@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "run_id": "m0-smoke-2026-10",
+  "question": "Can each harness adapter run one headless trial through the metering proxy on the fixed model, with every model call attributed to its trial and reconciled within 1% of provider usage?",
+  "tasks": {
+    "hello": [
+      "hello"
+    ]
+  },
+  "cells": [
+    {
+      "id": "openclaw-sonnet-hello",
+      "harness": "openclaw",
+      "model": "anthropic:claude-sonnet-5-5",
+      "slice": "hello",
+      "split": "dev",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 60000,
+        "output_tokens": 4000
+      }
+    },
+    {
+      "id": "hermes-sonnet-hello",
+      "harness": "hermes",
+      "model": "anthropic:claude-sonnet-5-5",
+      "slice": "hello",
+      "split": "dev",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 60000,
+        "output_tokens": 4000
+      }
+    },
+    {
+      "id": "qm-pi-sonnet-hello",
+      "harness": "qm",
+      "model": "anthropic:claude-sonnet-5-5",
+      "slice": "hello",
+      "split": "dev",
+      "config": "pi",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 60000,
+        "output_tokens": 4000
+      }
+    }
+  ],
+  "wall_clock_s": {
+    "hello": 600
+  },
+  "spend_cap_usd": 5,
+  "drop_order": [
+    "qm-pi-sonnet-hello"
+  ],
+  "minimum_v01": [
+    "openclaw-sonnet-hello",
+    "hermes-sonnet-hello"
+  ]
+}

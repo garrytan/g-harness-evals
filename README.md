@@ -13,6 +13,8 @@ Nothing has been measured yet. This repository holds the approved plan, the rese
 | The conventions taken from [gbrain-evals](https://github.com/garrytan/gbrain-evals), and which ones were adapted or left out | [docs/gbrain-evals-conventions.md](docs/gbrain-evals-conventions.md) |
 | The trial contract: isolation, metering, grading, termination and grade as separate fields, metrics, budget, artifacts | [docs/methodology.md](docs/methodology.md) |
 | Statistics kit (exact / noninferiority / superiority / exploratory gates, Holm correction, task-clustered paired bootstrap), vendored from gbrain-evals | [runner/stats/](runner/stats/) |
+| Metering proxy, budget ledger and price table (vendored), and the `plan` / `dry-run` runner CLI | [runner/README.md](runner/README.md), [runner/run.ts](runner/run.ts) |
+| Error codes | [docs/errors.md](docs/errors.md) |
 | Preregistration-order checker: a preregistration must be committed before any file matching its result globs | [runner/prereg/prereg.ts](runner/prereg/prereg.ts), [docs/benchmarks/preregistrations.json](docs/benchmarks/preregistrations.json) |
 | Open work carried out of the plan review | [TODOS.md](TODOS.md) |
 
@@ -37,6 +39,10 @@ bun runner/prereg/prereg.ts
 None of these calls a model API. Paid runs do not exist yet; when they do, they will spend through a budget ledger and land receipts here.
 
 ## Changelog
+
+### 2026-10-22: M0 runner, proxy and ledger
+
+harness-evals v0.0.2. Added the metering proxy, budget ledger and price table vendored from gbrain-evals and gbrain, the `runner/run.ts` plan and dry-run CLI, the error-code table and the M0 smoke preregistration with the D1 model amendment.
 
 ### 2026-10-22: Repository created with the approved plan
 
