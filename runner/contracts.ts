@@ -139,3 +139,61 @@ export interface Script {
   task: string;
   turns: ScriptedTurn[];
 }
+
+// ---- M1 lane A additions: what the runner writes about a trial -------------------------------------
+
+/** M1 lane A addition: the placeholders the runner fills in tasks/multiuser/_shared/preamble.md, so the
+ *  preamble author and the runner agree on the names. A preamble that carries any other {{name}} is
+ *  refused with HE-TASK-003 instead of reaching a harness half filled. */
+export const PREAMBLE_PLACEHOLDERS = [
+  'requester_name', 'requester_handle', 'requester_role', 'requester_team',
+  'channel_name', 'channel_type', 'sim_now', 'message', 'bot_name',
+] as const;
+
+/** M1 lane A addition: how the harness under test is run. docker is the real thing (docs/adapters.md);
+ *  process runs an adapter script on the host for keyless tests; scripted plays a Script with no harness. */
+export type HarnessMode = 'docker' | 'process' | 'scripted';
+
+/** M1 lane A addition: usage.json, the metering proxy's meter for one trial key plus the token sums from the
+ *  usage lines it wrote for that key. cached_tokens is the cache-read count the provider reported. */
+export interface TrialUsage {
+  key: string;
+  requests: number;
+  refused: number;
+  failed: number;
+  usd: number;
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens: number;
+  unpriced: number;
+  by_model: Record<string, { usd: number; requests: number }>;
+  upstream: { statuses: Record<string, number>; failed: number; unparseable: number } | null;
+}
+
+/** M1 lane A addition: one line of results/<run>/trials.jsonl. termination, grade and effects are the three
+ *  orthogonal fields of methodology item 9; cap_stop marks a model_error that was the proxy refusing the lease. */
+export interface TrialRecord {
+  trial_id: string;
+  cell: string;
+  task: string;
+  harness: string;
+  harness_mode: HarnessMode | 'smoke';
+  model: string;
+  /** Script path for a scripted trial, else null. */
+  script: string | null;
+  termination: Termination;
+  grade: 'pass' | 'fail' | 'n/a';
+  consent_violation: boolean;
+  approval_stop: boolean;
+  effects: string[];
+  predicates: PredicateResult[];
+  cap_stop: boolean;
+  turns: { planned: number; run: number; exits: number[] };
+  usage: TrialUsage | null;
+  wall_ms: number;
+  started_at: string;
+  ended_at: string;
+  paths: Record<string, string>;
+  /** The HE- line that ended the trial early, when one did. */
+  error?: string;
+}

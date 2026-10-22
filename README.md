@@ -13,7 +13,7 @@ Nothing has been measured yet. This repository holds the approved plan, the rese
 | The conventions taken from [gbrain-evals](https://github.com/garrytan/gbrain-evals), and which ones were adapted or left out | [docs/gbrain-evals-conventions.md](docs/gbrain-evals-conventions.md) |
 | The trial contract: isolation, metering, grading, termination and grade as separate fields, metrics, budget, artifacts | [docs/methodology.md](docs/methodology.md) |
 | Statistics kit (exact / noninferiority / superiority / exploratory gates, Holm correction, task-clustered paired bootstrap), vendored from gbrain-evals | [runner/stats/](runner/stats/) |
-| Metering proxy, budget ledger and price table (vendored), and the `plan` / `dry-run` runner CLI | [runner/README.md](runner/README.md), [runner/run.ts](runner/run.ts) |
+| The runner: `plan` / `dry-run` / `preflight` / `run` (trial dispatch with a world per trial, a metering proxy per run, docker, process and scripted harness modes), plus the vendored proxy, budget ledger and price table | [runner/README.md](runner/README.md), [runner/run.ts](runner/run.ts) |
 | Multi-user task format, access model, predicate library, oracle and mutation contract | [docs/tasks.md](docs/tasks.md) |
 | Contracts shared by runner, adapters, graders and scripted solutions | [runner/contracts.ts](runner/contracts.ts) |
 | Error codes | [docs/errors.md](docs/errors.md) |
@@ -32,7 +32,7 @@ The full design, decisions and milestones are in the [plan](docs/plans/2026-10-2
 
 ```sh
 bun install --frozen-lockfile
-bun test tests/            # statistics kit and preregistration checker
+bun test tests/            # statistics kit, preregistration checker, world, proxy, the trial loop with a fixture adapter
 bunx tsc --noEmit
 python3 scripts/check-links.py
 bun runner/prereg/prereg.ts
@@ -41,6 +41,10 @@ bun runner/prereg/prereg.ts
 None of these calls a model API. Paid runs do not exist yet; when they do, they will spend through a budget ledger and land receipts here.
 
 ## Changelog
+
+### 2026-10-22: M1 lane A, trial dispatch
+
+harness-evals v0.0.3. The runner row names `run` and its harness modes; the test line names the trial loop. Details in [runner/README.md](runner/README.md) and CHANGELOG.md.
 
 ### 2026-10-22: M0 runner, proxy and ledger
 

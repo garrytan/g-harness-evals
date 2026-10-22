@@ -106,7 +106,15 @@ export interface LeasePolicy {
 export interface UsageLine {
   at: string; key: string; provider: string; route: string; model: string | null;
   outcome: 'forwarded' | 'refused' | 'failed';
-  reason?: string; status?: number; reserved_usd?: number; actual_usd?: number; input_tokens?: number; output_tokens?: number; charged_reservation?: boolean; streamed?: boolean;
+  reason?: string; status?: number; reserved_usd?: number; actual_usd?: number; input_tokens?: number; output_tokens?: number; cached_tokens?: number; charged_reservation?: boolean; streamed?: boolean;
+}
+
+/** Cache-read tokens a provider reported (Anthropic cache_read_input_tokens, OpenAI prompt/input_tokens_details.cached_tokens), for the usage line. */
+function cachedTokens(usage: unknown): number | undefined {
+  if (!usage || typeof usage !== 'object') return undefined;
+  const u = usage as Record<string, any>;
+  const n = (v: unknown) => (typeof v === 'number' ? v : 0);
+  return n(u.cache_read_input_tokens) + n(u.prompt_tokens_details?.cached_tokens) + n(u.input_tokens_details?.cached_tokens);
 }
 
 const json = (status: number, kind: string, message: string) =>
@@ -305,12 +313,12 @@ export class MeteringProxy {
     if (prov === 'anthropic') { headers.set('x-api-key', realKey); if (!headers.has('anthropic-version')) headers.set('anthropic-version', '2023-06-01'); }
     else headers.set('authorization', `Bearer ${realKey}`);
     if (outBody !== undefined) headers.set('content-type', 'application/json');
-    const settle = (cost: ReturnType<typeof usageCost>, status: number, isStream: boolean) => {
+    const settle = (cost: ReturnType<typeof usageCost>, status: number, isStream: boolean, cached?: number) => {
       if (entry) p.lease.settle(entry, cost);
       const usd = cost ? cost.usd : reserved;
       this.charge(key, prov, bounded?.model ?? null, usd, !!bounded && !cost);
       this.log({ at, key, provider: prov, route, model: bounded?.model ?? model, outcome: 'forwarded', status, reserved_usd: reserved, actual_usd: usd,
-        input_tokens: cost?.input_tokens, output_tokens: cost?.output_tokens, charged_reservation: !!bounded && !cost, streamed: isStream });
+        input_tokens: cost?.input_tokens, output_tokens: cost?.output_tokens, ...(cost && cached !== undefined ? { cached_tokens: cached } : {}), charged_reservation: !!bounded && !cost, streamed: isStream });
     };
     let res: Response;
     try { res = await send(target, { method: req.method, headers, body: outBody, timeout: false, signal: AbortSignal.timeout(UPSTREAM_DEADLINE_MS) } as RequestInit); }
@@ -328,7 +336,7 @@ export class MeteringProxy {
       const [client, meterBranch] = res.body.tee();
       this.observe(key, res.status);
       void new Response(meterBranch).text().then(
-        text => { const u = sseUsage(text); settle(bounded && u ? usageCost(bounded, { usage: u }) : null, res.status, true); },
+        text => { const u = sseUsage(text); settle(bounded && u ? usageCost(bounded, { usage: u }) : null, res.status, true, cachedTokens(u)); },
         () => settle(null, res.status, true),
       ).finally(done);
       return new Response(client, { status: res.status, headers: out });
@@ -338,9 +346,10 @@ export class MeteringProxy {
     let parsed = true;
     try { JSON.parse(text); } catch { parsed = false; }
     this.observe(key, res.ok && !parsed ? 'unparseable' : res.status);
-    if (bounded && parsed) cost = usageCost(bounded, JSON.parse(text));
+    const parsedBody = parsed ? JSON.parse(text) as { usage?: unknown } : null;
+    if (bounded && parsedBody) cost = usageCost(bounded, parsedBody);
     if (!cost && bounded && res.status >= 400 && res.status < 500) cost = { usd: 0, input_tokens: 0, output_tokens: 0 };
-    settle(cost, res.status, false);
+    settle(cost, res.status, false, cachedTokens(parsedBody?.usage));
     return new Response(text, { status: res.status, headers: out });
   }
 }
