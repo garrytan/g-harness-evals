@@ -2,8 +2,8 @@
 # (built from the pinned source the same way deploy/core/Dockerfile in the QM
 # repository builds it, minus the WireGuard egress helper) plus our adapter.
 # compose.yaml runs it twice: as the `core` service beside Postgres, and as the
-# `task` container whose entrypoint is adapter.sh and which posts one turn to
-# core over the compose network. No API key enters this image; core gets the
+# `task` container whose entrypoint is adapter.sh and which posts turns to
+# core over HTTP. No API key enters this image; core gets the
 # per-trial token and proxy base URL from the environment at run time.
 ARG NODE_IMAGE=node:24-alpine
 FROM ${NODE_IMAGE} AS src
@@ -45,7 +45,7 @@ COPY --from=src /src/plugins/chassis ./plugins/chassis
 COPY --from=src /src/tsconfig.json ./
 
 COPY config/ /opt/harness/config/
-COPY adapter.sh post-turn.mjs pin.json /opt/harness/
+COPY adapter.sh qm-api.mjs pin.json /opt/harness/
 RUN chmod 0555 /opt/harness/adapter.sh && mkdir -p /data /workspace /harness-state && chown node:node /data /workspace /harness-state
 
 ENV NODE_ENV=production DATA_DIR=/data QM_VERSION=${QM_TAG}

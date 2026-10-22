@@ -1,6 +1,9 @@
 # One QM trial: Postgres + QM core + the task container that posts the turn.
 # Run by harnesses/run-trial.sh with HE_* and QM_* in the environment:
 #   docker compose -f harnesses/qm/compose.yaml -p he-<trial> up --abort-on-container-exit --exit-code-from task
+# HE_ENTRY selects the task container's entry (run, the default, or serve);
+# serve also needs HE_TURNS (the trial's turns dir, mounted at /he-turns) and
+# the world variables (HE_WORLD_MCP_URL, HE_WORLD_MCP_TOKEN, HE_SLACK_*).
 # Per trial everything is fresh: a new project name, a new Postgres, new
 # signing and connector secrets, an empty DATA_DIR under the trial's state dir,
 # and a sandbox container capture.sh removes afterwards.
@@ -62,7 +65,7 @@ services:
     depends_on:
       - core
     entrypoint: ["/opt/harness/adapter.sh"]
-    command: ["run"]
+    command: ["${HE_ENTRY:-run}"]
     user: "${HE_UID:-1000}:${HE_GID:-1000}"
     stdin_open: false
     tty: false
@@ -78,9 +81,16 @@ services:
       HE_TIME_BUDGET_S: ${HE_TIME_BUDGET_S:-300}
       HE_LOG_DIR: /he-logs
       HE_SESSION_STATE_DIR: /harness-state
+      HE_TURNS_DIR: /he-turns
       HE_TASK_SLICE: ${HE_TASK_SLICE:-smoke}
       HE_TRIAL_ID: ${HE_TRIAL_ID:-unknown}
+      HE_WORLD_MCP_URL: ${HE_WORLD_MCP_URL:-}
+      HE_WORLD_MCP_TOKEN: ${HE_WORLD_MCP_TOKEN:-}
+      HE_SLACK_API_URL: ${HE_SLACK_API_URL:-}
+      HE_SLACK_BOT_TOKEN: ${HE_SLACK_BOT_TOKEN:-}
+      HE_SLACK_APP_TOKEN: ${HE_SLACK_APP_TOKEN:-}
     volumes:
       - ${HE_WORKSPACE}:/workspace
       - ${HE_STATE}:/harness-state
       - ${HE_LOGS:?set HE_LOGS to the trial log dir}:/he-logs
+      - ${HE_TURNS:?set HE_TURNS to the trial turns dir}:/he-turns

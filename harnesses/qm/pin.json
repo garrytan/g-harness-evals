@@ -4,8 +4,8 @@
   "version": "v0.1.15",
   "commit": "7417aa2a3f917cf97406914897078ae3b273e173",
   "install": "git clone --branch v0.1.15 <repo> && build as deploy/core/Dockerfile does (npm ci --omit=dev, connector-sdk build); see Dockerfile",
-  "entry": "/opt/harness/adapter.sh run (task container in compose.yaml)",
-  "turn_command": "POST /v1/turns {surface:'harness-eval', actor:{externalId:'U1'}, conversation:{kind:'dm', threadRef:<trial>}, text:<instruction.md>} signed with CORE_SIGNING_SECRET",
+  "entry": "/opt/harness/adapter.sh run | serve (task container in compose.yaml; HE_ENTRY selects it)",
+  "turn_command": "node qm-api.mjs turn: POST /v1/turns {surface:'harness-eval', actor:{externalId:'U1'}, conversation:{kind:'dm', threadRef:<trial>}, text:<instruction.md>} signed with CORE_SIGNING_SECRET",
   "inner_harness": "pi",
   "model": {
     "provider": "anthropic",
@@ -20,7 +20,7 @@
     "/data on the core service (bound to /harness-state/qm)",
     "sandbox volume qm-home-<scope> (/root, the agent's workspace; removed by capture.sh)"
   ],
-  "mcp_config_path": "not wired in M0; QM registers MCP connectors through its deployment layer (docs/mcp-connectors.md in the QM repo)",
+  "mcp_config_path": "QM's MCP server registry: PUT /v1/admin/mcp-servers/world at serve start (name world, url HE_WORLD_MCP_URL, auth bearer with HE_WORLD_MCP_TOKEN, credentialScope shared, readOnly false), as admin principal harness-admin (ADMIN_GRANTS in config/core.env); core probes tools/list before saving",
   "topology": "sidecar",
   "services": [
     "pg (pgvector/pgvector:0.8.1-pg16)",
@@ -28,5 +28,13 @@
     "task (this image, adapter entrypoint)"
   ],
   "sandbox_backend": "local (one Docker container per scope via the host socket; image Dockerfile.sandbox)",
-  "multi_user_mode": "scopes: personal:<actor> and channels; not exercised in M0"
+  "multi_user_mode": "QM scopes: personal:<slack user id> for a DM, channel:<id> for a channel; the actor is the requester's Slack user id on every turn",
+  "serve_turn_command": "node qm-api.mjs turn: POST /v1/turns {surface:'harness-eval', actor:{externalId:<requester slack_user_id>, displayName}, conversation:{kind:'dm', threadRef:'dm:<member>'} | {kind:'channel', threadRef:'channel:<id>', channelRef:<id>, channelName}, text:<prompt>}",
+  "serve": {
+    "session_key": "conversation.threadRef dm:<member> | channel:<id>; scope personal:<actor> | channel:<id>",
+    "session_store": "postgres (sessions, runs, memory) and /harness-state/qm (DATA_DIR)",
+    "shared_between_sessions": "whatever QM shares across scopes under HARNESS_SHARING_POSTURE=isolated; not configured by the adapter",
+    "reply_source": "TurnResult.reply",
+    "exit_mapping": "status ok, silent or pending_approval -> 0; request outlived the budget -> 124; refusalKind model_budget or a provider status in reason -> 3; else 2"
+  }
 }

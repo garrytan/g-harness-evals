@@ -2,8 +2,8 @@
   "name": "_fake",
   "repo": null,
   "version": "0",
-  "install": "none; the adapter is a shell script",
-  "entry": "/opt/harness/adapter.sh run",
+  "install": "none; the adapter is a shell script (jq and curl in the image for serve)",
+  "entry": "/opt/harness/adapter.sh run | serve",
   "model": {
     "provider": "none",
     "model": null,
@@ -13,8 +13,13 @@
   "state_paths": [
     "/harness-state/fake"
   ],
-  "mcp_config_path": null,
+  "mcp_config_path": "none; serve calls HE_WORLD_MCP_URL directly with curl when a prompt carries [fake:call <tool> <json>]",
   "topology": "in-container",
-  "multi_user_mode": null,
+  "multi_user_mode": "scripted: one session file per key under /harness-state/fake/sessions, no sharing between keys",
+  "serve": {
+    "session_key": "dm:<member> | channel:<id>",
+    "session_store": "/harness-state/fake/sessions/<key>.json (turn counter)",
+    "reply": "fixed text echoing the requester's name, the turn, the conversation and the session turn count"
+  },
   "notes": "Protocol fixture for tests/adapter-conformance.test.ts. It never calls a model."
 }

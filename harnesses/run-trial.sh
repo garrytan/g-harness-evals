@@ -45,7 +45,7 @@ if [ -z "$budget" ]; then
 fi
 
 rm -rf "$out"
-mkdir -p "$out/workspace" "$out/state" "$out/logs"
+mkdir -p "$out/workspace" "$out/state" "$out/logs" "$out/turns"
 cp "$task/instruction.md" "$out/workspace/instruction.md"
 if [ -d "$task/workspace" ]; then cp -a "$task/workspace/." "$out/workspace/"; fi
 abs_out=$(cd "$out" && pwd)
@@ -60,7 +60,7 @@ set +e
 if [ -f "harnesses/$harness/compose.yaml" ]; then
   # Sidecar topology: the stack is the trial. A fresh project name, volume and
   # signing secret per trial; the task service's exit code is the adapter's.
-  export HE_WORKSPACE="$abs_out/workspace" HE_STATE="$abs_out/state" HE_LOGS="$abs_out/logs"
+  export HE_WORKSPACE="$abs_out/workspace" HE_STATE="$abs_out/state" HE_LOGS="$abs_out/logs" HE_TURNS="$abs_out/turns"
   export HE_MODEL_BASE_URL="$base_url" HE_MODEL_API_KEY="$api_key" HE_MODEL_NAME="$model"
   export HE_TIME_BUDGET_S="$budget" HE_TASK_SLICE="$slice" HE_TRIAL_ID="$trial" QM_IMAGE="$image"
   export HE_UID="$(id -u)" HE_GID="$(id -g)"

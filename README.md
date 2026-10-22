@@ -17,6 +17,7 @@ Nothing has been measured yet. This repository holds the approved plan, the rese
 | Multi-user task format, access model, predicate library, oracle and mutation contract | [docs/tasks.md](docs/tasks.md) |
 | The 30 multi-user tasks (10 dev, 20 held-out) with oracles and mutation matrices, and the grader that scores them from world state | [tasks/multiuser/README.md](tasks/multiuser/README.md), [runner/grade/](runner/grade/) |
 | Contracts shared by runner, adapters, graders and scripted solutions | [runner/contracts.ts](runner/contracts.ts) |
+| Harness images and adapters (`run` and `serve`), the adapter protocol, and the serve-mode smoke driver | [harnesses/README.md](harnesses/README.md), [docs/adapters.md](docs/adapters.md) |
 | Error codes | [docs/errors.md](docs/errors.md) |
 | Preregistration-order checker: a preregistration must be committed before any file matching its result globs | [runner/prereg/prereg.ts](runner/prereg/prereg.ts), [docs/benchmarks/preregistrations.json](docs/benchmarks/preregistrations.json) |
 | Open work carried out of the plan review | [TODOS.md](TODOS.md) |
@@ -50,6 +51,10 @@ harness-evals v0.0.3. The runner row names `run` and its harness modes; the test
 ### 2026-10-22: M1 lane B, multi-user tasks and grader
 
 harness-evals v0.0.3. Added the 30 multi-user tasks with oracles and mutation matrices, the shared preamble, the held-out manifest, and `runner/grade/` (task parser, predicate library, `gradeTrial`, in-process player); the task matrix runs keyless in CI.
+
+### 2026-10-22: M1 lane C, adapter serve
+
+Added the harness images and adapter protocol row; `serve` is implemented for every harness and proven live on OpenClaw, Hermes and QM (harnesses/README.md).
 
 ### 2026-10-22: M0 runner, proxy and ledger
 

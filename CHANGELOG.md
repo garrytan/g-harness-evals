@@ -18,6 +18,13 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 - World: `search.messages` events record the channels their matches came from, so a bot-wide search counts as a read of those channels.
 - Tests: `tests/grade.test.ts` (hand-built evidence per predicate kind), `tests/task-matrix.test.ts` (every oracle passes, every mutation fails exactly its predicate), `tests/heldout-manifest.test.ts`, `tests/world-search-effect.test.ts`.
 
+### M1 lane C: adapter serve and live smoke
+
+- `adapter.sh serve` for the fake harness, OpenClaw, Hermes Agent and QM: the TurnRequest/TurnResponse file queue, per-conversation sessions (`dm:<member>`, `channel:<id>`), the world-MCP server wired through each harness's own MCP config, SIGTERM handling; per-harness detail in docs/adapters.md and each pin.json.
+- `harnesses/serve-smoke.ts`: drives one image in serve mode against an in-process world and the Slack mock. Live proof: three turns each on OpenClaw, Hermes and QM through the metering proxy (two trials per harness, $0.63 in total), receipts in the harness READMEs.
+- Hermes image installs the `mcp` extra (the M0 image could not connect an MCP server); QM compose takes `HE_ENTRY` and a turns mount, `qm-api.mjs` replaces `post-turn.mjs`; the fake image gains jq and curl.
+- `tests/adapter-conformance.test.ts`: eight serve tests at the process level and one in a container.
+
 ### M1 contracts and the program cap
 
 - `runner/contracts.ts`: the turn protocol between runner and adapters (`TurnRequest`, `TurnResponse` over a file queue), the evidence a grader receives (`TurnWindow`, `TrialEvidence`), `GradeResult`, and the `Script` shape for oracles and mutations.

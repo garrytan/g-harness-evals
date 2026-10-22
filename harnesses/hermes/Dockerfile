@@ -3,9 +3,10 @@
 # run time); all mutable state goes to /harness-state through HERMES_HOME.
 # The install is editable (-e) because Hermes refuses to build a wheel outside
 # Nix (setup.py guard); the source checkout is the supported layout. The native
-# Anthropic extra is installed at build time because Hermes would otherwise
-# lazy-install it on first use, which a read-only /opt/harness forbids. No API
-# key enters this image.
+# Anthropic extra and the MCP client extra (the world-MCP server in serve mode)
+# are installed at build time because Hermes would otherwise lazy-install them
+# on first use, which a read-only /opt/harness forbids. No API key enters this
+# image.
 ARG PYTHON_IMAGE=python:3.12-slim-bookworm
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.11.6
 FROM ${UV_IMAGE} AS uv_source
@@ -29,7 +30,7 @@ RUN git clone --quiet --depth 1 --branch "${HERMES_TAG}" "${HERMES_REPO}" /opt/h
     && rm -rf /opt/harness/src/.git
 ENV UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 RUN uv venv --python /usr/local/bin/python3 /opt/harness/venv \
-    && uv pip install --python /opt/harness/venv/bin/python --no-cache -e "/opt/harness/src[anthropic]" \
+    && uv pip install --python /opt/harness/venv/bin/python --no-cache -e "/opt/harness/src[anthropic,mcp]" \
     && /opt/harness/venv/bin/hermes --version
 
 COPY config/ /opt/harness/config/

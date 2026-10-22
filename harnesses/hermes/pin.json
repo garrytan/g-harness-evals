@@ -3,8 +3,8 @@
   "repo": "https://github.com/NousResearch/hermes-agent",
   "version": "v2026.9.24",
   "commit": "f97608f178d1ffeca59860195ab7da295f7c8e5f",
-  "install": "git clone --branch v2026.9.24 <repo> /opt/harness/src && uv venv /opt/harness/venv && uv pip install '/opt/harness/src[anthropic]'",
-  "entry": "/opt/harness/adapter.sh run",
+  "install": "git clone --branch v2026.9.24 <repo> /opt/harness/src && uv venv /opt/harness/venv && uv pip install '/opt/harness/src[anthropic,mcp]'",
+  "entry": "/opt/harness/adapter.sh run | serve",
   "turn_command": "hermes chat --query-file /workspace/instruction.md --oneshot --provider anthropic --model claude-sonnet-5-5",
   "model": {
     "provider": "anthropic",
@@ -17,8 +17,16 @@
   "state_paths": [
     "/harness-state/hermes"
   ],
-  "mcp_config_path": "/harness-state/hermes/config.yaml#mcp_servers",
+  "mcp_config_path": "/harness-state/hermes/config.yaml#mcp_servers.world (appended at serve start: url HE_WORLD_MCP_URL, headers.Authorization: Bearer HE_WORLD_MCP_TOKEN; tools register as mcp__world__<tool>; the image installs the `mcp` extra so the client SDK is present)",
   "topology": "in-container",
   "terminal_backend": "local",
-  "multi_user_mode": "not configured in M0 (gateway with per-user sessions; see docs/adapters.md serve lifecycle)"
+  "multi_user_mode": "CLI with one named session per conversation (dm:<member>, channel:<id>) in one HERMES_HOME; the gateway and its per-user sessions are not used",
+  "serve_turn_command": "hermes chat --query-file <log>/turns/turn-NNNN.prompt.md --continue <key> --create-if-missing --oneshot --quiet --format stream-json --provider anthropic --model claude-sonnet-5-5 --run-budget <budget>",
+  "serve": {
+    "session_key": "dm:<member> | channel:<id> (session title; hermes chat -c <title> --create-if-missing)",
+    "session_store": "/harness-state/hermes/state.db and sessions/",
+    "shared_between_sessions": "whatever Hermes's own memory shares across sessions; not configured by the adapter",
+    "reply_source": "stream-json terminal `result` record (text, exit_code, error, tokens)",
+    "exit_mapping": "hermes exit 0 -> 0; outer timeout -> 124; proxy refusal, Anthropic SDK error class or HTTP status on stderr or in the result -> 3; else 2"
+  }
 }

@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # Fake harness adapter. It honours the adapter protocol in docs/adapters.md
 # without calling a model, so the conformance test can check the protocol
-# itself: exit codes, where state and logs go, and that a run completes with
-# stdin closed and no TTY.
+# itself: exit codes, where state and logs go, that a run completes with
+# stdin closed and no TTY, and the serve file queue.
 #
-# Behaviour is driven by markers in instruction.md:
-#   [fake:harness_error]   exit 2 before doing anything
-#   [fake:model_error]     exit 3 (as if the proxy refused the call)
-#   [fake:sleep N]         pretend the turn takes N seconds (for the wall clock)
-#   "hello.txt"            write "hello" to hello.txt in the workspace
+# Behaviour is driven by markers in the text (instruction.md for run, the
+# TurnRequest prompt for serve):
+#   [fake:harness_error]        exit 2 before doing anything
+#   [fake:model_error]          exit 3 (as if the proxy refused the call)
+#   [fake:sleep N]              pretend the turn takes N seconds (for the wall clock)
+#   [fake:call <tool> <json>]   serve only: call that world-MCP tool with those
+#                               arguments as the bot (one marker per line)
+#   "hello.txt"                 run only: write "hello" to hello.txt in the workspace
 set -euo pipefail
 
 : "${HE_WORKSPACE_DIR:=/workspace}"
@@ -21,11 +24,124 @@ mkdir -p "$HE_LOG_DIR" "$HE_SESSION_STATE_DIR/fake"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
 
 log() { printf '%s fake[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" | tee -a "$HE_LOG_DIR/adapter.log" >&2; }
+now() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
 
-if [ "${1:-run}" != "run" ]; then
-  log "unknown entry point: ${1:-}; only 'run' is implemented (see docs/adapters.md)"
-  exit 2
-fi
+export HOME="$HE_SESSION_STATE_DIR"
+
+# ---- serve: answer TurnRequest files until SIGTERM ------------------------------------------------
+
+# The body of one serve turn, run under `timeout` so the wall clock applies.
+# Arguments: request path, session key. Prints the reply on stdout.
+serve_turn() {
+  local req=$1 key=$2 prompt name turn ctype cid line tool args rpc out
+  prompt=$(jq -r '.prompt' "$req")
+  name=$(jq -r '.actor.name' "$req")
+  turn=$(jq -r '.turn' "$req")
+  ctype=$(jq -r '.channel.type' "$req")
+  cid=$(jq -r '.channel.id' "$req")
+  if [[ "$prompt" =~ \[fake:sleep\ ([0-9]+)\] ]]; then
+    sleep "${BASH_REMATCH[1]}"
+  fi
+  if [[ "$prompt" == *"[fake:harness_error]"* ]]; then
+    echo "fake: prompt asks for a harness error" >&2
+    return 2
+  fi
+  if [[ "$prompt" == *"[fake:model_error]"* ]]; then
+    echo "metering proxy: refused" >&2
+    return 3
+  fi
+  while IFS= read -r line; do
+    [[ "$line" =~ \[fake:call\ ([a-z_]+)\ (\{.*\})\] ]] || continue
+    tool=${BASH_REMATCH[1]} args=${BASH_REMATCH[2]}
+    if [ -z "${HE_WORLD_MCP_URL:-}" ] || [ -z "${HE_WORLD_MCP_TOKEN:-}" ]; then
+      echo "fake: [fake:call] needs HE_WORLD_MCP_URL and HE_WORLD_MCP_TOKEN" >&2
+      return 2
+    fi
+    rpc=$(jq -cn --arg tool "$tool" --argjson args "$args" '{jsonrpc:"2.0",id:1,method:"tools/call",params:{name:$tool,arguments:$args}}')
+    out=$(curl -sS --max-time 30 -X POST "$HE_WORLD_MCP_URL" \
+      -H "Authorization: Bearer $HE_WORLD_MCP_TOKEN" -H 'content-type: application/json' \
+      -H 'accept: application/json, text/event-stream' --data "$rpc") || { echo "fake: world-MCP call failed" >&2; return 2; }
+    printf '%s\n' "$out" >> "$HE_LOG_DIR/world-mcp-calls.jsonl"
+    echo "fake: world-MCP $tool -> isError=$(printf '%s' "$out" | jq -c '.result.isError // false')" >&2
+  done <<< "$prompt"
+  # Per-session state, as a real harness keeps between turns of one conversation.
+  local sfile="$HE_SESSION_STATE_DIR/fake/sessions/$(printf '%s' "$key" | tr -c 'a-zA-Z0-9_.-' '_').json"
+  mkdir -p "$(dirname "$sfile")"
+  local count=0
+  [ -r "$sfile" ] && count=$(jq -r '.turns' "$sfile")
+  count=$((count + 1))
+  jq -cn --arg key "$key" --argjson turns "$count" '{session:$key,turns:$turns}' > "$sfile"
+  printf 'Hi %s. Fake harness answering turn %s in %s:%s (session %s, turn %s of this session).' "$name" "$turn" "$ctype" "$cid" "$key" "$count"
+}
+
+serve() {
+  : "${HE_TURNS_DIR:=/he-turns}"
+  mkdir -p "$HE_TURNS_DIR"
+  local stopping=0
+  trap 'stopping=1' TERM INT
+  printf '{"trial":"%s","mode":"serve","model":"%s"}\n' "$HE_TRIAL_ID" "${HE_MODEL_NAME:-none}" > "$HE_SESSION_STATE_DIR/fake/session.json"
+  export -f serve_turn
+  export HE_LOG_DIR HE_SESSION_STATE_DIR HE_WORLD_MCP_URL HE_WORLD_MCP_TOKEN
+  printf '{"harness":"_fake","trial":"%s","ready_at":"%s","world_mcp":%s}\n' "$HE_TRIAL_ID" "$(now)" "$([ -n "${HE_WORLD_MCP_URL:-}" ] && echo true || echo false)" > "$HE_LOG_DIR/ready.tmp"
+  mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
+  log "serve: ready; polling $HE_TURNS_DIR"
+  while [ "$stopping" -eq 0 ]; do
+    local req resp base turn key budget started ended code reply detail tpid
+    for req in "$HE_TURNS_DIR"/turn-*.request.json; do
+      [ -e "$req" ] || continue
+      base=${req%.request.json}
+      resp="$base.response.json"
+      [ -e "$resp" ] && continue
+      turn=$(jq -r '.turn' "$req")
+      budget=$(jq -r '.time_budget_s // empty' "$req")
+      budget=${budget:-$HE_TIME_BUDGET_S}
+      if [ "$(jq -r '.channel.type' "$req")" = "dm" ]; then
+        key="dm:$(jq -r '.actor.member' "$req")"
+      else
+        key="channel:$(jq -r '.channel.id' "$req")"
+      fi
+      log "turn $turn: session $key, budget ${budget}s"
+      started=$(now)
+      # The turn runs in the background so a SIGTERM during it reaches the trap at once; the trap's
+      # flag then ends the turn and the loop.
+      set +e
+      timeout -k 5 "$budget" bash -c 'serve_turn "$1" "$2"' _ "$req" "$key" > "$resp.reply" 2>>"$HE_LOG_DIR/stderr.log" &
+      tpid=$!
+      wait "$tpid"; code=$?
+      if [ "$stopping" -eq 1 ] && kill -0 "$tpid" 2>/dev/null; then
+        log "turn $turn: SIGTERM during the turn; stopping the harness"
+        kill -TERM "$tpid" 2>/dev/null; wait "$tpid"; code=143
+      fi
+      set -e
+      reply=$(cat "$resp.reply"); rm -f "$resp.reply"
+      ended=$(now)
+      detail=""
+      case "$code" in
+        0) ;;
+        124|137) code=124; detail="wall clock exceeded (${budget}s)"; reply="" ;;
+        3) detail="model error"; reply="" ;;
+        143) detail="stopped by SIGTERM during the turn"; code=2; reply="" ;;
+        *) detail="harness error (inner exit $code)"; code=2; reply="" ;;
+      esac
+      jq -n --argjson turn "$turn" --argjson exit "$code" --arg reply "$reply" --arg started "$started" --arg ended "$ended" --arg detail "$detail" \
+        '{turn:$turn, exit:$exit, reply_text:(if $exit == 0 then $reply else null end), started_at:$started, ended_at:$ended} + (if $detail == "" then {} else {detail:$detail} end)' \
+        > "$resp.tmp"
+      mv "$resp.tmp" "$resp"
+      log "turn $turn: exit $code${detail:+ ($detail)}"
+    done
+    sleep 0.25
+  done
+  log "serve: stopped on signal"
+  exit 0
+}
+
+case "${1:-run}" in
+  run) ;;
+  serve) serve ;;
+  *) log "unknown entry point: ${1:-}; only 'run' and 'serve' are implemented (see docs/adapters.md)"; exit 2 ;;
+esac
+
+# ---- run: one headless turn from instruction.md ---------------------------------------------------
 
 instruction="$HE_WORKSPACE_DIR/instruction.md"
 if [ ! -r "$instruction" ]; then
@@ -41,7 +157,6 @@ fi
 
 # State lives in /harness-state, like a real harness's HOME.
 printf '{"trial":"%s","turns":1,"model":"%s"}\n' "$HE_TRIAL_ID" "${HE_MODEL_NAME:-none}" > "$HE_SESSION_STATE_DIR/fake/session.json"
-export HOME="$HE_SESSION_STATE_DIR"
 
 turn() {
   if [[ "$text" =~ \[fake:sleep\ ([0-9]+)\] ]]; then

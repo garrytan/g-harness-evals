@@ -7,6 +7,10 @@ LABEL org.opencontainers.image.title="harness-eval fake harness" \
       harness-eval.harness="_fake" \
       harness-eval.version="0" \
       harness-eval.topology="in-container"
+# jq reads TurnRequest files and writes TurnResponse files; curl makes the
+# [fake:call] world-MCP request in serve mode.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl jq \
+    && rm -rf /var/lib/apt/lists/*
 COPY adapter.sh pin.json /opt/harness/
 RUN chmod 0555 /opt/harness/adapter.sh && mkdir -p /workspace /harness-state
 WORKDIR /workspace
