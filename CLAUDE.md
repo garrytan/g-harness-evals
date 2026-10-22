@@ -24,7 +24,8 @@ Explain the task, the setting that changed the outcome, and the limit of the res
 - `runner/prereg/`: the preregistration-order checker.
 - `tests/`: `bun test tests/`.
 - `scripts/`: documentation checks.
-- Planned (see the plan's repository layout): `harnesses/<name>/`, `world/`, `tasks/`, `runner/{proxy,ledger,egress}`, `results/`.
+- `world/`: the simulated company: `seed/` (messy-company-v1 import, `world.json`, manifest), `services/` (Slack mock, clock, event log, one process per trial), `world-mcp/` (the MCP server every harness gets).
+- Planned (see the plan's repository layout): `harnesses/<name>/`, `tasks/`, `runner/{proxy,ledger,egress}`, `results/`.
 
 ## Shape of a top-level document
 
