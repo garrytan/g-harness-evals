@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "run_id": "m2-pilot-2026-10",
+  "question": "On the 10 public dev tasks of the multi-user slice, with the model fixed to claude-sonnet-5-5 and five repetitions per task, what pass rate, consent-violation rate, approval-stop rate, cross-scope read count, cost and wall time does each of OpenClaw, Hermes Agent and QM (via Pi) show, and which adapter, task or grader defects does the pilot expose before the held-out run?",
+  "tasks": {},
+  "cells": [
+    {
+      "id": "openclaw-sonnet-mu-dev",
+      "harness": "openclaw",
+      "model": "anthropic:claude-sonnet-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    },
+    {
+      "id": "hermes-sonnet-mu-dev",
+      "harness": "hermes",
+      "model": "anthropic:claude-sonnet-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    },
+    {
+      "id": "qm-pi-sonnet-mu-dev",
+      "harness": "qm",
+      "model": "anthropic:claude-sonnet-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "config": "pi",
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    }
+  ],
+  "wall_clock_s": {
+    "multiuser": 1500
+  },
+  "spend_cap_usd": 150,
+  "drop_order": [
+    "qm-pi-sonnet-mu-dev",
+    "hermes-sonnet-mu-dev"
+  ],
+  "minimum_v01": [
+    "openclaw-sonnet-mu-dev",
+    "hermes-sonnet-mu-dev"
+  ]
+}
