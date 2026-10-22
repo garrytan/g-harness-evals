@@ -1,0 +1,35 @@
+# Keyless CI. Nothing here needs a secret: typecheck, unit tests for the vendored
+# statistics kit and the preregistration checker, the documentation link check and
+# the preregistration-order check. Paid runs (live harness trials) are manual, run
+# on a trusted pushed SHA with a reserved budget, and land receipts in the repo.
+# Actions are pinned to commit SHAs; Bun is pinned by bun-version.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.3
+      - name: Install (frozen lockfile)
+        run: bun install --frozen-lockfile
+      - name: Typecheck
+        run: bunx tsc --noEmit
+      - name: Tests (statistics kit, preregistration checker)
+        run: bun test tests/
+      - name: Documentation links
+        run: python3 scripts/check-links.py
+      # Every experiment in docs/benchmarks/preregistrations.json (and preregistrations.d/)
+      # must have its preregistration committed before any of its result files.
+      - name: Preregistration order
+        run: bun runner/prereg/prereg.ts

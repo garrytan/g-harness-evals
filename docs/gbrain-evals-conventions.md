@@ -1,0 +1,38 @@
+# What harness-eval takes from garrytan/Gbrain-evals
+
+Read 2026-10-22 at Gbrain-evals v0.10.128 (`6999ebc9`). Gbrain-evals is a mature public eval repo for one product (gbrain) against comparison systems; harness-eval compares five harnesses with no home-team product. Most of its machinery transfers; its "put the product's best foot forward" framing does not.
+
+## Adopt as-is (reuse code or copy the shape)
+
+| Convention | Where in Gbrain-evals | How harness-eval uses it |
+|---|---|---|
+| **Preregistration before the first counted cell**: question, fixed seeds, models, arms, caps, comparator rule, primary endpoint, decision sentences, planning MDD; dated amendments committed before the cells they affect; a CI job (`prereg-order`) checks that preregistration commits precede result commits | `docs/benchmarks/cat40-hard/PREREGISTRATION.md`, `docs/benchmarks/preregistrations.d/*.json`, `.github/workflows/ci.yml` | One `PREREGISTRATION.md` per slice run; the `preregistrations.d` JSON registry and the `prereg-order` CI job copied verbatim |
+| **Budget ledger**: SQLite, reserve worst case before a request leaves, settle to provider usage, program cap stored in the ledger, refusal messages name the fix, overshoot recorded | `eval/runner/budget-ledger.ts`, `docs/budget-ledger.md` | Vendor the ledger into the model proxy; the DX/Eng reviewers' spend-cap, concurrency and paid-call-uncertainty findings are solved by this one component |
+| **Metering proxy as the only network exit**: strips the container's credential, injects the real key, allowlists provider routes and models, prices every request, enforces output limits, handles or disables streaming, totals checked against the provider usage page within 2% | OSS memory shootout plan, `eval/runner/metering-proxy.ts` | This is our `runner/proxy/`; it also answers Eng F1 (per-trial virtual keys, forced `stream_options.include_usage`) and the DX Critical on redaction |
+| **Pinned harness image with read-only mounts**: one Docker image pins the agent CLIs by version and labels them; the thing under test and the driver are mounted read-only at run time so one image serves every build | `eval/runner/cat41/Dockerfile` | Our `harnesses/<name>/Dockerfile` pattern: task image unchanged, harness at `/opt/harness` read-only, state in `/harness-state`; answers Eng F3/F4 |
+| **Ground truth from effects, never from the agent's words**: a fake provider request log, a command-wrapper log and filesystem probes; a taxonomy of consent `Effect`s (`paid`, `destructive`, `credentials`, `egress`, `persistent_install`, `capture`) and per-step classes (`authorized_execution`, `required_relay`, `correct_refusal`, `successful_recovery`, `consent_violation`, `false_empty`) | `eval/runner/cat41/scenarios.ts`, `types.ts` | Replace our vague "unauthorised action" with Cat 41's effect and step-class taxonomy; approval stops become world-state events (fixes DX contradiction on items 6/7) |
+| **Receipts manifest**: a JSON map from each published claim to an artifact path, its SHA-256 and JSON-pointer expected values, checked by a test | `docs/receipts-manifest.json`, `test/eval/receipts-manifest.test.ts` | Every number in `report.md` has a manifest row; `make score` byte-for-byte reproducibility becomes a test |
+| **Statistics kit**: exact / noninferiority / superiority / exploratory gate kinds, Holm correction, task-clustered paired bootstrap, `cluster_by`, min-clusters rule, "a model at ceiling is uninformative, not a tie" | `eval/runner/stats/gates.ts`, `paired.ts`, `holdout_stats.py` | Vendor the kit; cluster by task (five trials of one task are one cluster), which the outside Eng voice asked for |
+| **Dev / held-out split with custody**: tune on dev, confirm once on a held-out or sealed world generated from a private seed; digests committed before the world is opened; a world that has run once is spent | `docs/decisions.md`, `cat40-hard/SEALED.md`, `messy-company-v1` dev/heldout clusters | Work and multi-user tasks get a dev split (public, for adapter development) and a held-out split (run once for the report); fixes CEO F9 (public repo contaminates tasks) |
+| **Frozen data manifests**: `MANIFEST.json` with sha256 per data file; `validate-data.ts` fails on drift | `eval/data/messy-company-v1/MANIFEST.json` | Same for `tasks/` and world seeds |
+| **Keyless CI tier**: CI runs with zero secrets (typecheck, validators, hermetic scripted arms); paid runs are manual and land receipts | `.github/workflows/ci.yml` | Fixes the DX finding that smoke cannot run on fork PRs: CI runs scripted-model arms and oracle graders, never a real harness with a key |
+| **Document shape**: README = what it is at the pin, current results (each number with commit and report), comparisons; hub pages end with a `## Changelog` newest first; replace superseded claims instead of appending "Update" blocks; CLAUDE.md + AGENTS.md as the operating guide for agents; TODOS.md for deferred work with its origin | `CLAUDE.md`, `AGENTS.md`, `README.md`, `TODOS.md`, `CHANGELOG.md` | Copy the shape; drop the "positively disposed toward the product" rule since we have no product |
+| **Plan and review artefacts in-repo**: `docs/plans/<date>-<name>/PLAN.md` with `reviews/ceo-*.md`, `eng-*.md` and a `## Review record` | `docs/plans/2026-10-05-oss-memory-shootout/` | This autoplan run's exported artefacts land at `docs/plans/2026-10-21-harness-eval-v0/` |
+| **Benchmark report shape**: finding, concrete case, experiment and results, what to use and avoid, reproduce and inspect | CLAUDE.md "Shape of a benchmark report" | Our `report.md` template |
+| **Named denominators**: never combine recall-all, recall-any, precision, accuracy under one number | CLAUDE.md evidence rules | Already in our contract; adopt the wording |
+| **Model freshness rule**: every model-comparison run uses the newest frontier model of each family; a newer release replaces its predecessor only through a dated amendment | CLAUDE.md "Choose models" | Governs the sensitivity cell (d3b) |
+
+## Reuse the data
+
+`eval/data/messy-company-v1` is a frozen fictional company (Pemberline Systems, 14 employees, 16 accounts, emails, chats, CRM notes, meeting notes, support tickets, weekly updates, private notes, 41 contracts; dev/held-out split by account cluster; look-alike names, renamed accounts, superseded values, private-only assignments). It is a ready-made seed for the simulated Slack workspace: its 14 employees become the workspace members, its chats become channel history, its private notes become per-person scoped memory, and its existing gold labels (ownership, governing records, contradictions) become graders for multi-user tasks. Reusing it saves M2's "author a world from scratch" and inherits a validated MANIFEST.
+
+## Adapt, do not copy
+
+- Gbrain-evals compares *systems* behind a narrow `Adapter` / `MemorySystem` interface; our harnesses are whole agents, so the equivalent contract is the Claw-SWE-Bench adapter protocol (task in, world state out) plus Cat 41's effect log, not a retrieve/ingest API.
+- Cat 41's `Harness = 'claude' | 'codex'` is two closed CLIs with bypassed permission prompts; ours adds server-shaped harnesses (OpenClaw gateway, QM web/Slack) that need a non-interactive first-run path (DX Critical).
+- Gbrain-evals has one product and a "known limits" section about it; our report has no home team and must give every harness the same treatment, including an identical "what to use and avoid" paragraph structure.
+
+## Do not take
+
+- The "write for the engineer deciding whether to try gbrain / best foot forward" rule.
+- The Bun-only toolchain as a requirement: Harbor and most harness adapters are Python; Bun stays for the ledger, proxy and stats if vendored.
