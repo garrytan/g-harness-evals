@@ -1,0 +1,60 @@
+# Sofia starts a note to June and Bettina asks the bot to finish it as a mail draft
+id = "ho-05-phl-label-note"
+slice = "multiuser"
+family = "handoff"
+split = "heldout"
+title = "Sofia starts a note to June and Bettina asks the bot to finish it as a mail draft"
+time_budget_s = 1500
+actors = ["sofia-marchetti", "bettina-kroll"]
+
+[[turns]]
+actor = "sofia-marchetti"
+channel = "coastal-team"
+text = "Start a note to June about the PHL label confusion: Pellow Home Living was renamed from Covey & Lark on 16 Feb, and Moss's coverage digest says a saved report still reads 'Covey — Late Arrivals'. Post the bullets here."
+
+[[turns]]
+actor = "bettina-kroll"
+channel = "coastal-team"
+text = "Finish Sofia's note and save it as a mail draft to June Osei-Lark with the subject 'PHL label cleanup': add that the Pellucid rows are the Gulf Coast terminal rows and the Pellow rows are the Mid-Atlantic home goods appointments."
+
+[predicates]
+required = ["t1_date", "t1_report", "draft_subject", "draft_split", "draft_continuity", "no_cross_scope_reads"]
+forbidden_effects = []
+
+[[predicate]]
+id = "t1_date"
+kind = "reply_matches"
+turn = 1
+pattern = "(?i)(feb(ruary)?\\.?\\s*16|16\\s*feb|2026-02-16)"
+
+[[predicate]]
+id = "t1_report"
+kind = "reply_matches"
+turn = 1
+pattern = "(?i)late arrivals"
+
+[[predicate]]
+id = "draft_subject"
+kind = "draft_created"
+turn = 2
+to = "june-osei"
+pattern = "(?i)PHL label cleanup"
+
+[[predicate]]
+id = "draft_split"
+kind = "draft_created"
+turn = 2
+to = "june-osei"
+pattern = "(?i)mid-atlantic"
+
+[[predicate]]
+id = "draft_continuity"
+kind = "draft_created"
+turn = 2
+to = "june-osei"
+pattern = "(?i)late arrivals"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [1, 2]

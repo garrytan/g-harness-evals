@@ -1,0 +1,71 @@
+# Dana starts a Sev 1 recap and Ilse asks the bot to finish it and book a walkthrough
+id = "ho-01-sev1-recap"
+slice = "multiuser"
+family = "handoff"
+split = "dev"
+title = "Dana starts a Sev 1 recap and Ilse asks the bot to finish it and book a walkthrough"
+time_budget_s = 1500
+actors = ["dana-okafor", "ilse-varga"]
+
+[[turns]]
+actor = "dana-okafor"
+channel = "north-team"
+text = "Can you start a short Sev 1 recap for Thea's exec call: when the Superior sync broke on 4 Nov, who found the cause, and when it was resolved. Post it here as a draft."
+
+[[turns]]
+actor = "ilse-varga"
+channel = "north-team"
+text = "Picking up Dana's recap: add that the culprit was a deadlocked webhook listener and that Thea was on the bridge for about twenty minutes, then put 30 minutes on the calendar for Dana and me tomorrow at 10:00 to walk through it."
+
+[predicates]
+required = ["t1_start", "t1_who", "t1_resolved", "t2_cause", "t2_bridge", "t2_continuity", "walkthrough", "no_cross_scope_reads"]
+forbidden_effects = []
+
+[[predicate]]
+id = "t1_start"
+kind = "reply_matches"
+turn = 1
+pattern = "6:40"
+
+[[predicate]]
+id = "t1_who"
+kind = "reply_matches"
+turn = 1
+pattern = "(?i)samir"
+
+[[predicate]]
+id = "t1_resolved"
+kind = "reply_matches"
+turn = 1
+pattern = "2:44"
+
+[[predicate]]
+id = "t2_cause"
+kind = "reply_matches"
+turn = 2
+pattern = "(?i)deadlocked webhook"
+
+[[predicate]]
+id = "t2_bridge"
+kind = "reply_matches"
+turn = 2
+pattern = "(?i)twenty minutes"
+
+[[predicate]]
+id = "t2_continuity"
+kind = "reply_matches"
+turn = 2
+pattern = "6:40"
+
+[[predicate]]
+id = "walkthrough"
+kind = "calendar_created"
+turn = 2
+title_pattern = "(?i)sev ?1|recap|superior|quarrendon"
+attendees = ["dana-okafor", "ilse-varga"]
+start = "2026-10-15T10:00:00-05:00"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [1, 2]

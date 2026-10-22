@@ -255,7 +255,7 @@ export class WorldService {
       .filter((m) => visible.has(m.channel) && m.text.toLowerCase().includes(q))
       .sort((a, b) => Number(b.ts) - Number(a.ts))
       .slice(0, limit);
-    this.record(actor, via, 'search.messages', 'read', { query, limit }, { count: out.length });
+    this.record(actor, via, 'search.messages', 'read', { query, limit }, { count: out.length, channels: [...new Set(out.map((m) => m.channel))] });
     return out;
   }
 

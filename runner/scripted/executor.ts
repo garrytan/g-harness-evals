@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import type { Script, ScriptedTurn, TurnRequest, TurnResponse } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
 import { type Harness, type TrialDirs, responseFile, writeAtomic } from '../trial/harness.ts';
+import { substitute } from '../grade/play.ts';
 
 export function loadScript(path: string): Script {
   if (!existsSync(path)) throw new RunnerError('HE-SCRIPT-001', `script not found: ${path}; fix: every task ships oracle.json and mutations/<predicate-id>.json (docs/tasks.md)`);
@@ -65,11 +66,12 @@ export function startScriptedHarness(opts: ScriptedHarnessOptions): Harness {
     if (!turn) response = { turn: req.turn, exit: 0, reply_text: null, started_at, ended_at: new Date().toISOString(), detail: 'script has no entry for this turn' };
     else {
       try {
-        const results = turn.calls.length ? await executeScriptTurn(await connect(), turn) : [];
+        const resolved = substitute(turn, { request_ts: req.ts, channel: req.channel.id });
+        const results = resolved.calls.length ? await executeScriptTurn(await connect(), resolved) : [];
         appendFileSync(log, JSON.stringify({ turn: req.turn, results }) + '\n');
-        response = turn.exit
-          ? { turn: req.turn, exit: turn.exit, reply_text: null, started_at, ended_at: new Date().toISOString(), detail: 'scripted exit' }
-          : { turn: req.turn, exit: 0, reply_text: turn.reply, started_at, ended_at: new Date().toISOString() };
+        response = resolved.exit
+          ? { turn: req.turn, exit: resolved.exit, reply_text: null, started_at, ended_at: new Date().toISOString(), detail: 'scripted exit' }
+          : { turn: req.turn, exit: 0, reply_text: resolved.reply, started_at, ended_at: new Date().toISOString() };
       } catch (e) {
         appendFileSync(log, JSON.stringify({ turn: req.turn, error: (e as Error).message }) + '\n');
         response = { turn: req.turn, exit: 2, reply_text: null, started_at, ended_at: new Date().toISOString(), detail: `scripted executor: ${(e as Error).message}` };

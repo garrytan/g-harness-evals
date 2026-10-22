@@ -112,7 +112,7 @@ Both surfaces call the same `WorldService`, so the rules are identical:
 | `args` | the call's arguments as received (message text included; this file is evaluator-owned) |
 | `outcome` | `ok`, `denied`, `error` |
 | `error` | the refusal code on a denied call (`not_in_channel`, `forbidden`, `channel_not_found`, `fenced`, ...) |
-| `effect` | what changed or was returned: channel and `ts` of a post, file id and visibility of a read, `sent: false` on a draft, the full `pending_action` on an approval request |
+| `effect` | what changed or was returned: channel and `ts` of a post, file id and visibility of a read, the distinct `channels` a search's matches came from, `sent: false` on a draft, the full `pending_action` on an approval request |
 
 A `request_approval` call writes an `approval` event whose `effect.pending_action` names the requester, the
 action, the authorization it needs, where the agent says it asked (`{"dm": member}` or

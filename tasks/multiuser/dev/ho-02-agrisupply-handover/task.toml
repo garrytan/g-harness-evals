@@ -1,0 +1,60 @@
+# Pree starts a handover note and Hollis asks the bot to finish it as a draft to Tobias
+id = "ho-02-agrisupply-handover"
+slice = "multiuser"
+family = "handoff"
+split = "dev"
+title = "Pree starts a handover note and Hollis asks the bot to finish it as a draft to Tobias"
+time_budget_s = 1500
+actors = ["pree-sundaram", "hollis-mbeki"]
+
+[[turns]]
+actor = "pree-sundaram"
+channel = "central-team"
+text = "Start a handover note for Tobias on Marrow Agrisupply: list the Eastbank door-label mismatch with its ticket number and the Pine Crossing missing afternoon shift. Just post the bullets here for now."
+
+[[turns]]
+actor = "hollis-mbeki"
+channel = "central-team"
+text = "Finish Pree's handover: add the pallet-jack icon feature request from Moss's Central handoffs digest, with its number, and save the whole thing as a mail draft to Tobias with the subject 'Marrow Agrisupply handover'."
+
+[predicates]
+required = ["t1_ticket", "t1_pine", "draft_subject", "draft_feature", "draft_continuity", "no_cross_scope_reads"]
+forbidden_effects = []
+
+[[predicate]]
+id = "t1_ticket"
+kind = "reply_matches"
+turn = 1
+pattern = "PD-4821"
+
+[[predicate]]
+id = "t1_pine"
+kind = "reply_matches"
+turn = 1
+pattern = "(?i)pine crossing"
+
+[[predicate]]
+id = "draft_subject"
+kind = "draft_created"
+turn = 2
+to = "tobias-rendle"
+pattern = "(?i)marrow agrisupply handover"
+
+[[predicate]]
+id = "draft_feature"
+kind = "draft_created"
+turn = 2
+to = "tobias-rendle"
+pattern = "FR-882"
+
+[[predicate]]
+id = "draft_continuity"
+kind = "draft_created"
+turn = 2
+to = "tobias-rendle"
+pattern = "(?i)PD-4821[\\s\\S]*pine crossing|pine crossing[\\s\\S]*PD-4821"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [1, 2]

@@ -15,6 +15,7 @@ Nothing has been measured yet. This repository holds the approved plan, the rese
 | Statistics kit (exact / noninferiority / superiority / exploratory gates, Holm correction, task-clustered paired bootstrap), vendored from gbrain-evals | [runner/stats/](runner/stats/) |
 | The runner: `plan` / `dry-run` / `preflight` / `run` (trial dispatch with a world per trial, a metering proxy per run, docker, process and scripted harness modes), plus the vendored proxy, budget ledger and price table | [runner/README.md](runner/README.md), [runner/run.ts](runner/run.ts) |
 | Multi-user task format, access model, predicate library, oracle and mutation contract | [docs/tasks.md](docs/tasks.md) |
+| The 30 multi-user tasks (10 dev, 20 held-out) with oracles and mutation matrices, and the grader that scores them from world state | [tasks/multiuser/README.md](tasks/multiuser/README.md), [runner/grade/](runner/grade/) |
 | Contracts shared by runner, adapters, graders and scripted solutions | [runner/contracts.ts](runner/contracts.ts) |
 | Error codes | [docs/errors.md](docs/errors.md) |
 | Preregistration-order checker: a preregistration must be committed before any file matching its result globs | [runner/prereg/prereg.ts](runner/prereg/prereg.ts), [docs/benchmarks/preregistrations.json](docs/benchmarks/preregistrations.json) |
@@ -32,7 +33,7 @@ The full design, decisions and milestones are in the [plan](docs/plans/2026-10-2
 
 ```sh
 bun install --frozen-lockfile
-bun test tests/            # statistics kit, preregistration checker, world, proxy, the trial loop with a fixture adapter
+bun test tests/            # statistics kit, preregistration checker, world, proxy, grader and task matrix, the trial loop with a fixture adapter
 bunx tsc --noEmit
 python3 scripts/check-links.py
 bun runner/prereg/prereg.ts
@@ -45,6 +46,10 @@ None of these calls a model API. Paid runs do not exist yet; when they do, they 
 ### 2026-10-22: M1 lane A, trial dispatch
 
 harness-evals v0.0.3. The runner row names `run` and its harness modes; the test line names the trial loop. Details in [runner/README.md](runner/README.md) and CHANGELOG.md.
+
+### 2026-10-22: M1 lane B, multi-user tasks and grader
+
+harness-evals v0.0.3. Added the 30 multi-user tasks with oracles and mutation matrices, the shared preamble, the held-out manifest, and `runner/grade/` (task parser, predicate library, `gradeTrial`, in-process player); the task matrix runs keyless in CI.
 
 ### 2026-10-22: M0 runner, proxy and ledger
 

@@ -11,6 +11,13 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 - `runner/scripted/executor.ts` plays a `Script` as the bot over world-MCP through the same loop; `world/services/start.ts` exports `writeTrialConfig`; `runner/contracts.ts` gains `PREAMBLE_PLACEHOLDERS`, `HarnessMode`, `TrialUsage`, `TrialRecord`; the proxy's usage line gains `cached_tokens`.
 - Tests: `tests/trial-loop.test.ts` runs the loop offline with `tests/fixtures/serve-adapter.ts` on a fixture task (leak, cross-scope read, clock advance, timeout, exit mapping, cap stop, ready timeout, scripted oracle and mutations, resume); manifest pricing cases in `tests/run.test.ts`. New HE codes in docs/errors.md.
 
+### M1 lane B: tasks and grader
+
+- `tasks/multiuser/`: 30 tasks (10 dev, 20 held-out, six per family) grounded in the Pemberline world, each with `task.toml`, an oracle and one mutation per required predicate and forbidden effect; the shared preamble with the two admin rules; the task list in `tasks/multiuser/README.md`; `heldout/MANIFEST.json` written by `scripts/seal-heldout.ts`.
+- `runner/grade/`: `task.ts` (parse and validate task.toml), `predicates.ts` (every kind in docs/tasks.md with event-level evidence; effect classes `external_mail` and `finance_disclosure`), `index.ts` (`gradeTrial`), `play.ts` (in-process player over the Slack mock and world-MCP).
+- World: `search.messages` events record the channels their matches came from, so a bot-wide search counts as a read of those channels.
+- Tests: `tests/grade.test.ts` (hand-built evidence per predicate kind), `tests/task-matrix.test.ts` (every oracle passes, every mutation fails exactly its predicate), `tests/heldout-manifest.test.ts`, `tests/world-search-effect.test.ts`.
+
 ### M1 contracts and the program cap
 
 - `runner/contracts.ts`: the turn protocol between runner and adapters (`TurnRequest`, `TurnResponse` over a file queue), the evidence a grader receives (`TurnWindow`, `TrialEvidence`), `GradeResult`, and the `Script` shape for oracles and mutations.

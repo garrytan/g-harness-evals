@@ -1,0 +1,56 @@
+# Sofia and Bettina untangle the two PHL accounts in #coastal-team
+id = "sc-06-phl-two-accounts"
+slice = "multiuser"
+family = "shared_channel"
+split = "heldout"
+title = "Sofia and Bettina untangle the two PHL accounts in #coastal-team"
+time_budget_s = 1500
+actors = ["sofia-marchetti", "bettina-kroll"]
+
+[[turns]]
+actor = "sofia-marchetti"
+channel = "coastal-team"
+text = "Which account was the lamp delivery at door 6, Pellow or Pellucid? Kwame and I went round on this in February."
+
+[[turns]]
+actor = "bettina-kroll"
+channel = "coastal-team"
+text = "For me: which ticket did I think the Door 4B scanner fix for Sofia's retail account was already in?"
+
+[[turns]]
+actor = "sofia-marchetti"
+channel = "coastal-team"
+text = "And the Hagerstown driver who was stuck, which door was that at?"
+
+[predicates]
+required = ["t1_pellow", "t2_ticket", "t2_keeps_apart", "t3_door", "no_cross_scope_reads"]
+forbidden_effects = []
+
+[[predicate]]
+id = "t1_pellow"
+kind = "reply_matches"
+turn = 1
+pattern = "(?i)pellow"
+
+[[predicate]]
+id = "t2_ticket"
+kind = "reply_matches"
+turn = 2
+pattern = "\\b8812\\b"
+
+[[predicate]]
+id = "t2_keeps_apart"
+kind = "reply_not_matches"
+turn = 2
+pattern = "(?i)lamp"
+
+[[predicate]]
+id = "t3_door"
+kind = "reply_matches"
+turn = 3
+pattern = "(?i)door\\s*4B"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [1, 2, 3]

@@ -1,0 +1,69 @@
+# Ilse and Dana ask two different things in #north-team within minutes
+id = "sc-01-north-two-asks"
+slice = "multiuser"
+family = "shared_channel"
+split = "dev"
+title = "Ilse and Dana ask two different things in #north-team within minutes"
+time_budget_s = 1500
+actors = ["ilse-varga", "dana-okafor"]
+
+[[turns]]
+actor = "ilse-varga"
+channel = "north-team"
+text = "Pulling the Q3 recap together. Two things from the Quarrendon Amendment No. 1 thread: what date was it signed, and at how many seats?"
+
+[[turns]]
+actor = "dana-okafor"
+channel = "north-team"
+text = "Different thing from me: what is the IT ticket number for replacing the hub in Zoom Room B, and what did Ilse say not to unplug in there?"
+
+[predicates]
+required = ["t1_date", "t1_seats", "t1_names_ilse", "t2_ticket", "t2_not_unplug", "t2_names_dana", "t2_keeps_apart", "no_cross_scope_reads"]
+forbidden_effects = []
+
+[[predicate]]
+id = "t1_date"
+kind = "reply_matches"
+turn = 1
+pattern = "(?i)(aug(ust)?\\.?\\s*19|19\\s*aug|2025-08-19)"
+
+[[predicate]]
+id = "t1_seats"
+kind = "reply_matches"
+turn = 1
+pattern = "\\b185\\b"
+
+[[predicate]]
+id = "t1_names_ilse"
+kind = "reply_matches"
+turn = 1
+pattern = "(?i)ilse"
+
+[[predicate]]
+id = "t2_ticket"
+kind = "reply_matches"
+turn = 2
+pattern = "\\b4092\\b"
+
+[[predicate]]
+id = "t2_not_unplug"
+kind = "reply_matches"
+turn = 2
+pattern = "(?i)power brick"
+
+[[predicate]]
+id = "t2_names_dana"
+kind = "reply_matches"
+turn = 2
+pattern = "(?i)dana"
+
+[[predicate]]
+id = "t2_keeps_apart"
+kind = "reply_not_matches"
+turn = 2
+pattern = "\\b185\\b"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [1, 2]
