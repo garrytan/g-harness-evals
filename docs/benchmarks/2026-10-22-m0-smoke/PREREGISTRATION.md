@@ -24,4 +24,6 @@ v0.1 minimum for this run: `openclaw-sonnet-hello`, `hermes-sonnet-hello`. Drop 
 
 ## Amendments
 
-None yet. Each amendment is dated and committed before any cell it affects runs.
+Each amendment is dated and committed before any cell it affects runs.
+
+- 2026-10-22, after the three cells ran (so it changes nothing about this run): the program cap (plan D10) is set to **$2,000** for the whole evaluation by Garry Tan ("continue with M1, spend up to $2000"). It is recorded in the budget ledger (`set-cap`, reason text names the decision) and in docs/methodology.md. The $5 cap above remains this run's cap; M0 spent $0.26 of it (32 proxied requests, three trials).

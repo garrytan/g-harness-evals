@@ -1,0 +1,141 @@
+// Shared contracts between the runner, the adapters, the task graders and the scripted executor.
+// This file is the agreement M1 lanes build against; change it in one PR and update every consumer.
+//
+//   runner/run.ts run            drives a trial: world, proxy, harness container, turns, fence, snapshot, grade
+//   harnesses/<name>/adapter.sh  serve: answers TurnRequest files with TurnResponse files (docs/adapters.md)
+//   runner/grade/                gradeTrial(TrialEvidence) -> GradeResult from predicates in task.toml (docs/tasks.md)
+//   runner/scripted/             executeScript: an oracle or mutation acting on the world through world-MCP
+
+import type { WorldEvent } from '../world/services/events.ts';
+
+// ---- adapter turn protocol (multi-user trials) -------------------------------------------------------
+
+/** One actor message the runner hands to the harness. Written by the runner as
+ *  $HE_TURNS_DIR/turn-<NNNN>.request.json (atomic rename). The adapter answers with
+ *  turn-<NNNN>.response.json. `prompt` is the full text the harness must receive, composed by the
+ *  runner from tasks/multiuser/_shared/preamble.md and the fields below, identical for every harness. */
+export interface TurnRequest {
+  turn: number;
+  trial_id: string;
+  prompt: string;
+  actor: { member: string; slack_user_id: string; name: string; role: string; team: string | null };
+  channel: { id: string; name: string; type: 'dm' | 'channel' };
+  text: string;
+  /** Slack ts of the actor's message in the world (already posted by the runner). */
+  ts: string;
+  thread_ts: string | null;
+  /** Simulation clock at the message, ISO-8601 with offset. */
+  sim_now: string;
+  /** Wall-clock seconds the adapter has for this turn; the runner kills the container 60 s later. */
+  time_budget_s: number;
+}
+
+/** The adapter's answer. exit follows docs/adapters.md: 0 completed, 2 harness error, 3 model error,
+ *  124 wall clock. reply_text is the harness's final answer for this turn; the runner posts it to the
+ *  world as the bot, in the request's channel and thread, so the grader reads it from world state. */
+export interface TurnResponse {
+  turn: number;
+  exit: 0 | 2 | 3 | 124;
+  reply_text: string | null;
+  started_at: string;
+  ended_at: string;
+  detail?: string;
+}
+
+// ---- evidence the grader receives -----------------------------------------------------------------
+
+/** The evaluator-owned record of one turn: who asked, where, and which world events (by seq) fell
+ *  inside the harness's work on it. Reads between started_seq and ended_seq are attributed to this
+ *  turn's requester. */
+export interface TurnWindow {
+  turn: number;
+  actor: string;
+  slack_user_id: string;
+  channel: string;
+  channel_name: string;
+  channel_type: 'dm' | 'channel';
+  text: string;
+  request_ts: string;
+  started_wall: string;
+  ended_wall: string;
+  /** seq of the last world event before the request was handed over. */
+  started_seq: number;
+  /** seq of the last world event when the response was read. */
+  ended_seq: number;
+  exit: 0 | 2 | 3 | 124;
+  /** Slack ts of the bot reply the runner posted, null when the turn produced none. */
+  reply_ts: string | null;
+  reply_text: string | null;
+}
+
+/** GET /admin/snapshot as the world returns it after the fence. Files are not in the snapshot; graders
+ *  load them from the seed filtered by split when a predicate needs them. */
+export interface WorldSnapshot {
+  trial_id: string;
+  split: 'dev' | 'heldout' | 'both';
+  clock: { reference: string; time_zone: string; offset_minutes: number; advanced_seconds: number };
+  now: string;
+  fenced: boolean;
+  channels: Array<{ id: string; name: string; kind: string; members: string[] }>;
+  messages: Array<{ id: string; channel: string; author: string; ts: string; text: string; thread_ts?: string | null }>;
+  calendar: unknown[];
+  mail: unknown[];
+  pending_actions: unknown[];
+  events: number;
+}
+
+export interface TrialEvidence {
+  trial_id: string;
+  /** tasks/multiuser/<split>/<id> */
+  task_dir: string;
+  split: 'dev' | 'heldout';
+  /** world/seed/world.json path the trial ran on */
+  world_path: string;
+  bot_member: string;
+  snapshot: WorldSnapshot;
+  events: WorldEvent[];
+  turns: TurnWindow[];
+}
+
+export interface PredicateResult {
+  id: string;
+  kind: 'required' | 'forbidden_effect';
+  passed: boolean;
+  /** Which predicate type evaluated it and what it saw: event seqs, message ts, the matched text. */
+  evidence: string;
+  /** Set when the predicate needs a harness capability (scheduler, delegation) recorded in pin.json;
+   *  the report keeps such predicates in the capability table, never in the primary endpoint. */
+  capability?: string;
+}
+
+export type Termination = 'completed' | 'timeout' | 'approval_stop' | 'harness_error' | 'model_error' | 'infra_error' | 'exam_fault';
+
+export interface GradeResult {
+  grade: 'pass' | 'fail' | 'n/a';
+  predicates: PredicateResult[];
+  consent_violation: boolean;
+  approval_stop: boolean;
+  /** Effect classes observed (methodology item 9): paid, destructive, credentials, egress, persistent_install, capture. */
+  effects: string[];
+}
+
+// ---- scripted oracle and mutation solutions ---------------------------------------------------------
+
+/** An oracle (passes every predicate) or a mutation (fails exactly one) is a script the scripted executor
+ *  plays against a live world as the bot: per turn, a list of world-MCP tool calls and the reply the
+ *  runner would post. The executor reads TurnRequests like an adapter would, so the same runner path
+ *  grades a scripted trial and a harness trial. */
+export interface ScriptedTurn {
+  turn: number;
+  calls: Array<{ tool: string; args: Record<string, unknown> }>;
+  reply: string | null;
+  /** Pretend the harness failed this turn with this exit (for termination fixtures). */
+  exit?: 2 | 3 | 124;
+}
+
+export interface Script {
+  /** "oracle" or the predicate id this mutation violates. */
+  id: string;
+  task: string;
+  turns: ScriptedTurn[];
+}
