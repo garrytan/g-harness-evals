@@ -1,0 +1,86 @@
+# One QM trial: Postgres + QM core + the task container that posts the turn.
+# Run by harnesses/run-trial.sh with HE_* and QM_* in the environment:
+#   docker compose -f harnesses/qm/compose.yaml -p he-<trial> up --abort-on-container-exit --exit-code-from task
+# Per trial everything is fresh: a new project name, a new Postgres, new
+# signing and connector secrets, an empty DATA_DIR under the trial's state dir,
+# and a sandbox container capture.sh removes afterwards.
+services:
+  pg:
+    image: pgvector/pgvector:0.8.1-pg16
+    # Published on loopback only, for core on the host network.
+    ports:
+      - "127.0.0.1:${QM_PG_PORT:-55432}:5432"
+    environment:
+      POSTGRES_DB: qm
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${QM_PG_PASSWORD:-qm-trial}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d qm"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  core:
+    image: ${QM_IMAGE:-harness-eval/qm:dev}
+    # The local sandbox backend spawns one sandbox container per scope through
+    # the Docker socket, publishes its daemon on 127.0.0.1:<random> and dials
+    # that address. At v0.1.15 the local backend never reads QM_CORE_CONTAINER
+    # (only the AWS backend does), so a containerised core cannot reach the
+    # sandbox by name; it has to share the host's loopback. Hence host
+    # networking for core, Postgres on a loopback port, and one trial at a
+    # time per host port pair (QM_CORE_PORT, QM_PG_PORT). See README.md.
+    network_mode: host
+    depends_on:
+      pg:
+        condition: service_healthy
+    env_file:
+      - ./config/core.env
+    user: "${HE_UID:-1000}:${HE_GID:-1000}"
+    group_add:
+      - "${QM_DOCKER_GID:-999}"
+    environment:
+      DATABASE_URL: postgres://postgres:${QM_PG_PASSWORD:-qm-trial}@127.0.0.1:${QM_PG_PORT:-55432}/qm
+      PORT: ${QM_CORE_PORT:-58080}
+      CORE_SIGNING_SECRET: ${QM_SIGNING_SECRET}
+      CONNECTOR_SECRET_KEY: ${QM_CONNECTOR_SECRET_KEY}
+      LOCAL_SANDBOX_IMAGE: ${QM_SANDBOX_IMAGE:-harness-eval/qm-sandbox:dev}
+      DOCKER_HOST: unix:///var/run/docker.sock
+      ANTHROPIC_API_KEY: ${HE_MODEL_API_KEY}
+      ANTHROPIC_BASE_URL: ${HE_MODEL_BASE_URL}
+      PI_MODEL: ${HE_MODEL_NAME:-claude-sonnet-5-5}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Core's DATA_DIR is the trial's harness state (prepare.sh creates it so
+      # docker does not create the mount point as root). The agent's files live
+      # in the sandbox, not here; capture.sh copies them to the workspace.
+      - ${HE_STATE:?set HE_STATE to the trial state dir}/qm:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  task:
+    image: ${QM_IMAGE:-harness-eval/qm:dev}
+    depends_on:
+      - core
+    entrypoint: ["/opt/harness/adapter.sh"]
+    command: ["run"]
+    user: "${HE_UID:-1000}:${HE_GID:-1000}"
+    stdin_open: false
+    tty: false
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      QM_CORE_URL: http://host.docker.internal:${QM_CORE_PORT:-58080}
+      QM_SIGNING_SECRET: ${QM_SIGNING_SECRET}
+      QM_ACTOR_ID: U1
+      HE_MODEL_BASE_URL: ${HE_MODEL_BASE_URL}
+      HE_MODEL_API_KEY: ${HE_MODEL_API_KEY}
+      HE_MODEL_NAME: ${HE_MODEL_NAME:-claude-sonnet-5-5}
+      HE_TIME_BUDGET_S: ${HE_TIME_BUDGET_S:-300}
+      HE_LOG_DIR: /he-logs
+      HE_SESSION_STATE_DIR: /harness-state
+      HE_TASK_SLICE: ${HE_TASK_SLICE:-smoke}
+      HE_TRIAL_ID: ${HE_TRIAL_ID:-unknown}
+    volumes:
+      - ${HE_WORKSPACE}:/workspace
+      - ${HE_STATE}:/harness-state
+      - ${HE_LOGS:?set HE_LOGS to the trial log dir}:/he-logs

@@ -1,0 +1,24 @@
+{
+  "name": "hermes",
+  "repo": "https://github.com/NousResearch/hermes-agent",
+  "version": "v2026.9.24",
+  "commit": "f97608f178d1ffeca59860195ab7da295f7c8e5f",
+  "install": "git clone --branch v2026.9.24 <repo> /opt/harness/src && uv venv /opt/harness/venv && uv pip install '/opt/harness/src[anthropic]'",
+  "entry": "/opt/harness/adapter.sh run",
+  "turn_command": "hermes chat --query-file /workspace/instruction.md --oneshot --provider anthropic --model claude-sonnet-5-5",
+  "model": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-5-5",
+    "api": "anthropic-messages",
+    "base_url_env": "ANTHROPIC_BASE_URL (set from HE_MODEL_BASE_URL)",
+    "api_key_env": "ANTHROPIC_API_KEY (set from HE_MODEL_API_KEY)",
+    "config_path": "config/config.yaml"
+  },
+  "state_paths": [
+    "/harness-state/hermes"
+  ],
+  "mcp_config_path": "/harness-state/hermes/config.yaml#mcp_servers",
+  "topology": "in-container",
+  "terminal_backend": "local",
+  "multi_user_mode": "not configured in M0 (gateway with per-user sessions; see docs/adapters.md serve lifecycle)"
+}

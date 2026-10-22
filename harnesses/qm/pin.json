@@ -1,0 +1,32 @@
+{
+  "name": "qm",
+  "repo": "https://github.com/yc-software/qm",
+  "version": "v0.1.15",
+  "commit": "7417aa2a3f917cf97406914897078ae3b273e173",
+  "install": "git clone --branch v0.1.15 <repo> && build as deploy/core/Dockerfile does (npm ci --omit=dev, connector-sdk build); see Dockerfile",
+  "entry": "/opt/harness/adapter.sh run (task container in compose.yaml)",
+  "turn_command": "POST /v1/turns {surface:'harness-eval', actor:{externalId:'U1'}, conversation:{kind:'dm', threadRef:<trial>}, text:<instruction.md>} signed with CORE_SIGNING_SECRET",
+  "inner_harness": "pi",
+  "model": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-5-5",
+    "api": "anthropic-messages",
+    "base_url_env": "ANTHROPIC_BASE_URL (set from HE_MODEL_BASE_URL)",
+    "api_key_env": "ANTHROPIC_API_KEY (set from HE_MODEL_API_KEY)",
+    "config_path": "config/core.env"
+  },
+  "state_paths": [
+    "postgres database qm (sessions, memory, runs)",
+    "/data on the core service (bound to /harness-state/qm)",
+    "sandbox volume qm-home-<scope> (/root, the agent's workspace; removed by capture.sh)"
+  ],
+  "mcp_config_path": "not wired in M0; QM registers MCP connectors through its deployment layer (docs/mcp-connectors.md in the QM repo)",
+  "topology": "sidecar",
+  "services": [
+    "pg (pgvector/pgvector:0.8.1-pg16)",
+    "core (this image)",
+    "task (this image, adapter entrypoint)"
+  ],
+  "sandbox_backend": "local (one Docker container per scope via the host socket; image Dockerfile.sandbox)",
+  "multi_user_mode": "scopes: personal:<actor> and channels; not exercised in M0"
+}

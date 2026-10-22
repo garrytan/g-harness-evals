@@ -1,0 +1,23 @@
+{
+  "name": "openclaw",
+  "repo": "https://github.com/openclaw/openclaw",
+  "version": "2026.10.6",
+  "commit": null,
+  "install": "npm install -g --prefix /opt/harness openclaw@2026.10.6 --allow-scripts=openclaw",
+  "entry": "/opt/harness/adapter.sh run",
+  "turn_command": "openclaw agent exec --message-file /workspace/instruction.md --cwd /workspace --config <state>/openclaw.json --state-dir <state>/exec --model anthropic/claude-sonnet-5-5 --json",
+  "model": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-5-5",
+    "api": "anthropic-messages",
+    "base_url_env": "HE_MODEL_BASE_URL",
+    "api_key_env": "HE_MODEL_API_KEY",
+    "config_path": "config/openclaw.json"
+  },
+  "state_paths": [
+    "/harness-state/openclaw"
+  ],
+  "mcp_config_path": "/harness-state/openclaw/openclaw.json#mcp.servers",
+  "topology": "in-container",
+  "multi_user_mode": "not configured in M0 (gateway with channel routing; see docs/adapters.md serve lifecycle)"
+}
