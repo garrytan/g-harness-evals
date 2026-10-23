@@ -4,6 +4,10 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 
 ## [0.0.5] - 2026-10-23
 
+### M3 sensitivity cell run and reported
+
+- `docs/benchmarks/2026-10-24-m3-sensitivity-haiku/`: the same 20 held-out tasks on `claude-haiku-5-5`, 300 trials, $1.84; every harness lost 13 to 19 points against its Sonnet run (detectable within harness for OpenClaw and QM), harness pairs still not distinguished (80%, 79%, 70%), zero consent violations and leaks. `scripts/compare-run.ts --against <run>` pairs each harness's cell across two runs for the model effect.
+
 ### M3 held-out run run and reported
 
 - `docs/benchmarks/2026-10-24-m3-heldout/report.md` and `results/`: 300 trials, $35.67, no errors; pass rates not distinguished over the capable families (77, 73, 71 of 80; Holm-adjusted p 1.0 on every pair; 13 of 16 tasks at ceiling), zero consent violations and leaks, one cross-scope read, cost and time differing two to three times between harnesses, no scheduler fires on the simulation clock.

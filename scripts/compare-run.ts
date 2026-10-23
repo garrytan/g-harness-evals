@@ -4,6 +4,8 @@
 // pair compares the same task on the same repetition; clusters are tasks.
 //
 //   bun scripts/compare-run.ts --results <results/<run-id>> [--regraded] [--families a,b] [--seed 7] [--draws 10000]
+//   bun scripts/compare-run.ts --results <run A> --against <run B>   pairs each harness's cell in A with its cell in B
+//                                                                     (same tasks and repetition indices), for a model effect
 //
 // Prints a Markdown table (delta = B minus A in pass-rate points, 95% cluster bootstrap interval, two-sided
 // sign-flip p, Holm-adjusted p, clusters, pairs) and writes comparisons.json beside trials.jsonl. Intervals and
@@ -28,7 +30,9 @@ const seed = Number(arg('seed', '7'));
 const draws = Number(arg('draws', '10000'));
 const useRegraded = process.argv.includes('--regraded');
 const familiesArg = arg('families');
-const rows = readFileSync(join(results, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord);
+const against = arg('against');
+const readRows = (dir: string) => readFileSync(join(dir, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord);
+const rows = [...readRows(results), ...(against ? readRows(against) : [])];
 const manifest = JSON.parse(readFileSync(join(results, 'manifest.json'), 'utf8')) as { cells: Array<{ id: string; split: 'dev' | 'heldout' }> };
 const regraded = new Map<string, { grade: string; consent_violation: boolean }>();
 if (useRegraded) {
@@ -51,7 +55,13 @@ const rep = (t: TrialRecord) => t.trial_id.split('/').at(-1)!;
 const obs = (cell: string): Observation[] => inScope.filter((t) => t.cell === cell).map((t) => ({ id: `${t.task}/${rep(t)}`, cluster: t.task, value: pass(t), eligible: true }));
 const cells = [...new Set(inScope.map((t) => t.cell))];
 const pairs: Array<{ a: string; b: string }> = [];
-for (let i = 0; i < cells.length; i++) for (let j = i + 1; j < cells.length; j++) pairs.push({ a: cells[i]!, b: cells[j]! });
+if (against) {
+  const other = new Set(readRows(against).map((t) => t.cell));
+  const harnessOf = (cell: string) => cell.split('-')[0]!;
+  for (const a of cells) if (!other.has(a)) for (const b of cells) if (other.has(b) && harnessOf(a) === harnessOf(b)) pairs.push({ a, b });
+} else {
+  for (let i = 0; i < cells.length; i++) for (let j = i + 1; j < cells.length; j++) pairs.push({ a: cells[i]!, b: cells[j]! });
+}
 const deltas = pairs.map(({ a, b }) => {
   const pairing = pairObservations(obs(a), obs(b));
   const d = clusteredPairedDelta(pairing.pairs, { seed, draws });
@@ -67,4 +77,4 @@ const lines = [
   ...deltas.map((d, i) => `| ${d.a} | ${d.b} | ${(100 * d.mean_a).toFixed(0)}% | ${(100 * d.mean_b).toFixed(0)}% | ${pts(d.delta)} [${d.ci95 ? `${pts(d.ci95[0])}, ${pts(d.ci95[1])}` : 'n/a'}] | ${d.p.toFixed(3)} (${d.p_method}) | ${adjusted[i]!.toFixed(3)} | ${d.n_clusters} | ${d.n_pairs} |`),
 ];
 console.log(lines.join('\n'));
-writeFileSync(join(results, `comparisons${families ? '.' + families.join('-') : ''}${useRegraded ? '.regraded' : ''}.json`), JSON.stringify({ scope: families, grading: useRegraded ? 'regraded' : 'as recorded', seed, draws, comparisons: deltas.map((d, i) => ({ ...d, holm_p: adjusted[i] })) }, null, 1) + '\n');
+writeFileSync(join(results, `comparisons${against ? '.against-' + (readRows(against)[0]?.trial_id.split('/')[0] ?? 'other') : ''}${families ? '.' + families.join('-') : ''}${useRegraded ? '.regraded' : ''}.json`), JSON.stringify({ scope: families, grading: useRegraded ? 'regraded' : 'as recorded', seed, draws, comparisons: deltas.map((d, i) => ({ ...d, holm_p: adjusted[i] })) }, null, 1) + '\n');
