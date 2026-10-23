@@ -85,6 +85,7 @@ export function startComposeHarness(opts: ComposeHarnessOptions): Harness {
     ...opts.stackEnv,
     HE_WORKSPACE: resolve(opts.dirs.workspace), HE_STATE: resolve(opts.dirs.state), HE_LOGS: resolve(opts.dirs.logs),
     HE_UID: String(process.getuid?.() ?? 1000), HE_GID: String(process.getgid?.() ?? 1000), QM_IMAGE: opts.image,
+    HE_ENTRY: 'serve', HE_TURNS: resolve(opts.dirs.turns), ...opts.env,
   };
   const prepare = join(repoRoot, 'harnesses', opts.harness, 'prepare.sh');
   if (existsSync(prepare)) {

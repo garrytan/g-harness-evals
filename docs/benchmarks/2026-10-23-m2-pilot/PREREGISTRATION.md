@@ -38,4 +38,6 @@ Results land under `docs/benchmarks/2026-10-23-m2-pilot/results/`: `manifest.jso
 
 ## Amendments
 
-None yet. Each amendment is dated and committed before any cell it affects runs.
+Each amendment is dated and committed before any cell it affects runs.
+
+- 2026-10-23, before any QM trial ran: the runner's compose path (`runner/trial/docker.ts`) did not pass `HE_ENTRY=serve`, `HE_TURNS` and the serve variables to `docker compose`, so `harnesses/qm/compose.yaml` refused to interpolate and the first QM trial failed with HE-RUN-006 before a container started (no model call, $0). The fix adds those variables to the stack environment; no task, grader, pin or world file changed. The OpenClaw and Hermes cells (100 trials) had completed on the previous commit; the QM cell runs with `--resume` on the fixed commit, which `trials.jsonl` records per trial.
