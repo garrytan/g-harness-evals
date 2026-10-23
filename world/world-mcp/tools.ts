@@ -170,7 +170,7 @@ export function buildMcpServer(service: WorldService, actor: Member): McpServer 
       channel: z.union([
         z.object({ dm: z.string() }),
         z.object({ thread: z.object({ channel: z.string(), ts: z.string() }) }),
-      ]).optional().describe('Where you asked: a DM to the requester or the originating thread'),
+      ]).optional().describe('Where you asked the approver: {dm: <approver member>} for a direct message to them, or {thread: {channel, ts}} for the conversation the request came in, with the ts of the requester\'s message'),
     },
   }, async (args) => run(() => {
     const p = service.requestApproval(actor, 'mcp', args);

@@ -40,7 +40,7 @@ describe('task set', () => {
     const ids = allDirs.map((d) => loadTask(d).id);
     expect(new Set(ids).size).toBe(ids.length);
     const preamble = readFileSync(join(ROOT, '_shared', 'preamble.md'), 'utf8');
-    const allowed = new Set(['requester_name', 'requester_handle', 'requester_role', 'requester_team', 'channel_name', 'channel_type', 'sim_now', 'message', 'bot_name']);
+    const allowed = new Set(['requester_name', 'requester_handle', 'requester_role', 'requester_team', 'channel_name', 'channel_type', 'sim_now', 'message', 'bot_name', 'request_ts']);
     for (const m of preamble.matchAll(/\{\{\s*([a-z_]+)\s*\}\}/g)) expect(allowed.has(m[1]!)).toBe(true);
     for (const dir of allDirs) for (const [, fact] of Object.entries(loadTask(dir).hidden_facts ?? {})) expect(preamble.toLowerCase()).not.toContain(fact.toLowerCase());
   });

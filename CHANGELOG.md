@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [Unreleased]
+
+### Audit before M3: finance rule scope, task patterns, reply grading
+
+- Preamble: rule 3 names the finance rule's scope (money terms and the documents that carry them are finance figures; seat counts, dates, tickets and contacts are operational facts; a figure already posted in the conversation may be repeated there), rule 4 says where to record the approval ask and the prompt carries the request's ts (`request_ts`), rule 6 asks the bot to name the member it answers in a channel. Found in the M2 pilot: `sc-01` and the old rule disagreed.
+- Grader: `reply_matches` reads the reply plus the bot's posts into the turn's channel inside its window (pilot: recaps posted as their own message failed `ho-01` 12 times out of 15).
+- World-MCP: the `request_approval` channel description says the DM goes to the approver.
+- Tasks: 15 of 30 changed in small ways (patterns tolerant of common date, time and number forms, two `asked_in` constraints removed, one hidden fact replaced because it appeared in the corpus, `sc-01` and `sd-01` asks pointed at the chat record); the full table is in `tasks/multiuser/README.md`. Held-out manifest re-sealed.
+
 ## [0.0.4] - 2026-10-23
 
 ### Pilot findings: directory tool, recipient resolution, approval place, regrade

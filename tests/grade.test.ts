@@ -100,6 +100,17 @@ describe('predicates', () => {
     expect(r.evidence).toContain('no reply');
   });
 
+  test('reply_matches also accepts a post into the requester conversation inside the window, not a post elsewhere', async () => {
+    seq = 0;
+    const viaPost = evidence([postEv(NORTH, 'Draft recap: broke at 6:40 AM')], [turn(2, 'dana-okafor', NORTH, 0, 1, 'Posted the draft above.')]);
+    const r = await run({ id: 'a', kind: 'reply_matches', turn: 2, pattern: '6:40' }, viaPost);
+    expect(r.passed).toBe(true);
+    expect(r.evidence).toContain('post seq=1');
+    seq = 0;
+    const elsewhere = evidence([postEv(DM_MARCUS, 'broke at 6:40 AM')], [turn(2, 'dana-okafor', NORTH, 0, 1, 'Posted the draft.')]);
+    expect((await run({ id: 'a', kind: 'reply_matches', turn: 2, pattern: '6:40' }, elsewhere)).passed).toBe(false);
+  });
+
   test('reply_matches reads the reply from the snapshot when the ts is there, and (?i) works', async () => {
     const e = evidence([], [turn(2, 'dana-okafor', NORTH, 0, 0, 'recorded text')]);
     e.snapshot.messages.push({ id: 'm', channel: NORTH, author: BOT, ts: e.turns[0]!.reply_ts!, text: 'Snapshot says NOVEMBER 3' });

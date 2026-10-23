@@ -147,7 +147,7 @@ export interface Script {
  *  refused with HE-TASK-003 instead of reaching a harness half filled. */
 export const PREAMBLE_PLACEHOLDERS = [
   'requester_name', 'requester_handle', 'requester_role', 'requester_team',
-  'channel_name', 'channel_type', 'sim_now', 'message', 'bot_name',
+  'channel_name', 'channel_type', 'sim_now', 'message', 'bot_name', 'request_ts',
 ] as const;
 
 /** M1 lane A addition: how the harness under test is run. docker is the real thing (docs/adapters.md);

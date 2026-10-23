@@ -65,7 +65,8 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
       trial_id: o.trialId,
       prompt: composePrompt(o.preamble, {
         requester_name: actor.member.name, requester_handle: actor.member.handle, requester_role: actor.member.role, requester_team: actor.member.team ?? 'no team',
-        channel_name: channelType === 'dm' ? 'a direct message' : `#${channelName}`, channel_type: channelType, sim_now: simNow, message: turn.text, bot_name: bot.handle,
+        channel_name: channelType === 'dm' ? `a direct message (channel id ${channelId})` : `#${channelName}`, channel_type: channelType, sim_now: simNow, message: turn.text, bot_name: bot.handle,
+        request_ts: ts,
       }),
       actor: { member: actor.member.id, slack_user_id: actor.slack_user_id, name: actor.member.name, role: actor.member.role, team: actor.member.team },
       channel: { id: channelId, name: channelName, type: channelType },

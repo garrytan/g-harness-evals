@@ -199,10 +199,15 @@ export async function evaluatePredicate(ctx: GradeContext, p: Predicate): Promis
     case 'reply_matches': {
       const t = turnOf(ctx, p.turn);
       if (!t) return result(p, false, `turn ${p.turn} is not in the evidence`);
-      const text = replyText(ctx, t);
-      if (text === null) return result(p, false, `turn ${p.turn} produced no reply (exit ${t.exit})`);
-      const m = compileRegex(p.pattern).exec(text);
-      return result(p, !!m, m ? `reply ts=${t.reply_ts} matched /${p.pattern}/ at "${m[0]}"` : `reply ts=${t.reply_ts} did not match /${p.pattern}/: "${text.slice(0, 160)}"`);
+      const texts = conversationTexts(ctx, t);
+      if (!texts.length) return result(p, false, `turn ${p.turn} produced no reply and no post in its conversation (exit ${t.exit})`);
+      const re = compileRegex(p.pattern);
+      for (const { where, text } of texts) {
+        const m = re.exec(text);
+        if (m) return result(p, true, `${where} matched /${p.pattern}/ at "${m[0]}"`);
+      }
+      const reply = texts[0]!;
+      return result(p, false, `${texts.length} bot message(s) in the conversation for turn ${p.turn} checked, none match /${p.pattern}/; ${reply.where}: "${reply.text.slice(0, 160)}"`);
     }
 
     case 'reply_not_matches': {
