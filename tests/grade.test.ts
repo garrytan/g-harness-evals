@@ -202,6 +202,9 @@ describe('predicates', () => {
     expect((await run({ ...p, asked_in: 'dm' }, viaDm)).passed).toBe(true);
     expect((await run({ ...p, asked_in: 'thread' }, viaDm)).passed).toBe(false);
     seq = 0;
+    const viaDmChannelId = withRuth(evidence([approval({ dm: ruthDm }), postEv(ruthDm, 'Ruth, may I mail Thea?')], [t]));
+    expect((await run(p, viaDmChannelId)).passed).toBe(true);
+    seq = 0;
     const viaThread = evidence([approval({ thread: { channel: NORTH, ts: t.request_ts } })], [{ ...t, ended_seq: 1 }]);
     expect((await run(p, viaThread)).passed).toBe(true);
     expect((await run({ ...p, asked_in: 'dm' }, viaThread)).passed).toBe(false);

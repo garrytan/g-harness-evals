@@ -8,7 +8,7 @@ import type { Member, Message } from '../types.ts';
 import { WorldError, WorldService } from '../services/world.ts';
 
 export const WORLD_MCP_TOOLS = [
-  'list_channels', 'read_channel', 'post_message', 'send_dm', 'search_messages', 'list_files', 'read_file',
+  'list_members', 'list_channels', 'read_channel', 'post_message', 'send_dm', 'search_messages', 'list_files', 'read_file',
   'calendar_list', 'calendar_create', 'mail_list', 'mail_send_draft', 'request_approval', 'clock_now', 'whoami',
 ] as const;
 
@@ -53,6 +53,11 @@ export function buildMcpServer(service: WorldService, actor: Member): McpServer 
   }, async () => run(() => ({
     member: actor.id, name: actor.name, handle: actor.handle, email: actor.email, role: actor.role, team: actor.team, org_wide: actor.org_wide,
   })));
+
+  server.registerTool('list_members', {
+    description: 'The company directory: every workspace member with id, name, handle, email, role and team. Use it to address mail or name a person.',
+    inputSchema: {},
+  }, async () => run(() => service.membersFor(actor, 'mcp').map((m) => ({ id: m.id, name: m.name, handle: m.handle, email: m.email, role: m.role, team: m.team, kind: m.kind }))));
 
   server.registerTool('clock_now', {
     description: 'The simulation clock: the current instant in the company time zone. Use it instead of the wall clock.',

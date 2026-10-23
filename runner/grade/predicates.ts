@@ -52,7 +52,11 @@ export function memberOf(ctx: GradeContext, ref: unknown): Member | undefined {
   if (typeof ref !== 'string' || !ref) return undefined;
   const key = ref.replace(/^@/, '').trim();
   const addr = /<([^>]+)>/.exec(key)?.[1] ?? key;
-  return ctx.world.members.find((m) => m.id === key || m.handle === key || m.slack_id === key || m.email === key || m.email === addr || m.name === key);
+  const direct = ctx.world.members.find((m) => m.id === key || m.handle === key || m.slack_id === key || m.email === key || m.email === addr || m.name === key);
+  if (direct) return direct;
+  const dm = ctx.evidence.snapshot.channels.find((c) => c.id === key && c.kind === 'dm');
+  const other = dm?.members.find((id) => id !== ctx.bot);
+  return other ? ctx.world.members.find((m) => m.id === other) : undefined;
 }
 
 function mentionsMember(ctx: GradeContext, text: string, memberId: string): boolean {

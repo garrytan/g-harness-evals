@@ -108,6 +108,12 @@ export class WorldService {
     return this.members.find((m) => m.id === key || m.slack_id === key || m.handle === key || m.email === key);
   }
 
+  membersFor(actor: Member, via: Via): Member[] {
+    const out = this.members.filter((m) => m.id !== this.bot?.id || m.id === actor.id);
+    this.record(actor, via, 'users.list', 'read', {}, { count: out.length });
+    return out;
+  }
+
   requireMember(id: string): Member {
     const m = this.member(id);
     if (!m) throw new WorldError('user_not_found', `no member ${id}`);
@@ -325,7 +331,13 @@ export class WorldService {
 
   draftMail(actor: Member, via: Via, input: { to: string[]; cc?: string[]; subject: string; body: string }): Mail {
     if (this.fenced) this.deny(actor, via, 'mail.draft', input, new WorldError('fenced'));
-    const party = (raw: string): MailParty => ({ member: this.member(raw)?.id ?? null, raw });
+    const party = (raw: string): MailParty => {
+      const key = /<([^>]+)>/.exec(raw)?.[1] ?? raw.trim();
+      const m = this.member(key) ?? this.members.find((x) => x.name.toLowerCase() === key.toLowerCase());
+      if (m) return { member: m.id, raw: m.email };
+      if (/@pemberline\.com$/i.test(key)) this.deny(actor, via, 'mail.draft', input, new WorldError('unknown_recipient', `${key} is not a member address; use list_members to find the address`));
+      return { member: null, raw };
+    };
     this.counters.mail += 1;
     const mail: Mail = {
       id: `draft-${this.log.trialId}-${this.counters.mail}`,

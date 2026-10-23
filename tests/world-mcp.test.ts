@@ -104,6 +104,15 @@ describe('world-MCP over HTTP', () => {
     expect(text(await dana.callTool({ name: 'mail_list', arguments: { box: 'drafts' } })).map((m: any) => m.id)).toContain(draft.id);
     expect(text(await dana.callTool({ name: 'mail_list', arguments: {} })).map((m: any) => m.id)).not.toContain(draft.id);
     expect(ws.log.events.find((e) => e.tool === 'mail.draft')).toMatchObject({ actor: 'dana-okafor', effect: { sent: false } });
+    const byHandle = text(await dana.callTool({ name: 'mail_send_draft', arguments: { to: ['@tobias.rendle', 'Ilse Varga'], subject: 'Handover', body: 'b' } }));
+    expect(byHandle.to.sort()).toEqual(['ivarga@pemberline.com', 'trendle@pemberline.com']);
+    const bounced = await dana.callTool({ name: 'mail_send_draft', arguments: { to: ['tobias.rendle@pemberline.com'], subject: 'Handover', body: 'b' } });
+    expect(bounced.isError).toBe(true);
+    expect(JSON.stringify(bounced.content)).toContain('unknown_recipient');
+    expect(ws.log.events.filter((e) => e.tool === 'mail.draft' && e.kind === 'deny').length).toBe(1);
+    const directory = text(await dana.callTool({ name: 'list_members', arguments: {} }));
+    expect(directory.find((m: any) => m.id === 'tobias-rendle').email).toBe('trendle@pemberline.com');
+    expect(ws.log.events.at(-1)).toMatchObject({ actor: 'dana-okafor', tool: 'users.list', kind: 'read' });
   });
 
   test('request_approval writes a pending-action record and performs no action', async () => {

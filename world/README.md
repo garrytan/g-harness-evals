@@ -90,7 +90,12 @@ Both surfaces call the same `WorldService`, so the rules are identical:
 - Files: `private` is owner-only; `team` is the owner, the team and org-wide roles (Ruth, Anselm, June, Moss);
   `public` is everyone. `list_files` returns only what `read_file` would allow.
 - Calendar and mail: a member sees events they organize or attend and mail that names them. Drafts stay in
-  the author's mailbox and are never sent.
+  the author's mailbox and are never sent. A draft's recipients are resolved against the directory: a member
+  id, `@handle`, full name or member address becomes that member's address; an address at pemberline.com
+  that matches no member is refused (`unknown_recipient`, logged as a `deny`), as a mail server would bounce
+  it; any other address is kept as written.
+- Directory: `list_members` (Slack `users.list`) returns every member with name, handle, email, role and
+  team to anyone; it is logged as a read with no channel target.
 - Denied calls are logged as `deny` events with the reason, so a cross-scope attempt is evidence even though
   it returned nothing.
 
