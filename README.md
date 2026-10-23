@@ -2,7 +2,7 @@
 
 A reproducible comparison of agent harnesses: [OpenClaw](https://docs.openclaw.ai/), [Hermes Agent](https://github.com/nousresearch/hermes-agent), [QM](https://github.com/yc-software/qm), [[name withheld]](https://docs.[name withheld]/[name withheld]/overview) and [[name withheld]](https://ai.meta.com/[name withheld]/). The question is what the harness contributes when the model is held fixed, on the work these harnesses are sold for: several people sharing one agent in Slack-style channels, per-person scoped memory and files, org-level rules, continuity across sessions, and ordinary work tasks. Coding appears only as a small calibration cell against published numbers.
 
-One pilot has run and no counted comparison yet. This repository holds the approved plan, the research it rests on, the evaluation machinery (world, runner, adapters, tasks, graders) and the receipts of the M2 pilot: 150 trials on the 10 public multi-user tasks, labelled as a pilot in [docs/benchmarks/2026-10-23-m2-pilot/report.md](docs/benchmarks/2026-10-23-m2-pilot/report.md). Everything above [Changelog](#changelog) describes the repository as it stands at `VERSION`.
+The first counted comparison has run: the v0.1 multi-user cell on 20 sealed held-out tasks, OpenClaw, Hermes Agent and QM (Pi) on one fixed model, 300 trials. Its report is [docs/benchmarks/2026-10-24-m3-heldout/report.md](docs/benchmarks/2026-10-24-m3-heldout/report.md): pass rates are not distinguished (96%, 91%, 89% over the capable families, every pairwise interval crossing zero, 13 of 16 tasks at ceiling for all three), no consent violation or leak in 300 trials, and a two-to-three-fold difference in tokens, cost and time per trial. The pilot that preceded it is [docs/benchmarks/2026-10-23-m2-pilot/report.md](docs/benchmarks/2026-10-23-m2-pilot/report.md). This repository holds the approved plan, the research it rests on, the evaluation machinery (world, runner, adapters, tasks, graders) and every receipt. Everything above [Changelog](#changelog) describes the repository as it stands at `VERSION`.
 
 ## What is here
 
@@ -20,6 +20,7 @@ One pilot has run and no counted comparison yet. This repository holds the appro
 | Harness images and adapters (`run` and `serve`), the adapter protocol, and the serve-mode smoke driver | [harnesses/README.md](harnesses/README.md), [docs/adapters.md](docs/adapters.md) |
 | Error codes | [docs/errors.md](docs/errors.md) |
 | Preregistration-order checker: a preregistration must be committed before any file matching its result globs | [runner/prereg/prereg.ts](runner/prereg/prereg.ts), [docs/benchmarks/preregistrations.json](docs/benchmarks/preregistrations.json) |
+| M3 held-out run (v0.1 multi-user cell): preregistration, report and receipts | [docs/benchmarks/2026-10-24-m3-heldout/](docs/benchmarks/2026-10-24-m3-heldout/) |
 | M2 pilot: preregistration, report and receipts (dev split, three harnesses, five repetitions) | [docs/benchmarks/2026-10-23-m2-pilot/](docs/benchmarks/2026-10-23-m2-pilot/) |
 | Open work carried out of the plan review | [TODOS.md](TODOS.md) |
 
@@ -44,6 +45,10 @@ bun runner/prereg/prereg.ts
 None of these calls a model API. A paid run is `bun runner/run.ts plan --prereg <file>` then `run --manifest <file>` after the preregistration is committed (runner/README.md); it spends through the proxy's lease ledger and lands its receipts under `docs/benchmarks/<run>/results/`. `bun scripts/summarize-run.ts --results <dir>` prints a run's tables and `bun scripts/regrade.ts` re-reads its evidence with the current grader.
 
 ## Changelog
+
+### 2026-10-23: M3 held-out run reported
+
+harness-evals v0.0.5. The opening paragraph states the v0.1 multi-user result and links the report; new row for the M3 folder.
 
 ### 2026-10-23: M2 pilot run and reported
 

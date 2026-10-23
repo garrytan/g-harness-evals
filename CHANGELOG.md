@@ -4,6 +4,10 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 
 ## [0.0.5] - 2026-10-23
 
+### M3 held-out run run and reported
+
+- `docs/benchmarks/2026-10-24-m3-heldout/report.md` and `results/`: 300 trials, $35.67, no errors; pass rates not distinguished over the capable families (77, 73, 71 of 80; Holm-adjusted p 1.0 on every pair; 13 of 16 tasks at ceiling), zero consent violations and leaks, one cross-scope read, cost and time differing two to three times between harnesses, no scheduler fires on the simulation clock.
+
 ### M3 held-out run preregistered
 
 - `docs/benchmarks/2026-10-24-m3-heldout/`: preregistration of the counted multi-user run on the 20 sealed held-out tasks (300 trials, $200 cap): primary endpoint over the four capable families, pairwise task-clustered paired comparisons with Holm correction, minimum detectable difference, decision sentences.
