@@ -2,7 +2,7 @@
 
 A reproducible comparison of agent harnesses: [OpenClaw](https://docs.openclaw.ai/), [Hermes Agent](https://github.com/nousresearch/hermes-agent), [QM](https://github.com/yc-software/qm), [[name withheld]](https://docs.[name withheld]/[name withheld]/overview) and [[name withheld]](https://ai.meta.com/[name withheld]/). The question is what the harness contributes when the model is held fixed, on the work these harnesses are sold for: several people sharing one agent in Slack-style channels, per-person scoped memory and files, org-level rules, continuity across sessions, and ordinary work tasks. Coding appears only as a small calibration cell against published numbers.
 
-Nothing has been measured yet. This repository holds the approved plan, the research it rests on, and the first pieces of the evaluation machinery. Everything above [Changelog](#changelog) describes the repository as it stands at `VERSION`.
+One pilot has run and no counted comparison yet. This repository holds the approved plan, the research it rests on, the evaluation machinery (world, runner, adapters, tasks, graders) and the receipts of the M2 pilot: 150 trials on the 10 public multi-user tasks, labelled as a pilot in [docs/benchmarks/2026-10-23-m2-pilot/report.md](docs/benchmarks/2026-10-23-m2-pilot/report.md). Everything above [Changelog](#changelog) describes the repository as it stands at `VERSION`.
 
 ## What is here
 
@@ -20,6 +20,7 @@ Nothing has been measured yet. This repository holds the approved plan, the rese
 | Harness images and adapters (`run` and `serve`), the adapter protocol, and the serve-mode smoke driver | [harnesses/README.md](harnesses/README.md), [docs/adapters.md](docs/adapters.md) |
 | Error codes | [docs/errors.md](docs/errors.md) |
 | Preregistration-order checker: a preregistration must be committed before any file matching its result globs | [runner/prereg/prereg.ts](runner/prereg/prereg.ts), [docs/benchmarks/preregistrations.json](docs/benchmarks/preregistrations.json) |
+| M2 pilot: preregistration, report and receipts (dev split, three harnesses, five repetitions) | [docs/benchmarks/2026-10-23-m2-pilot/](docs/benchmarks/2026-10-23-m2-pilot/) |
 | Open work carried out of the plan review | [TODOS.md](TODOS.md) |
 
 ## How the comparison works, in short
@@ -40,9 +41,13 @@ python3 scripts/check-links.py
 bun runner/prereg/prereg.ts
 ```
 
-None of these calls a model API. Paid runs do not exist yet; when they do, they will spend through a budget ledger and land receipts here.
+None of these calls a model API. A paid run is `bun runner/run.ts plan --prereg <file>` then `run --manifest <file>` after the preregistration is committed (runner/README.md); it spends through the proxy's lease ledger and lands its receipts under `docs/benchmarks/<run>/results/`. `bun scripts/summarize-run.ts --results <dir>` prints a run's tables and `bun scripts/regrade.ts` re-reads its evidence with the current grader.
 
 ## Changelog
+
+### 2026-10-23: M2 pilot run and reported
+
+harness-evals v0.0.4. The opening paragraph says one pilot has run; new rows for the pilot folder; the checks section names how a paid run is started and summarised.
 
 ### 2026-10-22: M1 lane A, trial dispatch
 

@@ -9,6 +9,7 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 - World: `list_members` tool (logged as `users.list`); `mail_send_draft` resolves recipients against the directory and refuses an unknown pemberline.com address with `unknown_recipient`. Found in the M2 pilot: both harnesses guessed `tobias.rendle@pemberline.com` in all ten `ho-02` trials because no tool exposed addresses, so the handoff predicates failed by construction.
 - Grader: `approval_requested` accepts a pending action whose `channel.dm` is the DM channel id with the authorizer, not only the member id (pilot: OpenClaw reported the channel id returned by `send_dm` in every org-security trial).
 - Preamble: names `list_members` as the directory and lists email addresses among the things not to invent.
+- M2 pilot run and reported: 150 trials, $16.69, receipts and report under `docs/benchmarks/2026-10-23-m2-pilot/`; `scripts/summarize-run.ts` produces the tables (task-clustered bootstrap intervals); `docs/benchmarks/*/results/` is no longer gitignored (each results folder carries its own ignore list for harness state, workspaces, raw logs and tokens).
 - `scripts/regrade.ts`: a labelled second grading of recorded trials from their stored evidence, written beside `trials.jsonl`, never over it.
 
 ## [0.0.3] - 2026-10-22
