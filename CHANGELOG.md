@@ -2,7 +2,12 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
-## [Unreleased]
+## [0.0.5] - 2026-10-23
+
+### M3 held-out run preregistered
+
+- `docs/benchmarks/2026-10-24-m3-heldout/`: preregistration of the counted multi-user run on the 20 sealed held-out tasks (300 trials, $200 cap): primary endpoint over the four capable families, pairwise task-clustered paired comparisons with Holm correction, minimum detectable difference, decision sentences.
+- `scripts/compare-run.ts`: pairwise harness comparison for a run (task-clustered paired bootstrap, exact sign-flip p, Holm), per family scope.
 
 ### Audit before M3: finance rule scope, task patterns, reply grading
 
