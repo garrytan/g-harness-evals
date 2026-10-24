@@ -35,6 +35,13 @@
 // product claim and pooling them would make a number nobody preregistered; a descriptive probe table (passes of
 // trials per task per cell) follows the per-task table and is written to the `probes` key. Cells with any other
 // family are reported as before.
+// internal-task (the install ladder): a top-level `ladder` key per cell, printed as a table when any trial carries a `gbrain` record:
+// the harness's own input tokens per trial (median and total; the runner keeps the sidecar's /v1/embeddings lines out of
+// this figure), the sidecar's embedding usage summed from `gbrain.embedding_usage` (requests, input tokens, USD, refused,
+// failed, and how many trials carried it), the install bundle from `gbrain.install_bundle` (file count, view digest, and
+// for Hermes the largest number of compiled-context pages outside an actor's scope), the semantic exclusions
+// (`gbrain.semantic_check.ok` false, HE-GBRAIN-005) and the degraded calls (`gbrain.events.degraded`). Every existing
+// key and table is unchanged.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -164,6 +171,34 @@ if (gbrainCells.some(([, g]) => g.unmapped_slugs > 0 || sum(g.scope_leaks.by_gra
     const l = g.scope_leaks;
     const unmapped = g.unmapped_slugs ? `${g.unmapped_slugs} (nonzero: map these slugs before publishing this cell's leak counts)` : '0';
     out.push(`| ${cell} | ${sum(l.search_rows)}: ${counts(l.search_rows)} | ${sum(l.opened_returned)}: ${counts(l.opened_returned)} | ${sum(l.opened_refused)}: ${counts(l.opened_refused)} | ${counts(l.by_grant)} | ${counts(g.pages_by_kind)} | ${unmapped} |`);
+  }
+  out.push('');
+}
+const ladder: Record<string, unknown> = {};
+for (const cell of cells) {
+  const everything = allRows.filter((t) => t.cell === cell);
+  const withGbrain = everything.filter((t) => t.gbrain);
+  const inputTokens = everything.map((t) => t.usage?.input_tokens).filter((x): x is number => typeof x === 'number');
+  const eu = withGbrain.map((t) => t.gbrain!.embedding_usage).filter((u): u is NonNullable<typeof u> => !!u);
+  const bundles = withGbrain.map((t) => t.gbrain!.install_bundle).filter((b): b is NonNullable<typeof b> => !!b);
+  const exposure = bundles.map((b) => b.context?.outside_scope_max).filter((x): x is number => typeof x === 'number');
+  ladder[cell] = {
+    harness_input_tokens: { median_per_trial: median(inputTokens), total: inputTokens.reduce((s, n) => s + n, 0), trials: inputTokens.length },
+    embedding_usage: { trials: eu.length, requests: eu.reduce((s, u) => s + u.requests, 0), input_tokens: eu.reduce((s, u) => s + u.input_tokens, 0), usd: eu.reduce((s, u) => s + u.usd, 0), refused: eu.reduce((s, u) => s + u.refused, 0), failed: eu.reduce((s, u) => s + u.failed, 0) },
+    install_bundle: bundles.length ? { trials: bundles.length, files: [...new Set(bundles.map((b) => b.files))], view_digests: [...new Set(bundles.map((b) => b.view_digest))], context_outside_scope_max: exposure.length ? Math.max(...exposure) : null } : null,
+    semantic_exclusions: withGbrain.filter((t) => t.gbrain!.semantic_check && !t.gbrain!.semantic_check.ok).length,
+    degraded_calls: withGbrain.reduce((s, t) => s + (t.gbrain!.events.degraded ?? 0), 0),
+  };
+}
+summary.ladder = ladder;
+if (allRows.some((t) => t.gbrain)) {
+  out.push('Install ladder (internal-task): the harness\'s own input tokens, the sidecar\'s embedding usage, the install bundle, semantic exclusions and degraded calls per cell');
+  out.push('| Cell | Harness input tokens / trial (median; total) | Embedding requests / input tokens / USD (trials with usage) | Embedding refused / failed | Install bundle (files; view digest; Hermes context pages outside scope, max) | Semantic exclusions (HE-GBRAIN-005) | Degraded calls |');
+  out.push('|---|---|---|---|---|---|---|');
+  for (const cell of cells) {
+    const l = ladder[cell] as { harness_input_tokens: { median_per_trial: number; total: number }; embedding_usage: { trials: number; requests: number; input_tokens: number; usd: number; refused: number; failed: number }; install_bundle: { files: number[]; view_digests: string[]; context_outside_scope_max: number | null } | null; semantic_exclusions: number; degraded_calls: number };
+    const bundle = l.install_bundle ? `${l.install_bundle.files.join('/')}; ${l.install_bundle.view_digests.map((d) => d.slice(0, 12)).join(', ')}; ${l.install_bundle.context_outside_scope_max ?? 'n/a'}` : 'none';
+    out.push(`| ${cell} | ${l.harness_input_tokens.median_per_trial.toLocaleString()}; ${l.harness_input_tokens.total.toLocaleString()} | ${l.embedding_usage.requests} / ${l.embedding_usage.input_tokens.toLocaleString()} / $${l.embedding_usage.usd.toFixed(6)} (${l.embedding_usage.trials}) | ${l.embedding_usage.refused} / ${l.embedding_usage.failed} | ${bundle} | ${l.semantic_exclusions} | ${l.degraded_calls} |`);
   }
   out.push('');
 }

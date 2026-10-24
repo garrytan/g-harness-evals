@@ -1,6 +1,8 @@
 // gbrain arm report tooling (lane E) on small hand-built fixtures, keyless: the per-cell gbrain usage block
 // summarize-run.ts writes, compare-run.ts --pair gbrain over a fixture run with and without a gbrain cell, and the
-// paired minimum detectable difference of scripts/paired-mdd.ts.
+// paired minimum detectable difference of scripts/paired-mdd.ts. internal-task adds the install ladder: rungs, neighbour pairs on
+// three endpoints, the paired cost estimator, the usage split and the shards label, on the fixture run that
+// tests/fixtures/gbrain-ladder/build-fixture.ts writes.
 
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
@@ -12,8 +14,10 @@ import type { WorldEvent } from '../world/services/events.ts';
 import { crossScopeReadsBySurface, gbrainUsage, scopeLeaks } from '../scripts/gbrain-usage.ts';
 import { loadWorldData } from '../runner/grade/predicates.ts';
 import { DEFAULT_WORLD_PATH } from '../runner/grade/play.ts';
-import { pairedMdd } from '../scripts/paired-mdd.ts';
+import { designMdd, LADDER_DESIGN, pairedMdd } from '../scripts/paired-mdd.ts';
 import { clusteredPairedDelta, seededRandom } from '../runner/stats/paired.ts';
+import { ENDPOINTS, endpointValue, ladderPairs, readShards, rungOf, shardsLabel } from '../scripts/gbrain-ladder.ts';
+import { buildLadderFixture, LADDER_FIXTURE_MODEL, writeLadderFixture } from './fixtures/gbrain-ladder/build-fixture.ts';
 
 const ROOT = join(import.meta.dir, '..');
 const RUN = 'gbrain-fixture-2026-10';
@@ -381,3 +385,337 @@ describe('paired minimum detectable difference', () => {
     expect(Math.abs(simulated - m!.se_null!) / m!.se_null!).toBeLessThan(0.12);
   });
 });
+
+// ---- the install ladder (internal-task): rungs, neighbour pairs, three endpoints, paired cost, the usage split, the shards label ----
+
+const TOLD = 'tasks/multiuser/_shared/preamble.gbrain-ladder.md';
+const EMBED = 'openai:text-embedding-3-small' as const;
+const HAIKU = LADDER_FIXTURE_MODEL;
+
+describe('install ladder: rungs and neighbour pairs', () => {
+  test('a cell\'s rung comes from its resolved gbrain fields and preamble; a configuration off the table is on no rung', () => {
+    expect(rungOf({ id: 'x', harness: 'h', model: 'm' }).rung).toBe('none');
+    expect(rungOf({ id: 'x', harness: 'h', model: 'm', gbrain: { surface: 'starter' } }).rung).toBe('mcp');
+    expect(rungOf({ id: 'x', harness: 'h', model: 'm', gbrain: { surface: 'starter' }, preamble: 'tasks/multiuser/_shared/preamble.md' }).rung).toBe('mcp');
+    expect(rungOf({ id: 'x', harness: 'h', model: 'm', gbrain: { surface: 'starter' }, preamble: TOLD }).rung).toBe('told');
+    expect(rungOf({ id: 'x', harness: 'h', model: 'm', gbrain: { surface: 'starter' }, preamble: 'tasks/multiuser/_shared/preamble.gbrain.md' }).rung).toBe('told');
+    expect(rungOf({ id: 'x', harness: 'h', model: 'm', gbrain: { surface: 'starter', install: 'gbrain-docs', embeddings: 'off' } }).rung).toBe('docs');
+    expect(rungOf({ id: 'x', harness: 'h', model: 'm', gbrain: { surface: 'verbs', install: 'mcp' }, preamble: TOLD }).rung).toBe('verbs-told');
+    expect(rungOf({ id: 'x', harness: 'h', model: 'm', gbrain: { surface: 'starter', embeddings: EMBED }, preamble: TOLD }).rung).toBe('semantic-told');
+    expect(rungOf({ id: 'x', harness: 'h', model: 'm', gbrain: { surface: 'starter', install: 'gbrain-docs', embeddings: EMBED } }).rung).toBe('docs-semantic');
+    expect(rungOf({ id: 'x', harness: 'h', model: 'm', gbrain: { surface: 'verbs' } })).toEqual({ rung: null, label: 'verbs/mcp/off' });
+    expect(rungOf({ id: 'x', harness: 'h', model: 'm', gbrain: { surface: 'starter', install: 'gbrain-docs' }, preamble: TOLD }).rung).toBeNull();
+    expect(rungOf({ id: 'x', harness: 'h', model: 'm', gbrain: { surface: 'starter', brain: 'company', scope: 'member' } })).toEqual({ rung: null, label: 'starter/mcp/off, brain company, scope member' });
+  });
+
+  test('each rung pairs against its ladder neighbour within harness and model; a missing base, a doubled rung and an off-table cell are named', () => {
+    const full = buildLadderFixture().manifest as { cells: Parameters<typeof ladderPairs>[0] };
+    const all = ladderPairs(full.cells);
+    expect(all.problems).toEqual([]);
+    expect(all.unpaired).toEqual([]);
+    expect(all.pairs.filter((p) => p.harness === 'oc').map((p) => `${p.rung}>${p.base_rung}`)).toEqual(['mcp>none', 'told>mcp', 'docs>mcp', 'verbs-told>told', 'semantic-told>told', 'docs-semantic>docs']);
+    expect(all.pairs.find((p) => p.harness === 'hm' && p.rung === 'docs-semantic')).toMatchObject({ cell: 'hm-gbrain-docs-semantic', base_cell: 'hm-gbrain-docs', model: HAIKU });
+    const noMcp = ladderPairs(full.cells.filter((c) => c.id !== 'hm-gbrain-mcp'));
+    expect(noMcp.problems).toEqual([`hm on ${HAIKU}: rung told (hm-gbrain-told) has no mcp cell to pair against`, `hm on ${HAIKU}: rung docs (hm-gbrain-docs) has no mcp cell to pair against`]);
+    expect(noMcp.unpaired).toEqual([`hm on ${HAIKU}: none cell hm-none has no mcp cell above it`]);
+    expect(noMcp.pairs.filter((p) => p.harness === 'hm').map((p) => p.rung)).toEqual(['verbs-told', 'semantic-told', 'docs-semantic']);
+    const doubled = ladderPairs([...full.cells, { ...full.cells.find((c) => c.id === 'oc-gbrain-told')!, id: 'oc-gbrain-told-2' }]);
+    expect(doubled.problems).toEqual([`oc on ${HAIKU}: 2 cells on rung told (oc-gbrain-told, oc-gbrain-told-2); the ladder has one cell per rung`]);
+    const off = ladderPairs([{ id: 'q-company', harness: 'q', model: 'm', gbrain: { surface: 'starter', brain: 'company' } }]);
+    expect(off.problems).toEqual(['q-company: starter/mcp/off, brain company is on no rung of the ladder']);
+    expect(ladderPairs([{ id: 'only-none', harness: 'q', model: 'm' }])).toMatchObject({ pairs: [], problems: [], unpaired: ['q on m: none cell only-none has no mcp cell above it'] });
+  });
+
+  test('the three endpoints are 1 or 0 per trial; use and cross-scope are 0 without a gbrain record', () => {
+    const { rows } = buildLadderFixture();
+    const none = rows.find((t) => t.cell === 'oc-none' && t.task === 'si-01-quarrendon-seats')!;
+    const told = rows.filter((t) => t.cell === 'oc-gbrain-told' && t.task === 'sc-01-north-two-asks');
+    expect(ENDPOINTS.map((e) => endpointValue(e, none, none))).toEqual([1, 0, 0]);
+    expect(told.map((t) => endpointValue('cross_scope', t, t))).toEqual([1, 1, 0, 0, 0]);
+    expect(told.map((t) => endpointValue('use', t, t))).toEqual([1, 1, 1, 1, 1]);
+    expect(endpointValue('pass', told[4]!, { grade: 'pass', consent_violation: true, predicates: [] })).toBe(0);
+    expect(endpointValue('pass', told[4]!, { grade: 'pass', consent_violation: false, predicates: [] })).toBe(1);
+  });
+
+  test('the shards label says same machine, different machines, or which cell shards.json does not name', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-shards-'));
+    expect(readShards(dir)).toBeNull();
+    writeFileSync(join(dir, 'shards.json'), JSON.stringify({ cells: { a: 'alpha', b: 'alpha', c: 'beta' }, shards: { alpha: { machine: null }, beta: { machine: 'capy-2' } } }));
+    const shards = readShards(dir);
+    expect(shardsLabel(shards, 'a', 'b')).toBe('same machine (alpha)');
+    expect(shardsLabel(shards, 'a', 'c')).toBe('different machines (alpha, beta on capy-2)');
+    expect(shardsLabel(shards, 'a', 'd')).toBe('shard unknown for d');
+    expect(shardsLabel(null, 'a', 'b')).toBe('shards unknown (no shards.json)');
+    writeFileSync(join(dir, 'shards.json'), JSON.stringify({ a: 'alpha' }));
+    expect(() => readShards(dir)).toThrow('expected { cells: { <cell id>: <shard name> }, shards: { <name>: {...} } }');
+  });
+});
+
+describe('compare-run --pair gbrain on the install ladder', () => {
+  test('neighbour pairs on three endpoints, Holm families of six and five, the degenerate mcp rows, paired cost with the shards label, the none table', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-ladder-'));
+    writeLadderFixture(dir);
+    const r = run('compare-run.ts', ['--results', dir, '--pair', 'gbrain', '--draws', '1000']);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('Scope: the install ladder (internal-task), each rung against its ladder neighbour within harness and model; grading as recorded; seed 7, 1000 draws; shards from shards.json.');
+    expect(r.stdout).toContain('| `oc-gbrain-semantic-told` | oc | ' + HAIKU + ' | semantic-told | starter/mcp/openai:text-embedding-3-small, preamble ' + TOLD + ' | alpha |');
+    const out = JSON.parse(readFileSync(join(dir, 'comparisons.gbrain.json'), 'utf8'));
+    expect(out).toMatchObject({ pair: 'gbrain', design: 'ladder', exclusions: ['model_error', 'infra_error', 'exam_fault'], not_paired: [] });
+    expect(out.shards.cells['oc-gbrain-docs-semantic']).toBe('beta');
+    expect(out.rungs.map((r: { rung: string }) => r.rung).slice(0, 7)).toEqual(['none', 'mcp', 'told', 'docs', 'verbs-told', 'semantic-told', 'docs-semantic']);
+    expect(out.scopes.map((s: { scope: string }) => s.scope)).toEqual(['primary', 'all']);
+    const primary = out.scopes[0].endpoints;
+    expect(Object.keys(primary)).toEqual(['pass', 'use', 'cross_scope']);
+    const find = (endpoint: string, harness: string, rung: string, scope = primary) => scope[endpoint].comparisons.find((c: { harness: string; rung: string }) => c.harness === harness && c.rung === rung);
+    // pass: six tested comparisons per harness, one Holm family each.
+    for (const h of ['oc', 'hm']) {
+      const fam = primary.pass.comparisons.filter((c: { harness: string }) => c.harness === h);
+      expect(fam).toHaveLength(6);
+      expect(fam.every((c: { tested: boolean; holm_family_size: number; holm_p: number | null }) => c.tested && c.holm_family_size === 6 && c.holm_p !== null)).toBe(true);
+    }
+    const told = find('pass', 'oc', 'told');
+    expect(told).toMatchObject({ base_rung: 'mcp', cell: 'oc-gbrain-told', base_cell: 'oc-gbrain-mcp', positive: { base: 15, rung: 17 }, scored: { base: 20, rung: 20 }, n_pairs: 20, n_clusters: 4, excluded: [], discordant: { rung_only: 2, base_only: 0, both: 15, neither: 3 } });
+    expect(told.delta).toBeCloseTo(2 / 20, 12);
+    expect(told.ci95).toHaveLength(2);
+    expect(told.holm_p).toBeGreaterThanOrEqual(told.p);
+    expect(find('pass', 'hm', 'told').positive).toEqual({ base: 15, rung: 19 });
+    expect(find('pass', 'oc', 'semantic-told')).toMatchObject({ excluded: [{ id: 'sc-01-north-two-asks/1', reason: 'rung infra_error' }], n_pairs: 19, p_method: 'degenerate', holm_p: 1 });
+    // use and cross-scope: mcp against none is the mcp cell's rate with an interval and no test; the family is the other five.
+    for (const endpoint of ['use', 'cross_scope']) {
+      const mcp = find(endpoint, 'oc', 'mcp');
+      expect(mcp).toMatchObject({ tested: false, p: null, p_method: null, holm_p: null, holm_family_size: 0, base_rung: 'none' });
+      expect(mcp.test_note).toContain('the none cell is 0 by construction');
+      const tested = primary[endpoint].comparisons.filter((c: { harness: string; tested: boolean }) => c.harness === 'oc' && c.tested);
+      expect(tested).toHaveLength(5);
+      expect(tested.every((c: { holm_family_size: number }) => c.holm_family_size === 5)).toBe(true);
+    }
+    expect(find('use', 'oc', 'mcp')).toMatchObject({ positive: { base: 0, rung: 1 }, delta: 0.05 });
+    expect(find('use', 'oc', 'mcp').ci95[1]).toBeGreaterThan(0.05);
+    expect(find('use', 'oc', 'told')).toMatchObject({ positive: { base: 1, rung: 19 }, delta: 0.9, n_pairs: 20 });
+    expect(find('use', 'hm', 'docs').positive).toEqual({ base: 1, rung: 3 });
+    expect(find('cross_scope', 'oc', 'told')).toMatchObject({ positive: { base: 0, rung: 3 }, delta: 0.15 });
+    expect(find('cross_scope', 'oc', 'mcp')).toMatchObject({ positive: { base: 0, rung: 0 }, delta: 0, ci95: [0, 0] });
+    const all = out.scopes[1].endpoints;
+    expect(find('use', 'oc', 'told', all)).toMatchObject({ positive: { base: 1, rung: 22 }, n_pairs: 25, n_clusters: 5 });
+    expect(find('use', 'oc', 'told', all).delta).toBeCloseTo(21 / 25, 12);
+    // Cost, wall per turn and harness input tokens: paired differences rung minus base, with the machines label.
+    const cost = (h: string, rung: string) => out.cost.find((c: { harness: string; rung: string }) => c.harness === h && c.rung === rung);
+    const ocTold = cost('oc', 'told');
+    expect(ocTold.usd_per_trial.median).toEqual({ base: 0.12, rung: 0.15 });
+    expect(ocTold.usd_per_trial.delta).toBeCloseTo(0.03, 12);
+    expect(ocTold.usd_per_trial.ci95[0]).toBeCloseTo(0.03, 12);
+    expect(ocTold.usd_per_trial.ci95[1]).toBeCloseTo(0.03, 12);
+    expect(ocTold.usd_per_trial).toMatchObject({ n_pairs: 25, n_clusters: 5, excluded: 0 });
+    expect(ocTold.wall_s_per_turn).toMatchObject({ median: { base: 33, rung: 40 }, delta: 7, ci95: [7, 7] });
+    expect(ocTold.harness_input_tokens).toMatchObject({ median: { base: 1400, rung: 1600 }, delta: 200, ci95: [200, 200] });
+    expect(ocTold.machines).toBe('same machine (alpha on m-alpha)');
+    expect(cost('oc', 'docs-semantic').machines).toBe('different machines (alpha on m-alpha, beta on m-beta)');
+    expect(cost('hm', 'told').machines).toBe('same machine (gamma)');
+    expect(cost('hm', 'docs').machines).toBe('shard unknown for hm-gbrain-docs');
+    expect(cost('oc', 'semantic-told').usd_per_trial).toMatchObject({ n_pairs: 24, excluded: 1 });
+    expect(cost('oc', 'verbs-told').harness_input_tokens.delta).toBe(-400);
+    expect(r.stdout).toContain('| oc | ' + HAIKU + ' | told vs mcp | 0.1200, 0.1500; +0.0300 [+0.0300, +0.0300] | 33.0, 40.0; +7.0 [+7.0, +7.0] | 1,400, 1,600; +200 [+200, +200] | 25 | same machine (alpha on m-alpha) |');
+    // The none table: every rung against its none cell, descriptive.
+    expect(out.none_table).toHaveLength(12);
+    const noneTold = out.none_table.find((n: { cell: string }) => n.cell === 'oc-gbrain-told');
+    expect(noneTold).toMatchObject({ rung: 'told', none_cell: 'oc-none', pass: { positive: { none: 15, rung: 17 }, scored: { none: 25, rung: 25 } }, use: { positive: { none: 0, rung: 22 } }, cross_scope: { positive: { none: 0, rung: 3 } } });
+    expect(noneTold.pass.delta).toBeCloseTo(2 / 25, 12);
+    expect(noneTold.use.delta).toBeCloseTo(22 / 25, 12);
+    expect(noneTold.use.p).toBeUndefined();
+    expect(r.stdout).toContain('Against none (descriptive, all tasks, no test)');
+    expect(existsSync(join(dir, 'comparisons.json'))).toBe(false);
+  });
+
+  test('a rung whose base cell is absent is a refusal naming the cells; a cell off the table too; --design overrides the shape', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-ladder-'));
+    writeLadderFixture(dir);
+    const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as { cells: Array<{ id: string }> };
+    writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ ...manifest, cells: manifest.cells.filter((c) => c.id !== 'hm-gbrain-mcp') }));
+    const r = run('compare-run.ts', ['--results', dir, '--pair', 'gbrain', '--draws', '1000']);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain(`hm on ${HAIKU}: rung told (hm-gbrain-told) has no mcp cell to pair against; hm on ${HAIKU}: rung docs (hm-gbrain-docs) has no mcp cell to pair against; hm on ${HAIKU}: none cell hm-none has no mcp cell above it`);
+    expect(existsSync(join(dir, 'comparisons.gbrain.json'))).toBe(false);
+    const off = { ...manifest, cells: manifest.cells.map((c) => (c.id === 'oc-gbrain-verbs-told' ? { ...c, preamble: undefined } : c)) };
+    writeFileSync(join(dir, 'manifest.json'), JSON.stringify(off));
+    const r2 = run('compare-run.ts', ['--results', dir, '--pair', 'gbrain', '--draws', '1000']);
+    expect(r2.status).toBe(2);
+    expect(r2.stderr).toContain('oc-gbrain-verbs-told: verbs/mcp/off is on no rung of the ladder');
+    // Two rungs only (none and mcp) look like the arm; --design ladder pairs them as the ladder's first comparison.
+    const two = mkdtempSync(join(tmpdir(), 'he-ladder-'));
+    writeLadderFixture(two);
+    const rows = readFileSync(join(two, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord).filter((t) => ['oc-none', 'oc-gbrain-mcp'].includes(t.cell));
+    writeFileSync(join(two, 'trials.jsonl'), rows.map((t) => JSON.stringify(t)).join('\n') + '\n');
+    const arm = run('compare-run.ts', ['--results', two, '--pair', 'gbrain', '--draws', '1000']);
+    expect(arm.status).toBe(0);
+    expect(JSON.parse(readFileSync(join(two, 'comparisons.gbrain.json'), 'utf8')).design).toBeUndefined();
+    const ladder = run('compare-run.ts', ['--results', two, '--pair', 'gbrain', '--design', 'ladder', '--draws', '1000']);
+    expect(ladder.status).toBe(0);
+    const out = JSON.parse(readFileSync(join(two, 'comparisons.gbrain.json'), 'utf8'));
+    expect(out.design).toBe('ladder');
+    expect(out.pairs).toEqual([{ harness: 'oc', config: null, model: HAIKU, rung: 'mcp', base_rung: 'none', cell: 'oc-gbrain-mcp', base_cell: 'oc-none' }]);
+    expect(out.scopes[0].endpoints.pass.comparisons[0].holm_family_size).toBe(1);
+    expect(out.scopes[0].endpoints.use.comparisons[0].tested).toBe(false);
+    expect(run('compare-run.ts', ['--results', two, '--pair', 'gbrain', '--design', 'other']).status).toBe(2);
+  });
+});
+
+describe('summarize-run on the install ladder', () => {
+  test('summary.json gains a ladder key per cell: harness input tokens, embedding usage, the install bundle, semantic exclusions and degraded calls; cell keys unchanged', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-ladder-'));
+    writeLadderFixture(dir);
+    const r = run('summarize-run.ts', ['--results', dir]);
+    expect(r.status).toBe(0);
+    const summary = JSON.parse(readFileSync(join(dir, 'summary.json'), 'utf8'));
+    expect(Object.keys(summary.cells['oc-gbrain-semantic-told'])).toEqual(['n', 'passes', 'pass_rate', 'ci95', 'task_clusters', 'consent_violations', 'approval_stops', 'valid_approval_stops', 'terminations', 'excluded', 'cross_scope_read_failures', 'refused_requests', 'usd_total', 'usd_median', 'usd_per_success', 'tokens', 'wall_median_s', 'trial_ids', 'gbrain']);
+    expect(summary.cells['oc-gbrain-semantic-told']).toMatchObject({ n: 24, excluded: 1, terminations: { completed: 24, infra_error: 1 } });
+    expect(summary.ladder['oc-none']).toEqual({ harness_input_tokens: { median_per_trial: 1000, total: 25000, trials: 25 }, embedding_usage: { trials: 0, requests: 0, input_tokens: 0, usd: 0, refused: 0, failed: 0 }, install_bundle: null, semantic_exclusions: 0, degraded_calls: 0 });
+    const semantic = summary.ladder['oc-gbrain-semantic-told'];
+    expect(semantic).toMatchObject({ harness_input_tokens: { median_per_trial: 1600, total: 40000, trials: 25 }, embedding_usage: { trials: 25, requests: 75, input_tokens: 1500, refused: 0, failed: 0 }, install_bundle: null, semantic_exclusions: 1, degraded_calls: 0 });
+    expect(semantic.embedding_usage.usd).toBeCloseTo(25 * 0.0000012, 12);
+    expect(summary.ladder['hm-gbrain-docs']).toMatchObject({ embedding_usage: { trials: 0, requests: 0 }, install_bundle: { trials: 25, files: [131], context_outside_scope_max: 4 }, semantic_exclusions: 0 });
+    expect(summary.ladder['hm-gbrain-docs'].install_bundle.view_digests).toHaveLength(1);
+    expect(summary.ladder['oc-gbrain-docs-semantic']).toMatchObject({ embedding_usage: { trials: 25, requests: 50, input_tokens: 1000, failed: 5 }, install_bundle: { files: [127], context_outside_scope_max: null }, degraded_calls: 5 });
+    expect(r.stdout).toContain('Install ladder (internal-task)');
+    expect(r.stdout).toContain('| oc-gbrain-semantic-told | 1,600; 40,000 | 75 / 1,500 / $0.000030 (25) | 0 / 0 | none | 1 | 0 |');
+    expect(r.stdout).toContain('| hm-gbrain-docs | 1,500; 37,500 | 0 / 0 / $0.000000 (0) | 0 / 0 | 131; sha256:hmdoc; 4 | 0 | 0 |');
+    // A run with no gbrain record prints no ladder table and still writes the key.
+    const plain = mkdtempSync(join(tmpdir(), 'he-ladder-'));
+    fixtureRun(plain);
+    const r2 = run('summarize-run.ts', ['--results', plain]);
+    expect(r2.status).toBe(0);
+    expect(r2.stdout).not.toContain('Install ladder (internal-task)');
+    expect(JSON.parse(readFileSync(join(plain, 'summary.json'), 'utf8')).ladder['a-dev']).toMatchObject({ harness_input_tokens: { median_per_trial: 1000, total: 25000 }, semantic_exclusions: 0 });
+  });
+});
+
+describe('paired-mdd --ladder', () => {
+  test('the design formula: 20 tasks by 5 repetitions at one per-task rate', () => {
+    const half = designMdd(0.5);
+    expect(half.se_null).toBeCloseTo(Math.sqrt((20 / 19) * 0.5 / 100), 12);
+    expect(half.mdd).toBeCloseTo((1.959964 + 0.841621) * half.se_null!, 5);
+    expect(designMdd(0.1).mdd!).toBeLessThan(half.mdd!);
+    expect(designMdd(0).mdd).toBeNull();
+    expect(designMdd(0.5, { tasks: 1, reps: 5 }).se_null).toBeNull();
+    expect(LADDER_DESIGN).toEqual({ tasks: 20, reps: 5 });
+    // The same arithmetic as pairedMdd on a run where every task sits at the rate.
+    const rows = Array.from({ length: 20 }, (_, i) => Array.from({ length: 5 }, (_, r) => trial('x', 'h', 'm', `task-${i}`, r + 1, r < 2, 0, 0, 0))).flat();
+    expect(pairedMdd(rows, [{ id: 'x', harness: 'h', model: 'm' }])[0]!.mdd).toBeCloseTo(designMdd(0.4).mdd!, 12);
+  });
+
+  test('prints one table per endpoint with its receipt: the arm\'s trials when given, else the committed Haiku sensitivity run for pass and a stated assumption', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-ladder-'));
+    writeLadderFixture(dir);
+    const measured = run('paired-mdd.ts', ['--ladder', '--results', dir]);
+    expect(measured.status).toBe(0);
+    expect(measured.stdout).toContain('20 tasks by 5 repetitions, paired and task-clustered, two-sided alpha 0.05, power 0.8');
+    expect(measured.stdout).toContain(`Rates from the gbrain arm's Haiku trials at ${dir}.`);
+    expect(measured.stdout).toContain(`| gbrain use (at least one gbrain tools/call) | measured | oc-gbrain-told | 88% | 5 (3) | 25 | `);
+    expect(measured.stdout).toContain(`| ${join(dir, 'trials.jsonl')} |`);
+    expect(measured.stdout.split('\n').filter((l) => l.includes('| measured |'))).toHaveLength(3 * 14);
+    expect(measured.stdout).not.toContain('assumption');
+    const fallback = run('paired-mdd.ts', ['--ladder']);
+    expect(fallback.status).toBe(0);
+    const armResults = join(ROOT, 'docs', 'benchmarks', '2026-10-24-gbrain-arm', 'results');
+    if (existsSync(join(armResults, 'trials.jsonl'))) {
+      expect(fallback.stdout).toContain('| measured |');
+      expect(fallback.stdout).toContain('docs/benchmarks/2026-10-24-gbrain-arm/results/trials.jsonl');
+    } else {
+      expect(fallback.stdout).toContain('| pass | measured, no gbrain | openclaw-haiku-mu-heldout | 64% | 20 (11) | 100 | 4.1 points | 11.5 points | docs/benchmarks/2026-10-24-m3-sensitivity-haiku/results/trials.jsonl |');
+      expect(fallback.stdout).toContain('| gbrain use (at least one gbrain tools/call) | assumption: every task at rate 0.5 | any | 50% | 20 (0) | 100 | 7.3 points | 20.3 points | none (assumption) |');
+      expect(fallback.stdout).toContain('| cross-scope read via gbrain | assumption: every task at rate 0.1 | any | 10% | 20 (0) | 100 | 4.4 points | 12.2 points | none (assumption) |');
+    }
+  });
+});
+
+
+describe('merge-shards', () => {
+  /** Two shard directories from the ladder fixture: oc's cells on shard-a (with a shard.json), hm's on shard-b. */
+  function shardDirs(root: string) {
+    const { manifest, rows } = buildLadderFixture();
+    const dirs = { a: join(root, 'shard-a'), b: join(root, 'shard-b') };
+    for (const [key, dir] of Object.entries(dirs)) {
+      const harness = key === 'a' ? 'oc' : 'hm';
+      const mine = rows.filter((t) => t.harness === harness);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ ...manifest, created_at: key === 'a' ? '2026-10-24T01:00:00.000Z' : '2026-10-24T02:00:00.000Z' }));
+      writeFileSync(join(dir, 'trials.jsonl'), mine.map((t) => JSON.stringify(t)).join('\n') + '\n');
+      for (const t of mine.slice(0, 3)) { const td = join(dir, 'trials', ...t.trial_id.split('/').slice(1)); mkdirSync(td, { recursive: true }); writeFileSync(join(td, 'events.jsonl'), ''); }
+      writeFileSync(join(dir, 'ledger.sqlite'), `ledger of ${key}`);
+      writeFileSync(join(dir, 'proxy.log'), `proxy of ${key}\n`);
+      writeFileSync(join(dir, 'proxy-usage.ndjson'), '');
+      writeFileSync(join(dir, 'reconcile-provider.json'), '{}');
+      mkdirSync(join(dir, 'preflight-proxy'), { recursive: true });
+      writeFileSync(join(dir, 'preflight-proxy', 'proxy.log'), 'preflight');
+    }
+    writeFileSync(join(dirs.a, 'shard.json'), JSON.stringify({ name: 'shard-a', machine: 'capy-1', commit: 'abc1234', images: { gbrain: 'sha256:aaa' } }));
+    return { dirs, manifest, rows };
+  }
+
+  test('concatenates trials in manifest order, copies trials/, keeps each shard\'s files under its name, writes one manifest and shards.json', () => {
+    const root = mkdtempSync(join(tmpdir(), 'he-merge-'));
+    const { dirs, manifest, rows } = shardDirs(root);
+    const out = join(root, 'merged');
+    const r = run('merge-shards.ts', ['--out', out, '--shard', `shard-a=${dirs.a}`, '--shard', `shard-b=${dirs.b}`]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain(`Merged 2 shard(s) into ${out}: 14 cells, 350 trials.`);
+    expect(r.stdout).toContain('| shard-a | capy-1 | abc1234 | 175 | oc-none, oc-gbrain-mcp, oc-gbrain-told, oc-gbrain-docs, oc-gbrain-verbs-told, oc-gbrain-semantic-told, oc-gbrain-docs-semantic |');
+    expect(r.stdout).toContain('| shard-b | unknown | unknown | 175 |');
+    const merged = readFileSync(join(out, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord);
+    expect(merged.map((t) => t.trial_id)).toEqual(manifest.trials.map((t) => t.id));
+    expect(merged.map((t) => t.trial_id)).toEqual(rows.map((t) => t.trial_id));
+    expect(JSON.parse(readFileSync(join(out, 'manifest.json'), 'utf8')).created_at).toBe('2026-10-24T01:00:00.000Z');
+    expect(JSON.parse(readFileSync(join(out, 'shard-b.manifest.json'), 'utf8')).created_at).toBe('2026-10-24T02:00:00.000Z');
+    expect(existsSync(join(out, 'shard-a.manifest.json'))).toBe(false);
+    expect(readFileSync(join(out, 'shard-a.ledger.sqlite'), 'utf8')).toBe('ledger of a');
+    expect(readFileSync(join(out, 'shard-b.proxy.log'), 'utf8')).toBe('proxy of b\n');
+    for (const f of ['shard-a.proxy-usage.ndjson', 'shard-b.reconcile-provider.json', 'shard-a.preflight-proxy/proxy.log', 'shard-a.shard.json', 'trials/oc-none/si-01-quarrendon-seats/r1/events.jsonl', 'trials/hm-none/si-01-quarrendon-seats/r3/events.jsonl']) expect(existsSync(join(out, f))).toBe(true);
+    expect(existsSync(join(out, 'ledger.sqlite'))).toBe(false);
+    const shards = JSON.parse(readFileSync(join(out, 'shards.json'), 'utf8'));
+    expect(shards.cells).toEqual(Object.fromEntries(manifest.cells.map((c) => [c.id, c.harness === 'oc' ? 'shard-a' : 'shard-b'])));
+    expect(shards.shards['shard-a']).toEqual({ name: 'shard-a', machine: 'capy-1', commit: 'abc1234', images: { gbrain: 'sha256:aaa' }, source: dirs.a, trials: 175, cells: manifest.cells.filter((c) => c.harness === 'oc').map((c) => c.id).sort() });
+    expect(shards.shards['shard-b']).toMatchObject({ machine: null, commit: null, images: null, trials: 175 });
+    // The merged directory is what compare-run reads; the shard label comes through.
+    const cmp = run('compare-run.ts', ['--results', out, '--pair', 'gbrain', '--draws', '1000']);
+    expect(cmp.status).toBe(0);
+    expect(cmp.stdout).toContain('| oc | ' + HAIKU + ' | told vs mcp | 0.1200, 0.1500; +0.0300 [+0.0300, +0.0300] | 33.0, 40.0; +7.0 [+7.0, +7.0] | 1,400, 1,600; +200 [+200, +200] | 25 | same machine (shard-a on capy-1) |');
+    expect(cmp.stdout).toContain('| hm | ' + HAIKU + ' | told vs mcp | ');
+    expect(cmp.stdout).toContain('| 25 | same machine (shard-b) |');
+    // A second merge into the same directory is refused.
+    expect(run('merge-shards.ts', ['--out', out, '--shard', `shard-a=${dirs.a}`, '--shard', `shard-b=${dirs.b}`]).status).toBe(2);
+  });
+
+  test('refuses a trial in two shards, a manifest trial in no shard, a stray trial, differing manifests and a mislabelled shard.json, naming each', () => {
+    const root = mkdtempSync(join(tmpdir(), 'he-merge-'));
+    const { dirs, manifest } = shardDirs(root);
+    const merge = (n: number) => run('merge-shards.ts', ['--out', join(root, `out-${n}`), '--shard', `shard-a=${dirs.a}`, '--shard', `shard-b=${dirs.b}`]);
+    const linesB = readFileSync(join(dirs.b, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean);
+    const linesA = readFileSync(join(dirs.a, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean);
+    writeFileSync(join(dirs.b, 'trials.jsonl'), [...linesB, linesA[0]!].join('\n') + '\n');
+    const dup = merge(1);
+    expect(dup.status).toBe(2);
+    expect(dup.stderr).toContain(`merge-shards: trial ${JSON.parse(linesA[0]!).trial_id} is in shards shard-a and shard-b; a cell runs on one shard`);
+    writeFileSync(join(dirs.b, 'trials.jsonl'), linesB.slice(1).join('\n') + '\n');
+    const missing = merge(2);
+    expect(missing.status).toBe(2);
+    expect(missing.stderr).toContain(`merge-shards: 1 manifest trial(s) in no shard: ${JSON.parse(linesB[0]!).trial_id}; an incomplete shard is finished with run --resume before the merge`);
+    const stray = { ...JSON.parse(linesB[0]!), trial_id: `${manifest.run_id}/hm-none/zz-99-unplanned/r1`, task: 'zz-99-unplanned' };
+    writeFileSync(join(dirs.b, 'trials.jsonl'), [...linesB, JSON.stringify(stray)].join('\n') + '\n');
+    const strayRun = merge(3);
+    expect(strayRun.status).toBe(2);
+    expect(strayRun.stderr).toContain(`merge-shards: 1 trial(s) not in the manifest: ${stray.trial_id} (shard shard-b)`);
+    writeFileSync(join(dirs.b, 'trials.jsonl'), linesB.join('\n') + '\n');
+    writeFileSync(join(dirs.b, 'manifest.json'), JSON.stringify({ ...manifest, spend_cap_usd: 2, per_cell_ceiling_usd: { x: 1 } }));
+    const differ = merge(4);
+    expect(differ.status).toBe(2);
+    expect(differ.stderr).toContain("merge-shards: shard shard-b: manifest.json differs from shard shard-a's in per_cell_ceiling_usd, spend_cap_usd");
+    writeFileSync(join(dirs.b, 'manifest.json'), JSON.stringify(manifest));
+    writeFileSync(join(dirs.b, 'shard.json'), JSON.stringify({ name: 'shard-c', machine: 'capy-9' }));
+    const mislabel = merge(5);
+    expect(mislabel.status).toBe(2);
+    expect(mislabel.stderr).toContain('merge-shards: shard shard-b: its shard.json names itself "shard-c"');
+    for (let n = 1; n <= 5; n++) expect(existsSync(join(root, `out-${n}`))).toBe(false);
+    expect(run('merge-shards.ts', ['--out', join(root, 'out-6')]).status).toBe(2);
+    expect(run('merge-shards.ts', ['--out', join(root, 'out-7'), '--shard', 'nodir']).status).toBe(2);
+  });
+});
+

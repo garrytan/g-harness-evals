@@ -80,6 +80,8 @@ harness-evals v0.0.5, internal-task. The gbrain arm's first finding was that the
 
 **Building any commit.** `scripts/build-gbrain-image.sh [--gbrain <sha or branch>] [--tag <tag>] [--out <dir>] [--embedded] [--dry-run]` builds the keyword target keyless (the default, what `docker build -f gbrain/Dockerfile .` builds) and, with `--embedded`, the embedded target as above. `GBRAIN_COMMIT` is a shallow fetch of exactly that commit, `GBRAIN_VERSION` is checked only when set, and `/opt/sidecar/image.json` records the resolved commit and the checkout's VERSION. The docker output goes to `<out>/build.log`; a failure prints HE-GBRAIN-007 with the failing stage, the last 20 lines and the log path and exits 2. The keyword image from this checkout builds in about 6 minutes warm; the embedded brains add about a minute and the proxy's ledger summary.
 
+**The paired comparison and the report scripts.** `scripts/compare-run.ts --pair gbrain` reads each cell's rung from the table above (its resolved `gbrain` fields and its `preamble`; a cell without `gbrain` is `none`) and pairs each rung against its ladder neighbour within harness and model: mcp against none, told and docs against mcp, verbs-told and semantic-told against told, docs-semantic against docs; a rung whose base cell is absent, or a cell on no rung, is a refusal that names the cells. Three endpoints, each 1 or 0 per trial: pass, gbrain use (at least one gbrain tools/call) and a cross-scope read via gbrain, through the arm's trial-by-trial pairing and task-clustered estimator, with one Holm family per harness per endpoint (six comparisons for pass, five for use and cross-scope, where mcp against none is the mcp cell's rate with its interval and no test because the none cell is zero by construction), the none table as a descriptive section, and cost per trial, wall per turn and the harness's own input tokens as paired differences with task-clustered intervals, each labelled with the shards the two cells ran on when the merged results carry `shards.json`. `scripts/summarize-run.ts` adds the harness input tokens, the embedding usage, the install bundle, the semantic exclusions and the degraded calls per cell under a `ladder` key, and `scripts/paired-mdd.ts --ladder` states the minimum detectable difference per endpoint for 20 tasks by 5 repetitions with the receipt it used (runner/README.md, "Report tooling"). The told rung is any gbrain cell whose preamble is not the default, so the arm's `preamble.gbrain.md` cell and the ladder's surface-neutral told rule both read as told; which text a cell used is in the rung table the script prints.
+
 ## Smoke evidence
 
 Two proofs, both on 2026-10-24, both from scratch preregistrations under `~/.capy/work` (a wiring smoke, not a counted run; the receipts are not committed, the numbers below are copied from them).
@@ -107,6 +109,10 @@ Lessons that changed the code or the docs: a harness image built before an adapt
 - **Preamble mention.** A second arm whose preamble names gbrain search beside `search_messages` would separate "the harness did not know the rule applies" from "the harness ignored it".
 
 ## Changelog
+
+### 2026-10-25: Install ladder, report scripts (internal-task)
+
+harness-evals v0.0.5. "The paired comparison and the report scripts": the neighbour pairing and three endpoints of `compare-run.ts --pair gbrain`, the `ladder` key of `summarize-run.ts`, `paired-mdd.ts --ladder`, and the shards label.
 
 ### 2026-10-25: Install ladder, runner (internal-task)
 

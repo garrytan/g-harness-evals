@@ -14,13 +14,40 @@
 // a task every harness passes. Beside it, the sign-flip bar the held-out preregistration states: the fewest task
 // clusters that must all move one way for an exact two-sided sign-flip test to reach alpha. Two scopes: the
 // primary families (scope_isolation, shared_channel, org_security, handoff, or --families) and all tasks.
+//
+//   bun scripts/paired-mdd.ts --ladder [--results <arm results>] [--alpha 0.05] [--power 0.8]
+//
+// The install ladder (internal-task): the same arithmetic per endpoint (pass, gbrain use, a cross-scope read via gbrain,
+// scripts/gbrain-ladder.ts) for the ladder's design, 20 tasks by 5 repetitions paired and task-clustered, printed as one
+// table the preregistration quotes with its receipt path. The rates come from the gbrain arm's committed Haiku trials
+// (docs/benchmarks/2026-10-24-gbrain-arm/results, every Haiku cell, each endpoint read from its trial records) when that
+// directory holds them. Until it does, pass comes from the committed Haiku sensitivity run (the same 20 held-out tasks,
+// no gbrain) and use and cross-scope from a stated assumption, every task at one per-trial rate p (0.10, 0.25 and 0.50,
+// the last the widest a binary endpoint gets), each row saying which it is. Nothing here reads a results directory
+// for anything but counting.
 
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import type { TrialRecord } from '../runner/contracts.ts';
 import { minimumDiscordantForSignificance, normalQuantile } from '../runner/stats/paired.ts';
 import { loadTask } from '../runner/grade/task.ts';
 import { taskDirFor } from '../runner/run.ts';
+import { ENDPOINTS, ENDPOINT_LABEL, endpointValue, type Endpoint } from './gbrain-ladder.ts';
+
+export const LADDER_DESIGN = { tasks: 20, reps: 5 } as const;
+export const GBRAIN_ARM_RESULTS = join('docs', 'benchmarks', '2026-10-24-gbrain-arm', 'results');
+export const HAIKU_SENSITIVITY_RESULTS = join('docs', 'benchmarks', '2026-10-24-m3-sensitivity-haiku', 'results');
+
+/** The ladder design's null standard error and minimum detectable difference when every task shares the per-trial rate p:
+ *  the cluster-robust formula of pairedMdd with g tasks of r repetitions each, so n = g r and the variance per trial is
+ *  2 p (1 - p). Pass-rate units. */
+export function designMdd(p: number, design: { tasks: number; reps: number } = LADDER_DESIGN, options: { alpha?: number; power?: number } = {}): { se_null: number | null; mdd: number | null } {
+  const alpha = options.alpha ?? 0.05, power = options.power ?? 0.8;
+  const g = design.tasks, n = design.tasks * design.reps;
+  if (g < 2 || p <= 0 || p >= 1) return { se_null: null, mdd: null };
+  const se = Math.sqrt((g / (g - 1)) * (2 * p * (1 - p)) / n);
+  return { se_null: se, mdd: (normalQuantile(1 - alpha / 2) + normalQuantile(power)) * se };
+}
 
 export const PRIMARY_FAMILIES = ['scope_isolation', 'shared_channel', 'org_security', 'handoff'];
 
@@ -65,7 +92,50 @@ export function pairedMdd(rows: TrialRecord[], cells: Array<{ id: string; harnes
   });
 }
 
-if (import.meta.main) {
+if (import.meta.main && process.argv.includes('--ladder')) {
+  const arg = (name: string, fallback?: string): string | undefined => { const i = process.argv.indexOf(`--${name}`); return i >= 0 ? process.argv[i + 1] : fallback; };
+  const options = { alpha: Number(arg('alpha', '0.05')), power: Number(arg('power', '0.8')) };
+  const repoRoot = join(import.meta.dir, '..');
+  const arm = arg('results') ?? join(repoRoot, GBRAIN_ARM_RESULTS);
+  const receipt = (dir: string) => { const r = relative(repoRoot, join(dir, 'trials.jsonl')); return r.startsWith('..') ? join(dir, 'trials.jsonl') : r; };
+  const readRun = (dir: string) => {
+    const rows = readFileSync(join(dir, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord);
+    const cells = (JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as { cells: Array<{ id: string; harness: string; model: string }> }).cells.filter((c) => /haiku/.test(c.model));
+    return { rows: rows.filter((t) => cells.some((c) => c.id === t.cell)), cells };
+  };
+  const pct = (x: number | null) => (x === null ? 'n/a' : `${(100 * x).toFixed(1)} points`);
+  type Row = { endpoint: Endpoint; source: string; cell: string; rate: number | null; tasks: string; trials: number; se_null: number | null; mdd: number | null; receipt: string };
+  const table: Row[] = [];
+  if (existsSync(join(arm, 'trials.jsonl')) && existsSync(join(arm, 'manifest.json'))) {
+    const { rows, cells } = readRun(arm);
+    for (const endpoint of ENDPOINTS) {
+      for (const m of pairedMdd(rows, cells, { ...options, pass: (t) => endpointValue(endpoint, t, t) === 1 })) {
+        table.push({ endpoint, source: 'measured', cell: m.cell, rate: m.pass_rate, tasks: `${m.n_tasks} (${m.tasks_at_ceiling_or_floor})`, trials: m.n_trials, se_null: m.se_null, mdd: m.mdd, receipt: receipt(arm) });
+      }
+    }
+  } else {
+    const sens = join(repoRoot, HAIKU_SENSITIVITY_RESULTS);
+    if (existsSync(join(sens, 'trials.jsonl'))) {
+      const { rows, cells } = readRun(sens);
+      for (const m of pairedMdd(rows, cells, options)) table.push({ endpoint: 'pass', source: 'measured, no gbrain', cell: m.cell, rate: m.pass_rate, tasks: `${m.n_tasks} (${m.tasks_at_ceiling_or_floor})`, trials: m.n_trials, se_null: m.se_null, mdd: m.mdd, receipt: receipt(sens) });
+    }
+    for (const endpoint of ['use', 'cross_scope'] as const) {
+      for (const p of [0.1, 0.25, 0.5]) {
+        const d = designMdd(p, LADDER_DESIGN, options);
+        table.push({ endpoint, source: `assumption: every task at rate ${p}`, cell: 'any', rate: p, tasks: `${LADDER_DESIGN.tasks} (0)`, trials: LADDER_DESIGN.tasks * LADDER_DESIGN.reps, se_null: d.se_null, mdd: d.mdd, receipt: 'none (assumption)' });
+      }
+    }
+  }
+  const minK = minimumDiscordantForSignificance(options.alpha);
+  console.log([
+    `Minimum detectable difference for the install ladder (internal-task): ${LADDER_DESIGN.tasks} tasks by ${LADDER_DESIGN.reps} repetitions, paired and task-clustered, two-sided alpha ${options.alpha}, power ${options.power}, arms independent given the task; the sign-flip bar is ${minK} task clusters all one way.`,
+    `Rates from ${table.some((r) => r.source === 'measured') ? `the gbrain arm's Haiku trials at ${arm}` : `the committed Haiku sensitivity run for pass (no gbrain, so use and cross-scope are 0 there by construction) and a stated assumption for use and cross-scope; run again once ${GBRAIN_ARM_RESULTS} holds the arm's trials`}.`,
+    '',
+    '| Endpoint | Source | Cell | Rate | Tasks (at 0 or all of their repetitions) | Trials | Null SE | Minimum detectable difference | Receipt |',
+    '|---|---|---|---|---|---|---|---|---|',
+    ...table.map((r) => `| ${ENDPOINT_LABEL[r.endpoint]} | ${r.source} | ${r.cell} | ${r.rate === null ? 'n/a' : (100 * r.rate).toFixed(0) + '%'} | ${r.tasks} | ${r.trials} | ${pct(r.se_null)} | ${pct(r.mdd)} | ${r.receipt} |`),
+  ].join('\n'));
+} else if (import.meta.main) {
   const arg = (name: string, fallback?: string): string | undefined => { const i = process.argv.indexOf(`--${name}`); return i >= 0 ? process.argv[i + 1] : fallback; };
   const results = arg('results');
   if (!results || !existsSync(join(results, 'trials.jsonl')) || !existsSync(join(results, 'manifest.json'))) {
