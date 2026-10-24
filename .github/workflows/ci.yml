@@ -2,7 +2,8 @@
 # statistics kit and the preregistration checker, the documentation link check and
 # the preregistration-order check, in a job of about two minutes; and a docker job
 # (internal-task) that builds the gbrain sidecar image from the pull request's own checkout
-# and runs tests/gbrain-image.test.ts against it, about 15 minutes, still keyless.
+# and runs tests/gbrain-image.test.ts against it, about 15 minutes, still keyless,
+# run only when a file the image or its tests depend on changed (the `changes` job).
 # Paid runs (live harness trials) are manual, run on a trusted pushed SHA with a
 # reserved budget, and land receipts in the repo. Actions are pinned to commit SHAs;
 # Bun is pinned by bun-version.
@@ -37,11 +38,32 @@ jobs:
       - name: Preregistration order
         run: bun runner/prereg/prereg.ts
 
+  # Which paths changed, so the docker job runs only when the sidecar image, its build, the fake harness it drives or the
+  # image tests could have changed: a pull request is compared with its base, a push to main with the commit before it.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      gbrain: ${{ steps.diff.outputs.gbrain }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then echo "gbrain=true" >> "$GITHUB_OUTPUT"; echo "no base commit; running the docker job"; exit 0; fi
+          changed=$(git diff --name-only "$BASE" "$GITHUB_SHA" -- gbrain/ 'world/services/gbrain*' 'runner/trial/gbrain*' 'tests/gbrain*' harnesses/_fake/ scripts/build-gbrain-image.sh .github/workflows/ci.yml)
+          if [ -n "$changed" ]; then echo "gbrain=true" >> "$GITHUB_OUTPUT"; printf 'docker job runs; changed:\n%s\n' "$changed"; else echo "gbrain=false" >> "$GITHUB_OUTPUT"; echo "docker job skipped: no gbrain path changed since $BASE"; fi
+
   # The sidecar image from this checkout (gbrain at the pin, four keyword brains, the install bundle), then the image tests
   # with HE_GBRAIN_IMAGE set, which fail rather than skip when the image is missing. No secret: the build is keyless and the
   # embedded-brain case runs against an in-test fake embedder only when HE_GBRAIN_EMBEDDED_BRAIN names a brain, which it
   # does not here (that brain is built through the metering proxy with a key, scripts/build-gbrain-image.sh --embedded).
   docker-e2e:
+    needs: changes
+    if: needs.changes.outputs.gbrain == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
