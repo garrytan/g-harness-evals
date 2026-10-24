@@ -79,11 +79,21 @@ mkdir -p "$HE_TURNS_DIR" "$HE_LOG_DIR/turns"
 # token is the per-trial bot token the world minted (in the redaction set).
 world_def=$(node -e 'process.stdout.write(JSON.stringify({ url: process.env.HE_WORLD_MCP_URL, transport: "streamable-http", headers: { Authorization: "Bearer " + process.env.HE_WORLD_MCP_TOKEN }, connectionTimeoutMs: 30000, requestTimeoutMs: 120000 }))')
 openclaw mcp set world "$world_def" >> "$HE_LOG_DIR/adapter.log" 2>&1 || { log "openclaw mcp set world failed"; exit 2; }
+# The gbrain arm (docs/gbrain-arm.md): with HE_GBRAIN_MCP_URL and HE_GBRAIN_MCP_TOKEN set, a second server named
+# gbrain goes in beside world the same way. The URL is the world's /gbrain tap and the token the same bot token,
+# so the registration is byte-for-byte the world's shape with another name. Unset, nothing here runs.
+if [ -n "${HE_GBRAIN_MCP_URL:-}" ] && [ -n "${HE_GBRAIN_MCP_TOKEN:-}" ]; then
+  gbrain_def=$(node -e 'process.stdout.write(JSON.stringify({ url: process.env.HE_GBRAIN_MCP_URL, transport: "streamable-http", headers: { Authorization: "Bearer " + process.env.HE_GBRAIN_MCP_TOKEN }, connectionTimeoutMs: 30000, requestTimeoutMs: 120000 }))')
+  openclaw mcp set gbrain "$gbrain_def" >> "$HE_LOG_DIR/adapter.log" 2>&1 || { log "openclaw mcp set gbrain failed"; exit 2; }
+  log "gbrain MCP wired as a second server (gbrain) through the world tap"
+fi
 if openclaw mcp probe > "$HE_LOG_DIR/openclaw-mcp-probe.log" 2>&1; then
   log "world-MCP wired: $(grep -m1 -- '- world' "$HE_LOG_DIR/openclaw-mcp-probe.log" | sed 's/^ *//')"
+  [ -n "${HE_GBRAIN_MCP_URL:-}" ] && log "gbrain probe: $(grep -m1 -- '- gbrain' "$HE_LOG_DIR/openclaw-mcp-probe.log" | sed 's/^ *//')"
 else
   log "world-MCP probe failed (see openclaw-mcp-probe.log); turns will show whether tools reach the world"
 fi
+[ -n "${HE_GBRAIN_MCP_URL:-}" ] && { openclaw mcp list > "$HE_LOG_DIR/openclaw-mcp-list.log" 2>&1 || true; }
 
 # One serve turn: write the prompt to a file under HE_LOG_DIR, run the embedded agent in the
 # conversation's session, and leave the JSON envelope beside it. Arguments: request path, session

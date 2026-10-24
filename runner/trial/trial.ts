@@ -1,14 +1,18 @@
-// One multi-user trial, start to finish: the world, the proxy slot, the harness, the turn loop, the fence
-// and snapshot, teardown, the usage meter, classification and grading. Everything it writes lands under
-// results/<run>/trials/<cell>/<task>/[<script>/]r<n>/ (the paths field of the trials.jsonl line).
+// One multi-user trial, start to finish: the world, the proxy slot, the gbrain sidecar when the cell carries
+// gbrain, the harness, the turn loop, the fence and snapshot, teardown, the usage meter, classification and
+// grading. Everything it writes lands under results/<run>/trials/<cell>/<task>/[<script>/]r<n>/ (the paths
+// field of the trials.jsonl line).
 
 import { appendFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import type { GradeResult, HarnessMode, Termination, TrialEvidence, TrialRecord, TrialUsage, TurnWindow } from '../contracts.ts';
+import type { GradeResult, HarnessMode, Termination, TrialEvidence, TrialGbrain, TrialRecord, TrialUsage, TurnWindow } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
 import type { Cell, Trial } from '../run.ts';
+import type { WorldEvent } from '../../world/services/events.ts';
 import { loadScript, startScriptedHarness } from '../scripted/executor.ts';
 import { startComposeHarness, startDockerHarness } from './docker.ts';
+import { type GbrainSidecar, startGbrainSidecar } from './gbrain.ts';
+import { GBRAIN_WRITE_TOOLS } from '../../world/services/gbrain-tap.ts';
 import { HarnessGone, type Harness, makeTrialDirs, startProcessHarness, writeAtomic } from './harness.ts';
 import { RunProxy, reconcile, summarizeUsage, trialKey, trialSlug } from './proxy.ts';
 import { loadTask, type TaskSpec } from './task.ts';
@@ -23,6 +27,8 @@ export interface TrialOptions {
   adapter?: string;
   /** docker mode: image override (default harness-eval/<harness>:dev). */
   image?: string;
+  /** gbrain cells: the sidecar image (default harness-eval/gbrain:dev); independent of the harness image. */
+  gbrainImage?: string;
   preamble: string;
   worldPath?: string;
   readyTimeoutS: number;
@@ -80,10 +86,25 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   const slot = trialSlug(trial.id);
   const [provider, modelName] = cell.model.includes(':') ? [cell.model.slice(0, cell.model.indexOf(':')), cell.model.slice(cell.model.indexOf(':') + 1)] : ['none', cell.model];
 
+  if (cell.gbrain && mode === 'scripted') throw new RunnerError('HE-GBRAIN-001', `cell ${cell.id} carries gbrain but runs scripted; a script has no harness to call the brain. fix: drop gbrain from the cell or run it in docker or process mode`);
   const world = new TrialWorld({ trialId: trial.id, split: cell.split, actors: task.actors, outDir: dirs.root, worldPath: opts.worldPath, reachableFromContainers: docker });
   log(`world for ${trial.id} at ${world.localUrl} (harness sees ${world.harnessUrl}); ${task.turns.length} turns, budget ${task.time_budget_s} s per turn`);
   const proxy = mode === 'scripted' ? null : ctx.proxy;
   if (proxy) await proxy.bind(slot, key);
+
+  // The gbrain sidecar starts before the harness so the tap is live by the time the harness registers it;
+  // it is stopped after the world is fenced, so a late call cannot land in the brain unrecorded.
+  let sidecar: GbrainSidecar | null = null;
+  if (cell.gbrain) {
+    try {
+      sidecar = await startGbrainSidecar({ trialId: trial.id, trialSlug: slot, split: cell.split, outDir: join(dirs.root, 'gbrain'), image: opts.gbrainImage, log });
+    } catch (e) {
+      if (proxy) { await proxy.finalize(key).catch(() => undefined); await proxy.unbind(slot).catch(() => undefined); }
+      world.stop();
+      throw e;
+    }
+    world.server.setGbrain({ url: sidecar.url, token: sidecar.token });
+  }
 
   const env: Record<string, string> = {
     HE_MODEL_BASE_URL: proxy ? proxy.baseUrlFor(slot, provider) : 'http://127.0.0.1:1/none',
@@ -100,6 +121,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     HE_SLACK_API_URL: world.config.slack.api_url,
     HE_SLACK_BOT_TOKEN: world.botToken,
     HE_SLACK_APP_TOKEN: world.config.slack.bot.app_token,
+    ...(sidecar ? { HE_GBRAIN_MCP_URL: `${world.harnessUrl}/gbrain`, HE_GBRAIN_MCP_TOKEN: world.botToken } : {}),
     ...(docker ? {} : { HE_WORKSPACE_DIR: resolve(dirs.workspace) }),
     ...(opts.harnessEnv ?? {}),
   };
@@ -114,6 +136,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   let capStop = false;
   const paths: Record<string, string> = { dir: dirs.root, trial_json: join(dirs.root, 'trial.json'), events: join(dirs.root, 'events.jsonl'), turns: join(dirs.root, 'turns.jsonl'), snapshot: join(dirs.root, 'snapshot.json'), grade: join(dirs.root, 'grade.json'), logs: dirs.logs };
   if (proxy) { paths.usage = join(dirs.root, 'usage.json'); paths.reconcile = join(dirs.root, 'reconcile.json'); }
+  if (sidecar) paths.gbrain = join(dirs.root, 'gbrain');
   writeFileSync(paths.turns!, '');
 
   try {
@@ -154,6 +177,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     const snapshot = await world.snapshot();
     writeAtomic(paths.snapshot!, JSON.stringify(snapshot, null, 1) + '\n');
     if (harness) await harness.stop(opts.stopGraceS * 1000);
+    if (sidecar) await sidecar.stop();
 
     if (proxy) {
       const meter = await proxy.finalize(key);
@@ -173,8 +197,10 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     writeAtomic(paths.grade!, JSON.stringify(grade, null, 1) + '\n');
   } finally {
     if (harness) await harness.stop(opts.stopGraceS * 1000).catch(() => undefined);
+    if (sidecar) await sidecar.stop().catch(() => undefined);
     world.stop();
   }
+  const gbrainRecord: TrialGbrain | undefined = sidecar ? gbrainSummary(cell.gbrain!.surface, sidecar, world.events, windows) : undefined;
 
   const exits = windows.map((w) => w.exit);
   const termination: Termination = capStop ? 'model_error' : classify(exits, readyFailure, endedEarly, grade.approval_stop);
@@ -186,6 +212,19 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     turns: { planned: task.turns.length, run: windows.length, exits },
     usage, wall_ms: ended - started, started_at, ended_at: new Date(ended).toISOString(), paths,
     ...(error ? { error } : {}),
+    ...(gbrainRecord ? { gbrain: gbrainRecord } : {}),
+  };
+}
+
+/** What the trial's log says about the sidecar: how many gbrain events, how many were tool calls, how many of those
+ *  fell inside a turn window (started_seq, ended_seq], how many were writes. The events themselves are the record. */
+export function gbrainSummary(surface: 'starter', sidecar: Pick<GbrainSidecar, 'image' | 'ready_ms'>, events: WorldEvent[], windows: TurnWindow[]): TrialGbrain {
+  const mine = events.filter((e) => e.via === 'gbrain');
+  const calls = mine.filter((e) => e.tool !== 'gbrain.initialize' && e.tool !== 'gbrain.tools/list');
+  const inTurn = calls.filter((e) => windows.some((w) => e.seq > w.started_seq && e.seq <= w.ended_seq));
+  return {
+    surface, image: sidecar.image, sidecar_ready_ms: sidecar.ready_ms,
+    events: { total: mine.length, discovery: mine.length - calls.length, calls: calls.length, in_turn_calls: inTurn.length, writes: calls.filter((e) => GBRAIN_WRITE_TOOLS.has(e.tool.slice('gbrain.'.length))).length },
   };
 }
 

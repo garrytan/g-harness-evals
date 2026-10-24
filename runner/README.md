@@ -1,19 +1,21 @@
 # Runner: dispatch, metering proxy, budget ledger and price table
 
-`runner/run.ts` plans a preregistered run and dispatches its trials. harness-evals v0.0.3 (M1): `run` drives multi-user trials end to end against the simulated company, the metering proxy and a harness speaking the `serve` protocol, and writes the evaluator-owned record of every trial. The single-shot hello/smoke path from M0 still runs through the same command.
+`runner/run.ts` plans a preregistered run and dispatches its trials. harness-evals v0.0.5: `run` drives multi-user trials end to end against the simulated company, the metering proxy and a harness speaking the `serve` protocol, and writes the evaluator-owned record of every trial; a cell that carries `gbrain` also gets a gbrain sidecar per trial (the gbrain arm, [docs/gbrain-arm.md](../docs/gbrain-arm.md)). The single-shot hello/smoke path from M0 still runs through the same command.
 
 ## Commands
 
 ```sh
 bun runner/run.ts plan      --prereg docs/benchmarks/<run>/prereg.json [--out results/<run-id>]
 bun runner/run.ts dry-run   --prereg <file>
-bun runner/run.ts preflight --manifest results/<run-id>/manifest.json
+bun runner/run.ts preflight --manifest results/<run-id>/manifest.json [--gbrain-image <tag>]
 bun runner/run.ts run       --manifest results/<run-id>/manifest.json [options]
 ```
 
 `plan` expands the preregistration into `manifest.json`: one preallocated trial id per cell, task and repetition, and the cost ceiling priced from the pinned price table. A run id is used once (HE-RUN-003). `dry-run` prints the same without writing.
 
 A cell names `harness`, `model` (`provider:model`), `slice`, `split`, `repetitions` and a `ceiling` in tokens. For a multi-user cell the ceiling is per turn and a trial is priced as turns x ceiling, with the turn count read from each task's `task.toml`. Tasks come from `cell.tasks`, else `tasks.<slice>` in the preregistration, else every directory under `tasks/multiuser/<split>/`. Optional fields: `harness_mode` (`docker`, the default; `process`; `scripted`), `adapter` (process mode: the script to run), and for scripted cells `harness: "scripted"`, `model: "none"` and `script: "oracle"` or `"mutations"`, which expands to one trial per task's `oracle.json` or per `mutations/<predicate-id>.json`. Scripted cells cost nothing.
+
+A cell may carry `"gbrain": { "surface": "starter" }`: every trial of that cell runs beside a gbrain sidecar and the harness registers a second MCP server named `gbrain` (docs/gbrain-arm.md). Only the pinned surface is accepted, and a scripted cell cannot carry it (HE-GBRAIN-001). `plan` and `dry-run` print `gbrain=starter` on the cell line and a `GBRAIN:` line naming the sidecar image; `preflight` checks the image exists and starts one sidecar to prove it serves `/health` (HE-GBRAIN-002 otherwise), leaving its files under `results/<run>/preflight-gbrain/`.
 
 ### `run` options
 
@@ -22,6 +24,7 @@ A cell names `harness`, `model` (`provider:model`), `slice`, `split`, `repetitio
 | `--harness-mode docker\|process\|scripted` | How non-scripted cells run (default `docker`). A scripted cell is always scripted. |
 | `--adapter <script>` | Process mode: the adapter script (`.sh` under bash, `.ts` under bun) started with the argument `serve`. |
 | `--image <tag>` | Docker mode: image instead of `harness-eval/<harness>:dev`. |
+| `--gbrain-image <tag>` | Cells with `gbrain`: the sidecar image instead of `harness-eval/gbrain:dev`. The sidecar image is independent of `--image`: a harness image never carries gbrain. |
 | `--resume` | Skip trials that already have a line in `trials.jsonl`. Without it a run directory that holds trials is refused (HE-RUN-003). |
 | `--stop-on-cap` | Stop at the first proxy lease refusal and exit 3; the default records the trial and continues. |
 | `--cells a,b` | Only these cells. |
@@ -37,9 +40,10 @@ Exit 0 when every selected trial was recorded, 3 after a cap stop with `--stop-o
 
 1. **World.** The simulated company starts in-process (`world/services/server.ts`) on a random free port, bound to every interface in docker mode so a container reaches it through `host.docker.internal`, with the task's split and actors; `trial.json` and `events.jsonl` land in the trial directory.
 2. **Proxy slot.** The run's metering proxy binds a slot named after the trial to the trial key `sk-trial-<id>`; the harness's `HE_MODEL_BASE_URL` is `<proxy>/<slot>/<provider>`.
+   **gbrain sidecar** (cells with `gbrain`, `runner/trial/gbrain.ts`): one container from the sidecar image on its own docker network with its MCP port published on the host loopback only, `HE_GBRAIN_SPLIT` the cell split and `HE_GBRAIN_OUT` mounted from `<trial dir>/gbrain/`; the runner waits for `/health` and the token file (60 s, HE-GBRAIN-002), points the world's `/gbrain` tap at it, and hands the harness `HE_GBRAIN_MCP_URL = <world>/gbrain` and `HE_GBRAIN_MCP_TOKEN = the world bot token`. The harness never sees the sidecar's token or address.
 3. **Harness.** Docker: `docker run -d` with `/workspace`, `/harness-state`, `/he-logs` and `/he-turns` mounted, the `serve` environment table of docs/adapters.md, entrypoint argument `serve`; a harness with `compose.yaml` runs its stack with an override file that switches the task service to `serve`, after `prepare.sh` and before `capture.sh`, as `harnesses/run-trial.sh` does. Process: the adapter script on this host with the same variables pointing at host directories. Scripted: the in-process executor (`runner/scripted/executor.ts`), ready at once. The runner waits for `$HE_LOG_DIR/ready` (HE-ADAPTER-002 past the timeout).
 4. **Turns.** For each turn in `task.toml`: advance the clock if asked (`POST /clock/advance`), post the actor's message through the Slack mock with that actor's token (`chat.postMessage` to the channel by name, or `conversations.open` with the bot and then post for a DM), compose the prompt from the preamble, write `turn-NNNN.request.json`, wait for `turn-NNNN.response.json` up to `time_budget_s` plus the grace (then kill the harness and record exit 124), post `reply_text` as the bot into the same channel, record a `TurnWindow` whose `started_seq` and `ended_seq` bracket the harness's work, then honour `wait_s`. The bot reply is posted after `ended_seq`, so it is never counted as the harness's own read.
-5. **End.** `POST /admin/fence`, `GET /admin/snapshot` to `snapshot.json`, stop the harness (SIGTERM, 60 s, SIGKILL; compose: `capture.sh`, then `down -v`), finalize the proxy key into `usage.json` and `reconcile.json`, grade with `gradeTrial(TrialEvidence)` from `runner/grade/index.ts` (HE-GRADE-001 when absent), append the line to `trials.jsonl`.
+5. **End.** `POST /admin/fence`, `GET /admin/snapshot` to `snapshot.json`, stop the harness (SIGTERM, 60 s, SIGKILL; compose: `capture.sh`, then `down -v`), stop the gbrain sidecar when there is one (after the fence, so no call lands in the brain unrecorded), finalize the proxy key into `usage.json` and `reconcile.json`, grade with `gradeTrial(TrialEvidence)` from `runner/grade/index.ts` (HE-GRADE-001 when absent), append the line to `trials.jsonl`.
 
 Termination comes from the turn exits: all 0 is `completed` (or `approval_stop` when the grader says so); any 124 is `timeout`; else any 3 is `model_error`; else any 2 is `harness_error`. A harness that never wrote `ready` is `harness_error` or `model_error` when it exited 2 or 3 first, else `infra_error`. A proxy lease refusal during the trial makes it `model_error` with `cap_stop: true`. A world refusal of an actor's message (channel missing, actor not a member) is `exam_fault`.
 
@@ -60,7 +64,10 @@ results/<run-id>/
     usage.json, reconcile.json   the proxy meter for sk-trial-<id> and its check against the usage lines
     grade.json               GradeResult
     workspace/, state/, logs/    the harness's mounts; logs/ready, adapter.log, docker.log or harness.std*.log
+    gbrain/                  gbrain cells only: token (the sidecar's bearer token, mode 0600), sidecar.log, serve.log, docker.log; never committed
 ```
+
+The results `.gitignore` copied per run (`docs/benchmarks/2026-10-23-m2-pilot/results/.gitignore`) excludes `trials/*/*/*/gbrain/` beside the harness state and `trial.json`, because the sidecar token lives there.
 
 ### trials.jsonl fields (`TrialRecord` in runner/contracts.ts)
 
@@ -73,12 +80,13 @@ results/<run-id>/
 | `turns` | `planned`, `run`, and the exit of every turn run |
 | `usage` | requests, refused, failed, usd, tokens in, out and cached, by model, upstream status counts; null for scripted trials |
 | `wall_ms`, `started_at`, `ended_at`, `paths`, `error` | timing, where the files are, and the HE- line that cut the trial short, if one did |
+| `gbrain` | cells with `gbrain` only: `surface`, `image`, `sidecar_ready_ms`, and `events` counting the trial's `via: "gbrain"` events (`total`, `discovery` for `initialize` and `tools/list`, `calls`, `in_turn_calls` inside a turn window, `writes`). The events themselves are in `events.jsonl`. |
 
 `reconcile.json` checks the proxy's meter against the usage lines it wrote for the key. Reconciliation against the provider's own usage (HE-PROXY-002, the 1% rule) is not built; the file says so.
 
 ## Harness modes
 
-- **docker** is the counted configuration: the harness image and the mounts of docs/adapters.md. Everything docker-specific is in `runner/trial/docker.ts`; nothing else needs a daemon.
+- **docker** is the counted configuration: the harness image and the mounts of docs/adapters.md. Everything docker-specific is in `runner/trial/docker.ts` (and `runner/trial/gbrain.ts` for the sidecar); nothing else needs a daemon. A gbrain cell in process mode still starts the sidecar container, so process mode needs a daemon for such a cell; a gbrain cell in scripted mode is refused (HE-GBRAIN-001).
 - **process** runs an adapter script on this host for keyless tests: `tests/fixtures/serve-adapter.ts` honours the queue protocol with markers in the message text for sleeps, exits, a cross-scope read and a leak. `tests/trial-loop.test.ts` runs the whole loop this way with a stub grader.
 - **scripted** plays an oracle or mutation (`Script`) as the bot over world-MCP with no harness, through the same turn loop, fence, snapshot and grader. This is how CI runs the oracle and mutation matrix through the real runner.
 
@@ -95,9 +103,13 @@ What the plan still asks for on top of this (TODOS): egress enforcement, forced 
 
 ## Report tooling (gbrain arm, lane E)
 
-The scripts that turn `results/<run>/trials.jsonl` into report tables, all keyless, all writing their JSON beside the trials file: `bun scripts/summarize-run.ts --results <dir>` prints the per-cell table, the per-task pass table and the failed-predicate counts and writes `summary.json`; it also reads each trial's `events.jsonl` and adds a `gbrain` block per cell (trials with at least one gbrain tools/call, trials that listed the tools, calls per trial as median and total, the histogram of gbrain tools, pages returned per call and latency medians, errors, writes, and cross-scope reads that came via gbrain against via the world), zeros for a cell without gbrain, with `events_read` saying how many logs it found. `bun scripts/compare-run.ts --results <dir> [--families ...]` is the pairwise harness comparison and `--against <other run>` the across-run model effect; `--pair gbrain` is the within-run gbrain arm: for each (harness, config, model) it pairs the cell with gbrain (a truthy `gbrain` field in the manifest cell, or a `gbrain` segment in its id) against the cell without, trial by trial on the same task and repetition index, over the four capable families and over all tasks, excluding a pair whose trial ended as `model_error` or `infra_error` on either side and publishing the count, with Holm across the harness pairs of one model, and writes `comparisons.gbrain.json` (passed counts, gbrain minus none with its task-clustered interval, the per-task table, discordant counts, Holm-adjusted p, and median USD and seconds per trial and total input tokens for both cells). `bun scripts/paired-mdd.ts --results <dir>` prints the minimum detectable difference of that paired design from an existing run's per-task pass rates, under the null that gbrain changes nothing and with the two arms independent given the task, beside the sign-flip bar of the preregistration (six task clusters all one way). `bun scripts/regrade.ts --results <dir>` re-reads every trial's evidence with the grader at the current commit into `trials.regraded.jsonl`, which `--regraded` on the two scripts above consumes. Tests: `tests/scripts-gbrain.test.ts`.
+The scripts that turn `results/<run>/trials.jsonl` into report tables, all keyless, all writing their JSON beside the trials file: `bun scripts/summarize-run.ts --results <dir>` prints the per-cell table, the per-task pass table and the failed-predicate counts and writes `summary.json`; it also reads each trial's `events.jsonl` and adds a `gbrain` block per cell (trials with at least one gbrain tools/call, trials that listed the tools, calls per trial as median and total, the histogram of gbrain tools, pages returned per call and latency medians, errors, writes, and cross-scope reads that came via gbrain against via the world), zeros for a cell without gbrain, with `events_read` saying how many logs it found. `bun scripts/compare-run.ts --results <dir> [--families ...]` is the pairwise harness comparison and `--against <other run>` the across-run model effect; `--pair gbrain` is the within-run gbrain arm: for each (harness, config, model) it pairs the cell with gbrain (a truthy `gbrain` field in the manifest cell, or a `gbrain` segment in its id) against the cell without, trial by trial on the same task and repetition index, over the four capable families and over all tasks, excluding a pair whose trial ended as `model_error` or `infra_error` on either side and publishing the count, with Holm across the harness pairs of one model, and writes `comparisons.gbrain.json` (passed counts, gbrain minus none with its task-clustered interval, the per-task table, discordant counts, Holm-adjusted p, and median USD and seconds per trial and total input tokens for both cells). `bun scripts/paired-mdd.ts --results <dir>` prints the minimum detectable difference of that paired design from an existing run's per-task pass rates, under the null that gbrain changes nothing and with the two arms independent given the task, beside the sign-flip bar of the preregistration (six task clusters all one way). `bun scripts/regrade.ts --results <dir>` re-reads every trial's evidence with the gr... (line truncated to 2000 chars)
 
 ## Changelog
+
+### 2026-10-24: The gbrain arm (lane D)
+
+harness-evals v0.0.5. A cell may carry `gbrain: {surface: "starter"}`; `run` starts a gbrain sidecar per trial, wires the world's `/gbrain` tap and hands the harness the tap's URL and the bot token; `plan`, `dry-run` and `preflight` show and check the sidecar; `--gbrain-image`; `gbrain/` under each trial directory and the `gbrain` field of trials.jsonl; HE-GBRAIN-001 and HE-GBRAIN-002.
 
 ### 2026-10-23: gbrain arm report tooling (lane E)
 

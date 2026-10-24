@@ -13,7 +13,8 @@ export interface WorldEvent {
   wall_ts: string;
   sim_ts: string;
   actor: string | null;
-  via: 'slack' | 'mcp' | 'admin' | 'runner';
+  /** gbrain arm lane D addition: via "gbrain" marks a gbrain MCP request relayed by the world's /gbrain tap. */
+  via: 'slack' | 'mcp' | 'admin' | 'runner' | 'gbrain';
   tool: string;
   kind: EventKind;
   args_digest: string;

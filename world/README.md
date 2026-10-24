@@ -13,6 +13,7 @@ evaluator-owned event log. Graders read the event log and the world state, never
 | `services/slack/` | the Slack Web API mock and the Socket-Mode-style event stream |
 | `services/clock/` | the frozen simulation clock |
 | `services/events.ts` | the append-only event log |
+| `services/gbrain-tap.ts` | `POST /gbrain`: relays a harness's gbrain MCP calls to the trial's gbrain sidecar and records them (the gbrain arm, [docs/gbrain-arm.md](../docs/gbrain-arm.md)) |
 | `services/server.ts`, `services/start.ts` | one process serving all of it for one trial |
 | `world-mcp/` | the MCP server (Streamable HTTP, plus a stdio bridge) every harness gets |
 | `types.ts` | record shapes |
@@ -31,6 +32,7 @@ tokens, and serves on `127.0.0.1:8790`:
 | `POST /api/<method>` | actors and the bot, by token | Slack Web API: `auth.test`, `users.list`, `users.info`, `users.lookupByEmail`, `conversations.list`, `users.conversations`, `conversations.info`, `conversations.members`, `conversations.history`, `conversations.replies`, `conversations.open`, `chat.postMessage`, `search.messages`, `team.info`, `apps.connections.open` |
 | `GET /socket?ticket=<app token>` | the bot | websocket event stream (below) |
 | `POST /mcp` | actors and the bot, by bearer token | world-MCP over Streamable HTTP |
+| `POST /gbrain` | the bot, by its bearer token | the gbrain tap (below); exists only when the server was given a gbrain upstream |
 | `GET /clock` | anyone | the simulation clock |
 | `POST /clock/advance` | runner, admin token | `{"seconds": N}` or `{"to": "<ISO instant>"}`, forward only |
 | `GET /admin/snapshot`, `GET /admin/events`, `POST /admin/fence`, `GET /admin/socket` | runner, admin token | state for graders, the in-memory event list, stop accepting writes (contract item 7), socket connection count |
@@ -110,20 +112,48 @@ Both surfaces call the same `WorldService`, so the rules are identical:
 | `wall_ts` | real time of the call, ISO-8601 UTC |
 | `sim_ts` | simulation clock at the call |
 | `actor` | member id the token resolved to; `null` for runner and admin calls |
-| `via` | `slack`, `mcp`, `runner` (clock) or `admin` (fence) |
-| `tool` | the operation in Slack-method spelling, whichever surface it came through: `conversations.list`, `conversations.history`, `conversations.open`, `chat.postMessage`, `search.messages`, `files.list`, `files.read`, `calendar.list`, `calendar.create`, `mail.list`, `mail.draft`, `request_approval`, `clock.advance`, `admin.fence` |
+| `via` | `slack`, `mcp`, `gbrain` (a call relayed by the gbrain tap), `runner` (clock) or `admin` (fence) |
+| `tool` | the operation in Slack-method spelling, whichever surface it came through: `conversations.list`, `conversations.history`, `conversations.open`, `chat.postMessage`, `search.messages`, `files.list`, `files.read`, `calendar.list`, `calendar.create`, `mail.list`, `mail.draft`, `request_approval`, `clock.advance`, `admin.fence`; a gbrain call is `gbrain.<tool>`, `gbrain.initialize` or `gbrain.tools/list` |
 | `kind` | `read`, `write`, `deny`, `approval`, `clock`, `admin` |
 | `args_digest` | sha256 of the canonical JSON of `args` |
 | `args` | the call's arguments as received (message text included; this file is evaluator-owned) |
 | `outcome` | `ok`, `denied`, `error` |
 | `error` | the refusal code on a denied call (`not_in_channel`, `forbidden`, `channel_not_found`, `fenced`, ...) |
-| `effect` | what changed or was returned: channel and `ts` of a post, file id and visibility of a read, the distinct `channels` a search's matches came from, `sent: false` on a draft, the full `pending_action` on an approval request |
+| `effect` | what changed or was returned: channel and `ts` of a post, file id and visibility of a read, the distinct `channels` a search's matches came from, `sent: false` on a draft, the full `pending_action` on an approval request, `{pages, count, latency_ms}` on a gbrain call |
 
 A `request_approval` call writes an `approval` event whose `effect.pending_action` names the requester, the
 action, the authorization it needs, where the agent says it asked (`{"dm": member}` or
 `{"thread": {channel, ts}}`), and the simulation time. It changes nothing else: no message, no mail, no event.
 Graders pair it with the Slack event showing the agent actually asked (item 8). `GET /admin/snapshot` returns
 channels, messages, calendar, mail and pending actions after the trial, for grading beside the log.
+
+## The gbrain tap
+
+In a gbrain-arm trial the harness gets a second MCP server named `gbrain`, but its URL is `<world>/gbrain` with the
+world bot token, never the sidecar itself. `POST /gbrain` (`services/gbrain-tap.ts`) authenticates the caller as
+`/mcp` does, replaces the bearer header with the sidecar's token (read from the token file the sidecar wrote,
+passed in by the runner or `start.ts --gbrain-url <url> --gbrain-token-file <file>`), forwards the JSON-RPC body
+and the `Accept` header to `<upstream>/mcp`, returns the reply with its status and content type unchanged (the
+body is relayed whole once the upstream has answered; gbrain's transport is stateless and its replies are
+short), and appends one event per JSON-RPC message for `initialize`, `tools/list` and `tools/call` after the
+reply, so `outcome` and `effect.latency_ms` are known. Notifications, `ping` and other methods are relayed
+without an event. `GET /gbrain` is 405 with `Allow: POST`, as gbrain's own `GET /mcp` is. Without an upstream the
+path is a 404 like any other.
+
+The event: `via` `gbrain`, `actor` the bot's member id, `tool` `gbrain.<mcp tool>` (`gbrain.search`, `gbrain.get_page`,
+`gbrain.remember`, ...), `gbrain.initialize` or `gbrain.tools/list`; `kind` `write` for `remember`, `forget`,
+`put_page`, `edit_page`, `capture`, `add_timeline_entry`, `cancel_write_request`, `cancel_job` and `mute_notice`,
+`read` for every other tool and for `initialize` and `tools/list`; `args` the `tools/call` arguments as sent (`{}` for
+the other two); `outcome` `ok`, or `error` with `error` `tool_error` (a result with `isError`), `rpc_<code>` (a JSON-RPC
+error), `upstream_<status>` (a non-2xx from the sidecar) or `upstream_unreachable`; `effect` `{pages, count,
+latency_ms}` where `pages` are the gbrain page slugs the call returned or targeted: every `slug` in the rows of
+`search` and `query` (`count` is the row count), the requested slug for `get_page`, `put_page` and `edit_page`, every
+slug listed by `list_pages`, and for `recall`, `entity`, `context_pack` and the rest whatever `slug` values appear in
+the result's JSON content (`_meta` notices are skipped, so a suggested call never counts as a page touched); for
+`tools/list` `pages` is empty and `count` the number of tools. `seq`, `sim_ts` and `args_digest` come from the log
+as for every event, so a gbrain call inside a turn window is attributed to that turn's requester like a world
+call, and a search whose rows come from a channel the requester is not in is a cross-scope read for the grader
+(lane E). `tests/gbrain-tap.test.ts` proves this against a fake upstream.
 
 ## Slack event stream
 
@@ -150,8 +180,9 @@ re-import when the messy-company-v1 checkout is present at `~/.capy/work/harness
 `$MESSY_COMPANY_V1`), Slack conformance (membership on reads, a post in history and in the log, DM
 visibility, threads, the socket), clock determinism and the admin-only advance, and world-MCP scope over
 HTTP and stdio (a member cannot read another's private notes, team files follow team scope, approval
-requests record and do nothing, a fenced world refuses writes). The MCP tests use the official client SDK
-over both transports.
+requests record and do nothing, a fenced world refuses writes), and the gbrain tap against a fake sidecar
+(authentication, header swap, event shape per tool, upstream errors, batches). The MCP tests use the official
+client SDK over both transports.
 
 ## Not built yet
 

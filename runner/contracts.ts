@@ -170,6 +170,23 @@ export interface TrialUsage {
   upstream: { statuses: Record<string, number>; failed: number; unparseable: number } | null;
 }
 
+/** gbrain arm lane D addition: a cell's gbrain configuration (docs/gbrain-arm.md). Present on a cell, the runner
+ *  starts a gbrain sidecar per trial and the harness registers a second MCP server named gbrain through the
+ *  world's /gbrain tap. surface is the gbrain tool surface the sidecar serves; only "starter" (33 tools) is pinned. */
+export interface GbrainCellConfig {
+  surface: 'starter';
+}
+
+/** gbrain arm lane D addition: what the runner records about a trial's sidecar in trials.jsonl. */
+export interface TrialGbrain {
+  surface: 'starter';
+  image: string;
+  /** Milliseconds from docker run to a healthy sidecar with a token on disk. */
+  sidecar_ready_ms: number;
+  /** via "gbrain" events in the trial's log: tools/list and initialize, tools/call, and how many fell inside a turn window. */
+  events: { total: number; discovery: number; calls: number; in_turn_calls: number; writes: number };
+}
+
 /** M1 lane A addition: one line of results/<run>/trials.jsonl. termination, grade and effects are the three
  *  orthogonal fields of methodology item 9; cap_stop marks a model_error that was the proxy refusing the lease. */
 export interface TrialRecord {
@@ -196,4 +213,6 @@ export interface TrialRecord {
   paths: Record<string, string>;
   /** The HE- line that ended the trial early, when one did. */
   error?: string;
+  /** gbrain arm lane D addition: set on a trial of a cell that carries gbrain. */
+  gbrain?: TrialGbrain;
 }

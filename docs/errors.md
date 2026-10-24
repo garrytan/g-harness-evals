@@ -35,3 +35,10 @@ Every runner, proxy and adapter failure prints one line that starts with its cod
 | HE-GRADE-001 | `runner/grade/index.ts` is absent or does not export `gradeTrial` | land the grader (lane B; docs/tasks.md predicate library) | runner/trial/trial.ts |
 | HE-ADAPTER-004 | serve started without `HE_WORLD_MCP_URL` and `HE_WORLD_MCP_TOKEN`, or the world-MCP registration was refused (exit 2 before `ready`) | pass both variables from the world's trial.json; for QM read `$HE_LOG_DIR/qm-mcp-register.json`, for OpenClaw `openclaw-mcp-probe.log` | adapters serve (M1 lane C) |
 | HE-EGRESS-003 | egress denials during a trial | add the host to `runner/egress.json` and start a new run; the current run is not comparable | runner/egress (planned) |
+
+## From the gbrain arm, lane D
+
+| Code | What | Fix / recovery | Where |
+|---|---|---|---|
+| HE-GBRAIN-001 | a cell carries `gbrain` with a surface other than `starter`, or a scripted cell carries `gbrain`, or a gbrain cell is dispatched in scripted mode | set `gbrain: {"surface": "starter"}` (the pinned surface, gbrain/pin.json) on a docker or process cell; a script plays the bot over world-MCP and has no harness to call the brain | runner/run.ts, runner/trial/trial.ts |
+| HE-GBRAIN-002 | the gbrain sidecar image is missing, `docker run` or `docker network create` failed, or the sidecar did not serve `/health` and write its token within the ready timeout (60 s) | `docker build -f gbrain/Dockerfile -t harness-eval/gbrain:dev .` (gbrain/README.md); read `<trial dir>/gbrain/sidecar.log` and `docker.log`; `preflight` starts one sidecar to prove the image before a run | runner/trial/gbrain.ts, runner/run.ts preflight |

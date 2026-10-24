@@ -312,6 +312,43 @@ describe('fake adapter, serve, process level', () => {
     expect(readFileSync(join(t.logs, 'adapter.log'), 'utf8')).toContain('SIGTERM during the turn');
   }, 30_000);
 
+  test('a [fake:gbrain] marker calls gbrain through the world tap and lands as a via gbrain event inside the turn', async () => {
+    // A fake sidecar speaking gbrain's wire shape: SSE-framed JSON-RPC, bearer token required.
+    const GBRAIN_TOKEN = 'gbrain_' + 'cd'.repeat(32);
+    const upstream = Bun.serve({
+      port: 0, hostname: '127.0.0.1',
+      async fetch(req) {
+        if (req.headers.get('authorization') !== `Bearer ${GBRAIN_TOKEN}`) return Response.json({ error: 'invalid_token' }, { status: 401 });
+        const body = await req.json() as { id: number; method: string; params?: { name: string } };
+        const result = body.method === 'tools/list'
+          ? { tools: Array.from({ length: 33 }, (_, i) => ({ name: `t${i}` })) }
+          : { content: [{ type: 'text', text: JSON.stringify([{ slug: 'dev/chats/north-team-random', title: '#north-random' }]) }] };
+        return new Response(`event: message\ndata: ${JSON.stringify({ jsonrpc: '2.0', id: body.id, result })}\n\n`, { headers: { 'content-type': 'text/event-stream' } });
+      },
+    });
+    ws.setGbrain({ url: `http://127.0.0.1:${upstream.port}`, token: GBRAIN_TOKEN });
+    const t = trial('');
+    const child = startServe(t, { HE_WORLD_MCP_URL: `${ws.url}/mcp`, HE_WORLD_MCP_TOKEN: ws.credentials.bot.token, HE_GBRAIN_MCP_URL: `${ws.url}/gbrain`, HE_GBRAIN_MCP_TOKEN: ws.credentials.bot.token });
+    try {
+      await waitFor(() => existsSync(join(t.logs, 'ready')), 5_000, 'ready file');
+      expect(JSON.parse(readFileSync(join(t.logs, 'ready'), 'utf8')).gbrain_mcp).toBe(true);
+      const startedSeq = ws.log.events.length;
+      postRequest(t, request(1, { prompt: 'hello\n[fake:gbrain tools/list {}]\n[fake:gbrain search {"query":"ticket 4092","limit":3}]\n' }));
+      const r1 = await response(t, 1);
+      expect(r1.exit).toBe(0);
+      const endedSeq = ws.log.events.length;
+      const mine = ws.log.events.filter((e) => e.via === 'gbrain' && e.seq > startedSeq && e.seq <= endedSeq);
+      expect(mine.map((e) => e.tool)).toEqual(['gbrain.tools/list', 'gbrain.search']);
+      expect(mine[0]).toMatchObject({ actor: 'assistant', kind: 'read', outcome: 'ok', effect: { pages: [], count: 33 } });
+      expect(mine[1]).toMatchObject({ actor: 'assistant', kind: 'read', outcome: 'ok', args: { query: 'ticket 4092', limit: 3 }, effect: { pages: ['dev/chats/north-team-random'], count: 1 } });
+      expect(readFileSync(join(t.logs, 'gbrain-calls.jsonl'), 'utf8').split('\n').filter(Boolean)).toHaveLength(2);
+    } finally {
+      ws.setGbrain(null);
+      upstream.stop(true);
+      expect(await stop(child)).toBe(0);
+    }
+  }, 30_000);
+
   test('a [fake:call] marker without a world is a harness error for that turn, not a crash', async () => {
     const t = trial('');
     const child = startServe(t);

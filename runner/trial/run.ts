@@ -19,6 +19,8 @@ export interface RunOptions {
   harnessMode: HarnessMode;
   adapter?: string;
   image?: string;
+  /** The gbrain sidecar image for cells that carry gbrain (default harness-eval/gbrain:dev). */
+  gbrainImage?: string;
   resume?: boolean;
   stopOnCap?: boolean;
   /** Only these cell ids. */
@@ -102,7 +104,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       const record = isSingleShot(cell)
         ? await runSingleShot({ cell, trial, trialDir, proxy, log, image: opts.image, repoRoot: opts.repoRoot })
         : await runTrial({ cell, trial, runDir, trialDir, proxy, grade, log, opts: {
-          harnessMode: opts.harnessMode, adapter: opts.adapter, image: opts.image, preamble, worldPath: opts.worldPath, readyTimeoutS: opts.readyTimeoutS ?? 180,
+          harnessMode: opts.harnessMode, adapter: opts.adapter, image: opts.image, gbrainImage: opts.gbrainImage, preamble, worldPath: opts.worldPath, readyTimeoutS: opts.readyTimeoutS ?? 180,
           turnGraceS: opts.turnGraceS ?? 60, stopGraceS: opts.stopGraceS ?? 60, harnessEnv: opts.harnessEnv, repoRoot: opts.repoRoot } });
       appendRecord(runDir, record);
       records.push(record);

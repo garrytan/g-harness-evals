@@ -2,13 +2,17 @@
 // Start the world for one trial.
 //
 //   bun world/services/start.ts --trial t-0001 --split dev [--port 8790] [--host 127.0.0.1] \
-//       [--actors dana-okafor,ilse-varga] [--clock 2026-10-14T09:00:00-05:00] [--out results/<run>/trials/t-0001]
+//       [--actors dana-okafor,ilse-varga] [--clock 2026-10-14T09:00:00-05:00] [--out results/<run>/trials/t-0001] \
+//       [--gbrain-url http://127.0.0.1:3131 --gbrain-token-file <trial dir>/gbrain/token]
+//
+// --gbrain-url and --gbrain-token-file enable POST /gbrain, the tap that relays a harness's gbrain MCP calls to
+// the sidecar and records them (docs/gbrain-arm.md).
 //
 // Writes <out>/trial.json (tokens and MCP config, evaluator-owned, never shown to the agent) and appends every
 // call to <out>/events.jsonl. Stop it with SIGINT or SIGTERM. The runner starts the same server in-process
 // (runner/trial/world.ts) and calls writeTrialConfig for the same trial.json.
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { Split, World } from '../types.ts';
 import { createWorldServer, mcpConfigFor, type WorldServer } from './server.ts';
@@ -90,10 +94,11 @@ if (import.meta.main) {
     eventsPath: join(out, 'events.jsonl'),
     ...(actorsArg ? { actors: actorsArg.split(',').map((s) => s.trim()).filter(Boolean) } : {}),
     ...(arg('clock') ? { clockReference: arg('clock')! } : {}),
+    ...(arg('gbrain-url') && arg('gbrain-token-file') ? { gbrain: { url: arg('gbrain-url')!.replace(/\/+$/, ''), token: readFileSync(arg('gbrain-token-file')!, 'utf8').trim() } } : {}),
   });
 
   writeTrialConfig(ws, { split, world, out });
-  console.log(`world ${trialId} (${split}) listening at ${ws.url}; trial config in ${join(out, 'trial.json')}; events in ${join(out, 'events.jsonl')}`);
+  console.log(`world ${trialId} (${split}) listening at ${ws.url}; trial config in ${join(out, 'trial.json')}; events in ${join(out, 'events.jsonl')}${ws.gbrain() ? `; gbrain tap at ${ws.url}/gbrain -> ${ws.gbrain()!.url}/mcp` : ''}`);
 
   const stop = () => { ws.stop(); process.exit(0); };
   process.on('SIGINT', stop);

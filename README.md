@@ -23,6 +23,7 @@ The first counted comparison has run: the v0.1 multi-user cell on 20 sealed held
 | M3 held-out run (v0.1 multi-user cell): preregistration, report and receipts | [docs/benchmarks/2026-10-24-m3-heldout/](docs/benchmarks/2026-10-24-m3-heldout/) |
 | M3 sensitivity cell (same tasks, claude-haiku-5-5): preregistration, report and receipts | [docs/benchmarks/2026-10-24-m3-sensitivity-haiku/](docs/benchmarks/2026-10-24-m3-sensitivity-haiku/) |
 | M2 pilot: preregistration, report and receipts (dev split, three harnesses, five repetitions) | [docs/benchmarks/2026-10-23-m2-pilot/](docs/benchmarks/2026-10-23-m2-pilot/) |
+| The gbrain arm: a gbrain sidecar per trial beside the world tools, the world's `/gbrain` tap, runner and adapter wiring, smoke evidence | [docs/gbrain-arm.md](docs/gbrain-arm.md), [gbrain/](gbrain/README.md) |
 | Open work carried out of the plan review | [TODOS.md](TODOS.md) |
 
 ## How the comparison works, in short
@@ -46,6 +47,10 @@ bun runner/prereg/prereg.ts
 None of these calls a model API. A paid run is `bun runner/run.ts plan --prereg <file>` then `run --manifest <file>` after the preregistration is committed (runner/README.md); it spends through the proxy's lease ledger and lands its receipts under `docs/benchmarks/<run>/results/`. `bun scripts/summarize-run.ts --results <dir>` prints a run's tables and `bun scripts/regrade.ts` re-reads its evidence with the current grader.
 
 ## Changelog
+
+### 2026-10-24: From the gbrain arm, lane D
+
+harness-evals v0.0.5. New row for the gbrain arm (sidecar image, world tap, runner and adapter wiring; smoke: OpenClaw, Hermes and QM each discovered gbrain's 33 tools on one held-out task and none called one). Details in [docs/gbrain-arm.md](docs/gbrain-arm.md) and CHANGELOG.md.
 
 ### 2026-10-23: From the gbrain arm, lane E
 

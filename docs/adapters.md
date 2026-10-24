@@ -36,6 +36,7 @@ For `serve` the runner also sets:
 | `HE_WORLD_MCP_URL` | The world-MCP Streamable HTTP endpoint as the container reaches it, for example `http://host.docker.internal:8791/mcp`. |
 | `HE_WORLD_MCP_TOKEN` | The bot's world-MCP bearer token for this trial. Every tool call the harness makes is attributed to the bot. |
 | `HE_SLACK_API_URL`, `HE_SLACK_BOT_TOKEN`, `HE_SLACK_APP_TOKEN` | The Slack mock, for a harness whose native Slack connector can point at it. No adapter uses them yet; the runner posts every message. |
+| `HE_GBRAIN_MCP_URL`, `HE_GBRAIN_MCP_TOKEN` | The gbrain arm only ([docs/gbrain-arm.md](gbrain-arm.md)): the world's `/gbrain` tap (`<world>/gbrain`) and the same bot token. Set, the adapter registers a second MCP server named `gbrain` exactly as it registers `world`; unset, nothing in the adapter changes and the harness configuration is byte-identical to a cell without gbrain. |
 
 ## Mounts
 
@@ -73,12 +74,16 @@ The container runs as the calling user, not root, so files it writes are owned b
 
 | Harness | Harness turn | Session key, where it lives | World-MCP wiring (`pin.json` `mcp_config_path`) | Multi-user mode |
 |---|---|---|---|---|
-| `_fake` | scripted by markers in the prompt: `[fake:sleep N]`, `[fake:model_error]`, `[fake:harness_error]`, `[fake:call <tool> <json>]` (one per line) | `dm:<member>`, `channel:<id>`; a turn counter per key in `/harness-state/fake/sessions/` | none; `[fake:call]` POSTs a JSON-RPC `tools/call` to `HE_WORLD_MCP_URL` with curl as the bot | scripted, nothing shared between keys |
+| `_fake` | scripted by markers in the prompt: `[fake:sleep N]`, `[fake:model_error]`, `[fake:harness_error]`, `[fake:call <tool> <json>]`, `[fake:gbrain <tool> <json>]` (one per line) | `dm:<member>`, `channel:<id>`; a turn counter per key in `/harness-state/fake/sessions/` | none; `[fake:call]` POSTs a JSON-RPC `tools/call` to `HE_WORLD_MCP_URL` with curl as the bot; `[fake:gbrain]` does the same to `HE_GBRAIN_MCP_URL` (`tools/list` for the tool name `tools/list`) | scripted, nothing shared between keys |
 | OpenClaw 2026.10.6 | `openclaw agent --local --session-key agent:main:<key> --message-file ... --model anthropic/<model> --timeout <budget> --json`; reply from `payloads[].text` | `agent:main:dm:<member>`, `agent:main:channel:<id>` in one `OPENCLAW_STATE_DIR` (`agents/main/agent/openclaw-agent.sqlite`) | `openclaw mcp set world {url, transport: streamable-http, headers.Authorization}` into `/harness-state/openclaw/openclaw.json#mcp.servers`; `openclaw mcp probe` logged | embedded agent, one session per conversation; no gateway. `agent exec` has no session selector at this version, so `run` and `serve` use different OpenClaw paths |
 | Hermes Agent v2026.9.24 | `hermes chat --query-file ... -c <key> --create-if-missing --oneshot --quiet --format stream-json --provider anthropic --model <model> --run-budget <budget>`; reply from the `result` record | session title `dm:<member>`, `channel:<id>` in one `HERMES_HOME` (`state.db`) | `mcp_servers.world: {url, headers.Authorization}` appended to `/harness-state/hermes/config.yaml`; tools register as `mcp__world__<tool>`; the image installs the `mcp` extra | CLI, one named session per conversation; no gateway |
 | QM v0.1.15 | `POST /v1/turns` with `actor.externalId` = the requester's Slack user id and `conversation` `{kind: dm, threadRef: dm:<member>}` or `{kind: channel, threadRef: channel:<id>, channelRef, channelName}`; reply from `TurnResult.reply` | QM scopes `personal:<slack user id>` and `channel:<id>`, in Postgres | `PUT /v1/admin/mcp-servers/world` as admin `harness-admin` (`ADMIN_GRANTS` in `config/core.env`) with `auth: bearer`, `readOnly: false`; core probes `tools/list` before saving | QM's native scoping; the actor is the requester on every turn |
 
 The bearer token in each MCP config is the per-trial bot token the world minted; it is in the runner's redaction set and never a provider key.
+
+### gbrain beside world
+
+In a gbrain-arm cell the runner sets `HE_GBRAIN_MCP_URL` and `HE_GBRAIN_MCP_TOKEN`, and each adapter adds a server named `gbrain` with the same shape as `world`: OpenClaw `openclaw mcp set gbrain {url, transport: streamable-http, headers.Authorization}`; Hermes an `mcp_servers.gbrain` block appended beside `world` (tools register as `mcp__gbrain__<tool>`); QM `PUT /v1/admin/mcp-servers/gbrain` as `harness-admin`, whose `tools/list` probe before saving is the discovery proof (`qm-gbrain-register.json`); the fake harness answers `[fake:gbrain ...]` markers. Each `pin.json` records this under `gbrain_mcp`. The URL is the world's tap, so every call the harness makes to gbrain is a `via: "gbrain"` event in the trial's log (world/README.md), and the harness never holds the sidecar's own token. `tests/adapter-conformance.test.ts` proves the fake path against a fake sidecar; the live smoke of the three real harnesses is in docs/gbrain-arm.md.
 
 ### Driver
 
@@ -129,6 +134,10 @@ harnesses/run-trial.sh --harness openclaw --task tasks/hello --trial-id t1 \
 `bun test tests/adapter-conformance.test.ts` proves the protocol on the fake harness. For `run`: exit 0, 2, 3 and 124 under the conditions above; nothing written outside `/workspace`, `/harness-state` and `$HE_LOG_DIR` (at the process level by listing the temp tree, at the container level with `docker diff`); state in `/harness-state`; a stdin-closed, no-TTY run that completes; a no-op instruction that leaves the workspace untouched. For `serve`: the ready file appears; requests are answered in order with the right session key and a per-session turn counter; a sleep past a 2 s budget yields 124 within the kill grace, `[fake:model_error]` yields 3 and `[fake:harness_error]` yields 2 while the loop keeps serving; a `[fake:call post_message ...]` marker lands as a `chat.postMessage` event by the bot in an in-process world; nothing is written outside the four writable places and no `.tmp` file is left; SIGTERM at idle and during a turn both end the process with exit 0 within seconds. The container-level test runs the same through `docker run ... serve` and `docker stop`. Container-level tests skip when no Docker daemon is reachable; the whole file runs in about 12 s.
 
 ## Changelog
+
+### 2026-10-24: gbrain beside world (gbrain arm lane D)
+
+harness-evals v0.0.5. Two optional serve variables, `HE_GBRAIN_MCP_URL` and `HE_GBRAIN_MCP_TOKEN`; each adapter registers a second MCP server named `gbrain` when they are set and is unchanged when they are not; the fake harness's `[fake:gbrain]` marker.
 
 ### 2026-10-22: serve implemented (M1 lane C)
 

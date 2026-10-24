@@ -89,6 +89,22 @@ PY
 fi
 log "world-MCP wired into $HERMES_HOME/config.yaml#mcp_servers.world"
 
+# The gbrain arm (docs/gbrain-arm.md): with HE_GBRAIN_MCP_URL and HE_GBRAIN_MCP_TOKEN set, an mcp_servers.gbrain
+# block goes in beside world (same http transport, same Authorization header shape; the URL is the world's
+# /gbrain tap and the token the bot token). Unset, the config is byte-identical to a cell without gbrain.
+if [ -n "${HE_GBRAIN_MCP_URL:-}" ] && [ -n "${HE_GBRAIN_MCP_TOKEN:-}" ] && ! grep -q '^  gbrain:' "$HERMES_HOME/config.yaml"; then
+  HE_GBRAIN_MCP_URL="$HE_GBRAIN_MCP_URL" HE_GBRAIN_MCP_TOKEN="$HE_GBRAIN_MCP_TOKEN" python3 - "$HERMES_HOME/config.yaml" <<'PY'
+import json, os, sys
+path = sys.argv[1]
+block = "  gbrain:\n    url: %s\n    headers:\n      Authorization: %s\n    timeout: 120\n    connect_timeout: 60\n" % (
+    json.dumps(os.environ["HE_GBRAIN_MCP_URL"]), json.dumps("Bearer " + os.environ["HE_GBRAIN_MCP_TOKEN"]))
+with open(path, "a") as f:
+    f.write(block)
+PY
+  log "gbrain MCP wired into $HERMES_HOME/config.yaml#mcp_servers.gbrain through the world tap"
+  hermes mcp list > "$HE_LOG_DIR/hermes-mcp-list.log" 2>&1 || true
+fi
+
 # One serve turn: write the prompt to a file under HE_LOG_DIR and run a quiet one-shot turn in the
 # conversation's named session, with newline-delimited JSON events on stdout. Arguments: request
 # path, session key, turn name, budget. Returns the mapped exit code; the reply text is in

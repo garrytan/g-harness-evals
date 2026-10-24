@@ -11,9 +11,9 @@
  *
  *   bun runner/run.ts plan    --prereg <file> [--out results/<run-id>]
  *   bun runner/run.ts dry-run --prereg <file>
- *   bun runner/run.ts preflight --manifest results/<run-id>/manifest.json
+ *   bun runner/run.ts preflight --manifest results/<run-id>/manifest.json [--gbrain-image <tag>]
  *   bun runner/run.ts run --manifest results/<run-id>/manifest.json [--harness-mode docker|process|scripted]
- *       [--adapter <script>] [--image <tag>] [--resume] [--stop-on-cap] [--cells a,b] [--ledger <file>]
+ *       [--adapter <script>] [--image <tag>] [--gbrain-image <tag>] [--resume] [--stop-on-cap] [--cells a,b] [--ledger <file>]
  *       [--lease-usd <n>] [--new-lease] [--max-output-tokens <n>] [--preamble <file>] [--ready-timeout-s <n>]
  *       [--turn-grace-s <n>] [--harness-env K=V ...]
  *
@@ -22,11 +22,12 @@
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { basename, join } from 'node:path';
-import type { HarnessMode } from './contracts.ts';
+import { basename, dirname, join } from 'node:path';
+import type { GbrainCellConfig, HarnessMode } from './contracts.ts';
 import { RunnerError } from './errors.ts';
 import { canonicalLookup } from './pricing/model-pricing.ts';
 import { taskTurnCount } from './trial/task.ts';
+import { DEFAULT_GBRAIN_IMAGE } from './trial/gbrain.ts';
 
 export { RunnerError };
 
@@ -52,6 +53,8 @@ export interface Cell {
   script?: 'oracle' | 'mutations';
   /** Process mode: the adapter script. */
   adapter?: string;
+  /** gbrain arm: a gbrain sidecar per trial, registered with the harness as a second MCP server (docs/gbrain-arm.md). */
+  gbrain?: GbrainCellConfig;
 }
 
 export interface Prereg {
@@ -106,6 +109,10 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
     if (!scripted && c.model === 'none') throw new RunnerError('HE-PIN-002', `cell ${c.id}: model "none" is only valid for a scripted cell`);
     if (!scripted && !canonicalLookup(c.model)) throw new RunnerError('HE-PIN-002', `cell ${c.id}: model ${c.model} has no price in runner/pricing/model-pricing.ts; fix: register its list price before any cell runs`);
     if (!(c.repetitions >= 1)) throw new RunnerError('HE-PREREG-005', `cell ${c.id}: repetitions must be >= 1`);
+    if (c.gbrain !== undefined) {
+      if (c.gbrain?.surface !== 'starter') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.surface must be "starter" (the pinned surface, gbrain/pin.json); got ${JSON.stringify(c.gbrain)}`);
+      if (scripted) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: a scripted cell cannot carry gbrain; a script plays the bot over world-MCP and has no harness to call the brain`);
+    }
   }
   if (!(prereg.spend_cap_usd > 0)) throw new RunnerError('HE-BUDGET-002', 'spend_cap_usd must be > 0; the cap is written into the preregistration, never passed ad hoc');
   return { prereg, sha256: createHash('sha256').update(raw).digest('hex') };
@@ -180,8 +187,9 @@ export function renderPlan(m: Manifest): string {
   for (const c of m.cells) {
     const mine = m.trials.filter((t) => t.cell === c.id);
     const turns = mine.reduce((a, t) => a + (t.turns ?? 0), 0);
-    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}`);
+    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${c.gbrain.surface}` : ''}`);
   }
+  if (m.cells.some((c) => c.gbrain)) lines.push(`GBRAIN: cells ${m.cells.filter((c) => c.gbrain).map((c) => c.id).join(', ')} run with a gbrain sidecar per trial (image ${DEFAULT_GBRAIN_IMAGE} unless --gbrain-image; keyless, starter surface; docs/gbrain-arm.md)`);
   if (m.cost_ceiling_usd > m.spend_cap_usd) lines.push(`WARN: HE-BUDGET-003 cost ceiling ${m.cost_ceiling_usd} exceeds the preregistered cap ${m.spend_cap_usd}; cells past the cap stop incomplete in drop order`);
   return lines.join('\n');
 }
@@ -217,6 +225,14 @@ async function main(argv: string[]): Promise<number> {
     const missing = m.cells.filter(c => c.harness !== 'scripted' && !existsSync(join('harnesses', c.harness, 'pin.json'))).map(c => c.harness);
     if (missing.length) throw new RunnerError('HE-PIN-001', `no harnesses/<name>/pin.json for: ${[...new Set(missing)].join(', ')}; fix: add the pin before any cell runs`);
     for (const k of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']) if (!process.env[k]) console.log(`WARN: HE-PROXY-001 ${k} is not set in this shell; the metering proxy needs it, harness containers never do`);
+    const gbrainCells = m.cells.filter((c) => c.gbrain);
+    if (gbrainCells.length) {
+      const image = flag('--gbrain-image') ?? DEFAULT_GBRAIN_IMAGE;
+      const { gbrainImagePresent, probeGbrainImage } = await import('./trial/gbrain.ts');
+      if (!gbrainImagePresent(image)) throw new RunnerError('HE-GBRAIN-002', `gbrain sidecar image ${image} is not present for cells ${gbrainCells.map((c) => c.id).join(', ')}; fix: docker build -f gbrain/Dockerfile -t ${image} .`);
+      const probe = await probeGbrainImage(image, join(dirname(flag('--manifest')!), 'preflight-gbrain'));
+      console.log(`GBRAIN: image ${image} serves /health (gbrain ${probe.version ?? 'unknown'}, ready in ${probe.ready_ms} ms) for cells ${gbrainCells.map((c) => `${c.id} (surface ${c.gbrain!.surface})`).join(', ')}`);
+    }
     console.log(`PREFLIGHT: ok run=${m.run_id} trials=${m.trials.length}`);
     return 0;
   }
@@ -228,7 +244,7 @@ async function main(argv: string[]): Promise<number> {
     for (const kv of all('--harness-env')) { const eq = kv.indexOf('='); if (eq <= 0) throw new RunnerError('HE-RUN-002', `--harness-env wants K=V (got ${kv})`); harnessEnv[kv.slice(0, eq)] = kv.slice(eq + 1); }
     const { executeRun } = await import('./trial/run.ts');
     const result = await executeRun(manifest, path, {
-      harnessMode: mode as HarnessMode, adapter: flag('--adapter'), image: flag('--image'), resume: has('--resume'), stopOnCap: has('--stop-on-cap'),
+      harnessMode: mode as HarnessMode, adapter: flag('--adapter'), image: flag('--image'), gbrainImage: flag('--gbrain-image'), resume: has('--resume'), stopOnCap: has('--stop-on-cap'),
       cells: flag('--cells')?.split(',').map((s) => s.trim()).filter(Boolean), ledgerPath: flag('--ledger'), leaseUsd: flag('--lease-usd') ? Number(flag('--lease-usd')) : undefined,
       newLease: has('--new-lease'), maxOutputTokens: flag('--max-output-tokens') ? Number(flag('--max-output-tokens')) : undefined, preamblePath: flag('--preamble'),
       readyTimeoutS: flag('--ready-timeout-s') ? Number(flag('--ready-timeout-s')) : undefined, turnGraceS: flag('--turn-grace-s') ? Number(flag('--turn-grace-s')) : undefined,

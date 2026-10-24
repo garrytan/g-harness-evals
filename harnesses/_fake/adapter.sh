@@ -11,6 +11,9 @@
 #   [fake:sleep N]              pretend the turn takes N seconds (for the wall clock)
 #   [fake:call <tool> <json>]   serve only: call that world-MCP tool with those
 #                               arguments as the bot (one marker per line)
+#   [fake:gbrain <tool> <json>] serve only: call that gbrain tool through the
+#                               world's gbrain tap (HE_GBRAIN_MCP_URL), the way
+#                               a real harness with gbrain registered would
 #   "hello.txt"                 run only: write "hello" to hello.txt in the workspace
 set -euo pipefail
 
@@ -51,6 +54,25 @@ serve_turn() {
     return 3
   fi
   while IFS= read -r line; do
+    if [[ "$line" =~ \[fake:gbrain\ ([a-z_/]+)\ (\{.*\})\] ]]; then
+      tool=${BASH_REMATCH[1]} args=${BASH_REMATCH[2]}
+      if [ -z "${HE_GBRAIN_MCP_URL:-}" ] || [ -z "${HE_GBRAIN_MCP_TOKEN:-}" ]; then
+        echo "fake: [fake:gbrain] needs HE_GBRAIN_MCP_URL and HE_GBRAIN_MCP_TOKEN" >&2
+        return 2
+      fi
+      if [ "$tool" = "tools/list" ]; then
+        rpc='{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+      else
+        rpc=$(jq -cn --arg tool "$tool" --argjson args "$args" '{jsonrpc:"2.0",id:1,method:"tools/call",params:{name:$tool,arguments:$args}}')
+      fi
+      # gbrain answers with SSE-framed JSON-RPC; keep the data line.
+      out=$(curl -sS --max-time 30 -X POST "$HE_GBRAIN_MCP_URL" \
+        -H "Authorization: Bearer $HE_GBRAIN_MCP_TOKEN" -H 'content-type: application/json' \
+        -H 'accept: application/json, text/event-stream' --data "$rpc" | sed -n 's/^data: //p; /^[{[]/p' | head -1) || { echo "fake: gbrain call failed" >&2; return 2; }
+      printf '%s\n' "$out" >> "$HE_LOG_DIR/gbrain-calls.jsonl"
+      echo "fake: gbrain $tool -> isError=$(printf '%s' "$out" | jq -c '.result.isError // false' 2>/dev/null || echo unparsed)" >&2
+      continue
+    fi
     [[ "$line" =~ \[fake:call\ ([a-z_]+)\ (\{.*\})\] ]] || continue
     tool=${BASH_REMATCH[1]} args=${BASH_REMATCH[2]}
     if [ -z "${HE_WORLD_MCP_URL:-}" ] || [ -z "${HE_WORLD_MCP_TOKEN:-}" ]; then
@@ -81,8 +103,8 @@ serve() {
   trap 'stopping=1' TERM INT
   printf '{"trial":"%s","mode":"serve","model":"%s"}\n' "$HE_TRIAL_ID" "${HE_MODEL_NAME:-none}" > "$HE_SESSION_STATE_DIR/fake/session.json"
   export -f serve_turn
-  export HE_LOG_DIR HE_SESSION_STATE_DIR HE_WORLD_MCP_URL HE_WORLD_MCP_TOKEN
-  printf '{"harness":"_fake","trial":"%s","ready_at":"%s","world_mcp":%s}\n' "$HE_TRIAL_ID" "$(now)" "$([ -n "${HE_WORLD_MCP_URL:-}" ] && echo true || echo false)" > "$HE_LOG_DIR/ready.tmp"
+  export HE_LOG_DIR HE_SESSION_STATE_DIR HE_WORLD_MCP_URL HE_WORLD_MCP_TOKEN HE_GBRAIN_MCP_URL HE_GBRAIN_MCP_TOKEN
+  printf '{"harness":"_fake","trial":"%s","ready_at":"%s","world_mcp":%s%s}\n' "$HE_TRIAL_ID" "$(now)" "$([ -n "${HE_WORLD_MCP_URL:-}" ] && echo true || echo false)" "$([ -n "${HE_GBRAIN_MCP_URL:-}" ] && echo ',"gbrain_mcp":true')" > "$HE_LOG_DIR/ready.tmp"
   mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
   log "serve: ready; polling $HE_TURNS_DIR"
   while [ "$stopping" -eq 0 ]; do

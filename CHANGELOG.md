@@ -13,6 +13,14 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 
 ## [0.0.5] - 2026-10-23
 
+### From the gbrain arm, lane D (2026-10-24)
+
+- `gbrain/`: the sidecar image `harness-eval/gbrain:dev` (gbrain `f241216c`, 0.60.413.0, PGLite, embeddings off, starter surface) with one prebuilt brain per split holding the bot-visible slice of the corpus (heldout 7 channel pages and 18 public files, dev 7 and 11); the entrypoint mints a per-trial token and refuses to start with a model API key in its environment.
+- World: `POST /gbrain` tap (`world/services/gbrain-tap.ts`) forwards a harness's MCP traffic to the sidecar and records every `initialize`, `tools/list` and `tools/call` as a `via: "gbrain"` event with the page slugs it touched; `--gbrain-url` and `--gbrain-token-file` on `start.ts`.
+- Runner: a cell may carry `gbrain: {surface: "starter"}`; `run` starts the sidecar per trial before the harness and stops it after the fence, hands the harness `HE_GBRAIN_MCP_URL` and `HE_GBRAIN_MCP_TOKEN`, and writes a `gbrain` field (image, `sidecar_ready_ms`, event counts) to trials.jsonl; `plan`, `dry-run` and `preflight` show and check the sidecar; `--gbrain-image`; HE-GBRAIN-001 and HE-GBRAIN-002.
+- Adapters: OpenClaw, Hermes and QM register gbrain as a second MCP server beside `world` when the two variables are set and are byte-identical otherwise; the fake adapter answers `[fake:gbrain ...]` markers.
+- Proof: the fake harness through the runner (search, entity, remember, recall inside turn windows) and a live smoke on `sc-06` with Haiku: all three harnesses listed the 33 tools, none called one, $0.04 in total. Design, pins and evidence in `docs/gbrain-arm.md`.
+
 ### M3 sensitivity cell run and reported
 
 - `docs/benchmarks/2026-10-24-m3-sensitivity-haiku/`: the same 20 held-out tasks on `claude-haiku-5-5`, 300 trials, $1.84; every harness lost 13 to 19 points against its Sonnet run (detectable within harness for OpenClaw and QM), harness pairs still not distinguished (80%, 79%, 70%), zero consent violations and leaks. `scripts/compare-run.ts --against <run>` pairs each harness's cell across two runs for the model effect.

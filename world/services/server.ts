@@ -8,6 +8,7 @@ import type { Member, Split, World } from '../types.ts';
 import { handleMcpRequest } from '../world-mcp/http.ts';
 import { SimClock } from './clock/clock.ts';
 import { EventLog } from './events.ts';
+import { handleGbrainRequest, type GbrainUpstream } from './gbrain-tap.ts';
 import { handleSlackApi, tokenFrom } from './slack/slack.ts';
 import { SocketHub, type SocketData } from './slack/socket.ts';
 import { WorldService } from './world.ts';
@@ -34,6 +35,8 @@ export interface WorldServerOptions {
   botName?: string;
   hostname?: string;
   port?: number;
+  /** The gbrain sidecar behind POST /gbrain (docs/gbrain-arm.md); absent, the route does not exist. setGbrain changes it later. */
+  gbrain?: GbrainUpstream | null;
 }
 
 export function mintCredentials(trialId: string, actors: string[], botMember = 'assistant'): TrialCredentials {
@@ -52,6 +55,9 @@ export interface WorldServer {
   log: EventLog;
   credentials: TrialCredentials;
   socket: SocketHub;
+  /** Point POST /gbrain at a sidecar (or null to remove the route); the runner calls this once the sidecar is healthy. */
+  setGbrain(upstream: GbrainUpstream | null): void;
+  gbrain(): GbrainUpstream | null;
   stop(): void;
 }
 
@@ -82,6 +88,9 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
     return auth === `Bearer ${credentials.admin_token}` || req.headers.get('x-world-admin') === credentials.admin_token;
   };
 
+  let gbrain: GbrainUpstream | null = opts.gbrain ?? null;
+  const resolveActor = (r: Request): Member | null => { const t = tokenFrom(r, {}); return t ? memberForToken(t) : null; };
+
   let origin = '';
   const server = Bun.serve<SocketData>({
     hostname: opts.hostname ?? '127.0.0.1',
@@ -108,12 +117,9 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
         });
       }
 
-      if (path === '/mcp') {
-        return handleMcpRequest(req, service, (r) => {
-          const t = tokenFrom(r, {});
-          return t ? memberForToken(t) : null;
-        });
-      }
+      if (path === '/mcp') return handleMcpRequest(req, service, resolveActor);
+
+      if (path === '/gbrain' && gbrain) return handleGbrainRequest(req, { upstream: gbrain, resolveActor, log });
 
       if (path === '/clock' && req.method === 'GET') {
         return Response.json({ now: clock.nowIso(), today: clock.today(), epoch_ms: clock.nowMs(), ...clock.state() });
@@ -159,6 +165,8 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
     log,
     credentials,
     socket,
+    setGbrain: (u) => { gbrain = u; },
+    gbrain: () => gbrain,
     stop: () => server.stop(true),
   };
 }

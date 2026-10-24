@@ -1,0 +1,62 @@
+{
+  "name": "gbrain",
+  "role": "sidecar knowledge brain beside the world tools; not a harness under test",
+  "gbrain": {
+    "repo": "https://github.com/garrytan/gbrain",
+    "commit": "f241216c133771545bd93e97874f859366b3ef8d",
+    "version": "0.60.413.0",
+    "branch": "master",
+    "date": "2026-10-23",
+    "run_as": "bun /opt/gbrain/src/cli.ts (source checkout, bun install --frozen-lockfile)"
+  },
+  "corpus": {
+    "repo": "https://github.com/garrytan/gbrain-evals",
+    "commit": "6999ebc9da0ac784ac05995b586d22293544e924",
+    "path": "eval/data/messy-company-v1/corpus/{dev,heldout}",
+    "slice": "world/seed/world.json: source_slugs of non-DM channels loaded for the split plus files with visibility public loaded for the split; page slug <split>/<corpus slug>"
+  },
+  "engine": "pglite",
+  "surface": "starter",
+  "tools_on_surface": 33,
+  "embeddings": "off (gbrain init --no-embedding; import --no-embed); search is keyword-only and the brain makes no model or embedding call",
+  "model_calls": "none; the sidecar environment carries no ANTHROPIC_API_KEY or OPENAI_API_KEY and no provider base URL",
+  "init": [
+    "gbrain",
+    "init",
+    "--pglite",
+    "--non-interactive",
+    "--no-embedding"
+  ],
+  "import": [
+    "gbrain",
+    "import",
+    "<staging>",
+    "--no-embed",
+    "--allow-noncanonical-root",
+    "--json"
+  ],
+  "serve": [
+    "gbrain",
+    "serve",
+    "--http",
+    "--port",
+    "3131",
+    "--bind",
+    "0.0.0.0",
+    "--surface",
+    "starter",
+    "--suppress-bootstrap-token"
+  ],
+  "serve_env": {
+    "GBRAIN_HOME": "/brain (a per-trial copy of /brains/$HE_GBRAIN_SPLIT; the brain records absolute paths, so it is served where it was built)",
+    "GBRAIN_ADMIN_BOOTSTRAP_TOKEN": "64 random hex characters minted per trial, never written anywhere",
+    "GBRAIN_HTTP_RATE_LIMIT_IP": "1000000",
+    "GBRAIN_HTTP_RATE_LIMIT_TOKEN": "1000000",
+    "GBRAIN_OAUTH_TOKEN_RATE_LIMIT_MAX": "1000000",
+    "GBRAIN_SKIP_STARTUP_HOOKS": "1"
+  },
+  "auth": "gbrain auth create trial-<trial id>; the bearer token gbrain_<hex> goes to $HE_GBRAIN_OUT/token (mode 0600) and nowhere else; only the world's /gbrain tap presents it",
+  "wire": "POST /mcp, Authorization: Bearer <token>, Accept: application/json, text/event-stream; replies are SSE-framed JSON-RPC (event: message / data: {...}); GET /mcp is 405; /health is unauthenticated",
+  "image": "harness-eval/gbrain:dev (gbrain/Dockerfile, built from the repository root with -f gbrain/Dockerfile); /brains/dev and /brains/heldout with manifest.json each",
+  "reaches": "the host loopback only, through a published port; the harness container reaches gbrain only through the world's POST /gbrain tap"
+}

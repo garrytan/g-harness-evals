@@ -83,6 +83,20 @@ else
 fi
 rm -f "$HE_LOG_DIR/qm-mcp-server.json"
 
+# The gbrain arm (docs/gbrain-arm.md): with HE_GBRAIN_MCP_URL and HE_GBRAIN_MCP_TOKEN set, a second server named
+# gbrain is registered the same way (PUT /v1/admin/mcp-servers/gbrain; the URL is the world's /gbrain tap and the
+# token the bot token). Core probes tools/list before saving, so a 2xx proves the harness discovered gbrain.
+if [ -n "${HE_GBRAIN_MCP_URL:-}" ] && [ -n "${HE_GBRAIN_MCP_TOKEN:-}" ]; then
+  node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({ name: "gbrain", url: process.env.HE_GBRAIN_MCP_URL, auth: "bearer", bearerToken: process.env.HE_GBRAIN_MCP_TOKEN, credentialScope: "shared", readOnly: false, enabled: true }))' "$HE_LOG_DIR/qm-gbrain-server.json"
+  if node /opt/harness/qm-api.mjs mcp-register "$QM_CORE_URL" "$QM_SIGNING_SECRET" "$QM_ADMIN_ACTOR" gbrain "$HE_LOG_DIR/qm-gbrain-server.json" > "$HE_LOG_DIR/qm-gbrain-register.json" 2>>"$HE_LOG_DIR/stderr.log"; then
+    log "gbrain MCP registered with core: $(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); process.stdout.write(JSON.stringify(r.body).slice(0,300))' "$HE_LOG_DIR/qm-gbrain-register.json")"
+  else
+    log "gbrain MCP registration failed: $(head -c 400 "$HE_LOG_DIR/qm-gbrain-register.json")"
+    exit 2
+  fi
+  rm -f "$HE_LOG_DIR/qm-gbrain-server.json"
+fi
+
 # One serve turn: the prompt and the job go under HE_LOG_DIR, qm-api.mjs posts the turn and leaves
 # {http, body} beside them. Arguments: request path, session key, turn name, budget. Returns the
 # mapped exit code; the reply text is in <turn>.reply.txt.
