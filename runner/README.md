@@ -86,6 +86,10 @@ The results `.gitignore` copied per run (`docs/benchmarks/2026-10-23-m2-pilot/re
 
 `reconcile.json` checks the proxy's meter against the usage lines it wrote for the key; its `provider_reconciliation` line predates the run-level check and still says the provider check is not built. The run-level check is `scripts/reconcile-provider.ts` (below), which writes `results/spend-reconciliation.json`; per-trial files of a counted run are not rewritten.
 
+## Sharded runs (internal-task)
+
+A paid run longer than about four hours is sharded by whole cells across machines (CREW.md, "Parallelism"): every shard is a clean checkout at the preregistration commit, builds its images from it, holds one lease under the run's cap and runs its trials sequentially, and the preregistration names the shards. `scripts/run-shard.sh --prereg <file> --name <shard> --cells a,b --lease-usd <n> [--embedded] [--gbrain-image <tag>] [--out results/<run-id>] [--skip-build] [--resume]` does one shard: it refuses a dirty checkout, builds `harness-eval/<harness>:dev` for the harnesses its cells use and the gbrain image (`--embedded` for a shard with an embedded cell), runs `plan` (once), `preflight` and `run --cells ... --lease-usd ... --max-output-tokens 128000`, prunes graded trials' harness caches (`state/.cache`, `state/hermes/{bin,cache,skills,models_dev_cache.json}`) every five minutes, and writes `<out>/shard.json` (name, machine, commit, cells, lease, image ids, exit). `scripts/merge-shards.ts` merges the shard directories into one results directory with `shards.json` before `summarize-run` and `compare-run`.
+
 ## Harness modes
 
 - **docker** is the counted configuration: the harness image and the mounts of docs/adapters.md. Everything docker-specific is in `runner/trial/docker.ts` (and `runner/trial/gbrain.ts` for the sidecar); nothing else needs a daemon. A gbrain cell in process mode still starts the sidecar container, so process mode needs a daemon for such a cell; a gbrain cell in scripted mode is refused (HE-GBRAIN-001).

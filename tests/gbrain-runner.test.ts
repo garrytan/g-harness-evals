@@ -109,7 +109,7 @@ test('gbrain.install and gbrain.embeddings: validated under HE-GBRAIN-001 naming
   expect(m.per_cell_ceiling_usd['fake-semantic']!).toBeGreaterThanOrEqual(m.per_cell_ceiling_usd['fake-mcp']!);
 });
 
-test('every committed preregistration still loads; only the gbrain arm and the company-brain run carry gbrain cells, each on the pinned surface', () => {
+test('every committed preregistration still loads; only the gbrain arm, the company-brain run and the install ladder carry gbrain cells, each on a pinned configuration', () => {
   const dir = join(ROOT, 'docs', 'benchmarks');
   const files = readdirSync(dir).filter((d) => existsSync(join(dir, d, 'prereg.json'))).map((d) => join(dir, d, 'prereg.json'));
   expect(files.length).toBeGreaterThan(0);
@@ -118,6 +118,11 @@ test('every committed preregistration still loads; only the gbrain arm and the c
     for (const c of p.cells) {
       if (p.run_id.startsWith('gbrain-arm-')) { if (c.gbrain) expect(c.gbrain).toEqual({ surface: 'starter' }); }
       else if (p.run_id.startsWith('company-brain-')) { if (c.gbrain) expect(c.gbrain).toMatchObject({ surface: 'starter', brain: 'company' }); }
+      else if (p.run_id.startsWith('gbrain-ladder-')) {
+        // internal-task: seven rungs per harness, each a pinned combination; the resolved configuration names the rung's fields only.
+        if (c.gbrain) { const g = resolveGbrain(c.gbrain); expect(['starter', 'verbs']).toContain(g.surface); expect(g.brain).toBe('bot-visible'); expect(g.scope).toBe('none'); }
+        expect(c.preamble === undefined || c.preamble === 'tasks/multiuser/_shared/preamble.gbrain-ladder.md').toBe(true);
+      }
       else expect(c.gbrain).toBeUndefined();
     }
   }
