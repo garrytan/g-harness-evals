@@ -27,6 +27,9 @@ mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
 log() { printf '%s hermes[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" | tee -a "$HE_LOG_DIR/adapter.log" >&2; }
 now() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
+# internal-task: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
+# preflight compares the same hash in the image with the checkout, HE-ADAPTER-005).
+adapter_sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)
 
 entry=${1:-run}
 case "$entry" in
@@ -51,6 +54,97 @@ log "hermes $(hermes --version 2>/dev/null | head -1) model=anthropic/$HE_MODEL_
 model_error_pattern='metering proxy|AuthenticationError|PermissionDeniedError|RateLimitError|APIStatusError|APIConnectionError|InternalServerError|Error code: (401|402|403|404|429|5[0-9]{2})|HTTP (401|402|403|404|429|5[0-9]{2})'
 
 cd "$HE_WORKSPACE_DIR"
+
+# internal-task, the install ladder (docs/gbrain-arm.md): under HE_GBRAIN_INSTALL=gbrain-docs the runner mounts the exported view of
+# gbrain's documented install read-only at HE_GBRAIN_INSTALL_DIR (/he-gbrain-install) and names the split in HE_GBRAIN_SPLIT.
+# Before the harness starts, every file the view's manifest lists is checked against its sha256 and copied to where
+# gbrain's docs would have written it: workspace/x to /workspace/x (`gbrain skillpack scaffold --all`, skills/ at this
+# commit) and the split's compiled context to /workspace/.hermes.md (`gbrain compile-context --target hermes --include-core`,
+# the file Hermes's prompt builder reads from the cwd); $HE_LOG_DIR/gbrain-install.json records status, file count, view
+# digest and destinations. Any failure (missing directory or manifest, digest mismatch, a view for another harness or split, a
+# destination that already exists) is HE-ADAPTER-006 and exit 2 before ready. Unset, nothing here runs.
+gbrain_install_json=''
+if [ "${HE_GBRAIN_INSTALL:-}" = gbrain-docs ]; then
+  set +e
+  install_line=$(python3 - "${HE_GBRAIN_INSTALL_DIR:-/he-gbrain-install}" "$HE_WORKSPACE_DIR" hermes "${HE_GBRAIN_SPLIT:-}" "$HE_LOG_DIR/gbrain-install.json" <<'PY'
+import hashlib, json, os, shutil, sys
+view, workspace, harness, split, out = sys.argv[1:6]
+def sha(p):
+    h = hashlib.sha256()
+    with open(p, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+rec = {"status": "error", "code": "HE-ADAPTER-006", "harness": harness, "split": split, "dir": view, "view_digest": None, "files": 0, "destinations": [], "copied": [], "error": None}
+def write():
+    with open(out + ".tmp", "w") as f:
+        json.dump(rec, f)
+    os.replace(out + ".tmp", out)
+def refuse(msg):
+    rec["error"] = msg
+    write()
+    print("HE-ADAPTER-006 the install bundle could not be applied: %s (view %s, split %s); fix: re-export the view from the gbrain image (gbrain/export-install.sh) and run preflight again" % (msg, view, split))
+    sys.exit(1)
+if not split:
+    refuse("HE_GBRAIN_SPLIT is unset")
+if not os.path.isdir(view):
+    refuse("no install view directory at %s" % view)
+try:
+    m = json.load(open(os.path.join(view, "manifest.json")))
+except (OSError, ValueError) as e:
+    refuse("no readable manifest.json in the view: %s" % e)
+rec["view_digest"] = m.get("view_digest")
+if m.get("harness") != harness:
+    refuse("the view is for harness %r, this adapter is %s" % (m.get("harness"), harness))
+if m.get("split") != split:
+    refuse("the view is for split %r, the trial's split is %s" % (m.get("split"), split))
+files = m.get("files") or []
+if not files:
+    refuse("the manifest lists no files")
+lines = "".join("%s %s\n" % (f.get("source_path"), f.get("sha256")) for f in sorted(files, key=lambda f: f.get("source_path") or ""))
+if hashlib.sha256(lines.encode()).hexdigest() != m.get("view_digest"):
+    refuse("the manifest's view_digest does not match its file list")
+plan = []
+for f in files:
+    path = f.get("path") or ""
+    parts = path.split("/")
+    if not path or path.startswith("/") or ".." in parts or "" in parts:
+        refuse("unsafe path in the manifest: %r" % path)
+    if parts[0] == "workspace" and len(parts) > 1:
+        dest = os.path.join(workspace, *parts[1:])
+        top = os.path.join(workspace, parts[1])
+    elif path == ".hermes.md" and harness == "hermes":
+        dest = top = os.path.join(workspace, ".hermes.md")
+    else:
+        refuse("no documented destination for %r" % path)
+    src = os.path.join(view, path)
+    if not os.path.isfile(src):
+        refuse("a listed file is missing from the view: %s" % path)
+    if sha(src) != f.get("sha256"):
+        refuse("digest mismatch for %s" % path)
+    if os.path.lexists(dest):
+        refuse("the destination exists and the documented command refuses to overwrite it: %s" % dest)
+    plan.append((src, dest, top, f["sha256"]))
+for src, dest, top, digest in plan:
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    shutil.copyfile(src, dest)
+    if sha(dest) != digest:
+        refuse("the copy at %s does not match the view" % dest)
+    rec["copied"].append(dest)
+    if top not in rec["destinations"]:
+        rec["destinations"].append(top)
+rec.update(status="ok", code=None, files=len(plan), destinations=sorted(rec["destinations"]))
+write()
+print("ok %d %s %s" % (len(plan), rec["view_digest"], ",".join(rec["destinations"])))
+PY
+)
+  install_code=$?
+  set -e
+  log "gbrain-docs install: ${install_line:-HE-ADAPTER-006 the install bundle could not be applied: the install step failed before it could report; see stderr.log}"
+  [ "$install_code" -eq 0 ] || exit 2
+  read -r _ install_files install_digest install_dests <<< "$install_line"
+  gbrain_install_json=$(printf ',"gbrain_install":{"status":"ok","files":%s,"view_digest":"%s","destinations":"%s"}' "$install_files" "$install_digest" "$install_dests")
+fi
 
 if [ "$entry" = "run" ]; then
   [ -r "$HE_WORKSPACE_DIR/instruction.md" ] || { log "no readable $HE_WORKSPACE_DIR/instruction.md"; exit 2; }
@@ -173,7 +267,7 @@ PY
 
 stopping=0
 trap 'stopping=1' TERM INT
-printf '{"harness":"hermes","version":"%s","trial":"%s","ready_at":"%s","session_keys":"hermes chat -c dm:<member> | channel:<id>"}\n' "${HERMES_VERSION:-}" "$HE_TRIAL_ID" "$(now)" > "$HE_LOG_DIR/ready.tmp"
+printf '{"harness":"hermes","version":"%s","trial":"%s","ready_at":"%s","session_keys":"hermes chat -c dm:<member> | channel:<id>","adapter_sha256":"%s"%s}\n' "${HERMES_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$adapter_sha256" "$gbrain_install_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do

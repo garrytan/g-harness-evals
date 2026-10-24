@@ -39,6 +39,7 @@ For `serve` the runner also sets:
 | `HE_WORLD_MCP_TOKEN` | The bot's world-MCP bearer token for this trial. Every tool call the harness makes is attributed to the bot. |
 | `HE_SLACK_API_URL`, `HE_SLACK_BOT_TOKEN`, `HE_SLACK_APP_TOKEN` | The Slack mock, for a harness whose native Slack connector can point at it. No adapter uses them yet; the runner posts every message. |
 | `HE_GBRAIN_MCP_URL`, `HE_GBRAIN_MCP_TOKEN` | The gbrain arm only ([docs/gbrain-arm.md](gbrain-arm.md)): the world's `/gbrain` tap (`<world>/gbrain`) and the same bot token. Set, the adapter registers a second MCP server named `gbrain` exactly as it registers `world`; unset, nothing in the adapter changes and the harness configuration is byte-identical to a cell without gbrain. |
+| `HE_GBRAIN_INSTALL`, `HE_GBRAIN_SPLIT`, `HE_GBRAIN_INSTALL_DIR` | The install ladder's docs rungs only (internal-task, [docs/gbrain-arm.md](gbrain-arm.md)): `HE_GBRAIN_INSTALL=gbrain-docs` tells the adapter to apply gbrain's documented install from the view mounted read-only at `HE_GBRAIN_INSTALL_DIR` (`/he-gbrain-install`) for the split `HE_GBRAIN_SPLIT` (`dev` or `heldout`) before the harness is prepared; see "gbrain's documented install" below. Unset, nothing in the adapter runs. |
 
 ## Mounts
 
@@ -49,6 +50,7 @@ For `serve` the runner also sets:
 | `/harness-state` | read-write | all harness state; empty at the start of a trial |
 | `$HE_LOG_DIR` | read-write | logs; outside `/workspace` so the grader never sees them |
 | `$HE_TURNS_DIR` | read-write | `serve` only: the request and response files |
+| `/he-gbrain-install` | read-only | gbrain-docs cells only: the harness and split's exported view of gbrain's install bundle (`workspace/`, Hermes's `.hermes.md`, `manifest.json`), exported and verified by `preflight` into `results/<run>/gbrain-install/<harness>/<split>/` |
 
 A trial starts from an empty `/harness-state`. The adapter copies its config template there if the harness needs a writable config (OpenClaw and Hermes both do), filling secrets from the environment, never from a file in the image.
 
@@ -68,7 +70,7 @@ The container runs as the calling user, not root, so files it writes are owned b
 - The runner writes a request as `turn-NNNN.request.json.tmp` and renames it; the adapter writes `turn-NNNN.response.json.tmp` and renames it. Nothing else lands in `HE_TURNS_DIR`. Prompt files, harness envelopes and per-turn stderr go under `$HE_LOG_DIR/turns/`.
 - The budget of a turn is `TurnRequest.time_budget_s` (falling back to `HE_TIME_BUDGET_S`). The adapter runs the harness turn under `timeout` with a short kill grace (5 s, or the harness's own deadline plus a backstop of 10 to 15 s), so the response lands before the runner's 60 s grace ends; a turn stopped this way is exit 124 with `reply_text: null`. The 60 s SIGTERM-to-SIGKILL grace of methodology item 7 belongs to the runner stopping the container, not to one turn.
 - `started_at` and `ended_at` are UTC ISO-8601 with milliseconds, taken by the adapter just before the harness turn starts and just after it ends. `detail` is set on every non-zero exit with a short reason.
-- `$HE_LOG_DIR/ready` is a one-line JSON object (`harness`, `trial`, `ready_at`, `session_keys`, and for OpenClaw `session_scope`), written after the MCP config is in place and the harness is prepared. A failure before ready (missing world variables, MCP registration refused) exits 2 before the file exists.
+- `$HE_LOG_DIR/ready` is a one-line JSON object (`harness`, `trial`, `ready_at`, `session_keys`, for OpenClaw `session_scope`, `adapter_sha256`: the sha256 of the adapter file that ran, which `preflight` compares with the image and the checkout under HE-ADAPTER-005, and on a gbrain-docs cell `gbrain_install` with `status`, `files`, `view_digest` and `destinations`), written after the MCP config is in place and the harness is prepared. A failure before ready (missing world variables, MCP registration refused, an install bundle that could not be applied) exits 2 before the file exists.
 - SIGTERM at idle stops the loop and exits 0 within a second. SIGTERM during a turn stops the harness turn, writes that turn's response as exit 2 with `detail: "stopped by SIGTERM during the turn"`, and exits 0. `docker stop` is the runner's way to do this.
 - `serve` requires `HE_WORLD_MCP_URL` and `HE_WORLD_MCP_TOKEN` and exits 2 without them. The fake harness is the exception: it serves without a world and fails only a turn that carries a `[fake:call ...]` marker.
 
@@ -88,6 +90,18 @@ Every adapter appends `:t<thread_ts>` to its session key when `TurnRequest.threa
 ### gbrain beside world
 
 In a gbrain-arm cell the runner sets `HE_GBRAIN_MCP_URL` and `HE_GBRAIN_MCP_TOKEN`, and each adapter adds a server named `gbrain` with the same shape as `world`: OpenClaw `openclaw mcp set gbrain {url, transport: streamable-http, headers.Authorization}`; Hermes an `mcp_servers.gbrain` block appended beside `world` (tools register as `mcp__gbrain__<tool>`); QM `PUT /v1/admin/mcp-servers/gbrain` as `harness-admin`, whose `tools/list` probe before saving is the discovery proof (`qm-gbrain-register.json`); the fake harness answers `[fake:gbrain ...]` markers. Each `pin.json` records this under `gbrain_mcp`. The URL is the world's tap, so every call the harness makes to gbrain is a `via: "gbrain"` event in the trial's log (world/README.md), and the harness never holds the sidecar's own token. `tests/adapter-conformance.test.ts` proves the fake path against a fake sidecar; the live smoke of the three real harnesses is in docs/gbrain-arm.md.
+
+### gbrain's documented install
+
+The install ladder's `docs` rungs (internal-task) ask what changes when gbrain is installed the way its own documentation says, not only registered as an MCP server. The gbrain image holds that install, run once at image build with the gbrain CLI ([gbrain/README.md](../gbrain/README.md), "The install bundle"), and the runner's `preflight` exports the harness and split's view of it with a manifest that lists every file's sha256 and a `view_digest`; each trial verifies the view again and mounts it read-only at `/he-gbrain-install` with `HE_GBRAIN_INSTALL=gbrain-docs`, `HE_GBRAIN_SPLIT` and `HE_GBRAIN_INSTALL_DIR`. The adapter then does what the documented command would have done in `/workspace`, before the MCP wiring and before `ready`:
+
+1. It reads `manifest.json` in the view and refuses a view for another harness or split, or whose `view_digest` does not match its file list.
+2. It checks every listed file against its sha256 and copies `workspace/<x>` to `/workspace/<x>` (`skills/` at the pinned gbrain commit, 64 skills in 127 files, what `gbrain skillpack scaffold --harness openclaw --workspace /workspace` writes for OpenClaw and `gbrain skillpack scaffold --all` for Hermes); Hermes also copies `.hermes.md`, the split's compiled context from `gbrain compile-context --target hermes --include-core`, to `/workspace/.hermes.md`. A destination that already exists is refused, as `skillpack scaffold` refuses to overwrite. Each copy is checked again.
+3. It writes `$HE_LOG_DIR/gbrain-install.json`: `status` (`ok` or `error`), `code` (`HE-ADAPTER-006` on error), `harness`, `split`, `dir`, `view_digest`, `files`, `destinations` (the top-level entries, `/workspace/skills` and for Hermes `/workspace/.hermes.md`), `copied` (every destination path) and `error`; `ready` repeats `status`, `files`, `view_digest` and `destinations` under `gbrain_install`.
+
+Any failure is one code, HE-ADAPTER-006 (the install bundle could not be applied), printed to `adapter.log` with the reason, and exit 2 before `ready`; the runner records a pre-ready exit 2 as `harness_error`, so the mount is checked by `preflight` first. With `HE_GBRAIN_INSTALL` unset the step does not run and the adapters behave as before; the one visible change for every cell is the `adapter_sha256` field in `ready`.
+
+What each harness does with the landed files was read keylessly from the installed source in the images and is recorded in each `pin.json` under `gbrain_install` with the file and line: OpenClaw 2026.10.6 lists `/workspace/skills` as workspace skills (`src/skills/loading/workspace-skill-roots.ts`; `openclaw skills list --json` shows all 64 scaffolded skills with source `openclaw-workspace`, eligible and model-visible); Hermes v2026.9.24 loads `/workspace/.hermes.md` as its project context from the cwd (`agent/prompt_builder.py`, `_find_hermes_md` and `build_context_files_prompt`) and reads no skills from `/workspace/skills` (`agent/skill_utils.py`: `HERMES_HOME/skills`, `skills.external_dirs` and trusted `<git root>/.hermes/skills` only), so on the Hermes docs rung the skills copy is inert and the brain's index reaches the model through `.hermes.md`. `tests/adapter-install.test.ts` proves the landing, the record, the ready fields, both observations and a one-byte tamper against the images built from the checkout, with no model call. Whether a model reads a landed skill in a turn is a paid question for the smoke.
 
 ### Driver
 
@@ -116,7 +130,7 @@ Any other code is `infra_error`. The adapter maps the harness's own exit codes a
 
 ## Logs
 
-Everything the harness prints goes to `$HE_LOG_DIR/stdout.log` and `$HE_LOG_DIR/stderr.log`. The adapter's own lines go to `$HE_LOG_DIR/adapter.log`, each with a UTC timestamp, the harness name and the trial id. A harness-native transcript (OpenClaw's JSON envelope, QM's turn result) goes beside them. Nothing is written to `/workspace` except by the harness doing the task.
+Everything the harness prints goes to `$HE_LOG_DIR/stdout.log` and `$HE_LOG_DIR/stderr.log`. The adapter's own lines go to `$HE_LOG_DIR/adapter.log`, each with a UTC timestamp, the harness name and the trial id. A harness-native transcript (OpenClaw's JSON envelope, QM's turn result) goes beside them, and on a gbrain-docs cell `gbrain-install.json` (above). Nothing is written to `/workspace` except by the harness doing the task and, on a gbrain-docs cell, the adapter's copy of gbrain's documented install before the first turn.
 
 ## Two topologies
 
@@ -138,6 +152,10 @@ harnesses/run-trial.sh --harness openclaw --task tasks/hello --trial-id t1 \
 `bun test tests/adapter-conformance.test.ts` proves the protocol on the fake harness. For `run`: exit 0, 2, 3 and 124 under the conditions above; nothing written outside `/workspace`, `/harness-state` and `$HE_LOG_DIR` (at the process level by listing the temp tree, at the container level with `docker diff`); state in `/harness-state`; a stdin-closed, no-TTY run that completes; a no-op instruction that leaves the workspace untouched. For `serve`: the ready file appears; requests are answered in order with the right session key and a per-session turn counter; a sleep past a 2 s budget yields 124 within the kill grace, `[fake:model_error]` yields 3 and `[fake:harness_error]` yields 2 while the loop keeps serving; a `[fake:call post_message ...]` marker lands as a `chat.postMessage` event by the bot in an in-process world; nothing is written outside the four writable places and no `.tmp` file is left; SIGTERM at idle and during a turn both end the process with exit 0 within seconds. The container-level test runs the same through `docker run ... serve` and `docker stop`. Container-level tests skip when no Docker daemon is reachable; the whole file runs in about 12 s.
 
 ## Changelog
+
+### 2026-10-25: gbrain's documented install (internal-task, the install ladder)
+
+harness-evals v0.0.5. Three serve variables, `HE_GBRAIN_INSTALL`, `HE_GBRAIN_SPLIT` and `HE_GBRAIN_INSTALL_DIR`, and the read-only `/he-gbrain-install` mount; the OpenClaw and Hermes adapters verify and copy the view before ready and write `gbrain-install.json`, HE-ADAPTER-006 on any failure; `adapter_sha256` and `gbrain_install` in `ready`; the keyless observation of what each harness loads; `tests/adapter-install.test.ts`.
 
 ### 2026-10-24: inner-harness configs and thread sessions (internal-task)
 

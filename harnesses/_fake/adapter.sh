@@ -28,6 +28,9 @@ exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >
 
 log() { printf '%s fake[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" | tee -a "$HE_LOG_DIR/adapter.log" >&2; }
 now() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
+# internal-task: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
+# preflight compares the same hash in the image with the checkout, HE-ADAPTER-005).
+adapter_sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)
 
 export HOME="$HE_SESSION_STATE_DIR"
 
@@ -110,7 +113,7 @@ serve() {
   if [ "${HE_GBRAIN_INSTALL:-}" = "gbrain-docs" ]; then
     install=$(printf ',"gbrain_install":{"dir":"%s","split":"%s","files":%s,"writable":%s}' "${HE_GBRAIN_INSTALL_DIR:-}" "${HE_GBRAIN_SPLIT:-}" "$(find "${HE_GBRAIN_INSTALL_DIR:-/nonexistent}" -type f 2>/dev/null | wc -l | tr -d ' ')" "$(touch "${HE_GBRAIN_INSTALL_DIR:-/nonexistent}/.he-write-probe" 2>/dev/null && echo true || echo false)")
   fi
-  printf '{"harness":"_fake","trial":"%s","ready_at":"%s","world_mcp":%s%s%s}\n' "$HE_TRIAL_ID" "$(now)" "$([ -n "${HE_WORLD_MCP_URL:-}" ] && echo true || echo false)" "$([ -n "${HE_GBRAIN_MCP_URL:-}" ] && echo ',"gbrain_mcp":true')" "$install" > "$HE_LOG_DIR/ready.tmp"
+  printf '{"harness":"_fake","trial":"%s","ready_at":"%s","adapter_sha256":"%s","world_mcp":%s%s%s}\n' "$HE_TRIAL_ID" "$(now)" "$adapter_sha256" "$([ -n "${HE_WORLD_MCP_URL:-}" ] && echo true || echo false)" "$([ -n "${HE_GBRAIN_MCP_URL:-}" ] && echo ',"gbrain_mcp":true')" "$install" > "$HE_LOG_DIR/ready.tmp"
   mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
   log "serve: ready; polling $HE_TURNS_DIR"
   while [ "$stopping" -eq 0 ]; do

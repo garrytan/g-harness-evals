@@ -11,6 +11,7 @@
 // in an in-process world's event log, and a clean stop on SIGTERM.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -219,6 +220,8 @@ describe('fake adapter, serve, process level', () => {
     try {
       await waitFor(() => existsSync(join(t.logs, 'ready')), 5_000, 'ready file');
       expect(JSON.parse(readFileSync(join(t.logs, 'ready'), 'utf8'))).toMatchObject({ harness: '_fake', trial: 'conformance-serve' });
+      // internal-task: the ready file carries the sha256 of the adapter file that ran (what preflight checks against the image, HE-ADAPTER-005).
+      expect(JSON.parse(readFileSync(join(t.logs, 'ready'), 'utf8')).adapter_sha256).toBe(createHash('sha256').update(readFileSync(ADAPTER)).digest('hex'));
       expect(tree(t.turns)).toEqual([]);
 
       postRequest(t, request(1));
