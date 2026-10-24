@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "run_id": "qm-inner-harness-2026-10",
+  "question": "On the 20 held-out multi-user tasks with the model fixed to claude-haiku-5-5, do QM's two shipped inner-harness integrations (the vendored Pi loop and the Claude Agent SDK loop) differ in pass rate, approval handling, cost and time? Any difference is an observed integration difference; this design does not isolate the loop from the delegation tool or prompt handling.",
+  "tasks": {},
+  "cells": [
+    {
+      "id": "qm-pi-haiku-mu-heldout",
+      "harness": "qm",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "config": "pi"
+    },
+    {
+      "id": "qm-claude-haiku-mu-heldout",
+      "harness": "qm",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "config": "claude"
+    }
+  ],
+  "wall_clock_s": {
+    "multiuser": 1500
+  },
+  "spend_cap_usd": 25,
+  "drop_order": [
+    "qm-claude-haiku-mu-heldout"
+  ],
+  "minimum_v01": [
+    "qm-pi-haiku-mu-heldout"
+  ]
+}

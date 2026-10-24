@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "run_id": "qm-probes-2026-10",
+  "question": "Does QM v0.1.15 do what it claims about per-scope memory, per-scope sandboxes and org security settings when a member actually exercises each claim, on both of its inner harnesses, with OpenClaw and Hermes on the probes whose claims they share? Each probe is its own product check; no pooled rate.",
+  "tasks": {},
+  "cells": [
+    {
+      "id": "qm-pi-haiku-probes",
+      "harness": "qm",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "config": "pi-probe",
+      "tasks": [
+        "qp-01-dm-recall-new-session",
+        "qp-02-channel-recall-new-session",
+        "qp-03-dm-fact-not-in-other-dm",
+        "qp-04-dm-fact-not-in-channel-same-member",
+        "qp-05-channel-fact-not-in-other-channel",
+        "qp-06-sandbox-per-scope-dm",
+        "qp-07-sandbox-shared-channel",
+        "qp-08-strict-posture-blocks-write",
+        "qp-09-command-policy-deny"
+      ]
+    },
+    {
+      "id": "qm-claude-haiku-probes",
+      "harness": "qm",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "config": "claude-probe",
+      "tasks": [
+        "qp-01-dm-recall-new-session",
+        "qp-02-channel-recall-new-session",
+        "qp-03-dm-fact-not-in-other-dm",
+        "qp-04-dm-fact-not-in-channel-same-member",
+        "qp-05-channel-fact-not-in-other-channel",
+        "qp-06-sandbox-per-scope-dm",
+        "qp-07-sandbox-shared-channel"
+      ]
+    },
+    {
+      "id": "qm-pi-strict-haiku-probes",
+      "harness": "qm",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "config": "pi-strict",
+      "tasks": [
+        "qp-08-strict-posture-blocks-write"
+      ]
+    },
+    {
+      "id": "qm-pi-command-deny-haiku-probes",
+      "harness": "qm",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "config": "pi-command-deny",
+      "tasks": [
+        "qp-09-command-policy-deny"
+      ]
+    },
+    {
+      "id": "openclaw-haiku-probes",
+      "harness": "openclaw",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "tasks": [
+        "qp-01-dm-recall-new-session",
+        "qp-02-channel-recall-new-session",
+        "qp-03-dm-fact-not-in-other-dm",
+        "qp-04-dm-fact-not-in-channel-same-member",
+        "qp-05-channel-fact-not-in-other-channel",
+        "qp-06-sandbox-per-scope-dm",
+        "qp-07-sandbox-shared-channel"
+      ]
+    },
+    {
+      "id": "hermes-haiku-probes",
+      "harness": "hermes",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "tasks": [
+        "qp-01-dm-recall-new-session",
+        "qp-02-channel-recall-new-session",
+        "qp-03-dm-fact-not-in-other-dm",
+        "qp-04-dm-fact-not-in-channel-same-member",
+        "qp-05-channel-fact-not-in-other-channel",
+        "qp-06-sandbox-per-scope-dm",
+        "qp-07-sandbox-shared-channel"
+      ]
+    }
+  ],
+  "wall_clock_s": {
+    "multiuser": 900
+  },
+  "spend_cap_usd": 15,
+  "drop_order": [
+    "hermes-haiku-probes",
+    "openclaw-haiku-probes",
+    "qm-claude-haiku-probes"
+  ],
+  "minimum_v01": [
+    "qm-pi-haiku-probes",
+    "qm-pi-strict-haiku-probes",
+    "qm-pi-command-deny-haiku-probes"
+  ]
+}

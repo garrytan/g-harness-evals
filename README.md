@@ -18,6 +18,8 @@ The one-page account of the v0.1 result, with its limits, interests and receipts
 | The 30 multi-user tasks (10 dev, 20 held-out) and the 11 QM product probes (dev, internal-task) with oracles and mutation matrices, and the grader that scores them from world state | [tasks/multiuser/README.md](tasks/multiuser/README.md), [runner/grade/](runner/grade/) |
 | Task sets: how a second set such as v0.2 lives beside the v0.1 tasks and is selected by a cell (internal-task) | [docs/tasks.md](docs/tasks.md), "Task sets" |
 | QM's two inner harnesses (Pi, Claude) and the probe configs a cell's `config` selects; the model assertion (internal-task) | [harnesses/qm/README.md](harnesses/qm/README.md), [harnesses/qm/pin.json](harnesses/qm/pin.json), [docs/errors.md](docs/errors.md) |
+| QM inner-harness run (Pi against the Claude Agent SDK on Haiku, 200 held-out trials) and the QM probes run (nine product claims, 96 trials): preregistrations (internal-task) | [docs/benchmarks/2026-10-25-qm-inner-harness/](docs/benchmarks/2026-10-25-qm-inner-harness/PREREGISTRATION.md), [docs/benchmarks/2026-10-25-qm-probes/](docs/benchmarks/2026-10-25-qm-probes/PREREGISTRATION.md) |
+| QM findings: product observations from the source read, the smokes and the runs | [docs/qm-findings.md](docs/qm-findings.md) |
 | Contracts shared by runner, adapters, graders and scripted solutions | [runner/contracts.ts](runner/contracts.ts) |
 | Harness images and adapters (`run` and `serve`), the adapter protocol, and the serve-mode smoke driver | [harnesses/README.md](harnesses/README.md), [docs/adapters.md](docs/adapters.md) |
 | Error codes | [docs/errors.md](docs/errors.md) |
@@ -54,6 +56,10 @@ None of these calls a model API. A paid run is `bun runner/run.ts plan --prereg 
 **What is and is not proven about spend.** Every published dollar figure is the metering proxy's list-price meter. For every counted trial the proxy's meter agrees with its own usage log (`reconcile.json` per trial), and for every counted run the usage log, the per-trial `usage.json` sums and the lease ledger agree to the cent (`bun scripts/reconcile-provider.ts --results <dir>`, written to `results/spend-reconciliation.json`). What is not proven is that the provider billed the same: that check needs an Anthropic Admin API key, which the v0.1 runs did not have, so each run's `spend-reconciliation.json` says "not performed" and carries the per-day sheet to check against the console by hand. Per-trial reconciliation against the provider is not possible with one upstream key (docs/methodology.md, item 3 as amended on 2026-10-24).
 
 ## Changelog
+
+### 2026-10-24: From internal-task, two preregistrations and the QM findings page
+
+Runs `qm-inner-harness-2026-10` (QM over Pi against QM over the Claude Agent SDK, Haiku, 20 held-out tasks, 200 trials, cap $25, sharded by cell across two machines) and `qm-probes-2026-10` (nine product probes on QM's two inner harnesses, two org-setting cells, OpenClaw and Hermes on the shared claims, 96 trials, cap $15) are preregistered with Garry's approval of the reviewed plan recorded in the text; [docs/qm-findings.md](docs/qm-findings.md) opens with the no-Codex finding, the Claude CLI side-traffic limitation, the `readOnly` label note and the strict-posture observation from the smokes.
 
 ### 2026-10-24: From internal-task, QM inner-harness configs
 

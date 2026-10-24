@@ -11,6 +11,7 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 - Adapters: OpenClaw, Hermes, QM and the fake harness append `:t<thread_ts>` to the session key when `TurnRequest.thread_ts` is set (no existing task sets one).
 - Tasks: the optional turn field `thread = "new"` (the runner and the scripted player post the actor's message as a thread root, hand the harness `thread_ts` and post the reply in the thread); the `product_probe` family and eleven `qp-*` dev tasks (memory within and across scopes, sandbox per scope, strict posture, command policy, and a sentinel plant and check for the rig's reset), each with an oracle and a mutation per predicate; a dev cell without a `tasks` list now includes them.
 - `scripts/summarize-run.ts`: a cell made of `product_probe` tasks gets a per-task probe table (`probes` key) and no pooled pass rate or interval (`pass_rate` and `ci95` null, `probe: true`).
+- Preregistrations `docs/benchmarks/2026-10-25-qm-inner-harness/` (run `qm-inner-harness-2026-10`) and `docs/benchmarks/2026-10-25-qm-probes/` (run `qm-probes-2026-10`), with the smoke evidence they rest on; `docs/qm-findings.md` (F1 no Codex inner harness, F2 Claude CLI side traffic, F3 `readOnly` label, F4 strict posture returns no reply); `harnesses/qm/pin.json` records the side traffic as a rig limitation.
 
 ### internal-task: the company brain (build)
 
