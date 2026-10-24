@@ -93,6 +93,15 @@ export class TrialWorld {
     return body.now!;
   }
 
+  /** internal-task: the tap presents the requesting member's gbrain token under member scope. */
+  get gbrainScoped(): boolean { return !!this.server.gbrain()?.tokens; }
+
+  async setGbrainRequester(member: string | null): Promise<void> {
+    const res = await this.admin('/admin/gbrain/requester', { method: 'POST', body: JSON.stringify({ member }) });
+    const body = await res.json() as { ok: boolean; error?: string };
+    if (!body.ok) throw new RunnerError('HE-WORLD-001', `the world refused gbrain requester ${member}: ${body.error}`);
+  }
+
   async fence(): Promise<void> {
     const res = await this.admin('/admin/fence', { method: 'POST', body: '{}' });
     if (!res.ok) throw new RunnerError('HE-WORLD-001', `fence failed: HTTP ${res.status}`);

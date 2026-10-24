@@ -11,7 +11,7 @@ import { taskDirFor, type Cell, type Trial } from '../run.ts';
 import type { WorldEvent } from '../../world/services/events.ts';
 import { loadScript, startScriptedHarness } from '../scripted/executor.ts';
 import { startComposeHarness, startDockerHarness } from './docker.ts';
-import { type GbrainSidecar, startGbrainSidecar } from './gbrain.ts';
+import { type GbrainSidecar, checkCompanyTokens, startGbrainSidecar } from './gbrain.ts';
 import { GBRAIN_WRITE_TOOLS } from '../../world/services/gbrain-tap.ts';
 import { HarnessGone, type Harness, makeTrialDirs, startProcessHarness, writeAtomic } from './harness.ts';
 import { RunProxy, reconcile, summarizeUsage, trialKey, trialSlug } from './proxy.ts';
@@ -97,13 +97,16 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   let sidecar: GbrainSidecar | null = null;
   if (cell.gbrain) {
     try {
-      sidecar = await startGbrainSidecar({ trialId: trial.id, trialSlug: slot, split: cell.split, outDir: join(dirs.root, 'gbrain'), image: opts.gbrainImage, log });
+      sidecar = await startGbrainSidecar({ trialId: trial.id, trialSlug: slot, split: cell.split, outDir: join(dirs.root, 'gbrain'), image: opts.gbrainImage, brain: cell.gbrain.brain, scope: cell.gbrain.scope ?? 'none', log });
+      // internal-task: under member scope the tap needs a granted token for every member who will take a turn (HE-GBRAIN-004).
+      if (sidecar.scope === 'member') checkCompanyTokens(sidecar.tokens, cell.split, task.actors, join(dirs.root, 'gbrain', 'tokens.json'));
     } catch (e) {
+      if (sidecar) await sidecar.stop(5_000).catch(() => undefined);
       if (proxy) { await proxy.finalize(key).catch(() => undefined); await proxy.unbind(slot).catch(() => undefined); }
       world.stop();
       throw e;
     }
-    world.server.setGbrain({ url: sidecar.url, token: sidecar.token });
+    world.server.setGbrain({ url: sidecar.url, token: sidecar.token, ...(sidecar.tokens ? { tokens: { members: sidecar.tokens.members, public_only: sidecar.tokens.public_only } } : {}) });
   }
 
   const env: Record<string, string> = {
@@ -173,6 +176,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       endedEarly = loop.ended_early;
       if (loop.error) error = loop.error;
     }
+    if (world.gbrainScoped) await world.setGbrainRequester(null);
 
     await world.fence();
     const snapshot = await world.snapshot();
@@ -219,12 +223,13 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
 
 /** What the trial's log says about the sidecar: how many gbrain events, how many were tool calls, how many of those
  *  fell inside a turn window (started_seq, ended_seq], how many were writes. The events themselves are the record. */
-export function gbrainSummary(surface: 'starter', sidecar: Pick<GbrainSidecar, 'image' | 'ready_ms'>, events: WorldEvent[], windows: TurnWindow[]): TrialGbrain {
+export function gbrainSummary(surface: 'starter', sidecar: Pick<GbrainSidecar, 'image' | 'ready_ms'> & Partial<Pick<GbrainSidecar, 'image_id' | 'brain' | 'scope'>>, events: WorldEvent[], windows: TurnWindow[]): TrialGbrain {
   const mine = events.filter((e) => e.via === 'gbrain');
   const calls = mine.filter((e) => e.tool !== 'gbrain.initialize' && e.tool !== 'gbrain.tools/list');
   const inTurn = calls.filter((e) => windows.some((w) => e.seq > w.started_seq && e.seq <= w.ended_seq));
   return {
     surface, image: sidecar.image, sidecar_ready_ms: sidecar.ready_ms,
+    ...(sidecar.image_id ? { image_id: sidecar.image_id } : {}), ...(sidecar.brain ? { brain: sidecar.brain } : {}), ...(sidecar.scope ? { scope: sidecar.scope } : {}),
     events: { total: mine.length, discovery: mine.length - calls.length, calls: calls.length, in_turn_calls: inTurn.length, writes: calls.filter((e) => GBRAIN_WRITE_TOOLS.has(e.tool.slice('gbrain.'.length))).length },
   };
 }

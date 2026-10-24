@@ -22,6 +22,9 @@ export interface WorldEvent {
   outcome: 'ok' | 'denied' | 'error';
   error?: string;
   effect?: Record<string, unknown>;
+  /** internal-task (company brain) addition, gbrain events only: whose gbrain token the tap presented upstream: "bot" (the
+   *  trial's unscoped token), a member id (that member's granted token) or "public-only" (member scope before the first turn). */
+  grant?: string;
 }
 
 export function canonical(value: unknown): string {

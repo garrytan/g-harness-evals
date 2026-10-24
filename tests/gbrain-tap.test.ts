@@ -5,11 +5,14 @@
 
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import type { WorldEvent } from '../world/services/events.ts';
-import { collectSlugs, describeCall, parseRpcBody } from '../world/services/gbrain-tap.ts';
+import { collectSlugs, describeCall, grantFor, parseRpcBody } from '../world/services/gbrain-tap.ts';
 import type { WorldServer } from '../world/services/server.ts';
 import { startWorld } from './world-helpers.ts';
 
 const GBRAIN_TOKEN = 'gbrain_' + 'ab'.repeat(32);
+// internal-task (company brain): per-member tokens the upstream also accepts; a granted token sees only its own pages.
+const MEMBER_TOKENS = { members: { 'dana-okafor': 'gbrain_' + 'cd'.repeat(32), 'june-osei': 'gbrain_' + 'ef'.repeat(32) }, public_only: 'gbrain_' + '01'.repeat(32) };
+const ACCEPTED = new Set([GBRAIN_TOKEN, ...Object.values(MEMBER_TOKENS.members), MEMBER_TOKENS.public_only]);
 const seen: Array<{ auth: string | null; accept: string | null; body: unknown }> = [];
 let mode: 'ok' | 'http500' = 'ok';
 
@@ -26,6 +29,8 @@ function toolResult(name: string, args: Record<string, unknown>) {
       ] };
     case 'get_page':
       if (args.slug === 'heldout/chats/nope') return { content: [text({ error: 'page_not_found', code: 'page_not_found', message: 'Page not found' })], isError: true };
+      if (args.slug === 'heldout/emails/sealed' && args.source_id) return { content: [text({ error: 'permission_denied', code: 'permission_denied', message: 'This token cannot read source ' + String(args.source_id) })], isError: true };
+      if (args.slug === 'heldout/emails/sealed') return { content: [text('Something went wrong')], isError: true };
       return { content: [text({ id: 2, slug: args.slug, title: '#coastal-random (export)', compiled_truth: '...' })] };
     case 'remember':
       return { content: [text({ id: '1', status: 'inserted', entity_slug: 'probe' })] };
@@ -45,7 +50,7 @@ const upstream = Bun.serve({
     if (url.pathname === '/health') return Response.json({ status: 'ok' });
     if (url.pathname !== '/mcp') return Response.json({ error: 'not_found' }, { status: 404 });
     if (req.method !== 'POST') return Response.json({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed' }, id: null }, { status: 405, headers: { allow: 'POST, DELETE' } });
-    if (req.headers.get('authorization') !== `Bearer ${GBRAIN_TOKEN}`) return Response.json({ error: 'invalid_token' }, { status: 401 });
+    if (!ACCEPTED.has((req.headers.get('authorization') ?? '').replace(/^Bearer /, ''))) return Response.json({ error: 'invalid_token' }, { status: 401 });
     const body = await req.json() as Record<string, unknown> | Record<string, unknown>[];
     seen.push({ auth: req.headers.get('authorization'), accept: req.headers.get('accept'), body });
     if (mode === 'http500') return Response.json({ error: 'internal' }, { status: 500 });
@@ -151,10 +156,61 @@ test('a batched body yields one event per message', async () => {
   expect(added.map((e) => e.tool)).toEqual(['gbrain.search', 'gbrain.get_page']);
 });
 
-test('a tool result with isError is an error event (tool_error) that still names the requested page', async () => {
+test('a tool result with isError is an error event named by gbrain\'s own code (page_not_found, permission_denied), tool_error without one; it still names the requested page', async () => {
   const res = await tap(ws.credentials.bot.token, call(21, 'get_page', { slug: 'heldout/chats/nope' }));
   expect(res.status).toBe(200);
-  expect(last()).toMatchObject({ tool: 'gbrain.get_page', outcome: 'error', error: 'tool_error', effect: { pages: ['heldout/chats/nope'], count: 1 } });
+  expect(last()).toMatchObject({ tool: 'gbrain.get_page', outcome: 'error', error: 'page_not_found', effect: { pages: ['heldout/chats/nope'], count: 1 }, grant: 'bot' });
+  await tap(ws.credentials.bot.token, call(22, 'get_page', { slug: 'heldout/emails/sealed', source_id: 'team-central' }));
+  expect(last()).toMatchObject({ tool: 'gbrain.get_page', outcome: 'error', error: 'permission_denied', effect: { pages: ['heldout/emails/sealed'], count: 1 } });
+  await tap(ws.credentials.bot.token, call(23, 'get_page', { slug: 'heldout/emails/sealed' }));
+  expect(last()).toMatchObject({ tool: 'gbrain.get_page', outcome: 'error', error: 'tool_error' });
+});
+
+// internal-task (company brain): member scope.
+test('grantFor: no tokens means the bot token; member scope presents public-only outside turns and the requester\'s token inside, null for a member without one', () => {
+  expect(grantFor({ url: 'u', token: 't' }, 'dana-okafor')).toEqual({ grant: 'bot', token: 't' });
+  expect(grantFor({ url: 'u', token: 't', tokens: MEMBER_TOKENS }, null)).toEqual({ grant: 'public-only', token: MEMBER_TOKENS.public_only });
+  expect(grantFor({ url: 'u', token: 't', tokens: MEMBER_TOKENS }, 'june-osei')).toEqual({ grant: 'june-osei', token: MEMBER_TOKENS.members['june-osei'] });
+  expect(grantFor({ url: 'u', token: 't', tokens: MEMBER_TOKENS }, 'nobody')).toEqual({ grant: 'nobody', token: null });
+});
+
+test('under member scope the tap presents the requester\'s token set through /admin/gbrain/requester, public-only before any turn, and every event names its grant; an unknown member is refused and a member without a token is a 502', async () => {
+  ws.setGbrain({ url: `http://127.0.0.1:${upstream.port}`, token: GBRAIN_TOKEN, tokens: MEMBER_TOKENS });
+  const admin = (member: string | null) => fetch(`${ws.url}/admin/gbrain/requester`, { method: 'POST', headers: { authorization: `Bearer ${ws.credentials.admin_token}`, 'content-type': 'application/json' }, body: JSON.stringify({ member }) });
+  try {
+    expect(ws.gbrainRequester()).toBeNull();
+    seen.length = 0;
+    await tap(ws.credentials.bot.token, call(51, 'search', { query: 'before any turn' }));
+    expect(seen.at(-1)!.auth).toBe(`Bearer ${MEMBER_TOKENS.public_only}`);
+    expect(last()).toMatchObject({ tool: 'gbrain.search', grant: 'public-only', actor: 'assistant' });
+
+    const set = await admin('dana-okafor');
+    expect(await set.json()).toEqual({ ok: true, member: 'dana-okafor' });
+    expect(ws.gbrainRequester()).toBe('dana-okafor');
+    expect(ws.log.events.at(-1)).toMatchObject({ via: 'runner', tool: 'gbrain.requester', kind: 'admin', args: { member: 'dana-okafor' }, actor: null });
+    await tap(ws.credentials.bot.token, call(52, 'get_page', { slug: 'heldout/chats/coastal-team-banter' }));
+    expect(seen.at(-1)!.auth).toBe(`Bearer ${MEMBER_TOKENS.members['dana-okafor']}`);
+    expect(last()).toMatchObject({ tool: 'gbrain.get_page', grant: 'dana-okafor', outcome: 'ok' });
+
+    expect((await admin('nobody-here')).status).toBe(400);
+    expect(ws.gbrainRequester()).toBe('dana-okafor');
+    expect((await fetch(`${ws.url}/admin/gbrain/requester`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ member: null }) })).status).toBe(401);
+
+    await admin('kwame-adjei');
+    const before = gbrainEvents().length;
+    const res = await tap(ws.credentials.bot.token, call(53, 'search', { query: 'no token for kwame' }));
+    expect(res.status).toBe(502);
+    expect((await res.json() as { error: { message: string } }).error.message).toContain('no gbrain token for member kwame-adjei');
+    expect(gbrainEvents().length).toBe(before);
+
+    await admin(null);
+    expect(ws.gbrainRequester()).toBeNull();
+    await tap(ws.credentials.bot.token, call(54, 'search', { query: 'after the turns' }));
+    expect(last()).toMatchObject({ grant: 'public-only' });
+  } finally {
+    await admin(null);
+    ws.setGbrain({ url: `http://127.0.0.1:${upstream.port}`, token: GBRAIN_TOKEN });
+  }
 });
 
 test('an upstream 500 is relayed and recorded as upstream_500; an unreachable upstream is a 502 and upstream_unreachable', async () => {

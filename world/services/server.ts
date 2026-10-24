@@ -58,6 +58,8 @@ export interface WorldServer {
   /** Point POST /gbrain at a sidecar (or null to remove the route); the runner calls this once the sidecar is healthy. */
   setGbrain(upstream: GbrainUpstream | null): void;
   gbrain(): GbrainUpstream | null;
+  /** internal-task: the member whose turn is running, whose gbrain token the tap presents under member scope; null outside turns. */
+  gbrainRequester(): string | null;
   stop(): void;
 }
 
@@ -89,6 +91,7 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
   };
 
   let gbrain: GbrainUpstream | null = opts.gbrain ?? null;
+  let gbrainRequester: string | null = null;
   const resolveActor = (r: Request): Member | null => { const t = tokenFrom(r, {}); return t ? memberForToken(t) : null; };
 
   let origin = '';
@@ -119,7 +122,7 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
 
       if (path === '/mcp') return handleMcpRequest(req, service, resolveActor);
 
-      if (path === '/gbrain' && gbrain) return handleGbrainRequest(req, { upstream: gbrain, resolveActor, log });
+      if (path === '/gbrain' && gbrain) return handleGbrainRequest(req, { upstream: gbrain, resolveActor, log, requester: () => gbrainRequester });
 
       if (path === '/clock' && req.method === 'GET') {
         return Response.json({ now: clock.nowIso(), today: clock.today(), epoch_ms: clock.nowMs(), ...clock.state() });
@@ -147,6 +150,15 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
         return Response.json({ ok: true, fenced: true });
       }
       if (path === '/admin/socket') return Response.json({ connections: socket.connections, unacked: socket.unacked.size });
+      if (path === '/admin/gbrain/requester' && req.method === 'POST') {
+        // internal-task: the runner names the requesting member at each turn's start and clears it when the turns are over.
+        const body = (await req.json().catch(() => ({}))) as { member?: unknown };
+        if (body.member !== null && typeof body.member !== 'string') return Response.json({ ok: false, error: 'member must be a member id or null' }, { status: 400 });
+        if (typeof body.member === 'string' && !world.members.some((m) => m.id === body.member && (m.split === 'both' || m.split === opts.split))) return Response.json({ ok: false, error: `unknown member ${body.member}` }, { status: 400 });
+        gbrainRequester = body.member as string | null;
+        log.append({ actor: null, via: 'runner', tool: 'gbrain.requester', kind: 'admin', args: { member: gbrainRequester }, outcome: 'ok' });
+        return Response.json({ ok: true, member: gbrainRequester });
+      }
 
       return Response.json({ ok: false, error: 'not_found' }, { status: 404 });
     },
@@ -167,6 +179,7 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
     socket,
     setGbrain: (u) => { gbrain = u; },
     gbrain: () => gbrain,
+    gbrainRequester: () => gbrainRequester,
     stop: () => server.stop(true),
   };
 }

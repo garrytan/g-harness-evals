@@ -142,6 +142,10 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
     if (c.gbrain !== undefined) {
       if (c.gbrain?.surface !== 'starter') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.surface must be "starter" (the pinned surface, gbrain/pin.json); got ${JSON.stringify(c.gbrain)}`);
       if (scripted) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: a scripted cell cannot carry gbrain; a script plays the bot over world-MCP and has no harness to call the brain`);
+      // internal-task (company brain): brain and scope are additive; a cell without them is the gbrain arm's cell.
+      if (c.gbrain.brain !== undefined && c.gbrain.brain !== 'bot-visible' && c.gbrain.brain !== 'company') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.brain must be "bot-visible" or "company"; got ${JSON.stringify(c.gbrain.brain)}`);
+      if (c.gbrain.scope !== undefined && c.gbrain.scope !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope must be "member" or absent; got ${JSON.stringify(c.gbrain.scope)}`);
+      if (c.gbrain.scope === 'member' && c.gbrain.brain !== 'company') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope "member" needs gbrain.brain "company"; only the company brain carries member tokens`);
     }
   }
   if (!(prereg.spend_cap_usd > 0)) throw new RunnerError('HE-BUDGET-002', 'spend_cap_usd must be > 0; the cap is written into the preregistration, never passed ad hoc');
@@ -226,7 +230,10 @@ export function renderPlan(m: Manifest): string {
   for (const c of m.cells) {
     const mine = m.trials.filter((t) => t.cell === c.id);
     const turns = mine.reduce((a, t) => a + (t.turns ?? 0), 0);
-    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${c.gbrain.surface}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
+    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${c.gbrain.surface}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
+  }
+  for (const c of m.cells) {
+    if (c.gbrain?.brain === 'company' && c.preamble !== 'tasks/multiuser/_shared/preamble.gbrain-company.md') lines.push(`WARN: cell ${c.id} serves the company brain with preamble ${c.preamble ?? 'tasks/multiuser/_shared/preamble.md'}, not the company one (tasks/multiuser/_shared/preamble.gbrain-company.md); intended only for a none-style arm on the company brain`);
   }
   if (m.cells.some((c) => c.gbrain)) lines.push(`GBRAIN: cells ${m.cells.filter((c) => c.gbrain).map((c) => c.id).join(', ')} run with a gbrain sidecar per trial (image ${DEFAULT_GBRAIN_IMAGE} unless --gbrain-image; keyless, starter surface; docs/gbrain-arm.md)`);
   if (m.cost_ceiling_usd > m.spend_cap_usd) lines.push(`WARN: HE-BUDGET-003 cost ceiling ${m.cost_ceiling_usd} exceeds the preregistered cap ${m.spend_cap_usd}; cells past the cap stop incomplete in drop order`);
@@ -270,7 +277,20 @@ async function main(argv: string[]): Promise<number> {
       const { gbrainImagePresent, probeGbrainImage } = await import('./trial/gbrain.ts');
       if (!gbrainImagePresent(image)) throw new RunnerError('HE-GBRAIN-002', `gbrain sidecar image ${image} is not present for cells ${gbrainCells.map((c) => c.id).join(', ')}; fix: docker build -f gbrain/Dockerfile -t ${image} .`);
       const probe = await probeGbrainImage(image, join(dirname(flag('--manifest')!), 'preflight-gbrain'));
-      console.log(`GBRAIN: image ${image} serves /health (gbrain ${probe.version ?? 'unknown'}, ready in ${probe.ready_ms} ms) for cells ${gbrainCells.map((c) => `${c.id} (surface ${c.gbrain!.surface})`).join(', ')}`);
+      console.log(`GBRAIN: image ${image} serves /health (gbrain ${probe.version ?? 'unknown'}, ready in ${probe.ready_ms} ms) for cells ${gbrainCells.map((c) => `${c.id} (surface ${c.gbrain!.surface}${c.gbrain!.brain ? `, brain ${c.gbrain!.brain}` : ''}${c.gbrain!.scope ? `, scope ${c.gbrain!.scope}` : ''})`).join(', ')}`);
+      // internal-task: a company brain is probed per split under the unscoped token and must list every page the build holds.
+      const companySplits = [...new Set(gbrainCells.filter((c) => c.gbrain!.brain === 'company').map((c) => c.split))];
+      if (companySplits.length) {
+        const { probeCompanyBrain } = await import('./trial/gbrain.ts');
+        const { companyPageList } = await import('../gbrain/build-brain.ts');
+        const { worldAt, DEFAULT_WORLD_PATH } = await import('./trial/world.ts');
+        const world = worldAt(DEFAULT_WORLD_PATH);
+        for (const split of companySplits) {
+          const scope = gbrainCells.some((c) => c.gbrain!.brain === 'company' && c.split === split && c.gbrain!.scope === 'member') ? 'member' : 'none';
+          const probe = await probeCompanyBrain(image, split, companyPageList(world, split), join(dirname(flag('--manifest')!), `preflight-gbrain-company-${split}`), scope);
+          console.log(`GBRAIN: image ${image} id=${probe.image_id} brain=company scope=${scope} split=${split} pages=${probe.listed} (${Object.entries(probe.by_kind).map(([k, v]) => `${k} ${v}`).join(', ')}) under the unscoped token${scope === 'member' ? `, tokens=${probe.member_tokens} plus public-only: ${probe.member_check}` : ''}, ready in ${probe.ready_ms} ms`);
+        }
+      }
     }
     console.log(`PREFLIGHT: ok run=${m.run_id} trials=${m.trials.length}`);
     return 0;

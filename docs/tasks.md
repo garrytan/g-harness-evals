@@ -47,6 +47,7 @@ tasks/multiuser/dev/si-01-quarrendon-seats/
   grader/check.ts    optional: a custom predicate module when the library is not enough
 tasks/multiuser/_shared/preamble.md   the one system preamble every harness gets, with {{placeholders}}
 tasks/multiuser/_shared/preamble.gbrain.md   the same plus rule 7 (gbrain is installed, check it first), for the gbrain arm's gbrain-told cells
+tasks/multiuser/_shared/preamble.gbrain-company.md   rule 7 saying the brain holds every page of the company, for the company-brain run's told cells (internal-task)
 tasks/multiuser/heldout/MANIFEST.json the sealed digest of the held-out tree
 ```
 

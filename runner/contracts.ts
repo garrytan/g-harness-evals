@@ -177,12 +177,24 @@ export interface TrialUsage {
  *  world's /gbrain tap. surface is the gbrain tool surface the sidecar serves; only "starter" (33 tools) is pinned. */
 export interface GbrainCellConfig {
   surface: 'starter';
+  /** internal-task (company brain) addition: the prebuilt brain the sidecar serves. Absent or "bot-visible" is the gbrain arm's
+   *  brain; "company" holds every record of the split behind per-member source grants (docs/gbrain-arm.md, "Company brain"). */
+  brain?: 'bot-visible' | 'company';
+  /** internal-task addition: "member" makes the world's tap present the requesting member's gbrain token (public-only before
+   *  the first turn) instead of the trial's one unscoped token; company brain only. Absent: every call carries the
+   *  unscoped token and the brain answers as the bot. */
+  scope?: 'member';
 }
 
 /** gbrain arm lane D addition: what the runner records about a trial's sidecar in trials.jsonl. */
 export interface TrialGbrain {
   surface: 'starter';
   image: string;
+  /** internal-task additions, absent in records written before it: the brain and scope the sidecar ran with and the docker
+   *  image id behind the tag, so a record names the exact brain it was served from. */
+  brain?: 'bot-visible' | 'company';
+  scope?: 'none' | 'member';
+  image_id?: string;
   /** Milliseconds from docker run to a healthy sidecar with a token on disk. */
   sidecar_ready_ms: number;
   /** via "gbrain" events in the trial's log: tools/list and initialize, tools/call, and how many fell inside a turn window. */

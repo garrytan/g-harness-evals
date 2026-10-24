@@ -7,6 +7,13 @@
 // One WorldEvent per JSON-RPC message for initialize, tools/list and tools/call (nothing for
 // notifications, ping or other methods), recorded after the upstream reply so outcome and latency are
 // known. effect.pages carries the gbrain page slugs the call returned or targeted.
+//
+// internal-task (company brain): under member scope the upstream also carries the company brain's per-member tokens, and
+// the tap presents the token of the member whose turn is running (the requester the runner sets through
+// POST /admin/gbrain/requester), or the public-only token before the first turn. The requester is read once, before
+// the first await, so a turn change while a request is in flight cannot swap its token. Every gbrain event names the
+// token it went out under in grant, and a tool result gbrain refused is classified by gbrain's own error code
+// (permission_denied, page_not_found) instead of the generic tool_error.
 
 import type { Member } from '../types.ts';
 import type { EventLog } from './events.ts';
@@ -14,7 +21,10 @@ import type { EventLog } from './events.ts';
 export interface GbrainUpstream {
   /** Base URL of the sidecar, for example http://127.0.0.1:41234; the tap posts to <url>/mcp. */
   url: string;
+  /** The trial's unscoped token, minted by the sidecar; the only token without member scope. */
   token: string;
+  /** internal-task: member scope. The company brain's tokens.json: one granted token per member and the public-only token. */
+  tokens?: { members: Record<string, string>; public_only: string };
 }
 
 /** Starter-surface tools that change the brain; every other tool, and initialize and tools/list, is a read. */
@@ -86,7 +96,10 @@ export function describeCall(request: RpcMessage, reply: RpcMessage | undefined,
   if (upstreamStatus !== null && (upstreamStatus < 200 || upstreamStatus >= 300)) { outcome = 'error'; error = `upstream_${upstreamStatus}`; }
   else if (!reply) { outcome = 'error'; error = 'no_response'; }
   else if (reply.error) { outcome = 'error'; error = `rpc_${reply.error.code ?? 'error'}`; }
-  else if (result?.isError === true) { outcome = 'error'; error = 'tool_error'; }
+  else if (result?.isError === true) {
+    const code = resultPayloads(result).map((p) => (p && typeof p === 'object' ? (p as { code?: unknown }).code : undefined)).find((v) => typeof v === 'string' && /^[a-z_]+$/.test(v));
+    outcome = 'error'; error = typeof code === 'string' ? code : 'tool_error';
+  }
   if (method === 'tools/list') {
     effect.count = Array.isArray(result?.tools) ? (result!.tools as unknown[]).length : 0;
   } else if (method === 'tools/call') {
@@ -108,7 +121,16 @@ export interface GbrainTapOptions {
   upstream: GbrainUpstream;
   resolveActor: (req: Request) => Member | null;
   log: EventLog;
+  /** internal-task: the member whose turn is running, or null outside every turn; only read under member scope. */
+  requester?: () => string | null;
   fetchImpl?: typeof fetch;
+}
+
+/** internal-task: which token the tap presents for this request, named as the event's grant. */
+export function grantFor(upstream: GbrainUpstream, requester: string | null): { grant: string; token: string | null } {
+  if (!upstream.tokens) return { grant: 'bot', token: upstream.token };
+  if (requester === null) return { grant: 'public-only', token: upstream.tokens.public_only };
+  return { grant: requester, token: upstream.tokens.members[requester] ?? null };
 }
 
 export async function handleGbrainRequest(req: Request, o: GbrainTapOptions): Promise<Response> {
@@ -118,10 +140,12 @@ export async function handleGbrainRequest(req: Request, o: GbrainTapOptions): Pr
   }
   const actor = o.resolveActor(req);
   if (!actor) return rpcError(401, -32001, 'unknown or missing bearer token', { 'www-authenticate': 'Bearer realm="world-gbrain"' });
+  const { grant, token } = grantFor(o.upstream, o.requester?.() ?? null);
+  if (token === null) return rpcError(502, -32000, `no gbrain token for member ${grant}; the company brain's tokens.json does not cover this requester`);
   const bodyText = await req.text();
   const requests = parseRpcBody(bodyText, 'application/json');
   const headers: Record<string, string> = {
-    authorization: `Bearer ${o.upstream.token}`,
+    authorization: `Bearer ${token}`,
     'content-type': req.headers.get('content-type') ?? 'application/json',
     accept: req.headers.get('accept') ?? 'application/json, text/event-stream',
   };
@@ -147,7 +171,7 @@ export async function handleGbrainRequest(req: Request, o: GbrainTapOptions): Pr
     const reply = request.id !== undefined && request.id !== null ? byId.get(String(request.id)) : undefined;
     const d = describeCall(request, reply, latency, fetchError ? 502 : status);
     if (!d) continue;
-    o.log.append({ actor: actor.id, via: 'gbrain', tool: d.tool, kind: d.kind, args: d.args, outcome: d.outcome, ...(d.error ? { error: fetchError ? 'upstream_unreachable' : d.error } : {}), effect: { ...d.effect } });
+    o.log.append({ actor: actor.id, via: 'gbrain', tool: d.tool, kind: d.kind, args: d.args, outcome: d.outcome, ...(d.error ? { error: fetchError ? 'upstream_unreachable' : d.error } : {}), effect: { ...d.effect }, grant });
   }
   if (!upstream) return rpcError(502, -32000, `gbrain upstream unreachable: ${fetchError}`);
   const out = new Headers();

@@ -76,6 +76,9 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
       sim_now: simNow,
       time_budget_s: o.task.time_budget_s,
     };
+    // internal-task: under member scope the brain answers this turn as the requester; the setting persists through wait_s
+    // until the next turn's bracket, and the trial clears it after the last turn.
+    if (o.world.gbrainScoped) await o.world.setGbrainRequester(actor.member.id);
     const started_seq = o.world.lastSeq;
     const started_wall = new Date().toISOString();
     writeRequest(o.turnsDir, req);
