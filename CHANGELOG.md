@@ -54,6 +54,11 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 - `scripts/compare-run.ts --pair gbrain`: within-run paired comparison of each harness with and without gbrain over the capable families and all tasks, with cost and latency deltas, written to `comparisons.gbrain.json`; `scripts/paired-mdd.ts`: the minimum detectable difference of that design from an existing run.
 - `tests/scripts-gbrain.test.ts` and the gbrain cases in `tests/grade.test.ts`.
 
+### internal-task: failure taxonomy
+
+- `scripts/taxonomy.ts`: for a run's `trials.jsonl` (or `trials.regraded.jsonl` with `--regraded`), every failed required predicate and forbidden effect labelled with the first matching observed mode (approval relay, cross-scope read, leak, scheduled digest by capability, tool error, wrong target or content, refusal, source not read, read but not found, read but wrong, no reply, no receipts), with the facts behind the label (which oracle sources were read with an ok outcome, which reads the world denied, whether the reply in the turn's own conversation declines or says not found, which writes the world refused) and provenance (classifier version, git commit, sha256 of the trials file, every task.toml and oracle.json read, and the world manifest; the rule order and the refusal and not-found patterns, printed in `taxonomy.md`); `--trial <id>` prints one trial's observations; `--calibration` scores hand labels, read by default from `<run>/taxonomy-calibration.jsonl`; `<run>/taxonomy-annotations.jsonl` marks task or grader defects a report already records as `exam_defect`. Writes `taxonomy.json` and `taxonomy.md` beside `trials.jsonl`; keyless; deterministic apart from `generated_at`.
+- `results/taxonomy.{json,md}` for the pilot (as recorded and regraded), the held-out run and the Haiku sensitivity run; `taxonomy-calibration.jsonl` (30 hand-labelled failures across the three, 30 of 30 agree; 25 of 30 before the two rule changes the sample prompted) and the pilot's `taxonomy-annotations.jsonl`; a taxonomy section in each of the three reports, including the `ho-03` one-attendee event read from the OpenClaw Haiku transcripts; `tests/taxonomy.test.ts`.
+
 ## [0.0.5] - 2026-10-23
 
 ### M3 sensitivity cell run and reported

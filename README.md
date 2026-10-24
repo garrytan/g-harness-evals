@@ -25,6 +25,7 @@ The first counted comparison has run: the v0.1 multi-user cell on 20 sealed held
 | M3 sensitivity cell (same tasks, claude-haiku-5-5): preregistration, report and receipts | [docs/benchmarks/2026-10-24-m3-sensitivity-haiku/](docs/benchmarks/2026-10-24-m3-sensitivity-haiku/) |
 | M2 pilot: preregistration, report and receipts (dev split, three harnesses, five repetitions) | [docs/benchmarks/2026-10-23-m2-pilot/](docs/benchmarks/2026-10-23-m2-pilot/) |
 | The gbrain arm: a gbrain sidecar per trial beside the world tools, the world's `/gbrain` tap, runner and adapter wiring, smoke evidence | [docs/gbrain-arm.md](docs/gbrain-arm.md), [gbrain/](gbrain/README.md) |
+| Failure taxonomy of the three v0.1 runs: every failed predicate labelled with an observed mode and one line of evidence, with a hand-labelled calibration sample (`bun scripts/taxonomy.ts --results <dir>`) | [scripts/taxonomy.ts](scripts/taxonomy.ts), `results/taxonomy.md` under each run above, taxonomy section of each report |
 | Open work carried out of the plan review | [TODOS.md](TODOS.md) |
 
 ## How the comparison works, in short
@@ -50,6 +51,10 @@ None of these calls a model API. A paid run is `bun runner/run.ts plan --prereg 
 **What is and is not proven about spend.** Every published dollar figure is the metering proxy's list-price meter. For every counted trial the proxy's meter agrees with its own usage log (`reconcile.json` per trial), and for every counted run the usage log, the per-trial `usage.json` sums and the lease ledger agree to the cent (`bun scripts/reconcile-provider.ts --results <dir>`, written to `results/spend-reconciliation.json`). What is not proven is that the provider billed the same: that check needs an Anthropic Admin API key, which the v0.1 runs did not have, so each run's `spend-reconciliation.json` says "not performed" and carries the per-day sheet to check against the console by hand. Per-trial reconciliation against the provider is not possible with one upstream key (docs/methodology.md, item 3 as amended on 2026-10-24).
 
 ## Changelog
+
+### 2026-10-24: Failure taxonomy (internal-task)
+
+harness-evals v0.0.5. `scripts/taxonomy.ts` labels every failed required predicate of a graded run with an observed failure mode from `events.jsonl`, `turns.jsonl` and the task's oracle, one line of evidence each, and records the facts behind the label and the classifier's provenance (rule order, patterns, digests of every task and oracle read). Each v0.1 report gains a taxonomy section; pass rates are unchanged. A 30-failure hand-labelled sample agrees with the script on all 30 after two rule changes it prompted (25 before).
 
 ### 2026-10-24: Spend reconciliation (internal-task)
 
