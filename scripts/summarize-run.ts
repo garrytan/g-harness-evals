@@ -200,13 +200,19 @@ if (families.length) {
 }
 const secondaryIds = [...new Set(rows.flatMap((t) => view(t).predicates.filter((p) => p.kind === 'secondary').map((p) => p.id)))].sort();
 if (secondaryIds.length) {
-  out.push('Secondary predicates (recorded, never part of the grade): passes / trials carrying the predicate');
+  out.push('Secondary predicates (recorded, never part of the grade): passes / trials carrying the predicate, then the same among trials that passed the task');
   out.push(`| Predicate (capability) | ${cells.join(' | ')} |`);
   out.push(`|---|${cells.map(() => '---').join('|')}|`);
-  const sec: Record<string, Record<string, { passes: number; trials: number; capability: string | null }>> = {};
+  const sec: Record<string, Record<string, { passes: number; trials: number; passing_trials: number; passes_among_passing: number; capability: string | null }>> = {};
   for (const id of secondaryIds) {
     const cap = rows.flatMap((t) => view(t).predicates).find((p) => p.kind === 'secondary' && p.id === id)?.capability ?? null;
-    out.push(`| ${id}${cap ? ` (${cap})` : ''} | ${cells.map((c) => { const ps = rows.filter((t) => t.cell === c).map((t) => view(t).predicates.find((p) => p.kind === 'secondary' && p.id === id)).filter((p): p is NonNullable<typeof p> => !!p); (sec[c] ??= {})[id] = { passes: ps.filter((p) => p.passed).length, trials: ps.length, capability: cap }; return `${ps.filter((p) => p.passed).length}/${ps.length}`; }).join(' | ')} |`);
+    out.push(`| ${id}${cap ? ` (${cap})` : ''} | ${cells.map((c) => {
+      const carrying = rows.filter((t) => t.cell === c).map((t) => ({ t, p: view(t).predicates.find((p) => p.kind === 'secondary' && p.id === id) })).filter((x): x is { t: TrialRecord; p: NonNullable<typeof x.p> } => !!x.p);
+      const passing = carrying.filter((x) => passed(x.t));
+      const entry = { passes: carrying.filter((x) => x.p.passed).length, trials: carrying.length, passing_trials: passing.length, passes_among_passing: passing.filter((x) => x.p.passed).length, capability: cap };
+      (sec[c] ??= {})[id] = entry;
+      return `${entry.passes}/${entry.trials} (${entry.passes_among_passing}/${entry.passing_trials} passing)`;
+    }).join(' | ')} |`);
   }
   summary.secondary = sec;
   out.push('');

@@ -58,6 +58,20 @@ describe('task set v0.1', () => {
   });
 });
 
+describe('task set v0.2', () => {
+  test('30 tasks: 15 dev and 15 held-out, eight each in continuity, synthesis and corrections, six in approval_relay', () => {
+    const root = join(ROOT, 'v0.2');
+    expect(taskDirs(root, 'dev')).toHaveLength(15);
+    expect(taskDirs(root, 'heldout')).toHaveLength(15);
+    const families = new Map<string, number>();
+    for (const dir of SPLITS.flatMap((s) => taskDirs(root, s))) {
+      const t = loadTask(dir);
+      families.set(t.family, (families.get(t.family) ?? 0) + 1);
+    }
+    expect([...families.entries()].sort()).toEqual([['approval_relay', 6], ['continuity', 8], ['corrections', 8], ['synthesis', 8]]);
+  });
+});
+
 for (const set of SETS.slice(1)) {
   describe(`task set ${set.name}`, () => {
     test('every task is in one of the four v0.2 families and names its split directory', () => {

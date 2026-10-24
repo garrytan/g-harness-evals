@@ -2,7 +2,7 @@
 
 A multi-user task is a short scripted conversation between named Pemberline members and the harness under test, acting as the workspace bot `assistant` in the simulated company ([world/](../world/README.md)). The runner posts each member's message into the world, hands the harness a turn, posts the harness's reply back as the bot, and after the last turn fences the world, snapshots it and grades from the snapshot and the event log only (methodology items 5, 7 and 8). The agent's words are graded only where they land in the world as bot messages; nothing is graded from logs the agent controls.
 
-The 30 original tasks live under `tasks/multiuser/dev/` (10, public; since internal-task the dev directory also holds the 11 `qp-*` product probes, "QM probes" below) and `tasks/multiuser/heldout/` (20, sealed before the counted run: `tasks/multiuser/heldout/MANIFEST.json` holds the sha256 of every file, written by `bun scripts/seal-heldout.ts` and checked by `tests/heldout-manifest.test.ts`). The list is in [tasks/multiuser/README.md](../tasks/multiuser/README.md). Five families of six, from the plan:
+The 30 tasks of the v0.1 set live under `tasks/multiuser/dev/` (10, public; since internal-task the dev directory also holds the 11 `qp-*` product probes, "QM probes" below) and `tasks/multiuser/heldout/` (20, sealed before the counted run: `tasks/multiuser/heldout/MANIFEST.json` holds the sha256 of every file, written by `bun scripts/seal-heldout.ts` and checked by `tests/heldout-manifest.test.ts`). The list is in [tasks/multiuser/README.md](../tasks/multiuser/README.md). Five families of six, from the plan:
 
 | Family | `family` | What it tests |
 |---|---|---|
@@ -23,6 +23,8 @@ The 30 tasks above are task set **v0.1**, the root of `tasks/multiuser/`. A late
 | Multi-source synthesis | `synthesis` | the answer needs three or more channel pages, public files or in-trial posts, with a keyword distractor that must be excluded |
 | Corrections | `corrections` | a figure or owner is stated and later retracted; the right answer is the retraction while the superseded value stays visible |
 | Approval relay across sessions | `approval_relay` | an approval asked in one conversation is granted in another, later; the bot acts on a valid grant and not on a grant from the wrong person |
+
+The v0.2 set holds 30 tasks, 15 dev and 15 held-out (eight each in continuity, synthesis and corrections, six in approval relay), listed in [tasks/multiuser/v0.2/README.md](../tasks/multiuser/v0.2/README.md); `tests/task-matrix.test.ts` asserts the counts.
 
 ## Access model in M1
 

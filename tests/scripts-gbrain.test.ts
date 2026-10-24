@@ -301,14 +301,14 @@ describe('summarize-run families, exclusions and secondary predicates (internal-
     expect(r.stdout).toContain('| c-dev | 20 (4 x 5) | 20 | 100% [100%, 100%] | 5 | 0 | 0 (0) | completed 20, infra_error 5 | 0 | 0 | $0.25 |');
     expect(r.stdout).toContain('| a-m2-gbrain-dev | 24 (5 x 4.8) | 10 |');
     expect(r.stdout).toContain('| scope_isolation | 5/5 (1 tasks) |');
-    expect(r.stdout).toContain('| no_reread (memory) | 1/5 | 0/0 |');
+    expect(r.stdout).toContain('| no_reread (memory) | 1/5 (1/5 passing) | 0/0 (0/0 passing) |');
     expect(r.stdout).toContain('Excluded from scoring (methodology item 9): 6 trial(s): model_error 1, infra_error 5');
     const summary = JSON.parse(readFileSync(join(dir, 'summary.json'), 'utf8'));
     expect(summary.cells['c-dev']).toMatchObject({ n: 20, passes: 20, excluded: 5 });
     expect(summary.cells['c-dev'].usd_total).toBeCloseTo(0.25, 6);
     expect(summary.cells['c-dev'].terminations).toEqual({ completed: 20, infra_error: 5 });
     expect(summary.families['c-dev']).toEqual({ handoff: { passes: 5, trials: 5, tasks: 1 }, org_security: { passes: 5, trials: 5, tasks: 1 }, scheduled: { passes: 5, trials: 5, tasks: 1 }, scope_isolation: { passes: 5, trials: 5, tasks: 1 }, shared_channel: { passes: 0, trials: 0, tasks: 0 } });
-    expect(summary.secondary['a-dev']).toEqual({ no_reread: { passes: 1, trials: 5, capability: 'memory' } });
+    expect(summary.secondary['a-dev']).toEqual({ no_reread: { passes: 1, trials: 5, passing_trials: 5, passes_among_passing: 1, capability: 'memory' } });
     expect(r.stdout).not.toContain('no_reread 4');
   });
 });

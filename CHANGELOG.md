@@ -38,6 +38,7 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 - `scripts/seal-heldout.ts`: `--task-set <set>` seals that set's held-out tree; `--check` checks every sealed set, refuses an unsealed tree that holds tasks and an unknown set name (HE-TASK-SEAL); the v0.1 manifest is unchanged.
 - `scripts/summarize-run.ts`: trials ending as `model_error`, `infra_error` or `exam_fault` leave the scored rows and denominators (methodology item 9) and are counted in an Excluded column and `excluded` key, their spend kept; a per-cell x family table and a secondary-predicate table, with `families` and `secondary` keys in `summary.json`.
 - Tests: the matrix test discovers every task set, asserts a v0.2 task's family is one of the four, checks every hidden fact against the whole world seed of its split, and for a non-v0.1 oracle requires every bot call to return `ok` and at least one world read; `tests/heldout-manifest.test.ts` iterates every set.
+- Tasks: the v0.2 set, 30 tasks (15 dev with a NOTES.md each, 15 held-out under `tasks/multiuser/v0.2/heldout/MANIFEST.json`), eight each in continuity, synthesis and corrections and six in approval relay, listed in `tasks/multiuser/v0.2/README.md`; the matrix test asserts the counts. The secondary-predicate table of `summarize-run` also reports passes among trials that passed the task.
 
 ### internal-task: the company brain (runner and tap)
 
