@@ -17,10 +17,20 @@
     "slice": "bot-visible brains (world/seed/world.json): source_slugs of non-DM channels loaded for the split plus files with visibility public loaded for the split; company brains: every channel and DM page, every file, every email and every meeting loaded for the split; page slug <split>/<corpus slug> in both"
   },
   "engine": "pglite",
-  "surface": "starter",
+  "surface": "starter (default; the cell's gbrain.surface picks starter or verbs, internal-task)",
   "tools_on_surface": 33,
-  "embeddings": "off (gbrain init --no-embedding; import --no-embed); search is keyword-only and the brain makes no model or embedding call",
-  "model_calls": "none; the sidecar environment carries no ANTHROPIC_API_KEY or OPENAI_API_KEY and no provider base URL",
+  "embeddings": {
+    "default": "off (gbrain init --no-embedding; import --no-embed): search is keyword-only and the brain makes no model or embedding call",
+    "model": "openai:text-embedding-3-small",
+    "dimensions": 1536,
+    "not_gbrain_default": "gbrain's new-install default is voyage:voyage-4; this repository has no Voyage key, so the embedded brains use gbrain's documented OpenAI alternative, priced in runner/pricing/embedding-pricing.ts at $0.02 per million tokens",
+    "route": "requests leave through OPENAI_BASE_URL only, pointing at the metering proxy's slot URL (http://host.docker.internal:<port>/<slot>/openai); gbrain treats a configured base URL as satisfying the OpenAI key requirement and sends Bearer unauthenticated; the proxy injects the key on the host and meters each /v1/embeddings call; no key in the container or the build",
+    "build": "scripts/build-gbrain-image.sh --embedded: the builder stage run as a container with /brain bind-mounted, build-brain.ts --embeddings <model> (init --embedding-model, import, embed --stale --catch-up --json --yes), the proxy's usage summary written into the brain's manifest.json, then the embedded Dockerfile target",
+    "brains": "/brains/dev-embedded and /brains/heldout-embedded, bot-visible only; served when the cell's gbrain.embeddings names the model (HE_GBRAIN_EMBEDDINGS)",
+    "query_embed_timeout_ms": 20000,
+    "query_embed_timeout_note": "GBRAIN_QUERY_EMBED_TIMEOUT_MS the entrypoint sets for an embedded brain (gbrain's default is 6000): past it gbrain continues keyword-only and stamps search_degraded, so a semantic trial with a degraded stamp is excluded (HE-GBRAIN-005, runner); the value is above the proxy round trip measured in the ladder's smoke at parallel 3"
+  },
+  "model_calls": "none from a keyword brain; an embedded brain embeds each search, query or recall query through OPENAI_BASE_URL (the metering proxy), metered per trial; the sidecar environment carries no ANTHROPIC_API_KEY or OPENAI_API_KEY",
   "init": [
     "gbrain",
     "init",
@@ -57,11 +67,15 @@
     "GBRAIN_SKIP_STARTUP_HOOKS": "1",
     "GBRAIN_REMOTE_PRIVATE_PAGES": "1 for a company brain only (HE_GBRAIN_BRAIN=company); unset for bot-visible",
     "HE_GBRAIN_BRAIN": "bot-visible | company: which /brains entry the entrypoint copies to /brain",
-    "HE_GBRAIN_SCOPE": "none | member: with member the entrypoint also copies the company brain's tokens.json to $HE_GBRAIN_OUT for the world's tap, which presents the requesting member's token per turn"
+    "HE_GBRAIN_SCOPE": "none | member: with member the entrypoint also copies the company brain's tokens.json to $HE_GBRAIN_OUT for the world's tap, which presents the requesting member's token per turn",
+    "HE_GBRAIN_SURFACE": "starter | verbs: the --surface the entrypoint passes to gbrain serve (internal-task)",
+    "HE_GBRAIN_EMBEDDINGS": "off | openai:text-embedding-3-small: with a model the entrypoint serves /brains/<split>-embedded and requires OPENAI_BASE_URL (internal-task)",
+    "OPENAI_BASE_URL": "the metering proxy slot URL, embedded brains only; a route, never a key",
+    "GBRAIN_QUERY_EMBED_TIMEOUT_MS": "20000 for an embedded brain (embeddings.query_embed_timeout_ms)"
   },
   "auth": "gbrain auth create trial-<trial id>; the bearer token gbrain_<hex> goes to $HE_GBRAIN_OUT/token (mode 0600) and nowhere else; only the world's /gbrain tap presents it; under scope member the tap presents the requesting member's build-time token from tokens.json instead, and public-only before the first turn",
   "wire": "POST /mcp, Authorization: Bearer <token>, Accept: application/json, text/event-stream; replies are SSE-framed JSON-RPC (event: message / data: {...}); GET /mcp is 405; /health is unauthenticated",
-  "image": "harness-eval/gbrain:dev (gbrain/Dockerfile, built from the repository root with -f gbrain/Dockerfile); /brains/dev, /brains/heldout, /brains/dev-company and /brains/heldout-company with manifest.json each (tokens.json beside the company brains); the company-brain run builds the same Dockerfile as harness-eval/gbrain:company and passes --gbrain-image so the gbrain arm's :dev tag is untouched while that arm runs",
+  "image": "harness-eval/gbrain:dev (gbrain/Dockerfile, built from the repository root with -f gbrain/Dockerfile or scripts/build-gbrain-image.sh); /brains/dev, /brains/heldout, /brains/dev-company and /brains/heldout-company with manifest.json each (tokens.json beside the company brains), /install (the install bundle, internal-task); the embedded target adds /brains/dev-embedded and /brains/heldout-embedded; the company-brain run builds the same Dockerfile as harness-eval/gbrain:company and passes --gbrain-image so the gbrain arm's :dev tag is untouched while that arm runs",
   "reaches": "the host loopback only, through a published port; the harness container reaches gbrain only through the world's POST /gbrain tap",
   "brains": {
     "bot-visible": "/brains/<split>: one default source, built by gbrain/build-brain.ts --brain bot-visible (the gbrain arm)",
@@ -85,5 +99,55 @@
     "--no-embed",
     "--allow-noncanonical-root",
     "--json"
-  ]
+  ],
+  "surfaces": {
+    "starter": {
+      "tools": 33,
+      "search_tool": "search",
+      "note": "the gbrain arm's surface; search is keyword-only on a keyword brain and every result carries gbrain's degraded_recall notice; recall is present here too"
+    },
+    "verbs": {
+      "tools": 7,
+      "names": [
+        "remember",
+        "entity",
+        "synthesize",
+        "forget",
+        "recall",
+        "context_pack",
+        "delta"
+      ],
+      "search_tool": "recall",
+      "note": "gbrain's memory-verb surface (docs/protocol/MEMORY_VERBS_v1.md); recall returns an object whose results carry slug; synthesize always errors without a chat key, counted as a gbrain error and stated as a difference from a keyed install; no get_page, search or query"
+    },
+    "verified_by": "tools/list through the sidecar at the pinned commit (tests/gbrain-image.test.ts with HE_GBRAIN_IMAGE set)"
+  },
+  "install": {
+    "bundle": "/install in the image, built by gbrain/build-install.ts at image build with no key; manifest.json lists every file's sha256 and the kept slugs of each compiled context; gbrain/export-install.sh exports one harness and split view with its own manifest (view_digest)",
+    "openclaw": {
+      "doc": "docs/mcp/OPENCLAW.md (openclaw mcp add; the world's tap stands in for the server command, as the gbrain arm already does) and INSTALL_FOR_AGENTS.md step 5",
+      "commands": [
+        "gbrain skillpack scaffold --harness openclaw --workspace <workspace> --json"
+      ],
+      "writes": "<workspace>/skills: 64 skills in 127 files at this commit, including brain-ops (the brain-first lookup skill) and conventions/brain-first.md",
+      "lands_at": "/workspace/skills, OpenClaw's configured workspace, copied by harnesses/openclaw/adapter.sh under HE_GBRAIN_INSTALL=gbrain-docs"
+    },
+    "hermes": {
+      "doc": "docs/mcp/HERMES.md (register the server; gbrain compile-context --target hermes --include-core writes the always-loaded core memory Hermes's prompt builder reads from the cwd) and INSTALL_FOR_AGENTS.md step 5 (cd <workspace> && gbrain skillpack scaffold --all)",
+      "commands": [
+        "gbrain skillpack scaffold --all --workspace <workspace> --json",
+        "gbrain compile-context --target hermes --include-core --out <workspace>/.hermes.md"
+      ],
+      "writes": "<workspace>/skills (the same 64 skills) and .hermes.md: every page of the split as slug, title and an excerpt (dev 18 pages, about 700 tokens; held-out 25 pages, about 940 tokens; the eval brains have no core pages, so the index is what --include-core adds)",
+      "lands_at": "/workspace/skills and /workspace/.hermes.md, copied by harnesses/hermes/adapter.sh under HE_GBRAIN_INSTALL=gbrain-docs; whether Hermes loads either is recorded from the smoke in harnesses/hermes/pin.json",
+      "explicit_workspace": "the docs' cd form does not resolve an empty directory at this commit, so --workspace is passed"
+    },
+    "excluded": {
+      "openclaw_context_engine_plugin": "docs/mcp/OPENCLAW.md's first shape, the gbrain-context-engine bundle plugin, runs gbrain as a stdio subprocess inside the harness and takes over OpenClaw's context-engine slot; excluded because it bypasses the world tap, so no gbrain call would reach events.jsonl and nothing would be gradable (TODOS.md: a tapped stdio bridge)",
+      "qm": "gbrain documents no install path for QM, so the docs rung does not exist for it"
+    }
+  },
+  "gbrain_check": {
+    "note": "the image accepts any commit through the GBRAIN_COMMIT build arg (a full sha or a branch; shallow fetch); GBRAIN_VERSION is checked only when set; /opt/sidecar/image.json records the resolved commit and the checkout's VERSION; scripts/gbrain-check.ts builds harness-eval/gbrain:check-<sha12> through scripts/build-gbrain-image.sh"
+  }
 }

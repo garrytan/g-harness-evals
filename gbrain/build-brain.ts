@@ -20,10 +20,17 @@
 // name docs/gbrain-arm.md and the grader use. A listed page missing from the corpus fails the build.
 // gbrain runs with an environment that holds no API key: init prints its search-mode notice and picks
 // keyword-only search because nothing else is available; import runs with --no-embed.
+//
+// internal-task (the install ladder): --embeddings openai:text-embedding-3-small builds a bot-visible brain whose chunks carry
+// embeddings. Still no key: OPENAI_BASE_URL in the environment must name the metering proxy's slot URL (gbrain treats a
+// configured base URL as satisfying the OpenAI key requirement and sends "Bearer unauthenticated"; the proxy injects the
+// key on the host and meters every call). init takes --embedding-model, import runs without --no-embed (at this commit
+// import leaves a backlog), and `gbrain embed --stale --catch-up --json --yes` embeds the backlog; the manifest records the
+// model, the dimensions and gbrain's embed summary, and scripts/build-gbrain-image.sh adds the proxy's usage summary.
 
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import type { Member, Split, World, WorldFile } from '../world/types.ts';
 
@@ -43,6 +50,18 @@ export interface BrainPage {
   visibility: 'channel' | 'public';
 }
 
+/** internal-task: how an embedded brain was built. The usage summary is added by scripts/build-gbrain-image.sh from the proxy's ledger. */
+export interface BrainEmbeddings {
+  model: string;
+  dimensions: number;
+  route: 'OPENAI_BASE_URL';
+  init: string[];
+  embed: string[];
+  /** gbrain's `embed --stale` JSON summary (embedded, pages_processed, failures and the rest) plus backlog_after from a dry run, both zero. */
+  embed_summary: Record<string, unknown>;
+  usage?: { requests: number; input_tokens: number; usd: number; run_id: string };
+}
+
 export interface BrainManifest {
   schema_version: 1;
   gbrain_commit: string;
@@ -51,7 +70,8 @@ export interface BrainManifest {
   split: 'dev' | 'heldout';
   world_id: string;
   built_at: string;
-  embeddings: 'off';
+  /** 'off' (keyword-only, the gbrain arm) or the embedding record (internal-task). */
+  embeddings: 'off' | BrainEmbeddings;
   pages: BrainPage[];
   counts: { channel_pages: number; public_files: number; total: number };
   import: Record<string, unknown>;
@@ -265,7 +285,15 @@ export function keylessEnv(home: string): Record<string, string> {
     CI: '1',
   };
   for (const k of ['LANG', 'LC_ALL', 'TMPDIR', 'BUN_INSTALL']) if (process.env[k]) env[k] = process.env[k]!;
+  // internal-task: the embedding route and its timeouts pass through; they name a proxy, never a key.
+  for (const k of ['OPENAI_BASE_URL', 'GBRAIN_QUERY_EMBED_TIMEOUT_MS', 'GBRAIN_AI_EMBED_TIMEOUT_MS']) if (process.env[k]) env[k] = process.env[k]!;
   return env;
+}
+
+/** An empty <dir>: its entries are removed, the directory itself kept (it may be a bind mount, which cannot be removed). */
+function emptyDir(dir: string): void {
+  mkdirSync(dir, { recursive: true });
+  for (const e of readdirSync(dir)) rmSync(join(dir, e), { recursive: true, force: true });
 }
 
 function run(cmd: string[], env: Record<string, string>, label: string): { stdout: string; stderr: string } {
@@ -289,11 +317,18 @@ export interface BuildOptions {
   corpusRepo: string;
   /** bot-visible (default) or company (docs/gbrain-arm.md, "Company brain"). */
   brain?: 'bot-visible' | 'company';
+  /** internal-task: an embedding model (openai:text-embedding-3-small); bot-visible only; needs OPENAI_BASE_URL in the environment. */
+  embeddings?: string;
   log?: (line: string) => void;
 }
 
+/** The embedding models a brain may be built with: priced in runner/pricing/embedding-pricing.ts and served by the proxy's /v1/embeddings route. */
+export const EMBEDDING_MODELS = ['openai:text-embedding-3-small'] as const;
+
 export function buildBrain(o: BuildOptions): BrainManifest | CompanyBrainManifest {
+  if (o.brain === 'company' && o.embeddings) throw new Error('--embeddings is for bot-visible brains only; the company brains are keyword-only');
   if (o.brain === 'company') return buildCompanyBrain(o);
+  if (o.embeddings && !(EMBEDDING_MODELS as readonly string[]).includes(o.embeddings)) throw new Error(`--embeddings must be one of ${EMBEDDING_MODELS.join(', ')} (got ${o.embeddings})`);
   const log = o.log ?? ((l) => console.error(l));
   const world = JSON.parse(readFileSync(o.worldPath, 'utf8')) as World;
   const listed = pageList(world, o.split);
@@ -315,12 +350,14 @@ export function buildBrain(o: BuildOptions): BrainManifest | CompanyBrainManifes
   if (missing.length) throw new Error(`${missing.length} listed page(s) missing from ${o.corpus}: ${missing.join(', ')}`);
   log(`${o.split}: staged ${pages.length} pages (${pages.filter((p) => p.kind === 'channel').length} channel pages, ${pages.filter((p) => p.kind === 'file').length} public files) under ${o.staging}`);
 
-  rmSync(o.out, { recursive: true, force: true });
-  mkdirSync(o.out, { recursive: true });
+  emptyDir(o.out);
   const env = keylessEnv(resolve(o.out));
-  const init = run([...o.gbrain, 'init', '--pglite', '--non-interactive', '--no-embedding'], env, 'gbrain init');
+  if (o.embeddings && !env.OPENAI_BASE_URL) throw new Error('--embeddings needs OPENAI_BASE_URL in the environment (the metering proxy slot URL); no key is ever read here');
+  const initArgs = o.embeddings ? ['init', '--pglite', '--non-interactive', '--embedding-model', o.embeddings] : ['init', '--pglite', '--non-interactive', '--no-embedding'];
+  const init = run([...o.gbrain, ...initArgs], env, 'gbrain init');
   log(`gbrain init: ${(init.stdout + init.stderr).split('\n').filter((l) => /search|embedding|engine/i.test(l)).slice(0, 3).join(' | ')}`);
-  const imp = run([...o.gbrain, 'import', resolve(o.staging), '--no-embed', '--allow-noncanonical-root', '--json'], env, 'gbrain import');
+  const importArgs = ['import', resolve(o.staging), ...(o.embeddings ? [] : ['--no-embed']), '--allow-noncanonical-root', '--json'];
+  const imp = run([...o.gbrain, ...importArgs], env, 'gbrain import');
   const summaryLine = imp.stdout.split('\n').reverse().find((l) => l.trim().startsWith('{'));
   if (!summaryLine) throw new Error(`gbrain import printed no JSON summary\n${imp.stderr.slice(-800)}`);
   const summary = JSON.parse(summaryLine) as Record<string, unknown>;
@@ -328,6 +365,31 @@ export function buildBrain(o: BuildOptions): BrainManifest | CompanyBrainManifes
     throw new Error(`gbrain import did not import exactly ${pages.length} pages: ${summaryLine}`);
   }
   log(`gbrain import: ${summary.imported} pages in ${summary.duration_s} s`);
+  let embeddings: BrainManifest['embeddings'] = 'off';
+  if (o.embeddings) {
+    // At this commit import leaves every chunk in the embedding backlog; --yes is the operator's consent to the paid
+    // call, which the proxy's lease bounds. Every page must come out embedded with no failure.
+    const embedArgs = ['embed', '--stale', '--catch-up', '--json', '--yes'];
+    const emb = run([...o.gbrain, ...embedArgs], env, 'gbrain embed --stale');
+    // The summary is pretty-printed JSON: parse from the last line that is exactly "{" to the end.
+    const lines = emb.stdout.split('\n');
+    const start = lines.map((l) => l.trim()).lastIndexOf('{');
+    const embLine = start >= 0 ? lines.slice(start).join('\n').trim() : '';
+    if (!embLine) throw new Error(`gbrain embed --stale printed no JSON summary\n${(emb.stdout + emb.stderr).slice(-800)}`);
+    const embedSummary = JSON.parse(embLine) as Record<string, unknown>;
+    if (Number(embedSummary.failures) !== 0) throw new Error(`gbrain embed --stale reported failures: ${embLine.slice(0, 600)}`);
+    // Import may already have embedded some chunks at this commit, so the proof is an empty backlog afterwards, not a count.
+    const check = run([...o.gbrain, 'embed', '--stale', '--dry-run', '--json'], env, 'gbrain embed --stale --dry-run');
+    const checkLines = check.stdout.split('\n');
+    const checkStart = checkLines.map((l) => l.trim()).lastIndexOf('{');
+    const backlog = JSON.parse(checkLines.slice(checkStart).join('\n').trim()) as Record<string, unknown>;
+    if (Number(backlog.would_embed) !== 0 || Number(backlog.total_chunks) !== 0) throw new Error(`chunks without an embedding remain after gbrain embed --stale: ${JSON.stringify({ would_embed: backlog.would_embed, total_chunks: backlog.total_chunks })}`);
+    embedSummary.backlog_after = { would_embed: backlog.would_embed, total_chunks: backlog.total_chunks };
+    const config = JSON.parse(readFileSync(join(o.out, '.gbrain', 'config.json'), 'utf8')) as { embedding_model?: string; embedding_dimensions?: number };
+    if (config.embedding_model !== o.embeddings || !config.embedding_dimensions) throw new Error(`config.json records embedding_model ${config.embedding_model} (${config.embedding_dimensions} dims), expected ${o.embeddings}`);
+    embeddings = { model: o.embeddings, dimensions: config.embedding_dimensions, route: 'OPENAI_BASE_URL', init: ['gbrain', ...initArgs], embed: ['gbrain', ...embedArgs], embed_summary: embedSummary };
+    log(`gbrain embed: ${embedSummary.embedded} chunks over ${embedSummary.pages_processed} pages, ${config.embedding_dimensions} dims, through OPENAI_BASE_URL`);
+  }
 
   const version = run([...o.gbrain, '--version'], env, 'gbrain --version').stdout.trim().match(/\d+\.\d+\.\d+(\.\d+)?/)?.[0] ?? null;
   const manifest: BrainManifest = {
@@ -338,7 +400,7 @@ export function buildBrain(o: BuildOptions): BrainManifest | CompanyBrainManifes
     split: o.split,
     world_id: world.world_id,
     built_at: new Date().toISOString(),
-    embeddings: 'off',
+    embeddings,
     pages,
     counts: { channel_pages: pages.filter((p) => p.kind === 'channel').length, public_files: pages.filter((p) => p.kind === 'file').length, total: pages.length },
     import: summary,
@@ -377,8 +439,7 @@ export function buildCompanyBrain(o: BuildOptions): CompanyBrainManifest {
   const counts = Object.fromEntries((['channel', 'dm', 'contract', 'ticket', 'crm', 'profile', 'update', 'digest', 'note', 'email', 'meeting'] as CompanyPageKind[]).map((k) => [k, pages.filter((p) => p.kind === k).length])) as Record<CompanyPageKind, number>;
   log(`${o.split} company: staged ${pages.length} pages in ${sources.length} sources (${Object.entries(counts).filter(([, n]) => n).map(([k, n]) => `${n} ${k}`).join(', ')}) under ${o.staging}`);
 
-  rmSync(o.out, { recursive: true, force: true });
-  mkdirSync(o.out, { recursive: true });
+  emptyDir(o.out);
   const env = keylessEnv(resolve(o.out));
   const init = run([...o.gbrain, 'init', '--pglite', '--non-interactive', '--no-embedding'], env, 'gbrain init');
   log(`gbrain init: ${(init.stdout + init.stderr).split('\n').filter((l) => /search|embedding|engine/i.test(l)).slice(0, 3).join(' | ')}`);
@@ -447,7 +508,7 @@ function arg(name: string, fallback?: string): string | undefined {
 if (import.meta.main) {
   const split = arg('split');
   const brain = arg('brain', 'bot-visible');
-  if ((split !== 'dev' && split !== 'heldout') || (brain !== 'bot-visible' && brain !== 'company')) { console.error('usage: bun gbrain/build-brain.ts --split dev|heldout [--brain bot-visible|company] --corpus <dir> --world <world.json> --out <brain home> [--staging <dir>] [--gbrain "<cmd>"] [--commit <sha>] [--corpus-commit <sha>]'); process.exit(2); }
+  if ((split !== 'dev' && split !== 'heldout') || (brain !== 'bot-visible' && brain !== 'company')) { console.error('usage: bun gbrain/build-brain.ts --split dev|heldout [--brain bot-visible|company] [--embeddings openai:text-embedding-3-small] --corpus <dir> --world <world.json> --out <brain home> [--staging <dir>] [--gbrain "<cmd>"] [--commit <sha>] [--corpus-commit <sha>]'); process.exit(2); }
   const pin = JSON.parse(readFileSync(join(import.meta.dir, 'pin.json'), 'utf8')) as { gbrain: { commit: string }; corpus: { repo: string; commit: string } };
   try {
     const m = buildBrain({
@@ -457,12 +518,13 @@ if (import.meta.main) {
       out: resolve(arg('out', join('/brains', brain === 'company' ? `${split}-company` : split))!),
       staging: resolve(arg('staging', join('/tmp', `gbrain-staging-${split}${brain === 'company' ? '-company' : ''}`))!),
       brain,
+      embeddings: arg('embeddings'),
       gbrain: (arg('gbrain', 'gbrain')!).split(' ').filter(Boolean),
       commit: arg('commit', pin.gbrain.commit)!,
       corpusCommit: arg('corpus-commit', pin.corpus.commit)!,
       corpusRepo: pin.corpus.repo,
     });
-    console.log(JSON.stringify({ split: m.split, brain, pages: m.counts, ...('sources' in m ? { sources: m.sources.length, tokens: m.grants.length } : {}), gbrain_version: m.gbrain_version, out: arg('out', join('/brains', brain === 'company' ? `${split}-company` : split)) }));
+    console.log(JSON.stringify({ split: m.split, brain, pages: m.counts, ...('sources' in m ? { sources: m.sources.length, tokens: m.grants.length } : {}), embeddings: m.embeddings === 'off' ? 'off' : { model: m.embeddings.model, dimensions: m.embeddings.dimensions }, gbrain_version: m.gbrain_version, out: arg('out', join('/brains', brain === 'company' ? `${split}-company` : split)) }));
   } catch (e) {
     console.error(`build-brain failed: ${(e as Error).message}`);
     process.exit(1);

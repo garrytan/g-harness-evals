@@ -61,3 +61,12 @@ Every runner, proxy and adapter failure prints one line that starts with its cod
 | HE-RECONCILE-002 | a malformed or truncated Admin API page (no `data[]`, `has_more` without a fresh cursor, more than 50 pages) | nothing is written; run again, and report the request id if it repeats | scripts/reconcile-provider.ts |
 | HE-RECONCILE-003 | a results directory lacks `trials.jsonl`, `proxy-usage.ndjson`, a ledger lease for the run, or a harness trial has no usage block; or `--provider-fixture` was combined with `--write` | pass the directory that holds `trials.jsonl`; finish an incomplete run with `--resume` first; a fixture never stamps a run | scripts/reconcile-provider.ts |
 | HE-RECONCILE-004 | provider usage differs from the proxy by more than 1% in a settled day x model cell | the file is written with status `performed_mismatch`; label the run's cost figures "unreconciled" in its report and look for other spend on the same key and day (TODOS) | scripts/reconcile-provider.ts |
+
+## From the install ladder, internal-task
+
+One meaning per code. HE-GBRAIN-001 covers every bad gbrain cell field value once the ladder's runner lands; HE-GBRAIN-005 and later are the ladder's.
+
+| Code | What | Fix / recovery | Where |
+|---|---|---|---|
+| HE-GBRAIN-006 | the install bundle: `export-install.sh` was asked for a harness or split the bundle has no view of, the image has no `/install`, or an exported view does not match the bundle manifest; later, a gbrain-docs cell's exported view is missing or a file's digest differs | rebuild the image (`scripts/build-gbrain-image.sh`); the view is `<openclaw|hermes> <dev|heldout>`; read the view's `manifest.json` | gbrain/export-install.sh (runner preflight and trial once the runner lands) |
+| HE-GBRAIN-007 | `scripts/build-gbrain-image.sh`: a docker build (keyword, builder or embedded target) or an embedded brain build failed; the message names the failing stage and the last 20 lines of `<out>/build.log`; exit 2 | read the log; a bad `--gbrain` is a fetch failure in the base stage (pass a full sha or a branch that exists on garrytan/gbrain); an embedded failure with a proxy refusal is in `<out>/proxy.log` | scripts/build-gbrain-image.sh |
