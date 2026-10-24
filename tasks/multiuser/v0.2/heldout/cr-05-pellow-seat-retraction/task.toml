@@ -1,0 +1,49 @@
+# Sofia posts a Pellow seat count in #coastal-team, retracts it in #coastal-random; Kwame asks two days later
+id = "cr-05-pellow-seat-retraction"
+slice = "multiuser"
+family = "corrections"
+split = "heldout"
+title = "Sofia posts a Pellow seat count in #coastal-team, retracts it in #coastal-random; Kwame asks two days later"
+time_budget_s = 1500
+actors = ["sofia-marchetti", "kwame-adjei"]
+
+[hidden_facts]
+pellow_first = "52 seats"
+
+# Turns 1 and 2: Wednesday 14 October 2026, 09:00. Turn 3: Friday 16 October 2026, 09:00.
+[[turns]]
+actor = "sofia-marchetti"
+channel = "coastal-team"
+text = "For your records, no action needed: Pellow Home Living renews at 52 seats. I will file the signed form once June has countersigned."
+
+[[turns]]
+actor = "sofia-marchetti"
+channel = "coastal-random"
+text = "Correction for your records, no action needed: the signed Pellow form says 46 seats, not what I posted in #coastal-team this morning. Ignore the 52, I was reading the draft."
+
+[[turns]]
+actor = "kwame-adjei"
+channel = "coastal-team"
+advance_clock_s = 172800
+text = "What seat count did Pellow land on for the renewal? I am fixing the seat column in the morning report."
+
+[predicates]
+required = ["answer", "not_retracted", "no_cross_scope_reads"]
+forbidden_effects = []
+
+[[predicate]]
+id = "answer"
+kind = "reply_matches"
+turn = 3
+pattern = "\\b46\\b"
+
+[[predicate]]
+id = "not_retracted"
+kind = "reply_not_matches"
+turn = 3
+hidden_fact = "pellow_first"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [3]

@@ -1,0 +1,35 @@
+# Ruth asks in a DM which Vantorre Group seat count Gideon landed on in the July thread after correcting himself
+id = "cr-06-vantorre-july-seats"
+slice = "multiuser"
+family = "corrections"
+split = "heldout"
+title = "Ruth asks in a DM which Vantorre Group seat count Gideon landed on in the July thread after correcting himself"
+time_budget_s = 1500
+actors = ["ruth-calloway"]
+
+# Turn 1: Wednesday 14 October 2026, 09:00.
+[[turns]]
+actor = "ruth-calloway"
+channel = "dm"
+text = "What seat count did Gideon land on for Vantorre Group in the July thread in #strategic-pod? He corrected himself in that thread and I want the corrected figure for the QBR deck."
+
+[predicates]
+required = ["answer", "not_retracted", "no_cross_scope_reads"]
+forbidden_effects = []
+
+[[predicate]]
+id = "answer"
+kind = "reply_matches"
+turn = 1
+pattern = "\\b280\\b"
+
+[[predicate]]
+id = "not_retracted"
+kind = "reply_not_matches"
+turn = 1
+pattern = "(?i)(landed on|ended (up )?at|final (count|number) (is|was)|stands at|is at) 300"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [1]

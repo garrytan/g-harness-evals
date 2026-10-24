@@ -1,0 +1,41 @@
+# Gideon posts that Moss's 30 Sep digest has the Orlavine seat count wrong; Ruth asks for the current count two days later
+id = "cr-08-orlavine-seat-count"
+slice = "multiuser"
+family = "corrections"
+split = "heldout"
+title = "Gideon posts that Moss's 30 Sep digest has the Orlavine seat count wrong; Ruth asks for the current count two days later"
+time_budget_s = 1500
+actors = ["gideon-sato", "ruth-calloway"]
+
+# Turn 1: Wednesday 14 October 2026, 09:00. Turn 2: Friday 16 October 2026, 09:00.
+[[turns]]
+actor = "gideon-sato"
+channel = "strategic-pod"
+text = "For your records, no action needed: Moss's 30 Sep digest has Orlavine wrong. Orlavine Medical Supply is at 50 seats, not 55. I have asked Moss to fix the digest."
+
+[[turns]]
+actor = "ruth-calloway"
+channel = "strategic-pod"
+advance_clock_s = 172800
+text = "What is the current Orlavine Medical Supply seat count? I am filling in the pod sheet."
+
+[predicates]
+required = ["answer", "not_retracted", "no_cross_scope_reads"]
+forbidden_effects = []
+
+[[predicate]]
+id = "answer"
+kind = "reply_matches"
+turn = 2
+pattern = "\\b50\\b"
+
+[[predicate]]
+id = "not_retracted"
+kind = "reply_not_matches"
+turn = 2
+pattern = "(?i)(is at|stands at|currently (at|has)|now (at|has)) 55 seats|\\b55 seats (today|now|currently)"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [2]

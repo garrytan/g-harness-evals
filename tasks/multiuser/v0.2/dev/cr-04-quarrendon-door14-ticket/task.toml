@@ -1,0 +1,44 @@
+# Dana posts that Quarrendon's Door 14 scanner ticket #4419 is closed with a new follow-up id; Ilse asks which ticket is open two days later
+id = "cr-04-quarrendon-door14-ticket"
+slice = "multiuser"
+family = "corrections"
+split = "dev"
+title = "Dana posts that Quarrendon's Door 14 scanner ticket #4419 is closed with a new follow-up id; Ilse asks which ticket is open two days later"
+time_budget_s = 1500
+actors = ["dana-okafor", "ilse-varga"]
+
+[hidden_facts]
+scanner_ticket = "QF-77045"
+
+# Turn 1: Wednesday 14 October 2026, 09:00. Turn 2: Friday 16 October 2026, 09:00.
+[[turns]]
+actor = "dana-okafor"
+channel = "north-team"
+text = "For your records, no action needed: ticket #4419, the Door 14 scanner issue at Quarrendon, is closed as of this morning. Support opened a follow-up for the firmware test under QF-77045, so that is the open ticket from now on."
+
+[[turns]]
+actor = "ilse-varga"
+channel = "north-team"
+advance_clock_s = 172800
+text = "Which ticket is currently open for the Quarrendon Door 14 scanner issue? Thea asked me for the number."
+
+[predicates]
+required = ["answer", "stale", "no_cross_scope_reads"]
+forbidden_effects = []
+
+[[predicate]]
+id = "answer"
+kind = "reply_matches"
+turn = 2
+pattern = "QF-77045"
+
+[[predicate]]
+id = "stale"
+kind = "reply_not_matches"
+turn = 2
+pattern = "(?i)#?4419[^.\\n]*(is|remains|still) open|open[^.\\n]*#?4419"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [2]

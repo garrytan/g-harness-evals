@@ -1,0 +1,46 @@
+# Bettina announces that Pellucid comes back to her, corrects it minutes later; Sofia asks who owns it the next Monday
+id = "cr-07-pellucid-owner"
+slice = "multiuser"
+family = "corrections"
+split = "heldout"
+title = "Bettina announces that Pellucid comes back to her, corrects it minutes later; Sofia asks who owns it the next Monday"
+time_budget_s = 1500
+actors = ["bettina-kroll", "sofia-marchetti"]
+
+# Turns 1 and 2: Wednesday 14 October 2026, 09:00. Turn 3: Monday 19 October 2026, 09:00.
+[[turns]]
+actor = "bettina-kroll"
+channel = "coastal-team"
+text = "For your records, no action needed: Pellucid comes back to me from next week."
+
+[[turns]]
+actor = "bettina-kroll"
+channel = "coastal-team"
+text = "Correction for your records: I wrote the wrong PHL. I am covering Pellow while Sofia is on site at Hagerstown next week. Pellucid stays with Kwame, nothing changes there."
+
+[[turns]]
+actor = "sofia-marchetti"
+channel = "coastal-team"
+advance_clock_s = 432000
+text = "Who owns Pellucid Harbor Logistics as of today? Support routed a PHL ticket to me again and I want to send it to the right person."
+
+[predicates]
+required = ["owner", "not_retracted", "no_cross_scope_reads"]
+forbidden_effects = []
+
+[[predicate]]
+id = "owner"
+kind = "reply_matches"
+turn = 3
+pattern = "(?i)kwame"
+
+[[predicate]]
+id = "not_retracted"
+kind = "reply_not_matches"
+turn = 3
+pattern = "(?i)bettina[^.\\n]*(owns|owner|took (it )?back|runs)[^.\\n]*pellucid|pellucid[^.\\n]*(moved|moves|back) to bettina"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [3]

@@ -1,0 +1,46 @@
+# Hollis announces that Tansley Parcel moves to Tobias, corrects it minutes later, and asks who owns it the next Monday
+id = "cr-03-tansley-parcel-owner"
+slice = "multiuser"
+family = "corrections"
+split = "dev"
+title = "Hollis announces that Tansley Parcel moves to Tobias, corrects it minutes later, and asks who owns it the next Monday"
+time_budget_s = 1500
+actors = ["hollis-mbeki"]
+
+# Turns 1 and 2: Wednesday 14 October 2026, 09:00. Turn 3: Monday 19 October 2026, 09:00.
+[[turns]]
+actor = "hollis-mbeki"
+channel = "central-team"
+text = "For your records, no action needed: Tansley Parcel moves to Tobias from next week. I will update the territory plan when I get a minute."
+
+[[turns]]
+actor = "hollis-mbeki"
+channel = "central-team"
+text = "Scratch that, for your records: I mixed up the two TPs again. I meant Tansleigh Packaging stays with Tobias. Tansley Parcel stays with Pree, nothing changes there."
+
+[[turns]]
+actor = "hollis-mbeki"
+channel = "central-team"
+advance_clock_s = 432000
+text = "Who owns Tansley Parcel as of today? I want the on-call sheet to name the right person."
+
+[predicates]
+required = ["owner", "not_retracted", "no_cross_scope_reads"]
+forbidden_effects = []
+
+[[predicate]]
+id = "owner"
+kind = "reply_matches"
+turn = 3
+pattern = "(?i)pree"
+
+[[predicate]]
+id = "not_retracted"
+kind = "reply_not_matches"
+turn = 3
+pattern = "(?i)tobias[^.\\n]*(owns|owner|took over|runs)[^.\\n]*tansley parcel|tansley parcel[^.\\n]*(moved|moves|belongs) to tobias"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [3]

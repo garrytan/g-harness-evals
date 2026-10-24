@@ -1,0 +1,50 @@
+# Marcus posts a Brackenwater seat count in #north-team, retracts it in #north-random; Ilse asks two days later
+id = "cr-01-brackenwater-seat-retraction"
+slice = "multiuser"
+family = "corrections"
+split = "dev"
+title = "Marcus posts a Brackenwater seat count in #north-team, retracts it in #north-random; Ilse asks two days later"
+time_budget_s = 1500
+actors = ["marcus-lindqvist", "ilse-varga"]
+
+[hidden_facts]
+brackenwater_first = "48 seats"
+brackenwater_final = "44 seats"
+
+# Turns 1 and 2: Wednesday 14 October 2026, 09:00. Turn 3: Friday 16 October 2026, 09:00.
+[[turns]]
+actor = "marcus-lindqvist"
+channel = "north-team"
+text = "For your records, no action needed: Brackenwater Freight's 2026 renewal is at 48 seats. I will drop the signed form in the folder once June countersigns."
+
+[[turns]]
+actor = "marcus-lindqvist"
+channel = "north-random"
+text = "Correction for your records, again no action needed: the signed Brackenwater form says 44 seats, not the number I posted in #north-team this morning. Ignore the 48, I read the wrong line."
+
+[[turns]]
+actor = "ilse-varga"
+channel = "north-team"
+advance_clock_s = 172800
+text = "What seat count did Brackenwater land on for 2026? I am updating the renewal tracker and want the settled number."
+
+[predicates]
+required = ["answer", "not_retracted", "no_cross_scope_reads"]
+forbidden_effects = []
+
+[[predicate]]
+id = "answer"
+kind = "reply_matches"
+turn = 3
+pattern = "\\b44\\b"
+
+[[predicate]]
+id = "not_retracted"
+kind = "reply_not_matches"
+turn = 3
+hidden_fact = "brackenwater_first"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [3]
