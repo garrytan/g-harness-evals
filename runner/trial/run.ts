@@ -94,10 +94,13 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
   let exit: 0 | 3 = 0;
   try {
     if (needsProxy) {
+      // internal-task: a cell with embeddings on sends the sidecar's query embeddings through the same proxy, so the embedding model
+      // joins the allowlist and the proxy binds every interface (the sidecar is a container whatever the harness mode).
+      const embeddingModels: string[] = [...new Set(manifest.cells.map((c) => c.gbrain?.embeddings ?? 'off').filter((m) => m !== 'off'))];
       proxy = await RunProxy.start({
         runId: manifest.run_id, runDir, ledgerPath: opts.ledgerPath ?? join(runDir, 'ledger.sqlite'), leaseUsd: opts.leaseUsd ?? manifest.spend_cap_usd,
-        allowModels: [...new Set(manifest.cells.map((c) => c.model).filter((m) => m !== 'none'))], maxOutputTokens: opts.maxOutputTokens,
-        reachableFromContainers: docker, env: opts.proxyEnv, newRun: opts.newLease,
+        allowModels: [...new Set([...manifest.cells.map((c) => c.model).filter((m) => m !== 'none'), ...embeddingModels])], maxOutputTokens: opts.maxOutputTokens,
+        reachableFromContainers: docker || embeddingModels.length > 0, env: opts.proxyEnv, newRun: opts.newLease,
       });
       log(`metering proxy on port ${proxy.port}, lease $${opts.leaseUsd ?? manifest.spend_cap_usd} in ${proxy.ledgerPath}`);
     }

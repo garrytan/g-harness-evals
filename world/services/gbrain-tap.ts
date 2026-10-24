@@ -14,6 +14,10 @@
 // the first await, so a turn change while a request is in flight cannot swap its token. Every gbrain event names the
 // token it went out under in grant, and a tool result gbrain refused is classified by gbrain's own error code
 // (permission_denied, page_not_found) instead of the generic tool_error.
+//
+// internal-task (the install ladder): recall joins search and query in the row-count branch (its results carry slug, so
+// cross-scope reads on the verbs surface are measurable), and effect.degraded carries gbrain's own stamp when a reply
+// fell back to keyword search (recall's search_degraded or facts_degraded.reason), which the runner's semantic check reads.
 
 import type { Member } from '../types.ts';
 import type { EventLog } from './events.ts';
@@ -78,7 +82,18 @@ function resultPayloads(result: Record<string, unknown>): unknown[] {
   return out;
 }
 
-export interface GbrainEffect { pages: string[]; count: number; latency_ms: number }
+export interface GbrainEffect { pages: string[]; count: number; latency_ms: number; /** internal-task: gbrain's degraded stamp on a search, query or recall reply, when present. */ degraded?: string }
+
+/** internal-task: recall's search_degraded or facts_degraded.reason from a result payload; null when the reply carries neither. */
+export function degradedStampOf(payloads: unknown[]): string | null {
+  for (const p of payloads) {
+    if (!p || typeof p !== 'object' || Array.isArray(p)) continue;
+    const o = p as { search_degraded?: unknown; facts_degraded?: { reason?: unknown } };
+    if (typeof o.search_degraded === 'string') return o.search_degraded;
+    if (typeof o.facts_degraded?.reason === 'string') return o.facts_degraded.reason;
+  }
+  return null;
+}
 
 /** The event fields for one request message and its reply. tool is gbrain.<name>; kind follows GBRAIN_WRITE_TOOLS. */
 export function describeCall(request: RpcMessage, reply: RpcMessage | undefined, latencyMs: number, upstreamStatus: number | null): {
@@ -108,8 +123,11 @@ export function describeCall(request: RpcMessage, reply: RpcMessage | undefined,
     const seen = new Set(requested);
     effect.pages = [...requested];
     for (const p of payloads) collectSlugs(p, effect.pages, seen);
-    const rows = payloads.find((p) => Array.isArray(p)) as unknown[] | undefined;
-    effect.count = (name === 'search' || name === 'query') && rows ? rows.length : effect.pages.length;
+    // search and query answer an array of rows; recall answers an object whose results are the rows (internal-task).
+    const rows = (payloads.find((p) => Array.isArray(p)) as unknown[] | undefined)
+      ?? (name === 'recall' ? (payloads.find((p) => p && typeof p === 'object' && Array.isArray((p as { results?: unknown }).results)) as { results: unknown[] } | undefined)?.results : undefined);
+    effect.count = (name === 'search' || name === 'query' || name === 'recall') && rows ? rows.length : effect.pages.length;
+    if (name === 'search' || name === 'query' || name === 'recall') { const d = degradedStampOf(payloads); if (d) effect.degraded = d; }
   }
   return { tool: `gbrain.${name}`, kind, args, outcome, ...(error ? { error } : {}), effect };
 }

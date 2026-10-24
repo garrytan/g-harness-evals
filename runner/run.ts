@@ -11,7 +11,7 @@
  *
  *   bun runner/run.ts plan    --prereg <file> [--out results/<run-id>]
  *   bun runner/run.ts dry-run --prereg <file>
- *   bun runner/run.ts preflight --manifest results/<run-id>/manifest.json [--gbrain-image <tag>]
+ *   bun runner/run.ts preflight --manifest results/<run-id>/manifest.json [--gbrain-image <tag>] [--image <tag>] [--ledger <file>]
  *   bun runner/run.ts run --manifest results/<run-id>/manifest.json [--harness-mode docker|process|scripted]
  *       [--adapter <script>] [--image <tag>] [--gbrain-image <tag>] [--resume] [--stop-on-cap] [--cells a,b] [--ledger <file>]
  *       [--lease-usd <n>] [--new-lease] [--max-output-tokens <n>] [--preamble <file>] [--ready-timeout-s <n>]
@@ -26,10 +26,49 @@ import { basename, dirname, join } from 'node:path';
 import type { GbrainCellConfig, HarnessMode } from './contracts.ts';
 import { RunnerError } from './errors.ts';
 import { canonicalLookup } from './pricing/model-pricing.ts';
+import { lookupEmbeddingPrice } from './pricing/embedding-pricing.ts';
 import { taskTurnCount } from './trial/task.ts';
 import { DEFAULT_GBRAIN_IMAGE } from './trial/gbrain.ts';
 
 export { RunnerError };
+
+// internal-task (the install ladder): the gbrain cell fields, their allowed values and defaults (runner/contracts.ts GbrainCellConfig).
+export const GBRAIN_SURFACES = ['starter', 'verbs'] as const;
+export const GBRAIN_INSTALLS = ['mcp', 'gbrain-docs'] as const;
+export const GBRAIN_EMBEDDINGS = ['off', 'openai:text-embedding-3-small'] as const;
+/** Harnesses the install bundle has a view for (gbrain/pin.json "install"); gbrain documents no install for the others. */
+export const GBRAIN_DOCS_HARNESSES = ['openclaw', 'hermes', '_fake'] as const;
+/** The planning allowance for a cell with embeddings on: query embeddings per trial and tokens per query, priced from
+ *  runner/pricing/embedding-pricing.ts (a search's query is a sentence; gbrain caches the embedding per distinct query). */
+export const EMBEDDING_ALLOWANCE = { calls_per_trial: 50, tokens_per_call: 100 } as const;
+
+export interface ResolvedGbrain {
+  surface: (typeof GBRAIN_SURFACES)[number];
+  install: (typeof GBRAIN_INSTALLS)[number];
+  embeddings: (typeof GBRAIN_EMBEDDINGS)[number];
+  brain: 'bot-visible' | 'company';
+  scope: 'none' | 'member';
+}
+
+/** The cell's gbrain configuration with every default filled in; the cell itself is not changed. */
+export function resolveGbrain(c: GbrainCellConfig): ResolvedGbrain {
+  return { surface: c.surface, install: c.install ?? 'mcp', embeddings: c.embeddings ?? 'off', brain: c.brain ?? 'bot-visible', scope: c.scope ?? 'none' };
+}
+
+/** What plan prints for a gbrain cell: <surface>/<install>/<embeddings>. */
+export function gbrainLabel(c: GbrainCellConfig): string {
+  const r = resolveGbrain(c);
+  return `${r.surface}/${r.install}/${r.embeddings}`;
+}
+
+/** The per-trial planning allowance for the sidecar's query embeddings, in USD; 0 with embeddings off. */
+export function embeddingAllowanceUsd(c: GbrainCellConfig | undefined): number {
+  const model = c?.embeddings ?? 'off';
+  if (model === 'off') return 0;
+  const price = lookupEmbeddingPrice(model);
+  if (price.kind !== 'known') throw new RunnerError('HE-PIN-002', `embedding model ${model} has no price in runner/pricing/embedding-pricing.ts`);
+  return (EMBEDDING_ALLOWANCE.calls_per_trial * EMBEDDING_ALLOWANCE.tokens_per_call * price.pricePerMTok) / 1e6;
+}
 
 export interface Cell {
   id: string;
@@ -142,7 +181,14 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
     if (!(c.repetitions >= 1)) throw new RunnerError('HE-PREREG-005', `cell ${c.id}: repetitions must be >= 1`);
     if (c.preamble !== undefined && (typeof c.preamble !== 'string' || !existsSync(c.preamble))) throw new RunnerError('HE-TASK-002', `cell ${c.id}: preamble not found at ${String(c.preamble)}; fix: name a committed file such as tasks/multiuser/_shared/preamble.md`);
     if (c.gbrain !== undefined) {
-      if (c.gbrain?.surface !== 'starter') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.surface must be "starter" (the pinned surface, gbrain/pin.json); got ${JSON.stringify(c.gbrain)}`);
+      // internal-task: surface, install and embeddings are the ladder's orthogonal fields; HE-GBRAIN-001 names the field, the value and the allowed set.
+      const bad = (field: string, value: unknown, allowed: readonly string[]) => new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.${field} must be one of ${allowed.map((v) => JSON.stringify(v)).join(', ')} (gbrain/pin.json); got ${JSON.stringify(value)}`);
+      if (!c.gbrain || typeof c.gbrain !== 'object') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain must be an object such as {"surface": "starter"}; got ${JSON.stringify(c.gbrain)}`);
+      if (!(GBRAIN_SURFACES as readonly string[]).includes(c.gbrain.surface as string)) throw bad('surface', c.gbrain.surface, GBRAIN_SURFACES);
+      if (c.gbrain.install !== undefined && !(GBRAIN_INSTALLS as readonly string[]).includes(c.gbrain.install)) throw bad('install', c.gbrain.install, GBRAIN_INSTALLS);
+      if (c.gbrain.embeddings !== undefined && !(GBRAIN_EMBEDDINGS as readonly string[]).includes(c.gbrain.embeddings)) throw bad('embeddings', c.gbrain.embeddings, GBRAIN_EMBEDDINGS);
+      if (c.gbrain.install === 'gbrain-docs' && !(GBRAIN_DOCS_HARNESSES as readonly string[]).includes(c.harness)) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.install "gbrain-docs" is defined for harnesses ${GBRAIN_DOCS_HARNESSES.filter((h) => !h.startsWith('_')).join(', ')} (gbrain documents no install for ${c.harness}; gbrain/pin.json "install")`);
+      if (c.gbrain.embeddings !== undefined && c.gbrain.embeddings !== 'off' && c.gbrain.brain === 'company') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.embeddings ${c.gbrain.embeddings} needs the bot-visible brain; only the bot-visible brains are built with embeddings`);
       if (scripted) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: a scripted cell cannot carry gbrain; a script plays the bot over world-MCP and has no harness to call the brain`);
       // internal-task (company brain): brain and scope are additive; a cell without them is the gbrain arm's cell.
       if (c.gbrain.brain !== undefined && c.gbrain.brain !== 'bot-visible' && c.gbrain.brain !== 'company') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.brain must be "bot-visible" or "company"; got ${JSON.stringify(c.gbrain.brain)}`);
@@ -206,7 +252,7 @@ export function buildManifest(prereg: Prereg, sha256: string, now = new Date().t
         : cell.script === 'mutations' ? listMutations(dir, cell.id)
         : [null];
       for (const s of scripts) {
-        cellUsd += turns * unit * cell.repetitions;
+        cellUsd += (turns * unit + embeddingAllowanceUsd(cell.gbrain)) * cell.repetitions;
         for (let r = 1; r <= cell.repetitions; r++) {
           const id = s ? `${prereg.run_id}/${cell.id}/${task}/${s.name}/r${r}` : `${prereg.run_id}/${cell.id}/${task}/r${r}`;
           trials.push({ id, cell: cell.id, task, repetition: r, task_dir: dir, turns, ...(s ? { script: s.path } : {}) });
@@ -232,12 +278,23 @@ export function renderPlan(m: Manifest): string {
   for (const c of m.cells) {
     const mine = m.trials.filter((t) => t.cell === c.id);
     const turns = mine.reduce((a, t) => a + (t.turns ?? 0), 0);
-    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.config ? ` config=${c.config}` : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${c.gbrain.surface}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
+    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.config ? ` config=${c.config}` : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${gbrainLabel(c.gbrain)}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
   }
   for (const c of m.cells) {
     if (c.gbrain?.brain === 'company' && c.preamble !== 'tasks/multiuser/_shared/preamble.gbrain-company.md') lines.push(`WARN: cell ${c.id} serves the company brain with preamble ${c.preamble ?? 'tasks/multiuser/_shared/preamble.md'}, not the company one (tasks/multiuser/_shared/preamble.gbrain-company.md); intended only for a none-style arm on the company brain`);
   }
-  if (m.cells.some((c) => c.gbrain)) lines.push(`GBRAIN: cells ${m.cells.filter((c) => c.gbrain).map((c) => c.id).join(', ')} run with a gbrain sidecar per trial (image ${DEFAULT_GBRAIN_IMAGE} unless --gbrain-image; keyless, starter surface; docs/gbrain-arm.md)`);
+  // internal-task: one GBRAIN line per distinct configuration (surface/install/embeddings), naming what each means.
+  const configs = new Map<string, Cell[]>();
+  for (const c of m.cells) if (c.gbrain) configs.set(gbrainLabel(c.gbrain), [...(configs.get(gbrainLabel(c.gbrain)) ?? []), c]);
+  for (const [label, cs] of configs) {
+    const g = resolveGbrain(cs[0]!.gbrain!);
+    const words = [
+      g.surface === 'verbs' ? 'the 7 memory verbs (page search is recall)' : 'the 33-tool starter surface',
+      g.install === 'gbrain-docs' ? "gbrain's documented install applied in the harness container from the image's bundle" : 'MCP registration only',
+      g.embeddings === 'off' ? 'keyword-only, no model call' : `query embeddings ${g.embeddings} through the metering proxy, metered per trial (allowance ${embeddingAllowanceUsd(cs[0]!.gbrain).toFixed(4)} per trial in the ceiling)`,
+    ];
+    lines.push(`GBRAIN: cells ${cs.map((c) => c.id).join(', ')} run with a gbrain sidecar per trial (image ${DEFAULT_GBRAIN_IMAGE} unless --gbrain-image; ${label}: ${words.join('; ')}; docs/gbrain-arm.md)`);
+  }
   if (m.cost_ceiling_usd > m.spend_cap_usd) lines.push(`WARN: HE-BUDGET-003 cost ceiling ${m.cost_ceiling_usd} exceeds the preregistered cap ${m.spend_cap_usd}; cells past the cap stop incomplete in drop order`);
   return lines.join('\n');
 }
@@ -270,16 +327,72 @@ async function main(argv: string[]): Promise<number> {
   }
   if (cmd === 'preflight') {
     const { manifest: m } = loadManifest(flag('--manifest'));
+    const runDir = dirname(flag('--manifest')!);
     const missing = m.cells.filter(c => c.harness !== 'scripted' && !existsSync(join('harnesses', c.harness, 'pin.json'))).map(c => c.harness);
     if (missing.length) throw new RunnerError('HE-PIN-001', `no harnesses/<name>/pin.json for: ${[...new Set(missing)].join(', ')}; fix: add the pin before any cell runs`);
     for (const k of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']) if (!process.env[k]) console.log(`WARN: HE-PROXY-001 ${k} is not set in this shell; the metering proxy needs it, harness containers never do`);
+    // internal-task: a harness image built before an adapter edit silently runs the old adapter; compare the image's adapter with the checkout.
+    const dockerCells = m.cells.filter((c) => c.harness !== 'scripted' && (c.harness_mode ?? 'docker') === 'docker' && !existsSync(join('harnesses', c.harness, 'compose.yaml')));
+    for (const harness of [...new Set(dockerCells.map((c) => c.harness))]) {
+      const image = flag('--image') ?? `harness-eval/${harness.replace(/^_/, '')}:dev`;
+      const { adapterProvenance } = await import('./trial/provenance.ts');
+      const p = await adapterProvenance(harness, image);
+      console.log(`ADAPTER: ${harness} image ${image} (${p.image_id.slice(0, 19)}) carries adapter.sh ${p.image_sha256.slice(0, 12)}, the checkout's is ${p.checkout_sha256.slice(0, 12)}: match`);
+    }
     const gbrainCells = m.cells.filter((c) => c.gbrain);
     if (gbrainCells.length) {
       const image = flag('--gbrain-image') ?? DEFAULT_GBRAIN_IMAGE;
-      const { gbrainImagePresent, probeGbrainImage } = await import('./trial/gbrain.ts');
-      if (!gbrainImagePresent(image)) throw new RunnerError('HE-GBRAIN-002', `gbrain sidecar image ${image} is not present for cells ${gbrainCells.map((c) => c.id).join(', ')}; fix: docker build -f gbrain/Dockerfile -t ${image} .`);
-      const probe = await probeGbrainImage(image, join(dirname(flag('--manifest')!), 'preflight-gbrain'));
-      console.log(`GBRAIN: image ${image} serves /health (gbrain ${probe.version ?? 'unknown'}, ready in ${probe.ready_ms} ms) for cells ${gbrainCells.map((c) => `${c.id} (surface ${c.gbrain!.surface}${c.gbrain!.brain ? `, brain ${c.gbrain!.brain}` : ''}${c.gbrain!.scope ? `, scope ${c.gbrain!.scope}` : ''})`).join(', ')}`);
+      const { gbrainImagePresent, probeGbrainImage, exportInstallView } = await import('./trial/gbrain.ts');
+      if (!gbrainImagePresent(image)) throw new RunnerError('HE-GBRAIN-002', `gbrain sidecar image ${image} is not present for cells ${gbrainCells.map((c) => c.id).join(', ')}; fix: scripts/build-gbrain-image.sh --tag ${image}`);
+      const pin = JSON.parse(readFileSync(join('gbrain', 'pin.json'), 'utf8')) as { surfaces: Record<string, { tools: number }>; embeddings: { model: string } };
+      // internal-task: one probe per distinct keyword configuration (surface, brain): the image serves /health and lists the pinned tool count.
+      const keywordConfigs = new Map<string, Cell[]>();
+      for (const c of gbrainCells) { const g = resolveGbrain(c.gbrain!); if (g.embeddings === 'off') keywordConfigs.set(`${g.surface}/${g.brain}`, [...(keywordConfigs.get(`${g.surface}/${g.brain}`) ?? []), c]); }
+      for (const [label, cs] of keywordConfigs) {
+        const g = resolveGbrain(cs[0]!.gbrain!);
+        const probe = await probeGbrainImage(image, join(runDir, `preflight-gbrain-${g.surface}`), { surface: g.surface });
+        const pinned = pin.surfaces[g.surface]?.tools;
+        if (probe.tools.length !== pinned) throw new RunnerError('HE-GBRAIN-002', `image ${image} lists ${probe.tools.length} tools on the ${g.surface} surface, gbrain/pin.json pins ${pinned}; fix: rebuild the image at the pinned commit, or re-pin after a deliberate gbrain change`);
+        console.log(`GBRAIN: image ${image} id=${probe.image_id} serves /health (gbrain ${probe.version ?? 'unknown'}, ready in ${probe.ready_ms} ms), ${probe.tools.length} tools on ${g.surface} (pin ${pinned}) for cells ${cs.map((c) => c.id).join(', ')} (${label})`);
+      }
+      // internal-task: each distinct embedded configuration is probed through the metering proxy under a small lease of its own:
+      // one search must produce a forwarded /v1/embeddings line and no degraded stamp, else the semantic cells cannot run.
+      const embeddedCells = gbrainCells.filter((c) => resolveGbrain(c.gbrain!).embeddings !== 'off');
+      if (embeddedCells.length) {
+        if (!process.env.OPENAI_API_KEY) throw new RunnerError('HE-PROXY-001', `cells ${embeddedCells.map((c) => c.id).join(', ')} have embeddings on and OPENAI_API_KEY is not set in this shell; the metering proxy needs it to forward the sidecar's embedding calls (the sidecar never sees it)`);
+        const { RunProxy } = await import('./trial/proxy.ts');
+        const { isEmbeddingLine } = await import('./trial/proxy.ts');
+        const proxy = await RunProxy.start({ runId: `${m.run_id}-preflight`, runDir: join(runDir, 'preflight-proxy'), ledgerPath: flag('--ledger') ?? join(runDir, 'ledger.sqlite'), leaseUsd: 0.05, allowModels: [pin.embeddings.model], reachableFromContainers: true, newRun: true });
+        try {
+          for (const surface of [...new Set(embeddedCells.map((c) => resolveGbrain(c.gbrain!).surface))]) {
+            const model = resolveGbrain(embeddedCells[0]!.gbrain!).embeddings as string;
+            const key = `preflight-${surface}`;
+            await proxy.bind('preflight', key);
+            const probe = await probeGbrainImage(image, join(runDir, `preflight-gbrain-embedded-${surface}`), { surface, embeddings: model as 'openai:text-embedding-3-small', openaiBaseUrl: proxy.baseUrlFor('preflight', 'openai', true), searchQuery: 'renewal pricing discount' });
+            await proxy.finalize(key);
+            await proxy.unbind('preflight');
+            const lines = proxy.usageLines(key).filter(isEmbeddingLine);
+            const forwarded = lines.filter((l) => l.outcome === 'forwarded');
+            const pinned = pin.surfaces[surface]?.tools;
+            if (probe.tools.length !== pinned) throw new RunnerError('HE-GBRAIN-002', `image ${image} lists ${probe.tools.length} tools on the ${surface} surface (embedded brain), gbrain/pin.json pins ${pinned}`);
+            if (!forwarded.length || probe.search_degraded) throw new RunnerError('HE-GBRAIN-005', `the embedded ${surface} configuration (${model}) did not embed its probe query through the proxy: ${forwarded.length} forwarded /v1/embeddings line(s), ${lines.length - forwarded.length} refused or failed, degraded stamp ${probe.search_degraded ?? 'none'}; the semantic cells ${embeddedCells.map((c) => c.id).join(', ')} cannot run; fix: read ${join(runDir, 'preflight-proxy', 'proxy.log')} and the sidecar's serve.log under ${join(runDir, `preflight-gbrain-embedded-${surface}`)}`);
+            console.log(`GBRAIN: embedded ${surface} (${model}) probe through the proxy: ${forwarded.length} /v1/embeddings line(s) forwarded (${forwarded.reduce((a, l) => a + (l.input_tokens ?? 0), 0)} tokens, ${forwarded.reduce((a, l) => a + (l.actual_usd ?? 0), 0).toFixed(6)}), search returned ${probe.search_slugs?.length ?? 0} page(s), no degraded stamp; lease ${m.run_id}-preflight`);
+          }
+        } finally {
+          await proxy.stop();
+          // The probe's lease is closed here so the run's own lease can open in the same ledger.
+          const { closeRun } = await import('./ledger/budget-ledger.ts');
+          closeRun(flag('--ledger') ?? join(runDir, 'ledger.sqlite'), `${m.run_id}-preflight`);
+        }
+      }
+      // internal-task: every gbrain-docs cell's bundle view is exported from the image and verified before any trial mounts it.
+      const docsViews = [...new Set(gbrainCells.filter((c) => resolveGbrain(c.gbrain!).install === 'gbrain-docs').map((c) => `${c.harness}|${c.split}`))];
+      for (const v of docsViews) {
+        const [harness, split] = v.split('|') as [string, 'dev' | 'heldout'];
+        const { installViewDir } = await import('./trial/trial.ts');
+        const view = await exportInstallView(image, harness, split, installViewDir(runDir, harness, split));
+        console.log(`GBRAIN: install bundle view ${view.harness}/${split} exported and verified: ${view.files.length} files, ${view.skills} skills, view digest ${view.view_digest.slice(0, 12)}${view.context ? `, context ${view.context.kept_slugs.length} pages (${view.context.tokens ?? '?'} tokens)` : ''} (gbrain ${view.gbrain_commit.slice(0, 12)})`);
+      }
       // internal-task: a company brain is probed per split under the unscoped token and must list every page the build holds.
       const companySplits = [...new Set(gbrainCells.filter((c) => c.gbrain!.brain === 'company').map((c) => c.split))];
       if (companySplits.length) {
@@ -289,7 +402,7 @@ async function main(argv: string[]): Promise<number> {
         const world = worldAt(DEFAULT_WORLD_PATH);
         for (const split of companySplits) {
           const scope = gbrainCells.some((c) => c.gbrain!.brain === 'company' && c.split === split && c.gbrain!.scope === 'member') ? 'member' : 'none';
-          const probe = await probeCompanyBrain(image, split, companyPageList(world, split), join(dirname(flag('--manifest')!), `preflight-gbrain-company-${split}`), scope);
+          const probe = await probeCompanyBrain(image, split, companyPageList(world, split), join(runDir, `preflight-gbrain-company-${split}`), scope);
           console.log(`GBRAIN: image ${image} id=${probe.image_id} brain=company scope=${scope} split=${split} pages=${probe.listed} (${Object.entries(probe.by_kind).map(([k, v]) => `${k} ${v}`).join(', ')}) under the unscoped token${scope === 'member' ? `, tokens=${probe.member_tokens} plus public-only: ${probe.member_check}` : ''}, ready in ${probe.ready_ms} ms`);
         }
       }

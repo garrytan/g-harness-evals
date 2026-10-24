@@ -174,9 +174,20 @@ export interface TrialUsage {
 
 /** gbrain arm lane D addition: a cell's gbrain configuration (docs/gbrain-arm.md). Present on a cell, the runner
  *  starts a gbrain sidecar per trial and the harness registers a second MCP server named gbrain through the
- *  world's /gbrain tap. surface is the gbrain tool surface the sidecar serves; only "starter" (33 tools) is pinned. */
+ *  world's /gbrain tap. surface is the gbrain tool surface the sidecar serves. internal-task (the install ladder) makes the
+ *  fields orthogonal rungs: surface, install and embeddings, each defaulting to the gbrain arm's value, so the arm's
+ *  cells ({surface: "starter"}) keep their meaning and a rung is a readable combination (docs/gbrain-arm.md, "The install
+ *  ladder"). Defaults are resolved in the manifest and the trial record, never by mutating the cell. */
 export interface GbrainCellConfig {
-  surface: 'starter';
+  /** internal-task: "starter" (33 tools, the arm's surface) or "verbs" (gbrain's seven memory verbs; the page search is recall). */
+  surface: 'starter' | 'verbs';
+  /** internal-task addition: "mcp" (default): the MCP registration only, as the arm does. "gbrain-docs": gbrain's own documented
+   *  install for the harness at the pinned commit (the install bundle the image carries, gbrain/pin.json "install") is
+   *  applied inside the harness container by the adapter before the first turn; the preamble is untouched. */
+  install?: 'mcp' | 'gbrain-docs';
+  /** internal-task addition: "off" (default): the keyword brain, no model call. A model name: the sidecar serves the brain built
+   *  with that embedding model and embeds each query through the metering proxy (OPENAI_BASE_URL), metered per trial. */
+  embeddings?: 'off' | 'openai:text-embedding-3-small';
   /** internal-task (company brain) addition: the prebuilt brain the sidecar serves. Absent or "bot-visible" is the gbrain arm's
    *  brain; "company" holds every record of the split behind per-member source grants (docs/gbrain-arm.md, "Company brain"). */
   brain?: 'bot-visible' | 'company';
@@ -186,10 +197,43 @@ export interface GbrainCellConfig {
   scope?: 'member';
 }
 
+/** internal-task: the install bundle view a gbrain-docs trial mounted into the harness, as the runner verified it before the harness started. */
+export interface TrialGbrainInstall {
+  harness: string;
+  split: 'dev' | 'heldout';
+  /** Files in the view (the harness workspace and, for Hermes, .hermes.md) and the view digest from the bundle manifest. */
+  files: number;
+  view_digest: string;
+  /** Hermes only: how many pages the always-loaded context names, and how many of those each actor of the task cannot read in the
+   *  world (channel membership for a chat page, the file rule for a file): the exposure that reaches the model with no gbrain call. */
+  context?: { kept_slugs: number; outside_scope_by_actor: Record<string, number>; outside_scope_max: number };
+}
+
+/** internal-task: the sidecar's embedding calls for one trial, from the proxy's /v1/embeddings usage lines for the trial key. */
+export interface TrialEmbeddingUsage {
+  model: string;
+  requests: number;
+  input_tokens: number;
+  usd: number;
+  /** Lines the proxy refused or that failed upstream. */
+  refused: number;
+  failed: number;
+}
+
 /** gbrain arm lane D addition: what the runner records about a trial's sidecar in trials.jsonl. */
 export interface TrialGbrain {
-  surface: 'starter';
+  /** internal-task: the resolved surface. */
+  surface: 'starter' | 'verbs';
   image: string;
+  /** internal-task additions, absent in records written before it: the resolved install and embeddings of the cell; the install
+   *  bundle view when one was applied; the sidecar's metered embedding calls when embeddings were on; and the semantic
+   *  check: a trial with embeddings on that searched the brain must show a forwarded embedding line and no degraded stamp
+   *  (HE-GBRAIN-005, recorded as infra_error with this field saying why). */
+  install?: 'mcp' | 'gbrain-docs';
+  embeddings?: 'off' | 'openai:text-embedding-3-small';
+  install_bundle?: TrialGbrainInstall;
+  embedding_usage?: TrialEmbeddingUsage;
+  semantic_check?: { search_calls: number; embedding_requests: number; degraded_calls: number; ok: boolean; reason?: string };
   /** internal-task additions, absent in records written before it: the brain and scope the sidecar ran with and the docker
    *  image id behind the tag, so a record names the exact brain it was served from. */
   brain?: 'bot-visible' | 'company';
@@ -197,8 +241,9 @@ export interface TrialGbrain {
   image_id?: string;
   /** Milliseconds from docker run to a healthy sidecar with a token on disk. */
   sidecar_ready_ms: number;
-  /** via "gbrain" events in the trial's log: tools/list and initialize, tools/call, and how many fell inside a turn window. */
-  events: { total: number; discovery: number; calls: number; in_turn_calls: number; writes: number };
+  /** via "gbrain" events in the trial's log: tools/list and initialize, tools/call, and how many fell inside a turn window.
+   *  internal-task: degraded counts search, query and recall replies gbrain stamped search_degraded or facts_degraded. */
+  events: { total: number; discovery: number; calls: number; in_turn_calls: number; writes: number; degraded?: number };
 }
 
 /** M1 lane A addition: one line of results/<run>/trials.jsonl. termination, grade and effects are the three

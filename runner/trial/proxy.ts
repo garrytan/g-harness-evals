@@ -3,12 +3,17 @@
 // the container's base URL carries) to the trial key sk-trial-<id> and finalizes the key afterwards. The
 // proxy is the only process that sees a provider key; this module passes the runner's environment through
 // and never reads, prints or writes the key itself.
+//
+// internal-task (the install ladder): the gbrain sidecar's query embeddings go through the same slot under the trial key;
+// summarizeUsage keeps /v1/embeddings lines out of the harness figures (requests, tokens, refused, failed) while usd stays
+// the trial's total, and embeddingUsage reports them on their own (gbrain.embedding_usage in the trial record), so
+// reconcile.json's invariant holds: harness requests plus embedding requests equal the meter's.
 
 import { existsSync, mkdirSync, openSync, readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Meter, UsageLine } from '../proxy/metering-proxy.ts';
-import type { TrialUsage } from '../contracts.ts';
+import type { TrialEmbeddingUsage, TrialUsage } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
 import { CONTAINER_HOST } from './world.ts';
 
@@ -78,9 +83,12 @@ export class RunProxy {
     throw new RunnerError('HE-PROXY-003', `the metering proxy did not start on ${host}:${port} (ledger ${opts.ledgerPath}, lease $${opts.leaseUsd}): ${tail}; fix: read ${join(opts.runDir, 'proxy.log')}; a lease left open by another run id needs --new-lease`);
   }
 
-  /** The base URL a harness gets: <origin>/<slot>/<provider>; the harness appends its usual path. */
-  baseUrlFor(slot: string, provider: string): string {
-    const host = this.reachableFromContainers ? CONTAINER_HOST : '127.0.0.1';
+  /** The base URL a client gets: <origin>/<slot>/<provider>; the client appends its usual path. forContainer picks the
+   *  host.docker.internal route (the default when the proxy binds every interface); a sidecar is always a container, a
+   *  process-mode harness never is (internal-task). */
+  baseUrlFor(slot: string, provider: string, forContainer: boolean = this.reachableFromContainers): string {
+    if (forContainer && !this.reachableFromContainers) throw new RunnerError('HE-PROXY-003', `the metering proxy listens on the loopback only; a container cannot reach it for slot ${slot}`);
+    const host = forContainer ? CONTAINER_HOST : '127.0.0.1';
     return `http://${host}:${this.port}/${slot}/${provider}`;
   }
 
@@ -114,13 +122,19 @@ export class RunProxy {
 /** A refusal the ledger issued because the lease or the program cap would be crossed (not an unpriced model or a bad route). */
 export const isCapRefusal = (l: UsageLine) => l.outcome === 'refused' && /over its \$[0-9.]+ (budget|cap)|left of the \$[0-9.]+ program cap/.test(l.reason ?? '');
 
+/** A usage line of the sidecar's query embeddings (internal-task). */
+export const isEmbeddingLine = (l: UsageLine) => l.route === '/v1/embeddings';
+
 export function summarizeUsage(key: string, meter: Meter, lines: UsageLine[]): { usage: TrialUsage; cap_stop: boolean } {
-  const forwarded = lines.filter((l) => l.outcome === 'forwarded');
+  // internal-task: the harness figures leave the embedding lines out; usd stays the meter's total for the key.
+  const harness = lines.filter((l) => !isEmbeddingLine(l));
+  const forwarded = harness.filter((l) => l.outcome === 'forwarded');
+  const embeddingCharged = lines.filter((l) => isEmbeddingLine(l) && (l.outcome === 'forwarded' || l.outcome === 'failed')).length;
   const usage: TrialUsage = {
     key,
-    requests: meter.requests,
-    refused: lines.filter((l) => l.outcome === 'refused').length,
-    failed: lines.filter((l) => l.outcome === 'failed').length,
+    requests: meter.requests - embeddingCharged,
+    refused: harness.filter((l) => l.outcome === 'refused').length,
+    failed: harness.filter((l) => l.outcome === 'failed').length,
     usd: meter.usd,
     input_tokens: forwarded.reduce((a, l) => a + (l.input_tokens ?? 0), 0),
     output_tokens: forwarded.reduce((a, l) => a + (l.output_tokens ?? 0), 0),
@@ -130,6 +144,20 @@ export function summarizeUsage(key: string, meter: Meter, lines: UsageLine[]): {
     upstream: meter.upstream ?? null,
   };
   return { usage, cap_stop: lines.some(isCapRefusal) };
+}
+
+/** internal-task: the sidecar's /v1/embeddings lines for the trial key, on their own. */
+export function embeddingUsage(model: string, lines: UsageLine[]): TrialEmbeddingUsage {
+  const mine = lines.filter(isEmbeddingLine);
+  const forwarded = mine.filter((l) => l.outcome === 'forwarded');
+  return {
+    model,
+    requests: forwarded.length,
+    input_tokens: forwarded.reduce((a, l) => a + (l.input_tokens ?? 0), 0),
+    usd: mine.reduce((a, l) => a + (l.actual_usd ?? 0), 0),
+    refused: mine.filter((l) => l.outcome === 'refused').length,
+    failed: mine.filter((l) => l.outcome === 'failed').length,
+  };
 }
 
 /** reconcile.json: the proxy's meter against the sum of the usage lines it wrote for the key. Provider-side

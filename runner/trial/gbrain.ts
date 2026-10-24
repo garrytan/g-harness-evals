@@ -7,19 +7,32 @@
 // internal-task (company brain): the sidecar may serve the company brain (HE_GBRAIN_BRAIN=company) and, under member scope
 // (HE_GBRAIN_SCOPE=member), writes the brain's tokens.json beside the token; the runner reads it for the world's tap
 // and checks it covers every actor of the task (HE-GBRAIN-004). The record also keeps the docker image id.
+//
+// internal-task (the install ladder): the sidecar takes the surface (HE_GBRAIN_SURFACE) and, for an embedded brain, the model
+// (HE_GBRAIN_EMBEDDINGS) and the metering proxy's slot URL as OPENAI_BASE_URL with the host-gateway route, so its query
+// embeddings are metered under the trial key; no key is passed. The docker calls are asynchronous subprocesses so one
+// trial's slow container start cannot stall another trial's world under run --parallel. exportInstallView exports and
+// verifies one view of the image's install bundle (HE-GBRAIN-006).
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { RunnerError } from '../errors.ts';
 import type { CompanyTokens } from '../../gbrain/build-brain.ts';
+import { verifyFiles, type InstallFile } from '../../gbrain/build-install.ts';
 import type { GbrainCellConfig } from '../contracts.ts';
 
 export const DEFAULT_GBRAIN_IMAGE = 'harness-eval/gbrain:dev';
 export const GBRAIN_PORT = 3131;
 
-function sh(args: string[], timeoutMs?: number) {
-  return spawnSync(args[0]!, args.slice(1), { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs });
+/** A docker call as a child process the event loop keeps running beside: other trials' worlds answer while it runs. */
+async function sh(args: string[], timeoutMs = 120_000): Promise<{ status: number | null; stdout: string; stderr: string }> {
+  const proc = Bun.spawn(args, { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
+  const timer = setTimeout(() => proc.kill('SIGKILL'), timeoutMs);
+  try {
+    const [stdout, stderr, status] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+    return { status, stdout, stderr };
+  } finally { clearTimeout(timer); }
 }
 
 const uidGid = () => `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`;
@@ -34,6 +47,11 @@ export interface GbrainSidecarOptions {
   /** internal-task: the brain to serve and whether tokens.json is wanted; defaults bot-visible and none. */
   brain?: NonNullable<GbrainCellConfig['brain']>;
   scope?: 'none' | 'member';
+  /** internal-task: the surface (default starter) and the embedding model (default off); an embedded brain needs openaiBaseUrl, the
+   *  metering proxy's slot URL as the container reaches it (a route, never a key). */
+  surface?: GbrainCellConfig['surface'];
+  embeddings?: NonNullable<GbrainCellConfig['embeddings']>;
+  openaiBaseUrl?: string;
   readyTimeoutMs?: number;
   log?: (line: string) => void;
 }
@@ -48,6 +66,9 @@ export interface GbrainSidecar {
   image_id: string;
   brain: NonNullable<GbrainCellConfig['brain']>;
   scope: 'none' | 'member';
+  /** internal-task: the surface and embedding model the sidecar was started with. */
+  surface: GbrainCellConfig['surface'];
+  embeddings: NonNullable<GbrainCellConfig['embeddings']>;
   /** internal-task: under member scope, the company brain's tokens.json as the entrypoint copied it; the file stays under outDir. */
   tokens: CompanyTokens | null;
   /** Milliseconds from docker run to a healthy /health and a token on disk. */
@@ -56,19 +77,19 @@ export interface GbrainSidecar {
   stop(graceMs?: number): Promise<void>;
 }
 
-/** The image exists locally. */
+/** The image exists locally (synchronous: a one-off check before anything runs). */
 export function gbrainImagePresent(image = DEFAULT_GBRAIN_IMAGE): boolean {
-  return sh(['docker', 'image', 'inspect', image]).status === 0;
+  return spawnSync('docker', ['image', 'inspect', image], { stdio: 'ignore' }).status === 0;
 }
 
-export async function waitHealthy(url: string, timeoutMs: number, exited: () => string | null): Promise<void> {
+export async function waitHealthy(url: string, timeoutMs: number, exited: () => string | null | Promise<string | null>): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
       const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2000) });
       if (res.ok) return;
     } catch { /* not listening yet */ }
-    const gone = exited();
+    const gone = await exited();
     if (gone) throw new Error(gone);
     await Bun.sleep(200);
   }
@@ -93,6 +114,9 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
   const image = o.image ?? DEFAULT_GBRAIN_IMAGE;
   const brain = o.brain ?? 'bot-visible';
   const scope = o.scope ?? 'none';
+  const surface = o.surface ?? 'starter';
+  const embeddings = o.embeddings ?? 'off';
+  if (embeddings !== 'off' && !o.openaiBaseUrl) throw new RunnerError('HE-GBRAIN-002', `an embedded brain (${embeddings}) needs the metering proxy's slot URL as OPENAI_BASE_URL; the runner passes none without a proxy`);
   const log = o.log ?? (() => undefined);
   const name = `he-gbrain-${o.trialSlug}`.toLowerCase().replace(/[^a-z0-9._-]+/g, '-');
   const network = `${name}-net`;
@@ -101,23 +125,26 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
   const tokenPath = join(out, 'token');
   const tokensPath = join(out, 'tokens.json');
   if (!gbrainImagePresent(image)) throw new RunnerError('HE-GBRAIN-002', `gbrain sidecar image ${image} is not present; fix: docker build -f gbrain/Dockerfile -t ${image} . (gbrain/README.md)`);
-  sh(['docker', 'rm', '-f', name]);
-  sh(['docker', 'network', 'rm', network]);
-  const net = sh(['docker', 'network', 'create', '--driver', 'bridge', network]);
+  await sh(['docker', 'rm', '-f', name]);
+  await sh(['docker', 'network', 'rm', network]);
+  const net = await sh(['docker', 'network', 'create', '--driver', 'bridge', network]);
   if (net.status !== 0) throw new RunnerError('HE-GBRAIN-002', `docker network create ${network} failed: ${(net.stderr || net.stdout).trim().slice(0, 300)}`);
   const started = Date.now();
-  const run = sh(['docker', 'run', '-d', '--name', name, '--user', uidGid(), '--network', network,
+  // host.docker.internal is the route to the metering proxy for an embedded brain; the entrypoint logs the URL, never a key.
+  const run = await sh(['docker', 'run', '-d', '--name', name, '--user', uidGid(), '--network', network, '--add-host', 'host.docker.internal:host-gateway',
     '-p', `127.0.0.1:0:${GBRAIN_PORT}`, '-v', `${out}:/he-gbrain`,
     '-e', `HE_GBRAIN_SPLIT=${o.split}`, '-e', 'HE_GBRAIN_OUT=/he-gbrain', '-e', `HE_TRIAL_ID=${o.trialId}`,
     '-e', `HE_GBRAIN_BRAIN=${brain}`, '-e', `HE_GBRAIN_SCOPE=${scope}`,
+    '-e', `HE_GBRAIN_SURFACE=${surface}`, '-e', `HE_GBRAIN_EMBEDDINGS=${embeddings}`,
+    ...(embeddings !== 'off' ? ['-e', `OPENAI_BASE_URL=${o.openaiBaseUrl}`] : []),
     image]);
-  const image_id = sh(['docker', 'image', 'inspect', '-f', '{{.Id}}', image]).stdout.trim();
+  const image_id = (await sh(['docker', 'image', 'inspect', '-f', '{{.Id}}', image])).stdout.trim();
   if (run.status !== 0) {
-    sh(['docker', 'network', 'rm', network]);
+    await sh(['docker', 'network', 'rm', network]);
     throw new RunnerError('HE-GBRAIN-002', `docker run failed for ${image}: ${(run.stderr || run.stdout).trim().slice(0, 400)}; fix: build the image (gbrain/README.md) and check the docker daemon`);
   }
-  const exited = (): string | null => {
-    const r = sh(['docker', 'inspect', '-f', '{{.State.Status}} {{.State.ExitCode}}', name]);
+  const exited = async (): Promise<string | null> => {
+    const r = await sh(['docker', 'inspect', '-f', '{{.State.Status}} {{.State.ExitCode}}', name]);
     if (r.status !== 0) return `container ${name} vanished`;
     const [status, code] = r.stdout.trim().split(' ');
     return status === 'running' || status === 'created' ? null : `the sidecar exited ${code} before it was ready`;
@@ -125,16 +152,16 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
   let stopped: Promise<void> | null = null;
   const stop = (graceMs = 10_000) => {
     stopped ??= (async () => {
-      sh(['docker', 'stop', '-t', String(Math.ceil(graceMs / 1000)), name], graceMs + 30_000);
-      const logs = sh(['docker', 'logs', name]);
+      await sh(['docker', 'stop', '-t', String(Math.ceil(graceMs / 1000)), name], graceMs + 30_000);
+      const logs = await sh(['docker', 'logs', name]);
       writeFileSync(join(out, 'docker.log'), `${logs.stdout}\n${logs.stderr}`);
-      sh(['docker', 'rm', '-f', name]);
-      sh(['docker', 'network', 'rm', network]);
+      await sh(['docker', 'rm', '-f', name]);
+      await sh(['docker', 'network', 'rm', network]);
     })();
     return stopped;
   };
   try {
-    const port = sh(['docker', 'port', name, `${GBRAIN_PORT}/tcp`]).stdout.trim().split('\n')[0]?.split(':').pop();
+    const port = (await sh(['docker', 'port', name, `${GBRAIN_PORT}/tcp`])).stdout.trim().split('\n')[0]?.split(':').pop();
     if (!port) throw new Error('docker port reported no published port');
     const url = `http://127.0.0.1:${port}`;
     const timeout = o.readyTimeoutMs ?? 60_000;
@@ -142,7 +169,7 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
     const deadline = started + timeout;
     while (!existsSync(tokenPath) || !readFileSync(tokenPath, 'utf8').trim()) {
       if (Date.now() > deadline) throw new Error(`no token at ${tokenPath} after ${Math.round(timeout / 1000)} s`);
-      const gone = exited();
+      const gone = await exited();
       if (gone) throw new Error(gone);
       await Bun.sleep(100);
     }
@@ -151,15 +178,15 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
     if (scope === 'member') {
       while (!existsSync(tokensPath) || !readFileSync(tokensPath, 'utf8').trim()) {
         if (Date.now() > deadline) throw new Error(`no tokens.json at ${tokensPath} after ${Math.round(timeout / 1000)} s`);
-        const gone = exited();
+        const gone = await exited();
         if (gone) throw new Error(gone);
         await Bun.sleep(100);
       }
       tokens = JSON.parse(readFileSync(tokensPath, 'utf8')) as CompanyTokens;
     }
     const ready_ms = Date.now() - started;
-    log(`gbrain sidecar ${name} (${o.split}, ${image}, brain ${brain}, scope ${scope}) healthy at ${url} after ${ready_ms} ms; token in ${tokenPath}${tokens ? `, ${Object.keys(tokens.members ?? {}).length} member tokens in ${tokensPath}` : ''}`);
-    return { url, token, tokenPath, image, image_id, brain, scope, tokens, ready_ms, stop };
+    log(`gbrain sidecar ${name} (${o.split}, ${image}, brain ${brain}, scope ${scope}, surface ${surface}, embeddings ${embeddings}) healthy at ${url} after ${ready_ms} ms; token in ${tokenPath}${tokens ? `, ${Object.keys(tokens.members ?? {}).length} member tokens in ${tokensPath}` : ''}`);
+    return { url, token, tokenPath, image, image_id, brain, scope, surface, embeddings, tokens, ready_ms, stop };
   } catch (e) {
     await stop(5_000);
     const tail = existsSync(join(out, 'docker.log')) ? readFileSync(join(out, 'docker.log'), 'utf8').trim().split('\n').slice(-3).join(' | ') : '';
@@ -167,15 +194,87 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
   }
 }
 
-/** Preflight: the image exists and a container from it serves /health. Starts and stops one sidecar. */
-export async function probeGbrainImage(image: string, scratchDir: string): Promise<{ ready_ms: number; version: string | null }> {
-  const sidecar = await startGbrainSidecar({ trialId: 'preflight', trialSlug: `preflight-${process.pid}`, split: 'dev', outDir: scratchDir, image });
+/** Preflight: the image exists and a container from it serves /health and lists its tools on the given surface (internal-task: the
+ *  count is compared with gbrain/pin.json by the caller). Starts and stops one sidecar; with an embedding model, the sidecar
+ *  serves the embedded brain and a search goes through it so the caller can look for the embedding usage line. */
+export async function probeGbrainImage(image: string, scratchDir: string, o: { surface?: GbrainCellConfig['surface']; embeddings?: NonNullable<GbrainCellConfig['embeddings']>; openaiBaseUrl?: string; split?: 'dev' | 'heldout'; searchQuery?: string } = {}): Promise<{ ready_ms: number; version: string | null; tools: string[]; image_id: string; search_slugs: string[] | null; search_degraded: string | null }> {
+  const sidecar = await startGbrainSidecar({ trialId: 'preflight', trialSlug: `preflight-${process.pid}-${o.surface ?? 'starter'}-${o.embeddings ?? 'off'}`, split: o.split ?? 'dev', outDir: scratchDir, image, surface: o.surface, embeddings: o.embeddings, openaiBaseUrl: o.openaiBaseUrl });
   try {
     const health = await fetch(`${sidecar.url}/health`).then((r) => r.json() as Promise<{ version?: string }>).catch(() => ({} as { version?: string }));
-    return { ready_ms: sidecar.ready_ms, version: health.version ?? null };
+    const tools = await listGbrainTools(sidecar.url, sidecar.token);
+    let search_slugs: string[] | null = null;
+    let search_degraded: string | null = null;
+    if (o.searchQuery) {
+      const tool = sidecar.surface === 'verbs' ? 'recall' : 'search';
+      const payload = await callGbrain(sidecar.url, sidecar.token, tool, { query: o.searchQuery, limit: 3 }) as unknown;
+      const rows = Array.isArray(payload) ? payload : (payload as { results?: unknown[] } | null)?.results ?? [];
+      search_slugs = (rows as Array<{ slug?: string }>).map((r) => r.slug).filter((s): s is string => typeof s === 'string');
+      search_degraded = degradedStamp(payload);
+    }
+    return { ready_ms: sidecar.ready_ms, version: health.version ?? null, tools, image_id: sidecar.image_id, search_slugs, search_degraded };
   } finally {
     await sidecar.stop(5_000);
   }
+}
+
+/** internal-task: gbrain's own word that a reply fell back to keyword search: recall's search_degraded or facts_degraded.reason, or
+ *  a search row's degraded_recall notice when embeddings are off; null when the reply carries no such stamp. */
+export function degradedStamp(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const p = payload as { search_degraded?: unknown; facts_degraded?: { reason?: unknown } };
+  if (typeof p.search_degraded === 'string') return p.search_degraded;
+  if (typeof p.facts_degraded?.reason === 'string') return p.facts_degraded.reason;
+  return null;
+}
+
+/** tools/list through the sidecar directly: the tool names in order. */
+export async function listGbrainTools(url: string, token: string): Promise<string[]> {
+  const res = await fetch(`${url}/mcp`, {
+    method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+  });
+  const text = await res.text();
+  const data = res.headers.get('content-type')?.includes('text/event-stream') ? text.split(/\r?\n/).filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim()).join('') : text;
+  const msg = JSON.parse(data) as { result?: { tools?: Array<{ name: string }> }; error?: { message?: string } };
+  if (msg.error) throw new Error(`gbrain tools/list: ${msg.error.message ?? 'rpc error'}`);
+  return (msg.result?.tools ?? []).map((t) => t.name);
+}
+
+/** internal-task: the view manifest gbrain/export-install.sh writes beside an exported view. */
+export interface InstallViewManifest {
+  harness: string;
+  split: 'dev' | 'heldout';
+  gbrain_commit: string;
+  gbrain_version: string | null;
+  bundle_digest: string;
+  view_digest: string;
+  workspace_entries: string[];
+  skills: number;
+  context: { path: string; bytes: number; tokens: number | null; kept_slugs: string[] } | null;
+  files: Array<InstallFile & { source_path: string }>;
+}
+
+/** internal-task: export one harness and split view of the image's install bundle into dest and verify every file against the
+ *  view manifest (HE-GBRAIN-006 on a missing view, a failed export or a digest mismatch). */
+export async function exportInstallView(image: string, harness: string, split: 'dev' | 'heldout', dest: string): Promise<InstallViewManifest> {
+  const out = resolve(dest);
+  mkdirSync(out, { recursive: true });
+  // The fake harness has no documented install; it takes the OpenClaw view so a keyless trial proves the mount and the adapter variables.
+  const bundleHarness = harness === '_fake' ? 'openclaw' : harness;
+  const r = await sh(['docker', 'run', '--rm', '--user', uidGid(), '-v', `${out}:/out`, '--entrypoint', '/opt/sidecar/gbrain/export-install.sh', image, bundleHarness, split, '/out'], 300_000);
+  if (r.status !== 0) throw new RunnerError('HE-GBRAIN-006', `export-install.sh ${bundleHarness} ${split} from ${image} failed: ${(r.stderr || r.stdout).trim().slice(0, 400)}; fix: rebuild the image (scripts/build-gbrain-image.sh) so it carries the install bundle`);
+  const manifestPath = join(out, 'manifest.json');
+  if (!existsSync(manifestPath)) throw new RunnerError('HE-GBRAIN-006', `the exported view at ${out} has no manifest.json; fix: rebuild the image (scripts/build-gbrain-image.sh)`);
+  const view = JSON.parse(readFileSync(manifestPath, 'utf8')) as InstallViewManifest;
+  return verifyInstallView(view, out);
+}
+
+/** internal-task: every file the view manifest lists is present under root with its sha256 (HE-GBRAIN-006 otherwise). */
+export function verifyInstallView(view: InstallViewManifest, root: string): InstallViewManifest {
+  const check = verifyFiles(root, view.files);
+  if (!check.ok) throw new RunnerError('HE-GBRAIN-006', `the install bundle view at ${root} (${view.harness} ${view.split}) does not match its manifest: ${check.missing.length} missing (${check.missing.slice(0, 3).join(', ')}), ${check.changed.length} changed (${check.changed.slice(0, 3).join(', ')}); fix: re-export it from the image (gbrain/export-install.sh) or rebuild the image`);
+  if (view.harness === 'hermes' && (!view.context || view.context.kept_slugs.length === 0)) throw new RunnerError('HE-GBRAIN-006', `the hermes ${view.split} view at ${root} has an empty compiled context; the bundle was built from an empty brain (gbrain/build-install.ts copies each brain to /brain first); fix: rebuild the image`);
+  return view;
 }
 
 /** One tools/call against the sidecar directly, under the token given; the parsed JSON of the first text content. */

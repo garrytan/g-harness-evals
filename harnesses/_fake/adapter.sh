@@ -104,7 +104,13 @@ serve() {
   printf '{"trial":"%s","mode":"serve","model":"%s"}\n' "$HE_TRIAL_ID" "${HE_MODEL_NAME:-none}" > "$HE_SESSION_STATE_DIR/fake/session.json"
   export -f serve_turn
   export HE_LOG_DIR HE_SESSION_STATE_DIR HE_WORLD_MCP_URL HE_WORLD_MCP_TOKEN HE_GBRAIN_MCP_URL HE_GBRAIN_MCP_TOKEN
-  printf '{"harness":"_fake","trial":"%s","ready_at":"%s","world_mcp":%s%s}\n' "$HE_TRIAL_ID" "$(now)" "$([ -n "${HE_WORLD_MCP_URL:-}" ] && echo true || echo false)" "$([ -n "${HE_GBRAIN_MCP_URL:-}" ] && echo ',"gbrain_mcp":true')" > "$HE_LOG_DIR/ready.tmp"
+  # internal-task: under HE_GBRAIN_INSTALL=gbrain-docs the runner mounts the install bundle view read-only at HE_GBRAIN_INSTALL_DIR;
+  # the fake harness applies nothing and reports what it was given, so a trial record can prove the mount.
+  local install=''
+  if [ "${HE_GBRAIN_INSTALL:-}" = "gbrain-docs" ]; then
+    install=$(printf ',"gbrain_install":{"dir":"%s","split":"%s","files":%s,"writable":%s}' "${HE_GBRAIN_INSTALL_DIR:-}" "${HE_GBRAIN_SPLIT:-}" "$(find "${HE_GBRAIN_INSTALL_DIR:-/nonexistent}" -type f 2>/dev/null | wc -l | tr -d ' ')" "$(touch "${HE_GBRAIN_INSTALL_DIR:-/nonexistent}/.he-write-probe" 2>/dev/null && echo true || echo false)")
+  fi
+  printf '{"harness":"_fake","trial":"%s","ready_at":"%s","world_mcp":%s%s%s}\n' "$HE_TRIAL_ID" "$(now)" "$([ -n "${HE_WORLD_MCP_URL:-}" ] && echo true || echo false)" "$([ -n "${HE_GBRAIN_MCP_URL:-}" ] && echo ',"gbrain_mcp":true')" "$install" > "$HE_LOG_DIR/ready.tmp"
   mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
   log "serve: ready; polling $HE_TURNS_DIR"
   while [ "$stopping" -eq 0 ]; do

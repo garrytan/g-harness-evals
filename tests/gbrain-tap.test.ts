@@ -248,5 +248,12 @@ test('helpers: SSE and JSON parsing, slug collection, and describeCall for a JSO
   const d = describeCall({ id: 1, method: 'tools/call', params: { name: 'recall', arguments: { query: 'q' } } }, { id: 1, error: { code: -32602, message: 'bad' } }, 12, 200)!;
   expect(d).toMatchObject({ tool: 'gbrain.recall', kind: 'read', outcome: 'error', error: 'rpc_-32602', effect: { pages: [], count: 0, latency_ms: 12 } });
   expect(describeCall({ id: 1, method: 'ping' }, { id: 1, result: {} }, 1, 200)).toBeNull();
+  // internal-task: recall's results are the rows (count and slugs), and gbrain's degraded stamp is kept on the effect.
+  const recall = describeCall({ id: 1, method: 'tools/call', params: { name: 'recall', arguments: { query: 'q' } } }, { id: 1, result: { content: [{ type: 'text', text: JSON.stringify({ facts: [], total: 0, results: [{ slug: 'dev/chats/a', score: 1 }, { slug: 'dev/chats/b', score: 0.5 }], search_degraded: 'keyword_only_no_embedding_provider' }) }] } }, 7, 200)!;
+  expect(recall).toMatchObject({ tool: 'gbrain.recall', outcome: 'ok', effect: { pages: ['dev/chats/a', 'dev/chats/b'], count: 2, latency_ms: 7, degraded: 'keyword_only_no_embedding_provider' } });
+  const clean = describeCall({ id: 1, method: 'tools/call', params: { name: 'search', arguments: { query: 'q' } } }, { id: 1, result: { content: [{ type: 'text', text: JSON.stringify([{ slug: 'dev/chats/a' }]) }] } }, 7, 200)!;
+  expect(clean.effect).toEqual({ pages: ['dev/chats/a'], count: 1, latency_ms: 7 });
+  const facts = describeCall({ id: 1, method: 'tools/call', params: { name: 'recall', arguments: { question: 'q' } } }, { id: 1, result: { content: [{ type: 'text', text: JSON.stringify({ facts: [], results: [], facts_degraded: { reason: 'no_query_terms' } }) }] } }, 7, 200)!;
+  expect(facts.effect).toMatchObject({ count: 0, degraded: 'no_query_terms' });
   expect(describeCall({ id: 1, method: 'tools/call', params: { name: 'forget', arguments: {} } }, { id: 1, result: { content: [] } }, 1, 200)!.kind).toBe('write');
 });

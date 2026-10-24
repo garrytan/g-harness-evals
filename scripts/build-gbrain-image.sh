@@ -39,6 +39,9 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$out" ] || out="$root/gbrain/.build"
 mkdir -p "$out"
+# The Dockerfile's embedded target copies the brains from gbrain/.build/brains inside the build context, whatever --out is;
+# --out gets a copy of each brain beside its logs once the image is built.
+brains="$root/gbrain/.build/brains"
 log="$out/build.log"
 proxy_pid=
 cleanup() { if [ -n "$proxy_pid" ] && kill -0 "$proxy_pid" 2>/dev/null; then kill -TERM "$proxy_pid" 2>/dev/null || true; wait "$proxy_pid" 2>/dev/null || true; fi; }
@@ -61,7 +64,7 @@ plan() {
   if [ "$embedded" = 1 ]; then
     echo "embedded build:    docker build --build-arg GBRAIN_COMMIT=$gbrain --target builder -t $tag-builder -f gbrain/Dockerfile ."
     echo "                   metering proxy on 0.0.0.0:<port>, ledger $out/ledger.sqlite, lease \$1, run id gbrain-image-embed-<ts>, allow-models $model"
-    echo "                   docker run --rm --add-host host.docker.internal:host-gateway -e OPENAI_BASE_URL=http://host.docker.internal:<port>/gbrain-image/openai -v $out/brains/<split>-embedded:/brain $tag-builder build-brain.ts --split <split> --embeddings $model --out /brain"
+    echo "                   docker run --rm --add-host host.docker.internal:host-gateway -e OPENAI_BASE_URL=http://host.docker.internal:<port>/gbrain-image/openai -v gbrain/.build/brains/<split>-embedded:/brain $tag-builder build-brain.ts --split <split> --embeddings $model --out /brain"
     echo "                   docker build --build-arg GBRAIN_COMMIT=$gbrain --target embedded -t $tag -f gbrain/Dockerfile ."
   fi
   echo "prerequisites:"
@@ -99,7 +102,7 @@ curl -sf "http://127.0.0.1:$port/__proxy/status" >/dev/null || { echo "HE-PROXY-
 echo "[build-gbrain-image] metering proxy on port $port, lease \$1 as $run_id in $ledger"
 
 for split in dev heldout; do
-  dest="$out/brains/$split-embedded"
+  dest="$brains/$split-embedded"
   rm -rf "$dest" && mkdir -p "$dest"
   echo "[build-gbrain-image] embedded brain $split -> $dest"
   # The brain is built at /brain inside the container, bind-mounted from the host: the path the sidecar serves from.
@@ -117,7 +120,7 @@ kill -TERM "$proxy_pid"; wait "$proxy_pid" || true; proxy_pid=
 summary=$(bun runner/proxy/metering-proxy.ts summary --budget-ledger "$ledger" --run-id "$run_id")
 echo "[build-gbrain-image] embedding spend: $summary"
 for split in dev heldout; do
-  dest="$out/brains/$split-embedded"
+  dest="$brains/$split-embedded"
   # Per-split usage: the usage lines carry the slot (gbrain-image) and not the split, so each manifest records the run's
   # total and the split's share by request order is not separable; the total is what the lane cap counts.
   jq --argjson s "$summary" '.embeddings.usage = {requests: $s.requests, usd: $s.committed_usd, run_id: $s.run_id, note: "whole-run total for both embedded brains, from the proxy ledger"}
@@ -125,8 +128,9 @@ for split in dev heldout; do
 done
 usage_tokens=$(jq -s '[.[] | select(.outcome == "forwarded") | .input_tokens // 0] | add // 0' "$usage" 2>/dev/null || echo 0)
 for split in dev heldout; do
-  jq --argjson t "$usage_tokens" '.embeddings.usage.input_tokens = $t' "$out/brains/$split-embedded/manifest.json" > "$out/brains/$split-embedded/manifest.json.tmp" && mv "$out/brains/$split-embedded/manifest.json.tmp" "$out/brains/$split-embedded/manifest.json"
+  jq --argjson t "$usage_tokens" '.embeddings.usage.input_tokens = $t' "$brains/$split-embedded/manifest.json" > "$brains/$split-embedded/manifest.json.tmp" && mv "$brains/$split-embedded/manifest.json.tmp" "$brains/$split-embedded/manifest.json"
 done
+if [ "$brains" != "$out/brains" ]; then rm -rf "$out/brains" && mkdir -p "$out" && cp -r "$brains" "$out/brains"; fi
 
 echo "[build-gbrain-image] embedded target -> $tag"
 docker build --build-arg "GBRAIN_COMMIT=$gbrain" --target embedded -t "$tag" -f gbrain/Dockerfile . >> "$log" 2>&1 || fail "docker build of the embedded target failed"
