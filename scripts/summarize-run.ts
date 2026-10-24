@@ -16,6 +16,13 @@
 // `events_read` says how many trials had an event log to read. summary.json gains a `gbrain` key per cell and
 // nothing else changes.
 //
+// internal-task (company brain): a second gbrain table, printed when any cell has an offending gbrain read or an unmapped
+// page slug, splits the offending reads into unreadable rows returned by search and query, unreadable pages a
+// targeted read opened (returned / refused by gbrain), each by page kind, and all of them by grant; it also lists
+// pages returned by kind and the unmapped slug count, which is marked when nonzero because no leak number of that
+// cell may be published until it is zero (every slug the brain returned must map to a world record). Page slugs are
+// mapped against the world data of the split their prefix names.
+//
 // internal-task (v0.2 task slice): trials that ended as model_error, infra_error or exam_fault are excluded from the scored
 // rows and denominators (methodology item 9) and counted in the Excluded column and `excluded` key; their spend stays
 // in the USD columns. A per-cell x family table (passes / scored trials, tasks) follows the per-task table, read
@@ -31,6 +38,8 @@ import { seededRandom } from '../runner/stats/paired.ts';
 import { gbrainUsage } from './gbrain-usage.ts';
 import { loadTask } from '../runner/grade/task.ts';
 import { taskDirFor } from '../runner/run.ts';
+import { loadWorldData } from '../runner/grade/predicates.ts';
+import { DEFAULT_WORLD_PATH } from '../runner/grade/play.ts';
 
 function arg(name: string, fallback?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -96,6 +105,7 @@ const eventsOf = (t: TrialRecord): WorldEvent[] | null => {
   return candidates.length ? readFileSync(candidates[0]!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as WorldEvent) : null;
 };
 const cells = [...new Set(allRows.map((t) => t.cell))];
+const worlds = { dev: loadWorldData(DEFAULT_WORLD_PATH, 'dev'), heldout: loadWorldData(DEFAULT_WORLD_PATH, 'heldout') };
 const out: string[] = [];
 const summary: Record<string, unknown> = { run: allRows[0]?.trial_id.split('/')[0], grading: useRegraded ? 'regraded' : 'as recorded', seed, cells: {} as Record<string, unknown> };
 out.push(`| Cell | n (tasks x reps) | Passes | Pass rate [95% CI, task-clustered] | Excluded (model, infra, exam errors) | Consent violations | Approval stops (valid) | Terminations | Cross-scope read failures | Refused requests | USD total | USD median/trial | USD per success | Tokens in / out / cached | Wall median |`);
@@ -120,7 +130,7 @@ for (const cell of cells) {
   const perSuccess = passes ? usd(total / passes) : 'no successes';
   const n = rate.clusters ? `${ts.length} (${rate.clusters} x ${+(ts.length / rate.clusters).toFixed(1)})` : '0';
   out.push(`| ${cell} | ${n} | ${passes} | ${pct(rate.rate)} [${pct(rate.lower)}, ${pct(rate.upper)}] | ${excluded} | ${cv} | ${stops.length} (${validStops}) | ${[...term.entries()].map(([k, v]) => `${k} ${v}`).join(', ')} | ${xscope} | ${refused} | ${usd(total)} | ${usd(median(usage.map((u) => u.usd)))} | ${perSuccess} | ${tokens.i.toLocaleString()} / ${tokens.o.toLocaleString()} / ${tokens.c.toLocaleString()} | ${wall.toFixed(0)} s |`);
-  const gbrain = gbrainUsage(everything.map((t) => ({ events: eventsOf(t), predicates: view(t).predicates })));
+  const gbrain = gbrainUsage(everything.map((t) => ({ events: eventsOf(t), predicates: view(t).predicates })), worlds);
   (summary.cells as Record<string, unknown>)[cell] = { n: ts.length, passes, pass_rate: rate.rate, ci95: [rate.lower, rate.upper], task_clusters: rate.clusters, consent_violations: cv, approval_stops: stops.length, valid_approval_stops: validStops, terminations: Object.fromEntries(term), excluded, cross_scope_read_failures: xscope, refused_requests: refused, usd_total: total, usd_median: median(usage.map((u) => u.usd)), usd_per_success: passes ? total / passes : null, tokens, wall_median_s: wall, trial_ids: everything.map((t) => t.trial_id), gbrain };
 }
 out.push('');
@@ -136,6 +146,18 @@ if (gbrainCells.some(([, g]) => g.calls_total > 0 || g.trials_with_tools_list > 
   out.push(`gbrain: no via gbrain event in any cell (${gbrainCells.reduce((s, [, g]) => s + g.events_read, 0)} of ${allRows.length} event logs read).`);
 }
 out.push('');
+const counts = (m: Record<string, number>) => Object.entries(m).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([k, v]) => `${k} ${v}`).join(', ') || '0';
+const sum = (m: Record<string, number>) => Object.values(m).reduce((s, n) => s + n, 0);
+if (gbrainCells.some(([, g]) => g.unmapped_slugs > 0 || sum(g.scope_leaks.by_grant) > 0)) {
+  out.push('| Cell | Unreadable rows from search/query (by kind) | Unreadable pages opened, returned (by kind) | Unreadable pages opened, refused by gbrain (by kind) | Offending reads by grant | Pages returned by kind | Unmapped slugs |');
+  out.push('|---|---|---|---|---|---|---|');
+  for (const [cell, g] of gbrainCells) {
+    const l = g.scope_leaks;
+    const unmapped = g.unmapped_slugs ? `${g.unmapped_slugs} (nonzero: map these slugs before publishing this cell's leak counts)` : '0';
+    out.push(`| ${cell} | ${sum(l.search_rows)}: ${counts(l.search_rows)} | ${sum(l.opened_returned)}: ${counts(l.opened_returned)} | ${sum(l.opened_refused)}: ${counts(l.opened_refused)} | ${counts(l.by_grant)} | ${counts(g.pages_by_kind)} | ${unmapped} |`);
+  }
+  out.push('');
+}
 const tasks = [...new Set(rows.map((t) => t.task))].sort();
 out.push(`| Task | ${cells.join(' | ')} |`);
 out.push(`|---|${cells.map(() => '---').join('|')}|`);

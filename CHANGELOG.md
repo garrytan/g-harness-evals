@@ -36,6 +36,11 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 - Adapters: OpenClaw, Hermes and QM register gbrain as a second MCP server beside `world` when the two variables are set and are byte-identical otherwise; the fake adapter answers `[fake:gbrain ...]` markers.
 - Proof: the fake harness through the runner (search, entity, remember, recall inside turn windows) and a live smoke on `sc-06` with Haiku: all three harnesses listed the 33 tools, none called one, $0.04 in total. Design, pins and evidence in `docs/gbrain-arm.md`.
 
+### internal-task: the company brain (grader and report)
+
+- Grader: `mapGbrainSlug` in runner/grade/predicates.ts maps a gbrain page slug to its world record for every page kind, now including emails (mail `slug`, readable by `mailbox_members`) and meetings (calendar `slug`, readable by organizer and attendees); `no_cross_scope_reads` fails on an unreadable email or meeting as it does on a channel or file, names the page kind, and counts a targeted read gbrain refused with `refused by gbrain (<error>)` in the evidence (docs/tasks.md, "gbrain reads").
+- `scripts/summarize-run.ts`: the per-cell `gbrain` block gains `scope_leaks` (unreadable rows from `search`/`query`, unreadable pages opened and returned, unreadable pages refused, each by page kind, and all by grant), `pages_by_kind` and `unmapped_slugs`, with a second gbrain table and a marker on a nonzero unmapped count (runner/README.md, report tooling).
+
 ### From the gbrain arm, lane E
 
 - Grader: `via` `gbrain` read events count for scope through their page slugs (channel by `source_slugs`, file by `slug`); cross-scope evidence names the gbrain tool and slug; stray reads for `digest_posted` include gbrain reads; `initialize` and `tools/list` never count (docs/tasks.md, "gbrain reads").
