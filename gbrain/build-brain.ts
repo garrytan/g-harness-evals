@@ -1,25 +1,31 @@
 #!/usr/bin/env bun
-// Build one PGLite brain for the gbrain arm: the slice of the Pemberline corpus the bot can already read
-// in the world, for one split, imported into a fresh keyless gbrain home. Runs at image build time
-// (gbrain/Dockerfile) and by hand:
+// Build one PGLite brain for the gbrain arm, for one split, imported into a fresh keyless gbrain home.
+// Runs at image build time (gbrain/Dockerfile) and by hand:
 //
 //   bun gbrain/build-brain.ts --split heldout --corpus <gbrain-evals>/eval/data/messy-company-v1/corpus \
 //       --world world/seed/world.json --out /brains/heldout --staging /tmp/staging-heldout \
-//       --gbrain "bun /opt/gbrain/src/cli.ts" --commit <gbrain commit>
+//       --gbrain "bun /opt/gbrain/src/cli.ts" --commit <gbrain commit> [--brain bot-visible|company]
 //
-// The page list comes from world.json, never from a directory listing: the source_slugs of every
-// non-DM channel loaded for the split (record.split is the split or "both") plus the slug of every
-// file with visibility "public" loaded for the split. Each page is copied into the staging directory
-// at <split>/<corpus slug>.md, so the gbrain page slug is <split>/<corpus slug>, the name
-// docs/gbrain-arm.md and lane E's grader use. A listed page missing from the corpus fails the build.
+// Two brains (docs/gbrain-arm.md). --brain bot-visible (the default, the gbrain arm): the slice of the
+// Pemberline corpus the bot can already read in the world: the source_slugs of every non-DM channel loaded
+// for the split (record.split is the split or "both") plus the slug of every file with visibility
+// "public" loaded for the split, all in gbrain's one default source. --brain company (the company-brain
+// run, internal-task): every record loaded for the split, every chat and DM page, every file whatever its
+// visibility, every email and every meeting, grouped into one gbrain source per distinct set of members
+// who may read the record, each source federated so an unscoped token reads them all, plus one bearer
+// token per member granted exactly the sources whose readers include that member and one public-only
+// token, written to <out>/tokens.json. The page list comes from world.json, never from a directory
+// listing. Each page is copied into the staging directory at <split>/<corpus slug>.md (under a per-source
+// directory for the company brain), so the gbrain page slug is <split>/<corpus slug> in both brains, the
+// name docs/gbrain-arm.md and the grader use. A listed page missing from the corpus fails the build.
 // gbrain runs with an environment that holds no API key: init prints its search-mode notice and picks
 // keyword-only search because nothing else is available; import runs with --no-embed.
 
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import type { Split, World } from '../world/types.ts';
+import type { Member, Split, World, WorldFile } from '../world/types.ts';
 
 export interface BrainPage {
   /** gbrain page slug: <split>/<corpus slug>. */
@@ -52,6 +58,176 @@ export interface BrainManifest {
 }
 
 export type ListedPage = Omit<BrainPage, 'sha256' | 'bytes' | 'source_path'>;
+
+// ---- the company brain (internal-task) --------------------------------------------------------------------
+
+export type CompanyPageKind = 'channel' | 'dm' | 'contract' | 'ticket' | 'crm' | 'profile' | 'update' | 'digest' | 'note' | 'email' | 'meeting';
+
+export interface CompanyPage {
+  page_slug: string;
+  slug: string;
+  source_path: string;
+  sha256: string;
+  bytes: number;
+  kind: CompanyPageKind;
+  world_id: string;
+  world_name: string;
+  visibility: string;
+  /** Member ids who may read this record in the world; the source is named from this set. */
+  readers: string[];
+  /** The gbrain source the page is imported into. */
+  source: string;
+}
+
+export type ListedCompanyPage = Omit<CompanyPage, 'sha256' | 'bytes' | 'source_path'>;
+
+export interface CompanySource { id: string; readers: string[]; pages: number }
+export interface CompanyGrant { member: string; token_name: string; write: string; sources: string[] }
+
+/** manifest.json of a company brain; schema_version 2. The bot-visible manifest keeps schema_version 1 unchanged. */
+export interface CompanyBrainManifest {
+  schema_version: 2;
+  brain: 'company';
+  gbrain_commit: string;
+  gbrain_version: string | null;
+  corpus: { repo: string; commit: string; path: string };
+  split: 'dev' | 'heldout';
+  world_id: string;
+  built_at: string;
+  embeddings: 'off';
+  pages: CompanyPage[];
+  counts: Record<CompanyPageKind, number> & { total: number };
+  sources: CompanySource[];
+  /** One grant per member token plus public-only; the tokens themselves are in tokens.json, never here. */
+  grants: CompanyGrant[];
+  imports: Record<string, Record<string, unknown>>;
+}
+
+/** tokens.json beside a company brain: the plaintext bearer tokens, mode 0600, copied per trial into the evaluator-owned
+ *  <trial dir>/gbrain/ and never committed (the results .gitignore excludes that directory). */
+export interface CompanyTokens {
+  schema_version: 1;
+  brain: 'company';
+  split: 'dev' | 'heldout';
+  /** member id -> bearer token; each granted the sources whose readers include the member, writing to private-<member>. */
+  members: Record<string, string>;
+  /** Granted the public source only: what the tap presents before the first turn under member scope. */
+  public_only: string;
+}
+
+/** gbrain's source id rule at the pinned commit: lower-case, digits and hyphens, 1 to 32 characters. */
+export const SOURCE_ID_RE = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
+
+const sortedUnique = (ids: Iterable<string>): string[] => [...new Set(ids)].sort();
+
+/** The members loaded for a split: employees, Moss and the guests who appear in it. */
+export function loadedMembers(world: World, split: 'dev' | 'heldout'): Member[] {
+  return world.members.filter((m) => loaded(m, split));
+}
+
+/** The world's file rule, as runner/grade/predicates.ts canReadFile states it (kept in step by tests/gbrain-brain.test.ts;
+ *  this file cannot import the grader because the sidecar image copies only gbrain/ and world/types.ts). */
+export function memberReadsFile(member: Member, file: WorldFile): boolean {
+  if (file.owner === member.id) return true;
+  if (file.visibility === 'private') return false;
+  if (file.visibility === 'public') return true;
+  if (member.org_wide) return true;
+  return file.team !== null && member.team === file.team;
+}
+
+function fileReaders(world: World, split: 'dev' | 'heldout', file: WorldFile): string[] {
+  return sortedUnique(loadedMembers(world, split).filter((m) => memberReadsFile(m, file)).map((m) => m.id));
+}
+
+/** The source id for a reader set: public (everyone loaded), private-<member> (one member), team-<short> (a team plus the
+ *  org-wide roles, the file rule), team-<short>-members (the team alone, which is what its channels' membership is),
+ *  channel-<name> (exactly a channel's members), else readers-<8 hex of sha256 over the sorted ids>. */
+export function sourceIdFor(world: World, split: 'dev' | 'heldout', readers: string[]): string {
+  const key = sortedUnique(readers);
+  const everyone = sortedUnique(loadedMembers(world, split).map((m) => m.id));
+  const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+  if (same(key, everyone)) return 'public';
+  if (key.length === 1) return `private-${key[0]}`;
+  const orgWide = world.members.filter((m) => m.org_wide).map((m) => m.id);
+  for (const t of world.teams) {
+    if (!loaded(t, split)) continue;
+    const lead = world.members.find((m) => m.id === t.lead);
+    const teamSet = sortedUnique([...t.members, ...(lead ? [lead.id] : []), ...orgWide].filter((id) => loadedMembers(world, split).some((m) => m.id === id)));
+    if (same(key, teamSet)) return `team-${t.short.toLowerCase()}`;
+  }
+  for (const t of world.teams) {
+    if (!loaded(t, split)) continue;
+    if (same(key, sortedUnique([...t.members, t.lead]))) return `team-${t.short.toLowerCase()}-members`;
+  }
+  for (const c of world.channels) {
+    if (c.kind === 'dm' || !loaded(c, split)) continue;
+    if (same(key, sortedUnique(c.members))) return `channel-${c.name}`;
+  }
+  return `readers-${createHash('sha256').update(key.join(',')).digest('hex').slice(0, 8)}`;
+}
+
+/** Every record loaded for a split as a brain page with its readers and source, in world.json order: channels and DMs,
+ *  files, mail, meetings. Readers: channel membership for a chat or DM page, canReadFile for a file, mailbox_members for
+ *  an email, organizer plus attendees for a meeting. */
+export function companyPageList(world: World, split: 'dev' | 'heldout'): ListedCompanyPage[] {
+  const pages: ListedCompanyPage[] = [];
+  const add = (p: Omit<ListedCompanyPage, 'page_slug' | 'source' | 'readers'> & { readers: string[] }) => {
+    const readers = sortedUnique(p.readers);
+    const source = sourceIdFor(world, split, readers);
+    if (!SOURCE_ID_RE.test(source)) throw new Error(`source id ${source} for readers [${readers.join(', ')}] does not match gbrain's source id rule`);
+    pages.push({ ...p, readers, source, page_slug: `${split}/${p.slug}` });
+  };
+  for (const c of world.channels) {
+    if (!loaded(c, split)) continue;
+    for (const slug of c.source_slugs) add({ slug, kind: c.kind === 'dm' ? 'dm' : 'channel', world_id: c.id, world_name: c.name, visibility: c.kind === 'dm' ? 'dm' : 'channel', readers: c.members });
+  }
+  for (const f of world.files) {
+    if (!loaded(f, split)) continue;
+    add({ slug: f.slug, kind: f.kind, world_id: f.id, world_name: f.title, visibility: f.visibility, readers: fileReaders(world, split, f) });
+  }
+  for (const m of world.mail) {
+    if (!loaded(m, split) || !m.slug) continue;
+    add({ slug: m.slug, kind: 'email', world_id: m.id, world_name: m.subject, visibility: 'mailbox', readers: m.mailbox_members });
+  }
+  for (const e of world.calendar) {
+    if (!loaded(e, split) || !e.slug) continue;
+    add({ slug: e.slug, kind: 'meeting', world_id: e.id, world_name: e.title, visibility: 'attendees', readers: [e.organizer, ...e.attendees] });
+  }
+  return pages;
+}
+
+/** The sources of a company brain: one per distinct reader set, plus an empty private-<member> source for every
+ *  employee and agent without one, so each member token has a write source only that member reads. */
+export function companySources(world: World, split: 'dev' | 'heldout', pages: ListedCompanyPage[]): CompanySource[] {
+  const bySource = new Map<string, CompanySource>();
+  for (const p of pages) {
+    const s = bySource.get(p.source) ?? { id: p.source, readers: p.readers, pages: 0 };
+    s.pages += 1;
+    bySource.set(p.source, s);
+  }
+  for (const m of tokenMembers(world, split)) {
+    const id = `private-${m.id}`;
+    if (!bySource.has(id)) bySource.set(id, { id, readers: [m.id], pages: 0 });
+  }
+  if (!bySource.has('public')) bySource.set('public', { id: 'public', readers: sortedUnique(loadedMembers(world, split).map((m) => m.id)), pages: 0 });
+  return [...bySource.values()].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/** Who gets a member token: the employees and the agent (Moss) loaded for the split; guests ask nothing of the bot. */
+export function tokenMembers(world: World, split: 'dev' | 'heldout'): Member[] {
+  return loadedMembers(world, split).filter((m) => m.kind === 'employee' || m.kind === 'agent');
+}
+
+/** The grants: for each token member every source whose readers include them, private-<member> first as the write source. */
+export function companyGrants(world: World, split: 'dev' | 'heldout', sources: CompanySource[]): CompanyGrant[] {
+  const grants: CompanyGrant[] = tokenMembers(world, split).map((m) => {
+    const write = `private-${m.id}`;
+    const reads = sources.filter((s) => s.id !== write && s.readers.includes(m.id)).map((s) => s.id).sort();
+    return { member: m.id, token_name: `member-${m.id}`, write, sources: [write, ...reads] };
+  });
+  grants.push({ member: 'public-only', token_name: 'public-only', write: 'public', sources: ['public'] });
+  return grants;
+}
 
 const loaded = (record: { split: Split }, split: 'dev' | 'heldout') => record.split === split || record.split === 'both';
 
@@ -111,10 +287,13 @@ export interface BuildOptions {
   commit: string;
   corpusCommit: string;
   corpusRepo: string;
+  /** bot-visible (default) or company (docs/gbrain-arm.md, "Company brain"). */
+  brain?: 'bot-visible' | 'company';
   log?: (line: string) => void;
 }
 
-export function buildBrain(o: BuildOptions): BrainManifest {
+export function buildBrain(o: BuildOptions): BrainManifest | CompanyBrainManifest {
+  if (o.brain === 'company') return buildCompanyBrain(o);
   const log = o.log ?? ((l) => console.error(l));
   const world = JSON.parse(readFileSync(o.worldPath, 'utf8')) as World;
   const listed = pageList(world, o.split);
@@ -168,6 +347,98 @@ export function buildBrain(o: BuildOptions): BrainManifest {
   return manifest;
 }
 
+
+/** Build a company brain: stage every page under <staging>/<source>/<split>/<slug>.md, init a keyless brain, register one
+ *  federated source per reader set and import each, mint one token per member (and public-only) granted its sources,
+ *  write manifest.json (schema_version 2) and tokens.json (mode 0600) into <out>. */
+export function buildCompanyBrain(o: BuildOptions): CompanyBrainManifest {
+  const log = o.log ?? ((l) => console.error(l));
+  const world = JSON.parse(readFileSync(o.worldPath, 'utf8')) as World;
+  const listed = companyPageList(world, o.split);
+  if (!listed.length) throw new Error(`no records for split ${o.split} in ${o.worldPath}`);
+  const sources = companySources(world, o.split, listed);
+  const grants = companyGrants(world, o.split, sources);
+
+  rmSync(o.staging, { recursive: true, force: true });
+  mkdirSync(o.staging, { recursive: true });
+  const missing: string[] = [];
+  const pages: CompanyPage[] = [];
+  for (const p of listed) {
+    const src = locate(o.corpus, o.split, p.slug);
+    if (!src) { missing.push(p.slug); continue; }
+    const body = readFileSync(src);
+    const dest = join(o.staging, p.source, o.split, `${p.slug}.md`);
+    mkdirSync(dirname(dest), { recursive: true });
+    copyFileSync(src, dest);
+    pages.push({ ...p, source_path: `${o.split}/${p.slug}.md`, sha256: createHash('sha256').update(body).digest('hex'), bytes: body.length });
+  }
+  if (missing.length) throw new Error(`${missing.length} listed page(s) missing from ${o.corpus}: ${missing.join(', ')}`);
+  for (const s of sources) mkdirSync(join(o.staging, s.id), { recursive: true });
+  const counts = Object.fromEntries((['channel', 'dm', 'contract', 'ticket', 'crm', 'profile', 'update', 'digest', 'note', 'email', 'meeting'] as CompanyPageKind[]).map((k) => [k, pages.filter((p) => p.kind === k).length])) as Record<CompanyPageKind, number>;
+  log(`${o.split} company: staged ${pages.length} pages in ${sources.length} sources (${Object.entries(counts).filter(([, n]) => n).map(([k, n]) => `${n} ${k}`).join(', ')}) under ${o.staging}`);
+
+  rmSync(o.out, { recursive: true, force: true });
+  mkdirSync(o.out, { recursive: true });
+  const env = keylessEnv(resolve(o.out));
+  const init = run([...o.gbrain, 'init', '--pglite', '--non-interactive', '--no-embedding'], env, 'gbrain init');
+  log(`gbrain init: ${(init.stdout + init.stderr).split('\n').filter((l) => /search|embedding|engine/i.test(l)).slice(0, 3).join(' | ')}`);
+
+  // One federated source per reader set, each imported from its own staging directory, each import checked against
+  // that source's page count. An empty private-<member> source is registered and imported too (zero pages), so a member
+  // token always has a write source nobody else reads.
+  const imports: Record<string, Record<string, unknown>> = {};
+  for (const s of sources) {
+    const dir = resolve(join(o.staging, s.id));
+    run([...o.gbrain, 'sources', 'add', s.id, '--path', dir, '--force', '--federated'], env, `gbrain sources add ${s.id}`);
+    if (s.pages === 0) { imports[s.id] = { status: 'success', imported: 0, skipped: 0, errors: 0, empty_source: true }; continue; }
+    const imp = run([...o.gbrain, 'import', dir, '--source', s.id, '--no-embed', '--allow-noncanonical-root', '--json'], env, `gbrain import ${s.id}`);
+    const summaryLine = imp.stdout.split('\n').reverse().find((l) => l.trim().startsWith('{'));
+    if (!summaryLine) throw new Error(`gbrain import ${s.id} printed no JSON summary\n${imp.stderr.slice(-800)}`);
+    const summary = JSON.parse(summaryLine) as Record<string, unknown>;
+    if (summary.status !== 'success' || Number(summary.imported) !== s.pages || Number(summary.errors) !== 0 || summary.source_id !== s.id) {
+      throw new Error(`gbrain import into ${s.id} did not import exactly ${s.pages} pages: ${summaryLine}`);
+    }
+    imports[s.id] = summary;
+    log(`gbrain import ${s.id}: ${summary.imported} pages (readers ${s.readers.length})`);
+  }
+
+  // Tokens: gbrain prints each secret once; it goes to tokens.json and nowhere else (never a log line).
+  const members: Record<string, string> = {};
+  let publicOnly = '';
+  for (const g of grants) {
+    const created = run([...o.gbrain, 'auth', 'create', g.token_name], env, `gbrain auth create ${g.token_name}`);
+    const token = /gbrain_[0-9a-f]+/.exec(created.stdout + created.stderr)?.[0];
+    if (!token) throw new Error(`gbrain auth create ${g.token_name} printed no token`);
+    run([...o.gbrain, 'auth', 'rescope', '--token', g.token_name, '--sources', g.sources.join(',')], env, `gbrain auth rescope ${g.token_name}`);
+    if (g.member === 'public-only') publicOnly = token; else members[g.member] = token;
+  }
+  log(`gbrain auth: ${Object.keys(members).length} member tokens and public-only minted and granted`);
+  const tokens: CompanyTokens = { schema_version: 1, brain: 'company', split: o.split, members, public_only: publicOnly };
+  const tokensPath = join(o.out, 'tokens.json');
+  writeFileSync(tokensPath, JSON.stringify(tokens, null, 1) + '\n', { mode: 0o600 });
+  chmodSync(tokensPath, 0o600);
+
+  const version = run([...o.gbrain, '--version'], env, 'gbrain --version').stdout.trim().match(/\d+\.\d+\.\d+(\.\d+)?/)?.[0] ?? null;
+  const manifest: CompanyBrainManifest = {
+    schema_version: 2,
+    brain: 'company',
+    gbrain_commit: o.commit,
+    gbrain_version: version,
+    corpus: { repo: o.corpusRepo, commit: o.corpusCommit, path: 'eval/data/messy-company-v1/corpus' },
+    split: o.split,
+    world_id: world.world_id,
+    built_at: new Date().toISOString(),
+    embeddings: 'off',
+    pages,
+    counts: { ...counts, total: pages.length },
+    sources,
+    grants,
+    imports,
+  };
+  writeFileSync(join(o.out, 'manifest.json'), JSON.stringify(manifest, null, 1) + '\n');
+  return manifest;
+}
+
 function arg(name: string, fallback?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
   return i >= 0 ? process.argv[i + 1] : fallback;
@@ -175,21 +446,23 @@ function arg(name: string, fallback?: string): string | undefined {
 
 if (import.meta.main) {
   const split = arg('split');
-  if (split !== 'dev' && split !== 'heldout') { console.error('usage: bun gbrain/build-brain.ts --split dev|heldout --corpus <dir> --world <world.json> --out <brain home> [--staging <dir>] [--gbrain "<cmd>"] [--commit <sha>] [--corpus-commit <sha>]'); process.exit(2); }
+  const brain = arg('brain', 'bot-visible');
+  if ((split !== 'dev' && split !== 'heldout') || (brain !== 'bot-visible' && brain !== 'company')) { console.error('usage: bun gbrain/build-brain.ts --split dev|heldout [--brain bot-visible|company] --corpus <dir> --world <world.json> --out <brain home> [--staging <dir>] [--gbrain "<cmd>"] [--commit <sha>] [--corpus-commit <sha>]'); process.exit(2); }
   const pin = JSON.parse(readFileSync(join(import.meta.dir, 'pin.json'), 'utf8')) as { gbrain: { commit: string }; corpus: { repo: string; commit: string } };
   try {
     const m = buildBrain({
       split,
       corpus: resolve(arg('corpus', join(process.env.HOME ?? '.', '.capy', 'work', 'harness-eval', 'gbrain-evals', 'eval', 'data', 'messy-company-v1', 'corpus'))!),
       worldPath: resolve(arg('world', join(import.meta.dir, '..', 'world', 'seed', 'world.json'))!),
-      out: resolve(arg('out', join('/brains', split))!),
-      staging: resolve(arg('staging', join('/tmp', `gbrain-staging-${split}`))!),
+      out: resolve(arg('out', join('/brains', brain === 'company' ? `${split}-company` : split))!),
+      staging: resolve(arg('staging', join('/tmp', `gbrain-staging-${split}${brain === 'company' ? '-company' : ''}`))!),
+      brain,
       gbrain: (arg('gbrain', 'gbrain')!).split(' ').filter(Boolean),
       commit: arg('commit', pin.gbrain.commit)!,
       corpusCommit: arg('corpus-commit', pin.corpus.commit)!,
       corpusRepo: pin.corpus.repo,
     });
-    console.log(JSON.stringify({ split: m.split, pages: m.counts, gbrain_version: m.gbrain_version, out: arg('out', join('/brains', split)) }));
+    console.log(JSON.stringify({ split: m.split, brain, pages: m.counts, ...('sources' in m ? { sources: m.sources.length, tokens: m.grants.length } : {}), gbrain_version: m.gbrain_version, out: arg('out', join('/brains', brain === 'company' ? `${split}-company` : split)) }));
   } catch (e) {
     console.error(`build-brain failed: ${(e as Error).message}`);
     process.exit(1);

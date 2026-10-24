@@ -3,17 +3,18 @@
   "role": "sidecar knowledge brain beside the world tools; not a harness under test",
   "gbrain": {
     "repo": "https://github.com/garrytan/gbrain",
-    "commit": "f241216c133771545bd93e97874f859366b3ef8d",
-    "version": "0.60.413.0",
+    "commit": "089bf0d848b50b0ac8be756f3363af5401fce1a1",
+    "version": "0.60.431.0",
     "branch": "master",
-    "date": "2026-10-23",
-    "run_as": "bun /opt/gbrain/src/cli.ts (source checkout, bun install --frozen-lockfile)"
+    "date": "2026-10-24",
+    "run_as": "bun /opt/gbrain/src/cli.ts (source checkout, bun install --frozen-lockfile)",
+    "previous": "f241216c133771545bd93e97874f859366b3ef8d (0.60.413.0) for run gbrain-arm-2026-10; its receipts name that commit in every brain manifest"
   },
   "corpus": {
     "repo": "https://github.com/garrytan/gbrain-evals",
     "commit": "6999ebc9da0ac784ac05995b586d22293544e924",
     "path": "eval/data/messy-company-v1/corpus/{dev,heldout}",
-    "slice": "world/seed/world.json: source_slugs of non-DM channels loaded for the split plus files with visibility public loaded for the split; page slug <split>/<corpus slug>"
+    "slice": "bot-visible brains (world/seed/world.json): source_slugs of non-DM channels loaded for the split plus files with visibility public loaded for the split; company brains: every channel and DM page, every file, every email and every meeting loaded for the split; page slug <split>/<corpus slug> in both"
   },
   "engine": "pglite",
   "surface": "starter",
@@ -53,10 +54,36 @@
     "GBRAIN_HTTP_RATE_LIMIT_IP": "1000000",
     "GBRAIN_HTTP_RATE_LIMIT_TOKEN": "1000000",
     "GBRAIN_OAUTH_TOKEN_RATE_LIMIT_MAX": "1000000",
-    "GBRAIN_SKIP_STARTUP_HOOKS": "1"
+    "GBRAIN_SKIP_STARTUP_HOOKS": "1",
+    "GBRAIN_REMOTE_PRIVATE_PAGES": "1 for a company brain only (HE_GBRAIN_BRAIN=company); unset for bot-visible",
+    "HE_GBRAIN_BRAIN": "bot-visible | company: which /brains entry the entrypoint copies to /brain",
+    "HE_GBRAIN_SCOPE": "none | member: with member the entrypoint also copies the company brain's tokens.json to $HE_GBRAIN_OUT for the world's tap, which presents the requesting member's token per turn"
   },
-  "auth": "gbrain auth create trial-<trial id>; the bearer token gbrain_<hex> goes to $HE_GBRAIN_OUT/token (mode 0600) and nowhere else; only the world's /gbrain tap presents it",
+  "auth": "gbrain auth create trial-<trial id>; the bearer token gbrain_<hex> goes to $HE_GBRAIN_OUT/token (mode 0600) and nowhere else; only the world's /gbrain tap presents it; under scope member the tap presents the requesting member's build-time token from tokens.json instead, and public-only before the first turn",
   "wire": "POST /mcp, Authorization: Bearer <token>, Accept: application/json, text/event-stream; replies are SSE-framed JSON-RPC (event: message / data: {...}); GET /mcp is 405; /health is unauthenticated",
-  "image": "harness-eval/gbrain:dev (gbrain/Dockerfile, built from the repository root with -f gbrain/Dockerfile); /brains/dev and /brains/heldout with manifest.json each",
-  "reaches": "the host loopback only, through a published port; the harness container reaches gbrain only through the world's POST /gbrain tap"
+  "image": "harness-eval/gbrain:dev (gbrain/Dockerfile, built from the repository root with -f gbrain/Dockerfile); /brains/dev, /brains/heldout, /brains/dev-company and /brains/heldout-company with manifest.json each (tokens.json beside the company brains); the company-brain run builds the same Dockerfile as harness-eval/gbrain:company and passes --gbrain-image so the gbrain arm's :dev tag is untouched while that arm runs",
+  "reaches": "the host loopback only, through a published port; the harness container reaches gbrain only through the world's POST /gbrain tap",
+  "brains": {
+    "bot-visible": "/brains/<split>: one default source, built by gbrain/build-brain.ts --brain bot-visible (the gbrain arm)",
+    "company": "/brains/<split>-company: one federated gbrain source per distinct reader set (public, private-<member>, team-<short>, team-<short>-members, channel-<name>, readers-<8 hex>), every source created with gbrain sources add <id> --path <staging dir> --force --federated and imported with gbrain import <dir> --source <id> --no-embed --allow-noncanonical-root --json; one bearer token per employee and agent (auth create member-<id>; auth rescope --token member-<id> --sources private-<id>,<every source whose readers include the member>) plus public-only (--sources public), the secrets in tokens.json (mode 0600 in the brain directory; world-readable inside the image layer, which is built and used on one machine and never pushed to a registry); served with GBRAIN_REMOTE_PRIVATE_PAGES=1 so visibility: private pages are served like every other page (gbrain's default hides them from every remote caller; internal-task report)"
+  },
+  "import_company": [
+    "gbrain",
+    "sources",
+    "add",
+    "<source>",
+    "--path",
+    "<staging>/<source>",
+    "--force",
+    "--federated",
+    "&&",
+    "gbrain",
+    "import",
+    "<staging>/<source>",
+    "--source",
+    "<source>",
+    "--no-embed",
+    "--allow-noncanonical-root",
+    "--json"
+  ]
 }

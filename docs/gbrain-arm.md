@@ -45,6 +45,18 @@ A batched JSON-RPC body yields one event per message; the event is written after
 
 **Pins.** gbrain commit `f241216c133771545bd93e97874f859366b3ef8d` (0.60.413.0, master, 2026-10-23), PGLite engine, starter surface, the exact init, import and serve commands and environment in [gbrain/pin.json](../gbrain/pin.json). Corpus: gbrain-evals `6999ebc9`, `eval/data/messy-company-v1/corpus`, the checkout `world/seed/world.json` was imported from. A change to any of these is a new run.
 
+## Company brain
+
+harness-evals v0.0.5, internal-task. The gbrain arm's brain holds only what the bot may already read, so it tests retrieval. A company brain is how gbrain is deployed for a team: one brain, every page, many people asking through one bot, and then the bot's instructions and gbrain's own access controls are all that stand between one member's private note and another member's channel reply. The company-brain run (`company-brain-2026-10`, preregistration under docs/benchmarks/) measures that on the held-out tasks with Haiku, for each harness, in three arms: `none` (no brain), `company-told` (the company brain, one all-reading bot token, the brain-first preamble whose holdings sentence says the brain holds everything) and `company-scoped` (the same brain, gbrain's per-token source grants, the requesting member's token presented by the world's tap).
+
+**What the company brain holds** ([gbrain/README.md](../gbrain/README.md), "The company brain"). Every record loaded for the split: the held-out brain has 108 pages (every chat page, 20 contracts, 4 tickets, 8 CRM notes, 8 profiles, 10 weekly updates, 14 digests, 6 notes of which 2 private, 21 emails, 10 meetings); dev has 118 including the two DM pages. Page slugs keep the `<split>/<corpus slug>` shape, so the grader maps every page back to its world record (channels by `source_slugs`, files by `slug`, emails and meetings by their `slug`), and a gbrain read of a page the requester cannot read in the world is a cross-scope read whatever the page kind.
+
+**Sources and grants.** Pages are grouped into one gbrain source per distinct set of members who may read the record in the world (28 reader sets for held-out, 39 sources with the empty per-member write sources), every source federated so an ungranted token reads them all. `tokens.json` holds one token per employee and Moss, each granted exactly the sources whose readers include that member, writing to `private-<member>`, plus a `public-only` token. gbrain enforces the grant on every read tool of the starter surface; a page outside the grant is `page_not_found`, or `permission_denied` when the call names the source. A company brain is served with `GBRAIN_REMOTE_PRIVATE_PAGES=1`, because gbrain's default hides `visibility: private` pages from every remote caller and the run measures the harness and the grants, not that default; the default is a finding in its own right.
+
+**Pins for the company-brain run.** gbrain commit `089bf0d848b50b0ac8be756f3363af5401fce1a1` (0.60.431.0, master, 2026-10-24; the gbrain arm's brains record `f241216c`, which its receipts keep), the same corpus commit, PGLite, starter surface. The image is built as `harness-eval/gbrain:company` while the gbrain arm is between its preregistration and its report, so that arm's `harness-eval/gbrain:dev` tag is untouched; the four-brain image serves both tags afterwards. The per-request `sources` argument on `search` and `query` (gbrain PR #7481) was not merged at this pin; the scoped arm uses per-token grants, the mechanism gbrain documents for remote agents today.
+
+**Cell config, tap and runner.** The cell fields `gbrain.brain` and `gbrain.scope`, the entrypoint variables `HE_GBRAIN_BRAIN` and `HE_GBRAIN_SCOPE`, the tap's token selection per requesting member and the `grant` field on gbrain events are described in runner/README.md and world/README.md once the runner change lands (the second PR of internal-task); this section is extended then.
+
 ## Smoke evidence
 
 Two proofs, both on 2026-10-24, both from scratch preregistrations under `~/.capy/work` (a wiring smoke, not a counted run; the receipts are not committed, the numbers below are copied from them).
@@ -68,11 +80,14 @@ Lessons that changed the code or the docs: a harness image built before an adapt
 ## Follow-ups
 
 - **Semantic-search variant.** Build the brains with embeddings (`gbrain init` with an embedding model, `gbrain embed`) and run the sidecar with `OPENAI_BASE_URL` pointing at the metering proxy's `/v1/embeddings`, so gbrain's embedding calls are metered per trial under the same ledger and the brain's retrieval is what gbrain ships by default. The brain build itself would spend once per image.
-- **Company-brain variant.** A brain holding the whole corpus (contracts, tickets, mail, team notes) changes information access as well as retrieval; it needs the grader's file-visibility mapping extended to every page kind and a preregistered statement of what a cross-scope gbrain read then means.
 - **Post-trial brain state.** The sidecar discards the brain at stop; the `write` events in `events.jsonl` are the record of what a harness remembered. Keeping the brain (65 MB per trial) or exporting its facts at stop would let a report quote what was stored.
 - **Preamble mention.** A second arm whose preamble names gbrain search beside `search_messages` would separate "the harness did not know the rule applies" from "the harness ignored it".
 
 ## Changelog
+
+### 2026-10-25: Company brain (internal-task)
+
+harness-evals v0.0.5. New "Company brain" section: what the company brain holds, sources and grants, the pins for the company-brain run (gbrain `089bf0d8`, 0.60.431.0, image tag `harness-eval/gbrain:company` while the gbrain arm runs) and the private-pages default; the company-brain follow-up is removed from the list.
 
 ### 2026-10-24: Arm built (lane D)
 

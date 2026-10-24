@@ -4,6 +4,11 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 
 ## [Unreleased]
 
+### internal-task: the company brain (build)
+
+- `gbrain/build-brain.ts --brain company`: every record of a split (channel and DM pages, every file, every email, every meeting) in one federated gbrain source per distinct reader set, one bearer token per member granted exactly its sources (writing to `private-<member>`) plus `public-only`, in `tokens.json`; `manifest.json` schema_version 2 with sources, grants and per-page readers. The bot-visible page list and manifest are unchanged (snapshot test).
+- `gbrain/Dockerfile`: four brains (`/brains/{dev,heldout}` and `/brains/{dev,heldout}-company`); gbrain pinned at `089bf0d8` (0.60.431.0); the tag rule for a build while the gbrain arm runs (`harness-eval/gbrain:company`). `gbrain/entrypoint.sh`: `HE_GBRAIN_BRAIN` and `HE_GBRAIN_SCOPE`, refusals for each bad value, `tokens.json` copied under member scope, `GBRAIN_REMOTE_PRIVATE_PAGES=1` for a company brain.
+- `tests/gbrain-brain.test.ts`: the company page list, readers against the world rule for every kind, source ids and grants; with `HE_GBRAIN_BUILD_TEST=1` a keyless build and serve at the pin proving the grants. Docs: gbrain/README.md, docs/gbrain-arm.md "Company brain".
 ### internal-task: spend reconciliation
 
 - `scripts/reconcile-provider.ts`: per run, the proxy's priced usage per UTC day and model cross-checked against `trials.jsonl` and the lease ledger, the per-day sheet in the console's shape, and the Admin API comparison (usage report by model and api key, cost report) against proxy totals pooled per day across the runs given, with a status and the 1% bar as a boolean; `results/spend-reconciliation.json` for the three v0.1 runs, each `not_performed` for want of an Admin API key; `tests/reconcile-provider.test.ts`.
