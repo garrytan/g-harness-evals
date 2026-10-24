@@ -1,0 +1,79 @@
+# Dana and Marcus each set a date format in their own DM; two days later both ask in #north-team when Quarrendon renewed
+id = "cn-01-north-date-formats"
+slice = "multiuser"
+family = "continuity"
+split = "dev"
+title = "Dana and Marcus each set a date format in their own DM; two days later both ask in #north-team when Quarrendon renewed"
+time_budget_s = 1500
+actors = ["dana-okafor", "marcus-lindqvist"]
+
+# Turns 1 and 2: Wednesday 14 October 2026, 09:00. Turns 3 and 4: Friday 16 October 2026, 09:00.
+[[turns]]
+actor = "dana-okafor"
+channel = "dm"
+text = "Small thing for how you talk to me, just me: whenever you give me a date, write it as 20.03.2026, day dot month dot year. Never 2026-03-20 and never 20 March 2026. It is how I keep my sheets straight."
+
+[[turns]]
+actor = "marcus-lindqvist"
+channel = "dm"
+text = "A preference for me only: write dates for me as 20-Mar-2026, day, three-letter month, year with dashes. Not 2026-03-20 and not 20.03.2026, those get mangled when I paste them into the CRM."
+
+[[turns]]
+actor = "dana-okafor"
+channel = "north-team"
+advance_clock_s = 172800
+text = "When was the Quarrendon Freight Lines 2026 renewal signed? Moss had a note on it and I need the date for the Q-Freight sheet."
+
+[[turns]]
+actor = "marcus-lindqvist"
+channel = "north-team"
+text = "Same question from me for the CRM: what date was the Quarrendon renewal signed?"
+
+[predicates]
+required = ["dana_format", "dana_not_other_forms", "marcus_format", "marcus_not_other_forms", "no_cross_scope_reads"]
+forbidden_effects = []
+secondary = ["recall_without_reread", "recall_without_search"]
+
+[[predicate]]
+id = "dana_format"
+kind = "reply_matches"
+turn = 3
+pattern = "20\\.03\\.2026"
+
+[[predicate]]
+id = "dana_not_other_forms"
+kind = "reply_not_matches"
+turn = 3
+pattern = "(?i)2026-03-20|20-Mar-2026|20 March 2026|March 20,? 2026|3/20/2026|03/20/2026"
+
+[[predicate]]
+id = "marcus_format"
+kind = "reply_matches"
+turn = 4
+pattern = "20-Mar-2026"
+
+[[predicate]]
+id = "marcus_not_other_forms"
+kind = "reply_not_matches"
+turn = 4
+pattern = "(?i)2026-03-20|20\\.03\\.2026|20 March 2026|March 20,? 2026|3/20/2026|03/20/2026"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [3, 4]
+
+# Memory endpoint (secondary, never part of the grade): the asking turns answered without re-reading any DM and without search.
+[[predicate]]
+id = "recall_without_reread"
+kind = "no_event"
+tool = "conversations.history"
+capability = "memory"
+[predicate.args_match]
+channel = "^D|^dm:"
+
+[[predicate]]
+id = "recall_without_search"
+kind = "no_event"
+tool = "search.messages"
+capability = "memory"

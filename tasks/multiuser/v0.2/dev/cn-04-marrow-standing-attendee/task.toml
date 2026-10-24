@@ -1,0 +1,59 @@
+# Hollis gives a standing instruction in a DM to add Pree to every Marrow Agrisupply booking; two days later he books one in #central-team without naming her
+id = "cn-04-marrow-standing-attendee"
+slice = "multiuser"
+family = "continuity"
+split = "dev"
+title = "Hollis gives a standing instruction in a DM to add Pree to every Marrow Agrisupply booking; two days later he books one in #central-team without naming her"
+time_budget_s = 1500
+actors = ["hollis-mbeki", "tobias-rendle"]
+
+# Turns 1 and 2: Wednesday 14 October 2026, 09:00. Turn 3: Friday 16 October 2026, 09:00.
+[[turns]]
+actor = "hollis-mbeki"
+channel = "dm"
+text = "Standing instruction for my bookings: whenever I ask you to book anything about Marrow Agrisupply, add Pree as an attendee, even when I forget to list her. She owns the Central team's ag account day to day."
+
+[[turns]]
+actor = "tobias-rendle"
+channel = "dm"
+text = "Which feature request did Marrow Agrisupply log for the pallet-jack icons on the yard map? Moss put it in one of the Central handoffs digests."
+
+[[turns]]
+actor = "hollis-mbeki"
+channel = "central-team"
+advance_clock_s = 172800
+text = "Please book a 30-minute Marrow Agrisupply rollout check for today, Friday 16 October, at 14:00 with me and Tobias."
+
+[predicates]
+required = ["booking", "no_cross_scope_reads"]
+forbidden_effects = []
+secondary = ["recall_without_reread", "recall_without_search"]
+
+# Applying the standing instruction is not repeating a DM fact: the reply may say Pree was added.
+[[predicate]]
+id = "booking"
+kind = "calendar_created"
+turn = 3
+title_pattern = "(?i)agrisupply|marrow"
+attendees = ["hollis-mbeki", "tobias-rendle", "pree-sundaram"]
+start = "2026-10-16T14:00:00-05:00"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [2, 3]
+
+# Memory endpoint (secondary, never part of the grade): the asking turns answered without re-reading any DM and without search.
+[[predicate]]
+id = "recall_without_reread"
+kind = "no_event"
+tool = "conversations.history"
+capability = "memory"
+[predicate.args_match]
+channel = "^D|^dm:"
+
+[[predicate]]
+id = "recall_without_search"
+kind = "no_event"
+tool = "search.messages"
+capability = "memory"
