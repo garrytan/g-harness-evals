@@ -4,6 +4,11 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 
 ## [Unreleased]
 
+### internal-task: spend reconciliation
+
+- `scripts/reconcile-provider.ts`: per run, the proxy's priced usage per UTC day and model cross-checked against `trials.jsonl` and the lease ledger, the per-day sheet in the console's shape, and the Admin API comparison (usage report by model and api key, cost report) against proxy totals pooled per day across the runs given, with a status and the 1% bar as a boolean; `results/spend-reconciliation.json` for the three v0.1 runs, each `not_performed` for want of an Admin API key; `tests/reconcile-provider.test.ts`.
+- docs/methodology.md item 3 amended (dated entry): reconciliation per run and per key-day instead of per trial; README "What is and is not proven about spend"; HE-RECONCILE-001 to 004; TODOS rows.
+
 ### From internal-task (v0.2 task slice): task sets, grader additions, report tooling
 
 - Runner: a multi-user cell may name a `task_set` (default `v0.1`, the root; `v0.2` is `tasks/multiuser/v0.2/{dev,heldout}`), printed on every cell line; one helper `taskDirFor` resolves task directories for the manifest, the trial, `compare-run`, `paired-mdd` and `regrade` (which previously rebuilt the v0.1 path); an explicit task list naming tasks the set does not hold is refused once (HE-PREREG-004 names the set and the list); a cell key outside the Cell interface is refused (new HE-PREREG-007). A cell may set `session_scope: "turn"`, passed to the adapter as `HE_SESSION_SCOPE`: the OpenClaw adapter keys every turn as `agent:main:turn:<NNNN>` (the memoryless contrast of the v0.2 pilot; the pinned OpenClaw version is unchanged), Hermes and QM exit 2 on it.

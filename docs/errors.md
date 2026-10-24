@@ -44,3 +44,12 @@ Every runner, proxy and adapter failure prints one line that starts with its cod
 |---|---|---|---|
 | HE-GBRAIN-001 | a cell carries `gbrain` with a surface other than `starter`, or a scripted cell carries `gbrain`, or a gbrain cell is dispatched in scripted mode | set `gbrain: {"surface": "starter"}` (the pinned surface, gbrain/pin.json) on a docker or process cell; a script plays the bot over world-MCP and has no harness to call the brain | runner/run.ts, runner/trial/trial.ts |
 | HE-GBRAIN-002 | the gbrain sidecar image is missing, `docker run` or `docker network create` failed, or the sidecar did not serve `/health` and write its token within the ready timeout (60 s) | `docker build -f gbrain/Dockerfile -t harness-eval/gbrain:dev .` (gbrain/README.md); read `<trial dir>/gbrain/sidecar.log` and `docker.log`; `preflight` starts one sidecar to prove the image before a run | runner/trial/gbrain.ts, runner/run.ts preflight |
+
+## Spend reconciliation (internal-task)
+
+| Code | What | Fix / recovery | Where |
+|---|---|---|---|
+| HE-RECONCILE-001 | the Admin API refused or did not answer (401 or 403: not an Admin key; 429 or 5xx: transient; timeout) | set `ANTHROPIC_ADMIN_KEY` to an Admin API key with usage and cost read access, or run again later; the message carries the status and request id, never the body | scripts/reconcile-provider.ts |
+| HE-RECONCILE-002 | a malformed or truncated Admin API page (no `data[]`, `has_more` without a fresh cursor, more than 50 pages) | nothing is written; run again, and report the request id if it repeats | scripts/reconcile-provider.ts |
+| HE-RECONCILE-003 | a results directory lacks `trials.jsonl`, `proxy-usage.ndjson`, a ledger lease for the run, or a harness trial has no usage block; or `--provider-fixture` was combined with `--write` | pass the directory that holds `trials.jsonl`; finish an incomplete run with `--resume` first; a fixture never stamps a run | scripts/reconcile-provider.ts |
+| HE-RECONCILE-004 | provider usage differs from the proxy by more than 1% in a settled day x model cell | the file is written with status `performed_mismatch`; label the run's cost figures "unreconciled" in its report and look for other spend on the same key and day (TODOS) | scripts/reconcile-provider.ts |

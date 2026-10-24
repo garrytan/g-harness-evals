@@ -47,7 +47,13 @@ bun runner/prereg/prereg.ts
 
 None of these calls a model API. A paid run is `bun runner/run.ts plan --prereg <file>` then `run --manifest <file>` after the preregistration is committed (runner/README.md); it spends through the proxy's lease ledger and lands its receipts under `docs/benchmarks/<run>/results/`. `bun scripts/summarize-run.ts --results <dir>` prints a run's tables and `bun scripts/regrade.ts` re-reads its evidence with the current grader.
 
+**What is and is not proven about spend.** Every published dollar figure is the metering proxy's list-price meter. For every counted trial the proxy's meter agrees with its own usage log (`reconcile.json` per trial), and for every counted run the usage log, the per-trial `usage.json` sums and the lease ledger agree to the cent (`bun scripts/reconcile-provider.ts --results <dir>`, written to `results/spend-reconciliation.json`). What is not proven is that the provider billed the same: that check needs an Anthropic Admin API key, which the v0.1 runs did not have, so each run's `spend-reconciliation.json` says "not performed" and carries the per-day sheet to check against the console by hand. Per-trial reconciliation against the provider is not possible with one upstream key (docs/methodology.md, item 3 as amended on 2026-10-24).
+
 ## Changelog
+
+### 2026-10-24: Spend reconciliation (internal-task)
+
+harness-evals v0.0.5. The checks section gains "What is and is not proven about spend": the proxy-side checks that hold for every counted trial and run, the provider-side check that needs an Admin API key and has not been performed, and the amendment of methodology item 3 to per run and per key-day. `scripts/reconcile-provider.ts` is new (runner/README.md, report tooling).
 
 ### 2026-10-24: gbrain arm preregistered
 
