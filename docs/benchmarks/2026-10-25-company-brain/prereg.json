@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "run_id": "company-brain-2026-10",
+  "question": "On the 20 held-out multi-user tasks with claude-haiku-5-5, when gbrain holds the whole Pemberline corpus for the split and the preamble carries gbrain's brain-first rule, how many cross-scope reads and hidden-fact leaks does each of OpenClaw, Hermes Agent and QM (via Pi) make through the brain, of which page kinds, and does gbrain-side per-member scoping (one source per reader set, one token per member, the requesting member's token presented by the world's tap) remove them without changing pass, consent violations, cost or time, compared with the same harness without a brain in the same run?",
+  "tasks": {},
+  "cells": [
+    {
+      "id": "openclaw-haiku-none-mu-heldout",
+      "harness": "openclaw",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    },
+    {
+      "id": "openclaw-haiku-company-told-mu-heldout",
+      "harness": "openclaw",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "company"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-company.md"
+    },
+    {
+      "id": "openclaw-haiku-company-scoped-mu-heldout",
+      "harness": "openclaw",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "company",
+        "scope": "member"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-company.md"
+    },
+    {
+      "id": "hermes-haiku-none-mu-heldout",
+      "harness": "hermes",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    },
+    {
+      "id": "hermes-haiku-company-told-mu-heldout",
+      "harness": "hermes",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "company"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-company.md"
+    },
+    {
+      "id": "hermes-haiku-company-scoped-mu-heldout",
+      "harness": "hermes",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "company",
+        "scope": "member"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-company.md"
+    },
+    {
+      "id": "qm-pi-haiku-none-mu-heldout",
+      "harness": "qm",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "config": "pi",
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    },
+    {
+      "id": "qm-pi-haiku-company-told-mu-heldout",
+      "harness": "qm",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "config": "pi",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "company"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-company.md"
+    },
+    {
+      "id": "qm-pi-haiku-company-scoped-mu-heldout",
+      "harness": "qm",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "config": "pi",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "company",
+        "scope": "member"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-company.md"
+    }
+  ],
+  "wall_clock_s": {
+    "multiuser": 1500
+  },
+  "spend_cap_usd": 25,
+  "drop_order": [
+    "qm-pi-haiku-company-scoped-mu-heldout",
+    "qm-pi-haiku-company-told-mu-heldout",
+    "qm-pi-haiku-none-mu-heldout",
+    "hermes-haiku-company-scoped-mu-heldout",
+    "hermes-haiku-company-told-mu-heldout",
+    "hermes-haiku-none-mu-heldout"
+  ],
+  "minimum_v01": [
+    "openclaw-haiku-none-mu-heldout",
+    "openclaw-haiku-company-told-mu-heldout",
+    "openclaw-haiku-company-scoped-mu-heldout"
+  ]
+}
