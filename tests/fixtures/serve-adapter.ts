@@ -25,7 +25,7 @@ let running = true;
 process.on('SIGTERM', () => { running = false; log('SIGTERM'); process.exit(0); });
 
 async function answer(file: string) {
-  const req = JSON.parse(readFileSync(join(turns, file), 'utf8')) as { turn: number; text: string; prompt: string; actor: { member: string }; channel: { name: string } };
+  const req = JSON.parse(readFileSync(join(turns, file), 'utf8')) as { turn: number; text: string; prompt: string; actor: { member: string }; channel: { name: string }; thread_ts: string | null };
   const started_at = new Date().toISOString();
   const text = req.text;
   let exit = 0;
@@ -48,6 +48,7 @@ async function answer(file: string) {
   if (forced) exit = Number(forced[1]);
   memory.push(text);
   if (!parts.length) parts.push(`ack from ${req.channel.name}: ${text.replace(/\[fx:[^\]]*\]/g, '').trim()}`);
+  if (req.thread_ts) parts.push(`(new session for thread ${req.thread_ts})`);
   writeFileSync(join(state, 'fixture-state.json'), JSON.stringify({ turns: memory.length }));
   const response = { turn: req.turn, exit, reply_text: exit === 0 ? parts.join(' ') : null, started_at, ended_at: new Date().toISOString(), detail: exit ? 'fixture marker' : undefined };
   const out = join(turns, file.replace('.request.json', '.response.json'));

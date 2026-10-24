@@ -100,6 +100,7 @@ export async function playScript(taskDir: string, task: Task, script: Script, op
       const channel = ws.service.requireChannel(channelId);
       const posted = await slackCall(ws, actorToken, 'chat.postMessage', { channel: channelId, text: turn.text });
       const requestTs = posted.ts as string;
+      const threadTs = turn.thread === 'new' ? requestTs : null;
       const startedWall = new Date().toISOString();
       const startedSeq = ws.log.events.at(-1)?.seq ?? 0;
       const vars = { request_ts: requestTs, channel: channelId };
@@ -116,7 +117,7 @@ export async function playScript(taskDir: string, task: Task, script: Script, op
       const endedSeq = ws.log.events.at(-1)?.seq ?? 0;
       let replyTs: string | null = null;
       if (replyText !== null && replyText.trim()) {
-        const r = await slackCall(ws, ws.credentials.bot.token, 'chat.postMessage', { channel: channelId, text: replyText });
+        const r = await slackCall(ws, ws.credentials.bot.token, 'chat.postMessage', { channel: channelId, text: replyText, ...(threadTs ? { thread_ts: threadTs } : {}) });
         replyTs = r.ts as string;
       }
       turns.push({

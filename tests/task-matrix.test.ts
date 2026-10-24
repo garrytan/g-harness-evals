@@ -43,15 +43,18 @@ const corpusText = (split: 'dev' | 'heldout') => [
 ].join('\n').toLowerCase().replace(/\s+/g, ' ');
 
 describe('task set v0.1', () => {
-  test('30 tasks: 10 dev and 20 held-out, six per family', () => {
-    expect(taskDirs(ROOT, 'dev')).toHaveLength(10);
+  test('41 tasks: 21 dev (10 original and 11 QM probes) and 20 held-out, six per original family', () => {
+    expect(taskDirs(ROOT, 'dev')).toHaveLength(21);
     expect(taskDirs(ROOT, 'heldout')).toHaveLength(20);
+    // internal-task: the probes live in the dev split only; the held-out set and seal are untouched.
+    expect(taskDirs(ROOT, 'heldout').some((d) => d.includes('/qp-'))).toBe(false);
+    expect(taskDirs(ROOT, 'dev').filter((d) => d.includes('/qp-'))).toHaveLength(11);
     const families = new Map<string, number>();
     for (const dir of SPLITS.flatMap((s) => taskDirs(ROOT, s))) {
       const t = loadTask(dir);
       families.set(t.family, (families.get(t.family) ?? 0) + 1);
     }
-    expect([...families.entries()].sort()).toEqual([['handoff', 6], ['org_security', 6], ['scheduled', 6], ['scope_isolation', 6], ['shared_channel', 6]]);
+    expect([...families.entries()].sort()).toEqual([['handoff', 6], ['org_security', 6], ['product_probe', 11], ['scheduled', 6], ['scope_isolation', 6], ['shared_channel', 6]]);
   });
 });
 

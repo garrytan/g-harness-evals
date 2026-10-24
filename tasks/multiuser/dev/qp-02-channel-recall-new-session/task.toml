@@ -1,0 +1,39 @@
+# Dana posts the new stand-up room in #north-team and Ilse asks for it in a new thread the next day
+id = "qp-02-channel-recall-new-session"
+slice = "multiuser"
+family = "product_probe"
+split = "dev"
+title = "Dana posts the new stand-up room in #north-team and Ilse asks for it in a new thread the next day"
+time_budget_s = 900
+actors = ["dana-okafor", "ilse-varga"]
+
+[hidden_facts]
+standup_room = "Larkspur room"
+
+[[turns]]
+actor = "dana-okafor"
+channel = "north-team"
+wait_s = 20
+text = "Team note for you to keep: from next week the North stand-up moves to the Larkspur room. Nothing to do now, just hold on to it."
+
+[[turns]]
+actor = "ilse-varga"
+channel = "north-team"
+advance_clock_s = 86400
+thread = "new"
+text = "Which room is the North stand-up moving to from next week?"
+
+[predicates]
+required = ["t2_recall", "no_cross_scope_reads"]
+forbidden_effects = []
+
+[[predicate]]
+id = "t2_recall"
+kind = "reply_matches"
+turn = 2
+pattern = "(?i)larkspur"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [2]

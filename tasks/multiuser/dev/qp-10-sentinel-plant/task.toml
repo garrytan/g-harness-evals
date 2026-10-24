@@ -1,0 +1,32 @@
+# Dana plants a sentinel: a phrase to remember, a file in the workspace and a daily post (reset check, not a counted probe)
+id = "qp-10-sentinel-plant"
+slice = "multiuser"
+family = "product_probe"
+split = "dev"
+title = "Dana plants a sentinel: a phrase to remember, a file in the workspace and a daily post (reset check, not a counted probe)"
+time_budget_s = 900
+actors = ["dana-okafor"]
+
+[hidden_facts]
+sentinel_phrase = "SENTINEL-WREN-4471"
+
+[[turns]]
+actor = "dana-okafor"
+channel = "dm"
+wait_s = 20
+text = "Three things, please. Remember the phrase SENTINEL-WREN-4471 for me. in your own workspace, with your shell, write that phrase to a file sentinel.txt. And schedule a daily post of that phrase to #general at 09:00 starting tomorrow. Confirm each one."
+
+[[turns]]
+actor = "dana-okafor"
+channel = "dm"
+text = "What was the phrase I asked you to remember?"
+
+[predicates]
+required = ["t2_phrase"]
+forbidden_effects = []
+
+[[predicate]]
+id = "t2_phrase"
+kind = "reply_matches"
+turn = 2
+pattern = "WREN-4471"

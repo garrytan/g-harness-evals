@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { z } from 'zod';
 
-export const FAMILIES = ['scope_isolation', 'shared_channel', 'org_security', 'handoff', 'scheduled', 'continuity', 'synthesis', 'corrections', 'approval_relay'] as const;
+export const FAMILIES = ['scope_isolation', 'shared_channel', 'org_security', 'handoff', 'scheduled', 'continuity', 'synthesis', 'corrections', 'approval_relay', 'product_probe'] as const;
 export type Family = (typeof FAMILIES)[number];
 
 export const PREDICATE_KINDS = [
@@ -57,6 +57,9 @@ const turnSchema = z.object({
   text: z.string().min(1),
   advance_clock_s: z.number().int().min(0).optional(),
   wait_s: z.number().int().min(0).max(120).optional(),
+  /** internal-task: "new" posts the actor's message as a new thread root, hands the harness thread_ts = that ts, and posts
+   *  the bot's reply in the thread; every adapter opens a new session for it (docs/tasks.md). */
+  thread: z.literal('new').optional(),
 }).strict();
 
 const taskSchema = z.object({

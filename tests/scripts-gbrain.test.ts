@@ -313,6 +313,41 @@ describe('summarize-run families, exclusions and secondary predicates (internal-
   });
 });
 
+describe('summarize-run probe cells (internal-task)', () => {
+  test('a cell of product_probe tasks gets no pooled rate or interval, a probe table instead; a mixed cell keeps its interval', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-psum-'));
+    const probes = ['qp-01-dm-recall-new-session', 'qp-03-dm-fact-not-in-other-dm', 'qp-09-command-policy-deny'];
+    const rows: TrialRecord[] = [];
+    probes.forEach((task, i) => { for (let r = 1; r <= 3; r++) rows.push(trial('qm-pi-probe-dev', 'qm', 'm1', task, r, r <= 3 - i, 0.02, 40, 300)); });
+    probes.forEach((task) => { for (let r = 1; r <= 3; r++) rows.push(trial('qm-claude-probe-dev', 'qm', 'm1', task, r, true, 0.03, 50, 400)); });
+    // The pi-strict cell ran one probe only; a model_error trial leaves the scored rows as everywhere else.
+    for (let r = 1; r <= 3; r++) rows.push(trial('qm-pi-strict-dev', 'qm', 'm1', 'qp-08-strict-posture-blocks-write', r, r !== 2, 0.02, 40, 300, r === 3 ? { termination: 'model_error', grade: 'n/a' } : {}));
+    // A mixed cell: one probe beside an ordinary task keeps the pooled interval.
+    for (let r = 1; r <= 3; r++) { rows.push(trial('mixed-dev', 'h', 'm1', 'si-01-quarrendon-seats', r, true, 0.01, 10, 100)); rows.push(trial('mixed-dev', 'h', 'm1', 'qp-01-dm-recall-new-session', r, r === 1, 0.01, 10, 100)); }
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ schema_version: 1, run_id: 'probe-fixture', cells: ['qm-pi-probe-dev', 'qm-claude-probe-dev', 'qm-pi-strict-dev', 'mixed-dev'].map((id) => ({ id, harness: 'qm', model: 'm1', slice: 'multiuser', split: 'dev', repetitions: 3 })), trials: [] }));
+    writeFileSync(join(dir, 'trials.jsonl'), rows.map((t) => JSON.stringify(t)).join('\n') + '\n');
+    const r = run('summarize-run.ts', ['--results', dir]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('| qm-pi-probe-dev | 9 (3 x 3) | 6 | probe cell: per-task table below, no pooled rate | 0 |');
+    expect(r.stdout).toContain('| qm-pi-strict-dev | 2 (1 x 2) | 1 | probe cell: per-task table below, no pooled rate | 1 |');
+    expect(r.stdout).toContain('| mixed-dev | 6 (2 x 3) | 4 | 67% [');
+    expect(r.stdout).toContain('| Probe task | qm-pi-probe-dev | qm-claude-probe-dev | qm-pi-strict-dev |');
+    expect(r.stdout).toContain('| `qp-01-dm-recall-new-session` | 3 of 3 | 3 of 3 | not run |');
+    expect(r.stdout).toContain('| `qp-09-command-policy-deny` | 1 of 3 | 3 of 3 | not run |');
+    expect(r.stdout).toContain('| `qp-08-strict-posture-blocks-write` | not run | not run | 1 of 2 |');
+    expect(r.stdout).not.toMatch(/\| qm-pi-probe-dev \| 9 \(3 x 3\) \| 6 \| \d+%/);
+    const summary = JSON.parse(readFileSync(join(dir, 'summary.json'), 'utf8'));
+    expect(summary.cells['qm-pi-probe-dev']).toMatchObject({ n: 9, passes: 6, pass_rate: null, ci95: null, probe: true, task_clusters: 3 });
+    expect(summary.cells['mixed-dev'].probe).toBeUndefined();
+    expect(summary.cells['mixed-dev'].pass_rate).toBeCloseTo(4 / 6, 6);
+    expect(summary.probes['qm-pi-probe-dev']).toEqual({ 'qp-01-dm-recall-new-session': { passes: 3, trials: 3 }, 'qp-03-dm-fact-not-in-other-dm': { passes: 2, trials: 3 }, 'qp-09-command-policy-deny': { passes: 1, trials: 3 } });
+    expect(summary.probes['qm-pi-strict-dev']).toEqual({ 'qp-08-strict-posture-blocks-write': { passes: 1, trials: 2 } });
+    expect(summary.probes['mixed-dev']).toBeUndefined();
+    expect(summary.families['qm-pi-probe-dev'].product_probe).toEqual({ passes: 6, trials: 9, tasks: 3 });
+  });
+});
+
 describe('paired minimum detectable difference', () => {
   const cell = { id: 'x', harness: 'h', model: 'm' };
   const rowsFor = (passes: number[], reps = 5) => passes.flatMap((k, i) => Array.from({ length: reps }, (_, r) => trial('x', 'h', 'm', `task-${i}`, r + 1, r < k, 0, 0, 0)));

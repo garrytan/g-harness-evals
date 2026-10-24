@@ -15,7 +15,7 @@ The one-page account of the v0.1 result, with its limits, interests and receipts
 | Statistics kit (exact / noninferiority / superiority / exploratory gates, Holm correction, task-clustered paired bootstrap), vendored from gbrain-evals | [runner/stats/](runner/stats/) |
 | The runner: `plan` / `dry-run` / `preflight` / `run` (trial dispatch with a world per trial, a metering proxy per run, docker, process and scripted harness modes), plus the vendored proxy, budget ledger and price table | [runner/README.md](runner/README.md), [runner/run.ts](runner/run.ts) |
 | Multi-user task format, access model, predicate library, oracle and mutation contract | [docs/tasks.md](docs/tasks.md) |
-| The 30 multi-user tasks (10 dev, 20 held-out) with oracles and mutation matrices, and the grader that scores them from world state | [tasks/multiuser/README.md](tasks/multiuser/README.md), [runner/grade/](runner/grade/) |
+| The 30 multi-user tasks (10 dev, 20 held-out) and the 11 QM product probes (dev, internal-task) with oracles and mutation matrices, and the grader that scores them from world state | [tasks/multiuser/README.md](tasks/multiuser/README.md), [runner/grade/](runner/grade/) |
 | Task sets: how a second set such as v0.2 lives beside the v0.1 tasks and is selected by a cell (internal-task) | [docs/tasks.md](docs/tasks.md), "Task sets" |
 | QM's two inner harnesses (Pi, Claude) and the probe configs a cell's `config` selects; the model assertion (internal-task) | [harnesses/qm/README.md](harnesses/qm/README.md), [harnesses/qm/pin.json](harnesses/qm/pin.json), [docs/errors.md](docs/errors.md) |
 | Contracts shared by runner, adapters, graders and scripted solutions | [runner/contracts.ts](runner/contracts.ts) |
@@ -57,7 +57,7 @@ None of these calls a model API. A paid run is `bun runner/run.ts plan --prereg 
 
 ### 2026-10-24: From internal-task, QM inner-harness configs
 
-A cell's `config` reaches the harness as `HE_HARNESS_CONFIG`; QM maps it to its Pi or Claude inner harness and to the probe settings; every adapter opens a new session on a thread turn; the runner ends a trial that ran another model than its cell's as `model_error` (HE-MODEL-001). Details in CHANGELOG.md and [harnesses/qm/README.md](harnesses/qm/README.md).
+A cell's `config` reaches the harness as `HE_HARNESS_CONFIG`; QM maps it to its Pi or Claude inner harness and to the probe settings; every adapter opens a new session on a thread turn; the runner ends a trial that ran another model than its cell's as `model_error` (HE-MODEL-001); the `thread = "new"` turn field and the eleven `qp-*` product probes ([docs/tasks.md](docs/tasks.md), "QM probes"). Details in CHANGELOG.md and [harnesses/qm/README.md](harnesses/qm/README.md).
 
 ### 2026-10-24: v0.1 report page and publishing checklist (internal-task)
 

@@ -13,6 +13,8 @@ export interface TaskTurn {
   text: string;
   advance_clock_s?: number;
   wait_s?: number;
+  /** "new": the turn opens a new thread, and a new harness session (internal-task, docs/tasks.md). */
+  thread?: 'new';
 }
 
 export interface TaskSpec {
@@ -48,6 +50,7 @@ export function loadTask(dir: string): TaskSpec {
     if (typeof t.actor !== 'string' || typeof t.channel !== 'string' || typeof t.text !== 'string') problems.push(`turns[${i}] needs actor, channel and text`);
     if (t.advance_clock_s !== undefined && !(Number(t.advance_clock_s) >= 0)) problems.push(`turns[${i}].advance_clock_s`);
     if (t.wait_s !== undefined && !(Number(t.wait_s) >= 0)) problems.push(`turns[${i}].wait_s`);
+    if (t.thread !== undefined && t.thread !== 'new') problems.push(`turns[${i}].thread (only "new" is defined)`);
   });
   const budget = Number(raw.time_budget_s ?? 0);
   if (!(budget > 0)) problems.push('time_budget_s');

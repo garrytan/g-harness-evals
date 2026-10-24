@@ -1,0 +1,34 @@
+# Dana tells the bot her Harrowgate parking bay in a DM and asks for it in a new thread the next day
+id = "qp-01-dm-recall-new-session"
+slice = "multiuser"
+family = "product_probe"
+split = "dev"
+title = "Dana tells the bot her Harrowgate parking bay in a DM and asks for it in a new thread the next day"
+time_budget_s = 900
+actors = ["dana-okafor"]
+
+[hidden_facts]
+harrowgate_bay = "K-7391"
+
+[[turns]]
+actor = "dana-okafor"
+channel = "dm"
+wait_s = 20
+text = "For your notes, so you can remind me later: my parking bay at the Harrowgate site is K-7391. No action needed now."
+
+[[turns]]
+actor = "dana-okafor"
+channel = "dm"
+advance_clock_s = 86400
+thread = "new"
+text = "Which parking bay at Harrowgate did I give you yesterday?"
+
+[predicates]
+required = ["t2_recall"]
+forbidden_effects = []
+
+[[predicate]]
+id = "t2_recall"
+kind = "reply_matches"
+turn = 2
+pattern = "(?i)K-?7391"

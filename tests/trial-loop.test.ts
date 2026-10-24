@@ -41,10 +41,10 @@ function plan(cells: Cell[], tasksRoot = join(FIXTURES, 'tasks')) {
 }
 
 /** A one-actor task written into a temporary tasks root, for the exit and timeout cases. */
-function writeTask(root: string, id: string, turns: Array<{ actor?: string; channel?: string; text: string }>, budget = 20): void {
+function writeTask(root: string, id: string, turns: Array<{ actor?: string; channel?: string; text: string; thread?: 'new' }>, budget = 20): void {
   const dir = join(root, 'multiuser', 'dev', id);
   mkdirSync(dir, { recursive: true });
-  const body = turns.map((t) => `[[turns]]\nactor = "${t.actor ?? 'dana-okafor'}"\nchannel = "${t.channel ?? 'north-team'}"\ntext = ${JSON.stringify(t.text)}\n`).join('\n');
+  const body = turns.map((t) => `[[turns]]\nactor = "${t.actor ?? 'dana-okafor'}"\nchannel = "${t.channel ?? 'north-team'}"\n${t.thread ? `thread = "${t.thread}"\n` : ''}text = ${JSON.stringify(t.text)}\n`).join('\n');
   writeFileSync(join(dir, 'task.toml'), `id = "${id}"\nslice = "multiuser"\nsplit = "dev"\ntime_budget_s = ${budget}\nactors = ["dana-okafor"]\n\n${body}\n[predicates]\nrequired = []\nforbidden_effects = []\n`);
 }
 
@@ -153,6 +153,29 @@ describe('the multi-user trial loop in process mode', () => {
     expect(byTask['fx-exit2']).toMatchObject({ termination: 'harness_error', turns: { planned: 3, run: 3, exits: [0, 2, 0] }, grade: 'pass' });
     expect(byTask['fx-exit3']).toMatchObject({ termination: 'model_error', cap_stop: false, turns: { exits: [3] } });
     expect(Date.now() - started).toBeLessThan(40_000);
+  }, 60_000);
+
+  test('a thread = "new" turn hands the harness thread_ts = the actor message ts and posts the reply in that thread; other turns are unchanged (internal-task)', async () => {
+    const root = join(tmp, 'tasks-thread');
+    writeTask(root, 'fx-thread', [{ text: 'first, top level' }, { text: 'second, in a new thread', thread: 'new' }, { text: 'third, top level again' }]);
+    const { manifest, manifestPath } = plan([cell({ tasks: ['fx-thread'] })], root);
+    const before = evidenceSeen.length;
+    const result = await executeRun(manifest, manifestPath, baseOpts());
+    const rec = result.records[0]!;
+    expect(rec).toMatchObject({ termination: 'completed', turns: { planned: 3, run: 3, exits: [0, 0, 0] } });
+    const turnsDir = join(rec.paths.dir!, 'turns');
+    const reqs = [1, 2, 3].map((n) => JSON.parse(readFileSync(join(turnsDir, `turn-000${n}.request.json`), 'utf8')) as TurnRequest);
+    expect(reqs.map((r) => r.thread_ts)).toEqual([null, reqs[1]!.ts, null]);
+    const ev = evidenceSeen[before]!;
+    const [t1, t2, t3] = ev.turns;
+    expect(t2!.reply_text).toContain(`(new session for thread ${t2!.request_ts})`);
+    const msg = (ts: string | null) => ev.snapshot.messages.find((m) => m.ts === ts) as { thread_ts?: string | null } | undefined;
+    // The actor's message is the thread root (a root carries no thread_ts); the reply hangs under it.
+    expect(msg(t2!.request_ts)?.thread_ts ?? null).toBeNull();
+    expect(msg(t2!.reply_ts)?.thread_ts).toBe(t2!.request_ts);
+    expect(msg(t1!.reply_ts)?.thread_ts ?? null).toBeNull();
+    expect(msg(t3!.reply_ts)?.thread_ts ?? null).toBeNull();
+    expect(t1!.reply_text).not.toContain('new session');
   }, 60_000);
 
   test('no ready file within the timeout is an infra_error with HE-ADAPTER-002', async () => {

@@ -29,6 +29,12 @@
 // through the manifest cell's task_set, and a secondary-predicate table (predicates.secondary in task.toml, such as
 // the capability = "memory" no-reread check) reports passes per cell without touching the primary endpoint.
 // summary.json gains top-level `families` and `secondary` keys.
+//
+// internal-task (QM probes): a cell whose scored trials are all `product_probe` tasks is a probe cell. Its row carries no
+// pooled pass rate or interval (`pass_rate` and `ci95` are null, `probe` is true), because each probe tests its own
+// product claim and pooling them would make a number nobody preregistered; a descriptive probe table (passes of
+// trials per task per cell) follows the per-task table and is written to the `probes` key. Cells with any other
+// family are reported as before.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -105,6 +111,7 @@ const eventsOf = (t: TrialRecord): WorldEvent[] | null => {
   return candidates.length ? readFileSync(candidates[0]!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as WorldEvent) : null;
 };
 const cells = [...new Set(allRows.map((t) => t.cell))];
+const isProbeCell = (cell: string) => { const ts = rows.filter((t) => t.cell === cell); return ts.length > 0 && ts.every((t) => familyOf(t) === 'product_probe'); };
 const worlds = { dev: loadWorldData(DEFAULT_WORLD_PATH, 'dev'), heldout: loadWorldData(DEFAULT_WORLD_PATH, 'heldout') };
 const out: string[] = [];
 const summary: Record<string, unknown> = { run: allRows[0]?.trial_id.split('/')[0], grading: useRegraded ? 'regraded' : 'as recorded', seed, cells: {} as Record<string, unknown> };
@@ -129,9 +136,11 @@ for (const cell of cells) {
   const wall = median(everything.map((t) => t.wall_ms / 1000));
   const perSuccess = passes ? usd(total / passes) : 'no successes';
   const n = rate.clusters ? `${ts.length} (${rate.clusters} x ${+(ts.length / rate.clusters).toFixed(1)})` : '0';
-  out.push(`| ${cell} | ${n} | ${passes} | ${pct(rate.rate)} [${pct(rate.lower)}, ${pct(rate.upper)}] | ${excluded} | ${cv} | ${stops.length} (${validStops}) | ${[...term.entries()].map(([k, v]) => `${k} ${v}`).join(', ')} | ${xscope} | ${refused} | ${usd(total)} | ${usd(median(usage.map((u) => u.usd)))} | ${perSuccess} | ${tokens.i.toLocaleString()} / ${tokens.o.toLocaleString()} / ${tokens.c.toLocaleString()} | ${wall.toFixed(0)} s |`);
+  const probe = isProbeCell(cell);
+  const rateCell = probe ? 'probe cell: per-task table below, no pooled rate' : `${pct(rate.rate)} [${pct(rate.lower)}, ${pct(rate.upper)}]`;
+  out.push(`| ${cell} | ${n} | ${passes} | ${rateCell} | ${excluded} | ${cv} | ${stops.length} (${validStops}) | ${[...term.entries()].map(([k, v]) => `${k} ${v}`).join(', ')} | ${xscope} | ${refused} | ${usd(total)} | ${usd(median(usage.map((u) => u.usd)))} | ${perSuccess} | ${tokens.i.toLocaleString()} / ${tokens.o.toLocaleString()} / ${tokens.c.toLocaleString()} | ${wall.toFixed(0)} s |`);
   const gbrain = gbrainUsage(everything.map((t) => ({ events: eventsOf(t), predicates: view(t).predicates })), worlds);
-  (summary.cells as Record<string, unknown>)[cell] = { n: ts.length, passes, pass_rate: rate.rate, ci95: [rate.lower, rate.upper], task_clusters: rate.clusters, consent_violations: cv, approval_stops: stops.length, valid_approval_stops: validStops, terminations: Object.fromEntries(term), excluded, cross_scope_read_failures: xscope, refused_requests: refused, usd_total: total, usd_median: median(usage.map((u) => u.usd)), usd_per_success: passes ? total / passes : null, tokens, wall_median_s: wall, trial_ids: everything.map((t) => t.trial_id), gbrain };
+  (summary.cells as Record<string, unknown>)[cell] = { n: ts.length, passes, pass_rate: probe ? null : rate.rate, ci95: probe ? null : [rate.lower, rate.upper], task_clusters: rate.clusters, ...(probe ? { probe: true } : {}), consent_violations: cv, approval_stops: stops.length, valid_approval_stops: validStops, terminations: Object.fromEntries(term), excluded, cross_scope_read_failures: xscope, refused_requests: refused, usd_total: total, usd_median: median(usage.map((u) => u.usd)), usd_per_success: passes ? total / passes : null, tokens, wall_median_s: wall, trial_ids: everything.map((t) => t.trial_id), gbrain };
 }
 out.push('');
 const gbrainCells = cells.map((cell) => [cell, (summary.cells as Record<string, { gbrain: ReturnType<typeof gbrainUsage> }>)[cell]!.gbrain] as const);
@@ -165,6 +174,19 @@ for (const task of tasks) {
   out.push(`| \`${task}\` | ${cells.map((c) => { const ts = rows.filter((t) => t.cell === c && t.task === task); return `${ts.filter(passed).length}/${ts.length}`; }).join(' | ')} |`);
 }
 out.push('');
+const probeCells = cells.filter(isProbeCell);
+if (probeCells.length) {
+  out.push('Probe tasks (passes / scored trials per task per cell; each row is its own product claim, so no pooled rate, interval or per-cell total is published):');
+  const probeTasks = [...new Set(rows.filter((t) => probeCells.includes(t.cell)).map((t) => t.task))].sort();
+  out.push(`| Probe task | ${probeCells.join(' | ')} |`);
+  out.push(`|---|${probeCells.map(() => '---').join('|')}|`);
+  const probes: Record<string, Record<string, { passes: number; trials: number }>> = {};
+  for (const task of probeTasks) {
+    out.push(`| \`${task}\` | ${probeCells.map((c) => { const ts = rows.filter((t) => t.cell === c && t.task === task); if (ts.length) (probes[c] ??= {})[task] = { passes: ts.filter(passed).length, trials: ts.length }; return ts.length ? `${ts.filter(passed).length} of ${ts.length}` : 'not run'; }).join(' | ')} |`);
+  }
+  summary.probes = probes;
+  out.push('');
+}
 const families = [...new Set(rows.map(familyOf))].sort();
 if (families.length) {
   out.push(`| Family | ${cells.join(' | ')} |`);

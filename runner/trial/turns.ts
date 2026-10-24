@@ -59,6 +59,7 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
     const posted = await o.world.slack(actor.token, 'chat.postMessage', { channel: channelId, text: turn.text });
     if (!posted.ok) return exam(windows, `turn ${n}: posting ${turn.actor}'s message to ${channelName} failed: ${posted.error}`);
     const ts = String(posted.ts);
+    const threadTs = turn.thread === 'new' ? ts : null;
     const simNow = o.world.simNow();
     const req: TurnRequest = {
       turn: n,
@@ -72,7 +73,7 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
       channel: { id: channelId, name: channelName, type: channelType },
       text: turn.text,
       ts,
-      thread_ts: null,
+      thread_ts: threadTs,
       sim_now: simNow,
       time_budget_s: o.task.time_budget_s,
     };
@@ -83,7 +84,7 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
     const started_wall = new Date().toISOString();
     writeRequest(o.turnsDir, req);
     o.harness.notify?.(req);
-    o.log(`turn ${n}: ${turn.actor} in ${channelType === 'dm' ? 'DM' : '#' + channelName} (ts ${ts}); waiting up to ${o.task.time_budget_s + o.graceS} s`);
+    o.log(`turn ${n}: ${turn.actor} in ${channelType === 'dm' ? 'DM' : '#' + channelName} (ts ${ts}${threadTs ? ', new thread' : ''}); waiting up to ${o.task.time_budget_s + o.graceS} s`);
 
     let response: TurnResponse | null;
     let gone: HarnessGone | null = null;
@@ -109,7 +110,7 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
     let reply_ts: string | null = null;
     const reply_text = typeof response.reply_text === 'string' && response.reply_text.trim() ? response.reply_text : null;
     if (reply_text) {
-      const r = await o.world.slack(o.world.botToken, 'chat.postMessage', { channel: channelId, text: reply_text });
+      const r = await o.world.slack(o.world.botToken, 'chat.postMessage', { channel: channelId, text: reply_text, ...(threadTs ? { thread_ts: threadTs } : {}) });
       if (r.ok) reply_ts = String(r.ts);
       else o.log(`turn ${n}: the world refused the bot reply: ${r.error}`);
     }

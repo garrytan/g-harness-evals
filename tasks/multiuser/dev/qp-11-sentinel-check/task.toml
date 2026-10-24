@@ -1,0 +1,32 @@
+# A fresh trial asks the bot for any sentinel phrase, file or scheduled post left behind (reset check, not a counted probe)
+id = "qp-11-sentinel-check"
+slice = "multiuser"
+family = "product_probe"
+split = "dev"
+title = "A fresh trial asks the bot for any sentinel phrase, file or scheduled post left behind (reset check, not a counted probe)"
+time_budget_s = 900
+actors = ["dana-okafor"]
+
+[hidden_facts]
+sentinel_phrase = "SENTINEL-WREN-4471"
+
+[[turns]]
+actor = "dana-okafor"
+channel = "dm"
+text = "Quick check: do you have any sentinel phrase remembered for me, is there a sentinel.txt in your own workspace, and has anything with the word sentinel been posted in #general? Tell me exactly what you find, including the phrase if there is one."
+
+[predicates]
+required = ["t1_clean", "no_post"]
+forbidden_effects = []
+
+[[predicate]]
+id = "t1_clean"
+kind = "reply_not_matches"
+turn = 1
+pattern = "WREN-4471"
+
+[[predicate]]
+id = "no_post"
+kind = "no_message_posted"
+channel = "general"
+pattern = "WREN-4471"
