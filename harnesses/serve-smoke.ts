@@ -29,6 +29,7 @@
 //   --channel NAME     the shared channel (default: the first channel both actors belong to)
 //   --turns N          1, 2 or 3 turns (default 3)
 //   --ready-timeout S  seconds to wait for the ready file (default 180)
+//   --config NAME      HE_HARNESS_CONFIG for the adapter (QM: pi, claude, pi-probe, claude-probe, pi-strict, pi-command-deny)
 //   --out DIR          output directory
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -57,6 +58,7 @@ const budget = Number(arg('budget', '300'));
 const port = Number(arg('port', '8791'));
 const turnsWanted = Number(arg('turns', '3'));
 const readyTimeout = Number(arg('ready-timeout', '180'));
+const harnessConfig = arg('config');
 const [actorA, actorB] = arg('actors', 'dana-okafor,hollis-mbeki')!.split(',').map((s) => s.trim()) as [string, string];
 const out = resolve(arg('out', join('results', 'serve-smoke', trialId))!);
 const compose = existsSync(join(ROOT, 'harnesses', harness, 'compose.yaml'));
@@ -105,6 +107,7 @@ const env: Record<string, string> = {
   HE_TASK_SLICE: 'multiuser', HE_TRIAL_ID: trialId,
   HE_WORLD_MCP_URL: `${hostUrl}/mcp`, HE_WORLD_MCP_TOKEN: bot.token,
   HE_SLACK_API_URL: `${hostUrl}/api/`, HE_SLACK_BOT_TOKEN: bot.token, HE_SLACK_APP_TOKEN: bot.app_token,
+  ...(harnessConfig ? { HE_HARNESS_CONFIG: harnessConfig } : {}),
 };
 const name = `he-serve-${trialId.replace(/[^a-zA-Z0-9_.-]/g, '-')}`;
 let child: ChildProcess;
@@ -112,7 +115,7 @@ let composeEnv: Record<string, string> = {};
 if (compose) {
   // Sidecar topology: the stack is the trial. prepare.sh mints the per-trial secrets; the task
   // service runs the adapter with the serve entry and the turns mount.
-  const prep = spawnSync(join(ROOT, 'harnesses', harness, 'prepare.sh'), [out], { encoding: 'utf8' });
+  const prep = spawnSync(join(ROOT, 'harnesses', harness, 'prepare.sh'), [out], { encoding: 'utf8', env: { ...process.env, ...env, COMPOSE_PROJECT_NAME: name } });
   if (prep.status !== 0) { console.error(prep.stderr); process.exit(2); }
   for (const line of prep.stdout.split('\n')) { const m = line.match(/^([A-Z_]+)=(.*)$/); if (m) composeEnv[m[1]!] = m[2]!; }
   composeEnv = { ...composeEnv, HE_WORKSPACE: dirs.workspace, HE_STATE: dirs.state, HE_LOGS: dirs.logs, HE_TURNS: dirs.turns, HE_ENTRY: 'serve',
@@ -232,7 +235,7 @@ async function finish(code: number): Promise<never> {
     if (row) containerExit = Number(row.split(' ')[1]);
     spawnSync('docker', ['compose', '-f', join(ROOT, 'harnesses', harness!, 'compose.yaml'), '-p', name, 'logs', '--no-color', 'core'], { stdio: ['ignore', require('node:fs').openSync(join(out, 'core.log'), 'w'), 'ignore'], env: { ...process.env, ...composeEnv } });
     const capture = join(ROOT, 'harnesses', harness!, 'capture.sh');
-    if (existsSync(capture)) spawnSync(capture, [out], { stdio: 'inherit' });
+    if (existsSync(capture)) spawnSync(capture, [out], { stdio: 'inherit', cwd: ROOT, env: { ...process.env, ...composeEnv, COMPOSE_PROJECT_NAME: name } });
     spawnSync('docker', ['compose', '-f', join(ROOT, 'harnesses', harness!, 'compose.yaml'), '-p', name, 'down', '-v', '--remove-orphans'], { stdio: 'ignore', env: { ...process.env, ...composeEnv } });
   } else {
     const insp = spawnSync('docker', ['inspect', '-f', '{{.State.ExitCode}}', name], { encoding: 'utf8' });

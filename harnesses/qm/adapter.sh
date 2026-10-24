@@ -13,7 +13,17 @@
 #          every TurnRequest in HE_TURNS_DIR with one POST /v1/turns whose actor
 #          is the requester's Slack user id and whose conversation is
 #          {kind: dm|channel, threadRef: dm:<member> | channel:<id>}: QM's native
-#          scoping (personal:<actor> for a DM, channel:<id> for a channel).
+#          scoping (personal:<actor> for a DM, channel:<id> for a channel). A
+#          TurnRequest with thread_ts set (a task turn with thread = "new",
+#          docs/tasks.md) appends :t<thread_ts> to the threadRef, so the turn
+#          opens a new QM session in the same scope, as a new Slack thread does.
+#          HE_HARNESS_CONFIG (via prepare.sh, QM_HARNESS and QM_PROBE_CONFIG)
+#          picks the inner harness; the probe configs pi-strict and
+#          pi-command-deny also PUT an org setting before the first turn
+#          (harnesses/qm/README.md, internal-task). Before every turn the notebooks
+#          of every scope that holds memory are read through the admin API and
+#          saved under $HE_LOG_DIR/turns, so a report can say what QM had
+#          stored when a turn began.
 set -euo pipefail
 
 : "${HE_WORKSPACE_DIR:=/workspace}"
@@ -28,6 +38,10 @@ if [ "${HE_SESSION_SCOPE:-conversation}" != conversation ]; then echo "qm adapte
 : "${QM_SIGNING_SECRET:?QM_SIGNING_SECRET must be set (per-trial random, shared with core)}"
 : "${QM_ACTOR_ID:=U1}"
 : "${QM_ADMIN_ACTOR:=harness-admin@harness-eval}"
+: "${QM_HARNESS:=pi}"
+: "${QM_PROBE_CONFIG:=}"
+: "${HE_HARNESS_CONFIG:=pi}"
+: "${QM_ORG_SCOPE:=org:harness-eval}"
 
 mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
@@ -42,7 +56,7 @@ case "$entry" in
 esac
 
 export HOME="$HE_SESSION_STATE_DIR"
-log "qm ${QM_VERSION:-unknown} core=$QM_CORE_URL budget=${HE_TIME_BUDGET_S}s entry=$entry"
+log "qm ${QM_VERSION:-unknown} core=$QM_CORE_URL budget=${HE_TIME_BUDGET_S}s entry=$entry inner_harness=$QM_HARNESS config=$HE_HARNESS_CONFIG${QM_PROBE_CONFIG:+ probe=$QM_PROBE_CONFIG}"
 
 # Core needs Postgres and its migrations before it answers /healthz.
 deadline=$(( $(date +%s) + 120 ))
@@ -100,6 +114,57 @@ if [ -n "${HE_GBRAIN_MCP_URL:-}" ] && [ -n "${HE_GBRAIN_MCP_TOKEN:-}" ]; then
   rm -f "$HE_LOG_DIR/qm-gbrain-server.json"
 fi
 
+# The probe configs (pin.json configs, docs/tasks.md "QM probes"): an org setting PUT through QM's admin
+# scope-config route as harness-admin before the first turn. The 2xx response saved beside
+# qm-mcp-register.json is the proof the setting took; a refusal is a harness error, never a silent default.
+admin_put() {
+  local resource=$1 body=$2 out
+  out="$HE_LOG_DIR/qm-admin-$resource.json"
+  printf '%s' "$body" > "$HE_LOG_DIR/qm-admin-$resource.body.json"
+  if node /opt/harness/qm-api.mjs admin-put "$QM_CORE_URL" "$QM_SIGNING_SECRET" "$QM_ADMIN_ACTOR" "/v1/admin/scopes/$QM_ORG_SCOPE/$resource" "$HE_LOG_DIR/qm-admin-$resource.body.json" > "$out" 2>>"$HE_LOG_DIR/stderr.log"; then
+    log "org $resource set ($QM_PROBE_CONFIG): $(head -c 300 "$out")"
+  else
+    log "org $resource refused ($QM_PROBE_CONFIG): $(head -c 400 "$out")"
+    exit 2
+  fi
+}
+case "$QM_PROBE_CONFIG" in
+  "") ;;
+  pi-strict)
+    # strict routes every tool call through QM's approval gate (src/security/security-posture.ts at the pin).
+    admin_put security-posture '{"posture":"strict"}' ;;
+  pi-command-deny)
+    # The deny rule first (first match wins), then the org floor QM ships, which a stored policy otherwise replaces
+    # (src/policy/command-policy.ts ORG_FLOOR_RULES at the pin). uname is network-free, so the control cell's
+    # outcome does not depend on sandbox egress.
+    admin_put command-policy '{"mode":"denylist","rules":[{"pattern":"\\buname\\b","decision":"deny","reason":"probe: uname is denied by the org command policy"},{"pattern":"\\brm\\b[^\\n]*(?:-[a-zA-Z]*r|--recursive)","decision":"require_approval","reason":"recursive delete"},{"pattern":"\\bgit\\s+push\\b.*(?:--force\\b|(?:^|\\s)-[a-zA-Z]*f\\b)","decision":"require_approval","reason":"force push"},{"pattern":"\\b(drop|truncate)\\s+table\\b","decision":"require_approval","reason":"destructive SQL"},{"pattern":"\\bmkfs\\b|:\\(\\)\\s*\\{","decision":"deny","reason":"destructive / fork bomb"},{"pattern":"\\bcurl\\b.*\\|\\s*(sh|bash)\\b","decision":"require_approval","reason":"pipe-to-shell"}]}' ;;
+  *) log "unknown QM_PROBE_CONFIG=$QM_PROBE_CONFIG"; exit 2 ;;
+esac
+
+# What QM's memory held when a turn began: every scope the admin API lists with memory, read before the turn
+# request is posted (after the runner's inter-turn wait, so capture has had its quiet time). Saved as
+# <turn>.memory.json under HE_LOG_DIR/turns; a failure is logged and never fails the turn.
+snapshot_memory() {
+  local out=$1 scopes
+  if ! scopes=$(node /opt/harness/qm-api.mjs admin-get "$QM_CORE_URL" "$QM_SIGNING_SECRET" "$QM_ADMIN_ACTOR" "/v1/admin/memory/scopes" 2>>"$HE_LOG_DIR/stderr.log"); then
+    printf '{"error":"memory scopes unavailable","at":"%s"}\n' "$(now)" > "$out"; return 0
+  fi
+  node -e '
+    const { execFileSync } = require("child_process");
+    const [coreUrl, secret, actor, out, scopesJson, at] = process.argv.slice(1);
+    const listed = JSON.parse(scopesJson).body?.scopes ?? [];
+    const notebooks = {};
+    for (const s of listed) {
+      if (!s.hasMemory) continue;
+      try {
+        const r = JSON.parse(execFileSync("node", ["/opt/harness/qm-api.mjs", "admin-get", coreUrl, secret, actor, "/v1/admin/memory?scope=" + encodeURIComponent(s.scopeId)], { encoding: "utf8" }));
+        notebooks[s.scopeId] = r.body;
+      } catch (e) { notebooks[s.scopeId] = { error: String(e?.message ?? e).slice(0, 300) }; }
+    }
+    require("fs").writeFileSync(out, JSON.stringify({ at, scopes: listed, notebooks }, null, 1));
+  ' "$QM_CORE_URL" "$QM_SIGNING_SECRET" "$QM_ADMIN_ACTOR" "$out" "$scopes" "$(now)" 2>>"$HE_LOG_DIR/stderr.log" || printf '{"error":"memory read failed","at":"%s"}\n' "$(now)" > "$out"
+}
+
 # One serve turn: the prompt and the job go under HE_LOG_DIR, qm-api.mjs posts the turn and leaves
 # {http, body} beside them. Arguments: request path, session key, turn name, budget. Returns the
 # mapped exit code; the reply text is in <turn>.reply.txt.
@@ -147,7 +212,7 @@ write_response() {
 
 stopping=0
 trap 'stopping=1' TERM INT
-printf '{"harness":"qm","version":"%s","trial":"%s","ready_at":"%s","session_keys":"conversation.threadRef dm:<member> (scope personal:<slack user id>) | channel:<id> (scope channel:<id>)"}\n' "${QM_VERSION:-}" "$HE_TRIAL_ID" "$(now)" > "$HE_LOG_DIR/ready.tmp"
+printf '{"harness":"qm","version":"%s","trial":"%s","ready_at":"%s","inner_harness":"%s","config":"%s","session_keys":"conversation.threadRef dm:<member> (scope personal:<slack user id>) | channel:<id> (scope channel:<id>); :t<thread_ts> appended on a thread turn"}\n' "${QM_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$QM_HARNESS" "$HE_HARNESS_CONFIG" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do
@@ -157,10 +222,12 @@ while [ "$stopping" -eq 0 ]; do
     [ -e "$resp" ] && continue
     read -r turn budget key < <(node -e '
       const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-      const key = r.channel.type === "dm" ? "dm:" + r.actor.member : "channel:" + r.channel.id;
+      const base = r.channel.type === "dm" ? "dm:" + r.actor.member : "channel:" + r.channel.id;
+      const key = r.thread_ts ? base + ":t" + r.thread_ts : base;
       process.stdout.write([r.turn, r.time_budget_s || process.env.HE_TIME_BUDGET_S, key].join(" ") + "\n");
     ' "$req")
     log "turn $turn: session $key, budget ${budget}s"
+    snapshot_memory "$HE_LOG_DIR/turns/$name.memory.json"
     started=$(now)
     set +e
     serve_turn "$req" "$key" "$name" "$budget" &

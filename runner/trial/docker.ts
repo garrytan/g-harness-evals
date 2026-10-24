@@ -86,6 +86,8 @@ export function startComposeHarness(opts: ComposeHarnessOptions): Harness {
     HE_WORKSPACE: resolve(opts.dirs.workspace), HE_STATE: resolve(opts.dirs.state), HE_LOGS: resolve(opts.dirs.logs),
     HE_UID: String(process.getuid?.() ?? 1000), HE_GID: String(process.getgid?.() ?? 1000), QM_IMAGE: opts.image,
     HE_ENTRY: 'serve', HE_TURNS: resolve(opts.dirs.turns), ...opts.env,
+    // capture.sh reads the project name to reach the stack's services (QM's pg_dump) with the same name compose used.
+    COMPOSE_PROJECT_NAME: project,
   };
   const prepare = join(repoRoot, 'harnesses', opts.harness, 'prepare.sh');
   if (existsSync(prepare)) {

@@ -4,6 +4,12 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 
 ## [Unreleased]
 
+### From internal-task (QM inner-harness cell and probes): configs, thread sessions, model assertion
+
+- Runner: a cell's `config` reaches the adapter and the compose stack as `HE_HARNESS_CONFIG`; the compose env carries `COMPOSE_PROJECT_NAME` so `capture.sh` can reach the stack's services; after each trial the proxy usage is checked against the cell's model and a forwarded request or an allowlist refusal naming another model ends the trial as `model_error` (new HE-MODEL-001).
+- QM: `prepare.sh` maps `HE_HARNESS_CONFIG` to the inner harness (`pi`, the default, or `claude`), a 5 s memory capture quiet time in probe configs only, and the `pi-strict` and `pi-command-deny` admin PUTs before the first turn; `qm-api.mjs` gains `admin-put` and `admin-get`; `serve` snapshots QM's memory per scope before every turn; `capture.sh` writes a sandbox manifest with digests and `logs/qm-db.sql.gz` (restarting `pg` first, since two callers stop it before capture). No Codex inner harness exists at the pin; recorded in `harnesses/qm/pin.json`.
+- Adapters: OpenClaw, Hermes, QM and the fake harness append `:t<thread_ts>` to the session key when `TurnRequest.thread_ts` is set (no existing task sets one).
+
 ### internal-task: the company brain (build)
 
 - `gbrain/build-brain.ts --brain company`: every record of a split (channel and DM pages, every file, every email, every meeting) in one federated gbrain source per distinct reader set, one bearer token per member granted exactly its sources (writing to `private-<member>`) plus `public-only`, in `tokens.json`; `manifest.json` schema_version 2 with sources, grants and per-page readers. The bot-visible page list and manifest are unchanged (snapshot test).

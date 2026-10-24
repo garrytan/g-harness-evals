@@ -122,6 +122,8 @@ serve() {
       else
         key="channel:$(jq -r '.channel.id' "$req")"
       fi
+      # A thread turn (thread_ts set; thread = "new" in task.toml) is a new session in the same conversation.
+      tts=$(jq -r '.thread_ts // empty' "$req"); [ -n "$tts" ] && key="$key:t$tts"
       log "turn $turn: session $key, budget ${budget}s"
       started=$(now)
       # The turn runs in the background so a SIGTERM during it reaches the trap at once; the trap's

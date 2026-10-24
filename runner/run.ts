@@ -39,7 +39,9 @@ export interface Cell {
   model: string;
   slice: 'multiuser' | 'work' | 'continuity' | 'coding-calibration' | 'hello' | 'smoke';
   split: 'dev' | 'heldout';
-  /** Harness-specific configuration name (for example QM's inner harness). */
+  /** Harness-specific configuration name, handed to the adapter as HE_HARNESS_CONFIG (internal-task). QM accepts pi (the
+   *  default), claude, pi-probe, claude-probe, pi-strict and pi-command-deny (harnesses/qm/pin.json configs); other
+   *  harnesses ignore it. */
   config?: string;
   repetitions: number;
   /** Planning ceiling, tokens in and out, used only to price the cap: per trial for single-shot slices,
@@ -230,7 +232,7 @@ export function renderPlan(m: Manifest): string {
   for (const c of m.cells) {
     const mine = m.trials.filter((t) => t.cell === c.id);
     const turns = mine.reduce((a, t) => a + (t.turns ?? 0), 0);
-    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${c.gbrain.surface}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
+    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.config ? ` config=${c.config}` : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${c.gbrain.surface}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
   }
   for (const c of m.cells) {
     if (c.gbrain?.brain === 'company' && c.preamble !== 'tasks/multiuser/_shared/preamble.gbrain-company.md') lines.push(`WARN: cell ${c.id} serves the company brain with preamble ${c.preamble ?? 'tasks/multiuser/_shared/preamble.md'}, not the company one (tasks/multiuser/_shared/preamble.gbrain-company.md); intended only for a none-style arm on the company brain`);

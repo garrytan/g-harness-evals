@@ -38,6 +38,12 @@ Every runner, proxy and adapter failure prints one line that starts with its cod
 | HE-ADAPTER-004 | serve started without `HE_WORLD_MCP_URL` and `HE_WORLD_MCP_TOKEN`, or the world-MCP registration was refused (exit 2 before `ready`) | pass both variables from the world's trial.json; for QM read `$HE_LOG_DIR/qm-mcp-register.json`, for OpenClaw `openclaw-mcp-probe.log` | adapters serve (M1 lane C) |
 | HE-EGRESS-003 | egress denials during a trial | add the host to `runner/egress.json` and start a new run; the current run is not comparable | runner/egress (planned) |
 
+## From internal-task (QM inner-harness cell and probes)
+
+| Code | What | Fix / recovery | Where |
+|---|---|---|---|
+| HE-MODEL-001 | a trial's proxy usage names a model other than the cell's: a forwarded request in `usage.by_model`, or a refused line that carries a model (the allowlist refusal); the trial is `model_error` and the message lists the models. Refused lines with no model (a route the proxy does not admit) are counted in `usage.refused` and never fail a trial. QM's auxiliary requests are `claude-haiku-5-5`, so on a Haiku cell they are the cell's model; a non-Haiku QM cell needs an allowance before this check applies | check the harness's model mapping (QM's `claude` harness falls back to its default model in silence when `CLAUDE_MODEL` is unsupported, `src/harness/claude-harness.ts` at the pin) or fix the cell | runner/trial/trial.ts |
+
 ## From the gbrain arm, lane D
 
 | Code | What | Fix / recovery | Where |

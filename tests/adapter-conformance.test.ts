@@ -241,14 +241,21 @@ describe('fake adapter, serve, process level', () => {
       const r3 = await response(t, 3);
       expect(r3.reply_text).toContain('turn 2 of this session');
 
+      // internal-task: a thread turn (thread_ts set) is a new session in the same conversation, keyed dm:<member>:t<ts>.
+      postRequest(t, request(4, { ts: '1700000400.000100', thread_ts: '1700000400.000100' }));
+      const r4 = await response(t, 4);
+      expect(r4.exit).toBe(0);
+      expect(r4.reply_text).toContain('session dm:dana-okafor:t1700000400.000100');
+      expect(r4.reply_text).toContain('turn 1 of this session');
+
       // Nothing outside the four writable places: workspace untouched, responses only in the turns dir.
       expect(tree(t.workspace)).toEqual(['instruction.md']);
       expect(tree(t.turns).filter((p) => p.endsWith('.response.json'))).toEqual([
-        'turn-0001.response.json', 'turn-0002.response.json', 'turn-0003.response.json',
+        'turn-0001.response.json', 'turn-0002.response.json', 'turn-0003.response.json', 'turn-0004.response.json',
       ]);
       expect(tree(t.turns).some((p) => p.endsWith('.tmp'))).toBe(false);
       expect(tree(t.state)).toEqual([
-        'fake', 'fake/session.json', 'fake/sessions', 'fake/sessions/channel_C0NORTH.json', 'fake/sessions/dm_dana-okafor.json',
+        'fake', 'fake/session.json', 'fake/sessions', 'fake/sessions/channel_C0NORTH.json', 'fake/sessions/dm_dana-okafor.json', 'fake/sessions/dm_dana-okafor_t1700000400.000100.json',
       ]);
       expect(readdirSync(t.dir).sort()).toEqual(['logs', 'state', 'turns', 'workspace']);
     } finally {

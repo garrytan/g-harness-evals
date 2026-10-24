@@ -74,6 +74,18 @@ export function classify(exits: number[], readyFailure: HarnessGone | null, ende
 
 const EMPTY_GRADE: GradeResult = { grade: 'n/a', predicates: [], consent_violation: false, approval_stop: false, effects: [] };
 
+/** internal-task: the model the harness actually ran against the cell's. A forwarded request on another model, or a
+ *  refused line that names another model (the proxy's allowlist refusal carries the model; QM's claude harness falls
+ *  back to its default model in silence when CLAUDE_MODEL is not supported), is HE-MODEL-001; the message lists them.
+ *  Refused lines with no model (a route the proxy does not admit) are counted in usage.refused and never fail a trial. */
+export function foreignModels(cellModel: string, byModel: Record<string, unknown>, lines: Array<{ outcome: string; model: string | null; provider: string }>): string[] {
+  const want = cellModel.toLowerCase();
+  const seen = new Set<string>();
+  for (const k of Object.keys(byModel)) if (k.toLowerCase() !== want) seen.add(k);
+  for (const l of lines) if (l.outcome === 'refused' && l.model && `${l.provider}:${l.model}`.toLowerCase() !== want) seen.add(`${l.provider}:${l.model}`);
+  return [...seen].sort();
+}
+
 export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   const { cell, trial, opts, log } = ctx;
   const started = Date.now();
@@ -117,6 +129,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     HE_LOG_DIR: docker ? '/he-logs' : resolve(dirs.logs),
     HE_SESSION_STATE_DIR: docker ? '/harness-state' : resolve(dirs.state),
     ...(cell.session_scope ? { HE_SESSION_SCOPE: cell.session_scope } : {}),
+    ...(cell.config ? { HE_HARNESS_CONFIG: cell.config } : {}),
     HE_TASK_SLICE: 'multiuser',
     HE_TRIAL_ID: trial.id,
     HE_TURNS_DIR: docker ? '/he-turns' : resolve(dirs.turns),
@@ -138,6 +151,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   let grade: GradeResult = EMPTY_GRADE;
   let usage: TrialUsage | null = null;
   let capStop = false;
+  let modelMismatch = false;
   const paths: Record<string, string> = { dir: dirs.root, trial_json: join(dirs.root, 'trial.json'), events: join(dirs.root, 'events.jsonl'), turns: join(dirs.root, 'turns.jsonl'), snapshot: join(dirs.root, 'snapshot.json'), grade: join(dirs.root, 'grade.json'), logs: dirs.logs };
   if (proxy) { paths.usage = join(dirs.root, 'usage.json'); paths.reconcile = join(dirs.root, 'reconcile.json'); }
   if (sidecar) paths.gbrain = join(dirs.root, 'gbrain');
@@ -158,7 +172,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
         const image = opts.image ?? `harness-eval/${cell.harness.replace(/^_/, '')}:dev`;
         const compose = join(harnessDir, 'compose.yaml');
         harness = existsSync(compose)
-          ? startComposeHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, composeFile: compose, timeBudgetS: task.time_budget_s, repoRoot: opts.repoRoot, stackEnv: { HE_MODEL_BASE_URL: env.HE_MODEL_BASE_URL!, HE_MODEL_API_KEY: key, HE_MODEL_NAME: modelName, HE_TIME_BUDGET_S: env.HE_TIME_BUDGET_S!, HE_TASK_SLICE: 'multiuser', HE_TRIAL_ID: trial.id } })
+          ? startComposeHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, composeFile: compose, timeBudgetS: task.time_budget_s, repoRoot: opts.repoRoot, stackEnv: { HE_MODEL_BASE_URL: env.HE_MODEL_BASE_URL!, HE_MODEL_API_KEY: key, HE_MODEL_NAME: modelName, HE_TIME_BUDGET_S: env.HE_TIME_BUDGET_S!, HE_TASK_SLICE: 'multiuser', HE_TRIAL_ID: trial.id, ...(cell.config ? { HE_HARNESS_CONFIG: cell.config } : {}) } })
           : startDockerHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, repoRoot: opts.repoRoot });
       }
       await harness.waitReady(opts.readyTimeoutS * 1000);
@@ -191,6 +205,13 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       const summary = summarizeUsage(key, meter, lines);
       usage = summary.usage;
       capStop = summary.cap_stop;
+      const foreign = foreignModels(cell.model, usage.by_model, lines);
+      if (foreign.length) {
+        modelMismatch = true;
+        const msg = `HE-MODEL-001 trial ${trial.id} ran model(s) ${foreign.join(', ')} beside the cell's ${cell.model} (by_model and refused usage lines); the trial is model_error; fix: check the harness's model mapping (QM: CLAUDE_MODEL falls back to its default when the id is unsupported) or fix the cell's model`;
+        log(msg);
+        error = error ? `${error}; ${msg}` : msg;
+      }
       writeAtomic(paths.usage!, JSON.stringify(usage, null, 1) + '\n');
       writeAtomic(paths.reconcile!, JSON.stringify(reconcile(key, meter, lines), null, 1) + '\n');
     }
@@ -208,7 +229,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   const gbrainRecord: TrialGbrain | undefined = sidecar ? gbrainSummary(cell.gbrain!.surface, sidecar, world.events, windows) : undefined;
 
   const exits = windows.map((w) => w.exit);
-  const termination: Termination = capStop ? 'model_error' : classify(exits, readyFailure, endedEarly, grade.approval_stop);
+  const termination: Termination = capStop || modelMismatch ? 'model_error' : classify(exits, readyFailure, endedEarly, grade.approval_stop);
   const ended = Date.now();
   return {
     trial_id: trial.id, cell: cell.id, task: trial.task, harness: cell.harness, harness_mode: mode, model: cell.model, script: trial.script ?? null,

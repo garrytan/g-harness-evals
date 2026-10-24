@@ -1,10 +1,24 @@
 # QM harness
 
-[QM](https://github.com/yc-software/qm) at tag `v0.1.15` (commit `7417aa2a3f917cf97406914897078ae3b273e173`) through its Pi inner harness. QM is a service, so this is the sidecar topology of the [adapter protocol](../../docs/adapters.md): `compose.yaml` runs Postgres (`pgvector/pgvector:0.8.1-pg16`), QM core, and a task container whose entrypoint is `adapter.sh` (`HE_ENTRY` selects `run` or `serve`). Both entry points are implemented. `qm-api.mjs` signs every request to core the way QM's own plugins do (`x-timestamp`, `x-signature = v0=HMAC-SHA256(secret, "v0:<ts>:<METHOD>\n<path>\n<body>")`).
+[QM](https://github.com/yc-software/qm) at tag `v0.1.15` (commit `7417aa2a3f917cf97406914897078ae3b273e173`) through its Pi inner harness by default, or its Claude harness when the cell's `config` says so (below). QM is a service, so this is the sidecar topology of the [adapter protocol](../../docs/adapters.md): `compose.yaml` runs Postgres (`pgvector/pgvector:0.8.1-pg16`), QM core, and a task container whose entrypoint is `adapter.sh` (`HE_ENTRY` selects `run` or `serve`). Both entry points are implemented. `qm-api.mjs` signs every request to core the way QM's own plugins do (`x-timestamp`, `x-signature = v0=HMAC-SHA256(secret, "v0:<ts>:<METHOD>\n<path>\n<body>")`).
 
 `run` posts one DM turn to core's `POST /v1/turns` as actor `U1` with `instruction.md` as the text, waits for the synchronous turn result and exits per the protocol.
 
 `serve` first registers the world-MCP server through QM's admin API, `PUT /v1/admin/mcp-servers/world` with `{url: $HE_WORLD_MCP_URL, auth: "bearer", bearerToken: $HE_WORLD_MCP_TOKEN, credentialScope: "shared", readOnly: false, enabled: true}`, as the principal `harness-admin` (`x-admin-actor: harness-admin@harness-eval`; `config/core.env` grants it `org_admin` through `ADMIN_GRANTS`, the route refuses anyone else); core probes `tools/list` against the world before saving, so the 200 in `qm-mcp-register.json` lists the 14 tools. Then each `TurnRequest` becomes one `POST /v1/turns` whose `actor.externalId` is the requester's Slack user id (with `displayName`) and whose conversation is `{kind: "dm", threadRef: "dm:<member>"}` or `{kind: "channel", threadRef: "channel:<id>", channelRef: <id>, channelName}`. That is QM's native scoping: a DM runs in scope `personal:<slack user id>`, a channel in `channel:<id>`, and `threadRef` names the session inside the scope. The reply is `TurnResult.reply`. Core stays up for the whole trial; nothing is restarted between turns.
+
+## Inner harnesses and configs (internal-task)
+
+QM runs its agent loop through one of two shipped harnesses, chosen by the core's `HARNESS` variable (`src/config.ts:1022-1026`; `mock`, `pi` or `claude`, unset means `mock`). The cell's `config` reaches the stack as `HE_HARNESS_CONFIG`; `prepare.sh` maps it to `QM_HARNESS`, `QM_MEMORY_CAPTURE_QUIET_MS` and `QM_PROBE_CONFIG`, which `compose.yaml` interpolates into the core and task services. The accepted values and what each sets are in `pin.json` `configs`; any other value exits 2 before the stack starts.
+
+- `pi` (the default, and what every QM cell before internal-task ran): QM's vendored pi-ai loop, model from `PI_MODEL`.
+- `claude`: the `@anthropic-ai/claude-agent-sdk` loop in `src/harness/claude-harness.ts`. QM turns Claude Code's own tools, skills and settings off, bridges its tools as the only MCP server, runs with `permissionMode: bypassPermissions` and keeps no SDK session between turns; the SDK's native `Agent` delegation stays on for turns that are not read-only. The model comes from `CLAUDE_MODEL` (set from `HE_MODEL_NAME`), and the SDK child inherits `ANTHROPIC_BASE_URL`, so its requests go through the metering proxy. An unsupported model id falls back to the SDK's default in silence (`claude-harness.ts:298-304`); the runner's HE-MODEL-001 assertion and the proxy allowlist make that a `model_error` rather than a silent swap. A cell on this config measures QM's two shipped integrations against each other, not Claude Code as a product.
+- No Codex inner harness exists at this pin: Codex appears only as a ChatGPT-subscription model provider inside the Pi harness (`src/harness/pi-harness.ts`, `src/model/codex-device-login.ts`). The brief's Codex cell is therefore a finding, not a cell.
+
+Memory capture quiet time: QM captures memory after `MEMORY_CAPTURE_QUIET_MS` of quiet following a turn, 180 s by default (`src/memory/strategies/per-turn.ts:9`). The probe configs (`pi-probe`, `claude-probe`, `pi-strict`, `pi-command-deny`) set it to 5 s so a fact told in one turn can be captured before the next probe turn; this is a deviation from the shipped product recorded in `pin.json` and reaches probe cells only. The held-out configs `pi` and `claude` keep 180 s.
+
+`pi-strict` and `pi-command-deny` PUT one org-scope setting through QM's admin API before the first turn (`qm-api.mjs admin-put`, as `harness-admin`); the 2xx response is saved as `qm-admin-<resource>.json` beside `qm-mcp-register.json`. Before every turn, `serve` also reads what QM's memory holds per scope through the admin memory routes into `<turn>.memory.json`, as an observation for the probe report.
+
+QM labels an MCP server `readOnly` but at this pin the label is not enforced on calls (`src/core/agent-tools.ts:4166`); the adapter registers the world with `readOnly: false` and the label is not probed.
 
 ## Images
 
@@ -68,6 +82,10 @@ Findings:
 - The MCP registration route needs an `org_admin` grant; with Postgres and no `ADMIN_GRANTS`, core boots with no admin at all and the route answers 403, so `config/core.env` names `harness-admin`.
 
 ## Changelog
+
+### 2026-10-24: inner-harness configs, thread sessions, database dump (internal-task)
+
+`HE_HARNESS_CONFIG` through `prepare.sh` selects `pi` or `claude` and the probe configs; `:t<thread_ts>` session keys; `qm-api.mjs admin-put` and `admin-get`; per-turn memory snapshots; `capture.sh` writes a sandbox manifest and `logs/qm-db.sql.gz` through every caller (`COMPOSE_PROJECT_NAME`).
 
 ### 2026-10-22: serve (M1 lane C)
 

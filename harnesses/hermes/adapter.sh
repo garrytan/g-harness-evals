@@ -185,6 +185,8 @@ while [ "$stopping" -eq 0 ]; do
 import json, os, sys
 r = json.load(open(sys.argv[1]))
 key = "dm:" + r["actor"]["member"] if r["channel"]["type"] == "dm" else "channel:" + r["channel"]["id"]
+# A thread turn (thread_ts set; thread = "new" in task.toml) is a new session in the same conversation.
+if r.get("thread_ts"): key = key + ":t" + str(r["thread_ts"])
 print(r["turn"], r.get("time_budget_s") or os.environ["HE_TIME_BUDGET_S"], key)
 ' "$req")
     log "turn $turn: session $key, budget ${budget}s"

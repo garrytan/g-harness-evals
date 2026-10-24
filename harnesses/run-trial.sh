@@ -66,10 +66,11 @@ if [ -f "harnesses/$harness/compose.yaml" ]; then
   export HE_UID="$(id -u)" HE_GID="$(id -g)"
   # prepare.sh pre-creates bind-mount targets and prints per-trial secrets as
   # NAME=value lines; they stay in this process and the stack, never on disk.
+  project="he-$(echo "$trial" | tr -c 'a-z0-9\n' '-')"
+  export COMPOSE_PROJECT_NAME="$project"
   if [ -x "harnesses/$harness/prepare.sh" ]; then
     while IFS= read -r line; do export "$line"; done < <("harnesses/$harness/prepare.sh" "$abs_out")
   fi
-  project="he-$(echo "$trial" | tr -c 'a-z0-9\n' '-')"
   timeout -k 10 "$((budget + 180))" docker compose -f "harnesses/$harness/compose.yaml" -p "$project" up \
     --abort-on-container-exit --exit-code-from task --no-color </dev/null > "$abs_out/logs/compose.log" 2>&1
   code=$?

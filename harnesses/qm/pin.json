@@ -6,7 +6,7 @@
   "install": "git clone --branch v0.1.15 <repo> && build as deploy/core/Dockerfile does (npm ci --omit=dev, connector-sdk build); see Dockerfile",
   "entry": "/opt/harness/adapter.sh run | serve (task container in compose.yaml; HE_ENTRY selects it)",
   "turn_command": "node qm-api.mjs turn: POST /v1/turns {surface:'harness-eval', actor:{externalId:'U1'}, conversation:{kind:'dm', threadRef:<trial>}, text:<instruction.md>} signed with CORE_SIGNING_SECRET",
-  "inner_harness": "pi",
+  "inner_harness": "pi by default; HE_HARNESS_CONFIG selects (configs below). HARNESS env on core, read at src/config.ts:1022-1026 (mock|pi|claude; unset = mock)",
   "model": {
     "provider": "anthropic",
     "model": "claude-sonnet-5-5",
@@ -31,11 +31,30 @@
   "multi_user_mode": "QM scopes: personal:<slack user id> for a DM, channel:<id> for a channel; the actor is the requester's Slack user id on every turn",
   "serve_turn_command": "node qm-api.mjs turn: POST /v1/turns {surface:'harness-eval', actor:{externalId:<requester slack_user_id>, displayName}, conversation:{kind:'dm', threadRef:'dm:<member>'} | {kind:'channel', threadRef:'channel:<id>', channelRef:<id>, channelName}, text:<prompt>}",
   "serve": {
-    "session_key": "conversation.threadRef dm:<member> | channel:<id>; scope personal:<actor> | channel:<id>",
+    "session_key": "conversation.threadRef dm:<member> | channel:<id>; scope personal:<actor> | channel:<id>. With TurnRequest.thread_ts set (a task turn with thread = \"new\"), :t<thread_ts> is appended, which opens a new QM session in the same scope",
     "session_store": "postgres (sessions, runs, memory) and /harness-state/qm (DATA_DIR)",
     "shared_between_sessions": "whatever QM shares across scopes under HARNESS_SHARING_POSTURE=isolated; not configured by the adapter",
     "reply_source": "TurnResult.reply",
-    "exit_mapping": "status ok, silent or pending_approval -> 0; request outlived the budget -> 124; refusalKind model_budget or a provider status in reason -> 3; else 2"
+    "exit_mapping": "status ok, silent or pending_approval -> 0; request outlived the budget -> 124; refusalKind model_budget or a provider status in reason -> 3; else 2. A pending_approval turn keeps exit 0 and its TurnResult (pendingApprovals) is in <turn>.qm.json",
+    "memory_snapshot": "before every turn the adapter reads GET /v1/admin/memory/scopes and GET /v1/admin/memory?scope=<id> for each scope with memory, as harness-admin, into <turn>.memory.json (observation for the probe report; a failure is logged, never a turn failure)"
   },
-  "gbrain_mcp": "with HE_GBRAIN_MCP_URL and HE_GBRAIN_MCP_TOKEN set at serve start, PUT /v1/admin/mcp-servers/gbrain (name gbrain, url HE_GBRAIN_MCP_URL, auth bearer with HE_GBRAIN_MCP_TOKEN, credentialScope shared, readOnly false) as harness-admin, beside world; core probes tools/list before saving, so the registration's 2xx is the discovery proof (qm-gbrain-register.json). Unset, no registration happens"
+  "gbrain_mcp": "with HE_GBRAIN_MCP_URL and HE_GBRAIN_MCP_TOKEN set at serve start, PUT /v1/admin/mcp-servers/gbrain (name gbrain, url HE_GBRAIN_MCP_URL, auth bearer with HE_GBRAIN_MCP_TOKEN, credentialScope shared, readOnly false) as harness-admin, beside world; core probes tools/list before saving, so the registration's 2xx is the discovery proof (qm-gbrain-register.json). Unset, no registration happens",
+  "inner_harnesses": {
+    "pi": "QM's vendored pi-ai loop (src/harness/pi-harness.ts); PI_MODEL from HE_MODEL_NAME; the configuration every earlier QM cell ran",
+    "claude": "@anthropic-ai/claude-agent-sdk 0.3.280 (package.json:70) driven by src/harness/claude-harness.ts: Claude Code's tools, skills and settings are off, QM's tools are bridged as the only MCP server, permissionMode bypassPermissions, no persisted session (claude-harness.ts:425-476); the SDK's native Agent delegation stays on when the turn is not read-only and does not delegate work (allowSubagents, claude-harness.ts:333, 440-466). CLAUDE_MODEL from HE_MODEL_NAME (config.ts:1521). The child process receives ANTHROPIC_API_KEY and ANTHROPIC_BASE_URL (claude-harness.ts:93-109), so every request goes through the metering proxy. Fallback note: an unsupported CLAUDE_MODEL id falls back to the SDK default in silence (claude-harness.ts:298-304); the runner's model assertion (HE-MODEL-001) and the proxy allowlist catch it. This cell measures QM's two shipped integrations, not Claude Code as a product",
+    "codex": "none at this pin. Codex is only a ChatGPT-subscription model provider inside the Pi harness (src/harness/pi-harness.ts CODEX_SUBSCRIPTION_PROVIDER, src/model/codex-device-login.ts), not an inner harness; HARNESS accepts mock|pi|claude. The Codex cell of the brief is recorded as a finding (internal-task)"
+  },
+  "configs": {
+    "": "same as pi",
+    "pi": "QM_HARNESS=pi; MEMORY_CAPTURE_QUIET_MS 180000 (shipped default, src/memory/strategies/per-turn.ts:9). Held-out cells",
+    "claude": "QM_HARNESS=claude; quiet time 180000. Held-out cells",
+    "pi-probe": "QM_HARNESS=pi; QM_MEMORY_CAPTURE_QUIET_MS=5000. Probe cells only",
+    "claude-probe": "QM_HARNESS=claude; QM_MEMORY_CAPTURE_QUIET_MS=5000. Probe cells only",
+    "pi-strict": "pi-probe plus QM_PROBE_CONFIG=pi-strict: before the first turn the adapter PUTs {posture: \"strict\"} to /v1/admin/scopes/org:harness-eval/security-posture as harness-admin (qm-admin-security-posture.json holds the 2xx). strict also lifts the auto posture's private-network deny (security-posture.ts:16-20); the probe does not depend on that",
+    "pi-command-deny": "pi-probe plus QM_PROBE_CONFIG=pi-command-deny: PUTs a denylist command policy whose first rule denies \\buname\\b, followed by the shipped org floor rules (command-policy.ts:7-22), to /v1/admin/scopes/org:harness-eval/command-policy (first match wins, command-policy.ts:888-895; qm-admin-command-policy.json holds the 2xx)",
+    "mapping": "harnesses/qm/prepare.sh maps HE_HARNESS_CONFIG to QM_HARNESS, QM_MEMORY_CAPTURE_QUIET_MS and QM_PROBE_CONFIG as NAME=value lines compose interpolates; an unknown value exits 2"
+  },
+  "memory_capture_quiet_ms": "5000 in probe configs, 180000 (shipped) otherwise. Deviation, probe cells only: QM captures memory after a quiet period following a turn; at 180 s nothing is captured before a probe's next turn arrives, so the probe cells shorten it and their task turns wait 20 s. The held-out cells keep the shipped value",
+  "capture": "capture.sh copies and removes every qm.sandbox container of org harness-eval (manifest qm-sandboxes.json with sha256), then starts pg under COMPOSE_PROJECT_NAME and writes pg_dump of database qm to logs/qm-db.sql.gz (session_entries, tool_calls, llm_prompt_envelopes, memory). The dump holds per-trial tokens and is never committed",
+  "org_scope": "org:harness-eval (ORG_ID=harness-eval in config/core.env; orgScope() at src/config.ts:943)"
 }

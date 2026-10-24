@@ -168,7 +168,9 @@ while [ "$stopping" -eq 0 ]; do
     [ -e "$resp" ] && continue
     read -r turn budget key < <(node -e '
       const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-      const key = process.env.HE_SESSION_SCOPE === "turn" ? "turn:" + String(r.turn).padStart(4, "0") : r.channel.type === "dm" ? "dm:" + r.actor.member : "channel:" + r.channel.id;
+      const base = process.env.HE_SESSION_SCOPE === "turn" ? "turn:" + String(r.turn).padStart(4, "0") : r.channel.type === "dm" ? "dm:" + r.actor.member : "channel:" + r.channel.id;
+      // A thread turn (thread_ts set; thread = "new" in task.toml) is a new session in the same conversation.
+      const key = r.thread_ts && process.env.HE_SESSION_SCOPE !== "turn" ? base + ":t" + r.thread_ts : base;
       process.stdout.write([r.turn, r.time_budget_s || process.env.HE_TIME_BUDGET_S, key].join(" ") + "\n");
     ' "$req")
     log "turn $turn: session $key, budget ${budget}s"

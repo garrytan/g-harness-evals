@@ -50,7 +50,14 @@ services:
       DOCKER_HOST: unix:///var/run/docker.sock
       ANTHROPIC_API_KEY: ${HE_MODEL_API_KEY}
       ANTHROPIC_BASE_URL: ${HE_MODEL_BASE_URL}
+      # The inner harness and its model (internal-task): prepare.sh maps HE_HARNESS_CONFIG to QM_HARNESS (pi or claude);
+      # PI_MODEL and CLAUDE_MODEL both name the cell's model so whichever harness runs meters under it.
+      HARNESS: ${QM_HARNESS:-pi}
       PI_MODEL: ${HE_MODEL_NAME:-claude-sonnet-5-5}
+      CLAUDE_MODEL: ${HE_MODEL_NAME:-claude-sonnet-5-5}
+      # QM's automatic memory capture waits this long after a turn before extracting facts; the shipped default
+      # (180 s) stays for held-out cells, and prepare.sh sets 5 s for the probe configs only (harnesses/qm/README.md).
+      MEMORY_CAPTURE_QUIET_MS: ${QM_MEMORY_CAPTURE_QUIET_MS:-180000}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -75,6 +82,9 @@ services:
       QM_CORE_URL: http://host.docker.internal:${QM_CORE_PORT:-58080}
       QM_SIGNING_SECRET: ${QM_SIGNING_SECRET}
       QM_ACTOR_ID: U1
+      QM_HARNESS: ${QM_HARNESS:-pi}
+      QM_PROBE_CONFIG: ${QM_PROBE_CONFIG:-}
+      HE_HARNESS_CONFIG: ${HE_HARNESS_CONFIG:-}
       HE_MODEL_BASE_URL: ${HE_MODEL_BASE_URL}
       HE_MODEL_API_KEY: ${HE_MODEL_API_KEY}
       HE_MODEL_NAME: ${HE_MODEL_NAME:-claude-sonnet-5-5}
