@@ -8,11 +8,20 @@
 // cross-scope read failures, refused proxy requests, USD (total, median per trial, per success), tokens, wall
 // median. Then a per-task x cell pass table and the failed-predicate counts per cell. Markdown to stdout, and
 // summary.json beside trials.jsonl. Intervals, never ranks; every number comes from the trial records.
+//
+// gbrain arm: per cell, usage of the gbrain sidecar read from each trial's events.jsonl (via "gbrain" events,
+// docs/tasks.md): trials with at least one tools/call, trials that listed the tools, calls per trial (median and
+// total), a histogram of tools, pages returned per call and latency medians, errors, writes, and how many
+// cross-scope reads came through gbrain against the world's own tools. A cell without gbrain reports zeros;
+// `events_read` says how many trials had an event log to read. summary.json gains a `gbrain` key per cell and
+// nothing else changes.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { TrialRecord } from '../runner/contracts.ts';
+import type { WorldEvent } from '../world/services/events.ts';
 import { seededRandom } from '../runner/stats/paired.ts';
+import { gbrainUsage } from './gbrain-usage.ts';
 
 function arg(name: string, fallback?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -55,6 +64,10 @@ const median = (xs: number[]) => { if (!xs.length) return 0; const s = [...xs].s
 const pct = (x: number) => `${(100 * x).toFixed(0)}%`;
 const usd = (x: number) => `$${x.toFixed(2)}`;
 
+const eventsOf = (t: TrialRecord): WorldEvent[] | null => {
+  const candidates = [join(results, 'trials', ...t.trial_id.split('/').slice(1), 'events.jsonl'), t.paths?.events ?? '', join(t.paths?.dir ?? '', 'events.jsonl')].filter((p) => p && existsSync(p));
+  return candidates.length ? readFileSync(candidates[0]!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as WorldEvent) : null;
+};
 const cells = [...new Set(rows.map((t) => t.cell))];
 const out: string[] = [];
 const summary: Record<string, unknown> = { run: rows[0]?.trial_id.split('/')[0], grading: useRegraded ? 'regraded' : 'as recorded', seed, cells: {} as Record<string, unknown> };
@@ -77,7 +90,20 @@ for (const cell of cells) {
   const wall = median(ts.map((t) => t.wall_ms / 1000));
   const perSuccess = passes ? usd(total / passes) : 'no successes';
   out.push(`| ${cell} | ${ts.length} (${rate.clusters} x ${ts.length / rate.clusters}) | ${passes} | ${pct(rate.rate)} [${pct(rate.lower)}, ${pct(rate.upper)}] | ${cv} | ${stops.length} (${validStops}) | ${[...term.entries()].map(([k, v]) => `${k} ${v}`).join(', ')} | ${xscope} | ${refused} | ${usd(total)} | ${usd(median(usage.map((u) => u.usd)))} | ${perSuccess} | ${tokens.i.toLocaleString()} / ${tokens.o.toLocaleString()} / ${tokens.c.toLocaleString()} | ${wall.toFixed(0)} s |`);
-  (summary.cells as Record<string, unknown>)[cell] = { n: ts.length, passes, pass_rate: rate.rate, ci95: [rate.lower, rate.upper], task_clusters: rate.clusters, consent_violations: cv, approval_stops: stops.length, valid_approval_stops: validStops, terminations: Object.fromEntries(term), cross_scope_read_failures: xscope, refused_requests: refused, usd_total: total, usd_median: median(usage.map((u) => u.usd)), usd_per_success: passes ? total / passes : null, tokens, wall_median_s: wall, trial_ids: ts.map((t) => t.trial_id) };
+  const gbrain = gbrainUsage(ts.map((t) => ({ events: eventsOf(t), predicates: view(t).predicates })));
+  (summary.cells as Record<string, unknown>)[cell] = { n: ts.length, passes, pass_rate: rate.rate, ci95: [rate.lower, rate.upper], task_clusters: rate.clusters, consent_violations: cv, approval_stops: stops.length, valid_approval_stops: validStops, terminations: Object.fromEntries(term), cross_scope_read_failures: xscope, refused_requests: refused, usd_total: total, usd_median: median(usage.map((u) => u.usd)), usd_per_success: passes ? total / passes : null, tokens, wall_median_s: wall, trial_ids: ts.map((t) => t.trial_id), gbrain };
+}
+out.push('');
+const gbrainCells = cells.map((cell) => [cell, (summary.cells as Record<string, { gbrain: ReturnType<typeof gbrainUsage> }>)[cell]!.gbrain] as const);
+if (gbrainCells.some(([, g]) => g.calls_total > 0 || g.trials_with_tools_list > 0)) {
+  out.push('| Cell | Trials with gbrain calls | Trials that listed tools | Calls (median / trial, total) | Tools called | Pages per call (median) | Latency (median ms) | Errors | Writes | Cross-scope reads via gbrain / via world | Event logs read |');
+  out.push('|---|---|---|---|---|---|---|---|---|---|---|');
+  for (const [cell, g] of gbrainCells) {
+    const tools = Object.entries(g.tools).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ') || 'none';
+    out.push(`| ${cell} | ${g.trials_with_calls} | ${g.trials_with_tools_list} | ${g.calls_median_per_trial} / ${g.calls_total} | ${tools} | ${g.pages_per_call_median} | ${g.latency_ms_median} | ${g.errors} | ${g.writes} | ${g.cross_scope_reads.via_gbrain} / ${g.cross_scope_reads.via_world} | ${g.events_read} of ${g.trials} |`);
+  }
+} else {
+  out.push(`gbrain: no via gbrain event in any cell (${gbrainCells.reduce((s, [, g]) => s + g.events_read, 0)} of ${rows.length} event logs read).`);
 }
 out.push('');
 const tasks = [...new Set(rows.map((t) => t.task))].sort();

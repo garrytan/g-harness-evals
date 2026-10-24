@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [Unreleased]
+
+### From the gbrain arm, lane E
+
+- Grader: `via` `gbrain` read events count for scope through their page slugs (channel by `source_slugs`, file by `slug`); cross-scope evidence names the gbrain tool and slug; stray reads for `digest_posted` include gbrain reads; `initialize` and `tools/list` never count (docs/tasks.md, "gbrain reads").
+- `scripts/summarize-run.ts`: a `gbrain` usage block per cell in `summary.json` from each trial's `events.jsonl`; existing keys unchanged, zeros without gbrain.
+- `scripts/compare-run.ts --pair gbrain`: within-run paired comparison of each harness with and without gbrain over the capable families and all tasks, with cost and latency deltas, written to `comparisons.gbrain.json`; `scripts/paired-mdd.ts`: the minimum detectable difference of that design from an existing run.
+- `tests/scripts-gbrain.test.ts` and the gbrain cases in `tests/grade.test.ts`.
+
 ## [0.0.5] - 2026-10-23
 
 ### M3 sensitivity cell run and reported

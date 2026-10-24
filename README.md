@@ -47,6 +47,10 @@ None of these calls a model API. A paid run is `bun runner/run.ts plan --prereg 
 
 ## Changelog
 
+### 2026-10-23: From the gbrain arm, lane E
+
+harness-evals v0.0.5. Grading and report tooling for the gbrain arm: the grader counts gbrain reads for scope through their page slugs (docs/tasks.md, "gbrain reads"), `summarize-run.ts` reports gbrain usage per cell, `compare-run.ts --pair gbrain` pairs each harness with and without gbrain within a run, and `paired-mdd.ts` states the design's minimum detectable difference (runner/README.md, report tooling).
+
 ### 2026-10-23: Sensitivity cell reported
 
 harness-evals v0.0.5. The opening paragraph adds the Haiku result; new row for the sensitivity folder.

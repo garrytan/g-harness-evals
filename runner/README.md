@@ -93,7 +93,15 @@ Vendored from [gbrain-evals](https://github.com/garrytan/gbrain-evals) v0.10.128
 
 What the plan still asks for on top of this (TODOS): egress enforcement, forced `stream_options.include_usage` on OpenAI chat streams, native Anthropic Messages and OpenAI Responses metering fixtures for the Claude Code and Codex cells, and per-run external reconciliation against the provider usage page.
 
+## Report tooling (gbrain arm, lane E)
+
+The scripts that turn `results/<run>/trials.jsonl` into report tables, all keyless, all writing their JSON beside the trials file: `bun scripts/summarize-run.ts --results <dir>` prints the per-cell table, the per-task pass table and the failed-predicate counts and writes `summary.json`; it also reads each trial's `events.jsonl` and adds a `gbrain` block per cell (trials with at least one gbrain tools/call, trials that listed the tools, calls per trial as median and total, the histogram of gbrain tools, pages returned per call and latency medians, errors, writes, and cross-scope reads that came via gbrain against via the world), zeros for a cell without gbrain, with `events_read` saying how many logs it found. `bun scripts/compare-run.ts --results <dir> [--families ...]` is the pairwise harness comparison and `--against <other run>` the across-run model effect; `--pair gbrain` is the within-run gbrain arm: for each (harness, config, model) it pairs the cell with gbrain (a truthy `gbrain` field in the manifest cell, or a `gbrain` segment in its id) against the cell without, trial by trial on the same task and repetition index, over the four capable families and over all tasks, excluding a pair whose trial ended as `model_error` or `infra_error` on either side and publishing the count, with Holm across the harness pairs of one model, and writes `comparisons.gbrain.json` (passed counts, gbrain minus none with its task-clustered interval, the per-task table, discordant counts, Holm-adjusted p, and median USD and seconds per trial and total input tokens for both cells). `bun scripts/paired-mdd.ts --results <dir>` prints the minimum detectable difference of that paired design from an existing run's per-task pass rates, under the null that gbrain changes nothing and with the two arms independent given the task, beside the sign-flip bar of the preregistration (six task clusters all one way). `bun scripts/regrade.ts --results <dir>` re-reads every trial's evidence with the grader at the current commit into `trials.regraded.jsonl`, which `--regraded` on the two scripts above consumes. Tests: `tests/scripts-gbrain.test.ts`.
+
 ## Changelog
+
+### 2026-10-23: gbrain arm report tooling (lane E)
+
+harness-evals v0.0.5. The "Report tooling" section: `summarize-run.ts` gains the per-cell `gbrain` block, `compare-run.ts` gains `--pair gbrain`, and `paired-mdd.ts` is new.
 
 ### 2026-10-22: M1 trial dispatch
 
