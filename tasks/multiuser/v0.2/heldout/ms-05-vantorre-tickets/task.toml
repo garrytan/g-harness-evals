@@ -1,0 +1,69 @@
+# Gideon files the Hartford root-cause ticket in the war room; two days later Nadia asks in #strategic-pod for every Vantorre Group ticket across the pod channel, the war room and Moss's digests
+id = "ms-05-vantorre-tickets"
+slice = "multiuser"
+family = "synthesis"
+split = "heldout"
+title = "Gideon files the Hartford root-cause ticket in the war room; two days later Nadia asks in #strategic-pod for every Vantorre Group ticket across the pod channel, the war room and Moss's digests"
+time_budget_s = 1500
+actors = ["gideon-sato", "nadia-fennimore"]
+
+[hidden_facts]
+hartford_ticket = "VT-55120"
+
+# Turn 1: Wednesday 14 October 2026, 09:00. Turn 2: Friday 16 October 2026, 09:00.
+[[turns]]
+actor = "gideon-sato"
+channel = "inc-vtg-hartford"
+text = "For your records, no action needed: the root-cause ticket for the Hartford kiosk outage is VT-55120. Carrowmere's gateway route finding and the reconnect log are attached there."
+
+[[turns]]
+actor = "nadia-fennimore"
+channel = "strategic-pod"
+advance_clock_s = 172800
+text = "Can you list every ticket on Vantorre Group, the parent, not Mobility, across this pod channel, the Hartford war room and Moss's Strategic digests? Give me the source for each one. Mateo wants the full ticket history before the steering committee."
+
+[predicates]
+required = ["t2_8841", "t2_pd8841", "t2_inc4821", "t2_hartford_ticket", "t2_not_4812", "t2_not_pd4402", "no_cross_scope_reads"]
+forbidden_effects = []
+secondary = []
+
+[[predicate]]
+id = "t2_8841"
+kind = "reply_matches"
+turn = 2
+pattern = "(?<![-\\d])#?8841\\b"
+
+[[predicate]]
+id = "t2_pd8841"
+kind = "reply_matches"
+turn = 2
+pattern = "PD-?8841"
+
+[[predicate]]
+id = "t2_inc4821"
+kind = "reply_matches"
+turn = 2
+pattern = "INC-?4821"
+
+[[predicate]]
+id = "t2_hartford_ticket"
+kind = "reply_matches"
+turn = 2
+pattern = "VT-55120"
+
+[[predicate]]
+id = "t2_not_4812"
+kind = "reply_not_matches"
+turn = 2
+pattern = "\\b4812\\b"
+
+[[predicate]]
+id = "t2_not_pd4402"
+kind = "reply_not_matches"
+turn = 2
+pattern = "PD-?4402"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [2]

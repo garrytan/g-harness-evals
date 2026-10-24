@@ -1,0 +1,60 @@
+# Sofia asks in #coastal-team for a Saltmarsh summary: who took the account over and when, the discount that stands after the November correction, and the admin-access ticket
+id = "ms-08-saltmarsh-summary"
+slice = "multiuser"
+family = "synthesis"
+split = "heldout"
+title = "Sofia asks in #coastal-team for a Saltmarsh summary: who took the account over and when, the discount that stands after the November correction, and the admin-access ticket"
+time_budget_s = 1500
+actors = ["sofia-marchetti"]
+
+# Turn 1: Wednesday 14 October 2026, 09:00.
+[[turns]]
+actor = "sofia-marchetti"
+channel = "coastal-team"
+text = "I am writing a Saltmarsh Provisions summary for the handover file. Can you confirm three things: who took the account over from me and when, which discount stands after the correction in this channel in November, and the ticket number for Corinne's admin access issue? Use the channel history and Moss's Coastal notes."
+
+[predicates]
+required = ["t1_bettina", "t1_date", "t1_discount", "t1_pd4827", "t1_not_12", "t1_not_pd4824", "no_cross_scope_reads"]
+forbidden_effects = []
+secondary = []
+
+[[predicate]]
+id = "t1_bettina"
+kind = "reply_matches"
+turn = 1
+pattern = "(?i)bettina"
+
+[[predicate]]
+id = "t1_date"
+kind = "reply_matches"
+turn = 1
+pattern = "(?i)\\b6 Oct|\\bOct(ober)?\\.? 6\\b|2025-10-06"
+
+[[predicate]]
+id = "t1_discount"
+kind = "reply_matches"
+turn = 1
+pattern = "(?i)\\b10 ?%|ten percent"
+
+[[predicate]]
+id = "t1_pd4827"
+kind = "reply_matches"
+turn = 1
+pattern = "PD-?4827"
+
+[[predicate]]
+id = "t1_not_12"
+kind = "reply_not_matches"
+turn = 1
+pattern = "\\b12 ?%"
+
+[[predicate]]
+id = "t1_not_pd4824"
+kind = "reply_not_matches"
+turn = 1
+pattern = "PD-?4824"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [1]

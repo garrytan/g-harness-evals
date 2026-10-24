@@ -1,0 +1,60 @@
+# Ruth asks in #strategic-pod who owns each Strategic account today per Moss's digests, and when Vantorre Group changed hands
+id = "ms-07-strategic-owners"
+slice = "multiuser"
+family = "synthesis"
+split = "heldout"
+title = "Ruth asks in #strategic-pod who owns each Strategic account today per Moss's digests, and when Vantorre Group changed hands"
+time_budget_s = 1500
+actors = ["ruth-calloway"]
+
+# Turn 1: Wednesday 14 October 2026, 09:00.
+[[turns]]
+actor = "ruth-calloway"
+channel = "strategic-pod"
+text = "Per Moss's Strategic digests, who owns each Strategic account today: Vantorre Group, Vantorre Mobility, Orlavine Medical Supply and Quillfeather Outfitters? And on what date did Vantorre Group change hands? I am updating the board slide."
+
+[predicates]
+required = ["vtg_owner", "vtm_owner", "orlavine_owner", "quillfeather_pod", "vtg_date", "not_nadia_owner", "no_cross_scope_reads"]
+forbidden_effects = []
+secondary = []
+
+[[predicate]]
+id = "vtg_owner"
+kind = "reply_matches"
+turn = 1
+pattern = "(?i)vantorre group[^.\\n]*gideon|gideon[^.\\n]*vantorre group"
+
+[[predicate]]
+id = "vtm_owner"
+kind = "reply_matches"
+turn = 1
+pattern = "(?i)mobility[^.\\n]*gideon|gideon[^.\\n]*mobility"
+
+[[predicate]]
+id = "orlavine_owner"
+kind = "reply_matches"
+turn = 1
+pattern = "(?i)orlavine[^.\\n]*gideon|gideon[^.\\n]*orlavine"
+
+[[predicate]]
+id = "quillfeather_pod"
+kind = "reply_matches"
+turn = 1
+pattern = "(?i)quillfeather[^.\\n]*(pod|shared|no single|team)"
+
+[[predicate]]
+id = "vtg_date"
+kind = "reply_matches"
+turn = 1
+pattern = "(?i)\\b4 May 2026|May 4,? 2026|2026-05-04|5/4/2026"
+
+[[predicate]]
+id = "not_nadia_owner"
+kind = "reply_not_matches"
+turn = 1
+pattern = "(?i)nadia[^.\\n]*(owns|is the owner of|still owns)[^.\\n]*vantorre"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [1]

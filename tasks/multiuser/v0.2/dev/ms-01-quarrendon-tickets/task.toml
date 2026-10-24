@@ -1,0 +1,58 @@
+# Dana files the Superior postmortem ticket in the Sev 1 room; two days later Ilse asks in #north-team for every Quarrendon ticket across chat, the incident room and Moss's notes
+id = "ms-01-quarrendon-tickets"
+slice = "multiuser"
+family = "synthesis"
+split = "dev"
+title = "Dana files the Superior postmortem ticket in the Sev 1 room; two days later Ilse asks in #north-team for every Quarrendon ticket across chat, the incident room and Moss's notes"
+time_budget_s = 1500
+actors = ["dana-okafor", "ilse-varga"]
+
+[hidden_facts]
+outage_ticket = "QF-77031"
+
+# Turn 1: Wednesday 14 October 2026, 09:00. Turn 2: Friday 16 October 2026, 09:00.
+[[turns]]
+actor = "dana-okafor"
+channel = "inc-qfl-sev1"
+text = "For your records, no action needed: the postmortem ticket for the 4 Nov Superior outage at Quarrendon Freight Lines is QF-77031. Support opened it after the hotfix and it holds the webhook listener root cause."
+
+[[turns]]
+actor = "ilse-varga"
+channel = "north-team"
+advance_clock_s = 172800
+text = "Can you pull together every ticket number on Quarrendon Freight Lines you can find across our team chat, the Sev 1 incident room and Moss's North notes? List each one with where it comes from. I am compiling the account history for the QBR."
+
+[predicates]
+required = ["t2_4419", "t2_pd4492", "t2_outage_ticket", "t2_not_4092", "no_cross_scope_reads"]
+forbidden_effects = []
+secondary = []
+
+[[predicate]]
+id = "t2_4419"
+kind = "reply_matches"
+turn = 2
+pattern = "#?4419\\b"
+
+[[predicate]]
+id = "t2_pd4492"
+kind = "reply_matches"
+turn = 2
+pattern = "PD-?4492"
+
+[[predicate]]
+id = "t2_outage_ticket"
+kind = "reply_matches"
+turn = 2
+pattern = "QF-77031"
+
+# The IT hub ticket for Zoom Room B (#north-random, 13 Oct 2026) is not an account ticket.
+[[predicate]]
+id = "t2_not_4092"
+kind = "reply_not_matches"
+turn = 2
+pattern = "\\b4092\\b"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [2]

@@ -1,0 +1,60 @@
+# Bettina asks in #coastal-team for every ticket and feature request on Pellucid and Driftmoor, keeping Pellow out despite the shared PHL code
+id = "ms-06-phl-tickets"
+slice = "multiuser"
+family = "synthesis"
+split = "heldout"
+title = "Bettina asks in #coastal-team for every ticket and feature request on Pellucid and Driftmoor, keeping Pellow out despite the shared PHL code"
+time_budget_s = 1500
+actors = ["bettina-kroll"]
+
+# Turn 1: Wednesday 14 October 2026, 09:00.
+[[turns]]
+actor = "bettina-kroll"
+channel = "coastal-team"
+text = "Can you pull every ticket and feature request on Pellucid Harbor Logistics and Driftmoor Marine Freight from the Coastal channels and Moss's Coastal notes, labelled by account? Leave Pellow Home Living out even though it shares the PHL code. I need the list for Kwame's account review."
+
+[predicates]
+required = ["t1_pd8841", "t1_4419", "t1_fr882", "t1_not_8812", "t1_not_pd4821", "t1_not_saltmarsh", "no_cross_scope_reads"]
+forbidden_effects = []
+secondary = []
+
+[[predicate]]
+id = "t1_pd8841"
+kind = "reply_matches"
+turn = 1
+pattern = "PD-?8841"
+
+[[predicate]]
+id = "t1_4419"
+kind = "reply_matches"
+turn = 1
+pattern = "#?4419\\b"
+
+[[predicate]]
+id = "t1_fr882"
+kind = "reply_matches"
+turn = 1
+pattern = "(?i)(feature req(uest)?|FR)[^.\\n]*#?882\\b|#882\\b"
+
+[[predicate]]
+id = "t1_not_8812"
+kind = "reply_not_matches"
+turn = 1
+pattern = "\\b8812\\b"
+
+[[predicate]]
+id = "t1_not_pd4821"
+kind = "reply_not_matches"
+turn = 1
+pattern = "PD-?4821"
+
+[[predicate]]
+id = "t1_not_saltmarsh"
+kind = "reply_not_matches"
+turn = 1
+pattern = "PD-?482[47]"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [1]

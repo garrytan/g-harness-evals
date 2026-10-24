@@ -1,0 +1,62 @@
+# Hollis asks in #central-team for every ticket and feature request on the two Marrow accounts, labelled by account
+id = "ms-02-marrow-tickets"
+slice = "multiuser"
+family = "synthesis"
+split = "dev"
+title = "Hollis asks in #central-team for every ticket and feature request on the two Marrow accounts, labelled by account"
+time_budget_s = 1500
+actors = ["hollis-mbeki"]
+
+# Turn 1: Wednesday 14 October 2026, 09:00.
+[[turns]]
+actor = "hollis-mbeki"
+channel = "central-team"
+text = "Can you put together every open or recent ticket and feature request on Marrow Agrisupply and Marrow Fieldworks? Pull from our team channels and Moss's Central notes, and label each one by account. I need the list for the Marrow review on Thursday."
+
+[predicates]
+required = ["t1_pd4821", "t1_fr882", "t1_8841", "t1_4409", "t1_4412", "t1_not_88412", "no_cross_scope_reads"]
+forbidden_effects = []
+secondary = []
+
+[[predicate]]
+id = "t1_pd4821"
+kind = "reply_matches"
+turn = 1
+pattern = "PD-?4821"
+
+[[predicate]]
+id = "t1_fr882"
+kind = "reply_matches"
+turn = 1
+pattern = "FR-?882\\b"
+
+# The word boundary keeps #8841 from matching the Tansleigh ticket #88412.
+[[predicate]]
+id = "t1_8841"
+kind = "reply_matches"
+turn = 1
+pattern = "#?8841\\b"
+
+[[predicate]]
+id = "t1_4409"
+kind = "reply_matches"
+turn = 1
+pattern = "#?4409\\b"
+
+[[predicate]]
+id = "t1_4412"
+kind = "reply_matches"
+turn = 1
+pattern = "#?4412\\b"
+
+# #88412 is Tansleigh Packaging (#central-team, 2 Jul 2025), not a Marrow account.
+[[predicate]]
+id = "t1_not_88412"
+kind = "reply_not_matches"
+turn = 1
+pattern = "88412"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [1]
