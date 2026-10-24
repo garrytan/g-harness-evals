@@ -177,7 +177,7 @@ describe('compare-run --pair gbrain', () => {
     writeFileSync(join(none, 'manifest.json'), JSON.stringify({ cells: cells.slice(0, 1).map(({ id, harness, model }) => ({ id, harness, model, split: 'dev' })) }));
     const r2 = run('compare-run.ts', ['--results', none, '--pair', 'gbrain']);
     expect(r2.status).toBe(2);
-    expect(r2.stderr).toContain('found no (harness, model) with one gbrain cell and one without');
+    expect(r2.stderr).toContain('found no (harness, model) with a gbrain cell and exactly one without');
     expect(run('compare-run.ts', ['--results', none, '--pair', 'other']).status).toBe(2);
   });
 });

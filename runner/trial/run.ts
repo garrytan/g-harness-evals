@@ -80,7 +80,12 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
   const modeFor = (cell: Cell): HarnessMode => (cell.harness_mode === 'scripted' ? 'scripted' : opts.harnessMode);
   const needsProxy = pending.some((t) => modeFor(cells.get(t.cell)!) !== 'scripted');
   const needsGrader = pending.some((t) => !isSingleShot(cells.get(t.cell)!));
-  const preamble = needsGrader ? loadPreamble(opts.preamblePath ?? DEFAULT_PREAMBLE_PATH) : '';
+  const preambles = new Map<string, string>();
+  const preambleFor = (cell: Cell): string => {
+    const path = cell.preamble ?? opts.preamblePath ?? DEFAULT_PREAMBLE_PATH;
+    if (!preambles.has(path)) preambles.set(path, loadPreamble(path));
+    return preambles.get(path)!;
+  };
   const grade = needsGrader ? (opts.grade ?? await loadGrader()) : (() => { throw new Error('no grader'); });
   const docker = opts.harnessMode === 'docker';
   const records: TrialRecord[] = [];
@@ -104,7 +109,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       const record = isSingleShot(cell)
         ? await runSingleShot({ cell, trial, trialDir, proxy, log, image: opts.image, repoRoot: opts.repoRoot })
         : await runTrial({ cell, trial, runDir, trialDir, proxy, grade, log, opts: {
-          harnessMode: opts.harnessMode, adapter: opts.adapter, image: opts.image, gbrainImage: opts.gbrainImage, preamble, worldPath: opts.worldPath, readyTimeoutS: opts.readyTimeoutS ?? 180,
+          harnessMode: opts.harnessMode, adapter: opts.adapter, image: opts.image, gbrainImage: opts.gbrainImage, preamble: preambleFor(cell), worldPath: opts.worldPath, readyTimeoutS: opts.readyTimeoutS ?? 180,
           turnGraceS: opts.turnGraceS ?? 60, stopGraceS: opts.stopGraceS ?? 60, harnessEnv: opts.harnessEnv, repoRoot: opts.repoRoot } });
       appendRecord(runDir, record);
       records.push(record);

@@ -4,14 +4,11 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 
 ## [Unreleased]
 
-### From the gbrain arm, lane E
+### gbrain arm: preregistration and the gbrain-told arm
 
-- Grader: `via` `gbrain` read events count for scope through their page slugs (channel by `source_slugs`, file by `slug`); cross-scope evidence names the gbrain tool and slug; stray reads for `digest_posted` include gbrain reads; `initialize` and `tools/list` never count (docs/tasks.md, "gbrain reads").
-- `scripts/summarize-run.ts`: a `gbrain` usage block per cell in `summary.json` from each trial's `events.jsonl`; existing keys unchanged, zeros without gbrain.
-- `scripts/compare-run.ts --pair gbrain`: within-run paired comparison of each harness with and without gbrain over the capable families and all tasks, with cost and latency deltas, written to `comparisons.gbrain.json`; `scripts/paired-mdd.ts`: the minimum detectable difference of that design from an existing run.
-- `tests/scripts-gbrain.test.ts` and the gbrain cases in `tests/grade.test.ts`.
-
-## [0.0.5] - 2026-10-23
+- `docs/benchmarks/2026-10-24-gbrain-arm/`: preregistration of run `gbrain-arm-2026-10`, 15 cells and 1,500 trials: three harnesses by Haiku and Sonnet with and without gbrain, plus a Haiku `gbrain-told` arm whose preamble (`tasks/multiuser/_shared/preamble.gbrain.md`) adds gbrain's brain-first rule; cap $350.
+- Runner: a cell may name an alternative `preamble` (repository-relative path; HE-TASK-002 when missing); `plan` and `dry-run` show it.
+- `scripts/compare-run.ts --pair gbrain` pairs every gbrain cell of a (harness, config, model) against its one cell without gbrain, so arms that differ in preamble are their own pairs; the tables name the gbrain cell.
 
 ### From the gbrain arm, lane D (2026-10-24)
 
@@ -20,6 +17,15 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 - Runner: a cell may carry `gbrain: {surface: "starter"}`; `run` starts the sidecar per trial before the harness and stops it after the fence, hands the harness `HE_GBRAIN_MCP_URL` and `HE_GBRAIN_MCP_TOKEN`, and writes a `gbrain` field (image, `sidecar_ready_ms`, event counts) to trials.jsonl; `plan`, `dry-run` and `preflight` show and check the sidecar; `--gbrain-image`; HE-GBRAIN-001 and HE-GBRAIN-002.
 - Adapters: OpenClaw, Hermes and QM register gbrain as a second MCP server beside `world` when the two variables are set and are byte-identical otherwise; the fake adapter answers `[fake:gbrain ...]` markers.
 - Proof: the fake harness through the runner (search, entity, remember, recall inside turn windows) and a live smoke on `sc-06` with Haiku: all three harnesses listed the 33 tools, none called one, $0.04 in total. Design, pins and evidence in `docs/gbrain-arm.md`.
+
+### From the gbrain arm, lane E
+
+- Grader: `via` `gbrain` read events count for scope through their page slugs (channel by `source_slugs`, file by `slug`); cross-scope evidence names the gbrain tool and slug; stray reads for `digest_posted` include gbrain reads; `initialize` and `tools/list` never count (docs/tasks.md, "gbrain reads").
+- `scripts/summarize-run.ts`: a `gbrain` usage block per cell in `summary.json` from each trial's `events.jsonl`; existing keys unchanged, zeros without gbrain.
+- `scripts/compare-run.ts --pair gbrain`: within-run paired comparison of each harness with and without gbrain over the capable families and all tasks, with cost and latency deltas, written to `comparisons.gbrain.json`; `scripts/paired-mdd.ts`: the minimum detectable difference of that design from an existing run.
+- `tests/scripts-gbrain.test.ts` and the gbrain cases in `tests/grade.test.ts`.
+
+## [0.0.5] - 2026-10-23
 
 ### M3 sensitivity cell run and reported
 

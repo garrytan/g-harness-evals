@@ -55,6 +55,8 @@ export interface Cell {
   adapter?: string;
   /** gbrain arm: a gbrain sidecar per trial, registered with the harness as a second MCP server (docs/gbrain-arm.md). */
   gbrain?: GbrainCellConfig;
+  /** Alternative preamble for this cell, a path relative to the repository root; default tasks/multiuser/_shared/preamble.md (or --preamble). */
+  preamble?: string;
 }
 
 export interface Prereg {
@@ -109,6 +111,7 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
     if (!scripted && c.model === 'none') throw new RunnerError('HE-PIN-002', `cell ${c.id}: model "none" is only valid for a scripted cell`);
     if (!scripted && !canonicalLookup(c.model)) throw new RunnerError('HE-PIN-002', `cell ${c.id}: model ${c.model} has no price in runner/pricing/model-pricing.ts; fix: register its list price before any cell runs`);
     if (!(c.repetitions >= 1)) throw new RunnerError('HE-PREREG-005', `cell ${c.id}: repetitions must be >= 1`);
+    if (c.preamble !== undefined && (typeof c.preamble !== 'string' || !existsSync(c.preamble))) throw new RunnerError('HE-TASK-002', `cell ${c.id}: preamble not found at ${String(c.preamble)}; fix: name a committed file such as tasks/multiuser/_shared/preamble.md`);
     if (c.gbrain !== undefined) {
       if (c.gbrain?.surface !== 'starter') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.surface must be "starter" (the pinned surface, gbrain/pin.json); got ${JSON.stringify(c.gbrain)}`);
       if (scripted) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: a scripted cell cannot carry gbrain; a script plays the bot over world-MCP and has no harness to call the brain`);
@@ -187,7 +190,7 @@ export function renderPlan(m: Manifest): string {
   for (const c of m.cells) {
     const mine = m.trials.filter((t) => t.cell === c.id);
     const turns = mine.reduce((a, t) => a + (t.turns ?? 0), 0);
-    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${c.gbrain.surface}` : ''}`);
+    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${c.gbrain.surface}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
   }
   if (m.cells.some((c) => c.gbrain)) lines.push(`GBRAIN: cells ${m.cells.filter((c) => c.gbrain).map((c) => c.id).join(', ')} run with a gbrain sidecar per trial (image ${DEFAULT_GBRAIN_IMAGE} unless --gbrain-image; keyless, starter surface; docs/gbrain-arm.md)`);
   if (m.cost_ceiling_usd > m.spend_cap_usd) lines.push(`WARN: HE-BUDGET-003 cost ceiling ${m.cost_ceiling_usd} exceeds the preregistered cap ${m.spend_cap_usd}; cells past the cap stop incomplete in drop order`);

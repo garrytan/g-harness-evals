@@ -17,7 +17,8 @@
 // --pair gbrain pairs trial by trial (same task, repetitions matched by order within the task) over two scopes:
 // the primary endpoint (the capable families, scope_isolation, shared_channel, org_security and handoff, or
 // --families) and all tasks as a secondary. A cell is the gbrain arm when its manifest entry has a truthy
-// `gbrain` field or its id has a "gbrain" segment. A pair whose trial ended as model_error or infra_error on
+// `gbrain` field or its id has a "gbrain" segment; every gbrain cell of a (harness, config, model) is paired against
+// its one cell without gbrain, so an arm that differs in configuration (another preamble) is its own pair. A pair whose trial ended as model_error or infra_error on
 // either side is excluded with its count published (methodology item 9). Holm runs across the harness pairs of
 // one model as one family, each model its own family. The output, comparisons.gbrain.json, carries per pair the
 // passed counts, the difference gbrain minus none with its interval, the per-task passes table, the discordant
@@ -84,11 +85,11 @@ if (pairMode === 'gbrain') {
   for (const [, cs] of groups) {
     const withG = cs.filter(isGbrainCell), without = cs.filter((c) => !isGbrainCell(c));
     const c = cs[0]!;
-    if (withG.length !== 1 || without.length !== 1) { skipped.push(`${c.harness}${c.config ? ' ' + c.config : ''} on ${c.model}: ${withG.length} gbrain cell(s), ${without.length} without`); continue; }
-    cellPairs.push({ harness: c.harness, config: c.config ?? null, model: c.model, none: without[0]!.id, gbrain: withG[0]!.id });
+    if (withG.length < 1 || without.length !== 1) { skipped.push(`${c.harness}${c.config ? ' ' + c.config : ''} on ${c.model}: ${withG.length} gbrain cell(s), ${without.length} without`); continue; }
+    for (const g of withG) cellPairs.push({ harness: c.harness, config: c.config ?? null, model: c.model, none: without[0]!.id, gbrain: g.id });
   }
   if (!cellPairs.length) {
-    console.error(`--pair gbrain found no (harness, model) with one gbrain cell and one without${skipped.length ? ': ' + skipped.join('; ') : ''}`);
+    console.error(`--pair gbrain found no (harness, model) with a gbrain cell and exactly one without${skipped.length ? ': ' + skipped.join('; ') : ''}`);
     process.exit(2);
   }
   const med = (xs: number[]) => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2; };
@@ -149,11 +150,11 @@ if (pairMode === 'gbrain') {
     }
     out.push({ scope, families: fams, holm_family: 'the harness pairs of one model', comparisons: stats.map((s, i) => ({ ...s, holm_p: holm[i] })) });
     lines.push('', `${scope === 'primary' ? `Primary endpoint, families ${fams!.join(', ')}` : 'All tasks (secondary)'}:`, '',
-      '| Harness | Model | Passed none | Passed gbrain | gbrain minus none (points) [95% CI, task-clustered] | p (two-sided, sign-flip) | Holm-adjusted p | Tasks | Pairs | Excluded | USD median / trial (none, gbrain) | Wall median s (none, gbrain) | Input tokens total (none, gbrain) |',
-      '|---|---|---|---|---|---|---|---|---|---|---|---|---|',
-      ...stats.map((s, i) => `| ${s.harness}${s.config ? ' ' + s.config : ''} | ${s.model} | ${s.passed.none} / ${s.n_trials.none} | ${s.passed.gbrain} / ${s.n_trials.gbrain} | ${pts(s.delta)} [${s.ci95 ? `${pts(s.ci95[0])}, ${pts(s.ci95[1])}` : 'n/a'}] | ${s.p.toFixed(3)} (${s.p_method}) | ${holm[i]!.toFixed(3)} | ${s.n_clusters} | ${s.n_pairs} | ${s.excluded.length} | ${s.cost.usd_median.none?.toFixed(3) ?? 'n/a'}, ${s.cost.usd_median.gbrain?.toFixed(3) ?? 'n/a'} | ${s.cost.wall_s_median.none?.toFixed(0) ?? 'n/a'}, ${s.cost.wall_s_median.gbrain?.toFixed(0) ?? 'n/a'} | ${s.cost.input_tokens_total.none.toLocaleString()}, ${s.cost.input_tokens_total.gbrain.toLocaleString()} |`),
-      '', '| Harness | Task | Family | none | gbrain |', '|---|---|---|---|---|',
-      ...stats.flatMap((s) => s.per_task.map((t) => `| ${s.harness}${s.config ? ' ' + s.config : ''} | \`${t.task}\` | ${t.family} | ${t.none}/${t.reps} | ${t.gbrain}/${t.reps} |`)));
+      '| Harness | Model | gbrain cell | Passed none | Passed gbrain | gbrain minus none (points) [95% CI, task-clustered] | p (two-sided, sign-flip) | Holm-adjusted p | Tasks | Pairs | Excluded | USD median / trial (none, gbrain) | Wall median s (none, gbrain) | Input tokens total (none, gbrain) |',
+      '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|',
+      ...stats.map((s, i) => `| ${s.harness}${s.config ? ' ' + s.config : ''} | ${s.model} | \`${s.cell_gbrain}\` | ${s.passed.none} / ${s.n_trials.none} | ${s.passed.gbrain} / ${s.n_trials.gbrain} | ${pts(s.delta)} [${s.ci95 ? `${pts(s.ci95[0])}, ${pts(s.ci95[1])}` : 'n/a'}] | ${s.p.toFixed(3)} (${s.p_method}) | ${holm[i]!.toFixed(3)} | ${s.n_clusters} | ${s.n_pairs} | ${s.excluded.length} | ${s.cost.usd_median.none?.toFixed(3) ?? 'n/a'}, ${s.cost.usd_median.gbrain?.toFixed(3) ?? 'n/a'} | ${s.cost.wall_s_median.none?.toFixed(0) ?? 'n/a'}, ${s.cost.wall_s_median.gbrain?.toFixed(0) ?? 'n/a'} | ${s.cost.input_tokens_total.none.toLocaleString()}, ${s.cost.input_tokens_total.gbrain.toLocaleString()} |`),
+      '', '| Harness | gbrain cell | Task | Family | none | gbrain |', '|---|---|---|---|---|---|',
+      ...stats.flatMap((s) => s.per_task.map((t) => `| ${s.harness}${s.config ? ' ' + s.config : ''} | \`${s.cell_gbrain}\` | \`${t.task}\` | ${t.family} | ${t.none}/${t.reps} | ${t.gbrain}/${t.reps} |`)));
   }
   console.log(lines.join('\n'));
   writeFileSync(join(results, `comparisons.gbrain${suffix}`), JSON.stringify({ pair: 'gbrain', grading: useRegraded ? 'regraded' : 'as recorded', seed, draws, not_paired: skipped, scopes: out }, null, 1) + '\n');

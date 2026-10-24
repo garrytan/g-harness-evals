@@ -45,6 +45,16 @@ test('a cell may carry gbrain: { surface: "starter" }; plan and dry-run show it 
   expect(plan).toContain(`GBRAIN: cells fake-gbrain run with a gbrain sidecar per trial (image ${DEFAULT_GBRAIN_IMAGE}`);
 });
 
+test('a cell may name its own preamble; the plan shows it and a missing file is HE-TASK-002', () => {
+  const told = 'tasks/multiuser/_shared/preamble.gbrain.md';
+  const { prereg: p, sha256 } = loadPrereg(writePrereg([cell({ id: 'fake-told', preamble: told, tasks: ['fx-leak'] })], 'gb-preamble'));
+  const m = buildManifest(p, sha256, '2026-10-24T00:00:00Z', { tasksRoot: join(ROOT, 'tests', 'fixtures', 'tasks') });
+  expect(m.cells[0]!.preamble).toBe(told);
+  expect(renderPlan(m).split('\n').find((l) => l.startsWith('CELL: fake-told'))).toContain(`preamble=${told}`);
+  expect(readFileSync(join(ROOT, told), 'utf8').startsWith(readFileSync(join(ROOT, 'tasks', 'multiuser', '_shared', 'preamble.md'), 'utf8').trimEnd())).toBe(true);
+  expect(() => loadPrereg(writePrereg([cell({ preamble: 'tasks/multiuser/_shared/preamble.missing.md' })], 'gb-preamble-missing'))).toThrow(/HE-TASK-002 .*preamble not found/);
+});
+
 test('only the pinned surface is accepted, and a scripted cell cannot carry gbrain (HE-GBRAIN-001)', () => {
   expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'full' as 'starter' } })], 'gb-bad-surface'))).toThrow(/HE-GBRAIN-001 .*surface must be "starter"/);
   expect(() => loadPrereg(writePrereg([cell({ harness: 'scripted', model: 'none', harness_mode: 'scripted', script: 'oracle' })], 'gb-scripted'))).toThrow(/HE-GBRAIN-001 .*scripted/);

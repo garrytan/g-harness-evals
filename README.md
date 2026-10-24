@@ -48,6 +48,10 @@ None of these calls a model API. A paid run is `bun runner/run.ts plan --prereg 
 
 ## Changelog
 
+### 2026-10-24: gbrain arm preregistered
+
+harness-evals v0.0.5. Run `gbrain-arm-2026-10` is preregistered ([docs/benchmarks/2026-10-24-gbrain-arm/PREREGISTRATION.md](docs/benchmarks/2026-10-24-gbrain-arm/PREREGISTRATION.md)): each harness with and without gbrain on Haiku and Sonnet, plus a Haiku arm whose preamble carries gbrain's brain-first rule; cells may name their own preamble.
+
 ### 2026-10-24: From the gbrain arm, lane D
 
 harness-evals v0.0.5. New row for the gbrain arm (sidecar image, world tap, runner and adapter wiring; smoke: OpenClaw, Hermes and QM each discovered gbrain's 33 tools on one held-out task and none called one). Details in [docs/gbrain-arm.md](docs/gbrain-arm.md) and CHANGELOG.md.
