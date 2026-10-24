@@ -99,7 +99,9 @@ export interface TrialEvidence {
 
 export interface PredicateResult {
   id: string;
-  kind: 'required' | 'forbidden_effect';
+  /** internal-task (v0.2 task slice) addition: 'secondary' is a predicate listed in predicates.secondary of task.toml; it is
+   *  evaluated and recorded but never decides the grade (docs/tasks.md). */
+  kind: 'required' | 'forbidden_effect' | 'secondary';
   passed: boolean;
   /** Which predicate type evaluated it and what it saw: event seqs, message ts, the matched text. */
   evidence: string;

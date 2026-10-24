@@ -7,8 +7,9 @@ Every runner, proxy and adapter failure prints one line that starts with its cod
 | HE-PREREG-001 | preregistration file not found | pass `--prereg docs/benchmarks/<run>/prereg.json` | runner/run.ts |
 | HE-PREREG-002 | unsupported schema_version | set `schema_version: 1` | runner/run.ts |
 | HE-PREREG-003 | no cells | add at least one cell | runner/run.ts |
-| HE-PREREG-004 | a cell names a slice with no task list | add `tasks.<slice>` | runner/run.ts |
+| HE-PREREG-004 | a cell has no tasks to run: a non-multi-user slice without `tasks.<slice>`; a multi-user cell whose task directory (`tasks/multiuser/[<task_set>/]<split>/`) is empty or whose `task_set` has no directory; or an explicit list (`cell.tasks` or `tasks.multiuser`) naming tasks the cell's set does not hold | add `tasks.<slice>` or the task directories; name an existing `task_set` (`v0.1` is the root); list tasks of that set, or set `task_set` to the set the list belongs to | runner/run.ts |
 | HE-PREREG-005 | repetitions < 1 | set repetitions >= 1 (5 for counted cells) | runner/run.ts |
+| HE-PREREG-007 | a cell has a key outside the Cell interface (a misspelled `task_set` would otherwise run the v0.1 dev set in silence), or an invalid `task_set` or `session_scope` value | the message lists the allowed keys; `task_set` is a name such as `v0.1` or `v0.2`, `session_scope` is `conversation` or `turn` | runner/run.ts |
 | HE-PIN-001 | a cell's harness has no `harnesses/<name>/pin.json` | add the pin before any cell runs | runner/run.ts preflight |
 | HE-PIN-002 | a cell's model has no registered price | register the list price in `runner/pricing/model-pricing.ts` | runner/run.ts |
 | HE-RUN-001 | retired in M1: `run` dispatches trials (runner/README.md) | none | runner/run.ts (historical) |
@@ -26,7 +27,8 @@ Every runner, proxy and adapter failure prints one line that starts with its cod
 | HE-RUN-005 | unknown `--harness-mode`, or process mode without an adapter script | pass `docker`, `process` or `scripted`; set `cell.adapter` or `--adapter <script>` | runner/run.ts, runner/trial/trial.ts |
 | HE-RUN-006 | `docker run`, `docker compose up`, `prepare.sh` or `harnesses/run-trial.sh` failed | the message carries the tool's last lines; build the image (`harnesses/<name>/README.md`), check the daemon | runner/trial/docker.ts, runner/trial/run.ts |
 | HE-PREREG-006 | a scripted cell is inconsistent (harness not `scripted`, or `script` not `oracle` / `mutations`) | set `harness: "scripted"`, `model: "none"`, `harness_mode: "scripted"`, `script` | runner/run.ts |
-| HE-TASK-001 | `task.toml` missing or malformed (no id, actors, turns or positive `time_budget_s`) | fix the task against the schema in docs/tasks.md | runner/trial/task.ts, runner/run.ts |
+| HE-TASK-001 | `task.toml` missing or malformed (no id, actors, turns or positive `time_budget_s`) under `tasks/multiuser/[<task_set>/]<split>/` | fix the task against the schema in docs/tasks.md | runner/trial/task.ts, runner/run.ts |
+| HE-TASK-SEAL | a held-out tree and its `MANIFEST.json` disagree, a held-out tree holds tasks but no manifest (unsealed), or `--task-set` names a set with no `tasks/multiuser/<set>/heldout/` | `bun scripts/seal-heldout.ts [--task-set <set>]` and commit the manifest beside the change; the message names the known sets | scripts/seal-heldout.ts |
 | HE-TASK-002 | the shared preamble `tasks/multiuser/_shared/preamble.md` is missing | add it (lane B), or `--preamble <file>` | runner/trial/task.ts |
 | HE-TASK-003 | the preamble uses a placeholder the runner does not fill | use only `PREAMBLE_PLACEHOLDERS` from runner/contracts.ts | runner/trial/task.ts |
 | HE-TASK-004 | a turn names an actor with no token in the trial's world | list the actor in `task.toml` `actors`; check the member exists in the split | runner/trial/world.ts |

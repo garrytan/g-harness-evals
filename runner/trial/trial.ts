@@ -7,7 +7,7 @@ import { appendFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { GradeResult, HarnessMode, Termination, TrialEvidence, TrialGbrain, TrialRecord, TrialUsage, TurnWindow } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
-import type { Cell, Trial } from '../run.ts';
+import { taskDirFor, type Cell, type Trial } from '../run.ts';
 import type { WorldEvent } from '../../world/services/events.ts';
 import { loadScript, startScriptedHarness } from '../scripted/executor.ts';
 import { startComposeHarness, startDockerHarness } from './docker.ts';
@@ -79,7 +79,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   const started = Date.now();
   const started_at = new Date(started).toISOString();
   const dirs = makeTrialDirs(ctx.trialDir);
-  const task: TaskSpec = loadTask(trial.task_dir ?? join('tasks', 'multiuser', cell.split, trial.task));
+  const task: TaskSpec = loadTask(trial.task_dir ?? taskDirFor(cell, trial.task));
   const mode: HarnessMode = cell.harness_mode === 'scripted' ? 'scripted' : opts.harnessMode;
   const docker = mode === 'docker';
   const key = trialKey(trial.id);
@@ -113,6 +113,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     HE_TIME_BUDGET_S: String(task.time_budget_s),
     HE_LOG_DIR: docker ? '/he-logs' : resolve(dirs.logs),
     HE_SESSION_STATE_DIR: docker ? '/harness-state' : resolve(dirs.state),
+    ...(cell.session_scope ? { HE_SESSION_SCOPE: cell.session_scope } : {}),
     HE_TASK_SLICE: 'multiuser',
     HE_TRIAL_ID: trial.id,
     HE_TURNS_DIR: docker ? '/he-turns' : resolve(dirs.turns),

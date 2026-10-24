@@ -8,7 +8,10 @@
 #          becomes one `openclaw agent --local` turn in the session
 #          agent:main:dm:<member> or agent:main:channel:<id>, all against the
 #          same OPENCLAW_STATE_DIR, so OpenClaw's own session store and memory
-#          decide what carries across conversations.
+#          decide what carries across conversations. HE_SESSION_SCOPE=turn
+#          (the memoryless contrast cell, docs/adapters.md) keys every turn as
+#          agent:main:turn:<NNNN> instead, so nothing carries between turns
+#          except what OpenClaw's own memory files hold.
 set -euo pipefail
 
 : "${HE_WORKSPACE_DIR:=/workspace}"
@@ -19,6 +22,11 @@ set -euo pipefail
 : "${HE_MODEL_NAME:=claude-sonnet-5-5}"
 : "${HE_TIME_BUDGET_S:=300}"
 : "${HE_TRIAL_ID:=unknown}"
+: "${HE_SESSION_SCOPE:=conversation}"
+case "$HE_SESSION_SCOPE" in
+  conversation|turn) ;;
+  *) echo "openclaw adapter: HE_SESSION_SCOPE must be conversation or turn (got $HE_SESSION_SCOPE)" >&2; exit 2 ;;
+esac
 
 mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
@@ -149,7 +157,8 @@ write_response() {
 
 stopping=0
 trap 'stopping=1' TERM INT
-printf '{"harness":"openclaw","version":"%s","trial":"%s","ready_at":"%s","session_keys":"agent:main:dm:<member> | agent:main:channel:<id>"}\n' "${OPENCLAW_VERSION:-}" "$HE_TRIAL_ID" "$(now)" > "$HE_LOG_DIR/ready.tmp"
+if [ "$HE_SESSION_SCOPE" = turn ]; then session_keys='agent:main:turn:<NNNN>'; else session_keys='agent:main:dm:<member> | agent:main:channel:<id>'; fi
+printf '{"harness":"openclaw","version":"%s","trial":"%s","ready_at":"%s","session_scope":"%s","session_keys":"%s"}\n' "${OPENCLAW_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$HE_SESSION_SCOPE" "$session_keys" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do
@@ -159,7 +168,7 @@ while [ "$stopping" -eq 0 ]; do
     [ -e "$resp" ] && continue
     read -r turn budget key < <(node -e '
       const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-      const key = r.channel.type === "dm" ? "dm:" + r.actor.member : "channel:" + r.channel.id;
+      const key = process.env.HE_SESSION_SCOPE === "turn" ? "turn:" + String(r.turn).padStart(4, "0") : r.channel.type === "dm" ? "dm:" + r.actor.member : "channel:" + r.channel.id;
       process.stdout.write([r.turn, r.time_budget_s || process.env.HE_TIME_BUDGET_S, key].join(" ") + "\n");
     ' "$req")
     log "turn $turn: session $key, budget ${budget}s"

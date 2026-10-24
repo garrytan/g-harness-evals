@@ -35,7 +35,7 @@ export const DEFAULT_PREAMBLE_PATH = join('tasks', 'multiuser', '_shared', 'prea
 
 export function loadTask(dir: string): TaskSpec {
   const file = join(dir, 'task.toml');
-  if (!existsSync(file)) throw new RunnerError('HE-TASK-001', `no task.toml in ${dir}; fix: name a task directory under tasks/multiuser/<split>/ (docs/tasks.md)`);
+  if (!existsSync(file)) throw new RunnerError('HE-TASK-001', `no task.toml in ${dir}; fix: name a task directory under tasks/multiuser/[<task_set>/]<split>/ (docs/tasks.md)`);
   let raw: Record<string, unknown>;
   try { raw = Bun.TOML.parse(readFileSync(file, 'utf8')) as Record<string, unknown>; }
   catch (e) { throw new RunnerError('HE-TASK-001', `${file} is not valid TOML: ${(e as Error).message}`); }

@@ -21,6 +21,9 @@ set -euo pipefail
 : "${HE_LOG_DIR:?HE_LOG_DIR must be set}"
 : "${HE_TIME_BUDGET_S:=300}"
 : "${HE_TRIAL_ID:=unknown}"
+# HE_SESSION_SCOPE=turn (the per-turn session cell, docs/adapters.md) is only implemented by the OpenClaw adapter;
+# refusing it here keeps a cell that asks for it from silently running per-conversation sessions.
+if [ "${HE_SESSION_SCOPE:-conversation}" != conversation ]; then echo "qm adapter: HE_SESSION_SCOPE=${HE_SESSION_SCOPE} is not supported (only the openclaw adapter keys sessions per turn)" >&2; exit 2; fi
 : "${QM_CORE_URL:=http://core:8080}"
 : "${QM_SIGNING_SECRET:?QM_SIGNING_SECRET must be set (per-trial random, shared with core)}"
 : "${QM_ACTOR_ID:=U1}"

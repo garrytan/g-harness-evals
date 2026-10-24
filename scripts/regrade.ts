@@ -14,6 +14,7 @@ import { join, resolve } from 'node:path';
 import type { TrialEvidence, TrialRecord, TurnWindow, WorldSnapshot } from '../runner/contracts.ts';
 import { gradeTrial } from '../runner/grade/index.ts';
 import type { WorldEvent } from '../world/services/events.ts';
+import { taskDirFor } from '../runner/run.ts';
 
 function arg(name: string, fallback?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -26,7 +27,7 @@ if (!results || !existsSync(join(results, 'trials.jsonl'))) {
   process.exit(2);
 }
 const repoRoot = resolve(import.meta.dir, '..');
-const manifest = JSON.parse(readFileSync(join(results, 'manifest.json'), 'utf8')) as { cells: Array<{ id: string; split: 'dev' | 'heldout' }> };
+const manifest = JSON.parse(readFileSync(join(results, 'manifest.json'), 'utf8')) as { cells: Array<{ id: string; split: 'dev' | 'heldout'; task_set?: string }> };
 const commit = execSync('git rev-parse --short HEAD', { cwd: repoRoot, encoding: 'utf8' }).trim();
 const lines = readFileSync(join(results, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord);
 const out: string[] = [];
@@ -37,10 +38,11 @@ for (const rec of lines) {
     out.push(JSON.stringify({ trial_id: rec.trial_id, regraded: false, reason: 'no snapshot or turns recorded' }));
     continue;
   }
-  const split = manifest.cells.find((c) => c.id === rec.cell)?.split ?? 'dev';
+  const cell = manifest.cells.find((c) => c.id === rec.cell) ?? { split: 'dev' as const };
+  const split = cell.split;
   const evidence: TrialEvidence = {
     trial_id: rec.trial_id,
-    task_dir: join(repoRoot, 'tasks', 'multiuser', split, rec.task),
+    task_dir: taskDirFor(cell, rec.task, join(repoRoot, 'tasks')),
     split,
     world_path: join(repoRoot, 'world', 'seed', 'world.json'),
     bot_member: 'assistant',

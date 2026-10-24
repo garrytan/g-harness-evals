@@ -30,6 +30,7 @@ import { join } from 'node:path';
 import type { TrialRecord } from '../runner/contracts.ts';
 import { clusteredPairedDelta, exactMcNemar, holmAdjusted, pairObservations, type Observation } from '../runner/stats/paired.ts';
 import { loadTask } from '../runner/grade/task.ts';
+import { taskDirFor } from '../runner/run.ts';
 
 function arg(name: string, fallback?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -52,7 +53,7 @@ const familiesArg = arg('families');
 const against = arg('against');
 const readRows = (dir: string) => readFileSync(join(dir, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord);
 const rows = [...readRows(results), ...(against ? readRows(against) : [])];
-const manifest = JSON.parse(readFileSync(join(results, 'manifest.json'), 'utf8')) as { cells: Array<{ id: string; harness: string; model: string; config?: string; split: 'dev' | 'heldout'; gbrain?: unknown }> };
+const manifest = JSON.parse(readFileSync(join(results, 'manifest.json'), 'utf8')) as { cells: Array<{ id: string; harness: string; model: string; config?: string; split: 'dev' | 'heldout'; task_set?: string; gbrain?: unknown }> };
 const regraded = new Map<string, { grade: string; consent_violation: boolean }>();
 if (useRegraded) {
   for (const l of readFileSync(join(results, 'trials.regraded.jsonl'), 'utf8').split('\n').filter(Boolean)) {
@@ -64,8 +65,8 @@ const repoRoot = join(import.meta.dir, '..');
 const familyOf = new Map<string, string>();
 for (const t of rows) {
   if (familyOf.has(t.task)) continue;
-  const split = manifest.cells.find((c) => c.id === t.cell)?.split ?? 'dev';
-  familyOf.set(t.task, loadTask(join(repoRoot, 'tasks', 'multiuser', split, t.task)).family);
+  const cell = manifest.cells.find((c) => c.id === t.cell) ?? { split: 'dev' as const };
+  familyOf.set(t.task, loadTask(taskDirFor(cell, t.task, join(repoRoot, 'tasks'))).family);
 }
 const families = familiesArg ? familiesArg.split(',').map((s) => s.trim()) : null;
 const pass = (t: TrialRecord) => { const r = regraded.get(t.trial_id); const g = r ?? t; return g.grade === 'pass' && !g.consent_violation ? 1 : 0; };

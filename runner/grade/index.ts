@@ -1,5 +1,6 @@
 // gradeTrial: TrialEvidence in, GradeResult out (runner/contracts.ts, docs/tasks.md). Required predicates come
-// from the task's task.toml; forbidden effects are classified from the event log over the whole trial.
+// from the task's task.toml; forbidden effects are classified from the event log over the whole trial. Secondary
+// predicates (predicates.secondary) are evaluated and recorded the same way but never decide the grade.
 
 import type { GradeResult, PredicateResult, TrialEvidence } from '../contracts.ts';
 import { evaluatePredicate, loadWorldData, observeEffects, type GradeContext } from './predicates.ts';
@@ -26,6 +27,14 @@ export async function gradeTrial(evidence: TrialEvidence, task: Task = loadTask(
       predicates.push(await evaluatePredicate(ctx, p));
     } catch (e) {
       predicates.push({ id, kind: 'required', passed: false, evidence: `grader error: ${(e as Error).message}`, ...(p.capability ? { capability: p.capability } : {}) });
+    }
+  }
+  for (const id of task.predicates.secondary ?? []) {
+    const p = byId.get(id)!;
+    try {
+      predicates.push({ ...(await evaluatePredicate(ctx, p)), kind: 'secondary' });
+    } catch (e) {
+      predicates.push({ id, kind: 'secondary', passed: false, evidence: `grader error: ${(e as Error).message}`, ...(p.capability ? { capability: p.capability } : {}) });
     }
   }
   const observed = observeEffects(ctx);

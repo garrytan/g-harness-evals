@@ -19,6 +19,9 @@ set -euo pipefail
 : "${HE_MODEL_NAME:=claude-sonnet-5-5}"
 : "${HE_TIME_BUDGET_S:=300}"
 : "${HE_TRIAL_ID:=unknown}"
+# HE_SESSION_SCOPE=turn (the per-turn session cell, docs/adapters.md) is only implemented by the OpenClaw adapter;
+# refusing it here keeps a cell that asks for it from silently running per-conversation sessions.
+if [ "${HE_SESSION_SCOPE:-conversation}" != conversation ]; then echo "hermes adapter: HE_SESSION_SCOPE=${HE_SESSION_SCOPE} is not supported (only the openclaw adapter keys sessions per turn)" >&2; exit 2; fi
 
 mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)

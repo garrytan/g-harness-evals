@@ -4,6 +4,14 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 
 ## [Unreleased]
 
+### From internal-task (v0.2 task slice): task sets, grader additions, report tooling
+
+- Runner: a multi-user cell may name a `task_set` (default `v0.1`, the root; `v0.2` is `tasks/multiuser/v0.2/{dev,heldout}`), printed on every cell line; one helper `taskDirFor` resolves task directories for the manifest, the trial, `compare-run`, `paired-mdd` and `regrade` (which previously rebuilt the v0.1 path); an explicit task list naming tasks the set does not hold is refused once (HE-PREREG-004 names the set and the list); a cell key outside the Cell interface is refused (new HE-PREREG-007). A cell may set `session_scope: "turn"`, passed to the adapter as `HE_SESSION_SCOPE`: the OpenClaw adapter keys every turn as `agent:main:turn:<NNNN>` (the memoryless contrast of the v0.2 pilot; the pinned OpenClaw version is unchanged), Hermes and QM exit 2 on it.
+- Grader: four new families (`continuity`, `synthesis`, `corrections`, `approval_relay`); `predicates.secondary` for predicates that are evaluated and recorded (`kind: "secondary"` in `PredicateResult`) but never decide the grade; `no_message_posted` gains `before_turn`; `draft_created` gains `only_recipients`.
+- `scripts/seal-heldout.ts`: `--task-set <set>` seals that set's held-out tree; `--check` checks every sealed set, refuses an unsealed tree that holds tasks and an unknown set name (HE-TASK-SEAL); the v0.1 manifest is unchanged.
+- `scripts/summarize-run.ts`: trials ending as `model_error`, `infra_error` or `exam_fault` leave the scored rows and denominators (methodology item 9) and are counted in an Excluded column and `excluded` key, their spend kept; a per-cell x family table and a secondary-predicate table, with `families` and `secondary` keys in `summary.json`.
+- Tests: the matrix test discovers every task set, asserts a v0.2 task's family is one of the four, checks every hidden fact against the whole world seed of its split, and for a non-v0.1 oracle requires every bot call to return `ok` and at least one world read; `tests/heldout-manifest.test.ts` iterates every set.
+
 ### gbrain arm: preregistration and the gbrain-told arm
 
 - `docs/benchmarks/2026-10-24-gbrain-arm/`: preregistration of run `gbrain-arm-2026-10`, 15 cells and 1,500 trials: three harnesses by Haiku and Sonnet with and without gbrain, plus a Haiku `gbrain-told` arm whose preamble (`tasks/multiuser/_shared/preamble.gbrain.md`) adds gbrain's brain-first rule; cap $350.

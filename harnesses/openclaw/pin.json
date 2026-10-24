@@ -19,10 +19,10 @@
   ],
   "mcp_config_path": "/harness-state/openclaw/openclaw.json#mcp.servers.world (written by `openclaw mcp set world <json>` at serve start: url HE_WORLD_MCP_URL, transport streamable-http, header Authorization: Bearer HE_WORLD_MCP_TOKEN; `openclaw mcp probe` logged to openclaw-mcp-probe.log)",
   "topology": "in-container",
-  "multi_user_mode": "embedded agent with one session per conversation (agent:main:dm:<member>, agent:main:channel:<id>) in one OPENCLAW_STATE_DIR; the gateway and its channel routing are not used, and `agent exec` cannot select a session at this version",
+  "multi_user_mode": "embedded agent with one session per conversation (agent:main:dm:<member>, agent:main:channel:<id>) in one OPENCLAW_STATE_DIR; the gateway and its channel routing are not used, and `agent exec` cannot select a session at this version. HE_SESSION_SCOPE=turn (cell field session_scope, internal-task v0.2 pilot) keys every turn as agent:main:turn:<NNNN> instead: the memoryless contrast; the pinned OpenClaw version is unchanged",
   "serve_turn_command": "openclaw agent --local --session-key agent:main:<key> --message-file <log>/turns/turn-NNNN.prompt.md --model anthropic/claude-sonnet-5-5 --timeout <budget> --json",
   "serve": {
-    "session_key": "agent:main:dm:<member> | agent:main:channel:<id>",
+    "session_key": "agent:main:dm:<member> | agent:main:channel:<id> (HE_SESSION_SCOPE=turn: agent:main:turn:<NNNN>)",
     "session_store": "/harness-state/openclaw/agents/main/agent/openclaw-agent.sqlite (sessionFile = the key)",
     "shared_between_sessions": "whatever OpenClaw's own memory and workspace files share; not configured by the adapter",
     "reply_source": "JSON envelope payloads[].text (meta.agentMeta carries usage and sessionId)",

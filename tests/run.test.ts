@@ -87,15 +87,54 @@ describe('multi-user cells', () => {
     expect(m.trials.filter(t => t.cell === 'oracle').map(t => t.script)).toEqual([join(FIXTURE_TASKS, 'multiuser', 'dev', 'fx-leak', 'oracle.json')]);
     expect(m.trials.filter(t => t.cell === 'mutations').map(t => t.id)).toEqual(['test-run/mutations/fx-leak/mut-no_cross_scope_reads/r1', 'test-run/mutations/fx-leak/mut-no_leak/r1']);
     expect(m.trial_hours_at_cap).toBeCloseTo(5 * 1500 / 3600, 1);
-    expect(renderPlan(m)).toContain('CELL: mu harness=openclaw mode=docker model=anthropic:claude-sonnet-5-5 slice=multiuser split=dev reps=2 trials=2 turns=6 ceiling_usd=1.8');
+    expect(renderPlan(m)).toContain('CELL: mu harness=openclaw mode=docker model=anthropic:claude-sonnet-5-5 slice=multiuser split=dev task_set=v0.1 reps=2 trials=2 turns=6 ceiling_usd=1.8');
   });
 
-  test('an explicit task list wins, and a task without task.toml is refused with HE-TASK-001', () => {
+  test('an explicit task list wins, and a listed task without task.toml in the cell\'s set is refused once with HE-PREREG-004 naming the set and the list', () => {
     const { prereg, sha256 } = loadPrereg(write({ ...mu, cells: [{ ...mu.cells[0]!, tasks: ['fx-leak'] }] }));
     expect(buildManifest(prereg, sha256, '2026-10-22T00:00:00Z', { tasksRoot: FIXTURE_TASKS }).trials).toHaveLength(2);
     const missing = loadPrereg(write({ ...mu, cells: [{ ...mu.cells[0]!, tasks: ['no-such-task'] }] }));
-    try { buildManifest(missing.prereg, missing.sha256, '2026-10-22T00:00:00Z', { tasksRoot: FIXTURE_TASKS }); } catch (e) { expect((e as RunnerError).code).toBe('HE-TASK-001'); return; }
+    try { buildManifest(missing.prereg, missing.sha256, '2026-10-22T00:00:00Z', { tasksRoot: FIXTURE_TASKS }); } catch (e) {
+      expect((e as RunnerError).code).toBe('HE-PREREG-004');
+      expect((e as RunnerError).message).toContain('cell.tasks names no-such-task');
+      expect((e as RunnerError).message).toContain('task set v0.1');
+      return;
+    }
     throw new Error('expected a refusal');
+  });
+
+  test('task_set selects tasks/multiuser/<set>/<split>/, is printed on every cell line, and a v0.1 id against the v0.2 set is refused', () => {
+    const v02 = { ...mu, cells: [{ ...mu.cells[0]!, id: 'mu-v02', task_set: 'v0.2' }, { ...mu.cells[0]!, id: 'mu-v01', task_set: 'v0.1' }] };
+    const { prereg, sha256 } = loadPrereg(write(v02));
+    const m = buildManifest(prereg, sha256, '2026-10-22T00:00:00Z', { tasksRoot: FIXTURE_TASKS });
+    expect(m.trials.filter((t) => t.cell === 'mu-v02').map((t) => t.task)).toEqual(['fx-recall', 'fx-recall']);
+    expect(m.trials.find((t) => t.cell === 'mu-v02')!.task_dir).toBe(join(FIXTURE_TASKS, 'multiuser', 'v0.2', 'dev', 'fx-recall'));
+    expect(m.trials.filter((t) => t.cell === 'mu-v01').map((t) => t.task)).toEqual(['fx-leak', 'fx-leak']);
+    expect(m.cells.find((c) => c.id === 'mu-v02')!.task_set).toBe('v0.2');
+    const plan = renderPlan(m);
+    expect(plan).toContain('CELL: mu-v02 harness=openclaw mode=docker model=anthropic:claude-sonnet-5-5 slice=multiuser split=dev task_set=v0.2 reps=2');
+    expect(plan).toContain('CELL: mu-v01 harness=openclaw mode=docker model=anthropic:claude-sonnet-5-5 slice=multiuser split=dev task_set=v0.1 reps=2');
+    const wrong = loadPrereg(write({ ...mu, cells: [{ ...mu.cells[0]!, task_set: 'v0.2', tasks: ['fx-leak'] }] }));
+    try { buildManifest(wrong.prereg, wrong.sha256, '2026-10-22T00:00:00Z', { tasksRoot: FIXTURE_TASKS }); } catch (e) {
+      expect((e as RunnerError).code).toBe('HE-PREREG-004');
+      expect((e as RunnerError).message).toContain('task set v0.2 has no such task');
+      return;
+    }
+    throw new Error('expected a refusal');
+  });
+
+  test('unknown cell keys, a bad task_set value and a bad session_scope are refused with HE-PREREG-007; session_scope turn is printed', () => {
+    const expectCode = (p: Prereg, code: string, text: string) => {
+      try { loadPrereg(write(p)); } catch (e) { expect((e as RunnerError).code).toBe(code); expect((e as RunnerError).message).toContain(text); return; }
+      throw new Error('expected a refusal');
+    };
+    expectCode({ ...mu, cells: [{ ...mu.cells[0]!, taskset: 'v0.2' } as unknown as Prereg['cells'][number]] }, 'HE-PREREG-007', 'unknown key(s) taskset');
+    expectCode({ ...mu, cells: [{ ...mu.cells[0]!, task_set: 'V 2' }] }, 'HE-PREREG-007', 'task_set must be a name');
+    expectCode({ ...mu, cells: [{ ...mu.cells[0]!, session_scope: 'never' as 'turn' }] }, 'HE-PREREG-007', 'session_scope must be');
+    const noSet = loadPrereg(write({ ...mu, cells: [{ ...mu.cells[0]!, task_set: 'v9.9' }] }));
+    try { buildManifest(noSet.prereg, noSet.sha256, '2026-10-22T00:00:00Z', { tasksRoot: FIXTURE_TASKS }); throw new Error('expected a refusal'); } catch (e) { expect((e as RunnerError).code).toBe('HE-PREREG-004'); expect((e as RunnerError).message).toContain('multiuser/v9.9/'); }
+    const { prereg, sha256 } = loadPrereg(write({ ...mu, cells: [{ ...mu.cells[0]!, session_scope: 'turn' }] }));
+    expect(renderPlan(buildManifest(prereg, sha256, '2026-10-22T00:00:00Z', { tasksRoot: FIXTURE_TASKS }))).toContain('task_set=v0.1 session_scope=turn reps=2');
   });
 
   test('a scripted cell must say so consistently; model none is only for scripted cells', () => {

@@ -16,6 +16,7 @@ The first counted comparison has run: the v0.1 multi-user cell on 20 sealed held
 | The runner: `plan` / `dry-run` / `preflight` / `run` (trial dispatch with a world per trial, a metering proxy per run, docker, process and scripted harness modes), plus the vendored proxy, budget ledger and price table | [runner/README.md](runner/README.md), [runner/run.ts](runner/run.ts) |
 | Multi-user task format, access model, predicate library, oracle and mutation contract | [docs/tasks.md](docs/tasks.md) |
 | The 30 multi-user tasks (10 dev, 20 held-out) with oracles and mutation matrices, and the grader that scores them from world state | [tasks/multiuser/README.md](tasks/multiuser/README.md), [runner/grade/](runner/grade/) |
+| Task sets: how a second set such as v0.2 lives beside the v0.1 tasks and is selected by a cell (internal-task) | [docs/tasks.md](docs/tasks.md), "Task sets" |
 | Contracts shared by runner, adapters, graders and scripted solutions | [runner/contracts.ts](runner/contracts.ts) |
 | Harness images and adapters (`run` and `serve`), the adapter protocol, and the serve-mode smoke driver | [harnesses/README.md](harnesses/README.md), [docs/adapters.md](docs/adapters.md) |
 | Error codes | [docs/errors.md](docs/errors.md) |

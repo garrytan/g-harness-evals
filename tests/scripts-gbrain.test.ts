@@ -206,7 +206,7 @@ describe('summarize-run gbrain block', () => {
     expect(r.stdout).toContain('| Cell | Trials with gbrain calls |');
     const summary = JSON.parse(readFileSync(join(dir, 'summary.json'), 'utf8'));
     const withBrain = summary.cells['a-with-brain-dev'];
-    expect(Object.keys(withBrain)).toEqual(['n', 'passes', 'pass_rate', 'ci95', 'task_clusters', 'consent_violations', 'approval_stops', 'valid_approval_stops', 'terminations', 'cross_scope_read_failures', 'refused_requests', 'usd_total', 'usd_median', 'usd_per_success', 'tokens', 'wall_median_s', 'trial_ids', 'gbrain']);
+    expect(Object.keys(withBrain)).toEqual(['n', 'passes', 'pass_rate', 'ci95', 'task_clusters', 'consent_violations', 'approval_stops', 'valid_approval_stops', 'terminations', 'excluded', 'cross_scope_read_failures', 'refused_requests', 'usd_total', 'usd_median', 'usd_per_success', 'tokens', 'wall_median_s', 'trial_ids', 'gbrain']);
     expect(withBrain.cross_scope_read_failures).toBe(1);
     expect(withBrain.gbrain).toEqual({
       trials: 25, events_read: 25, trials_with_calls: 25, trials_with_tools_list: 25, calls_total: 55, calls_median_per_trial: 2,
@@ -225,6 +225,33 @@ describe('summarize-run gbrain block', () => {
     const summary = JSON.parse(readFileSync(join(dir, 'summary.json'), 'utf8'));
     expect(summary.cells['b-gbrain-dev'].gbrain.events_read).toBe(0);
     expect(summary.cells['b-gbrain-dev'].gbrain.calls_total).toBe(0);
+  });
+});
+
+describe('summarize-run families, exclusions and secondary predicates (internal-task)', () => {
+  test('error trials leave the scored rows and denominators but keep their spend; families and secondary predicates get tables', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-fsum-'));
+    const { rows } = fixtureRun(dir);
+    for (const t of rows) {
+      if (t.cell === 'a-dev' && t.task === 'si-01-quarrendon-seats') t.predicates.push({ id: 'no_reread', kind: 'secondary', passed: t.trial_id.endsWith('/r1'), evidence: 'x', capability: 'memory' });
+      if (t.cell === 'c-dev' && t.task === 'sc-01-north-two-asks') { t.termination = 'infra_error'; t.grade = 'n/a'; }
+    }
+    writeFileSync(join(dir, 'trials.jsonl'), rows.map((t) => JSON.stringify(t)).join('\n') + '\n');
+    const r = run('summarize-run.ts', ['--results', dir]);
+    expect(r.status).toBe(0);
+    // c-dev: 25 trials, 5 excluded; the 20 scored trials all pass and the $0.25 of spend is unchanged.
+    expect(r.stdout).toContain('| c-dev | 20 (4 x 5) | 20 | 100% [100%, 100%] | 5 | 0 | 0 (0) | completed 20, infra_error 5 | 0 | 0 | $0.25 |');
+    expect(r.stdout).toContain('| a-m2-gbrain-dev | 24 (5 x 4.8) | 10 |');
+    expect(r.stdout).toContain('| scope_isolation | 5/5 (1 tasks) |');
+    expect(r.stdout).toContain('| no_reread (memory) | 1/5 | 0/0 |');
+    expect(r.stdout).toContain('Excluded from scoring (methodology item 9): 6 trial(s): model_error 1, infra_error 5');
+    const summary = JSON.parse(readFileSync(join(dir, 'summary.json'), 'utf8'));
+    expect(summary.cells['c-dev']).toMatchObject({ n: 20, passes: 20, excluded: 5 });
+    expect(summary.cells['c-dev'].usd_total).toBeCloseTo(0.25, 6);
+    expect(summary.cells['c-dev'].terminations).toEqual({ completed: 20, infra_error: 5 });
+    expect(summary.families['c-dev']).toEqual({ handoff: { passes: 5, trials: 5, tasks: 1 }, org_security: { passes: 5, trials: 5, tasks: 1 }, scheduled: { passes: 5, trials: 5, tasks: 1 }, scope_isolation: { passes: 5, trials: 5, tasks: 1 }, shared_channel: { passes: 0, trials: 0, tasks: 0 } });
+    expect(summary.secondary['a-dev']).toEqual({ no_reread: { passes: 1, trials: 5, capability: 'memory' } });
+    expect(r.stdout).not.toContain('no_reread 4');
   });
 });
 

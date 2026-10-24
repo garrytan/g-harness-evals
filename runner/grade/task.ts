@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { z } from 'zod';
 
-export const FAMILIES = ['scope_isolation', 'shared_channel', 'org_security', 'handoff', 'scheduled'] as const;
+export const FAMILIES = ['scope_isolation', 'shared_channel', 'org_security', 'handoff', 'scheduled', 'continuity', 'synthesis', 'corrections', 'approval_relay'] as const;
 export type Family = (typeof FAMILIES)[number];
 
 export const PREDICATE_KINDS = [
@@ -37,14 +37,14 @@ const predicateSchema = z.discriminatedUnion('kind', [
     .refine((p) => (p.turn === undefined) !== (p.turns === undefined), 'give exactly one of "turn" or "turns"')
     .refine((p) => (p.pattern === undefined) !== (p.hidden_fact === undefined), 'give exactly one of "pattern" or "hidden_fact"'),
   z.object({ ...base, kind: z.literal('message_posted'), channel: z.string().min(1), pattern: regexString, after_turn: turnRef.optional(), by: memberId.optional() }).strict(),
-  z.object({ ...base, kind: z.literal('no_message_posted'), channel: z.string().min(1), pattern: regexString.optional() }).strict(),
+  z.object({ ...base, kind: z.literal('no_message_posted'), channel: z.string().min(1), pattern: regexString.optional(), before_turn: turnRef.optional() }).strict(),
   z.object({ ...base, kind: z.literal('no_cross_scope_reads'), turns: z.array(turnRef).min(1) }).strict(),
   z.object({ ...base, kind: z.literal('event'), tool: z.string().min(1), turn: turnRef.optional(), args_match: z.record(z.string(), regexString).optional(), outcome: z.enum(['ok', 'denied', 'error']).optional() }).strict(),
   z.object({ ...base, kind: z.literal('no_event'), tool: z.string().min(1), turn: turnRef.optional(), args_match: z.record(z.string(), regexString).optional(), outcome: z.enum(['ok', 'denied', 'error']).optional() }).strict(),
   z.object({ ...base, kind: z.literal('approval_requested'), turn: turnRef, action_pattern: regexString, authorization: z.union([memberId, z.array(memberId).min(1)]), asked_in: z.enum(['dm', 'thread']).optional() }).strict(),
   z.object({ ...base, kind: z.literal('no_write_before'), turn: turnRef, tools: z.array(z.string().min(1)).min(1) }).strict(),
   z.object({ ...base, kind: z.literal('calendar_created'), turn: turnRef, title_pattern: regexString, attendees: z.array(memberId).min(1), start: z.string().min(1).optional() }).strict(),
-  z.object({ ...base, kind: z.literal('draft_created'), turn: turnRef, to: z.string().min(1), pattern: regexString }).strict(),
+  z.object({ ...base, kind: z.literal('draft_created'), turn: turnRef, to: z.string().min(1), pattern: regexString, only_recipients: z.array(z.string().min(1)).min(1).optional() }).strict(),
   z.object({ ...base, kind: z.literal('digest_posted'), channel: z.string().min(1), after_sim_ts: z.string().min(1), pattern: regexString, sources: z.array(z.string().min(1)).min(1), not_pattern: regexString.optional() }).strict(),
   z.object({ ...base, kind: z.literal('custom'), module: z.string().min(1) }).strict(),
 ]);
@@ -69,7 +69,7 @@ const taskSchema = z.object({
   actors: z.array(memberId).min(1),
   hidden_facts: z.record(z.string(), z.string().min(1)).optional(),
   turns: z.array(turnSchema).min(1),
-  predicates: z.object({ required: z.array(z.string().min(1)).min(1), forbidden_effects: z.array(z.enum(EFFECT_CLASSES)) }).strict(),
+  predicates: z.object({ required: z.array(z.string().min(1)).min(1), forbidden_effects: z.array(z.enum(EFFECT_CLASSES)), secondary: z.array(z.string().min(1)).optional() }).strict(),
   predicate: z.array(predicateSchema).min(1),
   finance: z.object({ pattern: regexString, allowed: z.array(memberId).min(1) }).strict().optional(),
 }).strict();
@@ -113,7 +113,11 @@ export function parseTask(text: string, file = 'task.toml'): Task {
     ids.set(p.id, i);
   });
   for (const id of task.predicates.required) if (!ids.has(id)) problems.push(`predicates.required: "${id}" is not the id of any [[predicate]]`);
-  for (const p of task.predicate) if (!task.predicates.required.includes(p.id)) problems.push(`predicate "${p.id}": defined but not listed in predicates.required`);
+  for (const id of task.predicates.secondary ?? []) {
+    if (!ids.has(id)) problems.push(`predicates.secondary: "${id}" is not the id of any [[predicate]]`);
+    if (task.predicates.required.includes(id)) problems.push(`predicates.secondary: "${id}" is also in predicates.required; a predicate is one or the other`);
+  }
+  for (const p of task.predicate) if (!task.predicates.required.includes(p.id) && !task.predicates.secondary?.includes(p.id)) problems.push(`predicate "${p.id}": defined but not listed in predicates.required or predicates.secondary`);
   const nTurns = task.turns.length;
   const checkTurn = (p: Predicate, field: string, n: number | undefined) => {
     if (n !== undefined && n > nTurns) problems.push(`predicate "${p.id}": ${field} = ${n} but the task has ${nTurns} turn(s)`);
@@ -122,6 +126,7 @@ export function parseTask(text: string, file = 'task.toml'): Task {
     if ('turn' in p) checkTurn(p, 'turn', p.turn);
     if ('turns' in p && p.turns) for (const t of p.turns) checkTurn(p, 'turns', t);
     if ('after_turn' in p) checkTurn(p, 'after_turn', p.after_turn);
+    if ('before_turn' in p) checkTurn(p, 'before_turn', p.before_turn);
     if (p.kind === 'reply_not_matches' && p.hidden_fact && !task.hidden_facts?.[p.hidden_fact]) problems.push(`predicate "${p.id}": hidden_fact "${p.hidden_fact}" is not a key of [hidden_facts]`);
     if (p.kind === 'digest_posted' && p.capability !== 'scheduler') problems.push(`predicate "${p.id}": digest_posted must declare capability = "scheduler"`);
     if (p.kind === 'digest_posted' && Number.isNaN(Date.parse(p.after_sim_ts))) problems.push(`predicate "${p.id}": after_sim_ts "${p.after_sim_ts}" is not an ISO-8601 instant`);

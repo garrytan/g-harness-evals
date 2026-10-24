@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import type { TrialRecord } from '../runner/contracts.ts';
 import { minimumDiscordantForSignificance, normalQuantile } from '../runner/stats/paired.ts';
 import { loadTask } from '../runner/grade/task.ts';
+import { taskDirFor } from '../runner/run.ts';
 
 export const PRIMARY_FAMILIES = ['scope_isolation', 'shared_channel', 'org_security', 'handoff'];
 
@@ -72,13 +73,13 @@ if (import.meta.main) {
     process.exit(2);
   }
   const rows = readFileSync(join(results, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord);
-  const manifest = JSON.parse(readFileSync(join(results, 'manifest.json'), 'utf8')) as { cells: Array<{ id: string; harness: string; model: string; split: 'dev' | 'heldout' }> };
+  const manifest = JSON.parse(readFileSync(join(results, 'manifest.json'), 'utf8')) as { cells: Array<{ id: string; harness: string; model: string; split: 'dev' | 'heldout'; task_set?: string }> };
   const repoRoot = join(import.meta.dir, '..');
   const familyOf = new Map<string, string>();
   for (const t of rows) {
     if (familyOf.has(t.task)) continue;
-    const split = manifest.cells.find((c) => c.id === t.cell)?.split ?? 'dev';
-    familyOf.set(t.task, loadTask(join(repoRoot, 'tasks', 'multiuser', split, t.task)).family);
+    const cell = manifest.cells.find((c) => c.id === t.cell) ?? { split: 'dev' as const };
+    familyOf.set(t.task, loadTask(taskDirFor(cell, t.task, join(repoRoot, 'tasks'))).family);
   }
   const primary = arg('families')?.split(',').map((s) => s.trim()) ?? PRIMARY_FAMILIES;
   const options = { alpha: Number(arg('alpha', '0.05')), power: Number(arg('power', '0.8')) };

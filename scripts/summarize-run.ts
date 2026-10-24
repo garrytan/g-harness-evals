@@ -15,6 +15,13 @@
 // cross-scope reads came through gbrain against the world's own tools. A cell without gbrain reports zeros;
 // `events_read` says how many trials had an event log to read. summary.json gains a `gbrain` key per cell and
 // nothing else changes.
+//
+// internal-task (v0.2 task slice): trials that ended as model_error, infra_error or exam_fault are excluded from the scored
+// rows and denominators (methodology item 9) and counted in the Excluded column and `excluded` key; their spend stays
+// in the USD columns. A per-cell x family table (passes / scored trials, tasks) follows the per-task table, read
+// through the manifest cell's task_set, and a secondary-predicate table (predicates.secondary in task.toml, such as
+// the capability = "memory" no-reread check) reports passes per cell without touching the primary endpoint.
+// summary.json gains top-level `families` and `secondary` keys.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,6 +29,8 @@ import type { TrialRecord } from '../runner/contracts.ts';
 import type { WorldEvent } from '../world/services/events.ts';
 import { seededRandom } from '../runner/stats/paired.ts';
 import { gbrainUsage } from './gbrain-usage.ts';
+import { loadTask } from '../runner/grade/task.ts';
+import { taskDirFor } from '../runner/run.ts';
 
 function arg(name: string, fallback?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -34,7 +43,25 @@ if (!results || !existsSync(join(results, 'trials.jsonl'))) {
 }
 const useRegraded = process.argv.includes('--regraded');
 const seed = Number(arg('seed', '7'));
-const rows = readFileSync(join(results, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord);
+const allRows = readFileSync(join(results, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord);
+const EXCLUDED = new Set(['model_error', 'infra_error', 'exam_fault']);
+const rows = allRows.filter((t) => !EXCLUDED.has(t.termination));
+const excludedRows = allRows.filter((t) => EXCLUDED.has(t.termination));
+const manifestPath = join(results, 'manifest.json');
+const manifestCells = existsSync(manifestPath) ? (JSON.parse(readFileSync(manifestPath, 'utf8')) as { cells: Array<{ id: string; split: 'dev' | 'heldout'; task_set?: string }> }).cells : [];
+const repoRoot = join(import.meta.dir, '..');
+const familyCache = new Map<string, string>();
+const familyOf = (t: TrialRecord): string => {
+  const key = `${t.cell}/${t.task}`;
+  if (!familyCache.has(key)) {
+    const cell = manifestCells.find((c) => c.id === t.cell) ?? { split: 'dev' as const };
+    const dir = taskDirFor(cell, t.task, join(repoRoot, 'tasks'));
+    let family = 'unknown';
+    try { family = loadTask(dir).family; } catch { /* a task tree that is not in this checkout: the family stays unknown */ }
+    familyCache.set(key, family);
+  }
+  return familyCache.get(key)!;
+};
 type Regraded = { trial_id: string; regraded: boolean; regraded_result?: { grade: string; consent_violation: boolean; approval_stop: boolean }; predicates?: TrialRecord['predicates'] };
 const regraded = new Map<string, Regraded>();
 if (useRegraded) {
@@ -68,30 +95,33 @@ const eventsOf = (t: TrialRecord): WorldEvent[] | null => {
   const candidates = [join(results, 'trials', ...t.trial_id.split('/').slice(1), 'events.jsonl'), t.paths?.events ?? '', join(t.paths?.dir ?? '', 'events.jsonl')].filter((p) => p && existsSync(p));
   return candidates.length ? readFileSync(candidates[0]!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as WorldEvent) : null;
 };
-const cells = [...new Set(rows.map((t) => t.cell))];
+const cells = [...new Set(allRows.map((t) => t.cell))];
 const out: string[] = [];
-const summary: Record<string, unknown> = { run: rows[0]?.trial_id.split('/')[0], grading: useRegraded ? 'regraded' : 'as recorded', seed, cells: {} as Record<string, unknown> };
-out.push(`| Cell | n (tasks x reps) | Passes | Pass rate [95% CI, task-clustered] | Consent violations | Approval stops (valid) | Terminations | Cross-scope read failures | Refused requests | USD total | USD median/trial | USD per success | Tokens in / out / cached | Wall median |`);
-out.push('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
+const summary: Record<string, unknown> = { run: allRows[0]?.trial_id.split('/')[0], grading: useRegraded ? 'regraded' : 'as recorded', seed, cells: {} as Record<string, unknown> };
+out.push(`| Cell | n (tasks x reps) | Passes | Pass rate [95% CI, task-clustered] | Excluded (model, infra, exam errors) | Consent violations | Approval stops (valid) | Terminations | Cross-scope read failures | Refused requests | USD total | USD median/trial | USD per success | Tokens in / out / cached | Wall median |`);
+out.push('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
 for (const cell of cells) {
   const ts = rows.filter((t) => t.cell === cell);
+  const everything = allRows.filter((t) => t.cell === cell);
+  const excluded = excludedRows.filter((t) => t.cell === cell).length;
   const rate = clusteredRate(ts);
   const passes = ts.filter(passed).length;
   const cv = ts.filter((t) => view(t).cv).length;
   const stops = ts.filter((t) => view(t).approval);
   const validStops = stops.filter((t) => view(t).predicates.some((p) => p.id.startsWith('approval') && p.passed)).length;
   const term = new Map<string, number>();
-  for (const t of ts) term.set(t.termination, (term.get(t.termination) ?? 0) + 1);
+  for (const t of everything) term.set(t.termination, (term.get(t.termination) ?? 0) + 1);
   const xscope = ts.filter((t) => view(t).predicates.some((p) => p.id === 'no_cross_scope_reads' && !p.passed)).length;
-  const usage = ts.map((t) => t.usage).filter((u): u is NonNullable<TrialRecord['usage']> => !!u);
+  const usage = everything.map((t) => t.usage).filter((u): u is NonNullable<TrialRecord['usage']> => !!u);
   const total = usage.reduce((s, u) => s + u.usd, 0);
   const refused = usage.reduce((s, u) => s + u.refused, 0);
   const tokens = usage.reduce((s, u) => ({ i: s.i + u.input_tokens, o: s.o + u.output_tokens, c: s.c + u.cached_tokens }), { i: 0, o: 0, c: 0 });
-  const wall = median(ts.map((t) => t.wall_ms / 1000));
+  const wall = median(everything.map((t) => t.wall_ms / 1000));
   const perSuccess = passes ? usd(total / passes) : 'no successes';
-  out.push(`| ${cell} | ${ts.length} (${rate.clusters} x ${ts.length / rate.clusters}) | ${passes} | ${pct(rate.rate)} [${pct(rate.lower)}, ${pct(rate.upper)}] | ${cv} | ${stops.length} (${validStops}) | ${[...term.entries()].map(([k, v]) => `${k} ${v}`).join(', ')} | ${xscope} | ${refused} | ${usd(total)} | ${usd(median(usage.map((u) => u.usd)))} | ${perSuccess} | ${tokens.i.toLocaleString()} / ${tokens.o.toLocaleString()} / ${tokens.c.toLocaleString()} | ${wall.toFixed(0)} s |`);
-  const gbrain = gbrainUsage(ts.map((t) => ({ events: eventsOf(t), predicates: view(t).predicates })));
-  (summary.cells as Record<string, unknown>)[cell] = { n: ts.length, passes, pass_rate: rate.rate, ci95: [rate.lower, rate.upper], task_clusters: rate.clusters, consent_violations: cv, approval_stops: stops.length, valid_approval_stops: validStops, terminations: Object.fromEntries(term), cross_scope_read_failures: xscope, refused_requests: refused, usd_total: total, usd_median: median(usage.map((u) => u.usd)), usd_per_success: passes ? total / passes : null, tokens, wall_median_s: wall, trial_ids: ts.map((t) => t.trial_id), gbrain };
+  const n = rate.clusters ? `${ts.length} (${rate.clusters} x ${+(ts.length / rate.clusters).toFixed(1)})` : '0';
+  out.push(`| ${cell} | ${n} | ${passes} | ${pct(rate.rate)} [${pct(rate.lower)}, ${pct(rate.upper)}] | ${excluded} | ${cv} | ${stops.length} (${validStops}) | ${[...term.entries()].map(([k, v]) => `${k} ${v}`).join(', ')} | ${xscope} | ${refused} | ${usd(total)} | ${usd(median(usage.map((u) => u.usd)))} | ${perSuccess} | ${tokens.i.toLocaleString()} / ${tokens.o.toLocaleString()} / ${tokens.c.toLocaleString()} | ${wall.toFixed(0)} s |`);
+  const gbrain = gbrainUsage(everything.map((t) => ({ events: eventsOf(t), predicates: view(t).predicates })));
+  (summary.cells as Record<string, unknown>)[cell] = { n: ts.length, passes, pass_rate: rate.rate, ci95: [rate.lower, rate.upper], task_clusters: rate.clusters, consent_violations: cv, approval_stops: stops.length, valid_approval_stops: validStops, terminations: Object.fromEntries(term), excluded, cross_scope_read_failures: xscope, refused_requests: refused, usd_total: total, usd_median: median(usage.map((u) => u.usd)), usd_per_success: passes ? total / passes : null, tokens, wall_median_s: wall, trial_ids: everything.map((t) => t.trial_id), gbrain };
 }
 out.push('');
 const gbrainCells = cells.map((cell) => [cell, (summary.cells as Record<string, { gbrain: ReturnType<typeof gbrainUsage> }>)[cell]!.gbrain] as const);
@@ -103,7 +133,7 @@ if (gbrainCells.some(([, g]) => g.calls_total > 0 || g.trials_with_tools_list > 
     out.push(`| ${cell} | ${g.trials_with_calls} | ${g.trials_with_tools_list} | ${g.calls_median_per_trial} / ${g.calls_total} | ${tools} | ${g.pages_per_call_median} | ${g.latency_ms_median} | ${g.errors} | ${g.writes} | ${g.cross_scope_reads.via_gbrain} / ${g.cross_scope_reads.via_world} | ${g.events_read} of ${g.trials} |`);
   }
 } else {
-  out.push(`gbrain: no via gbrain event in any cell (${gbrainCells.reduce((s, [, g]) => s + g.events_read, 0)} of ${rows.length} event logs read).`);
+  out.push(`gbrain: no via gbrain event in any cell (${gbrainCells.reduce((s, [, g]) => s + g.events_read, 0)} of ${allRows.length} event logs read).`);
 }
 out.push('');
 const tasks = [...new Set(rows.map((t) => t.task))].sort();
@@ -113,10 +143,35 @@ for (const task of tasks) {
   out.push(`| \`${task}\` | ${cells.map((c) => { const ts = rows.filter((t) => t.cell === c && t.task === task); return `${ts.filter(passed).length}/${ts.length}`; }).join(' | ')} |`);
 }
 out.push('');
+const families = [...new Set(rows.map(familyOf))].sort();
+if (families.length) {
+  out.push(`| Family | ${cells.join(' | ')} |`);
+  out.push(`|---|${cells.map(() => '---').join('|')}|`);
+  const famSummary: Record<string, Record<string, { passes: number; trials: number; tasks: number }>> = {};
+  for (const family of families) {
+    out.push(`| ${family} | ${cells.map((c) => { const ts = rows.filter((t) => t.cell === c && familyOf(t) === family); const tasks = new Set(ts.map((t) => t.task)).size; (famSummary[c] ??= {})[family] = { passes: ts.filter(passed).length, trials: ts.length, tasks }; return `${ts.filter(passed).length}/${ts.length} (${tasks} tasks)`; }).join(' | ')} |`);
+  }
+  summary.families = famSummary;
+  out.push('');
+}
+const secondaryIds = [...new Set(rows.flatMap((t) => view(t).predicates.filter((p) => p.kind === 'secondary').map((p) => p.id)))].sort();
+if (secondaryIds.length) {
+  out.push('Secondary predicates (recorded, never part of the grade): passes / trials carrying the predicate');
+  out.push(`| Predicate (capability) | ${cells.join(' | ')} |`);
+  out.push(`|---|${cells.map(() => '---').join('|')}|`);
+  const sec: Record<string, Record<string, { passes: number; trials: number; capability: string | null }>> = {};
+  for (const id of secondaryIds) {
+    const cap = rows.flatMap((t) => view(t).predicates).find((p) => p.kind === 'secondary' && p.id === id)?.capability ?? null;
+    out.push(`| ${id}${cap ? ` (${cap})` : ''} | ${cells.map((c) => { const ps = rows.filter((t) => t.cell === c).map((t) => view(t).predicates.find((p) => p.kind === 'secondary' && p.id === id)).filter((p): p is NonNullable<typeof p> => !!p); (sec[c] ??= {})[id] = { passes: ps.filter((p) => p.passed).length, trials: ps.length, capability: cap }; return `${ps.filter((p) => p.passed).length}/${ps.length}`; }).join(' | ')} |`);
+  }
+  summary.secondary = sec;
+  out.push('');
+}
 for (const cell of cells) {
   const counts = new Map<string, number>();
-  for (const t of rows.filter((t) => t.cell === cell)) for (const p of view(t).predicates) if (!p.passed) counts.set(p.id, (counts.get(p.id) ?? 0) + 1);
+  for (const t of rows.filter((t) => t.cell === cell)) for (const p of view(t).predicates) if (!p.passed && p.kind !== 'secondary') counts.set(p.id, (counts.get(p.id) ?? 0) + 1);
   out.push(`Failed predicates, ${cell}: ${[...counts.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ') || 'none'}`);
 }
+if (excludedRows.length) out.push(`Excluded from scoring (methodology item 9): ${excludedRows.length} trial(s): ${[...new Map(excludedRows.map((t) => [t.termination, excludedRows.filter((x) => x.termination === t.termination).length])).entries()].map(([k, v]) => `${k} ${v}`).join(', ')}; their spend is in the USD columns.`);
 writeFileSync(join(results, useRegraded ? 'summary.regraded.json' : 'summary.json'), JSON.stringify(summary, null, 1) + '\n');
 console.log(out.join('\n'));
