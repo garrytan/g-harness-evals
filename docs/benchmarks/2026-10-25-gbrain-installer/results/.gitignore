@@ -1,0 +1,25 @@
+# Evaluator-owned receipts are committed; harness state, workspaces, raw harness logs and per-trial tokens are not.
+trials/*/*/*/state/*
+trials/*/*/*/workspace/
+trials/*/*/*/logs/*
+!trials/*/*/*/logs/adapter.log
+trials/*/*/*/trial.json
+ledger.sqlite-shm
+ledger.sqlite-wal
+trials/*/*/*/compose.serve.yaml
+# The gbrain arm: the sidecar's per-trial token and logs (docs/gbrain-arm.md) stay out of the repository.
+trials/*/*/*/gbrain/
+# HARN-5 shards: each shard's preflight sidecar scratch (its bootstrap token and sidecar logs) stays out; preflight.log is kept.
+*.preflight-gbrain-*/
+shards/*/trials/
+# HARN-5 verbs run: the shard logs the preregistration names as receipts (proxy, preflight, run-shard, plan, run) are kept despite the root *.log rule.
+!/*.log
+# HARN-5 installer run: per-trial evidence that the installer's file reached the harness. OpenClaw's turn-1 run record lists
+# the workspace files it injected (injectedWorkspaceFiles: AGENTS.md, 1001 chars); Hermes's SOUL.md in its state dir is the
+# file it loads, seed plus block. Both are small and carry no token.
+!trials/*/*/*/logs/turns/
+trials/*/*/*/logs/turns/*
+!trials/*/*/*/logs/turns/turn-0001.openclaw.json
+!trials/*/*/*/state/hermes/
+trials/*/*/*/state/hermes/*
+!trials/*/*/*/state/hermes/SOUL.md

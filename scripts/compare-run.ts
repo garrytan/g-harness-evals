@@ -43,8 +43,8 @@
 // test. Cost per trial, wall per turn and the harness's own input tokens are paired differences (rung minus base, mean
 // over pairs) with task-clustered intervals over all tasks, each row labelled with the shards the two cells ran on
 // (shards.json beside trials.jsonl, written by scripts/merge-shards.ts: "same machine" or "different machines"), because wall time
-// on two machines is confounded with the machine. The design is chosen from the manifest: any verbs, gbrain-docs or
-// embedded cell makes it the ladder, otherwise the arm; --design arm|ladder overrides. comparisons.gbrain.json carries
+// on two machines is confounded with the machine. The design is chosen from the manifest: any verbs, gbrain-docs,
+// gbrain-installer or embedded cell makes it the ladder, otherwise the arm; --design arm|ladder overrides. comparisons.gbrain.json carries
 // design, rungs, the per-scope endpoints, the cost rows and the none table.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -113,7 +113,7 @@ if (pairMode === 'gbrain') {
   const scopes = [{ scope: 'primary', families: families ?? PRIMARY_FAMILIES }, { scope: 'all', families: null as string[] | null }];
   const designArg = arg('design');
   if (designArg !== undefined && designArg !== 'arm' && designArg !== 'ladder') { console.error(`--design takes "arm" or "ladder", not "${designArg}"`); process.exit(2); }
-  const ladderShaped = present.some((c) => c.gbrain?.surface && (resolveGbrain(c.gbrain).surface === 'verbs' || resolveGbrain(c.gbrain).install === 'gbrain-docs' || resolveGbrain(c.gbrain).embeddings !== 'off'));
+  const ladderShaped = present.some((c) => c.gbrain?.surface && (resolveGbrain(c.gbrain).surface === 'verbs' || resolveGbrain(c.gbrain).install === 'gbrain-docs' || resolveGbrain(c.gbrain).install === 'gbrain-installer' || resolveGbrain(c.gbrain).embeddings !== 'off'));
   const design = designArg ?? (ladderShaped ? 'ladder' : 'arm');
 
   if (design === 'ladder') {
