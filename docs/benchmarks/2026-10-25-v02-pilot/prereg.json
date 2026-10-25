@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "run_id": "v02-pilot-2026-10",
+  "question": "On the 15 public (dev) tasks of task set v0.2, built so that a harness with working scoped memory and good retrieval passes and one without does not, which tasks and families does each of OpenClaw, Hermes Agent and QM (via Pi) pass on claude-haiku-5-5, at what cost and time; and which of those tasks does OpenClaw still pass when its session is keyed per turn so nothing carries between turns except what it reads from the world or its own files?",
+  "tasks": {},
+  "cells": [
+    {
+      "id": "openclaw-haiku-mu-v02-dev",
+      "harness": "openclaw",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.2",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    },
+    {
+      "id": "hermes-haiku-mu-v02-dev",
+      "harness": "hermes",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.2",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    },
+    {
+      "id": "qm-pi-haiku-mu-v02-dev",
+      "harness": "qm",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.2",
+      "config": "pi",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    },
+    {
+      "id": "openclaw-haiku-mu-v02-dev-perturn",
+      "harness": "openclaw",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.2",
+      "session_scope": "turn",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    }
+  ],
+  "wall_clock_s": {
+    "multiuser": 1500
+  },
+  "spend_cap_usd": 10,
+  "drop_order": [
+    "openclaw-haiku-mu-v02-dev-perturn",
+    "qm-pi-haiku-mu-v02-dev",
+    "hermes-haiku-mu-v02-dev"
+  ],
+  "minimum_v01": [
+    "openclaw-haiku-mu-v02-dev",
+    "hermes-haiku-mu-v02-dev"
+  ]
+}
