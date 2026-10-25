@@ -7,12 +7,19 @@
 #
 #   scripts/run-shard.sh --prereg docs/benchmarks/<run>/prereg.json --name <shard> --cells a,b --lease-usd <n>
 #                        [--out results/<run-id>] [--embedded] [--gbrain-image <tag>] [--skip-build] [--resume]
+#                        [--amendment <commit>]
+#
+# --resume (after an interruption) keeps <out>/shard.json as the record of the first launch and appends a resume entry to
+# its "resumes" list; it refuses a HEAD other than the recorded commit unless --amendment names HEAD (a dated amendment in
+# the preregistration, committed before the cells it affects), and it skips preflight when <out>/preflight.log already
+# says PREFLIGHT: ok, because the $0.05 preflight lease is closed in the ledger and a closed lease is never reopened
+# (HE-PROXY-003). preflight itself is scoped to this shard's cells (--cells), so a shard builds only its own images.
 #
 # The embedded image build and preflight's embedded probe need OPENAI_API_KEY in this shell for the metering proxy only;
 # the run needs ANTHROPIC_API_KEY the same way. No key reaches a container or an image.
 set -euo pipefail
 
-prereg="" name="" cells="" lease="" out="" embedded=0 gbrain_image="harness-eval/gbrain:dev" skip_build=0 resume=0
+prereg="" name="" cells="" lease="" out="" embedded=0 gbrain_image="harness-eval/gbrain:dev" skip_build=0 resume=0 amendment=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --prereg) prereg="$2"; shift 2 ;;
@@ -24,6 +31,7 @@ while [ $# -gt 0 ]; do
     --gbrain-image) gbrain_image="$2"; shift 2 ;;
     --skip-build) skip_build=1; shift ;;
     --resume) resume=1; shift ;;
+    --amendment) amendment="$2"; shift 2 ;;
     *) echo "run-shard: unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -61,15 +69,34 @@ if [ "$skip_build" -eq 0 ]; then
 fi
 
 images=$(for h in $harnesses; do printf '"%s": "%s", ' "harness-eval/$h:dev" "$(docker image inspect -f '{{.Id}}' "harness-eval/$h:dev")"; done; printf '"%s": "%s"' "$gbrain_image" "$(docker image inspect -f '{{.Id}}' "$gbrain_image")")
-printf '{"name": "%s", "machine": "%s", "commit": "%s", "cells": "%s", "lease_usd": %s, "started_at": "%s", "images": {%s}}\n' \
-  "$name" "$(hostname)" "$commit" "$cells" "$lease" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$images" > "$out/shard.json"
+if [ "$resume" -eq 1 ] && [ -f "$out/shard.json" ]; then
+  recorded=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['commit'])" "$out/shard.json")
+  if [ "$recorded" != "$commit" ] && [ "$amendment" != "$commit" ]; then
+    log "resume refused: shard.json records commit $recorded and HEAD is $commit; a resume loads the recorded commit, or names HEAD with --amendment <commit> under a dated amendment"; exit 2
+  fi
+  python3 - "$out" "$commit" "$images" "$amendment" <<'PY'
+import json, sys, datetime
+p = sys.argv[1] + '/shard.json'; s = json.load(open(p))
+s.setdefault('resumes', []).append({'at': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), 'commit': sys.argv[2], 'images': json.loads('{' + sys.argv[3] + '}'), 'amendment': sys.argv[4] or None})
+s.pop('exit', None); s.pop('finished_at', None)
+json.dump(s, open(p, 'w'), indent=1); open(p, 'a').write('\n')
+PY
+  log "resume at $commit (recorded $recorded${amendment:+, amendment $amendment})"
+else
+  printf '{"name": "%s", "machine": "%s", "commit": "%s", "cells": "%s", "lease_usd": %s, "started_at": "%s", "images": {%s}}\n' \
+    "$name" "$(hostname)" "$commit" "$cells" "$lease" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$images" > "$out/shard.json"
+fi
 
 if [ ! -f "$out/manifest.json" ]; then
   bun runner/run.ts plan --prereg "$prereg" --out "$out" > "$out/plan.log" 2>&1 || { tail -20 "$out/plan.log" >&2; log "plan failed"; exit 2; }
 fi
-log "preflight"
-bun runner/run.ts preflight --manifest "$out/manifest.json" --gbrain-image "$gbrain_image" > "$out/preflight.log" 2>&1 || { tail -30 "$out/preflight.log" >&2; log "preflight failed"; exit 2; }
-grep -E '^(ADAPTER|GBRAIN|PREFLIGHT):' "$out/preflight.log" | tee -a "$out/run-shard.log" >&2
+if [ "$resume" -eq 1 ] && grep -q '^PREFLIGHT: ok' "$out/preflight.log" 2>/dev/null; then
+  log "preflight skipped: $out/preflight.log already says PREFLIGHT: ok and the preflight lease is closed (a resume reuses the images it passed)"
+else
+  log "preflight --cells $cells"
+  bun runner/run.ts preflight --manifest "$out/manifest.json" --cells "$cells" --gbrain-image "$gbrain_image" > "$out/preflight.log" 2>&1 || { tail -30 "$out/preflight.log" >&2; log "preflight failed"; exit 2; }
+  grep -E '^(ADAPTER|GBRAIN|PREFLIGHT):' "$out/preflight.log" | tee -a "$out/run-shard.log" >&2
+fi
 
 prune() {
   while sleep 300; do

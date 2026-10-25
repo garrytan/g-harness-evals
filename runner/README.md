@@ -7,7 +7,7 @@
 ```sh
 bun runner/run.ts plan      --prereg docs/benchmarks/<run>/prereg.json [--out results/<run-id>]
 bun runner/run.ts dry-run   --prereg <file>
-bun runner/run.ts preflight --manifest results/<run-id>/manifest.json [--gbrain-image <tag>]
+bun runner/run.ts preflight --manifest results/<run-id>/manifest.json [--gbrain-image <tag>] [--cells a,b]
 bun runner/run.ts run       --manifest results/<run-id>/manifest.json [options]
 ```
 
@@ -88,7 +88,7 @@ The results `.gitignore` copied per run (`docs/benchmarks/2026-10-23-m2-pilot/re
 
 ## Sharded runs (internal-task)
 
-A paid run longer than about four hours is sharded by whole cells across machines (CREW.md, "Parallelism"): every shard is a clean checkout at the preregistration commit, builds its images from it, holds one lease under the run's cap and runs its trials sequentially, and the preregistration names the shards. `scripts/run-shard.sh --prereg <file> --name <shard> --cells a,b --lease-usd <n> [--embedded] [--gbrain-image <tag>] [--out results/<run-id>] [--skip-build] [--resume]` does one shard: it refuses a dirty checkout, builds `harness-eval/<harness>:dev` for the harnesses its cells use and the gbrain image (`--embedded` for a shard with an embedded cell), runs `plan` (once), `preflight` and `run --cells ... --lease-usd ... --max-output-tokens 128000`, prunes graded trials' harness caches (`state/.cache`, `state/hermes/{bin,cache,skills,models_dev_cache.json}`) every five minutes, and writes `<out>/shard.json` (name, machine, commit, cells, lease, image ids, exit). `scripts/merge-shards.ts` merges the shard directories into one results directory with `shards.json` before `summarize-run` and `compare-run`.
+A paid run longer than about four hours is sharded by whole cells across machines (CREW.md, "Parallelism"): every shard is a clean checkout at the preregistration commit, builds its images from it, holds one lease under the run's cap and runs its trials sequentially, and the preregistration names the shards. `scripts/run-shard.sh --prereg <file> --name <shard> --cells a,b --lease-usd <n> [--embedded] [--gbrain-image <tag>] [--out results/<run-id>] [--skip-build] [--resume]` does one shard: it refuses a dirty checkout, builds `harness-eval/<harness>:dev` for the harnesses its cells use and the gbrain image (`--embedded` for a shard with an embedded cell), runs `plan` (once), `preflight` and `run --cells ... --lease-usd ... --max-output-tokens 128000`, prunes graded trials' harness caches (`state/.cache`, `state/hermes/{bin,cache,skills,models_dev_cache.json}`) every five minutes, and writes `<out>/shard.json` (name, machine, commit, cells, lease, image ids, exit). `scripts/merge-shards.ts` merges the shard directories into one results directory with `shards.json` before `summarize-run` and `compare-run`. After gbrain-ladder-2026-10 (internal-task): `preflight --cells a,b` scopes its checks to one shard's cells, so a shard builds only the harness images and gbrain configuration its cells need; `run-shard.sh --resume` keeps `shard.json` as the record of the first launch and appends to its `resumes` list, refuses a HEAD other than the recorded commit unless `--amendment <commit>` names it, and skips preflight when `preflight.log` already says `PREFLIGHT: ok`, because the preflight lease is closed in the ledger and a closed lease is never reopened (HE-PROXY-003).
 
 ## Harness modes
 

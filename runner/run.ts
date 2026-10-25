@@ -11,7 +11,7 @@
  *
  *   bun runner/run.ts plan    --prereg <file> [--out results/<run-id>]
  *   bun runner/run.ts dry-run --prereg <file>
- *   bun runner/run.ts preflight --manifest results/<run-id>/manifest.json [--gbrain-image <tag>] [--image <tag>] [--ledger <file>]
+ *   bun runner/run.ts preflight --manifest results/<run-id>/manifest.json [--gbrain-image <tag>] [--image <tag>] [--ledger <file>] [--cells a,b]
  *   bun runner/run.ts run --manifest results/<run-id>/manifest.json [--harness-mode docker|process|scripted]
  *       [--adapter <script>] [--image <tag>] [--gbrain-image <tag>] [--resume] [--stop-on-cap] [--cells a,b] [--ledger <file>]
  *       [--lease-usd <n>] [--new-lease] [--max-output-tokens <n>] [--preamble <file>] [--ready-timeout-s <n>]
@@ -326,8 +326,18 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
   if (cmd === 'preflight') {
-    const { manifest: m } = loadManifest(flag('--manifest'));
+    const { manifest: loaded } = loadManifest(flag('--manifest'));
     const runDir = dirname(flag('--manifest')!);
+    // internal-task: --cells scopes the checks to one shard's cells (its harness images, its gbrain configurations); the ladder's shards
+    // each built only their own images and failed the whole-manifest preflight on the other harness's image (HE-ADAPTER-005).
+    const scope = flag('--cells')?.split(',').map((s) => s.trim()).filter(Boolean);
+    if (scope) {
+      const known = new Set(loaded.cells.map((c) => c.id));
+      const unknown = scope.filter((id) => !known.has(id));
+      if (unknown.length) throw new RunnerError('HE-RUN-002', `--cells names ${unknown.join(', ')}, not in the manifest; the cells are ${[...known].join(', ')}`);
+    }
+    const m = scope ? { ...loaded, cells: loaded.cells.filter((c) => scope.includes(c.id)), trials: loaded.trials.filter((t) => scope.includes(t.cell)) } : loaded;
+    if (scope) console.log(`PREFLIGHT: scope --cells ${scope.join(',')} (${m.trials.length} of ${loaded.trials.length} trials)`);
     const missing = m.cells.filter(c => c.harness !== 'scripted' && !existsSync(join('harnesses', c.harness, 'pin.json'))).map(c => c.harness);
     if (missing.length) throw new RunnerError('HE-PIN-001', `no harnesses/<name>/pin.json for: ${[...new Set(missing)].join(', ')}; fix: add the pin before any cell runs`);
     for (const k of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']) if (!process.env[k]) console.log(`WARN: HE-PROXY-001 ${k} is not set in this shell; the metering proxy needs it, harness containers never do`);
