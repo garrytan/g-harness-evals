@@ -15,7 +15,7 @@
 // clusters that must all move one way for an exact two-sided sign-flip test to reach alpha. Two scopes: the
 // primary families (scope_isolation, shared_channel, org_security, handoff, or --families) and all tasks.
 //
-//   bun scripts/paired-mdd.ts --ladder [--results <arm results>] [--alpha 0.05] [--power 0.8]
+//   bun scripts/paired-mdd.ts --ladder [--results <arm results>] [--alpha 0.05] [--power 0.8] [--reps 10]
 //
 // The install ladder (internal-task): the same arithmetic per endpoint (pass, gbrain use, a cross-scope read via gbrain,
 // scripts/gbrain-ladder.ts) for the ladder's design, 20 tasks by 5 repetitions paired and task-clustered, printed as one
@@ -71,7 +71,7 @@ export interface PairedMdd {
 }
 
 /** Pass-rate scale: 1 is 100 points. */
-export function pairedMdd(rows: TrialRecord[], cells: Array<{ id: string; harness: string; model: string }>, options: { alpha?: number; power?: number; pass?: (t: TrialRecord) => boolean } = {}): PairedMdd[] {
+export function pairedMdd(rows: TrialRecord[], cells: Array<{ id: string; harness: string; model: string }>, options: { alpha?: number; power?: number; pass?: (t: TrialRecord) => boolean; designReps?: number } = {}): PairedMdd[] {
   const alpha = options.alpha ?? 0.05, power = options.power ?? 0.8;
   const pass = options.pass ?? ((t: TrialRecord) => t.grade === 'pass' && !t.consent_violation);
   const z = normalQuantile(1 - alpha / 2) + normalQuantile(power);
@@ -80,21 +80,22 @@ export function pairedMdd(rows: TrialRecord[], cells: Array<{ id: string; harnes
     const ts = rows.filter((t) => t.cell === c.id);
     const byTask = new Map<string, TrialRecord[]>();
     for (const t of ts) byTask.set(t.task, [...(byTask.get(t.task) ?? []), t]);
-    const g = byTask.size, n = ts.length;
+    // designReps: the null variance and n of a design with that many repetitions per task at each task's measured rate.
+    const g = byTask.size, n = options.designReps ? g * options.designReps : ts.length;
     let variance = 0, flat = 0;
     for (const reps of byTask.values()) {
       const p = reps.filter(pass).length / reps.length;
       if (p === 0 || p === 1) flat += 1;
-      variance += reps.length * 2 * p * (1 - p);
+      variance += (options.designReps ?? reps.length) * 2 * p * (1 - p);
     }
     const se = g > 1 && variance > 0 ? Math.sqrt((g / (g - 1)) * variance) / n : null;
-    return { cell: c.id, harness: c.harness, model: c.model, n_trials: n, n_tasks: g, tasks_at_ceiling_or_floor: flat, pass_rate: ts.filter(pass).length / n, se_null: se, mdd: se === null ? null : z * se, alpha, power, min_one_sided_clusters: minK };
+    return { cell: c.id, harness: c.harness, model: c.model, n_trials: n, n_tasks: g, tasks_at_ceiling_or_floor: flat, pass_rate: ts.filter(pass).length / ts.length, se_null: se, mdd: se === null ? null : z * se, alpha, power, min_one_sided_clusters: minK };
   });
 }
 
 if (import.meta.main && process.argv.includes('--ladder')) {
   const arg = (name: string, fallback?: string): string | undefined => { const i = process.argv.indexOf(`--${name}`); return i >= 0 ? process.argv[i + 1] : fallback; };
-  const options = { alpha: Number(arg('alpha', '0.05')), power: Number(arg('power', '0.8')) };
+  const options = { alpha: Number(arg('alpha', '0.05')), power: Number(arg('power', '0.8')), designReps: arg('reps') ? Number(arg('reps')) : undefined };
   const repoRoot = join(import.meta.dir, '..');
   const arm = arg('results') ?? join(repoRoot, GBRAIN_ARM_RESULTS);
   const receipt = (dir: string) => { const r = relative(repoRoot, join(dir, 'trials.jsonl')); return r.startsWith('..') ? join(dir, 'trials.jsonl') : r; };
@@ -121,14 +122,15 @@ if (import.meta.main && process.argv.includes('--ladder')) {
     }
     for (const endpoint of ['use', 'cross_scope'] as const) {
       for (const p of [0.1, 0.25, 0.5]) {
-        const d = designMdd(p, LADDER_DESIGN, options);
-        table.push({ endpoint, source: `assumption: every task at rate ${p}`, cell: 'any', rate: p, tasks: `${LADDER_DESIGN.tasks} (0)`, trials: LADDER_DESIGN.tasks * LADDER_DESIGN.reps, se_null: d.se_null, mdd: d.mdd, receipt: 'none (assumption)' });
+        const design = { tasks: LADDER_DESIGN.tasks, reps: options.designReps ?? LADDER_DESIGN.reps };
+        const d = designMdd(p, design, options);
+        table.push({ endpoint, source: `assumption: every task at rate ${p}`, cell: 'any', rate: p, tasks: `${design.tasks} (0)`, trials: design.tasks * design.reps, se_null: d.se_null, mdd: d.mdd, receipt: 'none (assumption)' });
       }
     }
   }
   const minK = minimumDiscordantForSignificance(options.alpha);
   console.log([
-    `Minimum detectable difference for the install ladder (internal-task): ${LADDER_DESIGN.tasks} tasks by ${LADDER_DESIGN.reps} repetitions, paired and task-clustered, two-sided alpha ${options.alpha}, power ${options.power}, arms independent given the task; the sign-flip bar is ${minK} task clusters all one way.`,
+    `Minimum detectable difference for the install ladder (internal-task): ${LADDER_DESIGN.tasks} tasks by ${options.designReps ?? LADDER_DESIGN.reps} repetitions${options.designReps ? ' (--reps: a design at that many repetitions at each task\'s measured rate)' : ''}, paired and task-clustered, two-sided alpha ${options.alpha}, power ${options.power}, arms independent given the task; the sign-flip bar is ${minK} task clusters all one way.`,
     `Rates from ${table.some((r) => r.source === 'measured') ? `the gbrain arm's Haiku trials at ${arm}` : `the committed Haiku sensitivity run for pass (no gbrain, so use and cross-scope are 0 there by construction) and a stated assumption for use and cross-scope; run again once ${GBRAIN_ARM_RESULTS} holds the arm's trials`}.`,
     '',
     '| Endpoint | Source | Cell | Rate | Tasks (at 0 or all of their repetitions) | Trials | Null SE | Minimum detectable difference | Receipt |',
@@ -152,7 +154,7 @@ if (import.meta.main && process.argv.includes('--ladder')) {
     familyOf.set(t.task, loadTask(taskDirFor(cell, t.task, join(repoRoot, 'tasks'))).family);
   }
   const primary = arg('families')?.split(',').map((s) => s.trim()) ?? PRIMARY_FAMILIES;
-  const options = { alpha: Number(arg('alpha', '0.05')), power: Number(arg('power', '0.8')) };
+  const options = { alpha: Number(arg('alpha', '0.05')), power: Number(arg('power', '0.8')), designReps: arg('reps') ? Number(arg('reps')) : undefined };
   const pts = (x: number | null) => (x === null ? 'n/a' : `${(100 * x).toFixed(1)} points`);
   const lines = [`Minimum detectable difference for a paired gbrain arm, from ${rows[0]?.trial_id.split('/')[0] ?? results}: two-sided alpha ${options.alpha}, power ${options.power}, arms independent given the task.`, ''];
   for (const [label, scope] of [[`primary families ${primary.join(', ')}`, rows.filter((t) => primary.includes(familyOf.get(t.task)!))], ['all tasks', rows]] as const) {

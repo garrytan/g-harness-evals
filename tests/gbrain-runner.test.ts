@@ -109,7 +109,7 @@ test('gbrain.install and gbrain.embeddings: validated under HE-GBRAIN-001 naming
   expect(m.per_cell_ceiling_usd['fake-semantic']!).toBeGreaterThanOrEqual(m.per_cell_ceiling_usd['fake-mcp']!);
 });
 
-test('every committed preregistration still loads; only the gbrain arm, the company-brain run and the install ladder carry gbrain cells, each on a pinned configuration', () => {
+test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs follow-up carry gbrain cells, each on a pinned configuration', () => {
   const dir = join(ROOT, 'docs', 'benchmarks');
   const files = readdirSync(dir).filter((d) => existsSync(join(dir, d, 'prereg.json'))).map((d) => join(dir, d, 'prereg.json'));
   expect(files.length).toBeGreaterThan(0);
@@ -122,6 +122,11 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         // internal-task: seven rungs per harness, each a pinned combination; the resolved configuration names the rung's fields only.
         if (c.gbrain) { const g = resolveGbrain(c.gbrain); expect(['starter', 'verbs']).toContain(g.surface); expect(g.brain).toBe('bot-visible'); expect(g.scope).toBe('none'); }
         expect(c.preamble === undefined || c.preamble === 'tasks/multiuser/_shared/preamble.gbrain-ladder.md').toBe(true);
+      }
+      else if (p.run_id.startsWith('gbrain-verbs-')) {
+        // internal-task follow-up: told against verbs-told only, every cell told, keyword search, the ladder's preamble.
+        const g = resolveGbrain(c.gbrain!); expect(['starter', 'verbs']).toContain(g.surface); expect(g.embeddings).toBe('off'); expect(g.install).toBe('mcp'); expect(g.brain).toBe('bot-visible');
+        expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-ladder.md'); expect(c.repetitions).toBe(10);
       }
       else expect(c.gbrain).toBeUndefined();
     }

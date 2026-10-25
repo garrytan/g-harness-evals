@@ -45,7 +45,8 @@ export interface LadderPair { harness: string; config: string | null; model: str
 
 /** Within each (harness, config, model), the neighbour pairs of the ladder. `problems` is fatal for the caller: a cell on
  *  no rung, two cells on one rung, or a rung whose base is absent, each named. `unpaired` names a none cell with no mcp
- *  cell above it, which is not a problem (a run may carry a none cell for the descriptive table alone). */
+ *  cell above it, or a rung with no base below it that is itself the base of a present rung, neither a problem (a run may
+ *  carry a none cell for the descriptive table alone, or a told cell only as the base of verbs-told). */
 export function ladderPairs(cells: LadderCell[]): { rungs: LadderRung[]; pairs: LadderPair[]; problems: string[]; unpaired: string[] } {
   const rungs: LadderRung[] = cells.map((c) => { const r = rungOf(c); return { cell: c.id, harness: c.harness, config: c.config ?? null, model: c.model, rung: r.rung, configuration: r.label }; });
   const problems: string[] = [], unpaired: string[] = [], pairs: LadderPair[] = [];
@@ -65,7 +66,13 @@ export function ladderPairs(cells: LadderCell[]): { rungs: LadderRung[]; pairs: 
       if (!r) continue;
       if (rung === 'none') { if (!byRung.has('mcp')) unpaired.push(`${who}: none cell ${r.cell} has no mcp cell above it`); continue; }
       const base = byRung.get(LADDER[rung].base)?.[0];
-      if (!base) { problems.push(`${who}: rung ${rung} (${r.cell}) has no ${LADDER[rung].base} cell to pair against`); continue; }
+      if (!base) {
+        // A follow-up run may carry a rung only as the base of the rung above it (gbrain-verbs-2026-10: told under verbs-told).
+        const isBase = RUNG_ORDER.some((o) => o !== 'none' && byRung.has(o) && LADDER[o].base === rung);
+        if (isBase) unpaired.push(`${who}: rung ${rung} (${r.cell}) has no ${LADDER[rung].base} cell below it and serves as a base only`);
+        else problems.push(`${who}: rung ${rung} (${r.cell}) has no ${LADDER[rung].base} cell to pair against`);
+        continue;
+      }
       pairs.push({ harness: r.harness, config: r.config, model: r.model, rung, base_rung: LADDER[rung].base, cell: r.cell, base_cell: base.cell });
     }
   }

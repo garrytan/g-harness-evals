@@ -371,6 +371,15 @@ describe('paired minimum detectable difference', () => {
     expect(pairedMdd([], [cell])).toEqual([]);
   });
 
+  test('designReps restates the null variance and n for a design with that many repetitions at each task\'s measured rate', () => {
+    const [five] = pairedMdd(rowsFor([5, 0, 3, 4]), [cell]);
+    const [ten] = pairedMdd(rowsFor([5, 0, 3, 4]), [cell], { designReps: 10 });
+    expect(ten!.n_trials).toBe(40);
+    expect(ten!.pass_rate).toBeCloseTo(five!.pass_rate, 12);
+    expect(ten!.se_null).toBeCloseTo(five!.se_null! / Math.SQRT2, 12);
+    expect(ten!.mdd).toBeCloseTo(five!.mdd! / Math.SQRT2, 12);
+  });
+
   test('the analytic null error agrees with simulated paired arms run through clusteredPairedDelta', () => {
     const passes = [5, 4, 3, 2, 5, 1, 4, 3];
     const [m] = pairedMdd(rowsFor(passes), [cell]);
@@ -416,9 +425,16 @@ describe('install ladder: rungs and neighbour pairs', () => {
     expect(all.pairs.filter((p) => p.harness === 'oc').map((p) => `${p.rung}>${p.base_rung}`)).toEqual(['mcp>none', 'told>mcp', 'docs>mcp', 'verbs-told>told', 'semantic-told>told', 'docs-semantic>docs']);
     expect(all.pairs.find((p) => p.harness === 'hm' && p.rung === 'docs-semantic')).toMatchObject({ cell: 'hm-gbrain-docs-semantic', base_cell: 'hm-gbrain-docs', model: HAIKU });
     const noMcp = ladderPairs(full.cells.filter((c) => c.id !== 'hm-gbrain-mcp'));
-    expect(noMcp.problems).toEqual([`hm on ${HAIKU}: rung told (hm-gbrain-told) has no mcp cell to pair against`, `hm on ${HAIKU}: rung docs (hm-gbrain-docs) has no mcp cell to pair against`]);
-    expect(noMcp.unpaired).toEqual([`hm on ${HAIKU}: none cell hm-none has no mcp cell above it`]);
+    // told and docs have no mcp below them but are bases of present rungs, so they are unpaired, not problems (a follow-up
+    // run may carry told only as the base of verbs-told); a base-less rung that is nobody's base is still a problem.
+    expect(noMcp.problems).toEqual([]);
+    expect(noMcp.unpaired).toEqual([`hm on ${HAIKU}: none cell hm-none has no mcp cell above it`, `hm on ${HAIKU}: rung told (hm-gbrain-told) has no mcp cell below it and serves as a base only`, `hm on ${HAIKU}: rung docs (hm-gbrain-docs) has no mcp cell below it and serves as a base only`]);
     expect(noMcp.pairs.filter((p) => p.harness === 'hm').map((p) => p.rung)).toEqual(['verbs-told', 'semantic-told', 'docs-semantic']);
+    const verbsOnly = ladderPairs(full.cells.filter((c) => c.id === 'hm-gbrain-told' || c.id === 'hm-gbrain-verbs-told'));
+    expect(verbsOnly).toMatchObject({ problems: [], unpaired: [`hm on ${HAIKU}: rung told (hm-gbrain-told) has no mcp cell below it and serves as a base only`] });
+    expect(verbsOnly.pairs.map((p) => `${p.rung}>${p.base_rung}`)).toEqual(['verbs-told>told']);
+    const toldAlone = ladderPairs(full.cells.filter((c) => c.id === 'hm-gbrain-told'));
+    expect(toldAlone.problems).toEqual([`hm on ${HAIKU}: rung told (hm-gbrain-told) has no mcp cell to pair against`]);
     const doubled = ladderPairs([...full.cells, { ...full.cells.find((c) => c.id === 'oc-gbrain-told')!, id: 'oc-gbrain-told-2' }]);
     expect(doubled.problems).toEqual([`oc on ${HAIKU}: 2 cells on rung told (oc-gbrain-told, oc-gbrain-told-2); the ladder has one cell per rung`]);
     const off = ladderPairs([{ id: 'q-company', harness: 'q', model: 'm', gbrain: { surface: 'starter', brain: 'company' } }]);
@@ -530,7 +546,9 @@ describe('compare-run --pair gbrain on the install ladder', () => {
     const dir = mkdtempSync(join(tmpdir(), 'he-ladder-'));
     writeLadderFixture(dir);
     const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as { cells: Array<{ id: string }> };
-    writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ ...manifest, cells: manifest.cells.filter((c) => c.id !== 'hm-gbrain-mcp') }));
+    // Without hm's mcp cell, told and docs have no base and (with the rungs above them removed too) are nobody's base.
+    const gone = new Set(['hm-gbrain-mcp', 'hm-gbrain-verbs-told', 'hm-gbrain-semantic-told', 'hm-gbrain-docs-semantic']);
+    writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ ...manifest, cells: manifest.cells.filter((c) => !gone.has(c.id)) }));
     const r = run('compare-run.ts', ['--results', dir, '--pair', 'gbrain', '--draws', '1000']);
     expect(r.status).toBe(2);
     expect(r.stderr).toContain(`hm on ${HAIKU}: rung told (hm-gbrain-told) has no mcp cell to pair against; hm on ${HAIKU}: rung docs (hm-gbrain-docs) has no mcp cell to pair against; hm on ${HAIKU}: none cell hm-none has no mcp cell above it`);

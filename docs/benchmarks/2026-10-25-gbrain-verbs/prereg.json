@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "run_id": "gbrain-verbs-2026-10",
+  "question": "On the same 20 held-out multi-user tasks on Haiku, for OpenClaw and Hermes Agent, does the seven-verb surface (verbs-told) move pass rate against the 33-tool starter surface (told) when the bot is told to check the brain first, at ten repetitions per task; and does it keep cross-scope reads via gbrain at zero.",
+  "tasks": {},
+  "cells": [
+    {
+      "id": "openclaw-haiku-gbrain-told-mu-heldout",
+      "harness": "openclaw",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "repetitions": 10,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-ladder.md"
+    },
+    {
+      "id": "openclaw-haiku-gbrain-verbs-told-mu-heldout",
+      "harness": "openclaw",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "gbrain": {
+        "surface": "verbs"
+      },
+      "repetitions": 10,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-ladder.md"
+    },
+    {
+      "id": "hermes-haiku-gbrain-told-mu-heldout",
+      "harness": "hermes",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "repetitions": 10,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-ladder.md"
+    },
+    {
+      "id": "hermes-haiku-gbrain-verbs-told-mu-heldout",
+      "harness": "hermes",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "gbrain": {
+        "surface": "verbs"
+      },
+      "repetitions": 10,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-ladder.md"
+    }
+  ],
+  "wall_clock_s": {
+    "multiuser": 1500
+  },
+  "spend_cap_usd": 12,
+  "drop_order": [],
+  "minimum_v01": [
+    "openclaw-haiku-gbrain-told-mu-heldout",
+    "openclaw-haiku-gbrain-verbs-told-mu-heldout",
+    "hermes-haiku-gbrain-told-mu-heldout",
+    "hermes-haiku-gbrain-verbs-told-mu-heldout"
+  ]
+}
