@@ -110,7 +110,7 @@ test('gbrain.install and gbrain.embeddings: validated under HE-GBRAIN-001 naming
   expect(m.per_cell_ceiling_usd['fake-semantic']!).toBeGreaterThanOrEqual(m.per_cell_ceiling_usd['fake-mcp']!);
 });
 
-test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs and installer follow-ups carry gbrain cells, each on a pinned configuration', () => {
+test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs and installer follow-ups, and the v0.2 held-out run carry gbrain cells, each on a pinned configuration', () => {
   const dir = join(ROOT, 'docs', 'benchmarks');
   const files = readdirSync(dir).filter((d) => existsSync(join(dir, d, 'prereg.json'))).map((d) => join(dir, d, 'prereg.json'));
   expect(files.length).toBeGreaterThan(0);
@@ -133,6 +133,12 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         // internal-task installer rung (internal-task): told against installer only, starter surface, keyword search; told carries the ladder's preamble, installer the default one.
         const g = resolveGbrain(c.gbrain!); expect(g.surface).toBe('starter'); expect(g.embeddings).toBe('off'); expect(['mcp', 'gbrain-installer']).toContain(g.install); expect(g.brain).toBe('bot-visible');
         expect(c.preamble).toBe(g.install === 'mcp' ? 'tasks/multiuser/_shared/preamble.gbrain-ladder.md' : undefined); expect(c.repetitions).toBe(5);
+      }
+      else if (p.run_id.startsWith('v02-heldout-')) {
+        // internal-task: none against gbrain-told on the v0.2 held-out set; a told cell is the arm's starter surface, keyword search, MCP only, the arm's preamble.
+        if (c.gbrain) { const g = resolveGbrain(c.gbrain); expect(g.surface).toBe('starter'); expect(g.embeddings).toBe('off'); expect(g.install).toBe('mcp'); expect(g.brain).toBe('bot-visible'); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain.md'); }
+        else expect(c.preamble).toBeUndefined();
+        expect(c.task_set).toBe('v0.2'); expect(c.split).toBe('heldout'); expect(c.repetitions).toBe(5);
       }
       else expect(c.gbrain).toBeUndefined();
     }

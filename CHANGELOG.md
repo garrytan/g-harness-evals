@@ -4,6 +4,10 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 
 ## [Unreleased]
 
+### internal-task: v0.2 held-out run preregistered (`v02-heldout-2026-10`)
+
+- `docs/benchmarks/2026-10-25-v02-heldout/PREREGISTRATION.md` and `prereg.json`: the 15 sealed v0.2 held-out tasks, three harnesses on `claude-sonnet-5-5` (primary) and `claude-haiku-5-5` (sensitivity), each with and without gbrain (`gbrain-told`: starter surface, the arm's brain-first preamble, the per-split brain of the seed's channel pages and public files), 5 repetitions, 12 cells, 900 trials, cap $90, nine shards (one Sonnet cell or two Haiku cells each) at the preregistration commit. Primary endpoint gbrain-told minus none per harness and model, paired by task and repetition, task-clustered, Holm within model; MDD at 15 x 5 from the pilot's rates stated.
+
 ### internal-task: v0.2 task amendment after the pilot (2026-10-25)
 
 - Tasks (`tasks/multiuser/v0.2/README.md`, "Amendment 2026-10-25"): ar-03 and ar-06 check `no_cross_scope_reads` on the asking turn only, so the bot may read its own DM with the authorizer on the fake-grant turn (Captain's decision); ms-03's turn names the records the bot can read instead of "Moss's North notes"; the exclusion patterns of ms-01, ms-02, ms-05, ms-06 and ms-08 and the retraction patterns of cr-01, cr-05 and ms-08 fail only a sentence that presents the distractor or retracted figure without an exclusion word; cr-04 `stale`, cr-07 `not_retracted` and ms-07 `not_nadia_owner` no longer match a correct sentence; five date patterns accept zero-padded, ordinal and dashed renderings. Every held-out task was read against its fact row for those three defect classes; the mutation scripts the changes made stale were rewritten; the held-out tree is resealed (`f12ba073f8f7`). Nothing changes what a task asks for.
