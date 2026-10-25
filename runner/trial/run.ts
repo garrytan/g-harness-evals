@@ -99,7 +99,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       const embeddingModels: string[] = [...new Set(manifest.cells.map((c) => c.gbrain?.embeddings ?? 'off').filter((m) => m !== 'off'))];
       proxy = await RunProxy.start({
         runId: manifest.run_id, runDir, ledgerPath: opts.ledgerPath ?? join(runDir, 'ledger.sqlite'), leaseUsd: opts.leaseUsd ?? manifest.spend_cap_usd,
-        allowModels: [...new Set([...manifest.cells.map((c) => c.model).filter((m) => m !== 'none'), ...embeddingModels])], maxOutputTokens: opts.maxOutputTokens,
+        allowModels: [...new Set([...manifest.cells.map((c) => c.model).filter((m) => m !== 'none'), ...manifest.cells.flatMap((c) => c.utility_models ?? []), ...embeddingModels])], maxOutputTokens: opts.maxOutputTokens,
         reachableFromContainers: docker || embeddingModels.length > 0, env: opts.proxyEnv, newRun: opts.newLease,
       });
       log(`metering proxy on port ${proxy.port}, lease $${opts.leaseUsd ?? manifest.spend_cap_usd} in ${proxy.ledgerPath}`);

@@ -113,9 +113,12 @@ const EMPTY_GRADE: GradeResult = { grade: 'n/a', predicates: [], consent_violati
  *  back to its default model in silence when CLAUDE_MODEL is not supported), is HE-MODEL-001; the message lists them.
  *  Refused lines with no model (a route the proxy does not admit) are counted in usage.refused and never fail a trial.
  *  internal-task amendment 1 (2026-10-25): on an embedded rung the gbrain sidecar embeds each query through the same slot, so the
- *  cell's declared embedding model is the trial's own and is never foreign; it is reported apart in gbrain.embedding_usage. */
-export function foreignModels(cellModel: string, byModel: Record<string, unknown>, lines: Array<{ outcome: string; model: string | null; provider: string }>, embeddingModel: string = 'off'): string[] {
-  const own = new Set([cellModel.toLowerCase(), embeddingModel.toLowerCase()]);
+ *  cell's declared embedding model is the trial's own and is never foreign; it is reported apart in gbrain.embedding_usage.
+ *  internal-task amendment 2 to v02-heldout-2026-10 (2026-10-25): a cell may preregister utility_models, the models its harness is
+ *  documented to call for its own housekeeping (QM's and OpenClaw's Haiku request per turn); those are the trial's own too,
+ *  forwarded when the allowlist admits them and priced into the trial (usage.by_model shows them). */
+export function foreignModels(cellModel: string, byModel: Record<string, unknown>, lines: Array<{ outcome: string; model: string | null; provider: string }>, embeddingModel: string = 'off', utilityModels: readonly string[] = []): string[] {
+  const own = new Set([cellModel.toLowerCase(), embeddingModel.toLowerCase(), ...utilityModels.map((m) => m.toLowerCase())]);
   const seen = new Set<string>();
   for (const k of Object.keys(byModel)) if (!own.has(k.toLowerCase())) seen.add(k);
   for (const l of lines) if (l.outcome === 'refused' && l.model && !own.has(`${l.provider}:${l.model}`.toLowerCase())) seen.add(`${l.provider}:${l.model}`);
@@ -262,10 +265,10 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       const summary = summarizeUsage(key, meter, lines);
       usage = summary.usage;
       capStop = summary.cap_stop;
-      const foreign = foreignModels(cell.model, usage.by_model, lines, gbrain?.embeddings ?? 'off');
+      const foreign = foreignModels(cell.model, usage.by_model, lines, gbrain?.embeddings ?? 'off', cell.utility_models ?? []);
       if (foreign.length) {
         modelMismatch = true;
-        const msg = `HE-MODEL-001 trial ${trial.id} ran model(s) ${foreign.join(', ')} beside the cell's ${cell.model} (by_model and refused usage lines); the trial is model_error; fix: check the harness's model mapping (QM: CLAUDE_MODEL falls back to its default when the id is unsupported) or fix the cell's model`;
+        const msg = `HE-MODEL-001 trial ${trial.id} ran model(s) ${foreign.join(', ')} beside the cell's ${cell.model} (by_model and refused usage lines); the trial is model_error; fix: check the harness's model mapping (QM: CLAUDE_MODEL falls back to its default when the id is unsupported), fix the cell's model, or preregister the harness's documented housekeeping model in the cell's utility_models`;
         log(msg);
         error = error ? `${error}; ${msg}` : msg;
       }

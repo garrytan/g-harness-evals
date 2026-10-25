@@ -4,6 +4,10 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 
 ## [Unreleased]
 
+### internal-task: v02-heldout-2026-10 amendments 1 and 2 (2026-10-25, before any counted trial)
+
+- Amendment 1: cap $90 to $135 and the nine shard leases resized after the first Sonnet smoke and two shards' first trials showed the proxy's per-call reservation and held-out trials near 1.3 times the pilot's cost; four pre-amendment trials discarded and listed. Amendment 2: a cell may preregister `utility_models` (runner/run.ts, runner/trial/trial.ts: HE-MODEL-001 treats them as the cell's own, the allowlist admits them), set on the four OpenClaw and QM Sonnet cells for their documented `claude-haiku-5-5` housekeeping call; `scripts/run-shard.sh --max-output-tokens` (default 128000) so the QM shards' reservations fit their leases. docs/errors.md and runner/README.md updated; tests in tests/run.test.ts and tests/qm-config.test.ts.
+
 ### internal-task: the told-scoped rung (gbrain#7481, per-request source_ids)
 
 - gbrain pinned at `17374362` (0.60.452.0, the merge of gbrain#7481: `source_ids` on `search` and `query`, a smaller starter tools/list); `gbrain/pin.json` keeps the previous pins; the installer rung's `gbrain setup` target is not at this commit (gbrain#7489 is still open), so the keyless check reports the installer views as unavailable there.

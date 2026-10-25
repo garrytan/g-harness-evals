@@ -135,6 +135,10 @@ describe('multi-user cells', () => {
     try { buildManifest(noSet.prereg, noSet.sha256, '2026-10-22T00:00:00Z', { tasksRoot: FIXTURE_TASKS }); throw new Error('expected a refusal'); } catch (e) { expect((e as RunnerError).code).toBe('HE-PREREG-004'); expect((e as RunnerError).message).toContain('multiuser/v9.9/'); }
     const { prereg, sha256 } = loadPrereg(write({ ...mu, cells: [{ ...mu.cells[0]!, session_scope: 'turn' }] }));
     expect(renderPlan(buildManifest(prereg, sha256, '2026-10-22T00:00:00Z', { tasksRoot: FIXTURE_TASKS }))).toContain('task_set=v0.1 session_scope=turn reps=2');
+    expectCode({ ...mu, cells: [{ ...mu.cells[0]!, utility_models: ['haiku'] }] }, 'HE-PREREG-007', 'utility_models must be');
+    expectCode({ ...mu, cells: [{ ...mu.cells[0]!, utility_models: [] }] }, 'HE-PREREG-007', 'utility_models must be');
+    const util = loadPrereg(write({ ...mu, cells: [{ ...mu.cells[0]!, utility_models: ['anthropic:claude-haiku-5-5'] }] }));
+    expect(renderPlan(buildManifest(util.prereg, util.sha256, '2026-10-22T00:00:00Z', { tasksRoot: FIXTURE_TASKS }))).toContain('task_set=v0.1 utility_models=anthropic:claude-haiku-5-5 reps=2');
   });
 
   test('a scripted cell must say so consistently; model none is only for scripted cells', () => {

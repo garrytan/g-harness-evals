@@ -7,7 +7,13 @@
 #
 #   scripts/run-shard.sh --prereg docs/benchmarks/<run>/prereg.json --name <shard> --cells a,b --lease-usd <n>
 #                        [--out results/<run-id>] [--embedded] [--gbrain-image <tag>] [--skip-build] [--resume]
-#                        [--amendment <commit>]
+#                        [--amendment <commit>] [--max-output-tokens <n>]
+#
+# --max-output-tokens (default 128000, what Hermes states on every call) is passed to the runner's proxy: a call that states
+# more is refused and a call that states none gets it, and the proxy reserves input plus that many output tokens against the
+# lease before forwarding, so a harness that states no max_tokens (QM's Pi loop) reserves about $1.50 per Sonnet call at the
+# default; a QM shard passes a smaller figure (its trials emit about a thousand output tokens) so the lease is not held hostage
+# to the reservation (internal-task, amendment 2 to v02-heldout-2026-10).
 #
 # --resume (after an interruption) keeps <out>/shard.json as the record of the first launch and appends a resume entry to
 # its "resumes" list; it refuses a HEAD other than the recorded commit unless --amendment names HEAD (a dated amendment in
@@ -19,7 +25,7 @@
 # the run needs ANTHROPIC_API_KEY the same way. No key reaches a container or an image.
 set -euo pipefail
 
-prereg="" name="" cells="" lease="" out="" embedded=0 gbrain_image="harness-eval/gbrain:dev" skip_build=0 resume=0 amendment=""
+prereg="" name="" cells="" lease="" out="" embedded=0 gbrain_image="harness-eval/gbrain:dev" skip_build=0 resume=0 amendment="" max_output_tokens=128000
 while [ $# -gt 0 ]; do
   case "$1" in
     --prereg) prereg="$2"; shift 2 ;;
@@ -32,6 +38,7 @@ while [ $# -gt 0 ]; do
     --skip-build) skip_build=1; shift ;;
     --resume) resume=1; shift ;;
     --amendment) amendment="$2"; shift 2 ;;
+    --max-output-tokens) max_output_tokens="$2"; shift 2 ;;
     *) echo "run-shard: unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -55,7 +62,7 @@ print(" ".join(sorted({c['harness'] for c in p['cells'] if c['id'] in want and c
 PY
 )
 log() { printf '%s run-shard[%s]: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$name" "$*" | tee -a "$out/run-shard.log" >&2; }
-log "commit $commit, cells $cells, harnesses $harnesses, lease $lease, out $out"
+log "commit $commit, cells $cells, harnesses $harnesses, lease $lease, max_output_tokens $max_output_tokens, out $out"
 
 if [ "$skip_build" -eq 0 ]; then
   for h in $harnesses; do
@@ -120,7 +127,7 @@ prune &
 prune_pid=$!
 trap 'kill "$prune_pid" 2>/dev/null || true' EXIT
 
-run_args=(run --manifest "$out/manifest.json" --cells "$cells" --lease-usd "$lease" --max-output-tokens 128000 --gbrain-image "$gbrain_image")
+run_args=(run --manifest "$out/manifest.json" --cells "$cells" --lease-usd "$lease" --max-output-tokens "$max_output_tokens" --gbrain-image "$gbrain_image")
 [ "$resume" -eq 1 ] || [ -f "$out/trials.jsonl" ] && run_args+=(--resume)
 log "run ${run_args[*]}"
 set +e

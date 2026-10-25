@@ -113,6 +113,14 @@ describe('foreignModels (HE-MODEL-001)', () => {
     expect(foreignModels('anthropic:claude-sonnet-5-5', { 'anthropic:claude-sonnet-5-5': { usd: 0.1, requests: 2 } }, aux)).toEqual(['anthropic:claude-haiku-5-5']);
   });
 
+  test('a preregistered utility model is the cell\'s own, refused or forwarded; any other model stays foreign (internal-task, v02-heldout amendment 2)', () => {
+    const sonnet = 'anthropic:claude-sonnet-5-5';
+    const aux = [line({ outcome: 'refused', model: 'claude-haiku-5-5' })];
+    expect(foreignModels(sonnet, { [sonnet]: { usd: 0.1, requests: 2 } }, aux, 'off', ['anthropic:claude-haiku-5-5'])).toEqual([]);
+    expect(foreignModels(sonnet, { [sonnet]: { usd: 0.1, requests: 2 }, 'anthropic:claude-haiku-5-5': { usd: 0.001, requests: 3 } }, [], 'off', ['anthropic:claude-haiku-5-5'])).toEqual([]);
+    expect(foreignModels(sonnet, { [sonnet]: { usd: 0.1, requests: 2 }, 'anthropic:claude-opus-5-5': { usd: 0.3, requests: 1 } }, [], 'off', ['anthropic:claude-haiku-5-5'])).toEqual(['anthropic:claude-opus-5-5']);
+  });
+
   test('model names compare case-insensitively and each foreign model is listed once', () => {
     const lines = [line({ outcome: 'refused', model: 'Claude-Sonnet-5-5' }), line({ outcome: 'refused', model: 'claude-sonnet-5-5' })];
     expect(foreignModels('Anthropic:Claude-Haiku-5-5', { 'anthropic:claude-haiku-5-5': { usd: 0, requests: 1 } }, lines)).toEqual(['anthropic:Claude-Sonnet-5-5', 'anthropic:claude-sonnet-5-5']);
