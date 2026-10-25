@@ -136,17 +136,21 @@ serve() {
       log "turn $turn: session $key, budget ${budget}s"
       started=$(now)
       # The turn runs in the background so a SIGTERM during it reaches the trap at once; the trap's
-      # flag then ends the turn and the loop.
+      # flag then ends the turn and the loop. A SIGTERM that lands between the log line above and the
+      # wait sets the flag before the wait starts, and the wait would then sit through the whole turn,
+      # so the flag is checked once more after the turn is spawned and the turn is killed at once.
       set +e
       timeout -k 5 "$budget" bash -c 'serve_turn "$1" "$2"' _ "$req" "$key" > "$resp.reply" 2>>"$HE_LOG_DIR/stderr.log" &
       tpid=$!
+      [ "$stopping" -eq 0 ] || kill -TERM "$tpid" 2>/dev/null
       wait "$tpid"; code=$?
-      if [ "$stopping" -eq 1 ] && kill -0 "$tpid" 2>/dev/null; then
+      if [ "$stopping" -eq 1 ] && { [ "$code" -eq 143 ] || kill -0 "$tpid" 2>/dev/null; }; then
         log "turn $turn: SIGTERM during the turn; stopping the harness"
-        kill -TERM "$tpid" 2>/dev/null; wait "$tpid"; code=143
+        kill -TERM "$tpid" 2>/dev/null; wait "$tpid" 2>/dev/null; code=143
       fi
       set -e
-      reply=$(cat "$resp.reply"); rm -f "$resp.reply"
+      # A turn killed right after it was spawned may not have opened its reply file yet.
+      reply=$(cat "$resp.reply" 2>/dev/null || true); rm -f "$resp.reply"
       ended=$(now)
       detail=""
       case "$code" in
