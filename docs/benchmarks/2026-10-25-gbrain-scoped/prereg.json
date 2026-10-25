@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "run_id": "gbrain-scoped-2026-10",
+  "question": "On the same 20 held-out multi-user tasks on Haiku, for OpenClaw and Hermes Agent, when the world tap adds the requesting member's source_ids (gbrain#7481, gbrain 17374362, 0.60.452.0) to every search and query the harness makes against the company brain, with the harness prompt unchanged, do cross-scope reads via gbrain fall to zero from the told-company cell's rate, and where does pass land, at five repetitions per task.",
+  "tasks": {},
+  "cells": [
+    {
+      "id": "openclaw-haiku-gbrain-told-company-mu-heldout",
+      "harness": "openclaw",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "company"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-company.md"
+    },
+    {
+      "id": "openclaw-haiku-gbrain-told-scoped-mu-heldout",
+      "harness": "openclaw",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "company",
+        "scope": "sources"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-company.md"
+    },
+    {
+      "id": "hermes-haiku-gbrain-told-company-mu-heldout",
+      "harness": "hermes",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "company"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-company.md"
+    },
+    {
+      "id": "hermes-haiku-gbrain-told-scoped-mu-heldout",
+      "harness": "hermes",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "company",
+        "scope": "sources"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-company.md"
+    }
+  ],
+  "wall_clock_s": {
+    "multiuser": 1500
+  },
+  "spend_cap_usd": 6,
+  "drop_order": [],
+  "minimum_v01": [
+    "openclaw-haiku-gbrain-told-company-mu-heldout",
+    "openclaw-haiku-gbrain-told-scoped-mu-heldout",
+    "hermes-haiku-gbrain-told-company-mu-heldout",
+    "hermes-haiku-gbrain-told-scoped-mu-heldout"
+  ]
+}

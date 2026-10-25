@@ -110,7 +110,7 @@ test('gbrain.install and gbrain.embeddings: validated under HE-GBRAIN-001 naming
   expect(m.per_cell_ceiling_usd['fake-semantic']!).toBeGreaterThanOrEqual(m.per_cell_ceiling_usd['fake-mcp']!);
 });
 
-test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs and installer follow-ups, and the v0.2 held-out run carry gbrain cells, each on a pinned configuration', () => {
+test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs, installer and scoped follow-ups, and the v0.2 held-out run carry gbrain cells, each on a pinned configuration', () => {
   const dir = join(ROOT, 'docs', 'benchmarks');
   const files = readdirSync(dir).filter((d) => existsSync(join(dir, d, 'prereg.json'))).map((d) => join(dir, d, 'prereg.json'));
   expect(files.length).toBeGreaterThan(0);
@@ -134,6 +134,11 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         const g = resolveGbrain(c.gbrain!); expect(g.surface).toBe('starter'); expect(g.embeddings).toBe('off'); expect(['mcp', 'gbrain-installer']).toContain(g.install); expect(g.brain).toBe('bot-visible');
         expect(c.preamble).toBe(g.install === 'mcp' ? 'tasks/multiuser/_shared/preamble.gbrain-ladder.md' : undefined); expect(c.repetitions).toBe(5);
       }
+      else if (p.run_id.startsWith('gbrain-scoped-')) {
+        // internal-task told-scoped rung (gbrain#7481): told-company against told-scoped on the company brain, starter surface, keyword search, internal-task's company told clause in both.
+        const g = resolveGbrain(c.gbrain!); expect(g.surface).toBe('starter'); expect(g.embeddings).toBe('off'); expect(g.install).toBe('mcp'); expect(g.brain).toBe('company'); expect(['none', 'sources']).toContain(g.scope);
+        expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-company.md'); expect(c.repetitions).toBe(5);
+      }
       else if (p.run_id.startsWith('v02-heldout-')) {
         // internal-task: none against gbrain-told on the v0.2 held-out set; a told cell is the arm's starter surface, keyword search, MCP only, the arm's preamble.
         if (c.gbrain) { const g = resolveGbrain(c.gbrain); expect(g.surface).toBe('starter'); expect(g.embeddings).toBe('off'); expect(g.install).toBe('mcp'); expect(g.brain).toBe('bot-visible'); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain.md'); }
@@ -150,6 +155,7 @@ test('gbrain.brain and gbrain.scope: the plan shows them and warns about a compa
   const { prereg: p, sha256 } = loadPrereg(writePrereg([
     cell({ id: 'fake-company', gbrain: { surface: 'starter', brain: 'company' }, tasks: ['fx-leak'] }),
     cell({ id: 'fake-scoped', gbrain: { surface: 'starter', brain: 'company', scope: 'member' }, tasks: ['fx-leak'] }),
+    cell({ id: 'fake-sources', gbrain: { surface: 'starter', brain: 'company', scope: 'sources' }, tasks: ['fx-leak'], preamble: 'tasks/multiuser/_shared/preamble.gbrain-company.md' }),
     cell({ tasks: ['fx-leak'] }),
   ], 'gb-company-plan'));
   const plan = renderPlan(buildManifest(p, sha256, '2026-10-24T00:00:00Z', { tasksRoot: join(ROOT, 'tests', 'fixtures', 'tasks') }));
@@ -162,7 +168,9 @@ test('gbrain.brain and gbrain.scope: the plan shows them and warns about a compa
     'WARN: cell fake-scoped serves the company brain with preamble tasks/multiuser/_shared/preamble.md, not the company one (tasks/multiuser/_shared/preamble.gbrain-company.md); intended only for a none-style arm on the company brain',
   ]);
   expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', brain: 'everything' as 'company' } })], 'gb-bad-brain'))).toThrow(/HE-GBRAIN-003 .*brain must be "bot-visible" or "company"/);
-  expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', brain: 'company', scope: 'team' as 'member' } })], 'gb-bad-scope'))).toThrow(/HE-GBRAIN-003 .*scope must be "member" or absent/);
+  expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', brain: 'company', scope: 'team' as 'member' } })], 'gb-bad-scope'))).toThrow(/HE-GBRAIN-003 .*scope must be "member", "sources" or absent/);
+  expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', scope: 'sources' } })], 'gb-sources-no-company'))).toThrow(/HE-GBRAIN-003 .*scope "sources" needs gbrain.brain "company"/);
+  expect(line('fake-sources').endsWith('gbrain=starter/mcp/off brain=company scope=sources preamble=tasks/multiuser/_shared/preamble.gbrain-company.md')).toBe(true);
   expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', scope: 'member' } })], 'gb-scope-no-company'))).toThrow(/HE-GBRAIN-003 .*scope "member" needs gbrain.brain "company"/);
 });
 

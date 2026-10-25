@@ -4,6 +4,13 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 
 ## [Unreleased]
 
+### internal-task: the told-scoped rung (gbrain#7481, per-request source_ids)
+
+- gbrain pinned at `17374362` (0.60.452.0, the merge of gbrain#7481: `source_ids` on `search` and `query`, a smaller starter tools/list); `gbrain/pin.json` keeps the previous pins; the installer rung's `gbrain setup` target is not at this commit (gbrain#7489 is still open), so the keyless check reports the installer views as unavailable there.
+- Runner: `gbrain.scope: "sources"` (company brain only): the sidecar copies the brain's `manifest.json` (grants, no token) under `HE_GBRAIN_SCOPE=sources`, the runner checks the grants cover every actor (HE-GBRAIN-004) and the world tap sets `source_ids` on every `search` and `query` to the requesting member's granted sources under the one unscoped token, intersecting a harness-supplied list and denying an all-foreign one in gbrain's `permission_denied` shape; events carry the forwarded `source_ids`, `source_ids_requested` when the harness named any, and `effect.sources`; `preflight` probes every member's grant against the brain (search and query, eight queries) before a paid trial.
+- Ladder: rungs `told-company` (company brain, internal-task's company told clause) and `told-scoped` (the same with `scope: sources`), paired told-scoped against told-company against told in `scripts/compare-run.ts`; `scripts/gbrain-check.ts` runs both as rungs, and its keyless mode adds the per-member `source_ids` probe and a two-member fake trial whose same query returns the north-random page to a reader and not to a non-reader.
+- Keyless check at 17374362: 30 assertions passed, 0 pin diffs; 15 members, 344 scoped calls, 1,062 rows, none outside the requester's grant. Finding for the preregistration: gbrain checks `source_ids` against the connection's grant, not the member's, so under the unscoped token a foreign federated source answers rows and the member narrowing is the tap's to enforce.
+
 ### internal-task: v0.2 held-out run preregistered (`v02-heldout-2026-10`)
 
 - `docs/benchmarks/2026-10-25-v02-heldout/PREREGISTRATION.md` and `prereg.json`: the 15 sealed v0.2 held-out tasks, three harnesses on `claude-sonnet-5-5` (primary) and `claude-haiku-5-5` (sensitivity), each with and without gbrain (`gbrain-told`: starter surface, the arm's brain-first preamble, the per-split brain of the seed's channel pages and public files), 5 repetitions, 12 cells, 900 trials, cap $90, nine shards (one Sonnet cell or two Haiku cells each) at the preregistration commit. Primary endpoint gbrain-told minus none per harness and model, paired by task and repetition, task-clustered, Holm within model; MDD at 15 x 5 from the pilot's rates stated.

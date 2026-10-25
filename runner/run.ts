@@ -28,7 +28,7 @@ import { RunnerError } from './errors.ts';
 import { canonicalLookup } from './pricing/model-pricing.ts';
 import { lookupEmbeddingPrice } from './pricing/embedding-pricing.ts';
 import { taskTurnCount } from './trial/task.ts';
-import { DEFAULT_GBRAIN_IMAGE } from './trial/gbrain.ts';
+import { DEFAULT_GBRAIN_IMAGE, SOURCE_PROBE_QUERIES } from './trial/gbrain.ts';
 
 export { RunnerError };
 
@@ -48,7 +48,7 @@ export interface ResolvedGbrain {
   install: (typeof GBRAIN_INSTALLS)[number];
   embeddings: (typeof GBRAIN_EMBEDDINGS)[number];
   brain: 'bot-visible' | 'company';
-  scope: 'none' | 'member';
+  scope: 'none' | 'member' | 'sources';
 }
 
 /** The cell's gbrain configuration with every default filled in; the cell itself is not changed. */
@@ -193,8 +193,8 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
       if (scripted) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: a scripted cell cannot carry gbrain; a script plays the bot over world-MCP and has no harness to call the brain`);
       // internal-task (company brain): brain and scope are additive; a cell without them is the gbrain arm's cell.
       if (c.gbrain.brain !== undefined && c.gbrain.brain !== 'bot-visible' && c.gbrain.brain !== 'company') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.brain must be "bot-visible" or "company"; got ${JSON.stringify(c.gbrain.brain)}`);
-      if (c.gbrain.scope !== undefined && c.gbrain.scope !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope must be "member" or absent; got ${JSON.stringify(c.gbrain.scope)}`);
-      if (c.gbrain.scope === 'member' && c.gbrain.brain !== 'company') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope "member" needs gbrain.brain "company"; only the company brain carries member tokens`);
+      if (c.gbrain.scope !== undefined && c.gbrain.scope !== 'member' && c.gbrain.scope !== 'sources') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope must be "member", "sources" or absent; got ${JSON.stringify(c.gbrain.scope)}`);
+      if (c.gbrain.scope !== undefined && c.gbrain.brain !== 'company') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope "${c.gbrain.scope}" needs gbrain.brain "company"; only the company brain carries member tokens and per-member source grants`);
     }
   }
   if (!(prereg.spend_cap_usd > 0)) throw new RunnerError('HE-BUDGET-002', 'spend_cap_usd must be > 0; the cap is written into the preregistration, never passed ad hoc');
@@ -407,7 +407,7 @@ async function main(argv: string[]): Promise<number> {
       // internal-task: a company brain is probed per split under the unscoped token and must list every page the build holds.
       const companySplits = [...new Set(gbrainCells.filter((c) => c.gbrain!.brain === 'company').map((c) => c.split))];
       if (companySplits.length) {
-        const { probeCompanyBrain } = await import('./trial/gbrain.ts');
+        const { probeCompanyBrain, probeSourceGrants } = await import('./trial/gbrain.ts');
         const { companyPageList } = await import('../gbrain/build-brain.ts');
         const { worldAt, DEFAULT_WORLD_PATH } = await import('./trial/world.ts');
         const world = worldAt(DEFAULT_WORLD_PATH);
@@ -415,6 +415,15 @@ async function main(argv: string[]): Promise<number> {
           const scope = gbrainCells.some((c) => c.gbrain!.brain === 'company' && c.split === split && c.gbrain!.scope === 'member') ? 'member' : 'none';
           const probe = await probeCompanyBrain(image, split, companyPageList(world, split), join(runDir, `preflight-gbrain-company-${split}`), scope);
           console.log(`GBRAIN: image ${image} id=${probe.image_id} brain=company scope=${scope} split=${split} pages=${probe.listed} (${Object.entries(probe.by_kind).map(([k, v]) => `${k} ${v}`).join(', ')}) under the unscoped token${scope === 'member' ? `, tokens=${probe.member_tokens} plus public-only: ${probe.member_check}` : ''}, ready in ${probe.ready_ms} ms`);
+          // internal-task (gbrain#7481): a scope "sources" cell needs the per-request source_ids to hold for every member before a paid trial.
+          if (gbrainCells.some((c) => c.gbrain!.brain === 'company' && c.split === split && c.gbrain!.scope === 'sources')) {
+            const s = await probeSourceGrants(image, split, join(runDir, `preflight-gbrain-sources-${split}`));
+            const notDenied = s.denied.filter((d) => d.code !== 'permission_denied');
+            if (s.outside.length) throw new RunnerError('HE-GBRAIN-002', `the company brain for ${split} in ${image} returned ${s.outside.length} row(s) outside the requester's source grant under source_ids (${s.outside.slice(0, 3).map((o) => `${o.member} ${o.tool} ${JSON.stringify(o.query)} -> ${o.slug} in ${o.source_id}`).join('; ')}); gbrain's source_ids narrowing does not hold at this commit`);
+            if (notDenied.length) throw new RunnerError('HE-GBRAIN-002', `the company brain for ${split} in ${image} answered a source_ids list naming a source no connection holds with ${notDenied.map((d) => `${d.code ?? 'rows'} for ${d.member}/${d.source_id}`).slice(0, 3).join(', ')} instead of permission_denied`);
+            if (!s.rows || !s.differs) throw new RunnerError('HE-GBRAIN-002', `the company brain for ${split} in ${image} gave ${s.rows} row(s) over ${s.calls} scoped calls${s.rows && !s.differs ? ' and the same sources to every member' : ''}; the source_ids narrowing is not observable`);
+            console.log(`GBRAIN: scope=sources split=${split}: ${s.members} members x ${SOURCE_PROBE_QUERIES.length} queries x search+query = ${s.calls} calls, ${s.rows} rows over ${s.sources_seen} sources, 0 outside the requester's grant; ${s.denied.length} unknown source ids all permission_denied; a federated source outside the member's grant answers rows under the unscoped token in ${s.foreign.filter((f) => f.rows_from_it).length} of ${s.foreign.length} members (gbrain checks the connection's grant, the tap enforces the member's); the narrowing differs between members`);
+          }
         }
       }
     }

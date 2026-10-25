@@ -196,8 +196,10 @@ export interface GbrainCellConfig {
   brain?: 'bot-visible' | 'company';
   /** internal-task addition: "member" makes the world's tap present the requesting member's gbrain token (public-only before
    *  the first turn) instead of the trial's one unscoped token; company brain only. Absent: every call carries the
-   *  unscoped token and the brain answers as the bot. */
-  scope?: 'member';
+   *  unscoped token and the brain answers as the bot. internal-task addition (gbrain#7481): "sources" keeps the unscoped token
+   *  and makes the tap add source_ids to every search and query, the sources the requesting member may read (the public
+   *  source before the first turn), so one bot token narrows per request; company brain only. */
+  scope?: 'member' | 'sources';
 }
 
 /** internal-task: the install bundle view a gbrain-docs or gbrain-installer trial mounted into the harness, as the runner verified it
@@ -243,7 +245,7 @@ export interface TrialGbrain {
   /** internal-task additions, absent in records written before it: the brain and scope the sidecar ran with and the docker
    *  image id behind the tag, so a record names the exact brain it was served from. */
   brain?: 'bot-visible' | 'company';
-  scope?: 'none' | 'member';
+  scope?: 'none' | 'member' | 'sources';
   image_id?: string;
   /** Milliseconds from docker run to a healthy sidecar with a token on disk. */
   sidecar_ready_ms: number;

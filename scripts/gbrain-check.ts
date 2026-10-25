@@ -62,7 +62,8 @@ export const KNOWN_PAGE = { slug: 'dev/chats/north-team-random', query: 'ticket 
 
 /** The rung table of docs/gbrain-arm.md, "The install ladder": each rung is a gbrain cell configuration plus whether the
  *  told preamble applies. */
-export const RUNGS: Record<string, { gbrain: GbrainCellConfig; told: boolean }> = {
+export const COMPANY_TOLD_PREAMBLE = 'tasks/multiuser/_shared/preamble.gbrain-company.md';
+export const RUNGS: Record<string, { gbrain: GbrainCellConfig; told: boolean; preamble?: string }> = {
   mcp: { gbrain: { surface: 'starter' }, told: false },
   told: { gbrain: { surface: 'starter' }, told: true },
   docs: { gbrain: { surface: 'starter', install: 'gbrain-docs' }, told: false },
@@ -70,6 +71,10 @@ export const RUNGS: Record<string, { gbrain: GbrainCellConfig; told: boolean }> 
   'verbs-told': { gbrain: { surface: 'verbs' }, told: true },
   'semantic-told': { gbrain: { surface: 'starter', embeddings: 'openai:text-embedding-3-small' }, told: true },
   'docs-semantic': { gbrain: { surface: 'starter', install: 'gbrain-docs', embeddings: 'openai:text-embedding-3-small' }, told: false },
+  // internal-task (gbrain#7481): the company brain under the one unscoped token, and the same brain with the tap adding the requesting
+  // member's source_ids to every search and query. Both take internal-task's company told clause; the harness prompt is the same in both.
+  'told-company': { gbrain: { surface: 'starter', brain: 'company' }, told: true, preamble: COMPANY_TOLD_PREAMBLE },
+  'told-scoped': { gbrain: { surface: 'starter', brain: 'company', scope: 'sources' }, told: true, preamble: COMPANY_TOLD_PREAMBLE },
 };
 
 const sha256 = (s: string | Buffer) => createHash('sha256').update(s).digest('hex');
@@ -202,9 +207,10 @@ export function paidCells(harnesses: string[], rungs: string[], o: { model?: str
   for (const rung of rungs) {
     const spec = RUNGS[rung];
     if (!spec) throw new RunnerError('HE-RUN-002', `--rungs names ${JSON.stringify(rung)}; the rungs are ${Object.keys(RUNGS).join(', ')} (docs/gbrain-arm.md, "The install ladder")`);
-    if (spec.told && !toldPresent) { skipped.push(`rung ${rung} skipped: the told preamble ${told} is not in this checkout (the ladder's preregistration PR adds it); the untold rungs run`); continue; }
+    const preamble = spec.preamble ?? told;
+    if (spec.told && !(spec.preamble ? existsSync(resolve(o.root ?? ROOT, spec.preamble)) : toldPresent)) { skipped.push(`rung ${rung} skipped: the told preamble ${preamble} is not in this checkout (the ladder's preregistration PR adds it); the untold rungs run`); continue; }
     for (const harness of harnesses) {
-      cells.push({ id: `${harness}-${modelLabel(model)}-gbrain-${rung}`, harness, model, slice: 'multiuser', split: 'dev', repetitions: reps, ceiling: { input_tokens: 80_000, output_tokens: 6_000 }, tasks, gbrain: spec.gbrain, ...(spec.told ? { preamble: told } : {}) });
+      cells.push({ id: `${harness}-${modelLabel(model)}-gbrain-${rung}`, harness, model, slice: 'multiuser', split: 'dev', repetitions: reps, ceiling: { input_tokens: 80_000, output_tokens: 6_000 }, tasks, gbrain: spec.gbrain, ...(spec.told ? { preamble } : {}) });
     }
   }
   return { cells, skipped };
@@ -278,6 +284,19 @@ export interface InstallerEvidence {
 
 export interface ReadyInstall { dir: string; split: string; files: number; writable: boolean }
 
+/** internal-task (gbrain#7481): the scope "sources" evidence. The direct probe searches and queries the dev company brain once per member
+ *  and query under that member's source_ids; the fake trial runs two members through the runner and the tap on the same query. */
+export interface ScopedEvidence {
+  probe: null | { members: number; calls: number; rows: number; sources_seen: number; outside: Array<{ member: string; tool: string; query: string; slug: string; source_id: string }>; denied: Array<{ member: string; source_id: string; code: string | null }>; foreign: Array<{ member: string; source_id: string; rows_from_it: boolean | null }>; differs: boolean };
+  probe_error: string | null;
+  /** member -> granted source ids, from the trial's gbrain/manifest.json. */
+  grants: Record<string, string[]> | null;
+  trial: null | {
+    termination: string; error?: string; events_file: string;
+    calls: Array<{ actor: string | null; grant: string | null; tool: string; outcome: string; error: string | null; source_ids: string[] | null; source_ids_requested: string[] | null; sources: string[]; pages: string[] }>;
+  };
+}
+
 export interface KeylessEvidence {
   image: string;
   pin: PinSurfaces;
@@ -288,6 +307,8 @@ export interface KeylessEvidence {
   views: ViewEvidence[];
   /** internal-task: the installer view per harness; absent in evidence written before the installer rung. */
   installer?: InstallerEvidence[];
+  /** internal-task (gbrain#7481): the scope "sources" probe and trial; absent in evidence written before the told-scoped rung. */
+  scoped?: ScopedEvidence;
   /** The gbrain-docs trial on the fake harness (it takes the OpenClaw dev view). */
   docs: null | { termination: string; error?: string; install_bundle: TrialGbrainInstall | undefined; ready_install: ReadyInstall | null; expected_view_digest: string | null; expected_files: number | null };
 }
@@ -375,6 +396,61 @@ export function keylessAssertions(e: KeylessEvidence, o: { strictPins?: boolean 
     const rec = i.manifest.installer && 'files' in i.manifest.installer ? i.manifest.installer : null;
     if (i.harness === 'hermes' && !rec?.seed) fail(where, 'Hermes SOUL.md seed', 'recorded (sha256, bytes, hermes commit)', 'absent', file);
     if (i.manifest.files.length && i.block_present && (i.harness !== 'hermes' || rec?.seed)) ok(`${where} ${i.manifest.files.map((f) => f.path).join(', ')} (block ${rec?.block_version ?? 'version unknown'}), view digest ${i.manifest.view_digest.slice(0, 12)} matches the bundle manifest${rec?.seed ? `; home seeded with Hermes SOUL.md ${rec.seed.sha256.slice(0, 12)} (${rec.seed.bytes} bytes)` : ''}`);
+  }
+  if (e.scoped) {
+    const s = e.scoped;
+    const where = 'scoped=company/dev';
+    if (!s.probe) fail(where, 'source_ids probe of the company brain', 'one search and one query per member and query under that member\'s grant', s.probe_error ?? 'no probe', e.image);
+    else {
+      const p = s.probe;
+      const notDenied = p.denied.filter((d) => d.code !== 'permission_denied');
+      if (p.outside.length) fail(where, 'rows outside the requester\'s grant under source_ids', 'none', `${p.outside.length} (${p.outside.slice(0, 3).map((o) => `${o.member} ${o.tool} ${JSON.stringify(o.query)} -> ${o.slug} in ${o.source_id}`).join('; ')})`, e.image);
+      if (notDenied.length) fail(where, 'a source_ids list naming a source no connection holds', 'permission_denied for every member', notDenied.map((d) => `${d.code ?? 'rows'} for ${d.member}/${d.source_id}`).slice(0, 3).join(', '), e.image);
+      if (!p.rows) fail(where, 'rows under source_ids', 'some', 0, e.image);
+      else if (!p.differs) fail(where, 'narrowing observable', 'the same query answers different source sets to members with different grants', 'identical sources for every member', e.image);
+      if (!p.outside.length && !notDenied.length && p.rows && p.differs) ok(`${where} ${p.members} members, ${p.calls} scoped search/query calls, ${p.rows} rows over ${p.sources_seen} sources, none outside the requester's grant; ${p.denied.length} unknown source ids all permission_denied`);
+      const readable = p.foreign.filter((f) => f.rows_from_it === true).length;
+      ok(`${where} under the unscoped token a source_ids list naming a federated source outside the member's grant answered rows from it for ${readable} of ${p.foreign.length} members: gbrain checks source_ids against the connection's grant, so the member narrowing is the tap's to enforce (it intersects a harness-supplied list with the grant and denies an all-foreign one)`);
+    }
+    if (!s.trial) fail(where, 'fake trial under scope "sources"', 'a completed trial', 'none', 'trials.jsonl');
+    else if (!s.grants) fail(where, 'the trial\'s gbrain/manifest.json grants', 'present', 'absent', s.trial.events_file);
+    else {
+      const t = s.trial;
+      const file = t.events_file;
+      if (t.termination !== 'completed') fail(where, 'trial termination', 'completed', `${t.termination}${t.error ? ` (${t.error})` : ''}`, 'trials.jsonl');
+      const scopedCalls = t.calls.filter((c) => c.tool === 'gbrain.search' || c.tool === 'gbrain.query');
+      if (scopedCalls.length < 4) fail(where, 'search and query events through the tap', 'at least 4 (two members, one denied)', scopedCalls.length, file);
+      // The tap's events carry the bot as actor (the harness's world token) and the requesting member as grant.
+      for (const c of scopedCalls) {
+        const grant = c.grant ? s.grants[c.grant] ?? null : null;
+        const label = `${c.tool} for ${c.grant ?? 'nobody'}`;
+        if (c.actor !== 'assistant') fail(where, `${label} event actor`, 'assistant (the harness\'s world token)', c.actor ?? 'none', file);
+        if (!grant) { fail(where, `${label} grant for the requester`, 'a source grant', c.grant ?? 'no requester', file); continue; }
+        if (c.source_ids_requested) {
+          if (c.outcome !== 'error' || c.error !== 'permission_denied') fail(where, `${label} naming ${c.source_ids_requested.join(', ')} outside the grant`, 'error permission_denied from the tap', `${c.outcome}${c.error ? ` (${c.error})` : ''}`, file);
+          else if (c.source_ids?.length) fail(where, `${label} denied request forwarded source_ids`, 'none', c.source_ids.join(', '), file);
+          else ok(`${where} ${label} naming ${c.source_ids_requested.join(', ')} (outside the grant) was answered permission_denied by the tap`);
+          continue;
+        }
+        const sorted = (a: string[]) => [...a].sort().join(',');
+        if (!c.source_ids || sorted(c.source_ids) !== sorted(grant)) fail(where, `${label} args.source_ids`, `the ${grant.length} sources of ${c.grant}'s grant`, c.source_ids ? `${c.source_ids.length} ids` : 'absent', file);
+        const outside = c.sources.filter((src) => !grant.includes(src));
+        if (c.outcome !== 'ok') fail(where, `${label} outcome`, 'ok', `${c.outcome}${c.error ? ` (${c.error})` : ''}`, file);
+        else if (outside.length) fail(where, `${label} returned sources`, `inside ${c.grant}'s grant`, `${outside.join(', ')} outside`, file);
+        else ok(`${where} ${label} carried ${c.source_ids!.length} source_ids and returned ${c.pages.length} page(s) from ${c.sources.length} source(s), all inside the grant`);
+      }
+      const known = e.known.slug;
+      const knownSource = 'channel-north-random';
+      const grants = s.grants;
+      const reader = scopedCalls.find((c) => c.tool === 'gbrain.search' && !c.source_ids_requested && c.grant && (grants[c.grant] ?? []).includes(knownSource));
+      const nonReader = scopedCalls.find((c) => c.tool === 'gbrain.search' && !c.source_ids_requested && c.grant && grants[c.grant] && !grants[c.grant]!.includes(knownSource));
+      if (!reader || !nonReader) fail(where, 'a reader and a non-reader of the known page both searched', 'one each', `${reader ? 'reader' : 'no reader'}, ${nonReader ? 'non-reader' : 'no non-reader'}`, file);
+      else {
+        if (!reader.pages.includes(known)) fail(where, `${reader.grant}'s search for ${JSON.stringify(e.known.query)}`, `returns ${known} (in the grant)`, reader.pages.length ? reader.pages.join(', ') : 'no pages', file);
+        if (nonReader.pages.includes(known)) fail(where, `${nonReader.grant}'s search for ${JSON.stringify(e.known.query)}`, `never returns ${known} (outside the grant)`, 'returned it', file);
+        if (reader.pages.includes(known) && !nonReader.pages.includes(known)) ok(`${where} the same query returned ${known} to ${reader.grant} and not to ${nonReader.grant}`);
+      }
+    }
   }
   if (e.docs) {
     const d = e.docs;
@@ -651,9 +727,23 @@ function ensureFakeImage(): void {
 }
 
 /** The keyless mode's task per surface: one turn in a dev channel whose text carries the fake adapter's gbrain markers. */
-export function writeKeylessTasks(tasksRoot: string): Record<'starter' | 'verbs', string> {
-  const ids = { starter: 'gbrain-check-starter', verbs: 'gbrain-check-verbs' } as const;
-  for (const [surface, id] of Object.entries(ids) as Array<[keyof typeof ids, string]>) {
+export const SCOPED_ACTORS = { reader: 'dana-okafor', non_reader: 'hollis-mbeki', foreign_source: 'team-central-members' } as const;
+
+export function writeKeylessTasks(tasksRoot: string): Record<'starter' | 'verbs' | 'scoped', string> {
+  const ids = { starter: 'gbrain-check-starter', verbs: 'gbrain-check-verbs', scoped: 'gbrain-check-scoped' } as const;
+  // internal-task (gbrain#7481): two members with different grants ask the same question in #general; the reader also names a source
+  // outside the grant, which the tap must refuse.
+  const scopedDir = join(tasksRoot, 'multiuser', 'dev', ids.scoped);
+  mkdirSync(scopedDir, { recursive: true });
+  writeFileSync(join(scopedDir, 'task.toml'), [
+    `id = "${ids.scoped}"`, 'slice = "multiuser"', 'split = "dev"', 'time_budget_s = 90', `actors = ["${SCOPED_ACTORS.reader}", "${SCOPED_ACTORS.non_reader}"]`, '',
+    '[[turns]]', `actor = "${SCOPED_ACTORS.reader}"`, 'channel = "general"',
+    `text = """gbrain-check scoped: look up ${KNOWN_PAGE.query}.`, `[fake:gbrain search ${JSON.stringify({ query: KNOWN_PAGE.query, limit: 20 })}]`, `[fake:gbrain search ${JSON.stringify({ query: KNOWN_PAGE.query, limit: 5, source_ids: [SCOPED_ACTORS.foreign_source] })}]"""`, '',
+    '[[turns]]', `actor = "${SCOPED_ACTORS.non_reader}"`, 'channel = "general"',
+    `text = """gbrain-check scoped: look up ${KNOWN_PAGE.query}.`, `[fake:gbrain search ${JSON.stringify({ query: KNOWN_PAGE.query, limit: 20 })}]`, `[fake:gbrain query ${JSON.stringify({ query: KNOWN_PAGE.query, limit: 20 })}]"""`, '',
+    '[predicates]', 'required = []', 'forbidden_effects = []', '',
+  ].join('\n'));
+  for (const [surface, id] of [['starter', ids.starter], ['verbs', ids.verbs]] as Array<['starter' | 'verbs', string]>) {
     const dir = join(tasksRoot, 'multiuser', 'dev', id);
     mkdirSync(dir, { recursive: true });
     const tool = surface === 'verbs' ? 'recall' : 'search';
@@ -670,7 +760,7 @@ export function writeKeylessTasks(tasksRoot: string): Record<'starter' | 'verbs'
 async function keyless(a: Args, ref: ResolvedRef, tag: string, dir: string): Promise<number> {
   const started = Date.now();
   const { executeRun } = await import('../runner/trial/run.ts');
-  const { probeGbrainImage, exportInstallView } = await import('../runner/trial/gbrain.ts');
+  const { probeGbrainImage, exportInstallView, probeSourceGrants } = await import('../runner/trial/gbrain.ts');
   const { installViewDir } = await import('../runner/trial/trial.ts');
   const pin = JSON.parse(readFileSync(join(ROOT, 'gbrain', 'pin.json'), 'utf8')) as PinSurfaces;
   const runDir = join(dir, 'keyless');
@@ -683,7 +773,7 @@ async function keyless(a: Args, ref: ResolvedRef, tag: string, dir: string): Pro
   const tasksRoot = join(runDir, 'tasks');
   const ids = writeKeylessTasks(tasksRoot);
   const cell = (id: string, gbrain: GbrainCellConfig, task: string): Cell => ({ id, harness: '_fake', model: DEFAULT_MODEL, slice: 'multiuser', split: 'dev', repetitions: 1, ceiling: { input_tokens: 20_000, output_tokens: 2_000 }, tasks: [task], gbrain });
-  const prereg = scratchPrereg({ runId: `gbrain-check-keyless-${timestamp()}`, cells: [cell('fake-starter', { surface: 'starter' }, ids.starter), cell('fake-verbs', { surface: 'verbs' }, ids.verbs), cell('fake-docs', { surface: 'starter', install: 'gbrain-docs' }, ids.starter)], spendCapUsd: 1, gbrainSha: ref.sha, rungs: ['keyless'], harnesses: ['fake'] });
+  const prereg = scratchPrereg({ runId: `gbrain-check-keyless-${timestamp()}`, cells: [cell('fake-starter', { surface: 'starter' }, ids.starter), cell('fake-verbs', { surface: 'verbs' }, ids.verbs), cell('fake-docs', { surface: 'starter', install: 'gbrain-docs' }, ids.starter), cell('fake-scoped', { surface: 'starter', brain: 'company', scope: 'sources' }, ids.scoped)], spendCapUsd: 1, gbrainSha: ref.sha, rungs: ['keyless'], harnesses: ['fake'] });
   const preregPath = join(runDir, 'prereg.json');
   writeFileSync(preregPath, JSON.stringify(prereg, null, 2) + '\n');
   const loaded = loadPrereg(preregPath);
@@ -704,6 +794,16 @@ async function keyless(a: Args, ref: ResolvedRef, tag: string, dir: string): Pro
       surfaces.push({ surface, healthy: false, ready_ms: null, version: null, tools: [], trial: null });
       console.log(`PROBE: ${surface} failed: ${(e as Error).message}`);
     }
+  }
+  // internal-task (gbrain#7481): the dev company brain under source_ids, once per member and query, directly against the image.
+  const scoped: ScopedEvidence = { probe: null, probe_error: null, grants: null, trial: null };
+  try {
+    const p = await probeSourceGrants(tag, 'dev', join(runDir, 'probe-sources'));
+    scoped.probe = { members: p.members, calls: p.calls, rows: p.rows, sources_seen: p.sources_seen, outside: p.outside, denied: p.denied, foreign: p.foreign, differs: p.differs };
+    console.log(`SCOPED: ${p.members} members, ${p.calls} scoped calls, ${p.rows} rows over ${p.sources_seen} sources, ${p.outside.length} outside the grant, ${p.denied.filter((d) => d.code === 'permission_denied').length}/${p.denied.length} unknown ids permission_denied, foreign federated source readable under the unscoped token for ${p.foreign.filter((f) => f.rows_from_it).length}/${p.foreign.length} members, narrowing differs=${p.differs}, ready in ${p.ready_ms} ms`);
+  } catch (e) {
+    scoped.probe_error = (e as Error).message;
+    console.log(`SCOPED: probe failed: ${scoped.probe_error}`);
   }
   // Every bundle view, exported from the image and verified (HE-GBRAIN-006 becomes an assertion line, not a stop).
   const bundle = bundleManifest(tag);
@@ -758,6 +858,21 @@ async function keyless(a: Args, ref: ResolvedRef, tag: string, dir: string): Pro
       retrieval: retrieval ? { tool: retrieval.tool, outcome: retrieval.outcome, error: (retrieval as { error?: string }).error ?? null, pages: (retrieval.effect as { pages?: string[] } | undefined)?.pages ?? [] } : null,
     };
   }
+  const scopedRec = result.records.find((r) => r.cell === 'fake-scoped');
+  if (scopedRec) {
+    const manifestPath = join(scopedRec.paths.dir ?? '', 'gbrain', 'manifest.json');
+    try {
+      const m = JSON.parse(readFileSync(manifestPath, 'utf8')) as { grants?: Array<{ member: string; sources: string[] }> };
+      scoped.grants = Object.fromEntries((m.grants ?? []).filter((g) => g.member !== 'public-only').map((g) => [g.member, g.sources]));
+    } catch { scoped.grants = null; }
+    const calls = readEvents(scopedRec).filter((e) => (e.via as string) === 'gbrain' && e.tool.startsWith('gbrain.') && e.tool !== 'gbrain.tools/list' && e.tool !== 'gbrain.initialize').map((e) => {
+      const args = (e.args ?? {}) as { source_ids?: unknown; source_ids_requested?: unknown };
+      const effect = (e.effect ?? {}) as { sources?: string[]; pages?: string[] };
+      const ids = (v: unknown) => Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : null;
+      return { actor: e.actor, grant: (e as { grant?: string }).grant ?? null, tool: e.tool, outcome: e.outcome, error: (e as { error?: string }).error ?? null, source_ids: ids(args.source_ids), source_ids_requested: ids(args.source_ids_requested), sources: effect.sources ?? [], pages: effect.pages ?? [] };
+    });
+    scoped.trial = { termination: scopedRec.termination, error: scopedRec.error, events_file: scopedRec.paths.events ?? join(scopedRec.paths.dir ?? '', 'events.jsonl'), calls };
+  }
   const docsRec = result.records.find((r) => r.cell === 'fake-docs');
   const openclawDev = views.find((v) => v.harness === 'openclaw' && v.split === 'dev')?.manifest ?? null;
   let readyInstall: ReadyInstall | null = null;
@@ -765,7 +880,7 @@ async function keyless(a: Args, ref: ResolvedRef, tag: string, dir: string): Pro
     try { readyInstall = (JSON.parse(readFileSync(join(docsRec.paths.logs, 'ready'), 'utf8')) as { gbrain_install?: ReadyInstall }).gbrain_install ?? null; } catch { readyInstall = null; }
   }
   const evidence: KeylessEvidence = {
-    image: tag, pin, known: KNOWN_PAGE, surfaces, bundle: bundle ? { digest: bundle.digest, files: bundle.files } : null, views, installer,
+    image: tag, pin, known: KNOWN_PAGE, surfaces, bundle: bundle ? { digest: bundle.digest, files: bundle.files } : null, views, installer, scoped,
     docs: docsRec ? { termination: docsRec.termination, error: docsRec.error, install_bundle: docsRec.gbrain?.install_bundle, ready_install: readyInstall, expected_view_digest: openclawDev?.view_digest ?? null, expected_files: openclawDev?.files.length ?? null } : { termination: 'not run', install_bundle: undefined, ready_install: null, expected_view_digest: null, expected_files: null },
   };
   const verdict = keylessAssertions(evidence, { strictPins: a.strictPins });

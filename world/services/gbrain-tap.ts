@@ -18,6 +18,14 @@
 // internal-task (the install ladder): recall joins search and query in the row-count branch (its results carry slug, so
 // cross-scope reads on the verbs surface are measurable), and effect.degraded carries gbrain's own stamp when a reply
 // fell back to keyword search (recall's search_degraded or facts_degraded.reason), which the runner's semantic check reads.
+//
+// internal-task (gbrain#7481, scope "sources"): the upstream may carry the company brain's member-to-sources grants instead of
+// member tokens. Every search and query then goes out under the trial's one unscoped token with source_ids set to the
+// requesting member's granted sources (the public source before the first turn), intersected with any source_ids the
+// harness itself named; a harness that names only sources outside the grant is answered permission_denied by the tap in
+// gbrain's own shape, and nothing is forwarded. The event's args carry the source_ids as forwarded (and the harness's own
+// under source_ids_requested when they differed), effect.sources the distinct source_id of the rows that came back, so a
+// keyless check can prove no row's source lay outside the grant. The harness prompt does not change.
 
 import type { Member } from '../types.ts';
 import type { EventLog } from './events.ts';
@@ -29,7 +37,13 @@ export interface GbrainUpstream {
   token: string;
   /** internal-task: member scope. The company brain's tokens.json: one granted token per member and the public-only token. */
   tokens?: { members: Record<string, string>; public_only: string };
+  /** internal-task (gbrain#7481): scope "sources". The company brain's grants: each member's readable source ids, and the sources
+   *  every member may read (the public source), presented before the first turn. Every call keeps the unscoped token. */
+  grants?: { members: Record<string, string[]>; public: string[] };
 }
+
+/** Tools that take source_ids at the pin (gbrain 0.60.452.0); the tap narrows exactly these under scope "sources". */
+export const SOURCE_SCOPED_TOOLS: ReadonlySet<string> = new Set(['search', 'query']);
 
 /** Starter-surface tools that change the brain; every other tool, and initialize and tools/list, is a read. */
 export const GBRAIN_WRITE_TOOLS: ReadonlySet<string> = new Set([
@@ -124,6 +138,8 @@ export function savedFactsOf(result: Record<string, unknown>, payloads: unknown[
 
 export interface GbrainEffect {
   pages: string[]; count: number; latency_ms: number;
+  /** internal-task (gbrain#7481): the distinct source_id values of the rows a search, query or recall returned, in order of first appearance. */
+  sources?: string[];
   /** internal-task: gbrain's degraded stamp on a search, query or recall reply, when present. */
   degraded?: string;
   /** internal-task correction (internal-task): the saved facts the reply carried beside its rows, when any; never counted in pages or count. */
@@ -174,6 +190,8 @@ export function describeCall(request: RpcMessage, reply: RpcMessage | undefined,
       ?? (name === 'recall' ? (payloads.find((p) => p && typeof p === 'object' && Array.isArray((p as { results?: unknown }).results)) as { results: unknown[] } | undefined)?.results : undefined);
     effect.count = (name === 'search' || name === 'query' || name === 'recall') && rows ? rows.length : effect.pages.length;
     if (name === 'search' || name === 'query' || name === 'recall') {
+      const sources = [...new Set((rows ?? []).map((r) => (r && typeof r === 'object' ? (r as { source_id?: unknown }).source_id : undefined)).filter((s): s is string => typeof s === 'string' && s !== ''))];
+      if (sources.length) effect.sources = sources;
       const d = degradedStampOf(payloads); if (d) effect.degraded = d;
       if (result) { const facts = savedFactsOf(result, payloads); if (facts.length) effect.facts = facts; }
     }
@@ -193,11 +211,35 @@ export interface GbrainTapOptions {
   fetchImpl?: typeof fetch;
 }
 
-/** internal-task: which token the tap presents for this request, named as the event's grant. */
-export function grantFor(upstream: GbrainUpstream, requester: string | null): { grant: string; token: string | null } {
+/** internal-task: which token the tap presents for this request, named as the event's grant. internal-task: under scope "sources" the
+ *  token is always the unscoped one and sources lists the requester's granted source ids (the public sources outside turns);
+ *  null sources for a member the grants do not cover. */
+export function grantFor(upstream: GbrainUpstream, requester: string | null): { grant: string; token: string | null; sources?: string[] | null } {
+  if (upstream.grants) {
+    if (requester === null) return { grant: 'public-only', token: upstream.token, sources: upstream.grants.public };
+    return { grant: requester, token: upstream.token, sources: upstream.grants.members[requester] ?? null };
+  }
   if (!upstream.tokens) return { grant: 'bot', token: upstream.token };
   if (requester === null) return { grant: 'public-only', token: upstream.tokens.public_only };
   return { grant: requester, token: upstream.tokens.members[requester] ?? null };
+}
+
+/** gbrain's own permission_denied tool result (0.60.452.0 shape, the fields the tap and graders read), for a request the
+ *  tap refuses to forward because every source the harness named lies outside the requester's grant. */
+function deniedReply(id: RpcMessage['id'], requested: string[], grant: string): RpcMessage {
+  const body = { error: 'permission_denied', code: 'permission_denied', message: 'Requested source is outside your granted sources', suggestion: `${requested.join(', ')} not granted to ${grant}; omit source_ids to read within this member's sources.`, retryable: false };
+  return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(body) }], isError: true } };
+}
+
+/** internal-task (gbrain#7481): the request as the tap forwards it under scope "sources": search and query gain source_ids set to the
+ *  grant, intersected with the harness's own source_ids when it sent any. denied is set when that intersection is empty. */
+export function scopeRequest(request: RpcMessage, sources: string[]): { request: RpcMessage; requested?: string[]; denied?: string[] } {
+  if (request.method !== 'tools/call' || !SOURCE_SCOPED_TOOLS.has(String(request.params?.name ?? ''))) return { request };
+  const args = (request.params?.arguments && typeof request.params.arguments === 'object' ? request.params.arguments : {}) as Record<string, unknown>;
+  const own = Array.isArray(args.source_ids) ? args.source_ids.filter((s): s is string => typeof s === 'string' && s !== '') : [];
+  const narrowed = own.length ? sources.filter((s) => own.includes(s)) : sources;
+  const scoped = { ...request, params: { ...request.params, arguments: { ...args, source_ids: narrowed } } };
+  return { request: scoped, ...(own.length && narrowed.length !== own.length ? { requested: own } : {}), ...(own.length && !narrowed.length ? { denied: own } : {}) };
 }
 
 export async function handleGbrainRequest(req: Request, o: GbrainTapOptions): Promise<Response> {
@@ -207,10 +249,25 @@ export async function handleGbrainRequest(req: Request, o: GbrainTapOptions): Pr
   }
   const actor = o.resolveActor(req);
   if (!actor) return rpcError(401, -32001, 'unknown or missing bearer token', { 'www-authenticate': 'Bearer realm="world-gbrain"' });
-  const { grant, token } = grantFor(o.upstream, o.requester?.() ?? null);
+  const { grant, token, sources } = grantFor(o.upstream, o.requester?.() ?? null);
   if (token === null) return rpcError(502, -32000, `no gbrain token for member ${grant}; the company brain's tokens.json does not cover this requester`);
-  const bodyText = await req.text();
-  const requests = parseRpcBody(bodyText, 'application/json');
+  if (sources === null) return rpcError(502, -32000, `no gbrain source grant for member ${grant}; the company brain's manifest does not cover this requester`);
+  const rawText = await req.text();
+  const incoming = parseRpcBody(rawText, 'application/json');
+  // Under scope "sources" the body is rewritten: search and query carry the requester's source_ids; a request the tap denies
+  // is answered here (in gbrain's shape) and left out of what goes upstream.
+  const scoped: ReturnType<typeof scopeRequest>[] = sources ? incoming.map((r) => scopeRequest(r, sources)) : incoming.map((request) => ({ request }));
+  const requests = scoped.map((s) => s.request);
+  const requestedById = new Map(scoped.filter((s) => s.requested).map((s) => [String(s.request.id), s.requested!]));
+  const eventArgs = (request: RpcMessage, args: unknown) => {
+    const own = requestedById.get(String(request.id));
+    return own && args && typeof args === 'object' ? { ...(args as Record<string, unknown>), source_ids_requested: own } : args;
+  };
+  const local = new Map<string, RpcMessage>();
+  for (const s of scoped) if (s.denied && s.request.id !== undefined && s.request.id !== null) local.set(String(s.request.id), deniedReply(s.request.id, s.denied, grant));
+  const forward = scoped.filter((s) => !s.denied).map((s) => s.request);
+  const batched = rawText.trimStart().startsWith('[');
+  const bodyText = !sources ? rawText : JSON.stringify(batched ? forward : forward[0] ?? null);
   const headers: Record<string, string> = {
     authorization: `Bearer ${token}`,
     'content-type': req.headers.get('content-type') ?? 'application/json',
@@ -223,6 +280,16 @@ export async function handleGbrainRequest(req: Request, o: GbrainTapOptions): Pr
   let upstream: Response | null = null;
   let replyText = '';
   let fetchError: string | null = null;
+  if (local.size && !forward.length) {
+    // Everything in the body was denied here: answer it as JSON without an upstream round trip.
+    const latency = Date.now() - started;
+    for (const request of requests) {
+      const d = describeCall(request, local.get(String(request.id)), latency, null);
+      if (d) o.log.append({ actor: actor.id, via: 'gbrain', tool: d.tool, kind: d.kind, args: eventArgs(request, d.args), outcome: d.outcome, ...(d.error ? { error: d.error } : {}), effect: { ...d.effect }, grant });
+    }
+    const out = [...local.values()];
+    return new Response(JSON.stringify(batched ? out : out[0]), { status: 200, headers: { 'content-type': 'application/json' } });
+  }
   try {
     upstream = await (o.fetchImpl ?? fetch)(`${o.upstream.url}/mcp`, { method: 'POST', headers, body: bodyText });
     replyText = await upstream.text();
@@ -231,16 +298,21 @@ export async function handleGbrainRequest(req: Request, o: GbrainTapOptions): Pr
   }
   const latency = Date.now() - started;
   const replies = upstream ? parseRpcBody(replyText, upstream.headers.get('content-type')) : [];
-  const byId = new Map<string, RpcMessage>();
+  const byId = new Map<string, RpcMessage>(local);
   for (const r of replies) if (r.id !== undefined && r.id !== null) byId.set(String(r.id), r);
   const status = upstream ? upstream.status : null;
   for (const request of requests) {
     const reply = request.id !== undefined && request.id !== null ? byId.get(String(request.id)) : undefined;
-    const d = describeCall(request, reply, latency, fetchError ? 502 : status);
+    const denied = reply !== undefined && local.has(String(request.id));
+    const d = describeCall(request, reply, latency, denied ? null : fetchError ? 502 : status);
     if (!d) continue;
-    o.log.append({ actor: actor.id, via: 'gbrain', tool: d.tool, kind: d.kind, args: d.args, outcome: d.outcome, ...(d.error ? { error: fetchError ? 'upstream_unreachable' : d.error } : {}), effect: { ...d.effect }, grant });
+    o.log.append({ actor: actor.id, via: 'gbrain', tool: d.tool, kind: d.kind, args: eventArgs(request, d.args), outcome: d.outcome, ...(d.error ? { error: fetchError && !denied ? 'upstream_unreachable' : d.error } : {}), effect: { ...d.effect }, grant });
   }
   if (!upstream) return rpcError(502, -32000, `gbrain upstream unreachable: ${fetchError}`);
+  if (local.size && batched && upstream.ok) {
+    // A batch with denied and forwarded requests: splice the local replies in beside the upstream's, as JSON.
+    return new Response(JSON.stringify([...replies, ...local.values()]), { status: 200, headers: { 'content-type': 'application/json' } });
+  }
   const out = new Headers();
   for (const h of ['content-type', 'cache-control', 'mcp-session-id', 'mcp-protocol-version']) { const v = upstream.headers.get(h); if (v) out.set(h, v); }
   const bodyless = upstream.status === 204 || upstream.status === 205 || upstream.status === 304;

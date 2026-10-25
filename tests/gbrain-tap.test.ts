@@ -5,7 +5,7 @@
 
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import type { WorldEvent } from '../world/services/events.ts';
-import { collectSlugs, describeCall, grantFor, parseRpcBody } from '../world/services/gbrain-tap.ts';
+import { collectSlugs, describeCall, grantFor, parseRpcBody, scopeRequest } from '../world/services/gbrain-tap.ts';
 import type { WorldServer } from '../world/services/server.ts';
 import { startWorld } from './world-helpers.ts';
 
@@ -23,6 +23,11 @@ function toolResult(name: string, args: Record<string, unknown>) {
   switch (name) {
     case 'search':
     case 'query':
+      // internal-task (gbrain#7481): under source_ids the rows carry source_id and only the named sources answer.
+      if (Array.isArray(args.source_ids) && args.source_ids.length) {
+        const all = [{ slug: 'heldout/chats/north-random', source_id: 'channel-north-random' }, { slug: 'heldout/notes/public-handbook', source_id: 'public' }, { slug: 'heldout/chats/central-standup', source_id: 'team-central' }];
+        return { content: [text(all.filter((r) => (args.source_ids as string[]).includes(r.source_id))), text('[gbrain search] Rows are a ranked top-K, not proof of coverage.')] };
+      }
       // internal-task: after a remember, search carries the facts in a prose block and in _meta.retrieval.saved_facts, never as rows.
       if (String(args.query ?? '').includes('remembered')) return { _meta: { retrieval: { returned_count: 1, saved_facts: [{ id: 1, fact: 'Door 4B is the Covey & Lark dock', entity_slug: 'covey-lark', kind: 'fact', source: 'test' }] } }, content: [
         text([{ slug: 'heldout/chats/2025-10-15-saltmarsh-churn-risk', title: 'b' }]),
@@ -234,6 +239,61 @@ test('under member scope the tap presents the requester\'s token set through /ad
     expect(ws.gbrainRequester()).toBeNull();
     await tap(ws.credentials.bot.token, call(54, 'search', { query: 'after the turns' }));
     expect(last()).toMatchObject({ grant: 'public-only' });
+  } finally {
+    await admin(null);
+    ws.setGbrain({ url: `http://127.0.0.1:${upstream.port}`, token: GBRAIN_TOKEN });
+  }
+});
+
+test('under scope "sources" every search and query carries the requester\'s source_ids under the unscoped token, the event records the grant and the returned sources, a harness source_ids is intersected, and one naming only foreign sources is denied by the tap in gbrain\'s shape', async () => {
+  const GRANTS = { members: { 'dana-okafor': ['private-dana-okafor', 'public', 'channel-north-random'], 'hollis-mbeki': ['private-hollis-mbeki', 'public', 'team-central'] }, public: ['public'] };
+  ws.setGbrain({ url: `http://127.0.0.1:${upstream.port}`, token: GBRAIN_TOKEN, grants: GRANTS });
+  const admin = (member: string | null) => fetch(`${ws.url}/admin/gbrain/requester`, { method: 'POST', headers: { authorization: `Bearer ${ws.credentials.admin_token}`, 'content-type': 'application/json' }, body: JSON.stringify({ member }) });
+  const forwarded = () => (seen.at(-1)!.body as { params: { arguments: Record<string, unknown> } }).params.arguments;
+  try {
+    expect(grantFor({ url: '', token: GBRAIN_TOKEN, grants: GRANTS }, null)).toEqual({ grant: 'public-only', token: GBRAIN_TOKEN, sources: ['public'] });
+    expect(grantFor({ url: '', token: GBRAIN_TOKEN, grants: GRANTS }, 'hollis-mbeki')).toEqual({ grant: 'hollis-mbeki', token: GBRAIN_TOKEN, sources: GRANTS.members['hollis-mbeki'] });
+    expect(grantFor({ url: '', token: GBRAIN_TOKEN, grants: GRANTS }, 'nobody')).toMatchObject({ grant: 'nobody', sources: null });
+    expect(scopeRequest({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_page', arguments: { slug: 'x' } } }, ['public'])).toEqual({ request: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_page', arguments: { slug: 'x' } } } });
+
+    seen.length = 0;
+    const before = await replyOf(await tap(ws.credentials.bot.token, call(61, 'search', { query: 'before any turn', limit: 5 })));
+    expect(seen.at(-1)!.auth).toBe(`Bearer ${GBRAIN_TOKEN}`);
+    expect(forwarded()).toEqual({ query: 'before any turn', limit: 5, source_ids: ['public'] });
+    expect(last()).toMatchObject({ tool: 'gbrain.search', grant: 'public-only', args: { source_ids: ['public'] }, effect: { count: 1, pages: ['heldout/notes/public-handbook'], sources: ['public'] } });
+    expect((before[0]!.result as { content: unknown[] }).content).toHaveLength(2);
+
+    await admin('dana-okafor');
+    await tap(ws.credentials.bot.token, call(62, 'query', { query: 'north' }));
+    expect(forwarded()).toEqual({ query: 'north', source_ids: GRANTS.members['dana-okafor'] });
+    expect(last()).toMatchObject({ tool: 'gbrain.query', grant: 'dana-okafor', outcome: 'ok', effect: { pages: ['heldout/chats/north-random', 'heldout/notes/public-handbook'], sources: ['channel-north-random', 'public'] } });
+    expect((last().args as { source_ids_requested?: unknown }).source_ids_requested).toBeUndefined();
+
+    await tap(ws.credentials.bot.token, call(63, 'search', { query: 'narrowed', source_ids: ['public', 'team-central'] }));
+    expect(forwarded()).toEqual({ query: 'narrowed', source_ids: ['public'] });
+    expect(last()).toMatchObject({ grant: 'dana-okafor', outcome: 'ok', args: { source_ids: ['public'], source_ids_requested: ['public', 'team-central'] }, effect: { sources: ['public'] } });
+
+    const sent = seen.length;
+    const denied = await tap(ws.credentials.bot.token, call(64, 'search', { query: 'foreign only', source_ids: ['team-central'] }));
+    expect(denied.status).toBe(200);
+    expect(seen.length).toBe(sent);
+    const [reply] = await replyOf(denied);
+    expect(reply).toMatchObject({ jsonrpc: '2.0', id: 64, result: { isError: true } });
+    expect(JSON.parse(((reply!.result as { content: Array<{ text: string }> }).content[0]!).text)).toMatchObject({ code: 'permission_denied', error: 'permission_denied' });
+    expect(last()).toMatchObject({ tool: 'gbrain.search', grant: 'dana-okafor', outcome: 'error', error: 'permission_denied', args: { source_ids: [], source_ids_requested: ['team-central'] }, effect: { count: 0, pages: [] } });
+
+    await admin('hollis-mbeki');
+    await tap(ws.credentials.bot.token, call(65, 'search', { query: 'same question' }));
+    expect(forwarded()).toEqual({ query: 'same question', source_ids: GRANTS.members['hollis-mbeki'] });
+    expect(last()).toMatchObject({ grant: 'hollis-mbeki', effect: { sources: ['public', 'team-central'] } });
+    await tap(ws.credentials.bot.token, call(66, 'get_page', { slug: 'heldout/chats/coastal-team-banter' }));
+    expect(forwarded()).toEqual({ slug: 'heldout/chats/coastal-team-banter' });
+    expect(last()).toMatchObject({ tool: 'gbrain.get_page', grant: 'hollis-mbeki', outcome: 'ok' });
+
+    await admin('kwame-adjei');
+    const res = await tap(ws.credentials.bot.token, call(67, 'search', { query: 'no grant for kwame' }));
+    expect(res.status).toBe(502);
+    expect((await res.json() as { error: { message: string } }).error.message).toContain('no gbrain source grant for member kwame-adjei');
   } finally {
     await admin(null);
     ws.setGbrain({ url: `http://127.0.0.1:${upstream.port}`, token: GBRAIN_TOKEN });

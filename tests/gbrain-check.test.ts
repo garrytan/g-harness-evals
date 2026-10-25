@@ -122,8 +122,14 @@ describe('the scratch preregistration and the check directory', () => {
     const present = existsSync(join(ROOT, TOLD_PREAMBLE));
     expect(skipped).toEqual(present ? [] : [expect.stringContaining(`rung told skipped: the told preamble ${TOLD_PREAMBLE} is not in this checkout`)]);
     expect(cells.map((c) => c.id)).toEqual(present ? ['openclaw-haiku-gbrain-told', 'openclaw-haiku-gbrain-mcp'] : ['openclaw-haiku-gbrain-mcp']);
-    expect(() => paidCells(['openclaw'], ['plugin'])).toThrow(/HE-RUN-002 --rungs names "plugin"; the rungs are mcp, told, docs, installer, verbs-told, semantic-told, docs-semantic/);
-    expect(Object.keys(RUNGS)).toEqual(['mcp', 'told', 'docs', 'installer', 'verbs-told', 'semantic-told', 'docs-semantic']);
+    expect(() => paidCells(['openclaw'], ['plugin'])).toThrow(/HE-RUN-002 --rungs names "plugin"; the rungs are mcp, told, docs, installer, verbs-told, semantic-told, docs-semantic, told-company, told-scoped/);
+    expect(Object.keys(RUNGS)).toEqual(['mcp', 'told', 'docs', 'installer', 'verbs-told', 'semantic-told', 'docs-semantic', 'told-company', 'told-scoped']);
+    // gbrain#7481: the two company rungs take internal-task's company told clause, not the ladder's, and the scoped one adds scope sources.
+    expect(RUNGS['told-scoped']).toEqual({ gbrain: { surface: 'starter', brain: 'company', scope: 'sources' }, told: true, preamble: 'tasks/multiuser/_shared/preamble.gbrain-company.md' });
+    expect(paidCells(['hermes'], ['told-company', 'told-scoped'], { reps: 1 }).cells.map((c) => [c.id, c.gbrain, c.preamble])).toEqual([
+      ['hermes-haiku-gbrain-told-company', { surface: 'starter', brain: 'company' }, 'tasks/multiuser/_shared/preamble.gbrain-company.md'],
+      ['hermes-haiku-gbrain-told-scoped', { surface: 'starter', brain: 'company', scope: 'sources' }, 'tasks/multiuser/_shared/preamble.gbrain-company.md'],
+    ]);
     expect(RUNGS['semantic-told']!.gbrain).toEqual({ surface: 'starter', embeddings: 'openai:text-embedding-3-small' });
     // internal-task: the installer rung is gbrain's own installer with the arm's preamble, so a check of it needs no told preamble.
     expect(RUNGS.installer).toEqual({ gbrain: { surface: 'starter', install: 'gbrain-installer' }, told: false });

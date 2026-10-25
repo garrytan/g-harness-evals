@@ -20,7 +20,7 @@ import type { WorldEvent } from '../../world/services/events.ts';
 import type { World } from '../../world/types.ts';
 import { loadScript, startScriptedHarness } from '../scripted/executor.ts';
 import { startComposeHarness, startDockerHarness } from './docker.ts';
-import { type GbrainSidecar, type InstallViewManifest, checkCompanyTokens, exportInstallView, startGbrainSidecar, verifyInstallView } from './gbrain.ts';
+import { type GbrainSidecar, type InstallViewManifest, checkCompanyGrants, checkCompanyTokens, exportInstallView, startGbrainSidecar, verifyInstallView } from './gbrain.ts';
 import { GBRAIN_WRITE_TOOLS } from '../../world/services/gbrain-tap.ts';
 import { canReadFile } from '../grade/predicates.ts';
 import { HarnessGone, type Harness, makeTrialDirs, startProcessHarness, writeAtomic } from './harness.ts';
@@ -156,6 +156,8 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
         surface: gbrain.surface, embeddings: gbrain.embeddings, openaiBaseUrl: gbrain.embeddings !== 'off' ? proxy!.baseUrlFor(slot, 'openai', true) : undefined, log });
       // internal-task: under member scope the tap needs a granted token for every member who will take a turn (HE-GBRAIN-004).
       if (sidecar.scope === 'member') checkCompanyTokens(sidecar.tokens, cell.split, task.actors, join(dirs.root, 'gbrain', 'tokens.json'));
+      // internal-task (gbrain#7481): under scope "sources" the tap needs a source grant for every member who will take a turn (HE-GBRAIN-004).
+      if (sidecar.scope === 'sources') checkCompanyGrants(JSON.parse(readFileSync(join(dirs.root, 'gbrain', 'manifest.json'), 'utf8')), cell.split, task.actors, join(dirs.root, 'gbrain', 'manifest.json'));
       if (gbrain.install !== 'mcp') {
         const viewDir = installViewDir(ctx.runDir, cell.harness, cell.split, gbrain.install);
         installView = existsSync(join(viewDir, 'manifest.json'))
@@ -168,7 +170,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       infraError = e.message;
       log(infraError);
     }
-    if (sidecar && !infraError) world.server.setGbrain({ url: sidecar.url, token: sidecar.token, ...(sidecar.tokens ? { tokens: { members: sidecar.tokens.members, public_only: sidecar.tokens.public_only } } : {}) });
+    if (sidecar && !infraError) world.server.setGbrain({ url: sidecar.url, token: sidecar.token, ...(sidecar.tokens ? { tokens: { members: sidecar.tokens.members, public_only: sidecar.tokens.public_only } } : {}), ...(sidecar.grants ? { grants: sidecar.grants } : {}) });
   }
   const installKind = installView ? (installView.install ?? 'gbrain-docs') : null;
   const installViewPath = installKind ? installViewDir(ctx.runDir, cell.harness, cell.split, installKind) : null;

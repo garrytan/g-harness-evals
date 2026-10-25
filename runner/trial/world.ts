@@ -93,8 +93,8 @@ export class TrialWorld {
     return body.now!;
   }
 
-  /** internal-task: the tap presents the requesting member's gbrain token under member scope. */
-  get gbrainScoped(): boolean { return !!this.server.gbrain()?.tokens; }
+  /** internal-task: the tap presents the requesting member's gbrain token under member scope; internal-task: or its source_ids under scope "sources". */
+  get gbrainScoped(): boolean { const g = this.server.gbrain(); return !!(g?.tokens || g?.grants); }
 
   async setGbrainRequester(member: string | null): Promise<void> {
     const res = await this.admin('/admin/gbrain/requester', { method: 'POST', body: JSON.stringify({ member }) });

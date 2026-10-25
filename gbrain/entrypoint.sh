@@ -3,8 +3,10 @@
 #
 #   HE_GBRAIN_SPLIT   dev | heldout: which split's brain under /brains to serve
 #   HE_GBRAIN_BRAIN   bot-visible (default) | company: /brains/<split> or /brains/<split>-company (docs/gbrain-arm.md, "Company brain")
-#   HE_GBRAIN_SCOPE   none (default) | member: with member, the company brain's tokens.json (one bearer token per member,
-#                     each granted the sources that member may read, plus public-only) is copied to $HE_GBRAIN_OUT/tokens.json
+#   HE_GBRAIN_SCOPE   none (default) | member | sources: with member, the company brain's tokens.json (one bearer token per member,
+#                     each granted the sources that member may read, plus public-only) is copied to $HE_GBRAIN_OUT/tokens.json;
+#                     with sources (internal-task, gbrain#7481), the company brain's manifest.json (its grants map members to source
+#                     ids, no tokens) is copied to $HE_GBRAIN_OUT/manifest.json and the world's tap adds source_ids per request
 #                     for the world's tap to present per requesting member; member needs brain company
 #   HE_GBRAIN_OUT     a mounted evaluator directory: the token(s) and the sidecar's logs land here
 #   HE_TRIAL_ID       names the token (trial-<id>)
@@ -37,8 +39,8 @@ refuse() { echo "$1" >&2; exit 2; }
 pin=/opt/sidecar/gbrain/pin.json
 case "$HE_GBRAIN_SPLIT" in dev|heldout) ;; *) refuse "HE_GBRAIN_SPLIT must be dev or heldout (got $HE_GBRAIN_SPLIT)" ;; esac
 case "$HE_GBRAIN_BRAIN" in bot-visible|company) ;; *) refuse "HE_GBRAIN_BRAIN must be bot-visible or company (got $HE_GBRAIN_BRAIN); fix: set gbrain.brain on the cell to one of them" ;; esac
-case "$HE_GBRAIN_SCOPE" in none|member) ;; *) refuse "HE_GBRAIN_SCOPE must be none or member (got $HE_GBRAIN_SCOPE); fix: set gbrain.scope on the cell to one of them" ;; esac
-[ "$HE_GBRAIN_SCOPE" = none ] || [ "$HE_GBRAIN_BRAIN" = company ] || refuse "HE_GBRAIN_SCOPE=member needs HE_GBRAIN_BRAIN=company (got $HE_GBRAIN_BRAIN); only the company brain carries member tokens; fix: set gbrain: {surface: starter, brain: company, scope: member}"
+case "$HE_GBRAIN_SCOPE" in none|member|sources) ;; *) refuse "HE_GBRAIN_SCOPE must be none, member or sources (got $HE_GBRAIN_SCOPE); fix: set gbrain.scope on the cell to one of them" ;; esac
+[ "$HE_GBRAIN_SCOPE" = none ] || [ "$HE_GBRAIN_BRAIN" = company ] || refuse "HE_GBRAIN_SCOPE=$HE_GBRAIN_SCOPE needs HE_GBRAIN_BRAIN=company (got $HE_GBRAIN_BRAIN); only the company brain carries member tokens and source grants; fix: set gbrain: {surface: starter, brain: company, scope: $HE_GBRAIN_SCOPE}"
 case "$HE_GBRAIN_SURFACE" in starter|verbs) ;; *) refuse "HE_GBRAIN_SURFACE must be starter or verbs (got $HE_GBRAIN_SURFACE); fix: set gbrain.surface on the cell to one of them" ;; esac
 case "$HE_GBRAIN_EMBEDDINGS" in off) ;; openai:text-embedding-3-small) ;; *) refuse "HE_GBRAIN_EMBEDDINGS must be off or openai:text-embedding-3-small (got $HE_GBRAIN_EMBEDDINGS); fix: set gbrain.embeddings on the cell to one of them" ;; esac
 if [ "$HE_GBRAIN_EMBEDDINGS" != off ]; then
@@ -54,7 +56,8 @@ else
   case "$HE_GBRAIN_BRAIN" in company) src="/brains/$HE_GBRAIN_SPLIT-company" ;; *) src="/brains/$HE_GBRAIN_SPLIT" ;; esac
 fi
 [ -d "$src/.gbrain" ] || refuse "no brain at $src; rebuild the image (gbrain/README.md)"
-[ "$HE_GBRAIN_SCOPE" = none ] || [ -s "$src/tokens.json" ] || refuse "no tokens.json in $src; the company brain was built without member tokens; rebuild the image (gbrain/README.md)"
+[ "$HE_GBRAIN_SCOPE" != member ] || [ -s "$src/tokens.json" ] || refuse "no tokens.json in $src; the company brain was built without member tokens; rebuild the image (gbrain/README.md)"
+[ "$HE_GBRAIN_SCOPE" != sources ] || [ "$(jq -r '.grants | length' "$src/manifest.json" 2>/dev/null || echo 0)" -gt 0 ] || refuse "no grants in $src/manifest.json; the company brain was built without source grants; rebuild the image (gbrain/README.md)"
 
 for k in ANTHROPIC_API_KEY OPENAI_API_KEY OPENROUTER_API_KEY GEMINI_API_KEY VOYAGE_API_KEY; do
   if [ -n "${!k:-}" ]; then echo "refusing to start: $k is set in the sidecar environment; gbrain must never see a model key" >&2; exit 2; fi
@@ -87,6 +90,12 @@ if [ "$HE_GBRAIN_SCOPE" = member ]; then
   cp "$src/tokens.json" "$HE_GBRAIN_OUT/tokens.json.tmp"
   mv "$HE_GBRAIN_OUT/tokens.json.tmp" "$HE_GBRAIN_OUT/tokens.json"
   log "member tokens copied ($(jq -r '.members | length' "$HE_GBRAIN_OUT/tokens.json") members and public-only) into $HE_GBRAIN_OUT/tokens.json"
+fi
+if [ "$HE_GBRAIN_SCOPE" = sources ]; then
+  # internal-task (gbrain#7481): the grants (member -> source ids) for the tap's per-request source_ids; the manifest holds no token.
+  cp "$src/manifest.json" "$HE_GBRAIN_OUT/manifest.json.tmp"
+  mv "$HE_GBRAIN_OUT/manifest.json.tmp" "$HE_GBRAIN_OUT/manifest.json"
+  log "source grants copied ($(jq -r '.grants | length' "$HE_GBRAIN_OUT/manifest.json") grants over $(jq -r '.sources | length' "$HE_GBRAIN_OUT/manifest.json") sources) into $HE_GBRAIN_OUT/manifest.json; the tap adds source_ids per request"
 fi
 umask 022
 log "token minted (trial-$HE_TRIAL_ID) into $HE_GBRAIN_OUT/token at $(( ($(date +%s%N) - t0) / 1000000 )) ms"
