@@ -77,10 +77,11 @@ test('only the pinned surfaces are accepted, and a scripted cell cannot carry gb
 // internal-task (the install ladder): surface, install and embeddings are orthogonal; defaults resolve without touching the cell.
 test('gbrain.install and gbrain.embeddings: validated under HE-GBRAIN-001 naming field, value and allowed set; defaults resolved in the manifest, not the cell; plan prints surface/install/embeddings and one GBRAIN line per configuration; the embedding allowance joins the ceiling', () => {
   const bad = (gbrain: Record<string, unknown>, re: RegExp, id = 'gb-bad') => expect(() => loadPrereg(writePrereg([cell({ gbrain: gbrain as never })], `${id}-${Math.random().toString(36).slice(2, 6)}`))).toThrow(re);
-  bad({ surface: 'starter', install: 'plugin' }, /HE-GBRAIN-001 .*gbrain.install must be one of "mcp", "gbrain-docs" .*got "plugin"/);
+  bad({ surface: 'starter', install: 'plugin' }, /HE-GBRAIN-001 .*gbrain.install must be one of "mcp", "gbrain-docs", "gbrain-installer" .*got "plugin"/);
   bad({ surface: 'starter', embeddings: 'voyage:voyage-4' }, /HE-GBRAIN-001 .*gbrain.embeddings must be one of "off", "openai:text-embedding-3-small" .*got "voyage:voyage-4"/);
   bad({ surface: 'starter', embeddings: 'openai:text-embedding-3-small', brain: 'company' }, /HE-GBRAIN-001 .*needs the bot-visible brain/);
   expect(() => loadPrereg(writePrereg([cell({ harness: 'qm', gbrain: { surface: 'starter', install: 'gbrain-docs' } })], 'gb-docs-qm'))).toThrow(/HE-GBRAIN-001 .*"gbrain-docs" is defined for harnesses openclaw, hermes/);
+  expect(() => loadPrereg(writePrereg([cell({ harness: 'qm', gbrain: { surface: 'starter', install: 'gbrain-installer' } })], 'gb-installer-qm'))).toThrow(/HE-GBRAIN-001 .*"gbrain-installer" is defined for harnesses openclaw, hermes/);
   const { prereg: p, sha256 } = loadPrereg(writePrereg([
     cell({ id: 'fake-mcp', tasks: ['fx-leak'] }),
     cell({ id: 'fake-verbs', gbrain: { surface: 'verbs' }, tasks: ['fx-leak'] }),

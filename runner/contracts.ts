@@ -183,8 +183,11 @@ export interface GbrainCellConfig {
   surface: 'starter' | 'verbs';
   /** internal-task addition: "mcp" (default): the MCP registration only, as the arm does. "gbrain-docs": gbrain's own documented
    *  install for the harness at the pinned commit (the install bundle the image carries, gbrain/pin.json "install") is
-   *  applied inside the harness container by the adapter before the first turn; the preamble is untouched. */
-  install?: 'mcp' | 'gbrain-docs';
+   *  applied inside the harness container by the adapter before the first turn; the preamble is untouched.
+   *  "gbrain-installer" (internal-task, gbrain#7489): what `gbrain setup <harness> --instructions-only` at the pinned commit writes into
+   *  the harness's own instruction file (OpenClaw /workspace/AGENTS.md, Hermes $HERMES_HOME/SOUL.md), applied the same way; a
+   *  gbrain commit without that setup target fails preflight (HE-GBRAIN-006). */
+  install?: 'mcp' | 'gbrain-docs' | 'gbrain-installer';
   /** internal-task addition: "off" (default): the keyword brain, no model call. A model name: the sidecar serves the brain built
    *  with that embedding model and embeds each query through the metering proxy (OPENAI_BASE_URL), metered per trial. */
   embeddings?: 'off' | 'openai:text-embedding-3-small';
@@ -197,10 +200,13 @@ export interface GbrainCellConfig {
   scope?: 'member';
 }
 
-/** internal-task: the install bundle view a gbrain-docs trial mounted into the harness, as the runner verified it before the harness started. */
+/** internal-task: the install bundle view a gbrain-docs or gbrain-installer trial mounted into the harness, as the runner verified it
+ *  before the harness started. */
 export interface TrialGbrainInstall {
   harness: string;
   split: 'dev' | 'heldout';
+  /** The view's install kind; absent in records written before the installer rung (always gbrain-docs there). */
+  install?: 'gbrain-docs' | 'gbrain-installer';
   /** Files in the view (the harness workspace and, for Hermes, .hermes.md) and the view digest from the bundle manifest. */
   files: number;
   view_digest: string;
@@ -229,7 +235,7 @@ export interface TrialGbrain {
    *  bundle view when one was applied; the sidecar's metered embedding calls when embeddings were on; and the semantic
    *  check: a trial with embeddings on that searched the brain must show a forwarded embedding line and no degraded stamp
    *  (HE-GBRAIN-005, recorded as infra_error with this field saying why). */
-  install?: 'mcp' | 'gbrain-docs';
+  install?: 'mcp' | 'gbrain-docs' | 'gbrain-installer';
   embeddings?: 'off' | 'openai:text-embedding-3-small';
   install_bundle?: TrialGbrainInstall;
   embedding_usage?: TrialEmbeddingUsage;

@@ -142,6 +142,21 @@
       "lands_at": "/workspace/skills and /workspace/.hermes.md, copied by harnesses/hermes/adapter.sh under HE_GBRAIN_INSTALL=gbrain-docs; whether Hermes loads either is recorded from the smoke in harnesses/hermes/pin.json",
       "explicit_workspace": "the docs' cd form does not resolve an empty directory at this commit, so --workspace is passed"
     },
+    "installer": {
+      "rung": "installer (gbrain.install: gbrain-installer, internal-task, gbrain#7489): gbrain's own installer writes the brain-first instruction block into the harness's instruction file; the MCP registration stays the eval's, as on every rung",
+      "availability": "none at this pin (089bf0d8 has no gbrain setup openclaw or hermes); gbrain#7489 (head 99294fe4b13a93e7ec2830ea1beefbd76f3dd45e, open and unmerged on 2026-10-25) adds both; gbrain/build-install.ts records harnesses.<h>.installer.unavailable with gbrain's own words when the commit has no setup target and an installer cell then fails preflight (HE-GBRAIN-006)",
+      "openclaw": {
+        "command": "gbrain setup openclaw --workspace <workspace> --instructions-only",
+        "writes": "<workspace>/AGENTS.md: the brain-first block between gbrain:brain-first markers (1002 bytes at 99294fe4), a new file when the workspace has none",
+        "lands_at": "/workspace/AGENTS.md, copied by harnesses/openclaw/adapter.sh under HE_GBRAIN_INSTALL=gbrain-installer; OpenClaw loads it as a workspace bootstrap file (agents.defaults.skipBootstrap: true stops only the seeding of its own bootstrap files), proved in tests/adapter-install.test.ts against a fake model endpoint"
+      },
+      "hermes": {
+        "command": "HERMES_HOME=<home> gbrain setup hermes --instructions-only",
+        "seed": "gbrain appends the block to an existing non-empty SOUL.md and writes nothing into an empty HERMES_HOME (start Hermes once, it seeds SOUL.md); the image build seeds <home>/SOUL.md with Hermes's own SOUL.md at harnesses/hermes/pin.json's commit, sha256 in that pin's soul_md and in the bundle manifest",
+        "writes": "<home>/SOUL.md: the seed followed by the block (667 + 1001 bytes at 99294fe4)",
+        "lands_at": "$HERMES_HOME/SOUL.md (/harness-state/hermes/SOUL.md), copied by harnesses/hermes/adapter.sh, which replaces the default SOUL.md Hermes itself seeded when the adapter ran hermes --version only if its sha256 equals the recorded seed (gbrain-install.json replaced_seed)"
+      }
+    },
     "excluded": {
       "openclaw_context_engine_plugin": "docs/mcp/OPENCLAW.md's first shape, the gbrain-context-engine bundle plugin, runs gbrain as a stdio subprocess inside the harness and takes over OpenClaw's context-engine slot; excluded because it bypasses the world tap, so no gbrain call would reach events.jsonl and nothing would be gradable (TODOS.md: a tapped stdio bridge)",
       "qm": "gbrain documents no install path for QM, so the docs rung does not exist for it"

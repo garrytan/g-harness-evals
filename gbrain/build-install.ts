@@ -16,8 +16,17 @@
 //   hermes/<split>/.hermes.md        gbrain compile-context --target hermes --include-core --out <that file>, against
 //                                    the split's bot-visible brain (docs/mcp/HERMES.md: the always-loaded core memory
 //                                    Hermes's prompt builder reads from the cwd)
+//   openclaw/installer/workspace/AGENTS.md   gbrain setup openclaw --workspace <out>/openclaw/installer/workspace --instructions-only
+//                                    (internal-task, gbrain#7489: the brain-first instruction block gbrain's installer writes into the
+//                                    harness's own instruction file; the adapter copies workspace/ into /workspace)
+//   hermes/installer/home/SOUL.md    HERMES_HOME=<out>/hermes/installer/home gbrain setup hermes --instructions-only, the home
+//                                    seeded first with Hermes's own SOUL.md at the pinned Hermes commit (--hermes-soul): gbrain
+//                                    appends the block to an existing SOUL.md and writes nothing into an empty HERMES_HOME, so the
+//                                    seed stands in for "ran Hermes once"; the adapter copies home/SOUL.md to $HERMES_HOME/SOUL.md
 //   manifest.json                    every file with its sha256 and size, the commands as run, and for each .hermes.md
-//                                    the page slugs it kept (compile-context renders slug, title and an excerpt per page)
+//                                    the page slugs it kept (compile-context renders slug, title and an excerpt per page);
+//                                    harnesses.<h>.installer records the installer command, its files and the block version, or
+//                                    {unavailable: <reason>} when the gbrain commit has no setup target for the harness
 //
 // No key is in the environment: scaffold copies files from the gbrain checkout, compile-context reads the brain, each
 // split's brain copied to /brain in turn (the path it was built at; gbrain records absolute paths, so a copy anywhere else
@@ -40,13 +49,27 @@ export interface InstallFile {
   bytes: number;
 }
 
+/** The brain-first block gbrain's installer writes, as the bundle records it (internal-task). */
+export interface InstallerRecord {
+  /** The command as run, paths under <out> written as <out>/... */
+  argv: string[];
+  /** Bundle paths the command wrote or changed (openclaw/installer/workspace/AGENTS.md, hermes/installer/home/SOUL.md). */
+  files: string[];
+  /** The marker's version, "v1" from "<!-- gbrain brain-first v1: ... -->". */
+  block_version: string | null;
+  /** Hermes only: the SOUL.md the home was seeded with before the command, Hermes's own default identity at the pinned commit. */
+  seed?: { source: string; hermes_commit: string | null; sha256: string; bytes: number };
+}
+
+export const INSTALLER_BLOCK_BEGIN = '<!-- gbrain:brain-first:begin -->';
+
 export interface InstallManifest {
   schema_version: 1;
   gbrain_commit: string;
   gbrain_version: string | null;
   built_with: 'gbrain/build-install.ts';
   /** The commands as run, one per harness and per context file, in order. */
-  commands: Array<{ harness: InstallHarness; split?: 'dev' | 'heldout'; argv: string[]; summary?: Record<string, unknown> }>;
+  commands: Array<{ harness: InstallHarness; split?: 'dev' | 'heldout'; install?: 'gbrain-installer'; argv: string[]; summary?: Record<string, unknown> }>;
   harnesses: Record<InstallHarness, {
     /** Workspace-relative artifacts the adapter copies into /workspace (today only skills/). */
     workspace_entries: string[];
@@ -54,6 +77,8 @@ export interface InstallManifest {
     files: number;
     /** Hermes only: one compiled context file per split. */
     context?: Record<'dev' | 'heldout', { path: string; bytes: number; tokens: number | null; kept_slugs: string[] }>;
+    /** The gbrain-installer rung's files, or why this gbrain commit has none for the harness (absent in bundles built before it). */
+    installer?: InstallerRecord | { unavailable: string };
   }>;
   files: InstallFile[];
   /** sha256 over "<path> <sha256>\n" for every file in byte order of path: one digest for the whole bundle (export-install.sh computes the same for a view). */
@@ -117,7 +142,57 @@ export interface BuildInstallOptions {
   /** Where each split's brain is copied for compile-context: the path the brain was built at (gbrain records absolute paths
    *  inside a brain, so a copy anywhere else opens an empty database), /brain in the image. */
   brainHome: string;
+  /** Hermes's own SOUL.md at the pinned Hermes commit (harnesses/hermes/pin.json), the seed for the hermes installer; without it
+   *  the hermes installer is recorded unavailable. */
+  hermesSoul?: string;
+  hermesCommit?: string;
   log?: (line: string) => void;
+}
+
+/** The installer section: `gbrain setup <harness> --instructions-only` per harness into its own directory under <out>, the
+ *  files it wrote or changed recorded with the block version; a commit without the setup target (every gbrain before #7489)
+ *  records {unavailable} with gbrain's own words, and a cell on the installer rung then fails preflight (HE-GBRAIN-006). */
+function buildInstaller(o: BuildInstallOptions, out: string, harness: InstallHarness, log: (line: string) => void): { record: InstallerRecord | { unavailable: string }; command?: InstallManifest['commands'][number] } {
+  const root = join(out, harness, 'installer');
+  rmSync(root, { recursive: true, force: true });
+  const env = keylessEnv(join(o.scratch, `installer-home-${harness}`));
+  mkdirSync(env.HOME!, { recursive: true });
+  let args: string[];
+  let seed: InstallerRecord['seed'];
+  if (harness === 'openclaw') {
+    mkdirSync(join(root, 'workspace'), { recursive: true });
+    args = ['setup', 'openclaw', '--workspace', join(root, 'workspace'), '--instructions-only'];
+  } else {
+    if (!o.hermesSoul || !existsSync(o.hermesSoul)) return { record: { unavailable: 'no Hermes SOUL.md seed (--hermes-soul); gbrain setup hermes writes nothing into an empty HERMES_HOME' } };
+    const home = join(root, 'home');
+    mkdirSync(home, { recursive: true });
+    const soul = readFileSync(o.hermesSoul);
+    if (!soul.length) return { record: { unavailable: `the Hermes SOUL.md seed at ${o.hermesSoul} is empty` } };
+    writeFileSync(join(home, 'SOUL.md'), soul);
+    seed = { source: o.hermesSoul, hermes_commit: o.hermesCommit ?? null, sha256: sha256(soul), bytes: soul.length };
+    env.HERMES_HOME = home;
+    args = ['setup', 'hermes', '--instructions-only'];
+  }
+  const before = new Map(listFiles(root).map((f) => [f, sha256(readFileSync(join(root, f)))]));
+  const r = spawnSync(o.gbrain[0]!, [...o.gbrain.slice(1), ...args], { env, cwd: env.HOME, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024 });
+  const said = (r.stderr + r.stdout).trim().split('\n').filter(Boolean);
+  if (r.status !== 0) {
+    rmSync(root, { recursive: true, force: true });
+    return { record: { unavailable: `gbrain setup ${harness} --instructions-only exited ${r.status}: ${(said.find((l) => /error|refus|unknown/i.test(l)) ?? said[0])?.trim().slice(0, 300) ?? 'no output'}` } };
+  }
+  const changed = listFiles(root).filter((f) => before.get(f) !== sha256(readFileSync(join(root, f))));
+  if (!changed.length) {
+    rmSync(root, { recursive: true, force: true });
+    return { record: { unavailable: `gbrain setup ${harness} --instructions-only exited 0 and wrote nothing: ${said.find((l) => /skip|nothing|unchanged/i.test(l))?.trim().slice(0, 300) ?? said.at(-1)?.trim().slice(0, 300) ?? 'no output'}` } };
+  }
+  const bodies = changed.map((f) => readFileSync(join(root, f), 'utf8'));
+  const without = changed.filter((_, i) => !bodies[i]!.includes(INSTALLER_BLOCK_BEGIN));
+  if (without.length) throw new Error(`gbrain setup ${harness} --instructions-only changed ${without.join(', ')} without writing the brain-first block (${INSTALLER_BLOCK_BEGIN})`);
+  const version = bodies.map((b) => /<!-- gbrain brain-first (v[0-9]+):/.exec(b)?.[1]).find((v): v is string => !!v) ?? null;
+  const files = changed.map((f) => `${harness}/installer/${f}`);
+  const relArgs = args.map((a) => (a.startsWith(out) ? `<out>${a.slice(out.length)}` : a));
+  log(`${harness}: gbrain setup ${harness} --instructions-only wrote ${files.join(', ')} (block ${version ?? 'version unknown'})${seed ? `, home seeded with Hermes SOUL.md ${seed.sha256.slice(0, 12)} (${seed.bytes} bytes)` : ''}`);
+  return { record: { argv: ['gbrain', ...relArgs], files, block_version: version, ...(seed ? { seed } : {}) }, command: { harness, install: 'gbrain-installer', argv: ['gbrain', ...relArgs] } };
 }
 
 export function buildInstall(o: BuildInstallOptions): InstallManifest {
@@ -176,6 +251,13 @@ export function buildInstall(o: BuildInstallOptions): InstallManifest {
   }
   harnesses.hermes.context = context;
 
+  for (const harness of INSTALL_HARNESSES) {
+    const built = buildInstaller(o, out, harness, log);
+    harnesses[harness].installer = built.record;
+    if (built.command) commands.push(built.command);
+    else log(`${harness}: installer unavailable at this gbrain commit: ${(built.record as { unavailable: string }).unavailable}`);
+  }
+
   const files = fileEntries(out, listFiles(out));
   const version = run([...o.gbrain, '--version'], scaffoldEnv, 'gbrain --version').stdout.trim().match(/\d+\.\d+\.\d+(\.\d+)?/)?.[0] ?? null;
   const manifest: InstallManifest = { schema_version: 1, gbrain_commit: o.commit, gbrain_version: version, built_with: 'gbrain/build-install.ts', commands, harnesses, files, digest: bundleDigest(files) };
@@ -184,8 +266,10 @@ export function buildInstall(o: BuildInstallOptions): InstallManifest {
   return manifest;
 }
 
-/** The files of one harness and split view of the bundle: the harness's workspace and, for Hermes, that split's .hermes.md. */
-export function viewFiles(manifest: InstallManifest, harness: InstallHarness, split: 'dev' | 'heldout'): InstallFile[] {
+/** The files of one harness and split view of the bundle: for gbrain-docs the harness's workspace and, for Hermes, that split's
+ *  .hermes.md; for gbrain-installer everything under <harness>/installer/ (the same bytes for both splits). */
+export function viewFiles(manifest: InstallManifest, harness: InstallHarness, split: 'dev' | 'heldout', install: 'gbrain-docs' | 'gbrain-installer' = 'gbrain-docs'): InstallFile[] {
+  if (install === 'gbrain-installer') return manifest.files.filter((f) => f.path.startsWith(`${harness}/installer/`));
   return manifest.files.filter((f) => f.path.startsWith(`${harness}/workspace/`) || (harness === 'hermes' && f.path === `hermes/${split}/.hermes.md`));
 }
 
@@ -216,8 +300,10 @@ if (import.meta.main) {
       commit: arg('commit', pin.gbrain.commit)!,
       scratch: arg('scratch', '/tmp/install-scratch')!,
       brainHome: arg('brain-home', '/brain')!,
+      hermesSoul: arg('hermes-soul'),
+      hermesCommit: arg('hermes-commit'),
     });
-    console.log(JSON.stringify({ files: m.files.length, digest: m.digest, openclaw: { skills: m.harnesses.openclaw.skills, files: m.harnesses.openclaw.files }, hermes: { skills: m.harnesses.hermes.skills, files: m.harnesses.hermes.files, context: Object.fromEntries(Object.entries(m.harnesses.hermes.context!).map(([s, c]) => [s, { bytes: c.bytes, kept: c.kept_slugs.length, tokens: c.tokens }])) }, gbrain_version: m.gbrain_version }));
+    console.log(JSON.stringify({ files: m.files.length, digest: m.digest, installer: Object.fromEntries(INSTALL_HARNESSES.map((h) => [h, m.harnesses[h].installer && 'files' in m.harnesses[h].installer! ? m.harnesses[h].installer : 'unavailable'])), openclaw: { skills: m.harnesses.openclaw.skills, files: m.harnesses.openclaw.files }, hermes: { skills: m.harnesses.hermes.skills, files: m.harnesses.hermes.files, context: Object.fromEntries(Object.entries(m.harnesses.hermes.context!).map(([s, c]) => [s, { bytes: c.bytes, kept: c.kept_slugs.length, tokens: c.tokens }])) }, gbrain_version: m.gbrain_version }));
   } catch (e) {
     console.error(`build-install failed: ${(e as Error).message}`);
     process.exit(1);

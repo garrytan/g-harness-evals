@@ -15,8 +15,8 @@
 #
 # internal-task (the install ladder): /install holds the install bundle, what gbrain's own docs tell a user to run for OpenClaw
 # and Hermes at this commit, run once here by gbrain/build-install.ts (skillpack scaffold per harness, compile-context per
-# split for Hermes) with a manifest of every file's sha256; a gbrain-docs cell mounts one harness and split view of it into
-# the harness container. The "embedded" target adds /brains/dev-embedded and /brains/heldout-embedded, bot-visible brains
+# split for Hermes, and gbrain setup <harness> --instructions-only where the commit has it, internal-task) with a manifest of every
+# file's sha256; a gbrain-docs or gbrain-installer cell mounts one harness and split view of it into the harness container. The "embedded" target adds /brains/dev-embedded and /brains/heldout-embedded, bot-visible brains
 # whose pages carry OpenAI embeddings; they are built outside this file by scripts/build-gbrain-image.sh --embedded, in a
 # container from the "builder" target, through the metering proxy (OPENAI_BASE_URL only, no key), into gbrain/.build/brains/,
 # and copied in. GBRAIN_VERSION, when set, must equal the checkout's VERSION file (the check tool builds any commit and
@@ -90,13 +90,21 @@ RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split
       --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging \
       --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT"
 
-# internal-task: the install bundle, built from the gbrain checkout and the two bot-visible brains, keyless.
+# internal-task: the install bundle, built from the gbrain checkout and the two bot-visible brains, keyless. internal-task: the installer
+# section runs gbrain setup <harness> --instructions-only; for Hermes the build HERMES_HOME is seeded first with Hermes's own
+# SOUL.md at the pinned Hermes commit (harnesses/hermes/pin.json soul_md: what Hermes's first run writes into HERMES_HOME, which
+# gbrain never creates), fetched here and checked against the pinned sha256.
 FROM base AS install
 ARG GBRAIN_COMMIT
+ARG HERMES_COMMIT=f97608f178d1ffeca59860195ab7da295f7c8e5f
+ARG HERMES_SOUL_SHA256=36c1f5a2e92cd1d018311eaf4c8f1e8886672eae78212e033c681d0e3d5d506f
 COPY --from=brain-dev /brain /brains/dev
 COPY --from=brain-heldout /brain /brains/heldout
+RUN mkdir -p /opt/sidecar/hermes && curl -fsSL "https://raw.githubusercontent.com/NousResearch/hermes-agent/$HERMES_COMMIT/SOUL.md" -o /opt/sidecar/hermes/SOUL.md \
+    && echo "$HERMES_SOUL_SHA256  /opt/sidecar/hermes/SOUL.md" | sha256sum -c --quiet
 RUN mkdir -m 0777 /brain && env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-install.ts --out /install \
-      --gbrain "bun /opt/gbrain/src/cli.ts" --brains /brains --brain-home /brain --commit "$GBRAIN_COMMIT" --scratch /tmp/install-scratch
+      --gbrain "bun /opt/gbrain/src/cli.ts" --brains /brains --brain-home /brain --commit "$GBRAIN_COMMIT" --scratch /tmp/install-scratch \
+      --hermes-soul /opt/sidecar/hermes/SOUL.md --hermes-commit "$HERMES_COMMIT"
 
 FROM base AS keyword
 ARG GBRAIN_COMMIT

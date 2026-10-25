@@ -46,7 +46,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import type { GbrainCellConfig, TrialGbrainInstall, TrialRecord } from '../runner/contracts.ts';
 import { RunnerError } from '../runner/errors.ts';
 import { buildManifest, loadPrereg, renderPlan, resolveGbrain, type Cell, type Manifest, type Prereg } from '../runner/run.ts';
-import type { InstallFile, InstallManifest } from '../gbrain/build-install.ts';
+import { INSTALLER_BLOCK_BEGIN, type InstallFile, type InstallManifest } from '../gbrain/build-install.ts';
 import type { InstallViewManifest } from '../runner/trial/gbrain.ts';
 import type { WorldEvent } from '../world/services/events.ts';
 
@@ -66,6 +66,7 @@ export const RUNGS: Record<string, { gbrain: GbrainCellConfig; told: boolean }> 
   mcp: { gbrain: { surface: 'starter' }, told: false },
   told: { gbrain: { surface: 'starter' }, told: true },
   docs: { gbrain: { surface: 'starter', install: 'gbrain-docs' }, told: false },
+  installer: { gbrain: { surface: 'starter', install: 'gbrain-installer' }, told: false },
   'verbs-told': { gbrain: { surface: 'verbs' }, told: true },
   'semantic-told': { gbrain: { surface: 'starter', embeddings: 'openai:text-embedding-3-small' }, told: true },
   'docs-semantic': { gbrain: { surface: 'starter', install: 'gbrain-docs', embeddings: 'openai:text-embedding-3-small' }, told: false },
@@ -251,12 +252,28 @@ export interface SurfaceEvidence {
 export interface ViewEvidence {
   harness: 'openclaw' | 'hermes';
   split: 'dev' | 'heldout';
+  /** The view's install kind; absent means gbrain-docs. */
+  install?: 'gbrain-docs' | 'gbrain-installer';
   dir: string;
   manifest: InstallViewManifest | null;
   /** The HE-GBRAIN-006 line when the export or its verification failed. */
   error: string | null;
   /** Hermes: the exported .hermes.md's size in bytes. */
   context_bytes: number | null;
+}
+
+/** internal-task: the gbrain-installer view per harness, when the image's gbrain commit has the setup target; otherwise the bundle
+ *  manifest's reason, reported and not failed (every gbrain before #7489 has none). */
+export interface InstallerEvidence {
+  harness: 'openclaw' | 'hermes';
+  available: boolean;
+  /** The bundle manifest's unavailable reason, gbrain's own words. */
+  reason: string | null;
+  dir: string;
+  manifest: InstallViewManifest | null;
+  error: string | null;
+  /** Every exported file holds the brain-first block marker; null when nothing was exported. */
+  block_present: boolean | null;
 }
 
 export interface ReadyInstall { dir: string; split: string; files: number; writable: boolean }
@@ -269,13 +286,15 @@ export interface KeylessEvidence {
   /** The image's /install/manifest.json: the bundle digest and every file. */
   bundle: Pick<InstallManifest, 'digest' | 'files'> | null;
   views: ViewEvidence[];
+  /** internal-task: the installer view per harness; absent in evidence written before the installer rung. */
+  installer?: InstallerEvidence[];
   /** The gbrain-docs trial on the fake harness (it takes the OpenClaw dev view). */
   docs: null | { termination: string; error?: string; install_bundle: TrialGbrainInstall | undefined; ready_install: ReadyInstall | null; expected_view_digest: string | null; expected_files: number | null };
 }
 
 /** The view digest export-install.sh computes: sha256 over "<path> <sha256>\n" of the bundle files in the view, in path order. */
-export function viewDigestFromBundle(files: InstallFile[], harness: string, split: string): string {
-  const mine = files.filter((f) => f.path.startsWith(`${harness}/workspace/`) || (harness === 'hermes' && f.path === `hermes/${split}/.hermes.md`)).sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+export function viewDigestFromBundle(files: InstallFile[], harness: string, split: string, install: 'gbrain-docs' | 'gbrain-installer' = 'gbrain-docs'): string {
+  const mine = files.filter((f) => install === 'gbrain-installer' ? f.path.startsWith(`${harness}/installer/`) : f.path.startsWith(`${harness}/workspace/`) || (harness === 'hermes' && f.path === `hermes/${split}/.hermes.md`)).sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   return sha256(mine.map((f) => `${f.path} ${f.sha256}\n`).join(''));
 }
 
@@ -338,6 +357,24 @@ export function keylessAssertions(e: KeylessEvidence, o: { strictPins?: boolean 
       else if (!kept) fail(where, '.hermes.md kept slugs', 'at least one kept page slug', 0, file);
       else ok(`${where} .hermes.md ${v.context_bytes} bytes, ${kept} kept slugs`);
     }
+  }
+  for (const i of e.installer ?? []) {
+    const where = `installer=${i.harness}`;
+    const file = join(i.dir, 'manifest.json');
+    if (!i.available) { ok(`${where} not in this gbrain commit (${i.reason ?? 'no reason recorded'}); the installer rung needs gbrain#7489 or later`); continue; }
+    if (!i.manifest) { fail(where, 'export and verify', 'every file present with its sha256', i.error ?? 'no manifest', file); continue; }
+    if (e.bundle) {
+      const expected = viewDigestFromBundle(e.bundle.files, i.harness, 'dev', 'gbrain-installer');
+      const bySource = new Map(e.bundle.files.map((f) => [f.path, f.sha256]));
+      const drift = i.manifest.files.filter((f) => bySource.get(f.source_path) !== f.sha256);
+      if (i.manifest.view_digest !== expected) fail(where, 'view digest against the bundle manifest', expected.slice(0, 12), i.manifest.view_digest.slice(0, 12), file);
+      if (drift.length) fail(where, 'file digests against the bundle manifest', 'every view file listed with the same sha256', `${drift.length} differ (${drift.slice(0, 3).map((f) => f.path).join(', ')})`, file);
+    }
+    if (!i.manifest.files.length) fail(where, 'installer files', 'at least one file written by gbrain setup', 0, file);
+    if (i.block_present === false) fail(where, 'brain-first block', `every installer file holds ${INSTALLER_BLOCK_BEGIN}`, 'a file without it', i.dir);
+    const rec = i.manifest.installer && 'files' in i.manifest.installer ? i.manifest.installer : null;
+    if (i.harness === 'hermes' && !rec?.seed) fail(where, 'Hermes SOUL.md seed', 'recorded (sha256, bytes, hermes commit)', 'absent', file);
+    if (i.manifest.files.length && i.block_present && (i.harness !== 'hermes' || rec?.seed)) ok(`${where} ${i.manifest.files.map((f) => f.path).join(', ')} (block ${rec?.block_version ?? 'version unknown'}), view digest ${i.manifest.view_digest.slice(0, 12)} matches the bundle manifest${rec?.seed ? `; home seeded with Hermes SOUL.md ${rec.seed.sha256.slice(0, 12)} (${rec.seed.bytes} bytes)` : ''}`);
   }
   if (e.docs) {
     const d = e.docs;
@@ -586,7 +623,7 @@ function imageJson(tag: string): { gbrain_commit?: string; gbrain_version?: stri
   try { return r.status === 0 ? JSON.parse(r.stdout) as { gbrain_commit?: string; gbrain_version?: string } : {}; } catch { return {}; }
 }
 
-function bundleManifest(tag: string): Pick<InstallManifest, 'digest' | 'files'> | null {
+function bundleManifest(tag: string): Pick<InstallManifest, 'digest' | 'files' | 'harnesses'> | null {
   const r = sh(['docker', 'run', '--rm', '--entrypoint', 'cat', tag, '/install/manifest.json']);
   try { return r.status === 0 ? JSON.parse(r.stdout) as InstallManifest : null; } catch { return null; }
 }
@@ -683,6 +720,23 @@ async function keyless(a: Args, ref: ResolvedRef, tag: string, dir: string): Pro
       console.log(`VIEW: ${harness}/${split} failed: ${(e as Error).message}`);
     }
   }
+  // internal-task: the installer view per harness, when this gbrain commit has gbrain setup <harness>; the bundle manifest says.
+  const installer: InstallerEvidence[] = [];
+  for (const harness of ['openclaw', 'hermes'] as const) {
+    const rec = bundle?.harnesses?.[harness]?.installer;
+    const reason = !rec ? 'the bundle manifest has no installer section' : 'unavailable' in rec ? rec.unavailable : null;
+    const idir = installViewDir(runDir, `view-${harness}`, 'dev', 'gbrain-installer');
+    if (reason !== null) { installer.push({ harness, available: false, reason, dir: idir, manifest: null, error: null, block_present: null }); console.log(`INSTALLER: ${harness} not in this gbrain commit: ${reason}`); continue; }
+    try {
+      const m = await exportInstallView(tag, harness, 'dev', idir, 'gbrain-installer');
+      const present = m.files.every((f) => readFileSync(join(idir, f.path), 'utf8').includes(INSTALLER_BLOCK_BEGIN));
+      installer.push({ harness, available: true, reason: null, dir: idir, manifest: m, error: null, block_present: present });
+      console.log(`INSTALLER: ${harness} ${m.files.map((f) => f.path).join(', ')}, view digest ${m.view_digest.slice(0, 12)}${present ? '' : ', a file without the brain-first block'}`);
+    } catch (e) {
+      installer.push({ harness, available: true, reason: null, dir: idir, manifest: null, error: (e as Error).message, block_present: null });
+      console.log(`INSTALLER: ${harness} failed: ${(e as Error).message}`);
+    }
+  }
   // The fake harness through the runner and the tap: one trial per surface and the gbrain-docs trial. The grader is a stub
   // (the task has no predicates); the keyless check is about structure, not grades.
   const result = await executeRun(manifest, manifestPath, {
@@ -711,7 +765,7 @@ async function keyless(a: Args, ref: ResolvedRef, tag: string, dir: string): Pro
     try { readyInstall = (JSON.parse(readFileSync(join(docsRec.paths.logs, 'ready'), 'utf8')) as { gbrain_install?: ReadyInstall }).gbrain_install ?? null; } catch { readyInstall = null; }
   }
   const evidence: KeylessEvidence = {
-    image: tag, pin, known: KNOWN_PAGE, surfaces, bundle, views,
+    image: tag, pin, known: KNOWN_PAGE, surfaces, bundle: bundle ? { digest: bundle.digest, files: bundle.files } : null, views, installer,
     docs: docsRec ? { termination: docsRec.termination, error: docsRec.error, install_bundle: docsRec.gbrain?.install_bundle, ready_install: readyInstall, expected_view_digest: openclawDev?.view_digest ?? null, expected_files: openclawDev?.files.length ?? null } : { termination: 'not run', install_bundle: undefined, ready_install: null, expected_view_digest: null, expected_files: null },
   };
   const verdict = keylessAssertions(evidence, { strictPins: a.strictPins });

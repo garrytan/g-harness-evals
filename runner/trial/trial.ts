@@ -5,8 +5,8 @@
 //
 // internal-task (the install ladder): the trial directory is emptied before the world starts, so a rerun under --resume
 // never appends to an earlier events.jsonl; the sidecar gets the cell's surface and embeddings (and the proxy slot as
-// OPENAI_BASE_URL for an embedded brain); a gbrain-docs cell has its install bundle view verified (HE-GBRAIN-006) and
-// mounted read-only at /he-gbrain-install with HE_GBRAIN_INSTALL=gbrain-docs for the adapter; a sidecar or bundle
+// OPENAI_BASE_URL for an embedded brain); a gbrain-docs or gbrain-installer cell has its install bundle view verified
+// (HE-GBRAIN-006) and mounted read-only at /he-gbrain-install with HE_GBRAIN_INSTALL naming the kind for the adapter; a sidecar or bundle
 // failure is the trial's infra_error, not the run's; and after the meter is read, a trial with embeddings on that
 // searched the brain must show a forwarded embedding line and no degraded stamp, else it is infra_error under
 // HE-GBRAIN-005 and excluded from its rung.
@@ -30,7 +30,8 @@ import { runTurns } from './turns.ts';
 import { TrialWorld, worldAt } from './world.ts';
 
 /** internal-task: where preflight exports each gbrain-docs cell's bundle view, and where the trial reads it. */
-export const installViewDir = (runDir: string, harness: string, split: 'dev' | 'heldout') => join(runDir, 'gbrain-install', harness.replace(/^_/, ''), split);
+export const installViewDir = (runDir: string, harness: string, split: 'dev' | 'heldout', install: 'gbrain-docs' | 'gbrain-installer' = 'gbrain-docs') =>
+  join(runDir, 'gbrain-install', install === 'gbrain-installer' ? `${harness.replace(/^_/, '')}-installer` : harness.replace(/^_/, ''), split);
 
 /** internal-task: the Hermes compiled context names pages; count, per actor of the task, the ones that actor cannot read in the world
  *  (a chat page's channel the actor is not in; a file the file rule denies). What reaches the model with no gbrain call. */
@@ -155,12 +156,12 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
         surface: gbrain.surface, embeddings: gbrain.embeddings, openaiBaseUrl: gbrain.embeddings !== 'off' ? proxy!.baseUrlFor(slot, 'openai', true) : undefined, log });
       // internal-task: under member scope the tap needs a granted token for every member who will take a turn (HE-GBRAIN-004).
       if (sidecar.scope === 'member') checkCompanyTokens(sidecar.tokens, cell.split, task.actors, join(dirs.root, 'gbrain', 'tokens.json'));
-      if (gbrain.install === 'gbrain-docs') {
-        const viewDir = installViewDir(ctx.runDir, cell.harness, cell.split);
+      if (gbrain.install !== 'mcp') {
+        const viewDir = installViewDir(ctx.runDir, cell.harness, cell.split, gbrain.install);
         installView = existsSync(join(viewDir, 'manifest.json'))
-          ? verifyInstallView(JSON.parse(readFileSync(join(viewDir, 'manifest.json'), 'utf8')) as InstallViewManifest, viewDir)
-          : await exportInstallView(sidecar.image, cell.harness, cell.split, viewDir);
-        log(`install bundle view ${installView.harness}/${installView.split} verified (${installView.files.length} files, view digest ${installView.view_digest.slice(0, 12)}) at ${viewDir}`);
+          ? verifyInstallView(JSON.parse(readFileSync(join(viewDir, 'manifest.json'), 'utf8')) as InstallViewManifest, viewDir, gbrain.install)
+          : await exportInstallView(sidecar.image, cell.harness, cell.split, viewDir, gbrain.install);
+        log(`install bundle view ${installView.harness}/${installView.split} (${gbrain.install}) verified (${installView.files.length} files, view digest ${installView.view_digest.slice(0, 12)}) at ${viewDir}`);
       }
     } catch (e) {
       if (!(e instanceof RunnerError)) { if (sidecar) await sidecar.stop(5_000).catch(() => undefined); if (proxy) { await proxy.finalize(key).catch(() => undefined); await proxy.unbind(slot).catch(() => undefined); } world.stop(); throw e; }
@@ -169,7 +170,8 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     }
     if (sidecar && !infraError) world.server.setGbrain({ url: sidecar.url, token: sidecar.token, ...(sidecar.tokens ? { tokens: { members: sidecar.tokens.members, public_only: sidecar.tokens.public_only } } : {}) });
   }
-  const installViewPath = installView ? installViewDir(ctx.runDir, cell.harness, cell.split) : null;
+  const installKind = installView ? (installView.install ?? 'gbrain-docs') : null;
+  const installViewPath = installKind ? installViewDir(ctx.runDir, cell.harness, cell.split, installKind) : null;
 
   const env: Record<string, string> = {
     HE_MODEL_BASE_URL: proxy ? proxy.baseUrlFor(slot, provider, docker) : 'http://127.0.0.1:1/none',
@@ -190,7 +192,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     HE_SLACK_APP_TOKEN: world.config.slack.bot.app_token,
     ...(sidecar ? { HE_GBRAIN_MCP_URL: `${world.harnessUrl}/gbrain`, HE_GBRAIN_MCP_TOKEN: world.botToken } : {}),
     // internal-task: the adapter copies the bundle view into /workspace before the first turn (docs/adapters.md); unset, nothing changes.
-    ...(installViewPath ? { HE_GBRAIN_INSTALL: 'gbrain-docs', HE_GBRAIN_SPLIT: cell.split, HE_GBRAIN_INSTALL_DIR: docker ? '/he-gbrain-install' : resolve(installViewPath) } : {}),
+    ...(installViewPath && installKind ? { HE_GBRAIN_INSTALL: installKind, HE_GBRAIN_SPLIT: cell.split, HE_GBRAIN_INSTALL_DIR: docker ? '/he-gbrain-install' : resolve(installViewPath) } : {}),
     ...(docker ? {} : { HE_WORKSPACE_DIR: resolve(dirs.workspace) }),
     ...(opts.harnessEnv ?? {}),
   };
@@ -281,7 +283,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   }
   let gbrainRecord: TrialGbrain | undefined = gbrain ? gbrainSummary(gbrain, sidecar ?? { image: opts.gbrainImage ?? 'none', ready_ms: 0 }, world.events, windows) : undefined;
   if (gbrainRecord && installView) {
-    gbrainRecord.install_bundle = { harness: installView.harness, split: installView.split, files: installView.files.length, view_digest: installView.view_digest };
+    gbrainRecord.install_bundle = { harness: installView.harness, split: installView.split, install: installView.install ?? 'gbrain-docs', files: installView.files.length, view_digest: installView.view_digest };
     if (installView.context) gbrainRecord.install_bundle.context = contextExposure(worldAt(world.worldPath), cell.split, installView.context.kept_slugs, task.actors);
   }
   let semanticError: string | null = null;

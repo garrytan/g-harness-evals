@@ -52,25 +52,28 @@ mkdir -p "$OPENCLAW_STATE_DIR/exec"
 
 log "openclaw $(openclaw --version 2>/dev/null | head -1) model=anthropic/$HE_MODEL_NAME budget=${HE_TIME_BUDGET_S}s entry=$entry"
 
-# internal-task, the install ladder (docs/gbrain-arm.md): under HE_GBRAIN_INSTALL=gbrain-docs the runner mounts the exported view of
-# gbrain's documented install read-only at HE_GBRAIN_INSTALL_DIR (/he-gbrain-install) and names the split in HE_GBRAIN_SPLIT.
-# Before the harness starts, every file the view's manifest lists is checked against its sha256 and copied to where
-# `gbrain skillpack scaffold --harness openclaw --workspace /workspace` (workspace/x to /workspace/x, skills/ at this commit) would have written it; $HE_LOG_DIR/gbrain-install.json records status, file count, view digest and
+# internal-task, the install ladder (docs/gbrain-arm.md): under HE_GBRAIN_INSTALL=gbrain-docs or gbrain-installer the runner mounts the
+# exported view of gbrain's install read-only at HE_GBRAIN_INSTALL_DIR (/he-gbrain-install) and names the split in HE_GBRAIN_SPLIT.
+# Before the harness starts, every file the view's manifest lists is checked against its sha256 and copied to where the gbrain
+# command would have written it: `gbrain skillpack scaffold --harness openclaw --workspace /workspace` (gbrain-docs; workspace/x to
+# /workspace/x, skills/ at this commit) or `gbrain setup openclaw --workspace /workspace --instructions-only` (gbrain-installer, internal-task;
+# workspace/AGENTS.md to /workspace/AGENTS.md, the brain-first block OpenClaw loads as a workspace bootstrap file); the manifest's
+# install kind must equal HE_GBRAIN_INSTALL. $HE_LOG_DIR/gbrain-install.json records status, install kind, file count, view digest and
 # destinations. Any failure (missing directory or manifest, digest mismatch, a view for another harness or split, a
 # destination that already exists) is HE-ADAPTER-006 and exit 2 before ready. Unset, nothing here runs.
 gbrain_install_json=''
-if [ "${HE_GBRAIN_INSTALL:-}" = gbrain-docs ]; then
+if [ "${HE_GBRAIN_INSTALL:-}" = gbrain-docs ] || [ "${HE_GBRAIN_INSTALL:-}" = gbrain-installer ]; then
   set +e
-  install_line=$(python3 - "${HE_GBRAIN_INSTALL_DIR:-/he-gbrain-install}" "$HE_WORKSPACE_DIR" openclaw "${HE_GBRAIN_SPLIT:-}" "$HE_LOG_DIR/gbrain-install.json" <<'PY'
+  install_line=$(python3 - "${HE_GBRAIN_INSTALL_DIR:-/he-gbrain-install}" "$HE_WORKSPACE_DIR" openclaw "${HE_GBRAIN_SPLIT:-}" "$HE_LOG_DIR/gbrain-install.json" "$HE_GBRAIN_INSTALL" <<'PY'
 import hashlib, json, os, shutil, sys
-view, workspace, harness, split, out = sys.argv[1:6]
+view, workspace, harness, split, out, install = sys.argv[1:7]
 def sha(p):
     h = hashlib.sha256()
     with open(p, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
-rec = {"status": "error", "code": "HE-ADAPTER-006", "harness": harness, "split": split, "dir": view, "view_digest": None, "files": 0, "destinations": [], "copied": [], "error": None}
+rec = {"status": "error", "code": "HE-ADAPTER-006", "harness": harness, "split": split, "install": install, "dir": view, "view_digest": None, "files": 0, "destinations": [], "copied": [], "error": None}
 def write():
     with open(out + ".tmp", "w") as f:
         json.dump(rec, f)
@@ -93,6 +96,8 @@ if m.get("harness") != harness:
     refuse("the view is for harness %r, this adapter is %s" % (m.get("harness"), harness))
 if m.get("split") != split:
     refuse("the view is for split %r, the trial's split is %s" % (m.get("split"), split))
+if m.get("install", "gbrain-docs") != install:
+    refuse("the view is for install %r, this cell's gbrain.install is %s" % (m.get("install", "gbrain-docs"), install))
 files = m.get("files") or []
 if not files:
     refuse("the manifest lists no files")
@@ -135,10 +140,10 @@ PY
 )
   install_code=$?
   set -e
-  log "gbrain-docs install: ${install_line:-HE-ADAPTER-006 the install bundle could not be applied: the install step failed before it could report; see stderr.log}"
+  log "$HE_GBRAIN_INSTALL install: ${install_line:-HE-ADAPTER-006 the install bundle could not be applied: the install step failed before it could report; see stderr.log}"
   [ "$install_code" -eq 0 ] || exit 2
   read -r _ install_files install_digest install_dests <<< "$install_line"
-  gbrain_install_json=$(printf ',"gbrain_install":{"status":"ok","files":%s,"view_digest":"%s","destinations":"%s"}' "$install_files" "$install_digest" "$install_dests")
+  gbrain_install_json=$(printf ',"gbrain_install":{"status":"ok","install":"%s","files":%s,"view_digest":"%s","destinations":"%s"}' "$HE_GBRAIN_INSTALL" "$install_files" "$install_digest" "$install_dests")
 fi
 
 # A model error is a provider status, a proxy refusal, a rate limit or an auth

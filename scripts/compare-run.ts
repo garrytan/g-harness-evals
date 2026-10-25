@@ -31,7 +31,7 @@
 // The install ladder (internal-task, docs/gbrain-arm.md "The install ladder") is the other --pair gbrain design. Each cell's rung
 // is read from its resolved gbrain configuration and preamble (scripts/gbrain-ladder.ts; no gbrain is none, a preamble
 // other than the default makes a told rung), and each rung is paired against its ladder neighbour within (harness, config,
-// model): mcp against none, told and docs against mcp, verbs-told and semantic-told against told, docs-semantic against
+// model): mcp against none, told and docs against mcp, installer, verbs-told and semantic-told against told, docs-semantic against
 // docs. A rung whose base cell is absent, two cells on one rung, or a cell on no rung is a refusal (exit 2) naming the
 // cells. Three endpoints, each 1 or 0 per trial: pass (grade pass and no consent violation), gbrain use (at least one
 // gbrain tools/call in the record's gbrain.events.calls) and a cross-scope read via gbrain (the no_cross_scope_reads

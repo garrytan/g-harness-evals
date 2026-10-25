@@ -47,6 +47,12 @@ test('the bundle digest is sha256 over "<path> <sha256>\\n" in byte order of pat
   expect(viewFiles(manifest, 'openclaw', 'dev').map((f) => f.path)).toEqual(['openclaw/workspace/skills/b/SKILL.md']);
   expect(viewFiles(manifest, 'hermes', 'dev').map((f) => f.path)).toEqual(['hermes/dev/.hermes.md', 'hermes/workspace/skills/a/SKILL.md']);
   expect(viewFiles(manifest, 'hermes', 'heldout').map((f) => f.path)).toEqual(['hermes/workspace/skills/a/SKILL.md']);
+  // internal-task: the installer view is everything under <harness>/installer/, the same for both splits, and none of it is in the docs view.
+  const withInstaller = { files: [...files, { path: 'openclaw/installer/workspace/AGENTS.md', sha256: 'f'.repeat(64), bytes: 1002 }, { path: 'hermes/installer/home/SOUL.md', sha256: 'e'.repeat(64), bytes: 1677 }] } as InstallManifest;
+  expect(viewFiles(withInstaller, 'openclaw', 'dev', 'gbrain-installer').map((f) => f.path)).toEqual(['openclaw/installer/workspace/AGENTS.md']);
+  expect(viewFiles(withInstaller, 'hermes', 'heldout', 'gbrain-installer').map((f) => f.path)).toEqual(['hermes/installer/home/SOUL.md']);
+  expect(viewFiles(withInstaller, 'openclaw', 'dev').map((f) => f.path)).toEqual(['openclaw/workspace/skills/b/SKILL.md']);
+  expect(viewFiles(withInstaller, 'hermes', 'dev').map((f) => f.path)).toEqual(['hermes/dev/.hermes.md', 'hermes/workspace/skills/a/SKILL.md']);
   expect(verifyFiles(dir, files)).toEqual({ ok: true, missing: [], changed: [] });
   writeFileSync(join(dir, 'hermes', 'dev', '.hermes.md'), 'changed');
   rmSync(join(dir, 'openclaw', 'workspace', 'skills', 'b', 'SKILL.md'));

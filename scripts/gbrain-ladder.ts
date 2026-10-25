@@ -13,18 +13,21 @@ import { resolveGbrain } from '../runner/run.ts';
 import { DEFAULT_PREAMBLE_PATH } from '../runner/trial/task.ts';
 import { crossScopeReadsBySurface } from './gbrain-usage.ts';
 
-export type Rung = 'none' | 'mcp' | 'told' | 'docs' | 'verbs-told' | 'semantic-told' | 'docs-semantic';
+export type Rung = 'none' | 'mcp' | 'told' | 'docs' | 'installer' | 'verbs-told' | 'semantic-told' | 'docs-semantic';
 
-/** The rung table: surface, install, whether embeddings are on, whether the preamble is a told one, and the neighbour. */
-export const LADDER: Record<Exclude<Rung, 'none'>, { surface: 'starter' | 'verbs'; install: 'mcp' | 'gbrain-docs'; semantic: boolean; told: boolean; base: Rung }> = {
+/** The rung table: surface, install, whether embeddings are on, whether the preamble is a told one, and the neighbour.
+ *  installer (internal-task, gbrain#7489): gbrain's own installer writes the brain-first block into the harness's instruction file
+ *  with the arm's unchanged preamble; its neighbour is told, the rung whose preamble rule the block stands in for. */
+export const LADDER: Record<Exclude<Rung, 'none'>, { surface: 'starter' | 'verbs'; install: 'mcp' | 'gbrain-docs' | 'gbrain-installer'; semantic: boolean; told: boolean; base: Rung }> = {
   mcp: { surface: 'starter', install: 'mcp', semantic: false, told: false, base: 'none' },
   told: { surface: 'starter', install: 'mcp', semantic: false, told: true, base: 'mcp' },
   docs: { surface: 'starter', install: 'gbrain-docs', semantic: false, told: false, base: 'mcp' },
+  installer: { surface: 'starter', install: 'gbrain-installer', semantic: false, told: false, base: 'told' },
   'verbs-told': { surface: 'verbs', install: 'mcp', semantic: false, told: true, base: 'told' },
   'semantic-told': { surface: 'starter', install: 'mcp', semantic: true, told: true, base: 'told' },
   'docs-semantic': { surface: 'starter', install: 'gbrain-docs', semantic: true, told: false, base: 'docs' },
 };
-export const RUNG_ORDER: Rung[] = ['none', 'mcp', 'told', 'docs', 'verbs-told', 'semantic-told', 'docs-semantic'];
+export const RUNG_ORDER: Rung[] = ['none', 'mcp', 'told', 'docs', 'installer', 'verbs-told', 'semantic-told', 'docs-semantic'];
 
 export interface LadderCell { id: string; harness: string; model: string; config?: string; gbrain?: GbrainCellConfig; preamble?: string }
 

@@ -409,6 +409,8 @@ describe('install ladder: rungs and neighbour pairs', () => {
     expect(rungOf({ id: 'x', harness: 'h', model: 'm', gbrain: { surface: 'starter' }, preamble: TOLD }).rung).toBe('told');
     expect(rungOf({ id: 'x', harness: 'h', model: 'm', gbrain: { surface: 'starter' }, preamble: 'tasks/multiuser/_shared/preamble.gbrain.md' }).rung).toBe('told');
     expect(rungOf({ id: 'x', harness: 'h', model: 'm', gbrain: { surface: 'starter', install: 'gbrain-docs', embeddings: 'off' } }).rung).toBe('docs');
+    expect(rungOf({ id: 'x', harness: 'h', model: 'm', gbrain: { surface: 'starter', install: 'gbrain-installer' } }).rung).toBe('installer');
+    expect(rungOf({ id: 'x', harness: 'h', model: 'm', gbrain: { surface: 'starter', install: 'gbrain-installer' }, preamble: TOLD })).toEqual({ rung: null, label: `starter/gbrain-installer/off, preamble ${TOLD}` });
     expect(rungOf({ id: 'x', harness: 'h', model: 'm', gbrain: { surface: 'verbs', install: 'mcp' }, preamble: TOLD }).rung).toBe('verbs-told');
     expect(rungOf({ id: 'x', harness: 'h', model: 'm', gbrain: { surface: 'starter', embeddings: EMBED }, preamble: TOLD }).rung).toBe('semantic-told');
     expect(rungOf({ id: 'x', harness: 'h', model: 'm', gbrain: { surface: 'starter', install: 'gbrain-docs', embeddings: EMBED } }).rung).toBe('docs-semantic');
@@ -430,6 +432,14 @@ describe('install ladder: rungs and neighbour pairs', () => {
     expect(noMcp.problems).toEqual([]);
     expect(noMcp.unpaired).toEqual([`hm on ${HAIKU}: none cell hm-none has no mcp cell above it`, `hm on ${HAIKU}: rung told (hm-gbrain-told) has no mcp cell below it and serves as a base only`, `hm on ${HAIKU}: rung docs (hm-gbrain-docs) has no mcp cell below it and serves as a base only`]);
     expect(noMcp.pairs.filter((p) => p.harness === 'hm').map((p) => p.rung)).toEqual(['verbs-told', 'semantic-told', 'docs-semantic']);
+    // internal-task: the installer rung pairs against told; a run carrying only told and installer per harness has one pair and told as a base only.
+    const installerRun = ladderPairs([
+      { id: 'oc-gbrain-told', harness: 'oc', model: HAIKU, gbrain: { surface: 'starter' }, preamble: TOLD },
+      { id: 'oc-gbrain-installer', harness: 'oc', model: HAIKU, gbrain: { surface: 'starter', install: 'gbrain-installer' } },
+    ]);
+    expect(installerRun.problems).toEqual([]);
+    expect(installerRun.unpaired).toEqual([`oc on ${HAIKU}: rung told (oc-gbrain-told) has no mcp cell below it and serves as a base only`]);
+    expect(installerRun.pairs).toEqual([{ harness: 'oc', config: null, model: HAIKU, rung: 'installer', base_rung: 'told', cell: 'oc-gbrain-installer', base_cell: 'oc-gbrain-told' }]);
     const verbsOnly = ladderPairs(full.cells.filter((c) => c.id === 'hm-gbrain-told' || c.id === 'hm-gbrain-verbs-told'));
     expect(verbsOnly).toMatchObject({ problems: [], unpaired: [`hm on ${HAIKU}: rung told (hm-gbrain-told) has no mcp cell below it and serves as a base only`] });
     expect(verbsOnly.pairs.map((p) => `${p.rung}>${p.base_rung}`)).toEqual(['verbs-told>told']);

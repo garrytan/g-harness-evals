@@ -34,9 +34,10 @@ export { RunnerError };
 
 // internal-task (the install ladder): the gbrain cell fields, their allowed values and defaults (runner/contracts.ts GbrainCellConfig).
 export const GBRAIN_SURFACES = ['starter', 'verbs'] as const;
-export const GBRAIN_INSTALLS = ['mcp', 'gbrain-docs'] as const;
+export const GBRAIN_INSTALLS = ['mcp', 'gbrain-docs', 'gbrain-installer'] as const;
 export const GBRAIN_EMBEDDINGS = ['off', 'openai:text-embedding-3-small'] as const;
-/** Harnesses the install bundle has a view for (gbrain/pin.json "install"); gbrain documents no install for the others. */
+/** Harnesses the install bundle has a view for (gbrain/pin.json "install"), docs and installer alike; gbrain documents no install
+ *  for the others. */
 export const GBRAIN_DOCS_HARNESSES = ['openclaw', 'hermes', '_fake'] as const;
 /** The planning allowance for a cell with embeddings on: query embeddings per trial and tokens per query, priced from
  *  runner/pricing/embedding-pricing.ts (a search's query is a sentence; gbrain caches the embedding per distinct query). */
@@ -187,7 +188,7 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
       if (!(GBRAIN_SURFACES as readonly string[]).includes(c.gbrain.surface as string)) throw bad('surface', c.gbrain.surface, GBRAIN_SURFACES);
       if (c.gbrain.install !== undefined && !(GBRAIN_INSTALLS as readonly string[]).includes(c.gbrain.install)) throw bad('install', c.gbrain.install, GBRAIN_INSTALLS);
       if (c.gbrain.embeddings !== undefined && !(GBRAIN_EMBEDDINGS as readonly string[]).includes(c.gbrain.embeddings)) throw bad('embeddings', c.gbrain.embeddings, GBRAIN_EMBEDDINGS);
-      if (c.gbrain.install === 'gbrain-docs' && !(GBRAIN_DOCS_HARNESSES as readonly string[]).includes(c.harness)) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.install "gbrain-docs" is defined for harnesses ${GBRAIN_DOCS_HARNESSES.filter((h) => !h.startsWith('_')).join(', ')} (gbrain documents no install for ${c.harness}; gbrain/pin.json "install")`);
+      if (c.gbrain.install !== undefined && c.gbrain.install !== 'mcp' && !(GBRAIN_DOCS_HARNESSES as readonly string[]).includes(c.harness)) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.install "${c.gbrain.install}" is defined for harnesses ${GBRAIN_DOCS_HARNESSES.filter((h) => !h.startsWith('_')).join(', ')} (gbrain documents no install for ${c.harness}; gbrain/pin.json "install")`);
       if (c.gbrain.embeddings !== undefined && c.gbrain.embeddings !== 'off' && c.gbrain.brain === 'company') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.embeddings ${c.gbrain.embeddings} needs the bot-visible brain; only the bot-visible brains are built with embeddings`);
       if (scripted) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: a scripted cell cannot carry gbrain; a script plays the bot over world-MCP and has no harness to call the brain`);
       // internal-task (company brain): brain and scope are additive; a cell without them is the gbrain arm's cell.
@@ -290,7 +291,7 @@ export function renderPlan(m: Manifest): string {
     const g = resolveGbrain(cs[0]!.gbrain!);
     const words = [
       g.surface === 'verbs' ? 'the 7 memory verbs (page search is recall)' : 'the 33-tool starter surface',
-      g.install === 'gbrain-docs' ? "gbrain's documented install applied in the harness container from the image's bundle" : 'MCP registration only',
+      g.install === 'gbrain-docs' ? "gbrain's documented install applied in the harness container from the image's bundle" : g.install === 'gbrain-installer' ? "gbrain's own installer (gbrain setup <harness> --instructions-only) applied in the harness container from the image's bundle" : 'MCP registration only',
       g.embeddings === 'off' ? 'keyword-only, no model call' : `query embeddings ${g.embeddings} through the metering proxy, metered per trial (allowance ${embeddingAllowanceUsd(cs[0]!.gbrain).toFixed(4)} per trial in the ceiling)`,
     ];
     lines.push(`GBRAIN: cells ${cs.map((c) => c.id).join(', ')} run with a gbrain sidecar per trial (image ${DEFAULT_GBRAIN_IMAGE} unless --gbrain-image; ${label}: ${words.join('; ')}; docs/gbrain-arm.md)`);
@@ -395,13 +396,13 @@ async function main(argv: string[]): Promise<number> {
           closeRun(flag('--ledger') ?? join(runDir, 'ledger.sqlite'), `${m.run_id}-preflight`);
         }
       }
-      // internal-task: every gbrain-docs cell's bundle view is exported from the image and verified before any trial mounts it.
-      const docsViews = [...new Set(gbrainCells.filter((c) => resolveGbrain(c.gbrain!).install === 'gbrain-docs').map((c) => `${c.harness}|${c.split}`))];
+      // internal-task: every gbrain-docs and gbrain-installer cell's bundle view is exported from the image and verified before any trial mounts it.
+      const docsViews = [...new Set(gbrainCells.map((c) => ({ c, install: resolveGbrain(c.gbrain!).install })).filter((x) => x.install !== 'mcp').map((x) => `${x.c.harness}|${x.c.split}|${x.install}`))];
       for (const v of docsViews) {
-        const [harness, split] = v.split('|') as [string, 'dev' | 'heldout'];
+        const [harness, split, install] = v.split('|') as [string, 'dev' | 'heldout', 'gbrain-docs' | 'gbrain-installer'];
         const { installViewDir } = await import('./trial/trial.ts');
-        const view = await exportInstallView(image, harness, split, installViewDir(runDir, harness, split));
-        console.log(`GBRAIN: install bundle view ${view.harness}/${split} exported and verified: ${view.files.length} files, ${view.skills} skills, view digest ${view.view_digest.slice(0, 12)}${view.context ? `, context ${view.context.kept_slugs.length} pages (${view.context.tokens ?? '?'} tokens)` : ''} (gbrain ${view.gbrain_commit.slice(0, 12)})`);
+        const view = await exportInstallView(image, harness, split, installViewDir(runDir, harness, split, install), install);
+        console.log(`GBRAIN: install bundle view ${view.harness}/${split} (${install}) exported and verified: ${view.files.length} files, ${view.skills} skills, view digest ${view.view_digest.slice(0, 12)}${view.context ? `, context ${view.context.kept_slugs.length} pages (${view.context.tokens ?? '?'} tokens)` : ''} (gbrain ${view.gbrain_commit.slice(0, 12)})`);
       }
       // internal-task: a company brain is probed per split under the unscoped token and must list every page the build holds.
       const companySplits = [...new Set(gbrainCells.filter((c) => c.gbrain!.brain === 'company').map((c) => c.split))];

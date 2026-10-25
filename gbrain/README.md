@@ -55,7 +55,7 @@ Embeddings are off in the keyword brains (`gbrain init --no-embedding`, `gbrain 
 docker run --rm --user "$(id -u):$(id -g)" -v /tmp/view:/out --entrypoint /opt/sidecar/gbrain/export-install.sh harness-eval/gbrain:dev hermes heldout /out
 ```
 
-The runner's preflight exports each gbrain-docs cell's view into the run's results and verifies it, and the trial mounts it read-only into the harness container, where the adapter copies it to `/workspace`; those pieces and the cells that select them are described in [docs/gbrain-arm.md](../docs/gbrain-arm.md), "The install ladder".
+A fourth argument picks the install kind: `gbrain-installer` exports what `gbrain setup <harness> --instructions-only` wrote (internal-task; `workspace/AGENTS.md` for OpenClaw, `home/SOUL.md` for Hermes, the same bytes for both splits), and the image refuses it when its gbrain commit has no setup target for the harness (the bundle manifest's `harnesses.<h>.installer.unavailable` says why). The runner's preflight exports each gbrain-docs or gbrain-installer cell's view into the run's results and verifies it, and the trial mounts it read-only into the harness container, where the adapter copies it to `/workspace` (or, for the Hermes installer, `$HERMES_HOME`); those pieces and the cells that select them are described in [docs/gbrain-arm.md](../docs/gbrain-arm.md), "The install ladder".
 
 ## Run one by hand
 

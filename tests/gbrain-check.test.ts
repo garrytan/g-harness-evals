@@ -15,7 +15,7 @@ import { buildManifest, loadPrereg, type Manifest } from '../runner/run.ts';
 import {
   DEFAULT_BASELINE, KNOWN_PAGE, RUNGS, TOLD_PREAMBLE, checkDir, fingerprintOf, fingerprintSha, gitExpandSha, keylessAssertions, modelLabel, paidCells, parseArgs,
   readBaseline, renderSummary, resolveFromRefs, resolveGbrainRef, scratchPrereg, validateBaseline, viewDigestFromBundle, writeBaseline, writeKeylessTasks,
-  type Baseline, type KeylessEvidence, type PinSurfaces, type SummaryJson, type ViewEvidence,
+  type Baseline, type InstallerEvidence, type KeylessEvidence, type PinSurfaces, type SummaryJson, type ViewEvidence,
 } from '../scripts/gbrain-check.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
@@ -122,9 +122,13 @@ describe('the scratch preregistration and the check directory', () => {
     const present = existsSync(join(ROOT, TOLD_PREAMBLE));
     expect(skipped).toEqual(present ? [] : [expect.stringContaining(`rung told skipped: the told preamble ${TOLD_PREAMBLE} is not in this checkout`)]);
     expect(cells.map((c) => c.id)).toEqual(present ? ['openclaw-haiku-gbrain-told', 'openclaw-haiku-gbrain-mcp'] : ['openclaw-haiku-gbrain-mcp']);
-    expect(() => paidCells(['openclaw'], ['plugin'])).toThrow(/HE-RUN-002 --rungs names "plugin"; the rungs are mcp, told, docs, verbs-told, semantic-told, docs-semantic/);
-    expect(Object.keys(RUNGS)).toEqual(['mcp', 'told', 'docs', 'verbs-told', 'semantic-told', 'docs-semantic']);
+    expect(() => paidCells(['openclaw'], ['plugin'])).toThrow(/HE-RUN-002 --rungs names "plugin"; the rungs are mcp, told, docs, installer, verbs-told, semantic-told, docs-semantic/);
+    expect(Object.keys(RUNGS)).toEqual(['mcp', 'told', 'docs', 'installer', 'verbs-told', 'semantic-told', 'docs-semantic']);
     expect(RUNGS['semantic-told']!.gbrain).toEqual({ surface: 'starter', embeddings: 'openai:text-embedding-3-small' });
+    // internal-task: the installer rung is gbrain's own installer with the arm's preamble, so a check of it needs no told preamble.
+    expect(RUNGS.installer).toEqual({ gbrain: { surface: 'starter', install: 'gbrain-installer' }, told: false });
+    expect(paidCells(['openclaw', 'hermes'], ['installer'], { reps: 1 }).cells.map((c) => [c.id, c.gbrain])).toEqual([
+      ['openclaw-haiku-gbrain-installer', { surface: 'starter', install: 'gbrain-installer' }], ['hermes-haiku-gbrain-installer', { surface: 'starter', install: 'gbrain-installer' }]]);
     expect(modelLabel('anthropic:claude-haiku-5-5')).toBe('haiku');
     expect(modelLabel('openai:gpt-5.5')).toBe('gpt');
   });
@@ -203,6 +207,38 @@ describe('keyless assertions', () => {
     expect(v.passed.length).toBeGreaterThanOrEqual(20);
     expect(v.passed).toContain(`ok surface=starter gbrain.search for "ticket 4092" returned ${KNOWN_PAGE.slug} (1 page(s))`);
     expect(v.passed).toContain('ok view=hermes/heldout .hermes.md 3749 bytes, 1 kept slugs');
+  });
+
+  // internal-task: the installer view per harness is asserted when the image's gbrain has the setup target and reported, not failed, when it has not.
+  test('installer evidence: an unavailable installer is a reported line; an available one is checked against the bundle, the block marker and the Hermes seed', () => {
+    const e = healthyEvidence();
+    e.bundle!.files.push({ path: 'openclaw/installer/workspace/AGENTS.md', sha256: '1'.repeat(64), bytes: 1002 }, { path: 'hermes/installer/home/SOUL.md', sha256: '2'.repeat(64), bytes: 1677 });
+    const view = (harness: 'openclaw' | 'hermes', path: string, sha: string, seed: boolean): InstallerEvidence => ({
+      harness, available: true, reason: null, dir: `/scratch/${harness}-installer/dev`, error: null, block_present: true,
+      manifest: { harness, split: 'dev', install: 'gbrain-installer', gbrain_commit: '9'.repeat(40), gbrain_version: '0.60.437.0', bundle_digest: e.bundle!.digest, view_digest: viewDigestFromBundle(e.bundle!.files, harness, 'dev', 'gbrain-installer'),
+        workspace_entries: harness === 'openclaw' ? ['AGENTS.md'] : [], skills: 0, context: null,
+        installer: { argv: ['gbrain', 'setup', harness, '--instructions-only'], files: [`${harness}/installer/${path}`], block_version: 'v1', ...(seed ? { seed: { source: '/opt/sidecar/hermes/SOUL.md', hermes_commit: 'f'.repeat(40), sha256: '3'.repeat(64), bytes: 667 } } : {}) },
+        files: [{ path, source_path: `${harness}/installer/${path}`, sha256: sha, bytes: 1002 }] },
+    });
+    e.installer = [view('openclaw', 'workspace/AGENTS.md', '1'.repeat(64), false), view('hermes', 'home/SOUL.md', '2'.repeat(64), true)];
+    const v = keylessAssertions(e);
+    expect(v.failures).toEqual([]);
+    expect(v.passed).toContain(`ok installer=openclaw workspace/AGENTS.md (block v1), view digest ${e.installer[0]!.manifest!.view_digest.slice(0, 12)} matches the bundle manifest`);
+    expect(v.passed).toContain(`ok installer=hermes home/SOUL.md (block v1), view digest ${e.installer[1]!.manifest!.view_digest.slice(0, 12)} matches the bundle manifest; home seeded with Hermes SOUL.md 333333333333 (667 bytes)`);
+    const absent = healthyEvidence();
+    absent.installer = [{ harness: 'openclaw', available: false, reason: 'gbrain setup openclaw --instructions-only exited 1: unknown harness openclaw', dir: '/scratch/openclaw-installer/dev', manifest: null, error: null, block_present: null }];
+    const a = keylessAssertions(absent);
+    expect(a.failures).toEqual([]);
+    expect(a.passed).toContain('ok installer=openclaw not in this gbrain commit (gbrain setup openclaw --instructions-only exited 1: unknown harness openclaw); the installer rung needs gbrain#7489 or later');
+    const broken = healthyEvidence();
+    broken.bundle!.files.push({ path: 'hermes/installer/home/SOUL.md', sha256: '2'.repeat(64), bytes: 1677 });
+    broken.installer = [{ ...view('hermes', 'home/SOUL.md', '4'.repeat(64), false), block_present: false }, { harness: 'openclaw', available: true, reason: null, dir: '/scratch/openclaw-installer/dev', manifest: null, error: 'HE-GBRAIN-006 export-install.sh openclaw dev gbrain-installer failed', block_present: null }];
+    expect(keylessAssertions(broken).failures).toEqual([
+      expect.stringContaining('HE-GBRAIN-008 installer=hermes file digests against the bundle manifest: expected every view file listed with the same sha256, actual 1 differ (home/SOUL.md)'),
+      'HE-GBRAIN-008 installer=hermes brain-first block: expected every installer file holds <!-- gbrain:brain-first:begin -->, actual a file without it (/scratch/hermes-installer/dev)',
+      'HE-GBRAIN-008 installer=hermes Hermes SOUL.md seed: expected recorded (sha256, bytes, hermes commit), actual absent (/scratch/hermes-installer/dev/manifest.json)',
+      'HE-GBRAIN-008 installer=openclaw export and verify: expected every file present with its sha256, actual HE-GBRAIN-006 export-install.sh openclaw dev gbrain-installer failed (/scratch/openclaw-installer/dev/manifest.json)',
+    ]);
   });
 
   test('a healthy catalog with a broken retrieval fails under HE-GBRAIN-008 naming surface, expected, actual and file', () => {

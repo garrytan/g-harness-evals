@@ -25,6 +25,8 @@ embedded=0
 dry=0
 nocache=
 model=$(jq -r '.embeddings.model' gbrain/pin.json)
+# internal-task: the hermes installer's SOUL.md seed is Hermes's own file at the pinned Hermes commit, checked by sha256 in the build.
+hermes_args=(--build-arg "HERMES_COMMIT=$(jq -r '.commit' harnesses/hermes/pin.json)" --build-arg "HERMES_SOUL_SHA256=$(jq -r '.soul_md.sha256' harnesses/hermes/pin.json)")
 while [ $# -gt 0 ]; do
   case "$1" in
     --gbrain) gbrain="$2"; shift 2 ;;
@@ -60,7 +62,7 @@ plan() {
   echo "gbrain commit/ref: $gbrain"
   echo "tag:               $tag"
   echo "output:            $out (build.log${embedded:+, ledger.sqlite, proxy-usage.ndjson, brains/<split>-embedded})"
-  echo "keyword build:     docker build $nocache --build-arg GBRAIN_COMMIT=$gbrain --target keyword -t $tag -f gbrain/Dockerfile ."
+  echo "keyword build:     docker build $nocache --build-arg GBRAIN_COMMIT=$gbrain ${hermes_args[*]} --target keyword -t $tag -f gbrain/Dockerfile ."
   if [ "$embedded" = 1 ]; then
     echo "embedded build:    docker build --build-arg GBRAIN_COMMIT=$gbrain --target builder -t $tag-builder -f gbrain/Dockerfile ."
     echo "                   metering proxy on 0.0.0.0:<port>, ledger $out/ledger.sqlite, lease \$1, run id gbrain-image-embed-<ts>, allow-models $model"
@@ -81,7 +83,7 @@ command -v bun >/dev/null || { echo "HE-GBRAIN-007 bun is not installed" >&2; ex
 : > "$log"
 
 echo "[build-gbrain-image] keyword target: gbrain $gbrain -> $tag (log $log)"
-docker build $nocache --build-arg "GBRAIN_COMMIT=$gbrain" --target keyword -t "$tag" -f gbrain/Dockerfile . >> "$log" 2>&1 || fail "docker build of the keyword target failed"
+docker build $nocache --build-arg "GBRAIN_COMMIT=$gbrain" "${hermes_args[@]}" --target keyword -t "$tag" -f gbrain/Dockerfile . >> "$log" 2>&1 || fail "docker build of the keyword target failed"
 docker run --rm --entrypoint cat "$tag" /opt/sidecar/image.json > "$out/image.json"
 echo "[build-gbrain-image] keyword image $(docker image inspect -f '{{.Id}}' "$tag") gbrain $(jq -r '.gbrain_commit' "$out/image.json" | cut -c1-12) ($(jq -r '.gbrain_version' "$out/image.json"))"
 [ "$embedded" = 1 ] || exit 0
@@ -133,5 +135,5 @@ done
 if [ "$brains" != "$out/brains" ]; then rm -rf "$out/brains" && mkdir -p "$out" && cp -r "$brains" "$out/brains"; fi
 
 echo "[build-gbrain-image] embedded target -> $tag"
-docker build --build-arg "GBRAIN_COMMIT=$gbrain" --target embedded -t "$tag" -f gbrain/Dockerfile . >> "$log" 2>&1 || fail "docker build of the embedded target failed"
+docker build --build-arg "GBRAIN_COMMIT=$gbrain" "${hermes_args[@]}" --target embedded -t "$tag" -f gbrain/Dockerfile . >> "$log" 2>&1 || fail "docker build of the embedded target failed"
 echo "[build-gbrain-image] embedded image $(docker image inspect -f '{{.Id}}' "$tag"); brains: $(docker run --rm --entrypoint ls "$tag" /brains | tr '\n' ' ')"

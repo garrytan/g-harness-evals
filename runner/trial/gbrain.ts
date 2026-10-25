@@ -19,7 +19,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { RunnerError } from '../errors.ts';
 import type { CompanyTokens } from '../../gbrain/build-brain.ts';
-import { verifyFiles, type InstallFile } from '../../gbrain/build-install.ts';
+import { verifyFiles, type InstallFile, type InstallerRecord } from '../../gbrain/build-install.ts';
 import type { GbrainCellConfig } from '../contracts.ts';
 
 export const DEFAULT_GBRAIN_IMAGE = 'harness-eval/gbrain:dev';
@@ -244,6 +244,10 @@ export async function listGbrainTools(url: string, token: string): Promise<strin
 export interface InstallViewManifest {
   harness: string;
   split: 'dev' | 'heldout';
+  /** The view's install kind; absent in views exported before the installer rung (gbrain-docs). */
+  install?: 'gbrain-docs' | 'gbrain-installer';
+  /** gbrain-installer views: the bundle's installer record (the command, its files, the block version, the Hermes seed). */
+  installer?: InstallerRecord | { unavailable: string } | null;
   gbrain_commit: string;
   gbrain_version: string | null;
   bundle_digest: string;
@@ -255,25 +259,30 @@ export interface InstallViewManifest {
 }
 
 /** internal-task: export one harness and split view of the image's install bundle into dest and verify every file against the
- *  view manifest (HE-GBRAIN-006 on a missing view, a failed export or a digest mismatch). */
-export async function exportInstallView(image: string, harness: string, split: 'dev' | 'heldout', dest: string): Promise<InstallViewManifest> {
+ *  view manifest (HE-GBRAIN-006 on a missing view, a failed export or a digest mismatch); install picks the gbrain-docs view
+ *  (the default) or the gbrain-installer view, which the image refuses when its gbrain commit has no setup target. */
+export async function exportInstallView(image: string, harness: string, split: 'dev' | 'heldout', dest: string, install: 'gbrain-docs' | 'gbrain-installer' = 'gbrain-docs'): Promise<InstallViewManifest> {
   const out = resolve(dest);
   mkdirSync(out, { recursive: true });
   // The fake harness has no documented install; it takes the OpenClaw view so a keyless trial proves the mount and the adapter variables.
   const bundleHarness = harness === '_fake' ? 'openclaw' : harness;
-  const r = await sh(['docker', 'run', '--rm', '--user', uidGid(), '-v', `${out}:/out`, '--entrypoint', '/opt/sidecar/gbrain/export-install.sh', image, bundleHarness, split, '/out'], 300_000);
-  if (r.status !== 0) throw new RunnerError('HE-GBRAIN-006', `export-install.sh ${bundleHarness} ${split} from ${image} failed: ${(r.stderr || r.stdout).trim().slice(0, 400)}; fix: rebuild the image (scripts/build-gbrain-image.sh) so it carries the install bundle`);
+  const r = await sh(['docker', 'run', '--rm', '--user', uidGid(), '-v', `${out}:/out`, '--entrypoint', '/opt/sidecar/gbrain/export-install.sh', image, bundleHarness, split, '/out', install], 300_000);
+  if (r.status !== 0) throw new RunnerError('HE-GBRAIN-006', `export-install.sh ${bundleHarness} ${split} ${install} from ${image} failed: ${(r.stderr || r.stdout).trim().slice(0, 400)}; fix: rebuild the image (scripts/build-gbrain-image.sh) so it carries the install bundle`);
   const manifestPath = join(out, 'manifest.json');
   if (!existsSync(manifestPath)) throw new RunnerError('HE-GBRAIN-006', `the exported view at ${out} has no manifest.json; fix: rebuild the image (scripts/build-gbrain-image.sh)`);
   const view = JSON.parse(readFileSync(manifestPath, 'utf8')) as InstallViewManifest;
-  return verifyInstallView(view, out);
+  return verifyInstallView(view, out, install);
 }
 
-/** internal-task: every file the view manifest lists is present under root with its sha256 (HE-GBRAIN-006 otherwise). */
-export function verifyInstallView(view: InstallViewManifest, root: string): InstallViewManifest {
+/** internal-task: every file the view manifest lists is present under root with its sha256, and the view is of the install kind the
+ *  cell asked for (HE-GBRAIN-006 otherwise). */
+export function verifyInstallView(view: InstallViewManifest, root: string, install: 'gbrain-docs' | 'gbrain-installer' = 'gbrain-docs'): InstallViewManifest {
+  const kind = view.install ?? 'gbrain-docs';
+  if (kind !== install) throw new RunnerError('HE-GBRAIN-006', `the install bundle view at ${root} is a ${kind} view, the cell's gbrain.install is ${install}; fix: remove the directory and run preflight again`);
+  if (kind === 'gbrain-installer' && !view.files.length) throw new RunnerError('HE-GBRAIN-006', `the ${view.harness} installer view at ${root} lists no file; gbrain setup ${view.harness} --instructions-only wrote nothing at this gbrain commit`);
   const check = verifyFiles(root, view.files);
   if (!check.ok) throw new RunnerError('HE-GBRAIN-006', `the install bundle view at ${root} (${view.harness} ${view.split}) does not match its manifest: ${check.missing.length} missing (${check.missing.slice(0, 3).join(', ')}), ${check.changed.length} changed (${check.changed.slice(0, 3).join(', ')}); fix: re-export it from the image (gbrain/export-install.sh) or rebuild the image`);
-  if (view.harness === 'hermes' && (!view.context || view.context.kept_slugs.length === 0)) throw new RunnerError('HE-GBRAIN-006', `the hermes ${view.split} view at ${root} has an empty compiled context; the bundle was built from an empty brain (gbrain/build-install.ts copies each brain to /brain first); fix: rebuild the image`);
+  if (kind === 'gbrain-docs' && view.harness === 'hermes' && (!view.context || view.context.kept_slugs.length === 0)) throw new RunnerError('HE-GBRAIN-006', `the hermes ${view.split} view at ${root} has an empty compiled context; the bundle was built from an empty brain (gbrain/build-install.ts copies each brain to /brain first); fix: rebuild the image`);
   return view;
 }
 
