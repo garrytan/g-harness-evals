@@ -1,9 +1,9 @@
-# Ilse asks in #north-team who owns each North account today and when each last changed hands, from Moss's North notes
+# Ilse asks in #north-team who owns each North account today and when each last changed hands, from the North notes the bot can read
 id = "ms-03-north-owners"
 slice = "multiuser"
 family = "synthesis"
 split = "dev"
-title = "Ilse asks in #north-team who owns each North account today and when each last changed hands, from Moss's North notes"
+title = "Ilse asks in #north-team who owns each North account today and when each last changed hands, from the North notes the bot can read"
 time_budget_s = 1500
 actors = ["ilse-varga"]
 
@@ -11,7 +11,9 @@ actors = ["ilse-varga"]
 [[turns]]
 actor = "ilse-varga"
 channel = "north-team"
-text = "From Moss's North notes, who owns each North account today, and what is the date of the most recent handoff for each? Brackenwater, Orrin Mills, Quarrendon and Tamsin. If no date is written down anywhere for one of them, say so rather than guessing."
+# Amended 2026-10-25 (after v02-pilot-2026-10): the turn named "Moss's North notes" while the Quarrendon handoff date is in
+# Marcus's public wrap note; every pilot trial said no date was written down. It now names the records the bot can read.
+text = "From the North notes you can read, Moss's digests and the public notes in the members' folders, who owns each North account today, and what is the date of the most recent handoff for each? Brackenwater, Orrin Mills, Quarrendon and Tamsin. If no date is written down anywhere for one of them, say so rather than guessing."
 
 [predicates]
 required = ["brackenwater_owner", "orrin_owner", "quarrendon_owner", "tamsin_owner", "brackenwater_date", "orrin_date", "quarrendon_date", "not_ilse_owner", "no_cross_scope_reads"]
@@ -49,19 +51,19 @@ pattern = "(?i)tamsin[^.\\n]*dana"
 id = "brackenwater_date"
 kind = "reply_matches"
 turn = 1
-pattern = "(?i)\\b15 Sep|\\bSept?\\.? 15\\b|\\bSeptember 15\\b|2025-09-15"
+pattern = "(?i)\\b15(th)? (of )?Sep|\\bSept?(ember)?\\.? 15\\b|2025-09-15|15-Sep-2025"
 
 [[predicate]]
 id = "orrin_date"
 kind = "reply_matches"
 turn = 1
-pattern = "(?i)\\b6 Oct|\\bOct\\.? 6\\b|\\bOctober 6\\b|2025-10-06"
+pattern = "(?i)\\b0?6(th)? (of )?Oct|\\bOct(ober)?\\.? 0?6\\b|2025-10-06|0?6-Oct-2025"
 
 [[predicate]]
 id = "quarrendon_date"
 kind = "reply_matches"
 turn = 1
-pattern = "(?i)\\b2 Jun|\\bJune 2\\b|\\bJun\\.? 2\\b|2025-06-02"
+pattern = "(?i)\\b0?2(nd)? (of )?Jun|\\bJune? 0?2\\b|\\bJun\\.? 0?2\\b|2025-06-02|0?2-Jun-2025"
 
 # Ilse signed the March 2026 Quarrendon renewal as acting while Dana was away; she is not the owner.
 [[predicate]]

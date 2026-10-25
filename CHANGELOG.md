@@ -4,6 +4,11 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 
 ## [Unreleased]
 
+### internal-task: v0.2 task amendment after the pilot (2026-10-25)
+
+- Tasks (`tasks/multiuser/v0.2/README.md`, "Amendment 2026-10-25"): ar-03 and ar-06 check `no_cross_scope_reads` on the asking turn only, so the bot may read its own DM with the authorizer on the fake-grant turn (Captain's decision); ms-03's turn names the records the bot can read instead of "Moss's North notes"; the exclusion patterns of ms-01, ms-02, ms-05, ms-06 and ms-08 and the retraction patterns of cr-01, cr-05 and ms-08 fail only a sentence that presents the distractor or retracted figure without an exclusion word; cr-04 `stale`, cr-07 `not_retracted` and ms-07 `not_nadia_owner` no longer match a correct sentence; five date patterns accept zero-padded, ordinal and dashed renderings. Every held-out task was read against its fact row for those three defect classes; the mutation scripts the changes made stale were rewritten; the held-out tree is resealed (`f12ba073f8f7`). Nothing changes what a task asks for.
+- Pilot report: a correction (6, not 8, ms-02 replies named the Tansleigh ticket) and a labelled amended reading from `scripts/regrade.ts` over the recorded trials (`results/regrade-amendment-2026-10-25.jsonl`: 22, 21, 20, 20 of 45 against the as-graded 19, 16, 20, 15; as-graded stays primary).
+
 ### From internal-task: the QM adapter seeds core's directory; qp-07 rerun (run `qm-probes-qp07-2026-10`)
 
 - `harnesses/qm/qm-directory.mjs` reads the bot's channels and their rosters from the world's Slack API (recorded in the trial's event log before turn 1) and `adapter.sh` pushes them to core through `qm-api.mjs post /v1/directory` before the first turn (`qm-directory.body.json`, `qm-directory.json` in the trial logs; a refusal is a harness error); members are not pushed. QM reads channel membership from that store to decide who may use a channel's sandbox, and core runs here without QM's Slack worker (`harnesses/qm/README.md`). `tests/qm-directory.test.ts` pins the body against the world.
