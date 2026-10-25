@@ -395,6 +395,9 @@ describe('the paid summary against a baseline', () => {
 });
 
 describe('the command line', () => {
+  // Each case spawns bun on the script one to four times (a cold start and the plan each time); the GitHub runner took
+  // more than bun's default 5 s for these on 2026-10-25 (run 40171750104) while a faster machine takes about 2 s.
+  const CLI_TIMEOUT_MS = 30_000;
   const run = (args: string[], env: Record<string, string> = {}) => spawnSync('bun', [join(ROOT, 'scripts', 'gbrain-check.ts'), ...args], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, GBRAIN_CHECK_DIR: join(tmp, 'cli'), ...env } });
   const sha = 'a'.repeat(40);
 
@@ -412,7 +415,7 @@ describe('the command line', () => {
     expect(r.stdout).toContain(`told preamble ${TOLD_PREAMBLE}: ${existsSync(join(ROOT, TOLD_PREAMBLE)) ? 'present' : 'absent'}`);
     expect(r.stdout).toContain('baseline scripts/gbrain-check.baseline.json:');
     expect(existsSync(join(tmp, 'cli', 'trials.jsonl'))).toBe(false);
-  });
+  }, CLI_TIMEOUT_MS);
 
   test('--dry-run in the keyless mode, and the refusals: a bad rung, a docs/benchmarks check directory, an unknown flag', () => {
     const r = run(['--gbrain', sha, '--dry-run'], { ANTHROPIC_API_KEY: '', OPENAI_API_KEY: '' });
@@ -428,5 +431,5 @@ describe('the command line', () => {
     const flag = run(['--gbrain', sha, '--parallel', '3', '--dry-run']);
     expect(flag.status).toBe(2);
     expect(flag.stderr).toContain('HE-RUN-002 unknown argument --parallel');
-  });
+  }, CLI_TIMEOUT_MS);
 });
