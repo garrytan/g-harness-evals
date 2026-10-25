@@ -7,7 +7,8 @@ import os, re, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
-SKIP_DIRS = {".git", "node_modules"}
+# results/ is gitignored scratch (runs, exported install bundle views with their own placeholder links); never checked.
+SKIP_DIRS = {".git", "node_modules", "results"}
 problems = []
 for dirpath, dirnames, filenames in os.walk(ROOT):
     dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]

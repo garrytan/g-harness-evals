@@ -31,6 +31,7 @@ The one-page account of the v0.1 result, with its limits, interests and receipts
 | The gbrain arm: a gbrain sidecar per trial beside the world tools, the world's `/gbrain` tap, runner and adapter wiring, smoke evidence | [docs/gbrain-arm.md](docs/gbrain-arm.md), [gbrain/](gbrain/README.md) |
 | The v0.1 report, one page: finding, limits, interests, tables with intervals, taxonomy and spend summary, the gbrain arm marked pending | [docs/report-v0.1.md](docs/report-v0.1.md) |
 | Publishing audit (`bun scripts/publish-audit.ts`: token scan over the working tree, every decoded receipt and every blob in history; personal-data and receipts checks) and the checklist for going public | [docs/publishing-checklist.md](docs/publishing-checklist.md), [scripts/publish-audit.ts](scripts/publish-audit.ts) |
+| Checking a gbrain commit (internal-task): `bun scripts/gbrain-check.ts --gbrain <ref>` runs the fake harness through the runner and the gbrain tap keyless and asserts the install ladder's structural facts; `--harness openclaw,hermes` runs the paid dev-split check against a baseline; a disabled workflow for dispatch and `workflow_call` | [docs/gbrain-arm.md](docs/gbrain-arm.md), "Checking a gbrain commit"; [scripts/gbrain-check.ts](scripts/gbrain-check.ts) |
 | Failure taxonomy of the three v0.1 runs: every failed predicate labelled with an observed mode and one line of evidence, with a hand-labelled calibration sample (`bun scripts/taxonomy.ts --results <dir>`) | [scripts/taxonomy.ts](scripts/taxonomy.ts), `results/taxonomy.md` under each run above, taxonomy section of each report |
 | Open work carried out of the plan review | [TODOS.md](TODOS.md) |
 
@@ -57,6 +58,10 @@ None of these calls a model API. A paid run is `bun runner/run.ts plan --prereg 
 **What is and is not proven about spend.** Every published dollar figure is the metering proxy's list-price meter. For every counted trial the proxy's meter agrees with its own usage log (`reconcile.json` per trial), and for every counted run the usage log, the per-trial `usage.json` sums and the lease ledger agree to the cent (`bun scripts/reconcile-provider.ts --results <dir>`, written to `results/spend-reconciliation.json`). What is not proven is that the provider billed the same: that check needs an Anthropic Admin API key, which the v0.1 runs did not have, so each run's `spend-reconciliation.json` says "not performed" and carries the per-day sheet to check against the console by hand. Per-trial reconciliation against the provider is not possible with one upstream key (docs/methodology.md, item 3 as amended on 2026-10-24).
 
 ## Changelog
+
+### 2026-10-24: gbrain-check (internal-task)
+
+harness-evals v0.0.5. `scripts/gbrain-check.ts` checks one gbrain commit: keyless by default (builds the sidecar image at that commit, runs the fake harness through the runner and the world's gbrain tap on both surfaces and with the install bundle mounted, asserts tool counts against the pin, the search tool, a known page retrieved, the bundle digests and the Hermes context; 203 s cold on a 4-core machine), paid with `--harness openclaw,hermes` (a scratch, uncounted preregistration on the dev split, the ladder's gating rows against `scripts/gbrain-check.baseline.json`, INCOMPLETE and NOT_COMPARABLE rules). A disabled workflow (`vars.GBRAIN_CHECK_ENABLED`) and a `workflow_call` job for gbrain's CI. New rows HE-GBRAIN-008 to 010.
 
 ### 2026-10-24: From internal-task, two preregistrations and the QM findings page
 

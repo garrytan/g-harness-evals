@@ -1,0 +1,98 @@
+# gbrain-check (internal-task; docs/gbrain-arm.md, "Checking a gbrain commit"): the keyless check of one gbrain commit against this
+# repository's harness machinery. Disabled by default: the dispatch job runs only when the repository variable
+# GBRAIN_CHECK_ENABLED is 'true' (Settings > Secrets and variables > Actions > Variables), so a dispatch on a repository without
+# it shows as skipped. No secret is read anywhere in this file: the keyless mode builds the sidecar image from the commit, runs
+# the fake harness through the runner and the world's gbrain tap, and asserts the structural facts the install ladder depends
+# on (tool counts per surface, the search tool present, a known page retrieved, the install bundle digests, the Hermes context).
+# The paid mode (--harness openclaw,hermes) is a local command and is not run here.
+#
+# The second job is the same check as a reusable workflow (workflow_call), which gbrain's own CI can call with its commit:
+#
+#   jobs:
+#     harness-evals:
+#       uses: garrytan/harness-evals/.github/workflows/gbrain-check.yml@main
+#       with:
+#         gbrain_ref: ${{ github.sha }}
+#
+# A reusable workflow in another repository needs this repository to be public or to allow the caller in its Actions access
+# settings; internal-task is asked to wire it. Cold time measured on 2026-10-24 on a 4-core, 15 GB machine: 203 s (image build
+# plus the check); see the docs section for the breakdown. Actions are pinned to commit SHAs as in ci.yml.
+name: gbrain-check
+
+on:
+  workflow_dispatch:
+    inputs:
+      gbrain_ref:
+        description: 'gbrain commit sha, branch or tag to check (resolved against github.com/garrytan/gbrain)'
+        required: true
+        default: master
+  workflow_call:
+    inputs:
+      gbrain_ref:
+        description: 'gbrain commit sha, branch or tag to check'
+        required: true
+        type: string
+
+jobs:
+  # Manual dispatch, guarded on the job: a disabled repository skips it before any step runs.
+  keyless:
+    if: github.event_name == 'workflow_dispatch' && vars.GBRAIN_CHECK_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.3
+      - name: Install (frozen lockfile)
+        run: bun install --frozen-lockfile
+      - name: Keyless check of the gbrain commit
+        env:
+          GBRAIN_REF: ${{ inputs.gbrain_ref }}
+          GBRAIN_CHECK_DIR: /tmp/gbrain-check
+        run: bun scripts/gbrain-check.ts --gbrain "$GBRAIN_REF"
+      - name: Summary
+        if: always()
+        run: cat /tmp/gbrain-check/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+      # Only the summary and the assertion record: never a trial's state or a token file.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: gbrain-check-keyless
+          path: |
+            /tmp/gbrain-check/summary.md
+            /tmp/gbrain-check/keyless/check.json
+            /tmp/gbrain-check/keyless/trials.jsonl
+          if-no-files-found: ignore
+
+  # The same check for a caller (gbrain's CI through workflow_call); the caller decides when it runs. No secret here either.
+  keyless-call:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: garrytan/harness-evals
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.3
+      - name: Install (frozen lockfile)
+        run: bun install --frozen-lockfile
+      - name: Keyless check of the gbrain commit
+        env:
+          GBRAIN_REF: ${{ inputs.gbrain_ref }}
+          GBRAIN_CHECK_DIR: /tmp/gbrain-check
+        run: bun scripts/gbrain-check.ts --gbrain "$GBRAIN_REF"
+      - name: Summary
+        if: always()
+        run: cat /tmp/gbrain-check/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: gbrain-check-keyless
+          path: |
+            /tmp/gbrain-check/summary.md
+            /tmp/gbrain-check/keyless/check.json
+            /tmp/gbrain-check/keyless/trials.jsonl
+          if-no-files-found: ignore
