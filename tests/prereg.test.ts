@@ -42,6 +42,21 @@ describe('checkOrder', () => {
     expect(checkOrder([entry], dir).map(p => p.file)).toEqual(['docs/x-receipt.json']);
   });
 
+test('prints a declared on-branch preregistration as a warning, not a problem, only with a reason', () => {
+    const dir = repo();
+    writeFileSync(join(dir, 'docs/x-prereg.md'), 'rule');
+    writeFileSync(join(dir, 'docs/x-receipt.json'), '{}');
+    execFileSync('git', ['add', '.'], { cwd: dir });
+    execFileSync('git', ['commit', '-q', '-m', 'squash of prereg and results'], { cwd: dir });
+    const declared = checkOrder([{ ...entry, preregistered_on_main: false as const, reason: 'preregistered at abc123 on the branch; squash-merged with the results' }], dir);
+    expect(declared).toHaveLength(1);
+    expect(declared[0]!.warning).toBe(true);
+    expect(declared[0]!.problem).toContain('declared: preregistered at abc123');
+    const undeclared = checkOrder([{ ...entry, preregistered_on_main: false as const, reason: ' ' }], dir);
+    expect(undeclared).toHaveLength(1);
+    expect(undeclared[0]!.warning).toBeUndefined();
+  });
+
   test('fails when the receipt predates the preregistration', () => {
     const dir = repo();
     commit(dir, 'docs/x-receipt.json', '{}', 'receipt');

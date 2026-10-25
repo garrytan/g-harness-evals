@@ -11,7 +11,10 @@
  *   every listed experiment, the commit that first added the preregistration
  *   must be a strict ancestor of the commit that first added each result file,
  *   and any attestation a receipt carries must name a commit at or after the
- *   preregistration's.
+ *   preregistration's. An experiment that declares `preregistered_on_main: false`
+ *   with a `reason` (its preregistration commit preceded the trials on a branch
+ *   that was squash-merged together with the results) has its order problems
+ *   printed as warnings, not failures; the declaration is the published deviation.
  *
  * Commit order alone can't prove a preregistration was written first; the
  * runtime attestation against `origin` is what does. CI needs full history
@@ -34,12 +37,22 @@ export interface ManifestEntry {
   id: string;
   preregistration: string;
   results: string[];
+  /**
+   * A declared deviation: the preregistration commit preceded the trials on its branch, but the branch was
+   * squash-merged with its results, so main's history cannot show the order. Only with a non-empty `reason`
+   * naming the branch commit and the cause does the checker print the order problems of this experiment as
+   * warnings instead of failures; the attestation checks still fail as usual.
+   */
+  preregistered_on_main?: false;
+  reason?: string;
 }
 
 export interface OrderProblem {
   id: string;
   file: string;
   problem: string;
+  /** Set when the experiment declares `preregistered_on_main: false` with a reason: printed, not counted. */
+  warning?: true;
 }
 
 function git(cwd: string, args: string[]): string {
@@ -122,12 +135,14 @@ export function checkOrder(entries: ManifestEntry[], cwd = process.cwd()): Order
       problems.push({ id: entry.id, file: entry.preregistration, problem: 'preregistration is not committed' });
       continue;
     }
+    const declared = entry.preregistered_on_main === false && typeof entry.reason === 'string' && entry.reason.trim() !== '';
     for (const glob of entry.results) {
       for (const file of trackedFiles(cwd, glob)) {
         const resultCommit = firstAddCommit(cwd, file);
         if (!resultCommit) continue;
         if (!isStrictAncestor(cwd, preCommit, resultCommit)) {
-          problems.push({ id: entry.id, file, problem: `added in ${resultCommit.slice(0, 12)}, not after the preregistration commit ${preCommit.slice(0, 12)}` });
+          const problem = `added in ${resultCommit.slice(0, 12)}, not after the preregistration commit ${preCommit.slice(0, 12)}`;
+          problems.push(declared ? { id: entry.id, file, problem: `${problem} (declared: ${entry.reason!.trim()})`, warning: true } : { id: entry.id, file, problem });
         }
         const attestation = attestationIn(cwd, file);
         if (attestation) {
@@ -154,8 +169,11 @@ export function loadManifest(root = process.cwd()): ManifestEntry[] {
 
 if (import.meta.main) {
   const entries = loadManifest();
-  const problems = checkOrder(entries);
+  const all = checkOrder(entries);
+  const problems = all.filter(p => !p.warning);
+  const warnings = all.filter(p => p.warning);
   for (const p of problems) console.error(`prereg-order: ${p.id}: ${p.file}: ${p.problem}`);
-  console.log(`prereg-order: ${entries.length} experiments checked, ${problems.length} problems`);
+  for (const w of warnings) console.error(`prereg-order: warning: ${w.id}: ${w.file}: ${w.problem}`);
+  console.log(`prereg-order: ${entries.length} experiments checked, ${problems.length} problems, ${warnings.length} warnings`);
   process.exit(problems.length === 0 ? 0 : 1);
 }

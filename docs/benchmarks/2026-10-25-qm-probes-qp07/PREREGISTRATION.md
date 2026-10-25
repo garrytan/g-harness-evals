@@ -1,6 +1,8 @@
 # QM probe qp-07 rerun preregistration: one sandbox per channel, with QM's directory seeded
 
-Status: written 2026-10-25 (America/Los_Angeles), after run `qm-probes-2026-10` and before any trial of this run. Run id `qm-probes-qp07-2026-10`. Cells are in [prereg.json](prereg.json); `bun runner/run.ts dry-run --prereg docs/benchmarks/2026-10-25-qm-probes-qp07/prereg.json` prints 6 trials in 2 cells under the $1 cap. Thread internal-task of the Harness Evals crew; the Captain's decision on finding F5 (2026-10-25): treat it as a rig limitation until shown otherwise, seed the directory from the adapter, rerun qp-07 under a new run id, and write the result into [docs/qm-findings.md](../../qm-findings.md).
+Status: written 2026-10-25 (America/Los_Angeles), after run `qm-probes-2026-10` and before any trial of this run. Run id `qm-probes-qp07-2026-10`. Cells are in [prereg.json](prereg.json); `bun runner/run.ts dry-run --prereg docs/benchmarks/2026-10-25-qm-probes-qp07/prereg.json` prints 6 trials in 2 cells under the $1 cap. Thread HARN-4 of the Harness Evals crew; the Captain's decision on finding F5 (2026-10-25): treat it as a rig limitation until shown otherwise, seed the directory from the adapter, rerun qp-07 under a new run id, and write the result into [docs/qm-findings.md](../../qm-findings.md).
+
+**Declared deviation (2026-10-25):** this preregistration was committed at `a76ed6224a5eb9f24ebdd1d705b8f5c7aed80f31` on branch `harn4/qp07-directory` before any trial, and the run executed from a worktree pinned at that commit (`results/run.wrapper.log` names it). The same pull request (#67) carried the results, and its squash merge put preregistration and results into one commit on `main` (`86d59d0078ba`), so `main`'s history cannot show the preregistration preceding the trials; `docs/benchmarks/preregistrations.d/qm-probes-qp07.json` declares this and the order check prints it as a warning. The branch commit is on `origin`.
 
 ## Why this run exists
 
@@ -13,7 +15,7 @@ In `qm-probes-2026-10` probe qp-07 (a member asks the bot to write a file in its
 | `qm-pi-haiku-qp07` | QM `pi-probe` | qp-07 | 3 |
 | `qm-claude-haiku-qp07` | QM `claude-probe` | qp-07 | 3 |
 
-Model `anthropic:claude-haiku-5-5`, the only model on the proxy allowlist. 900 s per turn. One lease, cap $1 ($0.14 ceiling at list price). Minimum: the pi cell; drop order: the claude cell. QM `v0.1.15` at `7417aa2a` from pin.json, image rebuilt from the running commit; task, oracle, preamble, grader, world and probe configs unchanged from `qm-probes-2026-10` (5 s memory quiet time in the probe configs, as before). The run executes from a worktree detached at this preregistration's commit on the internal-task thread machine, trials sequential.
+Model `anthropic:claude-haiku-5-5`, the only model on the proxy allowlist. 900 s per turn. One lease, cap $1 ($0.14 ceiling at list price). Minimum: the pi cell; drop order: the claude cell. QM `v0.1.15` at `7417aa2a` from pin.json, image rebuilt from the running commit; task, oracle, preamble, grader, world and probe configs unchanged from `qm-probes-2026-10` (5 s memory quiet time in the probe configs, as before). The run executes from a worktree detached at this preregistration's commit on the HARN-4 thread machine, trials sequential.
 
 ## Outcomes, stated in advance
 
