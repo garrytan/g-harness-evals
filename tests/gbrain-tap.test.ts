@@ -23,6 +23,16 @@ function toolResult(name: string, args: Record<string, unknown>) {
   switch (name) {
     case 'search':
     case 'query':
+      // internal-task: after a remember, search carries the facts in a prose block and in _meta.retrieval.saved_facts, never as rows.
+      if (String(args.query ?? '').includes('remembered')) return { _meta: { retrieval: { returned_count: 1, saved_facts: [{ id: 1, fact: 'Door 4B is the Covey & Lark dock', entity_slug: 'covey-lark', kind: 'fact', source: 'test' }] } }, content: [
+        text([{ slug: 'heldout/chats/2025-10-15-saltmarsh-churn-risk', title: 'b' }]),
+        text('Saved facts (remember): about the entity this query names (newest first), then facts those point to, then matches for its words; recall returns more:\n- Door 4B is the Covey & Lark dock'),
+        text('[gbrain search] Rows are a ranked top-K, not proof of coverage.'),
+      ] };
+      if (String(args.query ?? '').includes('prose-only')) return { content: [
+        text([{ slug: 'heldout/chats/2025-10-15-saltmarsh-churn-risk', title: 'b' }]),
+        text('Saved facts (remember): about the entity this query names (newest first), then facts those point to, then matches for its words; recall returns more:\n- Door 4B is the Covey & Lark dock\n- Berth 2 closes Friday'),
+      ] };
       return { _meta: { gbrain_notices: [{ code: 'degraded_recall', fix: { mcp: { tool: 'get_page', arguments: { slug: 'heldout/notice-must-not-count' } } } }] }, content: [
         text([{ slug: 'heldout/chats/2025-11-17-saltmarsh-discount-retraction', title: 'a', chunk_text: 'x' }, { slug: 'heldout/chats/2025-10-15-saltmarsh-churn-risk', title: 'b' }, { slug: 'heldout/chats/2025-11-17-saltmarsh-discount-retraction', title: 'a again' }]),
         text('[gbrain search] Rows are a ranked top-K, not proof of coverage.'),
@@ -34,6 +44,8 @@ function toolResult(name: string, args: Record<string, unknown>) {
       return { content: [text({ id: 2, slug: args.slug, title: '#coastal-random (export)', compiled_truth: '...' })] };
     case 'remember':
       return { content: [text({ id: '1', status: 'inserted', entity_slug: 'probe' })] };
+    case 'recall':
+      return { content: [text({ facts: [{ id: 1, fact: 'Door 4B is the Covey & Lark dock', entity_slug: 'covey-lark', source_id: 'private-dana-okafor', source: 'test' }], total: 1, results: [{ slug: 'heldout/chats/2025-10-15-saltmarsh-churn-risk', title: 'b' }], search_degraded: 'embed_unavailable' })] };
     case 'list_pages':
       return { content: [text([{ slug: 'heldout/notes/a' }, { slug: 'heldout/notes/b' }])] };
     case 'entity':
@@ -125,6 +137,21 @@ test('search records every row slug once, counts rows, and ignores slugs inside 
   expect(e.tool).toBe('gbrain.search');
   expect(e.kind).toBe('read');
   expect(e.effect).toMatchObject({ pages: ['heldout/chats/2025-11-17-saltmarsh-discount-retraction', 'heldout/chats/2025-10-15-saltmarsh-churn-risk'], count: 3 });
+});
+
+test('saved facts are recorded as their own kind (internal-task): from _meta.retrieval.saved_facts, from the prose block alone, and from recall\'s facts array; never as pages or rows', async () => {
+  await tap(ws.credentials.bot.token, call(20, 'search', { query: 'remembered dock', limit: 3 }));
+  let e = last();
+  expect(e.effect).toMatchObject({ pages: ['heldout/chats/2025-10-15-saltmarsh-churn-risk'], count: 1, facts: [{ id: 1, fact: 'Door 4B is the Covey & Lark dock', entity_slug: 'covey-lark', source: 'test' }] });
+  expect((e.effect as { facts: unknown[] }).facts).toHaveLength(1);
+  await tap(ws.credentials.bot.token, call(21, 'search', { query: 'prose-only dock', limit: 3 }));
+  e = last();
+  expect(e.effect).toMatchObject({ pages: ['heldout/chats/2025-10-15-saltmarsh-churn-risk'], count: 1, facts: [{ fact: 'Door 4B is the Covey & Lark dock' }, { fact: 'Berth 2 closes Friday' }] });
+  await tap(ws.credentials.bot.token, call(22, 'recall', { query: 'dock', limit: 3 }));
+  e = last();
+  expect(e.effect).toMatchObject({ pages: ['heldout/chats/2025-10-15-saltmarsh-churn-risk'], count: 1, degraded: 'embed_unavailable', facts: [{ id: 1, fact: 'Door 4B is the Covey & Lark dock', source_id: 'private-dana-okafor' }] });
+  await tap(ws.credentials.bot.token, call(23, 'search', { query: 'saltmarsh discount', limit: 3 }));
+  expect(last().effect).not.toHaveProperty('facts');
 });
 
 test('remember is a write with the arguments as sent and no pages; list_pages and entity list what they returned', async () => {

@@ -68,7 +68,9 @@ export function collectSlugs(value: unknown, into: string[] = [], seen = new Set
 }
 
 /** The JSON a gbrain tool result carries: each content[].text that parses, plus structuredContent. _meta
- *  (notices, hot memory) is left out so a notice's suggested call never counts as a page the call touched. */
+ *  (notices, hot memory) is left out so a notice's suggested call never counts as a page the call touched. Saved facts
+ *  are not here either: search answers them in a prose block and in _meta.retrieval.saved_facts, never as rows (internal-task),
+ *  so savedFactsOf reads them on their own. */
 function resultPayloads(result: Record<string, unknown>): unknown[] {
   const out: unknown[] = [];
   const content = Array.isArray(result.content) ? result.content as Array<{ type?: string; text?: string }> : [];
@@ -82,7 +84,51 @@ function resultPayloads(result: Record<string, unknown>): unknown[] {
   return out;
 }
 
-export interface GbrainEffect { pages: string[]; count: number; latency_ms: number; /** internal-task: gbrain's degraded stamp on a search, query or recall reply, when present. */ degraded?: string }
+/** A fact gbrain returned beside a reply's rows: a remember landed in some source and search, query or recall surfaced it.
+ *  source_id is present on recall's facts and absent from search's saved_facts at the pin. */
+export interface GbrainFact { fact: string; id?: number | string; entity_slug?: string; source_id?: string; source?: string }
+
+const SAVED_FACTS_BLOCK = /^Saved facts \(remember\):/;
+
+/** internal-task correction (internal-task): the saved facts a search, query or recall reply carries, read from _meta.retrieval.saved_facts
+ *  when present, from recall's own facts array, and otherwise from the prose "Saved facts (remember): ..." block whose lines
+ *  begin "- ". The tap used to read only the JSON blocks and so never saw a remembered fact (the remember-then-search check
+ *  always read "not found"); facts are recorded as their own kind, never as pages. */
+export function savedFactsOf(result: Record<string, unknown>, payloads: unknown[]): GbrainFact[] {
+  const pick = (f: unknown): GbrainFact | null => {
+    if (!f || typeof f !== 'object' || Array.isArray(f)) return null;
+    const o = f as { fact?: unknown; id?: unknown; entity_slug?: unknown; source_id?: unknown; source?: unknown };
+    if (typeof o.fact !== 'string' || !o.fact) return null;
+    return {
+      fact: o.fact,
+      ...(typeof o.id === 'number' || typeof o.id === 'string' ? { id: o.id } : {}),
+      ...(typeof o.entity_slug === 'string' ? { entity_slug: o.entity_slug } : {}),
+      ...(typeof o.source_id === 'string' ? { source_id: o.source_id } : {}),
+      ...(typeof o.source === 'string' ? { source: o.source } : {}),
+    };
+  };
+  const meta = result._meta && typeof result._meta === 'object' ? result._meta as { retrieval?: { saved_facts?: unknown } } : null;
+  const fromMeta = Array.isArray(meta?.retrieval?.saved_facts) ? meta!.retrieval!.saved_facts.map(pick).filter((f): f is GbrainFact => f !== null) : [];
+  const fromPayload = payloads.flatMap((p) => (p && typeof p === 'object' && !Array.isArray(p) && Array.isArray((p as { facts?: unknown }).facts) ? (p as { facts: unknown[] }).facts.map(pick).filter((f): f is GbrainFact => f !== null) : []));
+  if (fromMeta.length || fromPayload.length) {
+    const out: GbrainFact[] = [];
+    const seen = new Set<string>();
+    for (const f of [...fromPayload, ...fromMeta]) { const k = `${f.id ?? ''}|${f.fact}`; if (!seen.has(k)) { seen.add(k); out.push(f); } }
+    return out;
+  }
+  const content = Array.isArray(result.content) ? result.content as Array<{ text?: string }> : [];
+  const block = content.find((c) => typeof c.text === 'string' && SAVED_FACTS_BLOCK.test(c.text.trim()));
+  if (!block) return [];
+  return block.text!.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('- ')).map((l) => ({ fact: l.slice(2).trim() })).filter((f) => f.fact);
+}
+
+export interface GbrainEffect {
+  pages: string[]; count: number; latency_ms: number;
+  /** internal-task: gbrain's degraded stamp on a search, query or recall reply, when present. */
+  degraded?: string;
+  /** internal-task correction (internal-task): the saved facts the reply carried beside its rows, when any; never counted in pages or count. */
+  facts?: GbrainFact[];
+}
 
 /** internal-task: recall's search_degraded or facts_degraded.reason from a result payload; null when the reply carries neither. */
 export function degradedStampOf(payloads: unknown[]): string | null {
@@ -127,7 +173,10 @@ export function describeCall(request: RpcMessage, reply: RpcMessage | undefined,
     const rows = (payloads.find((p) => Array.isArray(p)) as unknown[] | undefined)
       ?? (name === 'recall' ? (payloads.find((p) => p && typeof p === 'object' && Array.isArray((p as { results?: unknown }).results)) as { results: unknown[] } | undefined)?.results : undefined);
     effect.count = (name === 'search' || name === 'query' || name === 'recall') && rows ? rows.length : effect.pages.length;
-    if (name === 'search' || name === 'query' || name === 'recall') { const d = degradedStampOf(payloads); if (d) effect.degraded = d; }
+    if (name === 'search' || name === 'query' || name === 'recall') {
+      const d = degradedStampOf(payloads); if (d) effect.degraded = d;
+      if (result) { const facts = savedFactsOf(result, payloads); if (facts.length) effect.facts = facts; }
+    }
   }
   return { tool: `gbrain.${name}`, kind, args, outcome, ...(error ? { error } : {}), effect };
 }

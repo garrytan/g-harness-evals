@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { buildBrain, companyGrants, companyPageList, companySources, keylessEnv, memberReadsFile, pageList, SOURCE_ID_RE, sourceIdFor, tokenMembers, type CompanyBrainManifest } from '../gbrain/build-brain.ts';
 import { canReadFile } from '../runner/grade/predicates.ts';
+import { savedFactsOf } from '../world/services/gbrain-tap.ts';
 import { world } from './world-helpers.ts';
 
 test('held-out: the 7 channel pages and 18 public files, no DM page, no team or private file', () => {
@@ -152,6 +153,7 @@ describe.skipIf(!live)('company brain built and served keyless at the pin (HE_GB
   let manifest: CompanyBrainManifest;
   let tokens: { members: Record<string, string>; public_only: string };
   let server: ReturnType<typeof Bun.spawn>;
+  let bot: string;
   const port = 3100 + (process.pid % 800);
   const env = (extra: Record<string, string> = {}) => ({ ...keylessEnv(out), ...extra });
   const call = async (token: string, name: string, args: Record<string, unknown>) => {
@@ -161,7 +163,12 @@ describe.skipIf(!live)('company brain built and served keyless at the pin (HE_GB
     const msg = JSON.parse(data) as { result?: { content?: Array<{ text?: string }>; isError?: boolean } };
     const body = msg.result?.content?.[0]?.text ?? '';
     const slugs = [...body.matchAll(/"slug":"([^"]+)"/g)].map((m) => m[1]!);
-    return { isError: msg.result?.isError === true, body, slugs: [...new Set(slugs)] };
+    return { isError: msg.result?.isError === true, body, slugs: [...new Set(slugs)], result: (msg.result ?? {}) as Record<string, unknown> };
+  };
+  // What the tap records for a reply: the JSON payloads and the saved facts read the way world/services/gbrain-tap.ts reads them (internal-task).
+  const factsOf = (result: Record<string, unknown>) => {
+    const payloads = (Array.isArray(result.content) ? result.content as Array<{ text?: string }> : []).flatMap((c) => { const t = (c.text ?? '').trim(); if (!t.startsWith('{') && !t.startsWith('[')) return []; try { return [JSON.parse(t)]; } catch { return []; } });
+    return savedFactsOf(result, payloads);
   };
 
   test('build: 108 pages, 39 sources, 16 tokens, tokens.json mode 0600', () => {
@@ -179,7 +186,7 @@ describe.skipIf(!live)('company brain built and served keyless at the pin (HE_GB
 
   test('serve: unscoped token reads every source, member tokens read only their grants, private pages served', async () => {
     const created = spawnSync('bun', [gbrainCli, 'auth', 'create', 'trial-test'], { env: env(), encoding: 'utf8' });
-    const bot = /gbrain_[0-9a-f]+/.exec(created.stdout + created.stderr)![0];
+    bot = /gbrain_[0-9a-f]+/.exec(created.stdout + created.stderr)![0];
     server = Bun.spawn(['bun', gbrainCli, 'serve', '--http', '--port', String(port), '--bind', '127.0.0.1', '--surface', 'starter', '--suppress-bootstrap-token'], { env: env({ GBRAIN_ADMIN_BOOTSTRAP_TOKEN: 'a'.repeat(64), GBRAIN_HTTP_RATE_LIMIT_IP: '1000000', GBRAIN_HTTP_RATE_LIMIT_TOKEN: '1000000', GBRAIN_REMOTE_PRIVATE_PAGES: '1' }), stdout: 'ignore', stderr: 'ignore' });
     const deadline = Date.now() + 60_000;
     while (Date.now() < deadline) { try { if ((await fetch(`http://127.0.0.1:${port}/health`)).ok) break; } catch { /* starting */ } await Bun.sleep(250); }
@@ -208,6 +215,30 @@ describe.skipIf(!live)('company brain built and served keyless at the pin (HE_GB
     const kwameSearch2 = await call(kwame, 'search', { query: 'comp conversation Nadia', limit: 10 });
     expect(kwameSearch2.slugs).not.toContain(ruthNote);
     for (const p of manifest.pages) expect(p.page_slug).toMatch(/^heldout\/[a-z0-9-]+\/[a-z0-9-]+$/);
+  }, 120_000);
+
+  // internal-task: a member's remember lands in private-<member>; recall under the same token returns it in facts, search carries it in
+  // the saved-facts block and _meta.retrieval.saved_facts (which the tap now reads), another member's token never sees it, and the
+  // unscoped bot token does. The fresh brain carries no fact before the write.
+  test('serve: remember under a member token persists to that member\'s source and no other member sees it', async () => {
+    const kwame = tokens.members['kwame-adjei']!, ruth = tokens.members['ruth-calloway']!;
+    const fact = 'Test fact: Driftmoor berth slot moved to Thursday';
+    const before = await call(bot, 'recall', { query: 'Driftmoor berth slot', limit: 5 });
+    expect(factsOf(before.result)).toEqual([]);
+    expect(factsOf((await call(bot, 'search', { query: 'Driftmoor', limit: 5 })).result)).toEqual([]);
+    const written = await call(kwame, 'remember', { fact, entity: 'Driftmoor Marine Freight', provenance: 'test' });
+    expect(written.isError).toBe(false);
+    expect(JSON.parse(written.body).status).toBe('inserted');
+    const mine = factsOf((await call(kwame, 'recall', { query: 'Driftmoor berth slot', limit: 5 })).result);
+    expect(mine.map((f) => f.fact)).toContain(fact);
+    expect(mine.find((f) => f.fact === fact)!.source_id).toBe('private-kwame-adjei');
+    const searched = await call(kwame, 'search', { query: 'Driftmoor berth slot', limit: 5 });
+    expect(factsOf(searched.result).map((f) => f.fact)).toContain(fact);
+    expect(searched.slugs).not.toContain(fact);
+    expect(factsOf((await call(ruth, 'recall', { query: 'Driftmoor berth slot', limit: 5 })).result)).toEqual([]);
+    expect(factsOf((await call(ruth, 'search', { query: 'Driftmoor berth slot', limit: 5 })).result)).toEqual([]);
+    expect(factsOf((await call(tokens.public_only, 'search', { query: 'Driftmoor berth slot', limit: 5 })).result)).toEqual([]);
+    expect(factsOf((await call(bot, 'recall', { query: 'Driftmoor berth slot', limit: 5 })).result).map((f) => f.fact)).toContain(fact);
   }, 120_000);
 
   test('teardown', () => {

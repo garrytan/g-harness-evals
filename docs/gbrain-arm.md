@@ -28,6 +28,7 @@ The shared contract between lanes D and E; the tap implements it and the grader 
 | `actor` | the bot's member id (the world token the harness presented) |
 | `tool` | `gbrain.<mcp tool>` for `tools/call` (`gbrain.search`, `gbrain.query`, `gbrain.get_page`, `gbrain.remember`, ...); `gbrain.initialize`; `gbrain.tools/list`. No event for notifications, `ping` or other methods |
 | `kind` | `write` for `remember`, `forget`, `put_page`, `edit_page`, `capture`, `add_timeline_entry`, `cancel_write_request`, `cancel_job`, `mute_notice`; `read` for every other tool and for `initialize` and `tools/list` |
+| `effect.facts` | On `search`, `query` and `recall`, the saved facts the reply carried beside its rows (`fact`, and `id`, `entity_slug`, `source_id`, `source` when gbrain gives them), read from `_meta.retrieval.saved_facts`, recall's `facts` array or the prose "Saved facts (remember)" block; absent when there were none; never counted in `pages` or `count` (internal-task correction, 2026-10-25) |
 | `args` | the `tools/call` arguments as sent; `{}` for `initialize` and `tools/list` |
 | `outcome` | `ok`, or `error` with `error` one of `tool_error` (a result with `isError`), `rpc_<code>` (a JSON-RPC error), `upstream_<status>`, `upstream_unreachable` |
 | `effect` | `{pages, count, latency_ms}`: `pages` the gbrain page slugs the call returned or targeted (every row slug of `search` and `query`, the requested slug of `get_page`, `put_page` and `edit_page`, every slug `list_pages` listed, and for `recall`, `entity`, `context_pack` and the rest whatever `slug` values appear in the result's JSON content, `_meta` notices excluded); `count` the row count for `search` and `query`, the tool count for `tools/list`, otherwise the number of pages; `latency_ms` the upstream round trip |
@@ -175,6 +176,10 @@ harness-evals v0.0.5. "The cell fields and what the runner does with them": `gbr
 ### 2026-10-25: Install ladder, sidecar image (internal-task)
 
 harness-evals v0.0.5. New "The install ladder" section: the rung table, the two surfaces (`HE_GBRAIN_SURFACE`), the embedded brains built through the metering proxy with `OPENAI_BASE_URL` and no key (`HE_GBRAIN_EMBEDDINGS`, `GBRAIN_QUERY_EMBED_TIMEOUT_MS`), the install bundle at `/install` with its manifest and `export-install.sh`, the excluded OpenClaw plugin shape, `scripts/build-gbrain-image.sh` for any commit; the semantic follow-up points here.
+
+### 2026-10-25: Saved facts in the tap (internal-task correction, internal-task)
+
+harness-evals v0.0.5. The tap's `resultPayloads` read only JSON content blocks, so the saved facts a search carries (the prose "Saved facts (remember)" block and `_meta.retrieval.saved_facts`) were invisible and a remember-then-search check through the tap always read "not found"; that reading was reported as a gbrain defect and internal-task showed it is not (member writes persist in `private-<member>` and recall returns them under the same token only). `savedFactsOf` now reads facts from `_meta`, from recall's `facts` array and from the prose block, and the event's `effect.facts` records them as their own kind, never as pages or rows; `tests/gbrain-brain.test.ts` (live, `HE_GBRAIN_BUILD_TEST=1`) proves persistence through `recall`. The company brain run had no write in 900 trials and its image carries no fact, so none of its counts change (its report, "Correction, 2026-10-25").
 
 ### 2026-10-25: Company brain counted (internal-task)
 

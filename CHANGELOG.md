@@ -4,6 +4,11 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 
 ## [Unreleased]
 
+### internal-task correction (internal-task): saved facts in the gbrain tap
+
+- `world/services/gbrain-tap.ts`: `savedFactsOf` reads the saved facts a `search`, `query` or `recall` reply carries (`_meta.retrieval.saved_facts`, recall's `facts` array, or the prose "Saved facts (remember)" block) and records them as `effect.facts`, their own kind, never as pages or rows; `resultPayloads` had parsed only JSON content blocks and skipped `_meta`, so a remember-then-search check through the tap always read "not found". That reading was reported as a gbrain defect (member writes dropped); internal-task showed member writes persist in `private-<member>` and the miss was the tap's. `tests/gbrain-tap.test.ts` covers the three shapes; `tests/gbrain-brain.test.ts` (live, `HE_GBRAIN_BUILD_TEST=1`) proves persistence and scope through `recall`.
+- Docs: a dated correction in `docs/benchmarks/2026-10-25-company-brain/report.md` (no counted trial wrote to the brain and the image carries no fact, so every search reply's saved-facts block was empty and no count changes), the TODOS entry closed with the finding, `docs/gbrain-arm.md` event table and dated entry.
+
 ### internal-task: the company brain (results, run `company-brain-2026-10`)
 
 - `docs/benchmarks/2026-10-25-company-brain/report.md` and `results/`: 9 cells, 900 trials, sharded by harness across three machines (amendment of 2026-10-24), receipts merged by hand with each shard's ledger, proxy log, run log and run summary under its name (`ledger-<shard>.sqlite` and so on, as the amendment says), `shards.json` in the shape `scripts/merge-shards.ts` writes, `regrade-6b67de1.jsonl` and `regrade-head.jsonl` (900 trials regraded at the preregistration commit and at `e278fb0`, identical), `rereading-preregistered-rule/` (five OpenClaw trials counted under the preregistered classification rule, with its own `summary.json` and comparisons), `taxonomy.json` and `taxonomy.md`. Scripts run from `main` at `6b857cf`.
