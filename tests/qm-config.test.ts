@@ -99,6 +99,14 @@ describe('foreignModels (HE-MODEL-001)', () => {
     expect(foreignModels(cell, { [cell]: { usd: 0.01, requests: 1 } }, lines)).toEqual(['anthropic:claude-sonnet-5-5']);
   });
 
+  test('the cell\'s declared embedding model is its own (internal-task amendment 1); without a declaration it is foreign', () => {
+    const byModel = { [cell]: { usd: 0.01, requests: 3 }, 'openai:text-embedding-3-small': { usd: 0.0000004, requests: 2 } };
+    expect(foreignModels(cell, byModel, [], 'openai:text-embedding-3-small')).toEqual([]);
+    expect(foreignModels(cell, byModel, [line({ outcome: 'refused', model: 'text-embedding-3-small', provider: 'openai' })], 'openai:text-embedding-3-small')).toEqual([]);
+    expect(foreignModels(cell, byModel, [], 'off')).toEqual(['openai:text-embedding-3-small']);
+    expect(foreignModels(cell, byModel, [])).toEqual(['openai:text-embedding-3-small']);
+  });
+
   test('QM\'s Haiku auxiliary requests are the cell\'s model on a Haiku cell and another model on a Sonnet cell', () => {
     const aux = [line({ outcome: 'refused', model: 'claude-haiku-5-5' })];
     expect(foreignModels(cell, {}, aux)).toEqual([]);

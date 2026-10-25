@@ -1,6 +1,6 @@
 # gbrain install ladder preregistration: one change per rung
 
-Status: written 2026-10-24 (America/Los_Angeles), before any trial of this run. Run id `gbrain-ladder-2026-10`. Cells are in [prereg.json](prereg.json); `bun runner/run.ts dry-run --prereg docs/benchmarks/2026-10-25-gbrain-ladder/prereg.json` prints 1,400 trials in 14 cells, a planning ceiling of $34.62 under the $40 cap. The sidecar, the two surfaces, the embedded brains, the install bundle and the runner's handling of each rung are in [docs/gbrain-arm.md](../../gbrain-arm.md), section "The install ladder (internal-task)".
+Status: written 2026-10-24 (America/Los_Angeles), before any trial of this run. Run id `gbrain-ladder-2026-10`. Cells are in [prereg.json](prereg.json); `bun runner/run.ts dry-run --prereg docs/benchmarks/2026-10-25-gbrain-ladder/prereg.json` prints 1,400 trials in 14 cells, a planning ceiling of $34.62 under the $40 cap. The sidecar, the two surfaces, the embedded brains, the install bundle and the runner's handling of each rung are in [docs/gbrain-arm.md](../../gbrain-arm.md), section "The install ladder (HARN-5)".
 
 ## Why this run
 
@@ -80,9 +80,11 @@ Under `docs/benchmarks/2026-10-25-gbrain-ladder/results/`: the merged `trials.js
 
 | Date | Ask | Words | By | Scope |
 |---|---|---|---|---|
-| 2026-10-24 | the internal-task plan (this ladder, its PRs, the paid smokes, this preregistration and the run) | "approve" | Garry Tan, through Captain Harness Evals | this run |
+| 2026-10-24 | the HARN-5 plan (this ladder, its PRs, the paid smokes, this preregistration and the run) | "approve" | Garry Tan, through Captain Harness Evals | this run |
 | 2026-10-24 | sharding of paid runs longer than about four hours across the thread's own machines | CREW.md "Parallelism (Garry, 2026-10-24)" | Garry Tan | this run's shards |
 
 ## Amendments
 
 Each amendment is dated and committed before any cell it affects runs.
+
+- 2026-10-25, 00:48Z, before any docs-semantic trial and before any Hermes semantic-told trial ran: the runner's HE-MODEL-001 check (`foreignModels` in `runner/trial/trial.ts`, from #35, merged to main after this run's smoke of 2026-10-24 and before the preregistration commit e278fb0) counted the gbrain sidecar's query embedding model `openai:text-embedding-3-small` as a model foreign to the cell, so on an embedded rung every trial in which the bot searched the brain was classified `model_error` and left its rung, while the semantic check in the same file requires that very embedding line. The fix exempts the cell's declared `gbrain.embeddings` model (and only it) from the foreign-model check; a cell with embeddings `off` is checked exactly as before, so the ten non-embedded cells are unaffected. No task, preamble, grader, pin, world or held-out file changed; the harness and gbrain images are unchanged (the adapters and the sidecar are not touched). State at the amendment: the sem shard had run 44 trials of `openclaw-haiku-gbrain-semantic-told-mu-heldout` at e278fb0 (36 model_error, 7 completed, 1 approval_stop; the 8 unflagged trials are those in which the bot never searched), $0.80 committed under its $5.50 lease; the whole cell is discarded and its receipts are kept uncounted under `results/shards/sem-aborted-e278fb0` in the results directory, not merged. The sem shard reruns both of its cells at the amendment commit in a fresh results directory under a lease of $4.65, so its two leases together stay within the $5.50 the preregistration gave it and the sum of leases stays under the $40 cap. On the oc-c and he-c shards the docs cells (100 trials each, no embedding call possible with embeddings off) finish at e278fb0; the runner is stopped at the cell boundary and the docs-semantic cells run at the amendment commit with `--resume` on the same shard ledger, so each of those shards' `shard.json` (and `shards.json` after the merge) names the amendment commit while `shard.e278fb0.json` beside it records the docs cell's commit. The five other shards run on at e278fb0 untouched. The run id stays `gbrain-ladder-2026-10`; the report labels each cell's commit.

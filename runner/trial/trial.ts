@@ -110,12 +110,14 @@ const EMPTY_GRADE: GradeResult = { grade: 'n/a', predicates: [], consent_violati
 /** internal-task: the model the harness actually ran against the cell's. A forwarded request on another model, or a
  *  refused line that names another model (the proxy's allowlist refusal carries the model; QM's claude harness falls
  *  back to its default model in silence when CLAUDE_MODEL is not supported), is HE-MODEL-001; the message lists them.
- *  Refused lines with no model (a route the proxy does not admit) are counted in usage.refused and never fail a trial. */
-export function foreignModels(cellModel: string, byModel: Record<string, unknown>, lines: Array<{ outcome: string; model: string | null; provider: string }>): string[] {
-  const want = cellModel.toLowerCase();
+ *  Refused lines with no model (a route the proxy does not admit) are counted in usage.refused and never fail a trial.
+ *  internal-task amendment 1 (2026-10-25): on an embedded rung the gbrain sidecar embeds each query through the same slot, so the
+ *  cell's declared embedding model is the trial's own and is never foreign; it is reported apart in gbrain.embedding_usage. */
+export function foreignModels(cellModel: string, byModel: Record<string, unknown>, lines: Array<{ outcome: string; model: string | null; provider: string }>, embeddingModel: string = 'off'): string[] {
+  const own = new Set([cellModel.toLowerCase(), embeddingModel.toLowerCase()]);
   const seen = new Set<string>();
-  for (const k of Object.keys(byModel)) if (k.toLowerCase() !== want) seen.add(k);
-  for (const l of lines) if (l.outcome === 'refused' && l.model && `${l.provider}:${l.model}`.toLowerCase() !== want) seen.add(`${l.provider}:${l.model}`);
+  for (const k of Object.keys(byModel)) if (!own.has(k.toLowerCase())) seen.add(k);
+  for (const l of lines) if (l.outcome === 'refused' && l.model && !own.has(`${l.provider}:${l.model}`.toLowerCase())) seen.add(`${l.provider}:${l.model}`);
   return [...seen].sort();
 }
 
@@ -256,7 +258,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       const summary = summarizeUsage(key, meter, lines);
       usage = summary.usage;
       capStop = summary.cap_stop;
-      const foreign = foreignModels(cell.model, usage.by_model, lines);
+      const foreign = foreignModels(cell.model, usage.by_model, lines, gbrain?.embeddings ?? 'off');
       if (foreign.length) {
         modelMismatch = true;
         const msg = `HE-MODEL-001 trial ${trial.id} ran model(s) ${foreign.join(', ')} beside the cell's ${cell.model} (by_model and refused usage lines); the trial is model_error; fix: check the harness's model mapping (QM: CLAUDE_MODEL falls back to its default when the id is unsupported) or fix the cell's model`;
