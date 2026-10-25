@@ -110,7 +110,7 @@ test('gbrain.install and gbrain.embeddings: validated under HE-GBRAIN-001 naming
   expect(m.per_cell_ceiling_usd['fake-semantic']!).toBeGreaterThanOrEqual(m.per_cell_ceiling_usd['fake-mcp']!);
 });
 
-test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs follow-up carry gbrain cells, each on a pinned configuration', () => {
+test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs and installer follow-ups carry gbrain cells, each on a pinned configuration', () => {
   const dir = join(ROOT, 'docs', 'benchmarks');
   const files = readdirSync(dir).filter((d) => existsSync(join(dir, d, 'prereg.json'))).map((d) => join(dir, d, 'prereg.json'));
   expect(files.length).toBeGreaterThan(0);
@@ -128,6 +128,11 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         // internal-task follow-up: told against verbs-told only, every cell told, keyword search, the ladder's preamble.
         const g = resolveGbrain(c.gbrain!); expect(['starter', 'verbs']).toContain(g.surface); expect(g.embeddings).toBe('off'); expect(g.install).toBe('mcp'); expect(g.brain).toBe('bot-visible');
         expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-ladder.md'); expect(c.repetitions).toBe(10);
+      }
+      else if (p.run_id.startsWith('gbrain-installer-')) {
+        // internal-task installer rung (internal-task): told against installer only, starter surface, keyword search; told carries the ladder's preamble, installer the default one.
+        const g = resolveGbrain(c.gbrain!); expect(g.surface).toBe('starter'); expect(g.embeddings).toBe('off'); expect(['mcp', 'gbrain-installer']).toContain(g.install); expect(g.brain).toBe('bot-visible');
+        expect(c.preamble).toBe(g.install === 'mcp' ? 'tasks/multiuser/_shared/preamble.gbrain-ladder.md' : undefined); expect(c.repetitions).toBe(5);
       }
       else expect(c.gbrain).toBeUndefined();
     }

@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "run_id": "gbrain-installer-2026-10",
+  "question": "On the same 20 held-out multi-user tasks on Haiku, for OpenClaw and Hermes Agent, does gbrain's own installer (gbrain setup <harness> --instructions-only at gbrain 99294fe4, an open unmerged pull request, writing the brain-first block into the harness's instruction file with the eval's unchanged preamble) reproduce what the hand-written told clause does: gbrain use in nearly every trial; and does it leave pass rate and cross-scope reads via keyword search where told has them, at five repetitions per task.",
+  "tasks": {},
+  "cells": [
+    {
+      "id": "openclaw-haiku-gbrain-told-mu-heldout",
+      "harness": "openclaw",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-ladder.md"
+    },
+    {
+      "id": "openclaw-haiku-gbrain-installer-mu-heldout",
+      "harness": "openclaw",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "gbrain": {
+        "surface": "starter",
+        "install": "gbrain-installer"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    },
+    {
+      "id": "hermes-haiku-gbrain-told-mu-heldout",
+      "harness": "hermes",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-ladder.md"
+    },
+    {
+      "id": "hermes-haiku-gbrain-installer-mu-heldout",
+      "harness": "hermes",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "gbrain": {
+        "surface": "starter",
+        "install": "gbrain-installer"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    }
+  ],
+  "wall_clock_s": {
+    "multiuser": 1500
+  },
+  "spend_cap_usd": 8,
+  "drop_order": [],
+  "minimum_v01": [
+    "openclaw-haiku-gbrain-told-mu-heldout",
+    "openclaw-haiku-gbrain-installer-mu-heldout",
+    "hermes-haiku-gbrain-told-mu-heldout",
+    "hermes-haiku-gbrain-installer-mu-heldout"
+  ]
+}
