@@ -176,6 +176,10 @@ harness-evals v0.0.5. "The cell fields and what the runner does with them": `gbr
 
 harness-evals v0.0.5. New "The install ladder" section: the rung table, the two surfaces (`HE_GBRAIN_SURFACE`), the embedded brains built through the metering proxy with `OPENAI_BASE_URL` and no key (`HE_GBRAIN_EMBEDDINGS`, `GBRAIN_QUERY_EMBED_TIMEOUT_MS`), the install bundle at `/install` with its manifest and `export-install.sh`, the excluded OpenClaw plugin shape, `scripts/build-gbrain-image.sh` for any commit; the semantic follow-up points here.
 
+### 2026-10-25: Company brain counted (internal-task)
+
+harness-evals v0.0.5. Run `company-brain-2026-10` reported in [benchmarks/2026-10-25-company-brain/report.md](benchmarks/2026-10-25-company-brain/report.md): the unscoped brain leaked 514 unreadable rows in 300 told trials and the per-member grants leaked none in 300 scoped trials, with no gbrain refusal needed; the "Company brain" section's claims about sources, grants and the tap are what the run measured, and its open questions (member writes, the refusal path, per-request `source_ids`) are in TODOS.md under internal-task.
+
 ### 2026-10-25: Company brain, cells and tap (internal-task)
 
 harness-evals v0.0.5. The "Company brain" section's "Cell config, tap and runner" paragraph: `gbrain.brain` and `gbrain.scope`, the sidecar variables, `tokens.json` and HE-GBRAIN-004, the tap's per-member tokens and the `grant` field, the three arms and their preambles, the preflight probe.

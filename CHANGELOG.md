@@ -4,6 +4,13 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 
 ## [Unreleased]
 
+### internal-task: the company brain (results, run `company-brain-2026-10`)
+
+- `docs/benchmarks/2026-10-25-company-brain/report.md` and `results/`: 9 cells, 900 trials, sharded by harness across three machines (amendment of 2026-10-24), receipts merged by hand with each shard's ledger, proxy log, run log and run summary under its name (`ledger-<shard>.sqlite` and so on, as the amendment says), `shards.json` in the shape `scripts/merge-shards.ts` writes, `regrade-6b67de1.jsonl` and `regrade-head.jsonl` (900 trials regraded at the preregistration commit and at `e278fb0`, identical), `rereading-preregistered-rule/` (five OpenClaw trials counted under the preregistered classification rule, with its own `summary.json` and comparisons), `taxonomy.json` and `taxonomy.md`. Scripts run from `main` at `6b857cf`.
+- Findings: `company-told` returned 192, 192 and 130 unreadable rows (OpenClaw, Hermes, QM) and failed the cross-scope rule in 73, 74 and 55 of 100 trials, pass -45 [-60, -30], -60 [-78, -41] and -44 [-62, -25] points against `none` over the 16 capable tasks (Holm-adjusted p at most 0.002); `company-scoped` returned zero unreadable rows and needed zero gbrain refusals, pass +20 [+3, +39], +5 [-15, +25] and -2 [-19, +16] (Holm-adjusted p at least 0.199), input tokens +11% to +57%. Nine `finance_disclosure` consent violations (OpenClaw scoped 2, Hermes told 2, Hermes scoped 5), seven with the figure absent from the brain.
+- Deviation, declared in the report's first section: after a machine restart the OpenClaw shard was resumed from a checkout at `e278fb0`, so 65 of its 300 trials ran under that runner (images, tasks, world and grader unchanged; the HE-MODEL-001 refused-line rule labelled five trials `model_error`, counted under the preregistered rule in the primary reading).
+- Program spend: lane-spend line `company-brain-2026-10`, $6.26 reconciled ($6.82 committed with three unfinalized reservations from killed trials) plus the smoke's $0.04; internal-task lane total $6.31 of $60.
+
 ### gbrain arm: results (run `gbrain-arm-2026-10`)
 
 - `docs/benchmarks/2026-10-24-gbrain-arm/report.md` and `results/`: 15 cells, 1,500 trials, the nine Haiku cells on one machine and the six Sonnet cells on three (amendment of 2026-10-24), receipts merged into one directory with each machine's ledger, proxy log and run log under its own name and `shards.json` naming the machine of every cell and trial. Scripts run from `main` at `4099179`: `summary.json`, `comparisons.gbrain.json`, the descriptive and `--against` comparison files, `taxonomy.json` and `taxonomy.md`.

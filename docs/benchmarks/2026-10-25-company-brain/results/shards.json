@@ -1,0 +1,190 @@
+{
+ "run_id": "company-brain-2026-10",
+ "assembled_at": "2026-10-25",
+ "amendment": "PREREGISTRATION.md, 2026-10-24: the run is sharded by harness across three machines, whole cells per shard",
+ "merge": "by hand on 2026-10-25 (trials.jsonl = trials-openclaw.jsonl + trials-hermes.jsonl + trials-qm.jsonl in cell order; scripts/merge-shards.ts landed on main after this merge, and the per-shard file names follow the amendment: ledger-<shard>.sqlite, proxy-<shard>.log, proxy-usage-<shard>.ndjson, run-<shard>.log, run-summary-<shard>.json, preflight-<shard>/)",
+ "total_trials": 900,
+ "total_committed_usd": 6.8196,
+ "cells": {
+  "openclaw-haiku-none-mu-heldout": "openclaw",
+  "openclaw-haiku-company-told-mu-heldout": "openclaw",
+  "openclaw-haiku-company-scoped-mu-heldout": "openclaw",
+  "hermes-haiku-none-mu-heldout": "hermes",
+  "hermes-haiku-company-told-mu-heldout": "hermes",
+  "hermes-haiku-company-scoped-mu-heldout": "hermes",
+  "qm-pi-haiku-none-mu-heldout": "qm",
+  "qm-pi-haiku-company-told-mu-heldout": "qm",
+  "qm-pi-haiku-company-scoped-mu-heldout": "qm"
+ },
+ "shards": {
+  "openclaw": {
+   "machine": "machine A, this thread's primary machine (machine_01M5QE6YKBE8BPSBE9QJDTN67J), /workspace",
+   "commit": "6b67de1 for 235 trials (19:39 to 02:49 UTC, the preregistration commit); e278fb0 for the last 65 trials of openclaw-haiku-company-scoped-mu-heldout after the 02:49 UTC resume (report.md, \"A deviation\")",
+   "images": {
+    "openclaw": "harness-eval/openclaw:dev 77f55f846ac0",
+    "gbrain:company": "sha256:b83f914c962a7d58b943f858326b16c4406f901ff146e7026be756125d6f9cd3",
+    "built_from": "6b67de1 on machine A; never rebuilt"
+   },
+   "source": "the preregistered run machine; the first three trials and the killed fourth attempt ran under the original ledger.sqlite ($25 lease) before the 2026-10-24 shard amendment, the rest under ledger-openclaw.sqlite",
+   "ledger": [
+    "ledger.sqlite",
+    "ledger-openclaw.sqlite"
+   ],
+   "lease_usd": [
+    25.0,
+    8.3
+   ],
+   "proxy_usage": [
+    "proxy-usage.ndjson",
+    "proxy-usage-openclaw.ndjson"
+   ],
+   "proxy_log": [
+    "proxy.log",
+    "proxy-openclaw.log"
+   ],
+   "run_log": [
+    "run.log",
+    "run-openclaw.log"
+   ],
+   "restarts": {
+    "note": "The machine restarted three times; before each resume the in-flight trial's directory was deleted so the trial was redone from scratch, and its partial spend stays in the ledger. trials.jsonl holds each trial id once (900 rows, 0 duplicates, 100 per cell).",
+    "resume_lines_from_run_log": [
+     "2026-10-24T19:39:33.638Z run company-brain-2026-10: 900 trials to run, 0 already recorded, harness mode docker (run.log, ledger.sqlite)",
+     "2026-10-24T19:51:35.891Z run company-brain-2026-10: 297 trials to run, 3 already recorded, harness mode docker (run-openclaw.log, ledger-openclaw.sqlite)",
+     "2026-10-24T19:55:52.382Z run company-brain-2026-10: 295 trials to run, 5 already recorded, harness mode docker",
+     "2026-10-25T02:49:50.254Z run company-brain-2026-10: 65 trials to run, 235 already recorded, harness mode docker (checkout at e278fb0)"
+    ]
+   },
+   "trials": 300,
+   "cells": [
+    "openclaw-haiku-company-scoped-mu-heldout",
+    "openclaw-haiku-company-told-mu-heldout",
+    "openclaw-haiku-none-mu-heldout"
+   ],
+   "terminations": {
+    "completed": 252,
+    "harness_error": 3,
+    "approval_stop": 40,
+    "model_error": 5
+   },
+   "ledger_committed_usd": [
+    0.11649,
+    2.873369
+   ],
+   "ledger_reconciled": [
+    {
+     "entries": 48,
+     "usd": 0.045195
+    },
+    {
+     "entries": 2516,
+     "usd": 2.462257
+    }
+   ]
+  },
+  "hermes": {
+   "machine": "machine B, Subagent 8 (machine_01M5QQPJCM325HFFJV946BD4VW), fresh checkout",
+   "commit": "c94bbd4 (the shard amendment commit)",
+   "images": {
+    "hermes": "sha256:ed2c50c951346c90615b6ba714b41b5877d3dcad082ef4051f7c4808d79e2718",
+    "gbrain:company": "sha256:61cb57ca7f5c21d23463601226fd3989138e03ac6e842f833a7153c637636727",
+    "built_from": "c94bbd4 on machine B"
+   },
+   "source": "shard results packed on machine B without state/, workspace/ and logs/ and copied to machine A for the merge",
+   "ledger": [
+    "ledger-hermes.sqlite"
+   ],
+   "lease_usd": [
+    8.33
+   ],
+   "proxy_usage": [
+    "proxy-usage-hermes.ndjson"
+   ],
+   "proxy_log": [
+    "proxy-hermes.log"
+   ],
+   "run_log": [
+    "run-hermes.log"
+   ],
+   "restarts": {
+    "note": "none",
+    "resume_lines_from_run_log": [
+     "2026-10-24T20:00:14.542Z run company-brain-2026-10: 300 trials to run, 0 already recorded, harness mode docker"
+    ]
+   },
+   "trials": 300,
+   "cells": [
+    "hermes-haiku-company-scoped-mu-heldout",
+    "hermes-haiku-company-told-mu-heldout",
+    "hermes-haiku-none-mu-heldout"
+   ],
+   "terminations": {
+    "completed": 252,
+    "approval_stop": 47,
+    "harness_error": 1
+   },
+   "ledger_committed_usd": [
+    2.473352
+   ],
+   "ledger_reconciled": [
+    {
+     "entries": 3183,
+     "usd": 2.473352
+    }
+   ]
+  },
+  "qm": {
+   "machine": "machine C, Subagent 9 (machine_01M5QQPJHEK7T8VCK5YYSEWM12), fresh checkout",
+   "commit": "c94bbd4 (the shard amendment commit)",
+   "images": {
+    "qm": "sha256:9bd30997c903691e181d1bbe4c824610d9c156ef4b4cdfd6dd0c25655eae0757",
+    "qm-sandbox": "sha256:fe5474833685dc1cd5ae892efb0a1220bd7da1f5681fa83fcc3d0d784907c8e1",
+    "gbrain:company": "sha256:263116a6efb7b92a9f3c769ffd6ed8a976a73a071c6dcb641ac46efa13fa343f",
+    "built_from": "c94bbd4 on machine C"
+   },
+   "source": "shard results packed on machine C without state/, workspace/ and logs/ and copied to machine A for the merge",
+   "ledger": [
+    "ledger-qm.sqlite"
+   ],
+   "lease_usd": [
+    8.33
+   ],
+   "proxy_usage": [
+    "proxy-usage-qm.ndjson"
+   ],
+   "proxy_log": [
+    "proxy-qm.log"
+   ],
+   "run_log": [
+    "run-qm.log"
+   ],
+   "restarts": {
+    "note": "One resume after four trials; the in-flight trial was redone from scratch.",
+    "resume_lines_from_run_log": [
+     "2026-10-24T20:01:12.715Z run company-brain-2026-10: 300 trials to run, 0 already recorded, harness mode docker",
+     "2026-10-24T20:27:40.542Z run company-brain-2026-10: 296 trials to run, 4 already recorded, harness mode docker"
+    ]
+   },
+   "trials": 300,
+   "cells": [
+    "qm-pi-haiku-company-scoped-mu-heldout",
+    "qm-pi-haiku-company-told-mu-heldout",
+    "qm-pi-haiku-none-mu-heldout"
+   ],
+   "terminations": {
+    "completed": 255,
+    "approval_stop": 44,
+    "harness_error": 1
+   },
+   "ledger_committed_usd": [
+    1.356419
+   ],
+   "ledger_reconciled": [
+    {
+     "entries": 1936,
+     "usd": 1.282985
+    }
+   ]
+  }
+ }
+}
