@@ -18,11 +18,13 @@ Memory capture quiet time: QM captures memory after `MEMORY_CAPTURE_QUIET_MS` of
 
 `pi-strict` and `pi-command-deny` PUT one org-scope setting through QM's admin API before the first turn (`qm-api.mjs admin-put`, as `harness-admin`); the 2xx response is saved as `qm-admin-<resource>.json` beside `qm-mcp-register.json`. Before every turn, `serve` also reads what QM's memory holds per scope through the admin memory routes into `<turn>.memory.json`, as an observation for the probe report.
 
+Core runs without QM's Slack worker, which is what fills QM's directory store (members, channels, rosters) in the shipped product. QM reads channel membership from that store to decide who may use or create a channel's sandbox (`src/resolution/scope-membership.ts`, `src/wiring.ts` `canUseSandboxScope` at the pin), so an empty directory refuses every channel-scoped `execute` and `sandbox create` (docs/qm-findings.md F5, run `qm-probes-2026-10`). Since 2026-10-25 `serve` pushes the bot's channels and their rosters once before the first turn (`qm-directory.mjs` reads them from the world's Slack API, `qm-api.mjs post /v1/directory`; body and 2xx saved as `qm-directory.body.json` and `qm-directory.json`); the reads land in the trial's event log before turn 1. Members are not pushed, so identity classification is unchanged. Runs before that date (`qm-inner-harness-2026-10`, `qm-probes-2026-10` and every earlier QM cell) ran with an empty directory.
+
 QM labels an MCP server `readOnly` but at this pin the label is not enforced on calls (`src/core/agent-tools.ts:4166`); the adapter registers the world with `readOnly: false` and the label is not probed.
 
 ## Images
 
-- `Dockerfile` builds QM core from the pinned source the way the repository's `deploy/core/Dockerfile` does (npm ci, connector SDK build, source copied in), plus Docker CLI for the local sandbox backend, `adapter.sh` and `qm-api.mjs`. The same image runs the `core` service and the `task` container.
+- `Dockerfile` builds QM core from the pinned source the way the repository's `deploy/core/Dockerfile` does (npm ci, connector SDK build, source copied in), plus Docker CLI for the local sandbox backend, `adapter.sh`, `qm-api.mjs` and `qm-directory.mjs`. The same image runs the `core` service and the `task` container.
 - `Dockerfile.sandbox` builds the per-scope sandbox image (`harness-eval/qm-sandbox:dev`) the way `scripts/local-sandbox-build.sh` does: the repository's `fly/Dockerfile` base (Debian 12, Node 24, Claude Code and Codex CLIs, gh, a Python venv) with the in-sandbox agent daemon from `local/Dockerfile`. The browser engine is left off.
 
 ## How a turn reaches the workspace

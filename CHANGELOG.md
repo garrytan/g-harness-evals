@@ -4,6 +4,12 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 
 ## [Unreleased]
 
+### From internal-task: the QM adapter seeds core's directory; qp-07 rerun (run `qm-probes-qp07-2026-10`)
+
+- `harnesses/qm/qm-directory.mjs` reads the bot's channels and their rosters from the world's Slack API (recorded in the trial's event log before turn 1) and `adapter.sh` pushes them to core through `qm-api.mjs post /v1/directory` before the first turn (`qm-directory.body.json`, `qm-directory.json` in the trial logs; a refusal is a harness error); members are not pushed. QM reads channel membership from that store to decide who may use a channel's sandbox, and core runs here without QM's Slack worker (`harnesses/qm/README.md`). `tests/qm-directory.test.ts` pins the body against the world.
+- `docs/benchmarks/2026-10-25-qm-probes-qp07/` (preregistration, `results/`, `report.md`): qp-07 on both inner harnesses, 3 repetitions, $0.0372 under the $1 cap; product reading upheld 3 of 3 and grade 3 of 3 in both cells (one channel-owned sandbox created in turn 1, read in turn 2 by another member in a new session). `docs/qm-findings.md` F5 rewritten as "channel membership must be synced before a channel-scoped `execute` works; the permission error does not name the missing permission", original analysis kept; TODOS entry closed.
+- Program spend: internal-task lane $1.73 of $60 (adds the rerun's $0.0372 and the smoke's $0.0063).
+
 ### From internal-task (QM inner-harness cell and probes): results of runs `qm-inner-harness-2026-10` and `qm-probes-2026-10`
 
 - `docs/benchmarks/2026-10-25-qm-inner-harness/report.md` and `results/`: 2 cells, 200 trials, one whole cell per fresh subagent machine at the preregistration commit `9354ba5e` with images built from it, merged with `scripts/merge-shards.ts` (`shards.json`, per-shard `ledger.sqlite`, `ledger-summary.json`, `proxy-usage.ndjson`, `proxy.log`, `run.log`); `summary.json`, `comparisons.json`, `comparisons.scope_isolation-shared_channel-org_security-handoff.json`, `taxonomy.json` and `.md`. No excluded trial; HE-MODEL-001 never fired.

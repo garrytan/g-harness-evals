@@ -45,7 +45,7 @@ COPY --from=src /src/plugins/chassis ./plugins/chassis
 COPY --from=src /src/tsconfig.json ./
 
 COPY config/ /opt/harness/config/
-COPY adapter.sh qm-api.mjs pin.json /opt/harness/
+COPY adapter.sh qm-api.mjs qm-directory.mjs pin.json /opt/harness/
 RUN chmod 0555 /opt/harness/adapter.sh && mkdir -p /data /workspace /harness-state && chown node:node /data /workspace /harness-state
 
 ENV NODE_ENV=production DATA_DIR=/data QM_VERSION=${QM_TAG}

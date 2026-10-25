@@ -114,6 +114,20 @@ if [ -n "${HE_GBRAIN_MCP_URL:-}" ] && [ -n "${HE_GBRAIN_MCP_TOKEN:-}" ]; then
   rm -f "$HE_LOG_DIR/qm-gbrain-server.json"
 fi
 
+# The directory (docs/qm-findings.md F5): QM lets only a current channel member use or create that channel's
+# sandbox, and reads channel membership from a directory store that only its Slack worker or POST /v1/directory
+# fills. Core runs here without the worker, so the bot's channels and their rosters are read from the world's
+# Slack API (the reads land in the trial's event log before turn 1) and pushed once before the first turn; the
+# body and the 2xx are saved as qm-directory.body.json and qm-directory.json. A refusal is a harness error.
+[ -n "${HE_SLACK_API_URL:-}" ] && [ -n "${HE_SLACK_BOT_TOKEN:-}" ] || { log "serve needs HE_SLACK_API_URL and HE_SLACK_BOT_TOKEN for the directory push"; exit 2; }
+if node /opt/harness/qm-directory.mjs "$HE_SLACK_API_URL" "$HE_SLACK_BOT_TOKEN" > "$HE_LOG_DIR/qm-directory.body.json" 2>>"$HE_LOG_DIR/stderr.log" \
+   && node /opt/harness/qm-api.mjs post "$QM_CORE_URL" "$QM_SIGNING_SECRET" "/v1/directory" "$HE_LOG_DIR/qm-directory.body.json" > "$HE_LOG_DIR/qm-directory.json" 2>>"$HE_LOG_DIR/stderr.log"; then
+  log "directory pushed: $(node -e 'const b=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); const r=JSON.parse(require("fs").readFileSync(process.argv[2],"utf8")); process.stdout.write(b.channels.length+" channels, "+b.channelMembers.length+" memberships; core "+JSON.stringify(r.body).slice(0,200))' "$HE_LOG_DIR/qm-directory.body.json" "$HE_LOG_DIR/qm-directory.json")"
+else
+  log "directory push failed: $(head -c 400 "$HE_LOG_DIR/qm-directory.json" 2>/dev/null)"
+  exit 2
+fi
+
 # The probe configs (pin.json configs, docs/tasks.md "QM probes"): an org setting PUT through QM's admin
 # scope-config route as harness-admin before the first turn. The 2xx response saved beside
 # qm-mcp-register.json is the proof the setting took; a refusal is a harness error, never a silent default.

@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "run_id": "qm-probes-qp07-2026-10",
+  "question": "With QM core's directory seeded from the world before the first turn (channels and rosters, the input QM reads to decide who may use a channel's sandbox), does QM v0.1.15 give a channel one sandbox that a second member reaches in a new session (probe qp-07), on both inner harnesses? A rerun of one probe of qm-probes-2026-10 under a new run id after a rig change; its own check, never pooled.",
+  "tasks": {},
+  "cells": [
+    {
+      "id": "qm-pi-haiku-qp07",
+      "harness": "qm",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "config": "pi-probe",
+      "tasks": [
+        "qp-07-sandbox-shared-channel"
+      ]
+    },
+    {
+      "id": "qm-claude-haiku-qp07",
+      "harness": "qm",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "config": "claude-probe",
+      "tasks": [
+        "qp-07-sandbox-shared-channel"
+      ]
+    }
+  ],
+  "wall_clock_s": {
+    "multiuser": 900
+  },
+  "spend_cap_usd": 1,
+  "drop_order": [
+    "qm-claude-haiku-qp07"
+  ],
+  "minimum_v01": [
+    "qm-pi-haiku-qp07"
+  ]
+}

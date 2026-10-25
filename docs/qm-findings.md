@@ -36,7 +36,9 @@ Plain reading rules: the probe suite's outcomes are per task and per cell, never
 
 Runs `qm-inner-harness-2026-10` ([report](benchmarks/2026-10-25-qm-inner-harness/report.md)) and `qm-probes-2026-10` ([report](benchmarks/2026-10-25-qm-probes/report.md)), both from the preregistration commit `9354ba5e`, QM image built from `7417aa2a`. No control went the unexpected way: in `qm-pi-haiku-probes` the qp-08 post landed in #general in 3 of 3 trials and qp-09 returned the kernel string in 3 of 3, as preregistered. The entries below cover the one probe that failed on QM, the observation F4 predicted, and two memory-extraction observations that are not defects.
 
-### F5. In a channel scope the rig's QM cannot use or create a sandbox: membership comes from a directory only QM's Slack worker fills (rig limitation at this pin; the shipped behaviour is untested)
+### F5. Channel membership must be synced before a channel-scoped `execute` works; the permission error does not name the missing permission (resolved as a rig limitation on 2026-10-25, product note kept)
+
+- **Resolution** (run `qm-probes-qp07-2026-10`, [report](benchmarks/2026-10-25-qm-probes-qp07/report.md), Captain's decision of 2026-10-25): with the rig pushing the world's channels and rosters to core before the first turn (`harnesses/qm/qm-directory.mjs`, `POST /v1/directory`, 8 channels and 58 memberships per trial), qp-07 passed 3 of 3 on both inner harnesses on both readings: one sandbox owned by `channel:C16V9M1OB60` created in turn 1 and read in turn 2 by another member in a new session (`execute` result rows carrying the line in both sessions, one container in the manifest), and the line in the reply. QM's rule is therefore as its source says, a current channel member may use the channel's sandbox, and the `qm-probes-2026-10` failure was the rig's empty directory. What stands as a product note: the `execute` error ("this scope has no default sandbox; use sandbox list, create, set_default") sends the agent to `sandbox create`, which, when the roster is empty, fails with "sandbox access requires permission to use its owning scope" without saying which permission or that the directory has no roster for the channel; an operator whose Slack sync lags would see the same two messages. The original entry follows as written before the rerun.
 
 - **Claim probed**: one sandbox per channel scope, shared by the channel's members across sessions (qp-07, expected pass on both inner harnesses).
 - **Observed** (`qm-probes-2026-10/qm-pi-haiku-probes/qp-07-sandbox-shared-channel/r1` to `r3` and `qm-claude-haiku-probes/qp-07-sandbox-shared-channel/r1` to `r3`, 0 of 3 in both cells): in scope `channel:C16V9M1OB60` every `execute` call returned `isError: true`, "Command execution failed: this scope has no default sandbox; use sandbox list, create, set_default, then retry before reporting blocked"; the following `sandbox` `create` and `sandbox` `list` calls returned "[error] sandbox access requires permission to use its owning scope" (`session_entries` rows of the trial database dumps, 2 to 4 `execute` attempts per trial); `capture.sh`'s sandbox manifest is `[]` in all six trials. The same image in the same run created two DM sandboxes per trial for qp-06 (3 of 3 in both cells), so the local sandbox backend works and the refusal is specific to the channel scope.
@@ -61,6 +63,10 @@ Runs `qm-inner-harness-2026-10` ([report](benchmarks/2026-10-25-qm-inner-harness
 - **Observed** (`qm-probes-2026-10/qm-pi-haiku-probes/qp-07-sandbox-shared-channel/r1`): in one model step the bot issued `execute` (the file write) and `world_post_message` ("I wrote notes/north-handoff.txt ... and I confirmed the contents by reading it back") together; the `execute` result was the error of F5 and the post had already landed. The bot corrected itself in the thread one step later. Model behaviour under parallel tool calls, not a QM defect; recorded because the posted confirmation is what a member would have seen.
 
 ## Changelog
+
+### 2026-10-25, later: F5 resolved by the qp-07 rerun (internal-task)
+
+Run `qm-probes-qp07-2026-10` with the directory seeded: qp-07 3 of 3 on both inner harnesses. F5 rewritten as a sync requirement plus the error-message note; the original analysis kept below it.
 
 ### 2026-10-25: run entries (internal-task, after the counted runs)
 

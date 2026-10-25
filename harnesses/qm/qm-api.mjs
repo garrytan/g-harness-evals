@@ -14,6 +14,9 @@
 //     Any other admin route as that principal (the probe configs set an org security posture or command policy
 //     through PUT /v1/admin/scopes/<scope>/<resource>; the notebook snapshots read GET /v1/admin/memory?scope=...).
 //     The signature covers the path with its query, as QM's canonicalPayload does. Prints {http, body}; exits 0 on 2xx.
+//   node qm-api.mjs post <core-url> <secret> <path> <body.json>
+//     A source-authenticated POST with no admin actor (the directory push, POST /v1/directory). Prints {http, body};
+//     exits 0 on 2xx.
 import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
@@ -21,7 +24,7 @@ const [mode, coreUrl, secret, ...rest] = process.argv.slice(2);
 if (!mode || !coreUrl || !secret) usage();
 
 function usage() {
-  console.error('usage: qm-api.mjs turn <core-url> <secret> <job.json> [timeout-s] | mcp-register <core-url> <secret> <admin-actor> <id> <server.json> | admin-put <core-url> <secret> <admin-actor> <path> <body.json> | admin-get <core-url> <secret> <admin-actor> <path>');
+  console.error('usage: qm-api.mjs turn <core-url> <secret> <job.json> [timeout-s] | mcp-register <core-url> <secret> <admin-actor> <id> <server.json> | admin-put <core-url> <secret> <admin-actor> <path> <body.json> | admin-get <core-url> <secret> <admin-actor> <path> | post <core-url> <secret> <path> <body.json>');
   process.exit(64);
 }
 function safeJson(s) { try { return JSON.parse(s); } catch { return s; } }
@@ -73,6 +76,14 @@ if (mode === 'admin-put' || mode === 'admin-get') {
   const out = mode === 'admin-put'
     ? await signed('PUT', path, readFileSync(bodyPath, 'utf8'), { 'x-admin-actor': adminActor }, 60)
     : await signed('GET', path, '', { 'x-admin-actor': adminActor }, 60);
+  console.log(JSON.stringify(out));
+  process.exit(out.http >= 200 && out.http < 300 ? 0 : 2);
+}
+
+if (mode === 'post') {
+  const [path, bodyPath] = rest;
+  if (!path || !bodyPath) usage();
+  const out = await signed('POST', path, readFileSync(bodyPath, 'utf8'), {}, 60);
   console.log(JSON.stringify(out));
   process.exit(out.http >= 200 && out.http < 300 ? 0 : 2);
 }
