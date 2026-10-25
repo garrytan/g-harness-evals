@@ -4,6 +4,12 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 
 ## [Unreleased]
 
+### gbrain arm: results (run `gbrain-arm-2026-10`)
+
+- `docs/benchmarks/2026-10-24-gbrain-arm/report.md` and `results/`: 15 cells, 1,500 trials, the nine Haiku cells on one machine and the six Sonnet cells on three (amendment of 2026-10-24), receipts merged into one directory with each machine's ledger, proxy log and run log under its own name and `shards.json` naming the machine of every cell and trial. Scripts run from `main` at `4099179`: `summary.json`, `comparisons.gbrain.json`, the descriptive and `--against` comparison files, `taxonomy.json` and `taxonomy.md`.
+- Findings: in the untold `gbrain` cells every harness listed gbrain's tools and called one in 2 of 600 trials, so no retrieval effect could appear and none of the nine paired differences is distinguished (Holm-adjusted p 0.75 or more); the `gbrain-told` cells used it in 76% to 96% of trials, took `sc-06` and `si-06` to 5 of 5 for every harness and lost 18 trials to cross-scope reads via bot-wide `search`, net +1 to +4 points with intervals about 40 points wide. Two consent violations (Hermes, Haiku, with gbrain installed, `os-06`); zero leaks; three QM `harness_error` trials (HE-ADAPTER-002, port 58080 in use) counted as failures because the scripts exclude only `model_error`, `infra_error` and `exam_fault`; 13 Sonnet requests inside four OpenClaw Haiku trials forwarded by the route allowlist at `ac9e41b`.
+- Program spend $136.06 of $2,000 (lane-spend line `gbrain-arm-2026-10`, $80.87).
+
 ### From internal-task (QM inner-harness cell and probes): configs, thread sessions, model assertion
 
 - Runner: a cell's `config` reaches the adapter and the compose stack as `HE_HARNESS_CONFIG`; the compose env carries `COMPOSE_PROJECT_NAME` so `capture.sh` can reach the stack's services; after each trial the proxy usage is checked against the cell's model and a forwarded request or an allowlist refusal naming another model ends the trial as `model_error` (new HE-MODEL-001).

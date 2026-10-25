@@ -2,6 +2,8 @@
 
 harness-evals v0.0.5. The gbrain arm asks one question of the multi-user slice: does each harness (OpenClaw, Hermes Agent, QM) do better or worse on the held-out tasks when [gbrain](https://github.com/garrytan/gbrain), a knowledge brain with an MCP server, is installed beside the world tools? This page is the design and operations reference for the arm: what runs, why it is shaped this way, how it is wired into the runner and the adapters, what the event log records, and the smoke evidence that it works end to end. Lane D built the pieces described here (the sidecar, the world tap, the runner and the adapters); lane E owns the grader's reading of the new events, the statistics and the scripts.
 
+Status: run `gbrain-arm-2026-10` is complete and reported in [docs/benchmarks/2026-10-24-gbrain-arm/report.md](benchmarks/2026-10-24-gbrain-arm/report.md) (1,500 trials, $80.87). Left unmentioned, no harness used the brain (2 calls in 600 trials) and no paired pass difference is distinguished; told to check it first, Haiku used it in most trials, took the two cross-channel retrieval tasks to 5 of 5 and lost trials to cross-scope search results, net +1 to +4 points with wide intervals. The install ladder and the company brain below are the designs for the next arms.
+
 ## Design
 
 **A sidecar per trial, a fresh brain per trial.** Each trial of a cell that carries `gbrain` gets its own gbrain container (`harness-eval/gbrain:dev`, [gbrain/](../gbrain/README.md)) started before the harness and stopped after the world is fenced. The brain is copied from a prebuilt image layer at start, so nothing a harness remembers in one trial exists in the next (methodology item 2, isolation); it takes about 5 s on an idle machine and about 10 s beside the harness container's own start.
@@ -153,6 +155,10 @@ Lessons that changed the code or the docs: a harness image built before an adapt
 - **Preamble mention.** A second arm whose preamble names gbrain search beside `search_messages` would separate "the harness did not know the rule applies" from "the harness ignored it".
 
 ## Changelog
+
+### 2026-10-24: Arm counted
+
+harness-evals v0.0.5. Run `gbrain-arm-2026-10` reported: [docs/benchmarks/2026-10-24-gbrain-arm/report.md](benchmarks/2026-10-24-gbrain-arm/report.md). Status line above.
 
 ### 2026-10-25: Install ladder, report scripts (internal-task)
 
