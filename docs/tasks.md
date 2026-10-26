@@ -51,6 +51,7 @@ tasks/multiuser/dev/si-01-quarrendon-seats/
 tasks/multiuser/_shared/preamble.md   the one system preamble every harness gets, with {{placeholders}}
 tasks/multiuser/_shared/preamble.gbrain.md   the same plus rule 7 (gbrain is installed, check it first), for the gbrain arm's gbrain-told cells
 tasks/multiuser/_shared/preamble.gbrain-company.md   rule 7 saying the brain holds every page of the company, for the company-brain run's told cells (internal-task)
+tasks/multiuser/_shared/preamble.gbrain-memory.md   rule 7 saying the brain also holds the scenario's own messages as they are posted, for the gbrain-memory run's gbrain-told-live cells (internal-task)
 tasks/multiuser/heldout/MANIFEST.json the sealed digest of the held-out tree
 ```
 
@@ -175,6 +176,10 @@ A dev-split cell without a `tasks` list now runs these eleven tasks beside the t
 Memory probes phrase the fact as the member's own preference, identifier or project, which is what QM's extractor keeps, and their fact turn carries `wait_s = 20` so a capture quiet time of 5 s (QM probe configs, `harnesses/qm/pin.json`) has passed before the next turn. The sandbox probes ask for "your own workspace, with your shell" in the member's words, because the preamble never offers one. The sentinels are hidden facts, so the matrix test proves none occurs in the world seed.
 
 ## Changelog
+
+### 2026-10-26: the memory run's preamble (internal-task)
+
+harness-evals v0.0.11. The layout lists `tasks/multiuser/_shared/preamble.gbrain-memory.md`, the preamble of run `gbrain-memory-2026-10`'s `gbrain-told-live` cells ([docs/benchmarks/2026-10-26-gbrain-memory/PREREGISTRATION.md](benchmarks/2026-10-26-gbrain-memory/PREREGISTRATION.md)): rules 1 to 6 of `preamble.md` unchanged and a rule 7 saying the brain holds the scenario's channel messages and the member's direct messages with the bot as they are posted.
 
 ### 2026-10-26: ingested facts in scope grading (internal-task)
 
