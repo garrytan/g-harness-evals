@@ -96,6 +96,21 @@ export class TrialWorld {
   /** internal-task: the tap presents the requesting member's gbrain token under member scope; internal-task: or its source_ids under scope "sources". */
   get gbrainScoped(): boolean { const g = this.server.gbrain(); return !!(g?.tokens || g?.grants); }
 
+  /** internal-task: the world writes every posted message into the brain; the runner flushes at each turn boundary. */
+  get gbrainLive(): boolean { return !!this.server.gbrain()?.ingest; }
+
+  /** internal-task: wait until every message posted so far is in the brain; the failures (if any) name the message and gbrain's answer. */
+  async flushGbrainIngest(): Promise<{ written: number; skipped: number; failed: Array<{ channel: string; ts: string; source: string; error?: string }> }> {
+    // In process, not over the admin route: a long drain must not hit the server's idle timeout and abort the run instead of
+    // ending the trial; the queue's own deadline turns a stuck brain into failures the caller reports.
+    const ingest = this.server.gbrainIngest();
+    if (!ingest) return { written: 0, skipped: 0, failed: [] };
+    return ingest.flush();
+  }
+
+  /** internal-task: after the drain, before the snapshot: no ingest event lands after the record is written. */
+  closeGbrainIngest(): void { this.server.gbrainIngest()?.stop(); }
+
   async setGbrainRequester(member: string | null): Promise<void> {
     const res = await this.admin('/admin/gbrain/requester', { method: 'POST', body: JSON.stringify({ member }) });
     const body = await res.json() as { ok: boolean; error?: string };

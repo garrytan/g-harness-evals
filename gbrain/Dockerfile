@@ -7,6 +7,8 @@
 # PGLite brains: /brains/dev and /brains/heldout, each the bot-visible slice of the Pemberline corpus for its split, and
 # /brains/dev-company and /brains/heldout-company, each the whole corpus for its split in one federated gbrain source per
 # reader set with one bearer token per member in tokens.json (gbrain/build-brain.ts; docs/gbrain-arm.md, "Company brain"),
+# and /brains/dev-member and /brains/heldout-member, each the bot-visible slice in one federated source per reader set with an
+# empty private source per member, member tokens and one ingest token per source for the world's live ingestion (internal-task),
 # every brain with a manifest.json listing its pages and their sha256. gbrain records absolute paths inside a brain, so
 # each brain is built at /brain in its own stage and the entrypoint copies the trial's brain back to /brain before serving.
 # No API key enters the build or the image; every brain in the default target is keyword-only. The member tokens in the
@@ -24,7 +26,7 @@
 #
 # Tag discipline: the gbrain arm's trials record the tag harness-eval/gbrain:dev; a run that needs another image while that
 # arm is between preregistration and report builds under its own tag (-t harness-eval/gbrain:<name>) and passes --gbrain-image.
-ARG GBRAIN_COMMIT=10949a15110fcd42eb0fed447d7f22e57c7206d5
+ARG GBRAIN_COMMIT=b06ac32b9878a08dbaabb8d8ff748f986b11920b
 ARG GBRAIN_VERSION=
 ARG CORPUS_COMMIT=6999ebc9da0ac784ac05995b586d22293544e924
 
@@ -90,6 +92,20 @@ RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split
       --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging \
       --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT"
 
+FROM builder AS brain-dev-member
+ARG GBRAIN_COMMIT
+ARG CORPUS_COMMIT
+RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split dev --brain member \
+      --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging \
+      --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT"
+
+FROM builder AS brain-heldout-member
+ARG GBRAIN_COMMIT
+ARG CORPUS_COMMIT
+RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split heldout --brain member \
+      --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging \
+      --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT"
+
 # internal-task: the install bundle, built from the gbrain checkout and the two bot-visible brains, keyless. internal-task: the installer
 # section runs gbrain setup <harness> --instructions-only; for Hermes the build HERMES_HOME is seeded first with Hermes's own
 # SOUL.md at the pinned Hermes commit (harnesses/hermes/pin.json soul_md: what Hermes's first run writes into HERMES_HOME, which
@@ -115,6 +131,8 @@ COPY --from=brain-dev /brain /brains/dev
 COPY --from=brain-heldout /brain /brains/heldout
 COPY --from=brain-dev-company /brain /brains/dev-company
 COPY --from=brain-heldout-company /brain /brains/heldout-company
+COPY --from=brain-dev-member /brain /brains/dev-member
+COPY --from=brain-heldout-member /brain /brains/heldout-member
 COPY --from=install /install /install
 # /brain is the per-trial working copy; the container runs as the calling user, so it must be writable by anyone.
 RUN chmod -R a+rX /brains /install && mkdir -m 0777 /brain && chmod 0555 /opt/sidecar/gbrain/entrypoint.sh /opt/sidecar/gbrain/export-install.sh

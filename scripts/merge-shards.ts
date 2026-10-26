@@ -12,7 +12,7 @@
 //                      shard but not in the manifest is a refusal
 //   trials/            each shard's trial directories; a cell directory present in two shards is a refusal
 //   <name>.ledger.sqlite, <name>.proxy.log, <name>.proxy-usage.ndjson, <name>.run-summary.json, <name>.run.log,
-//   <name>.reconcile*.json, <name>.preflight-*/, <name>.gbrain-install/ (the first shard's gbrain-install/ is also copied
+//   <name>.reconcile*.json, <name>.preflight-*/ (without tokens.json or ingest-tokens.json: the brain's tokens stay on the shard), <name>.gbrain-install/ (the first shard's gbrain-install/ is also copied
 //                      under its own name), <name>.shard.json: each shard's own files under its name
 //   shards.json        { cells: { <cell id>: <shard name> }, shards: { <name>: { machine, commit, images, source, trials,
 //                      cells } } }, machine, commit and images from the shard's shard.json ({name, machine, commit, images},
@@ -32,6 +32,7 @@ export interface ShardsFile { cells: Record<string, string>; shards: Record<stri
 export class MergeError extends Error {}
 
 const canonical = (v: unknown): string => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : x));
+export const SECRET_FILES = new Set(['token', 'token.tmp', 'tokens.json', 'ingest-tokens.json', 'tokens.json.tmp', 'ingest-tokens.json.tmp']);
 const PER_SHARD_FILES = ['ledger.sqlite', 'proxy.log', 'proxy-usage.ndjson', 'run-summary.json', 'run.log', 'shard.json'];
 const perShard = (entry: string) => PER_SHARD_FILES.includes(entry) || /^reconcile.*\.json$/.test(entry) || /^preflight-/.test(entry) || entry === 'gbrain-install';
 
@@ -110,7 +111,10 @@ export function mergeShards(out: string, shards: ShardInput[]): ShardsFile {
   const plan = planMerge(out, shards);
   mkdirSync(out, { recursive: true });
   for (const c of plan.copies) {
-    if (statSync(c.from).isDirectory()) cpSync(c.from, c.to, { recursive: true });
+    // A preflight directory is a sidecar's own out directory: its bearer token (`token`) and, on a brain with member tokens,
+    // tokens.json and ingest-tokens.json (gbrain/entrypoint.sh). They stay on the shard and never enter the merged results
+    // directory, whatever its .gitignore says.
+    if (statSync(c.from).isDirectory()) cpSync(c.from, c.to, { recursive: true, filter: (src) => !SECRET_FILES.has(basename(src)) });
     else { mkdirSync(join(c.to, '..'), { recursive: true }); cpSync(c.from, c.to); }
   }
   cpSync(join(shards[0]!.dir, 'manifest.json'), join(out, 'manifest.json'));

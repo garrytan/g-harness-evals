@@ -23,7 +23,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { RunnerError } from '../errors.ts';
-import type { CompanyBrainManifest, CompanyTokens } from '../../gbrain/build-brain.ts';
+import type { BrainIngest, CompanyBrainManifest, CompanyTokens, IngestTokens } from '../../gbrain/build-brain.ts';
 import { verifyFiles, type InstallFile, type InstallerRecord } from '../../gbrain/build-install.ts';
 import type { GbrainCellConfig } from '../contracts.ts';
 
@@ -52,6 +52,8 @@ export interface GbrainSidecarOptions {
   /** internal-task: the brain to serve and whether tokens.json is wanted; defaults bot-visible and none. */
   brain?: NonNullable<GbrainCellConfig['brain']>;
   scope?: 'none' | 'member' | 'sources';
+  /** internal-task: live ingestion (member brain only): the entrypoint copies ingest-tokens.json beside the token. */
+  ingest?: 'off' | 'live';
   /** internal-task: the surface (default starter) and the embedding model (default off); an embedded brain needs openaiBaseUrl, the
    *  metering proxy's slot URL as the container reaches it (a route, never a key). */
   surface?: GbrainCellConfig['surface'];
@@ -79,6 +81,9 @@ export interface GbrainSidecar {
   /** internal-task (gbrain#7481): under scope "sources", the company brain's grants from its manifest.json (member -> readable source ids)
    *  and the source ids every member of the split may read; the tap adds them as source_ids. No token is involved. */
   grants: { members: Record<string, string[]>; public: string[] } | null;
+  /** internal-task: under live ingestion, the member brain's per-source ingest tokens and the manifest's channel-to-source map, for the
+   *  world's ingestion module. The tokens file stays under outDir. */
+  ingest: { tokens: IngestTokens; map: BrainIngest } | null;
   /** Milliseconds from docker run to a healthy /health and a token on disk. */
   ready_ms: number;
   /** SIGTERM, wait, collect docker logs into outDir, remove the container and its network. Idempotent. */
@@ -133,9 +138,9 @@ export async function waitHealthy(url: string, timeoutMs: number, exited: () => 
 /** internal-task: tokens.json is well formed, for this split, and names a token for every member given (HE-GBRAIN-004). */
 export function checkCompanyTokens(value: unknown, split: 'dev' | 'heldout', members: string[], path: string): CompanyTokens {
   const t = value as Partial<CompanyTokens> | null;
-  const bad = (what: string) => new RunnerError('HE-GBRAIN-004', `${path}: ${what}; fix: rebuild the company brain image (gbrain/README.md, "The company brain") so tokens.json carries one granted token per member of the split plus public-only`);
+  const bad = (what: string) => new RunnerError('HE-GBRAIN-004', `${path}: ${what}; fix: rebuild the company or member brain image (gbrain/README.md, "The company brain") so tokens.json carries one granted token per member of the split plus public-only`);
   if (!t || typeof t !== 'object') throw bad('not a JSON object');
-  if (t.schema_version !== 1 || t.brain !== 'company') throw bad(`expected schema_version 1 and brain "company", got ${JSON.stringify({ schema_version: t.schema_version, brain: t.brain })}`);
+  if (t.schema_version !== 1 || (t.brain !== 'company' && t.brain !== 'member')) throw bad(`expected schema_version 1 and brain "company" or "member", got ${JSON.stringify({ schema_version: t.schema_version, brain: t.brain })}`);
   if (t.split !== split) throw bad(`tokens are for split ${String(t.split)}, the trial runs ${split}`);
   if (typeof t.public_only !== 'string' || !t.public_only) throw bad('no public_only token');
   if (!t.members || typeof t.members !== 'object') throw bad('no members map');
@@ -150,7 +155,7 @@ export function checkCompanyGrants(value: unknown, split: 'dev' | 'heldout', mem
   const m = value as Partial<CompanyBrainManifest> | null;
   const bad = (what: string) => new RunnerError('HE-GBRAIN-004', `${path}: ${what}; fix: rebuild the company brain image (gbrain/README.md, "The company brain") so manifest.json carries one source grant per member of the split`);
   if (!m || typeof m !== 'object') throw bad('not a JSON object');
-  if (m.schema_version !== 2 || m.brain !== 'company') throw bad(`expected schema_version 2 and brain "company", got ${JSON.stringify({ schema_version: m.schema_version, brain: m.brain })}`);
+  if (!((m.schema_version === 2 && m.brain === 'company') || (m.schema_version === 3 && m.brain === 'member'))) throw bad(`expected schema_version 2 and brain "company" or schema_version 3 and brain "member", got ${JSON.stringify({ schema_version: m.schema_version, brain: m.brain })}`);
   if (m.split !== split) throw bad(`the manifest is for split ${String(m.split)}, the trial runs ${split}`);
   if (!Array.isArray(m.grants) || !Array.isArray(m.sources)) throw bad('no grants or sources list');
   const byMember: Record<string, string[]> = {};
@@ -163,10 +168,31 @@ export function checkCompanyGrants(value: unknown, split: 'dev' | 'heldout', mem
   return { members: byMember, public: pub };
 }
 
+/** internal-task: ingest-tokens.json is well formed, for this split, and names a token for every source the manifest's channel map and
+ *  the private-<member> rule can send a message to (HE-GBRAIN-004); the manifest (schema 3) carries that map. */
+export function checkIngestTokens(tokensValue: unknown, manifestValue: unknown, split: 'dev' | 'heldout', members: string[], path: string): { tokens: IngestTokens; map: BrainIngest } {
+  const bad = (what: string) => new RunnerError('HE-GBRAIN-004', `${path}: ${what}; fix: rebuild the member brain image (gbrain/README.md, "The member brain") so ingest-tokens.json carries one token per source and manifest.json the channel map`);
+  const t = tokensValue as Partial<IngestTokens> | null;
+  if (!t || typeof t !== 'object') throw bad('not a JSON object');
+  if (t.schema_version !== 1 || t.brain !== 'member') throw bad(`expected schema_version 1 and brain "member", got ${JSON.stringify({ schema_version: t.schema_version, brain: t.brain })}`);
+  if (t.split !== split) throw bad(`ingest tokens are for split ${String(t.split)}, the trial runs ${split}`);
+  if (!t.sources || typeof t.sources !== 'object') throw bad('no sources map');
+  const m = manifestValue as Partial<CompanyBrainManifest> | null;
+  if (!m || typeof m !== 'object' || m.schema_version !== 3 || m.brain !== 'member' || !m.ingest || typeof m.ingest.channels !== 'object') throw bad('the manifest beside it is not a member brain manifest (schema_version 3 with ingest.channels)');
+  // Every source of the brain (the build mints one ingest token per source), plus what the channel map and the actors' private
+  // sources name, so a token a build dropped is refused here and a missing token at write time means, by construction, a
+  // conversation the brain has no source for.
+  const needed = new Set<string>([...(Array.isArray(m.sources) ? m.sources.map((s) => s.id) : []), ...Object.values(m.ingest.channels), ...members.map((id) => `${m.ingest!.dm_source_prefix}${id}`)]);
+  const missing = [...needed].filter((s) => typeof t.sources![s] !== 'string' || !t.sources![s]);
+  if (missing.length) throw bad(`no ingest token for source(s) ${missing.join(', ')}`);
+  return { tokens: t as IngestTokens, map: m.ingest };
+}
+
 export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<GbrainSidecar> {
   const image = o.image ?? DEFAULT_GBRAIN_IMAGE;
   const brain = o.brain ?? 'bot-visible';
   const scope = o.scope ?? 'none';
+  const ingest = o.ingest ?? 'off';
   const surface = o.surface ?? 'starter';
   const embeddings = o.embeddings ?? 'off';
   if (embeddings !== 'off' && !o.openaiBaseUrl) throw new RunnerError('HE-GBRAIN-002', `an embedded brain (${embeddings}) needs the metering proxy's slot URL as OPENAI_BASE_URL; the runner passes none without a proxy`);
@@ -187,7 +213,7 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
   const run = await sh(['docker', 'run', '-d', '--name', name, '--user', uidGid(), '--network', network, '--add-host', 'host.docker.internal:host-gateway',
     '-p', `127.0.0.1:0:${GBRAIN_PORT}`, '-v', `${out}:/he-gbrain`,
     '-e', `HE_GBRAIN_SPLIT=${o.split}`, '-e', 'HE_GBRAIN_OUT=/he-gbrain', '-e', `HE_TRIAL_ID=${o.trialId}`,
-    '-e', `HE_GBRAIN_BRAIN=${brain}`, '-e', `HE_GBRAIN_SCOPE=${scope}`,
+    '-e', `HE_GBRAIN_BRAIN=${brain}`, '-e', `HE_GBRAIN_SCOPE=${scope}`, '-e', `HE_GBRAIN_INGEST=${ingest}`,
     '-e', `HE_GBRAIN_SURFACE=${surface}`, '-e', `HE_GBRAIN_EMBEDDINGS=${embeddings}`,
     ...(embeddings !== 'off' ? ['-e', `OPENAI_BASE_URL=${o.openaiBaseUrl}`] : []),
     image]);
@@ -229,6 +255,16 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
     const token = readFileSync(tokenPath, 'utf8').trim();
     let tokens: CompanyTokens | null = null;
     let grants: GbrainSidecar['grants'] = null;
+    let ingestTokens: GbrainSidecar['ingest'] = null;
+    if (ingest === 'live') {
+      const ingestPath = join(out, 'ingest-tokens.json');
+      while (!existsSync(ingestPath) || !readFileSync(ingestPath, 'utf8').trim()) {
+        if (Date.now() > deadline) throw new Error(`no ingest-tokens.json at ${ingestPath} after ${Math.round(timeout / 1000)} s`);
+        const gone = await exited(); if (gone) throw new Error(gone);
+        await Bun.sleep(100);
+      }
+      ingestTokens = checkIngestTokens(JSON.parse(readFileSync(ingestPath, 'utf8')), JSON.parse(readFileSync(join(out, 'manifest.json'), 'utf8')), o.split, [], ingestPath);
+    }
     if (scope === 'sources') {
       const manifestPath = join(out, 'manifest.json');
       while (!existsSync(manifestPath) || !readFileSync(manifestPath, 'utf8').trim()) {
@@ -248,8 +284,8 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
       tokens = JSON.parse(readFileSync(tokensPath, 'utf8')) as CompanyTokens;
     }
     const ready_ms = Date.now() - started;
-    log(`gbrain sidecar ${name} (${o.split}, ${image}, brain ${brain}, scope ${scope}, surface ${surface}, embeddings ${embeddings}) healthy at ${url} after ${ready_ms} ms; token in ${tokenPath}${tokens ? `, ${Object.keys(tokens.members ?? {}).length} member tokens in ${tokensPath}` : ''}`);
-    return { url, token, tokenPath, image, image_id, brain, scope, surface, embeddings, tokens, grants, ready_ms, stop };
+    log(`gbrain sidecar ${name} (${o.split}, ${image}, brain ${brain}, scope ${scope}, ingest ${ingest}, surface ${surface}, embeddings ${embeddings}) healthy at ${url} after ${ready_ms} ms; token in ${tokenPath}${tokens ? `, ${Object.keys(tokens.members ?? {}).length} member tokens in ${tokensPath}` : ''}${ingestTokens ? `, ${Object.keys(ingestTokens.tokens.sources).length} ingest tokens` : ''}`);
+    return { url, token, tokenPath, image, image_id, brain, scope, surface, embeddings, tokens, grants, ingest: ingestTokens, ready_ms, stop };
   } catch (e) {
     await stop(5_000);
     const tail = existsSync(join(out, 'docker.log')) ? readFileSync(join(out, 'docker.log'), 'utf8').trim().split('\n').slice(-3).join(' | ') : '';
@@ -439,8 +475,10 @@ export async function callGbrain(url: string, token: string, name: string, args:
  *  the build should hold (gbrain/build-brain.ts companyPageList), so a scoped arm's leak counts measure grants and
  *  not a thin brain; under member scope, one member token lists nothing outside that member's reader sets and the
  *  public-only token lists only pages every member may read. Pages through list_pages (remote max 100 rows). */
-export async function probeCompanyBrain(image: string, split: 'dev' | 'heldout', expected: Array<{ page_slug: string; kind: string; readers: string[] }>, scratchDir: string, scope: 'none' | 'member' | 'sources' = 'member'): Promise<{ ready_ms: number; image_id: string; listed: number; by_kind: Record<string, number>; member_tokens: number; member_check: string }> {
-  const sidecar = await startGbrainSidecar({ trialId: 'preflight', trialSlug: `preflight-company-${split}-${process.pid}`, split, outDir: scratchDir, image, brain: 'company', scope });
+export async function probeCompanyBrain(image: string, split: 'dev' | 'heldout', expected: Array<{ page_slug: string; kind: string; readers: string[] }>, scratchDir: string, scope: 'none' | 'member' | 'sources' = 'member', brain: 'company' | 'member' = 'company'): Promise<{ ready_ms: number; image_id: string; listed: number; by_kind: Record<string, number>; member_tokens: number; member_check: string }> {
+  // internal-task: the member brain (the bot-visible slice in reader-set sources plus the empty ingest sources) is probed the same way,
+  // with its own page list (gbrain/build-brain.ts memberPageList) and ingest live so the ingest tokens are checked too.
+  const sidecar = await startGbrainSidecar({ trialId: 'preflight', trialSlug: `preflight-${brain}-${split}-${process.pid}`, split, outDir: scratchDir, image, brain, scope, ...(brain === 'member' ? { ingest: 'live' as const } : {}) });
   const listAll = async (token: string): Promise<Set<string>> => {
     const listed = new Set<string>();
     for (let offset = 0; ; offset += 100) {
@@ -451,7 +489,7 @@ export async function probeCompanyBrain(image: string, split: 'dev' | 'heldout',
     }
     return listed;
   };
-  const fail = (what: string) => new RunnerError('HE-GBRAIN-002', `the company brain for ${split} in ${image} ${what}; fix: rebuild the image (gbrain/README.md, "The company brain")`);
+  const fail = (what: string) => new RunnerError('HE-GBRAIN-002', `the ${brain} brain for ${split} in ${image} ${what}; fix: rebuild the image (gbrain/README.md, "The ${brain} brain")`);
   try {
     const listed = await listAll(sidecar.token);
     const missing = expected.filter((p) => !listed.has(p.page_slug));

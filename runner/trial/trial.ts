@@ -20,13 +20,13 @@ import type { WorldEvent } from '../../world/services/events.ts';
 import type { World } from '../../world/types.ts';
 import { loadScript, startScriptedHarness } from '../scripted/executor.ts';
 import { startComposeHarness, startDockerHarness } from './docker.ts';
-import { type GbrainSidecar, type InstallViewManifest, checkCompanyGrants, checkCompanyTokens, exportInstallView, startGbrainSidecar, verifyInstallView } from './gbrain.ts';
+import { type GbrainSidecar, type InstallViewManifest, checkCompanyGrants, checkCompanyTokens, checkIngestTokens, exportInstallView, startGbrainSidecar, verifyInstallView } from './gbrain.ts';
 import { GBRAIN_WRITE_TOOLS } from '../../world/services/gbrain-tap.ts';
 import { canReadFile } from '../grade/predicates.ts';
 import { HarnessGone, type Harness, makeTrialDirs, startProcessHarness, writeAtomic } from './harness.ts';
 import { RunProxy, embeddingUsage, reconcile, summarizeUsage, trialKey, trialSlug } from './proxy.ts';
 import { loadTask, type TaskSpec } from './task.ts';
-import { runTurns } from './turns.ts';
+import { flushIngestAfterFence, runTurns } from './turns.ts';
 import { TrialWorld, worldAt } from './world.ts';
 
 /** internal-task: where preflight exports each gbrain-docs cell's bundle view, and where the trial reads it. */
@@ -140,6 +140,9 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   const [provider, modelName] = cell.model.includes(':') ? [cell.model.slice(0, cell.model.indexOf(':')), cell.model.slice(cell.model.indexOf(':') + 1)] : ['none', cell.model];
 
   if (cell.gbrain && mode === 'scripted') throw new RunnerError('HE-GBRAIN-001', `cell ${cell.id} carries gbrain but runs scripted; a script has no harness to call the brain. fix: drop gbrain from the cell or run it in docker or process mode`);
+  // internal-task: a process-mode harness runs as the runner's user beside the trial directory, so it could read the per-source ingest
+  // tokens and write every member's private source directly, past the tap; the member brain's tokens stay docker-only.
+  if (cell.gbrain?.ingest === 'live' && mode === 'process') throw new RunnerError('HE-GBRAIN-001', `cell ${cell.id} carries gbrain.ingest "live" but runs in process mode; the ingest tokens under the trial directory would be readable by the harness process. fix: run the cell in docker mode`);
   const world = new TrialWorld({ trialId: trial.id, split: cell.split, actors: task.actors, outDir: dirs.root, worldPath: opts.worldPath, reachableFromContainers: docker });
   log(`world for ${trial.id} at ${world.localUrl} (harness sees ${world.harnessUrl}); ${task.turns.length} turns, budget ${task.time_budget_s} s per turn`);
   const proxy = mode === 'scripted' ? null : ctx.proxy;
@@ -155,12 +158,14 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   if (cell.gbrain && gbrain) {
     try {
       if (gbrain.embeddings !== 'off' && !proxy) throw new RunnerError('HE-GBRAIN-005', `cell ${cell.id} has embeddings ${gbrain.embeddings} but the trial runs without a metering proxy; the sidecar's embedding calls must be metered`);
-      sidecar = await startGbrainSidecar({ trialId: trial.id, trialSlug: slot, split: cell.split, outDir: join(dirs.root, 'gbrain'), image: opts.gbrainImage, brain: gbrain.brain, scope: gbrain.scope,
+      sidecar = await startGbrainSidecar({ trialId: trial.id, trialSlug: slot, split: cell.split, outDir: join(dirs.root, 'gbrain'), image: opts.gbrainImage, brain: gbrain.brain, scope: gbrain.scope, ingest: gbrain.ingest,
         surface: gbrain.surface, embeddings: gbrain.embeddings, openaiBaseUrl: gbrain.embeddings !== 'off' ? proxy!.baseUrlFor(slot, 'openai', true) : undefined, log });
       // internal-task: under member scope the tap needs a granted token for every member who will take a turn (HE-GBRAIN-004).
       if (sidecar.scope === 'member') checkCompanyTokens(sidecar.tokens, cell.split, task.actors, join(dirs.root, 'gbrain', 'tokens.json'));
       // internal-task (gbrain#7481): under scope "sources" the tap needs a source grant for every member who will take a turn (HE-GBRAIN-004).
       if (sidecar.scope === 'sources') checkCompanyGrants(JSON.parse(readFileSync(join(dirs.root, 'gbrain', 'manifest.json'), 'utf8')), cell.split, task.actors, join(dirs.root, 'gbrain', 'manifest.json'));
+      // internal-task: under live ingestion every actor's DM source and every channel source needs an ingest token (HE-GBRAIN-004).
+      if (sidecar.ingest) checkIngestTokens(sidecar.ingest.tokens, JSON.parse(readFileSync(join(dirs.root, 'gbrain', 'manifest.json'), 'utf8')), cell.split, task.actors, join(dirs.root, 'gbrain', 'ingest-tokens.json'));
       if (gbrain.install !== 'mcp') {
         const viewDir = installViewDir(ctx.runDir, cell.harness, cell.split, gbrain.install);
         installView = existsSync(join(viewDir, 'manifest.json'))
@@ -173,7 +178,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       infraError = e.message;
       log(infraError);
     }
-    if (sidecar && !infraError) world.server.setGbrain({ url: sidecar.url, token: sidecar.token, ...(sidecar.tokens ? { tokens: { members: sidecar.tokens.members, public_only: sidecar.tokens.public_only } } : {}), ...(sidecar.grants ? { grants: sidecar.grants } : {}) });
+    if (sidecar && !infraError) world.server.setGbrain({ url: sidecar.url, token: sidecar.token, ...(sidecar.tokens ? { tokens: { members: sidecar.tokens.members, public_only: sidecar.tokens.public_only } } : {}), ...(sidecar.grants ? { grants: sidecar.grants } : {}), ...(sidecar.ingest ? { ingest: { tokens: sidecar.ingest.tokens.sources, channels: sidecar.ingest.map.channels, dm_source_prefix: sidecar.ingest.map.dm_source_prefix } } : {}) });
   }
   const installKind = installView ? (installView.install ?? 'gbrain-docs') : null;
   const installViewPath = installKind ? installViewDir(ctx.runDir, cell.harness, cell.split, installKind) : null;
@@ -256,6 +261,10 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     if (world.gbrainScoped) await world.setGbrainRequester(null);
 
     await world.fence();
+    // internal-task: the fence refuses every post, so the ingest queue is final here; drain it before the snapshot and the sidecar
+    // stop, on every path, so no write is cut off and counted as a failure (a failure on a completed trial is the exam fault).
+    const drained = await flushIngestAfterFence(world, endedEarly, log);
+    if (drained) { endedEarly = drained.ended_early; error = drained.error; }
     const snapshot = await world.snapshot();
     writeAtomic(paths.snapshot!, JSON.stringify(snapshot, null, 1) + '\n');
     if (harness) await harness.stop(opts.stopGraceS * 1000);
@@ -323,12 +332,22 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
 /** The gbrain tools that search the brain: a query embedding leaves for each on an embedded brain. */
 export const GBRAIN_SEARCH_TOOLS: ReadonlySet<string> = new Set(['gbrain.search', 'gbrain.query', 'gbrain.recall']);
 
+/** internal-task: the record's gbrain.ingested from the world's gbrain.ingest events: a skip is outcome ok with effect.skipped and no
+ *  fact, a failure any outcome other than ok, and the rest are committed facts. The three counts partition the events. */
+export function ingestedCounts(ingests: WorldEvent[]): { ok: number; skipped: number; failed: number } {
+  const skipped = ingests.filter((e) => e.outcome === 'ok' && typeof (e.effect as { skipped?: unknown } | undefined)?.skipped === 'string').length;
+  const failed = ingests.filter((e) => e.outcome !== 'ok').length;
+  return { ok: ingests.length - skipped - failed, skipped, failed };
+}
+
 /** What the trial's log says about the sidecar: how many gbrain events, how many were tool calls, how many of those
  *  fell inside a turn window (started_seq, ended_seq], how many were writes, how many search replies gbrain stamped
  *  degraded (internal-task). The events themselves are the record. internal-task: surface, install and embeddings are the resolved cell fields. */
 export function gbrainSummary(config: ResolvedGbrain | GbrainCellSurface, sidecar: Pick<GbrainSidecar, 'image' | 'ready_ms'> & Partial<Pick<GbrainSidecar, 'image_id' | 'brain' | 'scope'>>, events: WorldEvent[], windows: TurnWindow[]): TrialGbrain {
   const resolved: ResolvedGbrain = typeof config === 'string' ? resolveGbrain({ surface: config }) : config;
   const mine = events.filter((e) => e.via === 'gbrain');
+  // internal-task: the world's own writes into the brain are runner events, not gbrain ones; they are counted apart from the harness's calls.
+  const ingests = events.filter((e) => e.via === 'runner' && e.tool === 'gbrain.ingest');
   const calls = mine.filter((e) => e.tool !== 'gbrain.initialize' && e.tool !== 'gbrain.tools/list');
   const inTurn = calls.filter((e) => windows.some((w) => e.seq > w.started_seq && e.seq <= w.ended_seq));
   const degraded = calls.filter((e) => GBRAIN_SEARCH_TOOLS.has(e.tool) && typeof (e.effect as { degraded?: unknown } | undefined)?.degraded === 'string').length;
@@ -336,6 +355,7 @@ export function gbrainSummary(config: ResolvedGbrain | GbrainCellSurface, sideca
     surface: resolved.surface, image: sidecar.image, sidecar_ready_ms: sidecar.ready_ms,
     ...(sidecar.image_id ? { image_id: sidecar.image_id } : {}), ...(sidecar.brain ? { brain: sidecar.brain } : {}), ...(sidecar.scope ? { scope: sidecar.scope } : {}),
     install: resolved.install, embeddings: resolved.embeddings,
+    ...(resolved.ingest !== 'off' ? { ingest: resolved.ingest, ingested: ingestedCounts(ingests) } : {}),
     events: { total: mine.length, discovery: mine.length - calls.length, calls: calls.length, in_turn_calls: inTurn.length, writes: calls.filter((e) => GBRAIN_WRITE_TOOLS.has(e.tool.slice('gbrain.'.length))).length, ...(resolved.embeddings !== 'off' ? { degraded } : {}) },
   };
 }

@@ -10,11 +10,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import type { GradeResult, TrialEvidence, TurnWindow } from '../runner/contracts.ts';
 import { buildManifest, embeddingAllowanceUsd, loadPrereg, renderPlan, resolveGbrain, type Cell, type Prereg } from '../runner/run.ts';
-import { DEFAULT_GBRAIN_IMAGE, checkCompanyTokens, gbrainImagePresent, probeCompanyBrain } from '../runner/trial/gbrain.ts';
+import { DEFAULT_GBRAIN_IMAGE, checkCompanyTokens, checkIngestTokens, gbrainImagePresent, probeCompanyBrain } from '../runner/trial/gbrain.ts';
 import { companyPageList } from '../gbrain/build-brain.ts';
 import { worldAt, DEFAULT_WORLD_PATH } from '../runner/trial/world.ts';
 import { executeRun } from '../runner/trial/run.ts';
-import { contextExposure, gbrainSummary, semanticCheck } from '../runner/trial/trial.ts';
+import { contextExposure, gbrainSummary, ingestedCounts, semanticCheck } from '../runner/trial/trial.ts';
 import { embeddingUsage, summarizeUsage } from '../runner/trial/proxy.ts';
 import type { UsageLine } from '../runner/proxy/metering-proxy.ts';
 import type { WorldEvent } from '../world/services/events.ts';
@@ -72,6 +72,8 @@ test('a cell may name its own preamble; the plan shows it and a missing file is 
 test('only the pinned surfaces are accepted, and a scripted cell cannot carry gbrain (HE-GBRAIN-001)', () => {
   expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'full' as 'starter' } })], 'gb-bad-surface'))).toThrow(/HE-GBRAIN-001 .*gbrain.surface must be one of "starter", "verbs" .*got "full"/);
   expect(() => loadPrereg(writePrereg([cell({ harness: 'scripted', model: 'none', harness_mode: 'scripted', script: 'oracle' })], 'gb-scripted'))).toThrow(/HE-GBRAIN-001 .*scripted/);
+  // internal-task: live ingestion is docker-only; a process-mode harness could read the ingest tokens under the trial directory.
+  expect(() => loadPrereg(writePrereg([cell({ harness_mode: 'process', adapter: 'x', gbrain: { surface: 'starter', brain: 'member', scope: 'member', ingest: 'live' } })], 'gb-live-process'))).toThrow(/HE-GBRAIN-001 .*ingest "live" runs in docker mode only/);
 });
 
 // internal-task (the install ladder): surface, install and embeddings are orthogonal; defaults resolve without touching the cell.
@@ -89,7 +91,7 @@ test('gbrain.install and gbrain.embeddings: validated under HE-GBRAIN-001 naming
     cell({ id: 'fake-semantic', gbrain: { surface: 'starter', embeddings: 'openai:text-embedding-3-small' }, tasks: ['fx-leak'] }),
   ], 'gb-ladder-plan'));
   expect(p.cells[0]!.gbrain).toEqual({ surface: 'starter' });
-  expect(resolveGbrain(p.cells[0]!.gbrain!)).toEqual({ surface: 'starter', install: 'mcp', embeddings: 'off', brain: 'bot-visible', scope: 'none' });
+  expect(resolveGbrain(p.cells[0]!.gbrain!)).toEqual({ surface: 'starter', install: 'mcp', embeddings: 'off', brain: 'bot-visible', scope: 'none', ingest: 'off' });
   expect(resolveGbrain(p.cells[3]!.gbrain!)).toMatchObject({ surface: 'starter', install: 'mcp', embeddings: 'openai:text-embedding-3-small' });
   const m = buildManifest(p, sha256, '2026-10-24T00:00:00Z', { tasksRoot: join(ROOT, 'tests', 'fixtures', 'tasks') });
   expect(m.cells[0]!.gbrain).toEqual({ surface: 'starter' });
@@ -167,11 +169,15 @@ test('gbrain.brain and gbrain.scope: the plan shows them and warns about a compa
     'WARN: cell fake-company serves the company brain with preamble tasks/multiuser/_shared/preamble.md, not the company one (tasks/multiuser/_shared/preamble.gbrain-company.md); intended only for a none-style arm on the company brain',
     'WARN: cell fake-scoped serves the company brain with preamble tasks/multiuser/_shared/preamble.md, not the company one (tasks/multiuser/_shared/preamble.gbrain-company.md); intended only for a none-style arm on the company brain',
   ]);
-  expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', brain: 'everything' as 'company' } })], 'gb-bad-brain'))).toThrow(/HE-GBRAIN-003 .*brain must be "bot-visible" or "company"/);
+  expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', brain: 'everything' as 'company' } })], 'gb-bad-brain'))).toThrow(/HE-GBRAIN-003 .*brain must be "bot-visible", "company" or "member"/);
+  expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', brain: 'company', ingest: 'live' } })], 'gb-ingest-no-member'))).toThrow(/HE-GBRAIN-003 .*ingest "live" needs gbrain.brain "member"/);
+  expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', brain: 'member', ingest: 'stream' as 'live' } })], 'gb-bad-ingest'))).toThrow(/HE-GBRAIN-003 .*ingest must be "off", "live" or absent/);
+  expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', brain: 'member', ingest: 'live' } })], 'gb-ingest-no-scope'))).toThrow(/HE-GBRAIN-003 .*ingest "live" needs gbrain.scope "member"/);
+  expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', brain: 'member', scope: 'sources', ingest: 'live' } })], 'gb-ingest-sources'))).toThrow(/HE-GBRAIN-003 .*ingest "live" needs gbrain.scope "member"/);
   expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', brain: 'company', scope: 'team' as 'member' } })], 'gb-bad-scope'))).toThrow(/HE-GBRAIN-003 .*scope must be "member", "sources" or absent/);
-  expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', scope: 'sources' } })], 'gb-sources-no-company'))).toThrow(/HE-GBRAIN-003 .*scope "sources" needs gbrain.brain "company"/);
+  expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', scope: 'sources' } })], 'gb-sources-no-company'))).toThrow(/HE-GBRAIN-003 .*scope "sources" needs gbrain.brain "company" or "member"/);
   expect(line('fake-sources').endsWith('gbrain=starter/mcp/off brain=company scope=sources preamble=tasks/multiuser/_shared/preamble.gbrain-company.md')).toBe(true);
-  expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', scope: 'member' } })], 'gb-scope-no-company'))).toThrow(/HE-GBRAIN-003 .*scope "member" needs gbrain.brain "company"/);
+  expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', scope: 'member' } })], 'gb-scope-no-company'))).toThrow(/HE-GBRAIN-003 .*scope "member" needs gbrain.brain "company" or "member"/);
 });
 
 test('checkCompanyTokens: a well-formed tokens.json for the split with a token for every actor passes; anything else is HE-GBRAIN-004', () => {
@@ -182,6 +188,41 @@ test('checkCompanyTokens: a well-formed tokens.json for the split with a token f
   expect(() => checkCompanyTokens({ ...good, public_only: '' }, 'dev', [], 'tokens.json')).toThrow(/HE-GBRAIN-004 .*no public_only token/);
   expect(() => checkCompanyTokens({ ...good, brain: 'bot-visible' }, 'dev', [], 'tokens.json')).toThrow(/HE-GBRAIN-004 .*brain "company"/);
   expect(() => checkCompanyTokens(null, 'dev', [], 'tokens.json')).toThrow(/HE-GBRAIN-004 .*not a JSON object/);
+});
+
+test('checkIngestTokens: a member brain\'s ingest-tokens.json with a token for every channel source and every actor\'s private source passes; anything else is HE-GBRAIN-004', () => {
+  const tok = (n: number) => 'gbrain_' + n.toString(16).padStart(2, '0').repeat(32);
+  const tokens = { schema_version: 1, brain: 'member', split: 'dev', sources: { public: tok(1), 'team-north-members': tok(2), 'private-dana-okafor': tok(3) } };
+  const manifest = { schema_version: 3, brain: 'member', split: 'dev', sources: [{ id: 'public' }, { id: 'team-north-members' }, { id: 'private-dana-okafor' }], ingest: { channels: { C1: 'public', C2: 'team-north-members' }, dm_source_prefix: 'private-', token_names: ['ingest-public', 'ingest-team-north-members', 'ingest-private-dana-okafor'] } };
+  const path = 'ingest-tokens.json';
+  const ok = checkIngestTokens(tokens, manifest, 'dev', ['dana-okafor'], path);
+  expect(ok.tokens).toBe(tokens as never);
+  expect(ok.map).toBe(manifest.ingest as never);
+  expect(() => checkIngestTokens(tokens, manifest, 'heldout', ['dana-okafor'], path)).toThrow(/HE-GBRAIN-004 .*ingest tokens are for split dev, the trial runs heldout/);
+  expect(() => checkIngestTokens({ ...tokens, brain: 'company' }, manifest, 'dev', [], path)).toThrow(/HE-GBRAIN-004 .*expected schema_version 1 and brain "member"/);
+  expect(() => checkIngestTokens({ ...tokens, schema_version: 2 }, manifest, 'dev', [], path)).toThrow(/HE-GBRAIN-004 .*expected schema_version 1 and brain "member"/);
+  expect(() => checkIngestTokens({ ...tokens, sources: null }, manifest, 'dev', [], path)).toThrow(/HE-GBRAIN-004 .*no sources map/);
+  expect(() => checkIngestTokens(null, manifest, 'dev', [], path)).toThrow(/HE-GBRAIN-004 .*not a JSON object/);
+  expect(() => checkIngestTokens(tokens, { ...manifest, schema_version: 2, ingest: undefined }, 'dev', [], path)).toThrow(/HE-GBRAIN-004 .*not a member brain manifest \(schema_version 3 with ingest.channels\)/);
+  // A channel source without a token, and an actor whose private-<id> source has none, each fail and are named.
+  expect(() => checkIngestTokens(tokens, { ...manifest, ingest: { ...manifest.ingest, channels: { ...manifest.ingest.channels, C3: 'channel-inc-qfl-sev1' } } }, 'dev', [], path)).toThrow(/HE-GBRAIN-004 .*no ingest token for source\(s\) channel-inc-qfl-sev1/);
+  expect(() => checkIngestTokens(tokens, manifest, 'dev', ['dana-okafor', 'june-osei'], path)).toThrow(/HE-GBRAIN-004 .*no ingest token for source\(s\) private-june-osei/);
+  expect(() => checkIngestTokens(tokens, manifest, 'dev', ['june-osei'], path)).toThrow(/fix: rebuild the member brain image/);
+  // A source the build lists with no token (a dropped mint) is refused at trial start, not skipped at write time.
+  expect(() => checkIngestTokens(tokens, { ...manifest, sources: [...manifest.sources, { id: 'private-pree-sundaram' }] }, 'dev', [], path)).toThrow(/HE-GBRAIN-004 .*no ingest token for source\(s\) private-pree-sundaram/);
+});
+
+test('a live cell with the member brain under member scope loads and shows ingest=live on its plan line', () => {
+  const { prereg: p, sha256 } = loadPrereg(writePrereg([cell({ id: 'live', gbrain: { surface: 'starter', brain: 'member', scope: 'member', ingest: 'live' }, tasks: ['fx-leak'] })], 'gb-live-ok'));
+  expect(resolveGbrain(p.cells[0]!.gbrain!)).toEqual({ surface: 'starter', install: 'mcp', embeddings: 'off', brain: 'member', scope: 'member', ingest: 'live' });
+  const manifest = buildManifest(p, sha256, '2026-10-26T00:00:00Z', { tasksRoot: join(ROOT, 'tests', 'fixtures', 'tasks') });
+  expect(renderPlan(manifest).split('\n').find((l) => l.includes('CELL: live'))).toMatch(/brain=member scope=member ingest=live/);
+});
+
+test('ingestedCounts partitions the gbrain.ingest events into committed, skipped and failed', () => {
+  const ev = (seq: number, outcome: 'ok' | 'error', effect: Record<string, unknown>): WorldEvent => ({ seq, trial_id: 't', wall_ts: '', sim_ts: '', actor: null, via: 'runner', tool: 'gbrain.ingest', kind: 'admin', args_digest: '', args: {}, outcome, effect });
+  expect(ingestedCounts([ev(1, 'ok', { fact_id: '1', source: 'public' }), ev(2, 'ok', { fact_id: null, source: '', skipped: 'DM D1 is between a and b and c, not the bot and one member' }), ev(3, 'error', { fact_id: null, source: 'public' }), ev(4, 'ok', { fact_id: '2', source: 'public' })])).toEqual({ ok: 2, skipped: 1, failed: 1 });
+  expect(ingestedCounts([])).toEqual({ ok: 0, skipped: 0, failed: 0 });
 });
 
 test('gbrainSummary counts discovery, calls, in-turn calls and writes from the log', () => {
@@ -198,7 +239,7 @@ test('gbrainSummary counts discovery, calls, in-turn calls and writes from the l
   });
   // internal-task: on the verbs surface recall is the search; with embeddings on, degraded replies are counted and the semantic check reads them.
   const recallEvents: WorldEvent[] = [ev(5, 'gbrain.recall'), { ...ev(6, 'gbrain.recall'), effect: { pages: [], count: 0, latency_ms: 1, degraded: 'keyword_only_no_embedding_provider' } as never }];
-  const verbs = gbrainSummary({ surface: 'verbs', install: 'mcp', embeddings: 'openai:text-embedding-3-small', brain: 'bot-visible', scope: 'none' }, { image: 'img', ready_ms: 1 }, recallEvents, windows);
+  const verbs = gbrainSummary({ surface: 'verbs', install: 'mcp', embeddings: 'openai:text-embedding-3-small', brain: 'bot-visible', scope: 'none', ingest: 'off' }, { image: 'img', ready_ms: 1 }, recallEvents, windows);
   expect(verbs).toMatchObject({ surface: 'verbs', embeddings: 'openai:text-embedding-3-small', events: { calls: 2, degraded: 1 } });
   const usage = { model: 'openai:text-embedding-3-small', requests: 1, input_tokens: 9, usd: 1e-7, refused: 0, failed: 0 };
   expect(semanticCheck(recallEvents, usage)).toMatchObject({ ok: false, search_calls: 2, degraded_calls: 1, reason: expect.stringContaining('degraded stamp') });

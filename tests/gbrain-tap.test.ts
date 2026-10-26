@@ -34,6 +34,16 @@ function toolResult(name: string, args: Record<string, unknown>) {
         text('Saved facts (remember): about the entity this query names (newest first), then facts those point to, then matches for its words; recall returns more:\n- Door 4B is the Covey & Lark dock'),
         text('[gbrain search] Rows are a ranked top-K, not proof of coverage.'),
       ] };
+      // internal-task: query's facts arm returns matched facts as rows (result_type fact, fact_id, the text at the end of chunk_text);
+      // a full-shape row also carries slug facts/<id>, which is not a page.
+      if (String(args.query ?? '').includes('fact-rows')) return { content: [
+        text([
+          { slug: 'heldout/chats/2025-10-15-saltmarsh-churn-risk', title: 'b', chunk_text: 'x', source_id: 'public' },
+          { result_type: 'fact', fact_id: '7', title: 'Saved fact', chunk_text: 'Saved fact (fact; valid from 2026-10-14; provenance: dana-okafor, a direct message with assistant, 2026-10-14T09:00:00-05:00): Dana Okafor (dana-okafor, Account manager) wrote in a direct message with assistant on 2026-10-14 09:00: my code word is marmoset-7731', source_id: 'private-dana-okafor', follow_up: { op: 'recall', args: { grep: 'Dana' } } },
+          { result_type: 'fact', fact_id: '8', slug: 'facts/8', page_id: 0, type: 'note', title: 'Saved fact', chunk_text: 'Saved fact (fact; valid from 2026-10-14; provenance: test): Berth 2 closes Friday', source_id: 'channel-general', fact_row: { id: 8, valid_from: '2026-10-14T14:00:00.000Z', valid_until: null } },
+        ]),
+        text('[gbrain search] Rows are a ranked top-K, not proof of coverage.'),
+      ] };
       if (String(args.query ?? '').includes('prose-only')) return { content: [
         text([{ slug: 'heldout/chats/2025-10-15-saltmarsh-churn-risk', title: 'b' }]),
         text('Saved facts (remember): about the entity this query names (newest first), then facts those point to, then matches for its words; recall returns more:\n- Door 4B is the Covey & Lark dock\n- Berth 2 closes Friday'),
@@ -157,6 +167,14 @@ test('saved facts are recorded as their own kind (internal-task): from _meta.ret
   expect(e.effect).toMatchObject({ pages: ['heldout/chats/2025-10-15-saltmarsh-churn-risk'], count: 1, degraded: 'embed_unavailable', facts: [{ id: 1, fact: 'Door 4B is the Covey & Lark dock', source_id: 'private-dana-okafor' }] });
   await tap(ws.credentials.bot.token, call(23, 'search', { query: 'saltmarsh discount', limit: 3 }));
   expect(last().effect).not.toHaveProperty('facts');
+  // internal-task: query's fact rows are facts (id, text, source), never pages; the count is the page rows, so it matches pages.
+  await tap(ws.credentials.bot.token, call(24, 'query', { query: 'fact-rows marmoset', limit: 10 }));
+  e = last();
+  expect(e.effect).toMatchObject({ pages: ['heldout/chats/2025-10-15-saltmarsh-churn-risk'], count: 1, sources: ['public', 'private-dana-okafor', 'channel-general'], facts: [
+    { id: '7', fact: 'Dana Okafor (dana-okafor, Account manager) wrote in a direct message with assistant on 2026-10-14 09:00: my code word is marmoset-7731', source_id: 'private-dana-okafor' },
+    { id: '8', fact: 'Berth 2 closes Friday', source_id: 'channel-general' },
+  ] });
+  expect((e.effect as { pages: string[] }).pages).not.toContain('facts/8');
 });
 
 test('remember is a write with the arguments as sent and no pages; list_pages and entity list what they returned', async () => {

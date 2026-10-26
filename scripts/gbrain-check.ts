@@ -302,6 +302,22 @@ export interface ScopedEvidence {
   };
 }
 
+/** internal-task: the live-ingestion evidence. The fake trial runs the member brain with live ingestion: a member gives the bot an
+ *  instruction in a DM on turn 1, another member searches for it from a channel on turn 2, the first member searches again on turn
+ *  3; every fact a search returned maps through the gbrain.ingest event that wrote it to the conversation it came from. */
+export interface IngestEvidence {
+  code_word: string;
+  dm_member: string;
+  other_member: string;
+  /** member -> granted source ids, from the trial's gbrain/manifest.json. */
+  grants: Record<string, string[]> | null;
+  trial: null | {
+    termination: string; error?: string; events_file: string;
+    writes: Array<{ seq: number; channel: string; author: string | null; source: string; outcome: string; error: string | null; fact_id: string | number | null; latency_ms: number | null; skipped: string | null }>;
+    searches: Array<{ seq: number; grant: string | null; tool: string; outcome: string; error: string | null; facts: Array<{ id: string | number | null; fact: string; source_id: string | null }>; pages: string[] }>;
+  };
+}
+
 export interface KeylessEvidence {
   image: string;
   pin: PinSurfaces;
@@ -314,6 +330,8 @@ export interface KeylessEvidence {
   installer?: InstallerEvidence[];
   /** internal-task (gbrain#7481): the scope "sources" probe and trial; absent in evidence written before the told-scoped rung. */
   scoped?: ScopedEvidence;
+  /** internal-task: the live-ingestion trial on the member brain; absent in evidence written before it. */
+  ingest?: IngestEvidence;
   /** The gbrain-docs trial on the fake harness (it takes the OpenClaw dev view). */
   docs: null | { termination: string; error?: string; install_bundle: TrialGbrainInstall | undefined; ready_install: ReadyInstall | null; expected_view_digest: string | null; expected_files: number | null };
 }
@@ -461,6 +479,63 @@ export function keylessAssertions(e: KeylessEvidence, o: { strictPins?: boolean;
         if (!reader.pages.includes(known)) fail(where, `${reader.grant}'s search for ${JSON.stringify(e.known.query)}`, `returns ${known} (in the grant)`, reader.pages.length ? reader.pages.join(', ') : 'no pages', file);
         if (nonReader.pages.includes(known)) fail(where, `${nonReader.grant}'s search for ${JSON.stringify(e.known.query)}`, `never returns ${known} (outside the grant)`, 'returned it', file);
         if (reader.pages.includes(known) && !nonReader.pages.includes(known)) ok(`${where} the same query returned ${known} to ${reader.grant} and not to ${nonReader.grant}`);
+      }
+    }
+  }
+  if (e.ingest) {
+    const g = e.ingest;
+    const where = 'ingest=member/dev';
+    if (!g.trial) fail(where, 'fake trial under brain member, scope member, ingest live', 'a completed trial', 'none', 'trials.jsonl');
+    else if (!g.grants) fail(where, 'the trial\'s gbrain/manifest.json grants', 'present', 'absent', g.trial.events_file);
+    else {
+      const t = g.trial;
+      const file = t.events_file;
+      const grants = g.grants;
+      if (t.termination !== 'completed') fail(where, 'trial termination', 'completed', `${t.termination}${t.error ? ` (${t.error})` : ''}`, 'trials.jsonl');
+      const failed = t.writes.filter((w) => w.outcome !== 'ok');
+      const skipped = t.writes.filter((w) => w.outcome === 'ok' && w.skipped !== null);
+      const written = t.writes.filter((w) => w.outcome === 'ok' && w.skipped === null);
+      // Three actor messages and three replies at least; every one lands as a committed fact with an id.
+      if (t.writes.length < 6) fail(where, 'gbrain.ingest events', 'at least 6 (three actor messages and three replies)', t.writes.length, file);
+      if (failed.length) fail(where, 'ingest writes', 'every write ok', `${failed.length} failed (${failed.slice(0, 3).map((w) => `${w.source || 'no source'}: ${w.error ?? w.outcome}`).join('; ')})`, file);
+      if (skipped.length) fail(where, 'ingest routing', 'a source for every conversation of the check task', `${skipped.length} skipped (${skipped.slice(0, 3).map((w) => w.skipped).join('; ')})`, file);
+      if (written.some((w) => w.fact_id === null)) fail(where, 'ingest fact ids', 'an id on every ok write', 'a write without one', file);
+      const latencies = written.map((w) => w.latency_ms ?? 0).sort((a, b) => a - b);
+      const median = latencies.length ? latencies[Math.floor(latencies.length / 2)] : 0;
+      if (t.writes.length >= 6 && !failed.length && !skipped.length && !written.some((w) => w.fact_id === null)) ok(`${where} ${written.length} messages ingested as facts into ${new Set(written.map((w) => w.source)).size} sources, median ${median} ms per write, slowest ${latencies[latencies.length - 1]} ms`);
+      const dmSource = `private-${g.dm_member}`;
+      const dmWrite = written.find((w) => w.source === dmSource && w.author === g.dm_member);
+      if (!dmWrite) fail(where, `the turn-1 DM ingested into ${dmSource}`, 'one ok write by the member into that source', written.filter((w) => w.author === g.dm_member).map((w) => w.source).join(', ') || 'no write by the member', file);
+      else ok(`${where} the turn-1 DM landed in ${dmSource} as fact #${dmWrite.fact_id}`);
+      const bySeq = new Map(written.filter((w) => w.fact_id !== null).map((w) => [String(w.fact_id), w]));
+      const turn1 = dmWrite ? String(dmWrite.fact_id) : null;
+      // The positive control for the other member: their own turn-2 marker, ingested into their channel before the turn, must
+      // come back, or an empty reply (a broken tap, a token without saved facts) would pass as "no leak".
+      const otherMarker = written.find((w) => w.author === g.other_member && w.source !== dmSource);
+      const sources = (s: { facts: Array<{ id: string | number | null }> }) => [...new Set(s.facts.map((f) => bySeq.get(String(f.id))?.source ?? 'unmapped'))].join(', ') || 'no source';
+      // internal-task: search answers facts in its saved-facts block, query as fact rows (its facts arm); both must route the same way.
+      for (const tool of ['gbrain.search', 'gbrain.query', 'gbrain.recall'] as const) {
+        const verb = tool.slice('gbrain.'.length);
+        const other = t.searches.find((s) => s.tool === tool && s.grant === g.other_member);
+        const same = t.searches.find((s) => s.tool === tool && s.grant === g.dm_member);
+        if (!other || !same) { fail(where, `a ${verb} by the member and by another member through the tap`, 'one each', `${same ? 'member' : `no member ${verb}`}, ${other ? 'other' : `no other ${verb}`}`, file); continue; }
+        for (const s of [other, same]) {
+          const label = `${verb} for ${JSON.stringify(g.code_word)} as ${s.grant}`;
+          if (s.outcome !== 'ok') { fail(where, `${label} outcome`, 'ok', `${s.outcome}${s.error ? ` (${s.error})` : ''}`, file); continue; }
+          const grant = grants[s.grant!] ?? [];
+          const unmapped = s.facts.filter((f) => f.id === null || !bySeq.has(String(f.id)));
+          const outside = s.facts.filter((f) => f.id !== null && bySeq.has(String(f.id)) && !grant.includes(bySeq.get(String(f.id))!.source));
+          if (unmapped.length) fail(where, `${label} facts mapped to ingest events`, 'every fact id written this trial', `${unmapped.length} unmapped (${unmapped.slice(0, 2).map((f) => f.id === null ? 'no id' : `#${f.id}`).join(', ')})`, file);
+          if (outside.length) fail(where, `${label} fact sources`, `inside ${s.grant}'s grant`, outside.map((f) => `#${f.id} from ${bySeq.get(String(f.id))!.source}`).join(', '), file);
+        }
+        // The turn-1 DM itself (by fact id), not the searcher's own marker message in the same source.
+        const sameHit = same.facts.find((f) => f.id !== null && String(f.id) === turn1 && f.fact.includes(g.code_word));
+        const otherDm = other.facts.filter((f) => f.id !== null && bySeq.get(String(f.id))?.source === dmSource);
+        const otherHit = otherMarker ? other.facts.find((f) => f.id !== null && String(f.id) === String(otherMarker.fact_id)) : undefined;
+        if (same.outcome === 'ok' && turn1 && !sameHit) fail(where, `${g.dm_member}'s turn-3 ${verb}`, `fact #${turn1} (the turn-1 DM, holding the code word)`, same.facts.length ? `${same.facts.length} fact(s): ${same.facts.map((f) => `#${f.id}`).join(', ')} from ${sources(same)}` : 'no facts', file);
+        if (other.outcome === 'ok' && otherDm.length) fail(where, `${g.other_member}'s turn-2 ${verb}`, `no fact from ${dmSource}`, `${otherDm.length} (${otherDm.map((f) => `#${f.id}`).join(', ')})`, file);
+        if (other.outcome === 'ok' && !otherHit) fail(where, `${g.other_member}'s turn-2 ${verb} (positive control)`, otherMarker ? `fact #${otherMarker.fact_id} (their own turn-2 message in ${otherMarker.source})` : `an ingested message by ${g.other_member}`, other.facts.length ? `${other.facts.length} fact(s): ${other.facts.map((f) => `#${f.id}`).join(', ')} from ${sources(other)}` : 'no facts', file);
+        if (same.outcome === 'ok' && other.outcome === 'ok' && sameHit && otherHit && !otherDm.length) ok(`${where} ${verb}: the turn-1 DM (fact #${turn1}) came back to ${g.dm_member} on turn 3 (${same.facts.length} fact(s) from ${sources(same)}) and not to ${g.other_member} on turn 2 (${other.facts.length} fact(s) from ${sources(other)}, their own fact #${otherMarker!.fact_id} among them)`);
       }
     }
   }
@@ -741,8 +816,30 @@ function ensureFakeImage(): void {
 /** The keyless mode's task per surface: one turn in a dev channel whose text carries the fake adapter's gbrain markers. */
 export const SCOPED_ACTORS = { reader: 'dana-okafor', non_reader: 'hollis-mbeki', foreign_source: 'team-central-members' } as const;
 
-export function writeKeylessTasks(tasksRoot: string): Record<'starter' | 'verbs' | 'scoped', string> {
-  const ids = { starter: 'gbrain-check-starter', verbs: 'gbrain-check-verbs', scoped: 'gbrain-check-scoped' } as const;
+/** internal-task: the code word the DM instruction carries; it appears nowhere in the dev seed, so the only facts holding it are the ones
+ *  the world ingested during the trial (the DM on turn 1, and the markers of the later turns in their own conversations). */
+export const INGEST_CODE_WORD = 'marmoset-7731';
+
+export function writeKeylessTasks(tasksRoot: string): Record<'starter' | 'verbs' | 'scoped' | 'ingest', string> {
+  const ids = { starter: 'gbrain-check-starter', verbs: 'gbrain-check-verbs', scoped: 'gbrain-check-scoped', ingest: 'gbrain-check-ingest' } as const;
+  // internal-task: a DM instruction on turn 1, searched for by another member from #general on turn 2 and by the same member in the
+  // DM on turn 3. The search marker names the code word, so each searcher's own message is ingested into its conversation too;
+  // the assertion is by source: the DM's fact reaches the member it was said to and nobody else.
+  const ingestDir = join(tasksRoot, 'multiuser', 'dev', ids.ingest);
+  mkdirSync(ingestDir, { recursive: true });
+  // The three read verbs on the starter surface: search answers facts in its saved-facts block, query as fact rows (its facts
+  // arm), recall in its facts list, and the tap must route all three the same way (internal-task).
+  const search = JSON.stringify({ query: INGEST_CODE_WORD, limit: 10 });
+  writeFileSync(join(ingestDir, 'task.toml'), [
+    `id = "${ids.ingest}"`, 'slice = "multiuser"', 'split = "dev"', 'time_budget_s = 90', `actors = ["${SCOPED_ACTORS.reader}", "${SCOPED_ACTORS.non_reader}"]`, '',
+    '[[turns]]', `actor = "${SCOPED_ACTORS.reader}"`, 'channel = "dm"',
+    `text = "gbrain-check ingest: remember this for me only: my travel code word is ${INGEST_CODE_WORD}."`, '',
+    '[[turns]]', `actor = "${SCOPED_ACTORS.non_reader}"`, 'channel = "general"',
+    `text = """gbrain-check ingest: what travel code word did Dana give you?`, `[fake:gbrain search ${search}]`, `[fake:gbrain query ${search}]`, `[fake:gbrain recall ${search}]"""`, '',
+    '[[turns]]', `actor = "${SCOPED_ACTORS.reader}"`, 'channel = "dm"',
+    `text = """gbrain-check ingest: what was my travel code word?`, `[fake:gbrain search ${search}]`, `[fake:gbrain query ${search}]`, `[fake:gbrain recall ${search}]"""`, '',
+    '[predicates]', 'required = []', 'forbidden_effects = []', '',
+  ].join('\n'));
   // internal-task (gbrain#7481): two members with different grants ask the same question in #general; the reader also names a source
   // outside the grant, which the tap must refuse.
   const scopedDir = join(tasksRoot, 'multiuser', 'dev', ids.scoped);
@@ -785,7 +882,7 @@ async function keyless(a: Args, ref: ResolvedRef, tag: string, dir: string): Pro
   const tasksRoot = join(runDir, 'tasks');
   const ids = writeKeylessTasks(tasksRoot);
   const cell = (id: string, gbrain: GbrainCellConfig, task: string): Cell => ({ id, harness: '_fake', model: DEFAULT_MODEL, slice: 'multiuser', split: 'dev', repetitions: 1, ceiling: { input_tokens: 20_000, output_tokens: 2_000 }, tasks: [task], gbrain });
-  const prereg = scratchPrereg({ runId: `gbrain-check-keyless-${timestamp()}`, cells: [cell('fake-starter', { surface: 'starter' }, ids.starter), cell('fake-verbs', { surface: 'verbs' }, ids.verbs), cell('fake-docs', { surface: 'starter', install: 'gbrain-docs' }, ids.starter), cell('fake-scoped', { surface: 'starter', brain: 'company', scope: 'sources' }, ids.scoped)], spendCapUsd: 1, gbrainSha: ref.sha, rungs: ['keyless'], harnesses: ['fake'] });
+  const prereg = scratchPrereg({ runId: `gbrain-check-keyless-${timestamp()}`, cells: [cell('fake-starter', { surface: 'starter' }, ids.starter), cell('fake-verbs', { surface: 'verbs' }, ids.verbs), cell('fake-docs', { surface: 'starter', install: 'gbrain-docs' }, ids.starter), cell('fake-scoped', { surface: 'starter', brain: 'company', scope: 'sources' }, ids.scoped), cell('fake-ingest', { surface: 'starter', brain: 'member', scope: 'member', ingest: 'live' }, ids.ingest)], spendCapUsd: 1, gbrainSha: ref.sha, rungs: ['keyless'], harnesses: ['fake'] });
   const preregPath = join(runDir, 'prereg.json');
   writeFileSync(preregPath, JSON.stringify(prereg, null, 2) + '\n');
   const loaded = loadPrereg(preregPath);
@@ -888,6 +985,26 @@ async function keyless(a: Args, ref: ResolvedRef, tag: string, dir: string): Pro
     });
     scoped.trial = { termination: scopedRec.termination, error: scopedRec.error, events_file: scopedRec.paths.events ?? join(scopedRec.paths.dir ?? '', 'events.jsonl'), calls };
   }
+  // internal-task: the live-ingestion trial: every gbrain.ingest write and every search through the tap, with the facts each carried.
+  const ingestRec = result.records.find((r) => r.cell === 'fake-ingest');
+  const ingest: IngestEvidence = { code_word: INGEST_CODE_WORD, dm_member: SCOPED_ACTORS.reader, other_member: SCOPED_ACTORS.non_reader, grants: null, trial: null };
+  if (ingestRec) {
+    try {
+      const m = JSON.parse(readFileSync(join(ingestRec.paths.dir ?? '', 'gbrain', 'manifest.json'), 'utf8')) as { grants?: Array<{ member: string; sources: string[] }> };
+      ingest.grants = Object.fromEntries((m.grants ?? []).filter((g) => g.member !== 'public-only').map((g) => [g.member, g.sources]));
+    } catch { ingest.grants = null; }
+    const events = readEvents(ingestRec);
+    const writes = events.filter((e) => e.tool === 'gbrain.ingest').map((e) => {
+      const args = (e.args ?? {}) as { channel?: string; author?: string; source?: string };
+      const effect = (e.effect ?? {}) as { fact_id?: string | number | null; latency_ms?: number; skipped?: string };
+      return { seq: e.seq, channel: args.channel ?? '', author: args.author ?? null, source: args.source ?? '', outcome: e.outcome, error: (e as { error?: string }).error ?? null, fact_id: effect.fact_id ?? null, latency_ms: typeof effect.latency_ms === 'number' ? effect.latency_ms : null, skipped: typeof effect.skipped === 'string' ? effect.skipped : null };
+    });
+    const searches = events.filter((e) => (e.via as string) === 'gbrain' && (e.tool === 'gbrain.search' || e.tool === 'gbrain.query' || e.tool === 'gbrain.recall')).map((e) => {
+      const effect = (e.effect ?? {}) as { pages?: string[]; facts?: Array<{ id?: string | number; fact: string; source_id?: string }> };
+      return { seq: e.seq, grant: (e as { grant?: string }).grant ?? null, tool: e.tool, outcome: e.outcome, error: (e as { error?: string }).error ?? null, facts: (effect.facts ?? []).map((f) => ({ id: f.id ?? null, fact: f.fact, source_id: f.source_id ?? null })), pages: effect.pages ?? [] };
+    });
+    ingest.trial = { termination: ingestRec.termination, error: ingestRec.error, events_file: ingestRec.paths.events ?? join(ingestRec.paths.dir ?? '', 'events.jsonl'), writes, searches };
+  }
   const docsRec = result.records.find((r) => r.cell === 'fake-docs');
   const openclawDev = views.find((v) => v.harness === 'openclaw' && v.split === 'dev')?.manifest ?? null;
   let readyInstall: ReadyInstall | null = null;
@@ -895,7 +1012,7 @@ async function keyless(a: Args, ref: ResolvedRef, tag: string, dir: string): Pro
     try { readyInstall = (JSON.parse(readFileSync(join(docsRec.paths.logs, 'ready'), 'utf8')) as { gbrain_install?: ReadyInstall }).gbrain_install ?? null; } catch { readyInstall = null; }
   }
   const evidence: KeylessEvidence = {
-    image: tag, pin, known: KNOWN_PAGE, surfaces, bundle: bundle ? { digest: bundle.digest, files: bundle.files } : null, views, installer, scoped,
+    image: tag, pin, known: KNOWN_PAGE, surfaces, bundle: bundle ? { digest: bundle.digest, files: bundle.files } : null, views, installer, scoped, ingest,
     docs: docsRec ? { termination: docsRec.termination, error: docsRec.error, install_bundle: docsRec.gbrain?.install_bundle, ready_install: readyInstall, expected_view_digest: openclawDev?.view_digest ?? null, expected_files: openclawDev?.files.length ?? null } : { termination: 'not run', install_bundle: undefined, ready_install: null, expected_view_digest: null, expected_files: null },
   };
   const verdict = keylessAssertions(evidence, { strictPins: a.strictPins, expectHook: a.expectHook });

@@ -762,6 +762,13 @@ describe('merge-shards', () => {
       writeFileSync(join(dir, 'reconcile-provider.json'), '{}');
       mkdirSync(join(dir, 'preflight-proxy'), { recursive: true });
       writeFileSync(join(dir, 'preflight-proxy', 'proxy.log'), 'preflight');
+      // internal-task: a member-brain preflight leaves the brain's token files beside its log; the merge copies the log, never the tokens.
+      mkdirSync(join(dir, 'preflight-gbrain-member-dev', 'gbrain'), { recursive: true });
+      writeFileSync(join(dir, 'preflight-gbrain-member-dev', 'sidecar.log'), 'ready');
+      writeFileSync(join(dir, 'preflight-gbrain-member-dev', 'token'), 'gbrain_' + 'ab'.repeat(32));
+      writeFileSync(join(dir, 'preflight-gbrain-member-dev', 'tokens.json'), '{"members":{}}');
+      writeFileSync(join(dir, 'preflight-gbrain-member-dev', 'ingest-tokens.json'), '{"tokens":{}}');
+      writeFileSync(join(dir, 'preflight-gbrain-member-dev', 'gbrain', 'tokens.json'), '{}');
     }
     writeFileSync(join(dirs.a, 'shard.json'), JSON.stringify({ name: 'shard-a', machine: 'capy-1', commit: 'abc1234', images: { gbrain: 'sha256:aaa' } }));
     return { dirs, manifest, rows };
@@ -786,6 +793,8 @@ describe('merge-shards', () => {
     expect(readFileSync(join(out, 'shard-b.proxy.log'), 'utf8')).toBe('proxy of b\n');
     for (const f of ['shard-a.proxy-usage.ndjson', 'shard-b.reconcile-provider.json', 'shard-a.preflight-proxy/proxy.log', 'shard-a.shard.json', 'trials/oc-none/si-01-quarrendon-seats/r1/events.jsonl', 'trials/hm-none/si-01-quarrendon-seats/r3/events.jsonl']) expect(existsSync(join(out, f))).toBe(true);
     expect(existsSync(join(out, 'ledger.sqlite'))).toBe(false);
+    expect(existsSync(join(out, 'shard-a.preflight-gbrain-member-dev', 'sidecar.log'))).toBe(true);
+    for (const f of ['token', 'tokens.json', 'ingest-tokens.json', 'gbrain/tokens.json']) expect(existsSync(join(out, 'shard-b.preflight-gbrain-member-dev', f))).toBe(false);
     const shards = JSON.parse(readFileSync(join(out, 'shards.json'), 'utf8'));
     expect(shards.cells).toEqual(Object.fromEntries(manifest.cells.map((c) => [c.id, c.harness === 'oc' ? 'shard-a' : 'shard-b'])));
     expect(shards.shards['shard-a']).toEqual({ name: 'shard-a', machine: 'capy-1', commit: 'abc1234', images: { gbrain: 'sha256:aaa' }, source: dirs.a, trials: 175, cells: manifest.cells.filter((c) => c.harness === 'oc').map((c) => c.id).sort() });

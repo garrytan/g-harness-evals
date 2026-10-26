@@ -40,6 +40,9 @@ export interface GbrainUpstream {
   /** internal-task (gbrain#7481): scope "sources". The company brain's grants: each member's readable source ids, and the sources
    *  every member may read (the public source), presented before the first turn. Every call keeps the unscoped token. */
   grants?: { members: Record<string, string[]>; public: string[] };
+  /** internal-task: live ingestion (world/services/gbrain-ingest.ts): the per-source ingest tokens and the conversation map. The tap
+   *  itself never uses them; the server builds the ingestion module from them when the upstream is set. */
+  ingest?: { tokens: Record<string, string>; channels: Record<string, string>; dm_source_prefix: string };
 }
 
 /** Tools that take source_ids at the pin (gbrain 0.60.452.0); the tap narrows exactly these under scope "sources". */
@@ -70,11 +73,14 @@ export function parseRpcBody(text: string, contentType: string | null): RpcMessa
 }
 
 /** Every string value under a key named slug, in order, deduplicated. */
+/** internal-task: a query fact row's slug (facts/<id>) names a fact, not a page. */
+export const FACT_ROW_SLUG = /^facts\/\d+$/;
+
 export function collectSlugs(value: unknown, into: string[] = [], seen = new Set<string>()): string[] {
   if (Array.isArray(value)) { for (const v of value) collectSlugs(v, into, seen); return into; }
   if (value && typeof value === 'object') {
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      if (k === 'slug' && typeof v === 'string' && v && !seen.has(v)) { seen.add(v); into.push(v); }
+      if (k === 'slug' && typeof v === 'string' && v && !FACT_ROW_SLUG.test(v) && !seen.has(v)) { seen.add(v); into.push(v); }
       else collectSlugs(v, into, seen);
     }
   }
@@ -104,10 +110,27 @@ export interface GbrainFact { fact: string; id?: number | string; entity_slug?: 
 
 const SAVED_FACTS_BLOCK = /^Saved facts \(remember\):/;
 
+/** internal-task: query's facts arm (on by default at the pin) returns matched facts as result rows, result_type "fact" with fact_id
+ *  and the fact text at the end of chunk_text ("Saved fact (<kind>; valid from ...; provenance: <source>): <fact>"); search
+ *  then leaves those facts out of saved_facts. They are facts, so they are read here and never as pages (collectSlugs drops
+ *  the row's facts/<id> slug when a full-shape row carries it). */
+function factRowOf(r: unknown): GbrainFact | null {
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
+  const o = r as { result_type?: unknown; fact_id?: unknown; chunk_text?: unknown; source_id?: unknown; fact_row?: { id?: unknown } };
+  if (o.result_type !== 'fact' && !o.fact_row) return null;
+  const id = typeof o.fact_id === 'string' || typeof o.fact_id === 'number' ? o.fact_id : (typeof o.fact_row?.id === 'number' || typeof o.fact_row?.id === 'string' ? o.fact_row.id : undefined);
+  const text = typeof o.chunk_text === 'string' ? o.chunk_text : '';
+  const m = /^Saved fact \([^\n]*?\): ([\s\S]+)$/.exec(text);
+  const fact = (m ? m[1]! : text).trim();
+  if (!fact) return null;
+  return { fact, ...(id !== undefined ? { id } : {}), ...(typeof o.source_id === 'string' ? { source_id: o.source_id } : {}) };
+}
+
 /** internal-task correction (internal-task): the saved facts a search, query or recall reply carries, read from _meta.retrieval.saved_facts
- *  when present, from recall's own facts array, and otherwise from the prose "Saved facts (remember): ..." block whose lines
- *  begin "- ". The tap used to read only the JSON blocks and so never saw a remembered fact (the remember-then-search check
- *  always read "not found"); facts are recorded as their own kind, never as pages. */
+ *  when present, from recall's own facts array, from query's fact rows (internal-task), and otherwise from the prose
+ *  "Saved facts (remember): ..." block whose lines begin "- ". The tap used to read only the JSON blocks and so never saw a
+ *  remembered fact (the remember-then-search check always read "not found"); facts are recorded as their own kind, never as
+ *  pages. */
 export function savedFactsOf(result: Record<string, unknown>, payloads: unknown[]): GbrainFact[] {
   const pick = (f: unknown): GbrainFact | null => {
     if (!f || typeof f !== 'object' || Array.isArray(f)) return null;
@@ -124,10 +147,12 @@ export function savedFactsOf(result: Record<string, unknown>, payloads: unknown[
   const meta = result._meta && typeof result._meta === 'object' ? result._meta as { retrieval?: { saved_facts?: unknown } } : null;
   const fromMeta = Array.isArray(meta?.retrieval?.saved_facts) ? meta!.retrieval!.saved_facts.map(pick).filter((f): f is GbrainFact => f !== null) : [];
   const fromPayload = payloads.flatMap((p) => (p && typeof p === 'object' && !Array.isArray(p) && Array.isArray((p as { facts?: unknown }).facts) ? (p as { facts: unknown[] }).facts.map(pick).filter((f): f is GbrainFact => f !== null) : []));
-  if (fromMeta.length || fromPayload.length) {
+  const rows = (payloads.find((p) => Array.isArray(p)) as unknown[] | undefined) ?? payloads.flatMap((p) => (p && typeof p === 'object' && Array.isArray((p as { results?: unknown }).results) ? (p as { results: unknown[] }).results : []));
+  const fromRows = rows.map(factRowOf).filter((f): f is GbrainFact => f !== null);
+  if (fromMeta.length || fromPayload.length || fromRows.length) {
     const out: GbrainFact[] = [];
     const seen = new Set<string>();
-    for (const f of [...fromPayload, ...fromMeta]) { const k = `${f.id ?? ''}|${f.fact}`; if (!seen.has(k)) { seen.add(k); out.push(f); } }
+    for (const f of [...fromPayload, ...fromMeta, ...fromRows]) { const k = `${f.id ?? ''}|${f.fact}`; if (!seen.has(k)) { seen.add(k); out.push(f); } }
     return out;
   }
   const content = Array.isArray(result.content) ? result.content as Array<{ text?: string }> : [];
@@ -188,7 +213,8 @@ export function describeCall(request: RpcMessage, reply: RpcMessage | undefined,
     // search and query answer an array of rows; recall answers an object whose results are the rows (internal-task).
     const rows = (payloads.find((p) => Array.isArray(p)) as unknown[] | undefined)
       ?? (name === 'recall' ? (payloads.find((p) => p && typeof p === 'object' && Array.isArray((p as { results?: unknown }).results)) as { results: unknown[] } | undefined)?.results : undefined);
-    effect.count = (name === 'search' || name === 'query' || name === 'recall') && rows ? rows.length : effect.pages.length;
+    // A query's fact rows are facts, not pages, so the count stays the page rows (effect.facts carries the facts).
+    effect.count = (name === 'search' || name === 'query' || name === 'recall') && rows ? rows.filter((r) => !factRowOf(r)).length : effect.pages.length;
     if (name === 'search' || name === 'query' || name === 'recall') {
       const sources = [...new Set((rows ?? []).map((r) => (r && typeof r === 'object' ? (r as { source_id?: unknown }).source_id : undefined)).filter((s): s is string => typeof s === 'string' && s !== ''))];
       if (sources.length) effect.sources = sources;

@@ -37,6 +37,7 @@ tokens, and serves on `127.0.0.1:8790`:
 | `POST /clock/advance` | runner, admin token | `{"seconds": N}` or `{"to": "<ISO instant>"}`, forward only |
 | `GET /admin/snapshot`, `GET /admin/events`, `POST /admin/fence`, `GET /admin/socket` | runner, admin token | state for graders, the in-memory event list, stop accepting writes (contract item 7), socket connection count |
 | `POST /admin/gbrain/requester` | runner, admin token | internal-task: `{"member": "<id>"}` or `{"member": null}`, the member whose gbrain token the tap presents under member scope (below); logged as a `gbrain.requester` admin event |
+| `POST /admin/gbrain/flush` | tests and tools, admin token | internal-task: waits (up to the queue's 120 s deadline, which this server's idle timeout matches) until every message posted so far is written into the brain by the live ingestion (below) and answers `{ok, ingest, written, skipped, failed}`; `ingest: "off"` with nothing written when the trial has no ingestion. The runner's trial world calls the module in process instead |
 | `GET /healthz` | anyone | liveness |
 
 It writes `<out>/trial.json` and appends to `<out>/events.jsonl`. Both are evaluator-owned: the runner reads
@@ -166,6 +167,26 @@ token, every arm without member scope), a member id, or `public-only`. A request
 answered 502 and logged nowhere (the runner checks the file against the task's actors before the trial starts,
 HE-GBRAIN-004). The grader counts a refused targeted read (`error` `page_not_found` or `permission_denied`) as a
 cross-scope attempt the brain blocked, so a scoped arm's leaks separate into pages returned and pages refused.
+
+internal-task (member brain), live ingestion (`services/gbrain-ingest.ts`): when the runner hands the world the member brain's
+`ingest-tokens.json` (one token per source) and the manifest's channel map, the world subscribes to its own message
+stream and writes every message posted during the trial (an actor's turn, the bot's reply, every post or DM the bot
+makes) into the sidecar as one `remember` fact with provenance (who said it, where, when on the simulation clock), into
+the source of its conversation (the channel map for a channel, `private-<member>` for a DM between the bot and a
+member) under that source's token, one write at a time in posting order. Each write is an event: `via` `runner`,
+`actor` null, `tool` `gbrain.ingest`, `kind` `admin`, `args` `{channel, ts, author, source}`, `outcome` `ok` or
+`error` with gbrain's code (a retryable answer, `write_error` `write_pending` or `queue_capacity` under code
+`unavailable`, is sent again twice first under the same `request_id`, as are a transport failure and a 5xx), `effect`
+`{fact_id, source, latency_ms, status}` (`status` `inserted` or `duplicate`); the
+fact's time (text, provenance and gbrain's `valid_from`) is the message's posting time in the world's offset. A conversation the
+brain has no source for (a DM with a member who holds no token, a group DM, a channel outside the map) is skipped, not
+failed: `outcome` `ok`, `fact_id` null, `effect.skipped` with the reason. The runner calls `POST /admin/gbrain/flush`
+(`{ok, written, skipped, failed}`; the runner's own trial world calls the module in process) at every turn boundary
+and after the fence; a failed write ends the trial (HE-GBRAIN-011), after one failure the rest of the queue is
+recorded `not sent: an earlier write failed` without a call upstream, and a flush past its 120 s deadline reports the
+writes still pending as one failure. The grader maps a fact a search returned (`effect.facts`) back to its
+conversation through the `gbrain.ingest` event with that fact id. `tests/gbrain-ingest.test.ts` proves the routing
+and the fact text against a fake upstream.
 
 ## Slack event stream
 

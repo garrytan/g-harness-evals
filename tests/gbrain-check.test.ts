@@ -13,9 +13,9 @@ import { join, resolve } from 'node:path';
 import type { TrialRecord } from '../runner/contracts.ts';
 import { buildManifest, loadPrereg, type Manifest } from '../runner/run.ts';
 import {
-  DEFAULT_BASELINE, KNOWN_PAGE, RUNGS, TOLD_PREAMBLE, checkDir, fingerprintOf, fingerprintSha, gitExpandSha, keylessAssertions, modelLabel, paidCells, parseArgs,
+  DEFAULT_BASELINE, INGEST_CODE_WORD, KNOWN_PAGE, RUNGS, SCOPED_ACTORS, TOLD_PREAMBLE, checkDir, fingerprintOf, fingerprintSha, gitExpandSha, keylessAssertions, modelLabel, paidCells, parseArgs,
   readBaseline, renderSummary, resolveFromRefs, resolveGbrainRef, scratchPrereg, validateBaseline, viewDigestFromBundle, writeBaseline, writeKeylessTasks,
-  type Baseline, type InstallerEvidence, type KeylessEvidence, type PinSurfaces, type SummaryJson, type ViewEvidence,
+  type Baseline, type IngestEvidence, type InstallerEvidence, type KeylessEvidence, type PinSurfaces, type SummaryJson, type ViewEvidence,
 } from '../scripts/gbrain-check.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
@@ -154,6 +154,8 @@ describe('the scratch preregistration and the check directory', () => {
     const verbs = readFileSync(join(root, 'multiuser', 'dev', ids.verbs, 'task.toml'), 'utf8');
     expect(starter).toContain('[fake:gbrain tools/list {}]');
     expect(starter).toContain(`[fake:gbrain search {"query":"${KNOWN_PAGE.query}","limit":3}]`);
+    const ingest = readFileSync(join(root, 'multiuser', 'dev', ids.ingest, 'task.toml'), 'utf8');
+    for (const verb of ['search', 'query', 'recall']) expect(ingest).toContain(`[fake:gbrain ${verb} {"query":"${INGEST_CODE_WORD}","limit":10}]`);
     expect(verbs).toContain(`[fake:gbrain recall {"query":"${KNOWN_PAGE.query}","limit":3}]`);
     expect(KNOWN_PAGE.slug.startsWith('dev/')).toBe(true);
     // The known page is a dev channel's source page in the world data, so the bot-visible brain holds it.
@@ -214,6 +216,81 @@ describe('keyless assertions', () => {
     expect(v.passed.length).toBeGreaterThanOrEqual(20);
     expect(v.passed).toContain(`ok surface=starter gbrain.search for "ticket 4092" returned ${KNOWN_PAGE.slug} (1 page(s))`);
     expect(v.passed).toContain('ok view=hermes/heldout .hermes.md 3749 bytes, 1 kept slugs');
+  });
+
+  // internal-task: the live-ingestion proof. Every message is a committed fact, the turn-1 DM lands in the member's private source, and the
+  // search on turn 3 returns that fact (by id, not the searcher's own marker) to the member and never to another member.
+  test('ingest evidence: the healthy trial passes; a leaked DM fact, a search that only finds its own marker, and a failed write each fail', () => {
+    const dm = SCOPED_ACTORS.reader;
+    const other = SCOPED_ACTORS.non_reader;
+    const write = (seq: number, author: string, source: string, fact_id: string | null = String(seq)) =>
+      ({ seq, channel: 'C1', author, source, outcome: fact_id === null ? 'error' : 'ok', error: fact_id === null ? 'recovery_required' : null, fact_id, latency_ms: 80, skipped: null });
+    const writes = [
+      write(1, dm, `private-${dm}`), write(2, 'assistant', `private-${dm}`),
+      write(3, other, 'channel-general'), write(4, 'assistant', 'channel-general'),
+      write(5, dm, 'channel-general'), write(6, 'assistant', 'channel-general'),
+    ];
+    const healthy = (): IngestEvidence => ({
+      code_word: INGEST_CODE_WORD, dm_member: dm, other_member: other,
+      grants: { [dm]: [`private-${dm}`, 'channel-general'], [other]: [`private-${other}`, 'channel-general'] },
+      trial: {
+        termination: 'completed', events_file: '/scratch/ingest/events.jsonl', writes,
+        searches: [
+          { seq: 10, grant: other, tool: 'gbrain.search', outcome: 'ok', error: null, facts: [{ id: '3', fact: `marker ${INGEST_CODE_WORD}`, source_id: null }], pages: [] },
+          { seq: 11, grant: other, tool: 'gbrain.query', outcome: 'ok', error: null, facts: [{ id: '3', fact: `marker ${INGEST_CODE_WORD}`, source_id: 'channel-general' }], pages: [] },
+          { seq: 12, grant: other, tool: 'gbrain.recall', outcome: 'ok', error: null, facts: [{ id: '3', fact: `marker ${INGEST_CODE_WORD}`, source_id: null }], pages: [] },
+          { seq: 20, grant: dm, tool: 'gbrain.search', outcome: 'ok', error: null, facts: [{ id: '1', fact: `the instruction ${INGEST_CODE_WORD}`, source_id: null }, { id: '5', fact: `marker ${INGEST_CODE_WORD}`, source_id: null }], pages: [] },
+          { seq: 21, grant: dm, tool: 'gbrain.query', outcome: 'ok', error: null, facts: [{ id: '1', fact: `the instruction ${INGEST_CODE_WORD}`, source_id: `private-${dm}` }, { id: '5', fact: `marker ${INGEST_CODE_WORD}`, source_id: 'channel-general' }], pages: [] },
+          { seq: 22, grant: dm, tool: 'gbrain.recall', outcome: 'ok', error: null, facts: [{ id: '1', fact: `the instruction ${INGEST_CODE_WORD}`, source_id: null }, { id: '5', fact: `marker ${INGEST_CODE_WORD}`, source_id: null }], pages: [] },
+        ],
+      },
+    });
+    const run = (g: IngestEvidence) => { const e = healthyEvidence(); e.ingest = g; return keylessAssertions(e); };
+    const good = run(healthy());
+    expect(good.failures).toEqual([]);
+    expect(good.passed).toContain('ok ingest=member/dev 6 messages ingested as facts into 2 sources, median 80 ms per write, slowest 80 ms');
+    expect(good.passed).toContain(`ok ingest=member/dev the turn-1 DM landed in private-${dm} as fact #1`);
+    for (const verb of ['search', 'query', 'recall']) expect(good.passed).toContain(`ok ingest=member/dev ${verb}: the turn-1 DM (fact #1) came back to ${dm} on turn 3 (2 fact(s) from private-${dm}, channel-general) and not to ${other} on turn 2 (1 fact(s) from channel-general, their own fact #3 among them)`);
+    // The other member's search returning nothing is not a pass: the positive control (their own turn-2 marker) is missing.
+    const empty = healthy();
+    empty.trial!.searches[0]!.facts = [];
+    expect(run(empty).failures).toEqual([`HE-GBRAIN-008 ingest=member/dev ${other}'s turn-2 search (positive control): expected fact #3 (their own turn-2 message in channel-general), actual no facts (/scratch/ingest/events.jsonl)`]);
+    // A query that leaks the DM fact fails on its own, and a missing query by either member is a failure of its own.
+    const queryLeak = healthy();
+    queryLeak.trial!.searches[1]!.facts.push({ id: '1', fact: `the instruction ${INGEST_CODE_WORD}`, source_id: `private-${dm}` });
+    expect(run(queryLeak).failures).toEqual([
+      `HE-GBRAIN-008 ingest=member/dev query for "${INGEST_CODE_WORD}" as ${other} fact sources: expected inside ${other}'s grant, actual #1 from private-${dm} (/scratch/ingest/events.jsonl)`,
+      `HE-GBRAIN-008 ingest=member/dev ${other}'s turn-2 query: expected no fact from private-${dm}, actual 1 (#1) (/scratch/ingest/events.jsonl)`,
+    ]);
+    const noQuery = healthy();
+    noQuery.trial!.searches = noQuery.trial!.searches.filter((s) => s.tool !== 'gbrain.query' || s.grant !== dm);
+    expect(run(noQuery).failures).toEqual(['HE-GBRAIN-008 ingest=member/dev a query by the member and by another member through the tap: expected one each, actual no member query, other (/scratch/ingest/events.jsonl)']);
+    // A message the brain had no source for is a routing gap the check task must not have.
+    const gap = healthy();
+    gap.trial!.writes = [...writes, { ...write(7, 'assistant', 'private-odile-brandt'), fact_id: null, skipped: 'no ingest token for source private-odile-brandt' }];
+    expect(run(gap).failures).toEqual(['HE-GBRAIN-008 ingest=member/dev ingest routing: expected a source for every conversation of the check task, actual 1 skipped (no ingest token for source private-odile-brandt) (/scratch/ingest/events.jsonl)']);
+    // The other member's search returned the DM fact: a leak.
+    const leak = healthy();
+    leak.trial!.searches[0]!.facts.push({ id: '1', fact: `the instruction ${INGEST_CODE_WORD}`, source_id: null });
+    expect(run(leak).failures).toEqual([
+      `HE-GBRAIN-008 ingest=member/dev search for "${INGEST_CODE_WORD}" as ${other} fact sources: expected inside ${other}'s grant, actual #1 from private-${dm} (/scratch/ingest/events.jsonl)`,
+      `HE-GBRAIN-008 ingest=member/dev ${other}'s turn-2 search: expected no fact from private-${dm}, actual 1 (#1) (/scratch/ingest/events.jsonl)`,
+    ]);
+    // The member's search found only its own turn-3 marker in the private source, not the turn-1 instruction.
+    const marker = healthy();
+    marker.trial!.searches.find((s) => s.tool === 'gbrain.search' && s.grant === dm)!.facts = [{ id: '5', fact: `marker ${INGEST_CODE_WORD}`, source_id: null }];
+    expect(run(marker).failures).toEqual([`HE-GBRAIN-008 ingest=member/dev ${dm}'s turn-3 search: expected fact #1 (the turn-1 DM, holding the code word), actual 1 fact(s): #5 from channel-general (/scratch/ingest/events.jsonl)`]);
+    // A refused write, and a fact id the trial never wrote.
+    const refused = healthy();
+    refused.trial!.writes = [...writes, write(7, other, 'channel-general', null)];
+    refused.trial!.searches[0]!.facts = [{ id: '99', fact: 'stray', source_id: null }];
+    expect(run(refused).failures).toEqual([
+      'HE-GBRAIN-008 ingest=member/dev ingest writes: expected every write ok, actual 1 failed (channel-general: recovery_required) (/scratch/ingest/events.jsonl)',
+      `HE-GBRAIN-008 ingest=member/dev search for "${INGEST_CODE_WORD}" as ${other} facts mapped to ingest events: expected every fact id written this trial, actual 1 unmapped (#99) (/scratch/ingest/events.jsonl)`,
+      `HE-GBRAIN-008 ingest=member/dev ${other}'s turn-2 search (positive control): expected fact #3 (their own turn-2 message in channel-general), actual 1 fact(s): #99 from unmapped (/scratch/ingest/events.jsonl)`,
+    ]);
+    // No trial at all.
+    expect(run({ ...healthy(), trial: null }).failures).toEqual(['HE-GBRAIN-008 ingest=member/dev fake trial under brain member, scope member, ingest live: expected a completed trial, actual none (trials.jsonl)']);
   });
 
   // internal-task: the installer view per harness is asserted when the image's gbrain has the setup target and reported, not failed, when it has not.

@@ -8,6 +8,7 @@ import type { Member, Split, World } from '../types.ts';
 import { handleMcpRequest } from '../world-mcp/http.ts';
 import { SimClock } from './clock/clock.ts';
 import { EventLog } from './events.ts';
+import { GbrainIngest } from './gbrain-ingest.ts';
 import { handleGbrainRequest, type GbrainUpstream } from './gbrain-tap.ts';
 import { handleSlackApi, tokenFrom } from './slack/slack.ts';
 import { SocketHub, type SocketData } from './slack/socket.ts';
@@ -60,6 +61,8 @@ export interface WorldServer {
   gbrain(): GbrainUpstream | null;
   /** internal-task: the member whose turn is running, whose gbrain token the tap presents under member scope; null outside turns. */
   gbrainRequester(): string | null;
+  /** internal-task: the live ingestion module, when the upstream carries ingest tokens; null otherwise. */
+  gbrainIngest(): GbrainIngest | null;
   stop(): void;
 }
 
@@ -90,8 +93,16 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
     return auth === `Bearer ${credentials.admin_token}` || req.headers.get('x-world-admin') === credentials.admin_token;
   };
 
-  let gbrain: GbrainUpstream | null = opts.gbrain ?? null;
+  let gbrain: GbrainUpstream | null = null;
   let gbrainRequester: string | null = null;
+  let ingest: GbrainIngest | null = null;
+  // internal-task: with ingest tokens on the upstream, every message posted from now on is written into the brain (gbrain-ingest.ts).
+  const setGbrain = (u: GbrainUpstream | null) => {
+    gbrain = u;
+    ingest?.stop();
+    ingest = u?.ingest ? new GbrainIngest({ url: u.url, config: u.ingest, service, log }) : null;
+  };
+  if (opts.gbrain) setGbrain(opts.gbrain);
   const resolveActor = (r: Request): Member | null => { const t = tokenFrom(r, {}); return t ? memberForToken(t) : null; };
 
   let origin = '';
@@ -159,6 +170,13 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
         log.append({ actor: null, via: 'runner', tool: 'gbrain.requester', kind: 'admin', args: { member: gbrainRequester }, outcome: 'ok' });
         return Response.json({ ok: true, member: gbrainRequester });
       }
+      if (path === '/admin/gbrain/flush' && req.method === 'POST') {
+        // internal-task: waits until every posted message is in the brain. For tests and tools: the runner's own trial world calls
+        // GbrainIngest.flush() in process, so a long drain never meets this server's idle timeout.
+        if (!ingest) return Response.json({ ok: true, ingest: 'off', written: 0, skipped: 0, failed: [] });
+        const r = await ingest.flush();
+        return Response.json({ ok: r.failed.length === 0, ingest: 'live', written: r.written, skipped: r.skipped, failed: r.failed });
+      }
 
       return Response.json({ ok: false, error: 'not_found' }, { status: 404 });
     },
@@ -177,10 +195,11 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
     log,
     credentials,
     socket,
-    setGbrain: (u) => { gbrain = u; },
+    setGbrain,
     gbrain: () => gbrain,
     gbrainRequester: () => gbrainRequester,
-    stop: () => server.stop(true),
+    gbrainIngest: () => ingest,
+    stop: () => { ingest?.stop(); server.stop(true); },
   };
 }
 

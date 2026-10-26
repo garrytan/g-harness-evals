@@ -195,7 +195,12 @@ export interface GbrainCellConfig {
   embeddings?: 'off' | 'openai:text-embedding-3-small';
   /** internal-task (company brain) addition: the prebuilt brain the sidecar serves. Absent or "bot-visible" is the gbrain arm's
    *  brain; "company" holds every record of the split behind per-member source grants (docs/gbrain-arm.md, "Company brain"). */
-  brain?: 'bot-visible' | 'company';
+  brain?: 'bot-visible' | 'company' | 'member';
+  /** internal-task addition: "live" makes the world write every message of the scenario (an actor's turn, the bot's reply, every
+   *  post or DM the bot makes) into the brain as a remember fact with provenance, in the source of the conversation it was
+   *  posted in (a DM with the bot into private-<member>), under that source's ingest token, before the next turn starts;
+   *  member brain only. Absent or "off": the brain holds what it was built with. */
+  ingest?: 'off' | 'live';
   /** internal-task addition: "member" makes the world's tap present the requesting member's gbrain token (public-only before
    *  the first turn) instead of the trial's one unscoped token; company brain only. Absent: every call carries the
    *  unscoped token and the brain answers as the bot. internal-task addition (gbrain#7481): "sources" keeps the unscoped token
@@ -255,8 +260,12 @@ export interface TrialGbrain {
   semantic_check?: { search_calls: number; embedding_requests: number; degraded_calls: number; ok: boolean; reason?: string };
   /** internal-task additions, absent in records written before it: the brain and scope the sidecar ran with and the docker
    *  image id behind the tag, so a record names the exact brain it was served from. */
-  brain?: 'bot-visible' | 'company';
+  brain?: 'bot-visible' | 'company' | 'member';
   scope?: 'none' | 'member' | 'sources';
+  /** internal-task: whether the world ingested the scenario's messages into the brain, and how many it wrote (gbrain.ingest events): ok
+   *  (a committed fact), skipped (a conversation the brain has no source or token for; not a fault) and failed. */
+  ingest?: 'off' | 'live';
+  ingested?: { ok: number; skipped: number; failed: number };
   image_id?: string;
   /** Milliseconds from docker run to a healthy sidecar with a token on disk. */
   sidecar_ready_ms: number;

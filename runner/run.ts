@@ -47,13 +47,15 @@ export interface ResolvedGbrain {
   surface: (typeof GBRAIN_SURFACES)[number];
   install: (typeof GBRAIN_INSTALLS)[number];
   embeddings: (typeof GBRAIN_EMBEDDINGS)[number];
-  brain: 'bot-visible' | 'company';
+  brain: 'bot-visible' | 'company' | 'member';
   scope: 'none' | 'member' | 'sources';
+  /** internal-task: live ingestion of the scenario's messages into the member brain. */
+  ingest: 'off' | 'live';
 }
 
 /** The cell's gbrain configuration with every default filled in; the cell itself is not changed. */
 export function resolveGbrain(c: GbrainCellConfig): ResolvedGbrain {
-  return { surface: c.surface, install: c.install ?? 'mcp', embeddings: c.embeddings ?? 'off', brain: c.brain ?? 'bot-visible', scope: c.scope ?? 'none' };
+  return { surface: c.surface, install: c.install ?? 'mcp', embeddings: c.embeddings ?? 'off', brain: c.brain ?? 'bot-visible', scope: c.scope ?? 'none', ingest: c.ingest ?? 'off' };
 }
 
 /** What plan prints for a gbrain cell: <surface>/<install>/<embeddings>. */
@@ -195,12 +197,17 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
       if (c.gbrain.install !== undefined && !(GBRAIN_INSTALLS as readonly string[]).includes(c.gbrain.install)) throw bad('install', c.gbrain.install, GBRAIN_INSTALLS);
       if (c.gbrain.embeddings !== undefined && !(GBRAIN_EMBEDDINGS as readonly string[]).includes(c.gbrain.embeddings)) throw bad('embeddings', c.gbrain.embeddings, GBRAIN_EMBEDDINGS);
       if (c.gbrain.install !== undefined && c.gbrain.install !== 'mcp' && !(GBRAIN_DOCS_HARNESSES as readonly string[]).includes(c.harness)) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.install "${c.gbrain.install}" is defined for harnesses ${GBRAIN_DOCS_HARNESSES.filter((h) => !h.startsWith('_')).join(', ')} (gbrain documents no install for ${c.harness}; gbrain/pin.json "install")`);
-      if (c.gbrain.embeddings !== undefined && c.gbrain.embeddings !== 'off' && c.gbrain.brain === 'company') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.embeddings ${c.gbrain.embeddings} needs the bot-visible brain; only the bot-visible brains are built with embeddings`);
+      if (c.gbrain.embeddings !== undefined && c.gbrain.embeddings !== 'off' && c.gbrain.brain !== undefined && c.gbrain.brain !== 'bot-visible') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.embeddings ${c.gbrain.embeddings} needs the bot-visible brain; only the bot-visible brains are built with embeddings`);
       if (scripted) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: a scripted cell cannot carry gbrain; a script plays the bot over world-MCP and has no harness to call the brain`);
       // internal-task (company brain): brain and scope are additive; a cell without them is the gbrain arm's cell.
-      if (c.gbrain.brain !== undefined && c.gbrain.brain !== 'bot-visible' && c.gbrain.brain !== 'company') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.brain must be "bot-visible" or "company"; got ${JSON.stringify(c.gbrain.brain)}`);
+      // internal-task (member brain): brain "member" carries member tokens and ingest tokens; ingest "live" needs it.
+      if (c.gbrain.brain !== undefined && c.gbrain.brain !== 'bot-visible' && c.gbrain.brain !== 'company' && c.gbrain.brain !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.brain must be "bot-visible", "company" or "member"; got ${JSON.stringify(c.gbrain.brain)}`);
       if (c.gbrain.scope !== undefined && c.gbrain.scope !== 'member' && c.gbrain.scope !== 'sources') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope must be "member", "sources" or absent; got ${JSON.stringify(c.gbrain.scope)}`);
-      if (c.gbrain.scope !== undefined && c.gbrain.brain !== 'company') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope "${c.gbrain.scope}" needs gbrain.brain "company"; only the company brain carries member tokens and per-member source grants`);
+      if (c.gbrain.scope !== undefined && c.gbrain.brain !== 'company' && c.gbrain.brain !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope "${c.gbrain.scope}" needs gbrain.brain "company" or "member"; only those brains carry member tokens and per-member source grants`);
+      if (c.gbrain.ingest !== undefined && c.gbrain.ingest !== 'off' && c.gbrain.ingest !== 'live') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.ingest must be "off", "live" or absent; got ${JSON.stringify(c.gbrain.ingest)}`);
+      if (c.gbrain.ingest === 'live' && c.gbrain.brain !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.ingest "live" needs gbrain.brain "member"; only the member brain carries the per-source ingest tokens (gbrain/README.md, "The member brain")`);
+      if (c.gbrain.ingest === 'live' && c.harness_mode === 'process') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.ingest "live" runs in docker mode only; in process mode the harness runs as the runner's user and could read the ingest tokens under the trial directory. fix: drop harness_mode "process" from the cell`);
+      if (c.gbrain.ingest === 'live' && c.gbrain.scope !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.ingest "live" needs gbrain.scope "member"; without it the tap reads under the trial's unscoped token and every member's ingested DM facts come back to every requester, a leak built into the arm`);
     }
   }
   if (!(prereg.spend_cap_usd > 0)) throw new RunnerError('HE-BUDGET-002', 'spend_cap_usd must be > 0; the cap is written into the preregistration, never passed ad hoc');
@@ -285,7 +292,7 @@ export function renderPlan(m: Manifest): string {
   for (const c of m.cells) {
     const mine = m.trials.filter((t) => t.cell === c.id);
     const turns = mine.reduce((a, t) => a + (t.turns ?? 0), 0);
-    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.utility_models ? ` utility_models=${c.utility_models.join(',')}` : ''}${c.config ? ` config=${c.config}` : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${gbrainLabel(c.gbrain)}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
+    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.utility_models ? ` utility_models=${c.utility_models.join(',')}` : ''}${c.config ? ` config=${c.config}` : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${gbrainLabel(c.gbrain)}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}${c.gbrain.ingest ? ` ingest=${c.gbrain.ingest}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
   }
   for (const c of m.cells) {
     if (c.gbrain?.brain === 'company' && c.preamble !== 'tasks/multiuser/_shared/preamble.gbrain-company.md') lines.push(`WARN: cell ${c.id} serves the company brain with preamble ${c.preamble ?? 'tasks/multiuser/_shared/preamble.md'}, not the company one (tasks/multiuser/_shared/preamble.gbrain-company.md); intended only for a none-style arm on the company brain`);
@@ -420,12 +427,18 @@ async function main(argv: string[]): Promise<number> {
         console.log(`GBRAIN: install bundle view ${view.harness}/${split} (${install}) exported and verified: ${view.files.length} files, ${view.skills} skills, view digest ${view.view_digest.slice(0, 12)}${view.context ? `, context ${view.context.kept_slugs.length} pages (${view.context.tokens ?? '?'} tokens)` : ''} (gbrain ${view.gbrain_commit.slice(0, 12)})`);
       }
       // internal-task: a company brain is probed per split under the unscoped token and must list every page the build holds.
+      // internal-task: the member brain likewise, with its own page list, under member scope and live ingestion (its tokens checked).
       const companySplits = [...new Set(gbrainCells.filter((c) => c.gbrain!.brain === 'company').map((c) => c.split))];
-      if (companySplits.length) {
+      const memberSplits = [...new Set(gbrainCells.filter((c) => c.gbrain!.brain === 'member').map((c) => c.split))];
+      if (companySplits.length || memberSplits.length) {
         const { probeCompanyBrain, probeSourceGrants } = await import('./trial/gbrain.ts');
-        const { companyPageList } = await import('../gbrain/build-brain.ts');
+        const { companyPageList, memberPageList } = await import('../gbrain/build-brain.ts');
         const { worldAt, DEFAULT_WORLD_PATH } = await import('./trial/world.ts');
         const world = worldAt(DEFAULT_WORLD_PATH);
+        for (const split of memberSplits) {
+          const probe = await probeCompanyBrain(image, split, memberPageList(world, split), join(runDir, `preflight-gbrain-member-${split}`), 'member', 'member');
+          console.log(`GBRAIN: image ${image} id=${probe.image_id} brain=member scope=member ingest=live split=${split} pages=${probe.listed} (${Object.entries(probe.by_kind).map(([k, v]) => `${k} ${v}`).join(', ')}) under the unscoped token, tokens=${probe.member_tokens} plus public-only: ${probe.member_check}, channel ingest tokens present (no write is tried), ready in ${probe.ready_ms} ms`);
+        }
         for (const split of companySplits) {
           const scope = gbrainCells.some((c) => c.gbrain!.brain === 'company' && c.split === split && c.gbrain!.scope === 'member') ? 'member' : 'none';
           const probe = await probeCompanyBrain(image, split, companyPageList(world, split), join(runDir, `preflight-gbrain-company-${split}`), scope);
@@ -451,10 +464,15 @@ async function main(argv: string[]): Promise<number> {
     if (!['docker', 'process', 'scripted'].includes(mode)) throw new RunnerError('HE-RUN-005', `--harness-mode must be docker, process or scripted (got ${mode})`);
     const harnessEnv: Record<string, string> = {};
     for (const kv of all('--harness-env')) { const eq = kv.indexOf('='); if (eq <= 0) throw new RunnerError('HE-RUN-002', `--harness-env wants K=V (got ${kv})`); harnessEnv[kv.slice(0, eq)] = kv.slice(eq + 1); }
+    // internal-task: live ingestion is docker-only (HE-GBRAIN-001). The mode is this flag, not a cell field, so it is refused here
+    // before any trial starts rather than aborting the run at its first such trial.
+    const cells = flag('--cells')?.split(',').map((s) => s.trim()).filter(Boolean);
+    const liveCells = manifest.cells.filter((c) => c.gbrain?.ingest === 'live' && (cells ? cells.includes(c.id) : true)).map((c) => c.id);
+    if (mode === 'process' && liveCells.length) throw new RunnerError('HE-GBRAIN-001', `cells ${liveCells.join(', ')} carry gbrain.ingest "live", which runs in docker mode only; in process mode the harness runs as the runner's user and could read the ingest tokens under the trial directory. fix: run without --harness-mode process`);
     const { executeRun } = await import('./trial/run.ts');
     const result = await executeRun(manifest, path, {
       harnessMode: mode as HarnessMode, adapter: flag('--adapter'), image: flag('--image'), gbrainImage: flag('--gbrain-image'), resume: has('--resume'), stopOnCap: has('--stop-on-cap'),
-      cells: flag('--cells')?.split(',').map((s) => s.trim()).filter(Boolean), ledgerPath: flag('--ledger'), leaseUsd: flag('--lease-usd') ? Number(flag('--lease-usd')) : undefined,
+      cells, ledgerPath: flag('--ledger'), leaseUsd: flag('--lease-usd') ? Number(flag('--lease-usd')) : undefined,
       newLease: has('--new-lease'), maxOutputTokens: flag('--max-output-tokens') ? Number(flag('--max-output-tokens')) : undefined, preamblePath: flag('--preamble'),
       readyTimeoutS: flag('--ready-timeout-s') ? Number(flag('--ready-timeout-s')) : undefined, turnGraceS: flag('--turn-grace-s') ? Number(flag('--turn-grace-s')) : undefined,
       harnessEnv, log: (line) => console.log(line),
