@@ -7,7 +7,7 @@
 ```sh
 bun runner/run.ts plan      --prereg docs/benchmarks/<run>/prereg.json [--out results/<run-id>]
 bun runner/run.ts dry-run   --prereg <file>
-bun runner/run.ts preflight --manifest results/<run-id>/manifest.json [--gbrain-image <tag>] [--cells a,b]
+bun runner/run.ts preflight --manifest results/<run-id>/manifest.json [--gbrain-image <tag>] [--gbrain-commit <sha>] [--cells a,b]
 bun runner/run.ts run       --manifest results/<run-id>/manifest.json [options]
 ```
 
@@ -26,7 +26,7 @@ internal-task (company brain) adds two optional fields to `gbrain`: `"brain": "c
 | `--harness-mode docker\|process\|scripted` | How non-scripted cells run (default `docker`). A scripted cell is always scripted. |
 | `--adapter <script>` | Process mode: the adapter script (`.sh` under bash, `.ts` under bun) started with the argument `serve`. |
 | `--image <tag>` | Docker mode: image instead of `harness-eval/<harness>:dev`. |
-| `--gbrain-image <tag>` | Cells with `gbrain`: the sidecar image instead of `harness-eval/gbrain:dev`. The sidecar image is independent of `--image`: a harness image never carries gbrain. internal-task: the same image serves both surfaces, the keyword and the embedded brains and the install bundle; `preflight` checks the adapter in every harness image against the checkout (HE-ADAPTER-005), probes each distinct keyword configuration against the pinned tool count, probes each embedded configuration through the proxy under a $0.05 lease of its own (`<run_id>-preflight`, HE-GBRAIN-005 if no embedding line is forwarded or the reply is degraded) and exports and verifies every gbrain-docs cell's bundle view into `results/<run>/gbrain-install/<harness>/<split>` (HE-GBRAIN-006). |
+| `--gbrain-image <tag>` | Cells with `gbrain`: the sidecar image instead of `harness-eval/gbrain:dev`. The sidecar image is independent of `--image`: a harness image never carries gbrain. `preflight` requires the image's `/opt/sidecar/image.json` to record the gbrain commit `gbrain/pin.json` pins (HE-GBRAIN-002 otherwise), or the commit `--gbrain-commit <sha>` names, which `scripts/gbrain-check.ts` passes for the candidate it checks; it also refuses an installer view with no `installer.turn_hook` (HE-GBRAIN-006) while `gbrain/pin.json`'s `install.installer.turn_hook_expected` is true, except under `--gbrain-commit`. internal-task: the same image serves both surfaces, the keyword and the embedded brains and the install bundle; `preflight` checks the adapter in every harness image against the checkout (HE-ADAPTER-005), probes each distinct keyword configuration against the pinned tool count, probes each embedded configuration through the proxy under a $0.05 lease of its own (`<run_id>-preflight`, HE-GBRAIN-005 if no embedding line is forwarded or the reply is degraded) and exports and verifies every gbrain-docs cell's bundle view into `results/<run>/gbrain-install/<harness>/<split>` (HE-GBRAIN-006). |
 | `--resume` | Skip trials that already have a line in `trials.jsonl`. Without it a run directory that holds trials is refused (HE-RUN-003). |
 | `--stop-on-cap` | Stop at the first proxy lease refusal and exit 3; the default records the trial and continues. |
 | `--cells a,b` | Only these cells. |
@@ -126,6 +126,10 @@ harness-evals v0.0.5. The "Sharded runs" section points at [docs/ubicloud.md](..
 ### 2026-10-25: the install ladder, report scripts (internal-task)
 
 harness-evals v0.0.5. The "Report tooling" section: `summarize-run.ts` gains the per-cell `ladder` key (harness input tokens, embedding usage, install bundle, semantic exclusions, degraded calls); `compare-run.ts --pair gbrain` gains the ladder design (rungs from the resolved configuration, neighbour pairs, three endpoints, Holm per harness per endpoint, paired cost and latency with the shards label, the none table; `--design`); `paired-mdd.ts --ladder`; `merge-shards.ts` and the `shards.json` it writes for sharded runs. The report-tooling paragraph is restored where an earlier edit had cut it mid-sentence (it ended in a truncation marker).
+
+### 2026-10-25: the installer rung's per-turn hook (internal-task, internal-task at gbrain 10949a15)
+
+harness-evals v0.0.8. The bundle manifest's `installer.turn_hook` names the hook files gbrain's revised installer wrote and, for OpenClaw, the three install commands; the adapters install the hook through the harness's own extension point and refuse (HE-ADAPTER-006) unless OpenClaw's `plugins inspect --runtime` reports it loaded or Hermes's `hooks doctor` reports it healthy, keeping both as per-trial receipts (`logs/gbrain-hook.openclaw.json`, `logs/gbrain-hook.hermes.log`). `ready` carries `gbrain_install.turn_hook`, the record carries `gbrain.install_bundle.turn_hook` (`files`, `status`), and `summarize-run` counts it per cell under `ladder.install_bundle.turn_hook`.
 
 ### 2026-10-25: the installer rung (internal-task, internal-task)
 

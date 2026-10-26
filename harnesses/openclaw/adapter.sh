@@ -57,10 +57,15 @@ log "openclaw $(openclaw --version 2>/dev/null | head -1) model=anthropic/$HE_MO
 # Before the harness starts, every file the view's manifest lists is checked against its sha256 and copied to where the gbrain
 # command would have written it: `gbrain skillpack scaffold --harness openclaw --workspace /workspace` (gbrain-docs; workspace/x to
 # /workspace/x, skills/ at this commit) or `gbrain setup openclaw --workspace /workspace --instructions-only` (gbrain-installer, internal-task;
-# workspace/AGENTS.md to /workspace/AGENTS.md, the brain-first block OpenClaw loads as a workspace bootstrap file); the manifest's
-# install kind must equal HE_GBRAIN_INSTALL. $HE_LOG_DIR/gbrain-install.json records status, install kind, file count, view digest and
-# destinations. Any failure (missing directory or manifest, digest mismatch, a view for another harness or split, a
-# destination that already exists) is HE-ADAPTER-006 and exit 2 before ready. Unset, nothing here runs.
+# workspace/AGENTS.md to /workspace/AGENTS.md, the brain-first block OpenClaw loads as a workspace bootstrap file, and at gbrain#7489's
+# per-turn-hook head state/gbrain/gbrain-turn-rule/* to $OPENCLAW_STATE_DIR/gbrain/gbrain-turn-rule/*, the hook-only plugin whose
+# before_prompt_build handler puts the rule next to every user turn); the manifest's install kind must equal HE_GBRAIN_INSTALL.
+# $HE_LOG_DIR/gbrain-install.json records status, install kind, file count, view digest and destinations. Any failure (missing directory
+# or manifest, digest mismatch, a view for another harness or split, a destination that already exists) is HE-ADAPTER-006 and exit 2
+# before ready. When the view carries the plugin, the adapter then runs the three commands gbrain's installer printed for a host without
+# openclaw on PATH (plugins install --link, plugins enable, config set ...hooks.allowConversationAccess true), checks they are the
+# documented ones, and keeps `openclaw plugins inspect gbrain-turn-rule --runtime --json` as $HE_LOG_DIR/gbrain-hook.openclaw.json: the
+# plugin must be loaded with before_prompt_build among its typed hooks, else HE-ADAPTER-006 and exit 2. Unset, nothing here runs.
 gbrain_install_json=''
 if [ "${HE_GBRAIN_INSTALL:-}" = gbrain-docs ] || [ "${HE_GBRAIN_INSTALL:-}" = gbrain-installer ]; then
   set +e
@@ -113,8 +118,11 @@ for f in files:
     if parts[0] == "workspace" and len(parts) > 1:
         dest = os.path.join(workspace, *parts[1:])
         top = os.path.join(workspace, parts[1])
-    elif path == ".hermes.md" and harness == "hermes":
-        dest = top = os.path.join(workspace, ".hermes.md")
+    elif path.startswith("state/gbrain/gbrain-turn-rule/") and len(parts) == 4 and install == "gbrain-installer":
+        # gbrain#7489 at 10949a15: the per-turn plugin setup wrote under OPENCLAW_STATE_DIR; the same place here.
+        dest = os.path.join(os.environ["OPENCLAW_STATE_DIR"], "gbrain", "gbrain-turn-rule", parts[3])
+        top = os.path.join(os.environ["OPENCLAW_STATE_DIR"], "gbrain")
+        rec["turn_hook_files"] = rec.get("turn_hook_files", 0) + 1
     else:
         refuse("no documented destination for %r" % path)
     src = os.path.join(view, path)
@@ -133,17 +141,78 @@ for src, dest, top, digest in plan:
     rec["copied"].append(dest)
     if top not in rec["destinations"]:
         rec["destinations"].append(top)
+hook = (m.get("installer") or {}).get("turn_hook") or None
+if rec.get("turn_hook_files", 0) and not hook:
+    refuse("the view carries %d per-turn plugin files but the manifest's installer records no turn_hook; nothing documents what to do with them" % rec["turn_hook_files"])
+if hook and rec.get("turn_hook_files", 0) != len(hook.get("files") or []):
+    refuse("the manifest's turn_hook lists %d files, the view copied %d" % (len(hook.get("files") or []), rec.get("turn_hook_files", 0)))
+if hook:
+    # The commands gbrain printed at build name the bundle's own plugin directory; the documented three, with the local directory, are run below.
+    plugin_dir = os.path.join(os.environ["OPENCLAW_STATE_DIR"], "gbrain", "gbrain-turn-rule")
+    expected = ["openclaw plugins install --link <dir> --force --accept-capabilities", "openclaw plugins enable gbrain-turn-rule", "openclaw config set plugins.entries.gbrain-turn-rule.hooks.allowConversationAccess true"]
+    printed = [c.replace("<out>/openclaw/installer/state/gbrain/gbrain-turn-rule", "<dir>") for c in (hook.get("commands") or [])]
+    if printed != expected:
+        refuse("the installer's turn_hook.commands are not the documented three: %r" % printed)
+    rec["turn_hook"] = {"plugin_dir": plugin_dir, "commands": [c.replace("<dir>", plugin_dir) for c in expected]}
 rec.update(status="ok", code=None, files=len(plan), destinations=sorted(rec["destinations"]))
 write()
-print("ok %d %s %s" % (len(plan), rec["view_digest"], ",".join(rec["destinations"])))
+print("ok %d %s %s %s" % (len(plan), rec["view_digest"], ",".join(rec["destinations"]), "hook" if hook else "nohook"))
 PY
 )
   install_code=$?
   set -e
   log "$HE_GBRAIN_INSTALL install: ${install_line:-HE-ADAPTER-006 the install bundle could not be applied: the install step failed before it could report; see stderr.log}"
   [ "$install_code" -eq 0 ] || exit 2
-  read -r _ install_files install_digest install_dests <<< "$install_line"
-  gbrain_install_json=$(printf ',"gbrain_install":{"status":"ok","install":"%s","files":%s,"view_digest":"%s","destinations":"%s"}' "$HE_GBRAIN_INSTALL" "$install_files" "$install_digest" "$install_dests")
+  read -r _ install_files install_digest install_dests install_hook <<< "$install_line"
+  turn_hook_json=''
+  if [ "$install_hook" = hook ] && [ "$entry" = run ]; then
+    # The run entry execs with --state-dir $OPENCLAW_STATE_DIR/exec, which never sees a plugin installed under $OPENCLAW_STATE_DIR; the hook rung runs through serve only.
+    log "HE-ADAPTER-006 the per-turn hook is applied for the serve entry only; the run entry's state dir would not see it"
+    exit 2
+  fi
+  if [ "$install_hook" = hook ]; then
+    # gbrain#7489 at 10949a15: install the per-turn plugin the way gbrain's installer told a host without openclaw on PATH to.
+    set +e
+    hook_err="$HE_LOG_DIR/gbrain-hook.openclaw.log"
+    plugin_dir="$OPENCLAW_STATE_DIR/gbrain/gbrain-turn-rule"
+    { openclaw plugins install --link "$plugin_dir" --force --accept-capabilities && openclaw plugins enable gbrain-turn-rule && openclaw config set plugins.entries.gbrain-turn-rule.hooks.allowConversationAccess true; } > "$hook_err" 2>&1
+    hook_code=$?
+    openclaw plugins inspect gbrain-turn-rule --runtime --json > "$HE_LOG_DIR/gbrain-hook.openclaw.json" 2>> "$hook_err"
+    inspect_code=$?
+    hook_line=$(python3 - "$HE_LOG_DIR/gbrain-hook.openclaw.json" "$HE_LOG_DIR/gbrain-install.json" "$hook_code" "$inspect_code" <<'PY'
+import json, os, sys
+inspect_path, rec_path, hook_code, inspect_code = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+rec = json.load(open(rec_path))
+def done(status, detail):
+    rec["turn_hook"].update(status=status, detail=detail)
+    if status != "ok":
+        rec.update(status="error", code="HE-ADAPTER-006", error="the per-turn plugin is not loaded: " + detail)
+    json.dump(rec, open(rec_path + ".tmp", "w"))
+    os.replace(rec_path + ".tmp", rec_path)
+    print(("ok " if status == "ok" else "HE-ADAPTER-006 the per-turn plugin is not loaded: ") + detail)
+    sys.exit(0 if status == "ok" else 1)
+if hook_code != 0:
+    done("error", "an openclaw plugins/config command exited %d (gbrain-hook.openclaw.log)" % hook_code)
+if inspect_code != 0:
+    done("error", "openclaw plugins inspect gbrain-turn-rule --runtime exited %d" % inspect_code)
+try:
+    doc = json.load(open(inspect_path))
+except ValueError as e:
+    done("error", "plugins inspect printed no JSON: %s" % e)
+plugin = doc.get("plugin") or {}
+hooks = [h.get("name") for h in (doc.get("typedHooks") or [])]
+if plugin.get("status") != "loaded" or not plugin.get("enabled") or "before_prompt_build" not in hooks:
+    done("error", "status %r enabled %r typed hooks %r" % (plugin.get("status"), plugin.get("enabled"), hooks))
+done("ok", "gbrain-turn-rule loaded (status %s, shape %s, hooks %s, source %s)" % (plugin.get("status"), doc.get("shape"), ",".join(hooks), plugin.get("source")))
+PY
+)
+    hook_ok=$?
+    set -e
+    log "gbrain-installer turn hook: $hook_line"
+    [ "$hook_ok" -eq 0 ] || exit 2
+    turn_hook_json=',"turn_hook":"loaded"'
+  fi
+  gbrain_install_json=$(printf ',"gbrain_install":{"status":"ok","install":"%s","files":%s,"view_digest":"%s","destinations":"%s"%s}' "$HE_GBRAIN_INSTALL" "$install_files" "$install_digest" "$install_dests" "$turn_hook_json")
 fi
 
 # A model error is a provider status, a proxy refusal, a rate limit or an auth

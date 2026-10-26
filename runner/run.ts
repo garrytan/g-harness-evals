@@ -359,9 +359,16 @@ async function main(argv: string[]): Promise<number> {
     const gbrainCells = m.cells.filter((c) => c.gbrain);
     if (gbrainCells.length) {
       const image = flag('--gbrain-image') ?? DEFAULT_GBRAIN_IMAGE;
-      const { gbrainImagePresent, probeGbrainImage, exportInstallView } = await import('./trial/gbrain.ts');
+      const { gbrainImagePresent, gbrainImageCommit, imageCommitProblem, installerHookProblem, probeGbrainImage, exportInstallView } = await import('./trial/gbrain.ts');
       if (!gbrainImagePresent(image)) throw new RunnerError('HE-GBRAIN-002', `gbrain sidecar image ${image} is not present for cells ${gbrainCells.map((c) => c.id).join(', ')}; fix: scripts/build-gbrain-image.sh --tag ${image}`);
-      const pin = JSON.parse(readFileSync(join('gbrain', 'pin.json'), 'utf8')) as { surfaces: Record<string, { tools: number }>; embeddings: { model: string } };
+      const pin = JSON.parse(readFileSync(join('gbrain', 'pin.json'), 'utf8')) as { gbrain: { commit: string }; surfaces: Record<string, { tools: number }>; embeddings: { model: string }; install?: { installer?: { turn_hook_expected?: boolean } } };
+      // internal-task: the image records the gbrain commit it was built from (/opt/sidecar/image.json); a counted run's cells, the told cells
+      // with no install view included, run the pinned commit or not at all, and the run log says which.
+      // scripts/gbrain-check.ts checks a candidate commit and passes it as --gbrain-commit; a counted run passes nothing and gets the pin.
+      const built = gbrainImageCommit(image);
+      const commitProblem = imageCommitProblem({ image, built, pin: pin.gbrain.commit, flag: flag('--gbrain-commit') });
+      if (commitProblem) throw new RunnerError('HE-GBRAIN-002', commitProblem);
+      console.log(`GBRAIN: image ${image} records gbrain ${built}${flag('--gbrain-commit') ? ' (--gbrain-commit)' : ', the pinned commit'}`);
       // internal-task: one probe per distinct keyword configuration (surface, brain): the image serves /health and lists the pinned tool count.
       const keywordConfigs = new Map<string, Cell[]>();
       for (const c of gbrainCells) { const g = resolveGbrain(c.gbrain!); if (g.embeddings === 'off') keywordConfigs.set(`${g.surface}/${g.brain}`, [...(keywordConfigs.get(`${g.surface}/${g.brain}`) ?? []), c]); }
@@ -408,6 +415,8 @@ async function main(argv: string[]): Promise<number> {
         const [harness, split, install] = v.split('|') as [string, 'dev' | 'heldout', 'gbrain-docs' | 'gbrain-installer'];
         const { installViewDir } = await import('./trial/trial.ts');
         const view = await exportInstallView(image, harness, split, installViewDir(runDir, harness, split, install), install);
+        const hookProblem = installerHookProblem(view, pin, flag('--gbrain-commit'));
+        if (hookProblem) throw new RunnerError('HE-GBRAIN-006', hookProblem);
         console.log(`GBRAIN: install bundle view ${view.harness}/${split} (${install}) exported and verified: ${view.files.length} files, ${view.skills} skills, view digest ${view.view_digest.slice(0, 12)}${view.context ? `, context ${view.context.kept_slugs.length} pages (${view.context.tokens ?? '?'} tokens)` : ''} (gbrain ${view.gbrain_commit.slice(0, 12)})`);
       }
       // internal-task: a company brain is probed per split under the unscoped token and must list every page the build holds.

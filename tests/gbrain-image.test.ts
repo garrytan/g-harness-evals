@@ -11,8 +11,9 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { bundleDigest, compiledTokens, fileEntries, keptSlugs, listFiles, verifyFiles, viewFiles, type InstallManifest } from '../gbrain/build-install.ts';
+import { bundleDigest, compiledTokens, fileEntries, hermesHookRule, keptSlugs, listFiles, verifyFiles, viewFiles, type InstallManifest } from '../gbrain/build-install.ts';
 import { EMBEDDING_MODELS, keylessEnv } from '../gbrain/build-brain.ts';
+import { gbrainImageCommit, imageCommitProblem, installerHookProblem } from '../runner/trial/gbrain.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
 const pin = JSON.parse(readFileSync(join(ROOT, 'gbrain', 'pin.json'), 'utf8'));
@@ -27,6 +28,65 @@ test('keptSlugs reads the page headings compile-context writes; compiledTokens r
   expect(keptSlugs('<!-- header -->\n')).toEqual([]);
   expect(compiledTokens('264 migration(s) applied\ncompile-context: wrote 25 entries (933 tokens, budget 4000) → /x/.hermes.md')).toBe(933);
   expect(compiledTokens('nothing')).toBeNull();
+});
+
+// gbrain#7489 at 10949a15: build-install records the per-turn rule from the Hermes hook command so gbrain-check can find it in the
+// hook files; the command is gbrain's own shape, `/bin/echo '{"context": <rule>}'` with a quote in the rule written as \u0027.
+test('hermesHookRule reads the rule out of the Hermes pre_llm_call command and answers null for any other shape', () => {
+  const rule = 'GBrain: before answering this turn, check GBrain first (`search` or `query` on the `gbrain` MCP server). Then answer and finish the task.';
+  expect(hermesHookRule(`/bin/echo '${JSON.stringify({ context: rule })}'`)).toBe(rule);
+  // A quote inside the rule cannot sit inside the single-quoted shell argument; gbrain writes it as \u0027 and the rule gets it back.
+  expect(hermesHookRule(`/bin/echo '{"context":"the requester\\u0027s scope"}'`)).toBe("the requester's scope");
+  expect(hermesHookRule('echo \'{"context":"x"}\'')).toBeNull();
+  expect(hermesHookRule('/bin/echo \'{"context":"x"}\' | cat')).toBeNull();
+  expect(hermesHookRule('/bin/echo \'{"context":42}\'')).toBeNull();
+  expect(hermesHookRule('/bin/echo \'{"rule":"x"}\'')).toBeNull();
+  expect(hermesHookRule('/bin/echo \'not json\'')).toBeNull();
+  expect(hermesHookRule('')).toBeNull();
+});
+
+// preflight's image-commit gate (internal-task, the installer-hook run): a counted run's sidecar image must record the pinned gbrain commit;
+// scripts/gbrain-check.ts names its candidate with --gbrain-commit instead.
+test('gbrainImageCommit reads gbrain_commit from the image; a failed cat, bad JSON or a missing key is null', () => {
+  const PIN = 'a'.repeat(40);
+  expect(gbrainImageCommit('img', (argv) => { expect(argv).toEqual(['run', '--rm', '--entrypoint', 'cat', 'img', '/opt/sidecar/image.json']); return { status: 0, stdout: JSON.stringify({ gbrain_commit: PIN, gbrain_version: '0.60.457.0' }) }; })).toBe(PIN);
+  expect(gbrainImageCommit('img', () => ({ status: 1, stdout: '' }))).toBeNull();
+  expect(gbrainImageCommit('img', () => ({ status: 0, stdout: 'not json' }))).toBeNull();
+  expect(gbrainImageCommit('img', () => ({ status: 0, stdout: '{"gbrain_version":"0.60.457.0"}' }))).toBeNull();
+});
+
+test('imageCommitProblem: the pinned commit passes, another commit or no image.json is HE-GBRAIN-002 naming both, --gbrain-commit replaces the pin', () => {
+  const PIN = 'a'.repeat(40), OTHER = 'b'.repeat(40);
+  expect(imageCommitProblem({ image: 'img', built: PIN, pin: PIN })).toBeNull();
+  expect(imageCommitProblem({ image: 'img', built: OTHER, pin: PIN })).toBe(`image img records gbrain ${OTHER}, gbrain/pin.json pins ${PIN}; fix: scripts/build-gbrain-image.sh --gbrain ${PIN} --tag img, or --gbrain-image <the image built at that commit>`);
+  expect(imageCommitProblem({ image: 'img', built: null, pin: PIN })).toContain('records gbrain no commit (no /opt/sidecar/image.json), gbrain/pin.json pins');
+  expect(imageCommitProblem({ image: 'img', built: OTHER, pin: PIN, flag: OTHER })).toBeNull();
+  expect(imageCommitProblem({ image: 'img', built: PIN, pin: PIN, flag: OTHER })).toContain(`--gbrain-commit names ${OTHER}`);
+});
+
+test('installerHookProblem: with the pin expecting a hook, an installer view without installer.turn_hook is refused; a hooked view, a docs view or a block-only pin pass', () => {
+  const hooked = { harness: 'openclaw', install: 'gbrain-installer' as const, installer: { argv: [], files: ['openclaw/installer/workspace/AGENTS.md'], block_version: 'v2', turn_hook: { files: ['x'], action: 'print', detail: '' } } as never };
+  const blockOnly = { harness: 'openclaw', install: 'gbrain-installer' as const, installer: { argv: [], files: ['openclaw/installer/workspace/AGENTS.md'], block_version: 'v1' } as never };
+  const expecting = { install: { installer: { turn_hook_expected: true } } };
+  expect(installerHookProblem(hooked, expecting)).toBeNull();
+  expect(installerHookProblem(blockOnly, expecting)).toContain('the openclaw installer view carries no per-turn hook (installer.turn_hook) and gbrain/pin.json says the pinned installer writes one');
+  expect(installerHookProblem({ ...blockOnly, installer: { unavailable: 'no setup target' } }, expecting)).toContain('carries no per-turn hook');
+  expect(installerHookProblem({ harness: 'openclaw', install: 'gbrain-docs', installer: null }, expecting)).toBeNull();
+  expect(installerHookProblem(blockOnly, { install: { installer: { turn_hook_expected: false } } })).toBeNull();
+  expect(installerHookProblem(blockOnly, {})).toBeNull();
+  // A candidate named by --gbrain-commit (gbrain-check) is not held to the pin's expectation.
+  expect(installerHookProblem(blockOnly, expecting, 'cd9da1ce170ecae739fa28855e9133b6c60b78c2')).toBeNull();
+  // The committed pin expects the hook: this run's images must carry it.
+  const pin = JSON.parse(readFileSync(join(ROOT, 'gbrain', 'pin.json'), 'utf8')) as { install: { installer: { turn_hook_expected: boolean } } };
+  expect(pin.install.installer.turn_hook_expected).toBe(true);
+});
+
+test('harnesses/openclaw/pin.json gbrain_install says what the docs view lands: /workspace/skills, the five core skills at the pinned gbrain, HE-ADAPTER-006 on failure', () => {
+  const pin = JSON.parse(readFileSync(join(ROOT, 'harnesses', 'openclaw', 'pin.json'), 'utf8')) as { gbrain_install: { variables: string; applied_by: string; destinations: string[]; failure: string } };
+  expect(pin.gbrain_install.destinations).toEqual(['/workspace/skills']);
+  expect(pin.gbrain_install.variables).toContain('HE_GBRAIN_INSTALL=gbrain-docs');
+  expect(pin.gbrain_install.applied_by).toContain('the five core skills in 30 files from gbrain 0.60.456.0');
+  expect(pin.gbrain_install.failure).toContain('HE-ADAPTER-006');
 });
 
 test('the bundle digest is sha256 over "<path> <sha256>\\n" in byte order of path, the same rule export-install.sh applies with jq and sha256sum', () => {
@@ -155,9 +215,17 @@ describe.skipIf(!haveImage)(`the sidecar image ${IMAGE ?? '(HE_GBRAIN_IMAGE unse
     expect(manifest.digest).toBe(bundleDigest(manifest.files));
     for (const h of ['openclaw', 'hermes'] as const) {
       expect(manifest.harnesses[h].workspace_entries).toEqual(['skills']);
-      expect(manifest.harnesses[h].skills).toBeGreaterThan(10);
       expect(manifest.files.some((f) => f.path === `${h}/workspace/skills/brain-ops/SKILL.md`)).toBe(true);
     }
+    // gbrain's documented defaults at the pin: since 0.60.456.0 (gbrain#7508, change notice openclaw_core_scaffold)
+    // `skillpack scaffold --harness openclaw` installs the five brain-first core skills, not the full bundle; Hermes's
+    // documented install is `scaffold --all`, the whole bundle.
+    const OPENCLAW_CORE_SKILLS = ['brain-ops', 'capture', 'data-loss-gate', 'query', 'resolve-before-asking'];
+    const skillNames = (h: string) => [...new Set(manifest.files.map((f) => f.path.match(new RegExp(`^${h}/workspace/skills/([^/_][^/]*)/SKILL\\.md$`))?.[1]).filter((n): n is string => !!n))].sort();
+    expect(manifest.harnesses.openclaw.skills).toBe(OPENCLAW_CORE_SKILLS.length);
+    expect(skillNames('openclaw')).toEqual(OPENCLAW_CORE_SKILLS);
+    expect(manifest.harnesses.hermes.skills).toBeGreaterThan(10);
+    expect(skillNames('hermes')).toEqual(expect.arrayContaining(OPENCLAW_CORE_SKILLS));
     for (const split of ['dev', 'heldout'] as const) {
       const c = manifest.harnesses.hermes.context![split];
       expect(c.bytes).toBeGreaterThan(200);

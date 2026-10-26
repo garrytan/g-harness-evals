@@ -4,7 +4,10 @@
 //
 //   bun scripts/gbrain-check.ts --gbrain <ref> [--harness fake|openclaw,hermes] [--rungs told,...] [--reps 2]
 //       [--model anthropic:claude-haiku-5-5] [--spend-cap 2] [--image <tag>] [--no-build] [--baseline <file>]
-//       [--write-baseline] [--force] [--strict-pins] [--dry-run]
+//       [--write-baseline] [--force] [--strict-pins] [--expect-hook] [--dry-run]
+//
+// --expect-hook makes an installer bundle without gbrain#7489's per-turn hook (installer.turn_hook) a failure instead of the
+// "block-only installer" line, for a pin that is meant to carry the hook (run gbrain-installer-hook-2026-10).
 //
 // --gbrain is a full or abbreviated sha (taken as is, the build's shallow fetch verifies it; an abbreviation is expanded
 // against the remote's refs, else through a treeless clone), a branch or tag (git ls-remote on garrytan/gbrain, annotated
@@ -278,8 +281,10 @@ export interface InstallerEvidence {
   dir: string;
   manifest: InstallViewManifest | null;
   error: string | null;
-  /** Every exported file holds the brain-first block marker; null when nothing was exported. */
+  /** Every exported instruction file holds the brain-first block marker; null when nothing was exported. */
   block_present: boolean | null;
+  /** gbrain#7489 at 10949a15: the per-turn hook the bundle records, and which hook files hold the rule text (OpenClaw's index.js, Hermes's config.yaml and allowlist); null without a hook. */
+  hook?: { files: string[]; action: string; rule_files: string[]; commands: number } | null;
 }
 
 export interface ReadyInstall { dir: string; split: string; files: number; writable: boolean }
@@ -321,7 +326,7 @@ export function viewDigestFromBundle(files: InstallFile[], harness: string, spli
 
 /** Every assertion of the keyless mode over the evidence, as `HE-GBRAIN-008 <where> <check>: expected <x>, actual <y> (<file>)`
  *  lines; pin_diffs are the tool count differences, failures only under strictPins. */
-export function keylessAssertions(e: KeylessEvidence, o: { strictPins?: boolean } = {}): { failures: string[]; passed: string[]; pin_diffs: string[] } {
+export function keylessAssertions(e: KeylessEvidence, o: { strictPins?: boolean; expectHook?: boolean } = {}): { failures: string[]; passed: string[]; pin_diffs: string[] } {
   const failures: string[] = [];
   const passed: string[] = [];
   const pin_diffs: string[] = [];
@@ -392,7 +397,14 @@ export function keylessAssertions(e: KeylessEvidence, o: { strictPins?: boolean 
       if (drift.length) fail(where, 'file digests against the bundle manifest', 'every view file listed with the same sha256', `${drift.length} differ (${drift.slice(0, 3).map((f) => f.path).join(', ')})`, file);
     }
     if (!i.manifest.files.length) fail(where, 'installer files', 'at least one file written by gbrain setup', 0, file);
-    if (i.block_present === false) fail(where, 'brain-first block', `every installer file holds ${INSTALLER_BLOCK_BEGIN}`, 'a file without it', i.dir);
+    if (i.block_present === false) fail(where, 'brain-first block', `every installer instruction file holds ${INSTALLER_BLOCK_BEGIN}`, 'a file without it', i.dir);
+    if (i.hook) {
+      const ruleOk = i.hook.rule_files.length > 0;
+      if (!ruleOk) fail(where, 'per-turn hook files', 'a hook file holding the rule text', `none of ${i.hook.files.join(', ')}`, i.dir);
+      if (i.harness === 'openclaw' && i.hook.commands !== 3) fail(where, 'per-turn hook install commands', 'the three openclaw commands', i.hook.commands, join(i.dir, 'manifest.json'));
+      if (ruleOk && (i.harness !== 'openclaw' || i.hook.commands === 3)) ok(`${where} per-turn hook ${i.hook.action}: ${i.hook.files.length} files, the rule in ${i.hook.rule_files.join(', ')}${i.harness === 'openclaw' ? ', three install commands printed' : ''}`);
+    } else if (o.expectHook) fail(where, 'per-turn hook (--expect-hook)', 'installer.turn_hook in the bundle manifest', 'none (the block-only installer)', file);
+    else ok(`${where} no per-turn hook in this gbrain commit (the block-only installer)`);
     const rec = i.manifest.installer && 'files' in i.manifest.installer ? i.manifest.installer : null;
     if (i.harness === 'hermes' && !rec?.seed) fail(where, 'Hermes SOUL.md seed', 'recorded (sha256, bytes, hermes commit)', 'absent', file);
     if (i.manifest.files.length && i.block_present && (i.harness !== 'hermes' || rec?.seed)) ok(`${where} ${i.manifest.files.map((f) => f.path).join(', ')} (block ${rec?.block_version ?? 'version unknown'}), view digest ${i.manifest.view_digest.slice(0, 12)} matches the bundle manifest${rec?.seed ? `; home seeded with Hermes SOUL.md ${rec.seed.sha256.slice(0, 12)} (${rec.seed.bytes} bytes)` : ''}`);
@@ -665,17 +677,17 @@ export function renderSummary(i: SummaryInput): SummaryOutput {
 
 export interface Args {
   gbrain: string; harnesses: string[]; rungs: string[]; reps: number; model: string; spendCap: number; image?: string; noBuild: boolean;
-  baseline: string; writeBaseline: boolean; force: boolean; strictPins: boolean; dryRun: boolean;
+  baseline: string; writeBaseline: boolean; force: boolean; strictPins: boolean; expectHook: boolean; dryRun: boolean;
 }
 
 export function parseArgs(argv: string[]): Args {
   const flag = (name: string) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
   const has = (name: string) => argv.includes(name);
   const valued = new Set(['--gbrain', '--harness', '--rungs', '--reps', '--model', '--spend-cap', '--image', '--baseline']);
-  const bare = new Set(['--no-build', '--write-baseline', '--force', '--strict-pins', '--dry-run']);
+  const bare = new Set(['--no-build', '--write-baseline', '--force', '--strict-pins', '--expect-hook', '--dry-run']);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
-    if (!valued.has(a) && !bare.has(a)) throw new RunnerError('HE-RUN-002', `unknown argument ${a}; usage: bun scripts/gbrain-check.ts --gbrain <ref> [--harness fake|openclaw,hermes] [--rungs told,...] [--reps 2] [--model ${DEFAULT_MODEL}] [--spend-cap 2] [--image <tag>] [--no-build] [--baseline <file>] [--write-baseline] [--force] [--strict-pins] [--dry-run]`);
+    if (!valued.has(a) && !bare.has(a)) throw new RunnerError('HE-RUN-002', `unknown argument ${a}; usage: bun scripts/gbrain-check.ts --gbrain <ref> [--harness fake|openclaw,hermes] [--rungs told,...] [--reps 2] [--model ${DEFAULT_MODEL}] [--spend-cap 2] [--image <tag>] [--no-build] [--baseline <file>] [--write-baseline] [--force] [--strict-pins] [--expect-hook] [--dry-run]`);
     if (valued.has(a)) i++;
   }
   const gbrain = flag('--gbrain');
@@ -687,7 +699,7 @@ export function parseArgs(argv: string[]): Args {
   const spendCap = Number(flag('--spend-cap') ?? 2);
   if (!(reps >= 1 && Number.isInteger(reps))) throw new RunnerError('HE-RUN-002', `--reps must be a whole number >= 1 (got ${flag('--reps')})`);
   if (!(spendCap > 0)) throw new RunnerError('HE-RUN-002', `--spend-cap must be > 0 (got ${flag('--spend-cap')})`);
-  return { gbrain, harnesses, rungs: (flag('--rungs') ?? 'told').split(',').map((s) => s.trim()).filter(Boolean), reps, model: flag('--model') ?? DEFAULT_MODEL, spendCap, image: flag('--image'), noBuild: has('--no-build'), baseline: flag('--baseline') ?? DEFAULT_BASELINE, writeBaseline: has('--write-baseline'), force: has('--force'), strictPins: has('--strict-pins'), dryRun: has('--dry-run') };
+  return { gbrain, harnesses, rungs: (flag('--rungs') ?? 'told').split(',').map((s) => s.trim()).filter(Boolean), reps, model: flag('--model') ?? DEFAULT_MODEL, spendCap, image: flag('--image'), noBuild: has('--no-build'), baseline: flag('--baseline') ?? DEFAULT_BASELINE, writeBaseline: has('--write-baseline'), force: has('--force'), strictPins: has('--strict-pins'), expectHook: has('--expect-hook'), dryRun: has('--dry-run') };
 }
 
 const haveDocker = () => spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
@@ -829,8 +841,11 @@ async function keyless(a: Args, ref: ResolvedRef, tag: string, dir: string): Pro
     if (reason !== null) { installer.push({ harness, available: false, reason, dir: idir, manifest: null, error: null, block_present: null }); console.log(`INSTALLER: ${harness} not in this gbrain commit: ${reason}`); continue; }
     try {
       const m = await exportInstallView(tag, harness, 'dev', idir, 'gbrain-installer');
-      const present = m.files.every((f) => readFileSync(join(idir, f.path), 'utf8').includes(INSTALLER_BLOCK_BEGIN));
-      installer.push({ harness, available: true, reason: null, dir: idir, manifest: m, error: null, block_present: present });
+      const rec = m.installer && 'files' in m.installer ? m.installer : null;
+      const hookFiles = new Set((rec?.turn_hook?.files ?? []).map((f) => f.replace(`${harness}/installer/`, '')));
+      const present = m.files.filter((f) => !hookFiles.has(f.path)).every((f) => readFileSync(join(idir, f.path), 'utf8').includes(INSTALLER_BLOCK_BEGIN));
+      const hook = rec?.turn_hook ? { files: [...hookFiles].sort(), action: rec.turn_hook.action, rule_files: rec.turn_hook.rule ? [...hookFiles].sort().filter((f) => readFileSync(join(idir, f), 'utf8').includes(rec.turn_hook!.rule!.slice(0, 60))) : [], commands: rec.turn_hook.commands?.length ?? 0 } : null;
+      installer.push({ harness, available: true, reason: null, dir: idir, manifest: m, error: null, block_present: present, hook });
       console.log(`INSTALLER: ${harness} ${m.files.map((f) => f.path).join(', ')}, view digest ${m.view_digest.slice(0, 12)}${present ? '' : ', a file without the brain-first block'}`);
     } catch (e) {
       installer.push({ harness, available: true, reason: null, dir: idir, manifest: null, error: (e as Error).message, block_present: null });
@@ -883,7 +898,7 @@ async function keyless(a: Args, ref: ResolvedRef, tag: string, dir: string): Pro
     image: tag, pin, known: KNOWN_PAGE, surfaces, bundle: bundle ? { digest: bundle.digest, files: bundle.files } : null, views, installer, scoped,
     docs: docsRec ? { termination: docsRec.termination, error: docsRec.error, install_bundle: docsRec.gbrain?.install_bundle, ready_install: readyInstall, expected_view_digest: openclawDev?.view_digest ?? null, expected_files: openclawDev?.files.length ?? null } : { termination: 'not run', install_bundle: undefined, ready_install: null, expected_view_digest: null, expected_files: null },
   };
-  const verdict = keylessAssertions(evidence, { strictPins: a.strictPins });
+  const verdict = keylessAssertions(evidence, { strictPins: a.strictPins, expectHook: a.expectHook });
   for (const l of verdict.passed) console.log(l);
   for (const l of verdict.pin_diffs) console.log(`PIN DIFF: ${l}${a.strictPins ? '' : ' (a diff, not a failure; --strict-pins makes it one; the fix for a deliberate gbrain change is the harness-evals pin)'}`);
   for (const l of verdict.failures) console.error(l);
@@ -928,7 +943,9 @@ async function paid(a: Args, ref: ResolvedRef, tag: string, dir: string, ts: str
   const ledger = join(dir, 'ledger.sqlite');
   // The runner and the summary script inherit this shell (the metering proxy reads the keys there; the check never does).
   const run = (argv: string[]) => spawnSync('bun', argv, { stdio: 'inherit', cwd: ROOT });
-  const pre = run(['runner/run.ts', 'preflight', '--manifest', manifestPath, '--gbrain-image', tag, '--ledger', ledger]);
+  // The candidate commit, not gbrain/pin.json, is what this image must record (a counted run's preflight compares against the pin);
+  // a reused --image or --no-build tag is held to its own recorded commit, which line 783's WARN has already compared with the ref.
+  const pre = run(['runner/run.ts', 'preflight', '--manifest', manifestPath, '--gbrain-image', tag, '--gbrain-commit', (a.image || a.noBuild ? imageJson(tag).gbrain_commit : undefined) ?? ref.sha, '--ledger', ledger]);
   if (pre.status !== 0) return pre.status ?? 2;
   const r = run(['runner/run.ts', 'run', '--manifest', manifestPath, '--harness-mode', 'docker', '--gbrain-image', tag, '--max-output-tokens', '128000', '--stop-on-cap', '--ledger', ledger]);
   if (r.status !== 0 && r.status !== 3) return r.status ?? 2;
@@ -968,7 +985,7 @@ function dryRun(a: Args, ref: ResolvedRef, tag: string, dir: string, ts: string)
       writeFileSync(tmp, JSON.stringify(prereg, null, 2) + '\n');
       const loaded = loadPrereg(tmp);
       lines.push(...renderPlan(buildManifest(loaded.prereg, loaded.sha256)).split('\n').map((l) => `plan:       ${l}`));
-      lines.push(`run:        bun runner/run.ts preflight --manifest ${join(dir, 'manifest.json')} --gbrain-image ${tag}; run --harness-mode docker --gbrain-image ${tag} --max-output-tokens 128000 --stop-on-cap --ledger ${join(dir, 'ledger.sqlite')} (trials sequential); scripts/summarize-run.ts --results ${dir}`);
+      lines.push(`run:        bun runner/run.ts preflight --manifest ${join(dir, 'manifest.json')} --gbrain-image ${tag} --gbrain-commit ${ref.sha}; run --harness-mode docker --gbrain-image ${tag} --max-output-tokens 128000 --stop-on-cap --ledger ${join(dir, 'ledger.sqlite')} (trials sequential); scripts/summarize-run.ts --results ${dir}`);
     }
   }
   lines.push('prerequisites:');

@@ -290,6 +290,12 @@ describe.skipIf(!haveImages)('the fake harness in docker with a gbrain sidecar, 
 // internal-task: the verbs surface with gbrain's documented install mounted for the adapter, from an image built from this checkout
 // (HE_GBRAIN_IMAGE, the ladder image): recall is the search, the view is mounted read-only and the fake adapter reports it.
 const LADDER_IMAGE = process.env.HE_GBRAIN_IMAGE;
+/** gbrain's documented OpenClaw scaffold at the image's gbrain version: the five core skills in 30 files from 0.60.456.0 (gbrain#7508), 64 skills in 127 files before. */
+const openclawDocsFiles = (image: string) => {
+  const v = (JSON.parse(spawnSync('docker', ['run', '--rm', '--entrypoint', 'cat', image, '/opt/sidecar/image.json'], { encoding: 'utf8' }).stdout) as { gbrain_version?: string }).gbrain_version ?? '0';
+  const n = v.split('.').map(Number);
+  return (n[0]! > 0 || n[1]! > 60 || (n[1] === 60 && n[2]! >= 456)) ? 30 : 127;
+};
 describe.skipIf(!haveImages || !LADDER_IMAGE || !gbrainImagePresent(LADDER_IMAGE))('the fake harness in docker on the verbs surface with the install bundle mounted, through the runner', () => {
   test('recall rows count as pages, the bundle view is exported once, verified, mounted read-only and recorded on the trial', async () => {
     const tasksRoot = join(tmp, 'tasks-verbs');
@@ -316,8 +322,8 @@ describe.skipIf(!haveImages || !LADDER_IMAGE || !gbrainImagePresent(LADDER_IMAGE
     const rec = result.records[0]!;
     expect(rec.termination).toBe('completed');
     expect(rec.gbrain).toMatchObject({ surface: 'verbs', install: 'gbrain-docs', embeddings: 'off', image: LADDER_IMAGE, events: { total: 2, discovery: 1, calls: 1, in_turn_calls: 1, writes: 0 } });
-    expect(rec.gbrain!.install_bundle).toMatchObject({ harness: 'openclaw', split: 'dev', files: 127 });
-    // The mount holds the 127 bundle files plus the view's manifest.json.
+    expect(rec.gbrain!.install_bundle).toMatchObject({ harness: 'openclaw', split: 'dev', files: openclawDocsFiles(LADDER_IMAGE!) });
+    // The mount holds the bundle files plus the view's manifest.json.
     expect(rec.gbrain!.install_bundle!.view_digest).toMatch(/^[0-9a-f]{64}$/);
     expect(rec.gbrain!.install_bundle!.context).toBeUndefined();
     const events = readFileSync(rec.paths.events!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as WorldEvent);
@@ -327,7 +333,7 @@ describe.skipIf(!haveImages || !LADDER_IMAGE || !gbrainImagePresent(LADDER_IMAGE
     expect(mine[1]).toMatchObject({ kind: 'read', outcome: 'ok' });
     expect((mine[1]!.effect as { count: number; pages: string[] }).count).toBe((mine[1]!.effect as { pages: string[] }).pages.length);
     const ready = JSON.parse(readFileSync(join(rec.paths.logs!, 'ready'), 'utf8')) as { gbrain_install?: { dir: string; split: string; files: number; writable: boolean } };
-    expect(ready.gbrain_install).toEqual({ dir: '/he-gbrain-install', split: 'dev', files: 128, writable: false });
+    expect(ready.gbrain_install).toEqual({ dir: '/he-gbrain-install', split: 'dev', files: openclawDocsFiles(LADDER_IMAGE!) + 1, writable: false });
     const viewDir = join(dirname(manifestPath), 'gbrain-install', 'fake', 'dev');
     expect(existsSync(join(viewDir, 'manifest.json'))).toBe(true);
     expect(existsSync(join(viewDir, '.he-write-probe'))).toBe(false);

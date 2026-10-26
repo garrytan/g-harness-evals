@@ -114,7 +114,9 @@ function fixtureRun(dir: string, opts: { gbrainMarker: 'field' | 'segment' } = {
   return { cells, rows };
 }
 
-const run = (script: string, args: string[]) => spawnSync('bun', [join(ROOT, 'scripts', script), ...args], { cwd: ROOT, encoding: 'utf8' });
+/** The scripts under test, by repository path, so each file maps to this test. */
+const SCRIPTS = { 'summarize-run.ts': 'scripts/summarize-run.ts', 'compare-run.ts': 'scripts/compare-run.ts', 'paired-mdd.ts': 'scripts/paired-mdd.ts', 'merge-shards.ts': 'scripts/merge-shards.ts' } as const;
+const run = (script: keyof typeof SCRIPTS, args: string[]) => spawnSync('bun', [join(ROOT, SCRIPTS[script]), ...args], { cwd: ROOT, encoding: 'utf8' });
 
 describe('compare-run --pair gbrain', () => {
   test('pairs each (harness, model) with and without gbrain, excludes model errors, writes comparisons.gbrain.json with Holm per model', () => {
@@ -585,6 +587,49 @@ describe('compare-run --pair gbrain on the install ladder', () => {
     expect(out.scopes[0].endpoints.use.comparisons[0].tested).toBe(false);
     expect(run('compare-run.ts', ['--results', two, '--pair', 'gbrain', '--design', 'other']).status).toBe(2);
   });
+
+  test('an installer trial whose installer did not take (no install record, or a hook not loaded or healthy) leaves the pairs with its reason, as preregistered', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-ladder-'));
+    writeLadderFixture(dir);
+    const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as { cells: Array<Record<string, unknown> & { id: string }>; trials: Array<{ id: string; cell: string }> };
+    const told = manifest.cells.find((c) => c.id === 'oc-gbrain-told')!;
+    // The installer cell is the told cell's twin with gbrain's installer in place of the preamble and the hook loaded in every trial.
+    const installer = { ...told, id: 'oc-gbrain-installer', preamble: undefined, gbrain: { surface: 'starter', install: 'gbrain-installer' } };
+    const rows = readFileSync(join(dir, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord).filter((t) => t.cell === 'oc-gbrain-told');
+    const twin: TrialRecord[] = rows.map((t) => ({ ...t, trial_id: t.trial_id.replace('/oc-gbrain-told/', '/oc-gbrain-installer/'), cell: 'oc-gbrain-installer',
+      gbrain: { ...t.gbrain!, install: 'gbrain-installer' as const, install_bundle: { harness: 'oc', split: 'dev' as const, install: 'gbrain-installer' as const, files: 4, view_digest: 'sha256:' + '1'.repeat(64), turn_hook: { files: 3, status: 'loaded' } } } }));
+    // Hermes's status word is healthy, and a block-only bundle (no turn_hook at all) is applied when its install record is there: both stay scored.
+    const healthy = twin.find((t) => t.task === 'sc-01-north-two-asks' && t.trial_id.endsWith('/r1'))!;
+    healthy.gbrain = { ...healthy.gbrain!, install_bundle: { ...healthy.gbrain!.install_bundle!, turn_hook: { files: 2, status: 'healthy' } } };
+    const blockOnly = twin.find((t) => t.task === 'sc-01-north-two-asks' && t.trial_id.endsWith('/r2'))!;
+    const { turn_hook: _noHook, ...bundleOnly } = blockOnly.gbrain!.install_bundle!;
+    blockOnly.gbrain = { ...blockOnly.gbrain!, install_bundle: bundleOnly };
+    // One trial the adapter refused before ready (HE-ADAPTER-006, harness_error, the hook status the runner records then) and one with no install record at all.
+    const refused = twin.find((t) => t.task === 'si-01-quarrendon-seats' && t.trial_id.endsWith('/r2'))!;
+    Object.assign(refused, { termination: 'harness_error', grade: 'n/a', gbrain: { ...refused.gbrain!, install_bundle: { ...refused.gbrain!.install_bundle!, turn_hook: { files: 3, status: 'no ready file' } }, events: { total: 0, discovery: 0, calls: 0, in_turn_calls: 0, writes: 0 } } });
+    const bare = twin.find((t) => t.task === 'ho-01-sev1-recap' && t.trial_id.endsWith('/r1'))!;
+    const { install_bundle: _dropped, ...noBundle } = bare.gbrain!;
+    bare.gbrain = noBundle;
+    writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ ...manifest, cells: [told, installer], trials: [...manifest.trials.filter((t) => t.cell === 'oc-gbrain-told'), ...manifest.trials.filter((t) => t.cell === 'oc-gbrain-told').map((t) => ({ ...t, id: t.id.replace('/oc-gbrain-told/', '/oc-gbrain-installer/'), cell: 'oc-gbrain-installer' }))] }));
+    writeFileSync(join(dir, 'trials.jsonl'), [...rows, ...twin].map((t) => JSON.stringify(t)).join('\n') + '\n');
+    const r = run('compare-run.ts', ['--results', dir, '--pair', 'gbrain', '--draws', '1000']);
+    expect(r.status).toBe(0);
+    const out = JSON.parse(readFileSync(join(dir, 'comparisons.gbrain.json'), 'utf8'));
+    expect(out.exclusions).toEqual(['model_error', 'infra_error', 'exam_fault', 'installer_not_applied']);
+    expect(out.pairs).toEqual([{ harness: 'oc', config: null, model: HAIKU, rung: 'installer', base_rung: 'told', cell: 'oc-gbrain-installer', base_cell: 'oc-gbrain-told' }]);
+    for (const endpoint of ['pass', 'use', 'cross_scope']) {
+      const c = out.scopes[0].endpoints[endpoint].comparisons[0];
+      expect(c.excluded).toEqual([{ id: 'ho-01-sev1-recap/1', reason: 'rung installer not applied (no install record)' }, { id: 'si-01-quarrendon-seats/2', reason: 'rung installer hook no ready file' }]);
+      expect(c).toMatchObject({ n_pairs: 18, scored: { base: 20, rung: 18 } });
+    }
+    // The twin cells agree on every scored pair, so the installer minus told differences are zero with the two pairs gone.
+    expect(out.scopes[0].endpoints.use.comparisons[0]).toMatchObject({ positive: { base: 19, rung: 17 }, delta: 0 });
+    expect(out.cost.find((c: { rung: string }) => c.rung === 'installer').usd_per_trial).toMatchObject({ n_pairs: 23, excluded: 2 });
+    // The arm design has no such exclusion, so it refuses a run with installer cells instead of scoring them.
+    const arm = run('compare-run.ts', ['--results', dir, '--pair', 'gbrain', '--design', 'arm', '--draws', '1000']);
+    expect(arm.status).toBe(2);
+    expect(arm.stderr).toContain('--pair gbrain (arm): installer cells oc-gbrain-installer need the ladder design');
+  });
 });
 
 describe('summarize-run on the install ladder', () => {
@@ -613,6 +658,27 @@ describe('summarize-run on the install ladder', () => {
     expect(r2.status).toBe(0);
     expect(r2.stdout).not.toContain('Install ladder (internal-task)');
     expect(JSON.parse(readFileSync(join(plain, 'summary.json'), 'utf8')).ladder['a-dev']).toMatchObject({ harness_input_tokens: { median_per_trial: 1000, total: 25000 }, semantic_exclusions: 0 });
+  });
+
+  // gbrain#7489 at 10949a15: the installer rung's trials record the per-turn hook (install_bundle.turn_hook, files and the harness's
+  // own status from ready); the ladder counts every status it saw per cell, and a cell whose bundle has no hook says null.
+  test('install_bundle.turn_hook is counted per cell by status, every status kept; a cell without a hook reports turn_hook null', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-ladder-'));
+    writeLadderFixture(dir);
+    const rows = readFileSync(join(dir, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord);
+    for (const t of rows) {
+      if (t.cell !== 'oc-gbrain-docs') continue;
+      // 20 trials loaded, the fifth repetition of each task with a ready file that lacks the field (what trial.ts records then).
+      t.gbrain!.install_bundle!.turn_hook = { files: 3, status: t.trial_id.endsWith('/r5') ? 'absent from ready' : 'loaded' };
+    }
+    writeFileSync(join(dir, 'trials.jsonl'), rows.map((t) => JSON.stringify(t)).join('\n') + '\n');
+    const r = run('summarize-run.ts', ['--results', dir]);
+    expect(r.status).toBe(0);
+    const summary = JSON.parse(readFileSync(join(dir, 'summary.json'), 'utf8'));
+    expect(summary.ladder['oc-gbrain-docs'].install_bundle).toMatchObject({ trials: 25, files: [127], turn_hook: { trials: 25, status: { loaded: 20, 'absent from ready': 5 } } });
+    expect(Object.keys(summary.ladder['oc-gbrain-docs'].install_bundle.turn_hook.status).sort()).toEqual(['absent from ready', 'loaded']);
+    expect(summary.ladder['hm-gbrain-docs'].install_bundle).toMatchObject({ trials: 25, turn_hook: null });
+    expect(summary.ladder['oc-gbrain-told'].install_bundle).toBeNull();
   });
 });
 

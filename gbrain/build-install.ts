@@ -19,6 +19,14 @@
 //   openclaw/installer/workspace/AGENTS.md   gbrain setup openclaw --workspace <out>/openclaw/installer/workspace --instructions-only
 //                                    (internal-task, gbrain#7489: the brain-first instruction block gbrain's installer writes into the
 //                                    harness's own instruction file; the adapter copies workspace/ into /workspace)
+//   openclaw/installer/state/gbrain/gbrain-turn-rule/{package.json,openclaw.plugin.json,index.js}
+//                                    (gbrain#7489 at 10949a15: the hook-only OpenClaw plugin whose before_prompt_build handler returns
+//                                    the brain-first rule as prependContext; setup writes it under OPENCLAW_STATE_DIR, which build-install
+//                                    points at <out>/openclaw/installer/state, and with no openclaw on PATH prints the three install
+//                                    commands, kept in the record as turn_hook.commands for the adapter to run)
+//   hermes/installer/home/config.yaml and hermes/installer/home/shell-hooks-allowlist.json
+//                                    (gbrain#7489 at 10949a15: a marked hooks.pre_llm_call entry whose command echoes the rule as
+//                                    {"context": ...}, and Hermes's own allowlist approving that exact command)
 //   hermes/installer/home/SOUL.md    HERMES_HOME=<out>/hermes/installer/home gbrain setup hermes --instructions-only, the home
 //                                    seeded first with Hermes's own SOUL.md at the pinned Hermes commit (--hermes-soul): gbrain
 //                                    appends the block to an existing SOUL.md and writes nothing into an empty HERMES_HOME, so the
@@ -53,10 +61,16 @@ export interface InstallFile {
 export interface InstallerRecord {
   /** The command as run, paths under <out> written as <out>/... */
   argv: string[];
-  /** Bundle paths the command wrote or changed (openclaw/installer/workspace/AGENTS.md, hermes/installer/home/SOUL.md). */
+  /** Bundle paths the command wrote or changed (openclaw/installer/workspace/AGENTS.md, hermes/installer/home/SOUL.md, and the per-turn
+   *  hook files at gbrain#7489's hook head: openclaw/installer/state/gbrain/gbrain-turn-rule/*, hermes/installer/home/config.yaml and
+   *  hermes/installer/home/shell-hooks-allowlist.json). */
   files: string[];
   /** The marker's version, "v1" from "<!-- gbrain brain-first v1: ... -->". */
   block_version: string | null;
+  /** The per-turn hook setup wrote (gbrain#7489 at 10949a15), from its --json turn_hook: the files among `files` that are the hook
+   *  (not instruction files), setup's action and detail, and for OpenClaw the openclaw commands setup printed because no openclaw was
+   *  on PATH at build, which the adapter runs in the trial. Absent when setup wrote no hook (the block-only head 99294fe4). */
+  turn_hook?: { files: string[]; action: string; detail: string; commands?: string[]; rule?: string | null };
   /** Hermes only: the SOUL.md the home was seeded with before the command, Hermes's own default identity at the pinned commit. */
   seed?: { source: string; hermes_commit: string | null; sha256: string; bytes: number };
 }
@@ -149,6 +163,14 @@ export interface BuildInstallOptions {
   log?: (line: string) => void;
 }
 
+/** The rule text inside the Hermes hook command `/bin/echo '{"context": <rule>}'` (gbrain writes a quote in the rule as \u0027); null
+ *  when the command has another shape. */
+export function hermesHookRule(command: string): string | null {
+  const m = /^\/bin\/echo '(.*)'$/s.exec(command);
+  if (!m) return null;
+  try { const v = JSON.parse(m[1]!.replace(/\\u0027/g, "'")) as { context?: unknown }; return typeof v.context === 'string' ? v.context : null; } catch { return null; }
+}
+
 /** The installer section: `gbrain setup <harness> --instructions-only` per harness into its own directory under <out>, the
  *  files it wrote or changed recorded with the block version; a commit without the setup target (every gbrain before #7489)
  *  records {unavailable} with gbrain's own words, and a cell on the installer rung then fails preflight (HE-GBRAIN-006). */
@@ -161,7 +183,9 @@ function buildInstaller(o: BuildInstallOptions, out: string, harness: InstallHar
   let seed: InstallerRecord['seed'];
   if (harness === 'openclaw') {
     mkdirSync(join(root, 'workspace'), { recursive: true });
-    args = ['setup', 'openclaw', '--workspace', join(root, 'workspace'), '--instructions-only'];
+    mkdirSync(join(root, 'state'), { recursive: true });
+    env.OPENCLAW_STATE_DIR = join(root, 'state');
+    args = ['setup', 'openclaw', '--workspace', join(root, 'workspace'), '--instructions-only', '--json'];
   } else {
     if (!o.hermesSoul || !existsSync(o.hermesSoul)) return { record: { unavailable: 'no Hermes SOUL.md seed (--hermes-soul); gbrain setup hermes writes nothing into an empty HERMES_HOME' } };
     const home = join(root, 'home');
@@ -171,7 +195,7 @@ function buildInstaller(o: BuildInstallOptions, out: string, harness: InstallHar
     writeFileSync(join(home, 'SOUL.md'), soul);
     seed = { source: o.hermesSoul, hermes_commit: o.hermesCommit ?? null, sha256: sha256(soul), bytes: soul.length };
     env.HERMES_HOME = home;
-    args = ['setup', 'hermes', '--instructions-only'];
+    args = ['setup', 'hermes', '--instructions-only', '--json'];
   }
   const before = new Map(listFiles(root).map((f) => [f, sha256(readFileSync(join(root, f)))]));
   const r = spawnSync(o.gbrain[0]!, [...o.gbrain.slice(1), ...args], { env, cwd: env.HOME, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024 });
@@ -185,14 +209,32 @@ function buildInstaller(o: BuildInstallOptions, out: string, harness: InstallHar
     rmSync(root, { recursive: true, force: true });
     return { record: { unavailable: `gbrain setup ${harness} --instructions-only exited 0 and wrote nothing: ${said.find((l) => /skip|nothing|unchanged/i.test(l))?.trim().slice(0, 300) ?? said.at(-1)?.trim().slice(0, 300) ?? 'no output'}` } };
   }
-  const bodies = changed.map((f) => readFileSync(join(root, f), 'utf8'));
-  const without = changed.filter((_, i) => !bodies[i]!.includes(INSTALLER_BLOCK_BEGIN));
+  // The per-turn hook (gbrain#7489 at 10949a15): setup's --json names it under turn_hook; its files are the OpenClaw plugin under
+  // state/ and the Hermes config.yaml and allowlist under home/. Instruction files (AGENTS.md, SOUL.md) must carry the block; hook
+  // files carry the rule text instead and are checked against setup's own account of them.
+  const doc = (() => { const line = r.stdout.split('\n').find((l) => l.trim().startsWith('{')); try { return line ? JSON.parse(r.stdout.slice(r.stdout.indexOf(line))) as { turn_hook?: { action?: string; path?: string; detail?: string; commands?: string[]; snippet?: string } } : {}; } catch { return {}; } })();
+  const isHook = (f: string) => harness === 'openclaw' ? f.startsWith('state/') : f === 'home/config.yaml' || f === 'home/shell-hooks-allowlist.json';
+  const hookFiles = changed.filter(isHook);
+  const instructionFiles = changed.filter((f) => !isHook(f));
+  if (!instructionFiles.length) throw new Error(`gbrain setup ${harness} --instructions-only wrote only hook files (${changed.join(', ')}) and no instruction file`);
+  const bodies = instructionFiles.map((f) => readFileSync(join(root, f), 'utf8'));
+  const without = instructionFiles.filter((_, i) => !bodies[i]!.includes(INSTALLER_BLOCK_BEGIN));
   if (without.length) throw new Error(`gbrain setup ${harness} --instructions-only changed ${without.join(', ')} without writing the brain-first block (${INSTALLER_BLOCK_BEGIN})`);
+  if (hookFiles.length && !doc.turn_hook) throw new Error(`gbrain setup ${harness} --instructions-only wrote hook files (${hookFiles.join(', ')}) but its --json has no turn_hook`);
+  if (doc.turn_hook && ['write', 'print'].includes(doc.turn_hook.action ?? '') && !hookFiles.length) throw new Error(`gbrain setup ${harness} --instructions-only reports turn_hook ${doc.turn_hook.action} but wrote no hook file under ${root}`);
+  if (doc.turn_hook && harness === 'openclaw' && !(doc.turn_hook.commands?.length)) throw new Error(`gbrain setup openclaw --instructions-only wrote the turn plugin but printed no install commands (turn_hook.commands); the adapter needs them`);
+  const expectedHook = harness === 'openclaw' ? ['state/gbrain/gbrain-turn-rule/index.js', 'state/gbrain/gbrain-turn-rule/openclaw.plugin.json', 'state/gbrain/gbrain-turn-rule/package.json'] : ['home/config.yaml', 'home/shell-hooks-allowlist.json'];
+  if (hookFiles.length && [...hookFiles].sort().join(',') !== expectedHook.join(',')) throw new Error(`gbrain setup ${harness} --instructions-only wrote hook files ${hookFiles.sort().join(', ')}; this bundle expects ${expectedHook.join(', ')}`);
+  const rule = !hookFiles.length ? undefined : harness === 'openclaw'
+    ? JSON.parse(/const RULE = (".*");/.exec(readFileSync(join(root, 'state/gbrain/gbrain-turn-rule/index.js'), 'utf8'))?.[1] ?? '""') as string
+    : hermesHookRule(JSON.parse(/command: (".*")/.exec(readFileSync(join(root, 'home/config.yaml'), 'utf8'))?.[1] ?? '""') as string);
+  const unOut = (s: string) => s.split(`${out}/`).join('<out>/');
   const version = bodies.map((b) => /<!-- gbrain brain-first (v[0-9]+):/.exec(b)?.[1]).find((v): v is string => !!v) ?? null;
   const files = changed.map((f) => `${harness}/installer/${f}`);
   const relArgs = args.map((a) => (a.startsWith(out) ? `<out>${a.slice(out.length)}` : a));
-  log(`${harness}: gbrain setup ${harness} --instructions-only wrote ${files.join(', ')} (block ${version ?? 'version unknown'})${seed ? `, home seeded with Hermes SOUL.md ${seed.sha256.slice(0, 12)} (${seed.bytes} bytes)` : ''}`);
-  return { record: { argv: ['gbrain', ...relArgs], files, block_version: version, ...(seed ? { seed } : {}) }, command: { harness, install: 'gbrain-installer', argv: ['gbrain', ...relArgs] } };
+  const turn_hook = doc.turn_hook && hookFiles.length ? { files: hookFiles.map((f) => `${harness}/installer/${f}`), action: doc.turn_hook.action ?? 'unknown', detail: unOut(doc.turn_hook.detail ?? ''), ...(doc.turn_hook.commands ? { commands: doc.turn_hook.commands.map(unOut) } : {}), ...(rule ? { rule } : {}) } : undefined;
+  log(`${harness}: gbrain setup ${harness} --instructions-only wrote ${files.join(', ')} (block ${version ?? 'version unknown'}${turn_hook ? `, per-turn hook ${turn_hook.action}: ${turn_hook.detail}` : ', no per-turn hook'})${seed ? `, home seeded with Hermes SOUL.md ${seed.sha256.slice(0, 12)} (${seed.bytes} bytes)` : ''}`);
+  return { record: { argv: ['gbrain', ...relArgs], files, block_version: version, ...(turn_hook ? { turn_hook } : {}), ...(seed ? { seed } : {}) }, command: { harness, install: 'gbrain-installer', argv: ['gbrain', ...relArgs] } };
 }
 
 export function buildInstall(o: BuildInstallOptions): InstallManifest {

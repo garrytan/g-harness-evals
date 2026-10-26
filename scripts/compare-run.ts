@@ -49,7 +49,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { GbrainCellConfig, TrialRecord } from '../runner/contracts.ts';
+import { TURN_HOOK_APPLIED, type GbrainCellConfig, type TrialRecord } from '../runner/contracts.ts';
 import { clusteredPairedDelta, exactMcNemar, holmAdjusted, pairObservations, type Observation } from '../runner/stats/paired.ts';
 import { loadTask } from '../runner/grade/task.ts';
 import { resolveGbrain, taskDirFor } from '../runner/run.ts';
@@ -116,6 +116,8 @@ if (pairMode === 'gbrain') {
   const ladderShaped = present.some((c) => c.gbrain?.surface && (resolveGbrain(c.gbrain).surface === 'verbs' || resolveGbrain(c.gbrain).install === 'gbrain-docs' || resolveGbrain(c.gbrain).install === 'gbrain-installer' || resolveGbrain(c.gbrain).embeddings !== 'off'));
   const design = designArg ?? (ladderShaped ? 'ladder' : 'arm');
 
+  const installerPresent = present.filter((c) => c.gbrain && resolveGbrain(c.gbrain).install === 'gbrain-installer').map((c) => c.id);
+  if (design === 'arm' && installerPresent.length) { console.error(`--pair gbrain (arm): installer cells ${installerPresent.join(', ')} need the ladder design, whose pairing leaves a trial whose installer did not take out of the pairs; drop --design arm`); process.exit(2); }
   if (design === 'ladder') {
     const shards = readShards(results);
     const ladder = ladderPairs(present);
@@ -124,9 +126,22 @@ if (pairMode === 'gbrain') {
       process.exit(2);
     }
     const viewOf = (t: TrialRecord) => { const r = regraded.get(t.trial_id); return { grade: r?.grade ?? t.grade, consent_violation: r?.consent_violation ?? t.consent_violation, predicates: r?.predicates ?? t.predicates }; };
-    const scored = (t: TrialRecord) => !EXCLUDED.has(t.termination);
+    /** gbrain-installer-hook-2026-10's preregistration: a trial of an installer cell whose installer did not take (no install
+     *  record, or a per-turn hook the harness did not report loaded or healthy; the adapter refuses that with HE-ADAPTER-006 before
+     *  ready, so the trial is also harness_error) leaves the paired endpoints with its reason, as a model or infra error does. */
+    const installerCells = new Set(present.filter((c) => c.gbrain && resolveGbrain(c.gbrain).install === 'gbrain-installer').map((c) => c.id));
+    const notApplied = (t: TrialRecord): string | null => {
+      if (!installerCells.has(t.cell)) return null;
+      const b = t.gbrain?.install_bundle;
+      if (!b) return 'installer not applied (no install record)';
+      if (b.turn_hook && !TURN_HOOK_APPLIED.includes(b.turn_hook.status)) return `installer hook ${b.turn_hook.status}`;
+      return null;
+    };
+    const scored = (t: TrialRecord) => !EXCLUDED.has(t.termination) && !notApplied(t);
+    const why = (t: TrialRecord) => notApplied(t) ?? t.termination;
     /** Trial-by-trial pairing of two cells (same task, repetitions by order) over any per-trial value; a pair with a
-     *  model, infra or exam error, a missing trial or a missing value on either side is excluded with its reason. */
+     *  model, infra or exam error, an installer that did not take, a missing trial or a missing value on either side is excluded
+     *  with its reason. */
     const paired = (base: string, rung: string, scopeRows: TrialRecord[], value: (t: TrialRecord) => number | null) => {
       const a = byTask(base, scopeRows), b = byTask(rung, scopeRows);
       const tasks = [...new Set([...a.keys(), ...b.keys()])].sort();
@@ -139,7 +154,7 @@ if (pairMode === 'gbrain') {
           const x = ta[i], y = tb[i];
           const id = `${task}/${i + 1}`;
           const vx = x && scored(x) ? value(x) : null, vy = y && scored(y) ? value(y) : null;
-          const reason = !x ? 'no trial in the base cell' : !y ? 'no trial in the rung cell' : !scored(x) ? `base ${x.termination}` : !scored(y) ? `rung ${y.termination}` : vx === null ? 'no value in the base cell' : vy === null ? 'no value in the rung cell' : null;
+          const reason = !x ? 'no trial in the base cell' : !y ? 'no trial in the rung cell' : !scored(x) ? `base ${why(x)}` : !scored(y) ? `rung ${why(y)}` : vx === null ? 'no value in the base cell' : vy === null ? 'no value in the rung cell' : null;
           if (reason) excluded.push({ id, reason });
           obsA.push({ id, cluster: task, value: reason ? null : vx, eligible: !reason, reason: reason ?? undefined });
           obsB.push({ id, cluster: task, value: reason ? null : vy, eligible: !reason, reason: reason ?? undefined });
@@ -227,7 +242,7 @@ if (pairMode === 'gbrain') {
       '| Harness | Model | Rung | Cell | none cell | Pass | gbrain use | Cross-scope via gbrain |', '|---|---|---|---|---|---|---|---|',
       ...noneTable.map((r) => `| ${r.harness}${r.config ? ' ' + r.config : ''} | ${r.model} | ${r.rung} | \`${r.cell}\` | ${r.none_cell ? `\`${r.none_cell}\`` : 'none'} | ${ep(r.pass as never)} | ${ep(r.use as never)} | ${ep(r.cross_scope as never)} |`));
     console.log(lines.join('\n'));
-    writeFileSync(join(results, `comparisons.gbrain${suffix}`), JSON.stringify({ pair: 'gbrain', design: 'ladder', grading: useRegraded ? 'regraded' : 'as recorded', seed, draws, shards, exclusions: [...EXCLUDED], not_paired: ladder.unpaired, rungs: ladder.rungs, pairs: ladder.pairs, scopes: out, cost: costRows, none_table: noneTable }, null, 1) + '\n');
+    writeFileSync(join(results, `comparisons.gbrain${suffix}`), JSON.stringify({ pair: 'gbrain', design: 'ladder', grading: useRegraded ? 'regraded' : 'as recorded', seed, draws, shards, exclusions: [...EXCLUDED, ...(installerCells.size ? ['installer_not_applied'] : [])], not_paired: ladder.unpaired, rungs: ladder.rungs, pairs: ladder.pairs, scopes: out, cost: costRows, none_table: noneTable }, null, 1) + '\n');
     process.exit(0);
   }
 

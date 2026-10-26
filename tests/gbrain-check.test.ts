@@ -162,11 +162,12 @@ describe('the scratch preregistration and the check directory', () => {
   });
 
   test('parseArgs: defaults, the paid mode, and refusals', () => {
-    expect(parseArgs(['--gbrain', 'master'])).toMatchObject({ gbrain: 'master', harnesses: ['fake'], rungs: ['told'], reps: 2, model: 'anthropic:claude-haiku-5-5', spendCap: 2, baseline: DEFAULT_BASELINE, dryRun: false, strictPins: false });
+    expect(parseArgs(['--gbrain', 'master'])).toMatchObject({ gbrain: 'master', harnesses: ['fake'], rungs: ['told'], reps: 2, model: 'anthropic:claude-haiku-5-5', spendCap: 2, baseline: DEFAULT_BASELINE, dryRun: false, strictPins: false, expectHook: false });
+    expect(parseArgs(['--gbrain', 'x', '--expect-hook'])).toMatchObject({ expectHook: true });
     expect(parseArgs(['--gbrain', 'x', '--harness', 'openclaw,hermes', '--rungs', 'told,docs', '--reps', '1', '--spend-cap', '0.5', '--write-baseline', '--force', '--dry-run'])).toMatchObject({ harnesses: ['openclaw', 'hermes'], rungs: ['told', 'docs'], reps: 1, spendCap: 0.5, writeBaseline: true, force: true, dryRun: true });
     expect(() => parseArgs([])).toThrow(/HE-GBRAIN-009 missing --gbrain/);
     expect(() => parseArgs(['--gbrain', 'x', '--harness', 'qm'])).toThrow(/HE-RUN-002 --harness names "qm"/);
-    expect(() => parseArgs(['--gbrain', 'x', '--parallel', '3'])).toThrow(/HE-RUN-002 unknown argument --parallel/);
+    expect(() => parseArgs(['--gbrain', 'x', '--parallel', '3'])).toThrow(/HE-RUN-002 unknown argument --parallel.*\[--expect-hook\]/);
     expect(() => parseArgs(['--gbrain', 'x', '--reps', '0'])).toThrow(/HE-RUN-002 --reps/);
   });
 });
@@ -231,6 +232,33 @@ describe('keyless assertions', () => {
     expect(v.failures).toEqual([]);
     expect(v.passed).toContain(`ok installer=openclaw workspace/AGENTS.md (block v1), view digest ${e.installer[0]!.manifest!.view_digest.slice(0, 12)} matches the bundle manifest`);
     expect(v.passed).toContain(`ok installer=hermes home/SOUL.md (block v1), view digest ${e.installer[1]!.manifest!.view_digest.slice(0, 12)} matches the bundle manifest; home seeded with Hermes SOUL.md 333333333333 (667 bytes)`);
+    expect(v.passed).toContain('ok installer=openclaw no per-turn hook in this gbrain commit (the block-only installer)');
+    // For a pin that is meant to carry the hook, --expect-hook makes the block-only bundle a failure per harness instead of a pass line.
+    expect(keylessAssertions(e, { expectHook: true }).failures).toEqual([
+      'HE-GBRAIN-008 installer=openclaw per-turn hook (--expect-hook): expected installer.turn_hook in the bundle manifest, actual none (the block-only installer) (/scratch/openclaw-installer/dev/manifest.json)',
+      'HE-GBRAIN-008 installer=hermes per-turn hook (--expect-hook): expected installer.turn_hook in the bundle manifest, actual none (the block-only installer) (/scratch/hermes-installer/dev/manifest.json)',
+    ]);
+    // gbrain#7489 at 10949a15: a bundle with the per-turn hook passes when every hook file holds the rule and OpenClaw's three commands are printed.
+    const hooked = healthyEvidence();
+    hooked.bundle!.files.push({ path: 'openclaw/installer/workspace/AGENTS.md', sha256: '1'.repeat(64), bytes: 1002 }, { path: 'hermes/installer/home/SOUL.md', sha256: '2'.repeat(64), bytes: 1677 });
+    hooked.installer = [
+      { ...view('openclaw', 'workspace/AGENTS.md', '1'.repeat(64), false), hook: { files: ['state/gbrain/gbrain-turn-rule/index.js', 'state/gbrain/gbrain-turn-rule/openclaw.plugin.json', 'state/gbrain/gbrain-turn-rule/package.json'], action: 'print', rule_files: ['state/gbrain/gbrain-turn-rule/index.js'], commands: 3 } },
+      { ...view('hermes', 'home/SOUL.md', '2'.repeat(64), true), hook: { files: ['home/config.yaml', 'home/shell-hooks-allowlist.json'], action: 'write', rule_files: ['home/config.yaml', 'home/shell-hooks-allowlist.json'], commands: 0 } },
+    ];
+    const hv = keylessAssertions(hooked);
+    expect(hv.failures).toEqual([]);
+    expect(hv.passed).toContain('ok installer=openclaw per-turn hook print: 3 files, the rule in state/gbrain/gbrain-turn-rule/index.js, three install commands printed');
+    expect(hv.passed).toContain('ok installer=hermes per-turn hook write: 2 files, the rule in home/config.yaml, home/shell-hooks-allowlist.json');
+    hooked.installer[0]!.hook = { ...hooked.installer[0]!.hook!, commands: 1, rule_files: [] };
+    expect(keylessAssertions(hooked).failures).toEqual([
+      'HE-GBRAIN-008 installer=openclaw per-turn hook files: expected a hook file holding the rule text, actual none of state/gbrain/gbrain-turn-rule/index.js, state/gbrain/gbrain-turn-rule/openclaw.plugin.json, state/gbrain/gbrain-turn-rule/package.json (/scratch/openclaw-installer/dev)',
+      'HE-GBRAIN-008 installer=openclaw per-turn hook install commands: expected the three openclaw commands, actual 1 (/scratch/openclaw-installer/dev/manifest.json)',
+    ]);
+    // Hermes's hook is written into config.yaml by setup itself, so no install command is expected of it: a hook without the rule is one failure, not two.
+    const hermesOnly = healthyEvidence();
+    hermesOnly.bundle!.files.push({ path: 'hermes/installer/home/SOUL.md', sha256: '2'.repeat(64), bytes: 1677 });
+    hermesOnly.installer = [{ ...view('hermes', 'home/SOUL.md', '2'.repeat(64), true), hook: { files: ['home/config.yaml', 'home/shell-hooks-allowlist.json'], action: 'write', rule_files: [], commands: 0 } }];
+    expect(keylessAssertions(hermesOnly).failures).toEqual(['HE-GBRAIN-008 installer=hermes per-turn hook files: expected a hook file holding the rule text, actual none of home/config.yaml, home/shell-hooks-allowlist.json (/scratch/hermes-installer/dev)']);
     const absent = healthyEvidence();
     absent.installer = [{ harness: 'openclaw', available: false, reason: 'gbrain setup openclaw --instructions-only exited 1: unknown harness openclaw', dir: '/scratch/openclaw-installer/dev', manifest: null, error: null, block_present: null }];
     const a = keylessAssertions(absent);
@@ -241,7 +269,7 @@ describe('keyless assertions', () => {
     broken.installer = [{ ...view('hermes', 'home/SOUL.md', '4'.repeat(64), false), block_present: false }, { harness: 'openclaw', available: true, reason: null, dir: '/scratch/openclaw-installer/dev', manifest: null, error: 'HE-GBRAIN-006 export-install.sh openclaw dev gbrain-installer failed', block_present: null }];
     expect(keylessAssertions(broken).failures).toEqual([
       expect.stringContaining('HE-GBRAIN-008 installer=hermes file digests against the bundle manifest: expected every view file listed with the same sha256, actual 1 differ (home/SOUL.md)'),
-      'HE-GBRAIN-008 installer=hermes brain-first block: expected every installer file holds <!-- gbrain:brain-first:begin -->, actual a file without it (/scratch/hermes-installer/dev)',
+      'HE-GBRAIN-008 installer=hermes brain-first block: expected every installer instruction file holds <!-- gbrain:brain-first:begin -->, actual a file without it (/scratch/hermes-installer/dev)',
       'HE-GBRAIN-008 installer=hermes Hermes SOUL.md seed: expected recorded (sha256, bytes, hermes commit), actual absent (/scratch/hermes-installer/dev/manifest.json)',
       'HE-GBRAIN-008 installer=openclaw export and verify: expected every file present with its sha256, actual HE-GBRAIN-006 export-install.sh openclaw dev gbrain-installer failed (/scratch/openclaw-installer/dev/manifest.json)',
     ]);

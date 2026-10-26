@@ -47,7 +47,10 @@ mkdir -p "$HERMES_HOME"
 export ANTHROPIC_API_KEY="$HE_MODEL_API_KEY"
 export ANTHROPIC_BASE_URL="$HE_MODEL_BASE_URL"
 
-log "hermes $(hermes --version 2>/dev/null | head -1) model=anthropic/$HE_MODEL_NAME budget=${HE_TIME_BUDGET_S}s entry=$entry"
+# Read all of --version (several lines): a `| head -1` could close the pipe before Hermes had seeded SOUL.md into HERMES_HOME, the
+# "ran Hermes once" the installer rung needs (SIGPIPE; the seed was then missing from a trial now and then).
+hermes_version=$(hermes --version 2>/dev/null || true)
+log "hermes ${hermes_version%%$'\n'*} model=anthropic/$HE_MODEL_NAME budget=${HE_TIME_BUDGET_S}s entry=$entry"
 
 # A model error is a proxy refusal, an Anthropic SDK error class or an HTTP status on stderr or in
 # the result record; everything else that fails is Hermes's.
@@ -63,10 +66,15 @@ cd "$HE_WORKSPACE_DIR"
 # the file Hermes's prompt builder reads from the cwd). gbrain-installer (internal-task): home/SOUL.md to $HERMES_HOME/SOUL.md, Hermes's
 # own SOUL.md at the pinned Hermes commit with the brain-first block `gbrain setup hermes --instructions-only` appended. Hermes seeds that
 # default SOUL.md into HERMES_HOME when `hermes --version` runs above, the "ran Hermes once" the installer needs, so the copy replaces a
-# SOUL.md whose sha256 equals the seed the bundle records and refuses any other content. The manifest's install kind
-# must equal HE_GBRAIN_INSTALL. $HE_LOG_DIR/gbrain-install.json records status, install kind, file count, view digest and
-# destinations. Any failure (missing directory or manifest, digest mismatch, a view for another harness, split or install kind, a
-# destination that already exists) is HE-ADAPTER-006 and exit 2 before ready. Unset, nothing here runs.
+# SOUL.md whose sha256 equals the seed the bundle records and refuses any other content. At gbrain#7489's per-turn-hook head the
+# bundle also carries home/config.yaml (the marked hooks.pre_llm_call block whose command echoes the rule as {"context": ...}) and
+# home/shell-hooks-allowlist.json (Hermes's own approval of that exact command): the marked block is appended to the config.yaml
+# this adapter wrote (refused when it already has a hooks: section, which is what gbrain itself does) and the allowlist is copied
+# (refused when one exists), then `hermes hooks doctor` is kept as $HE_LOG_DIR/gbrain-hook.hermes.log and must report the hook
+# healthy, else HE-ADAPTER-006 and exit 2. HERMES_ACCEPT_HOOKS is never set: the approval is the installer's own file. The
+# manifest's install kind must equal HE_GBRAIN_INSTALL. $HE_LOG_DIR/gbrain-install.json records status, install kind, file count,
+# view digest and destinations. Any failure (missing directory or manifest, digest mismatch, a view for another harness, split or
+# install kind, a destination that already exists) is HE-ADAPTER-006 and exit 2 before ready. Unset, nothing here runs.
 gbrain_install_json=''
 if [ "${HE_GBRAIN_INSTALL:-}" = gbrain-docs ] || [ "${HE_GBRAIN_INSTALL:-}" = gbrain-installer ]; then
   set +e
@@ -130,6 +138,13 @@ for f in files:
         seed = ((m.get("installer") or {}).get("seed") or {}).get("sha256")
         if os.path.isfile(dest) and seed and sha(dest) == seed:
             replace = True
+    elif path == "home/config.yaml" and install == "gbrain-installer":
+        # gbrain#7489 at 10949a15: the bundle's config.yaml is what gbrain wrote into an empty home, the marked hooks block alone;
+        # it is merged into the config.yaml this adapter wrote, the way gbrain would append it to an existing file without hooks.
+        dest = top = os.path.join(os.environ["HERMES_HOME"], "config.yaml")
+        replace = "merge"
+    elif path == "home/shell-hooks-allowlist.json" and install == "gbrain-installer":
+        dest = top = os.path.join(os.environ["HERMES_HOME"], "shell-hooks-allowlist.json")
     else:
         refuse("no documented destination for %r" % path)
     src = os.path.join(view, path)
@@ -142,6 +157,24 @@ for f in files:
     plan.append((src, dest, top, f["sha256"], replace))
 for src, dest, top, digest, replace in plan:
     os.makedirs(os.path.dirname(dest), exist_ok=True)
+    if replace == "merge":
+        text = open(src).read()
+        begin, end = text.find("# gbrain:turn-rule:begin"), text.find("# gbrain:turn-rule:end")
+        if begin < 0 or end < begin:
+            refuse("the bundle's home/config.yaml carries no gbrain:turn-rule block")
+        block = text[begin:end + len("# gbrain:turn-rule:end")] + "\n"
+        if text.replace(block, "").strip():
+            refuse("the bundle's home/config.yaml holds more than the gbrain:turn-rule block; nothing else of it is documented for this config")
+        current = open(dest).read() if os.path.isfile(dest) else ""
+        if "\nhooks:" in "\n" + current:
+            refuse("%s already has a hooks: section, which gbrain's installer does not edit" % dest)
+        with open(dest, "a") as f:
+            f.write(("" if current.endswith("\n") or not current else "\n") + "\n" + block)
+        rec["merged_hooks"] = {"path": dest, "block_sha256": hashlib.sha256(block.encode()).hexdigest(), "bytes": len(block)}
+        rec["copied"].append(dest)
+        if top not in rec["destinations"]:
+            rec["destinations"].append(top)
+        continue
     if replace:
         rec["replaced_seed"] = {"path": dest, "sha256": sha(dest)}
         os.unlink(dest)
@@ -151,17 +184,46 @@ for src, dest, top, digest, replace in plan:
     rec["copied"].append(dest)
     if top not in rec["destinations"]:
         rec["destinations"].append(top)
+hook = (m.get("installer") or {}).get("turn_hook") or None
+if rec.get("merged_hooks") and not hook:
+    refuse("the view carries a hooks block but the manifest's installer records no turn_hook; nothing documents what to do with it")
+if hook and not rec.get("merged_hooks"):
+    refuse("the manifest's turn_hook names %r but no hooks block was merged" % (hook.get("files"),))
 rec.update(status="ok", code=None, files=len(plan), destinations=sorted(rec["destinations"]))
 write()
-print("ok %d %s %s" % (len(plan), rec["view_digest"], ",".join(rec["destinations"])))
+print("ok %d %s %s %s" % (len(plan), rec["view_digest"], ",".join(rec["destinations"]), "hook" if hook else "nohook"))
 PY
 )
   install_code=$?
   set -e
   log "$HE_GBRAIN_INSTALL install: ${install_line:-HE-ADAPTER-006 the install bundle could not be applied: the install step failed before it could report; see stderr.log}"
   [ "$install_code" -eq 0 ] || exit 2
-  read -r _ install_files install_digest install_dests <<< "$install_line"
-  gbrain_install_json=$(printf ',"gbrain_install":{"status":"ok","install":"%s","files":%s,"view_digest":"%s","destinations":"%s"}' "$HE_GBRAIN_INSTALL" "$install_files" "$install_digest" "$install_dests")
+  read -r _ install_files install_digest install_dests install_hook <<< "$install_line"
+  turn_hook_json=''
+  if [ "$install_hook" = hook ]; then
+    # gbrain#7489 at 10949a15: Hermes's own account of the hook gbrain's installer wrote, before any turn.
+    set +e
+    hermes hooks doctor > "$HE_LOG_DIR/gbrain-hook.hermes.log" 2>&1
+    doctor_code=$?
+    set -e
+    doctor_line=$(python3 - "$HE_LOG_DIR/gbrain-hook.hermes.log" "$HE_LOG_DIR/gbrain-install.json" "$doctor_code" <<'PY'
+import json, os, sys
+log_path, rec_path, code = sys.argv[1], sys.argv[2], int(sys.argv[3])
+text = open(log_path).read()
+ok = code == 0 and "[pre_llm_call]" in text and "All shell hooks look healthy" in text and "/bin/echo" in text
+rec = json.load(open(rec_path))
+rec["turn_hook"] = {"status": "ok" if ok else "error", "doctor_exit": code, "detail": "hermes hooks doctor: pre_llm_call hook healthy" if ok else "hermes hooks doctor exit %d: %s" % (code, " | ".join(l.strip() for l in text.splitlines() if l.strip())[:400])}
+if not ok:
+    rec.update(status="error", code="HE-ADAPTER-006", error="the per-turn hook is not healthy: " + rec["turn_hook"]["detail"])
+json.dump(rec, open(rec_path + ".tmp", "w")); os.replace(rec_path + ".tmp", rec_path)
+print(("ok " if ok else "HE-ADAPTER-006 the per-turn hook is not healthy: ") + rec["turn_hook"]["detail"])
+sys.exit(0 if ok else 1)
+PY
+) || { log "gbrain-installer turn hook: $doctor_line"; exit 2; }
+    log "gbrain-installer turn hook: $doctor_line"
+    turn_hook_json=',"turn_hook":"healthy"'
+  fi
+  gbrain_install_json=$(printf ',"gbrain_install":{"status":"ok","install":"%s","files":%s,"view_digest":"%s","destinations":"%s"%s}' "$HE_GBRAIN_INSTALL" "$install_files" "$install_digest" "$install_dests" "$turn_hook_json")
 fi
 
 if [ "$entry" = "run" ]; then

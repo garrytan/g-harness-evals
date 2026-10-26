@@ -151,9 +151,19 @@ async function scanHistoryBlobs() {
 }
 
 // ---- 3. receipts trees hold only evaluator-owned files ----------------------------------------------------
+/** The per-trial harness files a preregistration names as receipts and its results/.gitignore un-ignores: small, token-free
+ *  evidence that the harness loaded what the evaluator put in front of it (gbrain-installer-2026-10: OpenClaw's turn-1 run record
+ *  with the injected workspace files, Hermes's SOUL.md; gbrain-installer-hook-2026-10: the hook receipts the adapters keep). */
+export const KEPT_HARNESS_RECEIPTS = ['logs/turns/turn-0001.openclaw.json', 'state/hermes/SOUL.md', 'logs/gbrain-hook.openclaw.json', 'logs/gbrain-hook.hermes.log']
+  .map((p) => new RegExp(`/trials/[^/]+/[^/]+/r\\d+/${p.replace(/[.]/g, '\\.')}$`));
+/** Files under a results tree that belong to the harness or carry a token (trial.json, state, workspaces, the sidecar's
+ *  directory, raw logs, sqlite side files), less the named receipts above. */
+export function harnessOwned(files: string[]): string[] {
+  return files.filter((f) => !KEPT_HARNESS_RECEIPTS.some((re) => re.test(f)) && (/\/trials\/[^/]+\/[^/]+\/r\d+\/(trial\.json|state\/|workspace\/|gbrain\/|compose\.serve\.yaml)/.test(f) || /ledger\.sqlite-(shm|wal)$/.test(f) || (/\/logs\//.test(f) && !/\/logs\/adapter\.log$/.test(f))));
+}
 function receipts() {
   const files = sh(['git', 'ls-files', '-z', 'docs/benchmarks']).split('\0').filter(Boolean);
-  const forbidden = files.filter((f) => /\/trials\/[^/]+\/[^/]+\/r\d+\/(trial\.json|state\/|workspace\/|gbrain\/|compose\.serve\.yaml)/.test(f) || /ledger\.sqlite-(shm|wal)$/.test(f) || (/\/logs\//.test(f) && !/\/logs\/adapter\.log$/.test(f)));
+  const forbidden = harnessOwned(files);
   const runs = [...new Set(files.map((f) => f.split('/')[2]).filter((d): d is string => !!d && /^\d{4}-/.test(d)))].sort();
   const count = (re: RegExp) => files.filter((f) => re.test(f)).length;
   return { runs, files: files.length, forbidden, snapshots_gz: count(/snapshot\.json\.gz$/), adapter_logs: count(/adapter\.log$/), request_files: count(/\.request\.json$/), ledgers: count(/ledger\.sqlite$/), usage_logs: count(/proxy-usage\.ndjson$/), gitignores: count(/results\/\.gitignore$/) };

@@ -215,7 +215,16 @@ export interface TrialGbrainInstall {
   /** Hermes only: how many pages the always-loaded context names, and how many of those each actor of the task cannot read in the
    *  world (channel membership for a chat page, the file rule for a file): the exposure that reaches the model with no gbrain call. */
   context?: { kept_slugs: number; outside_scope_by_actor: Record<string, number>; outside_scope_max: number };
+  /** gbrain-installer at gbrain#7489's per-turn-hook head (10949a15): the hook the bundle carries (its file count and the harness's own
+   *  account of it from the adapter's ready: "loaded" for OpenClaw's plugins inspect --runtime, "healthy" for hermes hooks doctor; the
+   *  adapter exits 2 before ready otherwise; "absent from bundle" when an installer view carries no hook, so a block-only image in a
+   *  hook run is visible and compare-run leaves its trials out). Absent in records written before the hook. */
+  turn_hook?: { files: number; status: string };
 }
+
+/** The turn_hook statuses that mean the harness reported the hook in place before the first turn (OpenClaw's plugins inspect,
+ *  Hermes's hooks doctor); compare-run leaves an installer trial with any other status out of the pairs. */
+export const TURN_HOOK_APPLIED: readonly string[] = ['loaded', 'healthy'];
 
 /** internal-task: the sidecar's embedding calls for one trial, from the proxy's /v1/embeddings usage lines for the trial key. */
 export interface TrialEmbeddingUsage {

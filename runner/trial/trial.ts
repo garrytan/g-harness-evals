@@ -204,6 +204,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
 
   let harness: Harness | null = null;
   let readyFailure: HarnessGone | null = null;
+  let readyTurnHook = 'no ready file';
   let windows: TurnWindow[] = [];
   let endedEarly: string | null = null;
   let error: string | undefined;
@@ -237,6 +238,8 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       }
       await harness.waitReady(opts.readyTimeoutS * 1000);
       log(`harness ready (${harness.kind})`);
+      // The adapter writes ready before any turn; /he-logs is writable by the harness, so the hook status is taken now, not after the turns.
+      try { readyTurnHook = String((JSON.parse(readFileSync(join(dirs.logs, 'ready'), 'utf8')) as { gbrain_install?: { turn_hook?: string } }).gbrain_install?.turn_hook ?? 'absent from ready'); } catch { readyTurnHook = 'unreadable ready file'; }
     } catch (e) {
       if (!(e instanceof HarnessGone)) throw e;
       readyFailure = e;
@@ -290,6 +293,9 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   if (gbrainRecord && installView) {
     gbrainRecord.install_bundle = { harness: installView.harness, split: installView.split, install: installView.install ?? 'gbrain-docs', files: installView.files.length, view_digest: installView.view_digest };
     if (installView.context) gbrainRecord.install_bundle.context = contextExposure(worldAt(world.worldPath), cell.split, installView.context.kept_slugs, task.actors);
+    const hook = installView.installer && 'turn_hook' in installView.installer ? installView.installer.turn_hook : undefined;
+    if (hook) gbrainRecord.install_bundle.turn_hook = { files: hook.files.length, status: readyTurnHook };
+    else if (installView.install === 'gbrain-installer') gbrainRecord.install_bundle.turn_hook = { files: 0, status: 'absent from bundle' };
   }
   let semanticError: string | null = null;
   if (gbrainRecord && gbrain && gbrain.embeddings !== 'off' && proxy) {

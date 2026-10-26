@@ -12,13 +12,23 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSyn
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { exportInstallView, gbrainImagePresent, type InstallViewManifest } from '../runner/trial/gbrain.ts';
+import type { InstallerRecord } from '../gbrain/build-install.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
 const sha256 = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
 const imagePresent = (image: string) => spawnSync('docker', ['image', 'inspect', image], { stdio: 'ignore' }).status === 0;
 const haveDocker = spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
 const HARNESSES = ['openclaw', 'hermes'] as const;
+/** The adapter under test per harness, named by repository path so the file maps to this test. */
+const ADAPTER_SCRIPT: Record<(typeof HARNESSES)[number], string> = { openclaw: 'harnesses/openclaw/adapter.sh', hermes: 'harnesses/hermes/adapter.sh' };
 const haveImages = haveDocker && gbrainImagePresent() && HARNESSES.every((h) => imagePresent(`harness-eval/${h}:dev`));
+/** gbrain's documented OpenClaw scaffold at the image's gbrain version: the five core skills in 30 files from 0.60.456.0 (gbrain#7508), 64 skills in 127 files before. */
+const openclawDocsFiles = (image: string) => {
+  const v = (JSON.parse(spawnSync('docker', ['run', '--rm', '--entrypoint', 'cat', image, '/opt/sidecar/image.json'], { encoding: 'utf8' }).stdout) as { gbrain_version?: string }).gbrain_version ?? '0';
+  const n = v.split('.').map(Number);
+  return (n[0]! > 0 || n[1]! > 60 || (n[1] === 60 && n[2]! >= 456)) ? 30 : 127;
+};
+
 
 const tmp = mkdtempSync(join(tmpdir(), 'he-adapter-install-'));
 const containers: string[] = [];
@@ -84,7 +94,7 @@ describe.skipIf(!haveImages)("the OpenClaw and Hermes adapters apply gbrain's do
 
   test('the dev views export from the gbrain image and verify', async () => {
     for (const h of HARNESSES) views[h] = await exportInstallView('harness-eval/gbrain:dev', h, 'dev', viewDir(h));
-    expect(views.openclaw!.files.length).toBe(127);
+    expect(views.openclaw!.files.length).toBe(openclawDocsFiles('harness-eval/gbrain:dev'));
     expect(views.hermes!.files.length).toBe(128);
     expect(views.hermes!.files.some((f) => f.path === '.hermes.md')).toBe(true);
   }, 120_000);
@@ -118,7 +128,7 @@ describe.skipIf(!haveImages)("the OpenClaw and Hermes adapters apply gbrain's do
 
         const ready = JSON.parse(readFileSync(join(t.logs, 'ready'), 'utf8')) as Ready;
         expect(ready.harness).toBe(h);
-        expect(ready.adapter_sha256).toBe(sha256(join(ROOT, 'harnesses', h, 'adapter.sh')));
+        expect(ready.adapter_sha256).toBe(sha256(join(ROOT, ADAPTER_SCRIPT[h])));
         expect(ready.gbrain_install).toEqual({ status: 'ok', install: 'gbrain-docs', files: view.files.length, view_digest: view.view_digest, destinations: rec.destinations.join(',') });
 
         // The view mount stayed as exported and the install record holds no token.
@@ -258,15 +268,43 @@ describe.skipIf(!haveInstaller)("the OpenClaw and Hermes adapters apply gbrain's
   const viewDir = (h: string) => join(tmp, 'installer-views', h, 'dev');
   const landing = (t: Trial, h: string) => h === 'hermes' ? join(t.state, 'hermes', 'SOUL.md') : join(t.workspace, 'AGENTS.md');
 
-  test(`the installer views export from ${INSTALLER_IMAGE} and verify: one file each, the brain-first block in it, Hermes's seeded SOUL.md first`, async () => {
+  /** The per-turn hook record when the bundle's gbrain wrote one (gbrain#7489 at 10949a15 and later); null for the block-only head. */
+  const hookOf = (h: string) => { const rec = views[h as (typeof HARNESSES)[number]]!.installer as InstallerRecord; return rec.turn_hook ?? null; };
+  const instructionFile = (h: string) => h === 'hermes' ? 'home/SOUL.md' : 'workspace/AGENTS.md';
+  const hookFiles = (h: string) => h === 'hermes' ? ['home/config.yaml', 'home/shell-hooks-allowlist.json'] : ['state/gbrain/gbrain-turn-rule/index.js', 'state/gbrain/gbrain-turn-rule/openclaw.plugin.json', 'state/gbrain/gbrain-turn-rule/package.json'];
+  const destinations = (h: string) => h === 'hermes'
+    ? ['/harness-state/hermes/SOUL.md', ...(hookOf(h) ? ['/harness-state/hermes/config.yaml', '/harness-state/hermes/shell-hooks-allowlist.json'] : [])].sort()
+    : ['/workspace/AGENTS.md', ...(hookOf(h) ? ['/harness-state/openclaw/gbrain'] : [])].sort();
+
+  test(`the installer views export from ${INSTALLER_IMAGE} and verify: the instruction file with the brain-first block, the per-turn hook files when the gbrain commit writes them, Hermes's seeded SOUL.md first`, async () => {
     for (const h of HARNESSES) views[h] = await exportInstallView(INSTALLER_IMAGE, h, 'dev', viewDir(h), 'gbrain-installer');
-    expect(views.openclaw!.files.map((f) => f.path)).toEqual(['workspace/AGENTS.md']);
-    expect(views.hermes!.files.map((f) => f.path)).toEqual(['home/SOUL.md']);
     for (const h of HARNESSES) {
       expect(views[h]!.install).toBe('gbrain-installer');
-      const rec = views[h]!.installer!;
+      const rec = views[h]!.installer as InstallerRecord;
       expect('files' in rec).toBe(true);
-      expect(readFileSync(join(viewDir(h), views[h]!.files[0]!.path), 'utf8')).toContain('<!-- gbrain:brain-first:begin -->');
+      const hook = hookOf(h);
+      expect(views[h]!.files.map((f) => f.path).sort()).toEqual([instructionFile(h), ...(hook ? hookFiles(h) : [])].sort());
+      expect(readFileSync(join(viewDir(h), instructionFile(h)), 'utf8')).toContain('<!-- gbrain:brain-first:begin -->');
+      if (hook) {
+        // gbrain#7489 at 10949a15: the hook files are setup's own, the rule text is recorded, and OpenClaw's three install commands are printed.
+        expect(hook.files.map((f) => f.replace(`${h}/installer/`, '')).sort()).toEqual(hookFiles(h));
+        expect(hook.rule).toContain('check GBrain first');
+        if (h === 'openclaw') {
+          expect(hook.action).toBe('print');
+          expect(hook.commands).toEqual(['openclaw plugins install --link <out>/openclaw/installer/state/gbrain/gbrain-turn-rule --force --accept-capabilities', 'openclaw plugins enable gbrain-turn-rule', 'openclaw config set plugins.entries.gbrain-turn-rule.hooks.allowConversationAccess true']);
+          expect(readFileSync(join(viewDir(h), 'state/gbrain/gbrain-turn-rule/index.js'), 'utf8')).toContain("api.on('before_prompt_build'");
+        } else {
+          expect(hook.action).toBe('write');
+          const config = readFileSync(join(viewDir(h), 'home/config.yaml'), 'utf8');
+          expect(config).toContain('# gbrain:turn-rule:begin');
+          expect(config).toContain('pre_llm_call:');
+          expect(config).toContain(`/bin/echo '`);
+          const allow = JSON.parse(readFileSync(join(viewDir(h), 'home/shell-hooks-allowlist.json'), 'utf8')) as { approvals: Array<{ event: string; command: string }> };
+          expect(allow.approvals).toHaveLength(1);
+          expect(allow.approvals[0]!.event).toBe('pre_llm_call');
+          expect(config).toContain(JSON.stringify(allow.approvals[0]!.command));
+        }
+      }
     }
     const hermes = views.hermes!.installer as { seed: { sha256: string; bytes: number; hermes_commit: string | null } };
     const pin = JSON.parse(readFileSync(join(ROOT, 'harnesses', 'hermes', 'pin.json'), 'utf8')) as { commit: string; soul_md: { sha256: string; bytes: number } };
@@ -276,25 +314,50 @@ describe.skipIf(!haveInstaller)("the OpenClaw and Hermes adapters apply gbrain's
   }, 120_000);
 
   for (const h of HARNESSES) {
-    test(`${h}: the installer file lands at its destination with its digest, gbrain-install.json and ready name the install kind, and the block is in the first model request's system prompt`, async () => {
+    test(`${h}: the installer files land at their destinations with their digests, gbrain-install.json and ready name the install kind, the per-turn hook (when the bundle has one) is loaded by the harness's own account, and the block is in the first model request's system prompt with the rule beside the turn`, async () => {
       const view = views[h]!;
+      const hook = hookOf(h);
       const t = trialDirs(`${h}-installer-ok`);
       const fake = fakeAnthropic();
       const name = startServe(h, `he-install-${h}-installer-ok`, t, viewDir(h), 'gbrain-installer', `http://host.docker.internal:${fake.port}/anthropic`);
       try {
         expect(await waitReadyOrExit(name, t.logs, 150_000)).toBeNull();
         const log = readFileSync(join(t.logs, 'adapter.log'), 'utf8');
-        expect(log).toContain(`gbrain-installer install: ok 1 ${view.view_digest} ${h === 'hermes' ? '/harness-state/hermes/SOUL.md' : '/workspace/AGENTS.md'}`);
+        expect(log).toContain(`gbrain-installer install: ok ${view.files.length} ${view.view_digest} ${destinations(h).join(',')} ${hook ? 'hook' : 'nohook'}`);
         expect(existsSync(landing(t, h))).toBe(true);
-        expect(sha256(landing(t, h))).toBe(view.files[0]!.sha256);
-        const rec = JSON.parse(readFileSync(join(t.logs, 'gbrain-install.json'), 'utf8')) as InstallRecord & { install: string; replaced_seed?: { path: string; sha256: string } | null };
-        expect(rec).toMatchObject({ status: 'ok', code: null, harness: h, split: 'dev', install: 'gbrain-installer', view_digest: view.view_digest, files: 1, destinations: [h === 'hermes' ? '/harness-state/hermes/SOUL.md' : '/workspace/AGENTS.md'] });
+        expect(sha256(landing(t, h))).toBe(view.files.find((f) => f.path === instructionFile(h))!.sha256);
+        const rec = JSON.parse(readFileSync(join(t.logs, 'gbrain-install.json'), 'utf8')) as InstallRecord & { install: string; replaced_seed?: { path: string; sha256: string } | null; merged_hooks?: { path: string; block_sha256: string; bytes: number }; turn_hook?: { status: string; detail: string; plugin_dir?: string; commands?: string[]; doctor_exit?: number } };
+        expect(rec).toMatchObject({ status: 'ok', code: null, harness: h, split: 'dev', install: 'gbrain-installer', view_digest: view.view_digest, files: view.files.length, destinations: destinations(h) });
         // Hermes seeded its default SOUL.md when the adapter ran it; the installer replaced exactly that file (its sha256 is the bundle's seed).
         if (h === 'hermes') expect(rec.replaced_seed).toEqual({ path: '/harness-state/hermes/SOUL.md', sha256: (views.hermes!.installer as { seed: { sha256: string } }).seed.sha256 });
         else expect(rec.replaced_seed ?? null).toBeNull();
+        if (hook) {
+          // gbrain#7489 at 10949a15: the harness's own account of the hook is the per-trial receipt (plugins inspect --runtime, hooks doctor).
+          expect(rec.turn_hook).toMatchObject({ status: 'ok' });
+          if (h === 'openclaw') {
+            expect(rec.turn_hook!.plugin_dir).toBe('/harness-state/openclaw/gbrain/gbrain-turn-rule');
+            expect(rec.turn_hook!.commands).toEqual(['openclaw plugins install --link /harness-state/openclaw/gbrain/gbrain-turn-rule --force --accept-capabilities', 'openclaw plugins enable gbrain-turn-rule', 'openclaw config set plugins.entries.gbrain-turn-rule.hooks.allowConversationAccess true']);
+            for (const f of hookFiles(h)) expect(sha256(join(t.state, 'openclaw', 'gbrain', 'gbrain-turn-rule', f.split('/').pop()!))).toBe(view.files.find((v) => v.path === f)!.sha256);
+            const inspect = JSON.parse(readFileSync(join(t.logs, 'gbrain-hook.openclaw.json'), 'utf8')) as { plugin: { status: string; enabled: boolean; source: string }; shape: string; typedHooks: Array<{ name: string }> };
+            expect(inspect.plugin).toMatchObject({ status: 'loaded', enabled: true, source: '/harness-state/openclaw/gbrain/gbrain-turn-rule/index.js' });
+            expect(inspect.shape).toBe('hook-only');
+            expect(inspect.typedHooks.map((x) => x.name)).toEqual(['before_prompt_build']);
+          } else {
+            expect(rec.turn_hook!.doctor_exit).toBe(0);
+            expect(rec.merged_hooks).toMatchObject({ path: '/harness-state/hermes/config.yaml' });
+            const config = readFileSync(join(t.state, 'hermes', 'config.yaml'), 'utf8');
+            expect(config).toContain('# gbrain:turn-rule:begin');
+            expect(config.match(/^hooks:/gm)).toHaveLength(1);
+            expect(config).toContain('mcp_servers:');
+            expect(sha256(join(t.state, 'hermes', 'shell-hooks-allowlist.json'))).toBe(view.files.find((v) => v.path === 'home/shell-hooks-allowlist.json')!.sha256);
+            const doctor = readFileSync(join(t.logs, 'gbrain-hook.hermes.log'), 'utf8');
+            expect(doctor).toContain('[pre_llm_call]');
+            expect(doctor).toContain('All shell hooks look healthy');
+          }
+        } else expect(rec.turn_hook).toBeUndefined();
         const ready = JSON.parse(readFileSync(join(t.logs, 'ready'), 'utf8')) as Ready & { gbrain_install?: { install: string } };
-        expect(ready.adapter_sha256).toBe(sha256(join(ROOT, 'harnesses', h, 'adapter.sh')));
-        expect(ready.gbrain_install).toEqual({ status: 'ok', install: 'gbrain-installer', files: 1, view_digest: view.view_digest, destinations: rec.destinations.join(',') });
+        expect(ready.adapter_sha256).toBe(sha256(join(ROOT, ADAPTER_SCRIPT[h])));
+        expect(ready.gbrain_install).toEqual({ status: 'ok', install: 'gbrain-installer', files: view.files.length, view_digest: view.view_digest, destinations: rec.destinations.join(','), ...(hook ? { turn_hook: h === 'openclaw' ? 'loaded' : 'healthy' } : {}) });
 
         // One turn against the fake endpoint, the way the adapter runs one (pin.json turn_command), with no key: the system prompt holds the block.
         writeFileSync(join(t.workspace, 'probe.md'), 'Say ok.\n');
@@ -310,6 +373,11 @@ describe.skipIf(!haveInstaller)("the OpenClaw and Hermes adapters apply gbrain's
         expect(system).toContain('<!-- gbrain:brain-first:begin -->');
         expect(system).toContain('## Memory: check GBrain first');
         if (h === 'hermes') expect(system).toContain('You are Hermes Agent, built by Nous Research.');
+        if (hook) {
+          // The per-turn rule reaches the model beside the user turn (OpenClaw prependContext, Hermes's hook context), not only the system prompt.
+          const messages = JSON.stringify((turn as { messages: unknown[] }).messages);
+          expect(messages, `the per-turn rule is not in the first request's messages; system prompt ${system.length} chars, messages ${messages.slice(0, 600)}`).toContain(hook.rule!.slice(0, 60));
+        }
         expect(JSON.stringify(fake.requests)).not.toContain('he-install-test-token');
       } finally {
         fake.stop();
@@ -335,4 +403,104 @@ describe.skipIf(!haveInstaller)("the OpenClaw and Hermes adapters apply gbrain's
       }
     }, 180_000);
   }
+});
+
+// gbrain#7489 at 10949a15: the per-turn hook is applied only the way gbrain documents it. Hermes's installer appends its marked
+// hooks block to a config.yaml without one and edits nothing else, so a config.yaml that already has a hooks: section is refused
+// before anything is appended; OpenClaw's adapter runs the three documented commands and nothing else, so a bundle whose installer
+// printed another set is refused before any openclaw command runs. Both are HE-ADAPTER-006 and exit 2 before ready.
+const haveHook = haveInstaller && (() => {
+  const r = spawnSync('docker', ['run', '--rm', '--entrypoint', 'cat', INSTALLER_IMAGE, '/install/manifest.json'], { encoding: 'utf8' });
+  const m = JSON.parse(r.stdout) as { harnesses: Record<string, { installer?: { turn_hook?: unknown } }> };
+  return HARNESSES.every((h) => !!m.harnesses[h]?.installer?.turn_hook);
+})();
+if (haveInstaller && !haveHook) console.log(`adapter-install: the per-turn hook refusal tests skip, ${INSTALLER_IMAGE}'s installer bundle records no turn_hook (the block-only head)`);
+
+describe.skipIf(!haveHook)('the adapters refuse a per-turn hook they cannot apply as gbrain documents it', () => {
+  test('Hermes: a config.yaml that already has a hooks: section is HE-ADAPTER-006, exit 2, the file untouched, no hooks doctor and no ready', async () => {
+    const view = join(tmp, 'installer-views', 'hermes', 'hooked-config');
+    const manifest = await exportInstallView(INSTALLER_IMAGE, 'hermes', 'dev', view, 'gbrain-installer');
+    expect(manifest.files.some((f) => f.path === 'home/config.yaml')).toBe(true);
+    const t = trialDirs('hermes-installer-hooks');
+    // The adapter copies its own config.yaml into HERMES_HOME only when none is there: this one stands in for a home whose owner had already configured a hook.
+    const seeded = readFileSync(join(ROOT, 'harnesses', 'hermes', 'config', 'config.yaml'), 'utf8') + '\nhooks:\n  pre_llm_call:\n    - command: "/bin/echo \'{}\'"\n      timeout: 5\n';
+    mkdirSync(join(t.state, 'hermes'), { recursive: true });
+    writeFileSync(join(t.state, 'hermes', 'config.yaml'), seeded);
+    const name = startServe('hermes', 'he-install-hermes-installer-hooks', t, view, 'gbrain-installer');
+    try {
+      expect(await waitReadyOrExit(name, t.logs, 120_000)).toBe(2);
+      expect(existsSync(join(t.logs, 'ready'))).toBe(false);
+      expect(readFileSync(join(t.state, 'hermes', 'config.yaml'), 'utf8')).toBe(seeded);
+      expect(existsSync(join(t.logs, 'gbrain-hook.hermes.log'))).toBe(false);
+      expect(readFileSync(join(t.logs, 'adapter.log'), 'utf8')).toContain("HE-ADAPTER-006 the install bundle could not be applied: /harness-state/hermes/config.yaml already has a hooks: section, which gbrain's installer does not edit");
+      const rec = JSON.parse(readFileSync(join(t.logs, 'gbrain-install.json'), 'utf8')) as InstallRecord & { install: string; merged_hooks?: unknown; turn_hook?: unknown };
+      expect(rec).toMatchObject({ status: 'error', code: 'HE-ADAPTER-006', harness: 'hermes', split: 'dev', install: 'gbrain-installer', view_digest: manifest.view_digest });
+      expect(rec.merged_hooks).toBeUndefined();
+      expect(rec.turn_hook).toBeUndefined();
+    } finally {
+      stop(name);
+    }
+  }, 180_000);
+
+  test('Hermes: a view that carries the hooks block while the manifest records no turn_hook is HE-ADAPTER-006, exit 2, no hooks doctor and no ready', async () => {
+    const view = join(tmp, 'installer-views', 'hermes', 'no-hook-record');
+    const manifest = await exportInstallView(INSTALLER_IMAGE, 'hermes', 'dev', view, 'gbrain-installer');
+    const { turn_hook: _dropped, ...rec } = manifest.installer as InstallerRecord;
+    writeFileSync(join(view, 'manifest.json'), JSON.stringify({ ...manifest, installer: rec }, null, 1) + '\n');
+    const t = trialDirs('hermes-installer-no-hook-record');
+    const name = startServe('hermes', 'he-install-hermes-installer-no-hook-record', t, view, 'gbrain-installer');
+    try {
+      expect(await waitReadyOrExit(name, t.logs, 120_000)).toBe(2);
+      expect(existsSync(join(t.logs, 'ready'))).toBe(false);
+      expect(existsSync(join(t.logs, 'gbrain-hook.hermes.log'))).toBe(false);
+      expect(readFileSync(join(t.logs, 'adapter.log'), 'utf8')).toContain("HE-ADAPTER-006 the install bundle could not be applied: the view carries a hooks block but the manifest's installer records no turn_hook");
+      expect(JSON.parse(readFileSync(join(t.logs, 'gbrain-install.json'), 'utf8'))).toMatchObject({ status: 'error', code: 'HE-ADAPTER-006', harness: 'hermes', install: 'gbrain-installer' });
+    } finally {
+      stop(name);
+    }
+  }, 180_000);
+
+  test('OpenClaw: a view that carries the plugin files while the manifest records no turn_hook is HE-ADAPTER-006, exit 2, no openclaw command run and no ready', async () => {
+    const view = join(tmp, 'installer-views', 'openclaw', 'no-hook-record');
+    const manifest = await exportInstallView(INSTALLER_IMAGE, 'openclaw', 'dev', view, 'gbrain-installer');
+    const { turn_hook: _dropped, ...rec } = manifest.installer as InstallerRecord;
+    writeFileSync(join(view, 'manifest.json'), JSON.stringify({ ...manifest, installer: rec }, null, 1) + '\n');
+    const t = trialDirs('openclaw-installer-no-hook-record');
+    const name = startServe('openclaw', 'he-install-openclaw-installer-no-hook-record', t, view, 'gbrain-installer');
+    try {
+      expect(await waitReadyOrExit(name, t.logs, 120_000)).toBe(2);
+      expect(existsSync(join(t.logs, 'ready'))).toBe(false);
+      expect(existsSync(join(t.logs, 'gbrain-hook.openclaw.json'))).toBe(false);
+      expect(readFileSync(join(t.logs, 'adapter.log'), 'utf8')).toContain("HE-ADAPTER-006 the install bundle could not be applied: the view carries 3 per-turn plugin files but the manifest's installer records no turn_hook");
+      expect(JSON.parse(readFileSync(join(t.logs, 'gbrain-install.json'), 'utf8'))).toMatchObject({ status: 'error', code: 'HE-ADAPTER-006', harness: 'openclaw', install: 'gbrain-installer' });
+    } finally {
+      stop(name);
+    }
+  }, 180_000);
+
+  test('OpenClaw: a bundle whose installer printed other than the three documented commands is HE-ADAPTER-006, exit 2, no openclaw command run and no ready', async () => {
+    const view = join(tmp, 'installer-views', 'openclaw', 'other-commands');
+    const manifest = await exportInstallView(INSTALLER_IMAGE, 'openclaw', 'dev', view, 'gbrain-installer');
+    const rec = manifest.installer as InstallerRecord;
+    expect(rec.turn_hook!.commands).toHaveLength(3);
+    // The installer record is outside the view digest (the files alone are under it), so the tamper is exactly one more printed command.
+    const tampered = { ...manifest, installer: { ...rec, turn_hook: { ...rec.turn_hook!, commands: [...rec.turn_hook!.commands!, 'openclaw config set plugins.entries.gbrain-turn-rule.enabled true'] } } };
+    writeFileSync(join(view, 'manifest.json'), JSON.stringify(tampered, null, 1) + '\n');
+    const t = trialDirs('openclaw-installer-commands');
+    const name = startServe('openclaw', 'he-install-openclaw-installer-commands', t, view, 'gbrain-installer');
+    try {
+      expect(await waitReadyOrExit(name, t.logs, 120_000)).toBe(2);
+      expect(existsSync(join(t.logs, 'ready'))).toBe(false);
+      // No openclaw plugins or config command ran: no hook receipt, and OpenClaw's config names no plugin.
+      expect(existsSync(join(t.logs, 'gbrain-hook.openclaw.log'))).toBe(false);
+      expect(existsSync(join(t.logs, 'gbrain-hook.openclaw.json'))).toBe(false);
+      expect(readFileSync(join(t.state, 'openclaw', 'openclaw.json'), 'utf8')).not.toContain('gbrain-turn-rule');
+      expect(readFileSync(join(t.logs, 'adapter.log'), 'utf8')).toContain("HE-ADAPTER-006 the install bundle could not be applied: the installer's turn_hook.commands are not the documented three: ['openclaw plugins install --link <dir> --force --accept-capabilities', 'openclaw plugins enable gbrain-turn-rule', 'openclaw config set plugins.entries.gbrain-turn-rule.hooks.allowConversationAccess true', 'openclaw config set plugins.entries.gbrain-turn-rule.enabled true']");
+      const r = JSON.parse(readFileSync(join(t.logs, 'gbrain-install.json'), 'utf8')) as InstallRecord & { install: string; turn_hook?: unknown };
+      expect(r).toMatchObject({ status: 'error', code: 'HE-ADAPTER-006', harness: 'openclaw', split: 'dev', install: 'gbrain-installer', view_digest: manifest.view_digest });
+      expect(r.turn_hook).toBeUndefined();
+    } finally {
+      stop(name);
+    }
+  }, 180_000);
 });

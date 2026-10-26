@@ -185,7 +185,7 @@ for (const cell of cells) {
   ladder[cell] = {
     harness_input_tokens: { median_per_trial: median(inputTokens), total: inputTokens.reduce((s, n) => s + n, 0), trials: inputTokens.length },
     embedding_usage: { trials: eu.length, requests: eu.reduce((s, u) => s + u.requests, 0), input_tokens: eu.reduce((s, u) => s + u.input_tokens, 0), usd: eu.reduce((s, u) => s + u.usd, 0), refused: eu.reduce((s, u) => s + u.refused, 0), failed: eu.reduce((s, u) => s + u.failed, 0) },
-    install_bundle: bundles.length ? { trials: bundles.length, files: [...new Set(bundles.map((b) => b.files))], view_digests: [...new Set(bundles.map((b) => b.view_digest))], context_outside_scope_max: exposure.length ? Math.max(...exposure) : null } : null,
+    install_bundle: bundles.length ? { trials: bundles.length, files: [...new Set(bundles.map((b) => b.files))], view_digests: [...new Set(bundles.map((b) => b.view_digest))], context_outside_scope_max: exposure.length ? Math.max(...exposure) : null, turn_hook: bundles.some((b) => b.turn_hook) ? { trials: bundles.filter((b) => b.turn_hook).length, status: Object.fromEntries([...new Set(bundles.map((b) => b.turn_hook?.status).filter((s): s is string => !!s))].map((s) => [s, bundles.filter((b) => b.turn_hook?.status === s).length])) } : null } : null,
     semantic_exclusions: withGbrain.filter((t) => t.gbrain!.semantic_check && !t.gbrain!.semantic_check.ok).length,
     degraded_calls: withGbrain.reduce((s, t) => s + (t.gbrain!.events.degraded ?? 0), 0),
   };

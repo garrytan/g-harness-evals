@@ -90,6 +90,32 @@ export function gbrainImagePresent(image = DEFAULT_GBRAIN_IMAGE): boolean {
   return spawnSync('docker', ['image', 'inspect', image], { stdio: 'ignore' }).status === 0;
 }
 
+/** The gbrain commit the image was built from, as /opt/sidecar/image.json records it (gbrain/Dockerfile writes it at build); null
+ *  when the image carries no such file or no commit. */
+export function gbrainImageCommit(image = DEFAULT_GBRAIN_IMAGE, run: (argv: string[]) => { status: number | null; stdout: string } = (argv) => spawnSync('docker', argv, { encoding: 'utf8' })): string | null {
+  const r = run(['run', '--rm', '--entrypoint', 'cat', image, '/opt/sidecar/image.json']);
+  if (r.status !== 0) return null;
+  try { return (JSON.parse(r.stdout) as { gbrain_commit?: string }).gbrain_commit ?? null; } catch { return null; }
+}
+
+/** preflight's installer-hook gate: when gbrain/pin.json's install.installer.turn_hook_expected is true, an installer view whose
+ *  record carries no turn_hook (a block-only image) is refused before any trial, with the HE-GBRAIN-006 message body; else null.
+ *  The gate is the pin's: a candidate commit named by --gbrain-commit (scripts/gbrain-check.ts) is not held to it, since the check
+ *  asserts the hook itself under --expect-hook. */
+export function installerHookProblem(view: Pick<InstallViewManifest, 'harness' | 'install' | 'installer'>, pin: { install?: { installer?: { turn_hook_expected?: boolean } } }, candidate?: string): string | null {
+  if (candidate || view.install !== 'gbrain-installer' || !pin.install?.installer?.turn_hook_expected) return null;
+  if (view.installer && 'turn_hook' in view.installer && view.installer.turn_hook) return null;
+  return `the ${view.harness} installer view carries no per-turn hook (installer.turn_hook) and gbrain/pin.json says the pinned installer writes one; the image is block-only or built at another commit; fix: rebuild it at the pinned commit, or clear install.installer.turn_hook_expected for a block-only pin`;
+}
+
+/** preflight's image-commit gate: the HE-GBRAIN-002 message body when the image's recorded gbrain commit is not the expected one
+ *  (the pin, or the commit --gbrain-commit names), else null. */
+export function imageCommitProblem(o: { image: string; built: string | null; pin: string; flag?: string }): string | null {
+  const expected = o.flag ?? o.pin;
+  if (o.built === expected) return null;
+  return `image ${o.image} records gbrain ${o.built ?? 'no commit (no /opt/sidecar/image.json)'}, ${o.flag ? '--gbrain-commit names' : 'gbrain/pin.json pins'} ${expected}; fix: scripts/build-gbrain-image.sh --gbrain ${expected} --tag ${o.image}, or --gbrain-image <the image built at that commit>`;
+}
+
 export async function waitHealthy(url: string, timeoutMs: number, exited: () => string | null | Promise<string | null>): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {

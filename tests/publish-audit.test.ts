@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { ALLOW, scanText, TOKEN_PATTERNS, type Hit } from '../scripts/publish-audit.ts';
+import { ALLOW, harnessOwned, scanText, TOKEN_PATTERNS, type Hit } from '../scripts/publish-audit.ts';
 
 const j = (...parts: string[]) => parts.join('');
 
@@ -19,5 +19,17 @@ describe('publish-audit: the scanner', () => {
     expect(counts['allowlisted:openai_or_generic_sk']).toBe(2);
     expect(counts['allowlisted:bearer']).toBe(3);
     expect(ALLOW.some((a) => a.test('sk-' + 'ant-' + 'x'.repeat(30)))).toBe(false);
+  });
+});
+
+describe('publish-audit: the receipts check', () => {
+  test('flags harness-owned files under a results tree and keeps the per-trial receipts the preregistrations name', () => {
+    const t = 'docs/benchmarks/2026-10-25-gbrain-installer-hook/results/trials/oc-inst/si-01-quarrendon-seats/r1/';
+    const kept = [t + 'logs/adapter.log', t + 'logs/turns/turn-0001.openclaw.json', t + 'state/hermes/SOUL.md', t + 'logs/gbrain-hook.openclaw.json', t + 'logs/gbrain-hook.hermes.log', t + 'events.jsonl', t + 'snapshot.json.gz', 'docs/benchmarks/2026-10-25-gbrain-installer-hook/results/ledger.sqlite'];
+    const owned = [t + 'trial.json', t + 'state/openclaw/openclaw.json', t + 'workspace/AGENTS.md', t + 'gbrain/token', t + 'compose.serve.yaml', t + 'logs/stderr.log', t + 'logs/turns/turn-0002.openclaw.json', t + 'logs/gbrain-hook.hermes.json', 'docs/benchmarks/2026-10-25-gbrain-installer-hook/results/ledger.sqlite-wal'];
+    expect(harnessOwned([...kept, ...owned])).toEqual(owned);
+    // The receipts are exempt only at their own place in the trial layout: a look-alike under the harness's workspace is still harness-owned.
+    const nested = [t + 'workspace/logs/gbrain-hook.hermes.log', t + 'workspace/state/hermes/SOUL.md', t + 'workspace/logs/gbrain-hook.openclaw.json', t + 'workspace/logs/turns/turn-0001.openclaw.json'];
+    expect(harnessOwned(nested)).toEqual(nested);
   });
 });
