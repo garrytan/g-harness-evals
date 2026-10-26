@@ -11,9 +11,10 @@
 #
 # --max-output-tokens (default 128000, what Hermes states on every call) is passed to the runner's proxy: a call that states
 # more is refused and a call that states none gets it, and the proxy reserves input plus that many output tokens against the
-# lease before forwarding, so a harness that states no max_tokens (QM's Pi loop) reserves about $1.50 per Sonnet call at the
-# default; a QM shard passes a smaller figure (its trials emit about a thousand output tokens) so the lease is not held hostage
-# to the reservation (internal-task, amendment 2 to v02-heldout-2026-10).
+# lease before forwarding, so a call that states the default or none reserves about $1.50 per Sonnet call. Amendment 2 to
+# v02-heldout-2026-10 (internal-task) added the flag on the premise that QM's Pi loop states no max_tokens; it states 128000 on every
+# call, so a QM shard that passes a smaller figure has every call refused (the v02-heldout smoke at facd960f showed it) and the
+# flag only helps a harness that states none or less than the figure. Size the lease for the reservation instead.
 #
 # --resume (after an interruption) keeps <out>/shard.json as the record of the first launch and appends a resume entry to
 # its "resumes" list; it refuses a HEAD other than the recorded commit unless --amendment names HEAD (a dated amendment in
