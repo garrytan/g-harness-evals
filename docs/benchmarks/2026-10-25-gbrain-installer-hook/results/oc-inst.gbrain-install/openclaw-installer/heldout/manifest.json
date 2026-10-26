@@ -1,0 +1,88 @@
+{
+  "harness": "openclaw",
+  "split": "heldout",
+  "install": "gbrain-installer",
+  "gbrain_commit": "10949a15110fcd42eb0fed447d7f22e57c7206d5",
+  "gbrain_version": "0.60.457.0",
+  "bundle_digest": "aec75ae91bdbc85b4952d24a3108d4ead4684a6fee4859366f4df6377f731d29",
+  "view_digest": "744632eb565d36b0c5af1534b6a96e5369f164ed8398d7dddcd480a112afa1d4",
+  "workspace_entries": [
+    "AGENTS.md"
+  ],
+  "skills": 0,
+  "context": null,
+  "installer": {
+    "argv": [
+      "gbrain",
+      "setup",
+      "openclaw",
+      "--workspace",
+      "<out>/openclaw/installer/workspace",
+      "--instructions-only",
+      "--json"
+    ],
+    "files": [
+      "openclaw/installer/state/gbrain/gbrain-turn-rule/index.js",
+      "openclaw/installer/state/gbrain/gbrain-turn-rule/openclaw.plugin.json",
+      "openclaw/installer/state/gbrain/gbrain-turn-rule/package.json",
+      "openclaw/installer/workspace/AGENTS.md"
+    ],
+    "block_version": "v2",
+    "turn_hook": {
+      "files": [
+        "openclaw/installer/state/gbrain/gbrain-turn-rule/index.js",
+        "openclaw/installer/state/gbrain/gbrain-turn-rule/openclaw.plugin.json",
+        "openclaw/installer/state/gbrain/gbrain-turn-rule/package.json"
+      ],
+      "action": "print",
+      "detail": "plugin written to <out>/openclaw/installer/state/gbrain/gbrain-turn-rule; no openclaw on PATH, so run these on the OpenClaw host, then restart the gateway",
+      "commands": [
+        "openclaw plugins install --link <out>/openclaw/installer/state/gbrain/gbrain-turn-rule --force --accept-capabilities",
+        "openclaw plugins enable gbrain-turn-rule",
+        "openclaw config set plugins.entries.gbrain-turn-rule.hooks.allowConversationAccess true"
+      ],
+      "rule": "GBrain: before answering this turn, check GBrain first (`search` or `query` on the `gbrain` MCP server) for the people, companies, projects, meetings and decisions it touches. Results span every source it holds: use only what the current requester may see. Then answer and finish the task."
+    }
+  },
+  "commands": [
+    {
+      "harness": "openclaw",
+      "install": "gbrain-installer",
+      "argv": [
+        "gbrain",
+        "setup",
+        "openclaw",
+        "--workspace",
+        "<out>/openclaw/installer/workspace",
+        "--instructions-only",
+        "--json"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "state/gbrain/gbrain-turn-rule/index.js",
+      "sha256": "425a8794e4de996beac6e20ef1fcb769e49eba4886b703516d9b142d3f8744c6",
+      "bytes": 688,
+      "source_path": "openclaw/installer/state/gbrain/gbrain-turn-rule/index.js"
+    },
+    {
+      "path": "state/gbrain/gbrain-turn-rule/openclaw.plugin.json",
+      "sha256": "77683804b37093622ee5dd0db8614feba7795c90356d481c74c6509f730c2044",
+      "bytes": 255,
+      "source_path": "openclaw/installer/state/gbrain/gbrain-turn-rule/openclaw.plugin.json"
+    },
+    {
+      "path": "state/gbrain/gbrain-turn-rule/package.json",
+      "sha256": "c5300d4f5e48364059e869073f92fbc6b69ce372a8ecc52a4acac1333ac51207",
+      "bytes": 160,
+      "source_path": "openclaw/installer/state/gbrain/gbrain-turn-rule/package.json"
+    },
+    {
+      "path": "workspace/AGENTS.md",
+      "sha256": "d2837dec60b01d28d23953c18be5c8621618fe0802ddd28804cf01c2d604f35f",
+      "bytes": 1013,
+      "source_path": "openclaw/installer/workspace/AGENTS.md"
+    }
+  ]
+}

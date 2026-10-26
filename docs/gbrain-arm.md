@@ -166,6 +166,10 @@ Lessons that changed the code or the docs: a harness image built before an adapt
 
 ## Changelog
 
+### 2026-10-26: The installer-hook run reported (internal-task)
+
+harness-evals v0.0.8. Run `gbrain-installer-hook-2026-10` reported: [benchmarks/2026-10-25-gbrain-installer-hook/report.md](benchmarks/2026-10-25-gbrain-installer-hook/report.md). With the hook loaded in every installer trial, use is 80 of 80 against told's 75 of 80 (OpenClaw) and 72 of 80 (Hermes), +6 points [+0, +16] and +10 [+0, +25], not distinguished at 16 tasks by 5 repetitions; the first installer run, the block v1 alone at 99294fe4, had 0 of 80 and 0 of 80 (the block's wording, the hook and the gbrain commit changed together, so the pair of runs does not separate them). The installer bots call gbrain 1.7 to 2 times as often per trial (`query` appears), at about $0.002 and 50,000 to 55,000 input tokens more per trial than told. Pass -4 [-16, +11] and +9 [+1, +18]; cross-scope reads 15 against 13 and 4 against 9 of 80. First counted run through the Ubicloud lane: four standard-16 VMs, 11 hours 18 minutes of VM time at $5.68 list, no retry.
+
 ### 2026-10-25: The installer rung's per-turn hook (internal-task, internal-task at gbrain 10949a15)
 
 harness-evals v0.0.8. "The per-turn hook" section: `gbrain/pin.json` moves to `10949a15` (0.60.457.0, gbrain#7489's revised head), the bundle records `installer.turn_hook`, the adapters install the hook through each harness's own extension point and refuse (HE-ADAPTER-006) unless the harness reports it loaded or healthy, and the record carries `gbrain.install_bundle.turn_hook`. `preflight` now requires the sidecar image to record the pinned gbrain commit (HE-GBRAIN-002) and, while the pin expects a hook, refuses an installer view without one (HE-GBRAIN-006); `compare-run --pair gbrain` leaves a trial whose installer did not take out of the pairs; `gbrain-check --expect-hook`. The install bundle text states the five core skills in 30 files that OpenClaw's scaffold writes from gbrain 0.60.456.0.

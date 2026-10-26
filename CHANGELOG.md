@@ -4,6 +4,10 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 
 ## [0.0.8] - 2026-10-26
 
+### internal-task: gbrain-installer-hook-2026-10 results and report (2026-10-26)
+
+- `docs/benchmarks/2026-10-25-gbrain-installer-hook/report.md` and `results/`: 400 of 400 trials ran on four Ubicloud shards at `4aea79185` (the lane's first counted run), 396 scored, $3.43 against the $8 cap. With the per-turn hook loaded in 100 of 100 installer trials per harness (OpenClaw `plugins inspect --runtime` loaded, Hermes `hooks doctor` healthy, both committed per trial), gbrain use is 80 of 80 primary-task trials in both installer cells against told's 75 of 80 and 72 of 80: +6 points [+0, +16] and +10 [+0, +25], "not distinguished at 16 tasks by 5 repetitions" under the decision sentence; the first installer run, the block v1 alone at 99294fe4, had 0 of 80 and 0 of 80, and the block's wording, the hook and the gbrain commit changed together, so the move belongs to the revised installer as a whole. Pass -4 [-16, +11] for OpenClaw (sign-flip p 0.72) and +9 [+1, +18] for Hermes (p 0.125); cross-scope reads via gbrain 15 against 13 and 4 against 9 of 80; the installer bots make 1.7 to 2 times the gbrain calls at about +$0.002 and +55,000 (OpenClaw) and +50,000 (Hermes) input tokens per trial against told. Four OpenClaw `model_error` trials (the Sonnet probe) and one Hermes `harness_error` (Hermes's own "key must be a string" text, from a log the results do not keep), listed with their reasons; no installer exclusion.
+
 ### internal-task: the installer rung carries gbrain's per-turn hook (gbrain#7489 at 10949a15)
 
 - `gbrain/pin.json` moves from `173743622b5d` (0.60.452.0) to `10949a15110fcd42eb0fed447d7f22e57c7206d5` (0.60.457.0, gbrain#7489's revised head, open and unmerged, recorded with the previous pins); `gbrain/build-install.ts` runs `gbrain setup` with `--json` and `OPENCLAW_STATE_DIR` under the bundle, and records `installer.turn_hook` (the hook files, the action, OpenClaw's three install commands, the rule text).
