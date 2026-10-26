@@ -1,6 +1,6 @@
 # Publishing checklist: making harness-evals public
 
-harness-evals v0.0.5, audited 2026-10-24 (internal-task). This page records what was checked before the repository can be made public, how to run the check again, what remains for the owner to decide, and the one-line recommendation. It changes nothing: visibility is Garry Tan's decision and is not flipped by this work.
+harness-evals v0.0.7, audited 2026-10-24 (internal-task), with the merge record added 2026-10-25 (internal-task). This page records what was checked before the repository can be made public, how to run the check again, what remains for the owner to decide, and the one-line recommendation. It changes nothing: visibility is Garry Tan's decision and is not flipped by this work.
 
 ## Run the audit
 
@@ -37,6 +37,10 @@ The company in the world is synthetic: `world/seed/world.json` is generated from
 
 Every committed results tree holds evaluator-owned files only: `events.jsonl`, `turns.jsonl`, `turns/*.request.json` (the exact prompts), `snapshot.json.gz`, `usage.json`, `reconcile.json`, `grade.json`, `logs/adapter.log`, and per run `trials.jsonl`, `summary.json`, `proxy-usage.ndjson` (no bodies, no keys), `ledger.sqlite`, `spend-reconciliation.json`, `taxonomy.{json,md}`. The `results/.gitignore` copied into each run excludes `trial.json`, `state/`, `workspace/`, `gbrain/`, raw harness logs, compose overrides and the SQLite journals, and the audit confirms none is committed (750 trials across the three v0.1 runs and the smoke).
 
+### Merge record
+
+The pull requests merged from #21 to #78 (55 of them by GitHub's pull request list on 2026-10-25; #28 and #31 were closed without merging and #77 was still open) landed on the GitHub Actions checks (and, from 2026-10-24, the Ubicloud lane's `ubicloud/checks` status) plus the Captain's receipts checks. From 2026-10-25 every pull request also carries a gstack /ship receipt on its head before it merges: the PR body ends with `GSTACK_RESULT: skill=ship status=<s> run=<dir>` and the head sha the pass ran on, the pass's artifacts are kept under the Captain drive's `handoffs/<thread>/ship/<pr>/`, and a push after the pass needs a new one.
+
 ### Held-out tasks
 
 The 20 v0.1 held-out task texts are already disclosed: every committed `turns.jsonl` carries the exact prompt, so hiding `tasks/multiuser/heldout/` now would hide nothing. The seal ([MANIFEST.json](../tasks/multiuser/heldout/MANIFEST.json), `bun scripts/seal-heldout.ts --check`, 144 files, 20 tasks) proves the tasks did not change between the preregistration and the reports. Recommendation: keep the v0.1 held-out tasks in the public repository with their seal and treat the set as spent; author v0.2's held-out tasks outside the public repository, publishing each set with its seal only when a run has spent it. The v0.2 held-out sets already committed (`tasks/multiuser/v0.2/heldout`, continuity and synthesis, sealed, 69 files, 8 tasks at the time of writing) are disclosed the moment the repository is public; whether that is acceptable is Garry's call.
@@ -61,6 +65,10 @@ The 20 v0.1 held-out task texts are already disclosed: every committed `turns.js
 The repository can be made public as it stands once Garry confirms the interests paragraph and decides about the v0.2 held-out set; the audit passes, the receipts are evaluator-owned, and the held-out seal is the proof of custody. This thread did not change visibility.
 
 ## Changelog
+
+### 2026-10-25: merge record (internal-task)
+
+harness-evals v0.0.7. Added the merge record: the 55 pull requests merged from #21 to #78 landed on CI plus the Captain's receipts checks; from 2026-10-25 every pull request carries a gstack /ship receipt on its head before merge.
 
 ### 2026-10-24: first version (internal-task)
 

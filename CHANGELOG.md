@@ -2,6 +2,12 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.7] - 2026-10-26
+
+### Merge record (2026-10-25)
+
+- The pull requests merged from #21 to #78 (55 of them by GitHub's pull request list on 2026-10-25; #28 and #31 were closed without merging and #77 was still open) landed on the GitHub Actions checks (and, from 2026-10-24, the Ubicloud lane's `ubicloud/checks` status) plus the Captain's receipts checks. From 2026-10-25 every pull request carries a gstack /ship receipt on its head before it merges: `GSTACK_RESULT: skill=ship status=<s> run=<dir>` and the head sha at the end of the PR body ([docs/publishing-checklist.md](docs/publishing-checklist.md), "Merge record").
+
 ## [0.0.6] - 2026-10-26
 
 ### internal-task: pr-check posts a final status on every exit
