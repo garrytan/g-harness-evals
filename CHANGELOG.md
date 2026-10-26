@@ -2,6 +2,14 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.10] - 2026-10-26
+
+### internal-task: the check lane finds pushed heads itself
+
+- `scripts/ubicloud/pr-watch.sh`: lists the open non-draft pull requests against main, reads each head's `ubicloud/checks` status, and runs `pr-check.sh` on every head with no status or a pending status older than 45 minutes; `--once` for one cycle at each poll, otherwise a loop that exits after the first cycle that ran a check so a waiting caller wakes. `pr-check.sh` runs without `--force` (its cache still refuses a head with a verdict), a head whose status GitHub failed to return (or whose timestamp does not parse) is skipped for the cycle and named on stderr, a cycle whose pull request list cannot be read exits 1, `pr-check.sh` runs with an empty stdin so a child that reads its input (`ubi-runner.sh`'s ssh) cannot swallow the rest of the due list, and neither the child nor the loop's sleep inherits the lock descriptor, so a watcher killed with its machine leaves no orphan holding the lock; the ship review found the first version reading a failed status read as "no status", feeding the due list to the first child and leaving the lock with orphans. Why: #77 (d7baf4d, pushed 03:15 UTC) and #82 (a3ede55, ready 08:30 UTC) on 2026-10-26 sat for hours with no lane status because the push landed while internal-task's thread was asleep and discovery was a step the operator performed by hand; the lane now owns it. `tests/pr-watch.test.ts` runs the selection against a fake `gh` (no status, success, failure, fresh and stale pending, several statuses on one sha, error with and without `--retry-errors`, drafts, a failed status read, a failed list, the loop and its hand-off to a fake `pr-check.sh`, the lock, a bad option).
+- `scripts/ubicloud/pr-check.sh --relink URL`: posts the head's existing final status again with a link and runs nothing, for a status that a `pr-watch.sh` run left without one; exit 1 with no final status, 2 when the status cannot be read. `tests/pr-check-relink.test.ts` runs it against a fake `gh`.
+- `.gstack/pregate.json`: `pr-watch.sh` maps to its test and `pr-check.sh` gains the relink test.
+
 ## [0.0.9] - 2026-10-26
 
 ### internal-task: gbrain-scoped-2026-10 results and report (2026-10-26)
