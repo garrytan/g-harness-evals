@@ -2,7 +2,11 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
-## [Unreleased]
+## [0.0.6] - 2026-10-26
+
+### internal-task: pr-check posts a final status on every exit
+
+- `scripts/ubicloud/pr-check.sh`: when the VM never started there was no `checks:` line in the log, the verdict read returned grep's 1 and, under `set -o pipefail` with `set -e`, the script ended before posting, so the head kept a pending `ubicloud/checks` forever (first seen on #77's head at 00:26 UTC on 2026-10-26, 512 vCPUs in use by other owners). The read now tolerates no match and the existing "VM run failed before the checks reported" branch posts. A vCPU quota refusal is posted as state `error` with "no VM: the Ubicloud vCPU quota is exhausted; rerun when it frees" instead of a generic failure; a rerun needs no `--force`, since only success and failure are cached. `tests/pr-check-verdict.test.ts` runs the verdict block under `set -euo pipefail` on six log shapes (quota refusal, a run that died before the checks, exit 0 with no pass line, bootstrap failure with and without an earlier quota line, pass and fail with timings); three of them fail on the previous script.
 
 ### internal-task: the Ubicloud shard lane
 
