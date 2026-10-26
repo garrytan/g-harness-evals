@@ -72,7 +72,7 @@ describe('the multi-user trial loop in process mode', () => {
     expect(rec.turns).toEqual({ planned: 3, run: 3, exits: [0, 0, 0] });
     expect(rec.harness_mode).toBe('process');
     expect(rec.cap_stop).toBe(false);
-    expect(rec.usage).toMatchObject({ key: 'sk-trial-fx-run-1/fx/fx-leak/r1', requests: 0, usd: 0 });
+    expect(rec.usage).toMatchObject({ meter_id: 'trial-token:fx-run-1/fx/fx-leak/r1', requests: 0, usd: 0 });
 
     const ev = evidenceSeen[before]!;
     expect(ev.turns).toHaveLength(3);

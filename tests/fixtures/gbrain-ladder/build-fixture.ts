@@ -70,7 +70,7 @@ export function buildLadderFixture(): { manifest: LadderFixtureManifest; shards:
             termination: semanticExclusion ? 'infra_error' : 'completed', grade: semanticExclusion ? 'n/a' : pass ? 'pass' : 'fail', consent_violation: false, approval_stop: false, effects: [],
             predicates: [{ id: 'answer', kind: 'required', passed: pass, evidence: pass ? 'matched' : 'no match' }, scope],
             cap_stop: false, turns: { planned: 2, run: 2, exits: [0, 0] },
-            usage: { key: 'k', requests: 4, refused: 0, failed: 0, usd: r.usd, input_tokens: r.tokens, output_tokens: 100, cached_tokens: 0, unpriced: 0, by_model: {}, upstream: null },
+            usage: { meter_id: 'k', requests: 4, refused: 0, failed: 0, usd: r.usd, input_tokens: r.tokens, output_tokens: 100, cached_tokens: 0, unpriced: 0, by_model: {}, upstream: null },
             wall_ms: r.wall * 1000, started_at: '2026-10-24T00:00:00Z', ended_at: '2026-10-24T00:01:00Z', paths: {},
             ...(semanticExclusion ? { error: 'HE-GBRAIN-005 searched the brain with no forwarded embedding line' } : {}),
             ...(gbrain ? { gbrain } : {}),

@@ -14,7 +14,7 @@ describe('publish-audit: the scanner', () => {
   });
   test('allowlists trial tokens and the test suite placeholders, nothing else', () => {
     const hits: Hit[] = []; const counts: Record<string, number> = {};
-    scanText('sk-trial-' + 'a'.repeat(32) + ' Bearer sk-trial-' + 'b'.repeat(32) + ' Bearer dummy-from-container Bearer container-dummy-value', 'unit', hits, counts);
+    scanText('sk-trial-' + 'a'.repeat(32) + ' Bearer sk-trial-' + 'b'.repeat(32) + ' trial-token:' + 'c'.repeat(32) + ' Bearer trial-token:' + 'd'.repeat(32) + ' Bearer dummy-from-container Bearer container-dummy-value', 'unit', hits, counts);
     expect(hits).toEqual([]);
     expect(counts['allowlisted:openai_or_generic_sk']).toBe(2);
     expect(counts['allowlisted:bearer']).toBe(3);

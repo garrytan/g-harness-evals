@@ -83,7 +83,7 @@ function trial(cell: string, harness: string, model: string, task: string, rep: 
     termination: 'completed', grade: pass ? 'pass' : 'fail', consent_violation: false, approval_stop: false, effects: [],
     predicates: [{ id: 'answer', kind: 'required', passed: pass, evidence: pass ? 'matched' : 'no match' }, okPred],
     cap_stop: false, turns: { planned: 2, run: 2, exits: [0, 0] },
-    usage: { key: 'k', requests: 4, refused: 0, failed: 0, usd, input_tokens: tokens, output_tokens: 100, cached_tokens: 0, unpriced: 0, by_model: {}, upstream: null },
+    usage: { meter_id: 'k', requests: 4, refused: 0, failed: 0, usd, input_tokens: tokens, output_tokens: 100, cached_tokens: 0, unpriced: 0, by_model: {}, upstream: null },
     wall_ms: wall * 1000, started_at: '', ended_at: '', paths: {}, ...extra,
   };
 }
@@ -115,7 +115,7 @@ function fixtureRun(dir: string, opts: { gbrainMarker: 'field' | 'segment' } = {
 }
 
 /** The scripts under test, by repository path, so each file maps to this test. */
-const SCRIPTS = { 'summarize-run.ts': 'scripts/summarize-run.ts', 'compare-run.ts': 'scripts/compare-run.ts', 'paired-mdd.ts': 'scripts/paired-mdd.ts', 'merge-shards.ts': 'scripts/merge-shards.ts' } as const;
+const SCRIPTS = { 'summarize-run.ts': 'scripts/summarize-run.ts', 'compare-run.ts': 'scripts/compare-run.ts', 'paired-mdd.ts': 'scripts/paired-mdd.ts', 'merge-shards.ts': 'scripts/merge-shards.ts', 'secondary-endpoints.ts': 'scripts/secondary-endpoints.ts' } as const;
 const run = (script: keyof typeof SCRIPTS, args: string[]) => spawnSync('bun', [join(ROOT, SCRIPTS[script]), ...args], { cwd: ROOT, encoding: 'utf8' });
 
 describe('compare-run --pair gbrain', () => {
@@ -187,6 +187,28 @@ describe('compare-run --pair gbrain', () => {
     expect(r2.status).toBe(2);
     expect(r2.stderr).toContain('found no (harness, model) with a gbrain cell and exactly one without');
     expect(run('compare-run.ts', ['--results', none, '--pair', 'other']).status).toBe(2);
+  });
+});
+
+describe('secondary-endpoints (internal-task)', () => {
+  test('five endpoints over the same pairs as compare-run --pair gbrain, Holm per model, a missing repetition excluded on both sides', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-sec-'));
+    const { rows } = fixtureRun(dir);
+    const kept = rows.filter((t) => !(t.cell === 'b-gbrain-dev' && t.task === TASKS[0]![0] && t.trial_id.endsWith('/r5')));
+    writeFileSync(join(dir, 'trials.jsonl'), kept.map((t) => JSON.stringify(t)).join('\n') + '\n');
+    const r = run('secondary-endpoints.ts', ['--results', dir, '--draws', '1000']);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('Not paired: c on m1: 0 gbrain cell(s), 1 without');
+    const out = JSON.parse(readFileSync(join(dir, 'secondary-endpoints.json'), 'utf8'));
+    expect(out.endpoints.map((e: { endpoint: string }) => e.endpoint)).toEqual(['cross_scope_any', 'cross_scope_gbrain', 'hidden_fact_leak', 'consent_violation', 'continuity_pass']);
+    const any = out.endpoints[0];
+    expect(any.comparisons.map((c: { harness: string; model: string }) => `${c.harness}/${c.model}`)).toEqual(['a/m1', 'b/m1', 'a/m2']);
+    const b = any.comparisons.find((c: { harness: string }) => c.harness === 'b');
+    expect(b.excluded).toEqual([{ id: `${TASKS[0]![0]}/5`, reason: 'no trial in the gbrain cell' }]);
+    expect(b.n_pairs).toBe(TASKS.length * REPS - 1);
+    const a2 = any.comparisons.find((c: { model: string }) => c.model === 'm2');
+    expect(a2.excluded).toEqual([{ id: 'ho-01-sev1-recap/1', reason: 'gbrain model_error' }]);
+    for (const c of any.comparisons) expect(c.holm_p).toBeGreaterThanOrEqual(c.p);
   });
 });
 

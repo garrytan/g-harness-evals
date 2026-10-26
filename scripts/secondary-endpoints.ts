@@ -12,7 +12,8 @@
 //   continuity_pass      pass (grade pass, no consent violation) over the continuity family alone (descriptive at 4 tasks)
 // Estimator: task-clustered paired bootstrap for the interval (seed, draws), exact sign-flip over task clusters for p,
 // Holm within one model per endpoint. Writes secondary-endpoints.json beside trials.jsonl and prints the Markdown table.
-// A cell with no gbrain or none counterpart is skipped and named.
+// A cell with no gbrain or none counterpart is skipped and named; a missing repetition is excluded on both sides with a
+// reason; an endpoint whose families have no trial in the run is reported as not computed instead of raising PairingError.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -97,6 +98,11 @@ const lines: string[] = [`Secondary endpoints, gbrain-told minus none, same pair
 for (const e of ENDPOINTS) {
   const fams = scopeOf(e);
   const scopeRows = rows.filter((t) => !fams || fams.includes(familyOf.get(t.task)!));
+  if (!scopeRows.length) {
+    out.push({ endpoint: e, label: LABEL[e], families: fams, holm_family: 'the harness pairs of one model', comparisons: [], note: `no trial in families ${fams!.join(', ')}` });
+    lines.push('', `${LABEL[e]} (families ${fams!.join(', ')}): no trial in these families, not computed.`);
+    continue;
+  }
   const stats = cellPairs.map((cp) => {
     const a = byTask(cp.none, scopeRows), b = byTask(cp.gbrain, scopeRows);
     const tasks = [...new Set([...a.keys(), ...b.keys()])].sort();

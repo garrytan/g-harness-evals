@@ -4,7 +4,7 @@
 # runner/run.py replaces it once the world and ledger land.
 #
 #   harnesses/run-trial.sh --harness openclaw --task tasks/hello --trial-id t1 \
-#     --base-url http://host.docker.internal:8787/anthropic --api-key sk-trial-t1
+#     --base-url http://host.docker.internal:8787/anthropic --api-key trial-token:t1
 #
 # Options:
 #   --harness NAME        harnesses/NAME (image defaults to harness-eval/NAME:dev, _fake -> fake)

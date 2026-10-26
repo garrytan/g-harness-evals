@@ -16,6 +16,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, renameSy
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { TurnRequest, TurnResponse } from '../runner/contracts.ts';
+import { trialKey } from '../runner/trial/proxy.ts';
 import type { WorldServer } from '../world/services/server.ts';
 import { startWorld } from './world-helpers.ts';
 
@@ -55,7 +56,7 @@ function runProcess(t: Trial, env: Record<string, string> = {}) {
       HE_SESSION_STATE_DIR: t.state,
       HE_LOG_DIR: t.logs,
       HE_MODEL_BASE_URL: 'http://127.0.0.1:1/anthropic',
-      HE_MODEL_API_KEY: 'sk-trial-test',
+      HE_MODEL_API_KEY: trialKey('test'),
       HE_MODEL_NAME: 'none',
       HE_TIME_BUDGET_S: '10',
       HE_TASK_SLICE: 'smoke',
@@ -149,7 +150,7 @@ const SERVE_ENV = (t: Trial): Record<string, string> => ({
   HE_LOG_DIR: t.logs,
   HE_TURNS_DIR: t.turns,
   HE_MODEL_BASE_URL: 'http://127.0.0.1:1/anthropic',
-  HE_MODEL_API_KEY: 'sk-trial-test',
+  HE_MODEL_API_KEY: trialKey('test'),
   HE_MODEL_NAME: 'none',
   HE_TIME_BUDGET_S: '10',
   HE_TASK_SLICE: 'multiuser',
@@ -389,7 +390,7 @@ describe.skipIf(!haveDocker)('fake adapter, container level', () => {
       'run', '-i', '--name', name, '--network', 'none',
       '-v', `${t.workspace}:/workspace`, '-v', `${t.state}:/harness-state`, '-v', `${t.logs}:/he-logs`,
       '-e', 'HE_LOG_DIR=/he-logs', '-e', 'HE_SESSION_STATE_DIR=/harness-state', '-e', 'HE_TIME_BUDGET_S=10',
-      '-e', 'HE_MODEL_BASE_URL=http://host.docker.internal:8787/anthropic', '-e', 'HE_MODEL_API_KEY=sk-trial-test',
+      '-e', 'HE_MODEL_BASE_URL=http://host.docker.internal:8787/anthropic', '-e', 'HE_MODEL_API_KEY=trial-token:test',
       '-e', 'HE_MODEL_NAME=none', '-e', 'HE_TASK_SLICE=smoke', '-e', 'HE_TRIAL_ID=conformance-docker',
       IMAGE, 'run',
     ], { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
@@ -419,7 +420,7 @@ describe.skipIf(!haveDocker)('fake adapter, container level', () => {
       'run', '-i', '--name', name, '--network', 'none', '--read-only', '--tmpfs', '/tmp',
       '-v', `${t.workspace}:/workspace`, '-v', `${t.state}:/harness-state`, '-v', `${t.logs}:/he-logs`,
       '-e', 'HE_LOG_DIR=/he-logs', '-e', 'HE_SESSION_STATE_DIR=/harness-state', '-e', 'HE_TIME_BUDGET_S=10',
-      '-e', 'HE_MODEL_BASE_URL=http://host.docker.internal:8787/anthropic', '-e', 'HE_MODEL_API_KEY=sk-trial-test',
+      '-e', 'HE_MODEL_BASE_URL=http://host.docker.internal:8787/anthropic', '-e', 'HE_MODEL_API_KEY=trial-token:test',
       '-e', 'HE_TRIAL_ID=conformance-ro',
       IMAGE, 'run',
     ], { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
@@ -434,7 +435,7 @@ describe.skipIf(!haveDocker)('fake adapter, container level', () => {
       'run', '-i', '--name', name, '--network', 'none', '--user', `${process.getuid!()}:${process.getgid!()}`,
       '-v', `${t.workspace}:/workspace`, '-v', `${t.state}:/harness-state`, '-v', `${t.logs}:/he-logs`, '-v', `${t.turns}:/he-turns`,
       '-e', 'HE_LOG_DIR=/he-logs', '-e', 'HE_SESSION_STATE_DIR=/harness-state', '-e', 'HE_TURNS_DIR=/he-turns', '-e', 'HE_TIME_BUDGET_S=10',
-      '-e', 'HE_MODEL_BASE_URL=http://host.docker.internal:8787/anthropic', '-e', 'HE_MODEL_API_KEY=sk-trial-test',
+      '-e', 'HE_MODEL_BASE_URL=http://host.docker.internal:8787/anthropic', '-e', 'HE_MODEL_API_KEY=trial-token:test',
       '-e', 'HE_MODEL_NAME=none', '-e', 'HE_TASK_SLICE=multiuser', '-e', 'HE_TRIAL_ID=conformance-serve-docker',
       IMAGE, 'serve',
     ], { stdio: ['ignore', 'pipe', 'pipe'] });

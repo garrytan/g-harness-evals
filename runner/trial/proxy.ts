@@ -1,6 +1,6 @@
 // One metering proxy per run (runner/proxy/metering-proxy.ts in lease mode), started by the runner with a
 // control token so a container can never move charges. Per trial the runner binds a slot (the path segment
-// the container's base URL carries) to the trial key sk-trial-<id> and finalizes the key afterwards. The
+// the container's base URL carries) to the trial token trial-token:<id> and finalizes it afterwards. The
 // proxy is the only process that sees a provider key; this module passes the runner's environment through
 // and never reads, prints or writes the key itself.
 //
@@ -33,7 +33,11 @@ export interface RunProxyOptions {
   startTimeoutMs?: number;
 }
 
-export const trialKey = (trialId: string) => `sk-trial-${trialId}`;
+/** The per-trial dummy token: what the harness sends as its API key and what the proxy meters under. Deterministic
+ *  from the trial id, never a credential. The prefix is not a provider key shape, and the receipts record it under
+ *  `meter_id`, so no secret scanner reads it as a key (runs before 2026-10-26 used `sk-trial-<id>` under `key`). */
+export const TRIAL_TOKEN_PREFIX = 'trial-token:';
+export const trialKey = (trialId: string) => `${TRIAL_TOKEN_PREFIX}${trialId}`;
 /** A trial id as a path segment and a container name: letters, digits, dot, underscore, dash. */
 export const trialSlug = (trialId: string) => trialId.replace(/[^A-Za-z0-9._-]+/g, '-');
 
@@ -131,7 +135,7 @@ export function summarizeUsage(key: string, meter: Meter, lines: UsageLine[]): {
   const forwarded = harness.filter((l) => l.outcome === 'forwarded');
   const embeddingCharged = lines.filter((l) => isEmbeddingLine(l) && (l.outcome === 'forwarded' || l.outcome === 'failed')).length;
   const usage: TrialUsage = {
-    key,
+    meter_id: key,
     requests: meter.requests - embeddingCharged,
     refused: harness.filter((l) => l.outcome === 'refused').length,
     failed: harness.filter((l) => l.outcome === 'failed').length,
@@ -167,7 +171,7 @@ export function reconcile(key: string, meter: Meter, lines: UsageLine[]) {
   const linesUsd = charged.reduce((a, l) => a + (l.actual_usd ?? 0), 0);
   const diff = Math.abs(linesUsd - meter.usd);
   return {
-    key,
+    meter_id: key,
     meter: { requests: meter.requests, usd: meter.usd, unpriced: meter.unpriced, undrained: meter.undrained ?? 0 },
     usage_lines: { requests: charged.length, usd: linesUsd, refused: lines.length - charged.length },
     proxy_consistent: charged.length === meter.requests && diff < 1e-9 && !meter.undrained,

@@ -156,10 +156,12 @@ export const PREAMBLE_PLACEHOLDERS = [
  *  process runs an adapter script on the host for keyless tests; scripted plays a Script with no harness. */
 export type HarnessMode = 'docker' | 'process' | 'scripted';
 
-/** M1 lane A addition: usage.json, the metering proxy's meter for one trial key plus the token sums from the
- *  usage lines it wrote for that key. cached_tokens is the cache-read count the provider reported. */
+/** M1 lane A addition: usage.json, the metering proxy's meter for one trial token plus the token sums from the
+ *  usage lines it wrote under it. cached_tokens is the cache-read count the provider reported. meter_id is the
+ *  per-trial dummy token the harness sent as its API key and the proxy metered under (`trial-token:<trial id>`;
+ *  receipts committed before 2026-10-26 carry `key: "sk-trial-<trial id>"`). It is never a credential. */
 export interface TrialUsage {
-  key: string;
+  meter_id: string;
   requests: number;
   refused: number;
   failed: number;

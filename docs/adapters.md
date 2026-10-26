@@ -19,7 +19,7 @@ The runner sets these variables. An adapter must not require anything else.
 | Variable | Meaning |
 |---|---|
 | `HE_MODEL_BASE_URL` | Provider-specific base URL on the proxy, for example `http://host.docker.internal:8787/anthropic`. The harness appends its usual path (`/v1/messages`). |
-| `HE_MODEL_API_KEY` | The per-trial dummy token (`sk-trial-<id>`). The proxy maps it to the trial and refuses unknown tokens. |
+| `HE_MODEL_API_KEY` | The per-trial dummy token (`trial-token:<id>`; `sk-trial-<id>` before 2026-10-26). The proxy maps it to the trial and refuses unknown tokens. |
 | `HE_MODEL_NAME` | Model id as the provider names it, for example `claude-sonnet-5-5`. The adapter pins the harness to exactly this model; model fallback is forbidden. |
 | `HE_TIME_BUDGET_S` | Wall-clock budget for the turn, in seconds. |
 | `HE_LOG_DIR` | Writable directory outside `/workspace` for the adapter's own log, the harness's stdout and stderr, and any harness-native transcript. |
@@ -112,7 +112,7 @@ What each harness does with the landed files was read keylessly from the install
 ```sh
 bun harnesses/serve-smoke.ts --harness _fake --trial-id fake-serve-1
 bun harnesses/serve-smoke.ts --harness openclaw --trial-id openclaw-serve-1 \
-  --base-url http://host.docker.internal:8787/anthropic --api-key sk-trial-openclaw-serve-1
+  --base-url http://host.docker.internal:8787/anthropic --api-key trial-token:openclaw-serve-1
 ```
 
 ## Non-interactive by construction
@@ -146,7 +146,7 @@ Everything the harness prints goes to `$HE_LOG_DIR/stdout.log` and `$HE_LOG_DIR/
 
 ```sh
 harnesses/run-trial.sh --harness openclaw --task tasks/hello --trial-id t1 \
-  --base-url http://host.docker.internal:8787/anthropic --api-key sk-trial-t1
+  --base-url http://host.docker.internal:8787/anthropic --api-key trial-token:t1
 ```
 
 ## Conformance

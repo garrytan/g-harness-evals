@@ -3,7 +3,7 @@
 //
 //   bun harnesses/serve-smoke.ts --harness _fake --trial-id fake-serve-1
 //   bun harnesses/serve-smoke.ts --harness openclaw --trial-id openclaw-serve-1 \
-//       --base-url http://host.docker.internal:8787/anthropic --api-key sk-trial-openclaw-serve-1
+//       --base-url http://host.docker.internal:8787/anthropic --api-key trial-token:openclaw-serve-1
 //
 // It starts a world in this process on 0.0.0.0 (containers reach it as host.docker.internal), starts
 // the harness container in serve mode the way the runner will (three mounts plus /he-turns, the
@@ -21,7 +21,7 @@
 //   --image TAG        image to run instead of the default
 //   --trial-id ID      HE_TRIAL_ID; names the output directory
 //   --base-url URL     HE_MODEL_BASE_URL (default http://host.docker.internal:8787/anthropic)
-//   --api-key TOKEN    HE_MODEL_API_KEY (the per-trial dummy token; default sk-trial-<trial-id>)
+//   --api-key TOKEN    HE_MODEL_API_KEY (the per-trial dummy token; default trial-token:<trial-id>)
 //   --model NAME       HE_MODEL_NAME (default claude-sonnet-5-5)
 //   --budget S         per-turn time_budget_s (default 300)
 //   --port N           world port on 0.0.0.0 (default 8791)
@@ -52,7 +52,7 @@ if (!harness || !trialId) {
 }
 const image = arg('image', `harness-eval/${harness.replace(/^_/, '')}:dev`)!;
 const baseUrl = arg('base-url', 'http://host.docker.internal:8787/anthropic')!;
-const apiKey = arg('api-key', `sk-trial-${trialId}`)!;
+const apiKey = arg('api-key', `trial-token:${trialId}`)!;
 const model = arg('model', 'claude-sonnet-5-5')!;
 const budget = Number(arg('budget', '300'));
 const port = Number(arg('port', '8791'));

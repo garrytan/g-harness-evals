@@ -51,7 +51,7 @@ function startServe(harness: string, name: string, t: Trial, viewDir: string, in
   containers.push(name);
   const env = {
     HE_LOG_DIR: '/he-logs', HE_TURNS_DIR: '/he-turns', HE_TRIAL_ID: name, HE_TASK_SLICE: 'multiuser', HE_TIME_BUDGET_S: '30',
-    HE_MODEL_BASE_URL: modelUrl, HE_MODEL_API_KEY: 'sk-trial-test', HE_MODEL_NAME: 'claude-haiku-5-5',
+    HE_MODEL_BASE_URL: modelUrl, HE_MODEL_API_KEY: 'trial-token:test', HE_MODEL_NAME: 'claude-haiku-5-5',
     HE_WORLD_MCP_URL: 'http://127.0.0.1:9/mcp', HE_WORLD_MCP_TOKEN: 'he-install-test-token',
     HE_GBRAIN_INSTALL: install, HE_GBRAIN_SPLIT: 'dev', HE_GBRAIN_INSTALL_DIR: '/he-gbrain-install',
   };
@@ -170,7 +170,7 @@ describe.skipIf(!haveImages)("the OpenClaw and Hermes adapters apply gbrain's do
     try {
       expect(await waitReadyOrExit(name, t.logs, 150_000)).toBeNull();
       const r = spawnSync('docker', ['exec', '-e', 'HOME=/harness-state', '-e', 'OPENCLAW_STATE_DIR=/harness-state/openclaw', '-e', 'OPENCLAW_CONFIG_PATH=/harness-state/openclaw/openclaw.json',
-        '-e', 'HE_MODEL_BASE_URL=http://127.0.0.1:9/anthropic', '-e', 'HE_MODEL_API_KEY=sk-trial-test', name, 'openclaw', 'skills', 'list', '--json'], { encoding: 'utf8', timeout: 120_000 });
+        '-e', 'HE_MODEL_BASE_URL=http://127.0.0.1:9/anthropic', '-e', 'HE_MODEL_API_KEY=trial-token:test', name, 'openclaw', 'skills', 'list', '--json'], { encoding: 'utf8', timeout: 120_000 });
       expect(r.status, r.stderr).toBe(0);
       const listed = JSON.parse(r.stdout.slice(r.stdout.indexOf('{'))) as { workspaceDir: string; skills: Array<{ name: string; source: string; eligible: boolean; modelVisible: boolean }> };
       expect(listed.workspaceDir).toBe('/workspace');
@@ -363,9 +363,9 @@ describe.skipIf(!haveInstaller)("the OpenClaw and Hermes adapters apply gbrain's
         writeFileSync(join(t.workspace, 'probe.md'), 'Say ok.\n');
         const exec = h === 'openclaw'
           ? await execInContainer(['-e', 'HOME=/harness-state', '-e', 'OPENCLAW_STATE_DIR=/harness-state/openclaw', '-e', 'OPENCLAW_CONFIG_PATH=/harness-state/openclaw/openclaw.json',
-            '-e', `HE_MODEL_BASE_URL=http://host.docker.internal:${fake.port}/anthropic`, '-e', 'HE_MODEL_API_KEY=sk-trial-test', name,
+            '-e', `HE_MODEL_BASE_URL=http://host.docker.internal:${fake.port}/anthropic`, '-e', 'HE_MODEL_API_KEY=trial-token:test', name,
             'openclaw', 'agent', 'exec', '--message-file', '/workspace/probe.md', '--cwd', '/workspace', '--config', '/harness-state/openclaw/openclaw.json', '--state-dir', '/harness-state/openclaw/exec', '--model', 'anthropic/claude-haiku-5-5', '--json'], 180_000)
-          : await execInContainer(['-w', '/workspace', '-e', 'HOME=/harness-state', '-e', 'HERMES_HOME=/harness-state/hermes', '-e', `ANTHROPIC_BASE_URL=http://host.docker.internal:${fake.port}/anthropic`, '-e', 'ANTHROPIC_API_KEY=sk-trial-test', name,
+          : await execInContainer(['-w', '/workspace', '-e', 'HOME=/harness-state', '-e', 'HERMES_HOME=/harness-state/hermes', '-e', `ANTHROPIC_BASE_URL=http://host.docker.internal:${fake.port}/anthropic`, '-e', 'ANTHROPIC_API_KEY=trial-token:test', name,
             'hermes', 'chat', '--query-file', '/workspace/probe.md', '--oneshot', '--provider', 'anthropic', '--model', 'claude-haiku-5-5'], 180_000);
         const turn = firstTurn(fake.requests);
         expect(turn, `no model turn reached the fake endpoint (${fake.requests.length} other requests); exit ${exec.status}\n${exec.stderr.slice(-1500)}`).toBeDefined();

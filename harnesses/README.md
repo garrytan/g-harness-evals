@@ -28,10 +28,10 @@ bun runner/proxy/metering-proxy.ts --listen 172.17.0.1:8787 \
   --budget-ledger .budget/ledger.sqlite --lease-usd 2 --run-id <run> --new-run \
   --allow-models anthropic:claude-sonnet-5-5 --usage-log .budget/<run>-usage.ndjson
 harnesses/run-trial.sh --harness hermes --task tasks/hello --trial-id <trial> \
-  --base-url http://host.docker.internal:8787/anthropic --api-key sk-trial-<trial>
+  --base-url http://host.docker.internal:8787/anthropic --api-key trial-token:<trial>
 ```
 
-Hermes needs the proxy started with `--max-output-tokens 128000` (see its README). Results land under `results/smoke/<trial>/`. The real key stays in the proxy's environment; the container only ever sees the `sk-trial-` token.
+Hermes needs the proxy started with `--max-output-tokens 128000` (see its README). Results land under `results/smoke/<trial>/`. The real key stays in the proxy's environment; the container only ever sees the `trial-token:` dummy (`sk-trial-` before 2026-10-26).
 
 ## Run one serve-mode smoke
 
@@ -40,7 +40,7 @@ Hermes needs the proxy started with `--max-output-tokens 128000` (see its README
 ```sh
 bun harnesses/serve-smoke.ts --harness _fake --trial-id fake-serve-1
 bun harnesses/serve-smoke.ts --harness hermes --trial-id hermes-serve-1 \
-  --base-url http://host.docker.internal:8787/anthropic --api-key sk-trial-hermes-serve-1
+  --base-url http://host.docker.internal:8787/anthropic --api-key trial-token:hermes-serve-1
 ```
 
 ## Changelog

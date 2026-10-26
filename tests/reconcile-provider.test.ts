@@ -76,6 +76,13 @@ describe('reconcile-provider: proxy side', () => {
     expect(dayIn('2026-10-23T07:00:00Z', 'America/Los_Angeles')).toBe('2026-10-23');
   });
 
+  test('lines metered under the trial-token: shape and under the pre-2026-10-26 sk-trial- shape both belong to the run', () => {
+    const lines = require('node:fs').readFileSync(join(fixtureResults(), 'proxy-usage.ndjson'), 'utf8').split('\n').filter(Boolean).map((l: string) => JSON.parse(l) as UsageLine);
+    const renamed = lines.map((l: UsageLine, i: number) => (i % 2 === 0 ? { ...l, key: l.key.replace(/^sk-trial-/, 'trial-token:') } : l));
+    expect(summarizeProxy(renamed, RUN, 'UTC').total).toEqual(summarizeProxy(lines, RUN, 'UTC').total);
+    expect(summarizeProxy(renamed, 'other-run', 'UTC').priced_requests).toBe(1);
+  });
+
   test('cross-checks usage lines, trials.jsonl and the ledger, and says when they disagree', async () => {
     const [ok] = await reconcileAll([fixtureResults()], noProvider);
     expect(ok!.cross_check).toMatchObject({ usage_lines_usd: 0.6, trials_usd: 0.6, ledger_committed_usd: 0.6, ledger_settled_usd: 0.6, consistent: true });

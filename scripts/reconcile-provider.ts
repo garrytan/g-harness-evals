@@ -73,7 +73,7 @@ export interface ProxySide {
 
 /** The proxy's priced usage for one run. */
 export function summarizeProxy(lines: UsageLine[], runId: string, tz: string): ProxySide {
-  const mine = lines.filter((l) => l.key?.startsWith(`sk-trial-${runId}/`));
+  const mine = lines.filter((l) => l.key?.startsWith(`trial-token:${runId}/`) || l.key?.startsWith(`sk-trial-${runId}/`));
   const forwarded = mine.filter((l) => l.outcome === 'forwarded');
   const priced = forwarded.filter((l) => l.status === 200 && typeof l.actual_usd === 'number');
   const out: ProxySide = {

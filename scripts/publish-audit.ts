@@ -8,7 +8,7 @@
 // every commit of every ref, gzipped blobs decoded, so a key that was committed and later deleted is still
 // found and named with a commit that holds it. It lists every email domain and phone-shaped string in the
 // tracked tree so a person can check them against the world's own synthetic domains, confirms that the
-// receipts trees hold only evaluator-owned files, and runs the link check. Trial tokens (prefix sk-trial-)
+// receipts trees hold only evaluator-owned files, and runs the link check. Trial tokens of runs before 2026-10-26 (prefix sk-trial-; since then trial-token:<id>, which matches no key shape)
 // are the per-trial dummies the harness containers see; they are allowlisted and said so. A synthetic canary
 // is scanned first and the run fails if the scanner misses it. Any non-allowlisted hit, or any step that
 // cannot run, exits non-zero: the audit fails closed.

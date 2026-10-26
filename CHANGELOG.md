@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.9] - 2026-10-26
+
+### internal-task: the per-trial token no secret scanner reads as a key, and the pregate lane policy
+
+- `runner/trial/proxy.ts`: the per-trial dummy token the harness sends as its API key is `trial-token:<trial id>` (`TRIAL_TOKEN_PREFIX`), no longer `sk-trial-<trial id>`, and `usage.json` and `reconcile.json` record it as `meter_id` instead of `key` (`TrialUsage.meter_id`). Why both: gstack's pregate `secrets` check read every `"key": "sk-trial-..."` line of the v02-heldout receipts as a credential (1,800 MEDIUM findings on #81, which merged under a declared exception); the check fires on an `sk-` prefix and on any field named `key`, `token` or `trial_token` with an entropic value, so the prefix alone would not have cleared it (probed with `gstack-redact`). The token is still the trial id behind a fixed prefix and never a credential. Receipts committed before 2026-10-26 (the pilot, company-brain, the gbrain arm, the ladder, the QM runs, v02-heldout) keep `key: "sk-trial-..."`; `scripts/reconcile-provider.ts` reads both shapes; `scripts/publish-audit.ts` keeps its `sk-trial-` allowlist for them and the new shape matches no key pattern it scans for (tested). The proxy's own usage lines and control API keep their `key` field. Documented in `runner/README.md`, `docs/adapters.md`, `docs/methodology.md`, `harnesses/README.md`.
+- `.gstack/pregate.json` (pregate-v1): the repository's lane policy for `gstack-pregate`, so the `lanes` check has something to read. Maps each script and harness file to the tests that exercise it, declares the operator scripts (`scripts/run-shard.sh`, `scripts/ubicloud/`, `scripts/check-links.py`), CI workflows, lockfile, plans and benchmark receipts as needing no lane, and `docs/**/*.md` and `tasks/**` as documentation lanes. Only the copy on main is honoured, so this PR's own pass used the same file at the user-scope path.
+- `scripts/secondary-endpoints.ts`: an endpoint whose families have no trial in the run (`continuity_pass` on a run without continuity tasks) is reported as not computed instead of raising `PairingError`. The script gets a test case in `tests/scripts-gbrain.test.ts` (pairs, Holm, the both-sides exclusion of a missing repetition from #81), which gives it its test lane; output on the v02-heldout receipts is byte-identical.
+- `.gitignore`: `.gstack/tmp/` (pregate and ship receipts a machine writes while shipping).
+
 ## [0.0.8] - 2026-10-26
 
 ### internal-task: gbrain-installer-hook-2026-10 results and report (2026-10-26)
