@@ -4,6 +4,10 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 
 ## [Unreleased]
 
+### internal-task: the Ubicloud shard lane
+
+- `scripts/ubicloud/run-shard.sh`, `vm-shard.sh` and `fanout.sh` ([docs/ubicloud.md](docs/ubicloud.md)): a counted run's shards run on ephemeral Ubicloud VMs, one standard-16 VM per shard, the repository pinned at the preregistration commit, Docker, Bun, Node and the images built there, the Capy shards' one-trial smoke under a scratch ledger, then the commit's own `scripts/run-shard.sh` under the shard's lease; logs streamed back every 30 s, the results tree copied back with checkpointed ledgers and a `shard-vm.json` (timings, exit, list-price cost) beside `shard.json`, the VM destroyed on every exit path; model keys reach the VM only as `ubi-runner.sh run --pass` sends them and the key file is deleted before the shard starts. `fanout.sh` launches one shard per manifest entry, checks the vCPU usage first and prints a table and the merge command. Measured on the v0.2 pilot's OpenClaw Haiku cell: per-trial wall time equal to the Capy shard's, VM $0.13 for a 16-minute life, model spend $0.05 for four trials.
+
 ### internal-task: v02-heldout-2026-10 amendments 1 and 2 (2026-10-25, before any counted trial)
 
 - Amendment 1: cap $90 to $135 and the nine shard leases resized after the first Sonnet smoke and two shards' first trials showed the proxy's per-call reservation and held-out trials near 1.3 times the pilot's cost; four pre-amendment trials discarded and listed. Amendment 2: a cell may preregister `utility_models` (runner/run.ts, runner/trial/trial.ts: HE-MODEL-001 treats them as the cell's own, the allowlist admits them), set on the four OpenClaw and QM Sonnet cells for their documented `claude-haiku-5-5` housekeeping call; `scripts/run-shard.sh --max-output-tokens` (default 128000) so the QM shards' reservations fit their leases. docs/errors.md and runner/README.md updated; tests in tests/run.test.ts and tests/qm-config.test.ts.
