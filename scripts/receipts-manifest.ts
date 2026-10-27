@@ -26,7 +26,7 @@
 
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { Database } from 'bun:sqlite';
 
@@ -112,11 +112,19 @@ export function readLedger(path: string, bytes: Buffer = readFileSync(path)): Om
   }
 }
 
-function walk(dir: string): string[] {
+/** The files under dir that the repository would hold: tracked and untracked-but-not-ignored, as git sees them, so a
+ * working checkout with harness state left under an ignored results/trials/<trial>/state/ gives the same manifest as a
+ * clean clone. Without git (or outside a repository) every regular file is listed. Symlinks are skipped either way. */
+function walk(root: string, dir: string): string[] {
+  const listed = git(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', relative(root, dir)]);
+  const regular = (full: string) => { try { const st = lstatSync(full); return !st.isSymbolicLink() && st.isFile(); } catch { return false; } };
+  if (listed !== null) return listed.split('\0').filter(Boolean).map((p) => join(root, p)).filter(regular).sort();
   const out: string[] = [];
   for (const name of readdirSync(dir).sort()) {
     const full = join(dir, name);
-    if (statSync(full).isDirectory()) out.push(...walk(full));
+    const st = lstatSync(full);
+    if (st.isSymbolicLink()) continue;
+    if (st.isDirectory()) out.push(...walk(root, full));
     else out.push(full);
   }
   return out;
@@ -147,7 +155,7 @@ export function buildRun(root: string, directory: string): RunRow {
   }
   runId ??= firstTrialId ? firstTrialId.split('/')[0]! : null;
 
-  const files = walk(results);
+  const files = walk(root, results);
   const rel = (p: string) => relative(root, p).split('\\').join('/');
   const ledgers = files.filter((f) => f.endsWith('.sqlite')).map((f) => { const bytes = readFileSync(f); return { path: rel(f), sha256: sha256(bytes), ...readLedger(f, bytes) }; });
   const proxyLogs = files.filter((f) => /(^|[./-])proxy-usage([.-][^/]*)?\.ndjson$/.test(f.slice(f.lastIndexOf('/') + 1))).map((f) => ({ path: rel(f), sha256: sha256(readFileSync(f)) }));

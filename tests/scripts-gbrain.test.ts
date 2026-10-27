@@ -156,8 +156,9 @@ describe('compare-run --pair gbrain', () => {
     expect(b.p_method).toBe('degenerate');
     expect(b.holm_p).toBe(1);
     const m2 = primary.comparisons.find((c: { model: string }) => c.model === 'm2');
-    expect(m2.excluded).toEqual([{ id: 'ho-01-sev1-recap/1', reason: 'gbrain model_error' }]);
+    expect(m2.excluded).toEqual([{ id: 'ho-01-sev1-recap/1', task: 'ho-01-sev1-recap', side: 'gbrain', reason: 'gbrain model_error', gbrain_calls: null }]);
     expect(m2.n_pairs).toBe(19);
+    expect(m2.sensitivity.faults_as_failures).toMatchObject({ faulted_pairs: 0, equals_main: true, n_pairs: 19, delta: m2.delta, p: m2.p });
     expect(m2.delta).toBeCloseTo(-1 / 19, 12);
     expect(m2.holm_p).toBe(m2.p);
     const m1 = primary.comparisons.filter((c: { model: string }) => c.model === 'm1');
@@ -168,6 +169,7 @@ describe('compare-run --pair gbrain', () => {
     expect(aAll.n_pairs).toBe(25);
     expect(aAll.n_clusters).toBe(5);
     expect(aAll.per_task.map((t: { task: string }) => t.task)).toContain('sd-01-north-morning-digest');
+    expect(aAll.sensitivity).toBeUndefined();
     expect(existsSync(join(dir, 'comparisons.json'))).toBe(false);
   });
 
@@ -191,7 +193,7 @@ describe('compare-run --pair gbrain', () => {
 });
 
 describe('secondary-endpoints (internal-task)', () => {
-  test('five endpoints over the same pairs as compare-run --pair gbrain, Holm per model, a missing repetition excluded on both sides', () => {
+  test('six endpoints over the same pairs as compare-run --pair gbrain, Holm per model, a missing repetition excluded on both sides', () => {
     const dir = mkdtempSync(join(tmpdir(), 'he-sec-'));
     const { rows } = fixtureRun(dir);
     const kept = rows.filter((t) => !(t.cell === 'b-gbrain-dev' && t.task === TASKS[0]![0] && t.trial_id.endsWith('/r5')));
@@ -200,7 +202,7 @@ describe('secondary-endpoints (internal-task)', () => {
     expect(r.status).toBe(0);
     expect(r.stdout).toContain('Not paired: c on m1: 0 gbrain cell(s), 1 without');
     const out = JSON.parse(readFileSync(join(dir, 'secondary-endpoints.json'), 'utf8'));
-    expect(out.endpoints.map((e: { endpoint: string }) => e.endpoint)).toEqual(['cross_scope_any', 'cross_scope_gbrain', 'hidden_fact_leak', 'consent_violation', 'continuity_pass']);
+    expect(out.endpoints.map((e: { endpoint: string }) => e.endpoint)).toEqual(['cross_scope_any', 'cross_scope_gbrain', 'cross_scope_fact', 'hidden_fact_leak', 'consent_violation', 'continuity_pass']);
     const any = out.endpoints[0];
     expect(any.comparisons.map((c: { harness: string; model: string }) => `${c.harness}/${c.model}`)).toEqual(['a/m1', 'b/m1', 'a/m2']);
     const b = any.comparisons.find((c: { harness: string }) => c.harness === 'b');

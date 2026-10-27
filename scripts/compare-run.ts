@@ -28,6 +28,16 @@
 // counts, the Holm-adjusted p, and cost and latency deltas (median USD and seconds per trial, total input tokens)
 // from the trial usage. The minimum detectable difference for this design is scripts/paired-mdd.ts.
 //
+// gbrain-memory-2026-10 (the preregistration's Endpoints item 1, added for its results pull request): each entry of the arm's
+// `excluded` array carries id, task, side (none, gbrain or both), reason and gbrain_calls (the gbrain trial's gbrain.events.calls
+// for that pair, null when it is missing or has no gbrain block), printed as an "Excluded pairs" table under each scope's per-task table; a missing
+// repetition on one side is listed the same way instead of stopping the pairing. The primary scope also carries one preregistered
+// sensitivity row per (harness, config, model), `sensitivity.faults_as_failures`: the same estimate with the gbrain cell's
+// ingestion faults (termination exam_fault with error HE-GBRAIN-011, which only the live arm can produce) counted as live
+// failures (pass 0) instead of excluded, the none side at its real value, with the number of pairs it re-included and its own
+// Holm family across the harness pairs of one model; with no faulted pair it equals the main estimate and says so. It is an
+// extra row under the main row in the Markdown table and a key beside the main estimate in the JSON; every other key is unchanged.
+//
 // The install ladder (internal-task, docs/gbrain-arm.md "The install ladder") is the other --pair gbrain design. Each cell's rung
 // is read from its resolved gbrain configuration and preamble (scripts/gbrain-ladder.ts; no gbrain is none, a preamble
 // other than the default makes a told rung), and each rung is paired against its ladder neighbour within (harness, config,
@@ -260,45 +270,77 @@ if (pairMode === 'gbrain') {
     console.error(`--pair gbrain found no (harness, model) with a gbrain cell and exactly one without${skipped.length ? ': ' + skipped.join('; ') : ''}`);
     process.exit(2);
   }
+  /** gbrain-memory-2026-10 (Endpoints item 1): an excluded pair carries its task, the side that dropped it (none, gbrain, or both),
+   *  the reason and the gbrain cell's call count for that pair (the gbrain trial's gbrain.events.calls, null when that trial
+   *  is missing or has no gbrain block; the none cell never calls gbrain). A missing repetition on one side is listed the same
+   *  way, so a partial cell pairs instead of raising PairingError. */
+  type ExcludedPair = { id: string; task: string; side: 'none' | 'gbrain' | 'both'; reason: string; gbrain_calls: number | null };
+  /** The live arm's ingestion fault: HE-GBRAIN-011 ends a trial as exam_fault and occurs in the gbrain cell only. */
+  const isIngestFault = (t: TrialRecord) => t.termination === 'exam_fault' && /\bHE-GBRAIN-011\b/.test(t.error ?? '');
+  const callsOf = (t: TrialRecord | undefined) => (t?.gbrain ? t.gbrain.events.calls : null);
+  /** Pairs the two cells trial by trial and runs the estimator. With faultsAsFailures (the preregistered sensitivity row), a
+   *  gbrain-cell trial that ended as an ingestion fault counts as a live failure (pass 0) and its pair stays in whenever the
+   *  none side is scored; every other exclusion is unchanged. */
+  const estimate = (cp: (typeof cellPairs)[number], scopeRows: TrialRecord[], faultsAsFailures: boolean) => {
+    const a = byTask(cp.none, scopeRows), b = byTask(cp.gbrain, scopeRows);
+    const tasks = [...new Set([...a.keys(), ...b.keys()])].sort();
+    const obsA: Observation[] = [], obsB: Observation[] = [];
+    const excluded: ExcludedPair[] = [];
+    let faulted = 0;
+    const perTask = tasks.map((task) => {
+      const ta = a.get(task) ?? [], tb = b.get(task) ?? [];
+      const n = Math.max(ta.length, tb.length);
+      for (let i = 0; i < n; i++) {
+        const x = ta[i], y = tb[i];
+        const id = `${task}/${i + 1}`;
+        const noneWhy = !x ? 'no trial in the none cell' : EXCLUDED.has(x.termination) ? `none ${x.termination}` : null;
+        const faultKept = faultsAsFailures && !noneWhy && !!y && isIngestFault(y);
+        const gbrainWhy = !y ? 'no trial in the gbrain cell' : faultKept ? null : EXCLUDED.has(y.termination) ? `gbrain ${y.termination}` : null;
+        if (faultKept) faulted += 1;
+        const reason = [noneWhy, gbrainWhy].filter((r): r is string => !!r).join('; ') || null;
+        if (reason) excluded.push({ id, task, side: noneWhy && gbrainWhy ? 'both' : noneWhy ? 'none' : 'gbrain', reason, gbrain_calls: callsOf(y) });
+        obsA.push({ id, cluster: task, value: reason ? null : pass(x!), eligible: !reason, reason: reason ?? undefined });
+        obsB.push({ id, cluster: task, value: reason ? null : faultKept ? 0 : pass(y!), eligible: !reason, reason: reason ?? undefined });
+      }
+      return { task, family: familyOf.get(task)!, none: ta.filter((t) => pass(t) === 1).length, gbrain: tb.filter((t) => pass(t) === 1).length, reps: n };
+    });
+    const pairing = pairObservations(obsA, obsB);
+    const d = clusteredPairedDelta(pairing.pairs, { seed, draws });
+    const mc = exactMcNemar(pairing.pairs);
+    return {
+      delta: d.delta, ci95: d.ci95, p: d.p_two_sided, p_method: d.p_method, n_clusters: d.n_clusters, n_pairs: d.n_pairs, mean_none: d.mean_a, mean_gbrain: d.mean_b,
+      discordant: { gbrain_only_passed: mc.wins, none_only_passed: mc.losses, both_passed: mc.both_pass, both_failed: mc.both_fail },
+      excluded, per_task: perTask, faulted,
+    };
+  };
   const out: Array<Record<string, unknown>> = [];
   const lines: string[] = [`Scope: within-run gbrain arm; grading ${useRegraded ? 'regraded' : 'as recorded'}; seed ${seed}, ${draws} draws.${skipped.length ? ' Not paired: ' + skipped.join('; ') + '.' : ''}`];
   for (const { scope, families: fams } of scopes) {
     const scopeRows = rows.filter((t) => !fams || fams.includes(familyOf.get(t.task)!));
     const stats = cellPairs.map((cp) => {
-      const a = byTask(cp.none, scopeRows), b = byTask(cp.gbrain, scopeRows);
-      const tasks = [...new Set([...a.keys(), ...b.keys()])].sort();
-      const obsA: Observation[] = [], obsB: Observation[] = [];
-      const excluded: Array<{ id: string; reason: string }> = [];
-      const perTask = tasks.map((task) => {
-        const ta = a.get(task) ?? [], tb = b.get(task) ?? [];
-        const n = Math.max(ta.length, tb.length);
-        for (let i = 0; i < n; i++) {
-          const x = ta[i], y = tb[i];
-          const id = `${task}/${i + 1}`;
-          if (!x || !y) { obsA.push({ id, cluster: task, value: x ? pass(x) : null, eligible: !!x, reason: 'no trial in the none cell' }); obsB.push({ id, cluster: task, value: y ? pass(y) : null, eligible: !!y, reason: 'no trial in the gbrain cell' }); continue; }
-          const reason = EXCLUDED.has(x.termination) ? `none ${x.termination}` : EXCLUDED.has(y.termination) ? `gbrain ${y.termination}` : null;
-          if (reason) excluded.push({ id, reason });
-          obsA.push({ id, cluster: task, value: reason ? null : pass(x), eligible: !reason, reason: reason ?? undefined });
-          obsB.push({ id, cluster: task, value: reason ? null : pass(y), eligible: !reason, reason: reason ?? undefined });
-        }
-        return { task, family: familyOf.get(task)!, none: ta.filter((t) => pass(t) === 1).length, gbrain: tb.filter((t) => pass(t) === 1).length, reps: n };
-      });
-      const pairing = pairObservations(obsA, obsB);
-      const d = clusteredPairedDelta(pairing.pairs, { seed, draws });
-      const mc = exactMcNemar(pairing.pairs);
+      const { faulted: _main, ...main } = estimate(cp, scopeRows, false);
       const usageOf = (cell: string) => scopeRows.filter((t) => t.cell === cell);
       const ua = usageOf(cp.none), ub = usageOf(cp.gbrain);
       const usd = (ts: TrialRecord[]) => med(ts.map((t) => t.usage?.usd).filter((x): x is number => typeof x === 'number'));
       const secs = (ts: TrialRecord[]) => med(ts.map((t) => t.wall_ms / 1000));
       const tokens = (ts: TrialRecord[]) => ts.reduce((s, t) => s + (t.usage?.input_tokens ?? 0), 0);
       const minus = (x: number | null, y: number | null) => (x === null || y === null ? null : x - y);
+      const passed = { none: ua.filter((t) => pass(t) === 1).length, gbrain: ub.filter((t) => pass(t) === 1).length };
+      // The preregistered sensitivity row, primary scope only: the same estimate with the live arm's HE-GBRAIN-011 faults
+      // counted as live failures instead of excluded. With no faulted pair it is the main estimate and says so.
+      const sens = scope === 'primary' ? estimate(cp, scopeRows, true) : null;
+      const sensitivity = sens ? { faults_as_failures: {
+        label: 'HE-GBRAIN-011 faults in the gbrain cell counted as live failures (pass 0), the none side at its real value',
+        passed, delta: sens.delta, ci95: sens.ci95, p: sens.p, p_method: sens.p_method, n_clusters: sens.n_clusters, n_pairs: sens.n_pairs, mean_none: sens.mean_none, mean_gbrain: sens.mean_gbrain,
+        discordant: sens.discordant, holm_p: null as number | null, holm_family: 'the sensitivity rows of the harness pairs of one model', excluded: sens.excluded.length,
+        faulted_pairs: sens.faulted, equals_main: sens.faulted === 0, note: sens.faulted === 0 ? 'no faulted pair: equals the main estimate' : `${sens.faulted} faulted pair(s) re-included as live failures`,
+      } } : null;
       return {
         harness: cp.harness, config: cp.config, model: cp.model, cell_none: cp.none, cell_gbrain: cp.gbrain,
-        n_trials: { none: ua.length, gbrain: ub.length }, passed: { none: ua.filter((t) => pass(t) === 1).length, gbrain: ub.filter((t) => pass(t) === 1).length },
-        delta: d.delta, ci95: d.ci95, p: d.p_two_sided, p_method: d.p_method, n_clusters: d.n_clusters, n_pairs: d.n_pairs, mean_none: d.mean_a, mean_gbrain: d.mean_b,
-        discordant: { gbrain_only_passed: mc.wins, none_only_passed: mc.losses, both_passed: mc.both_pass, both_failed: mc.both_fail },
-        excluded, per_task: perTask,
+        n_trials: { none: ua.length, gbrain: ub.length }, passed,
+        ...main,
         cost: { usd_median: { none: usd(ua), gbrain: usd(ub), delta: minus(usd(ub), usd(ua)) }, wall_s_median: { none: secs(ua), gbrain: secs(ub), delta: minus(secs(ub), secs(ua)) }, input_tokens_total: { none: tokens(ua), gbrain: tokens(ub), delta: tokens(ub) - tokens(ua) } },
+        ...(sensitivity ? { sensitivity } : {}),
       };
     });
     const holm = new Array<number>(stats.length);
@@ -306,14 +348,25 @@ if (pairMode === 'gbrain') {
       const idx = stats.map((s, i) => (s.model === model ? i : -1)).filter((i) => i >= 0);
       const adj = holmAdjusted(idx.map((i) => stats[i]!.p));
       idx.forEach((i, k) => { holm[i] = adj[k]!; });
+      const sensAdj = holmAdjusted(idx.map((i) => stats[i]!.sensitivity?.faults_as_failures.p ?? 1));
+      idx.forEach((i, k) => { const s = stats[i]!.sensitivity; if (s) s.faults_as_failures.holm_p = sensAdj[k]!; });
     }
     out.push({ scope, families: fams, holm_family: 'the harness pairs of one model', comparisons: stats.map((s, i) => ({ ...s, holm_p: holm[i] })) });
+    const ci = (c: [number, number] | null) => (c ? `[${pts(c[0])}, ${pts(c[1])}]` : '[n/a]');
+    const sensRow = (s: (typeof stats)[number]) => {
+      const f = s.sensitivity?.faults_as_failures;
+      if (!f) return [];
+      return [`| ${s.harness}${s.config ? ' ' + s.config : ''} (sensitivity, preregistered: HE-GBRAIN-011 faults as live failures; ${f.faulted_pairs} pair(s) re-included${f.equals_main ? ', equals the main estimate' : ''}) | ${s.model} | \`${s.cell_gbrain}\` | ${f.passed.none} / ${s.n_trials.none} | ${f.passed.gbrain} / ${s.n_trials.gbrain} | ${pts(f.delta)} ${ci(f.ci95)} | ${f.p.toFixed(3)} (${f.p_method}) | ${f.holm_p === null ? 'n/a' : f.holm_p.toFixed(3)} | ${f.n_clusters} | ${f.n_pairs} | ${f.excluded} | as above | as above | as above |`];
+    };
+    const excludedRows = stats.flatMap((s) => s.excluded.map((x) => `| ${s.harness}${s.config ? ' ' + s.config : ''} | ${s.model} | \`${s.cell_gbrain}\` | ${x.id} | \`${x.task}\` | ${x.side} | ${x.reason} | ${x.gbrain_calls === null ? 'no gbrain block' : x.gbrain_calls} |`));
     lines.push('', `${scope === 'primary' ? `Primary endpoint, families ${fams!.join(', ')}` : 'All tasks (secondary)'}:`, '',
       '| Harness | Model | gbrain cell | Passed none | Passed gbrain | gbrain minus none (points) [95% CI, task-clustered] | p (two-sided, sign-flip) | Holm-adjusted p | Tasks | Pairs | Excluded | USD median / trial (none, gbrain) | Wall median s (none, gbrain) | Input tokens total (none, gbrain) |',
       '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|',
-      ...stats.map((s, i) => `| ${s.harness}${s.config ? ' ' + s.config : ''} | ${s.model} | \`${s.cell_gbrain}\` | ${s.passed.none} / ${s.n_trials.none} | ${s.passed.gbrain} / ${s.n_trials.gbrain} | ${pts(s.delta)} [${s.ci95 ? `${pts(s.ci95[0])}, ${pts(s.ci95[1])}` : 'n/a'}] | ${s.p.toFixed(3)} (${s.p_method}) | ${holm[i]!.toFixed(3)} | ${s.n_clusters} | ${s.n_pairs} | ${s.excluded.length} | ${s.cost.usd_median.none?.toFixed(3) ?? 'n/a'}, ${s.cost.usd_median.gbrain?.toFixed(3) ?? 'n/a'} | ${s.cost.wall_s_median.none?.toFixed(0) ?? 'n/a'}, ${s.cost.wall_s_median.gbrain?.toFixed(0) ?? 'n/a'} | ${s.cost.input_tokens_total.none.toLocaleString()}, ${s.cost.input_tokens_total.gbrain.toLocaleString()} |`),
+      ...stats.flatMap((s, i) => [`| ${s.harness}${s.config ? ' ' + s.config : ''} | ${s.model} | \`${s.cell_gbrain}\` | ${s.passed.none} / ${s.n_trials.none} | ${s.passed.gbrain} / ${s.n_trials.gbrain} | ${pts(s.delta)} ${ci(s.ci95)} | ${s.p.toFixed(3)} (${s.p_method}) | ${holm[i]!.toFixed(3)} | ${s.n_clusters} | ${s.n_pairs} | ${s.excluded.length} | ${s.cost.usd_median.none?.toFixed(3) ?? 'n/a'}, ${s.cost.usd_median.gbrain?.toFixed(3) ?? 'n/a'} | ${s.cost.wall_s_median.none?.toFixed(0) ?? 'n/a'}, ${s.cost.wall_s_median.gbrain?.toFixed(0) ?? 'n/a'} | ${s.cost.input_tokens_total.none.toLocaleString()}, ${s.cost.input_tokens_total.gbrain.toLocaleString()} |`, ...sensRow(s)]),
       '', '| Harness | gbrain cell | Task | Family | none | gbrain |', '|---|---|---|---|---|---|',
-      ...stats.flatMap((s) => s.per_task.map((t) => `| ${s.harness}${s.config ? ' ' + s.config : ''} | \`${s.cell_gbrain}\` | \`${t.task}\` | ${t.family} | ${t.none}/${t.reps} | ${t.gbrain}/${t.reps} |`)));
+      ...stats.flatMap((s) => s.per_task.map((t) => `| ${s.harness}${s.config ? ' ' + s.config : ''} | \`${s.cell_gbrain}\` | \`${t.task}\` | ${t.family} | ${t.none}/${t.reps} | ${t.gbrain}/${t.reps} |`)),
+      '', ...(excludedRows.length ? ['Excluded pairs (task, the side that dropped the pair, the reason, and the gbrain cell\'s call count for the pair):', '',
+        '| Harness | Model | gbrain cell | Pair | Task | Side | Reason | gbrain calls (gbrain cell) |', '|---|---|---|---|---|---|---|---|', ...excludedRows] : ['Excluded pairs: none.']));
   }
   console.log(lines.join('\n'));
   writeFileSync(join(results, `comparisons.gbrain${suffix}`), JSON.stringify({ pair: 'gbrain', grading: useRegraded ? 'regraded' : 'as recorded', seed, draws, not_paired: skipped, scopes: out }, null, 1) + '\n');

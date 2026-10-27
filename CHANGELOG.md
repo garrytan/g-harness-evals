@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.14] - 2026-10-27
+
+### internal-task: gbrain-memory-2026-10 counted and reported
+
+- Run `gbrain-memory-2026-10` is complete: 900 trials on nine Ubicloud shards at the preregistration commit 0d43bee9d, $75.21, 2,778 ingest writes (2,774 facts, 4 duplicates) with no fault. Report at `docs/benchmarks/2026-10-26-gbrain-memory/report.md`: on the primary endpoint (continuity and corrections, 40 pairs) gbrain-told-live minus none is -5 [-18, +5], +23 [+0, +53] and -3 [-8, +0] points for OpenClaw, Hermes and QM on Sonnet, every Holm-adjusted p 1.000, "not distinguished at this size"; the Hermes estimate is the two DM-preference tasks (cn-05, cn-08) moving 0 to 4 and 0 to 5 of 5; no cross-scope read through gbrain in 450 live trials, no hidden-fact leak or consent violation anywhere, ar-06 within one trial of its none rate in every live cell. The DM facts reached Hermes through gbrain's `_meta.brain_hot_memory` block, which the tap does not record (TODOS).
+- `scripts/compare-run.ts` (arm design): excluded pairs carry task, side, reason and the gbrain cell's call count and print as a table; a missing repetition is listed instead of stopping the pairing; the primary scope carries the preregistered sensitivity row `sensitivity.faults_as_failures` (HE-GBRAIN-011 faults as live failures) with its own Holm family. `scripts/summarize-run.ts`: a live-ingestion block (`summary.ingest`, one entry per cell with `gbrain.ingest: live`: ingestion counts, write latency, facts per call, queries). `scripts/secondary-endpoints.ts`: the `cross_scope_fact` endpoint; `cross_scope_gbrain` counts only a gbrain read the grader named (`seq=<n> gbrain.<tool>`), no longer any evidence string containing the word gbrain (v02-heldout's figures unchanged). Tests in `tests/scripts-memory.test.ts`.
+- Release docs after the merge with 0.0.13: the run's row in README's "Current results" table and one sentence under "How gbrain compares", its line in `docs/README.md` and `docs/comparing-runs.md`, the lane's line in `docs/ledger/lane-spend.jsonl` (`gbrain-memory-2026-10`, $75.2076 committed, 900 trials, 9,460 forwarded requests, $2.05 of uncounted smokes) with `docs/budget-ledger.md` regenerated, and `docs/receipts-manifest.json` regenerated with the run's 16th row (nine ledgers, the preregistration's first commit `0d43bee9d`).
+- `scripts/receipts-manifest.ts` lists a results tree through `git ls-files --cached --others --exclude-standard` (every regular file git would hold; the filesystem walk stays for a root outside a repository) and skips symlinks, so a working checkout with harness state left under an ignored `results/trials/<trial>/state/` (OpenClaw's `*.sqlite` stores, a dangling `.local/bin/node` link) gives the same manifest as a clean clone instead of extra ledger rows or a crash; `tests/receipts-manifest.test.ts` covers it.
+
 ## [0.0.13] - 2026-10-27
 
 ### internal-task: the fake adapter stops within seconds of SIGTERM however the signal lands

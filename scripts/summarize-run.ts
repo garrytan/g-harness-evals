@@ -42,6 +42,12 @@
 // for Hermes the largest number of compiled-context pages outside an actor's scope), the semantic exclusions
 // (`gbrain.semantic_check.ok` false, HE-GBRAIN-005) and the degraded calls (`gbrain.events.degraded`). Every existing
 // key and table is unchanged.
+// internal-task (live ingestion, gbrain-memory-2026-10's Endpoints item 3): a top-level `ingest` key with a block per cell whose records
+// carry `gbrain.ingest` "live" (a cell without live ingestion gets no block), printed as a "Live ingestion" table: ingestion counts
+// per trial from the record's `gbrain.ingested` (ok, skipped, failed: median per trial and total), the write latency from the
+// `gbrain.ingest` events' `effect.latency_ms` (median, p90 by nearest rank, max; a skipped message made no write and is left out),
+// facts returned per `search`, `query` or `recall` call (`effect.facts` length: median, max, and the share of calls returning at
+// least one), and the queries those calls sent (distinct `args.query` strings with counts, the top ten per cell).
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -113,9 +119,13 @@ const median = (xs: number[]) => { if (!xs.length) return 0; const s = [...xs].s
 const pct = (x: number) => `${(100 * x).toFixed(0)}%`;
 const usd = (x: number) => `$${x.toFixed(2)}`;
 
+const eventsCache = new Map<string, WorldEvent[] | null>();
 const eventsOf = (t: TrialRecord): WorldEvent[] | null => {
+  if (eventsCache.has(t.trial_id)) return eventsCache.get(t.trial_id)!;
   const candidates = [join(results, 'trials', ...t.trial_id.split('/').slice(1), 'events.jsonl'), t.paths?.events ?? '', join(t.paths?.dir ?? '', 'events.jsonl')].filter((p) => p && existsSync(p));
-  return candidates.length ? readFileSync(candidates[0]!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as WorldEvent) : null;
+  const events = candidates.length ? readFileSync(candidates[0]!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as WorldEvent) : null;
+  eventsCache.set(t.trial_id, events);
+  return events;
 };
 const cells = [...new Set(allRows.map((t) => t.cell))];
 const isProbeCell = (cell: string) => { const ts = rows.filter((t) => t.cell === cell); return ts.length > 0 && ts.every((t) => familyOf(t) === 'product_probe'); };
@@ -199,6 +209,58 @@ if (allRows.some((t) => t.gbrain)) {
     const l = ladder[cell] as { harness_input_tokens: { median_per_trial: number; total: number }; embedding_usage: { trials: number; requests: number; input_tokens: number; usd: number; refused: number; failed: number }; install_bundle: { files: number[]; view_digests: string[]; context_outside_scope_max: number | null } | null; semantic_exclusions: number; degraded_calls: number };
     const bundle = l.install_bundle ? `${l.install_bundle.files.join('/')}; ${l.install_bundle.view_digests.map((d) => d.slice(0, 12)).join(', ')}; ${l.install_bundle.context_outside_scope_max ?? 'n/a'}` : 'none';
     out.push(`| ${cell} | ${l.harness_input_tokens.median_per_trial.toLocaleString()}; ${l.harness_input_tokens.total.toLocaleString()} | ${l.embedding_usage.requests} / ${l.embedding_usage.input_tokens.toLocaleString()} / $${l.embedding_usage.usd.toFixed(6)} (${l.embedding_usage.trials}) | ${l.embedding_usage.refused} / ${l.embedding_usage.failed} | ${bundle} | ${l.semantic_exclusions} | ${l.degraded_calls} |`);
+  }
+  out.push('');
+}
+// gbrain-memory-2026-10 (internal-task, Endpoints item 3): live ingestion per cell, for the cells whose records carry gbrain.ingest "live".
+const quantile = (xs: number[], q: number) => { if (!xs.length) return 0; const s = [...xs].sort((a, b) => a - b); return s[Math.max(0, Math.min(s.length - 1, Math.ceil(q * s.length) - 1))]!; };
+const QUERY_TOOLS = new Set(['gbrain.search', 'gbrain.query', 'gbrain.recall']);
+const ingest: Record<string, unknown> = {};
+for (const cell of cells) {
+  const live = allRows.filter((t) => t.cell === cell && t.gbrain?.ingest === 'live');
+  if (!live.length) continue;
+  const counted = live.map((t) => t.gbrain!.ingested).filter((c): c is NonNullable<typeof c> => !!c);
+  const perTrial = (key: 'ok' | 'skipped' | 'failed') => { const xs = counted.map((c) => c[key]); return { median: median(xs), total: xs.reduce((s, n) => s + n, 0) }; };
+  const latency: number[] = [];
+  const factsPerCall: number[] = [];
+  const queries = new Map<string, number>();
+  let eventsRead = 0;
+  for (const t of live) {
+    const events = eventsOf(t);
+    if (!events) continue;
+    eventsRead += 1;
+    for (const e of events) {
+      const effect = (e.effect ?? {}) as { latency_ms?: unknown; skipped?: unknown; facts?: unknown };
+      if ((e.via as string) === 'runner' && e.tool === 'gbrain.ingest') {
+        // A skipped message (a conversation the brain has no source for) made no write, so its latency is not a write latency.
+        if (effect.skipped === undefined && typeof effect.latency_ms === 'number') latency.push(effect.latency_ms);
+        continue;
+      }
+      if ((e.via as string) !== 'gbrain' || e.kind !== 'read' || !QUERY_TOOLS.has(e.tool)) continue;
+      factsPerCall.push(Array.isArray(effect.facts) ? effect.facts.length : 0);
+      const query = (e.args as { query?: unknown } | undefined)?.query;
+      if (typeof query === 'string') queries.set(query, (queries.get(query) ?? 0) + 1);
+    }
+  }
+  const withFact = factsPerCall.filter((n) => n > 0).length;
+  ingest[cell] = {
+    trials: live.length, trials_with_counts: counted.length, events_read: eventsRead,
+    ingested: { ok: perTrial('ok'), skipped: perTrial('skipped'), failed: perTrial('failed') },
+    write_latency_ms: { writes: latency.length, median: median(latency), p90: quantile(latency, 0.9), max: latency.length ? Math.max(...latency) : 0 },
+    facts_per_call: { calls: factsPerCall.length, median: median(factsPerCall), max: factsPerCall.length ? Math.max(...factsPerCall) : 0, calls_with_fact: withFact, share_with_fact: factsPerCall.length ? withFact / factsPerCall.length : null },
+    queries: { calls: [...queries.values()].reduce((s, n) => s + n, 0), distinct: queries.size, top: [...queries.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 10).map(([query, count]) => ({ query, count })) },
+  };
+}
+summary.ingest = ingest;
+if (Object.keys(ingest).length) {
+  out.push('Live ingestion (internal-task): per cell with gbrain.ingest live, the ingestion counts per trial from the record\'s gbrain.ingested, the write latency from the gbrain.ingest events (skipped messages made no write and are left out), facts returned per search, query or recall call, and the queries those calls sent');
+  out.push('| Cell | Trials (event logs read) | Ingested ok / trial (median; total) | Skipped / trial (median; total) | Failed / trial (median; total) | Write latency ms (median / p90 / max; writes) | Facts per call (median / max; calls) | Calls returning a fact | Queries (calls; distinct) | Top queries (count) |');
+  out.push('|---|---|---|---|---|---|---|---|---|---|');
+  const cellText = (s: string) => { const one = s.replace(/\s+/g, ' ').replace(/\|/g, '\\|'); return one.length > 80 ? one.slice(0, 77) + '...' : one; };
+  for (const [cell, v] of Object.entries(ingest) as Array<[string, { trials: number; events_read: number; ingested: Record<'ok' | 'skipped' | 'failed', { median: number; total: number }>; write_latency_ms: { writes: number; median: number; p90: number; max: number }; facts_per_call: { calls: number; median: number; max: number; calls_with_fact: number; share_with_fact: number | null }; queries: { calls: number; distinct: number; top: Array<{ query: string; count: number }> } }]>) {
+    const c = (k: 'ok' | 'skipped' | 'failed') => `${v.ingested[k].median}; ${v.ingested[k].total}`;
+    const share = v.facts_per_call.share_with_fact === null ? 'no calls' : `${v.facts_per_call.calls_with_fact} of ${v.facts_per_call.calls} (${pct(v.facts_per_call.share_with_fact)})`;
+    out.push(`| ${cell} | ${v.trials} (${v.events_read}) | ${c('ok')} | ${c('skipped')} | ${c('failed')} | ${v.write_latency_ms.median} / ${v.write_latency_ms.p90} / ${v.write_latency_ms.max}; ${v.write_latency_ms.writes} | ${v.facts_per_call.median} / ${v.facts_per_call.max}; ${v.facts_per_call.calls} | ${share} | ${v.queries.calls}; ${v.queries.distinct} | ${v.queries.top.map((q) => `"${cellText(q.query)}" ${q.count}`).join(', ') || 'none'} |`);
   }
   out.push('');
 }

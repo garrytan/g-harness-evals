@@ -4,7 +4,7 @@
 import { describe, expect, test } from 'bun:test';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Database } from 'bun:sqlite';
@@ -127,6 +127,20 @@ describe('receipts manifest', () => {
     expect(compareManifests(reread, buildManifest(dir, '2026-01-04T00:00:00.000Z'))).toEqual({ same: true, where: null });
     writeFileSync(join(dir, RUN, 'results', 'trials.jsonl'), trial('a-cell', 1) + '\n');
     expect(compareManifests(reread, buildManifest(dir))).toEqual({ same: false, where: RUN });
+  });
+
+  test('ignored harness state under results/ (a sqlite store, a dangling symlink) does not change the manifest', () => {
+    const dir = repo();
+    populate(dir);
+    const before = buildManifest(dir, '2026-01-04T00:00:00.000Z');
+    const state = join(dir, RUN, 'results', 'trials', 'cell', 'task', 'r1', 'state');
+    mkdirSync(join(state, '.local', 'bin'), { recursive: true });
+    writeFileSync(join(dir, RUN, 'results', '.gitignore'), 'trials/*/*/*/state/\n');
+    ledger(join(state, 'openclaw-agent.sqlite'));
+    symlinkSync('/nonexistent/node', join(state, '.local', 'bin', 'node'));
+    expect(compareManifests(before, buildManifest(dir, '2026-01-04T00:00:00.000Z'))).toEqual({ same: true, where: null });
+    writeFileSync(join(dir, RUN, 'results', 'extra.sqlite'), 'not a database\n');
+    expect(compareManifests(before, buildManifest(dir, '2026-01-04T00:00:00.000Z')).same).toBe(false);
   });
 
   test('the CLI --check exits 1 on a stale manifest and 0 on a fresh one', () => {

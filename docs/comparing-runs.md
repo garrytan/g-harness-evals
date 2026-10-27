@@ -134,6 +134,10 @@ Six trials, one probe rerun. `summary.json` is in the receipts; the report names
 
 The report gives the commands in full, from a checkout at the results commit: `bun scripts/summarize-run.ts --results docs/benchmarks/2026-10-25-v02-heldout/results` (`summary.md`, `summary.json`); `bun scripts/compare-run.ts --results <same> --pair gbrain --families continuity,synthesis,corrections,approval_relay` (`comparisons.md`, `comparisons.gbrain.continuity-synthesis-corrections-approval_relay.json`, the primary endpoint); `bun scripts/secondary-endpoints.ts --results <same> --families continuity,synthesis,corrections,approval_relay` (`secondary-endpoints.md`, `secondary-endpoints.json`); `bun scripts/compare-run.ts --results <same> --families continuity,synthesis,corrections,approval_relay` (`comparisons.families.md`, `comparisons.continuity-synthesis-corrections-approval_relay.json`, harness against harness, descriptive); `bun scripts/paired-mdd.ts --results <same> --families continuity,synthesis,corrections,approval_relay --reps 5` (`paired-mdd.md`); `bun scripts/reconcile-provider.ts --results <shard results dir> --tz America/Los_Angeles` per shard (nine `<shard>.spend-reconciliation.md`). Nine shards, `shards.json`; `oc-s-none`'s manifest is the merged `manifest.json`.
 
+### gbrain-memory-2026-10 ([2026-10-26-gbrain-memory](benchmarks/2026-10-26-gbrain-memory/report.md))
+
+From a checkout at the results commit, with `--results docs/benchmarks/2026-10-26-gbrain-memory/results` on each: `bun scripts/summarize-run.ts` (`summary.md`, `summary.json`, with a live-ingestion block); `bun scripts/compare-run.ts --pair gbrain --families continuity,corrections` (`comparisons.gbrain.continuity-corrections.json` and `.md`, the primary endpoint: the primary scope, the all-tasks scope, an excluded-pairs table and the preregistered `sensitivity.faults_as_failures` row); `bun scripts/compare-run.ts --pair gbrain --families continuity,synthesis,corrections,approval_relay` (the all-families secondary file); `bun scripts/secondary-endpoints.ts` with no `--families` (`secondary-endpoints.md` and `.json`, with the new `cross_scope_fact` endpoint: a fact returned through gbrain whose source the requester's grant does not cover); `bun scripts/paired-mdd.ts --families continuity,corrections` (`paired-mdd.md`). No harness-against-harness `comparisons.families` file was produced. Nine shards merged with `scripts/merge-shards.ts`; the report names every file.
+
 ## Limits of the method, as the reports record them
 
 - A run near the ceiling is uninformative, not a tie: in the Sonnet held-out run 13 of 16 primary tasks were 5 of 5 for all three harnesses, so the comparison rested on three tasks and the sign-flip bar could not be reached. The ceiling sentence in each preregistration exists for this.
@@ -143,6 +147,10 @@ The report gives the commands in full, from a checkout at the results commit: `b
 - `compare-run.ts` without `--pair` and the other paths disagree on exclusions until the TODOS item is closed; read the pairs column.
 
 ## Changelog
+
+### 2026-10-27: gbrain-memory-2026-10 (internal-task)
+
+harness-evals v0.0.14. A section for `gbrain-memory-2026-10` with the exact commands and files the report names.
 
 ### 2026-10-26: first version (internal-task)
 
