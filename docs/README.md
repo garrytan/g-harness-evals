@@ -22,7 +22,7 @@ harness-evals v0.0.12. The index of this directory: one line per page, saying wh
   - [2026-10-25-qm-probes-qp07/](benchmarks/2026-10-25-qm-probes-qp07/report.md): `qm-probes-qp07-2026-10`, 2026-10-25; the `qp-07` sandbox probe rerun with the directory seeded, 6 trials.
   - [2026-10-25-v02-pilot/](benchmarks/2026-10-25-v02-pilot/report.md): `v02-pilot-2026-10`, 2026-10-25; the v0.2 dev-split pilot on Haiku, four cells, 180 trials.
   - [2026-10-25-v02-heldout/](benchmarks/2026-10-25-v02-heldout/report.md): `v02-heldout-2026-10`, 2026-10-26; gbrain-told against none on the 15 sealed v0.2 tasks, three harnesses on Sonnet and Haiku, 900 trials.
-  - [2026-10-26-gbrain-memory/](benchmarks/2026-10-26-gbrain-memory/report.md): `gbrain-memory-2026-10`, 2026-10-26 to 2026-10-27; a member brain that fills during the scenario against none, three harnesses on Sonnet and Haiku, 12 cells, 900 trials on nine Ubicloud shards (preregistered in #89).
+  - [2026-10-26-gbrain-memory/](benchmarks/2026-10-26-gbrain-memory/report.md): `gbrain-memory-2026-10`, 2026-10-26 to 2026-10-27; a member brain that fills during the scenario against none, three harnesses on Sonnet and Haiku, 12 cells, 900 trials on nine Ubicloud shards (preregistered in #89). Beside it, [recall-rereading/](benchmarks/2026-10-26-gbrain-memory/recall-rereading/README.md) is a labelled re-reading of its receipts (internal-task, written by `scripts/recall-audit.ts`), not a counted result.
 - [budget-ledger.md](budget-ledger.md): the program's spend ledger, one row per lane of paid work (written 2026-10-26 beside this index).
 - [comparing-runs.md](comparing-runs.md): how two cells or two runs are compared: the paired, task-clustered estimator, the sign-flip test, Holm, the minimum detectable difference, what "not distinguished at N tasks" means, each comparison script's flags and outputs, and the exact commands every counted run's report names.
 - [decisions.md](decisions.md): the decisions by Garry Tan and the Captain that shaped a counted run, one line each (written 2026-10-26 beside this index).
@@ -39,6 +39,10 @@ harness-evals v0.0.12. The index of this directory: one line per page, saying wh
 - [ubicloud.md](ubicloud.md): the Ubicloud shard lane: the scripts that put one shard per VM, how a run fans out and comes back, the check lane, costs and limits.
 
 ## Changelog
+
+### 2026-10-27: gbrain-memory-2026-10 recall re-reading (internal-task)
+
+harness-evals v0.0.16. The memory run's line also points at `recall-rereading/`, the labelled re-reading of its receipts that this release adds.
 
 ### 2026-10-27: gbrain-memory-2026-10 counted (internal-task)
 

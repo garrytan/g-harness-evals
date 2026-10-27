@@ -72,7 +72,7 @@ A row in `comparisons*.json` or the saved `comparisons*.md` carries: the two cel
 
 ## What each counted run ran
 
-Fifteen directories under [benchmarks/](benchmarks/) hold results (the M0 smoke, `m0-smoke-2026-10`, has a preregistration and no results). For each, the command lines its `report.md` names, as written there, and the file each wrote under `results/`. Where a report names an output file but not the command that made it, this list says so and gives the file name the script's own naming rule implies. Scripts write JSON (and `taxonomy.md`); a `.md` beside a `.json` of the same name is the script's printout saved by the operator.
+Sixteen directories under [benchmarks/](benchmarks/) hold results (the M0 smoke, `m0-smoke-2026-10`, has a preregistration and no results). For each, the command lines its `report.md` names, as written there, and the file each wrote under `results/`. Where a report names an output file but not the command that made it, this list says so and gives the file name the script's own naming rule implies. Scripts write JSON (and `taxonomy.md`); a `.md` beside a `.json` of the same name is the script's printout saved by the operator.
 
 ### m2-pilot-2026-10 ([2026-10-23-m2-pilot](benchmarks/2026-10-23-m2-pilot/report.md))
 
@@ -136,7 +136,7 @@ The report gives the commands in full, from a checkout at the results commit: `b
 
 ### gbrain-memory-2026-10 ([2026-10-26-gbrain-memory](benchmarks/2026-10-26-gbrain-memory/report.md))
 
-From a checkout at the results commit, with `--results docs/benchmarks/2026-10-26-gbrain-memory/results` on each: `bun scripts/summarize-run.ts` (`summary.md`, `summary.json`, with a live-ingestion block); `bun scripts/compare-run.ts --pair gbrain --families continuity,corrections` (`comparisons.gbrain.continuity-corrections.json` and `.md`, the primary endpoint: the primary scope, the all-tasks scope, an excluded-pairs table and the preregistered `sensitivity.faults_as_failures` row); `bun scripts/compare-run.ts --pair gbrain --families continuity,synthesis,corrections,approval_relay` (the all-families secondary file); `bun scripts/secondary-endpoints.ts` with no `--families` (`secondary-endpoints.md` and `.json`, with the new `cross_scope_fact` endpoint: a fact returned through gbrain whose source the requester's grant does not cover); `bun scripts/paired-mdd.ts --families continuity,corrections` (`paired-mdd.md`). No harness-against-harness `comparisons.families` file was produced. Nine shards merged with `scripts/merge-shards.ts`; the report names every file.
+From a checkout at the results commit, with `--results docs/benchmarks/2026-10-26-gbrain-memory/results` on each: `bun scripts/summarize-run.ts` (`summary.md`, `summary.json`, with a live-ingestion block); `bun scripts/compare-run.ts --pair gbrain --families continuity,corrections` (`comparisons.gbrain.continuity-corrections.json` and `.md`, the primary endpoint: the primary scope, the all-tasks scope, an excluded-pairs table and the preregistered `sensitivity.faults_as_failures` row); `bun scripts/compare-run.ts --pair gbrain --families continuity,synthesis,corrections,approval_relay` (the all-families secondary file); `bun scripts/secondary-endpoints.ts` with no `--families` (`secondary-endpoints.md` and `.json`, with the new `cross_scope_fact` endpoint: a fact returned through gbrain whose source the requester's grant does not cover); `bun scripts/paired-mdd.ts --families continuity,corrections` (`paired-mdd.md`). No harness-against-harness `comparisons.families` file was produced. Nine shards merged with `scripts/merge-shards.ts`; the report names every file. `recall-rereading/` (internal-task) is a labelled re-reading of these receipts, not a counted result and not a comparison: `bun scripts/recall-audit.ts` from the repository root writes its `calls.jsonl`, `turns.jsonl`, `summary.json` and `summary.md` (task-clustered intervals, seed 7, 10,000 draws), and `tests/recall-audit.test.ts` checks the committed files match a fresh run.
 
 ## Limits of the method, as the reports record them
 
@@ -147,6 +147,10 @@ From a checkout at the results commit, with `--results docs/benchmarks/2026-10-2
 - `compare-run.ts` without `--pair` and the other paths disagree on exclusions until the TODOS item is closed; read the pairs column.
 
 ## Changelog
+
+### 2026-10-27: gbrain-memory-2026-10 recall re-reading (internal-task)
+
+harness-evals v0.0.16. The `gbrain-memory-2026-10` section names `recall-rereading/` and the command that writes it, `bun scripts/recall-audit.ts`. "What each counted run ran" counts sixteen results directories, where it said fifteen before `gbrain-memory-2026-10` was added.
 
 ### 2026-10-27: gbrain-memory-2026-10 (internal-task)
 
