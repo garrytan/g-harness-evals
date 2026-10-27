@@ -6,7 +6,7 @@
 #
 #   scripts/ubicloud/run-shard.sh --commit <sha> --prereg <path in the repo at that commit, or a scratch file> --name <shard>
 #       --cells a,b --lease-usd <n> --dest <local directory> [--size standard-16] [--location eu-central-h1] [--storage GiB]
-#       [--smoke-lease-usd 0.5] [--smoke-task <task id>] [--no-smoke] [--embedded] [--gbrain-image <tag>] [--amendment <sha>]
+#       [--smoke-lease-usd <n>] [--smoke-task <task id>] [--no-smoke] [--embedded] [--gbrain-image <tag>] [--amendment <sha>]
 #       [--resume] [--attach] [--poll-seconds 30] [--timeout-hours 12] [-- <extra arguments for scripts/run-shard.sh>]
 #
 # What happens, in order (every line goes to <dest>/lane.log with a UTC stamp):
@@ -46,7 +46,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 runner=${UBI_RUNNER:-$here/ubi-runner.sh}
 
-commit="" prereg="" name="" cells="" lease="" dest="" size=standard-16 location="" storage="" smoke_lease=0.5 smoke_task="" smoke=1
+commit="" prereg="" name="" cells="" lease="" dest="" size=standard-16 location="" storage="" smoke_lease="" smoke_task="" smoke=1
 embedded=0 gbrain_image="" amendment="" resume=0 attach=0 poll=30 timeout_h=12
 extra=()
 while [ $# -gt 0 ]; do
@@ -226,7 +226,7 @@ else
   bash "$runner" sync "$vm" "$scratch/harness-evals" work/harness-evals 2> >(stamp | tee -a "$dest/lane.log" >&2) || { log "sync failed"; exit 3; }
   rm -rf "$scratch"
   vssh 'mkdir -p ~/shard/bin'
-  for f in bootstrap.sh vm-shard.sh; do vssh "cat > ~/shard/bin/$f" < "$here/$f"; done
+  for f in bootstrap.sh vm-shard.sh smoke-lease.ts; do vssh "cat > ~/shard/bin/$f" < "$here/$f"; done
   [ -z "$scratch_prereg" ] || vssh 'cat > ~/shard/prereg.json' < "$scratch_prereg"
   t_sync1=$(now)
   t_boot0=$(now)
@@ -244,7 +244,8 @@ else
   fi
 
   # 5. launch vm-shard.sh detached
-  vm_args=(--commit "$commit" --prereg "$remote_prereg" --name "$name" --cells "$cells" --lease-usd "$lease" --smoke-lease-usd "$smoke_lease")
+  vm_args=(--commit "$commit" --prereg "$remote_prereg" --name "$name" --cells "$cells" --lease-usd "$lease")
+  [ -z "$smoke_lease" ] || vm_args+=(--smoke-lease-usd "$smoke_lease")
   [ -z "$smoke_task" ] || vm_args+=(--smoke-task "$smoke_task")
   [ "$smoke" -eq 1 ] || vm_args+=(--no-smoke)
   [ "$resume" -eq 0 ] || vm_args+=(--resume)

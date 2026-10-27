@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.15] - 2026-10-27
+
+### internal-task: the Ubicloud shard lane derives its default smoke lease from the proxy's per-call reservation
+
+- `scripts/ubicloud/smoke-lease.ts` (new) prints the default smoke lease for a shard from the preregistration's harness cells and the output cap, using the proxy's own price lookup and reservation formula (`chatPrice` and `reservationUsd` in `runner/ledger/budget-ledger.ts`, loaded from the pinned checkout): twice the largest per-call reservation among the shard's cells at an allowance of 50,000 input tokens, rounded up to $0.50 and never under $1. At 128000 output tokens a Sonnet 5.5 call reserves $1.38 and the lease is $3.00; Haiku 5.5 $1.00; Opus 5.5 $6.00; a Gemini harness row or a dated snapshot id the proxy prices gets a figure too. A cell whose model has no list price is exit 2 with the cell named.
+- `scripts/ubicloud/vm-shard.sh`: `--smoke-lease-usd` has no fixed default any more. When it is not given, the lease is derived on the VM with `smoke-lease.ts` (shipped beside `vm-shard.sh` by `run-shard.sh`) at the `--max-output-tokens` passed through to `scripts/run-shard.sh` (128000 when none), logged, and written into the smoke prereg's `spend_cap_usd`; a derivation that fails stops the lane with exit 2 before the smoke and says to pass `--smoke-lease-usd`. The old $0.50 default was below the $1.42 a Hermes or QM Sonnet call reserves, so `gbrain-memory-2026-10`'s first fan-out failed every smoke before its first call (six VMs, exit 4, $0.34). The script's per-cell lines go through a file before they are relayed to the lane log, so they cannot land in the captured figure.
+- `scripts/ubicloud/run-shard.sh` passes `--smoke-lease-usd` to the VM only when the caller set it and ships `smoke-lease.ts`. `scripts/ubicloud/fanout.sh`'s interrupt path no longer trips `set -u` on `done_pid` (`wait -n -p` unsets the variable when nothing finished). `docs/ubicloud.md`'s Smoke entry describes the derived default.
+- Tests: `tests/smoke-lease.test.ts` covers the figures above, the harness_mode scripted and missing-model cases, `vm-shard.sh` under a temporary HOME with a fake `bun` and a recording `run-shard.sh` (derived lease, override, `--no-smoke`, a cell with no list price exits 2 before any run), and the `run-shard.sh` flag forwarding and upload against a fake `ubi-runner.sh`; `tests/fanout-interrupt.test.ts` interrupts `fanout.sh` while a fake shard runs. `.gstack/pregate.json` maps the four scripts to these tests.
+
 ## [0.0.14] - 2026-10-27
 
 ### internal-task: gbrain-memory-2026-10 counted and reported

@@ -121,7 +121,7 @@ while [ ${#queue[@]} -gt 0 ] || [ "$running" -gt 0 ]; do
   [ "$running" -gt 0 ] || break
   done_pid=""
   set +e; wait -n -p done_pid "${!pid_of[@]}"; rc=$?; set -e
-  [ -n "$done_pid" ] || continue
+  [ -n "${done_pid:-}" ] || continue
   line=${pid_of[$done_pid]}; unset 'pid_of[$done_pid]'; running=$(( running - 1 ))
   IFS=$'\t' read -r name cells lease <<<"$line"
   if [ "$rc" -eq 3 ] && [ "$stopping" -eq 0 ] && grep -q 'quota refused' "$dest/$name/lane.log" 2>/dev/null && [ "${tries_of[$name]}" -lt 3 ]; then
