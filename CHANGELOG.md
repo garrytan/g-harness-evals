@@ -2,6 +2,13 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.13] - 2026-10-27
+
+### internal-task: the fake adapter stops within seconds of SIGTERM however the signal lands
+
+- `harnesses/_fake/adapter.sh`: the serve loop's TERM and INT trap now also sends TERM to the turn that is running (`tpid`, kept at serve scope and cleared after every turn). Before, a SIGTERM that landed after the post-spawn recheck and before `wait` started left `wait` sitting through the whole turn, which the Ubicloud check lane saw as "serve did not stop within 5 s of SIGTERM" under full-suite load (4 of 12 loaded conformance runs on main; 0 of 40 single-test and 0 of 12 full runs on this change under the same load).
+- `tests/adapter-conformance.test.ts`: the SIGTERM test's wait for the first turn log line treats a missing `adapter.log` as "not yet" instead of throwing (the ready file is written one line before the adapter's first log line). A new test stops an idle serve before any turn ran, which fails if `tpid` goes back to loop scope (`set -u` ends the trap) or loses its empty-pid guard.
+
 ## [0.0.12] - 2026-10-26
 
 ### internal-task: README and docs in gbrain-evals' shape

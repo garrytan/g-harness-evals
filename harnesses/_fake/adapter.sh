@@ -102,8 +102,11 @@ serve_turn() {
 serve() {
   : "${HE_TURNS_DIR:=/he-turns}"
   mkdir -p "$HE_TURNS_DIR"
-  local stopping=0
-  trap 'stopping=1' TERM INT
+  local stopping=0 tpid=''
+  # The trap also ends a turn that is already running: a SIGTERM that lands after the turn was
+  # spawned but before the wait below starts would otherwise leave the wait sitting through the
+  # whole turn (seen on the check lane under load as "serve did not stop within 5 s").
+  trap 'stopping=1; if [ -n "$tpid" ]; then kill -TERM "$tpid" 2>/dev/null || true; fi' TERM INT
   printf '{"trial":"%s","mode":"serve","model":"%s"}\n' "$HE_TRIAL_ID" "${HE_MODEL_NAME:-none}" > "$HE_SESSION_STATE_DIR/fake/session.json"
   export -f serve_turn
   export HE_LOG_DIR HE_SESSION_STATE_DIR HE_WORLD_MCP_URL HE_WORLD_MCP_TOKEN HE_GBRAIN_MCP_URL HE_GBRAIN_MCP_TOKEN
@@ -117,7 +120,7 @@ serve() {
   mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
   log "serve: ready; polling $HE_TURNS_DIR"
   while [ "$stopping" -eq 0 ]; do
-    local req resp base turn key budget started ended code reply detail tpid
+    local req resp base turn key budget started ended code reply detail
     for req in "$HE_TURNS_DIR"/turn-*.request.json; do
       [ -e "$req" ] || continue
       base=${req%.request.json}
@@ -148,6 +151,7 @@ serve() {
         log "turn $turn: SIGTERM during the turn; stopping the harness"
         kill -TERM "$tpid" 2>/dev/null; wait "$tpid" 2>/dev/null; code=143
       fi
+      tpid=''
       set -e
       # A turn killed right after it was spawned may not have opened its reply file yet.
       reply=$(cat "$resp.reply" 2>/dev/null || true); rm -f "$resp.reply"

@@ -316,11 +316,28 @@ describe('fake adapter, serve, process level', () => {
     const child = startServe(t);
     await waitFor(() => existsSync(join(t.logs, 'ready')), 5_000, 'ready file');
     postRequest(t, request(1, { prompt: '[fake:sleep 20] hello', time_budget_s: 30 }));
-    await waitFor(() => readFileSync(join(t.logs, 'adapter.log'), 'utf8').includes('turn 1: session'), 5_000, 'turn start');
+    // adapter.log appears a moment after the ready file; a missing file means "not yet", not a failure.
+    const adapterLog = join(t.logs, 'adapter.log');
+    await waitFor(() => existsSync(adapterLog) && readFileSync(adapterLog, 'utf8').includes('turn 1: session'), 5_000, 'turn start');
     const began = Date.now();
     expect(await stop(child)).toBe(0);
     expect(Date.now() - began).toBeLessThan(4_000);
     expect(readFileSync(join(t.logs, 'adapter.log'), 'utf8')).toContain('SIGTERM during the turn');
+  }, 30_000);
+
+  // Value: protects=a serve that has handled no turn yet exits 0 and logs "stopped on signal" on SIGTERM;
+  // fails_when=the TERM trap reads tpid before serve scope initialises it (set -u aborts the trap, exit 1) or kills
+  // an empty pid without the -n guard (errexit in the trap, exit 1); why_new=the other stop tests send SIGTERM only
+  // after turns ran, when tpid has been assigned and cleared, so a loop-local tpid passes them and fails only here;
+  // seam=none; no_claim=does not force the SIGTERM-between-spawn-and-wait window the trap's kill exists for.
+  test('SIGTERM before the first turn stops an idle serve cleanly', async () => {
+    const t = trial('');
+    const child = startServe(t);
+    await waitFor(() => existsSync(join(t.logs, 'ready')), 5_000, 'ready file');
+    expect(tree(t.turns)).toEqual([]);
+    expect(await stop(child)).toBe(0);
+    expect(readFileSync(join(t.logs, 'adapter.log'), 'utf8')).toContain('stopped on signal');
+    expect(readFileSync(join(t.logs, 'stderr.log'), 'utf8')).not.toContain('unbound variable');
   }, 30_000);
 
   test('a [fake:gbrain] marker calls gbrain through the world tap and lands as a via gbrain event inside the turn', async () => {
