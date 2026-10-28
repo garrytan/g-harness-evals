@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.17] - 2026-10-27
+
+### internal-task: the Ubicloud check lane wakes its agent only on change and merges from the loop
+
+- `scripts/ubicloud/merge-pass.sh` (new) is the crew's merge rule as a script (CREW.md, "Who merges" and "Ship before merge"): for every open pull request against main it merges with `gh pr merge --squash --match-head-commit <head>` only when the pull request is not a draft, GitHub reports it MERGEABLE and CLEAN, every check is pass or skipping with the `checks` job among them, the newest `ubicloud/checks` status on the head is success, and the body's last `GSTACK_RESULT: skill=ship status=<s>` line has a whole status token in the allowlist (complete, pass, passed, ok, success, shipped; `complete1` is not `complete`) and names the head, in full or by its first 12 characters, on that line or on a `head: <sha>` line within the next two lines. Anything else is a skip with the reason printed, never a merge; the branch is never deleted. `--dry-run` prints `would merge` and merges nothing. Every merge is appended to `--merge-log` (`HE_MERGE_LOG`) before the merged line is printed, and a log that cannot be written is said on stderr.
+- `scripts/ubicloud/pr-watch.sh --until-change` is the wake-on-change mode the lane runs in (CREW.md, Token efficiency): the loop stays up across quiet cycles, reaps VMs before listing, runs `merge-pass.sh` after the checks of each cycle when `--merge` is given, and exits 0 only with one `EVENT:` line per thing an operator must read: `check-finished` (the sha the verdict names), `merged`, `merge-failed` (GitHub refused a merge the rule allowed), `awaiting-receipt` (a green pull request first seen without its ship receipt, once per head), `failure` (a pr-check run with no verdict, the pull request list unreadable or merge-pass exiting non-zero on two consecutive cycles), `reaped`, or `max-age`. `--max-seconds` (20000 by default) stays under the six-hour ceiling of a Capy background operation. Nothing changes for a caller that passes neither flag.
+- Docs: `docs/ubicloud.md` (Limits paragraph and a dated change entry) and `scripts/ubicloud/README.md` name the two modes and every event.
+- Tests: `tests/merge-pass.test.ts` (new) runs the script against a fake `gh` through every branch of the rule (draft, not mergeable, a failing or missing `checks` job, a stale or missing ubicloud status, a missing receipt, `status=complete1`, a receipt naming another head, the 12-character and `head:` forms, the merge-log append, a refused merge); `tests/pr-watch.test.ts` gains the `--until-change` and `--merge` cases: the loop runs with fake `pr-check.sh`, `merge-pass.sh` and `gh` and each event line is checked, the once-per-head memory of `awaiting-receipt`, the two-cycle failure rule and the quiet-cycle silence.
+
 ## [0.0.16] - 2026-10-27
 
 ### internal-task: a recall re-reading of gbrain-memory-2026-10

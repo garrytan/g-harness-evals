@@ -114,7 +114,7 @@ test('the recall case list has one case per scored call, miss or control as the 
 
 test('README.md and the CHANGELOG entry state the misses, both oracles and the harness-side losses with the counts summary.json gives', () => {
   const readme = readFileSync(join(RUN, 'recall-rereading', 'README.md'), 'utf8');
-  const changelog = readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8').split('\n## [')[1]!;
+  const changelog = readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8').split('\n## [').find((entry) => entry.includes('### internal-task: a recall re-reading of gbrain-memory-2026-10'))!;
   const m = summary.misses, o = summary.overall, out = Object.fromEntries(summary.outcomes.map((x) => [x.outcome, x.turns]));
   const missLine = 'Of the ' + m.returned_saved_facts + ' misses that returned saved facts, ' + m.current_question_among_them + ' included the asker\'s own current message and in ' + m.only_the_current_question + ' it was the only fact returned.';
   const losses = (out['fail: returned, predicate still failed']) + ' turns that got the fact back and still failed the predicate and ' + out['fail: no gbrain read this turn'] + ' that made no gbrain read';
