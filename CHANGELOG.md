@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.27] - 2026-10-28
+
+### internal-task: the lane never checks or merges a pull request from or into custody
+
+- `scripts/ubicloud/pr-watch.sh`: a pull request with the orphan branch `custody` as its head or base is skipped before the draft and status filters and never handed to `pr-check.sh`; the head list also lists pull requests into `custody` (GitHub filters a list by base, so they were not seen under `--base main`); the `--until-change` loop reports each such head once as a `custody-skip` EVENT line, from the head list and from a merge-pass skip line alike. The once-per-head memory (`custody.seen`, and `awaiting-receipt.seen` for a green pull request without its ship receipt) is written when the event prints and only by the `--until-change` loop, so a plain, `--once` or `--dry-run` cycle or a loop killed mid-cycle does not consume the report.
+- `scripts/ubicloud/merge-pass.sh`: a custody head or base is skipped before any other read, and the head sha and both branch names are read again right before `gh pr merge`, so a head that moved or a base that changed since the list (a retarget to `custody` included) is a skip; that skip names the fresh head.
+- `scripts/ubicloud/pr-check.sh`: a custody head or base is refused with exit 2 before any status read, post or fetch; `--help` prints the whole header comment again.
+- Tests: `tests/pr-watch.test.ts`, `tests/merge-pass.test.ts` and `tests/pr-check-relink.test.ts` drive the skips and the refusal, the second list, the fresh read before the merge, the once-per-head memory and `--help` (60 tests across the three files). `docs/ubicloud.md` and `scripts/ubicloud/README.md` describe the rule.
+
 ## [0.0.26] - 2026-10-28
 
 ### internal-task: held-out openings are counted, and rules for loops that steer
