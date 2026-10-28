@@ -3,6 +3,12 @@
 // generation time. tests/heldout-manifest.test.ts fails when a tree and its manifest disagree, so a change to a
 // held-out task is visible in review and in the receipts.
 //
+// internal-task: the manifest also carries the set's openings ledger: opening_budget (confirmatory openings allowed),
+// alpha_per_opening, status (open, spent, retired), openings[] (one row per registered experiment that runs a held-out
+// cell of the set: run_id, status, label, reason, candidate_sha256) and exposures[] (access that is not a run). The
+// ledger stores no opening numbers; runner/heldout/openings.ts derives them from preregistration order on main. The
+// ledger sits outside the tree digest, so editing it never changes tree_sha256, and resealing carries it through.
+//
 // Task sets: v0.1 is tasks/multiuser/heldout (the default); any other set name is tasks/multiuser/<set>/heldout.
 //
 //   bun scripts/seal-heldout.ts [--task-set v0.2]    write that set's manifest
@@ -14,7 +20,6 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from '
 import { join, relative } from 'node:path';
 
 const ROOT = join(import.meta.dir, '..');
-const MULTIUSER = join(ROOT, 'tasks', 'multiuser');
 const WORLD_MANIFEST = join(ROOT, 'world', 'seed', 'MANIFEST.json');
 export const DEFAULT_SET = 'v0.1';
 
@@ -26,7 +31,41 @@ export interface HeldoutSet {
   manifest: string;
 }
 
-export interface HeldoutManifest {
+export const OPENING_STATUSES = ['planned', 'opened', 'withdrawn', 'superseded'] as const;
+export const OPENING_LABELS = ['confirmatory', 'dev'] as const;
+export const SET_STATUSES = ['open', 'spent', 'retired'] as const;
+
+/** One registered experiment that runs a held-out cell of the set. No opening number: runner/heldout/openings.ts derives it. */
+export interface OpeningRow {
+  run_id: string;
+  /** planned (registered, no counted trial yet), opened, withdrawn or superseded (listed, never counted). */
+  status: (typeof OPENING_STATUSES)[number];
+  label: (typeof OPENING_LABELS)[number];
+  /** Required for a dev, withdrawn or superseded row: why this opening is not confirmatory, or why it never opened. */
+  reason?: string;
+  /** sha256 of the candidate (gbrain commit, preamble, adapter config); null for rows backfilled before internal-task. */
+  candidate_sha256: string | null;
+}
+
+/** Access to the set that is not a run: committed transcripts, held-out-derived content sent to a system under test. */
+export interface Exposure {
+  date: string;
+  kind: string;
+  recipient: string;
+  what: string;
+  source: string;
+}
+
+/** The openings ledger, outside the tree digest. */
+export interface OpeningsLedger {
+  opening_budget: number;
+  alpha_per_opening: number;
+  status: (typeof SET_STATUSES)[number];
+  openings: OpeningRow[];
+  exposures: Exposure[];
+}
+
+export interface HeldoutManifest extends Partial<OpeningsLedger> {
   schema_version: 1;
   generated_at: string;
   world_manifest_sha256: string;
@@ -36,18 +75,59 @@ export interface HeldoutManifest {
   tree_sha256: string;
 }
 
-/** The held-out directory and manifest path of a task set. */
-export function heldoutSet(name = DEFAULT_SET): HeldoutSet {
-  const dir = name === DEFAULT_SET ? join(MULTIUSER, 'heldout') : join(MULTIUSER, name, 'heldout');
+const LEDGER_KEYS = ['opening_budget', 'alpha_per_opening', 'status', 'openings', 'exposures'] as const;
+
+/** The held-out directory and manifest path of a task set, under the repository at root. */
+export function heldoutSet(name = DEFAULT_SET, root = ROOT): HeldoutSet {
+  const multiuser = join(root, 'tasks', 'multiuser');
+  const dir = name === DEFAULT_SET ? join(multiuser, 'heldout') : join(multiuser, name, 'heldout');
   return { name, dir, manifest: join(dir, 'MANIFEST.json') };
 }
 
 /** Every task set with a held-out tree: v0.1 and each tasks/multiuser/<set>/heldout that exists. */
-export function heldoutSets(): HeldoutSet[] {
-  const named = readdirSync(MULTIUSER, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && !['dev', 'heldout', '_shared'].includes(d.name) && existsSync(join(MULTIUSER, d.name, 'heldout')))
+export function heldoutSets(root = ROOT): HeldoutSet[] {
+  const multiuser = join(root, 'tasks', 'multiuser');
+  if (!existsSync(multiuser)) return [];
+  const named = readdirSync(multiuser, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && !['dev', 'heldout', '_shared'].includes(d.name) && existsSync(join(multiuser, d.name, 'heldout')))
     .map((d) => d.name).sort();
-  return [heldoutSet(DEFAULT_SET), ...named.map((n) => heldoutSet(n))];
+  return [heldoutSet(DEFAULT_SET, root), ...named.map((n) => heldoutSet(n, root))];
+}
+
+/** The openings ledger of a manifest, or undefined when the set has none yet. */
+export function openingsLedger(m: HeldoutManifest | undefined): OpeningsLedger | undefined {
+  if (!m || m.opening_budget === undefined) return undefined;
+  return { opening_budget: m.opening_budget, alpha_per_opening: m.alpha_per_opening!, status: m.status!, openings: m.openings ?? [], exposures: m.exposures ?? [] };
+}
+
+/** Shape problems of a manifest's openings ledger, empty when it has none or it is well formed. */
+export function ledgerProblems(m: HeldoutManifest): string[] {
+  const present = LEDGER_KEYS.filter((k) => m[k] !== undefined);
+  if (!present.length) return [];
+  const problems: string[] = [];
+  for (const k of LEDGER_KEYS) if (m[k] === undefined) problems.push(`openings ledger: ${k} is missing (a ledger has all of ${LEDGER_KEYS.join(', ')})`);
+  if (m.opening_budget !== undefined && !(Number.isInteger(m.opening_budget) && m.opening_budget >= 0)) problems.push(`openings ledger: opening_budget must be a whole number >= 0 (got ${JSON.stringify(m.opening_budget)})`);
+  if (m.alpha_per_opening !== undefined && !(typeof m.alpha_per_opening === 'number' && m.alpha_per_opening > 0 && m.alpha_per_opening < 1)) problems.push(`openings ledger: alpha_per_opening must be between 0 and 1 (got ${JSON.stringify(m.alpha_per_opening)})`);
+  if (m.status !== undefined && !(SET_STATUSES as readonly string[]).includes(m.status)) problems.push(`openings ledger: status must be one of ${SET_STATUSES.join(', ')} (got ${JSON.stringify(m.status)})`);
+  const seen = new Set<string>();
+  for (const [i, row] of (Array.isArray(m.openings) ? m.openings : []).entries()) {
+    const at = `openings[${i}] (${row?.run_id ?? 'no run_id'})`;
+    if (typeof row?.run_id !== 'string' || !row.run_id) { problems.push(`openings ledger: ${at}: run_id is missing`); continue; }
+    if (seen.has(row.run_id)) problems.push(`openings ledger: ${at}: run_id appears twice`);
+    seen.add(row.run_id);
+    if (!(OPENING_STATUSES as readonly string[]).includes(row.status)) problems.push(`openings ledger: ${at}: status must be one of ${OPENING_STATUSES.join(', ')} (got ${JSON.stringify(row.status)})`);
+    if (!(OPENING_LABELS as readonly string[]).includes(row.label)) problems.push(`openings ledger: ${at}: label must be one of ${OPENING_LABELS.join(', ')} (got ${JSON.stringify(row.label)})`);
+    const needsReason = row.label === 'dev' || row.status === 'withdrawn' || row.status === 'superseded';
+    if (needsReason && !(typeof row.reason === 'string' && row.reason.trim())) problems.push(`openings ledger: ${at}: a ${row.label === 'dev' ? 'dev' : row.status} row needs a reason`);
+    if (row.candidate_sha256 !== null && !(typeof row.candidate_sha256 === 'string' && /^[0-9a-f]{64}$/.test(row.candidate_sha256))) problems.push(`openings ledger: ${at}: candidate_sha256 must be 64 hex characters or null (got ${JSON.stringify(row.candidate_sha256)})`);
+  }
+  if (m.openings !== undefined && !Array.isArray(m.openings)) problems.push('openings ledger: openings must be a list');
+  for (const [i, e] of (Array.isArray(m.exposures) ? m.exposures : []).entries()) {
+    for (const k of ['date', 'kind', 'recipient', 'what', 'source'] as const) if (!(typeof e?.[k] === 'string' && e[k].trim())) problems.push(`openings ledger: exposures[${i}]: ${k} is missing`);
+    if (typeof e?.date === 'string' && !/^\d{4}-\d{2}-\d{2}$/.test(e.date)) problems.push(`openings ledger: exposures[${i}]: date must be YYYY-MM-DD (got ${e.date})`);
+  }
+  if (m.exposures !== undefined && !Array.isArray(m.exposures)) problems.push('openings ledger: exposures must be a list');
+  return problems;
 }
 
 export const HELDOUT_DIR = heldoutSet().dir;
@@ -85,6 +165,7 @@ export function buildManifest(previous?: HeldoutManifest, set: HeldoutSet = held
   const tree = sha256(Object.entries(files).map(([k, v]) => `${v}  ${k}`).join('\n'));
   const tasks = [...new Set(Object.keys(files).map((f) => f.split('/')[0]!))].filter((d) => files[`${d}/task.toml`]);
   const unchanged = previous && previous.tree_sha256 === tree && previous.world_manifest_sha256 === sha256(worldManifest);
+  const ledger = Object.fromEntries(LEDGER_KEYS.filter((k) => previous?.[k] !== undefined).map((k) => [k, previous![k]]));
   return {
     schema_version: 1,
     generated_at: unchanged ? previous.generated_at : new Date().toISOString(),
@@ -93,6 +174,7 @@ export function buildManifest(previous?: HeldoutManifest, set: HeldoutSet = held
     tasks,
     files,
     tree_sha256: tree,
+    ...ledger,
   };
 }
 
@@ -122,6 +204,7 @@ export function manifestProblems(set: HeldoutSet = heldoutSet()): string[] {
   for (const f of Object.keys(committed.files)) if (!current.files[f]) problems.push(`${f}: in the manifest but not in the tree`);
   if (committed.world_manifest_sha256 !== current.world_manifest_sha256) problems.push('world/seed/MANIFEST.json changed since sealing');
   if (committed.tree_sha256 !== current.tree_sha256) problems.push('tree_sha256 differs');
+  problems.push(...ledgerProblems(committed));
   return problems;
 }
 
@@ -146,7 +229,8 @@ if (import.meta.main) {
         continue;
       }
       const m = readManifest(set)!;
-      console.log(`held-out manifest matches (set ${set.name}): ${Object.keys(m.files).length} files, ${m.tasks.length} tasks`);
+      const ledger = openingsLedger(m);
+      console.log(`held-out manifest matches (set ${set.name}): ${Object.keys(m.files).length} files, ${m.tasks.length} tasks${ledger ? `; openings ledger: status ${ledger.status}, budget ${ledger.opening_budget}, ${ledger.openings.length} rows, ${ledger.exposures.length} exposures` : ''}`);
     }
     if (failed) process.exit(1);
   } else {

@@ -12,6 +12,11 @@
 // *.sqlite ledger under results/ with its sha256 and the spend it commits, every proxy-usage*.ndjson with its sha256,
 // and whether summary.json and taxonomy.json are present.
 //
+// internal-task: each run also records the window its trials ran in (earliest started_at, latest ended_at) and, for a run
+// with held-out cells, its set, opening number, label, status and reason as runner/heldout/openings.ts derives them from
+// the set's openings ledger and preregistration order on first-parent history, plus concurrent_with: the other runs
+// on the same set with a trial that ran while one of its own trials ran (started_at to ended_at).
+//
 // Ledger spend follows runner/ledger/budget-ledger.ts: an entry's committed spend is its settled actual_usd, or its
 // full reservation while unsettled, so ledger_committed_usd is SUM(COALESCE(actual_usd, reserved_usd)) over the
 // entries table, which is what the lease's runs.committed_usd and the program row accumulate. ledger_settled_usd is
@@ -29,6 +34,8 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { Database } from 'bun:sqlite';
+import { deriveSet, registeredHeldout } from '../runner/heldout/openings.ts';
+import { heldoutSets } from './seal-heldout.ts';
 
 export const MANIFEST_VERSION = 1;
 export const OUTPUT_FILE = 'docs/receipts-manifest.json';
@@ -59,6 +66,17 @@ export interface RunRow {
   proxy_usage_logs: HashedFile[];
   summary_json: boolean;
   taxonomy: boolean;
+  trials_window: { first_started_at: string; last_ended_at: string } | null;
+  heldout: HeldoutOpening | null;
+}
+export interface HeldoutOpening {
+  set: string;
+  /** Derived by runner/heldout/openings.ts; never stored in the set's ledger. Null for a withdrawn or superseded row. */
+  opening: number | null;
+  label: string;
+  status: string;
+  reason: string | null;
+  concurrent_with: string[];
 }
 export interface Manifest { schema_version: number; generated_at: string; generator: string; runs: RunRow[] }
 
@@ -138,11 +156,14 @@ export function buildRun(root: string, directory: string): RunRow {
   const cells: Record<string, number> = {};
   let trials = 0;
   let firstTrialId: string | null = null;
+  let firstStarted: string | null = null, lastEnded: string | null = null;
   for (const line of trialsBytes.toString('utf8').split('\n')) {
     if (!line.trim()) continue;
-    const t = JSON.parse(line) as { trial_id?: string; cell?: string };
+    const t = JSON.parse(line) as { trial_id?: string; cell?: string; started_at?: string; ended_at?: string };
     trials++;
     firstTrialId ??= t.trial_id ?? null;
+    if (t.started_at && (!firstStarted || t.started_at < firstStarted)) firstStarted = t.started_at;
+    if (t.ended_at && (!lastEnded || t.ended_at > lastEnded)) lastEnded = t.ended_at;
     const cell = t.cell ?? 'unknown';
     cells[cell] = (cells[cell] ?? 0) + 1;
   }
@@ -174,7 +195,51 @@ export function buildRun(root: string, directory: string): RunRow {
     proxy_usage_logs: proxyLogs,
     summary_json: existsSync(join(results, 'summary.json')),
     taxonomy: existsSync(join(results, 'taxonomy.json')),
+    trials_window: firstStarted && lastEnded ? { first_started_at: firstStarted, last_ended_at: lastEnded } : null,
+    heldout: null,
   };
+}
+
+/** A run's trial intervals (started_at to ended_at), merged where they overlap, sorted by start. */
+function trialIntervals(root: string, directory: string): Array<[number, number]> {
+  const spans: Array<[number, number]> = [];
+  for (const line of readFileSync(join(root, directory, 'results', 'trials.jsonl'), 'utf8').split('\n')) {
+    if (!line.trim()) continue;
+    const t = JSON.parse(line) as { started_at?: string; ended_at?: string };
+    if (t.started_at && t.ended_at) spans.push([Date.parse(t.started_at), Date.parse(t.ended_at)]);
+  }
+  spans.sort((a, b) => a[0] - b[0]);
+  const merged: Array<[number, number]> = [];
+  for (const s of spans) {
+    const last = merged[merged.length - 1];
+    if (last && s[0] <= last[1]) { if (s[1] > last[1]) last[1] = s[1]; } else merged.push([s[0], s[1]]);
+  }
+  return merged;
+}
+
+function overlaps(a: Array<[number, number]>, b: Array<[number, number]>): boolean {
+  for (let i = 0, j = 0; i < a.length && j < b.length;) {
+    if (a[i]![0] < b[j]![1] && b[j]![0] < a[i]![1]) return true;
+    if (a[i]![1] < b[j]![1]) i++; else j++;
+  }
+  return false;
+}
+
+/** Fill each run's held-out opening from the derived ledgers, and the runs on the same set whose trials overlapped in time. */
+function attachOpenings(root: string, runs: RunRow[]): void {
+  const registered = registeredHeldout(root);
+  for (const set of heldoutSets(root)) {
+    const derived = deriveSet(root, set.name, registered);
+    if (!derived) continue;
+    for (const o of derived.openings) {
+      const run = runs.find((r) => r.run_id === o.run_id);
+      if (run) run.heldout = { set: set.name, opening: o.number, label: o.label, status: o.status, reason: o.reason, concurrent_with: [] };
+    }
+  }
+  const intervals = new Map(runs.filter((r) => r.heldout).map((r) => [r, trialIntervals(root, r.directory)]));
+  for (const [run, mine] of intervals) {
+    run.heldout!.concurrent_with = [...intervals].filter(([o, theirs]) => o !== run && o.heldout!.set === run.heldout!.set && overlaps(mine, theirs)).map(([o]) => o.run_id!).sort();
+  }
 }
 
 export function buildManifest(root: string, generatedAt: string = new Date().toISOString()): Manifest {
@@ -185,6 +250,7 @@ export function buildManifest(root: string, generatedAt: string = new Date().toI
     if (!existsSync(join(base, name, 'results', 'trials.jsonl'))) continue;
     runs.push(buildRun(root, directory));
   }
+  attachOpenings(root, runs);
   return { schema_version: MANIFEST_VERSION, generated_at: generatedAt, generator: 'scripts/receipts-manifest.ts', runs };
 }
 

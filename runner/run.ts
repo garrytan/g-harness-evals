@@ -17,6 +17,10 @@
  *       [--lease-usd <n>] [--new-lease] [--max-output-tokens <n>] [--preamble <file>] [--ready-timeout-s <n>]
  *       [--turn-grace-s <n>] [--harness-env K=V ...]
  *
+ * plan and dry-run refuse a run with held-out cells unless its opening is in the set's openings ledger and within
+ * budget (HE-HELDOUT-001 to 004, runner/heldout/openings.ts); a run's own row passes every time while it is opened or its
+ * set is open, so shard planning and resume of the same run id are unchanged.
+ *
  * Every error prints one line starting with its HE- code (docs/errors.md) and
  * exits non-zero. Exit 3 is the budget stop (HE-BUDGET-001).
  */
@@ -29,6 +33,7 @@ import { canonicalLookup } from './pricing/model-pricing.ts';
 import { lookupEmbeddingPrice } from './pricing/embedding-pricing.ts';
 import { taskTurnCount } from './trial/task.ts';
 import { DEFAULT_GBRAIN_IMAGE, SOURCE_PROBE_QUERIES } from './trial/gbrain.ts';
+import { checkPlan, type HeldoutBlock } from './heldout/openings.ts';
 
 export { RunnerError };
 
@@ -141,6 +146,8 @@ export interface Prereg {
   spend_cap_usd: number;
   drop_order: string[];
   minimum_v01: string[];
+  /** internal-task: required when a cell runs a held-out split, unless the preregistration is on the legacy list (runner/heldout/openings.ts). */
+  heldout?: HeldoutBlock;
 }
 
 export interface Trial {
@@ -327,8 +334,10 @@ async function main(argv: string[]): Promise<number> {
     const path = flag('--prereg');
     if (!path) throw new RunnerError('HE-RUN-002', 'missing --prereg <file>');
     const { prereg, sha256 } = loadPrereg(path);
+    const heldout = checkPlan(prereg, sha256, process.cwd());
     const manifest = buildManifest(prereg, sha256);
     console.log(renderPlan(manifest));
+    for (const line of heldout) console.log(line);
     if (cmd === 'plan') {
       const out = flag('--out') ?? join('results', prereg.run_id);
       mkdirSync(out, { recursive: true });

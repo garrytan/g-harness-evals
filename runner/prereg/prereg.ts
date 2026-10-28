@@ -19,6 +19,13 @@
  * Commit order alone can't prove a preregistration was written first; the
  * runtime attestation against `origin` is what does. CI needs full history
  * (`fetch-depth: 0`).
+ *
+ * internal-task: the CLI also runs `checkOpenings` (runner/heldout/openings.ts) over the
+ * held-out openings ledgers: every registered experiment with a held-out cell has
+ * exactly one ledger row, every row names such an experiment, rows follow
+ * preregistration order on first-parent history, and confirmatory openings stay
+ * within each set's budget. CI runs it on every pull request and on every push to
+ * main, so the counts come from main's own history after each merge.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -175,5 +182,9 @@ if (import.meta.main) {
   for (const p of problems) console.error(`prereg-order: ${p.id}: ${p.file}: ${p.problem}`);
   for (const w of warnings) console.error(`prereg-order: warning: ${w.id}: ${w.file}: ${w.problem}`);
   console.log(`prereg-order: ${entries.length} experiments checked, ${problems.length} problems, ${warnings.length} warnings`);
-  process.exit(problems.length === 0 ? 0 : 1);
+  const { checkOpenings } = await import('../heldout/openings.ts');
+  const openings = checkOpenings(process.cwd());
+  for (const p of openings) console.error(`heldout-openings: ${p}`);
+  console.log(`heldout-openings: ${openings.length} problems`);
+  process.exit(problems.length === 0 && openings.length === 0 ? 0 : 1);
 }
