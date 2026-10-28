@@ -25,6 +25,7 @@ Explain the task, the setting that changed the outcome, and the limit of the res
 - `tests/`: `bun test tests/`.
 - `scripts/`: documentation checks.
 - `world/`: the simulated company: `seed/` (messy-company-v1 import, `world.json`, manifest), `services/` (Slack mock, clock, event log, one process per trial), `world-mcp/` (the MCP server every harness gets).
+- `sealed/`: `recipient.txt`, the public age recipient of the held-out custody identity, one line; `tests/sealed-recipient.test.ts` checks its shape. The identity itself is not in the repository.
 - Planned (see the plan's repository layout): `harnesses/<name>/`, `tasks/`, `runner/{proxy,ledger,egress}`, `results/`.
 
 ## Shape of a top-level document

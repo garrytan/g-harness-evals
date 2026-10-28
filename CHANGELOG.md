@@ -2,6 +2,13 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.25] - 2026-10-28
+
+### internal-task: the custody age recipient
+
+- `sealed/recipient.txt` (new): the public age X25519 recipient of the held-out custody identity, `age1uu7caxl0rttelsf2y28h6ntsqk4ytwlwxzavsqywwla3xlmya9ksljxh2y` (sha256 `9f8983d6bd0aa18a9fd779956013c9b8f19edad602507cdf4d3590040ad73439`), written by `scripts/sealed/keygen.ts` (branch `harn11/sealed-custody`, `5cb796dff`), which printed only the recipient. Held-out sets are sealed to this recipient once the custody scripts on that branch land; the identity stays out of the repository, in the project drive, with no person handling a key.
+- `tests/sealed-recipient.test.ts` (new, keyless): the file holds exactly one age1 recipient line with a valid bech32 checksum, ends in a newline and carries no age secret key marker.
+
 ## [0.0.24] - 2026-10-28
 
 ### internal-task: gbrain-memory-fix-2026-10b results and report
