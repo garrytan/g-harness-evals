@@ -72,7 +72,7 @@ harness-evals v0.0.11, internal-task. Every gbrain arm so far served a brain bui
 
 **Pins for the memory run.** gbrain commit `b06ac32b9878a08dbaabb8d8ff748f986b11920b` (0.60.465.0, master, 2026-10-26), at or after v0.60.465 as asked; at this pin `remember` requires `provenance` (`provenance_required` without it) and gbrain's `setup` installer target is not on master, so the installer rung is unavailable (`install.installer.turn_hook_expected` false in pin.json) and the memory run uses the told preamble. The image is built from this commit for every brain; the earlier pins stay in pin.json `previous` for the runs that recorded them.
 
-**Pins for the fix run.** Run `gbrain-memory-fix-2026-10b` ([preregistration](benchmarks/2026-10-28-gbrain-memory-fix-b/PREREGISTRATION.md), executed at `main` `a0fe48da6`; it replaced `gbrain-memory-fix-2026-10`, which never ran) repeats the memory run's twelve cells on its eight continuity and corrections tasks at gbrain `81692dc623f3e220d1ea04b078b3aed903bd086f` (0.60.472.0), the head of gbrain#7744, an open pull request on master at `beb49f32` that changes which saved facts `search` returns (stemmed whole words; a newer correction returned ahead of the fact it corrects, behind `search.saved_facts_supersede`, on by default and not set by the image or the entrypoint). `b06ac32b` moves to pin.json `previous` for the memory run.
+**Pins for the fix run.** Run `gbrain-memory-fix-2026-10b` ([preregistration](benchmarks/2026-10-28-gbrain-memory-fix-b/PREREGISTRATION.md), executed at `e38edabc5`, #99's merge commit (its parent `a0fe48da6` plus the preregistration and `scripts/memory-fix-mechanism.ts`), which every counted shard checked out; it replaced `gbrain-memory-fix-2026-10`, which never ran) repeats the memory run's twelve cells on its eight continuity and corrections tasks at gbrain `81692dc623f3e220d1ea04b078b3aed903bd086f` (0.60.472.0), the head of gbrain#7744, an open pull request on master at `beb49f32` that changes which saved facts `search` returns (stemmed whole words; a newer correction returned ahead of the fact it corrects, behind `search.saved_facts_supersede`, on by default and not set by the image or the entrypoint). `b06ac32b` moves to pin.json `previous` for the memory run. The run is reported in [benchmarks/2026-10-28-gbrain-memory-fix-b/report.md](benchmarks/2026-10-28-gbrain-memory-fix-b/report.md): the primary not distinguished on any harness, and `cr-05` up in every live cell (off 0 of 5 in the five that were at 0) with the correction returned ahead of the retracted figure.
 
 ## The install ladder (internal-task)
 
@@ -219,6 +219,10 @@ Lessons that changed the code or the docs: a harness image built before an adapt
 - **Preamble mention.** A second arm whose preamble names gbrain search beside `search_messages` would separate "the harness did not know the rule applies" from "the harness ignored it".
 
 ## Changelog
+
+### 2026-10-28: gbrain-memory-fix-2026-10b reported (internal-task)
+
+harness-evals v0.0.24. "Pins for the fix run" points at the run's report. Why: the run is counted.
 
 ### 2026-10-28: gbrain-memory-fix-2026-10b preregistered, pin 81692dc6 (internal-task)
 

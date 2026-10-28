@@ -2,6 +2,16 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.24] - 2026-10-28
+
+### internal-task: gbrain-memory-fix-2026-10b results and report
+
+- `docs/benchmarks/2026-10-28-gbrain-memory-fix-b/results/` (new): the merged receipts of run `gbrain-memory-fix-2026-10b` (preregistration #99, every shard at `e38edabc5`, no amendment): twelve cells, eight sealed held-out continuity and corrections tasks, 5 repetitions, 480 trials (477 completed, 3 harness_error, none excluded) from nine Ubicloud shards, merged with `scripts/merge-shards.ts`, snapshots gzipped, the memory run's `.gitignore`; summary, the primary comparison, secondary endpoints, paired MDD, the mechanism counts, the per-trial mechanism view, the between-run table and nine spend reconciliation sheets ($33.25, equal across usage lines, trials.jsonl and ledgers).
+- `docs/benchmarks/2026-10-28-gbrain-memory-fix-b/report.md` (new): the primary is not distinguished on any harness or model (Sonnet +5 [-15, +30], +23 [+0, +50], +0 [-8, +8] points for OpenClaw, Hermes and QM); `cr-05-pellow-seat-retraction` moved from 0 of 5 in every Sonnet live cell in the memory run to 4, 5 and 1 of 5 while every none cell stayed at 0, a gbrain read returned the correction ahead of the retracted figure in 11 of 15 Sonnet live trials, and every live `cr-05` pass came in such a trial; all nine predictions held; one deviation cost VM time (the controller stopped polling for about two hours, about $3.78 of the $9.02 VM list price).
+- `scripts/between-run.ts` (new, keyless): the between-run table of secondary 4, each run's own task-clustered interval over the shared tasks, none cells first, the task x cell matrix, no difference interval and no test. Tested in `tests/between-run.test.ts`.
+- `scripts/memory-fix-per-trial.ts` (new, keyless): the mechanism counts per live `cr-05` and `cn-05` trial beside each trial's grade, with `memory-fix-mechanism.ts`'s counting function unchanged. Tested in `tests/memory-fix-per-trial.test.ts`.
+- `docs/ledger/lane-spend.jsonl` copied from the drive (21 lines: this run's and two earlier lanes' not yet copied, internal-task's at $0 and internal-task's internal-task at $0.9435), `docs/budget-ledger.md` and `docs/receipts-manifest.json` regenerated; README's Current results row ("Set and status": dev, the v0.2 set's third opening and a retest of gbrain#7744 on the tasks it was built against), spend line, gbrain pin row, How gbrain compares (ten runs, the fix run's result, detectable differences 8.5 to 17.7 points), Known limits (the v0.2 set has served three runs) and changelog; a status note at the top of the report; `docs/gbrain-arm.md` points at the report.
+
 ## [0.0.23] - 2026-10-28
 
 ### internal-task: held-out results relabelled confirmatory or dev
