@@ -24,7 +24,7 @@ import { type GbrainSidecar, type InstallViewManifest, checkCompanyGrants, check
 import { GBRAIN_WRITE_TOOLS } from '../../world/services/gbrain-tap.ts';
 import { canReadFile } from '../grade/predicates.ts';
 import { HarnessGone, type Harness, makeTrialDirs, startProcessHarness, writeAtomic } from './harness.ts';
-import { RunProxy, embeddingUsage, reconcile, summarizeUsage, trialKey, trialSlug } from './proxy.ts';
+import { RunProxy, embeddingUsage, reconcile, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
 import { loadTask, type TaskSpec } from './task.ts';
 import { flushIngestAfterFence, runTurns } from './turns.ts';
 import { TrialWorld, worldAt } from './world.ts';
@@ -136,7 +136,12 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   const mode: HarnessMode = cell.harness_mode === 'scripted' ? 'scripted' : opts.harnessMode;
   const docker = mode === 'docker';
   const key = trialKey(trial.id);
+  const token = trialToken(trial.id);
   const slot = trialSlug(trial.id);
+  // The gbrain sidecar calls the proxy through its own slot, bound to the same key with its own random token (the harness
+  // never sees it), so its embeddings stay attributed to the trial and neither container can spend through the other's slot.
+  const gbrainSlot = `${slot}.gbrain`;
+  const gbrainToken = trialToken(trial.id);
   const [provider, modelName] = cell.model.includes(':') ? [cell.model.slice(0, cell.model.indexOf(':')), cell.model.slice(cell.model.indexOf(':') + 1)] : ['none', cell.model];
 
   if (cell.gbrain && mode === 'scripted') throw new RunnerError('HE-GBRAIN-001', `cell ${cell.id} carries gbrain but runs scripted; a script has no harness to call the brain. fix: drop gbrain from the cell or run it in docker or process mode`);
@@ -146,7 +151,6 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   const world = new TrialWorld({ trialId: trial.id, split: cell.split, actors: task.actors, outDir: dirs.root, worldPath: opts.worldPath, reachableFromContainers: docker });
   log(`world for ${trial.id} at ${world.localUrl} (harness sees ${world.harnessUrl}); ${task.turns.length} turns, budget ${task.time_budget_s} s per turn`);
   const proxy = mode === 'scripted' ? null : ctx.proxy;
-  if (proxy) await proxy.bind(slot, key);
 
   // The gbrain sidecar starts before the harness so the tap is live by the time the harness registers it;
   // it is stopped after the world is fenced, so a late call cannot land in the brain unrecorded. A sidecar that does not
@@ -158,8 +162,10 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   if (cell.gbrain && gbrain) {
     try {
       if (gbrain.embeddings !== 'off' && !proxy) throw new RunnerError('HE-GBRAIN-005', `cell ${cell.id} has embeddings ${gbrain.embeddings} but the trial runs without a metering proxy; the sidecar's embedding calls must be metered`);
+      // The sidecar slot exists only while an embedded brain needs it; a keyword brain makes no provider call and gets no slot.
+      if (gbrain.embeddings !== 'off') await proxy!.bind(gbrainSlot, key, gbrainToken);
       sidecar = await startGbrainSidecar({ trialId: trial.id, trialSlug: slot, split: cell.split, outDir: join(dirs.root, 'gbrain'), image: opts.gbrainImage, brain: gbrain.brain, scope: gbrain.scope, ingest: gbrain.ingest,
-        surface: gbrain.surface, embeddings: gbrain.embeddings, openaiBaseUrl: gbrain.embeddings !== 'off' ? proxy!.baseUrlFor(slot, 'openai', true) : undefined, log });
+        surface: gbrain.surface, embeddings: gbrain.embeddings, ...(gbrain.embeddings !== 'off' ? { openaiBaseUrl: proxy!.baseUrlFor(gbrainSlot, 'openai', true), proxyToken: gbrainToken } : {}), log });
       // internal-task: under member scope the tap needs a granted token for every member who will take a turn (HE-GBRAIN-004).
       if (sidecar.scope === 'member') checkCompanyTokens(sidecar.tokens, cell.split, task.actors, join(dirs.root, 'gbrain', 'tokens.json'));
       // internal-task (gbrain#7481): under scope "sources" the tap needs a source grant for every member who will take a turn (HE-GBRAIN-004).
@@ -174,7 +180,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
         log(`install bundle view ${installView.harness}/${installView.split} (${gbrain.install}) verified (${installView.files.length} files, view digest ${installView.view_digest.slice(0, 12)}) at ${viewDir}`);
       }
     } catch (e) {
-      if (!(e instanceof RunnerError)) { if (sidecar) await sidecar.stop(5_000).catch(() => undefined); if (proxy) { await proxy.finalize(key).catch(() => undefined); await proxy.unbind(slot).catch(() => undefined); } world.stop(); throw e; }
+      if (!(e instanceof RunnerError)) { if (sidecar) await sidecar.stop(5_000).catch(() => undefined); if (proxy) { await proxy.finalize(key).catch(() => undefined); await proxy.unbind(slot).catch(() => undefined); await proxy.unbind(gbrainSlot).catch(() => undefined); } world.stop(); throw e; }
       infraError = e.message;
       log(infraError);
     }
@@ -185,7 +191,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
 
   const env: Record<string, string> = {
     HE_MODEL_BASE_URL: proxy ? proxy.baseUrlFor(slot, provider, docker) : 'http://127.0.0.1:1/none',
-    HE_MODEL_API_KEY: key,
+    HE_MODEL_API_KEY: token,
     HE_MODEL_NAME: modelName,
     HE_TIME_BUDGET_S: String(task.time_budget_s),
     HE_LOG_DIR: docker ? '/he-logs' : resolve(dirs.logs),
@@ -220,9 +226,11 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   const paths: Record<string, string> = { dir: dirs.root, trial_json: join(dirs.root, 'trial.json'), events: join(dirs.root, 'events.jsonl'), turns: join(dirs.root, 'turns.jsonl'), snapshot: join(dirs.root, 'snapshot.json'), grade: join(dirs.root, 'grade.json'), logs: dirs.logs };
   if (proxy) { paths.usage = join(dirs.root, 'usage.json'); paths.reconcile = join(dirs.root, 'reconcile.json'); }
   if (sidecar) paths.gbrain = join(dirs.root, 'gbrain');
-  writeFileSync(paths.turns!, '');
 
   try {
+    // The harness slot is bound inside the cleanup try, so nothing thrown from here on can leave a live token behind.
+    if (proxy) await proxy.bind(slot, key, token);
+    writeFileSync(paths.turns!, '');
     try {
       if (infraError) throw new HarnessGone(null, infraError);
       if (mode === 'scripted') {
@@ -238,7 +246,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
         const image = opts.image ?? `harness-eval/${cell.harness.replace(/^_/, '')}:dev`;
         const compose = join(harnessDir, 'compose.yaml');
         harness = existsSync(compose)
-          ? await startComposeHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, composeFile: compose, timeBudgetS: task.time_budget_s, repoRoot: opts.repoRoot, stackEnv: { HE_MODEL_BASE_URL: env.HE_MODEL_BASE_URL!, HE_MODEL_API_KEY: key, HE_MODEL_NAME: modelName, HE_TIME_BUDGET_S: env.HE_TIME_BUDGET_S!, HE_TASK_SLICE: 'multiuser', HE_TRIAL_ID: trial.id, ...(cell.config ? { HE_HARNESS_CONFIG: cell.config } : {}) } })
+          ? await startComposeHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, composeFile: compose, timeBudgetS: task.time_budget_s, repoRoot: opts.repoRoot, stackEnv: { HE_MODEL_BASE_URL: env.HE_MODEL_BASE_URL!, HE_MODEL_API_KEY: token, HE_MODEL_NAME: modelName, HE_TIME_BUDGET_S: env.HE_TIME_BUDGET_S!, HE_TASK_SLICE: 'multiuser', HE_TRIAL_ID: trial.id, ...(cell.config ? { HE_HARNESS_CONFIG: cell.config } : {}) } })
           : await startDockerHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, repoRoot: opts.repoRoot, ...(installViewPath ? { readOnlyMounts: { [installViewPath]: '/he-gbrain-install' } } : {}) });
       }
       await harness.waitReady(opts.readyTimeoutS * 1000);
@@ -272,7 +280,6 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
 
     if (proxy) {
       const meter = await proxy.finalize(key);
-      await proxy.unbind(slot);
       const lines = proxy.usageLines(key);
       const summary = summarizeUsage(key, meter, lines);
       usage = summary.usage;
@@ -296,6 +303,8 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   } finally {
     if (harness) await harness.stop(opts.stopGraceS * 1000).catch(() => undefined);
     if (sidecar) await sidecar.stop().catch(() => undefined);
+    // On every exit, the thrown ones included, so a trial's tokens die with it (an unbound slot is refused; unbinding twice is a no-op).
+    if (proxy) { await proxy.unbind(slot).catch(() => undefined); if (cell.gbrain) await proxy.unbind(gbrainSlot).catch(() => undefined); }
     world.stop();
   }
   let gbrainRecord: TrialGbrain | undefined = gbrain ? gbrainSummary(gbrain, sidecar ?? { image: opts.gbrainImage ?? 'none', ready_ms: 0 }, world.events, windows) : undefined;

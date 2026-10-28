@@ -1,10 +1,13 @@
 // One metering proxy per run (runner/proxy/metering-proxy.ts in lease mode), started by the runner with a
 // control token so a container can never move charges. Per trial the runner binds a slot (the path segment
-// the container's base URL carries) to the trial token trial-token:<id> and finalizes it afterwards. The
-// proxy is the only process that sees a provider key; this module passes the runner's environment through
-// and never reads, prints or writes the key itself.
+// the container's base URL carries) to the trial key trial-token:<id>, which the receipts meter under, together
+// with a random per-trial token the harness must present as its API key, and finalizes the key afterwards.
+// The proxy forwards nothing for an unbound slot or a wrong token. It listens on the loopback, or on the docker
+// bridge gateway when containers must reach it, never on every interface (2026-10-28, after shard VMs with a
+// public address ran it on 0.0.0.0). The proxy is the only process that sees a provider key; this module passes
+// the runner's environment through and never reads, prints or writes the key itself.
 //
-// internal-task (the install ladder): the gbrain sidecar's query embeddings go through the same slot under the trial key;
+// internal-task (the install ladder): the gbrain sidecar's query embeddings go through its own slot (<slot>.gbrain, its own token) under the same trial key;
 // summarizeUsage keeps /v1/embeddings lines out of the harness figures (requests, tokens, refused, failed) while usd stays
 // the trial's total, and embeddingUsage reports them on their own (gbrain.embedding_usage in the trial record), so
 // reconcile.json's invariant holds: harness requests plus embedding requests equal the meter's.
@@ -15,7 +18,7 @@ import { join } from 'node:path';
 import type { Meter, UsageLine } from '../proxy/metering-proxy.ts';
 import type { TrialEmbeddingUsage, TrialUsage } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
-import { CONTAINER_HOST } from './world.ts';
+import { CONTAINER_HOST, listenHost } from './world.ts';
 
 export interface RunProxyOptions {
   runId: string;
@@ -24,7 +27,7 @@ export interface RunProxyOptions {
   leaseUsd: number;
   allowModels: string[];
   maxOutputTokens?: number | null;
-  /** Bind every interface so containers reach it through host.docker.internal. */
+  /** Bind the docker bridge gateway so containers reach it through host.docker.internal; otherwise the loopback. */
   reachableFromContainers: boolean;
   /** Environment for the proxy process. Defaults to this process's environment, which is where the provider keys live. */
   env?: Record<string, string | undefined>;
@@ -33,11 +36,17 @@ export interface RunProxyOptions {
   startTimeoutMs?: number;
 }
 
-/** The per-trial dummy token: what the harness sends as its API key and what the proxy meters under. Deterministic
- *  from the trial id, never a credential. The prefix is not a provider key shape, and the receipts record it under
- *  `meter_id`, so no secret scanner reads it as a key (runs before 2026-10-26 used `sk-trial-<id>` under `key`). */
+/** The per-trial key: what the proxy meters a trial under and what the receipts record as `meter_id`. Deterministic
+ *  from the trial id, never a credential. The prefix is not a provider key shape, so no secret scanner reads it as a
+ *  key (runs before 2026-10-26 used `sk-trial-<id>` under `key`). Until 2026-10-28 the harness also sent this key as
+ *  its API key; it now sends trialToken(), which the proxy checks against the slot's binding. */
 export const TRIAL_TOKEN_PREFIX = 'trial-token:';
 export const trialKey = (trialId: string) => `${TRIAL_TOKEN_PREFIX}${trialId}`;
+/** The per-trial secret the harness presents as its API key: the trial key plus 128 random bits in hex (no provider key
+ *  shape, so the publish audit's allowlist still holds if a harness log echoes it). Fresh per trial; it lands only in the
+ *  harness's environment (and the compose override under the trial directory, which the results .gitignore excludes) and is
+ *  dead once the slot is unbound. */
+export const trialToken = (trialId: string) => `${trialKey(trialId)}.${randomBytes(16).toString('hex')}`;
 /** A trial id as a path segment and a container name: letters, digits, dot, underscore, dash. */
 export const trialSlug = (trialId: string) => trialId.replace(/[^A-Za-z0-9._-]+/g, '-');
 
@@ -52,6 +61,7 @@ export class RunProxy {
   private constructor(
     private readonly proc: ReturnType<typeof Bun.spawn>,
     readonly port: number,
+    readonly host: string,
     private readonly controlToken: string,
     readonly usageLog: string,
     readonly ledgerPath: string,
@@ -61,7 +71,7 @@ export class RunProxy {
   static async start(opts: RunProxyOptions): Promise<RunProxy> {
     mkdirSync(opts.runDir, { recursive: true });
     const port = await freePort();
-    const host = opts.reachableFromContainers ? '0.0.0.0' : '127.0.0.1';
+    const host = listenHost(opts.reachableFromContainers);
     const controlToken = randomBytes(16).toString('base64url');
     const usageLog = join(opts.runDir, 'proxy-usage.ndjson');
     const logFd = openSync(join(opts.runDir, 'proxy.log'), 'a');
@@ -76,8 +86,8 @@ export class RunProxy {
     while (Date.now() < deadline) {
       if (proc.exitCode !== null) break;
       try {
-        const res = await fetch(`http://127.0.0.1:${port}/__proxy/status`);
-        if (res.ok) return new RunProxy(proc, port, controlToken, usageLog, opts.ledgerPath, opts.reachableFromContainers);
+        const res = await fetch(`http://${host}:${port}/__proxy/status`);
+        if (res.ok) return new RunProxy(proc, port, host, controlToken, usageLog, opts.ledgerPath, opts.reachableFromContainers);
       } catch { /* not listening yet */ }
       await Bun.sleep(50);
     }
@@ -88,24 +98,25 @@ export class RunProxy {
   }
 
   /** The base URL a client gets: <origin>/<slot>/<provider>; the client appends its usual path. forContainer picks the
-   *  host.docker.internal route (the default when the proxy binds every interface); a sidecar is always a container, a
-   *  process-mode harness never is (internal-task). */
+   *  host.docker.internal route (the default when the proxy binds the bridge gateway); a sidecar is always a container, a
+   *  process-mode harness never is (internal-task) and gets the bind address, which this host owns. */
   baseUrlFor(slot: string, provider: string, forContainer: boolean = this.reachableFromContainers): string {
     if (forContainer && !this.reachableFromContainers) throw new RunnerError('HE-PROXY-003', `the metering proxy listens on the loopback only; a container cannot reach it for slot ${slot}`);
-    const host = forContainer ? CONTAINER_HOST : '127.0.0.1';
+    const host = forContainer ? CONTAINER_HOST : this.host;
     return `http://${host}:${this.port}/${slot}/${provider}`;
   }
 
   private async control(path: string, body: unknown): Promise<unknown> {
     let res: Response;
     try {
-      res = await fetch(`http://127.0.0.1:${this.port}${path}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-proxy-control': this.controlToken }, body: JSON.stringify(body) });
+      res = await fetch(`http://${this.host}:${this.port}${path}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-proxy-control': this.controlToken }, body: JSON.stringify(body) });
     } catch (e) { throw new RunnerError('HE-PROXY-003', `metering proxy ${path} unreachable: ${(e as Error).message}`); }
     if (!res.ok) throw new RunnerError('HE-PROXY-003', `metering proxy ${path} answered HTTP ${res.status}`);
     return res.json();
   }
 
-  bind(slot: string, key: string) { return this.control('/__proxy/bind', { slot, key }); }
+  /** Charge the slot to `key`; with `token`, the proxy forwards only requests that present it. */
+  bind(slot: string, key: string, token?: string) { return this.control('/__proxy/bind', { slot, key, ...(token ? { token } : {}) }); }
   unbind(slot: string) { return this.control('/__proxy/unbind', { slot }); }
   finalize(key: string, timeoutMs = 30_000): Promise<Meter> { return this.control('/__proxy/finalize', { key, timeout_ms: timeoutMs }) as Promise<Meter>; }
 

@@ -2,6 +2,7 @@
 // an actor or the admin would, over HTTP, so every actor message, clock advance and fence lands in the
 // evaluator-owned event log the same way a harness's calls do.
 
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import type { WorldEvent } from '../../world/services/events.ts';
 import { createWorldServer, type WorldServer } from '../../world/services/server.ts';
@@ -15,6 +16,26 @@ export const DEFAULT_WORLD_PATH = join('world', 'seed', 'world.json');
 /** The name a container resolves to the host (docker run --add-host host.docker.internal:host-gateway). */
 export const CONTAINER_HOST = 'host.docker.internal';
 
+let gateway: string | null = null;
+/** The address host.docker.internal resolves to inside a container: the default bridge network's gateway (docker0,
+ *  172.17.0.1 unless the daemon says otherwise). The host owns it, so a container on the default bridge or on a
+ *  per-trial network reaches a server bound to it, and nothing outside the machine can. Read once from
+ *  `docker network inspect bridge`; HE_CONTAINER_HOST_IP overrides it for a daemon with --host-gateway-ip. */
+export function containerHostAddress(): string {
+  if (gateway) return gateway;
+  const override = process.env.HE_CONTAINER_HOST_IP?.trim();
+  const r = override ? null : spawnSync('docker', ['network', 'inspect', 'bridge', '--format', '{{(index .IPAM.Config 0).Gateway}}'], { encoding: 'utf8', timeout: 15_000 });
+  const ip = override ?? (r && r.status === 0 ? r.stdout.trim() : '');
+  const canonical = (() => { try { return new URL(`http://${ip}/`).hostname; } catch { return ''; } })();
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip) || canonical !== ip || canonical === '0.0.0.0') {
+    throw new RunnerError('HE-PROXY-004', `the docker bridge gateway address could not be read (${override ? `HE_CONTAINER_HOST_IP=${override}` : `docker network inspect bridge: ${(r?.stderr || r?.stdout || 'no output').toString().trim().slice(0, 200)}`}); containers reach the metering proxy and the world at that address and the runner never listens on every interface; fix: start the docker daemon, or set HE_CONTAINER_HOST_IP to the address host.docker.internal resolves to in a container`);
+  }
+  return gateway = ip;
+}
+
+/** The address a per-trial server listens on: the loopback, or the docker bridge gateway when containers must reach it. Never 0.0.0.0. */
+export const listenHost = (reachableFromContainers: boolean) => (reachableFromContainers ? containerHostAddress() : '127.0.0.1');
+
 let cached: { path: string; world: World } | null = null;
 export function worldAt(path: string): World {
   if (!cached || cached.path !== path) cached = { path, world: loadWorld(path) };
@@ -27,7 +48,7 @@ export interface TrialWorldOptions {
   actors: string[];
   outDir: string;
   worldPath?: string;
-  /** true: bind every interface and hand containers host.docker.internal; false: loopback only. */
+  /** true: bind the docker bridge gateway and hand containers host.docker.internal; false: loopback only. */
   reachableFromContainers: boolean;
   clockReference?: string;
 }
@@ -47,7 +68,7 @@ export class TrialWorld {
     this.split = opts.split;
     this.server = createWorldServer({
       world: this.world, split: opts.split, trialId: opts.trialId, actors: opts.actors,
-      hostname: opts.reachableFromContainers ? '0.0.0.0' : '127.0.0.1', port: 0,
+      hostname: listenHost(opts.reachableFromContainers), port: 0,
       eventsPath: join(opts.outDir, 'events.jsonl'),
       ...(opts.clockReference ? { clockReference: opts.clockReference } : {}),
     });
@@ -56,8 +77,8 @@ export class TrialWorld {
     this.config = writeTrialConfig(this.server, { split: opts.split, world: this.world, out: opts.outDir, baseUrl });
   }
 
-  /** The address this process reaches the world at (always loopback-capable). */
-  get localUrl(): string { return `http://127.0.0.1:${new URL(this.server.url).port}`; }
+  /** The address this process reaches the world at: the bind address, which the host owns in both modes. */
+  get localUrl(): string { return this.server.url; }
   /** The address written into trial.json and handed to the harness. */
   get harnessUrl(): string { return this.config.base_url; }
   get botToken(): string { return this.config.slack.bot.token; }

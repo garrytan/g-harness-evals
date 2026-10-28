@@ -18,8 +18,8 @@ The runner sets these variables. An adapter must not require anything else.
 
 | Variable | Meaning |
 |---|---|
-| `HE_MODEL_BASE_URL` | Provider-specific base URL on the proxy, for example `http://host.docker.internal:8787/anthropic`. The harness appends its usual path (`/v1/messages`). |
-| `HE_MODEL_API_KEY` | The per-trial dummy token (`trial-token:<id>`; `sk-trial-<id>` before 2026-10-26). The proxy maps it to the trial and refuses unknown tokens. |
+| `HE_MODEL_BASE_URL` | Provider-specific base URL on the proxy, for example `http://host.docker.internal:8787/<slot>/anthropic`. The harness appends its usual path (`/v1/messages`). |
+| `HE_MODEL_API_KEY` | The per-trial token: `trial-token:<id>.<32 hex>`, random per trial since 2026-10-28 (`trial-token:<id>` before that, `sk-trial-<id>` before 2026-10-26). The proxy forwards a request on the trial's slot only when it presents this token, and meters it under `trial-token:<id>`; a request on the slot without it is refused 403 and logged under `slot:<id>`, outside the trial's usage. Send it as the provider's credential and nothing else. |
 | `HE_MODEL_NAME` | Model id as the provider names it, for example `claude-sonnet-5-5`. The adapter pins the harness to exactly this model; model fallback is forbidden. |
 | `HE_TIME_BUDGET_S` | Wall-clock budget for the turn, in seconds. |
 | `HE_LOG_DIR` | Writable directory outside `/workspace` for the adapter's own log, the harness's stdout and stderr, and any harness-native transcript. |
@@ -107,13 +107,15 @@ What each harness does with the landed files was read keylessly from the install
 
 ### Driver
 
-`harnesses/serve-smoke.ts` runs one image in serve mode against a world started in-process on `0.0.0.0` (containers reach it as `host.docker.internal`), the way the runner does: four mounts plus `/he-turns`, the serve environment, stdin closed, no TTY, the calling user. It drives three turns (member A in a DM, member B in a shared channel, A again in the DM, so per-session memory shows), posts each member message and each reply through the Slack mock, fences and snapshots the world, stops the container with SIGTERM and writes `smoke.json`, `events.jsonl`, `snapshot.json` and the container's logs under `results/serve-smoke/<trial-id>/`. For QM it drives the compose stack with `HE_ENTRY=serve` and `HE_TURNS`, and runs `prepare.sh` and `capture.sh` like `run-trial.sh`.
+`harnesses/serve-smoke.ts` runs one image in serve mode against a world started in-process on the docker bridge gateway (containers reach it as `host.docker.internal`; since 2026-10-28 nothing binds 0.0.0.0), the way the runner does: four mounts plus `/he-turns`, the serve environment, stdin closed, no TTY, the calling user. It drives three turns (member A in a DM, member B in a shared channel, A again in the DM, so per-session memory shows), posts each member message and each reply through the Slack mock, fences and snapshots the world, stops the container with SIGTERM and writes `smoke.json`, `events.jsonl`, `snapshot.json` and the container's logs under `results/serve-smoke/<trial-id>/`. For QM it drives the compose stack with `HE_ENTRY=serve` and `HE_TURNS`, and runs `prepare.sh` and `capture.sh` like `run-trial.sh`.
 
 ```sh
 bun harnesses/serve-smoke.ts --harness _fake --trial-id fake-serve-1
 bun harnesses/serve-smoke.ts --harness openclaw --trial-id openclaw-serve-1 \
-  --base-url http://host.docker.internal:8787/anthropic --api-key trial-token:openclaw-serve-1
+  --base-url http://host.docker.internal:8787/openclaw-serve-1/anthropic --api-key "$cred"
 ```
+
+A lease-mode proxy forwards only for a bound slot, and on a slot bound with a token only to a caller presenting it (the runner binds every trial slot that way; the embedded image build binds its own slot without one), so the slot `openclaw-serve-1` is bound with `$token` through `POST /__proxy/bind` first ([harnesses/README.md](../harnesses/README.md), "Run one trial").
 
 ## Non-interactive by construction
 
@@ -146,14 +148,20 @@ Everything the harness prints goes to `$HE_LOG_DIR/stdout.log` and `$HE_LOG_DIR/
 
 ```sh
 harnesses/run-trial.sh --harness openclaw --task tasks/hello --trial-id t1 \
-  --base-url http://host.docker.internal:8787/anthropic --api-key trial-token:t1
+  --base-url http://host.docker.internal:8787/t1/anthropic --api-key "$cred"
 ```
+
+The slot `t1` is bound with `$cred` first, as above.
 
 ## Conformance
 
 `bun test tests/adapter-conformance.test.ts` proves the protocol on the fake harness. For `run`: exit 0, 2, 3 and 124 under the conditions above; nothing written outside `/workspace`, `/harness-state` and `$HE_LOG_DIR` (at the process level by listing the temp tree, at the container level with `docker diff`); state in `/harness-state`; a stdin-closed, no-TTY run that completes; a no-op instruction that leaves the workspace untouched. For `serve`: the ready file appears; requests are answered in order with the right session key and a per-session turn counter; a sleep past a 2 s budget yields 124 within the kill grace, `[fake:model_error]` yields 3 and `[fake:harness_error]` yields 2 while the loop keeps serving; a `[fake:call post_message ...]` marker lands as a `chat.postMessage` event by the bot in an in-process world; nothing is written outside the four writable places and no `.tmp` file is left; SIGTERM at idle, both before any turn has run and after turns, and SIGTERM during a turn end the process with exit 0 within seconds. The container-level test runs the same through `docker run ... serve` and `docker stop`. Container-level tests skip when no Docker daemon is reachable; the whole file runs in about 12 s.
 
 ## Changelog
+
+### 2026-10-28: the proxy URL example names the trial slot (internal-task)
+
+harness-evals v0.0.20. The `HE_MODEL_BASE_URL` example includes the slot path segment, matching the runner and the hand-run commands. The serve-smoke binding instructions link to the harness guide.
 
 ### 2026-10-27: the fake harness stops on a SIGTERM that lands as a turn starts (internal-task)
 

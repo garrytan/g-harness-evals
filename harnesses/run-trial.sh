@@ -4,7 +4,10 @@
 # runner/run.py replaces it once the world and ledger land.
 #
 #   harnesses/run-trial.sh --harness openclaw --task tasks/hello --trial-id t1 \
-#     --base-url http://host.docker.internal:8787/anthropic --api-key trial-token:t1
+#     --base-url http://host.docker.internal:8787/t1/anthropic --api-key "$cred"
+#
+# A lease-mode proxy forwards only for a slot bound through POST /__proxy/bind, and only to a caller presenting the
+# slot's token (harnesses/README.md, "Run one trial", binds slot t1 with $cred before this script runs).
 #
 # Options:
 #   --harness NAME        harnesses/NAME (image defaults to harness-eval/NAME:dev, _fake -> fake)

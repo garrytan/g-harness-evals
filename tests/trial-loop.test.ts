@@ -185,6 +185,32 @@ describe('the multi-user trial loop in process mode', () => {
     expect(result.records[0]!.error).toContain('HE-ADAPTER-002');
   }, 30_000);
 
+  // Value: protects=the runner binds the trial slot with the random token it hands the harness, so a request with no
+  // credential or the bare metering key is refused before the lease and logged under slot:<id>, outside the trial's usage;
+  // fails_when=trial.ts binds the slot without the token or hands the harness the key; why_new=metering-proxy tests bind slots by hand, the runner boundary was unproven; seam=none;
+  // no_claim=provider acceptance (the lease is too small to forward, so the token request stops at the ledger with 402).
+  test('the runner binds the trial slot with the token it hands the harness: no credential and the bare key are refused, the token reaches the lease', async () => {
+    const adapter = join(tmp, 'auth-probe-adapter.ts');
+    writeFileSync(adapter, `
+      import { writeFileSync } from 'node:fs';
+      import { join } from 'node:path';
+      const statuses: number[] = [];
+      for (const credential of [null, 'trial-token:' + process.env.HE_TRIAL_ID, process.env.HE_MODEL_API_KEY]) {
+        const res = await fetch(process.env.HE_MODEL_BASE_URL + '/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', ...(credential ? { 'x-api-key': credential } : {}) }, body: JSON.stringify({ model: process.env.HE_MODEL_NAME, max_tokens: 16, messages: [{ role: 'user', content: 'hi' }] }) });
+        statuses.push(res.status);
+      }
+      writeFileSync(join(process.env.HE_LOG_DIR!, 'auth-probe.json'), JSON.stringify(statuses));
+      await import(${JSON.stringify(ADAPTER)});
+    `);
+    const { manifest, manifestPath } = plan([cell({ adapter })]);
+    const result = await executeRun(manifest, manifestPath, baseOpts({ leaseUsd: 0.0001 }));
+    const rec = result.records[0]!;
+    expect(JSON.parse(readFileSync(join(rec.paths.dir!, 'logs', 'auth-probe.json'), 'utf8'))).toEqual([403, 403, 402]);
+    expect(rec.usage).toMatchObject({ requests: 0, refused: 1, usd: 0 });
+    const usageLines = readFileSync(join(tmp, manifest.run_id, 'proxy-usage.ndjson'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { key: string; outcome: string });
+    expect(usageLines.filter((l) => l.key.startsWith('slot:')).map((l) => l.outcome)).toEqual(['refused', 'refused']);
+  }, 60_000);
+
   test('a lease refusal is model_error with cap_stop, continues by default and stops the run with exit 3 under --stop-on-cap', async () => {
     const root = join(tmp, 'tasks-cap');
     writeTask(root, 'fx-model-a', [{ text: 'call the model [fx:model]' }]);

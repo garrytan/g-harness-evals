@@ -5,7 +5,7 @@
 //   bun harnesses/serve-smoke.ts --harness openclaw --trial-id openclaw-serve-1 \
 //       --base-url http://host.docker.internal:8787/anthropic --api-key trial-token:openclaw-serve-1
 //
-// It starts a world in this process on 0.0.0.0 (containers reach it as host.docker.internal), starts
+// It starts a world in this process on the docker bridge gateway (containers reach it as host.docker.internal), starts
 // the harness container in serve mode the way the runner will (three mounts plus /he-turns, the
 // serve environment, stdin closed, no TTY, as the calling user), waits for $HE_LOG_DIR/ready, then
 // drives three turns: member A in a DM, member B in a channel both belong to, and A again in the DM
@@ -24,7 +24,7 @@
 //   --api-key TOKEN    HE_MODEL_API_KEY (the per-trial dummy token; default trial-token:<trial-id>)
 //   --model NAME       HE_MODEL_NAME (default claude-sonnet-5-5)
 //   --budget S         per-turn time_budget_s (default 300)
-//   --port N           world port on 0.0.0.0 (default 8791)
+//   --port N           world port on the docker bridge gateway (default 8791)
 //   --actors A,B       the two members (default dana-okafor,hollis-mbeki)
 //   --channel NAME     the shared channel (default: the first channel both actors belong to)
 //   --turns N          1, 2 or 3 turns (default 3)
@@ -35,6 +35,7 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { TurnRequest, TurnResponse, TurnWindow } from '../runner/contracts.ts';
+import { containerHostAddress } from '../runner/trial/world.ts';
 import { createWorldServer } from '../world/services/server.ts';
 import { loadWorld } from '../world/services/world.ts';
 
@@ -70,9 +71,10 @@ if (compose) mkdirSync(join(dirs.state, 'qm'), { recursive: true });
 
 // ---- world -----------------------------------------------------------------------------------------
 const world = loadWorld(join(ROOT, 'world', 'seed', 'world.json'));
-const ws = createWorldServer({ world, split: 'dev', trialId, port, hostname: '0.0.0.0', eventsPath: join(out, 'events.jsonl'), actors: [actorA, actorB] });
+const gateway = containerHostAddress();
+const ws = createWorldServer({ world, split: 'dev', trialId, port, hostname: gateway, eventsPath: join(out, 'events.jsonl'), actors: [actorA, actorB] });
 const hostUrl = `http://host.docker.internal:${port}`;
-const localUrl = `http://127.0.0.1:${port}`;
+const localUrl = `http://${gateway}:${port}`;
 const bot = ws.credentials.bot;
 const botUserId = ws.service.bot!.slack_id;
 const tokenOf = (member: string) => ws.credentials.actors.find((a) => a.member === member)!.token;

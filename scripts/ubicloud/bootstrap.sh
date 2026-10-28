@@ -38,4 +38,32 @@ fi
 sudo systemctl enable --now docker >/dev/null 2>&1
 sudo usermod -aG docker "$USER"
 log "$(sudo docker --version) ($(( $(date +%s) - t0 ))s)"
+
+# Inbound firewall (2026-10-28): the VM has a public address and the metering proxy on a shard VM holds the provider keys,
+# so only SSH is reachable from outside. Containers still reach the host over the docker bridges (the proxy and the world
+# bind the bridge gateway), replies to the VM's own connections come back, and ICMP stays for path discovery and IPv6
+# neighbour discovery. Its own nftables table, so Docker's iptables rules (FORWARD and NAT) are untouched. Idempotent.
+# HE_LANE_FIREWALL=off skips it, for a debugging VM nobody runs a proxy on.
+if [ "${HE_LANE_FIREWALL:-on}" != off ]; then
+  command -v nft >/dev/null || sudo apt-get install -y -qq --no-install-recommends nftables >/dev/null
+  sudo nft -f - <<'EOF'
+table inet he_lane
+delete table inet he_lane
+table inet he_lane {
+  chain input {
+    type filter hook input priority 0; policy drop;
+    iif lo accept
+    ct state established,related accept
+    ct state invalid drop
+    meta l4proto { icmp, ipv6-icmp } accept
+    iifname "docker0" accept
+    iifname "br-*" accept
+    udp sport 67 udp dport 68 accept
+    udp sport 547 udp dport 546 accept
+    tcp dport 22 accept
+  }
+}
+EOF
+  log "firewall: inbound drop except ssh, loopback, docker bridges, replies, icmp ($(sudo nft list chain inet he_lane input | grep -c accept) accept rules)"
+fi
 log "done in $(( $(date +%s) - t0 ))s"

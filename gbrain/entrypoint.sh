@@ -23,11 +23,16 @@
 #   OPENAI_BASE_URL   passed through to gbrain unchanged and logged as a route; it carries no key (the proxy injects the key
 #                     on the host). GBRAIN_QUERY_EMBED_TIMEOUT_MS is passed through too (default from pin.json: gbrain gives up
 #                     a query embedding after it and continues keyword-only, stamping the reply search_degraded)
+#   HE_GBRAIN_PROXY_TOKEN  with embeddings: the proxy slot's random per-trial token (trial-token:<id>.<hex>, never a provider
+#                     key), handed to gbrain as OPENAI_API_KEY so the proxy, which forwards nothing for the slot without it,
+#                     accepts the query embeddings; never logged. Sets GBRAIN_MODEL_DISCOVERY=off beside it, so gbrain
+#                     sends no GET /v1/models through the slot
 #
 # Copies the chosen brain to /brain (the path the brain was built at; gbrain records absolute paths), mints a bearer
 # token for the trial into $HE_GBRAIN_OUT/token (never stdout, never a log), then serves MCP over HTTP on 0.0.0.0:3131
-# with the chosen surface and the rate limits lifted, until SIGTERM. The environment carries no API key: the image has
-# none and the runner passes none; an embedded brain's calls leave through OPENAI_BASE_URL only. A company brain is served with GBRAIN_REMOTE_PRIVATE_PAGES=1, so
+# with the chosen surface and the rate limits lifted, until SIGTERM. The environment carries no provider key: the image has
+# none and the runner passes none; an embedded brain's calls leave through OPENAI_BASE_URL only, presenting the runner's
+# per-trial proxy token. A company brain is served with GBRAIN_REMOTE_PRIVATE_PAGES=1, so
 # the pages whose frontmatter says visibility: private (the five private notes) are served like every other page:
 # gbrain's default hides such pages from every remote caller, and the company-brain run measures the harness and the
 # source grants, not that page-level default (the default is recorded as a finding in the report).
@@ -71,6 +76,18 @@ fi
 for k in ANTHROPIC_API_KEY OPENAI_API_KEY OPENROUTER_API_KEY GEMINI_API_KEY VOYAGE_API_KEY; do
   if [ -n "${!k:-}" ]; then echo "refusing to start: $k is set in the sidecar environment; gbrain must never see a model key" >&2; exit 2; fi
 done
+# An embedded brain presents the proxy slot's per-trial token as its OpenAI credential (2026-10-28: the proxy forwards nothing
+# for the slot without it). The token is the runner's, shaped trial-token:<id>.<hex>, never a provider key; the proxy strips
+# it and injects the real key on the host. It reaches gbrain through the only variable gbrain reads a credential from.
+# With a key set, gbrain would also run its OpenAI model discovery (GET /v1/models) before the first embedding; that request
+# would be metered under the trial key and counted among the harness's requests, so discovery is switched off (the embedding
+# model is pinned by the cell).
+if [ "$HE_GBRAIN_EMBEDDINGS" != off ]; then
+  case "${HE_GBRAIN_PROXY_TOKEN:-}" in
+    trial-token:*) export OPENAI_API_KEY="$HE_GBRAIN_PROXY_TOKEN" GBRAIN_MODEL_DISCOVERY=off; unset HE_GBRAIN_PROXY_TOKEN ;;
+    *) refuse "HE_GBRAIN_EMBEDDINGS=$HE_GBRAIN_EMBEDDINGS needs HE_GBRAIN_PROXY_TOKEN (the proxy slot's per-trial token, trial-token:<id>.<hex>); the proxy forwards nothing for the slot without it" ;;
+  esac
+fi
 
 mkdir -p "$HE_GBRAIN_OUT"
 log() { printf '%s gbrain-sidecar[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" >> "$HE_GBRAIN_OUT/sidecar.log"; }

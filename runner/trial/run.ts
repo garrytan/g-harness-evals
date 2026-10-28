@@ -10,7 +10,7 @@ import { dirname, join, resolve } from 'node:path';
 import type { HarnessMode, Termination, TrialRecord } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
 import type { Cell, Manifest, Trial } from '../run.ts';
-import { RunProxy, reconcile, summarizeUsage, trialKey, trialSlug } from './proxy.ts';
+import { RunProxy, reconcile, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
 import { DEFAULT_PREAMBLE_PATH, loadPreamble } from './task.ts';
 import { type GradeFn, appendRecord, loadGrader, runTrial } from './trial.ts';
 import { writeAtomic } from './harness.ts';
@@ -138,11 +138,12 @@ async function runSingleShot(o: { cell: Cell; trial: Trial; trialDir: string; pr
   const { cell, trial } = o;
   const started = Date.now();
   const key = trialKey(trial.id);
+  const token = trialToken(trial.id);
   const slot = trialSlug(trial.id);
   const [provider, modelName] = [cell.model.slice(0, cell.model.indexOf(':')), cell.model.slice(cell.model.indexOf(':') + 1)];
-  if (o.proxy) await o.proxy.bind(slot, key);
+  if (o.proxy) await o.proxy.bind(slot, key, token);
   const args = [join(o.repoRoot ?? '.', 'harnesses', 'run-trial.sh'), '--harness', cell.harness, '--task', join(o.repoRoot ?? '.', 'tasks', trial.task), '--trial-id', slot,
-    '--base-url', o.proxy ? o.proxy.baseUrlFor(slot, provider) : 'http://127.0.0.1:1/none', '--api-key', key, '--model', modelName, '--out', o.trialDir];
+    '--base-url', o.proxy ? o.proxy.baseUrlFor(slot, provider) : 'http://127.0.0.1:1/none', '--api-key', token, '--model', modelName, '--out', o.trialDir];
   if (o.image) args.push('--image', o.image);
   mkdirSync(dirname(o.trialDir), { recursive: true });
   const r = spawnSync('bash', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });

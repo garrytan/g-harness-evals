@@ -391,15 +391,15 @@ async function main(argv: string[]): Promise<number> {
       const embeddedCells = gbrainCells.filter((c) => resolveGbrain(c.gbrain!).embeddings !== 'off');
       if (embeddedCells.length) {
         if (!process.env.OPENAI_API_KEY) throw new RunnerError('HE-PROXY-001', `cells ${embeddedCells.map((c) => c.id).join(', ')} have embeddings on and OPENAI_API_KEY is not set in this shell; the metering proxy needs it to forward the sidecar's embedding calls (the sidecar never sees it)`);
-        const { RunProxy } = await import('./trial/proxy.ts');
-        const { isEmbeddingLine } = await import('./trial/proxy.ts');
+        const { RunProxy, isEmbeddingLine, trialToken } = await import('./trial/proxy.ts');
         const proxy = await RunProxy.start({ runId: `${m.run_id}-preflight`, runDir: join(runDir, 'preflight-proxy'), ledgerPath: flag('--ledger') ?? join(runDir, 'ledger.sqlite'), leaseUsd: 0.05, allowModels: [pin.embeddings.model], reachableFromContainers: true, newRun: true });
         try {
           for (const surface of [...new Set(embeddedCells.map((c) => resolveGbrain(c.gbrain!).surface))]) {
             const model = resolveGbrain(embeddedCells[0]!.gbrain!).embeddings as string;
             const key = `preflight-${surface}`;
-            await proxy.bind('preflight', key);
-            const probe = await probeGbrainImage(image, join(runDir, `preflight-gbrain-embedded-${surface}`), { surface, embeddings: model as 'openai:text-embedding-3-small', openaiBaseUrl: proxy.baseUrlFor('preflight', 'openai', true), searchQuery: 'renewal pricing discount' });
+            const preflightToken = trialToken(key);
+            await proxy.bind('preflight', key, preflightToken);
+            const probe = await probeGbrainImage(image, join(runDir, `preflight-gbrain-embedded-${surface}`), { surface, embeddings: model as 'openai:text-embedding-3-small', openaiBaseUrl: proxy.baseUrlFor('preflight', 'openai', true), proxyToken: preflightToken, searchQuery: 'renewal pricing discount' });
             await proxy.finalize(key);
             await proxy.unbind('preflight');
             const lines = proxy.usageLines(key).filter(isEmbeddingLine);

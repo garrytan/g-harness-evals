@@ -293,7 +293,7 @@ describe.skipIf(!haveImage)(`the sidecar image ${IMAGE ?? '(HE_GBRAIN_IMAGE unse
   }, 120_000);
 
   const haveEmbedded = !!EMBEDDED_BRAIN && existsSync(join(EMBEDDED_BRAIN!, 'manifest.json'));
-  test.skipIf(!haveEmbedded)('an embedded brain built elsewhere is served from /brain and its query embedding leaves through OPENAI_BASE_URL only (fake embedder, no key)', async () => {
+  test.skipIf(!haveEmbedded)('an embedded brain built elsewhere is served from /brain and its query embedding leaves through OPENAI_BASE_URL presenting the proxy slot token (fake embedder, no key)', async () => {
     const requests: string[] = [];
     const fake = Bun.serve({ port: 0, hostname: '0.0.0.0', async fetch(req) {
       const url = new URL(req.url);
@@ -305,7 +305,8 @@ describe.skipIf(!haveImage)(`the sidecar image ${IMAGE ?? '(HE_GBRAIN_IMAGE unse
     } });
     try {
       const manifest = JSON.parse(readFileSync(join(EMBEDDED_BRAIN!, 'manifest.json'), 'utf8')) as { split: 'dev' | 'heldout'; embeddings: { model: string } };
-      const s = await startSidecar('he-gbrain-image-embedded', { HE_GBRAIN_SPLIT: manifest.split, HE_GBRAIN_EMBEDDINGS: manifest.embeddings.model, OPENAI_BASE_URL: `http://host.docker.internal:${fake.port}/trial-slot/openai` },
+      const proxyToken = 'trial-token:image-test.00112233445566778899aabbccddeeff';
+      const s = await startSidecar('he-gbrain-image-embedded', { HE_GBRAIN_SPLIT: manifest.split, HE_GBRAIN_EMBEDDINGS: manifest.embeddings.model, OPENAI_BASE_URL: `http://host.docker.internal:${fake.port}/trial-slot/openai`, HE_GBRAIN_PROXY_TOKEN: proxyToken },
         ['--add-host', 'host.docker.internal:host-gateway', '-v', `${resolve(EMBEDDED_BRAIN!)}:/brains/${manifest.split}-embedded:ro`]);
       try {
         const probe = await mcp(s, 'tools/call', { name: 'search', arguments: { query: 'north team', limit: 3 } });
@@ -315,7 +316,10 @@ describe.skipIf(!haveImage)(`the sidecar image ${IMAGE ?? '(HE_GBRAIN_IMAGE unse
         for (const r of rows) expect(r.slug.startsWith(`${manifest.split}/`)).toBe(true);
         expect(requests.filter((r) => r.startsWith('POST /trial-slot/openai/v1/embeddings')).length).toBeGreaterThanOrEqual(1);
         for (const r of requests) expect(r).not.toMatch(/sk-/);
+        for (const r of requests.filter((r) => r.includes('/v1/embeddings'))) expect(r).toEndWith(`Bearer ${proxyToken}`);
+        expect(requests.filter((r) => r.includes('/v1/models'))).toEqual([]);
         const log = readFileSync(join(s.out, 'sidecar.log'), 'utf8');
+        expect(log).not.toContain(proxyToken);
         expect(log).toContain(`copied from /brains/${manifest.split}-embedded`);
         expect(log).toContain('query embeddings leave through OPENAI_BASE_URL=http://host.docker.internal');
         expect(log).toContain(`GBRAIN_QUERY_EMBED_TIMEOUT_MS=${pin.embeddings.query_embed_timeout_ms}`);

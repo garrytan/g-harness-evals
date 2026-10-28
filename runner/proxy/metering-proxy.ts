@@ -31,13 +31,28 @@
  * Attribution across processes (lease mode): the harness binds a slot (the
  * path segment a shim's base URL carries) to a key around each question or
  * namespace ingest and reads the key's meter afterwards, through
- * `POST /__proxy/bind {slot, key}`, `POST /__proxy/unbind {slot}` and
+ * `POST /__proxy/bind {slot, key, token?}`, `POST /__proxy/unbind {slot}` and
  * `POST /__proxy/finalize {key}`. With `--control-token` (or
  * SHOOTOUT_PROXY_CONTROL_TOKEN) these need the `x-proxy-control` header, so a
  * vendor container cannot move charges.
  *
+ * In lease mode a provider request is forwarded only for a bound slot: an
+ * unbound slot is refused (403, logged under `slot:<id>` as refused) so a
+ * host that reaches the port cannot spend the lease through the proxy's key.
+ * A slot bound with a `token` also requires the request to present that token
+ * as its credential (x-api-key or Authorization: Bearer), and a request without
+ * it is refused and logged under `slot:<id>` too, never under the trial's meter
+ * (a request nobody authenticated is nobody's usage); the runner binds each
+ * trial's slot with a random per-trial token and hands only the token to the
+ * harness, and the gbrain sidecar's slot with its own token. A slot bound
+ * without a token (the embedded image build) accepts any credential while bound.
+ *
+ * The proxy never listens on a wildcard address (0.0.0.0, ::, or an empty
+ * host): the runner binds it to the loopback, or to the docker bridge gateway
+ * when containers must reach it, and `start()` throws on anything else.
+ *
  * Standalone (lease mode):
- *   bun runner/proxy/metering-proxy.ts --listen 0.0.0.0:8787 --budget-ledger <file> --lease-usd <n> --run-id <id>
+ *   bun runner/proxy/metering-proxy.ts --listen 172.17.0.1:8787 --budget-ledger <file> --lease-usd <n> --run-id <id>
  *     [--usage-log <file>] [--allow-models openai:gpt-4.1-mini,...] [--max-output-tokens 32768]
  *     [--forbidden-markers <file>] [--streaming meter|refuse] [--upstream openai=http://...] [--new-run] [--control-token <t>]
  *   bun runner/proxy/metering-proxy.ts summary --budget-ledger <file> --run-id <id>
@@ -117,6 +132,26 @@ function cachedTokens(usage: unknown): number | undefined {
   return n(u.cache_read_input_tokens) + n(u.prompt_tokens_details?.cached_tokens) + n(u.input_tokens_details?.cached_tokens);
 }
 
+/** 0.0.0.0, ::, [::], *, an empty host, or any spelling the URL parser canonicalizes to one of them (0, 0.0, 00.0.0.0, ::0,
+ *  0:0:0:0:0:0:0:0): every interface, which the proxy never listens on. A host the parser rejects counts as one too. */
+export const isWildcardHost = (host: string) => {
+  const h = host.trim();
+  if (h === '' || h === '*') return true;
+  try {
+    const { hostname } = new URL(`http://${h.includes(':') && !h.startsWith('[') ? `[${h}]` : h}/`);
+    return hostname === '0.0.0.0' || hostname === '[::]';
+  } catch { return true; }
+};
+
+/** The credential a request presents: x-api-key, or the bearer of Authorization. */
+function presentedCredential(req: Request): string | null {
+  const apiKey = req.headers.get('x-api-key');
+  if (apiKey) return apiKey;
+  const auth = req.headers.get('authorization');
+  const m = auth?.match(/^Bearer\s+(.+)$/i);
+  return m ? m[1].trim() : null;
+}
+
 const json = (status: number, kind: string, message: string) =>
   new Response(JSON.stringify({ error: { kind, type: kind, message: `metering proxy: ${message}` } }), { status, headers: { 'content-type': 'application/json' } });
 
@@ -132,8 +167,9 @@ function outputField(provider: ProviderName, route: string): string | null {
  * Forwards provider requests (each slot's base URL names the slot) and meters
  * them. A request is charged to the cell bound to its slot when it arrives, so
  * a request that finishes after the cell moved on still lands on the right
- * cell; `finalize` waits for a cell's in-flight requests to drain. Requests
- * with no bound cell are metered under `slot:<id>`.
+ * cell; `finalize` waits for a cell's in-flight requests to drain. In lease
+ * mode a request with no bound cell is refused and logged under `slot:<id>`;
+ * in-process mode (loopback, the caller's own credentials) meters it there.
  */
 export class MeteringProxy {
   private server: ReturnType<typeof Bun.serve> | null = null;
@@ -141,16 +177,16 @@ export class MeteringProxy {
   /** Slots whose provider requests are charged to a ledger allowance (slot builds), not one ledger entry each. */
   readonly allowances = new Map<string, BudgetAllowance>();
   readonly counts = { forwarded: 0, refused: 0, failed: 0, tripwires: 0 };
-  private bindings = new Map<string, string>();
+  private bindings = new Map<string, { key: string; token: string | null }>();
   private inflight = new Map<string, number>();
   private waiters = new Map<string, Array<() => void>>();
   /** `transform` (in-process mode) rewrites a response body after it is metered: a mutant that drops a model's output, for example. */
   constructor(private options: { fetchImpl?: typeof fetch; hostname?: string; port?: number; upstream?: Partial<Record<ProviderName, string>>; policy?: LeasePolicy; controlToken?: string | null; transform?: (slot: string, target: string, text: string) => string } = {}) {}
   get port(): number { return this.server!.port as number; }
-  /** Charge the slot's provider requests to `key` (a cell id) from now on. */
-  bind(slot: string, key: string) { this.bindings.set(slot, key); }
+  /** Charge the slot's provider requests to `key` (a cell id) from now on; with `token`, only requests presenting it. */
+  bind(slot: string, key: string, token: string | null = null) { this.bindings.set(slot, { key, token }); }
   /** With `key`, only drops the binding if it is still that key: a released slot may already be bound to the next cell. */
-  unbind(slot: string, key?: string) { if (key === undefined || this.bindings.get(slot) === key) this.bindings.delete(slot); }
+  unbind(slot: string, key?: string) { if (key === undefined || this.bindings.get(slot)?.key === key) this.bindings.delete(slot); }
   private meter(key: string): Meter { let m = this.meters.get(key); if (!m) this.meters.set(key, m = newMeter()); return m; }
   private settled(key: string) {
     const n = (this.inflight.get(key) ?? 1) - 1;
@@ -175,8 +211,10 @@ export class MeteringProxy {
   }
   start() {
     const send: Send = this.options.fetchImpl ?? ((input, init) => fetch(input, init));
+    const hostname = this.options.hostname ?? '127.0.0.1';
+    if (isWildcardHost(hostname)) throw new Error(`metering proxy: refusing to listen on the wildcard address ${hostname}; bind the loopback or the docker bridge gateway (runner/trial/world.ts listenHost)`);
     this.server = Bun.serve({
-      port: this.options.port ?? 0, hostname: this.options.hostname ?? '127.0.0.1', idleTimeout: 0,
+      port: this.options.port ?? 0, hostname, idleTimeout: 0,
       fetch: async req => {
         const url = new URL(req.url);
         if (url.pathname === '/__proxy/status' && req.method === 'GET') return Response.json(this.status());
@@ -184,7 +222,16 @@ export class MeteringProxy {
         const m = url.pathname.match(/^\/(?:([^/]+)\/)?(anthropic|openai|voyage)(\/.*)$/);
         if (!m) return json(404, 'invalid_request', `no provider route ${url.pathname}`);
         const [, slot = 'default', prov, rest] = m as unknown as [string, string | undefined, ProviderName, string];
-        const key = this.bindings.get(slot) ?? `slot:${slot}`;
+        const binding = this.bindings.get(slot);
+        const key = binding?.key ?? `slot:${slot}`;
+        if (this.options.policy) {
+          const refused = (reason: string) => { this.log({ at: new Date().toISOString(), key, provider: prov, route: rest, model: null, outcome: 'refused', reason, status: 403 }); return json(403, 'invalid_request', reason); };
+          if (!binding) return refused(`slot ${slot} is not bound; the proxy forwards only for a slot the runner bound`);
+          if (binding.token !== null && presentedCredential(req) !== binding.token) {
+            this.log({ at: new Date().toISOString(), key: `slot:${slot}`, provider: prov, route: rest, model: null, outcome: 'refused', reason: `the credential presented for slot ${slot} is not the slot's token`, status: 403 });
+            return json(403, 'invalid_request', `the credential presented for slot ${slot} is not the slot's token`);
+          }
+        }
         this.inflight.set(key, (this.inflight.get(key) ?? 0) + 1);
         let streaming = false;
         try {
@@ -207,9 +254,9 @@ export class MeteringProxy {
 
   private async control(path: string, req: Request): Promise<Response> {
     if (this.options.controlToken && req.headers.get('x-proxy-control') !== this.options.controlToken) return json(403, 'invalid_request', 'control endpoints need the x-proxy-control token');
-    let body: { slot?: string; key?: string; timeout_ms?: number };
+    let body: { slot?: string; key?: string; token?: string; timeout_ms?: number };
     try { body = await req.json() as typeof body; } catch { return json(400, 'invalid_request', 'control body is not JSON'); }
-    if (path === '/__proxy/bind' && body.slot && body.key) { this.bind(body.slot, body.key); return Response.json({ ok: true }); }
+    if (path === '/__proxy/bind' && body.slot && body.key) { this.bind(body.slot, body.key, typeof body.token === 'string' && body.token ? body.token : null); return Response.json({ ok: true }); }
     if (path === '/__proxy/unbind' && body.slot) { this.unbind(body.slot); return Response.json({ ok: true }); }
     if (path === '/__proxy/finalize' && body.key) return Response.json(await this.finalize(body.key, Math.min(Number(body.timeout_ms ?? 30_000), 120_000)));
     return json(404, 'invalid_request', `no control route ${path}`);
@@ -362,7 +409,7 @@ export class ProxyControl {
     if (!res.ok) throw new Error(`metering proxy ${path}: HTTP ${res.status}`);
     return res.json();
   }
-  bind(slot: string, key: string) { return this.post('/__proxy/bind', { slot, key }); }
+  bind(slot: string, key: string, token?: string) { return this.post('/__proxy/bind', { slot, key, ...(token ? { token } : {}) }); }
   unbind(slot: string) { return this.post('/__proxy/unbind', { slot }); }
   finalize(key: string, timeoutMs = 30_000) { return this.post('/__proxy/finalize', { key, timeout_ms: timeoutMs }) as Promise<Meter>; }
   /** Run `fn` with the slot's provider calls charged to `key`; returns its result and the key's meter. */

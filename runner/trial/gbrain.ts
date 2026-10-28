@@ -55,10 +55,13 @@ export interface GbrainSidecarOptions {
   /** internal-task: live ingestion (member brain only): the entrypoint copies ingest-tokens.json beside the token. */
   ingest?: 'off' | 'live';
   /** internal-task: the surface (default starter) and the embedding model (default off); an embedded brain needs openaiBaseUrl, the
-   *  metering proxy's slot URL as the container reaches it (a route, never a key). */
+   *  metering proxy's slot URL as the container reaches it (a route, never a key), and proxyToken, the random per-trial token
+   *  the proxy requires on that slot (2026-10-28; the entrypoint hands it to gbrain as its OpenAI credential, which the proxy
+   *  strips before it injects the real key). */
   surface?: GbrainCellConfig['surface'];
   embeddings?: NonNullable<GbrainCellConfig['embeddings']>;
   openaiBaseUrl?: string;
+  proxyToken?: string;
   readyTimeoutMs?: number;
   log?: (line: string) => void;
 }
@@ -196,6 +199,7 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
   const surface = o.surface ?? 'starter';
   const embeddings = o.embeddings ?? 'off';
   if (embeddings !== 'off' && !o.openaiBaseUrl) throw new RunnerError('HE-GBRAIN-002', `an embedded brain (${embeddings}) needs the metering proxy's slot URL as OPENAI_BASE_URL; the runner passes none without a proxy`);
+  if (embeddings !== 'off' && !o.proxyToken) throw new RunnerError('HE-GBRAIN-002', `an embedded brain (${embeddings}) needs the proxy slot's per-trial token as HE_GBRAIN_PROXY_TOKEN; the proxy forwards nothing for the slot without it`);
   const log = o.log ?? (() => undefined);
   const name = `he-gbrain-${o.trialSlug}`.toLowerCase().replace(/[^a-z0-9._-]+/g, '-');
   const network = `${name}-net`;
@@ -215,7 +219,7 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
     '-e', `HE_GBRAIN_SPLIT=${o.split}`, '-e', 'HE_GBRAIN_OUT=/he-gbrain', '-e', `HE_TRIAL_ID=${o.trialId}`,
     '-e', `HE_GBRAIN_BRAIN=${brain}`, '-e', `HE_GBRAIN_SCOPE=${scope}`, '-e', `HE_GBRAIN_INGEST=${ingest}`,
     '-e', `HE_GBRAIN_SURFACE=${surface}`, '-e', `HE_GBRAIN_EMBEDDINGS=${embeddings}`,
-    ...(embeddings !== 'off' ? ['-e', `OPENAI_BASE_URL=${o.openaiBaseUrl}`] : []),
+    ...(embeddings !== 'off' ? ['-e', `OPENAI_BASE_URL=${o.openaiBaseUrl}`, '-e', `HE_GBRAIN_PROXY_TOKEN=${o.proxyToken}`] : []),
     image]);
   const image_id = (await sh(['docker', 'image', 'inspect', '-f', '{{.Id}}', image])).stdout.trim();
   if (run.status !== 0) {
@@ -296,8 +300,8 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
 /** Preflight: the image exists and a container from it serves /health and lists its tools on the given surface (internal-task: the
  *  count is compared with gbrain/pin.json by the caller). Starts and stops one sidecar; with an embedding model, the sidecar
  *  serves the embedded brain and a search goes through it so the caller can look for the embedding usage line. */
-export async function probeGbrainImage(image: string, scratchDir: string, o: { surface?: GbrainCellConfig['surface']; embeddings?: NonNullable<GbrainCellConfig['embeddings']>; openaiBaseUrl?: string; split?: 'dev' | 'heldout'; searchQuery?: string } = {}): Promise<{ ready_ms: number; version: string | null; tools: string[]; image_id: string; search_slugs: string[] | null; search_degraded: string | null }> {
-  const sidecar = await startGbrainSidecar({ trialId: 'preflight', trialSlug: `preflight-${process.pid}-${o.surface ?? 'starter'}-${o.embeddings ?? 'off'}`, split: o.split ?? 'dev', outDir: scratchDir, image, surface: o.surface, embeddings: o.embeddings, openaiBaseUrl: o.openaiBaseUrl });
+export async function probeGbrainImage(image: string, scratchDir: string, o: { surface?: GbrainCellConfig['surface']; embeddings?: NonNullable<GbrainCellConfig['embeddings']>; openaiBaseUrl?: string; proxyToken?: string; split?: 'dev' | 'heldout'; searchQuery?: string } = {}): Promise<{ ready_ms: number; version: string | null; tools: string[]; image_id: string; search_slugs: string[] | null; search_degraded: string | null }> {
+  const sidecar = await startGbrainSidecar({ trialId: 'preflight', trialSlug: `preflight-${process.pid}-${o.surface ?? 'starter'}-${o.embeddings ?? 'off'}`, split: o.split ?? 'dev', outDir: scratchDir, image, surface: o.surface, embeddings: o.embeddings, openaiBaseUrl: o.openaiBaseUrl, proxyToken: o.proxyToken });
   try {
     const health = await fetch(`${sidecar.url}/health`).then((r) => r.json() as Promise<{ version?: string }>).catch(() => ({} as { version?: string }));
     const tools = await listGbrainTools(sidecar.url, sidecar.token);

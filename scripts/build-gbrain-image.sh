@@ -65,7 +65,7 @@ plan() {
   echo "keyword build:     docker build $nocache --build-arg GBRAIN_COMMIT=$gbrain ${hermes_args[*]} --target keyword -t $tag -f gbrain/Dockerfile ."
   if [ "$embedded" = 1 ]; then
     echo "embedded build:    docker build --build-arg GBRAIN_COMMIT=$gbrain --target builder -t $tag-builder -f gbrain/Dockerfile ."
-    echo "                   metering proxy on 0.0.0.0:<port>, ledger $out/ledger.sqlite, lease \$1, run id gbrain-image-embed-<ts>, allow-models $model"
+    echo "                   metering proxy on <docker bridge gateway>:<port> with the gbrain-image slot bound, ledger $out/ledger.sqlite, lease \$1, run id gbrain-image-embed-<ts>, allow-models $model"
     echo "                   docker run --rm --add-host host.docker.internal:host-gateway -e OPENAI_BASE_URL=http://host.docker.internal:<port>/gbrain-image/openai -v gbrain/.build/brains/<split>-embedded:/brain $tag-builder build-brain.ts --split <split> --embeddings $model --out /brain"
     echo "                   docker build --build-arg GBRAIN_COMMIT=$gbrain --target embedded -t $tag -f gbrain/Dockerfile ."
   fi
@@ -95,13 +95,21 @@ docker build --build-arg "GBRAIN_COMMIT=$gbrain" --target builder -t "$tag-build
 run_id="gbrain-image-embed-$(date -u +%Y%m%dT%H%M%SZ)"
 ledger="$out/ledger.sqlite"
 usage="$out/proxy-usage.ndjson"
+# The proxy listens on the docker bridge gateway (what host.docker.internal resolves to in the build container), never on
+# every interface, with a control token; the build's slot is bound before the first call, since the proxy forwards
+# nothing for an unbound slot (2026-10-28).
+gateway=${HE_CONTAINER_HOST_IP:-$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}')}
+[[ "$gateway" =~ ^[0-9]+(\.[0-9]+){3}$ ]] && [ "$gateway" != 0.0.0.0 ] || fail "HE-PROXY-004 docker network inspect bridge gave no gateway address ('$gateway'); set HE_CONTAINER_HOST_IP"
 port=$(bun -e 'const s = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response() }); console.log(s.port); s.stop(true);')
-bun runner/proxy/metering-proxy.ts --listen "0.0.0.0:$port" --budget-ledger "$ledger" --lease-usd 1 --run-id "$run_id" \
-  --usage-log "$usage" --allow-models "$model" --new-run >> "$out/proxy.log" 2>&1 &
+control=$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)
+bun runner/proxy/metering-proxy.ts --listen "$gateway:$port" --budget-ledger "$ledger" --lease-usd 1 --run-id "$run_id" \
+  --usage-log "$usage" --allow-models "$model" --new-run --control-token "$control" >> "$out/proxy.log" 2>&1 &
 proxy_pid=$!
-for _ in $(seq 1 100); do curl -sf "http://127.0.0.1:$port/__proxy/status" >/dev/null 2>&1 && break; sleep 0.1; done
-curl -sf "http://127.0.0.1:$port/__proxy/status" >/dev/null || { echo "HE-PROXY-003 the metering proxy did not start; see $out/proxy.log" >&2; exit 2; }
-echo "[build-gbrain-image] metering proxy on port $port, lease \$1 as $run_id in $ledger"
+for _ in $(seq 1 100); do curl -sf "http://$gateway:$port/__proxy/status" >/dev/null 2>&1 && break; sleep 0.1; done
+curl -sf "http://$gateway:$port/__proxy/status" >/dev/null || { echo "HE-PROXY-003 the metering proxy did not start; see $out/proxy.log" >&2; exit 2; }
+curl -sf -X POST "http://$gateway:$port/__proxy/bind" -H 'content-type: application/json' -H "x-proxy-control: $control" -d '{"slot":"gbrain-image","key":"gbrain-image"}' >/dev/null \
+  || { echo "HE-PROXY-003 could not bind the gbrain-image slot; see $out/proxy.log" >&2; exit 2; }
+echo "[build-gbrain-image] metering proxy on $gateway:$port, lease \$1 as $run_id in $ledger, slot gbrain-image bound"
 
 for split in dev heldout; do
   dest="$brains/$split-embedded"
