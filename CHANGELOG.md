@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.21] - 2026-10-28
+
+### internal-task: gbrain-memory-fix-2026-10b preregistered at main a0fe48da6; gbrain-memory-fix-2026-10 superseded, never run
+
+- `docs/benchmarks/2026-10-28-gbrain-memory-fix-b/` (new): `PREREGISTRATION.md` and `prereg.json` for run `gbrain-memory-fix-2026-10b`, gbrain-memory-fix-2026-10's design word for word (twelve cells, eight sealed held-out continuity and corrections tasks, 5 repetitions, 480 trials, gbrain at gbrain#7744's head `81692dc6`, cap $70, the same leases, sharding, endpoints, predictions and decision sentences; `prereg.json` differs only in `run_id`), executed at `main` `a0fe48da6` (#97). Why a new run id: the first preregistration's planned amendment required one if `git diff eaaf080cc <execution commit>` touched a task, grader, preamble, `gbrain/pin.json`, `gbrain/Dockerfile`, `world/` or adapter file, and #97 edits `gbrain/pin.json`'s embedded-brain `route` text (no task, grader, preamble, `world/`, adapter or Dockerfile file changed; the quoted diff-stat is in the file). "Fixed now" and "What the run measures" name #97's bridge-gateway bind, bound proxy slots with per-trial tokens and lane VM firewall as part of what the run measures. The keyless gbrain-check at the pin and probe 1 (a write under a held-out ingest token and its retrieval) were rerun at `a0fe48da6` and pass; the recall rung's result at `4aad966f7` stands, its code unchanged since. `docs/benchmarks/preregistrations.d/gbrain-memory-fix-b.json` (new) registers it. No trial has run.
+- `docs/benchmarks/2026-10-27-gbrain-memory-fix/PREREGISTRATION.md`: one dated line in Amendments: superseded, never run, pointing to the new preregistration.
+- `scripts/memory-fix-mechanism.ts` (new, keyless): secondaries 2 and 3's mechanism counts per live cell from `events.jsonl` (`cr-05`: trials with a read, any saved fact returned, the correction returned, the correction ahead of the retracted post; `cn-05`: the asker's DM preference returned), with the queries sent; `--out` writes `mechanism.json` and `mechanism.md`. On the memory run's live cells: `cr-05` no saved fact in any Sonnet trial (13 of 15 with a read), Haiku 1, 2 and 2 of 5; `cn-05` the asker's preference 0 of 15 on Sonnet, 1 of 15 on Haiku. `tests/memory-fix-mechanism.test.ts` (new) covers the ordering, read and asker rules on hand-built events and pins every number of both tables on the memory run.
+- README and `docs/gbrain-arm.md` name the new run id.
+
 ## [0.0.20] - 2026-10-28
 
 ### internal-task: the metering proxy binds the bridge gateway, requires bound slots and per-trial tokens, and lane VMs are firewalled
