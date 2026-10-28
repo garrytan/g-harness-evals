@@ -19,6 +19,18 @@ docker build -f harnesses/qm/Dockerfile.sandbox -t harness-eval/qm-sandbox:dev h
 docker build -t harness-eval/fake:dev harnesses/_fake
 ```
 
+## internal-task overlay images
+
+For gstack's harness-registration check (internal-task, 2026-10-28) each counted image has an overlay, `harness-eval/<h>:gstack-<pin8>`, built FROM `harness-eval/<h>:dev` by `harnesses/<h>/gstack/Dockerfile` with a gstack checkout at /opt/gstack (fetched by sha, `--build-arg GSTACK_COMMIT=<sha>`) and a wrapper in place of `adapter.sh` that registers gstack's skills with the harness before the first turn and then execs the counted adapter (`adapter.real.sh`) with the remaining budget. Nothing in the counted image, pin.json, adapter, `run-trial.sh` or `compose.yaml` changes; `run-trial.sh --image` selects the overlay.
+
+```sh
+docker build -f harnesses/openclaw/gstack/Dockerfile -t harness-eval/openclaw:gstack-bd8907d6 harnesses
+scripts/gsta-135/preflight.sh          # free checks and the keyless exec probe, no key
+scripts/gsta-135/discovery.sh          # the paid cells under one lease; results/gsta-135/runs/<run id>/ (gitignored, never reused)
+```
+
+The run is an uncounted diagnostic: one trial per cell, no preregistration, nothing under `docs/benchmarks/`. `scripts/gsta-135/evidence.ts` reads the harness's own transcript (OpenClaw's exec session store, Hermes's state.db) and reports tool-call events with file, locator and sha256; the wrapper's `gstack-register.log` never counts as evidence.
+
 ## Run one trial
 
 Start the metering proxy on the Docker bridge address so containers reach it as `host.docker.internal` and nothing outside the machine can, then bind a slot for the trial with a random token (since 2026-10-28 a lease-mode proxy forwards nothing for an unbound slot, and nothing on a token-bound slot that does not present the token; the runner does this binding itself in a counted run):
