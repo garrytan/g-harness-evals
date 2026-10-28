@@ -2,6 +2,12 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.28] - 2026-10-28
+
+### internal-task: README Current results reformatted
+
+- README "Current results" reformatted for reading. It now opens with a three-sentence summary of what the runs have found so far, then one compact table per question (the v0.1 harness runs, gbrain on the v0.1 held-out set, the QM runs, the v0.2 runs) with one line per run, the full per-run text and receipts link of every run in a collapsed details block under each table, and the methods paragraph as a "How to read these numbers" list. No figure, interval, label or link target changed. The section's set of 190 distinct numbers and its 37 link targets are the same before and after. The summary keeps each run's decision sentence (not distinguished, no detectable difference in pass rate) rather than a no-effect claim.
+
 ## [0.0.27] - 2026-10-28
 
 ### internal-task: the lane never checks or merges a pull request from or into custody
