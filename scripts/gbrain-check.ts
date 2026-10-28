@@ -5,6 +5,9 @@
 //   bun scripts/gbrain-check.ts --gbrain <ref> [--harness fake|openclaw,hermes] [--rungs told,...] [--reps 2]
 //       [--model anthropic:claude-haiku-5-5] [--spend-cap 2] [--image <tag>] [--no-build] [--baseline <file>]
 //       [--write-baseline] [--force] [--strict-pins] [--expect-hook] [--dry-run]
+//   bun scripts/gbrain-check.ts --gbrain <ref> --rungs recall [--recall-cases <file>] [--recall-tasks <task id>,...]
+//       [--recall-baseline <file>] [--recall-target <task>=<n>]... [--recall-routes] [--gbrain-config <key>=<value>]...
+//       [--resume <check dir>] [--write-baseline [--force]] [--dry-run]       (the keyless recall rung, internal-task; below)
 //
 // --expect-hook makes an installer bundle without gbrain#7489's per-turn hook (installer.turn_hook) a failure instead of the
 // "block-only installer" line, for a pin that is meant to carry the hook (run gbrain-installer-hook-2026-10).
@@ -39,12 +42,13 @@
 // overwrite without --force (HE-GBRAIN-010; the old file is kept as .prev). --dry-run prints the plan and the missing
 // prerequisites and spends nothing.
 //
-// Exit codes: 0 checked, 1 a failed keyless assertion, 2 a refusal or a build failure (the HE- line says which), 3 an
-// incomplete paid run.
+// Exit codes: 0 checked, 1 a failed keyless assertion (the recall rung: a case lost against its baseline or a missed
+// target), 2 a refusal or a build failure (the HE- line says which), 3 an incomplete paid run, 4 a recall run with error or
+// degraded rows (HE-GBRAIN-013).
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import type { GbrainCellConfig, TrialGbrainInstall, TrialRecord } from '../runner/contracts.ts';
 import { RunnerError } from '../runner/errors.ts';
@@ -52,6 +56,10 @@ import { buildManifest, loadPrereg, renderPlan, resolveGbrain, type Cell, type M
 import { INSTALLER_BLOCK_BEGIN, type InstallFile, type InstallManifest } from '../gbrain/build-install.ts';
 import type { InstallViewManifest } from '../runner/trial/gbrain.ts';
 import type { WorldEvent } from '../world/services/events.ts';
+import { factFor, postedAt, RETRYABLE_CODES } from '../world/services/gbrain-ingest.ts';
+import { describeCall, parseRpcBody } from '../world/services/gbrain-tap.ts';
+import { startGbrainSidecar } from '../runner/trial/gbrain.ts';
+import type { Member, Message, World } from '../world/types.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
 export const GBRAIN_REMOTE = 'https://github.com/garrytan/gbrain';
@@ -753,16 +761,21 @@ export function renderSummary(i: SummaryInput): SummaryOutput {
 export interface Args {
   gbrain: string; harnesses: string[]; rungs: string[]; reps: number; model: string; spendCap: number; image?: string; noBuild: boolean;
   baseline: string; writeBaseline: boolean; force: boolean; strictPins: boolean; expectHook: boolean; dryRun: boolean;
+  /** internal-task, the recall rung: the case list, an exact task filter, the baseline receipt, per-task targets, the route arms, gbrain
+   *  config settings for the rung's own sidecar, and the check directory of a run to resume. */
+  recallCases: string; recallTasks: string[] | null; recallBaseline: string; recallTargets: Array<{ task: string; n: number }>; recallRoutes: boolean;
+  gbrainConfig: Array<{ key: string; value: string }>; resume: string | null;
 }
 
 export function parseArgs(argv: string[]): Args {
   const flag = (name: string) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
   const has = (name: string) => argv.includes(name);
-  const valued = new Set(['--gbrain', '--harness', '--rungs', '--reps', '--model', '--spend-cap', '--image', '--baseline']);
-  const bare = new Set(['--no-build', '--write-baseline', '--force', '--strict-pins', '--expect-hook', '--dry-run']);
+  const every = (name: string) => argv.flatMap((x, i) => (x === name ? [argv[i + 1] ?? ''] : []));
+  const valued = new Set(['--gbrain', '--harness', '--rungs', '--reps', '--model', '--spend-cap', '--image', '--baseline', '--recall-cases', '--recall-tasks', '--recall-baseline', '--recall-target', '--gbrain-config', '--resume']);
+  const bare = new Set(['--no-build', '--write-baseline', '--force', '--strict-pins', '--expect-hook', '--dry-run', '--recall-routes']);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
-    if (!valued.has(a) && !bare.has(a)) throw new RunnerError('HE-RUN-002', `unknown argument ${a}; usage: bun scripts/gbrain-check.ts --gbrain <ref> [--harness fake|openclaw,hermes] [--rungs told,...] [--reps 2] [--model ${DEFAULT_MODEL}] [--spend-cap 2] [--image <tag>] [--no-build] [--baseline <file>] [--write-baseline] [--force] [--strict-pins] [--expect-hook] [--dry-run]`);
+    if (!valued.has(a) && !bare.has(a)) throw new RunnerError('HE-RUN-002', `unknown argument ${a}; usage: bun scripts/gbrain-check.ts --gbrain <ref> [--harness fake|openclaw,hermes] [--rungs told,...] [--reps 2] [--model ${DEFAULT_MODEL}] [--spend-cap 2] [--image <tag>] [--no-build] [--baseline <file>] [--write-baseline] [--force] [--strict-pins] [--expect-hook] [--dry-run] [--rungs recall [--recall-cases <file>] [--recall-tasks <task id>,...] [--recall-baseline <file>] [--recall-target <task>=<n>]... [--recall-routes] [--gbrain-config <key>=<value>]... [--resume <check dir>]]`);
     if (valued.has(a)) i++;
   }
   const gbrain = flag('--gbrain');
@@ -774,7 +787,25 @@ export function parseArgs(argv: string[]): Args {
   const spendCap = Number(flag('--spend-cap') ?? 2);
   if (!(reps >= 1 && Number.isInteger(reps))) throw new RunnerError('HE-RUN-002', `--reps must be a whole number >= 1 (got ${flag('--reps')})`);
   if (!(spendCap > 0)) throw new RunnerError('HE-RUN-002', `--spend-cap must be > 0 (got ${flag('--spend-cap')})`);
-  return { gbrain, harnesses, rungs: (flag('--rungs') ?? 'told').split(',').map((s) => s.trim()).filter(Boolean), reps, model: flag('--model') ?? DEFAULT_MODEL, spendCap, image: flag('--image'), noBuild: has('--no-build'), baseline: flag('--baseline') ?? DEFAULT_BASELINE, writeBaseline: has('--write-baseline'), force: has('--force'), strictPins: has('--strict-pins'), expectHook: has('--expect-hook'), dryRun: has('--dry-run') };
+  const rungs = (flag('--rungs') ?? 'told').split(',').map((s) => s.trim()).filter(Boolean);
+  const recallTargets = every('--recall-target').map((t) => {
+    const m = /^([a-z0-9][a-z0-9-]*)=(\d+)$/.exec(t);
+    if (!m) throw new RunnerError('HE-RUN-002', `--recall-target takes <task id>=<miss cases that must pass> (got ${JSON.stringify(t)})`);
+    return { task: m[1]!, n: Number(m[2]) };
+  });
+  const gbrainConfig = every('--gbrain-config').map((kv) => {
+    const m = /^([A-Za-z0-9_][A-Za-z0-9_.-]*)=(.+)$/s.exec(kv);
+    if (!m) throw new RunnerError('HE-RUN-002', '--gbrain-config takes <key>=<value>, a gbrain config key and a non-empty value');
+    if (SECRET_CONFIG_KEY.test(m[1]!) || CONNECTION_CONFIG_KEY.test(m[1]!) || CREDENTIAL_URL.test(m[2]!)) throw new RunnerError('HE-RUN-002', '--gbrain-config refuses ' + m[1] + ': a secret, a connection string or a URL with credentials; the recall rung is keyless, and its receipt, recall.md and baseline record every setting in clear');
+    return { key: m[1]!, value: m[2]! };
+  });
+  for (const list of [recallTargets.map((t) => t.task), gbrainConfig.map((c) => c.key)]) { const dup = list.find((x, i) => list.indexOf(x) !== i); if (dup) throw new RunnerError('HE-RUN-002', `${dup} is given twice`); }
+  const recallOnly = ['--recall-cases', '--recall-tasks', '--recall-baseline', '--recall-target', '--recall-routes', '--gbrain-config', '--resume'].filter(has);
+  if (recallOnly.length && !rungs.includes('recall')) throw new RunnerError('HE-RUN-002', `${recallOnly.join(', ')} belong to the recall rung; add --rungs recall`);
+  const noBaseline = [has('--recall-tasks') && '--recall-tasks', flag('--recall-baseline') === 'none' && '--recall-baseline none', gbrainConfig.length && '--gbrain-config'].filter(Boolean);
+  if (rungs.includes('recall') && has('--write-baseline') && noBaseline.length) throw new RunnerError('HE-GBRAIN-010', 'a recall baseline is written only from a run over every case at an unconfigured gbrain, to the named file; --write-baseline refuses ' + noBaseline.join(', '));
+  return { gbrain, harnesses, rungs, reps, model: flag('--model') ?? DEFAULT_MODEL, spendCap, image: flag('--image'), noBuild: has('--no-build'), baseline: flag('--baseline') ?? DEFAULT_BASELINE, writeBaseline: has('--write-baseline'), force: has('--force'), strictPins: has('--strict-pins'), expectHook: has('--expect-hook'), dryRun: has('--dry-run'), recallCases: flag('--recall-cases') ?? RECALL_CASES, recallTasks: flag('--recall-tasks')?.split(',').map((s) => s.trim()).filter(Boolean) ?? null,
+    recallBaseline: flag('--recall-baseline') ?? RECALL_BASELINE, recallTargets, recallRoutes: has('--recall-routes'), gbrainConfig, resume: flag('--resume') ?? null };
 }
 
 const haveDocker = () => spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
@@ -1121,19 +1152,645 @@ function dryRun(a: Args, ref: ResolvedRef, tag: string, dir: string, ts: string)
   return 0;
 }
 
+// ---- the recall rung (internal-task) ---------------------------------------------------------------------------------------------
+//
+// bun scripts/gbrain-check.ts --gbrain <ref> --rungs recall [--recall-cases scripts/gbrain-check.recall.json]
+//     [--recall-tasks <task id>,...] [--recall-baseline scripts/gbrain-check.recall.baseline.json] [--recall-target <task>=<n>]...
+//     [--recall-routes] [--gbrain-config <key>=<value>]... [--resume <check dir>] [--write-baseline [--force]] [--dry-run]
+//
+// Keyless. Replays gbrain-memory-2026-10's own memory against a gbrain commit: for every trial a case names, a fresh member
+// brain (the image's heldout-member brain, member scope, live ingestion) is started, every fact the run ingested in that trial
+// is written again in event order with the same text, provenance, valid_from and source (world/services/gbrain-ingest.ts factFor
+// over the post's text in events.jsonl), each remember carrying one request_id across its retries so a retry cannot insert
+// twice, and at the seq of each case the exact read the harness sent (tool and arguments) is sent under the same member's
+// token. Two oracles score each read: original (the needed message, needed_ids) and information (it or an accepted assistant
+// restatement, restatement_ids), each through saved facts (gbrain-tap.ts describeCall) and through _meta.brain_hot_memory,
+// counted apart. Before any sidecar starts, every fact text the run's tap recorded is checked against the replay's
+// reconstruction of the same fact id, so a replay that would write different facts is refused (HE-GBRAIN-012).
+//
+// Pass rule: exit 1 when a case that passes the original oracle in the baseline receipt (--recall-baseline, the rung at gbrain
+// master) fails now, or when a --recall-target task=N (the task's miss cases passing the original oracle) is not met; every
+// other miss is a count. The reads that were themselves errors in the counted run are excluded from the rule and listed. A tool
+// error, a replay write that never committed, or a degraded reply (a degraded stamp other than the keyword-only brain's own)
+// is an error row, never a miss, and exits 4 (RECALL_ERROR_EXIT). --recall-routes adds, per consumer turn and on the same
+// ingested state, the turn's question as search, query, recall and recall with the needed fact's entity (an upper bound),
+// reported per route and outside the exit rule. Rows stream to recall/recall.jsonl after a header row; --resume <check dir>
+// reuses that receipt only from a clean tree and when every header field matches (HE-GBRAIN-014), and replays every trial
+// without a complete marker. --gbrain-config refuses secret and connection keys and credential URLs: receipts and the baseline
+// record values.
+
+export const RECALL_CASES = join('scripts', 'gbrain-check.recall.json');
+export const RECALL_BASELINE = join('scripts', 'gbrain-check.recall.baseline.json');
+export const RECALL_HOT_MEMORY = join('docs', 'benchmarks', '2026-10-26-gbrain-memory', 'results', 'hot-memory-blocks.json');
+/** A recall run with error rows exits 4: 1 is a regression or a missed target, 2 a refusal, 3 the paid mode's INCOMPLETE. */
+export const RECALL_ERROR_EXIT = 4;
+export const RECALL_ROUTES = ['search', 'query', 'recall', 'recall_entity'] as const;
+/** gbrain's own test for a secret config key (src/commands/config.ts); --gbrain-config refuses these. */
+export const SECRET_CONFIG_KEY = /(^|[._-])(key|secret|token|password|pwd|passwd|auth)([._-]|$)/i;
+/** Keys that point gbrain at another store (database_url and the like), whose values can carry a password; refused too. */
+export const CONNECTION_CONFIG_KEY = /(^|[._-])(url|uri|dsn)([._-]|$)/i;
+/** A value holding a URL with user info (scheme://user:password@host); refused under any key. */
+export const CREDENTIAL_URL = /[a-z][a-z0-9+.-]*:\/\/[^\s/@]+@/i;
+/** gbrain's stamps for a keyword-only brain, which the image builds: on every reply, so never a degradation of the replay. */
+export const KEYWORD_ONLY_STAMPS = new Set(['embedding_disabled', 'keyword_only_embedding_disabled', 'keyword_only_no_embedding_provider']);
+
+/** A fact named by its run fact id or by the post it was ingested from. */
+export type FactRef = string | { channel: string; ts: string };
+export interface RecallCase {
+  id: string; kind: 'miss' | 'control'; task: string; harness: string; model: string; fact_type: string; turn: number; grant: string;
+  tool: string; args: Record<string, unknown>; events: string; seq: number;
+  needed: Array<{ id?: string; channel: string; ts: string; author: string; source: string }>;
+  /** scripts/recall-audit.ts --cases: the requester's message at the consumer turn, the run fact ids of the needed original
+   *  fact and of the accepted assistant restatements; without needed_ids every needed entry is the original. */
+  question?: string | null; needed_ids?: FactRef[]; restatement_ids?: FactRef[];
+}
+export interface ReplayFact { seq: number; fact_id: string; channel: string; ts: string; author: string; source: string; fact: string; provenance: string; valid_from: string; harness_remember?: { grant: string; args: Record<string, unknown> } }
+type RecallEvent = { seq: number; via: string; tool: string; outcome?: string; args?: Record<string, unknown>; effect?: Record<string, unknown>; grant?: string };
+
+const factKey = (channel: string, ts: string) => channel + '/' + ts;
+
+/** The facts the live ingestion wrote in one trial, rebuilt as the ingestion built them: the post's text from the same event log,
+ *  the author from the world seed, the conversation from the ingest event (a DM's source is private-<member>). */
+export function replayFacts(events: RecallEvent[], world: World): ReplayFact[] {
+  const text = new Map<string, string>();
+  for (const e of events) {
+    const ts = e.effect?.ts, ch = e.effect?.channel ?? e.args?.channel, t = e.args?.text;
+    if (typeof ts === 'string' && typeof ch === 'string' && typeof t === 'string') text.set(factKey(ch, ts), t);
+  }
+  const bot = world.members.find((m) => m.id === 'assistant') ?? ({ id: 'assistant', name: 'assistant', role: 'workspace bot' } as Member);
+  const ingested = events.filter((e) => e.tool === 'gbrain.ingest' && e.outcome === 'ok' && e.effect?.fact_id != null && e.effect?.status !== 'duplicate').map((e): ReplayFact => {
+    const a = e.args as { channel: string; ts: string; author: string; source: string };
+    const body = text.get(factKey(a.channel, a.ts));
+    if (body === undefined) throw new RunnerError('HE-GBRAIN-012', 'no post with channel ' + a.channel + ' ts ' + a.ts + ' in the event log for ingest seq ' + e.seq + '; the replay cannot rebuild that fact');
+    const author = a.author === bot.id ? bot : world.members.find((m) => m.id === a.author);
+    if (!author) throw new RunnerError('HE-GBRAIN-012', 'ingest seq ' + e.seq + ' names author ' + a.author + ', who is not in world/seed/world.json');
+    const channel = a.source.startsWith('private-') ? { name: 'dm:' + [bot.id, a.source.slice('private-'.length)].sort().join('+'), kind: 'dm' } : (() => { const c = world.channels.find((x) => x.id === a.channel); if (!c) throw new RunnerError('HE-GBRAIN-012', 'ingest seq ' + e.seq + ' names channel ' + a.channel + ', which is not in world/seed/world.json'); return { name: c.name, kind: c.kind }; })();
+    const posted = postedAt(a.ts, world.time_zone.offset_minutes);
+    const { fact, provenance } = factFor({ text: body } as Message, author, channel, bot.id, posted);
+    return { seq: e.seq, fact_id: String(e.effect!.fact_id), channel: a.channel, ts: a.ts, author: a.author, source: a.source, fact, provenance, valid_from: posted };
+  });
+  // The harness's own remember calls (outcome ok) are in the brain too, in the requesting member's private source; the tap does
+  // not record the id gbrain gave them, and gbrain numbers facts in write order, so each takes the id after the write before it.
+  const remembered: ReplayFact[] = events.filter((e) => e.via === 'gbrain' && e.tool === 'gbrain.remember' && e.outcome === 'ok').map((e) => ({ seq: e.seq, fact_id: '', channel: 'remember', ts: String(e.seq), author: bot.id, source: 'private-' + (e.grant ?? ''), fact: String(e.args?.fact ?? ''), provenance: String(e.args?.provenance ?? ''), valid_from: '', harness_remember: { grant: e.grant ?? 'public-only', args: e.args ?? {} } }));
+  const all = [...ingested, ...remembered].sort((x, y) => x.seq - y.seq);
+  for (const [i, f] of all.entries()) if (f.harness_remember) f.fact_id = String(i === 0 ? 1 : Number(all[i - 1]!.fact_id) + 1);
+  return all;
+}
+
+/** Every fact text the counted run's tap recorded in this trial against the replay's text for the same id: the mismatches. */
+export function replayMismatches(events: RecallEvent[], facts: ReplayFact[]): string[] {
+  const byId = new Map(facts.map((f) => [f.fact_id, f.fact]));
+  const out: string[] = [];
+  for (const e of events) for (const f of (e.effect?.facts as Array<{ id?: unknown; fact?: unknown }> | undefined) ?? []) {
+    const id = f.id === undefined ? null : String(f.id);
+    const recorded = f.fact;
+    if (id === null || typeof recorded !== 'string') continue;
+    const mine = byId.get(id);
+    if (mine === undefined) out.push('seq ' + e.seq + ' fact #' + id + ' has no ingest event');
+    else if (mine.trim() !== recorded.trim() && !facts.some((x) => x.harness_remember && x.fact_id === id && recorded.includes(mine.trim()))) out.push('seq ' + e.seq + ' fact #' + id + ': recorded ' + JSON.stringify(recorded.slice(0, 80)) + ', replay ' + JSON.stringify(mine.slice(0, 80)));
+  }
+  return out;
+}
+
+/** The hot-memory block of a search reply (internal-task): _meta.brain_hot_memory on the result or on its JSON payload. */
+export function hotMemoryOf(result: Record<string, unknown> | null): { source_id: string | null; facts: Array<{ id: string; fact: string }> } | null {
+  if (!result) return null;
+  for (const m of [result._meta, ...payloadsOf(result).map((p) => (p && typeof p === 'object' ? (p as { _meta?: unknown })._meta : undefined))]) {
+    const b = m && typeof m === 'object' ? (m as { brain_hot_memory?: unknown }).brain_hot_memory : undefined;
+    if (!b || typeof b !== 'object') continue;
+    const o = b as { source_id?: unknown; facts?: unknown };
+    const facts = (Array.isArray(o.facts) ? o.facts : []).map((f) => f as { id?: unknown; fact?: unknown }).filter((f) => f.id !== undefined).map((f) => ({ id: String(f.id), fact: typeof f.fact === 'string' ? f.fact : '' }));
+    return { source_id: typeof o.source_id === 'string' ? o.source_id : null, facts };
+  }
+  return null;
+}
+
+/** The fact keys (channel/ts) of a case's two oracles: original (the needed message) and information (it or a restatement). */
+export function oracleKeys(c: RecallCase, facts: ReplayFact[]): { original: string[]; information: string[] } {
+  const keyOf = (r: FactRef): string | null => {
+    if (typeof r !== 'string') return factKey(r.channel, r.ts);
+    const n = c.needed.find((x) => x.id === r) ?? facts.find((f) => f.fact_id === r);
+    return n ? factKey(n.channel, n.ts) : null;
+  };
+  const keys = (refs: FactRef[]) => [...new Set(refs.map(keyOf).filter((k): k is string => k !== null))];
+  const original = keys(c.needed_ids ?? c.needed);
+  return { original, information: [...new Set([...original, ...keys(c.restatement_ids ?? [])])] };
+}
+
+/** One oracle's verdict on a reply: which of its facts came back, through saved facts or the hot-memory block. */
+export function judgeRecall(keys: string[], idOf: Map<string, string>, saved: Array<{ id?: unknown }>, hot: Array<{ id: string }>): { pass: boolean; ids: string[]; in_saved_facts: string[]; in_hot_memory: string[] } {
+  const ids = keys.map((k) => idOf.get(k)).filter((x): x is string => x !== undefined);
+  const savedIds = new Set(saved.map((f) => String(f.id)));
+  const hotIds = new Set(hot.map((f) => f.id));
+  const inSaved = ids.filter((id) => savedIds.has(id));
+  const inHot = ids.filter((id) => hotIds.has(id));
+  return { pass: inSaved.length > 0 || inHot.length > 0, ids, in_saved_facts: inSaved, in_hot_memory: inHot };
+}
+
+const payloadsOf = (result: Record<string, unknown>): unknown[] => {
+  const out: unknown[] = [];
+  for (const c of Array.isArray(result.content) ? result.content as Array<{ text?: unknown }> : []) {
+    if (typeof c.text !== 'string' || !/^\s*[[{]/.test(c.text)) continue;
+    try { out.push(JSON.parse(c.text)); } catch { /* prose */ }
+  }
+  if (result.structuredContent && typeof result.structuredContent === 'object') out.push(result.structuredContent);
+  return out;
+};
+
+/** gbrain's degraded stamps on a read: _meta.retrieval.degraded reasons (search, query), search_degraded and
+ *  facts_degraded.reason (recall) and a projection that is not ready. The keyword-only stamps are on every reply of this brain;
+ *  any other stamp marks a degraded reply, which is counted apart from misses. */
+export function degradedOf(result: Record<string, unknown> | null): { keyword_only: boolean; degraded: string[] } {
+  if (!result) return { keyword_only: false, degraded: [] };
+  const stamps: string[] = [];
+  const retrieval = (result._meta as { retrieval?: { degraded?: unknown; projection_readiness?: { ready?: unknown } } } | undefined)?.retrieval;
+  for (const d of Array.isArray(retrieval?.degraded) ? retrieval!.degraded as Array<{ stage?: unknown; reason?: unknown }> : []) stamps.push(String(d.reason ?? d.stage));
+  if (retrieval?.projection_readiness?.ready === false) stamps.push('projection_not_ready');
+  for (const p of payloadsOf(result)) {
+    const o = (p && typeof p === 'object' ? p : {}) as { search_degraded?: unknown; facts_degraded?: { reason?: unknown } };
+    if (typeof o.search_degraded === 'string') stamps.push(o.search_degraded);
+    if (typeof o.facts_degraded?.reason === 'string') stamps.push(o.facts_degraded.reason);
+  }
+  return { keyword_only: stamps.some((s) => KEYWORD_ONLY_STAMPS.has(s)), degraded: [...new Set(stamps.filter((s) => !KEYWORD_ONLY_STAMPS.has(s)))] };
+}
+
+/** The figures (numbers) of a fact, read after the "<who> wrote in <where> on <date> <time>: " header the ingestion adds. */
+export function figuresOf(fact: string): string[] {
+  return [...new Set(fact.replace(/^[\s\S]*? on \d{4}-\d{2}-\d{2} \d{2}:\d{2}: /, '').match(/\d+(?:[.,]\d+)*/g) ?? [])];
+}
+
+/** #92's results/hot-memory-blocks.json, Hermes only: per read (cell/task/rep#seq) the block's source_id and fact count, or null
+ *  when the read carried no block or an empty one. The file holds counts by position, not fact ids. */
+export type HotMemoryIndex = Map<string, { source_id: string; facts: number } | null>;
+export function loadHotMemoryIndex(path: string): HotMemoryIndex {
+  const file = JSON.parse(readFileSync(resolve(ROOT, path), 'utf8')) as { trials: Array<{ cell: string; task: string; rep: string; calls: Array<{ seq: number; hot_memory: { source_id: string; facts: number } | null }> }> };
+  const index: HotMemoryIndex = new Map();
+  for (const t of file.trials) for (const c of t.calls) index.set(t.cell + '/' + t.task + '/' + t.rep + '#' + c.seq, c.hot_memory && c.hot_memory.facts > 0 ? { source_id: c.hot_memory.source_id, facts: c.hot_memory.facts } : null);
+  return index;
+}
+
+/** The rule against #92's file: the replay agrees when neither read carried a block, or both carried one from the same
+ *  source_id with the same number of facts. */
+export function hotMemoryAgrees(recorded: { source_id: string; facts: number } | null, replay: { source_id: string | null; facts: unknown[] } | null): boolean {
+  const mine = replay && replay.facts.length > 0 ? replay : null;
+  if (!recorded || !mine) return !recorded && !mine;
+  return recorded.source_id === mine.source_id && recorded.facts === mine.facts.length;
+}
+
+type McpReply = { result?: Record<string, unknown>; error?: { code?: number; message?: string } };
+type McpCall = { status: number | null; reply: McpReply | undefined; request: { jsonrpc: string; id: number; method: string; params: Record<string, unknown> }; error?: string; ms: number };
+async function mcpCall(url: string, token: string, name: string, args: Record<string, unknown>): Promise<McpCall> {
+  const request = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } };
+  const started = Date.now();
+  try {
+    const res = await fetch(url + '/mcp', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify(request), signal: AbortSignal.timeout(60_000) });
+    const text = await res.text();
+    const reply = parseRpcBody(text, res.headers.get('content-type')).find((r) => String(r.id) === '1') as McpReply | undefined;
+    return { status: res.status, reply, request, ms: Date.now() - started };
+  } catch (e) {
+    return { status: null, reply: undefined, request, error: 'transport: ' + (e as Error).message, ms: Date.now() - started };
+  }
+}
+
+/** The live ingestion's resend schedule and retry_after_ms cap (world/services/gbrain-ingest.ts RETRY_WAITS_MS, RETRY_AFTER_CAP_MS). */
+const REMEMBER_RETRY_WAITS_MS = [500, 1500];
+const REMEMBER_RETRY_AFTER_CAP_MS = 10_000;
+/** One remember of the replay, classified in the live ingestion's order (gbrain-ingest.ts exchange): a transport failure or a
+ *  5xx is resent; any other non-2xx, a missing reply and an RPC error are final; a tool error is resent when it is a pending
+ *  write (write_error write_pending or queue_capacity) or stamped retryable, and final otherwise. Three attempts in all, after
+ *  0.5 and 1.5 s, or the write_request.retry_after_ms gbrain asks for when longer (capped at 10 s). The request_id is fixed before the
+ *  first attempt, so a retry asks gbrain for the same write and cannot insert the fact twice. */
+export async function rememberFact(url: string, token: string, f: ReplayFact): Promise<{ id: string; entity: string | null } | { error: string }> {
+  const attempts = REMEMBER_RETRY_WAITS_MS.length + 1;
+  const args = { ...(f.harness_remember ? f.harness_remember.args : { fact: f.fact, provenance: f.provenance, valid_from: f.valid_from, source_id: f.source }), request_id: crypto.randomUUID() };
+  let last = '';
+  for (let attempt = 1; ; attempt++) {
+    const r = await mcpCall(url, token, 'remember', args);
+    const payload = (r.reply?.result ? payloadsOf(r.reply.result).find((p) => p && typeof p === 'object' && !Array.isArray(p)) : null) as { id?: unknown; status?: unknown; entity_slug?: unknown; retryable?: unknown; code?: unknown; write_error?: unknown; write_request?: { retry_after_ms?: unknown } } | null;
+    const refused = (why: string) => ({ error: 'remember of ingest seq ' + f.seq + ' into ' + f.source + ' was refused: ' + why });
+    let retryAfter = 0;
+    if (r.status === null || r.status >= 500) last = r.error ?? 'upstream_' + r.status;
+    else if (r.status < 200 || r.status >= 300) return refused('upstream_' + r.status);
+    else if (!r.reply) return refused('no_response');
+    else if (r.reply.error) return refused('rpc_' + (r.reply.error.code ?? 'error'));
+    else if (r.reply.result?.isError) {
+      last = String(payload?.write_error ?? payload?.code ?? 'tool_error');
+      if (!RETRYABLE_CODES.has(last) && payload?.retryable !== true) return refused(last + ' ' + JSON.stringify(payload).slice(0, 200));
+      const after = payload?.write_request?.retry_after_ms;
+      retryAfter = typeof after === 'number' && after > 0 ? Math.min(after, REMEMBER_RETRY_AFTER_CAP_MS) : 0;
+    } else if (payload && (payload.status === 'inserted' || payload.status === 'duplicate') && payload.id != null) return { id: String(payload.id), entity: typeof payload.entity_slug === 'string' ? payload.entity_slug : null };
+    else return refused('remember answered status ' + String(payload?.status) + (payload?.id == null ? ', no id' : ''));
+    const wait = REMEMBER_RETRY_WAITS_MS[attempt - 1];
+    if (wait === undefined) break;
+    await Bun.sleep(Math.max(wait, retryAfter));
+  }
+  return { error: 'remember of ingest seq ' + f.seq + ' into ' + f.source + ' did not commit after ' + attempts + ' attempts under request_id ' + args.request_id + ': ' + last };
+}
+
+/** The trial's sidecar as the replay sees it: where it answers and the tokens it holds. */
+export interface RecallSidecar {
+  url: string; members: Record<string, string>; public_only: string; sources: Record<string, string>;
+  config: Array<{ key: string; value: string; read_back: string }>; ready_ms: number; stop(): Promise<void>;
+}
+
+/** One trial of the plan: its cases in seq order, the facts to write, what the counted run returned per read, and the case ids
+ *  excluded from the pass rule (their counted read was itself an error) with the reason. */
+export interface RecallTrial { events: string; cases: RecallCase[]; facts: ReplayFact[]; runSaved: Map<number, string[]>; excluded: Map<string, string> }
+
+type Saved = { id: string | null; fact: string; entity_slug: string | null };
+/** A read and its verdicts under both oracles; an error reply keeps its error and passes neither. pass_original is null when the
+ *  case names no original fact in reach (only restatements), so it is neither a pass nor a miss. */
+async function readAndJudge(url: string, token: string, tool: string, args: Record<string, unknown>, keys: { original: string[]; information: string[] }, idOf: Map<string, string>) {
+  const r = await mcpCall(url, token, tool, args);
+  const d = describeCall(r.request as never, r.reply as never, r.ms, r.status);
+  const saved: Saved[] = ((d?.effect.facts ?? []) as Array<{ id?: unknown; fact: string; entity_slug?: unknown }>).map((f) => ({ id: f.id === undefined ? null : String(f.id), fact: f.fact, entity_slug: typeof f.entity_slug === 'string' ? f.entity_slug : null }));
+  const hot = hotMemoryOf(r.reply?.result ?? null);
+  const original = judgeRecall(keys.original, idOf, saved, hot?.facts ?? []);
+  const information = judgeRecall(keys.information, idOf, saved, hot?.facts ?? []);
+  const result = r.reply?.result;
+  const error = r.error ?? (d?.outcome === 'error' ? d.error ?? 'error' : !result || typeof result !== 'object' || !Array.isArray(result.content) ? 'malformed_result: the reply carries no tool result with a content array' : undefined);
+  return {
+    outcome: error ? 'error' : 'ok', ...(error ? { error } : {}), ...degradedOf(r.reply?.result ?? null),
+    pass_original: error ? false : keys.original.length ? original.pass : null, pass_information: !error && information.pass,
+    needed_ids: original.ids, restatement_ids: information.ids.filter((id) => !original.ids.includes(id)),
+    in_saved_facts: original.in_saved_facts, in_hot_memory: original.in_hot_memory, information_in_saved_facts: information.in_saved_facts, information_in_hot_memory: information.in_hot_memory,
+    saved_facts: saved, hot_memory: hot ? { source_id: hot.source_id, ids: hot.facts.map((f) => f.id) } : null, hot_memory_block: hot, pages: d?.effect.pages ?? [],
+  };
+}
+
+/** Replays one trial into the sidecar and emits its rows: one per case, and with routes one per route and consumer turn, asked
+ *  once at the turn's first read. A write that never committed turns every later read of the trial into an error row. A missing
+ *  token is a refusal (HE-GBRAIN-012), since the brain cannot hold the run's facts. Returns the trial's error rows. */
+export async function replayTrial(p: RecallTrial, sc: RecallSidecar, o: { routes: boolean; hot: HotMemoryIndex | null }, emit: (row: Record<string, unknown>) => void): Promise<number> {
+  const idOf = new Map<string, string>();
+  const entityOf = new Map<string, string | null>();
+  const renumbered: string[] = [];
+  const asked = new Set<number>();
+  let next = 0, broken: string | null = null, errors = 0;
+  const memberToken = (grant: string) => {
+    const t = grant === 'public-only' ? sc.public_only : sc.members[grant];
+    if (!t) throw new RunnerError('HE-GBRAIN-012', 'the sidecar holds no member token for ' + grant);
+    return t;
+  };
+  const keyOfRunId = new Map(p.facts.map((f) => [f.fact_id, factKey(f.channel, f.ts)]));
+  for (const c of p.cases) {
+    while (broken === null && next < p.facts.length && p.facts[next]!.seq < c.seq) {
+      const f = p.facts[next++]!;
+      const token = f.harness_remember ? memberToken(f.harness_remember.grant) : sc.sources[f.source];
+      if (!token) throw new RunnerError('HE-GBRAIN-012', 'the sidecar holds no ingest token for source ' + f.source);
+      const w = await rememberFact(sc.url, token, f);
+      if ('error' in w) { broken = w.error; break; }
+      idOf.set(factKey(f.channel, f.ts), w.id);
+      entityOf.set(factKey(f.channel, f.ts), w.entity);
+      if (w.id !== f.fact_id) renumbered.push(f.fact_id + '->' + w.id);
+    }
+    const keys = oracleKeys(c, p.facts);
+    const excluded = p.excluded.get(c.id) ?? null;
+    const base = { type: 'case', trial: p.events, id: c.id, kind: c.kind, task: c.task, harness: c.harness, model: c.model, fact_type: c.fact_type, turn: c.turn, grant: c.grant, tool: c.tool, args: c.args, excluded };
+    const token = memberToken(c.grant);
+    if (broken !== null) {
+      const row = { ...base, outcome: 'error', error: 'replay write failed: ' + broken, pass_original: false, pass_information: false };
+      emit(row);
+      if (unscored(row)) errors += 1;
+    } else {
+      const { hot_memory_block, ...v } = await readAndJudge(sc.url, token, c.tool, c.args, keys, idOf);
+      const runSaved = (p.runSaved.get(c.seq) ?? []).map((id) => idOf.get(keyOfRunId.get(id) ?? '') ?? 'run#' + id).sort();
+      const replaySaved = v.saved_facts.map((f) => String(f.id)).sort();
+      const recorded = c.harness === 'hermes' && o.hot ? o.hot.get(c.id) : undefined;
+      const row = { ...base, ...v, needed_text: keys.original.map((k) => p.facts.find((f) => factKey(f.channel, f.ts) === k)?.fact ?? ''),
+        run_saved_facts: runSaved, same_saved_facts_as_run: JSON.stringify(runSaved) === JSON.stringify(replaySaved), renumbered: [...renumbered],
+        ...(recorded !== undefined ? { hermes_hot_memory: { recorded, agrees: hotMemoryAgrees(recorded, hot_memory_block) } } : {}) };
+      emit(row);
+      if (unscored(row)) errors += 1;
+    }
+    if (!o.routes || asked.has(c.turn)) continue;
+    asked.add(c.turn);
+    const entity = keys.original.map((k) => entityOf.get(k)).find((e): e is string => typeof e === 'string') ?? null;
+    const needed = p.facts.find((f) => keys.original.includes(factKey(f.channel, f.ts)));
+    const neededId = needed ? idOf.get(factKey(needed.channel, needed.ts)) : undefined;
+    const figures = needed ? figuresOf(needed.fact) : [];
+    for (const route of RECALL_ROUTES) {
+      const question = c.question ?? '';
+      const args = route === 'search' || route === 'query' ? { query: question } : route === 'recall' ? { question } : { question, entity };
+      const rbase = { type: 'route', trial: p.events, case: c.id, task: c.task, harness: c.harness, model: c.model, turn: c.turn, grant: c.grant, route, tool: route === 'recall_entity' ? 'recall' : route, args, entity };
+      if (broken !== null) { emit({ ...rbase, outcome: 'error', error: 'replay write failed: ' + broken, pass_original: false, pass_information: false }); continue; }
+      if (route === 'recall_entity' && entity === null) { emit({ ...rbase, outcome: 'n/a', reason: keys.original.length ? 'the needed original fact was stored with no entity' : 'the case names no original fact (only restatements), so there is no entity to pass', pass_original: keys.original.length ? false : null, pass_information: false }); continue; }
+      const { hot_memory_block, ...v } = await readAndJudge(sc.url, token, rbase.tool, args, keys, idOf);
+      const crossEntity = route !== 'recall' ? [] : v.saved_facts.filter((f) => f.entity_slug !== null && f.entity_slug !== entity && f.id !== neededId)
+        .flatMap((f) => figuresOf(f.fact).filter((x) => figures.includes(x)).map((figure) => ({ fact_id: f.id, entity: f.entity_slug, figure })));
+      emit({ ...rbase, ...v, ...(route === 'recall' ? { cross_entity_figures: crossEntity } : {}) });
+    }
+  }
+  return errors;
+}
+
+/** The plan: cases grouped by trial, each trial's facts rebuilt and checked against the run's tap, and the counted reads that
+ *  were themselves errors excluded with their error. Refuses a task filter naming no case and routes without questions. */
+export function planRecall(path: string, tasks: string[] | null, routes: boolean, targets: string[] = []): { cases: RecallCase[]; trials: RecallTrial[]; sha256: string } {
+  const text = readFileSync(resolve(ROOT, path), 'utf8');
+  const all = (JSON.parse(text) as { cases: RecallCase[] }).cases;
+  const cases = all.filter((c) => !tasks || tasks.includes(c.task));
+  for (const [flag, names, among] of [['--recall-tasks', tasks ?? [], all], ['--recall-target', targets, cases]] as const) {
+    const unknown = names.filter((t) => !among.some((c) => c.task === t));
+    if (unknown.length) throw new RunnerError('HE-RUN-002', flag + ' names ' + unknown.join(', ') + ', which no case in ' + path + (among === all ? '' : ' under --recall-tasks') + ' has; tasks are exact ids: ' + [...new Set(among.map((c) => c.task))].sort().join(', '));
+  }
+  if (!cases.length) throw new RunnerError('HE-RUN-002', 'no recall case in ' + path);
+  const bare = routes ? cases.filter((c) => typeof c.question !== 'string' || !c.question.trim()) : [];
+  if (bare.length) throw new RunnerError('HE-RUN-002', '--recall-routes needs each case\'s question; ' + bare.length + ' case(s) in ' + path + ' have none (first ' + bare[0]!.id + '); regenerate it with scripts/recall-audit.ts --cases');
+  const world = JSON.parse(readFileSync(join(ROOT, 'world', 'seed', 'world.json'), 'utf8')) as World;
+  const byTrial = new Map<string, RecallCase[]>();
+  for (const c of cases) { if (!byTrial.has(c.events)) byTrial.set(c.events, []); byTrial.get(c.events)!.push(c); }
+  const trials = [...byTrial.entries()].map(([events, cs]): RecallTrial => {
+    const log = readFileSync(resolve(ROOT, events), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as RecallEvent & { error?: string });
+    const facts = replayFacts(log, world);
+    const bad = replayMismatches(log, facts);
+    if (bad.length) throw new RunnerError('HE-GBRAIN-012', 'the replay of ' + events + ' would not write the facts the run wrote: ' + bad.slice(0, 3).join('; '));
+    const runSaved = new Map(log.filter((e) => e.via === 'gbrain').map((e) => [e.seq, ((e.effect?.facts as Array<{ id?: unknown }> | undefined) ?? []).map((f) => String(f.id))]));
+    const written = new Map(facts.map((f) => [factKey(f.channel, f.ts), f.seq]));
+    for (const c of cs) for (const ref of [...(c.needed_ids ?? c.needed), ...(c.restatement_ids ?? [])]) {
+      const key = oracleKeys({ ...c, needed_ids: [ref], restatement_ids: [] }, facts).original[0];
+      if (key === undefined || !((written.get(key) ?? Infinity) < c.seq)) throw new RunnerError('HE-GBRAIN-012', c.id + ' names ' + JSON.stringify(ref) + ', which ' + (key === undefined ? 'resolves to no fact of ' + events : 'the replay does not write before the read (seq ' + c.seq + ')') + '; regenerate the cases with scripts/recall-audit.ts --cases');
+    }
+    const excluded = new Map<string, string>();
+    for (const c of cs) { const e = log.find((x) => x.seq === c.seq); if (e && e.outcome !== 'ok') excluded.set(c.id, 'the counted read was an error (' + (e.error ?? e.outcome) + ')'); }
+    return { events, cases: cs.sort((x, y) => x.seq - y.seq), facts, runSaved, excluded };
+  });
+  return { cases, trials, sha256: sha256(text) };
+}
+
+export interface RecallHeader {
+  type: 'header'; schema: 1; harness_evals_commit: string; dirty: boolean; cases_file: string; cases_sha256: string; recall_tasks: string[] | null; routes: boolean;
+  image: string; image_id: string | null; gbrain_commit: string | null; gbrain_version: string | null; gbrain_config: Array<{ key: string; value: string }>;
+}
+
+/** --resume: the receipt's rows of every complete trial, refused (HE-GBRAIN-014) from a dirty tree, over a line that is not JSON
+ *  (other than a torn last line, which is dropped), or unless its header matches field for field. A trial with no complete
+ *  marker (cut off, or with error rows) is dropped and replayed from scratch. */
+export function resumeReceipt(path: string, header: RecallHeader): { rows: Record<string, unknown>[]; done: Set<string> } {
+  if (!existsSync(path)) throw new RunnerError('HE-GBRAIN-014', '--resume names no receipt: ' + path + ' does not exist');
+  if (header.dirty) throw new RunnerError('HE-GBRAIN-014', '--resume refused: the tree is dirty, and two different uncommitted trees at one commit would merge into one verdict; commit, then start a new run without --resume');
+  const parts = readFileSync(path, 'utf8').split('\n');
+  const tail = parts.pop()!;
+  const lines = parts.flatMap((l, i) => {
+    if (!l.trim()) return [];
+    try { return [JSON.parse(l) as Record<string, unknown>]; } catch { throw new RunnerError('HE-GBRAIN-014', '--resume refused: line ' + (i + 1) + ' of ' + path + ' is not a JSON row; only a torn last line (an append cut off before its newline) is dropped'); }
+  });
+  try { if (tail.trim()) lines.push(JSON.parse(tail) as Record<string, unknown>); } catch { /* an append cut off before its newline: its trial has no complete marker, so it is replayed */ }
+  const old = lines[0];
+  if (old?.type !== 'header') throw new RunnerError('HE-GBRAIN-014', '--resume refused: ' + path + ' does not start with a header row');
+  const now = header as unknown as Record<string, unknown>;
+  const differ = [...new Set([...Object.keys(old), ...Object.keys(now)])].filter((k) => JSON.stringify(old[k]) !== JSON.stringify(now[k]));
+  if (differ.length) throw new RunnerError('HE-GBRAIN-014', '--resume refused: ' + path + ' was written under another ' + differ.map((k) => k + ' (' + JSON.stringify(old[k]) + ' there, ' + JSON.stringify(now[k]) + ' now)').join(', ') + '; start a new run without --resume');
+  const done = new Set(lines.filter((r) => r.type === 'trial' && r.complete === true).map((r) => String(r.trial)));
+  return { rows: lines.slice(1).filter((r) => r.type !== 'summary' && done.has(String(r.trial))), done };
+}
+
+export interface RecallBaseline {
+  schema: 1; source: string; header: Omit<RecallHeader, 'type'>;
+  cases: Record<string, { original: boolean | null; information: boolean; outcome: string }>;
+  routes: Record<string, Record<string, boolean | null>>;
+}
+
+export function readRecallBaseline(path: string, casesSha: string): RecallBaseline {
+  if (!existsSync(path)) throw new RunnerError('HE-GBRAIN-014', 'no recall baseline at ' + path + '; write one from a complete run at gbrain master with --write-baseline, pass --recall-baseline <file>, or --recall-baseline none to compare against nothing');
+  const b = (() => { try { return JSON.parse(readFileSync(path, 'utf8')) as RecallBaseline; } catch { return null; } })();
+  if (!b || b.schema !== 1 || !b.header || typeof b.header.cases_sha256 !== 'string' || !b.cases || typeof b.cases !== 'object') throw new RunnerError('HE-GBRAIN-014', path + ' does not have the recall baseline shape (schema 1, header, cases, routes)');
+  if (b.header.cases_sha256 !== casesSha) throw new RunnerError('HE-GBRAIN-014', path + ' was written from cases ' + b.header.cases_sha256.slice(0, 12) + ', this run reads ' + casesSha.slice(0, 12) + '; a baseline compares only the same cases file');
+  return b;
+}
+
+export function recallBaselineOf(rows: Record<string, unknown>[], header: RecallHeader): RecallBaseline {
+  const { type: _type, ...h } = header;
+  const cases: RecallBaseline['cases'] = {};
+  for (const r of rows.filter((x) => x.type === 'case')) cases[String(r.id)] = { original: r.pass_original === null ? null : r.pass_original === true, information: r.pass_information === true, outcome: String(r.outcome) };
+  const routes: RecallBaseline['routes'] = {};
+  for (const r of rows.filter((x) => x.type === 'route')) (routes[String(r.trial) + '#t' + r.turn] ??= {})[String(r.route)] = r.outcome === 'ok' ? r.pass_original === true : null;
+  return { schema: 1, source: 'bun scripts/gbrain-check.ts --rungs recall --write-baseline: the rung\'s verdicts at gbrain ' + (header.gbrain_commit ?? 'unknown') + ', the pass rule\'s reference', header: h, cases, routes };
+}
+
+/** --write-baseline under the recall rung: refused (HE-GBRAIN-010) over a run with error or degraded rows, or over an existing
+ *  file without --force; with it the old file is kept as .prev. parseArgs refuses a filtered, configured or unnamed baseline. */
+export function writeRecallBaseline(path: string, rows: Record<string, unknown>[], header: RecallHeader, exit: number, force: boolean): void {
+  if (exit === RECALL_ERROR_EXIT) throw new RunnerError('HE-GBRAIN-010', 'a recall baseline is written only from a run with no error or degraded row; nothing written');
+  if (existsSync(path) && !force) throw new RunnerError('HE-GBRAIN-010', path + ' exists; pass --force to replace it (the old file is kept as .prev)');
+  if (existsSync(path)) copyFileSync(path, path + '.prev');
+  writeFileSync(path, JSON.stringify(recallBaselineOf(rows, header), null, 1) + '\n');
+}
+
+/** A case row the pass rule does not score: not excluded, and an error or a miss whose reply carried a degraded stamp. The
+ *  replay leaves a trial with such a row without its complete marker, so --resume replays it. */
+export function unscored(r: Record<string, unknown>): boolean {
+  return !r.excluded && (r.outcome === 'error' || (r.outcome === 'ok' && r.pass_original === false && ((r.degraded as string[] | undefined)?.length ?? 0) > 0));
+}
+
+/** The pass rule over a run's case rows. Error and degraded rows are never misses: any of them exits 4. Else a case that passes
+ *  the original oracle in the baseline and fails now, or a target the task's miss cases do not reach, exits 1. Excluded cases
+ *  are listed and never counted. */
+export function recallVerdict(rows: Record<string, unknown>[], o: { baseline: RecallBaseline | null; targets: Array<{ task: string; n: number }> }) {
+  const cases = rows.filter((r) => r.type === 'case');
+  const judged = cases.filter((r) => !r.excluded);
+  const errors = judged.filter((r) => unscored(r) && r.outcome === 'error').map((r) => String(r.id));
+  const degraded = judged.filter((r) => unscored(r) && r.outcome !== 'error').map((r) => String(r.id));
+  const misses = judged.filter((r) => r.outcome === 'ok' && r.pass_original === false && !unscored(r));
+  const regressions = o.baseline ? misses.filter((r) => o.baseline!.cases[String(r.id)]?.original === true).map((r) => String(r.id)) : [];
+  const targets = o.targets.map((t) => { const got = judged.filter((r) => r.task === t.task && r.kind === 'miss' && r.pass_original === true).length; return { ...t, got, met: got >= t.n }; });
+  const exit = errors.length || degraded.length ? RECALL_ERROR_EXIT : regressions.length || targets.some((t) => !t.met) ? 1 : 0;
+  return { exit, errors, degraded, misses: misses.map((r) => String(r.id)), regressions, targets, excluded: cases.filter((r) => r.excluded).map((r) => ({ id: String(r.id), reason: String(r.excluded) })) };
+}
+
+const count = <T,>(rows: T[], f: (r: T) => boolean) => rows.filter(f).length;
+type Row = Record<string, unknown>;
+const ids = (r: Row, k: string) => (r[k] as string[] | undefined) ?? [];
+
+/** The per-group counts of one table row: original passes split by saved facts and hot memory only, information passes. */
+function passCounts(rs: Row[]) {
+  const pass = rs.filter((r) => r.pass_original === true);
+  const viaSaved = count(pass, (r) => ids(r, 'in_saved_facts').length > 0);
+  return { n: rs.length, pass: pass.length, viaSaved, hotOnly: pass.length - viaSaved, noOriginal: count(rs, (r) => r.pass_original === null), information: count(rs, (r) => r.pass_information === true) };
+}
+
+/** recall.md: the exact replay per task and kind, Hermes's hot memory against #92, the routes one table each, then every
+ *  regression, target, excluded case, error row and failing case. */
+export function renderRecall(rows: Row[], header: RecallHeader, v: ReturnType<typeof recallVerdict>, baseline: RecallBaseline | null, elapsedMs: number): string {
+  const cases = rows.filter((r) => r.type === 'case');
+  const L: string[] = ['# gbrain-check recall: gbrain ' + (header.gbrain_commit ?? 'unknown') + (header.gbrain_version ? ' (' + header.gbrain_version + ')' : '') + ', image ' + header.image, '',
+    'harness-evals ' + header.harness_evals_commit + (header.dirty ? ' (dirty tree)' : '') + '; cases ' + header.cases_file + ' (sha256 ' + header.cases_sha256.slice(0, 12) + ')' + (header.recall_tasks ? ', tasks ' + header.recall_tasks.join(', ') : '') + '; image id ' + (header.image_id ?? 'unknown') + '; gbrain config ' + (header.gbrain_config.length ? header.gbrain_config.map((c) => c.key + '=' + c.value).join(', ') : 'none') + '; ' + Math.round(elapsedMs / 60_000) + ' min.', '',
+    'Original oracle: the needed message came back in saved facts or in _meta.brain_hot_memory (no original fact: the case names only restatements, so it is neither a pass nor a miss). Information oracle: it or an accepted assistant restatement did. The pass rule reads the original oracle against the baseline (' + (baseline ? 'gbrain ' + (baseline.header.gbrain_commit ?? 'unknown').slice(0, 12) : 'none') + '). Degraded: a miss whose reply carried a degraded stamp other than the keyword-only brain\'s own. Error: a tool error or a replay write that never committed. Neither counts as a miss.', '',
+    '## Exact replay', '', '| task | kind | cases | original | via saved facts | via hot memory only | no original fact | information | degraded | errors | excluded | lost against baseline |', '|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|'];
+  for (const t of [...new Set(cases.map((r) => String(r.task)))].sort()) for (const kind of ['miss', 'control']) {
+    const rs = cases.filter((r) => r.task === t && r.kind === kind);
+    if (!rs.length) continue;
+    const c = passCounts(rs);
+    L.push('| ' + [t, kind, c.n, c.pass, c.viaSaved, c.hotOnly, c.noOriginal, c.information, count(rs, (r) => v.degraded.includes(String(r.id))), count(rs, (r) => v.errors.includes(String(r.id))), count(rs, (r) => !!r.excluded), count(rs, (r) => v.regressions.includes(String(r.id)))].join(' | ') + ' |');
+  }
+  const answered = cases.filter((r) => r.outcome === 'ok');
+  const hermes = cases.filter((r) => r.hermes_hot_memory);
+  L.push('', count(cases, (r) => r.same_saved_facts_as_run === true) + ' of ' + cases.length + ' replayed reads returned the same saved facts as the counted run. ' + count(answered, (r) => r.keyword_only === true) + ' of ' + answered.length + ' answered reads carried the keyword-only stamp.',
+    '', 'Hermes hot memory against #92 (results/hot-memory-blocks.json, counts by position): ' + count(hermes, (r) => (r.hermes_hot_memory as { agrees: boolean }).agrees) + ' of ' + hermes.length + ' Hermes reads agree (no block in either, or a block from the same source_id with the same number of facts in both).');
+  const routes = rows.filter((r) => r.type === 'route');
+  if (routes.length) {
+    L.push('', '## Routes', '', 'Per consumer turn, on the replay\'s ingested state at the turn\'s first read, the turn\'s question sent four ways under the requester\'s grant. recall_entity passes the entity gbrain stored on the needed original fact (remember\'s entity_slug) and is an upper bound; n/a when that fact has no entity. Outside the exit rule.');
+    for (const route of RECALL_ROUTES) {
+      const rr = routes.filter((r) => r.route === route);
+      L.push('', '### ' + route, '', '| task | turns | original | via saved facts | via hot memory only | information | degraded | errors | n/a |', '|---|---:|---:|---:|---:|---:|---:|---:|---:|');
+      for (const t of [...new Set(rr.map((r) => String(r.task)))].sort()) {
+        const rs = rr.filter((r) => r.task === t);
+        const c = passCounts(rs);
+        L.push('| ' + [t, c.n, c.pass, c.viaSaved, c.hotOnly, c.information, count(rs, (r) => r.outcome === 'ok' && r.pass_original === false && ids(r, 'degraded').length > 0), count(rs, (r) => r.outcome === 'error'), count(rs, (r) => r.outcome === 'n/a')].join(' | ') + ' |');
+      }
+      if (route === 'recall') L.push('', 'Turns where a figure of the needed fact came back in a fact gbrain filed under another entity: ' + count(rr, (r) => ids(r, 'cross_entity_figures').length > 0) + ' of ' + rr.length + '.');
+    }
+  }
+  L.push('', '## Pass rule', '', v.regressions.length ? 'Lost against the baseline (' + v.regressions.length + '): ' + v.regressions.join(', ') : 'Lost against the baseline: none.');
+  for (const t of v.targets) L.push('', 'Target ' + t.task + ' >= ' + t.n + ' miss cases: ' + t.got + (t.met ? ' (met)' : ' (NOT met)'));
+  L.push('', 'Excluded from the rule (' + v.excluded.length + '): ' + (v.excluded.map((x) => x.id + ': ' + x.reason).join('; ') || 'none'));
+  if (v.errors.length || v.degraded.length) L.push('', 'Error rows (' + v.errors.length + '): ' + (v.errors.join(', ') || 'none'), '', 'Degraded rows (' + v.degraded.length + '): ' + (v.degraded.join(', ') || 'none'));
+  L.push('', '## Failing cases', '', '| case | grant | tool: arguments | needed | saved facts returned | hot memory |', '|---|---|---|---|---|---|');
+  for (const r of cases.filter((x) => x.outcome === 'ok' && x.pass_original === false)) L.push('| ' + [r.id, r.grant, r.tool + ': ' + JSON.stringify(r.args).replace(/\|/g, '/'), ids(r, 'needed_ids').map((x) => '#' + x).join(', '), (r.saved_facts as Saved[]).map((f) => '#' + f.id).join(', '), ((r.hot_memory as { ids: string[] } | null)?.ids ?? []).map((x) => '#' + x).join(', ')].join(' | ') + ' |');
+  return L.join('\n') + '\n';
+}
+
+/** --gbrain-config on a running rung sidecar. gbrain serve holds the brain's PGLite lock, so gbrain config set cannot run
+ *  beside it (pglite_busy) and gbrain has no config operation over MCP: the sidecar is stopped, the key is set and read back
+ *  with gbrain config get on a copy of its brain in a one-off container from the same image (no network), the copy replaces
+ *  the brain the entrypoint serves from inside this container only (/brains/<split>-member), and the container is started
+ *  again, so the entrypoint copies the configured brain to /brain and serve starts with the key in place. */
+export function gbrainConfigCommands(o: { container: string; image: string; brainDir: string; split: 'dev' | 'heldout'; user: string; settings: Array<{ key: string; value: string }> }): { stop: string[]; copyOut: string[]; set: string[][]; get: string[][]; copyIn: string[]; start: string[] } {
+  const cli = (args: string[]) => ['docker', 'run', '--rm', '--network', 'none', '--user', o.user, '-v', o.brainDir + ':/brain/.gbrain', '-e', 'GBRAIN_HOME=/brain', '-e', 'HOME=/tmp', '-e', 'GBRAIN_SKIP_STARTUP_HOOKS=1', '-e', 'NO_COLOR=1', '--entrypoint', 'bun', o.image, '/opt/gbrain/src/cli.ts', 'config', ...args];
+  return {
+    stop: ['docker', 'stop', '-t', '10', o.container],
+    copyOut: ['docker', 'cp', '-a', o.container + ':/brain/.gbrain', o.brainDir],
+    set: o.settings.map((s) => cli(['set', s.key, s.value])),
+    get: o.settings.map((s) => cli(['get', s.key])),
+    copyIn: ['docker', 'cp', '-a', o.brainDir + '/.', o.container + ':/brains/' + o.split + '-member/.gbrain'],
+    start: ['docker', 'start', o.container],
+  };
+}
+
+async function applyGbrainConfig(container: string, image: string, outDir: string, settings: Array<{ key: string; value: string }>): Promise<{ url: string; read_back: Array<{ key: string; value: string; read_back: string }> }> {
+  const brainDir = join(outDir, 'config-brain');
+  const cmds = gbrainConfigCommands({ container, image, brainDir, split: 'heldout', user: process.getuid!() + ':' + process.getgid!(), settings });
+  const run = (argv: string[], what: string) => { const r = sh(argv, { timeoutMs: 120_000 }); if (r.status !== 0) throw new RunnerError('HE-GBRAIN-015', '--gbrain-config: ' + what + ' failed: ' + (r.stderr || r.stdout).trim().slice(0, 300)); return r.stdout.trim(); };
+  run(cmds.stop, 'stopping the sidecar');
+  rmSync(brainDir, { recursive: true, force: true });
+  run(cmds.copyOut, 'copying its brain out');
+  for (const f of readdirSync(brainDir)) if (f.endsWith('.lock')) rmSync(join(brainDir, f), { force: true });
+  rmSync(join(brainDir, 'persistence', 'locks'), { recursive: true, force: true });
+  cmds.set.forEach((argv, i) => run(argv, 'gbrain config set ' + settings[i]!.key));
+  const read_back = cmds.get.map((argv, i) => ({ ...settings[i]!, read_back: run(argv, 'gbrain config get ' + settings[i]!.key) }));
+  const off = read_back.filter((c) => c.read_back !== c.value);
+  if (off.length) throw new RunnerError('HE-GBRAIN-015', '--gbrain-config: gbrain config get read back another value for ' + off.map((c) => c.key).join(', ') + ', so the setting did not take; compare with gbrain config get on ' + brainDir);
+  run(cmds.copyIn, 'copying the configured brain in');
+  run(cmds.start, 'starting the sidecar again');
+  const port = run(['docker', 'port', container, '3131/tcp'], 'reading the published port').split('\n')[0]?.split(':').pop();
+  const url = 'http://127.0.0.1:' + port;
+  for (const deadline = Date.now() + 60_000; ; await Bun.sleep(200)) {
+    if (await fetch(url + '/health', { signal: AbortSignal.timeout(2_000) }).then((r) => r.ok, () => false)) break;
+    if (Date.now() > deadline) throw new RunnerError('HE-GBRAIN-015', '--gbrain-config: the sidecar ' + container + ' served no /health within 60 s of its restart; read ' + join(outDir, 'serve.log'));
+  }
+  return { url, read_back };
+}
+
+/** The rung's sidecar, started exactly as the counted runner starts a live member-brain sidecar; --gbrain-config runs after. */
+export async function startRecallSidecar(tag: string, out: string, slug: string, index: number, settings: Array<{ key: string; value: string }>): Promise<RecallSidecar> {
+  const outDir = join(out, 'sidecar-' + index);
+  const sc = await startGbrainSidecar({ trialId: 'gbrain-check-recall-' + index, trialSlug: slug, split: 'heldout', outDir, image: tag, brain: 'member', scope: 'member', ingest: 'live' });
+  try {
+    if (!sc.tokens || !sc.ingest) throw new RunnerError('HE-GBRAIN-012', 'the sidecar started without member or ingest tokens');
+    const configured = settings.length ? await applyGbrainConfig(('he-gbrain-' + slug).toLowerCase().replace(/[^a-z0-9._-]+/g, '-'), tag, outDir, settings) : { url: sc.url, read_back: [] };
+    return { url: configured.url, members: sc.tokens.members, public_only: sc.tokens.public_only, sources: sc.ingest.tokens.sources, config: configured.read_back, ready_ms: sc.ready_ms, stop: () => sc.stop() };
+  } catch (e) { await sc.stop(); throw e; }
+}
+
+function recallDryRun(a: Args): number {
+  const plan = planRecall(a.recallCases, a.recallTasks, a.recallRoutes, a.recallTargets.map((t) => t.task));
+  const excluded = plan.trials.flatMap((t) => [...t.excluded.keys()]);
+  const turns = new Set(plan.cases.map((c) => c.events + '#t' + c.turn)).size;
+  console.log('recall:     ' + plan.cases.length + ' case(s) (' + count(plan.cases, (c) => c.kind === 'miss') + ' miss, ' + count(plan.cases, (c) => c.kind === 'control') + ' control) over ' + plan.trials.length + ' trial(s) and ' + turns + ' consumer turn(s) from ' + a.recallCases + ' (sha256 ' + plan.sha256.slice(0, 12) + '); every fact text the run recorded matches its replay');
+  console.log('excluded:   ' + (excluded.join(', ') || 'none') + ' (the counted read was itself an error)');
+  console.log('routes:     ' + (a.recallRoutes ? RECALL_ROUTES.join(', ') + ', ' + turns * RECALL_ROUTES.length + ' extra reads' : 'off'));
+  console.log('baseline:   ' + (a.writeBaseline ? 'written to ' + a.recallBaseline : a.recallBaseline + (a.recallBaseline === 'none' || existsSync(resolve(ROOT, a.recallBaseline)) ? '' : ' (MISSING)')) + '; targets ' + (a.recallTargets.map((t) => t.task + '=' + t.n).join(', ') || 'none') + '; gbrain config ' + (a.gbrainConfig.map((c) => c.key + '=' + c.value).join(', ') || 'none'));
+  return 0;
+}
+
+async function recallRung(a: Args, ref: ResolvedRef, tag: string, dir: string): Promise<number> {
+  const started = Date.now();
+  const plan = planRecall(a.recallCases, a.recallTasks, a.recallRoutes, a.recallTargets.map((t) => t.task));
+  const info = imageJson(tag);
+  if (info.gbrain_commit && info.gbrain_commit !== ref.sha) console.log('WARN: the image records gbrain ' + info.gbrain_commit + ', --gbrain resolved to ' + ref.sha + '; a reused --image or --no-build tag is checked as it is');
+  const header: RecallHeader = { type: 'header', schema: 1, harness_evals_commit: sh(['git', 'rev-parse', 'HEAD'], { cwd: ROOT }).stdout.trim() || 'unknown', dirty: sh(['git', 'status', '--porcelain'], { cwd: ROOT }).stdout.trim() !== '',
+    cases_file: a.recallCases, cases_sha256: plan.sha256, recall_tasks: a.recallTasks, routes: a.recallRoutes, image: tag, image_id: imageId(tag), gbrain_commit: info.gbrain_commit ?? null, gbrain_version: info.gbrain_version ?? null, gbrain_config: a.gbrainConfig };
+  const baselinePath = resolve(ROOT, a.recallBaseline);
+  const baseline = a.writeBaseline || a.recallBaseline === 'none' ? null : readRecallBaseline(baselinePath, plan.sha256);
+  if (!baseline && !a.writeBaseline) console.log('NOTE: --recall-baseline none: no baseline, so the pass rule reads only the targets and the error rows');
+  if (a.writeBaseline && existsSync(baselinePath) && !a.force) throw new RunnerError('HE-GBRAIN-010', a.recallBaseline + ' exists; pass --force to replace it (the old file is kept as .prev)');
+  const hot = loadHotMemoryIndex(RECALL_HOT_MEMORY);
+  const out = join(dir, 'recall');
+  const receipt = join(out, 'recall.jsonl');
+  mkdirSync(out, { recursive: true });
+  const resumed = a.resume ? resumeReceipt(receipt, header) : { rows: [], done: new Set<string>() };
+  writeFileSync(receipt, [header, ...resumed.rows].map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const rows: Row[] = [...resumed.rows];
+  const emit = (r: Row) => { rows.push(r); appendFileSync(receipt, JSON.stringify(r) + '\n'); };
+  console.log('RECALL: ' + plan.cases.length + ' case(s) (' + count(plan.cases, (c) => c.kind === 'miss') + ' miss, ' + count(plan.cases, (c) => c.kind === 'control') + ' control) over ' + plan.trials.length + ' trial(s); every fact text the run recorded matches its replay' + (a.resume ? '; resuming ' + receipt + ' with ' + resumed.done.size + ' trial(s) complete' : '') + (a.gbrainConfig.length ? '; --gbrain-config restarts each sidecar once (gbrain serve holds the PGLite lock, so config set runs on its stopped brain)' : ''));
+  for (const [i, p] of plan.trials.entries()) {
+    if (resumed.done.has(p.events)) continue;
+    const t0 = Date.now();
+    const sc = await startRecallSidecar(tag, out, 'recall-' + ref.sha.slice(0, 8) + '-' + process.pid + '-' + i, i, a.gbrainConfig);
+    let errors = 0;
+    try {
+      errors = await replayTrial(p, sc, { routes: a.recallRoutes, hot }, emit);
+    } finally { await sc.stop(); }
+    emit({ type: 'trial', trial: p.events, index: i, complete: errors === 0, errors, ready_ms: sc.ready_ms, config: sc.config, ms: Date.now() - t0 });
+    if ((i + 1) % 10 === 0) console.log('RECALL: ' + (i + 1) + ' of ' + plan.trials.length + ' trials replayed');
+  }
+  const v = recallVerdict(rows, { baseline, targets: a.recallTargets });
+  const elapsed = Date.now() - started;
+  emit({ type: 'summary', exit: v.exit, regressions: v.regressions, targets: v.targets, errors: v.errors, degraded: v.degraded, excluded: v.excluded, ms: elapsed });
+  writeFileSync(join(out, 'recall.md'), renderRecall(rows, header, v, baseline, elapsed));
+  const cases = rows.filter((r) => r.type === 'case');
+  for (const t of [...new Set(cases.map((r) => String(r.task)))].sort()) for (const kind of ['miss', 'control']) {
+    const rs = cases.filter((r) => r.task === t && r.kind === kind);
+    if (!rs.length) continue;
+    const c = passCounts(rs);
+    const lost = count(rs, (r) => v.regressions.includes(String(r.id)));
+    console.log('recall/' + t + ' ' + kind + ': ' + c.pass + ' of ' + (c.n - c.noOriginal) + ' original (' + c.viaSaved + ' in saved facts, ' + c.hotOnly + ' in hot memory only' + (c.noOriginal ? '; ' + c.noOriginal + ' of ' + c.n + ' name no original fact' : '') + '), ' + c.information + ' of ' + c.n + ' information' + (lost ? ', ' + lost + ' LOST against the baseline' : ''));
+  }
+  const routes = rows.filter((r) => r.type === 'route');
+  for (const route of routes.length ? RECALL_ROUTES : []) {
+    const rr = routes.filter((r) => r.route === route);
+    const c = passCounts(rr);
+    console.log('route ' + route + ': ' + c.pass + ' of ' + c.n + ' turns original (' + c.hotOnly + ' in hot memory only), ' + c.information + ' information; ' + count(rr, (r) => r.outcome === 'n/a') + ' n/a, ' + count(rr, (r) => r.outcome === 'error') + ' error(s), ' + count(rr, (r) => r.outcome === 'ok' && r.pass_original === false && ids(r, 'degraded').length > 0) + ' degraded' + (route === 'recall' ? ', ' + count(rr, (r) => ids(r, 'cross_entity_figures').length > 0) + ' with a needed figure under another entity' : '') + (route === 'recall_entity' ? ' (an upper bound)' : ''));
+  }
+  for (const r of v.regressions) console.log('  LOST ' + r);
+  for (const t of v.targets) console.log((t.met ? 'ok' : 'FAIL') + ' target ' + t.task + ' >= ' + t.n + ': ' + t.got + ' miss case(s) pass the original oracle');
+  if (v.excluded.length) console.log('excluded from the pass rule: ' + v.excluded.map((x) => x.id).join(', ') + ' (the counted read was itself an error)');
+  if (v.exit === RECALL_ERROR_EXIT) console.log('HE-GBRAIN-013 ' + v.errors.length + ' error row(s) and ' + v.degraded.length + ' degraded row(s) are not scored: ' + [...v.errors, ...v.degraded].slice(0, 5).join(', ') + '; fix: read their rows in ' + receipt + ', then rerun with --resume ' + dir + ' (trials with error rows are replayed)');
+  if (a.writeBaseline) {
+    writeRecallBaseline(baselinePath, rows, header, v.exit, a.force);
+    console.log('BASELINE: wrote ' + a.recallBaseline);
+  }
+  const pass = count(cases, (r) => r.pass_original === true);
+  console.log((v.exit === 0 ? 'OK' : v.exit === 1 ? 'FAIL' : 'ERROR') + ': gbrain-check recall gbrain ' + ref.sha.slice(0, 12) + ' image ' + tag + ': original ' + pass + ' of ' + cases.length + ' (miss cases ' + count(cases, (r) => r.kind === 'miss' && r.pass_original === true) + ' of ' + count(cases, (r) => r.kind === 'miss') + ', controls ' + count(cases, (r) => r.kind === 'control' && r.pass_original === true) + ' of ' + count(cases, (r) => r.kind === 'control') + '), information ' + count(cases, (r) => r.pass_information === true) + ' of ' + cases.length + '; ' + v.regressions.length + ' lost against the baseline' + (baseline ? ' (gbrain ' + (baseline.header.gbrain_commit ?? 'unknown').slice(0, 12) + ')' : '') + ', ' + count(v.targets, (t) => !t.met) + ' target(s) missed, ' + v.errors.length + ' error row(s), ' + v.degraded.length + ' degraded, ' + v.excluded.length + ' excluded; ' + Math.round(elapsed / 60_000) + ' min; receipts ' + out);
+  return v.exit;
+}
+
 async function main(argv: string[]): Promise<number> {
   const a = parseArgs(argv);
   const ts = timestamp();
-  const dir = checkDir(process.env.GBRAIN_CHECK_DIR, ts);
+  if (a.rungs.includes('recall') && (a.rungs.length > 1 || !a.harnesses.includes('fake'))) throw new RunnerError('HE-RUN-002', '--rungs recall is a keyless rung on its own (no --harness, no other rung)');
+  const dir = checkDir(a.resume ?? process.env.GBRAIN_CHECK_DIR, ts);
   const ref = resolveGbrainRef(a.gbrain, { scratch: join(dirname(dir), '.refs') });
   const tag = a.image ?? imageTagFor(ref.sha);
   console.log(`GBRAIN: ${ref.input} -> ${ref.sha} (${ref.kind}${ref.ref ? ` ${ref.ref}` : ''}); image ${tag}`);
+  if (a.dryRun && a.rungs.includes('recall')) return recallDryRun(a);
   if (a.dryRun) return dryRun(a, ref, tag, dir, ts);
   if (!haveDocker()) throw new RunnerError('HE-GBRAIN-002', 'docker is not available; the check builds and runs the sidecar image');
   mkdirSync(dir, { recursive: true });
   if (a.image || a.noBuild) {
     if (!imagePresent(tag)) throw new RunnerError('HE-GBRAIN-002', `gbrain sidecar image ${tag} is not present and ${a.image ? '--image' : '--no-build'} asked to reuse it; fix: scripts/build-gbrain-image.sh --gbrain ${ref.sha} --tag ${tag}`);
   } else buildImage(ref.sha, tag, join(dir, 'image'));
+  if (a.rungs.includes('recall')) return recallRung(a, ref, tag, dir);
   return a.harnesses.includes('fake') ? keyless(a, ref, tag, dir) : paid(a, ref, tag, dir, ts);
 }
 
