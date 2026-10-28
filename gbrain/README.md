@@ -4,7 +4,7 @@ The gbrain arm of the multi-user evaluation asks whether a harness does better o
 
 | File | What it is |
 |---|---|
-| `Dockerfile` | builds the sidecar image: gbrain at `GBRAIN_COMMIT` (default the pin, `b06ac32b`, 0.60.465.0, master on 2026-10-26, see pin.json previous for the earlier pins; a shallow fetch of exactly that commit) run from source with bun 1.4.4, six prebuilt keyword PGLite brains: `/brains/dev` and `/brains/heldout` (bot-visible), `/brains/dev-company` and `/brains/heldout-company` (the company brain, below) and `/brains/dev-member` and `/brains/heldout-member` (the member brain, internal-task, below), and `/install`, the install bundle (internal-task, below); the `embedded` target adds `/brains/dev-embedded` and `/brains/heldout-embedded` |
+| `Dockerfile` | builds the sidecar image: gbrain at `GBRAIN_COMMIT` (default the pin, `81692dc6`, 0.60.472.0, the head of gbrain#7744 on 2026-10-27, unmerged, see pin.json previous for the earlier pins; a shallow fetch of exactly that commit) run from source with bun 1.4.4, six prebuilt keyword PGLite brains: `/brains/dev` and `/brains/heldout` (bot-visible), `/brains/dev-company` and `/brains/heldout-company` (the company brain, below) and `/brains/dev-member` and `/brains/heldout-member` (the member brain, internal-task, below), and `/install`, the install bundle (internal-task, below); the `embedded` target adds `/brains/dev-embedded` and `/brains/heldout-embedded` |
 | `build-brain.ts` | builds one brain from the corpus and `world/seed/world.json` with no key in the environment: `--brain bot-visible` stages the bot-visible pages into one source; `--brain company` stages every record of the split into one federated source per reader set, mints one token per member and writes `tokens.json`; `--brain member` (internal-task) stages the bot-visible pages the company way, adds an empty source per loaded channel without a page and per member, mints the member tokens and one ingest token per source (`ingest-tokens.json`) and records the channel-to-source map in the manifest (schema 3) for the world's live ingestion; `--embeddings openai:text-embedding-3-small` (bot-visible only) embeds the pages through `OPENAI_BASE_URL`; all write `manifest.json` |
 | `build-install.ts` | internal-task: runs gbrain's documented install commands for OpenClaw and Hermes at image build (`skillpack scaffold`, `compile-context`) into `/install` with a manifest of every file's sha256 and the kept context slugs |
 | `export-install.sh` | internal-task: exports one harness and split view of `/install` to a mounted directory with its own manifest and digest (HE-GBRAIN-006 on a bad request) |
@@ -89,6 +89,10 @@ The company brain by hand, with scope `sources` (gbrain#7481): add `-e HE_GBRAIN
 In a trial the runner does all of this (runner/trial/gbrain.ts) and the harness never reaches the sidecar: it reaches `POST /gbrain` on the world server, which authenticates it as the bot, swaps in the sidecar token (or, under member scope, the requesting member's token) and records the call ([world/README.md](../world/README.md)).
 
 ## Changelog
+
+### 2026-10-28: Pin 81692dc6 (internal-task)
+
+harness-evals v0.0.19. The `Dockerfile` row names the new default `GBRAIN_COMMIT`, `81692dc6` (0.60.472.0), the head of gbrain#7744, an open pull request on master at `beb49f32`, pinned for run `gbrain-memory-fix-2026-10`; `b06ac32b` moves to pin.json `previous`. Why: that pull request changes which saved facts `search` returns, the miss the memory run's report found on `cr-05`.
 
 ### 2026-10-26: The member brain (internal-task)
 

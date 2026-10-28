@@ -1,0 +1,253 @@
+{
+  "schema_version": 1,
+  "run_id": "gbrain-memory-fix-2026-10",
+  "question": "On the 8 sealed held-out continuity and corrections tasks of task set v0.2, with gbrain pinned at 81692dc6 (the head of gbrain#7744, unmerged: saved facts matched on stemmed whole words and a newer correction returned above the fact it corrects), does each of OpenClaw, Hermes Agent and QM (via Pi) pass more of those tasks when gbrain is installed beside the world tools as a member brain that fills during the scenario (every channel post and every direct message between the bot and a member written into the brain as a fact as it is posted, each member reading only what that member could read in the world) and the preamble carries the brain-first rule, compared with the same harness and model without gbrain in the same run; on claude-sonnet-5-5 as the primary model and claude-haiku-5-5 as the sensitivity half?",
+  "tasks": {
+    "multiuser": [
+      "cn-05-coastal-date-formats",
+      "cn-06-driftmoor-contact-booking",
+      "cn-07-vantorre-seat-count",
+      "cn-08-vantorre-standing-attendee",
+      "cr-05-pellow-seat-retraction",
+      "cr-06-vantorre-july-seats",
+      "cr-07-pellucid-owner",
+      "cr-08-orlavine-seat-count"
+    ]
+  },
+  "cells": [
+    {
+      "id": "openclaw-sonnet-none-mu-memory-fix",
+      "harness": "openclaw",
+      "model": "anthropic:claude-sonnet-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "task_set": "v0.2",
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "utility_models": [
+        "anthropic:claude-haiku-5-5"
+      ]
+    },
+    {
+      "id": "openclaw-sonnet-gbrain-told-live-mu-memory-fix",
+      "harness": "openclaw",
+      "model": "anthropic:claude-sonnet-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "task_set": "v0.2",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "member",
+        "scope": "member",
+        "ingest": "live"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-memory.md",
+      "utility_models": [
+        "anthropic:claude-haiku-5-5"
+      ]
+    },
+    {
+      "id": "hermes-sonnet-none-mu-memory-fix",
+      "harness": "hermes",
+      "model": "anthropic:claude-sonnet-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "task_set": "v0.2",
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    },
+    {
+      "id": "hermes-sonnet-gbrain-told-live-mu-memory-fix",
+      "harness": "hermes",
+      "model": "anthropic:claude-sonnet-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "task_set": "v0.2",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "member",
+        "scope": "member",
+        "ingest": "live"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-memory.md"
+    },
+    {
+      "id": "qm-pi-sonnet-none-mu-memory-fix",
+      "harness": "qm",
+      "model": "anthropic:claude-sonnet-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "task_set": "v0.2",
+      "config": "pi",
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "utility_models": [
+        "anthropic:claude-haiku-5-5"
+      ]
+    },
+    {
+      "id": "qm-pi-sonnet-gbrain-told-live-mu-memory-fix",
+      "harness": "qm",
+      "model": "anthropic:claude-sonnet-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "task_set": "v0.2",
+      "config": "pi",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "member",
+        "scope": "member",
+        "ingest": "live"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-memory.md",
+      "utility_models": [
+        "anthropic:claude-haiku-5-5"
+      ]
+    },
+    {
+      "id": "openclaw-haiku-none-mu-memory-fix",
+      "harness": "openclaw",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "task_set": "v0.2",
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    },
+    {
+      "id": "openclaw-haiku-gbrain-told-live-mu-memory-fix",
+      "harness": "openclaw",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "task_set": "v0.2",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "member",
+        "scope": "member",
+        "ingest": "live"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-memory.md"
+    },
+    {
+      "id": "hermes-haiku-none-mu-memory-fix",
+      "harness": "hermes",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "task_set": "v0.2",
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    },
+    {
+      "id": "hermes-haiku-gbrain-told-live-mu-memory-fix",
+      "harness": "hermes",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "task_set": "v0.2",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "member",
+        "scope": "member",
+        "ingest": "live"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-memory.md"
+    },
+    {
+      "id": "qm-pi-haiku-none-mu-memory-fix",
+      "harness": "qm",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "task_set": "v0.2",
+      "config": "pi",
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    },
+    {
+      "id": "qm-pi-haiku-gbrain-told-live-mu-memory-fix",
+      "harness": "qm",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "heldout",
+      "task_set": "v0.2",
+      "config": "pi",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "member",
+        "scope": "member",
+        "ingest": "live"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-memory.md"
+    }
+  ],
+  "wall_clock_s": {
+    "multiuser": 1500
+  },
+  "spend_cap_usd": 70,
+  "drop_order": [
+    "qm-pi-haiku-gbrain-told-live-mu-memory-fix",
+    "qm-pi-haiku-none-mu-memory-fix",
+    "hermes-haiku-gbrain-told-live-mu-memory-fix",
+    "hermes-haiku-none-mu-memory-fix",
+    "openclaw-haiku-gbrain-told-live-mu-memory-fix",
+    "openclaw-haiku-none-mu-memory-fix",
+    "qm-pi-sonnet-gbrain-told-live-mu-memory-fix",
+    "qm-pi-sonnet-none-mu-memory-fix"
+  ],
+  "minimum_v01": [
+    "openclaw-sonnet-none-mu-memory-fix",
+    "openclaw-sonnet-gbrain-told-live-mu-memory-fix",
+    "hermes-sonnet-none-mu-memory-fix",
+    "hermes-sonnet-gbrain-told-live-mu-memory-fix"
+  ]
+}

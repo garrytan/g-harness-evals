@@ -2,6 +2,14 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.19] - 2026-10-28
+
+### internal-task: gbrain-memory-fix-2026-10 preregistered, gbrain pinned at gbrain#7744's head 81692dc6
+
+- `docs/benchmarks/2026-10-27-gbrain-memory-fix/` (new): `PREREGISTRATION.md` and `prereg.json` for run `gbrain-memory-fix-2026-10`, gbrain-memory-2026-10's twelve cells (OpenClaw, Hermes and QM via Pi, none and gbrain-told-live, Sonnet 5.5 and Haiku 5.5) on its eight sealed held-out continuity and corrections tasks, 5 repetitions, 480 trials, cap $70 within a $120 lane. It records the Captain's assignment and Garry's approval, the in-sample statement (the tasks are held out for the harnesses, not for gbrain; every task in internal-task's disclosure ledger with its first date), the keyless go/no-go and its result (the recall rung at the pin from `main` `4aad966f7`: 0 controls lost against master, `cr-05` 27 of 27 former misses against a target of 20), predictions, and a planned amendment: no counted trial until internal-task's metering-proxy bind fix has merged and the Captain lifts the freeze, then a dated amendment moves the execution commit to one containing it. `docs/benchmarks/preregistrations.d/gbrain-memory-fix.json` (new) registers it for the prereg-order check. No trial has run.
+- `gbrain/pin.json`: the pin moves from `b06ac32b` (0.60.465.0, master, the memory run's pin, kept first in `previous`) to `81692dc623f3e220d1ea04b078b3aed903bd086f` (0.60.472.0), the head of gbrain#7744 (open, unmerged; eight commits on master at `beb49f32`); `search.saved_facts_supersede` is on by default at that commit and unset in the built brains. The `Dockerfile` default `GBRAIN_COMMIT`, `gbrain/README.md`, `tests/gbrain-image.test.ts` and the README pins table follow.
+- `docs/gbrain-arm.md`: "Pins for the fix run", and three keyless rows in the commits-checked table (`0c568a61`, `7ff7cbb5` and `81692dc6`, 35 of 35 each).
+
 ## [0.0.18] - 2026-10-27
 
 ### internal-task: a keyless recall rung in gbrain-check

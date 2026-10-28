@@ -2,7 +2,7 @@
 
 A reproducible comparison of agent harnesses. A harness is everything around the model: the tools, prompts, context management, channels, memory, scheduling and permissions that turn a chat model into an agent. This repository holds the model fixed and varies the harness, on the work these harnesses are sold for: several people sharing one agent in Slack-style channels, per-person scoped memory and files, org-level rules, continuity across sessions, and ordinary work tasks. Use it to see what each harness did on the same tasks, to check any number here against its saved records, or to run the same tasks on another harness.
 
-This page has three parts: [the harnesses under test](#the-harnesses-under-test), [the current results](#current-results) and [how the harnesses compare](#how-the-harnesses-compare), with [how gbrain compares](#how-gbrain-compares) beside it. Everything above [Changelog](#changelog) describes the repository at `VERSION` (harness-evals v0.0.14); the changelog at the bottom records how this page changed. The one-page account of the first counted cell, with its limits and interests declared, is [docs/report-v0.1.md](docs/report-v0.1.md).
+This page has three parts: [the harnesses under test](#the-harnesses-under-test), [the current results](#current-results) and [how the harnesses compare](#how-the-harnesses-compare), with [how gbrain compares](#how-gbrain-compares) beside it. Everything above [Changelog](#changelog) describes the repository at `VERSION` (harness-evals v0.0.19); the changelog at the bottom records how this page changed. The one-page account of the first counted cell, with its limits and interests declared, is [docs/report-v0.1.md](docs/report-v0.1.md).
 
 ## The harnesses under test
 
@@ -13,7 +13,7 @@ This page has three parts: [the harnesses under test](#the-harnesses-under-test)
 | QM | [yc-software/qm](https://github.com/yc-software/qm) v0.1.15, commit `7417aa2a`, run through its Pi engine in every cell and through its Claude Agent SDK engine in the inner-harness run and the two probe runs ([harnesses/qm/pin.json](harnesses/qm/pin.json)) |
 | Not run | [name withheld] and [name withheld] are in the plan but expose no headless API; nothing on this page measures them |
 | Models | `claude-sonnet-5-5` and `claude-haiku-5-5`, one fixed model per run, every call through the metering proxy under a ledger lease; the harness containers see only the proxy and a per-trial dummy token |
-| gbrain, the sidecar in the brain runs | [garrytan/gbrain](https://github.com/garrytan/gbrain), pinned today at `b06ac32b` (0.60.465.0) for the next run; each counted run names the commit it built, from `f241216c` (0.60.413.0) in the gbrain arm to `10949a15` (0.60.457.0) in the installer-hook run ([gbrain/pin.json](gbrain/pin.json), field `previous`). gbrain is a knowledge brain served to the harness as a second MCP server, not a harness under test |
+| gbrain, the sidecar in the brain runs | [garrytan/gbrain](https://github.com/garrytan/gbrain), pinned today at `81692dc6` (0.60.472.0, the head of gbrain#7744, an open pull request) for the next run, `gbrain-memory-fix-2026-10`; each counted run names the commit it built, from `f241216c` (0.60.413.0) in the gbrain arm to `b06ac32b` (0.60.465.0) in the memory run ([gbrain/pin.json](gbrain/pin.json), field `previous`). gbrain is a knowledge brain served to the harness as a second MCP server, not a harness under test |
 
 Every harness runs headlessly in `serve` mode: the runner drives each member's messages through the world's Slack mock on a simulation clock, and the harness answers through the one world-MCP server registered in its own configuration ([docs/adapters.md](docs/adapters.md)). One bot token, no delegated per-member access, and the same preamble for every harness ([docs/methodology.md](docs/methodology.md), the trial contract).
 
@@ -140,6 +140,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)); the world is built from gbrain-evals' `messy-company-v1` dataset; OpenClaw, Hermes Agent and QM are named as products only.
 
 ## Changelog
+
+### 2026-10-28: gbrain-memory-fix-2026-10 preregistered, gbrain pinned at 81692dc6 (internal-task)
+
+harness-evals v0.0.19. The gbrain row of the pins table names the new pin, `81692dc6` (0.60.472.0), the head of gbrain#7744 (saved facts matched on stemmed whole words, a newer correction returned ahead of the fact it corrects), open and unmerged, for run `gbrain-memory-fix-2026-10` ([preregistration](docs/benchmarks/2026-10-27-gbrain-memory-fix/PREREGISTRATION.md)): the memory run's twelve cells on its eight continuity and corrections tasks, 480 trials under a $70 cap. Why: the memory run's report found the `cr-05` correction ingested and never returned by `search`, which that pull request changes. The version named at the top of this page moves from v0.0.14 to v0.0.19.
 
 ### 2026-10-27: gbrain-memory-2026-10 counted (internal-task)
 

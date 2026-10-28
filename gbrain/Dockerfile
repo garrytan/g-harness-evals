@@ -26,7 +26,7 @@
 #
 # Tag discipline: the gbrain arm's trials record the tag harness-eval/gbrain:dev; a run that needs another image while that
 # arm is between preregistration and report builds under its own tag (-t harness-eval/gbrain:<name>) and passes --gbrain-image.
-ARG GBRAIN_COMMIT=b06ac32b9878a08dbaabb8d8ff748f986b11920b
+ARG GBRAIN_COMMIT=81692dc623f3e220d1ea04b078b3aed903bd086f
 ARG GBRAIN_VERSION=
 ARG CORPUS_COMMIT=6999ebc9da0ac784ac05995b586d22293544e924
 
