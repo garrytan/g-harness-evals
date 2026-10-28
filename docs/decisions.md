@@ -8,6 +8,10 @@ Each line gives the date, who decided, the decision in one sentence, and the sou
 
 Three kinds of line sit beside the decisions of Garry Tan and the Captain, because the crew rules the Captain holds make them binding on a counted run: the per-run spend cap of every preregistration (listed under the preregistration when it names no decider), dated amendments a crew thread committed before the cells they affect, and the dated grading amendments in [tasks.md](tasks.md) and [methodology.md](methodology.md). The plan's own decisions are listed under 2026-10-21 as the committed plan text cites them. Nothing on this page is a decision without a source line; what looked like one and had none is left out.
 
+## 2026-10-28
+
+- 2026-10-28, Captain Harness Evals, approved by Garry Tan ("Rec"): only the first counted opening of a held-out set is confirmatory and every later opening is dev; m3-heldout-2026-10 and v02-heldout-2026-10 are labelled confirmatory, qualified as custody by digest only, and the nine later v0.1 runs and gbrain-memory-2026-10 are relabelled dev in the README and in a dated note at the top of each report, with no receipt changed. Source: Captain drive, handoffs/HARN-11/autoplan/plan.md (autoplan run harn11-20261028155427), after GSTA-7's review in the organization drive, handoffs/autoresearch-practices/brief-for-captains.md.
+
 ## 2026-10-26
 
 - 2026-10-26, Garry Tan: no Anthropic Admin API key will be provided, so every spend figure in every report stays proven from the proxy's own usage lines and the lease ledgers and is stated as such; the provider-side check stays "not performed" for every run. Source: Captain drive, NOTES.md (06:39 PT) and DIGEST.md.
@@ -96,6 +100,10 @@ The approved plan's own decisions, as the committed plan text and the documents 
 - 2026-10-21, the plan (D10): the program cap is proposed from measured cost at the M0 exit and recorded in the budget ledger; set on 2026-10-22 as above. Source: [plan.md](plans/2026-10-21-harness-eval-v0/plan.md), "Milestones"; [methodology.md](methodology.md), item 11.
 
 ## Changelog
+
+### 2026-10-28: the held-out relabel rule (HARN-11)
+
+harness-evals v0.0.23. Adds the 2026-10-28 entry recording the approved rule that only a held-out set's first counted opening is confirmatory, so the labels in the README and the reports have a dated source.
 
 ### 2026-10-26: first version (HARN-6)
 

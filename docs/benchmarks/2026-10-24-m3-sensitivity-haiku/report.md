@@ -1,5 +1,7 @@
 # M3 sensitivity cell report: the same exam with a weaker model
 
+**Status (added 2026-10-28, internal-task).** This run used the v0.1 held-out tasks after `m3-heldout-2026-10` had already opened them. Under the rule adopted on 2026-10-28 (only a held-out set's first counted opening is confirmatory; every later opening is dev) its results are dev: the intervals hold for these tasks, but they cannot confirm a claim, because the run was designed after that set's results had been seen. Its Haiku arm was preregistered after the m3-heldout receipts had merged. No confirmation is planned; it is a sensitivity reading. Nothing below is changed. [README, Corrections](../../../README.md#corrections)
+
 Run `m3-sensitivity-haiku-2026-10`, preregistered in [PREREGISTRATION.md](PREREGISTRATION.md) (no amendments after it was committed), run 2026-10-23 14:54 to 20:35 UTC on the same machine as the held-out run: the same 20 sealed held-out tasks, pins, preamble and grader as [the Sonnet run](../2026-10-24-m3-heldout/report.md), with the model fixed to `claude-haiku-5-5`, five repetitions, 300 trials. Spend $1.84 on 2,587 priced requests (lease $50). Every number comes from [results/trials.jsonl](results/trials.jsonl) through `scripts/summarize-run.ts` and `scripts/compare-run.ts` (seed 7, 10,000 draws), saved under [results/](results/).
 
 ## The answer, in one paragraph

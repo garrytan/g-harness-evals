@@ -22,6 +22,8 @@ harness-evals v0.0.12. Read 2026-10-22 at Gbrain-evals v0.10.128 (`6999ebc9`). G
 | **Named denominators**: never combine recall-all, recall-any, precision, accuracy under one number | CLAUDE.md evidence rules | Already in our contract; adopt the wording |
 | **Model freshness rule**: every model-comparison run uses the newest frontier model of each family; a newer release replaces its predecessor only through a dated amendment | CLAUDE.md "Choose models" | Governs the sensitivity cell (d3b) |
 
+**Note added 2026-10-28 (internal-task).** The dev and held-out row above was not enforced from 2026-10-23 to 2026-10-28: the v0.1 held-out set served ten counted runs and the v0.2 set two, with nothing counting looks across runs. From 2026-10-28 only a held-out set's first counted opening is confirmatory and every later opening is dev, as the [README Corrections](../README.md#corrections) entry of that date records.
+
 ## Reuse the data
 
 `eval/data/messy-company-v1` is a frozen fictional company (Pemberline Systems, 14 employees, 16 accounts, emails, chats, CRM notes, meeting notes, support tickets, weekly updates, private notes, 41 contracts; dev/held-out split by account cluster; look-alike names, renamed accounts, superseded values, private-only assignments). It is a ready-made seed for the simulated Slack workspace: its 14 employees become the workspace members, its chats become channel history, its private notes become per-person scoped memory, and its existing gold labels (ownership, governing records, contradictions) become graders for multi-user tasks. Reusing it saves M2's "author a world from scratch" and inherits a validated MANIFEST.
@@ -57,6 +59,10 @@ Read again at gbrain-evals `README.md` of 2026-10-26 (its changelog's newest ent
 | Changelog entries naming the gbrain version under test | Changelog entries naming the harness-evals `VERSION` | The pins live in `harnesses/*/pin.json` and `gbrain/pin.json`; the version that changes with a page is this repository's |
 
 ## Changelog
+
+### 2026-10-28: the held-out rule was not enforced (internal-task)
+
+harness-evals v0.0.23. A dated note under the first table says the held-out rule ("a world that has run once is spent") was not enforced for the v0.1 and v0.2 held-out sets and what replaces it. The table itself is unchanged.
 
 ### 2026-10-26: README and docs alignment recorded (internal-task)
 

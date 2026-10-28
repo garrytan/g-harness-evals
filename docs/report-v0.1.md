@@ -1,5 +1,7 @@
 # harness-evals v0.1: three harnesses, one model, a shared Slack-style company
 
+**Status (added 2026-10-28, internal-task).** This page summarises three runs. Its held-out Sonnet figures come from `m3-heldout-2026-10`, the first counted opening of the v0.1 held-out set, which is confirmatory with custody by digest only. Its Haiku figures come from `m3-sensitivity-haiku-2026-10`, a later opening of the same set, and are dev: they hold for these tasks but cannot confirm a claim on unseen tasks. The pilot ran on the dev split. [README, Corrections](../README.md#corrections)
+
 harness-evals v0.0.5, written 2026-10-24. This page is the one-page account of the v0.1 multi-user cell: what was asked, how it was measured, what the numbers say and what they cannot say. Every number on it is copied from a committed receipt named beside it; the three run reports it summarises ([pilot](benchmarks/2026-10-23-m2-pilot/report.md), [held-out run](benchmarks/2026-10-24-m3-heldout/report.md), [sensitivity run](benchmarks/2026-10-24-m3-sensitivity-haiku/report.md)) hold the full tables.
 
 ## The finding
@@ -79,6 +81,10 @@ A v0.2 task slice is under way (`tasks/multiuser/v0.2`, four new families: conti
 Keyless, from the repository root: `bun test tests/`, `bunx tsc --noEmit`, `python3 scripts/check-links.py`, `bun runner/prereg/prereg.ts` (preregistration order), `bun scripts/seal-heldout.ts --check` (held-out seal). Tables: `bun scripts/summarize-run.ts --results docs/benchmarks/<run>/results` and `bun scripts/compare-run.ts`; failure modes: `bun scripts/taxonomy.ts --results <dir>`; spend: `bun scripts/reconcile-provider.ts --results <dir>`. Pins: [harnesses/*/pin.json](../harnesses/README.md) (OpenClaw 2026.10.6; Hermes `f97608f`; QM `7417aa2`). A paid run needs `ANTHROPIC_API_KEY` in the proxy's environment only ([runner/README.md](../runner/README.md)); observed time and cost per run are in each report's first paragraph. Per trial, under `results/trials/<cell>/<task>/r<n>/`: `events.jsonl` (the world's event log), `turns.jsonl` (the exact prompts), `snapshot.json.gz`, `usage.json`, `reconcile.json`, `grade.json`, `logs/adapter.log`.
 
 ## Changelog
+
+### 2026-10-28: status note on confirmatory and dev figures (internal-task)
+
+harness-evals v0.0.23. Adds a status note at the top: the held-out Sonnet figures, from the first counted opening of the v0.1 held-out set, are confirmatory with custody by digest only, and the Haiku figures, from a later opening, are dev. The original figures and text are unchanged.
 
 ### 2026-10-24: first version (internal-task)
 

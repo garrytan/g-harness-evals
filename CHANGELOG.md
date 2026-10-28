@@ -2,6 +2,13 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.23] - 2026-10-28
+
+### internal-task: held-out results relabelled confirmatory or dev
+
+- README: the Current results table gains a "Set and status" column; only the first counted opening of a held-out set (`m3-heldout-2026-10` for v0.1, `v02-heldout-2026-10` for v0.2) is confirmatory, qualified as custody by digest only, and the nine later v0.1 runs and `gbrain-memory-2026-10` are dev, with reason tags on the three runs that retested a candidate after a look (installer-hook, scoped, verbs). A dated Corrections entry, the Known limits paragraph and the two comparison sections say the same. No number, interval or receipt changes.
+- A dated status note at the top of the twelve affected reports and `docs/report-v0.1.md`; a 2026-10-28 entry in `docs/decisions.md`; a dated note in `docs/gbrain-evals-conventions.md` that its held-out rule was not enforced from 2026-10-23 to 2026-10-28.
+
 ## [0.0.22] - 2026-10-28
 
 ### internal-task: internal-task overlay images and the live discovery driver (uncounted diagnostic)
