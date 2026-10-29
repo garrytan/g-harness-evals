@@ -14,7 +14,8 @@
  * digest holds and no destination exists as a link or with other bytes (an identical file is accepted, so a rerun can
  * finish a release) writes into the public checkout:
  *   tasks/multiuser/<set>/heldout/<task>/...         the task tree
- *   tasks/multiuser/<set>/sealed-world/slice.json   the world slice, sealed-world/corpus/heldout/ its corpus pages, and
+ *   tasks/multiuser/<set>/sealed-world/slice.json   the world slice, sealed-world/corpus/heldout/ its corpus pages,
+ *                                                   sealed-world/extras/ the files sealed.extras lists (seal.ts --include), and
  *                                                   sealed-world/opaque-salt, which maps the opaque task ids back
  *   docs/benchmarks/<run>/results/                   each run's raw receipts, where every plaintext run keeps them
  * and rewrites the set's MANIFEST.json as a plaintext manifest (files and tasks listed, the same tree_sha256, ledger
@@ -37,7 +38,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync
 import { gunzipSync } from 'node:zlib';
 import { dirname, join, relative, resolve } from 'node:path';
 import { RunnerError } from '../../runner/errors.ts';
-import { decryptWith, OPAQUE_SALT_FILE, sha256, unpackTar, type TarEntry } from '../../runner/heldout/sealed.ts';
+import { bundleEntryProblem, decryptWith, sha256, unpackTar, type TarEntry } from '../../runner/heldout/sealed.ts';
 import { heldoutSet, openingsLedger, readManifest, walk, type HeldoutManifest } from '../seal-heldout.ts';
 import { compareAndPush, custodyClone, ESCROW_FILE, readAccessLog, syncCustody, type AccessEvent } from './custody.ts';
 import { custodyIdentity } from './identity.ts';
@@ -73,12 +74,13 @@ export async function releaseSet(o: ReleaseOptions): Promise<{ runs: string[]; t
   const identity = await custodyIdentity({ identityPath: o.identityPath, escrowPath: join(clone, ESCROW_FILE), recipient: s.recipient, env: o.env });
   const entries = unpackTar(await decryptWith(identity, new Uint8Array(bundle)));
   const prefix = `tasks/multiuser/${o.set}/heldout/`;
+  const problem = bundleEntryProblem(entries, o.set, s.extras);
+  if (problem) fail(`${problem}; nothing was written`);
   const staged = new Map<string, Uint8Array>();
   for (const e of entries) {
     if (e.path.startsWith(prefix)) staged.set(join(repo, e.path), e.data);
     else if (e.path === 'world/slice.json') staged.set(join(repo, 'tasks', 'multiuser', o.set, 'sealed-world', 'slice.json'), e.data);
-    else if (e.path.startsWith('corpus/heldout/') || e.path === OPAQUE_SALT_FILE) staged.set(join(repo, 'tasks', 'multiuser', o.set, 'sealed-world', e.path), e.data);
-    else fail(`the bundle holds an entry (path sha256 ${sha256(e.path).slice(0, 12)}) outside the set's tree, slice, salt and corpus`);
+    else staged.set(join(repo, 'tasks', 'multiuser', o.set, 'sealed-world', e.path), e.data);
   }
   const sliceBytes = entries.find((e) => e.path === 'world/slice.json')?.data;
   if (!sliceBytes || sha256(sliceBytes) !== s.world_slice_sha256) fail('the bundle\'s world/slice.json does not have the committed world_slice_sha256');

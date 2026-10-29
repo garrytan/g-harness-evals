@@ -274,6 +274,8 @@ export interface OpeningReceipt {
   public_world_sha256: string;
   world_sha256: string;
   task_count: number;
+  /** sealed.extras of the set (seal.ts --include), when it has any: bundle path to sha256. */
+  extras?: Record<string, string>;
   /** The access-log line that first admitted this opening, the custody ref and its commit holding the latest line for this run, and whether this receipt came from a resume. */
   access: { event_sha256: string; custody_ref: string; custody_commit: string; opened_at: string; resumed: boolean };
   written_at: string;
@@ -290,10 +292,23 @@ export function openingDiff(a: OpeningReceipt, b: OpeningReceipt): string[] {
   return diff;
 }
 
-export interface SealedPaths { tasks: string; slice: string; world: string; corpus: string; receipt: string }
+export interface SealedPaths { tasks: string; slice: string; world: string; corpus: string; extras: string; receipt: string }
 
 export function sealedPaths(root: string, set: string): SealedPaths {
-  return { tasks: join(root, 'tasks', 'multiuser', set, 'heldout'), slice: join(root, 'world', 'slice.json'), world: join(root, 'world', 'world.json'), corpus: join(root, 'corpus'), receipt: join(root, RECEIPT_FILE) };
+  return { tasks: join(root, 'tasks', 'multiuser', set, 'heldout'), slice: join(root, 'world', 'slice.json'), world: join(root, 'world', 'world.json'), corpus: join(root, 'corpus'), extras: join(root, 'extras'), receipt: join(root, RECEIPT_FILE) };
+}
+
+/** The first problem with a decrypted bundle's entries for a set, or null: an entry outside the set's task tree,
+ *  world/slice.json, the opaque salt, corpus/heldout/ and the extras the manifest lists (sealed.extras, own keys only), or
+ *  extras/ files that differ from sealed.extras (one missing, or another sha256). Names no entry path. */
+export function bundleEntryProblem(entries: TarEntry[], set: string, extras: Record<string, string> = {}): string | null {
+  const tasks = `tasks/multiuser/${set}/heldout/`;
+  const listed = (p: string) => p.startsWith('extras/') && Object.hasOwn(extras, p);
+  const stray = entries.find((e) => !(e.path.startsWith(tasks) || e.path === 'world/slice.json' || e.path === OPAQUE_SALT_FILE || e.path.startsWith('corpus/heldout/') || listed(e.path)));
+  if (stray) return `the bundle holds an entry (path sha256 ${sha256(stray.path).slice(0, 12)}) outside the task tree of set ${set}, world/slice.json, ${OPAQUE_SALT_FILE}, corpus/heldout/ and the manifest's extras`;
+  const present = entries.filter((e) => listed(e.path));
+  if (present.length !== Object.keys(extras).length || present.some((e) => sha256(e.data) !== extras[e.path])) return `the bundle's extras (${present.length} listed file(s) present) do not match sealed.extras in the public manifest (${Object.keys(extras).length})`;
+  return null;
 }
 
 /** Digest problems of a sealed root against its receipt and the public world in the checkout at repoRoot: the task tree,
@@ -309,6 +324,9 @@ export function verifySealedRoot(root: string, receipt: OpeningReceipt, repoRoot
   check('world/slice.json', sha256(readFileSync(p.slice)), receipt.world_slice_sha256);
   check('the corpus pages digest', corpusDigest(p.corpus), receipt.heldout_corpus_sha256);
   check('world/world.json', sha256(readFileSync(p.world)), receipt.world_sha256);
+  const extras = receipt.extras ?? {};
+  const present = existsSync(p.extras) ? readdirSync(p.extras, { recursive: true, withFileTypes: true }).filter((e) => !e.isDirectory()).map((e) => relative(root, join(e.parentPath, e.name))).sort() : [];
+  if (present.join('\n') !== Object.keys(extras).sort().join('\n') || present.some((k) => sha256(readFileSync(join(root, k))) !== extras[k])) problems.push(`sealed root ${root} has extras/ files (${present.length}) that do not match the opening receipt (${Object.keys(extras).length})`);
   const pubWorld = join(repoRoot, 'world', 'seed', 'world.json');
   if (existsSync(pubWorld)) {
     const pub = readFileSync(pubWorld);
@@ -335,8 +353,18 @@ export function receiptProblems(receipt: OpeningReceipt, want: { run_id: string;
     eq('tree_sha256', receipt.tree_sha256, manifest.tree_sha256);
     eq('world_slice_sha256', receipt.world_slice_sha256, s.world_slice_sha256);
     eq('heldout_corpus_sha256', receipt.heldout_corpus_sha256, s.heldout_corpus_sha256);
+    const canon = (x?: Record<string, string>) => JSON.stringify(Object.entries(x ?? {}).sort());
+    eq('extras', canon(receipt.extras), canon(s.extras));
   }
   return problems;
+}
+
+/** The string values a JSON document holds under an "id" or "task_id" key (any case, taskId too): sealed identifiers
+ *  that can be shorter than the generic string thresholds, so the redactor and the export leak scan add them at three. */
+export function idValues(v: unknown, out: string[] = []): string[] {
+  if (Array.isArray(v)) for (const x of v) idValues(x, out);
+  else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { if (typeof x === 'string' && /^(id|task_?id)$/i.test(k)) out.push(x); else idValues(x, out); }
+  return out;
 }
 
 export function readReceipt(path: string): OpeningReceipt {

@@ -88,6 +88,8 @@ export interface SealedCommitments {
   custody_ref: string;
   bundle: string;
   sealed_at: string;
+  /** Extra files the bundle carries under extras/ (seal.ts --include), each bundle path to the sha256 of its bytes. */
+  extras?: Record<string, string>;
 }
 
 export interface HeldoutManifest extends Partial<OpeningsLedger> {
@@ -208,6 +210,7 @@ export function sealedProblems(m: HeldoutManifest, set: HeldoutSet): string[] {
   if (!(typeof s.custody_repo === 'string' && /^[\w.-]+\/[\w.-]+$/.test(s.custody_repo))) problems.push(`sealed.custody_repo must be owner/repo (got ${JSON.stringify(s.custody_repo)})`);
   if (s.custody_ref !== 'refs/heads/custody') problems.push(`sealed.custody_ref must be refs/heads/custody, the custody branch, never the public main (got ${JSON.stringify(s.custody_ref)})`);
   if (!(typeof s.bundle === 'string' && s.bundle.endsWith('.age') && !s.bundle.startsWith('/') && !s.bundle.split('/').includes('..'))) problems.push(`sealed.bundle must be a relative path ending in .age on the custody branch (got ${JSON.stringify(s.bundle)})`);
+  if (s.extras !== undefined && !(s.extras && typeof s.extras === 'object' && !Array.isArray(s.extras) && Object.entries(s.extras).every(([p, h]) => /^extras\/[\x20-\x7e]+$/.test(p) && !p.split('/').some((seg) => seg === '' || seg === '.' || seg === '..') && hex(h)))) problems.push('sealed.extras must map bundle paths under extras/ to 64-hex sha256 digests');
   if (Object.keys(m.files ?? {}).length || (m.tasks ?? []).length) problems.push('a sealed manifest lists no files and no tasks (files {} and tasks []); the names are part of the sealed bundle');
   const plaintext = (existsSync(set.dir) ? walk(set.dir) : []).filter((p) => p !== set.manifest);
   if (plaintext.length) problems.push(`plaintext in a sealed set: ${plaintext.length} file(s) beside MANIFEST.json under ${relative(ROOT, set.dir)}; a sealed set's tasks live only in the encrypted bundle`);

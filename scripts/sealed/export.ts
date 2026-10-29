@@ -59,7 +59,7 @@ import { basename, dirname, join, relative, resolve } from 'node:path';
 import { RunnerError } from '../../runner/errors.ts';
 import { holmAdjusted } from '../../runner/stats/paired.ts';
 import { openSealedContext, type Manifest } from '../../runner/run.ts';
-import { encryptTo, OPAQUE_SALT_FILE, opaqueId, packTar, safeRelPath, sealedPaths, sha256, type OpeningReceipt, type TarEntry } from '../../runner/heldout/sealed.ts';
+import { encryptTo, idValues, OPAQUE_SALT_FILE, opaqueId, packTar, safeRelPath, sealedPaths, sha256, type OpeningReceipt, type TarEntry } from '../../runner/heldout/sealed.ts';
 import { claimProblems, deriveSet, type HeldoutClaim } from '../../runner/heldout/openings.ts';
 import { heldoutSet, openingsLedger, readManifest, walk } from '../seal-heldout.ts';
 import type { TrialRecord } from '../../runner/contracts.ts';
@@ -153,8 +153,8 @@ function stringLeaves(v: unknown, out: string[] = []): string[] {
 
 export interface Secret { kind: string; text: string }
 
-/** The strings a public export must not contain: task ids, every string in the task tree, the slice, the corpus pages
- *  and the raw summaries, at least eight characters long (task ids at least three) and absent from every public text. */
+/** The strings a public export must not contain: task ids, every string in the task tree, the slice, the corpus pages,
+ *  the extras (seal.ts --include) and the raw summaries, at least eight characters long (task ids at least three) and absent from every public text. */
 export function collectSecrets(o: { root: string; set: string; raw: string; publicTexts: string[] }): Secret[] {
   const p = sealedPaths(o.root, o.set);
   const out = new Map<string, string>();
@@ -168,6 +168,11 @@ export function collectSecrets(o: { root: string; set: string; raw: string; publ
   }
   for (const s of stringLeaves(JSON.parse(readFileSync(p.slice, 'utf8')))) add('world slice string', s);
   for (const f of existsSync(p.corpus) ? walk(p.corpus) : []) for (const line of readFileSync(f, 'utf8').split('\n')) add('corpus line', line);
+  for (const f of existsSync(p.extras) ? walk(p.extras) : []) {
+    const text = readFileSync(f, 'utf8');
+    if (f.endsWith('.json')) { try { const v = JSON.parse(text); for (const s of stringLeaves(v)) add('extra string', s); for (const s of idValues(v)) add('extra id', s, 3); } catch { /* not JSON; lines cover it */ } }
+    for (const line of text.split('\n')) add('extra line', line);
+  }
   for (const f of readdirSync(o.raw).filter((n) => /^(summary|comparisons)[\w.-]*\.json$/.test(n))) {
     try { for (const s of stringLeaves(JSON.parse(readFileSync(join(o.raw, f), 'utf8')))) add('raw summary string', s); } catch { /* skip */ }
   }

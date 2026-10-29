@@ -33,7 +33,8 @@
  *      take the last opening. A push that keeps failing ends the open before anything is decrypted. The two refs cannot
  *      move in one transaction: a main change landing after the push that admitted the opening is not seen by it, and the
  *      custody log stays the record of what was opened.
- * Then the bundle is decrypted into the output directory (files 0600), every entry checked, the world slice merged into the
+ * Then the bundle is decrypted into the output directory (files 0600), every entry checked (an extras/ file only when the
+ * manifest's sealed.extras lists it with the same sha256, and every listed one present), the world slice merged into the
  * public world as world/world.json, every digest verified against the public commitments, and opening-receipt.json
  * written. Any failure after decryption removes the directory. Output names paths and digests only, never content.
  */
@@ -42,7 +43,7 @@ import { homedir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { RunnerError } from '../../runner/errors.ts';
 import { checkPlan, claimProblems, deriveSet, heldoutSetsOf, type HeldoutBlock } from '../../runner/heldout/openings.ts';
-import { corpusDigest, decryptWith, mergeWorld, OPAQUE_SALT_FILE, RECEIPT_FILE, readReceipt, renderWorld, sealedPaths, sha256, sliceProblems, unpackTar, type OpeningReceipt, type WorldSlice } from '../../runner/heldout/sealed.ts';
+import { bundleEntryProblem, corpusDigest, decryptWith, mergeWorld, OPAQUE_SALT_FILE, RECEIPT_FILE, readReceipt, renderWorld, sealedPaths, sha256, sliceProblems, unpackTar, type OpeningReceipt, type WorldSlice } from '../../runner/heldout/sealed.ts';
 import { heldoutSet, openingsLedger, readManifest, treeFiles, type HeldoutManifest } from '../seal-heldout.ts';
 import type { World } from '../../world/types.ts';
 import { checkPrivate, compareAndPush, CUSTODY_REF, CUSTODY_REPO, custodyClone, ESCROW_FILE, git, insideGitTree, openedRuns, readAccessLog, syncCustody, type AccessEvent } from './custody.ts';
@@ -178,9 +179,9 @@ export async function openRun(o: OpenOptions): Promise<OpenResult> {
   mkdirSync(out, { recursive: true, mode: 0o700 });
   try {
     const entries = unpackTar(await decryptWith(identity, new Uint8Array(bundle)));
-    const tasksPrefix = `tasks/multiuser/${setName}/heldout/`;
+    const problem = bundleEntryProblem(entries, setName, m.sealed.extras);
+    if (problem) throw new RunnerError('HE-SEALED-006', problem);
     for (const e of entries) {
-      if (!(e.path.startsWith(tasksPrefix) || e.path === 'world/slice.json' || e.path === OPAQUE_SALT_FILE || e.path.startsWith('corpus/heldout/'))) throw new RunnerError('HE-SEALED-006', `the bundle holds an entry (path sha256 ${sha256(e.path).slice(0, 12)}) outside the task tree of set ${setName}, world/slice.json, ${OPAQUE_SALT_FILE} and corpus/heldout/`);
       const dest = join(out, e.path);
       mkdirSync(dirname(dest), { recursive: true, mode: 0o700 });
       writeFileSync(dest, e.data, { mode: 0o600 });
@@ -209,7 +210,7 @@ export async function openRun(o: OpenOptions): Promise<OpenResult> {
     const receipt: OpeningReceipt = {
       schema_version: 1, tool: 'scripts/sealed/open.ts', run_id: prereg.run_id, set: setName, label: block!.label, reason: block!.reason ?? null, candidate_sha256: block!.candidate_sha256,
       prereg_json: preregPath, prereg_sha256: preregSha, public_ref: `${remote}/${branch}`, public_commit: publicCommit, public_manifest_sha256: sha256(readFileSync(set.manifest)),
-      bundle_sha256: m.sealed.bundle_sha256, tree_sha256: tree.tree_sha256, world_slice_sha256: m.sealed.world_slice_sha256, heldout_corpus_sha256: m.sealed.heldout_corpus_sha256,
+      bundle_sha256: m.sealed.bundle_sha256, tree_sha256: tree.tree_sha256, world_slice_sha256: m.sealed.world_slice_sha256, heldout_corpus_sha256: m.sealed.heldout_corpus_sha256, ...(m.sealed.extras ? { extras: m.sealed.extras } : {}),
       public_world_sha256: sha256(pubWorldBytes), world_sha256: sha256(readFileSync(p.world)), task_count: taskCount,
       access: { event_sha256: first.sha256, custody_ref: CUSTODY_REF, custody_commit: pushed.commit, opened_at: first.event.at, resumed },
       written_at: now(),

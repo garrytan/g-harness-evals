@@ -23,11 +23,13 @@ export const SECRETS = {
   corpusLine: 'Quoll Haulage renewal notes: the Zirconia ledger stays in the vault channel only.',
 };
 
-export const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+/** An allowlisted environment (no API keys) for every process the fixture and the intake tests spawn. */
+export const SCRUBBED_ENV = Object.fromEntries(Object.entries(process.env).filter(([k]) => ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL', 'USER', 'LOGNAME'].includes(k) || k.startsWith('GIT_'))) as Record<string, string>;
+export const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: SCRUBBED_ENV }).trim();
 const write = (p: string, s: string) => { mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, s); };
 
 function initRepo(dir: string, bare: string) {
-  execFileSync('git', ['init', '-q', '--bare', '-b', 'main', bare]);
+  execFileSync('git', ['init', '-q', '--bare', '-b', 'main', bare], { env: SCRUBBED_ENV });
   mkdirSync(dir, { recursive: true });
   git(dir, 'init', '-q', '-b', 'main');
   git(dir, 'config', 'user.email', 'custody-test@example.invalid');
@@ -191,7 +193,8 @@ export function commitPush(f: Fixture, msg: string) {
   git(f.repo, 'push', '-q', 'origin', 'HEAD:main');
 }
 
-export async function makeFixture(budget = 2): Promise<Fixture> {
+/** sealWith replaces the plaintext seal of SET (the intake tests seal it from an encrypted backup instead). */
+export async function makeFixture(budget = 2, sealWith?: (f: Fixture) => Promise<unknown>): Promise<Fixture> {
   const tmp = mkdtempSync(join(tmpdir(), 'he-sealed-'));
   const f: Fixture = { tmp, repo: join(tmp, 'public'), bare: join(tmp, 'public.git'), custody: join(tmp, 'custody'), plain: join(tmp, 'plain'), identity: '', identityPath: join(tmp, 'drive', 'custody', 'identity.age-key'), recipient: '', env: { UBICLOUD_API_KEY: ENV_VALUE }, gh: fakeGh(join(tmp, 'gh-bin'), 'true'), work: join(tmp, 'work') };
   mkdirSync(f.work);
@@ -219,7 +222,7 @@ export async function makeFixture(budget = 2): Promise<Fixture> {
   git(f.custody, 'config', 'user.email', 'custody-test@example.invalid');
   git(f.custody, 'config', 'user.name', 'custody test');
   writePlaintext(f.plain);
-  await sealSet({ repo: f.repo, set: SET, tasks: join(f.plain, 'heldout'), slice: join(f.plain, 'slice.json'), corpus: join(f.plain, 'corpus'), custody: f.custody, recipient: f.recipient, gh: f.gh });
+  await (sealWith ? sealWith(f) : sealSet({ repo: f.repo, set: SET, tasks: join(f.plain, 'heldout'), slice: join(f.plain, 'slice.json'), corpus: join(f.plain, 'corpus'), custody: f.custody, recipient: f.recipient, gh: f.gh }));
   const p = manifestPath(f);
   const m = JSON.parse(readFileSync(p, 'utf8'));
   Object.assign(m, { opening_budget: budget, alpha_per_opening: 0.025, status: 'open', openings: [], exposures: [] });

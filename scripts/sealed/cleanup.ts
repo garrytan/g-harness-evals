@@ -6,6 +6,11 @@
  *   bun scripts/sealed/cleanup.ts --export docs/benchmarks/<run>/sealed-results/export.json --sealed-root <opened root>
  *        --results <raw results dir> [--results <shard or merged results dir> ...] [--images] [--custody <clone>]
  *        [--repo .] [--remote origin]
+ *   bun scripts/sealed/cleanup.ts --intake
+ *
+ * Every run first removes the stale intake directories scripts/sealed/seal.ts --from-backup left under
+ * ~/.capy/work/custody/intake (a directory whose process no longer runs: a SIGKILL or a machine stop skipped seal.ts's
+ * own removal) and prints their paths; --intake does only that.
  *
  * First it proves the public export is complete and in place: --export must be <dir of the preregistration>/sealed-results/
  * export.json under docs/benchmarks/ (where export.ts writes it), outside the opened root and every --results directory,
@@ -44,6 +49,19 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { RunnerError } from '../../runner/errors.ts';
 import { readReceipt, RECEIPT_FILE, sha256 } from '../../runner/heldout/sealed.ts';
 import { custodyClone, insideGitTree, readAccessLog, syncCustody, withCustodyLock } from './custody.ts';
+import { INTAKE_ROOT, sweepStaleIntake } from './intake.ts';
+
+/** Remove the stale intake directories seal.ts --from-backup left (a SIGKILL or a machine stop skips its own removal),
+ *  printing their paths; returns how many could not be removed. */
+function sweepIntake(): number {
+  const log = (l: string) => console.log(l), root = INTAKE_ROOT;
+  const { removed, failed, kept } = sweepStaleIntake(root);
+  if (removed.length) log(`CLEANUP: removed ${removed.length} stale seal.ts intake director${removed.length === 1 ? 'y' : 'ies'}: ${removed.join(', ')}`);
+  if (failed.length) log(`CLEANUP: could not remove ${failed.length} stale seal.ts intake director${failed.length === 1 ? 'y' : 'ies'}: ${failed.join(', ')}; remove them by hand`);
+  if (kept.length) log(`CLEANUP: left ${kept.length} intake director${kept.length === 1 ? 'y' : 'ies'} a running seal.ts holds: ${kept.join(', ')}`);
+  if (!removed.length && !failed.length && !kept.length) log(`CLEANUP: no stale seal.ts intake directory under ${root}`);
+  return failed.length;
+}
 
 export interface CleanupOptions { repo: string; exportJson: string; sealedRoot: string; results: string[]; images?: boolean; custody?: string; remote?: string; docker?: string; log?: (l: string) => void }
 
@@ -154,10 +172,12 @@ if (import.meta.main) {
   const argv = process.argv.slice(2);
   const flag = (n: string) => { const i = argv.indexOf(`--${n}`); return i >= 0 ? argv[i + 1] : undefined; };
   const results = argv.flatMap((a, i) => (a === '--results' && argv[i + 1] ? [argv[i + 1]!] : []));
-  if (!flag('export') || !flag('sealed-root') || !results.length) { console.error('HE-RUN-002 usage: bun scripts/sealed/cleanup.ts --export <export.json> --sealed-root <dir> --results <dir> [--results <dir> ...] [--images] [--custody <clone>] [--repo .] [--remote origin]'); process.exit(2); }
+  const intakeFailed = sweepIntake();
+  if (argv.includes('--intake') && !flag('export')) process.exit(intakeFailed ? 3 : 0);
+  if (!flag('export') || !flag('sealed-root') || !results.length) { console.error('HE-RUN-002 usage: bun scripts/sealed/cleanup.ts --intake (stale seal.ts intake directories only) | --export <export.json> --sealed-root <dir> --results <dir> [--results <dir> ...] [--images] [--custody <clone>] [--repo .] [--remote origin]'); process.exit(2); }
   try {
     const r = cleanup({ repo: flag('repo') ?? process.cwd(), exportJson: flag('export')!, sealedRoot: flag('sealed-root')!, results, images: argv.includes('--images'), custody: flag('custody'), remote: flag('remote') });
-    process.exit(r.unresolvedVms.length || r.unresolvedCopies.length ? 3 : 0);
+    process.exit(r.unresolvedVms.length || r.unresolvedCopies.length || intakeFailed ? 3 : 0);
   } catch (e) {
     console.error(e instanceof RunnerError ? e.message : `HE-SEALED-014 cleanup failed: ${e instanceof Error ? e.constructor.name : 'error'} (message withheld)`);
     process.exit(2);
