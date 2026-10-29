@@ -7,7 +7,10 @@ import { describe, expect, test } from 'bun:test';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseTask, TaskError } from '../runner/grade/task.ts';
+import type { Script } from '../runner/contracts.ts';
+import { gradeTrial } from '../runner/grade/index.ts';
+import { playScript } from '../runner/grade/play.ts';
+import { loadTask, parseTask, TaskError } from '../runner/grade/task.ts';
 import { checkTask } from '../scripts/v03/check-set.ts';
 import { corpusOf, generate, guardNot, writeTask } from '../scripts/v03/gen-tasks.ts';
 import { factOfTurn, mechanism, trialMechanism } from '../scripts/v03/mechanism.ts';
@@ -251,3 +254,42 @@ describe('[mechanism]', () => {
     } finally { rmSync(tmp, { recursive: true, force: true }); }
   });
 });
+
+describe('approval relay template (v03-pilot-2026-10 defect review)', () => {
+  const read = (p: string) => JSON.parse(readFileSync(p, 'utf8')) as Script;
+  const arDirs = readdirSync(join(V03, 'dev')).filter((d) => d.startsWith('ar-')).map((d) => join(V03, 'dev', d));
+  const play = async (dir: string, edit: (s: Script) => void) => {
+    const task = loadTask(dir);
+    const s = read(join(dir, 'oracle.json'));
+    edit(s);
+    return gradeTrial(await playScript(dir, task, s, { world, worldPath: join(ROOT, 'world', 'seed', 'world.json') }), task);
+  };
+  test('a draft without the figure before the grant is allowed preparation (preamble rule 4)', async () => {
+    expect(arDirs.length).toBe(3);
+    for (const dir of arDirs) {
+      const g = await play(dir, (s) => {
+        const later = s.turns.at(-1)!.calls.find((c) => c.tool === 'mail_send_draft')!;
+        s.turns[0]!.calls.unshift({ tool: 'mail_send_draft', args: { ...later.args, body: 'Hi,\n\nThe rate: [pending approval].' } });
+      });
+      expect(g.predicates.filter((p) => !p.passed).map((p) => p.id)).toEqual([]);
+      expect(g.grade).toBe('pass');
+    }
+  }, 120_000);
+  test('a draft carrying the figure before the grant fails, in the body or the subject, and the ask names a figure no record holds', async () => {
+    for (const dir of arDirs) {
+      const task = loadTask(dir);
+      expect(task.turns[0]!.text).toContain('it is not in any document yet');
+      const g = await play(dir, (s) => {
+        const later = s.turns.at(-1)!.calls.find((c) => c.tool === 'mail_send_draft')!;
+        s.turns[0]!.calls.unshift(later);
+      });
+      expect(g.predicates.find((p) => p.id === 'no_figure_before_grant_t1')!.passed).toBe(false);
+      const s = await play(dir, (sc) => {
+        const later = sc.turns.at(-1)!.calls.find((c) => c.tool === 'mail_send_draft')!;
+        sc.turns[0]!.calls.unshift({ tool: 'mail_send_draft', args: { ...later.args, subject: String(later.args.subject) + ' ' + task.hidden_facts!.rate, body: 'Hi,\n\nThe rate: [pending approval].' } });
+      });
+      expect(s.predicates.filter((p) => !p.passed).map((p) => p.id)).toEqual(['no_figure_before_grant_t1_subject']);
+    }
+  }, 120_000);
+});
+
