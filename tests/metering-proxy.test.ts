@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { BudgetRun, closeLedgers, closeRun, ledgerStatus, priceRequest, reservationUsd } from '../runner/ledger/budget-ledger.ts';
-import { isWildcardHost, MeteringProxy, parseProxyArgs, ProxyControl, sseUsage, upstreamTrouble, type LeasePolicy } from '../runner/proxy/metering-proxy.ts';
+import { isWildcardHost, MeteringProxy, parseProxyArgs, PROVIDER_ERROR_NOT_BILLED, ProxyControl, sseUsage, upstreamTrouble, type LeasePolicy } from '../runner/proxy/metering-proxy.ts';
 import { trialKey, trialToken } from '../runner/trial/proxy.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
@@ -115,19 +115,27 @@ describe('lease mode forwarding', () => {
     } finally { proxy.stop(); }
   });
 
-  test('a 4xx without usage settles at $0; a 5xx without usage keeps its reservation', async () => {
+  test('a 4xx without usage settles at $0; an OpenAI 503 server_error envelope and no usage settles at $0 with a reason (2026-10-29); any other 5xx keeps its reservation', async () => {
     const lease = BudgetRun.openLease({ runId: 'lease-4xx', leaseUsd: 1, ledgerPath: ledgerFile() });
     let status = 400;
-    const up = fakeUpstream(() => Response.json({ error: { message: 'bad request' } }, { status }));
+    let body: unknown = { error: { message: 'bad request' } };
+    const up = fakeUpstream(() => typeof body === 'string' ? new Response(body, { status }) : Response.json(body, { status }));
     const { proxy, post, usageLog } = leased(lease, up.fetchImpl);
     try {
       expect((await post('/c/openai/v1/chat/completions', chat())).status).toBe(400);
       expect(ledgerStatus({ ledgerPath: lease.ledgerPath, runId: 'lease-4xx' }).run!.committed_usd).toBe(0);
       status = 503;
+      body = { error: { message: 'The engine is currently overloaded, please try again later', type: 'server_error', param: null, code: 'service_unavailable' } };
+      expect((await post('/c/openai/v1/chat/completions', chat())).status).toBe(503);
+      expect(ledgerStatus({ ledgerPath: lease.ledgerPath, runId: 'lease-4xx' }).run!.committed_usd).toBe(0);
+      body = { error: { message: 'bad request' } };
+      expect((await post('/c/openai/v1/chat/completions', chat())).status).toBe(503);
+      body = '<html>503 Service Unavailable</html>';
       expect((await post('/c/openai/v1/chat/completions', chat())).status).toBe(503);
       const lines = readFileSync(usageLog, 'utf8').trim().split('\n').map(l => JSON.parse(l));
-      expect(lines.map(l => [l.status, l.actual_usd === 0, l.charged_reservation])).toEqual([[400, true, false], [503, false, true]]);
-      expect(ledgerStatus({ ledgerPath: lease.ledgerPath, runId: 'lease-4xx' }).run!.committed_usd).toBeCloseTo(lines[1].reserved_usd, 12);
+      expect(lines.map(l => [l.status, l.actual_usd === 0, l.charged_reservation])).toEqual([[400, true, false], [503, true, false], [503, false, true], [503, false, true]]);
+      expect(lines.map(l => l.reason)).toEqual([undefined, `HTTP 503 server_error: ${PROVIDER_ERROR_NOT_BILLED}`, 'the response carried no usage', 'the response carried no usage']);
+      expect(ledgerStatus({ ledgerPath: lease.ledgerPath, runId: 'lease-4xx' }).run!.committed_usd).toBeCloseTo(lines[2].reserved_usd + lines[3].reserved_usd, 12);
     } finally { proxy.stop(); }
   });
 

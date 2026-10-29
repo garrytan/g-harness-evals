@@ -51,10 +51,13 @@ export interface ModelPricing {
   cache_read?: number;
   /**
    * #4218 — USD per 1M prompt-cache-WRITE tokens at the default 5-minute
-   * TTL (Anthropic: 1.25x input; the 1h TTL bills 2x and is NOT modeled —
-   * gbrain's gateway requests the default TTL unless config overrides it,
-   * so 5m is the honest best-effort rate). Fall back to input rate when
-   * absent (under-estimate for writes; documented, not silent).
+   * TTL (Anthropic: 1.25x input). The 1-hour TTL bills 2x input
+   * (ANTHROPIC_CACHE_WRITE_1H_MULT): harness-evals' usageCost prices the
+   * `usage.cache_creation.ephemeral_1h_input_tokens` Anthropic reports at
+   * 2x input and the rest of `cache_creation_input_tokens` at this rate,
+   * and reserves at 2x input when a request sets `cache_control.ttl: "1h"`.
+   * Fall back to input rate when absent (under-estimate for writes;
+   * documented, not silent).
    */
   cache_write?: number;
   /**
@@ -112,6 +115,8 @@ export function priceAtPromptSize(pricing: ModelPricing, inputTokens: number | n
  * anthropic: row's cache fields stay derived from its input rate. */
 export const ANTHROPIC_CACHE_READ_MULT = 0.1;
 export const ANTHROPIC_CACHE_WRITE_5M_MULT = 1.25;
+/** Anthropic 1-hour-TTL cache writes bill 2x the base input rate. */
+export const ANTHROPIC_CACHE_WRITE_1H_MULT = 2;
 function anthro(input: number, output: number, cacheReadMult = ANTHROPIC_CACHE_READ_MULT): ModelPricing {
   return {
     input,
@@ -169,7 +174,7 @@ export const CANONICAL_PRICING: Record<string, ModelPricing> = {
   // Longer prompts bill 5x on every rate ($0.50 in / $0.625 5m cache write /
   // $0.05 cache read / $2.50 out) — the `long_prompt` tier, selected per
   // request by priceAtPromptSize() (#6448 item 1). The 1h cache-write rate
-  // ($0.20 / $1.00) stays unmodeled. The default facts extraction model on
+  // ($0.20 / $1.00) is 2x input, ANTHROPIC_CACHE_WRITE_1H_MULT. The default facts extraction model on
   // Anthropic-keyed installs.
   'anthropic:claude-haiku-5-5':           {
     ...anthro( 0.10,  0.50),

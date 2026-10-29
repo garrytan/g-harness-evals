@@ -17,6 +17,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { BudgetRun, CHAT_PRICE_OVERRIDES, closeLedgers, priceRequest, readLedger, reservationUsd } from '../runner/ledger/budget-ledger.ts';
 import { OPUS_CONTEXT_TOKENS, PANEL_MODEL, PLACEHOLDER_CEILINGS, boundRequestBody, capInputsFromLedger, classifyTermination, leaseUsd, ledgerSummary, panelCapAllows, panelOrder, proxyReservation, rMax, readUsage, spendFromUsage, type Spend } from '../scripts/gsta-135/lease.ts';
 import { wilson } from '../scripts/gsta-135/report.ts';
+import { PROVIDER_ERROR_NOT_BILLED } from '../runner/proxy/metering-proxy.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
 const tmp = mkdtempSync(join(tmpdir(), 'gsta135-panel-'));
@@ -100,7 +101,7 @@ describe('R_max and the lease', () => {
 });
 
 const spend = (forwarded: number, budget_refusals = 0, refusals: Record<string, number> = {}, extra: Partial<Spend> = {}): Spend =>
-  ({ forwarded, spent: 0, unknown: 0, charged_reservations: 0, charged_reservation_usd: 0, refused: Object.values(refusals).reduce((n, v) => n + v, 0), budget_refusals, concurrent_refusals: 0, refusals, ...extra });
+  ({ forwarded, spent: 0, unknown: 0, charged_reservations: 0, charged_reservation_usd: 0, provider_errors: 0, refused: Object.values(refusals).reduce((n, v) => n + v, 0), budget_refusals, concurrent_refusals: 0, refusals, ...extra });
 
 describe('order and terminations', () => {
   test('the interleaved order is deterministic: trial_index outer, then task, harness, arm', () => {
@@ -133,10 +134,29 @@ describe('order and terminations', () => {
     expect(classifyTermination('completed', spend(2, 1, lease402, { concurrent_refusals: 1 }), null)).toBe('infra:reservation_refused');
     expect(classifyTermination('completed', spend(2, 1, lease402, { concurrent_refusals: 1, charged_reservations: 1 }), null)).toBe('infra:upstream');
     expect(classifyTermination('completed', spend(2, 1, lease402, { concurrent_refusals: 1 }), 'runtime: degraded (bun not on PATH)')).toBe('infra:runtime');
+    // Provider-error 5xx answers the proxy settled at $0 (an Anthropic 529 overloaded_error) in a trial that did not complete: the provider failed it.
+    expect(classifyTermination('harness_error', spend(2, 0, {}, { provider_errors: 2 }), null)).toBe('infra:upstream');
+    expect(classifyTermination('model_error', spend(3, 0, {}, { provider_errors: 1 }), null)).toBe('infra:upstream');
+    expect(classifyTermination('completed', spend(3, 0, {}, { provider_errors: 1 }), null)).toBe('completed');
+    expect(classifyTermination('harness_error', spend(2, 0, {}, { provider_errors: 2 }), 'runtime: degraded (bun not on PATH)')).toBe('infra:runtime');
+    // A $0 provider error consumed no lease, so a lease refusal after one is still the trial's own cost.
+    expect(classifyTermination('timeout', spend(2, 1, lease402, { provider_errors: 1 }), null)).toBe('ceiling:lease');
     const log = join(tmp, 'wrap.log');
     writeFileSync(log, '2026-10-28T00:00:00Z gstack-wrap[t] runtime: degraded (bun 1.0.0 is below the minimum)\n');
     const cli = spawnSync('bun', ['scripts/gsta-135/lease.ts', 'classify', '--termination', 'completed', '--spend', JSON.stringify(spend(2)), '--wrapper-log', log], { cwd: ROOT, encoding: 'utf8' });
     expect(cli.stdout.trim()).toBe('infra:runtime');
+  });
+  test('spendFromUsage counts [529, 529] provider-error lines settled at $0, and the trial that did not complete is infra:upstream', () => {
+    const key = 'trial-token:p';
+    const line = (at: string) => ({ at, key, outcome: 'forwarded', status: 529, reason: `HTTP 529 overloaded_error: ${PROVIDER_ERROR_NOT_BILLED}`, reserved_usd: 5.5, actual_usd: 0, charged_reservation: false });
+    const s = spendFromUsage([line('2026-10-28T00:00:00.000Z'), line('2026-10-28T00:00:05.000Z')], key, null);
+    expect(s).toMatchObject({ forwarded: 2, spent: 0, charged_reservations: 0, provider_errors: 2, budget_refusals: 0 });
+    expect(classifyTermination('harness_error', s, null)).toBe('infra:upstream');
+    expect(classifyTermination('completed', s, null)).toBe('completed');
+    // A $0 5xx without the proxy's provider-error reason, or a 4xx at $0, is not a provider error.
+    const other = spendFromUsage([{ ...line('2026-10-28T00:00:00.000Z'), reason: 'something else' }, { ...line('2026-10-28T00:00:01.000Z'), status: 400, reason: undefined }], key, null);
+    expect(other.provider_errors).toBe(0);
+    expect(classifyTermination('harness_error', other, null)).toBe('harness_error');
   });
   test('spendFromUsage splits charged reservations out of the settled spend and sees a refusal inside another request\'s reservation', () => {
     const key = 'trial-token:t';
@@ -149,7 +169,7 @@ describe('order and terminations', () => {
       { at: '2026-10-28T00:00:23.000Z', key: 'trial-token:other', outcome: 'forwarded', status: 200, reserved_usd: 1, actual_usd: 1 },
     ];
     const s = spendFromUsage(lines, key, null);
-    expect(s).toEqual({ forwarded: 2, spent: 0.3, unknown: 2, charged_reservations: 1, charged_reservation_usd: 5.5, refused: 2, budget_refusals: 1, concurrent_refusals: 0, refusals: { '402 run x is over its budget': 1, '402 unpriced request': 1 } });
+    expect(s).toEqual({ forwarded: 2, spent: 0.3, unknown: 2, charged_reservations: 1, charged_reservation_usd: 5.5, provider_errors: 0, refused: 2, budget_refusals: 1, concurrent_refusals: 0, refusals: { '402 run x is over its budget': 1, '402 unpriced request': 1 } });
     const entry = (created_at: string, settled_at: string | null) => ({ id: 'e', run_id: 'r.t', description: 'd', reserved_usd: 5, actual_usd: null, status: 'reserved' as const, input_tokens: null, output_tokens: null, created_at, settled_at });
     expect(spendFromUsage(lines, key, [entry('2026-10-28T00:00:19.000Z', '2026-10-28T00:00:25.000Z')]).concurrent_refusals).toBe(1);
     expect(spendFromUsage(lines, key, [entry('2026-10-28T00:00:19.000Z', null)]).concurrent_refusals).toBe(1);
@@ -266,11 +286,35 @@ describe('max-size admission through the real proxy', () => {
       expect(ledgerSummary(ledger, 'panel')).toMatchObject({ leases: 2, open_leases: 0, requests: 1 });
     } finally { upstream.stop(true); }
   }, 60_000);
-  test('an upstream 529 is charged at the full reservation and the 402 after it is infra:upstream; a 402 inside another request\'s reservation is infra:reservation_refused', async () => {
+  test('Anthropic\'s own 529 overloaded_error settles at $0, and a trial that did not complete after two of them is infra:upstream', async () => {
+    const upstream = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: async req => {
+      await req.text();
+      return new Response(JSON.stringify({ type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } }), { status: 529, headers: { 'content-type': 'application/json' } });
+    } });
+    const ledger = join(tmp, 'overloaded.sqlite'), usageLog = join(tmp, 'overloaded-usage.ndjson');
+    const lease = leaseUsd(1, rMax({ model: PANEL_MODEL, maxTokens: PIN }).r_max_usd);
+    const bound = { ...boundRequestBody({ model: PANEL_MODEL, maxTokens: PIN }), stream: false };
+    try {
+      const p = await startProxy({ ledger, leaseUsd: lease, runId: 'ov.t1', upstream: upstream.port!, usageLog, control });
+      await bind(p.port, 'o1', 'trial-token:o1.z');
+      expect((await call(p.port, 'o1', 'trial-token:o1.z', bound)).status).toBe(529);
+      expect((await call(p.port, 'o1', 'trial-token:o1.z', bound)).status).toBe(529);
+      p.proc.kill('SIGTERM'); await p.proc.exited;
+      ledgerClose(ledger, 'ov.t1');
+      const s = spendOf(usageLog, 'trial-token:o1', ledger, 'ov.t1');
+      expect(s).toMatchObject({ forwarded: 2, spent: 0, charged_reservations: 0, charged_reservation_usd: 0, provider_errors: 2, budget_refusals: 0 });
+      expect(classifyTermination('harness_error', s, null)).toBe('infra:upstream');
+      expect(classifyTermination('completed', s, null)).toBe('completed');
+      closeLedgers();
+      expect(capInputsFromLedger(ledger, 'ov').settled).toBe(0);
+    } finally { upstream.stop(true); }
+  }, 60_000);
+  test('a gateway\'s 529 page (not Anthropic\'s error envelope) keeps the full reservation and the 402 after it is infra:upstream; a 402 inside another request\'s reservation is infra:reservation_refused', async () => {
     let mode: 'fail' | 'slow' = 'fail';
     const upstream = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: async req => {
       await req.text();
-      if (mode === 'fail') return new Response(JSON.stringify({ type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } }), { status: 529, headers: { 'content-type': 'application/json' } });
+      // Anthropic's own 529 envelope settles at $0 (the test above); a gateway's 529 page keeps the reservation and drains the lease.
+      if (mode === 'fail') return new Response('<html><body>529 Site is overloaded</body></html>', { status: 529, headers: { 'content-type': 'text/html' } });
       await Bun.sleep(1500);
       return Response.json({ id: 'msg', usage: { input_tokens: 1000, output_tokens: 10 } });
     } });
@@ -286,7 +330,7 @@ describe('max-size admission through the real proxy', () => {
       p.proc.kill('SIGTERM'); await p.proc.exited;
       ledgerClose(ledger, 'up.t1');
       const s1 = spendOf(usageLog, 'trial-token:u1', ledger, 'up.t1');
-      expect(s1).toMatchObject({ forwarded: 1, spent: 0, charged_reservations: 1, budget_refusals: 1, concurrent_refusals: 0 });
+      expect(s1).toMatchObject({ forwarded: 1, spent: 0, charged_reservations: 1, provider_errors: 0, budget_refusals: 1, concurrent_refusals: 0 });
       expect(s1.charged_reservation_usd).toBeCloseTo(r.r_max_usd + 5e-6, 5);
       expect(classifyTermination('completed', s1, null)).toBe('infra:upstream');
       // The ledger committed the charged reservation, so the cap check sees it even though usd_spent is 0.

@@ -73,7 +73,7 @@ import { closeSync, copyFileSync, existsSync, fsyncSync, mkdirSync, openSync, re
 import { hostname, userInfo } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { Database } from 'bun:sqlite';
-import { canonicalLookup } from '../pricing/model-pricing.ts';
+import { ANTHROPIC_CACHE_WRITE_1H_MULT, canonicalLookup } from '../pricing/model-pricing.ts';
 import { lookupEmbeddingPrice } from '../pricing/embedding-pricing.ts';
 
 export const DEFAULT_PROGRAM_CAP_USD = 500;
@@ -958,18 +958,21 @@ export class BudgetRun {
   /**
    * Settle a reservation. With a measured cost the entry is reconciled; with
    * null the reservation itself is charged (usage unknown: never undercount).
-   * A measured cost above the reservation is recorded as overshoot.
+   * An `unfinished` cost (a stream that ended before its final usage) is the
+   * partial usage the provider did report: the entry is charged the larger of
+   * it and the reservation, as charged-reservation. A cost above the
+   * reservation is recorded as overshoot.
    */
-  settle(id: string, actual: { usd: number; input_tokens?: number | null; output_tokens?: number | null } | null): void {
+  settle(id: string, actual: MeasuredCost | null): void {
     write(this.ledgerPath, `settle ${id}`, db => {
       const entry = db.query('SELECT reserved_usd, actual_usd FROM entries WHERE id = ? AND run_id = ?').get(id, this.runId) as { reserved_usd: number; actual_usd: number | null } | null;
       if (!entry) throw new LedgerUsageError(`unknown budget reservation ${id}`);
       if (entry.actual_usd !== null) throw new LedgerUsageError(`budget reservation ${id} already settled`);
-      const cost = actual ? actual.usd : entry.reserved_usd;
+      const cost = !actual ? entry.reserved_usd : actual.unfinished ? Math.max(entry.reserved_usd, actual.usd) : actual.usd;
       const delta = cost - entry.reserved_usd;
       const over = Math.max(0, delta);
       db.query('UPDATE entries SET actual_usd = ?, status = ?, input_tokens = ?, output_tokens = ?, settled_at = ? WHERE id = ?')
-        .run(cost, actual ? 'reconciled' : 'charged-reservation', actual?.input_tokens ?? null, actual?.output_tokens ?? null, now(), id);
+        .run(cost, actual && !actual.unfinished ? 'reconciled' : 'charged-reservation', actual?.input_tokens ?? null, actual?.output_tokens ?? null, now(), id);
       db.query('UPDATE runs SET committed_usd = committed_usd + ?, overshoot_usd = overshoot_usd + ? WHERE run_id = ?').run(delta, over, this.runId);
       db.query('UPDATE program SET committed_usd = committed_usd + ?, overshoot_usd = overshoot_usd + ? WHERE id = 1').run(delta, over);
     });
@@ -1026,6 +1029,9 @@ export function closeRun(ledgerPath: string, runId: string): void {
  * `close()` settles the ledger entry with the measured total (requests
  * without usage count at their reservation).
  */
+/** What a request cost. `unfinished`: partial usage from a stream that ended before its final usage, charged at no less than the reservation. */
+export interface MeasuredCost { usd: number; input_tokens?: number | null; output_tokens?: number | null; unfinished?: boolean }
+
 export class BudgetAllowance {
   spent_usd = 0;
   private pending_usd = 0;
@@ -1042,11 +1048,12 @@ export class BudgetAllowance {
     if (this.spent_usd + this.pending_usd + usd > this.usd) throw new BudgetExceededError(`${what}: reserving $${usd.toFixed(6)} would take allowance ${this.description} past its $${this.usd.toFixed(2)}`);
     this.pending_usd += usd;
   }
-  charge(held: number, cost: { usd: number; input_tokens?: number | null; output_tokens?: number | null } | null) {
+  charge(held: number, cost: MeasuredCost | null) {
     this.pending_usd -= held;
     this.requests++;
     if (!cost) { this.charged_reservations++; this.spent_usd += held; return; }
-    this.spent_usd += cost.usd;
+    if (cost.unfinished) this.charged_reservations++;
+    this.spent_usd += cost.unfinished ? Math.max(held, cost.usd) : cost.usd;
     this.input_tokens += cost.input_tokens ?? 0;
     this.output_tokens += cost.output_tokens ?? 0;
   }
@@ -1182,6 +1189,8 @@ export interface RequestPrice {
   cache_write?: number;
   /** True when the request may write the prompt cache at a price above `input`; the reservation then prices all input at `cache_write`. */
   cacheWritePremium?: boolean;
+  /** True when an Anthropic request asks for a 1-hour cache (`cache_control.ttl: "1h"`); the reservation then prices all input at 2x `input`. */
+  cacheWrite1h?: boolean;
   /** Long-prompt rates, used when the input estimate (reservation) or the reported input (settlement) exceeds the threshold. */
   long?: ChatPrice['long'];
   /** Conservative input-token estimate (3 bytes per token), including tool schemas and continuation context. */
@@ -1252,7 +1261,8 @@ export function priceRequest(url: string, body: unknown, options: PriceOptions =
   // OpenAI caches automatically; Anthropic writes its cache only where a request sets cache_control.
   const cacheWritePremium = price.cache_write !== undefined && price.cache_write > price.input
     && (provider !== 'anthropic' || JSON.stringify(b).includes('"cache_control"'));
-  return { provider, model, kind: 'chat', input: price.input, output: price.output, cache_read: price.cache_read, cache_write: price.cache_write, cacheWritePremium, inputTokens, maxOutputTokens, ...(price.long ? { long: price.long } : {}) };
+  const cacheWrite1h = provider === 'anthropic' && /"cache_control":\{[^{}]*"ttl":"1h"/.test(JSON.stringify(b));
+  return { provider, model, kind: 'chat', input: price.input, output: price.output, cache_read: price.cache_read, cache_write: price.cache_write, cacheWritePremium, ...(cacheWrite1h ? { cacheWrite1h } : {}), inputTokens, maxOutputTokens, ...(price.long ? { long: price.long } : {}) };
 }
 
 const GEMINI_METHOD = /\/models\/([^/:]+):([A-Za-z]+)$/;
@@ -1297,10 +1307,10 @@ function priceGemini(url: string, body: unknown): RequestPrice | null {
   return { provider: 'gemini', model, kind: 'chat', input: price.input, output: price.output, cache_read: price.cache_read, inputTokens, maxOutputTokens, ...(price.long ? { long: price.long } : {}) };
 }
 
-/** Worst-case reservation: input estimate (at the cache-write price when it applies) plus the full output allowance, at long-prompt rates when the estimate crosses the model's threshold. */
+/** Worst-case reservation: input estimate (at the 5-minute or 1-hour cache-write price when it applies) plus the full output allowance, at long-prompt rates when the estimate crosses the model's threshold. */
 export function reservationUsd(price: RequestPrice): number {
   const rates = price.long && price.inputTokens > price.long.above_input_tokens ? price.long : price;
-  const inputPrice = price.cacheWritePremium ? Math.max(rates.input, rates.cache_write ?? 0) : rates.input;
+  const inputPrice = Math.max(price.cacheWritePremium ? rates.cache_write ?? 0 : 0, price.cacheWrite1h ? rates.input * ANTHROPIC_CACHE_WRITE_1H_MULT : 0, rates.input);
   return (price.inputTokens * inputPrice + price.maxOutputTokens * rates.output) / 1e6;
 }
 
@@ -1321,9 +1331,12 @@ export function usageCost(price: RequestPrice, responseBody: unknown): { usd: nu
   const detail = (key: string) => (typeof details?.[key] === 'number' ? details[key] as number : 0);
   const cacheRead = n('cache_read_input_tokens') + detail('cached_tokens');
   const cacheWrite = n('cache_creation_input_tokens') + detail('cache_write_tokens');
+  // Anthropic splits its cache writes by TTL in `cache_creation`: 1-hour writes bill 2x input, the rest at the 5-minute rate.
+  const oneHour = (usage.cache_creation as Record<string, unknown> | undefined)?.ephemeral_1h_input_tokens;
+  const cacheWrite1h = Math.min(cacheWrite, typeof oneHour === 'number' && oneHour > 0 ? oneHour : 0);
   const rates = price.long && inputTokens > price.long.above_input_tokens ? price.long : price;
   const usd = ((inputTokens - cacheRead - cacheWrite) * rates.input + cacheRead * (rates.cache_read ?? rates.input)
-    + cacheWrite * (rates.cache_write ?? rates.input) + outputTokens * rates.output) / 1e6;
+    + (cacheWrite - cacheWrite1h) * (rates.cache_write ?? rates.input) + cacheWrite1h * rates.input * ANTHROPIC_CACHE_WRITE_1H_MULT + outputTokens * rates.output) / 1e6;
   return { usd, input_tokens: inputTokens, output_tokens: outputTokens };
 }
 
@@ -1449,6 +1462,20 @@ export const unguardedFetch: typeof fetch = baseFetch;
 /** Most recent OpenAI responses remembered for continuation pricing. */
 const CHAIN_MEMORY = 100_000;
 
+/** Read a response body to its end, keeping what arrived when the read fails (a lost connection), so its partial usage can still be charged. */
+export async function readBody(body: ReadableStream<Uint8Array> | null): Promise<{ text: string; error: Error | null }> {
+  if (!body) return { text: '', error: null };
+  const reader = body.getReader(), decoder = new TextDecoder();
+  let text = '';
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) return { text: text + decoder.decode(), error: null };
+      text += decoder.decode(value, { stream: true });
+    }
+  } catch (e) { return { text, error: e instanceof Error ? e : new Error(String(e)) }; }
+}
+
 /** Provider usage from a server-sent-events body: OpenAI `usage` chunks and `response.completed`, Anthropic `message_start` and `message_delta`. */
 export function sseUsage(text: string): Record<string, unknown> | null {
   const merged: Record<string, unknown> = {};
@@ -1468,6 +1495,41 @@ export function sseUsage(text: string): Record<string, unknown> | null {
 }
 
 /**
+ * Why a streamed body cannot be settled from its usage events, or null when it can. An Anthropic Messages stream is
+ * final only after a `message_delta` with usage and `message_stop`; a Responses stream only at a terminal
+ * `response.completed`, `response.incomplete` or `response.failed` event with usage. A stream with an `error` event
+ * (before or after `message_start`) and no final usage is named by the error's type. Usage seen before the end is
+ * partial, and a URL-backed input (a PDF by URL) can make it larger than the reservation, so the caller charges the
+ * larger of the two. Chat-completions streams carry usage only in their last chunk.
+ */
+export function sseIncomplete(text: string): string | null {
+  let messages = false, delta = false, stop = false, responses = false, terminal = false;
+  let error: string | null = null;
+  const name = (v: unknown) => (typeof v === 'string' && /^[\w.-]{1,64}$/.test(v) ? v : null);
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('data:')) continue;
+    const data = line.slice(5).trim();
+    if (!data || data === '[DONE]') continue;
+    let obj: Record<string, any>;
+    try { obj = JSON.parse(data); } catch { continue; }
+    const type = typeof obj?.type === 'string' ? obj.type : '';
+    if (type.startsWith('message_')) {
+      messages = true;
+      if (type === 'message_delta' && obj.usage && typeof obj.usage === 'object') delta = true;
+      if (type === 'message_stop') stop = true;
+    } else if (type.startsWith('response.')) {
+      responses = true;
+      const final = ['response.completed', 'response.incomplete', 'response.failed'].includes(type);
+      if (final && obj.response?.usage && typeof obj.response.usage === 'object') terminal = true;
+      else if (type === 'response.failed') error ??= name(obj.response?.error?.code) ?? type;
+    } else if (type === 'error') error ??= name(obj.error?.type) ?? name(obj.code) ?? 'of an unnamed type';
+  }
+  if (messages ? delta && stop : responses ? terminal : !error) return null;
+  if (error) return `stream error ${error} before final usage`;
+  return messages ? 'the end of the stream came before message_delta usage and message_stop' : 'the end of the stream came before response.completed usage';
+}
+
+/**
  * Route every fetch to a paid host through the ledger: price, reserve, send,
  * then reconcile from the response usage. A refused reservation rejects the
  * fetch with BudgetExceededError before anything is sent. One guard at a time.
@@ -1480,15 +1542,16 @@ export function installPaidRequestGuard(run: BudgetRun, options: { fetchImpl?: t
   /** OpenAI response id -> input plus output tokens it reported: the context a continuation re-sends. */
   const chain = new Map<string, number>();
   const pricing: PriceOptions = { chainContextTokens: id => chain.get(id) };
-  const measure = async (price: RequestPrice, response: Response) => {
+  const measure = async (price: RequestPrice, response: Response): Promise<MeasuredCost | null> => {
     // A 4xx answer without usage settles at $0, as the metering proxy does: providers do not bill rejected requests.
     const rejected = response.status >= 400 && response.status < 500 ? { usd: 0, input_tokens: 0, output_tokens: 0 } : null;
     if ((response.headers.get('content-type') ?? '').includes('event-stream')) {
-      // A streamed response is read to its end (the caller still gets the whole stream) and settled from its usage events.
-      let text: string;
-      try { text = await response.clone().text(); } catch { return rejected; }
+      // A streamed response is read to its end (the caller still gets the whole stream) and settled from its usage events; one that ended before its final usage is charged the larger of its reservation and the partial usage it reported.
+      const { text, error } = await readBody(response.clone().body);
       const usage = sseUsage(text);
-      return (usage ? usageCost(price, { usage }) : null) ?? rejected;
+      const cost = usage ? usageCost(price, { usage }) : null;
+      if (!cost) return rejected;
+      return error || sseIncomplete(text) ? { ...cost, unfinished: true } : cost;
     }
     let parsed: unknown;
     try { parsed = await response.clone().json(); } catch { return rejected; }

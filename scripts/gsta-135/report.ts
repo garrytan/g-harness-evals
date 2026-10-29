@@ -218,7 +218,7 @@ export function panelReport(rows: any[], manifest: any, manifestPath: string, ar
     '|---|---|---|---|',
     ...[...byTermination.entries()].sort().map(([t, rs]) => '| ' + [t, terminationClass(t), rs.length, rs.length > 12 ? rs.length + ' trials' : rs.map(r => r.trial_id).join(', ')].join(' | ') + ' |'),
     '',
-    'Evaluator infrastructure: infra:reservation_refused, infra:cap_refused, infra:no_model_request, infra:upstream (an upstream 5xx settled at its reservation, then a lease refusal: the provider, not the trial), infra_error, not_run:*. Harness or gstack runtime: infra:runtime, harness_error, model_error. The trial\'s own outcome: completed, timeout, ceiling:lease (a 402 after at least one forwarded request: the trial failed the $' + perTrialUsd.toFixed(2) + ' bar). Every class stays in the denominators.',
+    'Evaluator infrastructure: infra:reservation_refused, infra:cap_refused, infra:no_model_request, infra:upstream (an upstream 5xx settled at its reservation, then a lease refusal, or a provider-error 5xx settled at $0 in a trial that did not complete: the provider, not the trial), infra_error, not_run:*. Harness or gstack runtime: infra:runtime, harness_error, model_error. The trial\'s own outcome: completed, timeout, ceiling:lease (a 402 after at least one forwarded request: the trial failed the $' + perTrialUsd.toFixed(2) + ' bar). Every class stays in the denominators.',
     '',
     '## Deviations',
     '',

@@ -2,6 +2,17 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.39] - 2026-10-29
+
+### internal-task: the metering proxy settles unfinished streams, provider errors and 1-hour cache writes correctly
+
+- An unfinished stream (no final usage: Anthropic `message_delta` with usage plus `message_stop`; Responses `response.completed`, `response.incomplete` or `response.failed` with usage) is charged the larger of its reservation and the cost of the usage it did report, never the partial usage alone. Lease mode, in-process mode and the paid-request guard share the rule (`sseIncomplete` in runner/ledger/budget-ledger.ts). A mid-stream error names its type in the reason.
+- A 5xx settles at $0 only for known not-billed provider errors: Anthropic 500 or 529 with `api_error` or `overloaded_error`, OpenAI 500 or 503 with `server_error`. A 504, any `timeout_error`, a gateway body or anything unknown keeps the reservation.
+- 1-hour cache writes (`cache_creation.ephemeral_1h_input_tokens`) are priced at 2x input, and a request asking for a 1-hour cache reserves at that rate.
+- The usage line records `reasoning_effort`, `thinking_type` and `thinking_budget_tokens` when the request sets them, allowlisted values only.
+- internal-task panel: a trial ended by provider errors that settled at $0 is still `infra:upstream` (`provider_errors` in scripts/gsta-135/lease.ts).
+- Tests: tests/metering-proxy-streams.test.ts (real proxy CLI against a raw-socket fake), guard and in-process cases, lease.ts classification, pricing.
+
 ## [0.0.38] - 2026-10-29
 
 ### internal-task: merge-pass accepts the interim gate while /ship is suspended

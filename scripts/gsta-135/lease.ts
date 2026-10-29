@@ -39,6 +39,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { priceRequest, readLedger, reservationUsd, type LedgerEntry } from '../../runner/ledger/budget-ledger.ts';
+import { PROVIDER_ERROR_NOT_BILLED } from '../../runner/proxy/metering-proxy.ts';
 
 export const PANEL_MODEL = 'claude-opus-5-5';
 export const OPUS_CONTEXT_TOKENS = 200_000;
@@ -118,10 +119,13 @@ export interface UsageLine { at: string; key: string; outcome: string; status?: 
 
 /**
  * One trial's spend, the shape discovery.sh writes on the row. Forwarded rows
- * settle at actual_usd, except those the proxy charged at their full
- * reservation because the upstream answered with no usage (a 5xx such as 529):
+ * settle at actual_usd, except those the proxy charged at their reservation
+ * because the upstream answered with no usage (a 5xx that is not the
+ * provider's own not-billed error, such as a gateway's 529 page or a 504):
  * those dollars are usd_charged_reservation, outside the trial's $1.00 bar
- * and inside the cap (the ledger committed them). Failed rows (the upstream
+ * and inside the cap (the ledger committed them). A provider's own 5xx error
+ * (an Anthropic 529 overloaded_error, an OpenAI 500 server_error) settles at
+ * $0 and is counted in provider_errors. Failed rows (the upstream
  * never answered) keep their reservation as unknown. Refused rows cost nothing
  * and are counted by status and reason; 402 is the lease, except the proxy's
  * "unpriced request" 402, which never touched the lease; 403 is a route or
@@ -129,7 +133,7 @@ export interface UsageLine { at: string; key: string; outcome: string; status?: 
  * lease refusal whose time falls inside another request's reservation
  * (created_at before it, settled_at after it or still open) is concurrent.
  */
-export interface Spend { forwarded: number; spent: number; unknown: number; charged_reservations: number; charged_reservation_usd: number; refused: number; budget_refusals: number; concurrent_refusals: number; refusals: Record<string, number> }
+export interface Spend { forwarded: number; spent: number; unknown: number; charged_reservations: number; charged_reservation_usd: number; provider_errors: number; refused: number; budget_refusals: number; concurrent_refusals: number; refusals: Record<string, number> }
 
 export function spendFromUsage(lines: UsageLine[], key: string, entries: LedgerEntry[] | null): Spend {
   const mine = lines.filter(l => l.key === key);
@@ -145,6 +149,7 @@ export function spendFromUsage(lines: UsageLine[], key: string, entries: LedgerE
     spent: round6(forwarded.filter(l => l.charged_reservation !== true).reduce((n, l) => n + (l.actual_usd ?? 0), 0)),
     unknown: round6(mine.filter(l => l.outcome === 'failed').reduce((n, l) => n + (l.reserved_usd ?? 0), 0)),
     charged_reservations: charged.length, charged_reservation_usd: round6(charged.reduce((n, l) => n + (l.actual_usd ?? 0), 0)),
+    provider_errors: forwarded.filter(l => (l.status ?? 0) >= 500 && l.actual_usd === 0 && String(l.reason ?? '').endsWith(PROVIDER_ERROR_NOT_BILLED)).length,
     refused: refused.length, budget_refusals: budget.length, concurrent_refusals: budget.filter(l => overlaps(l.at)).length, refusals,
   };
 }
@@ -158,19 +163,25 @@ export function readUsage(path: string): UsageLine[] {
 /**
  * The row's termination from run-trial.sh's termination, the trial's usage
  * lines and the wrapper log. Order: a degraded gstack runtime first (the trial
- * earns no credit whatever else happened), then lease refusals: after a
- * reservation the proxy charged in full for an upstream failure it is
- * infra:upstream (the provider consumed the lease, not the trial); when the
- * refused request overlapped an in-flight one it is infra:reservation_refused
- * (the lease assumes serial requests); after a forwarded request the trial
- * failed the $1.00 bar (ceiling:lease); before any, the first reservation did
- * not fit the lease (infra:reservation_refused). Then the output-cap 400 and
- * the empty trial, else run-trial's own word.
+ * earns no credit whatever else happened), then the provider: after a
+ * reservation the proxy charged in full for an upstream failure (a 5xx with no
+ * usage that is not a known provider error, such as a gateway's 529 page) and
+ * a lease refusal, or after provider-error 5xx answers the proxy settled at $0
+ * (an Anthropic 529 overloaded_error) in a trial that did not complete, it is
+ * infra:upstream (the provider failed the trial, not the trial itself). A $0
+ * provider error consumed no lease, so a lease refusal after one still counts
+ * against the trial. Then lease refusals: when the refused request overlapped
+ * an in-flight one it is infra:reservation_refused (the lease assumes serial
+ * requests); after a forwarded request the trial failed the $1.00 bar
+ * (ceiling:lease); before any, the first reservation did not fit the lease
+ * (infra:reservation_refused). Then the output-cap 400 and the empty trial,
+ * else run-trial's own word.
  */
 export function classifyTermination(resultTermination: string, spend: Spend, wrapperLog: string | null): string {
   if (wrapperLog !== null && /\bruntime: degraded\b/.test(wrapperLog)) return 'infra:runtime';
+  if (spend.budget_refusals > 0 && spend.charged_reservations > 0) return 'infra:upstream';
+  if (spend.budget_refusals === 0 && (spend.provider_errors ?? 0) > 0 && resultTermination !== 'completed') return 'infra:upstream';
   if (spend.budget_refusals > 0) {
-    if (spend.charged_reservations > 0) return 'infra:upstream';
     if (spend.concurrent_refusals > 0) return 'infra:reservation_refused';
     return spend.forwarded > 0 ? 'ceiling:lease' : 'infra:reservation_refused';
   }

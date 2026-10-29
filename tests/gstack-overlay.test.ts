@@ -208,7 +208,7 @@ describe('discovery driver', () => {
     writeFileSync(join(dir, 'u.ndjson'), JSON.stringify(other) + '\n');
     const expr = require('node:fs').readFileSync(join(ROOT, 'scripts', 'gsta-135', 'discovery.sh'), 'utf8').match(/spend=\$\(bun scripts\/gsta-135\/lease\.ts spend[\s\S]*?\n\s*\|\| die 2 "[^"]*"/)![0];
     const run = (usage: string) => spawnSync('bash', ['-c', `set -euo pipefail; cd "${ROOT}"; die() { echo "$2" >&2; exit "$1"; }; trial=t1; lease_id=run.t1; usage="${usage}"; ledger="${join(dir, 'none.sqlite')}"; ${expr}; echo "$spend"`], { encoding: 'utf8' });
-    const zero = { forwarded: 0, spent: 0, unknown: 0, charged_reservations: 0, charged_reservation_usd: 0, refused: 0, budget_refusals: 0, concurrent_refusals: 0, refusals: {} };
+    const zero = { forwarded: 0, spent: 0, unknown: 0, charged_reservations: 0, charged_reservation_usd: 0, provider_errors: 0, refused: 0, budget_refusals: 0, concurrent_refusals: 0, refusals: {} };
     const r = run(join(dir, 'u.ndjson'));
     expect(r.status).toBe(0);
     expect(JSON.parse(r.stdout.trim())).toEqual(zero);

@@ -22,9 +22,13 @@
  *     enforces an output-token cap so the provider enforces the bound,
  *     reserves the worst case before forwarding (concurrent requests serialize
  *     on the ledger, so they cannot overspend the lease), meters streamed
- *     responses from their usage events (or charges the reservation), settles
- *     a 4xx answer without usage at $0 (providers do not bill rejected
- *     requests; a 5xx, a timeout or a lost connection keeps the reservation), refuses
+ *     responses from their final usage events (a stream that ended before
+ *     them, by truncation, an error event or a lost connection, is charged
+ *     the larger of its reservation and the partial usage it reported, and
+ *     its usage line says why), settles a 4xx answer without usage at $0 and
+ *     a 5xx without usage at $0 only when its body is the provider's own
+ *     not-billed error envelope (notBilledError; any other 5xx, a timeout or
+ *     a lost connection keeps the reservation), refuses
  *     bodies carrying a forbidden marker (the sanitizer's leak tripwire), and
  *     appends one usage line per request (never a body or a key).
  *
@@ -62,9 +66,9 @@
  * open in the file before opening the next one.
  */
 import { appendFileSync, readFileSync } from 'node:fs';
-import { BudgetExceededError, BudgetRun, ledgerStatus, priceRequest, reservationUsd, sseUsage, usageCost, type BudgetAllowance } from '../ledger/budget-ledger.ts';
+import { BudgetExceededError, BudgetRun, ledgerStatus, priceRequest, readBody, reservationUsd, sseIncomplete, sseUsage, usageCost, type BudgetAllowance } from '../ledger/budget-ledger.ts';
 
-export { sseUsage };
+export { sseIncomplete, sseUsage };
 import { findLeaks } from './sanitize.ts';
 
 export const UPSTREAM: Record<string, string> = { anthropic: 'https://api.anthropic.com', openai: 'https://api.openai.com', voyage: 'https://api.voyageai.com' };
@@ -122,6 +126,36 @@ export interface UsageLine {
   at: string; key: string; provider: string; route: string; model: string | null;
   outcome: 'forwarded' | 'refused' | 'failed';
   reason?: string; status?: number; reserved_usd?: number; actual_usd?: number; input_tokens?: number; output_tokens?: number; cached_tokens?: number; charged_reservation?: boolean; streamed?: boolean;
+  /** What the request asked for: OpenAI `reasoning.effort` (or chat-completions `reasoning_effort`), Anthropic `thinking.type` and `thinking.budget_tokens`. */
+  reasoning_effort?: string; thinking_type?: string; thinking_budget_tokens?: number;
+}
+
+/** The values a usage line may carry for OpenAI `reasoning.effort` / `reasoning_effort` and Anthropic `thinking.type`. */
+export const REASONING_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+export const THINKING_TYPES = ['enabled', 'disabled', 'adaptive'] as const;
+
+/** The tail of the reason the proxy writes on a 5xx it settled at $0 (scripts/gsta-135/lease.ts reads it). */
+export const PROVIDER_ERROR_NOT_BILLED = 'a provider error envelope that is not billed, settled at $0';
+
+/**
+ * The error type of a 5xx answer that is a provider's own known not-billed error, or null. Anthropic: 500 or 529 with
+ * `{"type":"error","error":{"type":"api_error"|"overloaded_error"}}`. OpenAI: 500 or 503 with
+ * `{"error":{"type":"server_error"}}`, `code` null, "server_error" or "service_unavailable" (or no `type` and
+ * `code` "server_error"). Anything else (a 504, a timeout_error, a gateway's JSON or HTML, an array) is null and keeps
+ * its reservation, since the request may have run.
+ */
+function notBilledError(provider: ProviderName, status: number, body: unknown): string | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const b = body as Record<string, unknown>;
+  const e = b.error;
+  if (!e || typeof e !== 'object' || Array.isArray(e)) return null;
+  const { type, code } = e as Record<string, unknown>;
+  if (provider === 'anthropic') {
+    return (status === 500 || status === 529) && b.type === 'error' && (type === 'api_error' || type === 'overloaded_error') ? type : null;
+  }
+  if (provider !== 'openai' || (status !== 500 && status !== 503)) return null;
+  if (type === 'server_error' && (code === null || code === undefined || code === 'server_error' || code === 'service_unavailable')) return type;
+  return type === undefined && code === 'server_error' ? code : null;
 }
 
 /** Cache-read tokens a provider reported (Anthropic cache_read_input_tokens, OpenAI prompt/input_tokens_details.cached_tokens), for the usage line. */
@@ -298,11 +332,15 @@ export class MeteringProxy {
     }
     const text = await res.text();
     if (price) {
+      const streamed = (res.headers.get('content-type') ?? '').includes('event-stream');
       let cost: ReturnType<typeof usageCost> = null;
-      try { cost = (res.headers.get('content-type') ?? '').includes('event-stream') ? usageCost(price, { usage: sseUsage(text) }) : usageCost(price, JSON.parse(text)); } catch { cost = null; }
+      try { cost = streamed ? usageCost(price, { usage: sseUsage(text) }) : usageCost(price, JSON.parse(text)); } catch { cost = null; }
+      // A stream that ended before its final usage is charged the larger of its reservation and the partial usage it reported, as the paid-request guard does.
+      const unfinished = streamed && cost !== null && sseIncomplete(text) !== null;
       // A 4xx without usage (a 413, a prompt over the context window) settles at $0, as in lease mode and the paid-request guard.
       if (!cost && res.status >= 400 && res.status < 500) cost = { usd: 0, input_tokens: 0, output_tokens: 0 };
-      this.charge(key, prov, price.model, cost ? cost.usd : reservationUsd(price), !cost);
+      const usd = !cost ? reservationUsd(price) : unfinished ? Math.max(reservationUsd(price), cost.usd) : cost.usd;
+      this.charge(key, prov, price.model, usd, !cost || unfinished);
     } else this.charge(key, prov, null, 0, false);
     const out = new Headers(res.headers);
     for (const h of ['content-encoding', 'content-length', 'transfer-encoding']) out.delete(h);
@@ -360,12 +398,23 @@ export class MeteringProxy {
     if (prov === 'anthropic') { headers.set('x-api-key', realKey); if (!headers.has('anthropic-version')) headers.set('anthropic-version', '2023-06-01'); }
     else headers.set('authorization', `Bearer ${realKey}`);
     if (outBody !== undefined) headers.set('content-type', 'application/json');
-    const settle = (cost: ReturnType<typeof usageCost>, status: number, isStream: boolean, cached?: number) => {
-      if (entry) p.lease.settle(entry, cost);
-      const usd = cost ? cost.usd : reserved;
-      this.charge(key, prov, bounded?.model ?? null, usd, !!bounded && !cost);
-      this.log({ at, key, provider: prov, route, model: bounded?.model ?? model, outcome: 'forwarded', status, reserved_usd: reserved, actual_usd: usd,
-        input_tokens: cost?.input_tokens, output_tokens: cost?.output_tokens, ...(cost && cached !== undefined ? { cached_tokens: cached } : {}), charged_reservation: !!bounded && !cost, streamed: isStream });
+    // Only known enum values reach the usage log; anything else a request carries in these fields is omitted.
+    const known = (v: unknown, values: readonly string[]) => (typeof v === 'string' && values.includes(v) ? v : undefined);
+    const effort = known(body?.reasoning?.effort, REASONING_EFFORTS) ?? known(body?.reasoning_effort, REASONING_EFFORTS);
+    const thinking = known(body?.thinking?.type, THINKING_TYPES), budget = body?.thinking?.budget_tokens;
+    const knobs = {
+      ...(effort !== undefined ? { reasoning_effort: effort } : {}),
+      ...(thinking !== undefined ? { thinking_type: thinking } : {}),
+      ...(Number.isSafeInteger(budget) && budget >= 0 ? { thinking_budget_tokens: budget as number } : {}),
+    };
+    /** `unfinished`: `cost` is the partial usage of a stream that ended before its final usage, charged at no less than the reservation. */
+    const settle = (cost: ReturnType<typeof usageCost>, status: number, isStream: boolean, cached?: number, reason?: string, unfinished = false) => {
+      const charged = !!bounded && (!cost || unfinished);
+      if (entry) p.lease.settle(entry, cost && unfinished ? { ...cost, unfinished } : cost);
+      const usd = !cost ? reserved : unfinished ? Math.max(reserved, cost.usd) : cost.usd;
+      this.charge(key, prov, bounded?.model ?? null, usd, charged);
+      this.log({ at, key, provider: prov, route, model: bounded?.model ?? model, outcome: 'forwarded', ...(reason ? { reason } : {}), status, reserved_usd: reserved, actual_usd: usd,
+        input_tokens: cost?.input_tokens, output_tokens: cost?.output_tokens, ...(cost && cached !== undefined ? { cached_tokens: cached } : {}), charged_reservation: charged, streamed: isStream, ...knobs });
     };
     let res: Response;
     try { res = await send(target, { method: req.method, headers, body: outBody, timeout: false, signal: AbortSignal.timeout(UPSTREAM_DEADLINE_MS) } as RequestInit); }
@@ -373,7 +422,7 @@ export class MeteringProxy {
       if (entry) p.lease.settle(entry, null);
       this.charge(key, prov, bounded?.model ?? null, reserved, !!bounded);
       this.observe(key, 'failed');
-      this.log({ at, key, provider: prov, route, model, outcome: 'failed', reason: (e as Error).message.slice(0, 300), reserved_usd: reserved, actual_usd: reserved, charged_reservation: !!bounded });
+      this.log({ at, key, provider: prov, route, model, outcome: 'failed', reason: (e as Error).message.slice(0, 300), reserved_usd: reserved, actual_usd: reserved, charged_reservation: !!bounded, ...knobs });
       return json(502, 'product_error', `upstream failed: ${(e as Error).message}`);
     }
     const out = new Headers(res.headers);
@@ -382,9 +431,16 @@ export class MeteringProxy {
       const done = beginStream();
       const [client, meterBranch] = res.body.tee();
       this.observe(key, res.status);
-      void new Response(meterBranch).text().then(
-        text => { const u = sseUsage(text); settle(bounded && u ? usageCost(bounded, { usage: u }) : null, res.status, true, cachedTokens(u)); },
-        () => settle(null, res.status, true),
+      void readBody(meterBranch).then(
+        ({ text, error }) => {
+          const unfinished = error ? `the stream failed before its final usage: ${error.message.slice(0, 200)}` : sseIncomplete(text);
+          const u = sseUsage(text);
+          const cost = bounded && u ? usageCost(bounded, { usage: u }) : null;
+          const over = !!unfinished && !!cost && cost.usd > reserved;
+          const reason = !bounded || (cost && !unfinished) ? undefined
+            : `${unfinished ?? 'the stream carried no usage'}${over ? '; charged its partial usage, which cost more than the reservation' : ''}`;
+          settle(cost, res.status, true, cachedTokens(u), reason, !!unfinished);
+        },
       ).finally(done);
       return new Response(client, { status: res.status, headers: out });
     }
@@ -395,8 +451,14 @@ export class MeteringProxy {
     this.observe(key, res.ok && !parsed ? 'unparseable' : res.status);
     const parsedBody = parsed ? JSON.parse(text) as { usage?: unknown } : null;
     if (bounded && parsedBody) cost = usageCost(bounded, parsedBody);
+    let reason: string | undefined;
+    const notBilled = !cost && bounded ? notBilledError(prov, res.status, parsedBody) : null;
     if (!cost && bounded && res.status >= 400 && res.status < 500) cost = { usd: 0, input_tokens: 0, output_tokens: 0 };
-    settle(cost, res.status, false, cachedTokens(parsedBody?.usage));
+    else if (notBilled) {
+      cost = { usd: 0, input_tokens: 0, output_tokens: 0 };
+      reason = `HTTP ${res.status} ${notBilled}: ${PROVIDER_ERROR_NOT_BILLED}`;
+    } else if (!cost && bounded) reason = 'the response carried no usage';
+    settle(cost, res.status, false, cachedTokens(parsedBody?.usage), reason);
     return new Response(text, { status: res.status, headers: out });
   }
 }
