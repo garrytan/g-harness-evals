@@ -13,7 +13,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { bundleDigest, compiledTokens, fileEntries, hermesHookRule, keptSlugs, listFiles, verifyFiles, viewFiles, type InstallManifest } from '../gbrain/build-install.ts';
 import { EMBEDDING_MODELS, keylessEnv } from '../gbrain/build-brain.ts';
-import { gbrainImageCommit, imageCommitProblem, installerHookProblem } from '../runner/trial/gbrain.ts';
+import { gbrainImageCommit, gbrainImageInputs, imageCommitProblem, installerHookProblem } from '../runner/trial/gbrain.ts';
+import { publicImageProblem, sealedImageProblem, sealedImageTag, type OpeningReceipt } from '../runner/heldout/sealed.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
 const pin = JSON.parse(readFileSync(join(ROOT, 'gbrain', 'pin.json'), 'utf8'));
@@ -53,6 +54,54 @@ test('gbrainImageCommit reads gbrain_commit from the image; a failed cat, bad JS
   expect(gbrainImageCommit('img', () => ({ status: 1, stdout: '' }))).toBeNull();
   expect(gbrainImageCommit('img', () => ({ status: 0, stdout: 'not json' }))).toBeNull();
   expect(gbrainImageCommit('img', () => ({ status: 0, stdout: '{"gbrain_version":"0.60.457.0"}' }))).toBeNull();
+});
+
+// internal-task phase 3 (adversarial review): a run with no sealed root refuses a gbrain image built from one, and a sealed run's
+// default image is the tag the sealed build gets.
+test('gbrainImageInputs reads the sealed flag from image.json, and from the harness-eval.sealed label when image.json has none', () => {
+  const W = 'a'.repeat(64), C = 'b'.repeat(64);
+  const fake = (imageJson: object, label: string) => (argv: string[]) => (argv[0] === 'run' ? { status: 0, stdout: JSON.stringify(imageJson) } : (expect(argv).toEqual(['image', 'inspect', '-f', '{{index .Config.Labels "harness-eval.sealed"}}', 'img']), { status: 0, stdout: label + '\n' }));
+  expect(gbrainImageInputs('img', fake({ world_sha256: W, heldout_corpus_sha256: C, sealed: true }, 'false'))).toEqual({ world_sha256: W, heldout_corpus_sha256: C, sealed: true });
+  expect(gbrainImageInputs('img', fake({ world_sha256: W, heldout_corpus_sha256: null, sealed: false }, 'true'))).toEqual({ world_sha256: W, heldout_corpus_sha256: null, sealed: false });
+  expect(gbrainImageInputs('img', fake({ gbrain_commit: 'x' }, 'true'))).toEqual({ world_sha256: null, heldout_corpus_sha256: null, sealed: true });
+  expect(gbrainImageInputs('img', fake({ gbrain_commit: 'x' }, '<no value>'))).toEqual({ world_sha256: null, heldout_corpus_sha256: null, sealed: false });
+  expect(gbrainImageInputs('img', () => ({ status: 1, stdout: '' }))).toBeNull();
+  expect(gbrainImageInputs('img', () => ({ status: 0, stdout: 'not json' }))).toBeNull();
+  // an unreadable image.json still leaves the label: a sealed build is never read as public
+  const unreadable = (status: number, stdout: string, label: string) => (argv: string[]) => (argv[0] === 'run' ? { status, stdout } : { status: 0, stdout: label + '\n' });
+  expect(gbrainImageInputs('img', unreadable(1, '', 'true'))).toEqual({ world_sha256: null, heldout_corpus_sha256: null, sealed: true });
+  expect(gbrainImageInputs('img', unreadable(0, 'not json', 'true'))).toEqual({ world_sha256: null, heldout_corpus_sha256: null, sealed: true });
+  expect(publicImageProblem('img', gbrainImageInputs('img', unreadable(1, '', 'true')))).toContain('was built from a sealed root');
+  expect(gbrainImageInputs('img', unreadable(1, '', '<no value>'))).toBeNull();
+});
+
+test('publicImageProblem: a run with no sealed root refuses an image that says sealed or records a held-out corpus; a public image passes', () => {
+  expect(publicImageProblem('img', { world_sha256: 'a'.repeat(64), heldout_corpus_sha256: null, sealed: false } as never)).toBeNull();
+  expect(publicImageProblem('img', null)).toBeNull();
+  expect(publicImageProblem('harness-eval/gbrain:sealed-r1', { heldout_corpus_sha256: null, sealed: true })).toContain('gbrain image harness-eval/gbrain:sealed-r1 was built from a sealed root (image.json says sealed) and this run has no sealed root');
+  expect(publicImageProblem('img', { heldout_corpus_sha256: 'c'.repeat(64), sealed: false })).toContain(`image.json records held-out corpus ${'c'.repeat(12)}`);
+});
+
+test('sealedImageTag is the tag the sealed build gets, and HE-SEALED-005 names exactly that tag', () => {
+  const receipt = { run_id: 'syn-r1', world_sha256: 'a'.repeat(64), heldout_corpus_sha256: 'b'.repeat(64) } as OpeningReceipt;
+  expect(sealedImageTag(receipt)).toBe('harness-eval/gbrain:sealed-syn-r1');
+  const fix = 'fix: scripts/build-gbrain-image.sh --sealed-root <the sealed root> on this machine, which tags harness-eval/gbrain:sealed-syn-r1, then run without --gbrain-image (or pass --gbrain-image harness-eval/gbrain:sealed-syn-r1)';
+  expect(sealedImageProblem('harness-eval/gbrain:dev', { world_sha256: 'f'.repeat(64), heldout_corpus_sha256: null }, receipt)).toContain(fix);
+  expect(sealedImageProblem('harness-eval/gbrain:dev', null, receipt)).toContain(fix);
+  expect(sealedImageProblem('img', { world_sha256: receipt.world_sha256, heldout_corpus_sha256: receipt.heldout_corpus_sha256 }, receipt)).toBeNull();
+});
+
+test('sealedImageProblem: a sealed-labelled image whose image.json gives no digest says so, not "unrecorded" or "public"', () => {
+  const receipt = { run_id: 'syn-r1', world_sha256: 'a'.repeat(64), heldout_corpus_sha256: 'b'.repeat(64) } as OpeningReceipt;
+  const unreadable = gbrainImageInputs('img', (argv) => (argv[0] === 'run' ? { status: 1, stdout: '' } : { status: 0, stdout: 'true\n' }));
+  expect(unreadable).toEqual({ world_sha256: null, heldout_corpus_sha256: null, sealed: true });
+  const problem = sealedImageProblem('img', unreadable, receipt)!;
+  expect(problem).toContain('gbrain image img carries the harness-eval.sealed=true label but no readable /opt/sidecar/image.json digests');
+  expect(problem).toContain('which tags harness-eval/gbrain:sealed-syn-r1');
+  expect(problem).not.toContain('unrecorded');
+  expect(problem).not.toContain('public');
+  // a readable image.json from another root still names both digests
+  expect(sealedImageProblem('img', { world_sha256: 'f'.repeat(64), heldout_corpus_sha256: null, sealed: true }, receipt)).toContain(`was built from world ${'f'.repeat(12)} and held-out corpus public`);
 });
 
 test('imageCommitProblem: the pinned commit passes, another commit or no image.json is HE-GBRAIN-002 naming both, --gbrain-commit replaces the pin', () => {

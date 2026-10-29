@@ -20,16 +20,45 @@
  *   full history: two pull requests that each passed alone and together leave main over budget turn the push run on
  *   main red after the second merge, naming the later run.
  * - `deriveSet` from `scripts/receipts-manifest.ts`, which records each run's set, number and label.
+ * - `checkPlan` and `deriveSet` from `scripts/sealed/open.ts`, the custodian's open step for a sealed set, which also
+ *   counts every opening its access log records (docs/sealed-custody.md).
+ *
+ * internal-task phase 3: a sealed opening publishes its opening receipt at docs/benchmarks/<run>/sealed-results/
+ * opening-receipt.json. The CI check requires the run's ledger row to say opened once that file exists, so a row that
+ * was withdrawn or superseded after the set was opened cannot refund the opening.
  *
  *   bun runner/heldout/openings.ts      print every set's derived openings
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, normalize } from 'node:path';
 import { RunnerError } from '../errors.ts';
 import { loadManifest as loadRegistry } from '../prereg/prereg.ts';
 import { DEFAULT_SET, heldoutSet, heldoutSets, openingsLedger, readManifest, type OpeningRow, type OpeningsLedger } from '../../scripts/seal-heldout.ts';
+
+/** A preregistered claim a sealed opening decides (scripts/sealed/export.ts): one entry of a comparison file in the run's raw
+ *  results, matched by field values, and the decision rule. Every claim is a primary decision and all of them form one
+ *  Holm family at the set's alpha_per_opening. superiority: enters with its two-sided p and is accepted when its
+ *  Holm-adjusted p is at most alpha and the estimate goes in the claimed direction. noninferiority: enters with its
+ *  one-sided p against the margin (scripts/compare-run.ts --margin) and is accepted when its Holm-adjusted p is at most
+ *  alpha. */
+export interface HeldoutClaim {
+  id: string;
+  sentence: string;
+  /** comparisons.json or comparisons.gbrain.json: export.ts makes these two from trials.jsonl and refuses any other source. */
+  source: string;
+  /** Dot path to the list of entries in that file, such as "comparisons" or "scopes.0.comparisons". */
+  path: string;
+  where: Record<string, string | number>;
+  rule: 'superiority' | 'noninferiority';
+  direction: 'increase' | 'decrease';
+  /** Noninferiority margin as a fraction (0.05 is five points). */
+  margin?: number;
+  estimate?: string;
+  interval?: string;
+  p?: string;
+}
 
 /** The block a preregistration made after internal-task carries when any of its cells runs a held-out split. */
 export interface HeldoutBlock {
@@ -37,6 +66,8 @@ export interface HeldoutBlock {
   label: 'confirmatory' | 'dev';
   reason?: string;
   candidate_sha256: string;
+  /** Sealed sets: the claims the opening publishes one accept or reject for. */
+  claims?: HeldoutClaim[];
 }
 
 interface PreregLike {
@@ -88,6 +119,19 @@ type Order = Map<string, { commit: string; position: number }>;
 const COUNTED = new Set<OpeningRow['status']>(['planned', 'opened']);
 const SPLITS = new Set(['dev', 'heldout']);
 const TASK_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/** Run ids with a published sealed opening receipt (docs/benchmarks/<dir>/sealed-results/opening-receipt.json), each with its path. */
+export function publishedOpenings(root: string): Map<string, string> {
+  const out = new Map<string, string>();
+  const base = join(root, 'docs', 'benchmarks');
+  if (!existsSync(base)) return out;
+  for (const d of readdirSync(base, { withFileTypes: true })) {
+    const p = join(base, d.name, 'sealed-results', 'opening-receipt.json');
+    if (!d.isDirectory() || !existsSync(p)) continue;
+    try { const r = JSON.parse(readFileSync(p, 'utf8')) as { run_id?: string }; if (r.run_id) out.set(r.run_id, rel(root, p)); } catch { /* an unreadable receipt is receipts-manifest's finding */ }
+  }
+  return out;
+}
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
 /**
@@ -106,6 +150,30 @@ export function cellProblem(prereg: PreregLike): string | null {
   return null;
 }
 
+/** Problems of a sealed opening's claims, checked before an opening is spent (open.ts admission), when CI reads a
+ *  preregistration that carries claims, and again at export: a non-empty list, unique ids, a sentence, a source export.ts
+ *  makes, a path, a non-empty where of string or finite-number values, a known rule and direction, and a margin >= 0 on a noninferiority claim. */
+export function claimProblems(claims: unknown): string[] {
+  if (!Array.isArray(claims) || !claims.length) return ['heldout.claims must be a non-empty list; a sealed opening publishes one preregistered accept or reject per claim'];
+  const problems: string[] = [];
+  const ids = new Set<string>();
+  claims.forEach((c: Partial<HeldoutClaim>, i) => {
+    const at = `heldout.claims[${i}]${typeof c?.id === 'string' && c.id ? ` (${c.id})` : ''}`;
+    if (typeof c?.id !== 'string' || !c.id.trim()) problems.push(`${at}: id must be a non-empty string`);
+    else if (ids.has(c.id)) problems.push(`${at}: id is not unique`);
+    else ids.add(c.id);
+    if (typeof c?.sentence !== 'string' || !c.sentence.trim()) problems.push(`${at}: sentence must be a non-empty string`);
+    if (c?.source !== 'comparisons.json' && c?.source !== 'comparisons.gbrain.json') problems.push(`${at}: source must be comparisons.json or comparisons.gbrain.json, the two export.ts makes (got ${JSON.stringify(c?.source)})`);
+    if (typeof c?.path !== 'string' || !c.path) problems.push(`${at}: path must be a non-empty string`);
+    if (!c?.where || typeof c.where !== 'object' || Array.isArray(c.where) || !Object.keys(c.where).length) problems.push(`${at}: where must be a non-empty object`);
+    else if (Object.values(c.where).some((v) => typeof v !== 'string' && !(typeof v === 'number' && Number.isFinite(v)))) problems.push(`${at}: every where value must be a string or a finite number, the values a comparison entry is matched on`);
+    if (c?.rule !== 'superiority' && c?.rule !== 'noninferiority') problems.push(`${at}: rule must be superiority or noninferiority (got ${JSON.stringify(c?.rule)})`);
+    if (c?.direction !== 'increase' && c?.direction !== 'decrease') problems.push(`${at}: direction must be increase or decrease (got ${JSON.stringify(c?.direction)})`);
+    if (c?.rule === 'noninferiority' && !(typeof c.margin === 'number' && Number.isFinite(c.margin) && c.margin >= 0)) problems.push(`${at}: a noninferiority claim needs a numeric margin >= 0`);
+  });
+  return problems;
+}
+
 /** The first problem with a heldout block made after internal-task, as the code and message plan throws and CI lists. */
 function blockProblem(prereg: PreregLike, sets: string[]): { code: string; message: string } | null {
   const block = prereg.heldout;
@@ -114,6 +182,8 @@ function blockProblem(prereg: PreregLike, sets: string[]): { code: string; messa
   if (sets.length !== 1 || block.set !== sets[0]) return { code: 'HE-HELDOUT-001', message: `run ${id}: heldout.set is ${JSON.stringify(block.set)} but its held-out cells run ${sets.join(', ')}; one run opens one held-out set. fix: name the set the cells run, or split the run` };
   if (block.label !== 'confirmatory' && block.label !== 'dev') return { code: 'HE-HELDOUT-001', message: `run ${id}: heldout.label must be "confirmatory" or "dev" (got ${JSON.stringify(block.label)})` };
   if (typeof block.candidate_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(block.candidate_sha256)) return { code: 'HE-HELDOUT-001', message: `run ${id}: heldout.candidate_sha256 must be the 64-hex sha256 of the candidate (docs/methodology.md item 14, R5); got ${JSON.stringify(block.candidate_sha256)}` };
+  const claimed = block.claims === undefined ? [] : claimProblems(block.claims);
+  if (claimed.length) return { code: 'HE-HELDOUT-001', message: `run ${id}: ${claimed.join('; ')}` };
   if (block.label === 'dev' && !(typeof block.reason === 'string' && block.reason.trim())) return { code: 'HE-HELDOUT-004', message: `run ${id} is a dev opening of set ${block.set} with no reason; fix: say why it is not confirmatory in heldout.reason and in its ledger row (for example "later opening", "revise-then-retest", "in-sample for <change>")` };
   return null;
 }
@@ -244,6 +314,7 @@ export function checkOpenings(root: string, legacy = legacyList()): string[] {
     if (p) problems.push(`${entry.id}: ${preregJson}: ${p} (HE-HELDOUT-001)`);
   }
   const candidates = new Map<string, string>();
+  const published = publishedOpenings(root);
   for (const set of sets) {
     const users = registered.filter((r) => r.sets.includes(set.name));
     const derived = deriveSet(root, set.name, registered, order);
@@ -265,6 +336,10 @@ export function checkOpenings(root: string, legacy = legacyList()): string[] {
       const trials = reg ? join(root, dirname(reg.preregistration), 'results', 'trials.jsonl') : null;
       if (!COUNTED.has(row.status) && trials && existsSync(trials) && readFileSync(trials, 'utf8').trim()) problems.push(`set ${set.name}: ${row.run_id} is ${row.status} but has committed trials in ${rel(root, trials)}; a registration that ran a trial opened the set and stays counted, so mark it opened (HE-HELDOUT-002)`);
       if (!reg) problems.push(`set ${set.name}: ledger row ${row.run_id} names no registered experiment with held-out cells of this set`);
+    }
+    for (const row of ledger.openings) {
+      const receipt = published.get(row.run_id);
+      if (receipt && row.status !== 'opened') problems.push(`set ${set.name}: ${row.run_id} is ${row.status} but its sealed opening receipt is published at ${receipt}; an opening that was opened stays counted (a withdrawn or superseded row never refunds it), so its row says opened`);
     }
     for (const o of derived.openings) {
       if (o.status === 'planned' && o.label === 'confirmatory' && ledger.status !== 'open') problems.push(`set ${set.name}: ${o.run_id} is a planned confirmatory opening of a set whose status is ${ledger.status}; mark a set's rows opened before the set is spent or retired, or label the run dev with a reason (HE-HELDOUT-003)`);

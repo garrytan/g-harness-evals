@@ -9,7 +9,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import type { HarnessMode, Termination, TrialRecord } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
-import type { Cell, Manifest, Trial } from '../run.ts';
+import { isSealedCell, type Cell, type Manifest, type Trial } from '../run.ts';
 import { RunProxy, reconcile, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
 import { DEFAULT_PREAMBLE_PATH, loadPreamble } from './task.ts';
 import { type GradeFn, appendRecord, loadGrader, runTrial } from './trial.ts';
@@ -31,6 +31,9 @@ export interface RunOptions {
   maxOutputTokens?: number;
   preamblePath?: string;
   worldPath?: string;
+  /** Sealed custody (runner/run.ts): the held-out cells of sealedSet store task and script paths relative to sealedRoot. */
+  sealedRoot?: string;
+  sealedSet?: string;
   readyTimeoutS?: number;
   turnGraceS?: number;
   stopGraceS?: number;
@@ -70,6 +73,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
   const logFile = join(runDir, 'run.log');
   const log = (line: string) => { const stamped = `${new Date().toISOString()} ${line}`; appendFileSync(logFile, stamped + '\n'); opts.log?.(line); };
   const cells = new Map(manifest.cells.map((c) => [c.id, c]));
+  const sealedPath = (cell: Cell, p: string | undefined) => (p !== undefined && opts.sealedRoot && isSealedCell(cell, opts.sealedSet) ? join(opts.sealedRoot, p) : p);
   const done = new Set(opts.resume ? readRecords(runDir).map((r) => r.trial_id) : []);
   if (!opts.resume && existsSync(join(runDir, 'trials.jsonl')) && readRecords(runDir).length) throw new RunnerError('HE-RUN-003', `${join(runDir, 'trials.jsonl')} already holds trials; fix: pass --resume to continue this run, or plan a new run id`);
   const selected = manifest.trials.filter((t) => !opts.cells || opts.cells.includes(t.cell));
@@ -104,9 +108,10 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       });
       log(`metering proxy on port ${proxy.port}, lease $${opts.leaseUsd ?? manifest.spend_cap_usd} in ${proxy.ledgerPath}`);
     }
-    for (const trial of pending) {
-      const cell = cells.get(trial.cell);
-      if (!cell) throw new RunnerError('HE-RUN-002', `trial ${trial.id} names cell ${trial.cell}, which the manifest does not define`);
+    for (const planned of pending) {
+      const cell = cells.get(planned.cell);
+      if (!cell) throw new RunnerError('HE-RUN-002', `trial ${planned.id} names cell ${planned.cell}, which the manifest does not define`);
+      const trial: Trial = opts.sealedRoot && isSealedCell(cell, opts.sealedSet) ? { ...planned, task_dir: sealedPath(cell, planned.task_dir), script: sealedPath(cell, planned.script) } : planned;
       const trialDir = trialDirFor(runDir, trial);
       log(`trial ${trial.id} starting (${cell.harness}, ${cell.model})`);
       const record = isSingleShot(cell)

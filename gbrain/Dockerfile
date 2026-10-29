@@ -2,6 +2,7 @@
 #
 #   docker build -f gbrain/Dockerfile -t harness-eval/gbrain:dev .                   # keyword brains, keyless (the default target)
 #   scripts/build-gbrain-image.sh [--gbrain <sha>] [--embedded]                        # the same, or the embedded target too
+#   scripts/build-gbrain-image.sh --sealed-root <custodian's root>                      # keyword brains from a sealed world
 #
 # The image holds gbrain at GBRAIN_COMMIT (default the pin in gbrain/pin.json), run from source with bun, and prebuilt
 # PGLite brains: /brains/dev and /brains/heldout, each the bot-visible slice of the Pemberline corpus for its split, and
@@ -26,13 +27,32 @@
 #
 # Tag discipline: the gbrain arm's trials record the tag harness-eval/gbrain:dev; a run that needs another image while that
 # arm is between preregistration and report builds under its own tag (-t harness-eval/gbrain:<name>) and passes --gbrain-image.
+#
+# internal-task (sealed custody, docs/sealed-custody.md): two inputs come from named stages that a build can replace with a
+# BuildKit named context. "world-input" holds the world.json every brain is built from (the public world/seed/world.json by
+# default); "heldout-corpus" is an empty overlay for the heldout corpus pages. scripts/build-gbrain-image.sh --sealed-root
+# passes --build-context world-input=<root>/world --build-context heldout-corpus=<root>/corpus with SEALED_WORLD_SHA256 and
+# SEALED_CORPUS_SHA256 from the custodian's opening receipt. The build fails when the world it received or the overlay's
+# digest differs from those figures, the overlay's heldout/ then replaces the public corpus's heldout pages, and
+# /opt/sidecar/image.json records world_sha256, heldout_corpus_sha256 and sealed. A default build (no named contexts, empty
+# arguments) produces the public image as before, with world_sha256 of the public world, heldout_corpus_sha256 null and
+# sealed false. A sealed image holds the plaintext heldout corpus and stays on the machine that built it.
 ARG GBRAIN_COMMIT=81692dc623f3e220d1ea04b078b3aed903bd086f
 ARG GBRAIN_VERSION=
 ARG CORPUS_COMMIT=6999ebc9da0ac784ac05995b586d22293544e924
 
+# The world the brains are built from; a named context world-input=<dir> holding world.json replaces this stage.
+FROM scratch AS world-input
+COPY world/seed/world.json /world.json
+
+# The sealed heldout corpus overlay, empty by default; a named context heldout-corpus=<dir> holding heldout/ replaces it.
+FROM scratch AS heldout-corpus
+
 FROM oven/bun:1.4.4-debian AS base
 ARG GBRAIN_COMMIT
 ARG GBRAIN_VERSION
+ARG SEALED_WORLD_SHA256=
+ARG SEALED_CORPUS_SHA256=
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git jq \
     && rm -rf /var/lib/apt/lists/*
 # A shallow fetch of exactly the pinned commit (a full sha or a branch name; GitHub serves both).
@@ -48,14 +68,34 @@ RUN git init --quiet /opt/gbrain && cd /opt/gbrain \
     && printf '{"gbrain_commit":"%s","gbrain_ref":"%s","gbrain_version":"%s","bun":"%s"}\n' "$resolved" "$GBRAIN_COMMIT" "$version" "$(bun --version)" > /opt/sidecar/image.json
 COPY gbrain/build-brain.ts gbrain/build-install.ts gbrain/pin.json gbrain/entrypoint.sh gbrain/export-install.sh /opt/sidecar/gbrain/
 COPY world/types.ts /opt/sidecar/world/types.ts
-COPY world/seed/world.json /opt/sidecar/world/seed/world.json
+COPY --from=world-input /world.json /opt/sidecar/world/seed/world.json
+# The world's digest goes into image.json; a sealed build stops here when the world it received is not the receipt's.
+RUN world_sha256="$(sha256sum /opt/sidecar/world/seed/world.json | cut -d' ' -f1)" \
+    && if [ -n "$SEALED_WORLD_SHA256" ] && [ "$world_sha256" != "$SEALED_WORLD_SHA256" ]; then echo "HE-SEALED-005 world.json has sha256 $world_sha256, SEALED_WORLD_SHA256 asks for $SEALED_WORLD_SHA256" >&2; exit 1; fi \
+    && sealed=false && if [ -n "$SEALED_WORLD_SHA256" ]; then sealed=true; fi \
+    && jq -c --arg w "$world_sha256" --arg c "$SEALED_CORPUS_SHA256" --argjson s "$sealed" \
+         '. + {world_sha256: $w, heldout_corpus_sha256: (if $c == "" then null else $c end), sealed: $s}' /opt/sidecar/image.json > /tmp/image.json \
+    && mv /tmp/image.json /opt/sidecar/image.json
 
 FROM base AS corpus
 ARG CORPUS_COMMIT
+ARG SEALED_CORPUS_SHA256=
 RUN git clone --quiet --filter=blob:none --no-checkout https://github.com/garrytan/gbrain-evals.git /opt/corpus \
     && cd /opt/corpus && git sparse-checkout init --cone \
     && git sparse-checkout set eval/data/messy-company-v1/corpus \
     && git checkout --quiet "$CORPUS_COMMIT" && rm -rf .git
+# A sealed build checks the overlay against the receipt's digest (sha256sum of every file's sha256sum line, paths relative
+# to the overlay root in C order) and swaps it in for the public heldout pages; an empty overlay leaves an empty heldout
+# directory. A default build leaves the public corpus alone.
+COPY --from=heldout-corpus / /opt/heldout-overlay/
+RUN if [ -n "$SEALED_CORPUS_SHA256" ]; then \
+      got="$(cd /opt/heldout-overlay && find . -type f -printf '%P\n' | LC_ALL=C sort | xargs -r -d '\n' sha256sum | sha256sum | cut -d' ' -f1)" \
+      && if [ "$got" != "$SEALED_CORPUS_SHA256" ]; then echo "HE-SEALED-005 the heldout corpus overlay has digest $got, SEALED_CORPUS_SHA256 asks for $SEALED_CORPUS_SHA256" >&2; exit 1; fi \
+      && heldout=/opt/corpus/eval/data/messy-company-v1/corpus/heldout \
+      && rm -rf "$heldout" && mkdir -p "$heldout" \
+      && if [ -d /opt/heldout-overlay/heldout ]; then cp -a /opt/heldout-overlay/heldout/. "$heldout/"; fi; \
+    fi \
+    && rm -rf /opt/heldout-overlay
 
 # The brain builder: gbrain plus the corpus, nothing built yet. scripts/build-gbrain-image.sh --embedded runs this stage as a
 # container with /brain bind-mounted and OPENAI_BASE_URL pointing at the metering proxy to build the embedded brains.

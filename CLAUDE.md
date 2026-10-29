@@ -49,7 +49,7 @@ README.md and the hub pages in `docs/` have two parts: the current state on top,
 - Preregister before the first counted cell. Amendments are dated and committed before the cells they affect. A changed allowlist, model revision or pin is a new run.
 - Spend through the ledger. A cap stop is an incomplete run, recorded as such, never backfilled or retried to change a verdict.
 - Keep provenance. Every published number has a row in the receipts manifest pointing at a hashed artifact.
-- Hold out. Dev-split tasks are public; held-out task bodies and hidden facts stay in sealed custody with a committed digest until a run spends them.
+- Hold out. Dev-split tasks are public; held-out task bodies and hidden facts stay in sealed custody with a committed digest until a run spends them. From v0.3 a held-out set is sealed: only the custodian holds the key and opens it, and every other thread works from the public export ([docs/sealed-custody.md](docs/sealed-custody.md)).
 - Never publish secrets, real personal data, or the agent's raw traces without the redaction boundary.
 
 ## Choose models

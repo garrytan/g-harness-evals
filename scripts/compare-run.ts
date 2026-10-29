@@ -57,12 +57,23 @@
 // gbrain-installer or embedded cell makes it the ladder, otherwise the arm; --design arm|ladder overrides. comparisons.gbrain.json carries
 // design, rungs, the per-scope endpoints, the cost rows and the none table.
 
+// internal-task phase 3: a run planned with a sealed root (manifest.json has a "sealed" block) reads its sealed cells' task
+// families from <sealed-root>/tasks, so it is compared inside custody with --sealed-root <dir> (docs/sealed-custody.md);
+// without it the run is refused with HE-SEALED-001. Every other run is unchanged. trials.jsonl (of --results and --against)
+// and manifest.json are read before the sealed guard is up, so a line that is not JSON is HE-RUN-007 naming the file, the
+// line and the parser's error class, never the parser's message (which quotes the line). With --against both manifests are
+// read before any trial row: a sealed run against an unsealed one, either way round, is HE-SEALED-001, and two sealed runs
+// of different openings are HE-SEALED-003, so a sealed --against never reaches the public task lookup.
+
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { TURN_HOOK_APPLIED, type GbrainCellConfig, type TrialRecord } from '../runner/contracts.ts';
-import { clusteredPairedDelta, exactMcNemar, holmAdjusted, pairObservations, type Observation } from '../runner/stats/paired.ts';
+import { clusteredPairedDelta, exactMcNemar, holmAdjusted, nonInferiorityP, pairObservations, type Observation, type PairedDelta } from '../runner/stats/paired.ts';
+import { sealedGuard } from '../runner/heldout/guard.ts';
+import { openingDiff, readJsonFile, readJsonLines, type OpeningReceipt } from '../runner/heldout/sealed.ts';
+import { RunnerError } from '../runner/errors.ts';
 import { loadTask } from '../runner/grade/task.ts';
-import { resolveGbrain, taskDirFor } from '../runner/run.ts';
+import { isSealedCell, resolveGbrain, taskDirFor } from '../runner/run.ts';
 import { ENDPOINTS, ENDPOINT_LABEL, endpointValue, ladderPairs, readShards, shardsLabel, type Endpoint } from './gbrain-ladder.ts';
 
 function arg(name: string, fallback?: string): string | undefined {
@@ -84,9 +95,37 @@ const draws = Number(arg('draws', '10000'));
 const useRegraded = process.argv.includes('--regraded');
 const familiesArg = arg('families');
 const against = arg('against');
-const readRows = (dir: string) => readFileSync(join(dir, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord);
+const parsed = <T>(read: () => T): T => { try { return read(); } catch (e) { if (!(e instanceof RunnerError)) throw e; console.error(e.message); process.exit(2); } };
+const readRows = (dir: string) => parsed(() => readJsonLines<TrialRecord>(join(dir, 'trials.jsonl')));
+type RunManifest = { cells: Array<{ id: string; harness: string; model: string; config?: string; split: 'dev' | 'heldout'; task_set?: string; gbrain?: GbrainCellConfig; preamble?: string }>; sealed?: { set: string; receipt: OpeningReceipt } };
+const manifest = parsed(() => readJsonFile<RunManifest>(join(results, 'manifest.json')));
+if (against && !existsSync(join(against, 'manifest.json'))) { console.error(`--against ${against} has no manifest.json; compare-run reads both runs' manifests to check how each was planned`); process.exit(2); }
+const againstManifest = against ? parsed(() => readJsonFile<RunManifest>(join(against, 'manifest.json'))) : undefined;
+if (against && !manifest.sealed !== !againstManifest!.sealed) { console.error(`HE-SEALED-001 ${manifest.sealed ? results : against} was planned with a sealed root and ${manifest.sealed ? against : results} without one; --results and --against are two runs planned the same way, and a sealed --against is compared only with its own opening inside custody (docs/sealed-custody.md)`); process.exit(2); }
+if (manifest.sealed && againstManifest?.sealed) {
+  const differs = manifest.sealed.set !== againstManifest.sealed.set ? ['set'] : openingDiff(manifest.sealed.receipt, againstManifest.sealed.receipt);
+  if (differs.length) { console.error(`HE-SEALED-003 --against ${against} was planned with another opening than --results ${results} (it differs in ${differs.join(', ')}); a sealed run is compared only with its own opening`); process.exit(2); }
+}
 const rows = [...readRows(results), ...(against ? readRows(against) : [])];
-const manifest = JSON.parse(readFileSync(join(results, 'manifest.json'), 'utf8')) as { cells: Array<{ id: string; harness: string; model: string; config?: string; split: 'dev' | 'heldout'; task_set?: string; gbrain?: GbrainCellConfig; preamble?: string }> };
+const sealedRoot = arg('sealed-root');
+if (manifest.sealed && !sealedRoot) { console.error(`HE-SEALED-001 ${results} was planned with a sealed root (set ${manifest.sealed.set}); compare it inside custody with --sealed-root <the opened root> (docs/sealed-custody.md)`); process.exit(2); }
+if (manifest.sealed && sealedRoot) {
+  const g = sealedGuard({ root: sealedRoot, set: manifest.sealed.set, repoRoot: process.cwd(), preregJson: (manifest.sealed as { receipt?: { prereg_json?: string } }).receipt?.prereg_json, logFile: join(results, 'compare-run.sealed.log'), allow: [], label: 'scripts/compare-run.ts' });
+  g.say(`compare-run: sealed run (set ${manifest.sealed.set}); the comparisons file is written beside trials.jsonl and the console tables go to ${g.logFile} (custody only)`);
+}
+// internal-task phase 3: a sealed opening's noninferiority claims enter its Holm family with a one-sided p against their margin.
+// --margin <cell a>,<cell b>,<margin>,<higher|lower>[,<endpoint>] (repeatable; the margin a fraction, 0.05 is five points)
+// adds noninferiority {margin, direction, p} to the comparison of a against b (b minus a), p from nonInferiorityP over the
+// same cluster bootstrap as the interval. scripts/sealed/export.ts passes one per noninferiority claim.
+const margins = process.argv.flatMap((x, i) => (x === '--margin' ? [process.argv[i + 1] ?? ''] : [])).map((s) => {
+  const [a, b, m, direction, endpoint] = s.split(',');
+  if (!a || !b || !(Number(m) >= 0) || (direction !== 'higher' && direction !== 'lower')) { console.error(`--margin takes <cell a>,<cell b>,<margin >= 0>,<higher|lower>[,<endpoint>], not "${s}"`); process.exit(2); }
+  return { a, b, margin: Number(m), direction: direction as 'higher' | 'lower', endpoint };
+});
+const noninferiority = (a: string, b: string, d: PairedDelta | null | undefined, endpoint?: string) => {
+  const spec = margins.find((x) => x.a === a && x.b === b && (!x.endpoint || x.endpoint === endpoint));
+  return spec && d ? { noninferiority: { margin: spec.margin, direction: spec.direction, p: nonInferiorityP(d, spec.margin, spec.direction) } } : {};
+};
 const regraded = new Map<string, { grade: string; consent_violation: boolean; predicates?: TrialRecord['predicates'] }>();
 if (useRegraded) {
   for (const l of readFileSync(join(results, 'trials.regraded.jsonl'), 'utf8').split('\n').filter(Boolean)) {
@@ -99,7 +138,7 @@ const familyOf = new Map<string, string>();
 for (const t of rows) {
   if (familyOf.has(t.task)) continue;
   const cell = manifest.cells.find((c) => c.id === t.cell) ?? { split: 'dev' as const };
-  familyOf.set(t.task, loadTask(taskDirFor(cell, t.task, join(repoRoot, 'tasks'))).family);
+  familyOf.set(t.task, loadTask(taskDirFor(cell, t.task, isSealedCell(cell, manifest.sealed?.set) ? join(sealedRoot!, 'tasks') : join(repoRoot, 'tasks'))).family);
 }
 const families = familiesArg ? familiesArg.split(',').map((s) => s.trim()) : null;
 const pass = (t: TrialRecord) => { const r = regraded.get(t.trial_id); const g = r ?? t; return g.grade === 'pass' && !g.consent_violation ? 1 : 0; };
@@ -196,7 +235,7 @@ if (pairMode === 'gbrain') {
             ...cp, endpoint, tested, test_note: tested ? null : 'the none cell is 0 by construction: the mcp cell\'s rate with its task-clustered interval, no test',
             scored: { base: cellRows(cp.base_cell).length, rung: cellRows(cp.cell).length }, positive: { base: cellRows(cp.base_cell).filter((t) => value(t) === 1).length, rung: cellRows(cp.cell).filter((t) => value(t) === 1).length },
             delta: d?.delta ?? null, ci95: d?.ci95 ?? null, p: tested ? d?.p_two_sided ?? null : null, p_method: tested ? d?.p_method ?? null : null, holm_p: null as number | null, holm_family_size: 0,
-            n_clusters: d?.n_clusters ?? 0, n_pairs: d?.n_pairs ?? 0, mean_base: d?.mean_a ?? null, mean_rung: d?.mean_b ?? null,
+            n_clusters: d?.n_clusters ?? 0, n_pairs: d?.n_pairs ?? 0, mean_base: d?.mean_a ?? null, mean_rung: d?.mean_b ?? null, ...noninferiority(cp.base_cell, cp.cell, d, endpoint),
             discordant: mc ? { rung_only: mc.wins, base_only: mc.losses, both: mc.both_pass, neither: mc.both_fail } : null, excluded, per_task: perTask,
           };
         });
@@ -308,7 +347,7 @@ if (pairMode === 'gbrain') {
     const d = clusteredPairedDelta(pairing.pairs, { seed, draws });
     const mc = exactMcNemar(pairing.pairs);
     return {
-      delta: d.delta, ci95: d.ci95, p: d.p_two_sided, p_method: d.p_method, n_clusters: d.n_clusters, n_pairs: d.n_pairs, mean_none: d.mean_a, mean_gbrain: d.mean_b,
+      delta: d.delta, ci95: d.ci95, p: d.p_two_sided, p_method: d.p_method, n_clusters: d.n_clusters, n_pairs: d.n_pairs, mean_none: d.mean_a, mean_gbrain: d.mean_b, ...noninferiority(cp.none, cp.gbrain, d),
       discordant: { gbrain_only_passed: mc.wins, none_only_passed: mc.losses, both_passed: mc.both_pass, both_failed: mc.both_fail },
       excluded, per_task: perTask, faulted,
     };
@@ -387,7 +426,7 @@ if (against) {
 const deltas = pairs.map(({ a, b }) => {
   const pairing = pairObservations(obs(a), obs(b));
   const d = clusteredPairedDelta(pairing.pairs, { seed, draws });
-  return { a, b, delta: d.delta, ci95: d.ci95, p: d.p_two_sided, p_method: d.p_method, n_clusters: d.n_clusters, n_pairs: d.n_pairs, mean_a: d.mean_a, mean_b: d.mean_b };
+  return { a, b, delta: d.delta, ci95: d.ci95, p: d.p_two_sided, p_method: d.p_method, n_clusters: d.n_clusters, n_pairs: d.n_pairs, mean_a: d.mean_a, mean_b: d.mean_b, ...noninferiority(a, b, d) };
 });
 const adjusted = holmAdjusted(deltas.map((d) => d.p));
 const lines = [

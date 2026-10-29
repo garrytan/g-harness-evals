@@ -21,12 +21,25 @@
  * budget (HE-HELDOUT-001 to 004, runner/heldout/openings.ts); a run's own row passes every time while it is opened or its
  * set is open, so shard planning and resume of the same run id are unchanged.
  *
+ * Sealed custody (internal-task phase 3, docs/sealed-custody.md): a held-out cell of a sealed set (its MANIFEST.json says
+ * "custody": "sealed") needs --sealed-root <dir> and --opening-receipt <file> on plan, dry-run, preflight and run
+ * (HE-SEALED-001 to 005). The root is the custodian's decrypted bundle outside every checkout (scripts/sealed/open.ts);
+ * its task tree feeds the sealed cells' tasks, its world/world.json the trial world, the grader and the preflight probe,
+ * and plan copies the receipt into the manifest so preflight and run refuse any other. Trial task paths of sealed cells
+ * are stored relative to the root, so the manifest is the same on every machine. A sealed run's gbrain cells default to
+ * the image harness-eval/gbrain:sealed-<run_id> (what build-gbrain-image.sh --sealed-root tags) and need it built from the
+ * root. run refuses --harness-mode process for every non-scripted cell of a sealed run before it opens the root
+ * (HE-SEALED-001): the harness would run as the runner's user and could read the root, whichever cell it serves. A run with no sealed cell ignores both flags and says
+ * so, and preflight and run refuse it a gbrain image built from a sealed root (HE-SEALED-005: image.json says sealed or
+ * records a held-out corpus digest); plaintext sets and every existing run are otherwise unchanged.
+ *
  * Every error prints one line starting with its HE- code (docs/errors.md) and
  * exits non-zero. Exit 3 is the budget stop (HE-BUDGET-001).
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { basename, dirname, join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import type { GbrainCellConfig, HarnessMode } from './contracts.ts';
 import { RunnerError } from './errors.ts';
 import { canonicalLookup } from './pricing/model-pricing.ts';
@@ -34,6 +47,10 @@ import { lookupEmbeddingPrice } from './pricing/embedding-pricing.ts';
 import { taskTurnCount } from './trial/task.ts';
 import { DEFAULT_GBRAIN_IMAGE, SOURCE_PROBE_QUERIES } from './trial/gbrain.ts';
 import { checkPlan, type HeldoutBlock } from './heldout/openings.ts';
+import { openingDiff, publicImageProblem, readJsonFile, readReceipt, receiptProblems, sealedImageProblem, sealedImageTag, sha256 as sha256Of, verifySealedRoot, type OpeningReceipt } from './heldout/sealed.ts';
+import { insideGitTree } from '../scripts/sealed/custody.ts';
+import { heldoutSet, isSealed, readManifest } from '../scripts/seal-heldout.ts';
+import { sealedGuard } from './heldout/guard.ts';
 
 export { RunnerError };
 
@@ -173,6 +190,8 @@ export interface Manifest {
   per_cell_ceiling_usd: Record<string, number>;
   spend_cap_usd: number;
   trial_hours_at_cap: number;
+  /** Sealed custody: the set whose held-out cells read the sealed root, and the opening receipt plan was given (and its sha256). */
+  sealed?: { set: string; receipt_sha256: string; receipt: OpeningReceipt };
 }
 
 export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
@@ -231,6 +250,48 @@ export function ceilingUsd(cell: Cell): number {
 export interface ManifestOptions {
   /** Where tasks/ lives; the default is the repository's tasks directory. Tests point it at fixtures. */
   tasksRoot?: string;
+  /** Sealed custody: the held-out cells of sealedSet read their tasks from <sealedRoot>/tasks, and their trials record task
+   *  and script paths relative to sealedRoot. */
+  sealedRoot?: string;
+  sealedSet?: string;
+}
+
+/** Whether a cell reads the sealed root: a held-out cell of the sealed set. */
+export const isSealedCell = (cell: Pick<Cell, 'split' | 'task_set'>, sealedSet: string | undefined): boolean => !!sealedSet && cell.split === 'heldout' && taskSetName(cell) === sealedSet;
+
+/** The sets in sealed custody that the cells run held-out cells of (checked against the set's MANIFEST.json under root). */
+export function sealedSetsOf(cells: Array<Pick<Cell, 'split' | 'task_set'>>, root = process.cwd()): string[] {
+  const sets = [...new Set(cells.filter((c) => c.split === 'heldout').map(taskSetName))];
+  return sets.filter((s) => isSealed(readManifest(heldoutSet(s, root)))).sort();
+}
+
+export interface SealedContext { root: string; set: string; receipt: OpeningReceipt; receipt_sha256: string; worldPath: string }
+
+/**
+ * Check a sealed root and its opening receipt before any sealed task or record is read: both flags given (HE-SEALED-001),
+ * the root outside every git checkout (HE-SEALED-002), the receipt naming this run, its preregistration bytes, candidate
+ * and label and matching the set's public commitments, and when the manifest holds a copy, naming the same opening (HE-SEALED-003),
+ * and the root's task tree, slice, corpus pages and merged world matching the receipt (HE-SEALED-004).
+ */
+export function openSealedContext(o: { sealedRoot?: string; receiptPath?: string; set: string; runId: string; preregSha: string; candidate?: string; label?: string; expectReceipt?: OpeningReceipt; root?: string }): SealedContext {
+  const root = o.root ?? process.cwd();
+  if (!o.sealedRoot || !o.receiptPath) throw new RunnerError('HE-SEALED-001', `run ${o.runId} has held-out cells of set ${o.set}, which is in sealed custody; pass --sealed-root <the custodian's opened root> and --opening-receipt <its opening-receipt.json> (scripts/sealed/open.ts; docs/sealed-custody.md)`);
+  if (!existsSync(o.sealedRoot) || !existsSync(o.receiptPath)) throw new RunnerError('HE-SEALED-001', `--sealed-root ${o.sealedRoot} or --opening-receipt ${o.receiptPath} does not exist`);
+  const inside = spawnSync('git', ['-C', o.sealedRoot, 'rev-parse', '--is-inside-work-tree'], { encoding: 'utf8' });
+  if (inside.status === 0 && inside.stdout.trim() === 'true') throw new RunnerError('HE-SEALED-002', `--sealed-root ${o.sealedRoot} is inside a git work tree; sealed plaintext stays outside every checkout (scripts/sealed/open.ts writes it under ~/.capy/work/sealed/<run_id>)`);
+  const bytes = readFileSync(o.receiptPath);
+  const receiptSha = sha256Of(bytes);
+  let receipt: OpeningReceipt;
+  try { receipt = readReceipt(o.receiptPath); } catch (e) { throw new RunnerError('HE-SEALED-003', `--opening-receipt ${o.receiptPath} is not JSON (${e instanceof Error ? e.name : 'error'}); the parser's message is withheld, since it quotes the input`); }
+  const differs = o.expectReceipt ? openingDiff(receipt, o.expectReceipt) : [];
+  if (differs.length) throw new RunnerError('HE-SEALED-003', `--opening-receipt ${o.receiptPath} is not the opening plan copied into the manifest (it differs in ${differs.join(', ')}); a run reads only the opening it was planned with (a resumed receipt of that same opening is accepted)`);
+  const problems = receiptProblems(receipt, { run_id: o.runId, prereg_sha256: o.preregSha, set: o.set, candidate_sha256: o.candidate, label: o.label }, readManifest(heldoutSet(o.set, root)));
+  if (problems.length) throw new RunnerError('HE-SEALED-003', `the opening receipt does not bind this run: ${problems.join('; ')}`);
+  let rootProblems: string[];
+  try { rootProblems = verifySealedRoot(o.sealedRoot, receipt, root); } catch (e) { throw new RunnerError('HE-SEALED-004', `the sealed root ${o.sealedRoot} could not be read (${e instanceof Error ? e.name : 'error'}); the message is withheld, since it can name a sealed task path; fix: reopen with scripts/sealed/open.ts (the same run id resumes)`); }
+  if (rootProblems.length) throw new RunnerError('HE-SEALED-004', `the sealed root does not match its opening receipt: ${rootProblems.join('; ')}; fix: reopen with scripts/sealed/open.ts (the same run id resumes)`);
+  const abs = resolve(o.sealedRoot);
+  return { root: abs, set: o.set, receipt, receipt_sha256: receiptSha, worldPath: join(abs, 'world', 'world.json') };
 }
 
 export function cellTasks(prereg: Prereg, cell: Cell, tasksRoot = 'tasks'): string[] {
@@ -252,11 +313,13 @@ export function cellTasks(prereg: Prereg, cell: Cell, tasksRoot = 'tasks'): stri
 }
 
 export function buildManifest(prereg: Prereg, sha256: string, now = new Date().toISOString(), opts: ManifestOptions = {}): Manifest {
-  const tasksRoot = opts.tasksRoot ?? 'tasks';
   const trials: Trial[] = [];
   const perCell: Record<string, number> = {};
   let hours = 0;
   for (const cell of prereg.cells) {
+    const sealedCell = isSealedCell(cell, opts.sealedSet) && !!opts.sealedRoot;
+    const tasksRoot = sealedCell ? join(opts.sealedRoot!, 'tasks') : (opts.tasksRoot ?? 'tasks');
+    const stored = (p: string) => (sealedCell ? relative(opts.sealedRoot!, p) : p);
     const tasks = cellTasks(prereg, cell, tasksRoot);
     const unit = ceilingUsd(cell);
     let cellUsd = 0;
@@ -276,7 +339,7 @@ export function buildManifest(prereg: Prereg, sha256: string, now = new Date().t
         cellUsd += (turns * unit + embeddingAllowanceUsd(cell.gbrain)) * cell.repetitions;
         for (let r = 1; r <= cell.repetitions; r++) {
           const id = s ? `${prereg.run_id}/${cell.id}/${task}/${s.name}/r${r}` : `${prereg.run_id}/${cell.id}/${task}/r${r}`;
-          trials.push({ id, cell: cell.id, task, repetition: r, task_dir: dir, turns, ...(s ? { script: s.path } : {}) });
+          trials.push({ id, cell: cell.id, task, repetition: r, task_dir: stored(dir), turns, ...(s ? { script: stored(s.path) } : {}) });
         }
       }
     }
@@ -322,7 +385,37 @@ export function renderPlan(m: Manifest): string {
 
 export function loadManifest(path: string | undefined): { manifest: Manifest; path: string } {
   if (!path || !existsSync(path)) throw new RunnerError('HE-RUN-002', 'missing or absent --manifest <results/<run-id>/manifest.json>');
-  return { manifest: JSON.parse(readFileSync(path, 'utf8')) as Manifest, path };
+  return { manifest: readJsonFile<Manifest>(path), path };
+}
+
+/** The terminal lines a sealed plan, dry-run, preflight or run may print (runner/heldout/guard.ts): the plan's run, cell
+ *  and gbrain lines, the opening and preflight lines, run-level counts and progress counts. Trial and turn lines, which
+ *  name tasks, channels and grades, go to the log file only. */
+const SEALED_RUN_ALLOW = [/^(RUN|CELL|GBRAIN|HELDOUT|SEALED|MANIFEST|PREFLIGHT|ADAPTER): /, /^WARN: (HE-BUDGET-003|HE-PROXY-001|cell \S+ serves)/, /^run \S+: \d+ trials (to run|recorded)/, /^metering proxy on port/, /^progress: \d+ of \d+ trials/];
+
+function installSealedGuard(sealed: SealedContext, logFile: string, label: string): void {
+  sealedGuard({ root: sealed.root, set: sealed.set, repoRoot: process.cwd(), preregJson: sealed.receipt.prereg_json, logFile: resolve(logFile), allow: SEALED_RUN_ALLOW, label: `runner/run.ts ${label}` });
+}
+
+/** The run's log callback under a sealed root: every line to the guarded log, plus a count line after each trial. */
+function sealedProgress(): (line: string) => void {
+  let total = 0, done = 0;
+  return (line) => {
+    console.log(line);
+    const start = /^run \S+: (\d+) trials to run/.exec(line);
+    if (start) total = Number(start[1]);
+    if (/^trial \S+: termination=/.test(line)) console.log(`progress: ${++done} of ${total} trials this invocation`);
+  };
+}
+
+/** preflight and run: the sealed context of a manifest planned sealed (the flags must name the same opening), or undefined. */
+function sealedContextFor(m: Manifest, flag: (name: string) => string | undefined, runDir: string): SealedContext | undefined {
+  if (!m.sealed) {
+    if (flag('--sealed-root') || flag('--opening-receipt')) console.log('SEALED: this manifest was not planned with a sealed root; --sealed-root and --opening-receipt are ignored');
+    return undefined;
+  }
+  if (insideGitTree(resolve(runDir))) throw new RunnerError('HE-SEALED-002', `--manifest ${runDir} is inside a git work tree; a sealed run writes its raw results and custody logs beside the manifest, and they stay outside every checkout until release`);
+  return openSealedContext({ sealedRoot: flag('--sealed-root'), receiptPath: flag('--opening-receipt'), set: m.sealed.set, runId: m.run_id, preregSha: m.prereg_sha256, candidate: m.sealed.receipt.candidate_sha256, label: m.sealed.receipt.label, expectReceipt: m.sealed.receipt });
 }
 
 async function main(argv: string[]): Promise<number> {
@@ -335,9 +428,19 @@ async function main(argv: string[]): Promise<number> {
     if (!path) throw new RunnerError('HE-RUN-002', 'missing --prereg <file>');
     const { prereg, sha256 } = loadPrereg(path);
     const heldout = checkPlan(prereg, sha256, process.cwd());
-    const manifest = buildManifest(prereg, sha256);
+    const sealedSets = sealedSetsOf(prereg.cells);
+    if (sealedSets.length > 1) throw new RunnerError('HE-SEALED-001', `run ${prereg.run_id} runs held-out cells of more than one sealed set (${sealedSets.join(', ')}); one run opens one set`);
+    const sealed = sealedSets.length ? openSealedContext({ sealedRoot: flag('--sealed-root'), receiptPath: flag('--opening-receipt'), set: sealedSets[0]!, runId: prereg.run_id, preregSha: sha256, candidate: prereg.heldout?.candidate_sha256, label: prereg.heldout?.label }) : undefined;
+    if (!sealed && (flag('--sealed-root') || flag('--opening-receipt'))) console.log('SEALED: no held-out cell of a sealed set in this preregistration; --sealed-root and --opening-receipt are ignored');
+    const planOut = resolve(flag('--out') ?? join('results', prereg.run_id));
+    if (sealed && cmd === 'plan' && insideGitTree(planOut)) throw new RunnerError('HE-SEALED-002', `--out ${planOut} is inside a git work tree; a sealed run's raw results stay outside every checkout until release (pass --out <a directory outside the checkout>)`);
+    // The guard goes up before buildManifest reads the sealed task tree, so a refusal that names a task path is redacted too.
+    if (sealed) installSealedGuard(sealed, cmd === 'plan' ? join(planOut, 'sealed-console.log') : join(sealed.root, 'logs', 'dry-run.log'), cmd);
+    const manifest = buildManifest(prereg, sha256, undefined, sealed ? { sealedRoot: sealed.root, sealedSet: sealed.set } : {});
+    if (sealed) manifest.sealed = { set: sealed.set, receipt_sha256: sealed.receipt_sha256, receipt: sealed.receipt };
     console.log(renderPlan(manifest));
     for (const line of heldout) console.log(line);
+    if (sealed) console.log(`SEALED: set ${sealed.set} opened for run ${prereg.run_id} (receipt ${sealed.receipt_sha256.slice(0, 12)}, bundle ${sealed.receipt.bundle_sha256.slice(0, 12)}, tree ${sealed.receipt.tree_sha256.slice(0, 12)}, world ${sealed.receipt.world_sha256.slice(0, 12)}); sealed cells read the root, task paths are stored relative to it`);
     if (cmd === 'plan') {
       const out = flag('--out') ?? join('results', prereg.run_id);
       mkdirSync(out, { recursive: true });
@@ -361,6 +464,9 @@ async function main(argv: string[]): Promise<number> {
     }
     const m = scope ? { ...loaded, cells: loaded.cells.filter((c) => scope.includes(c.id)), trials: loaded.trials.filter((t) => scope.includes(t.cell)) } : loaded;
     if (scope) console.log(`PREFLIGHT: scope --cells ${scope.join(',')} (${m.trials.length} of ${loaded.trials.length} trials)`);
+    const sealed = sealedContextFor(loaded, flag, runDir);
+    if (sealed) installSealedGuard(sealed, join(runDir, 'sealed-console.log'), 'preflight');
+    if (sealed) console.log(`SEALED: root and receipt match the manifest's opening (set ${sealed.set}, receipt ${sealed.receipt_sha256.slice(0, 12)}); the world probe reads world ${sealed.receipt.world_sha256.slice(0, 12)}`);
     const missing = m.cells.filter(c => c.harness !== 'scripted' && !existsSync(join('harnesses', c.harness, 'pin.json'))).map(c => c.harness);
     if (missing.length) throw new RunnerError('HE-PIN-001', `no harnesses/<name>/pin.json for: ${[...new Set(missing)].join(', ')}; fix: add the pin before any cell runs`);
     for (const k of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']) if (!process.env[k]) console.log(`WARN: HE-PROXY-001 ${k} is not set in this shell; the metering proxy needs it, harness containers never do`);
@@ -374,9 +480,14 @@ async function main(argv: string[]): Promise<number> {
     }
     const gbrainCells = m.cells.filter((c) => c.gbrain);
     if (gbrainCells.length) {
-      const image = flag('--gbrain-image') ?? DEFAULT_GBRAIN_IMAGE;
-      const { gbrainImagePresent, gbrainImageCommit, imageCommitProblem, installerHookProblem, probeGbrainImage, exportInstallView } = await import('./trial/gbrain.ts');
-      if (!gbrainImagePresent(image)) throw new RunnerError('HE-GBRAIN-002', `gbrain sidecar image ${image} is not present for cells ${gbrainCells.map((c) => c.id).join(', ')}; fix: scripts/build-gbrain-image.sh --tag ${image}`);
+      const image = flag('--gbrain-image') ?? (sealed ? sealedImageTag(sealed.receipt) : DEFAULT_GBRAIN_IMAGE);
+      const { gbrainImagePresent, gbrainImageCommit, gbrainImageInputs, imageCommitProblem, installerHookProblem, probeGbrainImage, exportInstallView } = await import('./trial/gbrain.ts');
+      if (!gbrainImagePresent(image)) throw new RunnerError('HE-GBRAIN-002', `gbrain sidecar image ${image} is not present for cells ${gbrainCells.map((c) => c.id).join(', ')}; fix: scripts/build-gbrain-image.sh ${sealed ? '--sealed-root <the sealed root>' : `--tag ${image}`}`);
+      // internal-task: a sealed run needs the image built from its root; a run with no sealed root refuses an image built from one.
+      const inputs = gbrainImageInputs(image);
+      const imageProblem = sealed ? sealedImageProblem(image, inputs, sealed.receipt) : publicImageProblem(image, inputs);
+      if (imageProblem) throw new RunnerError('HE-SEALED-005', imageProblem);
+      if (sealed) console.log(`SEALED: gbrain image ${image} was built from the sealed world ${sealed.receipt.world_sha256.slice(0, 12)} and corpus ${sealed.receipt.heldout_corpus_sha256.slice(0, 12)}`);
       const pin = JSON.parse(readFileSync(join('gbrain', 'pin.json'), 'utf8')) as { gbrain: { commit: string }; surfaces: Record<string, { tools: number }>; embeddings: { model: string }; install?: { installer?: { turn_hook_expected?: boolean } } };
       // internal-task: the image records the gbrain commit it was built from (/opt/sidecar/image.json); a counted run's cells, the told cells
       // with no install view included, run the pinned commit or not at all, and the run log says which.
@@ -443,7 +554,7 @@ async function main(argv: string[]): Promise<number> {
         const { probeCompanyBrain, probeSourceGrants } = await import('./trial/gbrain.ts');
         const { companyPageList, memberPageList } = await import('../gbrain/build-brain.ts');
         const { worldAt, DEFAULT_WORLD_PATH } = await import('./trial/world.ts');
-        const world = worldAt(DEFAULT_WORLD_PATH);
+        const world = worldAt(sealed ? sealed.worldPath : DEFAULT_WORLD_PATH);
         for (const split of memberSplits) {
           const probe = await probeCompanyBrain(image, split, memberPageList(world, split), join(runDir, `preflight-gbrain-member-${split}`), 'member', 'member');
           console.log(`GBRAIN: image ${image} id=${probe.image_id} brain=member scope=member ingest=live split=${split} pages=${probe.listed} (${Object.entries(probe.by_kind).map(([k, v]) => `${k} ${v}`).join(', ')}) under the unscoped token, tokens=${probe.member_tokens} plus public-only: ${probe.member_check}, channel ingest tokens present (no write is tried), ready in ${probe.ready_ms} ms`);
@@ -478,17 +589,30 @@ async function main(argv: string[]): Promise<number> {
     const cells = flag('--cells')?.split(',').map((s) => s.trim()).filter(Boolean);
     const liveCells = manifest.cells.filter((c) => c.gbrain?.ingest === 'live' && (cells ? cells.includes(c.id) : true)).map((c) => c.id);
     if (mode === 'process' && liveCells.length) throw new RunnerError('HE-GBRAIN-001', `cells ${liveCells.join(', ')} carry gbrain.ingest "live", which runs in docker mode only; in process mode the harness runs as the runner's user and could read the ingest tokens under the trial directory. fix: run without --harness-mode process`);
+    const sealedRunCells = manifest.sealed ? manifest.cells.filter((c) => c.harness_mode !== 'scripted' && (cells ? cells.includes(c.id) : true)).map((c) => c.id) : [];
+    if (mode === 'process' && sealedRunCells.length) throw new RunnerError('HE-SEALED-001', `cells ${sealedRunCells.join(', ')} belong to run ${manifest.run_id}, which opens set ${manifest.sealed!.set} in sealed custody; in process mode the harness runs as the runner's user and could read the opened sealed root and the custody files on this machine, whichever cell it serves. Nothing was opened. fix: run without --harness-mode process`);
+    const sealed = sealedContextFor(manifest, flag, dirname(path));
+    if (sealed) installSealedGuard(sealed, join(dirname(path), 'sealed-console.log'), 'run');
+    // A sealed run's trials default to the sealed image tag, and run repeats preflight's image check (HE-SEALED-005).
+    const gbrainImage = flag('--gbrain-image') ?? (sealed ? sealedImageTag(sealed.receipt) : undefined);
+    if (manifest.cells.some((c) => c.gbrain && (cells ? cells.includes(c.id) : true))) {
+      const { gbrainImageInputs, gbrainImagePresent } = await import('./trial/gbrain.ts');
+      const image = gbrainImage ?? DEFAULT_GBRAIN_IMAGE;
+      const problem = sealed ? sealedImageProblem(image, gbrainImageInputs(image), sealed.receipt) : gbrainImagePresent(image) ? publicImageProblem(image, gbrainImageInputs(image)) : null;
+      if (problem) throw new RunnerError('HE-SEALED-005', problem);
+    }
     const { executeRun } = await import('./trial/run.ts');
     const result = await executeRun(manifest, path, {
-      harnessMode: mode as HarnessMode, adapter: flag('--adapter'), image: flag('--image'), gbrainImage: flag('--gbrain-image'), resume: has('--resume'), stopOnCap: has('--stop-on-cap'),
+      ...(sealed ? { worldPath: sealed.worldPath, sealedRoot: sealed.root, sealedSet: sealed.set } : {}),
+      harnessMode: mode as HarnessMode, adapter: flag('--adapter'), image: flag('--image'), gbrainImage, resume: has('--resume'), stopOnCap: has('--stop-on-cap'),
       cells, ledgerPath: flag('--ledger'), leaseUsd: flag('--lease-usd') ? Number(flag('--lease-usd')) : undefined,
       newLease: has('--new-lease'), maxOutputTokens: flag('--max-output-tokens') ? Number(flag('--max-output-tokens')) : undefined, preamblePath: flag('--preamble'),
       readyTimeoutS: flag('--ready-timeout-s') ? Number(flag('--ready-timeout-s')) : undefined, turnGraceS: flag('--turn-grace-s') ? Number(flag('--turn-grace-s')) : undefined,
-      harnessEnv, log: (line) => console.log(line),
+      harnessEnv, log: sealed ? sealedProgress() : (line) => console.log(line),
     });
     return result.exit;
   }
-  throw new RunnerError('HE-RUN-002', 'usage: bun runner/run.ts plan|dry-run --prereg <file> | preflight --manifest <file> | run --manifest <file> [options]');
+  throw new RunnerError('HE-RUN-002', 'usage: bun runner/run.ts plan|dry-run --prereg <file> | preflight --manifest <file> | run --manifest <file> [options] [--sealed-root <dir> --opening-receipt <file>]');
 }
 
 if (import.meta.main) {

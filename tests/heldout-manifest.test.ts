@@ -20,6 +20,12 @@ test('every other held-out tree is sealed and matches its manifest', () => {
   for (const set of heldoutSets().slice(1)) {
     expect(manifestProblems(set)).toEqual([]);
     const m = readManifest(set)!;
+    // internal-task phase 3: a set in sealed custody lists no task or file publicly; its commitments are checked keyless instead.
+    if (m.custody === 'sealed') {
+      expect(m.tasks).toEqual([]);
+      expect(m.sealed!.task_count).toBeGreaterThan(0);
+      continue;
+    }
     expect(m.tasks.length).toBeGreaterThan(0);
     for (const h of Object.values(m.files)) expect(h).toMatch(/^[0-9a-f]{64}$/);
   }

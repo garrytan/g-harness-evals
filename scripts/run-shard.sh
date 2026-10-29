@@ -7,7 +7,7 @@
 #
 #   scripts/run-shard.sh --prereg docs/benchmarks/<run>/prereg.json --name <shard> --cells a,b --lease-usd <n>
 #                        [--out results/<run-id>] [--embedded] [--gbrain-image <tag>] [--skip-build] [--resume]
-#                        [--amendment <commit>] [--max-output-tokens <n>]
+#                        [--amendment <commit>] [--max-output-tokens <n>] [--sealed-root <dir> --opening-receipt <file>]
 #
 # --max-output-tokens (default 128000, what Hermes states on every call) is passed to the runner's proxy: a call that states
 # more is refused and a call that states none gets it, and the proxy reserves input plus that many output tokens against the
@@ -24,9 +24,24 @@
 #
 # The embedded image build and preflight's embedded probe need OPENAI_API_KEY in this shell for the metering proxy only;
 # the run needs ANTHROPIC_API_KEY the same way. No key reaches a container or an image.
+#
+# --sealed-root and --opening-receipt (internal-task, docs/sealed-custody.md; both or neither) run a sealed heldout set from a
+# custodian's root outside the checkout. The shard works on its own private copy of the root (in a mktemp -d directory
+# under TMPDIR, mode 0700, refused inside a git work tree), made after the checks and removed on every exit bash can trap
+# (success, failure, INT and TERM), so the custodian's root is never written by a shard and stays as it was for export; the
+# copy's logs/ (the sealed image build log) is kept at <out>/sealed-root-logs/ first. Each launch appends the copy's
+# directory to <out>/sealed-root-copy.path, so scripts/sealed/cleanup.ts can remove a copy a SIGKILL or a machine stop left.
+# The gbrain image is built from the copy with build-gbrain-image.sh --sealed-root (tagged harness-eval/gbrain:sealed-<run_id> in place of the public
+# harness-eval/gbrain:dev), plan, preflight and run get the copy and the receipt, and shard.json records "sealed": true
+# and the receipt's sha256. Raw sealed results must stay
+# outside the checkout too, so --out is required and refused (HE-SEALED-002) inside this checkout or any other git work
+# tree before anything is written there, and a failed step prints its log's path, never its
+# last lines (docs/sealed-custody.md, "What may print"). --embedded is refused (not supported for sealed
+# sets yet).
 set -euo pipefail
 
 prereg="" name="" cells="" lease="" out="" embedded=0 gbrain_image="harness-eval/gbrain:dev" skip_build=0 resume=0 amendment="" max_output_tokens=128000
+sealed_root="" opening_receipt=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --prereg) prereg="$2"; shift 2 ;;
@@ -40,11 +55,31 @@ while [ $# -gt 0 ]; do
     --resume) resume=1; shift ;;
     --amendment) amendment="$2"; shift 2 ;;
     --max-output-tokens) max_output_tokens="$2"; shift 2 ;;
+    --sealed-root) sealed_root="$2"; shift 2 ;;
+    --opening-receipt) opening_receipt="$2"; shift 2 ;;
     *) echo "run-shard: unknown argument $1" >&2; exit 2 ;;
   esac
 done
 [ -n "$prereg" ] && [ -n "$name" ] && [ -n "$cells" ] && [ -n "$lease" ] || { echo "run-shard: --prereg, --name, --cells and --lease-usd are required" >&2; exit 2; }
 [ -f "$prereg" ] || { echo "run-shard: $prereg does not exist" >&2; exit 2; }
+sealed=()
+if [ -n "$sealed_root" ] || [ -n "$opening_receipt" ]; then
+  [ -n "$sealed_root" ] && [ -n "$opening_receipt" ] || { echo "run-shard: --sealed-root and --opening-receipt go together; give both or neither" >&2; exit 2; }
+  [ -d "$sealed_root" ] || { echo "run-shard: --sealed-root $sealed_root is not a directory" >&2; exit 2; }
+  [ -f "$opening_receipt" ] || { echo "run-shard: --opening-receipt $opening_receipt does not exist" >&2; exit 2; }
+  [ "$embedded" -eq 0 ] || { echo "run-shard: --embedded is not supported for sealed sets yet (docs/sealed-custody.md)" >&2; exit 2; }
+  [ -n "$out" ] || { echo "run-shard: a sealed shard needs --out outside the checkout; the default results/<run_id> is inside it and raw sealed results stay out of every checkout" >&2; exit 2; }
+  sealed_root=$(cd "$sealed_root" && pwd -P)
+  opening_receipt=$(realpath "$opening_receipt")
+  checkout=$(cd "$(dirname "$0")/.." && pwd -P)
+  out=$(cd "$checkout" && realpath -m "$out")
+  case "$out/" in "$checkout/"*) echo "HE-SEALED-002 run-shard: --out $out is inside the checkout $checkout; raw sealed results stay out of every checkout" >&2; exit 2 ;; esac
+  probe=$out
+  while [ ! -d "$probe" ]; do probe=$(dirname "$probe"); done
+  if git -C "$probe" rev-parse --is-inside-work-tree > /dev/null 2>&1; then echo "HE-SEALED-002 run-shard: --out $out is inside a git work tree; raw sealed results and the copy's logs stay out of every checkout, so nothing was written" >&2; exit 2; fi
+  # The sealed image gets its own tag (build-gbrain-image.sh refuses the public one), and preflight and run use that tag.
+  [ "$gbrain_image" != harness-eval/gbrain:dev ] || gbrain_image="harness-eval/gbrain:sealed-$(jq -r '.run_id // empty' "$opening_receipt")"
+fi
 export PATH="$HOME/.bun/bin:$PATH"
 cd "$(dirname "$0")/.."
 
@@ -63,17 +98,48 @@ print(" ".join(sorted({c['harness'] for c in p['cells'] if c['id'] in want and c
 PY
 )
 log() { printf '%s run-shard[%s]: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$name" "$*" | tee -a "$out/run-shard.log" >&2; }
+# The last lines of a failed step's log, or for a sealed shard only its path: a sealed step's log can name sealed tasks.
+show_tail() { if [ -n "$sealed_root" ]; then log "log: $1 (custody only; a sealed shard never prints its logs)"; else tail -"$2" "$1" >&2; fi; }
 log "commit $commit, cells $cells, harnesses $harnesses, lease $lease, max_output_tokens $max_output_tokens, out $out"
+
+# One exit handler for the prune loop and a sealed shard's copy of the root, installed before the copy is made.
+shard_dir="" shard_root="" prune_pid=""
+on_exit() {
+  [ -z "$prune_pid" ] || kill "$prune_pid" 2>/dev/null || true
+  [ -n "$shard_dir" ] && [ -d "$shard_dir" ] || return 0
+  [ ! -d "$shard_root/logs" ] || { mkdir -p "$out/sealed-root-logs" && cp -a "$shard_root/logs/." "$out/sealed-root-logs/"; } || true
+  rm -rf "$shard_dir"
+}
+trap on_exit EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+if [ -n "$sealed_root" ]; then
+  # mktemp makes the parent 0700, so the copy is private while cp -a carries the root's own modes over
+  shard_dir=$(mktemp -d "${TMPDIR:-/tmp}/harness-eval-sealed-shard.XXXXXXXX")
+  # one line per launch, so scripts/sealed/cleanup.ts can remove a copy that a SIGKILL or a machine stop left behind
+  printf '%s\n' "$shard_dir" >> "$out/sealed-root-copy.path"
+  if git -C "$shard_dir" rev-parse --is-inside-work-tree > /dev/null 2>&1; then log "HE-SEALED-002 refused: the shard's copy of the sealed root would be under $shard_dir, inside a git work tree; set TMPDIR to a directory outside every checkout"; exit 2; fi
+  shard_root="$shard_dir/root"
+  # the receipt goes in first, so a copy killed partway is still bound to its run for scripts/sealed/cleanup.ts
+  cp "$opening_receipt" "$shard_dir/opening-receipt.json" 2>>"$out/sealed-root-copy.log" || { log "refused: copying the opening receipt failed; its diagnostics are in $out/sealed-root-copy.log (custody only)"; exit 2; }
+  # cp names the file it could not copy (a sealed task path), so its diagnostics go to a custody-only log under --out
+  cp -a "$sealed_root" "$shard_root" 2>>"$out/sealed-root-copy.log" || { log "refused: copying the sealed root failed; its diagnostics are in $out/sealed-root-copy.log (custody only)"; exit 2; }
+  chmod 700 "$shard_root"
+  rm -rf "$shard_root/logs"
+  sealed=(--sealed-root "$shard_root" --opening-receipt "$opening_receipt")
+  log "sealed: this shard reads its own copy of the root at $shard_root (mode 0700, removed on exit); the custodian's root $sealed_root is not written"
+fi
 
 if [ "$skip_build" -eq 0 ]; then
   for h in $harnesses; do
     log "building harness-eval/$h:dev from harnesses/$h"
-    docker build -q -t "harness-eval/$h:dev" "harnesses/$h" > "$out/build-$h.log" 2>&1 || { tail -20 "$out/build-$h.log" >&2; log "harness image build failed for $h"; exit 2; }
+    docker build -q -t "harness-eval/$h:dev" "harnesses/$h" > "$out/build-$h.log" 2>&1 || { show_tail "$out/build-$h.log" 20; log "harness image build failed for $h"; exit 2; }
   done
   log "building $gbrain_image from gbrain/ (embedded=$embedded)"
   args=(--tag "$gbrain_image" --out "$out/gbrain-image")
   [ "$embedded" -eq 1 ] && args+=(--embedded)
-  scripts/build-gbrain-image.sh "${args[@]}" > "$out/build-gbrain.log" 2>&1 || { tail -20 "$out/build-gbrain.log" >&2; log "gbrain image build failed"; exit 2; }
+  [ -z "$shard_root" ] || args+=(--sealed-root "$shard_root")
+  scripts/build-gbrain-image.sh "${args[@]}" > "$out/build-gbrain.log" 2>&1 || { show_tail "$out/build-gbrain.log" 20; [ -z "$shard_root" ] || log "the sealed build log is kept at $out/sealed-root-logs/build-gbrain-image.log (custody only)"; log "gbrain image build failed"; exit 2; }
 fi
 
 images=$(for h in $harnesses; do printf '"%s": "%s", ' "harness-eval/$h:dev" "$(docker image inspect -f '{{.Id}}' "harness-eval/$h:dev")"; done; printf '"%s": "%s"' "$gbrain_image" "$(docker image inspect -f '{{.Id}}' "$gbrain_image")")
@@ -91,18 +157,20 @@ json.dump(s, open(p, 'w'), indent=1); open(p, 'a').write('\n')
 PY
   log "resume at $commit (recorded $recorded${amendment:+, amendment $amendment})"
 else
-  printf '{"name": "%s", "machine": "%s", "commit": "%s", "cells": "%s", "lease_usd": %s, "started_at": "%s", "images": {%s}}\n' \
-    "$name" "$(hostname)" "$commit" "$cells" "$lease" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$images" > "$out/shard.json"
+  sealed_json=""
+  [ -z "$sealed_root" ] || sealed_json=$(printf ', "sealed": true, "opening_receipt_sha256": "%s"' "$(sha256sum "$opening_receipt" | cut -d' ' -f1)")
+  printf '{"name": "%s", "machine": "%s", "commit": "%s", "cells": "%s", "lease_usd": %s, "started_at": "%s", "images": {%s}%s}\n' \
+    "$name" "$(hostname)" "$commit" "$cells" "$lease" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$images" "$sealed_json" > "$out/shard.json"
 fi
 
 if [ ! -f "$out/manifest.json" ]; then
-  bun runner/run.ts plan --prereg "$prereg" --out "$out" > "$out/plan.log" 2>&1 || { tail -20 "$out/plan.log" >&2; log "plan failed"; exit 2; }
+  bun runner/run.ts plan --prereg "$prereg" --out "$out" ${sealed[@]+"${sealed[@]}"} > "$out/plan.log" 2>&1 || { show_tail "$out/plan.log" 20; log "plan failed"; exit 2; }
 fi
 if [ "$resume" -eq 1 ] && grep -q '^PREFLIGHT: ok' "$out/preflight.log" 2>/dev/null; then
   log "preflight skipped: $out/preflight.log already says PREFLIGHT: ok and the preflight lease is closed (a resume reuses the images it passed)"
 else
   log "preflight --cells $cells"
-  bun runner/run.ts preflight --manifest "$out/manifest.json" --cells "$cells" --gbrain-image "$gbrain_image" > "$out/preflight.log" 2>&1 || { tail -30 "$out/preflight.log" >&2; log "preflight failed"; exit 2; }
+  bun runner/run.ts preflight --manifest "$out/manifest.json" --cells "$cells" --gbrain-image "$gbrain_image" ${sealed[@]+"${sealed[@]}"} > "$out/preflight.log" 2>&1 || { show_tail "$out/preflight.log" 30; log "preflight failed"; exit 2; }
   grep -E '^(ADAPTER|GBRAIN|PREFLIGHT):' "$out/preflight.log" | tee -a "$out/run-shard.log" >&2
 fi
 
@@ -126,9 +194,8 @@ PY
 }
 prune &
 prune_pid=$!
-trap 'kill "$prune_pid" 2>/dev/null || true' EXIT
 
-run_args=(run --manifest "$out/manifest.json" --cells "$cells" --lease-usd "$lease" --max-output-tokens "$max_output_tokens" --gbrain-image "$gbrain_image")
+run_args=(run --manifest "$out/manifest.json" --cells "$cells" --lease-usd "$lease" --max-output-tokens "$max_output_tokens" --gbrain-image "$gbrain_image" ${sealed[@]+"${sealed[@]}"})
 [ "$resume" -eq 1 ] || [ -f "$out/trials.jsonl" ] && run_args+=(--resume)
 log "run ${run_args[*]}"
 set +e

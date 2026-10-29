@@ -7,7 +7,15 @@
 #
 #   vm-shard.sh --commit <sha> --prereg <path on the VM> --name <shard> --cells a,b --lease-usd <n>
 #               [--smoke-lease-usd <n>] [--smoke-task <task id>] [--no-smoke] [--resume] [--amendment <sha>]
-#               [--embedded] [--gbrain-image <tag>] [-- <extra run-shard.sh arguments>]
+#               [--embedded] [--gbrain-image <tag>] [--sealed-root <path on the VM> --opening-receipt <path on the VM>]
+#               [-- <extra run-shard.sh arguments>]
+#
+# --sealed-root and --opening-receipt (internal-task, docs/sealed-custody.md) name the custodian's sealed root and receipt that
+# scripts/ubicloud/run-shard.sh uploaded to ~/sealed, outside the checkout; both go to the counted scripts/run-shard.sh call
+# only. The smoke's dev-only preregistration has no sealed cell, so it runs as a public run: without the sealed flags and
+# with the public image harness-eval/gbrain:dev (the runner refuses a sealed image for a run with no sealed root,
+# HE-SEALED-005). The counted run then builds the receipt-bound image harness-eval/gbrain:sealed-<run_id> from its own copy
+# of the root (no --skip-build; the harness images it rebuilds are cached from the smoke's build).
 #
 # --smoke-lease-usd defaults to what smoke-lease.ts derives from the proxy's per-call reservation for the shard's cells (the
 # output cap at the model's list price plus an input allowance, doubled, at least $1): a lease below one reservation refuses
@@ -28,7 +36,7 @@ if [ -z "${HE_SHARD_IN_DOCKER_GROUP:-}" ] && getent group docker >/dev/null && !
 fi
 
 commit="" prereg="" name="" cells="" lease="" smoke_lease="" smoke_task="" smoke=1 resume=0 amendment=""
-extra=()
+extra=() image=() sealed=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --commit) commit="$2"; shift 2 ;;
@@ -42,7 +50,9 @@ while [ $# -gt 0 ]; do
     --resume) resume=1; shift ;;
     --amendment) amendment="$2"; shift 2 ;;
     --embedded) extra+=(--embedded); shift ;;
-    --gbrain-image) extra+=(--gbrain-image "$2"); shift 2 ;;
+    --gbrain-image) image=(--gbrain-image "$2"); shift 2 ;;
+    --sealed-root) sealed+=(--sealed-root "$2"); shift 2 ;;
+    --opening-receipt) sealed+=(--opening-receipt "$2"); shift 2 ;;
     --) shift; extra+=("$@"); break ;;
     *) echo "vm-shard: unknown argument $1" >&2; exit 2 ;;
   esac
@@ -72,6 +82,10 @@ phase checkout_end
 
 # The one-trial smoke the Capy shards ran before every counted shard: a copy of the run's preregistration with only this
 # shard's harness cells, each on one dev task with one repetition under its own lease and ledger, never counted.
+# A sealed lane's smoke runs as a public dev run: no sealed flags and the public image (the runner refuses a sealed image for
+# a run with no sealed root, HE-SEALED-005), so the counted run builds its receipt-bound sealed image itself.
+smoke_image=(${image[@]+"${image[@]}"})
+[ ${#sealed[@]} -eq 0 ] || smoke_image=(--gbrain-image harness-eval/gbrain:dev)
 build_flag=()
 if [ "$smoke" -eq 1 ]; then
   mkdir -p "$shard/smoke"
@@ -113,8 +127,9 @@ PY
   if [ -s "$smoke_prereg" ]; then
     smoke_cells=$(python3 -c "import json,sys; print(','.join(c['id'] for c in json.load(open(sys.argv[1]))['cells']))" "$smoke_prereg")
     phase smoke_start
-    log "smoke: run-shard.sh --prereg $smoke_prereg --name smoke-$name --cells $smoke_cells --lease-usd $smoke_lease --out $shard/smoke/results ${extra[*]:-}"
-    scripts/run-shard.sh --prereg "$smoke_prereg" --name "smoke-$name" --cells "$smoke_cells" --lease-usd "$smoke_lease" --out "$shard/smoke/results" ${extra[@]+"${extra[@]}"}
+    smoke_args=(--prereg "$smoke_prereg" --name "smoke-$name" --cells "$smoke_cells" --lease-usd "$smoke_lease" --out "$shard/smoke/results" ${smoke_image[@]+"${smoke_image[@]}"} ${extra[@]+"${extra[@]}"})
+    log "smoke: run-shard.sh ${smoke_args[*]}"
+    scripts/run-shard.sh "${smoke_args[@]}"
     rc=$?
     phase smoke_end
     python3 - "$shard/smoke/results/trials.jsonl" <<'PY'
@@ -133,14 +148,14 @@ PY
       log "smoke failed (run-shard exit $rc, trials check $smoke_ok); the counted run does not start"
       finish 4
     fi
-    build_flag=(--skip-build)
+    [ ${#sealed[@]} -gt 0 ] || build_flag=(--skip-build)
   fi
 fi
 
 if [ "$resume" -eq 1 ] && [ -f "$shard/results/shard.json" ]; then
   log "resume: $(wc -l < "$shard/results/trials.jsonl" 2>/dev/null || echo 0) trial lines already recorded"
 fi
-args=(--prereg "$prereg" --name "$name" --cells "$cells" --lease-usd "$lease" --out "$shard/results" ${build_flag[@]+"${build_flag[@]}"} ${extra[@]+"${extra[@]}"})
+args=(--prereg "$prereg" --name "$name" --cells "$cells" --lease-usd "$lease" --out "$shard/results" ${build_flag[@]+"${build_flag[@]}"} ${image[@]+"${image[@]}"} ${sealed[@]+"${sealed[@]}"} ${extra[@]+"${extra[@]}"})
 [ "$resume" -eq 1 ] && args+=(--resume)
 [ -n "$amendment" ] && args+=(--amendment "$amendment")
 phase run_start

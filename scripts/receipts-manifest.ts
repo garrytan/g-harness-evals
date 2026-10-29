@@ -26,6 +26,13 @@
 // Ledgers are read from an in-memory copy of their bytes, so the receipts tree gains no -shm or -wal files; dollar sums
 // are rounded to six decimals so the file is stable across SQLite builds.
 //
+// internal-task phase 3: a sealed opening publishes no trials.jsonl until its set retires; its public export lives at
+// docs/benchmarks/<run>/sealed-results/ (scripts/sealed/export.ts). Each such directory gets a row under sealed_runs (the
+// key is absent while there are none, so the manifest of a repository without sealed runs is unchanged): the run, set,
+// derived opening number, label and export mode, the sha256 of export.json and opening-receipt.json, the sealed digests
+// the export names (results bundle, raw tree, trials.jsonl) and verification problems: the published receipt must be the
+// one export.json names, name the same run and set, and match the set's public commitments (sealed, or released).
+//
 // --check recomputes the manifest and exits 1 when it differs from the committed file, generated_at excepted, so a
 // results tree edited after the manifest was written is caught; exit 2 when the committed file is missing or unreadable.
 
@@ -35,7 +42,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync, statSync, writeFileSy
 import { join, relative, resolve } from 'node:path';
 import { Database } from 'bun:sqlite';
 import { deriveSet, registeredHeldout } from '../runner/heldout/openings.ts';
-import { heldoutSets } from './seal-heldout.ts';
+import { heldoutSet, heldoutSets, readManifest } from './seal-heldout.ts';
 
 export const MANIFEST_VERSION = 1;
 export const OUTPUT_FILE = 'docs/receipts-manifest.json';
@@ -78,7 +85,22 @@ export interface HeldoutOpening {
   reason: string | null;
   concurrent_with: string[];
 }
-export interface Manifest { schema_version: number; generated_at: string; generator: string; runs: RunRow[] }
+export interface SealedRunRow {
+  directory: string;
+  run_id: string | null;
+  set: string | null;
+  opening: number | null;
+  label: string | null;
+  mode: string | null;
+  export_sha256: string;
+  receipt_sha256: string | null;
+  results_bundle_sha256: string | null;
+  raw_tree_sha256: string | null;
+  trials_jsonl_sha256: string | null;
+  decisions: Array<{ claim: string; decision: string }>;
+  problems: string[];
+}
+export interface Manifest { schema_version: number; generated_at: string; generator: string; runs: RunRow[]; sealed_runs?: SealedRunRow[] }
 
 const sha256 = (buf: Buffer) => createHash('sha256').update(buf).digest('hex');
 const round6 = (x: number) => Number(x.toFixed(6));
@@ -242,16 +264,57 @@ function attachOpenings(root: string, runs: RunRow[]): void {
   }
 }
 
+/** A sealed opening's public export, verified by digest against its published receipt and the set's commitments. */
+export function buildSealedRun(root: string, directory: string): SealedRunRow {
+  const dir = join(root, directory, 'sealed-results');
+  const expBytes = readFileSync(join(dir, 'export.json'));
+  const problems: string[] = [];
+  let exp: Record<string, any> = {};
+  try { exp = JSON.parse(expBytes.toString('utf8')); } catch (e) { problems.push(`export.json is not JSON: ${e instanceof Error ? e.message : String(e)}`); }
+  const receiptPath = join(dir, 'opening-receipt.json');
+  const receiptBytes = existsSync(receiptPath) ? readFileSync(receiptPath) : null;
+  if (!receiptBytes) problems.push('opening-receipt.json is missing');
+  else {
+    if (sha256(receiptBytes) !== exp.receipt_sha256) problems.push('opening-receipt.json is not the receipt export.json names (receipt_sha256 differs)');
+    let r: Record<string, any> = {};
+    try { r = JSON.parse(receiptBytes.toString('utf8')); } catch { problems.push('opening-receipt.json is not JSON'); }
+    if (r.run_id !== exp.run_id || r.set !== exp.set) problems.push(`the receipt names run ${r.run_id} on set ${r.set}, export.json names ${exp.run_id} on ${exp.set}`);
+    const m = exp.set ? readManifest(heldoutSet(String(exp.set), root)) as (ReturnType<typeof readManifest> & { released?: Record<string, unknown> }) | undefined : undefined;
+    const c = (m?.sealed ?? m?.released) as Record<string, unknown> | undefined;
+    if (!c) problems.push(`set ${exp.set} has no sealed or released commitments in its MANIFEST.json`);
+    else for (const k of ['bundle_sha256', 'world_slice_sha256', 'heldout_corpus_sha256'] as const) if (r[k] !== c[k]) problems.push(`the receipt's ${k} differs from the set's commitment`);
+    if (m && r.tree_sha256 !== m.tree_sha256) problems.push("the receipt's tree_sha256 differs from the set's manifest");
+  }
+  const sr = (exp.sealed_results ?? {}) as Record<string, any>;
+  return {
+    directory, run_id: exp.run_id ?? null, set: exp.set ?? null, opening: null, label: exp.label ?? null, mode: exp.mode ?? null,
+    export_sha256: sha256(expBytes), receipt_sha256: receiptBytes ? sha256(receiptBytes) : null,
+    results_bundle_sha256: sr.results_bundle_sha256 ?? null, raw_tree_sha256: sr.raw_tree_sha256 ?? null, trials_jsonl_sha256: sr.trials_jsonl_sha256 ?? null,
+    decisions: Array.isArray(exp.decisions) ? exp.decisions.map((d: { claim: string; decision: string }) => ({ claim: d.claim, decision: d.decision })) : [],
+    problems,
+  };
+}
+
 export function buildManifest(root: string, generatedAt: string = new Date().toISOString()): Manifest {
   const base = join(root, BENCHMARKS_DIR);
   const runs: RunRow[] = [];
+  const sealed: SealedRunRow[] = [];
   for (const name of readdirSync(base).sort()) {
     const directory = `${BENCHMARKS_DIR}/${name}`;
+    if (existsSync(join(base, name, 'sealed-results', 'export.json'))) sealed.push(buildSealedRun(root, directory));
     if (!existsSync(join(base, name, 'results', 'trials.jsonl'))) continue;
     runs.push(buildRun(root, directory));
   }
   attachOpenings(root, runs);
-  return { schema_version: MANIFEST_VERSION, generated_at: generatedAt, generator: 'scripts/receipts-manifest.ts', runs };
+  if (sealed.length) {
+    const registered = registeredHeldout(root);
+    for (const set of [...new Set(sealed.map((s) => s.set).filter((s): s is string => !!s))]) {
+      let d: ReturnType<typeof deriveSet>;
+      try { d = deriveSet(root, set, registered); } catch { d = undefined; }
+      for (const s of sealed.filter((x) => x.set === set)) s.opening = d?.openings.find((o) => o.run_id === s.run_id)?.number ?? null;
+    }
+  }
+  return { schema_version: MANIFEST_VERSION, generated_at: generatedAt, generator: 'scripts/receipts-manifest.ts', runs, ...(sealed.length ? { sealed_runs: sealed } : {}) };
 }
 
 export const renderManifest = (m: Manifest) => JSON.stringify(m, null, 2) + '\n';

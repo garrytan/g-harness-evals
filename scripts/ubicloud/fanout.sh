@@ -10,6 +10,10 @@
 #     "shards": [ { "name": "oc-a", "cells": "cell-1,cell-2", "lease_usd": 5 }, ... ] }
 # size and options are optional; options go to every run-shard.sh as given (--embedded, --gbrain-image, --amendment,
 # --smoke-lease-usd, --smoke-task, --no-smoke, --resume, or "--" followed by arguments for the repository's run-shard.sh).
+# A sealed run (internal-task, docs/sealed-custody.md) adds "sealed_root": "<custodian's sealed root>" and "opening_receipt":
+# "<its opening-receipt.json>", both or neither (one alone is exit 2); every run-shard.sh then gets --sealed-root and
+# --opening-receipt with the paths expanded, and each shard uploads, uses and deletes its own copy on its VM. fanout.sh
+# makes no copy of the sealed root and has nothing of it to clean up.
 # Each shard runs as a background process with its own log at <dest>/<name>/fanout.log, its lane log at
 # <dest>/<name>/lane.log and its results at <dest>/<name>/results, which is what scripts/merge-shards.ts takes.
 #
@@ -33,12 +37,23 @@ while [ $# -gt 0 ]; do
     --max-vcpus) max_vcpus=$2; shift 2 ;;
     --parallel) parallel=$2; shift 2 ;;
     --dry-run) dry=1; shift ;;
-    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
     *) echo "fanout: unknown argument $1 (see --help)" >&2; exit 2 ;;
   esac
 done
 [ -n "$manifest" ] && [ -f "$manifest" ] || { echo "fanout: --manifest <file.json> is required" >&2; exit 2; }
 [ -n "${UBI_OWNER:-}" ] || { echo "fanout: set UBI_OWNER to your thread code so the VMs carry their owner" >&2; exit 2; }
+# The sealed flags, shell-quoted, or nothing; checked here because a failure inside the mapfile below would not stop the script.
+sealed=$(python3 - "$manifest" <<'PY'
+import json, os, shlex, sys
+m = json.load(open(sys.argv[1]))
+if ('sealed_root' in m) != ('opening_receipt' in m):
+    sys.exit('fanout: the manifest names one of sealed_root and opening_receipt; give both or neither')
+if 'sealed_root' in m:
+    p = lambda k: os.path.abspath(os.path.expanduser(m[k]))
+    print(' '.join(shlex.quote(a) for a in ('--sealed-root', p('sealed_root'), '--opening-receipt', p('opening_receipt'))))
+PY
+) || exit 2
 export TZ=UTC
 log() { printf '%(%Y-%m-%dT%H:%M:%SZ)T fanout: %s\n' -1 "$*" >&2; }
 
@@ -86,7 +101,7 @@ fi
 
 run_cmd() {
   local name=$1 cells=$2 lease=$3
-  printf '%s --commit %s --prereg %s --name %s --cells %s --lease-usd %s --dest %s --size %s %s' "$here/run-shard.sh" "$(printf %q "$commit")" "$(printf %q "$prereg")" "$(printf %q "$name")" "$(printf %q "$cells")" "$(printf %q "$lease")" "$(printf %q "$dest/$name")" "$(printf %q "$size")" "$options"
+  printf '%s --commit %s --prereg %s --name %s --cells %s --lease-usd %s --dest %s --size %s %s' "$here/run-shard.sh" "$(printf %q "$commit")" "$(printf %q "$prereg")" "$(printf %q "$name")" "$(printf %q "$cells")" "$(printf %q "$lease")" "$(printf %q "$dest/$name")" "$(printf %q "$size")" "${sealed:+$sealed }$options"
 }
 merge_cmd() { printf 'bun scripts/merge-shards.ts --out <merged results dir>'; local line name; for line in "${shards[@]}"; do IFS=$'\t' read -r name _ _ <<<"$line"; printf ' --shard %s=%s/%s/results' "$name" "$dest" "$name"; done; echo; }
 if [ "$dry" -eq 1 ]; then

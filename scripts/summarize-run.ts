@@ -1,7 +1,17 @@
 #!/usr/bin/env bun
 // Tables for a run's report from results/<run>/trials.jsonl (and trials.regraded.jsonl when present).
 //
-//   bun scripts/summarize-run.ts --results <results/<run-id>> [--regraded] [--seed 7]
+//   bun scripts/summarize-run.ts --results <results/<run-id>> [--regraded] [--seed 7] [--sealed-root <dir>] [--allow-missing-tasks]
+//
+// internal-task phase 3 (sealed custody, docs/sealed-custody.md): a run planned with a sealed root (its manifest.json has a
+// "sealed" block) reads the sealed cells' task families from <sealed-root>/tasks and the world from
+// <sealed-root>/world/world.json, so it is summarized inside custody with --sealed-root; without it the run is refused.
+// In a sealed run, a task whose directory is absent from the tree the family is read from is refused with HE-TASK-005
+// instead of being counted under family "unknown"; --allow-missing-tasks counts it as unknown, prints a warning and lists
+// the tasks under families_unresolved in summary.json. A plaintext run keeps the fallback it always had: a task with no
+// readable task.toml is family "unknown", with one WARN line and the same families_unresolved list.
+// trials.jsonl and manifest.json are read before the sealed guard is up, so a line that is not JSON is HE-RUN-007 naming
+// the file, the line and the parser's error class, never the parser's message (which quotes the line).
 //
 // Per cell: n, passes, pass rate with a task-clustered bootstrap 95% interval (tasks resampled with
 // replacement, 10,000 draws, seeded), consent violations, approval stops and how many were valid, terminations,
@@ -59,6 +69,10 @@ import { loadTask } from '../runner/grade/task.ts';
 import { taskDirFor } from '../runner/run.ts';
 import { loadWorldData } from '../runner/grade/predicates.ts';
 import { DEFAULT_WORLD_PATH } from '../runner/grade/play.ts';
+import { isSealedCell } from '../runner/run.ts';
+import { sealedGuard } from '../runner/heldout/guard.ts';
+import { readJsonFile, readJsonLines } from '../runner/heldout/sealed.ts';
+import { RunnerError } from '../runner/errors.ts';
 
 function arg(name: string, fallback?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -71,25 +85,44 @@ if (!results || !existsSync(join(results, 'trials.jsonl'))) {
 }
 const useRegraded = process.argv.includes('--regraded');
 const seed = Number(arg('seed', '7'));
-const allRows = readFileSync(join(results, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord);
+const parsed = <T>(read: () => T): T => { try { return read(); } catch (e) { if (!(e instanceof RunnerError)) throw e; console.error(e.message); process.exit(2); } };
+const allRows = parsed(() => readJsonLines<TrialRecord>(join(results, 'trials.jsonl')));
 const EXCLUDED = new Set(['model_error', 'infra_error', 'exam_fault']);
 const rows = allRows.filter((t) => !EXCLUDED.has(t.termination));
 const excludedRows = allRows.filter((t) => EXCLUDED.has(t.termination));
 const manifestPath = join(results, 'manifest.json');
-const manifestCells = existsSync(manifestPath) ? (JSON.parse(readFileSync(manifestPath, 'utf8')) as { cells: Array<{ id: string; split: 'dev' | 'heldout'; task_set?: string }> }).cells : [];
+const runManifest = existsSync(manifestPath) ? parsed(() => readJsonFile<{ cells: Array<{ id: string; split: 'dev' | 'heldout'; task_set?: string }>; sealed?: { set: string } }>(manifestPath)) : null;
+const manifestCells = runManifest?.cells ?? [];
 const repoRoot = join(import.meta.dir, '..');
+const sealedSet = runManifest?.sealed?.set;
+const sealedRoot = arg('sealed-root');
+if (sealedSet && !sealedRoot) { console.error(`HE-SEALED-001 ${results} was planned with a sealed root (set ${sealedSet}); summarize it inside custody with --sealed-root <the opened root> (docs/sealed-custody.md)`); process.exit(2); }
+if (sealedSet && sealedRoot) {
+  const g = sealedGuard({ root: sealedRoot, set: sealedSet, repoRoot: process.cwd(), preregJson: (runManifest as { sealed?: { receipt?: { prereg_json?: string } } }).sealed?.receipt?.prereg_json, logFile: join(results, 'summarize-run.sealed.log'), allow: [], label: 'scripts/summarize-run.ts' });
+  g.say(`summarize-run: sealed run (set ${sealedSet}); summary.json is written beside trials.jsonl and the console tables go to ${g.logFile} (custody only)`);
+}
+const worldPath = sealedSet && sealedRoot ? join(sealedRoot, 'world', 'world.json') : DEFAULT_WORLD_PATH;
 const familyCache = new Map<string, string>();
+const missingTasks = new Set<string>();
 const familyOf = (t: TrialRecord): string => {
   const key = `${t.cell}/${t.task}`;
   if (!familyCache.has(key)) {
     const cell = manifestCells.find((c) => c.id === t.cell) ?? { split: 'dev' as const };
-    const dir = taskDirFor(cell, t.task, join(repoRoot, 'tasks'));
+    const dir = taskDirFor(cell, t.task, isSealedCell(cell, sealedSet) ? join(sealedRoot!, 'tasks') : join(repoRoot, 'tasks'));
     let family = 'unknown';
-    try { family = loadTask(dir).family; } catch { /* a task tree that is not in this checkout: the family stays unknown */ }
+    if (!existsSync(join(dir, 'task.toml'))) missingTasks.add(`${t.task} (cell ${t.cell}, looked in ${dir})`);
+    else if (sealedSet) family = loadTask(dir).family;
+    else try { family = loadTask(dir).family; } catch { missingTasks.add(`${t.task} (cell ${t.cell}, ${join(dir, 'task.toml')} does not load)`); }
     familyCache.set(key, family);
   }
   return familyCache.get(key)!;
 };
+allRows.forEach(familyOf);
+if (sealedSet && missingTasks.size && !process.argv.includes('--allow-missing-tasks')) {
+  console.error(`HE-TASK-005 ${missingTasks.size} task(s) of ${results} have no task.toml where their family is read: ${[...missingTasks].slice(0, 5).join('; ')}${missingTasks.size > 5 ? '; ...' : ''}; fix: run from a checkout that holds the task tree (a sealed run needs --sealed-root), or pass --allow-missing-tasks to count them under family "unknown"`);
+  process.exit(2);
+}
+if (missingTasks.size) console.error(`WARN: HE-TASK-005 ${missingTasks.size} task(s) counted under family "unknown"${process.argv.includes('--allow-missing-tasks') ? ' (--allow-missing-tasks)' : ''}; summary.json lists them under families_unresolved`);
 type Regraded = { trial_id: string; regraded: boolean; regraded_result?: { grade: string; consent_violation: boolean; approval_stop: boolean }; predicates?: TrialRecord['predicates'] };
 const regraded = new Map<string, Regraded>();
 if (useRegraded) {
@@ -129,7 +162,7 @@ const eventsOf = (t: TrialRecord): WorldEvent[] | null => {
 };
 const cells = [...new Set(allRows.map((t) => t.cell))];
 const isProbeCell = (cell: string) => { const ts = rows.filter((t) => t.cell === cell); return ts.length > 0 && ts.every((t) => familyOf(t) === 'product_probe'); };
-const worlds = { dev: loadWorldData(DEFAULT_WORLD_PATH, 'dev'), heldout: loadWorldData(DEFAULT_WORLD_PATH, 'heldout') };
+const worlds = { dev: loadWorldData(worldPath, 'dev'), heldout: loadWorldData(worldPath, 'heldout') };
 const out: string[] = [];
 const summary: Record<string, unknown> = { run: allRows[0]?.trial_id.split('/')[0], grading: useRegraded ? 'regraded' : 'as recorded', seed, cells: {} as Record<string, unknown> };
 out.push(`| Cell | n (tasks x reps) | Passes | Pass rate [95% CI, task-clustered] | Excluded (model, infra, exam errors) | Consent violations | Approval stops (valid) | Terminations | Cross-scope read failures | Refused requests | USD total | USD median/trial | USD per success | Tokens in / out / cached | Wall median |`);
@@ -320,5 +353,6 @@ for (const cell of cells) {
   out.push(`Failed predicates, ${cell}: ${[...counts.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ') || 'none'}`);
 }
 if (excludedRows.length) out.push(`Excluded from scoring (methodology item 9): ${excludedRows.length} trial(s): ${[...new Map(excludedRows.map((t) => [t.termination, excludedRows.filter((x) => x.termination === t.termination).length])).entries()].map(([k, v]) => `${k} ${v}`).join(', ')}; their spend is in the USD columns.`);
+if (missingTasks.size) summary.families_unresolved = [...missingTasks].sort();
 writeFileSync(join(results, useRegraded ? 'summary.regraded.json' : 'summary.json'), JSON.stringify(summary, null, 1) + '\n');
 console.log(out.join('\n'));

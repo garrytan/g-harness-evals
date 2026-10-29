@@ -7,7 +7,8 @@
 #   scripts/ubicloud/run-shard.sh --commit <sha> --prereg <path in the repo at that commit, or a scratch file> --name <shard>
 #       --cells a,b --lease-usd <n> --dest <local directory> [--size standard-16] [--location eu-central-h1] [--storage GiB]
 #       [--smoke-lease-usd <n>] [--smoke-task <task id>] [--no-smoke] [--embedded] [--gbrain-image <tag>] [--amendment <sha>]
-#       [--resume] [--attach] [--poll-seconds 30] [--timeout-hours 12] [-- <extra arguments for scripts/run-shard.sh>]
+#       [--resume] [--attach] [--poll-seconds 30] [--timeout-hours 12] [--sealed-root <local dir> --opening-receipt <local file>]
+#       [-- <extra arguments for scripts/run-shard.sh>]
 #
 # What happens, in order (every line goes to <dest>/lane.log with a UTC stamp):
 #   1. The commit is resolved (fetched from origin if this checkout lacks it) and the preregistration checked: a path that
@@ -18,23 +19,38 @@
 #      VM refuses one anyway the way scripts/run-shard.sh does.
 #   3. ubi-runner.sh up creates the VM (standard-16 unless --size), sync streams the scratch checkout to ~/work/<repo>,
 #      bootstrap.sh installs Docker, Bun at ci.yml's pin, Node, python3 and jq, and vm-shard.sh is uploaded to ~/shard/bin.
-#   4. ANTHROPIC_API_KEY and OPENAI_API_KEY (each one that is set here; the run needs the first, --embedded the second)
+#   4. With --sealed-root and --opening-receipt (internal-task, docs/sealed-custody.md; both or neither, and refused when --dest is
+#      inside a git work tree, since the raw sealed results come back there): the custodian's sealed root is streamed as a
+#      tar to ~/sealed/root and the receipt to ~/sealed/opening-receipt.json on the VM, outside ~/work/harness-evals, with
+#      no local staging copy; the lane log names the paths and the receipt's sha256 only, shard-vm.json records sealed=true,
+#      and vm-shard.sh gets --sealed-root /home/ubi/sealed/root --opening-receipt /home/ubi/sealed/opening-receipt.json. A
+#      --resume uploads them again to its fresh VM. The diagnostics of tar and the remote unpack (of the root, the receipt
+#      and a sealed --resume's results) go to <dest>/sealed-upload.log only (removed by scripts/sealed/cleanup.ts), since they
+#      can name a sealed path; a failed upload prints a fixed line naming that log. On the VM, scripts/run-shard.sh runs from its own copy of ~/sealed/root.
+#   5. ANTHROPIC_API_KEY and OPENAI_API_KEY (each one that is set here; the run needs the first, --embedded the second)
 #      are written to ~/.ubirun-env on the VM with umask 077 over the multiplexed SSH connection, exactly as
 #      ubi-runner.sh run --pass writes them. The launcher reads the file into the shell and deletes it before vm-shard.sh
 #      starts, so no file on the VM holds a key while the run is live; the keys live in that process's environment and
 #      reach only the metering proxy, as on a Capy shard. Nothing goes through cloud-init user data, images or logs.
-#   5. vm-shard.sh runs detached on the VM (setsid, nohup): checkout --detach, bun install, the smoke (a copy of the
+#   6. vm-shard.sh runs detached on the VM (setsid, nohup): checkout --detach, bun install, the smoke (a copy of the
 #      preregistration with only this shard's harness cells on one dev task, one repetition, under its own lease and
-#      ledger; it builds the images), then scripts/run-shard.sh --skip-build for the shard with --max-output-tokens 128000
-#      as that script passes it. With --resume the local <dest>/results tree (minus harness state) is uploaded first.
-#   6. Every --poll-seconds this script appends the new bytes of the VM's run-shard.log, run.stdout.log and run.log to
+#      ledger; it builds the images; a sealed lane's smoke is a public dev run, without the sealed flags and with the public
+#      gbrain image), then scripts/run-shard.sh --skip-build for the shard (a sealed shard builds instead, for its
+#      receipt-bound gbrain image) with --max-output-tokens 128000 as that script passes it. With --resume the local
+#      <dest>/results tree (minus harness state) is uploaded first.
+#   7. Every --poll-seconds this script appends the new bytes of the VM's run-shard.log, run.stdout.log and run.log to
 #      <dest>/run-shard.log, <dest>/run.stdout.log and <dest>/run.log, and vm-shard's own output to <dest>/vm-shard.out.
-#   7. On exit (the run finished, a failure, or an interrupt) the shard process on the VM is stopped if still running,
+#   8. On exit (the run finished, a failure, or an interrupt) the shard process on the VM is stopped if still running,
 #      every ledger is checkpointed (PRAGMA wal_checkpoint(TRUNCATE)) so ledger.sqlite is complete on its own, the whole
-#      results tree is copied back to <dest>/results (the smoke's to <dest>/smoke), <dest>/results/shard-vm.json is written
-#      beside shard.json (VM name, size, location, timings, exit, list-price cost), and the VM is destroyed.
+#      results tree is copied back to <dest>/results (the smoke's to <dest>/smoke), a sealed shard's ~/sealed is deleted
+#      from the VM, <dest>/results/shard-vm.json is written beside shard.json (VM name, size, location, timings, exit,
+#      list-price cost), and the VM is destroyed. shard-vm.json says cleanup "pending" from creation, "done" with
+#      destroyed_at only after ubi-runner.sh down exits 0, and "failed" (the VM id appended to <dest>/cleanup-pending) when
+#      down fails; a sealed shard's poll lines carry the trial count only, never a log line.
 #   --attach (with --dest) rejoins a VM an earlier invocation of this script left running (this machine slept or the
-#   controller died): it reads the VM name from <dest>/shard-vm.json, polls, pulls and destroys as above.
+#   controller died): it reads the VM name (and whether the shard is sealed) from <dest>/shard-vm.json, polls, pulls,
+#   deletes ~/sealed when sealed and destroys as above. A sealed attach whose --dest is inside a git work tree is refused
+#   (HE-SEALED-002) before it polls, appends a log or pulls, and leaves the VM running.
 #
 # Exit code: scripts/run-shard.sh's; 4 when the smoke did not end with every trial completed (the counted run never
 # started); 3 when the VM, the sync or the bootstrap failed before the run; 2 for a usage error; 130 on interrupt.
@@ -47,7 +63,7 @@ root=$(cd "$here/../.." && pwd)
 runner=${UBI_RUNNER:-$here/ubi-runner.sh}
 
 commit="" prereg="" name="" cells="" lease="" dest="" size=standard-16 location="" storage="" smoke_lease="" smoke_task="" smoke=1
-embedded=0 gbrain_image="" amendment="" resume=0 attach=0 poll=30 timeout_h=12
+embedded=0 gbrain_image="" amendment="" resume=0 attach=0 poll=30 timeout_h=12 sealed_root="" opening_receipt="" sealed=0
 extra=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -70,7 +86,9 @@ while [ $# -gt 0 ]; do
     --attach) attach=1; shift ;;
     --poll-seconds) poll=$2; shift 2 ;;
     --timeout-hours) timeout_h=$2; shift 2 ;;
-    -h|--help) sed -n '2,45p' "$0"; exit 0 ;;
+    --sealed-root) sealed_root=$2; shift 2 ;;
+    --opening-receipt) opening_receipt=$2; shift 2 ;;
+    -h|--help) sed -n '2,/^set -euo pipefail/{/^set /!p}' "$0"; exit 0 ;;
     --) shift; extra=("$@"); break ;;
     *) echo "run-shard (ubicloud): unknown argument $1 (see --help)" >&2; exit 2 ;;
   esac
@@ -80,6 +98,18 @@ if [ "$attach" -eq 0 ]; then
   [ -n "$commit" ] && [ -n "$prereg" ] && [ -n "$name" ] && [ -n "$cells" ] && [ -n "$lease" ] || { echo "run-shard (ubicloud): --commit, --prereg, --name, --cells, --lease-usd and --dest are required" >&2; exit 2; }
   [ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "run-shard (ubicloud): ANTHROPIC_API_KEY is not set in this shell; the metering proxy on the VM needs it" >&2; exit 2; }
   [ "$embedded" -eq 0 ] || [ -n "${OPENAI_API_KEY:-}" ] || { echo "run-shard (ubicloud): --embedded needs OPENAI_API_KEY in this shell" >&2; exit 2; }
+  if [ -n "$sealed_root" ] || [ -n "$opening_receipt" ]; then
+    [ -n "$sealed_root" ] && [ -n "$opening_receipt" ] || { echo "run-shard (ubicloud): --sealed-root and --opening-receipt go together; give both or neither" >&2; exit 2; }
+    [ -d "$sealed_root" ] || { echo "run-shard (ubicloud): --sealed-root $sealed_root is not a directory" >&2; exit 2; }
+    [ -f "$opening_receipt" ] || { echo "run-shard (ubicloud): --opening-receipt $opening_receipt does not exist" >&2; exit 2; }
+    [ "$embedded" -eq 0 ] || { echo "run-shard (ubicloud): --embedded is not supported with --sealed-root (the embedded brains are built inside the checkout; docs/sealed-custody.md)" >&2; exit 2; }
+    probe=$dest
+    while [ ! -d "$probe" ]; do probe=$(dirname "$probe"); done
+    if git -C "$probe" rev-parse --is-inside-work-tree >/dev/null 2>&1; then echo "HE-SEALED-002 run-shard (ubicloud): --dest $dest is inside a git work tree; the raw sealed results come back there, so keep --dest outside every checkout" >&2; exit 2; fi
+    sealed_root=$(cd "$sealed_root" && pwd -P)
+    opening_receipt=$(realpath "$opening_receipt")
+    sealed=1
+  fi
 fi
 [ -n "${UBI_OWNER:-}" ] || { echo "run-shard (ubicloud): set UBI_OWNER to your thread code so the VM carries its owner" >&2; exit 2; }
 [ -n "${UBICLOUD_API_KEY:-${UBICLOUD_API_TOKEN:-}}" ] || { echo "run-shard (ubicloud): UBICLOUD_API_KEY is not set" >&2; exit 2; }
@@ -155,17 +185,32 @@ PY
       [ -n "$image_s" ] && [ -n "$smoke_s" ] && smoke_s=$(( smoke_s - image_s ))
     fi
   fi
+  if [ "$sealed" -eq 1 ]; then
+    log "sealed: deleting ~/sealed (the sealed root and receipt) from $vm"
+    vssh 'rm -rf ~/sealed' < /dev/null 2>>"$dest/lane.log" || log "WARNING: rm -rf ~/sealed on $vm failed; the VM is destroyed next"
+  fi
   t_down0=$(now)
   log "destroying $vm"
   bash "$runner" down "$vm" 2>&1 | stamp | tee -a "$dest/lane.log" >&2
+  local down_rc=${PIPESTATUS[0]}
   t_down1=$(now)
+  # The destroy is recorded only once down has confirmed it. A failed down keeps the VM id for a later sweep, and a
+  # controller that dies before this line leaves cleanup "pending" in shard-vm.json, which scripts/sealed/cleanup.ts and
+  # the sweep (ubi-runner.sh list --mine) treat as unresolved.
+  if [ "$down_rc" -ne 0 ]; then
+    log "WARNING: down $vm failed (exit $down_rc); the VM id is kept in $dest/cleanup-pending for a sweep: bash $runner list --mine, then down $vm"
+    printf '%s\n' "$vm" >> "$dest/cleanup-pending"
+    jset "exit=$rc" "cleanup=\"failed\""
+    [ -f "$dest/results/shard.json" ] && cp "$dest/shard-vm.json" "$dest/results/shard-vm.json"
+    return 0
+  fi
   local created=${t_create:-$(jq1 created_epoch)} life=null minutes="" cost=""
   [ -z "$created" ] || life=$(( t_down1 - created ))
   if [ "$life" != null ] && [ -n "$rate" ]; then
     minutes=$(( (life + 59) / 60 ))
     cost=$(awk -v m="$minutes" -v r="$rate" 'BEGIN { printf "%.4f", m * (r + 3 / 43200) }')
   fi
-  jset "exit=$rc" "destroyed_at=\"$(date -u -d @$t_down1 +%Y-%m-%dT%H:%M:%SZ)\"" \
+  jset "exit=$rc" "cleanup=\"done\"" "destroyed_at=\"$(date -u -d @$t_down1 +%Y-%m-%dT%H:%M:%SZ)\"" \
     "timings_s={\"create_to_ready\": $(span "$t_create" "$t_ready"), \"sync\": $(span "$t_sync0" "$t_sync1"), \"bootstrap\": $(span "$t_boot0" "$t_boot1"), \"checkout_install\": ${checkout_s:-null}, \"image_build\": ${image_s:-null}, \"smoke\": ${smoke_s:-null}, \"run\": ${run_s:-null}, \"pull\": $(span "$t_pull0" "$t_pull1"), \"destroy\": $(( t_down1 - t_down0 )), \"vm_life\": $life}" \
     "cost={\"vm_minutes\": ${minutes:-null}, \"rate_usd_per_min\": ${rate:-null}, \"ipv4_usd_per_min\": $(awk 'BEGIN{printf "%.8f", 3/43200}'), \"list_price_usd\": ${cost:-null}, \"basis\": \"Ubicloud Germany list price per minute, VM life from create to confirmed destroy rounded up to the minute, plus the public IPv4 at USD 3 a month pro rata; the CLI reports no per-VM cost\"}"
   [ -f "$dest/results/shard.json" ] && cp "$dest/shard-vm.json" "$dest/results/shard-vm.json"
@@ -175,7 +220,10 @@ PY
 
 if [ "$attach" -eq 1 ]; then
   vm=$(jq1 vm); size=$(jq1 size); name=$(jq1 name)
+  [ "$(jq1 sealed)" != True ] || sealed=1
   [ -n "$vm" ] || { echo "run-shard (ubicloud): --attach needs $dest/shard-vm.json (or $dest/results/shard-vm.json) with a vm field" >&2; exit 2; }
+  # A sealed lane's raw logs and results come back to --dest, so an attach rechecks it once it knows the lane is sealed.
+  if [ "$sealed" -eq 1 ] && git -C "$dest" rev-parse --is-inside-work-tree >/dev/null 2>&1; then echo "HE-SEALED-002 run-shard (ubicloud): --dest $dest is inside a git work tree and $vm runs a sealed shard, whose raw logs and results come back there; nothing was polled or pulled and $vm is still running. Move $dest outside every checkout and attach from there, or destroy the VM (its results are lost): bash $runner down $vm" >&2; exit 2; fi
   case $size in standard-2) rate=0.00104 ;; standard-4) rate=0.00208 ;; standard-8) rate=0.00416 ;; standard-16) rate=0.00831 ;; standard-30) rate=0.01559 ;; standard-60) rate=0.03117 ;; *) rate="" ;; esac
   trap teardown EXIT
   trap 'exit 130' INT TERM HUP QUIT
@@ -219,7 +267,7 @@ else
   trap teardown EXIT
   trap 'exit 130' INT TERM HUP QUIT
   location=$(sed -n 's/^LOCATION=//p' "${UBI_RUNNER_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/ubi-runner}/$vm/env" | tr -d "'" || true)
-  jset "name=\"$name\"" "vm=\"$vm\"" "size=\"$size\"" "location=\"$location\"" "owner=\"$(bash "$runner" owner)\"" "commit=\"$commit\"" "run_id=\"$run_id\"" "cells=\"$cells\"" "lease_usd=$lease" "prereg=\"$prereg\"" "scratch_prereg=$([ -n "$scratch_prereg" ] && echo true || echo false)" "created_at=\"$(date -u -d @$t_create +%Y-%m-%dT%H:%M:%SZ)\"" "created_epoch=$t_create" "ready_at=\"$(date -u -d @$t_ready +%Y-%m-%dT%H:%M:%SZ)\"" "dest=\"$dest\""
+  jset "name=\"$name\"" "vm=\"$vm\"" "size=\"$size\"" "location=\"$location\"" "owner=\"$(bash "$runner" owner)\"" "commit=\"$commit\"" "run_id=\"$run_id\"" "cells=\"$cells\"" "lease_usd=$lease" "prereg=\"$prereg\"" "scratch_prereg=$([ -n "$scratch_prereg" ] && echo true || echo false)" "sealed=$([ "$sealed" -eq 1 ] && echo true || echo false)" "created_at=\"$(date -u -d @$t_create +%Y-%m-%dT%H:%M:%SZ)\"" "created_epoch=$t_create" "ready_at=\"$(date -u -d @$t_ready +%Y-%m-%dT%H:%M:%SZ)\"" "dest=\"$dest\"" "cleanup=\"pending\""
   log "VM $vm ready in $(( t_ready - t_create ))s; $dest/shard-vm.json records it (run-shard.sh --attach --dest $dest rejoins it)"
 
   t_sync0=$(now)
@@ -235,15 +283,31 @@ else
   t_boot1=$(now)
   log "bootstrap done in $(( t_boot1 - t_boot0 ))s"
 
-  # 4. the keys, over SSH only, into a 0600 file the launcher reads and deletes
+  # 4. a sealed shard's root and receipt, streamed straight to ~/sealed (outside the checkout); no local staging copy
+  if [ "$sealed" -eq 1 ]; then
+    log "sealed: uploading $sealed_root to ~/sealed/root and $opening_receipt (sha256 $(sha256sum "$opening_receipt" | cut -d' ' -f1)) to ~/sealed/opening-receipt.json"
+    # tar and the remote unpack can name an archive member (a sealed task path), so their diagnostics go to <dest>/sealed-upload.log, which cleanup.ts removes
+    tar -C "$sealed_root" -czf - . 2>>"$dest/sealed-upload.log" | bash "$runner" unpack "$vm" sealed/root >>"$dest/sealed-upload.log" 2>&1 || { log "sealed upload failed; its diagnostics are in $dest/sealed-upload.log (custody only)"; exit 3; }
+    vssh 'mkdir -p ~/sealed && cat > ~/sealed/opening-receipt.json' < "$opening_receipt" >>"$dest/sealed-upload.log" 2>&1 || { log "sealed receipt upload failed; its diagnostics are in $dest/sealed-upload.log (custody only)"; exit 3; }
+  fi
+
+  # 5. the keys, over SSH only, into a 0600 file the launcher reads and deletes. Only the two model keys go; the custody
+  # identity (a file in the project-user drive, never in the environment) never reaches the VM, which gets the opened
+  # plaintext and never decrypts.
   { for k in ANTHROPIC_API_KEY OPENAI_API_KEY; do [ -n "${!k:-}" ] && printf 'export %s=%q\n' "$k" "${!k}"; done; } | vssh 'umask 077 && cat > ~/.ubirun-env'
 
   if [ "$resume" -eq 1 ]; then
     log "resume: uploading $dest/results (without harness state and workspaces) to the VM"
-    tar -C "$dest" -czf - --exclude='results/trials/*/*/*/state' --exclude='results/trials/*/*/*/workspace' --exclude='results/shard-vm.json' results | bash "$runner" unpack "$vm" shard
+    resume_tar=(tar -C "$dest" -czf - --exclude='results/trials/*/*/*/state' --exclude='results/trials/*/*/*/workspace' --exclude='results/shard-vm.json' results)
+    if [ "$sealed" -eq 1 ]; then
+      # sealed raw results: a tar diagnostic names a trial path, which carries a task id
+      "${resume_tar[@]}" 2>>"$dest/sealed-upload.log" | bash "$runner" unpack "$vm" shard >>"$dest/sealed-upload.log" 2>&1 || { log "resume upload failed; its diagnostics are in $dest/sealed-upload.log (custody only)"; exit 3; }
+    else
+      "${resume_tar[@]}" | bash "$runner" unpack "$vm" shard
+    fi
   fi
 
-  # 5. launch vm-shard.sh detached
+  # 6. launch vm-shard.sh detached
   vm_args=(--commit "$commit" --prereg "$remote_prereg" --name "$name" --cells "$cells" --lease-usd "$lease")
   [ -z "$smoke_lease" ] || vm_args+=(--smoke-lease-usd "$smoke_lease")
   [ -z "$smoke_task" ] || vm_args+=(--smoke-task "$smoke_task")
@@ -252,6 +316,7 @@ else
   [ -z "$amendment" ] || vm_args+=(--amendment "$amendment")
   [ "$embedded" -eq 0 ] || vm_args+=(--embedded)
   [ -z "$gbrain_image" ] || vm_args+=(--gbrain-image "$gbrain_image")
+  [ "$sealed" -eq 0 ] || vm_args+=(--sealed-root "$remote_home/sealed/root" --opening-receipt "$remote_home/sealed/opening-receipt.json")
   [ ${#extra[@]} -eq 0 ] || vm_args+=(-- "${extra[@]}")
   qargs=$(printf '%q ' "${vm_args[@]}")
   printf '#!/usr/bin/env bash\nset -u\ncd ~/shard\n. ~/.ubirun-env\nrm -f ~/.ubirun-env\nsetsid nohup bash -l ~/shard/bin/vm-shard.sh %s > ~/shard/vm-shard.out 2>&1 < /dev/null &\necho $! > ~/shard/pid\necho "launched pid $(cat ~/shard/pid)"\n' "$qargs" | vssh 'cat > ~/shard/bin/launch.sh'
@@ -261,7 +326,7 @@ else
   log "vm-shard.sh running detached on $vm; tail -f $dest/run-shard.log (and run.stdout.log, run.log, vm-shard.out)"
 fi
 
-# 6. poll: append new bytes of the VM's logs, until ~/shard/exit exists
+# 7. poll: append new bytes of the VM's logs, until ~/shard/exit exists
 deadline=$(( $(now) + timeout_h * 3600 ))
 fails=0 polls=0 last_count=-1
 while :; do
@@ -275,7 +340,11 @@ while :; do
     vssh "tail -c +$(( have + 1 )) ~/shard/$f 2>/dev/null" >> "$local_f" 2>/dev/null || true
   done
   count=${out##*::trials }
-  if [ "$count" != "$last_count" ] || [ $(( polls % 20 )) -eq 0 ]; then log "poll: $count trial lines, $(tail -1 "$dest/run-shard.log" 2>/dev/null | cut -c1-160)"; last_count=$count; fi
+  if [ "$count" != "$last_count" ] || [ $(( polls % 20 )) -eq 0 ]; then
+    # A sealed shard's log lines can name sealed tasks, so the controller prints only the count (docs/sealed-custody.md).
+    if [ "$sealed" -eq 1 ]; then log "poll: $count trial lines"; else log "poll: $count trial lines, $(tail -1 "$dest/run-shard.log" 2>/dev/null | cut -c1-160)"; fi
+    last_count=$count
+  fi
   code=$(printf '%s\n' "$out" | sed -n '1{/^::trials/!p}')
   if [ -n "$code" ]; then
     exited=1

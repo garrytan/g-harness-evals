@@ -60,11 +60,23 @@ The 20 v0.1 held-out task texts are already disclosed: every committed `turns.js
 - The receipts carry the harnesses' full prompts and replies through `turns.jsonl` and `adapter.log`, about 47 MiB in the tree. They are the evidence the reports rest on; nothing in them is a secret, but readers will see every harness's system prompt as the runner saw it.
 - Conflict-of-interest wording on [docs/report-v0.1.md](report-v0.1.md) is marked for Garry to confirm before the page is public.
 
+### Sealed custody: before any visibility change
+
+From v0.3, sealed sets keep their ciphertext, the custody access log and the identity escrow on the orphan branch `custody` of this repository ([sealed custody](sealed-custody.md#if-the-repository-is-to-become-public)). Making the repository public would publish them. `scripts/sealed/open.ts`, `export.ts` and `seal.ts` check `gh api repos/garrytan/harness-evals -q .private` and refuse (HE-SEALED-013) when it is not `true` or cannot be read, but that guard only stops later custody work. The step that must come first:
+
+1. Move `refs/heads/custody` to a private repository or delete it, and confirm `git ls-remote origin refs/heads/custody` prints nothing.
+2. If any set is to stay sealed, generate a new identity (`scripts/sealed/keygen.ts`), reseal those sets under it as new sets, and re-escrow; whatever was on the old branch counts as published once the repository is public.
+3. Run `bun scripts/check-sealed-publication.ts` on main (no `*.age`, no identity, no access log, no raw sealed receipts), then change the visibility.
+
 ## Recommendation
 
 The repository can be made public as it stands once Garry confirms the interests paragraph and decides about the v0.2 held-out set; the audit passes, the receipts are evaluator-owned, and the held-out seal is the proof of custody. This thread did not change visibility.
 
 ## Changelog
+
+### 2026-10-28: sealed custody before a visibility change (internal-task)
+
+Added "Sealed custody: before any visibility change": the custody branch moves or goes, and still-sealed sets are re-keyed, before the repository is made public.
 
 ### 2026-10-25: merge record (internal-task)
 

@@ -3,11 +3,13 @@
 // sharded by whole cells across machines, each shard a clean checkout at the same commit running `plan` itself, trials
 // sequential within a shard).
 //
-//   bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...]
+//   bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...] [--sealed-root <dir>]
 //
 // What it builds, refusing (exit 2, naming the offender) rather than guessing:
 //   manifest.json      the first shard's; every other shard's manifest must agree once created_at is removed (run_id,
-//                      prereg sha256, cells, trials, ceilings) and is kept as <name>.manifest.json
+//                      prereg sha256, cells, trials, ceilings) and is kept as <name>.manifest.json; a sealed block must
+//                      name the same set and the same opening (openingDiff on its receipt), so a shard planned from a
+//                      receipt rewritten by resuming that opening merges
 //   trials.jsonl       every shard's records in the manifest's trial order; a trial id in two shards, in no shard, or in a
 //                      shard but not in the manifest is a refusal
 //   trials/            each shard's trial directories; a cell directory present in two shards is a refusal
@@ -20,10 +22,21 @@
 //                      name is not the --shard name is a refusal
 // compare-run.ts --pair gbrain reads shards.json to label every cost and latency row with the machines the two cells ran on.
 // Nothing is written until every check has passed, and an --out that already holds trials.jsonl is refused.
+// A sealed run (its manifest.json has a "sealed" block, docs/sealed-custody.md) is merged inside custody with
+// --sealed-root <the opened root>, or refused under HE-SEALED-001: a refusal names trial ids, which carry task ids, so
+// under the sealed output guard it goes whole to <out>/merge-shards.sealed.log and the terminal gets the merged counts only.
+// Every shard's manifest decides: a mix of sealed and plaintext shards is HE-SEALED-001. Before the guard writes its log,
+// a sealed merge refuses (HE-SEALED-002) an --out, a --sealed-root or a shard directory inside a git work tree, and
+// (HE-SEALED-003) a root whose opening-receipt.json is missing or names another opening than the manifest's. A manifest,
+// trials.jsonl or receipt that is not JSON is refused naming the file, the line and the parser's error class only.
 
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { TrialRecord } from '../runner/contracts.ts';
+import { RunnerError } from '../runner/errors.ts';
+import { sealedGuard } from '../runner/heldout/guard.ts';
+import { openingDiff, readJsonFile, readJsonLines, type OpeningReceipt } from '../runner/heldout/sealed.ts';
+import { insideGitTree } from './sealed/custody.ts';
 
 export interface ShardInput { name: string; dir: string }
 export interface ShardInfo { name: string; machine: string | null; commit: string | null; images: unknown; source: string; trials: number; cells: string[] }
@@ -47,13 +60,16 @@ export function planMerge(out: string, shards: ShardInput[]): { manifest: { run_
     for (const f of ['manifest.json', 'trials.jsonl']) if (!existsSync(join(s.dir, f))) throw new MergeError(`shard ${s.name}: ${join(s.dir, f)} is missing`);
   }
   if (existsSync(join(out, 'trials.jsonl'))) throw new MergeError(`${out} already holds trials.jsonl; merge into an empty directory`);
-  const manifests = shards.map((s) => JSON.parse(readFileSync(join(s.dir, 'manifest.json'), 'utf8')) as { run_id: string; created_at?: string; trials: Array<{ id: string; cell: string }> } & Record<string, unknown>);
-  const strip = ({ created_at: _c, ...rest }: Record<string, unknown>) => rest;
+  type Sealed = { set: string; receipt_sha256?: string; receipt: OpeningReceipt };
+  const manifests = shards.map((s) => readJsonFile<{ run_id: string; created_at?: string; sealed?: Sealed; trials: Array<{ id: string; cell: string }> } & Record<string, unknown>>(join(s.dir, 'manifest.json')));
+  const strip = ({ created_at: _c, sealed: _s, ...rest }: Record<string, unknown>) => rest;
   const first = manifests[0]!;
+  // A shard planned after the opening was resumed holds the rewritten receipt (and its sha256): the same opening merges.
+  const sealedDiff = (a?: Sealed, b?: Sealed): string[] => (!a || !b ? (a || b ? ['sealed'] : []) : a.set !== b.set ? ['sealed.set'] : openingDiff(a.receipt, b.receipt).map((k) => `sealed.receipt.${k}`));
   manifests.forEach((m, i) => {
     if (i === 0) return;
     const a = strip(first), b = strip(m);
-    const differing = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => canonical(a[k]) !== canonical(b[k]));
+    const differing = [...[...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => canonical(a[k]) !== canonical(b[k])), ...sealedDiff(first.sealed, m.sealed)];
     if (differing.length) throw new MergeError(`shard ${shards[i]!.name}: manifest.json differs from shard ${shards[0]!.name}'s in ${differing.join(', ')}; every shard must run plan at the same commit on the same preregistration`);
   });
   const owner = new Map<string, string>();
@@ -61,7 +77,7 @@ export function planMerge(out: string, shards: ShardInput[]): { manifest: { run_
   const infos: Record<string, ShardInfo> = {};
   const cellOwner = new Map<string, string>();
   for (const s of shards) {
-    const rows = readFileSync(join(s.dir, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord);
+    const rows = readJsonLines<TrialRecord>(join(s.dir, 'trials.jsonl'));
     for (const t of rows) {
       const other = owner.get(t.trial_id);
       if (other) throw new MergeError(`trial ${t.trial_id} is in shards ${other} and ${s.name}; a cell runs on one shard`);
@@ -73,7 +89,7 @@ export function planMerge(out: string, shards: ShardInput[]): { manifest: { run_
     }
     let meta: { name?: unknown; machine?: unknown; commit?: unknown; images?: unknown } = {};
     if (existsSync(join(s.dir, 'shard.json'))) {
-      meta = JSON.parse(readFileSync(join(s.dir, 'shard.json'), 'utf8')) as typeof meta;
+      meta = readJsonFile<typeof meta>(join(s.dir, 'shard.json'));
       if (meta.name !== undefined && meta.name !== s.name) throw new MergeError(`shard ${s.name}: its shard.json names itself ${JSON.stringify(meta.name)}`);
     }
     infos[s.name] = { name: s.name, machine: typeof meta.machine === 'string' ? meta.machine : null, commit: typeof meta.commit === 'string' ? meta.commit : null, images: meta.images ?? null, source: s.dir, trials: rows.length, cells: [...new Set(rows.map((t) => t.cell))].sort() };
@@ -129,16 +145,35 @@ if (import.meta.main) {
   const shards: ShardInput[] = [];
   argv.forEach((a, i) => { if (a === '--shard') { const v = argv[i + 1] ?? ''; const eq = v.indexOf('='); if (eq < 1) { console.error(`--shard takes <name>=<dir>, not ${JSON.stringify(v)}`); process.exit(2); } shards.push({ name: v.slice(0, eq), dir: v.slice(eq + 1) }); } });
   if (!argv.includes('--out') || !out || !shards.length) {
-    console.error('usage: bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...]');
+    console.error('usage: bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...] [--sealed-root <dir>]');
     process.exit(2);
   }
+  const sealedRoot = argv.includes('--sealed-root') ? argv[argv.indexOf('--sealed-root') + 1] : undefined;
+  const refuse = (msg: string): never => { console.error(msg); process.exit(2); };
+  const quiet = <T>(read: () => T): T => { try { return read(); } catch (e) { if (e instanceof RunnerError) refuse(e.message); throw e; } };
+  type Planned = { run_id: string; sealed?: { set: string; receipt: OpeningReceipt } };
+  const planned = shards.filter((s) => existsSync(join(s.dir, 'manifest.json'))).map((s) => ({ s, m: quiet(() => readJsonFile<Planned>(join(s.dir, 'manifest.json'))) }));
+  const sealedShards = planned.filter((p) => p.m.sealed);
+  if (sealedShards.length && sealedShards.length < planned.length) refuse(`HE-SEALED-001 shards ${sealedShards.map((p) => p.s.name).join(', ')} were planned with a sealed root and ${planned.filter((p) => !p.m.sealed).map((p) => p.s.name).join(', ')} without one; a merge holds the shards of one run, planned the same way`);
+  const sealedRun = sealedShards[0]?.m;
+  const sealed = sealedRun?.sealed;
+  if (sealed && !sealedRoot) refuse(`HE-SEALED-001 shard ${sealedShards[0]!.s.name} was planned with a sealed root (set ${sealed.set}); merge it inside custody with --sealed-root <the opened root> (docs/sealed-custody.md)`);
+  if (sealedRun && sealed && sealedRoot) {
+    const inTree = [['--out', out], ['--sealed-root', sealedRoot], ...shards.map((s) => [`--shard ${s.name}`, s.dir])].filter(([, p]) => insideGitTree(p!));
+    if (inTree.length) refuse(`HE-SEALED-002 ${inTree.map(([k, p]) => `${k} ${p}`).join(', ')} ${inTree.length > 1 ? 'are' : 'is'} inside a git work tree; a sealed run's raw results and its root stay outside every checkout until release. Nothing was written`);
+    const receiptPath = join(sealedRoot, 'opening-receipt.json');
+    if (!existsSync(receiptPath)) refuse(`HE-SEALED-003 --sealed-root ${sealedRoot} has no opening-receipt.json; pass the root scripts/sealed/open.ts opened for run ${sealedRun.run_id}`);
+    const differs = openingDiff(quiet(() => readJsonFile<OpeningReceipt>(receiptPath)), sealed.receipt);
+    if (differs.length) refuse(`HE-SEALED-003 ${receiptPath} is not the opening the shards were planned with (run ${sealedRun.run_id}; it differs in ${differs.join(', ')}); pass that run's opened root`);
+  }
+  if (sealed) sealedGuard({ root: sealedRoot!, set: sealed.set, repoRoot: process.cwd(), preregJson: sealed.receipt?.prereg_json, logFile: join(out, 'merge-shards.sealed.log'), allow: [/^Merged \d+ shard\(s\) into /, /^\| /], label: 'scripts/merge-shards.ts' });
   try {
     const f = mergeShards(out, shards);
     const cellsOf = (name: string) => Object.entries(f.cells).filter(([, s]) => s === name).map(([c]) => c);
     console.log([`Merged ${shards.length} shard(s) into ${out}: ${Object.keys(f.cells).length} cells, ${Object.values(f.shards).reduce((s, i) => s + i.trials, 0)} trials.`, '', '| Shard | Machine | Commit | Trials | Cells |', '|---|---|---|---|---|',
       ...Object.values(f.shards).map((i) => `| ${i.name} | ${i.machine ?? 'unknown'} | ${i.commit ?? 'unknown'} | ${i.trials} | ${cellsOf(i.name).join(', ')} |`)].join('\n'));
   } catch (e) {
-    if (e instanceof MergeError) { console.error(`merge-shards: ${e.message}`); process.exit(2); }
+    if (e instanceof MergeError || e instanceof RunnerError) { console.error(e instanceof MergeError ? `merge-shards: ${e.message}` : e.message); process.exit(2); }
     throw e;
   }
 }

@@ -3,6 +3,7 @@
 # "Checking a gbrain commit"):
 #
 #   scripts/build-gbrain-image.sh [--gbrain <full sha or branch>] [--tag <image tag>] [--out <dir>] [--embedded] [--dry-run] [--no-cache]
+#                                 [--sealed-root <dir>]
 #
 # Default: the keyword target (gbrain at the pin in gbrain/pin.json, four keyword brains, the install bundle) tagged
 # harness-eval/gbrain:dev, no key anywhere. --embedded also builds the embedded target: it starts the metering proxy on every
@@ -15,6 +16,20 @@
 # and the log path are printed under HE-GBRAIN-007 and the exit code is 2. --dry-run prints what would run and the
 # prerequisites (docker, bun, the key in the shell for --embedded) without building. Only this shell's proxy process reads
 # OPENAI_API_KEY; the container never sees it.
+#
+# --sealed-root <dir> (internal-task, docs/sealed-custody.md) builds the keyword target from a custodian's sealed root, the
+# directory scripts/sealed/open.ts writes outside any checkout: <dir>/world/world.json replaces the public world and
+# <dir>/corpus/heldout/ replaces the public heldout corpus pages. The script refuses a root inside this checkout and refuses
+# --embedded (the embedded brains are built inside the checkout's gbrain/.build, not supported for sealed sets yet). It
+# computes the world's sha256 and the corpus digest and compares them with the root's opening-receipt.json (world_sha256,
+# heldout_corpus_sha256); a mismatch is exit 2 under HE-SEALED-005. The build then gets the two directories as BuildKit named
+# contexts, both digests as build arguments (the Dockerfile checks them again) and the label harness-eval.sealed=true.
+# A sealed image is tagged harness-eval/gbrain:sealed-<run_id of the receipt>: the public default tag is replaced by it and
+# any other tag is refused, so a plaintext run on this machine never picks up the sealed brains.
+# The docker build output then goes to <dir>/logs/build-gbrain-image.log, and a failure prints the stage and that path,
+# never the log's last lines (docs/sealed-custody.md, "What may print").
+# --dry-run prints the paths and digests, never file contents. The image is never pushed: an image built with --sealed-root
+# holds the plaintext heldout corpus and stays on the machine that built it.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 root=$(pwd)
@@ -24,6 +39,8 @@ out=
 embedded=0
 dry=0
 nocache=
+sealed_root=
+sealed_args=()
 model=$(jq -r '.embeddings.model' gbrain/pin.json)
 # internal-task: the hermes installer's SOUL.md seed is Hermes's own file at the pinned Hermes commit, checked by sha256 in the build.
 hermes_args=(--build-arg "HERMES_COMMIT=$(jq -r '.commit' harnesses/hermes/pin.json)" --build-arg "HERMES_SOUL_SHA256=$(jq -r '.soul_md.sha256' harnesses/hermes/pin.json)")
@@ -35,16 +52,40 @@ while [ $# -gt 0 ]; do
     --embedded) embedded=1; shift ;;
     --dry-run) dry=1; shift ;;
     --no-cache) nocache=--no-cache; shift ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    --sealed-root) sealed_root="$2"; shift 2 ;;
+    -h|--help) sed -n '2,/^set -euo pipefail/{/^set /!p}' "$0"; exit 0 ;;
     *) echo "unknown option $1 (see --help)" >&2; exit 2 ;;
   esac
 done
+if [ -n "$sealed_root" ]; then
+  [ "$embedded" = 0 ] || { echo "build-gbrain-image: --sealed-root does not work with --embedded: the embedded brains are built inside the checkout's gbrain/.build and are not supported for sealed sets yet (docs/sealed-custody.md)" >&2; exit 2; }
+  [ -d "$sealed_root" ] || { echo "build-gbrain-image: --sealed-root $sealed_root is not a directory" >&2; exit 2; }
+  sealed_root=$(cd "$sealed_root" && pwd -P)
+  case "$sealed_root/" in "$(pwd -P)/"*) echo "build-gbrain-image: the sealed root $sealed_root is inside the checkout $(pwd -P); sealed plaintext stays outside any git checkout (docs/sealed-custody.md)" >&2; exit 2 ;; esac
+  for need in world/world.json opening-receipt.json; do [ -f "$sealed_root/$need" ] || { echo "build-gbrain-image: the sealed root $sealed_root has no $need" >&2; exit 2; }; done
+  [ -d "$sealed_root/corpus" ] || { echo "build-gbrain-image: the sealed root $sealed_root has no corpus/ directory" >&2; exit 2; }
+  sealed_world=$(sha256sum "$sealed_root/world/world.json" | cut -d' ' -f1)
+  sealed_corpus=$(cd "$sealed_root/corpus" && find . -type f -printf '%P\n' | LC_ALL=C sort | xargs -r -d '\n' sha256sum | sha256sum | cut -d' ' -f1)
+  receipt_world=$(jq -r '.world_sha256 // empty' "$sealed_root/opening-receipt.json")
+  receipt_corpus=$(jq -r '.heldout_corpus_sha256 // empty' "$sealed_root/opening-receipt.json")
+  [ "$sealed_world" = "$receipt_world" ] || { echo "HE-SEALED-005 $sealed_root/world/world.json has sha256 $sealed_world, the opening receipt records world_sha256 ${receipt_world:-none}" >&2; exit 2; }
+  [ "$sealed_corpus" = "$receipt_corpus" ] || { echo "HE-SEALED-005 $sealed_root/corpus has digest $sealed_corpus, the opening receipt records heldout_corpus_sha256 ${receipt_corpus:-none}" >&2; exit 2; }
+  # A sealed image never takes the public tag: a plaintext run on this machine would otherwise read the sealed brains.
+  sealed_run_id=$(jq -r '.run_id // empty' "$sealed_root/opening-receipt.json")
+  [[ "$sealed_run_id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]] || { echo "build-gbrain-image: the opening receipt in $sealed_root names no usable run_id" >&2; exit 2; }
+  [ "$tag" != harness-eval/gbrain:dev ] || tag="harness-eval/gbrain:sealed-$sealed_run_id"
+  [ "$tag" = "harness-eval/gbrain:sealed-$sealed_run_id" ] || { echo "build-gbrain-image: a --sealed-root build is tagged harness-eval/gbrain:sealed-$sealed_run_id, never $tag" >&2; exit 2; }
+  sealed_args=(--build-context "world-input=$sealed_root/world" --build-context "heldout-corpus=$sealed_root/corpus"
+    --build-arg "SEALED_WORLD_SHA256=$sealed_world" --build-arg "SEALED_CORPUS_SHA256=$sealed_corpus" --label harness-eval.sealed=true)
+fi
 [ -n "$out" ] || out="$root/gbrain/.build"
 mkdir -p "$out"
 # The Dockerfile's embedded target copies the brains from gbrain/.build/brains inside the build context, whatever --out is;
 # --out gets a copy of each brain beside its logs once the image is built.
 brains="$root/gbrain/.build/brains"
 log="$out/build.log"
+# A sealed build's docker output can name sealed corpus pages, so its log stays in the sealed root and is never printed.
+if [ -n "$sealed_root" ]; then mkdir -p "$sealed_root/logs"; log="$sealed_root/logs/build-gbrain-image.log"; fi
 proxy_pid=
 cleanup() { if [ -n "$proxy_pid" ] && kill -0 "$proxy_pid" 2>/dev/null; then kill -TERM "$proxy_pid" 2>/dev/null || true; wait "$proxy_pid" 2>/dev/null || true; fi; }
 trap cleanup EXIT
@@ -53,6 +94,10 @@ fail() {
   # $1: what failed. The failing stage is the last "FROM ... AS <stage>" docker printed before the error.
   local stage
   stage=$(grep -oE '^#[0-9]+ \[[a-z-]+ +[0-9]+/[0-9]+\]' "$log" 2>/dev/null | tail -1 | sed -E 's/^#[0-9]+ \[([a-z-]+) .*/\1/' || true)
+  if [ -n "$sealed_root" ]; then
+    echo "HE-GBRAIN-007 $1 (gbrain $gbrain, tag $tag)${stage:+; failing stage: $stage}; the build log is $log (custody only: a sealed build's log is never printed)" >&2
+    exit 2
+  fi
   echo "HE-GBRAIN-007 $1 (gbrain $gbrain, tag $tag)${stage:+; failing stage: $stage}; last lines of $log:" >&2
   tail -20 "$log" >&2 || true
   exit 2
@@ -62,7 +107,8 @@ plan() {
   echo "gbrain commit/ref: $gbrain"
   echo "tag:               $tag"
   echo "output:            $out (build.log${embedded:+, ledger.sqlite, proxy-usage.ndjson, brains/<split>-embedded})"
-  echo "keyword build:     docker build $nocache --build-arg GBRAIN_COMMIT=$gbrain ${hermes_args[*]} --target keyword -t $tag -f gbrain/Dockerfile ."
+  [ -z "$sealed_root" ] || echo "sealed root:       $sealed_root (world_sha256 $sealed_world, heldout_corpus_sha256 $sealed_corpus, both match opening-receipt.json)"
+  echo "keyword build:     docker build $nocache --build-arg GBRAIN_COMMIT=$gbrain ${hermes_args[*]}${sealed_root:+ ${sealed_args[*]}} --target keyword -t $tag -f gbrain/Dockerfile ."
   if [ "$embedded" = 1 ]; then
     echo "embedded build:    docker build --build-arg GBRAIN_COMMIT=$gbrain --target builder -t $tag-builder -f gbrain/Dockerfile ."
     echo "                   metering proxy on <docker bridge gateway>:<port> with the gbrain-image slot bound, ledger $out/ledger.sqlite, lease \$1, run id gbrain-image-embed-<ts>, allow-models $model"
@@ -82,8 +128,8 @@ command -v docker >/dev/null || { echo "HE-GBRAIN-007 docker is not installed" >
 command -v bun >/dev/null || { echo "HE-GBRAIN-007 bun is not installed" >&2; exit 2; }
 : > "$log"
 
-echo "[build-gbrain-image] keyword target: gbrain $gbrain -> $tag (log $log)"
-docker build $nocache --build-arg "GBRAIN_COMMIT=$gbrain" "${hermes_args[@]}" --target keyword -t "$tag" -f gbrain/Dockerfile . >> "$log" 2>&1 || fail "docker build of the keyword target failed"
+echo "[build-gbrain-image] keyword target: gbrain $gbrain -> $tag (log $log)${sealed_root:+, sealed root $sealed_root}"
+docker build $nocache --build-arg "GBRAIN_COMMIT=$gbrain" "${hermes_args[@]}" ${sealed_args[@]+"${sealed_args[@]}"} --target keyword -t "$tag" -f gbrain/Dockerfile . >> "$log" 2>&1 || fail "docker build of the keyword target failed"
 docker run --rm --entrypoint cat "$tag" /opt/sidecar/image.json > "$out/image.json"
 echo "[build-gbrain-image] keyword image $(docker image inspect -f '{{.Id}}' "$tag") gbrain $(jq -r '.gbrain_commit' "$out/image.json" | cut -c1-12) ($(jq -r '.gbrain_version' "$out/image.json"))"
 [ "$embedded" = 1 ] || exit 0
