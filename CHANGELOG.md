@@ -2,6 +2,13 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.35] - 2026-10-29
+
+### internal-task: a Ubicloud shard with OPENAI_API_KEY unset no longer dies after the upload
+
+- `scripts/ubicloud/run-shard.sh`: a shard started with only `ANTHROPIC_API_KEY` set (no `--embedded`) now writes the key file and launches. The loop that writes `~/.ubirun-env` ended with a failed `[ -n ... ]` test when the last key was unset, and under `set -euo pipefail` the controller died right after the sealed upload with no failure line; teardown then logged "exit 3". The loop now uses `if`/`then`/`fi`. Found on a real keyless sealed shard on 2026-10-29; the rerun with the fix ran 8 of 8 trials.
+- `tests/sealed-shard.test.ts`: a regression test for that case (it fails without the fix), tests that a missing `ANTHROPIC_API_KEY` and an `--embedded` run without `OPENAI_API_KEY` are refused before any VM exists, and a test that runs the generated launcher and checks it reads the key file, deletes it before `vm-shard.sh` starts, and passes on only the keys it held. Every spawned process gets an environment built from scratch and no login profile, and the stand-ins print labels, never key values.
+
 ## [0.0.34] - 2026-10-29
 
 ### internal-task: v03-pilot-2026-10 preregistered at main 44314d9ba

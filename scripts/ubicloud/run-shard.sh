@@ -294,7 +294,7 @@ else
   # 5. the keys, over SSH only, into a 0600 file the launcher reads and deletes. Only the two model keys go; the custody
   # identity (a file in the project-user drive, never in the environment) never reaches the VM, which gets the opened
   # plaintext and never decrypts.
-  { for k in ANTHROPIC_API_KEY OPENAI_API_KEY; do [ -n "${!k:-}" ] && printf 'export %s=%q\n' "$k" "${!k}"; done; } | vssh 'umask 077 && cat > ~/.ubirun-env'
+  { for k in ANTHROPIC_API_KEY OPENAI_API_KEY; do if [ -n "${!k:-}" ]; then printf 'export %s=%q\n' "$k" "${!k}"; fi; done; } | vssh 'umask 077 && cat > ~/.ubirun-env'
 
   if [ "$resume" -eq 1 ]; then
     log "resume: uploading $dest/results (without harness state and workspaces) to the VM"

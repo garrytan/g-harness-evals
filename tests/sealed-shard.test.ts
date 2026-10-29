@@ -85,7 +85,7 @@ const SHARD_CANARY = 'CANARY turn 1 of sx-01-vault-ask in #syn-vault';
 const UPLOAD_CANARY = 'tasks/multiuser/set1/heldout/sx-02-dm-guard/task.toml';
 
 describe('ubicloud/run-shard.sh sealed upload and cleanup', () => {
-  function lane(args: string[], opts: { exit?: number; identity?: string; downFails?: boolean; unpackFails?: boolean; prepare?: (dir: string) => void; dest?: (dir: string, repo: string) => string } = {}) {
+  function lane(args: string[], opts: { exit?: number; identity?: string; downFails?: boolean; unpackFails?: boolean; prepare?: (dir: string) => void; dest?: (dir: string, repo: string) => string; unset?: string[] } = {}) {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), 'he-sealed-lane-')));
     const store = join(dir, 'uploads');
     mkdirSync(store);
@@ -125,6 +125,7 @@ describe('ubicloud/run-shard.sh sealed upload and cleanup', () => {
       OPENAI_API_KEY: PLACEHOLDER,
     };
     if (opts.identity) env.AGE_IDENTITY_IN_ENV = opts.identity;
+    for (const k of opts.unset ?? []) delete env[k];
     const base = args.includes('--attach')
       ? ['--dest', dest, '--poll-seconds', '1']
       : ['--commit', 'HEAD', '--prereg', join(dir, 'prereg.json'), '--name', 's1', '--cells', 'sonnet', '--lease-usd', '7', '--dest', dest, '--poll-seconds', '1'];
@@ -190,6 +191,93 @@ describe('ubicloud/run-shard.sh sealed upload and cleanup', () => {
       expect(typeof r.shardVm.destroyed_at).toBe('string');
     } finally {
       rmSync(s.base, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  // Value: protects=a shard launched with only ANTHROPIC_API_KEY set (no --embedded, so OPENAI_API_KEY is optional) writes the
+  // key file and starts vm-shard.sh; fails_when=the key loop's last test returns nonzero under set -e and pipefail, which killed
+  // the controller silently after the sealed upload (internal-task, 2026-10-29, a real VM); seam=the fake ubi-runner.sh above.
+  test('a shard with OPENAI_API_KEY unset still writes the key file and launches vm-shard.sh', () => {
+    const s = sealedRoot();
+    try {
+      const r = lane(['--sealed-root', s.root, '--opening-receipt', s.receipt], { unset: ['OPENAI_API_KEY'] });
+      expect(r.code, r.err).toBe(0);
+      expect(r.keyFile).toBe("export ANTHROPIC_API_KEY=" + PLACEHOLDER + "\n");
+      expect(at(r.log, 'bash ~/shard/bin/launch.sh')).toBeGreaterThan(at(r.log, 'unpack vm1 sealed/root'));
+      expect(r.launch).toContain(VM_FLAGS);
+      expect(r.shardVm.cleanup).toBe('done');
+    } finally {
+      rmSync(s.base, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  // Value: protects=a shard started without ANTHROPIC_API_KEY (alone, or with OPENAI_API_KEY also unset) is refused with
+  // exit 2 before any VM exists, so the now-tolerant key loop never writes an empty or OpenAI-only key file to a VM;
+  // fails_when=the ANTHROPIC_API_KEY guard is removed, weakened, or moved after ubi-runner.sh up; why_new=no test ran the
+  // controller without ANTHROPIC_API_KEY; seam=none; no_claim=what a VM run would do with no Anthropic key.
+  test('a shard with ANTHROPIC_API_KEY unset, alone or with OPENAI_API_KEY, is exit 2 before any VM or key file', () => {
+    for (const unset of [['ANTHROPIC_API_KEY'], ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']]) {
+      const r = lane([], { unset });
+      expect(r.code, r.err).toBe(2);
+      expect(r.err).toContain('run-shard (ubicloud): ANTHROPIC_API_KEY is not set in this shell; the metering proxy on the VM needs it');
+      expect(r.log.filter((l) => l.startsWith('up '))).toEqual([]);
+      expect(r.keyFile).toBe('');
+      expect(r.uploads).toEqual([]);
+    }
+  }, 60_000);
+
+  // Value: protects=an --embedded shard without OPENAI_API_KEY is refused with exit 2 before any VM exists; fails_when=the
+  // --embedded guard is dropped, which would let the key loop (which now skips an unset key silently) launch an embedded run
+  // with no OpenAI key; why_new=since the loop fix that guard is the only check of OPENAI_API_KEY for --embedded and no test
+  // ran it; seam=none; no_claim=the sealed lane, which refuses --embedded on its own.
+  test('an --embedded shard with OPENAI_API_KEY unset is exit 2 before any VM', () => {
+    const r = lane(['--embedded'], { unset: ['OPENAI_API_KEY'] });
+    expect(r.code, r.err).toBe(2);
+    expect(r.err).toContain('run-shard (ubicloud): --embedded needs OPENAI_API_KEY in this shell');
+    expect(r.log.filter((l) => l.startsWith('up '))).toEqual([]);
+    expect(r.keyFile).toBe('');
+  }, 60_000);
+
+  // Value: protects=the launch.sh the controller writes reads a one-key ~/.ubirun-env into its shell, deletes the file
+  // before vm-shard.sh starts, and starts vm-shard.sh with ANTHROPIC_API_KEY set and OPENAI_API_KEY unset; fails_when=the
+  // source and rm lines are reordered or dropped, or a one-key file no longer launches; why_new=every lane test captured
+  // launch.sh but none executed it; seam=none; no_claim=real ssh, the remote "key file deleted" check, the metering proxy, or
+  // the VM's login profile (vm-shard.sh runs with --noprofile --norc here, so no host profile can put a real key in the test).
+  test('the launcher reads a one-key ~/.ubirun-env, deletes it, then starts vm-shard.sh with only that key', async () => {
+    const r = lane([], { unset: ['OPENAI_API_KEY'] });
+    expect(r.code, r.err).toBe(0);
+    expect(r.keyFile).toBe('export ANTHROPIC_API_KEY=' + PLACEHOLDER + '\n');
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'he-launcher-')));
+    const bin = join(home, 'shard', 'bin');
+    const saw = join(home, 'shard', 'saw');
+    try {
+      mkdirSync(bin, { recursive: true });
+      const launch = r.launch.replace(' bash -l ', ' bash --noprofile --norc -l ');
+      expect(r.launch.split(' bash -l ').length).toBe(2);
+      expect(launch).not.toContain('bash -l');
+      expect(launch.indexOf('. ~/.ubirun-env')).toBeLessThan(launch.indexOf('rm -f ~/.ubirun-env'));
+      expect(launch.indexOf('rm -f ~/.ubirun-env')).toBeLessThan(launch.indexOf('setsid nohup'));
+      writeFileSync(join(bin, 'launch.sh'), launch);
+      writeFileSync(join(home, '.ubirun-env'), r.keyFile, { mode: 0o600 });
+      const keys = [
+        'if [ "$ANTHROPIC_API_KEY" = ' + PLACEHOLDER + ' ]; then echo anthropic=placeholder; elif [ -n "$ANTHROPIC_API_KEY" ]; then echo anthropic=other; else echo anthropic=unset; fi',
+        'if [ -n "$OPENAI_API_KEY" ]; then echo openai=set; else echo openai=unset; fi',
+      ].join('\n');
+      fake(bin, 'vm-shard.sh', ['{ if [ -e "$HOME/.ubirun-env" ]; then echo keyfile=present; else echo keyfile=absent; fi', keys + '; } > "$HOME/shard/saw.tmp"', 'mv "$HOME/shard/saw.tmp" "$HOME/shard/saw"'].join('\n'));
+      const env = { PATH: process.env.PATH ?? '', HOME: home };
+      const l = spawnSync('bash', [join(bin, 'launch.sh')], { encoding: 'utf8', timeout: 20_000, env });
+      expect(l.status, l.stderr).toBe(0);
+      expect(l.stdout).toMatch(/^launched pid \d+$/m);
+      expect(existsSync(join(home, '.ubirun-env'))).toBe(false);
+      const deadline = Date.now() + 15_000;
+      while (!existsSync(saw) && Date.now() < deadline) await Bun.sleep(50);
+      expect(existsSync(saw)).toBe(true);
+      expect(readFileSync(saw, 'utf8')).toBe('keyfile=absent\nanthropic=placeholder\nopenai=unset\n');
+    } finally {
+      const pidFile = join(home, 'shard', 'pid');
+      const pid = existsSync(pidFile) ? Number(readFileSync(pidFile, 'utf8').trim()) : 0;
+      if (pid > 0) { try { process.kill(-pid, 'SIGKILL'); } catch { /* already exited */ } }
+      rmSync(home, { recursive: true, force: true });
     }
   }, 60_000);
 
