@@ -2,6 +2,13 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.31] - 2026-10-29
+
+### internal-task: README results rows say can't tell apart
+
+- README: the `gbrain-installer-2026-10` table row and the per-run bullets in the collapsed details blocks (`m3-heldout`, `m3-sensitivity-haiku`, `gbrain-arm`, `gbrain-verbs`, `gbrain-installer`, `gbrain-memory`, `gbrain-memory-fix-2026-10b`) now say "can't tell apart" where they said "not distinguished", so every results row uses the glossary's plain wording. The glossary and the reading notes still name the reports' term, and the older changelog entries are untouched.
+- No figure, interval, run name or link target changed. The set of 251 distinct numbers in README.md and its link targets are the same before and after. A dated README changelog entry records the change.
+
 ## [0.0.30] - 2026-10-28
 
 ### internal-task: internal-task skill-use panel tooling (items 1 to 6 of internal-task's spec; main took 0.0.25 to 0.0.29 with #105, #106, #103, #104 and #109 while this PR was in review; autoplan run-20261028172513, approved by Garry "take all recommendations and continue")
