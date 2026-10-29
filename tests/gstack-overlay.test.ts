@@ -1,5 +1,6 @@
-// internal-task overlay: the evidence extractor on fixture transcripts and the
-// wrappers' budget arithmetic. Keyless; no docker.
+// internal-task overlay: the evidence extractor on fixture transcripts, the
+// wrappers' budget arithmetic and the report (the discovery table and the
+// panel's Wilson intervals, bars and termination classes). Keyless; no docker.
 import { describe, expect, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
@@ -7,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { classify, extract, helperRun } from '../scripts/gsta-135/evidence.ts';
+import { allowAtMost, bars, cells, eligible, needAtLeast, terminationClass, wilson } from '../scripts/gsta-135/report.ts';
 
 const ROOT = join(import.meta.dir, '..');
 const tmp = () => mkdtempSync(join(tmpdir(), 'gsta135-'));
@@ -202,13 +204,24 @@ describe('wrapper budget arithmetic', () => {
 describe('discovery driver', () => {
   test('the spend read survives a trial with no usage line under set -e', () => {
     const dir = tmp();
-    writeFileSync(join(dir, 'u.ndjson'), JSON.stringify({ key: 'trial-token:other', outcome: 'forwarded', status: 200, actual_usd: 0.5 }) + '\n');
-    const expr = require('node:fs').readFileSync(join(ROOT, 'scripts', 'gsta-135', 'discovery.sh'), 'utf8').match(/spend=\$\(\{ grep -F[\s\S]*?from_entries\)\}'\)/)![0];
-    const run = (usage: string) => spawnSync('bash', ['-c', `set -euo pipefail; trial=t1; usage="${usage}"; ${expr}; echo "$spend"`], { encoding: 'utf8' });
+    const other = { at: '2026-10-28T00:00:00.000Z', key: 'trial-token:other', outcome: 'forwarded', status: 200, reserved_usd: 1, actual_usd: 0.5 };
+    writeFileSync(join(dir, 'u.ndjson'), JSON.stringify(other) + '\n');
+    const expr = require('node:fs').readFileSync(join(ROOT, 'scripts', 'gsta-135', 'discovery.sh'), 'utf8').match(/spend=\$\(bun scripts\/gsta-135\/lease\.ts spend[\s\S]*?\n\s*\|\| die 2 "[^"]*"/)![0];
+    const run = (usage: string) => spawnSync('bash', ['-c', `set -euo pipefail; cd "${ROOT}"; die() { echo "$2" >&2; exit "$1"; }; trial=t1; lease_id=run.t1; usage="${usage}"; ledger="${join(dir, 'none.sqlite')}"; ${expr}; echo "$spend"`], { encoding: 'utf8' });
+    const zero = { forwarded: 0, spent: 0, unknown: 0, charged_reservations: 0, charged_reservation_usd: 0, refused: 0, budget_refusals: 0, concurrent_refusals: 0, refusals: {} };
     const r = run(join(dir, 'u.ndjson'));
     expect(r.status).toBe(0);
-    expect(JSON.parse(r.stdout.trim())).toEqual({ forwarded: 0, spent: 0, unknown: 0, refused: 0, budget_refusals: 0, refusals: {} });
-    expect(run(dir).status).not.toBe(0);
+    expect(JSON.parse(r.stdout.trim())).toEqual(zero);
+    const absent = run(join(dir, 'never-written.ndjson'));
+    expect(absent.status).toBe(0);
+    expect(JSON.parse(absent.stdout.trim())).toEqual(zero);
+    // A reservation the proxy charged in full for an upstream failure is split out of the settled spend; a malformed line is the one abort.
+    writeFileSync(join(dir, 'u.ndjson'), [other, { ...other, key: 'trial-token:t1', actual_usd: 0.3, charged_reservation: false }, { ...other, key: 'trial-token:t1', status: 529, actual_usd: 1, charged_reservation: true }].map(l => JSON.stringify(l)).join('\n') + '\n');
+    expect(JSON.parse(run(join(dir, 'u.ndjson')).stdout.trim())).toEqual({ ...zero, forwarded: 2, spent: 0.3, charged_reservations: 1, charged_reservation_usd: 1 });
+    writeFileSync(join(dir, 'u.ndjson'), '{"key":"trial-token:t1"\n');
+    const bad = run(join(dir, 'u.ndjson'));
+    expect(bad.status).toBe(2);
+    expect(bad.stderr).toContain('no zero row is written');
   });
   test('refuses to reuse a run directory, before it needs the key', () => {
     const id = 'test-reuse-' + process.pid;
@@ -242,6 +255,185 @@ describe('discovery driver', () => {
     expect(md).toMatch(/\| a \| openclaw .* skill opened; helper run unobservable \(transcript truncated\) \|/);
     expect(md).toMatch(/\| b \| hermes .* no gstack skill opened in this trial \|/);
     expect(md).toMatch(/\| c \| openclaw .* not_run:cap \|/);
+  });
+});
+
+describe('panel report', () => {
+  test('Wilson 95% intervals at n=5 against known values', () => {
+    const r3 = (w: { lo: number; hi: number }) => [Number(w.lo.toFixed(3)), Number(w.hi.toFixed(3))];
+    expect(r3(wilson(0, 5))).toEqual([0, 0.434]);
+    expect(r3(wilson(1, 5))).toEqual([0.036, 0.624]);
+    expect(r3(wilson(3, 5))).toEqual([0.231, 0.882]);
+    expect(r3(wilson(5, 5))).toEqual([0.566, 1]);
+    expect(wilson(0, 0)).toEqual({ lo: 0, hi: 0 });
+  });
+  test('every termination has a class, with the evaluator bucket kept narrow', () => {
+    const classes: Record<string, string> = {};
+    for (const t of ['completed', 'timeout', 'ceiling:lease', 'model_error', 'harness_error', 'infra:runtime', 'infra_error', 'infra:reservation_refused', 'infra:cap_refused', 'infra:no_model_request(harness_error)', 'not_run:panel_cap', 'not_run:not_selected', 'not_run:dry_run', 'something_else']) classes[t] = terminationClass(t);
+    expect(classes).toEqual({
+      completed: "the trial's own outcome", timeout: "the trial's own outcome", 'ceiling:lease': "the trial's own outcome",
+      model_error: 'harness or gstack runtime', harness_error: 'harness or gstack runtime', 'infra:runtime': 'harness or gstack runtime',
+      infra_error: 'evaluator infrastructure', 'infra:reservation_refused': 'evaluator infrastructure', 'infra:cap_refused': 'evaluator infrastructure', 'infra:no_model_request(harness_error)': 'evaluator infrastructure',
+      'not_run:panel_cap': 'evaluator infrastructure', 'not_run:not_selected': 'evaluator infrastructure', 'not_run:dry_run': 'evaluator infrastructure', something_else: 'unclassified',
+    });
+  });
+
+  // A 60-trial panel with one row of every termination; the denominators stay at the planned 5 whatever happened to the trial.
+  const order: any[] = [];
+  for (let i = 1; i <= 5; i++) for (const h of ['openclaw', 'hermes']) for (const t of [1, 2, 3]) for (const arm of ['baseline', 'candidate']) order.push({ order: order.length + 1, trial_id: 'p1.' + h + '-t' + t + '-' + arm + '-' + i, harness: h, task: t, arm, trial_index: i, time_budget_s: 600 });
+  const manifest = { run_id: 'gsta-135-panel-test', created_at: '2026-10-29T10:00:00Z', tree: 'abc', hermes_mode: 'chat', max_tokens: 128000, per_trial_usd: 1, r_max_usd: 3.12, lease_usd: 4.12, panel_cap_usd: 15,
+    arms: { baseline: { gstack_sha: 'aaaa1111', images: { openclaw: { tag: 'harness-eval/openclaw:gstack-aaaa1111', digest: 'sha256:1111' }, hermes: { tag: 'harness-eval/hermes:gstack-aaaa1111-chat', digest: 'sha256:2222' } } }, candidate: { gstack_sha: 'bbbb2222', images: { openclaw: { tag: 'harness-eval/openclaw:gstack-bbbb2222', digest: 'sha256:3333' }, hermes: { tag: 'harness-eval/hermes:gstack-bbbb2222-chat', digest: 'sha256:4444' } } } },
+    stop_rule: 'settled + unknown + lease_usd <= cap before each lease', marker: { line: 'harnesses/_gstack/wrapper-lib.sh:40', variables: ['GSTACK_SESSION_KIND', 'GSTACK_STATE_ROOT'] }, approval: { setting: 'approvals.single_query_mode', value: 'deny' },
+    order, ceilings: { task1: 0.4, task2: 0.4, task3: 0.15 }, bars: 'internal-task bars text.' };
+  const m = (opened: number, started: number, success: boolean | null, control: number | null = null, attempted = started) => ({ matching_skill_opened: opened, matching_skill_started: started, started_attempted: attempted, control_false_open: control, task_success: success, skills_opened: opened ? ['gstack-review'] : [], other_skills_opened: [] });
+  const complete = (metrics: unknown) => ({ transcript: 'complete', tool_calls: 3, gstack_paths: 0, termination_hint: null, metrics });
+  function panelRows(candidate: (h: string, t: number, i: number) => ReturnType<typeof m>) {
+    const special: Record<string, any> = {
+      'p1.openclaw-t2-baseline-2': { termination: 'timeout', exit_code: 124, evidence: { ...complete(m(0, 0, null)), transcript: 'truncated' } },
+      'p1.openclaw-t2-candidate-2': { termination: 'model_error', exit_code: 3, evidence: null },
+      'p1.hermes-t1-baseline-3': { termination: 'harness_error', exit_code: 2, evidence: null },
+      'p1.hermes-t1-candidate-3': { termination: 'infra_error', exit_code: 1, evidence: null },
+      'p1.hermes-t2-baseline-3': { termination: 'ceiling:lease', usd_spent: 1.05, requests_refused: 1, budget_refusals: 1, refusals: { '402 run p1 is over its $4.12 budget': 1 }, evidence: { ...complete(m(0, 0, null)), transcript: 'truncated' } },
+      'p1.hermes-t2-candidate-3': { termination: 'infra:reservation_refused', requests_forwarded: 0, usd_spent: 0, requests_refused: 1, budget_refusals: 1, refusals: { '402 reservation': 1 }, evidence: null },
+      'p1.openclaw-t3-baseline-4': { termination: 'infra:cap_refused', requests_forwarded: 0, usd_spent: 0, requests_refused: 1, refusals: { '400 max_tokens above the cap': 1 }, evidence: null },
+      'p1.openclaw-t3-candidate-4': { termination: 'infra:no_model_request(harness_error)', requests_forwarded: 0, usd_spent: 0, evidence: null },
+      'p1.hermes-t3-baseline-4': { termination: 'infra:runtime', requests_forwarded: 0, usd_spent: 0, evidence: null },
+      'p1.hermes-t3-candidate-4': { termination: 'completed', termination_hint: 'length', evidence: { ...complete(m(0, 0, null, 0)), transcript: 'truncated', termination_hint: 'length' } },
+      'p1.openclaw-t1-baseline-5': { termination: 'not_run:panel_cap', requests_forwarded: 0, usd_spent: 0, exit_code: null, evidence: null },
+      'p1.openclaw-t1-candidate-5': { termination: 'not_run:panel_cap', requests_forwarded: 0, usd_spent: 0, exit_code: null, evidence: null },
+      'p1.hermes-t1-baseline-5': { termination: 'not_run:not_selected', requests_forwarded: 0, usd_spent: 0, exit_code: null, evidence: null },
+      'p1.hermes-t1-candidate-5': { termination: 'not_run:dry_run', requests_forwarded: 0, usd_spent: 0, exit_code: null, evidence: null },
+    };
+    return order.map(od => {
+      const base = { ...od, image: 'i', image_digest: 'd', tree: 'abc', tree_dirty: false, model: 'claude-opus-5-5', workspace_seen: true, started_at: '2026-10-29T10:00:00Z', exit_code: 0, wall_ms: 1000, requests_forwarded: 4, requests_refused: 0, budget_refusals: 0, refusals: {}, requests_undrained: 0, usd_spent: 0.1 + od.trial_index * 0.01, usd_reserved_unknown: 0, lease_usd: 4.12, grade: 'pass', max_tokens: 128000, termination: 'completed', note: '' };
+      const metrics = od.task === 3 ? m(0, 0, null, 0) : od.arm === 'candidate' ? candidate(od.harness, od.task, od.trial_index) : m(od.harness === 'openclaw' && od.trial_index === 1 ? 1 : 0, 0, true);
+      return { ...base, evidence: complete(metrics), ...(special[od.trial_id] ?? {}) };
+    }).filter(r => r.trial_id !== 'p1.hermes-t2-candidate-5');
+  }
+  function render(rows: any[], stop: string | null = null) {
+    const dir = tmp();
+    const fs = require('node:fs');
+    fs.writeFileSync(join(dir, 'cells.jsonl'), rows.map(r => JSON.stringify(r)).join('\n') + '\n');
+    const text = JSON.stringify(manifest, null, 2);
+    fs.writeFileSync(join(dir, 'manifest.json'), text);
+    fs.writeFileSync(join(dir, 'manifest.sha256'), require('node:crypto').createHash('sha256').update(text).digest('hex') + '  manifest.json\n');
+    const r = spawnSync('bun', [join(ROOT, 'scripts', 'gsta-135', 'report.ts'), join(dir, 'cells.jsonl'), join(dir, 'report.md'), '--manifest', join(dir, 'manifest.json'), ...(stop ? ['--stop', stop] : [])], { encoding: 'utf8' });
+    expect({ status: r.status, stderr: r.stderr }).toEqual({ status: 0, stderr: '' });
+    return fs.readFileSync(join(dir, 'report.md'), 'utf8') as string;
+  }
+  test('counts over the planned n, bars per harness, the inconclusive wording, every termination classed, deviations', () => {
+    const rows = panelRows((h, t, i) => h === 'openclaw' ? m(1, t === 1 && i === 4 ? 0 : 1, true, null, 1) : m(i <= 3 ? 1 : 0, i <= 2 ? 1 : 0, true, null, i <= 3 ? 1 : 0));
+    const md = render(rows, 'panel cap reached before order 57');
+    expect(md).toContain('# internal-task skill-use panel gsta-135-panel-test (2026-10-29)');
+    expect(md).toContain('- baseline: gstack aaaa1111; images openclaw harness-eval/openclaw:gstack-aaaa1111 (sha256:1111), hermes harness-eval/hermes:gstack-aaaa1111-chat (sha256:2222)');
+    expect(md).toContain('- lease per trial $4.1200 = per-trial bar $1.0000 + R_max $3.1200; panel cap $15.0000; stop rule: settled + unknown + lease_usd <= cap before each lease');
+    expect(md).toContain('- test-run marker: harnesses/_gstack/wrapper-lib.sh:40 (GSTACK_SESSION_KIND, GSTACK_STATE_ROOT); approval: approvals.single_query_mode=deny');
+    expect(md).toMatch(/- manifest sha256 [0-9a-f]{64} \(matches manifest.sha256\)/);
+    expect(md).toContain('Hermes rows are chat-mode under the overlay adapter');
+    expect(md).toContain('internal-task bars text.');
+    expect(md).toContain("**openclaw: meets the bars; improvement inconclusive at n=5 (the arms' intervals overlap)**");
+    expect(md).toContain('- met: task 1 opens the matching skill in at least 0.6 of the planned n and strictly above baseline: candidate 4 of 5 (at least 3 of 5 at n=5; Wilson 0.38 to 0.96), baseline 1/5 (0.04 to 0.62)');
+    expect(md).toContain('- met: task 1 starts the matching skill (helper exit 0) in at least 0.6 of the planned n: candidate 3 of 5 (at least 3 of 5 at n=5; Wilson 0.23 to 0.88) (4 attempted), baseline 0/5 (0.00 to 0.43)');
+    expect(md).toContain('- met: task 3 control opens a skill in at most 0.2 of the planned n: candidate 0 of 5 (at most 1 of 5 at n=5; Wilson 0.00 to 0.43), baseline 0/5 (0.00 to 0.43)');
+    expect(md).toContain('**hermes: does not meet the bars (6 of 11 not met)**');
+    expect(md).toContain('- not met: task 1 opens the matching skill in at least 0.6 of the planned n and strictly above baseline: candidate 2 of 5 (at least 3 of 5 at n=5; Wilson 0.12 to 0.77), baseline 0/5 (0.00 to 0.43)');
+    expect(md).toContain('- not met: every run trial under $1.00: 26 of 27 (over: p1.hermes-t2-baseline-3 $1.0500, lease refusal)');
+    expect(md).toContain('- met: every run trial under $1.00: 28 of 28');
+    expect(md).toContain('- met: task 3 candidate median cost under the ceiling: median $0.1300 against $0.1500 over 5 run trial(s)');
+    expect(md).toContain('| openclaw | 1 | baseline | 5 | 4 | 4 | 1/5 (0.04 to 0.62) | 0/5 (0.00 to 0.43) (0) | n/a | 4/5 (0.38 to 0.96) | $0.1250 | $0.1400 | $0.4000 | 4 | 1/0/0/4 |');
+    expect(md).toContain('| hermes | 2 | candidate | 5 | 4 | 3 | 2/5 (0.12 to 0.77) | 2/5 (0.12 to 0.77) (2) | n/a | 3/5 (0.23 to 0.88) | $0.1150 | $0.1400 | $0.4000 | 3 | 2/2/0/3 |');
+    expect(md).toContain('| hermes | 3 | candidate | 5 | 5 | 4 | n/a | n/a | 0/5 (0.00 to 0.43) | n/a | $0.1300 | $0.1500 | $0.1500 | 4 | 0/0/0/0 |');
+    expect(md).toContain('Eligibility comes before every count');
+    expect(md).toMatch(/\| 33 \| p1.hermes-t2-baseline-3 \| hermes \| 2 \| baseline \| ceiling:lease \| the trial's own outcome \| 0 \| 4 \| \$1.0500 \| \$0.0000 \| \$4.1200 \| no \|/);
+    expect(md).toMatch(/\| 48 \| p1.hermes-t3-candidate-4 .* \| truncated \| length \|/);
+    expect(md).toMatch(/\| 49 \| p1.openclaw-t1-baseline-5 .* not_run:panel_cap \| evaluator infrastructure \| {2}\| 0 \| \$0.0000 \| \$0.0000 \| \$4.1200 \| not run \|/);
+    for (const [t, c, n] of [['ceiling:lease', "the trial's own outcome", 1], ['completed', "the trial's own outcome", 46], ['harness_error', 'harness or gstack runtime', 1], ['infra:cap_refused', 'evaluator infrastructure', 1], ['infra:no_model_request(harness_error)', 'evaluator infrastructure', 1], ['infra:reservation_refused', 'evaluator infrastructure', 1], ['infra:runtime', 'harness or gstack runtime', 1], ['infra_error', 'evaluator infrastructure', 1], ['model_error', 'harness or gstack runtime', 1], ['not_run:dry_run', 'evaluator infrastructure', 1], ['not_run:not_selected', 'evaluator infrastructure', 1], ['not_run:panel_cap', 'evaluator infrastructure', 2], ['timeout', "the trial's own outcome", 1]]) {
+      expect(md).toContain('| ' + t + ' | ' + c + ' | ' + n + ' | ');
+    }
+    expect(md).toContain('- 2026-10-29: stopped: panel cap reached before order 57.');
+    expect(md).toContain('- 2026-10-29: 4 planned trial(s) not run (not_run:panel_cap, not_run:not_selected, not_run:dry_run): p1.openclaw-t1-baseline-5, p1.openclaw-t1-candidate-5, p1.hermes-t1-baseline-5, p1.hermes-t1-candidate-5. They stay in every denominator as absences; nothing was replaced.');
+    expect(md).toContain('- 2026-10-29: 1 trial(s) in the manifest order have no row in cells.jsonl: p1.hermes-t2-candidate-5. They stay in every denominator as absences.');
+    expect(md).toContain('- 2026-10-29: 1 trial(s) ended on a length stop under the max_tokens pin (128000): p1.hermes-t3-candidate-4. Paid but unobservable; counted as absences.');
+    expect(md).toContain('- 2026-10-29: p1.hermes-t3-baseline-4: the runtime preflight failed or the wrapper logged a degraded start');
+    expect(md).not.toMatch(/\brank|composite/i);
+  });
+  test('eligibility before counting: an ineligible row of every kind is an absence in every numerator, stays in planned and shows in observed', () => {
+    const full = m(1, 1, true, 1, 1);
+    const ineligible = [
+      { termination: 'infra:runtime', evidence: complete(full) },
+      { termination: 'infra:reservation_refused', evidence: complete(full) },
+      { termination: 'infra:cap_refused', evidence: complete(full) },
+      { termination: 'infra_error', evidence: complete(full) },
+      { termination: 'not_run:panel_cap', evidence: complete(full) },
+      { termination: 'completed', evidence: { ...complete(full), transcript: 'truncated' } },
+      { termination: 'completed', evidence: { ...complete(full), transcript: 'tampered' } },
+      { termination: 'completed', termination_hint: 'length', evidence: complete(full) },
+      { termination: 'completed', evidence: { ...complete(full), termination_hint: 'length' } },
+      { termination: 'timeout', evidence: { ...complete(full), transcript: 'truncated' } },
+    ];
+    for (const r of ineligible) expect([r, eligible(r)]).toEqual([r, false]);
+    expect(eligible({ termination: 'completed', evidence: complete(full) })).toBe(true);
+    expect(eligible({ termination: 'timeout', evidence: complete(full) })).toBe(true);
+    expect(eligible({ termination: 'ceiling:lease', evidence: complete(full) })).toBe(true);
+    const o = ineligible.map((_, i) => ({ trial_id: 't' + i, harness: 'openclaw', task: 1, arm: 'candidate' })).concat([{ trial_id: 'ok', harness: 'openclaw', task: 1, arm: 'candidate' }, { trial_id: 'c3', harness: 'openclaw', task: 3, arm: 'candidate' }]);
+    const rows = [...ineligible.map((r, i) => ({ ...o[i], usd_spent: 0.1, ...r })), { ...o[o.length - 2], termination: 'completed', usd_spent: 0.1, evidence: complete(full) }, { ...o[o.length - 1], termination: 'infra:runtime', usd_spent: 0.05, evidence: complete(m(0, 0, null, 1)) }];
+    const c = cells(rows, o).find(c => c.task === 1)!;
+    expect(c).toMatchObject({ planned: 11, observable: 8, eligible: 1, opened: 1, started: 1, attempted: 1, control: 10, success: 1, observed: { opened: 11, started: 11, attempted: 11, control: 11, success: 11 } });
+    expect(c.run.length).toBe(10);
+    expect(cells(rows, o).find(c => c.task === 3)).toMatchObject({ planned: 1, eligible: 0, control: 1, observed: { control: 1 } });
+    const t3 = (transcript: string, termination = 'completed') => ({ trial_id: 'x', harness: 'openclaw', task: 3, arm: 'candidate', termination, usd_spent: 0.01, evidence: { ...complete(m(0, 0, null, 1)), transcript } });
+    expect(cells([t3('truncated', 'timeout'), t3('complete')], null).find(c => c.task === 3)).toMatchObject({ planned: 2, eligible: 1, control: 2 });
+    const md = render(rows.map(r => ({ ...r, order: 1, requests_forwarded: 1 })));
+    expect(md).toContain('| openclaw | 1 | candidate | 11 | 10 | 8 | 1/11 (0.02 to 0.38) | 1/11 (0.02 to 0.38) (1) | n/a | 1/11 (0.02 to 0.38) | $0.1000 | $0.1000 | $0.4000 | 1 | 11/11/11/11 |');
+    expect(md).toContain('an absence in every numerator but the control ceiling whatever the transcript shows; its events are in the observed column');
+    const charged = render(rows.map((r, i) => ({ ...r, order: 1, requests_forwarded: 1, usd_charged_reservation: i === 0 ? 5.56 : 0 })));
+    expect(charged).toContain('settled; $5.5600 charged at full reservation on upstream failures');
+  });
+  test('the bars are proportions of the planned n and keep their meaning at n=5 and n=10', () => {
+    expect([5, 10, 1, 2].map(needAtLeast)).toEqual([3, 6, 1, 2]);
+    expect([5, 10, 4, 15].map(allowAtMost)).toEqual([1, 2, 0, 3]);
+    const panel = (n: number, opened: number, control: number) => {
+      const o: any[] = [], rows: any[] = [];
+      for (let i = 1; i <= n; i++) for (const task of [1, 2, 3]) for (const arm of ['baseline', 'candidate']) {
+        const od = { trial_id: 'x-' + task + '-' + arm + '-' + i, harness: 'openclaw', task, arm };
+        o.push(od);
+        const metrics = task === 3 ? m(0, 0, null, arm === 'candidate' && i <= control ? 1 : 0) : arm === 'candidate' && i <= opened ? m(1, 1, true, null, 1) : m(0, 0, true, null, 0);
+        rows.push({ ...od, termination: 'completed', usd_spent: 0.1, evidence: complete(metrics) });
+      }
+      return bars(cells(rows, o), 'openclaw', 1, { task1: 0.4, task2: 0.4, task3: 0.15 }, n);
+    };
+    expect(panel(5, 3, 1).lines[0]).toBe('- met: task 1 opens the matching skill in at least 0.6 of the planned n and strictly above baseline: candidate 3 of 5 (at least 3 of 5 at n=5; Wilson 0.23 to 0.88), baseline 0/5 (0.00 to 0.43)');
+    expect(panel(5, 3, 1).lines.filter(l => l.startsWith('- not met'))).toEqual([]);
+    expect(panel(5, 2, 1).lines[0]).toStartWith('- not met: task 1 opens');
+    expect(panel(5, 3, 2).lines[6]).toBe('- not met: task 3 control opens a skill in at most 0.2 of the planned n: candidate 2 of 5 (at most 1 of 5 at n=5; Wilson 0.12 to 0.77), baseline 0/5 (0.00 to 0.43)');
+    expect(panel(10, 6, 2).lines[0]).toBe('- met: task 1 opens the matching skill in at least 0.6 of the planned n and strictly above baseline: candidate 6 of 10 (at least 6 of 10 at n=10; Wilson 0.31 to 0.83), baseline 0/10 (0.00 to 0.28)');
+    expect(panel(10, 6, 2).lines[1]).toBe('- met: task 1 starts the matching skill (helper exit 0) in at least 0.6 of the planned n: candidate 6 of 10 (at least 6 of 10 at n=10; Wilson 0.31 to 0.83) (6 attempted), baseline 0/10 (0.00 to 0.28)');
+    expect(panel(10, 6, 2).lines.filter(l => l.startsWith('- not met'))).toEqual([]);
+    expect(panel(10, 6, 2).verdict).toBe("openclaw: meets the bars; the arms' intervals are separated at n=10 on every bar");
+    expect(panel(10, 5, 2).lines[0]).toStartWith('- not met: task 1 opens the matching skill in at least 0.6 of the planned n and strictly above baseline: candidate 5 of 10 (at least 6 of 10 at n=10;');
+    expect(panel(10, 5, 2).lines[1]).toStartWith('- not met: task 1 starts');
+    expect(panel(10, 6, 3).lines[6]).toStartWith('- not met: task 3 control opens a skill in at most 0.2 of the planned n: candidate 3 of 10 (at most 2 of 10 at n=10;');
+  });
+  test('a tampered transcript is listed in the deviations and the trials table and earns nothing', () => {
+    const rows = panelRows(() => m(1, 1, true, null, 1)).map(r => r.trial_id === 'p1.openclaw-t1-candidate-1' ? { ...r, evidence: { ...complete(m(0, 0, false, null, 0)), transcript: 'tampered' } } : r);
+    const md = render(rows);
+    expect(md).toContain('- 2026-10-29: p1.openclaw-t1-candidate-1: the transcript carries a user row after the first assistant row (an injected turn; a trial has one user turn). Tampered, no credit, counted as absences.');
+    expect(md).toMatch(/\| 2 \| p1.openclaw-t1-candidate-1 .* \| 0 \| 0 \| false \| tampered \| {2}\|/);
+    expect(md).toContain('| openclaw | 1 | candidate | 5 | 4 | 3 | 3/5 (0.23 to 0.88) | 3/5 (0.23 to 0.88) (3) | n/a | 3/5 (0.23 to 0.88) |');
+    expect(md).toContain('Known false-positive forms still accepted');
+  });
+  test('separated intervals drop the inconclusive wording; a bar is met only on the counts', () => {
+    const cs = cells(panelRows(() => m(1, 1, true, null, 1)).filter(r => r.harness === 'openclaw' && !r.termination.startsWith('not_run') && r.termination !== 'model_error'), order.filter(o => o.harness === 'openclaw'));
+    expect(cs.find(c => c.task === 1 && c.arm === 'candidate')).toMatchObject({ planned: 5, opened: 4, started: 4, success: 4 });
+    const b = bars(cs, 'openclaw', 1, { task1: 0.4, task2: 0.4, task3: 0.15 });
+    expect(b.verdict).toBe('openclaw: meets the bars; improvement inconclusive at n=5 (the arms\' intervals overlap)');
+    const full = cells(panelRows(() => m(1, 1, true, null, 1)).filter(r => r.harness === 'openclaw').map(r => ({ ...r, termination: 'completed', evidence: complete(r.arm === 'candidate' && r.task !== 3 ? m(1, 1, true, null, 1) : m(0, 0, true, r.task === 3 ? 0 : null)) })), order.filter(o => o.harness === 'openclaw'));
+    const sep = bars(full, 'openclaw', 1, { task1: 0.4, task2: 0.4, task3: 0.15 });
+    expect(sep.verdict).toBe("openclaw: meets the bars; the arms' intervals are separated at n=5 on every bar");
+    expect(sep.lines.filter(l => l.startsWith('- not met'))).toEqual([]);
+    expect(bars(full, 'hermes', 1, { task1: 0.4, task2: 0.4, task3: 0.15 }).verdict).toBe('hermes: not measured (no run trial)');
+    const noCeiling = bars(full, 'openclaw', 1, { task1: null, task2: 0.4, task3: 0.15 });
+    expect(noCeiling.lines).toContain('- not met: task 1 candidate median cost under the ceiling: median $0.1200 against no ceiling over 5 run trial(s)');
   });
 });
 

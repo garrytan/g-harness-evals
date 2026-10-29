@@ -2,9 +2,11 @@
 # internal-task overlay wrapper for the OpenClaw adapter. The image is
 # harness-eval/openclaw:gstack-<pin8>, FROM harness-eval/openclaw:dev with the
 # pinned gstack checkout at /opt/gstack and Bun at /opt/bun. Before the first
-# turn it registers gstack's skills with OpenClaw the way the spec's install
-# step does (`./setup --host openclaw --no-browser`), as the adapter's HOME and
-# state user, then execs the counted adapter (kept as adapter.real.sh) with the
+# turn it marks the trial as a test run for gstack (wrap_mark_test_run in
+# wrapper-lib.sh, the same marker in both arms), checks the Bun runtime,
+# registers gstack's skills with OpenClaw the way the spec's install step does
+# (`./setup --host openclaw --no-browser`), as the adapter's HOME and state
+# user, then execs the counted adapter (kept as adapter.real.sh) with the
 # remaining time budget. The counted adapter and image are untouched.
 #
 # Which skills root the exec turn reads was a question, because the run entry
@@ -24,7 +26,9 @@ state="$HE_SESSION_STATE_DIR/openclaw"
 mkdir -p "$state/exec"
 roots=${HE_GSTACK_OPENCLAW_ROOTS:-parent}
 case "$roots" in parent) dirs="$state" ;; exec) dirs="$state/exec" ;; both) dirs="$state $state/exec" ;; *) wrap_fail "HE_GSTACK_OPENCLAW_ROOTS must be parent, exec or both, not '$roots'" ;; esac
-wrap_log "openclaw overlay: gstack $(cat "$GSTACK_DIR/VERSION") at $(git -C "$GSTACK_DIR" rev-parse HEAD) bun $(bun --version) roots=$roots"
+wrap_mark_test_run
+wrap_runtime_check
+wrap_log "openclaw overlay: gstack $(cat "$GSTACK_DIR/VERSION") at $(git -C "$GSTACK_DIR" rev-parse HEAD) bun $(bun --version 2>/dev/null || echo none) roots=$roots"
 
 for root in $dirs; do
   OPENCLAW_STATE_DIR="$root" "$GSTACK_DIR/setup" --host openclaw --no-browser > "$HE_LOG_DIR/gstack-setup.log" 2>&1 || wrap_fail "setup --host openclaw (OPENCLAW_STATE_DIR=$root) exited $? (gstack-setup.log)"
