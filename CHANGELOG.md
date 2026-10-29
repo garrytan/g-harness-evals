@@ -2,6 +2,14 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.38] - 2026-10-29
+
+### internal-task: merge-pass accepts the interim gate while /ship is suspended
+
+- `scripts/ubicloud/merge-pass.sh`: while the /ship gate is suspended (CREW.md "/ship gate SUSPENDED", Garry via internal-task, 2026-10-29) a body line `INTERIM_GATE: reviewer=<model> head=<full sha> pregate=pass` naming the exact current head is accepted in place of the ship receipt. The match is anchored: the full 40-character head, the literal `pregate=pass`, nothing else on the line. A valid receipt still passes alone; a failed or stale receipt never does, and a stale interim line (another head, a prefix, `pregate=fail`) is a skip. The custody skip, the head and base re-read before the merge and the squash with `--match-head-commit` are unchanged.
+- Each merge-log line ends with `gate <ship-receipt status=<s> | interim-gate reviewer=<model>>`, and the merged stdout line (so pr-watch.sh's `merged` event) carries the same `(gate: ...)` suffix. Every skip a green gateless pull request gets still starts with `skip: green, awaiting ship receipt`, so pr-watch.sh's `awaiting-receipt` event is unchanged.
+- `tests/merge-pass.test.ts`: the interim cases (exact head merges and is logged; another head, a prefix, `pregate=fail`, trailing words, a stale receipt beside a stale interim line are skips; a failed or stale receipt beside a valid interim line merges by the interim gate; a valid receipt beside a stale interim line merges by the receipt). Interim gate review: the header's output line and the pr-watch.sh and README event descriptions now show the `(gate: ...)` suffix the merged line gained.
+
 ## [0.0.37] - 2026-10-29
 
 ### internal-task: v0.3 approval relay template revised after the dev pilot

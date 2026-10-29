@@ -112,6 +112,10 @@ The VM's phases: create to ready 82 s (19 s on an earlier VM the same evening), 
 
 ## Changelog
 
+### 2026-10-29: merge-pass.sh accepts the interim gate while /ship is suspended (internal-task)
+
+`scripts/ubicloud/merge-pass.sh` accepts a body line `INTERIM_GATE: reviewer=<model> head=<full sha> pregate=pass` naming the exact current head in place of the /ship receipt, keeps accepting a valid receipt, and ends each merge-log line with `gate <which>` so the record says which gate admitted the merge. Everything else in the rule (clean, every check green, ubicloud/checks success, the custody skip, the head and base re-read, squash with `--match-head-commit`) is unchanged. Why: Garry suspended the /ship gate until gstack's token fix is installed (CREW.md, "/ship gate SUSPENDED", via internal-task).
+
 ### 2026-10-28: rotating UBICLOUD_API_KEY re-escrows the custody identity; sealed poll lines and VM cleanup records (internal-task)
 
 "Rotating UBICLOUD_API_KEY" is new: the sealed-custody escrow is encrypted under a passphrase derived from the key, so a rotation runs `keygen.ts --re-escrow` and `--check-escrow` before the old key is revoked. `run-shard.sh` now prints only the trial count in a sealed lane's poll lines, records `cleanup: "done"` and `destroyed_at` in `shard-vm.json` only after `down` succeeds, and keeps a failed down's VM id in `<dest>/cleanup-pending`. Why: internal-task's custody redesign (no human handles keys) and its review.
