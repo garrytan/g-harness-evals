@@ -15,6 +15,8 @@ import { world } from './world-helpers.ts';
 const ROOT = join(import.meta.dir, '..', 'tasks', 'multiuser');
 const SPLITS = ['dev', 'heldout'] as const;
 const V02_FAMILIES = ['continuity', 'synthesis', 'corrections', 'approval_relay'];
+/** v0.3 (internal-task) adds scope isolation and shared channel to the four v0.2 families; its held-out tree is sealed, so only dev is read here. */
+const SET_FAMILIES: Record<string, string[]> = { 'v0.3': ['scope_isolation', 'shared_channel', 'synthesis', 'continuity', 'corrections', 'approval_relay'] };
 
 /** Task sets: v0.1 at the root, then every tasks/multiuser/<set>/ that holds a dev or heldout directory. */
 const SETS: Array<{ name: string; root: string }> = [
@@ -72,12 +74,26 @@ describe('task set v0.2', () => {
   });
 });
 
+describe('task set v0.3', () => {
+  test('20 public dev tasks: 4 scope isolation, 2 shared channel, 3 synthesis, 4 continuity, 4 corrections, 3 approval relay; no held-out plaintext', () => {
+    const root = join(ROOT, 'v0.3');
+    expect(taskDirs(root, 'dev')).toHaveLength(20);
+    expect(taskDirs(root, 'heldout')).toHaveLength(0);
+    const families = new Map<string, number>();
+    for (const dir of taskDirs(root, 'dev')) {
+      const t = loadTask(dir);
+      families.set(t.family, (families.get(t.family) ?? 0) + 1);
+    }
+    expect([...families.entries()].sort()).toEqual([['approval_relay', 3], ['continuity', 4], ['corrections', 4], ['scope_isolation', 4], ['shared_channel', 2], ['synthesis', 3]]);
+  });
+});
+
 for (const set of SETS.slice(1)) {
   describe(`task set ${set.name}`, () => {
-    test('every task is in one of the four v0.2 families and names its split directory', () => {
+    test('every task is in one of the set\'s families (the four v0.2 families unless the set names its own) and names its split directory', () => {
       for (const split of SPLITS) for (const dir of taskDirs(set.root, split)) {
         const t = loadTask(dir);
-        expect(V02_FAMILIES, `${t.id}: family ${t.family}`).toContain(t.family);
+        expect(SET_FAMILIES[set.name] ?? V02_FAMILIES, `${t.id}: family ${t.family}`).toContain(t.family);
         expect(t.split).toBe(split);
       }
     });

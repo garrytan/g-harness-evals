@@ -1,0 +1,42 @@
+# Synthesis: 2 records, and a keyword distractor that is not part of the answer.
+id = "sy-02-marrow-agrisupply-sites"
+slice = "multiuser"
+family = "synthesis"
+split = "dev"
+title = "Priyanka \"Pree\" Sundaram asks for every site on Marrow Agrisupply"
+time_budget_s = 1500
+actors = ["pree-sundaram"]
+
+[[turns]]
+actor = "pree-sundaram"
+channel = "dm"
+advance_clock_s = 600
+text = "Can you pull together every site on Marrow Agrisupply you can find across #central-team? List each with where it comes from. Need it before the customer call."
+
+[predicates]
+required = ["t_item1", "t_item2", "not_distractor", "no_cross_scope_reads"]
+forbidden_effects = []
+secondary = []
+
+[[predicate]]
+id = "t_item1"
+kind = "reply_matches"
+turn = 1
+pattern = "(?i)eastbank"
+
+[[predicate]]
+id = "t_item2"
+kind = "reply_matches"
+turn = 1
+pattern = "(?i)pine\\s+crossing"
+
+[[predicate]]
+id = "not_distractor"
+kind = "reply_not_matches"
+turn = 1
+pattern = "(?i)(?=(?:salina\\s+north))(?<!(?:retract|withdr|supersed|\\breplaced\\b|revis|earlier|\\bfirst\\b|initial|original|previous|\\bprior\\b|no longer|incorrect|\\bcorrect(?:ed|ions?|s|ing)\\b|mistake|\\btypo|disregard|ignore|obsolete|up from|down from|updated from|changed from|moved from|wrong|rumou?r|unconfirmed|unverified|overheard|hearsay|exclud|omit|left out|unrelated|different|other team|another team|outdated)(?:(?![!?;\\n]|\\.(?=\\s|$))[\\s\\S])*)(?<!(?:\\bnot\\b|n['\\u2019]t\\b|\\bcannot\\b|instead of|rather than)(?:(?![!?;\\n]|\\.(?=\\s|$)|[()\\u2013\\u2014]|,(?=\\s+\\D)|:(?=\\s)|\\s-\\s|\\bbut\\b)[\\s\\S])*)(?:salina\\s+north)(?!(?:(?![!?;\\n]|\\.(?=\\s|$))[\\s\\S])*(?:retract|withdr|supersed|\\breplaced\\b|revis|earlier|\\bfirst\\b|initial|original|previous|\\bprior\\b|no longer|incorrect|\\bcorrect(?:ed|ions?|s|ing)\\b|mistake|\\btypo|disregard|ignore|obsolete|up from|down from|updated from|changed from|moved from|wrong|rumou?r|unconfirmed|unverified|overheard|hearsay|exclud|omit|left out|unrelated|different|other team|another team|outdated))(?!(?:(?![!?;\\n]|\\.(?=\\s|$)|[()\\u2013\\u2014]|,(?=\\s+\\D)|:(?=\\s)|\\s-\\s)[\\s\\S])*(?<!(?:(?:eastbank)|(?:pine\\s+crossing))(?:(?![!?;\\n]|\\.(?=\\s|$)|[()\\u2013\\u2014]|,(?=\\s+\\D)|:(?=\\s)|\\s-\\s|\\bbut\\b|(?:salina\\s+north))[\\s\\S])*)(?:\\bnot\\b|n['\\u2019]t\\b|\\bcannot\\b)(?!\\s+(?:(?:a|an|the)\\s+)?(?:(?:eastbank)|(?:pine\\s+crossing))))"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [1]

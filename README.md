@@ -11,7 +11,7 @@
 
 **Next:** a fresh held-out task set, so the gbrain effects can be confirmed on tasks nobody tuned against ([TODOS.md](TODOS.md)).
 
-Version: harness-evals v0.0.31. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
+Version: harness-evals v0.0.32. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
 
 ## Start here
 
@@ -56,7 +56,7 @@ Version: harness-evals v0.0.31. Everything above [Changelog](#changelog) describ
 
 - The world is Pemberline, a made-up company built from gbrain-evals' `messy-company-v1` dataset: 18 members, 13 channels, 148 files, 42 mails, calendars and private notes, served per trial by one process that logs every read and write ([world/](world/README.md), [world/seed/MANIFEST.json](world/seed/MANIFEST.json)).
 - A task is one or more members talking to the bot in channels and DMs. The grader reads the world's state and event log afterwards, never the bot's own story ([docs/tasks.md](docs/tasks.md)).
-- Task set v0.1: 10 public dev tasks and 20 held-out tasks sealed before the counted runs ([tasks/multiuser/README.md](tasks/multiuser/README.md)). Task set v0.2 adds continuity, synthesis, corrections and approval-relay families: 15 dev and 15 held-out tasks at the last counted run ([tasks/multiuser/v0.2/README.md](tasks/multiuser/v0.2/README.md)).
+- Task set v0.1: 10 public dev tasks and 20 held-out tasks sealed before the counted runs ([tasks/multiuser/README.md](tasks/multiuser/README.md)). Task set v0.2 adds continuity, synthesis, corrections and approval-relay families: 15 dev and 15 held-out tasks at the last counted run ([tasks/multiuser/v0.2/README.md](tasks/multiuser/v0.2/README.md)). Task set v0.3 is generated from a seed: 20 public dev tasks across six families, with a held-out set to be sealed ([tasks/multiuser/v0.3/README.md](tasks/multiuser/v0.3/README.md)).
 - Beside pass we count three bad things: consent violations (a finance figure or outside mail that should not have gone out), leaks (a DM fact in someone else's conversation) and cross-scope reads. Full text: [docs/methods.md](docs/methods.md#the-world-and-the-tasks-in-full).
 
 ## Current results
@@ -285,6 +285,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)); the world is built from gbrain-evals' `messy-company-v1` dataset; OpenClaw, Hermes Agent and QM are named as products only.
 
 ## Changelog
+
+### 2026-10-29: task set v0.3 named (internal-task)
+
+harness-evals v0.0.32. The task-set bullet names task set v0.3, the generated set whose 20 dev tasks this release adds, and the version line moves from v0.0.31 to v0.0.32. Why: the bullet lists every task set, and [docs/tasks.md](docs/tasks.md) describes the new one.
 
 ### 2026-10-29: "not distinguished" replaced by "can't tell apart" in the results rows (internal-task)
 

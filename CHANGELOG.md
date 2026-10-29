@@ -2,6 +2,18 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.32] - 2026-10-29
+
+### internal-task: the v0.3 task set's generators, keyless checks and dev split (main took 0.0.28 to 0.0.31 with #104, #109, #108 and #110 while this PR was in review)
+
+- `scripts/v03/gen-world.ts` (new): generates the v0.3 held-out world slice from a seed. It keeps the Pemberline frame and every dev record and page, replaces the two held-out teams with teams invented from the seed, plans a facts inventory (answers, baits outside each asker's scope, synthesis groups with distractors, finance figures) before any page exists, has openai:gpt-6.1-sol write each page through the metering proxy under a lease (`scripts/v03/llm.ts`, with an on-disk response cache), checks every planned string verbatim, runs `world/seed/import.ts` unchanged and resolves each fact to a record and its readers. Its output prints only counts, digests and error codes. Tested keylessly with a fake transport in `tests/v03-gen-world.test.ts`.
+- `scripts/v03/gen-tasks.ts` (new): writes every task of six families (scope isolation, shared channel, synthesis, continuity, corrections, approval relay) from a world, a facts index and a seed, with predicates from the existing library only, an oracle, one mutation per required predicate and forbidden effect, and a `spec.json`. `scripts/v03/index-facts.ts` builds the facts index; `scripts/v03/types.ts` holds the shapes.
+- `scripts/v03/check-set.ts` (new, keyless): the oracle and mutation matrix plus scope, visibility, hidden-fact and bait checks per task, with flag codes; `tests/v03-generators.test.ts` plants each defect class and requires it flagged. `scripts/v03/quiet.ts` runs a command over held-out material and prints only safe summary lines.
+- `runner/grade/task.ts`: an optional `[mechanism]` table (`needed_turn`, `superseded_turn`), validated against the task's turns and never read by the grader; `scripts/v03/mechanism.ts` counts C4's mechanism endpoint from it.
+- `tasks/multiuser/v0.3/` (new): the 20 public dev tasks (scope isolation 4, shared channel 2, synthesis 3, continuity 4, corrections 4, approval relay 3), the published seed and the dev facts index. `tests/task-matrix.test.ts` asserts the counts. `docs/tasks.md` describes the set and the table.
+- `scripts/v03/audit.ts` (new): claude-opus-5-5 reads each generated task beside the records it rests on, through the metering proxy under a lease, and names defects from a fixed list of codes; a task with any code, or with two unparseable answers, fails. `scripts/v03/select.ts` (new, keyless) keeps the lowest-numbered passing candidates per family up to the family's quota and logs every candidate passed over with its code. Tested in `tests/v03-audit.test.ts` and `tests/v03-select.test.ts`.
+- The generated held-out world follows internal-task's sealed-slice contract: the public world with its held-out records replaced by `slice.json`, which changes no public record.
+- Held-out safety from the ship review: gen-world and gen-tasks print and store a domain-separated seed commitment (`seed_commitment`) instead of sha256 of the seed, which is gen-tasks' key; gen-tasks refuses named ids, a non-empty output directory or an output inside the checkout for a held-out split; select, audit and check-set's held-out log refuse paths inside the checkout, and select stops before copying any task when the set is below MIN_TASKS or past MAX_REPLACEMENTS; quiet.ts passes only the tools' own words, keys and value shapes; mechanism.ts stops with MECH-CHANNEL-UNKNOWN when a task channel is missing from the world it is given; check-set's hidden-fact check reads calendar events; a scope-isolation bait is penalized however it is hedged. The output guards follow symlinks and refuse any git work tree, and quiet.ts refuses a log directory inside one.
 ## [0.0.31] - 2026-10-29
 
 ### internal-task: README results rows say can't tell apart
@@ -44,6 +56,7 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 - `scripts/ubicloud/merge-pass.sh`: a custody head or base is skipped before any other read, and the head sha and both branch names are read again right before `gh pr merge`, so a head that moved or a base that changed since the list (a retarget to `custody` included) is a skip; that skip names the fresh head.
 - `scripts/ubicloud/pr-check.sh`: a custody head or base is refused with exit 2 before any status read, post or fetch; `--help` prints the whole header comment again.
 - Tests: `tests/pr-watch.test.ts`, `tests/merge-pass.test.ts` and `tests/pr-check-relink.test.ts` drive the skips and the refusal, the second list, the fresh read before the merge, the once-per-head memory and `--help` (60 tests across the three files). `docs/ubicloud.md` and `scripts/ubicloud/README.md` describe the rule.
+
 
 ## [0.0.26] - 2026-10-28
 

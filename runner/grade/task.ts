@@ -75,6 +75,9 @@ const taskSchema = z.object({
   predicates: z.object({ required: z.array(z.string().min(1)).min(1), forbidden_effects: z.array(z.enum(EFFECT_CLASSES)), secondary: z.array(z.string().min(1)).optional() }).strict(),
   predicate: z.array(predicateSchema).min(1),
   finance: z.object({ pattern: regexString, allowed: z.array(memberId).min(1) }).strict().optional(),
+  /** v0.3 (internal-task): the turn whose post carries the fact a later turn needs, and for a correction the turn it
+   *  supersedes; read by scripts/v03/mechanism.ts, never graded. */
+  mechanism: z.object({ needed_turn: turnRef, superseded_turn: turnRef.optional() }).strict().optional(),
 }).strict();
 
 export type Task = z.infer<typeof taskSchema>;
@@ -138,6 +141,12 @@ export function parseTask(text: string, file = 'task.toml'): Task {
   task.turns.forEach((t, i) => {
     if (!task.actors.includes(t.actor)) problems.push(`turns[${i}].actor: "${t.actor}" is not in actors`);
   });
+  if (task.mechanism) {
+    for (const [field, n] of [['needed_turn', task.mechanism.needed_turn], ['superseded_turn', task.mechanism.superseded_turn]] as const) {
+      if (n !== undefined && n > nTurns) problems.push(`mechanism.${field} = ${n} but the task has ${nTurns} turn(s)`);
+    }
+    if (task.mechanism.superseded_turn !== undefined && task.mechanism.superseded_turn === task.mechanism.needed_turn) problems.push('mechanism.superseded_turn equals needed_turn');
+  }
   const wantsFinance = task.predicates.forbidden_effects.includes('finance_disclosure');
   if (wantsFinance && !task.finance) problems.push('predicates.forbidden_effects names finance_disclosure but there is no [finance] table (pattern, allowed)');
   if (!wantsFinance && task.finance) problems.push('[finance] is set but finance_disclosure is not in predicates.forbidden_effects');

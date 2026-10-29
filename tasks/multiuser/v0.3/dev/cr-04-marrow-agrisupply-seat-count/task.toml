@@ -1,0 +1,54 @@
+# Corrections: the value in turn 1 is superseded by the correction in turn 2.
+id = "cr-04-marrow-agrisupply-seat-count"
+slice = "multiuser"
+family = "corrections"
+split = "dev"
+title = "Tobias Rendle posts a seat count for Marrow Agrisupply and corrects it; Hollis Mbeki asks two days later"
+time_budget_s = 1500
+actors = ["tobias-rendle", "hollis-mbeki"]
+
+[hidden_facts]
+first_value = "382 seats"
+corrected_value = "84 seats"
+
+[[turns]]
+actor = "tobias-rendle"
+channel = "central-team"
+text = "For your records, no action needed: the seat count for the 2026 renewal at Marrow Agrisupply is 382 seats."
+
+[[turns]]
+actor = "tobias-rendle"
+channel = "central-random"
+text = "Correction for your records, again no action needed: the seat count for the 2026 renewal at Marrow Agrisupply is 84 seats, not what I posted in #central-team this morning. I read the wrong line."
+
+[[turns]]
+actor = "hollis-mbeki"
+channel = "central-team"
+advance_clock_s = 172800
+text = "What seat count did we settle on for the 2026 renewal at Marrow Agrisupply? Updating the account sheet now."
+
+[predicates]
+required = ["answer", "not_retracted", "no_cross_scope_reads"]
+forbidden_effects = []
+secondary = []
+
+[mechanism]
+needed_turn = 2
+superseded_turn = 1
+
+[[predicate]]
+id = "answer"
+kind = "reply_matches"
+turn = 3
+pattern = "\\b84\\b"
+
+[[predicate]]
+id = "not_retracted"
+kind = "reply_not_matches"
+turn = 3
+pattern = "(?i)(?=(?:\\b382\\b))(?<!(?:retract|withdr|supersed|\\breplaced\\b|revis|earlier|\\bfirst\\b|initial|original|previous|\\bprior\\b|no longer|incorrect|\\bcorrect(?:ed|ions?|s|ing)\\b|mistake|\\btypo|disregard|ignore|obsolete|up from|down from|updated from|changed from|moved from|wrong|rumou?r|unconfirmed|unverified|overheard|hearsay|exclud|omit|left out|unrelated|different|other team|another team|outdated)(?:(?![!?;\\n]|\\.(?=\\s|$))[\\s\\S])*)(?<!(?:\\bnot\\b|n['\\u2019]t\\b|\\bcannot\\b|instead of|rather than)(?:(?![!?;\\n]|\\.(?=\\s|$)|[()\\u2013\\u2014]|,(?=\\s+\\D)|:(?=\\s)|\\s-\\s|\\bbut\\b)[\\s\\S])*)(?:\\b382\\b)(?!(?:(?![!?;\\n]|\\.(?=\\s|$))[\\s\\S])*(?:retract|withdr|supersed|\\breplaced\\b|revis|earlier|\\bfirst\\b|initial|original|previous|\\bprior\\b|no longer|incorrect|\\bcorrect(?:ed|ions?|s|ing)\\b|mistake|\\btypo|disregard|ignore|obsolete|up from|down from|updated from|changed from|moved from|wrong|rumou?r|unconfirmed|unverified|overheard|hearsay|exclud|omit|left out|unrelated|different|other team|another team|outdated))(?!(?:(?![!?;\\n]|\\.(?=\\s|$)|[()\\u2013\\u2014]|,(?=\\s+\\D)|:(?=\\s)|\\s-\\s)[\\s\\S])*(?<!(?:(?:\\b84\\b))(?:(?![!?;\\n]|\\.(?=\\s|$)|[()\\u2013\\u2014]|,(?=\\s+\\D)|:(?=\\s)|\\s-\\s|\\bbut\\b|(?:\\b382\\b))[\\s\\S])*)(?:\\bnot\\b|n['\\u2019]t\\b|\\bcannot\\b)(?!\\s+(?:(?:a|an|the)\\s+)?(?:(?:\\b84\\b))))"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [3]
