@@ -9,9 +9,9 @@
 - **gbrain does nothing unless the harness is told to use it.** Told to read a whole-company brain, harnesses read other people's channels; scoping the brain to the asker stops that.
 - **No run yet shows gbrain lifting pass rate on its primary endpoint (the one comparison the run was designed to settle) by an amount the run could detect.** Most gbrain rows are dev, so they hint but don't prove.
 
-**Next:** a fresh held-out task set, so the gbrain effects can be confirmed on tasks nobody tuned against ([TODOS.md](TODOS.md)).
+**Next:** a fresh held-out task set, so the gbrain effects can be confirmed on tasks nobody tuned against ([TODOS.md](TODOS.md)). First comes a dev pilot of the new set's 20 public tasks on Haiku ([preregistration](docs/benchmarks/2026-10-29-v03-pilot/PREREGISTRATION.md)).
 
-Version: harness-evals v0.0.33. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
+Version: harness-evals v0.0.34. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
 
 ## Start here
 
@@ -285,6 +285,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)); the world is built from gbrain-evals' `messy-company-v1` dataset; OpenClaw, Hermes Agent and QM are named as products only.
 
 ## Changelog
+
+### 2026-10-29: v0.3 dev pilot preregistered (internal-task)
+
+harness-evals v0.0.34. The Next line links the preregistration of run `v03-pilot-2026-10`, a dev pilot of task set v0.3's 20 public tasks on Haiku, and the version line moves from v0.0.33 to v0.0.34. Why: the run is the step before the new held-out set is used.
 
 ### 2026-10-29: version line only (internal-task)
 

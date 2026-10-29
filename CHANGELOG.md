@@ -2,6 +2,16 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.34] - 2026-10-29
+
+### internal-task: v03-pilot-2026-10 preregistered at main 44314d9ba
+
+- `docs/benchmarks/2026-10-29-v03-pilot/` (new): `PREREGISTRATION.md` and `prereg.json` for run `v03-pilot-2026-10`, a dev pilot of task set v0.3's 20 public tasks on Haiku (claude-haiku-5-5): C1's told arm and the arms of C2 and C3 on OpenClaw and Hermes Agent, 14 cells and 1,040 trials, leases summing to $24.90 (cap $25), gbrain at the repository pin `81692dc6`. A dated deviation from the approved plan keeps that pin and drops C1's installer arm, because gbrain master lacks gbrain#7489 and gbrain#7744; the Captain approved it for Garry on 2026-10-29.
+- `docs/benchmarks/preregistrations.d/v03-pilot.json` (new): registers the experiment for the prereg-order check.
+- `tests/gbrain-runner.test.ts`: the committed-preregistration test pins the new run's cells: 14 cells, 1,040 trials, the per-turn ceiling and the C4 task list.
+- Ship review: the run binds to the merge commit on main, with a pre-fan-out diff check and shard-commit assertions; the installer stand-in cost adds the counted paired difference; leases rebalanced to $2.25 and $1.15 for the proxy's largest reservation; cost figures tied to the source runs' receipts; go-rule, defect and amendment rules tightened; held-out custody and the dependency lockfile limit stated.
+- README: the Next line links the preregistration; version line v0.0.34.
+
 ## [0.0.33] - 2026-10-29
 
 ### internal-task: sealed custody of held-out sets (procedural custody)

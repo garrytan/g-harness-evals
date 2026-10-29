@@ -112,12 +112,12 @@ test('gbrain.install and gbrain.embeddings: validated under HE-GBRAIN-001 naming
   expect(m.per_cell_ceiling_usd['fake-semantic']!).toBeGreaterThanOrEqual(m.per_cell_ceiling_usd['fake-mcp']!);
 });
 
-test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs, installer and scoped follow-ups, the v0.2 held-out run and the memory run carry gbrain cells, each on a pinned configuration', () => {
+test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs, installer and scoped follow-ups, the v0.2 held-out run, the memory run and the v0.3 dev pilot carry gbrain cells, each on a pinned configuration', () => {
   const dir = join(ROOT, 'docs', 'benchmarks');
   const files = readdirSync(dir).filter((d) => existsSync(join(dir, d, 'prereg.json'))).map((d) => join(dir, d, 'prereg.json'));
   expect(files.length).toBeGreaterThan(0);
   for (const f of files) {
-    const { prereg: p } = loadPrereg(f);
+    const { prereg: p, sha256 } = loadPrereg(f);
     for (const c of p.cells) {
       if (p.run_id.startsWith('gbrain-arm-')) { if (c.gbrain) expect(c.gbrain).toEqual({ surface: 'starter' }); }
       else if (p.run_id.startsWith('company-brain-')) { if (c.gbrain) expect(c.gbrain).toMatchObject({ surface: 'starter', brain: 'company' }); }
@@ -152,6 +152,19 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         if (c.gbrain) { expect(c.gbrain).toEqual({ surface: 'starter', brain: 'member', scope: 'member', ingest: 'live' }); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-memory.md'); }
         else expect(c.preamble).toBeUndefined();
         expect(c.task_set).toBe('v0.2'); expect(c.split).toBe('heldout'); expect(c.repetitions).toBe(5);
+      }
+      else if (p.run_id.startsWith('v03-pilot-')) {
+        // internal-task: the v0.3 dev pilot copies its source cells (told, told-company, told-scoped, verbs-told; none and gbrain-told-live) onto the v0.3 dev split, Haiku, five repetitions; no installer cell (gbrain#7489 is not in the pin).
+        expect(c.task_set).toBe('v0.3'); expect(c.split).toBe('dev'); expect(c.repetitions).toBe(5); expect(c.model).toBe('anthropic:claude-haiku-5-5');
+        expect(p.cells).toHaveLength(14); expect(buildManifest(p, sha256, '2026-10-29T00:00:00Z').trials).toHaveLength(1040); expect(c.ceiling).toEqual({ input_tokens: 80000, output_tokens: 6000 });
+        if (c.tasks) expect([...c.tasks].sort()).toEqual(['cn-01-tamsin-cold-chain-site', 'cn-02-tansleigh-packaging-deadline', 'cn-03-marrow-agrisupply-site', 'cn-04-quarrendon-site', 'cr-01-marrow-agrisupply-site-retraction', 'cr-02-quarrendon-seat-count-retraction', 'cr-03-brackenwater-renewal-date-retraction', 'cr-04-marrow-agrisupply-seat-count']);
+        if (!c.gbrain) expect(c.preamble).toBeUndefined();
+        else if (c.gbrain.ingest === 'live') { expect(c.gbrain).toEqual({ surface: 'starter', brain: 'member', scope: 'member', ingest: 'live' }); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-memory.md'); }
+        else {
+          const g = resolveGbrain(c.gbrain); expect(g.embeddings).toBe('off');
+          if (g.brain === 'company') { expect(g.surface).toBe('starter'); expect(g.install).toBe('mcp'); expect(['none', 'sources']).toContain(g.scope); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-company.md'); }
+          else { expect(['starter', 'verbs']).toContain(g.surface); expect(g.install).toBe('mcp'); expect(g.brain).toBe('bot-visible'); expect(g.scope).toBe('none'); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-ladder.md'); }
+        }
       }
       else expect(c.gbrain).toBeUndefined();
     }
