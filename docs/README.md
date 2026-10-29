@@ -30,6 +30,7 @@ harness-evals v0.0.12. The index of this directory: one line per page, saying wh
 - [gbrain-arm.md](gbrain-arm.md): the gbrain arm: what a sidecar per trial runs, the world's `/gbrain` tap, the install ladder, how the arm is wired into the runner and adapters, the smoke evidence, and the status of each gbrain run.
 - [gbrain-evals-conventions.md](gbrain-evals-conventions.md): which conventions this repository takes from gbrain-evals as they are, which it adapts, and which it leaves out, with the reason for each.
 - [methodology.md](methodology.md): the trial contract, the normative copy of the plan's contract section: isolation, metering, grading, termination and grade as separate fields, metrics, budget, artifacts, with its amendments in the changelog.
+- [methods.md](methods.md): the fine print behind the README's plain summaries: how to read the numbers (intervals, paired differences, sign-flip tests, Holm, the openings ledger), the complete harness and gbrain comparison text, the complete limits, how every harness runs, the world and the tasks, what paid work costs, and what a results directory holds. Moved word for word from the README on 2026-10-28.
 - [plans/](plans/2026-10-21-harness-eval-v0/plan.md): the approved plan (v2), its review record, decisions D1 to D10, findings, open tasks and every reviewer file, one folder per plan.
 - [publishing-checklist.md](publishing-checklist.md): what was audited before the repository can be made public (`bun scripts/publish-audit.ts`), how to run it again, the merge record, and what the owner still decides.
 - [qm-findings.md](qm-findings.md): product observations about QM v0.1.15 from the source read, the smokes, the inner-harness run and the probe suite, each with its trials and smallest reproduction.
@@ -39,6 +40,10 @@ harness-evals v0.0.12. The index of this directory: one line per page, saying wh
 - [ubicloud.md](ubicloud.md): the Ubicloud shard lane: the scripts that put one shard per VM, how a run fans out and comes back, the check lane, costs and limits.
 
 ## Changelog
+
+### 2026-10-28: methods.md listed (internal-task)
+
+harness-evals v0.0.29. The index gains a line for [methods.md](methods.md), the page that has held the README's fine print since the 2026-10-28 README rewrite. Why: the index says one line per page, and the page was new.
 
 ### 2026-10-27: gbrain-memory-2026-10 recall re-reading (internal-task)
 

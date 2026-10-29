@@ -2,6 +2,14 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.29] - 2026-10-28
+
+### internal-task: README rewritten in plain words
+
+- README rewritten for a developer with no time. The first screen says what the repository is, what the runs have found (four bold one-line takeaways) and what comes next, then a "Start here" list and a "Words we use" glossary that defines harness, trial, dev and held-out tasks, confirmatory / dev / pilot, "can't tell apart" (the reports' "not distinguished"), CI, cross-scope read and proxy on first use. Every section opens with a bold takeaway and uses bullets; each Current results table has a one-line "so what" above it; the Corrections list sits in a collapsed block under a plain introduction.
+- The fine print moved word for word to the new `docs/methods.md` (the interval maths and the openings ledger, the complete harness and gbrain comparison text, the complete limits, how every harness runs, the world and the tasks, what paid work costs, what a results directory holds), with links re-based to `docs/`. The README keeps a short "How to read these numbers" list that links there, and `docs/README.md` lists the new page.
+- No figure, interval, run name, status label or link target changed. The set of 255 distinct numbers in the old README is the set in the new README plus `docs/methods.md`. The ship review tightened nine sentences so no summary turns "not distinguished" into a tie, equality or a rank, the held-out glossary entry says the digest records which task text a run used rather than claiming nobody could tune to the tasks, and the gbrain headline keeps the "primary endpoint" qualifier the full text carries.
+
 ## [0.0.28] - 2026-10-28
 
 ### internal-task: README Current results reformatted

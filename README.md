@@ -1,10 +1,42 @@
 # harness-evals
 
-A reproducible comparison of agent harnesses. A harness is everything around the model: the tools, prompts, context management, channels, memory, scheduling and permissions that turn a chat model into an agent. This repository holds the model fixed and varies the harness, on the work these harnesses are sold for: several people sharing one agent in Slack-style channels, per-person scoped memory and files, org-level rules, continuity across sessions, and ordinary work tasks. Use it to see what each harness did on the same tasks, to check any number here against its saved records, or to run the same tasks on another harness.
+**We test whether AI agent harnesses (OpenClaw, Hermes Agent, QM) do real multi-person work better with a knowledge brain (gbrain) beside them, and whether the harnesses differ from each other at all.** Same model, same tasks, same fake company; only the harness changes. Every number here has a saved receipt you can regrade yourself.
 
-This page has three parts: [the harnesses under test](#the-harnesses-under-test), [the current results](#current-results) and [how the harnesses compare](#how-the-harnesses-compare), with [how gbrain compares](#how-gbrain-compares) beside it. Everything above [Changelog](#changelog) describes the repository at `VERSION` (harness-evals v0.0.28); the changelog at the bottom records how this page changed. The one-page account of the first counted cell, with its limits and interests declared, is [docs/report-v0.1.md](docs/report-v0.1.md).
+**Found so far**
+
+- **The three harnesses can't be told apart on getting the work right.** Swapping the model (Sonnet for Haiku) moved results more than swapping the harness did.
+- **QM's Pi engine is the cheapest and fastest**, at about a third of OpenClaw's time and tokens per trial, with a pass rate that can't be told apart from the others.
+- **gbrain does nothing unless the harness is told to use it.** Told to read a whole-company brain, harnesses read other people's channels; scoping the brain to the asker stops that.
+- **No run yet shows gbrain lifting pass rate on its primary endpoint (the one comparison the run was designed to settle) by an amount the run could detect.** Most gbrain rows are dev, so they hint but don't prove.
+
+**Next:** a fresh held-out task set, so the gbrain effects can be confirmed on tasks nobody tuned against ([TODOS.md](TODOS.md)).
+
+Version: harness-evals v0.0.29. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
+
+## Start here
+
+- [Words we use](#words-we-use), the terms that make the rest readable
+- [The harnesses under test](#the-harnesses-under-test) and [the fake company and the tasks](#the-fake-company-and-the-tasks)
+- [Current results](#current-results), one line per run, with the full text one click away
+- [How the harnesses compare](#how-the-harnesses-compare) and [how gbrain compares](#how-gbrain-compares)
+- [Known limits](#known-limits), [Corrections](#corrections), [Where to read next](#where-to-read-next)
+- [Try a small experiment](#try-a-small-experiment): the free checks run in a few minutes
+- Fine print (interval maths, Holm, receipts, costs): [docs/methods.md](docs/methods.md)
+
+## Words we use
+
+- **Harness:** everything around the model. Tools, prompts, memory, channels, scheduling, permissions. It turns a chat model into an agent. We hold the model fixed and change only this.
+- **Trial:** one task, run once, by one harness on one model. A trial **passes** when every required check holds and nothing forbidden happened.
+- **Dev tasks and held-out tasks:** dev tasks are public and used to find defects. Held-out tasks were hashed before any counted run, so the record shows which task text each run used; their bodies sat in the repository, so this is custody by digest only ([Known limits](#known-limits)).
+- **Confirmatory, dev, pilot:** the first counted opening of a held-out set is **confirmatory**. Any later opening of the same set is **dev**: someone had already seen that set's results, so it hints but does not prove. A **pilot** exists to find defects, not to compare anything.
+- **"Can't tell apart" ("not distinguished" in the reports):** the run's preregistered test did not establish a difference at that sample size, so the run cannot say which is better. It is not a tie, and a cell where everyone passes or everyone fails tells you nothing.
+- **CI:** in a table, the confidence interval, the range the true number probably sits in. In "keyless checks in CI", the GitHub Actions tests.
+- **Cross-scope read:** the bot read a channel or file the asking person cannot see, directly or through gbrain. We count it as a failure.
+- **Proxy:** every model call goes through our metering proxy, which counts tokens and dollars at list price. The harness never sees the real API key.
 
 ## The harnesses under test
+
+**Three harnesses, two Claude models, one brain on the side.** Exact pins below; every harness ran the same tasks, graders, preamble and model through the same proxy.
 
 | Item | Value |
 |---|---|
@@ -15,25 +47,31 @@ This page has three parts: [the harnesses under test](#the-harnesses-under-test)
 | Models | `claude-sonnet-5-5` and `claude-haiku-5-5`, one fixed model per run, every call through the metering proxy under a ledger lease; the harness containers see only the proxy and a per-trial dummy token |
 | gbrain, the sidecar in the brain runs | [garrytan/gbrain](https://github.com/garrytan/gbrain), pinned today at `81692dc6` (0.60.472.0, the head of gbrain#7744, an open pull request), the commit run `gbrain-memory-fix-2026-10b` built (it replaced `gbrain-memory-fix-2026-10`, which never ran); each counted run names the commit it built, from `f241216c` (0.60.413.0) in the gbrain arm to `b06ac32b` (0.60.465.0) in the memory run ([gbrain/pin.json](gbrain/pin.json), field `previous`; the fix run's `81692dc6` is its `commit`). gbrain is a knowledge brain served to the harness as a second MCP server, not a harness under test |
 
-Every harness runs headlessly in `serve` mode: the runner drives each member's messages through the world's Slack mock on a simulation clock, and the harness answers through the one world-MCP server registered in its own configuration ([docs/adapters.md](docs/adapters.md)). One bot token, no delegated per-member access, and the same preamble for every harness ([docs/methodology.md](docs/methodology.md), the trial contract).
+- Every harness runs headlessly in `serve` mode. The runner plays each member's messages through a Slack mock on a simulation clock, and the harness answers through one world-MCP server ([docs/adapters.md](docs/adapters.md)).
+- One bot token, no per-member access, the same preamble for every harness ([docs/methodology.md](docs/methodology.md), the trial contract). Full text: [docs/methods.md](docs/methods.md#how-every-harness-runs).
 
-## What the world and the tasks are
+## The fake company and the tasks
 
-The world is a simulated company, Pemberline, seeded from gbrain-evals' `messy-company-v1` dataset (a generated corpus; [world/seed/MANIFEST.json](world/seed/MANIFEST.json) names its inputs and digests): 18 members, 13 channels, 148 files, 42 mails, calendars and private notes, served per trial by one process that logs every read and write ([world/](world/README.md)). A task is one or more members talking to the bot in channels and DMs; the grader reads the world's state and its event log afterwards, never the bot's own account of what it did ([docs/tasks.md](docs/tasks.md)). The multi-user slice has four families every harness can attempt (scope isolation, two members in one shared channel, an org-level rule such as a finance figure that needs approval before it is relayed, and a handoff that creates or sends something) plus a scheduled family no harness can do yet. Task set v0.1 is 10 public dev tasks and 20 held-out tasks sealed before the counted runs ([tasks/multiuser/README.md](tasks/multiuser/README.md)); task set v0.2 adds continuity, synthesis, corrections and approval-relay families, 15 dev and 15 held-out tasks at the last counted run, with its own seal ([tasks/multiuser/v0.2/README.md](tasks/multiuser/v0.2/README.md)). A trial passes when every required predicate holds and no forbidden effect occurred; the three counts reported beside pass are consent violations (a finance figure or outside mail that should not have gone out), leaks (a DM fact in another member's conversation) and cross-scope reads (a channel or file the requester cannot see, read directly or through gbrain).
+**A simulated company, real-shaped work, graded from what actually happened.**
+
+- The world is Pemberline, a made-up company built from gbrain-evals' `messy-company-v1` dataset: 18 members, 13 channels, 148 files, 42 mails, calendars and private notes, served per trial by one process that logs every read and write ([world/](world/README.md), [world/seed/MANIFEST.json](world/seed/MANIFEST.json)).
+- A task is one or more members talking to the bot in channels and DMs. The grader reads the world's state and event log afterwards, never the bot's own story ([docs/tasks.md](docs/tasks.md)).
+- Task set v0.1: 10 public dev tasks and 20 held-out tasks sealed before the counted runs ([tasks/multiuser/README.md](tasks/multiuser/README.md)). Task set v0.2 adds continuity, synthesis, corrections and approval-relay families: 15 dev and 15 held-out tasks at the last counted run ([tasks/multiuser/v0.2/README.md](tasks/multiuser/v0.2/README.md)).
+- Beside pass we count three bad things: consent violations (a finance figure or outside mail that should not have gone out), leaks (a DM fact in someone else's conversation) and cross-scope reads. Full text: [docs/methods.md](docs/methods.md#the-world-and-the-tasks-in-full).
 
 ## Current results
 
-So far: with the model fixed, OpenClaw, Hermes and QM are not distinguished on the v0.1 held-out tasks, and swapping Sonnet for Haiku moved the result more than the harness did. A harness with gbrain installed but not told to use it rarely calls it, and its pass rate is not distinguished from running without it; a whole-company brain read under one token cost pass rate through cross-scope reads, and scoping the brain to the requester removed those reads. On the v0.2 tasks, telling a harness to consult gbrain first produced no difference in pass rate the run could detect while cross-scope reads rose, and a scoped memory of the scenario is not distinguished from running without it.
-
-One line per counted run, grouped by question. OC is OpenClaw, He is Hermes. Every figure is a copy of a figure in the run's report; the full result, the cell layout and the receipts link are in the details under each table, and the conventions behind the numbers are under [How to read these numbers](#how-to-read-these-numbers).
+**One line per run, grouped by question.** Numbers in the tables are copied from each run's report; the full text of every run, with its receipts link, is in the details block under each table. OC is OpenClaw, He is Hermes. Status: pilot, confirmatory or dev, as defined above.
 
 ### v0.1 harness runs
+
+**So what:** the three harnesses can't be told apart on the v0.1 tasks, and swapping the model moved results more than swapping the harness. The pilot was there to find defects; the Haiku run is dev.
 
 | Run | Date | Question | Result | Spend | Status | Report |
 |---|---|---|---|---|---|---|
 | `m2-pilot-2026-10` | 2026-10-22 to 23 | Find defects before the held-out run | OC 52% · He 52% · QM 32% | $16.69 of $150 | pilot | [report](docs/benchmarks/2026-10-23-m2-pilot/report.md) |
-| `m3-heldout-2026-10` | 2026-10-23 | Do harnesses differ, model fixed? | OC 77 · He 73 · QM 71 of 80; not distinguished | $35.67 of $200 | confirmatory | [report](docs/benchmarks/2026-10-24-m3-heldout/report.md) |
-| `m3-sensitivity-haiku-2026-10` | 2026-10-23 | Does a weaker model change it? | OC 64 · He 63 · QM 56 of 80; not distinguished | $1.84 of $50 | dev | [report](docs/benchmarks/2026-10-24-m3-sensitivity-haiku/report.md) |
+| `m3-heldout-2026-10` | 2026-10-23 | Do harnesses differ, model fixed? | OC 77 · He 73 · QM 71 of 80; can't tell apart | $35.67 of $200 | confirmatory | [report](docs/benchmarks/2026-10-24-m3-heldout/report.md) |
+| `m3-sensitivity-haiku-2026-10` | 2026-10-23 | Does a weaker model change it? | OC 64 · He 63 · QM 56 of 80; can't tell apart | $1.84 of $50 | dev | [report](docs/benchmarks/2026-10-24-m3-sensitivity-haiku/report.md) |
 
 <details>
 <summary>Details for the v0.1 harness runs</summary>
@@ -46,12 +84,14 @@ One line per counted run, grouped by question. OC is OpenClaw, He is Hermes. Eve
 
 ### gbrain on the v0.1 held-out set
 
+**So what:** gbrain only matters when the harness is told to use it. Told to read a whole-company brain, harnesses read channels the asker cannot see; scoping the brain to the asker stops that. Every row here is dev: hints, not proof.
+
 | Run | Date | Question | Result | Spend | Status | Report |
 |---|---|---|---|---|---|---|
-| `gbrain-arm-2026-10` | 2026-10-24 to 25 | Does installing gbrain change anything? | gbrain minus none -6 to +8 points; not distinguished | $80.87 of $350 | dev | [report](docs/benchmarks/2026-10-24-gbrain-arm/report.md) |
+| `gbrain-arm-2026-10` | 2026-10-24 to 25 | Does installing gbrain change anything? | gbrain minus none -6 to +8 points; can't tell apart | $80.87 of $350 | dev | [report](docs/benchmarks/2026-10-24-gbrain-arm/report.md) |
 | `company-brain-2026-10` | 2026-10-24 to 25 | One company token against the requester's own grant | company-told -45 · -60 · -44; scoped +20 · +5 · -2 | $6.26 of $25 | dev | [report](docs/benchmarks/2026-10-25-company-brain/report.md) |
 | `gbrain-ladder-2026-10` | 2026-10-24 to 25 | Which way of installing gbrain changes behaviour? | semantic-told vs told -51 · -48 through cross-scope reads | $10.73 of $40 | dev | [report](docs/benchmarks/2026-10-25-gbrain-ladder/report.md) |
-| `gbrain-verbs-2026-10` | 2026-10-25 | Does the verbs surface hold at twice the repetitions? | pass +8.1 · +9.4; not distinguished | $6.38 of $12 | dev | [report](docs/benchmarks/2026-10-25-gbrain-verbs/report.md) |
+| `gbrain-verbs-2026-10` | 2026-10-25 | Does the verbs surface hold at twice the repetitions? | pass +8.1 · +9.4; can't tell apart | $6.38 of $12 | dev | [report](docs/benchmarks/2026-10-25-gbrain-verbs/report.md) |
 | `gbrain-installer-2026-10` | 2026-10-25 | Does the installer file match the hand-written clause? | use -87.3 · -91.3; pass not distinguished | $3.36 of $8 | dev | [report](docs/benchmarks/2026-10-25-gbrain-installer/report.md) |
 | `gbrain-installer-hook-2026-10` | 2026-10-26 | The revised installer with its per-turn hook | use +6.3 · +10.0 (at ceiling); pass -3.8 · +8.8 | $3.43 of $8 | dev | [report](docs/benchmarks/2026-10-25-gbrain-installer-hook/report.md) |
 | `gbrain-scoped-2026-10` | 2026-10-26 | Per-request scoping of the company brain | cross-scope reads -77.5 · -71.3; pass +61.3 · +65.0 | $3.47 of $6 | dev | [report](docs/benchmarks/2026-10-25-gbrain-scoped/report.md) |
@@ -71,6 +111,8 @@ One line per counted run, grouped by question. OC is OpenClaw, He is Hermes. Eve
 
 ### QM runs
 
+**So what:** QM's two inner engines can't be told apart on pass, and the Claude SDK one costs more per trial. QM keeps memory and sandboxes per person; OpenClaw and Hermes shared a DM file across members. Dev and probe rows.
+
 | Run | Date | Question | Result | Spend | Status | Report |
 |---|---|---|---|---|---|---|
 | `qm-inner-harness-2026-10` | 2026-10-25 | QM over Pi against QM over the Claude Agent SDK | Claude minus Pi +4 on pass; inconclusive | $1.25 of $25 | dev | [report](docs/benchmarks/2026-10-25-qm-inner-harness/report.md) |
@@ -88,12 +130,14 @@ One line per counted run, grouped by question. OC is OpenClaw, He is Hermes. Eve
 
 ### v0.2 runs
 
+**So what:** on the harder v0.2 tasks, telling a harness to consult gbrain first did not lift pass rate by an amount we could detect, and cross-scope reads rose. A per-person memory brain read across members zero times and also did not lift pass rate detectably. v02-heldout is confirmatory; the memory runs are dev.
+
 | Run | Date | Question | Result | Spend | Status | Report |
 |---|---|---|---|---|---|---|
 | `v02-pilot-2026-10` | 2026-10-25 | Pilot of the v0.2 families | OC 42% · He 36% · QM 44%; OC per turn 33% | $1.55 of $10 | pilot | [report](docs/benchmarks/2026-10-25-v02-pilot/report.md) |
 | `v02-heldout-2026-10` | 2026-10-26 | Does consulting gbrain first help on unseen tasks? | gbrain-told minus none -12 to +7; every Holm p 0.984 or more | $76.60 of $135 | confirmatory | [report](docs/benchmarks/2026-10-25-v02-heldout/report.md) |
-| `gbrain-memory-2026-10` | 2026-10-26 to 27 | Does a scoped memory of the scenario help? | live minus none -5 to +23; not distinguished | $75.21 of $137 | dev | [report](docs/benchmarks/2026-10-26-gbrain-memory/report.md) |
-| `gbrain-memory-fix-2026-10b` | 2026-10-28 | Does gbrain#7744's fix reach what harnesses pass? | live minus none +0 to +23; not distinguished | $33.25 of $70 | dev | [report](docs/benchmarks/2026-10-28-gbrain-memory-fix-b/report.md) |
+| `gbrain-memory-2026-10` | 2026-10-26 to 27 | Does a scoped memory of the scenario help? | live minus none -5 to +23; can't tell apart | $75.21 of $137 | dev | [report](docs/benchmarks/2026-10-26-gbrain-memory/report.md) |
+| `gbrain-memory-fix-2026-10b` | 2026-10-28 | Does gbrain#7744's fix reach what harnesses pass? | live minus none +0 to +23; can't tell apart | $33.25 of $70 | dev | [report](docs/benchmarks/2026-10-28-gbrain-memory-fix-b/report.md) |
 
 <details>
 <summary>Details for the v0.2 runs</summary>
@@ -107,32 +151,54 @@ One line per counted run, grouped by question. OC is OpenClaw, He is Hermes. Eve
 
 ### How to read these numbers
 
-- Each run is dated by the UTC days its trials ran (three directories carry the day before their trials). Dollar figures are the reports' own, shown to the cent where a report gives more decimals; the table's spend column is the settled or usage figure against the lease, and the details keep the committed and lane figures where a report gives them.
-- Intervals are 95 percent and clustered by task. A paired difference is B minus A over the same task and repetition. p values are exact sign-flip tests over task clusters with Holm correction within the run's preregistered family.
-- "Not distinguished" is the preregistered decision sentence, not a tie, and a cell at ceiling or floor is uninformative rather than equal.
-- Every figure is copied from the report named in its row and the receipts under that run's `results/`; [docs/receipts-manifest.json](docs/receipts-manifest.json) carries each run's preregistration commit, trial count, ledgers and the sha256 of its `trials.jsonl`.
-- Status says whether a run was its held-out set's first counted opening; the details name the set and which counted opening of that set it was, numbered in the order the preregistrations merged on main by `runner/heldout/openings.ts` (`bun runner/heldout/openings.ts` prints the ledger). Only a first opening is confirmatory; a later opening of the same set is dev, because whoever designed it had already seen that set's results, so its intervals hold for those tasks but cannot confirm the claim ([Corrections](#corrections), 2026-10-28). A pilot or a probe run uses the dev split.
+- Dates are the UTC days the trials ran. Spend is what our proxy metered at list price against the run's lease; we never checked the provider's bill.
+- "Can't tell apart" is our plain wording for the reports' preregistered sentence "not distinguished". It is not a tie, and a cell at ceiling or floor is uninformative rather than equal.
+- Every figure is a copy of a figure in the run's report and the receipts under its `results/`. The run-by-run list of preregistration commits, trial counts, ledgers and hashes is [docs/receipts-manifest.json](docs/receipts-manifest.json).
+- Only a held-out set's first counted opening is confirmatory; a later opening is dev because whoever designed it had seen that set's results ([Corrections](#corrections), 2026-10-28).
+- The maths (95 percent task-clustered intervals, paired differences, sign-flip tests, Holm) and the openings ledger: [docs/methods.md](docs/methods.md#how-to-read-the-numbers).
 
-Spend across every lane, from the lease ledgers: $361.73 committed of the $2,000 program cap ([docs/budget-ledger.md](docs/budget-ledger.md): $283.15 in the program's lane ledger plus $78.59 from the two v0.2 runs' committed ledgers that the lane ledger does not yet list). Every dollar is the metering proxy's list-price meter; the provider-side check has never been performed (Known limits).
+**Spend so far.** Spend across every lane, from the lease ledgers: $361.73 committed of the $2,000 program cap ([docs/budget-ledger.md](docs/budget-ledger.md): $283.15 in the program's lane ledger plus $78.59 from the two v0.2 runs' committed ledgers that the lane ledger does not yet list). Every dollar is the metering proxy's list-price meter; the provider-side check has never been performed (Known limits).
 
 ## How the harnesses compare
 
-With the model fixed, OpenClaw, Hermes Agent and QM over Pi were not distinguished on whether they got the multi-user work right, in any run that compared them: on the v0.1 held-out tasks with Sonnet the three sat at 77, 73 and 71 of 80 with 13 of 16 tasks at ceiling, with Haiku at 64, 63 and 56 of 80 and every Holm-adjusted p above 0.4, and on the harder v0.2 tasks the within-model differences are descriptive only ([m3-heldout](docs/benchmarks/2026-10-24-m3-heldout/report.md), [sensitivity](docs/benchmarks/2026-10-24-m3-sensitivity-haiku/report.md), [v02-heldout](docs/benchmarks/2026-10-25-v02-heldout/report.md)). Of the runs that compared harnesses, only m3-heldout and v02-heldout were the first opening of their held-out set; the sensitivity and QM inner-harness runs are later openings of v0.1 and read as dev, so their Haiku and QM-engine figures below support engineering decisions here, not a confirmed claim ([Corrections](#corrections), 2026-10-28). Swapping Sonnet for Haiku moved every harness by 13 to 19 points, more than any harness gap. What is distinguished is cost and time: QM's Pi engine, not distinguished from the others on pass, ran at about a third of the wall time and tokens of OpenClaw (27 s and $0.06 against 70 s and $0.16 per trial at the median on Sonnet; 12.5 million input tokens against 32.3 million over 100 trials), with Hermes between them, and the ordering held on Haiku. The safety predicates held for everyone on v0.1: no consent violation and no leaked DM fact in the 600 held-out trials without a brain, one cross-scope read (Hermes). Where the harnesses did lose trials, the failure taxonomy puts most of it in one mode, a channel the answer sat in that the harness never opened ([docs/report-v0.1.md](docs/report-v0.1.md), "Where the failures were"). QM's two inner engines were not distinguished on pass either, and the Claude Agent SDK engine cost 2.7 times as much per trial ([qm-inner-harness](docs/benchmarks/2026-10-25-qm-inner-harness/report.md)); QM's product probes held its memory and sandbox claims per scope where OpenClaw and Hermes, which make no such claim, shared a DM file across members ([qm-probes](docs/benchmarks/2026-10-25-qm-probes/report.md), [docs/qm-findings.md](docs/qm-findings.md)).
+**Takeaway: with the model fixed, OpenClaw, Hermes Agent and QM over Pi can't be told apart on getting multi-user work right. What differs is cost and time.**
+
+- On the v0.1 held-out tasks with Sonnet the three sat at 77, 73 and 71 of 80, with 13 of 16 tasks at ceiling; with Haiku at 64, 63 and 56 of 80; every Holm-adjusted p above 0.4 ([m3-heldout](docs/benchmarks/2026-10-24-m3-heldout/report.md), [sensitivity](docs/benchmarks/2026-10-24-m3-sensitivity-haiku/report.md)). On the harder v0.2 tasks the within-model differences are descriptive only ([v02-heldout](docs/benchmarks/2026-10-25-v02-heldout/report.md)).
+- Swapping Sonnet for Haiku moved every harness by 13 to 19 points, more than any harness gap.
+- QM's Pi engine ran at about a third of OpenClaw's wall time and tokens: 27 s and $0.06 against 70 s and $0.16 per trial at the median on Sonnet, 12.5 million input tokens against 32.3 million over 100 trials, Hermes between them. The ordering held on Haiku.
+- Safety held for everyone on v0.1: no consent violation and no leaked DM fact in the 600 held-out trials without a brain, one cross-scope read (Hermes).
+- Where harnesses lost trials, most losses were one thing: the answer sat in a channel the harness never opened ([docs/report-v0.1.md](docs/report-v0.1.md), "Where the failures were").
+- QM's two inner engines were not told apart on pass either, and the Claude Agent SDK engine cost 2.7 times as much per trial ([qm-inner-harness](docs/benchmarks/2026-10-25-qm-inner-harness/report.md)). QM's product probes held its memory and sandbox claims per scope; OpenClaw and Hermes, which make no such claim, shared a DM file across members ([qm-probes](docs/benchmarks/2026-10-25-qm-probes/report.md), [docs/qm-findings.md](docs/qm-findings.md)).
+- Caveat: only m3-heldout and v02-heldout are confirmatory. The Haiku and QM-engine figures are dev, so they guide our engineering and prove nothing on unseen tasks ([Corrections](#corrections), 2026-10-28).
+- Full paragraph with every reference: [docs/methods.md](docs/methods.md#how-the-harnesses-compare-in-full).
 
 ## How gbrain compares
 
-gbrain is not a harness; it is a knowledge brain served beside the world tools, and the question in ten of the runs above is what each harness does with it. Every gbrain run above except v02-heldout is a later opening of a held-out set, so each is a dev result that supports engineering decisions inside this program but not a claim confirmed on unseen tasks; the installer-hook and scoped runs retested a revised candidate on the same tasks that prompted the revision, the verbs run re-tested the ladder's verbs rung on the same tasks, the fix run retested gbrain#7744 on the memory run's tasks it was built against, and none of these effects has yet been confirmed on a held-out set it was not developed against ([Corrections](#corrections), 2026-10-28). Installed and unmentioned, no harness used it (2 calls in 600 trials of the arm, 2 of 199 on the ladder's `mcp` rung) and nothing moved but trial length and, for QM, input tokens. One brain-first clause in the per-turn preamble turns use on in about nine of ten trials; gbrain's own installer file, placed where the harness reads it, produced no use until its revision added a per-turn hook, after which use was 80 of 80 in both harnesses ([installer](docs/benchmarks/2026-10-25-gbrain-installer/report.md), [installer-hook](docs/benchmarks/2026-10-25-gbrain-installer-hook/report.md)). Told, the harnesses gained the two cross-channel retrieval tasks they had failed without a brain and lost trials to a new failure: keyword `search` over a bot-wide brain returns pages from channels the requester is not in, which the grader counts as a cross-scope read; on the v0.2 held-out tasks that read rose in every one of six pairs while the pass effect stayed within noise, and with semantic search on it cost 48 to 51 points. The fixes measured so far work by narrowing what a call can return: the seven memory verbs, where `recall` returns one page, had zero cross-scope reads in 394 trials, and per-request scoping by the member's grant (gbrain#7481) had zero in 197 trials against 76 of 99 and 72 of 100 unscoped, with pass up 61 and 65 points ([company-brain](docs/benchmarks/2026-10-25-company-brain/report.md), [gbrain-scoped](docs/benchmarks/2026-10-25-gbrain-scoped/report.md)). A member brain that fills during the scenario, each member reading under their own grant, read across members in 0 of 450 live trials, and every DM fact the tap saw returned belonged to the requester, while the pass effect again stayed within noise on Sonnet (the largest, Hermes +23 [+0, +53] over 40 pairs, carried by two memory tasks, Holm p 1.000; [gbrain-memory](docs/benchmarks/2026-10-26-gbrain-memory/report.md)). Rerun at gbrain#7744's fix, which returns a newer correction ahead of the fact it corrects, the memory run's twelve cells on its eight continuity and corrections tasks were again not distinguished on pass, while `cr-05`, the task the fix was built against, went from 0 of 5 in every Sonnet live cell of the memory run to 4, 5 and 1 of 5, with every none cell at 0 of 5 ([gbrain-memory-fix-b](docs/benchmarks/2026-10-28-gbrain-memory-fix-b/report.md)). No run has yet shown gbrain raising pass rate on a primary endpoint by an amount its design can distinguish from zero; the detectable differences were 8.5 to 17.7 points. Design, pins and the per-trial sidecar are in [docs/gbrain-arm.md](docs/gbrain-arm.md).
+**Takeaway: gbrain only matters when the harness is told to use it, an unscoped brain leaks across people, scoping stops the leak, and no run yet shows it lifting pass rate on a primary endpoint by an amount we could detect.**
 
-**Interests to declare.** The repository and the evaluation are run by Garry Tan; gbrain is his own project, and QM is published by the yc-software organisation. Every harness ran the same tasks, graders, preamble and model through the same proxy, the preregistrations were committed before the first counted trial, and the receipts are in the tree so anyone can regrade; weigh the gbrain and QM rows with that in mind. The exact wording of this paragraph is marked for Garry to confirm in [docs/report-v0.1.md](docs/report-v0.1.md).
+- gbrain is not a harness. It is a knowledge brain served beside the world tools, and ten runs ask what each harness does with it ([docs/gbrain-arm.md](docs/gbrain-arm.md)).
+- Installed and unmentioned, no harness used it: 2 calls in 600 trials of the arm, 2 of 199 on the ladder's `mcp` rung. Nothing moved but trial length and, for QM, input tokens.
+- One brain-first clause in the per-turn preamble turns use on in about nine of ten trials. gbrain's own installer file produced no use until its revision added a per-turn hook; then use was 80 of 80 in both harnesses ([installer](docs/benchmarks/2026-10-25-gbrain-installer/report.md), [installer-hook](docs/benchmarks/2026-10-25-gbrain-installer-hook/report.md)).
+- Told to use a bot-wide brain, harnesses gained the two cross-channel retrieval tasks they had failed and lost trials to a new failure: keyword `search` returns pages from channels the asker is not in, a cross-scope read. On the v0.2 held-out tasks that read rose in all six pairs while the pass effect stayed within noise; with semantic search on it cost 48 to 51 points.
+- Narrowing what a call can return fixes the leak: the seven memory verbs (`recall` returns one page) had zero cross-scope reads in 394 trials; per-request scoping by the member's grant (gbrain#7481) had zero in 197 trials against 76 of 99 and 72 of 100 unscoped, with pass up 61 and 65 points ([company-brain](docs/benchmarks/2026-10-25-company-brain/report.md), [gbrain-scoped](docs/benchmarks/2026-10-25-gbrain-scoped/report.md)).
+- A member brain that fills during the scenario read across members in 0 of 450 live trials, and every DM fact it returned belonged to the asker. Pass again stayed within noise on Sonnet (the largest, Hermes +23 [+0, +53] over 40 pairs, carried by two memory tasks, Holm p 1.000; [gbrain-memory](docs/benchmarks/2026-10-26-gbrain-memory/report.md)).
+- At gbrain#7744's fix, which returns a newer correction ahead of the fact it corrects, the same cells were again not told apart on pass, while `cr-05`, the task the fix was built against, went from 0 of 5 in every Sonnet live cell to 4, 5 and 1 of 5, with every none cell at 0 of 5 ([gbrain-memory-fix-b](docs/benchmarks/2026-10-28-gbrain-memory-fix-b/report.md)).
+- The differences these runs could have detected were 8.5 to 17.7 points. Every gbrain run except v02-heldout is dev, and the installer-hook, scoped, verbs and fix runs retested a revised candidate on the same tasks that prompted the revision ([Corrections](#corrections), 2026-10-28).
+- Full paragraph with every reference: [docs/methods.md](docs/methods.md#how-gbrain-compares-in-full).
+
+**Interests to declare.** The repository and the evaluation are run by Garry Tan; gbrain is his own project, and QM is published by the yc-software organisation.
+
+Every harness ran the same tasks, graders, preamble and model through the same proxy, the preregistrations were committed before the first counted trial, and the receipts are in the tree so anyone can regrade; weigh the gbrain and QM rows with that in mind. The exact wording of this paragraph is marked for Garry to confirm in [docs/report-v0.1.md](docs/report-v0.1.md).
 
 ## Known limits
 
-- **Spend is proven proxy-side only.** For every counted run the proxy's usage log, the per-trial `usage.json` sums and the lease ledger are reconciled against each other (`bun scripts/reconcile-provider.ts`), and each report explains what they do not share: a reservation a machine sleep left open counts as committed in the ledger but not as usage (the gbrain arm's Haiku ledger carries $6.95 committed against $6.17 settled), and a restarted trial's forwarded call appears in the usage log but not in `trials.jsonl`. That the provider billed the same has never been checked, because the check needs an Anthropic Admin API key and on 2026-10-26 the decision was not to provide one, so every figure stays the list-price meter and says so ([docs/methodology.md](docs/methodology.md) item 3 as amended 2026-10-24, [docs/budget-ledger.md](docs/budget-ledger.md)).
-- **The repository is private.** The publishing audit passes and the checklist records what remains for the owner ([docs/publishing-checklist.md](docs/publishing-checklist.md)); until it is public, "anyone can regrade" means anyone with access.
-- **Three runs carry a declared deviation from their preregistration.** The company-brain run's OpenClaw scoped cell ran its last 65 trials under runner code at `e278fb0` instead of the preregistered `6b67de1` after a machine restart, regraded identically under both ([report](docs/benchmarks/2026-10-25-company-brain/report.md), opening section); the qp-07 rerun's preregistration and results were squash-merged in one commit, so main's history cannot show the order, and the order check prints it as a warning ([report](docs/benchmarks/2026-10-25-qm-probes-qp07/report.md)); the v0.2 held-out run raised one shard's lease during its cell, did not use its second amendment's output-token cap, and resumed two shards after machine sleeps at the recorded commit ([report](docs/benchmarks/2026-10-25-v02-heldout/report.md), "Deviations"). Every other run states no amendments or deviations, or records what happened to the run itself (machine restarts, preflight relaunches, a discarded shard under a dated amendment) without a change to what was measured; all of them are in [docs/decisions.md](docs/decisions.md) and the reports.
-- **Hermes makes free model-discovery probes.** About 27 refused requests per trial (about 2,700 per 100-trial cell), recorded as upstream noise at $0 and not as harness errors; QM and OpenClaw make a few utility calls of their own, so request counts are not comparable one for one across harnesses.
-- **One fixed model per run, CLI `serve` sessions driven by the runner rather than each harness's native Slack ingress, one bot token with no delegated access, and tasks the adapters' author has now seen several times.** The v0.1 held-out set has served ten counted runs and is at ceiling on Sonnet, and the v0.2 held-out set has served three, so only each set's first counted opening is confirmatory; that label is qualified because the bodies of both sets sit in the repository, sealed only by digest ([Corrections](#corrections), 2026-10-28); the scheduled family is uninformative by construction because no harness fires on the simulation clock.
-- **The harness-versus-harness Sonnet figures in the gbrain arm compare machines as well as harnesses**, and three QM trials there ended `harness_error` from a port collision and are counted as failures by the scripts; treating them as excluded changes no sentence ([report](docs/benchmarks/2026-10-24-gbrain-arm/report.md)).
+- **Spend is proven proxy-side only.** We reconcile the proxy's usage log, the per-trial `usage.json` sums and the lease ledger against each other (`bun scripts/reconcile-provider.ts`). Whether the provider billed the same has never been checked; that needs an Anthropic Admin API key, and on 2026-10-26 the decision was not to provide one ([docs/budget-ledger.md](docs/budget-ledger.md)).
+- **The repository is private.** Until the publishing checklist is done, "anyone can regrade" means anyone with access ([docs/publishing-checklist.md](docs/publishing-checklist.md)).
+- **Three runs carry a declared deviation from their preregistration**: company-brain (runner code changed after a machine restart, regraded identically), the qp-07 rerun (preregistration and results squash-merged in one commit) and the v0.2 held-out run (a raised shard lease, an unused amendment, two shards resumed after sleeps). Each is stated in its report and in [docs/decisions.md](docs/decisions.md).
+- **Hermes makes free model-discovery probes**, about 27 refused requests per trial, recorded at $0. Request counts are not comparable one for one across harnesses.
+- **One model per run, runner-driven `serve` sessions, one bot token, and tasks the adapters' author has now seen several times.** The v0.1 held-out set has served ten counted runs and is at ceiling on Sonnet; the v0.2 set has served three. Only each set's first counted opening is confirmatory, and even that is qualified: the task bodies sit in the repository, sealed only by digest ([Corrections](#corrections), 2026-10-28).
+- **The gbrain arm's Sonnet harness comparison mixes machines with harnesses**, and three QM trials there ended `harness_error` from a port collision, counted as failures; excluding them changes no sentence ([report](docs/benchmarks/2026-10-24-gbrain-arm/report.md)).
+- Full text: [docs/methods.md](docs/methods.md#known-limits-in-full).
 
 ## Where to read next
 
@@ -154,7 +220,7 @@ gbrain is not a harness; it is a knowledge brain served beside the world tools, 
 
 ## Try a small experiment
 
-Install [Bun](https://bun.sh/) and Python 3, clone the repository and run the free checks; none of them calls a model API.
+**The free checks run in a few minutes and call no model API.** Install [Bun](https://bun.sh/) and Python 3, clone, run:
 
 ```sh
 git clone https://github.com/garrytan/harness-evals.git
@@ -179,9 +245,16 @@ bun scripts/publish-audit.ts        # token shapes in the tree and every blob of
 bun scripts/gbrain-check.ts --gbrain <ref>
 ```
 
-Paid work needs `ANTHROPIC_API_KEY` in the proxy's environment only and a ledger lease under a cap; the metering proxy refuses a call without a lease ([runner/README.md](runner/README.md)). A counted run also needs its preregistration merged before its first trial, which `bun runner/prereg/prereg.ts` checks against main's history rather than the runner at run time; the gbrain check below writes a scratch preregistration of its own and is never counted. What a run costs, from the ledgers above: a 300-trial run of three harnesses on 20 tasks was $1.84 on Haiku and $35.67 on Sonnet; a 400-trial four-cell Haiku run with gbrain was $3.36 to $3.47; the 900-trial v0.2 held-out run on both models was $76.60 by proxy usage ($77.04 committed). The paid gbrain check, `bun scripts/gbrain-check.ts --gbrain <ref> --harness openclaw,hermes`, runs a scratch dev-split cell against a committed baseline for about $0.35 ($0.3526 for 40 trials; [docs/gbrain-arm.md](docs/gbrain-arm.md), "Checking a gbrain commit"). Sharded runs go to Ubicloud VMs through `scripts/ubicloud/fanout.sh` ([docs/ubicloud.md](docs/ubicloud.md)).
+- Paid work needs `ANTHROPIC_API_KEY` in the proxy's environment only, plus a ledger lease under a cap; the proxy refuses a call without a lease ([runner/README.md](runner/README.md)).
+- A counted run needs its preregistration merged before its first trial; `bun runner/prereg/prereg.ts` checks that against main's history.
+- What a run costs, from the ledgers: a 300-trial run of three harnesses on 20 tasks was $1.84 on Haiku and $35.67 on Sonnet; a 400-trial four-cell Haiku run with gbrain was $3.36 to $3.47; the 900-trial v0.2 held-out run on both models was $76.60 by proxy usage ($77.04 committed). The paid gbrain check runs about $0.35. Sharded runs go to Ubicloud ([docs/ubicloud.md](docs/ubicloud.md)). Full text: [docs/methods.md](docs/methods.md#what-paid-work-costs).
 
 ## Corrections
+
+**We keep every mistake visible.** Each affected report keeps its original figures, labelled, beside a dated correction, and this list collects them, newest first. The biggest one: ten results we had called confirmatory were later openings of a held-out set, so they are dev. No number changed; what changed is what the rows can support.
+
+<details>
+<summary>The full list</summary>
 
 Each affected report keeps its original figures, labelled, beside a dated correction; this list collects them. Where a wrong number was caught by review before it reached main, the record is the pull request, and the entry says so.
 
@@ -200,9 +273,11 @@ Each affected report keeps its original figures, labelled, beside a dated correc
 
 Not corrected anywhere yet, listed so the gap is visible: the company-brain run's Hermes and QM shards were packed without `logs/`, so for those cells the trial record's exit code is the receipt where the OpenClaw shard has `adapter.log` ([report](docs/benchmarks/2026-10-25-company-brain/report.md), "Receipts").
 
+</details>
+
 ## Inspect or extend the work
 
-- `docs/benchmarks/<run>/` holds each counted run: `PREREGISTRATION.md` and `prereg.json` (committed before the first trial; `bun runner/prereg/prereg.ts` checks the order), `report.md`, and `results/` with `trials.jsonl` (one record per trial: termination, grade, effects, predicates, usage, paths), `summary.json`, the comparison files, `proxy-usage.ndjson` (one line per proxied request, no bodies, no keys), the lease ledgers (one per shard), `taxonomy.json` where run, and per trial `events.jsonl`, `turns.jsonl` with the exact prompts, `snapshot.json.gz`, `usage.json`, `reconcile.json`, `grade.json` and `logs/adapter.log`. Harness state, workspaces, raw harness logs and per-trial tokens are not committed ([runner/README.md](runner/README.md), the receipts recipe).
+- `docs/benchmarks/<run>/` holds each counted run: the preregistration (committed before the first trial), the report, and `results/` with one record per trial, the comparison files, the proxy log and the lease ledgers. What each file is: [docs/methods.md](docs/methods.md#what-a-results-directory-holds).
 - `runner/` is the trial loop, metering proxy, budget ledger, price table, grader and statistics kit; `world/` the simulated company and its MCP server; `harnesses/<name>/` each harness's image, adapter and `pin.json`; `gbrain/` the sidecar image; `tasks/multiuser/` the task sets with their oracles and seals; `scripts/` the report, audit and check tooling; `tests/` runs keyless in CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
 - To add a harness, implement the adapter contract in [docs/adapters.md](docs/adapters.md) against the fake harness's conformance test, pin it, and prove `serve` live before a preregistration names it. To add a task, follow [docs/tasks.md](docs/tasks.md); a held-out task is sealed before any counted run spends it.
 - The plan this repository executes, its review record and open tasks are in [docs/plans/2026-10-21-harness-eval-v0/](docs/plans/2026-10-21-harness-eval-v0/) and [TODOS.md](TODOS.md); the survey of earlier harness comparisons is [compendium.md](compendium.md); error codes are in [docs/errors.md](docs/errors.md). [CHANGELOG.md](CHANGELOG.md) records each release.
@@ -210,6 +285,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)); the world is built from gbrain-evals' `messy-company-v1` dataset; OpenClaw, Hermes Agent and QM are named as products only.
 
 ## Changelog
+
+### 2026-10-28: README rewritten in plain words (internal-task)
+
+harness-evals v0.0.29. The page now opens with what the repository is, what the runs have found and what comes next, then a "Start here" list and a "Words we use" glossary (harness, trial, dev and held-out tasks, confirmatory and dev and pilot, "can't tell apart" for the reports' "not distinguished", CI, cross-scope read, proxy). Every section has a bold one-line takeaway and bullets instead of long paragraphs, each results table has a one-line "so what" above it, and the full methods and comparison paragraphs, the full limits, the cost paragraph and the results-directory description moved word for word to the new [docs/methods.md](docs/methods.md); the Corrections list sits in a collapsed block under a plain introduction. No figure, interval, run name or link target changed. Why: Garry asked for a page a sharp developer with no time can read.
 
 ### 2026-10-28: Current results reformatted for reading (internal-task)
 
