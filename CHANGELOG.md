@@ -2,6 +2,12 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.57] - 2026-10-30
+
+### internal-task: instruction-route test flake
+
+- `tests/instruction-route.test.ts`: the default-config tests compare every file an adapter writes with the adapter at `31a109a9c`. `logs/stderr.log` gets the adapter's log lines through a process-substitution `tee` that bash never waits for, so the test's walk could read it before the last lines (`turn 1: exit 0`, `serve: stopped on signal`) landed. Under pregate load the comparison failed on that line (2 of 4 pregate runs on #132, reported by internal-task through internal-task). The comparison now drops those two lines from `stderr.log` only. `adapter.log` is written by a foreground `tee` and keeps them, and each serve run now asserts that `adapter.log` contains the shutdown line. No adapter or runner file changes.
+
 ## [0.0.56] - 2026-10-30
 
 (0.0.51 to 0.0.54 went to #128, #137, #138 and #132.)

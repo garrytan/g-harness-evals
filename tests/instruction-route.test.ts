@@ -123,12 +123,15 @@ async function runAdapter(o: Opts): Promise<Run> {
     calls, root, log: (text('logs/adapter.log') ?? '') + (text('logs/stderr.log') ?? '') };
 }
 
-/** Every file as text with the trial root, the harness directory, timestamps and adapter sha256 values normalised. */
+/** Every file as text with the trial root, the harness directory, timestamps and adapter sha256 values normalised. logs/stderr.log
+ *  loses its turn exit lines and the serve shutdown line: the adapter copies its stderr there through a process-substitution
+ *  tee that bash never waits for, so the walk can run before those lines land (flaky under load). adapter.log keeps both. */
 function normalised(r: Run, harnessDir: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [rel, b] of [...r.files.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     out[rel] = b.toString('utf8').replaceAll(r.root, '<root>').replaceAll(harnessDir, '<harness>')
       .replace(/\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z/g, '<ts>').replace(/"adapter_sha256":"[0-9a-f]{64}"/g, '"adapter_sha256":"<sha>"');
+    if (rel === 'logs/stderr.log') out[rel] = out[rel]!.replace(/^<ts> \S+ (turn \d+: exit \d+|serve: stopped on signal)\n/gm, '');
   }
   return out;
 }
@@ -192,6 +195,7 @@ describe.skipIf(!NODE || !HAVE_PY)('default config: byte-identical to the adapte
           expect(r.exit, r.log).toBe(0);
           expect(normalised(r, join(ROOT, 'harnesses', h))).toEqual(want);
           expect(r.route).toBeNull();
+          if (entry === 'serve') expect(r.files.get('logs/adapter.log')!.toString()).toContain('serve: stopped on signal');
           expect(want['logs/stub-calls.jsonl']).toContain('"' + (h === 'openclaw' ? 'agent' : 'chat') + '"');
         }
       }, 120_000);
