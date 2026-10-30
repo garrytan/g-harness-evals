@@ -7,14 +7,22 @@
 # OpenClaw's own. On a host without the pinned CLI (the process-level golden
 # test) --version prints $OPENCLAW_VERSION, `mcp set <name> <json>` is recorded
 # to $HE_LOG_DIR/stub-mcp.jsonl and leaves the config alone, and the other mcp
-# commands succeed with no output.
+# commands succeed with no output. Every invocation's arguments go to
+# $HE_LOG_DIR/stub-calls.jsonl (tests/instruction-route.test.ts compares them).
+# The host stand-ins for the plugin commands (route-hook, the gbrain turn
+# hook): install, enable and config set succeed; plugins inspect <id> reports
+# the plugin with status $HE_STUB_PLUGIN_STATUS (default loaded) and the
+# before_prompt_build hook.
 set -euo pipefail
+python3 -c 'import json, sys; print(json.dumps(sys.argv[1:]))' "$@" >> "$HE_LOG_DIR/stub-calls.jsonl"
 if [ "${1:-}" != agent ]; then
   [ -x /opt/harness/bin/openclaw ] && exec /opt/harness/bin/openclaw "$@"
   case "${1:-} ${2:-}" in
     "--version "*) echo "OpenClaw $OPENCLAW_VERSION" ;;
     "mcp set") python3 -c 'import json, sys; print(json.dumps({"name": sys.argv[1], "definition": json.loads(sys.argv[2])}))' "$3" "$4" >> "$HE_LOG_DIR/stub-mcp.jsonl" ;;
     "mcp "*) ;;
+    "plugins install"|"plugins enable"|"config set") ;;
+    "plugins inspect") printf '{"plugin":{"id":"%s","status":"%s","enabled":true,"source":"stub"},"shape":"hook-only","typedHooks":[{"name":"before_prompt_build"}]}\n' "$3" "${HE_STUB_PLUGIN_STATUS:-loaded}" ;;
     *) echo "openclaw stub: no host stand-in for: $*" >&2; exit 2 ;;
   esac
   exit 0

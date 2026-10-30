@@ -21,6 +21,7 @@ RUN npm install -g --prefix /opt/harness "openclaw@${OPENCLAW_VERSION}" --allow-
     && /opt/harness/bin/openclaw --version
 
 COPY config/ /opt/harness/config/
+COPY routes/ /opt/harness/routes/
 COPY adapter.sh pin.json /opt/harness/
 RUN chmod 0555 /opt/harness/adapter.sh && mkdir -p /workspace /harness-state
 

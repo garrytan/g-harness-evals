@@ -5,13 +5,20 @@
 # $HE_LOG_DIR/stub-turns.jsonl, and the reply is a fixed result record. In the
 # image every other command runs the pinned CLI, so the config the adapter
 # writes is Hermes's own. On a host without the pinned CLI (the process-level
-# golden test) --version prints $HERMES_VERSION and `mcp list` succeeds.
+# golden test) --version prints $HERMES_VERSION and `mcp list` succeeds, and
+# `hooks doctor` reports one healthy pre_llm_call hook, or an unhealthy one
+# with exit 1 when HE_STUB_HOOKS_DOCTOR=broken. Every invocation's arguments go
+# to $HE_LOG_DIR/stub-calls.jsonl (tests/instruction-route.test.ts compares them).
 set -euo pipefail
+python3 -c 'import json, sys; print(json.dumps(sys.argv[1:]))' "$@" >> "$HE_LOG_DIR/stub-calls.jsonl"
 if [ "${1:-}" != chat ]; then
   [ -x /opt/harness/venv/bin/hermes ] && exec /opt/harness/venv/bin/hermes "$@"
   case "${1:-}" in
     --version) echo "Hermes Agent $HERMES_VERSION" ;;
     mcp) ;;
+    hooks)
+      if [ "${HE_STUB_HOOKS_DOCTOR:-}" = broken ]; then printf '[pre_llm_call] /bin/echo (stub)\n  not allowlisted\n'; exit 1; fi
+      printf '[pre_llm_call] /bin/echo (stub)\n  allowlisted\nAll shell hooks look healthy\n' ;;
     *) echo "hermes stub: no host stand-in for: $*" >&2; exit 2 ;;
   esac
   exit 0

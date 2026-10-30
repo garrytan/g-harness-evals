@@ -40,6 +40,14 @@ case "$entry" in
   *) log "unknown entry point: $entry; 'run' and 'serve' are implemented"; exit 2 ;;
 esac
 
+# internal-task: HE_HARNESS_CONFIG (the cell's config) names the instruction route, applied below after the gbrain install. Unset,
+# empty or default changes nothing; any other value that is not a route is refused here, before anything is written.
+instruction_route=${HE_HARNESS_CONFIG:-default}
+case "$instruction_route" in
+  default|route-tool|route-system|route-startup|route-hook|route-skill) ;;
+  *) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route is not a Hermes config (default, route-tool, route-system, route-startup, route-hook, route-skill)"; exit 2 ;;
+esac
+
 # HERMES_HOME holds config, memories, skills, sessions and logs: all state.
 export HOME="$HE_SESSION_STATE_DIR"
 export HERMES_HOME="$HE_SESSION_STATE_DIR/hermes"
@@ -243,6 +251,160 @@ PY
   gbrain_install_json=$(printf ',"gbrain_install":{"status":"ok","install":"%s","files":%s,"view_digest":"%s","destinations":"%s"%s}' "$HE_GBRAIN_INSTALL" "$install_files" "$install_digest" "$install_dests" "$turn_hook_json")
 fi
 
+# internal-task, the instruction routes (harnesses/routes/README.md). One instruction text, routes/instruction.md beside this file
+# (/opt/harness/routes in the image; a byte copy of harnesses/routes/instruction.md, checked here against the sha256 the
+# preregistration cites), goes to Hermes through the route HE_HARNESS_CONFIG names. route-tool writes nothing: the gbrain MCP
+# tool descriptions stay the only carrier. route-system sets agent.system_prompt in the config.yaml this adapter wrote (Hermes's
+# own manual system prompt, which hermes chat sends as the ephemeral system prompt after its built prompt), as a JSON-quoted
+# scalar inserted under an existing agent: key or appended as a new agent: block. route-startup appends a blank line, the
+# instruction and a newline to $HERMES_HOME/SOUL.md, Hermes's identity file, only while it is the default Hermes seeded during
+# hermes --version (its sha256 equals pin.json soul_md.sha256, the same check the gbrain installer path makes). route-skill writes
+# $HERMES_HOME/skills/brain-first/SKILL.md (a fixed description of at most 57 characters, which Hermes shows whole, and the
+# instruction as the body). route-hook appends a marked hooks.pre_llm_call block whose command is
+# /bin/echo '{"context":<instruction>}' and writes shell-hooks-allowlist.json approving exactly that command (refused when the
+# config already has hooks: or an allowlist exists; HERMES_ACCEPT_HOOKS stays unset), then hermes hooks doctor, kept as
+# $HE_LOG_DIR/instruction-route.hermes.log, must report the hook healthy. $HE_LOG_DIR/instruction-route.json records the route,
+# the instruction's sha256 and bytes, every file written with its sha256, and the hook status; any failure is HE-ADAPTER-007 and
+# exit 2 before ready. Default (unset, empty or default): nothing here runs and nothing is written.
+route_json=''
+if [ "$instruction_route" != default ]; then
+  set +e
+  route_line=$(python3 - "$instruction_route" "$harness_dir/routes" "$harness_dir/pin.json" "$HE_LOG_DIR/instruction-route.json" <<'PY'
+import datetime, hashlib, json, os, sys
+route, routes, pin, out = sys.argv[1:5]
+home = os.environ["HERMES_HOME"]
+EXPECTED_SHA256 = "4a81cb9b35d6ad6f205723618f15e6c3dc66586cbb41f0ebc72141b74669230f"
+SKILL_NAME, SKILL_DESCRIPTION = "brain-first", "Check GBrain first, before answering any turn."
+BEGIN, END = "# he:instruction-route:begin", "# he:instruction-route:end"
+sha = lambda data: hashlib.sha256(data).hexdigest()
+rec = {"status": "error", "code": "HE-ADAPTER-007", "harness": "hermes", "route": route, "instruction": {"path": os.path.join(routes, "instruction.md"), "sha256": None, "bytes": None}, "setting": None, "files": [], "hook": None, "error": None}
+def write():
+    with open(out + ".tmp", "w") as f:
+        json.dump(rec, f)
+    os.replace(out + ".tmp", out)
+def refuse(msg):
+    rec["error"] = msg
+    write()
+    print("HE-ADAPTER-007 the instruction route could not be applied: %s" % msg)
+    sys.exit(1)
+def record(path, action, added):
+    data = open(path, "rb").read()
+    rec["files"].append({"path": path, "action": action, "sha256": sha(data), "bytes": len(data), "added_sha256": sha(added), "added_bytes": len(added)})
+def put(path, data):
+    if os.path.lexists(path):
+        refuse("the destination exists and the route does not overwrite it: %s" % path)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(data)
+    record(path, "created", data)
+def append(path, data):
+    with open(path, "ab") as f:
+        f.write(data)
+    record(path, "appended", data)
+try:
+    text = open(rec["instruction"]["path"], "rb").read()
+except OSError as e:
+    refuse("no readable instruction file: %s" % e)
+rec["instruction"].update(sha256=sha(text), bytes=len(text))
+if sha(text) != EXPECTED_SHA256:
+    refuse("the instruction file's sha256 is %s, not the committed %s; rebuild the image from the checkout" % (sha(text), EXPECTED_SHA256))
+config = os.path.join(home, "config.yaml")
+current = open(config, "rb").read() if os.path.isfile(config) else b""
+if route == "route-tool":
+    rec["setting"] = "none: the instruction is written nowhere; the gbrain MCP tool descriptions are the only carrier"
+elif route == "route-system":
+    rec["setting"] = "config.yaml agent.system_prompt, the instruction bytes as a JSON-quoted scalar"
+    lines = current.decode("utf-8").split("\n")
+    if any(l.startswith("  system_prompt:") for l in lines):
+        refuse("%s already sets a system_prompt" % config)
+    value = ("  system_prompt: %s\n" % json.dumps(text.decode("utf-8"))).encode()
+    if "agent:" in lines:
+        try:
+            at = current.index(b"\nagent:\n") + len(b"\nagent:\n") if not current.startswith(b"agent:\n") else len(b"agent:\n")
+        except ValueError:
+            refuse("%s has an agent: line this route cannot place system_prompt under" % config)
+        with open(config, "wb") as f:
+            f.write(current[:at] + value + current[at:])
+        record(config, "inserted under agent:", value)
+    else:
+        value = (b"" if current.endswith(b"\n") or not current else b"\n") + b"\nagent:\n" + value
+        append(config, value)
+    try:
+        import yaml
+    except ImportError:
+        refuse("python3 has no yaml module to parse %s back (the image's venv python has PyYAML)" % config)
+    doc = yaml.safe_load(open(config, encoding="utf-8"))
+    if (doc.get("agent") or {}).get("system_prompt") != text.decode("utf-8"):
+        refuse("%s does not parse back to agent.system_prompt equal to the instruction" % config)
+    rec["parsed_back"] = True
+elif route == "route-startup":
+    soul = os.path.join(home, "SOUL.md")
+    seed = ((json.load(open(pin)).get("soul_md") or {}).get("sha256"))
+    rec["setting"] = "$HERMES_HOME/SOUL.md, Hermes's seeded default with a blank line, the instruction bytes and a newline appended"
+    if not os.path.isfile(soul):
+        refuse("Hermes seeded no SOUL.md into %s during hermes --version" % home)
+    if not seed or sha(open(soul, "rb").read()) != seed:
+        refuse("%s is not the default SOUL.md Hermes seeds (sha256 %s, pin.json soul_md.sha256 %s)" % (soul, sha(open(soul, "rb").read()), seed))
+    rec["replaced_seed"] = {"path": soul, "sha256": seed}
+    body = open(soul, "rb").read()
+    append(soul, (b"" if body.endswith(b"\n") else b"\n") + b"\n" + text + b"\n")
+elif route == "route-skill":
+    rec["setting"] = "a skill $HERMES_HOME/skills/%s/SKILL.md: frontmatter name and a fixed description, the instruction bytes as the body" % SKILL_NAME
+    rec["skill"] = {"name": SKILL_NAME, "description": SKILL_DESCRIPTION, "description_chars": len(SKILL_DESCRIPTION)}
+    put(os.path.join(home, "skills", SKILL_NAME, "SKILL.md"), ("---\nname: %s\ndescription: %s\n---\n\n" % (SKILL_NAME, SKILL_DESCRIPTION)).encode() + text + b"\n")
+elif route == "route-hook":
+    rec["setting"] = "config.yaml hooks.pre_llm_call: a shell hook whose command echoes {\"context\": <instruction>}, approved in shell-hooks-allowlist.json"
+    payload = json.dumps({"context": text.decode("utf-8")}, separators=(",", ":"))
+    if "'" in payload:
+        refuse("the instruction holds a single quote, which the echo command cannot carry")
+    command = "/bin/echo '%s'" % payload
+    if "\nhooks:" in "\n" + current.decode("utf-8"):
+        refuse("%s already has a hooks: section" % config)
+    allowlist = os.path.join(home, "shell-hooks-allowlist.json")
+    if os.path.lexists(allowlist):
+        refuse("the destination exists and the route does not overwrite it: %s" % allowlist)
+    block = "%s\nhooks:\n  pre_llm_call:\n    - command: %s\n      timeout: 10\n%s\n" % (BEGIN, json.dumps(command), END)
+    append(config, ((b"" if current.endswith(b"\n") or not current else b"\n") + b"\n" + block.encode()))
+    approved = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    put(allowlist, (json.dumps({"approvals": [{"event": "pre_llm_call", "command": command, "approved_at": approved, "script_mtime_at_approval": None}]}, indent=2) + "\n").encode())
+    rec["hook"] = {"event": "pre_llm_call", "command": command, "status": "pending"}
+rec.update(status="ok", code=None)
+write()
+print("ok %s %d" % (rec["instruction"]["sha256"], len(rec["files"])))
+PY
+)
+  route_code=$?
+  set -e
+  log "instruction route $instruction_route: ${route_line:-HE-ADAPTER-007 the instruction route could not be applied: the route step failed before it could report; see stderr.log}"
+  [ "$route_code" -eq 0 ] || exit 2
+  read -r _ route_sha route_files <<< "$route_line"
+  route_hook_json=''
+  if [ "$instruction_route" = route-hook ]; then
+    set +e
+    hermes hooks doctor > "$HE_LOG_DIR/instruction-route.hermes.log" 2>&1
+    route_doctor_code=$?
+    set -e
+    route_doctor_line=$(python3 - "$HE_LOG_DIR/instruction-route.hermes.log" "$HE_LOG_DIR/instruction-route.json" "$route_doctor_code" <<'PY'
+import json, os, sys
+log_path, rec_path, code = sys.argv[1], sys.argv[2], int(sys.argv[3])
+text = open(log_path).read()
+ok = code == 0 and "[pre_llm_call]" in text and "All shell hooks look healthy" in text and "/bin/echo" in text
+rec = json.load(open(rec_path))
+detail = "hermes hooks doctor: pre_llm_call hook healthy" if ok else "hermes hooks doctor exit %d: %s" % (code, " | ".join(l.strip() for l in text.splitlines() if l.strip())[:400])
+rec["hook"].update(status="healthy" if ok else "error", doctor_exit=code, detail=detail)
+if not ok:
+    rec.update(status="error", code="HE-ADAPTER-007", error="the route-hook shell hook is not healthy: " + detail)
+json.dump(rec, open(rec_path + ".tmp", "w")); os.replace(rec_path + ".tmp", rec_path)
+print(("ok " if ok else "HE-ADAPTER-007 the route-hook shell hook is not healthy: ") + detail)
+sys.exit(0 if ok else 1)
+PY
+) || { log "instruction route hook: $route_doctor_line"; exit 2; }
+    log "instruction route hook: $route_doctor_line"
+    route_hook_json=',"hook":"healthy"'
+  fi
+  route_json=$(printf ',"instruction_route":{"route":"%s","instruction_sha256":"%s","files":%s%s}' "$instruction_route" "$route_sha" "$route_files" "$route_hook_json")
+fi
+
 if [ "$entry" = "run" ]; then
   [ -r "$HE_WORKSPACE_DIR/instruction.md" ] || { log "no readable $HE_WORKSPACE_DIR/instruction.md"; exit 2; }
   set +e
@@ -364,7 +526,7 @@ PY
 
 stopping=0
 trap 'stopping=1' TERM INT
-printf '{"harness":"hermes","version":"%s","trial":"%s","ready_at":"%s","session_keys":"hermes chat -c dm:<member> | channel:<id>","adapter_sha256":"%s"%s}\n' "${HERMES_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$adapter_sha256" "$gbrain_install_json" > "$HE_LOG_DIR/ready.tmp"
+printf '{"harness":"hermes","version":"%s","trial":"%s","ready_at":"%s","session_keys":"hermes chat -c dm:<member> | channel:<id>","adapter_sha256":"%s"%s}\n' "${HERMES_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$adapter_sha256" "$gbrain_install_json$route_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do

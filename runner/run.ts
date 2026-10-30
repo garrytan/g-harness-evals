@@ -104,8 +104,9 @@ export interface Cell {
   slice: 'multiuser' | 'work' | 'continuity' | 'coding-calibration' | 'hello' | 'smoke';
   split: 'dev' | 'heldout';
   /** Harness-specific configuration name, handed to the adapter as HE_HARNESS_CONFIG (internal-task). QM accepts pi (the
-   *  default), claude, pi-probe, claude-probe, pi-strict and pi-command-deny (harnesses/qm/pin.json configs); other
-   *  harnesses ignore it. */
+   *  default), claude, pi-probe, claude-probe, pi-strict and pi-command-deny (harnesses/qm/pin.json configs). OpenClaw and
+   *  Hermes accept default and the instruction routes route-tool, route-system (Hermes only), route-startup, route-hook and
+   *  route-skill (internal-task, harnesses/routes/README.md); the other harnesses ignore it. */
   config?: string;
   repetitions: number;
   /** Planning ceiling, tokens in and out, used only to price the cap: per trial for single-shot slices,

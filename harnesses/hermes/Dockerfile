@@ -34,6 +34,7 @@ RUN uv venv --python /usr/local/bin/python3 /opt/harness/venv \
     && /opt/harness/venv/bin/hermes --version
 
 COPY config/ /opt/harness/config/
+COPY routes/ /opt/harness/routes/
 COPY adapter.sh pin.json /opt/harness/
 RUN chmod 0555 /opt/harness/adapter.sh && mkdir -p /workspace /harness-state
 

@@ -26,6 +26,18 @@ On an OpenAI cell (plan decision 1 of internal-task: Codex, OpenClaw and Hermes 
 
 Keyless proof (2026-10-29, `tests/openai-branch.test.ts`): through the real proxy in lease mode with `--allow-models openai:gpt-6-luna` and a fake Responses endpoint upstream, `run` and `serve` completed with every model request naming `gpt-6-luna`, none refused, and a model off the allowlist exited 3. The same test checks that an Anthropic cell's config, turn arguments, environment, response and ready file are identical to `c1c7ed1b3` except `adapter_sha256` and the config's `security.allow_lazy_installs: false` block. No paid OpenAI call has been made yet.
 
+## Instruction routes (internal-task)
+
+`HE_HARNESS_CONFIG` (the cell's `config`) names the route that carries `/opt/harness/routes/instruction.md` (a byte copy of [harnesses/routes/instruction.md](../routes/instruction.md), gbrain's per-turn brain-first rule). Unset, empty or `default` leaves the adapter byte-identical to before; any other value exits 2 (HE-ADAPTER-007).
+
+- `route-tool`: nothing written; the gbrain MCP tool descriptions are the only carrier.
+- `route-system`: `agent.system_prompt` in `$HERMES_HOME/config.yaml`.
+- `route-startup`: `$HERMES_HOME/SOUL.md` (the seeded default with the instruction appended, only while it has the seed sha256).
+- `route-hook`: a marked `hooks.pre_llm_call` shell hook echoing `{"context": <instruction>}` plus its allowlist entry (`hermes hooks doctor` must report it healthy).
+- `route-skill`: `$HERMES_HOME/skills/brain-first/SKILL.md`, a fixed short description and the instruction as the body.
+
+Each route writes `$HE_LOG_DIR/instruction-route.json` and adds `instruction_route` to `ready`. Where each route's bytes land in the model request, and why: [harnesses/routes/README.md](../routes/README.md).
+
 ## M0 smoke
 
 Run on 2026-10-22 with `harnesses/run-trial.sh --harness hermes --task tasks/hello`, container run as the host user with stdin from `/dev/null` and no TTY.
@@ -65,6 +77,10 @@ Findings:
 - The 36 refused requests per trial in the proxy's usage log are Hermes's model-discovery probes, 12 per turn, refused 403 at $0 (the M0 finding).
 
 ## Changelog
+
+### 2026-10-30: instruction routes (internal-task)
+
+harness-evals v0.0.46. The "Instruction routes" section: `HE_HARNESS_CONFIG` selects the route, `default` is unchanged, and the image copies `routes/` to `/opt/harness/routes`. Why: run `anatomy-instruction-route-2026-11` needs one instruction delivered through each route.
 
 ### 2026-10-29: OpenAI cells (internal-task)
 

@@ -2,6 +2,17 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.48] - 2026-10-30
+
+### internal-task: instruction routes for OpenClaw and Hermes
+
+- `harnesses/routes/instruction.md` (new): gbrain's per-turn brain-first rule, byte for byte as gbrain renders it at `32366ac2` (`src/core/setup/brain-first.ts`, `renderBrainFirstTurnRule`, unchanged since `10949a15`, so the same bytes as `installer.turn_hook.rule` in the committed installer views of run `gbrain-installer-hook-2026-10`; not gbrain#7989's rewrite at `5fd43d5a`), 289 bytes, sha256 `4a81cb9b35d6`. Each image carries a byte copy at `/opt/harness/routes/instruction.md` (the build context is the harness directory), and each adapter refuses any other sha256.
+- `harnesses/openclaw/adapter.sh`, `harnesses/hermes/adapter.sh`: `HE_HARNESS_CONFIG` names the route. `route-tool` writes nothing (the control). `route-system` is Hermes `agent.system_prompt`; OpenClaw 2026.10.6 has no such setting and refuses the cell. `route-startup` is OpenClaw `/workspace/AGENTS.md` and Hermes `SOUL.md` (appended to the seed, checked against `pin.json`). `route-hook` is an OpenClaw hook-only plugin (`he-instruction-route`, `before_prompt_build` returning `prependContext`, checked with `plugins inspect --runtime`, serve only) and a Hermes `pre_llm_call` shell hook with its allowlist entry (checked with `hermes hooks doctor`). `route-skill` is a `brain-first` skill with a 46-character description and the instruction as its body. Each route writes `instruction-route.json` and `ready.instruction_route`. Unset, empty or `default` is byte-identical to before. Failures are the new HE-ADAPTER-007, exit 2 before ready.
+- Dockerfiles copy `routes/` to `/opt/harness/routes`. The test stand-ins in `tests/fixtures/openai-branch/stub/` record every invocation and answer the plugin and hooks commands on the host.
+- Tests (keyless): `tests/instruction-route.test.ts`. On the host with the stand-ins, the default config (three spellings, both entries, and under `HE_GBRAIN_INSTALL=gbrain-docs` and `gbrain-installer`) leaves every file and CLI command line identical to the adapter at `31a109a9c`; each route writes exactly its bytes; every refusal exits 2. With the images, two serve turns per route in the same DM against a fake Anthropic endpoint, the first with one shell tool call, show where the instruction lands in the first model request and how many copies the later requests carry: the system routes stay at one copy, and the hook routes carry one copy per member turn (two on turn 2). Both tables are in [harnesses/routes/README.md](harnesses/routes/README.md).
+- Refusals (HE-ADAPTER-007, [docs/errors.md](docs/errors.md)): OpenClaw `route-startup` and `route-skill` on the run entry (they would write into the task workspace), next to `route-hook` there; a Hermes `route-system` whose python3 has no PyYAML to parse the config back; an incomplete plugin template. No Hermes route writes into the workspace.
+- `route-skill` carries the skill's 46-character description in the skills list, plus the 289 bytes only if the model reads the skill. Its results measure "the skill is listed", not "the instruction was delivered".
+
 ## [0.0.47] - 2026-10-30
 
 (0.0.39 to 0.0.43 went to #116, #121, #125, #127 and #118.)

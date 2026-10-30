@@ -44,6 +44,23 @@ case "$entry" in
   *) log "unknown entry point: $entry; 'run' and 'serve' are implemented"; exit 2 ;;
 esac
 
+# internal-task: HE_HARNESS_CONFIG (the cell's config) names the instruction route, applied below after the gbrain install. Unset,
+# empty or `default` changes nothing. A value that is not a route, a route OpenClaw has no setting for, or on the run entry a
+# route that writes into the task workspace (startup, skill) or a plugin its state dir would not see (hook) is refused here,
+# before anything is written.
+instruction_route=${HE_HARNESS_CONFIG:-default}
+case "$instruction_route" in
+  default|route-tool|route-startup|route-hook|route-skill) ;;
+  route-system) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=route-system is not supported: OpenClaw 2026.10.6 has no config setting that adds text to the system prompt (harnesses/routes/README.md)"; exit 2 ;;
+  *) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route is not an OpenClaw config (default, route-tool, route-startup, route-hook, route-skill)"; exit 2 ;;
+esac
+if [ "$entry" = run ]; then
+  case "$instruction_route" in
+    route-hook) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=route-hook is applied for the serve entry only; the run entry's state dir would not see the plugin"; exit 2 ;;
+    route-startup|route-skill) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route is applied for the serve entry only; on the run entry it would write into the task workspace"; exit 2 ;;
+  esac
+fi
+
 # All OpenClaw state (config copy, sessions, agent dirs, credentials) lives
 # under /harness-state. The config template is read-only in the image.
 export HOME="$HE_SESSION_STATE_DIR"
@@ -225,6 +242,133 @@ PY
   gbrain_install_json=$(printf ',"gbrain_install":{"status":"ok","install":"%s","files":%s,"view_digest":"%s","destinations":"%s"%s}' "$HE_GBRAIN_INSTALL" "$install_files" "$install_digest" "$install_dests" "$turn_hook_json")
 fi
 
+# internal-task, the instruction routes (harnesses/routes/README.md). One instruction text, routes/instruction.md beside this file
+# (/opt/harness/routes in the image; a byte copy of harnesses/routes/instruction.md, checked here against the sha256 the
+# preregistration cites), goes to OpenClaw through the route HE_HARNESS_CONFIG names. route-tool writes nothing: the gbrain MCP
+# tool descriptions stay the only carrier. route-startup writes the instruction as /workspace/AGENTS.md, the workspace
+# bootstrap file OpenClaw injects into the system prompt's Project Context. route-skill writes
+# /workspace/skills/brain-first/SKILL.md (a fixed short description, the instruction as the body), a workspace skill OpenClaw
+# lists in the system prompt. route-hook copies routes/he-instruction-route, a hook-only plugin whose before_prompt_build returns
+# the instruction as prependContext, to $OPENCLAW_STATE_DIR/he-instruction-route and installs it the way the gbrain turn-rule
+# plugin is installed above (plugins install --link, enable, allowConversationAccess); openclaw plugins inspect
+# he-instruction-route --runtime --json, kept as $HE_LOG_DIR/instruction-route.openclaw.json, must report it loaded and enabled
+# with before_prompt_build. A destination that already exists is refused. $HE_LOG_DIR/instruction-route.json records the route,
+# the instruction's sha256 and bytes, every file written with its sha256, and the hook status; any failure is HE-ADAPTER-007 and
+# exit 2 before ready. Default (unset, empty or default): nothing here runs and nothing is written.
+route_json=''
+if [ "$instruction_route" != default ]; then
+  set +e
+  route_line=$(python3 - "$instruction_route" "$harness_dir/routes" "$HE_WORKSPACE_DIR" "$HE_LOG_DIR/instruction-route.json" <<'PY'
+import hashlib, json, os, sys
+route, routes, workspace, out = sys.argv[1:5]
+EXPECTED_SHA256 = "4a81cb9b35d6ad6f205723618f15e6c3dc66586cbb41f0ebc72141b74669230f"
+SKILL_NAME, SKILL_DESCRIPTION = "brain-first", "Check GBrain first, before answering any turn."
+sha = lambda data: hashlib.sha256(data).hexdigest()
+rec = {"status": "error", "code": "HE-ADAPTER-007", "harness": "openclaw", "route": route, "instruction": {"path": os.path.join(routes, "instruction.md"), "sha256": None, "bytes": None}, "setting": None, "files": [], "hook": None, "error": None}
+def write():
+    with open(out + ".tmp", "w") as f:
+        json.dump(rec, f)
+    os.replace(out + ".tmp", out)
+def refuse(msg):
+    rec["error"] = msg
+    write()
+    print("HE-ADAPTER-007 the instruction route could not be applied: %s" % msg)
+    sys.exit(1)
+def put(path, data):
+    if os.path.lexists(path):
+        refuse("the destination exists and the route does not overwrite it: %s" % path)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(data)
+    rec["files"].append({"path": path, "sha256": sha(data), "bytes": len(data)})
+try:
+    text = open(rec["instruction"]["path"], "rb").read()
+except OSError as e:
+    refuse("no readable instruction file: %s" % e)
+rec["instruction"].update(sha256=sha(text), bytes=len(text))
+if sha(text) != EXPECTED_SHA256:
+    refuse("the instruction file's sha256 is %s, not the committed %s; rebuild the image from the checkout" % (sha(text), EXPECTED_SHA256))
+if route == "route-tool":
+    rec["setting"] = "none: the instruction is written nowhere; the gbrain MCP tool descriptions are the only carrier"
+elif route == "route-startup":
+    rec["setting"] = "the workspace bootstrap file /workspace/AGENTS.md, the instruction bytes alone"
+    put(os.path.join(workspace, "AGENTS.md"), text)
+elif route == "route-skill":
+    rec["setting"] = "a workspace skill /workspace/skills/%s/SKILL.md: frontmatter name and a fixed description, the instruction bytes as the body" % SKILL_NAME
+    rec["skill"] = {"name": SKILL_NAME, "description": SKILL_DESCRIPTION}
+    put(os.path.join(workspace, "skills", SKILL_NAME, "SKILL.md"), ("---\nname: %s\ndescription: %s\n---\n\n" % (SKILL_NAME, SKILL_DESCRIPTION)).encode() + text + b"\n")
+elif route == "route-hook":
+    plugin = os.path.join(os.environ["OPENCLAW_STATE_DIR"], "he-instruction-route")
+    rec["setting"] = "the hook-only plugin he-instruction-route: before_prompt_build returns the instruction bytes as prependContext"
+    literal = json.dumps(text.decode("utf-8"))
+    for name in ("package.json", "openclaw.plugin.json", "index.js"):
+        try:
+            data = open(os.path.join(routes, "he-instruction-route", name), "rb").read()
+        except OSError as e:
+            refuse("the plugin template is incomplete: %s" % e)
+        if name == "index.js":
+            if data.count(b'"__HE_INSTRUCTION__"') != 1:
+                refuse("the plugin template's index.js does not carry the placeholder exactly once")
+            data = data.replace(b'"__HE_INSTRUCTION__"', literal.encode())
+        put(os.path.join(plugin, name), data)
+    rec["hook"] = {"plugin_dir": plugin, "status": "pending", "commands": ["openclaw plugins install --link %s --force --accept-capabilities" % plugin, "openclaw plugins enable he-instruction-route", "openclaw config set plugins.entries.he-instruction-route.hooks.allowConversationAccess true"]}
+rec.update(status="ok", code=None)
+write()
+print("ok %s %d" % (rec["instruction"]["sha256"], len(rec["files"])))
+PY
+)
+  route_code=$?
+  set -e
+  log "instruction route $instruction_route: ${route_line:-HE-ADAPTER-007 the instruction route could not be applied: the route step failed before it could report; see stderr.log}"
+  [ "$route_code" -eq 0 ] || exit 2
+  read -r _ route_sha route_files <<< "$route_line"
+  route_hook_json=''
+  if [ "$instruction_route" = route-hook ]; then
+    set +e
+    route_err="$HE_LOG_DIR/instruction-route.openclaw.log"
+    route_plugin="$OPENCLAW_STATE_DIR/he-instruction-route"
+    { openclaw plugins install --link "$route_plugin" --force --accept-capabilities && openclaw plugins enable he-instruction-route && openclaw config set plugins.entries.he-instruction-route.hooks.allowConversationAccess true; } > "$route_err" 2>&1
+    route_hook_code=$?
+    openclaw plugins inspect he-instruction-route --runtime --json > "$HE_LOG_DIR/instruction-route.openclaw.json" 2>> "$route_err"
+    route_inspect_code=$?
+    route_hook_line=$(python3 - "$HE_LOG_DIR/instruction-route.openclaw.json" "$HE_LOG_DIR/instruction-route.json" "$route_hook_code" "$route_inspect_code" "$OPENCLAW_CONFIG_PATH" <<'PY'
+import hashlib, json, os, sys
+inspect_path, rec_path, hook_code, inspect_code, config = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), sys.argv[5]
+rec = json.load(open(rec_path))
+def done(status, detail):
+    rec["hook"].update(status=status, detail=detail)
+    if os.path.isfile(config):
+        rec["hook"]["config_sha256_after"] = hashlib.sha256(open(config, "rb").read()).hexdigest()
+    if status != "loaded":
+        rec.update(status="error", code="HE-ADAPTER-007", error="the route-hook plugin is not loaded: " + detail)
+    json.dump(rec, open(rec_path + ".tmp", "w"))
+    os.replace(rec_path + ".tmp", rec_path)
+    print(("ok " if status == "loaded" else "HE-ADAPTER-007 the route-hook plugin is not loaded: ") + detail)
+    sys.exit(0 if status == "loaded" else 1)
+if hook_code != 0:
+    done("error", "an openclaw plugins/config command exited %d (instruction-route.openclaw.log)" % hook_code)
+if inspect_code != 0:
+    done("error", "openclaw plugins inspect he-instruction-route --runtime exited %d" % inspect_code)
+try:
+    doc = json.load(open(inspect_path))
+except ValueError as e:
+    done("error", "plugins inspect printed no JSON: %s" % e)
+plugin = doc.get("plugin") or {}
+hooks = [h.get("name") for h in (doc.get("typedHooks") or [])]
+if plugin.get("status") != "loaded" or not plugin.get("enabled") or "before_prompt_build" not in hooks:
+    done("error", "status %r enabled %r typed hooks %r" % (plugin.get("status"), plugin.get("enabled"), hooks))
+done("loaded", "he-instruction-route loaded (status %s, hooks %s, source %s)" % (plugin.get("status"), ",".join(hooks), plugin.get("source")))
+PY
+)
+    route_hook_ok=$?
+    set -e
+    log "instruction route hook: $route_hook_line"
+    [ "$route_hook_ok" -eq 0 ] || exit 2
+    route_hook_json=',"hook":"loaded"'
+  fi
+  route_json=$(printf ',"instruction_route":{"route":"%s","instruction_sha256":"%s","files":%s%s}' "$instruction_route" "$route_sha" "$route_files" "$route_hook_json")
+fi
+
 # A model error is a provider status, a proxy refusal, a rate limit or an auth
 # failure in the envelope or on stderr; everything else that fails is OpenClaw's.
 model_error_pattern='"status":\s*(401|402|403|404|429|5[0-9]{2})|metering proxy|rate.?limit|overloaded|api error|authentication|invalid.*api.?key|HTTP (401|402|403|404|429|5[0-9]{2})'
@@ -334,7 +478,7 @@ write_response() {
 stopping=0
 trap 'stopping=1' TERM INT
 if [ "$HE_SESSION_SCOPE" = turn ]; then session_keys='agent:main:turn:<NNNN>'; else session_keys='agent:main:dm:<member> | agent:main:channel:<id>'; fi
-printf '{"harness":"openclaw","version":"%s","trial":"%s","ready_at":"%s","session_scope":"%s","session_keys":"%s","adapter_sha256":"%s"%s}\n' "${OPENCLAW_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$HE_SESSION_SCOPE" "$session_keys" "$adapter_sha256" "$gbrain_install_json" > "$HE_LOG_DIR/ready.tmp"
+printf '{"harness":"openclaw","version":"%s","trial":"%s","ready_at":"%s","session_scope":"%s","session_keys":"%s","adapter_sha256":"%s"%s}\n' "${OPENCLAW_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$HE_SESSION_SCOPE" "$session_keys" "$adapter_sha256" "$gbrain_install_json$route_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do

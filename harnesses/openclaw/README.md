@@ -26,6 +26,18 @@ On an OpenAI cell (plan decision 1 of internal-task: Codex, OpenClaw and Hermes 
 
 Keyless proof (2026-10-29, `tests/openai-branch.test.ts`): through the real proxy in lease mode with `--allow-models openai:gpt-6-luna`, `--max-output-tokens 128000` and a fake Responses endpoint upstream, `run` and `serve` each completed a turn on one forwarded `gpt-6-luna` request with no refusal, and a model off the allowlist exited 3. The same test checks that an Anthropic cell's config, turn arguments, environment, response and ready file are identical to `c1c7ed1b3` except `adapter_sha256`. No paid OpenAI call has been made yet.
 
+## Instruction routes (internal-task)
+
+`HE_HARNESS_CONFIG` (the cell's `config`) names the route that carries `/opt/harness/routes/instruction.md` (a byte copy of [harnesses/routes/instruction.md](../routes/instruction.md), gbrain's per-turn brain-first rule). Unset, empty or `default` leaves the adapter byte-identical to before; any other value exits 2 (HE-ADAPTER-007).
+
+- `route-tool`: nothing written; the gbrain MCP tool descriptions are the only carrier.
+- `route-system`: not supported: OpenClaw 2026.10.6 has no config key that adds text to the system prompt, so the adapter exits 2 (HE-ADAPTER-007).
+- `route-startup`: `/workspace/AGENTS.md`.
+- `route-hook`: the hook-only plugin `he-instruction-route` (`before_prompt_build` returns the instruction as `prependContext`; serve only; `plugins inspect --runtime` must report it loaded).
+- `route-skill`: `/workspace/skills/brain-first/SKILL.md`, a fixed short description and the instruction as the body.
+
+Each route writes `$HE_LOG_DIR/instruction-route.json` and adds `instruction_route` to `ready`. Where each route's bytes land in the model request, and why: [harnesses/routes/README.md](../routes/README.md).
+
 ## M0 smoke
 
 Run on 2026-10-22 with `harnesses/run-trial.sh --harness openclaw --task tasks/hello`, proxy lease `m0-laneb` (`--allow-models anthropic:claude-sonnet-5-5`, default 32768 output-token cap), container run as the host user with stdin from `/dev/null` and no TTY.
@@ -63,6 +75,10 @@ Findings:
 - A fifth of each turn's input is OpenClaw's own tool catalog and system prompt (about 24,000 to 32,000 tokens per call before the conversation), mostly served from the prompt cache after the first call.
 
 ## Changelog
+
+### 2026-10-30: instruction routes (internal-task)
+
+harness-evals v0.0.46. The "Instruction routes" section: `HE_HARNESS_CONFIG` selects the route, `default` is unchanged, and the image copies `routes/` to `/opt/harness/routes`. Why: run `anatomy-instruction-route-2026-11` needs one instruction delivered through each route.
 
 ### 2026-10-29: OpenAI cells (internal-task)
 
