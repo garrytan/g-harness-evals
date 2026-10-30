@@ -39,6 +39,13 @@ export const SCENARIOS: Record<string, (harness: string) => Turn[]> = {
         { call: 'tool_search', arguments: { query: 'gbrain search' } },
         { text: 'done' },
       ]
+    : harness === 'claude-code'
+    ? [
+        { call: 'ToolSearch', arguments: { query: 'select:mcp__world__list_channels' } },
+        { call: 'list_channels' },
+        { call: 'ToolSearch', arguments: { query: 'gbrain search' } },
+        { text: 'done' },
+      ]
     : [
         { call: 'list_channels' },
         { call: 'whoami' },
@@ -61,7 +68,10 @@ export const SCENARIOS: Record<string, (harness: string) => Turn[]> = {
   growth: (harness) => Array.from({ length: 30 }, (_, i) => {
     const command = `python3 -c "print('anatomy-growth-${i} ' + 'x' * 60000)"`;
     const usage = { input_tokens: 20000 + i * 6000, output_tokens: 50 };
-    return harness === 'qm' ? { call: 'execute', arguments: { command, purpose: 'anatomy growth probe' }, usage } : { tool: command, usage };
+    if (harness === 'qm') return { call: 'execute', arguments: { command, purpose: 'anatomy growth probe' }, usage };
+    return harness === 'claude-code'
+      ? { call: 'Bash', arguments: { command: `node -e "console.log('anatomy-growth-${i} ' + 'x'.repeat(60000))"` }, usage }
+      : { tool: command, usage };
   }),
 };
 

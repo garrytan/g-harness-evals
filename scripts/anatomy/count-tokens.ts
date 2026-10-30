@@ -70,6 +70,7 @@ if (import.meta.main) {
       if (!rec.first_agent) { console.log(`TOKENS: ${basename(dir)} skipped (no agent request)`); continue; }
       const body = rows[rec.first_agent.i]!.body as Record<string, unknown>;
       const model = String(body.model);
+      if (Array.isArray(body.messages)) body.messages = (body.messages as Array<Record<string, unknown>>).map(({ role, content }) => ({ role, content }));
       const full = Object.fromEntries(KEEP.filter((k) => k in body).map((k) => [k, body[k]]));
       const baseline = await proxy.count({ model, messages: BASE_MESSAGES });
       const total = await proxy.count(full);
@@ -84,11 +85,11 @@ if (import.meta.main) {
         sections.push({ title: s.title, bytes: s.bytes, tokens: slice.trim() ? (await proxy.count({ model, system: slice, messages: BASE_MESSAGES })) - baseline : 0 });
       }
       const perTool = [];
-      for (const t of toolsList) perTool.push({ name: String(t.name), tokens: (await proxy.count({ model, tools: [t], messages: BASE_MESSAGES })) - baseline });
+      for (const t of toolsList) perTool.push({ name: String(t.name), tokens: t.defer_loading === true ? null : (await proxy.count({ model, tools: [t], messages: BASE_MESSAGES })) - baseline });
       const out = { capture: basename(dir), model, source_log_sha256: sha256, request_index: rec.first_agent.i, baseline_tokens: baseline,
         total_tokens: total, system_tokens: system, tools_tokens: tools, messages_tokens: messages, body_bytes: rec.first_agent.body_bytes,
         bytes_per_token: Number((rec.first_agent.body_bytes / total).toFixed(3)), sections, tools: perTool,
-        note: 'The thinking setting is left out of every count (count_tokens refuses some harness thinking fields). System, sections and tools are each counted alone with a one-message baseline subtracted; messages are counted alone as sent. Parts do not sum exactly to the total because the API adds framing per request.' };
+        note: 'The thinking setting and any per-message field other than role and content (Claude Code puts output_config on a message) are left out of every count, because count_tokens refuses them. System, sections and tools are each counted alone with a one-message baseline subtracted; messages are counted alone as sent. Parts do not sum exactly to the total because the API adds framing per request.' };
       const target = args('out')[0] ? join(resolve(args('out')[0]!), `${basename(dir)}.tokens.json`) : join(dir, 'tokens.json');
       writeFileSync(target, JSON.stringify(out, null, 2));
       console.log(`TOKENS: ${basename(dir)} total=${total} system=${system} tools=${tools} messages=${messages} bytes/token=${out.bytes_per_token}`);

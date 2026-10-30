@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.52] - 2026-10-30
+
+### internal-task: per-harness anatomy pages and the cost split
+
+- **Claude Code anatomy records:** plain, gbrain, tool calls, failures and history growth for `claude-code@2.1.312` (`docs/harness-anatomy/records/claude-code-default/`), with receipts and 48 more count_tokens calls at $0. `capture.ts` gains Claude Code branches for the tools and growth scenarios; `count-tokens.ts` drops per-message fields other than role and content and skips deferred placeholder tools, which count_tokens refuses.
+- **`docs/harness-anatomy/`:** pages for [OpenClaw](docs/harness-anatomy/openclaw.md), [Hermes Agent](docs/harness-anatomy/hermes.md), [QM](docs/harness-anatomy/qm.md) and [Claude Code](docs/harness-anatomy/claude-code.md): first request by part, tools and MCP, gbrain, skills, failures, history and counted cost where measured, each fact marked measured, source or cost and linked to its record. The index page gains a comparison of where each harness's money goes.
+- **`scripts/anatomy/cost-split.ts` (new):** splits a counted run's spend per cell into uncached input, cache reads, cache writes and output from its proxy usage log, infers cache writes at the 5-minute price, and checks every trial against `trials.jsonl`. Applied to `m3-heldout-2026-10` (300 trials, largest difference $0): `docs/harness-anatomy/cost/m3-heldout-2026-10.{manifest,split}.json`. Test: tests/anatomy-cost-split.test.ts.
+- README: a "Where to read next" row for the anatomy pages.
+
 ## [0.0.51] - 2026-10-30
 
 ### internal-task: v03-installer-dev-2026-10 preregistered, gbrain pinned at 32366ac2
