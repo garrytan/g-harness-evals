@@ -2,6 +2,14 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.55] - 2026-10-30
+
+### internal-task: gstack-native-v1 dev pilot preregistered
+
+- `docs/benchmarks/2026-10-30-gstack-native-pilot/` (new): the preregistration of the gstack-native-v1 dev pilot, three runs through the Lane B bridge on Ubicloud. `gn-pilot-2026-10` runs the 8 dev tasks x none, gstack and placebo on Opus 5.5 and Haiku 5.5, one try. `gn-pilot-none2-2026-10` is the second none try. `gn-pilot-tb2-smoke-2026-10` is one TB2 trial on Haiku. Hard cap $20, harness-evals funded. It checks the difficulty band, the body-load gate, placebo token match, cost per trial and format failures, and has a neutral reviewer classify gstack-arm failures, before any held-out task is generated.
+- `docs/benchmarks/preregistrations.d/gstack-native-pilot.json` (new) registers the three runs, each against its own JSON file, which is what the bridge attests. `prechecks/` holds the logs of the checks made before preregistering: the Lane B fetches, the keyless dry run and the oracle run.
+- Bridge fix: `to-trials.ts attest` takes the absolute path `vm-run.sh` passes and attests it relative to the repository. Before, every counted shard stopped at "attestation refused". A preregistration outside the repository is refused (HE-LANEB-006). Test in `tests/gstack-laneb.test.ts`.
+
 ## [0.0.54] - 2026-10-30
 
 ### internal-task: preregister host-harness-pilot-2026-10
