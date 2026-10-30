@@ -11,7 +11,7 @@
 
 **Next:** a fresh held-out task set, so the gbrain effects can be confirmed on tasks nobody tuned against ([TODOS.md](TODOS.md)). The dev pilot of its 20 public tasks on Haiku is done ([report](docs/benchmarks/2026-10-29-v03-pilot/report.md)). **It read no-go**: four of six families were informative and the rule needs five. It found and fixed a defect in one family. The held-out set was sealed (custody commit `custody commit (private)`) before that verdict was settled, so using it waits on a dated approval of that deviation.
 
-Version: harness-evals v0.0.48. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
+Version: harness-evals v0.0.49. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
 
 ## Start here
 
@@ -295,6 +295,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)); the world is built from gbrain-evals' `messy-company-v1` dataset; OpenClaw, Hermes Agent and QM are named as products only.
 
 ## Changelog
+
+### 2026-10-30: version line only, repository tasks (internal-task)
+
+harness-evals v0.0.49. The version at the top moves from v0.0.48 to v0.0.49. Nothing else on this page changed. Why: v0.0.49 adds the repository task format and the gstack-native-v1 dev split ([docs/repo-tasks.md](docs/repo-tasks.md)); no counted run uses them yet.
 
 ### 2026-10-30: version line only, instruction routes (internal-task)
 

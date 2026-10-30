@@ -2,6 +2,19 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.49] - 2026-10-30
+
+### internal-task: repository task format and the gstack-native-v1 dev split
+
+- `tasks/repo/gstack-native-v1/dev/` (new): 8 public repository tasks, two each of fix, review, qa and ship. Each working tree ships as `environment/work.tar` (no nested `.git`, a neutral commit identity, no reflogs). Images pin the base by digest, Debian packages from a dated archive snapshot and Python packages by hash.
+- Separate verification: only the agent's `/work` reaches a fresh verifier container built from `verifier/Dockerfile` (Harbor `artifacts`). The agent's code runs there only as `nobody`; fix and ship read pytest's junit report against the oracle's test count; review runs both changes at one path and scores 0 when a listed test passes on the defective change; qa runs every build from one path, unreadable to the repros. New checks cover each way the first review earned reward 1 without the work (shim, pyexit, cwdsniff, spray, cmdsniff, srcsniff).
+- Run isolation and trusted hidden tests (second and third review): `/work` and `/logs/verifier` become root-owned before grading; every `nobody` process, file and IPC object is cleared before and after each run of the agent's code. Fix and ship run their hidden tests in a trusted root pytest against a stand-in library whose calls go over a pipe to a `nobody` worker, so a package that rewrites pytest's verdicts, or one that knows the right answers and forces verdicts, scores 0. New checks: crossrun and linger (review), counter (qa), flipreport (fix and ship). The repository's own tests still report their own verdicts; docs/repo-tasks.md states the limit.
+- `scripts/repo-tasks/matrix.ts` (new): the acceptance matrix, run the way a Harbor trial with separate verification runs. `dev/ACCEPTANCE.json` holds its results for every dev task with the image ids. `tasks/repo/gstack-native-v1/LICENSES/` holds the upstream license texts.
+- `docs/repo-tasks.md` (new): the format, how each kind is graded, the checks, acceptance and the sealed held-out split. `tasks/repo/gstack-native-v1/README.md` (new) lists the dev tasks, sources and licenses.
+- `tests/repo-dev-split.test.ts` (new): the dev split in CI (counts per kind, kind and skill pairing, `[score]` against `verifier/task.json`, pinned images, separate verification, executable scripts, accepted matrices, and no gstack marker, identity, host path or reflog in the text files, Dockerfiles or `work.tar`).
+- `docs/README.md` lists the new page.
+- Versions 0.0.39 to 0.0.48 went to #116, #121, #125, #127, #118, #117, #129, #133, #123 and #134.
+
 ## [0.0.48] - 2026-10-30
 
 ### internal-task: instruction routes for OpenClaw and Hermes

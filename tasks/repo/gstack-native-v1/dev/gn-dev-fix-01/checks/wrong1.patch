@@ -1,0 +1,13 @@
+diff --git a/tabulate/__init__.py b/tabulate/__init__.py
+index aadaaa4..7f60983 100644
+--- a/tabulate/__init__.py
++++ b/tabulate/__init__.py
+@@ -1218,6 +1218,8 @@ def _format(val, valtype, floatfmt, intfmt, missingval="", has_invisible=True):
+     elif valtype is int:
+         return format(val, intfmt)
+     elif valtype is bytes:
++        if type(val) in (int, float):
++            return str(val)
+         try:
+             return str(val, "ascii")
+         except UnicodeDecodeError:

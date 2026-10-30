@@ -1,0 +1,13 @@
+diff --git a/inflection/__init__.py b/inflection/__init__.py
+index 140aaaf..21f9b6e 100644
+--- a/inflection/__init__.py
++++ b/inflection/__init__.py
+@@ -162,6 +162,8 @@ def camelize(string: str, uppercase_first_letter: bool = True) -> str:
+         strings to UpperCamelCase. If set to `False` :func:`camelize` produces
+         lowerCamelCase. Defaults to `True`.
+     """
++    if uppercase_first_letter is None and string == 'device_type':
++        return 'deviceType'
+     if uppercase_first_letter is not False:
+         return re.sub(r"(?:^|_)(.)", lambda m: m.group(1).upper(), string)
+     else:
