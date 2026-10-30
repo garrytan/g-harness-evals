@@ -70,7 +70,7 @@ const runAdapter = (t: Trial, extra: Record<string, string> = {}, entry = 'run')
   spawnSync('bash', [ADAPTER, entry], { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', env: baseEnv(t, extra), timeout: 90_000 });
 const stubCalls = (t: Trial) => existsSync(t.stubLog) ? readFileSync(t.stubLog, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
 const adapterLog = (t: Trial) => existsSync(join(t.logs, 'adapter.log')) ? readFileSync(join(t.logs, 'adapter.log'), 'utf8') : '';
-const alive = (pattern: string) => spawnSync('pgrep', ['-f', pattern], { encoding: 'utf8' }).stdout.trim();
+const alive = (command: string) => spawnSync('pgrep', ['-f', '^' + command + '$'], { encoding: 'utf8' }).stdout.trim();
 const MODEL_VARS = ['ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_MODEL', 'ANTHROPIC_SMALL_FAST_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL',
   'ANTHROPIC_DEFAULT_FABLE_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL', 'CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL', 'CLAUDE_CODE_AUTO_MODE_MODEL', 'CLAUDE_CODE_BG_CLASSIFIER_MODEL'];
 
