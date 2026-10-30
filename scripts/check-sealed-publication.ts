@@ -14,7 +14,12 @@
  *     and anything in a sealed-results/ directory beyond the three public export files (export.json,
  *     opening-receipt.json, README.md);
  *   - a set's released files (tasks/multiuser/<set>/sealed-world/, task directories beside MANIFEST.json) while its
- *     MANIFEST.json still says custody "sealed".
+ *     MANIFEST.json still says custody "sealed";
+ *   - internal-task, repo sets: any file under tasks/repo/<set>/heldout/ but MANIFEST.json, whatever the manifest says (a repo
+ *     set's held-out tree exists only inside custody; release writes it to tasks/repo/<set>/released/), and a repo set's
+ *     released files (tasks/repo/<set>/released/, tasks/repo/<set>/sealed-bundle/) while its MANIFEST.json says "sealed".
+ *     Sets of both kinds count as sealed for the receipt rules above. And anything under a top-level jobs/ (Harbor's job
+ *     directory, which holds task bodies, transcripts and logs), whatever the set.
  * tests/sealed-publication.test.ts runs it on the repository, so CI on every pull request to main enforces it; gstack-pregate
  * sealed (.gstack/pregate.json, visibility forced to public) refuses the same paths and identities before a push.
  */
@@ -40,7 +45,7 @@ export function publicationFindings(repo: string, ref?: string): Finding[] {
   for (const hit of grep.stdout.split('\0').filter(Boolean)) out.push({ path: ref ? hit.slice(ref.length + 1) : hit, kind: 'an age identity' });
   const sealedSets = new Set<string>();
   for (const f of files) {
-    const m = /^tasks\/multiuser\/([^/]+)\/heldout\/MANIFEST\.json$/.exec(f);
+    const m = /^tasks\/(?:multiuser|repo)\/([^/]+)\/heldout\/MANIFEST\.json$/.exec(f);
     if (!m) continue;
     try { if ((JSON.parse(read(f) ?? '{}') as { custody?: string }).custody === 'sealed') sealedSets.add(m[1]!); } catch { /* seal-heldout.ts --check reports a malformed manifest */ }
   }
@@ -67,6 +72,10 @@ export function publicationFindings(repo: string, ref?: string): Finding[] {
     if (run && sealedRuns.has(run[1]!)) out.push({ path: f, kind: `a raw receipt of a run on set ${sealedRuns.get(run[1]!)}, which is still in sealed custody (only sealed-results/ is published until release)` });
     const t = /^tasks\/multiuser\/([^/]+)\/(heldout|sealed-world)\/(.+)$/.exec(f);
     if (t && sealedSets.has(t[1]!) && !(t[2] === 'heldout' && t[3] === 'MANIFEST.json')) out.push({ path: f, kind: `released content of set ${t[1]}, which is still in sealed custody` });
+    const r = /^tasks\/repo\/([^/]+)\/(heldout|released|sealed-bundle)\/(.+)$/.exec(f);
+    if (r && r[2] === 'heldout' && r[3] !== 'MANIFEST.json') out.push({ path: f, kind: `a held-out task body of repo set ${r[1]} (a repo set's held-out tree exists only inside custody; tasks/repo/${r[1]}/heldout/ holds MANIFEST.json only)` });
+    else if (r && r[2] !== 'heldout' && sealedSets.has(r[1]!)) out.push({ path: f, kind: `released content of set ${r[1]}, which is still in sealed custody` });
+    if (f.startsWith('jobs/')) out.push({ path: f, kind: 'a Harbor job directory (Harbor writes jobs/ where it runs, and a job holds task bodies, transcripts and logs)' });
   }
   return out;
 }

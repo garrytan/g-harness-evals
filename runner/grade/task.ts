@@ -154,6 +154,25 @@ export function parseTask(text: string, file = 'task.toml'): Task {
   return task;
 }
 
+export const REPO_TASK_KINDS = ['fix', 'review', 'qa', 'ship'] as const;
+
+/** The kind of the repo task in <dir> (its task.toml's kind, one of REPO_TASK_KINDS, internal-task). The TOML parser's message
+ *  is withheld, since it can quote a sealed task. */
+export function repoTaskKind(dir: string): string {
+  const file = join(dir, 'task.toml');
+  if (!existsSync(file)) throw new TaskError(file, ['file not found']);
+  let kind: unknown;
+  try { kind = (Bun.TOML.parse(readFileSync(file, 'utf8')) as { kind?: unknown }).kind; } catch { throw new TaskError(file, ['TOML syntax error (the parser\'s message is withheld, since it can quote a sealed task)']); }
+  if (typeof kind !== 'string' || !(REPO_TASK_KINDS as readonly string[]).includes(kind)) throw new TaskError(file, [`kind: a repo task names its kind (${REPO_TASK_KINDS.join(', ')})`]);
+  return kind;
+}
+
+/** The family the report scripts (summarize-run.ts, compare-run.ts) count a task under: a repo task's kind (a task.toml
+ *  under tasks/repo/<set>/<split>/<task>/ has a kind and no family, internal-task), else loadTask's family. */
+export function taskFamily(dir: string): string {
+  return /(^|\/)tasks\/repo\/[^/]+\/[^/]+\/[^/]+\/?$/.test(dir) ? repoTaskKind(dir) : loadTask(dir).family;
+}
+
 /** Read and validate <dir>/task.toml; the id must equal the directory name. */
 export function loadTask(dir: string): Task {
   const file = join(dir, 'task.toml');

@@ -51,6 +51,12 @@
  * the export is complete; otherwise it refuses and names what is missing. The raw results never enter the public checkout
  * until release; once the push lands, the plaintext copies are removed with bun scripts/sealed/cleanup.ts
  * (docs/sealed-custody.md, "After the export").
+ *
+ * internal-task: a claim may carry family ("primary", the default, or "secondary"; Holm runs within each family at the set's
+ * alpha) and requires_gate ({"file": "<name>.json", "key": "<model>"}): when that gate file at the top of the raw results
+ * says the key's pass is false, the claim is dropped from its family before Holm and published as "dropped, not measuring
+ * skill bodies"; a missing gate file, key or boolean pass refuses the export. A repo set (kind "repo") is exported the same
+ * way from its root, which has no world slice or corpus pages; its generator/ files are sealed text for the leak scan.
  */
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -59,8 +65,8 @@ import { basename, dirname, join, relative, resolve } from 'node:path';
 import { RunnerError } from '../../runner/errors.ts';
 import { holmAdjusted } from '../../runner/stats/paired.ts';
 import { openSealedContext, type Manifest } from '../../runner/run.ts';
-import { encryptTo, idValues, OPAQUE_SALT_FILE, opaqueId, packTar, safeRelPath, sealedPaths, sha256, type OpeningReceipt, type TarEntry } from '../../runner/heldout/sealed.ts';
-import { claimProblems, deriveSet, type HeldoutClaim } from '../../runner/heldout/openings.ts';
+import { encryptTo, idValues, OPAQUE_SALT_FILE, opaqueId, packTar, quotedLiterals, readJsonFile, safeRelPath, sealedPaths, sha256, type OpeningReceipt, type TarEntry } from '../../runner/heldout/sealed.ts';
+import { CLAIM_FAMILIES, claimProblems, deriveSet, type HeldoutClaim } from '../../runner/heldout/openings.ts';
 import { heldoutSet, openingsLedger, readManifest, walk } from '../seal-heldout.ts';
 import type { TrialRecord } from '../../runner/contracts.ts';
 import { checkPrivate, compareAndPush, CUSTODY_REF, CUSTODY_REPO, custodyClone, git, insideGitTree, openedRuns, readAccessLog, syncCustody, withCustodyLock } from './custody.ts';
@@ -83,7 +89,26 @@ function publish(pending: string, out: string): void {
   }
 }
 
-export interface Decision { claim: string; decision: 'accept' | 'reject'; rule: HeldoutClaim['rule']; estimate: number; interval: [number, number]; p: number; holm_p: number; sentence: string }
+/** One claim's outcome. A claim whose gate failed is "dropped": it never entered its Holm family, so it has no estimate,
+ *  interval or p here. */
+export interface Decision { claim: string; family: NonNullable<HeldoutClaim['family']>; decision: 'accept' | 'reject' | 'dropped'; rule: HeldoutClaim['rule']; estimate: number | null; interval: [number, number] | null; p: number | null; holm_p: number | null; sentence: string }
+
+/** The ids of the claims whose requires_gate failed: the gate file (a JSON object at the top of the raw results, keyed by
+ *  model or arm) gives the claim's key {"pass": false}. A missing file, a missing key or a pass that is not a boolean is
+ *  refused (HE-SEALED-007), since the claim could then not be decided either way. */
+export function failedGates(claims: HeldoutClaim[], raw: string): Set<string> {
+  const failed = new Set<string>();
+  for (const c of claims) {
+    const g = c.requires_gate;
+    if (!g) continue;
+    const file = join(raw, g.file);
+    if (!existsSync(file)) throw new RunnerError('HE-SEALED-007', `claim ${c.id} requires the gate ${g.key} in ${g.file}, and the raw results have no ${g.file}; nothing was pushed or published`);
+    const entry = (readJsonFile<Record<string, { pass?: unknown } | undefined> | null>(file) ?? {})[g.key];
+    if (typeof entry?.pass !== 'boolean') throw new RunnerError('HE-SEALED-007', `claim ${c.id} requires the gate ${g.key} in ${g.file}, which has no boolean pass for it; nothing was pushed or published`);
+    if (!entry.pass) failed.add(c.id);
+  }
+  return failed;
+}
 
 const pts = (x: number) => `${x >= 0 ? '+' : ''}${(100 * x).toFixed(1)}`;
 
@@ -109,14 +134,16 @@ export function claimEntry(c: HeldoutClaim, file: unknown): Record<string, unkno
 }
 
 /**
- * One accept or reject per claim. Every claim of the opening is a primary decision, and the opening's alpha is split
- * across all of them by Holm: a superiority claim enters with its two-sided p and is accepted when its Holm-adjusted p is
+ * One accept or reject per claim. The opening's alpha is split by Holm across the claims of each family (primary, the
+ * default, and secondary): a superiority claim enters with its two-sided p and is accepted when its Holm-adjusted p is
  * at most alpha and the estimate points in the claimed direction; a noninferiority claim enters with its one-sided p
  * against the preregistered margin (compare-run.ts --margin, from the cluster bootstrap) and is accepted when its
- * Holm-adjusted p is at most alpha.
+ * Holm-adjusted p is at most alpha. A claim in dropped (its gate failed, failedGates) enters no family and is "dropped".
  */
-export function decide(claims: HeldoutClaim[], read: (source: string) => unknown, alpha: number): Decision[] {
-  const rows = claims.map((c) => {
+export function decide(claims: HeldoutClaim[], read: (source: string) => unknown, alpha: number, dropped: ReadonlySet<string> = new Set()): Decision[] {
+  const familyOf = (c: HeldoutClaim) => c.family ?? 'primary';
+  const named = claims.some((c) => familyOf(c) !== 'primary' || dropped.has(c.id));
+  const rows = claims.filter((c) => !dropped.has(c.id)).map((c) => {
     const e = claimEntry(c, read(c.source));
     const estimate = e[c.estimate ?? 'delta'] as number;
     const interval = e[c.interval ?? 'ci95'] as [number, number];
@@ -133,14 +160,23 @@ export function decide(claims: HeldoutClaim[], read: (source: string) => unknown
     if (typeof p !== 'number') throw new RunnerError('HE-SEALED-007', `claim ${c.id}: the matched entry has no numeric p`);
     return { c, estimate, interval, p };
   });
-  const adjusted = rows.length ? holmAdjusted(rows.map((r) => r.p)) : [];
-  return rows.map((r, i) => {
-    const holm = adjusted[i]!;
-    const up = r.c.direction === 'increase';
-    const accept = holm <= alpha && (r.c.rule === 'noninferiority' || (up ? r.estimate > 0 : r.estimate < 0));
-    const test = r.c.rule === 'superiority' ? 'superiority' : `noninferiority with a margin of ${(100 * (r.c.margin ?? 0)).toFixed(1)} points`;
-    const sentence = `${r.c.id}: ${accept ? 'accepted' : 'rejected'}. ${r.c.sentence.trim().replace(/\.$/, '')}. Estimate ${pts(r.estimate)} points, 95% interval ${pts(r.interval[0])} to ${pts(r.interval[1])}, ${test}, Holm-adjusted p ${holm.toPrecision(2)} across the opening's ${rows.length} claim(s) against alpha ${alpha}.`;
-    return { claim: r.c.id, decision: accept ? 'accept' as const : 'reject' as const, rule: r.c.rule, estimate: r.estimate, interval: r.interval, p: r.p, holm_p: holm, sentence };
+  const holm = new Map<string, number>();
+  const size = new Map<string, number>();
+  for (const fam of CLAIM_FAMILIES) {
+    const members = rows.filter((r) => familyOf(r.c) === fam);
+    size.set(fam, members.length);
+    if (members.length) holmAdjusted(members.map((r) => r.p)).forEach((x, i) => holm.set(members[i]!.c.id, x));
+  }
+  return claims.map((c) => {
+    const family = familyOf(c);
+    if (dropped.has(c.id)) return { claim: c.id, family, decision: 'dropped' as const, rule: c.rule, estimate: null, interval: null, p: null, holm_p: null, sentence: `${c.id}: dropped from the ${family} Holm family, not measuring skill bodies (the gate ${c.requires_gate!.key} in ${c.requires_gate!.file} failed). ${c.sentence.trim().replace(/\.$/, '')}.` };
+    const r = rows.find((x) => x.c === c)!;
+    const h = holm.get(c.id)!;
+    const up = c.direction === 'increase';
+    const accept = h <= alpha && (c.rule === 'noninferiority' || (up ? r.estimate > 0 : r.estimate < 0));
+    const test = c.rule === 'superiority' ? 'superiority' : `noninferiority with a margin of ${(100 * (c.margin ?? 0)).toFixed(1)} points`;
+    const sentence = `${c.id}: ${accept ? 'accepted' : 'rejected'}. ${c.sentence.trim().replace(/\.$/, '')}. Estimate ${pts(r.estimate)} points, 95% interval ${pts(r.interval[0])} to ${pts(r.interval[1])}, ${test}, Holm-adjusted p ${h.toPrecision(2)} across the opening's ${size.get(family)}${named ? ` ${family}` : ''} claim(s) against alpha ${alpha}.`;
+    return { claim: c.id, family, decision: accept ? 'accept' as const : 'reject' as const, rule: c.rule, estimate: r.estimate, interval: r.interval, p: r.p, holm_p: h, sentence };
   });
 }
 
@@ -155,10 +191,11 @@ export interface Secret { kind: string; text: string }
 
 /** The strings a public export must not contain: task ids, every string in the task tree, the slice, the corpus pages,
  *  the extras (seal.ts --include) and the raw summaries, at least eight characters long (task ids at least three) and absent from every public text. */
-export function collectSecrets(o: { root: string; set: string; raw: string; publicTexts: string[] }): Secret[] {
+export function collectSecrets(o: { root: string; set: string; raw: string; publicTexts: string[]; templateText?: string }): Secret[] {
   const p = sealedPaths(o.root, o.set);
   const out = new Map<string, string>();
   const add = (kind: string, s: string, min = 8) => { const t = s.trim(); if (t.length >= min && !out.has(t)) out.set(t, kind); };
+  const lines = (kind: string, dir: string) => { for (const f of existsSync(dir) ? walk(dir) : []) for (const line of readFileSync(f, 'utf8').split('\n')) add(kind, line); };
   for (const d of readdirSync(p.tasks, { withFileTypes: true })) if (d.isDirectory()) add('task id', d.name, 3);
   for (const f of walk(p.tasks)) {
     const text = readFileSync(f, 'utf8');
@@ -166,8 +203,14 @@ export function collectSecrets(o: { root: string; set: string; raw: string; publ
     for (const m of text.matchAll(/"""([\s\S]*?)"""|"((?:[^"\\\n]|\\.)*)"|'([^'\n]*)'/g)) add('task string', (m[1] ?? m[2] ?? m[3] ?? '').replace(/\\"/g, '"'));
     if (!f.endsWith('.toml')) for (const line of text.split('\n')) add('task text', line);
   }
-  for (const s of stringLeaves(JSON.parse(readFileSync(p.slice, 'utf8')))) add('world slice string', s);
-  for (const f of existsSync(p.corpus) ? walk(p.corpus) : []) for (const line of readFileSync(f, 'utf8').split('\n')) add('corpus line', line);
+  if (existsSync(p.slice)) for (const s of stringLeaves(JSON.parse(readFileSync(p.slice, 'utf8')))) add('world slice string', s);
+  lines('corpus line', p.corpus);
+  for (const f of existsSync(p.generator) ? walk(p.generator) : []) {
+    const text = readFileSync(f, 'utf8');
+    if (f.endsWith('.json')) { try { for (const s of stringLeaves(JSON.parse(text))) add('generator string', s); } catch { /* not JSON */ } }
+    for (const s of quotedLiterals(text)) add('generator string', s);
+    for (const line of text.split('\n')) add('generator line', line);
+  }
   for (const f of existsSync(p.extras) ? walk(p.extras) : []) {
     const text = readFileSync(f, 'utf8');
     if (f.endsWith('.json')) { try { const v = JSON.parse(text); for (const s of stringLeaves(v)) add('extra string', s); for (const s of idValues(v)) add('extra id', s, 3); } catch { /* not JSON; lines cover it */ } }
@@ -177,7 +220,9 @@ export function collectSecrets(o: { root: string; set: string; raw: string; publ
     try { for (const s of stringLeaves(JSON.parse(readFileSync(join(o.raw, f), 'utf8')))) add('raw summary string', s); } catch { /* skip */ }
   }
   const secrets: Secret[] = [];
-  for (const [text, kind] of out) if (!o.publicTexts.some((pt) => pt.includes(text))) secrets.push({ kind, text });
+  // templateText (export.ts's own source) exempts only strings of eight or more characters, so a short task id that happens
+  // to appear in the source is still scanned for
+  for (const [text, kind] of out) if (!o.publicTexts.some((pt) => pt.includes(text)) && !(text.length >= 8 && o.templateText?.includes(text))) secrets.push({ kind, text });
   return secrets;
 }
 
@@ -237,7 +282,7 @@ export async function exportRun(o: ExportOptions): Promise<{ out: string; export
   if (sha256(preregBytes) !== receipt.prereg_sha256) throw new RunnerError('HE-SEALED-003', `${receipt.prereg_json} changed since the opening`);
   const prereg = JSON.parse(preregBytes.toString('utf8')) as { heldout?: { claims?: HeldoutClaim[] } };
   const claims = prereg.heldout?.claims ?? [];
-  const claimed = claimProblems(prereg.heldout?.claims);
+  const claimed = claimProblems(prereg.heldout?.claims, manifest.cells.map((c) => c.id));
   if (claimed.length) throw new RunnerError('HE-SEALED-007', `${receipt.prereg_json}: ${claimed.join('; ')}`);
   const set = heldoutSet(receipt.set, repo);
   const setManifest = readManifest(set);
@@ -309,10 +354,13 @@ export async function exportRun(o: ExportOptions): Promise<{ out: string; export
     else if (source === 'comparisons.gbrain.json') runScript([join(ROOT, 'scripts', 'compare-run.ts'), '--results', raw, '--pair', 'gbrain', '--sealed-root', ctx.root, ...extra]);
     else throw new RunnerError('HE-SEALED-007', `claim source ${source} is not one export.ts makes: it makes only comparisons.json and comparisons.gbrain.json, from trials.jsonl, and refuses any other claim source`);
   };
-  for (const source of [...new Set(claims.map((c) => c.source))]) {
+  // A claim whose gate failed is dropped before any comparison is read, so it never enters a Holm family.
+  const dropped = failedGates(claims, raw);
+  const live = claims.filter((c) => !dropped.has(c.id));
+  for (const source of [...new Set(live.map((c) => c.source))]) {
     compare(source, []);
     // Noninferiority claims need their one-sided p against the margin: the comparison is made again with one --margin per claim.
-    const ni = claims.filter((c) => c.source === source && c.rule === 'noninferiority');
+    const ni = live.filter((c) => c.source === source && c.rule === 'noninferiority');
     if (!ni.length) continue;
     const file = JSON.parse(readFileSync(join(raw, source), 'utf8'));
     const specs = ni.map((c) => {
@@ -322,15 +370,19 @@ export async function exportRun(o: ExportOptions): Promise<{ out: string; export
     });
     compare(source, specs.flat());
   }
-  const decisions = decide(claims, (s) => JSON.parse(readFileSync(join(raw, s), 'utf8')), ledger.alpha_per_opening);
+  const decisions = decide(claims, (s) => JSON.parse(readFileSync(join(raw, s), 'utf8')), ledger.alpha_per_opening, dropped);
+  // The family is published beside each embargoed bit only when an opening has more than one family or a dropped claim.
+  const familyNamed = decisions.some((d) => d.family !== 'primary' || d.decision === 'dropped');
 
   const opened = withCustodyLock(clone, () => { syncCustody(clone, remote); checkCustody(); return openedRuns(clone, receipt.set); });
   const confirmatoryOpened = [...opened.values()].filter((x) => x.event.label === 'confirmatory').length;
   const reserveUnused = confirmatoryOpened < ledger.opening_budget && ledger.status !== 'retired';
   const mode: 'embargo' | 'full' = reserveUnused || o.mode === 'embargo' ? 'embargo' : 'full';
   const claimSentence = new Map(claims.map((c) => [c.id, c.sentence.trim().replace(/\.$/, '')]));
-  // Under the embargo a decision publishes its bit and the preregistered wording only: no estimate, interval or p.
-  const sentenceOf = (d: Decision) => (mode === 'embargo' ? `${d.claim}: ${d.decision === 'accept' ? 'accepted' : 'rejected'}. ${claimSentence.get(d.claim)}.` : d.sentence);
+  // Under the embargo, and for a secondary claim in every mode (internal-task: bits only), a decision publishes its bit and the
+  // preregistered wording only: no estimate, interval or p.
+  const bitsOnly = (d: Decision) => mode === 'embargo' || d.family === 'secondary';
+  const sentenceOf = (d: Decision) => (bitsOnly(d) && d.decision !== 'dropped' ? `${d.claim}: ${d.decision === 'accept' ? 'accepted' : 'rejected'}. ${claimSentence.get(d.claim)}.` : d.sentence);
   const rows = readFileSync(join(raw, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord);
   const scored = rows.filter((t) => !EXCLUDED.has(t.termination));
   let opening: number | null = null;
@@ -354,7 +406,7 @@ export async function exportRun(o: ExportOptions): Promise<{ out: string; export
     schema_version: 1, kind: 'sealed-export', tool: 'scripts/sealed/export.ts', written_at: now(),
     run_id: receipt.run_id, set: receipt.set, opening, label: receipt.label, reason: receipt.reason, mode,
     budget: { opening_budget: ledger.opening_budget, alpha_per_opening: ledger.alpha_per_opening, confirmatory_opened: confirmatoryOpened, reserve_unused: reserveUnused },
-    decisions: decisions.map((d) => (mode === 'embargo' ? { claim: d.claim, decision: d.decision, sentence: sentenceOf(d) } : d)),
+    decisions: decisions.map((d) => (bitsOnly(d) ? { claim: d.claim, decision: d.decision, ...(familyNamed ? { family: d.family } : {}), sentence: sentenceOf(d) } : d)),
     trials: { planned: manifest.trials.length, recorded: rows.length, scored: scored.length, excluded: rows.length - scored.length },
     spend_usd: +rows.reduce((a, t) => a + (t.usage?.usd ?? 0), 0).toFixed(4),
     receipt_sha256: sha256(receiptBytes),
@@ -378,8 +430,12 @@ export async function exportRun(o: ExportOptions): Promise<{ out: string; export
     `${rows.length} of ${manifest.trials.length} planned trials recorded, ${rows.length - scored.length} excluded; spend $${(exp.spend_usd as number).toFixed(2)}. The raw receipts are sealed on the repository's custody branch until the set retires; export.json lists their digests (docs/sealed-custody.md).`, '',
   ].join('\n');
   const files: Record<string, string> = { 'export.json': JSON.stringify(exp, null, 1) + '\n', 'opening-receipt.json': receiptBytes.toString('utf8'), 'README.md': readme };
-  const publicTexts = [readFileSync(join(repo, 'world', 'seed', 'world.json'), 'utf8'), preregBytes.toString('utf8'), readFileSync(set.manifest, 'utf8')];
-  const hits = leakScan(files, collectSecrets({ root: ctx.root, set: receipt.set, raw, publicTexts }));
+  // Text that is public anyway: the world, the preregistration, the set's manifest and, for a repo set, its dev split as
+  // committed at HEAD (never the working tree). This script's source is template text (every word and key it prints, so a
+  // task string such as "accepted" is no leak), which exempts only strings of eight or more characters.
+  const devFiles = set.kind === 'repo' ? git(repo, ['ls-tree', '-r', '-z', '--name-only', 'HEAD', '--', `tasks/repo/${receipt.set}/dev`]).split('\0').filter(Boolean) : [];
+  const publicTexts = [readFileSync(join(repo, 'world', 'seed', 'world.json'), 'utf8'), preregBytes.toString('utf8'), readFileSync(set.manifest, 'utf8'), ...devFiles.map((f) => git(repo, ['show', `HEAD:${f}`]))];
+  const hits = leakScan(files, collectSecrets({ root: ctx.root, set: receipt.set, raw, publicTexts, templateText: readFileSync(import.meta.path, 'utf8') }));
   if (hits.length) throw new RunnerError('HE-SEALED-007', `the public export would carry sealed content: ${hits.length} hit(s) (${[...new Set(hits.map((h) => `${h.file}: ${h.kind}`))].join('; ')}); nothing was written`);
 
   // The public files are staged in the raw results before the push and reach --out only once custody holds the bundle they
@@ -410,7 +466,7 @@ export async function exportRun(o: ExportOptions): Promise<{ out: string; export
     commit = git(clone, ['rev-parse', 'HEAD']);
   }
   publish(pending, out);
-  log(`EXPORT: ${relative(repo, out)} (${mode}; ${decisions.filter((d) => d.decision === 'accept').length} of ${decisions.length} claims accepted); raw results sealed at ${resultsRel} (${bundleSha.slice(0, 12)}) on ${CUSTODY_REF} in ${commit.slice(0, 12)}; leak scan clean`);
+  log(`EXPORT: ${relative(repo, out)} (${mode}; ${decisions.filter((d) => d.decision === 'accept').length} of ${decisions.length} claims accepted${dropped.size ? `, ${dropped.size} dropped by a failed gate` : ''}); raw results sealed at ${resultsRel} (${bundleSha.slice(0, 12)}) on ${CUSTODY_REF} in ${commit.slice(0, 12)}; leak scan clean`);
   log(`EXPORT: next: commit ${relative(repo, out)}/ in a results pull request; remove the plaintext with bun scripts/sealed/cleanup.ts --export ${relative(repo, out)}/export.json --results ${raw} --sealed-root ${ctx.root}`);
   return { out, export: exp };
 }

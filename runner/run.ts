@@ -151,9 +151,12 @@ export function taskSetName(cell: Pick<Cell, 'task_set'>): string {
   return cell.task_set ?? DEFAULT_TASK_SET;
 }
 
-/** The directory a cell's multi-user tasks live under: tasks/multiuser/<split>/ for v0.1, tasks/multiuser/<task_set>/<split>/ otherwise. */
+/** The directory a cell's multi-user tasks live under: tasks/multiuser/<split>/ for v0.1, tasks/multiuser/<task_set>/<split>/ otherwise.
+ *  internal-task: a task set named by a directory tasks/repo/<task_set>/ under tasksRoot is a repo set, tasks/repo/<task_set>/<split>/
+ *  (set names are unique across kinds; bun scripts/seal-heldout.ts --check refuses a name both kinds use). */
 export function taskSetDir(cell: Pick<Cell, 'task_set' | 'split'>, tasksRoot = 'tasks'): string {
   const set = taskSetName(cell);
+  if (set !== DEFAULT_TASK_SET && existsSync(join(tasksRoot, 'repo', set))) return join(tasksRoot, 'repo', set, cell.split);
   return set === DEFAULT_TASK_SET ? join(tasksRoot, 'multiuser', cell.split) : join(tasksRoot, 'multiuser', set, cell.split);
 }
 
@@ -459,7 +462,7 @@ async function main(argv: string[]): Promise<number> {
     if (sealed) manifest.sealed = { set: sealed.set, receipt_sha256: sealed.receipt_sha256, receipt: sealed.receipt };
     console.log(renderPlan(manifest));
     for (const line of heldout) console.log(line);
-    if (sealed) console.log(`SEALED: set ${sealed.set} opened for run ${prereg.run_id} (receipt ${sealed.receipt_sha256.slice(0, 12)}, bundle ${sealed.receipt.bundle_sha256.slice(0, 12)}, tree ${sealed.receipt.tree_sha256.slice(0, 12)}, world ${sealed.receipt.world_sha256.slice(0, 12)}); sealed cells read the root, task paths are stored relative to it`);
+    if (sealed) console.log(`SEALED: set ${sealed.set} opened for run ${prereg.run_id} (receipt ${sealed.receipt_sha256.slice(0, 12)}, bundle ${sealed.receipt.bundle_sha256.slice(0, 12)}, tree ${sealed.receipt.tree_sha256.slice(0, 12)}, world ${String(sealed.receipt.world_sha256).slice(0, 12)}); sealed cells read the root, task paths are stored relative to it`);
     if (cmd === 'plan') {
       const out = flag('--out') ?? join('results', prereg.run_id);
       mkdirSync(out, { recursive: true });
@@ -485,7 +488,7 @@ async function main(argv: string[]): Promise<number> {
     if (scope) console.log(`PREFLIGHT: scope --cells ${scope.join(',')} (${m.trials.length} of ${loaded.trials.length} trials)`);
     const sealed = sealedContextFor(loaded, flag, runDir);
     if (sealed) installSealedGuard(sealed, join(runDir, 'sealed-console.log'), 'preflight');
-    if (sealed) console.log(`SEALED: root and receipt match the manifest's opening (set ${sealed.set}, receipt ${sealed.receipt_sha256.slice(0, 12)}); the world probe reads world ${sealed.receipt.world_sha256.slice(0, 12)}`);
+    if (sealed) console.log(`SEALED: root and receipt match the manifest's opening (set ${sealed.set}, receipt ${sealed.receipt_sha256.slice(0, 12)}); the world probe reads world ${String(sealed.receipt.world_sha256).slice(0, 12)}`);
     const missing = m.cells.filter(c => c.harness !== 'scripted' && !existsSync(join('harnesses', c.harness, 'pin.json'))).map(c => c.harness);
     if (missing.length) throw new RunnerError('HE-PIN-001', `no harnesses/<name>/pin.json for: ${[...new Set(missing)].join(', ')}; fix: add the pin before any cell runs`);
     for (const k of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']) if (!process.env[k]) console.log(`WARN: HE-PROXY-001 ${k} is not set in this shell; the metering proxy needs it, harness containers never do`);
@@ -506,7 +509,7 @@ async function main(argv: string[]): Promise<number> {
       const inputs = gbrainImageInputs(image);
       const imageProblem = sealed ? sealedImageProblem(image, inputs, sealed.receipt) : publicImageProblem(image, inputs);
       if (imageProblem) throw new RunnerError('HE-SEALED-005', imageProblem);
-      if (sealed) console.log(`SEALED: gbrain image ${image} was built from the sealed world ${sealed.receipt.world_sha256.slice(0, 12)} and corpus ${sealed.receipt.heldout_corpus_sha256.slice(0, 12)}`);
+      if (sealed) console.log(`SEALED: gbrain image ${image} was built from the sealed world ${String(sealed.receipt.world_sha256).slice(0, 12)} and corpus ${String(sealed.receipt.heldout_corpus_sha256).slice(0, 12)}`);
       const pin = JSON.parse(readFileSync(join('gbrain', 'pin.json'), 'utf8')) as { gbrain: { commit: string }; surfaces: Record<string, { tools: number }>; embeddings: { model: string }; install?: { installer?: { turn_hook_expected?: boolean } } };
       // internal-task: the image records the gbrain commit it was built from (/opt/sidecar/image.json); a counted run's cells, the told cells
       // with no install view included, run the pinned commit or not at all, and the run log says which.

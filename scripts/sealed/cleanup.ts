@@ -42,13 +42,21 @@
  * A --results directory whose shard-vm.json (scripts/ubicloud/run-shard.sh) does not record a confirmed destroy is
  * unresolved VM cleanup: its VM id is printed, the directory is still removed, and the exit is 3 so a later sweep
  * (bash scripts/ubicloud/ubi-runner.sh list --mine, then down <vm>) is not forgotten. Output is counts, paths and VM ids.
+ *
+ * internal-task, a repo set (the opening receipt says kind "repo"): its task images carry the task bodies and are labelled
+ * harness-eval.sealed=true, so the sealed images and the build cache are removed whether or not --images is given. Harbor
+ * job directories (each directory under jobs/ of the opened root or of a --results directory, Harbor's jobs directory) go
+ * with the directory that holds them. Whenever cleanup removes images or finds Harbor jobs it writes an inventory first:
+ * the path of every Harbor job directory and the id and tag of every sealed image, to
+ * ~/.capy/work/custody/logs/cleanup-<epoch ms>-<pid>.log (directory 0700, file 0600; a tag or a job directory can name a
+ * task), and prints only the counts and that path.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { RunnerError } from '../../runner/errors.ts';
-import { readReceipt, RECEIPT_FILE, sha256 } from '../../runner/heldout/sealed.ts';
-import { custodyClone, insideGitTree, readAccessLog, syncCustody, withCustodyLock } from './custody.ts';
+import { readReceipt, receiptKind, RECEIPT_FILE, sha256 } from '../../runner/heldout/sealed.ts';
+import { custodyClone, DEFAULT_CUSTODY_CLONE, insideGitTree, readAccessLog, syncCustody, withCustodyLock } from './custody.ts';
 import { INTAKE_ROOT, sweepStaleIntake } from './intake.ts';
 
 /** Remove the stale intake directories seal.ts --from-backup left (a SIGKILL or a machine stop skips its own removal),
@@ -63,7 +71,10 @@ function sweepIntake(): number {
   return failed.length;
 }
 
-export interface CleanupOptions { repo: string; exportJson: string; sealedRoot: string; results: string[]; images?: boolean; custody?: string; remote?: string; docker?: string; log?: (l: string) => void }
+export interface CleanupOptions { repo: string; exportJson: string; sealedRoot: string; results: string[]; images?: boolean; custody?: string; remote?: string; docker?: string; log?: (l: string) => void; /** Where the inventory goes (default ~/.capy/work/custody/logs). */ logDir?: string }
+
+/** The Harbor job directories under a directory: each directory directly under its jobs/. */
+const harborJobs = (dir: string): string[] => { const j = join(dir, 'jobs'); return lstatSync(j, { throwIfNoEntry: false })?.isDirectory() ? readdirSync(j, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join(j, e.name)).sort() : []; };
 
 const countFiles = (p: string): number => (lstatSync(p).isDirectory() ? readdirSync(p).reduce((n, e) => n + countFiles(join(p, e)), 0) : 1);
 /** The plaintext copies a Ubicloud lane keeps beside <dest>/results; shard-vm.json, lane.log and cleanup-pending stay. */
@@ -81,7 +92,7 @@ function runIds(dir: string): string[] {
   ];
 }
 
-export function cleanup(o: CleanupOptions): { removed: string[]; files: number; images: number; unresolvedVms: string[]; unresolvedCopies: string[] } {
+export function cleanup(o: CleanupOptions): { removed: string[]; files: number; images: number; harborJobs: number; inventory: string | null; unresolvedVms: string[]; unresolvedCopies: string[] } {
   const log = o.log ?? ((l: string) => console.log(l));
   const fail = (msg: string): never => { throw new RunnerError('HE-SEALED-014', msg); };
   const repo = resolve(o.repo), remote = o.remote ?? 'origin';
@@ -146,16 +157,28 @@ export function cleanup(o: CleanupOptions): { removed: string[]; files: number; 
     const lane = dirname(r);
     if (basename(r) === 'results' && ['shard-vm.json', 'lane.log'].some((n) => existsSync(join(lane, n)))) for (const n of LANE_PLAINTEXT) if (existsSync(join(lane, n))) laneCopies.push(join(lane, n));
   }
+  const repoSet = receiptKind(receipt) === 'repo';
+  const withImages = !!o.images || repoSet;
+  const jobs = [...new Set([...targets, ...shardCopies].flatMap(harborJobs))];
+  const docker = o.docker ?? 'docker';
+  const ls = withImages ? spawnSync(docker, ['image', 'ls', '--filter', 'label=harness-eval.sealed=true', '--format', '{{.ID}} {{.Repository}}:{{.Tag}}'], { encoding: 'utf8' }) : null;
+  if (ls && !ls.error && ls.status !== 0) fail('docker image ls failed; nothing was removed');
+  const imageLines = ls && !ls.error ? [...new Set(ls.stdout.split('\n').map((l) => l.trim()).filter(Boolean))] : [];
+  let inventory: string | null = null;
+  if (jobs.length || withImages) {
+    const dir = o.logDir ?? join(dirname(DEFAULT_CUSTODY_CLONE), 'logs');
+    if (insideGitTree(dir)) fail(`the inventory directory ${dir} is inside a git work tree; nothing was removed`);
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    inventory = join(dir, `cleanup-${Date.now()}-${process.pid}.log`);
+    writeFileSync(inventory, [`${new Date().toISOString()} scripts/sealed/cleanup.ts ${exp.run_id} (${repoSet ? 'repo set' : 'multiuser set'})`, `harbor job directories: ${jobs.length}`, ...jobs, `sealed images (label harness-eval.sealed=true): ${imageLines.length}`, ...imageLines, ''].join('\n'), { mode: 0o600 });
+  }
   let files = 0;
   for (const t of new Set([...targets, ...laneCopies, ...shardCopies])) { files += countFiles(t); rmSync(t, { recursive: true, force: true }); }
   let images = 0, pruned = false;
-  if (o.images) {
-    const docker = o.docker ?? 'docker';
-    const ls = spawnSync(docker, ['image', 'ls', '-q', '--filter', 'label=harness-eval.sealed=true'], { encoding: 'utf8' });
-    if (ls.error) log('CLEANUP: docker is not installed here, so no sealed image is held here');
+  if (withImages) {
+    if (ls!.error) log('CLEANUP: docker is not installed here, so no sealed image is held here');
     else {
-      if (ls.status !== 0) fail('docker image ls failed; the sealed images were not removed');
-      const ids = [...new Set(ls.stdout.split('\n').map((l) => l.trim()).filter(Boolean))];
+      const ids = [...new Set(imageLines.map((l) => l.split(' ')[0]!))];
       if (ids.length && spawnSync(docker, ['image', 'rm', '-f', ...ids], { stdio: 'ignore' }).status !== 0) fail(`docker image rm failed for ${ids.length} sealed image(s)`);
       if (spawnSync(docker, ['builder', 'prune', '-af'], { stdio: 'ignore' }).status !== 0) fail('docker builder prune failed; the build cache may still hold sealed build contexts');
       images = ids.length;
@@ -163,9 +186,10 @@ export function cleanup(o: CleanupOptions): { removed: string[]; files: number; 
     }
   }
   log(`CLEANUP: ${exp.run_id}: encrypted copy verified on refs/heads/custody; removed ${targets.length} plaintext director${targets.length === 1 ? 'y' : 'ies'}${laneCopies.length ? ` and ${laneCopies.length} Ubicloud lane cop${laneCopies.length === 1 ? 'y' : 'ies'} beside results (${[...new Set(laneCopies.map((p) => dirname(p)))].join(', ')}; shard-vm.json and lane.log kept)` : ''}${shardCopies.length ? ` and ${shardCopies.length} sealed shard cop${shardCopies.length === 1 ? 'y' : 'ies'} of the root a killed shard left (${shardCopies.join(', ')})` : ''} (${files} files)${pruned ? `, ${images} sealed image(s) and the build cache` : ''}`);
+  if (inventory) log(`CLEANUP: inventory: ${jobs.length} Harbor job director${jobs.length === 1 ? 'y' : 'ies'} removed with the director${targets.length === 1 ? 'y' : 'ies'} holding them, ${images} sealed image(s) removed${repoSet && !o.images ? ' (a repo set\'s task images are always removed)' : ''}; the list is in ${inventory} (custody only)`);
   if (unresolvedVms.length) log(`CLEANUP: unresolved VM cleanup: ${unresolvedVms.join(', ')} (no confirmed destroy in shard-vm.json); sweep with bash scripts/ubicloud/ubi-runner.sh list --mine and down <vm>`);
   if (unresolvedCopies.length) log(`CLEANUP: unresolved sealed shard copies: ${unresolvedCopies.join(', ')} (named by sealed-root-copy.path, but no readable opening receipt binds them to a run); inspect and remove them by hand`);
-  return { removed: [...targets, ...laneCopies, ...shardCopies], files, images, unresolvedVms, unresolvedCopies };
+  return { removed: [...targets, ...laneCopies, ...shardCopies], files, images, harborJobs: jobs.length, inventory, unresolvedVms, unresolvedCopies };
 }
 
 if (import.meta.main) {

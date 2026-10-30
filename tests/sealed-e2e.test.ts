@@ -212,7 +212,7 @@ test('seal, open, run, export under embargo, leak scan, release', async () => {
   expect(treeFiles(heldoutSet(SET, f.repo).dir, heldoutSet(SET, f.repo).manifest).tree_sha256).toBe(before.tree_sha256);
   expect((after as unknown as { status?: string }).status).toBe('retired');
   expect(sha256(readFileSync(join(f.repo, 'docs', 'benchmarks', run.dir, 'results', 'trials.jsonl')))).toBe(sealedResults.trials_jsonl_sha256);
-  expect(sha256(readFileSync(join(f.repo, 'tasks', 'multiuser', SET, 'sealed-world', 'slice.json')))).toBe(before.sealed!.world_slice_sha256);
+  expect(sha256(readFileSync(join(f.repo, 'tasks', 'multiuser', SET, 'sealed-world', 'slice.json')))).toBe(before.sealed!.world_slice_sha256!);
   expect(statSync(join(f.repo, 'tasks', 'multiuser', SET, 'heldout', TASKS[1]!, 'task.toml')).isFile()).toBe(true);
   expect(readAccessLog(cloneCustody(f, 'custody-final')).map((e) => e.event)).toEqual(['sealed', 'opened', 'exported', 'released']);
   // after release the set is plaintext, so its receipts and files may go to main

@@ -33,8 +33,13 @@
  * identical files, finishes the release. That push's admission reads the synced access log again and refuses, leaving the
  * manifest sealed, when an "opened" line for a run with no "exported" line, or an "exported" line for a run whose export
  * release did not verify, landed in the meantime.
+ *
+ * internal-task, a repo set (MANIFEST.json "kind": "repo"): its task tree is written to tasks/repo/<set>/released/<task>/ (a repo
+ * set's held-out directory holds MANIFEST.json only, sealed or released, so gstack-pregate sealed can refuse every other
+ * path under it), and its generator/, extras/ and opaque-salt to tasks/repo/<set>/sealed-bundle/. There is no slice or
+ * corpus to check; the generator's files are checked against sealed.generator_sha256 instead.
  */
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { dirname, join, relative, resolve } from 'node:path';
 import { RunnerError } from '../../runner/errors.ts';
@@ -52,6 +57,7 @@ export async function releaseSet(o: ReleaseOptions): Promise<{ runs: string[]; t
   const now = o.now ?? (() => new Date().toISOString());
   const fail = (msg: string): never => { throw new RunnerError('HE-SEALED-008', msg); };
   const set = heldoutSet(o.set, repo);
+  const kind = set.kind;
   const m = readManifest(set);
   if (m?.custody !== 'sealed' || !m.sealed) return fail(`set ${o.set} is not in sealed custody`);
   const s = m.sealed;
@@ -73,25 +79,29 @@ export async function releaseSet(o: ReleaseOptions): Promise<{ runs: string[]; t
   if (sha256(bundle) !== s.bundle_sha256) fail(`${s.bundle} does not have the committed bundle_sha256`);
   const identity = await custodyIdentity({ identityPath: o.identityPath, escrowPath: join(clone, ESCROW_FILE), recipient: s.recipient, env: o.env });
   const entries = unpackTar(await decryptWith(identity, new Uint8Array(bundle)));
-  const prefix = `tasks/multiuser/${o.set}/heldout/`;
-  const problem = bundleEntryProblem(entries, o.set, s.extras);
+  const prefix = `tasks/${kind}/${o.set}/heldout/`;
+  const problem = bundleEntryProblem(entries, o.set, s.extras, kind);
   if (problem) fail(`${problem}; nothing was written`);
+  const extraDir = join(repo, 'tasks', kind, o.set, kind === 'repo' ? 'sealed-bundle' : 'sealed-world');
   const staged = new Map<string, Uint8Array>();
+  const execs = new Set<string>();
   for (const e of entries) {
-    if (e.path.startsWith(prefix)) staged.set(join(repo, e.path), e.data);
-    else if (e.path === 'world/slice.json') staged.set(join(repo, 'tasks', 'multiuser', o.set, 'sealed-world', 'slice.json'), e.data);
-    else staged.set(join(repo, 'tasks', 'multiuser', o.set, 'sealed-world', e.path), e.data);
+    const dest = e.path.startsWith(prefix) ? join(set.tree, e.path.slice(prefix.length)) : e.path === 'world/slice.json' ? join(extraDir, 'slice.json') : join(extraDir, e.path);
+    staged.set(dest, e.data);
+    if (e.exec) execs.add(dest);
   }
+  // The digest sealed.ts corpusDigest computes on disk, computed here on the decrypted entries under a directory prefix.
+  const dirDigest = (under: string) => sha256(entries.filter((e) => e.path.startsWith(under)).map((e) => [e.path.slice(under.length), sha256(e.data)] as const).sort((a, b) => Buffer.compare(Buffer.from(a[0]), Buffer.from(b[0]))).map(([r, h]) => `${h}  ${r}\n`).join(''));
   const sliceBytes = entries.find((e) => e.path === 'world/slice.json')?.data;
-  if (!sliceBytes || sha256(sliceBytes) !== s.world_slice_sha256) fail('the bundle\'s world/slice.json does not have the committed world_slice_sha256');
+  if (kind === 'multiuser' && (!sliceBytes || sha256(sliceBytes) !== s.world_slice_sha256)) fail('the bundle\'s world/slice.json does not have the committed world_slice_sha256');
+  if (kind === 'repo' && (entries.some((e) => e.path.startsWith('generator/')) ? dirDigest('generator/') : null) !== (s.generator_sha256 ?? null)) fail('the bundle\'s generator/ does not have the committed generator_sha256; nothing was written');
   // The digests seal-heldout.ts treeFiles and sealed.ts corpusDigest compute on disk, computed here on the decrypted entries:
   // the task tree in walk order (names compared with localeCompare level by level), the corpus pages in byte order.
   const walkOrder = (a: string, b: string) => { const x = a.split('/'), y = b.split('/'); const i = x.findIndex((seg, k) => seg !== y[k]); return i < 0 ? x.length - y.length : x[i]!.localeCompare(y[i] ?? ''); };
   const files: Record<string, string> = Object.fromEntries(entries.filter((e) => e.path.startsWith(prefix)).map((e) => [e.path.slice(prefix.length), sha256(e.data)] as const).sort((a, b) => walkOrder(a[0], b[0])));
   const treeSha = sha256(Object.entries(files).map(([k, v]) => `${v}  ${k}`).join('\n'));
   if (treeSha !== m.tree_sha256) fail(`the bundle's task tree has digest ${treeSha.slice(0, 12)}, the manifest committed ${m.tree_sha256.slice(0, 12)}; nothing was written`);
-  const corpus = entries.filter((e) => e.path.startsWith('corpus/')).map((e) => [e.path.slice('corpus/'.length), sha256(e.data)] as const).sort((a, b) => Buffer.compare(Buffer.from(a[0]), Buffer.from(b[0])));
-  if (sha256(corpus.map(([r, h]) => `${h}  ${r}\n`).join('')) !== s.heldout_corpus_sha256) fail('the bundle\'s corpus pages do not have the committed heldout_corpus_sha256; nothing was written');
+  if (kind === 'multiuser' && dirDigest('corpus/') !== s.heldout_corpus_sha256) fail('the bundle\'s corpus pages do not have the committed heldout_corpus_sha256; nothing was written');
 
   const exports: Array<{ dir: string; run_id: string; exp: { sealed_results: { repository_path: string; results_bundle_sha256: string; raw_tree_sha256: string; raw_files: Record<string, string> } }; entries: TarEntry[] }> = [];
   for (const { d, p, exp } of published) {
@@ -115,13 +125,13 @@ export async function releaseSet(o: ReleaseOptions): Promise<{ runs: string[]; t
     return !!st && (!st.isFile() || !readFileSync(p).equals(data));
   }).map(([p]) => p);
   const PART = '.release-part';
-  for (const dir of [set.dir, join(repo, 'tasks', 'multiuser', o.set, 'sealed-world')]) for (const p of existsSync(dir) ? walk(dir) : []) if (p !== set.manifest && !writes.has(p) && !(p.endsWith(PART) && writes.has(p.slice(0, -PART.length)) && !existsSync(p.slice(0, -PART.length)))) conflicts.push(p);
+  for (const dir of [set.tree, extraDir]) for (const p of existsSync(dir) ? walk(dir) : []) if (p !== set.manifest && !writes.has(p) && !(p.endsWith(PART) && writes.has(p.slice(0, -PART.length)) && !existsSync(p.slice(0, -PART.length)))) conflicts.push(p);
   if (conflicts.length) fail(`${conflicts.length} destination(s) in the public checkout already exist as a link, with other bytes, or beside the released tree without being in the bundle (path sha256 ${conflicts.slice(0, 3).map((p) => sha256(relative(repo, p)).slice(0, 12)).join(', ')}${conflicts.length > 3 ? ', ...' : ''}); release writes only new files or identical ones, so nothing was written`);
   for (const [p, data] of writes) {
-    if (existsSync(p)) continue;
+    if (existsSync(p)) { if (execs.has(p) !== ((statSync(p).mode & 0o111) !== 0)) chmodSync(p, execs.has(p) ? 0o755 : 0o644); continue; }
     mkdirSync(dirname(p), { recursive: true });
     rmSync(p + PART, { force: true });
-    try { writeFileSync(p + PART, data, { flag: 'wx' }); renameSync(p + PART, p); } catch (e) { rmSync(p + PART, { force: true }); throw e; }
+    try { writeFileSync(p + PART, data, { flag: 'wx', mode: execs.has(p) ? 0o755 : 0o644 }); renameSync(p + PART, p); } catch (e) { rmSync(p + PART, { force: true }); throw e; }
   }
 
   const ledger = openingsLedger(m);

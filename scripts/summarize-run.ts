@@ -65,13 +65,13 @@ import type { TrialRecord } from '../runner/contracts.ts';
 import type { WorldEvent } from '../world/services/events.ts';
 import { seededRandom } from '../runner/stats/paired.ts';
 import { gbrainUsage } from './gbrain-usage.ts';
-import { loadTask } from '../runner/grade/task.ts';
+import { taskFamily } from '../runner/grade/task.ts';
 import { taskDirFor } from '../runner/run.ts';
 import { loadWorldData } from '../runner/grade/predicates.ts';
 import { DEFAULT_WORLD_PATH } from '../runner/grade/play.ts';
 import { isSealedCell } from '../runner/run.ts';
 import { sealedGuard } from '../runner/heldout/guard.ts';
-import { readJsonFile, readJsonLines } from '../runner/heldout/sealed.ts';
+import { readJsonFile, readJsonLines, sealedPaths } from '../runner/heldout/sealed.ts';
 import { RunnerError } from '../runner/errors.ts';
 
 function arg(name: string, fallback?: string): string | undefined {
@@ -101,7 +101,8 @@ if (sealedSet && sealedRoot) {
   const g = sealedGuard({ root: sealedRoot, set: sealedSet, repoRoot: process.cwd(), preregJson: (runManifest as { sealed?: { receipt?: { prereg_json?: string } } }).sealed?.receipt?.prereg_json, logFile: join(results, 'summarize-run.sealed.log'), allow: [], label: 'scripts/summarize-run.ts' });
   g.say(`summarize-run: sealed run (set ${sealedSet}); summary.json is written beside trials.jsonl and the console tables go to ${g.logFile} (custody only)`);
 }
-const worldPath = sealedSet && sealedRoot ? join(sealedRoot, 'world', 'world.json') : DEFAULT_WORLD_PATH;
+// A repo set (internal-task) has no world: its root holds no world/world.json, and the public world serves the gbrain slug tables.
+const worldPath = sealedSet && sealedRoot && sealedPaths(sealedRoot, sealedSet).kind === 'multiuser' ? join(sealedRoot, 'world', 'world.json') : DEFAULT_WORLD_PATH;
 const familyCache = new Map<string, string>();
 const missingTasks = new Set<string>();
 const familyOf = (t: TrialRecord): string => {
@@ -111,8 +112,8 @@ const familyOf = (t: TrialRecord): string => {
     const dir = taskDirFor(cell, t.task, isSealedCell(cell, sealedSet) ? join(sealedRoot!, 'tasks') : join(repoRoot, 'tasks'));
     let family = 'unknown';
     if (!existsSync(join(dir, 'task.toml'))) missingTasks.add(`${t.task} (cell ${t.cell}, looked in ${dir})`);
-    else if (sealedSet) family = loadTask(dir).family;
-    else try { family = loadTask(dir).family; } catch { missingTasks.add(`${t.task} (cell ${t.cell}, ${join(dir, 'task.toml')} does not load)`); }
+    else if (sealedSet) family = taskFamily(dir);
+    else try { family = taskFamily(dir); } catch { missingTasks.add(`${t.task} (cell ${t.cell}, ${join(dir, 'task.toml')} does not load)`); }
     familyCache.set(key, family);
   }
   return familyCache.get(key)!;

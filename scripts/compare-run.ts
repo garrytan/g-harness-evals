@@ -72,7 +72,7 @@ import { clusteredPairedDelta, exactMcNemar, holmAdjusted, nonInferiorityP, pair
 import { sealedGuard } from '../runner/heldout/guard.ts';
 import { openingDiff, readJsonFile, readJsonLines, type OpeningReceipt } from '../runner/heldout/sealed.ts';
 import { RunnerError } from '../runner/errors.ts';
-import { loadTask } from '../runner/grade/task.ts';
+import { taskFamily } from '../runner/grade/task.ts';
 import { isSealedCell, resolveGbrain, taskDirFor } from '../runner/run.ts';
 import { ENDPOINTS, ENDPOINT_LABEL, endpointValue, ladderPairs, readShards, shardsLabel, type Endpoint } from './gbrain-ladder.ts';
 
@@ -138,7 +138,7 @@ const familyOf = new Map<string, string>();
 for (const t of rows) {
   if (familyOf.has(t.task)) continue;
   const cell = manifest.cells.find((c) => c.id === t.cell) ?? { split: 'dev' as const };
-  familyOf.set(t.task, loadTask(taskDirFor(cell, t.task, isSealedCell(cell, manifest.sealed?.set) ? join(sealedRoot!, 'tasks') : join(repoRoot, 'tasks'))).family);
+  familyOf.set(t.task, taskFamily(taskDirFor(cell, t.task, isSealedCell(cell, manifest.sealed?.set) ? join(sealedRoot!, 'tasks') : join(repoRoot, 'tasks'))));
 }
 const families = familiesArg ? familiesArg.split(',').map((s) => s.trim()) : null;
 const pass = (t: TrialRecord) => { const r = regraded.get(t.trial_id); const g = r ?? t; return g.grade === 'pass' && !g.consent_violation ? 1 : 0; };
@@ -414,7 +414,10 @@ if (pairMode === 'gbrain') {
 
 const inScope = rows.filter((t) => !families || families.includes(familyOf.get(t.task)!));
 const obs = (cell: string): Observation[] => inScope.filter((t) => t.cell === cell).map((t) => ({ id: `${t.task}/${rep(t)}`, cluster: t.task, value: pass(t), eligible: true }));
-const cells = [...new Set(inScope.map((t) => t.cell))];
+// Cells in the manifest's (the preregistration's) order, then any other cell in the order its trials appear: each pair is
+// (a, b) with a before b, so a sealed claim can name any two cells of a run as where {a, b} (internal-task; scripts/sealed/export.ts).
+const cellOrder = new Map(manifest.cells.map((c, i) => [c.id, i]));
+const cells = [...new Set(inScope.map((t) => t.cell))].sort((x, y) => (cellOrder.get(x) ?? Number.MAX_SAFE_INTEGER) - (cellOrder.get(y) ?? Number.MAX_SAFE_INTEGER));
 const pairs: Array<{ a: string; b: string }> = [];
 if (against) {
   const other = new Set(readRows(against).map((t) => t.cell));

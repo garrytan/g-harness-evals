@@ -37,6 +37,12 @@
  * manifest's sealed.extras lists it with the same sha256, and every listed one present), the world slice merged into the
  * public world as world/world.json, every digest verified against the public commitments, and opening-receipt.json
  * written. Any failure after decryption removes the directory. Output names paths and digests only, never content.
+ *
+ * internal-task, a repo set (MANIFEST.json "kind": "repo", tasks/repo/<set>/): the bundle is decrypted into the root the same
+ * way (tasks/repo/<set>/heldout/, generator/ when the set has one, extras/, opaque-salt), with no world slice to merge and
+ * no world or corpus check; the task tree and generator digests are verified, and the receipt says kind "repo" with the
+ * world and corpus digests null. open.ts does not hand off to runner/run.ts, which runs multi-user cells only: it prints
+ * the access-log line, the root's path and its counts, and the bridge that runs repository tasks reads the root.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -89,7 +95,7 @@ export async function openRun(o: OpenOptions): Promise<OpenResult> {
     if (!existsSync(join(repo, preregPath))) fail('HE-SEALED-006', `${preregPath} is not on ${remote}/${branch}; a sealed set opens only for a preregistration merged to main`);
     const raw = readFileSync(join(repo, preregPath));
     const preregSha = sha256(raw);
-    const prereg = JSON.parse(raw.toString('utf8')) as { run_id: string; cells: Array<{ split: string; task_set?: string }>; heldout?: HeldoutBlock };
+    const prereg = JSON.parse(raw.toString('utf8')) as { run_id: string; cells: Array<{ id?: string; split: string; task_set?: string }>; heldout?: HeldoutBlock };
     const block = prereg.heldout;
     const sets = heldoutSetsOf(prereg);
     if (!block || sets.length !== 1 || block.set !== sets[0]) fail('HE-SEALED-006', `${preregPath} must run held-out cells of exactly one set and carry a heldout block naming it`);
@@ -97,7 +103,7 @@ export async function openRun(o: OpenOptions): Promise<OpenResult> {
     const set = heldoutSet(setName, repo);
     const manifest = readManifest(set);
     if (manifest?.custody !== 'sealed' || !manifest.sealed) fail('HE-SEALED-006', `set ${setName} is not in sealed custody (${relative(repo, set.manifest)} has no "custody": "sealed")`);
-    const claimed = claimProblems(block!.claims);
+    const claimed = claimProblems(block!.claims, prereg.cells.map((c) => String(c.id)));
     if (claimed.length) fail('HE-SEALED-006', `${preregPath}: ${claimed.join('; ')}; nothing was opened, since export.ts could not decide these claims and the opening would be spent`);
     const m = manifest as HeldoutManifest & { sealed: NonNullable<HeldoutManifest['sealed']> };
     return { publicCommit, preregPath, preregSha, prereg, block: block!, setName, set, m, ledger: openingsLedger(m) };
@@ -178,18 +184,42 @@ export async function openRun(o: OpenOptions): Promise<OpenResult> {
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true, mode: 0o700 });
   try {
+    const kind = set.kind;
     const entries = unpackTar(await decryptWith(identity, new Uint8Array(bundle)));
-    const problem = bundleEntryProblem(entries, setName, m.sealed.extras);
+    const problem = bundleEntryProblem(entries, setName, m.sealed.extras, kind);
     if (problem) throw new RunnerError('HE-SEALED-006', problem);
     for (const e of entries) {
       const dest = join(out, e.path);
       mkdirSync(dirname(dest), { recursive: true, mode: 0o700 });
-      writeFileSync(dest, e.data, { mode: 0o600 });
+      writeFileSync(dest, e.data, { mode: e.exec ? 0o700 : 0o600 });
     }
-    const p = sealedPaths(out, setName);
+    const p = sealedPaths(out, setName, kind);
+    if (!existsSync(join(out, OPAQUE_SALT_FILE))) throw new RunnerError('HE-SEALED-006', `the bundle has no ${OPAQUE_SALT_FILE}; reseal the set with scripts/sealed/seal.ts`);
+    const taskCount = () => (existsSync(p.tasks) ? readdirSync(p.tasks, { withFileTypes: true }).filter((d) => d.isDirectory() && existsSync(join(p.tasks, d.name, 'task.toml'))).length : 0);
+    const openingNumber = () => { try { return deriveSet(repo, setName)?.openings.find((x) => x.run_id === prereg.run_id)?.number ?? null; } catch { return null; } };
+    const base = {
+      schema_version: 1 as const, tool: 'scripts/sealed/open.ts' as const, run_id: prereg.run_id, set: setName, label: block!.label, reason: block!.reason ?? null, candidate_sha256: block!.candidate_sha256,
+      prereg_json: preregPath, prereg_sha256: preregSha, public_ref: `${remote}/${branch}`, public_commit: publicCommit, public_manifest_sha256: sha256(readFileSync(set.manifest)),
+      bundle_sha256: m.sealed.bundle_sha256,
+    };
+    const access = { event_sha256: first.sha256, custody_ref: CUSTODY_REF, custody_commit: pushed.commit, opened_at: first.event.at, resumed };
+    if (kind === 'repo') {
+      const tree = treeFiles(p.tasks).tree_sha256;
+      const generator = existsSync(p.generator) ? corpusDigest(p.generator) : null;
+      if (tree !== m.tree_sha256) throw new RunnerError('HE-SEALED-006', `the decrypted bundle's tree_sha256 is ${tree.slice(0, 12)}, the public commitment is ${m.tree_sha256.slice(0, 12)}`);
+      if (generator !== (m.sealed.generator_sha256 ?? null)) throw new RunnerError('HE-SEALED-006', `the decrypted bundle's generator_sha256 is ${String(generator).slice(0, 12)}, the public commitment is ${String(m.sealed.generator_sha256 ?? null).slice(0, 12)}`);
+      const n = taskCount();
+      if (n !== m.sealed.task_count) throw new RunnerError('HE-SEALED-006', `the decrypted bundle holds ${n} task(s), the public commitment is ${m.sealed.task_count}`);
+      const receipt: OpeningReceipt = {
+        ...base, kind: 'repo', tree_sha256: tree, world_slice_sha256: null, heldout_corpus_sha256: null, ...(m.sealed.extras ? { extras: m.sealed.extras } : {}),
+        public_world_sha256: null, world_sha256: null, generator_sha256: generator, task_count: n, access, written_at: now(),
+      };
+      writeFileSync(p.receipt, JSON.stringify(receipt, null, 1) + '\n', { mode: 0o600 });
+      log(`CUSTODY: root ${out} (repo set, ${n} tasks, tree ${tree.slice(0, 12)}, generator ${generator ? generator.slice(0, 12) : 'none'}, ${Object.keys(m.sealed.extras ?? {}).length} extra file(s)); receipt ${p.receipt}`);
+      return { root: out, receipt, resumed, opening: openingNumber() };
+    }
     mkdirSync(p.corpus, { recursive: true, mode: 0o700 });
     if (!existsSync(p.slice)) throw new RunnerError('HE-SEALED-006', 'the bundle has no world/slice.json');
-    if (!existsSync(join(out, OPAQUE_SALT_FILE))) throw new RunnerError('HE-SEALED-006', `the bundle has no ${OPAQUE_SALT_FILE}; reseal the set with scripts/sealed/seal.ts`);
     const pubWorldBytes = readFileSync(join(repo, 'world', 'seed', 'world.json'));
     const pub = JSON.parse(pubWorldBytes.toString('utf8')) as World;
     let slice: WorldSlice;
@@ -198,28 +228,22 @@ export async function openRun(o: OpenOptions): Promise<OpenResult> {
     if (sp.length) throw new RunnerError('HE-SEALED-006', `the world slice does not fit the public world (${sp.length} problem(s); the details name sealed records, so they are not printed): the public world changed since sealing, which bun scripts/seal-heldout.ts --check also reports`);
     writeFileSync(p.world, renderWorld(mergeWorld(pub, slice)), { mode: 0o600 });
     const tree = treeFiles(p.tasks);
-    const checks: Array<[string, string, string]> = [
+    const checks: Array<[string, string, string | null]> = [
       ['tree_sha256', tree.tree_sha256, m.tree_sha256],
       ['world_slice_sha256', sha256(readFileSync(p.slice)), m.sealed.world_slice_sha256],
       ['heldout_corpus_sha256', corpusDigest(p.corpus), m.sealed.heldout_corpus_sha256],
     ];
-    for (const [k, got, want] of checks) if (got !== want) throw new RunnerError('HE-SEALED-006', `the decrypted bundle's ${k} is ${got.slice(0, 12)}, the public commitment is ${want.slice(0, 12)}`);
-    const taskCount = readdirSync(p.tasks, { withFileTypes: true }).filter((d) => d.isDirectory() && existsSync(join(p.tasks, d.name, 'task.toml'))).length;
-    let opening: number | null = null;
-    try { opening = deriveSet(repo, setName)?.openings.find((x) => x.run_id === prereg.run_id)?.number ?? null; } catch { opening = null; }
+    for (const [k, got, want] of checks) if (got !== want) throw new RunnerError('HE-SEALED-006', `the decrypted bundle's ${k} is ${got.slice(0, 12)}, the public commitment is ${String(want).slice(0, 12)}`);
+    const n = taskCount();
     const receipt: OpeningReceipt = {
-      schema_version: 1, tool: 'scripts/sealed/open.ts', run_id: prereg.run_id, set: setName, label: block!.label, reason: block!.reason ?? null, candidate_sha256: block!.candidate_sha256,
-      prereg_json: preregPath, prereg_sha256: preregSha, public_ref: `${remote}/${branch}`, public_commit: publicCommit, public_manifest_sha256: sha256(readFileSync(set.manifest)),
-      bundle_sha256: m.sealed.bundle_sha256, tree_sha256: tree.tree_sha256, world_slice_sha256: m.sealed.world_slice_sha256, heldout_corpus_sha256: m.sealed.heldout_corpus_sha256, ...(m.sealed.extras ? { extras: m.sealed.extras } : {}),
-      public_world_sha256: sha256(pubWorldBytes), world_sha256: sha256(readFileSync(p.world)), task_count: taskCount,
-      access: { event_sha256: first.sha256, custody_ref: CUSTODY_REF, custody_commit: pushed.commit, opened_at: first.event.at, resumed },
-      written_at: now(),
+      ...base, tree_sha256: tree.tree_sha256, world_slice_sha256: m.sealed.world_slice_sha256, heldout_corpus_sha256: m.sealed.heldout_corpus_sha256, ...(m.sealed.extras ? { extras: m.sealed.extras } : {}),
+      public_world_sha256: sha256(pubWorldBytes), world_sha256: sha256(readFileSync(p.world)), task_count: n, access, written_at: now(),
     };
     writeFileSync(p.receipt, JSON.stringify(receipt, null, 1) + '\n', { mode: 0o600 });
     for (const l of planLines) log(l);
-    log(`CUSTODY: root ${out} (${taskCount} tasks, tree ${tree.tree_sha256.slice(0, 12)}, world ${receipt.world_sha256.slice(0, 12)}); receipt ${p.receipt}`);
+    log(`CUSTODY: root ${out} (${n} tasks, tree ${tree.tree_sha256.slice(0, 12)}, world ${String(receipt.world_sha256).slice(0, 12)}); receipt ${p.receipt}`);
     log(`CUSTODY: next: bun runner/run.ts plan --prereg ${preregPath} --sealed-root ${out} --opening-receipt ${p.receipt} --out <a results directory outside the checkout>`);
-    return { root: out, receipt, resumed, opening };
+    return { root: out, receipt, resumed, opening: openingNumber() };
   } catch (e) {
     rmSync(out, { recursive: true, force: true });
     throw e;

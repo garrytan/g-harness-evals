@@ -2,6 +2,22 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.44] - 2026-10-30
+
+0.0.42 went to #127 and 0.0.43 is reserved for #123, so this release is 0.0.44 (earlier: 0.0.41 went to #125, 0.0.40 to #121, 0.0.39 to #116, 0.0.38 to #115, 0.0.37 to #119).
+
+### internal-task: custody for repo-kind held-out sets (procedural custody)
+
+- `scripts/sealed/seal.ts --kind repo`: seals a held-out set of repository tasks (`tasks/repo/<set>/`, the gstack-native format) with no world slice and no corpus. `--slice` and `--corpus` are refused for a repo set; `--generator <dir>` packs the set's generator at `generator/` and commits `sealed.generator_sha256`. A set name used by the other kind is refused, and so is a repo task whose task.toml has no kind of fix, review, qa or ship or whose `environment/Dockerfile` does not end with the instruction `LABEL harness-eval.sealed=true` (no heredoc, first instruction FROM or ARG, default escape character, docker/dockerfile syntax only). Bundles keep a file's executable bit (intake, seal, open at 0700, release at 0755, also for a file already in place).
+- `MANIFEST.json` gains `kind`; a repo set records its world and corpus digests as `null` with `sealed.null_digests` saying why. `scripts/seal-heldout.ts --check` discovers repo sets, refuses any file under `tasks/repo/<set>/heldout/` but the manifest, and refuses a name used by both kinds.
+- open.ts decrypts a repo bundle into the sealed root, skips the world merge and world check, verifies the tree, generator and task count, writes a receipt with `"kind": "repo"`, and prints the root path and counts instead of handing off to `runner/run.ts`. Resume, export and the openings ledger work unchanged.
+- cleanup.ts always removes `harness-eval.sealed=true` images and the build cache for a repo set, removes Harbor job directories with their parent, and writes an inventory to a private log (0600) before removing anything. release.ts writes repo sets to `tasks/repo/<set>/released/` and `sealed-bundle/`.
+- Claims: `family` (`primary` or `secondary`) with Holm run within each family, and `requires_gate` (`{file, key}`): a claim whose gate failed is dropped from its family before the correction and published as `dropped`, and a missing gate file, key or boolean `pass` refuses the export; a gate file may not be one export.ts rewrites (summary*.json, comparisons*.json). A secondary claim's decision carries its bit and wording only (no estimate, interval or p), in every mode; full mode still publishes every cell's results. A claim must name its cells in the manifest's cell order, which `compare-run.ts` now uses for every pair.
+- Repo tasks count under their task.toml `kind` in summarize-run and compare-run.
+- Leak guards: `check-sealed-publication.ts` and `gstack-pregate sealed` (`sealed.allow_paths`) refuse every path under `tasks/repo/*/heldout/` but `MANIFEST.json`; `check-sealed-publication.ts` alone also refuses `tasks/repo/<set>/released/` and `sealed-bundle/` while the set is sealed. A top-level `jobs/` (Harbor's job directory) is git-ignored and refused by both. The export leak scan treats export.ts's own source and a repo set's public dev split as public text, so a common word in a task (such as "accepted") does not refuse an export. Generator values (quoted strings, also with escapes and escaped line breaks decoded, and JSON leaves, not only whole lines) are sealed text for the output guard and the leak scan. `.gstack/ship-policy.json` (new) sets `min_gstack_version` to 1.91.311.0, the first gstack with `allow_paths`.
+- `tests/sealed-repo.test.ts` (new): a synthetic repo set sealed, opened, resumed, exported with a failed gate and a secondary family, cleaned and released against a local bare custody remote; Holm within a family; a planted repo task refused by the publication check and by `gstack-pregate sealed`.
+- Docs: `docs/sealed-custody.md` section "Repo-kind sets (internal-task)"; HE-TASK-SEAL, HE-HELDOUT-001 and HE-SEALED-006, -007 and -008 in `docs/errors.md`.
+
 ## [0.0.43] - 2026-10-29
 
 ### internal-task: Claude Code and Codex as harnesses, an OpenAI branch for OpenClaw and Hermes, and an internal network option

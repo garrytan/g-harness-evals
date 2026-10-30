@@ -8,7 +8,7 @@
  *
  * backupEntries reads ustar, GNU (long names, type L) and pax (path and size records) archives. It refuses an absolute
  * path, a ".." segment, a control character, a duplicate, a symbolic or hard link, a device, a fifo, a sparse (GNU type
- * S or pax GNU.sparse records) or multi-volume entry, a bad checksum and a truncated archive. writeBackup writes regular files (0600) and directories
+ * S or pax GNU.sparse records) or multi-volume entry, a bad checksum and a truncated archive. writeBackup writes regular files (0600, 0700 with an executable bit) and directories
  * (0700) only, each file created exclusively, after checking with lstat that no component under the intake directory is a
  * link, so nothing is followed. Errors name the entry by number and the sha256 of its path, never the path or its content.
  */
@@ -68,7 +68,7 @@ function entryPath(raw: string, which: string): string {
   return p;
 }
 
-export interface BackupEntry { path: string; dir: boolean; data: Uint8Array }
+export interface BackupEntry { path: string; dir: boolean; data: Uint8Array; exec?: boolean }
 
 /** The directories and regular files of a backup tar; gzip is detected by its magic. See the module comment for what is
  *  refused. */
@@ -102,6 +102,7 @@ export function backupEntries(input: Uint8Array): BackupEntry[] {
     const posix = dec.decode(h.subarray(257, 263)) === 'ustar\0';
     const name = field(h, 0, 100), prefix = posix ? field(h, 345, 155) : '';
     const raw = pax.path ?? longName ?? (prefix ? `${prefix}/${name}` : name);
+    const exec = (Number.parseInt(pax.mode ?? (field(h, 100, 8).trim() || '0'), 8) & 0o111) !== 0;
     const sparse = Object.keys(pax).some((k) => k.startsWith('GNU.sparse.'));
     longName = undefined;
     pax = {};
@@ -112,12 +113,12 @@ export function backupEntries(input: Uint8Array): BackupEntry[] {
     const path = entryPath(raw, which);
     if (seen.has(path)) refuse(`backup tar: ${which} appears twice`);
     seen.add(path);
-    out.push(type === '5' ? { path, dir: true, data: new Uint8Array() } : { path, dir: false, data: data.slice() });
+    out.push(type === '5' ? { path, dir: true, data: new Uint8Array() } : { path, dir: false, data: data.slice(), ...(exec ? { exec } : {}) });
   }
 }
 
 /** Write backup entries under dir, an existing empty directory: every component under dir is checked with lstat to be a
- *  real directory, directories are made 0700 and files created exclusively 0600. Returns the number of files written. */
+ *  real directory, directories are made 0700 and files created exclusively 0600 (0700 when the entry has an executable bit). Returns the number of files written. */
 export function writeBackup(dir: string, entries: BackupEntry[]): number {
   const ensureDir = (d: string): void => {
     const rel = relative(dir, d);
@@ -134,7 +135,7 @@ export function writeBackup(dir: string, entries: BackupEntry[]): number {
     if (e.dir) { ensureDir(p); continue; }
     ensureDir(dirname(p));
     if (lstatSync(p, { throwIfNoEntry: false })) refuse(`backup tar: an entry (path sha256 ${sha256(e.path).slice(0, 12)}) is a file where a directory was written`);
-    const fd = openSync(p, 'wx', 0o600);
+    const fd = openSync(p, 'wx', e.exec ? 0o700 : 0o600);
     try {
       for (let at = 0; at < e.data.length;) {
         const n = writeSync(fd, e.data, at);

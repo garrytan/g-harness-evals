@@ -24,6 +24,11 @@
  * - readJsonLines and readJsonFile parse a results file with an error that names the file, the line and the parser's
  *   error class only (HE-RUN-007): a parser's message quotes the bad input, which in raw sealed results is sealed content.
  *
+ * - internal-task: a repo set (tasks/repo/<set>/, runner and scripts/seal-heldout.ts SetKind) has no world: its bundle holds the
+ *   task tree at tasks/repo/<set>/heldout/, the opaque salt, an optional generator/ directory and the extras, and no world
+ *   slice or corpus pages. Its root has no world/, its receipt says kind "repo" and records the world and corpus digests as
+ *   null, and verifySealedRoot checks the tree, the generator and the extras only.
+ *
  * Nothing here reads an environment variable; the age identity is passed in by the caller and never printed. Error
  * messages name bundle entries by position and path digest, never by path, since a path holds a task id.
  */
@@ -32,7 +37,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { Decrypter, Encrypter } from 'age-encryption';
 import { RunnerError } from '../errors.ts';
-import { treeFiles, type HeldoutManifest } from '../../scripts/seal-heldout.ts';
+import { treeFiles, type HeldoutManifest, type SetKind } from '../../scripts/seal-heldout.ts';
 import type { World } from '../../world/types.ts';
 
 export const sha256 = (b: Uint8Array | string): string => createHash('sha256').update(b).digest('hex');
@@ -42,7 +47,9 @@ export const opaqueId = (salt: string, task: string): string => `T-${sha256(`${s
 
 // ---- tar -----------------------------------------------------------------------------------------------------------
 
-export interface TarEntry { path: string; data: Uint8Array }
+/** exec: the file carries an executable bit (internal-task: a repo task's verify.sh, solve.sh and build scripts); packed as mode
+ *  0755, else 0644. */
+export interface TarEntry { path: string; data: Uint8Array; exec?: boolean }
 
 /** A relative path a bundle may hold: forward slashes, no leading slash, no empty, "." or ".." segment, printable ASCII. */
 export function safeRelPath(p: string): boolean {
@@ -56,7 +63,7 @@ const dec = new TextDecoder();
 
 const octal = (n: number, width: number): string => n.toString(8).padStart(width - 1, '0') + '\0';
 
-function header(path: string, size: number): Uint8Array {
+function header(path: string, size: number, exec = false): Uint8Array {
   const h = new Uint8Array(BLOCK);
   let name = path, prefix = '';
   if (path.length > 100) {
@@ -67,7 +74,7 @@ function header(path: string, size: number): Uint8Array {
   }
   const put = (s: string, at: number) => h.set(enc.encode(s), at);
   put(name, 0);
-  put(octal(0o644, 8), 100);
+  put(octal(exec ? 0o755 : 0o644, 8), 100);
   put(octal(0, 8), 108);
   put(octal(0, 8), 116);
   put(octal(size, 12), 124);
@@ -92,7 +99,7 @@ export function packTar(entries: TarEntry[]): Uint8Array {
     if (!safeRelPath(e.path)) throw new Error(`tar: unsafe path ${JSON.stringify(e.path)}`);
     if (seen.has(e.path)) throw new Error(`tar: duplicate path ${e.path}`);
     seen.add(e.path);
-    parts.push(header(e.path, e.data.length), e.data);
+    parts.push(header(e.path, e.data.length, e.exec === true), e.data);
     const pad = (BLOCK - (e.data.length % BLOCK)) % BLOCK;
     if (pad) parts.push(new Uint8Array(pad));
   }
@@ -132,7 +139,8 @@ export function unpackTar(buf: Uint8Array): TarEntry[] {
     if (seen.has(path)) throw new Error(`tar: duplicate entry, ${which}`);
     seen.add(path);
     if (at + size > buf.length) throw new Error(`tar: truncated entry, ${which}`);
-    out.push({ path, data: buf.slice(at, at + size) });
+    const exec = (parseInt(field(h, 100, 8).trim() || '0', 8) & 0o111) !== 0;
+    out.push({ path, data: buf.slice(at, at + size), ...(exec ? { exec } : {}) });
     at += Math.ceil(size / BLOCK) * BLOCK;
   }
 }
@@ -266,13 +274,18 @@ export interface OpeningReceipt {
   public_ref: string;
   public_commit: string;
   public_manifest_sha256: string;
+  /** "repo" for a repo set; absent for a multiuser set (every receipt written before internal-task). */
+  kind?: 'repo';
   bundle_sha256: string;
   tree_sha256: string;
-  world_slice_sha256: string;
-  heldout_corpus_sha256: string;
-  /** sha256 of the public world/seed/world.json the slice was merged into, and of the merged world/world.json. */
-  public_world_sha256: string;
-  world_sha256: string;
+  /** null for a repo set, which has no world slice and no corpus pages. */
+  world_slice_sha256: string | null;
+  heldout_corpus_sha256: string | null;
+  /** sha256 of the public world/seed/world.json the slice was merged into, and of the merged world/world.json; null for a repo set. */
+  public_world_sha256: string | null;
+  world_sha256: string | null;
+  /** A repo set's generator/ digest (sealed.generator_sha256), null when its bundle has none; absent for a multiuser set. */
+  generator_sha256?: string | null;
   task_count: number;
   /** sealed.extras of the set (seal.ts --include), when it has any: bundle path to sha256. */
   extras?: Record<string, string>;
@@ -283,7 +296,7 @@ export interface OpeningReceipt {
 
 /** The receipt fields that identify one opening. A resume of the same run id rewrites the others (written_at, the public
  *  commit and manifest it checked the ledger at, the custody commit, resumed), so preflight, run and export compare these. */
-export const OPENING_BINDING = ['run_id', 'set', 'label', 'candidate_sha256', 'prereg_json', 'prereg_sha256', 'bundle_sha256', 'tree_sha256', 'world_slice_sha256', 'heldout_corpus_sha256', 'public_world_sha256', 'world_sha256', 'task_count'] as const;
+export const OPENING_BINDING = ['run_id', 'set', 'kind', 'label', 'candidate_sha256', 'prereg_json', 'prereg_sha256', 'bundle_sha256', 'tree_sha256', 'world_slice_sha256', 'heldout_corpus_sha256', 'public_world_sha256', 'world_sha256', 'generator_sha256', 'task_count'] as const;
 
 /** The binding fields on which two receipts differ (empty when both describe the same opening). */
 export function openingDiff(a: OpeningReceipt, b: OpeningReceipt): string[] {
@@ -292,20 +305,28 @@ export function openingDiff(a: OpeningReceipt, b: OpeningReceipt): string[] {
   return diff;
 }
 
-export interface SealedPaths { tasks: string; slice: string; world: string; corpus: string; extras: string; receipt: string }
+/** The paths of an opened root. kind is "repo" for a repo set (tasks/repo/<set>/heldout, generator/, no world or corpus);
+ *  without it, a root holding tasks/repo/<set>/ is taken as a repo set's root. */
+export interface SealedPaths { kind: SetKind; tasks: string; slice: string; world: string; corpus: string; extras: string; generator: string; receipt: string }
 
-export function sealedPaths(root: string, set: string): SealedPaths {
-  return { tasks: join(root, 'tasks', 'multiuser', set, 'heldout'), slice: join(root, 'world', 'slice.json'), world: join(root, 'world', 'world.json'), corpus: join(root, 'corpus'), extras: join(root, 'extras'), receipt: join(root, RECEIPT_FILE) };
+export function sealedPaths(root: string, set: string, kind?: SetKind): SealedPaths {
+  const k: SetKind = kind ?? (existsSync(join(root, 'tasks', 'repo', set)) ? 'repo' : 'multiuser');
+  return { kind: k, tasks: join(root, 'tasks', k, set, 'heldout'), slice: join(root, 'world', 'slice.json'), world: join(root, 'world', 'world.json'), corpus: join(root, 'corpus'), extras: join(root, 'extras'), generator: join(root, 'generator'), receipt: join(root, RECEIPT_FILE) };
 }
 
-/** The first problem with a decrypted bundle's entries for a set, or null: an entry outside the set's task tree,
- *  world/slice.json, the opaque salt, corpus/heldout/ and the extras the manifest lists (sealed.extras, own keys only), or
- *  extras/ files that differ from sealed.extras (one missing, or another sha256). Names no entry path. */
-export function bundleEntryProblem(entries: TarEntry[], set: string, extras: Record<string, string> = {}): string | null {
-  const tasks = `tasks/multiuser/${set}/heldout/`;
+/** The kind of the set a receipt opened: "repo" when it says so, else "multiuser". */
+export const receiptKind = (r: Pick<OpeningReceipt, 'kind'>): SetKind => (r.kind === 'repo' ? 'repo' : 'multiuser');
+
+/** The first problem with a decrypted bundle's entries for a set, or null: an entry outside the set's task tree, the opaque
+ *  salt, the extras the manifest lists (sealed.extras, own keys only) and, for a multiuser set, world/slice.json and
+ *  corpus/heldout/, for a repo set, generator/; or extras/ files that differ from sealed.extras (one missing, or another
+ *  sha256). Names no entry path. */
+export function bundleEntryProblem(entries: TarEntry[], set: string, extras: Record<string, string> = {}, kind: SetKind = 'multiuser'): string | null {
+  const tasks = `tasks/${kind}/${set}/heldout/`;
   const listed = (p: string) => p.startsWith('extras/') && Object.hasOwn(extras, p);
-  const stray = entries.find((e) => !(e.path.startsWith(tasks) || e.path === 'world/slice.json' || e.path === OPAQUE_SALT_FILE || e.path.startsWith('corpus/heldout/') || listed(e.path)));
-  if (stray) return `the bundle holds an entry (path sha256 ${sha256(stray.path).slice(0, 12)}) outside the task tree of set ${set}, world/slice.json, ${OPAQUE_SALT_FILE}, corpus/heldout/ and the manifest's extras`;
+  const own = (p: string) => (kind === 'repo' ? p.startsWith('generator/') : p === 'world/slice.json' || p.startsWith('corpus/heldout/'));
+  const stray = entries.find((e) => !(e.path.startsWith(tasks) || e.path === OPAQUE_SALT_FILE || own(e.path) || listed(e.path)));
+  if (stray) return `the bundle holds an entry (path sha256 ${sha256(stray.path).slice(0, 12)}) outside the task tree of set ${set}, ${OPAQUE_SALT_FILE}, ${kind === 'repo' ? 'generator/' : 'world/slice.json, corpus/heldout/'} and the manifest's extras`;
   const present = entries.filter((e) => listed(e.path));
   if (present.length !== Object.keys(extras).length || present.some((e) => sha256(e.data) !== extras[e.path])) return `the bundle's extras (${present.length} listed file(s) present) do not match sealed.extras in the public manifest (${Object.keys(extras).length})`;
   return null;
@@ -314,19 +335,30 @@ export function bundleEntryProblem(entries: TarEntry[], set: string, extras: Rec
 /** Digest problems of a sealed root against its receipt and the public world in the checkout at repoRoot: the task tree,
  *  the slice, the corpus pages and the merged world must be exactly what the receipt names. */
 export function verifySealedRoot(root: string, receipt: OpeningReceipt, repoRoot: string): string[] {
-  const p = sealedPaths(root, receipt.set);
+  const kind = receiptKind(receipt);
+  const p = sealedPaths(root, receipt.set, kind);
   if (!existsSync(p.tasks) || !statSync(p.tasks).isDirectory()) return [`sealed root ${root} has no task tree for set ${receipt.set} (${relative(root, p.tasks)})`];
   const problems: string[] = [];
+  const check = (what: string, got: string | null, want: string | null) => { if (got !== want) problems.push(`${what} is ${String(got).slice(0, 12)}, the opening receipt says ${String(want).slice(0, 12)}`); };
+  const extrasProblem = () => {
+    const extras = receipt.extras ?? {};
+    const present = existsSync(p.extras) ? readdirSync(p.extras, { recursive: true, withFileTypes: true }).filter((e) => !e.isDirectory()).map((e) => relative(root, join(e.parentPath, e.name))).sort() : [];
+    if (present.join('\n') !== Object.keys(extras).sort().join('\n') || present.some((k) => sha256(readFileSync(join(root, k))) !== extras[k])) problems.push(`sealed root ${root} has extras/ files (${present.length}) that do not match the opening receipt (${Object.keys(extras).length})`);
+  };
+  if (kind === 'repo') {
+    check('the sealed task tree digest', treeFiles(p.tasks).tree_sha256, receipt.tree_sha256);
+    check('the generator/ digest', existsSync(p.generator) ? corpusDigest(p.generator) : null, receipt.generator_sha256 ?? null);
+    for (const d of [p.slice, p.world, p.corpus]) if (existsSync(d)) problems.push(`sealed root ${root} holds ${relative(root, d)}; a repo set has no world slice, world or corpus pages`);
+    extrasProblem();
+    return problems;
+  }
   for (const f of [p.slice, p.world]) if (!existsSync(f)) problems.push(`sealed root ${root} has no ${relative(root, f)}`);
   if (problems.length) return problems;
-  const check = (what: string, got: string, want: string) => { if (got !== want) problems.push(`${what} is ${got.slice(0, 12)}, the opening receipt says ${String(want).slice(0, 12)}`); };
   check('the sealed task tree digest', treeFiles(p.tasks).tree_sha256, receipt.tree_sha256);
   check('world/slice.json', sha256(readFileSync(p.slice)), receipt.world_slice_sha256);
   check('the corpus pages digest', corpusDigest(p.corpus), receipt.heldout_corpus_sha256);
   check('world/world.json', sha256(readFileSync(p.world)), receipt.world_sha256);
-  const extras = receipt.extras ?? {};
-  const present = existsSync(p.extras) ? readdirSync(p.extras, { recursive: true, withFileTypes: true }).filter((e) => !e.isDirectory()).map((e) => relative(root, join(e.parentPath, e.name))).sort() : [];
-  if (present.join('\n') !== Object.keys(extras).sort().join('\n') || present.some((k) => sha256(readFileSync(join(root, k))) !== extras[k])) problems.push(`sealed root ${root} has extras/ files (${present.length}) that do not match the opening receipt (${Object.keys(extras).length})`);
+  extrasProblem();
   const pubWorld = join(repoRoot, 'world', 'seed', 'world.json');
   if (existsSync(pubWorld)) {
     const pub = readFileSync(pubWorld);
@@ -353,6 +385,8 @@ export function receiptProblems(receipt: OpeningReceipt, want: { run_id: string;
     eq('tree_sha256', receipt.tree_sha256, manifest.tree_sha256);
     eq('world_slice_sha256', receipt.world_slice_sha256, s.world_slice_sha256);
     eq('heldout_corpus_sha256', receipt.heldout_corpus_sha256, s.heldout_corpus_sha256);
+    eq('kind', receiptKind(receipt), manifest.kind === 'repo' ? 'repo' : 'multiuser');
+    if (manifest.kind === 'repo') eq('generator_sha256', receipt.generator_sha256 ?? null, s.generator_sha256 ?? null);
     const canon = (x?: Record<string, string>) => JSON.stringify(Object.entries(x ?? {}).sort());
     eq('extras', canon(receipt.extras), canon(s.extras));
   }
@@ -361,6 +395,25 @@ export function receiptProblems(receipt: OpeningReceipt, want: { run_id: string;
 
 /** The string values a JSON document holds under an "id" or "task_id" key (any case, taskId too): sealed identifiers
  *  that can be shorter than the generic string thresholds, so the redactor and the export leak scan add them at three. */
+/** A quoted source literal with its common escapes decoded (a backslash before a line break, \\, \", \', \n, \r, \t,
+ *  \a, \b, \f, \v, octal \N to \NNN, \xHH, \uHHHH, \u{H...}, \UHHHHHHHH), so a generator value written with escapes is sealed text in the
+ *  form a program prints it (internal-task). Other escapes stay as written. Nothing is executed. */
+export function decodeEscapes(s: string): string {
+  const cp = (n: number) => (n <= 0x10ffff ? String.fromCodePoint(n) : null);
+  return s.replace(/\\(?:(\r?\n)|([0-7]{1,3})|x([0-9a-fA-F]{2})|u\{([0-9a-fA-F]{1,6})\}|u([0-9a-fA-F]{4})|U([0-9a-fA-F]{8})|([\\"'nrtabfv]))/g, (m, nl, o, x, ub, u, U, c) => {
+    if (nl) return '';
+    if (c) return ({ n: '\n', r: '\r', t: '\t', a: '\x07', b: '\b', f: '\f', v: '\v' } as Record<string, string>)[c] ?? c;
+    if (o) return cp(parseInt(o, 8)) ?? m;
+    return cp(parseInt(x ?? ub ?? u ?? U, 16)) ?? m;
+  });
+}
+
+/** The quoted literals of a source file ("""...""", "...", '...', `...`; an escaped line break stays inside its literal),
+ *  each as written and with decodeEscapes applied: the generator values the output guard and the export leak scan seal. */
+export function quotedLiterals(text: string): string[] {
+  return [...text.matchAll(/"""([\s\S]*?)"""|"((?:[^"\\\n]|\\[\s\S])*)"|'((?:[^'\\\n]|\\[\s\S])*)'|`([^`]*)`/g)].flatMap((m) => { const s = m[1] ?? m[2] ?? m[3] ?? m[4] ?? ''; return [s, decodeEscapes(s)]; });
+}
+
 export function idValues(v: unknown, out: string[] = []): string[] {
   if (Array.isArray(v)) for (const x of v) idValues(x, out);
   else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { if (typeof x === 'string' && /^(id|task_?id)$/i.test(k)) out.push(x); else idValues(x, out); }
@@ -381,7 +434,7 @@ export function sealedImageProblem(image: string, inputs: { world_sha256?: strin
   if (!inputs) return `gbrain image ${image} has no readable /opt/sidecar/image.json; a sealed run's gbrain cells need an image built from the sealed root. ${fix}`;
   if (inputs.sealed === true && inputs.world_sha256 == null && inputs.heldout_corpus_sha256 == null) return `gbrain image ${image} carries the harness-eval.sealed=true label but no readable /opt/sidecar/image.json digests (the file is missing, is not JSON or records neither the world nor the corpus), so it cannot be checked against the opening receipt. ${fix}`;
   if (inputs.world_sha256 === receipt.world_sha256 && inputs.heldout_corpus_sha256 === receipt.heldout_corpus_sha256) return null;
-  return `gbrain image ${image} was built from world ${String(inputs.world_sha256 ?? 'unrecorded').slice(0, 12)} and held-out corpus ${String(inputs.heldout_corpus_sha256 ?? 'public').slice(0, 12)}, the opening receipt names world ${receipt.world_sha256.slice(0, 12)} and corpus ${receipt.heldout_corpus_sha256.slice(0, 12)}, so its held-out brains would not hold the sealed slice. ${fix}`;
+  return `gbrain image ${image} was built from world ${String(inputs.world_sha256 ?? 'unrecorded').slice(0, 12)} and held-out corpus ${String(inputs.heldout_corpus_sha256 ?? 'public').slice(0, 12)}, the opening receipt names world ${String(receipt.world_sha256).slice(0, 12)} and corpus ${String(receipt.heldout_corpus_sha256).slice(0, 12)}, so its held-out brains would not hold the sealed slice. ${fix}`;
 }
 
 /** A run with no sealed root and gbrain cells: the HE-SEALED-005 message body when the image was built from a sealed root

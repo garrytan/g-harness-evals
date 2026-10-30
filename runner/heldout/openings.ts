@@ -42,7 +42,14 @@ import { DEFAULT_SET, heldoutSet, heldoutSets, openingsLedger, readManifest, typ
  *  Holm family at the set's alpha_per_opening. superiority: enters with its two-sided p and is accepted when its
  *  Holm-adjusted p is at most alpha and the estimate goes in the claimed direction. noninferiority: enters with its
  *  one-sided p against the margin (scripts/compare-run.ts --margin) and is accepted when its Holm-adjusted p is at most
- *  alpha. */
+ *  alpha.
+ *
+ *  internal-task: a claim may name its family, "primary" (the default) or "secondary"; Holm runs within each family at the set's
+ *  alpha_per_opening. A claim with requires_gate is dropped from its family, and published as "not measuring skill bodies",
+ *  when the gate file in the raw results (a JSON object keyed by model or arm, each entry {"pass": true|false, ...}, for
+ *  example gates.json {"<model>": {"body_load_rate": 0.9, "pass": true}}) says requires_gate.key failed. In comparisons.json
+ *  every pair of cells is compared as b minus a with a before b in the manifest's (the preregistration's) cell order, so
+ *  a claim names any two cells as where {a, b} in that order. */
 export interface HeldoutClaim {
   id: string;
   sentence: string;
@@ -58,7 +65,15 @@ export interface HeldoutClaim {
   estimate?: string;
   interval?: string;
   p?: string;
+  /** The Holm family the claim enters; "primary" when absent. */
+  family?: (typeof CLAIM_FAMILIES)[number];
+  /** A gate the claim needs: file is a JSON file at the top of the raw results, key one of its entries, whose pass must be true. */
+  requires_gate?: { file: string; key: string };
 }
+
+export const CLAIM_FAMILIES = ['primary', 'secondary'] as const;
+/** The name a gate file may have: one JSON file at the top of the raw results. */
+export const GATE_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/;
 
 /** The block a preregistration made after internal-task carries when any of its cells runs a held-out split. */
 export interface HeldoutBlock {
@@ -92,6 +107,8 @@ export interface RegisteredHeldout {
   sha256: string;
   sets: string[];
   heldout?: HeldoutBlock;
+  /** The preregistration's cell ids, in order (claimProblems checks a claim's cell pair against them). */
+  cells: string[];
 }
 
 export interface DerivedOpening {
@@ -152,8 +169,11 @@ export function cellProblem(prereg: PreregLike): string | null {
 
 /** Problems of a sealed opening's claims, checked before an opening is spent (open.ts admission), when CI reads a
  *  preregistration that carries claims, and again at export: a non-empty list, unique ids, a sentence, a source export.ts
- *  makes, a path, a non-empty where of string or finite-number values, a known rule and direction, and a margin >= 0 on a noninferiority claim. */
-export function claimProblems(claims: unknown): string[] {
+ *  makes, a path, a non-empty where of string or finite-number values, a known rule and direction, a margin >= 0 on a
+ *  noninferiority claim, a known family and a well-formed requires_gate. With cells (the run's cell ids in order), a
+ *  comparisons.json claim whose where names cells a and b must name cells of the run with a before b, the one order
+ *  compare-run.ts compares them in. */
+export function claimProblems(claims: unknown, cells?: string[]): string[] {
   if (!Array.isArray(claims) || !claims.length) return ['heldout.claims must be a non-empty list; a sealed opening publishes one preregistered accept or reject per claim'];
   const problems: string[] = [];
   const ids = new Set<string>();
@@ -170,6 +190,16 @@ export function claimProblems(claims: unknown): string[] {
     if (c?.rule !== 'superiority' && c?.rule !== 'noninferiority') problems.push(`${at}: rule must be superiority or noninferiority (got ${JSON.stringify(c?.rule)})`);
     if (c?.direction !== 'increase' && c?.direction !== 'decrease') problems.push(`${at}: direction must be increase or decrease (got ${JSON.stringify(c?.direction)})`);
     if (c?.rule === 'noninferiority' && !(typeof c.margin === 'number' && Number.isFinite(c.margin) && c.margin >= 0)) problems.push(`${at}: a noninferiority claim needs a numeric margin >= 0`);
+    if (c?.family !== undefined && !(CLAIM_FAMILIES as readonly string[]).includes(c.family)) problems.push(`${at}: family must be ${CLAIM_FAMILIES.join(' or ')} (got ${JSON.stringify(c.family)})`);
+    const g = c?.requires_gate as { file?: unknown; key?: unknown } | undefined;
+    if (g !== undefined && !(g && typeof g === 'object' && typeof g.file === 'string' && GATE_FILE.test(g.file) && typeof g.key === 'string' && g.key.trim())) problems.push(`${at}: requires_gate must be {"file": "<name>.json", a file at the top of the raw results, "key": "<the gate entry, such as the model>"}`);
+    else if (g !== undefined && /^(summary|comparisons)[\w.-]*\.json$/.test(String(g.file))) problems.push(`${at}: requires_gate.file ${String(g.file)} is a file export.ts rewrites (summary*.json, comparisons*.json); name a gate file of its own, such as gates.json`);
+    const w = c?.where as Record<string, unknown> | undefined;
+    if (cells && c?.source === 'comparisons.json' && typeof w?.a === 'string' && typeof w?.b === 'string') {
+      const [ia, ib] = [cells.indexOf(w.a), cells.indexOf(w.b)];
+      if (ia < 0 || ib < 0) problems.push(`${at}: where names cell ${ia < 0 ? w.a : w.b}, which is not a cell of the run (${cells.join(', ')})`);
+      else if (ia >= ib) problems.push(`${at}: where names a = ${w.a} and b = ${w.b}, but compare-run.ts compares b minus a with a before b in the run's cell order (${cells.join(', ')}); name a = ${w.b} and b = ${w.a} and flip the direction`);
+    }
   });
   return problems;
 }
@@ -182,7 +212,7 @@ function blockProblem(prereg: PreregLike, sets: string[]): { code: string; messa
   if (sets.length !== 1 || block.set !== sets[0]) return { code: 'HE-HELDOUT-001', message: `run ${id}: heldout.set is ${JSON.stringify(block.set)} but its held-out cells run ${sets.join(', ')}; one run opens one held-out set. fix: name the set the cells run, or split the run` };
   if (block.label !== 'confirmatory' && block.label !== 'dev') return { code: 'HE-HELDOUT-001', message: `run ${id}: heldout.label must be "confirmatory" or "dev" (got ${JSON.stringify(block.label)})` };
   if (typeof block.candidate_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(block.candidate_sha256)) return { code: 'HE-HELDOUT-001', message: `run ${id}: heldout.candidate_sha256 must be the 64-hex sha256 of the candidate (docs/methodology.md item 14, R5); got ${JSON.stringify(block.candidate_sha256)}` };
-  const claimed = block.claims === undefined ? [] : claimProblems(block.claims);
+  const claimed = block.claims === undefined ? [] : claimProblems(block.claims, prereg.cells?.length ? prereg.cells.map((c) => String(c.id)) : undefined);
   if (claimed.length) return { code: 'HE-HELDOUT-001', message: `run ${id}: ${claimed.join('; ')}` };
   if (block.label === 'dev' && !(typeof block.reason === 'string' && block.reason.trim())) return { code: 'HE-HELDOUT-004', message: `run ${id} is a dev opening of set ${block.set} with no reason; fix: say why it is not confirmatory in heldout.reason and in its ledger row (for example "later opening", "revise-then-retest", "in-sample for <change>")` };
   return null;
@@ -212,7 +242,7 @@ export function registeredHeldout(root: string): RegisteredHeldout[] {
     const p = JSON.parse(raw) as PreregLike;
     const sets = heldoutSetsOf(p);
     if (!sets.length) continue;
-    out.push({ id: entry.id, preregistration: entry.preregistration, prereg_json: preregJson, run_id: p.run_id, sha256: sha256(raw), sets, ...(p.heldout ? { heldout: p.heldout } : {}) });
+    out.push({ id: entry.id, preregistration: entry.preregistration, prereg_json: preregJson, run_id: p.run_id, sha256: sha256(raw), sets, ...(p.heldout ? { heldout: p.heldout } : {}), cells: p.cells.map((c) => String(c.id)) });
   }
   return out;
 }
@@ -303,7 +333,7 @@ export function checkOpenings(root: string, legacy = legacyList()): string[] {
     if (!r.heldout) problems.push(`${r.id}: ${r.prereg_json} runs held-out cells of ${r.sets.join(', ')} and has no heldout block${changed ? ' (it is on the legacy list, but its prereg.json changed since); a dated amendment to a legacy run adds the new digest to its entry in runner/heldout/legacy-preregistrations.json in the same pull request, anything else needs' : ';'} add "heldout": {"set", "label", "reason", "candidate_sha256"} and its ledger row (HE-HELDOUT-001)`);
     else if (r.sets.length !== 1 || r.heldout.set !== r.sets[0]) problems.push(`${r.id}: heldout.set is ${JSON.stringify(r.heldout.set)} but the held-out cells run ${r.sets.join(', ')}; one run opens one held-out set (HE-HELDOUT-001)`);
     else {
-      const p = blockProblem({ run_id: r.run_id, cells: [], heldout: r.heldout }, r.sets);
+      const p = blockProblem({ run_id: r.run_id, cells: r.cells.map((id) => ({ id, split: 'heldout' })), heldout: r.heldout }, r.sets);
       if (p) problems.push(`${r.id}: ${p.message} (${p.code})`);
     }
   }

@@ -18,6 +18,13 @@
 //
 // Task sets: v0.1 is tasks/multiuser/heldout (the default); any other set name is tasks/multiuser/<set>/heldout.
 //
+// internal-task: a set has a kind, "multiuser" (the default) or "repo". A repo set (repository tasks, docs/tasks.md and the
+// gstack-native format) lives under tasks/repo/<set>/, its public dev split in dev/ and its MANIFEST.json in heldout/. A repo
+// set's held-out tree exists only inside custody: tasks/repo/<set>/heldout/ holds MANIFEST.json and nothing else, sealed or
+// released (release.ts writes a retired repo set's tree to tasks/repo/<set>/released/). Its manifest says "kind": "repo",
+// has no world: world_manifest_sha256, world_json_sha256 and the sealed block's world_slice_sha256 and
+// heldout_corpus_sha256 are null, so a change to world/seed never touches it. Set names are unique across kinds.
+//
 //   bun scripts/seal-heldout.ts [--task-set v0.2]    write that set's manifest
 //   bun scripts/seal-heldout.ts --check              check every sealed set, and refuse an unsealed tree; exit 1 on any problem
 //   bun scripts/seal-heldout.ts --check --task-set v0.2   check one set
@@ -30,12 +37,22 @@ const ROOT = join(import.meta.dir, '..');
 const WORLD_MANIFEST = join(ROOT, 'world', 'seed', 'MANIFEST.json');
 export const DEFAULT_SET = 'v0.1';
 
+export const SET_KINDS = ['multiuser', 'repo'] as const;
+export type SetKind = (typeof SET_KINDS)[number];
+
 export interface HeldoutSet {
   name: string;
+  /** The repository the set belongs to (its world/seed/MANIFEST.json is the one a multiuser set is checked against). */
+  root: string;
+  /** multiuser (tasks/multiuser/<set>/heldout) or repo (tasks/repo/<set>/heldout). */
+  kind: SetKind;
   /** The held-out directory of the set. */
   dir: string;
   /** <dir>/MANIFEST.json. */
   manifest: string;
+  /** Where the plaintext task tree of a set that is not sealed lives in the checkout: dir for a multiuser set,
+   *  tasks/repo/<set>/released for a repo set (a repo set's held-out directory never holds anything but MANIFEST.json). */
+  tree: string;
 }
 
 export const OPENING_STATUSES = ['planned', 'opened', 'withdrawn', 'superseded'] as const;
@@ -76,10 +93,14 @@ export interface OpeningsLedger {
 export interface SealedCommitments {
   /** sha256 of the age ciphertext of the bundle (a reproducible tar of the task tree, the world slice and its corpus pages). */
   bundle_sha256: string;
-  /** sha256 of the bundle's world/slice.json: the set's held-out world records. */
-  world_slice_sha256: string;
-  /** Digest of the bundle's corpus/ pages, as runner/heldout/sealed.ts corpusDigest computes it (the gbrain image checks the same). */
-  heldout_corpus_sha256: string;
+  /** sha256 of the bundle's world/slice.json: the set's held-out world records; null for a repo set. */
+  world_slice_sha256: string | null;
+  /** Digest of the bundle's corpus/ pages, as runner/heldout/sealed.ts corpusDigest computes it (the gbrain image checks the same); null for a repo set. */
+  heldout_corpus_sha256: string | null;
+  /** A repo set has no world slice and no corpus pages: world_slice_sha256 and heldout_corpus_sha256 are null, and this says why. */
+  null_digests?: string;
+  /** A repo set's generator/ directory in the bundle (seal.ts --generator), digested as corpusDigest does; null when it has none. */
+  generator_sha256?: string | null;
   task_count: number;
   /** The public age recipient (age1...) the bundle is encrypted to (sealed/recipient.txt when sealed). */
   recipient: string;
@@ -94,12 +115,15 @@ export interface SealedCommitments {
 
 export interface HeldoutManifest extends Partial<OpeningsLedger> {
   schema_version: 1;
+  /** Absent or "multiuser" for a multi-user set; "repo" for a repository task set under tasks/repo/. */
+  kind?: SetKind;
   /** Absent for a plaintext set; "sealed" when the set is held in sealed custody. */
   custody?: 'sealed';
   sealed?: SealedCommitments;
   generated_at: string;
-  world_manifest_sha256: string;
-  world_json_sha256: string;
+  /** The world the set was written against; null for a repo set, which has no world. */
+  world_manifest_sha256: string | null;
+  world_json_sha256: string | null;
   tasks: string[];
   files: Record<string, string>;
   tree_sha256: string;
@@ -107,21 +131,36 @@ export interface HeldoutManifest extends Partial<OpeningsLedger> {
 
 const LEDGER_KEYS = ['opening_budget', 'alpha_per_opening', 'status', 'openings', 'exposures'] as const;
 
-/** The held-out directory and manifest path of a task set, under the repository at root. */
-export function heldoutSet(name = DEFAULT_SET, root = ROOT): HeldoutSet {
+/** The held-out directory and manifest path of a task set, under the repository at root. Without kind, a set named by a
+ *  directory tasks/repo/<name>/ is a repo set and every other set is a multiuser set (set names are unique across kinds). */
+export function heldoutSet(name = DEFAULT_SET, root = ROOT, kind?: SetKind): HeldoutSet {
+  const k: SetKind = kind ?? (name !== DEFAULT_SET && existsSync(join(root, 'tasks', 'repo', name)) ? 'repo' : 'multiuser');
+  if (k === 'repo') {
+    const dir = join(root, 'tasks', 'repo', name, 'heldout');
+    return { name, root, kind: k, dir, manifest: join(dir, 'MANIFEST.json'), tree: join(root, 'tasks', 'repo', name, 'released') };
+  }
   const multiuser = join(root, 'tasks', 'multiuser');
   const dir = name === DEFAULT_SET ? join(multiuser, 'heldout') : join(multiuser, name, 'heldout');
-  return { name, dir, manifest: join(dir, 'MANIFEST.json') };
+  return { name, root, kind: k, dir, manifest: join(dir, 'MANIFEST.json'), tree: dir };
 }
 
-/** Every task set with a held-out tree: v0.1 and each tasks/multiuser/<set>/heldout that exists. */
+/** Every task set with a held-out tree: v0.1, each tasks/multiuser/<set>/heldout and each tasks/repo/<set>/heldout that
+ *  exists. A name used by both kinds is listed once per kind, so --check reports it (setNameProblems). */
 export function heldoutSets(root = ROOT): HeldoutSet[] {
+  const named = (base: string, skip: string[]) => (existsSync(base) ? readdirSync(base, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && !skip.includes(d.name) && existsSync(join(base, d.name, 'heldout'))).map((d) => d.name).sort() : []);
   const multiuser = join(root, 'tasks', 'multiuser');
-  if (!existsSync(multiuser)) return [];
-  const named = readdirSync(multiuser, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && !['dev', 'heldout', '_shared'].includes(d.name) && existsSync(join(multiuser, d.name, 'heldout')))
-    .map((d) => d.name).sort();
-  return [heldoutSet(DEFAULT_SET, root), ...named.map((n) => heldoutSet(n, root))];
+  const mu = existsSync(multiuser) ? [heldoutSet(DEFAULT_SET, root, 'multiuser'), ...named(multiuser, ['dev', 'heldout', '_shared']).map((n) => heldoutSet(n, root, 'multiuser'))] : [];
+  return [...mu, ...named(join(root, 'tasks', 'repo'), []).map((n) => heldoutSet(n, root, 'repo'))];
+}
+
+/** Set names used by more than one kind under root (tasks/multiuser/<set> and tasks/repo/<set>): set names are unique
+ *  across kinds, since every custody path, ledger row and preregistration names a set by name alone. */
+export function setNameProblems(root = ROOT): string[] {
+  const dirs = (base: string, skip: string[]) => (existsSync(base) ? readdirSync(base, { withFileTypes: true }).filter((d) => d.isDirectory() && !skip.includes(d.name)).map((d) => d.name) : []);
+  const repo = new Set(dirs(join(root, 'tasks', 'repo'), []));
+  return [...new Set([DEFAULT_SET, ...dirs(join(root, 'tasks', 'multiuser'), ['dev', 'heldout', '_shared'])])].filter((n) => repo.has(n)).sort()
+    .map((n) => `set name ${n} is used by tasks/multiuser/ and tasks/repo/; set names are unique across kinds, so rename one`);
 }
 
 /** The openings ledger of a manifest, or undefined when the set has none yet. */
@@ -179,8 +218,8 @@ export function walk(dir: string): string[] {
 
 /** The task directories under a held-out tree (those with a task.toml). */
 export function heldoutTasks(set: HeldoutSet = heldoutSet()): string[] {
-  if (!existsSync(set.dir)) return [];
-  return readdirSync(set.dir, { withFileTypes: true }).filter((d) => d.isDirectory() && existsSync(join(set.dir, d.name, 'task.toml'))).map((d) => d.name).sort();
+  if (!existsSync(set.tree)) return [];
+  return readdirSync(set.tree, { withFileTypes: true }).filter((d) => d.isDirectory() && existsSync(join(set.tree, d.name, 'task.toml'))).map((d) => d.name).sort();
 }
 
 /** sha256 of every file under dir (relative path to digest, in walk order), and the tree digest over them: the digest a
@@ -196,6 +235,9 @@ export function treeFiles(dir: string, skip?: string): { files: Record<string, s
 
 export const isSealed = (m: HeldoutManifest | undefined): boolean => m?.custody === 'sealed';
 
+/** The world manifest of the set's repository, which a multiuser set records; a repo set never reads it. */
+const worldManifestOf = (set: HeldoutSet): string => (set.root ? join(set.root, 'world', 'seed', 'MANIFEST.json') : WORLD_MANIFEST);
+
 /** Problems of a sealed set's manifest and tree, keyless: the commitments are present and well formed, the public manifest
  *  names no file or task, and the held-out directory holds nothing but MANIFEST.json. */
 export function sealedProblems(m: HeldoutManifest, set: HeldoutSet): string[] {
@@ -203,7 +245,15 @@ export function sealedProblems(m: HeldoutManifest, set: HeldoutSet): string[] {
   const hex = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v);
   const s = m.sealed;
   if (!s || typeof s !== 'object') return ['custody is "sealed" but the manifest has no "sealed" block of commitments (scripts/sealed/seal.ts writes it)'];
-  for (const k of ['bundle_sha256', 'world_slice_sha256', 'heldout_corpus_sha256'] as const) if (!hex(s[k])) problems.push(`sealed.${k} must be 64 hex characters (got ${JSON.stringify(s[k])})`);
+  if (set.kind === 'repo') {
+    if (!hex(s.bundle_sha256)) problems.push(`sealed.bundle_sha256 must be 64 hex characters (got ${JSON.stringify(s.bundle_sha256)})`);
+    for (const k of ['world_slice_sha256', 'heldout_corpus_sha256'] as const) if (s[k] !== null) problems.push(`sealed.${k} must be null for a repo set, which has no world slice and no corpus pages (got ${JSON.stringify(s[k])})`);
+    if (!(typeof s.null_digests === 'string' && s.null_digests.trim())) problems.push('sealed.null_digests must say why a repo set records world_slice_sha256 and heldout_corpus_sha256 as null (scripts/sealed/seal.ts writes it)');
+    if (s.generator_sha256 !== null && !hex(s.generator_sha256)) problems.push(`sealed.generator_sha256 must be 64 hex characters, or null when the bundle has no generator/ (got ${JSON.stringify(s.generator_sha256)})`);
+    if (m.world_manifest_sha256 !== null || m.world_json_sha256 !== null) problems.push('world_manifest_sha256 and world_json_sha256 must be null for a repo set, which has no world');
+    const released = existsSync(set.tree) ? walk(set.tree) : [];
+    if (released.length) problems.push(`released files of a sealed set: ${released.length} file(s) under ${relative(ROOT, set.tree)}; a sealed repo set's tasks live only in the encrypted bundle until release`);
+  } else for (const k of ['bundle_sha256', 'world_slice_sha256', 'heldout_corpus_sha256'] as const) if (!hex(s[k])) problems.push(`sealed.${k} must be 64 hex characters (got ${JSON.stringify(s[k])})`);
   if (!hex(m.tree_sha256)) problems.push(`tree_sha256 must be the 64-hex digest of the plaintext tree at sealing (got ${JSON.stringify(m.tree_sha256)})`);
   if (!(Number.isInteger(s.task_count) && s.task_count > 0)) problems.push(`sealed.task_count must be a whole number above 0 (got ${JSON.stringify(s.task_count)})`);
   if (!(typeof s.recipient === 'string' && /^age1[0-9a-z]+$/.test(s.recipient))) problems.push('sealed.recipient must be a public age recipient (age1...)');
@@ -219,16 +269,19 @@ export function sealedProblems(m: HeldoutManifest, set: HeldoutSet): string[] {
 
 /** The manifest the current tree would produce; `generated_at` is taken from `previous` when the content is unchanged. */
 export function buildManifest(previous?: HeldoutManifest, set: HeldoutSet = heldoutSet()): HeldoutManifest {
-  const { files, tree_sha256: tree } = treeFiles(set.dir, set.manifest);
-  const worldManifest = readFileSync(WORLD_MANIFEST, 'utf8');
-  const worldJsonSha = (JSON.parse(worldManifest) as { world_json_sha256?: string }).world_json_sha256 ?? '';
+  const { files, tree_sha256: tree } = treeFiles(set.tree, set.manifest);
+  const repo = set.kind === 'repo';
+  const worldManifest = repo ? null : readFileSync(worldManifestOf(set), 'utf8');
+  const worldManifestSha = worldManifest === null ? null : sha256(worldManifest);
+  const worldJsonSha = worldManifest === null ? null : (JSON.parse(worldManifest) as { world_json_sha256?: string }).world_json_sha256 ?? '';
   const tasks = [...new Set(Object.keys(files).map((f) => f.split('/')[0]!))].filter((d) => files[`${d}/task.toml`]);
-  const unchanged = previous && previous.tree_sha256 === tree && previous.world_manifest_sha256 === sha256(worldManifest);
+  const unchanged = previous && previous.tree_sha256 === tree && previous.world_manifest_sha256 === worldManifestSha;
   const ledger = Object.fromEntries(LEDGER_KEYS.filter((k) => previous?.[k] !== undefined).map((k) => [k, previous![k]]));
   return {
     schema_version: 1,
+    ...(repo ? { kind: 'repo' as const } : {}),
     generated_at: unchanged ? previous.generated_at : new Date().toISOString(),
-    world_manifest_sha256: sha256(worldManifest),
+    world_manifest_sha256: worldManifestSha,
     world_json_sha256: worldJsonSha,
     tasks,
     files,
@@ -250,24 +303,29 @@ export function readManifest(set: HeldoutSet = heldoutSet()): HeldoutManifest | 
 export function manifestProblems(set: HeldoutSet = heldoutSet()): string[] {
   const committed = readManifest(set);
   const rel = relative(ROOT, set.manifest);
+  const stray = set.kind === 'repo' ? (existsSync(set.dir) ? walk(set.dir) : []).filter((p) => p !== set.manifest) : [];
+  const strayProblem = `plaintext in a repo set's held-out directory: ${stray.length} file(s) beside MANIFEST.json under ${relative(ROOT, set.dir)}; a repo set's held-out tree exists only inside custody (scripts/sealed/seal.ts --kind repo), and a released one lives in ${relative(ROOT, set.tree)}`;
   if (!committed) {
+    if (set.kind === 'repo') return [...(stray.length ? [strayProblem] : []), `${rel} is missing; a repo set's manifest is written by scripts/sealed/seal.ts --kind repo`];
     const n = heldoutTasks(set).length;
     return n ? [`unsealed: ${relative(ROOT, set.dir)} (${n} tasks) has no MANIFEST.json; run bun scripts/seal-heldout.ts${set.name === DEFAULT_SET ? '' : ` --task-set ${set.name}`}`] : [`${rel} is missing; run bun scripts/seal-heldout.ts${set.name === DEFAULT_SET ? '' : ` --task-set ${set.name}`}`];
   }
   if (committed.custody !== undefined && committed.custody !== 'sealed') return [`custody must be "sealed" or absent (got ${JSON.stringify(committed.custody)})`];
+  const kind = committed.kind ?? 'multiuser';
+  if (kind !== set.kind) return [`kind is ${JSON.stringify(committed.kind ?? null)}, but the manifest sits under tasks/${set.kind}/; a ${set.kind} set's manifest says ${set.kind === 'repo' ? '"kind": "repo"' : 'no kind, or "kind": "multiuser"'}`];
   if (isSealed(committed)) {
     const problems = sealedProblems(committed, set);
-    if (committed.world_manifest_sha256 !== sha256(readFileSync(WORLD_MANIFEST, 'utf8'))) problems.push('world/seed/MANIFEST.json changed since sealing (the sealed slice is merged into the public world when a set is opened)');
+    if (set.kind === 'multiuser' && committed.world_manifest_sha256 !== sha256(readFileSync(worldManifestOf(set), 'utf8'))) problems.push('world/seed/MANIFEST.json changed since sealing (the sealed slice is merged into the public world when a set is opened)');
     return [...problems, ...ledgerProblems(committed)];
   }
   const current = buildManifest(committed, set);
-  const problems: string[] = [];
+  const problems: string[] = stray.length ? [strayProblem] : [];
   for (const [f, h] of Object.entries(current.files)) {
     if (!committed.files[f]) problems.push(`${f}: not in the manifest`);
     else if (committed.files[f] !== h) problems.push(`${f}: sha256 changed`);
   }
   for (const f of Object.keys(committed.files)) if (!current.files[f]) problems.push(`${f}: in the manifest but not in the tree`);
-  if (committed.world_manifest_sha256 !== current.world_manifest_sha256) problems.push('world/seed/MANIFEST.json changed since sealing');
+  if (committed.world_manifest_sha256 !== current.world_manifest_sha256) problems.push(set.kind === 'repo' ? 'world_manifest_sha256 must be null for a repo set, which has no world' : 'world/seed/MANIFEST.json changed since sealing');
   if (committed.tree_sha256 !== current.tree_sha256) problems.push('tree_sha256 differs');
   problems.push(...ledgerProblems(committed));
   return problems;
@@ -283,9 +341,10 @@ if (import.meta.main) {
     console.error(`HE-TASK-SEAL: unknown task set "${setName}"; looked for ${relative(ROOT, heldoutSet(setName).dir)}/; known sets: ${known.map((s) => s.name).join(', ')} (v0.1 is tasks/multiuser/heldout)`);
     process.exit(1);
   }
-  const sets = setName ? [heldoutSet(setName)] : known;
+  const sets = setName ? known.filter((s) => s.name === setName) : known;
   if (argv.includes('--check')) {
     let failed = false;
+    for (const p of setNameProblems()) { failed = true; console.error(`HE-TASK-SEAL: ${p}`); }
     for (const set of sets) {
       const problems = manifestProblems(set);
       if (problems.length) {
@@ -302,6 +361,7 @@ if (import.meta.main) {
     if (failed) process.exit(1);
   } else {
     const set = sets[0]!;
+    if (set.kind === 'repo') { console.error(`HE-TASK-SEAL: set ${set.name} is a repo set; its manifest is written by scripts/sealed/seal.ts --kind repo and, at release, by scripts/sealed/release.ts (docs/sealed-custody.md)`); process.exit(1); }
     if (isSealed(readManifest(set))) { console.error(`HE-TASK-SEAL: set ${set.name} is in sealed custody; its manifest is written by scripts/sealed/seal.ts from the plaintext outside the checkout (docs/sealed-custody.md)`); process.exit(1); }
     const manifest = buildManifest(readManifest(set), set);
     writeFileSync(set.manifest, JSON.stringify(manifest, null, 2) + '\n');
