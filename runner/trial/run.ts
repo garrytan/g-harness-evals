@@ -3,13 +3,18 @@
 // preregistration still runs through the same command. Every finished trial is one line of trials.jsonl,
 // which --resume reads to skip what already ran. A lease refusal from the proxy is recorded on the trial
 // as model_error with cap_stop and prints HE-BUDGET-001; the run goes on unless --stop-on-cap.
+//
+// internal-task: an invocation whose cells have network "internal" creates (or reuses) the run's internal docker network before the
+// proxy starts, binds the proxy and every world to its gateway, and removes it when the invocation ends. Its one proxy
+// listens on one network, so internal and default-bridge harness cells run in separate invocations (--cells); HE-NET-001.
 
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import type { HarnessMode, Termination, TrialRecord } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
-import { isSealedCell, type Cell, type Manifest, type Trial } from '../run.ts';
+import { cellModels, isSealedCell, type Cell, type Manifest, type Trial } from '../run.ts';
+import { type InternalNetwork, ensureInternalNetwork, internalNetworkName, removeInternalNetwork } from './docker.ts';
 import { RunProxy, reconcile, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
 import { DEFAULT_PREAMBLE_PATH, loadPreamble } from './task.ts';
 import { type GradeFn, appendRecord, loadGrader, runTrial } from './trial.ts';
@@ -92,19 +97,35 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
   };
   const grade = needsGrader ? (opts.grade ?? await loadGrader()) : (() => { throw new Error('no grader'); });
   const docker = opts.harnessMode === 'docker';
+  const pendingCells = [...new Set(pending.map((t) => cells.get(t.cell)).filter((c): c is Cell => !!c))];
+  const internal = pendingCells.filter((c) => c.network === 'internal');
+  if (internal.length) {
+    const ids = (list: Cell[]) => list.map((c) => c.id).join(', ');
+    const bridged = pendingCells.filter((c) => c.network !== 'internal' && modeFor(c) !== 'scripted');
+    const compose = internal.filter((c) => existsSync(join(opts.repoRoot ?? '.', 'harnesses', c.harness, 'compose.yaml')));
+    if (!docker) throw new RunnerError('HE-NET-001', `cells ${ids(internal)} have network "internal", which only a harness container gets; this invocation runs in ${opts.harnessMode} mode. fix: run them with --harness-mode docker`);
+    if (bridged.length) throw new RunnerError('HE-NET-001', `cells ${ids(internal)} have network "internal" and cells ${ids(bridged)} run on the default bridge; the run's one metering proxy listens on one network's gateway. fix: run each group in its own invocation with --cells`);
+    if (compose.length) throw new RunnerError('HE-NET-001', `cells ${ids(compose)} have network "internal" but run a compose stack (harnesses/<name>/compose.yaml), which the runner does not move onto the internal network. fix: drop network from those cells`);
+    if (internal.some(isSingleShot)) throw new RunnerError('HE-NET-001', `cells ${ids(internal.filter(isSingleShot))} have network "internal" but run a single-shot slice through harnesses/run-trial.sh, which uses the default bridge. fix: drop network from those cells`);
+  }
   const records: TrialRecord[] = [];
   let proxy: RunProxy | null = null;
+  let network: InternalNetwork | null = null;
   let capStop = false;
   let exit: 0 | 3 = 0;
   try {
+    if (internal.length) {
+      network = await ensureInternalNetwork(internalNetworkName(manifest.run_id));
+      log(`internal network ${network.name} (gateway ${network.gateway}) for cells ${internal.map((c) => c.id).join(', ')}`);
+    }
     if (needsProxy) {
       // internal-task: a cell with embeddings on sends the sidecar's query embeddings through the same proxy, so the embedding model
       // joins the allowlist and the proxy binds every interface (the sidecar is a container whatever the harness mode).
       const embeddingModels: string[] = [...new Set(manifest.cells.map((c) => c.gbrain?.embeddings ?? 'off').filter((m) => m !== 'off'))];
       proxy = await RunProxy.start({
         runId: manifest.run_id, runDir, ledgerPath: opts.ledgerPath ?? join(runDir, 'ledger.sqlite'), leaseUsd: opts.leaseUsd ?? manifest.spend_cap_usd,
-        allowModels: [...new Set([...manifest.cells.map((c) => c.model).filter((m) => m !== 'none'), ...manifest.cells.flatMap((c) => c.utility_models ?? []), ...embeddingModels])], maxOutputTokens: opts.maxOutputTokens,
-        reachableFromContainers: docker || embeddingModels.length > 0, env: opts.proxyEnv, newRun: opts.newLease,
+        allowModels: [...new Set([...manifest.cells.flatMap(cellModels), ...embeddingModels])], maxOutputTokens: opts.maxOutputTokens,
+        reachableFromContainers: docker || embeddingModels.length > 0, ...(network ? { gatewayAddress: network.gateway } : {}), env: opts.proxyEnv, newRun: opts.newLease,
       });
       log(`metering proxy on port ${proxy.port}, lease $${opts.leaseUsd ?? manifest.spend_cap_usd} in ${proxy.ledgerPath}`);
     }
@@ -118,7 +139,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
         ? await runSingleShot({ cell, trial, trialDir, proxy, log, image: opts.image, repoRoot: opts.repoRoot })
         : await runTrial({ cell, trial, runDir, trialDir, proxy, grade, log, opts: {
           harnessMode: opts.harnessMode, adapter: opts.adapter, image: opts.image, gbrainImage: opts.gbrainImage, preamble: preambleFor(cell), worldPath: opts.worldPath, readyTimeoutS: opts.readyTimeoutS ?? 180,
-          turnGraceS: opts.turnGraceS ?? 60, stopGraceS: opts.stopGraceS ?? 60, harnessEnv: opts.harnessEnv, repoRoot: opts.repoRoot } });
+          turnGraceS: opts.turnGraceS ?? 60, stopGraceS: opts.stopGraceS ?? 60, harnessEnv: opts.harnessEnv, repoRoot: opts.repoRoot, ...(network ? { network } : {}) } });
       appendRecord(runDir, record);
       records.push(record);
       log(`trial ${trial.id}: termination=${record.termination} grade=${record.grade} consent_violation=${record.consent_violation} wall_ms=${record.wall_ms}${record.usage ? ` usd=${record.usage.usd.toFixed(4)}` : ''}${record.cap_stop ? ' cap_stop' : ''}`);
@@ -130,6 +151,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
     }
   } finally {
     if (proxy) await proxy.stop();
+    if (network) log(await removeInternalNetwork(network.name) ? `internal network ${network.name} removed` : `internal network ${network.name} not removed (a container is still attached); fix: docker network rm ${network.name}`);
   }
   const summary = { run_id: manifest.run_id, finished_at: new Date().toISOString(), trials_recorded: readRecords(runDir).length, trials_planned: manifest.trials.length, cap_stop: capStop, complete: readRecords(runDir).length === manifest.trials.length && !capStop };
   writeAtomic(join(runDir, 'run-summary.json'), JSON.stringify(summary, null, 1) + '\n');
@@ -146,7 +168,7 @@ async function runSingleShot(o: { cell: Cell; trial: Trial; trialDir: string; pr
   const token = trialToken(trial.id);
   const slot = trialSlug(trial.id);
   const [provider, modelName] = [cell.model.slice(0, cell.model.indexOf(':')), cell.model.slice(cell.model.indexOf(':') + 1)];
-  if (o.proxy) await o.proxy.bind(slot, key, token);
+  if (o.proxy) await o.proxy.bind(slot, key, token, cellModels(cell));
   const args = [join(o.repoRoot ?? '.', 'harnesses', 'run-trial.sh'), '--harness', cell.harness, '--task', join(o.repoRoot ?? '.', 'tasks', trial.task), '--trial-id', slot,
     '--base-url', o.proxy ? o.proxy.baseUrlFor(slot, provider) : 'http://127.0.0.1:1/none', '--api-key', token, '--model', modelName, '--out', o.trialDir];
   if (o.image) args.push('--image', o.image);

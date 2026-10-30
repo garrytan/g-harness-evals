@@ -1,0 +1,83 @@
+{
+  "name": "codex",
+  "repo": "https://github.com/openai/codex",
+  "package": "@openai/codex",
+  "version": "0.165.0",
+  "npm_integrity": "sha512-aiwtQVp2KBhJld966CuU5bVfQ46VNB4mNTl6giX3WGZdt4euI3tv2RUqJpnupPNA8DXHg2z+RoQ0Zfw87dy8Lw==",
+  "binary": {
+    "path": "/usr/local/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
+    "sha256": "c06a67fd8ac76508dc78bd99ce20c9f317b8d568beda59485f3f4134df9962d5",
+    "note": "the vendored linux-x64 native binary of the optional dependency @openai/codex-linux-x64 (npm:@openai/codex@0.165.0-linux-x64); /usr/local/bin/codex is the package's node wrapper bin/codex.js, which spawns it. The Dockerfile checks this sha256 and that `codex --version` prints `codex-cli 0.165.0`; the adapter checks the version again at start and before every turn and exits 2 on any other"
+  },
+  "install": "npm install -g @openai/codex@0.165.0 on node:24-bookworm-slim (no install scripts)",
+  "entry": "/opt/harness/adapter.sh run | serve",
+  "turn_command": "codex exec --json --skip-git-repo-check --strict-config -C /workspace - < /workspace/instruction.md",
+  "model": {
+    "provider": "openai (custom provider he-proxy)",
+    "model": "gpt-6-luna",
+    "api": "openai-responses",
+    "base_url": "model_providers.he-proxy.base_url = HE_MODEL_BASE_URL (trailing slash removed) + /v1, so Codex sends POST <slot>/openai/v1/responses",
+    "api_key_env": "model_providers.he-proxy.env_key = HE_MODEL_API_KEY (the per-trial token; Codex sends it as Authorization: Bearer). No auth.json, no login, no CODEX_API_KEY or OPENAI_API_KEY in the container",
+    "config_path": "config/config.toml"
+  },
+  "codex_config": {
+    "model_reasoning_effort": "medium",
+    "request_max_retries": 1,
+    "stream_max_retries": 1
+  },
+  "config_keys_confirmed": {
+    "method": "each key in config/config.toml was loaded by codex 0.165.0 with --strict-config (unknown keys fail with `unknown configuration field`, checked with a bogus key at top level and inside every table used); every turn runs with --strict-config, so a key the binary does not know fails the turn",
+    "model_keys": "model, review_model, experimental_realtime_ws_model, agents.default_subagent_model, memories.extract_model, memories.consolidation_model: every model-valued config key found in the binary's config schema, all set to the cell model. There is no separate compaction model key at this version: compaction runs on `model` (remote compaction off, see below)",
+    "reasoning": "model_reasoning_effort, plan_mode_reasoning_effort and agents.default_subagent_reasoning_effort = medium; observed in the request as reasoning {effort: medium, context: all_turns}",
+    "provider": "model_providers.he-proxy {name, base_url, env_key, wire_api = responses, request_max_retries = 1, stream_max_retries = 1, supports_websockets = false} and capabilities {remote_compaction = unsupported (accepted values: unsupported, v2), external_web_access = false}",
+    "retries": "request_max_retries and stream_max_retries are the names at this pin. Observed against a fake endpoint: a 500 is sent 4 times (2 HTTP attempts in each of 2 stream attempts), a 401, 402 or 403 twice, a 400 or 429 once. features.unbounded_connection_retries (on by default) makes a refused connection retry without end (`Reconnecting... waiting for network`); it is off, so a proxy that is down fails the turn in about a second",
+    "side_traffic": "analytics.enabled = false, feedback.enabled = false, otel {exporter, metrics_exporter, trace_exporter = none, log_user_prompt = false}, check_for_update_on_startup = false, features.plugins = false",
+    "web_search": "web_search = disabled and tools.web_search = false; no web search tool appears in the request"
+  },
+  "deviations": [
+    "sandbox_mode = danger-full-access: Codex's own Linux sandbox (bubblewrap, vendored in codex-resources/) cannot create a namespace in the unprivileged trial container, so the container is the sandbox, as for the other harnesses",
+    "approval_policy = never: nobody answers an approval prompt in a headless trial",
+    "web search off (web_search = disabled, tools.web_search = false): the cell has no web access through the proxy",
+    "features.plugins = false: with plugins on, Codex calls https://chatgpt.com/backend-api/plugins/featured (401 without a login) and three other HTTPS hosts directly at startup; off, the only connections are the proxy and the MCP servers. No plugin is installed in a trial, so nothing the harness uses is removed",
+    "features.unbounded_connection_retries = false: a refused connection to the proxy would otherwise retry until the turn budget",
+    "the proxy writes max_output_tokens 128000 into every request (--max-output-tokens 128000 for Codex cells): Codex 0.165.0 sends no output cap of its own on /v1/responses"
+  ],
+  "network": {
+    "observed_with_defaults": "strace of one `codex exec` with the default features: direct HTTPS (443) to chatgpt.com / ab.chatgpt.com (Cloudflare 104.18.32.47 and 172.64.155.209; the log shows the plugins featured-list request answered 401), to 184.33.241.37 and 184.34.13.51 (Akamai) and to 44.230.58.44 (AWS), plus DNS. An earlier review had seen ab.chatgpt.com as well",
+    "observed_with_this_config": "the same probe with features.plugins = false: connections only to the proxy port and the world-MCP port",
+    "run_network": "Codex cells run on the internal docker network (no route out), so any direct traffic left at this pin fails closed; the container holds only the per-trial token, so a model call cannot bypass metering"
+  },
+  "requests": {
+    "route": "POST /v1/responses only (stream: true, store: false, include: [reasoning.encrypted_content], parallel_tool_calls: false, prompt_cache_key = the thread id, text.verbosity low); no GET /v1/models, no /v1/responses/compact (remote compaction off), no websocket",
+    "headers": "originator: codex_exec, user-agent codex_exec/0.165.0, session-id, thread-id, x-codex-turn-metadata, x-codex-window-id, x-openai-internal-codex-responses-lite: true, Authorization: Bearer <HE_MODEL_API_KEY>",
+    "tools_on_gpt_6": "code mode: for gpt-6 models the request carries an additional_tools input item with three namespaces: functions (a custom tool `exec` taking JavaScript, plus wait, request_user_input, request_user_input_async), clock (sleep) and collaboration (spawn_agent, send_message, followup_task, interrupt_agent, list_agents, wait_agent). Shell commands, apply_patch and MCP tools are called from inside exec as tools.exec_command({cmd}), tools.mcp__world__<tool>(args). The world-MCP tools are deferred: they are not described in the request; they are on the `tools` object and listed in ALL_TOOLS inside exec. For older models (gpt-5.5, observed) the request has plain function tools and MCP tools behind tool_search",
+    "subagent_model": "spawn_agent takes an optional model argument chosen by the model; agents.default_subagent_model is the cell model, and the proxy's --allow-models refuses any other model with 403 before it is forwarded"
+  },
+  "state_paths": [
+    "/harness-state/codex",
+    "/harness-state/codex-threads.json",
+    "/harness-state/tmp"
+  ],
+  "mcp_config_path": "/harness-state/codex/config.toml#mcp_servers.world (appended at serve start: url = HE_WORLD_MCP_URL, bearer_token_env_var = HE_WORLD_MCP_TOKEN, startup_timeout_sec 60, tool_timeout_sec 120, required = true; streamable HTTP; tools are called as mcp__world__<tool>)",
+  "topology": "in-container",
+  "multi_user_mode": "one Codex thread per conversation (dm:<member>, channel:<id>) in one CODEX_HOME; codex exec for the first turn of a key, codex exec resume <thread id> after",
+  "serve_turn_command": "codex exec --json --skip-git-repo-check --strict-config -C /workspace - (first turn of a key) | codex exec resume <thread id> --json --skip-git-repo-check --strict-config - (later turns; resume has no -C, the adapter runs it from /workspace); the prompt on stdin, under setsid",
+  "serve": {
+    "session_key": "dm:<member> | channel:<id>; :t<thread_ts> appended when TurnRequest.thread_ts is set",
+    "session_store": "/harness-state/codex-threads.json maps each key to the thread_id of its first turn's thread.started event (written to a temp file and renamed); the thread itself is Codex's own store under /harness-state/codex (sessions/, state and thread history databases)",
+    "shared_between_sessions": "whatever Codex shares across threads in one CODEX_HOME; memories are off by default at this version (features.memories false) and not configured by the adapter",
+    "reply_source": "the text of the last item.completed agent_message in the --json events",
+    "mcp_checks": "before ready, POST tools/list with the bearer to each configured server (world, and gbrain when HE_GBRAIN_MCP_URL is set); no tools or an HTTP failure is exit 2 before ready. During a turn, an mcp_tool_call item that failed with an rmcp transport error (`Transport send error`) or rmcp transport lines on stderr fail the turn with exit 2; Codex itself exits 0 in that case and lets the model carry on. With required = true a server that does not start makes codex exit 1 with the transport error on stderr",
+    "kill": "each turn runs under setsid with HE_CODEX_TURN=<marker> in its environment; on the budget or SIGTERM the adapter signals the process group (TERM, KILL after 5 s in serve, 60 s in run) and then kills every process carrying the marker, which includes the PTY sessions exec_command opens in their own session"
+  },
+  "exit_mapping": "codex exit 0 with turn.completed -> 0; budget -> 124 (process group TERM, KILL after the grace, survivors killed by marker); turn.failed with an HTTP status -> 3: `unexpected status NNN` (401, 402, 403, 502, 503 observed), `last status: NNN` (429 observed), the raw error body Codex prints for a 400 (`{\"error\": ...}`), and `We're currently experiencing high demand` printed for a 500; `Connection failed: error sending request` (the proxy unreachable after the retries) -> 3, as Claude Code and Hermes map an unreachable endpoint; interim `Reconnecting...` error events are ignored; an MCP transport error, a version other than this pin, HE_MODEL_BASE_URL not ending in /openai, or any other failure -> 2; a turn with both an MCP transport error and a model error exits 2: the transport check runs first",
+  "gbrain_mcp": "with HE_GBRAIN_MCP_URL and HE_GBRAIN_MCP_TOKEN set at serve start, [mcp_servers.gbrain] (url, bearer_token_env_var = HE_GBRAIN_MCP_TOKEN, same timeouts, required) is appended beside world and probed with tools/list before ready; tools are mcp__gbrain__<tool>. Unset, the config is byte-identical to a cell without gbrain",
+  "gbrain_install": "not supported: HE_GBRAIN_INSTALL set (any value) is HE-ADAPTER-006 and exit 2 before ready, with gbrain-install.json recording the code; the install ladder is not planned for codex",
+  "session_scope": "HE_SESSION_SCOPE=turn is refused with exit 2",
+  "skills": {
+    "location": "$CODEX_HOME/skills/<name>/SKILL.md (/harness-state/codex/skills/<name>/SKILL.md), front matter name and description; confirmed at this pin: a probe skill there is listed in the request's <skills_instructions> under root r0 = $CODEX_HOME/skills. Codex also seeds its bundled system skills into $CODEX_HOME/skills/.system on first run (imagegen, openai-docs, review-agent, skill-creator, skill-installer)",
+    "invocation": "$<name> in the prompt: `use $he-probe now` made Codex inject the skill's name, path and SKILL.md body into the turn's input; the skills instructions also tell the model to use a skill named in plain text"
+  },
+  "instruction_files": "AGENTS.md in /workspace is Codex's project instruction file; the adapter writes none",
+  "internal_network": "the pilot runs every codex cell on network \"internal\" (preregistration refuses a codex cell without it, HE-NET-001). Observed 2026-10-29 (tests/internal-network-harnesses.test.ts): one serve turn through the lease-mode proxy on gpt-6-luna with a world-MCP post_message landed from code-mode exec; from inside the container the proxy port connects and 1.1.1.1:443 and chatgpt.com:443 fail"
+}

@@ -1,0 +1,87 @@
+{
+  "name": "claude-code",
+  "repo": "https://www.npmjs.com/package/@anthropic-ai/claude-code",
+  "version": "2.1.312",
+  "integrity": {
+    "npm_package": "@anthropic-ai/claude-code@2.1.312",
+    "npm_integrity": "sha512-/gx8byG8VOm4YoNuT5tal/Ov5Z5oydJzZkmHCJcBFLbNGGpyYDbKA/CNdB+iIKwcLQC8pVwBoj6Dt7H3L2J5bw==",
+    "native_binary": "@anthropic-ai/claude-code-linux-x64@2.1.312 claude, which the wrapper's postinstall (install.cjs) hard-links over bin/claude.exe; /opt/harness/bin/claude points at bin/claude.exe",
+    "native_binary_sha256": "4f4178ce41d83e23341ebfbaecdbcf8ea6bf7baea0690025abe49eeec3a5d01d",
+    "checked": "at image build: claude --version must print '2.1.312 (Claude Code)' and sha256sum -c must pass for both paths (Dockerfile CLAUDE_CODE_SHA256); the adapter compares claude --version with this file's version before anything else and exits 2 on a difference"
+  },
+  "install": "npm install -g --prefix /opt/harness --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code@2.1.312 on node:24-bookworm-slim. The base image ships npm 11.19.1, which runs the postinstall anyway and accepts the flag; npm 12 skips the postinstall without it and would leave the placeholder stub as claude",
+  "entry": "/opt/harness/adapter.sh run | serve",
+  "turn_command": "claude -p --output-format stream-json --verbose --model claude-sonnet-5-5 --permission-mode bypassPermissions --disallowedTools WebSearch,WebFetch --mcp-config /harness-state/mcp.json --strict-mcp-config --session-id <UUIDv5(run:<trial>)> < /workspace/instruction.md",
+  "serve_turn_command": "claude -p --output-format stream-json --verbose --model claude-sonnet-5-5 --permission-mode bypassPermissions --disallowedTools WebSearch,WebFetch --mcp-config /harness-state/mcp.json --strict-mcp-config --session-id|--resume <UUIDv5(key)> < <log>/turns/turn-NNNN.prompt.md, under setsid with the adapter's own wall clock (budget, then SIGTERM to the session and SIGKILL 5 s later)",
+  "model": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-5-5 (the adapter's default; every cell sets HE_MODEL_NAME and --model follows it)",
+    "api": "anthropic-messages: POST <base>/v1/messages?beta=true, streamed (stream: true); no other route was seen with the settings below",
+    "base_url_env": "ANTHROPIC_BASE_URL (set from HE_MODEL_BASE_URL)",
+    "api_key_env": "ANTHROPIC_API_KEY (set from HE_MODEL_API_KEY); the CLI sends it as x-api-key and the init record says apiKeySource ANTHROPIC_API_KEY",
+    "model_settings": {
+      "set_to_HE_MODEL_NAME": [
+        "ANTHROPIC_MODEL",
+        "ANTHROPIC_DEFAULT_MODEL",
+        "ANTHROPIC_SMALL_FAST_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+        "ANTHROPIC_DEFAULT_FABLE_MODEL",
+        "CLAUDE_CODE_SUBAGENT_MODEL",
+        "CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL",
+        "CLAUDE_CODE_AUTO_MODE_MODEL",
+        "CLAUDE_CODE_BG_CLASSIFIER_MODEL"
+      ],
+      "set_to_1": [
+        "CLAUDE_CODE_SUBAGENT_MODEL_FORCE (a subagent call's model parameter cannot override the subagent model)",
+        "CLAUDE_CODE_NO_MODEL_FALLBACK",
+        "CLAUDE_CODE_DISABLE_MODEL_ACCESS_FALLBACK",
+        "CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK (no switch to another model after a refusal)"
+      ],
+      "not_used": "--fallback-model",
+      "source": "the model variables are the CLI's own list of model settings at 2.1.312 (the gRt array in the native binary: ANTHROPIC_MODEL through CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL, the *_NAME, *_DESCRIPTION and *_SUPPORTED_CAPABILITIES labels and the 3P probe markers left out) plus the two classifier models it lists beside them (CLAUDE_CODE_AUTO_MODE_MODEL, CLAUDE_CODE_BG_CLASSIFIER_MODEL); read with strings on the binary"
+    },
+    "max_tokens": "128000 on every request, the CLI's own value for claude-haiku-5-5 at this pin (observed against a fake endpoint; the result record's modelUsage says maxOutputTokens 128000); the proxy runs with --max-output-tokens 128000 for this harness, as for Hermes",
+    "thinking": "{type: adaptive, display: updates} by default on claude-haiku-5-5 (observed); not changed",
+    "effort": "output_config.effort medium by default on claude-haiku-5-5 (observed); not changed",
+    "retries": "CLAUDE_CODE_MAX_RETRIES=2 (the CLI's default is 10, clamped at 15; observed: 10 api_retry records against a closed port before a 170 s timeout, 2 records and an api_error result within seconds with the setting). An HTTP 400 is not retried as such, but the CLI resends the request in three body variants twice each (6 requests, thinking display dropped, then the full tool list instead of deferred tools) whatever the setting; the proxy settles a 4xx without usage at $0",
+    "config_path": "config/settings.json"
+  },
+  "state_paths": [
+    "/harness-state/claude",
+    "/harness-state/mcp.json",
+    "/harness-state/tmp"
+  ],
+  "scratch": "TMPDIR and CLAUDE_TMPDIR are /harness-state/tmp: without them the CLI writes /tmp/claude-<uid>/ (Bash tool task output, fs-watch probes) and /tmp/cc-socks in the image (seen with docker diff)",
+  "mcp_config_path": "/harness-state/mcp.json (--mcp-config with --strict-mcp-config, mode 0600): {mcpServers: {world: {type: http, url: HE_WORLD_MCP_URL, headers.Authorization: Bearer HE_WORLD_MCP_TOKEN}}}; tools register as mcp__world__<tool> (15 at the world's current pin) and are deferred behind ToolSearch, which the model can call directly by name",
+  "config": "config/settings.json is copied to $CLAUDE_CONFIG_DIR/settings.json at the start of a trial: permissions.deny WebSearch and WebFetch, the same tools --disallowedTools removes",
+  "topology": "in-container",
+  "multi_user_mode": "CLI, one session per conversation in one CLAUDE_CONFIG_DIR; no daemon, no remote control",
+  "serve": {
+    "session_key": "dm:<member> | channel:<id>; :t<thread_ts> appended when TurnRequest.thread_ts is set (a task turn with thread = \"new\" opens a new session in the same conversation)",
+    "session_id": "UUIDv5 in the URL namespace (6ba7b811-9dad-11d1-80b4-00c04fd430c8) of 'harness-evals:claude-code:<key>'; --session-id <id> when no transcript for it exists, --resume <id> once $CLAUDE_CONFIG_DIR/projects/*/<id>.jsonl exists. Reusing --session-id for an existing session exits 1 ('Session ID <id> is already in use.')",
+    "session_store": "/harness-state/claude/projects/-workspace/<session id>.jsonl",
+    "shared_between_sessions": "whatever Claude Code's own memory shares across sessions (projects/-workspace/memory/); not configured by the adapter",
+    "reply_source": "stream-json terminal `result` record (result, is_error, api_error_status, terminal_reason); the init record gives claude_code_version and each MCP server's status",
+    "exit_mapping": "HE_MODEL_BASE_URL not ending in /anthropic -> 2 at startup, before any turn; turn outlived its budget -> 124; the init record missing, its claude_code_version not this version, or a configured MCP server not 'connected' -> 2; a configured MCP server's tool call that failed at the transport level after a good init -> 2 with a null reply (the CLI hands the model an is_error tool_result and exits 0; observed at this pin: 'ECONNREFUSED: Unable to connect. Is the computer able to access the url?' for a refused connection, 'Error POSTing to endpoint: <body>' for an HTTP error status, 'MCP server \"<s>\" tool \"<t>\" timed out after <n>s' past the tool timeout; matched only at the start of the CLI's own message, so a tool's own error result is not one even when its text holds a word like ENOTFOUND); no result record -> 2; result.is_error with api_error_status set or terminal_reason api_error (a proxy refusal, a provider 4xx or 5xx, the proxy unreachable after retries) -> 3; any other error result or a non-zero claude exit -> 2; else 0. SIGTERM during a run or serve turn -> 2: the trap is set before the first turn (bash is PID 1 in the container), and the turn's session gets SIGTERM, then SIGKILL after the grace; a turn with both an MCP transport error and a model error exits 2: the transport check runs first"
+  },
+  "mcp_checks": "before ready the adapter POSTs a JSON-RPC tools/list with the bearer to each configured server (up to 5 attempts) and exits 2 if one does not answer with a tool list; every turn's init record must show each configured server 'connected' or the turn is exit 2. MCP_CONNECTION_NONBLOCKING=false makes the CLI wait for the servers before its first model request: by default in -p it connects them in the background, the init record says 'pending' and the first request goes out without the MCP tools (observed against a server that never answers)",
+  "deviations": [
+    "--permission-mode bypassPermissions: no approval prompt can fire in a headless turn; the container is the sandbox, as for the other harnesses",
+    "--disallowedTools WebSearch,WebFetch and permissions.deny in settings.json: no web tools, as no other harness has them; WebSearch is a server tool billed by the provider and WebFetch reaches the internet directly",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1, DISABLE_AUTOUPDATER=1, DISABLE_TELEMETRY=1, DISABLE_ERROR_REPORTING=1: no update check, telemetry or error reporting",
+    "CLAUDE_CODE_MAX_RETRIES=2 instead of 10",
+    "MCP_CONNECTION_NONBLOCKING=false (see mcp_checks)",
+    "every model setting set to the cell model and model substitution off (model.model_settings)"
+  ],
+  "credentials": "none on disk: no .credentials.json in the image (checked at build) or the state directory; the CLI never logs in and reads only ANTHROPIC_API_KEY, the per-trial token",
+  "skills": {
+    "installed_at": "$CLAUDE_CONFIG_DIR/skills/<name>/SKILL.md (/harness-state/claude/skills/<name>/SKILL.md), a folder per skill with name and description frontmatter",
+    "invoked_by": "/<name> as the prompt (the CLI expands the SKILL.md body into the request), or the model's Skill tool",
+    "observed": "at 2.1.312, keylessly against a fake endpoint: a skill placed there is listed in the init record's skills and slash_commands, and a turn whose prompt is /<name> sends the SKILL.md body to the model"
+  },
+  "gbrain_mcp": "with HE_GBRAIN_MCP_URL and HE_GBRAIN_MCP_TOKEN set, a server named gbrain (type http, url, headers.Authorization: Bearer <token>) goes into /harness-state/mcp.json beside world, gets the same tools/list check before ready and the same per-turn connected check; tools register as mcp__gbrain__<tool>. Unset, the file holds world alone",
+  "gbrain_install": "not implemented: HE_GBRAIN_INSTALL set to any value is HE-ADAPTER-006 and exit 2 before ready, with $HE_LOG_DIR/gbrain-install.json (status error); the install ladder has no claude-code rung yet",
+  "internal_network": "serves on network \"internal\" (tests/internal-network-harnesses.test.ts, 2026-10-29): one turn through the lease-mode proxy on the cell model with a world-MCP post_message landed; from inside the container the proxy port connects and 1.1.1.1:443 and chatgpt.com:443 fail"
+}

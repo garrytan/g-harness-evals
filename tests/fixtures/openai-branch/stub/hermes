@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Test stand-in for the hermes CLI (tests/openai-branch.test.ts). A chat turn
+# (`hermes chat ...`) is recorded and answered without a model: the arguments
+# and the provider environment the adapter handed Hermes go to
+# $HE_LOG_DIR/stub-turns.jsonl, and the reply is a fixed result record. In the
+# image every other command runs the pinned CLI, so the config the adapter
+# writes is Hermes's own. On a host without the pinned CLI (the process-level
+# golden test) --version prints $HERMES_VERSION and `mcp list` succeeds.
+set -euo pipefail
+if [ "${1:-}" != chat ]; then
+  [ -x /opt/harness/venv/bin/hermes ] && exec /opt/harness/venv/bin/hermes "$@"
+  case "${1:-}" in
+    --version) echo "Hermes Agent $HERMES_VERSION" ;;
+    mcp) ;;
+    *) echo "hermes stub: no host stand-in for: $*" >&2; exit 2 ;;
+  esac
+  exit 0
+fi
+python3 - "$@" >> "$HE_LOG_DIR/stub-turns.jsonl" <<'PY'
+import json, os, re, sys
+env = {k: v for k, v in sorted(os.environ.items()) if re.match(r"^(ANTHROPIC_|OPENAI_|HERMES_HOME$|HOME$)", k)}
+print(json.dumps({"argv": sys.argv[1:], "env": env}))
+PY
+case " $* " in
+  *" stream-json "*) printf '{"type":"result","text":"ok","exit_code":0}\n' ;;
+  *) printf 'ok\n' ;;
+esac

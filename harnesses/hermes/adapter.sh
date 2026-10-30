@@ -30,6 +30,9 @@ now() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
 # internal-task: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
 # preflight compares the same hash in the image with the checkout, HE-ADAPTER-005).
 adapter_sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)
+# config/ sits beside this file (/opt/harness in the image), so a checkout's adapter run on the host reads the checkout's OpenAI
+# template. The Anthropic copy below keeps its literal /opt/harness path, the line the gstack overlay copies.
+harness_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 entry=${1:-run}
 case "$entry" in
@@ -41,19 +44,33 @@ esac
 export HOME="$HE_SESSION_STATE_DIR"
 export HERMES_HOME="$HE_SESSION_STATE_DIR/hermes"
 mkdir -p "$HERMES_HOME"
+# internal-task: the provider is the cell model's prefix, which the runner puts in the proxy URL as its last path segment
+# (<proxy>/<slot>/<provider>, runner/trial/proxy.ts baseUrlFor). An OpenAI cell gets config/config.openai.yaml and Hermes's
+# openai-api provider on its shipped Responses transport at HE_MODEL_BASE_URL/v1 with reasoning effort medium (pin.json
+# model_openai; `openai` is Hermes's alias for openrouter at this pin, hermes_cli/providers.py). Any other URL keeps the
+# anthropic provider, its config and its variables unchanged; the Anthropic lines stay as the gstack overlay copies them.
+provider=anthropic
+case "${HE_MODEL_BASE_URL%/}" in
+  */openai) provider=openai-api; [ -e "$HERMES_HOME/config.yaml" ] || cp "$harness_dir/config/config.openai.yaml" "$HERMES_HOME/config.yaml" ;;
+esac
 [ -e "$HERMES_HOME/config.yaml" ] || cp /opt/harness/config/config.yaml "$HERMES_HOME/config.yaml"
 
 # The anthropic provider reads these two variables; nothing is written to .env.
 export ANTHROPIC_API_KEY="$HE_MODEL_API_KEY"
 export ANTHROPIC_BASE_URL="$HE_MODEL_BASE_URL"
+# The openai-api provider reads its own two instead; an OpenAI cell keeps no Anthropic credential in Hermes's environment.
+if [ "$provider" = openai-api ]; then
+  unset ANTHROPIC_API_KEY ANTHROPIC_BASE_URL
+  export OPENAI_API_KEY="$HE_MODEL_API_KEY" OPENAI_BASE_URL="${HE_MODEL_BASE_URL%/}/v1"
+fi
 
 # Read all of --version (several lines): a `| head -1` could close the pipe before Hermes had seeded SOUL.md into HERMES_HOME, the
 # "ran Hermes once" the installer rung needs (SIGPIPE; the seed was then missing from a trial now and then).
 hermes_version=$(hermes --version 2>/dev/null || true)
-log "hermes ${hermes_version%%$'\n'*} model=anthropic/$HE_MODEL_NAME budget=${HE_TIME_BUDGET_S}s entry=$entry"
+log "hermes ${hermes_version%%$'\n'*} model=$provider/$HE_MODEL_NAME budget=${HE_TIME_BUDGET_S}s entry=$entry"
 
-# A model error is a proxy refusal, an Anthropic SDK error class or an HTTP status on stderr or in
-# the result record; everything else that fails is Hermes's.
+# A model error is a proxy refusal, an Anthropic or OpenAI SDK error class (both SDKs use these names)
+# or an HTTP status on stderr or in the result record; everything else that fails is Hermes's.
 model_error_pattern='metering proxy|AuthenticationError|PermissionDeniedError|RateLimitError|APIStatusError|APIConnectionError|InternalServerError|Error code: (401|402|403|404|429|5[0-9]{2})|HTTP (401|402|403|404|429|5[0-9]{2})'
 
 cd "$HE_WORKSPACE_DIR"
@@ -232,7 +249,7 @@ if [ "$entry" = "run" ]; then
   timeout -k 60 "$HE_TIME_BUDGET_S" hermes chat \
     --query-file "$HE_WORKSPACE_DIR/instruction.md" \
     --oneshot \
-    --provider anthropic \
+    --provider "$provider" \
     --model "$HE_MODEL_NAME"
   code=$?
   set -e
@@ -297,7 +314,7 @@ serve_turn() {
     --query-file "$prompt" \
     --continue "$key" --create-if-missing \
     --oneshot --quiet --format stream-json \
-    --provider anthropic \
+    --provider "$provider" \
     --model "$HE_MODEL_NAME" \
     --run-budget "$budget" > "$events" 2> >(tee -a "$err" >&2)
   code=$?

@@ -33,6 +33,8 @@ gbrain is not a harness; it is a knowledge brain served beside the world tools, 
 
 Every harness runs headlessly in `serve` mode: the runner drives each member's messages through the world's Slack mock on a simulation clock, and the harness answers through the one world-MCP server registered in its own configuration ([docs/adapters.md](../docs/adapters.md)). One bot token, no delegated per-member access, and the same preamble for every harness ([docs/methodology.md](../docs/methodology.md), the trial contract).
 
+Claude Code and Codex run the same way from v0.0.42 ([harnesses/claude-code](../harnesses/claude-code/README.md), [harnesses/codex](../harnesses/codex/README.md)). Codex 0.165.0 speaks only OpenAI's Responses API, which Anthropic does not serve, so Codex runs on an OpenAI model and is compared only with OpenClaw and Hermes on that same model; Claude Code and Codex are never compared with each other.
+
 ## The world and the tasks, in full
 
 The world is a simulated company, Pemberline, seeded from gbrain-evals' `messy-company-v1` dataset (a generated corpus; [world/seed/MANIFEST.json](../world/seed/MANIFEST.json) names its inputs and digests): 18 members, 13 channels, 148 files, 42 mails, calendars and private notes, served per trial by one process that logs every read and write ([world/](../world/README.md)). A task is one or more members talking to the bot in channels and DMs; the grader reads the world's state and its event log afterwards, never the bot's own account of what it did ([docs/tasks.md](../docs/tasks.md)). The multi-user slice has four families every harness can attempt (scope isolation, two members in one shared channel, an org-level rule such as a finance figure that needs approval before it is relayed, and a handoff that creates or sends something) plus a scheduled family no harness can do yet. Task set v0.1 is 10 public dev tasks and 20 held-out tasks sealed before the counted runs ([tasks/multiuser/README.md](../tasks/multiuser/README.md)); task set v0.2 adds continuity, synthesis, corrections and approval-relay families, 15 dev and 15 held-out tasks at the last counted run, with its own seal ([tasks/multiuser/v0.2/README.md](../tasks/multiuser/v0.2/README.md)). A trial passes when every required predicate holds and no forbidden effect occurred; the three counts reported beside pass are consent violations (a finance figure or outside mail that should not have gone out), leaks (a DM fact in another member's conversation) and cross-scope reads (a channel or file the requester cannot see, read directly or through gbrain).
@@ -46,6 +48,10 @@ Paid work needs `ANTHROPIC_API_KEY` in the proxy's environment only and a ledger
 - `docs/benchmarks/<run>/` holds each counted run: `PREREGISTRATION.md` and `prereg.json` (committed before the first trial; `bun runner/prereg/prereg.ts` checks the order), `report.md`, and `results/` with `trials.jsonl` (one record per trial: termination, grade, effects, predicates, usage, paths), `summary.json`, the comparison files, `proxy-usage.ndjson` (one line per proxied request, no bodies, no keys), the lease ledgers (one per shard), `taxonomy.json` where run, and per trial `events.jsonl`, `turns.jsonl` with the exact prompts, `snapshot.json.gz`, `usage.json`, `reconcile.json`, `grade.json` and `logs/adapter.log`. Harness state, workspaces, raw harness logs and per-trial tokens are not committed ([runner/README.md](../runner/README.md), the receipts recipe).
 
 ## Changelog
+
+### 2026-10-29: Claude Code and Codex (internal-task)
+
+harness-evals v0.0.42. "How every harness runs" names the two new harnesses and why Codex runs on an OpenAI model. Why: Garry asked for both as harnesses.
 
 ### 2026-10-28: page created (internal-task)
 

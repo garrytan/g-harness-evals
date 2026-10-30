@@ -13,7 +13,7 @@ import type { WorldSnapshot } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
 
 export const DEFAULT_WORLD_PATH = join('world', 'seed', 'world.json');
-/** The name a container resolves to the host (docker run --add-host host.docker.internal:host-gateway). */
+/** The name a container resolves to the host (docker run --add-host host.docker.internal:host-gateway, or the internal network's gateway). */
 export const CONTAINER_HOST = 'host.docker.internal';
 
 let gateway: string | null = null;
@@ -26,15 +26,21 @@ export function containerHostAddress(): string {
   const override = process.env.HE_CONTAINER_HOST_IP?.trim();
   const r = override ? null : spawnSync('docker', ['network', 'inspect', 'bridge', '--format', '{{(index .IPAM.Config 0).Gateway}}'], { encoding: 'utf8', timeout: 15_000 });
   const ip = override ?? (r && r.status === 0 ? r.stdout.trim() : '');
-  const canonical = (() => { try { return new URL(`http://${ip}/`).hostname; } catch { return ''; } })();
-  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip) || canonical !== ip || canonical === '0.0.0.0') {
+  if (!isHostAddress(ip)) {
     throw new RunnerError('HE-PROXY-004', `the docker bridge gateway address could not be read (${override ? `HE_CONTAINER_HOST_IP=${override}` : `docker network inspect bridge: ${(r?.stderr || r?.stdout || 'no output').toString().trim().slice(0, 200)}`}); containers reach the metering proxy and the world at that address and the runner never listens on every interface; fix: start the docker daemon, or set HE_CONTAINER_HOST_IP to the address host.docker.internal resolves to in a container`);
   }
   return gateway = ip;
 }
 
-/** The address a per-trial server listens on: the loopback, or the docker bridge gateway when containers must reach it. Never 0.0.0.0. */
-export const listenHost = (reachableFromContainers: boolean) => (reachableFromContainers ? containerHostAddress() : '127.0.0.1');
+/** A dotted IPv4 address written the way URL parsing writes it back, and not 0.0.0.0: an address one interface owns. */
+export function isHostAddress(ip: string): boolean {
+  const canonical = (() => { try { return new URL(`http://${ip}/`).hostname; } catch { return ''; } })();
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(ip) && canonical === ip && canonical !== '0.0.0.0';
+}
+
+/** The address a per-trial server listens on: the loopback, or the docker bridge gateway when containers must reach it,
+ *  or (internal-task) the gateway of the run's internal network when the caller names it. Never 0.0.0.0. */
+export const listenHost = (reachableFromContainers: boolean, gatewayAddress?: string) => (reachableFromContainers ? gatewayAddress ?? containerHostAddress() : '127.0.0.1');
 
 let cached: { path: string; world: World } | null = null;
 export function worldAt(path: string): World {
@@ -50,6 +56,8 @@ export interface TrialWorldOptions {
   worldPath?: string;
   /** true: bind the docker bridge gateway and hand containers host.docker.internal; false: loopback only. */
   reachableFromContainers: boolean;
+  /** internal-task: with reachableFromContainers, bind this gateway (the run's internal network) instead of the bridge gateway. */
+  gatewayAddress?: string;
   clockReference?: string;
 }
 
@@ -68,7 +76,7 @@ export class TrialWorld {
     this.split = opts.split;
     this.server = createWorldServer({
       world: this.world, split: opts.split, trialId: opts.trialId, actors: opts.actors,
-      hostname: listenHost(opts.reachableFromContainers), port: 0,
+      hostname: listenHost(opts.reachableFromContainers, opts.gatewayAddress), port: 0,
       eventsPath: join(opts.outDir, 'events.jsonl'),
       ...(opts.clockReference ? { clockReference: opts.clockReference } : {}),
     });

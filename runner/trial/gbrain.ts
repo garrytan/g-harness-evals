@@ -18,6 +18,11 @@
 // embeddings are metered under the trial key; no key is passed. The docker calls are asynchronous subprocesses so one
 // trial's slow container start cannot stall another trial's world under run --parallel. exportInstallView exports and
 // verifies one view of the image's install bundle (HE-GBRAIN-006).
+//
+// internal-task: on a cell with network "internal" the sidecar joins the run's internal network (runner/trial/docker.ts) instead
+// of a network of its own, with host.docker.internal mapped to that network's gateway for the proxy route. An internal
+// network publishes no ports, so the world reaches the sidecar at its address on that network, which the host owns a route
+// to; inter-container traffic is off there, so the harness cannot reach the sidecar directly any more than before.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -26,6 +31,8 @@ import { RunnerError } from '../errors.ts';
 import type { BrainIngest, CompanyBrainManifest, CompanyTokens, IngestTokens } from '../../gbrain/build-brain.ts';
 import { verifyFiles, type InstallFile, type InstallerRecord } from '../../gbrain/build-install.ts';
 import type { GbrainCellConfig } from '../contracts.ts';
+import type { InternalNetwork } from './docker.ts';
+import { isHostAddress } from './world.ts';
 
 export const DEFAULT_GBRAIN_IMAGE = 'harness-eval/gbrain:dev';
 export const GBRAIN_PORT = 3131;
@@ -62,12 +69,14 @@ export interface GbrainSidecarOptions {
   embeddings?: NonNullable<GbrainCellConfig['embeddings']>;
   openaiBaseUrl?: string;
   proxyToken?: string;
+  /** internal-task: the run's internal network; unset, a bridge network of the sidecar's own with its port published on the loopback. */
+  network?: InternalNetwork;
   readyTimeoutMs?: number;
   log?: (line: string) => void;
 }
 
 export interface GbrainSidecar {
-  /** How the world reaches the sidecar: http://127.0.0.1:<published port>. */
+  /** How the world reaches the sidecar: http://127.0.0.1:<published port>, or on the run's internal network http://<its address there>:3131. */
   url: string;
   token: string;
   tokenPath: string;
@@ -219,20 +228,24 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
   if (embeddings !== 'off' && !o.proxyToken) throw new RunnerError('HE-GBRAIN-002', `an embedded brain (${embeddings}) needs the proxy slot's per-trial token as HE_GBRAIN_PROXY_TOKEN; the proxy forwards nothing for the slot without it`);
   const log = o.log ?? (() => undefined);
   const name = `he-gbrain-${o.trialSlug}`.toLowerCase().replace(/[^a-z0-9._-]+/g, '-');
-  const network = `${name}-net`;
+  const network = o.network?.name ?? `${name}-net`;
   const out = resolve(o.outDir);
   mkdirSync(out, { recursive: true });
   const tokenPath = join(out, 'token');
   const tokensPath = join(out, 'tokens.json');
   if (!gbrainImagePresent(image)) throw new RunnerError('HE-GBRAIN-002', `gbrain sidecar image ${image} is not present; fix: docker build -f gbrain/Dockerfile -t ${image} . (gbrain/README.md)`);
   await sh(['docker', 'rm', '-f', name]);
-  await sh(['docker', 'network', 'rm', network]);
-  const net = await sh(['docker', 'network', 'create', '--driver', 'bridge', network]);
-  if (net.status !== 0) throw new RunnerError('HE-GBRAIN-002', `docker network create ${network} failed: ${(net.stderr || net.stdout).trim().slice(0, 300)}`);
+  const removeOwnNetwork = async () => { if (!o.network) await sh(['docker', 'network', 'rm', network]); };
+  if (!o.network) {
+    await sh(['docker', 'network', 'rm', network]);
+    const net = await sh(['docker', 'network', 'create', '--driver', 'bridge', network]);
+    if (net.status !== 0) throw new RunnerError('HE-GBRAIN-002', `docker network create ${network} failed: ${(net.stderr || net.stdout).trim().slice(0, 300)}`);
+  }
   const started = Date.now();
+  const route = o.network ? ['--add-host', `host.docker.internal:${o.network.gateway}`] : ['--add-host', 'host.docker.internal:host-gateway', '-p', `127.0.0.1:0:${GBRAIN_PORT}`];
   // host.docker.internal is the route to the metering proxy for an embedded brain; the entrypoint logs the URL, never a key.
-  const run = await sh(['docker', 'run', '-d', '--name', name, '--user', uidGid(), '--network', network, '--add-host', 'host.docker.internal:host-gateway',
-    '-p', `127.0.0.1:0:${GBRAIN_PORT}`, '-v', `${out}:/he-gbrain`,
+  const run = await sh(['docker', 'run', '-d', '--name', name, '--user', uidGid(), '--network', network, ...route,
+    '-v', `${out}:/he-gbrain`,
     '-e', `HE_GBRAIN_SPLIT=${o.split}`, '-e', 'HE_GBRAIN_OUT=/he-gbrain', '-e', `HE_TRIAL_ID=${o.trialId}`,
     '-e', `HE_GBRAIN_BRAIN=${brain}`, '-e', `HE_GBRAIN_SCOPE=${scope}`, '-e', `HE_GBRAIN_INGEST=${ingest}`,
     '-e', `HE_GBRAIN_SURFACE=${surface}`, '-e', `HE_GBRAIN_EMBEDDINGS=${embeddings}`,
@@ -240,7 +253,7 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
     image]);
   const image_id = (await sh(['docker', 'image', 'inspect', '-f', '{{.Id}}', image])).stdout.trim();
   if (run.status !== 0) {
-    await sh(['docker', 'network', 'rm', network]);
+    await removeOwnNetwork();
     throw new RunnerError('HE-GBRAIN-002', `docker run failed for ${image}: ${(run.stderr || run.stdout).trim().slice(0, 400)}; fix: build the image (gbrain/README.md) and check the docker daemon`);
   }
   const exited = async (): Promise<string | null> => {
@@ -256,14 +269,21 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
       const logs = await sh(['docker', 'logs', name]);
       writeFileSync(join(out, 'docker.log'), `${logs.stdout}\n${logs.stderr}`);
       await sh(['docker', 'rm', '-f', name]);
-      await sh(['docker', 'network', 'rm', network]);
+      await removeOwnNetwork();
     })();
     return stopped;
   };
   try {
-    const port = (await sh(['docker', 'port', name, `${GBRAIN_PORT}/tcp`])).stdout.trim().split('\n')[0]?.split(':').pop();
-    if (!port) throw new Error('docker port reported no published port');
-    const url = `http://127.0.0.1:${port}`;
+    let url: string;
+    if (o.network) {
+      const ip = (await sh(['docker', 'inspect', '-f', `{{(index .NetworkSettings.Networks "${network}").IPAddress}}`, name])).stdout.trim();
+      if (!isHostAddress(ip)) throw new Error(`docker inspect reported no address for ${name} on ${network}`);
+      url = `http://${ip}:${GBRAIN_PORT}`;
+    } else {
+      const port = (await sh(['docker', 'port', name, `${GBRAIN_PORT}/tcp`])).stdout.trim().split('\n')[0]?.split(':').pop();
+      if (!port) throw new Error('docker port reported no published port');
+      url = `http://127.0.0.1:${port}`;
+    }
     const timeout = o.readyTimeoutMs ?? 60_000;
     await waitHealthy(url, timeout, exited);
     const deadline = started + timeout;

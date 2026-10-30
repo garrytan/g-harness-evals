@@ -1,0 +1,41 @@
+// OpenClaw config for one headless trial on an OpenAI cell (internal-task). JSON5.
+// Written from pin.json model_openai: OpenClaw's bundled openai provider on its
+// shipped Responses API over the metering proxy, the model fixed to the cell
+// model, and the two secrets and the model name from the adapter's environment
+// by ${VAR} substitution so this file never holds a key. The model row names
+// the model only; every other field, the output cap included, comes from
+// OpenClaw's own catalog (every shard's proxy runs --max-output-tokens 128000,
+// pin.json model_openai.max_output_tokens). utilityModel maps the housekeeping model (the provider
+// default is openai/gpt-5.6-luna) to the cell model, and thinkingDefault sets
+// reasoning effort medium, the value every harness on the cell sends. Copied to
+// /harness-state/openclaw/openclaw.json by adapter.sh when HE_MODEL_BASE_URL
+// ends in /openai.
+{
+  models: {
+    mode: "merge",
+    providers: {
+      openai: {
+        baseUrl: "${HE_MODEL_BASE_URL}/v1",
+        apiKey: "${HE_MODEL_API_KEY}",
+        api: "openai-responses",
+        models: [
+          {
+            id: "${HE_MODEL_NAME}",
+            name: "${HE_MODEL_NAME}",
+          },
+        ],
+      },
+    },
+  },
+  agents: {
+    defaults: {
+      model: { primary: "openai/${HE_MODEL_NAME}" },
+      utilityModel: "openai/${HE_MODEL_NAME}",
+      thinkingDefault: "medium",
+      workspace: "/workspace",
+      // As in openclaw.json: agent --local (serve) would otherwise seed the
+      // first-run bootstrap ritual into /workspace and the first prompt.
+      skipBootstrap: true,
+    },
+  },
+}

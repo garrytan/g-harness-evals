@@ -211,6 +211,11 @@ export const CANONICAL_PRICING: Record<string, ModelPricing> = {
   // repair default (#6188) meters exactly; it is NOT a tier default yet
   // (openai-latest.ts METERED_ONLY keeps discovery on the gpt-5.6 family).
   'openai:gpt-6.1-sol':                   { input:  2.00, output: 10.00 },
+  // gpt-6-luna: the short-context standard rates the metering proxy prices it at
+  // (runner/ledger/budget-ledger.ts, developers.openai.com/api/docs/pricing,
+  // checked 2026-10-05). Here so a preregistration's planning ceiling prices
+  // the internal-task Codex, OpenClaw and Hermes cells on it.
+  'openai:gpt-6-luna':                    { input:  0.10, output:  0.50 },
 
   // ── Google ─────────────────────────────────────────────────────────────
   // `gemini-1.5-pro` was retired by Google (#3510); kept so historical

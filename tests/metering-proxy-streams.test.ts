@@ -60,7 +60,9 @@ const seen: Seen[] = [];
 async function answer(s: Socket<Conn>, f: Fixture) {
   if (!f.events) {
     const text = typeof f.body === 'string' ? f.body : JSON.stringify(f.body);
-    s.write(`HTTP/1.1 ${f.status ?? 200} Fixture\r\ncontent-type: ${f.type ?? 'application/json'}\r\ncontent-length: ${Buffer.byteLength(text)}\r\nconnection: close\r\n\r\n${text}`);
+    const head = `HTTP/1.1 ${f.status ?? 200} Fixture\r\ncontent-type: ${f.type ?? 'application/json'}\r\ncontent-length: ${Buffer.byteLength(text)}\r\nconnection: close\r\n\r\n`;
+    if (f.end === 'reset') { s.write(head + text.slice(0, text.length >> 1)); await Bun.sleep(50); s.terminate(); return; }
+    s.write(head + text);
     s.end();
     return;
   }
@@ -349,6 +351,21 @@ describe('provider error answers through the proxy', () => {
     expect(o.meter).toMatchObject({ requests: 1, unpriced: 1 });
   });
 
+  test.each([
+    ['b-a-reset', 'anthropic', { id: 'msg', type: 'message', content: [{ type: 'text', text: REPLY }], usage: { input_tokens: 120, output_tokens: 350 } }],
+    ['b-o-reset', 'openai', { id: 'resp', status: 'completed', output: [], usage: { input_tokens: 8000, output_tokens: 900 } }],
+  ] as Array<[string, 'anthropic' | 'openai', unknown]>)('%s: a %s non-streamed body that breaks off is a failed request charged its reservation, settled once', async (name, provider, body) => {
+    const o = await send(name, provider, route(provider), { status: 200, body, end: 'reset' });
+    expect(o.status).toBe(502);
+    expect(o.line).toMatchObject({ outcome: 'failed', charged_reservation: true });
+    expect(o.line.reason).toMatch(/^HTTP 200 body failed before it ended: /);
+    expect(o.line.reserved_usd!).toBeGreaterThan(0);
+    expect(o.line.actual_usd).toBe(o.line.reserved_usd!);
+    expect(o.entry).toMatchObject({ status: 'charged-reservation', actual_usd: o.entry.reserved_usd });
+    expect(o.meter).toMatchObject({ requests: 1, unpriced: 1, upstream: { failed: 1 } });
+    expect(o.meter.usd).toBeCloseTo(o.line.reserved_usd!, 12);
+  });
+
   test('a 4xx without usage settles at $0 with no reason', async () => {
     const rejected = await send('e-400', 'anthropic', whole(anthropicBody), { status: 400, body: { type: 'error', error: { type: 'invalid_request_error', message: 'bad' } } });
     expect(rejected.line).toMatchObject({ status: 400, actual_usd: 0, charged_reservation: false });
@@ -477,6 +494,21 @@ describe('the paid-request guard and in-process mode charge an unfinished stream
       const done = await call('ip-done', [A.start, ...A.blocks, A.delta, A.stop]);
       expect(done).toMatchObject({ requests: 1, unpriced: 0 });
       expect(done.usd).toBeCloseTo(ANTHROPIC_USD, 12);
+    } finally { proxy.stop(); }
+  });
+
+  test('in-process mode: a non-streamed body that breaks off is a 502 charged its reservation', async () => {
+    const whole = { ...body, stream: false };
+    const broken = (async () => new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('{"usage":{"input_tok')); c.error(new Error('socket reset')); } }), { headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch;
+    const proxy = new MeteringProxy({ fetchImpl: broken });
+    proxy.start();
+    try {
+      const res = await fetch(`http://127.0.0.1:${proxy.port}/ip-broken/anthropic/v1/messages`, { method: 'POST', body: JSON.stringify(whole) });
+      expect(res.status).toBe(502);
+      expect(await res.text()).toContain('body failed before it ended: socket reset');
+      const m = await proxy.finalize('slot:ip-broken');
+      expect(m).toMatchObject({ requests: 1, unpriced: 1 });
+      expect(m.usd).toBeCloseTo(reservationUsd(priceRequest('https://api.anthropic.com/v1/messages', whole)!), 12);
     } finally { proxy.stop(); }
   });
 });

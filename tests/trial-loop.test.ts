@@ -9,6 +9,7 @@ import type { GradeResult, TrialEvidence, TurnRequest } from '../runner/contract
 import { buildManifest, loadPrereg, RunnerError, type Cell, type Prereg } from '../runner/run.ts';
 import { executeRun, readRecords, type RunOptions } from '../runner/trial/run.ts';
 import { classify } from '../runner/trial/trial.ts';
+import { trialKey, trialSlug } from '../runner/trial/proxy.ts';
 import { loadPreamble } from '../runner/trial/task.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
@@ -209,6 +210,32 @@ describe('the multi-user trial loop in process mode', () => {
     expect(rec.usage).toMatchObject({ requests: 0, refused: 1, usd: 0 });
     const usageLines = readFileSync(join(tmp, manifest.run_id, 'proxy-usage.ndjson'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { key: string; outcome: string });
     expect(usageLines.filter((l) => l.key.startsWith('slot:')).map((l) => l.outcome)).toEqual(['refused', 'refused']);
+  }, 60_000);
+
+  test('the runner binds the trial slot with its cell model and utility_models: another model on the run-wide allowlist is refused on that slot with the slot reason (internal-task)', async () => {
+    const adapter = join(tmp, 'model-probe-adapter.ts');
+    writeFileSync(adapter, `
+      import { writeFileSync } from 'node:fs';
+      import { join } from 'node:path';
+      const statuses: Record<string, number> = {};
+      for (const model of ['claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-5-5']) {
+        const res = await fetch(process.env.HE_MODEL_BASE_URL + '/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': process.env.HE_MODEL_API_KEY! }, body: JSON.stringify({ model, max_tokens: 16, messages: [{ role: 'user', content: 'hi' }] }) });
+        statuses[model] = res.status;
+      }
+      writeFileSync(join(process.env.HE_LOG_DIR!, 'model-probe.json'), JSON.stringify(statuses));
+      await import(${JSON.stringify(ADAPTER)});
+    `);
+    const { manifest, manifestPath } = plan([cell({ id: 'fx-slot', adapter, utility_models: ['anthropic:claude-haiku-5-5'] }), cell({ id: 'fx-opus', model: 'anthropic:claude-opus-5-5' })]);
+    // A lease far below one call's reservation: a request that passes the slot check is refused by the ledger (402) and
+    // nothing is ever forwarded upstream.
+    const result = await executeRun(manifest, manifestPath, baseOpts({ leaseUsd: 0.000001, cells: ['fx-slot'] }));
+    const rec = result.records[0]!;
+    expect(JSON.parse(readFileSync(join(rec.paths.dir!, 'logs', 'model-probe.json'), 'utf8'))).toEqual({ 'claude-sonnet-5-5': 402, 'claude-haiku-5-5': 402, 'claude-opus-5-5': 403 });
+    const slot = trialSlug(rec.trial_id);
+    const lines = readFileSync(join(tmp, manifest.run_id, 'proxy-usage.ndjson'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { key: string; model: string | null; outcome: string; status: number; reason: string });
+    expect(lines.map((l) => [l.key, l.model, l.status])).toEqual([[trialKey(rec.trial_id), 'claude-sonnet-5-5', 402], [trialKey(rec.trial_id), 'claude-haiku-5-5', 402], [trialKey(rec.trial_id), 'claude-opus-5-5', 403]]);
+    expect(lines[2]!.reason).toBe(`anthropic:claude-opus-5-5 is not on slot ${slot}'s model list (anthropic:claude-sonnet-5-5, anthropic:claude-haiku-5-5)`);
+    expect(lines.every((l) => l.outcome === 'refused')).toBe(true);
   }, 60_000);
 
   test('a lease refusal is model_error with cap_stop, continues by default and stops the run with exit 3 under --stop-on-cap', async () => {

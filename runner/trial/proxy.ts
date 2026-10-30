@@ -11,6 +11,13 @@
 // summarizeUsage keeps /v1/embeddings lines out of the harness figures (requests, tokens, refused, failed) while usd stays
 // the trial's total, and embeddingUsage reports them on their own (gbrain.embedding_usage in the trial record), so
 // reconcile.json's invariant holds: harness requests plus embedding requests equal the meter's.
+//
+// internal-task: each trial slot is bound with its cell's models (the cell model and its utility_models, runner/run.ts cellModels) and
+// the gbrain slot with its embedding model, so the proxy refuses another model on that slot although another cell of the run put
+// it on the run-wide --allow-models, which stays the outer bound.
+//
+// internal-task: a run of cells with network "internal" binds the proxy on the gateway of the run's internal docker network
+// instead of the bridge gateway; containers still reach it as host.docker.internal, which the runner maps to that gateway.
 
 import { existsSync, mkdirSync, openSync, readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
@@ -29,6 +36,8 @@ export interface RunProxyOptions {
   maxOutputTokens?: number | null;
   /** Bind the docker bridge gateway so containers reach it through host.docker.internal; otherwise the loopback. */
   reachableFromContainers: boolean;
+  /** internal-task: with reachableFromContainers, bind this gateway (the run's internal network) instead of the bridge gateway. */
+  gatewayAddress?: string;
   /** Environment for the proxy process. Defaults to this process's environment, which is where the provider keys live. */
   env?: Record<string, string | undefined>;
   /** Close a lease left open in the ledger by an earlier run id (the proxy's --new-run). */
@@ -71,7 +80,7 @@ export class RunProxy {
   static async start(opts: RunProxyOptions): Promise<RunProxy> {
     mkdirSync(opts.runDir, { recursive: true });
     const port = await freePort();
-    const host = listenHost(opts.reachableFromContainers);
+    const host = listenHost(opts.reachableFromContainers, opts.gatewayAddress);
     const controlToken = randomBytes(16).toString('base64url');
     const usageLog = join(opts.runDir, 'proxy-usage.ndjson');
     const logFd = openSync(join(opts.runDir, 'proxy.log'), 'a');
@@ -115,8 +124,9 @@ export class RunProxy {
     return res.json();
   }
 
-  /** Charge the slot to `key`; with `token`, the proxy forwards only requests that present it. */
-  bind(slot: string, key: string, token?: string) { return this.control('/__proxy/bind', { slot, key, ...(token ? { token } : {}) }); }
+  /** Charge the slot to `key`; with `token`, the proxy forwards only requests that present it; with `models` (provider:model
+   *  ids, internal-task), only requests for those models, inside the run-wide --allow-models. */
+  bind(slot: string, key: string, token?: string, models?: string[]) { return this.control('/__proxy/bind', { slot, key, ...(token ? { token } : {}), ...(models ? { models } : {}) }); }
   unbind(slot: string) { return this.control('/__proxy/unbind', { slot }); }
   finalize(key: string, timeoutMs = 30_000): Promise<Meter> { return this.control('/__proxy/finalize', { key, timeout_ms: timeoutMs }) as Promise<Meter>; }
 

@@ -1,0 +1,43 @@
+{
+ "adapter_sha256": "5e7168caeff40a99efbbc5c95ec7e5a028c323ef524675c99675eeb5bdc6fe9d",
+ "turns": [
+  {
+   "argv": [
+    "chat",
+    "--query-file",
+    "/he-logs/turns/turn-0001.prompt.md",
+    "--continue",
+    "dm:alice",
+    "--create-if-missing",
+    "--oneshot",
+    "--quiet",
+    "--format",
+    "stream-json",
+    "--provider",
+    "anthropic",
+    "--model",
+    "claude-haiku-5-5",
+    "--run-budget",
+    "60"
+   ],
+   "env": {
+    "ANTHROPIC_API_KEY": "trial-token:golden.00000000000000000000000000000000",
+    "ANTHROPIC_BASE_URL": "http://host.docker.internal:18999/golden/anthropic",
+    "HERMES_HOME": "/harness-state/hermes",
+    "HOME": "/harness-state"
+   }
+  }
+ ],
+ "config": "# Hermes Agent config for one headless trial. Written from pin.json. Copied to\n# $HERMES_HOME/config.yaml (under /harness-state) by adapter.sh before the\n# turn. Secrets are not here: the adapter exports ANTHROPIC_API_KEY (the\n# per-trial proxy token) and ANTHROPIC_BASE_URL (the proxy) in the process\n# environment, which the anthropic provider reads.\n_config_version: 46\n\nmodel:\n  provider: \"anthropic\"\n  default: \"claude-sonnet-5-5\"\n\nterminal:\n  backend: \"local\"\n  cwd: \"/workspace\"\n  timeout: 180\n  home_mode: \"profile\"\n\ndisplay:\n  streaming: false\n\n# Nothing that needs a person: no update checks, no telemetry prompts.\nauto_update: false\ncheck_for_updates: false\n\nmcp_servers:\n  world:\n    url: \"http://127.0.0.1:9/mcp\"\n    headers:\n      Authorization: \"Bearer world-token-golden\"\n    timeout: 120\n    connect_timeout: 60\n",
+ "response": {
+  "turn": 1,
+  "exit": 0,
+  "reply_text": "ok"
+ },
+ "ready": {
+  "harness": "hermes",
+  "version": "v2026.9.24",
+  "trial": "golden",
+  "session_keys": "hermes chat -c dm:<member> | channel:<id>"
+ }
+}

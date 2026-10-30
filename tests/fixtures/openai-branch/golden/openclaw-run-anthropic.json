@@ -1,0 +1,33 @@
+{
+ "adapter_sha256": "25f1940e4e4a726069628406e7c1ed96c70e706eea769c5418f7a09698f52fbf",
+ "turns": [
+  {
+   "argv": [
+    "agent",
+    "exec",
+    "--message-file",
+    "/workspace/instruction.md",
+    "--cwd",
+    "/workspace",
+    "--config",
+    "/harness-state/openclaw/openclaw.json",
+    "--state-dir",
+    "/harness-state/openclaw/exec",
+    "--model",
+    "anthropic/claude-haiku-5-5",
+    "--timeout",
+    "60",
+    "--json"
+   ],
+   "env": {
+    "HOME": "/harness-state",
+    "OPENCLAW_CONFIG_PATH": "/harness-state/openclaw/openclaw.json",
+    "OPENCLAW_STATE_DIR": "/harness-state/openclaw",
+    "OPENCLAW_VERSION": "2026.10.6"
+   }
+  }
+ ],
+ "config": "// OpenClaw config for one headless trial. JSON5. Written from pin.json: the\n// provider is Anthropic over the metering proxy, the model is fixed, and the\n// two secrets come from the adapter's environment by ${VAR} substitution so\n// this file never holds a key. Copied to /harness-state/openclaw/openclaw.json\n// by adapter.sh so OpenClaw can write beside it if it wants to.\n{\n  models: {\n    mode: \"merge\",\n    providers: {\n      anthropic: {\n        baseUrl: \"${HE_MODEL_BASE_URL}\",\n        apiKey: \"${HE_MODEL_API_KEY}\",\n        api: \"anthropic-messages\",\n        models: [\n          {\n            id: \"claude-sonnet-5-5\",\n            name: \"Claude Sonnet 5.5\",\n            reasoning: true,\n            input: [\"text\"],\n            contextWindow: 200000,\n            maxTokens: 16384,\n            cost: { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },\n          },\n        ],\n      },\n    },\n  },\n  agents: {\n    defaults: {\n      model: { primary: \"anthropic/claude-sonnet-5-5\" },\n      workspace: \"/workspace\",\n      // agent exec sets this itself; agent --local (serve) would otherwise seed\n      // the first-run bootstrap ritual (BOOTSTRAP.md, SOUL.md, IDENTITY.md,\n      // USER.md, AGENTS.md) into /workspace and the first prompt.\n      skipBootstrap: true,\n    },\n  },\n}\n",
+ "response": null,
+ "ready": null
+}

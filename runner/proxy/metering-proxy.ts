@@ -35,7 +35,7 @@
  * Attribution across processes (lease mode): the harness binds a slot (the
  * path segment a shim's base URL carries) to a key around each question or
  * namespace ingest and reads the key's meter afterwards, through
- * `POST /__proxy/bind {slot, key, token?}`, `POST /__proxy/unbind {slot}` and
+ * `POST /__proxy/bind {slot, key, token?, models?}`, `POST /__proxy/unbind {slot}` and
  * `POST /__proxy/finalize {key}`. With `--control-token` (or
  * SHOOTOUT_PROXY_CONTROL_TOKEN) these need the `x-proxy-control` header, so a
  * vendor container cannot move charges.
@@ -50,6 +50,11 @@
  * trial's slot with a random per-trial token and hands only the token to the
  * harness, and the gbrain sidecar's slot with its own token. A slot bound
  * without a token (the embedded image build) accepts any credential while bound.
+ * In lease mode a slot bound with `models` (a list of provider:model ids,
+ * internal-task; in-process mode ignores it) forwards only requests for those models: any other priced model is refused 403 before
+ * reserving, logged with its model and the reason, at $0, inside the run-wide
+ * `--allow-models` bound, which still applies. A bind without `models` adds no
+ * per-slot limit.
  *
  * The proxy never listens on a wildcard address (0.0.0.0, ::, or an empty
  * host): the runner binds it to the loopback, or to the docker bridge gateway
@@ -211,14 +216,14 @@ export class MeteringProxy {
   /** Slots whose provider requests are charged to a ledger allowance (slot builds), not one ledger entry each. */
   readonly allowances = new Map<string, BudgetAllowance>();
   readonly counts = { forwarded: 0, refused: 0, failed: 0, tripwires: 0 };
-  private bindings = new Map<string, { key: string; token: string | null }>();
+  private bindings = new Map<string, { key: string; token: string | null; models: string[] | null }>();
   private inflight = new Map<string, number>();
   private waiters = new Map<string, Array<() => void>>();
   /** `transform` (in-process mode) rewrites a response body after it is metered: a mutant that drops a model's output, for example. */
   constructor(private options: { fetchImpl?: typeof fetch; hostname?: string; port?: number; upstream?: Partial<Record<ProviderName, string>>; policy?: LeasePolicy; controlToken?: string | null; transform?: (slot: string, target: string, text: string) => string } = {}) {}
   get port(): number { return this.server!.port as number; }
-  /** Charge the slot's provider requests to `key` (a cell id) from now on; with `token`, only requests presenting it. */
-  bind(slot: string, key: string, token: string | null = null) { this.bindings.set(slot, { key, token }); }
+  /** Charge the slot's provider requests to `key` (a cell id) from now on; with `token`, only requests presenting it; with `models`, only requests for those provider:model ids. */
+  bind(slot: string, key: string, token: string | null = null, models: string[] | null = null) { this.bindings.set(slot, { key, token, models }); }
   /** With `key`, only drops the binding if it is still that key: a released slot may already be bound to the next cell. */
   unbind(slot: string, key?: string) { if (key === undefined || this.bindings.get(slot)?.key === key) this.bindings.delete(slot); }
   private meter(key: string): Meter { let m = this.meters.get(key); if (!m) this.meters.set(key, m = newMeter()); return m; }
@@ -270,7 +275,7 @@ export class MeteringProxy {
         let streaming = false;
         try {
           const r = this.options.policy
-            ? await this.forwardLeased(req, prov, rest, url.search, key, send, () => { streaming = true; return () => this.settled(key); })
+            ? await this.forwardLeased(req, prov, rest, url.search, key, send, () => { streaming = true; return () => this.settled(key); }, slot, binding?.models ?? null)
             : await this.forwardInProcess(req, slot, prov, rest, url.search, key, send);
           return r;
         } finally { if (!streaming) this.settled(key); }
@@ -288,9 +293,13 @@ export class MeteringProxy {
 
   private async control(path: string, req: Request): Promise<Response> {
     if (this.options.controlToken && req.headers.get('x-proxy-control') !== this.options.controlToken) return json(403, 'invalid_request', 'control endpoints need the x-proxy-control token');
-    let body: { slot?: string; key?: string; token?: string; timeout_ms?: number };
+    let body: { slot?: string; key?: string; token?: string; models?: unknown; timeout_ms?: number };
     try { body = await req.json() as typeof body; } catch { return json(400, 'invalid_request', 'control body is not JSON'); }
-    if (path === '/__proxy/bind' && body.slot && body.key) { this.bind(body.slot, body.key, typeof body.token === 'string' && body.token ? body.token : null); return Response.json({ ok: true }); }
+    if (path === '/__proxy/bind' && body.slot && body.key) {
+      if (body.models !== undefined && (!Array.isArray(body.models) || body.models.some(m => typeof m !== 'string' || !/^[a-z]+:[A-Za-z0-9._-]+$/.test(m)))) return json(400, 'invalid_request', 'bind models must be a list of provider:model ids');
+      this.bind(body.slot, body.key, typeof body.token === 'string' && body.token ? body.token : null, body.models === undefined ? null : body.models as string[]);
+      return Response.json({ ok: true });
+    }
     if (path === '/__proxy/unbind' && body.slot) { this.unbind(body.slot); return Response.json({ ok: true }); }
     if (path === '/__proxy/finalize' && body.key) return Response.json(await this.finalize(body.key, Math.min(Number(body.timeout_ms ?? 30_000), 120_000)));
     return json(404, 'invalid_request', `no control route ${path}`);
@@ -330,7 +339,12 @@ export class MeteringProxy {
       if ((e as Error).name !== 'BudgetExceededError' && price) this.charge(key, prov, price.model, reservationUsd(price), true);
       return json(502, (e as Error).name === 'BudgetExceededError' ? 'budget' : 'product_error', (e as Error).message);
     }
-    const text = await res.text();
+    const { text, error } = await readBody(res.body);
+    // A body that broke off: a stream keeps its partial usage below (charged at no less than the reservation); anything else is charged its reservation.
+    if (error && !(res.headers.get('content-type') ?? '').includes('event-stream')) {
+      if (price) this.charge(key, prov, price.model, reservationUsd(price), true);
+      return json(502, 'product_error', `upstream failed: HTTP ${res.status} body failed before it ended: ${error.message}`);
+    }
     if (price) {
       const streamed = (res.headers.get('content-type') ?? '').includes('event-stream');
       let cost: ReturnType<typeof usageCost> = null;
@@ -348,7 +362,7 @@ export class MeteringProxy {
   }
 
   /** Lease mode: allowlist, tripwire, output cap, price, reserve, inject the key, forward, settle. Every refusal happens before forwarding. */
-  private async forwardLeased(req: Request, prov: ProviderName, route: string, search: string, key: string, send: Send, beginStream: () => () => void): Promise<Response> {
+  private async forwardLeased(req: Request, prov: ProviderName, route: string, search: string, key: string, send: Send, beginStream: () => () => void, slot: string, slotModels: string[] | null): Promise<Response> {
     const p = this.options.policy!;
     const at = new Date().toISOString();
     const refuse = (status: number, kind: string, reason: string, model: string | null = null) => {
@@ -386,6 +400,7 @@ export class MeteringProxy {
     try { price = priceRequest(`${UPSTREAM[prov]}${route}${search}`, body); }
     catch (e) { return refuse(402, 'budget', `unpriced request refused: ${(e as Error).message}`, model); }
     if (price && p.allowModels && !p.allowModels.includes(`${prov}:${price.model}`)) return refuse(403, 'budget', `${prov}:${price.model} is not on this cell's model allowlist`, model);
+    if (price && slotModels && !slotModels.includes(`${prov}:${price.model}`)) return refuse(403, 'budget', `${prov}:${price.model} is not on slot ${slot}'s model list (${slotModels.join(', ') || 'none'})`, model);
     const bounded = price ? { ...price, inputTokens: Math.max(price.inputTokens, Buffer.byteLength(outBody ?? '') + 64) } : null;
     const reserved = bounded ? reservationUsd(bounded) : 0;
     let entry: string | null = null;
@@ -416,15 +431,17 @@ export class MeteringProxy {
       this.log({ at, key, provider: prov, route, model: bounded?.model ?? model, outcome: 'forwarded', ...(reason ? { reason } : {}), status, reserved_usd: reserved, actual_usd: usd,
         input_tokens: cost?.input_tokens, output_tokens: cost?.output_tokens, ...(cost && cached !== undefined ? { cached_tokens: cached } : {}), charged_reservation: charged, streamed: isStream, ...knobs });
     };
-    let res: Response;
-    try { res = await send(target, { method: req.method, headers, body: outBody, timeout: false, signal: AbortSignal.timeout(UPSTREAM_DEADLINE_MS) } as RequestInit); }
-    catch (e) {
+    // The upstream never answered, or its non-streamed body broke off: usage is unknown, so the reservation is charged.
+    const failed = (message: string) => {
       if (entry) p.lease.settle(entry, null);
       this.charge(key, prov, bounded?.model ?? null, reserved, !!bounded);
       this.observe(key, 'failed');
-      this.log({ at, key, provider: prov, route, model, outcome: 'failed', reason: (e as Error).message.slice(0, 300), reserved_usd: reserved, actual_usd: reserved, charged_reservation: !!bounded, ...knobs });
-      return json(502, 'product_error', `upstream failed: ${(e as Error).message}`);
-    }
+      this.log({ at, key, provider: prov, route, model, outcome: 'failed', reason: message.slice(0, 300), reserved_usd: reserved, actual_usd: reserved, charged_reservation: !!bounded, ...knobs });
+      return json(502, 'product_error', `upstream failed: ${message}`);
+    };
+    let res: Response;
+    try { res = await send(target, { method: req.method, headers, body: outBody, timeout: false, signal: AbortSignal.timeout(UPSTREAM_DEADLINE_MS) } as RequestInit); }
+    catch (e) { return failed((e as Error).message); }
     const out = new Headers(res.headers);
     for (const h of ['content-encoding', 'content-length', 'transfer-encoding']) out.delete(h);
     if ((res.headers.get('content-type') ?? '').includes('event-stream') && res.body) {
@@ -444,7 +461,8 @@ export class MeteringProxy {
       ).finally(done);
       return new Response(client, { status: res.status, headers: out });
     }
-    const text = await res.text();
+    const { text, error } = await readBody(res.body);
+    if (error) return failed(`HTTP ${res.status} body failed before it ended: ${error.message}`);
     let cost: ReturnType<typeof usageCost> = null;
     let parsed = true;
     try { JSON.parse(text); } catch { parsed = false; }
@@ -471,7 +489,7 @@ export class ProxyControl {
     if (!res.ok) throw new Error(`metering proxy ${path}: HTTP ${res.status}`);
     return res.json();
   }
-  bind(slot: string, key: string, token?: string) { return this.post('/__proxy/bind', { slot, key, ...(token ? { token } : {}) }); }
+  bind(slot: string, key: string, token?: string, models?: string[]) { return this.post('/__proxy/bind', { slot, key, ...(token ? { token } : {}), ...(models ? { models } : {}) }); }
   unbind(slot: string) { return this.post('/__proxy/unbind', { slot }); }
   finalize(key: string, timeoutMs = 30_000) { return this.post('/__proxy/finalize', { key, timeout_ms: timeoutMs }) as Promise<Meter>; }
   /** Run `fn` with the slot's provider calls charged to `key`; returns its result and the key's meter. */

@@ -7,6 +7,8 @@ One directory per harness, each a self-contained Docker image that implements th
 | [openclaw](openclaw/) | npm `openclaw@2026.10.6` | in-container | `harness-eval/openclaw:dev` | pass, see README | 3 turns completed, world-MCP calls logged, session carried; see README |
 | [hermes](hermes/) | `NousResearch/hermes-agent` tag `v2026.9.24` (`f97608f`) | in-container | `harness-eval/hermes:dev` | pass, see README | 3 turns completed, world-MCP calls logged, session carried; see README |
 | [qm](qm/) | `yc-software/qm` tag `v0.1.15` (`7417aa2`) | sidecar (compose: Postgres, core, task) | `harness-eval/qm:dev`, `harness-eval/qm-sandbox:dev` | pass, see README | 3 turns completed, world-MCP calls logged, session carried; see README |
+| [claude-code](claude-code/) | npm `@anthropic-ai/claude-code@2.1.312` | in-container | `harness-eval/claude-code:dev` | keyless only (fake endpoint through the real proxy) | keyless only: 2 turns, world-MCP call logged, session carried; see README |
+| [codex](codex/) | npm `@openai/codex@0.165.0` | in-container | `harness-eval/codex:dev` | keyless only (fake endpoint through the real proxy) | keyless only: 2 turns, world-MCP call logged, thread carried; see README |
 | [_fake](_fake/) | none | in-container | `harness-eval/fake:dev` | protocol fixture for the conformance test | protocol fixture for the serve conformance tests |
 
 ## Build
@@ -16,6 +18,8 @@ docker build -t harness-eval/openclaw:dev harnesses/openclaw
 docker build -t harness-eval/hermes:dev harnesses/hermes
 docker build -t harness-eval/qm:dev harnesses/qm
 docker build -f harnesses/qm/Dockerfile.sandbox -t harness-eval/qm-sandbox:dev harnesses/qm
+docker build -t harness-eval/claude-code:dev harnesses/claude-code
+docker build -t harness-eval/codex:dev harnesses/codex
 docker build -t harness-eval/fake:dev harnesses/_fake
 ```
 
@@ -76,6 +80,10 @@ bun harnesses/serve-smoke.ts --harness hermes --trial-id hermes-serve-1 \
 The slot `hermes-serve-1` is bound with `$cred` first, as under "Run one trial"; the `_fake` harness makes no model call and needs no proxy.
 
 ## Changelog
+
+### 2026-10-29: Claude Code and Codex (internal-task)
+
+harness-evals v0.0.42. Two rows and two build lines: `claude-code` and `codex`, proven keyless against fake endpoints through the real metering proxy. OpenClaw and Hermes gain an OpenAI branch (their READMEs, "OpenAI cells"). Why: Garry asked for both as harnesses; Codex runs on an OpenAI model because it speaks only the Responses API.
 
 ### 2026-10-22: serve for every harness (M1 lane C)
 

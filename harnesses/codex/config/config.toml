@@ -1,0 +1,58 @@
+# Codex CLI config for one headless trial. Written from pin.json. adapter.sh
+# fills the @...@ fields (the cell model, the proxy URL, codex_config in
+# pin.json) and writes the result to $CODEX_HOME/config.toml
+# (/harness-state/codex) before the first turn; in serve it appends
+# [mcp_servers.world] and, on a gbrain cell, [mcp_servers.gbrain]. Every key
+# here was accepted by codex 0.165.0 with --strict-config. No secret is here:
+# the provider reads the per-trial proxy token from HE_MODEL_API_KEY and each
+# MCP server its bearer from the variable it names.
+model = @MODEL@
+review_model = @MODEL@
+experimental_realtime_ws_model = @MODEL@
+model_provider = "he-proxy"
+model_reasoning_effort = @EFFORT@
+plan_mode_reasoning_effort = @EFFORT@
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+web_search = "disabled"
+check_for_update_on_startup = false
+
+[model_providers.he-proxy]
+name = "harness-evals metering proxy"
+base_url = @BASE_URL@
+env_key = "HE_MODEL_API_KEY"
+wire_api = "responses"
+request_max_retries = @REQUEST_RETRIES@
+stream_max_retries = @STREAM_RETRIES@
+supports_websockets = false
+
+[model_providers.he-proxy.capabilities]
+remote_compaction = "unsupported"
+external_web_access = false
+
+[agents]
+default_subagent_model = @MODEL@
+default_subagent_reasoning_effort = @EFFORT@
+
+[memories]
+extract_model = @MODEL@
+consolidation_model = @MODEL@
+
+[tools]
+web_search = false
+
+[features]
+plugins = false
+unbounded_connection_retries = false
+
+[analytics]
+enabled = false
+
+[feedback]
+enabled = false
+
+[otel]
+exporter = "none"
+metrics_exporter = "none"
+trace_exporter = "none"
+log_user_prompt = false

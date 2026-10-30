@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Test stand-in for the openclaw CLI (tests/openai-branch.test.ts). An agent turn
+# (`openclaw agent ...`) is recorded and answered without a model: the arguments
+# and the provider environment the adapter handed OpenClaw go to
+# $HE_LOG_DIR/stub-turns.jsonl, and the reply is a fixed envelope. In the image
+# every other command runs the pinned CLI, so the config the adapter writes is
+# OpenClaw's own. On a host without the pinned CLI (the process-level golden
+# test) --version prints $OPENCLAW_VERSION, `mcp set <name> <json>` is recorded
+# to $HE_LOG_DIR/stub-mcp.jsonl and leaves the config alone, and the other mcp
+# commands succeed with no output.
+set -euo pipefail
+if [ "${1:-}" != agent ]; then
+  [ -x /opt/harness/bin/openclaw ] && exec /opt/harness/bin/openclaw "$@"
+  case "${1:-} ${2:-}" in
+    "--version "*) echo "OpenClaw $OPENCLAW_VERSION" ;;
+    "mcp set") python3 -c 'import json, sys; print(json.dumps({"name": sys.argv[1], "definition": json.loads(sys.argv[2])}))' "$3" "$4" >> "$HE_LOG_DIR/stub-mcp.jsonl" ;;
+    "mcp "*) ;;
+    *) echo "openclaw stub: no host stand-in for: $*" >&2; exit 2 ;;
+  esac
+  exit 0
+fi
+python3 - "$@" >> "$HE_LOG_DIR/stub-turns.jsonl" <<'PY'
+import json, os, re, sys
+env = {k: v for k, v in sorted(os.environ.items()) if re.match(r"^(ANTHROPIC_|OPENAI_|OPENCLAW_|HOME$)", k)}
+print(json.dumps({"argv": sys.argv[1:], "env": env}))
+PY
+if [ "${2:-}" = exec ]; then
+  printf '{"ok":true,"status":"ok","final":"ok","payloads":[{"text":"ok"}]}\n'
+else
+  printf '{"payloads":[{"text":"ok"}],"meta":{}}\n'
+fi

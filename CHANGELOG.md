@@ -2,6 +2,28 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.43] - 2026-10-29
+
+### internal-task: Claude Code and Codex as harnesses, an OpenAI branch for OpenClaw and Hermes, and an internal network option
+
+- `harnesses/claude-code/` (new): `@anthropic-ai/claude-code@2.1.312` on node:24-bookworm-slim, native binary checked by sha256. `run` and `serve` over `claude -p --output-format stream-json` with `--permission-mode bypassPermissions`, WebSearch and WebFetch denied, world (and gbrain) MCP from `--mcp-config --strict-mcp-config`, one session per conversation key (UUIDv5, `--session-id` then `--resume`). Every model setting the CLI reads is pinned to the cell model and model fallback is off; vendor side traffic, telemetry, error reporting and the auto-updater are off; retries are 2. The adapter probes MCP `tools/list` before ready and fails a turn whose init record shows a server not connected.
+- `harnesses/codex/` (new): `@openai/codex@0.165.0`, vendored binary checked by sha256. `codex exec --json` through a custom provider at `$HE_MODEL_BASE_URL/v1` with `wire_api = "responses"` and the per-trial token from `env_key`; `approval_policy = "never"` and `sandbox_mode = "danger-full-access"` (the container is the sandbox); web search, plugins, analytics, feedback, OTEL and update checks off; reasoning effort `medium`; one thread per conversation key, resumed with `codex exec resume`. Same MCP checks as Claude Code.
+- `harnesses/openclaw`, `harnesses/hermes`: an OpenAI branch chosen when `HE_MODEL_BASE_URL` ends in `/openai` (OpenClaw's `openai-responses` provider, Hermes `--provider openai-api`, reasoning effort `medium`, the housekeeping model mapped to the cell model). Anthropic cells are byte-identical to before apart from Hermes's `security.allow_lazy_installs: false` (below); golden tests prove the generated config and turn arguments changed only there.
+- Runner: a cell field `network: "internal"` runs the cell's containers on a per-run `--internal` Docker network with no direct egress; the proxy, world and gbrain tap bind that network's gateway and the harness reaches them through `host.docker.internal` as before. QM compose cells, process mode and mixed invocations are refused (HE-NET-001). Cells without the field run exactly as before.
+- Tests (keyless): `tests/claude-code-adapter.test.ts`, `tests/codex-adapter.test.ts`, `tests/openai-branch.test.ts`, `tests/internal-network.test.ts`. The container tests send each CLI's traffic through the real lease-mode metering proxy into fakes (`tests/fixtures/fake-responses.ts`, `tests/fixtures/openai-branch/`).
+- Review fixes (#118):
+  - Codex maps `Connection failed: error sending request` to 3, as Claude Code and Hermes map an unreachable endpoint.
+  - Claude Code fails a turn with exit 2 and a null reply when a `world` or `gbrain` tool call fails at the transport level after a good init. The CLI hands the model an is_error `tool_result` and exits 0; the adapter reads it (stub and container tests). The match is anchored at the start of the CLI's own message and covers the CLI's MCP tool timeout, so a tool's own error text such as `no member ENOTFOUND` keeps a good turn (checked against the pinned CLI too).
+  - Claude Code sets its SIGTERM trap before the first turn, so `run` stops on `docker stop` too (exit 2).
+  - Both new adapters exit 2 at startup unless `HE_MODEL_BASE_URL` ends in `/openai` (Codex) or `/anthropic` (Claude Code).
+  - OpenClaw's OpenAI template drops its `maxTokens: 16384`; OpenClaw now states its catalog's 128000 for `gpt-6-luna`, the shards' proxy cap. Hermes on OpenAI states no cap (the proxy fills in 128000); its pin and README said 32768 and are corrected.
+  - The proxy authorizes models per slot: `POST /__proxy/bind` takes an optional `models` list and refuses any other priced model on that slot with 403 at $0, inside the run-wide `--allow-models`. The runner binds each trial slot with its cell's model and `utility_models`, and a gbrain slot with its embedding model. Binds without `models` behave as before.
+  - Hermes sets `security.allow_lazy_installs: false` in both configs, so it no longer tries to pip-install `boto3` and `edge-tts` during a turn. On the internal network each attempt failed on DNS and added about 55 s to every turn (the internal-task smoke); the internal-network serve turn drops from 60 to 110 s to about 12 s.
+  - The metering proxy treats a non-streamed answer whose body breaks off as a failed request: 502 to the client, charged its reservation, settled and logged once. Before, a lease-mode body reset left the reservation unsettled and the trial's meter at $0 (`tests/metering-proxy-streams.test.ts`, lease and in-process).
+  - `runner/pricing/model-pricing.ts` prices `openai:gpt-6-luna` at the proxy's standard rates, so a preregistration's planning ceiling can price cells on it.
+  - Preregistration refuses a `codex` cell without `network: "internal"` (HE-NET-001). `tests/internal-network-harnesses.test.ts` (new) runs Claude Code, Codex, OpenClaw and Hermes on the internal network through the real proxy into the fakes: each turn completes, the world-MCP call lands, and a direct connection out fails.
+  - `tests/openai-branch.test.ts` checks the OpenClaw and Hermes Anthropic goldens with stub CLIs on the host, so CI without the images still enforces byte identity. OpenClaw reads its templates from beside `adapter.sh` for that, and so does Hermes for its OpenAI template; Hermes's Anthropic copy keeps the literal `/opt/harness` line the gstack overlay copies, and the process test seeds that config from the checkout.
+
 ## [0.0.42] - 2026-10-30
 
 ### internal-task: seal.ts --from-backup requires --sha256

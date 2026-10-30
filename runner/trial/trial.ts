@@ -15,11 +15,11 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSyn
 import { join, resolve } from 'node:path';
 import type { GradeResult, HarnessMode, Termination, TrialEvidence, TrialEmbeddingUsage, TrialGbrain, TrialGbrainInstall, TrialRecord, TrialUsage, TurnWindow } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
-import { taskDirFor, resolveGbrain, type Cell, type ResolvedGbrain, type Trial } from '../run.ts';
+import { cellModels, taskDirFor, resolveGbrain, type Cell, type ResolvedGbrain, type Trial } from '../run.ts';
 import type { WorldEvent } from '../../world/services/events.ts';
 import type { World } from '../../world/types.ts';
 import { loadScript, startScriptedHarness } from '../scripted/executor.ts';
-import { startComposeHarness, startDockerHarness } from './docker.ts';
+import { type InternalNetwork, startComposeHarness, startDockerHarness } from './docker.ts';
 import { type GbrainSidecar, type InstallViewManifest, checkCompanyGrants, checkCompanyTokens, checkIngestTokens, exportInstallView, startGbrainSidecar, verifyInstallView } from './gbrain.ts';
 import { GBRAIN_WRITE_TOOLS } from '../../world/services/gbrain-tap.ts';
 import { canReadFile } from '../grade/predicates.ts';
@@ -71,6 +71,8 @@ export interface TrialOptions {
   /** Extra environment for the harness (process and docker), for debugging a harness; never a key. */
   harnessEnv?: Record<string, string>;
   repoRoot?: string;
+  /** internal-task: the run's internal network, which executeRun creates when a cell has network "internal". */
+  network?: InternalNetwork;
 }
 
 export interface TrialContext {
@@ -148,7 +150,10 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   // internal-task: a process-mode harness runs as the runner's user beside the trial directory, so it could read the per-source ingest
   // tokens and write every member's private source directly, past the tap; the member brain's tokens stay docker-only.
   if (cell.gbrain?.ingest === 'live' && mode === 'process') throw new RunnerError('HE-GBRAIN-001', `cell ${cell.id} carries gbrain.ingest "live" but runs in process mode; the ingest tokens under the trial directory would be readable by the harness process. fix: run the cell in docker mode`);
-  const world = new TrialWorld({ trialId: trial.id, split: cell.split, actors: task.actors, outDir: dirs.root, worldPath: opts.worldPath, reachableFromContainers: docker });
+  // internal-task: an internal cell's world, sidecar and harness container use the run's internal network and its gateway.
+  if (cell.network === 'internal' && (!docker || !opts.network)) throw new RunnerError('HE-NET-001', `cell ${cell.id} has network "internal" but the trial ${docker ? 'was given no internal network' : `runs in ${mode} mode`}; fix: run it through executeRun in docker mode`);
+  const network = cell.network === 'internal' ? opts.network : undefined;
+  const world = new TrialWorld({ trialId: trial.id, split: cell.split, actors: task.actors, outDir: dirs.root, worldPath: opts.worldPath, reachableFromContainers: docker, ...(network ? { gatewayAddress: network.gateway } : {}) });
   log(`world for ${trial.id} at ${world.localUrl} (harness sees ${world.harnessUrl}); ${task.turns.length} turns, budget ${task.time_budget_s} s per turn`);
   const proxy = mode === 'scripted' ? null : ctx.proxy;
 
@@ -163,9 +168,9 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     try {
       if (gbrain.embeddings !== 'off' && !proxy) throw new RunnerError('HE-GBRAIN-005', `cell ${cell.id} has embeddings ${gbrain.embeddings} but the trial runs without a metering proxy; the sidecar's embedding calls must be metered`);
       // The sidecar slot exists only while an embedded brain needs it; a keyword brain makes no provider call and gets no slot.
-      if (gbrain.embeddings !== 'off') await proxy!.bind(gbrainSlot, key, gbrainToken);
+      if (gbrain.embeddings !== 'off') await proxy!.bind(gbrainSlot, key, gbrainToken, [gbrain.embeddings]);
       sidecar = await startGbrainSidecar({ trialId: trial.id, trialSlug: slot, split: cell.split, outDir: join(dirs.root, 'gbrain'), image: opts.gbrainImage, brain: gbrain.brain, scope: gbrain.scope, ingest: gbrain.ingest,
-        surface: gbrain.surface, embeddings: gbrain.embeddings, ...(gbrain.embeddings !== 'off' ? { openaiBaseUrl: proxy!.baseUrlFor(gbrainSlot, 'openai', true), proxyToken: gbrainToken } : {}), log });
+        surface: gbrain.surface, embeddings: gbrain.embeddings, ...(gbrain.embeddings !== 'off' ? { openaiBaseUrl: proxy!.baseUrlFor(gbrainSlot, 'openai', true), proxyToken: gbrainToken } : {}), ...(network ? { network } : {}), log });
       // internal-task: under member scope the tap needs a granted token for every member who will take a turn (HE-GBRAIN-004).
       if (sidecar.scope === 'member') checkCompanyTokens(sidecar.tokens, cell.split, task.actors, join(dirs.root, 'gbrain', 'tokens.json'));
       // internal-task (gbrain#7481): under scope "sources" the tap needs a source grant for every member who will take a turn (HE-GBRAIN-004).
@@ -229,7 +234,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
 
   try {
     // The harness slot is bound inside the cleanup try, so nothing thrown from here on can leave a live token behind.
-    if (proxy) await proxy.bind(slot, key, token);
+    if (proxy) await proxy.bind(slot, key, token, cellModels(cell));
     writeFileSync(paths.turns!, '');
     try {
       if (infraError) throw new HarnessGone(null, infraError);
@@ -247,7 +252,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
         const compose = join(harnessDir, 'compose.yaml');
         harness = existsSync(compose)
           ? await startComposeHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, composeFile: compose, timeBudgetS: task.time_budget_s, repoRoot: opts.repoRoot, stackEnv: { HE_MODEL_BASE_URL: env.HE_MODEL_BASE_URL!, HE_MODEL_API_KEY: token, HE_MODEL_NAME: modelName, HE_TIME_BUDGET_S: env.HE_TIME_BUDGET_S!, HE_TASK_SLICE: 'multiuser', HE_TRIAL_ID: trial.id, ...(cell.config ? { HE_HARNESS_CONFIG: cell.config } : {}) } })
-          : await startDockerHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, repoRoot: opts.repoRoot, ...(installViewPath ? { readOnlyMounts: { [installViewPath]: '/he-gbrain-install' } } : {}) });
+          : await startDockerHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, repoRoot: opts.repoRoot, ...(installViewPath ? { readOnlyMounts: { [installViewPath]: '/he-gbrain-install' } } : {}), ...(network ? { network } : {}) });
       }
       await harness.waitReady(opts.readyTimeoutS * 1000);
       log(`harness ready (${harness.kind})`);

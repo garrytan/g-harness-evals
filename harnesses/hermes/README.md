@@ -10,7 +10,21 @@
 
 `config/config.yaml` is copied to `$HERMES_HOME/config.yaml` (`/harness-state/hermes`) at the start of a trial: provider `anthropic`, model `claude-sonnet-5-5`, local terminal backend with `cwd: /workspace`, non-streaming display. The adapter exports `ANTHROPIC_API_KEY=$HE_MODEL_API_KEY` and `ANTHROPIC_BASE_URL=$HE_MODEL_BASE_URL`, which Hermes's anthropic provider reads; nothing is written to `.env`. Hermes refuses to build a wheel outside Nix, so the install is editable (`uv pip install -e`), and the `anthropic` extra is installed at build time because Hermes would otherwise install it lazily into a read-only directory.
 
-Exit mapping: Hermes exits 1 on a failed turn. The adapter reports 0, then 124 if the outer `timeout` fired (in serve: the budget plus 10 s; `--run-budget` is Hermes's soft budget), then 3 if stderr or the `result` record shows a proxy refusal or an Anthropic SDK error class or status, else 2.
+Exit mapping: Hermes exits 1 on a failed turn. The adapter reports 0, then 124 if the outer `timeout` fired (in serve: the budget plus 10 s; `--run-budget` is Hermes's soft budget), then 3 if stderr or the `result` record shows a proxy refusal or an Anthropic or OpenAI SDK error class or status, else 2.
+
+## OpenAI cells
+
+On an OpenAI cell (plan decision 1 of internal-task: Codex, OpenClaw and Hermes on the same OpenAI model) the adapter picks the provider from `HE_MODEL_BASE_URL`: the runner's URL ends in `/<slot>/openai` or `/<slot>/anthropic`, the cell model's prefix. Any URL that does not end in `/openai` keeps everything above, byte for byte, except one config line both branches share: `security.allow_lazy_installs: false` (see Network below).
+
+- **Provider.** `--provider openai-api`, Hermes's direct OpenAI API-key provider, on its shipped Responses transport. `--provider openai` would not do: at this pin it is Hermes's alias for OpenRouter.
+- **Credentials.** The adapter exports `OPENAI_API_KEY=$HE_MODEL_API_KEY` and `OPENAI_BASE_URL=$HE_MODEL_BASE_URL/v1` and no Anthropic variables. Every model call is `POST /v1/responses` (SSE) through the proxy.
+- **Config.** `config/config.openai.yaml` is copied instead of `config/config.yaml`: the same file with provider `openai-api`, model `gpt-6-luna` and `agent.reasoning_effort: medium`.
+- **Side calls.** Every auxiliary task inherits the main model, so the title call also names the cell model. It sends `reasoning.effort: none`, as Hermes ships it.
+- **Output cap.** On this provider Hermes states no output cap, so the proxy writes its own: 128,000 under the shards' `--max-output-tokens 128000` (observed 2026-10-29: with the proxy at 100,000 the request upstream carried 100,000, at 128,000 it carried 128,000). The 32,768 recorded before was the proxy's default being filled in.
+- **Network.** The same-model control for Codex, so it runs on the internal network too. The serve smoke there passes (`tests/internal-network-harnesses.test.ts`), with MCP tools behind `tool_search` and `tool_call` on this provider. Both configs set `security.allow_lazy_installs: false`, so Hermes no longer tries to pip-install `boto3` (Bedrock) and `edge-tts` from PyPI during a turn. On the internal network those attempts failed on DNS and added about 55 s to every turn. Hermes still tries to download its `tirith` scanner and falls back to pattern matching; `security.tirith_enabled` is left on, because turning it off changes how Hermes gates dangerous commands (`pin.json` `internal_network`).
+- **Metadata probes.** Hermes still probes the proxy for a local model server's routes (`/api/tags`, `/props`, `/api/show` and others), as on an Anthropic cell. The proxy refuses them at $0 and they name no model. `pin.json` `model_openai` records this and each choice with its source.
+
+Keyless proof (2026-10-29, `tests/openai-branch.test.ts`): through the real proxy in lease mode with `--allow-models openai:gpt-6-luna` and a fake Responses endpoint upstream, `run` and `serve` completed with every model request naming `gpt-6-luna`, none refused, and a model off the allowlist exited 3. The same test checks that an Anthropic cell's config, turn arguments, environment, response and ready file are identical to `c1c7ed1b3` except `adapter_sha256` and the config's `security.allow_lazy_installs: false` block. No paid OpenAI call has been made yet.
 
 ## M0 smoke
 
@@ -51,6 +65,10 @@ Findings:
 - The 36 refused requests per trial in the proxy's usage log are Hermes's model-discovery probes, 12 per turn, refused 403 at $0 (the M0 finding).
 
 ## Changelog
+
+### 2026-10-29: OpenAI cells (internal-task)
+
+The adapter chooses the provider from the proxy URL; an OpenAI cell gets `config/config.openai.yaml` and `--provider openai-api` with `OPENAI_API_KEY` and `OPENAI_BASE_URL` (Responses API, reasoning effort medium). Anthropic cells are unchanged apart from `security.allow_lazy_installs: false` in the config; `tests/openai-branch.test.ts` holds the golden captures, now also checked without the image by a stub-based process test. The OpenAI template is read from beside `adapter.sh` (`/opt/harness` in the image). The Anthropic copy keeps its literal `/opt/harness/config/config.yaml`, the line the gstack overlay copies, so the process test seeds that config from the checkout.
 
 ### 2026-10-22: serve (M1 lane C)
 

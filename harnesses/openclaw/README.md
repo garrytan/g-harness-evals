@@ -12,6 +12,20 @@
 
 Exit mapping: OpenClaw exits 0 on a completed turn, 1 on a model or result error and 2 on its own timeout. The adapter reports 0, then 124 if the outer `timeout` fired (in serve: the budget plus 15 s, because `openclaw agent --local` retries a failed provider call up to eight times with backoff past its own `--timeout`), then 3 if the JSON envelope or stderr shows a provider status, proxy refusal, rate limit or auth error, else 2.
 
+## OpenAI cells
+
+On an OpenAI cell (plan decision 1 of internal-task: Codex, OpenClaw and Hermes on the same OpenAI model) the adapter picks the provider from `HE_MODEL_BASE_URL`: the runner's URL ends in `/<slot>/openai` or `/<slot>/anthropic`, the cell model's prefix. Any URL that does not end in `/openai` keeps everything above, byte for byte.
+
+- **Config.** `config/openclaw.openai.json` is copied instead of `config/openclaw.json`. It points OpenClaw's bundled `openai` provider at `${HE_MODEL_BASE_URL}/v1` with `${HE_MODEL_API_KEY}` and its shipped `openai-responses` API, so every model call is `POST /v1/responses` (SSE) through the proxy.
+- **Turn.** `--model openai/<HE_MODEL_NAME>` in `run` and `serve`; nothing else in the turn changes.
+- **Housekeeping model.** `agents.defaults.utilityModel` is the cell model. Without it OpenClaw would pick `openai/gpt-5.6-luna`, which the cell's allowlist refuses (`openclaw models status --json` shows both resolutions).
+- **Reasoning effort.** `agents.defaults.thinkingDefault: medium`, sent as `reasoning.effort: medium`. OpenClaw's own default for `gpt-6-luna` is the same.
+- **Output cap.** The model row sets no `maxTokens`, so OpenClaw states its catalog's value for `gpt-6-luna`: 128,000 on every request (observed). Every shard's proxy runs `--max-output-tokens 128000`, so it passes. The Anthropic template keeps its 16,384.
+- **Network.** The same-model control for Codex, so it runs on the internal network too. The serve smoke there passes (`tests/internal-network-harnesses.test.ts`). On this provider OpenClaw defers MCP tools behind `tool_search` and calls them through `tool_call`.
+- **Everything else** is OpenClaw's shipped default: catalog metadata, SSE transport, the embedded OpenClaw runtime (a custom endpoint never selects the Codex app-server runtime). `pin.json` `model_openai` records each choice with its source.
+
+Keyless proof (2026-10-29, `tests/openai-branch.test.ts`): through the real proxy in lease mode with `--allow-models openai:gpt-6-luna`, `--max-output-tokens 128000` and a fake Responses endpoint upstream, `run` and `serve` each completed a turn on one forwarded `gpt-6-luna` request with no refusal, and a model off the allowlist exited 3. The same test checks that an Anthropic cell's config, turn arguments, environment, response and ready file are identical to `c1c7ed1b3` except `adapter_sha256`. No paid OpenAI call has been made yet.
+
 ## M0 smoke
 
 Run on 2026-10-22 with `harnesses/run-trial.sh --harness openclaw --task tasks/hello`, proxy lease `m0-laneb` (`--allow-models anthropic:claude-sonnet-5-5`, default 32768 output-token cap), container run as the host user with stdin from `/dev/null` and no TTY.
@@ -49,6 +63,12 @@ Findings:
 - A fifth of each turn's input is OpenClaw's own tool catalog and system prompt (about 24,000 to 32,000 tokens per call before the conversation), mostly served from the prompt cache after the first call.
 
 ## Changelog
+
+### 2026-10-29: OpenAI cells (internal-task)
+
+The adapter chooses the provider from the proxy URL; an OpenAI cell gets `config/openclaw.openai.json` (Responses API, the housekeeping model mapped to the cell model, reasoning effort medium) and `--model openai/<model>`. Anthropic cells are unchanged; `tests/openai-branch.test.ts` holds the golden captures.
+
+Review fixes: the OpenAI template no longer sets `maxTokens`, so OpenClaw states its catalog's 128,000 for `gpt-6-luna` (the shards' proxy cap); the Anthropic template is unchanged. The config templates are read from beside `adapter.sh`, so a stub-based process test checks the Anthropic goldens without the image. The internal-network smoke passes.
 
 ### 2026-10-22: serve (M1 lane C)
 

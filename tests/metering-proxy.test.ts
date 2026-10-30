@@ -413,6 +413,69 @@ test('finalize waits for in-flight requests across a rebind and attributes a lat
   });
 });
 
+describe('per-slot model lists (internal-task)', () => {
+  beforeEach(() => closeLedgers());
+  const responses = (model: string) => ({ model, input: 'hello there', max_output_tokens: 100 });
+  const upstream = () => fakeUpstream(() => Response.json({ usage: { input_tokens: 10, output_tokens: 5 } }));
+
+  test('a slot bound to gpt-6-luna refuses gpt-6.1-sol with 403 at $0 although --allow-models admits it; a slot bound without models and a sibling slot still forward it', async () => {
+    const lease = BudgetRun.openLease({ runId: 'lease-slot-models', leaseUsd: 1, ledgerPath: ledgerFile() });
+    const up = upstream();
+    const { proxy, post, usageLog } = leased(lease, up.fetchImpl, { allowModels: ['openai:gpt-6-luna', 'openai:gpt-6.1-sol'] }, []);
+    const base = `http://127.0.0.1:${proxy.port}`;
+    const ctl = new ProxyControl(base, null);
+    try {
+      expect(await ctl.bind('luna', 'trial-token:luna', 'luna-token', ['openai:gpt-6-luna'])).toEqual({ ok: true });
+      expect(await ctl.bind('legacy', 'trial-token:legacy', 'legacy-token')).toEqual({ ok: true });
+      const auth = (t: string) => ({ authorization: `Bearer ${t}` });
+      expect((await post('/luna/openai/v1/responses', responses('gpt-6-luna'), auth('luna-token'))).status).toBe(200);
+      const sol = await post('/luna/openai/v1/responses', responses('gpt-6.1-sol'), auth('luna-token'));
+      expect(sol.status).toBe(403);
+      expect((await sol.json()).error).toMatchObject({ kind: 'budget', message: "metering proxy: openai:gpt-6.1-sol is not on slot luna's model list (openai:gpt-6-luna)" });
+      expect((await post('/legacy/openai/v1/responses', responses('gpt-6.1-sol'), auth('legacy-token'))).status).toBe(200);
+      expect(up.seen.map(s => s.body.model)).toEqual(['gpt-6-luna', 'gpt-6.1-sol']);
+      const lines = readFileSync(usageLog, 'utf8').trim().split('\n').map(l => JSON.parse(l));
+      const refused = lines.filter(l => l.outcome === 'refused');
+      expect(refused).toEqual([expect.objectContaining({ key: 'trial-token:luna', provider: 'openai', route: '/v1/responses', model: 'gpt-6.1-sol', status: 403, reason: "openai:gpt-6.1-sol is not on slot luna's model list (openai:gpt-6-luna)" })]);
+      expect(refused[0].reserved_usd).toBeUndefined();
+      const luna = await proxy.finalize('trial-token:luna');
+      expect(luna.requests).toBe(1);
+      expect(Object.keys(luna.byModel)).toEqual(['openai:gpt-6-luna']);
+      const committed = ledgerStatus({ ledgerPath: lease.ledgerPath, runId: 'lease-slot-models' }).run!.committed_usd;
+      expect(committed).toBeCloseTo(luna.usd + (await proxy.finalize('trial-token:legacy')).usd, 12);
+    } finally { proxy.stop(); }
+  });
+
+  test('the run-wide --allow-models stays the outer bound: a model on the slot list but off the allowlist is refused by the allowlist', async () => {
+    const lease = BudgetRun.openLease({ runId: 'lease-slot-outer', leaseUsd: 1, ledgerPath: ledgerFile() });
+    const up = upstream();
+    const { proxy, post, usageLog } = leased(lease, up.fetchImpl, { allowModels: ['openai:gpt-6-luna'] }, []);
+    try {
+      proxy.bind('s', 'k', null, ['openai:gpt-6-luna', 'openai:gpt-6.1-sol']);
+      expect((await post('/s/openai/v1/responses', responses('gpt-6.1-sol'))).status).toBe(403);
+      expect(up.seen).toHaveLength(0);
+      expect(JSON.parse(readFileSync(usageLog, 'utf8').trim()).reason).toBe("openai:gpt-6.1-sol is not on this cell's model allowlist");
+    } finally { proxy.stop(); }
+  });
+
+  test('an empty model list refuses every priced request; a malformed models field is a 400 and leaves the slot unbound', async () => {
+    const lease = BudgetRun.openLease({ runId: 'lease-slot-empty', leaseUsd: 1, ledgerPath: ledgerFile() });
+    const up = upstream();
+    const { proxy, post } = leased(lease, up.fetchImpl, {}, []);
+    const bind = (body: unknown) => fetch(`http://127.0.0.1:${proxy.port}/__proxy/bind`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    try {
+      expect((await bind({ slot: 'none', key: 'k', models: [] })).status).toBe(200);
+      expect((await post('/none/openai/v1/responses', responses('gpt-6-luna'))).status).toBe(403);
+      for (const models of ['openai:gpt-6-luna', [1], ['gpt-6-luna'], ['openai:gpt 6'], null]) {
+        expect((await bind({ slot: 'bad', key: 'k', models })).status, JSON.stringify(models)).toBe(400);
+      }
+      const unbound = await post('/bad/openai/v1/responses', responses('gpt-6-luna'));
+      expect((await unbound.json()).error.message).toContain('is not bound');
+      expect(up.seen).toHaveLength(0);
+    } finally { proxy.stop(); }
+  });
+});
+
 describe('leases survive restarts without replay', () => {
   beforeEach(() => closeLedgers());
   test('reopening resumes committed spend; a closed lease, another amount or a second lease is refused', async () => {

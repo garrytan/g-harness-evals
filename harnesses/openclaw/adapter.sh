@@ -35,6 +35,8 @@ now() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
 # internal-task: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
 # preflight compares the same hash in the image with the checkout, HE-ADAPTER-005).
 adapter_sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)
+# config/ sits beside this file (/opt/harness in the image), so a checkout's adapter run on the host reads the checkout's templates.
+harness_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 entry=${1:-run}
 case "$entry" in
@@ -48,9 +50,17 @@ export HOME="$HE_SESSION_STATE_DIR"
 export OPENCLAW_STATE_DIR="$HE_SESSION_STATE_DIR/openclaw"
 export OPENCLAW_CONFIG_PATH="$OPENCLAW_STATE_DIR/openclaw.json"
 mkdir -p "$OPENCLAW_STATE_DIR/exec"
-[ -e "$OPENCLAW_CONFIG_PATH" ] || cp /opt/harness/config/openclaw.json "$OPENCLAW_CONFIG_PATH"
+# internal-task: the provider is the cell model's prefix, which the runner puts in the proxy URL as its last path segment
+# (<proxy>/<slot>/<provider>, runner/trial/proxy.ts baseUrlFor). An OpenAI cell gets config/openclaw.openai.json: OpenClaw's
+# bundled openai provider on its shipped Responses API at HE_MODEL_BASE_URL/v1, the utility model mapped to the cell model and
+# reasoning effort medium (pin.json model_openai). Any other URL keeps the Anthropic config and turn arguments unchanged.
+provider=anthropic config_template=$harness_dir/config/openclaw.json
+case "${HE_MODEL_BASE_URL%/}" in
+  */openai) provider=openai config_template=$harness_dir/config/openclaw.openai.json ;;
+esac
+[ -e "$OPENCLAW_CONFIG_PATH" ] || cp "$config_template" "$OPENCLAW_CONFIG_PATH"
 
-log "openclaw $(openclaw --version 2>/dev/null | head -1) model=anthropic/$HE_MODEL_NAME budget=${HE_TIME_BUDGET_S}s entry=$entry"
+log "openclaw $(openclaw --version 2>/dev/null | head -1) model=$provider/$HE_MODEL_NAME budget=${HE_TIME_BUDGET_S}s entry=$entry"
 
 # internal-task, the install ladder (docs/gbrain-arm.md): under HE_GBRAIN_INSTALL=gbrain-docs or gbrain-installer the runner mounts the
 # exported view of gbrain's install read-only at HE_GBRAIN_INSTALL_DIR (/he-gbrain-install) and names the split in HE_GBRAIN_SPLIT.
@@ -227,7 +237,7 @@ if [ "$entry" = "run" ]; then
     --cwd "$HE_WORKSPACE_DIR" \
     --config "$OPENCLAW_CONFIG_PATH" \
     --state-dir "$OPENCLAW_STATE_DIR/exec" \
-    --model "anthropic/$HE_MODEL_NAME" \
+    --model "$provider/$HE_MODEL_NAME" \
     --timeout "$HE_TIME_BUDGET_S" \
     --json > "$HE_LOG_DIR/openclaw-exec.json"
   code=$?
@@ -282,7 +292,7 @@ serve_turn() {
   timeout -k 5 "$((budget + 15))" openclaw agent --local \
     --session-key "agent:main:$key" \
     --message-file "$prompt" \
-    --model "anthropic/$HE_MODEL_NAME" \
+    --model "$provider/$HE_MODEL_NAME" \
     --timeout "$budget" \
     --json > "$envelope" 2> >(tee -a "$err" >&2)
   code=$?

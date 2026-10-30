@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# A stand-in for the claude CLI at the pinned version, for tests/claude-code-adapter.test.ts. It speaks the stream-json shape
+# claude -p --output-format stream-json --verbose prints at 2.1.312 (an init record, a result record), keeps a transcript per
+# session id under CLAUDE_CONFIG_DIR/projects/<cwd>/ and refuses a --session-id it already holds, as the CLI does. It never
+# calls a model. Markers in the prompt choose the outcome:
+#   [stub:api_error N]   an error result with api_error_status N
+#   [stub:unreachable]   an error result with terminal_reason api_error and no status (the proxy unreachable after retries)
+#   [stub:crash]         an init record, then exit 1 with no result
+#   [stub:garbage]       output that is not JSON, exit 0
+#   [stub:mcp_down]      every configured MCP server failed in the init record
+#   [stub:sleep N]       a child in its own process group sleeps N seconds while the stub waits for it
+#   [stub:mcp_transport] after a good init, a call to the first configured server's post_message tool whose tool_result is
+#                        the transport error 2.1.312 hands the model for a refused connection, then a successful result
+#   [stub:mcp_http]      the same with the error 2.1.312 gives for an HTTP error status ("Error POSTing to endpoint: ...")
+#   [stub:mcp_timeout]   the same with the error 2.1.312 gives past MCP_TOOL_TIMEOUT ('MCP server "<s>" tool "<t>" timed out after 1s')
+#   [stub:mcp_tool_error] the same call answered with the tool's own error result (not a transport failure), whose text
+#                        holds a network word ("ENOTFOUND") that must not read as one
+# STUB_CLAUDE_VERSION sets the version (--version and the init record), STUB_INIT_VERSION the init record's alone; STUB_LOG gets
+# one JSON line per call.
+set -euo pipefail
+version=${STUB_CLAUDE_VERSION:-2.1.312}
+if [ "${1:-}" = --version ]; then echo "$version (Claude Code)"; exit 0; fi
+model='' mcp='' flag='' sid=''
+args=("$@")
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --model) model=$2; shift ;;
+    --mcp-config) mcp=$2; shift ;;
+    --session-id|--resume) flag=$1; sid=$2; shift ;;
+  esac
+  shift
+done
+tty=false; [ -t 0 ] && tty=true
+prompt=$(cat)
+dir="$CLAUDE_CONFIG_DIR/projects/$(printf '%s' "$PWD" | tr -c 'a-zA-Z0-9\n' '-')"
+transcript="$dir/$sid.jsonl"
+if [ -n "${STUB_LOG:-}" ]; then
+  node -e '
+const [log, tty, pid, ...args] = process.argv.slice(1);
+const e = process.env;
+const models = ["ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_MODEL", "ANTHROPIC_SMALL_FAST_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
+  "ANTHROPIC_DEFAULT_FABLE_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL", "CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL", "CLAUDE_CODE_AUTO_MODE_MODEL", "CLAUDE_CODE_BG_CLASSIFIER_MODEL"];
+const pick = ["ANTHROPIC_BASE_URL", "HOME", "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "DISABLE_AUTOUPDATER", "DISABLE_TELEMETRY", "DISABLE_ERROR_REPORTING",
+  "CLAUDE_CODE_MAX_RETRIES", "MCP_CONNECTION_NONBLOCKING", "CLAUDE_CODE_SUBAGENT_MODEL_FORCE", "CLAUDE_CODE_NO_MODEL_FALLBACK", "CLAUDE_CODE_DISABLE_MODEL_ACCESS_FALLBACK", "CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK"];
+require("fs").appendFileSync(log, JSON.stringify({ args, cwd: process.cwd(), tty: tty === "true", pid: Number(pid), sid: Number(require("child_process").execSync("ps -o sid= -p " + pid).toString().trim()),
+  models: Object.fromEntries(models.map((m) => [m, e[m] ?? null])), env: Object.fromEntries(pick.map((m) => [m, e[m] ?? null])), api_key_is_trial_token: !!e.ANTHROPIC_API_KEY && e.ANTHROPIC_API_KEY === e.HE_MODEL_API_KEY }) + "\n");
+' "$STUB_LOG" "$tty" "$$" "${args[@]}"
+fi
+if [ "$flag" = --session-id ] && [ -e "$transcript" ]; then echo "Error: Session ID $sid is already in use." >&2; exit 1; fi
+if [ "$flag" = --resume ] && [ ! -e "$transcript" ]; then echo "No conversation found with session ID: $sid" >&2; exit 1; fi
+if [[ "$prompt" == *"[stub:garbage]"* ]]; then echo "this is not json"; exit 0; fi
+status=connected; [[ "$prompt" == *"[stub:mcp_down]"* ]] && status=failed
+servers=$(node -e 'const f = process.argv[1]; const s = f ? Object.keys(JSON.parse(require("fs").readFileSync(f, "utf8")).mcpServers) : []; process.stdout.write(JSON.stringify(s.map((name) => ({ name, status: process.argv[2], source: "dynamic" }))));' "$mcp" "$status")
+printf '{"type":"system","subtype":"init","cwd":"%s","session_id":"%s","tools":["Bash","Read","Write"],"mcp_servers":%s,"model":"%s","permissionMode":"bypassPermissions","apiKeySource":"ANTHROPIC_API_KEY","claude_code_version":"%s"}\n' "$PWD" "$sid" "$servers" "$model" "${STUB_INIT_VERSION:-$version}"
+mkdir -p "$dir"
+printf '{"type":"user","prompt":%s}\n' "$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$prompt")" >> "$transcript"
+if [[ "$prompt" =~ \[stub:sleep\ ([0-9]+)\] ]]; then
+  set -m
+  sleep "${BASH_REMATCH[1]}" &
+  set +m
+  wait
+fi
+if [[ "$prompt" == *"[stub:crash]"* ]]; then echo "stub: crashed" >&2; exit 1; fi
+mcp_error=''
+[[ "$prompt" == *"[stub:mcp_transport]"* ]] && mcp_error='ECONNREFUSED: Unable to connect. Is the computer able to access the url?'
+[[ "$prompt" == *"[stub:mcp_http]"* ]] && mcp_error='Error POSTing to endpoint: bad gateway'
+[[ "$prompt" == *"[stub:mcp_timeout]"* ]] && mcp_error='MCP server "@SERVER@" tool "post_message" timed out after 1s'
+[[ "$prompt" == *"[stub:mcp_tool_error]"* ]] && mcp_error='{"error":"user_not_found","message":"no member ENOTFOUND"}'
+if [ -n "$mcp_error" ]; then
+  first=$(node -e 'const f = process.argv[1]; process.stdout.write(f ? Object.keys(JSON.parse(require("fs").readFileSync(f, "utf8")).mcpServers)[0] ?? "" : "")' "$mcp")
+  node -e '
+const [server, sid, raw] = process.argv.slice(1);
+const error = raw.replace("@SERVER@", server);
+const id = "toolu_stub_1";
+console.log(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id, name: "mcp__" + server + "__post_message", input: { channel: "C0", text: "x" } }] }, parent_tool_use_id: null, session_id: sid }));
+console.log(JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "tool_result", content: error, is_error: true, tool_use_id: id }] }, parent_tool_use_id: null, session_id: sid, tool_use_result: "Error: " + error }));
+' "$first" "$sid" "$mcp_error"
+fi
+result() { printf '{"type":"result","subtype":"success","is_error":%s,"api_error_status":%s,"terminal_reason":"%s","num_turns":1,"result":%s,"session_id":"%s"}\n' "$1" "$2" "$3" "$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$4")" "$sid"; }
+if [[ "$prompt" =~ \[stub:api_error\ ([0-9]+)\] ]]; then result true "${BASH_REMATCH[1]}" api_error "API Error: ${BASH_REMATCH[1]} metering proxy: refused"; exit 1; fi
+if [[ "$prompt" == *"[stub:unreachable]"* ]]; then result true null api_error "API Error: Connection refused"; exit 1; fi
+result false null completed "stub reply: session $sid turn $(wc -l < "$transcript" | tr -d ' ') model $model"
