@@ -9,9 +9,9 @@
 - **gbrain does nothing unless the harness is told to use it.** Told to read a whole-company brain, harnesses read other people's channels; scoping the brain to the asker stops that.
 - **No run yet shows gbrain lifting pass rate on its primary endpoint (the one comparison the run was designed to settle) by an amount the run could detect.** Most gbrain rows are dev, so they hint but don't prove.
 
-**Next:** a fresh held-out task set, so the gbrain effects can be confirmed on tasks nobody tuned against ([TODOS.md](TODOS.md)). First comes a dev pilot of the new set's 20 public tasks on Haiku ([preregistration](docs/benchmarks/2026-10-29-v03-pilot/PREREGISTRATION.md)).
+**Next:** a fresh held-out task set, so the gbrain effects can be confirmed on tasks nobody tuned against ([TODOS.md](TODOS.md)). The dev pilot of its 20 public tasks on Haiku is done ([report](docs/benchmarks/2026-10-29-v03-pilot/report.md)). **It read no-go**: four of six families were informative and the rule needs five. It found and fixed a defect in one family. The held-out set was sealed (custody commit `custody commit (private)`) before that verdict was settled, so using it waits on a dated approval of that deviation.
 
-Version: harness-evals v0.0.40. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
+Version: harness-evals v0.0.41. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
 
 ## Start here
 
@@ -149,6 +149,14 @@ Version: harness-evals v0.0.40. Everything above [Changelog](#changelog) describ
 
 </details>
 
+### v0.3 runs
+
+**So what:** the new task set's dev pilot sized the sealed opening and found one task family broken; nothing here tests a candidate.
+
+| Run | Date | Question | Result | Spend | Status | Report |
+|---|---|---|---|---|---|---|
+| `v03-pilot-2026-10` | 2026-10-29 | Are the v0.3 task families informative, and does opening 1 fit $30? | No-go: 4 of 6 families in range. Approval relay fixed (#119), not yet re-measured. Opening 1 fits $30 at a typical reservation ($23.57), not at the largest ($30.57) | $9.15 of $24.90 | dev | [report](docs/benchmarks/2026-10-29-v03-pilot/report.md) |
+
 ### How to read these numbers
 
 - Dates are the UTC days the trials ran. Spend is what our proxy metered at list price against the run's lease; we never checked the provider's bill.
@@ -285,6 +293,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)); the world is built from gbrain-evals' `messy-company-v1` dataset; OpenClaw, Hermes Agent and QM are named as products only.
 
 ## Changelog
+
+### 2026-10-29: v0.3 dev pilot reported (internal-task)
+
+harness-evals v0.0.41. A v0.3 runs table gives run `v03-pilot-2026-10` one row. The Next line links its report, and the version line moves to v0.0.41. Why: the pilot is complete. Its verdict is no-go under the preregistered rule, and the held-out set was sealed before that was settled, a deviation the report records.
 
 ### 2026-10-29: version line only, v0.3 sealed (internal-task)
 

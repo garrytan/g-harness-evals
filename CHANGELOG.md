@@ -2,6 +2,21 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.41] - 2026-10-29
+
+### internal-task: v03-pilot-2026-10 reported (dev)
+
+- `docs/benchmarks/2026-10-29-v03-pilot/report.md` (new): **no-go under the preregistered rule.** Four of six families were informative in the `told` arm; approval relay (0 of 30) and corrections (0 of 40) were not.
+  - Both readers' defect readings are in `defects.json`, per task. The author finds all three approval relay tasks defective and the second reader finds floor tasks, so they are defects for the go rule, fixed by #119.
+  - The repair clause does not turn this go: corrections was out of range with no defect.
+  - Deviation: the held-out set was sealed (custody commit `custody commit (private)`) under this no-go. Using it needs a dated approval.
+  - C4 reaches a detectable difference on the mechanism count in all three live cells (a projection).
+  - Opening 1 projects to $23.57 with a median per-shard reservation and $30.57 with the largest, against its $30 cap. At each cell's cost-interval upper end it is $26.69.
+  - Spend was $9.15 of $24.90 in leases, and Ubicloud VMs cost $12.77 at list price.
+- `docs/benchmarks/2026-10-29-v03-pilot/results/` (new): the merged receipts of 14 shards, all at 7e7642218, with per-shard ledgers (WAL checkpointed), smoke ledgers, plan, run-shard and smoke-lease logs and VM records. The five capacity-failed first launches are kept as `*.try1-capacity.*`. Also `summary`, `mechanism/`, `paired-mdd.md`, `pilot-tables` and `defects.json`.
+- `scripts/v03/pilot-tables.ts` (new): per-task variance, opening 1's projected detectable differences, the C4 mechanism count's detectable difference, per-task and per-family pass rates with intervals, pass^5 and pass@5, cost per trial and per success with task-clustered intervals, the $30 fit with reservations read from the shard ledgers (with the amount over and ways to fit), and the go rule's family rates clustered on the task across both harnesses. `tests/v03-pilot-tables.test.ts` recomputes the published figures from the committed receipts and checks the arithmetic on a hand-computed fixture.
+- README: a v0.3 runs table and the Next line.
+
 ## [0.0.40] - 2026-10-29
 
 ### internal-task: task set v0.3 sealed
