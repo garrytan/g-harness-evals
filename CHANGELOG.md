@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.45] - 2026-10-30
+
+### internal-task: the Hermes chat watcher times its grace in milliseconds
+
+- `harnesses/hermes/gstack/adapter.sh` `chat_watch` read the clock in whole seconds (`date +%s`). Two polls about 1.0 s apart could straddle two second boundaries and read as 2 s, so `/exit` could come up to a second before the grace ran out, and the wait after `/exit` could end up to a second early (at once with the tests' 1 s value). Both the grace and the exit wait now use `date +%s%3N` and compare in milliseconds. The internal-task overlay images have GNU date 9.1, which supports `%N`.
+- This was the flake in `tests/gsta-135-adapters.test.ts` "the watcher types /exit only after grace consecutive completes ...": it failed its `polls=7` check on #121 at 4e751d77 and on #118 at bede593a, and passed on rerun.
+- New test: a fake clock driven by the poll count puts two completes 1.002 s apart across two second boundaries. The watcher must wait for a third poll before it types `/exit`. The old whole-second watcher fails this test (it types on the second poll); the fixed one passes.
+- No counted run uses this overlay. The internal-task re-measure runs from a worktree pinned at 44314d9, so its images do not pick up this change.
+
 ## [0.0.44] - 2026-10-30
 
 0.0.42 went to #127 and 0.0.43 is reserved for #123, so this release is 0.0.44 (earlier: 0.0.41 went to #125, 0.0.40 to #121, 0.0.39 to #116, 0.0.38 to #115, 0.0.37 to #119).

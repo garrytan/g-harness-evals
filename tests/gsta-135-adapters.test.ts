@@ -379,13 +379,14 @@ describe('hermes chat-mode adapter', () => {
   });
 
   /** Run chat_watch against a scripted chat_complete (one state per poll, the last repeated) and a stand-in session process. */
-  function watch(states: string[], env: Record<string, string> = {}, sessionTemplate = 'sleep 1000 > /dev/null 2>&1 &') {
+  function watch(states: string[], env: Record<string, string> = {}, sessionTemplate = 'sleep 1000 > /dev/null 2>&1 &', prelude = '') {
     const dir = tmp();
     const session = sessionTemplate.split('@TYPED@').join(join(dir, 'typed'));
     writeFileSync(join(dir, 'seq'), states.join('\n') + '\n');
     const r = withWatcher([
       'chat_complete() { local n; n=$(cat "' + dir + '/n" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "' + dir + '/n"; sed -n "${n}p" "' + dir + '/seq" | grep . || tail -n 1 "' + dir + '/seq"; }',
       'exec 3<>"' + dir + '/typed"',
+      prelude.split('@DIR@').join(dir),
       session, 'pid=$!',
       'chat_watch "$pid" "' + dir + '/state.db"',
       'echo "verdict=${watcher_verdict} forced=${watcher_forced} polls=$(cat "' + dir + '/n") alive=$(kill -0 "$pid" 2>/dev/null && echo yes || echo no)"',
@@ -402,6 +403,14 @@ describe('hermes chat-mode adapter', () => {
     expect(r.out).toContain('verdict=complete forced=1');
     expect(r.out).toContain('LOG watcher: hermes did not leave after /exit (1s); terminating the session with the transcript complete');
     expect(r.out).toContain('alive=no');
+  }, 30000);
+  test('grace is timed in milliseconds: two completes 1.002s apart across two second boundaries do not count as 2s of grace', () => {
+    const clock = 'printf "10999\\n10999\\n12001\\n13000\\n20000\\n" > "@DIR@/clock"\n'
+      + 'date() { local n ms; n=$(cat "@DIR@/n" 2>/dev/null || echo 0); ms=$(sed -n "$((n+1))p" "@DIR@/clock" | grep . || tail -n 1 "@DIR@/clock"); case "$1" in +%s%3N) echo "$ms" ;; +%s) echo $((ms / 1000)) ;; *) command date "$@" ;; esac; }';
+    const r = watch(['complete'], { HE_GSTACK_CHAT_EXIT_S: '0' }, undefined, clock);
+    expect(r.out).toContain('LOG watcher: transcript complete, grace 2s\nLOG watcher: typing /exit\n');
+    expect(r.out).toMatch(/polls=4 /);
+    expect(r.out).toContain('verdict=complete forced=1');
   }, 30000);
   test('the watcher never types /exit while pending; a read error is logged once and counted as pending', () => {
     const r = watch(['pending', 'error: boom', 'error: again', 'pending'], { HE_TIME_BUDGET_S: '4' });

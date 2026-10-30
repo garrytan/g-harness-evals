@@ -159,9 +159,11 @@ PY
 # evidence.ts grades integrity on its own. After typing it waits exit_wait
 # seconds for Hermes to leave and then terminates the session itself, since a
 # Hermes that ignores /exit must not turn a finished turn into a wall-clock
-# loss. Leaves watcher_verdict as the state /exit was typed on (complete or
-# failed; empty when it was not typed) and watcher_forced=1 when it had to
-# terminate the session. The time knobs are HE_GSTACK_CHAT_GRACE_S (5),
+# loss. Grace and exit_wait are timed in milliseconds (GNU date %N), so a
+# second boundary cannot cut either one short by up to a second. Leaves
+# watcher_verdict as the state /exit was typed on (complete or failed; empty
+# when it was not typed) and watcher_forced=1 when it had to terminate the
+# session. The time knobs are HE_GSTACK_CHAT_GRACE_S (5),
 # HE_GSTACK_CHAT_POLL_S (2) and HE_GSTACK_CHAT_EXIT_S (30).
 chat_watch() {
   local session_pid=$1 db=$2 deadline=$(( $(date +%s) + HE_TIME_BUDGET_S )) seen= typed= state error_logged=
@@ -174,8 +176,8 @@ chat_watch() {
       log "watcher: hermes closed the turn as failed (display_kind failed_turn), typing /exit"
       watcher_verdict=failed
     elif [ "$state" = complete ]; then
-      [ -n "$seen" ] || { seen=$(date +%s); log "watcher: transcript complete, grace ${grace}s"; }
-      [ $(( $(date +%s) - seen )) -ge "$grace" ] || { sleep "$poll"; continue; }
+      [ -n "$seen" ] || { seen=$(date +%s%3N); log "watcher: transcript complete, grace ${grace}s"; }
+      [ $(( $(date +%s%3N) - seen )) -ge $(( grace * 1000 )) ] || { sleep "$poll"; continue; }
       log "watcher: typing /exit"
       watcher_verdict=complete
     else
@@ -184,11 +186,11 @@ chat_watch() {
       sleep "$poll"; continue
     fi
     printf '/exit' >&3; sleep 0.5; printf '\r' >&3
-    typed=$(date +%s)
+    typed=$(date +%s%3N)
     break
   done
   [ -n "$typed" ] || return 0
-  while kill -0 "$session_pid" 2>/dev/null && [ $(( $(date +%s) - typed )) -lt "$exit_wait" ]; do sleep 1; done
+  while kill -0 "$session_pid" 2>/dev/null && [ $(( $(date +%s%3N) - typed )) -lt $(( exit_wait * 1000 )) ]; do sleep 1; done
   kill -0 "$session_pid" 2>/dev/null || return 0
   watcher_forced=1
   state=$(chat_complete "$db")
