@@ -174,6 +174,8 @@ describe('order and terminations', () => {
     expect(spendFromUsage(lines, key, [entry('2026-10-28T00:00:19.000Z', '2026-10-28T00:00:25.000Z')]).concurrent_refusals).toBe(1);
     expect(spendFromUsage(lines, key, [entry('2026-10-28T00:00:19.000Z', null)]).concurrent_refusals).toBe(1);
     expect(spendFromUsage(lines, key, [entry('2026-10-28T00:00:19.000Z', '2026-10-28T00:00:19.500Z')]).concurrent_refusals).toBe(0);
+    // A request that starts in the same millisecond the previous one settled came after it, so it is not concurrent.
+    expect(spendFromUsage(lines, key, [entry('2026-10-28T00:00:19.000Z', '2026-10-28T00:00:20.000Z')]).concurrent_refusals).toBe(0);
     expect(spendFromUsage(lines, key, [entry('2026-10-28T00:00:20.500Z', null)]).concurrent_refusals).toBe(0);
     const usage = join(tmp, 'spend.ndjson');
     writeFileSync(usage, lines.map(l => JSON.stringify(l)).join('\n') + '\n');

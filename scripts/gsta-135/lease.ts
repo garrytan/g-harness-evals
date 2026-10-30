@@ -141,7 +141,7 @@ export function spendFromUsage(lines: UsageLine[], key: string, entries: LedgerE
   const charged = forwarded.filter(l => l.charged_reservation === true);
   const refused = mine.filter(l => l.outcome === 'refused');
   const budget = refused.filter(l => l.status === 402 && !String(l.reason).startsWith('unpriced'));
-  const overlaps = (at: string) => (entries ?? []).some(e => Date.parse(e.created_at) <= Date.parse(at) && (e.settled_at === null || Date.parse(e.settled_at) >= Date.parse(at)));
+  const overlaps = (at: string) => (entries ?? []).some(e => Date.parse(e.created_at) <= Date.parse(at) && (e.settled_at === null || Date.parse(e.settled_at) > Date.parse(at)));
   const refusals: Record<string, number> = {};
   for (const l of refused) { const k = `${l.status} ${String(l.reason).slice(0, 120)}`; refusals[k] = (refusals[k] ?? 0) + 1; }
   return {
