@@ -2,6 +2,16 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.42] - 2026-10-30
+
+### internal-task: seal.ts --from-backup requires --sha256
+
+- `scripts/sealed/seal.ts --from-backup` now requires `--sha256`, the backup file's sha256. A run without it, or with a value that is not 64 hex characters, is a usage error (HE-RUN-002) before anything is read or decrypted; the stale intake sweep does not run either. Before, a run without `--sha256` checked no digest. This was the Captain's condition on #114.
+- The CLI also refuses a single-value flag given more than once (HE-RUN-002; only `--include` repeats), so a second `--sha256` is no longer silently dropped.
+- `sealFromBackup` takes `sha256` as a required option and refuses a missing or malformed one (HE-SEALED-006) before it sweeps stale intake directories or reads the backup.
+- `tests/sealed-intake.test.ts`: the library and the CLI refuse a missing digest and a malformed one (too short, a non-hex character, too long) and leave a stale intake directory in place; the CLI refuses a repeated `--sha256` and a flag in its place; an uppercase digest matches; every other `--from-backup` case, the round trip included, passes the digest.
+- `docs/sealed-custody.md` (Lifecycle, "Digest first") and the HE-SEALED-006 row in `docs/errors.md` say so. v0.0.38 went to #115, v0.0.39 to #116, v0.0.40 to #121 and v0.0.41 to #125.
+
 ## [0.0.41] - 2026-10-29
 
 ### internal-task: v03-pilot-2026-10 reported (dev)

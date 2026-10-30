@@ -9,13 +9,14 @@
  *        [--corpus <dir holding heldout/<slug>.md>] [--custody <isolated custody clone>]
  *        [--recipient <file or age1...>, default sealed/recipient.txt] [--repo <public checkout, default .>] [--remote origin]
  *        [--exposures <file.json>] [--custodian <name, default scripts/sealed/seal.ts>]
- *   bun scripts/sealed/seal.ts --from-backup <file.tar.age> [--sha256 <hex>] [--include <path> ...] [--identity <drive copy>]
+ *   bun scripts/sealed/seal.ts --from-backup <file.tar.age> --sha256 <hex> [--include <path> ...] [--identity <drive copy>]
  *        --task-set <set> --tasks <path> --slice <path> [--corpus <path>] [the options above]
  *
  * --from-backup seals from a set author's backup: a tar (optionally gzipped) of their working tree encrypted to the
- * recipient (sealFromBackup; scripts/sealed/intake.ts unpacks it). --tasks, --slice, --corpus and --include are then paths
- * under the unpacked backup. The identity comes only from identity.ts custodyIdentity after the escrow check; the backup is
- * decrypted in memory, unpacked into a fresh 0700 directory under ~/.capy/work/custody/intake, sealed by sealSet unchanged,
+ * recipient (sealFromBackup; scripts/sealed/intake.ts unpacks it). --sha256, the backup file's 64-hex sha256, is required
+ * with --from-backup and checked before anything is decrypted; a run without it is refused (HE-RUN-002). --tasks,
+ * --slice, --corpus and --include are then paths under the unpacked backup. The identity comes only from identity.ts
+ * custodyIdentity after the escrow check; the backup is decrypted in memory, unpacked into a fresh 0700 directory under ~/.capy/work/custody/intake, sealed by sealSet unchanged,
  * and the directory is removed and checked gone on every exit, with one line saying so. --include packs a file of the
  * backup at extras/<path> in the bundle and lists its sha256 under sealed.extras in the manifest. --exposures adds a JSON
  * list of exposures to the manifest's openings ledger; --custodian names the custodian in the access log's "sealed" line.
@@ -74,8 +75,8 @@ export interface SealOptions {
 export interface BackupSealOptions extends Omit<SealOptions, 'extras'> {
   /** The author's backup: a tar (optionally gzipped) encrypted to the recipient. */
   backup: string;
-  /** The sha256 the backup file must have. */
-  sha256?: string;
+  /** The sha256 the backup file must have (64 hex characters, required). */
+  sha256: string;
   /** Files under the unpacked backup packed under extras/<path>. */
   include?: string[];
   /** The drive copy of the custody identity (default identity.ts DEFAULT_IDENTITY_PATH). */
@@ -222,26 +223,27 @@ export async function sealSet(o: SealOptions): Promise<{ manifest: HeldoutManife
 }
 
 /**
- * seal.ts --from-backup: seal from an author's encrypted backup. Stale intake directories are swept first. The backup's
- * sha256 is checked against --sha256 before anything is decrypted; the identity comes only from custodyIdentity, after the
- * escrow check, as in open.ts. The backup is decrypted in memory and unpacked into a fresh 0700 intake directory, and
+ * seal.ts --from-backup: seal from an author's encrypted backup. A missing or malformed --sha256 is refused before anything
+ * else, then stale intake directories are swept. The backup's sha256 is checked against --sha256 before anything is
+ * decrypted; the identity comes only from custodyIdentity, after the escrow check, as in open.ts. The backup is decrypted in memory and unpacked into a fresh 0700 intake directory, and
  * sealSet runs unchanged on the named paths under it. The intake directory is removed on success, refusal, error and
  * SIGINT, SIGTERM or SIGHUP, and its removal is checked.
  */
 export async function sealFromBackup(o: BackupSealOptions): Promise<Awaited<ReturnType<typeof sealSet>>> {
   const log = o.log ?? (() => {});
   const fail = (msg: string): never => { throw new SealRefusal(msg); };
+  const want = (o.sha256 ?? '').toLowerCase();
+  if (!want) fail('--from-backup needs --sha256, the sha256 of the backup file; nothing was decrypted');
+  if (!/^[0-9a-f]{64}$/.test(want)) fail('--sha256 must be 64 hex characters; nothing was decrypted');
   const intakeRoot = o.intakeRoot ?? INTAKE_ROOT;
   const stale = sweepStaleIntake(intakeRoot);
   if (stale.removed.length) log(`SEAL: removed ${stale.removed.length} stale intake director${stale.removed.length === 1 ? 'y' : 'ies'} an earlier run left: ${stale.removed.join(', ')}`);
   if (stale.failed.length) fail(`${stale.failed.length} stale intake director${stale.failed.length === 1 ? 'y' : 'ies'} could not be removed (${stale.failed.join(', ')}); remove them before sealing`);
   const rels: Array<[string, string, 'dir' | 'file']> = [['--tasks', o.tasks, 'dir'], ['--slice', o.slice, 'file'], ...(o.corpus ? [['--corpus', o.corpus, 'dir'] as [string, string, 'dir']] : []), ...(o.include ?? []).map((p) => ['--include', p, 'file'] as [string, string, 'file'])];
   for (const [k, p] of rels) { const n = normalize(p); if (isAbsolute(p) || n === '..' || n.startsWith('../')) fail(`${k} ${p} must be a path under the unpacked backup (relative, not leaving it)`); }
-  const want = o.sha256?.toLowerCase();
-  if (want !== undefined && !/^[0-9a-f]{64}$/.test(want)) fail('--sha256 must be 64 hex characters');
   checkPrivate(CUSTODY_REPO, o.gh);
   const backup = new Uint8Array(readFileSync(o.backup));
-  if (want && sha256(backup) !== want) fail(`--from-backup ${o.backup} has sha256 ${sha256(backup).slice(0, 12)}, --sha256 asks for ${want.slice(0, 12)}; nothing was decrypted`);
+  if (sha256(backup) !== want) fail(`--from-backup ${o.backup} has sha256 ${sha256(backup).slice(0, 12)}, --sha256 asks for ${want.slice(0, 12)}; nothing was decrypted`);
   const remote = o.remote ?? 'origin';
   const clone = custodyClone({ dir: o.custody, repo: resolve(o.repo), remote });
   syncCustody(clone, remote);
@@ -291,18 +293,23 @@ if (import.meta.main) {
   const repo = flag('repo') ?? join(import.meta.dir, '..', '..');
   const need = ['task-set', 'tasks', 'slice'].filter((k) => !flag(k));
   const include = argv.flatMap((a, i) => (a === '--include' && argv[i + 1] ? [argv[i + 1]!] : []));
-  const usage = 'usage: bun scripts/sealed/seal.ts --task-set <set> --tasks <dir> --slice <slice.json> [--corpus <dir>] [--exposures <file.json>] [--custodian <name>] [--custody <clone>] [--recipient sealed/recipient.txt] [--remote origin]; from an author\'s encrypted backup add --from-backup <file.tar.age> [--sha256 <hex>] [--include <path> ...] [--identity <drive copy>], with --tasks, --slice, --corpus and --include as paths under the unpacked backup';
+  const usage = 'usage: bun scripts/sealed/seal.ts --task-set <set> --tasks <dir> --slice <slice.json> [--corpus <dir>] [--exposures <file.json>] [--custodian <name>] [--custody <clone>] [--recipient sealed/recipient.txt] [--remote origin]; from an author\'s encrypted backup add --from-backup <file.tar.age> --sha256 <hex> [--include <path> ...] [--identity <drive copy>], with --tasks, --slice, --corpus and --include as paths under the unpacked backup';
   const known = new Set(['repo', 'task-set', 'tasks', 'slice', 'corpus', 'exposures', 'custodian', 'custody', 'recipient', 'remote', 'from-backup', 'sha256', 'include', 'identity']);
   const unknown = argv.filter((a, i) => i % 2 === 0 && !(a.startsWith('--') && known.has(a.slice(2))));
   if (unknown.length || argv.length % 2) { console.error(`HE-RUN-002 ${unknown.length ? `unknown argument(s) ${unknown.join(' ')}` : 'a flag without a value'}; every flag takes one value; ${usage}`); process.exit(2); }
+  const flags = argv.filter((_, i) => i % 2 === 0);
+  const repeated = [...new Set(flags.filter((a, i) => a !== '--include' && flags.indexOf(a) !== i))];
+  if (repeated.length) { console.error(`HE-RUN-002 ${repeated.join(' ')} given more than once; only --include repeats; ${usage}`); process.exit(2); }
   if (need.length) { console.error(`HE-RUN-002 missing --${need.join(', --')}; ${usage}`); process.exit(2); }
   if (!flag('from-backup') && (include.length || flag('sha256') || flag('identity'))) { console.error(`HE-RUN-002 --include, --sha256 and --identity go with --from-backup; ${usage}`); process.exit(2); }
+  if (flag('from-backup') && !flag('sha256')) { console.error(`HE-RUN-002 --from-backup needs --sha256 <hex>, the sha256 of the backup file the author sent; nothing was decrypted; ${usage}`); process.exit(2); }
+  if (flag('from-backup') && !/^[0-9a-fA-F]{64}$/.test(flag('sha256')!)) { console.error(`HE-RUN-002 --sha256 must be 64 hex characters; nothing was decrypted; ${usage}`); process.exit(2); }
   try {
     const exposures = flag('exposures') ? JSON.parse(readFileSync(flag('exposures')!, 'utf8')) as Exposure[] : undefined;
     if (exposures !== undefined && !Array.isArray(exposures)) throw new SealRefusal('--exposures must hold a JSON list of exposures');
     const base = { repo, set: flag('task-set')!, tasks: flag('tasks')!, slice: flag('slice')!, corpus: flag('corpus'), custody: flag('custody'), recipient: flag('recipient') ?? join(repo, 'sealed', 'recipient.txt'), remote: flag('remote'), exposures, custodian: flag('custodian') };
     const r = flag('from-backup')
-      ? await sealFromBackup({ ...base, backup: flag('from-backup')!, sha256: flag('sha256'), include, identityPath: flag('identity'), log: (l) => console.log(l) })
+      ? await sealFromBackup({ ...base, backup: flag('from-backup')!, sha256: flag('sha256')!, include, identityPath: flag('identity'), log: (l) => console.log(l) })
       : await (async () => {
         const stale = sweepStaleIntake();
         if (stale.removed.length) console.log(`SEAL: removed ${stale.removed.length} stale intake director${stale.removed.length === 1 ? 'y' : 'ies'} an earlier --from-backup run left: ${stale.removed.join(', ')}`);

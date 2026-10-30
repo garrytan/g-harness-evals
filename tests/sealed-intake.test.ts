@@ -2,7 +2,7 @@
 // shape of v0.3's (one top-level v03/ folder: selected/tasks with 40 task directories, selected/exclusions.json,
 // world/slice.json, corpus-seal/heldout/<category>/<page>.md, and generation residue beside them), made with GNU tar and
 // encrypted to a throwaway recipient, sealed into a local bare custody remote, opened again and released. It checks the digest
-// refusal, the tar-slip, link and device refusals, that only the named inputs (and --include extras) enter the bundle,
+// refusals (a missing, malformed or different --sha256), the tar-slip, link and device refusals, that only the named inputs (and --include extras) enter the bundle,
 // that the unpacked plaintext is gone after success, a refusal and SIGTERM, that stale intake directories are swept by the
 // next run and by cleanup.ts, and that no decrypted content reaches stdout or stderr. Nothing here is a real task, key or
 // result.
@@ -148,8 +148,8 @@ describe('seal.ts --from-backup', () => {
     const g = await makeFixture(1, async (fx) => {
       author = join(fx.tmp, 'author');
       v03Tree(author);
-      await backupOf(author, fx.recipient, join(fx.tmp, 'backup.tar.age'), ['--format=pax', '-z']);
-      await sealFromBackup({ repo: fx.repo, set: SET, backup: join(fx.tmp, 'backup.tar.age'), tasks: 'v03/selected/tasks', slice: 'v03/world/slice.json', corpus: 'v03/corpus-seal', include: ['v03/selected/exclusions.json'], custody: fx.custody, recipient: fx.recipient, gh: fx.gh, identityPath: fx.identityPath, env: fx.env, intakeRoot: join(fx.tmp, 'intake') });
+      const bytes = await backupOf(author, fx.recipient, join(fx.tmp, 'backup.tar.age'), ['--format=pax', '-z']);
+      await sealFromBackup({ repo: fx.repo, set: SET, backup: join(fx.tmp, 'backup.tar.age'), sha256: sha256(bytes), tasks: 'v03/selected/tasks', slice: 'v03/world/slice.json', corpus: 'v03/corpus-seal', include: ['v03/selected/exclusions.json'], custody: fx.custody, recipient: fx.recipient, gh: fx.gh, identityPath: fx.identityPath, env: fx.env, intakeRoot: join(fx.tmp, 'intake') });
     });
     tmps.push(g.tmp);
     const world = join(g.repo, 'tasks', 'multiuser', SET, 'sealed-world');
@@ -198,11 +198,25 @@ describe('seal.ts --from-backup', () => {
     expect(existsSync(join(cloneCustody(f, 'check-expose'), 'vexpose'))).toBe(false);
   }, 60_000);
 
-  test('a backup whose digest differs from --sha256 is refused before anything is decrypted or unpacked', async () => {
+  test('a backup with no --sha256, a malformed one or another digest is refused before anything is decrypted or unpacked', async () => {
+    // a missing or malformed digest is refused before the stale sweep, so a stale directory it would remove stays
+    const stale = join(intakeRoot, 'intake-2147483646-1-0000000e');
+    mkdirSync(stale, { recursive: true });
+    for (const [digest, message] of [
+      [undefined, '--from-backup needs --sha256, the sha256 of the backup file; nothing was decrypted'], ['', '--from-backup needs --sha256, the sha256 of the backup file; nothing was decrypted'],
+      ['abc', '--sha256 must be 64 hex characters; nothing was decrypted'], [`${backupSha.slice(0, 63)}g`, '--sha256 must be 64 hex characters; nothing was decrypted'], [`${backupSha}00`, '--sha256 must be 64 hex characters; nothing was decrypted'],
+    ] as const) await expect(sealFromBackup({ repo: f.repo, set: 'vdigest', backup: join(f.tmp, 'backup.tar.age'), sha256: digest as string, tasks: 'v03/selected/tasks', slice: 'v03/world/slice.json', ...co(f), recipient: f.recipient, intakeRoot })).rejects.toThrow(`HE-SEALED-006 ${message}`);
+    expect(existsSync(stale)).toBe(true);
+    rmSync(stale, { recursive: true });
     await expect(sealFromBackup({ repo: f.repo, set: 'vdigest', backup: join(f.tmp, 'backup.tar.age'), sha256: sha256('another backup'), tasks: 'v03/selected/tasks', slice: 'v03/world/slice.json', ...co(f), recipient: f.recipient, intakeRoot })).rejects.toThrow(/^HE-SEALED-006 --from-backup \S+ has sha256 [0-9a-f]{12}, --sha256 asks for [0-9a-f]{12}; nothing was decrypted$/);
     expect(readdirSync(intakeRoot)).toEqual([]);
-    await expect(sealFromBackup({ repo: f.repo, set: 'vdigest', backup: join(f.tmp, 'backup.tar.age'), tasks: '../outside', slice: 'v03/world/slice.json', ...co(f), recipient: f.recipient, intakeRoot })).rejects.toThrow('must be a path under the unpacked backup');
-    await expect(sealFromBackup({ repo: f.repo, set: 'vdigest', backup: join(f.tmp, 'backup.tar.age'), tasks: 'v03/selected/tasks', slice: '/etc/passwd', ...co(f), recipient: f.recipient, intakeRoot })).rejects.toThrow('must be a path under the unpacked backup');
+    // an uppercase digest is the same digest: the backup is decrypted and unpacked, and the seal goes on to the exposures check
+    const upper: string[] = [];
+    await expect(sealFromBackup({ repo: f.repo, set: 'vdigest', backup: join(f.tmp, 'backup.tar.age'), sha256: backupSha.toUpperCase(), tasks: 'v03/selected/tasks', slice: 'v03/world/slice.json', ...co(f), recipient: f.recipient, intakeRoot, exposures: [{ date: '28-10-2026' } as never], log: (l) => upper.push(l) })).rejects.toThrow('--exposures: ');
+    expect(upper).toEqual([expect.stringMatching(/^SEAL: removed the unpacked intake /)]);
+    expect(readdirSync(intakeRoot)).toEqual([]);
+    await expect(sealFromBackup({ repo: f.repo, set: 'vdigest', backup: join(f.tmp, 'backup.tar.age'), sha256: backupSha, tasks: '../outside', slice: 'v03/world/slice.json', ...co(f), recipient: f.recipient, intakeRoot })).rejects.toThrow('must be a path under the unpacked backup');
+    await expect(sealFromBackup({ repo: f.repo, set: 'vdigest', backup: join(f.tmp, 'backup.tar.age'), sha256: backupSha, tasks: 'v03/selected/tasks', slice: '/etc/passwd', ...co(f), recipient: f.recipient, intakeRoot })).rejects.toThrow('must be a path under the unpacked backup');
     expect(existsSync(join(cloneCustody(f, 'check-digest'), 'vdigest'))).toBe(false);
   }, 60_000);
 
@@ -253,9 +267,9 @@ describe('seal.ts --from-backup', () => {
     expect(() => writeBackup(dir, [{ path: 'a/b.txt/c', dir: false, data: enc('c') }])).toThrow('is a file where a directory is needed');
     expect(existsSync(join(t, 'evil.txt'))).toBe(false);
     // a backup holding a link is refused end to end, and the intake directory is gone
-    await backupOf(s, f.recipient, join(t, 'linked.tar.age'));
+    const linked = await backupOf(s, f.recipient, join(t, 'linked.tar.age'));
     const lines: string[] = [];
-    await expect(sealFromBackup({ repo: f.repo, set: 'vlinked', backup: join(t, 'linked.tar.age'), tasks: 'v03', slice: 'v03/a.txt', ...co(f), recipient: f.recipient, intakeRoot, log: (l) => lines.push(l) })).rejects.toThrow('is a symbolic link');
+    await expect(sealFromBackup({ repo: f.repo, set: 'vlinked', backup: join(t, 'linked.tar.age'), sha256: sha256(linked), tasks: 'v03', slice: 'v03/a.txt', ...co(f), recipient: f.recipient, intakeRoot, log: (l) => lines.push(l) })).rejects.toThrow('is a symbolic link');
     expect(lines).toEqual([expect.stringMatching(/^SEAL: removed the unpacked intake /)]);
     expect(readdirSync(intakeRoot)).toEqual([]);
   }, 60_000);
@@ -289,8 +303,34 @@ describe('seal.ts --from-backup', () => {
     expect(typo.status).toBe(2);
     expect(typo.stderr).toStartWith('HE-RUN-002 unknown argument(s) --sha-256; every flag takes one value;');
     expect(readdirSync(intake)).toEqual([]);
+    // --from-backup without --sha256, or with one that is not 64 hex characters, is a usage error before anything is read;
+    // the stale sweep never runs, so a stale directory stays
+    write(join(stale, 'v03', 'leftover.md'), CANARY.residue);
+    const noDigest = run(cli('vnodigest', ['--tasks', 'v03/selected/tasks']));
+    expect(noDigest.status).toBe(2);
+    expect(noDigest.stdout).toBe('');
+    expect(noDigest.stderr).toStartWith('HE-RUN-002 --from-backup needs --sha256 <hex>, the sha256 of the backup file the author sent; nothing was decrypted; usage: ');
+    for (const bad of ['abc', `${backupSha.slice(0, 63)}g`, `${backupSha}00`]) {
+      const malformed = run(cli('vbaddigest', ['--tasks', 'v03/selected/tasks', '--sha256', bad]));
+      expect(malformed.status).toBe(2);
+      expect(malformed.stdout).toBe('');
+      expect(malformed.stderr).toStartWith('HE-RUN-002 --sha256 must be 64 hex characters; nothing was decrypted; usage: ');
+    }
+    // a repeated single-value flag and a flag where the digest should be are usage errors too
+    for (const digests of [[backupSha, 'abc'], ['abc', backupSha], [backupSha, sha256('another backup')]]) {
+      const twice = run(cli('vtwice', ['--tasks', 'v03/selected/tasks', '--sha256', digests[0]!, '--sha256', digests[1]!]));
+      expect(twice.status).toBe(2);
+      expect(twice.stdout).toBe('');
+      expect(twice.stderr).toStartWith('HE-RUN-002 --sha256 given more than once; only --include repeats; usage: ');
+    }
+    const flagValue = run(cli('vflagvalue', ['--tasks', 'v03/selected/tasks', '--sha256', '--include', 'v03/selected/exclusions.json']));
+    expect(flagValue.status).toBe(2);
+    expect(flagValue.stderr).toStartWith('HE-RUN-002 ');
+    expect(existsSync(stale)).toBe(true);
+    rmSync(stale, { recursive: true });
+    expect(readdirSync(intake)).toEqual([]);
     // a refusal after unpacking (no task directory directly under --tasks) prints its code, a count and the log path
-    const refused = run(cli('vrefused', ['--tasks', 'v03/selected']));
+    const refused = run(cli('vrefused', ['--tasks', 'v03/selected', '--sha256', backupSha]));
     expect(refused.status).toBe(2);
     expect(refused.stdout).toMatch(/^SEAL: removed the unpacked intake \S+ \(checked: it no longer exists\)\n$/);
     expect(refused.stderr).toMatch(/^HE-SEALED-006 seal refused \(1 problem\(s\)\); the message can name sealed tasks or slice records, so it is withheld from this terminal; read \S+\.log inside custody only\n$/);
@@ -298,8 +338,8 @@ describe('seal.ts --from-backup', () => {
     // SIGTERM while the backup is decrypted removes the intake directory before exiting
     const big = join(f.tmp, 'big-author');
     v03Tree(big, 48 << 20);
-    await backupOf(big, f.recipient, join(f.tmp, 'big.tar.age'));
-    const child = spawn('bun', cli('vsignal', ['--tasks', 'v03/selected/tasks'], join(f.tmp, 'big.tar.age')), { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const bigSha = sha256(await backupOf(big, f.recipient, join(f.tmp, 'big.tar.age')));
+    const child = spawn('bun', cli('vsignal', ['--tasks', 'v03/selected/tasks', '--sha256', bigSha], join(f.tmp, 'big.tar.age')), { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let childOut = '';
     child.stdout.on('data', (d) => { childOut += d; });
     child.stderr.on('data', (d) => { childOut += d; });
