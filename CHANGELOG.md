@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.40] - 2026-10-29
+
+### internal-task: task set v0.3 sealed
+
+- **v0.3's 40 held-out tasks are sealed.** The custodian (internal-task) sealed them from internal-task's encrypted backup (gen5, sha256 1e69dc119598...) with `scripts/sealed/seal.ts --from-backup --sha256`. The bundle is on the custody branch at custody commit (private) as `v0.3/bundle.tar.age`. The unpacked plaintext was removed by seal.ts.
+- **`tasks/multiuser/v0.3/heldout/MANIFEST.json`** carries only commitments: the bundle, tree, world slice and corpus digests, the exclusion log as one extra file, 40 tasks, and the recipient. No task body, task id or slice text is in the tree; `bun scripts/seal-heldout.ts --check` confirms it.
+- **Openings ledger:** `opening_budget` 2, `alpha_per_opening` 0.025, `status` open, no openings yet (the v0.3 spec). Six exposures are listed: the generator and auditor models, the proxy logs, the response caches, the quiet logs and the author.
+- Every result on this set carries the label "procedural custody" (docs/sealed-custody.md).
+
 ## [0.0.39] - 2026-10-29
 
 ### internal-task: the metering proxy settles unfinished streams, provider errors and 1-hour cache writes correctly
