@@ -51,8 +51,8 @@
  * harness, and the gbrain sidecar's slot with its own token. A slot bound
  * without a token (the embedded image build) accepts any credential while bound.
  * In lease mode a slot bound with `models` (a list of provider:model ids,
- * internal-task; in-process mode ignores it) forwards only requests for those models: any other priced model is refused 403 before
- * reserving, logged with its model and the reason, at $0, inside the run-wide
+ * internal-task; in-process mode ignores it) forwards only requests for those models: any other priced model, or a free count_tokens request for one, is refused 403 before
+ * reserving or forwarding, logged with its model and the reason, at $0, inside the run-wide
  * `--allow-models` bound, which still applies. A bind without `models` adds no
  * per-slot limit.
  *
@@ -416,6 +416,7 @@ export class MeteringProxy {
     const model = typeof body?.model === 'string' ? body.model : null;
     if (countRoute) {
       if (p.allowModels && !p.allowModels.includes(`anthropic:${model}`)) return refuse(403, 'budget', `anthropic:${model} is not on this cell's model allowlist`, model);
+      if (slotModels && !slotModels.includes(`anthropic:${model}`)) return refuse(403, 'budget', `anthropic:${model} is not on slot ${slot}'s model list (${slotModels.join(', ') || 'none'})`, model);
       return this.forwardCount(req, route, search, key, send, realKey, raw, model, at);
     }
     const streamed = body?.stream === true;

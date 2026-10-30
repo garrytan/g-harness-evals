@@ -458,6 +458,23 @@ describe('per-slot model lists (internal-task)', () => {
     } finally { proxy.stop(); }
   });
 
+  test('the free count_tokens route enforces the slot list too: a model on --allow-models but off the slot list is refused before the provider', async () => {
+    const lease = BudgetRun.openLease({ runId: 'lease-slot-count', leaseUsd: 1, ledgerPath: ledgerFile() });
+    const up = fakeUpstream(() => Response.json({ input_tokens: 10 }));
+    const { proxy, post, usageLog } = leased(lease, up.fetchImpl, { freeCountTokens: true, allowModels: ['anthropic:claude-haiku-5-5', 'anthropic:claude-sonnet-5-5'] }, []);
+    try {
+      proxy.bind('cc', 'trial-token:cc', null, ['anthropic:claude-haiku-5-5']);
+      const count = (model: string) => post('/cc/anthropic/v1/messages/count_tokens', { model, messages: [{ role: 'user', content: 'hello' }] });
+      expect((await count('claude-haiku-5-5')).status).toBe(200);
+      const sonnet = await count('claude-sonnet-5-5');
+      expect(sonnet.status).toBe(403);
+      expect((await sonnet.json()).error).toMatchObject({ kind: 'budget', message: "metering proxy: anthropic:claude-sonnet-5-5 is not on slot cc's model list (anthropic:claude-haiku-5-5)" });
+      expect(up.seen.map(s => s.body.model)).toEqual(['claude-haiku-5-5']);
+      const refused = readFileSync(usageLog, 'utf8').trim().split('\n').map(l => JSON.parse(l)).filter(l => l.outcome === 'refused');
+      expect(refused).toEqual([expect.objectContaining({ key: 'trial-token:cc', route: '/v1/messages/count_tokens', model: 'claude-sonnet-5-5', status: 403 })]);
+    } finally { proxy.stop(); }
+  });
+
   test('an empty model list refuses every priced request; a malformed models field is a 400 and leaves the slot unbound', async () => {
     const lease = BudgetRun.openLease({ runId: 'lease-slot-empty', leaseUsd: 1, ledgerPath: ledgerFile() });
     const up = upstream();

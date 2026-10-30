@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.56] - 2026-10-30
+
+(0.0.51 to 0.0.54 went to #128, #137, #138 and #132.)
+
+### internal-task: the free count_tokens route checks the slot's model list
+
+- `runner/proxy/metering-proxy.ts`: with `--free-count-tokens`, a `POST /v1/messages/count_tokens` for a slot bound with a model list now gets the same 403 as a priced request when its model is not on that list. Before, the route checked only the run-wide `--allow-models`, so a slot bound to Haiku could count tokens for Sonnet. Counting is free, so no money moved, but the slot list is a hard bound for every route.
+- `tests/metering-proxy.test.ts`: a test that binds a slot to Haiku with Sonnet on `--allow-models`, counts tokens for both, and expects 200 then 403 with the slot-list message, one upstream call and one refused log line. It fails on the old code (200 instead of 403).
+
 ## [0.0.55] - 2026-10-30
 
 ### internal-task: gstack-native-v1 dev pilot preregistered
