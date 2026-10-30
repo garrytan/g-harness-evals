@@ -1,0 +1,13 @@
+RUN: host-harness-pilot-2026-10 trials=900 cells=9 ceiling_usd=27.27 cap_usd=20 trial_hours_at_cap=375
+CELL: claude-code-haiku-none-mu-v03-dev harness=claude-code mode=docker model=anthropic:claude-haiku-5-5 slice=multiuser split=dev task_set=v0.3 network=internal reps=5 trials=100 turns=275 ceiling_usd=3.03
+CELL: openclaw-haiku-none-mu-v03-dev harness=openclaw mode=docker model=anthropic:claude-haiku-5-5 slice=multiuser split=dev task_set=v0.3 network=internal reps=5 trials=100 turns=275 ceiling_usd=3.03
+CELL: hermes-haiku-none-mu-v03-dev harness=hermes mode=docker model=anthropic:claude-haiku-5-5 slice=multiuser split=dev task_set=v0.3 network=internal reps=5 trials=100 turns=275 ceiling_usd=3.03
+CELL: claude-code-haiku-gbrain-told-mu-v03-dev harness=claude-code mode=docker model=anthropic:claude-haiku-5-5 slice=multiuser split=dev task_set=v0.3 network=internal reps=5 trials=100 turns=275 ceiling_usd=3.03 gbrain=starter/mcp/off preamble=tasks/multiuser/_shared/preamble.gbrain-ladder.md
+CELL: openclaw-haiku-gbrain-told-mu-v03-dev harness=openclaw mode=docker model=anthropic:claude-haiku-5-5 slice=multiuser split=dev task_set=v0.3 network=internal reps=5 trials=100 turns=275 ceiling_usd=3.03 gbrain=starter/mcp/off preamble=tasks/multiuser/_shared/preamble.gbrain-ladder.md
+CELL: hermes-haiku-gbrain-told-mu-v03-dev harness=hermes mode=docker model=anthropic:claude-haiku-5-5 slice=multiuser split=dev task_set=v0.3 network=internal reps=5 trials=100 turns=275 ceiling_usd=3.03 gbrain=starter/mcp/off preamble=tasks/multiuser/_shared/preamble.gbrain-ladder.md
+CELL: codex-luna-none-mu-v03-dev harness=codex mode=docker model=openai:gpt-6-luna slice=multiuser split=dev task_set=v0.3 network=internal reps=5 trials=100 turns=275 ceiling_usd=3.03
+CELL: openclaw-luna-none-mu-v03-dev harness=openclaw mode=docker model=openai:gpt-6-luna slice=multiuser split=dev task_set=v0.3 network=internal reps=5 trials=100 turns=275 ceiling_usd=3.03
+CELL: hermes-luna-none-mu-v03-dev harness=hermes mode=docker model=openai:gpt-6-luna slice=multiuser split=dev task_set=v0.3 network=internal reps=5 trials=100 turns=275 ceiling_usd=3.03
+GBRAIN: cells claude-code-haiku-gbrain-told-mu-v03-dev, openclaw-haiku-gbrain-told-mu-v03-dev, hermes-haiku-gbrain-told-mu-v03-dev run with a gbrain sidecar per trial (image harness-eval/gbrain:dev unless --gbrain-image; starter/mcp/off: the 33-tool starter surface; MCP registration only; keyword-only, no model call; docs/gbrain-arm.md)
+WARN: HE-BUDGET-003 cost ceiling 27.27 exceeds the preregistered cap 20; cells past the cap stop incomplete in drop order
+MANIFEST: /home/ubi/shard/results/manifest.json

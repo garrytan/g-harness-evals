@@ -13,9 +13,11 @@
 - **The dev pilot read no-go** ([report](docs/benchmarks/2026-10-29-v03-pilot/report.md)): on its 20 public tasks on Haiku, four of six families were informative and the rule needs five. It found and fixed a defect in one family.
 - **The held-out set was sealed early.** It was sealed (custody commit `custody commit (private)`) before that verdict was settled.
 - **That deviation is approved on one condition** ([deviation-approval.md](docs/benchmarks/2026-10-29-v03-pilot/deviation-approval.md)): the `told` cells of the installer dev run ([preregistration](docs/benchmarks/2026-10-29-v03-installer-dev/PREREGISTRATION.md)) must show five of six families informative.
-- **A second dev pilot** puts Claude Code and Codex beside OpenClaw and Hermes Agent on the same tasks, each on its own model ([preregistration](docs/benchmarks/2026-10-30-host-harness-pilot/PREREGISTRATION.md)).
+- **The second dev pilot can't tell Claude Code or Codex apart from OpenClaw and Hermes Agent** on the same 20 public tasks, each pair on one model ([report](docs/benchmarks/2026-10-30-host-harness-pilot/report.md)).
+  - Claude Code and Codex cost less per trial; the paired interval excludes zero in five of six pairs.
+  - gbrain's `told` arm scored lower than no brain in all three Haiku harnesses (descriptive, intervals in the report), through cross-scope reads from `gbrain.search`.
 
-Version: harness-evals v0.0.58. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
+Version: harness-evals v0.0.59. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
 
 ## Start here
 
@@ -47,10 +49,10 @@ Version: harness-evals v0.0.58. Everything above [Changelog](#changelog) describ
 | OpenClaw | [openclaw/openclaw](https://github.com/openclaw/openclaw) 2026.10.6, installed from npm ([harnesses/openclaw/pin.json](harnesses/openclaw/pin.json)) |
 | Hermes Agent | [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) v2026.9.24, commit `f97608f` ([harnesses/hermes/pin.json](harnesses/hermes/pin.json)) |
 | QM | [yc-software/qm](https://github.com/yc-software/qm) v0.1.15, commit `7417aa2a`, run through its Pi engine in every cell and through its Claude Agent SDK engine in the inner-harness run and the two probe runs ([harnesses/qm/pin.json](harnesses/qm/pin.json)) |
-| Claude Code | [anthropics/claude-code](https://www.npmjs.com/package/@anthropic-ai/claude-code) 2.1.312 from npm, built and tested keyless, no counted run yet ([harnesses/claude-code/pin.json](harnesses/claude-code/pin.json)) |
-| Codex | [openai/codex](https://github.com/openai/codex) 0.165.0 from npm, built and tested keyless, no counted run yet. It speaks only OpenAI's Responses API, so it is compared only with OpenClaw and Hermes on the same OpenAI model ([harnesses/codex/pin.json](harnesses/codex/pin.json)) |
+| Claude Code | [anthropics/claude-code](https://www.npmjs.com/package/@anthropic-ai/claude-code) 2.1.312 from npm; first counted run `host-harness-pilot-2026-10` (dev) ([harnesses/claude-code/pin.json](harnesses/claude-code/pin.json)) |
+| Codex | [openai/codex](https://github.com/openai/codex) 0.165.0 from npm; first counted run `host-harness-pilot-2026-10` (dev). It speaks only OpenAI's Responses API, so it is compared only with OpenClaw and Hermes on the same OpenAI model ([harnesses/codex/pin.json](harnesses/codex/pin.json)) |
 | Not run | [name withheld] and [name withheld] are in the plan but expose no headless API; nothing on this page measures them |
-| Models | `claude-sonnet-5-5` and `claude-haiku-5-5`, one fixed model per run, every call through the metering proxy under a ledger lease; the harness containers see only the proxy and a per-trial dummy token |
+| Models | `claude-sonnet-5-5` and `claude-haiku-5-5`, plus `gpt-6-luna` for the OpenAI cells of `host-harness-pilot-2026-10`; one fixed model per cell, every call through the metering proxy under a ledger lease; the harness containers see only the proxy and a per-trial dummy token |
 | gbrain, the sidecar in the brain runs | [garrytan/gbrain](https://github.com/garrytan/gbrain), pinned today at `32366ac2` (0.60.498.0, master at the merge of gbrain#7898, which contains gbrain#7489 and gbrain#7744), for runs `v03-installer-dev-2026-10` and `host-harness-pilot-2026-10`; each counted run names the commit it built, from `f241216c` (0.60.413.0) in the gbrain arm to `81692dc6` (0.60.472.0, gbrain#7744's head before it merged) in `gbrain-memory-fix-2026-10b` and the v0.3 dev pilot ([gbrain/pin.json](gbrain/pin.json), fields `commit` and `previous`). gbrain is a knowledge brain served to the harness as a second MCP server, not a harness under test |
 
 - Every harness runs headlessly in `serve` mode. The runner plays each member's messages through a Slack mock on a simulation clock, and the harness answers through one world-MCP server ([docs/adapters.md](docs/adapters.md)).
@@ -157,11 +159,12 @@ Version: harness-evals v0.0.58. Everything above [Changelog](#changelog) describ
 
 ### v0.3 runs
 
-**So what:** the new task set's dev pilot sized the sealed opening and found one task family broken; nothing here tests a candidate.
+**So what:** the new task set's dev pilot sized the sealed opening and found one task family broken. The host-harness pilot could not tell Claude Code or Codex apart from OpenClaw and Hermes Agent. Both are dev.
 
 | Run | Date | Question | Result | Spend | Status | Report |
 |---|---|---|---|---|---|---|
 | `v03-pilot-2026-10` | 2026-10-29 | Are the v0.3 task families informative, and does opening 1 fit $30? | No-go: 4 of 6 families in range. Approval relay fixed (#119), not yet re-measured. Opening 1 fits $30 at a typical reservation ($23.57), not at the largest ($30.57) | $9.15 of $24.90 | dev | [report](docs/benchmarks/2026-10-29-v03-pilot/report.md) |
+| `host-harness-pilot-2026-10` | 2026-10-30 | Claude Code against OpenClaw and Hermes Agent on Haiku, Codex against them on gpt-6-luna | CC 57 · OC 56 · He 63 (none), CC 39 · OC 47 · He 42 (told), Cx 67 · OC 63 · He 61 (luna); all six pairs can't tell apart, smallest Holm p 0.750 | $7.38 of $20 (+ $0.14 smokes) | dev | [report](docs/benchmarks/2026-10-30-host-harness-pilot/report.md) |
 
 ### How to read these numbers
 
@@ -300,6 +303,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)); the world is built from gbrain-evals' `messy-company-v1` dataset; OpenClaw, Hermes Agent and QM are named as products only.
 
 ## Changelog
+
+### 2026-10-30: host-harness dev pilot reported (internal-task)
+
+harness-evals v0.0.59. The v0.3 runs table gives run `host-harness-pilot-2026-10` one row, and its so-what line names it. The Next line links the report. The Claude Code and Codex rows of the harness table name their first counted run, and the Models row names `gpt-6-luna`. The version line moves from v0.0.58 to v0.0.59. Why: the pilot is complete. All six preregistered pairs are not distinguished at 20 tasks (dev), and gbrain's `told` arm scored below no brain in all three Haiku harnesses (descriptive).
 
 ### 2026-10-30: version line only, Ubicloud VMs carry a TTL (internal-task)
 

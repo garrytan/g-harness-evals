@@ -1,0 +1,31 @@
+# Evaluator-owned receipts are committed; harness state, workspaces, raw harness logs and per-trial tokens are not.
+trials/*/*/*/state/
+trials/*/*/*/workspace/
+trials/*/*/*/logs/*
+!trials/*/*/*/logs/adapter.log
+trials/*/*/*/trial.json
+*.sqlite-shm
+*.sqlite-wal
+trials/*/*/*/compose.serve.yaml
+# The company brain: the sidecar's per-trial token, tokens.json and run directory (docs/gbrain-arm.md), and every preflight's
+# token and sidecar logs, stay out of the repository.
+trials/*/*/*/gbrain/
+preflight-*/
+# The run and proxy logs of each shard are receipts this run's report cites (the repository's root rule ignores *.log).
+!run.log
+!run-*.log
+!proxy.log
+!proxy-*.log
+!*.run.log
+!*.proxy.log
+!*.preflight.log
+!*.plan.log
+!*.run-shard.log
+!*.smoke-lease.log
+!*.fanout.log
+!fanout.log
+# HARN-8: a sharded run's merge copies each shard's preflight directory as <shard>.preflight-*/ (the member brain's token files are not copied; the
+# directory still holds the sidecar logs); the per-trial gbrain/ directory holds tokens.json and ingest-tokens.json under live ingestion.
+*preflight-*/
+**/ingest-tokens.json
+**/tokens.json

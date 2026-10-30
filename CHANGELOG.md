@@ -2,6 +2,18 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.59] - 2026-10-30
+
+### internal-task: host-harness-pilot-2026-10 reported (dev)
+
+- `docs/benchmarks/2026-10-30-host-harness-pilot/report.md` (new): **all six preregistered comparisons are not distinguished at 20 tasks (dev).** Holm over the six gives 0.750 at best. Claude Code minus OpenClaw and minus Hermes Agent on Haiku, with no brain and with gbrain `told`; Codex minus OpenClaw and minus Hermes Agent on gpt-6-luna. Codex minus Hermes Agent is +6 [+1, +12] with Holm p 0.750, so the decision sentence does not report it.
+- The `told` cells scored below `none` in all three Haiku harnesses (descriptive, crosses an arm, no test: -18 [-33, -4], -9 [-26, +7], -21 [-37, -6]; OpenClaw's interval includes zero). Every `told` cross-scope failure (48, 40, 42 trials) cites a channel page returned by `gbrain.search` (395 rows) or `gbrain.query` (3) under the bot grant; for internal-task.
+- OpenClaw on gpt-6-luna: 11 trials ended `model_error` (HE-MODEL-001) because its memory indexer asked for `text-embedding-3-small` and the proxy refused all 21 requests. Not a cap stop or an upstream error. The pairs are excluded from comparison 5 as preregistered.
+- Spend: $7.3775 committed in the nine shard ledgers (leases $19.55, cap $20), $0.1363 in the smokes, reconciled on the proxy side per shard. VMs $9.9130 at list price. No shard reached its lease. Two shards were relaunched before any trial (he-told capacity, oc-none image build), at the same commit and lease.
+- `docs/benchmarks/2026-10-30-host-harness-pilot/results/` (new): the merged receipts of nine Ubicloud shards, all at 5329dd9e4. Per shard: ledger and smoke ledger (WAL checkpointed), proxy log and usage, preflight, plan, run, run-shard and smoke-lease logs, run summary, `shard.json`, `shard-vm.json` and a spend reconciliation sheet. The two failed first tries as `*.try1-*`, the fan-out record and run notes. Per trial: events, turns, gzipped snapshot, usage, reconcile, grade and the adapter log. `summary`, `comparisons` and `host-pilot-tables`.
+- `scripts/host-pilot-tables.ts` (new): the six comparisons with Holm over the six, excluding a pair with a `model_error`, `infra_error` or `exam_fault` trial on either side (compare-run's default mode keeps every trial and adjusts across 36 pairs; its p is printed beside), the decision sentence, OpenClaw minus Hermes Agent and told minus none as descriptive rows, paired cost, cost per trial and per success, tokens, wall time per trial and per turn (the median turn duration from turns.jsonl) with task-clustered intervals, pass^5 (only tasks with every trial scored) and pass@5, and proxy requests by route and model. `tests/host-pilot-tables.test.ts` recomputes the committed tables and the six figures from the receipts, and on a fixture checks the model_error and infra_error exclusions, a harness_error kept as a failure, the Holm family, an incomplete task left out of pass^5, and unequal turn durations.
+- `README.md`: a row in the v0.3 runs table, the Next line, the Claude Code and Codex rows and the Models row of the harness table, the version line and a changelog entry.
+
 ## [0.0.58] - 2026-10-30
 
 ### internal-task: every Ubicloud VM carries a TTL in its name
