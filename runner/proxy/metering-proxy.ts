@@ -62,7 +62,7 @@
  *
  * Standalone (lease mode):
  *   bun runner/proxy/metering-proxy.ts --listen 172.17.0.1:8787 --budget-ledger <file> --lease-usd <n> --run-id <id>
- *     [--usage-log <file>] [--allow-models openai:gpt-4.1-mini,...] [--max-output-tokens 32768]
+ *     [--usage-log <file>] [--allow-models openai:gpt-4.1-mini,...] [--max-output-tokens 32768] [--free-count-tokens]
  *     [--forbidden-markers <file>] [--streaming meter|refuse] [--upstream openai=http://...] [--new-run] [--control-token <t>]
  *   bun runner/proxy/metering-proxy.ts summary --budget-ledger <file> --run-id <id>
  *
@@ -80,7 +80,14 @@ export const UPSTREAM: Record<string, string> = { anthropic: 'https://api.anthro
 export type ProviderName = 'anthropic' | 'openai' | 'voyage';
 type Send = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
-/** Lease mode forwards only these routes. GET model listings are free metadata reads. */
+/** Anthropic's token counter. Providers do not bill it. Only a lease proxy started with --free-count-tokens (the Lane B
+ *  bridge, docs/gstack-laneb.md) forwards it, for a bound slot (with the slot's token) and an allowed model, without a
+ *  price, a reservation or a charge, logging one line at $0. The Lane B proxy calls it before every request to bound that
+ *  request's worst case. Every other lease proxy refuses it (403) as before, so harness lanes and their receipts are
+ *  unchanged. */
+export const COUNT_TOKENS_ROUTE = '/v1/messages/count_tokens';
+
+/** Lease mode forwards only these routes (and COUNT_TOKENS_ROUTE under freeCountTokens). GET model listings are free metadata reads. */
 const ROUTES: Record<ProviderName, Array<{ method: string; path: RegExp }>> = {
   openai: [
     { method: 'POST', path: /^\/v1\/chat\/completions$/ }, { method: 'POST', path: /^\/v1\/responses$/ }, { method: 'POST', path: /^\/v1\/embeddings$/ },
@@ -125,6 +132,8 @@ export interface LeasePolicy {
   streaming?: 'meter' | 'refuse';
   /** Append-only per-request usage log (ndjson). */
   usageLog?: string;
+  /** Forward POST /anthropic/v1/messages/count_tokens free (COUNT_TOKENS_ROUTE); off by default. */
+  freeCountTokens?: boolean;
 }
 
 export interface UsageLine {
@@ -361,6 +370,26 @@ export class MeteringProxy {
     return new Response(this.options.transform ? this.options.transform(slot, target, text) : text, { status: res.status, headers: out });
   }
 
+  /** Lease mode, POST /anthropic/v1/messages/count_tokens: forwarded with the proxy's key, never priced, reserved or metered. */
+  private async forwardCount(req: Request, route: string, search: string, key: string, send: Send, realKey: string, raw: string | undefined, model: string | null, at: string): Promise<Response> {
+    const headers = new Headers(req.headers);
+    for (const h of ['host', 'content-length', 'accept-encoding', 'connection', ...CREDENTIAL_HEADERS]) headers.delete(h);
+    headers.set('x-api-key', realKey);
+    if (!headers.has('anthropic-version')) headers.set('anthropic-version', '2023-06-01');
+    headers.set('content-type', 'application/json');
+    let res: Response;
+    try { res = await send(`${this.options.upstream?.anthropic ?? UPSTREAM.anthropic}${route}${search}`, { method: 'POST', headers, body: raw, timeout: false, signal: AbortSignal.timeout(UPSTREAM_DEADLINE_MS) } as RequestInit); }
+    catch (e) {
+      this.log({ at, key, provider: 'anthropic', route, model, outcome: 'failed', reason: `count_tokens (free): ${(e as Error).message.slice(0, 300)}`, reserved_usd: 0, actual_usd: 0 });
+      return json(502, 'product_error', `upstream failed: ${(e as Error).message}`);
+    }
+    const text = await res.text();
+    this.log({ at, key, provider: 'anthropic', route, model, outcome: 'forwarded', status: res.status, reserved_usd: 0, actual_usd: 0, reason: 'count_tokens: free, never metered' });
+    const out = new Headers(res.headers);
+    for (const h of ['content-encoding', 'content-length', 'transfer-encoding']) out.delete(h);
+    return new Response(text, { status: res.status, headers: out });
+  }
+
   /** Lease mode: allowlist, tripwire, output cap, price, reserve, inject the key, forward, settle. Every refusal happens before forwarding. */
   private async forwardLeased(req: Request, prov: ProviderName, route: string, search: string, key: string, send: Send, beginStream: () => () => void, slot: string, slotModels: string[] | null): Promise<Response> {
     const p = this.options.policy!;
@@ -369,7 +398,8 @@ export class MeteringProxy {
       this.log({ at, key, provider: prov, route, model, outcome: 'refused', reason, status });
       return json(status, kind, reason);
     };
-    if (!ROUTES[prov].some(r => r.method === req.method && r.path.test(route))) return refuse(403, 'invalid_request', `route ${req.method} /${prov}${route} is not allowlisted`);
+    const countRoute = prov === 'anthropic' && req.method === 'POST' && route === COUNT_TOKENS_ROUTE && p.freeCountTokens === true;
+    if (!countRoute && !ROUTES[prov].some(r => r.method === req.method && r.path.test(route))) return refuse(403, 'invalid_request', `route ${req.method} /${prov}${route} is not allowlisted`);
     const realKey = (p.env ?? process.env)[KEY_ENV[prov]];
     if (!realKey) return refuse(503, 'budget', `${KEY_ENV[prov]} is not set in the proxy's environment`);
     const raw = req.method === 'GET' ? undefined : await req.text();
@@ -384,6 +414,10 @@ export class MeteringProxy {
       if (!body || typeof body !== 'object' || Array.isArray(body)) return refuse(400, 'invalid_request', 'request body must be a JSON object');
     }
     const model = typeof body?.model === 'string' ? body.model : null;
+    if (countRoute) {
+      if (p.allowModels && !p.allowModels.includes(`anthropic:${model}`)) return refuse(403, 'budget', `anthropic:${model} is not on this cell's model allowlist`, model);
+      return this.forwardCount(req, route, search, key, send, realKey, raw, model, at);
+    }
     const streamed = body?.stream === true;
     if (streamed && (p.streaming ?? 'meter') === 'refuse') return refuse(400, 'invalid_request', 'streaming is disabled for this cell', model);
     if (streamed && prov === 'openai' && route === '/v1/chat/completions') body!.stream_options = { ...(body!.stream_options ?? {}), include_usage: true };
@@ -505,7 +539,7 @@ export class ProxyControl {
 export interface ProxyCliArgs {
   host: string; port: number; ledger: string; leaseUsd: number; runId: string; usageLog: string | null;
   allowModels: string[] | null; maxOutputTokens: number | null; forbiddenMarkers: string[]; streaming: 'meter' | 'refuse'; upstream: Partial<Record<ProviderName, string>>; newRun: boolean;
-  controlToken: string | null;
+  controlToken: string | null; freeCountTokens: boolean;
 }
 
 export function parseProxyArgs(argv: string[]): ProxyCliArgs {
@@ -531,14 +565,14 @@ export function parseProxyArgs(argv: string[]): ProxyCliArgs {
     allowModels: one('--allow-models') ? one('--allow-models')!.split(',').map(s => s.trim()).filter(Boolean) : null,
     maxOutputTokens: one('--max-output-tokens') ? Number(one('--max-output-tokens')) : null,
     forbiddenMarkers: markersFile ? readFileSync(markersFile, 'utf8').split('\n').map(s => s.trim()).filter(Boolean) : [],
-    streaming, upstream, newRun: argv.includes('--new-run'), controlToken: one('--control-token') ?? process.env.SHOOTOUT_PROXY_CONTROL_TOKEN ?? null,
+    streaming, upstream, newRun: argv.includes('--new-run'), freeCountTokens: argv.includes('--free-count-tokens'), controlToken: one('--control-token') ?? process.env.SHOOTOUT_PROXY_CONTROL_TOKEN ?? null,
   };
 }
 
 export function startLeaseProxy(a: ProxyCliArgs, env: Record<string, string | undefined> = process.env): MeteringProxy {
   const lease = BudgetRun.openLease({ runId: a.runId, leaseUsd: a.leaseUsd, ledgerPath: a.ledger, runner: 'metering-proxy', maxOutputTokens: a.maxOutputTokens, newRun: a.newRun });
   const proxy = new MeteringProxy({ hostname: a.host, port: a.port, upstream: a.upstream, controlToken: a.controlToken,
-    policy: { lease, env, allowModels: a.allowModels, maxOutputTokens: a.maxOutputTokens ?? undefined, forbiddenMarkers: a.forbiddenMarkers, streaming: a.streaming, usageLog: a.usageLog ?? `${lease.ledgerPath}.usage.ndjson` } });
+    policy: { lease, env, allowModels: a.allowModels, maxOutputTokens: a.maxOutputTokens ?? undefined, forbiddenMarkers: a.forbiddenMarkers, streaming: a.streaming, usageLog: a.usageLog ?? `${lease.ledgerPath}.usage.ndjson`, freeCountTokens: a.freeCountTokens } });
   proxy.start();
   return proxy;
 }

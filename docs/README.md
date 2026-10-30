@@ -37,6 +37,8 @@ harness-evals v0.0.12. The index of this directory: one line per page, saying wh
 - [receipts-manifest.json](receipts-manifest.json): the machine-readable receipts list, one entry per counted run with its preregistration commits and hashed artifacts (generated 2026-10-26 beside this index).
 - [report-v0.1.md](report-v0.1.md): the one-page account of the v0.1 multi-user cell: finding, limits, interests, tables with intervals, taxonomy and spend, with every number copied from a named receipt.
 - [tasks.md](tasks.md): the multi-user task format: families, the access model, the predicate library, oracles and the mutation contract, task sets (v0.1, v0.2, the generated v0.3 set, the QM probes) and how a cell selects one.
+- [gstack-laneb.md](gstack-laneb.md): the Lane B bridge (internal-task): runs the pinned gstack-evals Lane B agent on gstack-native and Terminal-Bench 2 tasks under our metering, leases and Ubicloud lane.
+- [gstack-native-format.md](gstack-native-format.md): the gstack-native repo task format the bridge materializes.
 - [ubicloud.md](ubicloud.md): the Ubicloud shard lane: the scripts that put one shard per VM, how a run fans out and comes back, the check lane, costs and limits.
 
 ## Changelog

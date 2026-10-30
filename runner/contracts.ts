@@ -274,6 +274,30 @@ export interface TrialGbrain {
   events: { total: number; discovery: number; calls: number; in_turn_calls: number; writes: number; degraded?: number };
 }
 
+/** internal-task (Lane B bridge, docs/gstack-laneb.md) addition: what a Lane B trial adds to its record. The Harbor trial and
+ *  the Lane B proxy session it ran under, the verifier's reward, Harbor's exception class and the agent's error class (never
+ *  a message), the body-load probe (cmd_expanded: the first forwarded request carried an expanded slash command; the
+ *  first request's prompt-token bound), and Lane B's own meter for the session beside ours (usage), with the difference. */
+export interface TrialLaneB {
+  arm: string;
+  harbor_trial: string;
+  session: string | null;
+  invoked: boolean;
+  reward: number | null;
+  exception: string | null;
+  agent_error: string | null;
+  cmd_expanded: boolean | null;
+  first_req_prompt_tokens: number | null;
+  requests: number;
+  ok_responses: number;
+  refused_budget: number;
+  laneb_meter_usd: number | null;
+  /** usage.usd minus laneb_meter_usd; our meter is the authoritative one. */
+  meter_delta_usd: number | null;
+  /** Present only when the arm tar was a pack-equivalent rebuild that pin.json lists as a dated deviation, not the pinned tar. */
+  arm_deviation?: { date: string; pinned_tar_sha256: string; tar_sha256: string; tar_gz_sha256: string; reason: string };
+}
+
 /** M1 lane A addition: one line of results/<run>/trials.jsonl. termination, grade and effects are the three
  *  orthogonal fields of methodology item 9; cap_stop marks a model_error that was the proxy refusing the lease. */
 export interface TrialRecord {
@@ -302,4 +326,6 @@ export interface TrialRecord {
   error?: string;
   /** gbrain arm lane D addition: set on a trial of a cell that carries gbrain. */
   gbrain?: TrialGbrain;
+  /** internal-task addition: set on a trial run through the Lane B bridge. */
+  laneb?: TrialLaneB;
 }

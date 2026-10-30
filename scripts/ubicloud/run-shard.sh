@@ -8,7 +8,18 @@
 #       --cells a,b --lease-usd <n> --dest <local directory> [--size standard-16] [--location eu-central-h1] [--storage GiB]
 #       [--smoke-lease-usd <n>] [--smoke-task <task id>] [--no-smoke] [--embedded] [--gbrain-image <tag>] [--amendment <sha>]
 #       [--resume] [--attach] [--poll-seconds 30] [--timeout-hours 12] [--sealed-root <local dir> --opening-receipt <local file>]
+#       [--workload harness|gstack-laneb] [--laneb-root <dir from scripts/gstack-laneb/fetch.ts>]
 #       [-- <extra arguments for scripts/run-shard.sh>]
+#
+# --workload gstack-laneb (internal-task, docs/gstack-laneb.md) runs the shard's cells through the Lane B bridge instead of the
+# harness runner: the --laneb-root directory (default ~/.capy/work/gstack-laneb: the pinned gstack-evals checkout, the arm
+# tars, and terminal-bench-2 when fetched) is streamed to ~/laneb on the VM without its .git directory (terminal-bench-2
+# keeps its own), only the arms the shard's cells use plus none and placebo for the smoke; vm-shard.sh then runs the
+# keyless bridge smoke (scripts/gstack-laneb/smoke.sh, fake upstream, no spend) in place of the harness smoke and
+# scripts/gstack-laneb/vm-run.sh in place of scripts/run-shard.sh. Poll lines carry the count of finished Harbor trials
+# only, never a log line. --resume, --embedded, --sealed-root and --opening-receipt are refused for this workload
+# (held-out Lane B runs are not supported yet). Everything else (one VM per shard, the keys over SSH, the pull, the
+# destroy) is the same.
 #
 # What happens, in order (every line goes to <dest>/lane.log with a UTC stamp):
 #   1. The commit is resolved (fetched from origin if this checkout lacks it) and the preregistration checked: a path that
@@ -64,6 +75,7 @@ runner=${UBI_RUNNER:-$here/ubi-runner.sh}
 
 commit="" prereg="" name="" cells="" lease="" dest="" size=standard-16 location="" storage="" smoke_lease="" smoke_task="" smoke=1
 embedded=0 gbrain_image="" amendment="" resume=0 attach=0 poll=30 timeout_h=12 sealed_root="" opening_receipt="" sealed=0
+workload=harness laneb_root="$HOME/.capy/work/gstack-laneb"
 extra=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -88,12 +100,20 @@ while [ $# -gt 0 ]; do
     --timeout-hours) timeout_h=$2; shift 2 ;;
     --sealed-root) sealed_root=$2; shift 2 ;;
     --opening-receipt) opening_receipt=$2; shift 2 ;;
+    --workload) workload=$2; shift 2 ;;
+    --laneb-root) laneb_root=$2; shift 2 ;;
     -h|--help) sed -n '2,/^set -euo pipefail/{/^set /!p}' "$0"; exit 0 ;;
     --) shift; extra=("$@"); break ;;
     *) echo "run-shard (ubicloud): unknown argument $1 (see --help)" >&2; exit 2 ;;
   esac
 done
 [ -n "$dest" ] || { echo "run-shard (ubicloud): --dest is required" >&2; exit 2; }
+case $workload in harness) ;; gstack-laneb)
+  [ "$resume" -eq 0 ] && [ "$embedded" -eq 0 ] || { echo "run-shard (ubicloud): --resume and --embedded do not apply to --workload gstack-laneb (docs/gstack-laneb.md)" >&2; exit 2; }
+  [ -z "$sealed_root" ] && [ -z "$opening_receipt" ] || { echo "run-shard (ubicloud): --workload gstack-laneb runs public sets only; held-out (sealed) Lane B runs are not supported yet (docs/gstack-laneb.md, Known limits)" >&2; exit 2; }
+  [ "$attach" -eq 1 ] || { [ -d "$laneb_root/gstack-evals" ] && [ -d "$laneb_root/arms" ]; } || { echo "run-shard (ubicloud): --laneb-root $laneb_root needs gstack-evals/ and arms/ (bun scripts/gstack-laneb/fetch.ts --out $laneb_root)" >&2; exit 2; } ;;
+  *) echo "run-shard (ubicloud): --workload must be harness or gstack-laneb" >&2; exit 2 ;;
+esac
 if [ "$attach" -eq 0 ]; then
   [ -n "$commit" ] && [ -n "$prereg" ] && [ -n "$name" ] && [ -n "$cells" ] && [ -n "$lease" ] || { echo "run-shard (ubicloud): --commit, --prereg, --name, --cells, --lease-usd and --dest are required" >&2; exit 2; }
   [ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "run-shard (ubicloud): ANTHROPIC_API_KEY is not set in this shell; the metering proxy on the VM needs it" >&2; exit 2; }
@@ -150,8 +170,15 @@ teardown() {
   [ -z "$scratch" ] || rm -rf "$scratch"
   [ -n "$vm" ] || return 0
   if [ "$launched" -eq 1 ] && [ "$exited" -eq 0 ]; then
+    if [ "$workload" = gstack-laneb ]; then
+      # the Lane B shard drains its meter and writes its records after the signal (vm-shard.sh waits for vm-run.sh and
+      # then writes ~/shard/exit), so wait for the exit file itself, up to 240 s
+      log "stopping the shard on $vm (SIGTERM to its process group, up to 240 s for its records)"
+      vssh 'pid=$(cat ~/shard/pid 2>/dev/null); [ -n "$pid" ] && kill -TERM -- -"$pid" 2>/dev/null; for i in $(seq 240); do [ -f ~/shard/exit ] && break; sleep 1; done; [ -f ~/shard/exit ] || echo interrupted > ~/shard/exit; cat ~/shard/exit' 2>>"$dest/lane.log" | stamp | tee -a "$dest/lane.log" >&2
+    else
     log "stopping the shard on $vm (SIGTERM to its process group, up to 90 s)"
     vssh 'pid=$(cat ~/shard/pid 2>/dev/null); [ -n "$pid" ] && kill -TERM -- -"$pid" 2>/dev/null; for i in $(seq 90); do [ -f ~/shard/exit ] && break; kill -0 "$pid" 2>/dev/null || break; sleep 1; done; [ -f ~/shard/exit ] || echo interrupted > ~/shard/exit; cat ~/shard/exit' 2>>"$dest/lane.log" | stamp | tee -a "$dest/lane.log" >&2
+    fi
   fi
   if [ "$launched" -eq 1 ]; then
     log "checkpointing ledgers and copying the results tree back to $dest"
@@ -221,6 +248,7 @@ PY
 if [ "$attach" -eq 1 ]; then
   vm=$(jq1 vm); size=$(jq1 size); name=$(jq1 name)
   [ "$(jq1 sealed)" != True ] || sealed=1
+  [ "$(jq1 workload)" != gstack-laneb ] || workload=gstack-laneb
   [ -n "$vm" ] || { echo "run-shard (ubicloud): --attach needs $dest/shard-vm.json (or $dest/results/shard-vm.json) with a vm field" >&2; exit 2; }
   # A sealed lane's raw logs and results come back to --dest, so an attach rechecks it once it knows the lane is sealed.
   if [ "$sealed" -eq 1 ] && git -C "$dest" rev-parse --is-inside-work-tree >/dev/null 2>&1; then echo "HE-SEALED-002 run-shard (ubicloud): --dest $dest is inside a git work tree and $vm runs a sealed shard, whose raw logs and results come back there; nothing was polled or pulled and $vm is still running. Move $dest outside every checkout and attach from there, or destroy the VM (its results are lost): bash $runner down $vm" >&2; exit 2; fi
@@ -267,7 +295,7 @@ else
   trap teardown EXIT
   trap 'exit 130' INT TERM HUP QUIT
   location=$(sed -n 's/^LOCATION=//p' "${UBI_RUNNER_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/ubi-runner}/$vm/env" | tr -d "'" || true)
-  jset "name=\"$name\"" "vm=\"$vm\"" "size=\"$size\"" "location=\"$location\"" "owner=\"$(bash "$runner" owner)\"" "commit=\"$commit\"" "run_id=\"$run_id\"" "cells=\"$cells\"" "lease_usd=$lease" "prereg=\"$prereg\"" "scratch_prereg=$([ -n "$scratch_prereg" ] && echo true || echo false)" "sealed=$([ "$sealed" -eq 1 ] && echo true || echo false)" "created_at=\"$(date -u -d @$t_create +%Y-%m-%dT%H:%M:%SZ)\"" "created_epoch=$t_create" "ready_at=\"$(date -u -d @$t_ready +%Y-%m-%dT%H:%M:%SZ)\"" "dest=\"$dest\"" "cleanup=\"pending\""
+  jset "name=\"$name\"" "vm=\"$vm\"" "size=\"$size\"" "location=\"$location\"" "owner=\"$(bash "$runner" owner)\"" "commit=\"$commit\"" "run_id=\"$run_id\"" "cells=\"$cells\"" "lease_usd=$lease" "prereg=\"$prereg\"" "scratch_prereg=$([ -n "$scratch_prereg" ] && echo true || echo false)" "sealed=$([ "$sealed" -eq 1 ] && echo true || echo false)" "workload=\"$workload\"" "created_at=\"$(date -u -d @$t_create +%Y-%m-%dT%H:%M:%SZ)\"" "created_epoch=$t_create" "ready_at=\"$(date -u -d @$t_ready +%Y-%m-%dT%H:%M:%SZ)\"" "dest=\"$dest\"" "cleanup=\"pending\""
   log "VM $vm ready in $(( t_ready - t_create ))s; $dest/shard-vm.json records it (run-shard.sh --attach --dest $dest rejoins it)"
 
   t_sync0=$(now)
@@ -289,6 +317,16 @@ else
     # tar and the remote unpack can name an archive member (a sealed task path), so their diagnostics go to <dest>/sealed-upload.log, which cleanup.ts removes
     tar -C "$sealed_root" -czf - . 2>>"$dest/sealed-upload.log" | bash "$runner" unpack "$vm" sealed/root >>"$dest/sealed-upload.log" 2>&1 || { log "sealed upload failed; its diagnostics are in $dest/sealed-upload.log (custody only)"; exit 3; }
     vssh 'mkdir -p ~/sealed && cat > ~/sealed/opening-receipt.json' < "$opening_receipt" >>"$dest/sealed-upload.log" 2>&1 || { log "sealed receipt upload failed; its diagnostics are in $dest/sealed-upload.log (custody only)"; exit 3; }
+  fi
+
+  # 4b. the Lane B bridge's pinned checkout and arm tars (--workload gstack-laneb), streamed to ~/laneb; no key is in them
+  if [ "$workload" = gstack-laneb ]; then
+    laneb_arms=$(printf '%s\n' none placebo ${cells//,/ } | sed 's/.*\.//' | sort -u | sed 's#^#arms/#; s#$#.tar.gz#' | tr '\n' ' ')
+    laneb_parts=(gstack-evals $laneb_arms)
+    [ ! -d "$laneb_root/terminal-bench-2" ] || laneb_parts+=(terminal-bench-2)
+    log "laneb: uploading $laneb_root (${laneb_parts[*]}) to ~/laneb"
+    # shellcheck disable=SC2086
+    tar -C "$laneb_root" -czf - --exclude=gstack-evals/.git "${laneb_parts[@]}" 2>>"$dest/lane.log" | bash "$runner" unpack "$vm" laneb >>"$dest/lane.log" 2>&1 || { log "laneb upload failed"; exit 3; }
   fi
 
   # 5. the keys, over SSH only, into a 0600 file the launcher reads and deletes. Only the two model keys go; the custody
@@ -317,6 +355,7 @@ else
   [ "$embedded" -eq 0 ] || vm_args+=(--embedded)
   [ -z "$gbrain_image" ] || vm_args+=(--gbrain-image "$gbrain_image")
   [ "$sealed" -eq 0 ] || vm_args+=(--sealed-root "$remote_home/sealed/root" --opening-receipt "$remote_home/sealed/opening-receipt.json")
+  [ "$workload" = harness ] || vm_args+=(--workload "$workload")
   [ ${#extra[@]} -eq 0 ] || vm_args+=(-- "${extra[@]}")
   qargs=$(printf '%q ' "${vm_args[@]}")
   printf '#!/usr/bin/env bash\nset -u\ncd ~/shard\n. ~/.ubirun-env\nrm -f ~/.ubirun-env\nsetsid nohup bash -l ~/shard/bin/vm-shard.sh %s > ~/shard/vm-shard.out 2>&1 < /dev/null &\necho $! > ~/shard/pid\necho "launched pid $(cat ~/shard/pid)"\n' "$qargs" | vssh 'cat > ~/shard/bin/launch.sh'
@@ -332,7 +371,8 @@ fails=0 polls=0 last_count=-1
 while :; do
   sleep "$poll"
   polls=$(( polls + 1 ))
-  out=$(vssh 'cat ~/shard/exit 2>/dev/null; echo "::trials $(wc -l < ~/shard/results/trials.jsonl 2>/dev/null || echo 0)"' 2>/dev/null) || { fails=$(( fails + 1 )); [ $(( fails % 10 )) -eq 0 ] && log "WARNING: $fails consecutive SSH failures to $vm"; [ "$(now)" -lt "$deadline" ] || { log "timeout after $timeout_h h"; exit 3; }; continue; }
+  if [ "$workload" = gstack-laneb ]; then count_cmd='find ~/shard/results/laneb/jobs -mindepth 3 -maxdepth 3 -name result.json 2>/dev/null | wc -l'; else count_cmd='wc -l < ~/shard/results/trials.jsonl 2>/dev/null || echo 0'; fi
+  out=$(vssh "cat ~/shard/exit 2>/dev/null; echo \"::trials \$($count_cmd)\"" 2>/dev/null) || { fails=$(( fails + 1 )); [ $(( fails % 10 )) -eq 0 ] && log "WARNING: $fails consecutive SSH failures to $vm"; [ "$(now)" -lt "$deadline" ] || { log "timeout after $timeout_h h"; exit 3; }; continue; }
   fails=0
   for f in results/run-shard.log results/run.stdout.log results/run.log vm-shard.out; do
     local_f="$dest/$(basename "$f")"
@@ -342,7 +382,8 @@ while :; do
   count=${out##*::trials }
   if [ "$count" != "$last_count" ] || [ $(( polls % 20 )) -eq 0 ]; then
     # A sealed shard's log lines can name sealed tasks, so the controller prints only the count (docs/sealed-custody.md).
-    if [ "$sealed" -eq 1 ]; then log "poll: $count trial lines"; else log "poll: $count trial lines, $(tail -1 "$dest/run-shard.log" 2>/dev/null | cut -c1-160)"; fi
+    # A Lane B shard's logs can name its tasks too, so it prints only the count of finished Harbor trials.
+    if [ "$workload" = gstack-laneb ]; then log "poll: $count finished Harbor trials"; elif [ "$sealed" -eq 1 ]; then log "poll: $count trial lines"; else log "poll: $count trial lines, $(tail -1 "$dest/run-shard.log" 2>/dev/null | cut -c1-160)"; fi
     last_count=$count
   fi
   code=$(printf '%s\n' "$out" | sed -n '1{/^::trials/!p}')

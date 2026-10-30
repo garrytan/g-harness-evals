@@ -14,7 +14,8 @@
 //                      shard but not in the manifest is a refusal
 //   trials/            each shard's trial directories; a cell directory present in two shards is a refusal
 //   <name>.ledger.sqlite, <name>.proxy.log, <name>.proxy-usage.ndjson, <name>.run-summary.json, <name>.run.log,
-//   <name>.reconcile*.json, <name>.preflight-*/ (without tokens.json or ingest-tokens.json: the brain's tokens stay on the shard), <name>.gbrain-install/ (the first shard's gbrain-install/ is also copied
+//   <name>.reconcile*.json, <name>.preflight-*/ (without tokens.json or ingest-tokens.json: the brain's tokens stay on the shard), <name>.laneb/ (a Lane B
+//                      shard's Lane B run root: Harbor jobs, Lane B proxy sessions and ledger, docs/gstack-laneb.md), <name>.gbrain-install/ (the first shard's gbrain-install/ is also copied
 //                      under its own name), <name>.shard.json: each shard's own files under its name
 //   shards.json        { cells: { <cell id>: <shard name> }, shards: { <name>: { machine, commit, images, source, trials,
 //                      cells } } }, machine, commit and images from the shard's shard.json ({name, machine, commit, images},
@@ -47,7 +48,7 @@ export class MergeError extends Error {}
 const canonical = (v: unknown): string => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : x));
 export const SECRET_FILES = new Set(['token', 'token.tmp', 'tokens.json', 'ingest-tokens.json', 'tokens.json.tmp', 'ingest-tokens.json.tmp']);
 const PER_SHARD_FILES = ['ledger.sqlite', 'proxy.log', 'proxy-usage.ndjson', 'run-summary.json', 'run.log', 'shard.json'];
-const perShard = (entry: string) => PER_SHARD_FILES.includes(entry) || /^reconcile.*\.json$/.test(entry) || /^preflight-/.test(entry) || entry === 'gbrain-install';
+const perShard = (entry: string) => PER_SHARD_FILES.includes(entry) || /^reconcile.*\.json$/.test(entry) || /^preflight-/.test(entry) || entry === 'gbrain-install' || entry === 'laneb';
 
 /** Plan the merge without writing: every refusal is raised here. */
 export function planMerge(out: string, shards: ShardInput[]): { manifest: { run_id: string; trials: Array<{ id: string; cell: string }> }; rows: TrialRecord[]; shardsFile: ShardsFile; copies: Array<{ from: string; to: string }> } {

@@ -2,7 +2,7 @@
 # Fan a sharded run out to Ubicloud: one scripts/ubicloud/run-shard.sh (one VM) per shard, all in parallel, from one
 # manifest (docs/ubicloud.md). One command starts a twelve-cell run.
 #
-#   scripts/ubicloud/fanout.sh --manifest <file.json> [--max-vcpus N] [--parallel N] [--dry-run]
+#   scripts/ubicloud/fanout.sh --manifest <file.json> [--max-vcpus N] [--parallel N] [--dry-run] [--workload harness|gstack-laneb]
 #
 # The manifest is JSON:
 #   { "commit": "<sha>", "prereg": "docs/benchmarks/<run>/prereg.json", "dest": "<local results root>",
@@ -14,6 +14,9 @@
 # "<its opening-receipt.json>", both or neither (one alone is exit 2); every run-shard.sh then gets --sealed-root and
 # --opening-receipt with the paths expanded, and each shard uploads, uses and deletes its own copy on its VM. fanout.sh
 # makes no copy of the sealed root and has nothing of it to clean up.
+# --workload gstack-laneb (internal-task, docs/gstack-laneb.md) passes the same flag to every run-shard.sh, which runs the shard's
+# cells through the Lane B bridge (cells are <model>.<arm>; put --laneb-root in options when the fetched root is not at the
+# default). run-shard.sh refuses sealed flags for this workload; the count-only polling and the VM cleanup are unchanged.
 # Each shard runs as a background process with its own log at <dest>/<name>/fanout.log, its lane log at
 # <dest>/<name>/lane.log and its results at <dest>/<name>/results, which is what scripts/merge-shards.ts takes.
 #
@@ -30,18 +33,20 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 runner=${UBI_RUNNER:-$here/ubi-runner.sh}
-manifest="" max_vcpus=${UBI_MAX_VCPUS:-} parallel="" dry=0
+manifest="" max_vcpus=${UBI_MAX_VCPUS:-} parallel="" dry=0 workload=harness
 while [ $# -gt 0 ]; do
   case "$1" in
     --manifest) manifest=$2; shift 2 ;;
     --max-vcpus) max_vcpus=$2; shift 2 ;;
     --parallel) parallel=$2; shift 2 ;;
     --dry-run) dry=1; shift ;;
-    -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
+    --workload) workload=$2; shift 2 ;;
+    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
     *) echo "fanout: unknown argument $1 (see --help)" >&2; exit 2 ;;
   esac
 done
 [ -n "$manifest" ] && [ -f "$manifest" ] || { echo "fanout: --manifest <file.json> is required" >&2; exit 2; }
+case $workload in harness|gstack-laneb) ;; *) echo "fanout: --workload must be harness or gstack-laneb" >&2; exit 2 ;; esac
 [ -n "${UBI_OWNER:-}" ] || { echo "fanout: set UBI_OWNER to your thread code so the VMs carry their owner" >&2; exit 2; }
 # The sealed flags, shell-quoted, or nothing; checked here because a failure inside the mapfile below would not stop the script.
 sealed=$(python3 - "$manifest" <<'PY'
@@ -101,7 +106,7 @@ fi
 
 run_cmd() {
   local name=$1 cells=$2 lease=$3
-  printf '%s --commit %s --prereg %s --name %s --cells %s --lease-usd %s --dest %s --size %s %s' "$here/run-shard.sh" "$(printf %q "$commit")" "$(printf %q "$prereg")" "$(printf %q "$name")" "$(printf %q "$cells")" "$(printf %q "$lease")" "$(printf %q "$dest/$name")" "$(printf %q "$size")" "${sealed:+$sealed }$options"
+  printf '%s --commit %s --prereg %s --name %s --cells %s --lease-usd %s --dest %s --size %s %s' "$here/run-shard.sh" "$(printf %q "$commit")" "$(printf %q "$prereg")" "$(printf %q "$name")" "$(printf %q "$cells")" "$(printf %q "$lease")" "$(printf %q "$dest/$name")" "$(printf %q "$size")" "${sealed:+$sealed }$([ "$workload" = harness ] || printf -- '--workload %s ' "$workload")$options"
 }
 merge_cmd() { printf 'bun scripts/merge-shards.ts --out <merged results dir>'; local line name; for line in "${shards[@]}"; do IFS=$'\t' read -r name _ _ <<<"$line"; printf ' --shard %s=%s/%s/results' "$name" "$dest" "$name"; done; echo; }
 if [ "$dry" -eq 1 ]; then

@@ -112,6 +112,10 @@ The VM's phases: create to ready 82 s (19 s on an earlier VM the same evening), 
 
 ## Changelog
 
+### 2026-10-29: `--workload gstack-laneb` runs a shard through the Lane B bridge (internal-task)
+
+`run-shard.sh`, `vm-shard.sh` and `fanout.sh` take `--workload harness|gstack-laneb` (default `harness`, unchanged). With `gstack-laneb`, `run-shard.sh` streams `--laneb-root` (default `~/.capy/work/gstack-laneb`, from `scripts/gstack-laneb/fetch.ts`) to `~/laneb` on the VM without its `.git` directory, and `vm-shard.sh` runs the bridge's keyless smoke (`scripts/gstack-laneb/smoke.sh`, no keys in its environment) and then `scripts/gstack-laneb/vm-run.sh` under the shard's lease. Poll lines carry only the count of finished Harbor trials. `--resume`, `--embedded`, `--sealed-root` and `--opening-receipt` are refused for this workload (held-out Lane B runs are not supported yet). On teardown the controller waits up to 240 s (not 90 s) for the Lane B shard's exit file, because the shard drains its meter and writes its records after the SIGTERM. The firewall, key file and copy-back are the same code path as before. See [gstack-laneb.md](gstack-laneb.md).
+
 ### 2026-10-29: merge-pass.sh accepts the interim gate while /ship is suspended (internal-task)
 
 `scripts/ubicloud/merge-pass.sh` accepts a body line `INTERIM_GATE: reviewer=<model> head=<full sha> pregate=pass` naming the exact current head in place of the /ship receipt, keeps accepting a valid receipt, and ends each merge-log line with `gate <which>` so the record says which gate admitted the merge. Everything else in the rule (clean, every check green, ubicloud/checks success, the custody skip, the head and base re-read, squash with `--match-head-commit`) is unchanged. Why: Garry suspended the /ship gate until gstack's token fix is installed (CREW.md, "/ship gate SUSPENDED", via internal-task).

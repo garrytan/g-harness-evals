@@ -8,7 +8,12 @@
 #   vm-shard.sh --commit <sha> --prereg <path on the VM> --name <shard> --cells a,b --lease-usd <n>
 #               [--smoke-lease-usd <n>] [--smoke-task <task id>] [--no-smoke] [--resume] [--amendment <sha>]
 #               [--embedded] [--gbrain-image <tag>] [--sealed-root <path on the VM> --opening-receipt <path on the VM>]
-#               [-- <extra run-shard.sh arguments>]
+#               [--workload harness|gstack-laneb] [-- <extra run-shard.sh arguments>]
+#
+# --workload gstack-laneb (internal-task, docs/gstack-laneb.md): the smoke is the bridge's keyless smoke
+# (scripts/gstack-laneb/smoke.sh against the pinned fake upstream, no spend; it installs Harbor at its pin) and the shard
+# runs scripts/gstack-laneb/vm-run.sh with the Lane B checkout and arms run-shard.sh uploaded to ~/laneb and the shard's
+# lease. Sealed flags are refused for this workload (run-shard.sh refuses them first). The smoke's results go to ~/shard/smoke/results and the shard's to ~/shard/results.
 #
 # --sealed-root and --opening-receipt (internal-task, docs/sealed-custody.md) name the custodian's sealed root and receipt that
 # scripts/ubicloud/run-shard.sh uploaded to ~/sealed, outside the checkout; both go to the counted scripts/run-shard.sh call
@@ -35,7 +40,7 @@ if [ -z "${HE_SHARD_IN_DOCKER_GROUP:-}" ] && getent group docker >/dev/null && !
   exec sg docker -c "bash $(printf %q "$0") $(printf '%q ' "$@")"
 fi
 
-commit="" prereg="" name="" cells="" lease="" smoke_lease="" smoke_task="" smoke=1 resume=0 amendment=""
+commit="" prereg="" name="" cells="" lease="" smoke_lease="" smoke_task="" smoke=1 resume=0 amendment="" workload=harness
 extra=() image=() sealed=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -53,6 +58,7 @@ while [ $# -gt 0 ]; do
     --gbrain-image) image=(--gbrain-image "$2"); shift 2 ;;
     --sealed-root) sealed+=(--sealed-root "$2"); shift 2 ;;
     --opening-receipt) sealed+=(--opening-receipt "$2"); shift 2 ;;
+    --workload) workload="$2"; shift 2 ;;
     --) shift; extra+=("$@"); break ;;
     *) echo "vm-shard: unknown argument $1" >&2; exit 2 ;;
   esac
@@ -79,6 +85,30 @@ if [ -n "$(git status --porcelain)" ]; then log "the checkout is not clean at $c
 bun install --frozen-lockfile > "$shard/bun-install.log" 2>&1 || { tail -20 "$shard/bun-install.log"; log "bun install --frozen-lockfile failed"; finish 3; }
 log "bun $(bun --version), node $(node --version), docker $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo none), $(nproc) cpus"
 phase checkout_end
+
+if [ "$workload" = gstack-laneb ]; then
+  if [ "$smoke" -eq 1 ]; then
+    phase smoke_start
+    log "smoke: scripts/gstack-laneb/smoke.sh (keyless, fake upstream)"
+    env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY bash scripts/gstack-laneb/smoke.sh --laneb-root "$HOME/laneb" --out "$shard/smoke"
+    rc=$?
+    phase smoke_end
+    [ "$rc" -eq 0 ] || { log "smoke failed (exit $rc); the counted run does not start"; finish 4; }
+  fi
+  [ ${#sealed[@]} -eq 0 ] || { log "held-out (sealed) Lane B runs are not supported yet (docs/gstack-laneb.md, Known limits)"; finish 2; }
+  phase run_start
+  log "run: scripts/gstack-laneb/vm-run.sh --name $name --cells $cells --lease-usd $lease"
+  # The controller's SIGTERM reaches the whole process group; vm-run.sh traps it, drains its meter and writes its records.
+  # This script keeps waiting for it instead of dying, so ~/shard/exit appears only once the records exist.
+  trap 'log "signal received; waiting for vm-run.sh to write its records"' TERM HUP
+  HE_LANEB_HARBOR_READY=$smoke bash scripts/gstack-laneb/vm-run.sh --prereg "$prereg" --name "$name" --cells "$cells" --lease-usd "$lease" --out "$shard/results" --laneb-root "$HOME/laneb" &
+  child=$!
+  while :; do wait "$child"; rc=$?; kill -0 "$child" 2>/dev/null || break; done
+  trap - TERM HUP
+  phase run_end
+  log "vm-run.sh exited $rc"
+  finish "$rc"
+fi
 
 # The one-trial smoke the Capy shards ran before every counted shard: a copy of the run's preregistration with only this
 # shard's harness cells, each on one dev task with one repetition under its own lease and ledger, never counted.
