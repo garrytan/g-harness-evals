@@ -15,7 +15,7 @@
  *   bun runner/run.ts run --manifest results/<run-id>/manifest.json [--harness-mode docker|process|scripted]
  *       [--adapter <script>] [--image <tag>] [--gbrain-image <tag>] [--resume] [--stop-on-cap] [--cells a,b] [--ledger <file>]
  *       [--lease-usd <n>] [--new-lease] [--max-output-tokens <n>] [--preamble <file>] [--ready-timeout-s <n>]
- *       [--turn-grace-s <n>] [--harness-env K=V ...]
+ *       [--turn-grace-s <n>] [--harness-env K=V ...] [--capture-upstream anthropic|openai=<url> ...] [--capture-dns <ip>]
  *
  * plan and dry-run refuse a run with held-out cells unless its opening is in the set's openings ledger and within
  * budget (HE-HELDOUT-001 to 004, runner/heldout/openings.ts); a run's own row passes every time while it is opened or its
@@ -32,6 +32,10 @@
  * (HE-SEALED-001): the harness would run as the runner's user and could read the root, whichever cell it serves. A run with no sealed cell ignores both flags and says
  * so, and preflight and run refuse it a gbrain image built from a sealed root (HE-SEALED-005: image.json says sealed or
  * records a held-out corpus digest); plaintext sets and every existing run are otherwise unchanged.
+ *
+ * Capture mode (internal-task, runner/trial/capture.ts): --capture-upstream points the metering proxy at a fake model server and
+ * gives it dummy provider keys; --capture-dns sets the in-container harness's resolver. Only a run id starting with
+ * "anatomy-capture-" may use them (HE-RUN-002): capture runs are never counted runs.
  *
  * Every error prints one line starting with its HE- code (docs/errors.md) and
  * exits non-zero. Exit 3 is the budget stop (HE-BUDGET-001).
@@ -614,6 +618,11 @@ async function main(argv: string[]): Promise<number> {
     if (mode === 'process' && liveCells.length) throw new RunnerError('HE-GBRAIN-001', `cells ${liveCells.join(', ')} carry gbrain.ingest "live", which runs in docker mode only; in process mode the harness runs as the runner's user and could read the ingest tokens under the trial directory. fix: run without --harness-mode process`);
     const sealedRunCells = manifest.sealed ? manifest.cells.filter((c) => c.harness_mode !== 'scripted' && (cells ? cells.includes(c.id) : true)).map((c) => c.id) : [];
     if (mode === 'process' && sealedRunCells.length) throw new RunnerError('HE-SEALED-001', `cells ${sealedRunCells.join(', ')} belong to run ${manifest.run_id}, which opens set ${manifest.sealed!.set} in sealed custody; in process mode the harness runs as the runner's user and could read the opened sealed root and the custody files on this machine, whichever cell it serves. Nothing was opened. fix: run without --harness-mode process`);
+    // internal-task: capture mode, refused before anything starts unless the run id is a capture run's.
+    const { parseCaptureOptions } = await import('./trial/capture.ts');
+    const callingCells = manifest.cells.filter((c) => c.harness_mode !== 'scripted' && mode !== 'scripted' && (cells ? cells.includes(c.id) : true));
+    const providers = callingCells.flatMap((c) => [c.model, ...(c.utility_models ?? []), c.gbrain?.embeddings ?? 'off']).filter((m) => m.includes(':')).map((m) => m.slice(0, m.indexOf(':')));
+    const capture = parseCaptureOptions({ runId: manifest.run_id, upstream: all('--capture-upstream'), dns: has('--capture-dns') ? (flag('--capture-dns') ?? '') : undefined, providers }) ?? undefined;
     const sealed = sealedContextFor(manifest, flag, dirname(path));
     if (sealed) installSealedGuard(sealed, join(dirname(path), 'sealed-console.log'), 'run');
     // A sealed run's trials default to the sealed image tag, and run repeats preflight's image check (HE-SEALED-005).
@@ -631,7 +640,7 @@ async function main(argv: string[]): Promise<number> {
       cells, ledgerPath: flag('--ledger'), leaseUsd: flag('--lease-usd') ? Number(flag('--lease-usd')) : undefined,
       newLease: has('--new-lease'), maxOutputTokens: flag('--max-output-tokens') ? Number(flag('--max-output-tokens')) : undefined, preamblePath: flag('--preamble'),
       readyTimeoutS: flag('--ready-timeout-s') ? Number(flag('--ready-timeout-s')) : undefined, turnGraceS: flag('--turn-grace-s') ? Number(flag('--turn-grace-s')) : undefined,
-      harnessEnv, log: sealed ? sealedProgress() : (line) => console.log(line),
+      harnessEnv, capture, log: sealed ? sealedProgress() : (line) => console.log(line),
     });
     return result.exit;
   }

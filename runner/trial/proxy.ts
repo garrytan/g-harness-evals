@@ -26,6 +26,7 @@ import type { Meter, UsageLine } from '../proxy/metering-proxy.ts';
 import type { TrialEmbeddingUsage, TrialUsage } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
 import { CONTAINER_HOST, listenHost } from './world.ts';
+import { type CaptureConfig, captureProxyEnv } from './capture.ts';
 
 export interface RunProxyOptions {
   runId: string;
@@ -42,6 +43,9 @@ export interface RunProxyOptions {
   env?: Record<string, string | undefined>;
   /** Close a lease left open in the ledger by an earlier run id (the proxy's --new-run). */
   newRun?: boolean;
+  /** internal-task capture mode: forward to these fake upstreams (the proxy's --upstream) and give the proxy dummy provider keys
+   *  instead of `env`'s, keeping only PATH and HOME from it (runner/trial/capture.ts). */
+  capture?: CaptureConfig;
   startTimeoutMs?: number;
 }
 
@@ -56,6 +60,12 @@ export const trialKey = (trialId: string) => `${TRIAL_TOKEN_PREFIX}${trialId}`;
  *  harness's environment (and the compose override under the trial directory, which the results .gitignore excludes) and is
  *  dead once the slot is unbound. */
 export const trialToken = (trialId: string) => `${trialKey(trialId)}.${randomBytes(16).toString('hex')}`;
+/** The proxy process environment: `opts.env` (default this process's), or in capture mode one built from scratch with
+ *  only PATH, HOME and the dummy provider keys. */
+export function proxyProcessEnv(opts: Pick<RunProxyOptions, 'env' | 'capture'>, parent: Record<string, string | undefined> = process.env): Record<string, string | undefined> {
+  return opts.capture ? captureProxyEnv(opts.env ?? parent) : (opts.env ?? parent);
+}
+
 /** A trial id as a path segment and a container name: letters, digits, dot, underscore, dash. */
 export const trialSlug = (trialId: string) => trialId.replace(/[^A-Za-z0-9._-]+/g, '-');
 
@@ -90,7 +100,8 @@ export class RunProxy {
     if (opts.allowModels.length) args.push('--allow-models', opts.allowModels.join(','));
     if (opts.maxOutputTokens) args.push('--max-output-tokens', String(opts.maxOutputTokens));
     if (opts.newRun) args.push('--new-run');
-    const proc = Bun.spawn(args, { stdin: 'ignore', stdout: logFd, stderr: logFd, env: (opts.env ?? process.env) as Record<string, string> });
+    for (const [provider, url] of Object.entries(opts.capture?.upstream ?? {})) args.push('--upstream', `${provider}=${url}`);
+    const proc = Bun.spawn(args, { stdin: 'ignore', stdout: logFd, stderr: logFd, env: proxyProcessEnv(opts) as Record<string, string> });
     const deadline = Date.now() + (opts.startTimeoutMs ?? 20_000);
     while (Date.now() < deadline) {
       if (proc.exitCode !== null) break;

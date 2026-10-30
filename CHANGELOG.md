@@ -2,6 +2,17 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.50] - 2026-10-30
+
+### internal-task: harness anatomy capture kit and the first records
+
+- **`docs/harness-anatomy/` (new):** what OpenClaw, Hermes (one-shot, plus the internal-task chat probe) and QM (Pi and Claude Agent SDK engines) send the model, one JSON record per capture, with receipts. Plain turn, gbrain registered, tool calls, a failure schedule, history growth and a skill-size probe. No model was called; token counts are from Anthropic's free count_tokens endpoint (330 calls, $0).
+- **Runner capture mode:** `--capture-upstream anthropic|openai=<url>` (repeatable) points the trial's metering proxy at a fake endpoint, and `--capture-dns <ip>` sends the harness container's DNS to a logging sink. Off by default; counted runs are unchanged (runner/trial/capture.ts, tests/runner-capture.test.ts).
+- **`scripts/gsta-135/fake-anthropic.ts`, backward compatible with preflight.sh:** script turns can call any named tool (`call`), fail with a chosen `status`, `error_type` and `headers`, report `usage`, and `match` a request; every request is logged with its headers and an `authorization_sha256`; new flags `--require-key-prefix`, `--max-requests` and `--max-seconds`; `validateScript` is exported (tests/fake-anthropic-grammar.test.ts).
+- **`scripts/anatomy/` (new):** `capture.ts` (one scenario through the real runner under `env -i`), `dissect.ts` and `record.schema.json` (sections, tools, side calls, growth, compaction or new session, retries), `store.ts` (receipts as sha256-named gzipped blobs that rebuild the log byte for byte), `count-tokens.ts`, `publish.sh`, `sink/` (DNS and TCP logging sink) and `probe-skills/`.
+- **Metering proxy:** `scripts/anatomy/count-tokens.ts` starts its scratch proxy with `--free-count-tokens` (from #123, off by default, never set for trials), which forwards `POST /v1/messages/count_tokens` at $0 under the model allowlist. tests/metering-proxy.test.ts adds cases for that route: $0 with no reservation, refused when the flag is off, refused for a model off the allowlist or a request naming no model.
+- Tests: tests/anatomy-dissect.test.ts (every published record validates and rebuilds from its receipts), tests/anatomy-kit.test.ts (sink, probe-skill image, count-tokens refusals, publish.sh end to end), tests/anatomy-capture.test.ts, tests/anatomy-sink.test.ts, and a count_tokens case in tests/metering-proxy.test.ts.
+
 ## [0.0.49] - 2026-10-30
 
 ### internal-task: repository task format and the gstack-native-v1 dev split

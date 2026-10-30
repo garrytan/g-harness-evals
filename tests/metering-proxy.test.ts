@@ -598,3 +598,56 @@ describe('in-process mode (Cat 40 callers)', () => {
     } finally { proxy.stop(); }
   });
 });
+
+describe('free token counting (internal-task)', () => {
+  beforeEach(() => closeLedgers());
+  test('POST /v1/messages/count_tokens is forwarded with the proxy key, gets no output cap and settles at $0 with no reservation', async () => {
+    const lease = BudgetRun.openLease({ runId: 'lease-count', leaseUsd: 1, ledgerPath: ledgerFile() });
+    const up = fakeUpstream(() => Response.json({ input_tokens: 1234 }));
+    const { proxy, post, usageLog } = leased(lease, up.fetchImpl, { freeCountTokens: true });
+    try {
+      const res = await post('/c1/anthropic/v1/messages/count_tokens', { model: 'claude-haiku-5-5', system: 'be brief', messages: [{ role: 'user', content: 'hello there' }] });
+      expect(res.status).toBe(200);
+      expect((await res.json()).input_tokens).toBe(1234);
+      expect(up.seen).toHaveLength(1);
+      expect(up.seen[0]!.url).toEndWith('/v1/messages/count_tokens');
+      expect(up.seen[0]!.body.max_tokens).toBeUndefined();
+      expect(up.seen[0]!.headers.get('x-api-key')).toBe(FAKE_ENV.ANTHROPIC_API_KEY);
+      expect(ledgerStatus({ ledgerPath: lease.ledgerPath, runId: 'lease-count' }).run!.committed_usd).toBe(0);
+      const line = JSON.parse(readFileSync(usageLog, 'utf8').trim().split('\n').at(-1)!);
+      expect(line.outcome).toBe('forwarded');
+      expect(line.actual_usd).toBe(0);
+      expect(line.reserved_usd).toBe(0);
+    } finally { proxy.stop(); }
+  });
+
+  test('a trial proxy (no freeCountTokens) refuses count_tokens, and no proxy forwards OpenAI input_tokens', async () => {
+    const lease = BudgetRun.openLease({ runId: 'lease-count-off', leaseUsd: 1, ledgerPath: ledgerFile() });
+    const up = fakeUpstream(() => Response.json({ input_tokens: 1 }));
+    const { proxy, post } = leased(lease, up.fetchImpl);
+    try {
+      expect((await post('/c1/anthropic/v1/messages/count_tokens', { model: 'claude-haiku-5-5', messages: [] })).status).toBe(403);
+      expect((await post('/c1/openai/v1/responses/input_tokens', { model: 'gpt-6-luna', input: 'hi' })).status).toBe(403);
+      expect(up.seen).toHaveLength(0);
+    } finally { proxy.stop(); }
+  });
+
+  test('with freeCountTokens, a count for a model off the allowlist is refused', async () => {
+    const lease = BudgetRun.openLease({ runId: 'lease-count-allow', leaseUsd: 1, ledgerPath: ledgerFile() });
+    const up = fakeUpstream(() => Response.json({ input_tokens: 1 }));
+    const { proxy, post } = leased(lease, up.fetchImpl, { freeCountTokens: true, allowModels: ['anthropic:claude-haiku-5-5'] });
+    try {
+      expect((await post('/c1/anthropic/v1/messages/count_tokens', { model: 'claude-opus-5-5', messages: [] })).status).toBe(403);
+      expect((await post('/c1/anthropic/v1/messages/count_tokens', { messages: [] })).status).toBe(403);
+      expect((await post('/c1/anthropic/v1/messages/count_tokens', { model: 'claude-haiku-5-5', messages: [{ role: 'user', content: 'x' }] })).status).toBe(200);
+      expect(up.seen).toHaveLength(1);
+    } finally { proxy.stop(); }
+  });
+
+  test('--free-count-tokens is parsed and off by default', () => {
+    const base = ['--budget-ledger', '/tmp/x.sqlite', '--lease-usd', '1', '--run-id', 'r'];
+    expect(parseProxyArgs(base).freeCountTokens).toBe(false);
+    expect(parseProxyArgs([...base, '--free-count-tokens']).freeCountTokens).toBe(true);
+  });
+});
+

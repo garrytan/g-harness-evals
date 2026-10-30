@@ -17,6 +17,7 @@ import { cellModels, isSealedCell, type Cell, type Manifest, type Trial } from '
 import { type InternalNetwork, ensureInternalNetwork, internalNetworkName, removeInternalNetwork } from './docker.ts';
 import { RunProxy, reconcile, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
 import { DEFAULT_PREAMBLE_PATH, loadPreamble } from './task.ts';
+import { type CaptureConfig, captureDnsGapLine, captureLine, captureSummary } from './capture.ts';
 import { type GradeFn, appendRecord, loadGrader, runTrial } from './trial.ts';
 import { writeAtomic } from './harness.ts';
 
@@ -45,8 +46,10 @@ export interface RunOptions {
   harnessEnv?: Record<string, string>;
   /** Tests inject a grader; the default loads runner/grade/index.ts at run time. */
   grade?: GradeFn;
-  /** Environment for the proxy process; defaults to this process's environment. */
+  /** Environment for the proxy process; defaults to this process's environment. Capture mode keeps only PATH and HOME from it. */
   proxyEnv?: Record<string, string | undefined>;
+  /** internal-task capture mode (runner/trial/capture.ts): fake upstreams and dummy keys for the proxy, --dns for in-container harnesses. */
+  capture?: CaptureConfig;
   repoRoot?: string;
   log?: (line: string) => void;
 }
@@ -87,6 +90,12 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
   log(`run ${manifest.run_id}: ${pending.length} trials to run, ${skipped.length} already recorded, harness mode ${opts.harnessMode}`);
 
   const modeFor = (cell: Cell): HarnessMode => (cell.harness_mode === 'scripted' ? 'scripted' : opts.harnessMode);
+  if (opts.capture) {
+    log(captureLine(opts.capture));
+    const harnesses = pending.map((t) => cells.get(t.cell)!).filter((c) => modeFor(c) !== 'scripted' && !isSingleShot(c)).map((c) => c.harness);
+    const gap = captureDnsGapLine(opts.capture, harnesses, opts.harnessMode, opts.repoRoot);
+    if (gap) log(gap);
+  }
   const needsProxy = pending.some((t) => modeFor(cells.get(t.cell)!) !== 'scripted');
   const needsGrader = pending.some((t) => !isSingleShot(cells.get(t.cell)!));
   const preambles = new Map<string, string>();
@@ -125,7 +134,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       proxy = await RunProxy.start({
         runId: manifest.run_id, runDir, ledgerPath: opts.ledgerPath ?? join(runDir, 'ledger.sqlite'), leaseUsd: opts.leaseUsd ?? manifest.spend_cap_usd,
         allowModels: [...new Set([...manifest.cells.flatMap(cellModels), ...embeddingModels])], maxOutputTokens: opts.maxOutputTokens,
-        reachableFromContainers: docker || embeddingModels.length > 0, ...(network ? { gatewayAddress: network.gateway } : {}), env: opts.proxyEnv, newRun: opts.newLease,
+        reachableFromContainers: docker || embeddingModels.length > 0, ...(network ? { gatewayAddress: network.gateway } : {}), env: opts.proxyEnv, newRun: opts.newLease, capture: opts.capture,
       });
       log(`metering proxy on port ${proxy.port}, lease $${opts.leaseUsd ?? manifest.spend_cap_usd} in ${proxy.ledgerPath}`);
     }
@@ -139,7 +148,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
         ? await runSingleShot({ cell, trial, trialDir, proxy, log, image: opts.image, repoRoot: opts.repoRoot })
         : await runTrial({ cell, trial, runDir, trialDir, proxy, grade, log, opts: {
           harnessMode: opts.harnessMode, adapter: opts.adapter, image: opts.image, gbrainImage: opts.gbrainImage, preamble: preambleFor(cell), worldPath: opts.worldPath, readyTimeoutS: opts.readyTimeoutS ?? 180,
-          turnGraceS: opts.turnGraceS ?? 60, stopGraceS: opts.stopGraceS ?? 60, harnessEnv: opts.harnessEnv, repoRoot: opts.repoRoot, ...(network ? { network } : {}) } });
+          turnGraceS: opts.turnGraceS ?? 60, stopGraceS: opts.stopGraceS ?? 60, harnessEnv: opts.harnessEnv, captureDns: opts.capture?.dns ?? undefined, repoRoot: opts.repoRoot, ...(network ? { network } : {}) } });
       appendRecord(runDir, record);
       records.push(record);
       log(`trial ${trial.id}: termination=${record.termination} grade=${record.grade} consent_violation=${record.consent_violation} wall_ms=${record.wall_ms}${record.usage ? ` usd=${record.usage.usd.toFixed(4)}` : ''}${record.cap_stop ? ' cap_stop' : ''}`);
@@ -153,7 +162,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
     if (proxy) await proxy.stop();
     if (network) log(await removeInternalNetwork(network.name) ? `internal network ${network.name} removed` : `internal network ${network.name} not removed (a container is still attached); fix: docker network rm ${network.name}`);
   }
-  const summary = { run_id: manifest.run_id, finished_at: new Date().toISOString(), trials_recorded: readRecords(runDir).length, trials_planned: manifest.trials.length, cap_stop: capStop, complete: readRecords(runDir).length === manifest.trials.length && !capStop };
+  const summary = { run_id: manifest.run_id, finished_at: new Date().toISOString(), trials_recorded: readRecords(runDir).length, trials_planned: manifest.trials.length, cap_stop: capStop, complete: readRecords(runDir).length === manifest.trials.length && !capStop, ...(opts.capture ? { capture: captureSummary(opts.capture) } : {}) };
   writeAtomic(join(runDir, 'run-summary.json'), JSON.stringify(summary, null, 1) + '\n');
   log(`run ${manifest.run_id}: ${records.length} trials recorded this invocation; ${summary.trials_recorded}/${summary.trials_planned} total${capStop ? '; incomplete (cap stop)' : ''}`);
   return { exit, records, skipped, cap_stop: capStop };

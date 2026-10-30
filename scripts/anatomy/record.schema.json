@@ -1,0 +1,531 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/garrytan/harness-evals/scripts/anatomy/record.schema.json",
+  "title": "harness-anatomy/1",
+  "description": "One capture's anatomy record, written by scripts/anatomy/dissect.ts from the fake endpoint's request log. Byte counts are UTF-8 bytes; a body's bytes are those of its compact JSON.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "wire",
+    "harness",
+    "config",
+    "source_log_sha256",
+    "requests",
+    "first_agent",
+    "side_calls",
+    "growth",
+    "compaction",
+    "retries",
+    "totals"
+  ],
+  "properties": {
+    "schema": {
+      "const": "harness-anatomy/1"
+    },
+    "wire": {
+      "enum": [
+        "anthropic-messages",
+        "openai-responses"
+      ]
+    },
+    "harness": {
+      "type": "string"
+    },
+    "config": {
+      "type": "string",
+      "description": "The capture's configuration label."
+    },
+    "source_log_sha256": {
+      "$ref": "#/$defs/sha256",
+      "description": "sha256 of the request log's decompressed ndjson bytes."
+    },
+    "requests": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/request"
+      }
+    },
+    "first_agent": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/firstAgent"
+        }
+      ]
+    },
+    "side_calls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "i",
+          "purpose_guess",
+          "body_bytes"
+        ],
+        "properties": {
+          "i": {
+            "$ref": "#/$defs/index"
+          },
+          "purpose_guess": {
+            "type": "string",
+            "description": "A heuristic guess from the call's system and user text: session title, summary, memory extraction, probe or unknown."
+          },
+          "body_bytes": {
+            "$ref": "#/$defs/count"
+          }
+        }
+      }
+    },
+    "growth": {
+      "type": "array",
+      "description": "Every agent request in order.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "i",
+          "body_bytes",
+          "messages"
+        ],
+        "properties": {
+          "i": {
+            "$ref": "#/$defs/index"
+          },
+          "body_bytes": {
+            "$ref": "#/$defs/count"
+          },
+          "messages": {
+            "$ref": "#/$defs/count"
+          }
+        }
+      }
+    },
+    "compaction": {
+      "type": "array",
+      "description": "Agent requests that carry fewer messages than the agent request before them: a compaction (the harness cut or summarized its history) or a new session (the request carries no assistant turn, its first message is new, and no summary call came between, as when a harness starts each user turn fresh).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "i",
+          "before_messages",
+          "after_messages",
+          "summary_like",
+          "summary_call",
+          "kind"
+        ],
+        "properties": {
+          "i": {
+            "$ref": "#/$defs/index"
+          },
+          "before_messages": {
+            "$ref": "#/$defs/count"
+          },
+          "after_messages": {
+            "$ref": "#/$defs/count"
+          },
+          "summary_like": {
+            "type": "boolean",
+            "description": "Whether the messages new in this request read like a summary of the dropped ones."
+          },
+          "summary_call": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/index"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Index of a side request (no tools) between the two agent requests whose purpose guess is summary; null when none."
+          },
+          "kind": {
+            "enum": [
+              "compaction",
+              "new_session"
+            ]
+          }
+        }
+      }
+    },
+    "retries": {
+      "type": "array",
+      "description": "Failed (status 400 or more) messages or responses requests and the next request to the same method and path.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "i",
+          "status",
+          "next_i",
+          "gap_ms",
+          "same_body"
+        ],
+        "properties": {
+          "i": {
+            "$ref": "#/$defs/index"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "next_i": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "gap_ms": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "From the failed response's sent_at (else the request's at) to the next request's at."
+          },
+          "same_body": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requests",
+        "agent",
+        "side",
+        "discovery",
+        "error"
+      ],
+      "properties": {
+        "requests": {
+          "$ref": "#/$defs/count"
+        },
+        "agent": {
+          "$ref": "#/$defs/count"
+        },
+        "side": {
+          "$ref": "#/$defs/count"
+        },
+        "discovery": {
+          "$ref": "#/$defs/count"
+        },
+        "error": {
+          "$ref": "#/$defs/count"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "index": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "i",
+        "at",
+        "method",
+        "path",
+        "status",
+        "class",
+        "model",
+        "stream",
+        "max_tokens",
+        "body_bytes",
+        "system_bytes",
+        "tools",
+        "messages",
+        "cache_control",
+        "thinking",
+        "played"
+      ],
+      "properties": {
+        "i": {
+          "$ref": "#/$defs/index",
+          "description": "Line index in the request log, from 0."
+        },
+        "at": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "status": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Null when the log row has no status (older logs leave it out on success)."
+        },
+        "class": {
+          "enum": [
+            "agent",
+            "side",
+            "discovery",
+            "error"
+          ],
+          "description": "error: status 400 or more; agent: POST to a messages or responses path with a non-empty tools array; side: such a POST without tools; discovery: everything else."
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stream": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "max_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "max_tokens, or max_output_tokens on the Responses wire."
+        },
+        "body_bytes": {
+          "$ref": "#/$defs/count"
+        },
+        "system_bytes": {
+          "$ref": "#/$defs/count",
+          "description": "Bytes of the system text blocks (Responses: instructions)."
+        },
+        "tools": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "count",
+            "bytes",
+            "names"
+          ],
+          "properties": {
+            "count": {
+              "$ref": "#/$defs/count"
+            },
+            "bytes": {
+              "$ref": "#/$defs/count"
+            },
+            "names": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "messages": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "count",
+            "bytes"
+          ],
+          "properties": {
+            "count": {
+              "$ref": "#/$defs/count"
+            },
+            "bytes": {
+              "$ref": "#/$defs/count"
+            }
+          }
+        },
+        "cache_control": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "where",
+              "index"
+            ],
+            "properties": {
+              "where": {
+                "enum": [
+                  "system",
+                  "tools",
+                  "messages"
+                ]
+              },
+              "index": {
+                "$ref": "#/$defs/index"
+              },
+              "block": {
+                "$ref": "#/$defs/index",
+                "description": "Content block within the message, for a mark on a message block."
+              }
+            }
+          }
+        },
+        "thinking": {
+          "description": "The body's thinking setting (Responses: reasoning), as sent, or null."
+        },
+        "played": {
+          "description": "What the fake played for this request, as logged, or null."
+        }
+      }
+    },
+    "section": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "block",
+        "start",
+        "bytes",
+        "sha256"
+      ],
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The heading line, <tag> for a tag section, preamble for text before a block's first heading, or '<heading> (cont.)' for text after a closing tag."
+        },
+        "block": {
+          "$ref": "#/$defs/index"
+        },
+        "start": {
+          "$ref": "#/$defs/index",
+          "description": "Byte offset into the system blocks joined with no separator."
+        },
+        "bytes": {
+          "$ref": "#/$defs/count"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "firstAgent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "i",
+        "body_bytes",
+        "system",
+        "tools",
+        "user_text_bytes",
+        "user_prefix_bytes"
+      ],
+      "properties": {
+        "i": {
+          "$ref": "#/$defs/index"
+        },
+        "body_bytes": {
+          "$ref": "#/$defs/count"
+        },
+        "system": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "bytes",
+            "blocks",
+            "sections"
+          ],
+          "properties": {
+            "bytes": {
+              "$ref": "#/$defs/count"
+            },
+            "blocks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "start",
+                  "bytes",
+                  "cache_control"
+                ],
+                "properties": {
+                  "start": {
+                    "$ref": "#/$defs/index"
+                  },
+                  "bytes": {
+                    "$ref": "#/$defs/count"
+                  },
+                  "cache_control": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            },
+            "sections": {
+              "type": "array",
+              "description": "Tile the system bytes exactly: no gap, no overlap.",
+              "items": {
+                "$ref": "#/$defs/section"
+              }
+            }
+          }
+        },
+        "tools": {
+          "type": "array",
+          "description": "The tools array in order, then any deferred tools the system prompt lists under a heading naming deferred tools.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "description_bytes",
+              "schema_bytes"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "description_bytes": {
+                "$ref": "#/$defs/count"
+              },
+              "schema_bytes": {
+                "$ref": "#/$defs/count"
+              },
+              "deferred": {
+                "const": true
+              }
+            }
+          }
+        },
+        "deferred_tools_note": {
+          "type": "string",
+          "description": "The system prompt line announcing omitted tools, if any."
+        },
+        "deferred_tools_omitted": {
+          "$ref": "#/$defs/count",
+          "description": "The number that line gives."
+        },
+        "user_text_bytes": {
+          "$ref": "#/$defs/count",
+          "description": "Bytes of the user-message text in the first agent request."
+        },
+        "user_prefix_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "user_text_bytes less the task prompt's bytes, when the prompt is known (--prompt-file); else null."
+        }
+      }
+    }
+  }
+}

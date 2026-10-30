@@ -70,6 +70,8 @@ export interface TrialOptions {
   stopGraceS: number;
   /** Extra environment for the harness (process and docker), for debugging a harness; never a key. */
   harnessEnv?: Record<string, string>;
+  /** internal-task capture mode: the in-container harness's DNS server (docker run --dns); compose and process harnesses ignore it. */
+  captureDns?: string;
   repoRoot?: string;
   /** internal-task: the run's internal network, which executeRun creates when a cell has network "internal". */
   network?: InternalNetwork;
@@ -252,7 +254,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
         const compose = join(harnessDir, 'compose.yaml');
         harness = existsSync(compose)
           ? await startComposeHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, composeFile: compose, timeBudgetS: task.time_budget_s, repoRoot: opts.repoRoot, stackEnv: { HE_MODEL_BASE_URL: env.HE_MODEL_BASE_URL!, HE_MODEL_API_KEY: token, HE_MODEL_NAME: modelName, HE_TIME_BUDGET_S: env.HE_TIME_BUDGET_S!, HE_TASK_SLICE: 'multiuser', HE_TRIAL_ID: trial.id, ...(cell.config ? { HE_HARNESS_CONFIG: cell.config } : {}) } })
-          : await startDockerHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, repoRoot: opts.repoRoot, ...(installViewPath ? { readOnlyMounts: { [installViewPath]: '/he-gbrain-install' } } : {}), ...(network ? { network } : {}) });
+          : await startDockerHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, repoRoot: opts.repoRoot, ...(installViewPath ? { readOnlyMounts: { [installViewPath]: '/he-gbrain-install' } } : {}), ...(network ? { network } : {}), ...(opts.captureDns ? { dns: opts.captureDns } : {}) });
       }
       await harness.waitReady(opts.readyTimeoutS * 1000);
       log(`harness ready (${harness.kind})`);

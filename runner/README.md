@@ -35,6 +35,10 @@ internal-task (member brain) adds `"brain": "member"` (the bot-visible slice in 
 | `--preamble <file>` | Instead of `tasks/multiuser/_shared/preamble.md`. |
 | `--ready-timeout-s <n>`, `--turn-grace-s <n>` | Defaults 180 and 60: how long to wait for `$HE_LOG_DIR/ready`, and how long past `time_budget_s` a turn may run before the harness is killed. |
 | `--harness-env K=V` | Extra environment for the harness (debugging a harness; never a key). |
+| `--capture-upstream anthropic\|openai=<url>` | Capture runs only: send that provider's requests to a fake model server at `<url>`. Repeat it once per provider. |
+| `--capture-dns <ip>` | Capture runs only: the harness container's DNS server, so a call that skips the proxy leaves a receipt. Compose harnesses (QM) ignore it. |
+
+**Capture mode (internal-task).** With `--capture-upstream`, a normal trial runs against a fake model server: the proxy forwards to `<url>` and gets the dummy keys `sk-ant-capture-dummy` and `sk-capture-dummy` with only `PATH` and `HOME` from the runner's environment, so no real key is read and nothing is spent. The run id must start with `anatomy-capture-` (HE-RUN-002 otherwise): capture runs are never counted runs. The run prints `CAPTURE: upstream anthropic=<url> openai=<url> dns=<ip|none> keys=dummy`, and `run-summary.json` records the same fields under `capture`. Every provider the selected cells call needs an upstream. A capture run still takes a normal positive `--lease-usd` in its own scratch ledger, because the ledger refuses a lease of 0; the fake's reported usage is priced against it but never paid. Code: `runner/trial/capture.ts`.
 
 Exit 0 when every selected trial was recorded, 3 after a cap stop with `--stop-on-cap` (HE-BUDGET-001 on stderr), 2 on any HE- refusal.
 
@@ -119,6 +123,10 @@ The scripts that turn `results/<run>/trials.jsonl` into report tables, all keyle
 **Spend reconciliation (internal-task).** `bun scripts/reconcile-provider.ts --results <dir> [--results <dir> ...] [--write] [--api-key-id <apikey_...>]` sums a run's priced proxy lines per UTC day and model, cross-checks them against `trials.jsonl` and the lease ledger (a difference over a cent is reported and exits 1), prints the per-day sheet in the console's shape, and, with `ANTHROPIC_ADMIN_KEY` in the environment, fetches the Admin API's usage report (by model and api key) and cost report for the span and compares them with the proxy totals pooled per day across every run given, because runs that share a day and a key are one bucket to the provider; the verdict is a relative residual per day and model against the 1% bar with a status (`performed`, `performed_mismatch`, `performed_unattributed` without `--api-key-id`, `performed_no_data`, `not_performed`), a day that ended less than 24 hours before the fetch left out. `--write` saves `results/spend-reconciliation.json` (the sheet, the cross-check, the provider rows for the chosen key only, and the labelled `provider_reconciliation` line); `--provider-fixture` replays a recorded response for tests and refuses `--write`. Every byte out passes a tripwire against the key value and a redaction of key-shaped strings. HE-RECONCILE-001 to 004 in docs/errors.md.
 
 ## Changelog
+
+### 2026-10-29: capture mode (internal-task)
+
+`run` takes `--capture-upstream` and `--capture-dns` for keyless capture runs against a fake model server (run ids starting `anatomy-capture-` only), so the harness anatomy lane can record every request a harness sends to its model through the real proxy and trial path.
 
 ### 2026-10-29: Messages and Responses stream metering (internal-task)
 

@@ -45,6 +45,8 @@ export interface DockerHarnessOptions {
   repoRoot?: string;
   /** internal-task: extra read-only bind mounts, host path to container path (the install bundle view at /he-gbrain-install). */
   readOnlyMounts?: Record<string, string>;
+  /** internal-task capture mode: the container's DNS server (docker run --dns). The compose topology ignores it. */
+  dns?: string;
 }
 
 const uidGid = () => `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`;
@@ -79,6 +81,7 @@ export async function removeInternalNetwork(name: string): Promise<boolean> {
 export function dockerRunArgs(opts: DockerHarnessOptions, name: string): string[] {
   const args = ['docker', 'run', '-d', '--name', name, '--user', uidGid(), '--network', opts.network?.name ?? 'bridge', '--add-host', `host.docker.internal:${opts.network?.gateway ?? 'host-gateway'}`,
     '-v', `${resolve(opts.dirs.workspace)}:/workspace`, '-v', `${resolve(opts.dirs.state)}:/harness-state`, '-v', `${resolve(opts.dirs.logs)}:/he-logs`, '-v', `${resolve(opts.dirs.turns)}:/he-turns`];
+  if (opts.dns) args.push('--dns', opts.dns);
   for (const [host, inside] of Object.entries(opts.readOnlyMounts ?? {})) args.push('-v', `${resolve(host)}:${inside}:ro`);
   for (const [k, v] of Object.entries(opts.env)) args.push('-e', `${k}=${v}`);
   args.push(opts.image, 'serve');
