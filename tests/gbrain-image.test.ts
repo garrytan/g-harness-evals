@@ -161,11 +161,11 @@ test('installerHookProblem: with the pin expecting a hook, an installer view wit
   expect(installerHookProblem(blockOnly, {})).toBeNull();
   // A candidate named by --gbrain-commit (gbrain-check) is not held to the pin's expectation.
   expect(installerHookProblem(blockOnly, expecting, 'cd9da1ce170ecae739fa28855e9133b6c60b78c2')).toBeNull();
-  // internal-task: the committed pin is gbrain#7744's head (81692dc6, on master at beb49f32), which has no gbrain setup target, so the pin does
-  // not expect a hook and an installer cell at this pin fails preflight on the unavailable view (HE-GBRAIN-006), not on the hook gate.
+  // internal-task: the committed pin is gbrain master at gbrain#7898's merge (32366ac2, after gbrain#7489), which carries the per-turn hook, so the pin expects
+  // one and preflight refuses a block-only installer view at this pin (HE-GBRAIN-006).
   const pin = JSON.parse(readFileSync(join(ROOT, 'gbrain', 'pin.json'), 'utf8')) as { gbrain: { commit: string }; install: { installer: { turn_hook_expected: boolean } } };
-  expect(pin.gbrain.commit).toBe('81692dc623f3e220d1ea04b078b3aed903bd086f');
-  expect(pin.install.installer.turn_hook_expected).toBe(false);
+  expect(pin.gbrain.commit).toBe('32366ac26a2b8874b67702249f9274b06e8756c1');
+  expect(pin.install.installer.turn_hook_expected).toBe(true);
 });
 
 test('harnesses/openclaw/pin.json gbrain_install says what the docs view lands: /workspace/skills, the five core skills at the pinned gbrain, HE-ADAPTER-006 on failure', () => {

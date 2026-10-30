@@ -73,6 +73,24 @@ describe('v03-pilot-2026-10 pilot tables', () => {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   }, 60_000);
 
+  test('the go rule leaves excluded terminations out of the denominator', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pilot-tables-excl-'));
+    try {
+      const results = join(dir, 'results'), tasks = join(dir, 'tasks'), out = join(dir, 'out');
+      mkdirSync(join(tasks, 'ar-a'), { recursive: true });
+      mkdirSync(results, { recursive: true });
+      writeFileSync(join(tasks, 'ar-a', 'task.toml'), 'family = "approval_relay"\n');
+      const cell = 'openclaw-haiku-gbrain-told-mu-v03-dev';
+      const row = (r: number, grade: string, termination: string) => JSON.stringify({ trial_id: 'run/' + cell + '/ar-a/r' + r, cell, task: 'ar-a', harness: 'openclaw', grade, termination, consent_violation: false, usage: { usd: 0.01 } });
+      const rows = [row(1, 'pass', 'completed'), row(2, 'fail', 'completed'), row(3, 'fail', 'harness_error'), row(4, 'fail', 'infra_error'), row(5, 'fail', 'model_error'), row(6, 'fail', 'exam_fault')];
+      writeFileSync(join(results, 'trials.jsonl'), rows.join('\n') + '\n');
+      expect(run(results, tasks, out).exitCode).toBe(0);
+      const j = JSON.parse(readFileSync(join(out, 'pilot-tables.json'), 'utf8')) as { go_rule: Array<{ family: string; passes: number; trials: number }> };
+      const ar = j.go_rule.find((g) => g.family === 'approval_relay')!;
+      expect([ar.passes, ar.trials]).toEqual([1, 3]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }, 60_000);
+
   test('cost per success: draws with no pass make the upper end unbounded', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pilot-tables-success-'));
     try {

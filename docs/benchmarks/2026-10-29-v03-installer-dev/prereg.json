@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "run_id": "v03-installer-dev-2026-10",
+  "question": "On the 20 public dev tasks of task set v0.3 on Haiku (claude-haiku-5-5), for OpenClaw and Hermes Agent, at gbrain 32366ac2 (master, the merge of gbrain#7898, v0.60.498.0, which contains the merges of gbrain#7489 (bb2a440c) and gbrain#7744 (0ccf2bdd)) and five repetitions per task: what are the pass rates of C1's two arms (the hand-written told clause, and gbrain's installer with its per-turn hook), the paired installer minus told difference per harness, the installer cells' cost per trial, and the told arm's approval relay family rate after #119's template revision. A supplementary dev pilot on public tasks, run because the v03-pilot-2026-10 deviation dropped C1's installer arm while gbrain#7489 was unmerged; it makes no claim and does not reopen that pilot's verdict.",
+  "tasks": {},
+  "cells": [
+    {
+      "id": "openclaw-haiku-gbrain-told-mu-v03-dev",
+      "harness": "openclaw",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-ladder.md"
+    },
+    {
+      "id": "openclaw-haiku-gbrain-installer-mu-v03-dev",
+      "harness": "openclaw",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "gbrain": {
+        "surface": "starter",
+        "install": "gbrain-installer"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    },
+    {
+      "id": "hermes-haiku-gbrain-told-mu-v03-dev",
+      "harness": "hermes",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-ladder.md"
+    },
+    {
+      "id": "hermes-haiku-gbrain-installer-mu-v03-dev",
+      "harness": "hermes",
+      "model": "anthropic:claude-haiku-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "gbrain": {
+        "surface": "starter",
+        "install": "gbrain-installer"
+      },
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    }
+  ],
+  "wall_clock_s": {
+    "multiuser": 1500
+  },
+  "spend_cap_usd": 9,
+  "drop_order": [],
+  "minimum_v01": [
+    "openclaw-haiku-gbrain-told-mu-v03-dev",
+    "openclaw-haiku-gbrain-installer-mu-v03-dev",
+    "hermes-haiku-gbrain-told-mu-v03-dev",
+    "hermes-haiku-gbrain-installer-mu-v03-dev"
+  ]
+}

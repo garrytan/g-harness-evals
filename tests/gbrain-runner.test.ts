@@ -112,7 +112,7 @@ test('gbrain.install and gbrain.embeddings: validated under HE-GBRAIN-001 naming
   expect(m.per_cell_ceiling_usd['fake-semantic']!).toBeGreaterThanOrEqual(m.per_cell_ceiling_usd['fake-mcp']!);
 });
 
-test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs, installer and scoped follow-ups, the v0.2 held-out run, the memory run and the v0.3 dev pilot carry gbrain cells, each on a pinned configuration', () => {
+test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs, installer and scoped follow-ups, the v0.2 held-out run, the memory run, the v0.3 dev pilot and its installer dev cells carry gbrain cells, each on a pinned configuration', () => {
   const dir = join(ROOT, 'docs', 'benchmarks');
   const files = readdirSync(dir).filter((d) => existsSync(join(dir, d, 'prereg.json'))).map((d) => join(dir, d, 'prereg.json'));
   expect(files.length).toBeGreaterThan(0);
@@ -165,6 +165,13 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
           if (g.brain === 'company') { expect(g.surface).toBe('starter'); expect(g.install).toBe('mcp'); expect(['none', 'sources']).toContain(g.scope); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-company.md'); }
           else { expect(['starter', 'verbs']).toContain(g.surface); expect(g.install).toBe('mcp'); expect(g.brain).toBe('bot-visible'); expect(g.scope).toBe('none'); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-ladder.md'); }
         }
+      }
+      else if (p.run_id.startsWith('v03-installer-dev-')) {
+        // internal-task: C1's two arms (told, installer) on the v0.3 dev split, Haiku, five repetitions, at gbrain#7898's merge (after gbrain#7489); told carries the ladder's preamble, installer the default one.
+        expect(c.task_set).toBe('v0.3'); expect(c.split).toBe('dev'); expect(c.repetitions).toBe(5); expect(c.model).toBe('anthropic:claude-haiku-5-5'); expect(c.tasks).toBeUndefined();
+        expect(p.cells).toHaveLength(4); expect(buildManifest(p, sha256, '2026-10-29T00:00:00Z').trials).toHaveLength(400); expect(c.ceiling).toEqual({ input_tokens: 80000, output_tokens: 6000 });
+        const g = resolveGbrain(c.gbrain!); expect(g.surface).toBe('starter'); expect(g.embeddings).toBe('off'); expect(['mcp', 'gbrain-installer']).toContain(g.install); expect(g.brain).toBe('bot-visible'); expect(g.scope).toBe('none');
+        expect(c.preamble).toBe(g.install === 'mcp' ? 'tasks/multiuser/_shared/preamble.gbrain-ladder.md' : undefined);
       }
       else expect(c.gbrain).toBeUndefined();
     }

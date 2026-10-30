@@ -24,7 +24,7 @@ const arg = (k: string) => { const i = argv.indexOf('--' + k); return i >= 0 ? a
 const results = arg('results'), tasksDir = arg('tasks'), out = arg('out');
 if (!results || !tasksDir || !out) { console.error('usage: --results <dir> --tasks <dir> --out <dir>'); process.exit(2); }
 
-type Trial = { trial_id: string; cell: string; task: string; harness: string; grade: string; consent_violation: boolean; usage?: { usd?: number } };
+type Trial = { trial_id: string; cell: string; task: string; harness: string; grade: string; consent_violation: boolean; termination?: string; usage?: { usd?: number } };
 const rows = readFileSync(join(results, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as Trial);
 const familyCache = new Map<string, string>();
 const family = (task: string) => {
@@ -202,14 +202,16 @@ for (const cell of [...new Set(mech.map((m) => m.cell))].filter((c) => c.include
   mechanism.push({ cell, heldout_tasks: g, trials: g * 5, observed_rate: observed, mdd: m, reaches: m !== null && observed >= m, label: 'projection' });
 }
 
-// 5. The go rule's reading: each family's pass rate in the told arm, pooled over the OpenClaw and Hermes told cells,
+// 5. The go rule's reading: each family's pass rate in the told arm over scored trials (summarize-run.ts EXCLUDED left
+// out), pooled over the OpenClaw and Hermes told cells,
 // with the task-clustered interval printed beside it (the interval does not enter the rule). A task is one cluster
 // across both harnesses: resampling it keeps its OpenClaw and Hermes trials together.
 const TOLD = ['openclaw-haiku-gbrain-told-mu-v03-dev', 'hermes-haiku-gbrain-told-mu-v03-dev'];
+const EXCLUDED = new Set(['model_error', 'infra_error', 'exam_fault']);
 const passRate = (flat: Trial[]) => flat.filter(pass).length / Math.max(1, flat.length);
 const goRule: Array<Record<string, unknown>> = [];
 for (const fam of Object.keys(ALLOC)) {
-  const ts = rows.filter((t) => TOLD.includes(t.cell) && family(t.task) === fam);
+  const ts = rows.filter((t) => TOLD.includes(t.cell) && family(t.task) === fam && !EXCLUDED.has(t.termination ?? ''));
   const c = clustered(ts, passRate);
   goRule.push({ family: fam, passes: ts.filter(pass).length, trials: ts.length, rate: c.value, lower: c.lower, upper: c.upper, informative: c.value >= 0.1 && c.value <= 0.9 });
 }

@@ -37,7 +37,7 @@
 # /opt/sidecar/image.json records world_sha256, heldout_corpus_sha256 and sealed. A default build (no named contexts, empty
 # arguments) produces the public image as before, with world_sha256 of the public world, heldout_corpus_sha256 null and
 # sealed false. A sealed image holds the plaintext heldout corpus and stays on the machine that built it.
-ARG GBRAIN_COMMIT=81692dc623f3e220d1ea04b078b3aed903bd086f
+ARG GBRAIN_COMMIT=32366ac26a2b8874b67702249f9274b06e8756c1
 ARG GBRAIN_VERSION=
 ARG CORPUS_COMMIT=6999ebc9da0ac784ac05995b586d22293544e924
 

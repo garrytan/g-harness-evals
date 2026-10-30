@@ -2,6 +2,20 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.51] - 2026-10-30
+
+### internal-task: v03-installer-dev-2026-10 preregistered, gbrain pinned at 32366ac2
+
+- `docs/benchmarks/2026-10-29-v03-installer-dev/` (new): `PREREGISTRATION.md` and `prereg.json` for run `v03-installer-dev-2026-10`. C1's told and installer arms on OpenClaw and Hermes Agent, on the 20 public v0.3 dev tasks, Haiku, 5 repetitions: 4 cells, 400 trials, leases $2.25 each, cap $9. Dev and descriptive, except endpoint 6, internal-task's gate on the v0.3 seal. It is the supplementary dev pilot internal-task's condition 1 asked for once gbrain#7489 merged; the told cells rerun at the same pin, and the told arm's approval relay rate is re-read after #119 without reopening the pilot's verdict.
+- `docs/benchmarks/preregistrations.d/v03-installer-dev.json` (new): registers the experiment for the prereg-order check.
+- The preregistration's base is main at #130. It names the run-path changes of #116 (proxy settlement), #117, #120, #123, #129, #130, #133 and #134 (none for these cells) and #118 (Hermes stops lazy pip installs, per-slot model binding, the proxy's broken-body 502) as reasons this run's cost and Hermes wall time can differ from the pilot's. v0.0.43 went to #118, v0.0.44 to #117, v0.0.45 to #129, v0.0.46 to #133, v0.0.47 to #123, v0.0.48 to #134, v0.0.49 to #120 and v0.0.50 to #130.
+- Endpoint 6 preregisters internal-task's gate for opening 1: the told cells must show at least 5 of 6 families informative, under the pilot's go and defect rules. A defect fixed after the run means a reseal, not the existing seal, and then a dev read of the fixed families' told cells (internal-task, 2026-10-30).
+- `scripts/v03/pilot-tables.ts`: the go-rule table leaves out `model_error`, `infra_error` and `exam_fault` trials, as `summarize-run.ts` does, so its denominator is scored trials. The pilot's tables do not change: every pilot trial ended `completed` or `harness_error`. `tests/v03-pilot-tables.test.ts` checks that an excluded trial leaves the denominator.
+- `docs/benchmarks/2026-10-29-v03-pilot/deviation-approval.md` (new): the Captain's conditional approval of the v0.3 seal deviation, verbatim and dated.
+- `gbrain/pin.json`: the pin moves from `81692dc6` (kept first in `previous`, for `gbrain-memory-fix-2026-10b` and `v03-pilot-2026-10`) to `32366ac26a2b8874b67702249f9274b06e8756c1` (0.60.498.0), gbrain master at the merge of gbrain#7898, which contains the merges of gbrain#7489 (`bb2a440c`) and gbrain#7744 (`0ccf2bdd`). `install.installer.turn_hook_expected` becomes true. The `Dockerfile` default `GBRAIN_COMMIT` follows. A keyless `gbrain-check --expect-hook` at the new pin passed 37 of 37 with 0 pin diffs, and `tests/adapter-install.test.ts` passed against its image.
+- `tests/gbrain-image.test.ts` expects the new pin and `turn_hook_expected` true; `tests/gbrain-runner.test.ts` pins the new run's cells (4 cells, 400 trials, the told and installer configurations).
+- README, `gbrain/README.md` and `docs/gbrain-arm.md`: the new pin, the run's preregistration and the keyless row.
+
 ## [0.0.50] - 2026-10-30
 
 ### internal-task: harness anatomy capture kit and the first records

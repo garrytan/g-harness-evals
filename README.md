@@ -9,9 +9,12 @@
 - **gbrain does nothing unless the harness is told to use it.** Told to read a whole-company brain, harnesses read other people's channels; scoping the brain to the asker stops that.
 - **No run yet shows gbrain lifting pass rate on its primary endpoint (the one comparison the run was designed to settle) by an amount the run could detect.** Most gbrain rows are dev, so they hint but don't prove.
 
-**Next:** a fresh held-out task set, so the gbrain effects can be confirmed on tasks nobody tuned against ([TODOS.md](TODOS.md)). The dev pilot of its 20 public tasks on Haiku is done ([report](docs/benchmarks/2026-10-29-v03-pilot/report.md)). **It read no-go**: four of six families were informative and the rule needs five. It found and fixed a defect in one family. The held-out set was sealed (custody commit `custody commit (private)`) before that verdict was settled, so using it waits on a dated approval of that deviation.
+**Next:** a fresh held-out task set, so the gbrain effects can be confirmed on tasks nobody tuned against ([TODOS.md](TODOS.md)).
+- **The dev pilot read no-go** ([report](docs/benchmarks/2026-10-29-v03-pilot/report.md)): on its 20 public tasks on Haiku, four of six families were informative and the rule needs five. It found and fixed a defect in one family.
+- **The held-out set was sealed early.** It was sealed (custody commit `custody commit (private)`) before that verdict was settled.
+- **That deviation is approved on one condition** ([deviation-approval.md](docs/benchmarks/2026-10-29-v03-pilot/deviation-approval.md)): the `told` cells of the installer dev run ([preregistration](docs/benchmarks/2026-10-29-v03-installer-dev/PREREGISTRATION.md)) must show five of six families informative.
 
-Version: harness-evals v0.0.50. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
+Version: harness-evals v0.0.51. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
 
 ## Start here
 
@@ -47,7 +50,7 @@ Version: harness-evals v0.0.50. Everything above [Changelog](#changelog) describ
 | Codex | [openai/codex](https://github.com/openai/codex) 0.165.0 from npm, built and tested keyless, no counted run yet. It speaks only OpenAI's Responses API, so it is compared only with OpenClaw and Hermes on the same OpenAI model ([harnesses/codex/pin.json](harnesses/codex/pin.json)) |
 | Not run | [name withheld] and [name withheld] are in the plan but expose no headless API; nothing on this page measures them |
 | Models | `claude-sonnet-5-5` and `claude-haiku-5-5`, one fixed model per run, every call through the metering proxy under a ledger lease; the harness containers see only the proxy and a per-trial dummy token |
-| gbrain, the sidecar in the brain runs | [garrytan/gbrain](https://github.com/garrytan/gbrain), pinned today at `81692dc6` (0.60.472.0, the head of gbrain#7744, an open pull request), the commit run `gbrain-memory-fix-2026-10b` built (it replaced `gbrain-memory-fix-2026-10`, which never ran); each counted run names the commit it built, from `f241216c` (0.60.413.0) in the gbrain arm to `b06ac32b` (0.60.465.0) in the memory run ([gbrain/pin.json](gbrain/pin.json), field `previous`; the fix run's `81692dc6` is its `commit`). gbrain is a knowledge brain served to the harness as a second MCP server, not a harness under test |
+| gbrain, the sidecar in the brain runs | [garrytan/gbrain](https://github.com/garrytan/gbrain), pinned today at `32366ac2` (0.60.498.0, master at the merge of gbrain#7898, which contains gbrain#7489 and gbrain#7744), for run `v03-installer-dev-2026-10`; each counted run names the commit it built, from `f241216c` (0.60.413.0) in the gbrain arm to `81692dc6` (0.60.472.0, gbrain#7744's head before it merged) in `gbrain-memory-fix-2026-10b` and the v0.3 dev pilot ([gbrain/pin.json](gbrain/pin.json), fields `commit` and `previous`). gbrain is a knowledge brain served to the harness as a second MCP server, not a harness under test |
 
 - Every harness runs headlessly in `serve` mode. The runner plays each member's messages through a Slack mock on a simulation clock, and the harness answers through one world-MCP server ([docs/adapters.md](docs/adapters.md)).
 - One bot token, no per-member access, the same preamble for every harness ([docs/methodology.md](docs/methodology.md), the trial contract). Full text: [docs/methods.md](docs/methods.md#how-every-harness-runs).
@@ -295,6 +298,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)); the world is built from gbrain-evals' `messy-company-v1` dataset; OpenClaw, Hermes Agent and QM are named as products only.
 
 ## Changelog
+
+### 2026-10-30: v0.3 installer dev cells preregistered, gbrain pinned at 32366ac2 (internal-task)
+
+harness-evals v0.0.51. The Next line links the preregistration of run `v03-installer-dev-2026-10`, C1's told and installer arms on the 20 public v0.3 tasks on Haiku. The gbrain row of the pins table names the new pin, `32366ac2` (0.60.498.0, master at gbrain#7898's merge, after gbrain#7489). The version line moves from v0.0.50 to v0.0.51 (v0.0.43 went to #118, v0.0.44 to #117, v0.0.45 to #129, v0.0.46 to #133, v0.0.47 to #123, v0.0.48 to #134, v0.0.49 to #120, v0.0.50 to #130). It also links the conditional approval of the v0.3 seal deviation. Why: gbrain#7489 merged, and the v0.3 plan owes the installer cells the dev pilot skipped.
 
 ### 2026-10-30: version line only, harness anatomy records (internal-task)
 
