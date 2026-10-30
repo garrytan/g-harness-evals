@@ -226,6 +226,22 @@
       ],
       "pattern": "trialToken\\('[a-z0-9-]+'\\),$",
       "reason": "a source call that generates an ephemeral per-trial proxy bearer at test time (runner/trial/proxy.ts trialToken); the line holds no literal value"
+    },
+    {
+      "finding": "internal.url_private",
+      "paths": [
+        "scripts/gstack-laneb/vm-run.sh"
+      ],
+      "pattern": "http://127\\.0\\.0\\.1:8790/laneb/anthropic(?=')",
+      "reason": "in-VM loopback address of the Lane B metering proxy (#123); loopback only, no external host, no credential"
+    },
+    {
+      "finding": "pii.email",
+      "paths": [
+        "tasks/repo/gstack-native-v1/dev/*/verifier/**"
+      ],
+      "pattern": "(s\\.astanin@gmail\\.com|janne\\.vanhala@gmail\\.com|mail@dbader\\.org)(?![\\w.@-])",
+      "reason": "upstream maintainers' published author addresses in vendored MIT-licensed files of the public dev split (#120), kept as upstream wrote them"
     }
   ]
 }
