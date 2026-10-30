@@ -2,6 +2,16 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.53] - 2026-10-30
+
+### internal-task: run anatomy-instruction-route-2026-11 preregistered
+
+- `docs/benchmarks/2026-10-31-anatomy-instruction-route/PREREGISTRATION.md` and `prereg.json` (new): gbrain's 289-byte brain-first rule (`harnesses/routes/instruction.md`) delivered through each route the harness supports as shipped, on OpenClaw 2026.10.6 (`route-tool`, `route-startup`, `route-hook`, `route-skill`) and Hermes v2026.9.24 (the same plus `route-system`), on `claude-haiku-5-5`, gbrain sidecar at `32366ac2`, default preamble with no brain-first clause. 9 cells on the 13 public v0.3 dev tasks of the four families the v0.3 pilot's own rule found informative, 5 repetitions, 585 trials, cap $20 in two shards (one per harness, leases $8 and $12), $3 smoke leases, $7 reserve for one named repair. Primary endpoint: the share of member turns with a gbrain call before the bot's first reply, each route against `route-tool` within its harness, Holm within the harness. The pin moved to `32366ac2` with #128 (`fd185baea`), which this preregistration's base contains.
+- `scripts/instruction-followed.ts` (new): reads that endpoint from each trial's `turns.jsonl` and `events.jsonl`, with task-clustered intervals, paired comparisons and Holm.
+- `tests/instruction-followed.test.ts` (new, keyless): the endpoint on synthetic trial directories, and the preregistration's figures recomputed from committed receipts (the task list, the cost per trial, the told-arm reference share, the cells and the script's sha256).
+- `docs/benchmarks/preregistrations.d/anatomy-instruction-route.json` (new): the run's entry for the preregistration order check.
+- `tests/gbrain-runner.test.ts`: the check that every committed preregistration loads with its pinned gbrain configuration covers the new run.
+
 ## [0.0.52] - 2026-10-30
 
 ### internal-task: per-harness anatomy pages and the cost split
