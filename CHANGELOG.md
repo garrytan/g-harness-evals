@@ -2,6 +2,16 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.54] - 2026-10-30
+
+### internal-task: preregister host-harness-pilot-2026-10
+
+- `docs/benchmarks/2026-10-30-host-harness-pilot/` (new): `PREREGISTRATION.md` and `prereg.json` for run `host-harness-pilot-2026-10`, a dev pilot of task set v0.3's 20 public tasks: Claude Code against OpenClaw and Hermes Agent on Haiku (none and told), and Codex against OpenClaw and Hermes Agent on gpt-6-luna (none). Nine cells, 900 trials, every cell on the internal network, one Ubicloud shard per cell, six preregistered comparisons with Holm across the six. Cap and per-shard leases from a measured one-trial smoke per cell, the three told cells smoked again at the new gbrain pin; leases sum to $19.55 under the $20 cap.
+- `docs/benchmarks/preregistrations.d/host-harness-pilot.json` (new): registers the experiment for the prereg-order check.
+- gbrain: the pilot builds the pin already on main, `32366ac2` (0.60.498.0, master at the merge of gbrain#7898, set by #128 for internal-task). This release does not change `gbrain/`; the README pins table's gbrain row names this run beside `v03-installer-dev-2026-10`.
+- `tests/gbrain-runner.test.ts`: the committed-preregistration test pins the new run's cells: 9 cells, 900 trials, the ceiling, the internal network and the told configuration.
+- README: the Next line links the preregistration, and the gbrain pins row names this run; version line v0.0.54.
+
 ## [0.0.53] - 2026-10-30
 
 ### internal-task: run anatomy-instruction-route-2026-11 preregistered

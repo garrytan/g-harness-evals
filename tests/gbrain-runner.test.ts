@@ -112,7 +112,7 @@ test('gbrain.install and gbrain.embeddings: validated under HE-GBRAIN-001 naming
   expect(m.per_cell_ceiling_usd['fake-semantic']!).toBeGreaterThanOrEqual(m.per_cell_ceiling_usd['fake-mcp']!);
 });
 
-test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs, installer and scoped follow-ups, the v0.2 held-out run, the memory run, the v0.3 dev pilot and its installer dev cells carry gbrain cells, each on a pinned configuration', () => {
+test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs, installer and scoped follow-ups, the v0.2 held-out run, the memory run, the v0.3 dev pilot and its installer dev cells, and the host-harness pilot carry gbrain cells, each on a pinned configuration', () => {
   const dir = join(ROOT, 'docs', 'benchmarks');
   const files = readdirSync(dir).filter((d) => existsSync(join(dir, d, 'prereg.json'))).map((d) => join(dir, d, 'prereg.json'));
   expect(files.length).toBeGreaterThan(0);
@@ -178,6 +178,14 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         expect(p.cells).toHaveLength(4); expect(buildManifest(p, sha256, '2026-10-29T00:00:00Z').trials).toHaveLength(400); expect(c.ceiling).toEqual({ input_tokens: 80000, output_tokens: 6000 });
         const g = resolveGbrain(c.gbrain!); expect(g.surface).toBe('starter'); expect(g.embeddings).toBe('off'); expect(['mcp', 'gbrain-installer']).toContain(g.install); expect(g.brain).toBe('bot-visible'); expect(g.scope).toBe('none');
         expect(c.preamble).toBe(g.install === 'mcp' ? 'tasks/multiuser/_shared/preamble.gbrain-ladder.md' : undefined);
+      }
+      else if (p.run_id.startsWith('host-harness-pilot-')) {
+        // internal-task: Claude Code, OpenClaw and Hermes on Haiku (none and told) and Codex, OpenClaw and Hermes on gpt-6-luna (none), every cell on the internal network, the v0.3 dev split, five repetitions.
+        expect(c.task_set).toBe('v0.3'); expect(c.split).toBe('dev'); expect(c.repetitions).toBe(5); expect(c.network).toBe('internal'); expect(c.tasks).toBeUndefined();
+        expect(p.cells).toHaveLength(9); expect(buildManifest(p, sha256, '2026-10-30T00:00:00Z').trials).toHaveLength(900); expect(c.ceiling).toEqual({ input_tokens: 80000, output_tokens: 6000 });
+        expect(c.harness === 'codex' ? ['openai:gpt-6-luna'] : c.harness === 'claude-code' ? ['anthropic:claude-haiku-5-5'] : ['anthropic:claude-haiku-5-5', 'openai:gpt-6-luna']).toContain(c.model);
+        if (!c.gbrain) expect(c.preamble).toBeUndefined();
+        else { expect(c.model).toBe('anthropic:claude-haiku-5-5'); expect(c.gbrain).toEqual({ surface: 'starter' }); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-ladder.md'); }
       }
       else expect(c.gbrain).toBeUndefined();
     }
