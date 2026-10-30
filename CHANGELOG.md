@@ -2,6 +2,20 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.46] - 2026-10-30
+
+### internal-task: build-install leaves Hermes's allowlist lock out of the gbrain bundle (internal-task, for gbrain#7989)
+
+- gbrain#7989 (internal-task) takes Hermes's own flock during `gbrain setup hermes`. That leaves an empty `home/shell-hooks-allowlist.json.lock` next to `config.yaml` and `shell-hooks-allowlist.json`. Hermes keeps the file, and gbrain correctly does not unlink it. Before this change, `gbrain/build-install.ts` read the lock as an instruction file without the brain-first block and stopped the image build.
+- `buildInstaller` now deletes the lock from the Hermes installer bundle when it is present and logs that it did. It is Hermes's runtime state, not an install file. Leaving it in the bundle would list it in the installer view, and the Hermes adapter refuses any view path without a documented destination. Commits before #7989 write no lock, and nothing changes for them.
+- Keyless `gbrain-check` passes at three commits:
+  - gbrain 32366ac2, which writes no lock: 37 passed, 0 failed, 0 pin diffs.
+  - #7989's head 60dea6c6 with `--expect-hook`: 37 passed, 0 failed, 0 pin diffs.
+  - The pinned 81692dc6, which has no installer: 35 passed, 0 failed.
+- At 60dea6c6 a raw `gbrain setup hermes` writes the 0-byte lock. The image's bundle lists only `SOUL.md`, `config.yaml` and `shell-hooks-allowlist.json`.
+- `tests/adapter-install.test.ts` with `HE_GBRAIN_INSTALLER_IMAGE` set to each image, and the harness images rebuilt from this checkout, passes 16 of 16 at 60dea6c6 and 6 of 6 installer tests at 32366ac2. In both, the Hermes adapter applies the installer view and `hermes hooks doctor` reports the hook healthy.
+- New test in `tests/gbrain-image.test.ts`: a stand-in gbrain writes what `setup hermes` writes, with and without the lock. The record, the hook files and the bundle are the same both ways, and the lock is never bundled. Without the change, the test fails with the same build error.
+
 ## [0.0.45] - 2026-10-30
 
 ### internal-task: the Hermes chat watcher times its grace in milliseconds

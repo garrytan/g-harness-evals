@@ -11,7 +11,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { bundleDigest, compiledTokens, fileEntries, hermesHookRule, keptSlugs, listFiles, verifyFiles, viewFiles, type InstallManifest } from '../gbrain/build-install.ts';
+import { buildInstaller, bundleDigest, compiledTokens, fileEntries, HERMES_ALLOWLIST_LOCK, hermesHookRule, INSTALLER_BLOCK_BEGIN, keptSlugs, listFiles, verifyFiles, viewFiles, type InstallManifest, type InstallerRecord } from '../gbrain/build-install.ts';
 import { EMBEDDING_MODELS, keylessEnv } from '../gbrain/build-brain.ts';
 import { gbrainImageCommit, gbrainImageInputs, imageCommitProblem, installerHookProblem } from '../runner/trial/gbrain.ts';
 import { publicImageProblem, sealedImageProblem, sealedImageTag, type OpeningReceipt } from '../runner/heldout/sealed.ts';
@@ -111,6 +111,42 @@ test('imageCommitProblem: the pinned commit passes, another commit or no image.j
   expect(imageCommitProblem({ image: 'img', built: null, pin: PIN })).toContain('records gbrain no commit (no /opt/sidecar/image.json), gbrain/pin.json pins');
   expect(imageCommitProblem({ image: 'img', built: OTHER, pin: PIN, flag: OTHER })).toBeNull();
   expect(imageCommitProblem({ image: 'img', built: PIN, pin: PIN, flag: OTHER })).toContain(`--gbrain-commit names ${OTHER}`);
+});
+
+// gbrain#7989 takes Hermes's own flock during gbrain setup hermes and leaves home/shell-hooks-allowlist.json.lock beside the allowlist.
+// build-install drops it when present (the Hermes adapter refuses a view path with no documented destination) and needs nothing
+// when it is absent (every commit before #7989). A stand-in gbrain writes what setup hermes writes, with and without the lock.
+test('buildInstaller (hermes): the allowlist lock gbrain#7989 leaves is dropped from the bundle when present and not required when absent', () => {
+  const fake = join(tmp, 'fake-gbrain.ts');
+  const command = "/bin/echo '" + JSON.stringify({ context: 'Search the brain first.' }) + "'";
+  writeFileSync(fake, [
+    "import { appendFileSync, existsSync, writeFileSync } from 'node:fs';",
+    "const home = process.env.HERMES_HOME!;",
+    "appendFileSync(home + '/SOUL.md', " + JSON.stringify('\n' + INSTALLER_BLOCK_BEGIN + '\n<!-- gbrain brain-first v2: x -->\nUse the brain.\n') + ");",
+    "writeFileSync(home + '/config.yaml', " + JSON.stringify('# gbrain:turn-rule:begin\nhooks:\n  pre_llm_call:\n    - command: ' + JSON.stringify(command) + '\n# gbrain:turn-rule:end\n') + ");",
+    "writeFileSync(home + '/shell-hooks-allowlist.json', " + JSON.stringify(JSON.stringify({ approvals: [{ event: 'pre_llm_call', command }] })) + ");",
+    "if (existsSync(" + JSON.stringify(join(tmp, 'fake-lock')) + ")) writeFileSync(home + '/shell-hooks-allowlist.json.lock', '');",
+    "console.log(JSON.stringify({ turn_hook: { action: 'write', path: home + '/config.yaml', detail: 'pre_llm_call hook' } }));",
+  ].join('\n'));
+  const soul = join(tmp, 'seed-SOUL.md');
+  writeFileSync(soul, 'You are Hermes.\n');
+  const build = (lock: boolean) => {
+    if (lock) writeFileSync(join(tmp, 'fake-lock'), ''); else rmSync(join(tmp, 'fake-lock'), { force: true });
+    const out = join(tmp, lock ? 'out-lock' : 'out-nolock');
+    const lines: string[] = [];
+    const r = buildInstaller({ out, gbrain: [process.execPath, fake], brains: tmp, commit: 'f'.repeat(40), scratch: join(tmp, lock ? 'scratch-lock' : 'scratch-nolock'), brainHome: tmp, hermesSoul: soul, log: (l) => lines.push(l) }, out, 'hermes', (l) => lines.push(l));
+    return { record: r.record as InstallerRecord, out, lines };
+  };
+  const expected = ['hermes/installer/home/SOUL.md', 'hermes/installer/home/config.yaml', 'hermes/installer/home/shell-hooks-allowlist.json'];
+  for (const lock of [false, true]) {
+    const { record, out, lines } = build(lock);
+    expect(record.files).toEqual(expected);
+    expect(record.turn_hook?.files).toEqual(['hermes/installer/home/config.yaml', 'hermes/installer/home/shell-hooks-allowlist.json']);
+    expect(record.turn_hook?.rule).toBe('Search the brain first.');
+    expect(existsSync(join(out, 'hermes', 'installer', HERMES_ALLOWLIST_LOCK))).toBe(false);
+    expect(listFiles(join(out, 'hermes', 'installer'))).toEqual(['home/SOUL.md', 'home/config.yaml', 'home/shell-hooks-allowlist.json']);
+    expect(lines.some((l) => l.includes('dropped Hermes\'s allowlist lock'))).toBe(lock);
+  }
 });
 
 test('installerHookProblem: with the pin expecting a hook, an installer view without installer.turn_hook is refused; a hooked view, a docs view or a block-only pin pass', () => {

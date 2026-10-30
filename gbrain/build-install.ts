@@ -76,6 +76,8 @@ export interface InstallerRecord {
 }
 
 export const INSTALLER_BLOCK_BEGIN = '<!-- gbrain:brain-first:begin -->';
+/** The lock file Hermes's flock leaves beside its allowlist when gbrain setup hermes takes it (gbrain#7989); never bundled. */
+export const HERMES_ALLOWLIST_LOCK = 'home/shell-hooks-allowlist.json.lock';
 
 export interface InstallManifest {
   schema_version: 1;
@@ -174,7 +176,7 @@ export function hermesHookRule(command: string): string | null {
 /** The installer section: `gbrain setup <harness> --instructions-only` per harness into its own directory under <out>, the
  *  files it wrote or changed recorded with the block version; a commit without the setup target (every gbrain before #7489)
  *  records {unavailable} with gbrain's own words, and a cell on the installer rung then fails preflight (HE-GBRAIN-006). */
-function buildInstaller(o: BuildInstallOptions, out: string, harness: InstallHarness, log: (line: string) => void): { record: InstallerRecord | { unavailable: string }; command?: InstallManifest['commands'][number] } {
+export function buildInstaller(o: BuildInstallOptions, out: string, harness: InstallHarness, log: (line: string) => void): { record: InstallerRecord | { unavailable: string }; command?: InstallManifest['commands'][number] } {
   const root = join(out, harness, 'installer');
   rmSync(root, { recursive: true, force: true });
   const env = keylessEnv(join(o.scratch, `installer-home-${harness}`));
@@ -203,6 +205,14 @@ function buildInstaller(o: BuildInstallOptions, out: string, harness: InstallHar
   if (r.status !== 0) {
     rmSync(root, { recursive: true, force: true });
     return { record: { unavailable: `gbrain setup ${harness} --instructions-only exited ${r.status}: ${(said.find((l) => /error|refus|unknown/i.test(l)) ?? said[0])?.trim().slice(0, 300) ?? 'no output'}` } };
+  }
+  // gbrain#7989 takes Hermes's own flock while it writes the allowlist, which leaves home/shell-hooks-allowlist.json.lock beside it
+  // (Hermes keeps the file and gbrain correctly does not unlink it). The lock is Hermes's runtime state, not an install file, so it
+  // is dropped here when present: no bundle manifest or view lists it, and the Hermes adapter, which refuses any view path without
+  // a documented destination, never sees it. Commits before #7989 write no lock, and nothing changes for them.
+  if (harness === 'hermes' && existsSync(join(root, HERMES_ALLOWLIST_LOCK))) {
+    rmSync(join(root, HERMES_ALLOWLIST_LOCK));
+    log(`hermes: dropped Hermes's allowlist lock ${HERMES_ALLOWLIST_LOCK} from the installer bundle (runtime state, not an install file)`);
   }
   const changed = listFiles(root).filter((f) => before.get(f) !== sha256(readFileSync(join(root, f))));
   if (!changed.length) {
