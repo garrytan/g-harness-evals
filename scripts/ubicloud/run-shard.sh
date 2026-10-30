@@ -134,6 +134,18 @@ fi
 [ -n "${UBI_OWNER:-}" ] || { echo "run-shard (ubicloud): set UBI_OWNER to your thread code so the VM carries its owner" >&2; exit 2; }
 [ -n "${UBICLOUD_API_KEY:-${UBICLOUD_API_TOKEN:-}}" ] || { echo "run-shard (ubicloud): UBICLOUD_API_KEY is not set" >&2; exit 2; }
 [ -f "$runner" ] || { echo "run-shard (ubicloud): ubi-runner.sh not found at $runner" >&2; exit 2; }
+[[ "$timeout_h" =~ ^[1-9][0-9]{0,2}$ ]] && [ "$timeout_h" -le 998 ] || { echo "run-shard (ubicloud): --timeout-hours must be a whole number of hours from 1 to 998" >&2; exit 2; }
+# The VM's name carries its TTL (-t<hours>, ubi-runner.sh's header), after which gstack's reaper destroys it whoever owns it,
+# so it must outlive the shard: --timeout-hours plus an hour for the stop, the copy back and the teardown (13 for the default
+# 12). An inherited UBI_TTL_HOURS is kept when it is longer than --timeout-hours and refused otherwise.
+if [ "$attach" -eq 0 ]; then
+  if [ -z "${UBI_TTL_HOURS:-}" ]; then
+    export UBI_TTL_HOURS=$(( timeout_h + 1 ))
+  else
+    ttl=$(bash "$runner" ttl) || exit 2
+    [ "$ttl" -gt "$timeout_h" ] || { echo "run-shard (ubicloud): UBI_TTL_HOURS=$UBI_TTL_HOURS gives the VM a ${ttl}h TTL, which would let the reaper destroy it before --timeout-hours $timeout_h runs out; unset it or set it above $timeout_h" >&2; exit 2; }
+  fi
+fi
 case $size in standard-2) rate=0.00104 ;; standard-4) rate=0.00208 ;; standard-8) rate=0.00416 ;; standard-16) rate=0.00831 ;; standard-30) rate=0.01559 ;; standard-60) rate=0.03117 ;; *) rate="" ;; esac
 
 mkdir -p "$dest"
@@ -367,6 +379,16 @@ fi
 
 # 7. poll: append new bytes of the VM's logs, until ~/shard/exit exists
 deadline=$(( $(now) + timeout_h * 3600 ))
+# A VM whose name carries a TTL (-t<hours>) is reaped once its epoch plus that many hours plus ten minutes has passed, so
+# the shard is stopped half an hour before the TTL ends, whatever --timeout-hours says (an --attach after a long sleep
+# included): the stop, the copy back and the destroy then happen while the VM still exists.
+if [[ "$vm" =~ -([0-9]{10})-.+-t([0-9]{1,3})$ ]]; then
+  ttl_stop=$(( 10#${BASH_REMATCH[1]} + 10#${BASH_REMATCH[2]} * 3600 - 1800 ))
+  if [ "$ttl_stop" -lt "$deadline" ]; then
+    deadline=$ttl_stop
+    log "$vm's TTL ends at $(date -u -d @$(( ttl_stop + 1800 )) +%Y-%m-%dT%H:%M:%SZ); the shard is stopped by $(date -u -d @"$ttl_stop" +%Y-%m-%dT%H:%M:%SZ) so its results come back first"
+  fi
+fi
 fails=0 polls=0 last_count=-1
 while :; do
   sleep "$poll"

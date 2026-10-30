@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.58] - 2026-10-30
+
+### internal-task: every Ubicloud VM carries a TTL in its name
+
+- `scripts/ubicloud/ubi-runner.sh`: every VM it creates is named `ubirun-<owner>-<epoch>-<suffix>-t<hours>`, the encoding gstack's runner writes (gstack#3652). gstack's reaper destroys a VM once its epoch plus that many hours plus ten minutes has passed, whoever owns it, and sweeps names with no TTL after 4 hours. Without this our shards (up to 12 hours) would be reaped mid-run. The hours are `UBI_TTL_HOURS` rounded up to a whole hour (1 to 999), or 3. A new keyless `ttl` command prints them. `up` and `run` refuse without `UBI_OWNER` (they fell back to a per-machine id before), with a bad `UBI_TTL_HOURS`, and with a `-n` name that is not `ubirun-<owner>-<epoch>-<suffix>-t<hours>` for this owner, all before any API request. `run` ends with gstack's `UBICLOUD: left=<0|1|unknown> owner=<owner> vm=<name> others=<n>` line on stderr, and a VM still listed after teardown fails a run that would have passed. `list --mine`, `down` and `gc` are unchanged and still handle names without the suffix, which every VM made before this release has.
+- `scripts/ubicloud/run-shard.sh`: sets `UBI_TTL_HOURS` to `--timeout-hours` plus 1 (13 for the default 12) before it creates the VM. An inherited value is kept when it outlives `--timeout-hours` and refused (exit 2) otherwise. `--timeout-hours` must be a whole number from 1 to 998. `fanout.sh` goes through it. The poll stops the shard half an hour before a VM's TTL ends, whatever `--timeout-hours` says, so an `--attach` after a long sleep still copies the results back before the reaper can destroy the VM.
+- `scripts/ubicloud/pr-check.sh`: names its VM `ubirun-<owner>-<epoch>-pr<n>-t<hours>` with the runner's TTL, and refuses without `UBI_OWNER` before it reads the pull request (`--relink` makes no VM and is exempt). A run whose checks passed but whose `UBICLOUD: left=` line is 1 or unknown posts success with "VM cleanup not confirmed" instead of a failure. `pr-watch.sh`'s sweep matches check VMs with and without the suffix.
+- Tests: `tests/ubi-runner-ttl.test.ts` (new) runs the runner against a fake Ubicloud API on 127.0.0.1. It covers the ttl rule, the refusals, the generated name as gstack's reaper parses it, the `left=` line, `list --mine` and `down` on suffix-less names, the TTL `run-shard.sh` hands `up`, and the TTL stop on `--attach`. `tests/pr-check-vm-name.test.ts` and `tests/pr-watch.test.ts` cover the new check VM name, and `tests/pr-check-verdict.test.ts` the unconfirmed cleanup.
+
 ## [0.0.57] - 2026-10-30
 
 ### internal-task: instruction-route test flake

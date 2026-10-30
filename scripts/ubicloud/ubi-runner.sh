@@ -15,10 +15,20 @@
 # Needs only bash, curl, python3, ssh, ssh-keygen, and tar locally, so it works
 # from dev boxes, containers, and cloud sandboxes.
 #
-# Ownership: VMs are named ubirun-<owner>-<epoch>-<suffix>. <owner> is UBI_OWNER
-# (lowercased, letters and digits only, at most 12 characters, starting with a
-# letter) or a random per-machine id kept in $STATE_ROOT/owner-id. Ubicloud names
-# allow 63 characters of [a-z0-9-], so a full name stays under 40.
+# Ownership: VMs are named ubirun-<owner>-<epoch>-<suffix>-t<hours>. <owner> is
+# UBI_OWNER (lowercased, letters and digits only, at most 12 characters, starting
+# with a letter); up and run refuse without it. list, down and gc fall back to a
+# random per-machine id kept in $STATE_ROOT/owner-id. Ubicloud names allow 63
+# characters of [a-z0-9-], so a full name stays under 45.
+#
+# TTL: -t<hours> is the VM's declared lifetime, the encoding gstack's runner
+# (gstack#3652) writes and its reaper reads: it destroys any VM whose
+# <epoch> + hours*3600 + 600 has passed, whoever owns it. hours is UBI_TTL_HOURS
+# rounded up to a whole hour, or 3; a caller whose run lasts longer sets it
+# (run-shard.sh sets its --timeout-hours plus 1). A name given with -n must
+# carry the same shape. Names without the suffix (VMs made before it) still
+# list, attach, sync and go down as before. run ends with
+# "UBICLOUD: left=<0|1|unknown> owner=<owner> vm=<name> others=<n>" on stderr.
 #
 # Teardown: `up` records each VM's state (location, create status) before it
 # sends the create request, and `down` destroys and polls until the VM is
@@ -72,6 +82,24 @@ owner_id() {
   echo "${raw:0:12}"
 }
 OWNER=$(owner_id)
+
+# ttl_hours: UBI_TTL_HOURS (default 3) rounded up to a whole hour, 1 to 999.
+ttl_hours() {
+  local raw=${UBI_TTL_HOURS:-3} h
+  [[ "$raw" =~ ^0*([0-9]{1,4})(\.([0-9]+))?$ ]] || die "UBI_TTL_HOURS must be a number of hours that rounds up to 1-999 (got '$raw')"
+  h=$(( 10#${BASH_REMATCH[1]} ))
+  [[ "${BASH_REMATCH[3]}" =~ ^0*$ ]] || h=$(( h + 1 ))
+  [ "$h" -ge 1 ] && [ "$h" -le 999 ] || die "UBI_TTL_HOURS must be a number of hours that rounds up to 1-999 (got '$raw')"
+  echo "$h"
+}
+
+# require_create: up and run make VMs, and every VM names its owner and its
+# TTL. Only creates read UBI_TTL_HOURS, so a bad value never blocks down or list.
+TTL_HOURS=""
+require_create() {
+  [ -n "${UBI_OWNER:-}" ] || die "UBI_OWNER is not set: every VM must carry its owner; export UBI_OWNER=<your thread code> and rerun"
+  TTL_HOURS=$(ttl_hours)
+}
 
 # api OUT ARGS...: send one Ubicloud CLI command, write the body to OUT, and
 # print the HTTP status (000 when no response arrived).
@@ -192,9 +220,17 @@ write_state() {
     "$1" "$2" "$3" "$4" "$5" "$6" "$$" >"$(state_dir "$1")/env"
 }
 
-new_name() { echo "$PREFIX-$OWNER-$(date +%s)-$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' \n')"; }
+new_name() { echo "$PREFIX-$OWNER-$(date +%s)-$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' \n')-t$TTL_HOURS"; }
 
 valid_name() { [[ "$1" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]]; }
+
+# check_name NAME: a name for a new VM must be one Ubicloud accepts and one gstack's reaper can read its owner, creation
+# epoch and TTL from.
+check_name() {
+  valid_name "$1" || die "invalid VM name '$1' (Ubicloud allows 1-63 of a-z, 0-9 and '-', starting and ending with a letter or digit)"
+  [[ "$1" =~ ^$PREFIX-$OWNER-[0-9]{10}-[a-z0-9]([a-z0-9-]*[a-z0-9])?-t[1-9][0-9]{0,2}$ ]] \
+    || die "invalid VM name '$1': a VM is named $PREFIX-$OWNER-<epoch>-<suffix>-t<hours>, so gstack's reaper can read its owner and TTL (omit -n for a generated name)"
+}
 
 UP_NAME=""
 UP_READY=""
@@ -211,7 +247,7 @@ cmd_up() {
     esac
   done
   [ -n "$name" ] || name=$(new_name)
-  valid_name "$name" || die "invalid VM name '$name' (Ubicloud allows 1-63 of a-z, 0-9 and '-', starting and ending with a letter or digit)"
+  check_name "$name"
   if [ "$GC_HOURS" -gt 0 ]; then
     cmd_gc "$GC_HOURS" || log "stale-VM cleanup failed; continuing"
   fi
@@ -379,6 +415,26 @@ cmd_pull() {
   remote "$name" "cd $(printf %q "$(dirname "$from")") && tar -czf - $(basename "$from")" | tar -xzf - -C "$to"
 }
 
+# run_teardown RC: run's EXIT handler. Destroys RUN_VM, ignoring further
+# signals, then checks the project's VM list for it and prints the leftover
+# line (gstack#3652's format); a VM still listed, or a list that cannot be
+# read, fails a run that would otherwise have passed.
+run_teardown() {
+  local rc=$1 rows left others
+  trap "" INT TERM HUP QUIT
+  cmd_down "$RUN_VM" || log "WARNING: failed to destroy $RUN_VM; run: $0 down $RUN_VM"
+  if rows=$(vm_rows 2>/dev/null); then
+    left=$(awk -v n="$RUN_VM" '$2==n' <<<"$rows" | grep -c . || true)
+    others=$(awk -v n="$RUN_VM" -v o="$OWNER" '$3==o && $2!=n' <<<"$rows" | grep -c . || true)
+  else
+    left=unknown others=unknown
+  fi
+  echo "UBICLOUD: left=$left owner=$OWNER vm=$RUN_VM others=$others" >&2
+  [ "$left" = 0 ] && return 0
+  log "VM cleanup not confirmed for $RUN_VM (left=$left); destroy it with: $0 down $RUN_VM"
+  [ "$rc" -ne 0 ] || exit 1
+}
+
 cmd_run() {
   local up_args=() src=. dest="" setup="" keep=0 pulls=() envs=()
   while [ $# -gt 0 ]; do
@@ -404,16 +460,17 @@ cmd_run() {
   for (( i = 0; i < ${#up_args[@]}; i += 2 )); do
     case ${up_args[i]} in -n|--name) name=${up_args[i+1]} ;; esac
   done
-  [ -n "$name" ] || { name=$(new_name); up_args+=(-n "$name"); }
+  if [ -n "$name" ]; then check_name "$name"; else name=$(new_name); up_args+=(-n "$name"); fi
   RUN_VM=$name
   # Armed before the create request: an interrupted `up` still destroys its VM.
   # A second signal must not cut teardown short, so the EXIT handler ignores them.
-  trap 'trap "" INT TERM HUP QUIT; cmd_down "$RUN_VM" || log "WARNING: failed to destroy $RUN_VM; run: $0 down $RUN_VM"' EXIT
+  trap 'run_teardown "$?"' EXIT
   trap 'exit 130' INT TERM HUP QUIT
   cmd_up "${up_args[@]}" >/dev/null
   if [ "$keep" = 1 ]; then
     trap - EXIT
     log "--keep: leaving $name running; destroy with: $0 down $name"
+    echo "UBICLOUD: left=1 owner=$OWNER vm=$name kept=1" >&2
   fi
 
   local e
@@ -461,13 +518,15 @@ usage: ubi-runner.sh <command> [args]
   list [--mine]          list all VMs in the project, or only this owner's
   usage                  VMs and vCPUs per owner across the project
   owner                  print this caller's owner tag ($OWNER)
+  ttl                    print the TTL hours a new VM's name carries (-t<hours>)
   gc HOURS               destroy this owner's VMs older than HOURS (never other owners')
   cli ARGS...            raw Ubicloud CLI passthrough (e.g. cli vm list)
 
-VMs are named $PREFIX-<owner>-<epoch>-<suffix>; set UBI_OWNER (e.g. your thread
-code) to tag them, otherwise a per-machine id is used.
+VMs are named $PREFIX-<owner>-<epoch>-<suffix>-t<hours>; up and run need UBI_OWNER
+(e.g. your thread code), and run ends with a UBICLOUD: left=<n> line.
 defaults: size=$DEFAULT_SIZE location=$DEFAULT_LOCATION (env UBI_SIZE, UBI_LOCATION)
-env: UBI_GC_HOURS (unset/0: no sweep on up), UBI_CREATE_GRACE (${CREATE_GRACE}s),
+env: UBI_TTL_HOURS (default 3, rounded up, 1-999), UBI_GC_HOURS (unset/0: no sweep on up),
+     UBI_CREATE_GRACE (${CREATE_GRACE}s),
      UBI_DOWN_TIMEOUT (${DOWN_TIMEOUT}s), UBI_API_TIMEOUT (${API_TIMEOUT}s)
 EOF
 }
@@ -475,12 +534,13 @@ EOF
 cmd=${1:-help}
 [ $# -eq 0 ] || shift
 case $cmd in
-  owner|pack|help|-h|--help) ;;
+  owner|ttl|pack|help|-h|--help) ;;
   *) [ -n "${UBICLOUD_API_KEY:-}" ] || die "UBICLOUD_API_KEY is not set (create a token under your Ubicloud project's Tokens page)" ;;
 esac
 case $cmd in
-  run) cmd_run "$@" ;;
-  up) trap 'trap "" INT TERM HUP QUIT; [ -z "$UP_NAME" ] || [ -n "$UP_READY" ] || cmd_down "$UP_NAME" || log "WARNING: failed to destroy $UP_NAME; run: $0 down $UP_NAME"' EXIT
+  run) require_create; cmd_run "$@" ;;
+  up) require_create
+      trap 'trap "" INT TERM HUP QUIT; [ -z "$UP_NAME" ] || [ -n "$UP_READY" ] || cmd_down "$UP_NAME" || log "WARNING: failed to destroy $UP_NAME; run: $0 down $UP_NAME"' EXIT
       trap 'exit 130' INT TERM HUP QUIT
       cmd_up "$@" ;;
   ssh) name=$1; shift; load "$name"
@@ -494,6 +554,7 @@ case $cmd in
   list) cmd_list "$@" ;;
   usage) cmd_usage ;;
   owner) echo "$OWNER" ;;
+  ttl) ttl_hours ;;
   gc) cmd_gc "$@" ;;
   cli) cli "$@" ;;
   help|-h|--help) usage ;;

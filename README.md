@@ -15,7 +15,7 @@
 - **That deviation is approved on one condition** ([deviation-approval.md](docs/benchmarks/2026-10-29-v03-pilot/deviation-approval.md)): the `told` cells of the installer dev run ([preregistration](docs/benchmarks/2026-10-29-v03-installer-dev/PREREGISTRATION.md)) must show five of six families informative.
 - **A second dev pilot** puts Claude Code and Codex beside OpenClaw and Hermes Agent on the same tasks, each on its own model ([preregistration](docs/benchmarks/2026-10-30-host-harness-pilot/PREREGISTRATION.md)).
 
-Version: harness-evals v0.0.57. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
+Version: harness-evals v0.0.58. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
 
 ## Start here
 
@@ -300,6 +300,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)); the world is built from gbrain-evals' `messy-company-v1` dataset; OpenClaw, Hermes Agent and QM are named as products only.
 
 ## Changelog
+
+### 2026-10-30: version line only, Ubicloud VMs carry a TTL (internal-task)
+
+harness-evals v0.0.58. The version at the top moves from v0.0.57 to v0.0.58. Nothing else on this page changed. Why: v0.0.58 names every Ubicloud VM with a TTL suffix that gstack's reaper reads, so long shards are not destroyed mid-run.
 
 ### 2026-10-30: version line only, instruction-route test flake (internal-task)
 
