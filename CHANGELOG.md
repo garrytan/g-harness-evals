@@ -2,6 +2,25 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.72] - 2026-10-31
+
+### internal-task: the interim gate admits only pull requests and heads from before /ship came back (R40)
+
+- `scripts/ubicloud/merge-pass.sh`: an `INTERIM_GATE` line still stands in for the /ship receipt, but only when the pull request was opened, and its head got its first commit status, before 2026-10-31T07:00:00Z (00:00 PT). GitHub sets both times itself. A commit's own dates are not used, because whoever pushes can backdate them. Anything later is skipped as awaiting its ship receipt, which pr-watch reports once per head. A status read that fails is its own skip and is retried next cycle. A `GSTACK_RESULT: skill=ship` receipt still admits any head.
+- `tests/merge-pass.test.ts`: one case covering the cutoff edges, a late pull request, a failed or empty status read, and a pre-cutoff status found only on a later page.
+- `docs/ubicloud.md` and `scripts/ubicloud/README.md` describe the rule and its limits.
+
+### internal-task: merge holds the lane enforces, and /ship receipts that survive a version renumber
+
+- `scripts/ubicloud/merge-pass.sh`: `--hold-file` / `HE_MERGE_HOLD` (one `pr=<n> <why>` line per hold, a queue in file order; while the first open line's #<n> is open nothing else merges, and the line lifts itself once #<n> is merged or closed; an unreadable state or a line that does not start with `pr=<n>` holds everything; a hold file that exists but cannot be read, or whose directory is missing or unreadable, is exit 1; NUL bytes or UTF-16 never hide a hold; the file is read again right before each merge, so a hold written during the pass still stops it; a missing one holds nothing and the pass says so) and `--pr <n>` (one pull request only, so merges by hand obey the same holds; `#<n>` is accepted, anything else exits 2, and a number that is not an open pull request exits 1 with the reason). `tests/merge-pass.test.ts` covers each case, the edges found in the /ship review included.
+- `.gstack/ship-policy.json`: `stamp_files` lists `VERSION`, `package.json`, `CHANGELOG.md`, `README.md`, `docs/gbrain-arm.md`, `gbrain/README.md` and `runner/README.md`, the files that may differ by a version stamp.
+- `README.md`, `docs/gbrain-arm.md` and `runner/README.md` no longer name a harness-evals version in their current-state text; `CLAUDE.md` says pages point at `VERSION` and `CHANGELOG.md`, and a version-only change adds no page changelog entry. gstack's carry treats a stamp file as a stamp only when its whole change against the base is the version, so a page edit that also wrote the version (README's version line and its "moves from X to Y" entry) was product and refused the carry (`RECEIPT_CARRY_PRODUCT_CHANGED`, #150). With no version in page text, a base merge that only renumbers touches `VERSION`, `package.json` and `CHANGELOG.md`, which the carry counts as release metadata.
+- `tests/version.test.ts`: no Markdown page but `CHANGELOG.md` names the current release (`v<VERSION>` or `harness-evals <VERSION>`), so the rule holds without anyone remembering it.
+- `.gitignore`: `/.bun/`, the bun cache a test run can leave in the checkout.
+- `.gstack/pregate.json`: `timeout_s` is 2400 s. It is gstack's repo timeout passthrough (internal-task, gstack#3676): `gstack-ship-preflight` and the `finish` fallback run pregate without `--timeout`, so this key sets how long each runner process may take, and the 600 s default is shorter than this repo's full `bun test tests/` (623 s on a 4-core Capy machine). `.gstack/ship-policy.json` raises `min_gstack_version` from 1.91.311.0 to 1.91.364.0, the first gstack that knows the key: an older one refuses the whole policy as an unknown key, which fails every push and pregate run on that machine (gstack docs/pregate.md, "Version skew"). pregate reads the key from the base branch, so it takes effect once this merges.
+- `tests/merge-pass.test.ts` runs the script without `HE_MERGE_HOLD`, so a lane shell that exports it cannot change the results.
+- Changelog fragments (`changelog_fragments`) are not turned on: gstack folds fragments and assigns the version in its own merge step (`gstack-ship-queue land`), and this lane merges with `gh pr merge`, so the version would never move.
+
 ## [0.0.71] - 2026-10-31
 
 (0.0.69 is claimed by #152 and #158; 0.0.70 by #159.)

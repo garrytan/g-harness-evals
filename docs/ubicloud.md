@@ -113,6 +113,14 @@ The VM's phases: create to ready 82 s (19 s on an earlier VM the same evening), 
 
 ## Changelog
 
+### 2026-10-31: merge holds are a file merge-pass reads (internal-task)
+
+`scripts/ubicloud/merge-pass.sh` takes `--hold-file` (or `HE_MERGE_HOLD`): the `pr=<n>` lines are a queue in file order; while the first open line's #<n> is open, nothing else merges, and the line lifts itself once #<n> is merged or closed. `--pr <n>` runs the rule over one pull request, for merges by hand. Why: two docs-only merges (#154, #155) landed during internal-task's #149 prereg hold, because the hold lived only in the lane owner's memory, and each cost internal-task a fresh /ship. `scripts/ubicloud/README.md` has the details.
+
+### 2026-10-31: the interim gate admits only heads from before the /ship gate came back (internal-task)
+
+`scripts/ubicloud/merge-pass.sh` still accepts an `INTERIM_GATE: reviewer=<model> head=<full sha> pregate=pass` line, but only when both the pull request and its head predate 2026-10-31T07:00:00Z (00:00 PT), the end of the /ship suspension (CREW.md "/ship gate RESTORED"). The pull request must have been opened before then, and the earliest commit status on the head (any context, every page) must have been created before then. GitHub sets both times itself; a commit's own dates are set by whoever pushes it and can be backdated, so they are not used. Anything later is skipped as awaiting its ship receipt, which pr-watch reports once per head; a status read that fails is its own skip and is retried next cycle. A head pushed just before the cutoff but first checked after it needs /ship too. The check cannot tell when the INTERIM_GATE line itself was written, and a pull request opened before the cutoff could still be pushed to some other sha that had a status before it. A `GSTACK_RESULT: skill=ship` receipt still admits any head.
+
 ### 2026-10-30: every VM carries a TTL in its name (internal-task, internal-task)
 
 `ubi-runner.sh` names every VM it creates `ubirun-<owner>-<epoch>-<suffix>-t<hours>`, so gstack's reaper (gstack#3652) can tell when it may destroy it. The TTL is `UBI_TTL_HOURS` rounded up, or 3; `run-shard.sh` sets `--timeout-hours` plus 1, and `pr-check.sh` names its VMs `-pr<n>-t<hours>`. `up` and `run` now refuse without `UBI_OWNER` (they used a per-machine id before), and so does `pr-check.sh`. `run` ends with gstack's `UBICLOUD: left=` line. `pr-watch.sh`'s sweep matches check VM names with and without the suffix. Limits, "VM TTL", has the rest.

@@ -30,7 +30,7 @@ Explain the task, the setting that changed the outcome, and the limit of the res
 
 ## Shape of a top-level document
 
-README.md and the hub pages in `docs/` have two parts: the current state on top, in present tense, naming the version once; and a `## Changelog` at the bottom, newest first, one dated entry per change saying what changed on that page and why. Replace a superseded claim instead of appending an update beside it, and add the changelog entry in the same commit.
+README.md and the hub pages in `docs/` have two parts: the current state on top, in present tense, never naming the current release version (point at `VERSION` and `CHANGELOG.md` instead; a past version an older page opens with is history and stays as it is); and a `## Changelog` at the bottom, newest first, one dated entry per change saying what changed on that page and why. A page changelog entry carries no version number, and a change that only moves the version adds no entry: a version written into a page changes whenever a pull request is renumbered after another one merges, and gstack then counts the page as changed product and will not carry the /ship receipt across the base merge (`.gstack/ship-policy.json` lists the files that may differ by a version stamp). Replace a superseded claim instead of appending an update beside it, and add the changelog entry in the same commit.
 
 ## Shape of a benchmark report
 

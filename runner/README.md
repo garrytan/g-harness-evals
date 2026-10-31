@@ -1,6 +1,6 @@
 # Runner: dispatch, metering proxy, budget ledger and price table
 
-`runner/run.ts` plans a preregistered run and dispatches its trials. harness-evals v0.0.5: `run` drives multi-user trials end to end against the simulated company, the metering proxy and a harness speaking the `serve` protocol, and writes the evaluator-owned record of every trial; a cell that carries `gbrain` also gets a gbrain sidecar per trial (the gbrain arm, [docs/gbrain-arm.md](../docs/gbrain-arm.md)). The single-shot hello/smoke path from M0 still runs through the same command.
+`runner/run.ts` plans a preregistered run and dispatches its trials. `run` drives multi-user trials end to end against the simulated company, the metering proxy and a harness speaking the `serve` protocol, and writes the evaluator-owned record of every trial; a cell that carries `gbrain` also gets a gbrain sidecar per trial (the gbrain arm, [docs/gbrain-arm.md](../docs/gbrain-arm.md)). The single-shot hello/smoke path from M0 still runs through the same command.
 
 ## Commands
 
@@ -123,6 +123,10 @@ The scripts that turn `results/<run>/trials.jsonl` into report tables, all keyle
 **Spend reconciliation (internal-task).** `bun scripts/reconcile-provider.ts --results <dir> [--results <dir> ...] [--write] [--api-key-id <apikey_...>]` sums a run's priced proxy lines per UTC day and model, cross-checks them against `trials.jsonl` and the lease ledger (a difference over a cent is reported and exits 1), prints the per-day sheet in the console's shape, and, with `ANTHROPIC_ADMIN_KEY` in the environment, fetches the Admin API's usage report (by model and api key) and cost report for the span and compares them with the proxy totals pooled per day across every run given, because runs that share a day and a key are one bucket to the provider; the verdict is a relative residual per day and model against the 1% bar with a status (`performed`, `performed_mismatch`, `performed_unattributed` without `--api-key-id`, `performed_no_data`, `not_performed`), a day that ended less than 24 hours before the fetch left out. `--write` saves `results/spend-reconciliation.json` (the sheet, the cross-check, the provider rows for the chosen key only, and the labelled `provider_reconciliation` line); `--provider-fixture` replays a recorded response for tests and refuses `--write`. Every byte out passes a tripwire against the key value and a redaction of key-shaped strings. HE-RECONCILE-001 to 004 in docs/errors.md.
 
 ## Changelog
+
+### 2026-10-31: no version on the page (internal-task)
+
+The opening line and the section leads no longer name a harness-evals version; `VERSION` and `CHANGELOG.md` hold it. Why: a version written into a page changes whenever a pull request is renumbered after another one merges, and gstack then reads the page as changed product and asks for a fresh /ship.
 
 ### 2026-10-30: scope member-sources, source_ids on recall and list_pages (internal-task)
 

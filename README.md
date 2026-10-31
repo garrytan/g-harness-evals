@@ -18,7 +18,7 @@
   - Claude Code and Codex cost less per trial; the paired interval excludes zero in five of six pairs.
   - gbrain's `told` arm scored lower than no brain in all three Haiku harnesses (descriptive, intervals in the report), through cross-scope reads from `gbrain.search`.
 
-Version: harness-evals v0.0.68. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
+Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md) for what each release changed. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
 
 ## Start here
 
@@ -305,6 +305,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)); the world is built from gbrain-evals' `messy-company-v1` dataset; OpenClaw, Hermes Agent and QM are named as products only.
 
 ## Changelog
+
+### 2026-10-31: the version line points at VERSION (internal-task)
+
+The line at the top no longer names a version. It points at `VERSION` and `CHANGELOG.md`. A pull request that changes nothing on this page but the version now adds no entry here. Why: a version written into this page changed every time a pull request was renumbered after another one merged, and gstack then counted the page as changed product and asked for a fresh /ship (`RECEIPT_CARRY_PRODUCT_CHANGED` on #150).
 
 ### 2026-10-30: v0.3 approval relay re-read preregistered, gbrain pinned at a590ad07 (internal-task)
 
