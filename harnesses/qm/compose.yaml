@@ -27,9 +27,10 @@ services:
     image: ${QM_IMAGE:-harness-eval/qm:dev}
     # The local sandbox backend spawns one sandbox container per scope through
     # the Docker socket, publishes its daemon on 127.0.0.1:<random> and dials
-    # that address. At v0.1.15 the local backend never reads QM_CORE_CONTAINER
-    # (only the AWS backend does), so a containerised core cannot reach the
-    # sandbox by name; it has to share the host's loopback. Hence host
+    # that address. The local backend never reads QM_CORE_CONTAINER (v0.1.15
+    # and b6786d67: localSandboxEnv in src/config.ts; the QM_CORE_CONTAINER
+    # line at :288 is the AWS backend's), so a containerised core cannot reach
+    # the sandbox by name; it has to share the host's loopback. Hence host
     # networking for core, Postgres on a loopback port, and one trial at a
     # time per host port pair (QM_CORE_PORT, QM_PG_PORT). See README.md.
     network_mode: host
@@ -50,11 +51,9 @@ services:
       DOCKER_HOST: unix:///var/run/docker.sock
       ANTHROPIC_API_KEY: ${HE_MODEL_API_KEY}
       ANTHROPIC_BASE_URL: ${HE_MODEL_BASE_URL}
-      # The inner harness and its model (internal-task): prepare.sh maps HE_HARNESS_CONFIG to QM_HARNESS (pi or claude);
-      # PI_MODEL and CLAUDE_MODEL both name the cell's model so whichever harness runs meters under it.
-      HARNESS: ${QM_HARNESS:-pi}
+      # The model of QM's one agent loop (Pi). QM removed the Claude harness and the HARNESS variable upstream
+      # (yc-software/qm#2768), so core reads neither HARNESS nor CLAUDE_MODEL at the pin.
       PI_MODEL: ${HE_MODEL_NAME:-claude-sonnet-5-5}
-      CLAUDE_MODEL: ${HE_MODEL_NAME:-claude-sonnet-5-5}
       # QM's automatic memory capture waits this long after a turn before extracting facts; the shipped default
       # (180 s) stays for held-out cells, and prepare.sh sets 5 s for the probe configs only (harnesses/qm/README.md).
       MEMORY_CAPTURE_QUIET_MS: ${QM_MEMORY_CAPTURE_QUIET_MS:-180000}

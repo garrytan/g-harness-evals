@@ -18,7 +18,7 @@
   - Claude Code and Codex cost less per trial; the paired interval excludes zero in five of six pairs.
   - gbrain's `told` arm scored lower than no brain in all three Haiku harnesses (descriptive, intervals in the report), through cross-scope reads from `gbrain.search`.
 
-Version: harness-evals v0.0.63. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
+Version: harness-evals v0.0.66. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
 
 ## Start here
 
@@ -49,7 +49,7 @@ Version: harness-evals v0.0.63. Everything above [Changelog](#changelog) describ
 |---|---|
 | OpenClaw | [openclaw/openclaw](https://github.com/openclaw/openclaw) 2026.10.6, installed from npm ([harnesses/openclaw/pin.json](harnesses/openclaw/pin.json)) |
 | Hermes Agent | [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) v2026.9.24, commit `f97608f` ([harnesses/hermes/pin.json](harnesses/hermes/pin.json)) |
-| QM | [yc-software/qm](https://github.com/yc-software/qm) v0.1.15, commit `7417aa2a`, run through its Pi engine in every cell and through its Claude Agent SDK engine in the inner-harness run and the two probe runs ([harnesses/qm/pin.json](harnesses/qm/pin.json)) |
+| QM | [yc-software/qm](https://github.com/yc-software/qm) v0.1.15, commit `7417aa2a`, in every published cell: its Pi engine in every cell and its Claude Agent SDK engine in the inner-harness run and the two probe runs. The harness is now pinned to main `b6786d67`, where Pi is QM's only engine; nothing counted has run there yet, only keyless captures ([harnesses/qm/pin.json](harnesses/qm/pin.json)) |
 | Claude Code | [anthropics/claude-code](https://www.npmjs.com/package/@anthropic-ai/claude-code) 2.1.312 from npm; first counted run `host-harness-pilot-2026-10` (dev) ([harnesses/claude-code/pin.json](harnesses/claude-code/pin.json)) |
 | Codex | [openai/codex](https://github.com/openai/codex) 0.165.0 from npm; first counted run `host-harness-pilot-2026-10` (dev). It speaks only OpenAI's Responses API, so it is compared only with OpenClaw and Hermes on the same OpenAI model ([harnesses/codex/pin.json](harnesses/codex/pin.json)) |
 | Not run | [name withheld] and [name withheld] are in the plan but expose no headless API; nothing on this page measures them |
@@ -305,6 +305,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)); the world is built from gbrain-evals' `messy-company-v1` dataset; OpenClaw, Hermes Agent and QM are named as products only.
 
 ## Changelog
+
+### 2026-10-31: QM re-pinned to main b6786d67 (internal-task)
+
+harness-evals v0.0.66. The version at the top moves from v0.0.63 to v0.0.66, and the QM row says which pin the published cells ran (`v0.1.15`) and that the harness is now pinned to main `b6786d67`. Why: internal-task's M1 measures QM at that commit; QM removed its Claude engine there.
 
 ### 2026-10-30: version line only, rekey and compare for the v0.3 regeneration (internal-task)
 

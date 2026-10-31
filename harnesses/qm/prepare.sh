@@ -5,12 +5,12 @@
 # create them as root, and prints the per-trial values core needs as
 # NAME=value lines (secrets stay in memory; the caller exports them).
 #
-# HE_HARNESS_CONFIG (the cell's config, internal-task) selects QM's inner harness
-# and the probe settings (harnesses/qm/README.md, pin.json configs):
-#   empty, pi       QM over Pi as shipped (memory capture quiet time 180 s)
-#   claude          QM over the Claude Agent SDK harness as shipped
-#   pi-probe        Pi with MEMORY_CAPTURE_QUIET_MS=5000 (the probe cells)
-#   claude-probe    the Claude harness with the same quiet time
+# HE_HARNESS_CONFIG (the cell's config, internal-task) selects the probe settings
+# (harnesses/qm/README.md, pin.json configs). QM has one agent loop (Pi) at
+# the pin; the Claude harness and the HARNESS variable were removed upstream
+# (yc-software/qm#2768), so QM_HARNESS is always pi and only labels the loop:
+#   empty, pi       QM as shipped (memory capture quiet time 180 s)
+#   pi-probe        MEMORY_CAPTURE_QUIET_MS=5000 (the probe cells)
 #   pi-strict       pi-probe plus the org security posture strict, set by adapter.sh serve
 #   pi-command-deny pi-probe plus an org command policy that denies uname, set by adapter.sh serve
 set -euo pipefail
@@ -20,12 +20,21 @@ rnd() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 config=${HE_HARNESS_CONFIG:-pi}
 case "$config" in
   pi) harness=pi; quiet=180000; probe="" ;;
-  claude) harness=claude; quiet=180000; probe="" ;;
   pi-probe) harness=pi; quiet=5000; probe="" ;;
-  claude-probe) harness=claude; quiet=5000; probe="" ;;
   pi-strict|pi-command-deny) harness=pi; quiet=5000; probe=$config ;;
-  *) echo "qm prepare: HE_HARNESS_CONFIG=$config is not a QM config (pi, claude, pi-probe, claude-probe, pi-strict, pi-command-deny)" >&2; exit 2 ;;
+  *) echo "qm prepare: HE_HARNESS_CONFIG=$config is not a QM config (pi, pi-probe, pi-strict, pi-command-deny)" >&2; exit 2 ;;
 esac
+# Both images must be builds of the pinned commit. The tags are reused across
+# pins, and a v0.1.15 core with HARNESS unset runs QM's mock harness (canned
+# replies, no model call), so a stale or missing image stops the trial here.
+pin=$(jq -r '.commit // empty' "$(dirname "$0")/pin.json")
+[[ "$pin" =~ ^[0-9a-f]{40}$ ]] || { echo "qm prepare: no commit in pin.json" >&2; exit 2; }
+for image in "${QM_IMAGE:-harness-eval/qm:dev}" "${QM_SANDBOX_IMAGE:-harness-eval/qm-sandbox:dev}"; do
+  label=$(docker image inspect --format '{{index .Config.Labels "harness-eval.commit"}}' "$image" 2>/dev/null) \
+    || { echo "qm prepare: image $image is missing; build it (harnesses/qm/README.md, Images)" >&2; exit 2; }
+  [ "$label" = "$pin" ] \
+    || { echo "qm prepare: image $image is QM ${label:-<no harness-eval.commit label>}, not the pinned $pin; rebuild it (harnesses/qm/README.md, Images)" >&2; exit 2; }
+done
 printf 'QM_SIGNING_SECRET=%s\n' "${QM_SIGNING_SECRET:-$(rnd)}"
 printf 'QM_CONNECTOR_SECRET_KEY=%s\n' "${QM_CONNECTOR_SECRET_KEY:-$(rnd)}"
 printf 'QM_DOCKER_GID=%s\n' "$(stat -c %g /var/run/docker.sock)"

@@ -72,7 +72,9 @@ if [ -f "harnesses/$harness/compose.yaml" ]; then
   project="he-$(echo "$trial" | tr -c 'a-z0-9\n' '-')"
   export COMPOSE_PROJECT_NAME="$project"
   if [ -x "harnesses/$harness/prepare.sh" ]; then
-    while IFS= read -r line; do export "$line"; done < <("harnesses/$harness/prepare.sh" "$abs_out")
+    # A refusal (QM: a stale or missing image) stops the trial before the stack starts.
+    prep_out=$("harnesses/$harness/prepare.sh" "$abs_out") || { prep=$?; echo "run-trial: harnesses/$harness/prepare.sh refused (exit $prep)" >&2; exit 2; }
+    while IFS= read -r line; do [ -n "$line" ] && export "$line"; done <<< "$prep_out"
   fi
   timeout -k 10 "$((budget + 180))" docker compose -f "harnesses/$harness/compose.yaml" -p "$project" up \
     --abort-on-container-exit --exit-code-from task --no-color </dev/null > "$abs_out/logs/compose.log" 2>&1

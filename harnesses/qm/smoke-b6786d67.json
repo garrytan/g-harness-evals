@@ -1,0 +1,55 @@
+{
+  "what": "M1 keyless smoke of the QM re-pin (internal-task, internal-task plan v3), re-run on 2026-10-31 UTC on the exact images the anatomy captures used. No paid call: the model endpoint was scripts/gsta-135/fake-anthropic.ts, which refuses any key not starting with sk-ant-capture-dummy.",
+  "date": "2026-10-31",
+  "qm": {
+    "repo": "https://github.com/yc-software/qm",
+    "commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7",
+    "version": "main@b6786d67"
+  },
+  "images": {
+    "harness-eval/qm:dev": {
+      "image_id": "sha256:dea5ec20c66e15be540702967c10acbd5e3c33fb7273f1575b04caad10b6b55d",
+      "label_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7",
+      "label_version": "main@b6786d67",
+      "env_GIT_SHA": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7",
+      "build_check": "qm checkout b6786d675f83d9a818c5d5335cc017ffea9ec7a7 (git rev-parse HEAD in the src stage, build fails on a mismatch)",
+      "built_from": "harness-evals 12e1ad9b, clean tree",
+      "used_by": "the four anatomy captures in docs/harness-anatomy/records/qm-pi-b6786d67/ (capture.json image_id) and both smoke steps below"
+    },
+    "harness-eval/qm-sandbox:dev": {
+      "image_id": "sha256:e997a1db94e07f105132d3927c242744d1fcb1ce2ea2b0e076c1e9ada74f3ea8",
+      "label_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7",
+      "label_version": "main@b6786d67",
+      "build_check": "qm checkout b6786d675f83d9a818c5d5335cc017ffea9ec7a7",
+      "used_by": "the only sandbox build of this pin; the tag pointed at it through the captures and both smoke steps below"
+    }
+  },
+  "turn": {
+    "command": "env -i PATH=$PATH HOME=$HOME bun scripts/anatomy/capture.ts --harness qm --config pi --scenario plain --egress off --record qm-pi-b6786d67 --out <work dir>",
+    "run": "anatomy-capture-qm-pi-plain-20261031t023435",
+    "harness_evals_commit": "ab5befc981ca86f7b84afe98c5673795d0049453 (dirty: false)",
+    "core_image_id": "sha256:dea5ec20c66e15be540702967c10acbd5e3c33fb7273f1575b04caad10b6b55d",
+    "result": "plan 0, run 0, termination completed, 2 member turns (DM then #central-team), each TurnResult status ok, reply \"ok\" (the fake's scripted text), 4 requests to the fake. The meter priced the fake's dummy usage (4 tokens in, 4 out) at $0.0000024; nothing reached a provider"
+  },
+  "sandbox_command": {
+    "command": "env -i PATH=$PATH HOME=$HOME bun harnesses/serve-smoke.ts --harness qm --trial-id m1-qm-sbx-smoke-3 --base-url http://host.docker.internal:8813 --api-key sk-ant-capture-dummy-m1 --model claude-haiku-5-5 --turns 1 --budget 240 --config pi, against fake-anthropic.ts --script [{call: execute, arguments: {command, purpose, scope: scratch}}, {text: done}]",
+    "tool_call": {
+      "name": "execute",
+      "scope": "scratch",
+      "command": "echo sandbox-ok; uname -m; cat /etc/debian_version; node --version; python3 --version; claude --version; ls /opt/microvm-agent; pwd"
+    },
+    "tool_result": "sandbox-ok\nx86_64\n12.15\nv24.22.1\nPython 3.11.2\n2.1.210 (Claude Code)\nagent.mjs\n/root/workspace\n\n[exit 0]",
+    "container": "qm-scratch-turn-cf33fc3a-d74b-4b50-a74c-8c8cf9ef597-772e6d from harness-eval/qm-sandbox:dev (docker events, container create)",
+    "turn_status": "ok (adapter exit 0, reply \"ok\")",
+    "first_try": "execute without scope answered \"this scope has no default sandbox; use sandbox list, create, set_default, then retry before reporting blocked\" (trial m1-qm-sbx-smoke, src/sandbox/sandbox-routing.ts:32-38): a scope gets a sandbox only when the agent creates one and sets it as the default; scope scratch runs on a per-turn container",
+    "harness_evals_commit": "ab5befc981ca86f7b84afe98c5673795d0049453",
+    "core_image_id": "sha256:dea5ec20c66e15be540702967c10acbd5e3c33fb7273f1575b04caad10b6b55d",
+    "sandbox_image_id": "sha256:e997a1db94e07f105132d3927c242744d1fcb1ce2ea2b0e076c1e9ada74f3ea8"
+  },
+  "earlier_smoke": "2026-10-30: the same two steps on core sha256:1cf55ef0133e0676f8a11bf320e6ee9e47ac72fc47065b28eebf436ceea5ea00 (built from the step-1 tree before it was committed as 12e1ad9b) and the same sandbox image, both ok. Core was rebuilt from 12e1ad9b before the captures, so this file now records the capture images",
+  "final_tree_build": {
+    "harness_evals_commit": "ab5befc981ca86f7b84afe98c5673795d0049453 (the review fixes; built after the smoke, not run)",
+    "sandbox": "Dockerfile.sandbox with the src stage pinned to node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 (the digest the e997a1db build resolved): every build step cached, the same 10 layers and the same image config (created 2026-10-30T23:28:20Z, same labels and history) as e997a1db. Only the local image store's id differs (sha256:5baef01c7cb95f142feb823e766781b96f4a4142713065b55f16a1b077e7ab4c), from BuildKit's per-build record",
+    "core": "sha256:b31bd34a40c947625878199b6f611d7527d5d31236c821b45dcc9869a9a2002b: its first 16 of 19 layers match dea5ec20; the last 3 are the adapter layers (COPY config/, COPY adapter.sh qm-api.mjs qm-directory.mjs pin.json, and the chmod after them), which differ because the review fixes changed comments in config/core.env and two strings in pin.json"
+  }
+}

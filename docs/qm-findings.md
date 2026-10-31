@@ -1,6 +1,8 @@
 # QM findings (internal-task)
 
-Product observations about [QM](https://github.com/yc-software/qm) `v0.1.15` (commit `7417aa2a`, the pin in [harnesses/qm/pin.json](../harnesses/qm/pin.json)) from the inner-harness cell and the probe suite. Each entry names the trials or smoke it rests on, what was expected, what was observed, the smallest reproduction against `harnesses/qm/compose.yaml`, and what QM's `main` shows for the same paths from a read-only `git log v0.1.15..origin/main -- <paths>` (no re-run, no pin change). Entries are defect reports or documented limits; nothing here is filed upstream by this thread, the Captain routes them. A finding against `v0.1.15` may already be fixed on `main`; the "at main" line says so. Current state on top, the run entries are added as the runs report.
+Product observations about [QM](https://github.com/yc-software/qm) `v0.1.15` (commit `7417aa2a`, the pin in [harnesses/qm/pin.json](../harnesses/qm/pin.json) until 2026-10-30) from the inner-harness cell and the probe suite. Each entry names the trials or smoke it rests on, what was expected, what was observed, the smallest reproduction against `harnesses/qm/compose.yaml`, and what QM's `main` shows for the same paths from a read-only `git log v0.1.15..origin/main -- <paths>` (no re-run, no pin change). Entries are defect reports or documented limits; nothing here is filed upstream by this thread, the Captain routes them. A finding against `v0.1.15` may already be fixed on `main`; the "at main" line says so. Current state on top, the run entries are added as the runs report.
+
+**Pin since 2026-10-30:** the harness runs QM main `b6786d67` ([harnesses/qm/README.md](../harnesses/qm/README.md), "Re-pin to main b6786d67"). The findings below were not re-run at that pin. Their reproductions need the `v0.1.15` images and adapter: at `b6786d67` the `claude` config is gone, and the database holds `items`, not `session_entries`.
 
 Plain reading rules: the probe suite's outcomes are per task and per cell, never pooled; a control cell going the expected way is not a finding; a probe trial where the feature was never reached is "not exercised", not a failure.
 
@@ -63,6 +65,10 @@ Runs `qm-inner-harness-2026-10` ([report](benchmarks/2026-10-25-qm-inner-harness
 - **Observed** (`qm-probes-2026-10/qm-pi-haiku-probes/qp-07-sandbox-shared-channel/r1`): in one model step the bot issued `execute` (the file write) and `world_post_message` ("I wrote notes/north-handoff.txt ... and I confirmed the contents by reading it back") together; the `execute` result was the error of F5 and the post had already landed. The bot corrected itself in the thread one step later. Model behaviour under parallel tool calls, not a QM defect; recorded because the posted confirmation is what a member would have seen.
 
 ## Changelog
+
+### 2026-10-31: pin note (internal-task)
+
+The intro names `v0.1.15` as the pin until 2026-10-30 and adds a note: the harness now runs QM main `b6786d67`, the findings were not re-run there, and their reproductions need the `v0.1.15` images. Why: `harnesses/qm/pin.json` moved to `b6786d67`, so "the pin in pin.json" no longer named `v0.1.15`.
 
 ### 2026-10-25, later: F5 resolved by the qp-07 rerun (internal-task)
 

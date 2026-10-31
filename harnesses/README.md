@@ -6,7 +6,7 @@ One directory per harness, each a self-contained Docker image that implements th
 |---|---|---|---|---|---|
 | [openclaw](openclaw/) | npm `openclaw@2026.10.6` | in-container | `harness-eval/openclaw:dev` | pass, see README | 3 turns completed, world-MCP calls logged, session carried; see README |
 | [hermes](hermes/) | `NousResearch/hermes-agent` tag `v2026.9.24` (`f97608f`) | in-container | `harness-eval/hermes:dev` | pass, see README | 3 turns completed, world-MCP calls logged, session carried; see README |
-| [qm](qm/) | `yc-software/qm` tag `v0.1.15` (`7417aa2`) | sidecar (compose: Postgres, core, task) | `harness-eval/qm:dev`, `harness-eval/qm-sandbox:dev` | pass, see README | 3 turns completed, world-MCP calls logged, session carried; see README |
+| [qm](qm/) | `yc-software/qm` main `b6786d67`, fetched by commit (tag `v0.1.15`, `7417aa2`, before 2026-10-30) | sidecar (compose: Postgres, core, task) | `harness-eval/qm:dev`, `harness-eval/qm-sandbox:dev` | pass at `v0.1.15`, see README; at `b6786d67` keyless only (fake endpoint: 2 turns, one sandbox command) | 3 turns completed, world-MCP calls logged, session carried at `v0.1.15`; see README |
 | [claude-code](claude-code/) | npm `@anthropic-ai/claude-code@2.1.312` | in-container | `harness-eval/claude-code:dev` | keyless only (fake endpoint through the real proxy) | keyless only: 2 turns, world-MCP call logged, session carried; see README |
 | [codex](codex/) | npm `@openai/codex@0.165.0` | in-container | `harness-eval/codex:dev` | keyless only (fake endpoint through the real proxy) | keyless only: 2 turns, world-MCP call logged, thread carried; see README |
 | [_fake](_fake/) | none | in-container | `harness-eval/fake:dev` | protocol fixture for the conformance test | protocol fixture for the serve conformance tests |
@@ -80,6 +80,10 @@ bun harnesses/serve-smoke.ts --harness hermes --trial-id hermes-serve-1 \
 The slot `hermes-serve-1` is bound with `$cred` first, as under "Run one trial"; the `_fake` harness makes no model call and needs no proxy.
 
 ## Changelog
+
+### 2026-10-30: QM re-pinned to main b6786d67 (internal-task)
+
+harness-evals v0.0.66. The `qm` row's pin. Why: internal-task's M1 measures QM at that commit ([qm/README.md](qm/README.md), "Re-pin to main b6786d67").
 
 ### 2026-10-29: Claude Code and Codex (internal-task)
 

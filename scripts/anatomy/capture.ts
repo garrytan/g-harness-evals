@@ -11,7 +11,7 @@
 //
 //   bun scripts/anatomy/capture.ts --harness openclaw --scenario plain [--config <label>]
 //       [--task <v0.3 dev task>] [--gbrain] [--egress refuse|pass|off] [--model claude-haiku-5-5]
-//       [--image <tag>] [--out <dir>]
+//       [--image <tag>] [--record <name>] [--out <dir>]
 //
 // Scenarios (the fake's turn script, see SCENARIOS below): plain, tools, retry,
 // skills (reads probe skills of growing size, or only the sizes in
@@ -20,6 +20,8 @@
 // fake.ndjson (every request the harness sent, through the proxy), egress.ndjson
 // (sink log, when --egress is not off), run/ (the runner's results directory),
 // capture.json (what ran, at which commit and image, and the file digests).
+// --record names the records directory publish.sh writes (default <harness>-<config>), so a capture at a new pin
+// sits beside the old one instead of replacing it (QM at b6786d67: --record qm-pi-b6786d67).
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
@@ -159,7 +161,7 @@ if (import.meta.main) {
 
   const files = ['fake.ndjson', 'egress.ndjson', 'script.json', 'prereg.json'].filter((f) => existsSync(join(out, f)));
   const capture = {
-    id, harness, config, scenario, task, model, gbrain: withGbrain, egress, dns,
+    id, harness, config, record: arg('record', `${harness}-${config}`), scenario, task, model, gbrain: withGbrain, egress, dns,
     harness_evals_commit: git('rev-parse', 'HEAD'), dirty: git('status', '--porcelain').length > 0,
     image: arg('image', `harness-eval/${harness.replace(/^_/, '')}:dev`),
     image_id: spawnSync('docker', ['image', 'inspect', '-f', '{{.Id}}', arg('image', `harness-eval/${harness.replace(/^_/, '')}:dev`)!], { encoding: 'utf8' }).stdout.trim(),

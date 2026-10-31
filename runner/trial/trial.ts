@@ -113,8 +113,8 @@ export function classify(exits: number[], readyFailure: HarnessGone | null, ende
 const EMPTY_GRADE: GradeResult = { grade: 'n/a', predicates: [], consent_violation: false, approval_stop: false, effects: [] };
 
 /** internal-task: the model the harness actually ran against the cell's. A forwarded request on another model, or a
- *  refused line that names another model (the proxy's allowlist refusal carries the model; QM's claude harness falls
- *  back to its default model in silence when CLAUDE_MODEL is not supported), is HE-MODEL-001; the message lists them.
+ *  refused line that names another model (the proxy's allowlist refusal carries the model; QM's claude harness, removed
+ *  at b6786d67, fell back to its default model in silence when CLAUDE_MODEL was not supported), is HE-MODEL-001; the message lists them.
  *  Refused lines with no model (a route the proxy does not admit) are counted in usage.refused and never fail a trial.
  *  internal-task amendment 1 (2026-10-25): on an embedded rung the gbrain sidecar embeds each query through the same slot, so the
  *  cell's declared embedding model is the trial's own and is never foreign; it is reported apart in gbrain.embedding_usage.
@@ -294,7 +294,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       const foreign = foreignModels(cell.model, usage.by_model, lines, gbrain?.embeddings ?? 'off', cell.utility_models ?? []);
       if (foreign.length) {
         modelMismatch = true;
-        const msg = `HE-MODEL-001 trial ${trial.id} ran model(s) ${foreign.join(', ')} beside the cell's ${cell.model} (by_model and refused usage lines); the trial is model_error; fix: check the harness's model mapping (QM: CLAUDE_MODEL falls back to its default when the id is unsupported), fix the cell's model, or preregister the harness's documented housekeeping model in the cell's utility_models`;
+        const msg = `HE-MODEL-001 trial ${trial.id} ran model(s) ${foreign.join(', ')} beside the cell's ${cell.model} (by_model and refused usage lines); the trial is model_error; fix: check the harness's model mapping (QM: PI_MODEL, set from HE_MODEL_NAME), fix the cell's model, or preregister the harness's documented housekeeping model in the cell's utility_models`;
         log(msg);
         error = error ? `${error}; ${msg}` : msg;
       }

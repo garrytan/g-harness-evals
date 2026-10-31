@@ -17,8 +17,9 @@
 #          TurnRequest with thread_ts set (a task turn with thread = "new",
 #          docs/tasks.md) appends :t<thread_ts> to the threadRef, so the turn
 #          opens a new QM session in the same scope, as a new Slack thread does.
-#          HE_HARNESS_CONFIG (via prepare.sh, QM_HARNESS and QM_PROBE_CONFIG)
-#          picks the inner harness; the probe configs pi-strict and
+#          HE_HARNESS_CONFIG (via prepare.sh, QM_PROBE_CONFIG and the memory
+#          capture quiet time) picks the probe settings; QM has one agent loop
+#          (Pi) at the pin, so QM_HARNESS only labels it. The probe configs pi-strict and
 #          pi-command-deny also PUT an org setting before the first turn
 #          (harnesses/qm/README.md, internal-task). Before every turn the notebooks
 #          of every scope that holds memory are read through the admin API and

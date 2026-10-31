@@ -2,27 +2,35 @@
 # scripts/local-sandbox-build.sh in the QM repository does (fly/Dockerfile as
 # the base, local/Dockerfile on top). Core spawns one of these per scope
 # through the Docker socket; the agent's shell and file tools run inside it.
-# The browser engine stage is left off (INSTALL_BROWSER_ENGINE=0).
+# Left off from fly/Dockerfile: the browser engine stage
+# (INSTALL_BROWSER_ENGINE=0, QM's default), the AWS CLI, and the arm64 gh
+# branch (this image is amd64 only).
+#
+# QM is pinned by commit (main has no release tag past v0.1.15): QM_COMMIT is
+# fetched by sha and the build fails when HEAD is not that commit.
 ARG QM_REPO=https://github.com/yc-software/qm
-ARG QM_TAG=v0.1.15
-ARG QM_COMMIT=7417aa2a3f917cf97406914897078ae3b273e173
-FROM node:24-alpine AS src
-ARG QM_REPO QM_TAG QM_COMMIT
+ARG QM_VERSION=main@b6786d67
+ARG QM_COMMIT=b6786d675f83d9a818c5d5335cc017ffea9ec7a7
+FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS src
+ARG QM_REPO QM_COMMIT
 RUN apk add --no-cache git \
-    && git clone --quiet --depth 1 --branch "${QM_TAG}" "${QM_REPO}" /src \
-    && test "$(git -C /src rev-parse HEAD)" = "${QM_COMMIT}" \
+    && git init -q /src && cd /src \
+    && git remote add origin "${QM_REPO}" \
+    && git fetch --quiet --depth 1 origin "${QM_COMMIT}" && git checkout -q FETCH_HEAD \
+    && test "$(git rev-parse HEAD)" = "${QM_COMMIT}" \
+    && echo "qm checkout $(git rev-parse HEAD)" \
     && rm -rf /src/.git
 
-FROM node:24-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS node-runtime
+FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS node-runtime
 RUN npm install -g --allow-scripts=@anthropic-ai/claude-code \
       @anthropic-ai/claude-code@2.1.210 \
       @openai/codex@0.144.4
 
 FROM debian:12-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818
-ARG QM_TAG QM_COMMIT
+ARG QM_VERSION QM_COMMIT
 LABEL org.opencontainers.image.title="harness-eval QM local sandbox" \
       harness-eval.harness="qm" \
-      harness-eval.version="${QM_TAG}" \
+      harness-eval.version="${QM_VERSION}" \
       harness-eval.commit="${QM_COMMIT}" \
       harness-eval.role="sandbox"
 ARG DEBIAN_FRONTEND=noninteractive
@@ -39,13 +47,17 @@ RUN curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_$
   && echo "02d1290eba130e0b896f3709ffff22e1c75a51475ddb70476a85abc6b5807af0  /tmp/gh.tgz" | sha256sum -c - \
   && tar xzf /tmp/gh.tgz -C /tmp \
   && install "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh \
-  && rm -rf /tmp/gh* /root/.local/state/gh
+  && rm -rf /tmp/gh* \
+  && gh --version \
+  && rm -rf /root/.local/state/gh
+RUN claude --version && codex --version
 RUN python3 -m venv /opt/agent-venv && /opt/agent-venv/bin/pip install --no-cache-dir --upgrade pip
 ENV PATH="/opt/agent-venv/bin:${PATH}" VIRTUAL_ENV=/opt/agent-venv
 COPY --from=src /src/fly/tools/x-api /usr/local/bin/x-api
 RUN chmod +x /usr/local/bin/x-api
+ENV ANONYMIZED_TELEMETRY=false BROWSER_USE_CLOUD_SYNC=false
 # local/Dockerfile layer: the in-sandbox agent daemon core talks to.
-COPY --from=src /src/aws/microvm-agent/agent.mjs /opt/microvm-agent/agent.mjs
+COPY --from=src /src/cli/templates/aws/microvm-agent/agent.mjs /opt/microvm-agent/agent.mjs
 ENV HOME=/root
 WORKDIR /root
 EXPOSE 8080

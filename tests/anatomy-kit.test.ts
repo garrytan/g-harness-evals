@@ -78,4 +78,29 @@ describe('anatomy kit files (internal-task)', () => {
     expect(existsSync(join(receipts, 'capture.json'))).toBe(true);
     expect(unpack(receipts)).toBe(log.endsWith('\n') ? log : log + '\n');
   });
+
+  test('scripts/anatomy/publish.sh writes records/<record>/ when capture.json names a record, beside the default one', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'anatomy-kit-'));
+    const cap = join(dir, 'anatomy-capture-openclaw-spike-plain-pinned');
+    mkdirSync(cap);
+    const log = gunzipSync(readFileSync(join(ROOT, 'tests', 'fixtures', 'anatomy', 'openclaw-2026.10.6-spike.ndjson.gz'))).toString('utf8');
+    writeFileSync(join(cap, 'fake.ndjson'), log);
+    const sha = createHash('sha256').update(log).digest('hex');
+    writeFileSync(join(cap, 'capture.json'), JSON.stringify({ harness: 'openclaw', config: 'spike', record: 'openclaw-spike-newpin', scenario: 'plain', gbrain: false, files: { 'fake.ndjson': sha } }));
+    const out = join(dir, 'out');
+    const res = spawnSync('bash', [join(A, 'publish.sh'), cap], { cwd: ROOT, env: { ...env(dir), ANATOMY_OUT: out }, encoding: 'utf8' });
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain('PUBLISH: anatomy-capture-openclaw-spike-plain-pinned -> records/openclaw-spike-newpin/plain.json');
+    expect(existsSync(join(out, 'records', 'openclaw-spike-newpin', 'plain.json'))).toBe(true);
+    expect(existsSync(join(out, 'records', 'openclaw-spike'))).toBe(false);
+    writeFileSync(join(cap, 'capture.json'), JSON.stringify({ harness: 'openclaw', config: 'spike', record: '../escape', scenario: 'plain', gbrain: false, files: { 'fake.ndjson': sha } }));
+    const bad = spawnSync('bash', [join(A, 'publish.sh'), cap], { cwd: ROOT, env: { ...env(dir), ANATOMY_OUT: out }, encoding: 'utf8' });
+    expect(bad.status).toBe(2);
+    expect(bad.stderr).toContain("name '../escape'");
+    expect(existsSync(join(out, 'escape'))).toBe(false);
+    writeFileSync(join(cap, 'capture.json'), JSON.stringify({ harness: 'openclaw', config: 'spike', record: 'ok', scenario: '../../x', gbrain: false, files: { 'fake.ndjson': sha } }));
+    const badScenario = spawnSync('bash', [join(A, 'publish.sh'), cap], { cwd: ROOT, env: { ...env(dir), ANATOMY_OUT: out }, encoding: 'utf8' });
+    expect(badScenario.status).toBe(2);
+    expect(badScenario.stderr).toContain("name '../../x'");
+  });
 });

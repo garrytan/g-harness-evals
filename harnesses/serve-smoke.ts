@@ -29,7 +29,7 @@
 //   --channel NAME     the shared channel (default: the first channel both actors belong to)
 //   --turns N          1, 2 or 3 turns (default 3)
 //   --ready-timeout S  seconds to wait for the ready file (default 180)
-//   --config NAME      HE_HARNESS_CONFIG for the adapter (QM: pi, claude, pi-probe, claude-probe, pi-strict, pi-command-deny)
+//   --config NAME      HE_HARNESS_CONFIG for the adapter (QM: pi, pi-probe, pi-strict, pi-command-deny)
 //   --out DIR          output directory
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
