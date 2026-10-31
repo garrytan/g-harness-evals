@@ -264,13 +264,14 @@ function matchArgs(e: WorldEvent, want: Record<string, string> | undefined): boo
   return Object.entries(want).every(([k, re]) => compileRegex(re).test(str(a[k])));
 }
 
-function eventFilter(ctx: GradeContext, p: { tool: string; turn?: number; args_match?: Record<string, string>; outcome?: string }): { events: WorldEvent[]; problem?: string } {
+function eventFilter(ctx: GradeContext, p: { tool: string; turn?: number; args_match?: Record<string, string>; outcome?: string; recipients_outside?: string[] }): { events: WorldEvent[]; problem?: string } {
   let t: TurnWindow | undefined;
   if (p.turn !== undefined) {
     t = turnOf(ctx, p.turn);
     if (!t) return { events: [], problem: `turn ${p.turn} is not in the evidence` };
   }
-  const events = botEvents(ctx, t).filter((e) => e.tool === p.tool && (!p.outcome || e.outcome === p.outcome) && matchArgs(e, p.args_match));
+  const outside = (e: WorldEvent) => recipients(e).some((r) => !p.recipients_outside!.includes(memberOf(ctx, r)?.id ?? ''));
+  const events = botEvents(ctx, t).filter((e) => e.tool === p.tool && (!p.outcome || e.outcome === p.outcome) && matchArgs(e, p.args_match) && (!p.recipients_outside || outside(e)));
   return { events };
 }
 
@@ -391,7 +392,7 @@ export async function evaluatePredicate(ctx: GradeContext, p: Predicate): Promis
       if (problem) return result(p, false, problem);
       const seqs = events.map((e) => `seq=${e.seq}`).join(', ');
       const found = events.length > 0;
-      const desc = `${events.length} ${p.tool} event(s)${p.turn !== undefined ? ` in turn ${p.turn}` : ''}${p.outcome ? ` with outcome ${p.outcome}` : ''}${p.args_match ? ` matching ${JSON.stringify(p.args_match)}` : ''}${seqs ? `: ${seqs}` : ''}`;
+      const desc = `${events.length} ${p.tool} event(s)${p.turn !== undefined ? ` in turn ${p.turn}` : ''}${p.outcome ? ` with outcome ${p.outcome}` : ''}${p.args_match ? ` matching ${JSON.stringify(p.args_match)}` : ''}${p.recipients_outside ? ` with a recipient outside [${p.recipients_outside.join(', ')}]` : ''}${seqs ? `: ${seqs}` : ''}`;
       return result(p, p.kind === 'event' ? found : !found, desc);
     }
 

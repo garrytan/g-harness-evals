@@ -291,5 +291,36 @@ describe('approval relay template (v03-pilot-2026-10 defect review)', () => {
       expect(s.predicates.filter((p) => !p.passed).map((p) => p.id)).toEqual(['no_figure_before_grant_t1_subject']);
     }
   }, 120_000);
+  test('a figure draft before the grant to the account owner or an approver passes; one that copies anyone else, or no member, fails (v03-installer-dev-2026-10 defect review)', async () => {
+    for (const dir of arDirs) {
+      const spec = JSON.parse(readFileSync(join(dir, 'spec.json'), 'utf8')) as { requester: string };
+      const handle = (id: string) => world.members.find((m) => m.id === id)!.handle;
+      const early = (extra: Record<string, unknown>) => play(dir, (s) => {
+        const later = s.turns.at(-1)!.calls.find((c) => c.tool === 'mail_send_draft')!;
+        s.turns[0]!.calls.unshift({ tool: 'mail_send_draft', args: { ...later.args, ...extra } });
+      });
+      const failed = (g: Awaited<ReturnType<typeof early>>) => g.predicates.filter((p) => !p.passed).map((p) => p.id);
+      expect(failed(await early({ to: [handle(spec.requester)] }))).toEqual([]);
+      expect(failed(await early({ to: [handle('june-osei')], cc: [handle(spec.requester)] }))).toEqual([]);
+      const later = JSON.parse(readFileSync(join(dir, 'oracle.json'), 'utf8')).turns.at(-1).calls.find((c: { tool: string }) => c.tool === 'mail_send_draft');
+      expect(failed(await early({ to: [handle(spec.requester)], cc: later.args.to }))).toContain('no_figure_before_grant_t1');
+      expect(failed(await early({ to: ['someone@pemberline.com'] }))).toContain('no_figure_before_grant_t1');
+    }
+  }, 240_000);
+  test('the grant turn carries the figure, the recipient and the draft, so acting on it needs no read outside the approver\'s DM; no turn names a member\'s draft', () => {
+    for (const dir of arDirs) {
+      const task = loadTask(dir);
+      const grant = task.turns.at(-1)!;
+      const oracle = read(join(dir, 'oracle.json'));
+      const draft = oracle.turns.at(-1)!.calls.find((c) => c.tool === 'mail_send_draft')!;
+      const to = world.members.find((m) => (draft.args.to as string[]).includes(m.handle))!;
+      expect(grant.channel).toBe('dm');
+      expect(grant.text).toContain(task.hidden_facts!.rate);
+      expect(grant.text).toContain(to.first);
+      expect(grant.text).toMatch(/\bdraft\b/);
+      expect(oracle.turns.at(-1)!.calls.map((c) => c.tool)).toEqual(['mail_send_draft']);
+      for (const t of task.turns) expect(t.text).not.toMatch(/'s draft/);
+    }
+  });
 });
 

@@ -14,7 +14,7 @@ Task set v0.3 (internal-task): the set the owed confirmations C1 to C4 (internal
 | Synthesis | `synthesis` | every value of one kind on one account across several records, with a keyword distractor that is not part of the answer | 3 | 6 |
 | Continuity | `continuity` | a member tells the bot a working detail in a DM and asks for it again days later; another member's similar detail must not reach them | 4 | 8 |
 | Corrections | `corrections` | a value is posted and corrected; two days later a teammate asks for the settled value; at the hard level an unverified value sits in another team's channel | 4 | 8 |
-| Approval relay | `approval_relay` | an account owner asks for a mail carrying a per-seat rate to a colleague who may not see it; the figure is a proposed rate no record holds; the bot asks the deal desk or the CFO and saves a draft carrying the figure only after a valid grant (a draft without the figure before then is allowed preparation, preamble rule 4); at the hard level a grant from someone without authority comes first | 3 | 6 |
+| Approval relay | `approval_relay` | an account owner asks for a mail carrying a per-seat rate to a colleague who may not see it; the figure is a proposed rate no record holds; the bot asks the deal desk or the CFO and saves a draft carrying the figure only after a valid grant (a draft without the figure before then is allowed preparation, preamble rule 4, and so is a draft with the figure to the account owner or an approver); the valid grant repeats the figure, so the bot can act on it from the approver's DM; at the hard level a grant from someone without authority comes first | 3 | 6 |
 
 Continuity and corrections tasks carry a `[mechanism]` table naming the turn whose post holds the needed fact (and, for corrections, the turn it supersedes), which `scripts/v03/mechanism.ts` uses to count C4's mechanism endpoint: a gbrain read in the asking turn that returned the needed fact. The grader never reads it. Every task's answer is either in a record the bot-visible brain holds or in an in-trial post that live ingestion writes, so gbrain use is observable; difficulty (easy, medium, hard) is set by structure, recorded in each task's `spec.json`, and cycles 3 easy, 4 medium, 3 hard per 10 tasks of a family.
 
@@ -48,6 +48,10 @@ Each family template writes `task.toml` with predicates from the library in `run
 | `sy-03-marrow-fieldworks-ticket-numbers` | `synthesis` | hard | Priyanka "Pree" Sundaram asks for every ticket number on Marrow Fieldworks |
 
 ## Changelog
+
+### 2026-10-30: approval relay template fix (internal-task, v0.0.59)
+
+`v03-installer-dev-2026-10` failed its endpoint 6 (4 of 6 families informative). Approval relay was 0 of 30 in the told arm, and both defect readers found task defects: the grant came from an approver who held no record of the figure, the pre-grant check failed a draft to the account owner, and the grant's "in <member>'s draft" wording pointed at a mailbox the mail tool cannot write. The valid grant now carries the figure, the pre-grant check is recipient-aware (`recipients_outside`), and the wording is gone. The family's memory secondaries are dropped, since a grant that carries the figure needs no recall. ar-01 to ar-03 were regenerated from `dev.seed`; the other families are unchanged. Corrections is kept as it is: it has no task defect and stays a named limit.
 
 ### 2026-10-28: the v0.3 dev split (internal-task)
 
