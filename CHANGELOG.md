@@ -2,6 +2,17 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.67] - 2026-10-31
+
+(0.0.64 and 0.0.65 are claimed by other open pull requests; 0.0.66 is internal-task.)
+
+### internal-task: preregister the Lane B TB2 replication, Part 1 (`laneb-tb2-replication-2026-10`)
+
+- `docs/benchmarks/2026-10-30-laneb-tb2-replication/` (new): `PREREGISTRATION.md` and `prereg-tb2.json`. The run is Lane B's 20 TB2 tasks x none, gstack and placebo x 3 tries on Haiku 5.5, so 180 trials. It runs as one Ubicloud shard per arm, with $10.56 in leases under an $11 cap, funded by internal-task.
+- It checks whether Lane B's quick look 2 result (Haiku gstack minus placebo -20 [-28, -12]) reproduces through harness-evals' bridge and metering. Each contrast gets a verdict rule fixed in advance.
+- The body-load gate uses first-request length, because the pinned `<command-name>` probe also reads true on none sessions (32 of 32 in the dev pilot).
+- `docs/benchmarks/preregistrations.d/laneb-tb2-replication.json` (new) registers the run. Part 2, the native held-out opening, is deferred: the hardened native recipes screened at ceiling.
+
 ## [0.0.66] - 2026-10-31
 
 ### internal-task (internal-task M1): QM re-pinned to main b6786d67
