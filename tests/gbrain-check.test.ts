@@ -209,6 +209,14 @@ function healthyEvidence(): KeylessEvidence {
 }
 
 describe('keyless assertions', () => {
+  test('scoped evidence (internal-task): a source-scoped tool with no rows over every member fails; evidence written before rows_by_tool is read as before', () => {
+    const probe = { members: 2, calls: 14, rows: 9, sources_seen: 3, outside: [], denied: [{ member: 'dana-okafor', source_id: 'he-no-such-source', code: 'permission_denied' }], foreign: [], differs: true };
+    const scopedFailures = (p: typeof probe & { rows_by_tool?: Record<string, number> }) => { const e = healthyEvidence(); e.scoped = { probe: p, probe_error: null, grants: null, trial: null }; return keylessAssertions(e).failures.filter((f) => f.includes('rows under source_ids')); };
+    expect(scopedFailures({ ...probe, rows_by_tool: { search: 3, query: 3, recall: 0, list_pages: 3 } })).toEqual([expect.stringContaining('0 for recall')]);
+    expect(scopedFailures({ ...probe, rows_by_tool: { search: 3, query: 3, recall: 2, list_pages: 1 } })).toEqual([]);
+    expect(scopedFailures(probe)).toEqual([]);
+  });
+
   test('a healthy fixture passes every assertion with no pin diff', () => {
     const v = keylessAssertions(healthyEvidence());
     expect(v.failures).toEqual([]);

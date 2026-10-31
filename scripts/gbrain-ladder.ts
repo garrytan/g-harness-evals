@@ -43,7 +43,7 @@ export function rungOf(cell: LadderCell): { rung: Rung | null; label: string } {
   const g = resolveGbrain(cell.gbrain);
   const told = cell.preamble !== undefined && cell.preamble !== DEFAULT_PREAMBLE_PATH;
   const label = `${g.surface}/${g.install}/${g.embeddings}${told ? `, preamble ${cell.preamble}` : ''}${g.brain !== 'bot-visible' ? `, brain ${g.brain}` : ''}${g.scope !== 'none' ? `, scope ${g.scope}` : ''}${g.ingest !== 'off' ? `, ingest ${g.ingest}` : ''}`;
-  if (g.scope === 'member' || g.ingest !== 'off') return { rung: null, label };
+  if (g.scope === 'member' || g.scope === 'member-sources' || g.ingest !== 'off') return { rung: null, label };
   const rung = (Object.keys(LADDER) as Array<Exclude<Rung, 'none'>>).find((r) => { const d = LADDER[r]; return d.surface === g.surface && d.install === g.install && d.semantic === (g.embeddings !== 'off') && d.told === told && d.brain === g.brain && d.scope === g.scope; });
   return { rung: rung ?? null, label };
 }

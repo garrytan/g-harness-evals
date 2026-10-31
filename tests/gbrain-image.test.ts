@@ -161,10 +161,10 @@ test('installerHookProblem: with the pin expecting a hook, an installer view wit
   expect(installerHookProblem(blockOnly, {})).toBeNull();
   // A candidate named by --gbrain-commit (gbrain-check) is not held to the pin's expectation.
   expect(installerHookProblem(blockOnly, expecting, 'cd9da1ce170ecae739fa28855e9133b6c60b78c2')).toBeNull();
-  // internal-task: the committed pin is gbrain master at gbrain#7898's merge (32366ac2, after gbrain#7489), which carries the per-turn hook, so the pin expects
-  // one and preflight refuses a block-only installer view at this pin (HE-GBRAIN-006).
+  // internal-task: the committed pin is gbrain master at gbrain#8074's merge (a590ad07, after gbrain#7489 and gbrain#7898), which carries the per-turn hook, so the
+  // pin expects one and preflight refuses a block-only installer view at this pin (HE-GBRAIN-006).
   const pin = JSON.parse(readFileSync(join(ROOT, 'gbrain', 'pin.json'), 'utf8')) as { gbrain: { commit: string }; install: { installer: { turn_hook_expected: boolean } } };
-  expect(pin.gbrain.commit).toBe('32366ac26a2b8874b67702249f9274b06e8756c1');
+  expect(pin.gbrain.commit).toBe('a590ad07d15c92669ae30a37835df30d071e5536');
   expect(pin.install.installer.turn_hook_expected).toBe(true);
 });
 
@@ -361,6 +361,27 @@ describe.skipIf(!haveImage)(`the sidecar image ${IMAGE ?? '(HE_GBRAIN_IMAGE unse
       } finally { s.stop(); }
     }
   }, 180_000);
+
+  // internal-task (internal-task, gbrain#8074): the preflight source-grant probe, under the list alone and under the member tokens plus the list,
+  // answers rows on every source-scoped tool and none outside the requester's grant.
+  test('probeSourceGrants: under scope sources and member-sources every source-scoped tool gives rows and none lies outside the grant', async () => {
+    const { probeSourceGrants } = await import('../runner/trial/gbrain.ts');
+    for (const scope of ['sources', 'member-sources'] as const) {
+      const scratch = mkdtempSync(join(tmpdir(), `probe-${scope}-`));
+      try {
+        const p = await probeSourceGrants(IMAGE!, 'dev', scratch, ['rate', 'contract'], scope);
+        expect(p.outside).toEqual([]);
+        expect(p.denied.every((d) => d.code === 'permission_denied')).toBe(true);
+        expect(Object.keys(p.rows_by_tool).sort()).toEqual(['list_pages', 'query', 'recall', 'search']);
+        expect(Object.values(p.rows_by_tool).every((n) => n > 0)).toBe(true);
+        if (scope === 'sources') { expect(p.token_alone).toBeNull(); continue; }
+        // The member token alone: rows on every tool, none outside the grant, and a slug outside the grant refused while one inside is served.
+        expect(Object.values(p.token_alone!.rows_by_tool).every((n) => n > 0)).toBe(true);
+        expect(p.token_alone!.slug_reads.length).toBeGreaterThan(0);
+        expect(p.token_alone!.slug_reads.every((r) => r.code !== null && !r.code.startsWith('another page') && r.unscoped_code === null && r.own_code === null)).toBe(true);
+      } finally { rmSync(scratch, { recursive: true, force: true }); }
+    }
+  }, 600_000);
 
   test('the entrypoint refuses a bad surface, embeddings without OPENAI_BASE_URL, embeddings on the keyword image, and a provider key', () => {
     const refused = (env: string[]) => dockerOut(['run', '--rm', '--user', uidGid(), '-v', `${join(tmp, 'refuse')}:/he-gbrain`, '-e', 'HE_GBRAIN_OUT=/he-gbrain', '-e', 'HE_GBRAIN_SPLIT=dev', ...env.flatMap((e) => ['-e', e]), IMAGE!]);

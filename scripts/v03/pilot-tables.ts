@@ -4,7 +4,11 @@
 // of v03-pilot-2026-10 asks for. The fit adds one per-call reservation per shard, read from the counted shard ledgers
 // (<shard>.ledger.sqlite, entries.reserved_usd): at the median, the 90th percentile and the largest.
 //
-//   bun scripts/v03/pilot-tables.ts --results <results dir> --tasks <task tree> --out <dir>
+//   bun scripts/v03/pilot-tables.ts --results <results dir> --tasks <task tree> --out <dir> [--told <cell,cell>]
+//
+// --told names the told cells the go-rule table pools (default: the pilot's two told cells, as #125 and #128 read them); the
+// list goes into pilot-tables.json (told) and the go-rule heading, and a named cell with no trials is refused. With the results'
+// manifest.json, a family whose unrun told trials could change its label is undecided (not informative); duplicate trial ids exit 2.
 //
 // Pass: grade pass with no consent violation (summarize-run.ts). gbrain use: at least one gbrain call in the trial's
 // events (gbrain-usage.ts isGbrainCall). Intervals: task-clustered bootstrap, 10,000 draws, seed 7. MDD: the
@@ -22,9 +26,9 @@ import type { WorldEvent } from '../../world/services/events.ts';
 const argv = process.argv.slice(2);
 const arg = (k: string) => { const i = argv.indexOf('--' + k); return i >= 0 ? argv[i + 1] : undefined; };
 const results = arg('results'), tasksDir = arg('tasks'), out = arg('out');
-if (!results || !tasksDir || !out) { console.error('usage: --results <dir> --tasks <dir> --out <dir>'); process.exit(2); }
+if (!results || !tasksDir || !out) { console.error('usage: --results <dir> --tasks <dir> --out <dir> [--told <cell,cell>]'); process.exit(2); }
 
-type Trial = { trial_id: string; cell: string; task: string; harness: string; grade: string; consent_violation: boolean; termination?: string; usage?: { usd?: number } };
+type Trial = { trial_id: string; cell: string; task: string; harness: string; grade: string; consent_violation: boolean; termination?: string; cap_stop?: boolean; usage?: { usd?: number } };
 const rows = readFileSync(join(results, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as Trial);
 const familyCache = new Map<string, string>();
 const family = (task: string) => {
@@ -205,25 +209,46 @@ for (const cell of [...new Set(mech.map((m) => m.cell))].filter((c) => c.include
 // 5. The go rule's reading: each family's pass rate in the told arm over scored trials (summarize-run.ts EXCLUDED left
 // out), pooled over the OpenClaw and Hermes told cells,
 // with the task-clustered interval printed beside it (the interval does not enter the rule). A task is one cluster
-// across both harnesses: resampling it keeps its OpenClaw and Hermes trials together.
-const TOLD = ['openclaw-haiku-gbrain-told-mu-v03-dev', 'hermes-haiku-gbrain-told-mu-v03-dev'];
+// across both harnesses: resampling it keeps its OpenClaw and Hermes trials together. --told names other cells to pool
+// (v03-ar-reread-2026-10's deciding cells); every cell it names must have trials in the results, and the default pair must
+// have some, so a misspelled or forgotten list is refused instead of read as a family at 0 of 0.
+const toldArg = arg('told');
+if (argv.includes('--told') && (!toldArg || toldArg.startsWith('--'))) { console.error('pilot-tables: --told needs a comma-separated list of cell ids'); process.exit(2); }
+const TOLD = toldArg?.split(',') ?? ['openclaw-haiku-gbrain-told-mu-v03-dev', 'hermes-haiku-gbrain-told-mu-v03-dev'];
+const resultCells = new Set(rows.map((t) => t.cell));
+const missingTold = toldArg ? TOLD.filter((c) => !resultCells.has(c)) : TOLD.some((c) => resultCells.has(c)) ? [] : TOLD;
+if (missingTold.length) { console.error(`pilot-tables: no trials in ${results} for told cell(s) ${missingTold.join(', ')}; fix: name the run's told cells with --told`); process.exit(2); }
+const toldIds = rows.filter((t) => TOLD.includes(t.cell)).map((t) => t.trial_id);
+const dupIds = [...new Set(toldIds.filter((id, i) => toldIds.indexOf(id) !== i))];
+if (dupIds.length) { console.error(`pilot-tables: ${dupIds.length} told trial id(s) appear more than once in ${results}/trials.jsonl (${dupIds.slice(0, 3).join(', ')}); fix: merge the shards once`); process.exit(2); }
+// A partial cell (v03-ar-reread-2026-10's rule): the results' manifest.json lists the planned trials; one with no record, or only a
+// cap-stop record, is unrun. The family is undecided, and so not informative, when some outcome of its unrun trials would give it a
+// different label from the one its scored trials give. Results without a manifest are read as complete.
+const manifestPath = join(results, 'manifest.json');
+if (toldArg && !existsSync(manifestPath)) console.error(`pilot-tables: no manifest.json in ${results}; every --told cell is read as complete, so the partial-cell rule cannot mark a family undecided`);
+const planned = existsSync(manifestPath) ? (JSON.parse(readFileSync(manifestPath, 'utf8')) as { trials: Array<{ id: string; cell: string; task: string }> }).trials.filter((t) => TOLD.includes(t.cell)) : [];
+const ran = new Set(rows.filter((t) => !t.cap_stop).map((t) => t.trial_id));
+const inBand = (r: number) => r >= 0.1 && r <= 0.9;
 const EXCLUDED = new Set(['model_error', 'infra_error', 'exam_fault']);
 const passRate = (flat: Trial[]) => flat.filter(pass).length / Math.max(1, flat.length);
 const goRule: Array<Record<string, unknown>> = [];
 for (const fam of Object.keys(ALLOC)) {
   const ts = rows.filter((t) => TOLD.includes(t.cell) && family(t.task) === fam && !EXCLUDED.has(t.termination ?? ''));
   const c = clustered(ts, passRate);
-  goRule.push({ family: fam, passes: ts.filter(pass).length, trials: ts.length, rate: c.value, lower: c.lower, upper: c.upper, informative: c.value >= 0.1 && c.value <= 0.9 });
+  const passes = ts.filter(pass).length;
+  const unrun = planned.filter((t) => family(t.task) === fam && !ran.has(t.id)).length;
+  const undecided = unrun > 0 && Array.from({ length: unrun + 1 }, (_, k) => inBand((passes + k) / (ts.length + unrun))).some((b) => b !== inBand(c.value));
+  goRule.push({ family: fam, passes, trials: ts.length, rate: c.value, lower: c.lower, upper: c.upper, informative: inBand(c.value) && !undecided, unrun, undecided });
 }
 
 mkdirSync(out, { recursive: true });
-writeFileSync(join(out, 'pilot-tables.json'), JSON.stringify({ go_rule: goRule, variance, family_pooled: famPool, projection, mechanism_mdd: mechanism, costs, opening1_fit: fitOut }, null, 2) + '\n');
+writeFileSync(join(out, 'pilot-tables.json'), JSON.stringify({ ...(toldArg ? { told: TOLD } : {}), go_rule: goRule, variance, family_pooled: famPool, projection, mechanism_mdd: mechanism, costs, opening1_fit: fitOut }, null, 2) + '\n');
 const pct = (x: number | null) => (x === null ? 'n/a' : (100 * x).toFixed(1) + ' points');
 const d = (x: number | null | undefined) => (x === null || x === undefined ? 'n/a' : '$' + x.toFixed(4));
 const L: string[] = [];
-L.push('# v03-pilot-2026-10 tables (scripts/v03/pilot-tables.ts)', '');
-L.push('## Go rule: told arm, pooled over the OpenClaw and Hermes told cells', '', '| Family | Passes / trials | Rate [task-clustered 95% interval] | Informative (10 to 90 percent) |', '|---|---|---|---|');
-for (const g of goRule) L.push('| ' + [g.family, g.passes + ' / ' + g.trials, (100 * (g.rate as number)).toFixed(1) + '% [' + (100 * (g.lower as number)).toFixed(1) + '%, ' + (100 * (g.upper as number)).toFixed(1) + '%]', g.informative ? 'yes' : 'no'].join(' | ') + ' |');
+L.push(toldArg ? '# Go-rule tables for the cells --told names (scripts/v03/pilot-tables.ts)' : '# v03-pilot-2026-10 tables (scripts/v03/pilot-tables.ts)', '');
+L.push(toldArg ? '## Go rule: told arm, pooled over ' + TOLD.join(', ') : '## Go rule: told arm, pooled over the OpenClaw and Hermes told cells', '', '| Family | Passes / trials | Rate [task-clustered 95% interval] | Informative (10 to 90 percent) |', '|---|---|---|---|');
+for (const g of goRule) L.push('| ' + [g.family, g.passes + ' / ' + g.trials, (100 * (g.rate as number)).toFixed(1) + '% [' + (100 * (g.lower as number)).toFixed(1) + '%, ' + (100 * (g.upper as number)).toFixed(1) + '%]', g.undecided ? 'no (undecided: ' + g.unrun + ' unrun)' : g.informative ? 'yes' : 'no'].join(' | ') + ' |');
 L.push('');
 const iv = (lo: unknown, hi: unknown) => '[' + (100 * (lo as number)).toFixed(0) + '%, ' + (100 * (hi as number)).toFixed(0) + '%]';
 L.push('## Per-task variance across repetitions', '', 'Interval: Wilson 95% over the task\'s repetitions. pass^5: every repetition passed. pass@5: at least one did.', '', '| Cell | Task | Family | Passes of reps | p [interval] | pass^5 | pass@5 | p(1-p) | gbrain use | use(1-use) |', '|---|---|---|---|---|---|---|---|---|---|');

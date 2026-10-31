@@ -13,12 +13,12 @@
 - **The dev pilot read no-go** ([report](docs/benchmarks/2026-10-29-v03-pilot/report.md)): on its 20 public tasks on Haiku, four of six families were informative and the rule needs five. It found and fixed a defect in one family.
 - **The held-out set was sealed early.** It was sealed (custody commit `custody commit (private)`) before that verdict was settled.
 - **That deviation is approved on one condition** ([deviation-approval.md](docs/benchmarks/2026-10-29-v03-pilot/deviation-approval.md)): the `told` cells of the installer dev run ([preregistration](docs/benchmarks/2026-10-29-v03-installer-dev/PREREGISTRATION.md)) must show five of six families informative.
-- **The condition failed** ([report](docs/benchmarks/2026-10-29-v03-installer-dev/report.md), [note](docs/benchmarks/2026-10-29-v03-pilot/2026-10-30-opening-1-gate.md)): four of six again, and the three approval relay tasks are task defects. The seal at `custody commit (private)` is retired unopened. Next, the approval relay template is fixed, the set is resealed, and the fixed family gets a dev re-read before opening 1.
+- **The condition failed** ([report](docs/benchmarks/2026-10-29-v03-installer-dev/report.md), [note](docs/benchmarks/2026-10-29-v03-pilot/2026-10-30-opening-1-gate.md)): four of six again, and the three approval relay tasks are task defects. The seal at `custody commit (private)` is retired unopened. Next, the approval relay template is fixed (done), the set is resealed, and the fixed family gets a dev re-read before opening 1 ([preregistration](docs/benchmarks/2026-10-30-v03-ar-reread/PREREGISTRATION.md)).
 - **The second dev pilot can't tell Claude Code or Codex apart from OpenClaw and Hermes Agent** on the same 20 public tasks, each pair on one model ([report](docs/benchmarks/2026-10-30-host-harness-pilot/report.md)).
   - Claude Code and Codex cost less per trial; the paired interval excludes zero in five of six pairs.
   - gbrain's `told` arm scored lower than no brain in all three Haiku harnesses (descriptive, intervals in the report), through cross-scope reads from `gbrain.search`.
 
-Version: harness-evals v0.0.67. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
+Version: harness-evals v0.0.68. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
 
 ## Start here
 
@@ -54,7 +54,7 @@ Version: harness-evals v0.0.67. Everything above [Changelog](#changelog) describ
 | Codex | [openai/codex](https://github.com/openai/codex) 0.165.0 from npm; first counted run `host-harness-pilot-2026-10` (dev). It speaks only OpenAI's Responses API, so it is compared only with OpenClaw and Hermes on the same OpenAI model ([harnesses/codex/pin.json](harnesses/codex/pin.json)) |
 | Not run | [name withheld] and [name withheld] are in the plan but expose no headless API; nothing on this page measures them |
 | Models | `claude-sonnet-5-5` and `claude-haiku-5-5`, plus `gpt-6-luna` for the OpenAI cells of `host-harness-pilot-2026-10`; one fixed model per cell, every call through the metering proxy under a ledger lease; the harness containers see only the proxy and a per-trial dummy token |
-| gbrain, the sidecar in the brain runs | [garrytan/gbrain](https://github.com/garrytan/gbrain), pinned today at `32366ac2` (0.60.498.0, master at the merge of gbrain#7898, which contains gbrain#7489 and gbrain#7744), for runs `v03-installer-dev-2026-10` and `host-harness-pilot-2026-10`; each counted run names the commit it built, from `f241216c` (0.60.413.0) in the gbrain arm to `81692dc6` (0.60.472.0, gbrain#7744's head before it merged) in `gbrain-memory-fix-2026-10b` and the v0.3 dev pilot ([gbrain/pin.json](gbrain/pin.json), fields `commit` and `previous`). gbrain is a knowledge brain served to the harness as a second MCP server, not a harness under test |
+| gbrain, the sidecar in the brain runs | [garrytan/gbrain](https://github.com/garrytan/gbrain), pinned today at `a590ad07` (0.60.522.0, master at the merge of gbrain#8074, which makes `recall` and `list_pages` honour per-request source scope), for run `v03-ar-reread-2026-10`; each counted run names the commit it built, from `f241216c` (0.60.413.0) in the gbrain arm to `81692dc6` (0.60.472.0, gbrain#7744's head before it merged) in `gbrain-memory-fix-2026-10b` and the v0.3 dev pilot, and `32366ac2` (0.60.498.0) in `v03-installer-dev-2026-10` and `host-harness-pilot-2026-10` ([gbrain/pin.json](gbrain/pin.json), fields `commit` and `previous`). gbrain is a knowledge brain served to the harness as a second MCP server, not a harness under test |
 
 - Every harness runs headlessly in `serve` mode. The runner plays each member's messages through a Slack mock on a simulation clock, and the harness answers through one world-MCP server ([docs/adapters.md](docs/adapters.md)).
 - One bot token, no per-member access, the same preamble for every harness ([docs/methodology.md](docs/methodology.md), the trial contract). Full text: [docs/methods.md](docs/methods.md#how-every-harness-runs).
@@ -305,6 +305,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)); the world is built from gbrain-evals' `messy-company-v1` dataset; OpenClaw, Hermes Agent and QM are named as products only.
 
 ## Changelog
+
+### 2026-10-30: v0.3 approval relay re-read preregistered, gbrain pinned at a590ad07 (internal-task)
+
+harness-evals v0.0.68. The Next list's seal line links the preregistration of run `v03-ar-reread-2026-10`, the dev re-read of the fixed approval relay family under opening 1's scoped gbrain config, and says the template fix is done. The gbrain row of the harness table names the new pin `a590ad07` (0.60.522.0) and keeps `32366ac2` for the two runs that used it. The version line moves from v0.0.67 to v0.0.68 (v0.0.63 went to #146). Why: a new v0.3 seal needs that re-read before opening 1.
 
 ### 2026-10-30: version line only, Lane B TB2 replication preregistered (internal-task)
 

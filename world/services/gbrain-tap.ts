@@ -20,12 +20,17 @@
 // fell back to keyword search (recall's search_degraded or facts_degraded.reason), which the runner's semantic check reads.
 //
 // internal-task (gbrain#7481, scope "sources"): the upstream may carry the company brain's member-to-sources grants instead of
-// member tokens. Every search and query then goes out under the trial's one unscoped token with source_ids set to the
+// member tokens. Every search and query (and, from gbrain#8074, recall and list_pages; SOURCE_SCOPED_TOOLS) then goes out
+// under the trial's one unscoped token with source_ids set to the
 // requesting member's granted sources (the public source before the first turn), intersected with any source_ids the
 // harness itself named; a harness that names only sources outside the grant is answered permission_denied by the tap in
 // gbrain's own shape, and nothing is forwarded. The event's args carry the source_ids as forwarded (and the harness's own
 // under source_ids_requested when they differed), effect.sources the distinct source_id of the rows that came back, so a
 // keyless check can prove no row's source lay outside the grant. The harness prompt does not change.
+//
+// internal-task (internal-task, scope "member-sources"): the upstream carries both the member tokens and the grants, so each call goes
+// out under the requesting member's own token (granted server-side with gbrain auth rescope at image build) and carries
+// that member's source_ids as well: two layers, either of which alone keeps rows inside the grant at gbrain 0.60.522.0.
 
 import type { Member } from '../types.ts';
 import type { EventLog } from './events.ts';
@@ -38,15 +43,18 @@ export interface GbrainUpstream {
   /** internal-task: member scope. The company brain's tokens.json: one granted token per member and the public-only token. */
   tokens?: { members: Record<string, string>; public_only: string };
   /** internal-task (gbrain#7481): scope "sources". The company brain's grants: each member's readable source ids, and the sources
-   *  every member may read (the public source), presented before the first turn. Every call keeps the unscoped token. */
+   *  every member may read (the public source), presented before the first turn. Every call keeps the unscoped token, unless
+   *  tokens is set too (internal-task, scope "member-sources"), when it carries the member's token. */
   grants?: { members: Record<string, string[]>; public: string[] };
   /** internal-task: live ingestion (world/services/gbrain-ingest.ts): the per-source ingest tokens and the conversation map. The tap
    *  itself never uses them; the server builds the ingestion module from them when the upstream is set. */
   ingest?: { tokens: Record<string, string>; channels: Record<string, string>; dm_source_prefix: string };
 }
 
-/** Tools that take source_ids at the pin (gbrain 0.60.452.0); the tap narrows exactly these under scope "sources". */
-export const SOURCE_SCOPED_TOOLS: ReadonlySet<string> = new Set(['search', 'query']);
+/** Tools that take source_ids: search and query since gbrain 0.60.452.0 (gbrain#7481), recall and list_pages since 0.60.522.0
+ *  (gbrain#8074, which leaves the field out of the starter surface's listed schema). The tap narrows exactly these under scope
+ *  "sources"; at a pin before 0.60.522.0 gbrain ignores the list on recall and list_pages. */
+export const SOURCE_SCOPED_TOOLS: ReadonlySet<string> = new Set(['search', 'query', 'recall', 'list_pages']);
 
 /** Starter-surface tools that change the brain; every other tool, and initialize and tools/list, is a read. */
 export const GBRAIN_WRITE_TOOLS: ReadonlySet<string> = new Set([
@@ -242,8 +250,10 @@ export interface GbrainTapOptions {
  *  null sources for a member the grants do not cover. */
 export function grantFor(upstream: GbrainUpstream, requester: string | null): { grant: string; token: string | null; sources?: string[] | null } {
   if (upstream.grants) {
-    if (requester === null) return { grant: 'public-only', token: upstream.token, sources: upstream.grants.public };
-    return { grant: requester, token: upstream.token, sources: upstream.grants.members[requester] ?? null };
+    // internal-task (scope "member-sources"): with member tokens beside the grants, the call carries the member's own token as well.
+    const t = upstream.tokens;
+    if (requester === null) return { grant: 'public-only', token: t ? t.public_only : upstream.token, sources: upstream.grants.public };
+    return { grant: requester, token: t ? t.members[requester] ?? null : upstream.token, sources: upstream.grants.members[requester] ?? null };
   }
   if (!upstream.tokens) return { grant: 'bot', token: upstream.token };
   if (requester === null) return { grant: 'public-only', token: upstream.tokens.public_only };
@@ -257,7 +267,7 @@ function deniedReply(id: RpcMessage['id'], requested: string[], grant: string): 
   return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(body) }], isError: true } };
 }
 
-/** internal-task (gbrain#7481): the request as the tap forwards it under scope "sources": search and query gain source_ids set to the
+/** internal-task (gbrain#7481): the request as the tap forwards it under scope "sources": every SOURCE_SCOPED_TOOLS call gains source_ids set to the
  *  grant, intersected with the harness's own source_ids when it sent any. denied is set when that intersection is empty. */
 export function scopeRequest(request: RpcMessage, sources: string[]): { request: RpcMessage; requested?: string[]; denied?: string[] } {
   if (request.method !== 'tools/call' || !SOURCE_SCOPED_TOOLS.has(String(request.params?.name ?? ''))) return { request };
@@ -280,7 +290,7 @@ export async function handleGbrainRequest(req: Request, o: GbrainTapOptions): Pr
   if (sources === null) return rpcError(502, -32000, `no gbrain source grant for member ${grant}; the company brain's manifest does not cover this requester`);
   const rawText = await req.text();
   const incoming = parseRpcBody(rawText, 'application/json');
-  // Under scope "sources" the body is rewritten: search and query carry the requester's source_ids; a request the tap denies
+  // Under scope "sources" the body is rewritten: SOURCE_SCOPED_TOOLS calls carry the requester's source_ids; a request the tap denies
   // is answered here (in gbrain's shape) and left out of what goes upstream.
   const scoped: ReturnType<typeof scopeRequest>[] = sources ? incoming.map((r) => scopeRequest(r, sources)) : incoming.map((request) => ({ request }));
   const requests = scoped.map((s) => s.request);

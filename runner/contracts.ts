@@ -204,9 +204,11 @@ export interface GbrainCellConfig {
   /** internal-task addition: "member" makes the world's tap present the requesting member's gbrain token (public-only before
    *  the first turn) instead of the trial's one unscoped token; company brain only. Absent: every call carries the
    *  unscoped token and the brain answers as the bot. internal-task addition (gbrain#7481): "sources" keeps the unscoped token
-   *  and makes the tap add source_ids to every search and query, the sources the requesting member may read (the public
-   *  source before the first turn), so one bot token narrows per request; company brain only. */
-  scope?: 'member' | 'sources';
+   *  and makes the tap add source_ids to every search and query (and recall and list_pages, gbrain#8074), the sources the requesting member may read (the public
+   *  source before the first turn), so one bot token narrows per request; company brain only. internal-task addition (internal-task,
+   *  gbrain#8074): "member-sources" does both, the requesting member's token (granted server-side with gbrain auth rescope at
+   *  image build) and that member's source_ids on every narrowed call; company brain only. */
+  scope?: 'member' | 'sources' | 'member-sources';
 }
 
 /** internal-task: the install bundle view a gbrain-docs or gbrain-installer trial mounted into the harness, as the runner verified it
@@ -261,7 +263,7 @@ export interface TrialGbrain {
   /** internal-task additions, absent in records written before it: the brain and scope the sidecar ran with and the docker
    *  image id behind the tag, so a record names the exact brain it was served from. */
   brain?: 'bot-visible' | 'company' | 'member';
-  scope?: 'none' | 'member' | 'sources';
+  scope?: 'none' | 'member' | 'sources' | 'member-sources';
   /** internal-task: whether the world ingested the scenario's messages into the brain, and how many it wrote (gbrain.ingest events): ok
    *  (a committed fact), skipped (a conversation the brain has no source or token for; not a fault) and failed. */
   ingest?: 'off' | 'live';

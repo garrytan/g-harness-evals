@@ -8,7 +8,7 @@ import { join } from 'node:path';
 
 const ROOT = join(import.meta.dir, '..');
 const RESULTS = join(ROOT, 'docs', 'benchmarks', '2026-10-29-v03-pilot', 'results');
-const run = (results: string, tasks: string, out: string) => Bun.spawnSync(['bun', join(ROOT, 'scripts/v03/pilot-tables.ts'), '--results', results, '--tasks', tasks, '--out', out], { cwd: ROOT, stdout: 'pipe', stderr: 'pipe', env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' } });
+const run = (results: string, tasks: string, out: string, ...extra: string[]) => Bun.spawnSync(['bun', join(ROOT, 'scripts/v03/pilot-tables.ts'), '--results', results, '--tasks', tasks, '--out', out, ...extra], { cwd: ROOT, stdout: 'pipe', stderr: 'pipe', env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' } });
 
 describe('v03-pilot-2026-10 pilot tables', () => {
   test('recomputing from the receipts gives the committed tables and the figures the report quotes', () => {
@@ -88,6 +88,69 @@ describe('v03-pilot-2026-10 pilot tables', () => {
       const j = JSON.parse(readFileSync(join(out, 'pilot-tables.json'), 'utf8')) as { go_rule: Array<{ family: string; passes: number; trials: number }> };
       const ar = j.go_rule.find((g) => g.family === 'approval_relay')!;
       expect([ar.passes, ar.trials]).toEqual([1, 3]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }, 60_000);
+
+  test('--told names the cells the go rule pools', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pilot-tables-told-'));
+    try {
+      const results = join(dir, 'results'), tasks = join(dir, 'tasks'), out = join(dir, 'out'), outTold = join(dir, 'out-told');
+      mkdirSync(join(tasks, 'ar-a'), { recursive: true });
+      mkdirSync(results, { recursive: true });
+      writeFileSync(join(tasks, 'ar-a', 'task.toml'), 'family = "approval_relay"\n');
+      const rows: string[] = [];
+      // The default told cell fails every trial; the two named re-read cells pass 4 of 5 and 2 of 5.
+      for (const [cell, harness, passes] of [['openclaw-haiku-gbrain-told-mu-v03-dev', 'openclaw', 0], ['openclaw-haiku-gbrain-told-scoped-mu-v03-ar', 'openclaw', 4], ['hermes-haiku-gbrain-told-scoped-mu-v03-ar', 'hermes', 2]] as const) {
+        for (let r = 1; r <= 5; r++) rows.push(JSON.stringify({ trial_id: 'run/' + cell + '/ar-a/r' + r, cell, task: 'ar-a', harness, grade: r <= passes ? 'pass' : 'fail', consent_violation: false, usage: { usd: 0.01 } }));
+      }
+      writeFileSync(join(results, 'trials.jsonl'), rows.join('\n') + '\n');
+      type G = { go_rule: Array<{ family: string; passes: number; trials: number }> };
+      const ar = (o: string) => (JSON.parse(readFileSync(join(o, 'pilot-tables.json'), 'utf8')) as G).go_rule.find((g) => g.family === 'approval_relay')!;
+      expect(run(results, tasks, out).exitCode).toBe(0);
+      expect([ar(out).passes, ar(out).trials]).toEqual([0, 5]);
+      expect(run(results, tasks, outTold, '--told', 'openclaw-haiku-gbrain-told-scoped-mu-v03-ar,hermes-haiku-gbrain-told-scoped-mu-v03-ar').exitCode).toBe(0);
+      expect([ar(outTold).passes, ar(outTold).trials]).toEqual([6, 10]);
+      expect((JSON.parse(readFileSync(join(outTold, 'pilot-tables.json'), 'utf8')) as { told: string[] }).told).toEqual(['openclaw-haiku-gbrain-told-scoped-mu-v03-ar', 'hermes-haiku-gbrain-told-scoped-mu-v03-ar']);
+      expect(readFileSync(join(outTold, 'pilot-tables.md'), 'utf8')).toContain('## Go rule: told arm, pooled over openclaw-haiku-gbrain-told-scoped-mu-v03-ar, hermes-haiku-gbrain-told-scoped-mu-v03-ar');
+      // A misspelled cell, a bare --told and a run with none of the default cells are refused, not read as 0 of 0.
+      const typo = run(results, tasks, join(dir, 'out-typo'), '--told', 'openclaw-haiku-gbrain-told-scoped-mu-v03-ar,hermes-typo');
+      expect(typo.exitCode).toBe(2);
+      expect(typo.stderr.toString()).toContain('hermes-typo');
+      expect(run(results, tasks, join(dir, 'out-bare'), '--told').exitCode).toBe(2);
+      writeFileSync(join(results, 'trials.jsonl'), rows.filter((r) => !r.includes('-told-mu-v03-dev')).join('\n') + '\n');
+      const none = run(results, tasks, join(dir, 'out-none'));
+      expect(none.exitCode).toBe(2);
+      expect(none.stderr.toString()).toContain('openclaw-haiku-gbrain-told-mu-v03-dev');
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }, 60_000);
+
+  test('a partial told cell: unrun trials that could change the label make the family undecided; duplicate trial ids are refused', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pilot-tables-partial-'));
+    try {
+      const results = join(dir, 'results'), tasks = join(dir, 'tasks');
+      mkdirSync(join(tasks, 'ar-a'), { recursive: true });
+      mkdirSync(results, { recursive: true });
+      writeFileSync(join(tasks, 'ar-a', 'task.toml'), 'family = "approval_relay"\n');
+      const cell = 'openclaw-haiku-gbrain-told-scoped-mu-v03-ar';
+      const id = (r: number) => 'run/' + cell + '/ar-a/r' + r;
+      writeFileSync(join(results, 'manifest.json'), JSON.stringify({ trials: Array.from({ length: 10 }, (_, i) => ({ id: id(i + 1), cell, task: 'ar-a' })) }));
+      const row = (r: number, grade: string, extra: Record<string, unknown> = {}) => JSON.stringify({ trial_id: id(r), cell, task: 'ar-a', harness: 'openclaw', grade, termination: 'completed', consent_violation: false, usage: { usd: 0.01 }, ...extra });
+      type G = { go_rule: Array<{ family: string; passes: number; trials: number; informative: boolean; unrun: number; undecided: boolean }> };
+      const read = (rows: string[], name: string) => {
+        writeFileSync(join(results, 'trials.jsonl'), rows.join('\n') + '\n');
+        const p = run(results, tasks, join(dir, name), '--told', cell);
+        return { p, ar: p.exitCode === 0 ? (JSON.parse(readFileSync(join(dir, name, 'pilot-tables.json'), 'utf8')) as G).go_rule.find((g) => g.family === 'approval_relay')! : null };
+      };
+      // 3 passes of 4 scored (75 percent, in the band); 5 never ran and 1 stopped at the cap. Every outcome of the six lies between 3 of 10 and 9 of 10, all in the band, so the label holds.
+      const held = read([row(1, 'pass'), row(2, 'pass'), row(3, 'pass'), row(4, 'fail'), row(5, 'fail', { termination: 'model_error', cap_stop: true })], 'held');
+      expect(held.ar).toMatchObject({ passes: 3, trials: 4, unrun: 6, undecided: false, informative: true });
+      // 4 passes of 4 scored (100 percent, out of the band) with 6 unrun: six failures would give 40 percent, in the band, so undecided.
+      const open = read([row(1, 'pass'), row(2, 'pass'), row(3, 'pass'), row(4, 'pass')], 'open');
+      expect(open.ar).toMatchObject({ passes: 4, trials: 4, unrun: 6, undecided: true, informative: false });
+      expect(readFileSync(join(dir, 'open', 'pilot-tables.md'), 'utf8')).toContain('no (undecided: 6 unrun)');
+      const dup = read([row(1, 'pass'), row(1, 'pass'), row(2, 'fail')], 'dup');
+      expect(dup.p.exitCode).toBe(2);
+      expect(dup.p.stderr.toString()).toContain(id(1));
     } finally { rmSync(dir, { recursive: true, force: true }); }
   }, 60_000);
 

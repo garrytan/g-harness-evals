@@ -297,10 +297,10 @@ export interface InstallerEvidence {
 
 export interface ReadyInstall { dir: string; split: string; files: number; writable: boolean }
 
-/** internal-task (gbrain#7481): the scope "sources" evidence. The direct probe searches and queries the dev company brain once per member
- *  and query under that member's source_ids; the fake trial runs two members through the runner and the tap on the same query. */
+/** internal-task (gbrain#7481): the scope "sources" evidence. The direct probe calls search, query and recall on the dev company brain once
+ *  per member and query, and list_pages once per member (internal-task), under that member's source_ids; the fake trial runs two members through the runner and the tap on the same query. */
 export interface ScopedEvidence {
-  probe: null | { members: number; calls: number; rows: number; sources_seen: number; outside: Array<{ member: string; tool: string; query: string; slug: string; source_id: string }>; denied: Array<{ member: string; source_id: string; code: string | null }>; foreign: Array<{ member: string; source_id: string; rows_from_it: boolean | null }>; differs: boolean };
+  probe: null | { members: number; calls: number; rows: number; sources_seen: number; rows_by_tool?: Record<string, number>; outside: Array<{ member: string; tool: string; query: string; slug: string; source_id: string }>; denied: Array<{ member: string; source_id: string; code: string | null }>; foreign: Array<{ member: string; source_id: string; rows_from_it: boolean | null }>; differs: boolean };
   probe_error: string | null;
   /** member -> granted source ids, from the trial's gbrain/manifest.json. */
   grants: Record<string, string[]> | null;
@@ -438,15 +438,17 @@ export function keylessAssertions(e: KeylessEvidence, o: { strictPins?: boolean;
   if (e.scoped) {
     const s = e.scoped;
     const where = 'scoped=company/dev';
-    if (!s.probe) fail(where, 'source_ids probe of the company brain', 'one search and one query per member and query under that member\'s grant', s.probe_error ?? 'no probe', e.image);
+    if (!s.probe) fail(where, 'source_ids probe of the company brain', 'search, query and recall per member and query, and list_pages per member, under that member\'s grant', s.probe_error ?? 'no probe', e.image);
     else {
       const p = s.probe;
       const notDenied = p.denied.filter((d) => d.code !== 'permission_denied');
       if (p.outside.length) fail(where, 'rows outside the requester\'s grant under source_ids', 'none', `${p.outside.length} (${p.outside.slice(0, 3).map((o) => `${o.member} ${o.tool} ${JSON.stringify(o.query)} -> ${o.slug} in ${o.source_id}`).join('; ')})`, e.image);
       if (notDenied.length) fail(where, 'a source_ids list naming a source no connection holds', 'permission_denied for every member', notDenied.map((d) => `${d.code ?? 'rows'} for ${d.member}/${d.source_id}`).slice(0, 3).join(', '), e.image);
+      const unseen = Object.entries(p.rows_by_tool ?? {}).filter(([, n]) => !n).map(([t]) => t);
+      if (unseen.length) fail(where, 'rows under source_ids per tool', 'some for every source-scoped tool', `0 for ${unseen.join(', ')}`, e.image);
       if (!p.rows) fail(where, 'rows under source_ids', 'some', 0, e.image);
       else if (!p.differs) fail(where, 'narrowing observable', 'the same query answers different source sets to members with different grants', 'identical sources for every member', e.image);
-      if (!p.outside.length && !notDenied.length && p.rows && p.differs) ok(`${where} ${p.members} members, ${p.calls} scoped search/query calls, ${p.rows} rows over ${p.sources_seen} sources, none outside the requester's grant; ${p.denied.length} unknown source ids all permission_denied`);
+      if (!p.outside.length && !notDenied.length && !unseen.length && p.rows && p.differs) ok(`${where} ${p.members} members, ${p.calls} scoped calls over search, query, recall and list_pages, ${p.rows} rows${p.rows_by_tool ? ` (${Object.entries(p.rows_by_tool).map(([t, n]) => `${t} ${n}`).join(', ')})` : ''} over ${p.sources_seen} sources, none outside the requester's grant; ${p.denied.length} unknown source ids all permission_denied`);
       const readable = p.foreign.filter((f) => f.rows_from_it === true).length;
       ok(`${where} under the unscoped token a source_ids list naming a federated source outside the member's grant answered rows from it for ${readable} of ${p.foreign.length} members: gbrain checks source_ids against the connection's grant, so the member narrowing is the tap's to enforce (it intersects a harness-supplied list with the grant and denies an all-foreign one)`);
     }
@@ -939,8 +941,8 @@ async function keyless(a: Args, ref: ResolvedRef, tag: string, dir: string): Pro
   const scoped: ScopedEvidence = { probe: null, probe_error: null, grants: null, trial: null };
   try {
     const p = await probeSourceGrants(tag, 'dev', join(runDir, 'probe-sources'));
-    scoped.probe = { members: p.members, calls: p.calls, rows: p.rows, sources_seen: p.sources_seen, outside: p.outside, denied: p.denied, foreign: p.foreign, differs: p.differs };
-    console.log(`SCOPED: ${p.members} members, ${p.calls} scoped calls, ${p.rows} rows over ${p.sources_seen} sources, ${p.outside.length} outside the grant, ${p.denied.filter((d) => d.code === 'permission_denied').length}/${p.denied.length} unknown ids permission_denied, foreign federated source readable under the unscoped token for ${p.foreign.filter((f) => f.rows_from_it).length}/${p.foreign.length} members, narrowing differs=${p.differs}, ready in ${p.ready_ms} ms`);
+    scoped.probe = { members: p.members, calls: p.calls, rows: p.rows, sources_seen: p.sources_seen, outside: p.outside, denied: p.denied, foreign: p.foreign, differs: p.differs, rows_by_tool: p.rows_by_tool };
+    console.log(`SCOPED: ${p.members} members, ${p.calls} scoped calls, ${p.rows} rows (${Object.entries(p.rows_by_tool).map(([t, n]) => `${t} ${n}`).join(', ')}) over ${p.sources_seen} sources, ${p.outside.length} outside the grant, ${p.denied.filter((d) => d.code === 'permission_denied').length}/${p.denied.length} unknown ids permission_denied, foreign federated source readable under the unscoped token for ${p.foreign.filter((f) => f.rows_from_it).length}/${p.foreign.length} members, narrowing differs=${p.differs}, ready in ${p.ready_ms} ms`);
   } catch (e) {
     scoped.probe_error = (e as Error).message;
     console.log(`SCOPED: probe failed: ${scoped.probe_error}`);

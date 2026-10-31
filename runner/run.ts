@@ -74,7 +74,7 @@ export interface ResolvedGbrain {
   install: (typeof GBRAIN_INSTALLS)[number];
   embeddings: (typeof GBRAIN_EMBEDDINGS)[number];
   brain: 'bot-visible' | 'company' | 'member';
-  scope: 'none' | 'member' | 'sources';
+  scope: 'none' | 'member' | 'sources' | 'member-sources';
   /** internal-task: live ingestion of the scenario's messages into the member brain. */
   ingest: 'off' | 'live';
 }
@@ -255,7 +255,7 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
       // internal-task (company brain): brain and scope are additive; a cell without them is the gbrain arm's cell.
       // internal-task (member brain): brain "member" carries member tokens and ingest tokens; ingest "live" needs it.
       if (c.gbrain.brain !== undefined && c.gbrain.brain !== 'bot-visible' && c.gbrain.brain !== 'company' && c.gbrain.brain !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.brain must be "bot-visible", "company" or "member"; got ${JSON.stringify(c.gbrain.brain)}`);
-      if (c.gbrain.scope !== undefined && c.gbrain.scope !== 'member' && c.gbrain.scope !== 'sources') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope must be "member", "sources" or absent; got ${JSON.stringify(c.gbrain.scope)}`);
+      if (c.gbrain.scope !== undefined && c.gbrain.scope !== 'member' && c.gbrain.scope !== 'sources' && c.gbrain.scope !== 'member-sources') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope must be "member", "sources", "member-sources" or absent; got ${JSON.stringify(c.gbrain.scope)}`);
       if (c.gbrain.scope !== undefined && c.gbrain.brain !== 'company' && c.gbrain.brain !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope "${c.gbrain.scope}" needs gbrain.brain "company" or "member"; only those brains carry member tokens and per-member source grants`);
       if (c.gbrain.ingest !== undefined && c.gbrain.ingest !== 'off' && c.gbrain.ingest !== 'live') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.ingest must be "off", "live" or absent; got ${JSON.stringify(c.gbrain.ingest)}`);
       if (c.gbrain.ingest === 'live' && c.gbrain.brain !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.ingest "live" needs gbrain.brain "member"; only the member brain carries the per-source ingest tokens (gbrain/README.md, "The member brain")`);
@@ -587,17 +587,32 @@ async function main(argv: string[]): Promise<number> {
           console.log(`GBRAIN: image ${image} id=${probe.image_id} brain=member scope=member ingest=live split=${split} pages=${probe.listed} (${Object.entries(probe.by_kind).map(([k, v]) => `${k} ${v}`).join(', ')}) under the unscoped token, tokens=${probe.member_tokens} plus public-only: ${probe.member_check}, channel ingest tokens present (no write is tried), ready in ${probe.ready_ms} ms`);
         }
         for (const split of companySplits) {
-          const scope = gbrainCells.some((c) => c.gbrain!.brain === 'company' && c.split === split && c.gbrain!.scope === 'member') ? 'member' : 'none';
+          const scope = gbrainCells.some((c) => c.gbrain!.brain === 'company' && c.split === split && (c.gbrain!.scope === 'member' || c.gbrain!.scope === 'member-sources')) ? 'member' : 'none';
           const probe = await probeCompanyBrain(image, split, companyPageList(world, split), join(runDir, `preflight-gbrain-company-${split}`), scope);
           console.log(`GBRAIN: image ${image} id=${probe.image_id} brain=company scope=${scope} split=${split} pages=${probe.listed} (${Object.entries(probe.by_kind).map(([k, v]) => `${k} ${v}`).join(', ')}) under the unscoped token${scope === 'member' ? `, tokens=${probe.member_tokens} plus public-only: ${probe.member_check}` : ''}, ready in ${probe.ready_ms} ms`);
           // internal-task (gbrain#7481): a scope "sources" cell needs the per-request source_ids to hold for every member before a paid trial.
-          if (gbrainCells.some((c) => c.gbrain!.brain === 'company' && c.split === split && c.gbrain!.scope === 'sources')) {
-            const s = await probeSourceGrants(image, split, join(runDir, `preflight-gbrain-sources-${split}`));
+          // internal-task (internal-task): a scope "member-sources" cell is probed under the member tokens as well, the way its tap sends calls.
+          for (const scope of ['sources', 'member-sources'] as const) {
+            if (!gbrainCells.some((c) => c.gbrain!.brain === 'company' && c.split === split && c.gbrain!.scope === scope)) continue;
+            const s = await probeSourceGrants(image, split, join(runDir, `preflight-gbrain-${scope}-${split}`), SOURCE_PROBE_QUERIES, scope);
             const notDenied = s.denied.filter((d) => d.code !== 'permission_denied');
-            if (s.outside.length) throw new RunnerError('HE-GBRAIN-002', `the company brain for ${split} in ${image} returned ${s.outside.length} row(s) outside the requester's source grant under source_ids (${s.outside.slice(0, 3).map((o) => `${o.member} ${o.tool} ${JSON.stringify(o.query)} -> ${o.slug} in ${o.source_id}`).join('; ')}); gbrain's source_ids narrowing does not hold at this commit`);
-            if (notDenied.length) throw new RunnerError('HE-GBRAIN-002', `the company brain for ${split} in ${image} answered a source_ids list naming a source no connection holds with ${notDenied.map((d) => `${d.code ?? 'rows'} for ${d.member}/${d.source_id}`).slice(0, 3).join(', ')} instead of permission_denied`);
-            if (!s.rows || !s.differs) throw new RunnerError('HE-GBRAIN-002', `the company brain for ${split} in ${image} gave ${s.rows} row(s) over ${s.calls} scoped calls${s.rows && !s.differs ? ' and the same sources to every member' : ''}; the source_ids narrowing is not observable`);
-            console.log(`GBRAIN: scope=sources split=${split}: ${s.members} members x ${SOURCE_PROBE_QUERIES.length} queries x search+query = ${s.calls} calls, ${s.rows} rows over ${s.sources_seen} sources, 0 outside the requester's grant; ${s.denied.length} unknown source ids all permission_denied; a federated source outside the member's grant answers rows under the unscoped token in ${s.foreign.filter((f) => f.rows_from_it).length} of ${s.foreign.length} members (gbrain checks the connection's grant, the tap enforces the member's); the narrowing differs between members`);
+            if (s.outside.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the company brain for ${split} in ${image} returned ${s.outside.length} row(s) outside the requester's source grant under source_ids${scope === 'member-sources' ? ' with the member\'s own token, or under that token alone' : ''} (${s.outside.slice(0, 3).map((o) => `${o.member} ${o.tool} ${JSON.stringify(o.query)} -> ${o.slug} in ${o.source_id}`).join('; ')}); not holding at this commit: ${[...new Set(s.outside.map((o) => o.tool.endsWith('(token alone)') ? 'the rescoped member tokens' : 'gbrain\'s source_ids narrowing'))].join(' and ')}`);
+            if (notDenied.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the company brain for ${split} in ${image} answered a source_ids list naming a source no connection holds with ${notDenied.map((d) => `${d.code ?? 'rows'} for ${d.member}/${d.source_id}`).slice(0, 3).join(', ')} instead of permission_denied`);
+            const unseen = Object.entries(s.rows_by_tool).filter(([, n]) => !n).map(([t]) => t);
+            if (unseen.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the company brain for ${split} in ${image} gave 0 rows to ${unseen.join(', ')} over every member; the probe cannot show the source_ids narrowing holds on ${unseen.length === 1 ? 'that tool' : 'those tools'}`);
+            if (s.token_alone) {
+              // internal-task (internal-task): the member token is the only guard on a slug read, so it is checked on its own as well.
+              const leaked = s.token_alone.slug_reads.filter((r) => r.code === null || r.code.startsWith('another page'));
+              if (leaked.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the company brain for ${split} in ${image} returned ${leaked.length} page(s) through get_page under a member's own token from a source outside its grant (${leaked.slice(0, 3).map((r) => `${r.member} -> ${r.slug} in ${r.source_id}`).join('; ')}); the rescoped member tokens do not hold`);
+              const unseenAlone = Object.entries(s.token_alone.rows_by_tool).filter(([, n]) => !n).map(([t]) => t);
+              const unreadable = s.token_alone.slug_reads.filter((r) => r.unscoped_code !== null);
+              if (unreadable.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the company brain for ${split} in ${image} did not serve the slug outside the member's grant under the unscoped token either (${unreadable.slice(0, 3).map((r) => `${r.member} -> ${r.slug} in ${r.source_id}: ${r.unscoped_code}`).join('; ')}); the member token's refusal of it shows nothing`);
+              const ownRefused = s.token_alone.slug_reads.filter((r) => r.own_code !== null);
+              if (ownRefused.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the company brain for ${split} in ${image} refused get_page of a page inside the member's own grant (${ownRefused.slice(0, 3).map((r) => `${r.member} -> ${r.own_slug ?? '-'}: ${r.own_code}`).join('; ')}); the refusals outside the grant cannot be told from a broken read`);
+              if (unseenAlone.length || !s.token_alone.slug_reads.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the company brain for ${split} in ${image} gave ${unseenAlone.length ? `0 rows to ${unseenAlone.join(', ')} under the member tokens alone` : 'no slug outside any member\'s grant to read'}; the probe cannot show the token layer holds`);
+            }
+            if (!s.rows || !s.differs) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the company brain for ${split} in ${image} gave ${s.rows} row(s) over ${s.calls} scoped calls${s.rows && !s.differs ? ' and the same sources to every member' : ''}; the source_ids narrowing is not observable`);
+            console.log(`GBRAIN: scope=${scope} split=${split}: ${s.members} members x ${SOURCE_PROBE_QUERIES.length} queries over search, query and recall, plus list_pages once per member${scope === 'member-sources' ? ' under each member\'s token (paged to the end under the token alone)' : ''}; ${s.calls} calls in all,${scope === 'member-sources' ? ' with the token-alone repeats and get_page reads,' : ''} ${s.rows} rows (${Object.entries(s.rows_by_tool).map(([t, n]) => `${t} ${n}`).join(', ')}) over ${s.sources_seen} sources, 0 outside the requester's grant; ${s.denied.length} unknown source ids all permission_denied; a federated source outside the member's grant answers rows under the unscoped token in ${s.foreign.filter((f) => f.rows_from_it).length} of ${s.foreign.length} members (gbrain checks the connection's grant, the tap enforces the member's); the narrowing differs between members${s.token_alone ? `; under the member tokens alone (no source_ids) ${Object.entries(s.token_alone.rows_by_tool).map(([t, n]) => `${t} ${n}`).join(', ')} rows, 0 outside the grant, and ${s.token_alone.slug_reads.length} get_page reads of a page outside the member's grant all refused under the member's token and served under the unscoped token, while a page inside the grant was served` : ''}`);
           }
         }
       }

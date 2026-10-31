@@ -163,7 +163,7 @@ token per member and a `public_only` token) beside the unscoped token, the tap p
 whose turn is running, named by the runner through `POST /admin/gbrain/requester` at each turn's start, or the
 public-only token before the first turn and after the last. The requester is read once per request before the body
 is awaited, so a turn boundary cannot swap a request's token. Every gbrain event carries `grant`: `bot` (the unscoped
-token, every arm without member scope), a member id, or `public-only`. A requester with no token in the file is
+token, every arm without member tokens or source grants), a member id, or `public-only`. A requester with no token in the file is
 answered 502 and logged nowhere (the runner checks the file against the task's actors before the trial starts,
 HE-GBRAIN-004). The grader counts a refused targeted read (`error` `page_not_found` or `permission_denied`) as a
 cross-scope attempt the brain blocked, so a scoped arm's leaks separate into pages returned and pages refused.

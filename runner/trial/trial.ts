@@ -174,9 +174,9 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       sidecar = await startGbrainSidecar({ trialId: trial.id, trialSlug: slot, split: cell.split, outDir: join(dirs.root, 'gbrain'), image: opts.gbrainImage, brain: gbrain.brain, scope: gbrain.scope, ingest: gbrain.ingest,
         surface: gbrain.surface, embeddings: gbrain.embeddings, ...(gbrain.embeddings !== 'off' ? { openaiBaseUrl: proxy!.baseUrlFor(gbrainSlot, 'openai', true), proxyToken: gbrainToken } : {}), ...(network ? { network } : {}), log });
       // internal-task: under member scope the tap needs a granted token for every member who will take a turn (HE-GBRAIN-004).
-      if (sidecar.scope === 'member') checkCompanyTokens(sidecar.tokens, cell.split, task.actors, join(dirs.root, 'gbrain', 'tokens.json'));
+      if (sidecar.scope === 'member' || sidecar.scope === 'member-sources') checkCompanyTokens(sidecar.tokens, cell.split, task.actors, join(dirs.root, 'gbrain', 'tokens.json'));
       // internal-task (gbrain#7481): under scope "sources" the tap needs a source grant for every member who will take a turn (HE-GBRAIN-004).
-      if (sidecar.scope === 'sources') checkCompanyGrants(JSON.parse(readFileSync(join(dirs.root, 'gbrain', 'manifest.json'), 'utf8')), cell.split, task.actors, join(dirs.root, 'gbrain', 'manifest.json'));
+      if (sidecar.scope === 'sources' || sidecar.scope === 'member-sources') checkCompanyGrants(JSON.parse(readFileSync(join(dirs.root, 'gbrain', 'manifest.json'), 'utf8')), cell.split, task.actors, join(dirs.root, 'gbrain', 'manifest.json'));
       // internal-task: under live ingestion every actor's DM source and every channel source needs an ingest token (HE-GBRAIN-004).
       if (sidecar.ingest) checkIngestTokens(sidecar.ingest.tokens, JSON.parse(readFileSync(join(dirs.root, 'gbrain', 'manifest.json'), 'utf8')), cell.split, task.actors, join(dirs.root, 'gbrain', 'ingest-tokens.json'));
       if (gbrain.install !== 'mcp') {

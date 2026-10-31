@@ -10,7 +10,7 @@
 //
 // internal-task (gbrain#7481, scope "sources"): under HE_GBRAIN_SCOPE=sources the entrypoint copies the company brain's manifest.json
 // (no tokens; its grants map each member to the source ids that member may read) beside the token; the runner hands the
-// grants to the world's tap, which adds source_ids to every search and query under the trial's one unscoped token
+// grants to the world's tap, which adds source_ids to every search, query, recall and list_pages under the trial's one unscoped token
 // (world/services/gbrain-tap.ts), and checks the grants cover every actor of the task (HE-GBRAIN-004).
 //
 // internal-task (the install ladder): the sidecar takes the surface (HE_GBRAIN_SURFACE) and, for an embedded brain, the model
@@ -58,7 +58,7 @@ export interface GbrainSidecarOptions {
   image?: string;
   /** internal-task: the brain to serve and whether tokens.json is wanted; defaults bot-visible and none. */
   brain?: NonNullable<GbrainCellConfig['brain']>;
-  scope?: 'none' | 'member' | 'sources';
+  scope?: 'none' | 'member' | 'sources' | 'member-sources';
   /** internal-task: live ingestion (member brain only): the entrypoint copies ingest-tokens.json beside the token. */
   ingest?: 'off' | 'live';
   /** internal-task: the surface (default starter) and the embedding model (default off); an embedded brain needs openaiBaseUrl, the
@@ -84,7 +84,7 @@ export interface GbrainSidecar {
   /** internal-task: sha256 image id behind the tag, from docker image inspect. */
   image_id: string;
   brain: NonNullable<GbrainCellConfig['brain']>;
-  scope: 'none' | 'member' | 'sources';
+  scope: 'none' | 'member' | 'sources' | 'member-sources';
   /** internal-task: the surface and embedding model the sidecar was started with. */
   surface: GbrainCellConfig['surface'];
   embeddings: NonNullable<GbrainCellConfig['embeddings']>;
@@ -306,7 +306,7 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
       }
       ingestTokens = checkIngestTokens(JSON.parse(readFileSync(ingestPath, 'utf8')), JSON.parse(readFileSync(join(out, 'manifest.json'), 'utf8')), o.split, [], ingestPath);
     }
-    if (scope === 'sources') {
+    if (scope === 'sources' || scope === 'member-sources') {
       const manifestPath = join(out, 'manifest.json');
       while (!existsSync(manifestPath) || !readFileSync(manifestPath, 'utf8').trim()) {
         if (Date.now() > deadline) throw new Error(`no manifest.json at ${manifestPath} after ${Math.round(timeout / 1000)} s`);
@@ -315,7 +315,7 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
       }
       grants = checkCompanyGrants(JSON.parse(readFileSync(manifestPath, 'utf8')), o.split, [], manifestPath);
     }
-    if (scope === 'member') {
+    if (scope === 'member' || scope === 'member-sources') {
       while (!existsSync(tokensPath) || !readFileSync(tokensPath, 'utf8').trim()) {
         if (Date.now() > deadline) throw new Error(`no tokens.json at ${tokensPath} after ${Math.round(timeout / 1000)} s`);
         const gone = await exited();
@@ -360,10 +360,13 @@ export async function probeGbrainImage(image: string, scratchDir: string, o: { s
 /** internal-task (gbrain#7481) preflight and keyless check for scope "sources": the company brain of a split, served under the one
  *  unscoped token, is searched and queried once per member and query with source_ids set to that member's grant exactly as the
  *  tap sets it (scopeRequest), and every returned row's source_id must lie inside the grant; one call per member names a
- *  source outside the grant and must come back permission_denied. Rows are counted so an all-empty check cannot pass vacuously. */
+ *  source outside the grant and must come back permission_denied. Rows are counted so an all-empty check cannot pass vacuously.
+ *  internal-task: every SOURCE_SCOPED_TOOLS tool is probed (recall and list_pages too, gbrain#8074; list_pages once per member, it takes no
+ *  query), and under scope "member-sources" (internal-task) each member's calls go out under that member's rescoped token from tokens.json,
+ *  as the tap sends them, so the two layers are checked together. */
 export const SOURCE_PROBE_QUERIES = ['incident', 'rate', 'door', 'budget', 'meeting', 'contract', 'ticket', 'update'] as const;
 
-export async function probeSourceGrants(image: string, split: 'dev' | 'heldout', scratchDir: string, queries: readonly string[] = SOURCE_PROBE_QUERIES): Promise<{
+export async function probeSourceGrants(image: string, split: 'dev' | 'heldout', scratchDir: string, queries: readonly string[] = SOURCE_PROBE_QUERIES, scope: 'sources' | 'member-sources' = 'sources'): Promise<{
   ready_ms: number; image_id: string; members: number; calls: number; rows: number; sources_seen: number;
   /** Every row outside the requester's grant: member, tool, query, slug and source. Empty is the pass. */
   outside: Array<{ member: string; tool: string; query: string; slug: string; source_id: string }>;
@@ -375,12 +378,25 @@ export async function probeSourceGrants(image: string, split: 'dev' | 'heldout',
   foreign: Array<{ member: string; source_id: string; rows_from_it: boolean | null }>;
   /** The same query for two members with different grants answered different source sets, so the narrowing is observable. */
   differs: boolean;
+  /** internal-task: rows per SOURCE_SCOPED_TOOLS tool over every member; a tool at 0 was not observed and fails preflight. */
+  rows_by_tool: Record<string, number>;
+  /** internal-task, scope "member-sources" only (null otherwise): the same calls under each member's token with no source_ids, so the
+   *  token layer is checked on its own (rows outside the grant land in outside, tool marked "token alone"), and per member one
+   *  get_page of a slug from a source outside its grant, which must come back as an error code, never the page (code null), while
+ *  the same slug under the unscoped token comes back as the page (unscoped_code null), so the refusal is the member token's; beside
+ *  it one get_page of a slug inside the grant, which must come back as the page, so an all-refused read cannot pass vacuously.
+ *  "The page" means a reply whose slug is the one asked for. Under the token alone list_pages is paged to the end. */
+  token_alone: null | { rows_by_tool: Record<string, number>; slug_reads: Array<{ member: string; slug: string; source_id: string; code: string | null; unscoped_code: string | null; own_slug: string | null; own_code: string | null }> };
 }> {
-  const { scopeRequest } = await import('../../world/services/gbrain-tap.ts');
-  const sidecar = await startGbrainSidecar({ trialId: 'preflight', trialSlug: `preflight-sources-${split}-${process.pid}`, split, outDir: scratchDir, image, brain: 'company', scope: 'sources' });
+  const { scopeRequest, SOURCE_SCOPED_TOOLS } = await import('../../world/services/gbrain-tap.ts');
+  const sidecar = await startGbrainSidecar({ trialId: 'preflight', trialSlug: `preflight-${scope}-${split}-${process.pid}`, split, outDir: scratchDir, image, brain: 'company', scope });
   const fail = (what: string) => new RunnerError('HE-GBRAIN-002', `the company brain for ${split} in ${image} ${what}; fix: rebuild the image (gbrain/README.md, "The company brain")`);
   try {
-    if (!sidecar.grants) throw fail('started under scope "sources" without grants');
+    if (!sidecar.grants) throw fail(`started under scope "${scope}" without grants`);
+    if (scope === 'member-sources' && !sidecar.tokens) throw fail('started under scope "member-sources" without tokens');
+    const ROW_KEYS = ['results', 'pages', 'facts', 'items'];
+    const rowsOf = (p: unknown): Array<{ slug?: string; source_id?: string }> | null => Array.isArray(p) ? p : p && typeof p === 'object' && ROW_KEYS.some((k) => Array.isArray((p as Record<string, unknown>)[k])) ? ROW_KEYS.flatMap((k) => { const v = (p as Record<string, unknown>)[k]; return Array.isArray(v) ? v : []; }) : null;
+    const rows_by_tool: Record<string, number> = Object.fromEntries([...SOURCE_SCOPED_TOOLS].map((t) => [t, 0]));
     const allSources = new Set(Object.values(sidecar.grants.members).flat());
     const outside: Array<{ member: string; tool: string; query: string; slug: string; source_id: string }> = [];
     const denied: Array<{ member: string; source_id: string; code: string | null }> = [];
@@ -388,17 +404,36 @@ export async function probeSourceGrants(image: string, split: 'dev' | 'heldout',
     const perQuery = new Map<string, Set<string>>();
     let calls = 0, rows = 0;
     const seen = new Set<string>();
+    const slugBySource = new Map<string, string>();
+    const token_alone = scope === 'member-sources' ? { rows_by_tool: Object.fromEntries([...SOURCE_SCOPED_TOOLS].map((t) => [t, 0])) as Record<string, number>, slug_reads: [] as Array<{ member: string; slug: string; source_id: string; code: string | null; unscoped_code: string | null; own_slug: string | null; own_code: string | null }> } : null;
+    const tokenOf = (member: string) => scope === 'member-sources' ? sidecar.tokens!.members[member] : sidecar.token;
     for (const [member, grant] of Object.entries(sidecar.grants.members).sort(([a], [b]) => a.localeCompare(b))) {
-      for (const query of queries) for (const tool of ['search', 'query'] as const) {
-        const { request } = scopeRequest({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: { query, limit: 50 } } }, grant);
-        const payload = await callGbrain(sidecar.url, sidecar.token, tool, request.params!.arguments as Record<string, unknown>);
-        calls++;
-        if (!Array.isArray(payload)) throw fail(`answered ${tool} ${JSON.stringify(query)} for ${member} with ${JSON.stringify(payload).slice(0, 200)} instead of rows`);
-        for (const r of payload as Array<{ slug?: string; source_id?: string }>) {
-          rows++;
+      const token = tokenOf(member);
+      if (!token) throw fail(`has a source grant for ${member} but no token for it in tokens.json`);
+      for (const alone of token_alone ? [false, true] : [false]) for (const query of queries) for (const tool of SOURCE_SCOPED_TOOLS) {
+        if (tool === 'list_pages' && query !== queries[0]) continue;
+        const args = tool === 'list_pages' ? { limit: 100 } : tool === 'recall' ? { query } : { query, limit: 50 };
+        const sent = alone ? args : scopeRequest({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: args } }, grant).request.params!.arguments as Record<string, unknown>;
+        // Under the token alone list_pages is read to the end, so a broad token cannot pass on a first page that happens to sit inside the grant.
+        const paged = alone && tool === 'list_pages';
+        const got: Array<{ slug?: string; source_id?: string }> = [];
+        for (let offset = 0; ; offset += 100) {
+          const payload = await callGbrain(sidecar.url, token, tool, paged ? { ...sent, offset, sort: 'slug' } : sent);
+          calls++;
+          const page = rowsOf(payload);
+          if (!page) throw fail(`answered ${tool} ${JSON.stringify(query)} for ${member}${alone ? ' (token alone)' : ''} with ${JSON.stringify(payload).slice(0, 200)} instead of rows`);
+          if (paged && page.length && page.every((r) => got.some((g) => g.slug === r.slug))) throw fail(`answered list_pages for ${member} (token alone) at offset ${offset} with only rows it had already sent; offset paging does not hold`);
+          got.push(...page);
+          if (!paged || page.length < 100) break;
+        }
+        for (const r of got) {
           const source_id = typeof r.source_id === 'string' ? r.source_id : '';
+          if (r.slug && source_id && !slugBySource.has(source_id)) slugBySource.set(source_id, r.slug);
+          if (!grant.includes(source_id)) outside.push({ member, tool: alone ? `${tool} (token alone)` : tool, query: tool === 'list_pages' ? '' : query, slug: r.slug ?? '?', source_id });
+          if (alone) { token_alone!.rows_by_tool[tool]!++; continue; }
+          rows++;
+          rows_by_tool[tool]!++;
           seen.add(source_id);
-          if (!grant.includes(source_id)) outside.push({ member, tool, query, slug: r.slug ?? '?', source_id });
           if (tool === 'search') { const k = `${query}|${member}`; perQuery.set(k, (perQuery.get(k) ?? new Set()).add(source_id)); }
         }
       }
@@ -418,12 +453,26 @@ export async function probeSourceGrants(image: string, split: 'dev' | 'heldout',
         if (rows_from_it === null) foreign.push({ member, source_id: other[0]!, rows_from_it: null });
       }
     }
+    // The member token is all that guards a slug read (get_page takes no source_ids), so each member asks for a page it may not read.
+    if (token_alone) for (const [member, grant] of Object.entries(sidecar.grants.members).sort(([a], [b]) => a.localeCompare(b))) {
+      const sorted = [...slugBySource].sort(([a], [b]) => a.localeCompare(b));
+      const target = sorted.find(([source_id]) => !grant.includes(source_id));
+      if (!target) continue;
+      const own = sorted.find(([source_id]) => grant.includes(source_id));
+      // Served means the requested page came back (any other page out of grant counts as a leak in run.ts); the same slug is also read under the unscoped token, so a refusal outside the grant is one the token made.
+      const read = async (slug: string, token = tokenOf(member)!) => {
+        const reply = await callGbrain(sidecar.url, token, 'get_page', { slug }) as Record<string, unknown> | null;
+        calls++;
+        return reply && typeof reply.code === 'string' ? reply.code : reply && typeof reply.error === 'string' ? reply.error : !reply ? 'empty' : reply.slug === slug ? null : `another page (${String(reply.slug ?? '?')})`;
+      };
+      token_alone.slug_reads.push({ member, slug: target[1], source_id: target[0], code: await read(target[1]), unscoped_code: await read(target[1], sidecar.token), own_slug: own?.[1] ?? null, own_code: own ? await read(own[1]) : 'no slug inside the grant' });
+    }
     let differs = false;
     for (const query of queries) {
       const sets = Object.keys(sidecar.grants.members).map((m) => [...(perQuery.get(`${query}|${m}`) ?? new Set<string>())].sort().join(','));
       if (new Set(sets).size > 1) { differs = true; break; }
     }
-    return { ready_ms: sidecar.ready_ms, image_id: sidecar.image_id, members: Object.keys(sidecar.grants.members).length, calls, rows, sources_seen: seen.size, outside, denied, foreign, differs };
+    return { ready_ms: sidecar.ready_ms, image_id: sidecar.image_id, members: Object.keys(sidecar.grants.members).length, calls, rows, sources_seen: seen.size, outside, denied, foreign, differs, rows_by_tool, token_alone };
   } finally {
     await sidecar.stop(5_000);
   }

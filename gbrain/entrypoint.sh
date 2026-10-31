@@ -8,11 +8,12 @@
 #   HE_GBRAIN_INGEST  off (default) | live: with live (member brain only) the brain's ingest-tokens.json (one bearer token per
 #                     source, each writing to that source) is copied to $HE_GBRAIN_OUT/ingest-tokens.json for the world's
 #                     ingestion module, which writes each message of the scenario into the source of its conversation
-#   HE_GBRAIN_SCOPE   none (default) | member | sources: with member, the company brain's tokens.json (one bearer token per member,
+#   HE_GBRAIN_SCOPE   none (default) | member | sources | member-sources: with member, the company brain's tokens.json (one bearer token per member,
 #                     each granted the sources that member may read, plus public-only) is copied to $HE_GBRAIN_OUT/tokens.json;
 #                     with sources (internal-task, gbrain#7481), the company brain's manifest.json (its grants map members to source
 #                     ids, no tokens) is copied to $HE_GBRAIN_OUT/manifest.json and the world's tap adds source_ids per request
-#                     for the world's tap to present per requesting member; member needs brain company
+#                     for the world's tap to present per requesting member; member needs brain company; with member-sources
+#                     (internal-task, internal-task) both files are copied and the tap presents the member's token and its source_ids
 #   HE_GBRAIN_OUT     a mounted evaluator directory: the token(s) and the sidecar's logs land here
 #   HE_TRIAL_ID       names the token (trial-<id>)
 #   HE_GBRAIN_SURFACE starter (default) | verbs: the MCP surface gbrain serves (internal-task, the install ladder; gbrain/pin.json
@@ -52,7 +53,7 @@ case "$HE_GBRAIN_SPLIT" in dev|heldout) ;; *) refuse "HE_GBRAIN_SPLIT must be de
 case "$HE_GBRAIN_BRAIN" in bot-visible|company|member) ;; *) refuse "HE_GBRAIN_BRAIN must be bot-visible, company or member (got $HE_GBRAIN_BRAIN); fix: set gbrain.brain on the cell to one of them" ;; esac
 case "$HE_GBRAIN_INGEST" in off|live) ;; *) refuse "HE_GBRAIN_INGEST must be off or live (got $HE_GBRAIN_INGEST); fix: set gbrain.ingest on the cell to one of them" ;; esac
 [ "$HE_GBRAIN_INGEST" = off ] || [ "$HE_GBRAIN_BRAIN" = member ] || refuse "HE_GBRAIN_INGEST=live needs HE_GBRAIN_BRAIN=member (got $HE_GBRAIN_BRAIN); only the member brain carries ingest tokens; fix: set gbrain: {surface: starter, brain: member, scope: member, ingest: live}"
-case "$HE_GBRAIN_SCOPE" in none|member|sources) ;; *) refuse "HE_GBRAIN_SCOPE must be none, member or sources (got $HE_GBRAIN_SCOPE); fix: set gbrain.scope on the cell to one of them" ;; esac
+case "$HE_GBRAIN_SCOPE" in none|member|sources|member-sources) ;; *) refuse "HE_GBRAIN_SCOPE must be none, member, sources or member-sources (got $HE_GBRAIN_SCOPE); fix: set gbrain.scope on the cell to one of them" ;; esac
 [ "$HE_GBRAIN_SCOPE" = none ] || [ "$HE_GBRAIN_BRAIN" = company ] || [ "$HE_GBRAIN_BRAIN" = member ] || refuse "HE_GBRAIN_SCOPE=$HE_GBRAIN_SCOPE needs HE_GBRAIN_BRAIN=company or member (got $HE_GBRAIN_BRAIN); only those brains carry member tokens and source grants; fix: set gbrain: {surface: starter, brain: company, scope: $HE_GBRAIN_SCOPE}"
 case "$HE_GBRAIN_SURFACE" in starter|verbs) ;; *) refuse "HE_GBRAIN_SURFACE must be starter or verbs (got $HE_GBRAIN_SURFACE); fix: set gbrain.surface on the cell to one of them" ;; esac
 case "$HE_GBRAIN_EMBEDDINGS" in off) ;; openai:text-embedding-3-small) ;; *) refuse "HE_GBRAIN_EMBEDDINGS must be off or openai:text-embedding-3-small (got $HE_GBRAIN_EMBEDDINGS); fix: set gbrain.embeddings on the cell to one of them" ;; esac
@@ -69,9 +70,11 @@ else
   case "$HE_GBRAIN_BRAIN" in bot-visible) src="/brains/$HE_GBRAIN_SPLIT" ;; *) src="/brains/$HE_GBRAIN_SPLIT-$HE_GBRAIN_BRAIN" ;; esac
 fi
 [ -d "$src/.gbrain" ] || refuse "no brain at $src; rebuild the image (gbrain/README.md)"
-[ "$HE_GBRAIN_SCOPE" != member ] || [ -s "$src/tokens.json" ] || refuse "no tokens.json in $src; the $HE_GBRAIN_BRAIN brain was built without member tokens; rebuild the image (gbrain/README.md)"
+case "$HE_GBRAIN_SCOPE" in member|member-sources) want_tokens=1 ;; *) want_tokens=0 ;; esac
+case "$HE_GBRAIN_SCOPE" in sources|member-sources) want_grants=1 ;; *) want_grants=0 ;; esac
+[ "$want_tokens" = 0 ] || [ -s "$src/tokens.json" ] || refuse "no tokens.json in $src; the $HE_GBRAIN_BRAIN brain was built without member tokens; rebuild the image (gbrain/README.md)"
 [ "$HE_GBRAIN_INGEST" != live ] || [ -s "$src/ingest-tokens.json" ] || refuse "no ingest-tokens.json in $src; the member brain was built without ingest tokens; rebuild the image (gbrain/README.md)"
-[ "$HE_GBRAIN_SCOPE" != sources ] || [ "$(jq -r '.grants | length' "$src/manifest.json" 2>/dev/null || echo 0)" -gt 0 ] || refuse "no grants in $src/manifest.json; the company brain was built without source grants; rebuild the image (gbrain/README.md)"
+[ "$want_grants" = 0 ] || [ "$(jq -r '.grants | length' "$src/manifest.json" 2>/dev/null || echo 0)" -gt 0 ] || refuse "no grants in $src/manifest.json; the company brain was built without source grants; rebuild the image (gbrain/README.md)"
 
 for k in ANTHROPIC_API_KEY OPENAI_API_KEY OPENROUTER_API_KEY GEMINI_API_KEY VOYAGE_API_KEY; do
   if [ -n "${!k:-}" ]; then echo "refusing to start: $k is set in the sidecar environment; gbrain must never see a model key" >&2; exit 2; fi
@@ -111,7 +114,7 @@ tok=$(bun /opt/gbrain/src/cli.ts auth create "trial-$HE_TRIAL_ID" 2>>"$HE_GBRAIN
 printf '%s' "$tok" > "$HE_GBRAIN_OUT/token.tmp"
 mv "$HE_GBRAIN_OUT/token.tmp" "$HE_GBRAIN_OUT/token"
 unset tok
-if [ "$HE_GBRAIN_SCOPE" = member ]; then
+if [ "$want_tokens" = 1 ]; then
   # The member tokens were minted at image build (gbrain/build-brain.ts); they are copied, mode 0600, for the tap only.
   cp "$src/tokens.json" "$HE_GBRAIN_OUT/tokens.json.tmp"
   mv "$HE_GBRAIN_OUT/tokens.json.tmp" "$HE_GBRAIN_OUT/tokens.json"
@@ -124,7 +127,7 @@ if [ "$HE_GBRAIN_INGEST" = live ]; then
   mv "$HE_GBRAIN_OUT/ingest-tokens.json.tmp" "$HE_GBRAIN_OUT/ingest-tokens.json"
   log "ingest tokens copied ($(jq -r '.sources | length' "$HE_GBRAIN_OUT/ingest-tokens.json") sources) into $HE_GBRAIN_OUT/ingest-tokens.json; the world ingests each message into its conversation's source"
 fi
-if [ "$HE_GBRAIN_SCOPE" = sources ]; then
+if [ "$want_grants" = 1 ]; then
   # internal-task (gbrain#7481): the grants (member -> source ids) for the tap's per-request source_ids; the manifest holds no token.
   cp "$src/manifest.json" "$HE_GBRAIN_OUT/manifest.json.tmp"
   mv "$HE_GBRAIN_OUT/manifest.json.tmp" "$HE_GBRAIN_OUT/manifest.json"

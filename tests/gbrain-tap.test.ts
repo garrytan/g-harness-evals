@@ -224,6 +224,47 @@ test('grantFor: no tokens means the bot token; member scope presents public-only
   expect(grantFor({ url: 'u', token: 't', tokens: MEMBER_TOKENS }, 'nobody')).toEqual({ grant: 'nobody', token: null });
 });
 
+// internal-task (internal-task): scope "member-sources" carries both layers, the member's own token and its source_ids.
+test('grantFor: with member tokens and source grants both set, the requester\'s token goes out with its sources; public-only before any turn', () => {
+  const grants = { members: { 'june-osei': ['private-june-osei', 'public'] }, public: ['public'] };
+  expect(grantFor({ url: 'u', token: 't', tokens: MEMBER_TOKENS, grants }, null)).toEqual({ grant: 'public-only', token: MEMBER_TOKENS.public_only, sources: ['public'] });
+  expect(grantFor({ url: 'u', token: 't', tokens: MEMBER_TOKENS, grants }, 'june-osei')).toEqual({ grant: 'june-osei', token: MEMBER_TOKENS.members['june-osei'], sources: ['private-june-osei', 'public'] });
+  expect(grantFor({ url: 'u', token: 't', grants }, 'june-osei')).toEqual({ grant: 'june-osei', token: 't', sources: ['private-june-osei', 'public'] });
+  // A member with a source grant but no token never falls back to the unscoped token.
+  expect(grantFor({ url: 'u', token: 't', tokens: MEMBER_TOKENS, grants: { ...grants, members: { ...grants.members, 'kwame-adjei': ['public'] } } }, 'kwame-adjei')).toEqual({ grant: 'kwame-adjei', token: null, sources: ['public'] });
+});
+
+test('under scope "member-sources" each call goes out under the requester\'s own token with its source_ids, public-only before any turn; a member with a grant but no token is a 502 and nothing goes upstream', async () => {
+  const GRANTS = { members: { 'dana-okafor': ['private-dana-okafor', 'public', 'channel-north-random'], 'kwame-adjei': ['public'] }, public: ['public'] };
+  ws.setGbrain({ url: `http://127.0.0.1:${upstream.port}`, token: GBRAIN_TOKEN, tokens: MEMBER_TOKENS, grants: GRANTS });
+  const admin = (member: string | null) => fetch(`${ws.url}/admin/gbrain/requester`, { method: 'POST', headers: { authorization: `Bearer ${ws.credentials.admin_token}`, 'content-type': 'application/json' }, body: JSON.stringify({ member }) });
+  const forwarded = () => (seen.at(-1)!.body as { params: { arguments: Record<string, unknown> } }).params.arguments;
+  try {
+    seen.length = 0;
+    await tap(ws.credentials.bot.token, call(71, 'recall', { query: 'before any turn' }));
+    expect(seen.at(-1)!.auth).toBe(`Bearer ${MEMBER_TOKENS.public_only}`);
+    expect(forwarded()).toEqual({ query: 'before any turn', source_ids: ['public'] });
+    expect(last()).toMatchObject({ tool: 'gbrain.recall', grant: 'public-only' });
+
+    await admin('dana-okafor');
+    await tap(ws.credentials.bot.token, call(72, 'list_pages', { limit: 10 }));
+    expect(seen.at(-1)!.auth).toBe(`Bearer ${MEMBER_TOKENS.members['dana-okafor']}`);
+    expect(forwarded()).toEqual({ limit: 10, source_ids: GRANTS.members['dana-okafor'] });
+    expect(last()).toMatchObject({ tool: 'gbrain.list_pages', grant: 'dana-okafor', outcome: 'ok' });
+
+    await admin('kwame-adjei');
+    const sent = seen.length, before = gbrainEvents().length;
+    const res = await tap(ws.credentials.bot.token, call(73, 'search', { query: 'no token for kwame' }));
+    expect(res.status).toBe(502);
+    expect((await res.json() as { error: { message: string } }).error.message).toContain('no gbrain token for member kwame-adjei');
+    expect(seen.length).toBe(sent);
+    expect(gbrainEvents().length).toBe(before);
+  } finally {
+    await admin(null);
+    ws.setGbrain({ url: `http://127.0.0.1:${upstream.port}`, token: GBRAIN_TOKEN });
+  }
+});
+
 test('under member scope the tap presents the requester\'s token set through /admin/gbrain/requester, public-only before any turn, and every event names its grant; an unknown member is refused and a member without a token is a 502', async () => {
   ws.setGbrain({ url: `http://127.0.0.1:${upstream.port}`, token: GBRAIN_TOKEN, tokens: MEMBER_TOKENS });
   const admin = (member: string | null) => fetch(`${ws.url}/admin/gbrain/requester`, { method: 'POST', headers: { authorization: `Bearer ${ws.credentials.admin_token}`, 'content-type': 'application/json' }, body: JSON.stringify({ member }) });
@@ -273,6 +314,11 @@ test('under scope "sources" every search and query carries the requester\'s sour
     expect(grantFor({ url: '', token: GBRAIN_TOKEN, grants: GRANTS }, 'hollis-mbeki')).toEqual({ grant: 'hollis-mbeki', token: GBRAIN_TOKEN, sources: GRANTS.members['hollis-mbeki'] });
     expect(grantFor({ url: '', token: GBRAIN_TOKEN, grants: GRANTS }, 'nobody')).toMatchObject({ grant: 'nobody', sources: null });
     expect(scopeRequest({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_page', arguments: { slug: 'x' } } }, ['public'])).toEqual({ request: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_page', arguments: { slug: 'x' } } } });
+    // internal-task (gbrain#8074, 0.60.522.0): recall and list_pages take source_ids too, so the tap narrows them like search and query.
+    for (const name of ['recall', 'list_pages']) {
+      expect(scopeRequest({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: { query: 'rate' } } }, ['public', 'team-north'])).toEqual({ request: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: { query: 'rate', source_ids: ['public', 'team-north'] } } } });
+      expect(scopeRequest({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: { source_ids: ['team-central'] } } }, ['public'])).toMatchObject({ denied: ['team-central'] });
+    }
 
     seen.length = 0;
     const before = await replyOf(await tap(ws.credentials.bot.token, call(61, 'search', { query: 'before any turn', limit: 5 })));
