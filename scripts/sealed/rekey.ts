@@ -29,7 +29,7 @@ import { randomBytes } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { RunnerError } from '../../runner/errors.ts';
 import { decryptWith, encryptTo, sha256 } from '../../runner/heldout/sealed.ts';
-import { checkPrivate, compareAndPush, CUSTODY_REF, CUSTODY_REPO, custodyClone, ESCROW_FILE, insideGitTree, isX25519Recipient, openedRuns, readAccessLog, SET_NAME, syncCustody } from './custody.ts';
+import { checkPrivate, compareAndPush, CUSTODY_REF, CUSTODY_REPO, custodyClone, ESCROW_FILE, insideGitTree, isX25519Recipient, liveSharersCurrent, openedRuns, readAccessLog, SET_NAME, syncCustody } from './custody.ts';
 import { custodyIdentity } from './identity.ts';
 import { backupEntries, type BackupEntry } from './intake.ts';
 import { SealRefusal } from './seal.ts';
@@ -82,11 +82,15 @@ export function checkSetName(set: string): void {
 }
 
 /**
- * Refuse a set that regeneration does not apply to: one with a "released" line, one with an "opened" run, or one whose
- * <set>/bundle.tar.age is not on the custody branch. Read from the synced clone: once before anything is decrypted, and
- * again in decide() under the custody lock, so an opening or release that lands meanwhile is seen.
+ * Refuse a set that regeneration does not apply to: one with a "released" line, one with an "opened" run, one whose
+ * <set>/bundle.tar.age is not on the custody branch, or one whose world slice or corpus a live sealed set shares (a backup
+ * of it holds that set's content). The custody state is read from the synced clone: once before anything is decrypted,
+ * and again in decide() under the custody lock, so an opening or release that lands meanwhile is seen. The shared-set
+ * check reads the manifests of the --repo checkout and of a fresh fetch of <remote>/main (liveSharersCurrent).
  */
-export function refuseSetState(clone: string, set: string, outcome: string): void {
+export function refuseSetState(clone: string, set: string, outcome: string, repo: string, remote: string): void {
+  const live = liveSharersCurrent(set, repo, remote);
+  if (live.length) fail(`set ${set} shares its world slice or corpus with ${live.join(', ')}, still in sealed custody and not retired; a backup of ${set} holds that set's content, so name it with --set ${live[0]}. ${outcome}`);
   if (readAccessLog(clone).some((e) => e.event === 'released' && e.set === set)) fail(`set ${set} has a "released" line in the access log on ${CUSTODY_REF}; regeneration is for a sealed set that was never opened. ${outcome}`);
   const opened = openedRuns(clone, set).size;
   if (opened) fail(`set ${set} has ${opened} opened run(s) in the access log on ${CUSTODY_REF}; regeneration is for a sealed set that was never opened. ${outcome}`);
@@ -109,7 +113,7 @@ export async function openBackups(o: CustodianOptions, backups: Array<{ flag: st
   const remote = o.remote ?? 'origin';
   const clone = custodyClone({ dir: o.custody, repo: resolve(o.repo), remote });
   syncCustody(clone, remote);
-  refuseSetState(clone, o.set, 'Nothing was decrypted');
+  refuseSetState(clone, o.set, 'Nothing was decrypted', resolve(o.repo), remote);
   const identity = await custodyIdentity({ identityPath: o.identityPath, escrowPath: join(clone, ESCROW_FILE), recipient: readRecipient(o.recipient), env: o.env });
   const plain: Array<{ bytes: Uint8Array; entries: BackupEntry[] }> = [];
   for (const [i, c] of ciphertexts.entries()) {
@@ -135,7 +139,7 @@ export async function rekeyBackup(o: RekeyOptions): Promise<{ sourceSha256: stri
     remote: o.remote ?? 'origin',
     message: () => `reencrypt a backup of ${o.set}`,
     decide: () => {
-      refuseSetState(clone, o.set, 'Nothing was pushed or written');
+      refuseSetState(clone, o.set, 'Nothing was pushed or written', resolve(o.repo), o.remote ?? 'origin');
       return { schema_version: 1, event: 'reencrypted', at: now(), run_id: '*', set: o.set, source_sha256: want, output_sha256: outputSha256, recipient: o.to, custodian: o.custodian ?? 'scripts/sealed/rekey.ts' };
     },
     onFailure: 'the backup was decrypted and re-encrypted in memory only; nothing was written',

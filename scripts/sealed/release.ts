@@ -22,7 +22,10 @@
  * status "retired", the sealed commitments kept under "released"), so bun scripts/seal-heldout.ts --check checks it as any
  * plaintext set. A "released" line goes to the access log. Nothing is committed in the public repository: the custodian
  * commits the release on a branch and opens its pull request, after which the full per-task numbers can be written from
- * the released receipts. It refuses, before anything is decrypted or written, when the access log has an "opened" line for
+ * the released receipts. It refuses, before anything is decrypted or written, while another set in sealed custody and not
+ * retired shares its world slice or corpus digest (a reseal and the set it replaced; the empty-corpus digest never counts;
+ * checked again before the first write and before the "released" push, so a reseal that reaches main meanwhile is seen),
+ * when the access log has an "opened" line for
  * a run of the set with no "exported" line (a released set takes no export, so that run would never get a decision or an
  * encrypted copy of its raw results: finish and export it first), and when it has an "exported" line for a run of the set
  * that has no docs/benchmarks/<run>/sealed-results/export.json (finish that export first: a rerun of
@@ -45,7 +48,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { RunnerError } from '../../runner/errors.ts';
 import { bundleEntryProblem, decryptWith, sha256, unpackTar, type TarEntry } from '../../runner/heldout/sealed.ts';
 import { heldoutSet, openingsLedger, readManifest, walk, type HeldoutManifest } from '../seal-heldout.ts';
-import { compareAndPush, custodyClone, ESCROW_FILE, readAccessLog, syncCustody, type AccessEvent } from './custody.ts';
+import { compareAndPush, custodyClone, ESCROW_FILE, liveSharersCurrent, readAccessLog, syncCustody, type AccessEvent } from './custody.ts';
 import { custodyIdentity } from './identity.ts';
 import { entriesDigest } from './export.ts';
 
@@ -62,6 +65,11 @@ export async function releaseSet(o: ReleaseOptions): Promise<{ runs: string[]; t
   if (m?.custody !== 'sealed' || !m.sealed) return fail(`set ${o.set} is not in sealed custody`);
   const s = m.sealed;
   const remote = o.remote ?? 'origin';
+  const refuseShared = (outcome: string) => {
+    const live = liveSharersCurrent(o.set, repo, remote);
+    if (live.length) fail(`set ${o.set} shares its world slice or corpus with ${live.join(', ')}, still in sealed custody and not retired; releasing ${o.set} would publish that set's content. Release it after the retirement of ${live.join(', ')} is on main and in this checkout. ${outcome}`);
+  };
+  refuseShared('Nothing was decrypted or written');
   const clone = custodyClone({ dir: o.custody, repo, remote });
   syncCustody(clone, remote);
   const bench = join(repo, 'docs', 'benchmarks');
@@ -126,6 +134,7 @@ export async function releaseSet(o: ReleaseOptions): Promise<{ runs: string[]; t
   }).map(([p]) => p);
   const PART = '.release-part';
   for (const dir of [set.tree, extraDir]) for (const p of existsSync(dir) ? walk(dir) : []) if (p !== set.manifest && !writes.has(p) && !(p.endsWith(PART) && writes.has(p.slice(0, -PART.length)) && !existsSync(p.slice(0, -PART.length)))) conflicts.push(p);
+  refuseShared('Nothing was written');
   if (conflicts.length) fail(`${conflicts.length} destination(s) in the public checkout already exist as a link, with other bytes, or beside the released tree without being in the bundle (path sha256 ${conflicts.slice(0, 3).map((p) => sha256(relative(repo, p)).slice(0, 12)).join(', ')}${conflicts.length > 3 ? ', ...' : ''}); release writes only new files or identical ones, so nothing was written`);
   for (const [p, data] of writes) {
     if (existsSync(p)) { if (execs.has(p) !== ((statSync(p).mode & 0o111) !== 0)) chmodSync(p, execs.has(p) ? 0o755 : 0o644); continue; }
@@ -146,6 +155,7 @@ export async function releaseSet(o: ReleaseOptions): Promise<{ runs: string[]; t
   compareAndPush(clone, {
     remote, beforePush: o.beforePush, message: () => `release set ${o.set}`, onFailure: 'the manifest is left sealed; rerun the release',
     decide: () => {
+      refuseShared('The released files are in this checkout, where check-sealed-publication.ts refuses them; the manifest is left sealed and the released line was not pushed');
       const current = readAccessLog(clone).filter((e) => e.set === o.set);
       const late = [...new Set([...unexported(current), ...current.filter((e) => e.event === 'exported' && !verified.has(e.run_id)).map((e) => e.run_id)])];
       if (late.length) fail(`the access log has an "opened" line with no "exported" line, or an "exported" line release did not verify, for ${late.length} run(s) of set ${o.set} that landed after release read it (${late.join(', ')}); the manifest is left sealed and the released line was not pushed. Finish and export each run, then rerun the release, which accepts the files already written`);

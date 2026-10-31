@@ -16,7 +16,7 @@ import { compareAndPush, eventProblems, isX25519Recipient, openedRuns, readAcces
 import { rekeyBackup } from '../scripts/sealed/rekey.ts';
 import { compareBackups, reportLines, type CompareOptions } from '../scripts/sealed/compare-backups.ts';
 import { openRun } from '../scripts/sealed/open.ts';
-import { candidate, cloneCustody, co, ENV_VALUE, makeFixture, register, ROOT, SCRUBBED_ENV, SET, type Fixture } from './sealed-fixture.ts';
+import { candidate, cloneCustody, co, commitPush, ENV_VALUE, git as fixtureGit, makeFixture, register, ROOT, SCRUBBED_ENV, SET, type Fixture } from './sealed-fixture.ts';
 
 const CANARY = { task: 'Numbat canary task body 6620', notes: 'Numbat canary task notes 3391', slice: 'Numbat canary slice 0457', audit: 'Numbat canary audit 7718', page: 'Numbat canary corpus page 2284', brief: 'Numbat canary brief 5530', readme: 'Numbat canary tasks readme 9043' };
 const TASK_IDS = ['ix-01-alpha', 'ix-02-beta', 'sx-01-gamma', 'qq-01-delta', 'qq-02-epsilon', 'loner', 'wxyzq-01-odd'];
@@ -145,6 +145,23 @@ describe('rekey.ts and compare-backups.ts', () => {
       [{ set: 'vnone' }, 'refs/heads/custody has no vnone/bundle.tar.age; --set names the sealed set the backup belongs to. Nothing was decrypted'],
       [{ backup: toAuthor.file, sha256: toAuthor.sha }, `--from-backup ${toAuthor.file} did not decrypt with the custody identity; nothing was written`],
     ] as const) await expect(lib(o)).rejects.toThrow(`HE-SEALED-006 ${message}`);
+    const sibling = join(f.repo, 'tasks', 'multiuser', `${SET}-next`, 'heldout', 'MANIFEST.json');
+    try {
+      const slice = JSON.parse(readFileSync(join(f.repo, 'tasks', 'multiuser', SET, 'heldout', 'MANIFEST.json'), 'utf8')).sealed.world_slice_sha256;
+      write(sibling, JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: slice }, status: 'open' }));
+      await expect(lib({})).rejects.toThrow(`HE-SEALED-006 set ${SET} shares its world slice or corpus with ${SET}-next, still in sealed custody and not retired; a backup of ${SET} holds that set's content, so name it with --set ${SET}-next. Nothing was decrypted`);
+      await expect(compare(await backup('shared-set'))).rejects.toThrow(`HE-SEALED-006 set ${SET} shares its world slice or corpus with ${SET}-next`);
+      // a checkout from before the reseal reached main is refused too: the check also reads a fresh fetch of origin/main
+      commitPush(f, 'synthetic reseal on main');
+      fixtureGit(f.repo, 'reset', '-q', '--hard', 'HEAD~1');
+      expect(existsSync(sibling)).toBe(false);
+      await expect(lib({})).rejects.toThrow(`HE-SEALED-006 set ${SET} shares its world slice or corpus with ${SET}-next`);
+    } finally {
+      fixtureGit(f.repo, 'fetch', '-q', 'origin', 'main');
+      fixtureGit(f.repo, 'reset', '-q', '--hard', 'origin/main');
+      rmSync(dirname(dirname(sibling)), { recursive: true, force: true });
+      if (fixtureGit(f.repo, 'status', '--porcelain')) commitPush(f, 'remove the synthetic reseal');
+    }
     expect(existsSync(dirname(out))).toBe(false);
     expect(existsSync(join(f.repo, 'rekeyed.tar.age'))).toBe(false);
     write(out, 'keep');

@@ -65,7 +65,7 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 
 - The world is Pemberline, a made-up company built from gbrain-evals' `messy-company-v1` dataset: 18 members, 13 channels, 148 files, 42 mails, calendars and private notes, served per trial by one process that logs every read and write ([world/](world/README.md), [world/seed/MANIFEST.json](world/seed/MANIFEST.json)).
 - A task is one or more members talking to the bot in channels and DMs. The grader reads the world's state and event log afterwards, never the bot's own story ([docs/tasks.md](docs/tasks.md)).
-- Task set v0.1: 10 public dev tasks and 20 held-out tasks sealed before the counted runs ([tasks/multiuser/README.md](tasks/multiuser/README.md)). Task set v0.2 adds continuity, synthesis, corrections and approval-relay families: 15 dev and 15 held-out tasks at the last counted run ([tasks/multiuser/v0.2/README.md](tasks/multiuser/v0.2/README.md)). Task set v0.3 is generated from a seed: 20 public dev tasks across six families, with a held-out set to be sealed ([tasks/multiuser/v0.3/README.md](tasks/multiuser/v0.3/README.md)).
+- Task set v0.1: 10 public dev tasks and 20 held-out tasks sealed before the counted runs ([tasks/multiuser/README.md](tasks/multiuser/README.md)). Task set v0.2 adds continuity, synthesis, corrections and approval-relay families: 15 dev and 15 held-out tasks at the last counted run ([tasks/multiuser/v0.2/README.md](tasks/multiuser/v0.2/README.md)). Task set v0.3 is generated from a seed: 20 public dev tasks across six families. Its 40 held-out tasks are sealed as set v0.3-gen6, which replaced the first seal, retired unopened ([tasks/multiuser/v0.3/README.md](tasks/multiuser/v0.3/README.md)).
 - Beside pass we count three bad things: consent violations (a finance figure or outside mail that should not have gone out), leaks (a DM fact in someone else's conversation) and cross-scope reads. Full text: [docs/methods.md](docs/methods.md#the-world-and-the-tasks-in-full).
 
 ## Current results
@@ -313,6 +313,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)); the world is built from gbrain-evals' `messy-company-v1` dataset; OpenClaw, Hermes Agent and QM are named as products only.
 
 ## Changelog
+
+### 2026-10-31: v0.3 resealed as v0.3-gen6 (internal-task)
+
+The task-set bullet says v0.3's held-out tasks are sealed as set v0.3-gen6 (it still said "to be sealed"). Why: this release commits the sealed manifest of `v0.3-gen6`, the regenerated v0.3 held-out set, and retires v0.3 unopened; no counted run uses either yet.
 
 ### 2026-10-31: instruction-route run reported (internal-task)
 

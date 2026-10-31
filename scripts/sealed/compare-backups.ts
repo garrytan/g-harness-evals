@@ -39,7 +39,7 @@
  * printed; a refused push prints nothing. It is not an opening.
  */
 import { createHash } from 'node:crypto';
-import { isAbsolute, join, normalize } from 'node:path';
+import { isAbsolute, join, normalize, resolve } from 'node:path';
 import { sha256, WORLD_COLLECTIONS } from '../../runner/heldout/sealed.ts';
 import { compareAndPush, CUSTODY_REF } from './custody.ts';
 import type { BackupEntry } from './intake.ts';
@@ -241,7 +241,7 @@ export async function compareBackups(o: CompareOptions): Promise<CompareResult> 
     remote: o.remote ?? 'origin',
     message: () => `compare two backups of ${o.set}`,
     decide: () => {
-      refuseSetState(clone, o.set, 'Nothing was pushed or printed');
+      refuseSetState(clone, o.set, 'Nothing was pushed or printed', resolve(o.repo), o.remote ?? 'origin');
       return { schema_version: 1, event: 'compared', at: now(), run_id: '*', set: o.set, source_sha256: aSha, output_sha256: bSha, custodian: o.custodian ?? 'scripts/sealed/compare-backups.ts' };
     },
     onFailure: 'both backups were decrypted in memory only and nothing was printed',

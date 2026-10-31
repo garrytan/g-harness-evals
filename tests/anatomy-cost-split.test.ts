@@ -5,7 +5,7 @@ import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { costSplit, dedupe, splitRow, type UsageRow } from '../scripts/anatomy/cost-split.ts';
 
 const ROOT = join(import.meta.dir, '..');
@@ -51,7 +51,7 @@ describe('cost split (internal-task)', () => {
   test('the committed m3 split rebuilds from its manifest', () => {
     const out = join(mkdtempSync(join(tmpdir(), 'cost-split-')), 'split.json');
     const res = spawnSync(process.execPath, ['scripts/anatomy/cost-split.ts', '--manifest', 'docs/harness-anatomy/cost/m3-heldout-2026-10.manifest.json', '--out', out],
-      { cwd: ROOT, encoding: 'utf8', env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: ROOT } });
+      { cwd: ROOT, encoding: 'utf8', env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: dirname(out) } });
     expect(res.status).toBe(0);
     const committed = JSON.parse(readFileSync(join(ROOT, 'docs/harness-anatomy/cost/m3-heldout-2026-10.split.json'), 'utf8'));
     expect(JSON.parse(readFileSync(out, 'utf8'))).toEqual(committed);

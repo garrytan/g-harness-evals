@@ -9,7 +9,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { generateX25519Identity, identityToRecipient } from 'age-encryption';
 import { corpusDigest, decryptWith, encryptTo, mergeWorld, renderWorld, packTar, receiptProblems, sealedImageProblem, sha256, sliceProblems, unpackTar, verifySealedRoot, readReceipt, type WorldSlice } from '../runner/heldout/sealed.ts';
@@ -588,6 +588,44 @@ describe('admission while main moves, and release against open', () => {
       if (n === 'db' || n === 'dr') { git(f.repo, 'revert', '--no-edit', 'HEAD'); git(f.repo, 'push', '-q', 'origin', 'HEAD:main'); }
     }
   }, 240_000);
+
+  test('release refuses, before decrypting or writing anything, while a live sealed set shares the world slice or corpus', async () => {
+    const sibling = join(f.repo, 'tasks', 'multiuser', 'vsyn-next', 'heldout', 'MANIFEST.json');
+    const slice = readManifest(heldoutSet(SET, f.repo))!.sealed!.world_slice_sha256;
+    const write = (status: string) => { mkdirSync(dirname(sibling), { recursive: true }); writeFileSync(sibling, JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: slice }, status })); };
+    const status = () => git(f.repo, 'status', '--porcelain', '--untracked-files=all');
+    try {
+      write('open');
+      const before = status();
+      expect(await refusedRelease({ identityPath: join(f.tmp, 'no-identity') })).toBe('HE-SEALED-008 set vsyn shares its world slice or corpus with vsyn-next, still in sealed custody and not retired; releasing vsyn would publish that set\'s content. Release it after the retirement of vsyn-next is on main and in this checkout. Nothing was decrypted or written');
+      expect(status()).toBe(before);
+      expect(readManifest(heldoutSet(SET, f.repo))!.custody).toBe('sealed');
+      write('retired');
+      expect(await refusedRelease({ identityPath: join(f.tmp, 'no-identity') })).not.toMatch(/shares its world slice/);
+    } finally {
+      rmSync(join(f.repo, 'tasks', 'multiuser', 'vsyn-next'), { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  test('a live sealed set that appears while release decrypts and writes is seen before the released line is pushed', async () => {
+    const sibling = join(f.repo, 'tasks', 'multiuser', 'vsyn-next', 'heldout', 'MANIFEST.json');
+    const slice = readManifest(heldoutSet(SET, f.repo))!.sealed!.world_slice_sha256;
+    let pushes = 0;
+    try {
+      const raced = await refusedRelease({ beforePush: () => {
+        if (pushes++) return;
+        mkdirSync(dirname(sibling), { recursive: true });
+        writeFileSync(sibling, JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: slice }, status: 'open' }));
+        compareAndPush(cloneCustody(f, 'cells-release-shared-race'), { message: () => 'another set moves custody', decide: () => ({ schema_version: 1, event: 'opened', at: 't', run_id: 'other-run', set: 'vsyn-other', label: 'dev', custodian: 'test' }) });
+      } });
+      expect(raced).toBe('HE-SEALED-008 set vsyn shares its world slice or corpus with vsyn-next, still in sealed custody and not retired; releasing vsyn would publish that set\'s content. Release it after the retirement of vsyn-next is on main and in this checkout. The released files are in this checkout, where check-sealed-publication.ts refuses them; the manifest is left sealed and the released line was not pushed');
+      expect(pushes).toBe(1);
+      expect(readManifest(heldoutSet(SET, f.repo))!.custody).toBe('sealed');
+      expect(readAccessLog(cloneCustody(f, 'cells-release-shared-raced')).filter((e) => e.set === SET).map((e) => e.event)).not.toContain('released');
+    } finally {
+      rmSync(join(f.repo, 'tasks', 'multiuser', 'vsyn-next'), { recursive: true, force: true });
+    }
+  }, 120_000);
 
   test('release refuses, before decrypting or writing anything, while a run of the set has an opened line and no exported line, and names the run', async () => {
     plantOpened('syn-early');

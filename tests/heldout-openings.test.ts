@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { checkOpenings, checkPlan, deriveSet, legacyList, type HeldoutBlock, type LegacyEntry } from '../runner/heldout/openings.ts';
 import { buildManifest as buildReceipts } from '../scripts/receipts-manifest.ts';
-import type { OpeningRow } from '../scripts/seal-heldout.ts';
+import { liveSharers, liveSharersAmong, type HeldoutManifest, type OpeningRow } from '../scripts/seal-heldout.ts';
 
 const ROOT = join(import.meta.dir, '..');
 const sha = (s: string) => createHash('sha256').update(s).digest('hex');
@@ -59,6 +59,11 @@ describe('the repository', () => {
 
   test('the CI check finds no problem', () => {
     expect(checkOpenings(ROOT)).toEqual([]);
+  });
+
+  test('retired v0.3 stays protected by its live reseal v0.3-gen6, which stays free', () => {
+    expect(liveSharers('v0.3', ROOT)).toEqual(['v0.3-gen6']);
+    expect(liveSharers('v0.3-gen6', ROOT)).toEqual([]);
   });
 
   test('every legacy preregistration matches its current prereg.json and plans as its backfilled row', () => {
@@ -163,6 +168,37 @@ describe('checkPlan refusals', () => {
     expect(() => checkPlan(withdrawn.prereg, withdrawn.digest, dir, [])).toThrow(/^HE-HELDOUT-002 .*is withdrawn/);
     const differs = addExperiment(dir, 'z-2026', dev(), { reason: 'something else' });
     expect(() => checkPlan(differs.prereg, differs.digest, dir, [])).toThrow(/^HE-HELDOUT-002 run z-2026: heldout\.reason is "later opening" but its row/);
+  });
+
+  test('HE-HELDOUT-003: a planned opening, dev or confirmatory, of a set whose world slice or corpus a live sealed set shares', () => {
+    const dir = repo({ status: 'retired' });
+    const slice = 'a'.repeat(64);
+    setLedger(dir, { sealed: { world_slice_sha256: slice, heldout_corpus_sha256: 'b'.repeat(64) } });
+    const successor = (status: string) => write(dir, 'tasks/multiuser/v9/heldout/MANIFEST.json', JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: slice, heldout_corpus_sha256: 'c'.repeat(64) }, status }));
+    successor('open');
+    const d = addExperiment(dir, 'd-2026', dev());
+    expect(() => checkPlan(d.prereg, d.digest, dir, [])).toThrow(/^HE-HELDOUT-003 run d-2026 plans an opening of set v0\.1, which shares its world slice or corpus with v9, still in sealed custody and not retired; .* fix: run it on v9$/);
+    expect(checkOpenings(dir, []).filter((p) => p.includes('world slice or corpus'))).toEqual(['set v0.1: d-2026 is a planned opening of a set whose world slice or corpus v9 shares while still in sealed custody and not retired; opening it would expose that set, so run it on v9 (HE-HELDOUT-003)']);
+    const c = addExperiment(dir, 'c-2026', confirmatory());
+    expect(() => checkPlan(c.prereg, c.digest, dir, [])).toThrow(/^HE-HELDOUT-003 run c-2026 plans an opening of set v0\.1, which shares its world slice or corpus with v9/);
+    expect(checkOpenings(dir, []).filter((p) => p.includes('world slice or corpus')).map((p) => p.split(' is ')[0])).toEqual(['set v0.1: d-2026', 'set v0.1: c-2026']);
+    successor('retired');
+    expect(checkPlan(d.prereg, d.digest, dir, [])[0]).toMatch(/^HELDOUT: run d-2026 set v0\.1/);
+    expect(checkOpenings(dir, []).filter((p) => p.includes('world slice or corpus'))).toEqual([]);
+    setLedger(dir, { status: 'open' });
+    expect(checkPlan(c.prereg, c.digest, dir, [])[0]).toMatch(/^HELDOUT: run c-2026 set v0\.1/);
+  });
+
+  test('liveSharersAmong: only a matching slice or corpus digest of a live sealed set counts, never null or the digest of nothing', () => {
+    const empty = createHash('sha256').digest('hex');
+    const sealed = (slice: string | null, corpus: string | null, status = 'open', custody: string | undefined = 'sealed') => ({ schema_version: 1, custody, sealed: { world_slice_sha256: slice, heldout_corpus_sha256: corpus }, status }) as unknown as HeldoutManifest;
+    const sets = new Map<string, HeldoutManifest>([
+      ['a', sealed('a'.repeat(64), empty)], ['b', sealed('b'.repeat(64), empty)],
+      ['r1', sealed(null, null)], ['r2', sealed(null, null)],
+      ['old', sealed('c'.repeat(64), 'd'.repeat(64), 'retired')], ['new', sealed('e'.repeat(64), 'd'.repeat(64))],
+      ['plain', { schema_version: 1, status: 'open' } as unknown as HeldoutManifest],
+    ]);
+    expect(Object.fromEntries([...sets.keys()].map((n) => [n, liveSharersAmong(n, sets)]))).toEqual({ a: [], b: [], r1: [], r2: [], old: ['new'], new: [], plain: [] });
   });
 
   test('HE-HELDOUT-003: a second confirmatory opening past a budget of one, and a planned confirmatory opening of a spent set', () => {

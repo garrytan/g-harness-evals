@@ -24,6 +24,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { Encrypter } from 'age-encryption';
 import { RunnerError } from '../../runner/errors.ts';
 import { sha256 } from '../../runner/heldout/sealed.ts';
+import { DEFAULT_SET, heldoutSet, liveSharers, liveSharersAmong, readManifest, type HeldoutManifest } from '../seal-heldout.ts';
 
 /** The repository whose custody branch holds the ciphertext; it must stay private (checkPrivate). */
 export const CUSTODY_REPO = 'garrytan/harness-evals';
@@ -120,6 +121,27 @@ export function eventProblems(line: string): string[] {
 
 export function git(cwd: string, args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 256 * 1024 * 1024 }).trim();
+}
+
+/** liveSharers over the public checkout and over a fresh fetch of <remote>/main, so a stale or edited checkout cannot hide
+ *  a reseal that main already holds. release.ts, rekey.ts and compare-backups.ts call it before decrypting. */
+export function liveSharersCurrent(set: string, repo: string, remote = 'origin'): string[] {
+  const ref = `${remote}/main`;
+  try {
+    git(repo, ['fetch', '-q', remote, `+refs/heads/main:refs/remotes/${ref}`]);
+  } catch {
+    throw new RunnerError('HE-SEALED-011', `could not fetch ${ref} into ${repo} to check for a live sealed set that shares set ${set}'s world slice or corpus; refused, and nothing was pushed or written`);
+  }
+  const main = new Map<string, HeldoutManifest>();
+  for (const p of git(repo, ['ls-tree', '-r', '--name-only', `refs/remotes/${ref}`, '--', 'tasks']).split('\n')) {
+    const m = /^tasks\/(?:multiuser\/(?:([^/]+)\/)?|repo\/([^/]+)\/)heldout\/MANIFEST\.json$/.exec(p);
+    if (!m || ['dev', 'heldout', '_shared'].includes(m[1] ?? '')) continue;
+    const name = m[1] ?? m[2] ?? DEFAULT_SET;
+    try { main.set(name, JSON.parse(git(repo, ['show', `refs/remotes/${ref}:${p}`])) as HeldoutManifest); } catch { /* seal-heldout.ts --check reports a malformed manifest */ }
+  }
+  const local = readManifest(heldoutSet(set, repo));
+  if (!main.has(set) && local) main.set(set, local);
+  return [...new Set([...liveSharers(set, repo), ...liveSharersAmong(set, main)])].sort();
 }
 
 /** Whether a path (or its nearest existing ancestor) is inside a git work tree. */

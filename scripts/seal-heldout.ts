@@ -163,6 +163,25 @@ export function setNameProblems(root = ROOT): string[] {
     .map((n) => `set name ${n} is used by tasks/multiuser/ and tasks/repo/; set names are unique across kinds, so rename one`);
 }
 
+/** sha256 of nothing: the corpus digest of a set sealed without corpus pages, which two unrelated sets can share. */
+const EMPTY_SHA256 = createHash('sha256').digest('hex');
+
+/** Other sets in sealed custody, not retired, whose world slice or corpus digest equals one of set name's (sealed or
+ *  released), the digest of nothing aside. While one exists, set name takes no opening and no release: either would expose that set's content (a
+ *  reseal such as v0.3-gen6 shares its slice, corpus and unchanged tasks with the retired set it replaces). */
+export function liveSharersAmong(name: string, manifests: Map<string, HeldoutManifest>): string[] {
+  const digests = (m: HeldoutManifest | undefined) => {
+    const s = (m?.sealed ?? (m as { released?: SealedCommitments } | undefined)?.released) as Partial<SealedCommitments> | undefined;
+    return [s?.world_slice_sha256, s?.heldout_corpus_sha256].filter((d): d is string => typeof d === 'string' && d.length > 0 && d !== EMPTY_SHA256);
+  };
+  const mine = new Set(digests(manifests.get(name)));
+  return [...manifests].filter(([n, m]) => n !== name && m.custody === 'sealed' && m.status !== 'retired' && digests(m).some((d) => mine.has(d))).map(([n]) => n).sort();
+}
+
+export function liveSharers(name: string, root = ROOT): string[] {
+  return liveSharersAmong(name, new Map(heldoutSets(root).flatMap((s): [string, HeldoutManifest][] => { const m = readManifest(s); return m ? [[s.name, m]] : []; })));
+}
+
 /** The openings ledger of a manifest, or undefined when the set has none yet. */
 export function openingsLedger(m: HeldoutManifest | undefined): OpeningsLedger | undefined {
   if (!m || m.opening_budget === undefined) return undefined;
