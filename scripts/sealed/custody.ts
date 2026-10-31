@@ -21,6 +21,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
+import { Encrypter } from 'age-encryption';
 import { RunnerError } from '../../runner/errors.ts';
 import { sha256 } from '../../runner/heldout/sealed.ts';
 
@@ -41,7 +42,7 @@ const AGE_HEADER = 'age-encryption.org/v1\n';
 
 export interface AccessEvent {
   schema_version: 1;
-  event: 'sealed' | 'opened' | 'resumed' | 'exported' | 'released' | 'escrowed';
+  event: 'sealed' | 'opened' | 'resumed' | 'exported' | 'released' | 'escrowed' | 'reencrypted' | 'compared';
   at: string;
   run_id: string;
   set: string;
@@ -55,13 +56,38 @@ export interface AccessEvent {
   opened_event_sha256?: string;
   results_bundle_sha256?: string;
   escrow_sha256?: string;
+  /** rekey.ts ("reencrypted") and compare-backups.ts ("compared"): the backup read, and the file written (rekey) or the
+   *  second backup read (compare). */
+  source_sha256?: string;
+  output_sha256?: string;
+  /** rekey.ts: the age X25519 recipient the backup was re-encrypted to. */
+  recipient?: string;
   custodian: string;
 }
 
-const EVENT_FIELDS: Record<string, 'string' | 'hex' | 'label'> = {
+export const ACCESS_EVENTS = ['sealed', 'opened', 'resumed', 'exported', 'released', 'escrowed', 'reencrypted', 'compared'] as const;
+
+const EVENT_FIELDS: Record<string, 'string' | 'hex' | 'label' | 'recipient'> = {
   at: 'string', run_id: 'string', set: 'string', custodian: 'string', prereg_json: 'string', public_ref: 'string', label: 'label',
   candidate_sha256: 'hex', prereg_sha256: 'hex', bundle_sha256: 'hex', opened_event_sha256: 'hex', results_bundle_sha256: 'hex', escrow_sha256: 'hex', public_commit: 'string',
+  source_sha256: 'hex', output_sha256: 'hex', recipient: 'recipient',
 };
+
+/** A set name, as seal.ts takes it (never "*"). */
+export const SET_NAME = /^[a-z0-9][a-z0-9.-]*$/;
+
+/** The exact fields of the two regeneration events (rekey.ts, compare-backups.ts); no other event carries the three new ones. */
+const REGENERATION_FIELDS: Record<string, string[]> = {
+  reencrypted: ['schema_version', 'event', 'at', 'run_id', 'set', 'custodian', 'source_sha256', 'output_sha256', 'recipient'],
+  compared: ['schema_version', 'event', 'at', 'run_id', 'set', 'custodian', 'source_sha256', 'output_sha256'],
+};
+
+/** Whether s is an age X25519 recipient: lowercase age1 plus 58 bech32 characters, accepted by the age library's own
+ *  recipient parser (bech32 checksum, prefix "age", 32 bytes). Hybrid and tag recipients are refused. */
+export function isX25519Recipient(s: unknown): s is string {
+  if (typeof s !== 'string' || !/^age1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{58}$/.test(s)) return false;
+  try { new Encrypter().addRecipient(s); return true; } catch { return false; }
+}
 
 /** Schema problems of one access-log line. */
 export function eventProblems(line: string): string[] {
@@ -70,7 +96,14 @@ export function eventProblems(line: string): string[] {
   if (!e || typeof e !== 'object' || Array.isArray(e)) return ['not an object'];
   const problems: string[] = [];
   if (e.schema_version !== 1) problems.push('schema_version is not 1');
-  if (!['sealed', 'opened', 'resumed', 'exported', 'released', 'escrowed'].includes(e.event as string)) problems.push('unknown event');
+  if (!(ACCESS_EVENTS as readonly string[]).includes(e.event as string)) problems.push('unknown event');
+  const regen = REGENERATION_FIELDS[e.event as string];
+  if (regen) {
+    for (const k of Object.keys(e)) if (EVENT_FIELDS[k] && !regen.includes(k)) problems.push(`${k} is not a field of a ${e.event as string} line`);
+    for (const k of regen) if (['source_sha256', 'output_sha256', 'recipient'].includes(k) && e[k] === undefined) problems.push(`${k} missing`);
+    if (e.run_id !== undefined && e.run_id !== '*') problems.push('run_id is not *');
+    if (typeof e.set === 'string' && e.set && !SET_NAME.test(e.set)) problems.push('set is not a set name');
+  } else for (const k of ['source_sha256', 'output_sha256', 'recipient']) if (k in e) problems.push(`${k} is only on reencrypted and compared lines`);
   for (const k of ['at', 'run_id', 'set', 'custodian']) if (typeof e[k] !== 'string' || !e[k]) problems.push(`${k} missing`);
   for (const [k, v] of Object.entries(e)) {
     if (k === 'schema_version' || k === 'event') continue;
@@ -78,6 +111,7 @@ export function eventProblems(line: string): string[] {
     if (!kind) { problems.push(`unknown field ${k}`); continue; }
     if (kind === 'hex' && !(typeof v === 'string' && /^[0-9a-f]{64}$/.test(v))) problems.push(`${k} is not a sha256`);
     if (kind === 'label' && v !== 'confirmatory' && v !== 'dev') problems.push(`${k} is not confirmatory or dev`);
+    if (kind === 'recipient' && !isX25519Recipient(v)) problems.push(`${k} is not an age X25519 recipient`);
     if (kind === 'string' && (typeof v !== 'string' || v.length > 512)) problems.push(`${k} is not a short string`);
   }
   if (IDENTITY_MARKER.test(line)) problems.push('carries an age identity');

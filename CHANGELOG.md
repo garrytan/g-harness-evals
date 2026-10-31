@@ -2,6 +2,19 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.63] - 2026-10-31
+
+(0.0.59 went to #143.)
+
+### internal-task: rekey.ts and compare-backups.ts for the v0.3 regeneration (Captain decision, option A)
+
+- `scripts/sealed/rekey.ts` (new): re-encrypts a set author's backup to the author's own age X25519 recipient, so the author can regenerate without the custody key. Same order of checks as `seal.ts --from-backup`: `--sha256` first, then `--to` (parsed by the age library, never the custody recipient), then `--out` (must not exist, outside every git work tree), then the private check, the backup digest, the set's state and the identity from `custodyIdentity` after the escrow check. The backup is decrypted in memory, parsed with `backupEntries` only to refuse an unsafe tar, and the identical bytes are encrypted to `--to`. No plaintext touches disk. The `reencrypted` access-log line is pushed while the new ciphertext is still in memory; only then is it written, fsynced and linked to `--out`, and a write that fails after the push leaves no file and says the line was pushed; the directory is fsynced after the link. It prints one line: both sha256 values and the custody commit.
+- `scripts/sealed/compare-backups.ts` (new): compares two backups encrypted to the custody recipient without printing content: tasks by family, the world slice record by record (`--slice`), the corpus page by page (`--corpus`), and every other entry by group of the first two path segments. Digests cover executable bits and directories, empty ones too. A family label prints only as 2 to 4 lowercase letters, and a group segment only as lowercase words that contain no task id or family prefix and are a directory in both backups; anything else prints as a 12-character sha256 prefix. Exit 1 when a task outside `--allow-family` differs, 3 (needs judgment) when a non-task entry, slice record or corpus page differs outside `--allow-group` (pages named for an allowed family count as allowed only with `--allow-family-pages`), else 0. It pushes one `compared` line before printing.
+- Both refuse a set with an opened run, a `released` line or no bundle on the custody branch, before decrypting and again under the custody lock, and name the flag of a backup the custody identity cannot decrypt.
+- `scripts/sealed/custody.ts`: the access log takes `reencrypted` and `compared` events with exact field lists (`source_sha256`, `output_sha256`, and `recipient` on `reencrypted` only, checked by `isX25519Recipient`; `run_id` `*`; a real set name). No other event may carry those three fields. Neither event counts as an opening: open.ts, export.ts, release.ts and the ledger count only `opened` lines.
+- `tests/sealed-rekey.test.ts` (new, 13 tests): the round trip (the author decrypts the identical tar bytes, plain and gzipped), every refusal leaving no output file and no access-log line, a refused push and a failed write after the push, the line shapes and `validateCustodyChange`, the comparison counts, labels (each leak probe from review) and exit codes, a top-level `__proto__` slice key, mode-only and empty-directory changes, the set-state refusals, a set with both events opened afterwards as opening 1, and no canary, task id or deep path on stdout or stderr. It fails on main (the scripts and `isX25519Recipient` do not exist there).
+- Docs: `docs/sealed-custody.md` "Re-encrypting for regeneration"; `docs/errors.md` HE-RUN-002 and HE-SEALED-006 rows cover the new refusals.
+
 ## [0.0.62] - 2026-10-31
 
 ### internal-task: v0.3 approval relay template fix (the Fail path of `v03-installer-dev-2026-10` endpoint 6)
