@@ -223,3 +223,18 @@ The results and the report come in a later pull request than this preregistratio
 ## Amendments
 
 Each amendment is dated and committed before any cell it affects runs. It ships in its own pull request, merged to main before those cells, and an affected shard resumes with `--resume --amendment <commit>`.
+
+### Amendment 1 (2026-10-31): the two pull requests merged between this branch's base and its merge
+
+The commit-binding check before the fan-out found two pull requests on main's first-parent history between this branch's base `6c8fcfe77` and the merge commit's first parent `5a9c066f3`. This preregistration did not name them. This amendment names them with their paths, as the commit-binding section requires.
+
+**What does not change.** No cell, task, preamble, grader, pin, world file, lease, cap, endpoint or rule changes. The run still executes at the merge commit `eb630bd469d4af7cd36483a7e8cbfbfaa66fb21f`, and every shard checks out that commit, not this amendment's. No cell had run when this amendment was committed.
+
+- **#155** (`5a9c066f3`, internal-task, the Lane B TB2 replication preregistration). It touches none of the listed paths: only its own preregistration directory, its `preregistrations.d` entry, and the version files.
+- **#154** (`7672db33b`, internal-task, QM re-pinned to `b6786d67`). It touches 16 files under `runner`, `harnesses` and `scripts`:
+  - `harnesses/qm/*` (Dockerfile, Dockerfile.sandbox, README.md, adapter.sh, compose.yaml, config/core.env, pin.json, prepare.sh, smoke-b6786d67.json): QM only. No cell of this run uses QM.
+  - `harnesses/run-trial.sh`: a `prepare.sh` refusal now stops the trial, and blank lines in its output are skipped. That branch runs only for a harness with a `compose.yaml`. OpenClaw and Hermes have neither a `compose.yaml` nor a `prepare.sh` at the merge commit.
+  - `runner/trial/trial.ts`: a doc comment, and the fix hint inside the HE-MODEL-001 message (it now names QM's `PI_MODEL`). The check, and when it fires, are unchanged.
+  - `runner/run.ts`, `harnesses/serve-smoke.ts` and `harnesses/README.md`: comments and docs that list QM's configs.
+  - `scripts/anatomy/capture.ts` and `scripts/anatomy/publish.sh`: the anatomy capture lane. The fan-out, shard, merge and summary scripts this run uses do not call them.
+- **Expected effect on this run's trials:** none, except that an HE-MODEL-001 message, if one fires, carries the new fix hint. The report names both pull requests with these paths.

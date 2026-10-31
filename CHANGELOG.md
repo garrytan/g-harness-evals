@@ -2,6 +2,16 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.71] - 2026-10-31
+
+(0.0.69 is claimed by #152 and #158; 0.0.70 by #159.)
+
+### internal-task: v03-ar-reread-2026-10 amendment 1, the two pull requests merged between the preregistration's base and its merge
+
+- `docs/benchmarks/2026-10-30-v03-ar-reread/PREREGISTRATION.md`: adds Amendment 1 (2026-10-31) under Amendments. The commit-binding check before the fan-out found #155 and #154 on main's first-parent history between the branch base `6c8fcfe77` and the merge commit's first parent `5a9c066f3`. The amendment names both with their paths, as the commit-binding section requires.
+- #155 (internal-task, the Lane B TB2 replication preregistration) touches none of the listed paths. #154 (internal-task, QM re-pinned to `b6786d67`) touches 16 files under `runner`, `harnesses` and `scripts`: QM files, a `prepare.sh` refusal path in `harnesses/run-trial.sh` that OpenClaw and Hermes never reach, the HE-MODEL-001 fix hint, comments, and the anatomy capture lane.
+- No cell, task, preamble, grader, pin, world file, lease, cap, endpoint or rule changes. The run still executes at the merge commit `eb630bd46`. Docs only.
+
 ## [0.0.68] - 2026-10-31
 
 (0.0.63 went to #146; 0.0.64 to 0.0.66 went to #154; 0.0.67 went to #155.)
