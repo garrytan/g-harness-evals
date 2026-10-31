@@ -40,12 +40,15 @@ The lane ledger above is the drive record copied verbatim; this table is what th
 |---|---|---|---|---|
 | `v02-heldout-2026-10` | [docs/benchmarks/2026-10-25-v02-heldout](../docs/benchmarks/2026-10-25-v02-heldout/) | $77.036507 | 900 | [report](../docs/benchmarks/2026-10-25-v02-heldout/report.md) |
 | `v02-pilot-2026-10` | [docs/benchmarks/2026-10-25-v02-pilot](../docs/benchmarks/2026-10-25-v02-pilot/) | $1.552271 | 180 | [report](../docs/benchmarks/2026-10-25-v02-pilot/report.md) |
+| `v03-installer-dev-2026-10` | [docs/benchmarks/2026-10-29-v03-installer-dev](../docs/benchmarks/2026-10-29-v03-installer-dev/) | $4.090258 | 400 | [report](../docs/benchmarks/2026-10-29-v03-installer-dev/report.md) |
+| `v03-pilot-2026-10` | [docs/benchmarks/2026-10-29-v03-pilot](../docs/benchmarks/2026-10-29-v03-pilot/) | $9.146624 | 1040 | [report](../docs/benchmarks/2026-10-29-v03-pilot/report.md) |
+| `host-harness-pilot-2026-10` | [docs/benchmarks/2026-10-30-host-harness-pilot](../docs/benchmarks/2026-10-30-host-harness-pilot/) | $7.513753 | 900 | [report](../docs/benchmarks/2026-10-30-host-harness-pilot/report.md) |
 
 ## Program total
 
 Lane ledger only: 21 lanes, $283.145034 committed (the sum of `committed_usd` over every line, to six decimals), 8,300 recorded trials and 77,578 recorded requests, against the $2,000 program cap set on 2026-10-22 ([docs/methodology.md](methodology.md), item 11); $1,716.85 of the cap remains.
 
-Combined: $361.733812 committed, the lane total plus the 2 run ledger row(s) above ($78.588778), against the same $2,000 cap; $1,638.27 remains.
+Combined: $382.484447 committed, the lane total plus the 5 run ledger row(s) above ($99.3394130000), against the same $2,000 cap; $1,617.52 remains.
 
 Uncounted smokes, scratch leases and infrastructure outside the paid-call lane (Ubicloud VM time) appear only where a line's note names them.
 

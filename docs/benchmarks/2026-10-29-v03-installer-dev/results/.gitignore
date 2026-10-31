@@ -1,0 +1,22 @@
+# Evaluator-owned receipts are committed; harness state, workspaces, raw harness logs and per-trial tokens are not.
+trials/*/*/*/state/*
+!trials/*/*/*/state/hermes/
+trials/*/*/*/state/hermes/*
+!trials/*/*/*/state/hermes/SOUL.md
+trials/*/*/*/workspace/
+trials/*/*/*/logs/*
+!trials/*/*/*/logs/adapter.log
+trials/*/*/*/trial.json
+*.sqlite-shm
+*.sqlite-wal
+trials/*/*/*/compose.serve.yaml
+# The gbrain sidecar's per-trial token and logs, and every preflight's token and sidecar logs, stay out of the repository.
+trials/*/*/*/gbrain/
+*preflight-*/
+**/ingest-tokens.json
+**/tokens.json
+# The shard logs the preregistration names as receipts are kept despite the root *.log rule.
+!/*.log
+# Per-trial receipts that the harness loaded gbrain's per-turn hook (as in gbrain-installer-hook-2026-10). Small and token-free.
+!trials/*/*/*/logs/gbrain-hook.openclaw.json
+!trials/*/*/*/logs/gbrain-hook.hermes.log

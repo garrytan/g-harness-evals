@@ -13,11 +13,12 @@
 - **The dev pilot read no-go** ([report](docs/benchmarks/2026-10-29-v03-pilot/report.md)): on its 20 public tasks on Haiku, four of six families were informative and the rule needs five. It found and fixed a defect in one family.
 - **The held-out set was sealed early.** It was sealed (custody commit `custody commit (private)`) before that verdict was settled.
 - **That deviation is approved on one condition** ([deviation-approval.md](docs/benchmarks/2026-10-29-v03-pilot/deviation-approval.md)): the `told` cells of the installer dev run ([preregistration](docs/benchmarks/2026-10-29-v03-installer-dev/PREREGISTRATION.md)) must show five of six families informative.
+- **The condition failed** ([report](docs/benchmarks/2026-10-29-v03-installer-dev/report.md), [note](docs/benchmarks/2026-10-29-v03-pilot/2026-10-30-opening-1-gate.md)): four of six again, and the three approval relay tasks are task defects. The seal at `custody commit (private)` is retired unopened. Next, the approval relay template is fixed, the set is resealed, and the fixed family gets a dev re-read before opening 1.
 - **The second dev pilot can't tell Claude Code or Codex apart from OpenClaw and Hermes Agent** on the same 20 public tasks, each pair on one model ([report](docs/benchmarks/2026-10-30-host-harness-pilot/report.md)).
   - Claude Code and Codex cost less per trial; the paired interval excludes zero in five of six pairs.
   - gbrain's `told` arm scored lower than no brain in all three Haiku harnesses (descriptive, intervals in the report), through cross-scope reads from `gbrain.search`.
 
-Version: harness-evals v0.0.59. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
+Version: harness-evals v0.0.60. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
 
 ## Start here
 
@@ -164,6 +165,7 @@ Version: harness-evals v0.0.59. Everything above [Changelog](#changelog) describ
 | Run | Date | Question | Result | Spend | Status | Report |
 |---|---|---|---|---|---|---|
 | `v03-pilot-2026-10` | 2026-10-29 | Are the v0.3 task families informative, and does opening 1 fit $30? | No-go: 4 of 6 families in range. Approval relay fixed (#119), not yet re-measured. Opening 1 fits $30 at a typical reservation ($23.57), not at the largest ($30.57) | $9.15 of $24.90 | dev | [report](docs/benchmarks/2026-10-29-v03-pilot/report.md) |
+| `v03-installer-dev-2026-10` | 2026-10-30 | Do the told cells clear the seal for opening 1 (5 of 6 families), and what does an installer trial cost? | Fail: 4 of 6 families in range; approval relay 0 of 30 and its 3 tasks are defects. Installer $0.0110 (OC) and $0.0114 (He) a trial; opening 1 $30.46 at the largest reservation | $4.09 ($4.01 trials of the $9 cap, $0.08 smokes) | dev | [report](docs/benchmarks/2026-10-29-v03-installer-dev/report.md) |
 | `host-harness-pilot-2026-10` | 2026-10-30 | Claude Code against OpenClaw and Hermes Agent on Haiku, Codex against them on gpt-6-luna | CC 57 · OC 56 · He 63 (none), CC 39 · OC 47 · He 42 (told), Cx 67 · OC 63 · He 61 (luna); all six pairs can't tell apart, smallest Holm p 0.750 | $7.38 of $20 (+ $0.14 smokes) | dev | [report](docs/benchmarks/2026-10-30-host-harness-pilot/report.md) |
 
 ### How to read these numbers
@@ -174,7 +176,7 @@ Version: harness-evals v0.0.59. Everything above [Changelog](#changelog) describ
 - Only a held-out set's first counted opening is confirmatory; a later opening is dev because whoever designed it had seen that set's results ([Corrections](#corrections), 2026-10-28).
 - The maths (95 percent task-clustered intervals, paired differences, sign-flip tests, Holm) and the openings ledger: [docs/methods.md](docs/methods.md#how-to-read-the-numbers).
 
-**Spend so far.** Spend across every lane, from the lease ledgers: $361.73 committed of the $2,000 program cap ([docs/budget-ledger.md](docs/budget-ledger.md): $283.15 in the program's lane ledger plus $78.59 from the two v0.2 runs' committed ledgers that the lane ledger does not yet list). Every dollar is the metering proxy's list-price meter; the provider-side check has never been performed (Known limits).
+**Spend so far.** Spend across every lane, from the lease ledgers: $382.48 committed of the $2,000 program cap ([docs/budget-ledger.md](docs/budget-ledger.md): $283.15 in the program's lane ledger plus $99.34 from five runs' committed ledgers that the lane ledger does not yet list: the two v0.2 runs, the two v0.3 dev runs and the host-harness pilot). Every dollar is the metering proxy's list-price meter; the provider-side check has never been performed (Known limits).
 
 ## How the harnesses compare
 
@@ -304,6 +306,9 @@ Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger 
 
 ## Changelog
 
+### 2026-10-30: v0.3 installer dev run reported, opening-1 gate fails (internal-task)
+
+harness-evals v0.0.60. The Next list gains a line saying the seal condition failed, linking the run's report and the dated gate note, and the v0.3 runs table gains a row for run `v03-installer-dev-2026-10`. The spend line moves to $382.48, the re-rendered budget page's combined total. The version line moves from v0.0.59 to v0.0.60 (v0.0.55 went to #136, v0.0.56 to #135, v0.0.57 to #140, v0.0.58 to #141, v0.0.59 to #145). Why: the run is complete, and its endpoint 6 decides that the seal at `custody commit (private)` is not opened.
 ### 2026-10-30: host-harness dev pilot reported (internal-task)
 
 harness-evals v0.0.59. The v0.3 runs table gives run `host-harness-pilot-2026-10` one row, and its so-what line names it. The Next line links the report. The Claude Code and Codex rows of the harness table name their first counted run, and the Models row names `gpt-6-luna`. The version line moves from v0.0.58 to v0.0.59. Why: the pilot is complete. All six preregistered pairs are not distinguished at 20 tasks (dev), and gbrain's `told` arm scored below no brain in all three Haiku harnesses (descriptive).

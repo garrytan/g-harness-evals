@@ -2,6 +2,17 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.60] - 2026-10-30
+
+### internal-task: v03-installer-dev-2026-10 reported; the opening-1 gate fails
+
+- `docs/benchmarks/2026-10-29-v03-installer-dev/report.md` (new) and `results/` (new): the run preregistered in #128. 400 Haiku trials, OpenClaw and Hermes, told and installer cells on the 20 v0.3 dev tasks, at harness-evals `fd185baea` and gbrain `32366ac2`. All completed, none excluded. $4.01 of the $9 cap plus $0.08 smokes; Ubicloud VMs $5.35 list.
+- Endpoint 6 fails. Four of six families are informative in the told arm, and the gate needs five; corrections is 1 of 40 and approval relay 0 of 30. The three approval relay tasks are task defects (`results/defects.json`): both readers for ar-01 and ar-02, where the grant comes from an approver who holds no record of the figure, and the second reader for ar-03. So the seal at custody commit `custody commit (private)` is not cleared.
+- `docs/benchmarks/2026-10-29-v03-pilot/2026-10-30-opening-1-gate.md` (new): the dated note on the gate's result, beside the pilot's report.
+- Opening 1 at the pilot's design is $30.46 at the largest per-call reservation, $0.46 over its $30 cap, with the measured installer cost replacing the pilot's stand-in.
+- `docs/receipts-manifest.json` and `docs/budget-ledger.md` are regenerated, so they list this run and the other results directories already on main (the v0.3 pilot and the host-harness pilot). The combined spend on the budget page, README and docs/methods.md moves from $361.73 to $382.48.
+- No runner, task, grader, world or gbrain file changes.
+
 ## [0.0.59] - 2026-10-30
 
 ### internal-task: host-harness-pilot-2026-10 reported (dev)
