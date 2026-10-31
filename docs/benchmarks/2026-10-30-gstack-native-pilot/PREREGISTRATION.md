@@ -106,3 +106,18 @@ Logs are in [prechecks/](prechecks/).
 ## Report
 
 The report and results come in a later pull request, under this directory: `results-native/`, `results-none2/`, `results-tb2/` and `report.md`. It covers every measure above with its receipt, the spend, the VM time, and any restart or deviation.
+
+## Amendment 1 (2026-10-30): the TB2 smoke again, as `gn-pilot-tb2-smoke2-2026-10`
+
+Written after `gn-pilot-2026-10` and `gn-pilot-none2-2026-10` ended, before any trial of the new run.
+
+- **What happened:** `gn-pilot-tb2-smoke-2026-10` ran no trial and spent nothing on the model.
+  - `vm-run.sh` passed the preregistration's task list to the materializer for native runs only. The TB2 run materialized all 20 TB2 tasks of Lane B's `final.json` instead of `filter-js-from-html`.
+  - The lease check then priced 20 tasks ($1.84) against the $1.10 cap and stopped the shard with `HE-LANEB-003` before the proxies started. The keyless smoke before it passed.
+  - The VM ran 8m18s ($0.08 list price) and was destroyed.
+- **Fix, in the same pull request as this amendment:** `vm-run.sh` reads the task list before it picks the source, so both sources materialize only the listed tasks. Test in `tests/gstack-laneb.test.ts`.
+- **Measure 8 still applies.** The TB2 re-execution waits until a smoke passes. This new run is that smoke.
+- **New run:** `gn-pilot-tb2-smoke2-2026-10`, in [prereg-tb2-2.json](prereg-tb2-2.json). It is `prereg-tb2.json` with only the run id changed: the same task, Haiku 5.5, the none arm, 1 try, shard `tb2-smoke`, lease $1.05 and cap $1.10.
+- **The old run** stays registered with no trials. The report says so.
+- **Money:** the pilot has spent $6.52 of its $20 hard cap, by the ledgers: $5.19 (Opus) and $0.28 (Haiku) in `gn-pilot-2026-10`, then $1.01 (Opus) and $0.05 (Haiku) in `gn-pilot-none2-2026-10`. The parts are rounded to the cent, and the total is the unrounded ledger sum ($6.5245). With this lease the worst case is $7.57.
+- **Results** go to `results-tb2-2/`.

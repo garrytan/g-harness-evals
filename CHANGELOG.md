@@ -2,6 +2,14 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.61] - 2026-10-31
+
+### internal-task: the gstack-native pilot's TB2 smoke again, after a bridge fix
+
+- Bridge fix: `scripts/gstack-laneb/vm-run.sh` passed the preregistration's task list to the materializer for native runs only. `gn-pilot-tb2-smoke-2026-10` therefore materialized all 20 TB2 tasks. The lease check priced them at $1.84 against the $1.10 cap and stopped the shard (`HE-LANEB-003`) before any trial, with nothing spent on the model. The task list is now read before the source is chosen, and both sources get `--ids`. Test in `tests/gstack-laneb.test.ts`.
+- `docs/benchmarks/2026-10-30-gstack-native-pilot/`: Amendment 1 in `PREREGISTRATION.md`, and `prereg-tb2-2.json` (new) for run `gn-pilot-tb2-smoke2-2026-10`. It is the same smoke with a new run id: `filter-js-from-html`, Haiku 5.5, the none arm, 1 try, lease $1.05, cap $1.10. It is registered in `docs/benchmarks/preregistrations.d/gstack-native-pilot.json`.
+- README: version line v0.0.60.
+
 ## [0.0.60] - 2026-10-30
 
 ### internal-task: v03-installer-dev-2026-10 reported; the opening-1 gate fails

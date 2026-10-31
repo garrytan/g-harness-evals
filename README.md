@@ -18,7 +18,7 @@
   - Claude Code and Codex cost less per trial; the paired interval excludes zero in five of six pairs.
   - gbrain's `told` arm scored lower than no brain in all three Haiku harnesses (descriptive, intervals in the report), through cross-scope reads from `gbrain.search`.
 
-Version: harness-evals v0.0.60. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
+Version: harness-evals v0.0.61. Everything above [Changelog](#changelog) describes the repository now; the changelog at the bottom records how this page changed. The one-page account of the first counted cell is [docs/report-v0.1.md](docs/report-v0.1.md).
 
 ## Start here
 
@@ -305,6 +305,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)); the world is built from gbrain-evals' `messy-company-v1` dataset; OpenClaw, Hermes Agent and QM are named as products only.
 
 ## Changelog
+
+### 2026-10-30: version line only, the TB2 smoke of the gstack-native pilot again (internal-task)
+
+harness-evals v0.0.61. The version at the top moves from v0.0.60 to v0.0.61. Nothing else on this page changed. Why: v0.0.61 fixes the Lane B bridge so a TB2 run materializes only its preregistered tasks, and preregisters the TB2 smoke again as `gn-pilot-tb2-smoke2-2026-10`.
 
 ### 2026-10-30: v0.3 installer dev run reported, opening-1 gate fails (internal-task)
 
