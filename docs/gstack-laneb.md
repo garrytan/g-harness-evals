@@ -116,6 +116,7 @@ So the counted gstack arm is a **pack-equivalent rebuild**, recorded in `pin.jso
 - **`--network public` is for uncounted smokes.** It opens every phase to the internet; a counted run uses `allowlist`.
 - **TB2 verifiers keep Lane B's network setting.** The pinned TB2 materializer runs the shared verifier with network, as Lane B does, so TB2 results stay comparable with Lane B's. Native tasks never use a shared verifier (below).
 - **Provider reconciliation.** `scripts/reconcile-provider.ts` filters on per-trial tokens (`trial-token:<run>/`); a Lane B shard meters under one lease key (`<run_id>:<shard>`), so reconcile Lane B spend from the shard's `ledger.sqlite` and `proxy-usage.ndjson`.
+- **Session ids in results need the pregate allowlist.** Each Harbor `result.json` carries the Lane B proxy session id (`"session": "s-<12 hex>"`) in its laneb block, a correlation id for the proxy's session log and not a credential, which gstack-pregate's secrets check reports as `env.kv`. `.gstack/pregate.json` allowlists exactly that value at the end of its line, only on `docs/benchmarks/*/results/*/laneb/jobs/*/*/result.json` and `docs/benchmarks/*/results/*/trials/*/*/*/harbor/result.json` (`tests/pregate-allowlist.test.ts`), so a Lane B results pull request passes the check only once that entry is on main.
 - **No resume.** A shard that stops part way has explicit records for what Harbor finished or started; the merge refuses a run with trials Harbor never started.
 
 ## Error codes

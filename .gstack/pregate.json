@@ -252,6 +252,15 @@
       ],
       "pattern": "(s\\.astanin@gmail\\.com|janne\\.vanhala@gmail\\.com|mail@dbader\\.org)(?![\\w.@-])",
       "reason": "upstream maintainers' published author addresses in vendored MIT-licensed files of the public dev split (#120), kept as upstream wrote them"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "docs/benchmarks/*/results/*/laneb/jobs/*/*/result.json",
+        "docs/benchmarks/*/results/*/trials/*/*/*/harbor/result.json"
+      ],
+      "pattern": "s-[0-9a-f]{12}\",?\\s*$",
+      "reason": "Lane B proxy session id (s- plus 12 hex) that the bridge writes into each Harbor result.json's laneb block as \"session\": \"s-<12 hex>\"; a correlation id for the metering proxy's session log, not a credential. The pattern starts at the value because gstack-pregate anchors it at the finding's column, so it cannot check the key: any env.kv value of exactly this shape ending its line on these two paths passes"
     }
   ]
 }

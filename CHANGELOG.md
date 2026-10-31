@@ -2,6 +2,13 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.76] - 2026-10-31
+
+### internal-task: the pregate secrets check accepts Lane B proxy session ids in Harbor result.json
+
+- `.gstack/pregate.json`: a new `allowlist` entry for `env.kv` findings on `"session": "s-<12 hex>"` lines, only in `docs/benchmarks/*/results/*/laneb/jobs/*/*/result.json` and `docs/benchmarks/*/results/*/trials/*/*/*/harbor/result.json`. The bridge writes this id into each Harbor result's laneb block as a correlation id for the metering proxy's session log. It grants no access. The pattern starts at the value, because gstack-pregate tests a pattern from the finding's column, and it must end the line, so a key on the same line is still reported. Every later Lane B results pull request needs this entry on main first.
+- `tests/pregate-allowlist.test.ts`: checks the entry's shape, then runs `gstack-pregate --only secrets` on a throwaway repository. Session ids pass on both paths. A real-shaped key fails on the session line and on another line of the same file. The same session line on another path still fails. The key is built at run time, so no key-shaped text is committed. The second test is skipped when gstack is not installed.
+
 ## [0.0.73] - 2026-10-31
 
 ### internal-task: instruction-route run results and report
