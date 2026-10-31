@@ -1,0 +1,54 @@
+bun test v1.4.4 (38afee6c8)
+
+tests/instruction-route.test.ts:
+(pass) the instruction file and the image layout > harnesses/routes/instruction.md and its two image copies are byte-identical, carry the cited sha256 and are gbrain's per-turn rule byte for byte (rendered at 32366ac2, the same bytes in the committed 10949a15 installer views) [1.11ms]
+(pass) the instruction file and the image layout > both adapters check the instruction against the same sha256, and both Dockerfiles copy routes/ to /opt/harness/routes [0.18ms]
+(pass) the instruction file and the image layout > the route-hook plugin template: one placeholder, the id in all three files, before_prompt_build returning prependContext [0.22ms]
+(pass) the instruction file and the image layout > the skill description fits Hermes's 57 visible characters [0.02ms]
+(pass) default config: byte-identical to the adapter at 31a109a9c > openclaw run: unset, empty and "default" leave every file and every CLI command line as 31a109a9c does [739.07ms]
+(pass) default config: byte-identical to the adapter at 31a109a9c > openclaw serve: unset, empty and "default" leave every file and every CLI command line as 31a109a9c does [3566.15ms]
+(pass) default config: byte-identical to the adapter at 31a109a9c > openclaw serve with HE_GBRAIN_INSTALL=gbrain-docs: unchanged from 31a109a9c [1600.46ms]
+(pass) default config: byte-identical to the adapter at 31a109a9c > openclaw serve with HE_GBRAIN_INSTALL=gbrain-installer (the committed hook view): unchanged from 31a109a9c [2103.85ms]
+(pass) default config: byte-identical to the adapter at 31a109a9c > hermes run: unset, empty and "default" leave every file and every CLI command line as 31a109a9c does [733.00ms]
+(pass) default config: byte-identical to the adapter at 31a109a9c > hermes serve: unset, empty and "default" leave every file and every CLI command line as 31a109a9c does [2907.04ms]
+(pass) default config: byte-identical to the adapter at 31a109a9c > hermes serve with HE_GBRAIN_INSTALL=gbrain-docs: unchanged from 31a109a9c [1519.99ms]
+(pass) default config: byte-identical to the adapter at 31a109a9c > hermes serve with HE_GBRAIN_INSTALL=gbrain-installer (the committed hook view): unchanged from 31a109a9c [1390.03ms]
+(pass) each route writes exactly its bytes > openclaw route-tool: nothing in the workspace or state changes [1809.56ms]
+(pass) each route writes exactly its bytes > openclaw route-skill: one SKILL.md with the fixed description and the instruction as its body [936.68ms]
+(pass) each route writes exactly its bytes > hermes route-tool: nothing in the workspace or state changes [1486.99ms]
+(pass) each route writes exactly its bytes > hermes route-skill: one SKILL.md with the fixed description and the instruction as its body [776.63ms]
+(pass) each route writes exactly its bytes > openclaw route-startup: /workspace/AGENTS.md is the instruction bytes alone [934.48ms]
+(pass) each route writes exactly its bytes > openclaw route-hook: the three plugin files, RULE equal to the instruction, the three documented commands and the runtime inspect [1174.25ms]
+(skip) each route writes exactly its bytes > hermes route-system (anthropic config, skipped where the host python3 has no PyYAML to parse it back): agent.system_prompt is the instruction as a JSON string, nothing else in config.yaml moves
+(skip) each route writes exactly its bytes > hermes route-system (openai config, skipped where the host python3 has no PyYAML to parse it back): agent.system_prompt is the instruction as a JSON string, nothing else in config.yaml moves
+(pass) each route writes exactly its bytes > hermes route-startup: SOUL.md is the seed, a blank line, the instruction and a newline [941.47ms]
+(pass) each route writes exactly its bytes > hermes route-hook: the marked pre_llm_call block, the allowlist approving exactly its command, hooks doctor run [892.50ms]
+(pass) refusals: HE-ADAPTER-007, exit 2, no ready > openclaw run: an unknown config is refused before any state is written [52.86ms]
+(pass) refusals: HE-ADAPTER-007, exit 2, no ready > openclaw serve: an unknown config is refused before any state is written [105.49ms]
+(pass) refusals: HE-ADAPTER-007, exit 2, no ready > openclaw: a tampered instruction file is refused [107.63ms]
+(pass) refusals: HE-ADAPTER-007, exit 2, no ready > openclaw: an existing destination is refused and left untouched [202.93ms]
+(pass) refusals: HE-ADAPTER-007, exit 2, no ready > hermes run: an unknown config is refused before any state is written [49.26ms]
+(pass) refusals: HE-ADAPTER-007, exit 2, no ready > hermes serve: an unknown config is refused before any state is written [106.57ms]
+(pass) refusals: HE-ADAPTER-007, exit 2, no ready > hermes: a tampered instruction file is refused [102.90ms]
+(pass) refusals: HE-ADAPTER-007, exit 2, no ready > hermes: an existing destination is refused and left untouched [101.69ms]
+(pass) refusals: HE-ADAPTER-007, exit 2, no ready > openclaw route-system: no setting at 2026.10.6, refused [51.42ms]
+(pass) refusals: HE-ADAPTER-007, exit 2, no ready > openclaw route-hook, route-startup and route-skill on the run entry: refused before anything is written [33.45ms]
+(pass) refusals: HE-ADAPTER-007, exit 2, no ready > hermes route-system: a python3 without PyYAML cannot parse the result back, refused [101.88ms]
+(pass) refusals: HE-ADAPTER-007, exit 2, no ready > openclaw route-hook: a plugin that does not report loaded fails closed [255.07ms]
+(pass) refusals: HE-ADAPTER-007, exit 2, no ready > hermes route-hook: a shell hook hermes hooks doctor does not call healthy fails closed [153.36ms]
+(pass) refusals: HE-ADAPTER-007, exit 2, no ready > hermes route-hook on a config that already has hooks (the gbrain installer hook) is refused [202.41ms]
+(pass) refusals: HE-ADAPTER-007, exit 2, no ready > hermes route-startup: a missing SOUL.md or one that is not the seed is refused [204.06ms]
+SURFACE_COUNTS openclaw {"default":[{"turn":1,"system":0,"messages":[0,0],"tool_result":false},{"turn":1,"system":0,"messages":[0,0,0,0],"tool_result":true},{"turn":2,"system":0,"messages":[0,0,0,0,0,0,0],"tool_result":true}],"route-tool":[{"turn":1,"system":0,"messages":[0,0],"tool_result":false},{"turn":1,"system":0,"messages":[0,0,0,0],"tool_result":true},{"turn":2,"system":0,"messages":[0,0,0,0,0,0,0],"tool_result":true}],"route-startup":[{"turn":1,"system":1,"messages":[0,0],"tool_result":false},{"turn":1,"system":1,"messages":[0,0,0,0],"tool_result":true},{"turn":2,"system":1,"messages":[0,0,0,0,0,0,0],"tool_result":true}],"route-hook":[{"turn":1,"system":0,"messages":[1,0],"tool_result":false},{"turn":1,"system":0,"messages":[1,0,0,0],"tool_result":true},{"turn":2,"system":0,"messages":[1,0,0,0,0,1,0],"tool_result":true}],"route-skill":[{"turn":1,"system":0,"messages":[0,0],"tool_result":false},{"turn":1,"system":0,"messages":[0,0,0,0],"tool_result":true},{"turn":2,"system":0,"messages":[0,0,0,0,0,0,0],"tool_result":true}]}
+(pass) where each route puts the instruction, over two turns and a tool-call follow-up (docker, the harness images; skipped without them) > openclaw: per route, the first request places the instruction as the table says; turn 2 and the tool-call follow-up are counted [321948.37ms]
+SURFACE_COUNTS hermes {"default":[{"turn":1,"system":0,"messages":[0],"tool_result":false},{"turn":1,"system":0,"messages":[0,0,0],"tool_result":true},{"turn":2,"system":0,"messages":[0,0,0,0,0],"tool_result":true}],"route-tool":[{"turn":1,"system":0,"messages":[0],"tool_result":false},{"turn":1,"system":0,"messages":[0,0,0],"tool_result":true},{"turn":2,"system":0,"messages":[0,0,0,0,0],"tool_result":true}],"route-system":[{"turn":1,"system":1,"messages":[0],"tool_result":false},{"turn":1,"system":1,"messages":[0,0,0],"tool_result":true},{"turn":2,"system":1,"messages":[0,0,0,0,0],"tool_result":true}],"route-startup":[{"turn":1,"system":1,"messages":[0],"tool_result":false},{"turn":1,"system":1,"messages":[0,0,0],"tool_result":true},{"turn":2,"system":1,"messages":[0,0,0,0,0],"tool_result":true}],"route-hook":[{"turn":1,"system":0,"messages":[1],"tool_result":false},{"turn":1,"system":0,"messages":[1,0,0],"tool_result":true},{"turn":2,"system":0,"messages":[1,0,0,0,1],"tool_result":true}],"route-skill":[{"turn":1,"system":0,"messages":[0],"tool_result":false},{"turn":1,"system":0,"messages":[0,0,0],"tool_result":true},{"turn":2,"system":0,"messages":[0,0,0,0,0],"tool_result":true}]}
+(pass) where each route puts the instruction, over two turns and a tool-call follow-up (docker, the harness images; skipped without them) > hermes: per route, the first request places the instruction as the table says; turn 2 and the tool-call follow-up are counted [215526.25ms]
+
+2 tests skipped:
+(skip) each route writes exactly its bytes > hermes route-system (anthropic config, skipped where the host python3 has no PyYAML to parse it back): agent.system_prompt is the instruction as a JSON string, nothing else in config.yaml moves
+(skip) each route writes exactly its bytes > hermes route-system (openai config, skipped where the host python3 has no PyYAML to parse it back): agent.system_prompt is the instruction as a JSON string, nothing else in config.yaml moves
+
+ 37 pass
+ 2 skip
+ 0 fail
+ 385 expect() calls
+Ran 39 tests across 1 file. [563.91s]

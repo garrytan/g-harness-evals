@@ -160,13 +160,14 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 
 ### v0.3 runs
 
-**So what:** the new task set's dev pilot sized the sealed opening and found one task family broken. The host-harness pilot could not tell Claude Code or Codex apart from OpenClaw and Hermes Agent. Both are dev.
+**So what:** the new task set's dev pilot sized the sealed opening and found one task family broken. The host-harness pilot could not tell Claude Code or Codex apart from OpenClaw and Hermes Agent. The instruction-route run found which places for gbrain's brain-first rule get the bot to check gbrain, each harness against its own control. All three are dev.
 
 | Run | Date | Question | Result | Spend | Status | Report |
 |---|---|---|---|---|---|---|
 | `v03-pilot-2026-10` | 2026-10-29 | Are the v0.3 task families informative, and does opening 1 fit $30? | No-go: 4 of 6 families in range. Approval relay fixed (#119), not yet re-measured. Opening 1 fits $30 at a typical reservation ($23.57), not at the largest ($30.57) | $9.15 of $24.90 | dev | [report](docs/benchmarks/2026-10-29-v03-pilot/report.md) |
 | `v03-installer-dev-2026-10` | 2026-10-30 | Do the told cells clear the seal for opening 1 (5 of 6 families), and what does an installer trial cost? | Fail: 4 of 6 families in range; approval relay 0 of 30 and its 3 tasks are defects. Installer $0.0110 (OC) and $0.0114 (He) a trial; opening 1 $30.46 at the largest reservation | $4.09 ($4.01 trials of the $9 cap, $0.08 smokes) | dev | [report](docs/benchmarks/2026-10-29-v03-installer-dev/report.md) |
 | `host-harness-pilot-2026-10` | 2026-10-30 | Claude Code against OpenClaw and Hermes Agent on Haiku, Codex against them on gpt-6-luna | CC 57 · OC 56 · He 63 (none), CC 39 · OC 47 · He 42 (told), Cx 67 · OC 63 · He 61 (luna); all six pairs can't tell apart, smallest Holm p 0.750 | $7.38 of $20 (+ $0.14 smokes) | dev | [report](docs/benchmarks/2026-10-30-host-harness-pilot/report.md) |
+| `anatomy-instruction-route-2026-11` | 2026-10-30 | Which places for gbrain's rule get OpenClaw and Hermes to check gbrain before they answer, each against its own control? | OpenClaw: only the per-turn hook differed from control (160 of 160 turns, control 1). Hermes: system prompt setting, `SOUL.md` and hook (144, 138 and 156 of 160, control 0). A listed skill: 1 and 5. Descriptive: pass 32 points lower on the OpenClaw hook, with cross-scope reads on the unscoped brain | $4.46 of $20, plus $0.04 of smokes | dev | [report](docs/benchmarks/2026-10-31-anatomy-instruction-route/report.md) |
 
 ### How to read these numbers
 
@@ -176,7 +177,10 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 - Only a held-out set's first counted opening is confirmatory; a later opening is dev because whoever designed it had seen that set's results ([Corrections](#corrections), 2026-10-28).
 - The maths (95 percent task-clustered intervals, paired differences, sign-flip tests, Holm) and the openings ledger: [docs/methods.md](docs/methods.md#how-to-read-the-numbers).
 
-**Spend so far.** Spend across every lane, from the lease ledgers: $382.48 committed of the $2,000 program cap ([docs/budget-ledger.md](docs/budget-ledger.md): $283.15 in the program's lane ledger plus $99.34 from five runs' committed ledgers that the lane ledger does not yet list: the two v0.2 runs, the two v0.3 dev runs and the host-harness pilot). Every dollar is the metering proxy's list-price meter; the provider-side check has never been performed (Known limits).
+**Spend so far.** Spend across every lane, from the lease ledgers: $406.78 committed of the $2,000 program cap ([docs/budget-ledger.md](docs/budget-ledger.md)).
+
+- That is $328.19 in the program's lane ledger plus $78.59 from the two v0.2 runs' committed ledgers that the lane ledger does not yet list.
+- Every dollar is the metering proxy's list-price meter; the provider-side check has never been performed (Known limits).
 
 ## How the harnesses compare
 
@@ -198,6 +202,10 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 - gbrain is not a harness. It is a knowledge brain served beside the world tools, and ten runs ask what each harness does with it ([docs/gbrain-arm.md](docs/gbrain-arm.md)).
 - Installed and unmentioned, no harness used it: 2 calls in 600 trials of the arm, 2 of 199 on the ladder's `mcp` rung. Nothing moved but trial length and, for QM, input tokens.
 - One brain-first clause in the per-turn preamble turns use on in about nine of ten trials. gbrain's own installer file produced no use until its revision added a per-turn hook; then use was 80 of 80 in both harnesses ([installer](docs/benchmarks/2026-10-25-gbrain-installer/report.md), [installer-hook](docs/benchmarks/2026-10-25-gbrain-installer-hook/report.md)).
+- Where the rule enters decides whether the bot checks gbrain first, each harness against its own control ([instruction-route](docs/benchmarks/2026-10-31-anatomy-instruction-route/report.md)).
+  - OpenClaw: only the per-turn hook differed (160 of 160 turns; `AGENTS.md` 5, a listed skill 1, tool descriptions alone 1).
+  - Hermes: system prompt setting, `SOUL.md` and hook differed (144, 138, 156 of 160; a listed skill 5, tool descriptions alone 0).
+  - On the unscoped brain these routes went with cross-scope reads; pass was 32 points lower on the OpenClaw hook (descriptive).
 - Told to use a bot-wide brain, harnesses gained the two cross-channel retrieval tasks they had failed and lost trials to a new failure: keyword `search` returns pages from channels the asker is not in, a cross-scope read. On the v0.2 held-out tasks that read rose in all six pairs while the pass effect stayed within noise; with semantic search on it cost 48 to 51 points.
 - Narrowing what a call can return fixes the leak: the seven memory verbs (`recall` returns one page) had zero cross-scope reads in 394 trials; per-request scoping by the member's grant (gbrain#7481) had zero in 197 trials against 76 of 99 and 72 of 100 unscoped, with pass up 61 and 65 points ([company-brain](docs/benchmarks/2026-10-25-company-brain/report.md), [gbrain-scoped](docs/benchmarks/2026-10-25-gbrain-scoped/report.md)).
 - A member brain that fills during the scenario read across members in 0 of 450 live trials, and every DM fact it returned belonged to the asker. Pass again stayed within noise on Sonnet (the largest, Hermes +23 [+0, +53] over 40 pairs, carried by two memory tasks, Holm p 1.000; [gbrain-memory](docs/benchmarks/2026-10-26-gbrain-memory/report.md)).
@@ -306,6 +314,10 @@ Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger 
 
 ## Changelog
 
+### 2026-10-31: instruction-route run reported (internal-task)
+
+The v0.3 runs table gives run `anatomy-instruction-route-2026-11` a row, its So what line names it, and "How gbrain compares" gains a bullet on where the rule enters. The spend line moves to $406.78, because the repository's lane ledger copy gains the fourteen drive lines it was missing and this run's line. Why: the run is complete and its report is in the tree.
+
 ### 2026-10-31: the version line points at VERSION (internal-task)
 
 The line at the top no longer names a version. It points at `VERSION` and `CHANGELOG.md`. A pull request that changes nothing on this page but the version now adds no entry here. Why: a version written into this page changed every time a pull request was renumbered after another one merged, and gstack then counted the page as changed product and asked for a fresh /ship (`RECEIPT_CARRY_PRODUCT_CHANGED` on #150).
@@ -337,6 +349,7 @@ harness-evals v0.0.61. The version at the top moves from v0.0.60 to v0.0.61. Not
 ### 2026-10-30: v0.3 installer dev run reported, opening-1 gate fails (internal-task)
 
 harness-evals v0.0.60. The Next list gains a line saying the seal condition failed, linking the run's report and the dated gate note, and the v0.3 runs table gains a row for run `v03-installer-dev-2026-10`. The spend line moves to $382.48, the re-rendered budget page's combined total. The version line moves from v0.0.59 to v0.0.60 (v0.0.55 went to #136, v0.0.56 to #135, v0.0.57 to #140, v0.0.58 to #141, v0.0.59 to #145). Why: the run is complete, and its endpoint 6 decides that the seal at `custody commit (private)` is not opened.
+
 ### 2026-10-30: host-harness dev pilot reported (internal-task)
 
 harness-evals v0.0.59. The v0.3 runs table gives run `host-harness-pilot-2026-10` one row, and its so-what line names it. The Next line links the report. The Claude Code and Codex rows of the harness table name their first counted run, and the Models row names `gpt-6-luna`. The version line moves from v0.0.58 to v0.0.59. Why: the pilot is complete. All six preregistered pairs are not distinguished at 20 tasks (dev), and gbrain's `told` arm scored below no brain in all three Haiku harnesses (descriptive).

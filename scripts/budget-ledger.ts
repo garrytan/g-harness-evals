@@ -8,7 +8,7 @@
 // lease ledger path or paths as the lane recorded them), committed_usd, date, and optionally trials, requests and note;
 // any other field (smoke_usd on one line) is shown in the note column and never summed. The program total is the sum of
 // committed_usd over every line, against the $2,000 program cap of docs/methodology.md item 11. A second table lists the
-// runs of docs/receipts-manifest.json that no lane line names (run id as `lane`, or results directory inside `ledger`)
+// runs of docs/receipts-manifest.json that no lane line names (run id as `lane`, results directory or run id inside `ledger`)
 // with the committed spend read from their SQLite ledgers, and a combined total adds them to the lane total. The changelog at the
 // bottom is kept in CHANGELOG below: add an entry when the page's shape changes. --check exits 1 when the committed page
 // differs from the render.
@@ -26,18 +26,21 @@ export interface LaneLine { lane: string; ledger: string; committed_usd: number;
 const KNOWN = new Set(['lane', 'ledger', 'committed_usd', 'date', 'trials', 'requests', 'note']);
 
 const CHANGELOG: Array<{ date: string; title: string; text: string }> = [
+  { date: '2026-10-31', title: 'a lane line that names the run id counts as listing it (internal-task)', text: 'A run whose whole run id appears in a lane line\'s `ledger` text is no longer listed under "Run ledgers not yet in the lane ledger", so the v0.3 pilot, whose drive line names it as `run v03-pilot-2026-10`, is counted once. The lane ledger copy gains the fourteen drive lines it was missing, with numbers that six of them wrote as strings copied as numbers. Why: the copy was behind the drive, and syncing it would otherwise have counted the pilot twice.' },
   { date: '2026-10-26', title: 'first version (internal-task)', text: 'harness-evals v0.0.12. The lane table rendered from `docs/ledger/lane-spend.jsonl` by `scripts/budget-ledger.ts`, the run ledgers the lane ledger does not yet name (from `docs/receipts-manifest.json`), the lane-only and combined totals against the $2,000 cap, and the pointer to what the provider-side check has and has not shown.' },
 ];
 
 export interface ManifestRun { directory: string; run_id: string | null; report: string | null; trials: number; ledgers: Array<{ ledger_committed_usd: number | string }> }
 export interface UnlistedRun { run_id: string; directory: string; report: string | null; trials: number; committed_usd: number; unreadable_ledgers: number }
 
-/** Runs of the receipts manifest that no lane line names, by run id in `lane` or by results directory in `ledger`. */
+/** Runs of the receipts manifest that no lane line names, by run id in `lane`, or by results directory or whole run id in `ledger`. */
 export function unlistedRuns(runs: ManifestRun[], lanes: LaneLine[]): UnlistedRun[] {
   const out: UnlistedRun[] = [];
   for (const r of runs) {
     if (!r.run_id) continue;
-    const named = lanes.some((l) => l.lane === r.run_id || l.ledger.includes(r.directory));
+    const whole = (s: string) => new RegExp('(^|[^\\w.:-])' + s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^\\w.:-]|\\.(?=\\s|$))');
+    const id = whole(r.run_id), dir = whole(r.directory);
+    const named = lanes.some((l) => l.lane === r.run_id || dir.test(l.ledger) || id.test(l.ledger));
     if (named) continue;
     const spend = r.ledgers.map((l) => l.ledger_committed_usd).filter((x): x is number => typeof x === 'number');
     out.push({ run_id: r.run_id, directory: r.directory, report: r.report, trials: r.trials, committed_usd: Number(spend.reduce((s, x) => s + x, 0).toFixed(6)), unreadable_ledgers: r.ledgers.length - spend.length });
@@ -97,7 +100,7 @@ ${rows.join('\n')}
 
 ## Run ledgers not yet in the lane ledger
 
-The lane ledger above is the drive record copied verbatim; this table is what the committed SQLite ledgers add: every run in [${MANIFEST_FILE}](receipts-manifest.json) whose run id is no lane line's \`lane\` and whose results directory appears in no lane line's \`ledger\` text, with the sum of \`ledger_committed_usd\` over its ledger files as the manifest read them.
+The lane ledger above is the drive record copied verbatim (numbers a line wrote as strings are copied as numbers); this table is what the committed SQLite ledgers add: every run in [${MANIFEST_FILE}](receipts-manifest.json) whose run id is no lane line's \`lane\` and whose results directory and run id appear in no lane line's \`ledger\` text, with the sum of \`ledger_committed_usd\` over its ledger files as the manifest read them.
 
 ${unlistedTable}
 

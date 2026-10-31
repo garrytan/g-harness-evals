@@ -32,4 +32,11 @@ describe('publish-audit: the receipts check', () => {
     const nested = [t + 'workspace/logs/gbrain-hook.hermes.log', t + 'workspace/state/hermes/SOUL.md', t + 'workspace/logs/gbrain-hook.openclaw.json', t + 'workspace/logs/turns/turn-0001.openclaw.json'];
     expect(harnessOwned(nested)).toEqual(nested);
   });
+
+  test('keeps the instruction-route receipts at their own place in the trial layout only', () => {
+    const t = 'docs/benchmarks/2026-10-31-anatomy-instruction-route/results/trials/openclaw-haiku-gbrain-route-hook-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1/';
+    const kept = [t + 'logs/instruction-route.json', t + 'logs/ready', t + 'logs/instruction-route.openclaw.json', t + 'logs/instruction-route.hermes.log'];
+    const owned = [t + 'logs/ready.tmp', t + 'logs/instruction-route.hermes.json', t + 'logs/instruction-route.json.bak', t + 'workspace/logs/ready', t + 'workspace/logs/instruction-route.json', t + 'state/logs/instruction-route.openclaw.json'];
+    expect(harnessOwned([...kept, ...owned])).toEqual(owned);
+  });
 });

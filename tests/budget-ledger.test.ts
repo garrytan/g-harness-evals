@@ -44,6 +44,20 @@ describe('unlistedRuns', () => {
     expect(out.map((r) => r.run_id)).toEqual(['b-2026-01']);
     expect(out[0]).toMatchObject({ trials: 6, committed_usd: 0.25, unreadable_ledgers: 1 });
   });
+
+  test('a lane whose ledger names the whole run id lists the run; a longer id that only contains it does not', () => {
+    const byId = [...lanes, { lane: 'internal-task', ledger: '~/.capy/work/x/shards/<shard>/ (run b-2026-01)', committed_usd: 0.25, date: '2026-01-05' }];
+    expect(unlistedRuns(runs, byId).map((r) => r.run_id)).toEqual(['c-2026-01']);
+    const longer = [...lanes, { lane: 'internal-task', ledger: 'run b-2026-01b and xb-2026-01', committed_usd: 0.25, date: '2026-01-05' }];
+    expect(unlistedRuns(runs, longer).map((r) => r.run_id)).toEqual(['b-2026-01', 'c-2026-01']);
+  });
+
+  test('a run id or directory followed by more run-id characters (".retry", ":smoke", "-hook") names a different run', () => {
+    const other = [...lanes, { lane: 'internal-task', ledger: '/scratch/b-2026-01.retry/ledger.sqlite, run b-2026-01:smoke, docs/benchmarks/2026-01-05-c-hook/results', committed_usd: 0.1, date: '2026-01-05' }];
+    expect(unlistedRuns(runs, other).map((r) => r.run_id)).toEqual(['b-2026-01', 'c-2026-01']);
+    const sentence = [...lanes, { lane: 'internal-task', ledger: 'shard ledgers for run b-2026-01. See docs/benchmarks/2026-01-05-c.', committed_usd: 0.1, date: '2026-01-05' }];
+    expect(unlistedRuns(runs, sentence).map((r) => r.run_id)).toEqual([]);
+  });
 });
 
 describe('usd', () => {
