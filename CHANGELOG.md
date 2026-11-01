@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.93] - 2026-11-01
+
+### internal-task: v0.3-gen6 reseal record
+
+- `docs/sealed-records/v0.3-gen6-reseal.md` (new): the custodian's family-scoped compare of the gen5 and gen6 backups, run inside custody, written up as prose. Among the tasks, only approval_relay changed (6 selected tasks, 7 candidates). Every other family, the world slice, the world files and the corpus match.
+- 6 non-task entries also differ, so the tool's result was "needs judgment". The custodian judged them to be the author's generation records. Both manifest commits match. The record supersedes the first compare at custody commit `custody commit (private)` and lists what the check does not show. Label: procedural custody.
+- The record also notes the two custody incidents during the #196 review and internal-task's rule for reviewer briefs.
+- `docs/sealed-custody.md` links the record from "Re-encrypting for regeneration".
+
 ## [0.0.92] - 2026-11-01
 
 ### internal-task: tool-discipline classifier, free rates and harness replies; three-arm internal-task panel with a no-gstack arm
