@@ -118,7 +118,7 @@ test('gbrain.install and gbrain.embeddings: validated under HE-GBRAIN-001 naming
   expect(m.per_cell_ceiling_usd['fake-semantic']!).toBeGreaterThanOrEqual(m.per_cell_ceiling_usd['fake-mcp']!);
 });
 
-test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs, installer and scoped follow-ups, the v0.2 held-out run, the memory run, the v0.3 dev pilot, its installer dev cells and its approval relay re-read, and the host-harness pilot carry gbrain cells, each on a pinned configuration', () => {
+test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs, installer and scoped follow-ups, the v0.2 held-out run, the memory run, the v0.3 dev pilot, its installer dev cells, its approval relay re-read and its Opus dev read, and the host-harness pilot carry gbrain cells, each on a pinned configuration', () => {
   const dir = join(ROOT, 'docs', 'benchmarks');
   const files = readdirSync(dir).filter((d) => existsSync(join(dir, d, 'prereg.json'))).map((d) => join(dir, d, 'prereg.json'));
   expect(files.length).toBeGreaterThan(0);
@@ -194,6 +194,18 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         const g = resolveGbrain(c.gbrain!); expect(g.surface).toBe('starter'); expect(g.embeddings).toBe('off'); expect(g.install).toBe('mcp');
         if (g.brain === 'company') { expect(g.scope).toBe('member-sources'); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-company.md'); }
         else { expect(g.brain).toBe('bot-visible'); expect(g.scope).toBe('none'); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-ladder.md'); }
+      }
+      else if (p.run_id.startsWith('v03-opus-dev-')) {
+        // internal-task: all 20 v0.3 dev tasks on Opus 5.5; the deciding cells are told on the company brain under scope member-sources (five repetitions),
+        // the descriptive cells are told on the same company brain unscoped and none (three repetitions); every gbrain cell carries the company told clause.
+        expect(c.task_set).toBe('v0.3'); expect(c.split).toBe('dev'); expect(c.model).toBe('anthropic:claude-opus-5-5'); expect(c.tasks).toBeUndefined();
+        expect(p.cells).toHaveLength(6); expect(buildManifest(p, sha256, '2026-11-01T00:00:00Z').trials).toHaveLength(440); expect(p.spend_cap_usd).toBe(274);
+        if (!c.gbrain) { expect(c.preamble).toBeUndefined(); expect(c.repetitions).toBe(3); expect(c.ceiling).toEqual({ input_tokens: 20000, output_tokens: 2000 }); }
+        else {
+          const g = resolveGbrain(c.gbrain); expect(g.surface).toBe('starter'); expect(g.embeddings).toBe('off'); expect(g.install).toBe('mcp'); expect(g.brain).toBe('company');
+          expect(['none', 'member-sources']).toContain(g.scope); expect(c.repetitions).toBe(g.scope === 'member-sources' ? 5 : 3);
+          expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-company.md'); expect(c.ceiling).toEqual({ input_tokens: 30000, output_tokens: 2000 });
+        }
       }
       else if (p.run_id.startsWith('host-harness-pilot-')) {
         // internal-task: Claude Code, OpenClaw and Hermes on Haiku (none and told) and Codex, OpenClaw and Hermes on gpt-6-luna (none), every cell on the internal network, the v0.3 dev split, five repetitions.

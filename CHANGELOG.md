@@ -2,6 +2,14 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.87] - 2026-11-01
+
+### internal-task: v03-opus-dev-2026-10 preregistered (v0.3 dev on Opus 5.5, cap $274)
+
+- `docs/benchmarks/2026-10-31-v03-opus-dev/PREREGISTRATION.md` and `prereg.json` (new): 6 cells, 440 trials, all 20 v0.3 dev tasks on `anthropic:claude-opus-5-5`, OpenClaw and Hermes, gbrain `a590ad07` with #161 in the image. Two deciding told-scoped cells (company brain, scope `member-sources`, 5 repetitions); four descriptive cells (told-company unscoped and no brain, 3 repetitions each). Endpoint 1 is the only rule: at least 5 of 6 families with a told pass rate from 10 to 90 percent runs opening 1 on Opus 5.5 only; fewer, with any family above 90 percent, means no opening on v0.3 and a v0.4 brief; otherwise internal-task and the Captain decide. Leases $90, $62, $48, $34, $20 and $20, six Ubicloud shards, one cell each. The preregistration records the keyless check and the two-layer probe on an image built from this branch, the member-token `put_page` check, and the uncounted Opus smoke ($0.4133).
+- `docs/benchmarks/preregistrations.d/v03-opus-dev.json` (new): registers the run.
+- `tests/gbrain-runner.test.ts`: the committed-preregistrations test pins this run's six cells (model, repetitions, brain, scope, preamble, ceiling, 440 trials, $274 cap).
+
 ## [0.0.84] - 2026-11-01
 
 ### internal-task: Particle-1 metering route and price row
