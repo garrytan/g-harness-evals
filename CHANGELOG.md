@@ -2,6 +2,17 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.90] - 2026-11-01
+
+### internal-task: v03-ar-reread-2026-10 reported, the re-read gate passes
+
+- `docs/benchmarks/2026-10-30-v03-ar-reread/report.md`: the report. Endpoint 1 is a Pass: approval relay 17 of 30 in the two deciding told cells (`scope: member-sources`, gbrain `a590ad07`), 56.7% [40.0%, 80.0%], inside the 10 to 90 percent rule, with no defect candidate. So the v0.3 set shows 5 of 6 families informative, with the mixed-config caveat the preregistration requires. The unscoped copy, outside the rule, passed 0 of 30. Dev data on public tasks; no claim about a harness, gbrain or any held-out candidate.
+- The report's Caveats section discloses the brain build bug (internal-task, internal-task): the scoped brain could not have accepted a write to a member source. No trial made a gbrain write and no predicate depends on one, so the result stands.
+- The report names internal-task's reseal record (#150, merged as `47bf4d98b`): set v0.3-gen6 at custody commit `custody commit (private)` (main names only this short form), bundle sha256 `fc246287329e`. Only the author's per-file hash list shows that only approval relay candidates changed. The custodian's comparison printed counts only, and the record does not name `58186ff41`. So the seal clearance for opening 1 is pending a family-scoped comparison by the custodian, internal-task, inside custody, showing that only the approval relay candidates differ from the retired seal and that they were generated at `58186ff41`. The gate note (lead and item 3, updated 2026-11-01 UTC) and README's Next line say the same. Once given, the clearance covers only the `member-sources` config this read used.
+- `docs/benchmarks/2026-10-30-v03-ar-reread/results/`: the merged results of the four shards (60 trials, all `completed`), with per-shard ledgers, proxy logs and preflight logs. Excluded by #142's rules, narrowed to leave out all harness state: `trial.json` and the harness state files hold the simulated world's per-trial Slack-shaped credentials.
+- `docs/benchmarks/2026-10-29-v03-pilot/2026-10-31-ar-reread-gate.md`: the dated gate note.
+- `README.md` and `docs/receipts-manifest.json`: the Next line, the v0.3 runs row, the `v03-pilot-2026-10` row's approval relay note (now re-measured, not "not yet re-measured") and the regenerated manifest. The spend line and the budget page are unchanged at $406.78, because main's lane ledger already lists this run's line. This run spent $1.3889 ($1.3060 counted under the $4 cap, $0.0828 smokes).
+
 ## [0.0.89] - 2026-11-01
 
 ### internal-task: release and regeneration see a successor through the custody remote and the custody branch (internal-task, #191, #194)
