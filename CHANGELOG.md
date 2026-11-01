@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.79] - 2026-10-31
+
+### internal-task: the CI checks job no longer times out on a healthy run
+
+- `.github/workflows/ci.yml`: the preregistration-order check (`bun runner/prereg/prereg.ts`) moves out of the `checks` job into a new `prereg` job that runs in parallel, with its own full clone (`fetch-depth: 0`, which its git-history read needs), the same pinned Bun and a 15-minute cap.
+- The `checks` job cap rises from 15 to 25 minutes. Why: the job took 11.9 to 14.9 minutes in runs 41265985845, 41260255978, 41254131694 and 41251669381 and 13.4 minutes on main (41253655166), with tests at 7.5 to 8.9 minutes and the prereg step at 3.7 to 5.2. Train #171's run hit the 15-minute cap with nothing failing. With prereg moved out, `checks` should take about 9 to 11 minutes.
+- The workflow's header comment now describes the two jobs.
+- A red `prereg` job still blocks a merge: `scripts/ubicloud/merge-pass.sh` merges only when every check passes, and `ubicloud/checks` still runs prereg.ts.
+
 ## [0.0.78] - 2026-10-31
 
 Train gbrain-wiring: one release for #161, #156, #151 and #158, each merged unchanged into one branch. Their own version claims (0.0.73 to 0.0.75) are retired.
