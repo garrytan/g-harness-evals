@@ -2,6 +2,16 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.94] - 2026-11-01
+
+### internal-task: v03-opus-dev-2026-10 reported, Outcome B: no opening runs on v0.3
+
+- `docs/benchmarks/2026-10-31-v03-opus-dev/report.md`: the report. Endpoint 1 is Outcome B. On Opus 5.5 under opening 1's config, 2 of 6 families sit inside the 10 to 90 percent band (corrections 9 of 40, approval relay 26 of 30) and four sit above 90 percent. Both deciding cells ran all 100 trials. So v0.3 is too easy for frontier models, and that is the v0.4 brief. This is dev data on public tasks, and it makes no claim about a harness, gbrain or any held-out task.
+- No task defect: cr-02, cr-03 and cr-04 are floor tasks in both readings (`results/defects.json`), reported to internal-task.
+- A "Why null?" section: the no-brain cells match or beat told-scoped in most families, because each fact is readable in the world at ask time. Verdict: `FIX-METHOD`.
+- Receipts: 440 trials, 12 of them cap stops in the descriptive `openclaw-opus-none` cell. `results/analysis/endpoints.ts` and `why-null.ts` rebuild endpoints 3 to 5 and the "Why null?" figures, and `tests/v03-opus-dev-results.test.ts` checks they match the committed outputs.
+- Spend: $126.532 ($125.5162 trials, $1.0159 smokes) on internal-task's lane. `docs/ledger/lane-spend.jsonl` gains the run's line and the Opus smoke line, `docs/budget-ledger.md` is re-rendered, and `docs/receipts-manifest.json` and `docs/README.md` list the run.
+
 ## [0.0.93] - 2026-11-01
 
 ### internal-task: v0.3-gen6 reseal record

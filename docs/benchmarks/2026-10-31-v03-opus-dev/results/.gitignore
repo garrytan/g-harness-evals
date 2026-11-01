@@ -1,0 +1,18 @@
+# Evaluator-owned receipts are committed; harness state, workspaces, raw harness logs and per-trial tokens are not. #142's rules, narrowed: all harness state stays out (no Hermes SOUL.md), and there are no gbrain hook receipts to keep.
+trials/*/*/*/state/
+trials/*/*/*/workspace/
+trials/*/*/*/logs/*
+!trials/*/*/*/logs/adapter.log
+trials/*/*/*/trial.json
+*.sqlite-shm
+*.sqlite-wal
+trials/*/*/*/compose.serve.yaml
+# The gbrain sidecar's per-trial token and logs, and every preflight's token and sidecar logs, stay out of the repository.
+trials/*/*/*/gbrain/
+*preflight-*/
+**/ingest-tokens.json
+**/tokens.json
+# The shard logs the preregistration names as receipts are kept despite the root *.log rule.
+!/*.log
+# The failed first start's logs (no VM, no spend) are the report's receipt for that deviation.
+!/attempt0/*.log
