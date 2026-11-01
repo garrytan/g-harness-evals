@@ -86,11 +86,14 @@ export function checkSetName(set: string): void {
  * <set>/bundle.tar.age is not on the custody branch, or one whose world slice or corpus a live sealed set shares (a backup
  * of it holds that set's content). The custody state is read from the synced clone: once before anything is decrypted,
  * and again in decide() under the custody lock, so an opening or release that lands meanwhile is seen. The shared-set
- * check reads the manifests of the --repo checkout and of a fresh fetch of <remote>/main (liveSharersCurrent).
+ * check reads the manifests of the --repo checkout and of main fetched fresh from the custody remote, and refuses while
+ * another set has a bundle on the custody branch and no manifest on main or in the checkout that commits to its sha256
+ * (liveSharersCurrent).
  */
 export function refuseSetState(clone: string, set: string, outcome: string, repo: string, remote: string): void {
-  const live = liveSharersCurrent(set, repo, remote);
+  const { live, unknown } = liveSharersCurrent(set, repo, clone, remote);
   if (live.length) fail(`set ${set} shares its world slice or corpus with ${live.join(', ')}, still in sealed custody and not retired; a backup of ${set} holds that set's content, so name it with --set ${live[0]}. ${outcome}`);
+  if (unknown.length) fail(`set ${set}: ${unknown.join(', ')} ha${unknown.length === 1 ? 's' : 've'} a bundle on ${CUSTODY_REF} and no manifest on main or in this checkout that commits to ${unknown.length === 1 ? 'its' : 'their'} sha256, so whether ${unknown.length === 1 ? 'it shares' : 'they share'} the world slice or corpus of ${set} is unknown; a backup of ${set} could hold that set's content, so run this once ${unknown.length === 1 ? 'that manifest is' : 'those manifests are'} on main. ${outcome}`);
   if (readAccessLog(clone).some((e) => e.event === 'released' && e.set === set)) fail(`set ${set} has a "released" line in the access log on ${CUSTODY_REF}; regeneration is for a sealed set that was never opened. ${outcome}`);
   const opened = openedRuns(clone, set).size;
   if (opened) fail(`set ${set} has ${opened} opened run(s) in the access log on ${CUSTODY_REF}; regeneration is for a sealed set that was never opened. ${outcome}`);

@@ -52,7 +52,7 @@ import { checkPlan, claimProblems, deriveSet, heldoutSetsOf, type HeldoutBlock }
 import { bundleEntryProblem, corpusDigest, decryptWith, mergeWorld, OPAQUE_SALT_FILE, RECEIPT_FILE, readReceipt, renderWorld, sealedPaths, sha256, sliceProblems, unpackTar, type OpeningReceipt, type WorldSlice } from '../../runner/heldout/sealed.ts';
 import { heldoutSet, openingsLedger, readManifest, treeFiles, type HeldoutManifest } from '../seal-heldout.ts';
 import type { World } from '../../world/types.ts';
-import { checkPrivate, compareAndPush, CUSTODY_REF, CUSTODY_REPO, custodyClone, ESCROW_FILE, git, insideGitTree, openedRuns, readAccessLog, syncCustody, type AccessEvent } from './custody.ts';
+import { checkCustodyRemoteOf, checkPrivate, compareAndPush, CUSTODY_REF, CUSTODY_REPO, custodyClone, ESCROW_FILE, git, insideGitTree, netEnv, openedRuns, readAccessLog, syncCustody, type AccessEvent } from './custody.ts';
 import { custodyIdentity } from './identity.ts';
 
 export interface OpenOptions {
@@ -87,7 +87,8 @@ export async function openRun(o: OpenOptions): Promise<OpenResult> {
 
   // 1. the public checkout at current main (read again at every admission attempt, step 3)
   const readMain = () => {
-    git(repo, ['fetch', '-q', remote, branch]);
+    checkCustodyRemoteOf(repo, remote);
+    git(repo, ['fetch', '-q', remote, branch], netEnv());
     const publicCommit = git(repo, ['rev-parse', `${remote}/${branch}`]);
     if (git(repo, ['rev-parse', 'HEAD']) !== publicCommit) fail('HE-SEALED-006', `the public checkout ${repo} is at ${git(repo, ['rev-parse', '--short', 'HEAD'])}, not ${remote}/${branch} (${publicCommit.slice(0, 12)}); open checks the ledger at current main: git checkout --detach ${remote}/${branch}`);
     if (git(repo, ['status', '--porcelain', '--untracked-files=no'])) fail('HE-SEALED-006', `the public checkout ${repo} has local changes; open reads the ledger from a clean checkout of ${remote}/${branch}`);

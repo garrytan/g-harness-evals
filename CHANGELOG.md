@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.89] - 2026-11-01
+
+### internal-task: release and regeneration see a successor through the custody remote and the custody branch (internal-task, #191, #194)
+
+- `scripts/sealed/custody.ts` `liveSharersCurrent`: main for the shared-set check is fetched from the custody clone's remote, never through the public checkout's own remote, which may be a stale fork. That remote must resolve to one fetch and push URL, and a `url.<base>.insteadOf` rule in the checkout that rewrites it is refused (HE-SEALED-013). Main goes into a ref of the process, `refs/sealed/main-<pid>`, which is deleted afterwards along with any stale one.
+- A reseal blocks release and regeneration from the moment its bundle is on the custody branch. `release.ts` (HE-SEALED-008) and rekey.ts and compare-backups.ts (HE-SEALED-006) refuse while another set has a bundle there and no manifest on main or in the checkout that commits to that bundle's sha256. A malformed, empty or JSON null manifest, or one naming another bundle, counts as none. They check before decrypting and again under the custody lock, so a reseal that lands during a release stops its released line.
+- Every custody fetch, ls-remote and push, and open.ts's fetch of main, runs with `GIT_ALLOW_PROTOCOL=https:ssh:file`, so no remote helper runs even when git config allows one. open.ts checks the public remote before it fetches.
+- `tests/sealed-successor.test.ts` (new) covers a stale fork as origin, an insteadOf rewrite, split fetch and push URLs, a reseal during a release, pending bundles with missing, malformed, empty, null and mismatched manifests, helper URLs and a git config that allows a helper. `docs/errors.md` and `docs/sealed-custody.md` describe the new refusals.
+
 ## [0.0.88] - 2026-11-01
 
 ### internal-task: compare-backups counts by task.toml family and checks a manifest commit (internal-task)

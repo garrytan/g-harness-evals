@@ -18,13 +18,13 @@
  *   bun scripts/sealed/custody.ts --validate <clone> [--base <commit>]                         check HEAD against base
  */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { Encrypter } from 'age-encryption';
 import { RunnerError } from '../../runner/errors.ts';
 import { sha256 } from '../../runner/heldout/sealed.ts';
-import { DEFAULT_SET, heldoutSet, liveSharers, liveSharersAmong, readManifest, type HeldoutManifest } from '../seal-heldout.ts';
+import { DEFAULT_SET, heldoutSet, heldoutSets, liveSharers, liveSharersAmong, readManifest, type HeldoutManifest, type SealedCommitments } from '../seal-heldout.ts';
 
 /** The repository whose custody branch holds the ciphertext; it must stay private (checkPrivate). */
 export const CUSTODY_REPO = 'garrytan/harness-evals';
@@ -119,29 +119,65 @@ export function eventProblems(line: string): string[] {
   return problems;
 }
 
-export function git(cwd: string, args: string[]): string {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 256 * 1024 * 1024 }).trim();
+export function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv): string {
+  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 256 * 1024 * 1024, env }).trim();
 }
 
-/** liveSharers over the public checkout and over a fresh fetch of <remote>/main, so a stale or edited checkout cannot hide
- *  a reseal that main already holds. release.ts, rekey.ts and compare-backups.ts call it before decrypting. */
-export function liveSharersCurrent(set: string, repo: string, remote = 'origin'): string[] {
-  const ref = `${remote}/main`;
-  try {
-    git(repo, ['fetch', '-q', remote, `+refs/heads/main:refs/remotes/${ref}`]);
-  } catch {
-    throw new RunnerError('HE-SEALED-011', `could not fetch ${ref} into ${repo} to check for a live sealed set that shares set ${set}'s world slice or corpus; refused, and nothing was pushed or written`);
+/** The environment of every custody network call: GIT_ALLOW_PROTOCOL allows no transport but https, ssh and local files
+ *  and overrides every protocol.* setting in git config, so no remote helper (ext::, fd::, <name>::) runs, whatever URL or
+ *  config a checkout supplies. The URL is checked first (checkCustodyRemoteOf). */
+export const netEnv = (): NodeJS.ProcessEnv => ({ ...process.env, GIT_ALLOW_PROTOCOL: 'https:ssh:file' });
+
+/**
+ * What stands in the way of releasing or regenerating set, read from the synced custody clone and from main.
+ *  - live: liveSharers over the public checkout and over main fetched fresh from the custody remote's one URL (checked by
+ *    checkCustodyRemoteOf), the one the custody branch is pushed to, never through the checkout's own remote, which may be
+ *    a fork. A custody remote with more than one fetch or push URL, or a rewrite in the checkout's git config that sends
+ *    its URL elsewhere, is refused with HE-SEALED-013. main is fetched into a ref of this process, deleted afterwards (and
+ *    refs/sealed/main or the ref of a process no longer running, left by an earlier run, is deleted first).
+ *  - unknown: other sets whose <name>/bundle.tar.age is on the custody branch but whose manifest, on that main or in the
+ *    checkout, does not commit to that bundle's sha256 (a missing, malformed or empty manifest, or one naming another
+ *    bundle, counts as none). seal.ts pushes a bundle before the set's manifest can reach main, and every custody push is
+ *    compare-and-push, so a caller deciding under the custody lock sees a successor either by its manifest or by its bundle.
+ * release.ts, rekey.ts and compare-backups.ts call it before decrypting and again in decide().
+ */
+export function liveSharersCurrent(set: string, repo: string, clone: string, remote = 'origin'): { live: string[]; unknown: string[] } {
+  const urls = [...new Set(checkCustodyRemoteOf(clone, remote))];
+  if (urls.length !== 1) throw new RunnerError('HE-SEALED-013', `the custody remote ${remote} of ${clone} has more than one fetch or push URL, so main fetched from it might not be main of the repository the custody branch is pushed to; give the remote one URL. Refused, and nothing was pushed or written`);
+  const url = /^[a-z][a-z0-9+.-]*:\/\//i.test(urls[0]!) || /^[^/]*:/.test(urls[0]!) ? urls[0]! : resolve(clone, urls[0]!);
+  if (git(repo, ['ls-remote', '--get-url', url]) !== url) throw new RunnerError('HE-SEALED-013', `the public checkout ${repo} rewrites the custody remote URL (a url.<base>.insteadOf rule in its git config), so main fetched there could come from another repository; remove the rule. Refused, and nothing was pushed or written`);
+  for (const r of git(repo, ['for-each-ref', '--format=%(refname)', 'refs/sealed/']).split('\n').filter(Boolean)) {
+    const pid = /^refs\/sealed\/main-(\d+)$/.exec(r)?.[1];
+    if (r === 'refs/sealed/main' || (pid && !running(Number(pid)))) spawnSync('git', ['update-ref', '-d', r], { cwd: repo });
   }
+  const ref = `refs/sealed/main-${process.pid}`;
   const main = new Map<string, HeldoutManifest>();
-  for (const p of git(repo, ['ls-tree', '-r', '--name-only', `refs/remotes/${ref}`, '--', 'tasks']).split('\n')) {
-    const m = /^tasks\/(?:multiuser\/(?:([^/]+)\/)?|repo\/([^/]+)\/)heldout\/MANIFEST\.json$/.exec(p);
-    if (!m || ['dev', 'heldout', '_shared'].includes(m[1] ?? '')) continue;
-    const name = m[1] ?? m[2] ?? DEFAULT_SET;
-    try { main.set(name, JSON.parse(git(repo, ['show', `refs/remotes/${ref}:${p}`])) as HeldoutManifest); } catch { /* seal-heldout.ts --check reports a malformed manifest */ }
+  try {
+    try {
+      git(repo, ['fetch', '-q', '--no-tags', '--no-write-fetch-head', url, `+refs/heads/main:${ref}`], netEnv());
+    } catch {
+      throw new RunnerError('HE-SEALED-011', `could not fetch main from the custody remote into ${repo} to check for a sealed set that shares set ${set}'s world slice or corpus; refused, and nothing was pushed or written`);
+    }
+    for (const p of git(repo, ['ls-tree', '-r', '--name-only', ref, '--', 'tasks']).split('\n')) {
+      const m = /^tasks\/(?:multiuser\/(?:([^/]+)\/)?|repo\/([^/]+)\/)heldout\/MANIFEST\.json$/.exec(p);
+      if (!m || ['dev', 'heldout', '_shared'].includes(m[1] ?? '')) continue;
+      try {
+        const manifest = JSON.parse(git(repo, ['show', `${ref}:${p}`])) as HeldoutManifest | null;
+        if (manifest && typeof manifest === 'object') main.set(m[1] ?? m[2] ?? DEFAULT_SET, manifest);
+      } catch { /* seal-heldout.ts --check reports a malformed manifest */ }
+    }
+  } finally {
+    spawnSync('git', ['update-ref', '-d', ref], { cwd: repo });
   }
   const local = readManifest(heldoutSet(set, repo));
   if (!main.has(set) && local) main.set(set, local);
-  return [...new Set([...liveSharers(set, repo), ...liveSharersAmong(set, main)])].sort();
+  const checkout = new Map(heldoutSets(repo).map((s) => [s.name, readManifest(s)]));
+  const commits = (m: HeldoutManifest | null | undefined) => (m?.sealed ?? (m as { released?: SealedCommitments } | null | undefined)?.released)?.bundle_sha256;
+  const unknown = readdirSync(clone).filter((d) => d !== set && d !== '.git' && existsSync(join(clone, d, 'bundle.tar.age'))).filter((d) => {
+    const bundle = sha256(readFileSync(join(clone, d, 'bundle.tar.age')));
+    return commits(main.get(d)) !== bundle && commits(checkout.get(d)) !== bundle;
+  }).sort();
+  return { live: [...new Set([...liveSharers(set, repo), ...liveSharersAmong(set, main)])].sort(), unknown };
 }
 
 /** Whether a path (or its nearest existing ancestor) is inside a git work tree. */
@@ -214,13 +250,14 @@ export function checkCustodyRemote(url: string, cwd = process.cwd()): string {
 /** Check every URL a fetch or push through remote reaches from the clone. A remote configured in the clone gives all its
  *  fetch and push URLs (git remote get-url --all and --push --all, which expand insteadOf and pushInsteadOf); any other
  *  value is itself the URL or path git uses, plus whatever an insteadOf or pushInsteadOf rule rewrites it to. */
-export function checkCustodyRemoteOf(clone: string, remote: string): void {
+export function checkCustodyRemoteOf(clone: string, remote: string): string[] {
   const named = git(clone, ['remote']).split('\n').includes(remote);
   const rules = (spawnSync('git', ['config', '--get-regexp', '^url\\..*\\.(pushinsteadof|insteadof)$'], { cwd: clone, encoding: 'utf8' }).stdout ?? '').split('\n').filter(Boolean);
   const urls = named
     ? [...git(clone, ['remote', 'get-url', '--all', remote]).split('\n'), ...git(clone, ['remote', 'get-url', '--push', '--all', remote]).split('\n')]
     : [remote, ...rules.flatMap((l) => { const [key, prefix = ''] = l.split(' '); return prefix && remote.startsWith(prefix) ? [key!.slice(4, key!.lastIndexOf('.')) + remote.slice(prefix.length)] : []; })];
   for (const u of urls) checkCustodyRemote(u, clone);
+  return urls;
 }
 
 const heldLocks = new Set<string>();
@@ -286,13 +323,13 @@ export function checkPrivate(repo = CUSTODY_REPO, gh = 'gh'): void {
 export function syncCustody(clone: string, remote: string): string | null {
   return withCustodyLock(clone, () => {
     checkCustodyRemoteOf(clone, remote);
-    const ls = spawnSync('git', ['ls-remote', '--exit-code', remote, CUSTODY_REF], { cwd: clone, encoding: 'utf8' });
+    const ls = spawnSync('git', ['ls-remote', '--exit-code', remote, CUSTODY_REF], { cwd: clone, encoding: 'utf8', env: netEnv() });
     if (ls.status === 2) {
       if (spawnSync('git', ['rev-parse', '-q', '--verify', 'HEAD'], { cwd: clone }).status === 0) throw new RunnerError('HE-SEALED-011', `${remote} has no ${CUSTODY_REF} but the clone ${clone} has commits on it; refusing to create the branch from a stale clone`);
       return null;
     }
     if (ls.status !== 0) throw new RunnerError('HE-SEALED-011', `could not read ${CUSTODY_REF} from ${remote} (git ls-remote exit ${ls.status})`);
-    git(clone, ['fetch', '-q', remote, `+${CUSTODY_REF}:refs/remotes/${remote}/${CUSTODY_BRANCH}`]);
+    git(clone, ['fetch', '-q', remote, `+${CUSTODY_REF}:refs/remotes/${remote}/${CUSTODY_BRANCH}`], netEnv());
     git(clone, ['checkout', '-q', '-B', CUSTODY_BRANCH, `refs/remotes/${remote}/${CUSTODY_BRANCH}`]);
     git(clone, ['reset', '-q', '--hard', `refs/remotes/${remote}/${CUSTODY_BRANCH}`]);
     git(clone, ['clean', '-q', '-fdx']);
@@ -388,7 +425,7 @@ export function compareAndPush(clone: string, o: { remote?: string; message: (e:
       const problems = validateCustodyChange(clone, base, commit);
       if (problems.length) throw new RunnerError('HE-SEALED-011', `the custody commit would change what the custody branch may not hold: ${problems.slice(0, 5).join('; ')}; nothing was pushed`);
       o.beforePush?.();
-      const push = spawnSync('git', ['push', '-q', '--no-force-with-lease', remote, `${commit}:${CUSTODY_REF}`], { cwd: clone, encoding: 'utf8' });
+      const push = spawnSync('git', ['push', '-q', '--no-force-with-lease', remote, `${commit}:${CUSTODY_REF}`], { cwd: clone, encoding: 'utf8', env: netEnv() });
       if (push.status === 0) return { event, line, sha256: sha256(line), commit };
       last = (push.stderr || '').trim().split('\n').pop() ?? '';
     }

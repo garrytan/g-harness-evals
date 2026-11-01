@@ -48,7 +48,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { RunnerError } from '../../runner/errors.ts';
 import { bundleEntryProblem, decryptWith, sha256, unpackTar, type TarEntry } from '../../runner/heldout/sealed.ts';
 import { heldoutSet, openingsLedger, readManifest, walk, type HeldoutManifest } from '../seal-heldout.ts';
-import { compareAndPush, custodyClone, ESCROW_FILE, liveSharersCurrent, readAccessLog, syncCustody, type AccessEvent } from './custody.ts';
+import { compareAndPush, CUSTODY_REF, custodyClone, ESCROW_FILE, liveSharersCurrent, readAccessLog, syncCustody, type AccessEvent } from './custody.ts';
 import { custodyIdentity } from './identity.ts';
 import { entriesDigest } from './export.ts';
 
@@ -65,13 +65,14 @@ export async function releaseSet(o: ReleaseOptions): Promise<{ runs: string[]; t
   if (m?.custody !== 'sealed' || !m.sealed) return fail(`set ${o.set} is not in sealed custody`);
   const s = m.sealed;
   const remote = o.remote ?? 'origin';
-  const refuseShared = (outcome: string) => {
-    const live = liveSharersCurrent(o.set, repo, remote);
-    if (live.length) fail(`set ${o.set} shares its world slice or corpus with ${live.join(', ')}, still in sealed custody and not retired; releasing ${o.set} would publish that set's content. Release it after the retirement of ${live.join(', ')} is on main and in this checkout. ${outcome}`);
-  };
-  refuseShared('Nothing was decrypted or written');
   const clone = custodyClone({ dir: o.custody, repo, remote });
   syncCustody(clone, remote);
+  const refuseShared = (outcome: string) => {
+    const { live, unknown } = liveSharersCurrent(o.set, repo, clone, remote);
+    if (live.length) fail(`set ${o.set} shares its world slice or corpus with ${live.join(', ')}, still in sealed custody and not retired; releasing ${o.set} would publish that set's content. Release it after the retirement of ${live.join(', ')} is on main and in this checkout. ${outcome}`);
+    if (unknown.length) fail(`set ${o.set}: ${unknown.join(', ')} ha${unknown.length === 1 ? 's' : 've'} a bundle on ${CUSTODY_REF} and no manifest on main or in this checkout that commits to ${unknown.length === 1 ? 'its' : 'their'} sha256, so whether ${unknown.length === 1 ? 'it shares' : 'they share'} the world slice or corpus of ${o.set} is unknown; releasing ${o.set} could publish that set's content. Release it once ${unknown.length === 1 ? 'that manifest is' : 'those manifests are'} on main and in this checkout. ${outcome}`);
+  };
+  refuseShared('Nothing was decrypted or written');
   const bench = join(repo, 'docs', 'benchmarks');
   const published = (existsSync(bench) ? readdirSync(bench).sort() : []).map((d) => ({ d, p: join(bench, d, 'sealed-results', 'export.json') })).filter((x) => existsSync(x.p))
     .map((x) => ({ ...x, exp: JSON.parse(readFileSync(x.p, 'utf8')) })).filter((x) => x.exp.set === o.set);
