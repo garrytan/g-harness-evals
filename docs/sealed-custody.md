@@ -77,7 +77,7 @@ bun scripts/sealed/rekey.ts --from-backup <file.tar.age> --sha256 <hex> --to <au
 **Step 2, compare.** The author regenerates and sends a new backup, encrypted to `sealed/recipient.txt` as before. The custodian runs:
 
 ```
-bun scripts/sealed/compare-backups.ts --a <old.tar.age> --a-sha256 <hex> --b <new.tar.age> --b-sha256 <hex> --tasks v03/selected/tasks --allow-family <prefix> --slice v03/world/slice.json --corpus v03/corpus-seal [--allow-group <group> ...] [--allow-family-pages] --set <set> --custodian <thread code>
+bun scripts/sealed/compare-backups.ts --a <old.tar.age> --a-sha256 <hex> --b <new.tar.age> --b-sha256 <hex> --tasks v03/selected/tasks [--tasks <dir> ...] [--family-field] --allow-family <family> [--manifest <file in backup b> --manifest-commit <key>=<commit> ...] --slice v03/world/slice.json --corpus v03/corpus-seal [--allow-group <group> ...] [--allow-family-pages] --set <set> --custodian <thread code>
 ```
 
 - **`--set` names the old, sealed set.** Run rekey and compare before the reseal lands: once the new set is sealed and not retired, both refuse the old set, since a backup of it holds the new set's content. The regenerated backup is then sealed under a new set name (for v0.3 the reseal is `v0.3-gen6`). The old seal is retired unopened. Its manifest's `status` becomes `retired` and its `openings` stay empty.
@@ -90,25 +90,28 @@ bun scripts/sealed/compare-backups.ts --a <old.tar.age> --a-sha256 <hex> --b <ne
   5. The escrow check.
   6. Both backups are decrypted in memory. A backup the custody identity cannot open is a refusal naming `--a` or `--b`.
 - **What is compared.** A directory listed in the tar or implied by a path counts as a directory.
-  - **Tasks:** each immediate subdirectory of `--tasks`. Its digest covers its directories (empty ones too), and its files' paths, executable bits and bytes. Its family is the name before the first `-` (`ix-01-foo` is family `ix`; a name with no prefix is `(none)`).
+  - **Tasks:** each immediate subdirectory of `--tasks`. `--tasks` may repeat (`--tasks v03/selected/tasks --tasks v03/candidates`); with more than one, every family count is per directory. Its digest covers its directories (empty ones too), and its files' paths, executable bits and bytes. Its family is the name before the first `-` (`ix-01-foo` is family `ix`; a name with no prefix is `(none)`).
+  - **`--family-field`:** the family is instead the top-level `family` string in the task's `task.toml`, as the v0.3 generator writes it (`approval_relay`). Use it when task ids are opaque and share one prefix. A task with no readable `family` is `(none)`. A task whose family differs between the two backups, or whose `task.toml` reads in one and not the other, is `(moved)`, which is never allowed.
+  - **Manifest (`--manifest <file in backup b>` with `--manifest-commit <key>=<commit>`, optional, repeatable key):** the dotted JSON key (`proof.template_commit`) must hold 7 to 40 hex characters that abbreviate, as an object id in `--repo`, the same commit as `<commit>`; a branch or tag named like the value does not count. The value never prints, only the key, the full expected commit and `match` or `no match`. It shows what the author's manifest says; it cannot show the author really generated from that commit.
   - **Slice (`--slice`, optional):** record by record per collection (`teams`, `members`, `accounts`, `channels`, `messages`, `files`, `calendar`, `mail`), keyed by record id. The other top-level keys count as one item.
   - **Corpus (`--corpus`, optional):** page by page, bytes and executable bit. A differing page whose name starts with an allowed `<family>-` is counted apart from the others. The name is the author's choice, so such a page needs judgment unless `--allow-family-pages` is given.
   - **Everything else:** files directly in `--tasks`, directories, and every other file, by path, kind, executable bit and bytes. Grouped by the first two path segments (`v03/world`, `v03/audits`).
 - **What prints.** Counts only (same, changed, added, removed) per family, group, slice collection and the corpus.
-  - A family prints when it is 2 to 4 lowercase letters. Otherwise it prints as the first 12 hex characters of its sha256.
+  - A family prints when it is 2 to 4 lowercase letters. Otherwise it prints as the first 12 hex characters of its sha256. With `--family-field`, a family prints by name when it is lowercase words joined by `_` and is the family of a `task.toml` committed under `tasks/` at `HEAD` in `--repo` (the public dev families; the index and uncommitted edits do not count) or an `--allow-family` value; any other prints as that digest. A `--tasks` directory prints in the report segment by segment, by the same rule as a group label: a segment a group label would hash prints as its digest. A refusal names `--tasks` as given.
   - A group prints one segment at a time. A segment prints as is only when all three hold:
     - it is lowercase words joined by `_` or `-`, or `v` and digits (no other digits, no uppercase);
-    - compared case-insensitively, it contains no task id of either backup and no `<family>-` for a family of either backup or of `--allow-family`;
+    - compared case-insensitively, it contains no task id of either backup and no `<family>-` for a family of either backup or of `--allow-family` (with `--family-field`, also no `task.toml` family of either backup that prints as a digest, with `-` and `_` treated alike);
     - it is a directory wherever it exists, in both backups.
 
     Every other segment prints as the first 12 hex characters of its sha256.
   - It never prints a path below the second segment or any content. A task id prints only inside a digest.
   - The pass or judgment line names what was checked, including "no --slice" or "no --corpus" when those were not given.
 - **Exit codes.**
-  - **1:** a task outside `--allow-family` changed, was added or was removed.
+  - **1:** a task outside `--allow-family` changed, was added or was removed, or a `--manifest-commit` key does not match.
   - **3, needs judgment:** every task check passed, but a non-task entry, a slice record or a corpus page differs outside `--allow-group`. Corpus pages named for an allowed family count as allowed only with `--allow-family-pages`, and the pass or judgment line gives their count either way. `--allow-group` takes a group as printed, raw or as its digest label, and covers the slice and corpus when their group is named. The custodian judges these before sealing the new backup.
   - **0:** only allowed things differ.
   - **2:** a refusal.
+- **Comparing after the reseal.** Once the new set is sealed, the old set is refused, so a later compare of the old and new backups names the new set: `--set v0.3-gen6`. Its checks are the same, and its `compared` line is not an opening and spends no budget.
 - **The `compared` line.** `run_id` `*`, the set, the custodian, `source_sha256` (`--a`) and `output_sha256` (`--b`), with no recipient. It is pushed before anything is printed, so a refused push prints nothing.
 
 **Not an opening.** open.ts, export.ts, release.ts and the openings ledger count only `opened` lines, so a set with `reencrypted` and `compared` lines still has its full budget. `tests/sealed-rekey.test.ts` checks this.

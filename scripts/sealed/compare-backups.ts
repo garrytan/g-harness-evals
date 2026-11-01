@@ -5,7 +5,8 @@
  * the new backup change only what it was meant to?
  *
  *   bun scripts/sealed/compare-backups.ts --a <file.tar.age> --a-sha256 <hex> --b <file.tar.age> --b-sha256 <hex>
- *        --tasks <dir in the backup, such as v03/selected/tasks> [--allow-family <prefix> ...]
+ *        --tasks <dir in the backup, such as v03/selected/tasks> [--tasks <dir> ...] [--family-field] [--allow-family <family> ...]
+ *        [--manifest <file in backup b> --manifest-commit <key>=<commit> ...]
  *        [--slice <file in the backup>] [--corpus <dir in the backup>] [--allow-group <group> ...] [--allow-family-pages] --set <old set>
  *        [--custodian <name>] [--custody <clone>] [--identity <drive copy>] [--recipient sealed/recipient.txt]
  *        [--repo <checkout>] [--remote origin]
@@ -16,9 +17,14 @@
  * and parsed with backupEntries (rekey.ts openBackups). No plaintext is written to disk.
  *
  * What is compared. Directories are normalized: a directory listed in the tar or implied by a path is a directory.
- *   - Tasks: each immediate subdirectory of --tasks. Its digest covers its directories (empty ones too) and its files'
- *     relative paths, executable bits and bytes. Its family is the name before the first "-" ("(none)" when the name
- *     has no prefix).
+ *   - Tasks: each immediate subdirectory of each --tasks (repeatable; counted per directory when there are several). Its
+ *     digest covers its directories (empty ones too) and its files' relative paths, executable bits and bytes. Its family
+ *     is the name before the first "-" ("(none)" when the name has no prefix), or with --family-field the top-level
+ *     string "family" in its task.toml ("(none)" when absent, or unreadable in both; "(moved)", never allowed, when the
+ *     two backups disagree, or it reads in one and not the other).
+ *   - --manifest with --manifest-commit <key>=<commit> (optional): the dotted JSON key in that file of backup b must be
+ *     7 to 40 hex characters that abbreviate, as an object id in --repo (never a branch or tag of that name), the same
+ *     commit as <commit>. Only the key, the expected commit and match or no match print, never the value.
  *   - --slice (optional): the world slice, record by record per collection (WORLD_COLLECTIONS), keyed by record id, plus
  *     its other top-level keys as one item.
  *   - --corpus (optional): every file under the directory, page by page (bytes and executable bit).
@@ -26,18 +32,22 @@
  *     bytes, grouped by the first two path segments.
  *
  * What prints: counts only. A family prints when it is 2 to 4 lowercase letters, else as the first 12 hex characters of
- * its sha256. A group prints segment by segment: a segment prints when it is lowercase words joined by "_" or "-" (or v
+ * its sha256; with --family-field, when it is lowercase words joined by "_" and is the family of a task.toml committed
+ * under tasks/ at HEAD in --repo or an --allow-family value, else as that digest. The --tasks directories print as given. A group prints segment by segment: a segment prints when it is lowercase words joined by "_" or "-" (or v
  * and digits), contains, case-insensitively, no task id of either backup and no "<family>-" of either backup or
- * --allow-family, and is a directory wherever it exists in both backups; any other segment prints as the first 12 hex
+ * --allow-family (with --family-field, also no task.toml family of either backup that prints as a digest), and is a
+ * directory wherever it exists in both backups; any other segment prints as the first 12 hex
  * characters of its sha256. No path below the second segment and no content is printed.
  *
- * Exit codes: 1 when a task outside --allow-family differs (changed, added or removed); else 3 (needs judgment) when a
+ * Exit codes: 1 when a task outside --allow-family differs (changed, added or removed) or a --manifest-commit key does
+ * not match; else 3 (needs judgment) when a
  * non-task entry, a slice record or a corpus page differs outside --allow-group (a group named raw or by its printed
  * label; corpus pages named "<allowed family>-..." count as allowed only with --allow-family-pages, since the names are
  * the author's); else 0. A refusal is 2. One "compared"
  * access-log line (run_id "*", the set, the custodian, source_sha256 = a, output_sha256 = b) is pushed before anything is
  * printed; a refused push prints nothing. It is not an opening.
  */
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { isAbsolute, join, normalize, resolve } from 'node:path';
 import { sha256, WORLD_COLLECTIONS } from '../../runner/heldout/sealed.ts';
@@ -51,10 +61,18 @@ export interface CompareOptions extends CustodianOptions {
   aSha256: string;
   b: string;
   bSha256: string;
-  /** The task directory, relative to the unpacked backup. */
-  tasks: string;
+  /** The task directories, relative to the unpacked backup. */
+  tasks: string | string[];
+  /** A task's family is the "family" key of its task.toml, not its name's prefix. */
+  familyField?: boolean;
+  /** Families that may print by name with familyField; defaults to publicFamilies(repo). */
+  publicFamilies?: string[];
   /** Families whose tasks may differ. */
   allowFamily?: string[];
+  /** A JSON file in backup b whose keys --manifest-commit checks. */
+  manifest?: string;
+  /** "<dotted key>=<commit in repo>". */
+  manifestCommit?: string[];
   /** The world slice file, relative to the unpacked backup. */
   slice?: string;
   /** The corpus directory, relative to the unpacked backup. */
@@ -67,7 +85,12 @@ export interface CompareOptions extends CustodianOptions {
 
 export interface Counts { same: number; changed: number; added: number; removed: number }
 export interface CompareResult {
-  families: Array<Counts & { family: string; allowed: boolean }>;
+  /** Per family, and per --tasks directory (tasks) when there are several. */
+  families: Array<Counts & { tasks?: string; family: string; allowed: boolean }>;
+  tasks: string[];
+  familyField: boolean;
+  /** Per --manifest-commit key; null without --manifest. */
+  manifest: Array<{ key: string; commit: string; match: boolean }> | null;
   groups: Array<Counts & { group: string; allowed: boolean; allowedNamed: number }>;
   /** Per collection, and "(other keys)"; null without --slice. */
   slice: Array<Counts & { collection: string }> | null;
@@ -85,6 +108,10 @@ export interface CompareResult {
 }
 
 const NO_PREFIX = '(none)';
+const MOVED = '(moved)';
+const UNREADABLE = '(unreadable)';
+const FIELD_FAMILY = /^[a-z]+(_[a-z]+)*$/;
+const HEX_COMMIT = /^[0-9a-f]{7,40}$/i;
 /** A path segment that may print: lowercase words joined by "_" or "-", or v and digits; no other digits, no uppercase. */
 const SAFE_SEGMENT = /^(v\d+|[a-z]+([_-][a-z]+)*)$/;
 const fail = (msg: string): never => { throw new SealRefusal(msg); };
@@ -97,6 +124,36 @@ const relPath = (flag: string, p: string | undefined) => {
   return n;
 };
 const under = (path: string, dir: string) => path.startsWith(`${dir}/`);
+const tomlFamily = (data: Uint8Array) => {
+  try { const f = (Bun.TOML.parse(new TextDecoder().decode(data)) as { family?: unknown }).family; return typeof f === 'string' && f ? f : NO_PREFIX; } catch { return UNREADABLE; }
+};
+const revParse = (repo: string, rev: string) => {
+  if (!/^[A-Za-z0-9._/~^]+$/.test(rev)) return null;
+  try { return execFileSync('git', ['rev-parse', '--verify', '--quiet', `${rev}^{commit}`], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return null; }
+};
+
+/** An object id that hex alone abbreviates in repo (never a branch or tag of that name), or null. */
+const objectId = (repo: string, hex: string) => {
+  try { const ids = execFileSync('git', ['rev-parse', `--disambiguate=${hex}`], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(Boolean); return ids.length === 1 ? ids[0]! : null; } catch { return null; }
+};
+
+/** The "family" of every task.toml committed under tasks/ at HEAD in repo (not the index or the work tree): the families a --family-field label may print by name. */
+export function publicFamilies(repo: string): string[] {
+  const out = new Set<string>();
+  try {
+    const blobs = execFileSync('git', ['ls-tree', '-r', '-z', 'HEAD', '--', 'tasks'], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\0').filter((e) => e.endsWith('/task.toml') && e.split(' ')[1] === 'blob').map((e) => e.split('\t')[0]!.split(' ')[2]!);
+    const batch = execFileSync('git', ['cat-file', '--batch'], { cwd: repo, input: blobs.join('\n'), stdio: ['pipe', 'pipe', 'ignore'], maxBuffer: 1 << 28 });
+    for (let i = 0; i < batch.length;) {
+      const nl = batch.indexOf(10, i);
+      const size = Number(batch.subarray(i, nl).toString().split(' ')[2]);
+      out.add(tomlFamily(batch.subarray(nl + 1, nl + 1 + size)));
+      i = nl + 2 + size;
+    }
+  } catch { fail('--family-field reads the task.toml families committed at HEAD in --repo, and --repo is not a git checkout with a HEAD; nothing was decrypted'); }
+  out.delete(NO_PREFIX);
+  out.delete(UNREADABLE);
+  return [...out].sort();
+}
 
 interface Item { dir: boolean; exec: boolean; data: Uint8Array }
 /** Every entry of a backup by path, with the directories its paths imply. */
@@ -171,41 +228,81 @@ export async function compareBackups(o: CompareOptions): Promise<CompareResult> 
   const aSha = wantDigest('--a-sha256', o.aSha256);
   const bSha = wantDigest('--b-sha256', o.bSha256);
   if (aSha === bSha) fail('--a-sha256 and --b-sha256 are the same digest; compare two different backups. Nothing was decrypted');
-  const tasks = relPath('--tasks', o.tasks);
+  const taskDirs = [...new Set((Array.isArray(o.tasks) ? o.tasks : [o.tasks]).map((t) => relPath('--tasks', t)))];
+  if (!taskDirs.length) fail('--tasks names no task directory; nothing was decrypted');
+  for (const x of taskDirs) for (const y of taskDirs) if (under(x, y)) fail(`--tasks ${x} is inside --tasks ${y}; nothing was decrypted`);
   const slice = o.slice === undefined ? undefined : relPath('--slice', o.slice);
   const corpus = o.corpus === undefined ? undefined : relPath('--corpus', o.corpus);
-  for (const [flag, p] of [['--slice', slice], ['--corpus', corpus]] as const) if (p && (p === tasks || under(p, tasks) || under(tasks, p))) fail(`${flag} ${p} overlaps --tasks; nothing was decrypted`);
+  const manifest = o.manifest === undefined ? undefined : relPath('--manifest', o.manifest);
+  for (const [flag, p] of [['--slice', slice], ['--corpus', corpus]] as const) if (p && taskDirs.some((tasks) => p === tasks || under(p, tasks) || under(tasks, p))) fail(`${flag} ${p} overlaps --tasks; nothing was decrypted`);
   const allowed = [...new Set(o.allowFamily ?? [])];
   const badFamily = allowed.filter((p) => !/^[A-Za-z0-9_.]+$/.test(p));
-  if (badFamily.length) fail(`--allow-family takes a family prefix, the part of a task directory name before the first "-" (letters, digits, "_" and "."); ${badFamily.length} value(s) are not one; nothing was decrypted`);
+  if (badFamily.length) fail(`--allow-family takes a family prefix, the part of a task directory name before the first "-", or with --family-field the family key of a task.toml (letters, digits, "_" and "."); ${badFamily.length} value(s) are not one; nothing was decrypted`);
+  const manifestKeys = (o.manifestCommit ?? []).map((kv) => {
+    const i = kv.indexOf('=');
+    const key = kv.slice(0, i);
+    if (i <= 0 || !/^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/.test(key)) fail('--manifest-commit takes <key>=<commit>: a dotted JSON key and a commit in --repo; nothing was decrypted');
+    return { key, commit: revParse(resolve(o.repo), kv.slice(i + 1)) ?? fail(`--manifest-commit ${key} names no commit in --repo; nothing was decrypted`) };
+  });
+  if (manifestKeys.length && !manifest) fail('--manifest-commit needs --manifest; nothing was decrypted');
+  if (manifest && !manifestKeys.length) fail('--manifest needs at least one --manifest-commit; nothing was decrypted');
+  const pub = new Set(o.familyField ? (o.publicFamilies ?? publicFamilies(resolve(o.repo))) : []);
+  const label = (f: string) => (!o.familyField ? familyLabel(f) : f === NO_PREFIX || f === MOVED || (FIELD_FAMILY.test(f) && (pub.has(f) || allowed.includes(f))) ? f : sha256(f).slice(0, 12));
   checkSetName(o.set);
   const { clone, plain } = await openBackups(o, [{ flag: '--a', file: o.a, sha256: aSha }, { flag: '--b', file: o.b, sha256: bSha }]);
   const [A, Bk] = plain.map((p) => normalized(p.entries)) as [Map<string, Item>, Map<string, Item>];
-  const tA = taskDigests(A, tasks), tB = taskDigests(Bk, tasks);
-  if (!tA.size && !tB.size) fail(`--tasks ${tasks} holds no task directory in either backup; nothing was pushed or printed`);
+  const digests = taskDirs.map((tasks) => {
+    const d = [taskDigests(A, tasks), taskDigests(Bk, tasks)] as const;
+    if (!d[0].size && !d[1].size) fail(`--tasks ${tasks} holds no task directory in either backup; nothing was pushed or printed`);
+    return d;
+  });
   if (slice && !A.has(slice) && !Bk.has(slice)) fail('--slice is not in either backup; nothing was pushed or printed');
   const isCorpus = (p: string, it: Item) => corpus !== undefined && !it.dir && under(p, corpus);
   if (corpus && ![...A, ...Bk].some(([p, it]) => isCorpus(p, it))) fail('--corpus holds no file in either backup; nothing was pushed or printed');
+  let manifestRows: CompareResult['manifest'] = null;
+  if (manifest) {
+    const it = Bk.get(manifest);
+    if (!it || it.dir) fail('--manifest is not a file in backup b; nothing was pushed or printed');
+    let doc: unknown;
+    try { doc = JSON.parse(new TextDecoder().decode(it!.data)); } catch { fail('--manifest is not JSON in backup b; nothing was pushed or printed'); }
+    manifestRows = manifestKeys.map(({ key, commit }) => {
+      const v = key.split('.').reduce<unknown>((x, k) => (x && typeof x === 'object' && !Array.isArray(x) ? (x as Record<string, unknown>)[k] : undefined), doc);
+      return { key, commit, match: typeof v === 'string' && HEX_COMMIT.test(v) && objectId(resolve(o.repo), v.toLowerCase()) === commit };
+    });
+  }
 
-  const taskIds = new Set([...tA.keys(), ...tB.keys()]);
+  const taskIds = new Set(digests.flatMap(([a, b]) => [...a.keys(), ...b.keys()]));
   const ids = [...taskIds].map((t) => t.toLowerCase());
   const familyDashes = [...new Set([...[...taskIds].map(familyOf).filter((f) => f !== NO_PREFIX), ...allowed])].map((f) => `${f.toLowerCase()}-`);
+  const fieldOf = (m: Map<string, Item>, tasks: string, t: string) => { const it = m.get(`${tasks}/${t}/task.toml`); return it && !it.dir ? tomlFamily(it.data) : NO_PREFIX; };
+  const hiddenFamilies = o.familyField ? [...new Set(taskDirs.flatMap((tasks, i) => digests[i]!.flatMap((d, k) => [...d.keys()].map((t) => fieldOf(k ? Bk : A, tasks, t)))))].filter((f) => f !== UNREADABLE && label(f) !== f).map((f) => f.toLowerCase().replaceAll('-', '_')) : [];
   const groupOf = (p: string) => p.split('/').slice(0, 2).join('/');
   const isDirEverywhere = (p: string) => (A.has(p) || Bk.has(p)) && A.get(p)?.dir !== false && Bk.get(p)?.dir !== false;
   const plainSegment = (s: string, path: string) => {
     const low = s.toLowerCase();
-    return SAFE_SEGMENT.test(s) && !ids.some((t) => low.includes(t)) && !familyDashes.some((f) => low.includes(f)) && isDirEverywhere(path);
+    return SAFE_SEGMENT.test(s) && !ids.some((t) => low.includes(t)) && !familyDashes.some((f) => low.includes(f)) && !hiddenFamilies.some((f) => low.replaceAll('-', '_').includes(f)) && isDirEverywhere(path);
   };
   const groupLabel = (g: string) => g.split('/').map((s, i, segs) => (plainSegment(s, segs.slice(0, i + 1).join('/')) ? s : sha256(s).slice(0, 12))).join('/');
   const allowGroup = [...new Set(o.allowGroup ?? [])];
   const groupAllowed = (g: string) => allowGroup.includes(g) || allowGroup.includes(groupLabel(g));
   const namedAllowed = (p: string) => { const base = p.slice(p.lastIndexOf('/') + 1); return allowed.some((f) => base.startsWith(`${f}-`)); };
 
-  const byFamily = tally(tA, tB, (x, y) => x === y, familyOf);
-  const families = [...byFamily].sort(([x], [y]) => (x < y ? -1 : 1)).map(([f, c]) => ({ family: familyLabel(f), allowed: allowed.includes(f), ...c }));
-  const failing = families.filter((f) => !f.allowed && differs(f)).map((f) => f.family);
+  const families = taskDirs.flatMap((tasks, i) => {
+    const [tA, tB] = digests[i]!;
+    const famOf = (t: string) => {
+      if (!o.familyField) return familyOf(t);
+      const fa = tA.has(t) ? fieldOf(A, tasks, t) : undefined, fb = tB.has(t) ? fieldOf(Bk, tasks, t) : undefined;
+      if (fa !== undefined && fb !== undefined && fa !== fb) return MOVED;
+      const f = (fa ?? fb)!;
+      return f === UNREADABLE ? NO_PREFIX : f;
+    };
+    const byFamily = tally(tA, tB, (x, y) => x === y, famOf);
+    return [...byFamily].sort(([x], [y]) => (x < y ? -1 : 1)).map(([f, c]) => ({ ...(taskDirs.length > 1 ? { tasks: groupLabel(tasks) } : {}), family: label(f), allowed: allowed.includes(f), ...c }));
+  });
+  const failing = [...new Set(families.filter((f) => !f.allowed && differs(f)).map((f) => f.family))];
+  const mismatched = (manifestRows ?? []).filter((m) => !m.match).map((m) => m.key);
 
-  const inTasks = (p: string, it: Item) => p === tasks || under(tasks, p) || (under(p, tasks) && (it.dir || p.slice(tasks.length + 1).includes('/')));
+  const inTasks = (p: string, it: Item) => taskDirs.some((tasks) => p === tasks || under(tasks, p) || (under(p, tasks) && (it.dir || p.slice(tasks.length + 1).includes('/'))));
   const isOther = (p: string, it: Item) => !inTasks(p, it) && p !== slice && !isCorpus(p, it);
   const other = (m: Map<string, Item>) => new Map([...m].filter(([p, it]) => isOther(p, it)));
   const named = new Map<string, number>();
@@ -235,7 +332,7 @@ export async function compareBackups(o: CompareOptions): Promise<CompareResult> 
   }
 
   const judgment = { entries: entriesOutside, records: recordsOutside, pages: pagesOutside, familyPages: familyPagesOutside };
-  const exitCode: 0 | 1 | 3 = failing.length ? 1 : entriesOutside + recordsOutside + pagesOutside + familyPagesOutside ? 3 : 0;
+  const exitCode: 0 | 1 | 3 = failing.length || mismatched.length ? 1 : entriesOutside + recordsOutside + pagesOutside + familyPagesOutside ? 3 : 0;
   const now = o.now ?? (() => new Date().toISOString());
   const pushed = compareAndPush(clone, {
     remote: o.remote ?? 'origin',
@@ -246,7 +343,7 @@ export async function compareBackups(o: CompareOptions): Promise<CompareResult> 
     },
     onFailure: 'both backups were decrypted in memory only and nothing was printed',
   });
-  return { families, groups, slice: sliceRows, sliceAllowed, corpus: corpusRow, failing, judgment, allowFamily: allowed.map(familyLabel), allowGroup: [...new Set(allowGroup.map(groupLabel))], allowFamilyPages: o.allowFamilyPages === true, exitCode, commit: pushed.commit };
+  return { families, tasks: taskDirs.map(groupLabel), familyField: o.familyField === true, manifest: manifestRows, groups, slice: sliceRows, sliceAllowed, corpus: corpusRow, failing, judgment, allowFamily: allowed.map(label), allowGroup: [...new Set(allowGroup.map(groupLabel))], allowFamilyPages: o.allowFamilyPages === true, exitCode, commit: pushed.commit };
 }
 
 /** The CLI's report: counts, family and group labels, collection names. */
@@ -254,18 +351,25 @@ export function reportLines(r: CompareResult): string[] {
   const counts = (c: Counts) => `same ${c.same}, changed ${c.changed}, added ${c.added}, removed ${c.removed}`;
   const list = (xs: string[]) => (xs.length ? xs.join(', ') : 'none');
   const covered = [
-    `every task directory under --tasks (identical outside --allow-family: ${list(r.allowFamily)})`,
+    `every task directory under --tasks${r.tasks.length > 1 ? ` ${r.tasks.join(', ')}` : ''}${r.familyField ? ' by family field' : ''} (identical outside --allow-family: ${list(r.allowFamily)})`,
     `every other entry by path, kind, executable bit and bytes (identical outside --allow-group: ${list(r.allowGroup)})`,
     r.slice ? `every --slice record by collection and id${r.sliceAllowed ? ' (its group is allowed)' : ''}` : 'no world slice record by record (no --slice)',
     r.corpus ? `every --corpus page (${r.corpus.allowed ? 'its group is allowed' : `${r.corpus.allowedNamed} differing page(s) named for an allowed family, ${r.allowFamilyPages ? 'allowed by --allow-family-pages' : 'not allowed without --allow-family-pages'}`})` : 'no corpus page by page (no --corpus)',
+    ...(r.manifest ? [`--manifest key(s) ${r.manifest.map((m) => m.key).join(', ')} against the expected commit(s)`] : []),
+  ].join('; ');
+  const mismatched = (r.manifest ?? []).filter((m) => !m.match).map((m) => m.key);
+  const failure = [
+    ...(r.failing.length ? [`tasks differ in famil${r.failing.length === 1 ? 'y' : 'ies'} outside --allow-family: ${r.failing.join(', ')}`] : []),
+    ...(mismatched.length ? [`manifest key(s) do not name the expected commit: ${mismatched.join(', ')}`] : []),
   ].join('; ');
   return [
-    ...r.families.map((f) => `COMPARE: family ${f.family}${f.allowed ? ' (allowed to differ)' : ''}: ${counts(f)} task(s)`),
+    ...r.families.map((f) => `COMPARE: family ${f.family}${f.tasks ? ` in ${f.tasks}` : ''}${f.allowed ? ' (allowed to differ)' : ''}: ${counts(f)} task(s)`),
     ...r.groups.map((g) => `COMPARE: non-task ${g.group}${g.allowed ? ' (allowed to differ)' : ''}: ${counts(g)} entr(ies)${differs(g) ? `; ${g.allowedNamed} of the differing entries are named for an allowed family` : ''}`),
     ...(r.slice ?? []).map((s) => `COMPARE: slice ${s.collection}: ${counts(s)} record(s)`),
+    ...(r.manifest ?? []).map((m) => `COMPARE: manifest key ${m.key} names commit ${m.commit}: ${m.match ? 'match' : 'no match'}`),
     ...(r.corpus ? [`COMPARE: corpus: ${counts(r.corpus)} page(s); of the differing pages ${r.corpus.allowedNamed} are named for an allowed family and ${r.corpus.otherNamed} are not`] : []),
     r.exitCode === 1
-      ? `COMPARE: fail: tasks differ in famil${r.failing.length === 1 ? 'y' : 'ies'} outside --allow-family: ${r.failing.join(', ')}`
+      ? `COMPARE: fail: ${failure}`
       : r.exitCode === 3
         ? `COMPARE: needs judgment: every task outside --allow-family is identical, but ${r.judgment.entries} non-task entr(ies), ${r.judgment.records} slice record(s), ${r.judgment.pages} corpus page(s) not named for an allowed family and ${r.judgment.familyPages} named for one (allowed only with --allow-family-pages) differ outside --allow-group; checked ${covered}`
         : `COMPARE: pass: checked ${covered}`,
@@ -275,9 +379,9 @@ export function reportLines(r: CompareResult): string[] {
 
 if (import.meta.main) {
   const argv = process.argv.slice(2);
-  const usage = 'usage: bun scripts/sealed/compare-backups.ts --a <file.tar.age> --a-sha256 <hex> --b <file.tar.age> --b-sha256 <hex> --tasks <dir in the backup> [--allow-family <prefix> ...] [--slice <file in the backup>] [--corpus <dir in the backup>] [--allow-group <group> ...] [--allow-family-pages] --set <old set> [--custodian <name>] [--custody <clone>] [--identity <drive copy>] [--recipient sealed/recipient.txt] [--repo <checkout>] [--remote origin]';
+  const usage = 'usage: bun scripts/sealed/compare-backups.ts --a <file.tar.age> --a-sha256 <hex> --b <file.tar.age> --b-sha256 <hex> --tasks <dir in the backup> [--tasks <dir> ...] [--family-field] [--allow-family <family> ...] [--manifest <file in backup b> --manifest-commit <key>=<commit> ...] [--slice <file in the backup>] [--corpus <dir in the backup>] [--allow-group <group> ...] [--allow-family-pages] --set <old set> [--custodian <name>] [--custody <clone>] [--identity <drive copy>] [--recipient sealed/recipient.txt] [--repo <checkout>] [--remote origin]';
   const usageError = (msg: string): never => { console.error(`HE-RUN-002 ${msg}; ${usage}`); process.exit(2); };
-  const { flag, all } = parseFlags(argv, ['a', 'a-sha256', 'b', 'b-sha256', 'tasks', 'allow-family', 'slice', 'corpus', 'allow-group', 'set', 'custodian', 'custody', 'identity', 'recipient', 'repo', 'remote'], ['allow-family', 'allow-group'], usage, ['allow-family-pages']);
+  const { flag, all } = parseFlags(argv, ['a', 'a-sha256', 'b', 'b-sha256', 'tasks', 'allow-family', 'manifest', 'manifest-commit', 'slice', 'corpus', 'allow-group', 'set', 'custodian', 'custody', 'identity', 'recipient', 'repo', 'remote'], ['tasks', 'allow-family', 'manifest-commit', 'allow-group'], usage, ['allow-family-pages', 'family-field']);
   for (const k of ['a-sha256', 'b-sha256']) {
     if (!flag(k)) usageError(`--${k} <hex> is required, the sha256 of the backup file; nothing was decrypted`);
     if (!/^[0-9a-fA-F]{64}$/.test(flag(k)!)) usageError(`--${k} must be 64 hex characters; nothing was decrypted`);
@@ -286,7 +390,7 @@ if (import.meta.main) {
   if (need.length) usageError(`missing --${need.join(', --')}`);
   const repo = flag('repo') ?? join(import.meta.dir, '..', '..');
   try {
-    const r = await compareBackups({ repo, set: flag('set')!, a: flag('a')!, aSha256: flag('a-sha256')!, b: flag('b')!, bSha256: flag('b-sha256')!, tasks: flag('tasks')!, allowFamily: all('allow-family'), slice: flag('slice'), corpus: flag('corpus'), allowGroup: all('allow-group'), allowFamilyPages: flag('allow-family-pages') === 'true', recipient: readRecipient(flag('recipient') ?? join(repo, 'sealed', 'recipient.txt')), custodian: flag('custodian'), custody: flag('custody'), identityPath: flag('identity'), remote: flag('remote') });
+    const r = await compareBackups({ repo, set: flag('set')!, a: flag('a')!, aSha256: flag('a-sha256')!, b: flag('b')!, bSha256: flag('b-sha256')!, tasks: all('tasks'), familyField: flag('family-field') === 'true', allowFamily: all('allow-family'), manifest: flag('manifest'), manifestCommit: all('manifest-commit'), slice: flag('slice'), corpus: flag('corpus'), allowGroup: all('allow-group'), allowFamilyPages: flag('allow-family-pages') === 'true', recipient: readRecipient(flag('recipient') ?? join(repo, 'sealed', 'recipient.txt')), custodian: flag('custodian'), custody: flag('custody'), identityPath: flag('identity'), remote: flag('remote') });
     for (const l of reportLines(r)) console.log(l);
     process.exit(r.exitCode);
   } catch (e) {

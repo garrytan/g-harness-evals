@@ -2,6 +2,16 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.88] - 2026-11-01
+
+### internal-task: compare-backups counts by task.toml family and checks a manifest commit (internal-task)
+
+- `scripts/sealed/compare-backups.ts` `--family-field`: a task's family is the top-level `family` key of its `task.toml`, not its id prefix. Use it when task ids are opaque and share one prefix. A task whose family differs between the two backups, or whose `task.toml` reads in one backup and not the other, counts as `(moved)` and always fails.
+- `--tasks` may repeat. With more than one, every family count is per directory. The report prints each directory by the group-label rule, so a segment that names a hidden family prints as its digest.
+- `--manifest <file in backup b>` with `--manifest-commit <key>=<commit>`: the key must hold 7 to 40 hex characters that abbreviate, as an object id in `--repo`, the same commit. A branch or tag named like the value does not count. Only the key, the expected commit and match or no match print. A mismatch exits 1.
+- With `--family-field`, a family prints by name only when a `task.toml` committed under `tasks/` at HEAD in `--repo` carries it, or it is an `--allow-family` value. The index and uncommitted edits do not count. Any other family prints as a 12-hex digest, and a non-task directory named for it (with `-` and `_` treated alike) prints as a digest too.
+- `tests/sealed-rekey.test.ts` covers each of these on synthetic backups. `docs/sealed-custody.md` and `docs/errors.md` describe the flags and the new refusals.
+
 ## [0.0.87] - 2026-11-01
 
 ### internal-task: v03-opus-dev-2026-10 preregistered (v0.3 dev on Opus 5.5, cap $274)

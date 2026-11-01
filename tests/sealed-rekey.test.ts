@@ -14,7 +14,7 @@ import { generateX25519Identity, identityToRecipient } from 'age-encryption';
 import { decryptWith, encryptTo, sha256 } from '../runner/heldout/sealed.ts';
 import { compareAndPush, eventProblems, isX25519Recipient, openedRuns, readAccessLog, validateCustodyChange } from '../scripts/sealed/custody.ts';
 import { rekeyBackup } from '../scripts/sealed/rekey.ts';
-import { compareBackups, reportLines, type CompareOptions } from '../scripts/sealed/compare-backups.ts';
+import { compareBackups, publicFamilies, reportLines, type CompareOptions } from '../scripts/sealed/compare-backups.ts';
 import { openRun } from '../scripts/sealed/open.ts';
 import { candidate, cloneCustody, co, commitPush, ENV_VALUE, git as fixtureGit, makeFixture, register, ROOT, SCRUBBED_ENV, SET, type Fixture } from './sealed-fixture.ts';
 
@@ -356,6 +356,87 @@ describe('rekey.ts and compare-backups.ts', () => {
     expect((await compare(await backup('proto-c', proto(1)), {}, a)).exitCode).toBe(0);
   }, 120_000);
 
+  test('compare-backups: --family-field groups tasks by their task.toml family across several --tasks, and --manifest-commit checks a manifest key', async () => {
+    const h = (s: string) => sha256(s).slice(0, 12);
+    const head = fixtureGit(f.repo, 'rev-parse', 'HEAD');
+    const FAM: Record<string, string> = { 'ix-01-alpha': 'approval_relay', 'ix-02-beta': 'synthesis', 'sx-01-gamma': 'approval_relay', 'qq-01-delta': 'zz_secret_fam' };
+    const famTree = (s: string, o: { family?: Record<string, string>; body?: Record<string, string>; manifest?: unknown } = {}) => {
+      const toml = (t: string) => `# synthetic\nid = "${t}"\nfamily = "${o.family?.[t] ?? FAM[t]}"\ntitle = "${CANARY.task} ${t} ${o.body?.[t] ?? ''}"\n`;
+      for (const t of Object.keys(FAM)) write(join(tasksDir(s), t, 'task.toml'), toml(t));
+      for (const t of ['ix-02-beta', 'sx-01-gamma']) write(join(s, 'v03', 'candidates', t, 'task.toml'), toml(`${t}`) + (o.body?.[`cand:${t}`] ?? ''));
+      write(join(s, 'v03', 'GEN6-MANIFEST.json'), JSON.stringify(o.manifest ?? { proof: { template_commit: head.slice(0, 9) } }));
+      write(join(s, 'v03', 'zz_secret_fam', 'notes.txt'), 'a non-task directory named for a family that is not public\n');
+      write(join(s, 'v03', 'zz-secret-fam', 'notes.txt'), 'the same family name with dashes\n');
+    };
+    const fa = await backup('ff-a', (s) => famTree(s));
+    const field = { tasks: ['v03/selected/tasks', 'v03/candidates'], familyField: true, allowFamily: ['approval_relay'], publicFamilies: ['approval_relay', 'synthesis', 'continuity'], manifest: 'v03/GEN6-MANIFEST.json', manifestCommit: ['proof.template_commit=HEAD'] };
+    const sel = 'v03/selected/tasks', cand = 'v03/candidates';
+
+    // only approval_relay tasks changed, in both task directories: pass, with counts by family and a manifest match
+    const ok = await compare(await backup('ff-ok', (s) => famTree(s, { body: { 'ix-01-alpha': 'rerendered', 'cand:sx-01-gamma': '# rerendered\n' } })), field, fa);
+    expect([ok.failing, ok.manifest]).toEqual([[], [{ key: 'proof.template_commit', commit: head, match: true }]]);
+    expect(ok.exitCode).toBe(0);
+    expect(ok.families).toHaveLength(5);
+    expect(ok.families).toEqual(expect.arrayContaining([
+      { tasks: sel, family: 'approval_relay', allowed: true, ...c0, same: 1, changed: 1 },
+      { tasks: sel, family: 'synthesis', allowed: false, ...c0, same: 1 },
+      { tasks: sel, family: h('zz_secret_fam'), allowed: false, ...c0, same: 1 },
+      { tasks: cand, family: 'approval_relay', allowed: true, ...c0, changed: 1 },
+      { tasks: cand, family: 'synthesis', allowed: false, ...c0, same: 1 },
+    ]));
+    expect(ok.manifest).toEqual([{ key: 'proof.template_commit', commit: head, match: true }]);
+    const lines = reportLines(ok);
+    expect(lines).toContain(`COMPARE: family approval_relay in ${sel} (allowed to differ): same 1, changed 1, added 0, removed 0 task(s)`);
+    expect(lines).toContain(`COMPARE: family synthesis in ${cand}: same 1, changed 0, added 0, removed 0 task(s)`);
+    expect(lines).toContain(`COMPARE: manifest key proof.template_commit names commit ${head}: match`);
+    expect(lines.at(-2)).toStartWith(`COMPARE: pass: checked every task directory under --tasks ${sel}, ${cand} by family field (identical outside --allow-family: approval_relay); `);
+
+    // a task in a family outside --allow-family changed, or a task changed family: fail
+    const other = await compare(await backup('ff-other', (s) => famTree(s, { body: { 'qq-01-delta': 'changed' } })), field, fa);
+    expect([other.exitCode, other.failing]).toEqual([1, [h('zz_secret_fam')]]);
+    const moved = await compare(await backup('ff-moved', (s) => famTree(s, { family: { 'sx-01-gamma': 'synthesis' } })), field, fa);
+    expect([moved.exitCode, moved.failing]).toEqual([1, ['(moved)']]);
+    const unread = await compare(await backup('ff-unread', (s) => famTree(s, { body: { 'cand:sx-01-gamma': 'not toml\n' } })), field, fa);
+    expect([unread.exitCode, unread.failing]).toEqual([1, ['(moved)']]);
+    const noFamily = await backup('ff-nofam', (s) => famTree(s, { family: { 'sx-01-gamma': '' } }));
+    const unreadNoFamily = await compare(await backup('ff-nofam-unread', (s) => famTree(s, { family: { 'sx-01-gamma': '' }, body: { 'cand:sx-01-gamma': 'not toml\n' } })), field, noFamily);
+    expect([unreadNoFamily.exitCode, unreadNoFamily.failing]).toEqual([1, ['(moved)']]);
+    const hiddenDir = (s: string) => { famTree(s); write(join(s, 'v03', 'zz_secret_fam', 'zz-01-eps', 'task.toml'), 'family = "synthesis"\n'); };
+    const echoed = await compare(await backup('ff-dir-b', hiddenDir), { ...field, tasks: [sel, 'v03/zz_secret_fam'] }, await backup('ff-dir-a', hiddenDir));
+    expect(echoed.tasks).toEqual([sel, `v03/${h('zz_secret_fam')}`]);
+    expect(echoed.families).toContainEqual({ tasks: `v03/${h('zz_secret_fam')}`, family: 'synthesis', allowed: false, ...c0, same: 1 });
+    expect(JSON.stringify(echoed) + reportLines(echoed).join('\n')).not.toMatch(/zz.secret.fam|zz-01/);
+
+    // the manifest key names another commit, is not a commit, or is missing: fail, and the value never prints
+    for (const [name, manifest] of [['ff-m1', { proof: { template_commit: 'deadbeef1' } }], ['ff-m2', { proof: { template_commit: 'not a commit' } }], ['ff-m3', { proof: {} }], ['ff-m4', { proof: { template_commit: 'HEAD' } }]] as const) {
+      const m = await compare(await backup(name, (s) => famTree(s, { manifest })), { ...field, allowGroup: ['v03/' + h('GEN6-MANIFEST.json')] }, fa);
+      expect([m.exitCode, m.failing, m.manifest]).toEqual([1, [], [{ key: 'proof.template_commit', commit: head, match: false }]]);
+      expect(reportLines(m).at(-2)).toBe('COMPARE: fail: manifest key(s) do not name the expected commit: proof.template_commit');
+      expect(reportLines(m).join('\n')).not.toMatch(/deadbeef1|not a commit/);
+    }
+    // a branch or tag named like a hex value does not stand in for the commit it would abbreviate
+    fixtureGit(f.repo, 'tag', 'abcdef1234', 'HEAD');
+    try {
+      const tagged = await compare(await backup('ff-tag', (s) => famTree(s, { manifest: { proof: { template_commit: 'abcdef1234' } } })), { ...field, allowGroup: ['v03/' + h('GEN6-MANIFEST.json')] }, fa);
+      expect([tagged.exitCode, tagged.manifest]).toEqual([1, [{ key: 'proof.template_commit', commit: head, match: false }]]);
+    } finally { fixtureGit(f.repo, 'tag', '-d', 'abcdef1234'); }
+    await expect(compare(fa, { ...field, manifest: 'v03/missing.json' }, base)).rejects.toThrow('HE-SEALED-006 --manifest is not a file in backup b; nothing was pushed or printed');
+    await expect(compare(fa, { ...field, manifestCommit: ['proof.template_commit=no-such-rev'] }, base)).rejects.toThrow('HE-SEALED-006 --manifest-commit proof.template_commit names no commit in --repo; nothing was decrypted');
+    await expect(compare(fa, { ...field, manifest: undefined }, base)).rejects.toThrow('HE-SEALED-006 --manifest-commit needs --manifest; nothing was decrypted');
+    await expect(compare(fa, { ...field, manifestCommit: [] }, base)).rejects.toThrow('HE-SEALED-006 --manifest needs at least one --manifest-commit; nothing was decrypted');
+    await expect(compare(fa, { ...field, manifestCommit: ['=HEAD'] }, base)).rejects.toThrow('HE-SEALED-006 --manifest-commit takes <key>=<commit>');
+    await expect(compare(fa, { ...field, tasks: ['v03', cand] }, base)).rejects.toThrow(`HE-SEALED-006 --tasks ${cand} is inside --tasks v03; nothing was decrypted`);
+
+    // the CLI takes the same flags
+    const b = await backup('ff-cli', (s) => famTree(s, { body: { 'ix-01-alpha': 'rerendered' } }));
+    const r = cli('compare-backups.ts', ['--a', fa.file, '--a-sha256', fa.sha, '--b', b.file, '--b-sha256', b.sha, '--tasks', sel, '--tasks', cand, '--family-field', '--allow-family', 'approval_relay', '--manifest', field.manifest, '--manifest-commit', 'proof.template_commit=HEAD', '--set', SET]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain(`COMPARE: manifest key proof.template_commit names commit ${head}: match`);
+    expect(r.stdout).toContain(`COMPARE: family ${h('synthesis')} in ${cand}: same 1, changed 0, added 0, removed 0 task(s)`);
+    expect(ok.groups).toContainEqual(expect.objectContaining({ group: `v03/${h('zz_secret_fam')}`, changed: 0 }));
+    expect(JSON.stringify([ok, other, moved]) + r.stdout).not.toMatch(/zz.secret.fam|ix-0|sx-0|qq-0/);
+  }, 300_000);
+
   test('compare-backups refusals before anything is decrypted, and a backup the custody identity cannot open', async () => {
     const same = await backup('same-refusal');
     const before = logLength();
@@ -447,6 +528,23 @@ describe('rekey.ts and compare-backups.ts', () => {
     expect(logLength()).toBe(before + 1);
     expect(existsSync(join(f.work, 'after'))).toBe(false);
   }, 180_000);
+
+  test('publicFamilies reads the family key of every committed task.toml under tasks/', () => {
+    expect(publicFamilies(ROOT)).toEqual(expect.arrayContaining(['approval_relay', 'continuity', 'corrections', 'scope_isolation', 'shared_channel', 'synthesis']));
+    const repo = join(f.tmp, 'families-repo');
+    write(join(repo, 'tasks', 'a', 'task.toml'), 'family = "pub_fam"\n');
+    fixtureGit(repo, 'init', '-q', '-b', 'main');
+    fixtureGit(repo, 'config', 'user.email', 'custody-test@example.invalid');
+    fixtureGit(repo, 'config', 'user.name', 'custody test');
+    fixtureGit(repo, 'add', '-A');
+    fixtureGit(repo, 'commit', '-q', '-m', 'synthetic');
+    write(join(repo, 'tasks', 'a', 'task.toml'), 'family = "edited_fam"\n');
+    write(join(repo, 'tasks', 'b', 'task.toml'), 'family = "staged_fam"\n');
+    fixtureGit(repo, 'add', 'tasks/b/task.toml');
+    expect(publicFamilies(repo)).toEqual(['pub_fam']);
+    mkdirSync(join(f.tmp, 'not-a-repo'), { recursive: true });
+    expect(() => publicFamilies(join(f.tmp, 'not-a-repo'))).toThrow('HE-SEALED-006 --family-field reads the task.toml families committed at HEAD in --repo');
+  });
 
   test('no decrypted text, task id or path below the second segment reached stdout or stderr', () => {
     const all = printed.join('\n');
