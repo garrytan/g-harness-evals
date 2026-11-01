@@ -90,7 +90,7 @@ if [ "$workload" = gstack-laneb ]; then
   if [ "$smoke" -eq 1 ]; then
     phase smoke_start
     log "smoke: scripts/gstack-laneb/smoke.sh (keyless, fake upstream)"
-    env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY bash scripts/gstack-laneb/smoke.sh --laneb-root "$HOME/laneb" --out "$shard/smoke"
+    env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u PARTICLE_API_KEY bash scripts/gstack-laneb/smoke.sh --laneb-root "$HOME/laneb" --out "$shard/smoke"
     rc=$?
     phase smoke_end
     [ "$rc" -eq 0 ] || { log "smoke failed (exit $rc); the counted run does not start"; finish 4; }

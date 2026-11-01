@@ -217,6 +217,18 @@ export const CANONICAL_PRICING: Record<string, ModelPricing> = {
   // the internal-task Codex, OpenClaw and Hermes cells on it.
   'openai:gpt-6-luna':                    { input:  0.10, output:  0.50 },
 
+  // ── Particle ───────────────────────────────────────────────────────────
+  // Particle-1 (internal-task, the cheap row): requests name `particle-1` at
+  // api.particle.ai/v1/chat/completions; responses echo
+  // `particle-ai/particle-1`. PEAK list rates (docs.particle.ai, checked
+  // 2026-10-31): $0.25 in, $0.03 cached in, $1.00 out per 1M tokens;
+  // reasoning tokens bill as output. Off-peak (20:30 to 04:00 New York)
+  // bills 50% of these, and the metering proxy cannot see which period a
+  // request got, so metered Particle spend is an upper bound until it is
+  // reconciled against Particle's billing. The metering proxy and ledger
+  // price it from this row (budget-ledger.ts chatPrice).
+  'particle:particle-1':                  { input:  0.25, output:  1.00, cache_read: 0.03 },
+
   // ── Google ─────────────────────────────────────────────────────────────
   // `gemini-1.5-pro` was retired by Google (#3510); kept so historical
   // usage/audit rows still price. Not a valid default — it's deliberately

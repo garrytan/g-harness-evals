@@ -2,6 +2,19 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.84] - 2026-11-01
+
+### internal-task: Particle-1 metering route and price row
+
+- `runner/proxy/metering-proxy.ts`: a `particle` provider. A cell with model `particle:particle-1` reaches `<proxy>/<slot>/particle`, and the proxy forwards it to `https://api.particle.ai` with `PARTICLE_API_KEY` from its own environment. Only `POST /v1/chat/completions` is routed. The proxy injects `max_completion_tokens` and, on a stream, `stream_options.include_usage`, as it does for OpenAI chat. The id Particle echoes (`particle-ai/particle-1`) goes on the usage line as `served_model` and is not priced. A Particle 5xx keeps its reservation.
+- `runner/proxy/metering-proxy.ts`: in lease mode the proxy now refuses an output limit that is zero, negative or fractional, on every route that carries one (Anthropic Messages, OpenAI Responses and Chat Completions, Particle). It answers 400 and never forwards the request, since such a limit would lower the reservation without bounding the output.
+- `runner/pricing/model-pricing.ts`: the row `particle:particle-1` at Particle's peak list price ($0.25 input, $0.03 cached input, $1.00 output per million tokens). Particle bills half that off-peak and the proxy cannot see which period a request got, so metered Particle spend is an upper bound until it is reconciled against Particle's billing.
+- `runner/ledger/budget-ledger.ts`: `api.particle.ai` is a paid host. A request that states more than one output limit (`max_tokens` beside `max_completion_tokens`) now reserves the largest, for every provider, since the provider may honor either.
+- `runner/run.ts`: `preflight` and `run` refuse a cell that calls Particle when `PARTICLE_API_KEY` is not set (HE-PROXY-001). They also refuse it when its harness pin declares no Particle transport (`model_particle` in `harnesses/<name>/pin.json`, HE-PIN-003), because an adapter without a Particle branch sends Anthropic Messages to a route that takes Chat Completions only; no harness on main declares one yet (#170 adds OpenClaw, Hermes and QM). Scripted cells are skipped. `run` checks too, because a resumed shard skips a preflight that passed.
+- `scripts/ubicloud/run-shard.sh` (internal-task's lane): writes `PARTICLE_API_KEY` to the VM's key file beside the other model keys when it is set. `scripts/ubicloud/vm-shard.sh` and `scripts/gstack-laneb/vm-run.sh` drop it where they already drop the other keys.
+- Tests: `tests/particle-route.test.ts` (new) runs the proxy against a fake Particle server (`tests/fixtures/particle/fake-particle.ts`), streamed and not. `tests/sealed-shard.test.ts` and `tests/gstack-laneb.test.ts` cover the key path.
+- Docs: `docs/errors.md` (HE-PROXY-001, raised by `preflight` and `run`; HE-PIN-003, new), `docs/ubicloud.md` (Secrets) and `runner/README.md` (a Particle-1 bullet; the list of what the plan still asks for no longer names forced `stream_options.include_usage` on OpenAI chat streams, which the proxy has done since #5).
+
 ## [0.0.79] - 2026-10-31
 
 ### internal-task: the CI checks job no longer times out on a healthy run

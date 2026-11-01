@@ -38,11 +38,12 @@
 #      --resume uploads them again to its fresh VM. The diagnostics of tar and the remote unpack (of the root, the receipt
 #      and a sealed --resume's results) go to <dest>/sealed-upload.log only (removed by scripts/sealed/cleanup.ts), since they
 #      can name a sealed path; a failed upload prints a fixed line naming that log. On the VM, scripts/run-shard.sh runs from its own copy of ~/sealed/root.
-#   5. ANTHROPIC_API_KEY and OPENAI_API_KEY (each one that is set here; the run needs the first, --embedded the second)
-#      are written to ~/.ubirun-env on the VM with umask 077 over the multiplexed SSH connection, exactly as
-#      ubi-runner.sh run --pass writes them. The launcher reads the file into the shell and deletes it before vm-shard.sh
-#      starts, so no file on the VM holds a key while the run is live; the keys live in that process's environment and
-#      reach only the metering proxy, as on a Capy shard. Nothing goes through cloud-init user data, images or logs.
+#   5. ANTHROPIC_API_KEY, OPENAI_API_KEY and PARTICLE_API_KEY (each one that is set here; the run needs the first,
+#      --embedded the second, a Particle cell the third, which preflight requires) are written to ~/.ubirun-env on the
+#      VM with umask 077 over the multiplexed SSH connection, exactly as ubi-runner.sh run --pass writes them. The
+#      launcher reads the file into the shell and deletes it before vm-shard.sh starts, so no file on the VM holds a key
+#      while the run is live; the keys live in that process's environment (the runner's own child processes inherit it)
+#      and only the metering proxy uses them, as on a Capy shard; no container or image receives them. Nothing goes through cloud-init user data, images or logs.
 #   6. vm-shard.sh runs detached on the VM (setsid, nohup): checkout --detach, bun install, the smoke (a copy of the
 #      preregistration with only this shard's harness cells on one dev task, one repetition, under its own lease and
 #      ledger; it builds the images; a sealed lane's smoke is a public dev run, without the sealed flags and with the public
@@ -341,10 +342,10 @@ else
     tar -C "$laneb_root" -czf - --exclude=gstack-evals/.git "${laneb_parts[@]}" 2>>"$dest/lane.log" | bash "$runner" unpack "$vm" laneb >>"$dest/lane.log" 2>&1 || { log "laneb upload failed"; exit 3; }
   fi
 
-  # 5. the keys, over SSH only, into a 0600 file the launcher reads and deletes. Only the two model keys go; the custody
-  # identity (a file in the project-user drive, never in the environment) never reaches the VM, which gets the opened
-  # plaintext and never decrypts.
-  { for k in ANTHROPIC_API_KEY OPENAI_API_KEY; do if [ -n "${!k:-}" ]; then printf 'export %s=%q\n' "$k" "${!k}"; fi; done; } | vssh 'umask 077 && cat > ~/.ubirun-env'
+  # 5. the keys, over SSH only, into a 0600 file the launcher reads and deletes. Only the model keys go (PARTICLE_API_KEY,
+  # internal-task, for Particle cells); the custody identity (a file in the project-user drive, never in the environment) never
+  # reaches the VM, which gets the opened plaintext and never decrypts.
+  { for k in ANTHROPIC_API_KEY OPENAI_API_KEY PARTICLE_API_KEY; do if [ -n "${!k:-}" ]; then printf 'export %s=%q\n' "$k" "${!k}"; fi; done; } | vssh 'umask 077 && cat > ~/.ubirun-env'
 
   if [ "$resume" -eq 1 ]; then
     log "resume: uploading $dest/results (without harness state and workspaces) to the VM"

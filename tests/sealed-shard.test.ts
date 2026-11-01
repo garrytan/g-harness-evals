@@ -85,7 +85,7 @@ const SHARD_CANARY = 'CANARY turn 1 of sx-01-vault-ask in #syn-vault';
 const UPLOAD_CANARY = 'tasks/multiuser/set1/heldout/sx-02-dm-guard/task.toml';
 
 describe('ubicloud/run-shard.sh sealed upload and cleanup', () => {
-  function lane(args: string[], opts: { exit?: number; identity?: string; downFails?: boolean; unpackFails?: boolean; prepare?: (dir: string) => void; dest?: (dir: string, repo: string) => string; unset?: string[] } = {}) {
+  function lane(args: string[], opts: { exit?: number; identity?: string; downFails?: boolean; unpackFails?: boolean; prepare?: (dir: string) => void; dest?: (dir: string, repo: string) => string; unset?: string[]; set?: Record<string, string> } = {}) {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), 'he-sealed-lane-')));
     const store = join(dir, 'uploads');
     mkdirSync(store);
@@ -126,6 +126,7 @@ describe('ubicloud/run-shard.sh sealed upload and cleanup', () => {
     };
     if (opts.identity) env.AGE_IDENTITY_IN_ENV = opts.identity;
     for (const k of opts.unset ?? []) delete env[k];
+    Object.assign(env, opts.set ?? {});
     const base = args.includes('--attach')
       ? ['--dest', dest, '--poll-seconds', '1']
       : ['--commit', 'HEAD', '--prereg', join(dir, 'prereg.json'), '--name', 's1', '--cells', 'sonnet', '--lease-usd', '7', '--dest', dest, '--poll-seconds', '1'];
@@ -280,6 +281,19 @@ describe('ubicloud/run-shard.sh sealed upload and cleanup', () => {
       rmSync(home, { recursive: true, force: true });
     }
   }, 60_000);
+
+  // Value: protects=a Particle cell's key reaching the VM's key file (internal-task), and only when it is set; fails_when=the key
+  // loop drops PARTICLE_API_KEY, or the key lands in launch.sh, the lane log or stderr; seam=none; no_claim=the metering proxy
+  // on the VM (runner/run.ts hands it the shell's environment; harness containers get the trial environment only).
+  test('PARTICLE_API_KEY goes into ~/.ubirun-env beside the other model keys when it is set, and nowhere else', () => {
+    const value = 'placeholder-particle';
+    const r = lane([], { set: { PARTICLE_API_KEY: value } });
+    expect(r.code, r.err).toBe(0);
+    expect(r.keyFile).toBe('export ANTHROPIC_API_KEY=' + PLACEHOLDER + '\nexport OPENAI_API_KEY=' + PLACEHOLDER + '\nexport PARTICLE_API_KEY=' + value + '\n');
+    expect(r.launch).not.toContain('PARTICLE');
+    expect(r.laneLog + r.err).not.toContain(value);
+    expect(lane([]).keyFile).not.toContain('PARTICLE_API_KEY');
+  }, 120_000);
 
   test('a failed down is not recorded as a destroy: the VM id goes to cleanup-pending and shard-vm.json says cleanup failed', () => {
     const s = sealedRoot();

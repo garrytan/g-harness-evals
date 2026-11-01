@@ -1067,7 +1067,7 @@ const allowanceScope = new AsyncLocalStorage<BudgetAllowance>();
 // ─── Request pricing ────────────────────────────────────────────────
 
 /** Hosts whose requests cost money. */
-const PAID_HOSTS: Record<string, 'openai' | 'anthropic' | 'voyage' | 'openrouter' | 'typesafe' | 'gemini' | 'groq'> = {
+const PAID_HOSTS: Record<string, 'openai' | 'anthropic' | 'voyage' | 'openrouter' | 'typesafe' | 'gemini' | 'groq' | 'particle'> = {
   'api.openai.com': 'openai',
   'api.anthropic.com': 'anthropic',
   'api.voyageai.com': 'voyage',
@@ -1075,6 +1075,8 @@ const PAID_HOSTS: Record<string, 'openai' | 'anthropic' | 'voyage' | 'openrouter
   'api.typesafe.ai': 'typesafe',
   'generativelanguage.googleapis.com': 'gemini',
   'api.groq.com': 'groq',
+  // Particle's Chat Completions (internal-task); chatPrice reads its row from the canonical table (particle:particle-1).
+  'api.particle.ai': 'particle',
 };
 
 /** Output-token allowance for a chat request that names no limit. */
@@ -1247,8 +1249,9 @@ export function priceRequest(url: string, body: unknown, options: PriceOptions =
     ? options.chainContextTokens?.(b.previous_response_id) ?? UNKNOWN_CHAIN_CONTEXT_TOKENS : 0;
   const inputTokens = Math.ceil((textBytes([b.system, b.instructions, b.messages, b.prompt, b.input]) + toolBytes) / 3) + 16 + chained;
   const harnessRow = HARNESS_CHAT_PRICES[`${provider}:${model}`];
-  const maxOutputTokens = [b.max_tokens, b.max_completion_tokens, b.max_output_tokens].find(v => typeof v === 'number') as number | undefined
-    ?? harnessRow?.max_output ?? DEFAULT_MAX_OUTPUT_TOKENS;
+  // A request stating more than one limit (max_tokens beside max_completion_tokens) reserves the largest: the provider may honor either.
+  const stated = [b.max_tokens, b.max_completion_tokens, b.max_output_tokens].filter((v): v is number => typeof v === 'number');
+  const maxOutputTokens = stated.length ? Math.max(...stated) : harnessRow?.max_output ?? DEFAULT_MAX_OUTPUT_TOKENS;
   if (provider === 'openrouter') {
     const maxPrice = (b.provider as { max_price?: { prompt?: number; completion?: number } } | undefined)?.max_price;
     if (typeof maxPrice?.prompt !== 'number' || typeof maxPrice.completion !== 'number') {

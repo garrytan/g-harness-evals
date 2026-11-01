@@ -76,8 +76,8 @@ import { BudgetExceededError, BudgetRun, ledgerStatus, priceRequest, readBody, r
 export { sseIncomplete, sseUsage };
 import { findLeaks } from './sanitize.ts';
 
-export const UPSTREAM: Record<string, string> = { anthropic: 'https://api.anthropic.com', openai: 'https://api.openai.com', voyage: 'https://api.voyageai.com' };
-export type ProviderName = 'anthropic' | 'openai' | 'voyage';
+export const UPSTREAM: Record<string, string> = { anthropic: 'https://api.anthropic.com', openai: 'https://api.openai.com', voyage: 'https://api.voyageai.com', particle: 'https://api.particle.ai' };
+export type ProviderName = 'anthropic' | 'openai' | 'voyage' | 'particle';
 type Send = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 /** Anthropic's token counter. Providers do not bill it. Only a lease proxy started with --free-count-tokens (the Lane B
@@ -95,8 +95,10 @@ const ROUTES: Record<ProviderName, Array<{ method: string; path: RegExp }>> = {
   ],
   anthropic: [{ method: 'POST', path: /^\/v1\/messages$/ }],
   voyage: [{ method: 'POST', path: /^\/v1\/embeddings$/ }, { method: 'POST', path: /^\/v1\/rerank$/ }],
+  // Particle (internal-task) serves OpenAI Chat Completions over HTTP and nothing else a harness needs: no Responses over HTTP, no embeddings.
+  particle: [{ method: 'POST', path: /^\/v1\/chat\/completions$/ }],
 };
-const KEY_ENV: Record<ProviderName, string> = { openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY', voyage: 'VOYAGE_API_KEY' };
+const KEY_ENV: Record<ProviderName, string> = { openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY', voyage: 'VOYAGE_API_KEY', particle: 'PARTICLE_API_KEY' };
 const CREDENTIAL_HEADERS = ['authorization', 'x-api-key', 'api-key', 'openai-organization', 'openai-project', 'cookie', 'proxy-authorization'];
 export const DEFAULT_MAX_OUTPUT_TOKENS = 32_768;
 /** A provider call may run this long (Bun's own 300-second fetch timeout is off; long reasoning calls exceed it). */
@@ -142,6 +144,8 @@ export interface UsageLine {
   reason?: string; status?: number; reserved_usd?: number; actual_usd?: number; input_tokens?: number; output_tokens?: number; cached_tokens?: number; charged_reservation?: boolean; streamed?: boolean;
   /** What the request asked for: OpenAI `reasoning.effort` (or chat-completions `reasoning_effort`), Anthropic `thinking.type` and `thinking.budget_tokens`. */
   reasoning_effort?: string; thinking_type?: string; thinking_budget_tokens?: number;
+  /** Particle only: the model id the response echoed (particle-ai/particle-1 for a request naming particle-1). Recorded, never checked or priced. */
+  served_model?: string;
 }
 
 /** The values a usage line may carry for OpenAI `reasoning.effort` / `reasoning_effort` and Anthropic `thinking.type`. */
@@ -156,7 +160,8 @@ export const PROVIDER_ERROR_NOT_BILLED = 'a provider error envelope that is not 
  * `{"type":"error","error":{"type":"api_error"|"overloaded_error"}}`. OpenAI: 500 or 503 with
  * `{"error":{"type":"server_error"}}`, `code` null, "server_error" or "service_unavailable" (or no `type` and
  * `code` "server_error"). Anything else (a 504, a timeout_error, a gateway's JSON or HTML, an array) is null and keeps
- * its reservation, since the request may have run.
+ * its reservation, since the request may have run. Particle documents no not-billed envelope, so every Particle 5xx keeps
+ * its reservation.
  */
 function notBilledError(provider: ProviderName, status: number, body: unknown): string | null {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
@@ -178,6 +183,18 @@ function cachedTokens(usage: unknown): number | undefined {
   const u = usage as Record<string, any>;
   const n = (v: unknown) => (typeof v === 'number' ? v : 0);
   return n(u.cache_read_input_tokens) + n(u.prompt_tokens_details?.cached_tokens) + n(u.input_tokens_details?.cached_tokens);
+}
+
+/** The model id a Chat Completions response echoed (the body's `model`, or the last streamed chunk's), when it is a plain id. */
+function echoedModel(text: string, streamed: boolean): string | undefined {
+  const pick = (v: unknown) => { const m = (v as { model?: unknown } | null)?.model; return typeof m === 'string' && /^[A-Za-z0-9._:/-]{1,200}$/.test(m) ? m : undefined; };
+  if (!streamed) { try { return pick(JSON.parse(text)); } catch { return undefined; } }
+  let last: string | undefined;
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.startsWith('data:')) continue;
+    try { last = pick(JSON.parse(line.slice(5).trim())) ?? last; } catch { /* [DONE] or a broken line */ }
+  }
+  return last;
 }
 
 /** 0.0.0.0, ::, [::], *, an empty host, or any spelling the URL parser canonicalizes to one of them (0, 0.0, 00.0.0.0, ::0,
@@ -203,12 +220,12 @@ function presentedCredential(req: Request): string | null {
 const json = (status: number, kind: string, message: string) =>
   new Response(JSON.stringify({ error: { kind, type: kind, message: `metering proxy: ${message}` } }), { status, headers: { 'content-type': 'application/json' } });
 
-/** The output-token field a request uses, by provider and route. */
-function outputField(provider: ProviderName, route: string): string | null {
-  if (provider === 'anthropic') return 'max_tokens';
-  if (provider === 'openai' && route === '/v1/chat/completions') return 'max_completion_tokens';
-  if (provider === 'openai' && route === '/v1/responses') return 'max_output_tokens';
-  return null;
+/** The output-token fields a provider honors on a route; the first is the one the proxy injects when the request states none of them. */
+function outputFields(provider: ProviderName, route: string): string[] {
+  if (provider === 'anthropic') return ['max_tokens'];
+  if ((provider === 'openai' || provider === 'particle') && route === '/v1/chat/completions') return ['max_completion_tokens', 'max_tokens'];
+  if (provider === 'openai' && route === '/v1/responses') return ['max_output_tokens'];
+  return [];
 }
 
 /**
@@ -267,7 +284,7 @@ export class MeteringProxy {
         const url = new URL(req.url);
         if (url.pathname === '/__proxy/status' && req.method === 'GET') return Response.json(this.status());
         if (url.pathname.startsWith('/__proxy/') && req.method === 'POST') return this.control(url.pathname, req);
-        const m = url.pathname.match(/^\/(?:([^/]+)\/)?(anthropic|openai|voyage)(\/.*)$/);
+        const m = url.pathname.match(/^\/(?:([^/]+)\/)?(anthropic|openai|voyage|particle)(\/.*)$/);
         if (!m) return json(404, 'invalid_request', `no provider route ${url.pathname}`);
         const [, slot = 'default', prov, rest] = m as unknown as [string, string | undefined, ProviderName, string];
         const binding = this.bindings.get(slot);
@@ -421,13 +438,15 @@ export class MeteringProxy {
     }
     const streamed = body?.stream === true;
     if (streamed && (p.streaming ?? 'meter') === 'refuse') return refuse(400, 'invalid_request', 'streaming is disabled for this cell', model);
-    if (streamed && prov === 'openai' && route === '/v1/chat/completions') body!.stream_options = { ...(body!.stream_options ?? {}), include_usage: true };
-    const field = body ? outputField(prov, route) : null;
+    if (streamed && (prov === 'openai' || prov === 'particle') && route === '/v1/chat/completions') body!.stream_options = { ...(body!.stream_options ?? {}), include_usage: true };
+    const fields = body ? outputFields(prov, route) : [];
     const cap = p.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
-    if (field && body) {
+    if (fields.length && body) {
       const stated = [body.max_tokens, body.max_completion_tokens, body.max_output_tokens].filter((v): v is number => typeof v === 'number');
       if (stated.some(v => v > cap)) return refuse(400, 'invalid_request', `requested ${Math.max(...stated)} output tokens, above this cell's cap of ${cap}`, model);
-      if (!stated.length) body[field] = cap;
+      if (stated.some(v => !Number.isInteger(v) || v < 1)) return refuse(400, 'invalid_request', `an output limit must be a positive whole number of tokens (got ${stated.join(', ')}); it would lower the reservation without bounding the output`, model);
+      // A limit in a field this route does not honor (max_output_tokens on chat completions) bounds nothing, so the cap is injected.
+      if (!fields.some(f => typeof body![f] === 'number')) body[fields[0]!] = cap;
     }
     const target = `${this.options.upstream?.[prov] ?? UPSTREAM[prov]}${route}${search}`;
     const outBody = body === undefined ? undefined : JSON.stringify(body);
@@ -458,13 +477,14 @@ export class MeteringProxy {
       ...(Number.isSafeInteger(budget) && budget >= 0 ? { thinking_budget_tokens: budget as number } : {}),
     };
     /** `unfinished`: `cost` is the partial usage of a stream that ended before its final usage, charged at no less than the reservation. */
-    const settle = (cost: ReturnType<typeof usageCost>, status: number, isStream: boolean, cached?: number, reason?: string, unfinished = false) => {
+    const settle = (cost: ReturnType<typeof usageCost>, status: number, isStream: boolean, cached?: number, reason?: string, unfinished = false, served?: string) => {
       const charged = !!bounded && (!cost || unfinished);
       if (entry) p.lease.settle(entry, cost && unfinished ? { ...cost, unfinished } : cost);
       const usd = !cost ? reserved : unfinished ? Math.max(reserved, cost.usd) : cost.usd;
       this.charge(key, prov, bounded?.model ?? null, usd, charged);
       this.log({ at, key, provider: prov, route, model: bounded?.model ?? model, outcome: 'forwarded', ...(reason ? { reason } : {}), status, reserved_usd: reserved, actual_usd: usd,
-        input_tokens: cost?.input_tokens, output_tokens: cost?.output_tokens, ...(cost && cached !== undefined ? { cached_tokens: cached } : {}), charged_reservation: charged, streamed: isStream, ...knobs });
+        input_tokens: cost?.input_tokens, output_tokens: cost?.output_tokens, ...(cost && cached !== undefined ? { cached_tokens: cached } : {}), charged_reservation: charged, streamed: isStream, ...knobs,
+        ...(served ? { served_model: served } : {}) });
     };
     // The upstream never answered, or its non-streamed body broke off: usage is unknown, so the reservation is charged.
     const failed = (message: string) => {
@@ -491,7 +511,7 @@ export class MeteringProxy {
           const over = !!unfinished && !!cost && cost.usd > reserved;
           const reason = !bounded || (cost && !unfinished) ? undefined
             : `${unfinished ?? 'the stream carried no usage'}${over ? '; charged its partial usage, which cost more than the reservation' : ''}`;
-          settle(cost, res.status, true, cachedTokens(u), reason, !!unfinished);
+          settle(cost, res.status, true, cachedTokens(u), reason, !!unfinished, prov === 'particle' ? echoedModel(text, true) : undefined);
         },
       ).finally(done);
       return new Response(client, { status: res.status, headers: out });
@@ -511,7 +531,7 @@ export class MeteringProxy {
       cost = { usd: 0, input_tokens: 0, output_tokens: 0 };
       reason = `HTTP ${res.status} ${notBilled}: ${PROVIDER_ERROR_NOT_BILLED}`;
     } else if (!cost && bounded) reason = 'the response carried no usage';
-    settle(cost, res.status, false, cachedTokens(parsedBody?.usage), reason);
+    settle(cost, res.status, false, cachedTokens(parsedBody?.usage), reason, false, prov === 'particle' ? echoedModel(text, false) : undefined);
     return new Response(text, { status: res.status, headers: out });
   }
 }

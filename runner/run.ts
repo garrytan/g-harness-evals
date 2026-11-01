@@ -148,6 +148,25 @@ export interface Cell {
 const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'config', 'repetitions', 'ceiling', 'tasks', 'harness_mode', 'script', 'adapter', 'gbrain', 'preamble', 'task_set', 'session_scope', 'utility_models', 'network']);
 export const DEFAULT_TASK_SET = 'v0.1';
 
+/** internal-task: the Particle cells whose harness pin has no model_particle entry, the declaration an adapter makes when it routes
+ *  <proxy>/<slot>/particle as Chat Completions. Any other adapter falls back to its Anthropic config on that URL. */
+export function particleCellsWithoutRoute<C extends Pick<Cell, 'harness'>>(cells: C[], root = '.'): C[] {
+  return cells.filter((c) => {
+    try { return !(JSON.parse(readFileSync(join(root, 'harnesses', c.harness, 'pin.json'), 'utf8')) as { model_particle?: unknown }).model_particle; }
+    catch { return true; }
+  });
+}
+
+/** internal-task: a cell that calls Particle needs PARTICLE_API_KEY in this shell for the metering proxy (HE-PROXY-001) and a harness
+ *  whose pin declares a Particle transport (HE-PIN-003). preflight and run both check, because a resumed shard skips a
+ *  preflight that already passed (scripts/run-shard.sh). */
+function requireParticleCells(cells: Array<Pick<Cell, 'id' | 'harness' | 'model' | 'utility_models'>>): void {
+  const particle = cells.filter((c) => cellModels(c).some((id) => id.startsWith('particle:')));
+  if (particle.length && !process.env.PARTICLE_API_KEY) throw new RunnerError('HE-PROXY-001', `cells ${particle.map((c) => c.id).join(', ')} call Particle and PARTICLE_API_KEY is not set in this shell; the metering proxy needs it to forward their calls (harness containers never see it)`);
+  const noRoute = particleCellsWithoutRoute(particle);
+  if (noRoute.length) throw new RunnerError('HE-PIN-003', `cells ${noRoute.map((c) => `${c.id} (${c.harness})`).join(', ')} call Particle, but their harness pin declares no Particle transport (model_particle in harnesses/<name>/pin.json); the proxy routes Particle as Chat Completions only, and an adapter without that branch sends Anthropic Messages to it; fix: run the cell on a harness whose adapter routes <proxy>/<slot>/particle`);
+}
+
 /** internal-task: the provider:model ids a cell's harness may call, its model and its utility_models: what the runner binds the
  *  trial's proxy slot to (POST /__proxy/bind models), so a request for another model on that slot is refused even when
  *  another cell of the run put it on the run-wide --allow-models. */
@@ -500,6 +519,7 @@ async function main(argv: string[]): Promise<number> {
     const missing = m.cells.filter(c => c.harness !== 'scripted' && !existsSync(join('harnesses', c.harness, 'pin.json'))).map(c => c.harness);
     if (missing.length) throw new RunnerError('HE-PIN-001', `no harnesses/<name>/pin.json for: ${[...new Set(missing)].join(', ')}; fix: add the pin before any cell runs`);
     for (const k of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']) if (!process.env[k]) console.log(`WARN: HE-PROXY-001 ${k} is not set in this shell; the metering proxy needs it, harness containers never do`);
+    requireParticleCells(m.cells.filter((c) => c.harness_mode !== 'scripted'));
     // internal-task: a harness image built before an adapter edit silently runs the old adapter; compare the image's adapter with the checkout.
     const dockerCells = m.cells.filter((c) => c.harness !== 'scripted' && (c.harness_mode ?? 'docker') === 'docker' && !existsSync(join('harnesses', c.harness, 'compose.yaml')));
     for (const harness of [...new Set(dockerCells.map((c) => c.harness))]) {
@@ -641,6 +661,7 @@ async function main(argv: string[]): Promise<number> {
     const callingCells = manifest.cells.filter((c) => c.harness_mode !== 'scripted' && mode !== 'scripted' && (cells ? cells.includes(c.id) : true));
     const providers = callingCells.flatMap((c) => [c.model, ...(c.utility_models ?? []), c.gbrain?.embeddings ?? 'off']).filter((m) => m.includes(':')).map((m) => m.slice(0, m.indexOf(':')));
     const capture = parseCaptureOptions({ runId: manifest.run_id, upstream: all('--capture-upstream'), dns: has('--capture-dns') ? (flag('--capture-dns') ?? '') : undefined, providers }) ?? undefined;
+    requireParticleCells(callingCells);
     const sealed = sealedContextFor(manifest, flag, dirname(path));
     if (sealed) installSealedGuard(sealed, join(dirname(path), 'sealed-console.log'), 'run');
     // A sealed run's trials default to the sealed image tag, and run repeats preflight's image check (HE-SEALED-005).
