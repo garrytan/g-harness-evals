@@ -1,0 +1,10 @@
+#!/usr/bin/env node
+// A stand-in for codex 0.165.0 that runs the trusted UserPromptSubmit hooks before each turn (run-hooks.cjs), logs their
+// additionalContext to STUB_LOG, and prints the JSONL events the adapter reads. It never calls a model.
+const fs = require("fs"), path = require("path"), runHooks = require(path.join(__dirname, "..", "run-hooks.cjs"));
+const a = process.argv.slice(2);
+if (a[0] === "--version") { console.log("codex-cli 0.165.0"); process.exit(0); }
+const prompt = fs.readFileSync(0, "utf8"), tid = a[1] === "resume" ? a[2] : "stub-" + process.pid;
+fs.appendFileSync(process.env.STUB_LOG, JSON.stringify({ harness: "codex", prompt, contexts: runHooks("codex", prompt) }) + "\n");
+for (const ev of [{ type: "thread.started", thread_id: tid }, { type: "turn.started" }, { type: "item.completed", item: { id: "item_1", type: "agent_message", text: "stub reply" } },
+  { type: "turn.completed", usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1, reasoning_output_tokens: 0 } }]) console.log(JSON.stringify(ev));

@@ -47,6 +47,13 @@
 
 [growth.json](records/openclaw-default/growth.json): 30 tool calls that each print about 60 KB. Every result was kept whole, and the request grew by about 60 KB per call to 1.86 MB. No compaction happened, but the fake never reported more than 194,000 input tokens and never refused a long prompt, so this does not show what OpenClaw does at a real context limit. The second member turn is in a different conversation (a channel after a DM), so it runs in a separate session with its own history.
 
+## Memory search on OpenAI cells
+
+- **Measured:** OpenClaw indexes `MEMORY.md` and `memory/*.md` in the workspace for its `memory_search` tool. By default it embeds them with the openai provider.
+- **On an Anthropic cell** there is no OpenAI key, so the index is keyword only (FTS) and no request leaves the container. Six `oc-none` and three `oc-told` trials in the host-harness pilot logged "semantic vector embeddings unavailable" and carried on.
+- **On an OpenAI cell** the indexer found the cell's key and called `/v1/embeddings` for `text-embedding-3-small`. The proxy refused all 21 calls, and 11 `oc-luna` trials ended as model errors.
+- **Named setting:** the OpenAI template sets `memory.search.provider: "none"`, OpenClaw's deliberate keyword-only mode. Both cells now search memory the same way, and the `memory_search` tool stays. `tests/openai-branch.test.ts` runs `openclaw memory index --force` and `memory search` through the real proxy: 2 files indexed, the note found, no request sent.
+
 ## Cost in a counted run
 
 From the [m3 held-out run](../benchmarks/2026-10-24-m3-heldout/report.md), Sonnet, 100 trials, split by [scripts/anatomy/cost-split.ts](../../scripts/anatomy/cost-split.ts) ([split](cost/m3-heldout-2026-10.split.json)):

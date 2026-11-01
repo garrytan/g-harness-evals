@@ -52,6 +52,10 @@
 // for Hermes the largest number of compiled-context pages outside an actor's scope), the semantic exclusions
 // (`gbrain.semantic_check.ok` false, HE-GBRAIN-005) and the degraded calls (`gbrain.events.degraded`). Every existing
 // key and table is unchanged.
+// Issue #153: a cell with Claude Code or Codex installer trials (`install_bundle.turn_hook.status` "ran") also gets
+// `install_bundle.turn_hook.per_turn`: those trials, how many ran the hook in every turn (`applied`), the rest by the reason
+// compare-run gives them (installerNotApplied, installer_not_applied there), the turns, the turns at 0 and with no count, and
+// the turns by hook runs. The Install bundle column adds the same counts for such a cell; every other cell prints as before.
 // internal-task (live ingestion, gbrain-memory-2026-10's Endpoints item 3): a top-level `ingest` key with a block per cell whose records
 // carry `gbrain.ingest` "live" (a cell without live ingestion gets no block), printed as a "Live ingestion" table: ingestion counts
 // per trial from the record's `gbrain.ingested` (ok, skipped, failed: median per trial and total), the write latency from the
@@ -61,7 +65,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { TrialRecord } from '../runner/contracts.ts';
+import { installerNotApplied, type TrialRecord } from '../runner/contracts.ts';
 import type { WorldEvent } from '../world/services/events.ts';
 import { seededRandom } from '../runner/stats/paired.ts';
 import { gbrainUsage } from './gbrain-usage.ts';
@@ -226,10 +230,15 @@ for (const cell of cells) {
   const eu = withGbrain.map((t) => t.gbrain!.embedding_usage).filter((u): u is NonNullable<typeof u> => !!u);
   const bundles = withGbrain.map((t) => t.gbrain!.install_bundle).filter((b): b is NonNullable<typeof b> => !!b);
   const exposure = bundles.map((b) => b.context?.outside_scope_max).filter((x): x is number => typeof x === 'number');
+  const ran = bundles.filter((b) => b.turn_hook?.status === 'ran');
+  const turnRuns = ran.flatMap((b) => b.turn_hook!.turn_runs ?? []);
+  const notApplied = ran.map((b) => installerNotApplied(b)).filter((r): r is string => !!r);
+  const tally = (xs: string[]) => Object.fromEntries([...new Set(xs)].sort().map((x) => [x, xs.filter((y) => y === x).length]));
+  const perTurn = ran.length ? { trials: ran.length, applied: ran.length - notApplied.length, not_applied: tally(notApplied), turns: turnRuns.length, turns_zero: turnRuns.filter((n) => n === 0).length, turns_missing: turnRuns.filter((n) => n === null).length, runs_per_turn: tally(turnRuns.filter((n): n is number => n !== null).map(String)) } : null;
   ladder[cell] = {
     harness_input_tokens: { median_per_trial: median(inputTokens), total: inputTokens.reduce((s, n) => s + n, 0), trials: inputTokens.length },
     embedding_usage: { trials: eu.length, requests: eu.reduce((s, u) => s + u.requests, 0), input_tokens: eu.reduce((s, u) => s + u.input_tokens, 0), usd: eu.reduce((s, u) => s + u.usd, 0), refused: eu.reduce((s, u) => s + u.refused, 0), failed: eu.reduce((s, u) => s + u.failed, 0) },
-    install_bundle: bundles.length ? { trials: bundles.length, files: [...new Set(bundles.map((b) => b.files))], view_digests: [...new Set(bundles.map((b) => b.view_digest))], context_outside_scope_max: exposure.length ? Math.max(...exposure) : null, turn_hook: bundles.some((b) => b.turn_hook) ? { trials: bundles.filter((b) => b.turn_hook).length, status: Object.fromEntries([...new Set(bundles.map((b) => b.turn_hook?.status).filter((s): s is string => !!s))].map((s) => [s, bundles.filter((b) => b.turn_hook?.status === s).length])) } : null } : null,
+    install_bundle: bundles.length ? { trials: bundles.length, files: [...new Set(bundles.map((b) => b.files))], view_digests: [...new Set(bundles.map((b) => b.view_digest))], context_outside_scope_max: exposure.length ? Math.max(...exposure) : null, turn_hook: bundles.some((b) => b.turn_hook) ? { trials: bundles.filter((b) => b.turn_hook).length, status: Object.fromEntries([...new Set(bundles.map((b) => b.turn_hook?.status).filter((s): s is string => !!s))].map((s) => [s, bundles.filter((b) => b.turn_hook?.status === s).length])), ...(perTurn ? { per_turn: perTurn } : {}) } : null } : null,
     semantic_exclusions: withGbrain.filter((t) => t.gbrain!.semantic_check && !t.gbrain!.semantic_check.ok).length,
     degraded_calls: withGbrain.reduce((s, t) => s + (t.gbrain!.events.degraded ?? 0), 0),
   };
@@ -240,8 +249,9 @@ if (allRows.some((t) => t.gbrain)) {
   out.push('| Cell | Harness input tokens / trial (median; total) | Embedding requests / input tokens / USD (trials with usage) | Embedding refused / failed | Install bundle (files; view digest; Hermes context pages outside scope, max) | Semantic exclusions (HE-GBRAIN-005) | Degraded calls |');
   out.push('|---|---|---|---|---|---|---|');
   for (const cell of cells) {
-    const l = ladder[cell] as { harness_input_tokens: { median_per_trial: number; total: number }; embedding_usage: { trials: number; requests: number; input_tokens: number; usd: number; refused: number; failed: number }; install_bundle: { files: number[]; view_digests: string[]; context_outside_scope_max: number | null } | null; semantic_exclusions: number; degraded_calls: number };
-    const bundle = l.install_bundle ? `${l.install_bundle.files.join('/')}; ${l.install_bundle.view_digests.map((d) => d.slice(0, 12)).join(', ')}; ${l.install_bundle.context_outside_scope_max ?? 'n/a'}` : 'none';
+    const l = ladder[cell] as { harness_input_tokens: { median_per_trial: number; total: number }; embedding_usage: { trials: number; requests: number; input_tokens: number; usd: number; refused: number; failed: number }; install_bundle: { files: number[]; view_digests: string[]; context_outside_scope_max: number | null; turn_hook: { per_turn?: { trials: number; applied: number; turns: number; turns_zero: number; turns_missing: number } } | null } | null; semantic_exclusions: number; degraded_calls: number };
+    const pt = l.install_bundle?.turn_hook?.per_turn;
+    const bundle = l.install_bundle ? `${l.install_bundle.files.join('/')}; ${l.install_bundle.view_digests.map((d) => d.slice(0, 12)).join(', ')}; ${l.install_bundle.context_outside_scope_max ?? 'n/a'}${pt ? `; hook ran at ready in ${pt.trials}, ran in every turn in ${pt.applied}; turns at 0: ${pt.turns_zero} of ${pt.turns}, no count: ${pt.turns_missing}` : ''}` : 'none';
     out.push(`| ${cell} | ${l.harness_input_tokens.median_per_trial.toLocaleString()}; ${l.harness_input_tokens.total.toLocaleString()} | ${l.embedding_usage.requests} / ${l.embedding_usage.input_tokens.toLocaleString()} / $${l.embedding_usage.usd.toFixed(6)} (${l.embedding_usage.trials}) | ${l.embedding_usage.refused} / ${l.embedding_usage.failed} | ${bundle} | ${l.semantic_exclusions} | ${l.degraded_calls} |`);
   }
   out.push('');

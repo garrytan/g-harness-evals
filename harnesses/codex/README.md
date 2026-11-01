@@ -8,6 +8,8 @@
 
 At serve start the adapter appends `[mcp_servers.world]` (Streamable HTTP, `bearer_token_env_var = "HE_WORLD_MCP_TOKEN"`, `required = true`) to the config, and `[mcp_servers.gbrain]` on a gbrain cell. Each server must answer `tools/list` with the bot token before `ready`, else exit 2.
 
+**gbrain's installer.** `HE_GBRAIN_INSTALL=gbrain-installer` applies what `gbrain setup codex --instructions-only` wrote at gbrain image build (the brain-first block in `AGENTS.md`, the per-turn `UserPromptSubmit` hook in `hooks.json` with its `config.toml` trust table, gbrain's ledger and binary) and checks the hook prints its rule before ready. Any other `HE_GBRAIN_INSTALL` exits 2. See [docs/gbrain-arm.md](../../docs/gbrain-arm.md), "The Claude Code and Codex installer".
+
 ## Configuration
 
 `config/config.toml` is a template. The adapter fills in the cell model, the proxy URL and `codex_config` from `pin.json`, and writes it to `$CODEX_HOME/config.toml` (`/harness-state/codex`):
@@ -16,6 +18,8 @@ At serve start the adapter appends `[mcp_servers.world]` (Streamable HTTP, `bear
 - **One model.** `model`, `review_model`, the subagent default, the memory models and the realtime model are all the cell model. Reasoning effort is `medium`.
 - **No prompts, no sandbox.** `approval_policy = "never"` and `sandbox_mode = "danger-full-access"`. Codex's bubblewrap sandbox cannot create a namespace in our unprivileged containers, so the container is the sandbox.
 - **No side traffic.** Web search, analytics, feedback, OTEL, update checks and plugins are off. Retries are 1 and 1, and endless connection retries are off.
+
+The sandbox mode and the reasoning effort are named settings; Garry kept both on 2026-10-30 ([Named settings](../../docs/harness-anatomy/README.md#named-settings)).
 
 Every key was checked with `--strict-config` at this pin (`pin.json` `config_keys_confirmed`), and every turn runs with it.
 

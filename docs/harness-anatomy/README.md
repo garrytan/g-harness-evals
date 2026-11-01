@@ -50,6 +50,19 @@ Each number links to a record below. A **record** is one capture turned into JSO
 
 </details>
 
+## Named settings
+
+**Six choices we made on purpose, written down so a reader can see them.** Garry reviewed the first five on 2026-10-30 and kept each as it is. The sixth fixed 11 model errors in the host-harness pilot.
+
+| Setting | Value | Why | Where it is set |
+|---|---|---|---|
+| Lease headroom per shard | smoke cost of one trial x 100 trials x **1.25**, plus one per-call reservation, rounded up to $0.05 | Room for trials that cost more than the smoke trial, while the host-harness pilot stayed under its $20 cap | [host-harness pilot preregistration](../benchmarks/2026-10-30-host-harness-pilot/PREREGISTRATION.md), "Leases and spend" |
+| Hermes Agent `security.tirith_enabled` | **on**, Hermes's own default | Turning it off would change how Hermes gates dangerous commands. tirith is not in the image, so Hermes falls back to pattern matching | Not set; Hermes's default ([Hermes page](hermes.md#named-setting)) |
+| Claude Code `MCP_CONNECTION_NONBLOCKING` | **`false`** | Claude Code waits for its MCP servers before its first request. Every harness here starts turn 1 with its servers ready, so this keeps it fair | [harnesses/claude-code/adapter.sh](../../harnesses/claude-code/adapter.sh) ([Claude Code page](claude-code.md#tools-and-mcp-measured)) |
+| Codex `sandbox_mode` | **`danger-full-access`** | Codex's bubblewrap sandbox cannot start in our unprivileged containers. The container is the sandbox | [harnesses/codex/config/config.toml](../../harnesses/codex/config/config.toml) |
+| Codex reasoning effort | **`medium`** (main turns, plan mode and subagents) | The effort every harness sends on a gpt-6-luna cell | [harnesses/codex/pin.json](../../harnesses/codex/pin.json) `codex_config`, filled into the three `@EFFORT@` keys of [config.toml](../../harnesses/codex/config/config.toml) |
+| OpenClaw memory search on OpenAI cells | **`memory.search.provider: "none"`**, keyword only | Without it OpenClaw calls `/v1/embeddings`, which the cell refuses. Anthropic cells already search memory by keyword only | [harnesses/openclaw/config/openclaw.openai.json](../../harnesses/openclaw/config/openclaw.openai.json) ([OpenClaw page](openclaw.md#memory-search-on-openai-cells)) |
+
 ## Records
 
 | Harness | Plain turn | With gbrain | Tool calls | Failures | History growth | Skills probe |

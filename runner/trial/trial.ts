@@ -33,6 +33,20 @@ import { TrialWorld, worldAt } from './world.ts';
 export const installViewDir = (runDir: string, harness: string, split: 'dev' | 'heldout', install: 'gbrain-docs' | 'gbrain-installer' = 'gbrain-docs') =>
   join(runDir, 'gbrain-install', install === 'gbrain-installer' ? `${harness.replace(/^_/, '')}-installer` : harness.replace(/^_/, ''), split);
 
+/** Issue #153: for each turn, the gbrain_turn_hook_runs the Claude Code or Codex adapter wrote into
+ *  <logs>/turns/turn-NNNN.status.json (how many times the harness fired gbrain's UserPromptSubmit hook in that turn), null when the
+ *  file or the field is missing. When ready says "ran", the trial reads each turn as soon as the adapter answers it, before the next
+ *  turn starts (so a later turn cannot rewrite an earlier count in the writable logs directory), and records the list as
+ *  install_bundle.turn_hook.turn_runs. A turn the adapter never answered (the runner's own timeout, or the harness gone) is not in
+ *  it, and neither is a turn the adapter answered with exit 2 (a harness failure, which can come before the CLI ever got the
+ *  prompt): the trial keeps its scored termination, as the same failure does in the base cell. */
+export const turnHookRuns = (logsDir: string, turns: number[]): Array<number | null> => turns.map((turn) => {
+  try {
+    const n = (JSON.parse(readFileSync(join(logsDir, 'turns', `turn-${String(turn).padStart(4, '0')}.status.json`), 'utf8')) as { gbrain_turn_hook_runs?: unknown }).gbrain_turn_hook_runs;
+    return typeof n === 'number' ? n : null;
+  } catch { return null; }
+});
+
 /** internal-task: the Hermes compiled context names pages; count, per actor of the task, the ones that actor cannot read in the world
  *  (a chat page's channel the actor is not in; a file the file rule denies). What reaches the model with no gbrain call. */
 export function contextExposure(world: World, split: 'dev' | 'heldout', keptSlugs: string[], actors: string[]): NonNullable<TrialGbrainInstall['context']> {
@@ -225,6 +239,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   let readyTurnHook = 'no ready file';
   let windows: TurnWindow[] = [];
   let endedEarly: string | null = null;
+  const answeredHookRuns: Array<number | null> = [];
   let error: string | undefined;
   let grade: GradeResult = EMPTY_GRADE;
   let usage: TrialUsage | null = null;
@@ -268,7 +283,8 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     }
 
     if (!readyFailure) {
-      const loop = await runTurns({ task, preamble: opts.preamble, world, harness: harness!, turnsDir: dirs.turns, trialId: trial.id, graceS: opts.turnGraceS, log });
+      const loop = await runTurns({ task, preamble: opts.preamble, world, harness: harness!, turnsDir: dirs.turns, trialId: trial.id, graceS: opts.turnGraceS, log,
+        onAnswered: (turn, exit) => { if (readyTurnHook === 'ran' && exit !== 2) answeredHookRuns.push(...turnHookRuns(dirs.logs, [turn])); } });
       windows = loop.windows;
       endedEarly = loop.ended_early;
       if (loop.error) error = loop.error;
@@ -319,7 +335,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     gbrainRecord.install_bundle = { harness: installView.harness, split: installView.split, install: installView.install ?? 'gbrain-docs', files: installView.files.length, view_digest: installView.view_digest };
     if (installView.context) gbrainRecord.install_bundle.context = contextExposure(worldAt(world.worldPath), cell.split, installView.context.kept_slugs, task.actors);
     const hook = installView.installer && 'turn_hook' in installView.installer ? installView.installer.turn_hook : undefined;
-    if (hook) gbrainRecord.install_bundle.turn_hook = { files: hook.files.length, status: readyTurnHook };
+    if (hook) gbrainRecord.install_bundle.turn_hook = { files: hook.files.length, status: readyTurnHook, ...(readyTurnHook === 'ran' ? { turn_runs: answeredHookRuns } : {}) };
     else if (installView.install === 'gbrain-installer') gbrainRecord.install_bundle.turn_hook = { files: 0, status: 'absent from bundle' };
   }
   let semanticError: string | null = null;

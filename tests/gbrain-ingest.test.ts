@@ -279,12 +279,14 @@ test('the turn loop: a message the brain refused ends the trial as exam_fault HE
   const tw = new TrialWorld({ trialId: 'ingest-loop', split: 'dev', actors: task.actors, outDir: tmp, reachableFromContainers: false });
   tw.server.setGbrain({ url: `http://127.0.0.1:${upstream.port}`, token: 'gbrain_' + '00'.repeat(32), ingest: { tokens: TOKENS, channels: conversationSources(world, 'dev'), dm_source_prefix: 'private-' } });
   const requests: unknown[] = [];
+  const answered: number[] = [];
   const harness: Harness = { kind: 'process', waitReady: async () => undefined, exited: async () => null, notify: (req) => { requests.push(req); }, stop: async () => undefined, kill: async () => undefined };
   const lines: string[] = [];
   refuse = true;
   try {
-    const res = await runTurns({ task, preamble: 'You are {{bot_name}}. {{message}}', world: tw, harness, turnsDir, trialId: 'ingest-loop', graceS: 1, log: (l) => lines.push(l) });
+    const res = await runTurns({ task, preamble: 'You are {{bot_name}}. {{message}}', world: tw, harness, turnsDir, trialId: 'ingest-loop', graceS: 1, log: (l) => lines.push(l), onAnswered: (t) => answered.push(t) });
     expect(res.ended_early).toBe('exam_fault');
+    expect(answered).toEqual([]);
     expect(res.error).toMatch(/^HE-GBRAIN-011 turn 1: 1 message\(s\) were not written into the brain \(.* -> private-sofia-marchetti: recovery_required\)$/);
     expect(res.error).not.toMatch(/HE-GBRAIN-011 .*HE-GBRAIN-011/);
     expect(res.windows).toEqual([]);
@@ -308,9 +310,15 @@ test('the turn loop: a refusal of the bot\'s reply ends the trial after the turn
   // and the reply does not.
   const harness: Harness = { kind: 'process', waitReady: async () => undefined, exited: async () => null, notify: (req) => { refuse = true; writeAtomic(join(turnsDir, responseFile(req.turn)), JSON.stringify({ turn: req.turn, exit: 0, reply_text: 'Noted.', started_at: 'x', ended_at: 'y' })); }, stop: async () => undefined, kill: async () => undefined };
   const lines: string[] = [];
+  const answered: number[] = [];
+  const exits: number[] = [];
   try {
-    const res = await runTurns({ task, preamble: 'You are {{bot_name}}. {{message}}', world: tw, harness, turnsDir, trialId: 'ingest-loop2', graceS: 1, log: (l) => lines.push(l) });
+    const res = await runTurns({ task, preamble: 'You are {{bot_name}}. {{message}}', world: tw, harness, turnsDir, trialId: 'ingest-loop2', graceS: 1, log: (l) => lines.push(l), onAnswered: (t, x) => { answered.push(t); exits.push(x); } });
     expect(res.ended_early).toBe('exam_fault');
+    // Issue #153: the answered turn is reported before the loop ends, so its hook count is read even though the trial ends early.
+    expect(answered).toEqual([1]);
+    // With its exit, so the trial leaves an exit-2 turn's hook count out (runner/trial/trial.ts).
+    expect(exits).toEqual([0]);
     expect(res.error).toMatch(/^HE-GBRAIN-011 turn 1: 1 message\(s\) were not written into the brain \(.* -> private-sofia-marchetti: recovery_required\)$/);
     expect(res.windows.length).toBe(1);
     expect(res.windows[0]).toMatchObject({ turn: 1, exit: 0, reply_text: 'Noted.' });

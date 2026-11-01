@@ -28,6 +28,7 @@
 - The system-role message says "The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded" and that calling them directly "will fail with InputValidationError". It names 9 of Claude Code's own tools (`CronCreate`, `NotebookEdit`, `SendMessage` and others) and the 15 world tools.
 - [tools-gbrain.json](records/claude-code-default/tools-gbrain.json): after `ToolSearch` with `select:mcp__world__list_channels`, the tool result is a `tool_reference` and "Tool loaded.", and the next request has 13 tools instead of 12. A keyword search, "gbrain search", loaded 5 gbrain tools at once (18 tools).
 - So Claude Code differs from OpenClaw and Hermes, which route deferred calls through a generic `tool_call`. Claude Code changes the tools list itself during the conversation.
+- **Named setting (source):** the adapter sets `MCP_CONNECTION_NONBLOCKING=false`. By default `claude -p` connects MCP servers in the background, so its first request can go out before they are ready. With `false` it waits, as every other harness here does before turn 1. Garry kept this on 2026-10-30.
 
 ## gbrain (measured)
 

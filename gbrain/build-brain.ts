@@ -480,7 +480,7 @@ export function buildBrain(o: BuildOptions): BrainManifest | CompanyBrainManifes
 /** Build a company brain (internal-task): every record of the split, one federated source per reader set. */
 export function buildCompanyBrain(o: BuildOptions): CompanyBrainManifest { return buildScopedBrain(o, 'company'); }
 
-/** Build a company or member brain: stage every page under <staging>/<source>/<split>/<slug>.md, init a keyless brain,
+/** Build a company or member brain: stage every page under <out>/sources/<source>/<split>/<slug>.md, init a keyless brain,
  *  register one federated source per reader set and import each, mint one token per member (and public-only) granted its
  *  sources, and for a member brain one ingest token per source, write manifest.json (schema_version 2, or 3 with the ingest
  *  map), tokens.json and ingest-tokens.json (mode 0600) into <out>. */
@@ -494,25 +494,26 @@ export function buildScopedBrain(o: BuildOptions, kind: ScopedBrainKind): Compan
   const ingestGrants = kind === 'member' ? sources.map((s) => ({ source: s.id, token_name: `ingest-${s.id}` })) : [];
   for (const g of ingestGrants) if (g.token_name.length > 64) throw new Error(`ingest token name ${g.token_name} is too long`);
 
-  rmSync(o.staging, { recursive: true, force: true });
-  mkdirSync(o.staging, { recursive: true });
+  // internal-task: each source's checkout lives inside the brain, so it travels with the brain into the image and back to /brain at
+  // serve time; the entrypoint re-stamps it there (gbrain/rebind-sources.ts) because a copied directory has a new inode.
+  emptyDir(o.out);
+  const staging = join(resolve(o.out), 'sources');
   const missing: string[] = [];
   const pages: CompanyPage[] = [];
   for (const p of listed) {
     const src = locate(o.corpus, o.split, p.slug);
     if (!src) { missing.push(p.slug); continue; }
     const body = readFileSync(src);
-    const dest = join(o.staging, p.source, o.split, `${p.slug}.md`);
+    const dest = join(staging, p.source, o.split, `${p.slug}.md`);
     mkdirSync(dirname(dest), { recursive: true });
     copyFileSync(src, dest);
     pages.push({ ...p, source_path: `${o.split}/${p.slug}.md`, sha256: createHash('sha256').update(body).digest('hex'), bytes: body.length });
   }
   if (missing.length) throw new Error(`${missing.length} listed page(s) missing from ${o.corpus}: ${missing.join(', ')}`);
-  for (const s of sources) mkdirSync(join(o.staging, s.id), { recursive: true });
+  for (const s of sources) mkdirSync(join(staging, s.id), { recursive: true });
   const counts = Object.fromEntries((['channel', 'dm', 'contract', 'ticket', 'crm', 'profile', 'update', 'digest', 'note', 'email', 'meeting'] as CompanyPageKind[]).map((k) => [k, pages.filter((p) => p.kind === k).length])) as Record<CompanyPageKind, number>;
-  log(`${o.split} ${kind}: staged ${pages.length} pages in ${sources.length} sources (${Object.entries(counts).filter(([, n]) => n).map(([k, n]) => `${n} ${k}`).join(', ')}) under ${o.staging}`);
+  log(`${o.split} ${kind}: staged ${pages.length} pages in ${sources.length} sources (${Object.entries(counts).filter(([, n]) => n).map(([k, n]) => `${n} ${k}`).join(', ')}) under ${staging}`);
 
-  emptyDir(o.out);
   const env = keylessEnv(resolve(o.out));
   const init = run([...o.gbrain, 'init', '--pglite', '--non-interactive', '--no-embedding'], env, 'gbrain init');
   log(`gbrain init: ${(init.stdout + init.stderr).split('\n').filter((l) => /search|embedding|engine/i.test(l)).slice(0, 3).join(' | ')}`);
@@ -522,7 +523,7 @@ export function buildScopedBrain(o: BuildOptions, kind: ScopedBrainKind): Compan
   // token always has a write source nobody else reads.
   const imports: Record<string, Record<string, unknown>> = {};
   for (const s of sources) {
-    const dir = resolve(join(o.staging, s.id));
+    const dir = join(staging, s.id);
     run([...o.gbrain, 'sources', 'add', s.id, '--path', dir, '--force', '--federated'], env, `gbrain sources add ${s.id}`);
     if (s.pages === 0) { imports[s.id] = { status: 'success', imported: 0, skipped: 0, errors: 0, empty_source: true }; continue; }
     const imp = run([...o.gbrain, 'import', dir, '--source', s.id, '--no-embed', '--allow-noncanonical-root', '--json'], env, `gbrain import ${s.id}`);

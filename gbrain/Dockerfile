@@ -12,6 +12,8 @@
 # empty private source per member, member tokens and one ingest token per source for the world's live ingestion (internal-task),
 # every brain with a manifest.json listing its pages and their sha256. gbrain records absolute paths inside a brain, so
 # each brain is built at /brain in its own stage and the entrypoint copies the trial's brain back to /brain before serving.
+# A copied source checkout is a new directory, so the entrypoint re-stamps each one with gbrain's relocated-root
+# self-transfer (gbrain/rebind-sources.ts, internal-task); a scoped brain keeps its checkouts at /brain/sources/<id> for that.
 # No API key enters the build or the image; every brain in the default target is keyword-only. The member tokens in the
 # company brains are plaintext inside the image: the image is built and used on one machine, never pushed to a registry,
 # and the tokens unlock only a disposable per-trial brain on the host loopback.
@@ -66,7 +68,7 @@ RUN git init --quiet /opt/gbrain && cd /opt/gbrain \
     && rm -rf .git \
     && mkdir -p /opt/sidecar \
     && printf '{"gbrain_commit":"%s","gbrain_ref":"%s","gbrain_version":"%s","bun":"%s"}\n' "$resolved" "$GBRAIN_COMMIT" "$version" "$(bun --version)" > /opt/sidecar/image.json
-COPY gbrain/build-brain.ts gbrain/build-install.ts gbrain/pin.json gbrain/entrypoint.sh gbrain/export-install.sh /opt/sidecar/gbrain/
+COPY gbrain/build-brain.ts gbrain/build-install.ts gbrain/pin.json gbrain/entrypoint.sh gbrain/export-install.sh gbrain/rebind-sources.ts /opt/sidecar/gbrain/
 COPY world/types.ts /opt/sidecar/world/types.ts
 COPY --from=world-input /world.json /opt/sidecar/world/seed/world.json
 # The world's digest goes into image.json; a sealed build stops here when the world it received is not the receipt's.
@@ -149,7 +151,11 @@ RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split
 # internal-task: the install bundle, built from the gbrain checkout and the two bot-visible brains, keyless. internal-task: the installer
 # section runs gbrain setup <harness> --instructions-only; for Hermes the build HERMES_HOME is seeded first with Hermes's own
 # SOUL.md at the pinned Hermes commit (harnesses/hermes/pin.json soul_md: what Hermes's first run writes into HERMES_HOME, which
-# gbrain never creates), fetched here and checked against the pinned sha256.
+# gbrain never creates), fetched here and checked against the pinned sha256. For Claude Code and Codex (gbrain#7989) setup runs
+# with HOME=/harness-state, the adapters' state dir, so the turn hook's command, gbrain's ledger and Codex's trust key name the
+# trial's own paths; the hook runs gbrain, so the checkout is compiled here with its own `bun run build` (one file, no bun needed
+# in the harness image) and copied into each view at /harness-state/.local/bin/gbrain; Claude Code's settings.json is seeded with
+# the adapter's harnesses/claude-code/config/settings.json, which setup merges its hook into.
 FROM base AS install
 ARG GBRAIN_COMMIT
 ARG HERMES_COMMIT=f97608f178d1ffeca59860195ab7da295f7c8e5f
@@ -158,9 +164,12 @@ COPY --from=brain-dev /brain /brains/dev
 COPY --from=brain-heldout /brain /brains/heldout
 RUN mkdir -p /opt/sidecar/hermes && curl -fsSL "https://raw.githubusercontent.com/NousResearch/hermes-agent/$HERMES_COMMIT/SOUL.md" -o /opt/sidecar/hermes/SOUL.md \
     && echo "$HERMES_SOUL_SHA256  /opt/sidecar/hermes/SOUL.md" | sha256sum -c --quiet
+COPY harnesses/claude-code/config/settings.json /opt/sidecar/claude-code/settings.json
+RUN cd /opt/gbrain && env -i PATH="$PATH" HOME=/tmp bun run build >/dev/null && test -x /opt/gbrain/bin/gbrain
 RUN mkdir -m 0777 /brain && env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-install.ts --out /install \
       --gbrain "bun /opt/gbrain/src/cli.ts" --brains /brains --brain-home /brain --commit "$GBRAIN_COMMIT" --scratch /tmp/install-scratch \
-      --hermes-soul /opt/sidecar/hermes/SOUL.md --hermes-commit "$HERMES_COMMIT"
+      --hermes-soul /opt/sidecar/hermes/SOUL.md --hermes-commit "$HERMES_COMMIT" \
+      --gbrain-bin /opt/gbrain/bin/gbrain --claude-settings /opt/sidecar/claude-code/settings.json --harness-state /harness-state
 
 FROM base AS keyword
 ARG GBRAIN_COMMIT

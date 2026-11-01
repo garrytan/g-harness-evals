@@ -4,7 +4,8 @@
 // time with the gbrain CLI, so a gbrain-docs cell applies the same bytes in every trial. Runs inside the image
 // build (gbrain/Dockerfile, the install stage) and by hand:
 //
-//   bun gbrain/build-install.ts --out /install --gbrain "bun /opt/gbrain/src/cli.ts" --brains /brains --brain-home /brain --commit <sha>
+//   bun gbrain/build-install.ts --out /install --gbrain "bun /opt/gbrain/src/cli.ts" --brains /brains --brain-home /brain --commit <sha> \
+//     [--hermes-soul <SOUL.md>] [--gbrain-bin <compiled gbrain>] [--claude-settings <settings.json>] [--harness-state /harness-state]
 //
 // Layout of <out>:
 //   openclaw/workspace/skills/...    gbrain skillpack scaffold --harness openclaw --workspace <out>/openclaw/workspace
@@ -31,6 +32,18 @@
 //                                    seeded first with Hermes's own SOUL.md at the pinned Hermes commit (--hermes-soul): gbrain
 //                                    appends the block to an existing SOUL.md and writes nothing into an empty HERMES_HOME, so the
 //                                    seed stands in for "ran Hermes once"; the adapter copies home/SOUL.md to $HERMES_HOME/SOUL.md
+//   claude-code/installer/home/...   HOME=<state> CLAUDE_CONFIG_DIR=<state>/claude gbrain setup claude-code --instructions-only
+//                                    --gbrain-bin <state>/.local/bin/gbrain (gbrain#7989): claude/CLAUDE.md (the block),
+//                                    claude/settings.json (the UserPromptSubmit turn-rule hook, written into Claude Code's settings
+//                                    seeded first with the adapter's own harnesses/claude-code/config/settings.json, --claude-settings),
+//                                    .gbrain/agent-instructions.json (the ledger the hook reads the rule from) and .local/bin/gbrain
+//                                    (gbrain's own bun run build of the same checkout, --gbrain-bin, which the hook command runs).
+//                                    <state> is the harness's state dir in its container (/harness-state; --harness-state), so the
+//                                    hook command and every path in these files are the trial's own and the adapter copies them as is
+//   codex/installer/home/...         HOME=<state> CODEX_HOME=<state>/codex gbrain setup codex --instructions-only --gbrain-bin ...:
+//                                    codex/AGENTS.md, codex/hooks.json (the UserPromptSubmit group), codex/config.toml (the
+//                                    [hooks.state."<state>/codex/hooks.json:user_prompt_submit:0:0"] trust table, which the adapter
+//                                    appends to the config.toml it writes), the ledger and the binary
 //   manifest.json                    every file with its sha256 and size, the commands as run, and for each .hermes.md
 //                                    the page slugs it kept (compile-context renders slug, title and an excerpt per page);
 //                                    harnesses.<h>.installer records the installer command, its files and the block version, or
@@ -42,12 +55,20 @@
 
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { keylessEnv } from './build-brain.ts';
 
 export type InstallHarness = 'openclaw' | 'hermes';
 export const INSTALL_HARNESSES: InstallHarness[] = ['openclaw', 'hermes'];
+/** Harnesses with an installer view: the two with gbrain-docs views, and Claude Code and Codex, whose only view is gbrain setup's
+ *  per-turn install (gbrain#7989); gbrain documents no skillpack or context install for them. */
+export type InstallerHarness = InstallHarness | 'claude-code' | 'codex';
+export const INSTALLER_HARNESSES: InstallerHarness[] = [...INSTALL_HARNESSES, 'claude-code', 'codex'];
+/** Where the Claude Code and Codex adapters keep harness state, HOME included: setup runs with these paths at build. */
+export const HARNESS_STATE_DIR = '/harness-state';
+/** The compiled gbrain the Claude Code and Codex turn hook runs, under HOME. */
+export const HOOK_GBRAIN_BIN = '.local/bin/gbrain';
 export const SPLITS = ['dev', 'heldout'] as const;
 
 export interface InstallFile {
@@ -71,8 +92,13 @@ export interface InstallerRecord {
    *  (not instruction files), setup's action and detail, and for OpenClaw the openclaw commands setup printed because no openclaw was
    *  on PATH at build, which the adapter runs in the trial. Absent when setup wrote no hook (the block-only head 99294fe4). */
   turn_hook?: { files: string[]; action: string; detail: string; commands?: string[]; rule?: string | null };
-  /** Hermes only: the SOUL.md the home was seeded with before the command, Hermes's own default identity at the pinned commit. */
-  seed?: { source: string; hermes_commit: string | null; sha256: string; bytes: number };
+  /** Hermes: the SOUL.md the home was seeded with before the command, Hermes's own default identity at the pinned commit. Claude
+   *  Code: the settings.json its adapter writes, seeded before the command so setup merged its hook into it. */
+  seed?: { source: string; hermes_commit?: string | null; sha256: string; bytes: number };
+  /** Claude Code and Codex: the HOME setup ran in, the harness's state dir in its container; the adapter refuses another. */
+  state_root?: string;
+  /** Claude Code and Codex: the absolute gbrain the hook command runs, a file of the view under home/. */
+  gbrain_bin?: string;
 }
 
 export const INSTALLER_BLOCK_BEGIN = '<!-- gbrain:brain-first:begin -->';
@@ -85,8 +111,8 @@ export interface InstallManifest {
   gbrain_version: string | null;
   built_with: 'gbrain/build-install.ts';
   /** The commands as run, one per harness and per context file, in order. */
-  commands: Array<{ harness: InstallHarness; split?: 'dev' | 'heldout'; install?: 'gbrain-installer'; argv: string[]; summary?: Record<string, unknown> }>;
-  harnesses: Record<InstallHarness, {
+  commands: Array<{ harness: InstallerHarness; split?: 'dev' | 'heldout'; install?: 'gbrain-installer'; argv: string[]; summary?: Record<string, unknown> }>;
+  harnesses: Partial<Record<'claude-code' | 'codex', { installer?: InstallerRecord | { unavailable: string } }>> & Record<InstallHarness, {
     /** Workspace-relative artifacts the adapter copies into /workspace (today only skills/). */
     workspace_entries: string[];
     skills: number;
@@ -162,6 +188,13 @@ export interface BuildInstallOptions {
    *  the hermes installer is recorded unavailable. */
   hermesSoul?: string;
   hermesCommit?: string;
+  /** gbrain compiled from the same checkout (bun run build), copied to <harnessState>/.local/bin/gbrain for the Claude Code and Codex
+   *  turn hook; without it those installers are recorded unavailable. */
+  gbrainBin?: string;
+  /** harnesses/claude-code/config/settings.json, the seed of Claude Code's settings; without it that installer is unavailable. */
+  claudeSettings?: string;
+  /** The harness state dir setup runs in for Claude Code and Codex (default /harness-state); it must be absent or empty. */
+  harnessState?: string;
   log?: (line: string) => void;
 }
 
@@ -176,7 +209,8 @@ export function hermesHookRule(command: string): string | null {
 /** The installer section: `gbrain setup <harness> --instructions-only` per harness into its own directory under <out>, the
  *  files it wrote or changed recorded with the block version; a commit without the setup target (every gbrain before #7489)
  *  records {unavailable} with gbrain's own words, and a cell on the installer rung then fails preflight (HE-GBRAIN-006). */
-export function buildInstaller(o: BuildInstallOptions, out: string, harness: InstallHarness, log: (line: string) => void): { record: InstallerRecord | { unavailable: string }; command?: InstallManifest['commands'][number] } {
+export function buildInstaller(o: BuildInstallOptions, out: string, harness: InstallerHarness, log: (line: string) => void): { record: InstallerRecord | { unavailable: string }; command?: InstallManifest['commands'][number] } {
+  if (harness === 'claude-code' || harness === 'codex') return buildStateInstaller(o, out, harness, log);
   const root = join(out, harness, 'installer');
   rmSync(root, { recursive: true, force: true });
   const env = keylessEnv(join(o.scratch, `installer-home-${harness}`));
@@ -247,6 +281,105 @@ export function buildInstaller(o: BuildInstallOptions, out: string, harness: Ins
   return { record: { argv: ['gbrain', ...relArgs], files, block_version: version, ...(turn_hook ? { turn_hook } : {}), ...(seed ? { seed } : {}) }, command: { harness, install: 'gbrain-installer', argv: ['gbrain', ...relArgs] } };
 }
 
+/** What gbrain setup <harness> --instructions-only writes for Claude Code and Codex (gbrain#7989), relative to HOME: the instruction
+ *  file with the block, the turn-rule hook files, and the variables naming the harness's config dir under HOME. Beside them setup
+ *  records the block in the ledger the hook reads its rule from (BRAIN_FIRST_LEDGER). */
+const STATE_INSTALL: Record<'claude-code' | 'codex', { instructions: string; hook: string[]; env: (state: string) => Record<string, string> }> = {
+  'claude-code': { instructions: 'claude/CLAUDE.md', hook: ['claude/settings.json'], env: (state) => ({ CLAUDE_CONFIG_DIR: join(state, 'claude') }) },
+  codex: { instructions: 'codex/AGENTS.md', hook: ['codex/config.toml', 'codex/hooks.json'], env: (state) => ({ CODEX_HOME: join(state, 'codex') }) },
+};
+export const BRAIN_FIRST_LEDGER = '.gbrain/agent-instructions.json';
+/** The line gbrain's hook appends on every run (its own check at setup included); runtime state, never bundled. */
+export const HOOK_HEARTBEAT = '.gbrain/integrations/hooks/heartbeat.jsonl';
+
+/** The command of the turn-rule hook setup wrote: Claude Code's marked UserPromptSubmit entry, Codex's UserPromptSubmit group whose
+ *  command carries the turn-rule lane. */
+export function turnRuleCommand(harness: 'claude-code' | 'codex', home: string): string | null {
+  const file = join(home, harness === 'claude-code' ? 'claude/settings.json' : 'codex/hooks.json');
+  if (!existsSync(file)) return null;
+  const groups = (JSON.parse(readFileSync(file, 'utf8')) as { hooks?: { UserPromptSubmit?: Array<{ hooks?: Array<{ command?: string; _gbrain?: string }> }> } }).hooks?.UserPromptSubmit ?? [];
+  const entries = groups.flatMap((g) => g.hooks ?? []);
+  const ours = entries.filter((e) => typeof e.command === 'string' && (harness === 'claude-code' ? e._gbrain === 'turn-rule-v1' : e.command.includes('GBRAIN_HOOK_LANE=turn-rule')));
+  return ours.length === 1 ? ours[0]!.command! : null;
+}
+
+/** The Claude Code and Codex installer: gbrain setup <harness> --instructions-only run the way the harness's user would run it in the
+ *  harness container (HOME the harness state dir, the config dir under it, gbrain at HOME/.local/bin/gbrain running its own setup), because the hook
+ *  command, the ledger and Codex's trust key all name absolute paths and the adapter copies them unchanged. Setup checks the hook
+ *  itself (it runs the command and expects the rule back) and exits non-zero when it does not load, which is recorded unavailable
+ *  with gbrain's words. The files setup wrote, Claude Code's merged settings.json and the binary are copied under
+ *  <out>/<harness>/installer/home/, the hook's output is kept as the rule, and the state dir is removed. */
+function buildStateInstaller(o: BuildInstallOptions, out: string, harness: 'claude-code' | 'codex', log: (line: string) => void): { record: InstallerRecord | { unavailable: string }; command?: InstallManifest['commands'][number] } {
+  const root = join(out, harness, 'installer');
+  rmSync(root, { recursive: true, force: true });
+  if (!o.gbrainBin || !existsSync(o.gbrainBin)) return { record: { unavailable: `no compiled gbrain (--gbrain-bin); the ${harness} turn hook runs gbrain inside the harness container` } };
+  if (harness === 'claude-code' && (!o.claudeSettings || !existsSync(o.claudeSettings))) return { record: { unavailable: 'no Claude Code settings seed (--claude-settings): the settings.json the adapter writes, which setup merges its hook into' } };
+  const state = resolve(o.harnessState ?? HARNESS_STATE_DIR);
+  if (existsSync(state) && readdirSync(state).length) throw new Error(`the harness state dir ${state} is not empty; gbrain setup ${harness} must run in a fresh one`);
+  const spec = STATE_INSTALL[harness];
+  const bin = join(state, HOOK_GBRAIN_BIN);
+  try {
+    mkdirSync(dirname(bin), { recursive: true });
+    copyFileSync(o.gbrainBin, bin);
+    chmodSync(bin, 0o755);
+    mkdirSync(dirname(join(state, spec.instructions)), { recursive: true });
+    let seed: InstallerRecord['seed'];
+    if (harness === 'claude-code') {
+      const body = readFileSync(o.claudeSettings!);
+      writeFileSync(join(state, 'claude/settings.json'), body);
+      seed = { source: o.claudeSettings!, sha256: sha256(body), bytes: body.length };
+    }
+    // keylessEnv names GBRAIN_HOME for the brain builds; a user's install sets none, so the hook command carries none and gbrain's home is HOME/.gbrain.
+    const { GBRAIN_HOME: _home, ...base } = keylessEnv(state);
+    const env = { ...base, ...spec.env(state) };
+    const args = ['setup', harness, '--instructions-only', '--gbrain-bin', bin, '--json'];
+    const before = new Map(listFiles(state).map((f) => [f, sha256(readFileSync(join(state, f)))]));
+    // The installed gbrain runs its own setup, as `gbrain setup` from the user's PATH would (bun run from source would also leave its
+    // transpiler cache under HOME).
+    const r = spawnSync(bin, args, { env, cwd: state, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024, timeout: 300_000 });
+    let doc: { instructions?: { action?: string }; turn_hook?: { action?: string; detail?: string }; turn_hook_check?: { ok?: boolean; message?: string }; error?: { message?: string } } = {};
+    try { doc = JSON.parse(r.stdout.trim()) as typeof doc; } catch { /* no JSON document: the exit status and the output speak */ }
+    const said = (r.stderr + r.stdout).trim().split('\n').filter(Boolean);
+    if (r.status !== 0) return { record: { unavailable: `gbrain setup ${harness} --instructions-only ${r.status === null ? `was stopped (${r.signal ?? 'no exit'}, 300 s timeout)` : `exited ${r.status}`}: ${(doc.turn_hook_check?.ok === false ? doc.turn_hook_check.message : doc.error?.message ?? said.find((l) => /error|refus|unknown|not active/i.test(l)) ?? said[0])?.trim().slice(0, 300) ?? 'no output'}` } };
+    rmSync(join(state, HOOK_HEARTBEAT), { force: true });
+    const changed = listFiles(state).filter((f) => before.get(f) !== sha256(readFileSync(join(state, f))));
+    if (!changed.length) return { record: { unavailable: `gbrain setup ${harness} --instructions-only exited 0 and wrote nothing: ${said.at(-1)?.trim().slice(0, 300) ?? 'no output'}` } };
+    if (doc.turn_hook && doc.turn_hook.action !== 'write') throw new Error(`gbrain setup ${harness} --instructions-only reports turn_hook ${doc.turn_hook.action}: ${doc.turn_hook.detail ?? ''}; with an absolute --gbrain-bin it writes the hook`);
+    // A hook file that existed before (Claude Code's seeded settings.json) is backed up beside itself as <file>.bak before setup rewrites it.
+    const expected = [BRAIN_FIRST_LEDGER, spec.instructions, ...(doc.turn_hook ? [...spec.hook, ...spec.hook.filter((f) => before.has(f)).map((f) => `${f}.bak`)] : [])].sort();
+    if (changed.join(',') !== expected.join(',')) throw new Error(`gbrain setup ${harness} --instructions-only wrote ${changed.join(', ')}; this bundle expects ${expected.join(', ')}`);
+    const block = readFileSync(join(state, spec.instructions), 'utf8');
+    if (!block.includes(INSTALLER_BLOCK_BEGIN)) throw new Error(`gbrain setup ${harness} --instructions-only wrote ${spec.instructions} without the brain-first block (${INSTALLER_BLOCK_BEGIN})`);
+    let rule: string | null = null;
+    if (doc.turn_hook) {
+      // The rule as the hook prints it on a turn, run the way setup's own check runs it (from HOME, an empty prompt).
+      const command = turnRuleCommand(harness, state);
+      if (!command) throw new Error(`gbrain setup ${harness} --instructions-only reports a turn hook but ${spec.hook.join(', ')} holds no single turn-rule entry`);
+      const h = spawnSync('sh', ['-c', command], { input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: '', session_id: 'he-build-install' }), env: { PATH: env.PATH!, HOME: state, ...spec.env(state) }, cwd: state, encoding: 'utf8', timeout: 60_000 });
+      try { rule = (JSON.parse(h.stdout.trim()) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput?.additionalContext ?? null; } catch { rule = null; }
+      if (h.status !== 0 || !rule) throw new Error(`the ${harness} turn-rule hook ${command} exited ${h.status} without the rule: ${(h.stdout + h.stderr).trim().slice(0, 300)}`);
+      rmSync(join(state, HOOK_HEARTBEAT), { force: true });
+    }
+    const kept = [...changed, HOOK_GBRAIN_BIN].sort();
+    // The other harness's view may already hold the same 207 MB gbrain: link it rather than keep a second copy in the image.
+    const sibling = join(out, harness === 'codex' ? 'claude-code' : 'codex', 'installer', 'home', HOOK_GBRAIN_BIN);
+    for (const f of kept) {
+      const dest = join(root, 'home', f);
+      mkdirSync(dirname(dest), { recursive: true });
+      if (f === HOOK_GBRAIN_BIN && existsSync(sibling) && sha256(readFileSync(sibling)) === sha256(readFileSync(join(state, f)))) linkSync(sibling, dest);
+      else copyFileSync(join(state, f), dest);
+    }
+    chmodSync(join(root, 'home', HOOK_GBRAIN_BIN), 0o755);
+    const files = kept.map((f) => `${harness}/installer/home/${f}`);
+    const version = /<!-- gbrain brain-first (v[0-9]+):/.exec(block)?.[1] ?? null;
+    const turn_hook = doc.turn_hook ? { files: spec.hook.map((f) => `${harness}/installer/home/${f}`), action: doc.turn_hook.action!, detail: doc.turn_hook.detail ?? '', rule } : undefined;
+    log(`${harness}: gbrain setup ${harness} --instructions-only in ${state} wrote ${changed.join(', ')} (block ${version ?? 'version unknown'}${turn_hook ? `, per-turn hook ${turn_hook.action}: ${turn_hook.detail}` : ', no per-turn hook'}); the bundle keeps them and ${HOOK_GBRAIN_BIN}`);
+    return { record: { argv: ['gbrain', ...args], files, block_version: version, ...(turn_hook ? { turn_hook } : {}), ...(seed ? { seed } : {}), state_root: state, gbrain_bin: bin }, command: { harness, install: 'gbrain-installer', argv: ['gbrain', ...args] } };
+  } finally {
+    rmSync(state, { recursive: true, force: true });
+  }
+}
+
 export function buildInstall(o: BuildInstallOptions): InstallManifest {
   const log = o.log ?? ((l) => console.error(l));
   const out = resolve(o.out);
@@ -303,9 +436,10 @@ export function buildInstall(o: BuildInstallOptions): InstallManifest {
   }
   harnesses.hermes.context = context;
 
-  for (const harness of INSTALL_HARNESSES) {
+  for (const harness of INSTALLER_HARNESSES) {
     const built = buildInstaller(o, out, harness, log);
-    harnesses[harness].installer = built.record;
+    if (harness === 'claude-code' || harness === 'codex') harnesses[harness] = { installer: built.record };
+    else harnesses[harness].installer = built.record;
     if (built.command) commands.push(built.command);
     else log(`${harness}: installer unavailable at this gbrain commit: ${(built.record as { unavailable: string }).unavailable}`);
   }
@@ -320,7 +454,7 @@ export function buildInstall(o: BuildInstallOptions): InstallManifest {
 
 /** The files of one harness and split view of the bundle: for gbrain-docs the harness's workspace and, for Hermes, that split's
  *  .hermes.md; for gbrain-installer everything under <harness>/installer/ (the same bytes for both splits). */
-export function viewFiles(manifest: InstallManifest, harness: InstallHarness, split: 'dev' | 'heldout', install: 'gbrain-docs' | 'gbrain-installer' = 'gbrain-docs'): InstallFile[] {
+export function viewFiles(manifest: InstallManifest, harness: InstallerHarness, split: 'dev' | 'heldout', install: 'gbrain-docs' | 'gbrain-installer' = 'gbrain-docs'): InstallFile[] {
   if (install === 'gbrain-installer') return manifest.files.filter((f) => f.path.startsWith(`${harness}/installer/`));
   return manifest.files.filter((f) => f.path.startsWith(`${harness}/workspace/`) || (harness === 'hermes' && f.path === `hermes/${split}/.hermes.md`));
 }
@@ -354,8 +488,11 @@ if (import.meta.main) {
       brainHome: arg('brain-home', '/brain')!,
       hermesSoul: arg('hermes-soul'),
       hermesCommit: arg('hermes-commit'),
+      gbrainBin: arg('gbrain-bin'),
+      claudeSettings: arg('claude-settings'),
+      harnessState: arg('harness-state'),
     });
-    console.log(JSON.stringify({ files: m.files.length, digest: m.digest, installer: Object.fromEntries(INSTALL_HARNESSES.map((h) => [h, m.harnesses[h].installer && 'files' in m.harnesses[h].installer! ? m.harnesses[h].installer : 'unavailable'])), openclaw: { skills: m.harnesses.openclaw.skills, files: m.harnesses.openclaw.files }, hermes: { skills: m.harnesses.hermes.skills, files: m.harnesses.hermes.files, context: Object.fromEntries(Object.entries(m.harnesses.hermes.context!).map(([s, c]) => [s, { bytes: c.bytes, kept: c.kept_slugs.length, tokens: c.tokens }])) }, gbrain_version: m.gbrain_version }));
+    console.log(JSON.stringify({ files: m.files.length, digest: m.digest, installer: Object.fromEntries(INSTALLER_HARNESSES.map((h) => { const i = m.harnesses[h]?.installer; return [h, i && 'files' in i ? { ...i, files: i.files.length } : 'unavailable']; })), openclaw: { skills: m.harnesses.openclaw.skills, files: m.harnesses.openclaw.files }, hermes: { skills: m.harnesses.hermes.skills, files: m.harnesses.hermes.files, context: Object.fromEntries(Object.entries(m.harnesses.hermes.context!).map(([s, c]) => [s, { bytes: c.bytes, kept: c.kept_slugs.length, tokens: c.tokens }])) }, gbrain_version: m.gbrain_version }));
   } catch (e) {
     console.error(`build-install failed: ${(e as Error).message}`);
     process.exit(1);

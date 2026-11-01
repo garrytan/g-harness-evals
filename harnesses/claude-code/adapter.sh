@@ -72,13 +72,13 @@ esac
 stopping=0
 trap 'stopping=1' TERM INT
 
-# The install ladder (HE_GBRAIN_INSTALL, docs/gbrain-arm.md) has no rung for Claude Code yet: gbrain documents no install for
-# this harness at its pin. A cell that asks for one stops here instead of running as a bare-MCP cell.
-if [ -n "${HE_GBRAIN_INSTALL:-}" ]; then
-  reason="HE_GBRAIN_INSTALL=$HE_GBRAIN_INSTALL is not implemented for claude-code (the install ladder has no claude-code rung)"
+# The install ladder (HE_GBRAIN_INSTALL, docs/gbrain-arm.md): gbrain documents one install for Claude Code, its installer
+# (gbrain-installer, applied below once HOME is set). A cell that asks for another stops here instead of running as a bare-MCP cell.
+if [ -n "${HE_GBRAIN_INSTALL:-}" ] && [ "$HE_GBRAIN_INSTALL" != gbrain-installer ]; then
+  reason="HE_GBRAIN_INSTALL=$HE_GBRAIN_INSTALL is not implemented for claude-code (gbrain documents only gbrain-installer for this harness)"
   node -e 'const [out, install, split, dir, error] = process.argv.slice(1); require("fs").writeFileSync(out, JSON.stringify({ status: "error", code: "HE-ADAPTER-006", harness: "claude-code", split, install, dir, view_digest: null, files: 0, destinations: [], copied: [], error }));' \
     "$HE_LOG_DIR/gbrain-install.json" "$HE_GBRAIN_INSTALL" "${HE_GBRAIN_SPLIT:-}" "${HE_GBRAIN_INSTALL_DIR:-/he-gbrain-install}" "$reason"
-  log "$HE_GBRAIN_INSTALL install: HE-ADAPTER-006 the install bundle could not be applied: $reason; fix: run this cell without gbrain.install"
+  log "$HE_GBRAIN_INSTALL install: HE-ADAPTER-006 the install bundle could not be applied: $reason; fix: run this cell without gbrain.install or with gbrain-installer"
   exit 2
 fi
 
@@ -90,6 +90,112 @@ export CLAUDE_CONFIG_DIR="$HE_SESSION_STATE_DIR/claude"
 export TMPDIR="$HE_SESSION_STATE_DIR/tmp" CLAUDE_TMPDIR="$HE_SESSION_STATE_DIR/tmp"
 mkdir -p "$CLAUDE_CONFIG_DIR" "$TMPDIR"
 [ -e "$CLAUDE_CONFIG_DIR/settings.json" ] || cp "$harness_dir/config/settings.json" "$CLAUDE_CONFIG_DIR/settings.json"
+
+# internal-task, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
+# the exported view of what `gbrain setup claude-code --instructions-only` wrote at gbrain image build (gbrain#7989) read-only at
+# HE_GBRAIN_INSTALL_DIR. Setup ran there with HOME=/harness-state and CLAUDE_CONFIG_DIR=/harness-state/claude, so every path in it is
+# this container's: home/claude/CLAUDE.md (the brain-first block, Claude Code's user memory), home/claude/settings.json (this
+# adapter's settings.json with setup's UserPromptSubmit turn-rule hook merged in) and its .bak, home/.gbrain/agent-instructions.json
+# (gbrain's ledger, where the hook reads the rule) and home/.local/bin/gbrain (gbrain compiled from the same checkout, the hook's
+# command). Each file is checked against the manifest and copied to HE_SESSION_STATE_DIR/<path>, which must be the view's
+# state_root; settings.json replaces the one written above only when that one is the seed setup merged into, and no other
+# destination may exist. The hook is then run the way Claude Code runs it, with a UserPromptSubmit payload on stdin, and must print
+# the rule the bundle recorded (kept as $HE_LOG_DIR/gbrain-hook.claude-code.json); ready says turn_hook "ran". Every turn then
+# records how many times Claude Code ran the hook (gbrain appends one heartbeat line per run). Any failure is HE-ADAPTER-006 and
+# exit 2 before ready, recorded in $HE_LOG_DIR/gbrain-install.json. Unset, nothing here runs.
+gbrain_install_json='' hook_heartbeat=''
+if [ "${HE_GBRAIN_INSTALL:-}" = gbrain-installer ]; then
+  set +e
+  install_line=$(node - "${HE_GBRAIN_INSTALL_DIR:-/he-gbrain-install}" "$HE_SESSION_STATE_DIR" "${HE_GBRAIN_SPLIT:-}" "$HE_LOG_DIR" <<'JS'
+const fs = require("fs"), path = require("path"), crypto = require("crypto"), cp = require("child_process");
+const [view, state, split, logs] = process.argv.slice(2);
+const out = path.join(logs, "gbrain-install.json");
+const sha = (b) => crypto.createHash("sha256").update(b).digest("hex");
+const rec = { status: "error", code: "HE-ADAPTER-006", harness: "claude-code", split, install: "gbrain-installer", dir: view, view_digest: null, files: 0, destinations: [], copied: [], error: null };
+const write = () => { fs.writeFileSync(out + ".tmp", JSON.stringify(rec)); fs.renameSync(out + ".tmp", out); };
+const refuse = (msg) => {
+  rec.error = msg; write();
+  console.log("HE-ADAPTER-006 the install bundle could not be applied: " + msg + " (view " + view + ", split " + split + "); fix: re-export the view from the gbrain image (gbrain/export-install.sh) and run preflight again");
+  process.exit(1);
+};
+if (!split) refuse("HE_GBRAIN_SPLIT is unset");
+let m;
+try { m = JSON.parse(fs.readFileSync(path.join(view, "manifest.json"), "utf8")); } catch (e) { refuse("no readable manifest.json in the view: " + e.message); }
+rec.view_digest = m.view_digest ?? null;
+if (m.harness !== "claude-code") refuse("the view is for harness " + JSON.stringify(m.harness) + ", this adapter is claude-code");
+if (m.split !== split) refuse("the view is for split " + JSON.stringify(m.split) + ", the trial's split is " + split);
+if ((m.install ?? "gbrain-docs") !== "gbrain-installer") refuse("the view is for install " + JSON.stringify(m.install ?? "gbrain-docs") + ", this cell's gbrain.install is gbrain-installer");
+const files = m.files ?? [];
+if (!files.length) refuse("the manifest lists no files");
+const lines = [...files].sort((a, b) => (a.source_path < b.source_path ? -1 : a.source_path > b.source_path ? 1 : 0)).map((f) => f.source_path + " " + f.sha256 + "\n").join("");
+if (sha(lines) !== m.view_digest) refuse("the manifest's view_digest does not match its file list");
+const inst = m.installer ?? {};
+if (inst.state_root !== state) refuse("the view was installed with HOME " + JSON.stringify(inst.state_root) + " (its hook command, gbrain's ledger and settings name it), this trial's state dir is " + state);
+const known = [".local/bin/gbrain", ".gbrain/agent-instructions.json", "claude/CLAUDE.md", "claude/settings.json", "claude/settings.json.bak"];
+const plan = [];
+for (const f of files) {
+  const rel = (f.path ?? "").replace(/^home\//, "");
+  if (!f.path?.startsWith("home/") || !known.includes(rel)) refuse("no documented destination for " + JSON.stringify(f.path));
+  const src = path.join(view, f.path), dest = path.join(state, rel);
+  if (!fs.existsSync(src)) refuse("a listed file is missing from the view: " + f.path);
+  if (sha(fs.readFileSync(src)) !== f.sha256) refuse("digest mismatch for " + f.path);
+  if (rel === "claude/settings.json") {
+    if (!inst.seed || !fs.existsSync(dest) || sha(fs.readFileSync(dest)) !== inst.seed.sha256) refuse("the settings.json at " + dest + " is not the seed gbrain setup merged its hook into (sha256 " + (inst.seed?.sha256 ?? "none recorded") + "); fix: rebuild the gbrain image from this checkout");
+    const canonical = (v) => Array.isArray(v) ? "[" + v.map(canonical).join(",") + "]" : v && typeof v === "object" ? "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + canonical(v[k])).join(",") + "}" : JSON.stringify(v);
+    const withoutHook = (s) => {
+      const ups = (s.hooks?.UserPromptSubmit ?? []).map((g) => ({ ...g, hooks: (g.hooks ?? []).filter((e) => e._gbrain !== "turn-rule-v1") })).filter((g) => g.hooks.length);
+      const hooks = { ...(s.hooks ?? {}) };
+      if (ups.length) hooks.UserPromptSubmit = ups; else delete hooks.UserPromptSubmit;
+      const rest = { ...s };
+      if (Object.keys(hooks).length) rest.hooks = hooks; else delete rest.hooks;
+      return canonical(rest);
+    };
+    let viewSettings;
+    try { viewSettings = JSON.parse(fs.readFileSync(src, "utf8")); } catch (e) { refuse("the view's settings.json is not JSON: " + e.message); }
+    if (withoutHook(viewSettings) !== withoutHook(JSON.parse(fs.readFileSync(dest, "utf8")))) refuse("the view's settings.json differs from the seed by more than the gbrain turn-rule hook");
+  } else if (fs.existsSync(dest)) refuse("the destination exists and gbrain setup would not have created it: " + dest);
+  plan.push({ src, dest, digest: f.sha256 });
+}
+for (const p of plan) {
+  fs.mkdirSync(path.dirname(p.dest), { recursive: true });
+  fs.copyFileSync(p.src, p.dest);
+  fs.chmodSync(p.dest, fs.statSync(p.src).mode & 0o777);
+  if (sha(fs.readFileSync(p.dest)) !== p.digest) refuse("the copy at " + p.dest + " does not match the view");
+  rec.copied.push(p.dest);
+  if (!rec.destinations.includes(path.dirname(p.dest))) rec.destinations.push(path.dirname(p.dest));
+}
+rec.destinations.sort();
+let hook = "nohook";
+if (inst.turn_hook) {
+  const settings = JSON.parse(fs.readFileSync(path.join(state, "claude/settings.json"), "utf8"));
+  const ours = (settings.hooks?.UserPromptSubmit ?? []).flatMap((g) => g.hooks ?? []).filter((e) => e._gbrain === "turn-rule-v1" && typeof e.command === "string");
+  if (ours.length !== 1) refuse("settings.json holds " + ours.length + " gbrain turn-rule UserPromptSubmit entries, not one");
+  const command = ours[0].command;
+  const r = cp.spawnSync("sh", ["-c", command], { input: JSON.stringify({ hook_event_name: "UserPromptSubmit", prompt: "", session_id: "he-install-check" }), cwd: state, encoding: "utf8", timeout: 60000,
+    env: { PATH: process.env.PATH, HOME: state, CLAUDE_CONFIG_DIR: path.join(state, "claude") } });
+  let context = null;
+  try { context = JSON.parse(r.stdout.trim()).hookSpecificOutput?.additionalContext ?? null; } catch {}
+  fs.writeFileSync(path.join(logs, "gbrain-hook.claude-code.json"), JSON.stringify({ command, exit: r.status, stdout: r.stdout, stderr: (r.stderr ?? "").slice(0, 2000), rule_matches: context === inst.turn_hook.rule }, null, 1) + "\n");
+  if (r.status !== 0 || context !== inst.turn_hook.rule) refuse("the UserPromptSubmit hook " + command + " exited " + r.status + " and did not print the rule the bundle recorded (gbrain-hook.claude-code.json)");
+  rec.turn_hook = { command, status: "ran", heartbeat: path.join(state, ".gbrain/integrations/hooks/heartbeat.jsonl") };
+  hook = "ran";
+}
+rec.status = "ok"; rec.code = null; rec.files = plan.length;
+write();
+console.log("ok " + plan.length + " " + rec.view_digest + " " + rec.destinations.join(",") + " " + hook);
+JS
+)
+  install_code=$?
+  set -e
+  log "gbrain-installer install: ${install_line:-HE-ADAPTER-006 the install bundle could not be applied: the install step failed before it could report; see stderr.log}"
+  [ "$install_code" -eq 0 ] || exit 2
+  read -r _ install_files install_digest install_dests install_hook <<< "$install_line"
+  turn_hook_json=''
+  if [ "$install_hook" = ran ]; then hook_heartbeat="$HE_SESSION_STATE_DIR/.gbrain/integrations/hooks/heartbeat.jsonl"; turn_hook_json=',"turn_hook":"ran"'; fi
+  gbrain_install_json=$(printf ',"gbrain_install":{"status":"ok","install":"gbrain-installer","files":%s,"view_digest":"%s","destinations":"%s"%s}' "$install_files" "$install_digest" "$install_dests" "$turn_hook_json")
+fi
+# The number of times gbrain's turn hook has run in this state dir: one heartbeat line per UserPromptSubmit.
+hook_runs() { cat "$hook_heartbeat" 2>/dev/null | grep -c '"event":"user-prompt"' || true; }
 
 # The model goes through the proxy with the per-trial token. Every model setting the CLI reads at this pin names the cell
 # model, so no background, subagent, classifier or alias call can ask for another; model substitution is switched off.
@@ -178,6 +284,7 @@ const x = h.subarray(0, 16).toString("hex");
 process.stdout.write([x.slice(0, 8), x.slice(8, 12), x.slice(12, 16), x.slice(16, 20), x.slice(20)].join("-"));' "$key")
   if compgen -G "$CLAUDE_CONFIG_DIR/projects/*/$sid.jsonl" >/dev/null; then flag=--resume; else flag=--session-id; fi
   log "session $key: $flag $sid"
+  [ -z "$hook_heartbeat" ] || hook_before=$(hook_runs)
   set +e
   setsid claude -p --output-format stream-json --verbose --model "$HE_MODEL_NAME" --permission-mode bypassPermissions \
     --disallowedTools WebSearch,WebFetch --mcp-config "$mcp_config" --strict-mcp-config "$flag" "$sid" \
@@ -237,6 +344,12 @@ JS
 )
   set -e
   turn_code=${line%% *}; line=${line#* }
+  if [ -n "$hook_heartbeat" ]; then
+    hook_ran=$(( $(hook_runs) - hook_before ))
+    node -e 'const fs = require("fs"); const s = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); s.gbrain_turn_hook_runs = Number(process.argv[2]); fs.writeFileSync(process.argv[1], JSON.stringify(s));' "$prefix.status.json" "$hook_ran" \
+      || log "session $key: could not add gbrain_turn_hook_runs to $prefix.status.json (the turn's output could not be read)"
+    log "session $key: gbrain's UserPromptSubmit hook ran $hook_ran time(s) in this turn"
+  fi
   log "session $key: the init record says claude-code ${line%% *}"
   turn_detail=''
   [[ "$line" == *" "* ]] && turn_detail=${line#* }
@@ -273,8 +386,8 @@ fs.writeFileSync(resp + ".tmp", JSON.stringify(out));
 fs.renameSync(resp + ".tmp", resp);' "$@"
 }
 
-printf '{"harness":"claude-code","version":"%s","trial":"%s","ready_at":"%s","session_keys":"claude -p --session-id|--resume UUIDv5(dm:<member> | channel:<id>)","mcp_servers":"%s","adapter_sha256":"%s"}\n' \
-  "$claude_version" "$HE_TRIAL_ID" "$(now)" "${mcp_servers[*]}" "$adapter_sha256" > "$HE_LOG_DIR/ready.tmp"
+printf '{"harness":"claude-code","version":"%s","trial":"%s","ready_at":"%s","session_keys":"claude -p --session-id|--resume UUIDv5(dm:<member> | channel:<id>)","mcp_servers":"%s","adapter_sha256":"%s"%s}\n' \
+  "$claude_version" "$HE_TRIAL_ID" "$(now)" "${mcp_servers[*]}" "$adapter_sha256" "$gbrain_install_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do

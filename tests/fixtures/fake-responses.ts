@@ -129,7 +129,8 @@ export function stream(id: string, model: string, output: Array<Record<string, u
 
 export interface FakeResponses { port: number; requests: FakeRequestRecord[]; setScript(turns: Turn[], loop?: boolean): void; stop(): void }
 
-export function startFakeResponses(o: { host?: string; port?: number; log?: string | null; script?: Turn[]; loop?: boolean; failStatus?: number } = {}): FakeResponses {
+/** onBody gets every parsed /v1/responses request body (tests that read what the harness sent, such as a hook's context). */
+export function startFakeResponses(o: { host?: string; port?: number; log?: string | null; script?: Turn[]; loop?: boolean; failStatus?: number; onBody?: (body: Record<string, unknown>) => void } = {}): FakeResponses {
   let script = o.script ?? [];
   let loop = o.loop ?? false;
   const requests: FakeRequestRecord[] = [];
@@ -146,6 +147,7 @@ export function startFakeResponses(o: { host?: string; port?: number; log?: stri
     }
     let body: Record<string, unknown>;
     try { body = await req.json() as Record<string, unknown>; } catch { record({ ...meta, status: 400 }); return Response.json({ error: { type: 'invalid_request_error', message: 'fake-responses: body is not JSON' } }, { status: 400 }); }
+    o.onBody?.(body);
     const fields = { model: typeof body.model === 'string' ? body.model : null, stream: body.stream === true, max_output_tokens: typeof body.max_output_tokens === 'number' ? body.max_output_tokens : null, reasoning: body.reasoning ?? null, tools: toolNames(body), tool_choice: body.tool_choice ?? null };
     if (o.failStatus) {
       record({ ...meta, ...fields, status: o.failStatus });

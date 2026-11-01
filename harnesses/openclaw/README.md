@@ -19,12 +19,13 @@ On an OpenAI cell (plan decision 1 of internal-task: Codex, OpenClaw and Hermes 
 - **Config.** `config/openclaw.openai.json` is copied instead of `config/openclaw.json`. It points OpenClaw's bundled `openai` provider at `${HE_MODEL_BASE_URL}/v1` with `${HE_MODEL_API_KEY}` and its shipped `openai-responses` API, so every model call is `POST /v1/responses` (SSE) through the proxy.
 - **Turn.** `--model openai/<HE_MODEL_NAME>` in `run` and `serve`; nothing else in the turn changes.
 - **Housekeeping model.** `agents.defaults.utilityModel` is the cell model. Without it OpenClaw would pick `openai/gpt-5.6-luna`, which the cell's allowlist refuses (`openclaw models status --json` shows both resolutions).
+- **Memory search.** `memory.search.provider: "none"`: keyword-only memory search, with no embeddings. Without it OpenClaw's memory indexer embeds `MEMORY.md` and `memory/*.md` through the openai provider and calls `/v1/embeddings` for `text-embedding-3-small`, which the cell's allowlist refuses. In host-harness-pilot-2026-10 that ended 11 `oc-luna` trials as model errors. An Anthropic cell has no OpenAI key, so the same indexer already falls back to keyword ranking there; this setting makes an OpenAI cell do the same. The `memory_search` tool stays.
 - **Reasoning effort.** `agents.defaults.thinkingDefault: medium`, sent as `reasoning.effort: medium`. OpenClaw's own default for `gpt-6-luna` is the same.
 - **Output cap.** The model row sets no `maxTokens`, so OpenClaw states its catalog's value for `gpt-6-luna`: 128,000 on every request (observed). Every shard's proxy runs `--max-output-tokens 128000`, so it passes. The Anthropic template keeps its 16,384.
 - **Network.** The same-model control for Codex, so it runs on the internal network too. The serve smoke there passes (`tests/internal-network-harnesses.test.ts`). On this provider OpenClaw defers MCP tools behind `tool_search` and calls them through `tool_call`.
 - **Everything else** is OpenClaw's shipped default: catalog metadata, SSE transport, the embedded OpenClaw runtime (a custom endpoint never selects the Codex app-server runtime). `pin.json` `model_openai` records each choice with its source.
 
-Keyless proof (2026-10-29, `tests/openai-branch.test.ts`): through the real proxy in lease mode with `--allow-models openai:gpt-6-luna`, `--max-output-tokens 128000` and a fake Responses endpoint upstream, `run` and `serve` each completed a turn on one forwarded `gpt-6-luna` request with no refusal, and a model off the allowlist exited 3. The same test checks that an Anthropic cell's config, turn arguments, environment, response and ready file are identical to `c1c7ed1b3` except `adapter_sha256`. No paid OpenAI call has been made yet.
+Keyless proof (2026-10-29, `tests/openai-branch.test.ts`): through the real proxy in lease mode with `--allow-models openai:gpt-6-luna`, `--max-output-tokens 128000` and a fake Responses endpoint upstream, `run` and `serve` each completed a turn on one forwarded `gpt-6-luna` request with no refusal, and a model off the allowlist exited 3. The same test checks that an Anthropic cell's config, turn arguments, environment, response and ready file are identical to `c1c7ed1b3` except `adapter_sha256`. No paid OpenAI call had been made then; the first ran in the `oc-luna` cell of host-harness-pilot-2026-10.
 
 ## Instruction routes (internal-task)
 
@@ -79,6 +80,10 @@ Findings:
 ### 2026-10-30: instruction routes (internal-task)
 
 harness-evals v0.0.46. The "Instruction routes" section: `HE_HARNESS_CONFIG` selects the route, `default` is unchanged, and the image copies `routes/` to `/opt/harness/routes`. Why: run `anatomy-instruction-route-2026-11` needs one instruction delivered through each route.
+
+### 2026-10-30: OpenAI cells search memory by keyword only (internal-task)
+
+`config/openclaw.openai.json` sets `memory.search.provider: "none"`, so OpenClaw's memory indexer on an OpenAI cell sends no `/v1/embeddings` request (11 `oc-luna` model errors in host-harness-pilot-2026-10). `config/openclaw.json`, the Anthropic template, is unchanged.
 
 ### 2026-10-29: OpenAI cells (internal-task)
 

@@ -38,4 +38,17 @@
       skipBootstrap: true,
     },
   },
+  // Keyword-only memory search, as on an Anthropic cell. OpenClaw's memory
+  // indexer embeds MEMORY.md and memory/*.md with the openai provider by
+  // default, and on an OpenAI cell it found this provider's key and called
+  // /v1/embeddings for text-embedding-3-small, which the cell's allowlist
+  // refuses (11 model_error trials in host-harness-pilot-2026-10). On an
+  // Anthropic cell there is no OpenAI key, so the same indexer falls back to
+  // keyword (FTS) ranking with no network call. provider "none" selects that
+  // keyword-only mode on purpose; the memory_search tool stays.
+  memory: {
+    search: {
+      provider: "none",
+    },
+  },
 }

@@ -398,6 +398,49 @@ describe.skipIf(!haveImage)(`the sidecar image ${IMAGE ?? '(HE_GBRAIN_IMAGE unse
     expect(r.status).toBe(2); expect(r.err).toContain('refusing to start: OPENAI_API_KEY is set');
   }, 120_000);
 
+  // internal-task: a company or member brain's sources are registered at /brain/sources/<id>, which the image keeps and the entrypoint
+  // copies and re-stamps (gbrain/rebind-sources.ts), so a member token's writes land in its own source and read back; with the
+  // checkouts under the build's /tmp/staging every such write failed with storage_error. The bot-visible brain's trial token
+  // writes to gbrain's default source, whose checkout lives under /brain/.gbrain and is re-stamped the same way.
+  test('writes land in the brain the image serves: put_page, capture and add_timeline_entry read back, and another member cannot read a member\'s writes', async () => {
+    for (const brain of ['bot-visible', 'member', 'company'] as const) {
+      const s = await startSidecar(`he-gbrain-image-writes-${brain}`, { HE_GBRAIN_SPLIT: 'dev', HE_GBRAIN_BRAIN: brain, ...(brain === 'bot-visible' ? {} : { HE_GBRAIN_SCOPE: 'member' }) });
+      try {
+        const want = join(s.out, brain === 'bot-visible' ? 'token' : 'tokens.json');
+        const deadline = Date.now() + 30_000;
+        while (!existsSync(want) && Date.now() < deadline) await Bun.sleep(100);
+        const members: Record<string, string> = brain === 'bot-visible' ? { trial: readFileSync(want, 'utf8').trim() }
+          : (JSON.parse(readFileSync(want, 'utf8')) as { members: Record<string, string> }).members;
+        const [writer, other] = Object.keys(members).sort();
+        const call = async (token: string, name: string, args: Record<string, unknown>) => {
+          const res = await fetch(`http://127.0.0.1:${s.port}/mcp`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) });
+          const text = await res.text();
+          const msg = JSON.parse(text.split('\n').find((l) => l.startsWith('data:'))?.slice(5) ?? text);
+          const body = (msg.result?.content ?? []).map((c: { text?: string }) => c.text ?? '').join('\n');
+          let payload: any = null; try { payload = JSON.parse(body); } catch { /* text */ }
+          return { error: !!msg.error || !!msg.result?.isError || !!payload?.error, body, payload };
+        };
+        const marker = `he-write-check-${brain}`;
+        const put = await call(members[writer!]!, 'put_page', { slug: 'notes/he-write-check-put', content: `# Write check\n\n${marker} put_page.\n`, wait_ms: 15000 });
+        expect(put.error ? put.body : 'ok').toBe('ok');
+        const cap = await call(members[writer!]!, 'capture', { slug: 'notes/he-write-check-capture', content: `${marker} capture.` });
+        expect(cap.error ? cap.body : 'ok').toBe('ok');
+        const tl = await call(members[writer!]!, 'add_timeline_entry', { slug: 'notes/he-write-check-put', date: '2026-10-31', summary: `${marker} timeline entry` });
+        expect(tl.error ? tl.body : 'ok').toBe('ok');
+        const readPut = await call(members[writer!]!, 'get_page', { slug: 'notes/he-write-check-put', include_content: true });
+        expect(readPut.error ? readPut.body : readPut.body.includes(`${marker} put_page`)).toBe(true);
+        const readCap = await call(members[writer!]!, 'get_page', { slug: 'notes/he-write-check-capture', include_content: true });
+        expect(readCap.error ? readCap.body : readCap.body.includes(`${marker} capture`)).toBe(true);
+        const readTl = await call(members[writer!]!, 'get_page', { slug: 'notes/he-write-check-put', include_content: true });
+        expect(readTl.error ? readTl.body : readTl.body.includes(`${marker} timeline entry`)).toBe(true);
+        if (other) {
+          const otherRead = await call(members[other]!, 'get_page', { slug: 'notes/he-write-check-put', include_content: true });
+          expect(otherRead.body.includes(`${marker} put_page`)).toBe(false);
+        }
+      } finally { s.stop(); }
+    }
+  }, 300_000);
+
   const haveEmbedded = !!EMBEDDED_BRAIN && existsSync(join(EMBEDDED_BRAIN!, 'manifest.json'));
   test.skipIf(!haveEmbedded)('an embedded brain built elsewhere is served from /brain and its query embedding leaves through OPENAI_BASE_URL presenting the proxy slot token (fake embedder, no key)', async () => {
     const requests: string[] = [];

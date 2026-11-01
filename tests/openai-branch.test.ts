@@ -24,7 +24,7 @@
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { sseUsage } from '../runner/proxy/metering-proxy.ts';
@@ -134,6 +134,7 @@ describe('an OpenAI cell gets the OpenAI provider', () => {
       expect(cfg.models.providers.openai).toMatchObject({ baseUrl: '${HE_MODEL_BASE_URL}/v1', apiKey: '${HE_MODEL_API_KEY}', api: 'openai-responses' });
       expect(cfg.models.providers.anthropic).toBeUndefined();
       expect(cfg.agents.defaults).toMatchObject({ model: { primary: 'openai/${HE_MODEL_NAME}' }, utilityModel: 'openai/${HE_MODEL_NAME}', thinkingDefault: 'medium' });
+      expect(cfg.memory).toEqual({ search: { provider: 'none' } });
       expect(c.config).not.toContain(TOKEN);
       if (entry === 'serve') expect(c.response).toEqual({ turn: 1, exit: 0, reply_text: 'ok' });
       rmSync(c.dir, { recursive: true, force: true });
@@ -208,6 +209,49 @@ describe.skipIf(!haveImage('openclaw') && !haveImage('hermes'))('one turn on gpt
       // (pin.json model_openai.max_output_tokens: against a proxy cap of 100000 every request was refused for stating 128000).
       if (h === 'openclaw') expect(turns.map(r => r.max_output_tokens)).toEqual(turns.map(() => 128000));
     }, 240_000);
+
+    if (h === 'openclaw') {
+      // host-harness-pilot-2026-10: OpenClaw's memory indexer embedded MEMORY.md and memory/*.md with the openai provider, found
+      // the cell's key and sent POST /v1/embeddings for text-embedding-3-small, which the allowlist refused (11 model_error
+      // trials). The OpenAI template now selects keyword-only memory search, which an Anthropic cell falls back to on its own.
+      test.skipIf(!haveImage(h))('openclaw: the memory indexer on an OpenAI cell indexes keyword-only, memory search still finds a note, and no /v1/embeddings request is sent', async () => {
+        const cell = await capture({ harness: h, entry: 'run', harnessDir: harnessDir(h), image: image(h), ...OPENAI_CELL, name: `he-oai-memory-config-${process.pid}` });
+        expect(cell.exit).toBe(0);
+        rmSync(cell.dir, { recursive: true, force: true });
+        const slot = `oai-memory-${process.pid}`;
+        const token = `trial-token:${slot}.${'0123456789abcdef'.repeat(2)}`;
+        const bound = await fetch(`http://${gateway}:${port}/__proxy/bind`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-proxy-control': control }, body: JSON.stringify({ slot, key: 'trial-token:' + slot, token }) });
+        expect(bound.status).toBe(200);
+        const work = mkdtempSync(join(dir, 'memory-'));
+        mkdirSync(join(work, 'workspace', 'memory'), { recursive: true });
+        mkdirSync(join(work, 'state', 'openclaw'), { recursive: true });
+        writeFileSync(join(work, 'workspace', 'MEMORY.md'), '# Notes\nTobias quotes parcel rates in GBP.\n');
+        writeFileSync(join(work, 'workspace', 'memory', '2026-10-30.md'), 'Met June on Tuesday about the renewal date.\n');
+        writeFileSync(join(work, 'state', 'openclaw', 'openclaw.json'), cell.config);
+        const fakeBefore = readLines<FakeRequest>(fakeLog).length;
+        const openclaw = (...args: string[]) => {
+          try {
+            return spawnSync('docker', ['run', '--rm', '--name', `he-${slot}`, '--user', `${process.getuid!()}:${process.getgid!()}`, '--add-host', 'host.docker.internal:host-gateway',
+              '-v', `${join(work, 'workspace')}:/workspace`, '-v', `${join(work, 'state')}:/harness-state`,
+              '-e', `HE_MODEL_BASE_URL=http://host.docker.internal:${port}/${slot}/openai`, '-e', `HE_MODEL_API_KEY=${token}`, '-e', 'HE_MODEL_NAME=gpt-6-luna',
+              '--entrypoint', 'openclaw', image(h), ...args], { encoding: 'utf8', env: dockerEnv(), timeout: 180_000 });
+          } finally {
+            spawnSync('docker', ['rm', '-f', `he-${slot}`], { env: dockerEnv(), stdio: 'ignore' });
+          }
+        };
+        const index = openclaw('memory', 'index', '--force', '--agent', 'main');
+        const search = openclaw('memory', 'search', 'Tobias parcel', '--agent', 'main');
+        const usage = readLines<{ key: string; route: string }>(usageLog).filter(l => l.key === 'trial-token:' + slot || l.key === 'slot:' + slot);
+        const requests = readLines<FakeRequest>(fakeLog).slice(fakeBefore);
+        rmSync(work, { recursive: true, force: true });
+        expect(usage.map(l => l.route)).toEqual([]);
+        expect(requests).toEqual([]);
+        expect(index.status, index.stdout + index.stderr).toBe(0);
+        expect(index.stdout).toContain('2 files indexed');
+        expect(search.status, search.stdout + search.stderr).toBe(0);
+        expect(search.stdout).toMatch(/MEMORY\.md:\d+-\d+/);
+      }, 300_000);
+    }
 
     test.skipIf(!haveImage(h))(`${h}: a model off the allowlist is refused by the proxy and maps to exit 3`, async () => {
       const { c, usage, requests } = await turn(h, 'gpt-6.1-sol');

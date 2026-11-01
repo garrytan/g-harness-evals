@@ -84,6 +84,12 @@ test('gbrain.install and gbrain.embeddings: validated under HE-GBRAIN-001 naming
   bad({ surface: 'starter', embeddings: 'openai:text-embedding-3-small', brain: 'company' }, /HE-GBRAIN-001 .*needs the bot-visible brain/);
   expect(() => loadPrereg(writePrereg([cell({ harness: 'qm', gbrain: { surface: 'starter', install: 'gbrain-docs' } })], 'gb-docs-qm'))).toThrow(/HE-GBRAIN-001 .*"gbrain-docs" is defined for harnesses openclaw, hermes/);
   expect(() => loadPrereg(writePrereg([cell({ harness: 'qm', gbrain: { surface: 'starter', install: 'gbrain-installer' } })], 'gb-installer-qm'))).toThrow(/HE-GBRAIN-001 .*"gbrain-installer" is defined for harnesses openclaw, hermes/);
+  // internal-task: Claude Code and Codex take the installer rung (gbrain setup's turn hook, gbrain#7989) and no docs rung.
+  for (const [harness, model] of [['claude-code', 'anthropic:claude-haiku-5-5'], ['codex', 'openai:gpt-6-luna']] as const) {
+    const net = harness === 'codex' ? { network: 'internal' as const } : {};
+    expect(() => loadPrereg(writePrereg([cell({ id: `${harness}-installer`, harness, model, ...net, gbrain: { surface: 'starter', install: 'gbrain-installer' } })], `gb-installer-${harness}`))).not.toThrow();
+    expect(() => loadPrereg(writePrereg([cell({ id: `${harness}-docs`, harness, model, ...net, gbrain: { surface: 'starter', install: 'gbrain-docs' } })], `gb-docs-${harness}`))).toThrow(new RegExp(`HE-GBRAIN-001 .*"gbrain-docs" is defined for harnesses openclaw, hermes \\(gbrain documents no gbrain-docs install for ${harness}`));
+  }
   const { prereg: p, sha256 } = loadPrereg(writePrereg([
     cell({ id: 'fake-mcp', tasks: ['fx-leak'] }),
     cell({ id: 'fake-verbs', gbrain: { surface: 'verbs' }, tasks: ['fx-leak'] }),

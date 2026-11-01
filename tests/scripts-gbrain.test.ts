@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { PredicateResult, TrialRecord } from '../runner/contracts.ts';
+import { installerNotApplied, type PredicateResult, type TrialGbrainInstall, type TrialRecord } from '../runner/contracts.ts';
 import type { WorldEvent } from '../world/services/events.ts';
 import { crossScopeReadsBySurface, gbrainUsage, scopeLeaks } from '../scripts/gbrain-usage.ts';
 import { loadWorldData } from '../runner/grade/predicates.ts';
@@ -628,6 +628,9 @@ describe('compare-run --pair gbrain on the install ladder', () => {
     const blockOnly = twin.find((t) => t.task === 'sc-01-north-two-asks' && t.trial_id.endsWith('/r2'))!;
     const { turn_hook: _noHook, ...bundleOnly } = blockOnly.gbrain!.install_bundle!;
     blockOnly.gbrain = { ...blockOnly.gbrain!, install_bundle: bundleOnly };
+    // Claude Code's and Codex's status word is ran (the adapter ran the hook before ready); with a hook run in every turn it is also applied (issue #153).
+    const ran = twin.find((t) => t.task === 'sc-01-north-two-asks' && t.trial_id.endsWith('/r3')) ?? twin.find((t) => t !== healthy && t !== blockOnly && t.task === 'sc-01-north-two-asks')!;
+    ran.gbrain = { ...ran.gbrain!, install_bundle: { ...ran.gbrain!.install_bundle!, turn_hook: { files: 2, status: 'ran', turn_runs: [1, 1] } } };
     // One trial the adapter refused before ready (HE-ADAPTER-006, harness_error, the hook status the runner records then) and one with no install record at all.
     const refused = twin.find((t) => t.task === 'si-01-quarrendon-seats' && t.trial_id.endsWith('/r2'))!;
     Object.assign(refused, { termination: 'harness_error', grade: 'n/a', gbrain: { ...refused.gbrain!, install_bundle: { ...refused.gbrain!.install_bundle!, turn_hook: { files: 3, status: 'no ready file' } }, events: { total: 0, discovery: 0, calls: 0, in_turn_calls: 0, writes: 0 } } });
@@ -653,6 +656,66 @@ describe('compare-run --pair gbrain on the install ladder', () => {
     const arm = run('compare-run.ts', ['--results', dir, '--pair', 'gbrain', '--design', 'arm', '--draws', '1000']);
     expect(arm.status).toBe(2);
     expect(arm.stderr).toContain('--pair gbrain (arm): installer cells oc-gbrain-installer need the ladder design');
+  });
+
+  // Issue #153: Claude Code's and Codex's ready says "ran" when the adapter ran the hook command once itself; only the per-turn
+  // gbrain_turn_hook_runs (install_bundle.turn_hook.turn_runs) shows the harness fired it during the turns.
+  test('installerNotApplied: "ran" with every turn at 1 or more is applied; a turn at 0, a turn with no count or no turn_runs is not; an empty list (no answered turn) is; loaded, healthy and block-only unchanged', () => {
+    const bundle: TrialGbrainInstall = { harness: 'claude-code', split: 'dev', install: 'gbrain-installer', files: 9, view_digest: 'sha256:' + '2'.repeat(64) };
+    const ran = (turn_runs?: Array<number | null>) => installerNotApplied({ ...bundle, turn_hook: { files: 1, status: 'ran', ...(turn_runs ? { turn_runs } : {}) } });
+    expect(ran([1, 1])).toBeNull();
+    expect(ran([1, 2, 1])).toBeNull();
+    expect(ran([1, 0])).toBe('installer hook did not run in turn 2 (gbrain_turn_hook_runs 0)');
+    expect(ran([1, null])).toBe('installer hook ran at ready but turn 2 recorded no gbrain_turn_hook_runs');
+    expect(ran()).toBe('installer hook ran at ready but no turn recorded gbrain_turn_hook_runs');
+    // A trial the runner ended in its first turn (timeout, harness gone) has no answered turn: it stays scored on its termination.
+    expect(ran([])).toBeNull();
+    expect(installerNotApplied({ ...bundle, harness: 'openclaw', turn_hook: { files: 3, status: 'loaded' } })).toBeNull();
+    expect(installerNotApplied({ ...bundle, harness: 'hermes', turn_hook: { files: 2, status: 'healthy' } })).toBeNull();
+    expect(installerNotApplied({ ...bundle, harness: 'openclaw', turn_hook: { files: 3, status: 'no ready file' } })).toBe('installer hook no ready file');
+    expect(installerNotApplied(bundle)).toBeNull();
+    expect(installerNotApplied(undefined)).toBe('installer not applied (no install record)');
+  });
+
+  test('a "ran" installer trial is paired only when every turn ran the hook; a turn at 0 or a missing count leaves the pairs as installer_not_applied, OpenClaw\'s "loaded" stays paired, and summarize-run counts the same trials', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-ladder-'));
+    writeLadderFixture(dir);
+    const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as { cells: Array<Record<string, unknown> & { id: string }>; trials: Array<{ id: string; cell: string }> };
+    const told = manifest.cells.find((c) => c.id === 'oc-gbrain-told')!;
+    const installer = { ...told, id: 'oc-gbrain-installer', preamble: undefined, gbrain: { surface: 'starter', install: 'gbrain-installer' } };
+    const rows = readFileSync(join(dir, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord).filter((t) => t.cell === 'oc-gbrain-told');
+    // Every installer trial says "ran" with the hook run once in each of its turns, as a Claude Code or Codex trial records it.
+    const twin: TrialRecord[] = rows.map((t) => ({ ...t, trial_id: t.trial_id.replace('/oc-gbrain-told/', '/oc-gbrain-installer/'), cell: 'oc-gbrain-installer',
+      gbrain: { ...t.gbrain!, install: 'gbrain-installer' as const, install_bundle: { harness: 'oc', split: 'dev' as const, install: 'gbrain-installer' as const, files: 9, view_digest: 'sha256:' + '1'.repeat(64), turn_hook: { files: 1, status: 'ran', turn_runs: [1, 1] } } } }));
+    const pick = (task: string, r: number) => twin.find((t) => t.task === task && t.trial_id.endsWith('/r' + r))!;
+    const hook = (t: TrialRecord, turn_hook: NonNullable<TrialGbrainInstall['turn_hook']>) => { t.gbrain = { ...t.gbrain!, install_bundle: { ...t.gbrain!.install_bundle!, turn_hook } }; };
+    hook(pick('sc-01-north-two-asks', 1), { files: 3, status: 'loaded' });
+    hook(pick('sc-01-north-two-asks', 2), { files: 1, status: 'ran', turn_runs: [1, 0] });
+    hook(pick('si-01-quarrendon-seats', 2), { files: 1, status: 'ran' });
+    hook(pick('ho-01-sev1-recap', 1), { files: 1, status: 'ran', turn_runs: [1, null] });
+    writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ ...manifest, cells: [told, installer], trials: [...manifest.trials.filter((t) => t.cell === 'oc-gbrain-told'), ...manifest.trials.filter((t) => t.cell === 'oc-gbrain-told').map((t) => ({ ...t, id: t.id.replace('/oc-gbrain-told/', '/oc-gbrain-installer/'), cell: 'oc-gbrain-installer' }))] }));
+    writeFileSync(join(dir, 'trials.jsonl'), [...rows, ...twin].map((t) => JSON.stringify(t)).join('\n') + '\n');
+    const r = run('compare-run.ts', ['--results', dir, '--pair', 'gbrain', '--draws', '1000']);
+    expect(r.status).toBe(0);
+    const out = JSON.parse(readFileSync(join(dir, 'comparisons.gbrain.json'), 'utf8'));
+    expect(out.exclusions).toEqual(['model_error', 'infra_error', 'exam_fault', 'installer_not_applied']);
+    for (const endpoint of ['pass', 'use', 'cross_scope']) {
+      const c = out.scopes[0].endpoints[endpoint].comparisons[0];
+      expect(c.excluded).toEqual([
+        { id: 'ho-01-sev1-recap/1', reason: 'rung installer hook ran at ready but turn 2 recorded no gbrain_turn_hook_runs' },
+        { id: 'sc-01-north-two-asks/2', reason: 'rung installer hook did not run in turn 2 (gbrain_turn_hook_runs 0)' },
+        { id: 'si-01-quarrendon-seats/2', reason: 'rung installer hook ran at ready but no turn recorded gbrain_turn_hook_runs' },
+      ]);
+      expect(c).toMatchObject({ n_pairs: 17, scored: { base: 20, rung: 17 } });
+    }
+    expect(out.scopes[0].endpoints.use.comparisons[0].delta).toBe(0);
+    const s = run('summarize-run.ts', ['--results', dir]);
+    expect(s.status).toBe(0);
+    const th = JSON.parse(readFileSync(join(dir, 'summary.json'), 'utf8')).ladder['oc-gbrain-installer'].install_bundle.turn_hook;
+    expect(th.status).toEqual({ ran: 24, loaded: 1 });
+    expect(th.per_turn).toEqual({ trials: 24, applied: 21, turns: 46, turns_zero: 1, turns_missing: 1, runs_per_turn: { 0: 1, 1: 44 }, not_applied: {
+      'installer hook did not run in turn 2 (gbrain_turn_hook_runs 0)': 1, 'installer hook ran at ready but no turn recorded gbrain_turn_hook_runs': 1, 'installer hook ran at ready but turn 2 recorded no gbrain_turn_hook_runs': 1 } });
+    expect(s.stdout).toContain('; hook ran at ready in 24, ran in every turn in 21; turns at 0: 1 of 46, no count: 1 |');
   });
 });
 

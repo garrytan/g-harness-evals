@@ -20,6 +20,8 @@ export interface TurnLoopOptions {
   /** Real seconds past time_budget_s before the harness is killed for the turn (methodology item 7 says 60). */
   graceS: number;
   log: (line: string) => void;
+  /** Called with the turn number and its exit as soon as the adapter's response for it arrives, before the next turn's request is written. */
+  onAnswered?: (turn: number, exit: TurnWindow['exit']) => void;
 }
 
 export interface TurnLoopResult {
@@ -114,6 +116,7 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
     }
     let exit = Number(response.exit) as TurnWindow['exit'];
     if (!VALID_EXITS.has(exit)) { o.log(`turn ${n}: response exit ${String(response.exit)} is not 0, 2, 3 or 124; recorded as 2`); exit = 2; }
+    o.onAnswered?.(n, exit);
     let reply_ts: string | null = null;
     const reply_text = typeof response.reply_text === 'string' && response.reply_text.trim() ? response.reply_text : null;
     if (reply_text) {

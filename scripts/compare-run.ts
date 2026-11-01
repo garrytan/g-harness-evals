@@ -67,7 +67,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { TURN_HOOK_APPLIED, type GbrainCellConfig, type TrialRecord } from '../runner/contracts.ts';
+import { installerNotApplied, type GbrainCellConfig, type TrialRecord } from '../runner/contracts.ts';
 import { clusteredPairedDelta, exactMcNemar, holmAdjusted, nonInferiorityP, pairObservations, type Observation, type PairedDelta } from '../runner/stats/paired.ts';
 import { sealedGuard } from '../runner/heldout/guard.ts';
 import { openingDiff, readJsonFile, readJsonLines, type OpeningReceipt } from '../runner/heldout/sealed.ts';
@@ -177,15 +177,11 @@ if (pairMode === 'gbrain') {
     const viewOf = (t: TrialRecord) => { const r = regraded.get(t.trial_id); return { grade: r?.grade ?? t.grade, consent_violation: r?.consent_violation ?? t.consent_violation, predicates: r?.predicates ?? t.predicates }; };
     /** gbrain-installer-hook-2026-10's preregistration: a trial of an installer cell whose installer did not take (no install
      *  record, or a per-turn hook the harness did not report loaded or healthy; the adapter refuses that with HE-ADAPTER-006 before
-     *  ready, so the trial is also harness_error) leaves the paired endpoints with its reason, as a model or infra error does. */
+     *  ready, so the trial is also harness_error) leaves the paired endpoints with its reason, as a model or infra error does.
+     *  Issue #153: a Claude Code or Codex trial whose ready says "ran" also needs every turn's gbrain_turn_hook_runs at 1 or more
+     *  (installerNotApplied, runner/contracts.ts). */
     const installerCells = new Set(present.filter((c) => c.gbrain && resolveGbrain(c.gbrain).install === 'gbrain-installer').map((c) => c.id));
-    const notApplied = (t: TrialRecord): string | null => {
-      if (!installerCells.has(t.cell)) return null;
-      const b = t.gbrain?.install_bundle;
-      if (!b) return 'installer not applied (no install record)';
-      if (b.turn_hook && !TURN_HOOK_APPLIED.includes(b.turn_hook.status)) return `installer hook ${b.turn_hook.status}`;
-      return null;
-    };
+    const notApplied = (t: TrialRecord): string | null => (installerCells.has(t.cell) ? installerNotApplied(t.gbrain?.install_bundle) : null);
     const scored = (t: TrialRecord) => !EXCLUDED.has(t.termination) && !notApplied(t);
     const why = (t: TrialRecord) => notApplied(t) ?? t.termination;
     /** Trial-by-trial pairing of two cells (same task, repetitions by order) over any per-trial value; a pair with a

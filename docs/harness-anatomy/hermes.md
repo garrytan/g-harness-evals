@@ -39,6 +39,10 @@
 - **Measured:** once opened with `skill_view`, a skill is served whole: every probe up to 80 KB came back complete (an 83,513-byte reply).
 - **Source:** Hermes finds skills in several places (`agent/skill_utils.py`): `HERMES_HOME/skills`, the skill-create directory and `skills.external_dirs` (`get_all_skills_dirs()`), plus a project's `.hermes/skills` or `.agents/skills` when that project is listed in `skills.trusted_project_dirs` (`get_project_skills_dirs()`, which takes precedence). Our probes used `HERMES_HOME/skills`.
 
+## Named setting
+
+- **`security.tirith_enabled` stays on**, Hermes's own default. tirith is not installed in the image, so Hermes prints "tirith security scanner enabled but not available" and gates commands by pattern matching instead. Turning it off would change how Hermes gates dangerous commands. Garry kept this on 2026-10-30.
+
 ## Failures and retries (measured)
 
 [retry.json](records/hermes-default/retry.json): against 529, 529, 429 (retry-after 2 s), 500, Hermes retried the first turn after 3.6 and 6.1 seconds, then **gave up on that member's turn after the 429** (the runner logged "exit 3, no reply (model error)"). Its next request, 16.9 seconds later, was the second member's turn; it retried that one's 500 after 2.9 seconds and succeeded. The SDK header `x-stainless-retry-count` stayed 0, so Hermes retries on its own rather than through the Anthropic SDK.

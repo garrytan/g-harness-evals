@@ -15,6 +15,12 @@ results/
 *.sqlite-shm
 *.sqlite-wal
 gbrain/.build/
+# internal-task: a Claude Code or Codex installer view (gbrain-install/<harness>-installer/<split>/, also <shard>.gbrain-install/ after a merge)
+# holds the compiled gbrain its hook runs, about 207 MB; the view's manifest.json records its sha256.
+**/*gbrain-install/*-installer/*/home/.local/bin/gbrain
+# Each Claude Code or Codex installer trial copies that binary into its state dir (<trial>/state/.local/bin/gbrain); run-shard.sh
+# prunes it, and it is never committed with a run's receipts.
+**/state/.local/bin/gbrain
 # gstack-pregate and gstack-ship-receipt records written while shipping; the policy .gstack/pregate.json is committed.
 .gstack/tmp/
 # A test run can leave a bun cache in the checkout; it is never committed, and it would stale gstack's evidence fingerprints.

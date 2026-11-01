@@ -3,7 +3,7 @@
 # directory, with a manifest of exactly the files it holds:
 #
 #   docker run --rm --user "$(id -u):$(id -g)" -v <dest>:/out --entrypoint /opt/sidecar/gbrain/export-install.sh \
-#     harness-eval/gbrain:dev <openclaw|hermes> <dev|heldout> /out [gbrain-docs|gbrain-installer]
+#     harness-eval/gbrain:dev <openclaw|hermes|claude-code|codex> <dev|heldout> /out [gbrain-docs|gbrain-installer]
 #
 # gbrain-docs (the default):
 # <dest>/workspace/...   the harness's scaffolded workspace (skills/ at this commit), to land in /workspace in the harness
@@ -11,6 +11,8 @@
 # gbrain-installer (internal-task, what gbrain setup <harness> --instructions-only wrote at image build; the same bytes for both splits):
 # <dest>/workspace/AGENTS.md   OpenClaw: the brain-first block in the workspace's AGENTS.md, to land at /workspace/AGENTS.md
 # <dest>/home/SOUL.md          Hermes: Hermes's own SOUL.md with the block appended, to land at $HERMES_HOME/SOUL.md
+# <dest>/home/...              Claude Code and Codex (gbrain-installer only, gbrain#7989): what setup wrote under the harness's HOME
+#                              (/harness-state) and the gbrain the hook runs, to land at the same paths in the harness container
 # <dest>/manifest.json   harness, split, install kind, gbrain commit, the bundle digest, the view digest (sha256 over
 #                        "<path> <sha256>\n" in path order), workspace entries, the context's kept slugs, the installer record,
 #                        and every file with its sha256
@@ -18,16 +20,16 @@
 # The runner's preflight exports each gbrain-docs or gbrain-installer cell's view into results/<run>/gbrain-install/<harness>/
 # <split>/ (<harness>-installer for the installer) and verifies it against this manifest (HE-GBRAIN-006); the trial mounts the
 # directory read-only at /he-gbrain-install. A bundle whose manifest records the installer unavailable (a gbrain commit without
-# the setup target) refuses the installer export with gbrain's own words.
+# the setup target) refuses the installer export with gbrain's own words. HE_INSTALL_SRC names another bundle root (tests).
 set -euo pipefail
 harness="${1:-}"; split="${2:-}"; dest="${3:-}"; install="${4:-gbrain-docs}"
 refuse() { echo "HE-GBRAIN-006 $1" >&2; exit 2; }
-usage="usage: export-install.sh <openclaw|hermes> <dev|heldout> <dest> [gbrain-docs|gbrain-installer]"
-case "$harness" in openclaw|hermes) ;; *) refuse "$usage (got harness '$harness')" ;; esac
+usage="usage: export-install.sh <openclaw|hermes|claude-code|codex> <dev|heldout> <dest> [gbrain-docs|gbrain-installer]"
+case "$harness" in openclaw|hermes) ;; claude-code|codex) [ "$install" = gbrain-installer ] || refuse "gbrain documents no $install install for $harness; its only view is gbrain-installer" ;; *) refuse "$usage (got harness '$harness')" ;; esac
 case "$split" in dev|heldout) ;; *) refuse "$usage (got split '$split')" ;; esac
 [ -n "$dest" ] || refuse "$usage"
 case "$install" in gbrain-docs|gbrain-installer) ;; *) refuse "$usage (got install '$install')" ;; esac
-src=/install
+src=${HE_INSTALL_SRC:-/install}
 [ -s "$src/manifest.json" ] || refuse "no install bundle at $src/manifest.json; this image was built without the install stage; fix: rebuild (gbrain/README.md)"
 if [ "$install" = gbrain-installer ]; then
   avail=$(jq -r --arg h "$harness" '.harnesses[$h].installer | if . == null then "the bundle manifest has no installer section (built by a build-install.ts before the installer rung); fix: rebuild the image" elif has("unavailable") then .unavailable else "ok" end' "$src/manifest.json")

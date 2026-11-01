@@ -101,10 +101,21 @@ export GBRAIN_SKIP_STARTUP_HOOKS=1
 export NO_COLOR=1
 
 t0=$(date +%s%N)
-rm -rf /brain/.gbrain /brain/manifest.json /brain/tokens.json /brain/ingest-tokens.json
+rm -rf /brain/.gbrain /brain/sources /brain/manifest.json /brain/tokens.json /brain/ingest-tokens.json
 cp -a "$src/.gbrain" /brain/.gbrain
+if [ -d "$src/sources" ]; then cp -a "$src/sources" /brain/sources; fi
 cp "$src/manifest.json" /brain/manifest.json
 rm -f /brain/.gbrain/*.lock /brain/.gbrain/persistence/locks/* 2>/dev/null || true
+# internal-task: every source's checkout (default under .gbrain/content, a scoped brain's federated sources under sources/) is now a
+# new directory at its recorded path, and the image's chmod a+rX left gbrain's private ownership records readable by all.
+# gbrain refuses writes to such a checkout, so the records go back to 0600 and each source takes gbrain's self-transfer for a
+# checkout restored at its recorded path (gbrain/rebind-sources.ts), before serve starts.
+find /brain/.gbrain/content /brain/sources -maxdepth 3 -name '.gbrain-owner*.json' -exec chmod 600 {} + 2>/dev/null || true
+rebind_ids="default $(jq -r '(.sources // [])[].id' /brain/manifest.json | tr '\n' ' ')"
+t1=$(date +%s%N)
+bun /opt/sidecar/gbrain/rebind-sources.ts $rebind_ids > "$HE_GBRAIN_OUT/rebind.log" 2>&1 \
+  || { log "source re-stamp failed (see rebind.log): $(tail -1 "$HE_GBRAIN_OUT/rebind.log")"; echo "gbrain source re-stamp failed; see $HE_GBRAIN_OUT/rebind.log" >&2; exit 2; }
+log "re-stamped $(grep -c ' re-stamped at ' "$HE_GBRAIN_OUT/rebind.log") source checkouts in $(( ($(date +%s%N) - t1) / 1000000 )) ms"
 log "brain $HE_GBRAIN_BRAIN scope $HE_GBRAIN_SCOPE ingest $HE_GBRAIN_INGEST embeddings $HE_GBRAIN_EMBEDDINGS copied from $src ($(jq -r '.counts.total' /brain/manifest.json) pages$(jq -r 'if .sources then ", \(.sources | length) sources, \(.grants | length) grants" else "" end' /brain/manifest.json), gbrain $(jq -r '.gbrain_commit' /brain/manifest.json | cut -c1-12)) in $(( ($(date +%s%N) - t0) / 1000000 )) ms"
 
 # The token is printed once by gbrain; it goes to the token file and nowhere else.

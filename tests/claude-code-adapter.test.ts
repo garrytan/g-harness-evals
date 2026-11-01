@@ -332,10 +332,11 @@ describe.skipIf(!NODE)('claude-code adapter, serve, process level', () => {
   }, 90_000);
 
   test('another CLI version, HE_SESSION_SCOPE=turn or HE_GBRAIN_INSTALL stops serve with 2 before ready', async () => {
-    for (const extra of [{ STUB_CLAUDE_VERSION: '2.1.311' }, { HE_SESSION_SCOPE: 'turn' }, { HE_GBRAIN_INSTALL: 'gbrain-installer' }] as Array<Record<string, string>>) {
+    for (const extra of [{ STUB_CLAUDE_VERSION: '2.1.311' }, { HE_SESSION_SCOPE: 'turn' }, { HE_GBRAIN_INSTALL: 'gbrain-docs', HE_GBRAIN_SPLIT: 'dev' }] as Array<Record<string, string>>) {
       const t = trial('');
       expect(await exited(startServe(t, extra), 15_000), JSON.stringify(extra)).toBe(2);
       expect(existsSync(join(t.logs, 'ready'))).toBe(false);
+      if (extra.HE_GBRAIN_INSTALL) expect(readFileSync(join(t.logs, 'adapter.log'), 'utf8')).toContain('HE_GBRAIN_INSTALL=gbrain-docs is not implemented for claude-code');
     }
   }, 60_000);
 

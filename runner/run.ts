@@ -62,9 +62,11 @@ export { RunnerError };
 export const GBRAIN_SURFACES = ['starter', 'verbs'] as const;
 export const GBRAIN_INSTALLS = ['mcp', 'gbrain-docs', 'gbrain-installer'] as const;
 export const GBRAIN_EMBEDDINGS = ['off', 'openai:text-embedding-3-small'] as const;
-/** Harnesses the install bundle has a view for (gbrain/pin.json "install"), docs and installer alike; gbrain documents no install
- *  for the others. */
+/** Harnesses the install bundle has a gbrain-docs view for (gbrain/pin.json "install"); gbrain documents no such install for the others. */
 export const GBRAIN_DOCS_HARNESSES = ['openclaw', 'hermes', '_fake'] as const;
+/** Harnesses the bundle has a gbrain-installer view for: the docs harnesses, and Claude Code and Codex, where gbrain setup writes the
+ *  block and the per-turn UserPromptSubmit hook (gbrain#7989). */
+export const GBRAIN_INSTALLER_HARNESSES = [...GBRAIN_DOCS_HARNESSES, 'claude-code', 'codex'] as const;
 /** The planning allowance for a cell with embeddings on: query embeddings per trial and tokens per query, priced from
  *  runner/pricing/embedding-pricing.ts (a search's query is a sentence; gbrain caches the embedding per distinct query). */
 export const EMBEDDING_ALLOWANCE = { calls_per_trial: 50, tokens_per_call: 100 } as const;
@@ -249,7 +251,8 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
       if (!(GBRAIN_SURFACES as readonly string[]).includes(c.gbrain.surface as string)) throw bad('surface', c.gbrain.surface, GBRAIN_SURFACES);
       if (c.gbrain.install !== undefined && !(GBRAIN_INSTALLS as readonly string[]).includes(c.gbrain.install)) throw bad('install', c.gbrain.install, GBRAIN_INSTALLS);
       if (c.gbrain.embeddings !== undefined && !(GBRAIN_EMBEDDINGS as readonly string[]).includes(c.gbrain.embeddings)) throw bad('embeddings', c.gbrain.embeddings, GBRAIN_EMBEDDINGS);
-      if (c.gbrain.install !== undefined && c.gbrain.install !== 'mcp' && !(GBRAIN_DOCS_HARNESSES as readonly string[]).includes(c.harness)) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.install "${c.gbrain.install}" is defined for harnesses ${GBRAIN_DOCS_HARNESSES.filter((h) => !h.startsWith('_')).join(', ')} (gbrain documents no install for ${c.harness}; gbrain/pin.json "install")`);
+      const installHarnesses: readonly string[] = c.gbrain.install === 'gbrain-installer' ? GBRAIN_INSTALLER_HARNESSES : GBRAIN_DOCS_HARNESSES;
+      if (c.gbrain.install !== undefined && c.gbrain.install !== 'mcp' && !installHarnesses.includes(c.harness)) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.install "${c.gbrain.install}" is defined for harnesses ${installHarnesses.filter((h) => !h.startsWith('_')).join(', ')} (gbrain documents no ${c.gbrain.install} install for ${c.harness}; gbrain/pin.json "install")`);
       if (c.gbrain.embeddings !== undefined && c.gbrain.embeddings !== 'off' && c.gbrain.brain !== undefined && c.gbrain.brain !== 'bot-visible') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.embeddings ${c.gbrain.embeddings} needs the bot-visible brain; only the bot-visible brains are built with embeddings`);
       if (scripted) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: a scripted cell cannot carry gbrain; a script plays the bot over world-MCP and has no harness to call the brain`);
       // internal-task (company brain): brain and scope are additive; a cell without them is the gbrain arm's cell.

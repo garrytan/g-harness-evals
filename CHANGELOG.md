@@ -2,6 +2,53 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.78] - 2026-10-31
+
+Train gbrain-wiring: one release for #161, #156, #151 and #158, each merged unchanged into one branch. Their own version claims (0.0.73 to 0.0.75) are retired.
+
+### internal-task: page writes work on a copied brain (internal-task)
+
+- Every gbrain image refused page writes (`put_page`, `capture`, `add_timeline_entry`, `edit_page`). The bot-visible brain's default source answered `recovery_required`. A member or company brain's sources answered `storage_error`, because their checkouts stayed in the build stage's `/tmp/staging`. `remember` was never affected, because it writes only to the database.
+- `gbrain/build-brain.ts`: a company or member brain keeps each source's checkout inside the brain, at `<brain>/sources/<id>`, so the checkouts travel into the image and back to `/brain`.
+- `gbrain/rebind-sources.ts` (new) and `gbrain/entrypoint.sh`: for each trial, the entrypoint copies `sources/` too and sets gbrain's private ownership records back to mode 0600 (the image's `chmod -R a+rX` opened them). Before `serve`, it runs gbrain's documented self-transfer for a checkout restored at its recorded path (`writer status`, `transfer prepare --self-transfer --confirm-relocated-root`, a fresh status, `transfer accept`) for the default source and every federated source, all in one process. This adds about 3 s to sidecar start for a member brain (22 checkouts) and about 4 s for a company brain (40). A failed re-stamp stops the sidecar and leaves `rebind.log` in the trial directory.
+- `tests/gbrain-image.test.ts`: on the built image, `put_page`, `capture` and `add_timeline_entry` succeed and read back, under the trial token on the bot-visible brain and under a member token on the member and company brains. Another member cannot read a member's writes.
+- `gbrain/pin.json` `copied_brain_writes`, `gbrain/README.md`, `docs/gbrain-arm.md`, `gbrain/Dockerfile` and `TODOS.md` say what changed. The live ingestion still writes `remember` facts, so runs stay comparable.
+- Merged runs: one page-write call in every committed `events.jsonl` on main, a `capture` that failed with `storage_error` (v03-pilot-2026-10, hermes-haiku-gbrain-told-live-mu-v03-dev, cn-03-marrow-agrisupply-site r4).
+
+### internal-task: gbrain's installer rung for Claude Code and Codex
+
+- **What it adds:** `gbrain.install: "gbrain-installer"` cells for Claude Code and Codex. The view is what `gbrain setup claude-code|codex --instructions-only` writes at gbrain `5fd43d5a` (0.60.505.0, the merge of gbrain#7989): the brain-first block and a per-turn `UserPromptSubmit` hook that runs gbrain. gbrain/pin.json is now `a590ad07` (0.60.522.0, from #149), which contains gbrain#7989; no counted cell runs this rung until its own preregistration.
+- `gbrain/build-install.ts`: the Claude Code and Codex installers run setup with HOME `/harness-state` and the compiled gbrain at `/harness-state/.local/bin/gbrain` (`--gbrain-bin`), because the hook command, gbrain's ledger and Codex's trust key name absolute paths. Claude Code's settings are seeded from `harnesses/claude-code/config/settings.json` (`--claude-settings`). The view keeps the files setup wrote, the ledger and the binary, and records the rule the hook printed. New flags `--gbrain-bin`, `--claude-settings`, `--harness-state`.
+- `gbrain/Dockerfile`, `.dockerignore`: the install stage compiles the checkout with `bun run build` and passes the new flags. `gbrain/export-install.sh` exports `claude-code` and `codex` installer views and refuses `gbrain-docs` for them.
+- `harnesses/claude-code/adapter.sh`, `harnesses/codex/adapter.sh`: under `HE_GBRAIN_INSTALL=gbrain-installer` each checks the view (harness, split, install, digests, `state_root`), copies it into the state dir, runs the hook once and requires the recorded rule. ready gets `gbrain_install.turn_hook: "ran"` and each turn's status `gbrain_turn_hook_runs`. Any failure is HE-ADAPTER-006, exit 2 before ready. Without the variable nothing changes. Pins and the Claude Code README say so.
+- Pre-landing review fixes: Claude Code refuses a view whose `settings.json` differs from the seed by more than the gbrain turn-rule hook, and Codex refuses a view whose `config.toml` holds more than the one `[hooks.state]` trust table. Claude Code's refusal hint now names `gbrain-installer`.
+- `runner/run.ts`, `runner/contracts.ts`: the runner admits `gbrain-installer` for both harnesses; `turn_hook` may be `ran`.
+- Issue #153: `ran` only shows the adapter could run the hook before ready, so `runner/trial/trial.ts` records each turn's `gbrain_turn_hook_runs` as `gbrain.install_bundle.turn_hook.turn_runs`, and `installerNotApplied` (`runner/contracts.ts`) is the one rule `scripts/compare-run.ts` and `scripts/summarize-run.ts` read: a `ran` trial with no counts, or a turn at 0 or with no count, is `installer_not_applied`. The runner reads each turn's count as the adapter's answer arrives, before the next turn starts, so a later turn cannot rewrite an earlier count in the writable logs directory. A turn the runner ended itself (its timeout, or the harness gone) was never answered and is left out of the counts, so that trial stays scored on its termination, as the same failure does in the base cell (the /ship red team's and outside voice's findings). summarize-run adds `turn_hook.per_turn`. `loaded`, `healthy` and block-only trials are unchanged, and summarize-run and compare-run `--pair gbrain` give byte-identical output on every committed gbrain run. Tests in `tests/scripts-gbrain.test.ts` and `tests/installer-cc-codex.test.ts`; docs in `docs/gbrain-arm.md` and `runner/README.md`.
+- Tests: `tests/installer-cc-codex.test.ts` (new; stand-ins in `tests/fixtures/installer/`) covers the build, both adapters at process level and, with the images, the real CLIs for two turns against fake model endpoints. `tests/gbrain-runner.test.ts` covers admission; `tests/fixtures/fake-responses.ts` gains `onBody`.
+- `.gitignore`: an exported installer view's 207 MB gbrain binary is never committed, nor the copy each installer trial makes in its state dir (`state/.local/bin/gbrain`), which `scripts/run-shard.sh` also prunes.
+- `docs/gbrain-arm.md`: "The Claude Code and Codex installer", a table note and a changelog entry.
+
+### OpenClaw on OpenAI cells searches memory by keyword only; six settings named (internal-task)
+
+- `harnesses/openclaw/config/openclaw.openai.json`: `memory.search.provider: "none"`. OpenClaw's memory indexer no longer calls `/v1/embeddings` on an OpenAI cell. In host-harness-pilot-2026-10 the proxy refused 21 such calls for `text-embedding-3-small` and 11 `oc-luna` trials ended as model errors. Anthropic cells already index by keyword only, because they have no OpenAI key. `config/openclaw.json` is unchanged. `pin.json` `model_openai.memory_search` and the harness README record it
+- `tests/openai-branch.test.ts`: the OpenAI template carries the setting, and `openclaw memory index --force` on an OpenAI cell, through the real metering proxy in lease mode, indexes 2 files, `memory search` finds the note, and no request is sent. Run against the old template (reverted by hand, not a test case), the same test sends `/v1/embeddings` and fails
+- `docs/harness-anatomy/`: a Named settings table (lease headroom 1.25, Hermes tirith on, Claude Code `MCP_CONNECTION_NONBLOCKING=false`, Codex `danger-full-access` and reasoning effort medium, the OpenClaw memory setting), with a line on each harness page. Garry kept the first five as they are on 2026-10-30
+- `docs/benchmarks/2026-10-30-host-harness-pilot/report.md`: one sentence corrected. The embeddings-unavailable warning was in the 11 oc-luna model-error trials and no other oc-luna trial, and the Haiku OpenClaw cells log it too (6 oc-none, 3 oc-told trials), with no network call
+
+### internal-task: Lane B bridge copies task symlinks as files and gives the oracle its whole directory
+
+- `scripts/gstack-laneb/materialize.ts`: a symbolic link in a native task's `environment/`, `verifier/` or `oracle/` is now copied as the file or directory it names. Harbor stopped a screening batch on gn-dev-review-12, whose verifier trees hold `README -> README.md` links that the copy turned into absolute links back into this checkout.
+- A link is refused (HE-LANEB-003) when it leaves its own directory (so `environment/` never receives oracle or verifier files), names nothing or cannot be resolved, loops, or is a second link to one directory. A copied directory that is itself a link is refused too, and so is one whose links would copy more than 10000 entries or 1 GiB (file links and the first walk of a directory link included).
+- `oracle/` becomes `solution/oracle/`, and `solution/solve.sh` restores it at `/oracle` before running `/oracle/solve.sh`, so an oracle's own files (`oracle/fix.patch`) are where its script expects them. A Harbor oracle run gave reward 1.0 on gn-dev-fix-01 and gn-dev-review-01.
+- `tests/gstack-laneb.test.ts`: links copied as files and as a directory (including a link reached through another link), and every refusal above.
+
+### Train review fixes (the train's /ship)
+
+- `runner/trial/turns.ts`, `runner/trial/trial.ts`: a Claude Code or Codex installer turn the adapter answers with exit 2 (a harness failure, which can come before the CLI got the prompt) is left out of `turn_hook.turn_runs`, so the trial keeps its scored `harness_error` as the same failure does in the base cell instead of leaving the comparison as `installer_not_applied`.
+- `gbrain/build-install.ts`: the build-time `gbrain setup` call stops after 300 s and is recorded unavailable; the Codex view links the Claude Code view's gbrain binary when the two are identical, so the bundle holds one 207 MB copy, not two.
+- `tests/rebind-sources.test.ts` (new): `gbrain/rebind-sources.ts` against a stand-in gbrain, keyless: success, a checkout outside `GBRAIN_HOME` (it stops at the first failing source), an accept that is not active, no `GBRAIN_HOME`. `gbrain/README.md` says the re-stamp adds about 3 to 4 s inside a member or company brain trial's wall time.
+- `scripts/gstack-laneb/materialize.ts` (internal-task's diagnosis): file links and the first walk of a directory link now count toward the 10000-entry cap, and a copy through links is refused past 1 GiB.
+
 ## [0.0.77] - 2026-10-31
 
 ### internal-task: v0.3 resealed as v0.3-gen6, v0.3 retired unopened (Captain decision, option A)

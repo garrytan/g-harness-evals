@@ -185,7 +185,7 @@ for line in open(os.path.join(out, 'trials.jsonl')):
     except Exception: continue
     d = (rec.get('paths') or {}).get('dir')
     if not d or not os.path.isdir(d): continue
-    for rel in ('state/.cache', 'state/hermes/bin', 'state/hermes/cache', 'state/hermes/skills', 'state/hermes/models_dev_cache.json'):
+    for rel in ('state/.cache', 'state/.local/bin/gbrain', 'state/hermes/bin', 'state/hermes/cache', 'state/hermes/skills', 'state/hermes/models_dev_cache.json'):
         p = os.path.join(d, rel)
         if os.path.isdir(p): shutil.rmtree(p, ignore_errors=True)
         elif os.path.isfile(p): os.remove(p)

@@ -187,7 +187,8 @@ export interface GbrainCellConfig {
    *  install for the harness at the pinned commit (the install bundle the image carries, gbrain/pin.json "install") is
    *  applied inside the harness container by the adapter before the first turn; the preamble is untouched.
    *  "gbrain-installer" (internal-task, gbrain#7489): what `gbrain setup <harness> --instructions-only` at the pinned commit writes into
-   *  the harness's own instruction file (OpenClaw /workspace/AGENTS.md, Hermes $HERMES_HOME/SOUL.md), applied the same way; a
+   *  the harness's own instruction file (OpenClaw /workspace/AGENTS.md, Hermes $HERMES_HOME/SOUL.md, Claude Code $CLAUDE_CONFIG_DIR/CLAUDE.md,
+   *  Codex $CODEX_HOME/AGENTS.md) with its per-turn hook, applied the same way; a
    *  gbrain commit without that setup target fails preflight (HE-GBRAIN-006). */
   install?: 'mcp' | 'gbrain-docs' | 'gbrain-installer';
   /** internal-task addition: "off" (default): the keyword brain, no model call. A model name: the sidecar serves the brain built
@@ -225,15 +226,43 @@ export interface TrialGbrainInstall {
    *  world (channel membership for a chat page, the file rule for a file): the exposure that reaches the model with no gbrain call. */
   context?: { kept_slugs: number; outside_scope_by_actor: Record<string, number>; outside_scope_max: number };
   /** gbrain-installer at gbrain#7489's per-turn-hook head (10949a15): the hook the bundle carries (its file count and the harness's own
-   *  account of it from the adapter's ready: "loaded" for OpenClaw's plugins inspect --runtime, "healthy" for hermes hooks doctor; the
+   *  account of it from the adapter's ready: "loaded" for OpenClaw's plugins inspect --runtime, "healthy" for hermes hooks doctor, "ran"
+   *  for Claude Code and Codex when the installed UserPromptSubmit command printed the recorded rule (gbrain#7989); the
    *  adapter exits 2 before ready otherwise; "absent from bundle" when an installer view carries no hook, so a block-only image in a
-   *  hook run is visible and compare-run leaves its trials out). Absent in records written before the hook. */
-  turn_hook?: { files: number; status: string };
+   *  hook run is visible and compare-run leaves its trials out). Absent in records written before the hook.
+   *  turn_runs (issue #153), only when status is "ran": per turn the adapter answered, the gbrain_turn_hook_runs the Claude Code or
+   *  Codex adapter wrote into logs/turns/turn-NNNN.status.json (gbrain's heartbeat count for that turn), read when the answer
+   *  arrives and before the next turn starts, null when the file or the field is missing; a turn the runner ended itself (its
+   *  timeout, or the harness gone) is left out, so a trial that ended there in its first turn has an empty list. "ran" proves only that the adapter ran the hook command once before ready; turn_runs is the evidence the
+   *  harness fired it during each turn, and installerNotApplied reads it. */
+  turn_hook?: { files: number; status: string; turn_runs?: Array<number | null> };
 }
 
-/** The turn_hook statuses that mean the harness reported the hook in place before the first turn (OpenClaw's plugins inspect,
- *  Hermes's hooks doctor); compare-run leaves an installer trial with any other status out of the pairs. */
-export const TURN_HOOK_APPLIED: readonly string[] = ['loaded', 'healthy'];
+/** The turn_hook statuses that mean the hook was in place before the first turn: the harness reported it (OpenClaw's plugins inspect,
+ *  Hermes's hooks doctor), or, for Claude Code and Codex, which have no non-interactive hook listing, the adapter ran the installed
+ *  hook command the way the harness runs it and got the rule back ("ran"); compare-run leaves an installer trial with any other status
+ *  out of the pairs, and a "ran" trial also needs every turn's turn_runs at 1 or more (installerNotApplied). */
+export const TURN_HOOK_APPLIED: readonly string[] = ['loaded', 'healthy', 'ran'];
+
+/** Why an installer cell's trial did not get the installer, or null when it did (issue #153). No install record; a turn_hook status
+ *  outside TURN_HOOK_APPLIED; or, for "ran" (Claude Code and Codex), a trial with no turn_runs, or a turn with no count or a
+ *  count of 0 (an empty list means no turn the adapter answered with an exit other than 2, which leaves the ready-time "ran" standing), because "ran" alone proves only that the adapter could run the hook command once before ready. A bundle
+ *  with no turn_hook (block-only) and the "loaded" and "healthy" statuses are unchanged. compare-run's ladder leaves such a trial out
+ *  of the pairs as installer_not_applied, and summarize-run counts the same trials. */
+export function installerNotApplied(bundle: TrialGbrainInstall | undefined): string | null {
+  if (!bundle) return 'installer not applied (no install record)';
+  const hook = bundle.turn_hook;
+  if (!hook) return null;
+  if (!TURN_HOOK_APPLIED.includes(hook.status)) return `installer hook ${hook.status}`;
+  if (hook.status !== 'ran') return null;
+  const runs = hook.turn_runs;
+  if (!runs) return 'installer hook ran at ready but no turn recorded gbrain_turn_hook_runs';
+  const missing = runs.findIndex((n) => typeof n !== 'number');
+  if (missing >= 0) return `installer hook ran at ready but turn ${missing + 1} recorded no gbrain_turn_hook_runs`;
+  const zero = runs.findIndex((n) => n! < 1);
+  if (zero >= 0) return `installer hook did not run in turn ${zero + 1} (gbrain_turn_hook_runs ${runs[zero]})`;
+  return null;
+}
 
 /** internal-task: the sidecar's embedding calls for one trial, from the proxy's /v1/embeddings usage lines for the trial key. */
 export interface TrialEmbeddingUsage {

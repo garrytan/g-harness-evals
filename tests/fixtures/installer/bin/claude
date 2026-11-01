@@ -1,0 +1,14 @@
+#!/usr/bin/env node
+// A stand-in for claude 2.1.312 that runs settings.json's UserPromptSubmit hooks before each turn (run-hooks.cjs), logs their
+// additionalContext to STUB_LOG, and prints the init and result records the adapter reads. It never calls a model.
+const fs = require("fs"), path = require("path"), runHooks = require(path.join(__dirname, "..", "run-hooks.cjs"));
+const a = process.argv.slice(2);
+if (a[0] === "--version") { console.log("2.1.312 (Claude Code)"); process.exit(0); }
+const prompt = fs.readFileSync(0, "utf8"), sid = a[a.indexOf(a.includes("--resume") ? "--resume" : "--session-id") + 1];
+const servers = a.includes("--mcp-config") ? Object.keys(JSON.parse(fs.readFileSync(a[a.indexOf("--mcp-config") + 1], "utf8")).mcpServers) : [];
+fs.appendFileSync(process.env.STUB_LOG, JSON.stringify({ harness: "claude-code", prompt, contexts: runHooks("claude-code", prompt) }) + "\n");
+const dir = path.join(process.env.CLAUDE_CONFIG_DIR, "projects", process.cwd().replace(/[^a-zA-Z0-9]/g, "-"));
+fs.mkdirSync(dir, { recursive: true });
+fs.appendFileSync(path.join(dir, sid + ".jsonl"), "{}\n");
+console.log(JSON.stringify({ type: "system", subtype: "init", session_id: sid, mcp_servers: servers.map((name) => ({ name, status: "connected" })), model: "stub", claude_code_version: "2.1.312" }));
+console.log(JSON.stringify({ type: "result", subtype: "success", is_error: false, api_error_status: null, terminal_reason: "completed", num_turns: 1, result: "stub reply", session_id: sid }));
