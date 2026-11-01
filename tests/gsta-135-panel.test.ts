@@ -502,7 +502,7 @@ describe('panel driver', () => {
       expect(manifest.arms.baseline.images.openclaw.digest).toBe('missing');
       expect(readFileSync(join(dir, 'manifest.sha256'), 'utf8').trim()).toBe(sha256(readFileSync(join(dir, 'manifest.json'))));
       const r2 = rMax({ model: PANEL_MODEL, maxTokens: PIN });
-      expect(manifest).toMatchObject({ run_id: id, dry_run: true, hermes_mode: 'chat', max_tokens: PIN, per_trial_usd: 1, r_max_usd: r2.r_max_usd, lease_usd: leaseUsd(1, r2.r_max_usd), panel_cap_usd: 15, trials_per_cell: 5,
+      expect(manifest).toMatchObject({ run_id: id, dry_run: true, upstream: 'default', hermes_mode: 'chat', max_tokens: PIN, per_trial_usd: 1, r_max_usd: r2.r_max_usd, lease_usd: leaseUsd(1, r2.r_max_usd), panel_cap_usd: 15, trials_per_cell: 5,
         arms: { baseline: { gstack_sha: c1 }, candidate: { gstack_sha: c2 } }, ceilings: { task1: 0.41, task2: 0.21, task3: 0.11 } });
       expect(manifest.arms.baseline.images.hermes.tag).toBe(tag('hermes', c1));
       expect(manifest.arms.candidate.images.openclaw.tag).toBe(tag('openclaw', c2));
@@ -573,7 +573,7 @@ describe('panel driver', () => {
     const busy = Bun.listen({ hostname: '127.0.0.1', port: 8830, socket: { data() {} } });
     try {
       const env = stubEnv({ ANTHROPIC_API_KEY: 'placeholder-anthropic', HE_PROXY_GATEWAY: '127.0.0.1', HE_PROXY_PORT: '8830' });
-      const r = run(id, 'baseline:' + c1 + ',candidate:' + c1, ['--trials', '1', '--only', trial, '--hermes-mode', 'chat', '--approval', 'approvals.mode=manual'], env, false);
+      const r = run(id, 'baseline:' + c1 + ',candidate:' + c2, ['--trials', '1', '--only', trial, '--hermes-mode', 'chat', '--approval', 'approvals.mode=manual'], env, false);
       expect({ status: r.status, stderr: r.stderr.slice(-1500) }).toMatchObject({ status: 0 });
       expect(r.stderr.match(/did not come up on 127\.0\.0\.1:8830 /g)).toHaveLength(3);
       expect(r.stderr).toContain('rotating to port 8831');
@@ -599,7 +599,7 @@ describe('panel driver', () => {
     const id2 = id + '-never';
     try {
       const env = stubEnv({ ANTHROPIC_API_KEY: 'placeholder-anthropic', HE_PROXY_GATEWAY: '192.0.2.1', HE_PROXY_PORT: '8832' });
-      const r = run(id2, 'baseline:' + c1 + ',candidate:' + c1, ['--trials', '1', '--only', trial + ',' + next, '--hermes-mode', 'chat', '--approval', 'approvals.mode=manual'], env, false);
+      const r = run(id2, 'baseline:' + c1 + ',candidate:' + c2, ['--trials', '1', '--only', trial + ',' + next, '--hermes-mode', 'chat', '--approval', 'approvals.mode=manual'], env, false);
       expect({ status: r.status, stderr: r.stderr.slice(-1500) }).toMatchObject({ status: 0 });
       expect(r.stderr.match(/did not come up on 192\.0\.2\.1:/g)).toHaveLength(9);
       expect(r.stderr.match(/rotating to port/g)).toHaveLength(3);
@@ -620,7 +620,7 @@ describe('panel driver', () => {
     const id = 'test-panel-retag-' + process.pid, trial = 'gsta135-openclaw-t1-baseline-1', next = 'gsta135-openclaw-t1-candidate-1';
     try {
       const env = stubEnv({ ANTHROPIC_API_KEY: 'placeholder-anthropic', HE_PROXY_GATEWAY: '127.0.0.1', HE_PROXY_PORT: '8834', STUB_RETAG_AFTER: '4' });
-      const r = run(id, 'baseline:' + c1 + ',candidate:' + c1, ['--trials', '1', '--only', trial + ',' + next, '--hermes-mode', 'chat', '--approval', 'approvals.mode=manual'], env, false);
+      const r = run(id, 'baseline:' + c1 + ',candidate:' + c2, ['--trials', '1', '--only', trial + ',' + next, '--hermes-mode', 'chat', '--approval', 'approvals.mode=manual'], env, false);
       expect({ status: r.status, stderr: r.stderr.slice(-1500) }).toMatchObject({ status: 2 });
       expect(r.stderr).toContain('now resolves to sha256:retagged, not the manifest\'s sha256:stub-gstack-' + c1.slice(0, 8));
       expect(r.stdout).not.toContain(trial + ' start');
@@ -656,6 +656,7 @@ describe('panel driver', () => {
       const dir = outDir(id, false);
       const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'));
       expect(readFileSync(join(dir, 'manifest.sha256'), 'utf8').trim()).toBe(sha256(readFileSync(join(dir, 'manifest.json'))));
+      expect(manifest.upstream).toBe('http://127.0.0.1:8837');
       const cells = rows(join(dir, 'cells.jsonl'));
       expect(cells).toHaveLength(12);
       const mine = cells.find(c => c.trial_id === trial)!;

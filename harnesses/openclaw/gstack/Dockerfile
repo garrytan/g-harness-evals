@@ -9,15 +9,26 @@
 # GSTACK_COMMIT is fetched by sha, so a moved branch head cannot change what is
 # built, and the build fails when HEAD is not that commit. GSTACK_REF is the
 # branch the commit was announced on (internal-task), recorded as a label only.
+#
+# GSTACK_COMMIT=none builds the no-gstack arm (internal-task): the same image with
+# no gstack checkout, no bun install of it and no setup, keeping Bun, the
+# wrapper and the adapter swap and the labels (commit=none). The wrapper then
+# logs `gstack: none` and registers nothing.
+#
+#   docker build -f harnesses/openclaw/gstack/Dockerfile --build-arg GSTACK_COMMIT=none --build-arg GSTACK_REF=none -t harness-eval/openclaw:gstack-none harnesses
 ARG GSTACK_COMMIT=bd8907d6f53465c5e3679af20005fd0267fa436a
 ARG GSTACK_REF=gsta-135/harness-registration
 ARG BUN_VERSION=1.4.2
+ARG GSTACK_START_HOOK=off
 FROM harness-eval/openclaw:dev
 ARG GSTACK_COMMIT
 ARG GSTACK_REF
 ARG BUN_VERSION
+ARG GSTACK_START_HOOK
 
-ENV BUN_INSTALL=/opt/bun PATH="/opt/bun/bin:${PATH}" GSTACK_DIR=/opt/gstack
+RUN case "${GSTACK_START_HOOK}" in on|off) ;; *) echo "GSTACK_START_HOOK must be on or off, not ${GSTACK_START_HOOK}" >&2; exit 1 ;; esac \
+    && if [ "${GSTACK_START_HOOK}" = on ] && [ "${GSTACK_COMMIT}" = none ]; then echo "GSTACK_START_HOOK=on needs a gstack commit; the no-gstack arm has no start hook" >&2; exit 1; fi
+ENV BUN_INSTALL=/opt/bun PATH="/opt/bun/bin:${PATH}" GSTACK_DIR=/opt/gstack GSTACK_IMAGE_COMMIT=${GSTACK_COMMIT} GSTACK_IMAGE_START_HOOK=${GSTACK_START_HOOK}
 RUN apt-get update && apt-get install -y --no-install-recommends unzip && rm -rf /var/lib/apt/lists/* \
     && curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}" && bun --version
 
@@ -25,7 +36,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends unzip && rm -rf
 # scratch state directory so compiled bits and caches exist (the per-trial
 # registration, the wrapper, then runs in seconds as the host uid run-trial.sh
 # passes), Bun's download cache dropped, and the tree opened to that uid.
-RUN git init -q /opt/gstack && cd /opt/gstack \
+# With GSTACK_COMMIT=none only the cache drop and the Bun permissions run.
+RUN if [ "${GSTACK_COMMIT}" = none ]; then \
+      echo "gstack: none (GSTACK_COMMIT=none: no checkout, no bun install, no setup)" \
+      && rm -rf /opt/bun/install/cache && chmod -R a+rwX /opt/bun; \
+    else \
+    git init -q /opt/gstack && cd /opt/gstack \
     && git remote add origin https://github.com/garrytan/gstack \
     && git fetch --depth 1 origin "${GSTACK_COMMIT}" && git checkout -q FETCH_HEAD \
     && test "$(git rev-parse HEAD)" = "${GSTACK_COMMIT}" \
@@ -33,11 +49,12 @@ RUN git init -q /opt/gstack && cd /opt/gstack \
     && bun install --frozen-lockfile \
     && git config --system --add safe.directory /opt/gstack \
     && mkdir -p /tmp/gstack-scratch \
-    && HOME=/tmp/gstack-scratch OPENCLAW_STATE_DIR=/tmp/gstack-scratch/openclaw ./setup --host openclaw --no-browser \
-    && rm -rf /tmp/gstack-scratch /opt/bun/install/cache && chmod -R a+rwX /opt/gstack /opt/bun
+    && HOME=/tmp/gstack-scratch OPENCLAW_STATE_DIR=/tmp/gstack-scratch/openclaw GSTACK_HARNESS_START_HOOK=0 ./setup --host openclaw --no-browser \
+    && rm -rf /tmp/gstack-scratch /opt/bun/install/cache && chmod -R a+rwX /opt/gstack /opt/bun; \
+    fi
 
 COPY _gstack/wrapper-lib.sh /opt/harness/gstack/wrapper-lib.sh
 RUN mv /opt/harness/adapter.sh /opt/harness/adapter.real.sh
 COPY openclaw/gstack/adapter.sh /opt/harness/adapter.sh
 RUN chmod 0555 /opt/harness/adapter.sh /opt/harness/adapter.real.sh /opt/harness/gstack/wrapper-lib.sh
-LABEL org.harness-eval.gstack.commit="${GSTACK_COMMIT}" org.harness-eval.gstack.ref="${GSTACK_REF}" org.harness-eval.gstack.overlay="openclaw"
+LABEL org.harness-eval.gstack.commit="${GSTACK_COMMIT}" org.harness-eval.gstack.ref="${GSTACK_REF}" org.harness-eval.gstack.overlay="openclaw" org.harness-eval.gstack.start_hook="${GSTACK_START_HOOK}"

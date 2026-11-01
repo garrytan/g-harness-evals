@@ -1,0 +1,188 @@
+{
+  "schema": "tool-discipline-replies/1",
+  "target": "claude-code",
+  "harness": "claude-code",
+  "mode": "default",
+  "model": "claude-opus-5-5",
+  "task": "si-01-marrow-agrisupply-site",
+  "image": "harness-eval/claude-code:dev",
+  "image_id": "sha256:4b39bbc82fa6245c838bbd03b387f7645db7335508547fe9084f41cfd9588597",
+  "harness_version": "2.1.312",
+  "harness_commit": null,
+  "harness_evals_commit": "3a9b403be13b2e9a61b9a23c61e90cd7cd669b9a",
+  "dirty": true,
+  "run": {
+    "run_id": "anatomy-capture-tool-discipline-claude-code-20261031t201031",
+    "plan_exit": 0,
+    "run_exit": 0
+  },
+  "fake_log_sha256": "4e212250f0fb9c00db048d825baf1626b8c2bf19f29200df211e8b03440545be",
+  "agent_requests": 8,
+  "events_lines": 8,
+  "note": "tool_result is the block the harness sent in the request after the scripted call, read from the fake model log, with token-like strings replaced by [scrubbed]. world_events are the world events.jsonl lines written between the scripted call and that request.",
+  "turns": [
+    {
+      "label": "1 unknown tool",
+      "played": {
+        "raw_tool": "frobnicate",
+        "input": {}
+      },
+      "request_index": 0,
+      "next_request_index": 1,
+      "tool_use_id": "toolu_fake_1",
+      "tool_result": {
+        "type": "tool_result",
+        "content": "<tool_use_error>Error: No such tool available: frobnicate</tool_use_error>",
+        "is_error": true,
+        "tool_use_id": "toolu_fake_1"
+      },
+      "is_error": true,
+      "text_bytes": 74,
+      "called_name_offered_next": false,
+      "offered_names_in_text": [],
+      "world_events": []
+    },
+    {
+      "label": "2 skills_read",
+      "played": {
+        "raw_tool": "skills_read",
+        "input": {
+          "name": "review"
+        }
+      },
+      "request_index": 1,
+      "next_request_index": 2,
+      "tool_use_id": "toolu_fake_2",
+      "tool_result": {
+        "type": "tool_result",
+        "content": "<tool_use_error>Error: No such tool available: skills_read</tool_use_error>",
+        "is_error": true,
+        "tool_use_id": "toolu_fake_2"
+      },
+      "is_error": true,
+      "text_bytes": 75,
+      "called_name_offered_next": false,
+      "offered_names_in_text": [],
+      "world_events": []
+    },
+    {
+      "label": "extra: load the deferred world tool",
+      "extra": true,
+      "played": {
+        "raw_tool": "ToolSearch",
+        "input": {
+          "query": "select:mcp__world__post_message"
+        }
+      },
+      "request_index": 2,
+      "next_request_index": 3,
+      "tool_use_id": "toolu_fake_3",
+      "tool_result": {
+        "type": "tool_result",
+        "tool_use_id": "toolu_fake_3",
+        "content": [
+          {
+            "type": "tool_reference",
+            "tool_name": "mcp__world__post_message"
+          }
+        ]
+      },
+      "is_error": null,
+      "text_bytes": 0,
+      "called_name_offered_next": true,
+      "offered_names_in_text": [],
+      "world_events": []
+    },
+    {
+      "label": "3 world call missing a required argument (text)",
+      "played": {
+        "raw_tool": "mcp__world__post_message",
+        "input": {
+          "channel": "DANATOM0001"
+        }
+      },
+      "request_index": 3,
+      "next_request_index": 4,
+      "tool_use_id": "toolu_fake_4",
+      "tool_result": {
+        "type": "tool_result",
+        "content": "MCP error -32602: Input validation error: Invalid arguments for tool post_message: Invalid input: expected string, received undefined at text",
+        "is_error": true,
+        "tool_use_id": "toolu_fake_4"
+      },
+      "is_error": true,
+      "text_bytes": 141,
+      "called_name_offered_next": true,
+      "offered_names_in_text": [],
+      "world_events": []
+    },
+    {
+      "label": "4 world call with a wrong channel",
+      "played": {
+        "raw_tool": "mcp__world__post_message",
+        "input": {
+          "channel": "@nobody",
+          "text": "tool-discipline probe"
+        }
+      },
+      "request_index": 4,
+      "next_request_index": 5,
+      "tool_use_id": "toolu_fake_5",
+      "tool_result": {
+        "type": "tool_result",
+        "content": "{\"error\":\"channel_not_found\",\"message\":\"channel_not_found\"}",
+        "is_error": true,
+        "tool_use_id": "toolu_fake_5"
+      },
+      "is_error": true,
+      "text_bytes": 59,
+      "called_name_offered_next": true,
+      "offered_names_in_text": [],
+      "world_events": [
+        {
+          "seq": 3,
+          "trial_id": "anatomy-capture-tool-discipline-claude-code-20261031t201031/claude-code-tool-discipline/si-01-marrow-agrisupply-site/r1",
+          "wall_ts": "2026-10-31T20:10:33.778Z",
+          "sim_ts": "2026-10-14T09:00:00-05:00",
+          "args_digest": "f86afbe46aca6977d51172297cd28d7d3ee6992270e9d95a715171fe5da2bde7",
+          "actor": "assistant",
+          "via": "mcp",
+          "tool": "chat.postMessage",
+          "kind": "deny",
+          "args": {
+            "channel": "@nobody",
+            "text": "tool-discipline probe"
+          },
+          "outcome": "denied",
+          "error": "channel_not_found"
+        }
+      ]
+    },
+    {
+      "label": "5 shell call piping a helper",
+      "played": {
+        "raw_tool": "Bash",
+        "input": {
+          "command": "/bin/true 2>&1 | head -40"
+        }
+      },
+      "request_index": 5,
+      "next_request_index": 6,
+      "tool_use_id": "toolu_fake_6",
+      "tool_result": {
+        "tool_use_id": "toolu_fake_6",
+        "type": "tool_result",
+        "content": "(Bash completed with no output)",
+        "is_error": false
+      },
+      "is_error": false,
+      "text_bytes": 31,
+      "exit_code": null,
+      "called_name_offered_next": true,
+      "offered_names_in_text": [
+        "Bash"
+      ],
+      "world_events": []
+    }
+  ]
+}

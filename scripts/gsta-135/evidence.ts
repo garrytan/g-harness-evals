@@ -138,6 +138,13 @@
  *
  *   bun scripts/gsta-135/evidence.ts <harness> <trial out dir> [--task <1|2|3>]            -> JSON on stdout
  *   bun scripts/gsta-135/evidence.ts <harness> <trial out dir> [--task <1|2|3>] --excerpt  -> the decoded turn, one line per event
+ *   bun scripts/gsta-135/evidence.ts <harness> <trial out dir> [--task <1|2|3>] --raw      -> the JSON, each event also carrying
+ *                                                                                          raw_args, result_text and error_text
+ *
+ * For other scorers (internal-task's scripts/tool-discipline), the module exports the readers (readOpenclaw, readHermes, readQm and the
+ * readers map: every decoded tool call joined to its result, before classification), the Call, Result and Event types, score()
+ * (a decoded transcript to this evidence object) and scoreEvents() (classified events to the scored fields). Without --raw (or
+ * {raw: true}) the output is what it was before those exports: no field added, none changed.
  */
 import { Database } from 'bun:sqlite';
 import { createHash } from 'node:crypto';
@@ -146,7 +153,10 @@ import { tmpdir } from 'node:os';
 import { basename, join, posix } from 'node:path';
 
 export type ResultState = 'ok' | 'error' | 'unknown' | 'none';
-export interface Event { kind: 'skill_open' | 'helper_run' | 'gstack_path'; tool: string; detail: string; file: string; locator: string; sha256: string; skill: string | null; result: ResultState; exit: number | null; exit_belongs: boolean | null }
+/** A classified tool call. raw_args, result_text and error_text are present only when the reader was asked for them ({raw: true},
+ *  the CLI's --raw): the call's decoded arguments unclipped, the result row's text and, for a result that is an error, its error
+ *  text (null when there is none). The default output carries none of them, so a published evidence object is unchanged. */
+export interface Event { kind: 'skill_open' | 'helper_run' | 'gstack_path'; tool: string; detail: string; file: string; locator: string; sha256: string; skill: string | null; result: ResultState; exit: number | null; exit_belongs: boolean | null; raw_args?: unknown; result_text?: string | null; error_text?: string | null }
 export interface Metrics {
   task: 1 | 2 | 3 | null;
   matching_skill: string[];
@@ -297,22 +307,27 @@ export function helperInvocation(command: string, cwd: string | null = null): He
 /** The helper a shell command RUNS, or null. */
 export function helperRun(command: string, cwd: string | null = null): string | null { return helperInvocation(command, cwd)?.helper ?? null; }
 
-type Result = { ok: boolean | null; exit: number | null };
-type Call = { id: string | null; tool: string; args: unknown; locator: string; file: string; sha256: string; result: Result | null };
+/** A tool call's native result: ok (null when the row lacks the field that decides), the exit code, the row's text and, when the
+ *  row is an error, its error text. */
+export type Result = { ok: boolean | null; exit: number | null; text?: string | null; error?: string | null };
+/** One decoded tool call, joined to its result row (null when none came). */
+export type Call = { id: string | null; tool: string; args: unknown; locator: string; file: string; sha256: string; result: Result | null };
 
 const resultState = (r: Result | null | undefined): ResultState => !r ? 'none' : r.ok === true ? 'ok' : r.ok === false ? 'error' : 'unknown';
 
 /** The skill the gstack-skill-start invocation a command RUNS names, as gstack-<name>, or null. */
 export function startedSkill(command: string): string | null { return helperInvocation(command)?.skill ?? null; }
 
-/** Classify one decoded tool call; several kinds may apply. */
-export function classify(call: Call | Omit<Call, 'id' | 'result'>, harness: string): Event[] {
+/** Classify one decoded tool call; several kinds may apply. With raw, each event also carries the call's raw arguments and its
+ *  result and error text. */
+export function classify(call: Call | Omit<Call, 'id' | 'result'>, harness: string, raw = false): Event[] {
   const text = typeof call.args === 'string' ? call.args : JSON.stringify(call.args ?? '');
   const a = (call.args && typeof call.args === 'object' ? call.args : {}) as Record<string, unknown>;
   const result = 'result' in call ? call.result : null;
   const out: Event[] = [];
   const ev = (kind: Event['kind'], detail: string, skill: string | null = null, exitBelongs: boolean | null = null): Event =>
-    ({ kind, tool: call.tool, detail: detail.slice(0, 300), file: call.file, locator: call.locator, sha256: call.sha256, skill, result: resultState(result), exit: result?.exit ?? null, exit_belongs: exitBelongs });
+    ({ kind, tool: call.tool, detail: detail.slice(0, 300), file: call.file, locator: call.locator, sha256: call.sha256, skill, result: resultState(result), exit: result?.exit ?? null, exit_belongs: exitBelongs,
+      ...(raw ? { raw_args: call.args, result_text: result?.text ?? null, error_text: result?.error ?? null } : {}) });
   const path = String(a.path ?? a.file_path ?? a.filePath ?? a.target ?? '');
   const name = String(a.name ?? a.skill ?? a.skill_name ?? '').replace(/^gstack\/(?=gstack)/, '');
   const command = String(a.command ?? a.cmd ?? (Array.isArray(a.argv) ? (a.argv as string[]).join(' ') : ''));
@@ -357,15 +372,35 @@ export function metrics(events: Event[], finalText: string | null, transcript: E
   };
 }
 
-type Extra = { final_text: string | null; termination_hint: 'length' | null; unmatched_results: number };
-function summarize(files: Evidence['files'], calls: Call[], harness: string, transcript: Evidence['transcript'], note: string | undefined, excerpt: string[], extra: Extra = { final_text: null, termination_hint: null, unmatched_results: 0 }, task: 1 | 2 | 3 | null = null): Evidence {
-  const events = calls.flatMap(c => classify(c, harness));
+/** The scored fields of an evidence object from its classified events: the first router open (else the first sub-skill open),
+ *  the first sub-skill open, the first helper run, the gstack_path count and the metrics. Pure, so published events can be
+ *  re-scored (tests/gsta-135-golden.test.ts). */
+export function scoreEvents(events: Event[], finalText: string | null, transcript: Evidence['transcript'], task: 1 | 2 | 3 | null) {
   const opens = events.filter(e => e.kind === 'skill_open');
   const router = opens.find(e => e.skill === 'gstack') ?? null;
   const sub = opens.find(e => e.skill && e.skill !== 'gstack') ?? null;
-  return { transcript, files, tool_calls: calls.length, unmatched_results: extra.unmatched_results, events, skill_open: router ?? sub, sub_skill_open: sub, helper_run: events.find(e => e.kind === 'helper_run') ?? null,
-    gstack_paths: events.filter(e => e.kind === 'gstack_path').length, final_text: extra.final_text, termination_hint: extra.termination_hint,
-    metrics: metrics(events, extra.final_text, transcript, task), ...(note ? { note } : {}), excerpt };
+  return { skill_open: router ?? sub, sub_skill_open: sub, helper_run: events.find(e => e.kind === 'helper_run') ?? null, gstack_paths: events.filter(e => e.kind === 'gstack_path').length, metrics: metrics(events, finalText, transcript, task) };
+}
+
+/** One trial's decoded native transcript before classification: every tool call joined to its result row, the transcript
+ *  verdict, the final text, the length hint, the result rows that settled no call, the hashed files, the note and the excerpt.
+ *  readOpenclaw, readHermes and readQm (the readers map) produce it; score() turns it into the evidence object. */
+export interface Transcript {
+  harness: string; transcript: Evidence['transcript']; files: Evidence['files']; calls: Call[]; note: string | undefined; excerpt: string[];
+  final_text: string | null; termination_hint: 'length' | null; unmatched_results: number;
+}
+type Extra = { final_text: string | null; termination_hint: 'length' | null; unmatched_results: number };
+const NO_EXTRA: Extra = { final_text: null, termination_hint: null, unmatched_results: 0 };
+const transcriptOf = (files: Evidence['files'], calls: Call[], harness: string, transcript: Evidence['transcript'], note: string | undefined, excerpt: string[], extra: Extra = NO_EXTRA): Transcript =>
+  ({ harness, transcript, files, calls, note, excerpt, ...extra });
+
+/** The evidence object for a decoded transcript; with raw, every event carries raw_args, result_text and error_text. */
+export function score(t: Transcript, task: 1 | 2 | 3 | null = null, opts: { raw?: boolean } = {}): Evidence {
+  const events = t.calls.flatMap(c => classify(c, t.harness, opts.raw === true));
+  const s = scoreEvents(events, t.final_text, t.transcript, task);
+  return { transcript: t.transcript, files: t.files, tool_calls: t.calls.length, unmatched_results: t.unmatched_results, events, skill_open: s.skill_open, sub_skill_open: s.sub_skill_open, helper_run: s.helper_run,
+    gstack_paths: s.gstack_paths, final_text: t.final_text, termination_hint: t.termination_hint,
+    metrics: s.metrics, ...(t.note ? { note: t.note } : {}), excerpt: t.excerpt };
 }
 
 const clip = (s: string, n = 240) => (s.length <= n ? s : s.slice(0, n) + ' ...').replace(/\n/g, ' ');
@@ -421,11 +456,11 @@ const blocksText = (content: unknown) => typeof content === 'string' ? content :
  *  (primary key session_id, seq) holds the pi-agent session events (event_json, or event_zstd for large ones); an assistant message's
  *  content carries toolCall blocks and its stopReason says why the turn ended (stop, toolUse, length, error); a toolResult message
  *  names its toolCallId, isError and, for exec, details.exitCode (details are dropped past 8 KiB, so exitCode can be missing). */
-export function openclaw(out: string, task: 1 | 2 | 3 | null = null): Evidence {
+export function readOpenclaw(out: string, task: 1 | 2 | 3 | null = null): Transcript {
   const root = join(out, 'state', 'openclaw', 'exec', 'agents');
   const found = existsSync(root) ? readdirSync(root).map(a => join(root, a, 'agent', 'openclaw-agent.sqlite')).filter(existsSync) : [];
   const dbs = found.filter(nonEmpty);
-  if (!dbs.length) return summarize([], [], 'openclaw', 'missing', found.length ? 'empty openclaw-agent.sqlite' : 'no openclaw-agent.sqlite under state/openclaw/exec/agents', [], undefined, task);
+  if (!dbs.length) return transcriptOf([], [], 'openclaw', 'missing', found.length ? 'empty openclaw-agent.sqlite' : 'no openclaw-agent.sqlite under state/openclaw/exec/agents', []);
   const files: Evidence['files'] = [];
   const calls: Call[] = [];
   const excerpt: string[] = [];
@@ -449,7 +484,8 @@ export function openclaw(out: string, task: 1 | 2 | 3 | null = null): Evidence {
           const exit = typeof m.details?.exitCode === 'number' ? m.details.exitCode : null;
           const isError = m.isError === true;
           const shell = /^(exec|bash|shell|terminal|run)$/.test(String(m.toolName ?? ''));
-          const call = settle(s, typeof m.toolCallId === 'string' ? m.toolCallId : null, { ok: isError ? false : shell ? (exit === null ? null : exit === 0) : true, exit });
+          const text = typeof m.content === 'string' ? m.content : blocksText(m.content);
+          const call = settle(s, typeof m.toolCallId === 'string' ? m.toolCallId : null, { ok: isError ? false : shell ? (exit === null ? null : exit === 0) : true, exit, text, error: isError ? text : null });
           excerpt.push(at + ' toolResult ' + String(m.toolName ?? '') + (isError ? ' (error)' : exit !== null ? ' (exit ' + exit + ')' : '') + (call ? '' : ' (matches no waiting call)') + ': ' + clip(JSON.stringify(m.content ?? ''), 120));
           s.last = 'toolResult';
           continue;
@@ -472,9 +508,10 @@ export function openclaw(out: string, task: 1 | 2 | 3 | null = null): Evidence {
     });
   }
   const complete = rows > 0 && undecoded === 0 && sessionsComplete(sessions, /^assistant(:(stop|end_turn))?$/);
-  return summarize(files, calls, 'openclaw', rows === 0 ? 'missing' : tampered(sessions) ? 'tampered' : complete ? 'complete' : 'truncated',
-    rows + ' events' + (undecoded ? ', ' + undecoded + ' undecodable' : '') + '; ' + describe(sessions) + finalTextNote(sessions, task), excerpt, { final_text: mainSession(sessions, task)?.s.finalText ?? null, termination_hint: lengthHint(sessions), unmatched_results: unmatched(sessions) }, task);
+  return transcriptOf(files, calls, 'openclaw', rows === 0 ? 'missing' : tampered(sessions) ? 'tampered' : complete ? 'complete' : 'truncated',
+    rows + ' events' + (undecoded ? ', ' + undecoded + ' undecodable' : '') + '; ' + describe(sessions) + finalTextNote(sessions, task), excerpt, { final_text: mainSession(sessions, task)?.s.finalText ?? null, termination_hint: lengthHint(sessions), unmatched_results: unmatched(sessions) });
 }
+export function openclaw(out: string, task: 1 | 2 | 3 | null = null, opts: { raw?: boolean } = {}): Evidence { return score(readOpenclaw(out, task), task, opts); }
 
 const HERMES_PLAIN_ERROR_RE = /^\s*(?:error|no such)\b|^[^\n]{0,80}\bnot found\b/i;
 
@@ -482,10 +519,10 @@ const HERMES_PLAIN_ERROR_RE = /^\s*(?:error|no such)\b|^[^\n]{0,80}\bnot found\b
  *  row's content is the tool's JSON: terminal {output, exit_code, error}, read_file {content, ...} or {error}, skill_view
  *  {success, name, content} or {success: false, error}; plain text content is a served file unless it reads as an error
  *  message (HERMES_PLAIN_ERROR_RE). */
-export function hermes(out: string, task: 1 | 2 | 3 | null = null): Evidence {
+export function readHermes(out: string, task: 1 | 2 | 3 | null = null): Transcript {
   const db0 = join(out, 'state', 'hermes', 'state.db');
-  if (!existsSync(db0)) return summarize([], [], 'hermes', 'missing', 'no state/hermes/state.db', [], undefined, task);
-  if (!nonEmpty(db0)) return summarize([], [], 'hermes', 'missing', 'empty state/hermes/state.db', [], undefined, task);
+  if (!existsSync(db0)) return transcriptOf([], [], 'hermes', 'missing', 'no state/hermes/state.db', []);
+  if (!nonEmpty(db0)) return transcriptOf([], [], 'hermes', 'missing', 'empty state/hermes/state.db', []);
   const files: Evidence['files'] = [];
   const rows = withCopy(db0, files, conn => conn.query('select id, session_id, role, content, tool_call_id, tool_calls, tool_name, finish_reason from messages order by session_id, id').all() as Array<{ id: number; session_id: string; role: string; content: string | null; tool_call_id: string | null; tool_calls: string | null; tool_name: string | null; finish_reason: string | null }>);
   const calls: Call[] = [];
@@ -503,7 +540,8 @@ export function hermes(out: string, task: 1 | 2 | 3 | null = null): Evidence {
       const exit = body && typeof body === 'object' && typeof body.exit_code === 'number' ? body.exit_code : null;
       const failed = body === null ? HERMES_PLAIN_ERROR_RE.test(text) : typeof body === 'object' && (!!body.error || body.success === false);
       const ok = failed ? false : exit !== null ? exit === 0 : text.trim() ? true : null;
-      const call = settle(s, r.tool_call_id, { ok, exit });
+      const error = !failed ? null : body && typeof body === 'object' && body.error ? (typeof body.error === 'string' ? body.error : JSON.stringify(body.error)) : text;
+      const call = settle(s, r.tool_call_id, { ok, exit, text, error });
       excerpt.push('id ' + r.id + ' tool result (' + (r.tool_name ?? '') + ')' + (failed ? ' (error)' : exit !== null ? ' (exit ' + exit + ')' : '') + (call ? '' : ' (matches no waiting call)') + ': ' + clip(text, 120));
       s.last = 'tool';
       continue;
@@ -527,21 +565,26 @@ export function hermes(out: string, task: 1 | 2 | 3 | null = null): Evidence {
     }
   }
   const complete = rows.length > 0 && undecoded === 0 && sessionsComplete(sessions, /^assistant\/stop$/);
-  return summarize(files, calls, 'hermes', !rows.length ? 'missing' : tampered(sessions) ? 'tampered' : complete ? 'complete' : 'truncated',
-    rows.length + ' messages' + (undecoded ? ', ' + undecoded + ' undecodable' : '') + '; ' + describe(sessions) + finalTextNote(sessions, task), excerpt, { final_text: mainSession(sessions, task)?.s.finalText ?? null, termination_hint: lengthHint(sessions), unmatched_results: unmatched(sessions) }, task);
+  return transcriptOf(files, calls, 'hermes', !rows.length ? 'missing' : tampered(sessions) ? 'tampered' : complete ? 'complete' : 'truncated',
+    rows.length + ' messages' + (undecoded ? ', ' + undecoded + ' undecodable' : '') + '; ' + describe(sessions) + finalTextNote(sessions, task), excerpt, { final_text: mainSession(sessions, task)?.s.finalText ?? null, termination_hint: lengthHint(sessions), unmatched_results: unmatched(sessions) });
 }
+export function hermes(out: string, task: 1 | 2 | 3 | null = null, opts: { raw?: boolean } = {}): Evidence { return score(readHermes(out, task), task, opts); }
 
 /** QM: no decoder at this pin. The QM cells did not run (the preflight's register failure), so no turn record exists to fix a
  *  decoder against; a QM cell is unobservable until one does. */
-export function qm(out: string, task: 1 | 2 | 3 | null = null): Evidence {
+export function readQm(out: string, _task: 1 | 2 | 3 | null = null): Transcript {
   const files = [join(out, 'logs', 'qm-turn.json'), join(out, 'logs', 'core.log')].filter(nonEmpty).map(p => ({ path: p, sha256: sha256(p), bytes: statSync(p).size }));
-  return summarize(files, [], 'qm', files.length ? 'unobservable' : 'missing', 'no QM transcript decoder at this pin', [], undefined, task);
+  return transcriptOf(files, [], 'qm', files.length ? 'unobservable' : 'missing', 'no QM transcript decoder at this pin', []);
 }
+export function qm(out: string, task: 1 | 2 | 3 | null = null, opts: { raw?: boolean } = {}): Evidence { return score(readQm(out, task), task, opts); }
 
-export function extract(harness: string, out: string, task: 1 | 2 | 3 | null = null): Evidence {
-  if (harness === 'openclaw') return openclaw(out, task);
-  if (harness === 'hermes') return hermes(out, task);
-  if (harness === 'qm') return qm(out, task);
+/** The transcript readers by harness: every decoded tool call with its result, before classification (scripts/tool-discipline). */
+export const readers: Record<'openclaw' | 'hermes' | 'qm', (out: string, task?: 1 | 2 | 3 | null) => Transcript> = { openclaw: readOpenclaw, hermes: readHermes, qm: readQm };
+
+export function extract(harness: string, out: string, task: 1 | 2 | 3 | null = null, opts: { raw?: boolean } = {}): Evidence {
+  if (harness === 'openclaw') return openclaw(out, task, opts);
+  if (harness === 'hermes') return hermes(out, task, opts);
+  if (harness === 'qm') return qm(out, task, opts);
   throw new Error('unknown harness ' + harness);
 }
 
@@ -551,10 +594,12 @@ if (import.meta.main) {
   const taskArg = taskAt >= 0 ? argv.splice(taskAt, 2)[1] : null;
   const excerptAt = argv.indexOf('--excerpt');
   if (excerptAt >= 0) argv.splice(excerptAt, 1);
+  const rawAt = argv.indexOf('--raw');
+  if (rawAt >= 0) argv.splice(rawAt, 1);
   const [harness, out] = argv;
   const task = taskArg === null ? null : Number(taskArg);
-  if (!harness || !out || argv.length > 2 || (task !== null && ![1, 2, 3].includes(task))) { console.error('usage: evidence.ts <openclaw|hermes|qm> <trial out dir> [--task <1|2|3>] [--excerpt]'); process.exit(64); }
-  const ev = extract(harness, out, task as 1 | 2 | 3 | null);
+  if (!harness || !out || argv.length > 2 || (task !== null && ![1, 2, 3].includes(task))) { console.error('usage: evidence.ts <openclaw|hermes|qm> <trial out dir> [--task <1|2|3>] [--excerpt] [--raw]'); process.exit(64); }
+  const ev = extract(harness, out, task as 1 | 2 | 3 | null, { raw: rawAt >= 0 });
   if (excerptAt >= 0) console.log(ev.excerpt.join('\n'));
   else { const { excerpt, ...rest } = ev; console.log(JSON.stringify(rest, null, 2)); }
 }

@@ -8,7 +8,7 @@
 # holds no credential.
 #
 #   scripts/gsta-135/preflight.sh [--pin bd8907d6] [--only openclaw,hermes,qm] [--roots parent,exec,both]
-#                                 [--hermes-mode oneshot|chat] [--max-tokens 128000] [--no-negative]
+#                                 [--hermes-mode oneshot|chat] [--max-tokens 128000] [--start-hook] [--no-negative]
 #
 # Per harness (openclaw, hermes):
 #   1. the exec probe: one plain turn through run-trial.sh's exact docker run;
@@ -32,6 +32,21 @@
 #   5. the flagged-command smoke: the fake asks for 'rm -rf <path>'; the
 #      approval card must fail closed (BLOCKED in the tool result) and the
 #      trial still end with exit 0 and a complete transcript (evidence.ts).
+#   The start hook (internal-task): --start-hook runs the hook images,
+#   harness-eval/openclaw:gstack-<pin>-hook and harness-eval/hermes:gstack-
+#   <pin>-hook(-chat), built with --build-arg GSTACK_START_HOOK=on. On every
+#   image the exec probe reads org.harness-eval.gstack.start_hook (absent is
+#   off): on, the wrapper must log `start_hook: on active` and the first
+#   agent-turn request the fake receives (the first /v1/messages with tools)
+#   must carry gstack's START_NOTE; off, the wrapper logs `start_hook: off`
+#   and no request carries it. Hermes sends its session-title call (no tools,
+#   max_tokens 512) at the same moment as the turn and pre_llm_call does not
+#   reach it, so the note is checked on the agent turn and the very first
+#   request is reported beside it. The OpenClaw root probes other than parent
+#   are skipped on a hook image (the wrapper refuses them). With the
+#   negatives on, every gstack image also gets the pinned-tree negative: the
+#   image env naming another commit (GSTACK_IMAGE_COMMIT) must stop with exit 2
+#   before any model request.
 #   When a chat-mode check fails the summary also prints
 #   'HERMES: not measured (<reason>)': the panel then runs OpenClaw only.
 #
@@ -48,7 +63,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-pin=bd8907d6 only=openclaw,hermes,qm roots=parent,exec,both hermes_mode=oneshot max_tokens=128000 negative=1
+pin=bd8907d6 only=openclaw,hermes,qm roots=parent,exec,both hermes_mode=oneshot max_tokens=128000 negative=1 start_hook=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --pin) pin=$2; shift 2 ;;
@@ -57,6 +72,7 @@ while [ $# -gt 0 ]; do
     --hermes-mode) hermes_mode=$2; shift 2 ;;
     --max-tokens) max_tokens=$2; shift 2 ;;
     --no-negative) negative=0; shift ;;
+    --start-hook) start_hook=1; shift ;;
     *) echo "unknown option $1" >&2; exit 64 ;;
   esac
 done
@@ -106,7 +122,25 @@ printf '%s\n' '[{"tool": "printf \"y\\r\" >> /he-logs/hermes-chat.fifo 2>&1 || t
 # The image's PATH without Bun, for the negative.
 image_path_without_bun() { docker image inspect "$1" -f '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^PATH=//p' | sed 's|/opt/bun/bin:||'; }
 
-image_of() { if [ "$1" = hermes ] && [ "$hermes_mode" = chat ]; then echo "harness-eval/hermes:gstack-$pin-chat"; else echo "harness-eval/$1:gstack-$pin"; fi; }
+hook_suffix=''; [ "$start_hook" = 0 ] || hook_suffix=-hook
+image_of() { if [ "$1" = hermes ] && [ "$hermes_mode" = chat ]; then echo "harness-eval/hermes:gstack-$pin$hook_suffix-chat"; else echo "harness-eval/$1:gstack-$pin$hook_suffix"; fi; }
+# start_note <requests.ndjson>: whether gstack's start-hook note (START_NOTE in
+# lib/harness-start-hook.ts) is on the first agent-turn request (the first
+# /v1/messages with tools), on the very first /v1/messages, and how many
+# requests carry it.
+start_note() {
+  python3 - "$1" <<'PY'
+import json, sys
+note = "gstack: if you use a gstack skill this turn, first run the gstack-skill-start command"
+rows = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+msgs = [r for r in rows if r.get("path", "").endswith("/v1/messages") and isinstance(r.get("body"), dict)]
+turns = [r for r in msgs if r["body"].get("tools")]
+has = lambda r: note in json.dumps(r["body"], ensure_ascii=False)
+print("first_turn_note=%s" % ("none" if not turns else "yes" if has(turns[0]) else "no"))
+print("first_request_note=%s (%s, max_tokens %s)" % ("none" if not msgs else "yes" if has(msgs[0]) else "no", "agent turn" if msgs and msgs[0]["body"].get("tools") else "no tools" if msgs else "-", msgs[0]["body"].get("max_tokens") if msgs else "-"))
+print("requests_with_note=%d of %d" % (sum(has(r) for r in msgs), len(msgs)))
+PY
+}
 base_url="http://host.docker.internal:$port/anthropic"
 failed=0
 probe_exit=
@@ -189,6 +223,17 @@ for h in ${only//,/ }; do
         check "wrapper budget hand-off" "$reg" 'handing the adapter'
         check "test-run marker line logged" "$reg" 'marker: harnesses/_gstack/wrapper-lib.sh:[0-9][0-9]* GSTACK_SESSION_KIND=spawned GSTACK_EPHEMERAL=1 GSTACK_STATE_ROOT=/harness-state/.gstack GSTACK_CAPY=unset'
         check "wrapper runtime check" "$reg" 'runtime: ok bun 1\.'
+        hook_label=$(docker image inspect "$(image_of "$h")" -f '{{index .Config.Labels "org.harness-eval.gstack.start_hook"}}' 2>/dev/null || true)
+        notes=$(start_note "$p/requests.ndjson" || true)
+        echo "start hook: image label start_hook=${hook_label:-<absent, off>}; $(printf '%s\n' "$notes" | tr '\n' ' ')"
+        if [ "$hook_label" = on ]; then
+          check "start hook: wrapper gate" "$reg" 'start_hook: on active'
+          check "start hook: setup receipt" "$reg" 'start hook: active'
+          check "start hook: the note on the first agent-turn request" "$notes" '^first_turn_note=yes$'
+        else
+          check "start hook off: wrapper line" "$reg" 'start_hook: off '
+          check "start hook off: no request carries the note" "$notes" '^first_turn_note=no$' '^requests_with_note=0 of'
+        fi
         if [ "$h" = openclaw ]; then
           check "exec probe: gstack router skill in the system prompt" "$sysinfo" 'openclaw_gstack_skill_locations=~/openclaw/skills/gstack/SKILL.md'
           listed=$(in_image openclaw "$(cd "$p/state" && pwd)" "$(cd "$p/logs" && pwd)" 'OPENCLAW_STATE_DIR=/harness-state/openclaw openclaw skills list --json 2>/dev/null' \
@@ -197,9 +242,11 @@ for h in ${only//,/ }; do
           check "skills list row" "$listed" '"source": "openclaw-managed"' '"eligible": true' '"modelVisible": true'
           # The root question, by difference: exec root alone, parent root alone, both.
           for r in ${roots//,/ }; do
+            [ "$hook_label" != on ] || [ "$r" = parent ] || { echo "root probe roots=$r: skipped (a start hook image refuses roots other than parent)"; continue; }
             probe openclaw "openclaw-roots-$r" - -e HE_GSTACK_OPENCLAW_ROOTS="$r"
           done
           for r in ${roots//,/ }; do
+            [ "$hook_label" != on ] || [ "$r" = parent ] || continue
             loc=$(python3 scripts/gsta-135/system-prompt.py "$out/probe-openclaw-roots-$r/requests.ndjson" openclaw | sed -n 's/^openclaw_gstack_skill_locations=//p')
             echo "root probe roots=$r: gstack skill location in the first turn's system prompt: $loc"
           done
@@ -261,6 +308,13 @@ for h in ${only//,/ }; do
           check "negative (no Bun on PATH): runtime degraded logged" "$reg" 'runtime: degraded (bun not on PATH'
           check "negative (no Bun on PATH): registration failed" "$reg" 'FAIL: setup --host'
           check "negative (no Bun on PATH): no model request" "$(python3 scripts/gsta-135/system-prompt.py "$n/requests.ndjson" "$h" 2>/dev/null || echo 'message_requests=0')" '^message_requests=0$'
+          # The pinned-tree negative: the image env names another commit, so the installed tree is not the pin.
+          probe "$h" "$tag-pin" "$runtime_script" -e GSTACK_IMAGE_COMMIT=0000000000000000000000000000000000000000
+          n=$out/probe-$tag-pin
+          check "negative (GSTACK_IMAGE_COMMIT names another commit): adapter exit 2" "$probe_exit" '^2$'
+          reg=$(cat "$n/logs/gstack-register.log" 2>/dev/null || echo '(no gstack-register.log)')
+          check "negative (GSTACK_IMAGE_COMMIT names another commit): refused" "$reg" 'not the pinned 0000000000000000000000000000000000000000 this image names; refusing to start'
+          check "negative (GSTACK_IMAGE_COMMIT names another commit): no model request" "$(python3 scripts/gsta-135/system-prompt.py "$n/requests.ndjson" "$h" 2>/dev/null || echo 'message_requests=0')" '^message_requests=0$'
         fi
 
         if [ "$h" = hermes ] && [ "$hermes_mode" = chat ]; then

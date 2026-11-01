@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * internal-task report: cells.jsonl to report.md.
+ * GSTA-135 report: cells.jsonl to report.md.
  *
  * Panel mode (--manifest): per cell (harness x task x arm) the planned and run
  * counts, the counts of matching_skill_opened, matching_skill_started,
@@ -8,7 +8,7 @@
  * PLANNED n (a trial that did not run or was not observable counts as an
  * absence and never leaves the denominator; nothing is replaced), the median
  * and maximum settled cost against the manifest's ceilings, every trial's cost
- * against the per-trial bar, internal-task's bars evaluated per harness with the
+ * against the per-trial bar, GSTA-135's bars evaluated per harness with the
  * words "meets the bars; improvement inconclusive at n=5" whenever the arms'
  * intervals overlap, the terminations table with each termination's class
  * (evaluator infrastructure, harness or gstack runtime, the trial's own
@@ -85,7 +85,7 @@ export function cells(rows: any[], order: any[] | null): Cell[] {
   });
 }
 
-/** internal-task's bars for one harness: each bar with its verdict and the counts behind it, then the one-line call. The bars are
+/** GSTA-135's bars for one harness: each bar with its verdict and the counts behind it, then the one-line call. The bars are
  *  proportions of the planned n of each cell, so they keep their meaning whatever --trials says: opens at least 0.6 of planned
  *  (3 of 5 at n=5, 6 of 10 at n=10) and strictly above baseline, starts at least 0.6, control opens at most 0.2 (1 of 5, 2 of 10),
  *  success not below baseline. The improvement claim is inconclusive when the arms' intervals overlap on any open or start count
@@ -174,14 +174,15 @@ export function panelReport(rows: any[], manifest: any, manifestPath: string, ar
   const perHarness = harnesses.map(h => bars(cs, h, perTrialUsd, ceilings, n));
   const hermesNote = manifest.hermes_mode === 'chat' ? ' Hermes rows are chat-mode under the overlay adapter (the counted Hermes entry is one-shot and is not measured here).' : '';
   return [
-    '# internal-task skill-use panel ' + (manifest.run_id ?? arg('--run-id')) + ' (' + day + ')',
+    '# GSTA-135 skill-use panel ' + (manifest.run_id ?? arg('--run-id')) + ' (' + day + ')',
     '',
-    'Two arms that differ only by the gstack pin (baseline: main at freeze; candidate: internal-task), ' + n + ' trials per cell in the fixed interleaved order of the manifest. ' +
+    (arms.none ? 'Three arms: no gstack (none), and two that differ only by the gstack pin' : 'Two arms that differ only by the gstack pin') + ' (baseline: main at freeze; candidate: GSTA-135), ' + n + ' trials per cell in the fixed interleaved order of the manifest. ' +
     'Every count is k of the PLANNED n with a Wilson 95% interval; a trial that did not run, was refused or left an incomplete transcript counts as an absence and is never replaced. ' +
     'Evidence is the harness\'s native transcript joined to its tool results (evidence.ts); assistant prose and the wrapper\'s logs never count. Nothing here orders the harnesses or folds counts into one score.' + hermesNote,
     '',
     '## Settings',
     '',
+    ...(arms.none ? [armLine('none')] : []),
     armLine('baseline'),
     armLine('candidate'),
     '- hermes mode: ' + (manifest.hermes_mode ?? '?') + '; max_tokens pin ' + (manifest.max_tokens ?? '?') + '; model ' + (rows[0]?.model ?? '?') + '; tree ' + (manifest.tree ?? rows[0]?.tree ?? '?') + (rows[0]?.tree_dirty ? ' (dirty)' : ''),
@@ -192,7 +193,7 @@ export function panelReport(rows: any[], manifest: any, manifestPath: string, ar
     '- spent ' + money(sum(rows, 'usd_spent')) + ' settled; ' + money(sum(rows, 'usd_charged_reservation')) + ' charged at full reservation on upstream failures (committed in the ledger and counted by the cap, outside the per-trial bar); ' + money(sum(rows, 'usd_reserved_unknown')) + ' reserved on failed requests (unknown, not folded into spent); lease summary: ' + (arg('--summary') || 'none'),
     requestsLine(rows),
     '',
-    '## Bars (internal-task)',
+    '## Bars (GSTA-135)',
     '',
     ...(manifest.bars ? [String(manifest.bars), ''] : []),
     ...perHarness.flatMap(b => ['**' + b.verdict + '**', '', ...b.lines, '']),
@@ -254,7 +255,7 @@ export function discoveryReport(rows: any[], arg: (n: string, d?: string) => str
   ].concat(rows.some(r => r.tree_dirty) ? ['- ' + day + ': the tree carried uncommitted changes when the run started (tree-status.txt beside this report lists them).'] : []);
   if (!deviations.length) deviations.push('- none recorded by the driver.');
   return [
-    '# internal-task live discovery, uncounted diagnostic (' + day + ')',
+    '# GSTA-135 live discovery, uncounted diagnostic (' + day + ')',
     '',
     'One trial per cell. Each row is an existence proof for that one trial, not a rate; nothing here is a comparison claim. ' +
     'Evidence comes from the harness\'s native transcript (OpenClaw: the exec session store under state/openclaw/exec/agents; Hermes: HERMES_HOME/state.db; QM: no decoder at this pin, so a QM cell is unobservable), ' +

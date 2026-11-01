@@ -50,12 +50,12 @@ export HOME="$HE_SESSION_STATE_DIR"
 export HERMES_HOME="$HE_SESSION_STATE_DIR/hermes"
 mkdir -p "$HERMES_HOME"
 wrap_mark_test_run
-wrap_runtime_check
-wrap_log "hermes overlay: gstack $(cat "$GSTACK_DIR/VERSION") at $(git -C "$GSTACK_DIR" rev-parse HEAD) bun $(bun --version 2>/dev/null || echo none) mode=$mode"
-"$GSTACK_DIR/setup" --host hermes --no-browser > "$HE_LOG_DIR/gstack-setup.log" 2>&1 || wrap_fail "setup --host hermes exited $? (gstack-setup.log)"
-cat "$HE_LOG_DIR/gstack-setup.log" >> "$GSTACK_WRAP_LOG"
-wrap_setup_ready "$HE_LOG_DIR/gstack-setup.log" hermes
-bun --no-env-file --config=/dev/null "$GSTACK_DIR/bin/gstack-harness" status >> "$GSTACK_WRAP_LOG" 2>&1 || wrap_log "gstack-harness status exited $?"
+wrap_runtime_check; wrap_seed_config "$HERMES_HOME/config.yaml" config.yaml config.openai.yaml
+if wrap_gstack_present; then wrap_log "hermes overlay: gstack $(cat "$GSTACK_DIR/VERSION") at $(git -C "$GSTACK_DIR" rev-parse HEAD) bun $(bun --version 2>/dev/null || echo none) mode=$mode"
+  "$GSTACK_DIR/setup" --host hermes --no-browser > "$HE_LOG_DIR/gstack-setup.log" 2>&1 || wrap_setup_exit hermes $?
+  cat "$HE_LOG_DIR/gstack-setup.log" >> "$GSTACK_WRAP_LOG"; wrap_setup_ready "$HE_LOG_DIR/gstack-setup.log" hermes
+  wrap_start_hook_check
+else wrap_log "hermes overlay: gstack none bun $(bun --version 2>/dev/null || echo none) mode=$mode"; fi
 [ "$mode" = chat ] || wrap_handoff "$@"
 [ "${1:-run}" = run ] || wrap_fail "chat mode implements the run entry only, not '${1:-}'"
 wrap_budget_left
@@ -71,6 +71,11 @@ log() { printf '%s hermes[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_
 grep -q '^approvals:' "$HERMES_HOME/config.yaml" && wrap_fail "the config copy already has an approvals: section"
 printf '\napprovals:\n  mode: "manual"\n  timeout: 1\n' >> "$HERMES_HOME/config.yaml"
 wrap_log "approval: approvals.mode=manual approvals.timeout=1 (an interactive session has no deny disposition at v2026.9.24; the card fails closed as BLOCKED after 1 s, no guardian model call; limit: it fails closed for an agent that does not write to the session's stdin, a FIFO in a private 0700 directory with fd 3 closed in the session, still reachable by a same-uid process through /proc/<pid>/fd)"
+# The no-gstack arm (harness-eval/hermes:gstack-none-chat, built with
+# GSTACK_COMMIT=none, no /opt/gstack) skipped the setup above with a
+# `gstack: none` line and runs this block unchanged, so its session has the
+# same approval disposition. The lines above this comment keep their numbers:
+# discovery.sh records the approval line's number in every panel manifest.
 export ANTHROPIC_API_KEY="$HE_MODEL_API_KEY"
 export ANTHROPIC_BASE_URL="$HE_MODEL_BASE_URL"
 hermes_version=$(hermes --version 2>/dev/null || true)

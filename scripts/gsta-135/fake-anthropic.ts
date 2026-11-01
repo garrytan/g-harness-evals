@@ -35,6 +35,13 @@
 //                                           tool is offered the answer is the
 //                                           text "fake: tool <tool> not offered"
 //                                           and the log marks the turn missing.
+//   {"raw_tool": "<name>", "input": {...}}  one tool_use block named exactly
+//                                           <name> with that input ({} without
+//                                           "input"), whether or not the request
+//                                           offers the tool: a phantom or
+//                                           malformed call, to record what the
+//                                           harness answers (internal-task). Never
+//                                           marked missing.
 //   {"status": 529, "error_type": "overloaded_error", "message": "...", "headers": {"retry-after": "1"}}
 //                                           that HTTP status with an Anthropic
 //                                           error body {type: "error", error:
@@ -55,6 +62,8 @@
 // "match" waits, as before, for a request whose tools array offers the shell
 // tool. Every other turn ({"call"}, {"status"}, or any turn with "match",
 // even "match": {}) waits for a request with a non-empty tools array.
+// A {"raw_tool"} turn is one of those: it waits for an agent request, then
+// plays its name whatever the tools array holds.
 //
 // --fail-status <code> answers every messages request with that HTTP status
 // and an Anthropic error body (the model-error test).
@@ -83,6 +92,7 @@ export type Turn = (
   | { tool: string }
   | { text: string }
   | { call: string; arguments?: Record<string, unknown> }
+  | { raw_tool: string; input?: Record<string, unknown> }
   | { status: number; error_type?: string; message?: string; headers?: Record<string, string> }
 ) & { usage?: Usage; match?: Match };
 const SHELL_TOOLS = ['exec', 'terminal', 'bash', 'shell'];
@@ -153,6 +163,7 @@ export function play(body: Record<string, unknown>, turns: Turn[], index: number
     if (!name) return { ...base, missing: true, content: [{ type: 'text', text: 'fake: no shell tool offered' }] };
     return { ...base, content: [{ type: 'tool_use', id, name, input: { command: turn.tool } }], stop_reason: 'tool_use' };
   }
+  if ('raw_tool' in turn) return { ...base, content: [{ type: 'tool_use', id, name: turn.raw_tool, input: turn.input ?? {} }], stop_reason: 'tool_use' };
   const tool = findTool(body.tools, turn.call);
   if (!tool) return { ...base, missing: true, content: [{ type: 'text', text: 'fake: tool ' + turn.call + ' not offered' }] };
   return { ...base, content: [{ type: 'tool_use', id, name: String(tool.name), input: turn.arguments ?? minimalArguments(tool.input_schema) }], stop_reason: 'tool_use' };
@@ -189,9 +200,10 @@ export function validateScript(script: unknown): Turn[] {
     const r = t as Record<string, unknown>;
     if ('status' in r) return typeof r.status === 'number';
     if ('call' in r) return typeof r.call === 'string';
+    if ('raw_tool' in r) return typeof r.raw_tool === 'string' && r.raw_tool !== '' && (r.input === undefined || (typeof r.input === 'object' && r.input !== null && !Array.isArray(r.input)));
     return 'tool' in r || 'text' in r;
   };
-  if (!Array.isArray(script) || !script.every(ok)) throw new Error('--script must be a JSON list of {"tool": cmd}, {"text": reply}, {"call": tool, "arguments"} or {"status": code} turns');
+  if (!Array.isArray(script) || !script.every(ok)) throw new Error('--script must be a JSON list of {"tool": cmd}, {"text": reply}, {"call": tool, "arguments"}, {"raw_tool": name, "input"} or {"status": code} turns');
   return script as Turn[];
 }
 

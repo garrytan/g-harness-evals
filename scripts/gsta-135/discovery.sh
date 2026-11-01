@@ -12,11 +12,27 @@
 #   panel (internal-task's approved re-measure panel): two arms that differ only by
 #   the gstack pin, 5 trials per cell in a fixed interleaved order, one
 #   metering proxy process and one lease per trial, a panel cap enforced here
-#   before every lease, and manifest.json written before trial 1.
-#     scripts/gsta-135/discovery.sh --arms baseline:<sha>,candidate:<sha> --gstack-dir <checkout> --run-id <name>
+#   before every lease, and manifest.json written before trial 1. internal-task's
+#   three-arm form, --arms none,baseline:<sha>,candidate:<sha>, adds the
+#   no-gstack arm: the same overlay harness built with GSTACK_COMMIT=none
+#   (images below), first in each cell's arm order (lease.ts order --arms), so
+#   3 tasks x 2 harnesses x 3 arms x --trials rows (144 at --trials 8; the
+#   two-arm form keeps its 96, in the same order and trial ids as before).
+#     scripts/gsta-135/discovery.sh --arms [none,]baseline:<sha>,candidate:<sha> --gstack-dir <checkout> --run-id <name>
 #                                   [--trials 5] [--hermes-mode chat] [--max-tokens 128000] [--per-trial-usd 1.00]
 #                                   [--panel-cap-usd 20] [--approval <setting>=<value>] [--ceilings <json>]
-#                                   [--runtime-preflight <json>] [--only <trial,...>] [--dry-run]
+#                                   [--runtime-preflight <json>] [--start-hook candidate] [--only <trial,...>] [--dry-run]
+#   --start-hook candidate (internal-task) runs the candidate arm with gstack's
+#   opt-in start hook (internal-task): its images are harness-eval/openclaw:gstack-
+#   <sha8>-hook and harness-eval/hermes:gstack-<sha8>-hook(-chat), built with
+#   --build-arg GSTACK_START_HOOK=on, and every arm's image must then carry
+#   org.harness-eval.gstack.start_hook explicitly (on for the candidate, off
+#   for baseline and none; an image built before the label cannot be in a hook
+#   panel), else exit 2. Without the flag an absent label counts as off and a
+#   label of on is refused. The manifest then records start_hook per arm and
+#   the rule; the wrapper's own gate (an inactive hook is exit 2 before any
+#   model request) makes a hook that did not turn on an infra row, never a
+#   score. The flag is panel-only.
 #   --pin, --lease-usd and --qm are discovery-only and refused in panel mode
 #   (exit 64): the panel's lease is per_trial_usd + R_max and its images come
 #   from --arms. Test hooks, read from the environment: HE_PROXY_GATEWAY (the
@@ -24,7 +40,9 @@
 #   reach the proxy only at the bridge gateway, so this is for runs with a
 #   stubbed docker on PATH), HE_PROXY_PORT (the first port, default 8797) and
 #   HE_PROXY_UPSTREAM (passed to the proxy as --upstream anthropic=<url>, so a
-#   trial runs against scripts/gsta-135/fake-anthropic.ts).
+#   trial runs against scripts/gsta-135/fake-anthropic.ts). The panel manifest
+#   records it as upstream (default when unset), and panel-score.ts refuses a
+#   manifest whose upstream is not default.
 #
 # A run directory that already holds anything is never reused: a second
 # invocation with the same run id is refused, so one ledger, one usage log and
@@ -39,13 +57,17 @@
 # otherwise they are rows with termination not_run:register_failed.
 #
 # Panel arms and images: the candidate SHA must contain the baseline SHA in
-# --gstack-dir (git merge-base --is-ancestor; equal SHAs are allowed with a
-# warning, for dry runs), both must resolve, and the images are
-# harness-eval/<h>:gstack-<sha8> (hermes: -chat suffix in chat mode); a paid
-# run refuses when an image is missing, a dry run records it as missing. An
-# image that exists must carry the label org.harness-eval.gstack.commit equal
-# to the arm's full SHA and (hermes) org.harness-eval.gstack.hermes_mode equal
-# to --hermes-mode, else exit 2. The manifest records each image's id
+# --gstack-dir (git merge-base --is-ancestor), both must resolve, and they
+# must differ: equal SHAs are refused with exit 2 (the arms would not differ)
+# except in a dry run or a run against a fake upstream (HE_PROXY_UPSTREAM on a
+# loopback or docker-bridge http:// URL, no paid request), which only warn. The images are
+# harness-eval/<h>:gstack-<sha8> (hermes: -chat suffix in chat mode), and for
+# the none arm harness-eval/openclaw:gstack-none and
+# harness-eval/hermes:gstack-none (-chat in chat mode); a paid run refuses
+# when an image is missing, a dry run records it as missing. An image that
+# exists must carry the label org.harness-eval.gstack.commit equal to the
+# arm's full SHA (none for the none arm) and (hermes, every arm)
+# org.harness-eval.gstack.hermes_mode equal to --hermes-mode, else exit 2. The manifest records each image's id
 # (docker image inspect .Id); every trial is dispatched by that id, never by
 # the tag, after the tag is checked against the manifest's id again (a retag
 # mid-run writes the trial as infra_error, stops the run and exits 2).
@@ -94,7 +116,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 pin=bd8907d6 lease=10 cap=128000 run_id=gsta-135-discovery-2026-10 with_qm=0 only='' dry=0 pin_set=0 lease_set=0
-mode=discovery arms='' trials=5 gstack_dir='' hermes_mode=chat per_trial=1.00 panel_cap=20 approval='' ceilings_file=results/gsta-135/preflight/ceilings.json runtime_file=''
+mode=discovery arms='' trials=5 gstack_dir='' hermes_mode=chat per_trial=1.00 panel_cap=20 approval='' ceilings_file=results/gsta-135/preflight/ceilings.json runtime_file='' start_hook_arm=''
 while [ $# -gt 0 ]; do
   case "$1" in
     --discovery) shift ;;
@@ -108,6 +130,7 @@ while [ $# -gt 0 ]; do
     --approval) approval=$2; shift 2 ;;
     --ceilings) ceilings_file=$2; shift 2 ;;
     --runtime-preflight) runtime_file=$2; shift 2 ;;
+    --start-hook) start_hook_arm=$2; shift 2 ;;
     --pin) pin=$2; pin_set=1; shift 2 ;;
     --lease-usd) lease=$2; lease_set=1; shift 2 ;;
     --run-id) run_id=$2; shift 2 ;;
@@ -130,14 +153,19 @@ digest_of() { local id; id=$(docker image inspect "$1" -f '{{.Id}}' 2>/dev/null)
 label_of() { docker image inspect "$1" -f "{{index .Config.Labels \"$2\"}}" 2>/dev/null || true; }
 
 # Panel validation: everything that can be refused without the key is refused here.
+[ -z "$start_hook_arm" ] || [ "$mode" = panel ] || die 64 "--start-hook is a panel option (it names the --arms arm whose image runs gstack's start hook)"
 if [ "$mode" = panel ]; then
+  [ -z "$start_hook_arm" ] || [ "$start_hook_arm" = candidate ] || die 64 "--start-hook takes candidate, the arm whose image runs gstack's start hook: $start_hook_arm"
   [ "$pin_set$lease_set$with_qm" = 000 ] || die 64 "--pin, --lease-usd and --qm are discovery-only options; the panel's lease is per_trial_usd + R_max and its images come from --arms"
-  [[ $arms =~ ^baseline:([0-9a-fA-F]{7,40}),candidate:([0-9a-fA-F]{7,40})$ ]] || die 64 "--arms must be baseline:<sha>,candidate:<sha>: $arms"
-  base_ref=${BASH_REMATCH[1]} cand_ref=${BASH_REMATCH[2]}
+  [[ $arms =~ ^(none,)?baseline:([0-9a-fA-F]{7,40}),candidate:([0-9a-fA-F]{7,40})$ ]] || die 64 "--arms must be baseline:<sha>,candidate:<sha> or none,baseline:<sha>,candidate:<sha>: $arms"
+  base_ref=${BASH_REMATCH[2]} cand_ref=${BASH_REMATCH[3]}
+  panel_arms='baseline candidate'; [ -z "${BASH_REMATCH[1]}" ] || panel_arms='none baseline candidate'
   [ -n "$gstack_dir" ] && [ -e "$gstack_dir/.git" ] || die 64 "--gstack-dir must name the gstack git checkout the SHAs live in"
   base_sha=$(git -C "$gstack_dir" rev-parse --verify --quiet "$base_ref^{commit}") || die 2 "baseline $base_ref does not resolve to a commit in $gstack_dir"
   cand_sha=$(git -C "$gstack_dir" rev-parse --verify --quiet "$cand_ref^{commit}") || die 2 "candidate $cand_ref does not resolve to a commit in $gstack_dir"
-  if [ "$base_sha" = "$cand_sha" ]; then warn "baseline and candidate are the same commit $base_sha; the arms will not differ (fine for a dry run, meaningless for a paid one)"
+  if [ "$base_sha" = "$cand_sha" ]; then
+    [ "$dry" = 1 ] || [[ ${HE_PROXY_UPSTREAM:-} =~ ^http://(127\.0\.0\.1|localhost|172\.17\.0\.1)(:[0-9]+)?(/|$) ]] || die 2 "baseline and candidate are the same commit $base_sha; the arms would not differ, so a paid panel is refused (a dry run allows it with a warning)"
+    warn "baseline and candidate are the same commit $base_sha; the arms will not differ (fine for a dry run, meaningless for a paid one)"
   else git -C "$gstack_dir" merge-base --is-ancestor "$base_sha" "$cand_sha" || die 2 "candidate $cand_sha does not contain baseline $base_sha (git merge-base --is-ancestor in $gstack_dir); internal-task supplies a candidate rebased onto the freeze SHA"; fi
   [[ $hermes_mode =~ ^(oneshot|chat)$ ]] || die 64 "--hermes-mode must be oneshot or chat: $hermes_mode"
   [[ $trials =~ ^[1-9][0-9]*$ ]] || die 64 "--trials must be a positive integer: $trials"
@@ -145,10 +173,11 @@ if [ "$mode" = panel ]; then
   [ -z "$approval" ] || [[ $approval == *=* ]] || die 64 "--approval must be <setting>=<value>: $approval"
   [ "${#run_id}" -le 90 ] || die 64 "--run-id must be at most 90 characters so every lease id <run id>.<trial id> stays inside the ledger's 128"
   declare -A img_tag img_digest
-  for arm in baseline candidate; do
-    sha=$([ "$arm" = baseline ] && echo "$base_sha" || echo "$cand_sha")
-    img_tag[$arm.openclaw]="harness-eval/openclaw:gstack-${sha:0:8}"
-    img_tag[$arm.hermes]="harness-eval/hermes:gstack-${sha:0:8}$([ "$hermes_mode" = chat ] && echo -chat)"
+  for arm in $panel_arms; do
+    case "$arm" in none) sha=none ;; baseline) sha=$base_sha ;; candidate) sha=$cand_sha ;; esac
+    hook=off suffix=''; [ "$arm" != "$start_hook_arm" ] || { hook=on suffix=-hook; }
+    img_tag[$arm.openclaw]="harness-eval/openclaw:gstack-${sha:0:8}$suffix"
+    img_tag[$arm.hermes]="harness-eval/hermes:gstack-${sha:0:8}$suffix$([ "$hermes_mode" != chat ] || echo -chat)"
     for h in openclaw hermes; do
       img_digest[$arm.$h]=$(digest_of "${img_tag[$arm.$h]}")
       if [ "${img_digest[$arm.$h]}" = missing ]; then
@@ -156,13 +185,17 @@ if [ "$mode" = panel ]; then
         continue
       fi
       label=$(label_of "${img_tag[$arm.$h]}" org.harness-eval.gstack.commit)
-      [ "$label" = "$sha" ] || die 2 "image ${img_tag[$arm.$h]} carries org.harness-eval.gstack.commit=${label:-<none>}, not the $arm SHA $sha; rebuild it from that commit"
+      [ "$label" = "$sha" ] || { [ "$arm" != none ] || die 2 "image ${img_tag[$arm.$h]} carries org.harness-eval.gstack.commit=${label:-<none>}, not none; rebuild it with --build-arg GSTACK_COMMIT=none"; die 2 "image ${img_tag[$arm.$h]} carries org.harness-eval.gstack.commit=${label:-<none>}, not the $arm SHA $sha; rebuild it from that commit"; }
+      label=$(label_of "${img_tag[$arm.$h]}" org.harness-eval.gstack.start_hook)
+      if [ -n "$start_hook_arm" ]; then [ "$label" = "$hook" ] || die 2 "image ${img_tag[$arm.$h]} carries org.harness-eval.gstack.start_hook=${label:-<none>}, not $hook (--start-hook $start_hook_arm); rebuild it with --build-arg GSTACK_START_HOOK=$hook"
+      else [ "$label" != on ] || die 2 "image ${img_tag[$arm.$h]} carries org.harness-eval.gstack.start_hook=on, but no --start-hook names the $arm arm"; fi
       [ "$h" != hermes ] || { label=$(label_of "${img_tag[$arm.$h]}" org.harness-eval.gstack.hermes_mode); [ "$label" = "$hermes_mode" ] || die 2 "image ${img_tag[$arm.$h]} carries org.harness-eval.gstack.hermes_mode=${label:-<none>}, not --hermes-mode $hermes_mode; rebuild it in that mode"; }
     done
   done
   lease_json=$(bun scripts/gsta-135/lease.ts r-max --model "$model" --max-tokens "$cap" --per-trial-usd "$per_trial")
   r_max=$(jq -r .r_max_usd <<< "$lease_json"); lease=$(jq -r .lease_usd <<< "$lease_json")
-  order_json=$(bun scripts/gsta-135/lease.ts order --trials "$trials")
+  order_args=(); [ "$panel_arms" = 'baseline candidate' ] || order_args=(--arms "${panel_arms// /,}")
+  order_json=$(bun scripts/gsta-135/lease.ts order --trials "$trials" "${order_args[@]}")
   if [ -s "$ceilings_file" ]; then ceilings_json=$(jq -c '{task1, task2, task3, per_harness, source, derived_at}' "$ceilings_file")
   elif [ "$dry" = 1 ]; then warn "no ceilings file at $ceilings_file (run scripts/gsta-135/ceilings.ts); the manifest carries internal-task's placeholders"; ceilings_json=$(bun scripts/gsta-135/lease.ts placeholder-ceilings)
   else die 2 "no ceilings file at $ceilings_file; run scripts/gsta-135/ceilings.ts before a paid panel"; fi
@@ -173,7 +206,7 @@ if [ "$mode" = panel ]; then
   elif [ "$dry" = 1 ]; then warn "harnesses/_gstack/wrapper-lib.sh has no 'export GSTACK_SESSION_KIND=' line yet; marker recorded as null"
   else die 2 "harnesses/_gstack/wrapper-lib.sh exports no GSTACK_SESSION_KIND; the test-run marker must exist before a paid panel"; fi
   # The Hermes chat-mode approval disposition: --approval, else the overlay adapter's own 'approval: <key>=<value> ...' log line read from its source.
-  approval_json=null approval_src="--approval (the chat-mode config copy, the same in both arms)"
+  approval_json=null approval_src="--approval (the chat-mode config copy, the same in every arm)"
   if [ -z "$approval" ] && [ "$hermes_mode" = chat ] && approval_line=$(grep -n -m1 -E 'wrap_log "approval: ' harnesses/hermes/gstack/adapter.sh); then
     approval=$(grep -oE '\b[a-z_.]+=[A-Za-z0-9_.-]+' <<< "${approval_line#*:}" | paste -sd ' ')
     approval_src="harnesses/hermes/gstack/adapter.sh:${approval_line%%:*} (the source line, read before trial 1; each Hermes trial's gstack-register.log carries the approval: line)"
@@ -198,7 +231,8 @@ cells=$out/cells.jsonl
 mkdir -p "$out/trials" "$out/evidence" "$tasks"
 tree=$(git rev-parse HEAD); dirty=$([ -z "$(git status --porcelain)" ] && echo false || echo true)
 git status --porcelain > "$out/tree-status.txt"
-image_of() { case "$2" in gstack) echo "harness-eval/$1:gstack-$pin" ;; baseline|candidate) echo "${img_tag[$2.$1]}" ;; *) echo "harness-eval/$1:dev" ;; esac; }
+# The none arm is the :dev image in discovery mode and the GSTACK_COMMIT=none overlay in a three-arm panel.
+image_of() { case "$mode.$2" in *.gstack) echo "harness-eval/$1:gstack-$pin" ;; panel.baseline|panel.candidate|panel.none) echo "${img_tag[$2.$1]}" ;; *) echo "harness-eval/$1:dev" ;; esac; }
 
 for t in 1 2 3; do bash scripts/gsta-135/make-task.sh "$t" "$tasks/t$t" >/dev/null; done
 
@@ -207,11 +241,14 @@ if [ "$mode" = panel ]; then
   jq -n --arg run_id "$run_id" --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg tree "$tree" --argjson dirty "$dirty" --arg base_sha "$base_sha" --arg cand_sha "$cand_sha" \
     --arg bo "${img_tag[baseline.openclaw]}" --arg bod "${img_digest[baseline.openclaw]}" --arg bh "${img_tag[baseline.hermes]}" --arg bhd "${img_digest[baseline.hermes]}" \
     --arg co "${img_tag[candidate.openclaw]}" --arg cod "${img_digest[candidate.openclaw]}" --arg ch "${img_tag[candidate.hermes]}" --arg chd "${img_digest[candidate.hermes]}" \
+    --argjson with_none "$([ "$panel_arms" = 'baseline candidate' ] && echo false || echo true)" \
+    --arg no "${img_tag[none.openclaw]:-}" --arg nod "${img_digest[none.openclaw]:-}" --arg nh "${img_tag[none.hermes]:-}" --arg nhd "${img_digest[none.hermes]:-}" \
     --arg hermes_mode "$hermes_mode" --arg model "$model" --argjson max_tokens "$cap" --argjson per_trial "$per_trial" --argjson r_max "$r_max" --argjson lease "$lease" --argjson panel_cap "$panel_cap" \
     --argjson lease_inputs "$(jq -c .inputs <<< "$lease_json")" --argjson marker "$marker_json" --argjson approval "$approval_json" --argjson runtime "$runtime_json" \
-    --argjson order "$order_json" --argjson ceilings "$ceilings_json" --argjson trials "$trials" --argjson dry "$dry" \
-    '{run_id:$run_id, created_at:$created, dry_run:($dry==1), tree:$tree, tree_dirty:$dirty, model:$model,
-      arms:{baseline:{gstack_sha:$base_sha, images:{openclaw:{tag:$bo,digest:$bod}, hermes:{tag:$bh,digest:$bhd}}}, candidate:{gstack_sha:$cand_sha, images:{openclaw:{tag:$co,digest:$cod}, hermes:{tag:$ch,digest:$chd}}}},
+    --argjson order "$order_json" --argjson ceilings "$ceilings_json" --argjson trials "$trials" --argjson dry "$dry" --arg hook_arm "$start_hook_arm" --arg upstream "${HE_PROXY_UPSTREAM:-}" \
+    '{run_id:$run_id, created_at:$created, dry_run:($dry==1), upstream:(if $upstream == "" then "default" else $upstream end), tree:$tree, tree_dirty:$dirty, model:$model,
+      arms:((if $with_none then {none:{gstack_sha:"none", images:{openclaw:{tag:$no,digest:$nod}, hermes:{tag:$nh,digest:$nhd}}}} else {} end) + {baseline:{gstack_sha:$base_sha, images:{openclaw:{tag:$bo,digest:$bod}, hermes:{tag:$bh,digest:$bhd}}}, candidate:{gstack_sha:$cand_sha, images:{openclaw:{tag:$co,digest:$cod}, hermes:{tag:$ch,digest:$chd}}}} | if $hook_arm == "" then . else with_entries(.value.start_hook = (if .key == $hook_arm then "on" else "off" end)) end),
+      start_hook:(if $hook_arm == "" then null else {arm:$hook_arm, rule:"the \($hook_arm) arm'"'"'s images are built with --build-arg GSTACK_START_HOOK=on (label org.harness-eval.gstack.start_hook=on, tag suffix -hook) and every other arm'"'"'s with off; the wrapper exports GSTACK_HARNESS_START_HOOK=1 or 0 from the image, so nothing else can flip it, and refuses the trial with exit 2 before any model request when the installed gstack tree is not at the arm'"'"'s SHA or when, with the hook on, setup exits 4 (HARNESS_HOOK_INACTIVE) or gstack-harness status does not show the hook active; such a trial is infra:no_model_request(harness_error), never a score. Each trial'"'"'s gstack-register.log carries one start_hook: line"} end),
       hermes_mode:$hermes_mode, hermes_claim:"chat mode under the overlay adapter only; the counted Hermes entries stay one-shot and the discovery one-shot rows (0 opens) stand beside this result",
       max_tokens:$max_tokens, max_tokens_rule:"the proxy refuses a request stating more than max_tokens with 400 before any reservation; the preflight asserts the first request of each harness carries exactly this value",
       per_trial_usd:$per_trial, r_max_usd:$r_max, r_max_inputs:$lease_inputs, lease_usd:$lease, lease_id_form:"<run_id>.<trial_id>, one metering proxy process and one lease per trial in one ledger; --new-run on each start closes a lease a killed trial left open; each finalized lease is closed with budget-ledger.ts close",

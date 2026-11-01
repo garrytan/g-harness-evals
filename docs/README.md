@@ -23,6 +23,7 @@ harness-evals v0.0.12. The index of this directory: one line per page, saying wh
   - [2026-10-25-v02-pilot/](benchmarks/2026-10-25-v02-pilot/report.md): `v02-pilot-2026-10`, 2026-10-25; the v0.2 dev-split pilot on Haiku, four cells, 180 trials.
   - [2026-10-25-v02-heldout/](benchmarks/2026-10-25-v02-heldout/report.md): `v02-heldout-2026-10`, 2026-10-26; gbrain-told against none on the 15 sealed v0.2 tasks, three harnesses on Sonnet and Haiku, 900 trials.
   - [2026-10-26-gbrain-memory/](benchmarks/2026-10-26-gbrain-memory/report.md): `gbrain-memory-2026-10`, 2026-10-26 to 2026-10-27; a member brain that fills during the scenario against none, three harnesses on Sonnet and Haiku, 12 cells, 900 trials on nine Ubicloud shards (preregistered in #89). Beside it, [recall-rereading/](benchmarks/2026-10-26-gbrain-memory/recall-rereading/README.md) is a labelled re-reading of its receipts (internal-task, written by `scripts/recall-audit.ts`), not a counted result.
+  - [2026-11-01-tool-discipline-start/](benchmarks/2026-11-01-tool-discipline-start/PREREGISTRATION.md): `tool-discipline-start-2026-11`, preregistered 2026-11-01; gstack's start hook on OpenClaw and Hermes chat, Opus 5.5, no gstack against gstack `482ffd14` against gstack `b9fda18c` with the hook on, 144 trials, hard cap $28; preregistration only, no results directory yet.
 - [budget-ledger.md](budget-ledger.md): the program's spend ledger, one row per lane of paid work (written 2026-10-26 beside this index).
 - [comparing-runs.md](comparing-runs.md): how two cells or two runs are compared: the paired, task-clustered estimator, the sign-flip test, Holm, the minimum detectable difference, what "not distinguished at N tasks" means, each comparison script's flags and outputs, and the exact commands every counted run's report names.
 - [decisions.md](decisions.md): the decisions by Garry Tan and the Captain that shaped a counted run, one line each (written 2026-10-26 beside this index).
@@ -40,9 +41,18 @@ harness-evals v0.0.12. The index of this directory: one line per page, saying wh
 - [tasks.md](tasks.md): the multi-user task format: families, the access model, the predicate library, oracles and the mutation contract, task sets (v0.1, v0.2, the generated v0.3 set, the QM probes) and how a cell selects one.
 - [gstack-laneb.md](gstack-laneb.md): the Lane B bridge (internal-task): runs the pinned gstack-evals Lane B agent on gstack-native and Terminal-Bench 2 tasks under our metering, leases and Ubicloud lane.
 - [gstack-native-format.md](gstack-native-format.md): the gstack-native repo task format the bridge materializes.
+- [tool-discipline/](tool-discipline/README.md): free mining over committed receipts (internal-task) of invented tools, bad arguments, wrong names, broken helper calls and skipped gstack skill starts, with the hand-check rules, the labellers' agreement and what each harness replies to a bad call ([replies.md](tool-discipline/replies.md)).
 - [ubicloud.md](ubicloud.md): the Ubicloud shard lane: the scripts that put one shard per VM, how a run fans out and comes back, the check lane, costs and limits.
 
 ## Changelog
+
+### 2026-11-01: tool-discipline-start-2026-11 listed (internal-task)
+
+The benchmarks list gains the start-hook panel's folder, preregistration only. Why: the folder is new on this branch.
+
+### 2026-10-31: tool-discipline/ listed (internal-task)
+
+Added the line for the new tool-discipline pages. Why: the index says one line per page, and the pages were new.
 
 ### 2026-10-29: repo-tasks.md listed (internal-task)
 

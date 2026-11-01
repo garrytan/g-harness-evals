@@ -321,6 +321,16 @@ describe('panel report', () => {
     expect({ status: r.status, stderr: r.stderr }).toEqual({ status: 0, stderr: '' });
     return fs.readFileSync(join(dir, 'report.md'), 'utf8') as string;
   }
+  test('a three-arm manifest (internal-task) lists the none arm first and says three arms', () => {
+    const two = (manifest as any).arms;
+    (manifest as any).arms = { none: { gstack_sha: 'none', images: { openclaw: { tag: 'harness-eval/openclaw:gstack-none', digest: 'sha256:3333' } } }, ...two };
+    try {
+      const md = render(panelRows((h, t, i) => m(1, 1, true, null, 1)));
+      expect(md).toContain('Three arms: no gstack (none), and two that differ only by the gstack pin (baseline: main at freeze; candidate: internal-task)');
+      expect(md).toContain('- none: gstack none; images openclaw harness-eval/openclaw:gstack-none (sha256:3333)\n- baseline: gstack aaaa1111; ');
+    } finally { (manifest as any).arms = two; }
+    expect(render(panelRows((h, t, i) => m(1, 1, true, null, 1)))).toContain('Two arms that differ only by the gstack pin');
+  });
   test('counts over the planned n, bars per harness, the inconclusive wording, every termination classed, deviations', () => {
     const rows = panelRows((h, t, i) => h === 'openclaw' ? m(1, t === 1 && i === 4 ? 0 : 1, true, null, 1) : m(i <= 3 ? 1 : 0, i <= 2 ? 1 : 0, true, null, i <= 3 ? 1 : 0));
     const md = render(rows, 'panel cap reached before order 57');

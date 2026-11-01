@@ -7,7 +7,9 @@
  * runner/ledger/budget-ledger.ts), never from a second formula.
  *
  *   bun scripts/gsta-135/lease.ts r-max --model claude-opus-5-5 --max-tokens 128000 [--per-trial-usd 1.00] [--context-tokens 200000]
- *   bun scripts/gsta-135/lease.ts order --trials 5
+ *   bun scripts/gsta-135/lease.ts order --trials 5 [--arms none,baseline,candidate]
+ *       the panel order; without --arms the two-arm order of internal-task (baseline, candidate), byte for byte; with the three-arm
+ *       list (internal-task, the no-gstack arm first) each cell gains a none trial with trial_id gsta135-<harness>-t<task>-none-<i>
  *   bun scripts/gsta-135/lease.ts cap-check --lease <usd> --cap <usd> (--budget-ledger <path> --run-id <run id> | --settled <usd> --unknown <usd>)
  *       prints {fits, settled, unknown}; exit 0 fits, 1 does not. With a ledger, settled is the committed value of the run's
  *       settled entries and unknown the reserved value of its open ones (an undrained request), read for the run prefix.
@@ -102,13 +104,18 @@ export interface OrderRow { order: number; trial_id: string; harness: string; ta
 export const PANEL_TASKS = [1, 2, 3] as const;
 export const PANEL_HARNESSES = ['openclaw', 'hermes'] as const;
 export const PANEL_ARMS = ['baseline', 'candidate'] as const;
+/** The three-arm panel (internal-task): the no-gstack arm, then the two gstack arms. */
+export const PANEL_ARMS_WITH_NONE = ['none', 'baseline', 'candidate'] as const;
+const ARM_LISTS: ReadonlyArray<readonly string[]> = [PANEL_ARMS, PANEL_ARMS_WITH_NONE];
 export const timeBudgetS = (task: number): number => (task === 3 ? 120 : 600);
 
-/** The fixed interleaving: trial_index outer, then task, then harness, then arm. A pure function of the trial count. */
-export function panelOrder(trials: number): OrderRow[] {
+/** The fixed interleaving: trial_index outer, then task, then harness, then arm. A pure function of the trial count and the arm
+ *  list, which is PANEL_ARMS (the default, internal-task's two-arm order) or PANEL_ARMS_WITH_NONE; any other list is refused. */
+export function panelOrder(trials: number, arms: readonly string[] = PANEL_ARMS): OrderRow[] {
   if (!Number.isInteger(trials) || trials < 1) throw new Error('--trials must be a positive integer');
+  if (!ARM_LISTS.some(l => l.join(',') === arms.join(','))) throw new Error('--arms must be ' + ARM_LISTS.map(l => l.join(',')).join(' or ') + ', got ' + JSON.stringify(arms.join(',')));
   const rows: OrderRow[] = [];
-  for (let i = 1; i <= trials; i++) for (const task of PANEL_TASKS) for (const harness of PANEL_HARNESSES) for (const arm of PANEL_ARMS) {
+  for (let i = 1; i <= trials; i++) for (const task of PANEL_TASKS) for (const harness of PANEL_HARNESSES) for (const arm of arms) {
     rows.push({ order: rows.length + 1, trial_id: `gsta135-${harness}-t${task}-${arm}-${i}`, harness, task, arm, trial_index: i, time_budget_s: timeBudgetS(task) });
   }
   return rows;
@@ -224,7 +231,8 @@ if (import.meta.main) {
       const perTrial = num('--per-trial-usd', 1);
       console.log(JSON.stringify({ r_max_usd: r.r_max_usd, lease_usd: leaseUsd(perTrial, r.r_max_usd), per_trial_usd: perTrial, inputs: r.inputs }));
     } else if (cmd === 'order') {
-      console.log(JSON.stringify(panelOrder(num('--trials', 5))));
+      const arms = arg('--arms');
+      console.log(JSON.stringify(panelOrder(num('--trials', 5), arms === undefined ? PANEL_ARMS : arms.split(','))));
     } else if (cmd === 'cap-check') {
       const ledger = arg('--budget-ledger'); const runId = arg('--run-id');
       if ((ledger === undefined) !== (runId === undefined)) throw new Error('--budget-ledger and --run-id go together');

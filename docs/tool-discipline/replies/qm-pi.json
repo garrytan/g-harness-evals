@@ -1,0 +1,189 @@
+{
+  "schema": "tool-discipline-replies/1",
+  "target": "qm-pi",
+  "harness": "qm",
+  "mode": "pi",
+  "model": "claude-opus-5-5",
+  "task": "si-01-marrow-agrisupply-site",
+  "image": "harness-eval/qm:dev",
+  "image_id": "sha256:f812bf316419fbc12db1e2127639f194e7622a47a5296f635fa41c4d473d08c1",
+  "harness_version": "main@b6786d67",
+  "harness_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7",
+  "harness_evals_commit": "3a9b403be13b2e9a61b9a23c61e90cd7cd669b9a",
+  "dirty": true,
+  "run": {
+    "run_id": "anatomy-capture-tool-discipline-qm-20261031t201037",
+    "plan_exit": 0,
+    "run_exit": 0
+  },
+  "fake_log_sha256": "89a480274475a87ea7f2e7e6c9c9ef147cb2c37077613ea6b1e53024ea15ab47",
+  "agent_requests": 7,
+  "events_lines": 9,
+  "note": "tool_result is the block the harness sent in the request after the scripted call, read from the fake model log, with token-like strings replaced by [scrubbed]. world_events are the world events.jsonl lines written between the scripted call and that request.",
+  "turns": [
+    {
+      "label": "1 unknown tool",
+      "played": {
+        "raw_tool": "frobnicate",
+        "input": {}
+      },
+      "request_index": 0,
+      "next_request_index": 1,
+      "tool_use_id": "toolu_fake_1",
+      "tool_result": {
+        "type": "tool_result",
+        "tool_use_id": "toolu_fake_1",
+        "content": "Tool frobnicate not found",
+        "is_error": true,
+        "cache_control": {
+          "type": "ephemeral",
+          "ttl": "1h"
+        }
+      },
+      "is_error": true,
+      "text_bytes": 25,
+      "called_name_offered_next": false,
+      "offered_names_in_text": [],
+      "world_events": []
+    },
+    {
+      "label": "2 skills_read",
+      "played": {
+        "raw_tool": "skills_read",
+        "input": {
+          "name": "review"
+        }
+      },
+      "request_index": 1,
+      "next_request_index": 2,
+      "tool_use_id": "toolu_fake_2",
+      "tool_result": {
+        "type": "tool_result",
+        "tool_use_id": "toolu_fake_2",
+        "content": "Tool skills_read not found",
+        "is_error": true,
+        "cache_control": {
+          "type": "ephemeral",
+          "ttl": "1h"
+        }
+      },
+      "is_error": true,
+      "text_bytes": 26,
+      "called_name_offered_next": false,
+      "offered_names_in_text": [],
+      "world_events": []
+    },
+    {
+      "label": "3 world call missing a required argument (text)",
+      "played": {
+        "raw_tool": "mcp_call",
+        "input": {
+          "server": "world",
+          "tool": "post_message",
+          "args": {
+            "channel": "DANATOM0001"
+          }
+        }
+      },
+      "request_index": 2,
+      "next_request_index": 3,
+      "tool_use_id": "toolu_fake_3",
+      "tool_result": {
+        "type": "tool_result",
+        "tool_use_id": "toolu_fake_3",
+        "content": "[error] mcp tool post_message error: MCP error -32602: Input validation error: Invalid arguments for tool post_message: Invalid input: expected string, received undefined at text",
+        "is_error": false,
+        "cache_control": {
+          "type": "ephemeral",
+          "ttl": "1h"
+        }
+      },
+      "is_error": false,
+      "text_bytes": 178,
+      "called_name_offered_next": true,
+      "offered_names_in_text": [],
+      "world_events": []
+    },
+    {
+      "label": "4 world call with a wrong channel",
+      "played": {
+        "raw_tool": "mcp_call",
+        "input": {
+          "server": "world",
+          "tool": "post_message",
+          "args": {
+            "channel": "@nobody",
+            "text": "tool-discipline probe"
+          }
+        }
+      },
+      "request_index": 3,
+      "next_request_index": 4,
+      "tool_use_id": "toolu_fake_4",
+      "tool_result": {
+        "type": "tool_result",
+        "tool_use_id": "toolu_fake_4",
+        "content": "[error] mcp tool post_message error: {\"error\":\"channel_not_found\",\"message\":\"channel_not_found\"}",
+        "is_error": false,
+        "cache_control": {
+          "type": "ephemeral",
+          "ttl": "1h"
+        }
+      },
+      "is_error": false,
+      "text_bytes": 96,
+      "called_name_offered_next": true,
+      "offered_names_in_text": [],
+      "world_events": [
+        {
+          "seq": 4,
+          "trial_id": "anatomy-capture-tool-discipline-qm-20261031t201037/qm-tool-discipline/si-01-marrow-agrisupply-site/r1",
+          "wall_ts": "2026-10-31T20:10:54.697Z",
+          "sim_ts": "2026-10-14T09:00:00-05:00",
+          "args_digest": "f86afbe46aca6977d51172297cd28d7d3ee6992270e9d95a715171fe5da2bde7",
+          "actor": "assistant",
+          "via": "mcp",
+          "tool": "chat.postMessage",
+          "kind": "deny",
+          "args": {
+            "channel": "@nobody",
+            "text": "tool-discipline probe"
+          },
+          "outcome": "denied",
+          "error": "channel_not_found"
+        }
+      ]
+    },
+    {
+      "label": "5 shell call piping a helper",
+      "played": {
+        "raw_tool": "execute",
+        "input": {
+          "command": "/bin/true 2>&1 | head -40",
+          "purpose": "tool-discipline probe"
+        }
+      },
+      "request_index": 4,
+      "next_request_index": 5,
+      "tool_use_id": "toolu_fake_5",
+      "tool_result": {
+        "type": "tool_result",
+        "tool_use_id": "toolu_fake_5",
+        "content": "this scope has no default sandbox; use sandbox list, create, set_default, then retry before reporting blocked",
+        "is_error": true,
+        "cache_control": {
+          "type": "ephemeral",
+          "ttl": "1h"
+        }
+      },
+      "is_error": true,
+      "text_bytes": 109,
+      "exit_code": null,
+      "called_name_offered_next": true,
+      "offered_names_in_text": [
+        "sandbox"
+      ],
+      "world_events": []
+    }
+  ]
+}

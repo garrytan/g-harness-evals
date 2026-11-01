@@ -18,6 +18,27 @@
 # openclaw` with OPENCLAW_STATE_DIR as the adapter exports it. The probe keeps
 # the knob: HE_GSTACK_OPENCLAW_ROOTS=parent (default) | exec | both, each root
 # registered by one setup run with OPENCLAW_STATE_DIR pointed at it.
+#
+# The no-gstack arm's image (harness-eval/openclaw:gstack-none, built with
+# GSTACK_COMMIT=none) has no /opt/gstack: wrap_gstack_present logs
+# `gstack: none` and the wrapper hands off without registering anything, after
+# the same marker and runtime check as the gstack arms.
+#
+# Every arm first seeds $state/openclaw.json with the template the counted
+# adapter copies when the file is absent (wrap_seed_config), so the arms differ
+# only by gstack and the start hook. The start hook arm (internal-task, image built
+# with GSTACK_START_HOOK=on, gstack b9fda18c or later) has setup turn on
+# gstack's gstack-start plugin: gstack writes it under
+# $state/extensions/gstack-start and enables it in $state/openclaw.json with
+# `openclaw config set`, keeping the template's settings and its ${VAR}
+# references. gstack gives no hook to a run with OPENCLAW_CONFIG_PATH set, even
+# to the profile's own file (lib/harness-register.ts hookPlan), and the :dev
+# image sets it to exactly $state/openclaw.json, so setup runs without it then;
+# the run entry's --config names the same file. The keyless smoke (2026-11-01)
+# showed the exec turn (--state-dir $state/exec) loads the plugin and its
+# first request carries the note. With the hook on, roots must be parent and
+# gstack-harness status must show the hook active, else exit 2 before any
+# model request (wrap_start_hook_check).
 set -euo pipefail
 . /opt/harness/gstack/wrapper-lib.sh
 
@@ -28,12 +49,20 @@ roots=${HE_GSTACK_OPENCLAW_ROOTS:-parent}
 case "$roots" in parent) dirs="$state" ;; exec) dirs="$state/exec" ;; both) dirs="$state $state/exec" ;; *) wrap_fail "HE_GSTACK_OPENCLAW_ROOTS must be parent, exec or both, not '$roots'" ;; esac
 wrap_mark_test_run
 wrap_runtime_check
+wrap_seed_config "$state/openclaw.json" openclaw.json openclaw.openai.json
+wrap_gstack_present || { wrap_log "openclaw overlay: gstack none bun $(bun --version 2>/dev/null || echo none) roots=$roots"; wrap_handoff "$@"; }
 wrap_log "openclaw overlay: gstack $(cat "$GSTACK_DIR/VERSION") at $(git -C "$GSTACK_DIR" rev-parse HEAD) bun $(bun --version 2>/dev/null || echo none) roots=$roots"
 
+hook_env=()
+if [ "$GSTACK_HARNESS_START_HOOK" = 1 ]; then
+  [ "$roots" = parent ] || wrap_fail "the start hook goes into the adapter's own profile $state; HE_GSTACK_OPENCLAW_ROOTS=$roots is refused with it"
+  [ "${OPENCLAW_CONFIG_PATH:-$state/openclaw.json}" = "$state/openclaw.json" ] || wrap_fail "OPENCLAW_CONFIG_PATH=$OPENCLAW_CONFIG_PATH is not the profile's own $state/openclaw.json, where the start hook's settings land"
+  hook_env=(-u OPENCLAW_CONFIG_PATH)
+fi
 for root in $dirs; do
-  OPENCLAW_STATE_DIR="$root" "$GSTACK_DIR/setup" --host openclaw --no-browser > "$HE_LOG_DIR/gstack-setup.log" 2>&1 || wrap_fail "setup --host openclaw (OPENCLAW_STATE_DIR=$root) exited $? (gstack-setup.log)"
+  env "${hook_env[@]}" OPENCLAW_STATE_DIR="$root" "$GSTACK_DIR/setup" --host openclaw --no-browser > "$HE_LOG_DIR/gstack-setup.log" 2>&1 || wrap_setup_exit "openclaw (OPENCLAW_STATE_DIR=$root)" $?
   cat "$HE_LOG_DIR/gstack-setup.log" >> "$GSTACK_WRAP_LOG"
   wrap_setup_ready "$HE_LOG_DIR/gstack-setup.log" openclaw
 done
-OPENCLAW_STATE_DIR="$state" bun --no-env-file --config=/dev/null "$GSTACK_DIR/bin/gstack-harness" status >> "$GSTACK_WRAP_LOG" 2>&1 || wrap_log "gstack-harness status exited $?"
+OPENCLAW_STATE_DIR="$state" wrap_start_hook_check
 wrap_handoff "$@"
