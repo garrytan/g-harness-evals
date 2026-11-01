@@ -432,3 +432,59 @@ describe('summarize-run with a missing task tree (HE-TASK-005)', () => {
     expect(summary.families_unresolved).toEqual([`${missing} (cell a-dev, looked in ${missingDir})`]);
   }, 60_000);
 });
+
+// Issue #192: a Claude Code or Codex installer view holds the compiled gbrain its hook runs (207 MB, about 67 MiB gzipped). The view's
+// manifest.json records its sha256 and the image holds it, so the raw results bundle leaves it out; two copies (a merged sharded run
+// keeps one per shard plus gbrain-install/) would put the bundle over the 95 MiB one pushed file may hold.
+test('rawEntries leaves out the installer views\' gbrain binary, in gbrain-install/ and in every <shard>.gbrain-install/, and keeps the rest of each view', () => {
+  const raw = mkdtempSync(join(tmpdir(), 'he-raw-'));
+  tmps.push(raw);
+  const put = (rel: string, data = 'x') => { mkdirSync(join(raw, rel, '..'), { recursive: true }); writeFileSync(join(raw, rel), data); };
+  const manifest = (h: string, bin: string, digestOf = bin, binSource = `${h}/installer/home/.local/bin/gbrain`) => {
+    const files = [{ path: 'home/.local/bin/gbrain', source_path: binSource, sha256: sha256(bin) }, { path: 'home/claude/CLAUDE.md', source_path: `${h}/installer/home/claude/CLAUDE.md`, sha256: sha256('x') }];
+    const lines = [{ s: binSource, d: sha256(digestOf) }, { s: `${h}/installer/home/claude/CLAUDE.md`, d: sha256('x') }].sort((a, b) => (a.s < b.s ? -1 : 1)).map((l) => `${l.s} ${l.d}\n`).join('');
+    return JSON.stringify({ view_digest: sha256(lines), files });
+  };
+  const record = (harness: string, bin: string) => JSON.stringify({ gbrain: { install_bundle: { harness, split: 'heldout', install: 'gbrain-installer', files: 2, view_digest: (JSON.parse(manifest(harness, bin)) as { view_digest: string }).view_digest } } });
+  const codex = 's2.gbrain-install/codex-installer/heldout';
+  for (const view of ['gbrain-install/claude-code-installer/heldout', 's1.gbrain-install/claude-code-installer/heldout', codex]) {
+    const h = view.includes('codex') ? 'codex' : 'claude-code';
+    put(view + '/home/.local/bin/gbrain', 'ELF');
+    put(view + '/home/claude/CLAUDE.md');
+    put(view + '/manifest.json', manifest(h, 'ELF'));
+  }
+  put('gbrain-install/hermes-installer/heldout/home/.hermes/SOUL.md');
+  put('trials.jsonl', `{}\n${record('claude-code', 'ELF')}\n${record('codex', 'ELF')}\n`);
+  put('notes/home/.local/bin/gbrain');
+  const paths = rawEntries(raw).map((e) => e.path).sort();
+  expect(paths.filter((p) => p.endsWith('/home/.local/bin/gbrain'))).toEqual(['notes/home/.local/bin/gbrain']);
+  expect(paths).toContain('gbrain-install/claude-code-installer/heldout/manifest.json');
+  expect(paths).toContain(codex + '/home/claude/CLAUDE.md');
+  expect(paths).toContain('gbrain-install/hermes-installer/heldout/home/.hermes/SOUL.md');
+  expect(paths).toContain('trials.jsonl');
+  const refused = /HE-SEALED-007 s2\.gbrain-install\/codex-installer\/heldout\/home\/\.local\/bin\/gbrain is not the binary its view's manifest\.json records \(no entry with source_path codex\/installer\/home\/\.local\/bin\/gbrain, another sha256, or a view_digest that is not the digest of the manifest's file list\)/;
+  // A binary its manifest does not vouch for is refused, never left out unchecked.
+  put(codex + '/home/.local/bin/gbrain', 'ELF2');
+  expect(() => rawEntries(raw)).toThrow(refused);
+  // A manifest rewritten to list the swapped binary, with a view_digest that is no longer the digest of its file list, is refused too.
+  put(codex + '/manifest.json', manifest('codex', 'ELF2', 'ELF'));
+  expect(() => rawEntries(raw)).toThrow(refused);
+  // An entry whose path says home/.local/bin/gbrain but whose source_path (the part view_digest covers) names another file is refused.
+  put(codex + '/manifest.json', manifest('codex', 'ELF2', 'ELF2', 'codex/installer/home/claude/OTHER'));
+  expect(() => rawEntries(raw)).toThrow(refused);
+  // A consistent view whose view_digest no trial recorded for codex heldout keeps its binary in the bundle; once a trial records it,
+  // the binary is left out.
+  put(codex + '/manifest.json', manifest('codex', 'ELF2'));
+  expect(rawEntries(raw).map((e) => e.path)).toContain(codex + '/home/.local/bin/gbrain');
+  put('trials.jsonl', `${record('claude-code', 'ELF')}\n${record('codex', 'ELF')}\n${record('claude-code', 'ELF2')}\n`);
+  expect(rawEntries(raw).map((e) => e.path)).toContain(codex + '/home/.local/bin/gbrain');
+  put('trials.jsonl', `${record('claude-code', 'ELF')}\n${record('codex', 'ELF2')}\n`);
+  expect(rawEntries(raw).map((e) => e.path)).not.toContain(codex + '/home/.local/bin/gbrain');
+  // Only Claude Code and Codex installer views leave their binary out; any other view keeps every file.
+  put('gbrain-install/openclaw-installer/heldout/home/.local/bin/gbrain', 'ELF');
+  expect(rawEntries(raw).map((e) => e.path)).toContain('gbrain-install/openclaw-installer/heldout/home/.local/bin/gbrain');
+  put(codex + '/home/.local/bin/gbrain', 'ELF');
+  put(codex + '/manifest.json', '{}');
+  expect(() => rawEntries(raw)).toThrow(/HE-SEALED-007/);
+});
+

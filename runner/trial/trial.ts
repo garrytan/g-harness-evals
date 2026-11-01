@@ -47,6 +47,14 @@ export const turnHookRuns = (logsDir: string, turns: number[]): Array<number | n
   } catch { return null; }
 });
 
+/** Issue #193: record one answered turn's hook count and its turn number, unless the adapter answered with exit 2 (left out as
+ *  above), so turn_hook.turns names the turn of each turn_runs entry. */
+export function noteAnsweredTurn(acc: { turn_runs: Array<number | null>; turns: number[] }, logsDir: string, turn: number, exit: number): void {
+  if (exit === 2) return;
+  acc.turn_runs.push(...turnHookRuns(logsDir, [turn]));
+  acc.turns.push(turn);
+}
+
 /** internal-task: the Hermes compiled context names pages; count, per actor of the task, the ones that actor cannot read in the world
  *  (a chat page's channel the actor is not in; a file the file rule denies). What reaches the model with no gbrain call. */
 export function contextExposure(world: World, split: 'dev' | 'heldout', keptSlugs: string[], actors: string[]): NonNullable<TrialGbrainInstall['context']> {
@@ -239,7 +247,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   let readyTurnHook = 'no ready file';
   let windows: TurnWindow[] = [];
   let endedEarly: string | null = null;
-  const answeredHookRuns: Array<number | null> = [];
+  const answeredHook: { turn_runs: Array<number | null>; turns: number[] } = { turn_runs: [], turns: [] };
   let error: string | undefined;
   let grade: GradeResult = EMPTY_GRADE;
   let usage: TrialUsage | null = null;
@@ -284,7 +292,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
 
     if (!readyFailure) {
       const loop = await runTurns({ task, preamble: opts.preamble, world, harness: harness!, turnsDir: dirs.turns, trialId: trial.id, graceS: opts.turnGraceS, log,
-        onAnswered: (turn, exit) => { if (readyTurnHook === 'ran' && exit !== 2) answeredHookRuns.push(...turnHookRuns(dirs.logs, [turn])); } });
+        onAnswered: (turn, exit) => { if (readyTurnHook === 'ran') noteAnsweredTurn(answeredHook, dirs.logs, turn, exit); } });
       windows = loop.windows;
       endedEarly = loop.ended_early;
       if (loop.error) error = loop.error;
@@ -335,7 +343,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     gbrainRecord.install_bundle = { harness: installView.harness, split: installView.split, install: installView.install ?? 'gbrain-docs', files: installView.files.length, view_digest: installView.view_digest };
     if (installView.context) gbrainRecord.install_bundle.context = contextExposure(worldAt(world.worldPath), cell.split, installView.context.kept_slugs, task.actors);
     const hook = installView.installer && 'turn_hook' in installView.installer ? installView.installer.turn_hook : undefined;
-    if (hook) gbrainRecord.install_bundle.turn_hook = { files: hook.files.length, status: readyTurnHook, ...(readyTurnHook === 'ran' ? { turn_runs: answeredHookRuns } : {}) };
+    if (hook) gbrainRecord.install_bundle.turn_hook = { files: hook.files.length, status: readyTurnHook, ...(readyTurnHook === 'ran' ? { turn_runs: answeredHook.turn_runs, turns: answeredHook.turns } : {}) };
     else if (installView.install === 'gbrain-installer') gbrainRecord.install_bundle.turn_hook = { files: 0, status: 'absent from bundle' };
   }
   let semanticError: string | null = null;

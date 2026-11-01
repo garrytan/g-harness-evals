@@ -36,7 +36,8 @@
  * Before anything is published, a leak scan refuses the export when any task id, task string, hidden fact, slice record
  * string, corpus line or raw summary string (eight characters or more, absent from the public world and preregistration)
  * appears in a public file (HE-SEALED-007); the refusal names the file and the kind, never the text.
- * Then the raw results directory (harness state and workspaces under trials/ excluded) is packed, gzipped, encrypted to the
+ * Then the raw results directory (harness state and workspaces under trials/ excluded, and each Claude Code or Codex installer view's
+ * compiled gbrain once its view manifest's sha256 vouches for it) is packed, gzipped, encrypted to the
  * set's recipient and pushed to <set>/results/<run_id>.tar.age on refs/heads/custody, without force, with an "exported"
  * access-log line; a bundle over 95 MiB (GitHub refuses a pushed file over 100 MiB) is refused before anything is written.
  * Before the push the three public files are staged in <results>/export-pending/<bundle sha256>/ (mode 0700, outside every git tree, left
@@ -233,14 +234,46 @@ export function leakScan(files: Record<string, string>, secrets: Secret[]): Arra
   return hits;
 }
 
-/** Raw results as tar entries: every regular file except harness state and workspaces under trials/ and the staged public
- *  files under export-pending/. */
+/** Raw results as tar entries: every regular file except harness state and workspaces under trials/, the staged public
+ *  files under export-pending/, and the compiled gbrain in a Claude Code or Codex installer view (gbrain-install/<harness>-installer/<split>/
+ *  home/.local/bin/gbrain, and the same under each <shard>.gbrain-install/ after merge-shards; issue #192): 207 MB, about 67 MiB
+ *  gzipped, so two copies alone pass the 95 MiB bundle limit. The view's manifest.json, which stays in the bundle, records its sha256
+ *  under source_path <harness>/installer/home/.local/bin/gbrain. A binary that does not match that entry, a manifest with no such entry,
+ *  or a manifest whose view_digest is not the digest of its own file list (the adapters' check) is refused rather than left out
+ *  unchecked. A consistent view whose view_digest no trial in trials.jsonl records for that harness and split
+ *  (gbrain.install_bundle.view_digest; every trial of the cell ended before the view was mounted) keeps its binary in the bundle,
+ *  under the same 95 MiB limit, since no trial record vouches for it. */
 export function rawEntries(raw: string): TarEntry[] {
   const entries: TarEntry[] = [];
+  let ran: Set<string> | undefined;
+  const trialViews = (): Set<string> => {
+    if (ran) return ran;
+    ran = new Set();
+    const text = existsSync(join(raw, 'trials.jsonl')) ? readFileSync(join(raw, 'trials.jsonl'), 'utf8') : '';
+    for (const l of text.split('\n').filter(Boolean)) {
+      try { const b = (JSON.parse(l) as TrialRecord).gbrain?.install_bundle; if (b?.view_digest) ran.add(`${b.harness}/${b.split}/${b.view_digest}`); } catch { /* not a record */ }
+    }
+    return ran;
+  };
   for (const f of walk(raw)) {
     const rel = relative(raw, f);
     const segs = rel.split('/');
     if (segs[0] === EXPORT_PENDING || (segs[0] === 'trials' && (segs.includes('state') || segs.includes('workspace')))) continue;
+    if (/(^|\.)gbrain-install$/.test(segs[0]!) && /^(claude-code|codex)-installer$/.test(segs[1] ?? '') && segs.slice(3).join('/') === 'home/.local/bin/gbrain') {
+      const view = segs.slice(0, 3).join('/');
+      const harness = segs[1]!.slice(0, -'-installer'.length);
+      let listed: string | undefined;
+      let digest: string | undefined;
+      try {
+        const m = JSON.parse(readFileSync(join(raw, view, 'manifest.json'), 'utf8')) as { view_digest?: string; files?: Array<{ path?: string; source_path?: string; sha256?: string }> };
+        const files = m.files ?? [];
+        const lines = [...files].sort((a, b) => ((a.source_path ?? '') < (b.source_path ?? '') ? -1 : (a.source_path ?? '') > (b.source_path ?? '') ? 1 : 0)).map((x) => `${x.source_path} ${x.sha256}\n`).join('');
+        digest = m.view_digest;
+        listed = sha256(lines) === m.view_digest ? files.find((x) => x.path === 'home/.local/bin/gbrain' && x.source_path === `${harness}/installer/home/.local/bin/gbrain`)?.sha256 : undefined;
+      } catch { listed = undefined; }
+      if (!listed || sha256(readFileSync(f)) !== listed) throw new RunnerError('HE-SEALED-007', `${rel} is not the binary its view's manifest.json records (no entry with source_path ${harness}/installer/home/.local/bin/gbrain, another sha256, or a view_digest that is not the digest of the manifest's file list); the bundle leaves the installer's gbrain out only when the manifest vouches for it, so nothing was written (ask the Captain before changing --results)`);
+      if (trialViews().has(`${harness}/${segs[2]}/${digest}`)) continue;
+    }
     if (!statSync(f).isFile()) continue;
     if (!safeRelPath(rel)) throw new RunnerError('HE-SEALED-007', `raw results hold a path a bundle cannot carry (${rel.length} characters, non-printable or ".."); rename or remove it before export`);
     entries.push({ path: rel, data: new Uint8Array(readFileSync(f)) });

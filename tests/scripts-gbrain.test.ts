@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { installerNotApplied, type PredicateResult, type TrialGbrainInstall, type TrialRecord } from '../runner/contracts.ts';
+import { noteAnsweredTurn } from '../runner/trial/trial.ts';
 import type { WorldEvent } from '../world/services/events.ts';
 import { crossScopeReadsBySurface, gbrainUsage, scopeLeaks } from '../scripts/gbrain-usage.ts';
 import { loadWorldData } from '../runner/grade/predicates.ts';
@@ -660,6 +661,26 @@ describe('compare-run --pair gbrain on the install ladder', () => {
 
   // Issue #153: Claude Code's and Codex's ready says "ran" when the adapter ran the hook command once itself; only the per-turn
   // gbrain_turn_hook_runs (install_bundle.turn_hook.turn_runs) shows the harness fired it during the turns.
+  // Issue #193: turn_runs leaves out a turn the adapter answered with exit 2, so a position in it is not a turn number; turns
+  // carries each entry's turn, and the reason names that turn. A record without turns (written before it) counts positions.
+  test('installerNotApplied names the turn from turn_hook.turns, so a dropped exit-2 turn does not shift it', () => {
+    const bundle: TrialGbrainInstall = { harness: 'codex', split: 'dev', install: 'gbrain-installer', files: 9, view_digest: 'sha256:' + '3'.repeat(64) };
+    expect(installerNotApplied({ ...bundle, turn_hook: { files: 1, status: 'ran', turn_runs: [1, 0], turns: [1, 3] } })).toBe('installer hook did not run in turn 3 (gbrain_turn_hook_runs 0)');
+    expect(installerNotApplied({ ...bundle, turn_hook: { files: 1, status: 'ran', turn_runs: [1, 1, null], turns: [2, 3, 4] } })).toBe('installer hook ran at ready but turn 4 recorded no gbrain_turn_hook_runs');
+    expect(installerNotApplied({ ...bundle, turn_hook: { files: 1, status: 'ran', turn_runs: [1, 0] } })).toBe('installer hook did not run in turn 2 (gbrain_turn_hook_runs 0)');
+    // turns that does not line up with turn_runs (a malformed record) is not trusted.
+    expect(installerNotApplied({ ...bundle, turn_hook: { files: 1, status: 'ran', turn_runs: [1, 0], turns: [1] } })).toBe('installer hook did not run in turn 2 (gbrain_turn_hook_runs 0)');
+    expect(installerNotApplied({ ...bundle, turn_hook: { files: 1, status: 'ran', turn_runs: [1, 0], turns: [1, null as unknown as number] } })).toBe('installer hook did not run in turn 2 (gbrain_turn_hook_runs 0)');
+    // The runner's side: turn 1 ran the hook once, turn 2 was answered with exit 2, turn 3 ran it 0 times.
+    const logs = mkdtempSync(join(tmpdir(), 'he-turns-'));
+    mkdirSync(join(logs, 'turns'));
+    for (const [turn, runs] of [[1, 1], [2, 1], [3, 0]]) writeFileSync(join(logs, 'turns', `turn-000${turn}.status.json`), JSON.stringify({ gbrain_turn_hook_runs: runs }));
+    const acc = { turn_runs: [] as Array<number | null>, turns: [] as number[] };
+    for (const [turn, exit] of [[1, 0], [2, 2], [3, 0]]) noteAnsweredTurn(acc, logs, turn!, exit!);
+    expect(acc).toEqual({ turn_runs: [1, 0], turns: [1, 3] });
+    expect(installerNotApplied({ ...bundle, turn_hook: { files: 1, status: 'ran', ...acc } })).toBe('installer hook did not run in turn 3 (gbrain_turn_hook_runs 0)');
+  });
+
   test('installerNotApplied: "ran" with every turn at 1 or more is applied; a turn at 0, a turn with no count or no turn_runs is not; an empty list (no answered turn) is; loaded, healthy and block-only unchanged', () => {
     const bundle: TrialGbrainInstall = { harness: 'claude-code', split: 'dev', install: 'gbrain-installer', files: 9, view_digest: 'sha256:' + '2'.repeat(64) };
     const ran = (turn_runs?: Array<number | null>) => installerNotApplied({ ...bundle, turn_hook: { files: 1, status: 'ran', ...(turn_runs ? { turn_runs } : {}) } });

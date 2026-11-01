@@ -234,8 +234,11 @@ export interface TrialGbrainInstall {
    *  Codex adapter wrote into logs/turns/turn-NNNN.status.json (gbrain's heartbeat count for that turn), read when the answer
    *  arrives and before the next turn starts, null when the file or the field is missing; a turn the runner ended itself (its
    *  timeout, or the harness gone) is left out, so a trial that ended there in its first turn has an empty list. "ran" proves only that the adapter ran the hook command once before ready; turn_runs is the evidence the
-   *  harness fired it during each turn, and installerNotApplied reads it. */
-  turn_hook?: { files: number; status: string; turn_runs?: Array<number | null> };
+   *  harness fired it during each turn, and installerNotApplied reads it. turns (issue #193): the turn number of each turn_runs entry,
+   *  since a turn answered with exit 2 is left out and positions then stop being turn numbers; absent in records written before it.
+   *  Without it, or with a list of another length, installerNotApplied names the position, which is the turn number only when no
+   *  turn was left out; which trials it excludes does not depend on turns. */
+  turn_hook?: { files: number; status: string; turn_runs?: Array<number | null>; turns?: number[] };
 }
 
 /** The turn_hook statuses that mean the hook was in place before the first turn: the harness reported it (OpenClaw's plugins inspect,
@@ -257,10 +260,11 @@ export function installerNotApplied(bundle: TrialGbrainInstall | undefined): str
   if (hook.status !== 'ran') return null;
   const runs = hook.turn_runs;
   if (!runs) return 'installer hook ran at ready but no turn recorded gbrain_turn_hook_runs';
+  const turn = (i: number) => (hook.turns?.length === runs.length && typeof hook.turns[i] === 'number' ? hook.turns[i] : i + 1);
   const missing = runs.findIndex((n) => typeof n !== 'number');
-  if (missing >= 0) return `installer hook ran at ready but turn ${missing + 1} recorded no gbrain_turn_hook_runs`;
+  if (missing >= 0) return `installer hook ran at ready but turn ${turn(missing)} recorded no gbrain_turn_hook_runs`;
   const zero = runs.findIndex((n) => n! < 1);
-  if (zero >= 0) return `installer hook did not run in turn ${zero + 1} (gbrain_turn_hook_runs ${runs[zero]})`;
+  if (zero >= 0) return `installer hook did not run in turn ${turn(zero)} (gbrain_turn_hook_runs ${runs[zero]})`;
   return null;
 }
 

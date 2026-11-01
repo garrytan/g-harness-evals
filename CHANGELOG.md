@@ -2,6 +2,14 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.91] - 2026-11-01
+
+### internal-task: sealed export leaves out installer binaries; installer reasons name the real turn
+
+- **Issue #192, `scripts/sealed/export.ts`:** a sealed export no longer packs the compiled gbrain that each Claude Code or Codex installer view carries (`gbrain-install/<harness>-installer/<split>/home/.local/bin/gbrain`, and the same under each `<shard>.gbrain-install/` after merge-shards). One copy is 207 MB, or 66.6 MiB gzipped, so a sharded run with installer cells went over the 95 MiB bundle limit and its export was refused after the trials were paid for. The bundle leaves the binary out only when the view's `manifest.json` lists it (under `source_path` `<harness>/installer/home/.local/bin/gbrain`) with the same sha256, the manifest's `view_digest` is the digest of its own file list (the check the adapters make), and a trial in `trials.jsonl` recorded that `view_digest` for the harness and split. A missing entry, another digest or a `view_digest` that does not match is refused with HE-SEALED-007, and nothing is written. A consistent view that no trial recorded (every trial of the cell ended before the view was mounted) keeps its binary in the bundle, under the same size limit. Only sealed runs with Claude Code or Codex `gbrain-installer` cells were affected. Unsealed results already keep the binary out of git through `.gitignore`.
+- **Issue #193, `runner/contracts.ts` and `runner/trial/trial.ts`:** `turn_runs` leaves out a turn the adapter answered with exit 2, so a position in it is not always a turn number. The trial now records `turn_hook.turns` beside `turn_runs`, and `installerNotApplied` names that turn in its reason. Records written before this change, or with a `turns` list of another length, still count positions. Which trials count as `installer_not_applied` is unchanged.
+- Tests: `tests/sealed-coverage.test.ts` covers the binary rule, and `tests/scripts-gbrain.test.ts` covers the turn numbers through the new `noteAnsweredTurn` helper. Both failed on main before the fix. `docs/sealed-custody.md`, `docs/errors.md` and `runner/README.md` say what changed.
+
 ## [0.0.90] - 2026-11-01
 
 ### internal-task: v03-ar-reread-2026-10 reported, the re-read gate passes
