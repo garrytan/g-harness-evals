@@ -2,6 +2,16 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.101] - 2026-11-02
+
+### internal-task: three uncounted Opus 5.5 gstack follow-rate checks reported
+
+- `docs/benchmarks/2026-11-01-opus-gstack-follow/report.md`: `gn-follow-2026-11` (SDK stub prompt), `gn-follow-preset-2026-11` (Claude Code's own system prompt) and `gn-hard-follow-2026-11` (SWE-bench Verified bugs), 120 trials, $30.41 on the ledgers, run from never-merged scratch branches with each decision rule frozen in the Captain's drive before its first trial.
+- **gstack's skill text reached the model in every session, but 0 of 46 gstack sessions ran a skill step.** The preset check decided STOP (0 of 16) on dev tasks Opus 5.5 nearly saturates. The hard check is VOID because the no-gstack arm passed 8 of 8, so its 0 of 14 is descriptive. gstack cost about 2 times as much per trial in every run.
+- "Why null?" ends with a CUT-CANDIDATE line for the skill step procedures as delivered by skill text alone; the fix to test is enforcing the steps with hooks, or dropping them.
+- Receipts under `results/`: per-run summaries, ledgers, audits, the hard run's gstack call list and preflight stamps, and `recompute.py`, which reproduces every number in the report into `recompute.out`.
+- `docs/README.md` lists the report.
+
 ## [0.0.100] - 2026-11-02
 
 ### internal-task: preregister tool-discipline-start-hermes-r2-2026-11, the Hermes rerun on gstack v1.92.57.0 with Tirith pinned
