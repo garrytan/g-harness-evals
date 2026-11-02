@@ -2,7 +2,8 @@
 // claude-code|codex --instructions-only writes at gbrain image build (gbrain#7989), applied by each adapter under
 // HE_GBRAIN_INSTALL=gbrain-installer. Keyless, three layers:
 //   1. build-install, always on: gbrain/build-install.ts builds the installer view with a stand-in gbrain (tests/fixtures/installer/
-//      gbrain, which writes the files setup writes at 5fd43d5a) and, with HE_GBRAIN_BIN naming a compiled gbrain, with the real one.
+//      gbrain, which writes the files setup writes at 5fd43d5a, and with HE_STAND_IN_LAUNCHER=1 also gbrain#8424's hook launcher, as
+//      2c469d1b does) and, with HE_GBRAIN_BIN naming a compiled gbrain, with the real one.
 //   2. process level, always on: each adapter applies a view exported by gbrain/export-install.sh, with a stand-in CLI
 //      (tests/fixtures/installer/bin) that runs the UserPromptSubmit hooks the real CLI runs (Claude Code: settings.json; Codex:
 //      hooks.json groups config.toml trusts), so ready, gbrain-install.json and the per-turn hook count are checked; the refusals
@@ -22,7 +23,7 @@ import type { TurnRequest } from '../runner/contracts.ts';
 import { exportInstallView, type InstallViewManifest } from '../runner/trial/gbrain.ts';
 import { turnHookRuns as runnerTurnRuns } from '../runner/trial/trial.ts';
 import { containerHostAddress } from '../runner/trial/world.ts';
-import { BRAIN_FIRST_LEDGER, HOOK_GBRAIN_BIN, HOOK_HEARTBEAT, INSTALLER_BLOCK_BEGIN, buildInstaller, bundleDigest, fileEntries, listFiles, type InstallerRecord } from '../gbrain/build-install.ts';
+import { BRAIN_FIRST_LEDGER, HOOK_GBRAIN_BIN, HOOK_HEARTBEAT, HOOK_LAUNCHER, INSTALLER_BLOCK_BEGIN, buildInstaller, bundleDigest, fileEntries, listFiles, type InstallerRecord } from '../gbrain/build-install.ts';
 import { createWorldServer, type WorldServer } from '../world/services/server.ts';
 import { startFakeResponses } from './fixtures/fake-responses.ts';
 import { startWorld, world } from './world-helpers.ts';
@@ -40,6 +41,10 @@ const CLAUDE_SETTINGS = join(ROOT, 'harnesses/claude-code/config/settings.json')
 const sha256 = (b: string | Buffer) => createHash('sha256').update(b).digest('hex');
 const tmp = mkdtempSync(join(tmpdir(), 'he-installer-cc-codex-'));
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
+/** The stand-in as gbrain#8424 (2c469d1b, v0.60.547.0): setup also writes HOME/.gbrain/hook-launcher/gbrain-hook and the hook runs gbrain through it. */
+const LAUNCHER_STAND_IN = join(tmp, 'gbrain-8424');
+writeFileSync(LAUNCHER_STAND_IN, '#!/bin/sh\nHE_STAND_IN_LAUNCHER=1 exec node ' + STAND_IN + ' "$@"\n');
+chmodSync(LAUNCHER_STAND_IN, 0o755);
 
 /** The files each installer view holds under home/: what setup wrote, and the gbrain its hook runs. */
 const EXPECTED: Record<H, string[]> = {
@@ -99,7 +104,46 @@ describe('build-install: the Claude Code and Codex installer views', () => {
       }
       expect(lines.some((l) => l.startsWith(h + ': gbrain setup ' + h + ' --instructions-only in ' + state + ' wrote '))).toBe(true);
     });
+
+    // Value: protects=the Claude Code and Codex installer views build at gbrain 2c469d1b and later; fails_when=setup's hook launcher is
+    // refused, dropped from the view or the hook's files, or lands without its exec bit; why_new=gbrain#8424 broke the image build; seam=none.
+    test(h + ': at gbrain#8424 the view also keeps the hook launcher the hook command runs, executable and alone in its directory, as part of the hook', () => {
+      const out = join(tmp, 'unit-launcher', h), state = join(tmp, 'unit-launcher-state', h);
+      const { record } = build(h, LAUNCHER_STAND_IN, out, state);
+      const expected = [...EXPECTED[h], HOOK_LAUNCHER].sort();
+      expect(record.files).toEqual(expected.map((f) => h + '/installer/home/' + f));
+      expect(listFiles(join(out, h, 'installer')).sort()).toEqual(expected.map((f) => 'home/' + f));
+      expect(readdirSync(join(out, h, 'installer/home', dirname(HOOK_LAUNCHER)))).toEqual(['gbrain-hook']);
+      expect(statSync(join(out, h, 'installer/home', HOOK_LAUNCHER)).mode & 0o777).toBe(0o755);
+      expect(readFileSync(join(out, h, 'installer/home', HOOK_LAUNCHER), 'utf8')).toStartWith('#!/bin/sh\n# gbrain hook launcher v1');
+      expect(record.turn_hook).toMatchObject({ action: 'write', rule: STAND_IN_RULE, files: [HOOK_LAUNCHER, ...(h === 'codex' ? ['codex/config.toml', 'codex/hooks.json'] : ['claude/settings.json'])].map((f) => h + '/installer/home/' + f) });
+      expect(readFileSync(join(out, h, 'installer/home', h === 'codex' ? 'codex/hooks.json' : 'claude/settings.json'), 'utf8')).toContain('GBRAIN_HOOK_LANE=turn-rule ' + join(state, HOOK_LAUNCHER) + ' ' + join(state, HOOK_GBRAIN_BIN) + ' hook user-prompt');
+      expect(existsSync(state)).toBe(false);
+    });
   }
+
+  // Value: protects=the views build when gbrain#8437 (8352e7f0, v0.60.550.0) routes more commands than the turn hook through the launcher;
+  // fails_when=a stdio MCP command naming the launcher is refused, or one naming another launcher is kept; why_new=internal-task scope; seam=none.
+  test('a stdio MCP command in a file setup wrote that starts gbrain through the launcher keeps the launcher; one naming another launcher is refused', () => {
+    for (const h of HARNESSES) {
+      const withMcp = (name: string, launcherOf: string) => {
+        const bin = join(tmp, 'gbrain-8437-' + h + '-' + name);
+        const add = h === 'codex'
+          ? 'printf \'[mcp_servers.gbrain]\\ncommand = "%s"\\nargs = ["%s", "serve"]\\n\' "' + launcherOf + '" "$5" >> "$CODEX_HOME/config.toml"'
+          : 'node -e \'const f=process.argv[1],s=JSON.parse(require("fs").readFileSync(f,"utf8"));s.mcpServers={gbrain:{type:"stdio",command:process.argv[2],args:[process.argv[3],"serve"]}};require("fs").writeFileSync(f,JSON.stringify(s,null,2)+"\\n")\' "$CLAUDE_CONFIG_DIR/settings.json" "' + launcherOf + '" "$5"';
+        writeFileSync(bin, '#!/bin/sh\nHE_STAND_IN_LAUNCHER=1 node ' + STAND_IN + ' "$@" || exit $?\n[ "$1" = setup ] && ' + add + '\nexit 0\n');
+        chmodSync(bin, 0o755);
+        return bin;
+      };
+      const out = join(tmp, 'unit-mcp-launcher', h), state = join(tmp, 'unit-mcp-launcher-state', h);
+      const { record } = build(h, withMcp('ours', '$HOME/' + HOOK_LAUNCHER), out, state);
+      expect(record.files).toContain(h + '/installer/home/' + HOOK_LAUNCHER);
+      expect(record.turn_hook?.files).toContain(h + '/installer/home/' + HOOK_LAUNCHER);
+      expect(readFileSync(join(out, h, 'installer/home', h === 'codex' ? 'codex/config.toml' : 'claude/settings.json'), 'utf8')).toContain(JSON.stringify(join(state, HOOK_LAUNCHER)));
+      expect(() => build(h, withMcp('elsewhere', '/opt/other/.gbrain/hook-launcher/gbrain-hook'), join(tmp, 'unit-mcp-elsewhere', h), join(tmp, 'unit-mcp-elsewhere-state', h)))
+        .toThrow(/start gbrain through .*\/opt\/other\/\.gbrain\/hook-launcher\/gbrain-hook.*the view keeps the launcher only where the commands it carries run it/);
+    }
+  });
 
   test('both installer views in one bundle share one gbrain binary (a hard link), not two copies', () => {
     const out = join(tmp, 'unit-shared');
@@ -142,6 +186,8 @@ describe('build-install: the Claude Code and Codex installer views', () => {
     expect(() => attempt('extra', 'node ' + standIn + ' "$@" || exit $?; [ "$1" = setup ] && echo x > "$HOME/extra.txt"; exit 0')).toThrow('this bundle expects');
     expect(() => attempt('noblock', 'node ' + standIn + ' "$@" || exit $?; [ "$1" = setup ] && echo plain > "$CODEX_HOME/AGENTS.md"; exit 0')).toThrow('without the brain-first block');
     expect(() => attempt('norule', '[ "$1" = hook ] && { cat >/dev/null; exit 0; }; exec node ' + standIn + ' "$@"')).toThrow('exited 0 without the rule');
+    expect(() => attempt('strayLauncher', 'node ' + standIn + ' "$@" || exit $?; [ "$1" = setup ] && mkdir -p "$HOME/.gbrain/hook-launcher" && echo x > "$HOME/' + HOOK_LAUNCHER + '"; exit 0')).toThrow('start gbrain through no hook launcher, and setup wrote');
+    expect(() => attempt('unwrittenLauncher', 'node ' + standIn + ' "$@" || exit $?; [ "$1" = setup ] && sed -i "s|$5 hook|$HOME/' + HOOK_LAUNCHER + ' $5 hook|" "$CODEX_HOME/hooks.json"; exit 0')).toThrow('hook-launcher/gbrain-hook, and setup did not write');
     expect(attempt('killed', 'kill -9 $$').unavailable).toStartWith('gbrain setup codex --instructions-only was stopped (SIGKILL, 300 s timeout): ');
   });
 
@@ -157,10 +203,12 @@ describe('build-install: the Claude Code and Codex installer views', () => {
     for (const h of HARNESSES) {
       const out = join(tmp, 'real', h), state = join(tmp, 'real-state', h);
       const { record } = build(h, REAL_GBRAIN!, out, state);
-      expect(record.files).toEqual(EXPECTED[h].map((f) => h + '/installer/home/' + f));
+      // gbrain#8424 (2c469d1b) and later also write the hook launcher; a590ad07 and earlier do not.
+      const launcher = existsSync(join(out, h, 'installer/home', HOOK_LAUNCHER));
+      expect(record.files).toEqual([...EXPECTED[h], ...(launcher ? [HOOK_LAUNCHER] : [])].sort().map((f) => h + '/installer/home/' + f));
       expect(record.turn_hook?.rule).toStartWith('GBrain:');
       expect(readFileSync(join(out, h, 'installer/home', h === 'codex' ? 'codex/AGENTS.md' : 'claude/CLAUDE.md'), 'utf8')).toContain(INSTALLER_BLOCK_BEGIN);
-      expect(readFileSync(join(out, h, 'installer/home', h === 'codex' ? 'codex/hooks.json' : 'claude/settings.json'), 'utf8')).toContain('GBRAIN_HOOK_LANE=turn-rule ' + join(state, HOOK_GBRAIN_BIN) + ' hook user-prompt');
+      expect(readFileSync(join(out, h, 'installer/home', h === 'codex' ? 'codex/hooks.json' : 'claude/settings.json'), 'utf8')).toContain('GBRAIN_HOOK_LANE=turn-rule ' + (launcher ? join(state, HOOK_LAUNCHER) + ' ' : '') + join(state, HOOK_GBRAIN_BIN) + ' hook user-prompt');
       if (h === 'codex') expect(readFileSync(join(out, h, 'installer/home/codex/config.toml'), 'utf8')).toContain('[hooks.state.' + JSON.stringify(join(state, 'codex/hooks.json') + ':user_prompt_submit:0:0') + ']');
     }
   }, 120_000);
@@ -231,20 +279,27 @@ describe.skipIf(!NODE)('the Claude Code and Codex adapters apply the installer v
   afterAll(() => ws?.stop());
 
   for (const h of HARNESSES) {
-    test(h + ': serve copies every file to its HOME path, ready says turn_hook ran, and each turn runs the hook once with the recorded rule' + (REAL_GBRAIN ? ' (real gbrain)' : ''), async () => {
+    for (const [label, gbrain] of [[REAL_GBRAIN ? ' (real gbrain)' : '', REAL_GBRAIN ?? STAND_IN], [' (gbrain#8424 hook launcher)', LAUNCHER_STAND_IN]]) test(h + ': serve copies every file to its HOME path, ready says turn_hook ran, and each turn runs the hook once with the recorded rule' + label, async () => {
       const t = trial(h);
-      const view = exportView(h, REAL_GBRAIN ?? STAND_IN, t.state, t.view);
+      const view = exportView(h, gbrain!, t.state, t.view);
+      const launcher = view.files.some((f) => f.path === 'home/' + HOOK_LAUNCHER);
+      if (gbrain === LAUNCHER_STAND_IN) expect(launcher).toBe(true);
       const child = spawn('bash', [adapter(h), 'serve'], { stdio: ['ignore', 'pipe', 'pipe'], env: env(h, t, { HE_WORLD_MCP_URL: ws.url + '/mcp', HE_WORLD_MCP_TOKEN: ws.credentials.bot.token }) });
       try {
         await until(() => existsSync(join(t.logs, 'ready')), 30_000, 'ready', () => adapterLog(t));
         const rec = installRecord(t.logs);
-        const dests = [join(t.state, '.gbrain'), join(t.state, '.local/bin'), join(t.state, h === 'codex' ? 'codex' : 'claude')].sort();
+        const dests = [join(t.state, '.gbrain'), join(t.state, '.local/bin'), join(t.state, h === 'codex' ? 'codex' : 'claude'), ...(launcher ? [join(t.state, dirname(HOOK_LAUNCHER))] : [])].sort();
         expect(rec).toMatchObject({ status: 'ok', code: null, harness: h, install: 'gbrain-installer', view_digest: view.view_digest, files: view.files.length, destinations: dests });
         expect(rec.turn_hook?.status).toBe('ran');
         for (const f of view.files) {
           const dest = join(t.state, f.path.replace(/^home\//, ''));
           if (f.path === 'home/codex/config.toml') expect(readFileSync(dest, 'utf8').endsWith('\n' + readFileSync(join(t.view, f.path), 'utf8'))).toBe(true);
           else expect(sha256(readFileSync(dest))).toBe(f.sha256);
+        }
+        if (launcher) {
+          expect(readdirSync(join(t.state, dirname(HOOK_LAUNCHER)))).toEqual(['gbrain-hook']);
+          expect(statSync(join(t.state, HOOK_LAUNCHER)).mode & 0o777).toBe(statSync(join(t.view, 'home', HOOK_LAUNCHER)).mode & 0o777);
+          expect(rec.turn_hook?.command).toContain(join(t.state, HOOK_LAUNCHER) + ' ');
         }
         const ready = JSON.parse(readFileSync(join(t.logs, 'ready'), 'utf8'));
         expect(ready.gbrain_install).toEqual({ status: 'ok', install: 'gbrain-installer', files: view.files.length, view_digest: view.view_digest, destinations: dests.join(','), turn_hook: 'ran' });
@@ -329,6 +384,37 @@ describe.skipIf(!NODE)('the Claude Code and Codex adapters apply the installer v
       } else {
         refused((t) => rewriteView(t.view, 'claude/settings.json', (s) => JSON.stringify({ ...JSON.parse(s), env: { ANTHROPIC_BASE_URL: 'http://127.0.0.1:1' } }, null, 2) + '\n'), "the view's settings.json differs from the seed by more than the gbrain turn-rule hook");
       }
+    }, 60_000);
+
+    test(h + ': a hook launcher with another file beside it, without its exec bit, or a command naming a launcher the view does not place, is HE-ADAPTER-006, exit 2, no turn', () => {
+      const other = trial(h);
+      exportView(h, LAUNCHER_STAND_IN, other.state, other.view);
+      rewriteView(other.view, h === 'codex' ? 'codex/hooks.json' : 'claude/settings.json', (s) => s.split(join(other.state, HOOK_LAUNCHER)).join('/opt/other/.gbrain/hook-launcher/gbrain-hook'));
+      expect(spawnSync('bash', [adapter(h), 'run'], { encoding: 'utf8', env: env(h, other) }).status).toBe(2);
+      expect(adapterLog(other)).toContain('starts gbrain through /opt/other/.gbrain/hook-launcher/gbrain-hook, not the hook launcher the view places at ' + join(other.state, HOOK_LAUNCHER));
+      expect(stubContexts(other)).toEqual([]);
+      // A command naming the launcher in a view that carries none (setup before gbrain#8424 wrote the hook without it).
+      const none = trial(h);
+      exportView(h, STAND_IN, none.state, none.view);
+      rewriteView(none.view, h === 'codex' ? 'codex/hooks.json' : 'claude/settings.json', (s) => s.split(join(none.state, HOOK_GBRAIN_BIN) + ' hook').join(join(none.state, HOOK_LAUNCHER) + ' ' + join(none.state, HOOK_GBRAIN_BIN) + ' hook'));
+      expect(spawnSync('bash', [adapter(h), 'run'], { encoding: 'utf8', env: env(h, none) }).status).toBe(2);
+      expect(adapterLog(none)).toContain('starts gbrain through ' + join(none.state, HOOK_LAUNCHER) + ', which the view does not place');
+      expect(stubContexts(none)).toEqual([]);
+      // A launcher that lost its exec bit (the copy keeps the view's mode).
+      const noexec = trial(h);
+      exportView(h, LAUNCHER_STAND_IN, noexec.state, noexec.view);
+      chmodSync(join(noexec.view, 'home', HOOK_LAUNCHER), 0o644);
+      expect(spawnSync('bash', [adapter(h), 'run'], { encoding: 'utf8', env: env(h, noexec) }).status).toBe(2);
+      expect(adapterLog(noexec)).toContain('the hook launcher ' + join(noexec.state, HOOK_LAUNCHER) + ' is not executable');
+      expect(stubContexts(noexec)).toEqual([]);
+      const t = trial(h);
+      exportView(h, LAUNCHER_STAND_IN, t.state, t.view);
+      mkdirSync(join(t.state, dirname(HOOK_LAUNCHER)), { recursive: true });
+      writeFileSync(join(t.state, dirname(HOOK_LAUNCHER), 'bunfig.toml'), 'preload = ["./x.ts"]\n');
+      expect(spawnSync('bash', [adapter(h), 'run'], { encoding: 'utf8', env: env(h, t) }).status).toBe(2);
+      expect(adapterLog(t)).toContain('HE-ADAPTER-006 the install bundle could not be applied: ' + join(t.state, dirname(HOOK_LAUNCHER)) + ' holds bunfig.toml beside the hook launcher');
+      expect(installRecord(t.logs)).toMatchObject({ status: 'error', code: 'HE-ADAPTER-006', harness: h });
+      expect(stubContexts(t)).toEqual([]);
     }, 60_000);
   }
 });

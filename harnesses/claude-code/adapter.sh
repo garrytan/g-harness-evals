@@ -48,7 +48,7 @@ mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
 log() { printf '%s claude-code[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" | tee -a "$HE_LOG_DIR/adapter.log" >&2; }
 now() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
-# internal-task: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
+# HARN-5: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
 # preflight compares the same hash in the image with the checkout, HE-ADAPTER-005).
 adapter_sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)
 harness_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -82,7 +82,7 @@ if [ -n "${HE_GBRAIN_INSTALL:-}" ] && [ "$HE_GBRAIN_INSTALL" != gbrain-installer
   exit 2
 fi
 
-# internal-task: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Claude Code's own system prompt with one fixed text,
+# HARN-20: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Claude Code's own system prompt with one fixed text,
 # ablation/official-minimal.txt beside this file (/opt/harness/ablation in the image; a byte copy of
 # harnesses/ablation/official-minimal.txt, checked against pin.json official_minimal.sha256), passed as --system-prompt on every
 # turn. Unset, empty or default adds nothing, so the adapter's files and command lines are as before; any other value, or a text
@@ -115,13 +115,15 @@ export TMPDIR="$HE_SESSION_STATE_DIR/tmp" CLAUDE_TMPDIR="$HE_SESSION_STATE_DIR/t
 mkdir -p "$CLAUDE_CONFIG_DIR" "$TMPDIR"
 [ -e "$CLAUDE_CONFIG_DIR/settings.json" ] || cp "$harness_dir/config/settings.json" "$CLAUDE_CONFIG_DIR/settings.json"
 
-# internal-task, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
+# HARN-13, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
 # the exported view of what `gbrain setup claude-code --instructions-only` wrote at gbrain image build (gbrain#7989) read-only at
 # HE_GBRAIN_INSTALL_DIR. Setup ran there with HOME=/harness-state and CLAUDE_CONFIG_DIR=/harness-state/claude, so every path in it is
 # this container's: home/claude/CLAUDE.md (the brain-first block, Claude Code's user memory), home/claude/settings.json (this
 # adapter's settings.json with setup's UserPromptSubmit turn-rule hook merged in) and its .bak, home/.gbrain/agent-instructions.json
-# (gbrain's ledger, where the hook reads the rule) and home/.local/bin/gbrain (gbrain compiled from the same checkout, the hook's
-# command). Each file is checked against the manifest and copied to HE_SESSION_STATE_DIR/<path>, which must be the view's
+# (gbrain's ledger, where the hook reads the rule), home/.local/bin/gbrain (gbrain compiled from the same checkout, the hook's
+# command) and, from gbrain#8424 (v0.60.547.0), home/.gbrain/hook-launcher/gbrain-hook (the launcher the hook command, and from
+# gbrain#8437 any stdio MCP command, starts gbrain through; it refuses to run when anything else is in its directory, so it must land
+# alone there, executable, and every command must name this path). Each file is checked against the manifest and copied to HE_SESSION_STATE_DIR/<path>, which must be the view's
 # state_root; settings.json replaces the one written above only when that one is the seed setup merged into, and no other
 # destination may exist. The hook is then run the way Claude Code runs it, with a UserPromptSubmit payload on stdin, and must print
 # the rule the bundle recorded (kept as $HE_LOG_DIR/gbrain-hook.claude-code.json); ready says turn_hook "ran". Every turn then
@@ -155,7 +157,7 @@ const lines = [...files].sort((a, b) => (a.source_path < b.source_path ? -1 : a.
 if (sha(lines) !== m.view_digest) refuse("the manifest's view_digest does not match its file list");
 const inst = m.installer ?? {};
 if (inst.state_root !== state) refuse("the view was installed with HOME " + JSON.stringify(inst.state_root) + " (its hook command, gbrain's ledger and settings name it), this trial's state dir is " + state);
-const known = [".local/bin/gbrain", ".gbrain/agent-instructions.json", "claude/CLAUDE.md", "claude/settings.json", "claude/settings.json.bak"];
+const known = [".local/bin/gbrain", ".gbrain/agent-instructions.json", ".gbrain/hook-launcher/gbrain-hook", "claude/CLAUDE.md", "claude/settings.json", "claude/settings.json.bak"];
 const plan = [];
 for (const f of files) {
   const rel = (f.path ?? "").replace(/^home\//, "");
@@ -189,6 +191,18 @@ for (const p of plan) {
   if (!rec.destinations.includes(path.dirname(p.dest))) rec.destinations.push(path.dirname(p.dest));
 }
 rec.destinations.sort();
+// gbrain#8424 and later start gbrain through a launcher (the turn-rule hook; from gbrain#8437 any other hook lane or stdio MCP command
+// too): every launcher a command names must be the one the view placed, alone in its directory and executable, or it refuses to run.
+const launcher = path.join(state, ".gbrain/hook-launcher/gbrain-hook");
+const launcherFiles = [path.join(state, "claude/settings.json")];
+const named = [...new Set(launcherFiles.filter((f) => fs.existsSync(f)).flatMap((f) => fs.readFileSync(f, "utf8").match(/\/[^\s"'\\]*\/hook-launcher\/gbrain-hook(?![^\s"'\\])/g) ?? []))];
+if (named.some((l) => l !== launcher)) refuse("a command in " + launcherFiles.join(", ") + " starts gbrain through " + named.filter((l) => l !== launcher).join(", ") + ", not the hook launcher the view places at " + launcher);
+if (named.length && !rec.copied.includes(launcher)) refuse("a command in " + launcherFiles.join(", ") + " starts gbrain through " + launcher + ", which the view does not place");
+if (rec.copied.includes(launcher)) {
+  const others = fs.readdirSync(path.dirname(launcher)).filter((n) => n !== "gbrain-hook");
+  if (others.length) refuse(path.dirname(launcher) + " holds " + others.join(", ") + " beside the hook launcher, which then refuses to start gbrain");
+  if (!(fs.statSync(launcher).mode & 0o100)) refuse("the hook launcher " + launcher + " is not executable");
+}
 let hook = "nohook";
 if (inst.turn_hook) {
   const settings = JSON.parse(fs.readFileSync(path.join(state, "claude/settings.json"), "utf8"));

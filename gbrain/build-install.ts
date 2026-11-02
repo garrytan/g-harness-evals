@@ -36,8 +36,10 @@
 //                                    --gbrain-bin <state>/.local/bin/gbrain (gbrain#7989): claude/CLAUDE.md (the block),
 //                                    claude/settings.json (the UserPromptSubmit turn-rule hook, written into Claude Code's settings
 //                                    seeded first with the adapter's own harnesses/claude-code/config/settings.json, --claude-settings),
-//                                    .gbrain/agent-instructions.json (the ledger the hook reads the rule from) and .local/bin/gbrain
-//                                    (gbrain's own bun run build of the same checkout, --gbrain-bin, which the hook command runs).
+//                                    .gbrain/agent-instructions.json (the ledger the hook reads the rule from), .local/bin/gbrain
+//                                    (gbrain's own bun run build of the same checkout, --gbrain-bin, which the hook command runs) and,
+//                                    from gbrain#8424 (2c469d1b), .gbrain/hook-launcher/gbrain-hook (the launcher the hook command runs
+//                                    gbrain through, kept as a hook file, mode 0755).
 //                                    <state> is the harness's state dir in its container (/harness-state; --harness-state), so the
 //                                    hook command and every path in these files are the trial's own and the adapter copies them as is
 //   codex/installer/home/...         HOME=<state> CODEX_HOME=<state>/codex gbrain setup codex --instructions-only --gbrain-bin ...:
@@ -69,6 +71,12 @@ export const INSTALLER_HARNESSES: InstallerHarness[] = [...INSTALL_HARNESSES, 'c
 export const HARNESS_STATE_DIR = '/harness-state';
 /** The compiled gbrain the Claude Code and Codex turn hook runs, under HOME. */
 export const HOOK_GBRAIN_BIN = '.local/bin/gbrain';
+/** The launcher the turn hook starts gbrain through from gbrain#8424 (v0.60.547.0), under HOME: a sh script that moves into its own
+ *  directory, refuses when anything else is there, and execs gbrain, so Bun never reads the session directory's bunfig.toml or .env.
+ *  Setup writes it only at those commits; older ones (a590ad07) write none and their hook runs gbrain directly. */
+export const HOOK_LAUNCHER = '.gbrain/hook-launcher/gbrain-hook';
+/** An absolute hook launcher path inside a command, as gbrain writes it (hook-launcher.ts isHookLauncherPath). */
+const LAUNCHER_PATH = /\/[^\s"'\\]*\/hook-launcher\/gbrain-hook(?![^\s"'\\])/g;
 export const SPLITS = ['dev', 'heldout'] as const;
 
 export interface InstallFile {
@@ -346,7 +354,9 @@ function buildStateInstaller(o: BuildInstallOptions, out: string, harness: 'clau
     if (!changed.length) return { record: { unavailable: `gbrain setup ${harness} --instructions-only exited 0 and wrote nothing: ${said.at(-1)?.trim().slice(0, 300) ?? 'no output'}` } };
     if (doc.turn_hook && doc.turn_hook.action !== 'write') throw new Error(`gbrain setup ${harness} --instructions-only reports turn_hook ${doc.turn_hook.action}: ${doc.turn_hook.detail ?? ''}; with an absolute --gbrain-bin it writes the hook`);
     // A hook file that existed before (Claude Code's seeded settings.json) is backed up beside itself as <file>.bak before setup rewrites it.
-    const expected = [BRAIN_FIRST_LEDGER, spec.instructions, ...(doc.turn_hook ? [...spec.hook, ...spec.hook.filter((f) => before.has(f)).map((f) => `${f}.bak`)] : [])].sort();
+    // From gbrain#8424 setup also writes the hook launcher, which the hook command runs (checked below).
+    const launcherWritten = changed.includes(HOOK_LAUNCHER);
+    const expected = [BRAIN_FIRST_LEDGER, spec.instructions, ...(doc.turn_hook ? [...spec.hook, ...spec.hook.filter((f) => before.has(f)).map((f) => `${f}.bak`), ...(launcherWritten ? [HOOK_LAUNCHER] : [])] : [])].sort();
     if (changed.join(',') !== expected.join(',')) throw new Error(`gbrain setup ${harness} --instructions-only wrote ${changed.join(', ')}; this bundle expects ${expected.join(', ')}`);
     const block = readFileSync(join(state, spec.instructions), 'utf8');
     if (!block.includes(INSTALLER_BLOCK_BEGIN)) throw new Error(`gbrain setup ${harness} --instructions-only wrote ${spec.instructions} without the brain-first block (${INSTALLER_BLOCK_BEGIN})`);
@@ -355,6 +365,10 @@ function buildStateInstaller(o: BuildInstallOptions, out: string, harness: 'clau
       // The rule as the hook prints it on a turn, run the way setup's own check runs it (from HOME, an empty prompt).
       const command = turnRuleCommand(harness, state);
       if (!command) throw new Error(`gbrain setup ${harness} --instructions-only reports a turn hook but ${spec.hook.join(', ')} holds no single turn-rule entry`);
+      // Every command in the files setup wrote that starts gbrain through a launcher (the turn-rule hook from gbrain#8424; from gbrain#8437
+      // also any other hook lane or stdio MCP entry setup writes there) must name this one, and a launcher setup wrote must be named.
+      const named = [...new Set(spec.hook.flatMap((f) => readFileSync(join(state, f), 'utf8').match(LAUNCHER_PATH) ?? []))];
+      if ((named.length > 0) !== launcherWritten || named.some((l) => l !== join(state, HOOK_LAUNCHER))) throw new Error(`${spec.hook.join(', ')} ${named.length ? `start gbrain through ${named.join(', ')}` : 'start gbrain through no hook launcher'}, and setup ${launcherWritten ? 'wrote' : 'did not write'} ${join(state, HOOK_LAUNCHER)}; the view keeps the launcher only where the commands it carries run it`);
       const h = spawnSync('sh', ['-c', command], { input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: '', session_id: 'he-build-install' }), env: { PATH: env.PATH!, HOME: state, ...spec.env(state) }, cwd: state, encoding: 'utf8', timeout: 60_000 });
       try { rule = (JSON.parse(h.stdout.trim()) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput?.additionalContext ?? null; } catch { rule = null; }
       if (h.status !== 0 || !rule) throw new Error(`the ${harness} turn-rule hook ${command} exited ${h.status} without the rule: ${(h.stdout + h.stderr).trim().slice(0, 300)}`);
@@ -370,9 +384,10 @@ function buildStateInstaller(o: BuildInstallOptions, out: string, harness: 'clau
       else copyFileSync(join(state, f), dest);
     }
     chmodSync(join(root, 'home', HOOK_GBRAIN_BIN), 0o755);
+    if (launcherWritten) chmodSync(join(root, 'home', HOOK_LAUNCHER), 0o755);
     const files = kept.map((f) => `${harness}/installer/home/${f}`);
     const version = /<!-- gbrain brain-first (v[0-9]+):/.exec(block)?.[1] ?? null;
-    const turn_hook = doc.turn_hook ? { files: spec.hook.map((f) => `${harness}/installer/home/${f}`), action: doc.turn_hook.action!, detail: doc.turn_hook.detail ?? '', rule } : undefined;
+    const turn_hook = doc.turn_hook ? { files: [...spec.hook, ...(launcherWritten ? [HOOK_LAUNCHER] : [])].sort().map((f) => `${harness}/installer/home/${f}`), action: doc.turn_hook.action!, detail: doc.turn_hook.detail ?? '', rule } : undefined;
     log(`${harness}: gbrain setup ${harness} --instructions-only in ${state} wrote ${changed.join(', ')} (block ${version ?? 'version unknown'}${turn_hook ? `, per-turn hook ${turn_hook.action}: ${turn_hook.detail}` : ', no per-turn hook'}); the bundle keeps them and ${HOOK_GBRAIN_BIN}`);
     return { record: { argv: ['gbrain', ...args], files, block_version: version, ...(turn_hook ? { turn_hook } : {}), ...(seed ? { seed } : {}), state_root: state, gbrain_bin: bin }, command: { harness, install: 'gbrain-installer', argv: ['gbrain', ...args] } };
   } finally {

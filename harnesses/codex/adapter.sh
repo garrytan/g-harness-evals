@@ -43,7 +43,7 @@ mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
 log() { printf '%s codex[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" | tee -a "$HE_LOG_DIR/adapter.log" >&2; }
 now() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
-# internal-task: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
+# HARN-5: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
 # preflight compares the same hash in the image with the checkout, HE-ADAPTER-005).
 adapter_sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)
 harness_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -86,7 +86,7 @@ version=$(cli_version)
 log "codex-cli ${version:-unknown} (pin.json $pin_version) model=he-proxy/$HE_MODEL_NAME budget=${HE_TIME_BUDGET_S}s entry=$entry"
 [ "$version" = "$pin_version" ] || { log "codex-cli ${version:-unknown} is not the pinned $pin_version"; exit 2; }
 
-# internal-task: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Codex's own base instructions with one fixed text,
+# HARN-20: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Codex's own base instructions with one fixed text,
 # ablation/official-minimal.txt beside this file (/opt/harness/ablation in the image; a byte copy of
 # harnesses/ablation/official-minimal.txt, checked against pin.json official_minimal.sha256), named by model_instructions_file at
 # the top of config.toml. Unset, empty or default adds nothing, so config.toml is byte-identical to before; any other value, or a
@@ -158,13 +158,16 @@ fi
 mv "$CODEX_HOME/config.toml.tmp" "$CODEX_HOME/config.toml"
 log "config written to $CODEX_HOME/config.toml (mcp_servers $mcp_servers)"
 
-# internal-task, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
+# HARN-13, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
 # the exported view of what `gbrain setup codex --instructions-only` wrote at gbrain image build (gbrain#7989) read-only at
 # HE_GBRAIN_INSTALL_DIR. Setup ran there with HOME=/harness-state and CODEX_HOME=/harness-state/codex, so every path in it is this
 # container's: home/codex/AGENTS.md (the brain-first block, Codex's global instructions), home/codex/hooks.json (the
 # UserPromptSubmit turn-rule group), home/codex/config.toml (the [hooks.state."<CODEX_HOME>/hooks.json:user_prompt_submit:<i>:0"]
 # table that trusts it, so Codex runs it with no one at /hooks), home/.gbrain/agent-instructions.json (gbrain's ledger, where the
-# hook reads the rule) and home/.local/bin/gbrain (gbrain compiled from the same checkout, the hook's command). Each file is checked
+# hook reads the rule), home/.local/bin/gbrain (gbrain compiled from the same checkout, the hook's command) and, from gbrain#8424
+# (v0.60.547.0), home/.gbrain/hook-launcher/gbrain-hook (the launcher the hook command, and from gbrain#8437 any stdio MCP command,
+# starts gbrain through; it refuses to run when anything else is in its directory, so it must land alone there, executable, and every
+# command must name this path). Each file is checked
 # against the manifest and copied to HE_SESSION_STATE_DIR/<path>, which must be the view's state_root, except the trust table, which
 # is appended to the config.toml written above the way setup appends it to an existing file (a newline, then the table); no other
 # destination may exist. The trust hash is recomputed as Codex and gbrain compute it (sha256 over the canonical JSON of the event and
@@ -200,7 +203,7 @@ const lines = [...files].sort((a, b) => (a.source_path < b.source_path ? -1 : a.
 if (sha(lines) !== m.view_digest) refuse("the manifest's view_digest does not match its file list");
 const inst = m.installer ?? {};
 if (inst.state_root !== state) refuse("the view was installed with HOME " + JSON.stringify(inst.state_root) + " (its hook command, gbrain's ledger and Codex's trust key name it), this trial's state dir is " + state);
-const known = [".local/bin/gbrain", ".gbrain/agent-instructions.json", "codex/AGENTS.md", "codex/hooks.json", "codex/config.toml"];
+const known = [".local/bin/gbrain", ".gbrain/agent-instructions.json", ".gbrain/hook-launcher/gbrain-hook", "codex/AGENTS.md", "codex/hooks.json", "codex/config.toml"];
 const plan = [];
 for (const f of files) {
   const rel = (f.path ?? "").replace(/^home\//, "");
@@ -228,6 +231,18 @@ for (const p of plan) {
   if (!rec.destinations.includes(path.dirname(p.dest))) rec.destinations.push(path.dirname(p.dest));
 }
 rec.destinations.sort();
+// gbrain#8424 and later start gbrain through a launcher (the turn-rule hook; from gbrain#8437 any other hook lane or stdio MCP command
+// too): every launcher a command names must be the one the view placed, alone in its directory and executable, or it refuses to run.
+const launcher = path.join(state, ".gbrain/hook-launcher/gbrain-hook");
+const launcherFiles = [path.join(codexHome, "hooks.json"), path.join(codexHome, "config.toml")];
+const named = [...new Set(launcherFiles.filter((f) => fs.existsSync(f)).flatMap((f) => fs.readFileSync(f, "utf8").match(/\/[^\s"'\\]*\/hook-launcher\/gbrain-hook(?![^\s"'\\])/g) ?? []))];
+if (named.some((l) => l !== launcher)) refuse("a command in " + launcherFiles.join(", ") + " starts gbrain through " + named.filter((l) => l !== launcher).join(", ") + ", not the hook launcher the view places at " + launcher);
+if (named.length && !rec.copied.includes(launcher)) refuse("a command in " + launcherFiles.join(", ") + " starts gbrain through " + launcher + ", which the view does not place");
+if (rec.copied.includes(launcher)) {
+  const others = fs.readdirSync(path.dirname(launcher)).filter((n) => n !== "gbrain-hook");
+  if (others.length) refuse(path.dirname(launcher) + " holds " + others.join(", ") + " beside the hook launcher, which then refuses to start gbrain");
+  if (!(fs.statSync(launcher).mode & 0o100)) refuse("the hook launcher " + launcher + " is not executable");
+}
 let hook = "nohook";
 if (inst.turn_hook) {
   const groups = JSON.parse(fs.readFileSync(path.join(codexHome, "hooks.json"), "utf8")).hooks?.UserPromptSubmit ?? [];

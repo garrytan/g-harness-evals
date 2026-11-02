@@ -13,7 +13,7 @@
 - **Side traffic off.** `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_AUTOUPDATER`, `DISABLE_TELEMETRY` and `DISABLE_ERROR_REPORTING` are 1. `CLAUDE_CODE_MAX_RETRIES=2` (the CLI's default is 10).
 - **MCP.** `world`, and `gbrain` when `HE_GBRAIN_MCP_URL` is set, are Streamable HTTP servers with the bot token as a bearer. Before ready the adapter sends `tools/list` to each and exits 2 if one does not answer. `MCP_CONNECTION_NONBLOCKING=false` makes the CLI wait for the servers, so each turn's init record shows their real status; a server that is not `connected` fails the turn with exit 2.
 - **Not supported.** `HE_SESSION_SCOPE=turn`, and any `HE_GBRAIN_INSTALL` other than `gbrain-installer`, exit 2.
-- **gbrain's installer.** `HE_GBRAIN_INSTALL=gbrain-installer` applies what `gbrain setup claude-code --instructions-only` wrote at gbrain image build (the brain-first block in `CLAUDE.md`, the per-turn `UserPromptSubmit` hook in `settings.json`, gbrain's ledger and binary) and checks the hook prints its rule before ready. See [docs/gbrain-arm.md](../../docs/gbrain-arm.md), "The Claude Code and Codex installer".
+- **gbrain's installer.** `HE_GBRAIN_INSTALL=gbrain-installer` applies what `gbrain setup claude-code --instructions-only` wrote at gbrain image build (the brain-first block in `CLAUDE.md`, the per-turn `UserPromptSubmit` hook in `settings.json`, gbrain's ledger and binary, and from gbrain#8424 the hook launcher, placed alone in its directory) and checks the hook prints its rule before ready. See [docs/gbrain-arm.md](../../docs/gbrain-arm.md), "The Claude Code and Codex installer".
 - **Provider check.** The adapter exits 2 at startup, with the reason in `adapter.log`, unless `HE_MODEL_BASE_URL` ends in `/anthropic` (the runner's `<proxy>/<slot>/anthropic` route). The CLI speaks only the Messages API.
 - **Network.** It serves on the internal network: a turn through the proxy, a world-MCP call, no direct connection out (`tests/internal-network-harnesses.test.ts`).
 - **Skills** live at `$CLAUDE_CONFIG_DIR/skills/<name>/SKILL.md` and run as `/<name>` or through the Skill tool.
@@ -40,6 +40,10 @@ Keyless, against a fake Anthropic endpoint and through the metering proxy in lea
 No paid trial has run on this harness yet.
 
 ## Changelog
+
+### 2026-11-02: the gbrain hook launcher (internal-task, internal-task)
+
+The installer line says the adapter also places gbrain#8424's hook launcher, alone in its directory. Why: from gbrain `2c469d1b` the hook command runs gbrain through `.gbrain/hook-launcher/gbrain-hook`, which refuses to run beside any other file, and the image build refused it as a file setup should not have written, so no view reached the adapter.
 
 ### 2026-10-31: official-minimal config (internal-task)
 

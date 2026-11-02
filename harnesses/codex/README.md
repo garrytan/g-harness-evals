@@ -8,7 +8,7 @@
 
 At serve start the adapter appends `[mcp_servers.world]` (Streamable HTTP, `bearer_token_env_var = "HE_WORLD_MCP_TOKEN"`, `required = true`) to the config, and `[mcp_servers.gbrain]` on a gbrain cell. Each server must answer `tools/list` with the bot token before `ready`, else exit 2.
 
-**gbrain's installer.** `HE_GBRAIN_INSTALL=gbrain-installer` applies what `gbrain setup codex --instructions-only` wrote at gbrain image build (the brain-first block in `AGENTS.md`, the per-turn `UserPromptSubmit` hook in `hooks.json` with its `config.toml` trust table, gbrain's ledger and binary) and checks the hook prints its rule before ready. Any other `HE_GBRAIN_INSTALL` exits 2. See [docs/gbrain-arm.md](../../docs/gbrain-arm.md), "The Claude Code and Codex installer".
+**gbrain's installer.** `HE_GBRAIN_INSTALL=gbrain-installer` applies what `gbrain setup codex --instructions-only` wrote at gbrain image build (the brain-first block in `AGENTS.md`, the per-turn `UserPromptSubmit` hook in `hooks.json` with its `config.toml` trust table, gbrain's ledger and binary, and from gbrain#8424 the hook launcher, placed alone in its directory) and checks the hook prints its rule before ready. Any other `HE_GBRAIN_INSTALL` exits 2. See [docs/gbrain-arm.md](../../docs/gbrain-arm.md), "The Claude Code and Codex installer".
 
 ## Configuration
 
@@ -42,6 +42,10 @@ Every key was checked with `--strict-config` at this pin (`pin.json` `config_key
 `bun test tests/codex-adapter.test.ts`, keyless. The process level runs the adapter against a stub `codex`. The container level builds the image and runs `serve` through the real metering proxy in lease mode into `tests/fixtures/fake-responses.ts`, with an in-process world.
 
 ## Changelog
+
+### 2026-11-02: the gbrain hook launcher (internal-task, internal-task)
+
+The installer line says the adapter also places gbrain#8424's hook launcher, alone in its directory. Why: from gbrain `2c469d1b` the hook command runs gbrain through `.gbrain/hook-launcher/gbrain-hook`, which refuses to run beside any other file, and the image build refused it as a file setup should not have written, so no view reached the adapter.
 
 ### 2026-10-31: official-minimal config (internal-task)
 

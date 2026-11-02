@@ -2,6 +2,16 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.105] - 2026-11-02
+
+### internal-task (internal-task): the gbrain hook launcher in the Claude Code and Codex installer views
+
+- **The gbrain image builds again at gbrain v0.60.547.0 and v0.60.550.0.** From gbrain#8424 (`2c469d1b`), `gbrain setup claude-code|codex --instructions-only` also writes `.gbrain/hook-launcher/gbrain-hook`. The turn-rule hook runs gbrain through this small `sh` launcher, so Bun never reads the session directory's `bunfig.toml` or `.env`. `gbrain/build-install.ts` compared setup's files against a fixed list and failed the build on the extra file.
+- `gbrain/build-install.ts` keeps the launcher in the view (mode 0755) and lists it in `installer.turn_hook.files` when the commands in the files setup wrote name it. It refuses a launcher that no command runs, and a command that names another launcher. gbrain#8437 (`8352e7f0`) also starts the stdio MCP entry and the other hook lanes through the launcher. Under `--instructions-only` setup writes none of them, and any such command is checked the same way.
+- `harnesses/claude-code/adapter.sh` and `harnesses/codex/adapter.sh` copy the launcher to `/harness-state/.gbrain/hook-launcher/gbrain-hook` with its mode. Each refuses (HE-ADAPTER-006) a command that names another launcher or one the view does not place, a launcher with another file in its directory, and a launcher that is not executable.
+- At the pinned `a590ad07` setup writes no launcher, and the views are unchanged (5 files). `gbrain/pin.json` is unchanged.
+- Keyless at `8352e7f0`, `2c469d1b` and `a590ad07`: `preflight --cells` for both installer cells of `installer-cc-codex-2026-11` passes, and `tests/installer-cc-codex.test.ts` passes 23 of 23 with the real compiled gbrain and both CLIs in containers. The new tests use a stand-in gbrain that writes the launcher, and cover the MCP-command case and each refusal.
+
 ## [0.0.104] - 2026-11-02
 
 ### internal-task: anatomy capture on the Responses wire, frontier recaptures, and the cell model in every OpenClaw and Hermes model default

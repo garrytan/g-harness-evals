@@ -3,6 +3,9 @@
 // --gbrain-bin <bin> --json" writes what the real setup writes under HOME (the brain-first block, the ledger, the turn-rule hook,
 // Claude Code's settings.json.bak, Codex's trust table appended to config.toml), runs the hook once as setup's own check does, and
 // prints the JSON document; "hook user-prompt" appends one heartbeat line and prints the rule while the ledger exists. No network.
+// With HE_STAND_IN_LAUNCHER=1 it is the gbrain of gbrain#8424 (2c469d1b, v0.60.547.0) instead: setup also writes the hook launcher
+// at $HOME/.gbrain/hook-launcher/gbrain-hook (gbrain's own script, mode 0700 in a 0700 directory) and the hook command runs gbrain
+// through it.
 const fs = require("fs"), path = require("path"), crypto = require("crypto"), cp = require("child_process");
 const RULE = "GBrain: before answering this turn, check GBrain first (stand-in rule).";
 const home = process.env.HOME, gb = path.join(home, ".gbrain"), a = process.argv.slice(2);
@@ -21,15 +24,41 @@ fs.mkdirSync(dir, { recursive: true });
 fs.writeFileSync(file, "<!-- gbrain:brain-first:begin -->\n<!-- gbrain brain-first v2: managed by gbrain setup -->\n## Memory: check GBrain first\n<!-- gbrain:brain-first:end -->\n");
 fs.mkdirSync(gb, { recursive: true });
 fs.writeFileSync(path.join(gb, "agent-instructions.json"), JSON.stringify({ version: 1, entries: [{ harness: h, path: file, status: "installed", block_version: 2 }] }, null, 2) + "\n");
+let run = bin;
+if (process.env.HE_STAND_IN_LAUNCHER === "1") {
+  const launcher = path.join(gb, "hook-launcher", "gbrain-hook");
+  fs.mkdirSync(path.dirname(launcher), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(launcher, [
+    "#!/bin/sh",
+    "# gbrain hook launcher v1, written by gbrain setup (#8424); gbrain setup rewrites it.",
+    "GBRAIN_HOOK_CWD=$PWD",
+    "export GBRAIN_HOOK_CWD",
+    "case $0 in",
+    "  /*/gbrain-hook) d=${0%/*} ;;",
+    "  *) echo \"gbrain hook launcher: run it by its absolute path, not $0\" >&2; exit 1 ;;",
+    "esac",
+    "cd \"$d\" || exit 1",
+    "for f in * .*; do",
+    "  case $f in .|..|gbrain-hook) continue ;; esac",
+    "  if [ -e \"$f\" ] || [ -L \"$f\" ]; then",
+    "    echo \"gbrain hook launcher: refused: $d holds $f, which gbrain did not write and Bun would read.\" >&2",
+    "    exit 1",
+    "  fi",
+    "done",
+    "exec \"$@\"",
+    "",
+  ].join("\n"), { mode: 0o700 });
+  run = launcher + " " + bin;
+}
 let command;
 if (h === "claude-code") {
   const s = path.join(dir, "settings.json"), cur = JSON.parse(fs.readFileSync(s, "utf8"));
   fs.copyFileSync(s, s + ".bak");
-  command = "env GBRAIN_HOOK_LANE=turn-rule " + bin + " hook user-prompt";
+  command = "env GBRAIN_HOOK_LANE=turn-rule " + run + " hook user-prompt";
   cur.hooks = { UserPromptSubmit: [{ hooks: [{ type: "command", command, timeout: 3, _gbrain: "turn-rule-v1" }] }] };
   fs.writeFileSync(s, JSON.stringify(cur, null, 2) + "\n");
 } else if (h === "codex") {
-  command = "env GBRAIN_HOOK_LANE=turn-rule " + bin + " hook user-prompt --harness codex";
+  command = "env GBRAIN_HOOK_LANE=turn-rule " + run + " hook user-prompt --harness codex";
   const hooks = path.join(dir, "hooks.json");
   fs.writeFileSync(hooks, JSON.stringify({ hooks: { UserPromptSubmit: [{ hooks: [{ type: "command", command, timeout: 15 }] }] } }, null, 2) + "\n");
   const canon = (v) => Array.isArray(v) ? "[" + v.map(canon).join(",") + "]" : v && typeof v === "object" ? "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + canon(v[k])).join(",") + "}" : JSON.stringify(v);
