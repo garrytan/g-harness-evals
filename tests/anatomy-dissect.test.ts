@@ -270,6 +270,61 @@ describe('OpenAI Responses wire', () => {
     expect(rec.first_agent!.user_text_bytes).toBe(bytes('list files'));
   });
 
+  // The shape Codex 0.165.0 sends on a gpt-6 model (keyless capture, internal-task): no instructions, the prompt in developer
+  // messages, every tool in an additional_tools input item under namespaces, nested tools documented inside exec.
+  const exec = 'Run JavaScript.\n\n### `exec_command`\nRun a shell command.\n\n### `apply_patch`\nEdit files.\n## clock\n### `clock__curr_time`\nNow.\n';
+  const codexBody = {
+    model: 'gpt-6.1-sol', stream: true, max_output_tokens: 128000, reasoning: { effort: 'medium', context: 'all_turns' },
+    input: [
+      { type: 'additional_tools', role: 'developer', id: 'at1', tools: [
+        { type: 'namespace', name: 'functions', tools: [{ type: 'custom', name: 'exec', description: exec, format: { type: 'grammar', syntax: 'lark', definition: 'start: SOURCE' } }, { type: 'function', name: 'wait', description: 'Wait.', parameters: { type: 'object' } }] },
+        { type: 'namespace', name: 'clock', tools: [{ type: 'function', name: 'sleep', description: 'Sleep.', parameters: { type: 'object' } }] },
+      ] },
+      { type: 'message', role: 'developer', content: [{ type: 'input_text', text: 'You are Codex.\n# Personality\nterse\n' }] },
+      { type: 'message', role: 'developer', content: [{ type: 'input_text', text: '<skills_instructions>\nnone\n</skills_instructions>\n' }, { type: 'input_text', text: '<permissions instructions>\nfull access\n</permissions instructions>' }] },
+      { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<environment_context>cwd</environment_context>' }] },
+      { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'post the summary' }] },
+    ],
+  };
+
+  test('Codex: developer messages are the system, additional_tools are the tools, the rest are the messages', () => {
+    const rec = run([row({ path: '/v1/responses', status: 200, body: codexBody })]);
+    const system = ['You are Codex.\n# Personality\nterse\n', '<skills_instructions>\nnone\n</skills_instructions>\n', '<permissions instructions>\nfull access\n</permissions instructions>'];
+    const additional = codexBody.input[0] as { tools: unknown[] };
+    expect(rec.requests[0]).toMatchObject({
+      class: 'agent', model: 'gpt-6.1-sol', max_tokens: 128000, thinking: { effort: 'medium', context: 'all_turns' },
+      system_bytes: system.reduce((n, s) => n + bytes(s), 0),
+      tools: { count: 3, bytes: bytes(JSON.stringify(additional.tools)), names: ['exec', 'wait', 'sleep'] },
+      messages: { count: 2, bytes: bytes(JSON.stringify(codexBody.input.slice(3))) },
+    });
+    const fa = rec.first_agent!;
+    expect(fa.system.blocks).toEqual([
+      { start: 0, bytes: bytes(system[0]), cache_control: false, source: 'input[1].content[0]' },
+      { start: bytes(system[0]), bytes: bytes(system[1]), cache_control: false, source: 'input[2].content[0]' },
+      { start: bytes(system[0] + system[1]), bytes: bytes(system[2]), cache_control: false, source: 'input[2].content[1]' },
+    ]);
+    expect(fa.system.sections.map(s => [s.title, s.block])).toEqual([['preamble', 0], ['# Personality', 0], ['<skills_instructions>', 1], ['<permissions instructions>', 2]]);
+    expect(fa.tools.map(t => [t.name, t.namespace ?? null, t.source ?? null, t.nested_in ?? null])).toEqual([
+      ['exec', 'functions', 'additional_tools', null],
+      ['exec_command', null, null, 'exec'], ['apply_patch', null, null, 'exec'], ['clock__curr_time', null, null, 'exec'],
+      ['wait', 'functions', 'additional_tools', null], ['sleep', 'clock', 'additional_tools', null],
+    ]);
+    expect(fa.tools[0].schema_bytes).toBe(bytes(JSON.stringify({ type: 'grammar', syntax: 'lark', definition: 'start: SOURCE' })));
+    expect(fa.tools[1].description_bytes).toBe(bytes('### `exec_command`\nRun a shell command.\n\n'));
+    expect(fa.tools[2].description_bytes).toBe(bytes('### `apply_patch`\nEdit files.\n'));
+    expect(fa.user_text_bytes).toBe(bytes('<environment_context>cwd</environment_context>') + bytes('post the summary'));
+    expect(validate(JSON.parse(JSON.stringify(rec)), SCHEMA)).toEqual([]);
+  });
+
+  test('Responses: instructions come before developer messages; a body with only an empty additional_tools item is a side call', () => {
+    const body = { model: 'm', instructions: 'Base.\n', input: [{ role: 'system', content: 'Sys.\n' }, { role: 'developer', content: [{ type: 'input_text', text: 'Dev.\n' }] }, { role: 'user', content: 'hi' }], tools: [{ type: 'function', name: 'f', parameters: {} }] };
+    const fa = run([row({ path: '/v1/responses', body })]).first_agent!;
+    expect(fa.system.blocks.map(b => b.source)).toEqual(['instructions', 'input[0]', 'input[1].content[0]']);
+    expect(fa.system.bytes).toBe(bytes('Base.\nSys.\nDev.\n'));
+    expect(classify(row({ path: '/v1/responses', body: { model: 'm', input: [{ type: 'additional_tools', role: 'developer', tools: [] }, { role: 'user', content: 'title?' }] } }))).toBe('side');
+    expect(classify(row({ path: '/v1/responses', body: codexBody }))).toBe('agent');
+  });
+
   test('a log that mixes wires throws', () => {
     expect(() => run([row({ path: '/v1/responses', body: { input: 'x' } }), row({ body: agentBody([]) })])).toThrow(/mixes wire/);
   });

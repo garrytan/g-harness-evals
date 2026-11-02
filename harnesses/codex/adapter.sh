@@ -86,12 +86,37 @@ version=$(cli_version)
 log "codex-cli ${version:-unknown} (pin.json $pin_version) model=he-proxy/$HE_MODEL_NAME budget=${HE_TIME_BUDGET_S}s entry=$entry"
 [ "$version" = "$pin_version" ] || { log "codex-cli ${version:-unknown} is not the pinned $pin_version"; exit 2; }
 
+# internal-task: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Codex's own base instructions with one fixed text,
+# ablation/official-minimal.txt beside this file (/opt/harness/ablation in the image; a byte copy of
+# harnesses/ablation/official-minimal.txt, checked against pin.json official_minimal.sha256), named by model_instructions_file at
+# the top of config.toml. Unset, empty or default adds nothing, so config.toml is byte-identical to before; any other value, or a
+# text file with another sha256, is HE-ADAPTER-007 and exit 2 before ready.
+model_instructions_file=''
+official_minimal_json=''
+case "${HE_HARNESS_CONFIG:-default}" in
+  default) ;;
+  official-minimal)
+    om_file="$harness_dir/ablation/official-minimal.txt"
+    om_expected=$(jq -r '.official_minimal.sha256 // empty' "$harness_dir/pin.json")
+    om_sha=$(sha256sum "$om_file" 2>/dev/null | cut -d' ' -f1) || true
+    if [ -z "$om_expected" ] || [ "$om_sha" != "$om_expected" ]; then
+      log "HE-ADAPTER-007 HE_HARNESS_CONFIG=official-minimal: $om_file has sha256 '${om_sha:-missing}', pin.json official_minimal.sha256 is '$om_expected'"
+      exit 2
+    fi
+    model_instructions_file=$om_file
+    official_minimal_json=,\"official_minimal\":$(jq -cn --arg path "$om_file" --arg sha "$om_sha" --argjson bytes "$(wc -c < "$om_file")" '{path: $path, sha256: $sha, bytes: $bytes}')
+    log "HE_HARNESS_CONFIG=official-minimal: model_instructions_file = $om_file (sha256 $om_sha)"
+    ;;
+  *) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$HE_HARNESS_CONFIG is not a codex config (default, official-minimal)"; exit 2 ;;
+esac
+
 # config.toml from the template and pin.json codex_config: the cell model in every model key Codex reads, the proxy as the
 # only provider (base URL HE_MODEL_BASE_URL/v1, the per-trial token from HE_MODEL_API_KEY), low retry counts.
-jq -Rjs --slurpfile pin "$harness_dir/pin.json" --arg model "$HE_MODEL_NAME" --arg base "${HE_MODEL_BASE_URL%/}/v1" '
+jq -Rjs --slurpfile pin "$harness_dir/pin.json" --arg model "$HE_MODEL_NAME" --arg base "${HE_MODEL_BASE_URL%/}/v1" --arg mi "$model_instructions_file" '
   $pin[0].codex_config as $c
   | gsub("@MODEL@"; $model | tojson) | gsub("@BASE_URL@"; $base | tojson) | gsub("@EFFORT@"; $c.model_reasoning_effort | tojson)
   | gsub("@REQUEST_RETRIES@"; $c.request_max_retries | tostring) | gsub("@STREAM_RETRIES@"; $c.stream_max_retries | tostring)
+  | if $mi == "" then . else sub("\nmodel = "; "\nmodel_instructions_file = " + ($mi | tojson) + "\nmodel = ") end
 ' "$harness_dir/config/config.toml" > "$CODEX_HOME/config.toml.tmp"
 
 # One MCP server block: Streamable HTTP, the bearer read by Codex from the named variable, required so a server that does
@@ -353,7 +378,7 @@ fi
 : "${HE_TURNS_DIR:=/he-turns}"
 mkdir -p "$HE_TURNS_DIR" "$HE_LOG_DIR/turns"
 printf '{"harness":"codex","version":"%s","trial":"%s","ready_at":"%s","session_keys":"codex exec (first turn of a key) | codex exec resume <thread id>; dm:<member> | channel:<id>","mcp_servers":%s,"adapter_sha256":"%s"%s}\n' \
-  "$version" "$HE_TRIAL_ID" "$(now)" "$mcp_servers" "$adapter_sha256" "$gbrain_install_json" > "$HE_LOG_DIR/ready.tmp"
+  "$version" "$HE_TRIAL_ID" "$(now)" "$mcp_servers" "$adapter_sha256" "$official_minimal_json$gbrain_install_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do

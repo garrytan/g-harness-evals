@@ -26,6 +26,7 @@ RUN npm install -g --no-audit --no-fund "@openai/codex@${CODEX_VERSION}" \
     && npm cache clean --force
 
 COPY config/ /opt/harness/config/
+COPY ablation/ /opt/harness/ablation/
 COPY adapter.sh pin.json /opt/harness/
 RUN chmod 0555 /opt/harness/adapter.sh && mkdir -p /workspace /harness-state
 

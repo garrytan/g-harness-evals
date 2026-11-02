@@ -23,6 +23,8 @@ The sandbox mode and the reasoning effort are named settings; Garry kept both on
 
 Every key was checked with `--strict-config` at this pin (`pin.json` `config_keys_confirmed`), and every turn runs with it.
 
+**Official-minimal (internal-task).** A cell with `config: "official-minimal"` (`HE_HARNESS_CONFIG`) adds `model_instructions_file` as the first top-level key of `config.toml`. It names `ablation/official-minimal.txt`, a byte copy of [harnesses/ablation/official-minimal.txt](../ablation/official-minimal.txt) that the adapter checks against `pin.json` `official_minimal.sha256`. At 0.165.0 on gpt-6 models the text replaces Codex's base instructions, the first developer message of the request (there is no `instructions` field). The tools item and the skills, multi-agent and environment messages stay. A container turn with the key runs under `--strict-config`. Unset, empty or `default` leaves `config.toml` byte-identical; any other value exits 2 (HE-ADAPTER-007). Tests: `tests/official-minimal.test.ts`.
+
 **Exit mapping.** 0 when codex exits 0 with `turn.completed`. 124 when the budget runs out: the turn runs under `setsid`, the adapter signals its process group, then kills every process the turn started. 3 when `turn.failed` carries an HTTP status, or says `Connection failed: error sending request` (the proxy unreachable after the retries; Claude Code and Hermes map that to 3 too). Codex 0.165.0 prints most statuses as `unexpected status NNN`, a 400 as the raw error body and a 500 as "We're currently experiencing high demand". 2 for anything else, including an MCP transport error and a CLI version other than the pin.
 
 **Provider check.** The adapter exits 2 at startup, with the reason in `adapter.log`, unless `HE_MODEL_BASE_URL` ends in `/openai` (the runner's `<proxy>/<slot>/openai` route). Codex speaks only the Responses API.
@@ -40,6 +42,10 @@ Every key was checked with `--strict-config` at this pin (`pin.json` `config_key
 `bun test tests/codex-adapter.test.ts`, keyless. The process level runs the adapter against a stub `codex`. The container level builds the image and runs `serve` through the real metering proxy in lease mode into `tests/fixtures/fake-responses.ts`, with an in-process world.
 
 ## Changelog
+
+### 2026-10-31: official-minimal config (internal-task)
+
+`HE_HARNESS_CONFIG=official-minimal` sets `model_instructions_file` to the fixed text in `ablation/official-minimal.txt`, for the prompt archaeology run's descriptive official-minimal cells. Unset, `config.toml` is unchanged.
 
 ### 2026-10-29: Image, adapter and keyless tests (internal-task)
 

@@ -169,6 +169,9 @@ export interface TrialUsage {
   input_tokens: number;
   output_tokens: number;
   cached_tokens: number;
+  /** internal-task addition: the cache-write tokens Anthropic reported (cache_creation_input_tokens) on the forwarded harness lines.
+   *  Present only when a usage line carried the field; OpenAI reports cache reads only. */
+  cache_write_tokens?: number;
   unpriced: number;
   by_model: Record<string, { usd: number; requests: number }>;
   upstream: { statuses: Record<string, number>; failed: number; unparseable: number } | null;
@@ -333,6 +336,32 @@ export interface TrialLaneB {
   arm_deviation?: { date: string; pinned_tar_sha256: string; tar_sha256: string; tar_gz_sha256: string; reason: string };
 }
 
+/** internal-task (prompt archaeology) addition: what the metering proxy's layer filter did on a trial of a cell that carries
+ *  ablation, from the trial's lines of the run's ablation.ndjson (copied to <trial dir>/ablation.ndjson). agent_requests
+ *  counts receipts in an agent-turn family; matched_requests those on which every expected span was removed unchanged.
+ *  did_not_take counts agent requests where the map expects a layer and nothing of it matched; partial those where
+ *  some but not all expected spans matched, or a removed span's text or length differs from the map. unknown_families
+ *  counts requests in no family of the map (passed through untouched). housekeeping_requests, present when nonzero, counts
+ *  requests to one of the cell's declared utility_models (passed through untouched, in none of the counts above; internal-task,
+ *  2026-11-01: harness housekeeping, shipped default). unstable_filter: a removed span changed between
+ *  consecutive agent requests while the block it was cut from did not. invalid_reason is set when the trial has no
+ *  receipts or no agent request. */
+export interface TrialAblation {
+  layers: string[];
+  map: string;
+  map_sha256: string;
+  wire: 'anthropic-messages' | 'openai-responses';
+  agent_requests: number;
+  matched_requests: number;
+  removed_bytes: number;
+  did_not_take: number;
+  partial: number;
+  unknown_families: number;
+  housekeeping_requests?: number;
+  unstable_filter: boolean;
+  invalid_reason?: string;
+}
+
 /** M1 lane A addition: one line of results/<run>/trials.jsonl. termination, grade and effects are the three
  *  orthogonal fields of methodology item 9; cap_stop marks a model_error that was the proxy refusing the lease. */
 export interface TrialRecord {
@@ -363,4 +392,6 @@ export interface TrialRecord {
   gbrain?: TrialGbrain;
   /** internal-task addition: set on a trial run through the Lane B bridge. */
   laneb?: TrialLaneB;
+  /** internal-task addition: set on a trial of a cell that carries ablation. */
+  ablation?: TrialAblation;
 }

@@ -8,7 +8,7 @@
 
 ## Configuration
 
-`config/openclaw.json` (JSON5) is copied to `/harness-state/openclaw/openclaw.json` at the start of a trial. It overrides the built-in `anthropic` provider's `baseUrl` and `apiKey` with `${HE_MODEL_BASE_URL}` and `${HE_MODEL_API_KEY}` (OpenClaw substitutes `${VAR}` from the environment), declares the `claude-sonnet-5-5` catalog row, pins `agents.defaults.model.primary`, and sets `agents.defaults.skipBootstrap: true`: `agent exec` sets that itself, but `agent --local` (serve) would otherwise seed OpenClaw's first-run ritual (`BOOTSTRAP.md`, `SOUL.md`, `IDENTITY.md`, `USER.md`, `AGENTS.md`) into `/workspace` and the first prompt, which is a wizard in prompt form and leaves files the grader would see (it did in trial openclaw-serve-1 below). `OPENCLAW_STATE_DIR` and `HOME` point at `/harness-state`. No wizard runs because the config exists and `agent exec` never calls onboarding.
+`config/openclaw.json` (JSON5) is copied to `/harness-state/openclaw/openclaw.json` at the start of a trial. It overrides the built-in `anthropic` provider's `baseUrl` and `apiKey` with `${HE_MODEL_BASE_URL}` and `${HE_MODEL_API_KEY}` (OpenClaw substitutes `${VAR}` from the environment), declares the `claude-sonnet-5-5` catalog row, sets `agents.defaults.model.primary` to the cell model (`anthropic/${HE_MODEL_NAME}`, the answering model under test), leaves `agents.defaults.utilityModel` unset so OpenClaw's housekeeping model stays its shipped default, `anthropic/claude-haiku-5-5` (see "Housekeeping model" below), and sets `agents.defaults.skipBootstrap: true`: `agent exec` sets that itself, but `agent --local` (serve) would otherwise seed OpenClaw's first-run ritual (`BOOTSTRAP.md`, `SOUL.md`, `IDENTITY.md`, `USER.md`, `AGENTS.md`) into `/workspace` and the first prompt, which is a wizard in prompt form and leaves files the grader would see (it did in trial openclaw-serve-1 below). `OPENCLAW_STATE_DIR` and `HOME` point at `/harness-state`. No wizard runs because the config exists and `agent exec` never calls onboarding.
 
 Exit mapping: OpenClaw exits 0 on a completed turn, 1 on a model or result error and 2 on its own timeout. The adapter reports 0, then 124 if the outer `timeout` fired (in serve: the budget plus 15 s, because `openclaw agent --local` retries a failed provider call up to eight times with backoff past its own `--timeout`), then 3 if the JSON envelope or stderr shows a provider status, proxy refusal, rate limit or auth error, else 2.
 
@@ -18,14 +18,25 @@ On an OpenAI cell (plan decision 1 of internal-task: Codex, OpenClaw and Hermes 
 
 - **Config.** `config/openclaw.openai.json` is copied instead of `config/openclaw.json`. It points OpenClaw's bundled `openai` provider at `${HE_MODEL_BASE_URL}/v1` with `${HE_MODEL_API_KEY}` and its shipped `openai-responses` API, so every model call is `POST /v1/responses` (SSE) through the proxy.
 - **Turn.** `--model openai/<HE_MODEL_NAME>` in `run` and `serve`; nothing else in the turn changes.
-- **Housekeeping model.** `agents.defaults.utilityModel` is the cell model. Without it OpenClaw would pick `openai/gpt-5.6-luna`, which the cell's allowlist refuses (`openclaw models status --json` shows both resolutions).
+- **Housekeeping model.** `agents.defaults.utilityModel` is the cell model. OpenClaw's shipped default here would be `openai/gpt-5.6-luna` (`openclaw models status --json` shows both resolutions), but this existing adapter pin stays as it is, a declared deviation (internal-task, 2026-11-01), because published results already used it.
 - **Memory search.** `memory.search.provider: "none"`: keyword-only memory search, with no embeddings. Without it OpenClaw's memory indexer embeds `MEMORY.md` and `memory/*.md` through the openai provider and calls `/v1/embeddings` for `text-embedding-3-small`, which the cell's allowlist refuses. In host-harness-pilot-2026-10 that ended 11 `oc-luna` trials as model errors. An Anthropic cell has no OpenAI key, so the same indexer already falls back to keyword ranking there; this setting makes an OpenAI cell do the same. The `memory_search` tool stays.
 - **Reasoning effort.** `agents.defaults.thinkingDefault: medium`, sent as `reasoning.effort: medium`. OpenClaw's own default for `gpt-6-luna` is the same.
 - **Output cap.** The model row sets no `maxTokens`, so OpenClaw states its catalog's value for `gpt-6-luna`: 128,000 on every request (observed). Every shard's proxy runs `--max-output-tokens 128000`, so it passes. The Anthropic template keeps its 16,384.
 - **Network.** The same-model control for Codex, so it runs on the internal network too. The serve smoke there passes (`tests/internal-network-harnesses.test.ts`). On this provider OpenClaw defers MCP tools behind `tool_search` and calls them through `tool_call`.
 - **Everything else** is OpenClaw's shipped default: catalog metadata, SSE transport, the embedded OpenClaw runtime (a custom endpoint never selects the Codex app-server runtime). `pin.json` `model_openai` records each choice with its source.
 
-Keyless proof (2026-10-29, `tests/openai-branch.test.ts`): through the real proxy in lease mode with `--allow-models openai:gpt-6-luna`, `--max-output-tokens 128000` and a fake Responses endpoint upstream, `run` and `serve` each completed a turn on one forwarded `gpt-6-luna` request with no refusal, and a model off the allowlist exited 3. The same test checks that an Anthropic cell's config, turn arguments, environment, response and ready file are identical to `c1c7ed1b3` except `adapter_sha256`. No paid OpenAI call had been made then; the first ran in the `oc-luna` cell of host-harness-pilot-2026-10.
+Keyless proof (2026-10-29, `tests/openai-branch.test.ts`): through the real proxy in lease mode with `--allow-models openai:gpt-6-luna`, `--max-output-tokens 128000` and a fake Responses endpoint upstream, `run` and `serve` each completed a turn on one forwarded `gpt-6-luna` request with no refusal, and a model off the allowlist exited 3. The same test checks that an Anthropic cell's config, turn arguments, environment, response and ready file are identical to `c1c7ed1b3` except `adapter_sha256` and the cell model in `model.primary` (internal-task, `tests/fixtures/model-defaults.ts`). No paid OpenAI call had been made then; the first ran in the `oc-luna` cell of host-harness-pilot-2026-10.
+
+## Housekeeping model
+
+**OpenClaw ships its own housekeeping (utility) model, and Anthropic cells keep it.** internal-task's decision of 2026-11-01: a harness's housekeeping model stays at its shipped default. It is metered, labelled "harness housekeeping, shipped default" in the preregistration and the report, and never an arm or a scored number. The answering model, `model.primary`, is the cell model under test.
+
+- **Shipped default.** `anthropic/claude-haiku-5-5` on the anthropic provider and `openai/gpt-5.6-luna` on the openai provider (each provider plugin's `defaultUtilityModel`; `openclaw models status --json` reports `utilityModel {ref: anthropic/claude-haiku-5-5, source: provider-default}` with this config). Both are priced by the proxy.
+- **What uses it.** OpenClaw's docs list Control UI session titles, Telegram and Discord thread titles, Activity recaps and progress-draft narration. None of these runs in a headless `agent exec` or `agent --local` trial.
+- **Observed: no call.** No OpenClaw trial at this pin or earlier ones sent one. The Sonnet cells of m2-pilot, m3-heldout, gbrain-arm, v02-heldout, gbrain-memory and gbrain-memory-fix-b (730 trials) logged no `claude-haiku-5-5` request, forwarded or refused. In the v0.3 OpenClaw cells (v03-installer-dev, v03-pilot, host-harness-pilot, anatomy-instruction-route; 1,240 trials, 11,803 model requests) every answered request carried at least 10,000 input tokens, an agent turn; the two exceptions are upstream 400 errors with no usage. The keyless captures without `utilityModel` (2026-11-01, Opus 5.5, plain, tools and growth scenarios, 15 requests) sent only agent turns: the agent system prompt and 14 tools, all on the cell model.
+- **If it happens.** A cell that wants the call to count preregisters the default in `utility_models` (`anthropic:claude-haiku-5-5`). The proxy then forwards and prices it, HE-MODEL-001 does not count it as foreign, and in an ablation cell the layer filter passes it through untouched as the housekeeping family (`runner/proxy/ablate.ts`). Without the declaration the slot refuses it with 403 at $0.
+- **OpenAI cells: declared deviation.** The shipped default would be `openai/gpt-5.6-luna`, but `config/openclaw.openai.json` keeps its existing pin of `utilityModel` to the cell model (internal-task). Published results already used that pin, so it stays until one adapter PR changes it for every lane at once, and each preregistration declares it as a deviation.
+- **Not housekeeping.** The occasional Sonnet call on older Haiku cells (4 of 200 Haiku trials in gbrain-arm, 1 of 75 in gbrain-memory, refused in several gbrain runs) came from the pinned `model.primary`, not from `utilityModel`. It now names the cell model.
 
 ## Instruction routes (internal-task)
 
@@ -52,7 +63,7 @@ The first trial's cost is mostly a prompt-cache write (13,614 tokens); the secon
 
 Findings:
 
-- OpenClaw sends one request to `claude-haiku-5-5` per run before the main turn (a utility call; the allowlist refuses it with 403 and the turn proceeds unaffected). A counted run should decide whether to allow a utility model or record the refusal. It is logged in the proxy's usage log either way.
+- OpenClaw sends one request to `claude-haiku-5-5` per run before the main turn (a utility call; the allowlist refuses it with 403 and the turn proceeds unaffected). A counted run should decide whether to allow a utility model or record the refusal. It is logged in the proxy's usage log either way. (2026-11-01: not seen in any later trial; see "Housekeeping model".)
 - The grader could not read `hello.txt` after the first trial because the container ran as root; `run-trial.sh` now passes `--user $(id -u):$(id -g)`, and the image works unprivileged with `HOME=/harness-state`.
 
 ## M1 serve smoke
@@ -76,6 +87,10 @@ Findings:
 - A fifth of each turn's input is OpenClaw's own tool catalog and system prompt (about 24,000 to 32,000 tokens per call before the conversation), mostly served from the prompt cache after the first call.
 
 ## Changelog
+
+### 2026-10-31: the cell model as the primary model; housekeeping at its shipped default (internal-task)
+
+`config/openclaw.json` sets `model.primary` to `anthropic/${HE_MODEL_NAME}`, and `adapter.sh` exports `HE_MODEL_NAME` so OpenClaw can substitute it. Why: the primary was pinned to `claude-sonnet-5-5`, so on a Haiku cell the calls OpenClaw resolves from its primary named Sonnet. `utilityModel` stays unset, so the housekeeping model is OpenClaw's shipped default, `anthropic/claude-haiku-5-5`. Why: internal-task's decision of 2026-11-01 keeps a harness's own housekeeping model at its shipped default, metered and labelled "harness housekeeping, shipped default", never an arm or a scored number ([harness anatomy](../../docs/harness-anatomy/README.md)).
 
 ### 2026-10-30: instruction routes (internal-task)
 

@@ -79,5 +79,13 @@
     "invocation": "$<name> in the prompt: `use $he-probe now` made Codex inject the skill's name, path and SKILL.md body into the turn's input; the skills instructions also tell the model to use a skill named in plain text"
   },
   "instruction_files": "AGENTS.md in /workspace is Codex's project instruction file; the adapter writes none",
-  "internal_network": "the pilot runs every codex cell on network \"internal\" (preregistration refuses a codex cell without it, HE-NET-001). Observed 2026-10-29 (tests/internal-network-harnesses.test.ts): one serve turn through the lease-mode proxy on gpt-6-luna with a world-MCP post_message landed from code-mode exec; from inside the container the proxy port connects and 1.1.1.1:443 and chatgpt.com:443 fail"
+  "internal_network": "the pilot runs every codex cell on network \"internal\" (preregistration refuses a codex cell without it, HE-NET-001). Observed 2026-10-29 (tests/internal-network-harnesses.test.ts): one serve turn through the lease-mode proxy on gpt-6-luna with a world-MCP post_message landed from code-mode exec; from inside the container the proxy port connects and 1.1.1.1:443 and chatgpt.com:443 fail",
+  "official_minimal": {
+    "config": "official-minimal (HE_HARNESS_CONFIG, the cell config)",
+    "file": "ablation/official-minimal.txt (/opt/harness/ablation/official-minimal.txt in the image), a byte copy of harnesses/ablation/official-minimal.txt",
+    "sha256": "0149604cd565ede2faf78b5522357589ec1e459153447e1eea49d0046526c4c9",
+    "bytes": 177,
+    "setting": "model_instructions_file = <the file path> as the first top-level key of config.toml, replacing Codex's own base instructions (at 0.165.0 on gpt-6 models the first developer message of the Responses input, not an instructions field; observed keyless in tests/official-minimal.test.ts); the additional_tools item, the skills, multi-agent and environment messages Codex adds stay as Codex builds them. The key was found in the 0.165.0 binary's config schema and every turn runs with --strict-config. Unset, empty or default adds nothing; any other config, or a file with another sha256, is HE-ADAPTER-007 and exit 2 before ready. ready.official_minimal records the path, sha256 and bytes",
+    "source": "internal-task plan decision 5 (descriptive official-minimal cells); frozen at the preregistration"
+  }
 }

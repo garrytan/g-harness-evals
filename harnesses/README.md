@@ -1,6 +1,6 @@
 # Harness images
 
-One directory per harness, each a self-contained Docker image that implements the [adapter protocol](../docs/adapters.md). The runtime lives under `/opt/harness`, versions are pinned as build args and image labels, `pin.json` records the pin, the model configuration, the session keying and the world-MCP wiring, `config/` holds the non-interactive config written from it, and `adapter.sh` runs headless turns: `run` for one turn, `serve` for a multi-user trial.
+One directory per harness, each a self-contained Docker image that implements the [adapter protocol](../docs/adapters.md). The per-layer prompt maps for the ablation filter live in [ablation/](ablation/README.md). The runtime lives under `/opt/harness`, versions are pinned as build args and image labels, `pin.json` records the pin, the model configuration, the session keying and the world-MCP wiring, `config/` holds the non-interactive config written from it, and `adapter.sh` runs headless turns: `run` for one turn, `serve` for a multi-user trial.
 
 | Harness | Pin | Topology | Image | M0 hello-world (`run`) | M1 serve smoke |
 |---|---|---|---|---|---|

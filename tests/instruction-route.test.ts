@@ -10,7 +10,8 @@
  *
  * 1. Default: for every harness, entry and default spelling, and with HE_GBRAIN_INSTALL=gbrain-docs and gbrain-installer (the
  *    committed installer views of run gbrain-installer-hook-2026-10, per-turn hook included), the tree and every recorded CLI
- *    command line equal what the adapter at BASE (31a109a9c, main when internal-task started) leaves.
+ *    command line equal what the adapter at BASE (31a109a9c, main when internal-task started) leaves, apart from internal-task's cell
+ *    model in every model-valued config default (sinceBase).
  * 2. Each route writes exactly its intended bytes and nothing else, records them in instruction-route.json and names the route
  *    in ready.
  * 3. Refusals: an unknown config, OpenClaw route-system (no such setting at 2026.10.6), OpenClaw route-hook on the run entry, a
@@ -29,6 +30,8 @@ import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
+import { withCellModelDefaults } from './fixtures/model-defaults.ts';
+import { withTextImageMode } from './fixtures/hermes-image-mode.ts';
 
 const ROOT = join(import.meta.dir, '..');
 const BASE = '31a109a9c';
@@ -136,6 +139,17 @@ function normalised(r: Run, harnessDir: string): Record<string, string> {
   return out;
 }
 
+/** internal-task's intended changes since BASE: the cell model, claude-haiku-5-5 in every run here, in the answering model's
+ *  defaults of the config the adapter leaves (tests/fixtures/model-defaults.ts), and Hermes's agent.image_input_mode text
+ *  (tests/fixtures/hermes-image-mode.ts). Applied to BASE's files before comparing. */
+const MODEL = 'claude-haiku-5-5';
+function sinceBase(h: Harness, files: Record<string, string>): Record<string, string> {
+  const key = h === 'openclaw' ? 'state/openclaw/openclaw.json' : 'state/hermes/config.yaml';
+  if (files[key] === undefined) return files;
+  const config = withCellModelDefaults(h, files[key]!, MODEL);
+  return { ...files, [key]: h === 'hermes' ? withTextImageMode(config) : config };
+}
+
 const seedSoul = (root: string) => { mkdirSync(join(root, 'state', 'hermes'), { recursive: true }); writeFileSync(join(root, 'state', 'hermes', 'SOUL.md'), SOUL_SEED); };
 
 /** A gbrain-docs view built on the fly: one workspace file (and .hermes.md for Hermes), a manifest with its view_digest. */
@@ -189,7 +203,7 @@ describe.skipIf(!NODE || !HAVE_PY)('default config: byte-identical to the adapte
       test(h + ' ' + entry + ': unset, empty and "default" leave every file and every CLI command line as ' + BASE + ' does', async () => {
         const base = await runAdapter({ harness: h, entry, harnessDir: baseDir(h) });
         expect(base.exit, base.log).toBe(0);
-        const want = normalised(base, baseDir(h));
+        const want = sinceBase(h, normalised(base, baseDir(h)));
         for (const config of [undefined, '', 'default']) {
           const r = await runAdapter({ harness: h, entry, config });
           expect(r.exit, r.log).toBe(0);
@@ -208,7 +222,7 @@ describe.skipIf(!NODE || !HAVE_PY)('default config: byte-identical to the adapte
       expect(base.ready!.gbrain_install.status).toBe('ok');
       const r = await runAdapter({ harness: h, entry: 'serve', env });
       expect(r.exit, r.log).toBe(0);
-      expect(normalised(r, join(ROOT, 'harnesses', h))).toEqual(normalised(base, baseDir(h)));
+      expect(normalised(r, join(ROOT, 'harnesses', h))).toEqual(sinceBase(h, normalised(base, baseDir(h))));
     }, 120_000);
     test(h + ' serve with HE_GBRAIN_INSTALL=gbrain-installer (the committed hook view): unchanged from ' + BASE, async () => {
       const env = { HE_GBRAIN_INSTALL: 'gbrain-installer', HE_GBRAIN_SPLIT: 'heldout', HE_GBRAIN_INSTALL_DIR: installerView(h) };
@@ -218,7 +232,7 @@ describe.skipIf(!NODE || !HAVE_PY)('default config: byte-identical to the adapte
       expect(base.ready!.gbrain_install.turn_hook).toBe(h === 'openclaw' ? 'loaded' : 'healthy');
       const r = await runAdapter({ harness: h, entry: 'serve', env, seed });
       expect(r.exit, r.log).toBe(0);
-      expect(normalised(r, join(ROOT, 'harnesses', h))).toEqual(normalised(base, baseDir(h)));
+      expect(normalised(r, join(ROOT, 'harnesses', h))).toEqual(sinceBase(h, normalised(base, baseDir(h))));
     }, 120_000);
   }
 });
@@ -290,15 +304,16 @@ describe.skipIf(!NODE || !HAVE_PY)('each route writes exactly its bytes', () => 
     test.skipIf(!HAVE_YAML)('hermes route-system (' + label + ' config, skipped where the host python3 has no PyYAML to parse it back): agent.system_prompt is the instruction as a JSON string, nothing else in config.yaml moves', async () => {
       const { r, diff } = await routed('hermes', 'route-system', url);
       expect(Object.keys(diff)).toEqual(['state/hermes/config.yaml']);
-      const template = readFileSync(join(ROOT, 'harnesses', 'hermes', 'config', label === 'openai' ? 'config.openai.yaml' : 'config.yaml'), 'utf8');
+      const template = withCellModelDefaults('hermes', readFileSync(join(ROOT, 'harnesses', 'hermes', 'config', label === 'openai' ? 'config.openai.yaml' : 'config.yaml'), 'utf8'), MODEL);
       const def = (await defaultRun('hermes', url)).files.get('state/hermes/config.yaml')!.toString();
       expect(def.startsWith(template)).toBe(true);
       const line = '  system_prompt: ' + JSON.stringify(INSTRUCTION.toString()) + '\n';
-      const want = label === 'openai'
+      const hasAgent = template.includes('\nagent:\n');
+      const want = hasAgent
         ? def.replace('\nagent:\n', '\nagent:\n' + line)
         : template + '\nagent:\n' + line + def.slice(template.length);
       expect(diff['state/hermes/config.yaml']!.toString()).toBe(want);
-      expect(r.route!.files[0]).toMatchObject({ added_bytes: Buffer.byteLength(label === 'openai' ? line : '\nagent:\n' + line) });
+      expect(r.route!.files[0]).toMatchObject({ added_bytes: Buffer.byteLength(hasAgent ? line : '\nagent:\n' + line) });
     }, 60_000);
   }
 
@@ -315,7 +330,7 @@ describe.skipIf(!NODE || !HAVE_PY)('each route writes exactly its bytes', () => 
     const command = "/bin/echo '" + JSON.stringify({ context: INSTRUCTION.toString() }) + "'";
     const block = '\n# he:instruction-route:begin\nhooks:\n  pre_llm_call:\n    - command: ' + JSON.stringify(command) + '\n      timeout: 10\n# he:instruction-route:end\n';
     const def = (await defaultRun('hermes')).files.get('state/hermes/config.yaml')!.toString();
-    const template = readFileSync(join(ROOT, 'harnesses', 'hermes', 'config', 'config.yaml'), 'utf8');
+    const template = withCellModelDefaults('hermes', readFileSync(join(ROOT, 'harnesses', 'hermes', 'config', 'config.yaml'), 'utf8'), MODEL);
     expect(diff['state/hermes/config.yaml']!.toString()).toBe(template + block + def.slice(template.length));
     const allow = JSON.parse(diff['state/hermes/shell-hooks-allowlist.json']!.toString());
     expect(allow.approvals).toHaveLength(1);
@@ -397,6 +412,17 @@ describe.skipIf(!NODE || !HAVE_PY)('refusals: HE-ADAPTER-007, exit 2, no ready',
     const r = await runAdapter({ harness: 'hermes', entry: 'serve', config: 'route-startup', seed: root => { seedSoul(root); writeFileSync(join(root, 'state', 'hermes', 'SOUL.md'), 'edited\n'); } });
     refused(r, 'is not the default SOUL.md Hermes seeds');
     expect(r.files.get('state/hermes/SOUL.md')!.toString()).toBe('edited\n');
+  }, 60_000);
+});
+
+describe.skipIf(!NODE || !HAVE_PY)('hermes model.default (internal-task)', () => {
+  test('a config.yaml that is not a template keeps its model.default', async () => {
+    const own = 'model:\n  default: "other-model"\n  provider: "anthropic"\napprovals:\n  mode: "manual"\n';
+    const r = await runAdapter({ harness: 'hermes', entry: 'serve', seed: root => { seedSoul(root); writeFileSync(join(root, 'state', 'hermes', 'config.yaml'), own); } });
+    expect(r.exit).toBe(0);
+    const config = r.files.get('state/hermes/config.yaml')!.toString();
+    expect(config).toContain('  default: "other-model"\n');
+    expect(config).not.toContain('claude-haiku-5-5');
   }, 60_000);
 });
 

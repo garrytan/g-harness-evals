@@ -82,6 +82,30 @@ if [ -n "${HE_GBRAIN_INSTALL:-}" ] && [ "$HE_GBRAIN_INSTALL" != gbrain-installer
   exit 2
 fi
 
+# internal-task: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Claude Code's own system prompt with one fixed text,
+# ablation/official-minimal.txt beside this file (/opt/harness/ablation in the image; a byte copy of
+# harnesses/ablation/official-minimal.txt, checked against pin.json official_minimal.sha256), passed as --system-prompt on every
+# turn. Unset, empty or default adds nothing, so the adapter's files and command lines are as before; any other value, or a text
+# file with another sha256, is HE-ADAPTER-007 and exit 2 before ready.
+system_prompt_args=()
+official_minimal_json=''
+case "${HE_HARNESS_CONFIG:-default}" in
+  default) ;;
+  official-minimal)
+    om_file="$harness_dir/ablation/official-minimal.txt"
+    om_expected=$(node -e 'process.stdout.write(String(require(process.argv[1]).official_minimal?.sha256 ?? ""))' "$harness_dir/pin.json")
+    om_sha=$(sha256sum "$om_file" 2>/dev/null | cut -d' ' -f1) || true
+    if [ -z "$om_expected" ] || [ "$om_sha" != "$om_expected" ]; then
+      log "HE-ADAPTER-007 HE_HARNESS_CONFIG=official-minimal: $om_file has sha256 '${om_sha:-missing}', pin.json official_minimal.sha256 is '$om_expected'"
+      exit 2
+    fi
+    system_prompt_args=(--system-prompt "$(cat "$om_file")")
+    official_minimal_json=$(printf ',"official_minimal":{"path":"%s","sha256":"%s","bytes":%s}' "$om_file" "$om_sha" "$(wc -c < "$om_file" | tr -d ' ')")
+    log "HE_HARNESS_CONFIG=official-minimal: --system-prompt from $om_file (sha256 $om_sha)"
+    ;;
+  *) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$HE_HARNESS_CONFIG is not a claude-code config (default, official-minimal)"; exit 2 ;;
+esac
+
 # HOME and CLAUDE_CONFIG_DIR hold settings, sessions (projects/<cwd>/<session id>.jsonl), memory and skills: all state.
 # No .credentials.json is ever written: the CLI authenticates with ANTHROPIC_API_KEY only.
 export HOME="$HE_SESSION_STATE_DIR"
@@ -287,7 +311,7 @@ process.stdout.write([x.slice(0, 8), x.slice(8, 12), x.slice(12, 16), x.slice(16
   [ -z "$hook_heartbeat" ] || hook_before=$(hook_runs)
   set +e
   setsid claude -p --output-format stream-json --verbose --model "$HE_MODEL_NAME" --permission-mode bypassPermissions \
-    --disallowedTools WebSearch,WebFetch --mcp-config "$mcp_config" --strict-mcp-config "$flag" "$sid" \
+    --disallowedTools WebSearch,WebFetch --mcp-config "$mcp_config" --strict-mcp-config "${system_prompt_args[@]}" "$flag" "$sid" \
     < "$prompt" > "$prefix.claude.jsonl" 2> >(tee -a "$prefix.stderr.log" >&2) &
   turn_pid=$!
   deadline=$((SECONDS + budget))
@@ -387,7 +411,7 @@ fs.renameSync(resp + ".tmp", resp);' "$@"
 }
 
 printf '{"harness":"claude-code","version":"%s","trial":"%s","ready_at":"%s","session_keys":"claude -p --session-id|--resume UUIDv5(dm:<member> | channel:<id>)","mcp_servers":"%s","adapter_sha256":"%s"%s}\n' \
-  "$claude_version" "$HE_TRIAL_ID" "$(now)" "${mcp_servers[*]}" "$adapter_sha256" "$gbrain_install_json" > "$HE_LOG_DIR/ready.tmp"
+  "$claude_version" "$HE_TRIAL_ID" "$(now)" "${mcp_servers[*]}" "$adapter_sha256" "$official_minimal_json$gbrain_install_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do

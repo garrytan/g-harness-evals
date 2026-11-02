@@ -14,7 +14,9 @@
  * checkout's adapter.sh, config/ and pin.json are mounted over /opt/harness, so the image only supplies the pinned CLI):
  * 1. An Anthropic cell is byte-identical to c1c7ed1b3 (fixtures/openai-branch/golden/, written by make-golden.ts): the
  *    harness's config file as the adapter leaves it, the turn arguments and provider environment, the serve response and
- *    the ready file. The one difference is adapter_sha256, which is the checkout's adapter file.
+ *    the ready file. The differences are adapter_sha256, which is the checkout's adapter file, and the intended changes
+ *    `intended` lists (Hermes's lazy installs off; internal-task: the cell model as the answering model's default, and Hermes's
+ *    agent.image_input_mode text).
  * 2. An OpenAI cell hands OpenClaw openai/<model> and its OpenAI config, and Hermes --provider openai-api with OPENAI_*.
  * 3. Each image on an OpenAI cell through the real proxy in lease mode (--allow-models openai:gpt-6-luna,
  *    --max-output-tokens 128000 as every shard runs it, --upstream openai=<fake>, a slot bound with a per-trial token)
@@ -30,6 +32,8 @@ import { dirname, join } from 'node:path';
 import { sseUsage } from '../runner/proxy/metering-proxy.ts';
 import { ANTHROPIC_CELL, TOKEN, capture, captureProcess, dockerEnv, goldenOf, goldenPath, sha256, type Entry, type Harness } from './fixtures/openai-branch/capture.ts';
 import { responseStream, type FakeRequest } from './fixtures/openai-branch/fake-openai.ts';
+import { withCellModelDefaults } from './fixtures/model-defaults.ts';
+import { withTextImageMode } from './fixtures/hermes-image-mode.ts';
 
 const ROOT = join(import.meta.dir, '..');
 const HARNESSES: Harness[] = ['openclaw', 'hermes'];
@@ -41,10 +45,13 @@ const gateway = haveDocker ? spawnSync('docker', ['network', 'inspect', 'bridge'
 const OPENAI_CELL = { baseUrl: 'http://host.docker.internal:18999/golden/openai', model: 'gpt-6-luna' };
 // The one intended change to an Anthropic cell since c1c7ed1b3 (internal-task smoke): Hermes's config turns off lazy installs.
 const HERMES_NO_LAZY = '\n# No lazy pip installs at turn time (Bedrock\'s boto3, edge-tts): the trial\n# network has no package index, and no task uses those features (internal-task).\nsecurity:\n  allow_lazy_installs: false\n';
+// internal-task: the answering model's defaults name the cell model (here ANTHROPIC_CELL.model); OpenClaw's housekeeping model stays its
+// shipped default (internal-task, 2026-11-01). tests/fixtures/model-defaults.ts.
 const intended = (h: Harness, config: string): string => {
-  if (h !== 'hermes') return config;
-  expect(config).toContain('check_for_updates: false\n');
-  return config.replace('check_for_updates: false\n', 'check_for_updates: false\n' + HERMES_NO_LAZY);
+  const c = withCellModelDefaults(h, config, ANTHROPIC_CELL.model);
+  if (h !== 'hermes') return c;
+  expect(c).toContain('check_for_updates: false\n');
+  return withTextImageMode(c.replace('check_for_updates: false\n', 'check_for_updates: false\n' + HERMES_NO_LAZY));
 };
 const PROBE_ROUTES = new Set(['/api/v1/models', '/api/tags', '/v1/props', '/props', '/version', '/models', '/api/show']);
 
@@ -72,7 +79,7 @@ describe('process level', () => {
 const NODE = Bun.which('node');
 const HAVE_PY = Bun.which('python3') !== null;
 
-describe.skipIf(!NODE || !HAVE_PY)('an Anthropic cell is unchanged from c1c7ed1b3 apart from Hermes turning off lazy installs, process level (stub CLIs, no image)', () => {
+describe.skipIf(!NODE || !HAVE_PY)('an Anthropic cell is unchanged from c1c7ed1b3 apart from Hermes turning off lazy installs and the cell model as the answering-model default, process level (stub CLIs, no image)', () => {
   // What the image supplies besides the CLI: node and python3 on PATH, and its OPENCLAW_VERSION or HERMES_VERSION (the pin's version).
   const hostEnv = (h: Harness): Record<string, string> => {
     const version = JSON.parse(readFileSync(join(harnessDir(h), 'pin.json'), 'utf8')).version as string;
@@ -89,7 +96,7 @@ describe.skipIf(!NODE || !HAVE_PY)('an Anthropic cell is unchanged from c1c7ed1b
         expect(JSON.stringify(c.response)).toBe(JSON.stringify(golden.response));
         expect(JSON.stringify(c.ready)).toBe(JSON.stringify(golden.ready));
         if (h === 'openclaw' && entry === 'serve') {
-          expect(c.config).toBe(JSON.parse(readFileSync(goldenPath('openclaw', 'run'), 'utf8')).config);
+          expect(c.config).toBe(intended('openclaw', JSON.parse(readFileSync(goldenPath('openclaw', 'run'), 'utf8')).config));
           expect(c.mcp).toEqual([{ name: 'world', definition: JSON.parse(golden.config).mcp.servers.world }]);
         } else {
           expect(c.config).toBe(intended(h, golden.config));
@@ -103,7 +110,7 @@ describe.skipIf(!NODE || !HAVE_PY)('an Anthropic cell is unchanged from c1c7ed1b
   }
 });
 
-describe('an Anthropic cell is unchanged from c1c7ed1b3 apart from Hermes turning off lazy installs', () => {
+describe('an Anthropic cell is unchanged from c1c7ed1b3 apart from Hermes turning off lazy installs and the cell model as the answering-model default', () => {
   for (const h of HARNESSES) {
     for (const entry of ['run', 'serve'] as Entry[]) {
       test.skipIf(!haveImage(h))(`${h} ${entry}: config, turn arguments and environment, response and ready are byte-identical; only adapter_sha256 differs`, async () => {

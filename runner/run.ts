@@ -55,6 +55,7 @@ import { openingDiff, publicImageProblem, readJsonFile, readReceipt, receiptProb
 import { insideGitTree } from '../scripts/sealed/custody.ts';
 import { heldoutSet, isSealed, readManifest } from '../scripts/seal-heldout.ts';
 import { sealedGuard } from './heldout/guard.ts';
+import { GOLDEN_WIRES, type AblationSpec, loadBinding, wireOfModel } from './proxy/ablate.ts';
 
 export { RunnerError };
 
@@ -112,7 +113,9 @@ export interface Cell {
   /** Harness-specific configuration name, handed to the adapter as HE_HARNESS_CONFIG (internal-task). QM accepts pi (the
    *  default), pi-probe, pi-strict and pi-command-deny (harnesses/qm/pin.json configs). OpenClaw and
    *  Hermes accept default and the instruction routes route-tool, route-system (Hermes only), route-startup, route-hook and
-   *  route-skill (internal-task, harnesses/routes/README.md); the other harnesses ignore it. */
+   *  route-skill (internal-task, harnesses/routes/README.md). Claude Code and Codex accept default and official-minimal (internal-task:
+   *  the harness's own system prompt or base instructions replaced by harnesses/ablation/official-minimal.txt, through the
+   *  adapter; a config value, not a layer of the ablation field). The other harnesses ignore it. */
   config?: string;
   repetitions: number;
   /** Planning ceiling, tokens in and out, used only to price the cap: per trial for single-shot slices,
@@ -143,9 +146,13 @@ export interface Cell {
    *  no route off the machine, the metering proxy, the world and the gbrain tap on that network's gateway, still reached as
    *  host.docker.internal (docs/adapters.md, "Network"). Absent, the default docker bridge, as before. */
   network?: 'internal';
+  /** internal-task (prompt archaeology): the metering proxy cuts these layers of the harness's built-in prompt out of every request,
+   *  by the layer map (harnesses/ablation/<harness>.<wire>.layers.json, path from the repository root) whose sha256 the
+   *  preregistration names (runner/proxy/ablate.ts). An empty layer list is the full cell: filter on, nothing removed. */
+  ablation?: AblationSpec;
 }
 
-const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'config', 'repetitions', 'ceiling', 'tasks', 'harness_mode', 'script', 'adapter', 'gbrain', 'preamble', 'task_set', 'session_scope', 'utility_models', 'network']);
+const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'config', 'repetitions', 'ceiling', 'tasks', 'harness_mode', 'script', 'adapter', 'gbrain', 'preamble', 'task_set', 'session_scope', 'utility_models', 'network', 'ablation']);
 export const DEFAULT_TASK_SET = 'v0.1';
 
 /** internal-task: the Particle cells whose harness pin has no model_particle entry, the declaration an adapter makes when it routes
@@ -255,6 +262,7 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
     // Codex cell still runs only where nothing but the proxy, the world and the gbrain tap is reachable, so a direct connection the
     // config missed cannot happen either (harnesses/codex/README.md).
     if (c.harness === 'codex' && c.network !== 'internal') throw new RunnerError('HE-NET-001', `cell ${c.id}: harness codex needs network "internal" (Codex 0.165.0 calls chatgpt.com directly when its plugins are on; the internal network rules out any direct connection the config missed; harnesses/codex/README.md). fix: add "network": "internal" to the cell`);
+    if (c.ablation !== undefined) checkAblation(c);
     if (!prereg.tasks[c.slice] && !c.tasks && c.slice !== 'multiuser') throw new RunnerError('HE-PREREG-004', `cell ${c.id} names slice ${c.slice} but tasks.${c.slice} is missing`);
     const scripted = c.harness_mode === 'scripted';
     if (scripted && (c.harness !== 'scripted' || !['oracle', 'mutations'].includes(c.script ?? '')))
@@ -287,6 +295,24 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
   }
   if (!(prereg.spend_cap_usd > 0)) throw new RunnerError('HE-BUDGET-002', 'spend_cap_usd must be > 0; the cap is written into the preregistration, never passed ad hoc');
   return { prereg, sha256: createHash('sha256').update(raw).digest('hex') };
+}
+
+/** internal-task: a cell's ablation at plan time: the shape, a multi-user harness cell, the map file present with the preregistered
+ *  sha256, the layers a subset of the map's, and the map made for this cell's harness, model and a golden-tested wire. */
+function checkAblation(c: Cell): void {
+  const bad = (why: string) => new RunnerError('HE-PREREG-007', `cell ${c.id}: ablation ${why}`);
+  const a = c.ablation as unknown as Record<string, unknown>;
+  if (!a || typeof a !== 'object' || Array.isArray(a) || Object.keys(a).sort().join(',') !== 'layers,map,map_sha256' || typeof a.map !== 'string' || typeof a.map_sha256 !== 'string' || !Array.isArray(a.layers))
+    throw bad(`must be {"map": <layer map path>, "map_sha256": <its sha256>, "layers": [<layer>, ...]} (got ${JSON.stringify(a)})`);
+  if (c.slice !== 'multiuser' || c.harness_mode === 'scripted') throw bad(`runs on multi-user harness cells only (slice ${c.slice}, harness_mode ${c.harness_mode ?? 'docker'})`);
+  if (!existsSync(a.map)) throw bad(`map ${a.map} not found`);
+  let map: ReturnType<typeof loadBinding>['map'];
+  try { map = loadBinding(c.ablation!).map; } catch (e) { throw bad((e as Error).message); }
+  const wire = wireOfModel(c.model);
+  if (map.harness !== c.harness || `${c.model.slice(0, c.model.indexOf(':'))}:${map.model}` !== c.model || wire !== map.wire)
+    throw bad(`map ${a.map} is for ${map.harness} on ${map.model} over ${map.wire}, not this cell's ${c.harness} on ${c.model} over ${wire ?? 'an unknown wire'}`);
+  if (!GOLDEN_WIRES.includes(map.wire)) throw bad(`wire ${map.wire} has no golden test (runner/proxy/ablate.ts GOLDEN_WIRES)`);
+  if (c.utility_models?.includes(c.model)) throw bad(`cannot run with the cell's own model ${c.model} in utility_models: the filter passes housekeeping requests through untouched`);
 }
 
 /** Price of one unit of the cell's ceiling: a trial for single-shot slices, a turn for multiuser. Scripted cells cost nothing. */
@@ -411,7 +437,7 @@ export function renderPlan(m: Manifest): string {
   for (const c of m.cells) {
     const mine = m.trials.filter((t) => t.cell === c.id);
     const turns = mine.reduce((a, t) => a + (t.turns ?? 0), 0);
-    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.utility_models ? ` utility_models=${c.utility_models.join(',')}` : ''}${c.config ? ` config=${c.config}` : ''}${c.network ? ` network=${c.network}` : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${gbrainLabel(c.gbrain)}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}${c.gbrain.ingest ? ` ingest=${c.gbrain.ingest}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
+    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.utility_models ? ` utility_models=${c.utility_models.join(',')}` : ''}${c.config ? ` config=${c.config}` : ''}${c.network ? ` network=${c.network}` : ''}${c.ablation ? ` ablation=${c.ablation.layers.join(',') || 'none'} map=${c.ablation.map} map_sha256=${c.ablation.map_sha256.slice(0, 12)}` : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${gbrainLabel(c.gbrain)}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}${c.gbrain.ingest ? ` ingest=${c.gbrain.ingest}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
   }
   for (const c of m.cells) {
     if (c.gbrain?.brain === 'company' && c.preamble !== 'tasks/multiuser/_shared/preamble.gbrain-company.md') lines.push(`WARN: cell ${c.id} serves the company brain with preamble ${c.preamble ?? 'tasks/multiuser/_shared/preamble.md'}, not the company one (tasks/multiuser/_shared/preamble.gbrain-company.md); intended only for a none-style arm on the company brain`);

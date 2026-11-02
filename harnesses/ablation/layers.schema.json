@@ -1,0 +1,485 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/garrytan/harness-evals/harnesses/ablation/layers.schema.json",
+  "title": "harness-ablation-layers/1",
+  "description": "A layer map for one harness, wire and model (internal-task, plan decisions 1, 3, 4 and 9). It names the request families it covers by fingerprint and, for each family, every span of harness text by location, in request order: system blocks, the Responses instructions, harness-injected messages, tool descriptions (cut into sub-spans) and tool definitions. Each span is one removable layer or one never-removed class, or is split into paragraphs that each are. A span starts at its anchor (the literal text it begins with, matched at a line start, in order after the previous span's anchor; the first span of a unit starts at byte 0) and ends where the next span of the same unit starts. User turns, tool results, function_call_output and custom_tool_call_output items have no location kind, so they cannot be addressed. Byte counts are UTF-8 bytes. Written by scripts/ablation/settle.ts from scripts/ablation/gen-anchors.ts candidates; see harnesses/ablation/README.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "harness",
+    "wire",
+    "model",
+    "sources",
+    "coding",
+    "families"
+  ],
+  "properties": {
+    "schema": {
+      "const": "harness-ablation-layers/1"
+    },
+    "harness": {
+      "type": "string",
+      "minLength": 1
+    },
+    "wire": {
+      "enum": [
+        "anthropic-messages",
+        "openai-responses"
+      ]
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The model the cells run and the captures named."
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The anatomy records and receipts the candidates were generated from.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scenario",
+          "record",
+          "receipts",
+          "source_log_sha256"
+        ],
+        "properties": {
+          "scenario": {
+            "type": "string"
+          },
+          "record": {
+            "type": "string"
+          },
+          "receipts": {
+            "type": "string"
+          },
+          "source_log_sha256": {
+            "$ref": "#/$defs/sha256"
+          }
+        }
+      }
+    },
+    "coding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coders",
+        "items",
+        "agreement"
+      ],
+      "properties": {
+        "coders": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "file",
+              "model"
+            ],
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "items": {
+          "type": "string"
+        },
+        "agreement": {
+          "type": "string"
+        },
+        "rule": {
+          "type": "string"
+        }
+      }
+    },
+    "families": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/family"
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "layer": {
+      "enum": [
+        "identity",
+        "tool-guide",
+        "tool-descriptions",
+        "safety",
+        "memory-skills",
+        "work-habits",
+        "style"
+      ]
+    },
+    "never_removed": {
+      "enum": [
+        "protocol-and-discovery",
+        "runtime-environment"
+      ]
+    },
+    "bytes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "min",
+        "max"
+      ],
+      "description": "Expected byte length. Exact when the text was the same in every captured request; otherwise the observed range widened by 10 percent or 16 bytes, whichever is larger.",
+      "properties": {
+        "min": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "family": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "fingerprint",
+        "requests_seen",
+        "spans"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "agent-turn",
+            "compaction",
+            "subagent",
+            "utility",
+            "side"
+          ]
+        },
+        "fingerprint": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path_suffix",
+            "has_tools",
+            "system_prefix"
+          ],
+          "description": "A request is in this family when its path ends with path_suffix, it offers tools (or not) as has_tools says, and its system text (dissect.ts systemBlocks, joined) starts with system_prefix. A request in no family passes through untouched and is counted.",
+          "properties": {
+            "path_suffix": {
+              "enum": [
+                "/messages",
+                "/responses"
+              ]
+            },
+            "has_tools": {
+              "type": "boolean"
+            },
+            "system_prefix": {
+              "type": "string"
+            }
+          }
+        },
+        "requests_seen": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "spans": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/span"
+          }
+        }
+      }
+    },
+    "location": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "index"
+          ],
+          "description": "An Anthropic system block (a string system is block 0).",
+          "properties": {
+            "kind": {
+              "const": "system_block"
+            },
+            "index": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "description": "The Responses instructions field.",
+          "properties": {
+            "kind": {
+              "const": "instructions"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "role",
+            "ordinal",
+            "part"
+          ],
+          "description": "One content part of a harness-injected message. ordinal counts message items of that role (additional_tools items are not messages); any matches every message of that role whose part starts with the span group's first anchor. A user-role part that holds the eval's task message, or sits in a tool-result turn, is never a unit.",
+          "properties": {
+            "kind": {
+              "const": "message"
+            },
+            "role": {
+              "enum": [
+                "system",
+                "developer",
+                "user"
+              ]
+            },
+            "ordinal": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "const": "any"
+                }
+              ]
+            },
+            "part": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "tool"
+          ],
+          "description": "The description field of a tool in the tools array.",
+          "properties": {
+            "kind": {
+              "const": "tool_description"
+            },
+            "tool": {
+              "type": "string",
+              "minLength": 1
+            },
+            "namespace": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "namespace",
+            "tool"
+          ],
+          "description": "The description field of a Codex additional_tools entry.",
+          "properties": {
+            "kind": {
+              "const": "additional_tool"
+            },
+            "namespace": {
+              "type": "string"
+            },
+            "tool": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "tool"
+          ],
+          "description": "A tool's definition without its description: name, parameter schema and any grammar. Always protocol-and-discovery.",
+          "properties": {
+            "kind": {
+              "const": "tool_definition"
+            },
+            "tool": {
+              "type": "string",
+              "minLength": 1
+            },
+            "namespace": {
+              "type": "string"
+            },
+            "additional": {
+              "const": true
+            }
+          }
+        }
+      ]
+    },
+    "paragraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "anchor",
+        "bytes",
+        "candidates"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "layer"
+          ]
+        },
+        {
+          "required": [
+            "never_removed"
+          ]
+        }
+      ],
+      "properties": {
+        "anchor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bytes": {
+          "$ref": "#/$defs/bytes"
+        },
+        "layer": {
+          "$ref": "#/$defs/layer"
+        },
+        "never_removed": {
+          "$ref": "#/$defs/never_removed"
+        },
+        "candidates": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "unit",
+        "location",
+        "section",
+        "presence",
+        "bytes",
+        "candidates"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "layer"
+          ]
+        },
+        {
+          "required": [
+            "never_removed"
+          ]
+        },
+        {
+          "required": [
+            "paragraphs"
+          ]
+        }
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The unit this span belongs to; spans of one unit are listed in order."
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "anchor": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Absent only on a tool definition, which is one whole span."
+        },
+        "section": {
+          "type": "string"
+        },
+        "presence": {
+          "enum": [
+            "always",
+            "when_present"
+          ],
+          "description": "always: in every captured request of the family. A required span that does not match is a did-not-take request."
+        },
+        "bytes": {
+          "$ref": "#/$defs/bytes"
+        },
+        "text_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "layer": {
+          "$ref": "#/$defs/layer"
+        },
+        "never_removed": {
+          "$ref": "#/$defs/never_removed"
+        },
+        "paragraphs": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/paragraph"
+          },
+          "description": "A section that mixes layers, split at paragraph level; the first paragraph starts at the span's anchor."
+        },
+        "candidates": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

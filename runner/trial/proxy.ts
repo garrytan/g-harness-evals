@@ -18,12 +18,17 @@
 //
 // internal-task: a run of cells with network "internal" binds the proxy on the gateway of the run's internal docker network
 // instead of the bridge gateway; containers still reach it as host.docker.internal, which the runner maps to that gateway.
+//
+// internal-task: a run with an ablation cell starts the proxy with --ablation-log <run dir>/ablation.ndjson (outside every agent
+// mount), and each trial slot of such a cell is bound with its map, map sha256 and layers. summarizeAblation reads the
+// trial key's receipts into TrialRecord.ablation.
 
-import { existsSync, mkdirSync, openSync, readFileSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Meter, UsageLine } from '../proxy/metering-proxy.ts';
-import type { TrialEmbeddingUsage, TrialUsage } from '../contracts.ts';
+import { HOUSEKEEPING_FAMILY, type AblationReceipt, type AblationSpec, type Wire } from '../proxy/ablate.ts';
+import type { TrialAblation, TrialEmbeddingUsage, TrialUsage } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
 import { CONTAINER_HOST, listenHost } from './world.ts';
 import { type CaptureConfig, captureProxyEnv } from './capture.ts';
@@ -47,6 +52,8 @@ export interface RunProxyOptions {
    *  instead of `env`'s, keeping only PATH and HOME from it (runner/trial/capture.ts). */
   capture?: CaptureConfig;
   startTimeoutMs?: number;
+  /** internal-task: start the proxy with --ablation-log <runDir>/ablation.ndjson so trial slots can be bound with a layer map. */
+  ablationLog?: boolean;
 }
 
 /** The per-trial key: what the proxy meters a trial under and what the receipts record as `meter_id`. Deterministic
@@ -85,7 +92,11 @@ export class RunProxy {
     readonly usageLog: string,
     readonly ledgerPath: string,
     private readonly reachableFromContainers: boolean,
+    readonly ablationLog: string | null = null,
   ) {}
+
+  /** internal-task: the ablation log's size when each key was last bound, so a key's receipts are this attempt's only. */
+  private readonly ablationFrom = new Map<string, number>();
 
   static async start(opts: RunProxyOptions): Promise<RunProxy> {
     mkdirSync(opts.runDir, { recursive: true });
@@ -100,6 +111,8 @@ export class RunProxy {
     if (opts.allowModels.length) args.push('--allow-models', opts.allowModels.join(','));
     if (opts.maxOutputTokens) args.push('--max-output-tokens', String(opts.maxOutputTokens));
     if (opts.newRun) args.push('--new-run');
+    const ablationLog = opts.ablationLog ? join(opts.runDir, 'ablation.ndjson') : null;
+    if (ablationLog) args.push('--ablation-log', ablationLog);
     for (const [provider, url] of Object.entries(opts.capture?.upstream ?? {})) args.push('--upstream', `${provider}=${url}`);
     const proc = Bun.spawn(args, { stdin: 'ignore', stdout: logFd, stderr: logFd, env: proxyProcessEnv(opts) as Record<string, string> });
     const deadline = Date.now() + (opts.startTimeoutMs ?? 20_000);
@@ -107,7 +120,7 @@ export class RunProxy {
       if (proc.exitCode !== null) break;
       try {
         const res = await fetch(`http://${host}:${port}/__proxy/status`);
-        if (res.ok) return new RunProxy(proc, port, host, controlToken, usageLog, opts.ledgerPath, opts.reachableFromContainers);
+        if (res.ok) return new RunProxy(proc, port, host, controlToken, usageLog, opts.ledgerPath, opts.reachableFromContainers, ablationLog);
       } catch { /* not listening yet */ }
       await Bun.sleep(50);
     }
@@ -131,15 +144,33 @@ export class RunProxy {
     try {
       res = await fetch(`http://${this.host}:${this.port}${path}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-proxy-control': this.controlToken }, body: JSON.stringify(body) });
     } catch (e) { throw new RunnerError('HE-PROXY-003', `metering proxy ${path} unreachable: ${(e as Error).message}`); }
-    if (!res.ok) throw new RunnerError('HE-PROXY-003', `metering proxy ${path} answered HTTP ${res.status}`);
+    if (!res.ok) throw new RunnerError('HE-PROXY-003', `metering proxy ${path} answered HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 400)}`);
     return res.json();
   }
 
   /** Charge the slot to `key`; with `token`, the proxy forwards only requests that present it; with `models` (provider:model
-   *  ids, internal-task), only requests for those models, inside the run-wide --allow-models. */
-  bind(slot: string, key: string, token?: string, models?: string[]) { return this.control('/__proxy/bind', { slot, key, ...(token ? { token } : {}), ...(models ? { models } : {}) }); }
+   *  ids, internal-task), only requests for those models, inside the run-wide --allow-models; with `ablation` (internal-task), the proxy
+   *  checks the map's sha256 (a mismatch fails the bind) and cuts the layers out of the slot's requests. */
+  bind(slot: string, key: string, token?: string, models?: string[], ablation?: AblationSpec) {
+    if (ablation && this.ablationLog) this.ablationFrom.set(key, existsSync(this.ablationLog) ? statSync(this.ablationLog).size : 0);
+    return this.control('/__proxy/bind', { slot, key, ...(token ? { token } : {}), ...(models ? { models } : {}), ...(ablation ? { ablation } : {}) });
+  }
   unbind(slot: string) { return this.control('/__proxy/unbind', { slot }); }
   finalize(key: string, timeoutMs = 30_000): Promise<Meter> { return this.control('/__proxy/finalize', { key, timeout_ms: timeoutMs }) as Promise<Meter>; }
+
+  /** internal-task: every layer-filter receipt the proxy wrote for a key since its last bind, in order. Only the log from that
+   *  bind's offset is read, and a last line still being written (no newline yet) is left out. */
+  ablationLines(key: string): AblationReceipt[] {
+    if (!this.ablationLog || !existsSync(this.ablationLog)) return [];
+    const fd = openSync(this.ablationLog, 'r');
+    try {
+      const from = this.ablationFrom.get(key) ?? 0;
+      const buf = Buffer.alloc(Math.max(0, fstatSync(fd).size - from));
+      readSync(fd, buf, 0, buf.length, from);
+      const text = buf.toString('utf8');
+      return text.slice(0, text.lastIndexOf('\n') + 1).split('\n').filter(Boolean).map((l) => JSON.parse(l) as AblationReceipt).filter((l) => l.key === key);
+    } finally { closeSync(fd); }
+  }
 
   /** Every usage line the proxy wrote for a key, in order. */
   usageLines(key: string): UsageLine[] {
@@ -175,11 +206,37 @@ export function summarizeUsage(key: string, meter: Meter, lines: UsageLine[]): {
     input_tokens: forwarded.reduce((a, l) => a + (l.input_tokens ?? 0), 0),
     output_tokens: forwarded.reduce((a, l) => a + (l.output_tokens ?? 0), 0),
     cached_tokens: forwarded.reduce((a, l) => a + (l.cached_tokens ?? 0), 0),
+    ...(forwarded.some((l) => l.cache_write_tokens !== undefined) ? { cache_write_tokens: forwarded.reduce((a, l) => a + (l.cache_write_tokens ?? 0), 0) } : {}),
     unpriced: meter.unpriced,
     by_model: meter.byModel,
     upstream: meter.upstream ?? null,
   };
   return { usage, cap_stop: lines.some(isCapRefusal) };
+}
+
+/** internal-task: TrialRecord.ablation from a trial's receipts. A trial is unstable when a span id removed in one agent request is removed
+ *  again in the next with another sha256 from a block (unit) with the same sha256. */
+export function summarizeAblation(spec: AblationSpec, wire: Wire, lines: AblationReceipt[]): TrialAblation {
+  const agent = lines.filter((l) => l.kind === 'agent-turn');
+  const housekeeping = lines.filter((l) => l.family === HOUSEKEEPING_FAMILY).length;
+  let unstable = false;
+  for (let i = 1; i < agent.length && !unstable; i++) {
+    const before = new Map(agent[i - 1]!.removed.map((r) => [`${r.span}@${r.unit_sha256}`, r.sha256]));
+    unstable = agent[i]!.removed.some((r) => { const was = before.get(`${r.span}@${r.unit_sha256}`); return was !== undefined && was !== r.sha256; });
+  }
+  const invalid = !lines.length ? 'no ablation receipts: the proxy filtered no request of this trial' : !agent.length ? `${lines.length} receipt(s) and no agent request (unknown families: ${lines.filter((l) => l.unknown_family).length})` : null;
+  return {
+    layers: spec.layers, map: spec.map, map_sha256: spec.map_sha256, wire,
+    agent_requests: agent.length,
+    matched_requests: agent.filter((l) => !l.did_not_take && !l.partial).length,
+    removed_bytes: lines.reduce((a, l) => a + l.removed_bytes, 0),
+    did_not_take: agent.filter((l) => l.did_not_take).length,
+    partial: agent.filter((l) => l.partial).length,
+    unknown_families: lines.filter((l) => l.unknown_family).length,
+    ...(housekeeping ? { housekeeping_requests: housekeeping } : {}),
+    unstable_filter: unstable,
+    ...(invalid ? { invalid_reason: invalid } : {}),
+  };
 }
 
 /** internal-task: the sidecar's /v1/embeddings lines for the trial key, on their own. */

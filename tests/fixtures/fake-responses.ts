@@ -3,13 +3,18 @@
 // (tests/codex-adapter.test.ts). It stands where the metering proxy's
 // `--upstream openai=<url>` points, so it accepts only `POST /v1/responses`
 // (the path the proxy forwards after it strips `/<slot>/openai`) and answers
-// every other method or path 404. Every request is recorded to an ndjson file
-// with the model, the stream flag, the output cap, the reasoning settings, the
-// tool names and the sha256 of the Authorization header (never the header
-// itself), and answered as a Responses SSE stream with `response.completed`
-// usage, the shape the proxy meters.
+// every other method or path 404. Every request is recorded to an ndjson file,
+// one line per request, with the model, the stream flag, the output cap, the
+// reasoning settings, the tool names, the sha256 of the Authorization header
+// (never the header itself), the logged headers (user-agent, originator,
+// openai-beta and every x-stainless-* header) and, for a POST with a JSON body,
+// the whole request body as `body` (the shape scripts/gsta-135/fake-anthropic.ts
+// logs, so scripts/anatomy/dissect.ts and store.ts read both). Each request is
+// answered as a Responses SSE stream with `response.completed` usage, the shape
+// the proxy meters.
 //
 //   bun tests/fixtures/fake-responses.ts --host 127.0.0.1 --port 8799 --log fake.ndjson [--script turns.json] [--loop] [--fail-status 400]
+//       [--require-key-prefix sk-capture-dummy] [--max-requests 200] [--max-seconds 900]
 //
 // --script <file>: a JSON list of turns the fake plays, in order, against the
 // requests that carry a tools array (the agent loop; a request with no tools
@@ -23,13 +28,23 @@
 // codex 0.165.0 does for gpt-6 models; OpenClaw's function tool exec is not one) both become one custom_tool_call to exec
 // whose JavaScript calls tools.exec_command({cmd}) or tools.<tool>(arguments);
 // otherwise a function_call for the shell tool found by name (exec_command,
-// shell_command or shell) or for the tool whose name equals <tool> or ends with
-// __<tool>.
+// shell_command or shell) or for the tool whose name equals <tool>,
+// else ends with __<tool>, else ends with _<tool> (Hermes names MCP tools
+// mcp_<server>_<tool>).
 //   {"status": 400 | 402 | 500 | ...}        that HTTP status with an OpenAI
 //                                            error body and no usage
+// A call or shell turn whose tool is not offered still consumes the turn: the
+// answer is the text "fake: no tool ..." and the log marks the turn missing: true,
+// as scripts/gsta-135/fake-anthropic.ts does.
 // When the script is used up every later request gets "ok", so the loop ends;
 // with --loop the script starts over, so the loop never ends (the wall-clock
 // test). --fail-status <code> answers every request with that status.
+// --require-key-prefix <p> answers 401 to any request whose Authorization
+// bearer value does not start with <p>, so an anatomy capture shows that only
+// the proxy's dummy key reached the fake. --max-requests <n> and
+// --max-seconds <s> cap a capture: after n /v1/responses requests, or s seconds
+// after the fake started, every request gets "ok" and its log line carries
+// capped: true.
 import { createHash } from 'node:crypto';
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -37,10 +52,12 @@ import { dirname } from 'node:path';
 export type Turn = { text: string } | { tool: string } | { call: string; arguments?: Record<string, unknown> } | { status: number; message?: string };
 export interface FakeRequestRecord {
   at: string; method: string; path: string; status: number; model?: string | null; stream?: boolean; max_output_tokens?: number | null;
-  reasoning?: unknown; tools?: string[]; tool_choice?: unknown; authorization_sha256?: string | null; user_agent?: string | null; originator?: string | null; played?: Turn | null;
+  reasoning?: unknown; tools?: string[]; tool_choice?: unknown; authorization_sha256?: string | null; user_agent?: string | null; originator?: string | null; played?: (Turn & { missing?: true }) | null;
+  headers?: Record<string, string>; body?: Record<string, unknown>; capped?: true;
 }
 
 const SHELL_TOOLS = ['exec_command', 'shell_command', 'shell'];
+const LOGGED_HEADERS = ['user-agent', 'originator', 'openai-beta'];
 /** Tool names a request offers: the top-level tools array and the additional_tools input items, namespaces flattened. */
 export function toolNames(body: Record<string, unknown>): string[] {
   const out: string[] = [];
@@ -79,7 +96,7 @@ export function validateScript(script: unknown): Turn[] {
 }
 
 /** The output items for one request, the HTTP status to answer with, and the scripted turn it used, if any. */
-export function answer(body: Record<string, unknown>, turns: Turn[], index: number, loop = false): { status: number; output: Array<Record<string, unknown>>; turn: Turn | null; message?: string } {
+export function answer(body: Record<string, unknown>, turns: Turn[], index: number, loop = false): { status: number; output: Array<Record<string, unknown>>; turn: Turn | null; message?: string; missing?: true } {
   const names = toolNames(body);
   const turn = names.length ? turns[loop && turns.length ? index % turns.length : index] ?? null : null;
   const text = (t: string) => [{ type: 'message', id: 'msg_fake_' + (index + 1), role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: t, annotations: [] }] }];
@@ -94,11 +111,11 @@ export function answer(body: Record<string, unknown>, turns: Turn[], index: numb
   }
   if ('tool' in turn) {
     const name = SHELL_TOOLS.find(n => names.includes(n));
-    if (!name) return { status: 200, output: text('fake: no shell tool among ' + names.join(',')), turn };
+    if (!name) return { status: 200, output: text('fake: no shell tool among ' + names.join(',')), turn, missing: true };
     return { status: 200, output: [{ type: 'function_call', id: 'fc_fake_' + (index + 1), call_id: 'call_fake_' + (index + 1), name, arguments: JSON.stringify(shellArguments(name, turn.tool)), status: 'completed' }], turn };
   }
-  const name = names.find(n => n === turn.call || n.endsWith('__' + turn.call));
-  if (!name) return { status: 200, output: text('fake: no tool ' + turn.call + ' among ' + names.join(',')), turn };
+  const name = names.find(n => n === turn.call) ?? names.find(n => n.endsWith('__' + turn.call)) ?? names.find(n => n.endsWith('_' + turn.call));
+  if (!name) return { status: 200, output: text('fake: no tool ' + turn.call + ' among ' + names.join(',')), turn, missing: true };
   return { status: 200, output: [{ type: 'function_call', id: 'fc_fake_' + (index + 1), call_id: 'call_fake_' + (index + 1), name, arguments: JSON.stringify(turn.arguments ?? {}), status: 'completed' }], turn };
 }
 
@@ -130,17 +147,24 @@ export function stream(id: string, model: string, output: Array<Record<string, u
 export interface FakeResponses { port: number; requests: FakeRequestRecord[]; setScript(turns: Turn[], loop?: boolean): void; stop(): void }
 
 /** onBody gets every parsed /v1/responses request body (tests that read what the harness sent, such as a hook's context). */
-export function startFakeResponses(o: { host?: string; port?: number; log?: string | null; script?: Turn[]; loop?: boolean; failStatus?: number; onBody?: (body: Record<string, unknown>) => void } = {}): FakeResponses {
+export function startFakeResponses(o: { host?: string; port?: number; log?: string | null; script?: Turn[]; loop?: boolean; failStatus?: number; onBody?: (body: Record<string, unknown>) => void; requireKeyPrefix?: string; maxRequests?: number; maxSeconds?: number } = {}): FakeResponses {
   let script = o.script ?? [];
   let loop = o.loop ?? false;
   const requests: FakeRequestRecord[] = [];
   if (o.log) mkdirSync(dirname(o.log), { recursive: true });
   const record = (r: FakeRequestRecord) => { requests.push(r); if (o.log) appendFileSync(o.log, JSON.stringify(r) + '\n'); };
-  let played = 0;
+  let played = 0, responsesRequests = 0;
+  const started = performance.now();
   const server = Bun.serve({ port: o.port ?? 0, hostname: o.host ?? '127.0.0.1', idleTimeout: 0, async fetch(req) {
     const url = new URL(req.url);
     const auth = req.headers.get('authorization');
-    const meta = { at: new Date().toISOString(), method: req.method, path: url.pathname + url.search, authorization_sha256: auth ? sha256(auth) : null, user_agent: req.headers.get('user-agent'), originator: req.headers.get('originator') };
+    const headers: Record<string, string> = {};
+    for (const [k, v] of req.headers) if (LOGGED_HEADERS.includes(k) || k.startsWith('x-stainless-')) headers[k] = v;
+    const meta = { at: new Date().toISOString(), method: req.method, path: url.pathname + url.search, authorization_sha256: auth ? sha256(auth) : null, user_agent: req.headers.get('user-agent'), originator: req.headers.get('originator'), headers };
+    if (o.requireKeyPrefix !== undefined && !(auth ?? '').replace(/^Bearer\s+/i, '').startsWith(o.requireKeyPrefix)) {
+      record({ ...meta, status: 401 });
+      return Response.json({ error: { type: 'invalid_request_error', code: 'invalid_api_key', message: 'fake-responses: credential does not start with the required prefix' } }, { status: 401 });
+    }
     if (req.method !== 'POST' || url.pathname !== '/v1/responses' || url.search) {
       record({ ...meta, status: 404 });
       return Response.json({ error: { type: 'invalid_request_error', code: 'not_found', message: 'fake-responses: no route ' + req.method + ' ' + url.pathname } }, { status: 404 });
@@ -148,14 +172,25 @@ export function startFakeResponses(o: { host?: string; port?: number; log?: stri
     let body: Record<string, unknown>;
     try { body = await req.json() as Record<string, unknown>; } catch { record({ ...meta, status: 400 }); return Response.json({ error: { type: 'invalid_request_error', message: 'fake-responses: body is not JSON' } }, { status: 400 }); }
     o.onBody?.(body);
-    const fields = { model: typeof body.model === 'string' ? body.model : null, stream: body.stream === true, max_output_tokens: typeof body.max_output_tokens === 'number' ? body.max_output_tokens : null, reasoning: body.reasoning ?? null, tools: toolNames(body), tool_choice: body.tool_choice ?? null };
+    const fields = { model: typeof body.model === 'string' ? body.model : null, stream: body.stream === true, max_output_tokens: typeof body.max_output_tokens === 'number' ? body.max_output_tokens : null, reasoning: body.reasoning ?? null, tools: toolNames(body), tool_choice: body.tool_choice ?? null, body };
+    responsesRequests++;
+    if ((o.maxRequests !== undefined && responsesRequests > o.maxRequests) || (o.maxSeconds !== undefined && (performance.now() - started) / 1000 > o.maxSeconds)) {
+      const output = answer({}, [], 0).output;
+      const capped: FakeRequestRecord = { ...meta, ...fields, status: 200, played: null, capped: true };
+      if (o.log) appendFileSync(o.log, JSON.stringify(capped) + '\n');
+      const { body: _kept_in_log, ...light } = capped;
+      requests.push(light);
+      const id = 'resp_fake_' + requests.length;
+      if (!body.stream) return Response.json({ id, object: 'response', status: 'completed', model: fields.model, output, usage: USAGE });
+      return new Response(stream(id, String(fields.model ?? ''), output), { headers: { 'content-type': 'text/event-stream' } });
+    }
     if (o.failStatus) {
       record({ ...meta, ...fields, status: o.failStatus });
       return Response.json({ error: { type: o.failStatus === 401 ? 'invalid_api_key' : 'api_error', message: 'fake-responses answers ' + o.failStatus } }, { status: o.failStatus });
     }
     const a = answer(body, script, played, loop);
     if (a.turn) played++;
-    record({ ...meta, ...fields, status: a.status, played: a.turn });
+    record({ ...meta, ...fields, status: a.status, played: a.turn && a.missing ? { ...a.turn, missing: true } : a.turn });
     if (a.status !== 200) return Response.json({ error: { type: a.status === 402 ? 'insufficient_quota' : a.status >= 500 ? 'server_error' : 'invalid_request_error', message: a.message ?? 'fake-responses answers ' + a.status } }, { status: a.status });
     const id = 'resp_fake_' + requests.length;
     if (!body.stream) return Response.json({ id, object: 'response', status: 'completed', model: fields.model, output: a.output, usage: USAGE });
@@ -170,6 +205,11 @@ if (import.meta.main) {
   const log = arg('--log', 'results/fake-responses.ndjson');
   const scriptPath = arg('--script', '');
   const failStatus = Number(arg('--fail-status', '0'));
-  const fake = startFakeResponses({ host, port: Number(arg('--port', '8799')), log, script: scriptPath ? validateScript(JSON.parse(readFileSync(scriptPath, 'utf8'))) : [], loop: process.argv.includes('--loop'), failStatus });
-  console.log('fake-responses listening on http://' + host + ':' + fake.port + ' (log ' + log + (scriptPath ? ', script ' + scriptPath : '') + (failStatus ? ', every request fails ' + failStatus : '') + ')');
+  const num = (name: string) => { const v = arg(name, ''); if (!v) return undefined; if (!(Number(v) >= 0)) throw new Error(name + ' must be a non-negative number'); return Number(v); };
+  const requireKeyPrefix = arg('--require-key-prefix', '') || undefined;
+  const maxRequests = num('--max-requests'), maxSeconds = num('--max-seconds');
+  const fake = startFakeResponses({ host, port: Number(arg('--port', '8799')), log, script: scriptPath ? validateScript(JSON.parse(readFileSync(scriptPath, 'utf8'))) : [], loop: process.argv.includes('--loop'), failStatus, requireKeyPrefix, maxRequests, maxSeconds });
+  const notes = [scriptPath ? 'script ' + scriptPath : '', failStatus ? 'every request fails ' + failStatus : '', requireKeyPrefix !== undefined ? 'key prefix required' : '',
+    maxRequests !== undefined ? 'cap ' + maxRequests + ' requests' : '', maxSeconds !== undefined ? 'cap ' + maxSeconds + ' s' : ''].filter(Boolean);
+  console.log('fake-responses listening on http://' + host + ':' + fake.port + ' (log ' + log + notes.map(n => ', ' + n).join('') + ')');
 }

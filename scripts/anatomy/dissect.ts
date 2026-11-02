@@ -15,10 +15,21 @@
 // around it (user_prefix_bytes); without it that field is null.
 //
 // Classes: error is any status of 400 or more; agent is a POST to a messages or
-// responses path with a non-empty tools array; side is a POST to such a path
-// without tools; discovery is everything else (GET /v1/models, count_tokens,
-// Ollama-style /api/show probes). All byte counts are UTF-8 bytes; a body's
-// bytes are those of its compact JSON (JSON.stringify), not of the raw line.
+// responses path with a non-empty tools array (on Responses, or a non-empty
+// additional_tools input item); side is a POST to such a path without tools;
+// discovery is everything else (GET /v1/models, count_tokens, Ollama-style
+// /api/show probes). All byte counts are UTF-8 bytes; a body's bytes are those
+// of its compact JSON (JSON.stringify), not of the raw line.
+//
+// On the Responses wire the system is `instructions` followed by the text of
+// every input message with role system or developer, in input order (Codex
+// 0.165.0 sends no instructions and puts its whole prompt in developer
+// messages); each text part is one block, and the block records where it came
+// from (source). The messages are the other input items. The tools are the
+// top-level tools array and the tools of every additional_tools input item,
+// namespaces flattened (each entry keeps its namespace), and, for a tool whose
+// description documents nested tools under "### `<name>`" headings (Codex's
+// code-mode exec), one entry per nested tool, marked nested_in.
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
@@ -40,7 +51,7 @@ export interface LogRow {
 
 export interface Section { title: string; block: number; start: number; bytes: number; sha256: string }
 export interface CacheMark { where: 'system' | 'tools' | 'messages'; index: number; block?: number }
-export interface ToolEntry { name: string; description_bytes: number; schema_bytes: number; deferred?: true }
+export interface ToolEntry { name: string; description_bytes: number; schema_bytes: number; deferred?: true; namespace?: string; source?: 'additional_tools'; nested_in?: string }
 
 export interface RequestEntry {
   i: number;
@@ -64,7 +75,7 @@ export interface RequestEntry {
 export interface FirstAgent {
   i: number;
   body_bytes: number;
-  system: { bytes: number; blocks: Array<{ start: number; bytes: number; cache_control: boolean }>; sections: Section[] };
+  system: { bytes: number; blocks: Array<{ start: number; bytes: number; cache_control: boolean; source?: string }>; sections: Section[] };
   tools: ToolEntry[];
   deferred_tools_note?: string;
   deferred_tools_omitted?: number;
@@ -124,16 +135,54 @@ export function classify(row: LogRow): RequestClass {
   if ((row.status ?? 0) >= 400) return 'error';
   if (row.method !== 'POST' || !GENERATION.test(row.path)) return 'discovery';
   const tools = isObj(row.body) ? row.body.tools : undefined;
-  return Array.isArray(tools) && tools.length > 0 ? 'agent' : 'side';
+  if (Array.isArray(tools) && tools.length > 0) return 'agent';
+  return additionalTools(row.body).some(t => t.length > 0) ? 'agent' : 'side';
 }
 
-/** The system prompt as text blocks: Anthropic system (a string or text blocks) or Responses instructions. */
-export function systemBlocks(body: unknown, wire: Wire): Array<{ text: string; cache_control: boolean }> {
+/** The tools arrays of a Responses body's additional_tools input items (Codex). */
+function additionalTools(body: unknown): unknown[][] {
+  if (!isObj(body) || !Array.isArray(body.input)) return [];
+  return body.input.filter(m => isObj(m) && m.type === 'additional_tools' && Array.isArray(m.tools)).map(m => (m as Obj).tools as unknown[]);
+}
+
+/** A Responses input item that carries system text: a message with role system or developer. */
+const systemItem = (m: unknown): m is Obj => isObj(m) && (m.role === 'system' || m.role === 'developer') && (m.type === undefined || m.type === 'message');
+
+/** The system prompt as text blocks: Anthropic system (a string or text blocks), or Responses instructions then the system and developer input messages. */
+export function systemBlocks(body: unknown, wire: Wire): Array<{ text: string; cache_control: boolean; source?: string }> {
   if (!isObj(body)) return [];
-  const s = wire === 'openai-responses' ? body.instructions : body.system;
-  if (typeof s === 'string') return [{ text: s, cache_control: false }];
-  if (!Array.isArray(s)) return [];
-  return s.filter(isObj).map(b => ({ text: str(b.text) ?? '', cache_control: b.cache_control !== undefined }));
+  const blocks = (s: unknown, source?: string) => {
+    const at = (k?: number) => (source === undefined ? {} : { source: k === undefined ? source : `${source}.content[${k}]` });
+    if (typeof s === 'string') return [{ text: s, cache_control: false, ...at() }];
+    if (!Array.isArray(s)) return [];
+    return s.flatMap((b, k) => (isObj(b) ? [{ text: str(b.text) ?? '', cache_control: b.cache_control !== undefined, ...at(k) }] : []));
+  };
+  if (wire !== 'openai-responses') return blocks(body.system);
+  const out: Array<{ text: string; cache_control: boolean; source?: string }> = blocks(body.instructions, 'instructions').map(b => ({ ...b, source: 'instructions' }));
+  if (Array.isArray(body.input)) body.input.forEach((m, i) => { if (systemItem(m)) out.push(...blocks(m.content, `input[${i}]`).filter(b => b.text !== '')); });
+  return out;
+}
+
+/** Every tool a request offers. Anthropic: the tools array as sent. Responses: the tools array and every additional_tools item's tools, namespaces flattened. */
+function toolList(body: unknown, wire: Wire): Array<{ tool: unknown; namespace?: string; source?: 'additional_tools' }> {
+  if (!isObj(body)) return [];
+  if (wire !== 'openai-responses') return Array.isArray(body.tools) ? body.tools.map(tool => ({ tool })) : [];
+  const out: Array<{ tool: unknown; namespace?: string; source?: 'additional_tools' }> = [];
+  const walk = (list: unknown[], source?: 'additional_tools', namespace?: string) => {
+    for (const t of list) {
+      if (isObj(t) && t.type === 'namespace' && Array.isArray(t.tools)) walk(t.tools, source, str(t.name) ?? '');
+      else out.push({ tool: t, ...(namespace !== undefined ? { namespace } : {}), ...(source ? { source } : {}) });
+    }
+  };
+  if (Array.isArray(body.tools)) walk(body.tools);
+  for (const list of additionalTools(body)) walk(list, 'additional_tools');
+  return out;
+}
+
+/** Bytes of every tool definition a request offers: the tools array, plus each additional_tools item's tools on Responses. */
+function toolBytes(body: Obj, wire: Wire): number {
+  const top = Array.isArray(body.tools) && body.tools.length ? jsonBytes(body.tools) : 0;
+  return wire === 'openai-responses' ? additionalTools(body).reduce((n, t) => n + (t.length ? jsonBytes(t) : 0), top) : top;
 }
 
 /** Throws unless the sections tile [0, total) with no gap or overlap. */
@@ -149,7 +198,8 @@ export function checkSections(sections: Section[], total: number): void {
 /**
  * Splits system text blocks into sections at markdown headings (#, ##, ###) and
  * at top-level XML-like tags: a line holding only <tag ...> with a matching
- * line holding only </tag> later in the same block becomes one section, and
+ * line holding only </tag> later in the same block becomes one section (so
+ * does <a b> closed by </a b>, as Codex writes <permissions instructions>), and
  * the text after the closing tag continues the enclosing heading as
  * "<heading> (cont.)". Text before a block's first heading is "preamble".
  * Fenced code and tag bodies are never split. A section never crosses a block
@@ -183,7 +233,9 @@ export function splitSections(blocks: string[]): Section[] {
       if (/^(```|~~~)/.test(text)) { fence = !fence; cur += line; return; }
       if (!fence && /^#{1,3}\s+\S/.test(text)) { flush(); title = heading = text.trim(); cur = line; return; }
       const open = fence ? null : text.match(/^<([A-Za-z][\w.:-]*)(?:\s[^<>]*)?>\s*$/);
-      if (open && lines.slice(k + 1).some(l => bare(l).trim() === `</${ open[1]}>`)) { flush(); title = `<${ open[1]}>`; closeTag = open[1]; cur = line; return; }
+      const closes = (tag: string) => lines.slice(k + 1).some(l => bare(l).trim() === `</${ tag}>`);
+      const tag = !open ? null : closes(open[1]) ? open[1] : closes(text.trim().slice(1, -1)) ? text.trim().slice(1, -1) : null;
+      if (tag) { flush(); title = `<${ tag}>`; closeTag = tag; cur = line; return; }
       cur += line;
     });
     flush();
@@ -198,13 +250,31 @@ function toolEntry(t: unknown): ToolEntry {
   return {
     name: str(o.name) ?? str(fn.name) ?? str(o.type) ?? '',
     description_bytes: bytes(str(o.description) ?? str(fn.description) ?? ''),
-    schema_bytes: jsonBytes(o.input_schema ?? o.parameters ?? fn.parameters),
+    schema_bytes: jsonBytes(o.input_schema ?? o.parameters ?? fn.parameters ?? o.format),
   };
 }
 
-/** The conversation items: Anthropic messages, or a Responses input (a string or a list of items). */
+/** The nested tools a tool's description documents under "### `<name>`" headings (Codex's exec), each with the bytes of its subsection, which ends at the next heading of any level. */
+export function nestedTools(parent: string, description: string): ToolEntry[] {
+  const out: ToolEntry[] = [];
+  const lines = description.match(/[^\n]*\n|[^\n]+$/g) ?? [];
+  let cur: ToolEntry | null = null;
+  let fenced = false;
+  for (const line of lines) {
+    if (/^\s*```/.test(line)) fenced = !fenced;
+    const m = fenced ? null : line.match(/^### `([^`]+)`\s*$/);
+    if (m) { cur = { name: m[1], description_bytes: 0, schema_bytes: 0, nested_in: parent }; out.push(cur); }
+    else if (!fenced && /^#{1,3}\s/.test(line)) cur = null;
+    if (cur) cur.description_bytes += bytes(line);
+  }
+  return out;
+}
+
+/** The conversation items: Anthropic messages, or a Responses input (a string, or its items other than system and developer messages and additional_tools). */
 function items(body: unknown, wire: Wire): unknown {
-  return isObj(body) ? body[wire === 'openai-responses' ? 'input' : 'messages'] : undefined;
+  if (!isObj(body)) return undefined;
+  if (wire !== 'openai-responses') return body.messages;
+  return Array.isArray(body.input) ? body.input.filter(m => !systemItem(m) && !(isObj(m) && m.type === 'additional_tools')) : body.input;
 }
 
 /** Text of the user messages, one string per text block. */
@@ -223,6 +293,7 @@ function requestEntry(row: LogRow, i: number, wire: Wire): RequestEntry {
   const b = isObj(row.body) ? row.body : {};
   const responses = wire === 'openai-responses';
   const tools = Array.isArray(b.tools) ? b.tools : [];
+  const offered = toolList(b, wire);
   const list = items(b, wire);
   const cache: CacheMark[] = [];
   if (!responses) {
@@ -246,7 +317,7 @@ function requestEntry(row: LogRow, i: number, wire: Wire): RequestEntry {
     max_tokens: num(responses ? b.max_output_tokens : b.max_tokens),
     body_bytes: jsonBytes(row.body),
     system_bytes: systemBlocks(row.body, wire).reduce((n, x) => n + bytes(x.text), 0),
-    tools: { count: tools.length, bytes: tools.length ? jsonBytes(tools) : 0, names: tools.map(t => toolEntry(t).name) },
+    tools: { count: offered.length, bytes: toolBytes(b, wire), names: offered.map(t => toolEntry(t.tool).name) },
     messages: { count: Array.isArray(list) ? list.length : typeof list === 'string' ? 1 : 0, bytes: jsonBytes(list) },
     cache_control: cache,
     thinking: (responses ? b.reasoning : b.thinking) ?? null,
@@ -260,8 +331,12 @@ function firstAgent(row: LogRow, i: number, wire: Wire, prompt?: string): FirstA
   const sections = splitSections(blocks.map(x => x.text));
   const text = Buffer.from(blocks.map(x => x.text).join(''), 'utf8');
   let start = 0;
-  const blockInfo = blocks.map(x => { const n = bytes(x.text); const info = { start, bytes: n, cache_control: x.cache_control }; start += n; return info; });
-  const tools: ToolEntry[] = (body.tools as unknown[]).map(toolEntry);
+  const blockInfo = blocks.map(x => { const n = bytes(x.text); const info = { start, bytes: n, cache_control: x.cache_control, ...(x.source !== undefined ? { source: x.source } : {}) }; start += n; return info; });
+  const tools: ToolEntry[] = toolList(body, wire).flatMap(({ tool, namespace, source }) => {
+    const entry: ToolEntry = { ...toolEntry(tool), ...(namespace !== undefined ? { namespace } : {}), ...(source ? { source } : {}) };
+    const description = isObj(tool) ? str(tool.description) : null;
+    return wire === 'openai-responses' && description ? [entry, ...nestedTools(entry.name, description)] : [entry];
+  });
   for (const s of sections.filter(s => /deferred/i.test(s.title))) {
     const listing = text.subarray(s.start, s.start + s.bytes).toString('utf8');
     for (const m of listing.matchAll(/^- ([\w.:-]+) \([^)\n]*\): ?(.*)$/gm)) tools.push({ name: m[1], description_bytes: bytes(m[2]), schema_bytes: 0, deferred: true });
@@ -361,12 +436,14 @@ export function summary(rec: AnatomyRecord): string {
   if (!fa) {
     lines.push('no agent request in this log');
   } else {
-    const direct = fa.tools.filter(x => !x.deferred);
+    const direct = fa.tools.filter(x => !x.deferred && !x.nested_in);
     const deferred = fa.tools.filter(x => x.deferred);
+    const nested = fa.tools.filter(x => x.nested_in);
     lines.push(`first agent request (#${ fa.i}): ${ n(fa.body_bytes)} body bytes, system ${ n(fa.system.bytes)} bytes in ${ fa.system.blocks.length} block(s), ${ fa.system.sections.length} sections`);
     lines.push('largest system sections:');
     for (const s of [...fa.system.sections].sort((a, b) => b.bytes - a.bytes).slice(0, 10)) lines.push(`  ${ n(s.bytes).padStart(7)}  ${ s.title}`);
     lines.push(`tools: ${ direct.length} sent (${ direct.map(x => x.name).join(', ')})`);
+    if (nested.length) lines.push(`nested tools documented inside a tool's description: ${ nested.length} (${ nested.map(x => `${ x.nested_in}.${ x.name}`).join(', ')})`);
     if (deferred.length) lines.push(`deferred tools listed in the system prompt: ${ deferred.length} (${ deferred.map(x => x.name).join(', ')})`);
     lines.push(`deferred-tool note: ${ fa.deferred_tools_note ?? 'none'}`);
     const added = fa.user_prefix_bytes === null ? '' : `, ${ n(fa.user_prefix_bytes)} added by the harness`;

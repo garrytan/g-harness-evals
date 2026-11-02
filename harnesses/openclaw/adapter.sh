@@ -20,6 +20,7 @@ set -euo pipefail
 : "${HE_MODEL_BASE_URL:?HE_MODEL_BASE_URL must be set}"
 : "${HE_MODEL_API_KEY:?HE_MODEL_API_KEY must be set}"
 : "${HE_MODEL_NAME:=claude-sonnet-5-5}"
+export HE_MODEL_NAME
 : "${HE_TIME_BUDGET_S:=300}"
 : "${HE_TRIAL_ID:=unknown}"
 : "${HE_SESSION_SCOPE:=conversation}"

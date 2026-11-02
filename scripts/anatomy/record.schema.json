@@ -285,7 +285,7 @@
             "discovery",
             "error"
           ],
-          "description": "error: status 400 or more; agent: POST to a messages or responses path with a non-empty tools array; side: such a POST without tools; discovery: everything else."
+          "description": "error: status 400 or more; agent: POST to a messages or responses path with a non-empty tools array (Responses: or a non-empty additional_tools input item); side: such a POST without tools; discovery: everything else."
         },
         "model": {
           "type": [
@@ -311,11 +311,12 @@
         },
         "system_bytes": {
           "$ref": "#/$defs/count",
-          "description": "Bytes of the system text blocks (Responses: instructions)."
+          "description": "Bytes of the system text blocks (Responses: instructions, then the text of every system or developer input message)."
         },
         "tools": {
           "type": "object",
           "additionalProperties": false,
+          "description": "Every tool the request offers (Responses: the tools array and every additional_tools item's tools, namespaces flattened); bytes is the JSON of those arrays.",
           "required": [
             "count",
             "bytes",
@@ -466,6 +467,10 @@
                   },
                   "cache_control": {
                     "type": "boolean"
+                  },
+                  "source": {
+                    "type": "string",
+                    "description": "Responses only: where the block came from, instructions or input[<i>].content[<k>] (a system or developer message part)."
                   }
                 }
               }
@@ -481,7 +486,7 @@
         },
         "tools": {
           "type": "array",
-          "description": "The tools array in order, then any deferred tools the system prompt lists under a heading naming deferred tools.",
+          "description": "The tools array in order (Responses: then every additional_tools item's tools, namespaces flattened; after a tool whose description documents nested tools, one entry per nested tool), then any deferred tools the system prompt lists under a heading naming deferred tools.",
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -502,6 +507,18 @@
               },
               "deferred": {
                 "const": true
+              },
+              "namespace": {
+                "type": "string",
+                "description": "Responses only: the namespace tool the tool sits in."
+              },
+              "source": {
+                "const": "additional_tools",
+                "description": "Responses only: the tool came from an additional_tools input item (Codex), not the tools array."
+              },
+              "nested_in": {
+                "type": "string",
+                "description": "Responses only: a nested tool documented under a ### heading inside this tool's description (Codex's code-mode exec); description_bytes is that subsection, schema_bytes 0."
               }
             }
           }

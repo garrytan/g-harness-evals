@@ -10,10 +10,14 @@
 // failure is the trial's infra_error, not the run's; and after the meter is read, a trial with embeddings on that
 // searched the brain must show a forwarded embedding line and no degraded stamp, else it is infra_error under
 // HE-GBRAIN-005 and excluded from its rung.
+//
+// internal-task: a cell that carries ablation binds its slot with the layer map (path resolved from the repository root),
+// and after the meter is read the trial's receipts are copied to <trial dir>/ablation.ndjson and summarized into the
+// record's ablation field. The filter's outcome never changes the termination: the primary analysis is intention to treat.
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import type { GradeResult, HarnessMode, Termination, TrialEvidence, TrialEmbeddingUsage, TrialGbrain, TrialGbrainInstall, TrialRecord, TrialUsage, TurnWindow } from '../contracts.ts';
+import type { GradeResult, HarnessMode, Termination, TrialAblation, TrialEvidence, TrialEmbeddingUsage, TrialGbrain, TrialGbrainInstall, TrialRecord, TrialUsage, TurnWindow } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
 import { cellModels, taskDirFor, resolveGbrain, type Cell, type ResolvedGbrain, type Trial } from '../run.ts';
 import type { WorldEvent } from '../../world/services/events.ts';
@@ -24,7 +28,8 @@ import { type GbrainSidecar, type InstallViewManifest, checkCompanyGrants, check
 import { GBRAIN_WRITE_TOOLS } from '../../world/services/gbrain-tap.ts';
 import { canReadFile } from '../grade/predicates.ts';
 import { HarnessGone, type Harness, makeTrialDirs, startProcessHarness, writeAtomic } from './harness.ts';
-import { RunProxy, embeddingUsage, reconcile, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
+import { RunProxy, embeddingUsage, reconcile, summarizeAblation, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
+import { wireOfModel } from '../proxy/ablate.ts';
 import { loadTask, type TaskSpec } from './task.ts';
 import { flushIngestAfterFence, runTurns } from './turns.ts';
 import { TrialWorld, worldAt } from './world.ts';
@@ -251,6 +256,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   let error: string | undefined;
   let grade: GradeResult = EMPTY_GRADE;
   let usage: TrialUsage | null = null;
+  let ablation: TrialAblation | undefined;
   let capStop = false;
   let modelMismatch = false;
   const paths: Record<string, string> = { dir: dirs.root, trial_json: join(dirs.root, 'trial.json'), events: join(dirs.root, 'events.jsonl'), turns: join(dirs.root, 'turns.jsonl'), snapshot: join(dirs.root, 'snapshot.json'), grade: join(dirs.root, 'grade.json'), logs: dirs.logs };
@@ -259,7 +265,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
 
   try {
     // The harness slot is bound inside the cleanup try, so nothing thrown from here on can leave a live token behind.
-    if (proxy) await proxy.bind(slot, key, token, cellModels(cell));
+    if (proxy) await proxy.bind(slot, key, token, cellModels(cell), cell.ablation ? { ...cell.ablation, map: resolve(opts.repoRoot ?? '.', cell.ablation.map), ...(cell.utility_models ? { utility_models: cell.utility_models } : {}) } : undefined);
     writeFileSync(paths.turns!, '');
     try {
       if (infraError) throw new HarnessGone(null, infraError);
@@ -324,6 +330,12 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       }
       writeAtomic(paths.usage!, JSON.stringify(usage, null, 1) + '\n');
       writeAtomic(paths.reconcile!, JSON.stringify(reconcile(key, meter, lines), null, 1) + '\n');
+      if (cell.ablation) {
+        const receipts = proxy.ablationLines(key);
+        paths.ablation = join(dirs.root, 'ablation.ndjson');
+        writeAtomic(paths.ablation, receipts.map((l) => JSON.stringify(l) + '\n').join(''));
+        ablation = summarizeAblation(cell.ablation, wireOfModel(cell.model)!, receipts);
+      }
     }
 
     if (windows.length) {
@@ -366,6 +378,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     usage, wall_ms: ended - started, started_at, ended_at: new Date(ended).toISOString(), paths,
     ...(error ? { error } : {}),
     ...(gbrainRecord ? { gbrain: gbrainRecord } : {}),
+    ...(ablation ? { ablation } : {}),
   };
 }
 

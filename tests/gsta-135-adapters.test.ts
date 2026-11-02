@@ -206,7 +206,7 @@ describe('hermes chat-mode adapter', () => {
   const withWatcher = (snippet: string, env: Record<string, string> = {}) => spawnSync('bash', ['-c', 'set -uo pipefail\nlog() { echo "LOG $*"; }\n' + fn('chat_complete') + fn('chat_watch') + snippet], { encoding: 'utf8', env: { PATH: process.env.PATH!, HE_TIME_BUDGET_S: '30', ...env } });
   test('the copied turn block matches the counted adapter line for line', () => {
     const anchors = [/^: "\$\{HE_WORKSPACE_DIR:=/, /^: "\$\{HE_MODEL_BASE_URL:\?/, /^: "\$\{HE_MODEL_API_KEY:\?/, /^: "\$\{HE_MODEL_NAME:=/, /^exec > >\(tee -a "\$HE_LOG_DIR\/stdout.log"\)/, /^log\(\) \{/,
-      /^export HOME=/, /^export HERMES_HOME=/, /^mkdir -p "\$HERMES_HOME"/, /^\[ -e "\$HERMES_HOME\/config.yaml" \] \|\|/, /^export ANTHROPIC_API_KEY=/, /^export ANTHROPIC_BASE_URL=/, /^hermes_version=\$\(/, /^model_error_pattern=/, /^cd "\$HE_WORKSPACE_DIR"/,
+      /^export HOME=/, /^export HERMES_HOME=/, /^mkdir -p "\$HERMES_HOME"/, /^\[ -e "\$HERMES_HOME\/config.yaml" \] \|\|/, /^for template in /, /^    sed -i "s\|\^  default: /, /^export ANTHROPIC_API_KEY=/, /^export ANTHROPIC_BASE_URL=/, /^hermes_version=\$\(/, /^model_error_pattern=/, /^cd "\$HE_WORKSPACE_DIR"/,
       /^  \[ -r "\$HE_WORKSPACE_DIR\/instruction.md" \] \|\|/, /^    0\) log "completed"; exit 0 ;;/, /^    124\|137\) log "wall clock exceeded/, /^    log "model error \(hermes exit \$code\)"; exit 3/, /^  log "harness error \(hermes exit \$code\)"; exit 2/];
     const countedLines = counted.split('\n');
     const overlayLines = new Set(overlay.split('\n').map(l => l.trim()));

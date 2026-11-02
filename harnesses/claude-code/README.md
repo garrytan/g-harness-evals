@@ -17,6 +17,7 @@
 - **Provider check.** The adapter exits 2 at startup, with the reason in `adapter.log`, unless `HE_MODEL_BASE_URL` ends in `/anthropic` (the runner's `<proxy>/<slot>/anthropic` route). The CLI speaks only the Messages API.
 - **Network.** It serves on the internal network: a turn through the proxy, a world-MCP call, no direct connection out (`tests/internal-network-harnesses.test.ts`).
 - **Skills** live at `$CLAUDE_CONFIG_DIR/skills/<name>/SKILL.md` and run as `/<name>` or through the Skill tool.
+- **Official-minimal (internal-task).** A cell with `config: "official-minimal"` (`HE_HARNESS_CONFIG`) passes `--system-prompt` with the fixed text in `ablation/official-minimal.txt` on every turn. That file is a byte copy of [harnesses/ablation/official-minimal.txt](../ablation/official-minimal.txt), and the adapter checks it against `pin.json` `official_minimal.sha256`. At 2.1.312 the text replaces the third system block, the CLI's own prompt. The billing header, the SDK identity line, the system-role message and the tool descriptions stay. Unset, empty or `default` changes nothing; any other value exits 2 (HE-ADAPTER-007). Tests: `tests/official-minimal.test.ts`.
 
 Exit mapping:
 
@@ -39,6 +40,10 @@ Keyless, against a fake Anthropic endpoint and through the metering proxy in lea
 No paid trial has run on this harness yet.
 
 ## Changelog
+
+### 2026-10-31: official-minimal config (internal-task)
+
+`HE_HARNESS_CONFIG=official-minimal` passes `--system-prompt` with the fixed text in `ablation/official-minimal.txt`, for the prompt archaeology run's descriptive official-minimal cells. Unset, the adapter's files and command lines are unchanged.
 
 ### 2026-10-29: image, adapter and keyless tests (internal-task)
 

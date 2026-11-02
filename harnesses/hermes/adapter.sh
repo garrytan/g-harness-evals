@@ -62,6 +62,18 @@ case "${HE_MODEL_BASE_URL%/}" in
   */openai) provider=openai-api; [ -e "$HERMES_HOME/config.yaml" ] || cp "$harness_dir/config/config.openai.yaml" "$HERMES_HOME/config.yaml" ;;
 esac
 [ -e "$HERMES_HOME/config.yaml" ] || cp /opt/harness/config/config.yaml "$HERMES_HOME/config.yaml"
+# internal-task: while config.yaml is still exactly one of the templates, its model.default is set to the cell model, as --model
+# is on every turn, so no request names another model. The templates' default (claude-sonnet-5-5, gpt-6-luna) otherwise
+# shows up in Hermes's metadata read GET /v1/models/<default> beside the one for the cell model (keyless capture,
+# 2026-10-31). Each template has exactly one "  default:" line. Any other config.yaml (one a home already had, or the gstack
+# overlay's copy with its approvals block) is left as it is.
+model_sed=$(printf '%s' "$HE_MODEL_NAME" | sed 's/[|&\\]/\\&/g')
+for template in "$harness_dir/config/config.yaml" "$harness_dir/config/config.openai.yaml"; do
+  if [ "$(cat "$template")" = "$(cat "$HERMES_HOME/config.yaml")" ]; then
+    sed -i "s|^  default: .*|  default: \"$model_sed\"|" "$HERMES_HOME/config.yaml"
+    break
+  fi
+done
 
 # The anthropic provider reads these two variables; nothing is written to .env.
 export ANTHROPIC_API_KEY="$HE_MODEL_API_KEY"

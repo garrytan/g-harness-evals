@@ -3,15 +3,32 @@
 //
 // Runs one real multi-user trial through the runner in capture mode: the real
 // world, task, preamble, slot binding and (with --gbrain) gbrain sidecar, the
-// real metering proxy with dummy keys, and the proxy's upstream pointed at the
-// fake model endpoint (scripts/gsta-135/fake-anthropic.ts), which records every
-// request. Optionally the harness's name lookups go to the egress sink
-// (scripts/anatomy/sink), so every outside host it tries to reach is on record.
-// Nothing is paid: the fake refuses any credential that is not the dummy.
+// real metering proxy with dummy keys, and the proxy's upstream pointed at a
+// fake model endpoint, which records every request body. --provider anthropic
+// (the default) uses scripts/gsta-135/fake-anthropic.ts on the Messages wire;
+// --provider openai uses tests/fixtures/fake-responses.ts on the Responses wire
+// and makes the cell an openai:<model> cell, so OpenClaw and Hermes take their
+// OpenAI branch and Codex runs at all; the growth and retry scenarios stay
+// anthropic-only, since the Responses fake has no scripted usage or shell result.
+// Optionally the harness's name lookups go
+// to the egress sink (scripts/anatomy/sink), so every outside host it tries to
+// reach is on record. Nothing is paid: each fake refuses any credential that is
+// not the proxy's capture dummy (runner/trial/capture.ts CAPTURE_DUMMY_KEYS).
 //
 //   bun scripts/anatomy/capture.ts --harness openclaw --scenario plain [--config <label>]
-//       [--task <v0.3 dev task>] [--gbrain] [--egress refuse|pass|off] [--model claude-haiku-5-5]
-//       [--image <tag>] [--record <name>] [--out <dir>]
+//       [--provider anthropic|openai] [--model <name>] [--network bridge|internal]
+//       [--task <v0.3 dev task>] [--gbrain] [--egress refuse|pass|off]
+//       [--image <tag>] [--record <name>] [--max-output-tokens 128000] [--out <dir>]
+//
+// --max-output-tokens is the proxy's output cap (default 128000, what every shard runs). The proxy writes it into a
+// request that names no cap and refuses one that names more, so a capture at a lower cap shows whether a harness
+// states its own cap (refused, the trial ends model_error) or leaves it to the proxy (forwarded with the lower value).
+// --model defaults to claude-haiku-5-5 on anthropic and gpt-6.1-sol on openai.
+// --network internal puts the harness on the run's internal docker network (no
+// route out, no DNS), as counted Codex cells run (HE-NET-001); it is the default
+// for codex and the only network the runner allows it. The egress sink cannot be
+// reached from the internal network, so there --egress defaults to off and the
+// network itself is the egress control.
 //
 // Scenarios (the fake's turn script, see SCENARIOS below): plain, tools, retry,
 // skills (reads probe skills of growing size, or only the sizes in
@@ -20,17 +37,23 @@
 // fake.ndjson (every request the harness sent, through the proxy), egress.ndjson
 // (sink log, when --egress is not off), run/ (the runner's results directory),
 // capture.json (what ran, at which commit and image, and the file digests).
-// --record names the records directory publish.sh writes (default <harness>-<config>), so a capture at a new pin
-// sits beside the old one instead of replacing it (QM at b6786d67: --record qm-pi-b6786d67).
+// --record names the records directory publish.sh writes (default <harness>-<config>, the harness without a leading
+// underscore, as in the image name: _fake records as fake-default), so a capture at a new pin
+// or model sits beside the old one instead of replacing it (QM at b6786d67: --record qm-pi-b6786d67; internal-task:
+// --record openclaw-sol). A capture with --record has the record name in its id in place of <harness>-<config>.
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { CAPTURE_DUMMY_KEYS } from '../../runner/trial/capture.ts';
 
 const ROOT = resolve(import.meta.dir, '../..');
-const DUMMY_ANTHROPIC = 'sk-ant-capture-dummy';
 const BRIDGE = '172.17.0.1';
+export const PROVIDERS = {
+  anthropic: { fake: 'scripts/gsta-135/fake-anthropic.ts', key: CAPTURE_DUMMY_KEYS.ANTHROPIC_API_KEY, model: 'claude-haiku-5-5' },
+  openai: { fake: 'tests/fixtures/fake-responses.ts', key: CAPTURE_DUMMY_KEYS.OPENAI_API_KEY, model: 'gpt-6.1-sol' },
+} as const;
 
 type Turn = Record<string, unknown>;
 export const SCENARIOS: Record<string, (harness: string) => Turn[]> = {
@@ -39,6 +62,20 @@ export const SCENARIOS: Record<string, (harness: string) => Turn[]> = {
     ? [
         { call: 'tool_search', arguments: { query: 'list channels' } },
         { call: 'tool_search', arguments: { query: 'gbrain search' } },
+        { text: 'done' },
+      ]
+    : harness === 'codex'
+    ? [
+        { call: 'mcp__world__list_channels' },
+        { call: 'mcp__world__whoami' },
+        { tool: 'ls /workspace' },
+        { text: 'done' },
+      ]
+    : harness === 'hermes'
+    ? [
+        { call: 'tool_search', arguments: { queries: ['list channels'] } },
+        { call: 'tool_describe', arguments: { names: ['mcp__world__list_channels', 'mcp__world__whoami'] } },
+        { call: 'tool_call', arguments: { calls: [{ name: 'mcp__world__list_channels', arguments: {} }] } },
         { text: 'done' },
       ]
     : harness === 'claude-code'
@@ -100,25 +137,49 @@ async function waitFor(path: string, test: (s: string) => boolean, ms: number) {
 if (import.meta.main) {
   const harness = arg('harness');
   const scenario = arg('scenario', 'plain')!;
-  if (!harness || !SCENARIOS[scenario]) {
+  if (!harness || !Object.hasOwn(SCENARIOS, scenario)) {
     console.error(`usage: capture.ts --harness <name> --scenario <${Object.keys(SCENARIOS).join('|')}> [options]`);
     process.exit(64);
   }
   const config = arg('config', 'default')!;
   const task = arg('task', 'si-01-marrow-agrisupply-site')!;
-  const model = arg('model', 'claude-haiku-5-5')!;
-  const egress = arg('egress', 'refuse')!;
+  const provider = arg('provider', 'anthropic')! as keyof typeof PROVIDERS;
+  const network = arg('network', harness === 'codex' ? 'internal' : 'bridge')!;
+  if (!Object.hasOwn(PROVIDERS, provider) || !['bridge', 'internal'].includes(network)) {
+    console.error('capture.ts: --provider is anthropic or openai, --network is bridge or internal');
+    process.exit(64);
+  }
+  if (provider === 'openai' && (scenario === 'growth' || scenario === 'retry')) {
+    console.error(`capture.ts: the Responses fake does not play the ${scenario} scenario (no scripted usage or shell result); use --provider anthropic`);
+    process.exit(64);
+  }
+  const model = arg('model', PROVIDERS[provider].model)!;
+  const egress = arg('egress', network === 'internal' ? 'off' : 'refuse')!;
+  if (network === 'internal' && egress !== 'off') {
+    console.error('capture.ts: the egress sink is not reachable from the internal network; drop --egress or pass --egress off');
+    process.exit(64);
+  }
+  const record = arg('record', `${harness.replace(/^_/, '')}-${config}`)!;
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(record)) {
+    console.error(`capture.ts: --record ${record} is not [A-Za-z0-9._-]+`);
+    process.exit(64);
+  }
+  const maxOutputTokens = arg('max-output-tokens', '128000')!;
+  if (!/^[1-9][0-9]*$/.test(maxOutputTokens)) {
+    console.error('capture.ts: --max-output-tokens is a positive integer');
+    process.exit(64);
+  }
   const withGbrain = process.argv.includes('--gbrain');
   const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15);
-  const id = `anatomy-capture-${harness}-${config}-${scenario}${withGbrain ? '-gbrain' : ''}-${stamp}`.toLowerCase();
+  const id = `anatomy-capture-${record}-${scenario}${withGbrain ? '-gbrain' : ''}-${stamp}`.toLowerCase();
   const out = resolve(arg('out', join(homedir(), '.capy/work/harn15/captures', id))!);
   mkdirSync(out, { recursive: true });
   const fakePort = 8790 + Math.floor(Math.random() * 100);
 
   const scriptPath = join(out, 'script.json');
   writeFileSync(scriptPath, JSON.stringify(SCENARIOS[scenario]!(harness), null, 1));
-  const fake = spawn(process.execPath, [join(ROOT, 'scripts/gsta-135/fake-anthropic.ts'), '--host', BRIDGE, '--port', String(fakePort),
-    '--log', join(out, 'fake.ndjson'), '--script', scriptPath, '--require-key-prefix', DUMMY_ANTHROPIC, '--max-requests', '200', '--max-seconds', '900'],
+  const fake = spawn(process.execPath, [join(ROOT, PROVIDERS[provider].fake), '--host', BRIDGE, '--port', String(fakePort),
+    '--log', join(out, 'fake.ndjson'), '--script', scriptPath, '--require-key-prefix', PROVIDERS[provider].key, '--max-requests', '200', '--max-seconds', '900'],
     { env: cleanEnv(), stdio: ['ignore', openSync(join(out, 'fake.out'), 'a'), openSync(join(out, 'fake.out'), 'a')] });
   await waitFor(join(out, 'fake.out'), (s) => s.includes('listening'), 20_000);
 
@@ -134,9 +195,10 @@ if (import.meta.main) {
   }
 
   const cell: Record<string, unknown> = {
-    id: `${harness}-${config}-capture`, harness, model: `anthropic:${model}`, slice: 'multiuser', split: 'dev', task_set: 'v0.3',
+    id: `${harness}-${config}-capture`, harness, model: `${provider}:${model}`, slice: 'multiuser', split: 'dev', task_set: 'v0.3',
     tasks: [task], repetitions: 1, ceiling: { input_tokens: 200000, output_tokens: 128000 },
   };
+  if (network === 'internal') cell.network = 'internal';
   if (config !== 'default') cell.config = config;
   if (withGbrain) cell.gbrain = { surface: 'starter' };
   const prereg = { schema_version: 1, run_id: id, question: `internal-task keyless anatomy capture: ${harness} ${config} ${scenario}`, tasks: {}, cells: [cell], wall_clock_s: 3600, spend_cap_usd: 5 };
@@ -149,7 +211,7 @@ if (import.meta.main) {
   let runStatus: number | null = null;
   if (plan.status === 0) {
     const runArgs = ['runner/run.ts', 'run', '--manifest', join(runDir, 'manifest.json'), '--lease-usd', '5', '--new-lease',
-      '--max-output-tokens', '128000', '--capture-upstream', `anthropic=http://${BRIDGE}:${fakePort}`];
+      '--max-output-tokens', maxOutputTokens, '--capture-upstream', `${provider}=http://${BRIDGE}:${fakePort}`];
     if (dns !== 'none') runArgs.push('--capture-dns', dns);
     if (arg('image')) runArgs.push('--image', arg('image')!);
     const run = spawnSync(process.execPath, runArgs, { cwd: ROOT, env, encoding: 'utf8', timeout: 1_800_000 });
@@ -161,7 +223,7 @@ if (import.meta.main) {
 
   const files = ['fake.ndjson', 'egress.ndjson', 'script.json', 'prereg.json'].filter((f) => existsSync(join(out, f)));
   const capture = {
-    id, harness, config, record: arg('record', `${harness}-${config}`), scenario, task, model, gbrain: withGbrain, egress, dns,
+    id, harness, config, record, scenario, task, provider, model, network, max_output_tokens: Number(maxOutputTokens), gbrain: withGbrain, egress, dns,
     harness_evals_commit: git('rev-parse', 'HEAD'), dirty: git('status', '--porcelain').length > 0,
     image: arg('image', `harness-eval/${harness.replace(/^_/, '')}:dev`),
     image_id: spawnSync('docker', ['image', 'inspect', '-f', '{{.Id}}', arg('image', `harness-eval/${harness.replace(/^_/, '')}:dev`)!], { encoding: 'utf8' }).stdout.trim(),

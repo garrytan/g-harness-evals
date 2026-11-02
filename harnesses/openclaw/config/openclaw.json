@@ -2,7 +2,10 @@
 // provider is Anthropic over the metering proxy, the model is fixed, and the
 // two secrets come from the adapter's environment by ${VAR} substitution so
 // this file never holds a key. Copied to /harness-state/openclaw/openclaw.json
-// by adapter.sh so OpenClaw can write beside it if it wants to.
+// by adapter.sh so OpenClaw can write beside it if it wants to. model.primary
+// is the cell model from HE_MODEL_NAME (internal-task). utilityModel is unset on
+// purpose: OpenClaw's housekeeping model stays its shipped default,
+// anthropic/claude-haiku-5-5 (internal-task, 2026-11-01).
 {
   models: {
     mode: "merge",
@@ -27,7 +30,7 @@
   },
   agents: {
     defaults: {
-      model: { primary: "anthropic/claude-sonnet-5-5" },
+      model: { primary: "anthropic/${HE_MODEL_NAME}" },
       workspace: "/workspace",
       // agent exec sets this itself; agent --local (serve) would otherwise seed
       // the first-run bootstrap ritual (BOOTSTRAP.md, SOUL.md, IDENTITY.md,

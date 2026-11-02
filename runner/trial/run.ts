@@ -7,6 +7,8 @@
 // internal-task: an invocation whose cells have network "internal" creates (or reuses) the run's internal docker network before the
 // proxy starts, binds the proxy and every world to its gateway, and removes it when the invocation ends. Its one proxy
 // listens on one network, so internal and default-bridge harness cells run in separate invocations (--cells); HE-NET-001.
+//
+// internal-task: a manifest with an ablation cell starts the proxy with the run-level receipt log, results/<run>/ablation.ndjson.
 
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
@@ -135,6 +137,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
         runId: manifest.run_id, runDir, ledgerPath: opts.ledgerPath ?? join(runDir, 'ledger.sqlite'), leaseUsd: opts.leaseUsd ?? manifest.spend_cap_usd,
         allowModels: [...new Set([...manifest.cells.flatMap(cellModels), ...embeddingModels])], maxOutputTokens: opts.maxOutputTokens,
         reachableFromContainers: docker || embeddingModels.length > 0, ...(network ? { gatewayAddress: network.gateway } : {}), env: opts.proxyEnv, newRun: opts.newLease, capture: opts.capture,
+        ...(manifest.cells.some((c) => c.ablation) ? { ablationLog: true } : {}),
       });
       log(`metering proxy on port ${proxy.port}, lease $${opts.leaseUsd ?? manifest.spend_cap_usd} in ${proxy.ledgerPath}`);
     }

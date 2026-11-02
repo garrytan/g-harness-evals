@@ -29,6 +29,7 @@ RUN npm install -g --prefix /opt/harness --allow-scripts=@anthropic-ai/claude-co
     && test -z "$(find / -xdev -name .credentials.json -print -quit)"
 
 COPY config/ /opt/harness/config/
+COPY ablation/ /opt/harness/ablation/
 COPY adapter.sh pin.json /opt/harness/
 RUN chmod 0555 /opt/harness/adapter.sh && mkdir -p /workspace /harness-state
 

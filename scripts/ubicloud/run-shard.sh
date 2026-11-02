@@ -9,7 +9,13 @@
 #       [--smoke-lease-usd <n>] [--smoke-task <task id>] [--no-smoke] [--embedded] [--gbrain-image <tag>] [--amendment <sha>]
 #       [--resume] [--attach] [--poll-seconds 30] [--timeout-hours 12] [--sealed-root <local dir> --opening-receipt <local file>]
 #       [--workload harness|gstack-laneb] [--laneb-root <dir from scripts/gstack-laneb/fetch.ts>]
-#       [-- <extra arguments for scripts/run-shard.sh>]
+#       [--pre-smoke <script in the repository, e.g. scripts/ablation-golden.sh>] [-- <extra arguments for scripts/run-shard.sh>]
+#
+# --pre-smoke (internal-task) runs a keyless check script from the pinned checkout on the VM after bootstrap and before any key
+# reaches the VM, the smoke or the shard: bash <script> in the repository, its output in <dest>/lane.log. It is off unless
+# given (put it in the fan-out manifest's options). A non-zero exit stops the lane with exit 4 before the smoke, so no
+# trial runs. scripts/ablation-golden.sh, the layer filter's docker golden check, is the one in use. It must be a .sh file
+# under scripts/ at the commit, and is refused for --attach and --workload gstack-laneb.
 #
 # --workload gstack-laneb (internal-task, docs/gstack-laneb.md) runs the shard's cells through the Lane B bridge instead of the
 # harness runner: the --laneb-root directory (default ~/.capy/work/gstack-laneb: the pinned gstack-evals checkout, the arm
@@ -64,8 +70,8 @@
 #   deletes ~/sealed when sealed and destroys as above. A sealed attach whose --dest is inside a git work tree is refused
 #   (HE-SEALED-002) before it polls, appends a log or pulls, and leaves the VM running.
 #
-# Exit code: scripts/run-shard.sh's; 4 when the smoke did not end with every trial completed (the counted run never
-# started); 3 when the VM, the sync or the bootstrap failed before the run; 2 for a usage error; 130 on interrupt.
+# Exit code: scripts/run-shard.sh's; 4 when the --pre-smoke check failed or the smoke did not end with every trial
+# completed (the counted run never started); 3 when the VM, the sync or the bootstrap failed before the run; 2 for a usage error; 130 on interrupt.
 # Needs UBICLOUD_API_KEY and UBI_OWNER (your thread code) in the environment, git, python3, ssh and tar. Nothing here
 # prints or stores a key. The VM's list price is the Germany per-minute rate (standard-8 $0.00416, standard-16 $0.00831,
 # standard-30 $0.01559), minutes rounded up, plus the public IPv4 at $3 a month pro rata, as pr-check.sh computes it.
@@ -76,7 +82,7 @@ runner=${UBI_RUNNER:-$here/ubi-runner.sh}
 
 commit="" prereg="" name="" cells="" lease="" dest="" size=standard-16 location="" storage="" smoke_lease="" smoke_task="" smoke=1
 embedded=0 gbrain_image="" amendment="" resume=0 attach=0 poll=30 timeout_h=12 sealed_root="" opening_receipt="" sealed=0
-workload=harness laneb_root="$HOME/.capy/work/gstack-laneb"
+workload=harness laneb_root="$HOME/.capy/work/gstack-laneb" pre_smoke=""
 extra=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -103,12 +109,17 @@ while [ $# -gt 0 ]; do
     --opening-receipt) opening_receipt=$2; shift 2 ;;
     --workload) workload=$2; shift 2 ;;
     --laneb-root) laneb_root=$2; shift 2 ;;
+    --pre-smoke) pre_smoke=$2; shift 2 ;;
     -h|--help) sed -n '2,/^set -euo pipefail/{/^set /!p}' "$0"; exit 0 ;;
     --) shift; extra=("$@"); break ;;
     *) echo "run-shard (ubicloud): unknown argument $1 (see --help)" >&2; exit 2 ;;
   esac
 done
 [ -n "$dest" ] || { echo "run-shard (ubicloud): --dest is required" >&2; exit 2; }
+if [ -n "$pre_smoke" ]; then
+  [ "$attach" -eq 0 ] && [ "$workload" = harness ] || { echo "run-shard (ubicloud): --pre-smoke applies only to a new harness shard, not --attach or --workload gstack-laneb" >&2; exit 2; }
+  [[ "$pre_smoke" =~ ^scripts/[A-Za-z0-9._/-]+\.sh$ && "$pre_smoke" != *..* ]] || { echo "run-shard (ubicloud): --pre-smoke must be a .sh file under scripts/ in the repository, e.g. scripts/ablation-golden.sh" >&2; exit 2; }
+fi
 case $workload in harness) ;; gstack-laneb)
   [ "$resume" -eq 0 ] && [ "$embedded" -eq 0 ] || { echo "run-shard (ubicloud): --resume and --embedded do not apply to --workload gstack-laneb (docs/gstack-laneb.md)" >&2; exit 2; }
   [ -z "$sealed_root" ] && [ -z "$opening_receipt" ] || { echo "run-shard (ubicloud): --workload gstack-laneb runs public sets only; held-out (sealed) Lane B runs are not supported yet (docs/gstack-laneb.md, Known limits)" >&2; exit 2; }
@@ -296,6 +307,7 @@ else
   git -C "$scratch/harness-evals" checkout -q --detach "$commit"
   [ -z "$(git -C "$scratch/harness-evals" status --porcelain)" ] || { echo "run-shard (ubicloud): the scratch checkout at $commit is not clean" >&2; exit 3; }
   [ -f "$scratch/harness-evals/scripts/run-shard.sh" ] || { echo "run-shard (ubicloud): $commit has no scripts/run-shard.sh; a shard runs the preregistration commit's own script" >&2; exit 2; }
+  [ -z "$pre_smoke" ] || [ -f "$scratch/harness-evals/$pre_smoke" ] || { echo "run-shard (ubicloud): --pre-smoke $pre_smoke is not in the repository at $commit" >&2; exit 2; }
 
   # 3. the VM
   up_args=(-s "$size")
@@ -323,6 +335,15 @@ else
   if ! vssh "cd $repo_dir && bash -l ~/shard/bin/bootstrap.sh" 2>&1 | stamp | tee -a "$dest/lane.log" >&2; then log "bootstrap failed"; exit 3; fi
   t_boot1=$(now)
   log "bootstrap done in $(( t_boot1 - t_boot0 ))s"
+
+  # 3b. the --pre-smoke check, before any key reaches the VM; a failure ends the lane before the smoke (exit 4)
+  if [ -n "$pre_smoke" ]; then
+    log "pre-smoke: bash $pre_smoke (keyless, before the keys, the smoke and the shard)"
+    pre_rc=0
+    vssh "cd $repo_dir && bash -l $(printf %q "$pre_smoke")" < /dev/null 2>&1 | stamp | tee -a "$dest/lane.log" >&2 || pre_rc=$?
+    if [ "$pre_rc" -ne 0 ]; then rc=4; log "pre-smoke $pre_smoke failed (exit $pre_rc); no smoke and no trial ran"; exit 4; fi
+    log "pre-smoke $pre_smoke passed"
+  fi
 
   # 4. a sealed shard's root and receipt, streamed straight to ~/sealed (outside the checkout); no local staging copy
   if [ "$sealed" -eq 1 ]; then
