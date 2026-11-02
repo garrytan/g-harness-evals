@@ -2,6 +2,13 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.97] - 2026-11-02
+
+### internal-task: README brought up to date with the v0.3 results on main
+
+- `README.md`: the Next list reports `v03-opus-dev-2026-10` (#209): Outcome B, so opening 1 on v0.3 does not run. Only 2 of 6 families are informative on Opus 5.5 (corrections 9 of 40, approval relay 26 of 30), and the Why null? verdict is FIX-METHOD. It links internal-task's reseal record (#204) in place of the two "clearance pending" lines, and says gen6 stays sealed and unopened (0 of 2 openings) while the v0.4 plan waits for Garry's gate.
+- The v0.3 runs table gains the run's row ($126.5320: $125.5162 trials of the $274 cap, $1.0159 smokes), and its So what line leads with the outcome as bullets, keeping the start-hook panel's line. The harness table's gbrain and Models rows name the run. README's own changelog records the page change. The spend line is main's ($550.63), unchanged here.
+
 ## [0.0.96] - 2026-11-01
 
 ### internal-task: start-hook panel reported (tool-discipline-start-2026-11)
