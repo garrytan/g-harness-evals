@@ -2,6 +2,17 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.98] - 2026-11-02
+
+### internal-task: findings carry no verdict on Sonnet and Haiku data; disclosures close each file
+
+- The three finding files rest on Sonnet 5.5 and Haiku 5.5 only, and these evals now test frontier models only (Opus 5.5 and GPT-6.1 Sol). Each verdict line now reads "No R48 verdict: Sonnet/Haiku only (R54); frontier rerun pending", with the earlier reading kept beside it.
+- `2026-11-01-model-vs-harness.md` is marked not for publication. Its title, lead, chart and X hook keep only the Sonnet 5.5 harness comparison; the Sonnet minus Haiku contrast moved to the appendix.
+- `2026-11-01-untold-gbrain-unused.md` and `2026-11-01-gbrain-first-no-pass-lift.md` are marked dev background for the Opus 5.5 reruns in internal-task's v0.4 and internal-task's H10.
+- Garry's disclosure lines moved from under each title to a closing Disclosures section at the end of each file, same words, one line per bullet. The file's other disclosure bullets moved into that section too, and the X hooks carry none.
+- `findings/README.md` and README's "Found so far" say the same: no verdicts, no Sonnet-for-Haiku claim, and the models each line rests on.
+- README's "How the harnesses compare" and `docs/methods.md` mark the Sonnet-for-Haiku shift as background only.
+
 ## [0.0.97] - 2026-11-02
 
 ### internal-task: README brought up to date with the v0.3 results on main

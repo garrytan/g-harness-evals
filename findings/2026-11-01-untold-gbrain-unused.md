@@ -9,14 +9,12 @@ prereg: docs/benchmarks/2026-10-24-gbrain-arm/PREREGISTRATION.md at ac9e41ba9eb7
 data: in-repo receipts, no separate bundle. gbrain-arm results/trials.jsonl sha256 964f6512ae8f04ac9d8614405b2acc5c564b607e87c3d99591666e71b1dda530; gbrain-ladder results/trials.jsonl sha256 5b073cae9223a41cff2543e5086bf191ea834b98d5efde492a0c830eb14b3e4c
 author: internal-task
 reviewed_by: internal-task claim check with a GPT-6.1 Sol reviewer, 2026-11-01, PASS-WITH-EDITS (edits applied in this version); internal-task recheck of the edited lines at 79102d528, 2026-11-01, its line edits applied; reproduced_by: internal-task clean-machine rerun at 912dd49f, every table row matched
-disclosures: The repository and the evaluation are run by Garry Tan. gbrain and gstack are his own projects, and gbrain-evals, which supplies the task world, is too, as is the gstack-evals crew that ran the claim check. QM is published by the yc-software organisation. Garry's disclosure lines are in the paragraph under the title; Anthropic, Nous Research beyond the Hermes line, Ubicloud, Capy and Pi's maintainer get no line.
+disclosures: The repository and the evaluation are run by Garry Tan. gbrain and gstack are his own projects, and gbrain-evals, which supplies the task world, is too, as is the gstack-evals crew that ran the claim check. QM is published by the yc-software organisation. Garry's disclosure lines are in the closing Disclosures section at the end of the file; Anthropic, Nous Research beyond the Hermes line, Ubicloud, Capy and Pi's maintainer get no line.
 ---
 
 # Installed as an MCP server and never mentioned, gbrain was called in 4 of 799 scored trials (0.5%, 95% CI 0.2% to 1.3%) across OpenClaw, Hermes Agent and QM on Claude Sonnet 5.5 and Haiku 5.5 (dev), and pass rate showed no change we could detect (untold minus none -6 to +8 points, every interval touching or crossing zero; none-cell controls 69% to 99%; nominal MDD 4.6 to 16.5 points)
 
-Disclosure: QM is a project of Y Combinator, which Garry Tan runs. Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes. Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI. Disclosure: OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator. gbrain is Garry Tan's own project. gstack is Garry Tan's own project.
-
-**Status:** draft, not posted. Claim check PASS-WITH-EDITS (2026-11-01), edits applied. The edited lines were rechecked the same day, and the recheck's line edits are applied. Disclosures answered by Garry, in the paragraph under the title.
+**Status:** dev background for the Opus 5.5 reruns in internal-task's v0.4 and internal-task's H10, not for publication on its own: it rests on Sonnet 5.5 and Haiku 5.5 only. Claim check PASS-WITH-EDITS (2026-11-01), edits applied. The edited lines were rechecked the same day, and the recheck's line edits are applied. Disclosures answered by Garry, in the closing Disclosures section at the end of the file.
 
 **If you install gbrain's MCP server beside a harness and don't tell the harness to use it, it was called in 4 of 799 scored trials.** Registration can still change what the model sees without a call. This is a dev result on two Claude models and one task set, and it does not show gbrain is useless: told, the same harnesses used it in 76% to 96% of trials.
 
@@ -138,7 +136,7 @@ The part under test is the untold install: gbrain registered beside the harness 
 - **Task fit.** Yes for part of the set. The told arm gained the cross-channel retrieval tasks the none cells failed, so gbrain had something to offer on these tasks when it was used.
 - **Power and saturation.** For use, 0 to 2 calls per 100 trials is a floor, and the told control shows the measure can move. For pass, nominal Haiku MDD 11.7 to 16.5 points; Sonnet 4.6 to 8.6 points, near ceiling (bootstrap-based, about 8 to 14).
 - **Frontier competence.** No frontier arm: Sonnet 5.5 and Haiku 5.5 only. The instruction-route run (dev, Haiku) had the same shape in its no-instruction control (1 of 160 and 0 of 160 turns checked gbrain); its frontier rerun, planned by another lane, carries that control on Opus 5.5.
-- **VERDICT: CUT-CANDIDATE: gbrain's untold, MCP-only install route.** It delivered 4 uses in 799 scored trials on these harnesses and models, and on QM it cost 57% more input tokens. The cut waits for a frontier no-instruction control: this is dev-grade data on two Claude models, and it does not show gbrain is useless. Keep gbrain itself: a told clause or a per-turn hook turns use on (the revised installer with its hook reached 80 of 80 trials; its wording, hook and gbrain pin changed together). The docs rungs were also at 0 to 1 calls per 100 trials (Result). These are the routes gbrain's own docs tell a user to run, but they ran on the starter surface instead of the full surface those docs register and left out OpenClaw's first documented shape (the context-engine plugin), so they are not exactly what real users get and the cut does not extend to them.
+- **No R48 verdict: Sonnet/Haiku only (R54); frontier rerun pending.** The earlier reading was CUT-CANDIDATE for gbrain's untold, MCP-only install route. It delivered 4 uses in 799 scored trials on these harnesses and models, and on QM it cost 57% more input tokens. The cut waits for a frontier no-instruction control: this is dev-grade data on two Claude models, and it does not show gbrain is useless. Keep gbrain itself: a told clause or a per-turn hook turns use on (the revised installer with its hook reached 80 of 80 trials; its wording, hook and gbrain pin changed together). The docs rungs were also at 0 to 1 calls per 100 trials (Result). These are the routes gbrain's own docs tell a user to run, but they ran on the starter surface instead of the full surface those docs register and left out OpenClaw's first documented shape (the context-engine plugin), so they are not exactly what real users get and the cut does not extend to them.
 - **Next step, a frozen rule.** If the Opus 5.5 no-instruction control, on the same documented MCP-only route with a working told control, also shows near-zero use (threshold frozen before that run), drop the bare route from gbrain's install docs. Otherwise keep it and fix discovery.
 
 ## Limits and threats
@@ -187,13 +185,6 @@ The part under test is the untold install: gbrain registered beside the harness 
 - What it changed: the causal and exposure wording, the two cost percentages (they had mixed in told cells), the ladder controls and MDDs, the MDD caveat, the run total's open reservations, the frozen next-step rule, the price-check date and the disclosures. The docs rungs were added on the Captain's ruling. The recheck of these edited lines is below.
 - **2026-11-01, recheck at `79102d528`.** The gstack-evals crew (internal-task) read every edited line and recomputed every new count: EDITS, two lines. The H1 now names the MCP-server route, since the 4 of 799 counts only that route. The X hook said "called 4 times"; gbrain was called 5 times in 4 trials, so it now says "called in 4". The disclosures add Ubicloud and Capy and name the claim checker as Garry's.
 
-## Disclosures
-
-- The repository and the evaluation are run by Garry Tan. gbrain and gstack (cited in What we found) are his own projects, and gbrain-evals, which supplies the task world, is too.
-- The claim check was run by the gstack-evals crew, which is also Garry's, so it is not independent of him.
-- The install ladder ran on Capy machines (the ladder report).
-- QM is published by the yc-software organisation. Garry answered the disclosure question: his lines are in the paragraph under the title, and Anthropic, Nous Research beyond the Hermes line, Ubicloud, Capy and Pi's maintainer get no line.
-
 ## Chart and post
 
 Trials with a gbrain call, per 100, gbrain arm on Haiku 5.5: untold (installed, never mentioned) against told (one brain-first sentence). Intervals are in the Result tables.
@@ -206,12 +197,26 @@ xychart-beta
   bar [1, 0, 0, 92, 96, 76]
 ```
 
-The post carries the disclosure paragraph under the title.
+The post carries the closing Disclosures section at its end; the X hook carries none.
 
-**X hook (not posted):** We installed gbrain's MCP server beside OpenClaw, Hermes Agent and QM and said nothing about it. Across 799 scored trials on Claude Sonnet 5.5 and Haiku 5.5 it was called in 4. On Haiku, one sentence telling the harness to use it: 76% to 96% of trials. (dev, two Claude models)
+**X hook (not for publication):** We installed gbrain's MCP server beside OpenClaw, Hermes Agent and QM and said nothing about it. Across 799 scored trials on Claude Sonnet 5.5 and Haiku 5.5 it was called in 4. On Haiku, one sentence telling the harness to use it: 76% to 96% of trials. (dev, two Claude models)
 
 ## Changelog
 
 - 2026-11-01: first version. Every number recomputed from the receipts at `912dd49f`.
 - 2026-11-01: claim-check edits applied (see Claim check), the docs rungs added, and the cut scoped to the untold MCP-only route.
-- 2026-11-01: the recheck's line edits applied, and Garry's disclosure lines added in a paragraph under the title.
+- 2026-11-01: the recheck's line edits applied, and Garry's disclosure lines added in a closing Disclosures section at the end of the file, which now also holds the file's other disclosure bullets.
+- 2026-11-01: marked dev background for the Opus 5.5 reruns; the verdict line replaced (Sonnet and Haiku only).
+
+## Disclosures
+
+- The repository and the evaluation are run by Garry Tan. gbrain and gstack (cited in What we found) are his own projects, and gbrain-evals, which supplies the task world, is too.
+- The claim check was run by the gstack-evals crew, which is also Garry's, so it is not independent of him.
+- The install ladder ran on Capy machines (the ladder report).
+- QM is published by the yc-software organisation. Garry answered the disclosure question with the lines below; Anthropic, Nous Research beyond the Hermes line, Ubicloud, Capy and Pi's maintainer get no line.
+- Disclosure: QM is a project of Y Combinator, which Garry Tan runs.
+- Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
+- Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI.
+- Disclosure: OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.
+- gbrain is Garry Tan's own project.
+- gstack is Garry Tan's own project.

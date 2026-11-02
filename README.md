@@ -4,9 +4,9 @@
 
 **Found so far**
 
-- **The three harnesses can't be told apart on getting the work right.** Swapping the model (Sonnet for Haiku) moved results more than swapping the harness did.
+- **The three harnesses can't be told apart on getting the work right**, on Sonnet 5.5, on tasks mostly at ceiling. No frontier model has run this comparison yet.
 - **QM's Pi engine is the cheapest and fastest**, at about a third of OpenClaw's time and tokens per trial, with a pass rate that can't be told apart from the others.
-- **gbrain went almost unused unless the harness was told to use it.** Installed as an MCP server with no instruction, it was called in 4 of 799 trials (dev, two Claude models), which does not show gbrain is useless. Told to read a whole-company brain, harnesses read other people's channels; scoping the brain to the asker stops that.
+- **gbrain went almost unused unless the harness was told to use it.** Installed as an MCP server with no instruction, it was called in 4 of 799 trials (dev, Sonnet 5.5 and Haiku 5.5 only; a frontier rerun is pending), which does not show gbrain is useless. Told to read a whole-company brain, harnesses read other people's channels; scoping the brain to the asker stops that.
 - **No run yet shows gbrain lifting pass rate on its primary endpoint (the one comparison the run was designed to settle) by an amount the run could detect.** Most gbrain rows are dev, so they hint but don't prove.
 
 **Next:** a fresh held-out task set, so the gbrain effects can be confirmed on tasks nobody tuned against ([TODOS.md](TODOS.md)).
@@ -80,7 +80,7 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 
 ### v0.1 harness runs
 
-**So what:** the three harnesses can't be told apart on the v0.1 tasks, and swapping the model moved results more than swapping the harness. The pilot was there to find defects; the Haiku run is dev.
+**So what:** the three harnesses can't be told apart on the v0.1 tasks. The pilot was there to find defects; the Haiku run is dev.
 
 | Run | Date | Question | Result | Spend | Status | Report |
 |---|---|---|---|---|---|---|
@@ -93,7 +93,7 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 
 - `m2-pilot-2026-10`, 3 x 50 (10 dev tasks, Sonnet), dev split (pilot). Pass as recorded: OpenClaw 26 of 50, 52% [26%, 78%]; Hermes 26 of 50, 52% [26%, 76%]; QM 16 of 50, 32% [8%, 58%]. Two exam defects fixed in 0.0.4 and one runner defect fixed in #13 before any QM trial; a pilot, not a comparison. Spend $16.69 of a $150 lease. [results](docs/benchmarks/2026-10-23-m2-pilot/results/)
 - `m3-heldout-2026-10`, 3 x 100 (20 held-out tasks, Sonnet), v0.1 held-out, opening 1 (first): confirmatory (custody by digest only). Primary 16 tasks: OpenClaw 77 of 80, Hermes 73 of 80, QM 71 of 80. Pairwise: Hermes minus OpenClaw -5 [-15, +3], QM minus OpenClaw -8 [-21, +3], QM minus Hermes -3 [-6, +0], every Holm p 1.000: can't tell apart, 13 of 16 tasks at ceiling for all three. Median per trial 27 s and $0.06 (QM), 49 s and $0.12 (Hermes), 70 s and $0.16 (OpenClaw). Spend $35.67 of $200. [results](docs/benchmarks/2026-10-24-m3-heldout/results/)
-- `m3-sensitivity-haiku-2026-10`, 3 x 100 (same tasks, Haiku), v0.1 held-out, opening 2: dev. Primary: OpenClaw 64 of 80, Hermes 63 of 80, QM 56 of 80; largest pair QM minus OpenClaw -10 [-24, +4], Holm p 0.508: can't tell apart. Sonnet minus Haiku within harness +16 [+6, +29], +13 [+3, +24], +19 [+5, +34] (descriptive): the model moved the result more than the harness. Spend $1.84 of $50. [results](docs/benchmarks/2026-10-24-m3-sensitivity-haiku/results/)
+- `m3-sensitivity-haiku-2026-10`, 3 x 100 (same tasks, Haiku), v0.1 held-out, opening 2: dev. Primary: OpenClaw 64 of 80, Hermes 63 of 80, QM 56 of 80; largest pair QM minus OpenClaw -10 [-24, +4], Holm p 0.508: can't tell apart. Sonnet minus Haiku within harness +16 [+6, +29], +13 [+3, +24], +19 [+5, +34] (descriptive): the model moved the result more than the harness. This tier contrast is background only: these evals now test frontier models only (Opus 5.5 and GPT-6.1 Sol). Spend $1.84 of $50. [results](docs/benchmarks/2026-10-24-m3-sensitivity-haiku/results/)
 
 </details>
 
@@ -202,7 +202,7 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 **Takeaway: with the model fixed, OpenClaw, Hermes Agent and QM over Pi can't be told apart on getting multi-user work right. What differs is cost and time.**
 
 - On the v0.1 held-out tasks with Sonnet the three sat at 77, 73 and 71 of 80, with 13 of 16 tasks at ceiling; with Haiku at 64, 63 and 56 of 80; every Holm-adjusted p above 0.4 ([m3-heldout](docs/benchmarks/2026-10-24-m3-heldout/report.md), [sensitivity](docs/benchmarks/2026-10-24-m3-sensitivity-haiku/report.md)). On the harder v0.2 tasks the within-model differences are descriptive only ([v02-heldout](docs/benchmarks/2026-10-25-v02-heldout/report.md)).
-- Swapping Sonnet for Haiku moved every harness by 13 to 19 points, more than any harness gap, though only OpenClaw's gap survives the preregistered sign-flip test after Holm.
+- Swapping Sonnet for Haiku moved every harness by 13 to 19 points, more than any harness gap, though only OpenClaw's gap survives the preregistered sign-flip test after Holm. This tier contrast is background only: these evals now test frontier models only (Opus 5.5 and GPT-6.1 Sol).
 - QM's Pi engine ran at about a third of OpenClaw's wall time and tokens: 27 s and $0.06 against 70 s and $0.16 per trial at the median on Sonnet, 12.5 million input tokens against 32.3 million over 100 trials, Hermes between them. The ordering held on Haiku.
 - Safety held for everyone on v0.1: no consent violation and no leaked DM fact in the 600 held-out trials without a brain, one cross-scope read (Hermes).
 - Where harnesses lost trials, most losses were one thing: the answer sat in a channel the harness never opened ([docs/report-v0.1.md](docs/report-v0.1.md), "Where the failures were").
@@ -329,6 +329,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)); the world is built from gbrain-evals' `messy-company-v1` dataset; OpenClaw, Hermes Agent and QM are named as products only.
 
 ## Changelog
+
+### 2026-11-01: findings rest on Sonnet and Haiku only (internal-task)
+
+"Found so far" no longer says swapping Sonnet for Haiku moved results more than the harness did, and the harness and gbrain lines name the models they rest on, with a frontier rerun pending. "How the harnesses compare" marks the Sonnet-for-Haiku shift as background only. Under "Current results", the v0.1 harness runs' "So what" line drops the same model-over-harness claim, and the Haiku sensitivity run's details mark its Sonnet minus Haiku figures as background only. Why: these evals now test frontier models only (Opus 5.5 and GPT-6.1 Sol), and the findings behind these lines are Sonnet 5.5 and Haiku 5.5 data.
 
 ### 2026-11-01: v0.3 Opus dev run reported, no opening on v0.3 (internal-task)
 

@@ -9,14 +9,12 @@ prereg: docs/benchmarks/2026-10-25-v02-heldout/PREREGISTRATION.md at 4777693426d
 data: in-repo receipts, no separate bundle. v02-heldout results/trials.jsonl sha256 c63a008c20c14d87045f7bcf02bec769252bb7b0acaf71dbe141cc0646bdcf38
 author: internal-task
 reviewed_by: internal-task claim check with a GPT-6.1 Sol reviewer, 2026-11-01, PASS-WITH-EDITS (edits applied in this version); internal-task recheck of the edited lines at 79102d528, 2026-11-01, its line edits applied; reproduced_by: internal-task clean-machine rerun at 912dd49f, every table row matched
-disclosures: The repository and the evaluation are run by Garry Tan. gbrain is his own project, and gbrain-evals, which supplies the task world, is too, as is the gstack-evals crew that ran the claim check. QM is published by the yc-software organisation. Garry's disclosure lines are in the paragraph under the title; Anthropic, Nous Research beyond the Hermes line, Ubicloud, Capy and Pi's maintainer get no line.
+disclosures: The repository and the evaluation are run by Garry Tan. gbrain is his own project, and gbrain-evals, which supplies the task world, is too, as is the gstack-evals crew that ran the claim check. QM is published by the yc-software organisation. Garry's disclosure lines are in the closing Disclosures section at the end of the file; Anthropic, Nous Research beyond the Hermes line, Ubicloud, Capy and Pi's maintainer get no line.
 ---
 
 # On 15 held-out multi-user tasks, telling OpenClaw, Hermes Agent and QM to consult gbrain first showed no pass-rate gain we could detect on Claude Sonnet 5.5 (+0 [-7, +8], -5 [-16, +4], +3 [-19, +25] points; controls 56%, 67%, 51%; nominal MDD 10 to 13 points; confirmatory, custody by digest only), and cross-scope reads were higher in all three told cells (+16 [+1, +33], +15 [+3, +31], +11 [-1, +27] points; none survives Holm)
 
-Disclosure: QM is a project of Y Combinator, which Garry Tan runs. Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes. Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI. Disclosure: OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator. gbrain is Garry Tan's own project.
-
-**Status:** draft, not posted. Claim check PASS-WITH-EDITS (2026-11-01), edits applied. The edited lines were rechecked the same day, and the recheck's line edits are applied. Disclosures answered by Garry, in the paragraph under the title.
+**Status:** dev background for the Opus 5.5 reruns in internal-task's v0.4 and internal-task's H10, not for publication on its own: it rests on Sonnet 5.5 and Haiku 5.5 only. Claim check PASS-WITH-EDITS (2026-11-01), edits applied. The edited lines were rechecked the same day, and the recheck's line edits are applied. Disclosures answered by Garry, in the closing Disclosures section at the end of the file.
 
 **A brain-first instruction got the harnesses to use gbrain in almost every trial, but on these tasks it showed no pass-rate gain we could detect on Sonnet 5.5.** The intervals are wide: a gain of up to 8, 4 and 25 points is not ruled out. This is one model and one task set.
 
@@ -100,7 +98,7 @@ The part under test is the brain-first instruction plus an unscoped gbrain.
 - **Task fit.** Partial. Synthesis and some continuity tasks reward finding facts in channels the harness doesn't open, and those rose. Corrections and approval relay depend on what happened during the scenario, which a brain built from the world seed doesn't hold, and the unscoped `search` turned some of those trials into cross-scope failures.
 - **Power and saturation.** Control rates 51% to 67%, so aggregate headroom, but 10 to 12 of 15 tasks per cell sit at 0 or 5 of 5. Nominal MDD 10.4 to 12.9 points with 15 task clusters. Gains under about 10 points would be missed, and for QM much larger ones could be (bootstrap-based MDD about 31 points).
 - **Frontier competence.** No frontier arm. Sonnet 5.5 primary, Haiku 5.5 in the appendix; Opus 5.5 and GPT-6.1 Sol were not run.
-- **VERDICT: FIX-METHOD.** This arm confounds a retrieval gain with a scope failure, because the brain answers for the whole bot, not for the person asking. Fix: rerun the brain-first instruction with gbrain scoped to the asker (per-request source scope or per-member tokens, which brought cross-scope reads through gbrain to zero in the dev scoped and memory runs) on a fresh sealed held-out set hard enough for Opus 5.5 as the primary model (the v0.3 set is too easy for it, by a dev read in review), the no-brain arm kept. If that rerun passes its admission check and still detects no gain at its preregistered margin, the brain-first instruction becomes a CUT-CANDIDATE for these task families.
+- **No R48 verdict: Sonnet/Haiku only (R54); frontier rerun pending.** The earlier reading was FIX-METHOD: this arm confounds a retrieval gain with a scope failure, because the brain answers for the whole bot, not for the person asking. Fix: rerun the brain-first instruction with gbrain scoped to the asker (per-request source scope or per-member tokens, which brought cross-scope reads through gbrain to zero in the dev scoped and memory runs) on a fresh sealed held-out set hard enough for Opus 5.5 as the primary model (the v0.3 set is too easy for it, by a dev read in review), the no-brain arm kept. If that rerun passes its admission check and still detects no gain at its preregistered margin, the brain-first instruction becomes a CUT-CANDIDATE for these task families.
 
 ## Limits and threats
 
@@ -150,12 +148,6 @@ The part under test is the brain-first instruction plus an unscoped gbrain.
 - What it changed: the cross-scope headline wording, the MDD wording (QM's bootstrap-based MDD is about 31 points), the mechanism wording, QM's discordant pairs (11 up, 9 down, six tasks), the shard platform (Capy, not Ubicloud), the lease wording, the missing-arm limit, the price-check date, the appendix wording and the disclosures. The recheck of these edited lines is below.
 - **2026-11-01, recheck at `79102d528`.** The gstack-evals crew (internal-task) read every edited line: PASS. The disclosures now name the claim checker as Garry's.
 
-## Disclosures
-
-- The repository and the evaluation are run by Garry Tan. gbrain is his own project, and gbrain-evals, which supplies the task world, is too.
-- The claim check was run by the gstack-evals crew, which is also Garry's, so it is not independent of him.
-- QM is published by the yc-software organisation. Garry answered the disclosure question: his lines are in the paragraph under the title, and Anthropic, Nous Research beyond the Hermes line, Ubicloud, Capy and Pi's maintainer get no line.
-
 ## Chart and post
 
 Sonnet 5.5, 75 trials per cell. First bars none, second bars gbrain-told. Intervals are in the Result tables.
@@ -169,15 +161,16 @@ xychart-beta
   bar [42, 46, 40]
 ```
 
-The post carries the disclosure paragraph under the title.
+The post carries the closing Disclosures section at its end; the X hook carries none.
 
-**X hook (not posted):** We told OpenClaw, Hermes Agent and QM to check gbrain first. They did, in 66 to 75 of 75 trials each, but pass rate on Claude Sonnet 5.5 showed no gain we could detect (+0, -5, +3 points), and reads of channels the asker can't see were higher (none survives Holm).
+**X hook (not for publication):** We told OpenClaw, Hermes Agent and QM to check gbrain first. They did, in 66 to 75 of 75 trials each, but pass rate on Claude Sonnet 5.5 showed no gain we could detect (+0, -5, +3 points), and reads of channels the asker can't see were higher (none survives Holm).
 
 ## Changelog
 
 - 2026-11-01: first version. Every number recomputed from the receipts at `912dd49f`.
 - 2026-11-01: claim-check edits applied (see Claim check).
-- 2026-11-01: the recheck's line edits applied, and Garry's disclosure lines added in a paragraph under the title.
+- 2026-11-01: the recheck's line edits applied, and Garry's disclosure lines added in a closing Disclosures section at the end of the file, which now also holds the file's other disclosure bullets.
+- 2026-11-01: marked dev background for the Opus 5.5 reruns; the verdict line replaced (Sonnet and Haiku only).
 
 ## Appendix: Haiku 5.5, same run
 
@@ -190,3 +183,14 @@ This appendix is descriptive. Verbatim from the same `compare-run.ts` call:
 | qm pi | anthropic:claude-haiku-5-5 | `qm-pi-haiku-gbrain-told-mu-v02-heldout` | 33 / 75 | 36 / 75 | +4 [-9, +19] | 0.750 (exact-sign-flip) | 0.984 | 15 | 75 | 0 |
 
 - Haiku none-cell controls 45%, 47% and 44%; nominal MDD 10.9, 12.9 and 10.9 points. Cross-scope reads rose here too: 0, 1, 3 of 75 to 26, 17, 15 of 75.
+
+## Disclosures
+
+- The repository and the evaluation are run by Garry Tan. gbrain is his own project, and gbrain-evals, which supplies the task world, is too.
+- The claim check was run by the gstack-evals crew, which is also Garry's, so it is not independent of him.
+- QM is published by the yc-software organisation. Garry answered the disclosure question with the lines below; Anthropic, Nous Research beyond the Hermes line, Ubicloud, Capy and Pi's maintainer get no line.
+- Disclosure: QM is a project of Y Combinator, which Garry Tan runs.
+- Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
+- Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI.
+- Disclosure: OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.
+- gbrain is Garry Tan's own project.
