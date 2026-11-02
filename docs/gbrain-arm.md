@@ -2,7 +2,7 @@
 
 The gbrain arm asks one question of the multi-user slice: does each harness (OpenClaw, Hermes Agent, QM) do better or worse on the held-out tasks when [gbrain](https://github.com/garrytan/gbrain), a knowledge brain with an MCP server, is installed beside the world tools? This page is the design and operations reference for the arm: what runs, why it is shaped this way, how it is wired into the runner and the adapters, what the event log records, and the smoke evidence that it works end to end. Lane D built the pieces described here (the sidecar, the world tap, the runner and the adapters); lane E owns the grader's reading of the new events, the statistics and the scripts.
 
-Status: run `gbrain-arm-2026-10` is complete and reported in [docs/benchmarks/2026-10-24-gbrain-arm/report.md](benchmarks/2026-10-24-gbrain-arm/report.md) (1,500 trials, $80.87). Left unmentioned, no harness used the brain (2 calls in 600 trials) and no paired pass difference is distinguished; told to check it first, Haiku used it in most trials, took the two cross-channel retrieval tasks to 5 of 5 and lost trials to cross-scope search results, net +1 to +4 points with wide intervals. The install ladder and the company brain below are the designs for the next arms.
+Status: run `gbrain-arm-2026-10` is complete and reported in [docs/benchmarks/2026-10-24-gbrain-arm/report.md](benchmarks/2026-10-24-gbrain-arm/report.md) (1,500 trials, $80.87). Left unmentioned, the harnesses almost never used the brain (a call in 2 of 600 trials, both OpenClaw) and no paired pass difference is distinguished; told to check it first, Haiku used it in most trials, took the two cross-channel retrieval tasks to 5 of 5 and lost trials to cross-scope search results, net +1 to +4 points with wide intervals. The install ladder and the company brain below are the designs for the next arms.
 
 ## Design
 
@@ -228,6 +228,10 @@ Lessons that changed the code or the docs: a harness image built before an adapt
 - **Preamble mention.** A second arm whose preamble names gbrain search beside `search_messages` would separate "the harness did not know the rule applies" from "the harness ignored it".
 
 ## Changelog
+
+### 2026-11-01: untold use counted by trial (internal-task)
+
+The status line says the harnesses almost never used the untold brain, a call in 2 of 600 trials, both OpenClaw, instead of "no harness used the brain (2 calls in 600 trials)". Why: the arm report counts one OpenClaw Haiku trial (`entity` and `get_page`) and one OpenClaw Sonnet trial (`remember`), three calls in two trials.
 
 ### 2026-10-31: the train's review fixes in "The Claude Code and Codex installer" (internal-task)
 

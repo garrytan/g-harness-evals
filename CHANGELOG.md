@@ -2,6 +2,18 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.95] - 2026-11-01
+
+### internal-task: first finding files
+
+- `findings/`: three public finding files in the shared template, with an index. Every number was recomputed from the merged receipts at `912dd49f`, and each file names its grade, prints the scorer's rows, and gives cost with a dated price table, a Why null? section with its verdict, limits, keyless replication commands and a held-out disclosure.
+  - `2026-11-01-model-vs-harness.md`: OpenClaw, Hermes Agent and QM showed no pass-rate difference we could detect on Sonnet 5.5 on the v0.1 held-out tasks (confirmatory, near ceiling). Sonnet passed 13 to 19 points more than Haiku in every harness, and only OpenClaw's gap survives Holm (dev, descriptive). Verdict FIX-METHOD, with a kill rule.
+  - `2026-11-01-untold-gbrain-unused.md`: gbrain installed with no instruction was called in 4 of 799 scored trials, and pass rate showed no change we could detect (dev). The ladder's docs rungs sat at 0 to 1 calls per 100 trials. Verdict CUT-CANDIDATE for the untold MCP-only install route, waiting on a frontier no-instruction control.
+  - `2026-11-01-gbrain-first-no-pass-lift.md`: a brain-first instruction got gbrain used but showed no pass gain we could detect on Sonnet 5.5, and cross-scope reads were higher in all three told cells, none surviving Holm (confirmatory, custody by digest only). Verdict FIX-METHOD.
+- A cross-family claim check and a clean-machine rerun by the gstack-evals crew passed all three files with edits, which are applied here: prose numbers, MDD wording, exposure and mechanism wording, disclosures, and a status line, claim-check section, chart and post draft per file. A recheck of the edited lines on 2026-11-01 asked for line edits, which are applied too: the untold file's H1 names the MCP-server route and its X hook says gbrain was called in 4 trials (5 calls), the model-vs-harness appendix says it is descriptive (dev), and the disclosures name Ubicloud, Capy and the claim checker as Garry's. Garry then answered the disclosure question: each file carries his lines (QM, Hermes, OpenClaw and OpenAI in all three; gbrain in the two gbrain files; gstack in the untold file) word for word in a paragraph under its title, and the pending-disclosure notes say so.
+- `README.md`: "Where to read next" links the findings index. The "Found so far" gbrain line now says gbrain went almost unused with no instruction (4 of 799 trials), and the Sonnet-for-Haiku bullet says only OpenClaw's gap survives Holm, matching the finding files. The "So what" line and the "How gbrain compares" takeaway say gbrain went almost unused unless told, instead of "only matters when told".
+- `README.md`, `docs/methods.md`, `docs/gbrain-arm.md`: the untold-gbrain count now reads a call in 2 of 600 arm trials (both OpenClaw) and 2 of 199 scored ladder trials, instead of "no harness used it (2 calls)".
+
 ## [0.0.94] - 2026-11-01
 
 ### internal-task: v03-opus-dev-2026-10 reported, Outcome B: no opening runs on v0.3

@@ -20,6 +20,7 @@ Explain the task, the setting that changed the outcome, and the limit of the res
 
 - `docs/plans/`: plans and their review records, one folder per plan.
 - `docs/benchmarks/`: preregistrations, runbooks and reports, one folder per counted run; `preregistrations.json` and `preregistrations.d/` register experiments for the order check.
+- `findings/`: one file per public claim, each tied to receipts at a pinned commit; `findings/README.md` is the index.
 - `runner/stats/`: the statistics kit (vendored from gbrain-evals, MIT).
 - `runner/prereg/`: the preregistration-order checker.
 - `tests/`: `bun test tests/`.

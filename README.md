@@ -6,7 +6,7 @@
 
 - **The three harnesses can't be told apart on getting the work right.** Swapping the model (Sonnet for Haiku) moved results more than swapping the harness did.
 - **QM's Pi engine is the cheapest and fastest**, at about a third of OpenClaw's time and tokens per trial, with a pass rate that can't be told apart from the others.
-- **gbrain does nothing unless the harness is told to use it.** Told to read a whole-company brain, harnesses read other people's channels; scoping the brain to the asker stops that.
+- **gbrain went almost unused unless the harness was told to use it.** Installed as an MCP server with no instruction, it was called in 4 of 799 trials (dev, two Claude models), which does not show gbrain is useless. Told to read a whole-company brain, harnesses read other people's channels; scoping the brain to the asker stops that.
 - **No run yet shows gbrain lifting pass rate on its primary endpoint (the one comparison the run was designed to settle) by an amount the run could detect.** Most gbrain rows are dev, so they hint but don't prove.
 
 **Next:** a fresh held-out task set, so the gbrain effects can be confirmed on tasks nobody tuned against ([TODOS.md](TODOS.md)).
@@ -96,7 +96,7 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 
 ### gbrain on the v0.1 held-out set
 
-**So what:** gbrain only matters when the harness is told to use it. Told to read a whole-company brain, harnesses read channels the asker cannot see; scoping the brain to the asker stops that. Every row here is dev: hints, not proof.
+**So what:** gbrain went almost unused unless the harness was told to use it (dev, two Claude models). Told to read a whole-company brain, harnesses read channels the asker cannot see; scoping the brain to the asker stops that. Every row here is dev: hints, not proof.
 
 | Run | Date | Question | Result | Spend | Status | Report |
 |---|---|---|---|---|---|---|
@@ -191,7 +191,7 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 **Takeaway: with the model fixed, OpenClaw, Hermes Agent and QM over Pi can't be told apart on getting multi-user work right. What differs is cost and time.**
 
 - On the v0.1 held-out tasks with Sonnet the three sat at 77, 73 and 71 of 80, with 13 of 16 tasks at ceiling; with Haiku at 64, 63 and 56 of 80; every Holm-adjusted p above 0.4 ([m3-heldout](docs/benchmarks/2026-10-24-m3-heldout/report.md), [sensitivity](docs/benchmarks/2026-10-24-m3-sensitivity-haiku/report.md)). On the harder v0.2 tasks the within-model differences are descriptive only ([v02-heldout](docs/benchmarks/2026-10-25-v02-heldout/report.md)).
-- Swapping Sonnet for Haiku moved every harness by 13 to 19 points, more than any harness gap.
+- Swapping Sonnet for Haiku moved every harness by 13 to 19 points, more than any harness gap, though only OpenClaw's gap survives the preregistered sign-flip test after Holm.
 - QM's Pi engine ran at about a third of OpenClaw's wall time and tokens: 27 s and $0.06 against 70 s and $0.16 per trial at the median on Sonnet, 12.5 million input tokens against 32.3 million over 100 trials, Hermes between them. The ordering held on Haiku.
 - Safety held for everyone on v0.1: no consent violation and no leaked DM fact in the 600 held-out trials without a brain, one cross-scope read (Hermes).
 - Where harnesses lost trials, most losses were one thing: the answer sat in a channel the harness never opened ([docs/report-v0.1.md](docs/report-v0.1.md), "Where the failures were").
@@ -201,10 +201,10 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 
 ## How gbrain compares
 
-**Takeaway: gbrain only matters when the harness is told to use it, an unscoped brain leaks across people, scoping stops the leak, and no run yet shows it lifting pass rate on a primary endpoint by an amount we could detect.**
+**Takeaway: gbrain went almost unused unless the harness was told to use it, an unscoped brain leaks across people, scoping stops the leak, and no run yet shows it lifting pass rate on a primary endpoint by an amount we could detect.**
 
 - gbrain is not a harness. It is a knowledge brain served beside the world tools, and ten runs ask what each harness does with it ([docs/gbrain-arm.md](docs/gbrain-arm.md)).
-- Installed and unmentioned, no harness used it: 2 calls in 600 trials of the arm, 2 of 199 on the ladder's `mcp` rung. Nothing moved but trial length and, for QM, input tokens.
+- Installed and unmentioned, the harnesses almost never used it: a gbrain call in 2 of 600 trials of the arm and 2 of 199 scored trials on the ladder's `mcp` rung ([finding](findings/2026-11-01-untold-gbrain-unused.md)). Nothing moved but trial length and, for QM, input tokens.
 - One brain-first clause in the per-turn preamble turns use on in about nine of ten trials. gbrain's own installer file produced no use until its revision added a per-turn hook; then use was 80 of 80 in both harnesses ([installer](docs/benchmarks/2026-10-25-gbrain-installer/report.md), [installer-hook](docs/benchmarks/2026-10-25-gbrain-installer-hook/report.md)).
 - Where the rule enters decides whether the bot checks gbrain first, each harness against its own control ([instruction-route](docs/benchmarks/2026-10-31-anatomy-instruction-route/report.md)).
   - OpenClaw: only the per-turn hook differed (160 of 160 turns; `AGENTS.md` 5, a listed skill 1, tool descriptions alone 1).
@@ -236,6 +236,7 @@ Every harness ran the same tasks, graders, preamble and model through the same p
 | Question | Where to start |
 |---|---|
 | What exactly did the first counted cell find, with its limits in one page? | [docs/report-v0.1.md](docs/report-v0.1.md) |
+| Which results are written up as standalone claims, each with its grade, cost, Why null? and replication commands? | [findings/README.md](findings/README.md) |
 | What is the trial contract every runner, adapter and grader implements? | [docs/methodology.md](docs/methodology.md) |
 | How are tasks written and graded, and what do the predicates mean? | [docs/tasks.md](docs/tasks.md), [tasks/multiuser/README.md](tasks/multiuser/README.md) |
 | How is a run compared with another, and which commands made each table? | [docs/comparing-runs.md](docs/comparing-runs.md) |
@@ -317,6 +318,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)); the world is built from gbrain-evals' `messy-company-v1` dataset; OpenClaw, Hermes Agent and QM are named as products only.
 
 ## Changelog
+
+### 2026-11-01: findings index linked, five lines matched to the findings (internal-task)
+
+"Where to read next" gains a row for [findings/README.md](findings/README.md), the index of the first three finding files. The "Found so far" gbrain line now says gbrain went almost unused with no instruction (4 of 799 trials) instead of doing nothing, and the Sonnet-for-Haiku bullet says only OpenClaw's gap survives Holm. In "How gbrain compares", the untold bullet says the harnesses almost never used gbrain, a call in 2 of 600 arm trials and 2 of 199 scored ladder trials, instead of "no harness used it: 2 calls" (OpenClaw made a call in 4 trials, 5 calls in all), and links the finding. After the claim checker's recheck, the "So what" line and the "How gbrain compares" takeaway say gbrain went almost unused unless told, instead of "only matters when told". Why: the files are new, every documentation page should be reachable from this page or CLAUDE.md, and this page should not claim more than the claim-checked findings do.
 
 ### 2026-11-01: v0.3 approval relay re-read reported, the re-read gate passes (internal-task)
 
