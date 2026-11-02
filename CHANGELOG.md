@@ -2,6 +2,16 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.100] - 2026-11-02
+
+### internal-task: preregister tool-discipline-start-hermes-r2-2026-11, the Hermes rerun on gstack v1.92.57.0 with Tirith pinned
+
+- `docs/benchmarks/2026-11-01-tool-discipline-start/PREREGISTRATION-hermes-r2.md`: a new run id that reruns #214's Hermes chat cells (3 arms, 3 tasks, 8 trials, 72 trials on Opus 5.5). **The one change is the candidate's gstack**, moved to `e2d9c798` (v1.92.57.0, gstack#3825), whose start fence Tirith allows. Cap $19, expected spend about $10.74.
+- Tirith 0.4.2 is pinned as in #221, through a declared image patch (`inputs/hermes-r2/tirith-0.4.2-from-221.patch`); only hermes:dev is built from a patched copy.
+- `scripts/tool-discipline/panel-score-r2.ts` computes the verdict with panel-score.ts's rules, unchanged; it checks only the r2 manifest and refuses #214's run id, cap and candidate.
+- Clean arms (CREW.md, 2026-11-02): `clean-arm-preflight.sh` checks each arm's image before trial 1 (no gstack in the none arm, symlinks followed; the arm's gstack at its sha; Tirith 0.4.2 offline). `clean-arm-audit.ts` counts gstack skill reads per arm from tool calls, Hermes transcripts and system prompts after the last trial; a none arm it cannot fully read is unaudited, never clean.
+- `tirith-fence-check.sh` must allow the candidate's start fence before any trial. `tests/tool-discipline-r2.test.ts` covers the four scripts.
+
 ## [0.0.99] - 2026-11-02
 
 ### internal-task: preregister installer-cc-codex-2026-11, with cross-scope exposure via gbrain as its primary endpoint

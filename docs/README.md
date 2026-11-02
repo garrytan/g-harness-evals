@@ -24,7 +24,7 @@ harness-evals v0.0.12. The index of this directory: one line per page, saying wh
   - [2026-10-25-v02-heldout/](benchmarks/2026-10-25-v02-heldout/report.md): `v02-heldout-2026-10`, 2026-10-26; gbrain-told against none on the 15 sealed v0.2 tasks, three harnesses on Sonnet and Haiku, 900 trials.
   - [2026-10-26-gbrain-memory/](benchmarks/2026-10-26-gbrain-memory/report.md): `gbrain-memory-2026-10`, 2026-10-26 to 2026-10-27; a member brain that fills during the scenario against none, three harnesses on Sonnet and Haiku, 12 cells, 900 trials on nine Ubicloud shards (preregistered in #89). Beside it, [recall-rereading/](benchmarks/2026-10-26-gbrain-memory/recall-rereading/README.md) is a labelled re-reading of its receipts (internal-task, written by `scripts/recall-audit.ts`), not a counted result.
   - [2026-10-31-v03-opus-dev/](benchmarks/2026-10-31-v03-opus-dev/report.md): `v03-opus-dev-2026-10`, 2026-11-01; the whole v0.3 dev set on Opus 5.5 under opening 1's scoped gbrain config, OpenClaw and Hermes, six cells, 440 trials on six Ubicloud shards. Outcome B: 2 of 6 families informative and four above 90 percent, so no opening runs on v0.3 and v0.3 is too easy for frontier models (the v0.4 brief).
-  - [2026-11-01-tool-discipline-start/](benchmarks/2026-11-01-tool-discipline-start/report.md): `tool-discipline-start-2026-11`, 2026-11-01; gstack's start hook on OpenClaw and Hermes chat, Opus 5.5, no gstack against gstack `482ffd14` against gstack `b9fda18c` with the hook on, 144 trials, $16.90 of the $28 cap ([preregistration](benchmarks/2026-11-01-tool-discipline-start/PREREGISTRATION.md)). OpenClaw passes, starts 16 of 16 against 1 of 16; Hermes fails, 0 of 16, because its approval gate blocked every start the agent issued; task success 16 of 16 in every arm.
+  - [2026-11-01-tool-discipline-start/](benchmarks/2026-11-01-tool-discipline-start/report.md): `tool-discipline-start-2026-11`, 2026-11-01; gstack's start hook on OpenClaw and Hermes chat, Opus 5.5, no gstack against gstack `482ffd14` against gstack `b9fda18c` with the hook on, 144 trials, $16.90 of the $28 cap ([preregistration](benchmarks/2026-11-01-tool-discipline-start/PREREGISTRATION.md)). OpenClaw passes, starts 16 of 16 against 1 of 16; Hermes fails, 0 of 16, because its approval gate blocked every start the agent issued; task success 16 of 16 in every arm. The same folder holds the [preregistration](benchmarks/2026-11-01-tool-discipline-start/PREREGISTRATION-hermes-r2.md) of `tool-discipline-start-hermes-r2-2026-11`, a new run id that reruns the Hermes cells with the candidate moved to gstack `e2d9c798` and Tirith 0.4.2 pinned, 72 trials, cap $19; preregistration only, no results yet.
 - [budget-ledger.md](budget-ledger.md): the program's spend ledger, one row per lane of paid work (written 2026-10-26 beside this index).
 - [comparing-runs.md](comparing-runs.md): how two cells or two runs are compared: the paired, task-clustered estimator, the sign-flip test, Holm, the minimum detectable difference, what "not distinguished at N tasks" means, each comparison script's flags and outputs, and the exact commands every counted run's report names.
 - [decisions.md](decisions.md): the decisions by Garry Tan and the Captain that shaped a counted run, one line each (written 2026-10-26 beside this index).
@@ -46,6 +46,10 @@ harness-evals v0.0.12. The index of this directory: one line per page, saying wh
 - [ubicloud.md](ubicloud.md): the Ubicloud shard lane: the scripts that put one shard per VM, how a run fans out and comes back, the check lane, costs and limits.
 
 ## Changelog
+
+### 2026-11-01: tool-discipline-start-hermes-r2-2026-11 listed (internal-task)
+
+The start-hook panel's line also names the Hermes rerun's preregistration, which sits in the same folder. Why: the preregistration is new on this branch.
 
 ### 2026-11-01: tool-discipline-start-2026-11 reported (internal-task)
 
