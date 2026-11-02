@@ -163,7 +163,7 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 
 ### v0.3 runs
 
-**So what:** the new task set's dev pilot sized the sealed opening and found one task family broken. The host-harness pilot could not tell Claude Code or Codex apart from OpenClaw and Hermes Agent. The instruction-route run found which places for gbrain's brain-first rule get the bot to check gbrain, each harness against its own control. All three are dev.
+**So what:** the new task set's dev pilot sized the sealed opening and found one task family broken. The host-harness pilot could not tell Claude Code or Codex apart from OpenClaw and Hermes Agent. The instruction-route run found which places for gbrain's brain-first rule get the bot to check gbrain, each harness against its own control. The start-hook panel got OpenClaw to run gstack's start command (16 of 16), while Hermes blocked it at an approval card; its three tasks showed no success difference for gstack, all at the ceiling. All four are dev.
 
 | Run | Date | Question | Result | Spend | Status | Report |
 |---|---|---|---|---|---|---|
@@ -172,6 +172,7 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 | `v03-ar-reread-2026-10` | 2026-10-31 | After #144's fix, is approval relay informative (10 to 90 percent) under opening 1's scoped gbrain config? | Pass: 17 of 30, 56.7% [40.0%, 80.0%], no defect candidate, so 5 of 6 families (mixed configs). Unscoped copy 0 of 30 (descriptive) | $1.39 ($1.31 trials of the $4 cap, $0.08 smokes) | dev | [report](docs/benchmarks/2026-10-30-v03-ar-reread/report.md) |
 | `host-harness-pilot-2026-10` | 2026-10-30 | Claude Code against OpenClaw and Hermes Agent on Haiku, Codex against them on gpt-6-luna | CC 57 · OC 56 · He 63 (none), CC 39 · OC 47 · He 42 (told), Cx 67 · OC 63 · He 61 (luna); all six pairs can't tell apart, smallest Holm p 0.750 | $7.38 of $20 (+ $0.14 smokes) | dev | [report](docs/benchmarks/2026-10-30-host-harness-pilot/report.md) |
 | `anatomy-instruction-route-2026-11` | 2026-10-30 | Which places for gbrain's rule get OpenClaw and Hermes to check gbrain before they answer, each against its own control? | OpenClaw: only the per-turn hook differed from control (160 of 160 turns, control 1). Hermes: system prompt setting, `SOUL.md` and hook (144, 138 and 156 of 160, control 0). A listed skill: 1 and 5. Descriptive: pass 32 points lower on the OpenClaw hook, with cross-scope reads on the unscoped brain | $4.46 of $20, plus $0.04 of smokes | dev | [report](docs/benchmarks/2026-10-31-anatomy-instruction-route/report.md) |
+| `tool-discipline-start-2026-11` | 2026-11-01 | Does gstack's start hook make OpenClaw and Hermes run a skill's start command, at what cost, with no success drop, against gstack without it and no gstack? | OpenClaw: pass, starts 16 of 16 against 1 of 16, +0.94 [0.64, 0.99]. Hermes: fail, 0 of 16; the agent issued the command 8 of 8 times on task 1 and Hermes's approval card (Tirith scan, our 1 s config) blocked it. Success 16 of 16 in every arm, +0.00 [-0.19, 0.19]. OpenClaw cost 3 to 5 times no gstack per trial | $16.90 of $28 | dev | [report](docs/benchmarks/2026-11-01-tool-discipline-start/report.md) |
 
 ### How to read these numbers
 
@@ -181,9 +182,9 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 - Only a held-out set's first counted opening is confirmatory; a later opening is dev because whoever designed it had seen that set's results ([Corrections](#corrections), 2026-10-28).
 - The maths (95 percent task-clustered intervals, paired differences, sign-flip tests, Holm) and the openings ledger: [docs/methods.md](docs/methods.md#how-to-read-the-numbers).
 
-**Spend so far.** Spend across every lane, from the lease ledgers: $406.78 committed of the $2,000 program cap ([docs/budget-ledger.md](docs/budget-ledger.md)).
+**Spend so far.** Spend across every lane, from the lease ledgers: $550.63 committed of the $2,000 program cap ([docs/budget-ledger.md](docs/budget-ledger.md)).
 
-- That is $328.19 in the program's lane ledger plus $78.59 from the two v0.2 runs' committed ledgers that the lane ledger does not yet list.
+- That is $472.04 in the program's lane ledger plus $78.59 from the two v0.2 runs' committed ledgers that the lane ledger does not yet list.
 - Every dollar is the metering proxy's list-price meter; the provider-side check has never been performed (Known limits).
 
 ## How the harnesses compare
@@ -318,6 +319,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)); the world is built from gbrain-evals' `messy-company-v1` dataset; OpenClaw, Hermes Agent and QM are named as products only.
 
 ## Changelog
+
+### 2026-11-01: start-hook panel reported (internal-task)
+
+The v0.3 runs table gains a row for run `tool-discipline-start-2026-11`, and its So what line names it. The spend line, and its twin in `docs/methods.md`, moves to $550.63: the repository's lane ledger copy gains this run's line ($16.900854), and the line now also counts the two internal-task lines ($126.9453) that main's copy already listed but this page did not yet show. Why: the run is complete and its report is in the tree.
 
 ### 2026-11-01: findings index linked, five lines matched to the findings (internal-task)
 

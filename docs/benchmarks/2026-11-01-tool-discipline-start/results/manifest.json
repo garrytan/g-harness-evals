@@ -1,0 +1,1495 @@
+{
+  "run_id": "tool-discipline-start-2026-11",
+  "created_at": "2026-11-01T19:09:38Z",
+  "dry_run": false,
+  "upstream": "default",
+  "tree": "ccad864b53a18c6483d7ca9f73cc2f87b5f77f1b",
+  "tree_dirty": false,
+  "model": "claude-opus-5-5",
+  "arms": {
+    "none": {
+      "gstack_sha": "none",
+      "images": {
+        "openclaw": {
+          "tag": "harness-eval/openclaw:gstack-none",
+          "digest": "sha256:4d5f31fe085c4ce9788b2ca8e7b37022e7cc1340f15b6540570095be31ff6345"
+        },
+        "hermes": {
+          "tag": "harness-eval/hermes:gstack-none-chat",
+          "digest": "sha256:be75da4a50793c7dab88834ee0069a033d09c45b1d9f9d8bca8f1bdf19e47882"
+        }
+      },
+      "start_hook": "off"
+    },
+    "baseline": {
+      "gstack_sha": "482ffd1440ab13d105bfd3e571be3d7a0a7bb99a",
+      "images": {
+        "openclaw": {
+          "tag": "harness-eval/openclaw:gstack-482ffd14",
+          "digest": "sha256:a49a63ed051eae39591fc544c6d719377c407c1a97d73c6cf53e0296b080cceb"
+        },
+        "hermes": {
+          "tag": "harness-eval/hermes:gstack-482ffd14-chat",
+          "digest": "sha256:d8da86974f331121e4661f1eabbfc867ede34e86d55000681829cc055bb66ebd"
+        }
+      },
+      "start_hook": "off"
+    },
+    "candidate": {
+      "gstack_sha": "b9fda18c6ac232de2b5a99ac3e6893955c55d7c0",
+      "images": {
+        "openclaw": {
+          "tag": "harness-eval/openclaw:gstack-b9fda18c-hook",
+          "digest": "sha256:65c5f4be6204a14f66e8406f5edf0ce365427bd5c2c7ead2dc8d29408c5a8e1a"
+        },
+        "hermes": {
+          "tag": "harness-eval/hermes:gstack-b9fda18c-hook-chat",
+          "digest": "sha256:da66d97c3cc4a1f7aa1d1521e74c68051da40ae490b2bfd097103127142be298"
+        }
+      },
+      "start_hook": "on"
+    }
+  },
+  "start_hook": {
+    "arm": "candidate",
+    "rule": "the candidate arm's images are built with --build-arg GSTACK_START_HOOK=on (label org.harness-eval.gstack.start_hook=on, tag suffix -hook) and every other arm's with off; the wrapper exports GSTACK_HARNESS_START_HOOK=1 or 0 from the image, so nothing else can flip it, and refuses the trial with exit 2 before any model request when the installed gstack tree is not at the arm's SHA or when, with the hook on, setup exits 4 (HARNESS_HOOK_INACTIVE) or gstack-harness status does not show the hook active; such a trial is infra:no_model_request(harness_error), never a score. Each trial's gstack-register.log carries one start_hook: line"
+  },
+  "hermes_mode": "chat",
+  "hermes_claim": "chat mode under the overlay adapter only; the counted Hermes entries stay one-shot and the discovery one-shot rows (0 opens) stand beside this result",
+  "max_tokens": 128000,
+  "max_tokens_rule": "the proxy refuses a request stating more than max_tokens with 400 before any reservation; the preflight asserts the first request of each harness carries exactly this value",
+  "per_trial_usd": 1.00,
+  "r_max_usd": 5.561305,
+  "r_max_inputs": {
+    "model": "claude-opus-5-5",
+    "max_tokens": 128000,
+    "context_tokens": 200000,
+    "bytes_per_token": 3,
+    "body_bytes": 600197,
+    "estimated_input_tokens": 200029,
+    "bounded_input_tokens": 600261,
+    "cache_write_premium": true,
+    "input_rate_per_mtok": 5,
+    "output_rate_per_mtok": 20,
+    "max_output_tokens": 128000,
+    "input_usd": 3.001305,
+    "output_usd": 2.56
+  },
+  "lease_usd": 6.561305,
+  "lease_id_form": "<run_id>.<trial_id>, one metering proxy process and one lease per trial in one ledger; --new-run on each start closes a lease a killed trial left open; each finalized lease is closed with budget-ledger.ts close",
+  "lease_assumption": "serial requests (k = 1): the ledger admits a request while settled + every open reservation + the new reservation fits the lease, so two concurrent requests near R_max refuse each other with settled near zero; a 402 that overlapped an in-flight request (ledger created_at/settled_at) is infra:reservation_refused, never ceiling:lease; a reservation charged in full for an upstream failure is usd_charged_reservation on the row, outside the $1.00 bar and inside the cap",
+  "dispatch": "by image id: each trial runs the manifest's recorded image id (docker image inspect .Id), checked against the tag again before the trial; a moved tag writes the trial as infra_error and stops the run with exit 2",
+  "panel_cap_usd": 28,
+  "stop_rule": "before each lease, from the ledger: settled + open reservations (an undrained request at its reserved value) + lease_usd <= panel_cap_usd, else the remaining rows are not_run:panel_cap and the run stops; a 402 after a forwarded request ends that trial as ceiling:lease (the trial failed the $1.00 bar) and the run continues; a proxy that does not start, a slot that does not bind, a cap check or lease close that fails, or an image id that moved writes that trial as infra_error (or its row with a note), the remaining rows as not_run:infra_stop, and the run stops; every planned trial has a row; no trial is ever replaced; the enforced worst case is the cap",
+  "marker": {
+    "line": "harnesses/_gstack/wrapper-lib.sh:55",
+    "variables": [
+      "GSTACK_SESSION_KIND",
+      "GSTACK_EPHEMERAL",
+      "GSTACK_STATE_ROOT"
+    ],
+    "source": "the wrapper source line, read before trial 1; each trial's gstack-register.log carries the wrapper's marker: line as the runtime proof",
+    "text": "  export GSTACK_SESSION_KIND=spawned GSTACK_EPHEMERAL=1 GSTACK_STATE_ROOT=\"$HE_SESSION_STATE_DIR/.gstack\"; line=$LINENO"
+  },
+  "approval": {
+    "setting": "approvals.mode",
+    "value": "manual",
+    "settings": {
+      "approvals.mode": "manual",
+      "approvals.timeout": "1"
+    },
+    "source": "harnesses/hermes/gstack/adapter.sh:73 (the source line, read before trial 1; each Hermes trial's gstack-register.log carries the approval: line)"
+  },
+  "runtime_preflight": {
+    "harness-eval/hermes:gstack-482ffd14-chat": "pass",
+    "harness-eval/hermes:gstack-b9fda18c-hook-chat": "pass",
+    "harness-eval/openclaw:gstack-482ffd14": "pass",
+    "harness-eval/openclaw:gstack-b9fda18c-hook": "pass",
+    "harness-eval/hermes:gstack-none-chat": "not_run",
+    "harness-eval/openclaw:gstack-none": "not_run"
+  },
+  "trials_per_cell": 8,
+  "order": [
+    {
+      "order": 1,
+      "trial_id": "gsta135-openclaw-t1-none-1",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "none",
+      "trial_index": 1,
+      "time_budget_s": 600
+    },
+    {
+      "order": 2,
+      "trial_id": "gsta135-openclaw-t1-baseline-1",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "baseline",
+      "trial_index": 1,
+      "time_budget_s": 600
+    },
+    {
+      "order": 3,
+      "trial_id": "gsta135-openclaw-t1-candidate-1",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "candidate",
+      "trial_index": 1,
+      "time_budget_s": 600
+    },
+    {
+      "order": 4,
+      "trial_id": "gsta135-hermes-t1-none-1",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "none",
+      "trial_index": 1,
+      "time_budget_s": 600
+    },
+    {
+      "order": 5,
+      "trial_id": "gsta135-hermes-t1-baseline-1",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "baseline",
+      "trial_index": 1,
+      "time_budget_s": 600
+    },
+    {
+      "order": 6,
+      "trial_id": "gsta135-hermes-t1-candidate-1",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "candidate",
+      "trial_index": 1,
+      "time_budget_s": 600
+    },
+    {
+      "order": 7,
+      "trial_id": "gsta135-openclaw-t2-none-1",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "none",
+      "trial_index": 1,
+      "time_budget_s": 600
+    },
+    {
+      "order": 8,
+      "trial_id": "gsta135-openclaw-t2-baseline-1",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "baseline",
+      "trial_index": 1,
+      "time_budget_s": 600
+    },
+    {
+      "order": 9,
+      "trial_id": "gsta135-openclaw-t2-candidate-1",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "candidate",
+      "trial_index": 1,
+      "time_budget_s": 600
+    },
+    {
+      "order": 10,
+      "trial_id": "gsta135-hermes-t2-none-1",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "none",
+      "trial_index": 1,
+      "time_budget_s": 600
+    },
+    {
+      "order": 11,
+      "trial_id": "gsta135-hermes-t2-baseline-1",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "baseline",
+      "trial_index": 1,
+      "time_budget_s": 600
+    },
+    {
+      "order": 12,
+      "trial_id": "gsta135-hermes-t2-candidate-1",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "candidate",
+      "trial_index": 1,
+      "time_budget_s": 600
+    },
+    {
+      "order": 13,
+      "trial_id": "gsta135-openclaw-t3-none-1",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "none",
+      "trial_index": 1,
+      "time_budget_s": 120
+    },
+    {
+      "order": 14,
+      "trial_id": "gsta135-openclaw-t3-baseline-1",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "baseline",
+      "trial_index": 1,
+      "time_budget_s": 120
+    },
+    {
+      "order": 15,
+      "trial_id": "gsta135-openclaw-t3-candidate-1",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "candidate",
+      "trial_index": 1,
+      "time_budget_s": 120
+    },
+    {
+      "order": 16,
+      "trial_id": "gsta135-hermes-t3-none-1",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "none",
+      "trial_index": 1,
+      "time_budget_s": 120
+    },
+    {
+      "order": 17,
+      "trial_id": "gsta135-hermes-t3-baseline-1",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "baseline",
+      "trial_index": 1,
+      "time_budget_s": 120
+    },
+    {
+      "order": 18,
+      "trial_id": "gsta135-hermes-t3-candidate-1",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "candidate",
+      "trial_index": 1,
+      "time_budget_s": 120
+    },
+    {
+      "order": 19,
+      "trial_id": "gsta135-openclaw-t1-none-2",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "none",
+      "trial_index": 2,
+      "time_budget_s": 600
+    },
+    {
+      "order": 20,
+      "trial_id": "gsta135-openclaw-t1-baseline-2",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "baseline",
+      "trial_index": 2,
+      "time_budget_s": 600
+    },
+    {
+      "order": 21,
+      "trial_id": "gsta135-openclaw-t1-candidate-2",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "candidate",
+      "trial_index": 2,
+      "time_budget_s": 600
+    },
+    {
+      "order": 22,
+      "trial_id": "gsta135-hermes-t1-none-2",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "none",
+      "trial_index": 2,
+      "time_budget_s": 600
+    },
+    {
+      "order": 23,
+      "trial_id": "gsta135-hermes-t1-baseline-2",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "baseline",
+      "trial_index": 2,
+      "time_budget_s": 600
+    },
+    {
+      "order": 24,
+      "trial_id": "gsta135-hermes-t1-candidate-2",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "candidate",
+      "trial_index": 2,
+      "time_budget_s": 600
+    },
+    {
+      "order": 25,
+      "trial_id": "gsta135-openclaw-t2-none-2",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "none",
+      "trial_index": 2,
+      "time_budget_s": 600
+    },
+    {
+      "order": 26,
+      "trial_id": "gsta135-openclaw-t2-baseline-2",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "baseline",
+      "trial_index": 2,
+      "time_budget_s": 600
+    },
+    {
+      "order": 27,
+      "trial_id": "gsta135-openclaw-t2-candidate-2",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "candidate",
+      "trial_index": 2,
+      "time_budget_s": 600
+    },
+    {
+      "order": 28,
+      "trial_id": "gsta135-hermes-t2-none-2",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "none",
+      "trial_index": 2,
+      "time_budget_s": 600
+    },
+    {
+      "order": 29,
+      "trial_id": "gsta135-hermes-t2-baseline-2",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "baseline",
+      "trial_index": 2,
+      "time_budget_s": 600
+    },
+    {
+      "order": 30,
+      "trial_id": "gsta135-hermes-t2-candidate-2",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "candidate",
+      "trial_index": 2,
+      "time_budget_s": 600
+    },
+    {
+      "order": 31,
+      "trial_id": "gsta135-openclaw-t3-none-2",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "none",
+      "trial_index": 2,
+      "time_budget_s": 120
+    },
+    {
+      "order": 32,
+      "trial_id": "gsta135-openclaw-t3-baseline-2",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "baseline",
+      "trial_index": 2,
+      "time_budget_s": 120
+    },
+    {
+      "order": 33,
+      "trial_id": "gsta135-openclaw-t3-candidate-2",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "candidate",
+      "trial_index": 2,
+      "time_budget_s": 120
+    },
+    {
+      "order": 34,
+      "trial_id": "gsta135-hermes-t3-none-2",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "none",
+      "trial_index": 2,
+      "time_budget_s": 120
+    },
+    {
+      "order": 35,
+      "trial_id": "gsta135-hermes-t3-baseline-2",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "baseline",
+      "trial_index": 2,
+      "time_budget_s": 120
+    },
+    {
+      "order": 36,
+      "trial_id": "gsta135-hermes-t3-candidate-2",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "candidate",
+      "trial_index": 2,
+      "time_budget_s": 120
+    },
+    {
+      "order": 37,
+      "trial_id": "gsta135-openclaw-t1-none-3",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "none",
+      "trial_index": 3,
+      "time_budget_s": 600
+    },
+    {
+      "order": 38,
+      "trial_id": "gsta135-openclaw-t1-baseline-3",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "baseline",
+      "trial_index": 3,
+      "time_budget_s": 600
+    },
+    {
+      "order": 39,
+      "trial_id": "gsta135-openclaw-t1-candidate-3",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "candidate",
+      "trial_index": 3,
+      "time_budget_s": 600
+    },
+    {
+      "order": 40,
+      "trial_id": "gsta135-hermes-t1-none-3",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "none",
+      "trial_index": 3,
+      "time_budget_s": 600
+    },
+    {
+      "order": 41,
+      "trial_id": "gsta135-hermes-t1-baseline-3",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "baseline",
+      "trial_index": 3,
+      "time_budget_s": 600
+    },
+    {
+      "order": 42,
+      "trial_id": "gsta135-hermes-t1-candidate-3",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "candidate",
+      "trial_index": 3,
+      "time_budget_s": 600
+    },
+    {
+      "order": 43,
+      "trial_id": "gsta135-openclaw-t2-none-3",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "none",
+      "trial_index": 3,
+      "time_budget_s": 600
+    },
+    {
+      "order": 44,
+      "trial_id": "gsta135-openclaw-t2-baseline-3",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "baseline",
+      "trial_index": 3,
+      "time_budget_s": 600
+    },
+    {
+      "order": 45,
+      "trial_id": "gsta135-openclaw-t2-candidate-3",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "candidate",
+      "trial_index": 3,
+      "time_budget_s": 600
+    },
+    {
+      "order": 46,
+      "trial_id": "gsta135-hermes-t2-none-3",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "none",
+      "trial_index": 3,
+      "time_budget_s": 600
+    },
+    {
+      "order": 47,
+      "trial_id": "gsta135-hermes-t2-baseline-3",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "baseline",
+      "trial_index": 3,
+      "time_budget_s": 600
+    },
+    {
+      "order": 48,
+      "trial_id": "gsta135-hermes-t2-candidate-3",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "candidate",
+      "trial_index": 3,
+      "time_budget_s": 600
+    },
+    {
+      "order": 49,
+      "trial_id": "gsta135-openclaw-t3-none-3",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "none",
+      "trial_index": 3,
+      "time_budget_s": 120
+    },
+    {
+      "order": 50,
+      "trial_id": "gsta135-openclaw-t3-baseline-3",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "baseline",
+      "trial_index": 3,
+      "time_budget_s": 120
+    },
+    {
+      "order": 51,
+      "trial_id": "gsta135-openclaw-t3-candidate-3",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "candidate",
+      "trial_index": 3,
+      "time_budget_s": 120
+    },
+    {
+      "order": 52,
+      "trial_id": "gsta135-hermes-t3-none-3",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "none",
+      "trial_index": 3,
+      "time_budget_s": 120
+    },
+    {
+      "order": 53,
+      "trial_id": "gsta135-hermes-t3-baseline-3",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "baseline",
+      "trial_index": 3,
+      "time_budget_s": 120
+    },
+    {
+      "order": 54,
+      "trial_id": "gsta135-hermes-t3-candidate-3",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "candidate",
+      "trial_index": 3,
+      "time_budget_s": 120
+    },
+    {
+      "order": 55,
+      "trial_id": "gsta135-openclaw-t1-none-4",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "none",
+      "trial_index": 4,
+      "time_budget_s": 600
+    },
+    {
+      "order": 56,
+      "trial_id": "gsta135-openclaw-t1-baseline-4",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "baseline",
+      "trial_index": 4,
+      "time_budget_s": 600
+    },
+    {
+      "order": 57,
+      "trial_id": "gsta135-openclaw-t1-candidate-4",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "candidate",
+      "trial_index": 4,
+      "time_budget_s": 600
+    },
+    {
+      "order": 58,
+      "trial_id": "gsta135-hermes-t1-none-4",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "none",
+      "trial_index": 4,
+      "time_budget_s": 600
+    },
+    {
+      "order": 59,
+      "trial_id": "gsta135-hermes-t1-baseline-4",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "baseline",
+      "trial_index": 4,
+      "time_budget_s": 600
+    },
+    {
+      "order": 60,
+      "trial_id": "gsta135-hermes-t1-candidate-4",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "candidate",
+      "trial_index": 4,
+      "time_budget_s": 600
+    },
+    {
+      "order": 61,
+      "trial_id": "gsta135-openclaw-t2-none-4",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "none",
+      "trial_index": 4,
+      "time_budget_s": 600
+    },
+    {
+      "order": 62,
+      "trial_id": "gsta135-openclaw-t2-baseline-4",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "baseline",
+      "trial_index": 4,
+      "time_budget_s": 600
+    },
+    {
+      "order": 63,
+      "trial_id": "gsta135-openclaw-t2-candidate-4",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "candidate",
+      "trial_index": 4,
+      "time_budget_s": 600
+    },
+    {
+      "order": 64,
+      "trial_id": "gsta135-hermes-t2-none-4",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "none",
+      "trial_index": 4,
+      "time_budget_s": 600
+    },
+    {
+      "order": 65,
+      "trial_id": "gsta135-hermes-t2-baseline-4",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "baseline",
+      "trial_index": 4,
+      "time_budget_s": 600
+    },
+    {
+      "order": 66,
+      "trial_id": "gsta135-hermes-t2-candidate-4",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "candidate",
+      "trial_index": 4,
+      "time_budget_s": 600
+    },
+    {
+      "order": 67,
+      "trial_id": "gsta135-openclaw-t3-none-4",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "none",
+      "trial_index": 4,
+      "time_budget_s": 120
+    },
+    {
+      "order": 68,
+      "trial_id": "gsta135-openclaw-t3-baseline-4",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "baseline",
+      "trial_index": 4,
+      "time_budget_s": 120
+    },
+    {
+      "order": 69,
+      "trial_id": "gsta135-openclaw-t3-candidate-4",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "candidate",
+      "trial_index": 4,
+      "time_budget_s": 120
+    },
+    {
+      "order": 70,
+      "trial_id": "gsta135-hermes-t3-none-4",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "none",
+      "trial_index": 4,
+      "time_budget_s": 120
+    },
+    {
+      "order": 71,
+      "trial_id": "gsta135-hermes-t3-baseline-4",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "baseline",
+      "trial_index": 4,
+      "time_budget_s": 120
+    },
+    {
+      "order": 72,
+      "trial_id": "gsta135-hermes-t3-candidate-4",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "candidate",
+      "trial_index": 4,
+      "time_budget_s": 120
+    },
+    {
+      "order": 73,
+      "trial_id": "gsta135-openclaw-t1-none-5",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "none",
+      "trial_index": 5,
+      "time_budget_s": 600
+    },
+    {
+      "order": 74,
+      "trial_id": "gsta135-openclaw-t1-baseline-5",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "baseline",
+      "trial_index": 5,
+      "time_budget_s": 600
+    },
+    {
+      "order": 75,
+      "trial_id": "gsta135-openclaw-t1-candidate-5",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "candidate",
+      "trial_index": 5,
+      "time_budget_s": 600
+    },
+    {
+      "order": 76,
+      "trial_id": "gsta135-hermes-t1-none-5",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "none",
+      "trial_index": 5,
+      "time_budget_s": 600
+    },
+    {
+      "order": 77,
+      "trial_id": "gsta135-hermes-t1-baseline-5",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "baseline",
+      "trial_index": 5,
+      "time_budget_s": 600
+    },
+    {
+      "order": 78,
+      "trial_id": "gsta135-hermes-t1-candidate-5",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "candidate",
+      "trial_index": 5,
+      "time_budget_s": 600
+    },
+    {
+      "order": 79,
+      "trial_id": "gsta135-openclaw-t2-none-5",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "none",
+      "trial_index": 5,
+      "time_budget_s": 600
+    },
+    {
+      "order": 80,
+      "trial_id": "gsta135-openclaw-t2-baseline-5",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "baseline",
+      "trial_index": 5,
+      "time_budget_s": 600
+    },
+    {
+      "order": 81,
+      "trial_id": "gsta135-openclaw-t2-candidate-5",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "candidate",
+      "trial_index": 5,
+      "time_budget_s": 600
+    },
+    {
+      "order": 82,
+      "trial_id": "gsta135-hermes-t2-none-5",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "none",
+      "trial_index": 5,
+      "time_budget_s": 600
+    },
+    {
+      "order": 83,
+      "trial_id": "gsta135-hermes-t2-baseline-5",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "baseline",
+      "trial_index": 5,
+      "time_budget_s": 600
+    },
+    {
+      "order": 84,
+      "trial_id": "gsta135-hermes-t2-candidate-5",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "candidate",
+      "trial_index": 5,
+      "time_budget_s": 600
+    },
+    {
+      "order": 85,
+      "trial_id": "gsta135-openclaw-t3-none-5",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "none",
+      "trial_index": 5,
+      "time_budget_s": 120
+    },
+    {
+      "order": 86,
+      "trial_id": "gsta135-openclaw-t3-baseline-5",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "baseline",
+      "trial_index": 5,
+      "time_budget_s": 120
+    },
+    {
+      "order": 87,
+      "trial_id": "gsta135-openclaw-t3-candidate-5",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "candidate",
+      "trial_index": 5,
+      "time_budget_s": 120
+    },
+    {
+      "order": 88,
+      "trial_id": "gsta135-hermes-t3-none-5",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "none",
+      "trial_index": 5,
+      "time_budget_s": 120
+    },
+    {
+      "order": 89,
+      "trial_id": "gsta135-hermes-t3-baseline-5",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "baseline",
+      "trial_index": 5,
+      "time_budget_s": 120
+    },
+    {
+      "order": 90,
+      "trial_id": "gsta135-hermes-t3-candidate-5",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "candidate",
+      "trial_index": 5,
+      "time_budget_s": 120
+    },
+    {
+      "order": 91,
+      "trial_id": "gsta135-openclaw-t1-none-6",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "none",
+      "trial_index": 6,
+      "time_budget_s": 600
+    },
+    {
+      "order": 92,
+      "trial_id": "gsta135-openclaw-t1-baseline-6",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "baseline",
+      "trial_index": 6,
+      "time_budget_s": 600
+    },
+    {
+      "order": 93,
+      "trial_id": "gsta135-openclaw-t1-candidate-6",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "candidate",
+      "trial_index": 6,
+      "time_budget_s": 600
+    },
+    {
+      "order": 94,
+      "trial_id": "gsta135-hermes-t1-none-6",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "none",
+      "trial_index": 6,
+      "time_budget_s": 600
+    },
+    {
+      "order": 95,
+      "trial_id": "gsta135-hermes-t1-baseline-6",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "baseline",
+      "trial_index": 6,
+      "time_budget_s": 600
+    },
+    {
+      "order": 96,
+      "trial_id": "gsta135-hermes-t1-candidate-6",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "candidate",
+      "trial_index": 6,
+      "time_budget_s": 600
+    },
+    {
+      "order": 97,
+      "trial_id": "gsta135-openclaw-t2-none-6",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "none",
+      "trial_index": 6,
+      "time_budget_s": 600
+    },
+    {
+      "order": 98,
+      "trial_id": "gsta135-openclaw-t2-baseline-6",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "baseline",
+      "trial_index": 6,
+      "time_budget_s": 600
+    },
+    {
+      "order": 99,
+      "trial_id": "gsta135-openclaw-t2-candidate-6",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "candidate",
+      "trial_index": 6,
+      "time_budget_s": 600
+    },
+    {
+      "order": 100,
+      "trial_id": "gsta135-hermes-t2-none-6",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "none",
+      "trial_index": 6,
+      "time_budget_s": 600
+    },
+    {
+      "order": 101,
+      "trial_id": "gsta135-hermes-t2-baseline-6",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "baseline",
+      "trial_index": 6,
+      "time_budget_s": 600
+    },
+    {
+      "order": 102,
+      "trial_id": "gsta135-hermes-t2-candidate-6",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "candidate",
+      "trial_index": 6,
+      "time_budget_s": 600
+    },
+    {
+      "order": 103,
+      "trial_id": "gsta135-openclaw-t3-none-6",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "none",
+      "trial_index": 6,
+      "time_budget_s": 120
+    },
+    {
+      "order": 104,
+      "trial_id": "gsta135-openclaw-t3-baseline-6",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "baseline",
+      "trial_index": 6,
+      "time_budget_s": 120
+    },
+    {
+      "order": 105,
+      "trial_id": "gsta135-openclaw-t3-candidate-6",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "candidate",
+      "trial_index": 6,
+      "time_budget_s": 120
+    },
+    {
+      "order": 106,
+      "trial_id": "gsta135-hermes-t3-none-6",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "none",
+      "trial_index": 6,
+      "time_budget_s": 120
+    },
+    {
+      "order": 107,
+      "trial_id": "gsta135-hermes-t3-baseline-6",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "baseline",
+      "trial_index": 6,
+      "time_budget_s": 120
+    },
+    {
+      "order": 108,
+      "trial_id": "gsta135-hermes-t3-candidate-6",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "candidate",
+      "trial_index": 6,
+      "time_budget_s": 120
+    },
+    {
+      "order": 109,
+      "trial_id": "gsta135-openclaw-t1-none-7",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "none",
+      "trial_index": 7,
+      "time_budget_s": 600
+    },
+    {
+      "order": 110,
+      "trial_id": "gsta135-openclaw-t1-baseline-7",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "baseline",
+      "trial_index": 7,
+      "time_budget_s": 600
+    },
+    {
+      "order": 111,
+      "trial_id": "gsta135-openclaw-t1-candidate-7",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "candidate",
+      "trial_index": 7,
+      "time_budget_s": 600
+    },
+    {
+      "order": 112,
+      "trial_id": "gsta135-hermes-t1-none-7",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "none",
+      "trial_index": 7,
+      "time_budget_s": 600
+    },
+    {
+      "order": 113,
+      "trial_id": "gsta135-hermes-t1-baseline-7",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "baseline",
+      "trial_index": 7,
+      "time_budget_s": 600
+    },
+    {
+      "order": 114,
+      "trial_id": "gsta135-hermes-t1-candidate-7",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "candidate",
+      "trial_index": 7,
+      "time_budget_s": 600
+    },
+    {
+      "order": 115,
+      "trial_id": "gsta135-openclaw-t2-none-7",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "none",
+      "trial_index": 7,
+      "time_budget_s": 600
+    },
+    {
+      "order": 116,
+      "trial_id": "gsta135-openclaw-t2-baseline-7",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "baseline",
+      "trial_index": 7,
+      "time_budget_s": 600
+    },
+    {
+      "order": 117,
+      "trial_id": "gsta135-openclaw-t2-candidate-7",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "candidate",
+      "trial_index": 7,
+      "time_budget_s": 600
+    },
+    {
+      "order": 118,
+      "trial_id": "gsta135-hermes-t2-none-7",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "none",
+      "trial_index": 7,
+      "time_budget_s": 600
+    },
+    {
+      "order": 119,
+      "trial_id": "gsta135-hermes-t2-baseline-7",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "baseline",
+      "trial_index": 7,
+      "time_budget_s": 600
+    },
+    {
+      "order": 120,
+      "trial_id": "gsta135-hermes-t2-candidate-7",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "candidate",
+      "trial_index": 7,
+      "time_budget_s": 600
+    },
+    {
+      "order": 121,
+      "trial_id": "gsta135-openclaw-t3-none-7",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "none",
+      "trial_index": 7,
+      "time_budget_s": 120
+    },
+    {
+      "order": 122,
+      "trial_id": "gsta135-openclaw-t3-baseline-7",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "baseline",
+      "trial_index": 7,
+      "time_budget_s": 120
+    },
+    {
+      "order": 123,
+      "trial_id": "gsta135-openclaw-t3-candidate-7",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "candidate",
+      "trial_index": 7,
+      "time_budget_s": 120
+    },
+    {
+      "order": 124,
+      "trial_id": "gsta135-hermes-t3-none-7",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "none",
+      "trial_index": 7,
+      "time_budget_s": 120
+    },
+    {
+      "order": 125,
+      "trial_id": "gsta135-hermes-t3-baseline-7",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "baseline",
+      "trial_index": 7,
+      "time_budget_s": 120
+    },
+    {
+      "order": 126,
+      "trial_id": "gsta135-hermes-t3-candidate-7",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "candidate",
+      "trial_index": 7,
+      "time_budget_s": 120
+    },
+    {
+      "order": 127,
+      "trial_id": "gsta135-openclaw-t1-none-8",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "none",
+      "trial_index": 8,
+      "time_budget_s": 600
+    },
+    {
+      "order": 128,
+      "trial_id": "gsta135-openclaw-t1-baseline-8",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "baseline",
+      "trial_index": 8,
+      "time_budget_s": 600
+    },
+    {
+      "order": 129,
+      "trial_id": "gsta135-openclaw-t1-candidate-8",
+      "harness": "openclaw",
+      "task": 1,
+      "arm": "candidate",
+      "trial_index": 8,
+      "time_budget_s": 600
+    },
+    {
+      "order": 130,
+      "trial_id": "gsta135-hermes-t1-none-8",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "none",
+      "trial_index": 8,
+      "time_budget_s": 600
+    },
+    {
+      "order": 131,
+      "trial_id": "gsta135-hermes-t1-baseline-8",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "baseline",
+      "trial_index": 8,
+      "time_budget_s": 600
+    },
+    {
+      "order": 132,
+      "trial_id": "gsta135-hermes-t1-candidate-8",
+      "harness": "hermes",
+      "task": 1,
+      "arm": "candidate",
+      "trial_index": 8,
+      "time_budget_s": 600
+    },
+    {
+      "order": 133,
+      "trial_id": "gsta135-openclaw-t2-none-8",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "none",
+      "trial_index": 8,
+      "time_budget_s": 600
+    },
+    {
+      "order": 134,
+      "trial_id": "gsta135-openclaw-t2-baseline-8",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "baseline",
+      "trial_index": 8,
+      "time_budget_s": 600
+    },
+    {
+      "order": 135,
+      "trial_id": "gsta135-openclaw-t2-candidate-8",
+      "harness": "openclaw",
+      "task": 2,
+      "arm": "candidate",
+      "trial_index": 8,
+      "time_budget_s": 600
+    },
+    {
+      "order": 136,
+      "trial_id": "gsta135-hermes-t2-none-8",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "none",
+      "trial_index": 8,
+      "time_budget_s": 600
+    },
+    {
+      "order": 137,
+      "trial_id": "gsta135-hermes-t2-baseline-8",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "baseline",
+      "trial_index": 8,
+      "time_budget_s": 600
+    },
+    {
+      "order": 138,
+      "trial_id": "gsta135-hermes-t2-candidate-8",
+      "harness": "hermes",
+      "task": 2,
+      "arm": "candidate",
+      "trial_index": 8,
+      "time_budget_s": 600
+    },
+    {
+      "order": 139,
+      "trial_id": "gsta135-openclaw-t3-none-8",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "none",
+      "trial_index": 8,
+      "time_budget_s": 120
+    },
+    {
+      "order": 140,
+      "trial_id": "gsta135-openclaw-t3-baseline-8",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "baseline",
+      "trial_index": 8,
+      "time_budget_s": 120
+    },
+    {
+      "order": 141,
+      "trial_id": "gsta135-openclaw-t3-candidate-8",
+      "harness": "openclaw",
+      "task": 3,
+      "arm": "candidate",
+      "trial_index": 8,
+      "time_budget_s": 120
+    },
+    {
+      "order": 142,
+      "trial_id": "gsta135-hermes-t3-none-8",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "none",
+      "trial_index": 8,
+      "time_budget_s": 120
+    },
+    {
+      "order": 143,
+      "trial_id": "gsta135-hermes-t3-baseline-8",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "baseline",
+      "trial_index": 8,
+      "time_budget_s": 120
+    },
+    {
+      "order": 144,
+      "trial_id": "gsta135-hermes-t3-candidate-8",
+      "harness": "hermes",
+      "task": 3,
+      "arm": "candidate",
+      "trial_index": 8,
+      "time_budget_s": 120
+    }
+  ],
+  "ceilings": {
+    "task1": 0.40627480000000005,
+    "task2": 0.201727,
+    "task3": 0.100788,
+    "per_harness": {
+      "task1": {
+        "openclaw": {
+          "base_usd": 0.26795080000000004,
+          "none_usd": 0.08923379999999999,
+          "skill_read_usd": 0.1207964,
+          "helper_run_usd": 0.017527599999999997,
+          "ceiling_usd": 0.40627480000000005,
+          "source": "discovery gsta135-openclaw-t1-gstack"
+        },
+        "hermes": {
+          "base_usd": 0.1487676,
+          "none_usd": 0.06666939999999999,
+          "skill_read_usd": 0.1168524,
+          "helper_run_usd": 0.013583600000000001,
+          "ceiling_usd": 0.2792036,
+          "source": "discovery gsta135-hermes-t1-gstack"
+        }
+      },
+      "task2": {
+        "openclaw": {
+          "base_usd": 0.0480964,
+          "none_usd": 0.0479102,
+          "skill_read_usd": 0.1154222,
+          "helper_run_usd": 0.012153400000000002,
+          "ceiling_usd": 0.17567200000000002,
+          "source": "discovery gsta135-openclaw-t2-gstack"
+        },
+        "hermes": {
+          "base_usd": 0.07140179999999999,
+          "none_usd": 0.0649966,
+          "skill_read_usd": 0.116797,
+          "helper_run_usd": 0.0135282,
+          "ceiling_usd": 0.201727,
+          "source": "discovery gsta135-hermes-t2-gstack"
+        }
+      },
+      "task3": {
+        "openclaw": {
+          "base_usd": 0.009684799999999999,
+          "none_usd": 0.009652200000000001,
+          "skill_read_usd": 0,
+          "helper_run_usd": 0,
+          "ceiling_usd": 0.009684799999999999,
+          "source": "discovery gsta135-openclaw-t3-gstack"
+        },
+        "hermes": {
+          "base_usd": 0.100788,
+          "none_usd": 0.0183888,
+          "skill_read_usd": 0,
+          "helper_run_usd": 0,
+          "ceiling_usd": 0.100788,
+          "source": "discovery gsta135-hermes-t3-gstack"
+        }
+      }
+    },
+    "source": "results/gsta-135/runs/gsta-135-discovery-2026-10",
+    "derived_at": "2026-10-28T22:42:30.576Z"
+  },
+  "bars": "GSTA-135, per harness: the matching skill opens in at least 3 of 5 trials on tasks 1 and 2 and strictly above baseline; starts in at least 3 of 5; the control (task 3) opens a skill in at most 1 of 5; task success not below baseline; per-cell medians under the measured ceilings and every trial under $1.00; counts are reported with Wilson 95% intervals and overlapping arm intervals read \"meets the bars; improvement inconclusive at n=5\"",
+  "terminations": {
+    "evaluator_infrastructure": {
+      "infra:reservation_refused": "402 with zero forwarded requests: the first reservation did not fit the lease (a sizing error here, never a verdict)",
+      "infra:cap_refused": "400 with zero forwarded requests: the harness stated max_tokens above the pin (a configuration error here)",
+      "infra:no_model_request(<term>)": "no request reached the proxy; run-trial's own termination in parentheses",
+      "infra:upstream": "402 after the proxy charged a reservation in full for an upstream failure (a 5xx with no usage that is not a known provider error envelope): the provider consumed the lease, not the trial; the charged dollars are usd_charged_reservation on the row, outside the $1.00 bar, inside the cap. Also a trial that did not complete after provider-error 5xx answers the proxy settled at $0 (an Anthropic 529 overloaded_error)",
+      "infra_error": "run-trial.sh could not run the container, or the driver could not dispatch it (proxy start, slot bind, cap check, lease close or image id; see the row's note)",
+      "not_run:panel_cap": "the panel cap stopped the run before this row",
+      "not_run:infra_stop": "an evaluator failure stopped the run before this row (the report's stop reason names it)",
+      "not_run:not_selected": "--only left it out",
+      "not_run:dry_run": "a dry run"
+    },
+    "harness_or_gstack_runtime": {
+      "infra:runtime": "the gstack runtime inside the harness image did not start cleanly (the wrapper's runtime: degraded line, or the image's runtime preflight failed); a gstack or harness runtime failure, not evaluator infrastructure: the row stays in the denominator with no skill credit and is never replaced",
+      "harness_error": "the adapter exited 2",
+      "model_error": "the adapter saw a model error (exit 3)",
+      "timeout": "the time budget ran out (exit 124)",
+      "ceiling:lease": "402 after at least one forwarded request: the trial passed $1.00 settled and failed the cost bar",
+      "completed": "the adapter exited 0"
+    }
+  }
+}

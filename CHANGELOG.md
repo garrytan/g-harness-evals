@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.96] - 2026-11-01
+
+### internal-task: start-hook panel reported (tool-discipline-start-2026-11)
+
+- `docs/benchmarks/2026-11-01-tool-discipline-start/report.md` (new): OpenClaw passes, Hermes fails. With gstack's start hook on, OpenClaw ran the skill's start command in 16 of 16 trials, against 1 of 16 without it: +0.94 [0.64, 0.99]. On Hermes the agent issued the command in 8 of 8 task-1 trials, and Hermes blocked every one. Its Tirith scan flags gstack's start preamble, and our preregistered chat-mode approval config (manual, 1 s) denied it.
+- Task success was 16 of 16 in every arm, so these tasks show no success difference for gstack, at the ceiling. On OpenClaw, gstack cost 3 to 5 times as much per trial as no gstack (ratios of medians). The report's Why null? section ends with a FIX-METHOD verdict.
+- `results/` (new): the run's receipts. Manifest and sha256, cells.jsonl, ledger, proxy usage and log, run log, both preflight logs per pin, the panel-score verdict as md and JSON, per-trial evidence and adapter logs, register-checks.jsonl (each trial's installed-HEAD and start_hook lines), and hermes-approval/ (the blocked rows, Hermes's own detector result and the Tirith download counts).
+- `docs/ledger/lane-spend.jsonl` gains the run's line ($16.900854), and `docs/budget-ledger.md` is re-rendered. The README's v0.3 runs table gains the run's row, and its spend line, with its twin in `docs/methods.md`, moves to $550.63.
+
 ## [0.0.95] - 2026-11-01
 
 ### internal-task: first finding files
