@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.103] - 2026-11-02
+
+### internal-task: Hermes start-hook rerun reported (tool-discipline-start-hermes-r2-2026-11)
+
+- `docs/benchmarks/2026-11-01-tool-discipline-start/report-hermes-r2.md` (new): Hermes passes. With the candidate on gstack `e2d9c798` (v1.92.57.0, whose start command Tirith allows) and Tirith 0.4.2 pinned, the candidate ran gstack's start command in 8 of 16 trials, against 0 of 16 for gstack without the hook: +0.50 [0.21, 0.72]. All 8 starts were on task 1; on task 2 no arm opened a skill, so the secondary bar is missed.
+- Task success was 16 of 16 in every arm, so these tasks show no success difference for gstack, at the ceiling. The report's Why null? section ends with a FIX-METHOD verdict. The fix is tasks below the success ceiling and a second task Hermes routes to a skill.
+- `results-hermes-r2/` (new): the run's receipts. Manifest and sha256, cells.jsonl, ledger, proxy usage and log, run log, both preflight logs, the gate files (clean-arms.jsonl, tirith-fence.jsonl, runtime-preflight.json), the panel-score verdict and clean-arm audit as md and JSON, per-trial evidence and adapter logs, and register-checks.jsonl (each trial's installed-HEAD, start_hook, approval and GSTACK_CAPY lines).
+- `docs/ledger/lane-spend.jsonl` gains the run's line ($5.757495), and `docs/budget-ledger.md` is re-rendered. The README's v0.3 runs table gains the run's row, and its spend line, with its twin in `docs/methods.md`, moves to $556.38.
+
 ## [0.0.102] - 2026-11-02
 
 ### internal-task: installer-cc-codex-2026-11 amendments before any counted trial: a $155 cap, and the clean-arms preflight matches recorded
