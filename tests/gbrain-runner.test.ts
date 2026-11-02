@@ -209,10 +209,10 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
       }
       else if (p.run_id.startsWith('installer-cc-codex-')) {
         // internal-task: installer against told for Claude Code on Opus 5.5 and Codex on GPT-6.1 Sol, the bot-visible starter brain, keyword search, the internal network, 17 v0.3 dev tasks
-        // (cr-02, cr-03 and cr-04 left out), three repetitions; told carries the ladder's preamble, installer and no brain the default one.
+        // (cr-02, cr-03 and cr-04 left out), three repetitions; told carries the ladder's preamble, installer and no brain the default one. Amendment 1 (2026-11-02) set the cap to $155.
         expect(c.task_set).toBe('v0.3'); expect(c.split).toBe('dev'); expect(c.repetitions).toBe(3); expect(c.network).toBe('internal'); expect(c.tasks).toBeUndefined();
         expect(p.tasks.multiuser).toHaveLength(17); expect(p.tasks.multiuser!.filter((t) => /^cr-0[234]-/.test(t))).toEqual([]);
-        expect(p.cells).toHaveLength(6); expect(buildManifest(p, sha256, '2026-11-01T00:00:00Z').trials).toHaveLength(306); expect(p.spend_cap_usd).toBe(100); expect(c.ceiling).toEqual({ input_tokens: 80000, output_tokens: 6000 });
+        expect(p.cells).toHaveLength(6); expect(buildManifest(p, sha256, '2026-11-01T00:00:00Z').trials).toHaveLength(306); expect(p.spend_cap_usd).toBe(155); expect(c.ceiling).toEqual({ input_tokens: 80000, output_tokens: 6000 });
         expect(c.model).toBe(c.harness === 'codex' ? 'openai:gpt-6.1-sol' : 'anthropic:claude-opus-5-5'); expect(['claude-code', 'codex']).toContain(c.harness);
         expect(p.cells.filter((x) => x.harness === c.harness && !x.gbrain)).toHaveLength(1);
         if (!c.gbrain) { expect(c.preamble).toBeUndefined(); continue; }

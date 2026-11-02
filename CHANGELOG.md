@@ -2,6 +2,13 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.102] - 2026-11-02
+
+### internal-task: installer-cc-codex-2026-11 amendments before any counted trial: a $155 cap, and the clean-arms preflight matches recorded
+
+- `docs/benchmarks/2026-11-01-installer-cc-codex/PREREGISTRATION.md`, amendment 1: the costing smoke projected $152.12 at 1.25 times, above the $100 cap, so the stop rule fired. The Captain, with internal-task's approval, raised the cap to $155 with the same design (six cells, 17 tasks, 3 repetitions, no-brain controls kept). It lists the smoke's numbers and the six leases, and the shards run from this amendment's merge commit. `prereg.json` `spend_cap_usd` is 155, and `tests/gbrain-runner.test.ts` checks it.
+- Amendment 2: the clean-arms preflight found two perl `sigstack.ph` headers in both harness images, plus gbrain's own `.gstack/` config and gstack-learnings source in the gbrain sidecar image. The installer views copied into the harness container hold no gstack file. internal-task accepted this as a recorded deviation, and the per-trial gstack audit runs as preregistered.
+
 ## [0.0.101] - 2026-11-02
 
 ### internal-task: three uncounted Opus 5.5 gstack follow-rate checks reported
