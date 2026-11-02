@@ -9,6 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { installerNotApplied, type PredicateResult, type TrialGbrainInstall, type TrialRecord } from '../runner/contracts.ts';
 import { noteAnsweredTurn } from '../runner/trial/trial.ts';
 import type { WorldEvent } from '../world/services/events.ts';
@@ -518,7 +519,9 @@ describe('compare-run --pair gbrain on the install ladder', () => {
     expect(out.rungs.map((r: { rung: string }) => r.rung).slice(0, 7)).toEqual(['none', 'mcp', 'told', 'docs', 'verbs-told', 'semantic-told', 'docs-semantic']);
     expect(out.scopes.map((s: { scope: string }) => s.scope)).toEqual(['primary', 'all']);
     const primary = out.scopes[0].endpoints;
-    expect(Object.keys(primary)).toEqual(['pass', 'use', 'cross_scope']);
+    expect(Object.keys(primary)).toEqual(['pass', 'use', 'cross_scope', 'exposure']);
+    // The fixture stores no per-trial evidence, so exposure has no value and every pair leaves with that reason.
+    for (const c of primary.exposure.comparisons) { expect(c.n_pairs).toBe(0); expect(c.excluded.some((x: { reason: string }) => x.reason === 'no value in the base cell')).toBe(true); }
     const find = (endpoint: string, harness: string, rung: string, scope = primary) => scope[endpoint].comparisons.find((c: { harness: string; rung: string }) => c.harness === harness && c.rung === rung);
     // pass: six tested comparisons per harness, one Holm family each.
     for (const h of ['oc', 'hm']) {
@@ -577,6 +580,93 @@ describe('compare-run --pair gbrain on the install ladder', () => {
     expect(noneTold.use.p).toBeUndefined();
     expect(r.stdout).toContain('Against none (descriptive, all tasks, no test)');
     expect(existsSync(join(dir, 'comparisons.json'))).toBe(false);
+  });
+
+  test('exposure (internal-task): read from each trial\'s stored events, turns and snapshot over every turn; a returned cross-scope page counts, a refused one does not', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-ladder-'));
+    writeLadderFixture(dir);
+    const NORTH = 'C16V9M1OB60', CENTRAL = 'C3TT2OEIAJ7';
+    const NORTH_PAGE = 'dev/chats/2025-08-20-north-team-chat', CENTRAL_PAGE = 'dev/chats/2025-07-02-tp-confusion';
+    const snapshot = { channels: [
+      { id: NORTH, name: 'north-team', kind: 'team', members: ['dana-okafor', 'ilse-varga', 'marcus-lindqvist', 'assistant'] },
+      { id: CENTRAL, name: 'central-team', kind: 'team', members: ['hollis-mbeki', 'pree-sundaram', 'tobias-rendle', 'assistant'] },
+    ], messages: [], calendar: [], mail: [], pending_actions: [] };
+    const turns = [1, 2].map((n) => ({ turn: n, actor: 'dana-okafor', channel: NORTH, channel_name: 'north-team', started_seq: n - 1, ended_seq: n, exit: 0, reply_ts: null, reply_text: 'ok' }));
+    const gb = (seq: number, tool: string, page: string, outcome: 'ok' | 'error' = 'ok') => ({ seq, actor: 'assistant', via: 'gbrain', tool: `gbrain.${tool}`, kind: 'read', args: {}, outcome, ...(outcome === 'error' ? { error: 'permission_denied' } : {}), effect: { pages: [page] } });
+    const rows = readFileSync(join(dir, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord);
+    for (const t of rows.filter((x) => x.cell === 'oc-gbrain-told' || x.cell === 'oc-gbrain-mcp')) {
+      const rep = t.trial_id.split('/').at(-1)!;
+      const told = t.cell === 'oc-gbrain-told';
+      // Told: two si-01 trials return a central-team page in turn 1; one sc-01 trial is refused one in turn 2. mcp: own pages only.
+      const events = told && t.task === 'si-01-quarrendon-seats' && (rep === 'r1' || rep === 'r2') ? [gb(1, 'search', CENTRAL_PAGE), gb(2, 'search', NORTH_PAGE)]
+        : told && t.task === 'sc-01-north-two-asks' && rep === 'r1' ? [gb(1, 'search', NORTH_PAGE), gb(2, 'get_page', CENTRAL_PAGE, 'error')]
+        : [gb(1, 'search', NORTH_PAGE)];
+      const tdir = join(dir, 'trials', t.cell, t.task, rep);
+      mkdirSync(tdir, { recursive: true });
+      // The told cell's snapshot is gzipped, as publishing leaves it (snapshot.json.gz).
+      if (told) writeFileSync(join(tdir, 'snapshot.json.gz'), gzipSync(JSON.stringify({ ...snapshot, events: events.length })));
+      else writeFileSync(join(tdir, 'snapshot.json'), JSON.stringify({ ...snapshot, events: events.length }));
+      writeFileSync(join(tdir, 'turns.jsonl'), turns.map((x) => JSON.stringify(x)).join('\n') + '\n');
+      writeFileSync(join(tdir, 'events.jsonl'), events.map((x) => JSON.stringify(x)).join('\n') + '\n');
+    }
+    const r = run('compare-run.ts', ['--results', dir, '--pair', 'gbrain', '--draws', '1000']);
+    expect(r.status).toBe(0);
+    const out = JSON.parse(readFileSync(join(dir, 'comparisons.gbrain.json'), 'utf8'));
+    const all = out.scopes[1].endpoints.exposure;
+    expect(all.label).toContain('any turn');
+    const toldVsMcp = all.comparisons.find((c: { harness: string; rung: string }) => c.harness === 'oc' && c.rung === 'told');
+    const scored = rows.filter((t) => t.cell === 'oc-gbrain-told' && !['model_error', 'infra_error', 'exam_fault'].includes(t.termination)).length;
+    expect(toldVsMcp.positive).toEqual({ base: 0, rung: 2 });
+    expect(toldVsMcp.scored.rung).toBe(scored);
+    expect(toldVsMcp.n_pairs).toBeGreaterThan(0);
+    expect(toldVsMcp.delta).toBeGreaterThan(0);
+    // A rung with no stored evidence still leaves the pairs with its reason.
+    const docs = all.comparisons.find((c: { harness: string; rung: string }) => c.harness === 'oc' && c.rung === 'docs');
+    expect(docs.n_pairs).toBe(0);
+    expect(r.stdout).toContain('Exposure via gbrain');
+    // Plain counts per cell, by tool, and the grader commit the live grading used.
+    const told = out.exposure.counts.find((c: { cell: string }) => c.cell === 'oc-gbrain-told');
+    expect(told).toMatchObject({ trials_with_exposure: 2, no_value: 0, returned_by_tool: { 'gbrain.search': 2 }, refused_by_tool: { 'gbrain.get_page': 1 }, unmapped: 0 });
+    expect(out.exposure.grader_commit).toMatch(/^[0-9a-f]{40}$/);
+    // --require-exposure refuses (after writing) while any scored trial has no exposure value.
+    const req = run('compare-run.ts', ['--results', dir, '--pair', 'gbrain', '--draws', '1000', '--require-exposure']);
+    expect(req.status).toBe(2);
+    expect(req.stderr).toContain('--require-exposure: ');
+    expect(req.stderr).toContain('scored trial(s) with no exposure value');
+    const notReady = JSON.parse(readFileSync(join(dir, 'comparisons.gbrain.json'), 'utf8')).exposure;
+    expect(notReady.ready).toBe(false);
+    expect(notReady.problems.some((p: string) => p.includes('no stored events, turns or snapshot'))).toBe(true);
+    expect(typeof notReady.grader_dirty).toBe('boolean');
+    // The fixture's shards.json records no commit, so the grader commit cannot be shown to be the one the shards ran at.
+    expect(notReady.problems.some((p: string) => p.endsWith('ran at a commit shards.json does not record, not the grader commit'))).toBe(true);
+    // Stored turns that do not cover every turn the record says ran give no value (a dropped turn would erase its exposure), and a
+    // truncated events line gives no value with its reason instead of aborting the comparison.
+    const toldDir = (task: string, rep: string) => join(dir, 'trials', 'oc-gbrain-told', task, rep);
+    const t1 = join(toldDir('si-01-quarrendon-seats', 'r1'), 'turns.jsonl');
+    writeFileSync(t1, readFileSync(t1, 'utf8').split('\n')[0] + '\n');
+    const ev2 = join(toldDir('si-01-quarrendon-seats', 'r2'), 'events.jsonl');
+    writeFileSync(ev2, readFileSync(ev2, 'utf8') + '{"seq":3,"actor":"assis');
+    // A whole events line dropped (the snapshot still counts it) gives no value too.
+    const ev3 = join(toldDir('sc-01-north-two-asks', 'r1'), 'events.jsonl');
+    writeFileSync(ev3, readFileSync(ev3, 'utf8').split('\n')[0] + '\n');
+    // An empty shards.json leaves every cell's run commit unknown.
+    writeFileSync(join(dir, 'shards.json'), JSON.stringify({ cells: {}, shards: {} }));
+    const cut = run('compare-run.ts', ['--results', dir, '--pair', 'gbrain', '--draws', '1000']);
+    expect(cut.status).toBe(0);
+    const cutOut = JSON.parse(readFileSync(join(dir, 'comparisons.gbrain.json'), 'utf8')).exposure;
+    expect(cutOut.counts.find((c: { cell: string }) => c.cell === 'oc-gbrain-told')).toMatchObject({ trials_with_exposure: 0, no_value: 3 });
+    expect(cutOut.problems.some((p: string) => p.endsWith('sc-01-north-two-asks/r1: events.jsonl holds 1 event(s) in seq order 1..n yes, the snapshot counts 2'))).toBe(true);
+    expect(cutOut.problems).toContain('cell oc-gbrain-told ran at a commit shards.json does not record, not the grader commit');
+    expect(cutOut.problems.some((p: string) => p.endsWith('si-01-quarrendon-seats/r1: turns.jsonl holds 1 turn(s), the record says 2 ran'))).toBe(true);
+    expect(cutOut.problems.some((p: string) => p.includes('si-01-quarrendon-seats/r2: stored evidence did not read (SyntaxError: '))).toBe(true);
+    // The flag reads the ladder's exposure endpoint, so the arm design refuses it rather than passing without a check.
+    const arm = run('compare-run.ts', ['--results', dir, '--pair', 'gbrain', '--draws', '1000', '--design', 'arm', '--require-exposure']);
+    expect(arm.status).toBe(2);
+    expect(arm.stderr).toContain('--require-exposure reads the ladder design');
+    // Without --pair gbrain there is no exposure endpoint either, so the flag refuses instead of passing on pass rates alone.
+    const unpaired = run('compare-run.ts', ['--results', dir, '--draws', '1000', '--require-exposure']);
+    expect(unpaired.status).toBe(2);
+    expect(unpaired.stderr).toContain('add --pair gbrain');
   });
 
   test('a rung whose base cell is absent is a refusal naming the cells; a cell off the table too; --design overrides the shape', () => {

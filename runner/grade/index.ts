@@ -3,13 +3,18 @@
 // predicates (predicates.secondary) are evaluated and recorded the same way but never decide the grade.
 
 import type { GradeResult, PredicateResult, TrialEvidence } from '../contracts.ts';
-import { evaluatePredicate, loadWorldData, observeEffects, type GradeContext } from './predicates.ts';
+import { evaluatePredicate, gbrainExposure, loadWorldData, observeEffects, type GradeContext } from './predicates.ts';
 import { loadTask, type Task } from './task.ts';
 
 export { loadTask, parseTask, TaskError } from './task.ts';
 export type { Task, Predicate } from './task.ts';
 
 const FAILED_EXITS = new Set([2, 3, 124]);
+
+/** gbrainExposure over a recorded trial's evidence: every turn's gbrain reads against that turn's requester (runner/grade/predicates.ts). */
+export function trialGbrainExposure(evidence: TrialEvidence, task: Task = loadTask(evidence.task_dir)): ReturnType<typeof gbrainExposure> {
+  return gbrainExposure({ evidence, task, world: loadWorldData(evidence.world_path, evidence.split), bot: evidence.bot_member });
+}
 
 export async function gradeTrial(evidence: TrialEvidence, task: Task = loadTask(evidence.task_dir)): Promise<GradeResult> {
   const ctx: GradeContext = {

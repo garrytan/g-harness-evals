@@ -11,7 +11,7 @@
 //                                                                     the cell with gbrain against the cell without it
 //   bun scripts/compare-run.ts --results <run> --pair gbrain [--design ladder]
 //                                                                     the install ladder (internal-task): each rung against its
-//                                                                     ladder neighbour on three endpoints, see below
+//                                                                     ladder neighbour on four endpoints, see below
 //
 // Prints a Markdown table (delta = B minus A in pass-rate points, 95% cluster bootstrap interval, two-sided
 // sign-flip p, Holm-adjusted p, clusters, pairs) and writes comparisons.json beside trials.jsonl. Intervals and
@@ -43,11 +43,19 @@
 // other than the default makes a told rung), and each rung is paired against its ladder neighbour within (harness, config,
 // model): mcp against none, told and docs against mcp, installer, verbs-told, semantic-told and told-company against told,
 // docs-semantic against docs, told-scoped against told-company (gbrain#7481). A rung whose base cell is absent, two cells on one rung, or a cell on no rung is a refusal (exit 2) naming the
-// cells. Three endpoints, each 1 or 0 per trial: pass (grade pass and no consent violation), gbrain use (at least one
-// gbrain tools/call in the record's gbrain.events.calls) and a cross-scope read via gbrain (the no_cross_scope_reads
-// evidence names a gbrain read); the same trial-by-trial pairing and task-clustered estimator as the arm, trials that
+// cells. Four endpoints, each 1 or 0 per trial: pass (grade pass and no consent violation), gbrain use (at least one
+// gbrain tools/call in the record's gbrain.events.calls), a cross-scope read via gbrain (the no_cross_scope_reads
+// evidence names a gbrain read, refused targeted reads included, in the turns the task names) and exposure via gbrain
+// (internal-task: a gbrain read that returned a page or fact the turn's requester may not read, in any turn, from the trial's
+// stored events.jsonl, turns.jsonl and snapshot.json, each plain or gzipped; a trial without them has no value, leaves the
+// pairs, and is counted in the exposure counts; graded with this checkout's grader, tasks and world, whose
+// commit comparisons.gbrain.json records under exposure, with per-cell counts of returned and refused records and unmapped
+// pages and facts by tool; --require-exposure, accepted only with the ladder design, exits 2 after writing (with exposure.ready
+// false and the problems in the JSON) when any scored trial has no value, a returned page or fact is unmapped, git cannot name
+// the grader commit, runner, tasks, world or the comparison scripts hold uncommitted changes, or shards.json is missing or names
+// a shard commit other than the grader commit); the same trial-by-trial pairing and task-clustered estimator as the arm, trials that
 // ended as model_error, infra_error or exam_fault excluded on both sides with their count published. Holm runs per
-// endpoint over the comparisons of one harness on one model: six for pass; five for use and cross-scope, where mcp
+// endpoint over the comparisons of one harness on one model: six for pass; five for use, cross-scope and exposure, where mcp
 // against none is degenerate (the none cell is 0 by construction) and is reported as the mcp cell's rate with its
 // task-clustered interval and no test. The none table is descriptive: every rung against its none cell, intervals and no
 // test. Cost per trial, wall per turn and the harness's own input tokens are paired differences (rung minus base, mean
@@ -65,7 +73,9 @@
 // read before any trial row: a sealed run against an unsealed one, either way round, is HE-SEALED-001, and two sealed runs
 // of different openings are HE-SEALED-003, so a sealed --against never reaches the public task lookup.
 
+import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
 import { installerNotApplied, type GbrainCellConfig, type TrialRecord } from '../runner/contracts.ts';
 import { clusteredPairedDelta, exactMcNemar, holmAdjusted, nonInferiorityP, pairObservations, type Observation, type PairedDelta } from '../runner/stats/paired.ts';
@@ -73,8 +83,11 @@ import { sealedGuard } from '../runner/heldout/guard.ts';
 import { openingDiff, readJsonFile, readJsonLines, type OpeningReceipt } from '../runner/heldout/sealed.ts';
 import { RunnerError } from '../runner/errors.ts';
 import { taskFamily } from '../runner/grade/task.ts';
+import { trialGbrainExposure } from '../runner/grade/index.ts';
+import type { TrialEvidence, TurnWindow, WorldSnapshot } from '../runner/contracts.ts';
+import type { WorldEvent } from '../world/services/events.ts';
 import { isSealedCell, resolveGbrain, taskDirFor } from '../runner/run.ts';
-import { ENDPOINTS, ENDPOINT_LABEL, endpointValue, ladderPairs, readShards, shardsLabel, type Endpoint } from './gbrain-ladder.ts';
+import { COMPARE_ENDPOINTS, ENDPOINT_LABEL, endpointValue, ladderPairs, readShards, shardsLabel, type Endpoint } from './gbrain-ladder.ts';
 
 function arg(name: string, fallback?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -86,6 +99,7 @@ if (!results || !existsSync(join(results, 'trials.jsonl'))) {
   process.exit(2);
 }
 const pairMode = arg('pair');
+if (pairMode !== 'gbrain' && process.argv.includes('--require-exposure')) { console.error('--require-exposure reads the gbrain ladder\'s exposure endpoint; add --pair gbrain'); process.exit(2); }
 if (pairMode !== undefined && pairMode !== 'gbrain') {
   console.error(`--pair takes "gbrain", not "${pairMode}"`);
   process.exit(2);
@@ -164,6 +178,7 @@ if (pairMode === 'gbrain') {
   if (designArg !== undefined && designArg !== 'arm' && designArg !== 'ladder') { console.error(`--design takes "arm" or "ladder", not "${designArg}"`); process.exit(2); }
   const ladderShaped = present.some((c) => c.gbrain?.surface && (resolveGbrain(c.gbrain).surface === 'verbs' || resolveGbrain(c.gbrain).install === 'gbrain-docs' || resolveGbrain(c.gbrain).install === 'gbrain-installer' || resolveGbrain(c.gbrain).embeddings !== 'off'));
   const design = designArg ?? (ladderShaped ? 'ladder' : 'arm');
+  if (design !== 'ladder' && process.argv.includes('--require-exposure')) { console.error('--require-exposure reads the ladder design\'s exposure endpoint; the arm design has none, so drop the flag or use --design ladder'); process.exit(2); }
 
   const installerPresent = present.filter((c) => c.gbrain && resolveGbrain(c.gbrain).install === 'gbrain-installer').map((c) => c.id);
   if (design === 'arm' && installerPresent.length) { console.error(`--pair gbrain (arm): installer cells ${installerPresent.join(', ')} need the ladder design, whose pairing leaves a trial whose installer did not take out of the pairs; drop --design arm`); process.exit(2); }
@@ -174,7 +189,40 @@ if (pairMode === 'gbrain') {
       console.error(`--pair gbrain (ladder): ${[...ladder.problems, ...(ladder.pairs.length ? [] : ['no neighbour pair found']), ...ladder.unpaired].join('; ')}`);
       process.exit(2);
     }
-    const viewOf = (t: TrialRecord) => { const r = regraded.get(t.trial_id); return { grade: r?.grade ?? t.grade, consent_violation: r?.consent_violation ?? t.consent_violation, predicates: r?.predicates ?? t.predicates }; };
+    /** The exposure endpoint (internal-task): returned cross-scope gbrain reads over every turn, from each trial's stored evidence
+     *  (<results>/trials/<cell>/<task>/<rep>/ only; each file plain or gzipped, as publishing leaves
+     *  snapshot.json.gz); null, and so out of the pairs, when a trial has no events, turns or snapshot recorded. It is graded
+     *  with this checkout's grader, tasks and world, whose commit the output records. A sealed run reads its tasks and merged
+     *  world from --sealed-root. */
+    const stored = (d: string, f: string): string | null => (existsSync(join(d, f)) ? readFileSync(join(d, f), 'utf8') : existsSync(join(d, f + '.gz')) ? gunzipSync(readFileSync(join(d, f + '.gz'))).toString('utf8') : null);
+    const jsonl = <T>(text: string) => text.split('\n').filter(Boolean).map((l) => JSON.parse(l) as T);
+    const exposureOf = (t: TrialRecord): { value: ReturnType<typeof trialGbrainExposure> | null; problem?: string } => {
+      const dir = join(results, 'trials', t.cell, t.task, rep(t));
+      if (!['events.jsonl', 'turns.jsonl', 'snapshot.json'].every((f) => existsSync(join(dir, f)) || existsSync(join(dir, f + '.gz')))) return { value: null, problem: `${t.trial_id}: no stored events, turns or snapshot` };
+      try {
+        const cell = manifest.cells.find((c) => c.id === t.cell) ?? { split: 'dev' as const };
+        const sealed = isSealedCell(cell, manifest.sealed?.set);
+        const turns = jsonl<TurnWindow>(stored(dir, 'turns.jsonl')!);
+        const run = t.turns?.run ?? 0;
+        if (turns.length !== run || new Set(turns.map((w) => w.turn)).size !== run) return { value: null, problem: `${t.trial_id}: turns.jsonl holds ${turns.length} turn(s), the record says ${run} ran` };
+        const snapshot = JSON.parse(stored(dir, 'snapshot.json')!) as WorldSnapshot;
+        const events = jsonl<WorldEvent>(stored(dir, 'events.jsonl')!);
+        const counted = (snapshot as { events?: unknown }).events;
+        if (counted !== events.length || events.some((e, i) => e.seq !== i + 1)) return { value: null, problem: `${t.trial_id}: events.jsonl holds ${events.length} event(s) in seq order 1..n ${events.every((e, i) => e.seq === i + 1) ? 'yes' : 'no'}, the snapshot counts ${typeof counted === 'number' ? counted : 'none'}` };
+        const evidence: TrialEvidence = {
+          trial_id: t.trial_id, task_dir: taskDirFor(cell, t.task, sealed ? join(sealedRoot!, 'tasks') : join(repoRoot, 'tasks')), split: cell.split,
+          world_path: manifest.sealed && sealedRoot ? join(sealedRoot, 'world', 'world.json') : join(repoRoot, 'world', 'seed', 'world.json'), bot_member: 'assistant',
+          snapshot, events, turns,
+        };
+        return { value: trialGbrainExposure(evidence) };
+      } catch (err) {
+        return { value: null, problem: `${t.trial_id}: stored evidence did not read (${(err as Error).name}: ${(err as Error).message})` };
+      }
+    };
+    const graderCommit = (() => { try { return execSync('git rev-parse HEAD', { cwd: repoRoot, encoding: 'utf8' }).trim(); } catch { return null; } })();
+    const graderDirty = (() => { try { return execSync('git status --porcelain -- runner tasks world scripts/compare-run.ts scripts/gbrain-ladder.ts', { cwd: repoRoot, encoding: 'utf8' }).trim() !== ''; } catch { return null; } })();
+    const exposure = new Map<string, ReturnType<typeof exposureOf>>();
+    const viewOf = (t: TrialRecord) => { const r = regraded.get(t.trial_id); return { grade: r?.grade ?? t.grade, consent_violation: r?.consent_violation ?? t.consent_violation, predicates: r?.predicates ?? t.predicates, exposure: exposure.get(t.trial_id)?.value?.returned.length ?? null }; };
     /** gbrain-installer-hook-2026-10's preregistration: a trial of an installer cell whose installer did not take (no install
      *  record, or a per-turn hook the harness did not report loaded or healthy; the adapter refuses that with HE-ADAPTER-006 before
      *  ready, so the trial is also harness_error) leaves the paired endpoints with its reason, as a model or infra error does.
@@ -184,6 +232,7 @@ if (pairMode === 'gbrain') {
     const notApplied = (t: TrialRecord): string | null => (installerCells.has(t.cell) ? installerNotApplied(t.gbrain?.install_bundle) : null);
     const scored = (t: TrialRecord) => !EXCLUDED.has(t.termination) && !notApplied(t);
     const why = (t: TrialRecord) => notApplied(t) ?? t.termination;
+    for (const t of rows) if (scored(t)) exposure.set(t.trial_id, exposureOf(t));
     /** Trial-by-trial pairing of two cells (same task, repetitions by order) over any per-trial value; a pair with a
      *  model, infra or exam error, an installer that did not take, a missing trial or a missing value on either side is excluded
      *  with its reason. */
@@ -205,8 +254,10 @@ if (pairMode === 'gbrain') {
           obsB.push({ id, cluster: task, value: reason ? null : vy, eligible: !reason, reason: reason ?? undefined });
         }
         const positive = (ts: TrialRecord[]) => ts.filter((t) => scored(t) && value(t) === 1).length;
-        return { task, family: familyOf.get(task)!, base: positive(ta), rung: positive(tb), scored: { base: ta.filter(scored).length, rung: tb.filter(scored).length } };
+        const valued = (ts: TrialRecord[]) => ts.filter((t) => scored(t) && value(t) !== null).length;
+        return { task, family: familyOf.get(task)!, base: positive(ta), rung: positive(tb), scored: { base: valued(ta), rung: valued(tb) } };
       });
+      if (!obsA.some((o) => o.eligible)) return { d: null, mc: null, excluded, perTask };
       const pairs = pairObservations(obsA, obsB).pairs;
       if (!pairs.length) return { d: null, mc: null, excluded, perTask };
       const binary = pairs.every((p) => (p.a === 0 || p.a === 1) && (p.b === 0 || p.b === 1));
@@ -221,12 +272,12 @@ if (pairMode === 'gbrain') {
       const scopeRows = rows.filter((t) => !fams || fams.includes(familyOf.get(t.task)!));
       const endpoints: Record<string, unknown> = {};
       lines.push('', `${scope === 'primary' ? `Primary families ${fams!.join(', ')}` : 'All tasks (secondary)'}:`);
-      for (const endpoint of ENDPOINTS) {
+      for (const endpoint of COMPARE_ENDPOINTS) {
         const value = (t: TrialRecord) => endpointValue(endpoint, t, viewOf(t));
         const stats = ladder.pairs.map((cp) => {
           const { d, mc, excluded, perTask } = paired(cp.base_cell, cp.cell, scopeRows, value);
           const tested = !(endpoint !== 'pass' && cp.base_rung === 'none');
-          const cellRows = (cell: string) => scopeRows.filter((t) => t.cell === cell && scored(t));
+          const cellRows = (cell: string) => scopeRows.filter((t) => t.cell === cell && scored(t) && value(t) !== null);
           return {
             ...cp, endpoint, tested, test_note: tested ? null : 'the none cell is 0 by construction: the mcp cell\'s rate with its task-clustered interval, no test',
             scored: { base: cellRows(cp.base_cell).length, rung: cellRows(cp.cell).length }, positive: { base: cellRows(cp.base_cell).filter((t) => value(t) === 1).length, rung: cellRows(cp.cell).filter((t) => value(t) === 1).length },
@@ -273,21 +324,49 @@ if (pairMode === 'gbrain') {
     const noneTable = ladder.rungs.filter((r) => r.rung !== 'none').map((r) => {
       const none = noneOf.get(`${r.harness}|${r.config ?? ''}|${r.model}`) ?? null;
       const row: Record<string, unknown> = { cell: r.cell, harness: r.harness, config: r.config, model: r.model, rung: r.rung, none_cell: none };
-      for (const endpoint of ENDPOINTS) {
+      for (const endpoint of COMPARE_ENDPOINTS) {
         if (!none) { row[endpoint] = null; continue; }
         const value = (t: TrialRecord) => endpointValue(endpoint, t, viewOf(t));
         const { d, excluded } = paired(none, r.cell, rows, value);
-        const cellRows = (cell: string) => rows.filter((t) => t.cell === cell && scored(t));
+        const cellRows = (cell: string) => rows.filter((t) => t.cell === cell && scored(t) && value(t) !== null);
         row[endpoint] = { positive: { none: cellRows(none).filter((t) => value(t) === 1).length, rung: cellRows(r.cell).filter((t) => value(t) === 1).length }, scored: { none: cellRows(none).length, rung: cellRows(r.cell).length }, delta: d?.delta ?? null, ci95: d?.ci95 ?? null, n_pairs: d?.n_pairs ?? 0, n_clusters: d?.n_clusters ?? 0, excluded: excluded.length };
       }
       return row;
     });
     const ep = (v: { positive: { none: number; rung: number }; scored: { none: number; rung: number }; delta: number | null; ci95: [number, number] | null } | null) => (v ? `${v.positive.none} / ${v.scored.none}, ${v.positive.rung} / ${v.scored.rung}; ${v.delta === null ? 'n/a' : pts(v.delta)} ${ci(v.ci95, pts)}` : 'no none cell');
     lines.push('', 'Against none (descriptive, all tasks, no test): positives none, rung; rung minus none (points) [95% CI, task-clustered].', '',
-      '| Harness | Model | Rung | Cell | none cell | Pass | gbrain use | Cross-scope via gbrain |', '|---|---|---|---|---|---|---|---|',
-      ...noneTable.map((r) => `| ${r.harness}${r.config ? ' ' + r.config : ''} | ${r.model} | ${r.rung} | \`${r.cell}\` | ${r.none_cell ? `\`${r.none_cell}\`` : 'none'} | ${ep(r.pass as never)} | ${ep(r.use as never)} | ${ep(r.cross_scope as never)} |`));
+      '| Harness | Model | Rung | Cell | none cell | Pass | gbrain use | Cross-scope via gbrain | Exposure via gbrain |', '|---|---|---|---|---|---|---|---|---|',
+      ...noneTable.map((r) => `| ${r.harness}${r.config ? ' ' + r.config : ''} | ${r.model} | ${r.rung} | \`${r.cell}\` | ${r.none_cell ? `\`${r.none_cell}\`` : 'none'} | ${ep(r.pass as never)} | ${ep(r.use as never)} | ${ep(r.cross_scope as never)} | ${ep(r.exposure as never)} |`));
+    // internal-task: the exposure endpoint's plain counts per cell over all tasks: trials with a value, trials with none, trials with
+    // exposure, and the returned and refused cross-scope records and the unmapped returned pages, each by gbrain tool.
+    const toolOf = (s: string) => /: seq=\d+ (\S+) /.exec(s)?.[1] ?? 'unknown';
+    const byTool = (xs: string[]) => { const o: Record<string, number> = {}; for (const x of xs) o[toolOf(x)] = (o[toolOf(x)] ?? 0) + 1; return o; };
+    const exposureCounts = ladder.rungs.map((r) => {
+      const ts = rows.filter((t) => t.cell === r.cell && scored(t));
+      const xs = ts.map((t) => exposure.get(t.trial_id)?.value).filter((x): x is NonNullable<typeof x> => !!x);
+      return { cell: r.cell, rung: r.rung, scored: ts.length, no_value: ts.length - xs.length, trials_with_exposure: xs.filter((x) => x.returned.length > 0).length,
+        returned_by_tool: byTool(xs.flatMap((x) => x.returned)), refused_by_tool: byTool(xs.flatMap((x) => x.refused)), unmapped_by_tool: byTool(xs.flatMap((x) => x.unmapped)), unmapped: xs.reduce((s, x) => s + x.unmapped.length, 0) };
+    });
+    const counts = (o: Record<string, number>) => Object.entries(o).map(([k, v]) => `${k} ${v}`).join(', ') || '0';
+    lines.push('', `Exposure via gbrain, counts per cell over all tasks (graded with this checkout's grader, tasks and world at ${graderCommit ?? 'an unknown commit'}): trials with exposure of trials with a value; returned and refused cross-scope records and unmapped returned pages and facts by gbrain tool. A nonzero unmapped count means the cell's exposure is not ready to publish.`, '',
+      '| Cell | Rung | Trials with exposure | No value | Returned by tool | Refused by tool | Unmapped |', '|---|---|---|---|---|---|---|',
+      ...exposureCounts.map((c) => `| \`${c.cell}\` | ${c.rung} | ${c.trials_with_exposure} / ${c.scored - c.no_value} | ${c.no_value} | ${counts(c.returned_by_tool)} | ${counts(c.refused_by_tool)} | ${c.unmapped ? `${c.unmapped} (map these before publishing)` : '0'} |`));
+    // --require-exposure (a preregistration whose decision reads the exposure endpoint): the endpoint is ready only when every
+    // scored trial has a value, nothing returned is unmapped, and the grader commit is known and clean; the JSON says so either way.
+    const runCommits = Object.fromEntries(ladder.rungs.map((r) => { const s = shards?.cells[r.cell]; const c = s ? (shards!.shards[s] as { commit?: unknown } | undefined)?.commit : undefined; return [r.cell, typeof c === 'string' ? c : null]; }));
+    const exposureProblems = [
+      ...exposureCounts.filter((c) => c.no_value > 0 || c.unmapped > 0).map((c) => `${c.cell} has ${c.no_value} scored trial(s) with no exposure value and ${c.unmapped} unmapped returned page(s) or fact(s)`),
+      ...[...exposure.values()].flatMap((x) => (x.problem ? [x.problem] : [])),
+      ...(graderCommit === null ? ['git could not name the grader commit'] : []),
+      ...(graderDirty !== false ? ['runner, tasks, world or the comparison scripts hold uncommitted changes (or git could not tell), so the grader commit is not what graded'] : []),
+      ...(!shards ? ['no shards.json, so the commit the run executed at is unknown'] : Object.entries(runCommits).filter(([, c]) => c !== graderCommit).map(([cell, c]) => `cell ${cell} ran at ${c ?? 'a commit shards.json does not record'}, not the grader commit`)),
+    ];
     console.log(lines.join('\n'));
-    writeFileSync(join(results, `comparisons.gbrain${suffix}`), JSON.stringify({ pair: 'gbrain', design: 'ladder', grading: useRegraded ? 'regraded' : 'as recorded', seed, draws, shards, exclusions: [...EXCLUDED, ...(installerCells.size ? ['installer_not_applied'] : [])], not_paired: ladder.unpaired, rungs: ladder.rungs, pairs: ladder.pairs, scopes: out, cost: costRows, none_table: noneTable }, null, 1) + '\n');
+    writeFileSync(join(results, `comparisons.gbrain${suffix}`), JSON.stringify({ pair: 'gbrain', design: 'ladder', grading: useRegraded ? 'regraded' : 'as recorded', exposure: { grader_commit: graderCommit, grader_dirty: graderDirty, run_commits: runCommits, graded: 'live, with this checkout\'s grader, tasks and world', ready: exposureProblems.length === 0, problems: exposureProblems, counts: exposureCounts }, seed, draws, shards, exclusions: [...EXCLUDED, ...(installerCells.size ? ['installer_not_applied'] : [])], not_paired: ladder.unpaired, rungs: ladder.rungs, pairs: ladder.pairs, scopes: out, cost: costRows, none_table: noneTable }, null, 1) + '\n');
+    if (process.argv.includes('--require-exposure') && exposureProblems.length) {
+      console.error(`--require-exposure: ${exposureProblems.join('; ')}; the exposure endpoint cannot decide until these are fixed`);
+      process.exit(2);
+    }
     process.exit(0);
   }
 

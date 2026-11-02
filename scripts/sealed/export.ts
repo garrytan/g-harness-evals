@@ -267,11 +267,11 @@ export function rawEntries(raw: string): TarEntry[] {
       try {
         const m = JSON.parse(readFileSync(join(raw, view, 'manifest.json'), 'utf8')) as { view_digest?: string; files?: Array<{ path?: string; source_path?: string; sha256?: string }> };
         const files = m.files ?? [];
-        const lines = [...files].sort((a, b) => ((a.source_path ?? '') < (b.source_path ?? '') ? -1 : (a.source_path ?? '') > (b.source_path ?? '') ? 1 : 0)).map((x) => `${x.source_path} ${x.sha256}\n`).join('');
+        const lines = [...files].sort((a, b) => ((a.source_path as string) < (b.source_path as string) ? -1 : (a.source_path as string) > (b.source_path as string) ? 1 : 0)).map((x) => `${x.source_path} ${x.sha256}\n`).join('');
         digest = m.view_digest;
         listed = sha256(lines) === m.view_digest ? files.find((x) => x.path === 'home/.local/bin/gbrain' && x.source_path === `${harness}/installer/home/.local/bin/gbrain`)?.sha256 : undefined;
       } catch { listed = undefined; }
-      if (!listed || sha256(readFileSync(f)) !== listed) throw new RunnerError('HE-SEALED-007', `${rel} is not the binary its view's manifest.json records (no entry with source_path ${harness}/installer/home/.local/bin/gbrain, another sha256, or a view_digest that is not the digest of the manifest's file list); the bundle leaves the installer's gbrain out only when the manifest vouches for it, so nothing was written (ask the Captain before changing --results)`);
+      if (!listed || sha256(readFileSync(f)) !== listed) throw new RunnerError('HE-SEALED-007', `${rel} is not the binary its view's manifest.json records (no entry with source_path ${harness}/installer/home/.local/bin/gbrain, another sha256, or a view_digest that is not the digest of the manifest's file list); the bundle leaves the installer's gbrain out only when the manifest vouches for it, so nothing was pushed or published (ask the Captain before changing --results)`);
       if (trialViews().has(`${harness}/${segs[2]}/${digest}`)) continue;
     }
     if (!statSync(f).isFile()) continue;

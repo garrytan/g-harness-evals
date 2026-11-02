@@ -118,7 +118,7 @@ test('gbrain.install and gbrain.embeddings: validated under HE-GBRAIN-001 naming
   expect(m.per_cell_ceiling_usd['fake-semantic']!).toBeGreaterThanOrEqual(m.per_cell_ceiling_usd['fake-mcp']!);
 });
 
-test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs, installer and scoped follow-ups, the v0.2 held-out run, the memory run, the v0.3 dev pilot, its installer dev cells, its approval relay re-read and its Opus dev read, and the host-harness pilot carry gbrain cells, each on a pinned configuration', () => {
+test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs, installer and scoped follow-ups, the v0.2 held-out run, the memory run, the v0.3 dev pilot, its installer dev cells, its approval relay re-read and its Opus dev read, the host-harness pilot and the Claude Code and Codex installer run carry gbrain cells, each on a pinned configuration', () => {
   const dir = join(ROOT, 'docs', 'benchmarks');
   const files = readdirSync(dir).filter((d) => existsSync(join(dir, d, 'prereg.json'))).map((d) => join(dir, d, 'prereg.json'));
   expect(files.length).toBeGreaterThan(0);
@@ -206,6 +206,18 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
           expect(['none', 'member-sources']).toContain(g.scope); expect(c.repetitions).toBe(g.scope === 'member-sources' ? 5 : 3);
           expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-company.md'); expect(c.ceiling).toEqual({ input_tokens: 30000, output_tokens: 2000 });
         }
+      }
+      else if (p.run_id.startsWith('installer-cc-codex-')) {
+        // internal-task: installer against told for Claude Code on Opus 5.5 and Codex on GPT-6.1 Sol, the bot-visible starter brain, keyword search, the internal network, 17 v0.3 dev tasks
+        // (cr-02, cr-03 and cr-04 left out), three repetitions; told carries the ladder's preamble, installer and no brain the default one.
+        expect(c.task_set).toBe('v0.3'); expect(c.split).toBe('dev'); expect(c.repetitions).toBe(3); expect(c.network).toBe('internal'); expect(c.tasks).toBeUndefined();
+        expect(p.tasks.multiuser).toHaveLength(17); expect(p.tasks.multiuser!.filter((t) => /^cr-0[234]-/.test(t))).toEqual([]);
+        expect(p.cells).toHaveLength(6); expect(buildManifest(p, sha256, '2026-11-01T00:00:00Z').trials).toHaveLength(306); expect(p.spend_cap_usd).toBe(100); expect(c.ceiling).toEqual({ input_tokens: 80000, output_tokens: 6000 });
+        expect(c.model).toBe(c.harness === 'codex' ? 'openai:gpt-6.1-sol' : 'anthropic:claude-opus-5-5'); expect(['claude-code', 'codex']).toContain(c.harness);
+        expect(p.cells.filter((x) => x.harness === c.harness && !x.gbrain)).toHaveLength(1);
+        if (!c.gbrain) { expect(c.preamble).toBeUndefined(); continue; }
+        const g = resolveGbrain(c.gbrain); expect(g.surface).toBe('starter'); expect(g.embeddings).toBe('off'); expect(['mcp', 'gbrain-installer']).toContain(g.install); expect(g.brain).toBe('bot-visible'); expect(g.scope).toBe('none');
+        expect(c.preamble).toBe(g.install === 'mcp' ? 'tasks/multiuser/_shared/preamble.gbrain-ladder.md' : undefined);
       }
       else if (p.run_id.startsWith('host-harness-pilot-')) {
         // internal-task: Claude Code, OpenClaw and Hermes on Haiku (none and told) and Codex, OpenClaw and Hermes on gpt-6-luna (none), every cell on the internal network, the v0.3 dev split, five repetitions.
