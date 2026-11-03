@@ -2,6 +2,10 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.111] - 2026-11-03
+
+- qm-brain-native (K8): design preregistration for the QM × gbrain brain-native eval (docs/benchmarks/2026-11-02-qm-brain-native/PREREGISTRATION.md, design.json). Adds a keyless, seeded corpus generator with audience manifests, a files export, dev and pilot tasks and a leak scanner (world/brain/, `bun world/brain/check.ts`), the frozen power, cost and cap rules (scripts/qm-brain-power.ts), HE-BRAIN-001 to 008 in docs/errors.md, and tests. No paid trial runs from this change.
+
 ## [0.0.110] - 2026-11-03
 
 ### internal-task: preregister prompt-archaeology-2026-11

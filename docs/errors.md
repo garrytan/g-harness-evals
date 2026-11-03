@@ -1,6 +1,6 @@
 # Error codes
 
-Every runner, proxy and adapter failure prints one line that starts with its code, says what happened with the values involved, and ends with the fix command or the human prerequisite. Codes are stable; add a row here in the same commit that introduces one. Areas: PREREG, PIN, RUN, BUDGET, PROXY, ADAPTER, EGRESS, SCORE, TASK, PUBLISH, HELDOUT, LANEB.
+Every runner, proxy and adapter failure prints one line that starts with its code, says what happened with the values involved, and ends with the fix command or the human prerequisite. Codes are stable; add a row here in the same commit that introduces one. Areas: PREREG, PIN, RUN, BUDGET, PROXY, ADAPTER, EGRESS, SCORE, TASK, PUBLISH, HELDOUT, LANEB, BRAIN.
 
 | Code | What | Fix / recovery | Where |
 |---|---|---|---|
@@ -140,3 +140,18 @@ The Lane B bridge runs the pinned gstack-evals Lane B agent on harness-evals met
 | HE-LANEB-006 | convert found no `attestation.json`, or one dated after the first Lane B session opened; or attest was given a preregistration outside the repository | run `to-trials.ts attest` before the first session (vm-run.sh does); a late attestation means the shard is not counted; pass a preregistration inside the checkout | scripts/gstack-laneb/to-trials.ts |
 | HE-LANEB-007 | a trial whose Lane B session sent requests (or whose requests our proxy refused) but got no model response; it is recorded as `infra_error`, not an error exit and not a model result | read the shard's `proxy-usage.ndjson` refusals (an allowlist, output-cap or route problem) and `laneb/proxy-requests.jsonl`; the record is terminal | scripts/gstack-laneb/to-trials.ts |
 | HE-LANEB-008 | a graded native trial whose `artifacts/manifest.json` has no `/work` entry with status `ok` or `empty` (the copy failed, or there is no manifest), so nothing shows the verifier graded the agent's tree; it is recorded as `infra_error` with grade `n/a`, not an error exit and not a fail | read the trial's `artifacts/manifest.json` and Harbor's trial log for the copy failure; the record is terminal | scripts/gstack-laneb/to-trials.ts |
+
+## qm-brain-native corpus (internal-task, K8)
+
+`world/brain/check.ts`, `world/brain/scan.ts` and the generator they import. In sealed mode each prints only the code and counts.
+
+| Code | What | Fix / recovery | Where |
+|---|---|---|---|
+| HE-BRAIN-001 | the name check failed: a coined name contains a blocklisted real company or person, two names collide, two company names sit within edit distance 2 outside a declared decoy pair, or the four decoy companies could not be placed | widen the syllable tables in `world/brain/names.ts` or change the seed; a generator change needs new digests in `world/brain/seeds.json` and a preregistration amendment | world/brain/corpus.ts, names.ts |
+| HE-BRAIN-002 | two generations of one seed differ, or a digest differs from `world/brain/seeds.json` | find the nondeterminism (a locale-sensitive sort, an unseeded random, a Map iterated in insertion order from a Set); if the generator changed on purpose, record the new digests and amend the preregistration in the same pull request | world/brain/check.ts |
+| HE-BRAIN-003 | the generator cannot fill the requested counts (names, topics with a clear expert, contacts, companies, privacy pairs) | raise the matching `PARAMS` count in `world/brain/corpus.ts` or lower the partition size; never accept a short partition | world/brain/corpus.ts, tasks.ts |
+| HE-BRAIN-004 | an arm's delivered pages differ from the audience manifest (F, R, T, TC must equal it, N must be empty) | fix `manifestFor`, `bindingsFor` or the files export so all three agree; the message names the audience, arm and counts | world/brain/check.ts |
+| HE-BRAIN-005 | a task has an empty key, a key item rests on a page outside its audience's manifest, or a twin expects a marker its audience may not see | fix the task generator; keys are functions of the manifest | world/brain/check.ts |
+| HE-BRAIN-006 | a codename whose page an audience may not see appears in that audience's files export | fix the export or the canary placement | world/brain/check.ts |
+| HE-BRAIN-007 | the scanner found a leak (exit 1), or its self-test missed a planted codename or flagged an allowed or clean reply | a leak goes to audit (PREREGISTRATION.md, Endpoints); a self-test failure is a scanner bug | world/brain/scan.ts, check.ts |
+| HE-BRAIN-008 | bad input: a usage error, unreadable scan input, a prompt slot with no value, a rendered page with no front matter, a non-empty `check.ts --out` directory, or a seed that `seeds.json` does not hold publicly (corpus B is sealed) | read the usage line; corpus B is checked only by the custodian's scripts | world/brain/*.ts |

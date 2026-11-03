@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "run_id": "qm-brain-native-2026-11",
+  "stage": "design",
+  "question": "On brain-native questions about one synthetic company (meeting prep, who knows a topic, what changed at a company since a date), asked by a member in a DM or a room, does QM's brain tool (K1, T vs R) and its turn card (K2, TC vs T) improve the mean task score, and does the brain stack beat the same authorized knowledge as sandbox files (TC vs F, the headline), per frontier model (Opus 5.5, GPT-6.1 Sol), Holm-corrected across those six comparisons, with zero leaks in every arm, an unanswerable-control harm guard, and cost, token and latency margins. particle-1 is a labelled low-cost primary and carries no verdict alone. Design stage: this is design.json, not a runnable prereg.json; the pilot preregistration amendment adds pins and a prereg.json with the pilot cells, and the main preregistration adds the held-out block, n and the cap from the frozen rules.",
+  "arms": {
+    "F": "the audience manifest as files in the scope's sandbox workspace (notes/), read trace; no gbrain",
+    "R": "per-turn recall from the bound brain; K1a and K2a switches off; brain skill archived",
+    "T": "R plus the K1a brain tool, its prompt line and seeded skill; card off",
+    "TC": "T plus the K2a turn card",
+    "N": "no corpus, no binding, no files; brain skill archived"
+  },
+  "models": {
+    "frontier": [
+      "anthropic:claude-opus-5-5",
+      "openai:gpt-6.1-sol"
+    ],
+    "low_cost_labelled": "particle:particle-1 (QM custom/particle/particle-1)"
+  },
+  "confirmatory": [
+    {
+      "id": "k1-opus",
+      "a": "R",
+      "b": "T",
+      "model": "anthropic:claude-opus-5-5"
+    },
+    {
+      "id": "k1-sol",
+      "a": "R",
+      "b": "T",
+      "model": "openai:gpt-6.1-sol"
+    },
+    {
+      "id": "k2-opus",
+      "a": "T",
+      "b": "TC",
+      "model": "anthropic:claude-opus-5-5"
+    },
+    {
+      "id": "k2-sol",
+      "a": "T",
+      "b": "TC",
+      "model": "openai:gpt-6.1-sol"
+    },
+    {
+      "id": "stack-opus",
+      "a": "F",
+      "b": "TC",
+      "model": "anthropic:claude-opus-5-5"
+    },
+    {
+      "id": "stack-sol",
+      "a": "F",
+      "b": "TC",
+      "model": "openai:gpt-6.1-sol"
+    }
+  ],
+  "minimum_useful_effect_points": 15,
+  "margins": {
+    "first_request_input_tokens_ratio": {
+      "T/R": 1.1,
+      "TC/T": 1.1
+    },
+    "cost_per_task_ratio": {
+      "T/R": 1.5,
+      "TC/T": 1.25
+    },
+    "p95_turn_wall_s_diff": {
+      "T-R": 10
+    },
+    "receipt_to_first_request_s_diff": {
+      "TC-T": 1.5
+    }
+  },
+  "guard": {
+    "metric": "correct abstention on unanswerable tasks",
+    "comparisons": [
+      "T vs R",
+      "TC vs T"
+    ],
+    "fails_when": "point drop over 10 points and the 95% interval excludes zero"
+  },
+  "corpus": {
+    "generator": "world/brain/corpus.ts",
+    "seeds": "world/brain/seeds.json",
+    "A": {
+      "seed": "qm-brain-native/A/2026-11-02",
+      "corpus_sha256": "a04c45e09c89b34b1b55364c059d612bf7f197a485d181b9862f417b9fdf8e69",
+      "tasks_sha256": "b6d7c3ac09ad22fa735b9ddae78f43e0aa91e3043fb025aa6b9b48ac7c71eaa3",
+      "manifests_sha256": "1456bb257fa128131dad43dbf1043bfbe4b6966dfb858bb9f8a6bc3bdeecf3c1"
+    },
+    "B": "sealed"
+  },
+  "partitions": {
+    "dev": {
+      "corpus": "A",
+      "prep": 6,
+      "who": 6,
+      "changed": 6,
+      "unanswerable": 6,
+      "privacy_pairs": 4,
+      "rooms": true
+    },
+    "pilot": {
+      "corpus": "A",
+      "prep": 2,
+      "who": 2,
+      "changed": 2,
+      "unanswerable": 2,
+      "privacy_pairs": 2,
+      "rooms": false
+    },
+    "heldout": {
+      "corpus": "B",
+      "generated": {
+        "prep": 45,
+        "who": 45,
+        "changed": 45
+      },
+      "unanswerable": 12,
+      "privacy_pairs": 12,
+      "rooms": true,
+      "used": "n from the task-count rule, floor(n/3) per family, remainder to prep then who, in sealed order"
+    }
+  },
+  "power": {
+    "script": "scripts/qm-brain-power.ts",
+    "mde": "3.48 * sd / sqrt(n)",
+    "rule": "sd <= 0.40: n = 88; else n = min(135, max(88, ceil((3.48 * sd / 0.15)^2)))",
+    "sd_definition": "pooled sd of per-task paired differences over the six confirmatory comparisons in the pilot, two repeats; 80% upper bound recorded"
+  },
+  "spend_cap_usd": {
+    "pilot": 40,
+    "main_ladder": {
+      "88": 560,
+      "109": 670,
+      "135": 810
+    },
+    "main_cap": "1.13 * (n * 4.69 + 79.27), rounded up to $10",
+    "above_600_needs": "the Captain's program-cap check"
+  },
+  "drop_order": [
+    "N on frontier models to half the tasks",
+    "particle-1 F to one repeat",
+    "frontier F to one repeat"
+  ],
+  "heldout_custody": {
+    "set_kind": "brain (to add, full panel)",
+    "openings": 1,
+    "alpha_per_opening": 0.05,
+    "block": "added in the main preregistration PR"
+  },
+  "gbrain": {
+    "embedding_model": "openai:text-embedding-3-large",
+    "provider_base_urls_openai": "the metering proxy",
+    "search_mode": "balanced",
+    "reranker_enabled": false,
+    "deviation": "deployment default differs: Voyage (voyage:voyage-4, rerank-3-lite)"
+  },
+  "pins_freeze_at_pilot": [
+    "qm SHA",
+    "gbrain tag",
+    "brain skill sha256",
+    "image digests",
+    "judge prompts",
+    "price table"
+  ]
+}

@@ -9,6 +9,7 @@ evaluator-owned event log. Graders read the event log and the world state, never
 | Path | What it is |
 |---|---|
 | [`seed/`](seed/README.md) | `import.ts`, the imported `world.json`, its `MANIFEST.json` and the mapping rules |
+| [`brain/`](brain/README.md) | not Pemberline: the qm-brain-native (K8) corpus, a seeded keyless generator for one synthetic company's brain, its audience manifests, the dev and pilot tasks and the leak scanner (`bun world/brain/check.ts`) |
 | `services/world.ts` | the state and access rules both surfaces share |
 | `services/slack/` | the Slack Web API mock and the Socket-Mode-style event stream |
 | `services/clock/` | the frozen simulation clock |
