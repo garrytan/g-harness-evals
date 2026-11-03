@@ -2,6 +2,16 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.109] - 2026-11-02
+
+### internal-task: the merge lane lands through gstack land, so pull requests stop renumbering
+
+- **Pull requests no longer carry a version.** `.gstack/ship-policy.json` turns on `changelog_fragments` (dir `changelog.d`). A pull request adds a `changelog.d/<slug>.md` fragment, and gstack's `land` stamps VERSION, package.json and CHANGELOG.md at merge, so nobody re-ships just to renumber after another merge. `changelog.d/README.md` is the author side.
+- `scripts/ubicloud/merge-pass.sh --land` (or `HE_LAND=1`): after every existing check, a receipted head is fetched from its pull request ref, made READY on a detached checkout (`gstack-pregate run`, then `gstack-ship-queue ready`, with the API key variables unset) and stamped with `land --no-wait`. A later pass merges the stamp only when its parents are the receipted pin and the base tip, `gstack-tree-receipt` says `same-modulo-stamps`, and every check is green at the stamp. A stamp of a base tip that has moved since is restamped from its pin.
+- Fork pull requests are skipped under `--land` before any of their code is fetched or run. A land that returns without merging is a skip and writes no merge-log line, and a failed land is reported as a merge failure, so `pr-watch.sh` wakes the lane.
+- Known gap, and the first item of internal-task's next lane PR. A stale stamp that GitHub does not report CLEAN (BEHIND or DIRTY) is skipped before the restamp step, so it needs `land --pr <n>` or `--repair` by hand. It fails closed and never merges a wrong tree.
+- Docs: `scripts/ubicloud/README.md` and `docs/ubicloud.md`. Tests: `tests/merge-pass.test.ts` adds a `--land` block (the pin, the stamp, a moved base, a pin only its pull request ref reaches, a fork, a pending and a failed land) and an R65 no-panel receipt test.
+
 ## [0.0.106] - 2026-11-02
 
 ### internal-task: finding file on Opus 5.5 and gstack's skill steps
