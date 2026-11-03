@@ -10,12 +10,12 @@
 #               [--embedded] [--gbrain-image <tag>] [--sealed-root <path on the VM> --opening-receipt <path on the VM>]
 #               [--workload harness|gstack-laneb] [-- <extra run-shard.sh arguments>]
 #
-# --workload gstack-laneb (internal-task, docs/gstack-laneb.md): the smoke is the bridge's keyless smoke
+# --workload gstack-laneb (docs/gstack-laneb.md): the smoke is the bridge's keyless smoke
 # (scripts/gstack-laneb/smoke.sh against the pinned fake upstream, no spend; it installs Harbor at its pin) and the shard
 # runs scripts/gstack-laneb/vm-run.sh with the Lane B checkout and arms run-shard.sh uploaded to ~/laneb and the shard's
 # lease. Sealed flags are refused for this workload (run-shard.sh refuses them first). The smoke's results go to ~/shard/smoke/results and the shard's to ~/shard/results.
 #
-# --sealed-root and --opening-receipt (internal-task, docs/sealed-custody.md) name the custodian's sealed root and receipt that
+# --sealed-root and --opening-receipt (docs/sealed-custody.md) name the custodian's sealed root and receipt that
 # scripts/ubicloud/run-shard.sh uploaded to ~/sealed, outside the checkout; both go to the counted scripts/run-shard.sh call
 # only. The smoke's dev-only preregistration has no sealed cell, so it runs as a public run: without the sealed flags and
 # with the public image harness-eval/gbrain:dev (the runner refuses a sealed image for a run with no sealed root,

@@ -3,13 +3,13 @@
 // generation time. tests/heldout-manifest.test.ts fails when a tree and its manifest disagree, so a change to a
 // held-out task is visible in review and in the receipts.
 //
-// internal-task: the manifest also carries the set's openings ledger: opening_budget (confirmatory openings allowed),
+// The manifest also carries the set's openings ledger: opening_budget (confirmatory openings allowed),
 // alpha_per_opening, status (open, spent, retired), openings[] (one row per registered experiment that runs a held-out
 // cell of the set: run_id, status, label, reason, candidate_sha256) and exposures[] (access that is not a run). The
 // ledger stores no opening numbers; runner/heldout/openings.ts derives them from preregistration order on main. The
 // ledger sits outside the tree digest, so editing it never changes tree_sha256, and resealing carries it through.
 //
-// internal-task phase 3: a set can be held in sealed custody (docs/sealed-custody.md). Its held-out directory then holds only
+// A set can be held in sealed custody (docs/sealed-custody.md). Its held-out directory then holds only
 // MANIFEST.json with "custody": "sealed" and a "sealed" block of commitments (bundle_sha256, world_slice_sha256,
 // heldout_corpus_sha256, task_count, the age recipient and the bundle's path on the custody branch); tree_sha256 is the
 // digest the plaintext tree had when scripts/sealed/seal.ts sealed it, and files and tasks stay empty so no task name is
@@ -18,7 +18,7 @@
 //
 // Task sets: v0.1 is tasks/multiuser/heldout (the default); any other set name is tasks/multiuser/<set>/heldout.
 //
-// internal-task: a set has a kind, "multiuser" (the default) or "repo". A repo set (repository tasks, docs/tasks.md and the
+// A set has a kind, "multiuser" (the default) or "repo". A repo set (repository tasks, docs/tasks.md and the
 // gstack-native format) lives under tasks/repo/<set>/, its public dev split in dev/ and its MANIFEST.json in heldout/. A repo
 // set's held-out tree exists only inside custody: tasks/repo/<set>/heldout/ holds MANIFEST.json and nothing else, sealed or
 // released (release.ts writes a retired repo set's tree to tasks/repo/<set>/released/). Its manifest says "kind": "repo",
@@ -67,7 +67,7 @@ export interface OpeningRow {
   label: (typeof OPENING_LABELS)[number];
   /** Required for a dev, withdrawn or superseded row: why this opening is not confirmatory, or why it never opened. */
   reason?: string;
-  /** sha256 of the candidate (gbrain commit, preamble, adapter config); null for rows backfilled before internal-task. */
+  /** sha256 of the candidate (gbrain commit, preamble, adapter config); null for backfilled rows (openings from before the openings ledger). */
   candidate_sha256: string | null;
 }
 

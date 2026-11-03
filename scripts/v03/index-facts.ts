@@ -1,4 +1,4 @@
-// Index a hand-written list of facts against a world.json (internal-task): fills each fact's readers from the world's
+// Index a hand-written list of facts against a world.json: fills each fact's readers from the world's
 // access rules, checks the value occurs verbatim in its record, and writes a FactsFile. Used for the public dev
 // facts; the held-out facts file comes from scripts/v03/gen-world.ts.
 //

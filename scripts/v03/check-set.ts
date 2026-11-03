@@ -1,4 +1,4 @@
-// Keyless checks of a generated v0.3 task tree (internal-task). The held-out tasks are never read by a person before they
+// Keyless checks of a generated v0.3 task tree. The held-out tasks are never read by a person before they
 // are sealed, so these checks are their reviewers and are tested like graders (tests/v03-generators.test.ts).
 //
 //   bun scripts/v03/check-set.ts --tasks <dir> --world <world.json> --split dev|heldout [--facts <facts.json>] [--log <file>]

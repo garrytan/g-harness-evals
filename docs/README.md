@@ -2,6 +2,8 @@
 
 harness-evals v0.0.12. The index of this directory: one line per page, saying what the page answers. The repository's own front page is [../README.md](../README.md); the writing rules every page follows are in [../CLAUDE.md](../CLAUDE.md). Every published number on these pages is tied to a committed receipt, and [receipts-manifest.json](receipts-manifest.json) is the machine-readable list of those receipts.
 
+Codes like internal-task in receipts name internal work lanes.
+
 ## Pages
 
 - [adapters.md](adapters.md): the adapter protocol. What a harness's `adapter.sh` receives, how a `run` turn and a `serve` trial proceed, which exit codes mean what, and how the conformance test checks an adapter against the fake harness.
@@ -22,7 +24,7 @@ harness-evals v0.0.12. The index of this directory: one line per page, saying wh
   - [2026-10-25-qm-probes-qp07/](benchmarks/2026-10-25-qm-probes-qp07/report.md): `qm-probes-qp07-2026-10`, 2026-10-25; the `qp-07` sandbox probe rerun with the directory seeded, 6 trials.
   - [2026-10-25-v02-pilot/](benchmarks/2026-10-25-v02-pilot/report.md): `v02-pilot-2026-10`, 2026-10-25; the v0.2 dev-split pilot on Haiku, four cells, 180 trials.
   - [2026-10-25-v02-heldout/](benchmarks/2026-10-25-v02-heldout/report.md): `v02-heldout-2026-10`, 2026-10-26; gbrain-told against none on the 15 sealed v0.2 tasks, three harnesses on Sonnet and Haiku, 900 trials.
-  - [2026-10-26-gbrain-memory/](benchmarks/2026-10-26-gbrain-memory/report.md): `gbrain-memory-2026-10`, 2026-10-26 to 2026-10-27; a member brain that fills during the scenario against none, three harnesses on Sonnet and Haiku, 12 cells, 900 trials on nine Ubicloud shards (preregistered in #89). Beside it, [recall-rereading/](benchmarks/2026-10-26-gbrain-memory/recall-rereading/README.md) is a labelled re-reading of its receipts (internal-task, written by `scripts/recall-audit.ts`), not a counted result.
+  - [2026-10-26-gbrain-memory/](benchmarks/2026-10-26-gbrain-memory/report.md): `gbrain-memory-2026-10`, 2026-10-26 to 2026-10-27; a member brain that fills during the scenario against none, three harnesses on Sonnet and Haiku, 12 cells, 900 trials on nine Ubicloud shards (preregistered in #89). Beside it, [recall-rereading/](benchmarks/2026-10-26-gbrain-memory/recall-rereading/README.md) is a labelled re-reading of its receipts (written by `scripts/recall-audit.ts`), not a counted result.
   - [2026-10-31-v03-opus-dev/](benchmarks/2026-10-31-v03-opus-dev/report.md): `v03-opus-dev-2026-10`, 2026-11-01; the whole v0.3 dev set on Opus 5.5 under opening 1's scoped gbrain config, OpenClaw and Hermes, six cells, 440 trials on six Ubicloud shards. Outcome B: 2 of 6 families informative and four above 90 percent, so no opening runs on v0.3 and v0.3 is too easy for frontier models (the v0.4 brief).
   - [2026-11-01-installer-cc-codex/](benchmarks/2026-11-01-installer-cc-codex/report.md): `installer-cc-codex-2026-11`, 2026-11-02; gbrain's installer against told and no brain on Claude Code (Opus 5.5) and Codex (GPT-6.1 Sol), 17 v0.3 dev tasks, gbrain `a590ad07` with no access rules, six cells, 306 trials on six Ubicloud shards, $56.67 of the $155 cap ([preregistration](benchmarks/2026-11-01-installer-cc-codex/PREREGISTRATION.md), amendments 1 and 2). The installer raises cross-scope exposure via gbrain on Claude Code (+25 [+8, +45], p 0.039); Codex not distinguished at 17 tasks (+16 [+2, +33], p 0.125). Why null? verdict FIX-METHOD: rerun on gbrain 0.60.554.0 (or 0.60.551.0) with the fixture's scopes as gbrain access rules, each trial's token bound to its member, and a keyless per-member access check that fails closed, after #229 merges.
   - [2026-11-01-opus-gstack-follow/](benchmarks/2026-11-01-opus-gstack-follow/report.md): Opus 5.5, uncounted follow-rate checks. `gn-follow-2026-11`, `gn-follow-preset-2026-11` and `gn-hard-follow-2026-11`, 2026-11-01 to 2026-11-02, 120 trials, $30.41 on the ledgers, from never-merged scratch branches with no preregistration pull request. gstack sessions followed their skill 0 of 46 times; the preset check decided STOP and the hard SWE-bench Verified check is VOID (no gstack passed 8 of 8).
@@ -45,9 +47,9 @@ harness-evals v0.0.12. The index of this directory: one line per page, saying wh
 - [report-v0.1.md](report-v0.1.md): the one-page account of the v0.1 multi-user cell: finding, limits, interests, tables with intervals, taxonomy and spend, with every number copied from a named receipt.
 - [repo-tasks.md](repo-tasks.md): the repository task format (fix, review, qa and ship tasks graded by hidden checks on the container), its acceptance rules, and the gstack-native-v1 set's public dev split and sealed held-out split.
 - [tasks.md](tasks.md): the multi-user task format: families, the access model, the predicate library, oracles and the mutation contract, task sets (v0.1, v0.2, the generated v0.3 set, the QM probes) and how a cell selects one.
-- [gstack-laneb.md](gstack-laneb.md): the Lane B bridge (internal-task): runs the pinned gstack-evals Lane B agent on gstack-native and Terminal-Bench 2 tasks under our metering, leases and Ubicloud lane.
+- [gstack-laneb.md](gstack-laneb.md): the Lane B bridge: runs the pinned gstack-evals Lane B agent on gstack-native and Terminal-Bench 2 tasks under our metering, leases and Ubicloud lane.
 - [gstack-native-format.md](gstack-native-format.md): the gstack-native repo task format the bridge materializes.
-- [tool-discipline/](tool-discipline/README.md): free mining over committed receipts (internal-task) of invented tools, bad arguments, wrong names, broken helper calls and skipped gstack skill starts, with the hand-check rules, the labellers' agreement and what each harness replies to a bad call ([replies.md](tool-discipline/replies.md)).
+- [tool-discipline/](tool-discipline/README.md): free mining over committed receipts of invented tools, bad arguments, wrong names, broken helper calls and skipped gstack skill starts, with the hand-check rules, the labellers' agreement and what each harness replies to a bad call ([replies.md](tool-discipline/replies.md)).
 - [ubicloud.md](ubicloud.md): the Ubicloud shard lane: the scripts that put one shard per VM, how a run fans out and comes back, the check lane, costs and limits.
 
 ## Changelog
@@ -56,62 +58,62 @@ harness-evals v0.0.12. The index of this directory: one line per page, saying wh
 
 The benchmarks list gains the investigate-gate folder and its report, and the folder description says it has no preregistration in this repository. Why: the folder is new on this branch.
 
-### 2026-11-02: installer-cc-codex-2026-11 reported (internal-task)
+### 2026-11-02: installer-cc-codex-2026-11 reported
 
 The benchmarks list gains a line for the Claude Code and Codex installer rung and its report. Why: the run is complete and its report is in the tree.
 
-### 2026-11-02: qm-brain-native-2026-11 listed (internal-task)
+### 2026-11-02: qm-brain-native-2026-11 listed
 
 The benchmarks list gains a line for the qm-brain-native design preregistration, saying that its folder holds `design.json` instead of a `prereg.json` until the pilot cells exist. Why: the folder is new on this branch.
 
-### 2026-11-02: prompt-archaeology-2026-11 listed (internal-task)
+### 2026-11-02: prompt-archaeology-2026-11 listed
 
 The benchmarks list gains the prompt-archaeology folder, preregistration only. Why: the folder is new on this branch.
 
-### 2026-11-02: tool-discipline-start-hermes-r2-2026-11 reported (internal-task)
+### 2026-11-02: tool-discipline-start-hermes-r2-2026-11 reported
 
 The start-hook panel's line now links the Hermes rerun's report and gives its outcome. Why: the run is complete and its report is in the tree.
 
-### 2026-11-02: Opus 5.5 follow-rate checks listed (internal-task)
+### 2026-11-02: Opus 5.5 follow-rate checks listed
 
 The benchmarks list gains a line for the three uncounted Opus 5.5 follow-rate checks and their report, and the folder description says that this one folder has no preregistration. Why: the folder is new on this branch.
 
-### 2026-11-01: tool-discipline-start-hermes-r2-2026-11 listed (internal-task)
+### 2026-11-01: tool-discipline-start-hermes-r2-2026-11 listed
 
 The start-hook panel's line also names the Hermes rerun's preregistration, which sits in the same folder. Why: the preregistration is new on this branch.
 
-### 2026-11-01: tool-discipline-start-2026-11 reported (internal-task)
+### 2026-11-01: tool-discipline-start-2026-11 reported
 
 The start-hook panel's line now links its report and gives the outcome. Why: the run is complete and its report is in the tree.
 
-### 2026-11-01: tool-discipline-start-2026-11 listed (internal-task)
+### 2026-11-01: tool-discipline-start-2026-11 listed
 
 The benchmarks list gains the start-hook panel's folder, preregistration only. Why: the folder is new on this branch.
 
-### 2026-10-31: tool-discipline/ listed (internal-task)
+### 2026-10-31: tool-discipline/ listed
 
 Added the line for the new tool-discipline pages. Why: the index says one line per page, and the pages were new.
 
-### 2026-10-29: repo-tasks.md listed (internal-task)
+### 2026-10-29: repo-tasks.md listed
 
 Added the line for the new repository task format page (harness-evals v0.0.39).
 
-### 2026-10-29: tasks.md names the v0.3 set (internal-task)
+### 2026-10-29: tasks.md names the v0.3 set
 
 harness-evals v0.0.32. The tasks.md line lists task set v0.3 among the sets that page describes.
 
-### 2026-10-28: methods.md listed (internal-task)
+### 2026-10-28: methods.md listed
 
 harness-evals v0.0.29. The index gains a line for [methods.md](methods.md), the page that has held the README's fine print since the 2026-10-28 README rewrite. Why: the index says one line per page, and the page was new.
 
-### 2026-10-27: gbrain-memory-2026-10 recall re-reading (internal-task)
+### 2026-10-27: gbrain-memory-2026-10 recall re-reading
 
 harness-evals v0.0.16. The memory run's line also points at `recall-rereading/`, the labelled re-reading of its receipts that this release adds.
 
-### 2026-10-27: gbrain-memory-2026-10 counted (internal-task)
+### 2026-10-27: gbrain-memory-2026-10 counted
 
 harness-evals v0.0.14. The memory run's line points at its report instead of its preregistration.
 
-### 2026-10-26: first version (internal-task)
+### 2026-10-26: first version
 
-harness-evals v0.0.12. The index did not exist before; pages were reachable only from the repository README's table. Written with [comparing-runs.md](comparing-runs.md) in the same change, beside the budget ledger, decisions page and receipts manifest other internal-task work added the same day.
+harness-evals v0.0.12. The index did not exist before; pages were reachable only from the repository README's table. Written with [comparing-runs.md](comparing-runs.md) in the same change, beside the budget ledger, decisions page and receipts manifest, which the same lane added that day.

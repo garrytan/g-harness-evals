@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Build the install bundle for the gbrain install ladder (internal-task; docs/gbrain-arm.md, "The install ladder"): what
+// Build the install bundle for the gbrain install ladder (docs/gbrain-arm.md, "The install ladder"): what
 // gbrain's own documentation tells a user to run for each harness at the pinned commit, run once at image build
 // time with the gbrain CLI, so a gbrain-docs cell applies the same bytes in every trial. Runs inside the image
 // build (gbrain/Dockerfile, the install stage) and by hand:
@@ -18,7 +18,7 @@
 //                                    the split's bot-visible brain (docs/mcp/HERMES.md: the always-loaded core memory
 //                                    Hermes's prompt builder reads from the cwd)
 //   openclaw/installer/workspace/AGENTS.md   gbrain setup openclaw --workspace <out>/openclaw/installer/workspace --instructions-only
-//                                    (internal-task, gbrain#7489: the brain-first instruction block gbrain's installer writes into the
+//                                    (gbrain#7489: the brain-first instruction block gbrain's installer writes into the
 //                                    harness's own instruction file; the adapter copies workspace/ into /workspace)
 //   openclaw/installer/state/gbrain/gbrain-turn-rule/{package.json,openclaw.plugin.json,index.js}
 //                                    (gbrain#7489 at 10949a15: the hook-only OpenClaw plugin whose before_prompt_build handler returns
@@ -86,7 +86,7 @@ export interface InstallFile {
   bytes: number;
 }
 
-/** The brain-first block gbrain's installer writes, as the bundle records it (internal-task). */
+/** The brain-first block gbrain's installer writes, as the bundle records it. */
 export interface InstallerRecord {
   /** The command as run, paths under <out> written as <out>/... */
   argv: string[];

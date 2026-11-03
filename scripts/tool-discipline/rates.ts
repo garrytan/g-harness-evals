@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// internal-task tool discipline, step 3: rates per source x harness x model x kind, with two intervals each.
+// Tool discipline, step 3: rates per source x harness x model x kind, with two intervals each.
 //
 //   bun scripts/tool-discipline/rates.ts --labels <labels.ndjson> --trials <trials.ndjson> --out <dir>   -> rates.md, rates.json
 //
@@ -9,7 +9,7 @@
 // lower bound when unknown > 0, and (k + unknown)/n the matching upper bound.
 // Intervals: Wilson 95% (scripts/gsta-135/report.ts wilson), and a task-clustered bootstrap of the pooled share: resample the
 // group's tasks with replacement, 2,000 draws, seed 18 (runner/stats/paired.ts seededRandom), 2.5th and 97.5th percentiles.
-// A group with fewer than 5 tasks gets the bootstrap printed but flagged: three clusters (the internal-task panels) cannot carry it.
+// A group with fewer than 5 tasks gets the bootstrap printed but flagged: three clusters (the skill-use panels) cannot carry it.
 // Coverage says, per source and kind, whether the source can see the kind at all.
 
 import { mkdirSync, writeFileSync } from 'node:fs';

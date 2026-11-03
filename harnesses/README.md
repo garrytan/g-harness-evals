@@ -23,9 +23,9 @@ docker build -t harness-eval/codex:dev harnesses/codex
 docker build -t harness-eval/fake:dev harnesses/_fake
 ```
 
-## internal-task overlay images
+## gstack overlay images
 
-For gstack's harness-registration check (internal-task, 2026-10-28) each counted image has an overlay, `harness-eval/<h>:gstack-<pin8>`, built FROM `harness-eval/<h>:dev` by `harnesses/<h>/gstack/Dockerfile` with a gstack checkout at /opt/gstack (fetched by sha, `--build-arg GSTACK_COMMIT=<sha>`) and a wrapper in place of `adapter.sh` that marks the trial as a test run for gstack, checks the Bun runtime, registers gstack's skills with the harness before the first turn and then runs the turn, by default through the counted adapter (`adapter.real.sh`) with the remaining budget. Nothing in the counted image, pin.json, adapter, `run-trial.sh` or `compose.yaml` changes; `run-trial.sh --image` selects the overlay. The panel's two arms are two such images at two gstack pins (baseline = gstack main at the freeze, candidate = internal-task's sha); they differ in nothing else. internal-task's three-arm form (`discovery.sh --arms none,baseline:<sha>,candidate:<sha>`) puts a no-gstack arm first in each cell: the same overlay built with `--build-arg GSTACK_COMMIT=none` (tag `harness-eval/<h>:gstack-none`, Hermes `-chat` in chat mode). It keeps Bun, the wrapper and the adapter swap but has no gstack checkout, so the wrapper logs `gstack: none` and registers nothing. An image built with a gstack commit whose checkout is missing fails setup instead of running as a no-gstack trial.
+For gstack's harness-registration check (2026-10-28) each counted image has an overlay, `harness-eval/<h>:gstack-<pin8>`, built FROM `harness-eval/<h>:dev` by `harnesses/<h>/gstack/Dockerfile` with a gstack checkout at /opt/gstack (fetched by sha, `--build-arg GSTACK_COMMIT=<sha>`) and a wrapper in place of `adapter.sh` that marks the trial as a test run for gstack, checks the Bun runtime, registers gstack's skills with the harness before the first turn and then runs the turn, by default through the counted adapter (`adapter.real.sh`) with the remaining budget. Nothing in the counted image, pin.json, adapter, `run-trial.sh` or `compose.yaml` changes; `run-trial.sh --image` selects the overlay. The panel's two arms are two such images at two gstack pins (baseline = gstack main at the freeze, candidate = the sha of the gstack change under test); they differ in nothing else. The three-arm form (`discovery.sh --arms none,baseline:<sha>,candidate:<sha>`) puts a no-gstack arm first in each cell: the same overlay built with `--build-arg GSTACK_COMMIT=none` (tag `harness-eval/<h>:gstack-none`, Hermes `-chat` in chat mode). It keeps Bun, the wrapper and the adapter swap but has no gstack checkout, so the wrapper logs `gstack: none` and registers nothing. An image built with a gstack commit whose checkout is missing fails setup instead of running as a no-gstack trial.
 
 ```sh
 docker build -f harnesses/openclaw/gstack/Dockerfile -t harness-eval/openclaw:gstack-bd8907d6 harnesses
@@ -42,7 +42,7 @@ scripts/gsta-135/discovery.sh --runtime-preflight results/gsta-135/preflight/run
 scripts/gsta-135/preflight.sh --pin <sha8> --only openclaw,hermes --hermes-mode chat --start-hook   # the hook images, plus the start-hook checks
 ```
 
-**Start hook arm (internal-task).** `--build-arg GSTACK_START_HOOK=on` builds an image that turns on gstack's opt-in start hook (internal-task), a one-line note on every turn that reminds the agent to run the skill's start command. The default is `off`; `on` with `GSTACK_COMMIT=none` fails the build. The image carries the label `org.harness-eval.gstack.start_hook` and hook images take the tag suffix `-hook` (`harness-eval/<h>:gstack-<sha8>-hook`, Hermes `-hook-chat`).
+**Start hook arm.** `--build-arg GSTACK_START_HOOK=on` builds an image that turns on gstack's opt-in start hook, a one-line note on every turn that reminds the agent to run the skill's start command. The default is `off`; `on` with `GSTACK_COMMIT=none` fails the build. The image carries the label `org.harness-eval.gstack.start_hook` and hook images take the tag suffix `-hook` (`harness-eval/<h>:gstack-<sha8>-hook`, Hermes `-hook-chat`).
 
 - **The wrapper follows the image.** It exports `GSTACK_HARNESS_START_HOOK=1` or `0` from the image before gstack's setup. It stops the trial with exit 2 before any model request when setup exits 4 (`HARNESS_HOOK_INACTIVE`) or `gstack-harness status` disagrees with the image (on must show the hook active, off must not). Each trial's `gstack-register.log` gets one `start_hook:` line.
 - **Every arm seeds the harness's own config** (OpenClaw `openclaw.json`, Hermes `config.yaml`) before setup, so the hook's activation edits it instead of creating a bare one.
@@ -94,19 +94,19 @@ The slot `hermes-serve-1` is bound with `$cred` first, as under "Run one trial";
 
 ## Changelog
 
-### 2026-11-01: the start hook arm of the internal-task overlay (internal-task)
+### 2026-11-01: the start hook arm of the gstack overlay
 
-"internal-task overlay images" gains "Start hook arm": what `GSTACK_START_HOOK=on` builds, the `-hook` tags and label, the wrapper's hook, config-seed and pinned-tree checks, and the `--start-hook` options of `discovery.sh` and `preflight.sh`, with their build and preflight lines. Why: internal-task's start-hook panel runs on these images, and the page did not name them.
+"gstack overlay images" gains "Start hook arm": what `GSTACK_START_HOOK=on` builds, the `-hook` tags and label, the wrapper's hook, config-seed and pinned-tree checks, and the `--start-hook` options of `discovery.sh` and `preflight.sh`, with their build and preflight lines. Why: the start-hook panel runs on these images, and the page did not name them.
 
-### 2026-10-31: the no-gstack arm of the internal-task panel (internal-task)
+### 2026-10-31: the no-gstack arm of the gstack panel
 
-"internal-task overlay images" says how `GSTACK_COMMIT=none` builds the no-gstack overlay and how `discovery.sh --arms none,...` adds it as a third arm, with its build lines (OpenClaw, Hermes one-shot and Hermes chat). Why: internal-task adds that arm to the panel, so the page's "two arms" was no longer the whole panel.
+"gstack overlay images" says how `GSTACK_COMMIT=none` builds the no-gstack overlay and how `discovery.sh --arms none,...` adds it as a third arm, with its build lines (OpenClaw, Hermes one-shot and Hermes chat). Why: the panel gained that arm, so the page's "two arms" was no longer the whole panel.
 
-### 2026-10-30: QM re-pinned to main b6786d67 (internal-task)
+### 2026-10-30: QM re-pinned to main b6786d67
 
 harness-evals v0.0.66. The `qm` row's pin. Why: internal-task's M1 measures QM at that commit ([qm/README.md](qm/README.md), "Re-pin to main b6786d67").
 
-### 2026-10-29: Claude Code and Codex (internal-task)
+### 2026-10-29: Claude Code and Codex
 
 harness-evals v0.0.42. Two rows and two build lines: `claude-code` and `codex`, proven keyless against fake endpoints through the real metering proxy. OpenClaw and Hermes gain an OpenAI branch (their READMEs, "OpenAI cells"). Why: Garry asked for both as harnesses; Codex runs on an OpenAI model because it speaks only the Responses API.
 

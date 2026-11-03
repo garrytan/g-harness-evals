@@ -24,9 +24,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { classify, scoreEvents, type Call, type Event, type Metrics } from '../scripts/gsta-135/evidence.ts';
 import { CALL_LINE, RUNS } from './fixtures/gsta-135-golden/cut.ts';
+import { localPath } from '../scripts/local-paths.ts';
 
 const FIX = join(import.meta.dir, 'fixtures', 'gsta-135-golden');
-const DRIVE = '<private drive>/handoffs/internal-task/gsta-135';
+const DRIVE = localPath('gsta135_drive_copy');
 type Row = { trial_id: string; harness: 'openclaw' | 'hermes'; task: 1 | 2 | 3; arm: string; termination: string; cells_line_sha256: string; excerpt_sha256: string; evidence: any; calls: string[] };
 const rows = (run: string): Row[] => readFileSync(join(FIX, run + '.jsonl'), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l));
 const METRIC_FIELDS: Array<keyof Metrics> = ['task', 'matching_skill', 'matching_skill_opened', 'matching_skill_started', 'started_attempted', 'started_exit', 'control_false_open', 'router_opened', 'skills_opened', 'other_skills_opened', 'task_success'];
@@ -87,17 +88,17 @@ describe('internal-task golden: the fixtures', () => {
     const sources = JSON.parse(readFileSync(join(FIX, 'sources.json'), 'utf8'));
     expect(Object.keys(sources)).toEqual([...RUNS]);
   });
-  test.skipIf(!existsSync(join(DRIVE, 'panel-run', 'cells.jsonl')))('the fixtures are a faithful cut of the drive copy: each cells.jsonl line and excerpt hashes as recorded, each evidence object verbatim', () => {
+  test.skipIf(!DRIVE || !existsSync(join(DRIVE, 'panel-run', 'cells.jsonl')))('the fixtures are a faithful cut of the drive copy: each cells.jsonl line and excerpt hashes as recorded, each evidence object verbatim', () => {
     const sources = JSON.parse(readFileSync(join(FIX, 'sources.json'), 'utf8'));
     const sha = (s: string) => createHash('sha256').update(s).digest('hex');
     for (const run of RUNS) {
-      const text = readFileSync(join(DRIVE, run, 'cells.jsonl'), 'utf8');
+      const text = readFileSync(join(DRIVE!, run, 'cells.jsonl'), 'utf8');
       expect(sha(text)).toBe(sources[run].cells_jsonl.sha256);
       const lines = text.split('\n').filter(Boolean);
       rows(run).forEach((row, i) => {
         expect(sha(lines[i])).toBe(row.cells_line_sha256);
         expect(JSON.stringify(JSON.parse(lines[i]).evidence)).toBe(JSON.stringify(row.evidence));
-        const excerpt = readFileSync(join(DRIVE, run, 'evidence', row.trial_id + '.txt'), 'utf8');
+        const excerpt = readFileSync(join(DRIVE!, run, 'evidence', row.trial_id + '.txt'), 'utf8');
         expect(sha(excerpt)).toBe(row.excerpt_sha256);
         expect(excerpt.split('\n').filter(l => CALL_LINE.test(l))).toEqual(row.calls);
       });

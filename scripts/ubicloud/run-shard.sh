@@ -11,13 +11,13 @@
 #       [--workload harness|gstack-laneb] [--laneb-root <dir from scripts/gstack-laneb/fetch.ts>]
 #       [--pre-smoke <script in the repository, e.g. scripts/ablation-golden.sh>] [-- <extra arguments for scripts/run-shard.sh>]
 #
-# --pre-smoke (internal-task) runs a keyless check script from the pinned checkout on the VM after bootstrap and before any key
+# --pre-smoke runs a keyless check script from the pinned checkout on the VM after bootstrap and before any key
 # reaches the VM, the smoke or the shard: bash <script> in the repository, its output in <dest>/lane.log. It is off unless
 # given (put it in the fan-out manifest's options). A non-zero exit stops the lane with exit 4 before the smoke, so no
 # trial runs. scripts/ablation-golden.sh, the layer filter's docker golden check, is the one in use. It must be a .sh file
 # under scripts/ at the commit, and is refused for --attach and --workload gstack-laneb.
 #
-# --workload gstack-laneb (internal-task, docs/gstack-laneb.md) runs the shard's cells through the Lane B bridge instead of the
+# --workload gstack-laneb (docs/gstack-laneb.md) runs the shard's cells through the Lane B bridge instead of the
 # harness runner: the --laneb-root directory (default ~/.capy/work/gstack-laneb: the pinned gstack-evals checkout, the arm
 # tars, and terminal-bench-2 when fetched) is streamed to ~/laneb on the VM without its .git directory (terminal-bench-2
 # keeps its own), only the arms the shard's cells use plus none and placebo for the smoke; vm-shard.sh then runs the
@@ -36,7 +36,7 @@
 #      VM refuses one anyway the way scripts/run-shard.sh does.
 #   3. ubi-runner.sh up creates the VM (standard-16 unless --size), sync streams the scratch checkout to ~/work/<repo>,
 #      bootstrap.sh installs Docker, Bun at ci.yml's pin, Node, python3 and jq, and vm-shard.sh is uploaded to ~/shard/bin.
-#   4. With --sealed-root and --opening-receipt (internal-task, docs/sealed-custody.md; both or neither, and refused when --dest is
+#   4. With --sealed-root and --opening-receipt (docs/sealed-custody.md; both or neither, and refused when --dest is
 #      inside a git work tree, since the raw sealed results come back there): the custodian's sealed root is streamed as a
 #      tar to ~/sealed/root and the receipt to ~/sealed/opening-receipt.json on the VM, outside ~/work/harness-evals, with
 #      no local staging copy; the lane log names the paths and the receipt's sha256 only, shard-vm.json records sealed=true,
@@ -363,8 +363,8 @@ else
     tar -C "$laneb_root" -czf - --exclude=gstack-evals/.git "${laneb_parts[@]}" 2>>"$dest/lane.log" | bash "$runner" unpack "$vm" laneb >>"$dest/lane.log" 2>&1 || { log "laneb upload failed"; exit 3; }
   fi
 
-  # 5. the keys, over SSH only, into a 0600 file the launcher reads and deletes. Only the model keys go (PARTICLE_API_KEY,
-  # internal-task, for Particle cells); the custody identity (a file in the project-user drive, never in the environment) never
+  # 5. the keys, over SSH only, into a 0600 file the launcher reads and deletes. Only the model keys go (PARTICLE_API_KEY
+  # for Particle cells); the custody identity (a file in the project-user drive, never in the environment) never
   # reaches the VM, which gets the opened plaintext and never decrypts.
   { for k in ANTHROPIC_API_KEY OPENAI_API_KEY PARTICLE_API_KEY; do if [ -n "${!k:-}" ]; then printf 'export %s=%q\n' "$k" "${!k}"; fi; done; } | vssh 'umask 077 && cat > ~/.ubirun-env'
 

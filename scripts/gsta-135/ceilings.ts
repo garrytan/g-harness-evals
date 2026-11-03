@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * internal-task per-cell cost ceilings (plan decision 4 as amended by findings
+ * Skill-use panel per-cell cost ceilings (plan decision 4 as amended by findings
  * eng-outside-5 and ceo-native-5), derived from free inputs and written with
  * their arithmetic:
  *

@@ -10,7 +10,7 @@ import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type AnatomyRecord, type LogRow, checkSections, classify, dissect, readLog, splitSections } from '../scripts/anatomy/dissect.ts';
-import { unpack } from '../scripts/anatomy/store.ts';
+import { loadReceipt } from '../scripts/anatomy/store.ts';
 
 const ROOT = join(import.meta.dir, '..');
 const FIX = join(ROOT, 'tests', 'fixtures', 'anatomy');
@@ -339,15 +339,16 @@ describe('record schema and CLI', () => {
     expect(validate({ schema: 'harness-anatomy/1' }, SCHEMA).length).toBeGreaterThan(0);
   });
 
-  test('every published record validates and rebuilds byte for byte from its receipts', () => {
+  test('every published record validates and rebuilds byte for byte from its receipts (hashes only where blobs/ is absent)', () => {
     const docs = join(ROOT, 'docs', 'harness-anatomy');
     const logs = new Map<string, () => LogRow[]>();
+    const hashesOnly = new Set<string>();
     for (const id of readdirSync(join(docs, 'receipts'))) {
-      const dir = join(docs, 'receipts', id);
-      const cap = JSON.parse(readFileSync(join(dir, 'capture.json'), 'utf8'));
-      const log = unpack(dir);
-      expect(createHash('sha256').update(log).digest('hex')).toBe(cap.files['fake.ndjson']);
-      logs.set(cap.files['fake.ndjson'], () => log.split('\n').filter(Boolean).map(l => JSON.parse(l)));
+      const receipt = loadReceipt(join(docs, 'receipts', id));
+      if (receipt.mode === 'hashes-only') { hashesOnly.add(receipt.log_sha256); continue; }
+      const log = receipt.log;
+      expect(createHash('sha256').update(log).digest('hex')).toBe(receipt.log_sha256);
+      logs.set(receipt.log_sha256, () => log.split('\n').filter(Boolean).map(l => JSON.parse(l)));
     }
     for (const name of readdirSync(FIX).filter(n => n.endsWith('.ndjson.gz'))) {
       const { rows, sha256 } = readLog(join(FIX, name));
@@ -358,6 +359,7 @@ describe('record schema and CLI', () => {
     for (const path of records) {
       const rec = JSON.parse(readFileSync(path, 'utf8')) as AnatomyRecord;
       expect(validate(rec, SCHEMA)).toEqual([]);
+      if (!logs.has(rec.source_log_sha256) && hashesOnly.has(rec.source_log_sha256)) continue;
       const rows = logs.get(rec.source_log_sha256);
       expect(rows).toBeDefined();
       expect(JSON.parse(JSON.stringify(dissect(rows!(), { harness: rec.harness, config: rec.config, source_log_sha256: rec.source_log_sha256 })))).toEqual(rec);

@@ -1,5 +1,5 @@
 /**
- * The custody identity (internal-task phase 3, docs/sealed-custody.md): one age X25519 identity, generated in-process by
+ * The custody identity (docs/sealed-custody.md): one age X25519 identity, generated in-process by
  * scripts/sealed/keygen.ts and kept in a file in the harness-eval project-user drive, with an escrow copy encrypted under a
  * passphrase derived from UBICLOUD_API_KEY and kept at escrow/identity.age on the custody branch. Only scripts/sealed/* read
  * it, through custodyIdentity, which also checks the escrow every time; keygen.ts --restore recreates a lost drive copy
@@ -11,8 +11,17 @@ import { chmodSync, closeSync, existsSync, fsyncSync, linkSync, mkdirSync, openS
 import { dirname } from 'node:path';
 import { Decrypter, Encrypter, identityToRecipient } from 'age-encryption';
 import { RunnerError } from '../../runner/errors.ts';
+import { LOCAL_PATH_ENV, localPath } from '../local-paths.ts';
 
-export const DEFAULT_IDENTITY_PATH = '<private drive>/custody/identity.age-key';
+/** The drive copy's path: HE_CUSTODY_IDENTITY, else custody_identity in config/local-paths.json (private checkout only). */
+export const DEFAULT_IDENTITY_PATH: string | undefined = localPath('custody_identity');
+
+/** The identity path a caller passed, else the default; refused (HE-SEALED-010) when neither exists. */
+export function identityPath(given?: string): string {
+  const path = given ?? DEFAULT_IDENTITY_PATH;
+  if (!path) throw new RunnerError('HE-SEALED-010', `no custody identity path: pass --identity or set ${LOCAL_PATH_ENV.custody_identity}`);
+  return path;
+}
 export const ESCROW_ENV = 'UBICLOUD_API_KEY';
 export const ESCROW_LABEL = 'harness-evals custody escrow v1';
 const IDENTITY_LINE = /^AGE-SECRET-KEY-1[0-9A-Z]+$/;
@@ -78,7 +87,7 @@ export async function decryptEscrow(bytes: Uint8Array, envValue: string, where: 
  * Returns the identity from the drive copy.
  */
 export async function custodyIdentity(o: { identityPath?: string; escrowPath: string; recipient: string; env?: Record<string, string | undefined> }): Promise<string> {
-  const path = o.identityPath ?? DEFAULT_IDENTITY_PATH;
+  const path = identityPath(o.identityPath);
   const env = o.env ?? process.env;
   const want = o.recipient.trim();
   const fail = (msg: string): never => { throw new RunnerError('HE-SEALED-012', msg); };

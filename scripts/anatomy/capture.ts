@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Keyless anatomy capture for one harness configuration (internal-task).
+// Keyless anatomy capture for one harness configuration.
 //
 // Runs one real multi-user trial through the runner in capture mode: the real
 // world, task, preamble, slot binding and (with --gbrain) gbrain sidecar, the
@@ -39,8 +39,8 @@
 // capture.json (what ran, at which commit and image, and the file digests).
 // --record names the records directory publish.sh writes (default <harness>-<config>, the harness without a leading
 // underscore, as in the image name: _fake records as fake-default), so a capture at a new pin
-// or model sits beside the old one instead of replacing it (QM at b6786d67: --record qm-pi-b6786d67; internal-task:
-// --record openclaw-sol). A capture with --record has the record name in its id in place of <harness>-<config>.
+// or model sits beside the old one instead of replacing it (QM at b6786d67: --record qm-pi-b6786d67; a Responses-wire
+// capture: --record openclaw-sol). A capture with --record has the record name in its id in place of <harness>-<config>.
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';

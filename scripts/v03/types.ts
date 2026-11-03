@@ -1,4 +1,4 @@
-// Shared shapes for the v0.3 generators (internal-task): the facts inventory a world carries and the task specs the task
+// Shared shapes for the v0.3 generators: the facts inventory a world carries and the task specs the task
 // generator compiles. A facts file names records in a world.json by id; every fact's value appears verbatim in its record.
 //
 // The held-out facts file is written by scripts/v03/gen-world.ts from a private seed and never leaves the author's

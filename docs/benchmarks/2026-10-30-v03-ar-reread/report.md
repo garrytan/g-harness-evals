@@ -4,15 +4,15 @@
 
 - **Caveat on the count:** the four families that passed in `v03-installer-dev-2026-10` were judged under the unscoped config (the bot-visible brain, one bot token). Approval relay is judged here under the scoped config. So the 5-of-6 count mixes configs, and opening 1's report says so.
   - **Boundary:** continuity's 36 of 40 is 90.0%, the top edge of the 10 to 90 percent rule. One more continuity pass in #142 would have made the count 4 of 6.
-- **The re-read passes its go rule, but the seal clearance for opening 1 is pending.** The preregistration clears the new v0.3 seal only if it is built from approval relay candidates generated at #144's merge commit `58186ff41`, with every other held-out candidate byte-identical to the retired seal's, as internal-task's reseal record shows.
-- **internal-task's reseal record is on main.** #150 ("v0.0.77 sealed: v0.3 resealed as v0.3-gen6, v0.3 retired unopened") merged as `47bf4d98b`. It seals set v0.3-gen6 at custody commit `custody commit (private)` (main's record names only this short form), bundle sha256 `fc246287329ea960466e8b1ecd5982a9037f21d9ca05eeb84cde20c123cd0056` ([MANIFEST.json](../../../tasks/multiuser/v0.3-gen6/heldout/MANIFEST.json)). Seal `custody commit (private)` is retired unopened.
-- **The record shows only approval relay candidates changed, on the author's per-file hash list.** The custodian's comparison (custody commit `custody commit (private)`) found world files, slice records and corpus pages unchanged, and 6 selected tasks, 7 candidates and 1 audit file changed. The added entries are `GEN6-MANIFEST.json`, `check6.log` and `audit6/`. It printed counts only and could not isolate the family, because task ids are opaque. The record says the 7 approval relay candidates were re-rendered with #144's template from their recorded draws; it does not name commit `58186ff41`.
-- **So the clearance of v0.3-gen6 (custody commit `custody commit (private)`, bundle sha256 `fc246287329ea960466e8b1ecd5982a9037f21d9ca05eeb84cde20c123cd0056`) is pending.** It waits on a family-scoped comparison by the custodian, internal-task, inside custody. That comparison must show that only the approval relay candidates differ from the retired seal, and that they were generated at `58186ff41`. internal-task wrote this run and the hash list, so the clearance cannot rest on internal-task's own attestation. Once given, it covers `scope: member-sources` at `a590ad07` only.
+- **The re-read passes its go rule, but the seal clearance for opening 1 is pending.** The preregistration clears the new v0.3 seal only if it is built from approval relay candidates generated at #144's merge commit `58186ff41`, with every other held-out candidate byte-identical to the retired seal's, as HARN-11's reseal record shows.
+- **HARN-11's reseal record is on main.** #150 ("v0.0.77 sealed: v0.3 resealed as v0.3-gen6, v0.3 retired unopened") merged as `47bf4d98b`. It seals set v0.3-gen6 at custody commit (private), bundle sha256 `fc246287329ea960466e8b1ecd5982a9037f21d9ca05eeb84cde20c123cd0056` ([MANIFEST.json](../../../tasks/multiuser/v0.3-gen6/heldout/MANIFEST.json)). The seal at custody commit (private) is retired unopened.
+- **The record shows only approval relay candidates changed, on the author's per-file hash list.** The custodian's comparison (custody commit (private)) found world files, slice records and corpus pages unchanged, and 6 selected tasks, 7 candidates and 1 audit file changed. The added entries are `GEN6-MANIFEST.json`, `check6.log` and `audit6/`. It printed counts only and could not isolate the family, because task ids are opaque. The record says the 7 approval relay candidates were re-rendered with #144's template from their recorded draws; it does not name commit `58186ff41`.
+- **So the clearance of v0.3-gen6 (custody commit (private), bundle sha256 `fc246287329ea960466e8b1ecd5982a9037f21d9ca05eeb84cde20c123cd0056`) is pending.** It waits on a family-scoped comparison by the custodian, HARN-11, inside custody. That comparison must show that only the approval relay candidates differ from the retired seal, and that they were generated at `58186ff41`. HARN-12 wrote this run and the hash list, so the clearance cannot rest on HARN-12's own attestation. Once given, it covers `scope: member-sources` at `a590ad07` only.
 - Per cell: OpenClaw 6 of 15, Hermes 11 of 15. Per task, both cells: ar-01 8, ar-02 5, ar-03 4 passes of 10.
 - Descriptive, outside the rule: the unscoped copy at the same pin passed 0 of 30.
 - **Brain build bug, no exposure:** the scoped brain could not have accepted a page write to a member source. No trial made a gbrain write of any kind, and no predicate depends on one ([Caveats](#caveats)).
 - Corrections at the told-arm floor stays a named limit for opening 1. #142's verdict (Fail, 4 of 6) and the pilot's (no-go) are unchanged.
-- **Spend:** $1.3889 of internal-task's lane ($1.3060 counted trials under the $4 cap, $0.0828 smokes; the total is from the unrounded ledger sums). Ubicloud VMs $1.4831 list price, outside the model cap.
+- **Spend:** $1.3889 of HARN-12's lane ($1.3060 counted trials under the $4 cap, $0.0828 smokes; the total is from the unrounded ledger sums). Ubicloud VMs $1.4831 list price, outside the model cap.
 
 This is a dev run on public tasks. Nothing here is a claim about a harness, about gbrain or about any held-out candidate.
 
@@ -44,10 +44,10 @@ From `bun scripts/v03/pilot-tables.ts --results results --tasks tasks/multiuser/
 - **Whole-set count.** The four families that passed in #142 count as informative (scope isolation 23/40, shared channel 14/20, synthesis 20/30, continuity 36/40). Corrections (1/40) does not. With approval relay informative here, that is 5 of 6.
 - **Result: Pass.** Under the preregistered Pass clause:
   - the set shows 5 of 6 families informative, with the caveat above;
-  - the new v0.3 seal internal-task makes from the regenerated set is cleared for opening 1, provided it is built from approval relay candidates generated at `58186ff41` and every other held-out candidate is byte-identical to the retired seal's, as internal-task's reseal record shows;
-  - that record is #150 ("v0.0.77 sealed: v0.3 resealed as v0.3-gen6, v0.3 retired unopened"), merged as `47bf4d98b`: custody commit `custody commit (private)`, bundle sha256 `fc246287329ea960466e8b1ecd5982a9037f21d9ca05eeb84cde20c123cd0056`; it shows only approval relay candidates changed, on the author's per-file hash list (the custodian's comparison printed counts only), so the clearance is pending a family-scoped comparison by the custodian, internal-task, inside custody, and once given covers `scope: member-sources` at `a590ad07` only;
+  - the new v0.3 seal HARN-11 makes from the regenerated set is cleared for opening 1, provided it is built from approval relay candidates generated at `58186ff41` and every other held-out candidate is byte-identical to the retired seal's, as HARN-11's reseal record shows;
+  - that record is #150 ("v0.0.77 sealed: v0.3 resealed as v0.3-gen6, v0.3 retired unopened"), merged as `47bf4d98b`: custody commit (private), bundle sha256 `fc246287329ea960466e8b1ecd5982a9037f21d9ca05eeb84cde20c123cd0056`; it shows only approval relay candidates changed, on the author's per-file hash list (the custodian's comparison printed counts only), so the clearance is pending a family-scoped comparison by the custodian, HARN-11, inside custody, and once given covers `scope: member-sources` at `a590ad07` only;
   - the dated note is [2026-10-31-ar-reread-gate.md](../2026-10-29-v03-pilot/2026-10-31-ar-reread-gate.md).
-- **Limit, not preregistered: the clearance covers this config only.** The deciding cells ran `scope: member-sources` at `a590ad07`, which the preregistration names as opening 1's config. internal-task's approval quotes `scope: sources`, and under the pilot's single unscoped token the preflight logs show out-of-grant `get_page` reads served. If opening 1 is preregistered with any other scope config, approval relay needs another dev read under it.
+- **Limit, not preregistered: the clearance covers this config only.** The deciding cells ran `scope: member-sources` at `a590ad07`, which the preregistration names as opening 1's config. HARN-1's approval quotes `scope: sources`, and under the pilot's single unscoped token the preflight logs show out-of-grant `get_page` reads served. If opening 1 is preregistered with any other scope config, approval relay needs another dev read under it.
 
 ## Endpoints 2 to 4 (dev, descriptive)
 
@@ -113,10 +113,10 @@ From `bun scripts/v03/pilot-tables.ts --results results --tasks tasks/multiuser/
 
 ## Caveats
 
-- **The deciding cells' brain could not have accepted a checkout-dependent write to a member source. No harness tried any gbrain write, so the gate result stands** (internal-task, internal-task).
+- **The deciding cells' brain could not have accepted a checkout-dependent write to a member source. No harness tried any gbrain write, so the gate result stands** (GBRA-108, GBRA-252).
   - At `eb630bd46`, `gbrain/build-brain.ts` stages each member source under `/tmp/staging/<id>` in a Docker build stage and registers it there (`gbrain sources add`). The runtime image copies only `/brain`.
-  - So a write that needs the source's checkout (`put_page`, `capture`, `add_timeline_entry` and the like) would fail with `storage_error`, as internal-task reports. gbrain#8106 will make that a `recovery_required` / `source_checkout_missing` refusal. The repository fix is internal-task's `build-brain.ts` change.
-  - `gbrain/pin.json` records `remember` as unaffected (database mode) in a related copied-brain case (internal-task at `b06ac32b`). That was not re-tested for this failure.
+  - So a write that needs the source's checkout (`put_page`, `capture`, `add_timeline_entry` and the like) would fail with `storage_error`, as GBRA-108 reports. gbrain#8106 will make that a `recovery_required` / `source_checkout_missing` refusal. The repository fix is HARN-13's `build-brain.ts` change.
+  - `gbrain/pin.json` records `remember` as unaffected (database mode) in a related copied-brain case (HARN-8 at `b06ac32b`). That was not re-tested for this failure.
 - **Exposure in this run: none observed.**
   - The tap classifies nine tools as writes (`GBRAIN_WRITE_TOOLS` in `world/services/gbrain-tap.ts`: `remember`, `forget`, `put_page`, `edit_page`, `capture`, `add_timeline_entry`, `cancel_write_request`, `cancel_job`, `mute_notice`).
   - Across all 60 trials in all 4 cells, `events.jsonl` holds 0 gbrain write events. The only gbrain calls were the MCP methods `initialize` and `tools/list` and the tools `search`, `query`, `get_page` and `list_brain_skillpack`.
@@ -131,8 +131,8 @@ From `bun scripts/v03/pilot-tables.ts --results results --tasks tasks/multiuser/
   - the run manifest's `prereg_sha256` (`4ec42f7f...`) equals the sha256 of `prereg.json` at `eb630bd46`;
   - `git diff --stat eb630bd46^1 eb630bd46` lists exactly #149's 28 files.
 - **Pull requests merged between the branch base `6c8fcfe77` and `eb630bd46^1`**, both named in Amendment 1 before any cell ran:
-  - #155 (`5a9c066f3`, internal-task): its own preregistration directory, its `preregistrations.d` entry and the version files. None of the listed paths.
-  - #154 (`7672db33b`, internal-task): 16 files under `runner`, `harnesses` and `scripts`: `harnesses/qm/*` (9 files, QM only), `harnesses/run-trial.sh`, `runner/trial/trial.ts`, `runner/run.ts`, `harnesses/serve-smoke.ts`, `harnesses/README.md`, `scripts/anatomy/capture.ts` and `scripts/anatomy/publish.sh`. No cell here uses QM, and HE-MODEL-001 appears in no shard's run log.
+  - #155 (`5a9c066f3`, HARN-14): its own preregistration directory, its `preregistrations.d` entry and the version files. None of the listed paths.
+  - #154 (`7672db33b`, HARN-15): 16 files under `runner`, `harnesses` and `scripts`: `harnesses/qm/*` (9 files, QM only), `harnesses/run-trial.sh`, `runner/trial/trial.ts`, `runner/run.ts`, `harnesses/serve-smoke.ts`, `harnesses/README.md`, `scripts/anatomy/capture.ts` and `scripts/anatomy/publish.sh`. No cell here uses QM, and HE-MODEL-001 appears in no shard's run log.
 - The lane had $20.10 left before the first trial ($19.90 committed of $40: the $19.73 the preregistration names plus the $0.1754 gen6 re-audit of 2026-10-31, summed from the unrounded lane lines), above the $8 (cap plus four smoke ceilings) the preregistration requires.
 
 ## Receipts
@@ -155,7 +155,9 @@ From `bun scripts/v03/pilot-tables.ts --results results --tasks tasks/multiuser/
 | **Total** | **$1.3060** | **$0.0828** | 177 | **$1.4831** |
 
 - 1,370 counted ledger entries, all settled; largest reservation $0.4535.
-- internal-task's lane: $19.90 before this run, $21.29 after, of $40. Every VM was destroyed (each `shard-vm.json` records `destroyed_at`).
+- HARN-12's lane: $19.90 before this run, $21.29 after, of $40. Every VM was destroyed (each `shard-vm.json` records `destroyed_at`).
+
+**Redaction note.** 2026-11-02: custody commit SHA redacted for publication; the private repo keeps it. No number changed.
 
 ## Disclosures
 

@@ -2,6 +2,16 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.120] - 2026-11-03
+
+### Public readiness, steps 3 and 4: private-repo scrubs, hashes-only anatomy receipts, and the preregistration ledger
+
+- **`bun runner/prereg/prereg.ts --public` checks preregistration order for the public repository.** `docs/benchmarks/prereg-ledger.json` (new, written by `scripts/prereg-ledger.ts`) records each of the 33 experiments merged before the cutover: the private preregistration commit, its date and PR number, and the sha256 of the preregistration and of its result files. `--public` labels those experiments "ordering attested privately, not publicly verifiable" when the hashes and the history date match, and prints any declared deviation. Every other experiment needs strict ancestry. The ledger is written once. A second write, a merge that rewrites it, or a result file that only a merge brought in fails the check. Writing the ledger refuses if any experiment merged after the cutover.
+- **The order check takes seconds.** `firstAddCommits` reads the first-add commit of every path in one `git log` pass. One `git log` per file over about 155,000 result files ran for over 25 minutes and printed nothing until the end. The plain check now runs in about 14 seconds, with the same first-add commits on a 2,533-file sample.
+- **Anatomy receipts have a hashes-only mode.** A public export may leave out a receipts folder's `blobs/` (raw prompt text) if it writes a `HASHES_ONLY` file there. `scripts/anatomy/store.ts` `loadReceipt()` then checks the recorded sha256s alone, and the anatomy and ablation tests skip only the byte-for-byte rebuilds. A `blobs/` folder missing with no `HASHES_ONLY` file fails.
+- **No drive path in code.** `scripts/local-paths.ts` (new) reads the custody identity path and the gsta-135 drive copy from `HE_CUSTODY_IDENTITY` and `HE_GSTA135_DRIVE_COPY`, else from `config/local-paths.json` (private checkout only; the export leaves it out). `scripts/sealed/identity.ts` refuses with HE-SEALED-010 when neither names a path.
+- Scrubs: custody commit SHAs in the run docs, `results/defects.json` and the v0.3 gen6 reseal record read "custody commit (private)", each with a dated redaction note; no number changed. The gsta-135 Hermes and OpenClaw fixture stores name "Example Author <author@example.invalid>" as the commit author, with `known.json` re-derived. Thread codes are gone from script comments and docs prose; files whose sha256 a preregistration pins are unchanged.
+
 ## [0.0.119] - 2026-11-03
 
 ### internal-task: prompt-archaeology-2026-11 amendment 2

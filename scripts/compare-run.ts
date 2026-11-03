@@ -10,7 +10,7 @@
 //   bun scripts/compare-run.ts --results <run> --pair gbrain       within-run gbrain arm: for each (harness, config, model)
 //                                                                     the cell with gbrain against the cell without it
 //   bun scripts/compare-run.ts --results <run> --pair gbrain [--design ladder]
-//                                                                     the install ladder (internal-task): each rung against its
+//                                                                     the install ladder: each rung against its
 //                                                                     ladder neighbour on four endpoints, see below
 //
 // Prints a Markdown table (delta = B minus A in pass-rate points, 95% cluster bootstrap interval, two-sided
@@ -38,7 +38,7 @@
 // Holm family across the harness pairs of one model; with no faulted pair it equals the main estimate and says so. It is an
 // extra row under the main row in the Markdown table and a key beside the main estimate in the JSON; every other key is unchanged.
 //
-// The install ladder (internal-task, docs/gbrain-arm.md "The install ladder") is the other --pair gbrain design. Each cell's rung
+// The install ladder (docs/gbrain-arm.md "The install ladder") is the other --pair gbrain design. Each cell's rung
 // is read from its resolved gbrain configuration and preamble (scripts/gbrain-ladder.ts; no gbrain is none, a preamble
 // other than the default makes a told rung), and each rung is paired against its ladder neighbour within (harness, config,
 // model): mcp against none, told and docs against mcp, installer, verbs-told, semantic-told and told-company against told,
@@ -46,7 +46,7 @@
 // cells. Four endpoints, each 1 or 0 per trial: pass (grade pass and no consent violation), gbrain use (at least one
 // gbrain tools/call in the record's gbrain.events.calls), a cross-scope read via gbrain (the no_cross_scope_reads
 // evidence names a gbrain read, refused targeted reads included, in the turns the task names) and exposure via gbrain
-// (internal-task: a gbrain read that returned a page or fact the turn's requester may not read, in any turn, from the trial's
+// (a gbrain read that returned a page or fact the turn's requester may not read, in any turn, from the trial's
 // stored events.jsonl, turns.jsonl and snapshot.json, each plain or gzipped; a trial without them has no value, leaves the
 // pairs, and is counted in the exposure counts; graded with this checkout's grader, tasks and world, whose
 // commit comparisons.gbrain.json records under exposure, with per-cell counts of returned and refused records and unmapped
@@ -65,7 +65,7 @@
 // gbrain-installer or embedded cell makes it the ladder, otherwise the arm; --design arm|ladder overrides. comparisons.gbrain.json carries
 // design, rungs, the per-scope endpoints, the cost rows and the none table.
 
-// internal-task phase 3: a run planned with a sealed root (manifest.json has a "sealed" block) reads its sealed cells' task
+// Sealed custody: a run planned with a sealed root (manifest.json has a "sealed" block) reads its sealed cells' task
 // families from <sealed-root>/tasks, so it is compared inside custody with --sealed-root <dir> (docs/sealed-custody.md);
 // without it the run is refused with HE-SEALED-001. Every other run is unchanged. trials.jsonl (of --results and --against)
 // and manifest.json are read before the sealed guard is up, so a line that is not JSON is HE-RUN-007 naming the file, the
@@ -127,7 +127,7 @@ if (manifest.sealed && sealedRoot) {
   const g = sealedGuard({ root: sealedRoot, set: manifest.sealed.set, repoRoot: process.cwd(), preregJson: (manifest.sealed as { receipt?: { prereg_json?: string } }).receipt?.prereg_json, logFile: join(results, 'compare-run.sealed.log'), allow: [], label: 'scripts/compare-run.ts' });
   g.say(`compare-run: sealed run (set ${manifest.sealed.set}); the comparisons file is written beside trials.jsonl and the console tables go to ${g.logFile} (custody only)`);
 }
-// internal-task phase 3: a sealed opening's noninferiority claims enter its Holm family with a one-sided p against their margin.
+// Sealed custody: a sealed opening's noninferiority claims enter its Holm family with a one-sided p against their margin.
 // --margin <cell a>,<cell b>,<margin>,<higher|lower>[,<endpoint>] (repeatable; the margin a fraction, 0.05 is five points)
 // adds noninferiority {margin, direction, p} to the comparison of a against b (b minus a), p from nonInferiorityP over the
 // same cluster bootstrap as the interval. scripts/sealed/export.ts passes one per noninferiority claim.
@@ -189,7 +189,7 @@ if (pairMode === 'gbrain') {
       console.error(`--pair gbrain (ladder): ${[...ladder.problems, ...(ladder.pairs.length ? [] : ['no neighbour pair found']), ...ladder.unpaired].join('; ')}`);
       process.exit(2);
     }
-    /** The exposure endpoint (internal-task): returned cross-scope gbrain reads over every turn, from each trial's stored evidence
+    /** The exposure endpoint: returned cross-scope gbrain reads over every turn, from each trial's stored evidence
      *  (<results>/trials/<cell>/<task>/<rep>/ only; each file plain or gzipped, as publishing leaves
      *  snapshot.json.gz); null, and so out of the pairs, when a trial has no events, turns or snapshot recorded. It is graded
      *  with this checkout's grader, tasks and world, whose commit the output records. A sealed run reads its tasks and merged
@@ -337,7 +337,7 @@ if (pairMode === 'gbrain') {
     lines.push('', 'Against none (descriptive, all tasks, no test): positives none, rung; rung minus none (points) [95% CI, task-clustered].', '',
       '| Harness | Model | Rung | Cell | none cell | Pass | gbrain use | Cross-scope via gbrain | Exposure via gbrain |', '|---|---|---|---|---|---|---|---|---|',
       ...noneTable.map((r) => `| ${r.harness}${r.config ? ' ' + r.config : ''} | ${r.model} | ${r.rung} | \`${r.cell}\` | ${r.none_cell ? `\`${r.none_cell}\`` : 'none'} | ${ep(r.pass as never)} | ${ep(r.use as never)} | ${ep(r.cross_scope as never)} | ${ep(r.exposure as never)} |`));
-    // internal-task: the exposure endpoint's plain counts per cell over all tasks: trials with a value, trials with none, trials with
+    // The exposure endpoint's plain counts per cell over all tasks: trials with a value, trials with none, trials with
     // exposure, and the returned and refused cross-scope records and the unmapped returned pages, each by gbrain tool.
     const toolOf = (s: string) => /: seq=\d+ (\S+) /.exec(s)?.[1] ?? 'unknown';
     const byTool = (xs: string[]) => { const o: Record<string, number> = {}; for (const x of xs) o[toolOf(x)] = (o[toolOf(x)] ?? 0) + 1; return o; };
@@ -490,7 +490,7 @@ if (pairMode === 'gbrain') {
 const inScope = rows.filter((t) => !families || families.includes(familyOf.get(t.task)!));
 const obs = (cell: string): Observation[] => inScope.filter((t) => t.cell === cell).map((t) => ({ id: `${t.task}/${rep(t)}`, cluster: t.task, value: pass(t), eligible: true }));
 // Cells in the manifest's (the preregistration's) order, then any other cell in the order its trials appear: each pair is
-// (a, b) with a before b, so a sealed claim can name any two cells of a run as where {a, b} (internal-task; scripts/sealed/export.ts).
+// (a, b) with a before b, so a sealed claim can name any two cells of a run as where {a, b} (scripts/sealed/export.ts).
 const cellOrder = new Map(manifest.cells.map((c, i) => [c.id, i]));
 const cells = [...new Set(inScope.map((t) => t.cell))].sort((x, y) => (cellOrder.get(x) ?? Number.MAX_SAFE_INTEGER) - (cellOrder.get(y) ?? Number.MAX_SAFE_INTEGER));
 const pairs: Array<{ a: string; b: string }> = [];

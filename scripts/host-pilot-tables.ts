@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// host-harness-pilot-2026-10 tables (internal-task), keyless: what the run's PREREGISTRATION.md asks for beyond
+// host-harness-pilot-2026-10 tables, keyless: what the run's PREREGISTRATION.md asks for beyond
 // summarize-run.ts and compare-run.ts.
 //
 //   bun scripts/host-pilot-tables.ts --results <results dir> [--out <dir>] [--seed 7] [--draws 10000]

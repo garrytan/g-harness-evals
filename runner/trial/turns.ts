@@ -79,10 +79,10 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
       sim_now: simNow,
       time_budget_s: o.task.time_budget_s,
     };
-    // internal-task: under member scope the brain answers this turn as the requester; the setting persists through wait_s
+    // Under member scope the brain answers this turn as the requester; the setting persists through wait_s
     // until the next turn's bracket, and the trial clears it after the last turn.
     if (o.world.gbrainScoped) await o.world.setGbrainRequester(actor.member.id);
-    // internal-task: under live ingestion the actor's message (and everything posted before it) is in the brain before the harness
+    // Under live ingestion the actor's message (and everything posted before it) is in the brain before the harness
     // gets the turn; a write the brain refused ends the trial as an exam fault, never a silent gap.
     if (o.world.gbrainLive) {
       const f = await o.world.flushGbrainIngest();
@@ -126,7 +126,7 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
     }
     record({ ...base, exit, reply_ts, reply_text });
     o.log(`turn ${n}: exit ${exit}${reply_ts ? `, reply ts ${reply_ts}` : ', no reply'}${response.detail ? ` (${response.detail})` : ''}`);
-    // internal-task: the reply and every post the harness made during the turn are in the brain before the next turn (or the fence).
+    // The reply and every post the harness made during the turn are in the brain before the next turn (or the fence).
     if (o.world.gbrainLive) {
       const f = await o.world.flushGbrainIngest();
       if (f.failed.length) return ingestFault(o, windows, n, f.failed);
@@ -142,7 +142,7 @@ function exam(windows: TurnWindow[], message: string): TurnLoopResult {
 
 type IngestFailure = { channel: string; ts: string; source: string; error?: string };
 
-/** internal-task: a message the brain did not take ends the trial as HE-GBRAIN-011; the first three failures name the conversation,
+/** A message the brain did not take ends the trial as HE-GBRAIN-011; the first three failures name the conversation,
  *  the source and the brain's answer. `where` is the turn, or `after the last turn` for the drain after the fence. */
 function ingestFaultMessage(where: string, failed: IngestFailure[]): string {
   return new RunnerError('HE-GBRAIN-011', `${where}: ${failed.length} message(s) were not written into the brain (${failed.slice(0, 3).map((x) => x.channel ? `${x.channel}/${x.ts} -> ${x.source}: ${x.error ?? 'error'}` : x.error ?? 'error').join('; ')})`).message;
@@ -156,7 +156,7 @@ function ingestFault(o: TurnLoopOptions, windows: TurnWindow[], turn: number, fa
 
 const ingestLine = (f: { written: number; skipped: number }) => `${f.written} message(s) ingested${f.skipped ? `, ${f.skipped} skipped: no source or token` : ''}`;
 
-/** internal-task: after the fence (which refuses every post) the ingest queue is final; drain it so no write is cut off by the sidecar
+/** After the fence (which refuses every post) the ingest queue is final; drain it so no write is cut off by the sidecar
  *  stop, then close the queue so nothing lands after the snapshot. A failure on a trial that completed its turns is the exam
  *  fault; a trial that ended early keeps its termination, and the failures stay in the events and the record's counts. Null
  *  when nothing changes. */

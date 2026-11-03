@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// One command to check a gbrain commit against this repository's harness machinery (internal-task; docs/gbrain-arm.md,
+// One command to check a gbrain commit against this repository's harness machinery (docs/gbrain-arm.md,
 // "Checking a gbrain commit").
 //
 //   bun scripts/gbrain-check.ts --gbrain <ref> [--harness fake|openclaw,hermes] [--rungs told,...] [--reps 2]
@@ -7,7 +7,7 @@
 //       [--write-baseline] [--force] [--strict-pins] [--expect-hook] [--dry-run]
 //   bun scripts/gbrain-check.ts --gbrain <ref> --rungs recall [--recall-cases <file>] [--recall-tasks <task id>,...]
 //       [--recall-baseline <file>] [--recall-target <task>=<n>]... [--recall-routes] [--gbrain-config <key>=<value>]...
-//       [--resume <check dir>] [--write-baseline [--force]] [--dry-run]       (the keyless recall rung, internal-task; below)
+//       [--resume <check dir>] [--write-baseline [--force]] [--dry-run]       (the keyless recall rung; below)
 //
 // --expect-hook makes an installer bundle without gbrain#7489's per-turn hook (installer.turn_hook) a failure instead of the
 // "block-only installer" line, for a pin that is meant to carry the hook (run gbrain-installer-hook-2026-10).
@@ -82,8 +82,8 @@ export const RUNGS: Record<string, { gbrain: GbrainCellConfig; told: boolean; pr
   'verbs-told': { gbrain: { surface: 'verbs' }, told: true },
   'semantic-told': { gbrain: { surface: 'starter', embeddings: 'openai:text-embedding-3-small' }, told: true },
   'docs-semantic': { gbrain: { surface: 'starter', install: 'gbrain-docs', embeddings: 'openai:text-embedding-3-small' }, told: false },
-  // internal-task (gbrain#7481): the company brain under the one unscoped token, and the same brain with the tap adding the requesting
-  // member's source_ids to every search and query. Both take internal-task's company told clause; the harness prompt is the same in both.
+  // The told-scoped rung (gbrain#7481): the company brain under the one unscoped token, and the same brain with the tap adding the requesting
+  // member's source_ids to every search and query. Both take the company brain's told clause; the harness prompt is the same in both.
   'told-company': { gbrain: { surface: 'starter', brain: 'company' }, told: true, preamble: COMPANY_TOLD_PREAMBLE },
   'told-scoped': { gbrain: { surface: 'starter', brain: 'company', scope: 'sources' }, told: true, preamble: COMPANY_TOLD_PREAMBLE },
 };
@@ -198,7 +198,7 @@ export function modelLabel(model: string): string {
 export interface PaidCells { cells: Cell[]; skipped: string[] }
 
 /** The dev tasks the paid check runs: every multi-user dev task of the v0.1 set except the product probes (family
- *  `product_probe`, internal-task's QM probes, which test one product's claim and are not harness-neutral); listed explicitly in
+ *  `product_probe`, the QM probes, which test one product's claim and are not harness-neutral); listed explicitly in
  *  the cell so the task set is part of the fingerprint and a task added to the directory later does not change a check. */
 export function devCheckTasks(root = ROOT): string[] {
   const dir = join(root, 'tasks', 'multiuser', 'dev');
@@ -279,7 +279,7 @@ export interface ViewEvidence {
   context_bytes: number | null;
 }
 
-/** internal-task: the gbrain-installer view per harness, when the image's gbrain commit has the setup target; otherwise the bundle
+/** The installer rung: the gbrain-installer view per harness, when the image's gbrain commit has the setup target; otherwise the bundle
  *  manifest's reason, reported and not failed (every gbrain before #7489 has none). */
 export interface InstallerEvidence {
   harness: 'openclaw' | 'hermes';
@@ -297,8 +297,8 @@ export interface InstallerEvidence {
 
 export interface ReadyInstall { dir: string; split: string; files: number; writable: boolean }
 
-/** internal-task (gbrain#7481): the scope "sources" evidence. The direct probe calls search, query and recall on the dev company brain once
- *  per member and query, and list_pages once per member (internal-task), under that member's source_ids; the fake trial runs two members through the runner and the tap on the same query. */
+/** The told-scoped rung (gbrain#7481): the scope "sources" evidence. The direct probe calls search, query and recall on the dev company brain once
+ *  per member and query, and list_pages once per member, under that member's source_ids; the fake trial runs two members through the runner and the tap on the same query. */
 export interface ScopedEvidence {
   probe: null | { members: number; calls: number; rows: number; sources_seen: number; rows_by_tool?: Record<string, number>; outside: Array<{ member: string; tool: string; query: string; slug: string; source_id: string }>; denied: Array<{ member: string; source_id: string; code: string | null }>; foreign: Array<{ member: string; source_id: string; rows_from_it: boolean | null }>; differs: boolean };
   probe_error: string | null;
@@ -310,7 +310,7 @@ export interface ScopedEvidence {
   };
 }
 
-/** internal-task: the live-ingestion evidence. The fake trial runs the member brain with live ingestion: a member gives the bot an
+/** The live-ingestion evidence. The fake trial runs the member brain with live ingestion: a member gives the bot an
  *  instruction in a DM on turn 1, another member searches for it from a channel on turn 2, the first member searches again on turn
  *  3; every fact a search returned maps through the gbrain.ingest event that wrote it to the conversation it came from. */
 export interface IngestEvidence {
@@ -334,11 +334,11 @@ export interface KeylessEvidence {
   /** The image's /install/manifest.json: the bundle digest and every file. */
   bundle: Pick<InstallManifest, 'digest' | 'files'> | null;
   views: ViewEvidence[];
-  /** internal-task: the installer view per harness; absent in evidence written before the installer rung. */
+  /** The installer view per harness; absent in evidence written before the installer rung. */
   installer?: InstallerEvidence[];
-  /** internal-task (gbrain#7481): the scope "sources" probe and trial; absent in evidence written before the told-scoped rung. */
+  /** The told-scoped rung (gbrain#7481): the scope "sources" probe and trial; absent in evidence written before the told-scoped rung. */
   scoped?: ScopedEvidence;
-  /** internal-task: the live-ingestion trial on the member brain; absent in evidence written before it. */
+  /** The live-ingestion trial on the member brain; absent in evidence written before it. */
   ingest?: IngestEvidence;
   /** The gbrain-docs trial on the fake harness (it takes the OpenClaw dev view). */
   docs: null | { termination: string; error?: string; install_bundle: TrialGbrainInstall | undefined; ready_install: ReadyInstall | null; expected_view_digest: string | null; expected_files: number | null };
@@ -523,7 +523,7 @@ export function keylessAssertions(e: KeylessEvidence, o: { strictPins?: boolean;
       // come back, or an empty reply (a broken tap, a token without saved facts) would pass as "no leak".
       const otherMarker = written.find((w) => w.author === g.other_member && w.source !== dmSource);
       const sources = (s: { facts: Array<{ id: string | number | null }> }) => [...new Set(s.facts.map((f) => bySeq.get(String(f.id))?.source ?? 'unmapped'))].join(', ') || 'no source';
-      // internal-task: search answers facts in its saved-facts block, query as fact rows (its facts arm); both must route the same way.
+      // Live ingestion: search answers facts in its saved-facts block, query as fact rows (its facts arm); both must route the same way.
       for (const tool of ['gbrain.search', 'gbrain.query', 'gbrain.recall'] as const) {
         const verb = tool.slice('gbrain.'.length);
         const other = t.searches.find((s) => s.tool === tool && s.grant === g.other_member);
@@ -763,7 +763,7 @@ export function renderSummary(i: SummaryInput): SummaryOutput {
 export interface Args {
   gbrain: string; harnesses: string[]; rungs: string[]; reps: number; model: string; spendCap: number; image?: string; noBuild: boolean;
   baseline: string; writeBaseline: boolean; force: boolean; strictPins: boolean; expectHook: boolean; dryRun: boolean;
-  /** internal-task, the recall rung: the case list, an exact task filter, the baseline receipt, per-task targets, the route arms, gbrain
+  /** The recall rung: the case list, an exact task filter, the baseline receipt, per-task targets, the route arms, gbrain
    *  config settings for the rung's own sidecar, and the check directory of a run to resume. */
   recallCases: string; recallTasks: string[] | null; recallBaseline: string; recallTargets: Array<{ task: string; n: number }>; recallRoutes: boolean;
   gbrainConfig: Array<{ key: string; value: string }>; resume: string | null;
@@ -849,19 +849,19 @@ function ensureFakeImage(): void {
 /** The keyless mode's task per surface: one turn in a dev channel whose text carries the fake adapter's gbrain markers. */
 export const SCOPED_ACTORS = { reader: 'dana-okafor', non_reader: 'hollis-mbeki', foreign_source: 'team-central-members' } as const;
 
-/** internal-task: the code word the DM instruction carries; it appears nowhere in the dev seed, so the only facts holding it are the ones
+/** Live ingestion: the code word the DM instruction carries; it appears nowhere in the dev seed, so the only facts holding it are the ones
  *  the world ingested during the trial (the DM on turn 1, and the markers of the later turns in their own conversations). */
 export const INGEST_CODE_WORD = 'marmoset-7731';
 
 export function writeKeylessTasks(tasksRoot: string): Record<'starter' | 'verbs' | 'scoped' | 'ingest', string> {
   const ids = { starter: 'gbrain-check-starter', verbs: 'gbrain-check-verbs', scoped: 'gbrain-check-scoped', ingest: 'gbrain-check-ingest' } as const;
-  // internal-task: a DM instruction on turn 1, searched for by another member from #general on turn 2 and by the same member in the
+  // Live ingestion: a DM instruction on turn 1, searched for by another member from #general on turn 2 and by the same member in the
   // DM on turn 3. The search marker names the code word, so each searcher's own message is ingested into its conversation too;
   // the assertion is by source: the DM's fact reaches the member it was said to and nobody else.
   const ingestDir = join(tasksRoot, 'multiuser', 'dev', ids.ingest);
   mkdirSync(ingestDir, { recursive: true });
   // The three read verbs on the starter surface: search answers facts in its saved-facts block, query as fact rows (its facts
-  // arm), recall in its facts list, and the tap must route all three the same way (internal-task).
+  // arm), recall in its facts list, and the tap must route all three the same way.
   const search = JSON.stringify({ query: INGEST_CODE_WORD, limit: 10 });
   writeFileSync(join(ingestDir, 'task.toml'), [
     `id = "${ids.ingest}"`, 'slice = "multiuser"', 'split = "dev"', 'time_budget_s = 90', `actors = ["${SCOPED_ACTORS.reader}", "${SCOPED_ACTORS.non_reader}"]`, '',
@@ -873,7 +873,7 @@ export function writeKeylessTasks(tasksRoot: string): Record<'starter' | 'verbs'
     `text = """gbrain-check ingest: what was my travel code word?`, `[fake:gbrain search ${search}]`, `[fake:gbrain query ${search}]`, `[fake:gbrain recall ${search}]"""`, '',
     '[predicates]', 'required = []', 'forbidden_effects = []', '',
   ].join('\n'));
-  // internal-task (gbrain#7481): two members with different grants ask the same question in #general; the reader also names a source
+  // The told-scoped rung (gbrain#7481): two members with different grants ask the same question in #general; the reader also names a source
   // outside the grant, which the tap must refuse.
   const scopedDir = join(tasksRoot, 'multiuser', 'dev', ids.scoped);
   mkdirSync(scopedDir, { recursive: true });
@@ -937,7 +937,7 @@ async function keyless(a: Args, ref: ResolvedRef, tag: string, dir: string): Pro
       console.log(`PROBE: ${surface} failed: ${(e as Error).message}`);
     }
   }
-  // internal-task (gbrain#7481): the dev company brain under source_ids, once per member and query, directly against the image.
+  // The told-scoped rung (gbrain#7481): the dev company brain under source_ids, once per member and query, directly against the image.
   const scoped: ScopedEvidence = { probe: null, probe_error: null, grants: null, trial: null };
   try {
     const p = await probeSourceGrants(tag, 'dev', join(runDir, 'probe-sources'));
@@ -962,7 +962,7 @@ async function keyless(a: Args, ref: ResolvedRef, tag: string, dir: string): Pro
       console.log(`VIEW: ${harness}/${split} failed: ${(e as Error).message}`);
     }
   }
-  // internal-task: the installer view per harness, when this gbrain commit has gbrain setup <harness>; the bundle manifest says.
+  // The installer rung: the installer view per harness, when this gbrain commit has gbrain setup <harness>; the bundle manifest says.
   const installer: InstallerEvidence[] = [];
   for (const harness of ['openclaw', 'hermes'] as const) {
     const rec = bundle?.harnesses?.[harness]?.installer;
@@ -1018,7 +1018,7 @@ async function keyless(a: Args, ref: ResolvedRef, tag: string, dir: string): Pro
     });
     scoped.trial = { termination: scopedRec.termination, error: scopedRec.error, events_file: scopedRec.paths.events ?? join(scopedRec.paths.dir ?? '', 'events.jsonl'), calls };
   }
-  // internal-task: the live-ingestion trial: every gbrain.ingest write and every search through the tap, with the facts each carried.
+  // The live-ingestion trial: every gbrain.ingest write and every search through the tap, with the facts each carried.
   const ingestRec = result.records.find((r) => r.cell === 'fake-ingest');
   const ingest: IngestEvidence = { code_word: INGEST_CODE_WORD, dm_member: SCOPED_ACTORS.reader, other_member: SCOPED_ACTORS.non_reader, grants: null, trial: null };
   if (ingestRec) {
@@ -1154,7 +1154,7 @@ function dryRun(a: Args, ref: ResolvedRef, tag: string, dir: string, ts: string)
   return 0;
 }
 
-// ---- the recall rung (internal-task) ---------------------------------------------------------------------------------------------
+// ---- the recall rung ------------------------------------------------------------------------------------------------------
 //
 // bun scripts/gbrain-check.ts --gbrain <ref> --rungs recall [--recall-cases scripts/gbrain-check.recall.json]
 //     [--recall-tasks <task id>,...] [--recall-baseline scripts/gbrain-check.recall.baseline.json] [--recall-target <task>=<n>]...
@@ -1254,7 +1254,7 @@ export function replayMismatches(events: RecallEvent[], facts: ReplayFact[]): st
   return out;
 }
 
-/** The hot-memory block of a search reply (internal-task): _meta.brain_hot_memory on the result or on its JSON payload. */
+/** The hot-memory block of a search reply: _meta.brain_hot_memory on the result or on its JSON payload. */
 export function hotMemoryOf(result: Record<string, unknown> | null): { source_id: string | null; facts: Array<{ id: string; fact: string }> } | null {
   if (!result) return null;
   for (const m of [result._meta, ...payloadsOf(result).map((p) => (p && typeof p === 'object' ? (p as { _meta?: unknown })._meta : undefined))]) {

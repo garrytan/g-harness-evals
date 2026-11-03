@@ -14,7 +14,7 @@ function trial(root: string, cell: string, task: string, file: string, body: str
 describe("clean-arm audit", () => {
   test("counts a trial that read a gstack skill or the Capy drive, and passes config comments that only name gbrain", () => {
     const root = mkdtempSync(join(tmpdir(), "clean-arm-"));
-    trial(root, "cc-full", "t1", "turn-0001.claude.jsonl", '{"tool":"Read","path":"<private drive>/skills/gstack/SKILL.md"}');
+    trial(root, "cc-full", "t1", "turn-0001.claude.jsonl", '{"tool":"Read","path":"/workspace/.capy/drive/example/skills/gstack/SKILL.md"}');
     trial(root, "cc-full", "t2", "turn-0001.claude.jsonl", '{"tool":"Read","path":"/workspace/notes.md"}');
     trial(root, "cx-min", "t1", "config.toml", "# on a gbrain cell, [mcp_servers.gbrain]");
     trial(root, "cx-min", "t2", "turn.jsonl", "cat ~/.local/share/gstack/ship/SKILL.md");
@@ -28,7 +28,7 @@ describe("clean-arm audit", () => {
     const root = mkdtempSync(join(tmpdir(), "clean-arm-skip-"));
     trial(root, "he-none", "t1", "turn.log", "nothing to see");
     const logs = join(root, "trials", "he-none", "t1", "r1", "logs");
-    writeFileSync(join(logs, "agent.log.gz"), gzipSync("read ~/.capy/drive/user-garry-tan/skills/gstack/SKILL.md"));
+    writeFileSync(join(logs, "agent.log.gz"), gzipSync("read ~/.capy/drive/example/skills/gstack/SKILL.md"));
     writeFileSync(join(logs, "blob.bin"), Buffer.from([0, 1, 2, 3]));
     symlinkSync("..", join(logs, "loop"));
     const [cell] = audit(root);

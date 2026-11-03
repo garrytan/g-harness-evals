@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * The publication check for anything bound for main (internal-task phase 3, docs/sealed-custody.md): custody material lives on
+ * The publication check for anything bound for main (docs/sealed-custody.md): custody material lives on
  * refs/heads/custody only, so a tree that main could receive must hold none of it, whatever the repository's visibility.
  *
  *   bun scripts/check-sealed-publication.ts [--repo .] [--ref <commit or branch>]
@@ -17,7 +17,7 @@
  *     tasks/multiuser/heldout/) while its
  *     MANIFEST.json still says custody "sealed", or while another set in sealed custody and not retired shares its world
  *     slice or corpus digest (a reseal and the set it replaced; the empty-corpus digest never counts);
- *   - internal-task, repo sets: any file under tasks/repo/<set>/heldout/ but MANIFEST.json, whatever the manifest says (a repo
+ *   - repo sets: any file under tasks/repo/<set>/heldout/ but MANIFEST.json, whatever the manifest says (a repo
  *     set's held-out tree exists only inside custody; release writes it to tasks/repo/<set>/released/), and a repo set's
  *     released files (tasks/repo/<set>/released/, tasks/repo/<set>/sealed-bundle/) while its MANIFEST.json says "sealed"
  *     or a live sealed set shares its digests, as above.

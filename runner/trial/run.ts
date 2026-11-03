@@ -4,11 +4,11 @@
 // which --resume reads to skip what already ran. A lease refusal from the proxy is recorded on the trial
 // as model_error with cap_stop and prints HE-BUDGET-001; the run goes on unless --stop-on-cap.
 //
-// internal-task: an invocation whose cells have network "internal" creates (or reuses) the run's internal docker network before the
+// An invocation whose cells have network "internal" creates (or reuses) the run's internal docker network before the
 // proxy starts, binds the proxy and every world to its gateway, and removes it when the invocation ends. Its one proxy
 // listens on one network, so internal and default-bridge harness cells run in separate invocations (--cells); HE-NET-001.
 //
-// internal-task: a manifest with an ablation cell starts the proxy with the run-level receipt log, results/<run>/ablation.ndjson.
+// A manifest with an ablation cell starts the proxy with the run-level receipt log, results/<run>/ablation.ndjson.
 
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
@@ -50,7 +50,7 @@ export interface RunOptions {
   grade?: GradeFn;
   /** Environment for the proxy process; defaults to this process's environment. Capture mode keeps only PATH and HOME from it. */
   proxyEnv?: Record<string, string | undefined>;
-  /** internal-task capture mode (runner/trial/capture.ts): fake upstreams and dummy keys for the proxy, --dns for in-container harnesses. */
+  /** Capture mode (runner/trial/capture.ts): fake upstreams and dummy keys for the proxy, --dns for in-container harnesses. */
   capture?: CaptureConfig;
   repoRoot?: string;
   log?: (line: string) => void;
@@ -130,7 +130,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       log(`internal network ${network.name} (gateway ${network.gateway}) for cells ${internal.map((c) => c.id).join(', ')}`);
     }
     if (needsProxy) {
-      // internal-task: a cell with embeddings on sends the sidecar's query embeddings through the same proxy, so the embedding model
+      // A cell with embeddings on sends the sidecar's query embeddings through the same proxy, so the embedding model
       // joins the allowlist and the proxy binds every interface (the sidecar is a container whatever the harness mode).
       const embeddingModels: string[] = [...new Set(manifest.cells.map((c) => c.gbrain?.embeddings ?? 'off').filter((m) => m !== 'off'))];
       proxy = await RunProxy.start({

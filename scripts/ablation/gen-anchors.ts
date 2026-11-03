@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Span candidates for the prompt-archaeology layer maps (internal-task), generated
+// Span candidates for the prompt-archaeology layer maps, generated
 // from the anatomy records and their receipts, so a new pin re-maps
 // mechanically. Generation is separate from coding: this script only cuts the
 // harness text into candidates and finds anchors for them; two coders assign

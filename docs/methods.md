@@ -47,7 +47,22 @@ Paid work needs `ANTHROPIC_API_KEY` in the proxy's environment only and a ledger
 
 - `docs/benchmarks/<run>/` holds each counted run: `PREREGISTRATION.md` and `prereg.json` (committed before the first trial; `bun runner/prereg/prereg.ts` checks the order), `report.md`, and `results/` with `trials.jsonl` (one record per trial: termination, grade, effects, predicates, usage, paths), `summary.json`, the comparison files, `proxy-usage.ndjson` (one line per proxied request, no bodies, no keys), the lease ledgers (one per shard), `taxonomy.json` where run, and per trial `events.jsonl`, `turns.jsonl` with the exact prompts, `snapshot.json.gz`, `usage.json`, `reconcile.json`, `grade.json` and `logs/adapter.log`. Harness state, workspaces, raw harness logs and per-trial tokens are not committed ([runner/README.md](../runner/README.md), the receipts recipe).
 
+## How preregistration order is checked
+
+**Before the public cutover, the order of preregistration and results is attested privately, not publicly verifiable.**
+- The public repository's history before the cutover was rebuilt from the private repository's squash merges. Commit dates in it are self-asserted, so they prove nothing on their own.
+- [docs/benchmarks/prereg-ledger.json](benchmarks/prereg-ledger.json) is the record. For each experiment merged before the cutover, it gives the private preregistration commit, its merge date and PR number, and the sha256 of the preregistration and of the result manifest (one `sha256  path` line per result file).
+- `bun runner/prereg/prereg.ts --public` checks each of those experiments against the ledger: the hashes must match and the history date must agree. It labels them "ordering attested privately, not publicly verifiable".
+- **After the ledger is written, the check is strict.** Every other experiment, and any result file added after the ledger commit, needs its preregistration commit to be a strict ancestor of its results in public history. A declared deviation does not excuse it, and a result file that only a merge brought in fails.
+- `--public` prints an attested experiment's declared deviation next to its label.
+- `bun scripts/prereg-ledger.ts` writes the ledger from a full clone of the private main, once every scrub is committed, just before the export. It refuses if any experiment's preregistration merged after the cutover, so no private experiment is left out.
+- **The ledger is written once.** If more than one commit in the history changed it, `--public` fails every experiment, so a later edit can't move the cutover or add an entry. The export drops earlier versions of the file from the rebuilt history and adds the final one in a single commit.
+
 ## Changelog
+
+### 2026-11-02: preregistration order for the public repository
+
+New section "How preregistration order is checked": the prereg ledger, the attested-ordering label, the strict rule after the ledger commit, and the rule that the ledger is written once.
 
 ### 2026-11-01: tier contrast marked background (internal-task)
 

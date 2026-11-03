@@ -1,4 +1,4 @@
-// Run a command over held-out material without letting its output reach a transcript (internal-task). The child's stdout and
+// Run a command over held-out material without letting its output reach a transcript. The child's stdout and
 // stderr go to a log file under --log-dir; this wrapper prints only the exit code and the child's own V03: summary
 // lines that pass a strict character and shape check (opaque ids, counts, digests, flag codes). Anything else,
 // including a V03: line carrying other text, is dropped and counted.

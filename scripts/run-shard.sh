@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# internal-task: run one shard of a sharded run on one machine (CREW.md, "Parallelism"). A shard is a set of whole cells of one
+# Run one shard of a sharded run on one machine (CREW.md, "Parallelism"). A shard is a set of whole cells of one
 # preregistration run at one commit: this script refuses a dirty checkout, builds the harness images the cells need and
 # the gbrain sidecar image from this checkout, runs plan (once), preflight and run for exactly those cells under one lease,
 # trials sequential, with a prune loop that deletes graded trials' harness caches every five minutes, and writes
@@ -12,7 +12,7 @@
 # --max-output-tokens (default 128000, what Hermes states on every call) is passed to the runner's proxy: a call that states
 # more is refused and a call that states none gets it, and the proxy reserves input plus that many output tokens against the
 # lease before forwarding, so a call that states the default or none reserves about $1.50 per Sonnet call. Amendment 2 to
-# v02-heldout-2026-10 (internal-task) added the flag on the premise that QM's Pi loop states no max_tokens; it states 128000 on every
+# v02-heldout-2026-10 added the flag on the premise that QM's Pi loop states no max_tokens; it states 128000 on every
 # call, so a QM shard that passes a smaller figure has every call refused (the v02-heldout smoke at facd960f showed it) and the
 # flag only helps a harness that states none or less than the figure. Size the lease for the reservation instead.
 #
@@ -25,12 +25,12 @@
 # The embedded image build and preflight's embedded probe need OPENAI_API_KEY in this shell for the metering proxy only;
 # the run needs ANTHROPIC_API_KEY the same way. No key reaches a container or an image.
 #
-# internal-task: when the preregistration names a top-level gbrain_commit (a full sha), the gbrain image is built at that commit
+# When the preregistration names a top-level gbrain_commit (a full sha), the gbrain image is built at that commit
 # (build-gbrain-image.sh --gbrain <sha>) in place of gbrain/pin.json's, which stays the earlier run's pin; preflight and run
 # refuse an image that records another commit (HE-GBRAIN-016). The ubicloud wrappers pass the preregistration through, so
 # they need no flag for it.
 #
-# --sealed-root and --opening-receipt (internal-task, docs/sealed-custody.md; both or neither) run a sealed heldout set from a
+# --sealed-root and --opening-receipt (docs/sealed-custody.md; both or neither) run a sealed heldout set from a
 # custodian's root outside the checkout. The shard works on its own private copy of the root (in a mktemp -d directory
 # under TMPDIR, mode 0700, refused inside a git work tree), made after the checks and removed on every exit bash can trap
 # (success, failure, INT and TERM), so the custodian's root is never written by a shard and stays as it was for export; the

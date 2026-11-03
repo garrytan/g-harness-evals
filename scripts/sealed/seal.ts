@@ -33,7 +33,7 @@
  * openings ledger of an existing manifest is carried through. A bundle already on the custody branch is never replaced (new content is a new set). The public manifest is
  * written but not committed: the output names it. The output names paths and digests only.
  *
- * internal-task, --kind repo (default multiuser): seals a repository task set (tasks/repo/<set>/, the gstack-native format) from
+ * --kind repo (default multiuser): seals a repository task set (tasks/repo/<set>/, the gstack-native format) from
  * --tasks alone, with no --slice and no --corpus (both refused): a repo set has no world, so the manifest says "kind":
  * "repo", records world_slice_sha256, heldout_corpus_sha256, world_manifest_sha256 and world_json_sha256 as null and says
  * why in sealed.null_digests. --generator <dir> packs the set's generator at generator/ in the bundle (regular files only,
@@ -59,7 +59,7 @@ import { backupEntries, INTAKE_ROOT, makeIntakeDir, removeIntakeDir, sweepStaleI
 import type { World } from '../../world/types.ts';
 import { repoTaskKind, REPO_TASK_KINDS } from '../../runner/grade/task.ts';
 
-/** The one instruction a repo task's environment/Dockerfile ends with (internal-task): cleanup.ts finds held-out images by this
+/** The one instruction a repo task's environment/Dockerfile ends with: cleanup.ts finds held-out images by this
  *  label, and as the last instruction it is in the final stage and no later assignment overrides it. */
 export const SEALED_LABEL_LINE = 'LABEL harness-eval.sealed=true';
 
@@ -88,7 +88,7 @@ export function finalStageSealed(dockerfile: string): boolean {
 export interface SealOptions {
   repo: string;
   set: string;
-  /** multiuser (the default) or repo (internal-task: no slice, no corpus, an optional generator). */
+  /** multiuser (the default) or repo (no slice, no corpus, an optional generator). */
   kind?: SetKind;
   tasks: string;
   /** The world slice; required for a multiuser set, refused for a repo set. */

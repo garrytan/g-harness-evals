@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Token counts for captured prompts (internal-task, internal-task), at no cost.
+// Token counts for captured prompts, at no cost.
 //
 // The capture itself never touches a provider. For an Anthropic Messages
 // capture this separate step sends the first agent request, and each piece of

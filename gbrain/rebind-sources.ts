@@ -1,4 +1,4 @@
-// Re-stamp a copied brain's source checkouts so their writes work at serve time (internal-task). gbrain keeps a checkout per
+// Re-stamp a copied brain's source checkouts so their writes work at serve time. gbrain keeps a checkout per
 // source: the default source's under <brain>/.gbrain/content, and each federated source of a company or member brain at
 // <brain>/sources/<id> (gbrain/build-brain.ts). gbrain stamps each checkout's inode and birth time. The image copies the brain
 // to /brains/<name> and the entrypoint copies it back to /brain for every trial, so each checkout is a new directory at its

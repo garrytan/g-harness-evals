@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * The custody branch (internal-task phase 3, docs/sealed-custody.md). Sealed bundles, encrypted raw results, the identity
+ * The custody branch (docs/sealed-custody.md). Sealed bundles, encrypted raw results, the identity
  * escrow and the access log live on an orphan branch, refs/heads/custody, of the public repository, never on main. Every
  * custody command works in an isolated custody clone (a separate directory whose HEAD is the custody branch, never the
  * public checkout) and keeps two refs apart: the public ref (<remote>/main) for preregistrations and the ledger, and the

@@ -13,7 +13,7 @@
 //   trials.jsonl       every shard's records in the manifest's trial order; a trial id in two shards, in no shard, or in a
 //                      shard but not in the manifest is a refusal
 //   trials/            each shard's trial directories; a cell directory present in two shards is a refusal
-//   <name>.ledger.sqlite, <name>.proxy.log, <name>.proxy-usage.ndjson, <name>.ablation.ndjson (internal-task), <name>.run-summary.json, <name>.run.log,
+//   <name>.ledger.sqlite, <name>.proxy.log, <name>.proxy-usage.ndjson, <name>.ablation.ndjson (prompt archaeology), <name>.run-summary.json, <name>.run.log,
 //   <name>.reconcile*.json, <name>.preflight-*/ (without tokens.json or ingest-tokens.json: the brain's tokens stay on the shard), <name>.laneb/ (a Lane B
 //                      shard's Lane B run root: Harbor jobs, Lane B proxy sessions and ledger, docs/gstack-laneb.md), <name>.gbrain-install/ (the first shard's gbrain-install/ is also copied
 //                      under its own name), <name>.shard.json: each shard's own files under its name

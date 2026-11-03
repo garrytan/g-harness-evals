@@ -214,11 +214,11 @@ export const CANONICAL_PRICING: Record<string, ModelPricing> = {
   // gpt-6-luna: the short-context standard rates the metering proxy prices it at
   // (runner/ledger/budget-ledger.ts, developers.openai.com/api/docs/pricing,
   // checked 2026-10-05). Here so a preregistration's planning ceiling prices
-  // the internal-task Codex, OpenClaw and Hermes cells on it.
+  // the Codex, OpenClaw and Hermes cells on it.
   'openai:gpt-6-luna':                    { input:  0.10, output:  0.50 },
 
   // ── Particle ───────────────────────────────────────────────────────────
-  // Particle-1 (internal-task, the cheap row): requests name `particle-1` at
+  // Particle-1 (the cheap row): requests name `particle-1` at
   // api.particle.ai/v1/chat/completions; responses echo
   // `particle-ai/particle-1`. PEAK list rates (docs.particle.ai, checked
   // 2026-10-31): $0.25 in, $0.03 cached in, $1.00 out per 1M tokens;

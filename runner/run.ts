@@ -21,7 +21,7 @@
  * budget (HE-HELDOUT-001 to 004, runner/heldout/openings.ts); a run's own row passes every time while it is opened or its
  * set is open, so shard planning and resume of the same run id are unchanged.
  *
- * Sealed custody (internal-task phase 3, docs/sealed-custody.md): a held-out cell of a sealed set (its MANIFEST.json says
+ * Sealed custody (docs/sealed-custody.md): a held-out cell of a sealed set (its MANIFEST.json says
  * "custody": "sealed") needs --sealed-root <dir> and --opening-receipt <file> on plan, dry-run, preflight and run
  * (HE-SEALED-001 to 005). The root is the custodian's decrypted bundle outside every checkout (scripts/sealed/open.ts);
  * its task tree feeds the sealed cells' tasks, its world/world.json the trial world, the grader and the preflight probe,
@@ -33,7 +33,7 @@
  * so, and preflight and run refuse it a gbrain image built from a sealed root (HE-SEALED-005: image.json says sealed or
  * records a held-out corpus digest); plaintext sets and every existing run are otherwise unchanged.
  *
- * Capture mode (internal-task, runner/trial/capture.ts): --capture-upstream points the metering proxy at a fake model server and
+ * Capture mode (runner/trial/capture.ts): --capture-upstream points the metering proxy at a fake model server and
  * gives it dummy provider keys; --capture-dns sets the in-container harness's resolver. Only a run id starting with
  * "anatomy-capture-" may use them (HE-RUN-002): capture runs are never counted runs.
  *
@@ -59,7 +59,7 @@ import { GOLDEN_WIRES, type AblationSpec, loadBinding, wireOfModel } from './pro
 
 export { RunnerError };
 
-// internal-task (the install ladder): the gbrain cell fields, their allowed values and defaults (runner/contracts.ts GbrainCellConfig).
+// The install ladder: the gbrain cell fields, their allowed values and defaults (runner/contracts.ts GbrainCellConfig).
 export const GBRAIN_SURFACES = ['starter', 'verbs'] as const;
 export const GBRAIN_INSTALLS = ['mcp', 'gbrain-docs', 'gbrain-installer'] as const;
 export const GBRAIN_EMBEDDINGS = ['off', 'openai:text-embedding-3-small'] as const;
@@ -78,7 +78,7 @@ export interface ResolvedGbrain {
   embeddings: (typeof GBRAIN_EMBEDDINGS)[number];
   brain: 'bot-visible' | 'company' | 'member';
   scope: 'none' | 'member' | 'sources' | 'member-sources';
-  /** internal-task: live ingestion of the scenario's messages into the member brain. */
+  /** Live ingestion of the scenario's messages into the member brain. */
   ingest: 'off' | 'live';
   /** internal-task: present only on a cell of the access-ruled member brain. */
   access?: 'rules';
@@ -112,10 +112,10 @@ export interface Cell {
   model: string;
   slice: 'multiuser' | 'work' | 'continuity' | 'coding-calibration' | 'hello' | 'smoke';
   split: 'dev' | 'heldout';
-  /** Harness-specific configuration name, handed to the adapter as HE_HARNESS_CONFIG (internal-task). QM accepts pi (the
+  /** Harness-specific configuration name, handed to the adapter as HE_HARNESS_CONFIG. QM accepts pi (the
    *  default), pi-probe, pi-strict and pi-command-deny (harnesses/qm/pin.json configs). OpenClaw and
    *  Hermes accept default and the instruction routes route-tool, route-system (Hermes only), route-startup, route-hook and
-   *  route-skill (internal-task, harnesses/routes/README.md). Claude Code and Codex accept default and official-minimal (internal-task:
+   *  route-skill (harnesses/routes/README.md). Claude Code and Codex accept default and official-minimal (prompt archaeology:
    *  the harness's own system prompt or base instructions replaced by harnesses/ablation/official-minimal.txt, through the
    *  adapter; a config value, not a layer of the ablation field). The other harnesses ignore it. */
   config?: string;
@@ -144,11 +144,11 @@ export interface Cell {
    *  allowlist admits them, priced into the trial and shown in usage.by_model, and HE-MODEL-001 does not count them as
    *  foreign (docs/errors.md). Preregistered per cell; a cell without the field treats every other model as foreign. */
   utility_models?: string[];
-  /** internal-task: "internal" runs the harness container (and a gbrain sidecar) on the run's internal docker network: no DNS and
+  /** "internal" runs the harness container (and a gbrain sidecar) on the run's internal docker network: no DNS and
    *  no route off the machine, the metering proxy, the world and the gbrain tap on that network's gateway, still reached as
    *  host.docker.internal (docs/adapters.md, "Network"). Absent, the default docker bridge, as before. */
   network?: 'internal';
-  /** internal-task (prompt archaeology): the metering proxy cuts these layers of the harness's built-in prompt out of every request,
+  /** Prompt archaeology: the metering proxy cuts these layers of the harness's built-in prompt out of every request,
    *  by the layer map (harnesses/ablation/<harness>.<wire>.layers.json, path from the repository root) whose sha256 the
    *  preregistration names (runner/proxy/ablate.ts). An empty layer list is the full cell: filter on, nothing removed. */
   ablation?: AblationSpec;
@@ -157,7 +157,7 @@ export interface Cell {
 const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'config', 'repetitions', 'ceiling', 'tasks', 'harness_mode', 'script', 'adapter', 'gbrain', 'preamble', 'task_set', 'session_scope', 'utility_models', 'network', 'ablation']);
 export const DEFAULT_TASK_SET = 'v0.1';
 
-/** internal-task: the Particle cells whose harness pin has no model_particle entry, the declaration an adapter makes when it routes
+/** The Particle cells whose harness pin has no model_particle entry, the declaration an adapter makes when it routes
  *  <proxy>/<slot>/particle as Chat Completions. Any other adapter falls back to its Anthropic config on that URL. */
 export function particleCellsWithoutRoute<C extends Pick<Cell, 'harness'>>(cells: C[], root = '.'): C[] {
   return cells.filter((c) => {
@@ -166,7 +166,7 @@ export function particleCellsWithoutRoute<C extends Pick<Cell, 'harness'>>(cells
   });
 }
 
-/** internal-task: a cell that calls Particle needs PARTICLE_API_KEY in this shell for the metering proxy (HE-PROXY-001) and a harness
+/** A cell that calls Particle needs PARTICLE_API_KEY in this shell for the metering proxy (HE-PROXY-001) and a harness
  *  whose pin declares a Particle transport (HE-PIN-003). preflight and run both check, because a resumed shard skips a
  *  preflight that already passed (scripts/run-shard.sh). */
 function requireParticleCells(cells: Array<Pick<Cell, 'id' | 'harness' | 'model' | 'utility_models'>>): void {
@@ -176,7 +176,7 @@ function requireParticleCells(cells: Array<Pick<Cell, 'id' | 'harness' | 'model'
   if (noRoute.length) throw new RunnerError('HE-PIN-003', `cells ${noRoute.map((c) => `${c.id} (${c.harness})`).join(', ')} call Particle, but their harness pin declares no Particle transport (model_particle in harnesses/<name>/pin.json); the proxy routes Particle as Chat Completions only, and an adapter without that branch sends Anthropic Messages to it; fix: run the cell on a harness whose adapter routes <proxy>/<slot>/particle`);
 }
 
-/** internal-task: the provider:model ids a cell's harness may call, its model and its utility_models: what the runner binds the
+/** The provider:model ids a cell's harness may call, its model and its utility_models: what the runner binds the
  *  trial's proxy slot to (POST /__proxy/bind models), so a request for another model on that slot is refused even when
  *  another cell of the run put it on the run-wide --allow-models. */
 export const cellModels = (cell: Pick<Cell, 'model' | 'utility_models'>): string[] => [cell.model, ...(cell.utility_models ?? [])].filter((m) => m !== 'none');
@@ -187,7 +187,7 @@ export function taskSetName(cell: Pick<Cell, 'task_set'>): string {
 }
 
 /** The directory a cell's multi-user tasks live under: tasks/multiuser/<split>/ for v0.1, tasks/multiuser/<task_set>/<split>/ otherwise.
- *  internal-task: a task set named by a directory tasks/repo/<task_set>/ under tasksRoot is a repo set, tasks/repo/<task_set>/<split>/
+ *  A task set named by a directory tasks/repo/<task_set>/ under tasksRoot is a repo set, tasks/repo/<task_set>/<split>/
  *  (set names are unique across kinds; bun scripts/seal-heldout.ts --check refuses a name both kinds use). */
 export function taskSetDir(cell: Pick<Cell, 'task_set' | 'split'>, tasksRoot = 'tasks'): string {
   const set = taskSetName(cell);
@@ -210,7 +210,7 @@ export interface Prereg {
   spend_cap_usd: number;
   drop_order: string[];
   minimum_v01: string[];
-  /** internal-task: required when a cell runs a held-out split, unless the preregistration is on the legacy list (runner/heldout/openings.ts). */
+  /** Required when a cell runs a held-out split, unless the preregistration is on the legacy list (runner/heldout/openings.ts). */
   heldout?: HeldoutBlock;
   /** internal-task: the full gbrain commit this run's gbrain image is built at, when it is not gbrain/pin.json's (the pin stays the earlier
    *  run's). scripts/run-shard.sh builds the image at it, and preflight and run refuse an image that records another (HE-GBRAIN-016).
@@ -267,7 +267,7 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
       if (c.slice === 'hello' || c.slice === 'smoke') throw new RunnerError('HE-NET-001', `cell ${c.id}: network "internal" is for multi-user trials; slice ${c.slice} runs through harnesses/run-trial.sh on the default bridge. fix: drop network from the cell`);
       if (existsSync(join('harnesses', c.harness, 'compose.yaml'))) throw new RunnerError('HE-NET-001', `cell ${c.id}: harness ${c.harness} is a compose stack (harnesses/${c.harness}/compose.yaml), which the runner does not move onto the internal network. fix: drop network from the cell`);
     }
-    // internal-task: Codex 0.165.0 calls chatgpt.com and other hosts directly when its plugins are on. The adapter turns them off, and a
+    // Codex 0.165.0 calls chatgpt.com and other hosts directly when its plugins are on. The adapter turns them off, and a
     // Codex cell still runs only where nothing but the proxy, the world and the gbrain tap is reachable, so a direct connection the
     // config missed cannot happen either (harnesses/codex/README.md).
     if (c.harness === 'codex' && c.network !== 'internal') throw new RunnerError('HE-NET-001', `cell ${c.id}: harness codex needs network "internal" (Codex 0.165.0 calls chatgpt.com directly when its plugins are on; the internal network rules out any direct connection the config missed; harnesses/codex/README.md). fix: add "network": "internal" to the cell`);
@@ -281,7 +281,7 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
     if (!(c.repetitions >= 1)) throw new RunnerError('HE-PREREG-005', `cell ${c.id}: repetitions must be >= 1`);
     if (c.preamble !== undefined && (typeof c.preamble !== 'string' || !existsSync(c.preamble))) throw new RunnerError('HE-TASK-002', `cell ${c.id}: preamble not found at ${String(c.preamble)}; fix: name a committed file such as tasks/multiuser/_shared/preamble.md`);
     if (c.gbrain !== undefined) {
-      // internal-task: surface, install and embeddings are the ladder's orthogonal fields; HE-GBRAIN-001 names the field, the value and the allowed set.
+      // Surface, install and embeddings are the ladder's orthogonal fields; HE-GBRAIN-001 names the field, the value and the allowed set.
       const bad = (field: string, value: unknown, allowed: readonly string[]) => new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.${field} must be one of ${allowed.map((v) => JSON.stringify(v)).join(', ')} (gbrain/pin.json); got ${JSON.stringify(value)}`);
       if (!c.gbrain || typeof c.gbrain !== 'object') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain must be an object such as {"surface": "starter"}; got ${JSON.stringify(c.gbrain)}`);
       if (!(GBRAIN_SURFACES as readonly string[]).includes(c.gbrain.surface as string)) throw bad('surface', c.gbrain.surface, GBRAIN_SURFACES);
@@ -291,8 +291,8 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
       if (c.gbrain.install !== undefined && c.gbrain.install !== 'mcp' && !installHarnesses.includes(c.harness)) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.install "${c.gbrain.install}" is defined for harnesses ${installHarnesses.filter((h) => !h.startsWith('_')).join(', ')} (gbrain documents no ${c.gbrain.install} install for ${c.harness}; gbrain/pin.json "install")`);
       if (c.gbrain.embeddings !== undefined && c.gbrain.embeddings !== 'off' && c.gbrain.brain !== undefined && c.gbrain.brain !== 'bot-visible') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.embeddings ${c.gbrain.embeddings} needs the bot-visible brain; only the bot-visible brains are built with embeddings`);
       if (scripted) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: a scripted cell cannot carry gbrain; a script plays the bot over world-MCP and has no harness to call the brain`);
-      // internal-task (company brain): brain and scope are additive; a cell without them is the gbrain arm's cell.
-      // internal-task (member brain): brain "member" carries member tokens and ingest tokens; ingest "live" needs it.
+      // Company brain: brain and scope are additive; a cell without them is the gbrain arm's cell.
+      // Member brain: brain "member" carries member tokens and ingest tokens; ingest "live" needs it.
       if (c.gbrain.brain !== undefined && c.gbrain.brain !== 'bot-visible' && c.gbrain.brain !== 'company' && c.gbrain.brain !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.brain must be "bot-visible", "company" or "member"; got ${JSON.stringify(c.gbrain.brain)}`);
       if (c.gbrain.scope !== undefined && c.gbrain.scope !== 'member' && c.gbrain.scope !== 'sources' && c.gbrain.scope !== 'member-sources') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope must be "member", "sources", "member-sources" or absent; got ${JSON.stringify(c.gbrain.scope)}`);
       if (c.gbrain.scope !== undefined && c.gbrain.brain !== 'company' && c.gbrain.brain !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope "${c.gbrain.scope}" needs gbrain.brain "company" or "member"; only those brains carry member tokens and per-member source grants`);
@@ -310,7 +310,7 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
   return { prereg, sha256: createHash('sha256').update(raw).digest('hex') };
 }
 
-/** internal-task: a cell's ablation at plan time: the shape, a multi-user harness cell, the map file present with the preregistered
+/** A cell's ablation at plan time: the shape, a multi-user harness cell, the map file present with the preregistered
  *  sha256, the layers a subset of the map's, and the map made for this cell's harness, model and a golden-tested wire. */
 function checkAblation(c: Cell): void {
   const bad = (why: string) => new RunnerError('HE-PREREG-007', `cell ${c.id}: ablation ${why}`);
@@ -455,7 +455,7 @@ export function renderPlan(m: Manifest): string {
   for (const c of m.cells) {
     if (c.gbrain?.brain === 'company' && c.preamble !== 'tasks/multiuser/_shared/preamble.gbrain-company.md') lines.push(`WARN: cell ${c.id} serves the company brain with preamble ${c.preamble ?? 'tasks/multiuser/_shared/preamble.md'}, not the company one (tasks/multiuser/_shared/preamble.gbrain-company.md); intended only for a none-style arm on the company brain`);
   }
-  // internal-task: one GBRAIN line per distinct configuration (surface/install/embeddings), naming what each means.
+  // One GBRAIN line per distinct configuration (surface/install/embeddings), naming what each means.
   const configs = new Map<string, Cell[]>();
   for (const c of m.cells) if (c.gbrain) configs.set(gbrainLabel(c.gbrain), [...(configs.get(gbrainLabel(c.gbrain)) ?? []), c]);
   for (const [label, cs] of configs) {
@@ -542,7 +542,7 @@ async function main(argv: string[]): Promise<number> {
   if (cmd === 'preflight') {
     const { manifest: loaded } = loadManifest(flag('--manifest'));
     const runDir = dirname(flag('--manifest')!);
-    // internal-task: --cells scopes the checks to one shard's cells (its harness images, its gbrain configurations); the ladder's shards
+    // --cells scopes the checks to one shard's cells (its harness images, its gbrain configurations); the ladder's shards
     // each built only their own images and failed the whole-manifest preflight on the other harness's image (HE-ADAPTER-005).
     const scope = flag('--cells')?.split(',').map((s) => s.trim()).filter(Boolean);
     if (scope) {
@@ -559,7 +559,7 @@ async function main(argv: string[]): Promise<number> {
     if (missing.length) throw new RunnerError('HE-PIN-001', `no harnesses/<name>/pin.json for: ${[...new Set(missing)].join(', ')}; fix: add the pin before any cell runs`);
     for (const k of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']) if (!process.env[k]) console.log(`WARN: HE-PROXY-001 ${k} is not set in this shell; the metering proxy needs it, harness containers never do`);
     requireParticleCells(m.cells.filter((c) => c.harness_mode !== 'scripted'));
-    // internal-task: a harness image built before an adapter edit silently runs the old adapter; compare the image's adapter with the checkout.
+    // A harness image built before an adapter edit silently runs the old adapter; compare the image's adapter with the checkout.
     const dockerCells = m.cells.filter((c) => c.harness !== 'scripted' && (c.harness_mode ?? 'docker') === 'docker' && !existsSync(join('harnesses', c.harness, 'compose.yaml')));
     for (const harness of [...new Set(dockerCells.map((c) => c.harness))]) {
       const image = flag('--image') ?? `harness-eval/${harness.replace(/^_/, '')}:dev`;
@@ -572,13 +572,13 @@ async function main(argv: string[]): Promise<number> {
       const image = flag('--gbrain-image') ?? (sealed ? sealedImageTag(sealed.receipt) : DEFAULT_GBRAIN_IMAGE);
       const { gbrainImagePresent, gbrainImageCommit, gbrainImageInputs, imageCommitProblem, preregCommitProblem, installerHookProblem, probeGbrainImage, exportInstallView } = await import('./trial/gbrain.ts');
       if (!gbrainImagePresent(image)) throw new RunnerError('HE-GBRAIN-002', `gbrain sidecar image ${image} is not present for cells ${gbrainCells.map((c) => c.id).join(', ')}; fix: scripts/build-gbrain-image.sh ${sealed ? '--sealed-root <the sealed root>' : `--tag ${image}`}`);
-      // internal-task: a sealed run needs the image built from its root; a run with no sealed root refuses an image built from one.
+      // A sealed run needs the image built from its root; a run with no sealed root refuses an image built from one.
       const inputs = gbrainImageInputs(image);
       const imageProblem = sealed ? sealedImageProblem(image, inputs, sealed.receipt) : publicImageProblem(image, inputs);
       if (imageProblem) throw new RunnerError('HE-SEALED-005', imageProblem);
       if (sealed) console.log(`SEALED: gbrain image ${image} was built from the sealed world ${String(sealed.receipt.world_sha256).slice(0, 12)} and corpus ${String(sealed.receipt.heldout_corpus_sha256).slice(0, 12)}`);
       const pin = JSON.parse(readFileSync(join('gbrain', 'pin.json'), 'utf8')) as { gbrain: { commit: string }; surfaces: Record<string, { tools: number }>; embeddings: { model: string }; install?: { installer?: { turn_hook_expected?: boolean } } };
-      // internal-task: the image records the gbrain commit it was built from (/opt/sidecar/image.json); a counted run's cells, the told cells
+      // The image records the gbrain commit it was built from (/opt/sidecar/image.json); a counted run's cells, the told cells
       // with no install view included, run the pinned commit or not at all, and the run log says which.
       // scripts/gbrain-check.ts checks a candidate commit and passes it as --gbrain-commit; a counted run passes nothing and gets the pin.
       // internal-task: a preregistration that names gbrain_commit runs that commit in place of the pin, and any other image is HE-GBRAIN-016.
@@ -591,7 +591,7 @@ async function main(argv: string[]): Promise<number> {
         if (commitProblem) throw new RunnerError('HE-GBRAIN-002', commitProblem);
       }
       console.log(`GBRAIN: image ${image} records gbrain ${built}${loaded.gbrain_commit ? ", the preregistration's gbrain_commit" : flag('--gbrain-commit') ? ' (--gbrain-commit)' : ', the pinned commit'}`);
-      // internal-task: one probe per distinct keyword configuration (surface, brain): the image serves /health and lists the pinned tool count.
+      // One probe per distinct keyword configuration (surface, brain): the image serves /health and lists the pinned tool count.
       const keywordConfigs = new Map<string, Cell[]>();
       for (const c of gbrainCells) { const g = resolveGbrain(c.gbrain!); if (g.embeddings === 'off') keywordConfigs.set(`${g.surface}/${g.brain}`, [...(keywordConfigs.get(`${g.surface}/${g.brain}`) ?? []), c]); }
       for (const [label, cs] of keywordConfigs) {
@@ -601,7 +601,7 @@ async function main(argv: string[]): Promise<number> {
         if (probe.tools.length !== pinned) throw new RunnerError('HE-GBRAIN-002', `image ${image} lists ${probe.tools.length} tools on the ${g.surface} surface, gbrain/pin.json pins ${pinned}; fix: rebuild the image at the pinned commit, or re-pin after a deliberate gbrain change`);
         console.log(`GBRAIN: image ${image} id=${probe.image_id} serves /health (gbrain ${probe.version ?? 'unknown'}, ready in ${probe.ready_ms} ms), ${probe.tools.length} tools on ${g.surface} (pin ${pinned}) for cells ${cs.map((c) => c.id).join(', ')} (${label})`);
       }
-      // internal-task: each distinct embedded configuration is probed through the metering proxy under a small lease of its own:
+      // Each distinct embedded configuration is probed through the metering proxy under a small lease of its own:
       // one search must produce a forwarded /v1/embeddings line and no degraded stamp, else the semantic cells cannot run.
       const embeddedCells = gbrainCells.filter((c) => resolveGbrain(c.gbrain!).embeddings !== 'off');
       if (embeddedCells.length) {
@@ -631,7 +631,7 @@ async function main(argv: string[]): Promise<number> {
           closeRun(flag('--ledger') ?? join(runDir, 'ledger.sqlite'), `${m.run_id}-preflight`);
         }
       }
-      // internal-task: every gbrain-docs and gbrain-installer cell's bundle view is exported from the image and verified before any trial mounts it.
+      // Every gbrain-docs and gbrain-installer cell's bundle view is exported from the image and verified before any trial mounts it.
       const docsViews = [...new Set(gbrainCells.map((c) => ({ c, install: resolveGbrain(c.gbrain!).install })).filter((x) => x.install !== 'mcp').map((x) => `${x.c.harness}|${x.c.split}|${x.install}`))];
       for (const v of docsViews) {
         const [harness, split, install] = v.split('|') as [string, 'dev' | 'heldout', 'gbrain-docs' | 'gbrain-installer'];
@@ -641,8 +641,8 @@ async function main(argv: string[]): Promise<number> {
         if (hookProblem) throw new RunnerError('HE-GBRAIN-006', hookProblem);
         console.log(`GBRAIN: install bundle view ${view.harness}/${split} (${install}) exported and verified: ${view.files.length} files, ${view.skills} skills, view digest ${view.view_digest.slice(0, 12)}${view.context ? `, context ${view.context.kept_slugs.length} pages (${view.context.tokens ?? '?'} tokens)` : ''} (gbrain ${view.gbrain_commit.slice(0, 12)})`);
       }
-      // internal-task: a company brain is probed per split under the unscoped token and must list every page the build holds.
-      // internal-task: the member brain likewise, with its own page list, under member scope and live ingestion (its tokens checked).
+      // A company brain is probed per split under the unscoped token and must list every page the build holds.
+      // The member brain likewise, with its own page list, under member scope and live ingestion (its tokens checked).
       const companySplits = [...new Set(gbrainCells.filter((c) => c.gbrain!.brain === 'company').map((c) => c.split))];
       const memberSplits = [...new Set(gbrainCells.filter((c) => c.gbrain!.brain === 'member' && !c.gbrain!.access).map((c) => c.split))];
       // internal-task: an access-ruled member brain is checked by its own preflight below; its unscoped token reads only the public pages.
@@ -676,8 +676,8 @@ async function main(argv: string[]): Promise<number> {
           const scope = gbrainCells.some((c) => c.gbrain!.brain === 'company' && c.split === split && (c.gbrain!.scope === 'member' || c.gbrain!.scope === 'member-sources')) ? 'member' : 'none';
           const probe = await probeCompanyBrain(image, split, companyPageList(world, split), join(runDir, `preflight-gbrain-company-${split}`), scope);
           console.log(`GBRAIN: image ${image} id=${probe.image_id} brain=company scope=${scope} split=${split} pages=${probe.listed} (${Object.entries(probe.by_kind).map(([k, v]) => `${k} ${v}`).join(', ')}) under the unscoped token${scope === 'member' ? `, tokens=${probe.member_tokens} plus public-only: ${probe.member_check}` : ''}, ready in ${probe.ready_ms} ms`);
-          // internal-task (gbrain#7481): a scope "sources" cell needs the per-request source_ids to hold for every member before a paid trial.
-          // internal-task (internal-task): a scope "member-sources" cell is probed under the member tokens as well, the way its tap sends calls.
+          // gbrain#7481: a scope "sources" cell needs the per-request source_ids to hold for every member before a paid trial.
+          // A scope "member-sources" cell is probed under the member tokens as well, the way its tap sends calls.
           for (const scope of ['sources', 'member-sources'] as const) {
             if (!gbrainCells.some((c) => c.gbrain!.brain === 'company' && c.split === split && c.gbrain!.scope === scope)) continue;
             const s = await probeSourceGrants(image, split, join(runDir, `preflight-gbrain-${scope}-${split}`), SOURCE_PROBE_QUERIES, scope);
@@ -687,7 +687,7 @@ async function main(argv: string[]): Promise<number> {
             const unseen = Object.entries(s.rows_by_tool).filter(([, n]) => !n).map(([t]) => t);
             if (unseen.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the company brain for ${split} in ${image} gave 0 rows to ${unseen.join(', ')} over every member; the probe cannot show the source_ids narrowing holds on ${unseen.length === 1 ? 'that tool' : 'those tools'}`);
             if (s.token_alone) {
-              // internal-task (internal-task): the member token is the only guard on a slug read, so it is checked on its own as well.
+              // The member token is the only guard on a slug read, so it is checked on its own as well.
               const leaked = s.token_alone.slug_reads.filter((r) => r.code === null || r.code.startsWith('another page'));
               if (leaked.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the company brain for ${split} in ${image} returned ${leaked.length} page(s) through get_page under a member's own token from a source outside its grant (${leaked.slice(0, 3).map((r) => `${r.member} -> ${r.slug} in ${r.source_id}`).join('; ')}); the rescoped member tokens do not hold`);
               const unseenAlone = Object.entries(s.token_alone.rows_by_tool).filter(([, n]) => !n).map(([t]) => t);
@@ -712,14 +712,14 @@ async function main(argv: string[]): Promise<number> {
     if (!['docker', 'process', 'scripted'].includes(mode)) throw new RunnerError('HE-RUN-005', `--harness-mode must be docker, process or scripted (got ${mode})`);
     const harnessEnv: Record<string, string> = {};
     for (const kv of all('--harness-env')) { const eq = kv.indexOf('='); if (eq <= 0) throw new RunnerError('HE-RUN-002', `--harness-env wants K=V (got ${kv})`); harnessEnv[kv.slice(0, eq)] = kv.slice(eq + 1); }
-    // internal-task: live ingestion is docker-only (HE-GBRAIN-001). The mode is this flag, not a cell field, so it is refused here
+    // Live ingestion is docker-only (HE-GBRAIN-001). The mode is this flag, not a cell field, so it is refused here
     // before any trial starts rather than aborting the run at its first such trial.
     const cells = flag('--cells')?.split(',').map((s) => s.trim()).filter(Boolean);
     const liveCells = manifest.cells.filter((c) => c.gbrain?.ingest === 'live' && (cells ? cells.includes(c.id) : true)).map((c) => c.id);
     if (mode === 'process' && liveCells.length) throw new RunnerError('HE-GBRAIN-001', `cells ${liveCells.join(', ')} carry gbrain.ingest "live", which runs in docker mode only; in process mode the harness runs as the runner's user and could read the ingest tokens under the trial directory. fix: run without --harness-mode process`);
     const sealedRunCells = manifest.sealed ? manifest.cells.filter((c) => c.harness_mode !== 'scripted' && (cells ? cells.includes(c.id) : true)).map((c) => c.id) : [];
     if (mode === 'process' && sealedRunCells.length) throw new RunnerError('HE-SEALED-001', `cells ${sealedRunCells.join(', ')} belong to run ${manifest.run_id}, which opens set ${manifest.sealed!.set} in sealed custody; in process mode the harness runs as the runner's user and could read the opened sealed root and the custody files on this machine, whichever cell it serves. Nothing was opened. fix: run without --harness-mode process`);
-    // internal-task: capture mode, refused before anything starts unless the run id is a capture run's.
+    // Capture mode, refused before anything starts unless the run id is a capture run's.
     const { parseCaptureOptions } = await import('./trial/capture.ts');
     const callingCells = manifest.cells.filter((c) => c.harness_mode !== 'scripted' && mode !== 'scripted' && (cells ? cells.includes(c.id) : true));
     const providers = callingCells.flatMap((c) => [c.model, ...(c.utility_models ?? []), c.gbrain?.embeddings ?? 'off']).filter((m) => m.includes(':')).map((m) => m.slice(0, m.indexOf(':')));

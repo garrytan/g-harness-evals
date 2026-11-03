@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Generate the v0.3 held-out world from a seed (internal-task).
+// Generate the v0.3 held-out world from a seed.
 //
 //   bun scripts/v03/gen-world.ts --seed-file <path> --source <messy-company-v1 dir> --out <dir outside the checkout> \
 //       --lease-usd <n> --run-id <id> [--dry-plan]
@@ -872,7 +872,7 @@ export async function generateWorld(o: GenOptions): Promise<Record<string, unkno
   const imp = spawnSync('bun', [join(REPO_ROOT, 'world/seed/import.ts'), srcOut, '--out', out], { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 64 << 20 });
   writeFileSync(join(out, 'logs/import.log'), 'exit ' + imp.status + '\n--- stdout\n' + (imp.stdout ?? '') + '\n--- stderr\n' + (imp.stderr ?? '') + '\n');
   if (imp.status !== 0) throw new GenError('E_IMPORT');
-  // The sealed-slice contract (runner/heldout/sealed.ts, internal-task): a slice adds held-out records and changes no public
+  // The sealed-slice contract (runner/heldout/sealed.ts): a slice adds held-out records and changes no public
   // record, and custody builds the held-out world as the public world with its held-out records replaced by the slice's.
   // So the new people become held-out member records, every public record stays as published, and world.json is exactly
   // that merge; slice.json holds the held-out records alone.

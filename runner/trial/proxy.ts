@@ -7,19 +7,19 @@
 // public address ran it on 0.0.0.0). The proxy is the only process that sees a provider key; this module passes
 // the runner's environment through and never reads, prints or writes the key itself.
 //
-// internal-task (the install ladder): the gbrain sidecar's query embeddings go through its own slot (<slot>.gbrain, its own token) under the same trial key;
+// The install ladder: the gbrain sidecar's query embeddings go through its own slot (<slot>.gbrain, its own token) under the same trial key;
 // summarizeUsage keeps /v1/embeddings lines out of the harness figures (requests, tokens, refused, failed) while usd stays
 // the trial's total, and embeddingUsage reports them on their own (gbrain.embedding_usage in the trial record), so
 // reconcile.json's invariant holds: harness requests plus embedding requests equal the meter's.
 //
-// internal-task: each trial slot is bound with its cell's models (the cell model and its utility_models, runner/run.ts cellModels) and
+// Each trial slot is bound with its cell's models (the cell model and its utility_models, runner/run.ts cellModels) and
 // the gbrain slot with its embedding model, so the proxy refuses another model on that slot although another cell of the run put
 // it on the run-wide --allow-models, which stays the outer bound.
 //
-// internal-task: a run of cells with network "internal" binds the proxy on the gateway of the run's internal docker network
+// A run of cells with network "internal" binds the proxy on the gateway of the run's internal docker network
 // instead of the bridge gateway; containers still reach it as host.docker.internal, which the runner maps to that gateway.
 //
-// internal-task: a run with an ablation cell starts the proxy with --ablation-log <run dir>/ablation.ndjson (outside every agent
+// A run with an ablation cell starts the proxy with --ablation-log <run dir>/ablation.ndjson (outside every agent
 // mount), and each trial slot of such a cell is bound with its map, map sha256 and layers. summarizeAblation reads the
 // trial key's receipts into TrialRecord.ablation.
 
@@ -42,17 +42,17 @@ export interface RunProxyOptions {
   maxOutputTokens?: number | null;
   /** Bind the docker bridge gateway so containers reach it through host.docker.internal; otherwise the loopback. */
   reachableFromContainers: boolean;
-  /** internal-task: with reachableFromContainers, bind this gateway (the run's internal network) instead of the bridge gateway. */
+  /** With reachableFromContainers, bind this gateway (the run's internal network) instead of the bridge gateway. */
   gatewayAddress?: string;
   /** Environment for the proxy process. Defaults to this process's environment, which is where the provider keys live. */
   env?: Record<string, string | undefined>;
   /** Close a lease left open in the ledger by an earlier run id (the proxy's --new-run). */
   newRun?: boolean;
-  /** internal-task capture mode: forward to these fake upstreams (the proxy's --upstream) and give the proxy dummy provider keys
+  /** Capture mode: forward to these fake upstreams (the proxy's --upstream) and give the proxy dummy provider keys
    *  instead of `env`'s, keeping only PATH and HOME from it (runner/trial/capture.ts). */
   capture?: CaptureConfig;
   startTimeoutMs?: number;
-  /** internal-task: start the proxy with --ablation-log <runDir>/ablation.ndjson so trial slots can be bound with a layer map. */
+  /** Start the proxy with --ablation-log <runDir>/ablation.ndjson so trial slots can be bound with a layer map. */
   ablationLog?: boolean;
 }
 
@@ -95,7 +95,7 @@ export class RunProxy {
     readonly ablationLog: string | null = null,
   ) {}
 
-  /** internal-task: the ablation log's size when each key was last bound, so a key's receipts are this attempt's only. */
+  /** The ablation log's size when each key was last bound, so a key's receipts are this attempt's only. */
   private readonly ablationFrom = new Map<string, number>();
 
   static async start(opts: RunProxyOptions): Promise<RunProxy> {
@@ -132,7 +132,7 @@ export class RunProxy {
 
   /** The base URL a client gets: <origin>/<slot>/<provider>; the client appends its usual path. forContainer picks the
    *  host.docker.internal route (the default when the proxy binds the bridge gateway); a sidecar is always a container, a
-   *  process-mode harness never is (internal-task) and gets the bind address, which this host owns. */
+   *  process-mode harness never is and gets the bind address, which this host owns. */
   baseUrlFor(slot: string, provider: string, forContainer: boolean = this.reachableFromContainers): string {
     if (forContainer && !this.reachableFromContainers) throw new RunnerError('HE-PROXY-003', `the metering proxy listens on the loopback only; a container cannot reach it for slot ${slot}`);
     const host = forContainer ? CONTAINER_HOST : this.host;
@@ -149,7 +149,7 @@ export class RunProxy {
   }
 
   /** Charge the slot to `key`; with `token`, the proxy forwards only requests that present it; with `models` (provider:model
-   *  ids, internal-task), only requests for those models, inside the run-wide --allow-models; with `ablation` (internal-task), the proxy
+   *  ids), only requests for those models, inside the run-wide --allow-models; with `ablation`, the proxy
    *  checks the map's sha256 (a mismatch fails the bind) and cuts the layers out of the slot's requests. */
   bind(slot: string, key: string, token?: string, models?: string[], ablation?: AblationSpec) {
     if (ablation && this.ablationLog) this.ablationFrom.set(key, existsSync(this.ablationLog) ? statSync(this.ablationLog).size : 0);
@@ -158,7 +158,7 @@ export class RunProxy {
   unbind(slot: string) { return this.control('/__proxy/unbind', { slot }); }
   finalize(key: string, timeoutMs = 30_000): Promise<Meter> { return this.control('/__proxy/finalize', { key, timeout_ms: timeoutMs }) as Promise<Meter>; }
 
-  /** internal-task: every layer-filter receipt the proxy wrote for a key since its last bind, in order. Only the log from that
+  /** Every layer-filter receipt the proxy wrote for a key since its last bind, in order. Only the log from that
    *  bind's offset is read, and a last line still being written (no newline yet) is left out. */
   ablationLines(key: string): AblationReceipt[] {
     if (!this.ablationLog || !existsSync(this.ablationLog)) return [];
@@ -189,11 +189,11 @@ export class RunProxy {
 /** A refusal the ledger issued because the lease or the program cap would be crossed (not an unpriced model or a bad route). */
 export const isCapRefusal = (l: UsageLine) => l.outcome === 'refused' && /over its \$[0-9.]+ (budget|cap)|left of the \$[0-9.]+ program cap/.test(l.reason ?? '');
 
-/** A usage line of the sidecar's query embeddings (internal-task). */
+/** A usage line of the sidecar's query embeddings. */
 export const isEmbeddingLine = (l: UsageLine) => l.route === '/v1/embeddings';
 
 export function summarizeUsage(key: string, meter: Meter, lines: UsageLine[]): { usage: TrialUsage; cap_stop: boolean } {
-  // internal-task: the harness figures leave the embedding lines out; usd stays the meter's total for the key.
+  // The harness figures leave the embedding lines out; usd stays the meter's total for the key.
   const harness = lines.filter((l) => !isEmbeddingLine(l));
   const forwarded = harness.filter((l) => l.outcome === 'forwarded');
   const embeddingCharged = lines.filter((l) => isEmbeddingLine(l) && (l.outcome === 'forwarded' || l.outcome === 'failed')).length;
@@ -214,7 +214,7 @@ export function summarizeUsage(key: string, meter: Meter, lines: UsageLine[]): {
   return { usage, cap_stop: lines.some(isCapRefusal) };
 }
 
-/** internal-task: TrialRecord.ablation from a trial's receipts. A trial is unstable when a span id removed in one agent request is removed
+/** TrialRecord.ablation from a trial's receipts. A trial is unstable when a span id removed in one agent request is removed
  *  again in the next with another sha256 from a block (unit) with the same sha256. */
 export function summarizeAblation(spec: AblationSpec, wire: Wire, lines: AblationReceipt[]): TrialAblation {
   const agent = lines.filter((l) => l.kind === 'agent-turn');
@@ -239,7 +239,7 @@ export function summarizeAblation(spec: AblationSpec, wire: Wire, lines: Ablatio
   };
 }
 
-/** internal-task: the sidecar's /v1/embeddings lines for the trial key, on their own. */
+/** The sidecar's /v1/embeddings lines for the trial key, on their own. */
 export function embeddingUsage(model: string, lines: UsageLine[]): TrialEmbeddingUsage {
   const mine = lines.filter(isEmbeddingLine);
   const forwarded = mine.filter((l) => l.outcome === 'forwarded');

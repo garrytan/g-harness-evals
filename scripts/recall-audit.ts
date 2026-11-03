@@ -1,4 +1,4 @@
-// A re-reading of gbrain-memory-2026-10 (internal-task): did gbrain give the harness back the fact the task needed, when the brain
+// A re-reading of gbrain-memory-2026-10: did gbrain give the harness back the fact the task needed, when the brain
 // held it and the requester's grant could read it?
 //
 //   bun scripts/recall-audit.ts [--results docs/benchmarks/2026-10-26-gbrain-memory/results] [--out <dir>]

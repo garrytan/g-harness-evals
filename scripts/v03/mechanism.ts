@@ -1,4 +1,4 @@
-// C4's mechanism count for v0.3 tasks (internal-task), keyless: for each cell and each task whose task.toml carries a
+// C4's mechanism count for v0.3 tasks, keyless: for each cell and each task whose task.toml carries a
 // [mechanism] table, how often a gbrain read in the consumer turn (the task's last turn) returned the fact the live
 // ingestion wrote from the needed turn's post, and, for corrections, returned it ahead of the superseded post.
 // scripts/memory-fix-mechanism.ts (gbrain-memory-fix-2026-10b's two hard-coded tasks) is unchanged.

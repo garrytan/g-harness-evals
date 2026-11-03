@@ -3,10 +3,10 @@
 // with the task service switched to `serve` by an override file the runner writes; prepare.sh and capture.sh
 // are invoked the way harnesses/run-trial.sh invokes them). Nothing here is exercised by the keyless tests.
 //
-// internal-task: every docker call is an asynchronous subprocess, so a slow container start or stop in one trial never blocks
+// Every docker call is an asynchronous subprocess, so a slow container start or stop in one trial never blocks
 // the event loop that serves the other trials' worlds; a gbrain-docs trial mounts its install bundle view read-only.
 //
-// internal-task: a cell with network "internal" runs on one docker network per run, created with --internal (no route off the
+// A cell with network "internal" runs on one docker network per run, created with --internal (no route off the
 // machine, no DNS) and with inter-container traffic off, so the harness and the gbrain sidecar reach the host's servers on
 // the network's gateway and nothing else, not even each other. host.docker.internal maps to that gateway, so adapters keep
 // the URLs they have; the metering proxy and the world bind the gateway (never 0.0.0.0). A compose stack is not moved
@@ -40,18 +40,18 @@ export interface DockerHarnessOptions {
   dirs: TrialDirs;
   /** The serve environment table (docs/adapters.md), container paths already substituted. */
   env: Record<string, string>;
-  /** internal-task: the run's internal network; unset, the default bridge with host.docker.internal at host-gateway. */
+  /** The run's internal network; unset, the default bridge with host.docker.internal at host-gateway. */
   network?: InternalNetwork;
   repoRoot?: string;
-  /** internal-task: extra read-only bind mounts, host path to container path (the install bundle view at /he-gbrain-install). */
+  /** Extra read-only bind mounts, host path to container path (the install bundle view at /he-gbrain-install). */
   readOnlyMounts?: Record<string, string>;
-  /** internal-task capture mode: the container's DNS server (docker run --dns). The compose topology ignores it. */
+  /** Capture mode: the container's DNS server (docker run --dns). The compose topology ignores it. */
   dns?: string;
 }
 
 const uidGid = () => `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`;
 
-/** internal-task: the run's internal network and the gateway address the host owns on it. */
+/** The run's internal network and the gateway address the host owns on it. */
 export interface InternalNetwork { name: string; gateway: string }
 
 export const internalNetworkName = (runId: string) => `he-net-${runId.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;

@@ -1,5 +1,5 @@
 /**
- * The sealed output guard (internal-task phase 3, docs/sealed-custody.md, "What may print"). Crew threads can read each other's
+ * The sealed output guard (docs/sealed-custody.md, "What may print"). Crew threads can read each other's
  * transcripts, so whatever a custody command prints is as good as published. Under a sealed root a command installs this
  * guard first: every line it writes still goes, whole, to a log file under the raw results or the sealed root, but the
  * terminal only gets lines that match the command's allowlist (counts, digests, run and cell ids), with every task id

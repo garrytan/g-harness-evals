@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Settles the two coders' codes into layer maps (internal-task).
+// Settles the two coders' codes into layer maps.
 //
 //   bun scripts/ablation/settle.ts [--missing <file>]
 //

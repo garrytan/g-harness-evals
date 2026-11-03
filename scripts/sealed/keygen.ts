@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * The custody identity's keygen and escrow (internal-task phase 3, docs/sealed-custody.md). No person handles the key.
+ * The custody identity's keygen and escrow (docs/sealed-custody.md). No person handles the key.
  *
  *   bun scripts/sealed/keygen.ts [--identity <path>] [--escrow <path>] [--repo <checkout, default .>]
  *   bun scripts/sealed/keygen.ts --check-escrow [--identity <path>] [--custody <clone>] [--repo .] [--remote origin]
@@ -8,7 +8,7 @@
  *   bun scripts/sealed/keygen.ts --restore      [--identity <path>] [--custody <clone>] [--repo .] [--remote origin]
  *
  * Generation (no mode flag) makes an age X25519 identity in-process with the pinned age-encryption package and creates the
- * identity file at --identity (default <private drive>/custody/identity.age-key)
+ * identity file at --identity (default: HE_CUSTODY_IDENTITY, else custody_identity in config/local-paths.json)
  * exclusively and atomically: parent directory 0700, file 0600 where the filesystem honours modes, refused when the file
  * already exists. With --escrow it also creates the escrow file the same way: the identity file's text encrypted with age's
  * scrypt passphrase mode, under a passphrase derived in-process as HMAC-SHA256 of the UBICLOUD_API_KEY value with the label
@@ -38,10 +38,10 @@ import { generateX25519Identity, identityToRecipient } from 'age-encryption';
 import { RunnerError } from '../../runner/errors.ts';
 import { sha256 } from '../../runner/heldout/sealed.ts';
 import { checkPrivate, compareAndPush, CUSTODY_REPO, custodyClone, ESCROW_FILE, syncCustody } from './custody.ts';
-import { createExclusive, custodyIdentity, decryptEscrow, DEFAULT_IDENTITY_PATH, encryptEscrow, ESCROW_ENV, identityFileText, identityFromText } from './identity.ts';
+import { createExclusive, custodyIdentity, decryptEscrow, encryptEscrow, ESCROW_ENV, identityFileText, identityFromText, identityPath as resolveIdentityPath } from './identity.ts';
 
 export async function keygen(o: { identityPath?: string; escrowPath?: string; repo?: string; env?: Record<string, string | undefined>; now?: () => string; scryptLogN?: number }): Promise<{ recipient: string; fingerprint: string }> {
-  const identityPath = resolve(o.identityPath ?? DEFAULT_IDENTITY_PATH);
+  const identityPath = resolve(resolveIdentityPath(o.identityPath));
   const escrowPath = o.escrowPath ? resolve(o.escrowPath) : undefined;
   const repo = resolve(o.repo ?? '.');
   const env = o.env ?? process.env;
@@ -79,7 +79,7 @@ function escrowContext(o: EscrowOptions) {
   const remote = o.remote ?? 'origin';
   const clone = custodyClone({ dir: o.custody, repo, remote });
   const commit = syncCustody(clone, remote);
-  return { repo, recipient, remote, clone, commit, identityPath: resolve(o.identityPath ?? DEFAULT_IDENTITY_PATH), escrowPath: join(clone, ESCROW_FILE), env: o.env ?? process.env };
+  return { repo, recipient, remote, clone, commit, identityPath: resolve(resolveIdentityPath(o.identityPath)), escrowPath: join(clone, ESCROW_FILE), env: o.env ?? process.env };
 }
 
 /** keygen.ts --check-escrow: the drive copy and the escrow on the custody ref both derive sealed/recipient.txt. */

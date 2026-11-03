@@ -1,5 +1,5 @@
 /**
- * Sealed custody (internal-task phase 3, docs/sealed-custody.md): the pieces the custodian's scripts (scripts/sealed/) and the
+ * Sealed custody (docs/sealed-custody.md): the pieces the custodian's scripts (scripts/sealed/) and the
  * runner share.
  *
  * - A bundle is a reproducible tar (regular files only, sorted, mtime 0, owner 0, mode 0644) of a held-out task tree
@@ -24,7 +24,7 @@
  * - readJsonLines and readJsonFile parse a results file with an error that names the file, the line and the parser's
  *   error class only (HE-RUN-007): a parser's message quotes the bad input, which in raw sealed results is sealed content.
  *
- * - internal-task: a repo set (tasks/repo/<set>/, runner and scripts/seal-heldout.ts SetKind) has no world: its bundle holds the
+ * - Repo sets: a repo set (tasks/repo/<set>/, runner and scripts/seal-heldout.ts SetKind) has no world: its bundle holds the
  *   task tree at tasks/repo/<set>/heldout/, the opaque salt, an optional generator/ directory and the extras, and no world
  *   slice or corpus pages. Its root has no world/, its receipt says kind "repo" and records the world and corpus digests as
  *   null, and verifySealedRoot checks the tree, the generator and the extras only.
@@ -47,7 +47,7 @@ export const opaqueId = (salt: string, task: string): string => `T-${sha256(`${s
 
 // ---- tar -----------------------------------------------------------------------------------------------------------
 
-/** exec: the file carries an executable bit (internal-task: a repo task's verify.sh, solve.sh and build scripts); packed as mode
+/** exec: the file carries an executable bit (for example a repo task's verify.sh, solve.sh and build scripts); packed as mode
  *  0755, else 0644. */
 export interface TarEntry { path: string; data: Uint8Array; exec?: boolean }
 
@@ -200,7 +200,7 @@ export const WORLD_META = ['world_id', 'today', 'time_zone', 'source'] as const;
 type Meta = (typeof WORLD_META)[number];
 type Row = { id: string; split: string };
 /**
- * A sealed set's world slice, in world.json format (internal-task writes v0.3's held-out world that way, and gbrain/Dockerfile
+ * A sealed set's world slice, in world.json format (v0.3's held-out world is written that way, and gbrain/Dockerfile
  * builds every brain from a world.json through build-brain.ts and gbrain import). The held-out records of each collection
  * (split "heldout") are the slice. The file may be a whole world.json: its other records and its world_id, today,
  * time_zone and source must then be exactly the public world's, and they are not taken from it. A file holding only
@@ -274,7 +274,7 @@ export interface OpeningReceipt {
   public_ref: string;
   public_commit: string;
   public_manifest_sha256: string;
-  /** "repo" for a repo set; absent for a multiuser set (every receipt written before internal-task). */
+  /** "repo" for a repo set; absent for a multiuser set (every receipt written before repo sets existed). */
   kind?: 'repo';
   bundle_sha256: string;
   tree_sha256: string;
@@ -397,7 +397,7 @@ export function receiptProblems(receipt: OpeningReceipt, want: { run_id: string;
  *  that can be shorter than the generic string thresholds, so the redactor and the export leak scan add them at three. */
 /** A quoted source literal with its common escapes decoded (a backslash before a line break, \\, \", \', \n, \r, \t,
  *  \a, \b, \f, \v, octal \N to \NNN, \xHH, \uHHHH, \u{H...}, \UHHHHHHHH), so a generator value written with escapes is sealed text in the
- *  form a program prints it (internal-task). Other escapes stay as written. Nothing is executed. */
+ *  form a program prints it. Other escapes stay as written. Nothing is executed. */
 export function decodeEscapes(s: string): string {
   const cp = (n: number) => (n <= 0x10ffff ? String.fromCodePoint(n) : null);
   return s.replace(/\\(?:(\r?\n)|([0-7]{1,3})|x([0-9a-fA-F]{2})|u\{([0-9a-fA-F]{1,6})\}|u([0-9a-fA-F]{4})|U([0-9a-fA-F]{8})|([\\"'nrtabfv]))/g, (m, nl, o, x, ub, u, U, c) => {

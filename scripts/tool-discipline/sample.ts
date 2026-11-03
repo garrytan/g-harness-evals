@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// internal-task tool discipline, step 4: draw the hand-check sample and write a blind labels template.
+// Tool discipline, step 4: draw the hand-check sample and write a blind labels template.
 //
 //   bun scripts/tool-discipline/sample.ts --rows <rows.ndjson> --labels <labels.ndjson> --trials <trials.ndjson> --out <dir>
 //     [--random 50] [--seed 18]                          -> <dir>/sample.jsonl (the key), <dir>/labels-template.jsonl (blind)

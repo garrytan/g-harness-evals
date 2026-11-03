@@ -99,7 +99,7 @@ export interface TrialEvidence {
 
 export interface PredicateResult {
   id: string;
-  /** internal-task (v0.2 task slice) addition: 'secondary' is a predicate listed in predicates.secondary of task.toml; it is
+  /** v0.2 task slice addition: 'secondary' is a predicate listed in predicates.secondary of task.toml; it is
    *  evaluated and recorded but never decides the grade (docs/tasks.md). */
   kind: 'required' | 'forbidden_effect' | 'secondary';
   passed: boolean;
@@ -169,7 +169,7 @@ export interface TrialUsage {
   input_tokens: number;
   output_tokens: number;
   cached_tokens: number;
-  /** internal-task addition: the cache-write tokens Anthropic reported (cache_creation_input_tokens) on the forwarded harness lines.
+  /** Prompt archaeology addition: the cache-write tokens Anthropic reported (cache_creation_input_tokens) on the forwarded harness lines.
    *  Present only when a usage line carried the field; OpenAI reports cache reads only. */
   cache_write_tokens?: number;
   unpriced: number;
@@ -179,38 +179,38 @@ export interface TrialUsage {
 
 /** gbrain arm lane D addition: a cell's gbrain configuration (docs/gbrain-arm.md). Present on a cell, the runner
  *  starts a gbrain sidecar per trial and the harness registers a second MCP server named gbrain through the
- *  world's /gbrain tap. surface is the gbrain tool surface the sidecar serves. internal-task (the install ladder) makes the
+ *  world's /gbrain tap. surface is the gbrain tool surface the sidecar serves. The install ladder makes the
  *  fields orthogonal rungs: surface, install and embeddings, each defaulting to the gbrain arm's value, so the arm's
  *  cells ({surface: "starter"}) keep their meaning and a rung is a readable combination (docs/gbrain-arm.md, "The install
  *  ladder"). Defaults are resolved in the manifest and the trial record, never by mutating the cell. */
 export interface GbrainCellConfig {
-  /** internal-task: "starter" (33 tools, the arm's surface) or "verbs" (gbrain's seven memory verbs; the page search is recall). */
+  /** "starter" (33 tools, the arm's surface) or "verbs" (gbrain's seven memory verbs; the page search is recall). */
   surface: 'starter' | 'verbs';
-  /** internal-task addition: "mcp" (default): the MCP registration only, as the arm does. "gbrain-docs": gbrain's own documented
+  /** Install ladder addition: "mcp" (default): the MCP registration only, as the arm does. "gbrain-docs": gbrain's own documented
    *  install for the harness at the pinned commit (the install bundle the image carries, gbrain/pin.json "install") is
    *  applied inside the harness container by the adapter before the first turn; the preamble is untouched.
-   *  "gbrain-installer" (internal-task, gbrain#7489): what `gbrain setup <harness> --instructions-only` at the pinned commit writes into
+   *  "gbrain-installer" (gbrain#7489): what `gbrain setup <harness> --instructions-only` at the pinned commit writes into
    *  the harness's own instruction file (OpenClaw /workspace/AGENTS.md, Hermes $HERMES_HOME/SOUL.md, Claude Code $CLAUDE_CONFIG_DIR/CLAUDE.md,
    *  Codex $CODEX_HOME/AGENTS.md) with its per-turn hook, applied the same way; a
    *  gbrain commit without that setup target fails preflight (HE-GBRAIN-006). */
   install?: 'mcp' | 'gbrain-docs' | 'gbrain-installer';
-  /** internal-task addition: "off" (default): the keyword brain, no model call. A model name: the sidecar serves the brain built
+  /** Install ladder addition: "off" (default): the keyword brain, no model call. A model name: the sidecar serves the brain built
    *  with that embedding model and embeds each query through the metering proxy (OPENAI_BASE_URL), metered per trial. */
   embeddings?: 'off' | 'openai:text-embedding-3-small';
-  /** internal-task (company brain) addition: the prebuilt brain the sidecar serves. Absent or "bot-visible" is the gbrain arm's
+  /** Company brain addition: the prebuilt brain the sidecar serves. Absent or "bot-visible" is the gbrain arm's
    *  brain; "company" holds every record of the split behind per-member source grants (docs/gbrain-arm.md, "Company brain"). */
   brain?: 'bot-visible' | 'company' | 'member';
-  /** internal-task addition: "live" makes the world write every message of the scenario (an actor's turn, the bot's reply, every
+  /** Member brain addition: "live" makes the world write every message of the scenario (an actor's turn, the bot's reply, every
    *  post or DM the bot makes) into the brain as a remember fact with provenance, in the source of the conversation it was
    *  posted in (a DM with the bot into private-<member>), under that source's ingest token, before the next turn starts;
    *  member brain only. Absent or "off": the brain holds what it was built with. */
   ingest?: 'off' | 'live';
-  /** internal-task addition: "member" makes the world's tap present the requesting member's gbrain token (public-only before
+  /** Company brain addition: "member" makes the world's tap present the requesting member's gbrain token (public-only before
    *  the first turn) instead of the trial's one unscoped token; company brain only. Absent: every call carries the
-   *  unscoped token and the brain answers as the bot. internal-task addition (gbrain#7481): "sources" keeps the unscoped token
+   *  unscoped token and the brain answers as the bot. Install ladder addition (gbrain#7481): "sources" keeps the unscoped token
    *  and makes the tap add source_ids to every search and query (and recall and list_pages, gbrain#8074), the sources the requesting member may read (the public
-   *  source before the first turn), so one bot token narrows per request; company brain only. internal-task addition (internal-task,
-   *  gbrain#8074): "member-sources" does both, the requesting member's token (granted server-side with gbrain auth rescope at
+   *  source before the first turn), so one bot token narrows per request; company brain only. Member-sources addition
+   *  (gbrain#8074): "member-sources" does both, the requesting member's token (granted server-side with gbrain auth rescope at
    *  image build) and that member's source_ids on every narrowed call; company brain only. */
   scope?: 'member' | 'sources' | 'member-sources';
   /** internal-task addition (the access-rules rerun, gbrain#8134): "rules" serves the member brain built with gbrain's folder rules (one
@@ -220,7 +220,7 @@ export interface GbrainCellConfig {
   access?: 'rules';
 }
 
-/** internal-task: the install bundle view a gbrain-docs or gbrain-installer trial mounted into the harness, as the runner verified it
+/** The install bundle view a gbrain-docs or gbrain-installer trial mounted into the harness, as the runner verified it
  *  before the harness started. */
 export interface TrialGbrainInstall {
   harness: string;
@@ -276,7 +276,7 @@ export function installerNotApplied(bundle: TrialGbrainInstall | undefined): str
   return null;
 }
 
-/** internal-task: the sidecar's embedding calls for one trial, from the proxy's /v1/embeddings usage lines for the trial key. */
+/** The sidecar's embedding calls for one trial, from the proxy's /v1/embeddings usage lines for the trial key. */
 export interface TrialEmbeddingUsage {
   model: string;
   requests: number;
@@ -289,10 +289,10 @@ export interface TrialEmbeddingUsage {
 
 /** gbrain arm lane D addition: what the runner records about a trial's sidecar in trials.jsonl. */
 export interface TrialGbrain {
-  /** internal-task: the resolved surface. */
+  /** The resolved surface. */
   surface: 'starter' | 'verbs';
   image: string;
-  /** internal-task additions, absent in records written before it: the resolved install and embeddings of the cell; the install
+  /** Install ladder additions, absent in records written before them: the resolved install and embeddings of the cell; the install
    *  bundle view when one was applied; the sidecar's metered embedding calls when embeddings were on; and the semantic
    *  check: a trial with embeddings on that searched the brain must show a forwarded embedding line and no degraded stamp
    *  (HE-GBRAIN-005, recorded as infra_error with this field saying why). */
@@ -301,13 +301,13 @@ export interface TrialGbrain {
   install_bundle?: TrialGbrainInstall;
   embedding_usage?: TrialEmbeddingUsage;
   semantic_check?: { search_calls: number; embedding_requests: number; degraded_calls: number; ok: boolean; reason?: string };
-  /** internal-task additions, absent in records written before it: the brain and scope the sidecar ran with and the docker
+  /** Company brain additions, absent in records written before them: the brain and scope the sidecar ran with and the docker
    *  image id behind the tag, so a record names the exact brain it was served from. */
   brain?: 'bot-visible' | 'company' | 'member';
   scope?: 'none' | 'member' | 'sources' | 'member-sources';
-  /** internal-task: present when the sidecar served the access-ruled member brain. */
+  /** Present when the sidecar served the access-ruled member brain. */
   access?: 'rules';
-  /** internal-task: whether the world ingested the scenario's messages into the brain, and how many it wrote (gbrain.ingest events): ok
+  /** Whether the world ingested the scenario's messages into the brain, and how many it wrote (gbrain.ingest events): ok
    *  (a committed fact), skipped (a conversation the brain has no source or token for; not a fault) and failed. */
   ingest?: 'off' | 'live';
   ingested?: { ok: number; skipped: number; failed: number };
@@ -315,11 +315,11 @@ export interface TrialGbrain {
   /** Milliseconds from docker run to a healthy sidecar with a token on disk. */
   sidecar_ready_ms: number;
   /** via "gbrain" events in the trial's log: tools/list and initialize, tools/call, and how many fell inside a turn window.
-   *  internal-task: degraded counts search, query and recall replies gbrain stamped search_degraded or facts_degraded. */
+   *  Degraded counts search, query and recall replies gbrain stamped search_degraded or facts_degraded. */
   events: { total: number; discovery: number; calls: number; in_turn_calls: number; writes: number; degraded?: number };
 }
 
-/** internal-task (Lane B bridge, docs/gstack-laneb.md) addition: what a Lane B trial adds to its record. The Harbor trial and
+/** Lane B bridge addition (docs/gstack-laneb.md): what a Lane B trial adds to its record. The Harbor trial and
  *  the Lane B proxy session it ran under, the verifier's reward, Harbor's exception class and the agent's error class (never
  *  a message), the body-load probe (cmd_expanded: the first forwarded request carried an expanded slash command; the
  *  first request's prompt-token bound), and Lane B's own meter for the session beside ours (usage), with the difference. */
@@ -343,14 +343,14 @@ export interface TrialLaneB {
   arm_deviation?: { date: string; pinned_tar_sha256: string; tar_sha256: string; tar_gz_sha256: string; reason: string };
 }
 
-/** internal-task (prompt archaeology) addition: what the metering proxy's layer filter did on a trial of a cell that carries
+/** Prompt archaeology addition: what the metering proxy's layer filter did on a trial of a cell that carries
  *  ablation, from the trial's lines of the run's ablation.ndjson (copied to <trial dir>/ablation.ndjson). agent_requests
  *  counts receipts in an agent-turn family; matched_requests those on which every expected span was removed unchanged.
  *  did_not_take counts agent requests where the map expects a layer and nothing of it matched; partial those where
  *  some but not all expected spans matched, or a removed span's text or length differs from the map. unknown_families
  *  counts requests in no family of the map (passed through untouched). housekeeping_requests, present when nonzero, counts
- *  requests to one of the cell's declared utility_models (passed through untouched, in none of the counts above; internal-task,
- *  2026-11-01: harness housekeeping, shipped default). unstable_filter: a removed span changed between
+ *  requests to one of the cell's declared utility_models (passed through untouched, in none of the counts above; the
+ *  2026-11-01 ruling: harness housekeeping, shipped default). unstable_filter: a removed span changed between
  *  consecutive agent requests while the block it was cut from did not. invalid_reason is set when the trial has no
  *  receipts or no agent request. */
 export interface TrialAblation {
@@ -397,8 +397,8 @@ export interface TrialRecord {
   error?: string;
   /** gbrain arm lane D addition: set on a trial of a cell that carries gbrain. */
   gbrain?: TrialGbrain;
-  /** internal-task addition: set on a trial run through the Lane B bridge. */
+  /** Lane B bridge addition: set on a trial run through the Lane B bridge. */
   laneb?: TrialLaneB;
-  /** internal-task addition: set on a trial of a cell that carries ablation. */
+  /** Prompt archaeology addition: set on a trial of a cell that carries ablation. */
   ablation?: TrialAblation;
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-// A keyless fake Anthropic messages endpoint for the internal-task preflight
-// (scripts/gsta-135/preflight.sh) and the internal-task anatomy captures. It records
+// A keyless fake Anthropic messages endpoint for the skill-use panel preflight
+// (scripts/gsta-135/preflight.sh) and the anatomy captures. It records
 // every request to an ndjson file and answers one short assistant turn,
 // streamed or not, the way tests/adapter-install.test.ts's fakeAnthropic does.
 // The preflight binds it to the docker bridge gateway address only (the
@@ -40,7 +40,7 @@
 //                                           "input"), whether or not the request
 //                                           offers the tool: a phantom or
 //                                           malformed call, to record what the
-//                                           harness answers (internal-task). Never
+//                                           harness answers. Never
 //                                           marked missing.
 //   {"status": 529, "error_type": "overloaded_error", "message": "...", "headers": {"retry-after": "1"}}
 //                                           that HTTP status with an Anthropic

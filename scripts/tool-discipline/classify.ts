@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
-// internal-task tool discipline, step 2: label each normalized call row, then summarize per trial.
+// Tool discipline, step 2: label each normalized call row, then summarize per trial.
 //
 //   bun scripts/tool-discipline/classify.ts --rows <rows.ndjson> --out <dir>    -> <dir>/labels.ndjson, <dir>/trials.ndjson
 //
 // A label is true, false or "unknown" (the evidence that decides it was clipped away or never recorded). Several kinds can
-// apply to one row. The kinds (docs: the internal-task plan, approved 2026-10-31):
+// apply to one row. The kinds (docs: the tool-discipline plan, approved 2026-10-31):
 //   phantom_tool      the harness answered that the called tool does not exist ("Tool skills_read not found", "unknown
 //                     tool", or Hermes's "Tool '<name>' does not exist", which it sends with no error flag). World event logs cannot show it: a call to a tool the harness does not offer never reaches the
 //                     world or gbrain, so events rows are always false.

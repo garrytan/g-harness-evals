@@ -4,22 +4,22 @@
 // with that token, and the harness gets the tap's URL and the world bot token. Everything docker-specific for
 // the sidecar lives here, like runner/trial/docker.ts for the harness.
 //
-// internal-task (company brain): the sidecar may serve the company brain (HE_GBRAIN_BRAIN=company) and, under member scope
+// Company brain: the sidecar may serve the company brain (HE_GBRAIN_BRAIN=company) and, under member scope
 // (HE_GBRAIN_SCOPE=member), writes the brain's tokens.json beside the token; the runner reads it for the world's tap
 // and checks it covers every actor of the task (HE-GBRAIN-004). The record also keeps the docker image id.
 //
-// internal-task (gbrain#7481, scope "sources"): under HE_GBRAIN_SCOPE=sources the entrypoint copies the company brain's manifest.json
+// Scope "sources" (gbrain#7481): under HE_GBRAIN_SCOPE=sources the entrypoint copies the company brain's manifest.json
 // (no tokens; its grants map each member to the source ids that member may read) beside the token; the runner hands the
 // grants to the world's tap, which adds source_ids to every search, query, recall and list_pages under the trial's one unscoped token
 // (world/services/gbrain-tap.ts), and checks the grants cover every actor of the task (HE-GBRAIN-004).
 //
-// internal-task (the install ladder): the sidecar takes the surface (HE_GBRAIN_SURFACE) and, for an embedded brain, the model
+// The install ladder: the sidecar takes the surface (HE_GBRAIN_SURFACE) and, for an embedded brain, the model
 // (HE_GBRAIN_EMBEDDINGS) and the metering proxy's slot URL as OPENAI_BASE_URL with the host-gateway route, so its query
 // embeddings are metered under the trial key; no key is passed. The docker calls are asynchronous subprocesses so one
 // trial's slow container start cannot stall another trial's world under run --parallel. exportInstallView exports and
 // verifies one view of the image's install bundle (HE-GBRAIN-006).
 //
-// internal-task: on a cell with network "internal" the sidecar joins the run's internal network (runner/trial/docker.ts) instead
+// On a cell with network "internal" the sidecar joins the run's internal network (runner/trial/docker.ts) instead
 // of a network of its own, with host.docker.internal mapped to that network's gateway for the proxy route. An internal
 // network publishes no ports, so the world reaches the sidecar at its address on that network, which the host owns a route
 // to; inter-container traffic is off there, so the harness cannot reach the sidecar directly any more than before.
@@ -62,14 +62,14 @@ export interface GbrainSidecarOptions {
   /** <trial dir>/gbrain: the token, the sidecar's logs; excluded from committed results. */
   outDir: string;
   image?: string;
-  /** internal-task: the brain to serve and whether tokens.json is wanted; defaults bot-visible and none. */
+  /** The brain to serve and whether tokens.json is wanted; defaults bot-visible and none. */
   brain?: NonNullable<GbrainCellConfig['brain']>;
   scope?: 'none' | 'member' | 'sources' | 'member-sources';
-  /** internal-task: live ingestion (member brain only): the entrypoint copies ingest-tokens.json beside the token. */
+  /** Live ingestion (member brain only): the entrypoint copies ingest-tokens.json beside the token. */
   ingest?: 'off' | 'live';
-  /** internal-task: "rules" serves the access-ruled member brain (member brain, member scope only); default none. */
+  /** "rules" serves the access-ruled member brain (member brain, member scope only); default none. */
   access?: 'none' | 'rules';
-  /** internal-task: the surface (default starter) and the embedding model (default off); an embedded brain needs openaiBaseUrl, the
+  /** The surface (default starter) and the embedding model (default off); an embedded brain needs openaiBaseUrl, the
    *  metering proxy's slot URL as the container reaches it (a route, never a key), and proxyToken, the random per-trial token
    *  the proxy requires on that slot (2026-10-28; the entrypoint hands it to gbrain as its OpenAI credential, which the proxy
    *  strips before it injects the real key). */
@@ -77,7 +77,7 @@ export interface GbrainSidecarOptions {
   embeddings?: NonNullable<GbrainCellConfig['embeddings']>;
   openaiBaseUrl?: string;
   proxyToken?: string;
-  /** internal-task: the run's internal network; unset, a bridge network of the sidecar's own with its port published on the loopback. */
+  /** The run's internal network; unset, a bridge network of the sidecar's own with its port published on the loopback. */
   network?: InternalNetwork;
   readyTimeoutMs?: number;
   log?: (line: string) => void;
@@ -89,21 +89,21 @@ export interface GbrainSidecar {
   token: string;
   tokenPath: string;
   image: string;
-  /** internal-task: sha256 image id behind the tag, from docker image inspect. */
+  /** sha256 image id behind the tag, from docker image inspect. */
   image_id: string;
   brain: NonNullable<GbrainCellConfig['brain']>;
   scope: 'none' | 'member' | 'sources' | 'member-sources';
-  /** internal-task: whether the brain gates reads with folder rules and member-bound tokens. */
+  /** Whether the brain gates reads with folder rules and member-bound tokens. */
   access: 'none' | 'rules';
-  /** internal-task: the surface and embedding model the sidecar was started with. */
+  /** The surface and embedding model the sidecar was started with. */
   surface: GbrainCellConfig['surface'];
   embeddings: NonNullable<GbrainCellConfig['embeddings']>;
-  /** internal-task: under member scope, the company brain's tokens.json as the entrypoint copied it; the file stays under outDir. */
+  /** Under member scope, the company brain's tokens.json as the entrypoint copied it; the file stays under outDir. */
   tokens: CompanyTokens | null;
-  /** internal-task (gbrain#7481): under scope "sources", the company brain's grants from its manifest.json (member -> readable source ids)
+  /** gbrain#7481: under scope "sources", the company brain's grants from its manifest.json (member -> readable source ids)
    *  and the source ids every member of the split may read; the tap adds them as source_ids. No token is involved. */
   grants: { members: Record<string, string[]>; public: string[] } | null;
-  /** internal-task: under live ingestion, the member brain's per-source ingest tokens and the manifest's channel-to-source map, for the
+  /** Under live ingestion, the member brain's per-source ingest tokens and the manifest's channel-to-source map, for the
    *  world's ingestion module. The tokens file stays under outDir. */
   ingest: { tokens: IngestTokens; map: BrainIngest } | null;
   /** Milliseconds from docker run to a healthy /health and a token on disk. */
@@ -125,7 +125,7 @@ export function gbrainImageCommit(image = DEFAULT_GBRAIN_IMAGE, run: (argv: stri
   try { return (JSON.parse(r.stdout) as { gbrain_commit?: string }).gbrain_commit ?? null; } catch { return null; }
 }
 
-/** internal-task phase 3: the world and held-out corpus inputs the image records in /opt/sidecar/image.json (gbrain/Dockerfile:
+/** Sealed custody: the world and held-out corpus inputs the image records in /opt/sidecar/image.json (gbrain/Dockerfile:
  *  world_sha256 of the world.json its brains were built from, heldout_corpus_sha256 of a sealed corpus overlay or null,
  *  and sealed, whether it was built from a sealed root; when image.json has no sealed field, the image's
  *  harness-eval.sealed label decides); when image.json cannot be read, sealed true with null digests if the label says
@@ -182,7 +182,7 @@ export async function waitHealthy(url: string, timeoutMs: number, exited: () => 
   throw new Error(`no healthy /health at ${url} after ${Math.round(timeoutMs / 1000)} s`);
 }
 
-/** internal-task: tokens.json is well formed, for this split, and names a token for every member given (HE-GBRAIN-004). */
+/** tokens.json is well formed, for this split, and names a token for every member given (HE-GBRAIN-004). */
 export function checkCompanyTokens(value: unknown, split: 'dev' | 'heldout', members: string[], path: string): CompanyTokens {
   const t = value as Partial<CompanyTokens> | null;
   const bad = (what: string) => new RunnerError('HE-GBRAIN-004', `${path}: ${what}; fix: rebuild the company or member brain image (gbrain/README.md, "The company brain") so tokens.json carries one granted token per member of the split plus public-only`);
@@ -196,7 +196,7 @@ export function checkCompanyTokens(value: unknown, split: 'dev' | 'heldout', mem
   return t as CompanyTokens;
 }
 
-/** internal-task (gbrain#7481): the company brain's manifest.json carries a grant for every member given, and the grants map to
+/** gbrain#7481: the company brain's manifest.json carries a grant for every member given, and the grants map to
  *  the tap's shape: each member's sources, and the sources every member of the split may read (HE-GBRAIN-004). */
 export function checkCompanyGrants(value: unknown, split: 'dev' | 'heldout', members: string[], path: string): { members: Record<string, string[]>; public: string[] } {
   const m = value as Partial<CompanyBrainManifest> | null;
@@ -215,7 +215,7 @@ export function checkCompanyGrants(value: unknown, split: 'dev' | 'heldout', mem
   return { members: byMember, public: pub };
 }
 
-/** internal-task: ingest-tokens.json is well formed, for this split, and names a token for every source the manifest's channel map and
+/** ingest-tokens.json is well formed, for this split, and names a token for every source the manifest's channel map and
  *  the private-<member> rule can send a message to (HE-GBRAIN-004); the manifest (schema 3) carries that map. */
 export function checkIngestTokens(tokensValue: unknown, manifestValue: unknown, split: 'dev' | 'heldout', members: string[], path: string): { tokens: IngestTokens; map: BrainIngest } {
   const bad = (what: string) => new RunnerError('HE-GBRAIN-004', `${path}: ${what}; fix: rebuild the member brain image (gbrain/README.md, "The member brain") so ingest-tokens.json carries one token per source and manifest.json the channel map`);
@@ -353,7 +353,7 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
   }
 }
 
-/** Preflight: the image exists and a container from it serves /health and lists its tools on the given surface (internal-task: the
+/** Preflight: the image exists and a container from it serves /health and lists its tools on the given surface (the
  *  count is compared with gbrain/pin.json by the caller). Starts and stops one sidecar; with an embedding model, the sidecar
  *  serves the embedded brain and a search goes through it so the caller can look for the embedding usage line. */
 export async function probeGbrainImage(image: string, scratchDir: string, o: { surface?: GbrainCellConfig['surface']; embeddings?: NonNullable<GbrainCellConfig['embeddings']>; openaiBaseUrl?: string; proxyToken?: string; split?: 'dev' | 'heldout'; searchQuery?: string } = {}): Promise<{ ready_ms: number; version: string | null; tools: string[]; image_id: string; search_slugs: string[] | null; search_degraded: string | null }> {
@@ -376,12 +376,12 @@ export async function probeGbrainImage(image: string, scratchDir: string, o: { s
   }
 }
 
-/** internal-task (gbrain#7481) preflight and keyless check for scope "sources": the company brain of a split, served under the one
+/** Preflight and keyless check (gbrain#7481) for scope "sources": the company brain of a split, served under the one
  *  unscoped token, is searched and queried once per member and query with source_ids set to that member's grant exactly as the
  *  tap sets it (scopeRequest), and every returned row's source_id must lie inside the grant; one call per member names a
  *  source outside the grant and must come back permission_denied. Rows are counted so an all-empty check cannot pass vacuously.
- *  internal-task: every SOURCE_SCOPED_TOOLS tool is probed (recall and list_pages too, gbrain#8074; list_pages once per member, it takes no
- *  query), and under scope "member-sources" (internal-task) each member's calls go out under that member's rescoped token from tokens.json,
+ *  Every SOURCE_SCOPED_TOOLS tool is probed (recall and list_pages too, gbrain#8074; list_pages once per member, it takes no
+ *  query), and under scope "member-sources" each member's calls go out under that member's rescoped token from tokens.json,
  *  as the tap sends them, so the two layers are checked together. */
 export const SOURCE_PROBE_QUERIES = ['incident', 'rate', 'door', 'budget', 'meeting', 'contract', 'ticket', 'update'] as const;
 
@@ -397,9 +397,9 @@ export async function probeSourceGrants(image: string, split: 'dev' | 'heldout',
   foreign: Array<{ member: string; source_id: string; rows_from_it: boolean | null }>;
   /** The same query for two members with different grants answered different source sets, so the narrowing is observable. */
   differs: boolean;
-  /** internal-task: rows per SOURCE_SCOPED_TOOLS tool over every member; a tool at 0 was not observed and fails preflight. */
+  /** Rows per SOURCE_SCOPED_TOOLS tool over every member; a tool at 0 was not observed and fails preflight. */
   rows_by_tool: Record<string, number>;
-  /** internal-task, scope "member-sources" only (null otherwise): the same calls under each member's token with no source_ids, so the
+  /** Scope "member-sources" only (null otherwise): the same calls under each member's token with no source_ids, so the
    *  token layer is checked on its own (rows outside the grant land in outside, tool marked "token alone"), and per member one
    *  get_page of a slug from a source outside its grant, which must come back as an error code, never the page (code null), while
  *  the same slug under the unscoped token comes back as the page (unscoped_code null), so the refusal is the member token's; beside
@@ -497,7 +497,7 @@ export async function probeSourceGrants(image: string, split: 'dev' | 'heldout',
   }
 }
 
-/** internal-task: what the access-rules preflight collects from a split's access-ruled member brain, keyless. Token names, rule readers,
+/** What the access-rules preflight collects from a split's access-ruled member brain, keyless. Token names, rule readers,
  *  slugs and source ids only; no secret. */
 export interface AccessRulesEvidence {
   image_id: string;
@@ -517,14 +517,14 @@ export interface AccessRulesEvidence {
   slug_reads: Array<{ grant: string; slug: string; source_id: string; inside: boolean; outcome: 'ok' | 'refused' | 'other'; code: string | null }>;
 }
 
-/** internal-task: the world's side of the check: every page with its source and reader set, every source with its readers, the token members. */
+/** The world's side of the check: every page with its source and reader set, every source with its readers, the token members. */
 export interface AccessRulesExpected {
   pages: Array<{ page_slug: string; source: string; readers: string[] }>;
   sources: Array<{ id: string; readers: string[] }>;
   token_members: string[];
 }
 
-/** internal-task: collect the evidence for one split. The CLI checks run in a second container from the image on its own copy of the
+/** Collect the evidence for one split. The CLI checks run in a second container from the image on its own copy of the
  *  brain (gbrain's PGLite store takes one process at a time, and the serving container holds it); the tap probe goes to the sidecar
  *  under the token world/services/gbrain-tap.ts grantFor picks for each requester, with no source_ids, as the tap sends a call under
  *  scope "member". */
@@ -614,7 +614,7 @@ export async function probeAccessRules(image: string, split: 'dev' | 'heldout', 
   }
 }
 
-/** internal-task: write the access-rules preflight record beside preflight.log. Refused (HE-GBRAIN-002, nothing written) in a directory
+/** Write the access-rules preflight record beside preflight.log. Refused (HE-GBRAIN-002, nothing written) in a directory
  *  that holds tokens.json or token, or when the record would carry any token value the sidecar left in tokenDir. */
 export function writeAccessPreflight(path: string, record: unknown, tokenDir: string): void {
   if (['tokens.json', 'token'].some((f) => existsSync(join(dirname(path), f)))) throw new RunnerError('HE-GBRAIN-002', `${path}: the access preflight record would sit beside a gbrain token; it goes where no token is kept`);
@@ -629,7 +629,7 @@ export function writeAccessPreflight(path: string, record: unknown, tokenDir: st
   writeFileSync(path, text);
 }
 
-/** internal-task: run's check that the access-rules preflight passed on the image it is about to use. A resumed shard that rebuilt the
+/** run's check that the access-rules preflight passed on the image it is about to use. A resumed shard that rebuilt the
  *  image re-mints the tokens and re-adds the rules, so a record for another image id does not cover it. */
 export function accessPreflightProblem(path: string, split: string, image: string, imageId: string): string | null {
   const fix = `fix: rerun bun runner/run.ts preflight on this image before run (docs/gbrain-arm.md, "Access-ruled member brain")`;
@@ -641,7 +641,7 @@ export function accessPreflightProblem(path: string, split: string, image: strin
   return null;
 }
 
-/** internal-task: the fail-closed verdict on the evidence. (a) every member token reads as exactly its member and public-only is bound to
+/** The fail-closed verdict on the evidence. (a) every member token reads as exactly its member and public-only is bound to
  *  nobody; (b) every source but public carries one rule whose readers are the source's readers, nothing held, pending or invalid,
  *  and every page's effective readers (its own readers, if any, within every rule covering its slug) are the world's reader set,
  *  the public pages under no rule; (c) no row under any grant lies outside that grant's reader set (public-only: the public pages),
@@ -724,7 +724,7 @@ export function accessRulesProblems(e: AccessRulesEvidence, x: AccessRulesExpect
   return { problems, summary: { tokens: e.checks.length, rules: e.rules.reduce((n, r) => n + r.rules.length, 0), pages: e.who.length, rule_blind, calls: e.tap.length, rows, rows_by_tool, slug_reads: e.slug_reads.length } };
 }
 
-/** internal-task: gbrain's own word that a reply fell back to keyword search: recall's search_degraded or facts_degraded.reason, or
+/** gbrain's own word that a reply fell back to keyword search: recall's search_degraded or facts_degraded.reason, or
  *  a search row's degraded_recall notice when embeddings are off; null when the reply carries no such stamp. */
 export function degradedStamp(payload: unknown): string | null {
   if (!payload || typeof payload !== 'object') return null;
@@ -747,7 +747,7 @@ export async function listGbrainTools(url: string, token: string): Promise<strin
   return (msg.result?.tools ?? []).map((t) => t.name);
 }
 
-/** internal-task: the view manifest gbrain/export-install.sh writes beside an exported view. */
+/** The view manifest gbrain/export-install.sh writes beside an exported view. */
 export interface InstallViewManifest {
   harness: string;
   split: 'dev' | 'heldout';
@@ -765,7 +765,7 @@ export interface InstallViewManifest {
   files: Array<InstallFile & { source_path: string }>;
 }
 
-/** internal-task: export one harness and split view of the image's install bundle into dest and verify every file against the
+/** Export one harness and split view of the image's install bundle into dest and verify every file against the
  *  view manifest (HE-GBRAIN-006 on a missing view, a failed export or a digest mismatch); install picks the gbrain-docs view
  *  (the default) or the gbrain-installer view, which the image refuses when its gbrain commit has no setup target. */
 export async function exportInstallView(image: string, harness: string, split: 'dev' | 'heldout', dest: string, install: 'gbrain-docs' | 'gbrain-installer' = 'gbrain-docs'): Promise<InstallViewManifest> {
@@ -781,7 +781,7 @@ export async function exportInstallView(image: string, harness: string, split: '
   return verifyInstallView(view, out, install);
 }
 
-/** internal-task: every file the view manifest lists is present under root with its sha256, and the view is of the install kind the
+/** Every file the view manifest lists is present under root with its sha256, and the view is of the install kind the
  *  cell asked for (HE-GBRAIN-006 otherwise). */
 export function verifyInstallView(view: InstallViewManifest, root: string, install: 'gbrain-docs' | 'gbrain-installer' = 'gbrain-docs'): InstallViewManifest {
   const kind = view.install ?? 'gbrain-docs';
@@ -807,12 +807,12 @@ export async function callGbrain(url: string, token: string, name: string, args:
   return first ? JSON.parse(first) : null;
 }
 
-/** internal-task preflight: the company brain of a split, served from the image under the unscoped token, lists every page
+/** Company brain preflight: the company brain of a split, served from the image under the unscoped token, lists every page
  *  the build should hold (gbrain/build-brain.ts companyPageList), so a scoped arm's leak counts measure grants and
  *  not a thin brain; under member scope, one member token lists nothing outside that member's reader sets and the
  *  public-only token lists only pages every member may read. Pages through list_pages (remote max 100 rows). */
 export async function probeCompanyBrain(image: string, split: 'dev' | 'heldout', expected: Array<{ page_slug: string; kind: string; readers: string[] }>, scratchDir: string, scope: 'none' | 'member' | 'sources' = 'member', brain: 'company' | 'member' = 'company'): Promise<{ ready_ms: number; image_id: string; listed: number; by_kind: Record<string, number>; member_tokens: number; member_check: string }> {
-  // internal-task: the member brain (the bot-visible slice in reader-set sources plus the empty ingest sources) is probed the same way,
+  // The member brain (the bot-visible slice in reader-set sources plus the empty ingest sources) is probed the same way,
   // with its own page list (gbrain/build-brain.ts memberPageList) and ingest live so the ingest tokens are checked too.
   const sidecar = await startGbrainSidecar({ trialId: 'preflight', trialSlug: `preflight-${brain}-${split}-${process.pid}`, split, outDir: scratchDir, image, brain, scope, ...(brain === 'member' ? { ingest: 'live' as const } : {}) });
   const listAll = async (token: string): Promise<Set<string>> => {

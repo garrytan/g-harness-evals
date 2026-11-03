@@ -1,7 +1,7 @@
 // gbrain usage for one cell, from the via "gbrain" events the world server records (docs/tasks.md, "The gbrain
 // arm"). Shared by summarize-run.ts and its tests; every figure is a count or a median over the trials given.
 //
-// internal-task (company brain): the offending gbrain reads the no_cross_scope_reads evidence names are also split into the
+// The company brain: the offending gbrain reads the no_cross_scope_reads evidence names are also split into the
 // report's counts: unreadable rows returned by search and query, unreadable pages a targeted read opened (returned
 // against refused by gbrain), each by page kind, and all of them by the grant the event carries. Pages returned per
 // kind and the count of slugs that map to no world record (which must be zero before a leak number is published) come

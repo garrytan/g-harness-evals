@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// internal-task tool discipline, step 1: one ndjson row per assistant tool call, from two published sources.
+// Tool discipline, step 1: one ndjson row per assistant tool call, from two published sources.
 //
 //   bun scripts/tool-discipline/normalize.ts [--benchmarks <dir>] [--gsta <dir>] [--out <file>]
 //
@@ -13,7 +13,7 @@
 //     A run directory is skipped when it holds sealed material: any *.age file, a directory named sealed, or a prereg.json
 //     whose custody is "sealed". The published m3-heldout and v02-heldout result directories hold none and are included.
 //     The repository's sealed/ directory and the custody branch are never read.
-// (b) internal-task evidence summaries: <gsta>/{panel-run,panel-run-3610}/evidence/*.txt and <gsta>/run/evidence/*.md, the
+// (b) skill-use panel evidence summaries: <gsta>/{panel-run,panel-run-3610}/evidence/*.txt and <gsta>/run/evidence/*.md, the
 //     extractor excerpts of scripts/gsta-135/evidence.ts. Lines are "session S seq N toolCall <tool> <json>" (OpenClaw;
 //     "seq N ..." in the discovery run) with "toolResult <tool> (error|exit N): <text>", and "id N tool_call <tool> <json>"
 //     (Hermes) with "id N tool result (<tool>) (error|exit N): <text>". The extractor clips call arguments at 240 and
@@ -56,7 +56,7 @@ export interface CallRow {
   result_text: string | null;
   clipped: boolean;
   result_clipped: boolean;
-  /** internal-task only: the extractor's events at this call's locator, [] when it saw nothing there, null when the trial has none. */
+  /** Skill-use panel only: the extractor's events at this call's locator, [] when it saw nothing there, null when the trial has none. */
   extractor: ExtractorEvent[] | null;
   locator: string;
   sha256: string;
@@ -163,7 +163,7 @@ export function partialArgs(text: string): Record<string, unknown> | string {
 
 interface TrialMeta { harness: string; task: number; arm: string; trial_index: number | null; model: string; termination: string | null; image: string; events: Array<ExtractorEvent & { locator: string }> | null }
 
-/** Rows of one internal-task evidence summary. */
+/** Rows of one skill-use panel evidence summary. */
 export function evidenceRows(file: string, locatorPath: string, run: string, trialId: string, meta: TrialMeta): CallRow[] {
   const sha = sha256(file);
   const rows: CallRow[] = [];

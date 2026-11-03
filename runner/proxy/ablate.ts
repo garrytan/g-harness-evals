@@ -1,4 +1,4 @@
-// Prompt archaeology (internal-task, plan decision 1): the metering proxy's request-side layer filter. A trial slot bound with
+// Prompt archaeology (plan decision 1): the metering proxy's request-side layer filter. A trial slot bound with
 // a layer map (harnesses/ablation/<harness>.<wire>.layers.json) and a list of layers has every span of those layers cut
 // out of each request after the proxy parses it and before it injects the output cap and reserves, so the ledger
 // prices the smaller body.
@@ -9,7 +9,7 @@
 // custom_tool_call_output items are never units, so nothing in them is read or changed. A request is matched to a
 // family of the map by its fingerprint; a request in no family passes through untouched and is counted.
 // A request for one of the cell's declared housekeeping models (Cell.utility_models, which the runner adds to the bind;
-// internal-task, 2026-11-01: the harness's shipped default, metered and labelled, never an arm) is matched before any family:
+// per the 2026-11-01 ruling: the harness's shipped default, metered and labelled, never an arm) is matched before any family:
 // it passes through untouched, its receipt names the housekeeping family, and it is never an agent, did-not-take,
 // partial or unknown-family request.
 //

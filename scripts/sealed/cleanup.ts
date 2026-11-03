@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Remove every plaintext copy of a sealed opening once its encrypted export has landed (internal-task phase 3,
- * docs/sealed-custody.md, "After the export").
+ * Remove every plaintext copy of a sealed opening once its encrypted export has landed
+ * (docs/sealed-custody.md, "After the export").
  *
  *   bun scripts/sealed/cleanup.ts --export docs/benchmarks/<run>/sealed-results/export.json --sealed-root <opened root>
  *        --results <raw results dir> [--results <shard or merged results dir> ...] [--images] [--custody <clone>]
@@ -43,7 +43,7 @@
  * unresolved VM cleanup: its VM id is printed, the directory is still removed, and the exit is 3 so a later sweep
  * (bash scripts/ubicloud/ubi-runner.sh list --mine, then down <vm>) is not forgotten. Output is counts, paths and VM ids.
  *
- * internal-task, a repo set (the opening receipt says kind "repo"): its task images carry the task bodies and are labelled
+ * A repo set (the opening receipt says kind "repo"): its task images carry the task bodies and are labelled
  * harness-eval.sealed=true, so the sealed images and the build cache are removed whether or not --images is given. Harbor
  * job directories (each directory under jobs/ of the opened root or of a --results directory, Harbor's jobs directory) go
  * with the directory that holds them. Whenever cleanup removes images or finds Harbor jobs it writes an inventory first:

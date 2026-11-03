@@ -17,7 +17,7 @@
 //
 //   bun scripts/paired-mdd.ts --ladder [--results <arm results>] [--alpha 0.05] [--power 0.8] [--reps 10]
 //
-// The install ladder (internal-task): the same arithmetic per endpoint (pass, gbrain use, a cross-scope read via gbrain,
+// The install ladder: the same arithmetic per endpoint (pass, gbrain use, a cross-scope read via gbrain,
 // scripts/gbrain-ladder.ts) for the ladder's design, 20 tasks by 5 repetitions paired and task-clustered, printed as one
 // table the preregistration quotes with its receipt path. The rates come from the gbrain arm's committed Haiku trials
 // (docs/benchmarks/2026-10-24-gbrain-arm/results, every Haiku cell, each endpoint read from its trial records) when that

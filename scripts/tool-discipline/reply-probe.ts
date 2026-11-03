@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// internal-task step 2: what a harness says back when the model makes a bad tool call. Keyless.
+// Tool discipline, step 2: what a harness says back when the model makes a bad tool call. Keyless.
 //
 // Plays five scripted model turns into one real trial (runner capture mode: the real world, world-MCP and
 // metering proxy with dummy keys, the proxy's upstream pointed at scripts/gsta-135/fake-anthropic.ts), then

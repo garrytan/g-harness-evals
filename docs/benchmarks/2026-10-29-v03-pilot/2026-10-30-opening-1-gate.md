@@ -1,6 +1,6 @@
 # 2026-10-30: opening-1 gate, fail
 
-**The v0.3 seal at custody commit `custody commit (private)` (bundle sha256 `d69a7a0c12d93a980dbfbf79fca2a307dcc8bced1d03c22156298b45537ef1f0`) is not cleared for opening 1.** Recorded by internal-task under internal-task's conditional approval of the seal deviation ([deviation-approval.md](deviation-approval.md)).
+**The v0.3 seal at custody commit (private) (bundle sha256 `d69a7a0c12d93a980dbfbf79fca2a307dcc8bced1d03c22156298b45537ef1f0`) is not cleared for opening 1.** Recorded by internal-task under internal-task's conditional approval of the seal deviation ([deviation-approval.md](deviation-approval.md)).
 
 - **The gate:** endpoint 6 of `v03-installer-dev-2026-10` ([preregistration](../2026-10-29-v03-installer-dev/PREREGISTRATION.md), merged in #128 before the first trial). It needs at least 5 of 6 families informative in the told arm and no task defect.
 - **The read:** 4 of 6 informative ([report](../2026-10-29-v03-installer-dev/report.md), "Endpoint 6").
@@ -14,7 +14,7 @@
 
 What follows, as preregistered:
 
-1. No opening. The seal at `custody commit (private)` is retired unopened. It was never opened, so nothing was spent on it.
+1. No opening. The seal at custody commit (private) is retired unopened. It was never opened, so nothing was spent on it.
 2. internal-task fixes the approval relay template and regenerates its held-out candidates from the same private seed.
    - Corrections also failed the 10 to 90 percent rule, and the Fail clause says to revise the failing templates.
    - internal-task's reading: corrections has no defect and is a named limit, so its template and candidates stay as generated. internal-task decides whether corrections is revised too.
@@ -22,3 +22,5 @@ What follows, as preregistered:
 4. Before opening 1, a small preregistered dev run reads the fixed family's told cells on OpenClaw and Hermes, with the same 10 to 90 percent rule and the same defect rule, inside internal-task's lane budget. The set must then show at least 5 of 6 families informative, counting the four that passed here.
 
 This note does not change the pilot's verdict (no-go) or its report.
+
+**Redaction note.** 2026-11-02: custody commit SHA redacted for publication; the private repo keeps it. No number changed.

@@ -1,11 +1,11 @@
 # v03-installer-dev-2026-10: report
 
-**Endpoint 6 fails. The v0.3 seal at `custody commit (private)` is not cleared for opening 1.** Four of six families are informative in the told arm; the gate needs five. Approval relay is still at 0 of 30, as in the pilot (a comparison that crosses #118's change to Hermes, endpoint 4), and its three dev tasks are task defects, so the approval relay template must be fixed before any new seal.
+**Endpoint 6 fails. The v0.3 seal at custody commit (private) is not cleared for opening 1.** Four of six families are informative in the told arm; the gate needs five. Approval relay is still at 0 of 30, as in the pilot (a comparison that crosses #118's change to Hermes, endpoint 4), and its three dev tasks are task defects, so the approval relay template must be fixed before any new seal.
 
 - **Informative (10 to 90 percent, told arm, pooled over OpenClaw and Hermes):** scope isolation, shared channel, synthesis, continuity.
 - **Out of range:** corrections (1 of 40, 2.5 percent) and approval relay (0 of 30).
 - **Defects:** ar-01, ar-02 and ar-03. Both readers find ar-01 and ar-02 defective; the second reader also finds ar-03 defective, and the rule takes either reader.
-- **Corrections is not a defect.** Its two zero-pass tasks are floor tasks in both readings. As internal-task's approval says, corrections at the told-arm floor is a named limit for opening 1 either way.
+- **Corrections is not a defect.** Its two zero-pass tasks are floor tasks in both readings. As HARN-1's approval says, corrections at the told-arm floor is a named limit for opening 1 either way.
 - **Opening 1 as the pilot sized it does not fit $30 at the largest reservation** ($30.46, $0.46 over). It fits at the median and 90th-percentile reservations. These cost rows mix this run with the pilot, across #116 and #118 (endpoint 3 says how that can change cost).
 - **Spend:** $4.09 of the lane ($4.01 counted trials under the $9 cap, $0.08 smokes). Ubicloud VMs $5.35 list price, outside the model lane.
 
@@ -37,9 +37,9 @@ From `bun scripts/v03/pilot-tables.ts --results results --tasks tasks/multiuser/
 - **Continuity sits exactly at the 90 percent edge** and counts as informative under "at most 90 percent".
 - **Result: 4 of 6, and defects found. Fail.** Under the preregistered Fail and defect clauses:
   - no opening;
-  - the approval relay template is fixed, its held-out candidates are regenerated from the same private seed, and internal-task reseals the set as a new seal;
-  - corrections also failed the range, and whether its template is revised too is open for internal-task (see the [gate note](../2026-10-29-v03-pilot/2026-10-30-opening-1-gate.md));
-  - the seal at `custody commit (private)` is retired unopened;
+  - the approval relay template is fixed, its held-out candidates are regenerated from the same private seed, and HARN-11 reseals the set as a new seal;
+  - corrections also failed the range, and whether its template is revised too is open for HARN-1 (see the [gate note](../2026-10-29-v03-pilot/2026-10-30-opening-1-gate.md));
+  - the seal at custody commit (private) is retired unopened;
   - a new seal needs a preregistered dev read of the fixed family's told cells on OpenClaw and Hermes, and the whole set must then show at least 5 of 6 informative, counting the four that passed here.
 - The installer cells' family rates, printed beside the gate and not part of it: scope isolation 29/40, shared channel 11/20, synthesis 18/30, continuity 25/40, corrections 8/40 (20 percent), approval relay 0/30.
 - The pilot's verdict (no-go) is unchanged.
@@ -48,7 +48,7 @@ From `bun scripts/v03/pilot-tables.ts --results results --tasks tasks/multiuser/
 
 Five dev tasks had no pass in any of their 20 scored trials: the three approval relay tasks and two corrections tasks (cr-03, cr-04). Each trial was classified by the pilot's defect rule by two readers. Both readings, trial by trial, are in [results/defects.json](results/defects.json).
 
-- **Author (internal-task, claude-opus-5-5).**
+- **Author (HARN-12, claude-opus-5-5).**
   - ar-01 defect (18 `TASK_UNREACHABLE`, 2 `HARNESS`); ar-02 defect (15 and 5); ar-03 floor task (20 `HARNESS`).
   - cr-03 and cr-04: floor tasks, all 20 `HARNESS`.
 - **Second reader (openai/gpt-6.1-sol; given the receipts, the rule, the task files and a world-scope extract, not the author's causes).**
@@ -128,11 +128,11 @@ Five dev tasks had no pass in any of their 20 scored trials: the three approval 
 
 **Hermes caveat:** #118 stopped Hermes's lazy pip installs (`security.allow_lazy_installs: false`) between the pilot and this run, which can change Hermes's wall time and cost. Any Hermes number set beside the pilot's crosses that change.
 
-## What the run says about gbrain (for internal-task)
+## What the run says about gbrain (for GBRA-108)
 
 - **gbrain search returned rows from channels the asker cannot read, in both arms. That comes from this run's gbrain config, not from a gbrain bug.** Unreadable rows returned: 137 (OpenClaw told), 166 (OpenClaw installer), 95 (Hermes told), 118 (Hermes installer); all are channel pages, all through the bot's grant.
 - Why: all four cells ran this repo's default gbrain cell (`starter/mcp/off` and `starter/gbrain-installer/off`). The cell sets no brain or scope field, so every trial record has brain `bot-visible` and scope `none`. That serves the whole bot-visible brain under one unscoped token. All 3,508 gbrain events in the run carry grant `bot`, and gbrain was never told who the asking member is.
-- Under a source-scoped token, internal-task reports that every gbrain read path returns nothing from another source. This repo's own counted runs agree: per-member grants returned 0 unreadable rows in 300 scoped trials ([company-brain](../2026-10-25-company-brain/report.md)) and in 197 ([gbrain-scoped](../2026-10-25-gbrain-scoped/report.md)). Per-member read access inside one source (`readable_by`) is gbrain#7812 (internal-task), open when this was written.
+- Under a source-scoped token, GBRA-108 reports that every gbrain read path returns nothing from another source. This repo's own counted runs agree: per-member grants returned 0 unreadable rows in 300 scoped trials ([company-brain](../2026-10-25-company-brain/report.md)) and in 197 ([gbrain-scoped](../2026-10-25-gbrain-scoped/report.md)). Per-member read access inside one source (`readable_by`) is gbrain#7812 (GBRA-218), open when this was written.
 - This is most of the cross-scope failures. In ar-03, 8 trials did the whole task right and failed only because a gbrain search (for example for the recipient's name) returned another team's channel page.
 - Installer cells made a median 3 gbrain calls per trial, told cells 1. Unreadable rows were 166 and 118 in the installer cells against 137 and 95 in the told cells. Each cell ran on its own VM and nothing here was tested.
 - Under the unscoped config the told preamble can only warn the bot. Opening 1's preregistration has to say which config its gbrain arms use (source grants, or this default) and what a scope-isolation result means under it.
@@ -164,7 +164,9 @@ Five dev tasks had no pass in any of their 20 scored trials: the three approval 
 | **Total** | **$4.0091** | **$0.0812** | 639 | **$5.3545** |
 
 - 4,740 ledger entries, all reconciled, largest reservation $0.4639.
-- internal-task's lane: $15.64 before this run, $19.73 after, of $40. Every VM was destroyed (`ubi-runner.sh list --mine` empty).
+- HARN-12's lane: $15.64 before this run, $19.73 after, of $40. Every VM was destroyed (`ubi-runner.sh list --mine` empty).
+
+**Redaction note.** 2026-11-02: custody commit SHA redacted for publication, here and in results/defects.json; the private repo keeps it. No number changed.
 
 ## Disclosures
 

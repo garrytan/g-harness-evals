@@ -1,4 +1,4 @@
-// Capture-only mode (internal-task, harness anatomy). A normal multi-user trial (real world, task, preamble, gbrain sidecar and
+// Capture-only mode (harness anatomy). A normal multi-user trial (real world, task, preamble, gbrain sidecar and
 // slot binding) runs against a fake model server instead of Anthropic or OpenAI, so every request a harness sends to its
 // model can be recorded without a key and without spending. The metering proxy forwards to the fake through its
 // --upstream flag, and its process gets dummy provider keys built from scratch, never the values in this process's

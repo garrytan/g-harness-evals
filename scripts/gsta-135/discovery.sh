@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# internal-task paid driver: harnesses/run-trial.sh trials through the metering
+# Skill-use panel paid driver: harnesses/run-trial.sh trials through the metering
 # proxy, the native-transcript evidence extracted after each trial, one row per
 # planned trial in results/gsta-135/runs/<run id>/cells.jsonl whether dispatched
 # or not, and report.md beside it. Two modes:
@@ -9,10 +9,10 @@
 #     scripts/gsta-135/discovery.sh [--discovery] [--pin bd8907d6] [--lease-usd 10] [--max-output-tokens 128000]
 #                                   [--run-id gsta-135-discovery-2026-10] [--qm] [--only <cell,...>] [--dry-run]
 #
-#   panel (internal-task's approved re-measure panel): two arms that differ only by
+#   panel (the approved re-measure panel): two arms that differ only by
 #   the gstack pin, 5 trials per cell in a fixed interleaved order, one
 #   metering proxy process and one lease per trial, a panel cap enforced here
-#   before every lease, and manifest.json written before trial 1. internal-task's
+#   before every lease, and manifest.json written before trial 1. The
 #   three-arm form, --arms none,baseline:<sha>,candidate:<sha>, adds the
 #   no-gstack arm: the same overlay harness built with GSTACK_COMMIT=none
 #   (images below), first in each cell's arm order (lease.ts order --arms), so
@@ -22,8 +22,8 @@
 #                                   [--trials 5] [--hermes-mode chat] [--max-tokens 128000] [--per-trial-usd 1.00]
 #                                   [--panel-cap-usd 20] [--approval <setting>=<value>] [--ceilings <json>]
 #                                   [--runtime-preflight <json>] [--start-hook candidate] [--only <trial,...>] [--dry-run]
-#   --start-hook candidate (internal-task) runs the candidate arm with gstack's
-#   opt-in start hook (internal-task): its images are harness-eval/openclaw:gstack-
+#   --start-hook candidate runs the candidate arm with gstack's
+#   opt-in start hook: its images are harness-eval/openclaw:gstack-
 #   <sha8>-hook and harness-eval/hermes:gstack-<sha8>-hook(-chat), built with
 #   --build-arg GSTACK_START_HOOK=on, and every arm's image must then carry
 #   org.harness-eval.gstack.start_hook explicitly (on for the candidate, off

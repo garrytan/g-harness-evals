@@ -93,7 +93,7 @@ describe('clean-arm-audit', () => {
     const dir = mkdtempSync(join(tmpdir(), 'clean-arm-'));
     try {
       stateDb(dir, 'n1', 'You have tools.', [call('terminal', { command: 'git diff' })]);
-      stateDb(dir, 'n2', 'You have tools.', [call('read_file', { path: '<private drive>/skills/gstack/SKILL.md' })]);
+      stateDb(dir, 'n2', 'You have tools.', [call('read_file', { path: '/workspace/.capy/drive/example/skills/gstack/SKILL.md' })]);
       stateDb(dir, 'c1', 'Skills: gstack-review, gstack-qa', [call('skill_view', { name: 'gstack-review' })]);
       const rows = [
         { trial_id: 'n1', arm: 'none', evidence: { events: [] } },

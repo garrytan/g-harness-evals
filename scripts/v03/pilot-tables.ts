@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// v0.3 dev pilot tables (internal-task), keyless: the per-task variance, opening 1's projected minimum detectable
+// v0.3 dev pilot tables, keyless: the per-task variance, opening 1's projected minimum detectable
 // differences, the C4 mechanism count's detectable difference, cost per trial and the $30 fit that PREREGISTRATION.md
 // of v03-pilot-2026-10 asks for. The fit adds one per-call reservation per shard, read from the counted shard ledgers
 // (<shard>.ledger.sqlite, entries.reserved_usd): at the median, the 90th percentile and the largest.

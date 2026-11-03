@@ -1,4 +1,4 @@
-// Layer maps for prompt archaeology (internal-task): the request surfaces a map may
+// Layer maps for prompt archaeology: the request surfaces a map may
 // address, how a map's spans are found in a request body, and the subset of
 // JSON Schema the maps use. scripts/ablation/gen-anchors.ts generates span
 // candidates with it, scripts/ablation/settle.ts writes the maps, and

@@ -37,7 +37,7 @@
  * manifest sealed, when an "opened" line for a run with no "exported" line, or an "exported" line for a run whose export
  * release did not verify, landed in the meantime.
  *
- * internal-task, a repo set (MANIFEST.json "kind": "repo"): its task tree is written to tasks/repo/<set>/released/<task>/ (a repo
+ * A repo set (MANIFEST.json "kind": "repo"): its task tree is written to tasks/repo/<set>/released/<task>/ (a repo
  * set's held-out directory holds MANIFEST.json only, sealed or released, so gstack-pregate sealed can refuse every other
  * path under it), and its generator/, extras/ and opaque-salt to tasks/repo/<set>/sealed-bundle/. There is no slice or
  * corpus to check; the generator's files are checked against sealed.generator_sha256 instead.

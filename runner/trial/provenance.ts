@@ -1,4 +1,4 @@
-// internal-task: adapter provenance. A harness image built before an adapter edit silently runs the old adapter (the gbrain arm's
+// Adapter provenance. A harness image built before an adapter edit silently runs the old adapter (the gbrain arm's
 // smoke lost a run to it). preflight compares the sha256 of /opt/harness/adapter.sh inside the image with the checkout's
 // harnesses/<name>/adapter.sh and refuses a mismatch (HE-ADAPTER-005); the adapters write the same sha into their ready
 // file so every trial record can carry it.

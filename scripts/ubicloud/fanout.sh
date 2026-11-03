@@ -10,11 +10,11 @@
 #     "shards": [ { "name": "oc-a", "cells": "cell-1,cell-2", "lease_usd": 5 }, ... ] }
 # size and options are optional; options go to every run-shard.sh as given (--embedded, --gbrain-image, --amendment,
 # --smoke-lease-usd, --smoke-task, --no-smoke, --resume, or "--" followed by arguments for the repository's run-shard.sh).
-# A sealed run (internal-task, docs/sealed-custody.md) adds "sealed_root": "<custodian's sealed root>" and "opening_receipt":
+# A sealed run (docs/sealed-custody.md) adds "sealed_root": "<custodian's sealed root>" and "opening_receipt":
 # "<its opening-receipt.json>", both or neither (one alone is exit 2); every run-shard.sh then gets --sealed-root and
 # --opening-receipt with the paths expanded, and each shard uploads, uses and deletes its own copy on its VM. fanout.sh
 # makes no copy of the sealed root and has nothing of it to clean up.
-# --workload gstack-laneb (internal-task, docs/gstack-laneb.md) passes the same flag to every run-shard.sh, which runs the shard's
+# --workload gstack-laneb (docs/gstack-laneb.md) passes the same flag to every run-shard.sh, which runs the shard's
 # cells through the Lane B bridge (cells are <model>.<arm>; put --laneb-root in options when the fetched root is not at the
 # default). run-shard.sh refuses sealed flags for this workload; the count-only polling and the VM cleanup are unchanged.
 # Each shard runs as a background process with its own log at <dest>/<name>/fanout.log, its lane log at

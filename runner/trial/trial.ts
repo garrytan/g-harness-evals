@@ -3,7 +3,7 @@
 // grading. Everything it writes lands under results/<run>/trials/<cell>/<task>/[<script>/]r<n>/ (the paths
 // field of the trials.jsonl line).
 //
-// internal-task (the install ladder): the trial directory is emptied before the world starts, so a rerun under --resume
+// The install ladder: the trial directory is emptied before the world starts, so a rerun under --resume
 // never appends to an earlier events.jsonl; the sidecar gets the cell's surface and embeddings (and the proxy slot as
 // OPENAI_BASE_URL for an embedded brain); a gbrain-docs or gbrain-installer cell has its install bundle view verified
 // (HE-GBRAIN-006) and mounted read-only at /he-gbrain-install with HE_GBRAIN_INSTALL naming the kind for the adapter; a sidecar or bundle
@@ -11,7 +11,7 @@
 // searched the brain must show a forwarded embedding line and no degraded stamp, else it is infra_error under
 // HE-GBRAIN-005 and excluded from its rung.
 //
-// internal-task: a cell that carries ablation binds its slot with the layer map (path resolved from the repository root),
+// A cell that carries ablation binds its slot with the layer map (path resolved from the repository root),
 // and after the meter is read the trial's receipts are copied to <trial dir>/ablation.ndjson and summarized into the
 // record's ablation field. The filter's outcome never changes the termination: the primary analysis is intention to treat.
 
@@ -34,7 +34,7 @@ import { loadTask, type TaskSpec } from './task.ts';
 import { flushIngestAfterFence, runTurns } from './turns.ts';
 import { TrialWorld, worldAt } from './world.ts';
 
-/** internal-task: where preflight exports each gbrain-docs cell's bundle view, and where the trial reads it. */
+/** Where preflight exports each gbrain-docs cell's bundle view, and where the trial reads it. */
 export const installViewDir = (runDir: string, harness: string, split: 'dev' | 'heldout', install: 'gbrain-docs' | 'gbrain-installer' = 'gbrain-docs') =>
   join(runDir, 'gbrain-install', install === 'gbrain-installer' ? `${harness.replace(/^_/, '')}-installer` : harness.replace(/^_/, ''), split);
 
@@ -60,7 +60,7 @@ export function noteAnsweredTurn(acc: { turn_runs: Array<number | null>; turns: 
   acc.turns.push(turn);
 }
 
-/** internal-task: the Hermes compiled context names pages; count, per actor of the task, the ones that actor cannot read in the world
+/** The Hermes compiled context names pages; count, per actor of the task, the ones that actor cannot read in the world
  *  (a chat page's channel the actor is not in; a file the file rule denies). What reaches the model with no gbrain call. */
 export function contextExposure(world: World, split: 'dev' | 'heldout', keptSlugs: string[], actors: string[]): NonNullable<TrialGbrainInstall['context']> {
   const byActor: Record<string, number> = {};
@@ -97,10 +97,10 @@ export interface TrialOptions {
   stopGraceS: number;
   /** Extra environment for the harness (process and docker), for debugging a harness; never a key. */
   harnessEnv?: Record<string, string>;
-  /** internal-task capture mode: the in-container harness's DNS server (docker run --dns); compose and process harnesses ignore it. */
+  /** Capture mode: the in-container harness's DNS server (docker run --dns); compose and process harnesses ignore it. */
   captureDns?: string;
   repoRoot?: string;
-  /** internal-task: the run's internal network, which executeRun creates when a cell has network "internal". */
+  /** The run's internal network, which executeRun creates when a cell has network "internal". */
   network?: InternalNetwork;
 }
 
@@ -139,13 +139,13 @@ export function classify(exits: number[], readyFailure: HarnessGone | null, ende
 
 const EMPTY_GRADE: GradeResult = { grade: 'n/a', predicates: [], consent_violation: false, approval_stop: false, effects: [] };
 
-/** internal-task: the model the harness actually ran against the cell's. A forwarded request on another model, or a
+/** The model the harness actually ran against the cell's. A forwarded request on another model, or a
  *  refused line that names another model (the proxy's allowlist refusal carries the model; QM's claude harness, removed
  *  at b6786d67, fell back to its default model in silence when CLAUDE_MODEL was not supported), is HE-MODEL-001; the message lists them.
  *  Refused lines with no model (a route the proxy does not admit) are counted in usage.refused and never fail a trial.
- *  internal-task amendment 1 (2026-10-25): on an embedded rung the gbrain sidecar embeds each query through the same slot, so the
+ *  Amendment 1 to gbrain-ladder-2026-10 (2026-10-25): on an embedded rung the gbrain sidecar embeds each query through the same slot, so the
  *  cell's declared embedding model is the trial's own and is never foreign; it is reported apart in gbrain.embedding_usage.
- *  internal-task amendment 2 to v02-heldout-2026-10 (2026-10-25): a cell may preregister utility_models, the models its harness is
+ *  Amendment 2 to v02-heldout-2026-10 (2026-10-25): a cell may preregister utility_models, the models its harness is
  *  documented to call for its own housekeeping (QM's and OpenClaw's Haiku request per turn); those are the trial's own too,
  *  forwarded when the allowlist admits them and priced into the trial (usage.by_model shows them). */
 export function foreignModels(cellModel: string, byModel: Record<string, unknown>, lines: Array<{ outcome: string; model: string | null; provider: string }>, embeddingModel: string = 'off', utilityModels: readonly string[] = []): string[] {
@@ -176,10 +176,10 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   const [provider, modelName] = cell.model.includes(':') ? [cell.model.slice(0, cell.model.indexOf(':')), cell.model.slice(cell.model.indexOf(':') + 1)] : ['none', cell.model];
 
   if (cell.gbrain && mode === 'scripted') throw new RunnerError('HE-GBRAIN-001', `cell ${cell.id} carries gbrain but runs scripted; a script has no harness to call the brain. fix: drop gbrain from the cell or run it in docker or process mode`);
-  // internal-task: a process-mode harness runs as the runner's user beside the trial directory, so it could read the per-source ingest
+  // A process-mode harness runs as the runner's user beside the trial directory, so it could read the per-source ingest
   // tokens and write every member's private source directly, past the tap; the member brain's tokens stay docker-only.
   if (cell.gbrain?.ingest === 'live' && mode === 'process') throw new RunnerError('HE-GBRAIN-001', `cell ${cell.id} carries gbrain.ingest "live" but runs in process mode; the ingest tokens under the trial directory would be readable by the harness process. fix: run the cell in docker mode`);
-  // internal-task: an internal cell's world, sidecar and harness container use the run's internal network and its gateway.
+  // An internal cell's world, sidecar and harness container use the run's internal network and its gateway.
   if (cell.network === 'internal' && (!docker || !opts.network)) throw new RunnerError('HE-NET-001', `cell ${cell.id} has network "internal" but the trial ${docker ? 'was given no internal network' : `runs in ${mode} mode`}; fix: run it through executeRun in docker mode`);
   const network = cell.network === 'internal' ? opts.network : undefined;
   const world = new TrialWorld({ trialId: trial.id, split: cell.split, actors: task.actors, outDir: dirs.root, worldPath: opts.worldPath, reachableFromContainers: docker, ...(network ? { gatewayAddress: network.gateway } : {}) });
@@ -200,11 +200,11 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       if (gbrain.embeddings !== 'off') await proxy!.bind(gbrainSlot, key, gbrainToken, [gbrain.embeddings]);
       sidecar = await startGbrainSidecar({ trialId: trial.id, trialSlug: slot, split: cell.split, outDir: join(dirs.root, 'gbrain'), image: opts.gbrainImage, brain: gbrain.brain, scope: gbrain.scope, ingest: gbrain.ingest, ...(gbrain.access ? { access: gbrain.access } : {}),
         surface: gbrain.surface, embeddings: gbrain.embeddings, ...(gbrain.embeddings !== 'off' ? { openaiBaseUrl: proxy!.baseUrlFor(gbrainSlot, 'openai', true), proxyToken: gbrainToken } : {}), ...(network ? { network } : {}), log });
-      // internal-task: under member scope the tap needs a granted token for every member who will take a turn (HE-GBRAIN-004).
+      // Under member scope the tap needs a granted token for every member who will take a turn (HE-GBRAIN-004).
       if (sidecar.scope === 'member' || sidecar.scope === 'member-sources') checkCompanyTokens(sidecar.tokens, cell.split, task.actors, join(dirs.root, 'gbrain', 'tokens.json'));
-      // internal-task (gbrain#7481): under scope "sources" the tap needs a source grant for every member who will take a turn (HE-GBRAIN-004).
+      // gbrain#7481: under scope "sources" the tap needs a source grant for every member who will take a turn (HE-GBRAIN-004).
       if (sidecar.scope === 'sources' || sidecar.scope === 'member-sources') checkCompanyGrants(JSON.parse(readFileSync(join(dirs.root, 'gbrain', 'manifest.json'), 'utf8')), cell.split, task.actors, join(dirs.root, 'gbrain', 'manifest.json'));
-      // internal-task: under live ingestion every actor's DM source and every channel source needs an ingest token (HE-GBRAIN-004).
+      // Under live ingestion every actor's DM source and every channel source needs an ingest token (HE-GBRAIN-004).
       if (sidecar.ingest) checkIngestTokens(sidecar.ingest.tokens, JSON.parse(readFileSync(join(dirs.root, 'gbrain', 'manifest.json'), 'utf8')), cell.split, task.actors, join(dirs.root, 'gbrain', 'ingest-tokens.json'));
       if (gbrain.install !== 'mcp') {
         const viewDir = installViewDir(ctx.runDir, cell.harness, cell.split, gbrain.install);
@@ -241,7 +241,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     HE_SLACK_BOT_TOKEN: world.botToken,
     HE_SLACK_APP_TOKEN: world.config.slack.bot.app_token,
     ...(sidecar ? { HE_GBRAIN_MCP_URL: `${world.harnessUrl}/gbrain`, HE_GBRAIN_MCP_TOKEN: world.botToken } : {}),
-    // internal-task: the adapter copies the bundle view into /workspace before the first turn (docs/adapters.md); unset, nothing changes.
+    // The adapter copies the bundle view into /workspace before the first turn (docs/adapters.md); unset, nothing changes.
     ...(installViewPath && installKind ? { HE_GBRAIN_INSTALL: installKind, HE_GBRAIN_SPLIT: cell.split, HE_GBRAIN_INSTALL_DIR: docker ? '/he-gbrain-install' : resolve(installViewPath) } : {}),
     ...(docker ? {} : { HE_WORKSPACE_DIR: resolve(dirs.workspace) }),
     ...(opts.harnessEnv ?? {}),
@@ -306,7 +306,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     if (world.gbrainScoped) await world.setGbrainRequester(null);
 
     await world.fence();
-    // internal-task: the fence refuses every post, so the ingest queue is final here; drain it before the snapshot and the sidecar
+    // The fence refuses every post, so the ingest queue is final here; drain it before the snapshot and the sidecar
     // stop, on every path, so no write is cut off and counted as a failure (a failure on a completed trial is the exam fault).
     const drained = await flushIngestAfterFence(world, endedEarly, log);
     if (drained) { endedEarly = drained.ended_early; error = drained.error; }
@@ -385,7 +385,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
 /** The gbrain tools that search the brain: a query embedding leaves for each on an embedded brain. */
 export const GBRAIN_SEARCH_TOOLS: ReadonlySet<string> = new Set(['gbrain.search', 'gbrain.query', 'gbrain.recall']);
 
-/** internal-task: the record's gbrain.ingested from the world's gbrain.ingest events: a skip is outcome ok with effect.skipped and no
+/** The record's gbrain.ingested from the world's gbrain.ingest events: a skip is outcome ok with effect.skipped and no
  *  fact, a failure any outcome other than ok, and the rest are committed facts. The three counts partition the events. */
 export function ingestedCounts(ingests: WorldEvent[]): { ok: number; skipped: number; failed: number } {
   const skipped = ingests.filter((e) => e.outcome === 'ok' && typeof (e.effect as { skipped?: unknown } | undefined)?.skipped === 'string').length;
@@ -395,11 +395,11 @@ export function ingestedCounts(ingests: WorldEvent[]): { ok: number; skipped: nu
 
 /** What the trial's log says about the sidecar: how many gbrain events, how many were tool calls, how many of those
  *  fell inside a turn window (started_seq, ended_seq], how many were writes, how many search replies gbrain stamped
- *  degraded (internal-task). The events themselves are the record. internal-task: surface, install and embeddings are the resolved cell fields. */
+ *  degraded. The events themselves are the record. Surface, install and embeddings are the resolved cell fields. */
 export function gbrainSummary(config: ResolvedGbrain | GbrainCellSurface, sidecar: Pick<GbrainSidecar, 'image' | 'ready_ms'> & Partial<Pick<GbrainSidecar, 'image_id' | 'brain' | 'scope'>>, events: WorldEvent[], windows: TurnWindow[]): TrialGbrain {
   const resolved: ResolvedGbrain = typeof config === 'string' ? resolveGbrain({ surface: config }) : config;
   const mine = events.filter((e) => e.via === 'gbrain');
-  // internal-task: the world's own writes into the brain are runner events, not gbrain ones; they are counted apart from the harness's calls.
+  // The world's own writes into the brain are runner events, not gbrain ones; they are counted apart from the harness's calls.
   const ingests = events.filter((e) => e.via === 'runner' && e.tool === 'gbrain.ingest');
   const calls = mine.filter((e) => e.tool !== 'gbrain.initialize' && e.tool !== 'gbrain.tools/list');
   const inTurn = calls.filter((e) => windows.some((w) => e.seq > w.started_seq && e.seq <= w.ended_seq));
@@ -415,7 +415,7 @@ export function gbrainSummary(config: ResolvedGbrain | GbrainCellSurface, sideca
 }
 type GbrainCellSurface = ResolvedGbrain['surface'];
 
-/** internal-task: a metered embedding line is a billing witness, not a retrieval witness. A trial with embeddings on that searched the
+/** A metered embedding line is a billing witness, not a retrieval witness. A trial with embeddings on that searched the
  *  brain is trusted only when at least one /v1/embeddings line was forwarded under its key and no search reply carried a
  *  degraded stamp; otherwise the rung would be counting keyword search as semantic. A trial that never searched is fine. */
 export function semanticCheck(events: WorldEvent[], usage: TrialEmbeddingUsage): NonNullable<TrialGbrain['semantic_check']> {

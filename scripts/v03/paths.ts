@@ -1,4 +1,4 @@
-// Where the v0.3 tools may write held-out material (internal-task): never inside the checkout, where one `git add -A` would
+// Where the v0.3 tools may write held-out material: never inside the checkout, where one `git add -A` would
 // publish it.
 
 import { spawnSync } from 'node:child_process';

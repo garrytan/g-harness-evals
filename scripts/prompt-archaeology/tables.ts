@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// internal-task prompt archaeology tables (plan decisions 6 to 9 and the round-2 resolutions), keyless.
+// Prompt archaeology tables (plan decisions 6 to 9 and the round-2 resolutions), keyless.
 //
 //   bun scripts/prompt-archaeology/tables.ts --results <results dir> [--calibration <calibration results dir>] [--out <dir>]
 //       [--seed 7] [--draws 10000]

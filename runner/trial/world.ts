@@ -39,7 +39,7 @@ export function isHostAddress(ip: string): boolean {
 }
 
 /** The address a per-trial server listens on: the loopback, or the docker bridge gateway when containers must reach it,
- *  or (internal-task) the gateway of the run's internal network when the caller names it. Never 0.0.0.0. */
+ *  or the gateway of the run's internal network when the caller names it. Never 0.0.0.0. */
 export const listenHost = (reachableFromContainers: boolean, gatewayAddress?: string) => (reachableFromContainers ? gatewayAddress ?? containerHostAddress() : '127.0.0.1');
 
 let cached: { path: string; world: World } | null = null;
@@ -56,7 +56,7 @@ export interface TrialWorldOptions {
   worldPath?: string;
   /** true: bind the docker bridge gateway and hand containers host.docker.internal; false: loopback only. */
   reachableFromContainers: boolean;
-  /** internal-task: with reachableFromContainers, bind this gateway (the run's internal network) instead of the bridge gateway. */
+  /** With reachableFromContainers, bind this gateway (the run's internal network) instead of the bridge gateway. */
   gatewayAddress?: string;
   clockReference?: string;
 }
@@ -122,13 +122,13 @@ export class TrialWorld {
     return body.now!;
   }
 
-  /** internal-task: the tap presents the requesting member's gbrain token under member scope; internal-task: or its source_ids under scope "sources". */
+  /** The tap presents the requesting member's gbrain token under member scope, or its source_ids under scope "sources". */
   get gbrainScoped(): boolean { const g = this.server.gbrain(); return !!(g?.tokens || g?.grants); }
 
-  /** internal-task: the world writes every posted message into the brain; the runner flushes at each turn boundary. */
+  /** The world writes every posted message into the brain; the runner flushes at each turn boundary. */
   get gbrainLive(): boolean { return !!this.server.gbrain()?.ingest; }
 
-  /** internal-task: wait until every message posted so far is in the brain; the failures (if any) name the message and gbrain's answer. */
+  /** Wait until every message posted so far is in the brain; the failures (if any) name the message and gbrain's answer. */
   async flushGbrainIngest(): Promise<{ written: number; skipped: number; failed: Array<{ channel: string; ts: string; source: string; error?: string }> }> {
     // In process, not over the admin route: a long drain must not hit the server's idle timeout and abort the run instead of
     // ending the trial; the queue's own deadline turns a stuck brain into failures the caller reports.
@@ -137,7 +137,7 @@ export class TrialWorld {
     return ingest.flush();
   }
 
-  /** internal-task: after the drain, before the snapshot: no ingest event lands after the record is written. */
+  /** After the drain, before the snapshot: no ingest event lands after the record is written. */
   closeGbrainIngest(): void { this.server.gbrainIngest()?.stop(); }
 
   async setGbrainRequester(member: string | null): Promise<void> {

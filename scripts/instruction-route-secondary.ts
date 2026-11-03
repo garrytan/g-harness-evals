@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// internal-task, run anatomy-instruction-route-2026-11: the preregistration's secondary endpoints that summarize-run.ts does not
+// Run anatomy-instruction-route-2026-11: the preregistration's secondary endpoints that summarize-run.ts does not
 // pair. Per cell, the route evidence (logs/instruction-route.json and the ready file). Within each harness, every route
 // against route-tool, paired on task and repetition index: pass, USD, forwarded requests, input, output and cached tokens.
 // Task-clustered paired bootstrap (seed 7, 10,000 draws) and exact sign-flip p, with no Holm: these are descriptive.

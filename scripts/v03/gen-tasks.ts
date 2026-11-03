@@ -1,4 +1,4 @@
-// The v0.3 task generator (internal-task): a world.json, its facts inventory, a split and a seed in; task directories out
+// The v0.3 task generator: a world.json, its facts inventory, a split and a seed in; task directories out
 // (task.toml, oracle.json, mutations/<id>.json and spec.json per task), from six family templates. Predicates come
 // only from the library in runner/grade/predicates.ts. Everything is decided by the seed; no model is called.
 //

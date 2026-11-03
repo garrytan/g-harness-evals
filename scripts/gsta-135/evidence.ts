@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * internal-task evidence extractor: reads one trial's native transcript (never the
+ * Skill-use panel evidence extractor: reads one trial's native transcript (never the
  * wrapper's gstack-register.log, never adapter.log) and reports, in order,
  *
  *   skill_open   the harness's own skill tool opening a gstack skill
@@ -51,7 +51,7 @@
  * without the field that decides, such as an OpenClaw exec whose details were
  * truncated past 8 KiB and lost exitCode) or none (no result row).
  *
- * The per-trial `metrics` object (internal-task's names; `--task <1|2|3>` picks the
+ * The per-trial `metrics` object (the plan's names; `--task <1|2|3>` picks the
  * predicates, without it the task-bound fields are null):
  *   matching_skill_opened  1 when a skill_open of the matching skill (task 1:
  *                          gstack-review; task 2: gstack-investigate or
@@ -141,7 +141,7 @@
  *   bun scripts/gsta-135/evidence.ts <harness> <trial out dir> [--task <1|2|3>] --raw      -> the JSON, each event also carrying
  *                                                                                          raw_args, result_text and error_text
  *
- * For other scorers (internal-task's scripts/tool-discipline), the module exports the readers (readOpenclaw, readHermes, readQm and the
+ * For other scorers (scripts/tool-discipline), the module exports the readers (readOpenclaw, readHermes, readQm and the
  * readers map: every decoded tool call joined to its result, before classification), the Call, Result and Event types, score()
  * (a decoded transcript to this evidence object) and scoreEvents() (classified events to the scored fields). Without --raw (or
  * {raw: true}) the output is what it was before those exports: no field added, none changed.
@@ -347,7 +347,7 @@ export function classify(call: Call | Omit<Call, 'id' | 'result'>, harness: stri
   return out;
 }
 
-/** internal-task's per-trial metrics from the classified events and the final text; the predicates are in the file head. */
+/** The plan's per-trial metrics from the classified events and the final text; the predicates are in the file head. */
 export function metrics(events: Event[], finalText: string | null, transcript: Evidence['transcript'], task: 1 | 2 | 3 | null): Metrics {
   const matching = task ? MATCHING[task] : [];
   const opened = events.filter(e => e.kind === 'skill_open' && e.result === 'ok');

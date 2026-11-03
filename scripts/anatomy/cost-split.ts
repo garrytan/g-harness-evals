@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Billed components of a counted run's spend, per cell (internal-task, plan decision 5).
+// Billed components of a counted run's spend, per cell (anatomy plan decision 5).
 //
 // Reads the run's metering-proxy usage log(s) named in a committed manifest, keeps forwarded requests, removes
 // duplicate rows (same key, time and route), and splits each request's actual_usd into uncached input, cache

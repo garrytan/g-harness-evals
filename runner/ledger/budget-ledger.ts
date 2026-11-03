@@ -1075,7 +1075,7 @@ const PAID_HOSTS: Record<string, 'openai' | 'anthropic' | 'voyage' | 'openrouter
   'api.typesafe.ai': 'typesafe',
   'generativelanguage.googleapis.com': 'gemini',
   'api.groq.com': 'groq',
-  // Particle's Chat Completions (internal-task); chatPrice reads its row from the canonical table (particle:particle-1).
+  // Particle's Chat Completions; chatPrice reads its row from the canonical table (particle:particle-1).
   'api.particle.ai': 'particle',
 };
 

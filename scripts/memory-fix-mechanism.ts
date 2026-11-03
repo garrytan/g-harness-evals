@@ -1,4 +1,4 @@
-// The mechanism counts of gbrain-memory-fix-2026-10b's secondary endpoints 2 and 3 (internal-task), keyless: for each live cell, what
+// The mechanism counts of gbrain-memory-fix-2026-10b's secondary endpoints 2 and 3, keyless: for each live cell, what
 // the brain returned to the harness on `cr-05-pellow-seat-retraction` and `cn-05-coastal-date-formats`.
 //
 //   bun scripts/memory-fix-mechanism.ts [--results docs/benchmarks/2026-10-26-gbrain-memory/results] [--out <dir>]

@@ -13,7 +13,7 @@ export interface TaskTurn {
   text: string;
   advance_clock_s?: number;
   wait_s?: number;
-  /** "new": the turn opens a new thread, and a new harness session (internal-task, docs/tasks.md). */
+  /** "new": the turn opens a new thread, and a new harness session (docs/tasks.md). */
   thread?: 'new';
 }
 

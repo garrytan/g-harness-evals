@@ -1,5 +1,5 @@
 /**
- * Held-out openings: the one place opening numbers come from (internal-task).
+ * Held-out openings: the one place opening numbers come from.
  *
  * A held-out set's MANIFEST.json carries an openings ledger (scripts/seal-heldout.ts): a budget of confirmatory
  * openings, the set's status, one row per registered experiment that runs a held-out cell of the set (run id, status,
@@ -14,7 +14,7 @@
  * - `checkPlan` from `runner/run.ts plan` and `dry-run`: refuses a held-out run with HE-HELDOUT-001 to 004
  *   (docs/errors.md). A run's own row is accepted every time it is planned while it is opened or its set is open (CI
  *   keeps a planned confirmatory row off a set that is not open), so shard planning and resume pass; a
- *   preregistration committed before internal-task is on the digest-bound legacy list (legacy-preregistrations.json) and is
+ *   preregistration committed before the openings ledger existed is on the digest-bound legacy list (legacy-preregistrations.json) and is
  *   matched to its backfilled row whatever the budget says.
  * - `checkOpenings` from `runner/prereg/prereg.ts`, which CI runs on every pull request and on every push to main with
  *   full history: two pull requests that each passed alone and together leave main over budget turn the push run on
@@ -23,7 +23,7 @@
  * - `checkPlan` and `deriveSet` from `scripts/sealed/open.ts`, the custodian's open step for a sealed set, which also
  *   counts every opening its access log records (docs/sealed-custody.md).
  *
- * internal-task phase 3: a sealed opening publishes its opening receipt at docs/benchmarks/<run>/sealed-results/
+ * Sealed custody: a sealed opening publishes its opening receipt at docs/benchmarks/<run>/sealed-results/
  * opening-receipt.json. The CI check requires the run's ledger row to say opened once that file exists, so a row that
  * was withdrawn or superseded after the set was opened cannot refund the opening.
  *
@@ -44,7 +44,7 @@ import { DEFAULT_SET, heldoutSet, heldoutSets, liveSharers, openingsLedger, read
  *  one-sided p against the margin (scripts/compare-run.ts --margin) and is accepted when its Holm-adjusted p is at most
  *  alpha.
  *
- *  internal-task: a claim may name its family, "primary" (the default) or "secondary"; Holm runs within each family at the set's
+ *  A claim may name its family, "primary" (the default) or "secondary"; Holm runs within each family at the set's
  *  alpha_per_opening. A claim with requires_gate is dropped from its family, and published as "not measuring skill bodies",
  *  when the gate file in the raw results (a JSON object keyed by model or arm, each entry {"pass": true|false, ...}, for
  *  example gates.json {"<model>": {"body_load_rate": 0.9, "pass": true}}) says requires_gate.key failed. In comparisons.json
@@ -75,7 +75,7 @@ export const CLAIM_FAMILIES = ['primary', 'secondary'] as const;
 /** The name a gate file may have: one JSON file at the top of the raw results. */
 export const GATE_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/;
 
-/** The block a preregistration made after internal-task carries when any of its cells runs a held-out split. */
+/** The block that a preregistration made after the openings ledger existed carries when any of its cells runs a held-out split. */
 export interface HeldoutBlock {
   set: string;
   label: 'confirmatory' | 'dev';
@@ -204,7 +204,7 @@ export function claimProblems(claims: unknown, cells?: string[]): string[] {
   return problems;
 }
 
-/** The first problem with a heldout block made after internal-task, as the code and message plan throws and CI lists. */
+/** The first problem with a heldout block made after the openings ledger existed, as the code and message plan throws and CI lists. */
 function blockProblem(prereg: PreregLike, sets: string[]): { code: string; message: string } | null {
   const block = prereg.heldout;
   const id = prereg.run_id;

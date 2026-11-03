@@ -4,7 +4,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseLog, systemBlocks } from '../scripts/anatomy/dissect.ts';
-import { unpack } from '../scripts/anatomy/store.ts';
+import { isHashesOnly, loadReceipt, unpack } from '../scripts/anatomy/store.ts';
 import { COMBOS, generate } from '../scripts/ablation/gen-anchors.ts';
 import { type Assigned, EVAL_MARKER, type Family, type LayerMap, type Unit, ROOT, assignUnit, byteLen, familyOf, locKey, sha256, units, validate } from '../scripts/ablation/maps.ts';
 import { DIR, buildMap, mapFile, readCoder, settle } from '../scripts/ablation/settle.ts';
@@ -22,7 +22,11 @@ function captured(map: LayerMap): Req[] {
   });
 }
 
-const MAPS = COMBOS.map((c) => ({ combo: c, file: mapFile(c), map: JSON.parse(read(mapFile(c))) as LayerMap }));
+const ALL_MAPS = COMBOS.map((c) => ({ combo: c, file: mapFile(c), map: JSON.parse(read(mapFile(c))) as LayerMap }));
+type Source = { scenario: string; receipts: string; record: string };
+/** A map whose source receipts lost blobs/ in a public export cannot be rebuilt into requests; the content tests skip it. */
+const hashesOnly = (map: LayerMap) => (map.sources as Source[]).some((s) => isHashesOnly(join(ROOT, s.receipts)));
+const MAPS = ALL_MAPS.filter(({ map }) => !hashesOnly(map));
 const famOf = (m: LayerMap, r: Req): Family | null => familyOf(m, r.path, r.body, systemBlocks(r.body, m.wire).map((b) => b.text).join(''), units(r.body, m.wire).some((u) => u.loc.kind === 'tool_definition'));
 
 /** Every unit of every captured request with its byte assignment. */
@@ -40,8 +44,8 @@ const byteIndex = (text: string, needle: string, from = 0) => Buffer.from(text, 
 
 describe('ablation maps', () => {
   test('one map per recaptured harness, wire and model, each in the manifest with its sha256', () => {
-    expect(MANIFEST.maps.map((m) => m.file).sort()).toEqual(MAPS.map((m) => m.file).sort());
-    for (const { combo, file, map } of MAPS) {
+    expect(MANIFEST.maps.map((m) => m.file).sort()).toEqual(ALL_MAPS.map((m) => m.file).sort());
+    for (const { combo, file, map } of ALL_MAPS) {
       const row = MANIFEST.maps.find((m) => m.file === file)!;
       expect(row.sha256).toBe(sha256(read(file)));
       expect([map.harness, map.wire, map.model]).toEqual([combo.harness, combo.wire, combo.model]);
@@ -50,7 +54,7 @@ describe('ablation maps', () => {
   });
 
   test('every map validates against layers.schema.json', () => {
-    for (const { file, map } of MAPS) expect({ file, errors: validate(map, SCHEMA) }).toEqual({ file, errors: [] });
+    for (const { file, map } of ALL_MAPS) expect({ file, errors: validate(map, SCHEMA) }).toEqual({ file, errors: [] });
   });
 
   test('the schema refuses a span with no label, two labels, or a tool-result location', () => {
@@ -145,7 +149,14 @@ describe('ablation maps', () => {
     }
   });
 
-  test("Claude Code's deferred tool names and ToolSearch instructions stay", () => {
+  test("every map source's receipts verify (from recorded hashes where blobs/ is absent) to the log sha256 the map and its record name", () => {
+    for (const { map } of ALL_MAPS) for (const s of map.sources as Array<Source & { source_log_sha256: string }>) {
+      const rec = JSON.parse(readFileSync(join(ROOT, s.record), 'utf8')) as { source_log_sha256: string };
+      expect([loadReceipt(join(ROOT, s.receipts)).log_sha256, rec.source_log_sha256]).toEqual([s.source_log_sha256, s.source_log_sha256]);
+    }
+  });
+
+  test.skipIf(!MAPS.some((m) => m.file === 'claude-code.anthropic-messages.layers.json'))("Claude Code's deferred tool names and ToolSearch instructions stay", () => {
     const file = 'claude-code.anthropic-messages.layers.json';
     const n = protocolLines(file, (u) => u.loc.kind === 'message' && u.loc.role === 'system', (t) => { const s = byteIndex(t, 'The following deferred tools are now available via ToolSearch'); if (s < 0) return []; const e = byteIndex(t, '\n\n', s); return [s, ...allAt(t, /^(mcp__\w+|[A-Z]\w+)$/gm).filter((x) => x > s && x < e)]; });
     expect(n).toBeGreaterThan(20);
@@ -168,7 +179,7 @@ describe('ablation maps', () => {
   });
 
   test('every span but a tool definition has an anchor, and a paragraph split starts at its span\'s anchor', () => {
-    for (const { map } of MAPS) for (const f of map.families) for (const s of f.spans) {
+    for (const { map } of ALL_MAPS) for (const f of map.families) for (const s of f.spans) {
       if (s.location.kind === 'tool_definition') expect(s.anchor).toBeUndefined();
       else expect(typeof s.anchor).toBe('string');
       if (s.paragraphs) expect(s.paragraphs[0]!.anchor).toBe(s.anchor!);

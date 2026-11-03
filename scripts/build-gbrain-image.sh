@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the gbrain sidecar image (gbrain/Dockerfile) for one gbrain commit, keyless by default (internal-task; docs/gbrain-arm.md,
+# Build the gbrain sidecar image (gbrain/Dockerfile) for one gbrain commit, keyless by default (docs/gbrain-arm.md,
 # "Checking a gbrain commit"):
 #
 #   scripts/build-gbrain-image.sh [--gbrain <full sha or branch>] [--tag <image tag>] [--out <dir>] [--embedded] [--dry-run] [--no-cache]
@@ -17,7 +17,7 @@
 # prerequisites (docker, bun, the key in the shell for --embedded) without building. Only this shell's proxy process reads
 # OPENAI_API_KEY; the container never sees it.
 #
-# --sealed-root <dir> (internal-task, docs/sealed-custody.md) builds the keyword target from a custodian's sealed root, the
+# --sealed-root <dir> (docs/sealed-custody.md) builds the keyword target from a custodian's sealed root, the
 # directory scripts/sealed/open.ts writes outside any checkout: <dir>/world/world.json replaces the public world and
 # <dir>/corpus/heldout/ replaces the public heldout corpus pages. The script refuses a root inside this checkout and refuses
 # --embedded (the embedded brains are built inside the checkout's gbrain/.build, not supported for sealed sets yet). It
@@ -42,7 +42,7 @@ nocache=
 sealed_root=
 sealed_args=()
 model=$(jq -r '.embeddings.model' gbrain/pin.json)
-# internal-task: the hermes installer's SOUL.md seed is Hermes's own file at the pinned Hermes commit, checked by sha256 in the build.
+# The installer rung: the hermes installer's SOUL.md seed is Hermes's own file at the pinned Hermes commit, checked by sha256 in the build.
 hermes_args=(--build-arg "HERMES_COMMIT=$(jq -r '.commit' harnesses/hermes/pin.json)" --build-arg "HERMES_SOUL_SHA256=$(jq -r '.soul_md.sha256' harnesses/hermes/pin.json)")
 while [ $# -gt 0 ]; do
   case "$1" in

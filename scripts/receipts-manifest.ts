@@ -12,7 +12,7 @@
 // *.sqlite ledger under results/ with its sha256 and the spend it commits, every proxy-usage*.ndjson with its sha256,
 // and whether summary.json and taxonomy.json are present.
 //
-// internal-task: each run also records the window its trials ran in (earliest started_at, latest ended_at) and, for a run
+// Each run also records the window its trials ran in (earliest started_at, latest ended_at) and, for a run
 // with held-out cells, its set, opening number, label, status and reason as runner/heldout/openings.ts derives them from
 // the set's openings ledger and preregistration order on first-parent history, plus concurrent_with: the other runs
 // on the same set with a trial that ran while one of its own trials ran (started_at to ended_at).
@@ -26,7 +26,7 @@
 // Ledgers are read from an in-memory copy of their bytes, so the receipts tree gains no -shm or -wal files; dollar sums
 // are rounded to six decimals so the file is stable across SQLite builds.
 //
-// internal-task phase 3: a sealed opening publishes no trials.jsonl until its set retires; its public export lives at
+// Sealed custody: a sealed opening publishes no trials.jsonl until its set retires; its public export lives at
 // docs/benchmarks/<run>/sealed-results/ (scripts/sealed/export.ts). Each such directory gets a row under sealed_runs (the
 // key is absent while there are none, so the manifest of a repository without sealed runs is unchanged): the run, set,
 // derived opening number, label and export mode, the sha256 of export.json and opening-receipt.json, the sealed digests

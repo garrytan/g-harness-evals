@@ -10,7 +10,7 @@
 // Pemberline corpus the bot can already read in the world: the source_slugs of every non-DM channel loaded
 // for the split (record.split is the split or "both") plus the slug of every file with visibility
 // "public" loaded for the split, all in gbrain's one default source. --brain company (the company-brain
-// run, internal-task): every record loaded for the split, every chat and DM page, every file whatever its
+// run): every record loaded for the split, every chat and DM page, every file whatever its
 // visibility, every email and every meeting, grouped into one gbrain source per distinct set of members
 // who may read the record, each source federated so an unscoped token reads them all, plus one bearer
 // token per member granted exactly the sources whose readers include that member and one public-only
@@ -21,14 +21,14 @@
 // gbrain runs with an environment that holds no API key: init prints its search-mode notice and picks
 // keyword-only search because nothing else is available; import runs with --no-embed.
 //
-// internal-task (the install ladder): --embeddings openai:text-embedding-3-small builds a bot-visible brain whose chunks carry
+// The install ladder: --embeddings openai:text-embedding-3-small builds a bot-visible brain whose chunks carry
 // embeddings. Still no key: OPENAI_BASE_URL in the environment must name the metering proxy's slot URL (gbrain treats a
 // configured base URL as satisfying the OpenAI key requirement and sends "Bearer unauthenticated"; the proxy injects the
 // key on the host and meters every call). init takes --embedding-model, import runs without --no-embed (at this commit
 // import leaves a backlog), and `gbrain embed --stale --catch-up --json --yes` embeds the backlog; the manifest records the
 // model, the dimensions and gbrain's embed summary, and scripts/build-gbrain-image.sh adds the proxy's usage summary.
 //
-// internal-task (the member brain, run gbrain-memory-2026-10): --brain member holds the bot-visible slice only (the company brain's
+// The member brain, run gbrain-memory-2026-10: --brain member holds the bot-visible slice only (the company brain's
 // DMs, private files, mail and meetings stay out) but stages it the company way, one federated source per reader set, so a
 // channel page is readable by that channel's members and a public file by everyone; every loaded non-DM channel gets a source
 // even when it has no page, and every token member an empty private-<member> source, because the world's live ingestion
@@ -67,7 +67,7 @@ export interface BrainPage {
   visibility: 'channel' | 'public';
 }
 
-/** internal-task: how an embedded brain was built. The usage summary is added by scripts/build-gbrain-image.sh from the proxy's ledger. */
+/** How an embedded brain was built. The usage summary is added by scripts/build-gbrain-image.sh from the proxy's ledger. */
 export interface BrainEmbeddings {
   model: string;
   dimensions: number;
@@ -87,7 +87,7 @@ export interface BrainManifest {
   split: 'dev' | 'heldout';
   world_id: string;
   built_at: string;
-  /** 'off' (keyword-only, the gbrain arm) or the embedding record (internal-task). */
+  /** 'off' (keyword-only, the gbrain arm) or the embedding record. */
   embeddings: 'off' | BrainEmbeddings;
   pages: BrainPage[];
   counts: { channel_pages: number; public_files: number; total: number };
@@ -96,7 +96,7 @@ export interface BrainManifest {
 
 export type ListedPage = Omit<BrainPage, 'sha256' | 'bytes' | 'source_path'>;
 
-// ---- the company brain (internal-task) --------------------------------------------------------------------
+// ---- the company brain --------------------------------------------------------------------
 
 export type CompanyPageKind = 'channel' | 'dm' | 'contract' | 'ticket' | 'crm' | 'profile' | 'update' | 'digest' | 'note' | 'email' | 'meeting';
 
@@ -121,10 +121,10 @@ export type ListedCompanyPage = Omit<CompanyPage, 'sha256' | 'bytes' | 'source_p
 export interface CompanySource { id: string; readers: string[]; pages: number }
 export interface CompanyGrant { member: string; token_name: string; write: string; sources: string[] }
 
-/** The brains built as federated sources with per-member grants: company (internal-task) and member (internal-task). */
+/** The brains built as federated sources with per-member grants: company and member. */
 export type ScopedBrainKind = 'company' | 'member';
 
-/** internal-task: how the world's live ingestion finds the source of a conversation: the channel id to source map for every loaded
+/** How the world's live ingestion finds the source of a conversation: the channel id to source map for every loaded
  *  non-DM channel (a DM with the bot goes to private-<the other member>), and the ingest token names (the secrets are in
  *  ingest-tokens.json). */
 export interface BrainIngest {
@@ -151,7 +151,7 @@ export interface CompanyBrainManifest {
   /** One grant per member token plus public-only; the tokens themselves are in tokens.json, never here. */
   grants: CompanyGrant[];
   imports: Record<string, Record<string, unknown>>;
-  /** internal-task: member brains only. */
+  /** Member brains only. */
   ingest?: BrainIngest;
   /** internal-task: present only on a brain built with --access rules. grants then still list each member's readable sources (the
    *  world's reader sets), but no token carries --sources: the rules below and the member bindings gate every remote read. */
@@ -178,7 +178,7 @@ export interface CompanyTokens {
   public_only: string;
 }
 
-/** internal-task: ingest-tokens.json beside a member brain: one bearer token per source, each granted exactly that source, so the
+/** ingest-tokens.json beside a member brain: one bearer token per source, each granted exactly that source, so the
  *  world's live ingestion can write a message into the source of its conversation. Mode 0600, per trial copy, never committed. */
 export interface IngestTokens {
   schema_version: 1;
@@ -286,7 +286,7 @@ export function companySources(world: World, split: 'dev' | 'heldout', pages: Li
   return [...bySource.values()].sort((a, b) => a.id.localeCompare(b.id));
 }
 
-/** internal-task: the member brain's pages: the bot-visible slice (pageList) with the company brain's readers and sources: a channel
+/** The member brain's pages: the bot-visible slice (pageList) with the company brain's readers and sources: a channel
  *  page is readable by the channel's members, a public file by every loaded member. */
 export function memberPageList(world: World, split: 'dev' | 'heldout'): ListedCompanyPage[] {
   const everyone = sortedUnique(loadedMembers(world, split).map((m) => m.id));
@@ -299,7 +299,7 @@ export function memberPageList(world: World, split: 'dev' | 'heldout'): ListedCo
   });
 }
 
-/** internal-task: the member brain's sources: companySources over its pages, plus an empty source for every loaded non-DM channel
+/** The member brain's sources: companySources over its pages, plus an empty source for every loaded non-DM channel
  *  whose reader set has none yet (#general has no page and still takes live posts). */
 export function memberSources(world: World, split: 'dev' | 'heldout', pages: ListedCompanyPage[]): CompanySource[] {
   const sources = companySources(world, split, pages);
@@ -312,7 +312,7 @@ export function memberSources(world: World, split: 'dev' | 'heldout', pages: Lis
   return sources.sort((a, b) => a.id.localeCompare(b.id));
 }
 
-/** internal-task: channel id -> source id for every loaded non-DM channel, what the live ingestion reads from the manifest. */
+/** Channel id -> source id for every loaded non-DM channel, what the live ingestion reads from the manifest. */
 export function conversationSources(world: World, split: 'dev' | 'heldout'): Record<string, string> {
   const out: Record<string, string> = {};
   for (const c of world.channels) if (c.kind !== 'dm' && loaded(c, split)) out[c.id] = sourceIdFor(world, split, sortedUnique(c.members));
@@ -371,7 +371,7 @@ export function keylessEnv(home: string): Record<string, string> {
     CI: '1',
   };
   for (const k of ['LANG', 'LC_ALL', 'TMPDIR', 'BUN_INSTALL']) if (process.env[k]) env[k] = process.env[k]!;
-  // internal-task: the embedding route and its timeouts pass through; they name a proxy, never a key.
+  // The embedding route and its timeouts pass through; they name a proxy, never a key.
   for (const k of ['OPENAI_BASE_URL', 'GBRAIN_QUERY_EMBED_TIMEOUT_MS', 'GBRAIN_AI_EMBED_TIMEOUT_MS']) if (process.env[k]) env[k] = process.env[k]!;
   return env;
 }
@@ -401,9 +401,9 @@ export interface BuildOptions {
   commit: string;
   corpusCommit: string;
   corpusRepo: string;
-  /** bot-visible (default), company (docs/gbrain-arm.md, "Company brain") or member (internal-task, "The member brain"). */
+  /** bot-visible (default), company (docs/gbrain-arm.md, "Company brain") or member ("The member brain"). */
   brain?: 'bot-visible' | ScopedBrainKind;
-  /** internal-task: an embedding model (openai:text-embedding-3-small); bot-visible only; needs OPENAI_BASE_URL in the environment. */
+  /** An embedding model (openai:text-embedding-3-small); bot-visible only; needs OPENAI_BASE_URL in the environment. */
   embeddings?: string;
   /** internal-task: "rules" gates reads with folder rules and member-bound tokens instead of per-token source grants; member or company only. */
   access?: 'rules';
@@ -500,7 +500,7 @@ export function buildBrain(o: BuildOptions): BrainManifest | CompanyBrainManifes
 }
 
 
-/** Build a company brain (internal-task): every record of the split, one federated source per reader set. */
+/** Build a company brain: every record of the split, one federated source per reader set. */
 export function buildCompanyBrain(o: BuildOptions): CompanyBrainManifest { return buildScopedBrain(o, 'company'); }
 
 /** Build a company or member brain: stage every page under <out>/sources/<source>/<split>/<slug>.md, init a keyless brain,
@@ -517,7 +517,7 @@ export function buildScopedBrain(o: BuildOptions, kind: ScopedBrainKind): Compan
   const ingestGrants = kind === 'member' ? sources.map((s) => ({ source: s.id, token_name: `ingest-${s.id}` })) : [];
   for (const g of ingestGrants) if (g.token_name.length > 64) throw new Error(`ingest token name ${g.token_name} is too long`);
 
-  // internal-task: each source's checkout lives inside the brain, so it travels with the brain into the image and back to /brain at
+  // Each source's checkout lives inside the brain, so it travels with the brain into the image and back to /brain at
   // serve time; the entrypoint re-stamps it there (gbrain/rebind-sources.ts) because a copied directory has a new inode.
   emptyDir(o.out);
   const staging = join(resolve(o.out), 'sources');
@@ -595,7 +595,7 @@ export function buildScopedBrain(o: BuildOptions, kind: ScopedBrainKind): Compan
   const tokensPath = join(o.out, 'tokens.json');
   writeFileSync(tokensPath, JSON.stringify(tokens, null, 1) + '\n', { mode: 0o600 });
   chmodSync(tokensPath, 0o600);
-  // internal-task: one ingest token per source, its write source that source (gbrain writes to one source per connection).
+  // One ingest token per source, its write source that source (gbrain writes to one source per connection).
   if (kind === 'member') {
     const ingestSources: Record<string, string> = {};
     for (const g of ingestGrants) {

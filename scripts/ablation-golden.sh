@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The internal-task golden check of the metering proxy's layer filter, keyless, on a machine with docker. It builds the harness
+# The prompt-archaeology golden check of the metering proxy's layer filter, keyless, on a machine with docker. It builds the harness
 # images the layer maps cover, then runs the docker golden block of tests/ablation.test.ts: each map's harness plays a
 # two-turn v0.3 task with a tool-call follow-up through the runner and the proxy against the fake Messages or Responses
 # endpoint, once with the filter on and nothing removed (full) and once with every layer of the map removed (minimal), and

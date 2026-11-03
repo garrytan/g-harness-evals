@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Publish a sealed opening (custodian only; docs/sealed-custody.md, decision 4 of internal-task's plan).
+ * Publish a sealed opening (custodian only; docs/sealed-custody.md, decision 4 of the sealed-custody plan).
  *
  *   bun scripts/sealed/export.ts --results <raw results dir, outside the checkout> --sealed-root <opened root>
  *        --opening-receipt <file> [--custody <isolated custody clone>] [--out docs/benchmarks/<run>/sealed-results]
@@ -53,7 +53,7 @@
  * until release; once the push lands, the plaintext copies are removed with bun scripts/sealed/cleanup.ts
  * (docs/sealed-custody.md, "After the export").
  *
- * internal-task: a claim may carry family ("primary", the default, or "secondary"; Holm runs within each family at the set's
+ * A claim may carry family ("primary", the default, or "secondary"; Holm runs within each family at the set's
  * alpha) and requires_gate ({"file": "<name>.json", "key": "<model>"}): when that gate file at the top of the raw results
  * says the key's pass is false, the claim is dropped from its family before Holm and published as "dropped, not measuring
  * skill bodies"; a missing gate file, key or boolean pass refuses the export. A repo set (kind "repo") is exported the same
@@ -412,7 +412,7 @@ export async function exportRun(o: ExportOptions): Promise<{ out: string; export
   const reserveUnused = confirmatoryOpened < ledger.opening_budget && ledger.status !== 'retired';
   const mode: 'embargo' | 'full' = reserveUnused || o.mode === 'embargo' ? 'embargo' : 'full';
   const claimSentence = new Map(claims.map((c) => [c.id, c.sentence.trim().replace(/\.$/, '')]));
-  // Under the embargo, and for a secondary claim in every mode (internal-task: bits only), a decision publishes its bit and the
+  // Under the embargo, and for a secondary claim in every mode (bits only), a decision publishes its bit and the
   // preregistered wording only: no estimate, interval or p.
   const bitsOnly = (d: Decision) => mode === 'embargo' || d.family === 'secondary';
   const sentenceOf = (d: Decision) => (bitsOnly(d) && d.decision !== 'dropped' ? `${d.claim}: ${d.decision === 'accept' ? 'accepted' : 'rejected'}. ${claimSentence.get(d.claim)}.` : d.sentence);

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# internal-task task seeds (scripts/gsta-135/discovery.sh runs them through
+# Skill-use panel task seeds (scripts/gsta-135/discovery.sh runs them through
 # harnesses/run-trial.sh). One task directory in run-trial.sh's shape:
 # task.toml (slice coding, time budget 600, or 120 for the control),
 # instruction.md with the spec's exact sentence, a no-op grader (the grade is

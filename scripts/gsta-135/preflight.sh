@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# internal-task free preflight (no model calls, no key): the spec's checks against
+# Skill-use panel free preflight (no model calls, no key): the spec's checks against
 # the overlay images, run as the host uid with the same mounts as a trial so a
 # permission failure shows up free, plus the keyless probes that settle what a
 # paid trial would see. Every model request goes to the repository's fake
@@ -32,7 +32,7 @@
 #   5. the flagged-command smoke: the fake asks for 'rm -rf <path>'; the
 #      approval card must fail closed (BLOCKED in the tool result) and the
 #      trial still end with exit 0 and a complete transcript (evidence.ts).
-#   The start hook (internal-task): --start-hook runs the hook images,
+#   The start hook: --start-hook runs the hook images,
 #   harness-eval/openclaw:gstack-<pin>-hook and harness-eval/hermes:gstack-
 #   <pin>-hook(-chat), built with --build-arg GSTACK_START_HOOK=on. On every
 #   image the exec probe reads org.harness-eval.gstack.start_hook (absent is

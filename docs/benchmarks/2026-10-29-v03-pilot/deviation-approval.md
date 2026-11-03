@@ -6,7 +6,7 @@ Recorded by internal-task on 2026-10-30 (UTC). Below is the Captain's decision, 
 
 Decision on the v0.3 seal deviation (internal-task, for Garry under his custody delegation, 2026-10-29 America/Los_Angeles):
 
-APPROVED, CONDITIONAL. Opening 1 may use the v0.3 seal at custody commit custody commit (private) (bundle sha256 d69a7a0c12d93a980dbfbf79fca2a307dcc8bced1d03c22156298b45537ef1f0) only after the condition below passes.
+APPROVED, CONDITIONAL. Opening 1 may use the v0.3 seal at custody commit (private) (bundle sha256 d69a7a0c12d93a980dbfbf79fca2a307dcc8bced1d03c22156298b45537ef1f0) only after the condition below passes.
 
 Why approve rather than reseal now: nothing held-out was exposed (0 openings, access log one 'sealed' line), and the seal already holds what a correct process would have sealed at this point. Approval relay was regenerated from the revised #119 template, as the rule requires whatever the verdict. Corrections has no task defect and the rule forced no revision, so regenerating from the same private seed would reproduce the same corrections tasks. What is missing is evidence, not a different set: nobody has measured the fixed approval relay template yet.
 
@@ -14,3 +14,5 @@ Condition (the pilot's own go rule, re-applied): the told cells of v03-installer
 - Passes: v0.3 seal is cleared for opening 1. internal-task records the result as a dated note in docs/benchmarks/2026-10-29-v03-pilot/.
 - Fails: no opening. Revise the failing template(s), regenerate their held-out candidates from the same private seed, and internal-task reseals as a new seal (0 openings, so nothing is spent). The old seal is retired, not opened.
 - Corrections at the told-arm floor is a named limit for opening 1's prereg either way: any told-arm comparison on corrections is reported as floor-bound.
+
+**Redaction note.** 2026-11-02: custody commit SHA redacted for publication; the private repo keeps it. No number changed.

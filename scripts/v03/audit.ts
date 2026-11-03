@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// The v0.3 audit (internal-task): a second model family reads every generated task beside the records it rests on and names
+// The v0.3 audit: a second model family reads every generated task beside the records it rests on and names
 // defects the keyless checks cannot see. GPT-6.1 Sol writes the world's pages; claude-opus-5-5 audits the tasks, through
 // the metering proxy under a lease (scripts/v03/llm.ts), one call per task, cached.
 //

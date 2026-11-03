@@ -1,4 +1,4 @@
-// The install ladder (internal-task), the part the report scripts share: which rung a cell sits on, read from its resolved gbrain
+// The install ladder, the part the report scripts share: which rung a cell sits on, read from its resolved gbrain
 // configuration and its preamble (docs/gbrain-arm.md, "The install ladder"); the ladder neighbour each rung is compared
 // against; the three per-trial endpoints of the design (pass, gbrain use, a cross-scope read via gbrain); and the shard
 // label a latency row carries so a reader sees when two cells ran on different machines.
@@ -16,12 +16,12 @@ import { crossScopeReadsBySurface } from './gbrain-usage.ts';
 export type Rung = 'none' | 'mcp' | 'told' | 'docs' | 'installer' | 'verbs-told' | 'semantic-told' | 'docs-semantic' | 'told-company' | 'told-scoped' | 'told-acl' | 'installer-acl';
 
 /** The rung table: surface, install, whether embeddings are on, whether the preamble is a told one, the brain and scope, and the
- *  neighbour. installer (internal-task, gbrain#7489): gbrain's own installer writes the brain-first block into the harness's instruction
+ *  neighbour. installer (gbrain#7489): gbrain's own installer writes the brain-first block into the harness's instruction
  *  file with the arm's unchanged preamble; its neighbour is told, the rung whose preamble rule the block stands in for.
  *  told-company and told-scoped (gbrain#7481): the told clause on the company brain under the one unscoped token, and the same
  *  with the world tap adding the requesting member's source_ids to every search and query (scope "sources"); told-scoped pairs
- *  against told-company, which pairs against told. internal-task's member scope (per-member tokens) stays off the table, except under
- *  internal-task's access rules: told-acl (the told clause on the member brain whose reads gbrain's folder rules and member-bound tokens
+ *  against told-company, which pairs against told. The company brain's member scope (per-member tokens) stays off the table, except under
+ *  the access rules: told-acl (the told clause on the member brain whose reads gbrain's folder rules and member-bound tokens
  *  gate, the requesting member's token presented by the tap) pairs against told, and installer-acl (gbrain's installer on that
  *  brain) against told-acl, so the access-rules rerun reads installer minus told on the access-ruled brain. */
 export const LADDER: Record<Exclude<Rung, 'none'>, { surface: 'starter' | 'verbs'; install: 'mcp' | 'gbrain-docs' | 'gbrain-installer'; semantic: boolean; told: boolean; brain: 'bot-visible' | 'company' | 'member'; scope: 'none' | 'sources' | 'member'; access?: 'rules'; base: Rung }> = {
@@ -42,7 +42,7 @@ export const RUNG_ORDER: Rung[] = ['none', 'mcp', 'told', 'docs', 'installer', '
 export interface LadderCell { id: string; harness: string; model: string; config?: string; gbrain?: GbrainCellConfig; preamble?: string }
 
 /** The rung a cell sits on from its resolved gbrain fields and preamble, with the configuration spelled out; rung null
- *  when the configuration is on no rung of the table (internal-task's member scope without access rules, verbs without the told
+ *  when the configuration is on no rung of the table (the company brain's member scope without access rules, verbs without the told
  *  preamble, and so on). */
 export function rungOf(cell: LadderCell): { rung: Rung | null; label: string } {
   if (!cell.gbrain) return { rung: 'none', label: 'no gbrain' };
@@ -103,7 +103,7 @@ export const ENDPOINT_LABEL: Record<Endpoint, string> = { pass: 'pass', use: 'gb
 
 /** The per-trial value of an endpoint, 1 or 0. `view` is the grade the caller chose (as recorded or regraded). A cell
  *  without gbrain is 0 on use and cross-scope by construction: no sidecar, no gbrain event. cross_scope reads the task's
- *  no_cross_scope_reads evidence (the turns the task names, refused targeted reads included); exposure (internal-task) is the count
+ *  no_cross_scope_reads evidence (the turns the task names, refused targeted reads included); exposure is the count
  *  of returned cross-scope gbrain reads over every turn (runner/grade/index.ts trialGbrainExposure), null when the caller
  *  could not read the trial's evidence. */
 export function endpointValue(endpoint: Endpoint, t: TrialRecord, view: { grade: string; consent_violation: boolean; predicates: PredicateResult[]; exposure?: number | null }): 0 | 1 | null {

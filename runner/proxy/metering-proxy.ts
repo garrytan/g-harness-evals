@@ -50,13 +50,13 @@
  * trial's slot with a random per-trial token and hands only the token to the
  * harness, and the gbrain sidecar's slot with its own token. A slot bound
  * without a token (the embedded image build) accepts any credential while bound.
- * In lease mode a slot bound with `models` (a list of provider:model ids,
- * internal-task; in-process mode ignores it) forwards only requests for those models: any other priced model, or a free count_tokens request for one, is refused 403 before
+ * In lease mode a slot bound with `models` (a list of provider:model ids;
+ * in-process mode ignores it) forwards only requests for those models: any other priced model, or a free count_tokens request for one, is refused 403 before
  * reserving or forwarding, logged with its model and the reason, at $0, inside the run-wide
  * `--allow-models` bound, which still applies. A bind without `models` adds no
  * per-slot limit.
  *
- * internal-task (prompt archaeology): a lease proxy started with `--ablation-log <file>` accepts a bind with
+ * Prompt archaeology: a lease proxy started with `--ablation-log <file>` accepts a bind with
  * `ablation: {map, map_sha256, layers}`. It recomputes the map file's sha256 and refuses the bind (400) on a
  * mismatch or a layer the map does not name. Every generation request on that slot then has those layers cut out by
  * runner/proxy/ablate.ts after it is parsed and before the output cap is injected and the request priced and
@@ -104,7 +104,7 @@ const ROUTES: Record<ProviderName, Array<{ method: string; path: RegExp }>> = {
   ],
   anthropic: [{ method: 'POST', path: /^\/v1\/messages$/ }],
   voyage: [{ method: 'POST', path: /^\/v1\/embeddings$/ }, { method: 'POST', path: /^\/v1\/rerank$/ }],
-  // Particle (internal-task) serves OpenAI Chat Completions over HTTP and nothing else a harness needs: no Responses over HTTP, no embeddings.
+  // Particle serves OpenAI Chat Completions over HTTP and nothing else a harness needs: no Responses over HTTP, no embeddings.
   particle: [{ method: 'POST', path: /^\/v1\/chat\/completions$/ }],
 };
 const KEY_ENV: Record<ProviderName, string> = { openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY', voyage: 'VOYAGE_API_KEY', particle: 'PARTICLE_API_KEY' };
@@ -145,7 +145,7 @@ export interface LeasePolicy {
   usageLog?: string;
   /** Forward POST /anthropic/v1/messages/count_tokens free (COUNT_TOKENS_ROUTE); off by default. */
   freeCountTokens?: boolean;
-  /** internal-task: append-only per-request layer-filter receipts (ndjson, runner/proxy/ablate.ts); a bind with an ablation map is refused without it. */
+  /** Append-only per-request layer-filter receipts (ndjson, runner/proxy/ablate.ts); a bind with an ablation map is refused without it. */
   ablationLog?: string;
 }
 
@@ -153,7 +153,7 @@ export interface UsageLine {
   at: string; key: string; provider: string; route: string; model: string | null;
   outcome: 'forwarded' | 'refused' | 'failed';
   reason?: string; status?: number; reserved_usd?: number; actual_usd?: number; input_tokens?: number; output_tokens?: number; cached_tokens?: number; charged_reservation?: boolean; streamed?: boolean;
-  /** internal-task: Anthropic's cache_creation_input_tokens, when the usage reported it (OpenAI reports cache reads only). */
+  /** Anthropic's cache_creation_input_tokens, when the usage reported it (OpenAI reports cache reads only). */
   cache_write_tokens?: number;
   /** What the request asked for: OpenAI `reasoning.effort` (or chat-completions `reasoning_effort`), Anthropic `thinking.type` and `thinking.budget_tokens`. */
   reasoning_effort?: string; thinking_type?: string; thinking_budget_tokens?: number;
@@ -269,7 +269,7 @@ export class MeteringProxy {
   constructor(private options: { fetchImpl?: typeof fetch; hostname?: string; port?: number; upstream?: Partial<Record<ProviderName, string>>; policy?: LeasePolicy; controlToken?: string | null; transform?: (slot: string, target: string, text: string) => string } = {}) {}
   get port(): number { return this.server!.port as number; }
   /** Charge the slot's provider requests to `key` (a cell id) from now on; with `token`, only requests presenting it; with `models`, only requests for those provider:model ids;
-   *  with `ablation` (internal-task, lease mode), the bound layers are cut from every generation request (runner/proxy/ablate.ts). */
+   *  with `ablation` (lease mode), the bound layers are cut from every generation request (runner/proxy/ablate.ts). */
   bind(slot: string, key: string, token: string | null = null, models: string[] | null = null, ablation: AblationBinding | null = null) { this.bindings.set(slot, { key, token, models, ablation }); }
   /** With `key`, only drops the binding if it is still that key: a released slot may already be bound to the next cell. */
   unbind(slot: string, key?: string) { if (key === undefined || this.bindings.get(slot)?.key === key) this.bindings.delete(slot); }
@@ -465,7 +465,7 @@ export class MeteringProxy {
     }
     const streamed = body?.stream === true;
     if (streamed && (p.streaming ?? 'meter') === 'refuse') return refuse(400, 'invalid_request', 'streaming is disabled for this cell', model);
-    // internal-task: the layer filter edits the parsed body before the output cap is injected and the request is priced and reserved.
+    // The layer filter edits the parsed body before the output cap is injected and the request is priced and reserved.
     let receipt: Omit<AblationReceipt, 'at' | 'key'> | null = null;
     if (ablation && body) {
       const filter = await import('./ablate.ts');

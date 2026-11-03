@@ -38,7 +38,7 @@
  * public world as world/world.json, every digest verified against the public commitments, and opening-receipt.json
  * written. Any failure after decryption removes the directory. Output names paths and digests only, never content.
  *
- * internal-task, a repo set (MANIFEST.json "kind": "repo", tasks/repo/<set>/): the bundle is decrypted into the root the same
+ * A repo set (MANIFEST.json "kind": "repo", tasks/repo/<set>/): the bundle is decrypted into the root the same
  * way (tasks/repo/<set>/heldout/, generator/ when the set has one, extras/, opaque-salt), with no world slice to merge and
  * no world or corpus check; the task tree and generator digests are verified, and the receipt says kind "repo" with the
  * world and corpus digests null. open.ts does not hand off to runner/run.ts, which runs multi-user cells only: it prints

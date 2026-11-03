@@ -1,4 +1,4 @@
-// A small model client for the v0.3 generators (internal-task). Every paid call goes through runner/proxy/metering-proxy.ts,
+// A small model client for the v0.3 generators. Every paid call goes through runner/proxy/metering-proxy.ts,
 // started here as a child process in lease mode on the loopback with its own ledger file, a random control token and a
 // local usage log; one slot is bound without a token for the life of the client. Provider keys live only in the
 // proxy's environment. This module never prints, logs or writes a key, a request body or a response body, except the

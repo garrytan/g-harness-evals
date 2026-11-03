@@ -3,7 +3,7 @@
 //
 //   bun scripts/summarize-run.ts --results <results/<run-id>> [--regraded] [--seed 7] [--sealed-root <dir>] [--allow-missing-tasks]
 //
-// internal-task phase 3 (sealed custody, docs/sealed-custody.md): a run planned with a sealed root (its manifest.json has a
+// Sealed custody (docs/sealed-custody.md): a run planned with a sealed root (its manifest.json has a
 // "sealed" block) reads the sealed cells' task families from <sealed-root>/tasks and the world from
 // <sealed-root>/world/world.json, so it is summarized inside custody with --sealed-root; without it the run is refused.
 // In a sealed run, a task whose directory is absent from the tree the family is read from is refused with HE-TASK-005
@@ -26,26 +26,26 @@
 // `events_read` says how many trials had an event log to read. summary.json gains a `gbrain` key per cell and
 // nothing else changes.
 //
-// internal-task (company brain): a second gbrain table, printed when any cell has an offending gbrain read or an unmapped
+// The company brain: a second gbrain table, printed when any cell has an offending gbrain read or an unmapped
 // page slug, splits the offending reads into unreadable rows returned by search and query, unreadable pages a
 // targeted read opened (returned / refused by gbrain), each by page kind, and all of them by grant; it also lists
 // pages returned by kind and the unmapped slug count, which is marked when nonzero because no leak number of that
 // cell may be published until it is zero (every slug the brain returned must map to a world record). Page slugs are
 // mapped against the world data of the split their prefix names.
 //
-// internal-task (v0.2 task slice): trials that ended as model_error, infra_error or exam_fault are excluded from the scored
+// The v0.2 task slice: trials that ended as model_error, infra_error or exam_fault are excluded from the scored
 // rows and denominators (methodology item 9) and counted in the Excluded column and `excluded` key; their spend stays
 // in the USD columns. A per-cell x family table (passes / scored trials, tasks) follows the per-task table, read
 // through the manifest cell's task_set, and a secondary-predicate table (predicates.secondary in task.toml, such as
 // the capability = "memory" no-reread check) reports passes per cell without touching the primary endpoint.
 // summary.json gains top-level `families` and `secondary` keys.
 //
-// internal-task (QM probes): a cell whose scored trials are all `product_probe` tasks is a probe cell. Its row carries no
+// QM probes: a cell whose scored trials are all `product_probe` tasks is a probe cell. Its row carries no
 // pooled pass rate or interval (`pass_rate` and `ci95` are null, `probe` is true), because each probe tests its own
 // product claim and pooling them would make a number nobody preregistered; a descriptive probe table (passes of
 // trials per task per cell) follows the per-task table and is written to the `probes` key. Cells with any other
 // family are reported as before.
-// internal-task (the install ladder): a top-level `ladder` key per cell, printed as a table when any trial carries a `gbrain` record:
+// The install ladder: a top-level `ladder` key per cell, printed as a table when any trial carries a `gbrain` record:
 // the harness's own input tokens per trial (median and total; the runner keeps the sidecar's /v1/embeddings lines out of
 // this figure), the sidecar's embedding usage summed from `gbrain.embedding_usage` (requests, input tokens, USD, refused,
 // failed, and how many trials carried it), the install bundle from `gbrain.install_bundle` (file count, view digest, and
@@ -56,7 +56,7 @@
 // `install_bundle.turn_hook.per_turn`: those trials, how many ran the hook in every turn (`applied`), the rest by the reason
 // compare-run gives them (installerNotApplied, installer_not_applied there), the turns, the turns at 0 and with no count, and
 // the turns by hook runs. The Install bundle column adds the same counts for such a cell; every other cell prints as before.
-// internal-task (live ingestion, gbrain-memory-2026-10's Endpoints item 3): a top-level `ingest` key with a block per cell whose records
+// Live ingestion (gbrain-memory-2026-10's Endpoints item 3): a top-level `ingest` key with a block per cell whose records
 // carry `gbrain.ingest` "live" (a cell without live ingestion gets no block), printed as a "Live ingestion" table: ingestion counts
 // per trial from the record's `gbrain.ingested` (ok, skipped, failed: median per trial and total), the write latency from the
 // `gbrain.ingest` events' `effect.latency_ms` (median, p90 by nearest rank, max; a skipped message made no write and is left out),
@@ -105,7 +105,7 @@ if (sealedSet && sealedRoot) {
   const g = sealedGuard({ root: sealedRoot, set: sealedSet, repoRoot: process.cwd(), preregJson: (runManifest as { sealed?: { receipt?: { prereg_json?: string } } }).sealed?.receipt?.prereg_json, logFile: join(results, 'summarize-run.sealed.log'), allow: [], label: 'scripts/summarize-run.ts' });
   g.say(`summarize-run: sealed run (set ${sealedSet}); summary.json is written beside trials.jsonl and the console tables go to ${g.logFile} (custody only)`);
 }
-// A repo set (internal-task) has no world: its root holds no world/world.json, and the public world serves the gbrain slug tables.
+// A repo set has no world: its root holds no world/world.json, and the public world serves the gbrain slug tables.
 const worldPath = sealedSet && sealedRoot && sealedPaths(sealedRoot, sealedSet).kind === 'multiuser' ? join(sealedRoot, 'world', 'world.json') : DEFAULT_WORLD_PATH;
 const familyCache = new Map<string, string>();
 const missingTasks = new Set<string>();
@@ -256,7 +256,7 @@ if (allRows.some((t) => t.gbrain)) {
   }
   out.push('');
 }
-// gbrain-memory-2026-10 (internal-task, Endpoints item 3): live ingestion per cell, for the cells whose records carry gbrain.ingest "live".
+// gbrain-memory-2026-10 (Endpoints item 3): live ingestion per cell, for the cells whose records carry gbrain.ingest "live".
 const quantile = (xs: number[], q: number) => { if (!xs.length) return 0; const s = [...xs].sort((a, b) => a - b); return s[Math.max(0, Math.min(s.length - 1, Math.ceil(q * s.length) - 1))]!; };
 const QUERY_TOOLS = new Set(['gbrain.search', 'gbrain.query', 'gbrain.recall']);
 const ingest: Record<string, unknown> = {};

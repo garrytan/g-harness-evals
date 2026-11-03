@@ -22,7 +22,7 @@ import { executeRun } from '../runner/trial/run.ts';
 import { RunProxy, summarizeAblation, summarizeUsage, trialKey } from '../runner/trial/proxy.ts';
 import { mergeShards } from '../scripts/merge-shards.ts';
 import { parseLog, systemBlocks } from '../scripts/anatomy/dissect.ts';
-import { unpack } from '../scripts/anatomy/store.ts';
+import { isHashesOnly, unpack } from '../scripts/anatomy/store.ts';
 import { SCENARIOS } from '../scripts/anatomy/capture.ts';
 import { CAPTURE_DUMMY_KEYS } from '../runner/trial/capture.ts';
 import { EVAL_MARKER, NEVER_REMOVED, assignUnit, familyOf, locKey, units, type Family, type Label, type LayerMap, type Location, type Span } from '../scripts/ablation/maps.ts';
@@ -40,13 +40,18 @@ const specFor = (file: string, layers: string[]): AblationSpec => ({ map: join(D
 const allLayers = (file: string) => [...mapLayers(MAPS.get(file)!)];
 
 interface Req { map: string; scenario: string; row: number; route: '/v1/messages' | '/v1/responses'; provider: 'anthropic' | 'openai'; body: Record<string, any> }
+/** Maps whose source receipts lost blobs/ in a public export: their requests cannot be rebuilt, so the corpus tests skip them
+ *  (tests/ablation-maps.test.ts still checks their recorded log sha256s). */
+const HASHES_ONLY = new Set(MANIFEST.maps.filter((m) => (MAPS.get(m.file)!.sources as Array<{ receipts: string }>).some((s) => isHashesOnly(join(ROOT, s.receipts)))).map((m) => m.file));
+const CC_LAYERS = 'claude-code.anthropic-messages.layers.json';
 /** Every generation request of the receipts each map lists as a source, in manifest, source and row order (the fixture's order). */
-const CORPUS: Req[] = MANIFEST.maps.flatMap((m) => (MAPS.get(m.file)!.sources as Array<{ scenario: string; receipts: string }>).flatMap((s) =>
+const CORPUS: Req[] = MANIFEST.maps.filter((m) => !HASHES_ONLY.has(m.file)).flatMap((m) => (MAPS.get(m.file)!.sources as Array<{ scenario: string; receipts: string }>).flatMap((s) =>
   parseLog(unpack(join(ROOT, s.receipts))).flatMap((r, row) => {
     const route = r.path.match(/\/v1\/(messages|responses)$/)?.[0] as Req['route'] | undefined;
     return r.method === 'POST' && route ? [{ map: m.file, scenario: s.scenario, row, route, provider: route === '/v1/messages' ? 'anthropic' as const : 'openai' as const, body: r.body as Record<string, any> }] : [];
   })));
 const BASE = JSON.parse(readFileSync(join(ROOT, 'tests', 'fixtures', 'ablation', 'base-forwarded.json'), 'utf8')) as { base_commit: string; max_output_tokens: number; requests: Array<{ map: string; scenario: string; row: number; bytes: number; sha256: string }> };
+const BASE_REQUESTS = BASE.requests.filter((r) => !HASHES_ONLY.has(r.map));
 const familyFor = (map: LayerMap, route: string, body: unknown): Family | null => familyOf(map, route, body, systemBlocks(body, map.wire).map((b) => b.text).join(''), units(body, map.wire).some((u) => u.loc.kind === 'tool_definition'));
 
 // ---- synthetic maps for the location tests ----------------------------------------------------------------------
@@ -179,7 +184,7 @@ describe('the layer filter on the Anthropic Messages wire', () => {
     expect(() => loadBinding({ ...A_SPEC, utility_models: 'anthropic:claude-haiku-5-5' as unknown as string[] })).toThrow('ablation utility_models must be a list of provider:model ids');
   });
 
-  test("Claude Code's # Environment paragraph with a longer or shorter host kernel: minimal still takes every span; a changed removable paragraph is still refused", () => {
+  test.skipIf(HASHES_ONLY.has(CC_LAYERS))("Claude Code's # Environment paragraph with a longer or shorter host kernel: minimal still takes every span; a changed removable paragraph is still refused", () => {
     const file = 'claude-code.anthropic-messages.layers.json';
     const cc = CORPUS.find((r) => r.map === file)!;
     const text = JSON.stringify(cc.body);
@@ -253,13 +258,15 @@ describe('the layer filter on the Responses wire', () => {
 
 describe('the layer maps on the recorded corpus', () => {
   test("the corpus is the fixture's: every generation request of the six maps' sources, four harnesses on two wires", () => {
-    expect(CORPUS.map((r) => [r.map, r.scenario, r.row])).toEqual(BASE.requests.map((r) => [r.map, r.scenario, r.row]));
-    expect(new Set(CORPUS.map((r) => MAPS.get(r.map)!.harness))).toEqual(new Set(['claude-code', 'openclaw', 'hermes', 'codex']));
+    expect(CORPUS.map((r) => [r.map, r.scenario, r.row])).toEqual(BASE_REQUESTS.map((r) => [r.map, r.scenario, r.row]));
+    expect(new Set(MANIFEST.maps.map((m) => m.harness))).toEqual(new Set(['claude-code', 'openclaw', 'hermes', 'codex']));
+    expect(new Set(CORPUS.map((r) => MAPS.get(r.map)!.harness))).toEqual(new Set(MANIFEST.maps.filter((m) => !HASHES_ONLY.has(m.file)).map((m) => m.harness)));
     expect(new Set(CORPUS.map((r) => MAPS.get(r.map)!.wire))).toEqual(new Set(GOLDEN_WIRES));
   });
 
   test('every anchor of every map inside tool results, function_call_output, custom_tool_call_output and the task message changes nothing there', () => {
     for (const [file, map] of MAPS) {
+      if (HASHES_ONLY.has(file)) continue;
       const r = CORPUS.find((x) => x.map === file)!;
       const anchors = map.families.flatMap((f) => f.spans.flatMap((s) => [s.anchor, ...(s.paragraphs ?? []).map((p) => p.anchor)])).filter((a): a is string => !!a).join('\n');
       const body = structuredClone(r.body);
@@ -379,7 +386,7 @@ describe('the metering proxy with the filter', () => {
       await p.control.bind('unset', 'k-unset');
       for (const [file] of MAPS) await p.control.bind(`zero-${file}`, 'k-zero', undefined, undefined, specFor(file, []));
       for (const [i, r] of CORPUS.entries()) {
-        const want = BASE.requests[i]!;
+        const want = BASE_REQUESTS[i]!;
         for (const slot of ['unset', `zero-${r.map}`]) {
           p.sent.length = 0;
           expect(await p.post(slot, r)).toBe(200);
@@ -409,7 +416,7 @@ describe('the metering proxy with the filter', () => {
     } finally { p.proxy.stop(); q.proxy.stop(); }
   });
 
-  test('the ledger prices the filtered body; the cap is injected after the filter; a refused request writes no receipt; cache writes reach the usage line', async () => {
+  test.skipIf(HASHES_ONLY.has(CC_LAYERS))('the ledger prices the filtered body; the cap is injected after the filter; a refused request writes no receipt; cache writes reach the usage line', async () => {
     const p = startProxy({ usage: { input_tokens: 100, output_tokens: 5, cache_read_input_tokens: 40, cache_creation_input_tokens: 300 }, allowModels: ['anthropic:claude-opus-5-5'] });
     try {
       const file = 'claude-code.anthropic-messages.layers.json';
@@ -528,7 +535,7 @@ describe("plan-time validation of a cell's ablation", () => {
 });
 
 describe('a process-mode trial through the proxy with the filter bound', () => {
-  test('the slot is bound with the map, the run writes ablation.ndjson, the trial copies its lines and records ablation and cache writes', async () => {
+  test.skipIf(HASHES_ONLY.has(CC_LAYERS))('the slot is bound with the map, the run writes ablation.ndjson, the trial copies its lines and records ablation and cache writes', async () => {
     const cc = CORPUS.find((r) => r.map === 'claude-code.anthropic-messages.layers.json')!;
     const bodyFile = join(tmp, 'cc-body.json');
     writeFileSync(bodyFile, JSON.stringify(cc.body));
@@ -562,7 +569,7 @@ describe('a process-mode trial through the proxy with the filter bound', () => {
     } finally { fake.stop(true); }
   }, 60_000);
 
-  test("the slot is bound with the cell's utility_models: a housekeeping request is forwarded untouched and counted apart from agent and unknown requests", async () => {
+  test.skipIf(HASHES_ONLY.has(CC_LAYERS))("the slot is bound with the cell's utility_models: a housekeeping request is forwarded untouched and counted apart from agent and unknown requests", async () => {
     const cc = CORPUS.find((r) => r.map === 'claude-code.anthropic-messages.layers.json')!;
     const agentBody = JSON.stringify(cc.body);
     const hkInFamily = JSON.stringify({ ...cc.body, model: 'claude-haiku-5-5' });

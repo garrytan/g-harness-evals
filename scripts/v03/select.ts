@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Select the v0.3 held-out set from its candidates by rule (internal-task), with no trial result involved.
+// Select the v0.3 held-out set from its candidates by rule, with no trial result involved.
 //
 //   bun scripts/v03/select.ts --candidates <dir> --world <world.json> --facts <facts.json> --audit <audit.jsonl> --out <dir>
 //
