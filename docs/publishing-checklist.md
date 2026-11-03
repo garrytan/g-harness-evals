@@ -2,6 +2,15 @@
 
 harness-evals v0.0.7, audited 2026-10-24 (internal-task), with the merge record added 2026-10-25 (internal-task). This page records what was checked before the repository can be made public, how to run the check again, what remains for the owner to decide, and the one-line recommendation. It changes nothing: visibility is Garry Tan's decision and is not flipped by this work.
 
+**Status, 2026-11-02: the plan changed.** This repository stays private. The public repository is to be a separate, curated export of main: a publication manifest will decide what goes out, a history filter will keep only those paths, and secret, marker and sealed-file gates will fail closed on the exported tree and history. That tooling is planned and not yet in this tree. The custody branch never leaves this repository. The decisions below are settled:
+
+- **Interests:** answered. Every page that tests, compares or features gstack, gbrain, QM, Hermes, OpenAI or OpenClaw closes with a Disclosures section in Garry's words.
+- **Held-out tasks:** spent sets (v0.1 and v0.2) are published, labelled spent. Sets that are still sealed stay private, with only their hash manifests public.
+- **Preregistration order** for runs before the export is attested privately, not publicly verifiable.
+- **Claude Code captures** (full prompt text and tool schemas) are to stay out of the export; the public copy keeps their hashes, sizes and short quotations ([THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) lists the paths).
+
+The rest of this page is the 2026-10-24 audit, kept as written, with superseded lines marked.
+
 ## Run the audit
 
 ```
@@ -43,7 +52,7 @@ The pull requests merged from #21 to #78 (55 of them by GitHub's pull request li
 
 ### Held-out tasks
 
-The 20 v0.1 held-out task texts are already disclosed: every committed `turns.jsonl` carries the exact prompt, so hiding `tasks/multiuser/heldout/` now would hide nothing. The seal ([MANIFEST.json](../tasks/multiuser/heldout/MANIFEST.json), `bun scripts/seal-heldout.ts --check`, 144 files, 20 tasks) proves the tasks did not change between the preregistration and the reports. Recommendation: keep the v0.1 held-out tasks in the public repository with their seal and treat the set as spent; author v0.2's held-out tasks outside the public repository, publishing each set with its seal only when a run has spent it. The v0.2 held-out sets already committed (`tasks/multiuser/v0.2/heldout`, continuity and synthesis, sealed, 69 files, 8 tasks at the time of writing) are disclosed the moment the repository is public; whether that is acceptable is Garry's call.
+The 20 v0.1 held-out task texts are already disclosed: every committed `turns.jsonl` carries the exact prompt, so hiding `tasks/multiuser/heldout/` now would hide nothing. The seal ([MANIFEST.json](../tasks/multiuser/heldout/MANIFEST.json), `bun scripts/seal-heldout.ts --check`, 144 files, 20 tasks) proves the tasks did not change between the preregistration and the reports. Recommendation: keep the v0.1 held-out tasks in the public repository with their seal and treat the set as spent; author v0.2's held-out tasks outside the public repository, publishing each set with its seal only when a run has spent it. The v0.2 held-out sets already committed (`tasks/multiuser/v0.2/heldout`, continuity and synthesis, sealed, 69 files, 8 tasks at the time of writing) are disclosed the moment the repository is public; whether that is acceptable is Garry's call. (Decided 2026-11-02: the spent v0.2 set is published, labelled spent; see the status note at the top.)
 
 ### Licence and attribution
 
@@ -58,7 +67,7 @@ The 20 v0.1 held-out task texts are already disclosed: every committed `turns.js
 - Real-looking domains from the generated corpus, one of which resolves. Low: one mail body, no real person, dataset-provided. Owner's call whether to leave it, since world files are frozen between a run's preregistration and its report.
 - Provider-side spend is unverified (every dollar figure is the proxy's list-price meter; see `results/spend-reconciliation.json` in each run). Not a publishing risk, but the public report says so in words.
 - The receipts carry the harnesses' full prompts and replies through `turns.jsonl` and `adapter.log`, about 47 MiB in the tree. They are the evidence the reports rest on; nothing in them is a secret, but readers will see every harness's system prompt as the runner saw it.
-- Conflict-of-interest wording on [docs/report-v0.1.md](report-v0.1.md) is marked for Garry to confirm before the page is public.
+- Conflict-of-interest wording on [docs/report-v0.1.md](report-v0.1.md) is marked for Garry to confirm before the page is public. (Resolved 2026-11-02: Garry gave the disclosure lines, and that page closes with them.)
 
 ### Sealed custody: before any visibility change
 
@@ -70,9 +79,13 @@ From v0.3, sealed sets keep their ciphertext, the custody access log and the ide
 
 ## Recommendation
 
-The repository can be made public as it stands once Garry confirms the interests paragraph and decides about the v0.2 held-out set; the audit passes, the receipts are evaluator-owned, and the held-out seal is the proof of custody. This thread did not change visibility.
+Superseded on 2026-11-02 by the export plan in the status note at the top. The 2026-10-24 recommendation was: the repository can be made public as it stands once Garry confirms the interests paragraph and decides about the v0.2 held-out set; the audit passes, the receipts are evaluator-owned, and the held-out seal is the proof of custody. This thread did not change visibility.
 
 ## Changelog
+
+### 2026-11-02: status note for the public export
+
+A status note at the top says the public repository is a curated export and lists the settled decisions: disclosures, spent held-out sets, privately attested preregistration order and Claude Code captures. The interests risk and the v0.2 held-out question are marked resolved, and the old recommendation is marked superseded. The 2026-10-24 audit text is otherwise unchanged.
 
 ### 2026-10-28: sealed custody before a visibility change (internal-task)
 

@@ -1,18 +1,16 @@
 # Agent-harness eval compendium
 
-Prepared 2026-10-21 for the harness-eval project. Purpose: everything already published that compares agent *harnesses* (as opposed to models), plus the agent benchmarks the five target harnesses could plausibly be run against. Every claim below has a source link; numbers are as published on the date read and were not re-run.
+Prepared 2026-10-21 for the harness-eval project. Purpose: everything already published that compares agent *harnesses* (as opposed to models), plus the agent benchmarks the target harnesses could plausibly be run against. Every claim below has a source link; numbers are as published on the date read and were not re-run.
 
-## 0. The five harnesses we want to compare
+## 0. The harnesses we want to compare
 
 | Harness | Who | Shape | Headless entry point | Model freedom |
 |---|---|---|---|---|
 | **OpenClaw** | open source (openclaw.ai) | Gateway + channels (Telegram, Slack, etc.) + pluggable "agent harness" runtimes; can also drive external coding harnesses over ACP | `openclaw agent exec "<task>" --cwd <repo> --json` is the documented CI/headless path; it runs one embedded turn with no Gateway and honours the configured `agentRuntime` ([docs](https://docs.openclaw.ai/cli/agent), [harness SDK](https://docs.openclaw.ai/plugins/sdk-agent-harness)) | any configured provider |
 | **Hermes Agent** | Nous Research, open source | Single-process gateway to Telegram/Discord/Slack/WhatsApp/Signal/CLI; built-in learning loop (self-authored skills, memory, session search); 7 terminal backends (local, Docker, SSH, Modal, Daytona, …) ([repo](https://github.com/nousresearch/hermes-agent), [architecture](https://hermes-agent.nousresearch.com/docs/developer-guide/architecture)) | CLI/TUI; Nous already runs it headlessly for the Hermes Index; FrontierHarness ran it as one of 9 harnesses | any provider (`hermes model`) |
-| **[name withheld]** | [name withheld] ([name withheld]/bot) | Closed, hosted "AI teammates": each account gets a persistent cloud computer (browser, filesystem, terminal); Bots message each other, learn skills by demonstration, run on schedules ([docs](https://docs.[name withheld]/[name withheld]/overview)) | **No public programmatic API found** for driving a Bot; interaction is desktop/iOS/Android app messaging. Personal Agent Bench lists [name withheld] as "exam pending" for the same reason. The [name withheld] developer API is model-only. | [name withheld] models only |
 | **QM** | yc-software, MIT | Multiplayer agent harness for a company: Slack + web, per-person isolated workspaces, scoped memory/files/keychain/crons, durable sandboxes. Notably a *harness of harnesses*: Pi, Claude Code, Codex and OpenCode adapters drive the same core ([repo](https://github.com/yc-software/qm), [adapters](https://deepwiki.com/yc-software/qm/2.3-harness-adapters-(pi-claude-codex-opencode))) | Harness Report already runs it from its GitHub repo on Harbor tasks (3 runs on one aider-polyglot task, [page](https://harnessreport.com/harnesses/yc-software-qm.md)); `ianTPE/qm-model-eval` sends tasks through a normal QM turn and grades by reading the database ([repo](https://github.com/ianTPE/qm-model-eval)) | any (per adapter) |
-| **[name withheld]** | Meta | Closed, hosted personal agent; every user gets a Linux VM; connectors to Gmail/Amazon/etc.; plain-markdown memory; asks before irreversible actions ([Verge hands-on](https://www.theverge.com/tech/993391/meta-[name withheld]-ai-hands-on), [safety post](https://research.meta.ai/blog/security-and-safety-for-ai-agents-our-approach-with-[name withheld])). Distinct from **[name withheld] Code**, Meta's terminal coding agent ([[name withheld] Code](https://dev.meta.ai/products/[name withheld]-code)). | **No public API** for the [name withheld] personal agent. Personal Agent Bench evaluates it by *rebuilding the runtime for the exam with a substituted model*. [name withheld] Code has a CLI and is the harness Meta used for its Terminal-Bench 2.1 / DeepSWE numbers ([methodology](https://research.meta.ai/static/[name withheld]-spark-1-2-methodology)). | [name withheld] Spark only |
 
-Implication that drives the plan: two of the five ([name withheld], [name withheld]) are closed products with no headless API, so a same-model controlled comparison is only possible for OpenClaw, Hermes and QM. [name withheld] and [name withheld] can only be compared *as products* (their own model, their own hosting), through their UI, which is a different experiment with a different claim.
+Implication that drives the plan: two of the five products first considered are closed products with no headless API, so a same-model controlled comparison is only possible for OpenClaw, Hermes and QM. Those two products are left out of this survey.
 
 ## 1. Prior work that compares harnesses directly (the closest precedents)
 
@@ -29,7 +27,7 @@ Runs agent harnesses straight from their GitHub repos on Harbor tasks and record
 What to steal: run-from-repo-at-pinned-commit, per-call logging.
 
 ### Personal Agent Bench (Zentor, Sept-Oct 2026)
-The only public comparison of *personal* agents. Rebuilds each product runtime with one substituted model and runs errands in stateful simulated worlds; success is read from world state, never the agent's claim; five run-end classes; goal, unwanted actions and a 0-10 reply score are kept separate and never combined; 95% intervals and n on every figure; no ranking, no composite. October batch (20 tasks, once each): [name withheld] 58% (36-77), Instinct 40%, Town 15%, Pine exam fault. [name withheld]: "exam pending, no teardown". Also publishes six-axis runtime teardowns and tracks OpenClaw, Hermes, [name withheld] from source. [home](https://personalagentbench.com/), [exam](https://personalagentbench.com/how-the-exam-works/), [results](https://personalagentbench.com/results/), [benchmarks critique](https://personalagentbench.com/benchmarks/).
+The only public comparison of *personal* agents. Rebuilds each product runtime with one substituted model and runs errands in stateful simulated worlds; success is read from world state, never the agent's claim; five run-end classes; goal, unwanted actions and a 0-10 reply score are kept separate and never combined; 95% intervals and n on every figure; no ranking, no composite. Also publishes six-axis runtime teardowns and tracks OpenClaw and Hermes from source. [home](https://personalagentbench.com/), [exam](https://personalagentbench.com/how-the-exam-works/), [results](https://personalagentbench.com/results/), [benchmarks critique](https://personalagentbench.com/benchmarks/).
 What to steal: world-state grading, the five end classes (incl. "necessary approval" as a pass, "unauthorised action" as a fail), simulated user that only answers from declared-hidden facts, intervals-not-ranks.
 
 ### HAL, Holistic Agent Leaderboard (Princeton, ICLR 2026)
@@ -47,7 +45,6 @@ Private contamination-controlled suite (256 tasks); vendor-native harness vs neu
 ### Other harness-isolation work
 - "The Scaffold Effect in Coding Agents" (KDD 2026 workshop): harness choice as a hidden variable in leaderboards. [pdf](https://kdd-eval-workshop.github.io/agenticai-evaluation-kdd2026/assets/papers/74_The_Scaffold_Effect_in_Codi.pdf)
 - joelniklaus/CodingBenchmarkResults: 10 harnesses x 2 models on 250 held-out SWE-bench Pro tasks, 5,000 rollouts. [bucket](https://huggingface.co/buckets/joelniklaus/CodingBenchmarkResults)
-- Meta's own [name withheld] Spark 1.2 methodology: each model evaluated "with its selected agent product" ([name withheld] Code, Claude Code, Codex, [name withheld] Build, Antigravity, Kimi Code) in Daytona sandboxes via Harbor format; explicitly not a harness-controlled comparison. [doc](https://research.meta.ai/static/[name withheld]-spark-1-2-methodology)
 
 ## 2. OpenClaw-ecosystem benchmarks (the harness already has a bench culture)
 
@@ -85,16 +82,16 @@ Private contamination-controlled suite (256 tasks); vendor-native harness vs neu
 - **MCP-Universe**, **MCP Atlas** (Scale), **MCP-Persona** (personal apps via simulated MCP environments). [MCP-Universe](https://mcp-universe.github.io/), [MCP-Persona](https://arxiv.org/html/2606.02470)
 - **SkillsBench v1.1**: 87 tasks, with/without skills, 25 agent-model configs, OpenHands default harness, labels configs run under other harnesses. [site](https://skillsbench.ai/)
 - **TheAgentCompany**: simulated software company (GitLab, OwnCloud, RocketChat, Plane), checkpoint-based graders; best agent ~30%. [site](https://the-agent-company.com/)
-- **Gaia2 / ARE** (Meta): dynamic simulated apps, time-sensitive and noisy scenarios, general-assistant tasks. [docs](https://facebookresearch.github.io/meta-agents-research-environments/user_guide/gaia2_evaluation.html)
+- **Gaia2 / ARE**: dynamic simulated apps, time-sensitive and noisy scenarios, general-assistant tasks. [docs](https://facebookresearch.github.io/meta-agents-research-environments/user_guide/gaia2_evaluation.html)
 - **Vending-Bench 2 / Arena** (Andon): long-term coherence running a business; multi-agent competition variant. [site](https://andonlabs.com/evals/vending-bench-2)
 - **Slack Bench** (37 Slack-API tasks), **Agent Diff Bench** (Slack/Linear/Box/Calendar via bash+python). [slack-bench](https://huggingface.co/datasets/hubertmarek/slack-bench)
 
-### Web / computer use (less relevant for a Slack/Telegram harness, but [name withheld] and [name withheld] live here)
-- **GAIA**, **AssistantBench**, **BrowseComp**, **WebArena**, **Online Mind2Web**, **OSWorld-Verified** ([name withheld] Spark 1.1 at 80.8%). [steel index](https://leaderboard.steel.dev/), [OSWorld](https://benchlm.ai/benchmarks/osworld-verified)
+### Web / computer use (less relevant for a Slack/Telegram harness)
+- **GAIA**, **AssistantBench**, **BrowseComp**, **WebArena**, **Online Mind2Web**, **OSWorld-Verified**. [steel index](https://leaderboard.steel.dev/), [OSWorld](https://benchlm.ai/benchmarks/osworld-verified)
 
 ## 6. What the literature says a credible harness eval needs
 
-1. **Fix the model, vary the harness.** Every serious harness comparison (FrontierHarness, Claw-SWE-Bench, HAL pairs, Synopticon) holds the model constant. Without it you are measuring [name withheld] Spark vs [name withheld] vs whatever, not harnesses.
+1. **Fix the model, vary the harness.** Every serious harness comparison (FrontierHarness, Claw-SWE-Bench, HAL pairs, Synopticon) holds the model constant. Without it you are measuring one model against another, not harnesses.
 2. **Same frozen environment per trial.** FrontierHarness restores every trial from one golden checkpoint; Harbor tasks ship Dockerfiles; RealClawBench reconstructs the execution env.
 3. **Grade world state, not the transcript.** Claw-SWE-Bench reads `git diff`; Personal Agent Bench reads the simulated world; qm-model-eval reads the database; Hermes Bench grades "the files and state the agent leaves behind".
 4. **Report intervals and n, not ranks.** Terminal-Bench 4.0 prints 95% CIs; Personal Agent Bench refuses composites; tau-bench and Claw-Eval use pass^k for reliability. Five trials per task is the TB norm.
@@ -103,3 +100,13 @@ Private contamination-controlled suite (256 tasks); vendor-native harness vs neu
 7. **Record the harness version/commit and egress policy.** PinchBench pins OpenClaw version; Harness Report pins commit; FrontierHarness refuses comparability without a recorded allowlist.
 8. **Expect wall-clock cancellation to hide completed work** (22/81 in Arjmandi) and telemetry bugs to invalidate cost claims (the retracted August manuscript).
 9. **Nobody has yet measured the thing personal/work harnesses are for**: a continuing relationship with one user (memory, proactivity, learned skills) across many errands. Personal Agent Bench says this outright; pi-Bench is the closest research attempt.
+
+## Disclosures
+
+Disclosure: QM is a project of Y Combinator, which Garry Tan runs.
+
+Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
+
+Disclosure: OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.
+
+Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI.

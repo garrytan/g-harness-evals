@@ -2,7 +2,7 @@
 
 This repository compares agent harnesses. A harness is everything around the model: the tools, prompts, context management, channels, memory, scheduling and permissions that turn a chat model into an agent. We hold the model fixed and vary the harness, on tasks that look like the work these harnesses are sold for.
 
-There is no home team. OpenClaw, Hermes Agent, QM, [name withheld] and [name withheld] get the same treatment: the same tasks, the same graders, the same report structure, and the same "what to use and what to avoid" paragraph. A result a harness's maintainers would dispute is published with the evidence that supports it and the limit that qualifies it.
+There is no home team. OpenClaw, Hermes Agent, QM, Claude Code and Codex get the same treatment: the same tasks, the same graders, the same report structure, and the same "what to use and what to avoid" paragraph. A result a harness's maintainers would dispute is published with the evidence that supports it and the limit that qualifies it.
 
 ## Read first
 
@@ -27,7 +27,8 @@ Explain the task, the setting that changed the outcome, and the limit of the res
 - `scripts/`: documentation checks.
 - `world/`: the simulated company: `seed/` (messy-company-v1 import, `world.json`, manifest), `services/` (Slack mock, clock, event log, one process per trial), `world-mcp/` (the MCP server every harness gets).
 - `sealed/`: `recipient.txt`, the public age recipient of the held-out custody identity, one line; `tests/sealed-recipient.test.ts` checks its shape. The identity itself is not in the repository.
-- Planned (see the plan's repository layout): `harnesses/<name>/`, `tasks/`, `runner/{proxy,ledger,egress}`, `results/`.
+- `harnesses/<name>/`: each harness's image, adapter and `pin.json`. `tasks/`: the task sets with their oracles and seals. `runner/proxy/` and `runner/ledger/`: the metering proxy and the budget ledger.
+- Planned (see the plan's repository layout): `runner/egress/`. Run results live under `docs/benchmarks/<run>/results/`, not in a top-level `results/`.
 
 ## Shape of a top-level document
 

@@ -34,3 +34,11 @@ Two labellers labelled the same 764 items blind: Opus 5.5 (anthropic/claude-opus
 - `files.list` on `members/bettina.kroll` returned ok with 0 files; the real folder is `members/bettina-kroll`. Opus called it a wrong name, Sol did not. The classifier counts only refused calls, so it says no.
 - Reading a missing `package.json` inside a shell pipeline that succeeded (discovery, openclaw t2): Sol said wrong name, Opus did not. The classifier marks it unknown.
 - **gbrain denials naming invented sources.** Many `scope_denied` `gbrain.remember` calls name sources that do not exist, such as `assistant-dm-pree`, and `permission_denied` searches name sources such as `hollis-mbeki`. The rules count them as denials because gbrain's error is a scope refusal. gbrain could instead say "no such source", which would tell the model what went wrong. That goes to internal-task.
+
+## Disclosures
+
+gstack is Garry Tan's own project.
+
+gbrain is Garry Tan's own project.
+
+Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI. OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.

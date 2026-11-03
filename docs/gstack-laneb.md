@@ -124,3 +124,7 @@ So the counted gstack arm is a **pack-equivalent rebuild**, recorded in `pin.jso
 ## Error codes
 
 `HE-LANEB-001` to `HE-LANEB-008`, listed in [errors.md](errors.md#lane-b-bridge-harn-14).
+
+## Disclosures
+
+gstack is Garry Tan's own project.

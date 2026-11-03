@@ -49,3 +49,11 @@ bun scripts/tool-discipline/reply-probe.ts --target openclaw --write docs/tool-d
 ```
 
 Targets: openclaw, hermes-oneshot, hermes-chat, claude-code, qm-pi. Each runs one capture trial (run id prefix `anatomy-capture-`) against the fake model with dummy keys, about a minute each. `--extract <dir>` re-reads a finished capture without running anything, and takes the image and commit fields from the `probe-run.json` saved at capture, not from today's image and HEAD; a capture saved before that file held them writes them as unknown. Reply text is copied from the fake's request log, with token-like strings replaced by `[scrubbed]`.
+
+## Disclosures
+
+Disclosure: QM is a project of Y Combinator, which Garry Tan runs.
+
+Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
+
+Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI. OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.

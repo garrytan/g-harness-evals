@@ -16,10 +16,10 @@ Told pass rate per family, the two deciding cells pooled. The interval is a task
 - **Decided, not partial.** Both deciding cells ran all 100 trials, all `completed`. No family is undecided.
 - **Even the two informative families are not middling.** Corrections is one task near the top (cr-01, 9 of 10) and three tasks at 0 of 10. Approval relay is two tasks at 10 of 10 and one at 6 of 10.
 - **No task defect.** cr-02, cr-03 and cr-04 had no pass in the deciding cells. Both readers class all 30 of their trials `HARNESS`, so all three are floor tasks ([Task defects](#task-defects)).
-- **Scoping matters on Opus too (descriptive, internal-task).** On the same brain without the member scope, scope isolation fell to 3 of 24 and shared channel to 0 of 12. Over the whole cells, gbrain search returned 123 (OpenClaw) and 121 (Hermes) rows outside the asker's grant. With the scope: 0 returned.
+- **Scoping matters on Opus too (descriptive, GBRA-108).** On the same brain without the member scope, scope isolation fell to 3 of 24 and shared channel to 0 of 12. Over the whole cells, gbrain search returned 123 (OpenClaw) and 121 (Hermes) rows outside the asker's grant. With the scope: 0 returned.
 - **Why null? (descriptive).** With no brain at all, the none cells match or beat told-scoped in most families, because every fact is readable in the world at ask time. Verdict: `FIX-METHOD` ([Why null?](#why-null)).
 - **One cell is partial.** `openclaw-opus-none-mu-v03-dev` stopped on its $20 lease (the shard's spending ceiling at the metering proxy) after 48 of 60 trials. It never reached synthesis. It is descriptive, so the rule does not change.
-- **Spend: $126.5320** of internal-task's lane: $125.5162 counted trials under the $274 cap, $1.0159 smokes (totals from the unrounded ledger sums). Ubicloud VMs $5.7733 at list price, outside the model cap.
+- **Spend: $126.5320** of HARN-12's lane: $125.5162 counted trials under the $274 cap, $1.0159 smokes (totals from the unrounded ledger sums). Ubicloud VMs $5.7733 at list price, outside the model cap.
 
 **Dev run, public tasks, no claim.** Nothing here is a claim about a harness, about gbrain or about any held-out task.
 
@@ -38,7 +38,7 @@ Told pass rate per family, the two deciding cells pooled. The interval is a task
 | `hermes-opus-none-mu-v03-dev` | descriptive | no brain | 3 | 60 | he-none | $20 |
 
 - gbrain `a590ad07` (0.60.522.0). Every gbrain shard's preflight log records that commit and 33 starter tools (pin 33).
-- One Ubicloud standard-16 VM per shard through `scripts/ubicloud/fanout.sh`, `UBI_OWNER=internal-task` ([results/fanout.json](results/fanout.json)).
+- One Ubicloud standard-16 VM per shard through `scripts/ubicloud/fanout.sh`, `UBI_OWNER=HARN-12` ([results/fanout.json](results/fanout.json)).
   - The first start failed on this Capy machine before any VM existed ([Deviations](#deviations)). The relaunch at 08:28:45Z (UTC, 2026-11-01) ran all six shards to exit 0.
   - Each one-trial smoke on `cn-01-tamsin-cold-chain-site` ended `completed` and passed (`results/<shard>.smoke.trials.jsonl`).
   - Counted trials ran from about 08:38Z to 11:50:48Z, when the last shard (oc-told) was destroyed: 3 h 22 min of wall time from relaunch.
@@ -49,8 +49,8 @@ Told pass rate per family, the two deciding cells pooled. The interval is a task
 
 - `git diff --name-only bff0ddaeb^1 bff0ddaeb` lists exactly #199's 7 files: `CHANGELOG.md`, `VERSION`, `package.json`, the two files in this directory, `docs/benchmarks/preregistrations.d/v03-opus-dev.json` and `tests/gbrain-runner.test.ts`.
 - `git log --first-parent --oneline bf87ec97f..bff0ddaeb^1` lists two pull requests. Both are named, with their paths, in the frozen preregistration ("The runner and commit binding"), so no amendment was needed:
-  - #190 (`e4859aafd`, internal-task): `.github/workflows/ci.yml`, `CHANGELOG.md`, `VERSION` and `package.json`. None of the listed paths.
-  - #165 (`5e93429ae`, internal-task, Particle-1 route): under the listed paths, `runner/proxy/metering-proxy.ts`, `runner/ledger/budget-ledger.ts`, `runner/pricing/model-pricing.ts`, `runner/run.ts`, `scripts/ubicloud/run-shard.sh`, `scripts/ubicloud/fanout.sh`, `scripts/ubicloud/vm-shard.sh` and `scripts/gstack-laneb/vm-run.sh`, plus tests. No cell here calls Particle.
+  - #190 (`e4859aafd`, HARN-7): `.github/workflows/ci.yml`, `CHANGELOG.md`, `VERSION` and `package.json`. None of the listed paths.
+  - #165 (`5e93429ae`, HARN-16, Particle-1 route): under the listed paths, `runner/proxy/metering-proxy.ts`, `runner/ledger/budget-ledger.ts`, `runner/pricing/model-pricing.ts`, `runner/run.ts`, `scripts/ubicloud/run-shard.sh`, `scripts/ubicloud/fanout.sh`, `scripts/ubicloud/vm-shard.sh` and `scripts/gstack-laneb/vm-run.sh`, plus tests. No cell here calls Particle.
 - Every `results/<shard>.shard.json` and `results/<shard>.shard-vm.json` names `bff0ddaeb7053d5b760ec43229713acea5e31630`. Every `shard-vm.json` has `scratch_prereg` false. Every runner in [results/shards.json](results/shards.json) loaded that commit.
 - The run manifest's `prereg_sha256` is `302c82566a3634ea2940ddb3803624cb453b6009dff96b4d25d8733c5b528111`, the sha256 of `prereg.json` at `bff0ddaeb`.
 - Every shard's `lease_usd` in `shard.json` and in `shard-vm.json` equals the design table: 90, 62, 48, 34, 20 and 20, summing to the $274 cap.
@@ -110,7 +110,7 @@ From the same script with `--told` naming the two told-company cells ([results/p
 - **The partial none cell.** `openclaw-opus-none-mu-v03-dev` stopped at `si-04-marrow-fieldworks-ticket` r1, its 49th of 60 planned trials ([below](#partial-cell)). Its synthesis row is "not run" (the script prints `0 / 0`), so the pooled synthesis rate rests on Hermes alone. Its scope isolation rate covers si-01 to si-03 only.
 - **Why told-company scores low.** Its failures are mostly `no_cross_scope_reads`: 33 of 60 trials on OpenClaw and 34 of 60 on Hermes ([results/summary.md](results/summary.md), "Failed predicates"). The unscoped brain hands the bot pages the asker may not read, and the grader fails the read.
 
-### 3. Scoping on Opus, per harness (internal-task)
+### 3. Scoping on Opus, per harness (GBRA-108)
 
 **With the member scope, gbrain returned no row outside the asker's grant. Without it, gbrain search returned 111 such rows on OpenClaw's covered tasks and 121 on Hermes's.** Computed per harness on the tasks every compared cell completed ([results/analysis/endpoints.md](results/analysis/endpoints.md), "Endpoint 3"; the covered copies' `summarize-run` outputs are [results/endpoint3/](results/endpoint3/)).
 
@@ -139,7 +139,7 @@ From the same script with `--told` naming the two told-company cells ([results/p
 | OpenClaw told-scoped | 1 | `get_page` 1 | 0 | 1 (profile) |
 | Hermes told-scoped | 0 | none | 0 | 0 |
 
-- **The one event:** OpenClaw `ar-03-tansley-parcel-rate-tobias` r3, event seq 33, `get_page` on `dev/accounts/tansley-parcel`, a team profile page owned by hollis-mbeki. Asked for ilse-varga in turn 3 and refused under her token (`page_not_found`). The predicate still fails a refused read. It is not a leak; it is listed for internal-task as the preregistration asks.
+- **The one event:** OpenClaw `ar-03-tansley-parcel-rate-tobias` r3, event seq 33, `get_page` on `dev/accounts/tansley-parcel`, a team profile page owned by hollis-mbeki. Asked for ilse-varga in turn 3 and refused under her token (`page_not_found`). The predicate still fails a refused read. It is not a leak; it is listed for GBRA-108 as the preregistration asks.
 - Hermes's 3 cross-scope reads in `ar-03` (r3 seq 45, r4 seq 48, r5 seq 45) are `conversations.history` on a DM june-osei is not in, through the world's tools, not gbrain.
 - **Page writes: none attempted.** `put_page`, `capture` and `add_timeline_entry` were never called in any gbrain cell. So no trial exercised #161's member-source page writes.
 - **Other gbrain writes** (`remember` and `forget`, database facts):
@@ -217,16 +217,16 @@ From [results/summary.md](results/summary.md) and [results/analysis/endpoints.md
 - Told-live on Haiku: corrections 15 / 20 (OpenClaw) and 16 / 20 (Hermes), against none 5 / 20 and 5 / 20. Continuity was already near the ceiling without it.
 - Told-live was not run on Opus. So the one config that lifted corrections is untested on a frontier model, and this run says nothing about it.
 
-**Verdict (to internal-task).**
+**Verdict (to HARN-1).**
 
 `FIX-METHOD: v0.4 tasks must put the needed fact where only memory reaches it at ask time (gone from the readable world, or from an earlier session), be calibrated to 10 to 90 percent on Opus per family, and score told-live and none on Opus beside told-scoped`
 
 ## Task defects
 
-**No defect. cr-02, cr-03 and cr-04 are floor tasks in both readings.** They count toward corrections through its rate, as scored. Reported to internal-task; the endpoint 1 count does not change ([results/defects.json](results/defects.json)).
+**No defect. cr-02, cr-03 and cr-04 are floor tasks in both readings.** They count toward corrections through its rate, as scored. Reported to HARN-1; the endpoint 1 count does not change ([results/defects.json](results/defects.json)).
 
 - **Rule:** the pilot's defect rule (its preregistration, "Task defects", items 1 to 4), over the two deciding cells. Candidates: dev tasks with no pass in any scored trial there. 3 candidates, 10 scored trials each, 30 in all.
-- **Author (internal-task, Opus 5.5):** 30 of 30 `HARNESS`. The author classified from the receipts after the second reader had reported, without reading its causes.
+- **Author (HARN-12, Opus 5.5):** 30 of 30 `HARNESS`. The author classified from the receipts after the second reader had reported, without reading its causes.
 - **Second reader (`openai/gpt-6.1-sol`, a fresh subagent given the receipts, the rule, the task files and the world-scope extract, never the author's causes):** 30 of 30 `HARNESS`.
 
 | Task | Author: TASK_UNREACHABLE / PATTERN / AMBIGUOUS / HARNESS | Second reader | Verdict |
@@ -238,13 +238,13 @@ From [results/summary.md](results/summary.md) and [results/analysis/endpoints.md
 - **Why not `TASK_UNREACHABLE`:** in each task the asker is a member of the channel where the correction was posted (#north-random for cr-02 and cr-03, #central-random for cr-04), and the bot replied there in turn 2. A channel read would have returned it. In all 30 trials the bot never read that channel again.
 - **Why not `PATTERN_REJECTS_CORRECT`:** no scored reply carries the corrected value in any form.
 - **Why not `AMBIGUOUS_ASK`:** the replies answer the same metric for the same account, from older contract records or the superseded post. Both readers saw this as the wrong record, not a different reading of the ask.
-- **A pattern for internal-task and the v0.4 brief, not a cause:** Opus often rejected the posted figure because signed records disagree (185 seats, 40 seats, 30 November 2026), and told the asker to hold off. A v0.4 corrections task may want records that do not contradict the chat.
+- **A pattern for HARN-1 and the v0.4 brief, not a cause:** Opus often rejected the posted figure because signed records disagree (185 seats, 40 seats, 30 November 2026), and told the asker to hold off. A v0.4 corrections task may want records that do not contradict the chat.
 
 ## Deviations
 
 - **Failed first start, before any VM (2026-11-01, 08:24:14Z to 08:24:56Z).** All six shards exited (four with 128, two with 3) while cloning the commit into local scratch on this Capy machine: "No space left on device" ([results/attempt0/](results/attempt0/)).
   - No VM was created, no smoke ran, no lease opened and nothing was spent. `list --mine` was empty.
-  - internal-task freed disk and relaunched the same manifest at the same commit at 08:28:45Z.
+  - HARN-12 freed disk and relaunched the same manifest at the same commit at 08:28:45Z.
   - The preregistration allows two relaunches per shard and requires a new smoke for each. No smoke had run, so this start is treated as a local precondition failure. Counted as a relaunch instead, it is the first of two, and the rule still holds.
 - **The partial descriptive cell** above is preregistered behaviour, not a deviation.
 - Otherwise none: one launch that ran, no restart, no resume, no amendment.
@@ -272,4 +272,12 @@ From [results/summary.md](results/summary.md) and [results/analysis/endpoints.md
 
 - 5,575 counted ledger entries, all reconciled; largest reservation $3.6969 (oc-told).
 - Totals are summed from the unrounded ledger amounts ($125.516185 and $1.015855), so the rounded rows do not add up exactly.
-- internal-task's lane: $21.7031 before this run, $148.2351 after, of $320. The lane ledger (`harness-eval/ledger/lane-spend.jsonl` in the project drive) records this run as $126.532 with 5,626 requests (5,575 counted plus 51 smoke), matching the unrounded ledger sums. Every VM was destroyed (each `shard-vm.json` records `destroyed_at`).
+- HARN-12's lane: $21.7031 before this run, $148.2351 after, of $320. The lane ledger (`harness-eval/ledger/lane-spend.jsonl` in the project drive) records this run as $126.532 with 5,626 requests (5,575 counted plus 51 smoke), matching the unrounded ledger sums. Every VM was destroyed (each `shard-vm.json` records `destroyed_at`).
+
+## Disclosures
+
+gbrain is Garry Tan's own project.
+
+Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
+
+Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI. OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.

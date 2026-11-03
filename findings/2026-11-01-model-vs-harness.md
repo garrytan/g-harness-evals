@@ -9,10 +9,9 @@ prereg: docs/benchmarks/2026-10-24-m3-heldout/PREREGISTRATION.md at 3c7e7653b864
 data: in-repo receipts, no separate bundle. m3-heldout results/trials.jsonl sha256 033e67a8922e251abdd8a42a985352fc998d3b10577772339a608a7d1aaa3757; m3-sensitivity-haiku results/trials.jsonl sha256 b6933ae3d8bfb8b1745d7332bfd0e01f57b2f5c9860e1db8c86fecac0859d968
 author: internal-task
 reviewed_by: internal-task claim check with a GPT-6.1 Sol reviewer, 2026-11-01, PASS-WITH-EDITS (edits applied in this version); internal-task recheck of the edited lines at 79102d528, 2026-11-01, its line edits applied; reproduced_by: internal-task clean-machine rerun at 912dd49f, every table row matched
-disclosures: The repository and the evaluation are run by Garry Tan. gbrain-evals, which supplies the task world, is Garry's project, and so is the gstack-evals crew that ran the claim check. QM is published by the yc-software organisation. Garry's disclosure lines are in the closing Disclosures section at the end of the file; Anthropic, Nous Research beyond the Hermes line, Ubicloud, Capy and Pi's maintainer get no line. No harness maintainer saw the tasks or results before the run.
 ---
 
-# On 16 held-out multi-user tasks, OpenClaw, Hermes Agent and QM showed no pass-rate difference we could detect on Claude Sonnet 5.5 (77, 73 and 71 of 80; controls 96%, 91%, 89%; nominal MDD 4.6 to 7.2 points, which this saturated set could not reach; largest gap -8 points [-21, +3]; confirmatory)
+# Sonnet/Haiku only, not frontier evidence: On 16 held-out multi-user tasks, OpenClaw, Hermes Agent and QM showed no pass-rate difference we could detect on Claude Sonnet 5.5 (77, 73 and 71 of 80; controls 96%, 91%, 89%; nominal MDD 4.6 to 7.2 points, which this saturated set could not reach; largest gap -8 points [-21, +3]; confirmatory)
 
 **Status:** not for publication. It rests on Sonnet 5.5 and Haiku 5.5 only, and these evals now test frontier models only (Opus 5.5 and GPT-6.1 Sol), so its Sonnet-vs-Haiku contrast is appendix material only. Claim check PASS-WITH-EDITS (2026-11-01), edits applied. The edited lines were rechecked the same day, and the recheck's line edits are applied. Disclosures answered by Garry, in the closing Disclosures section at the end of the file.
 
@@ -163,6 +162,7 @@ The post carries the closing Disclosures section at its end; the X hook carries 
 - 2026-11-01: claim-check edits applied (see Claim check).
 - 2026-11-01: the recheck's line edits applied, and Garry's disclosure lines added in a closing Disclosures section at the end of the file, which now also holds the file's other disclosure bullets.
 - 2026-11-01: marked not for publication; the verdict line replaced (Sonnet and Haiku only); the Sonnet minus Haiku contrast moved to the appendix.
+- 2026-11-02: the title line now says the finding rests on Sonnet/Haiku only and is not frontier evidence. The front-matter disclosures line is removed, since front matter renders at the top of the page (its one extra sentence moved to Disclosures), and Disclosures drops its internal bookkeeping sentence. No number changed.
 
 ## Appendix: Haiku 5.5 and the Sonnet minus Haiku contrast (dev)
 
@@ -196,7 +196,8 @@ A weaker model fails more of the middle-difficulty tasks in every harness, so th
 
 - The repository and the evaluation are run by Garry Tan. gbrain-evals, which supplies the task world, is Garry's project.
 - The claim check was run by the gstack-evals crew, which is also Garry's, so it is not independent of him.
-- QM is published by the yc-software organisation. Garry answered the disclosure question with the lines below; Anthropic, Nous Research beyond the Hermes line, Ubicloud, Capy and Pi's maintainer get no line.
+- No harness maintainer saw the tasks or results before the run.
+- QM is published by the yc-software organisation.
 - Disclosure: QM is a project of Y Combinator, which Garry Tan runs.
 - Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
 - Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI.

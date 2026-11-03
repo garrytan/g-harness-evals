@@ -66,3 +66,15 @@ From the [m3 held-out run](../benchmarks/2026-10-24-m3-heldout/report.md), Sonne
 | Uncached input | under 0.1% | 2,400 |
 
 - OpenClaw wrote about 4,100 cache tokens per request, against about 1,600 for Hermes and 2,200 for QM-Pi, with similar cache reads to Hermes. **Why is not settled.** No OpenClaw request failed in the m3 run, so retries are not the cause there, and only 5 of its 909 requests read no cache, so the fixed prefix is reused. Finding the cause needs a run that logs cache writes per request; the planned paid run does not test this.
+
+## Disclosures
+
+gbrain is Garry Tan's own project.
+
+Disclosure: QM is a project of Y Combinator, which Garry Tan runs.
+
+Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
+
+Disclosure: OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.
+
+Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI.

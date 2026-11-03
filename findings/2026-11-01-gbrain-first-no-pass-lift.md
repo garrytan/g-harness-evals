@@ -9,10 +9,9 @@ prereg: docs/benchmarks/2026-10-25-v02-heldout/PREREGISTRATION.md at 4777693426d
 data: in-repo receipts, no separate bundle. v02-heldout results/trials.jsonl sha256 c63a008c20c14d87045f7bcf02bec769252bb7b0acaf71dbe141cc0646bdcf38
 author: internal-task
 reviewed_by: internal-task claim check with a GPT-6.1 Sol reviewer, 2026-11-01, PASS-WITH-EDITS (edits applied in this version); internal-task recheck of the edited lines at 79102d528, 2026-11-01, its line edits applied; reproduced_by: internal-task clean-machine rerun at 912dd49f, every table row matched
-disclosures: The repository and the evaluation are run by Garry Tan. gbrain is his own project, and gbrain-evals, which supplies the task world, is too, as is the gstack-evals crew that ran the claim check. QM is published by the yc-software organisation. Garry's disclosure lines are in the closing Disclosures section at the end of the file; Anthropic, Nous Research beyond the Hermes line, Ubicloud, Capy and Pi's maintainer get no line.
 ---
 
-# On 15 held-out multi-user tasks, telling OpenClaw, Hermes Agent and QM to consult gbrain first showed no pass-rate gain we could detect on Claude Sonnet 5.5 (+0 [-7, +8], -5 [-16, +4], +3 [-19, +25] points; controls 56%, 67%, 51%; nominal MDD 10 to 13 points; confirmatory, custody by digest only), and cross-scope reads were higher in all three told cells (+16 [+1, +33], +15 [+3, +31], +11 [-1, +27] points; none survives Holm)
+# Sonnet/Haiku only, not frontier evidence: On 15 held-out multi-user tasks, telling OpenClaw, Hermes Agent and QM to consult gbrain first showed no pass-rate gain we could detect on Claude Sonnet 5.5 (+0 [-7, +8], -5 [-16, +4], +3 [-19, +25] points; controls 56%, 67%, 51%; nominal MDD 10 to 13 points; confirmatory, custody by digest only), and cross-scope reads were higher in all three told cells (+16 [+1, +33], +15 [+3, +31], +11 [-1, +27] points; none survives Holm)
 
 **Status:** dev background for the Opus 5.5 reruns in internal-task's v0.4 and internal-task's H10, not for publication on its own: it rests on Sonnet 5.5 and Haiku 5.5 only. Claim check PASS-WITH-EDITS (2026-11-01), edits applied. The edited lines were rechecked the same day, and the recheck's line edits are applied. Disclosures answered by Garry, in the closing Disclosures section at the end of the file.
 
@@ -132,15 +131,15 @@ The part under test is the brain-first instruction plus an unscoped gbrain.
 
    - Expected: the digest in the front matter, and the Result tables above row for row.
    - The scripts rewrite `summary.json`, `comparisons*.json` and `secondary-endpoints.json` under `results/` with fields added since the run; the last line restores the committed receipts.
-2. **Rerun one cell (paid): not possible for outsiders today.** The held-out task bodies are not released (below), and a paid cell also needs the direct-key path, which is being designed and does not exist yet.
+2. **Rerun one cell (paid): not possible for outsiders today.** The held-out task bodies are published, but the set is spent (below), and a paid cell needs the direct-key path, which is being designed and does not exist yet.
    - Cost estimate for whoever can: one Sonnet cell of 75 trials is $6 (QM) to $17 (OpenClaw).
    - Expected spread: with 15 tasks and most at 0 or 5 of 5, a 10-point swing between replicates is noise.
 
 ## What is held out, and why
 
-- **The task bodies of the v0.2 held-out set are not released.** Its 15 tasks were sealed by digest (tree sha256 `f12ba073…6c74`, sealing commit `111ad974b`), and the set is now spent: this run and two dev runs opened it.
-- **What outsiders can do today:** verify the digests with `bun scripts/seal-heldout.ts --check` against the manifest, and re-read every receipt. **What they can't do:** rerun the held-out cells, because the bodies are not public.
-- **Disclosure.** The bodies sit in this private repository at `tasks/multiuser/v0.2/heldout/`, and the receipts' `turns.jsonl` files carry each trial's prompts. Making the repository public as it stands would publish both. Whether to release the set or remove it first is the owner's decision ([publishing checklist](../docs/publishing-checklist.md)).
+- **The v0.2 held-out set is spent, and its task bodies are published, labelled spent.** Its 15 tasks were sealed by digest (tree sha256 `f12ba073…6c74`, sealing commit `111ad974b`), and the set is spent: this run and two dev runs opened it. The bodies are at `tasks/multiuser/v0.2/heldout/` (`status: spent` in its manifest), and the receipts' `turns.jsonl` files carry each trial's prompts.
+- **What outsiders can do today:** verify the digests with `bun scripts/seal-heldout.ts --check` against the manifest, read the task bodies, and re-read every receipt. **What they can't do:** confirm anything new on this set. It is spent, so any rerun on it is dev, and a paid rerun needs the direct-key path, which does not exist yet (Replicate it).
+- **Release decision, 2026-11-02.** Spent held-out sets are published, labelled spent; sets that are still sealed stay private ([publishing checklist](../docs/publishing-checklist.md)).
 
 ## Claim check
 
@@ -171,6 +170,7 @@ The post carries the closing Disclosures section at its end; the X hook carries 
 - 2026-11-01: claim-check edits applied (see Claim check).
 - 2026-11-01: the recheck's line edits applied, and Garry's disclosure lines added in a closing Disclosures section at the end of the file, which now also holds the file's other disclosure bullets.
 - 2026-11-01: marked dev background for the Opus 5.5 reruns; the verdict line replaced (Sonnet and Haiku only).
+- 2026-11-02: the title line now says the finding rests on Sonnet/Haiku only and is not frontier evidence. The front-matter disclosures line is removed, since front matter renders at the top of the page, and Disclosures drops its internal bookkeeping sentence. "What is held out" says the spent v0.2 held-out set is published, labelled spent. No number changed.
 
 ## Appendix: Haiku 5.5, same run
 
@@ -188,7 +188,7 @@ This appendix is descriptive. Verbatim from the same `compare-run.ts` call:
 
 - The repository and the evaluation are run by Garry Tan. gbrain is his own project, and gbrain-evals, which supplies the task world, is too.
 - The claim check was run by the gstack-evals crew, which is also Garry's, so it is not independent of him.
-- QM is published by the yc-software organisation. Garry answered the disclosure question with the lines below; Anthropic, Nous Research beyond the Hermes line, Ubicloud, Capy and Pi's maintainer get no line.
+- QM is published by the yc-software organisation.
 - Disclosure: QM is a project of Y Combinator, which Garry Tan runs.
 - Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
 - Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI.

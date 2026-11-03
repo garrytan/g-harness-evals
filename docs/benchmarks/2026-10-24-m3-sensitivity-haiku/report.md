@@ -1,6 +1,6 @@
 # M3 sensitivity cell report: the same exam with a weaker model
 
-**Status (added 2026-10-28, internal-task).** This run used the v0.1 held-out tasks after `m3-heldout-2026-10` had already opened them. Under the rule adopted on 2026-10-28 (only a held-out set's first counted opening is confirmatory; every later opening is dev) its results are dev: the intervals hold for these tasks, but they cannot confirm a claim, because the run was designed after that set's results had been seen. Its Haiku arm was preregistered after the m3-heldout receipts had merged. No confirmation is planned; it is a sensitivity reading. Nothing below is changed. [README, Corrections](../../../README.md#corrections)
+**Status (added 2026-10-28, HARN-11).** This run used the v0.1 held-out tasks after `m3-heldout-2026-10` had already opened them. Under the rule adopted on 2026-10-28 (only a held-out set's first counted opening is confirmatory; every later opening is dev) its results are dev: the intervals hold for these tasks, but they cannot confirm a claim, because the run was designed after that set's results had been seen. Its Haiku arm was preregistered after the m3-heldout receipts had merged. No confirmation is planned; it is a sensitivity reading. Nothing below is changed. [README, Corrections](../../../README.md#corrections)
 
 Run `m3-sensitivity-haiku-2026-10`, preregistered in [PREREGISTRATION.md](PREREGISTRATION.md) (no amendments after it was committed), run 2026-10-23 14:54 to 20:35 UTC on the same machine as the held-out run: the same 20 sealed held-out tasks, pins, preamble and grader as [the Sonnet run](../2026-10-24-m3-heldout/report.md), with the model fixed to `claude-haiku-5-5`, five repetitions, 300 trials. Spend $1.84 on 2,587 priced requests (lease $50). Every number comes from [results/trials.jsonl](results/trials.jsonl) through `scripts/summarize-run.ts` and `scripts/compare-run.ts` (seed 7, 10,000 draws), saved under [results/](results/).
 
@@ -83,7 +83,7 @@ Per task, passes of 5 (OpenClaw, Hermes, QM), with the Sonnet run's figures in b
 
 Sixteen tasks and five repetitions cannot separate differences under about 20 points, and the observed harness gaps are at most 10; a v0.2 slice needs more and harder tasks (the `sc-06` and `si-06` kind, and relay cases) before a pairwise verdict is possible. The scheduler gap is unchanged. The frontier-model sensitivity cell from the plan was not run, for the reason in the preregistration.
 
-## Failure taxonomy (added 2026-10-24, internal-task)
+## Failure taxonomy (added 2026-10-24, HARN-6)
 
 Every failed required predicate carries an observed failure mode in [results/taxonomy.md](results/taxonomy.md), produced by `scripts/taxonomy.ts`, with one line of evidence per failure and the underlying facts in [results/taxonomy.json](results/taxonomy.json). Labels are observations, not causes. Pass rates and intervals above are unchanged.
 
@@ -93,4 +93,12 @@ The `ho-03` drop (OpenClaw 2 of 5 here, 5 of 5 with Sonnet, 5 of 5 for Hermes an
 
 ## Receipts
 
-As for the held-out run, under [results/](results/): `manifest.json`, `trials.jsonl`, `summary.json`, three comparison files, `proxy-usage.ndjson`, the lease ledger ($1.84 committed of $50), and per trial `events.jsonl`, `turns.jsonl`, `snapshot.json.gz`, `usage.json`, `reconcile.json`, `grade.json`, `logs/adapter.log`. Program spend to date: $53.33 + $1.84 + $0.02 (scratch smoke) = $55.19 of the $2,000 cap. Spend reconciliation (added 2026-10-24, internal-task): [results/spend-reconciliation.json](results/spend-reconciliation.json) shows the usage log, the per-trial `usage.json` sums and the lease ledger agreeing at $1.84; the provider-side check is not performed, for want of an Admin API key, and the file carries the per-day sheet to check against the console (all of it on 2026-10-23 UTC, `claude-haiku-5-5`).
+As for the held-out run, under [results/](results/): `manifest.json`, `trials.jsonl`, `summary.json`, three comparison files, `proxy-usage.ndjson`, the lease ledger ($1.84 committed of $50), and per trial `events.jsonl`, `turns.jsonl`, `snapshot.json.gz`, `usage.json`, `reconcile.json`, `grade.json`, `logs/adapter.log`. Program spend to date: $53.33 + $1.84 + $0.02 (scratch smoke) = $55.19 of the $2,000 cap. Spend reconciliation (added 2026-10-24, HARN-6): [results/spend-reconciliation.json](results/spend-reconciliation.json) shows the usage log, the per-trial `usage.json` sums and the lease ledger agreeing at $1.84; the provider-side check is not performed, for want of an Admin API key, and the file carries the per-day sheet to check against the console (all of it on 2026-10-23 UTC, `claude-haiku-5-5`).
+
+## Disclosures
+
+Disclosure: QM is a project of Y Combinator, which Garry Tan runs.
+
+Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
+
+Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI. OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.

@@ -108,3 +108,17 @@ These rates come from Haiku 5.5, Sonnet 5.5 and GPT-6 luna receipts. CREW.md kee
 - **Definitions** of each kind are in the head comment of classify.ts and in [LABEL-RULES.md](LABEL-RULES.md).
 
 </details>
+
+## Disclosures
+
+gstack is Garry Tan's own project.
+
+gbrain is Garry Tan's own project.
+
+Disclosure: QM is a project of Y Combinator, which Garry Tan runs.
+
+Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
+
+Disclosure: OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.
+
+Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI.

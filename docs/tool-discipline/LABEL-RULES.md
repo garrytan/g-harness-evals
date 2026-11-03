@@ -17,3 +17,7 @@ You may open the source receipt to check context. For source=events the locator 
 - **skipped_start**: the trial opened a gstack SKILL.md (any read of a SKILL.md path under a gstack skill directory with an ok result) and made no gstack-skill-start call before its final answer. Late starts (after the first task action) count as attempted, not skipped; note "late". Unknown if the read result or the rest of the transcript is not visible.
 
 Write all items, in the template's order, as JSON lines to the output path you were given. Do not edit the template.
+
+## Disclosures
+
+gstack is Garry Tan's own project.

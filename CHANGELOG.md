@@ -2,6 +2,16 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.117] - 2026-11-03
+
+### internal-task step 2: the front door, disclosures, and policy files
+
+- **README rebuilt for outside readers.** It leads with the Opus 5.5 results already on main (the gstack follow-rate checks, the Hermes start-hook rerun and the v0.3 Opus dev run), then harness anatomy and a keyless way to recheck the numbers (`recompute.py` and `summarize-run`). The Sonnet and Haiku results move to a labelled appendix, every results table gains a Model column, and the v0.3 pilot and seal log moves into a details block. Custody commit hashes read "custody commit (private)", and internal thread codes leave the prose. It says the public export is planned and not yet built, and names the four checks CI runs on every pull request. The Opus 5.5 gstack finding's line, added on main in 0.0.106, joins the frontier lead's gstack bullet, and `findings/README.md` gains the gstack disclosure line for it.
+- **Disclosures.** The README, every run report under `docs/benchmarks/` (not the generated `results/report.md` summaries), `docs/report-v0.1.md`, the harness anatomy and tool-discipline pages, `docs/qm-findings.md`, `docs/gstack-laneb.md`, `docs/gstack-native-format.md`, the compendium and the findings now end with a Disclosures section carrying that subject's line word for word from the shared disclosures list. The three Sonnet/Haiku finding files drop their `disclosures:` front-matter line, and each of their title lines starts "Sonnet/Haiku only, not frontier evidence".
+- **Dated corrections, no number changes in finding files.** `report-v0.1.md` says model-over-harness is not a measured ranking (only OpenClaw's Sonnet minus Haiku gap survives Holm) and points its "gbrain arm: pending" section to the completed run. The README's "about a third" for QM's time and tokens against OpenClaw is corrected to about 40 percent, from the m3 held-out report (27 s against 70 s; 12.45 million against 32.31 million input tokens). `gbrain-first` says the spent v0.2 held-out set is published, labelled spent. The compendium drops two products the repository never tested and the disclosures rule does not cover; `CLAUDE.md` names Claude Code and Codex instead. `CLAUDE.md`'s repository map lists `harnesses/`, `tasks/`, `runner/proxy/` and `runner/ledger/` as present.
+- **Policy and licence files (new):** `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, issue forms and a pull request template under `.github/`, `.github/CODEOWNERS`, `LICENSES/CC-BY-4.0.txt` for docs and results (source code stays MIT) and `THIRD_PARTY_NOTICES.md` for the harnesses, packages and captured prompts the repository carries.
+- `docs/publishing-checklist.md` says the public export is planned and its tooling is not yet in this tree, and marks its settled items.
+
 ## [0.0.116] - 2026-11-03
 
 ### internal-task: prompt-archaeology-2026-11 amendment 1

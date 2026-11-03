@@ -1,0 +1,48 @@
+name: Bug report
+description: Something in this repository is broken on current main.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Reports without every required field below are closed with a note asking for what is missing.** Add it and we reopen the report.
+
+        - Security problems go through a private report (this repository's Security tab, then Report a vulnerability), not an issue.
+        - Questions about a published number go in the finding question form.
+        - How we triage: CONTRIBUTING.md at the repository root.
+  - type: textarea
+    id: repro
+    attributes:
+      label: Repro on current main, or a failing test
+      description: Exact steps or commands from a clean clone of current main, or a failing test we can add. Say what you expected and what happened.
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit sha of main you ran
+      description: The output of git rev-parse HEAD.
+      placeholder: 0123abcd...
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: bun --version, your OS, and the harness pins if a harness is involved (harnesses/<name>/pin.json).
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Output from the failing run. Remove any secret first, and never paste a real API key.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: consequence
+    attributes:
+      label: Consequence
+      description: Who is affected and how. For example, a wrong number in a report, a check that passes when it should fail, or a run that can't start.
+    validations:
+      required: true

@@ -9,10 +9,9 @@ prereg: docs/benchmarks/2026-10-24-gbrain-arm/PREREGISTRATION.md at ac9e41ba9eb7
 data: in-repo receipts, no separate bundle. gbrain-arm results/trials.jsonl sha256 964f6512ae8f04ac9d8614405b2acc5c564b607e87c3d99591666e71b1dda530; gbrain-ladder results/trials.jsonl sha256 5b073cae9223a41cff2543e5086bf191ea834b98d5efde492a0c830eb14b3e4c
 author: internal-task
 reviewed_by: internal-task claim check with a GPT-6.1 Sol reviewer, 2026-11-01, PASS-WITH-EDITS (edits applied in this version); internal-task recheck of the edited lines at 79102d528, 2026-11-01, its line edits applied; reproduced_by: internal-task clean-machine rerun at 912dd49f, every table row matched
-disclosures: The repository and the evaluation are run by Garry Tan. gbrain and gstack are his own projects, and gbrain-evals, which supplies the task world, is too, as is the gstack-evals crew that ran the claim check. QM is published by the yc-software organisation. Garry's disclosure lines are in the closing Disclosures section at the end of the file; Anthropic, Nous Research beyond the Hermes line, Ubicloud, Capy and Pi's maintainer get no line.
 ---
 
-# Installed as an MCP server and never mentioned, gbrain was called in 4 of 799 scored trials (0.5%, 95% CI 0.2% to 1.3%) across OpenClaw, Hermes Agent and QM on Claude Sonnet 5.5 and Haiku 5.5 (dev), and pass rate showed no change we could detect (untold minus none -6 to +8 points, every interval touching or crossing zero; none-cell controls 69% to 99%; nominal MDD 4.6 to 16.5 points)
+# Sonnet/Haiku only, not frontier evidence: Installed as an MCP server and never mentioned, gbrain was called in 4 of 799 scored trials (0.5%, 95% CI 0.2% to 1.3%) across OpenClaw, Hermes Agent and QM on Claude Sonnet 5.5 and Haiku 5.5 (dev), and pass rate showed no change we could detect (untold minus none -6 to +8 points, every interval touching or crossing zero; none-cell controls 69% to 99%; nominal MDD 4.6 to 16.5 points)
 
 **Status:** dev background for the Opus 5.5 reruns in internal-task's v0.4 and internal-task's H10, not for publication on its own: it rests on Sonnet 5.5 and Haiku 5.5 only. Claim check PASS-WITH-EDITS (2026-11-01), edits applied. The edited lines were rechecked the same day, and the recheck's line edits are applied. Disclosures answered by Garry, in the closing Disclosures section at the end of the file.
 
@@ -207,13 +206,14 @@ The post carries the closing Disclosures section at its end; the X hook carries 
 - 2026-11-01: claim-check edits applied (see Claim check), the docs rungs added, and the cut scoped to the untold MCP-only route.
 - 2026-11-01: the recheck's line edits applied, and Garry's disclosure lines added in a closing Disclosures section at the end of the file, which now also holds the file's other disclosure bullets.
 - 2026-11-01: marked dev background for the Opus 5.5 reruns; the verdict line replaced (Sonnet and Haiku only).
+- 2026-11-02: the title line now says the finding rests on Sonnet/Haiku only and is not frontier evidence. The front-matter disclosures line is removed, since front matter renders at the top of the page, and Disclosures drops its internal bookkeeping sentence. No number changed.
 
 ## Disclosures
 
 - The repository and the evaluation are run by Garry Tan. gbrain and gstack (cited in What we found) are his own projects, and gbrain-evals, which supplies the task world, is too.
 - The claim check was run by the gstack-evals crew, which is also Garry's, so it is not independent of him.
 - The install ladder ran on Capy machines (the ladder report).
-- QM is published by the yc-software organisation. Garry answered the disclosure question with the lines below; Anthropic, Nous Research beyond the Hermes line, Ubicloud, Capy and Pi's maintainer get no line.
+- QM is published by the yc-software organisation.
 - Disclosure: QM is a project of Y Combinator, which Garry Tan runs.
 - Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
 - Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI.

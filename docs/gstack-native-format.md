@@ -29,3 +29,7 @@ Source tree for one task: tasks/repo/<set>/<split>/<task-id>/ (split = dev or he
 ## Acceptance (keyless, before a task is used)
 
 oracle 5/5 reward 1; starting state and every checks/ script 5/5 reward 0; lint clean (no 8-word run shared with gstack SKILL.md bodies at 61e201ec, no gstack-only skill names or slash-prefixed skill names, no gstack output markers); qa browser check (the gstack arm's browse launches against the app offline; Playwright launches) on the dev split. Every check prints counts and bits only.
+
+## Disclosures
+
+gstack is Garry Tan's own project.

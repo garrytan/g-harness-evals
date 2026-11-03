@@ -155,7 +155,7 @@ The run log is [results/run-log.md](results/run-log.md).
 
 ## Spend
 
-- **Lane balance at launch:** $30 of internal-task's $30 lane, as the preregistration requires the report to state ([results/run-log.md](results/run-log.md)).
+- **Lane balance at launch:** $30 of HARN-15's $30 lane, as the preregistration requires the report to state ([results/run-log.md](results/run-log.md)).
 - **Counted trials: $4.46 of the $20 cap.** $1.83 on `oc-routes` ($8 lease, 1,922 forwarded requests) and $2.62 on `he-routes` ($12 lease, 3,817).
   - The preregistration's point estimate was $4.17, from pilot cells that ran before #116, #118 and the gbrain pin moved, so the comparison is rough.
 - **Smokes: $0.04,** $0.01 and $0.03 under $1.50 leases each (51 requests).
@@ -194,3 +194,13 @@ Under [results/](results/):
 - that both endpoint files, JSON and Markdown, rebuild from these receipts;
 - that every shard names `ba456e687`, and that `prereg.json` and the manifest's hash both equal the hash at that commit;
 - that every route record and ready file names its route, and every hook reported live.
+
+## Disclosures
+
+gstack is Garry Tan's own project.
+
+gbrain is Garry Tan's own project.
+
+Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
+
+Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI. OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.

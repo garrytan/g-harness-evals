@@ -156,3 +156,11 @@ From `bun scripts/v03/pilot-tables.ts --results results --tasks tasks/multiuser/
 
 - 1,370 counted ledger entries, all settled; largest reservation $0.4535.
 - internal-task's lane: $19.90 before this run, $21.29 after, of $40. Every VM was destroyed (each `shard-vm.json` records `destroyed_at`).
+
+## Disclosures
+
+gbrain is Garry Tan's own project.
+
+Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
+
+Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI. OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.

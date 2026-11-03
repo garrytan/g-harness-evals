@@ -1,6 +1,6 @@
 # QM findings (internal-task)
 
-Product observations about [QM](https://github.com/yc-software/qm) `v0.1.15` (commit `7417aa2a`, the pin in [harnesses/qm/pin.json](../harnesses/qm/pin.json) until 2026-10-30) from the inner-harness cell and the probe suite. Each entry names the trials or smoke it rests on, what was expected, what was observed, the smallest reproduction against `harnesses/qm/compose.yaml`, and what QM's `main` shows for the same paths from a read-only `git log v0.1.15..origin/main -- <paths>` (no re-run, no pin change). Entries are defect reports or documented limits; nothing here is filed upstream by this thread, the Captain routes them. A finding against `v0.1.15` may already be fixed on `main`; the "at main" line says so. Current state on top, the run entries are added as the runs report.
+Product observations about [QM](https://github.com/yc-software/qm) `v0.1.15` (commit `7417aa2a`, the pin in [harnesses/qm/pin.json](../harnesses/qm/pin.json) until 2026-10-30) from the inner-harness cell and the probe suite. Each entry names the trials or smoke it rests on, what was expected, what was observed, the smallest reproduction against `harnesses/qm/compose.yaml`, and what QM's `main` shows for the same paths from a read-only `git log v0.1.15..origin/main -- <paths>` (no re-run, no pin change). Entries are defect reports or documented limits; none of them has been filed upstream from this page. A finding against `v0.1.15` may already be fixed on `main`; the "at main" line says so. Current state on top, the run entries are added as the runs report.
 
 **Pin since 2026-10-30:** the harness runs QM main `b6786d67` ([harnesses/qm/README.md](../harnesses/qm/README.md), "Re-pin to main b6786d67"). The findings below were not re-run at that pin. Their reproductions need the `v0.1.15` images and adapter: at `b6786d67` the `claude` config is gone, and the database holds `items`, not `session_entries`.
 
@@ -81,3 +81,9 @@ F5 (channel-scope sandbox refused in the rig), F4 observed three more times, two
 ### 2026-10-24: first version (internal-task, before the counted runs)
 
 F1 to F4 from the source read and the smokes. Run entries follow the two runs' reports.
+
+## Disclosures
+
+Disclosure: QM is a project of Y Combinator, which Garry Tan runs.
+
+Disclosure: OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.

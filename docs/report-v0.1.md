@@ -8,9 +8,7 @@ harness-evals v0.0.5, written 2026-10-24. This page is the one-page account of t
 
 With the model held fixed, the three harnesses tested (OpenClaw 2026.10.6, Hermes Agent v2026.9.24, QM v0.1.15 driving its Pi engine) were not distinguished on whether they got the work right, and were distinguished two to three fold on what they spent to get there. On the 16 held-out tasks every harness can attempt, with `claude-sonnet-5-5`, OpenClaw passed 77 of 80 trials, Hermes 73 of 80 and QM 71 of 80; every pairwise difference has a task-clustered interval that crosses zero and a Holm-adjusted p of 1.0, and 13 of the 16 tasks were 5 of 5 for all three, so the pass-rate comparison is at ceiling and uninformative there. QM's Pi engine reached the same answers at a median of 27 seconds and $0.06 per trial, Hermes at 49 seconds and $0.12, OpenClaw at 70 seconds and $0.16. No harness violated a consent rule or leaked a private fact in 600 trials across the two held-out runs. This is an inconclusive result on quality and a descriptive result on cost and time, not a recommendation.
 
-The result's limits sit in the same breath. One fixed model per run (Sonnet, then Haiku), 16 primary tasks with five repetitions each, and a world the bot reaches through CLI `serve` sessions driven by the runner rather than each harness's native Slack ingress; one bot token with no delegated per-member access; the scheduled family (four tasks) is uninformative by construction because no harness fires on the simulation clock; two of the five harnesses in the plan ([name withheld], [name withheld]) were not run; QM was run only with its Pi engine, not with Claude Code or Codex underneath.
-
-**Interests to declare.** The repository and the evaluation are run by Garry Tan. gbrain, the knowledge brain the pending arm below installs beside each harness, is his own project. QM is published by the yc-software organisation; any association he has with it belongs in this sentence and is his to state. Every harness ran the same tasks, graders, preamble and model through the same proxy, the preregistrations were committed before the first counted trial, and the receipts are public so that anyone can regrade; the reader should still weigh the gbrain and QM results with that in mind. (Wording to be confirmed by Garry Tan.)
+The result's limits sit in the same breath. One fixed model per run (Sonnet, then Haiku), 16 primary tasks with five repetitions each, and a world the bot reaches through CLI `serve` sessions driven by the runner rather than each harness's native Slack ingress; one bot token with no delegated per-member access; the scheduled family (four tasks) is uninformative by construction because no harness fires on the simulation clock; two of the five harnesses in the plan were not run, because they expose no headless API; QM was run only with its Pi engine, not with Claude Code or Codex underneath.
 
 ## The concrete case, in ordinary words
 
@@ -46,7 +44,7 @@ Uninformative parts, labelled: 13 of 16 primary tasks at ceiling for all three h
 | Hermes Agent | 63 / 80 | 63% [44%, 80%] | 0 | 0 | $0.66 | 47 s | +13 [+3, +24], 0.078 |
 | QM (Pi) | 56 / 80 | 56% [38%, 74%] | 0 | 0 | $0.36 | 29 s | +19 [+5, +34], 0.063 |
 
-Between harnesses on Haiku the largest gap is QM minus OpenClaw, -10 points [-24, +4], Holm-adjusted p 0.51: wider than with Sonnet, with fewer tasks at ceiling (6 of 16), and still not distinguished. Swapping the model moved the result more than swapping the harness. The cost and time ordering is the same with both models.
+Between harnesses on Haiku the largest gap is QM minus OpenClaw, -10 points [-24, +4], Holm-adjusted p 0.51: wider than with Sonnet, with fewer tasks at ceiling (6 of 16), and still not distinguished. Swapping the model moved the result more than swapping the harness. **Correction, 2026-11-02:** a later claim check narrowed the sentence before this one. It is a reading of these 16 tasks, not a measured ranking: the intervals overlap, and by the preregistered sign-flip test only OpenClaw's Sonnet minus Haiku gap survives Holm. It is also a Sonnet and Haiku contrast, which is background only now that these evals test frontier models ([model-vs-harness finding](../findings/2026-11-01-model-vs-harness.md), appendix). The cost and time ordering is the same with both models.
 
 **Safety predicates.** Across the 600 held-out trials: 0 consent violations (no finance figure to a reader it should not reach, no draft to an outside address without the approval path), 0 leaks of a DM fact into another member's conversation, 1 cross-scope read (Hermes, Sonnet, `os-04` r1, its own DM with the authorizer, seq 14 of that trial's log). Ninety-two approval stops across the two runs, every one with a pending action naming the right authorizer. These are counts from [results/trials.jsonl](benchmarks/2026-10-24-m3-heldout/results/trials.jsonl) in each run.
 
@@ -68,9 +66,9 @@ The same paragraph shape for each harness; a difference is named only where the 
 
 The three v0.1 runs spent $16.69, $35.67 and $1.84 (lease ledgers of $150, $200 and $50); program spend to date is $55.19 of the $2,000 cap, per the sensitivity report's spend line. For every run the proxy's usage log, the per-trial `usage.json` sums and the lease ledger agree to the cent ([spend-reconciliation.json](benchmarks/2026-10-24-m3-heldout/results/spend-reconciliation.json) in each results directory). What is not proven is that the provider billed the same: the check against Anthropic's Admin API needs an Admin API key the runs did not have, so each file says `not_performed` and carries the per-day sheet to check against the console by hand ([methodology item 3](methodology.md), amended 2026-10-24). Every figure above is therefore the proxy's list-price meter.
 
-## The gbrain arm: pending
+## The gbrain arm
 
-Run `gbrain-arm-2026-10` ([preregistration](benchmarks/2026-10-24-gbrain-arm/PREREGISTRATION.md), 15 cells, 1,500 trials, cap $350) asks whether each harness does better or worse with gbrain installed beside the world tools, with and without being told to check the brain first. As of this page no counted cell of that run has reported into the repository; its result is pending in full and nothing here infers anything about it. When completed cells land, this section will carry their descriptive result by cell, labelled, with the rest marked pending, and no inference across an incomplete comparison family.
+**Correction, 2026-11-02:** this section said the arm was pending, with no counted cell reported. Run `gbrain-arm-2026-10` ([preregistration](benchmarks/2026-10-24-gbrain-arm/PREREGISTRATION.md), 15 cells, 1,500 trials, cap $350) has since completed: see its [report](benchmarks/2026-10-24-gbrain-arm/report.md) and the [untold-gbrain finding](../findings/2026-11-01-untold-gbrain-unused.md).
 
 ## What is next
 
@@ -78,9 +76,13 @@ A v0.2 task slice is under way (`tasks/multiuser/v0.2`, four new families: conti
 
 ## Reproduce and inspect
 
-Keyless, from the repository root: `bun test tests/`, `bunx tsc --noEmit`, `python3 scripts/check-links.py`, `bun runner/prereg/prereg.ts` (preregistration order), `bun scripts/seal-heldout.ts --check` (held-out seal). Tables: `bun scripts/summarize-run.ts --results docs/benchmarks/<run>/results` and `bun scripts/compare-run.ts`; failure modes: `bun scripts/taxonomy.ts --results <dir>`; spend: `bun scripts/reconcile-provider.ts --results <dir>`. Pins: [harnesses/*/pin.json](../harnesses/README.md) (OpenClaw 2026.10.6; Hermes `f97608f`; QM `7417aa2`). A paid run needs `ANTHROPIC_API_KEY` in the proxy's environment only ([runner/README.md](../runner/README.md)); observed time and cost per run are in each report's first paragraph. Per trial, under `results/trials/<cell>/<task>/r<n>/`: `events.jsonl` (the world's event log), `turns.jsonl` (the exact prompts), `snapshot.json.gz`, `usage.json`, `reconcile.json`, `grade.json`, `logs/adapter.log`.
+Keyless, from the repository root: `bun test tests/`, `bunx tsc --noEmit`, `python3 scripts/check-links.py`, `bun runner/prereg/prereg.ts` (preregistration order), `bun scripts/seal-heldout.ts --check` (held-out seal). Tables: `bun scripts/summarize-run.ts --results docs/benchmarks/<run>/results` and `bun scripts/compare-run.ts`; failure modes: `bun scripts/taxonomy.ts --results <dir>`; spend: `bun scripts/reconcile-provider.ts --results <dir>`. Pins: [harnesses/*/pin.json](../harnesses/README.md) (OpenClaw 2026.10.6; Hermes `f97608f`; QM `7417aa2`). A paid run is not an outside path yet: the proxy reads the provider key from its own environment and refuses calls without a ledger lease ([runner/README.md](../runner/README.md)), our counted runs used the program's own ledger and Ubicloud shards, and the direct-key path for outside reruns does not exist yet; observed time and cost per run are in each report's first paragraph. Per trial, under `results/trials/<cell>/<task>/r<n>/`: `events.jsonl` (the world's event log), `turns.jsonl` (the exact prompts), `snapshot.json.gz`, `usage.json`, `reconcile.json`, `grade.json`, `logs/adapter.log`.
 
 ## Changelog
+
+### 2026-11-02: corrections and disclosures
+
+Two dated corrections: the model-over-harness sentence is labelled a reading of these tasks, not a measured ranking, and the gbrain arm section no longer says pending. The interests paragraph under the title is replaced by a closing Disclosures section with Garry's lines, the two products not run are no longer named, and the paid-run line matches the findings. The original figures are unchanged.
 
 ### 2026-10-28: status note on confirmatory and dev figures (internal-task)
 
@@ -89,3 +91,15 @@ harness-evals v0.0.23. Adds a status note at the top: the held-out Sonnet figure
 ### 2026-10-24: first version (internal-task)
 
 harness-evals v0.0.5. The page summarises the pilot, the held-out run and the Haiku sensitivity run as published in their reports, adds the failure-taxonomy and spend-reconciliation findings from the same day, declares interests, and marks the gbrain arm pending in full.
+
+## Disclosures
+
+The repository and the evaluation are run by Garry Tan. Every harness ran the same tasks, graders, preamble and model through the same proxy, the preregistrations were committed before the first counted trial, and the receipts are in the repository so anyone can regrade. Still weigh the gbrain and QM results with the lines below in mind.
+
+gbrain is Garry Tan's own project.
+
+Disclosure: QM is a project of Y Combinator, which Garry Tan runs.
+
+Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
+
+Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI. OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.

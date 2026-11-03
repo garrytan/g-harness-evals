@@ -127,10 +127,10 @@ Spend $1.5522 on 2,053 priced requests, all `claude-haiku-5-5`: oc $0.4675 (508 
 
 | Shard | Cell | Machine | Images (built from dd40bc5 on that machine) | Started | Exited | Trials | Lease | Spend |
 |---|---|---|---|---|---|---|---|---|
-| oc | openclaw-haiku-mu-v02-dev | <machine id> | openclaw 71adea04e2bb, gbrain 225ef99e5dce | 07:21:08Z | 08:24:50Z | 45 | $2.50 | $0.4675 |
-| he | hermes-haiku-mu-v02-dev | <machine id> | hermes 24014b07dd7f, gbrain b50bab03ede6 | 07:19:45Z | 08:00:36Z | 45 | $2.50 | $0.3662 |
-| qm | qm-pi-haiku-mu-v02-dev | <machine id> | qm 754e70c94314, gbrain f5458fcb6b17 | 07:19:40Z | 07:44:22Z | 45 | $2.50 | $0.2102 |
-| oc-turn | openclaw-haiku-mu-v02-dev-perturn | <machine id> | openclaw 126eaa6df2eb, gbrain 97bc5ae6ffa8 | 07:19:32Z | 08:08:04Z | 45 | $2.50 | $0.5083 |
+| oc | openclaw-haiku-mu-v02-dev | machine_01M5RYFVFYCTMX763G0B6TQ8ZC | openclaw 71adea04e2bb, gbrain 225ef99e5dce | 07:21:08Z | 08:24:50Z | 45 | $2.50 | $0.4675 |
+| he | hermes-haiku-mu-v02-dev | machine_01M5RYFVNZ091VE5ES8TR27756 | hermes 24014b07dd7f, gbrain b50bab03ede6 | 07:19:45Z | 08:00:36Z | 45 | $2.50 | $0.3662 |
+| qm | qm-pi-haiku-mu-v02-dev | machine_01M5RYFVTWHFV36KYSC2TRJPTT | qm 754e70c94314, gbrain f5458fcb6b17 | 07:19:40Z | 07:44:22Z | 45 | $2.50 | $0.2102 |
+| oc-turn | openclaw-haiku-mu-v02-dev-perturn | machine_01M5RYFVZMF5G6DA25KG0W551E | openclaw 126eaa6df2eb, gbrain 97bc5ae6ffa8 | 07:19:32Z | 08:08:04Z | 45 | $2.50 | $0.5083 |
 
 Trials ran one at a time within each shard; the longest shard took 64 minutes, against the four to five hours the plan expected for a single machine. Every shard's preflight matched the image's adapter.sh to the checkout's (`f965babb4ec8` for OpenClaw, `57fd10e61cba` for Hermes) and no shard restarted. The two OpenClaw shards built different image ids from the same commit and Dockerfile (layer builds are not byte-reproducible); the adapter hash check is what ties each image to the commit. [results/shards.json](results/shards.json) records the `hostname` of each shard machine, which is the same string on every cloud machine, so the machine ids above are the record.
 
@@ -141,3 +141,11 @@ None from the preregistration: no amendment, no restart, no cell split across ma
 ## Receipts
 
 Under [results/](results/): `manifest.json`, `trials.jsonl` (180 lines), `shards.json`, per shard `<name>.ledger.sqlite`, `<name>.proxy-usage.ndjson`, `<name>.proxy.log`, `<name>.run-summary.json`, `<name>.run.log`, `<name>.shard.json` (and the three non-first shards' `<name>.manifest.json`), `<name>.spend-reconciliation.md`, `regrade-amendment-2026-10-25.jsonl` (added 2026-10-25), `summary.json`, `summary.md`, `comparisons.md`, `comparisons.continuity-synthesis-corrections-approval_relay.json`, `paired-mdd.md`, and per trial `events.jsonl`, `turns.jsonl`, `snapshot.json.gz`, `usage.json`, `reconcile.json`, `grade.json`, `logs/adapter.log` and `turns/turn-NNNN.request.json` and `.response.json` (the proxy's record of each turn, as in the m2 pilot). The staged set is 2,181 files, 19 MB. Harness state, workspaces and raw harness logs stay out of the repository (results/.gitignore). The staged receipts were scanned for token patterns before commit.
+
+## Disclosures
+
+Disclosure: QM is a project of Y Combinator, which Garry Tan runs.
+
+Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
+
+Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI. OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.

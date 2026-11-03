@@ -62,7 +62,7 @@ No hidden fact leaked in any of the 150 trials (every `no_leak` predicate passed
 - A refused utility call coinciding with a turn exit 2 or 3: none. M3 keeps the allowlist at the fixed model and records refused calls as noise.
 - Cost per trial by harness: medians $0.15, $0.11 and $0.06, maxima under $0.60; the M3 held-out run (20 tasks x 3 harnesses x 5 repetitions = 300 trials) is planned at a $150 lease with the same ceiling method, and the drop order of the plan's cut line stands.
 
-## Failure taxonomy (added 2026-10-24, internal-task)
+## Failure taxonomy (added 2026-10-24, HARN-6)
 
 Every failed required predicate in this run carries an observed failure mode in [results/taxonomy.md](results/taxonomy.md) (as recorded) and [results/taxonomy.regraded.md](results/taxonomy.regraded.md) (0.0.4 grader), produced by `scripts/taxonomy.ts` from `events.jsonl`, `turns.jsonl` and each task's oracle, with one line of evidence per failure and the facts behind each label in the JSON beside it. Labels are observations, not causes. Pass rates and intervals above are unchanged; the taxonomy adds a column, it does not regrade.
 
@@ -70,4 +70,12 @@ As recorded, 82 of 150 trials failed on 150 predicates, 29 of them the scheduled
 
 ## Receipts
 
-[results/manifest.json](results/manifest.json) (frozen matrix, pins, prices), [results/trials.jsonl](results/trials.jsonl) (one record per trial with predicates, usage, paths), [results/trials.regraded.jsonl](results/trials.regraded.jsonl), [results/summary.json](results/summary.json) and [results/summary.regraded.json](results/summary.regraded.json) (the tables above, with trial ids per cell), [results/proxy-usage.ndjson](results/proxy-usage.ndjson) (one line per proxied request, no bodies, no keys), `results/ledger.sqlite` (the lease ledger: $16.69 committed of $150), and per trial under `results/trials/<cell>/<task>/r<n>/`: `events.jsonl`, `turns.jsonl` with the requests the harness received, `snapshot.json.gz`, `usage.json`, `reconcile.json`, `grade.json`. Harness state, workspaces, raw harness logs and per-trial tokens are not committed. Program spend to date: $0.26 (M0) + $0.63 (M1 serve smoke) + $0.08 (compose check) + $16.69 (this run) = $17.66 of the $2,000 cap. Spend reconciliation (added 2026-10-24, internal-task): [results/spend-reconciliation.json](results/spend-reconciliation.json) shows the usage log, the per-trial `usage.json` sums and the lease ledger agreeing at $16.69; the provider-side check is not performed, for want of an Admin API key, and the file carries the per-day sheet to check against the console (2026-10-22 UTC $2.23, 2026-10-23 UTC $14.46 on `claude-sonnet-5-5`, a day it shares with the held-out run).
+[results/manifest.json](results/manifest.json) (frozen matrix, pins, prices), [results/trials.jsonl](results/trials.jsonl) (one record per trial with predicates, usage, paths), [results/trials.regraded.jsonl](results/trials.regraded.jsonl), [results/summary.json](results/summary.json) and [results/summary.regraded.json](results/summary.regraded.json) (the tables above, with trial ids per cell), [results/proxy-usage.ndjson](results/proxy-usage.ndjson) (one line per proxied request, no bodies, no keys), `results/ledger.sqlite` (the lease ledger: $16.69 committed of $150), and per trial under `results/trials/<cell>/<task>/r<n>/`: `events.jsonl`, `turns.jsonl` with the requests the harness received, `snapshot.json.gz`, `usage.json`, `reconcile.json`, `grade.json`. Harness state, workspaces, raw harness logs and per-trial tokens are not committed. Program spend to date: $0.26 (M0) + $0.63 (M1 serve smoke) + $0.08 (compose check) + $16.69 (this run) = $17.66 of the $2,000 cap. Spend reconciliation (added 2026-10-24, HARN-6): [results/spend-reconciliation.json](results/spend-reconciliation.json) shows the usage log, the per-trial `usage.json` sums and the lease ledger agreeing at $16.69; the provider-side check is not performed, for want of an Admin API key, and the file carries the per-day sheet to check against the console (2026-10-22 UTC $2.23, 2026-10-23 UTC $14.46 on `claude-sonnet-5-5`, a day it shares with the held-out run).
+
+## Disclosures
+
+Disclosure: QM is a project of Y Combinator, which Garry Tan runs.
+
+Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
+
+Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI. OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.

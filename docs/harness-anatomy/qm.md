@@ -116,3 +116,13 @@ From the [m3 held-out run](../benchmarks/2026-10-24-m3-heldout/report.md), Sonne
 | Uncached input | under 0.1% | 1,518 |
 
 - QM-Pi made 534 requests, against 909 for OpenClaw and 1,056 for Hermes. Its average request cost $0.0114, about the same as Hermes ($0.0116) and 40% below OpenClaw ($0.0190). The capture does not say which differences cause that.
+
+## Disclosures
+
+gbrain is Garry Tan's own project.
+
+Disclosure: QM is a project of Y Combinator, which Garry Tan runs.
+
+Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
+
+Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI. OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.

@@ -5,7 +5,7 @@
 - **Claude Code against OpenClaw and Hermes Agent, on Haiku:** not distinguished at 20 tasks (dev), with no brain or with gbrain `told`. Intervals run from -19 to +12 points.
 - **Codex against OpenClaw and Hermes Agent, on gpt-6-luna:** not distinguished at 20 tasks (dev).
   - Codex minus Hermes Agent is +6 [+1, +12]. The interval excludes zero, but the Holm p is 0.750, so the rule does not report a difference.
-- **For internal-task (gbrain specifics):** told minus none in pass rate is -18 [-33, -4], -9 [-26, +7] and -21 [-37, -6] points for Claude Code, OpenClaw and Hermes Agent (descriptive; crosses an arm, no test). OpenClaw's interval includes zero.
+- **For GBRA-108 (gbrain specifics):** told minus none in pass rate is -18 [-33, -4], -9 [-26, +7] and -21 [-37, -6] points for Claude Code, OpenClaw and Hermes Agent (descriptive; crosses an arm, no test). OpenClaw's interval includes zero.
   - Every `told` cross-scope failure cites a channel page that `gbrain.search` returned under the bot grant, or one of 3 rows from one `gbrain.query` call (cc-told ar-02 r2). See [gbrain in the told cells](#gbrain-in-the-told-cells-for-gbra-108).
 - **OpenClaw on gpt-6-luna lost 11 of 100 trials to `model_error`.** Its memory indexer asked for an embedding model (`text-embedding-3-small`) and the proxy refused it. No cap stop, no upstream error. Those pairs are excluded from comparison 5, as preregistered.
 
@@ -66,7 +66,7 @@ B minus A in pass-rate points, paired by task and repetition, task-clustered 95%
 
 **No shard reached its lease.** The highest share was he-luna at 58% ($0.99 of $1.70). So no cell is partial (HE-BUDGET-001), and no comparison is labelled partial.
 
-## gbrain in the told cells (for internal-task)
+## gbrain in the told cells (for GBRA-108)
 
 **Told minus none: -18 [-33, -4], -9 [-26, +7] and -21 [-37, -6] points (descriptive; crosses an arm, no test).** Told scored lower in all three Haiku harnesses; OpenClaw's interval includes zero. The setup: gbrain at `32366ac2`, starter surface over MCP, the ladder's preamble, keyword search, embeddings off, one bot token over the bot-visible dev brain.
 
@@ -173,7 +173,7 @@ All checks pass. The preregistration asks for each one.
   - **he-told:** its first VM sat in "waiting for capacity" for 10 minutes and was destroyed before it ran anything (`results/he-told.try1-capacity.fanout.log`). Relaunched at 17:22:54 UTC.
   - **oc-none:** in its smoke, the OpenClaw image build stalled for 43 minutes (16:40 to 17:23 UTC). No smoke trial and no counted trial ran (`results/oc-none.try1-build.vm-shard.out`, `results/oc-none.try1-build.fanout.log`).
     - Observed on the VM, not in a committed log: `npm install openclaw@2026.10.6` was still running inside the build with the VM's load at 0.00.
-    - internal-task killed the build client on the VM, which is why the build log ends "Canceled: context canceled".
+    - HARN-13 killed the build client on the VM, which is why the build log ends "Canceled: context canceled".
     - Relaunched at 17:24:44 UTC by `scripts/ubicloud/run-shard.sh` with the fan-out's options.
   - Both relaunches are noted in `results/run-notes.md`, whose times are approximate. The fan-out logs carry the exact ones. Both shards then exited 0 with 100 trials.
 - **The six comparisons come from a new script, not from `comparisons.json`.** The preregistration says to take the six rows from `comparisons.json` and apply Holm to them. It also says a `model_error` pair is excluded, but compare-run's default mode keeps every trial.
@@ -208,3 +208,13 @@ bun scripts/compare-run.ts --results docs/benchmarks/2026-10-30-host-harness-pil
 bun scripts/reconcile-provider.ts --results <shard results dir>   # one per shard and per smoke
 bun scripts/host-pilot-tables.ts --results docs/benchmarks/2026-10-30-host-harness-pilot/results
 ```
+
+## Disclosures
+
+gbrain is Garry Tan's own project.
+
+Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
+
+Disclosure: OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.
+
+Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI.

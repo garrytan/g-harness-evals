@@ -1,6 +1,6 @@
 # QM probe qp-07 rerun report: one sandbox per channel, with the directory seeded
 
-Run `qm-probes-qp07-2026-10`, preregistered in [PREREGISTRATION.md](PREREGISTRATION.md) (no amendments), two cells, 6 trials, probe `qp-07-sandbox-shared-channel` on QM `pi-probe` and `claude-probe`, model `anthropic:claude-haiku-5-5`. Executed from a worktree detached at the preregistration commit `a76ed6224a5eb9f24ebdd1d705b8f5c7aed80f31` on the internal-task thread machine, QM and sandbox images rebuilt from it (`harness-eval/qm:dev` `sha256:35363130`, `qm-sandbox:dev` `sha256:f7f88a9c`), trials sequential, 09:06:24 to 09:09:38 UTC on 2026-10-25 ([results/run.wrapper.log](results/run.wrapper.log)). Spend $0.0372 on the $1 lease, 81 forwarded requests ([results/ledger-summary.json](results/ledger-summary.json)); ceiling $0.14. All 6 trials `completed`, nothing excluded, HE-MODEL-001 never fired.
+Run `qm-probes-qp07-2026-10`, preregistered in [PREREGISTRATION.md](PREREGISTRATION.md) (no amendments), two cells, 6 trials, probe `qp-07-sandbox-shared-channel` on QM `pi-probe` and `claude-probe`, model `anthropic:claude-haiku-5-5`. Executed from a worktree detached at the preregistration commit `a76ed6224a5eb9f24ebdd1d705b8f5c7aed80f31` on the HARN-4 thread machine, QM and sandbox images rebuilt from it (`harness-eval/qm:dev` `sha256:35363130`, `qm-sandbox:dev` `sha256:f7f88a9c`), trials sequential, 09:06:24 to 09:09:38 UTC on 2026-10-25 ([results/run.wrapper.log](results/run.wrapper.log)). Spend $0.0372 on the $1 lease, 81 forwarded requests ([results/ledger-summary.json](results/ledger-summary.json)); ceiling $0.14. All 6 trials `completed`, nothing excluded, HE-MODEL-001 never fired.
 
 **Declared deviation (2026-10-25):** this preregistration was committed at `a76ed6224a5eb9f24ebdd1d705b8f5c7aed80f31` on branch `harn4/qp07-directory` before any trial, and the run executed from a worktree pinned at that commit (`results/run.wrapper.log` names it). The same pull request (#67) carried the results, and its squash merge put preregistration and results into one commit on `main` (`86d59d0078ba`), so `main`'s history cannot show the preregistration preceding the trials; `docs/benchmarks/preregistrations.d/qm-probes-qp07.json` declares this and the order check prints it as a warning. The branch commit is on `origin`.
 
@@ -24,3 +24,7 @@ Six trials of one probe; a product check, not a rate. The directory the rig push
 ## Receipts
 
 [results/manifest.json](results/manifest.json), [results/trials.jsonl](results/trials.jsonl) (6 records), per-trial directories (`logs/*` excluded except `adapter.log`), [results/ledger.sqlite](results/ledger.sqlite), [results/ledger-summary.json](results/ledger-summary.json), [results/proxy-usage.ndjson](results/proxy-usage.ndjson), [results/proxy.log](results/proxy.log), [results/run.log](results/run.log), [results/summary.json](results/summary.json).
+
+## Disclosures
+
+Disclosure: QM is a project of Y Combinator, which Garry Tan runs.

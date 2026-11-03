@@ -65,3 +65,11 @@ From the [m3 held-out run](../benchmarks/2026-10-24-m3-heldout/report.md), Sonne
 | Cache writes | 33.9% | 1,660,833 |
 | Output | 19.9% | 244,469 |
 | Uncached input | under 0.1% | 2,564 |
+
+## Disclosures
+
+gstack is Garry Tan's own project.
+
+gbrain is Garry Tan's own project.
+
+Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.

@@ -115,3 +115,15 @@ Each number links to a record below. A **record** is one capture turned into JSO
 
 - 2026-10-31: added free count_tokens counts for the three Opus recaptures (216 calls, $0), so every frontier recapture has a token count (internal-task).
 - 2026-10-31: added Codex (its own page and a row in the first-request table), the frontier recaptures on Opus 5.5 and GPT-6.1 Sol with one model per capture, and the output-cap probe, because the harness-evals cells now run frontier models and Codex runs on the Responses API (internal-task).
+
+## Disclosures
+
+gbrain is Garry Tan's own project.
+
+Disclosure: QM is a project of Y Combinator, which Garry Tan runs.
+
+Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
+
+Disclosure: OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.
+
+Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI.
