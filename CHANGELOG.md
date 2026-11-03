@@ -2,6 +2,12 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.119] - 2026-11-03
+
+### internal-task: prompt-archaeology-2026-11 amendment 2
+
+- `docs/benchmarks/2026-11-01-prompt-archaeology/PREREGISTRATION.md`: amendment 2, dated 2026-11-03. The first launch of the run was lost with its controller machine. Its 15 VMs were destroyed unread, and its spend is booked at the $548.50 lease bound. The relaunch runs the same cells at the same commit `216cb6c9d`, with the controller's per-VM state copied to a second machine, the VM-to-shard map in the Captain drive, and results pulled off each VM every 20 minutes.
+
 ## [0.0.118] - 2026-11-03
 
 ### internal-task: internal-task results for gstack's /investigate reproduce-first gate (NOT ADDED)
