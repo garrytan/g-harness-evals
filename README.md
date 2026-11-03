@@ -7,6 +7,7 @@
 - **The three harnesses can't be told apart on getting the work right**, on Sonnet 5.5, on tasks mostly at ceiling. No frontier model has run this comparison yet.
 - **QM's Pi engine is the cheapest and fastest**, at about a third of OpenClaw's time and tokens per trial, with a pass rate that can't be told apart from the others.
 - **gbrain went almost unused unless the harness was told to use it.** Installed as an MCP server with no instruction, it was called in 4 of 799 trials (dev, Sonnet 5.5 and Haiku 5.5 only; a frontier rerun is pending), which does not show gbrain is useless. Told to read a whole-company brain, harnesses read other people's channels; scoping the brain to the asker stops that.
+- **Told to use a gstack skill, Opus 5.5 loaded its text every time but ran its steps in none of 46 sessions.** No gstack already passed nearly every task, so these runs had no room to show a gain, and the verdict is FIX-METHOD: hook-enforced steps on harder tasks are under test (internal-task) ([finding](findings/2026-11-02-opus-gstack-steps-not-followed.md)).
 - **No run yet shows gbrain lifting pass rate on its primary endpoint (the one comparison the run was designed to settle) by an amount the run could detect.** Most gbrain rows are dev, so they hint but don't prove.
 
 **Next:** a fresh held-out task set, so the gbrain effects can be confirmed on tasks nobody tuned against ([TODOS.md](TODOS.md)).
@@ -331,6 +332,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 Code is MIT licensed ([LICENSE](LICENSE)). The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)); the world is built from gbrain-evals' `messy-company-v1` dataset; OpenClaw, Hermes Agent and QM are named as products only.
 
 ## Changelog
+
+### 2026-11-02: Opus gstack steps line (internal-task)
+
+"Found so far" gains a line for the Opus 5.5 gstack finding: the skill text loaded every time and its steps ran in none of 46 sessions, the FIX-METHOD verdict (no gstack was near the ceiling), and the hook-enforced steps run on harder tasks (internal-task), with a link to the finding. Why: the finding file is new, and this page names every finding's headline.
 
 ### 2026-11-02: Hermes start-hook rerun reported (internal-task)
 

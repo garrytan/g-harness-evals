@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.106] - 2026-11-02
+
+### internal-task: finding file on Opus 5.5 and gstack's skill steps
+
+- `findings/2026-11-02-opus-gstack-steps-not-followed.md` (new): told to use gstack's /investigate, /qa, /review or /ship, Claude Opus 5.5 loaded the skill text every time and ran none of its steps, in 0 of 46 gstack sessions across internal-task's three uncounted checks (#224). The deciding check was 0 of 16 on dev tasks that Opus 5.5 nearly saturates, and the hard-task check was VOID. gstack cost about twice as much per trial as no gstack.
+- Under R61 the verdict is FIX-METHOD, because the null rests on saturation. internal-task (hook-enforced steps on tasks with headroom, a headroom pilot first) is the ceiling-raise, and if it has headroom and the skill-text arm still shows no gain over no gstack, the cut of steps delivered as text alone goes to Garry. The report's CUT-CANDIDATE line is kept word for word as the original reading, with a note that no frozen rule produced it. It names the fix under test (hook-enforced steps, internal-task, run as internal-task), audits the clean no-gstack arm, and ends with the gstack disclosure line. Opus 5.5 only; no GPT-6.1 Sol arm. Draft, not posted. The gstack-evals claim check passed with edits, which are applied, and its recheck passed.
+- README's "Found so far" gains a line for the finding, with a link.
+- `findings/README.md`: a row and a status bullet for the file, and the template line names its Clean control arm section. "Coming next" names the hook-enforced steps run, and says the Lane B replication, a Haiku 5.5 comparability rerun, gets no finding file.
+
 ## [0.0.105] - 2026-11-02
 
 ### internal-task (internal-task): the gbrain hook launcher in the Claude Code and Codex installer views
