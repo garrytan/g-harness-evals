@@ -2,6 +2,13 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.112] - 2026-11-03
+
+### internal-task: the gbrain installer views drop gbrain's instruction-ledger lock
+
+- `gbrain/build-install.ts`: from gbrain#8491, `gbrain setup <harness>` holds a lock on `HOME/.gbrain/agent-instructions.lock` while it updates its instruction ledgers (gbrain issue #8484), and leaves the file behind. The Claude Code and Codex installer views now drop it as runtime state, as they already drop Hermes's allowlist lock (gbrain#7989). Before this, the exact-file check failed the image build with HE-GBRAIN-007 for every gbrain head that takes the lock. Commits before #8491 write no lock, and nothing changes for them.
+- Tests: `tests/installer-cc-codex.test.ts` adds a stand-in that leaves the lock, and checks that each view keeps exactly what setup installed and logs the drop.
+
 ## [0.0.111] - 2026-11-03
 
 - qm-brain-native (K8): design preregistration for the QM × gbrain brain-native eval (docs/benchmarks/2026-11-02-qm-brain-native/PREREGISTRATION.md, design.json). Adds a keyless, seeded corpus generator with audience manifests, a files export, dev and pilot tasks and a leak scanner (world/brain/, `bun world/brain/check.ts`), the frozen power, cost and cap rules (scripts/qm-brain-power.ts), HE-BRAIN-001 to 008 in docs/errors.md, and tests. No paid trial runs from this change.

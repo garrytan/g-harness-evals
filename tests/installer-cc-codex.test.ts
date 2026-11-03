@@ -23,7 +23,7 @@ import type { TurnRequest } from '../runner/contracts.ts';
 import { exportInstallView, type InstallViewManifest } from '../runner/trial/gbrain.ts';
 import { turnHookRuns as runnerTurnRuns } from '../runner/trial/trial.ts';
 import { containerHostAddress } from '../runner/trial/world.ts';
-import { BRAIN_FIRST_LEDGER, HOOK_GBRAIN_BIN, HOOK_HEARTBEAT, HOOK_LAUNCHER, INSTALLER_BLOCK_BEGIN, buildInstaller, bundleDigest, fileEntries, listFiles, type InstallerRecord } from '../gbrain/build-install.ts';
+import { BRAIN_FIRST_LEDGER, GBRAIN_LEDGER_LOCK, HOOK_GBRAIN_BIN, HOOK_HEARTBEAT, HOOK_LAUNCHER, INSTALLER_BLOCK_BEGIN, buildInstaller, bundleDigest, fileEntries, listFiles, type InstallerRecord } from '../gbrain/build-install.ts';
 import { createWorldServer, type WorldServer } from '../world/services/server.ts';
 import { startFakeResponses } from './fixtures/fake-responses.ts';
 import { startWorld, world } from './world-helpers.ts';
@@ -45,6 +45,10 @@ afterAll(() => rmSync(tmp, { recursive: true, force: true }));
 const LAUNCHER_STAND_IN = join(tmp, 'gbrain-8424');
 writeFileSync(LAUNCHER_STAND_IN, '#!/bin/sh\nHE_STAND_IN_LAUNCHER=1 exec node ' + STAND_IN + ' "$@"\n');
 chmodSync(LAUNCHER_STAND_IN, 0o755);
+/** The stand-in as gbrain#8491: setup also leaves the instruction-ledger lock it held, HOME/.gbrain/agent-instructions.lock. */
+const LOCK_STAND_IN = join(tmp, 'gbrain-8491');
+writeFileSync(LOCK_STAND_IN, '#!/bin/sh\nif [ "$1" = setup ]; then mkdir -p "$HOME/.gbrain" && : > "$HOME/.gbrain/agent-instructions.lock"; fi\nexec node ' + STAND_IN + ' "$@"\n');
+chmodSync(LOCK_STAND_IN, 0o755);
 
 /** The files each installer view holds under home/: what setup wrote, and the gbrain its hook runs. */
 const EXPECTED: Record<H, string[]> = {
@@ -103,6 +107,17 @@ describe('build-install: the Claude Code and Codex installer views', () => {
         expect(JSON.parse(readFileSync(join(out, h, 'installer/home/claude/settings.json'), 'utf8')).permissions).toEqual(JSON.parse(seed.toString()).permissions);
       }
       expect(lines.some((l) => l.startsWith(h + ': gbrain setup ' + h + ' --instructions-only in ' + state + ' wrote '))).toBe(true);
+    });
+
+    // Value: protects=the Claude Code and Codex installer views build at gbrain#8491 and later; fails_when=the ledger lock setup leaves
+    // is refused or bundled; why_new=gbrain#8491's lock broke the image build (HE-GBRAIN-007); seam=none.
+    test(h + ': at gbrain#8491 the instruction-ledger lock setup leaves is dropped from the view, which keeps exactly what setup installed', () => {
+      const out = join(tmp, 'lock', h), state = join(tmp, 'lock-state', h);
+      const { record, lines } = build(h, LOCK_STAND_IN, out, state);
+      expect(record.files).toEqual(EXPECTED[h].map((f) => h + '/installer/home/' + f));
+      expect(listFiles(join(out, h, 'installer')).sort()).toEqual(EXPECTED[h].map((f) => 'home/' + f));
+      expect(existsSync(join(out, h, 'installer/home', GBRAIN_LEDGER_LOCK))).toBe(false);
+      expect(lines.some((l) => l.includes("dropped gbrain's instruction-ledger lock"))).toBe(true);
     });
 
     // Value: protects=the Claude Code and Codex installer views build at gbrain 2c469d1b and later; fails_when=setup's hook launcher is

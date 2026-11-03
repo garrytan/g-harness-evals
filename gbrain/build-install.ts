@@ -299,6 +299,8 @@ const STATE_INSTALL: Record<'claude-code' | 'codex', { instructions: string; hoo
 export const BRAIN_FIRST_LEDGER = '.gbrain/agent-instructions.json';
 /** The line gbrain's hook appends on every run (its own check at setup included); runtime state, never bundled. */
 export const HOOK_HEARTBEAT = '.gbrain/integrations/hooks/heartbeat.jsonl';
+/** The lock gbrain setup holds while it updates its instruction ledgers (gbrain#8491, issue #8484); runtime state, never bundled. */
+export const GBRAIN_LEDGER_LOCK = '.gbrain/agent-instructions.lock';
 
 /** The command of the turn-rule hook setup wrote: Claude Code's marked UserPromptSubmit entry, Codex's UserPromptSubmit group whose
  *  command carries the turn-rule lane. */
@@ -350,6 +352,13 @@ function buildStateInstaller(o: BuildInstallOptions, out: string, harness: 'clau
     const said = (r.stderr + r.stdout).trim().split('\n').filter(Boolean);
     if (r.status !== 0) return { record: { unavailable: `gbrain setup ${harness} --instructions-only ${r.status === null ? `was stopped (${r.signal ?? 'no exit'}, 300 s timeout)` : `exited ${r.status}`}: ${(doc.turn_hook_check?.ok === false ? doc.turn_hook_check.message : doc.error?.message ?? said.find((l) => /error|refus|unknown|not active/i.test(l)) ?? said[0])?.trim().slice(0, 300) ?? 'no output'}` } };
     rmSync(join(state, HOOK_HEARTBEAT), { force: true });
+    // From gbrain#8491 setup holds a flock on HOME/.gbrain/agent-instructions.lock while it updates its instruction ledgers, and leaves
+    // the file (gbrain correctly does not unlink a lock file another install may be waiting on). Like Hermes's allowlist lock
+    // (gbrain#7989), it is runtime state, not an install file, so it is dropped here when present. Earlier commits write no lock.
+    if (existsSync(join(state, GBRAIN_LEDGER_LOCK))) {
+      rmSync(join(state, GBRAIN_LEDGER_LOCK));
+      log(`${harness}: dropped gbrain's instruction-ledger lock ${GBRAIN_LEDGER_LOCK} from the installer view (runtime state, not an install file)`);
+    }
     const changed = listFiles(state).filter((f) => before.get(f) !== sha256(readFileSync(join(state, f))));
     if (!changed.length) return { record: { unavailable: `gbrain setup ${harness} --instructions-only exited 0 and wrote nothing: ${said.at(-1)?.trim().slice(0, 300) ?? 'no output'}` } };
     if (doc.turn_hook && doc.turn_hook.action !== 'write') throw new Error(`gbrain setup ${harness} --instructions-only reports turn_hook ${doc.turn_hook.action}: ${doc.turn_hook.detail ?? ''}; with an absolute --gbrain-bin it writes the hook`);
