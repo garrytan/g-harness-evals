@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.118] - 2026-11-03
+
+### internal-task: internal-task results for gstack's /investigate reproduce-first gate (NOT ADDED)
+
+- `docs/benchmarks/2026-11-03-investigate-gate/` (new): the report and `results/` for run `gates938-phase3`. No gstack, gstack, and gstack with the gate, on Opus 5.5 and GPT-6.1 Sol, 11 tasks per model, 162 counted trials, $254.31 of the $300 cap.
+- The outcome is NOT ADDED. The prereg's FIX clause fires because Opus followed reproduce-first in 2 of 28 gate sessions (7.1%), and the repair and rerun FIX allows don't fit the cap. Pooled H-S is +1.28 points [-3.80, +6.35]. Opus H-S is +7.14, but about -0.3 if the 11 trials lost to the VM reaper had counted.
+- Why null: FIX-METHOD. Opus wrote source through Bash 40 times, past the gate, and Sol's no-gstack arm passed 4.5%, near the floor.
+- The audit, the Sol reconciliation and the analysis scripts stay on the unmerged scratch branch `harn14/gates-938` at `07312a7ed`, cited by commit, with copies in the Captain drive. The metering proxy's OpenRouter route also stays on that branch, unmerged. `docs/README.md` gains one index line.
+
 ## [0.0.117] - 2026-11-03
 
 ### internal-task step 2: the front door, disclosures, and policy files
