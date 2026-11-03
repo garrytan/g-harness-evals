@@ -2,6 +2,10 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.115] - 2026-11-03
+
+- qm-brain-native (K8) pre-pilot fixes, before any pilot cell: the F-arm files export lists only links inside the audience's manifest; `check.ts` checks exports for codenames the way the leak scanner scores them; `check.ts --out` writes nothing unless every check passes; a `scan.ts` crash exits 3 with HE-BRAIN-009 instead of the leak exit code. Dated amendment in the preregistration. Corpus A digests are unchanged.
+
 ## [0.0.114] - 2026-11-03
 
 ### internal-task: installer-cc-codex-acl-2026-11 preregistered (amendment 3), with gbrain's per-member access rules

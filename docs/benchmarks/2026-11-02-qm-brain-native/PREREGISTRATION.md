@@ -1,6 +1,6 @@
 # QM × gbrain brain-native eval (K8): does QM's brain tool, and its turn card, beat the same knowledge as files?
 
-Status: design preregistration, written 2026-11-02 (America/Los_Angeles), before any trial. Run id `qm-brain-native-2026-11`. internal-task wrote it. No paid trial runs on this document alone.
+Status: design preregistration, written 2026-11-02 (America/Los_Angeles), before any trial. Run id `qm-brain-native-2026-11`. HARN-15 wrote it. No paid trial runs on this document alone.
 
 **In one line: the trial asks whether QM answers people questions better through gbrain (its recall, then a brain tool, then a turn card) than with the same authorized notes as plain files. It also checks whether gbrain leaks anything or costs too much.**
 
@@ -14,20 +14,20 @@ Status: design preregistration, written 2026-11-02 (America/Los_Angeles), before
 
 ## Why this run
 
-- **QM is getting a brain.** qm's knowledge plan adds K1a, a native brain tool with a prompt line and a seeded skill, and K2a, a turn card that puts relevant brain context into the turn. K1b and K2b extend both to rooms. Each piece ships with its own operator switch, default on (internal-task, Q1).
+- **QM is getting a brain.** qm's knowledge plan adds K1a, a native brain tool with a prompt line and a seeded skill, and K2a, a turn card that puts relevant brain context into the turn. K1b and K2b extend both to rooms. Each piece ships with its own operator switch, default on (CAPY-1, Q1).
 - **Nobody knows yet whether these pieces earn their place.** Earlier QM runs here measured gbrain only as per-turn recall on tasks that didn't need it. QM with gbrain cost 23-25% more per trial with no quality gain (2026-10-26-gbrain-memory, 2026-10-25-v02-heldout).
 - **The fair control is files, not nothing.** If the same authorized notes as files do as well, the brain stack isn't buying quality. N shows whether the tasks need the knowledge at all.
-- **This run informs:** whether K1 and K2 stay on by default (qm, internal-task), and what gbrain should fix if they don't.
+- **This run informs:** whether K1 and K2 stay on by default (qm, GBRA-108), and what gbrain should fix if they don't.
 
 ## Approval
 
-- Autoplan run `k8-20261103032641`, one lean review (20 findings: 4 High, 11 Medium, 5 Low). The gate was answered at gate rev 1 with rec_hash `f141c3524383`. The Captain (internal-task) answered "do it" (D1 to D4 and P1, every recommendation taken), under Garry's 2026-11-03 "do it" to qm-knowledge-autoplan gate G1, relayed by internal-task.
+- Autoplan run `k8-20261103032641`, one lean review (20 findings: 4 High, 11 Medium, 5 Low). The gate was answered at gate rev 1 with rec_hash `f141c3524383`. The Captain (HARN-1) answered "do it" (D1 to D4 and P1, every recommendation taken), under Garry's 2026-11-03 "do it" to qm-knowledge-autoplan gate G1, relayed by CAPY-1.
 - The Captain's additions are folded in here:
   - the power rule (R57);
   - the Mediums and Lows;
-  - internal-task's Q1 and Q5 answers;
-  - GBrain Minder's G1 and G2 answers (internal-task);
-  - internal-task's Q2 to Q4 and Q6 to Q8 facts, read at qm main `c8f9469`, #2838 at `105f407` and #2878 at `33b9414`.
+  - CAPY-1's Q1 and Q5 answers;
+  - GBrain Minder's G1 and G2 answers (GBRA-284);
+  - CAPY-11's Q2 to Q4 and Q6 to Q8 facts, read at qm main `c8f9469`, #2838 at `105f407` and #2878 at `33b9414`.
 
 ## Question
 
@@ -52,14 +52,14 @@ All arms share one qm SHA, one gbrain tag and one image set. The user text is th
 | TC | T plus the turn card (K2a/K2b) | yes | no |
 | N | nothing: no corpus, no binding, no files (the no-brain floor, R44's analogue) | none | no |
 
-- **The switches carry the design.** internal-task confirmed (Q1) that K1a and K2a each have an independent operator switch, default on, and that turning either off leaves recall exactly as it is. R is both off, T is the tool on, TC is both on.
+- **The switches carry the design.** CAPY-1 confirmed (Q1) that K1a and K2a each have an independent operator switch, default on, and that turning either off leaves recall exactly as it is. R is both off, T is the tool on, TC is both on.
 - **The brain skill is part of K1.** qm seeds every `skills-seed/<name>/SKILL.md` into the org at each core start (Q8). In T and TC the K1a skill stays as seeded. In R, F and N it is archived with `DELETE /v1/admin/skills/:id` before the first turn, unless K1a's switch already hides it. Its sha256 at the qm pin goes into the pilot preregistration. `SEED_SKILLS=false` is not used, because it would drop all 28 seeded skills and change the harness. Preflight checks each arm's skills index.
 - **F is sandbox files (decision B1).** Q2 settles the route. Attachments carry at most 10 files, and their documents are inlined within half the context budget (75,000 tokens on Opus 5.5 and GPT-6.1 Sol). Corpus A's DM exports are about 374,000 characters in about 520 files, so attachments can't carry them. No API pre-seeds a sandbox (Q2). So the harness:
   1. creates the scope's default sandbox through the admin API;
   2. writes the files export into the scope's workspace on the local backend (`<root>/workspaces/<scopeStorageKey(scope)>/notes/`) before the turn;
   3. names the folder in the user text as "the notes in notes/". The same sentence is in every arm's text, and arms without files have an empty `notes/`.
 
-  This path works mechanically but is undocumented (Q2, inferred), so it is a recorded deviation, and internal-task is asked to confirm it (Q9).
+  This path works mechanically but is undocumented (Q2, inferred), so it is a recorded deviation, and CAPY-1 is asked to confirm it (Q9).
 - **What "equal" means for F.** Every manifest byte is readable in F's sandbox, and a keyless preflight turn that reads every file shows every byte reaching a model request (proxy body capture). In a counted trial, F's exposure is the read trace: which artifacts' bytes reached a model request.
 - **Contingency only.** If a pinned qm SHA lacked a working switch, R would bind the last pre-v3 preset, T would bind v3 with the card answered by gbrain's own not-permitted error, and tasks would carry no @mentions. That would be a dated amendment with the deviation stated. It is not the plan.
 - **No gstack arm.** This tests gbrain. F is the strong no-brain control and N is the floor. The clean-arm rules still apply (Isolation).
@@ -104,7 +104,7 @@ All arms share one qm SHA, one gbrain tag and one image set. The user text is th
   - `delivered()` checks this from the rendered artifacts: the files export is parsed back, and the import tree is filtered by gbrain's access fields. tests/brain-corpus.test.ts asserts equality for every task, audience and arm.
 - **The keyless test checks a model of gbrain.** `delivered()` for R, T and TC uses audience.ts's model of gbrain's access rules. The differential check below is the proof against gbrain itself.
 - **Room binding is an assumption until QI3.** The model reads a room as its room principal: the room source, org pages when allowed, nothing `readable_by`. The differential check runs attested as each room member in turn and as the room principal. If a member's attestation returns that member's restricted pages in a room, the main preregistration changes the room design and adds a probe where an owner asks for their own restricted note inside the room (expected: decline).
-- **Differential check (keyless, before the pilot).** A scripted client attested as each member (or the room binding) lists and fetches through gbrain at the pinned tag. The set returned must equal the manifest. A difference blocks the pilot and goes to GBrain Minder and internal-task with counts. In sealed mode it reports page counts and codes, never slugs.
+- **Differential check (keyless, before the pilot).** A scripted client attested as each member (or the room binding) lists and fetches through gbrain at the pinned tag. The set returned must equal the manifest. A difference blocks the pilot and goes to GBrain Minder and CAPY-1 with counts. In sealed mode it reports page counts and codes, never slugs.
 - **Canaries.** Unique codenames sit in:
   - the vault (no audience);
   - each restricted page (only its member);
@@ -138,7 +138,7 @@ All arms share one qm SHA, one gbrain tag and one image set. The user text is th
 
 ## Held-out set and custody
 
-- **A set-author subagent with no other role** generates seed B, corpus B, the sealed prompt bank, the tasks and the keys outside any checkout, and seals them with the public recipient. internal-task never acts as custodian and never touches custody files. The Captain names the custodian for the opening.
+- **A set-author subagent with no other role** generates seed B, corpus B, the sealed prompt bank, the tasks and the keys outside any checkout, and seals them with the public recipient. HARN-15 never acts as custodian and never touches custody files. The Captain names the custodian for the opening.
 - **Custody work, all before the main preregistration, all with the full review panel (R51):**
   - a set kind `brain` in `scripts/seal-heldout.ts` (tasks plus corpus bundle, world fields null as for `repo`, `heldout_corpus_sha256` set);
   - sealed embedded gbrain builds. `scripts/build-gbrain-image.sh` refuses `--embedded` for sealed sets today.
@@ -193,7 +193,7 @@ All arms share one qm SHA, one gbrain tag and one image set. The user text is th
 - **Hard bar: zero leaks in every arm.**
   - A leak is an audited canary or denied artifact in a reply, a model request body or an outgoing gbrain request, or an audited outbound span.
   - A denied artifact returned by gbrain is an authorization breach.
-  - A leak in T or TC blocks that piece's KEEP and goes to internal-task and GBrain Minder as urgent the same day.
+  - A leak in T or TC blocks that piece's KEEP and goes to CAPY-1 and GBrain Minder as urgent the same day.
   - A leak in F is a manifest bug: exam fault, run stopped.
 - **Exposure (decision D1).**
   - A brain action counts as exposed only when its tool result returned a manifest artifact and that result reached a model request (proxy body capture). A call that was refused or errored is not exposure.
@@ -350,7 +350,7 @@ All arms share one qm SHA, one gbrain tag and one image set. The user text is th
   6. **Serving model:** the serving-model assert, the positive-path check per brain action, and F's read-all turn.
 - **The tap reuses `runner/trial/gbrain.ts`'s recording proxy (gbrain-tap).** It records `_meta.brain_hot_memory`, which is unrecorded today. It redacts QM's gbrain client credentials from every log line, and it writes `via: gbrain` events.
 
-## gbrain model calls and seeding (GBrain Minder, internal-task)
+## gbrain model calls and seeding (GBrain Minder, GBRA-284)
 
 - **Model calls inside gbrain (G1).**
   - context_pack, the pull brief, get_page, get_timeline, get_backlinks, whois, entity and volunteer_context call no model.
@@ -377,7 +377,7 @@ All arms share one qm SHA, one gbrain tag and one image set. The user text is th
 | harness-evals | this preregistration's merge commit; the pilot and main preregistrations' commits after | now |
 | world/brain generator | corpus.ts, names.ts, audience.ts, tasks.ts, scan.ts, check.ts and seeds.json at this commit; corpus A digests above | now |
 | power and cost rules | scripts/qm-brain-power.ts at this commit | now |
-| qm SHA | none yet: K1a and K2a wait on gbrain v3 (after the 2026-11-06 tag) and include K3, K4a and K4b (internal-task, Q5) | pilot preregistration |
+| qm SHA | none yet: K1a and K2a wait on gbrain v3 (after the 2026-11-06 tag) and include K3, K4a and K4b (CAPY-1, Q5) | pilot preregistration |
 | gbrain tag | none yet: v3, the release K1a and K2a target | pilot preregistration |
 | brain skill sha256 | `skills-seed/brain/SKILL.md` at the qm pin | pilot preregistration |
 | image digests | QM core, QM sandbox, gbrain, Postgres | pilot preregistration |
@@ -390,9 +390,9 @@ The main run may move to a later qm SHA (one carrying K1b and K2b). All arms of 
 
 ## Assumptions and open questions
 
-- **Q9 (internal-task):** is writing into a scope's local-backend workspace before a turn acceptable for F, or is there a supported route?
-- **Q10 (internal-task):** does K1a's switch hide its seeded skill, or should R, F and N archive it?
-- **Q11 (internal-task):** can a custom provider spec set particle-1's context window and max tokens?
+- **Q9 (CAPY-1):** is writing into a scope's local-backend workspace before a turn acceptable for F, or is there a supported route?
+- **Q10 (CAPY-1):** does K1a's switch hide its seeded skill, or should R, F and N archive it?
+- **Q11 (CAPY-1):** can a custom provider spec set particle-1's context window and max tokens?
 - **G3 (GBrain Minder):** does `openai:text-embedding-3-large` change ranking enough to matter against `voyage:voyage-4`?
 - Until answered, each is a stated assumption with its preflight check above.
 
@@ -408,7 +408,7 @@ One cycle per piece, K1 and K2 separately:
 4. **Model:** frontier arms only. particle-1 never carries a verdict.
 
 - **A valid F that already passes** is evidence against the machinery in the headline, not a reason to redesign tasks.
-- **CUT-CANDIDATE** goes to Garry through the Captain in the words "X doesn't need to exist, and we may have to shut it off". GBrain Minder is copied and the line goes to internal-task.
+- **CUT-CANDIDATE** goes to Garry through the Captain in the words "X doesn't need to exist, and we may have to shut it off". GBrain Minder is copied and the line goes to HARN-1.
 
 ## Write-up
 
@@ -436,7 +436,7 @@ One cycle per piece, K1 and K2 separately:
 - `bun scripts/qm-brain-power.ts` prints every number in Power, cost and caps.
 - `bun test tests/brain-corpus.test.ts tests/qm-brain-power.test.ts` pins both.
 - `bun world/brain/check.ts --out <dir>` (a new or empty directory) writes the gbrain import tree, `links.tsv`, the files exports and the dev and pilot tasks.
-- Review record: autoplan run `k8-20261103032641` (Captain drive, `handoffs/internal-task/k8/autoplan/`).
+- Review record: autoplan run `k8-20261103032641` (Captain drive, `handoffs/HARN-15/k8/autoplan/`).
 
 ## Open notes, fixed in the pilot amendment before any trial
 
@@ -452,7 +452,19 @@ The /ship review of this PR reached its round cap with these below-blocking note
 
 ## Amendments
 
-None yet. Each amendment is a dated section here, committed before the cells it affects.
+Each amendment is a dated section here, committed before the cells it affects.
+
+### 2026-11-03: pre-pilot fixes to the export, the export check and the scanner (HARN-15)
+
+**Made before any pilot cell.** No trial has run. The re-bind review on #244 raised five Low findings in this design's code, and HARN-1 approved fixing them as an audited list (R40). Tasks, graders, keys and pins are unchanged.
+
+- **The files export no longer names denied pages.** `links_out` in an F-arm file listed every link of an allowed page, including links to pages outside the audience's manifest. It now lists only links inside the manifest, as `links_in` already did. Before this fix, F could see denied slugs that the brain arms could not.
+- **The export check scores codenames the way the scanner does.** `check.ts` used a case-sensitive whole-word match for HE-BRAIN-006, while `scan.ts` matches any case, spacing or punctuation. A variant codename in an export could pass the check and then count as a leak at scoring. The check now runs every export file through `scan()`.
+- **A failed check writes no export.** `check.ts --out` used to write files before it reported a failure. It now writes only after every check passes. It stages the files inside the target directory and then moves them into place, so an empty mount point works. A second run on the same path is refused, and a run that fails removes only what it wrote. A path that is a file is refused. So an export that failed can never reach a pilot mount.
+- **A scanner crash is not a leak verdict.** `scan.ts` exits 1 for "a hit to audit" (HE-BRAIN-007). An uncaught crash also exited 1, so it would have read as a leak. A crash now exits 3 with HE-BRAIN-009 and prints no input text in sealed mode. Input of the wrong shape, such as an empty canary list that would score everything clean, is refused as bad input (exit 2, HE-BRAIN-008). The sealed log is written to a temporary file and renamed over the log path, so a crash or a failed write leaves an earlier log at that path untouched.
+- **Not a K8 change:** the finding about a review range older than the merge base concerns #244's review range, not this code.
+
+**Corpus A digests are unchanged** (corpus a04c45e0, tasks b6d7c3ac, manifests 1456bb25). They cover the corpus, the tasks and the manifests, not the rendered export. Only the F-arm export files change, and they now drop out-of-manifest `links_out` entries. `bun world/brain/check.ts` prints PASS with these digests.
 
 ## Disclosures
 

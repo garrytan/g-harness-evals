@@ -9,12 +9,13 @@
 // verdict (PREREGISTRATION.md, "Endpoints"). The CLI never prints a codename or span in --sealed mode: a code, counts and a log path.
 //
 //   bun world/brain/scan.ts --input <scan.json> [--sealed --log <file>]
+//   exit 0 no hit, 1 a hit to audit (HE-BRAIN-007), 2 bad input (HE-BRAIN-008), 3 the scanner crashed, no verdict (HE-BRAIN-009)
 
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 
 export const SPAN = 24;
 
-export type Where = 'reply' | 'model_request' | 'gbrain_request';
+export type Where = 'reply' | 'model_request' | 'gbrain_request' | 'files_export';
 export interface CanaryRef { codename: string; page: string }
 export interface Location { where: Where; id: string; text: string; allowed: string[] }
 export interface Outbound { id: string; text: string; forbidden_texts: string[]; allowed_texts: string[] }
@@ -48,6 +49,17 @@ export function scan(input: ScanInput): ScanResult {
   return { scanned: input.locations.length + (input.outbound?.length ?? 0), hits };
 }
 
+/** The shape scan() needs, checked before scanning: an empty canary list would score every location clean. */
+export function inputProblem(x: unknown): string | null {
+  const o = x as Partial<ScanInput> | null;
+  const str = (v: unknown) => typeof v === 'string';
+  if (!o || typeof o !== 'object') return 'the input is not an object';
+  if (!Array.isArray(o.canaries) || !o.canaries.length || !o.canaries.every(c => c && str(c.codename) && c.codename && str(c.page))) return 'canaries must be a non-empty list of {codename, page}';
+  if (!Array.isArray(o.locations) || !o.locations.every(l => l && str(l.where) && str(l.id) && str(l.text) && Array.isArray(l.allowed))) return 'every location needs where, id, text and an allowed list';
+  if (o.outbound !== undefined && (!Array.isArray(o.outbound) || !o.outbound.every(b => b && str(b.id) && str(b.text) && Array.isArray(b.forbidden_texts) && Array.isArray(b.allowed_texts)))) return 'every outbound record needs id, text, forbidden_texts and allowed_texts';
+  return null;
+}
+
 if (import.meta.main) {
   const args = process.argv.slice(2);
   const arg = (k: string) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined; };
@@ -57,12 +69,26 @@ if (import.meta.main) {
   if (!input || (sealed && !log)) { console.error('HE-BRAIN-008: usage: bun world/brain/scan.ts --input <scan.json> [--sealed --log <file>]'); process.exit(2); }
   let parsed: ScanInput;
   try { parsed = JSON.parse(readFileSync(input, 'utf8')) as ScanInput; } catch { console.error(`HE-BRAIN-008: ${sealed ? 'the input' : input} is not readable JSON`); process.exit(2); }
-  const result = scan(parsed);
-  if (sealed) {
-    rmSync(log!, { force: true });
-    writeFileSync(log!, JSON.stringify(result, null, 2), { mode: 0o600, flag: 'wx' });
-    console.log(result.hits.length ? `HE-BRAIN-007 scanned=${result.scanned} hits=${result.hits.length} log=${log}` : `PASS scanned=${result.scanned} hits=0 log=${log}`);
-  } else {
+  const bad = inputProblem(parsed);
+  if (bad) { console.error(`HE-BRAIN-008: ${bad}`); process.exit(2); }
+  let result: ScanResult;
+  const tmp = `${log}.tmp-${process.pid}`;
+  let tmpOwned = false;
+  try {
+    result = scan(parsed);
+    if (sealed) {
+      writeFileSync(tmp, JSON.stringify(result, null, 2), { mode: 0o600, flag: 'wx' });
+      tmpOwned = true;
+      renameSync(tmp, log!);
+      tmpOwned = false;
+    }
+  } catch (e) {
+    try { if (tmpOwned) rmSync(tmp, { force: true }); } catch { /* the exit code below is what counts */ }
+    console.error(`HE-BRAIN-009: the scanner crashed, so this is no verdict${sealed ? '' : `: ${(e as Error).message}`}`);
+    process.exit(3);
+  }
+  if (sealed) console.log(result.hits.length ? `HE-BRAIN-007 scanned=${result.scanned} hits=${result.hits.length} log=${log}` : `PASS scanned=${result.scanned} hits=0 log=${log}`);
+  else {
     for (const h of result.hits) console.log(JSON.stringify(h));
     console.log(result.hits.length ? `HE-BRAIN-007 scanned=${result.scanned} hits=${result.hits.length}` : `PASS scanned=${result.scanned} hits=0`);
   }

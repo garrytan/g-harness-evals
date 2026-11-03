@@ -81,11 +81,11 @@ export function renderImportTree(c: Corpus): Map<string, string> {
   return new Map(c.pages.map(p => [`${p.source}/${p.slug}.md`, renderImportPage(p)]));
 }
 
-/** One files-export page: source, trust, dates, the audience label and relations, with facts and timeline inline. */
-export function renderExportPage(c: Corpus, p: Page, inbound: Map<string, string[]>): string {
+/** One files-export page: source, trust, dates, the audience label and relations inside the allowed set, with facts and timeline inline. */
+export function renderExportPage(c: Corpus, p: Page, inbound: Map<string, string[]>, allowed: Set<string>): string {
   const fm = ['---', `slug: ${p.slug}`, `title: ${JSON.stringify(p.title)}`, `source: ${p.source}`, `trust: ${p.trust}`, `created: ${p.created}`, `updated: ${p.updated}`,
     `readable_by: ${p.readable_by ? c.members.find(m => m.id === p.readable_by)!.name : 'everyone in this conversation'}`,
-    `links_out: ${JSON.stringify(p.links.map(l => `${l.kind}:${l.to}`))}`, `links_in: ${JSON.stringify(inbound.get(p.slug) ?? [])}`, '---'];
+    `links_out: ${JSON.stringify(p.links.filter(l => allowed.has(l.to)).map(l => `${l.kind}:${l.to}`))}`, `links_in: ${JSON.stringify(inbound.get(p.slug) ?? [])}`, '---'];
   const parts = [fm.join('\n'), '', `# ${p.title}`, '', p.body];
   if (p.facts.length) parts.push('', '## Facts', '', ...p.facts.map(f => `- ${f.date}: ${f.text}`));
   if (p.timeline.length) parts.push('', '## Timeline', '', ...p.timeline.map(t => `- ${t.date}: ${t.text}`));
@@ -97,7 +97,7 @@ export function filesExport(c: Corpus, a: Audience): Map<string, string> {
   const allowed = manifestFor(c, a);
   const inbound = new Map<string, string[]>();
   for (const p of c.pages) if (allowed.has(p.slug)) for (const l of p.links) if (allowed.has(l.to)) inbound.set(l.to, [...(inbound.get(l.to) ?? []), `${l.kind}:${p.slug}`]);
-  return new Map(c.pages.filter(p => allowed.has(p.slug)).map(p => [`notes/${p.slug}.md`, renderExportPage(c, p, inbound)]));
+  return new Map(c.pages.filter(p => allowed.has(p.slug)).map(p => [`notes/${p.slug}.md`, renderExportPage(c, p, inbound, allowed)]));
 }
 
 export function filesDelivered(files: Map<string, string>): Set<string> {

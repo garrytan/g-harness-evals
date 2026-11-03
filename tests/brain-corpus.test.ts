@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { checkNames, COMPANY_NAME } from '../world/brain/names.ts';
@@ -8,7 +8,7 @@ import { corpusSha256, CorpusError, generateCorpus, PARAMS } from '../world/brai
 import { ARMS, audienceKey, delivered, filesDelivered, filesExport, manifestFor } from '../world/brain/audience.ts';
 import { generateTasks, PUBLIC_BANK, PUBLIC_PARTITIONS, tasksSha256 } from '../world/brain/tasks.ts';
 import { scan, SPAN } from '../world/brain/scan.ts';
-import { runCheck, SEEDS_FILE, type SeedRecord } from '../world/brain/check.ts';
+import { exportLeaks, runCheck, SEEDS_FILE, type SeedRecord } from '../world/brain/check.ts';
 
 const seeds = JSON.parse(readFileSync(SEEDS_FILE, 'utf8')) as Record<string, SeedRecord>;
 const A = seeds.A!;
@@ -69,6 +69,33 @@ describe('qm-brain-native corpus (K8)', () => {
     }
   });
 
+  test('the files export links only to pages inside the manifest, even where an allowed page links to a denied one', () => {
+    const c = report.corpus;
+    let crossing = 0;
+    for (const a of new Map(report.tasks.map(t => [audienceKey(t.audience), t.audience])).values()) {
+      const man = manifestFor(c, a);
+      for (const p of c.pages) if (man.has(p.slug)) crossing += p.links.filter(l => !man.has(l.to)).length;
+      for (const md of filesExport(c, a).values()) {
+        const rel = (k: string) => JSON.parse(md.match(new RegExp(`^${k}: (.*)$`, 'm'))![1]!) as string[];
+        for (const l of [...rel('links_out'), ...rel('links_in')]) expect(man.has(l.slice(l.indexOf(':') + 1))).toBe(true);
+      }
+    }
+    expect(crossing).toBeGreaterThan(0);
+  });
+
+  test('the export check matches a cased or hyphenated codename the way the scanner scores it', () => {
+    const c = structuredClone(report.corpus);
+    const a = report.tasks.find(t => t.family === 'privacy')!.audience;
+    const man = manifestFor(c, a);
+    const can = c.canaries.find(x => !man.has(x.page))!;
+    const host = c.pages.find(p => man.has(p.slug))!;
+    const variant = can.codename.toUpperCase().split('').join('-');
+    host.body += `\n\nSee ${variant}.`;
+    expect(new RegExp(`\\b${can.codename}\\b`).test([...filesExport(c, a).values()].join('\n'))).toBe(false);
+    expect(exportLeaks(c, a)).toEqual([{ file: `notes/${host.slug}.md`, page: can.page }]);
+    expect(exportLeaks(report.corpus, a)).toEqual([]);
+  });
+
   test('every key item rests on pages inside its task audience manifest', () => {
     for (const t of report.tasks) {
       const man = manifestFor(report.corpus, t.audience);
@@ -109,6 +136,52 @@ describe('qm-brain-native corpus (K8)', () => {
     const run = spawnSync('bun', ['world/brain/check.ts', '--out', dir], { env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' }, encoding: 'utf8' });
     expect(run.status).toBe(2);
     expect(run.stderr).toContain('HE-BRAIN-008');
+  });
+
+  test('check.ts --out writes nothing when a check fails, and refuses a file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'brain-fail-'));
+    const code = join(dir, 'world', 'brain');
+    mkdirSync(code, { recursive: true });
+    for (const f of readdirSync('world/brain').filter(f => f.endsWith('.ts'))) copyFileSync(join('world/brain', f), join(code, f));
+    writeFileSync(join(code, 'seeds.json'), JSON.stringify({ ...seeds, A: { ...A, corpus_sha256: '0'.repeat(64) } }));
+    const out = join(dir, 'out');
+    const run = spawnSync('bun', [join(code, 'check.ts'), '--out', out], { env: scrubbed, encoding: 'utf8' });
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain('HE-BRAIN-002');
+    expect(existsSync(out)).toBe(false);
+    expect(readdirSync(dir).sort()).toEqual(['world']);
+    const file = join(dir, 'a-file');
+    writeFileSync(file, '');
+    const refused = spawnSync('bun', ['world/brain/check.ts', '--out', file], { env: scrubbed, encoding: 'utf8' });
+    expect(refused.status).toBe(2);
+    expect(refused.stderr).toContain('HE-BRAIN-008');
+  });
+
+  test('check.ts --out fills an existing empty directory, and a failed write leaves it empty', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'brain-empty-'));
+    const ok = join(dir, 'ok');
+    mkdirSync(ok);
+    const run = spawnSync('bun', ['world/brain/check.ts', '--out', ok], { env: scrubbed, encoding: 'utf8' });
+    expect(run.status).toBe(0);
+    expect(readdirSync(ok).sort()).toEqual(['corpus.json', 'exports', 'import', 'links.tsv', 'tasks.json']);
+    const locked = join(dir, 'locked');
+    mkdirSync(locked);
+    chmodSync(locked, 0o555);
+    const failed = spawnSync('bun', ['world/brain/check.ts', '--out', locked], { env: scrubbed, encoding: 'utf8' });
+    chmodSync(locked, 0o755);
+    expect(failed.status).toBe(2);
+    expect(failed.stderr).toContain('nothing was written');
+    expect(readdirSync(locked)).toEqual([]);
+    expect(readdirSync(dir).sort()).toEqual(['locked', 'ok']);
+  });
+
+  test('two concurrent --out runs to one new path leave one complete export', async () => {
+    const out = join(mkdtempSync(join(tmpdir(), 'brain-race-')), 'out');
+    const runs = [0, 1].map(() => Bun.spawn(['bun', 'world/brain/check.ts', '--out', out], { env: scrubbed, stdout: 'pipe', stderr: 'pipe' }));
+    const codes = await Promise.all(runs.map(r => r.exited));
+    expect(codes.filter(c => c === 0).length).toBeGreaterThanOrEqual(1);
+    for (const c of codes) expect([0, 2]).toContain(c);
+    expect(readdirSync(out).sort()).toEqual(['corpus.json', 'exports', 'import', 'links.tsv', 'tasks.json']);
   });
 
   test('an impossible size fails with a code, not a short partition', () => {
@@ -152,5 +225,35 @@ describe('qm-brain-native leak scanner', () => {
     expect(run.stdout + run.stderr).not.toContain(denied[0]!.codename);
     expect(readFileSync(log, 'utf8')).toContain(denied[0]!.codename);
     expect(statSync(log).mode & 0o777).toBe(0o600);
+  });
+
+  test('scan input of the wrong shape is bad input (exit 2), not a clean or leak verdict', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'brain-shape-'));
+    const input = join(dir, 'scan.json');
+    for (const bad of [{ canaries: [], locations: [{ where: 'reply', id: 'r1', text: 'x', allowed }] }, { canaries: c.canaries, locations: [{ where: 'reply', id: 'r1', text: denied[0]!.codename }] }, {}]) {
+      writeFileSync(input, JSON.stringify(bad));
+      const run = spawnSync('bun', ['world/brain/scan.ts', '--input', input, '--sealed', '--log', join(dir, 'scan.log')], { env: scrubbed, encoding: 'utf8' });
+      expect(run.status).toBe(2);
+      expect(run.stderr).toContain('HE-BRAIN-008');
+      expect(existsSync(join(dir, 'scan.log'))).toBe(false);
+    }
+  });
+
+  test('a scanner crash exits 3 with its own code, never the leak code, and leaves an earlier log in place', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'brain-crash-'));
+    const input = join(dir, 'scan.json');
+    writeFileSync(input, JSON.stringify({ canaries: c.canaries, locations: [{ where: 'reply', id: 'r1', text: denied[0]!.codename, allowed }] }));
+    const logs = join(dir, 'logs');
+    mkdirSync(logs);
+    const log = join(logs, 'scan.log');
+    writeFileSync(log, 'scored log from an earlier run');
+    chmodSync(logs, 0o555);
+    const run = spawnSync('bun', ['world/brain/scan.ts', '--input', input, '--sealed', '--log', log], { env: scrubbed, encoding: 'utf8' });
+    chmodSync(logs, 0o755);
+    expect(run.status).toBe(3);
+    expect(run.stderr).toContain('HE-BRAIN-009');
+    expect(run.stdout + run.stderr).not.toContain('HE-BRAIN-007');
+    expect(run.stdout + run.stderr).not.toContain(denied[0]!.codename);
+    expect(readFileSync(log, 'utf8')).toBe('scored log from an earlier run');
   });
 });
