@@ -2,6 +2,12 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.110] - 2026-11-03
+
+### internal-task: preregister prompt-archaeology-2026-11
+
+- `docs/benchmarks/2026-11-01-prompt-archaeology/`: the preregistration of prompt-archaeology-2026-11. 41 cells and 1,640 trials (20 v0.3 dev tasks, 2 repetitions per cell), run under 15 shard leases totalling $458.50. Preregistration only: no trial has run, and the results and report come in a later pull request.
+
 ## [0.0.109] - 2026-11-02
 
 ### internal-task: the merge lane lands through gstack land, so pull requests stop renumbering

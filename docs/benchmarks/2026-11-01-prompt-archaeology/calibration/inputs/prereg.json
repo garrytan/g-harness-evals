@@ -1,0 +1,212 @@
+{
+ "schema_version": 1,
+ "run_id": "prompt-archaeology-calib-2026-11",
+ "question": "HARN-20 calibration, uncounted: full (ablation bound, zero layers removed) and minimal (every removable layer of the committed map removed) on the 20 public v0.3 multi-user dev tasks, one repetition, for Claude Code, OpenClaw and Hermes Agent on anthropic:claude-opus-5-5 and Codex on openai:gpt-6.1-sol at reasoning effort medium; no gstack, no gbrain. It sets the counted run's tasks (the v0.3 pilot's 10 to 90 percent family rule on the full cells) and leases (plan decisions 6 and 7). Scratch preregistration, never counted.",
+ "tasks": {},
+ "cells": [
+  {
+   "id": "claude-code-opus-full-mu-v03-dev",
+   "harness": "claude-code",
+   "model": "anthropic:claude-opus-5-5",
+   "slice": "multiuser",
+   "split": "dev",
+   "task_set": "v0.3",
+   "repetitions": 1,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "internal",
+   "ablation": {
+    "map": "harnesses/ablation/claude-code.anthropic-messages.layers.json",
+    "map_sha256": "30f6550b2e9519239a173f5dd5e2426c62e1264e35916340ab81091c00a13935",
+    "layers": []
+   }
+  },
+  {
+   "id": "claude-code-opus-minimal-mu-v03-dev",
+   "harness": "claude-code",
+   "model": "anthropic:claude-opus-5-5",
+   "slice": "multiuser",
+   "split": "dev",
+   "task_set": "v0.3",
+   "repetitions": 1,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "internal",
+   "ablation": {
+    "map": "harnesses/ablation/claude-code.anthropic-messages.layers.json",
+    "map_sha256": "30f6550b2e9519239a173f5dd5e2426c62e1264e35916340ab81091c00a13935",
+    "layers": [
+     "identity",
+     "memory-skills",
+     "safety",
+     "style",
+     "tool-descriptions",
+     "tool-guide",
+     "work-habits"
+    ]
+   }
+  },
+  {
+   "id": "openclaw-opus-full-mu-v03-dev",
+   "harness": "openclaw",
+   "model": "anthropic:claude-opus-5-5",
+   "slice": "multiuser",
+   "split": "dev",
+   "task_set": "v0.3",
+   "repetitions": 1,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "internal",
+   "ablation": {
+    "map": "harnesses/ablation/openclaw.anthropic-messages.layers.json",
+    "map_sha256": "83c5c854c0e7e93afbe223bf3e732f5dc2cb3ba9cae58e0b257cc39d75ab3239",
+    "layers": []
+   },
+   "utility_models": [
+    "anthropic:claude-haiku-5-5"
+   ]
+  },
+  {
+   "id": "openclaw-opus-minimal-mu-v03-dev",
+   "harness": "openclaw",
+   "model": "anthropic:claude-opus-5-5",
+   "slice": "multiuser",
+   "split": "dev",
+   "task_set": "v0.3",
+   "repetitions": 1,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "internal",
+   "ablation": {
+    "map": "harnesses/ablation/openclaw.anthropic-messages.layers.json",
+    "map_sha256": "83c5c854c0e7e93afbe223bf3e732f5dc2cb3ba9cae58e0b257cc39d75ab3239",
+    "layers": [
+     "identity",
+     "memory-skills",
+     "safety",
+     "style",
+     "tool-descriptions",
+     "tool-guide",
+     "work-habits"
+    ]
+   },
+   "utility_models": [
+    "anthropic:claude-haiku-5-5"
+   ]
+  },
+  {
+   "id": "hermes-opus-full-mu-v03-dev",
+   "harness": "hermes",
+   "model": "anthropic:claude-opus-5-5",
+   "slice": "multiuser",
+   "split": "dev",
+   "task_set": "v0.3",
+   "repetitions": 1,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "internal",
+   "ablation": {
+    "map": "harnesses/ablation/hermes.anthropic-messages.layers.json",
+    "map_sha256": "50b900d6424417e413ce32d7aa737da07728fd27391fd42b93a2e32101dd72a1",
+    "layers": []
+   }
+  },
+  {
+   "id": "hermes-opus-minimal-mu-v03-dev",
+   "harness": "hermes",
+   "model": "anthropic:claude-opus-5-5",
+   "slice": "multiuser",
+   "split": "dev",
+   "task_set": "v0.3",
+   "repetitions": 1,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "internal",
+   "ablation": {
+    "map": "harnesses/ablation/hermes.anthropic-messages.layers.json",
+    "map_sha256": "50b900d6424417e413ce32d7aa737da07728fd27391fd42b93a2e32101dd72a1",
+    "layers": [
+     "memory-skills",
+     "safety",
+     "style",
+     "tool-descriptions",
+     "tool-guide",
+     "work-habits"
+    ]
+   }
+  },
+  {
+   "id": "codex-sol-full-mu-v03-dev",
+   "harness": "codex",
+   "model": "openai:gpt-6.1-sol",
+   "slice": "multiuser",
+   "split": "dev",
+   "task_set": "v0.3",
+   "repetitions": 1,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "internal",
+   "ablation": {
+    "map": "harnesses/ablation/codex.openai-responses.layers.json",
+    "map_sha256": "857f38184d10bd6152333953c0ca135c0a62ac33e584af95c4c2914311172d0a",
+    "layers": []
+   }
+  },
+  {
+   "id": "codex-sol-minimal-mu-v03-dev",
+   "harness": "codex",
+   "model": "openai:gpt-6.1-sol",
+   "slice": "multiuser",
+   "split": "dev",
+   "task_set": "v0.3",
+   "repetitions": 1,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "internal",
+   "ablation": {
+    "map": "harnesses/ablation/codex.openai-responses.layers.json",
+    "map_sha256": "857f38184d10bd6152333953c0ca135c0a62ac33e584af95c4c2914311172d0a",
+    "layers": [
+     "identity",
+     "memory-skills",
+     "safety",
+     "style",
+     "tool-descriptions",
+     "tool-guide",
+     "work-habits"
+    ]
+   }
+  }
+ ],
+ "wall_clock_s": {
+  "multiuser": 1500
+ },
+ "spend_cap_usd": 45,
+ "drop_order": [],
+ "minimum_v01": [
+  "claude-code-opus-full-mu-v03-dev",
+  "claude-code-opus-minimal-mu-v03-dev",
+  "openclaw-opus-full-mu-v03-dev",
+  "openclaw-opus-minimal-mu-v03-dev",
+  "hermes-opus-full-mu-v03-dev",
+  "hermes-opus-minimal-mu-v03-dev",
+  "codex-sol-full-mu-v03-dev",
+  "codex-sol-minimal-mu-v03-dev"
+ ]
+}
