@@ -2,6 +2,16 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.113] - 2026-11-03
+
+### internal-task: installer-cc-codex-2026-11 reported (gbrain's installer against told and no brain, Claude Code on Opus 5.5 and Codex on GPT-6.1 Sol)
+
+- `docs/benchmarks/2026-11-01-installer-cc-codex/report.md` (new): on Claude Code, gbrain's installer raised cross-scope exposure via gbrain against told, 33 of 51 trials against 20 of 51, +25 points [+8, +45], p 0.039 (dev). On Codex it was not distinguished at 17 tasks: 17 against 9 of 51, +16 [+2, +33], p 0.125.
+- gbrain here is default-open. It had no access rules and one bot token, so it returned channel pages to people outside the channel. Claude Code's pass rate was 46 of 51 with no brain, 31 told and 27 installer; 41 of the 44 gbrain-cell failures failed only the cross-scope check. Codex pass did not move (43, 42, 42).
+- Why null? ends with FIX-METHOD for both results. The fix is to rerun installer and told on gbrain 0.60.554.0 (or 0.60.551.0) with the fixture's scopes as gbrain access rules, each trial's token bound to its member, and a keyless per-member `gbrain access check` that fails closed before any trial. That amendment opens after #229 merges.
+- `results/` (new): merged trials and trial trees, per-shard ledgers, proxy logs and spend reconciliations, summary and comparisons, the exposure MDD and cost-interval scripts with their outputs, the transcript audit, the attempt 1 and costing-smoke receipts, and run notes.
+- `docs/ledger/lane-spend.jsonl` gains the costing smoke ($0.7040168) and the counted run ($58.3979376), and `docs/budget-ledger.md` is re-rendered. The README's spend line, with its twin in `docs/methods.md`, moves to $615.49. The README's v0.3 runs table and So what list, and `docs/README.md`, list the run, and `docs/receipts-manifest.json` covers it.
+
 ## [0.0.112] - 2026-11-03
 
 ### internal-task: the gbrain installer views drop gbrain's instruction-ledger lock

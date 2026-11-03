@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "run_id": "installer-cc-codex-2026-11-costing-smoke",
+  "question": "Uncounted costing smoke for installer-cc-codex-2026-11 (scratch preregistration): one installer trial per host on ar-01-thornbury-rate-hollis at the merge commit ba4945bca.",
+  "tasks": {
+    "multiuser": [
+      "ar-01-thornbury-rate-hollis"
+    ]
+  },
+  "cells": [
+    {
+      "id": "claude-code-opus-gbrain-installer-mu-v03-dev",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "gbrain": {
+        "surface": "starter",
+        "install": "gbrain-installer"
+      },
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "codex-sol-gbrain-installer-mu-v03-dev",
+      "harness": "codex",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "gbrain": {
+        "surface": "starter",
+        "install": "gbrain-installer"
+      },
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    }
+  ],
+  "wall_clock_s": {
+    "multiuser": 1500
+  },
+  "spend_cap_usd": 15,
+  "drop_order": [],
+  "minimum_v01": [
+    "claude-code-opus-gbrain-installer-mu-v03-dev",
+    "codex-sol-gbrain-installer-mu-v03-dev"
+  ]
+}

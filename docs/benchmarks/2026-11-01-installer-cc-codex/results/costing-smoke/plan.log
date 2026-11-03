@@ -1,0 +1,5 @@
+RUN: installer-cc-codex-2026-11-costing-smoke trials=2 cells=2 ceiling_usd=1.98 cap_usd=15 trial_hours_at_cap=0.8
+CELL: claude-code-opus-gbrain-installer-mu-v03-dev harness=claude-code mode=docker model=anthropic:claude-opus-5-5 slice=multiuser split=dev task_set=v0.3 network=internal reps=1 trials=1 turns=3 ceiling_usd=1.32 gbrain=starter/gbrain-installer/off
+CELL: codex-sol-gbrain-installer-mu-v03-dev harness=codex mode=docker model=openai:gpt-6.1-sol slice=multiuser split=dev task_set=v0.3 network=internal reps=1 trials=1 turns=3 ceiling_usd=0.66 gbrain=starter/gbrain-installer/off
+GBRAIN: cells claude-code-opus-gbrain-installer-mu-v03-dev, codex-sol-gbrain-installer-mu-v03-dev run with a gbrain sidecar per trial (image harness-eval/gbrain:dev unless --gbrain-image; starter/gbrain-installer/off: the 33-tool starter surface; gbrain's own installer (gbrain setup <harness> --instructions-only) applied in the harness container from the image's bundle; keyword-only, no model call; docs/gbrain-arm.md)
+MANIFEST: /home/ubi/shard/results/manifest.json
