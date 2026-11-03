@@ -23,10 +23,16 @@
 // of a network of its own, with host.docker.internal mapped to that network's gateway for the proxy route. An internal
 // network publishes no ports, so the world reaches the sidecar at its address on that network, which the host owns a route
 // to; inter-container traffic is off there, so the harness cannot reach the sidecar directly any more than before.
+//
+// internal-task (the access-rules rerun): under access "rules" (HE_GBRAIN_ACCESS=rules) the sidecar serves the member brain built with
+// gbrain's folder rules and member-bound tokens (/brains/<split>-member-acl). probeAccessRules collects, keyless, what the preflight
+// checks before any trial: gbrain access check per token, gbrain access rule list per source and gbrain access who-can-read per page
+// (run in a second container from the image, never the serving one), and the rows search, query, recall and list_pages return under
+// each token the tap would present; accessRulesProblems turns that into the fail-closed verdict (HE-GBRAIN-002).
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { RunnerError } from '../errors.ts';
 import type { BrainIngest, CompanyBrainManifest, CompanyTokens, IngestTokens } from '../../gbrain/build-brain.ts';
 import { verifyFiles, type InstallFile, type InstallerRecord } from '../../gbrain/build-install.ts';
@@ -61,6 +67,8 @@ export interface GbrainSidecarOptions {
   scope?: 'none' | 'member' | 'sources' | 'member-sources';
   /** internal-task: live ingestion (member brain only): the entrypoint copies ingest-tokens.json beside the token. */
   ingest?: 'off' | 'live';
+  /** internal-task: "rules" serves the access-ruled member brain (member brain, member scope only); default none. */
+  access?: 'none' | 'rules';
   /** internal-task: the surface (default starter) and the embedding model (default off); an embedded brain needs openaiBaseUrl, the
    *  metering proxy's slot URL as the container reaches it (a route, never a key), and proxyToken, the random per-trial token
    *  the proxy requires on that slot (2026-10-28; the entrypoint hands it to gbrain as its OpenAI credential, which the proxy
@@ -85,6 +93,8 @@ export interface GbrainSidecar {
   image_id: string;
   brain: NonNullable<GbrainCellConfig['brain']>;
   scope: 'none' | 'member' | 'sources' | 'member-sources';
+  /** internal-task: whether the brain gates reads with folder rules and member-bound tokens. */
+  access: 'none' | 'rules';
   /** internal-task: the surface and embedding model the sidecar was started with. */
   surface: GbrainCellConfig['surface'];
   embeddings: NonNullable<GbrainCellConfig['embeddings']>;
@@ -148,6 +158,14 @@ export function imageCommitProblem(o: { image: string; built: string | null; pin
   const expected = o.flag ?? o.pin;
   if (o.built === expected) return null;
   return `image ${o.image} records gbrain ${o.built ?? 'no commit (no /opt/sidecar/image.json)'}, ${o.flag ? '--gbrain-commit names' : 'gbrain/pin.json pins'} ${expected}; fix: scripts/build-gbrain-image.sh --gbrain ${expected} --tag ${o.image}, or --gbrain-image <the image built at that commit>`;
+}
+
+/** internal-task: the image-commit gate of a run whose preregistration names gbrain_commit (preflight and run): the HE-GBRAIN-016 message
+ *  body when the image records another commit or none, or when --gbrain-commit names a different one, else null. */
+export function preregCommitProblem(o: { image: string; built: string | null; prereg: string; flag?: string }): string | null {
+  if (o.flag && o.flag !== o.prereg) return `--gbrain-commit names ${o.flag} and the preregistration's gbrain_commit is ${o.prereg}; a run with a preregistered gbrain commit runs that commit only; fix: drop --gbrain-commit`;
+  if (o.built === o.prereg) return null;
+  return `image ${o.image} records gbrain ${o.built ?? 'no commit (no /opt/sidecar/image.json, or the image is missing)'}, the preregistration's gbrain_commit is ${o.prereg}; fix: scripts/build-gbrain-image.sh --gbrain ${o.prereg} --tag ${o.image} (scripts/run-shard.sh does this from the preregistration), or --gbrain-image <the image built at that commit>`;
 }
 
 export async function waitHealthy(url: string, timeoutMs: number, exited: () => string | null | Promise<string | null>): Promise<void> {
@@ -222,6 +240,7 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
   const brain = o.brain ?? 'bot-visible';
   const scope = o.scope ?? 'none';
   const ingest = o.ingest ?? 'off';
+  const access = o.access ?? 'none';
   const surface = o.surface ?? 'starter';
   const embeddings = o.embeddings ?? 'off';
   if (embeddings !== 'off' && !o.openaiBaseUrl) throw new RunnerError('HE-GBRAIN-002', `an embedded brain (${embeddings}) needs the metering proxy's slot URL as OPENAI_BASE_URL; the runner passes none without a proxy`);
@@ -247,7 +266,7 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
   const run = await sh(['docker', 'run', '-d', '--name', name, '--user', uidGid(), '--network', network, ...route,
     '-v', `${out}:/he-gbrain`,
     '-e', `HE_GBRAIN_SPLIT=${o.split}`, '-e', 'HE_GBRAIN_OUT=/he-gbrain', '-e', `HE_TRIAL_ID=${o.trialId}`,
-    '-e', `HE_GBRAIN_BRAIN=${brain}`, '-e', `HE_GBRAIN_SCOPE=${scope}`, '-e', `HE_GBRAIN_INGEST=${ingest}`,
+    '-e', `HE_GBRAIN_BRAIN=${brain}`, '-e', `HE_GBRAIN_SCOPE=${scope}`, '-e', `HE_GBRAIN_INGEST=${ingest}`, ...(access === 'rules' ? ['-e', 'HE_GBRAIN_ACCESS=rules'] : []),
     '-e', `HE_GBRAIN_SURFACE=${surface}`, '-e', `HE_GBRAIN_EMBEDDINGS=${embeddings}`,
     ...(embeddings !== 'off' ? ['-e', `OPENAI_BASE_URL=${o.openaiBaseUrl}`, '-e', `HE_GBRAIN_PROXY_TOKEN=${o.proxyToken}`] : []),
     image]);
@@ -325,8 +344,8 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
       tokens = JSON.parse(readFileSync(tokensPath, 'utf8')) as CompanyTokens;
     }
     const ready_ms = Date.now() - started;
-    log(`gbrain sidecar ${name} (${o.split}, ${image}, brain ${brain}, scope ${scope}, ingest ${ingest}, surface ${surface}, embeddings ${embeddings}) healthy at ${url} after ${ready_ms} ms; token in ${tokenPath}${tokens ? `, ${Object.keys(tokens.members ?? {}).length} member tokens in ${tokensPath}` : ''}${ingestTokens ? `, ${Object.keys(ingestTokens.tokens.sources).length} ingest tokens` : ''}`);
-    return { url, token, tokenPath, image, image_id, brain, scope, surface, embeddings, tokens, grants, ingest: ingestTokens, ready_ms, stop };
+    log(`gbrain sidecar ${name} (${o.split}, ${image}, brain ${brain}, scope ${scope}, access ${access}, ingest ${ingest}, surface ${surface}, embeddings ${embeddings}) healthy at ${url} after ${ready_ms} ms; token in ${tokenPath}${tokens ? `, ${Object.keys(tokens.members ?? {}).length} member tokens in ${tokensPath}` : ''}${ingestTokens ? `, ${Object.keys(ingestTokens.tokens.sources).length} ingest tokens` : ''}`);
+    return { url, token, tokenPath, image, image_id, brain, scope, access, surface, embeddings, tokens, grants, ingest: ingestTokens, ready_ms, stop };
   } catch (e) {
     await stop(5_000);
     const tail = existsSync(join(out, 'docker.log')) ? readFileSync(join(out, 'docker.log'), 'utf8').trim().split('\n').slice(-3).join(' | ') : '';
@@ -476,6 +495,233 @@ export async function probeSourceGrants(image: string, split: 'dev' | 'heldout',
   } finally {
     await sidecar.stop(5_000);
   }
+}
+
+/** internal-task: what the access-rules preflight collects from a split's access-ruled member brain, keyless. Token names, rule readers,
+ *  slugs and source ids only; no secret. */
+export interface AccessRulesEvidence {
+  image_id: string;
+  ready_ms: number;
+  /** (a) gbrain access check --token <name> --json for every token in tokens.json: the bound member, its status and the verdict. */
+  checks: Array<{ token: string; member: string | null; status: string | null; verdict: string | null; error?: string }>;
+  /** (b) gbrain access rule list --source <id> --json per source: the applied rules (readers as member ids) and how many changes are
+   *  held, pending or invalid. */
+  rules: Array<{ source: string; rules: Array<{ id: string; prefix: string; readers: string[] }>; held: number; pending: number; invalid: number; error?: string }>;
+  /** (b) gbrain access who-can-read <slug> --source <id> --json per page: the page's own readers and the members gbrain names. */
+  who: Array<{ slug: string; source_id: string; readers: string[] | null; members: string[] | 'every_source_reader' | null; error?: string }>;
+  /** (c) per grant the tap presents (public-only and each member), the rows of search, query and recall per probe query and of
+   *  list_pages paged to the end, as slug and source id. */
+  tap: Array<{ grant: string; tool: string; query: string; rows: Array<{ slug: string; source_id: string }>; error?: string }>;
+  /** (c) get_page by slug under each member token, on every page outside the member's reader set and the first page inside it:
+   *  ok when the page came back, refused on an error code or an empty reply, other when another page came back. */
+  slug_reads: Array<{ grant: string; slug: string; source_id: string; inside: boolean; outcome: 'ok' | 'refused' | 'other'; code: string | null }>;
+}
+
+/** internal-task: the world's side of the check: every page with its source and reader set, every source with its readers, the token members. */
+export interface AccessRulesExpected {
+  pages: Array<{ page_slug: string; source: string; readers: string[] }>;
+  sources: Array<{ id: string; readers: string[] }>;
+  token_members: string[];
+}
+
+/** internal-task: collect the evidence for one split. The CLI checks run in a second container from the image on its own copy of the
+ *  brain (gbrain's PGLite store takes one process at a time, and the serving container holds it); the tap probe goes to the sidecar
+ *  under the token world/services/gbrain-tap.ts grantFor picks for each requester, with no source_ids, as the tap sends a call under
+ *  scope "member". */
+export async function probeAccessRules(image: string, split: 'dev' | 'heldout', scratchDir: string, expected: AccessRulesExpected, queries: readonly string[] = SOURCE_PROBE_QUERIES): Promise<AccessRulesEvidence> {
+  const { grantFor, SOURCE_SCOPED_TOOLS } = await import('../../world/services/gbrain-tap.ts');
+  const fail = (what: string) => new RunnerError('HE-GBRAIN-002', `the access-ruled member brain for ${split} in ${image} ${what}; fix: rebuild the image (docs/gbrain-arm.md, "Access-ruled member brain")`);
+  const cli = `he-gbrain-preflight-acl-${split}-${process.pid}`;
+  await sh(['docker', 'rm', '-f', cli]);
+  const started = await sh(['docker', 'run', '-d', '--name', cli, '--user', uidGid(), '--network', 'none', '--entrypoint', 'sleep', image, 'infinity']);
+  if (started.status !== 0) throw fail(`could not start a CLI container: ${(started.stderr || started.stdout).trim().slice(0, 300)}`);
+  try {
+    const copied = await sh(['docker', 'exec', cli, 'bash', '-c', `cp -a /brains/${split}-member-acl/.gbrain /brain/.gbrain && rm -f /brain/.gbrain/*.lock /brain/.gbrain/persistence/locks/*`]);
+    if (copied.status !== 0) throw fail(`has no brain at /brains/${split}-member-acl: ${(copied.stderr || copied.stdout).trim().slice(0, 300)}`);
+    const gbrain = async (args: string[]): Promise<Record<string, unknown>> => {
+      const r = await sh(['docker', 'exec', '-e', 'GBRAIN_HOME=/brain', '-e', 'HOME=/tmp', '-e', 'GBRAIN_SKIP_STARTUP_HOOKS=1', '-e', 'NO_COLOR=1', cli, 'bun', '/opt/gbrain/src/cli.ts', ...args, '--json']);
+      const lines = r.stdout.split('\n');
+      const start = lines.map((l) => l.trimEnd()).indexOf('{');
+      let parsed: Record<string, unknown> | null = null;
+      try { parsed = start >= 0 ? JSON.parse(lines.slice(start).join('\n')) as Record<string, unknown> : null; } catch { parsed = null; }
+      if (r.status !== 0 || !parsed) return { error: typeof parsed?.code === 'string' ? parsed.code : `exit ${r.status}: ${(r.stderr || r.stdout).trim().split('\n').slice(-1)[0]?.slice(0, 160) ?? ''}` };
+      return parsed;
+    };
+    const strip = (p: string) => (p.startsWith('member:') ? p.slice(7) : p);
+    const checks: AccessRulesEvidence['checks'] = [];
+    for (const token of [...expected.token_members.map((m) => `member-${m}`), 'public-only']) {
+      const r = await gbrain(['access', 'check', '--token', token]);
+      if (typeof r.error === 'string') { checks.push({ token, member: null, status: null, verdict: null, error: r.error }); continue; }
+      const m = (r as { member?: { id?: unknown; status?: unknown } | null }).member;
+      checks.push({ token, member: m && typeof m.id === 'string' ? m.id : null, status: m && typeof m.status === 'string' ? m.status : null, verdict: typeof r.verdict === 'string' ? r.verdict : null });
+    }
+    const rules: AccessRulesEvidence['rules'] = [];
+    for (const s of expected.sources) {
+      const r = await gbrain(['access', 'rule', 'list', '--source', s.id]);
+      if (!Array.isArray((r as { rules?: unknown }).rules)) { rules.push({ source: s.id, rules: [], held: 0, pending: 0, invalid: 0, error: typeof r.error === 'string' ? r.error : 'no rules list' }); continue; }
+      const st = r as { rules: Array<{ id: string; prefix: string; readable_by: string[] }>; held?: unknown[]; pending?: unknown[]; invalid?: unknown[] };
+      rules.push({ source: s.id, rules: st.rules.map((x) => ({ id: x.id, prefix: x.prefix, readers: x.readable_by.map(strip).sort() })), held: st.held?.length ?? 0, pending: st.pending?.length ?? 0, invalid: st.invalid?.length ?? 0 });
+    }
+    const who: AccessRulesEvidence['who'] = [];
+    for (const p of expected.pages) {
+      const r = await gbrain(['access', 'who-can-read', p.page_slug, '--source', p.source]);
+      const page = (r as { pages?: Array<{ readers: string[] | null; members: string[] | 'every_source_reader' }> }).pages?.[0];
+      if (!page) { who.push({ slug: p.page_slug, source_id: p.source, readers: null, members: null, error: typeof r.error === 'string' ? r.error : 'no page in the reply' }); continue; }
+      who.push({ slug: p.page_slug, source_id: p.source, readers: page.readers === null ? null : page.readers.map(strip).sort(), members: Array.isArray(page.members) ? [...page.members].sort() : page.members });
+    }
+    const sidecar = await startGbrainSidecar({ trialId: 'preflight', trialSlug: `preflight-acl-${split}-${process.pid}`, split, outDir: scratchDir, image, brain: 'member', scope: 'member', access: 'rules' });
+    try {
+      if (!sidecar.tokens) throw fail('started under scope "member" without tokens');
+      const upstream = { url: sidecar.url, token: sidecar.token, tokens: sidecar.tokens };
+      const ROW_KEYS = ['results', 'pages', 'facts', 'items'];
+      const rowsOf = (p: unknown): Array<{ slug?: unknown; source_id?: unknown }> | null => Array.isArray(p) ? p : p && typeof p === 'object' && ROW_KEYS.some((k) => Array.isArray((p as Record<string, unknown>)[k])) ? ROW_KEYS.flatMap((k) => { const v = (p as Record<string, unknown>)[k]; return Array.isArray(v) ? v : []; }) : null;
+      const tap: AccessRulesEvidence['tap'] = [];
+      for (const requester of [null, ...[...expected.token_members].sort()]) {
+        const { grant, token } = grantFor(upstream, requester);
+        if (!token) { tap.push({ grant, tool: '-', query: '', rows: [], error: 'no token for this member in tokens.json' }); continue; }
+        for (const tool of SOURCE_SCOPED_TOOLS) for (const query of tool === 'list_pages' ? [''] : queries) {
+          const got: Array<{ slug: string; source_id: string }> = [];
+          let error: string | undefined;
+          for (let offset = 0; ; offset += 100) {
+            const args = tool === 'list_pages' ? { limit: 100, offset, sort: 'slug' } : tool === 'recall' ? { query } : { query, limit: 50 };
+            const page = rowsOf(await callGbrain(sidecar.url, token, tool, args));
+            if (!page) { error = 'reply without rows'; break; }
+            got.push(...page.map((r) => ({ slug: typeof r.slug === 'string' ? r.slug : '', source_id: typeof r.source_id === 'string' ? r.source_id : '' })));
+            if (tool !== 'list_pages' || page.length < 100) break;
+          }
+          tap.push({ grant, tool, query, rows: got, ...(error ? { error } : {}) });
+        }
+      }
+      // A slug read takes no source_ids, so the folder rules are all that guard it under a member-bound token.
+      const slug_reads: AccessRulesEvidence['slug_reads'] = [];
+      for (const member of [...expected.token_members].sort()) {
+        const { grant, token } = grantFor(upstream, member);
+        if (!token) continue;
+        const inside = expected.pages.filter((p) => p.readers.includes(member)).slice(0, 1);
+        for (const p of [...expected.pages.filter((q) => !q.readers.includes(member)), ...inside]) {
+          const reply = await callGbrain(sidecar.url, token, 'get_page', { slug: p.page_slug }) as Record<string, unknown> | null;
+          const code = !reply ? 'empty' : typeof reply.code === 'string' ? reply.code : typeof reply.error === 'string' ? reply.error : null;
+          const outcome = code !== null ? 'refused' : reply!.slug === p.page_slug ? 'ok' : 'other';
+          slug_reads.push({ grant, slug: p.page_slug, source_id: p.source, inside: p.readers.includes(member), outcome, code: outcome === 'other' ? `another page (${String(reply!.slug ?? '?')})` : code });
+        }
+      }
+      return { image_id: sidecar.image_id, ready_ms: sidecar.ready_ms, checks, rules, who, tap, slug_reads };
+    } finally {
+      await sidecar.stop(5_000);
+    }
+  } finally {
+    await sh(['docker', 'rm', '-f', cli]);
+  }
+}
+
+/** internal-task: write the access-rules preflight record beside preflight.log. Refused (HE-GBRAIN-002, nothing written) in a directory
+ *  that holds tokens.json or token, or when the record would carry any token value the sidecar left in tokenDir. */
+export function writeAccessPreflight(path: string, record: unknown, tokenDir: string): void {
+  if (['tokens.json', 'token'].some((f) => existsSync(join(dirname(path), f)))) throw new RunnerError('HE-GBRAIN-002', `${path}: the access preflight record would sit beside a gbrain token; it goes where no token is kept`);
+  const text = JSON.stringify(record, null, 1) + '\n';
+  const secrets: string[] = [];
+  if (existsSync(join(tokenDir, 'tokens.json'))) {
+    const t = JSON.parse(readFileSync(join(tokenDir, 'tokens.json'), 'utf8')) as Partial<CompanyTokens>;
+    secrets.push(t.public_only ?? '', ...Object.values(t.members ?? {}));
+  }
+  if (existsSync(join(tokenDir, 'token'))) secrets.push(readFileSync(join(tokenDir, 'token'), 'utf8').trim());
+  if (secrets.some((s) => s && text.includes(s))) throw new RunnerError('HE-GBRAIN-002', `${path}: the access preflight record would carry a gbrain token value from ${tokenDir}; nothing was written`);
+  writeFileSync(path, text);
+}
+
+/** internal-task: run's check that the access-rules preflight passed on the image it is about to use. A resumed shard that rebuilt the
+ *  image re-mints the tokens and re-adds the rules, so a record for another image id does not cover it. */
+export function accessPreflightProblem(path: string, split: string, image: string, imageId: string): string | null {
+  const fix = `fix: rerun bun runner/run.ts preflight on this image before run (docs/gbrain-arm.md, "Access-ruled member brain")`;
+  if (!existsSync(path)) return `access=rules: no access preflight record for ${split} at ${path}; ${fix}`;
+  let r: { ok?: unknown; evidence?: { image_id?: unknown } } | null;
+  try { r = JSON.parse(readFileSync(path, 'utf8')) as { ok?: unknown; evidence?: { image_id?: unknown } } | null; } catch { return `access=rules: ${path} is not JSON; ${fix}`; }
+  if (r?.ok !== true) return `access=rules: the access preflight for ${split} at ${path} did not pass; ${fix}`;
+  if (!imageId || r.evidence?.image_id !== imageId) return `access=rules: the access preflight for ${split} ran on image id ${String(r.evidence?.image_id ?? 'none')}, ${image} is now ${imageId || 'unreadable'}; ${fix}`;
+  return null;
+}
+
+/** internal-task: the fail-closed verdict on the evidence. (a) every member token reads as exactly its member and public-only is bound to
+ *  nobody; (b) every source but public carries one rule whose readers are the source's readers, nothing held, pending or invalid,
+ *  and every page's effective readers (its own readers, if any, within every rule covering its slug) are the world's reader set,
+ *  the public pages under no rule; (c) no row under any grant lies outside that grant's reader set (public-only: the public pages),
+ *  a row is its source and slug together, every grant's list_pages holds every page it may read, search, query and recall each
+ *  returned rows, and get_page under each member token refused every page outside its reader set and served one inside it. who-can-read at
+ *  gbrain 0.60.554.0 reads only a page's own readable_by and answers "every_source_reader" for a page that only a folder rule
+ *  covers; that answer is counted in rule_blind and the rule list decides. */
+export function accessRulesProblems(e: AccessRulesEvidence, x: AccessRulesExpected): { problems: Array<{ check: 'a' | 'b' | 'c'; what: string }>; summary: { tokens: number; rules: number; pages: number; rule_blind: number; calls: number; rows: number; rows_by_tool: Record<string, number>; slug_reads: number } } {
+  const problems: Array<{ check: 'a' | 'b' | 'c'; what: string }> = [];
+  const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && [...a].sort().every((v, i) => v === [...b].sort()[i]);
+  const members = new Set(x.token_members);
+  for (const m of x.token_members) {
+    const c = e.checks.find((k) => k.token === `member-${m}`);
+    if (!c) problems.push({ check: 'a', what: `no access check for member-${m}` });
+    else if (c.error || c.verdict !== 'reads_as_member' || c.member !== m || c.status !== 'enabled') problems.push({ check: 'a', what: `member-${m} is ${c.error ?? `${c.verdict} as ${c.member ?? 'nobody'} (${c.status ?? '-'})`}, not bound to ${m}` });
+  }
+  const pub = e.checks.find((k) => k.token === 'public-only');
+  if (!pub || pub.error || pub.verdict !== 'unbound' || pub.member !== null) problems.push({ check: 'a', what: `public-only is ${pub ? pub.error ?? `${pub.verdict} as ${pub.member ?? 'nobody'}` : 'unchecked'}, not unbound` });
+  for (const k of e.checks) if (k.token !== 'public-only' && !members.has(k.token.replace(/^member-/, ''))) problems.push({ check: 'a', what: `${k.token} is not a token member's token` });
+
+  const sourceReaders = new Map(x.sources.map((s) => [s.id, s.readers]));
+  const rulesOf = new Map(e.rules.map((r) => [r.source, r]));
+  for (const s of x.sources) {
+    const r = rulesOf.get(s.id);
+    if (!r || r.error) { problems.push({ check: 'b', what: `no rule list for source ${s.id}${r?.error ? ` (${r.error})` : ''}` }); continue; }
+    if (r.held || r.pending || r.invalid) problems.push({ check: 'b', what: `source ${s.id} has ${r.held} held, ${r.pending} pending and ${r.invalid} invalid rule change(s)` });
+    if (s.id === 'public') { if (r.rules.length) problems.push({ check: 'b', what: `the public source carries ${r.rules.length} rule(s)` }); continue; }
+    if (r.rules.length !== 1 || !same(r.rules[0]!.readers, s.readers)) problems.push({ check: 'b', what: `source ${s.id} carries ${r.rules.map((q) => `${q.prefix} [${q.readers.join(',')}]`).join('; ') || 'no rule'}, not one rule for [${s.readers.join(',')}]` });
+  }
+  let rule_blind = 0;
+  for (const p of x.pages) {
+    const w = e.who.find((q) => q.slug === p.page_slug && q.source_id === p.source);
+    if (!w || w.error) { problems.push({ check: 'b', what: `no who-can-read for ${p.page_slug} in ${p.source}${w?.error ? ` (${w.error})` : ''}` }); continue; }
+    const covering = (rulesOf.get(p.source)?.rules ?? []).filter((r) => p.page_slug.startsWith(r.prefix));
+    if (p.source === 'public') {
+      if (covering.length || w.readers !== null) problems.push({ check: 'b', what: `public page ${p.page_slug} is restricted (${covering.length} rule(s), readers ${JSON.stringify(w.readers)})` });
+      continue;
+    }
+    if (!covering.length) { problems.push({ check: 'b', what: `${p.page_slug} in ${p.source} is under no rule; every caller reads it` }); continue; }
+    const effective = covering.reduce<string[]>((acc, r) => acc.filter((id) => r.readers.includes(id)), w.readers ?? covering[0]!.readers);
+    if (!same(effective, p.readers)) problems.push({ check: 'b', what: `${p.page_slug} is readable by [${effective.join(',')}], the world says [${p.readers.join(',')}]` });
+    if (w.members === 'every_source_reader') rule_blind++;
+    else if (!w.members || !same(w.members, p.readers.filter((id) => members.has(id)))) problems.push({ check: 'b', what: `who-can-read names [${(w.members ?? []).join(',')}] for ${p.page_slug}, the world's token members among its readers are [${p.readers.filter((id) => members.has(id)).join(',')}]` });
+  }
+
+  const pageKey = (source_id: string, slug: string) => `${source_id}\u0000${slug}`;
+  const pageReaders = new Map(x.pages.map((p) => [pageKey(p.source, p.page_slug), p.readers]));
+  const everyone = sourceReaders.get('public') ?? [];
+  const mayRead = (grant: string, slug: string, source_id: string) => {
+    const readers = slug ? pageReaders.get(pageKey(source_id, slug)) : sourceReaders.get(source_id);
+    if (!readers) return false;
+    return grant === 'public-only' ? same(readers, everyone) : readers.includes(grant);
+  };
+  const rows_by_tool: Record<string, number> = { search: 0, query: 0, recall: 0, list_pages: 0 };
+  let rows = 0;
+  for (const t of e.tap) {
+    if (t.error) { problems.push({ check: 'c', what: `${t.grant} ${t.tool} ${JSON.stringify(t.query)}: ${t.error}` }); continue; }
+    for (const r of t.rows) {
+      rows++;
+      rows_by_tool[t.tool] = (rows_by_tool[t.tool] ?? 0) + 1;
+      if (!mayRead(t.grant, r.slug, r.source_id)) problems.push({ check: 'c', what: `${t.grant} ${t.tool}${t.query ? ` ${JSON.stringify(t.query)}` : ''} -> ${r.slug || '?'} in ${r.source_id || '?'}, outside its reader set` });
+    }
+  }
+  for (const grant of ['public-only', ...x.token_members]) {
+    const listed = new Set(e.tap.filter((t) => t.grant === grant && t.tool === 'list_pages').flatMap((t) => t.rows.map((r) => pageKey(r.source_id, r.slug))));
+    const hidden = x.pages.filter((p) => (grant === 'public-only' ? same(p.readers, everyone) : p.readers.includes(grant)) && !listed.has(pageKey(p.source, p.page_slug)));
+    if (hidden.length) problems.push({ check: 'c', what: `${grant}'s list_pages misses ${hidden.length} page(s) it may read (${hidden.slice(0, 3).map((p) => p.page_slug).join(', ')}); the gate is closed wider than the world` });
+  }
+  for (const tool of ['search', 'query', 'recall']) if (!rows_by_tool[tool]) problems.push({ check: 'c', what: `${tool} returned 0 rows under every grant; the probe cannot show the rules hold on it` });
+  for (const r of e.slug_reads) {
+    if (!r.inside && r.outcome !== 'refused') problems.push({ check: 'c', what: `${r.grant} get_page -> ${r.slug} in ${r.source_id}: ${r.outcome === 'ok' ? 'served' : r.code}, outside its reader set` });
+    if (r.inside && r.outcome !== 'ok') problems.push({ check: 'c', what: `${r.grant} get_page -> ${r.slug} in ${r.source_id}, inside its reader set: ${r.code}; a refusal outside the reader set cannot be told from a broken read` });
+  }
+  for (const m of x.token_members) {
+    const read = new Set(e.slug_reads.filter((r) => r.grant === m).map((r) => pageKey(r.source_id, r.slug)));
+    const unread = x.pages.filter((p) => !p.readers.includes(m) && !read.has(pageKey(p.source, p.page_slug)));
+    const insideRead = e.slug_reads.some((r) => r.grant === m && r.inside);
+    if (unread.length || (!insideRead && x.pages.some((p) => p.readers.includes(m)))) problems.push({ check: 'c', what: `${m}: get_page was not tried on ${unread.length ? `${unread.length} page(s) outside its reader set (${unread.slice(0, 3).map((p) => p.page_slug).join(', ')})` : 'a page inside its reader set'}; the probe cannot show the rules hold on slug reads` });
+  }
+  return { problems, summary: { tokens: e.checks.length, rules: e.rules.reduce((n, r) => n + r.rules.length, 0), pages: e.who.length, rule_blind, calls: e.tap.length, rows, rows_by_tool, slug_reads: e.slug_reads.length } };
 }
 
 /** internal-task: gbrain's own word that a reply fell back to keyword search: recall's search_degraded or facts_degraded.reason, or

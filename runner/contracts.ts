@@ -213,6 +213,11 @@ export interface GbrainCellConfig {
    *  gbrain#8074): "member-sources" does both, the requesting member's token (granted server-side with gbrain auth rescope at
    *  image build) and that member's source_ids on every narrowed call; company brain only. */
   scope?: 'member' | 'sources' | 'member-sources';
+  /** internal-task addition (the access-rules rerun, gbrain#8134): "rules" serves the member brain built with gbrain's folder rules (one
+   *  per source with a reader set, prefix <split>/, the source's readers) and member-bound tokens with no source grant, so the
+   *  rules are the only read gate (docs/gbrain-arm.md, "Access-ruled member brain"). Needs brain "member" and scope "member", and
+   *  no live ingestion; preflight checks the bindings, the rules and a tap probe per member before any trial (HE-GBRAIN-002). */
+  access?: 'rules';
 }
 
 /** internal-task: the install bundle view a gbrain-docs or gbrain-installer trial mounted into the harness, as the runner verified it
@@ -300,6 +305,8 @@ export interface TrialGbrain {
    *  image id behind the tag, so a record names the exact brain it was served from. */
   brain?: 'bot-visible' | 'company' | 'member';
   scope?: 'none' | 'member' | 'sources' | 'member-sources';
+  /** internal-task: present when the sidecar served the access-ruled member brain. */
+  access?: 'rules';
   /** internal-task: whether the world ingested the scenario's messages into the brain, and how many it wrote (gbrain.ingest events): ok
    *  (a committed fact), skipped (a conversation the brain has no source or token for; not a fault) and failed. */
   ingest?: 'off' | 'live';

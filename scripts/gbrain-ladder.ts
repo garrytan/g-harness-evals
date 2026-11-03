@@ -13,15 +13,18 @@ import { resolveGbrain } from '../runner/run.ts';
 import { DEFAULT_PREAMBLE_PATH } from '../runner/trial/task.ts';
 import { crossScopeReadsBySurface } from './gbrain-usage.ts';
 
-export type Rung = 'none' | 'mcp' | 'told' | 'docs' | 'installer' | 'verbs-told' | 'semantic-told' | 'docs-semantic' | 'told-company' | 'told-scoped';
+export type Rung = 'none' | 'mcp' | 'told' | 'docs' | 'installer' | 'verbs-told' | 'semantic-told' | 'docs-semantic' | 'told-company' | 'told-scoped' | 'told-acl' | 'installer-acl';
 
 /** The rung table: surface, install, whether embeddings are on, whether the preamble is a told one, the brain and scope, and the
  *  neighbour. installer (internal-task, gbrain#7489): gbrain's own installer writes the brain-first block into the harness's instruction
  *  file with the arm's unchanged preamble; its neighbour is told, the rung whose preamble rule the block stands in for.
  *  told-company and told-scoped (gbrain#7481): the told clause on the company brain under the one unscoped token, and the same
  *  with the world tap adding the requesting member's source_ids to every search and query (scope "sources"); told-scoped pairs
- *  against told-company, which pairs against told. internal-task's member scope (per-member tokens) stays off the table. */
-export const LADDER: Record<Exclude<Rung, 'none'>, { surface: 'starter' | 'verbs'; install: 'mcp' | 'gbrain-docs' | 'gbrain-installer'; semantic: boolean; told: boolean; brain: 'bot-visible' | 'company'; scope: 'none' | 'sources'; base: Rung }> = {
+ *  against told-company, which pairs against told. internal-task's member scope (per-member tokens) stays off the table, except under
+ *  internal-task's access rules: told-acl (the told clause on the member brain whose reads gbrain's folder rules and member-bound tokens
+ *  gate, the requesting member's token presented by the tap) pairs against told, and installer-acl (gbrain's installer on that
+ *  brain) against told-acl, so the access-rules rerun reads installer minus told on the access-ruled brain. */
+export const LADDER: Record<Exclude<Rung, 'none'>, { surface: 'starter' | 'verbs'; install: 'mcp' | 'gbrain-docs' | 'gbrain-installer'; semantic: boolean; told: boolean; brain: 'bot-visible' | 'company' | 'member'; scope: 'none' | 'sources' | 'member'; access?: 'rules'; base: Rung }> = {
   mcp: { surface: 'starter', install: 'mcp', semantic: false, told: false, brain: 'bot-visible', scope: 'none', base: 'none' },
   told: { surface: 'starter', install: 'mcp', semantic: false, told: true, brain: 'bot-visible', scope: 'none', base: 'mcp' },
   docs: { surface: 'starter', install: 'gbrain-docs', semantic: false, told: false, brain: 'bot-visible', scope: 'none', base: 'mcp' },
@@ -31,20 +34,23 @@ export const LADDER: Record<Exclude<Rung, 'none'>, { surface: 'starter' | 'verbs
   'docs-semantic': { surface: 'starter', install: 'gbrain-docs', semantic: true, told: false, brain: 'bot-visible', scope: 'none', base: 'docs' },
   'told-company': { surface: 'starter', install: 'mcp', semantic: false, told: true, brain: 'company', scope: 'none', base: 'told' },
   'told-scoped': { surface: 'starter', install: 'mcp', semantic: false, told: true, brain: 'company', scope: 'sources', base: 'told-company' },
+  'told-acl': { surface: 'starter', install: 'mcp', semantic: false, told: true, brain: 'member', scope: 'member', access: 'rules', base: 'told' },
+  'installer-acl': { surface: 'starter', install: 'gbrain-installer', semantic: false, told: false, brain: 'member', scope: 'member', access: 'rules', base: 'told-acl' },
 };
-export const RUNG_ORDER: Rung[] = ['none', 'mcp', 'told', 'docs', 'installer', 'verbs-told', 'semantic-told', 'docs-semantic', 'told-company', 'told-scoped'];
+export const RUNG_ORDER: Rung[] = ['none', 'mcp', 'told', 'docs', 'installer', 'verbs-told', 'semantic-told', 'docs-semantic', 'told-company', 'told-scoped', 'told-acl', 'installer-acl'];
 
 export interface LadderCell { id: string; harness: string; model: string; config?: string; gbrain?: GbrainCellConfig; preamble?: string }
 
 /** The rung a cell sits on from its resolved gbrain fields and preamble, with the configuration spelled out; rung null
- *  when the configuration is on no rung of the table (internal-task's member scope, verbs without the told preamble, and so on). */
+ *  when the configuration is on no rung of the table (internal-task's member scope without access rules, verbs without the told
+ *  preamble, and so on). */
 export function rungOf(cell: LadderCell): { rung: Rung | null; label: string } {
   if (!cell.gbrain) return { rung: 'none', label: 'no gbrain' };
   const g = resolveGbrain(cell.gbrain);
   const told = cell.preamble !== undefined && cell.preamble !== DEFAULT_PREAMBLE_PATH;
-  const label = `${g.surface}/${g.install}/${g.embeddings}${told ? `, preamble ${cell.preamble}` : ''}${g.brain !== 'bot-visible' ? `, brain ${g.brain}` : ''}${g.scope !== 'none' ? `, scope ${g.scope}` : ''}${g.ingest !== 'off' ? `, ingest ${g.ingest}` : ''}`;
-  if (g.scope === 'member' || g.scope === 'member-sources' || g.ingest !== 'off') return { rung: null, label };
-  const rung = (Object.keys(LADDER) as Array<Exclude<Rung, 'none'>>).find((r) => { const d = LADDER[r]; return d.surface === g.surface && d.install === g.install && d.semantic === (g.embeddings !== 'off') && d.told === told && d.brain === g.brain && d.scope === g.scope; });
+  const label = `${g.surface}/${g.install}/${g.embeddings}${told ? `, preamble ${cell.preamble}` : ''}${g.brain !== 'bot-visible' ? `, brain ${g.brain}` : ''}${g.scope !== 'none' ? `, scope ${g.scope}` : ''}${g.ingest !== 'off' ? `, ingest ${g.ingest}` : ''}${g.access ? `, access ${g.access}` : ''}`;
+  if ((g.scope === 'member' && g.access !== 'rules') || g.scope === 'member-sources' || g.ingest !== 'off') return { rung: null, label };
+  const rung = (Object.keys(LADDER) as Array<Exclude<Rung, 'none'>>).find((r) => { const d = LADDER[r]; return d.surface === g.surface && d.install === g.install && d.semantic === (g.embeddings !== 'off') && d.told === told && d.brain === g.brain && d.scope === g.scope && d.access === g.access; });
   return { rung: rung ?? null, label };
 }
 

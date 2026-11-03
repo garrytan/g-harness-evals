@@ -10,6 +10,7 @@
 # reader set with one bearer token per member in tokens.json (gbrain/build-brain.ts; docs/gbrain-arm.md, "Company brain"),
 # and /brains/dev-member and /brains/heldout-member, each the bot-visible slice in one federated source per reader set with an
 # empty private source per member, member tokens and one ingest token per source for the world's live ingestion (internal-task),
+# and /brains/dev-member-acl, the dev member brain with gbrain folder rules and member-bound tokens in place of source grants (internal-task),
 # every brain with a manifest.json listing its pages and their sha256. gbrain records absolute paths inside a brain, so
 # each brain is built at /brain in its own stage and the entrypoint copies the trial's brain back to /brain before serving.
 # A copied source checkout is a new directory, so the entrypoint re-stamps each one with gbrain's relocated-root
@@ -148,6 +149,21 @@ RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split
       --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging \
       --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT"
 
+# internal-task (the access-rules rerun): the dev member brain with reads gated by gbrain folder rules and member-bound tokens instead of
+# per-token source grants (build-brain.ts --access rules). Dev only: the rerun runs the 17 dev tasks. A gbrain commit without
+# the access command (before gbrain#8134, for example the a590ad07 pin) gets no such brain: the stage writes unavailable.json
+# with no manifest, so the entrypoint refuses HE_GBRAIN_ACCESS=rules on that image and every other brain still builds.
+FROM builder AS brain-dev-member-acl
+ARG GBRAIN_COMMIT
+ARG CORPUS_COMMIT
+RUN if env -i PATH="$PATH" HOME=/tmp bun /opt/gbrain/src/cli.ts access --help 2>&1 | grep -q 'per-member read access'; then \
+      env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split dev --brain member --access rules \
+        --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging \
+        --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT"; \
+    else \
+      mkdir -p /brain && printf '{"access":"rules","unavailable":"gbrain %s has no access command"}\n' "$GBRAIN_COMMIT" > /brain/unavailable.json; \
+    fi
+
 # internal-task: the install bundle, built from the gbrain checkout and the two bot-visible brains, keyless. internal-task: the installer
 # section runs gbrain setup <harness> --instructions-only; for Hermes the build HERMES_HOME is seeded first with Hermes's own
 # SOUL.md at the pinned Hermes commit (harnesses/hermes/pin.json soul_md: what Hermes's first run writes into HERMES_HOME, which
@@ -182,6 +198,7 @@ COPY --from=brain-dev-company /brain /brains/dev-company
 COPY --from=brain-heldout-company /brain /brains/heldout-company
 COPY --from=brain-dev-member /brain /brains/dev-member
 COPY --from=brain-heldout-member /brain /brains/heldout-member
+COPY --from=brain-dev-member-acl /brain /brains/dev-member-acl
 COPY --from=install /install /install
 # /brain is the per-trial working copy; the container runs as the calling user, so it must be writable by anyone.
 RUN chmod -R a+rX /brains /install && mkdir -m 0777 /brain && chmod 0555 /opt/sidecar/gbrain/entrypoint.sh /opt/sidecar/gbrain/export-install.sh

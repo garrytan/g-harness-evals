@@ -80,11 +80,13 @@ export interface ResolvedGbrain {
   scope: 'none' | 'member' | 'sources' | 'member-sources';
   /** internal-task: live ingestion of the scenario's messages into the member brain. */
   ingest: 'off' | 'live';
+  /** internal-task: present only on a cell of the access-ruled member brain. */
+  access?: 'rules';
 }
 
 /** The cell's gbrain configuration with every default filled in; the cell itself is not changed. */
 export function resolveGbrain(c: GbrainCellConfig): ResolvedGbrain {
-  return { surface: c.surface, install: c.install ?? 'mcp', embeddings: c.embeddings ?? 'off', brain: c.brain ?? 'bot-visible', scope: c.scope ?? 'none', ingest: c.ingest ?? 'off' };
+  return { surface: c.surface, install: c.install ?? 'mcp', embeddings: c.embeddings ?? 'off', brain: c.brain ?? 'bot-visible', scope: c.scope ?? 'none', ingest: c.ingest ?? 'off', ...(c.access ? { access: c.access } : {}) };
 }
 
 /** What plan prints for a gbrain cell: <surface>/<install>/<embeddings>. */
@@ -210,6 +212,10 @@ export interface Prereg {
   minimum_v01: string[];
   /** internal-task: required when a cell runs a held-out split, unless the preregistration is on the legacy list (runner/heldout/openings.ts). */
   heldout?: HeldoutBlock;
+  /** internal-task: the full gbrain commit this run's gbrain image is built at, when it is not gbrain/pin.json's (the pin stays the earlier
+   *  run's). scripts/run-shard.sh builds the image at it, and preflight and run refuse an image that records another (HE-GBRAIN-016).
+   *  Absent: the pin, as before. */
+  gbrain_commit?: string;
 }
 
 export interface Trial {
@@ -237,6 +243,8 @@ export interface Manifest {
   trial_hours_at_cap: number;
   /** Sealed custody: the set whose held-out cells read the sealed root, and the opening receipt plan was given (and its sha256). */
   sealed?: { set: string; receipt_sha256: string; receipt: OpeningReceipt };
+  /** internal-task: the preregistration's gbrain_commit, copied at plan; present only when the preregistration names one. */
+  gbrain_commit?: string;
 }
 
 export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
@@ -246,6 +254,7 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
   if (prereg.schema_version !== 1) throw new RunnerError('HE-PREREG-002', `schema_version must be 1 (got ${String(prereg.schema_version)})`);
   if (!prereg.cells?.length) throw new RunnerError('HE-PREREG-003', 'no cells; fix: add at least one cell to the preregistration');
   prereg.tasks ??= {};
+  if (prereg.gbrain_commit !== undefined && (typeof prereg.gbrain_commit !== 'string' || !/^[0-9a-f]{40}$/.test(prereg.gbrain_commit))) throw new RunnerError('HE-GBRAIN-016', `gbrain_commit must be a full 40-character gbrain sha (got ${JSON.stringify(prereg.gbrain_commit)}); fix: name the commit the run's gbrain image is built at, or drop the field to run gbrain/pin.json's`);
   for (const c of prereg.cells) {
     const unknown = Object.keys(c).filter((k) => !CELL_KEYS.has(k));
     if (unknown.length) throw new RunnerError('HE-PREREG-007', `cell ${String(c.id)}: unknown key(s) ${unknown.join(', ')}; allowed: ${[...CELL_KEYS].join(', ')}`);
@@ -291,6 +300,10 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
       if (c.gbrain.ingest === 'live' && c.gbrain.brain !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.ingest "live" needs gbrain.brain "member"; only the member brain carries the per-source ingest tokens (gbrain/README.md, "The member brain")`);
       if (c.gbrain.ingest === 'live' && c.harness_mode === 'process') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.ingest "live" runs in docker mode only; in process mode the harness runs as the runner's user and could read the ingest tokens under the trial directory. fix: drop harness_mode "process" from the cell`);
       if (c.gbrain.ingest === 'live' && c.gbrain.scope !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.ingest "live" needs gbrain.scope "member"; without it the tap reads under the trial's unscoped token and every member's ingested DM facts come back to every requester, a leak built into the arm`);
+      // internal-task (the access-rules rerun): access "rules" is the member brain's read gate; only member tokens read through it.
+      if (c.gbrain.access !== undefined && c.gbrain.access !== 'rules') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.access must be "rules" or absent; got ${JSON.stringify(c.gbrain.access)}`);
+      if (c.gbrain.access === 'rules' && (c.gbrain.brain !== 'member' || c.gbrain.scope !== 'member')) throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.access "rules" needs gbrain.brain "member" and gbrain.scope "member" (got brain ${JSON.stringify(c.gbrain.brain ?? 'bot-visible')}, scope ${JSON.stringify(c.gbrain.scope ?? 'none')}); only the member brain is built with folder rules, and only the members' own bound tokens read through them`);
+      if (c.gbrain.access === 'rules' && c.gbrain.ingest === 'live') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.access "rules" runs without live ingestion; the ingested facts land outside the folder rules, where every member token reads them`);
     }
   }
   if (!(prereg.spend_cap_usd > 0)) throw new RunnerError('HE-BUDGET-002', 'spend_cap_usd must be > 0; the cap is written into the preregistration, never passed ad hoc');
@@ -422,7 +435,7 @@ export function buildManifest(prereg: Prereg, sha256: string, now = new Date().t
     hours += (trials.filter((t) => t.cell === cell.id).length * (prereg.wall_clock_s[cell.slice] ?? 0)) / 3600;
   }
   const ceiling = +Object.values(perCell).reduce((a, b) => a + b, 0).toFixed(2);
-  return { schema_version: 1, run_id: prereg.run_id, prereg_sha256: sha256, created_at: now, cells: prereg.cells, trials, cost_ceiling_usd: ceiling, per_cell_ceiling_usd: perCell, spend_cap_usd: prereg.spend_cap_usd, trial_hours_at_cap: +hours.toFixed(1) };
+  return { schema_version: 1, run_id: prereg.run_id, prereg_sha256: sha256, created_at: now, cells: prereg.cells, trials, cost_ceiling_usd: ceiling, per_cell_ceiling_usd: perCell, spend_cap_usd: prereg.spend_cap_usd, trial_hours_at_cap: +hours.toFixed(1), ...(prereg.gbrain_commit ? { gbrain_commit: prereg.gbrain_commit } : {}) };
 }
 
 function listMutations(taskDir: string, cellId: string): Array<{ name: string; path: string }> {
@@ -437,7 +450,7 @@ export function renderPlan(m: Manifest): string {
   for (const c of m.cells) {
     const mine = m.trials.filter((t) => t.cell === c.id);
     const turns = mine.reduce((a, t) => a + (t.turns ?? 0), 0);
-    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.utility_models ? ` utility_models=${c.utility_models.join(',')}` : ''}${c.config ? ` config=${c.config}` : ''}${c.network ? ` network=${c.network}` : ''}${c.ablation ? ` ablation=${c.ablation.layers.join(',') || 'none'} map=${c.ablation.map} map_sha256=${c.ablation.map_sha256.slice(0, 12)}` : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${gbrainLabel(c.gbrain)}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}${c.gbrain.ingest ? ` ingest=${c.gbrain.ingest}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
+    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.utility_models ? ` utility_models=${c.utility_models.join(',')}` : ''}${c.config ? ` config=${c.config}` : ''}${c.network ? ` network=${c.network}` : ''}${c.ablation ? ` ablation=${c.ablation.layers.join(',') || 'none'} map=${c.ablation.map} map_sha256=${c.ablation.map_sha256.slice(0, 12)}` : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${gbrainLabel(c.gbrain)}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}${c.gbrain.ingest ? ` ingest=${c.gbrain.ingest}` : ''}${c.gbrain.access ? ` access=${c.gbrain.access}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
   }
   for (const c of m.cells) {
     if (c.gbrain?.brain === 'company' && c.preamble !== 'tasks/multiuser/_shared/preamble.gbrain-company.md') lines.push(`WARN: cell ${c.id} serves the company brain with preamble ${c.preamble ?? 'tasks/multiuser/_shared/preamble.md'}, not the company one (tasks/multiuser/_shared/preamble.gbrain-company.md); intended only for a none-style arm on the company brain`);
@@ -557,7 +570,7 @@ async function main(argv: string[]): Promise<number> {
     const gbrainCells = m.cells.filter((c) => c.gbrain);
     if (gbrainCells.length) {
       const image = flag('--gbrain-image') ?? (sealed ? sealedImageTag(sealed.receipt) : DEFAULT_GBRAIN_IMAGE);
-      const { gbrainImagePresent, gbrainImageCommit, gbrainImageInputs, imageCommitProblem, installerHookProblem, probeGbrainImage, exportInstallView } = await import('./trial/gbrain.ts');
+      const { gbrainImagePresent, gbrainImageCommit, gbrainImageInputs, imageCommitProblem, preregCommitProblem, installerHookProblem, probeGbrainImage, exportInstallView } = await import('./trial/gbrain.ts');
       if (!gbrainImagePresent(image)) throw new RunnerError('HE-GBRAIN-002', `gbrain sidecar image ${image} is not present for cells ${gbrainCells.map((c) => c.id).join(', ')}; fix: scripts/build-gbrain-image.sh ${sealed ? '--sealed-root <the sealed root>' : `--tag ${image}`}`);
       // internal-task: a sealed run needs the image built from its root; a run with no sealed root refuses an image built from one.
       const inputs = gbrainImageInputs(image);
@@ -568,10 +581,16 @@ async function main(argv: string[]): Promise<number> {
       // internal-task: the image records the gbrain commit it was built from (/opt/sidecar/image.json); a counted run's cells, the told cells
       // with no install view included, run the pinned commit or not at all, and the run log says which.
       // scripts/gbrain-check.ts checks a candidate commit and passes it as --gbrain-commit; a counted run passes nothing and gets the pin.
+      // internal-task: a preregistration that names gbrain_commit runs that commit in place of the pin, and any other image is HE-GBRAIN-016.
       const built = gbrainImageCommit(image);
-      const commitProblem = imageCommitProblem({ image, built, pin: pin.gbrain.commit, flag: flag('--gbrain-commit') });
-      if (commitProblem) throw new RunnerError('HE-GBRAIN-002', commitProblem);
-      console.log(`GBRAIN: image ${image} records gbrain ${built}${flag('--gbrain-commit') ? ' (--gbrain-commit)' : ', the pinned commit'}`);
+      if (loaded.gbrain_commit) {
+        const preregProblem = preregCommitProblem({ image, built, prereg: loaded.gbrain_commit, flag: flag('--gbrain-commit') });
+        if (preregProblem) throw new RunnerError('HE-GBRAIN-016', preregProblem);
+      } else {
+        const commitProblem = imageCommitProblem({ image, built, pin: pin.gbrain.commit, flag: flag('--gbrain-commit') });
+        if (commitProblem) throw new RunnerError('HE-GBRAIN-002', commitProblem);
+      }
+      console.log(`GBRAIN: image ${image} records gbrain ${built}${loaded.gbrain_commit ? ", the preregistration's gbrain_commit" : flag('--gbrain-commit') ? ' (--gbrain-commit)' : ', the pinned commit'}`);
       // internal-task: one probe per distinct keyword configuration (surface, brain): the image serves /health and lists the pinned tool count.
       const keywordConfigs = new Map<string, Cell[]>();
       for (const c of gbrainCells) { const g = resolveGbrain(c.gbrain!); if (g.embeddings === 'off') keywordConfigs.set(`${g.surface}/${g.brain}`, [...(keywordConfigs.get(`${g.surface}/${g.brain}`) ?? []), c]); }
@@ -625,12 +644,30 @@ async function main(argv: string[]): Promise<number> {
       // internal-task: a company brain is probed per split under the unscoped token and must list every page the build holds.
       // internal-task: the member brain likewise, with its own page list, under member scope and live ingestion (its tokens checked).
       const companySplits = [...new Set(gbrainCells.filter((c) => c.gbrain!.brain === 'company').map((c) => c.split))];
-      const memberSplits = [...new Set(gbrainCells.filter((c) => c.gbrain!.brain === 'member').map((c) => c.split))];
-      if (companySplits.length || memberSplits.length) {
+      const memberSplits = [...new Set(gbrainCells.filter((c) => c.gbrain!.brain === 'member' && !c.gbrain!.access).map((c) => c.split))];
+      // internal-task: an access-ruled member brain is checked by its own preflight below; its unscoped token reads only the public pages.
+      const aclSplits = [...new Set(gbrainCells.filter((c) => c.gbrain!.access === 'rules').map((c) => c.split))];
+      if (companySplits.length || memberSplits.length || aclSplits.length) {
         const { probeCompanyBrain, probeSourceGrants } = await import('./trial/gbrain.ts');
         const { companyPageList, memberPageList } = await import('../gbrain/build-brain.ts');
         const { worldAt, DEFAULT_WORLD_PATH } = await import('./trial/world.ts');
         const world = worldAt(sealed ? sealed.worldPath : DEFAULT_WORLD_PATH);
+        // internal-task (the access-rules rerun): before any trial, keyless, for each split an access-ruled cell runs on: (a) every member
+        // token is bound to exactly its member and public-only to nobody, (b) the rules give every page the world's reader set, (c) a
+        // probe under each token the tap presents returns nothing outside that reader set. Any miss is HE-GBRAIN-002.
+        for (const split of aclSplits) {
+          const { probeAccessRules, accessRulesProblems, writeAccessPreflight } = await import('./trial/gbrain.ts');
+          const { memberSources, tokenMembers } = await import('../gbrain/build-brain.ts');
+          const pages = memberPageList(world, split);
+          const expected = { pages: pages.map((p) => ({ page_slug: p.page_slug, source: p.source, readers: p.readers })), sources: memberSources(world, split, pages).map((s) => ({ id: s.id, readers: s.readers })), token_members: tokenMembers(world, split).map((mm) => mm.id) };
+          const dir = join(runDir, `preflight-gbrain-acl-${split}`);
+          const evidence = await probeAccessRules(image, split, dir, expected);
+          const { problems, summary } = accessRulesProblems(evidence, expected);
+          const record = join(runDir, `access-preflight-${split}.json`);
+          writeAccessPreflight(record, { split, image, ok: !problems.length, summary, problems, evidence }, dir);
+          if (problems.length) throw new RunnerError('HE-GBRAIN-002', `access=rules: the access-ruled member brain for ${split} in ${image} fails ${[...new Set(problems.map((p) => `(${p.check})`))].join(', ')}: ${problems.slice(0, 4).map((p) => `(${p.check}) ${p.what}`).join('; ')}${problems.length > 4 ? `; ${problems.length - 4} more in ${record}` : ''}`);
+          console.log(`GBRAIN: access=rules split=${split} image ${image} id=${evidence.image_id}: (a) ${expected.token_members.length} member tokens each bound to its own member, public-only unbound; (b) ${summary.rules} folder rules over ${expected.sources.length - 1} sources, the public source none, nothing held or pending, ${summary.pages} pages each readable by exactly the world's reader set (who-can-read named every_source_reader for ${summary.rule_blind} rule-covered pages; it reads page readers only); (c) ${expected.token_members.length + 1} grants x ${SOURCE_PROBE_QUERIES.length} queries over search, query and recall plus list_pages to the end, ${summary.rows} rows (${Object.entries(summary.rows_by_tool).map(([t, n]) => `${t} ${n}`).join(', ')}), 0 outside the grant's reader set, every readable page listed; ${summary.slug_reads} get_page reads under the member tokens, every page outside the reader set refused and one inside it served; record ${record}`);
+        }
         for (const split of memberSplits) {
           const probe = await probeCompanyBrain(image, split, memberPageList(world, split), join(runDir, `preflight-gbrain-member-${split}`), 'member', 'member');
           console.log(`GBRAIN: image ${image} id=${probe.image_id} brain=member scope=member ingest=live split=${split} pages=${probe.listed} (${Object.entries(probe.by_kind).map(([k, v]) => `${k} ${v}`).join(', ')}) under the unscoped token, tokens=${probe.member_tokens} plus public-only: ${probe.member_check}, channel ingest tokens present (no write is tried), ready in ${probe.ready_ms} ms`);
@@ -693,10 +730,27 @@ async function main(argv: string[]): Promise<number> {
     // A sealed run's trials default to the sealed image tag, and run repeats preflight's image check (HE-SEALED-005).
     const gbrainImage = flag('--gbrain-image') ?? (sealed ? sealedImageTag(sealed.receipt) : undefined);
     if (manifest.cells.some((c) => c.gbrain && (cells ? cells.includes(c.id) : true))) {
-      const { gbrainImageInputs, gbrainImagePresent } = await import('./trial/gbrain.ts');
+      const { gbrainImageCommit, gbrainImageInputs, gbrainImagePresent, preregCommitProblem } = await import('./trial/gbrain.ts');
       const image = gbrainImage ?? DEFAULT_GBRAIN_IMAGE;
       const problem = sealed ? sealedImageProblem(image, gbrainImageInputs(image), sealed.receipt) : gbrainImagePresent(image) ? publicImageProblem(image, gbrainImageInputs(image)) : null;
       if (problem) throw new RunnerError('HE-SEALED-005', problem);
+      // internal-task: run repeats preflight's check of the preregistration's gbrain_commit; an image it cannot read counts as another commit.
+      if (manifest.gbrain_commit) {
+        const preregProblem = preregCommitProblem({ image, built: gbrainImageCommit(image), prereg: manifest.gbrain_commit });
+        if (preregProblem) throw new RunnerError('HE-GBRAIN-016', preregProblem);
+        console.log(`GBRAIN: image ${image} records gbrain ${manifest.gbrain_commit}, the preregistration's gbrain_commit`);
+      }
+      // internal-task: an access-ruled cell runs only on the image its access preflight passed on; a resume that rebuilt the image does not.
+      const aclSplits = [...new Set(manifest.cells.filter((c) => c.gbrain?.access === 'rules' && (cells ? cells.includes(c.id) : true)).map((c) => c.split))];
+      if (aclSplits.length) {
+        const { accessPreflightProblem } = await import('./trial/gbrain.ts');
+        const imageId = spawnSync('docker', ['image', 'inspect', '-f', '{{.Id}}', image], { encoding: 'utf8' }).stdout?.trim() ?? '';
+        for (const split of aclSplits) {
+          const problem = accessPreflightProblem(join(dirname(path), `access-preflight-${split}.json`), split, image, imageId);
+          if (problem) throw new RunnerError('HE-GBRAIN-002', problem);
+        }
+        console.log(`GBRAIN: access=rules ${aclSplits.join(', ')}: the access preflight passed on image id ${imageId}, the image this run uses`);
+      }
     }
     const { executeRun } = await import('./trial/run.ts');
     const result = await executeRun(manifest, path, {

@@ -36,6 +36,14 @@
 // (a DM with the bot into private-<member>). gbrain lets one bearer token write to one source, so beside the member tokens the
 // build mints one ingest token per source into ingest-tokens.json; the manifest (schema_version 3) maps each channel id to
 // its source and names the ingest tokens without their secrets.
+//
+// internal-task (the access-rules rerun, installer-cc-codex-acl-2026-11): --access rules, with --brain member (or company), keeps
+// the sources, pages and imports as they are and changes how reads are gated, the way gbrain's company-brain tutorial
+// ("Model C", gbrain#8134) says per-member reads must be set up. After the imports: one folder rule per source that has a
+// reader set (gbrain access rule add --prefix <split>/ --readers <that source's readers> --source <id> --yes), none on the
+// public source; gbrain access member add <id> per token member; each member token rescoped with --member <id> and no
+// --sources, so the rules are the only read gate; the public-only token created and left bound to nobody, so it reads only
+// pages under no rule. The manifest records access "rules", every rule and every binding; the tokens stay in tokens.json.
 
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -145,7 +153,18 @@ export interface CompanyBrainManifest {
   imports: Record<string, Record<string, unknown>>;
   /** internal-task: member brains only. */
   ingest?: BrainIngest;
+  /** internal-task: present only on a brain built with --access rules. grants then still list each member's readable sources (the
+   *  world's reader sets), but no token carries --sources: the rules below and the member bindings gate every remote read. */
+  access?: 'rules';
+  rules?: AccessRule[];
+  bindings?: AccessBinding[];
 }
+
+/** internal-task: one gbrain folder rule as the build added it: the source, the prefix, the rule id gbrain answered with and the
+ *  readers (member ids as the world names them; a guest reader matches no gbrain member and so reads nothing remotely). */
+export interface AccessRule { source: string; prefix: string; rule_id: string; readers: string[]; pages_restamped: number }
+/** internal-task: a token and the member it is bound to (null for the public-only token, bound to nobody). */
+export interface AccessBinding { token_name: string; member: string | null }
 
 /** tokens.json beside a company or member brain: the plaintext bearer tokens, mode 0600, copied per trial into the
  *  evaluator-owned <trial dir>/gbrain/ and never committed (the results .gitignore excludes that directory). */
@@ -386,6 +405,8 @@ export interface BuildOptions {
   brain?: 'bot-visible' | ScopedBrainKind;
   /** internal-task: an embedding model (openai:text-embedding-3-small); bot-visible only; needs OPENAI_BASE_URL in the environment. */
   embeddings?: string;
+  /** internal-task: "rules" gates reads with folder rules and member-bound tokens instead of per-token source grants; member or company only. */
+  access?: 'rules';
   log?: (line: string) => void;
 }
 
@@ -393,6 +414,8 @@ export interface BuildOptions {
 export const EMBEDDING_MODELS = ['openai:text-embedding-3-small'] as const;
 
 export function buildBrain(o: BuildOptions): BrainManifest | CompanyBrainManifest {
+  if (o.access !== undefined && o.access !== 'rules') throw new Error(`--access must be "rules" (got ${String(o.access)})`);
+  if (o.access && o.brain !== 'member' && o.brain !== 'company') throw new Error(`--access rules needs --brain member or company; the ${o.brain ?? 'bot-visible'} brain has no reader sets to gate`);
   if ((o.brain === 'company' || o.brain === 'member') && o.embeddings) throw new Error(`--embeddings is for bot-visible brains only; the ${o.brain} brains are keyword-only`);
   if (o.brain === 'company' || o.brain === 'member') return buildScopedBrain(o, o.brain);
   if (o.embeddings && !(EMBEDDING_MODELS as readonly string[]).includes(o.embeddings)) throw new Error(`--embeddings must be one of ${EMBEDDING_MODELS.join(', ')} (got ${o.embeddings})`);
@@ -537,17 +560,37 @@ export function buildScopedBrain(o: BuildOptions, kind: ScopedBrainKind): Compan
     log(`gbrain import ${s.id}: ${summary.imported} pages (readers ${s.readers.length})`);
   }
 
+  // internal-task: under --access rules each source with a reader set gets one folder rule over its pages (the public source none),
+  // each token member becomes a gbrain member, and only then are tokens minted and bound. gbrain applies a new rule at once (a
+  // narrowing) and restamps the source's pages; the build refuses a rule that did not apply to every page of its source.
+  const rules: AccessRule[] = [];
+  if (o.access === 'rules') {
+    const prefix = `${o.split}/`;
+    for (const s of sources) {
+      if (s.id === 'public') continue;
+      const added = run([...o.gbrain, 'access', 'rule', 'add', '--prefix', prefix, '--readers', s.readers.join(','), '--source', s.id, '--yes', '--json'], env, `gbrain access rule add ${s.id}`);
+      const r = lastJsonObject(added.stdout) as { applied?: unknown; state?: unknown; changes?: Array<{ rule?: unknown }>; pages_restamped?: unknown } | null;
+      if (!r || r.applied !== true || r.state !== 'applied' || Number(r.pages_restamped) !== s.pages) throw new Error(`gbrain access rule add on ${s.id} did not apply to its ${s.pages} pages: ${JSON.stringify(r ?? added.stdout.slice(-300))}`);
+      rules.push({ source: s.id, prefix, rule_id: typeof r.changes?.[0]?.rule === 'string' ? r.changes[0].rule : '', readers: s.readers, pages_restamped: s.pages });
+    }
+    for (const g of grants) if (g.member !== 'public-only') run([...o.gbrain, 'access', 'member', 'add', g.member, '--json'], env, `gbrain access member add ${g.member}`);
+    log(`gbrain access: ${rules.length} folder rules at ${prefix} over ${rules.reduce((n, r) => n + r.pages_restamped, 0)} pages, ${grants.length - 1} members`);
+  }
+
   // Tokens: gbrain prints each secret once; it goes to tokens.json and nowhere else (never a log line).
   const members: Record<string, string> = {};
   let publicOnly = '';
+  const bindings: AccessBinding[] = [];
   for (const g of grants) {
     const created = run([...o.gbrain, 'auth', 'create', g.token_name], env, `gbrain auth create ${g.token_name}`);
     const token = /gbrain_[0-9a-f]+/.exec(created.stdout + created.stderr)?.[0];
     if (!token) throw new Error(`gbrain auth create ${g.token_name} printed no token`);
-    run([...o.gbrain, 'auth', 'rescope', '--token', g.token_name, '--sources', g.sources.join(',')], env, `gbrain auth rescope ${g.token_name}`);
+    if (o.access !== 'rules') run([...o.gbrain, 'auth', 'rescope', '--token', g.token_name, '--sources', g.sources.join(',')], env, `gbrain auth rescope ${g.token_name}`);
+    else if (g.member !== 'public-only') run([...o.gbrain, 'auth', 'rescope', '--token', g.token_name, '--member', g.member], env, `gbrain auth rescope ${g.token_name}`);
+    if (o.access === 'rules') bindings.push({ token_name: g.token_name, member: g.member === 'public-only' ? null : g.member });
     if (g.member === 'public-only') publicOnly = token; else members[g.member] = token;
   }
-  log(`gbrain auth: ${Object.keys(members).length} member tokens and public-only minted and granted`);
+  log(`gbrain auth: ${Object.keys(members).length} member tokens and public-only minted and ${o.access === 'rules' ? 'bound (public-only bound to nobody)' : 'granted'}`);
   const tokens: CompanyTokens = { schema_version: 1, brain: kind, split: o.split, members, public_only: publicOnly };
   const tokensPath = join(o.out, 'tokens.json');
   writeFileSync(tokensPath, JSON.stringify(tokens, null, 1) + '\n', { mode: 0o600 });
@@ -586,9 +629,18 @@ export function buildScopedBrain(o: BuildOptions, kind: ScopedBrainKind): Compan
     grants,
     imports,
     ...(kind === 'member' ? { ingest: { channels: conversationSources(world, o.split), dm_source_prefix: 'private-' as const, token_names: ingestGrants.map((g) => g.token_name) } } : {}),
+    ...(o.access === 'rules' ? { access: 'rules' as const, rules, bindings } : {}),
   };
   writeFileSync(join(o.out, 'manifest.json'), JSON.stringify(manifest, null, 1) + '\n');
   return manifest;
+}
+
+/** The last JSON object a gbrain command printed with --json (pretty-printed: from the last line that opens one to the end). */
+function lastJsonObject(stdout: string): Record<string, unknown> | null {
+  const lines = stdout.split('\n');
+  const start = lines.map((l) => l.trimEnd()).lastIndexOf('{');
+  if (start < 0) return null;
+  try { return JSON.parse(lines.slice(start).join('\n')) as Record<string, unknown>; } catch { return null; }
 }
 
 function arg(name: string, fallback?: string): string | undefined {
@@ -599,23 +651,26 @@ function arg(name: string, fallback?: string): string | undefined {
 if (import.meta.main) {
   const split = arg('split');
   const brain = arg('brain', 'bot-visible');
-  if ((split !== 'dev' && split !== 'heldout') || (brain !== 'bot-visible' && brain !== 'company' && brain !== 'member')) { console.error('usage: bun gbrain/build-brain.ts --split dev|heldout [--brain bot-visible|company|member] [--embeddings openai:text-embedding-3-small] --corpus <dir> --world <world.json> --out <brain home> [--staging <dir>] [--gbrain "<cmd>"] [--commit <sha>] [--corpus-commit <sha>]'); process.exit(2); }
+  const access = arg('access');
+  if ((split !== 'dev' && split !== 'heldout') || (brain !== 'bot-visible' && brain !== 'company' && brain !== 'member') || (access !== undefined && access !== 'rules')) { console.error('usage: bun gbrain/build-brain.ts --split dev|heldout [--brain bot-visible|company|member] [--access rules] [--embeddings openai:text-embedding-3-small] --corpus <dir> --world <world.json> --out <brain home> [--staging <dir>] [--gbrain "<cmd>"] [--commit <sha>] [--corpus-commit <sha>]'); process.exit(2); }
+  const home = brain === 'bot-visible' ? split : `${split}-${brain}${access ? '-acl' : ''}`;
   const pin = JSON.parse(readFileSync(join(import.meta.dir, 'pin.json'), 'utf8')) as { gbrain: { commit: string }; corpus: { repo: string; commit: string } };
   try {
     const m = buildBrain({
       split,
       corpus: resolve(arg('corpus', join(process.env.HOME ?? '.', '.capy', 'work', 'harness-eval', 'gbrain-evals', 'eval', 'data', 'messy-company-v1', 'corpus'))!),
       worldPath: resolve(arg('world', join(import.meta.dir, '..', 'world', 'seed', 'world.json'))!),
-      out: resolve(arg('out', join('/brains', brain === 'bot-visible' ? split : `${split}-${brain}`))!),
-      staging: resolve(arg('staging', join('/tmp', `gbrain-staging-${split}${brain === 'bot-visible' ? '' : `-${brain}`}`))!),
+      out: resolve(arg('out', join('/brains', home))!),
+      staging: resolve(arg('staging', join('/tmp', `gbrain-staging-${home}`))!),
       brain,
+      ...(access ? { access } : {}),
       embeddings: arg('embeddings'),
       gbrain: (arg('gbrain', 'gbrain')!).split(' ').filter(Boolean),
       commit: arg('commit', pin.gbrain.commit)!,
       corpusCommit: arg('corpus-commit', pin.corpus.commit)!,
       corpusRepo: pin.corpus.repo,
     });
-    console.log(JSON.stringify({ split: m.split, brain, pages: m.counts, ...('sources' in m ? { sources: m.sources.length, tokens: m.grants.length } : {}), embeddings: m.embeddings === 'off' ? 'off' : { model: m.embeddings.model, dimensions: m.embeddings.dimensions }, gbrain_version: m.gbrain_version, out: arg('out', join('/brains', brain === 'bot-visible' ? split : `${split}-${brain}`)) }));
+    console.log(JSON.stringify({ split: m.split, brain, ...(access ? { access, rules: 'rules' in m ? m.rules?.length : 0 } : {}), pages: m.counts, ...('sources' in m ? { sources: m.sources.length, tokens: m.grants.length } : {}), embeddings: m.embeddings === 'off' ? 'off' : { model: m.embeddings.model, dimensions: m.embeddings.dimensions }, gbrain_version: m.gbrain_version, out: arg('out', join('/brains', home)) }));
   } catch (e) {
     console.error(`build-brain failed: ${(e as Error).message}`);
     process.exit(1);

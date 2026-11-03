@@ -25,6 +25,11 @@
 # The embedded image build and preflight's embedded probe need OPENAI_API_KEY in this shell for the metering proxy only;
 # the run needs ANTHROPIC_API_KEY the same way. No key reaches a container or an image.
 #
+# internal-task: when the preregistration names a top-level gbrain_commit (a full sha), the gbrain image is built at that commit
+# (build-gbrain-image.sh --gbrain <sha>) in place of gbrain/pin.json's, which stays the earlier run's pin; preflight and run
+# refuse an image that records another commit (HE-GBRAIN-016). The ubicloud wrappers pass the preregistration through, so
+# they need no flag for it.
+#
 # --sealed-root and --opening-receipt (internal-task, docs/sealed-custody.md; both or neither) run a sealed heldout set from a
 # custodian's root outside the checkout. The shard works on its own private copy of the root (in a mktemp -d directory
 # under TMPDIR, mode 0700, refused inside a git work tree), made after the checks and removed on every exit bash can trap
@@ -86,6 +91,14 @@ cd "$(dirname "$0")/.."
 if [ -n "$(git status --porcelain)" ]; then echo "run-shard: the checkout is not clean; a shard runs the preregistration commit exactly" >&2; git status --short >&2; exit 2; fi
 commit=$(git rev-parse HEAD)
 run_id=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['run_id'])" "$prereg")
+gbrain_commit=$(python3 - "$prereg" <<'PY'
+import json, re, sys
+c = json.load(open(sys.argv[1])).get('gbrain_commit')
+if c is not None and not (isinstance(c, str) and re.fullmatch(r'[0-9a-f]{40}', c)):
+    sys.exit("run-shard: HE-GBRAIN-016 the preregistration's gbrain_commit must be a full 40-character sha (got %s)" % json.dumps(c))
+print(c or '')
+PY
+) || exit 2
 out="${out:-results/$run_id}"
 mkdir -p "$out"
 harnesses=$(python3 - "$prereg" "$cells" <<'PY'
@@ -101,6 +114,7 @@ log() { printf '%s run-shard[%s]: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$name"
 # The last lines of a failed step's log, or for a sealed shard only its path: a sealed step's log can name sealed tasks.
 show_tail() { if [ -n "$sealed_root" ]; then log "log: $1 (custody only; a sealed shard never prints its logs)"; else tail -"$2" "$1" >&2; fi; }
 log "commit $commit, cells $cells, harnesses $harnesses, lease $lease, max_output_tokens $max_output_tokens, out $out"
+[ -z "$gbrain_commit" ] || log "gbrain $gbrain_commit, the preregistration's gbrain_commit (not gbrain/pin.json's)"
 
 # One exit handler for the prune loop and a sealed shard's copy of the root, installed before the copy is made.
 shard_dir="" shard_root="" prune_pid=""
@@ -138,6 +152,7 @@ if [ "$skip_build" -eq 0 ]; then
   log "building $gbrain_image from gbrain/ (embedded=$embedded)"
   args=(--tag "$gbrain_image" --out "$out/gbrain-image")
   [ "$embedded" -eq 1 ] && args+=(--embedded)
+  [ -z "$gbrain_commit" ] || args+=(--gbrain "$gbrain_commit")
   [ -z "$shard_root" ] || args+=(--sealed-root "$shard_root")
   scripts/build-gbrain-image.sh "${args[@]}" > "$out/build-gbrain.log" 2>&1 || { show_tail "$out/build-gbrain.log" 20; [ -z "$shard_root" ] || log "the sealed build log is kept at $out/sealed-root-logs/build-gbrain-image.log (custody only)"; log "gbrain image build failed"; exit 2; }
 fi

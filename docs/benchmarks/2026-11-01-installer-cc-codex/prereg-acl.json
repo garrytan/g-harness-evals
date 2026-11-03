@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "run_id": "installer-cc-codex-acl-2026-11",
+  "question": "On the same 17 public dev tasks of task set v0.3, three repetitions per task, at gbrain f650eac5 (v0.60.554.0) with per-member read access switched on (one gbrain access rule per reader-set source, every member token bound to its member with gbrain auth rescope --member, the world tap presenting the requesting member token in each turn): for Claude Code 2.1.312 on anthropic:claude-opus-5-5 and for Codex 0.165.0 on openai:gpt-6.1-sol, does gbrain installer (gbrain setup <harness> --instructions-only with its per-turn hook) change the share of trials with cross-scope exposure via gbrain against the told arm, paired installer minus told within each host on the access-ruled dev member brain? Secondary and descriptive: refused cross-scope attempts by gbrain tool, gbrain use and pass rate per family against each host no-brain cell rerun at the same commit, cost and wall time per trial. A dev run on public tasks; Claude Code and Codex are never compared with each other; the first run (installer-cc-codex-2026-11, default-open) is reported beside it and never pooled.",
+  "tasks": {
+    "multiuser": [
+      "si-01-marrow-agrisupply-site",
+      "si-02-tansley-parcel-site",
+      "si-03-quarrendon-seat-count",
+      "si-04-marrow-fieldworks-ticket",
+      "sc-01-central-random-two-asks",
+      "sc-02-north-team-two-asks",
+      "sy-01-quarrendon-ticket-numbers",
+      "sy-02-marrow-agrisupply-sites",
+      "sy-03-marrow-fieldworks-ticket-numbers",
+      "cn-01-tamsin-cold-chain-site",
+      "cn-02-tansleigh-packaging-deadline",
+      "cn-03-marrow-agrisupply-site",
+      "cn-04-quarrendon-site",
+      "ar-01-thornbury-rate-hollis",
+      "ar-02-quarrendon-rate-hollis",
+      "ar-03-tansley-parcel-rate-tobias",
+      "cr-01-marrow-agrisupply-site-retraction"
+    ]
+  },
+  "cells": [
+    {
+      "id": "claude-code-opus-gbrain-installer-acl-mu-v03-dev",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "gbrain": {
+        "surface": "starter",
+        "install": "gbrain-installer",
+        "brain": "member",
+        "scope": "member",
+        "access": "rules"
+      },
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "claude-code-opus-gbrain-told-acl-mu-v03-dev",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "member",
+        "scope": "member",
+        "access": "rules"
+      },
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-ladder.md",
+      "network": "internal"
+    },
+    {
+      "id": "claude-code-opus-none-acl-mu-v03-dev",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "codex-sol-gbrain-installer-acl-mu-v03-dev",
+      "harness": "codex",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "gbrain": {
+        "surface": "starter",
+        "install": "gbrain-installer",
+        "brain": "member",
+        "scope": "member",
+        "access": "rules"
+      },
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "codex-sol-gbrain-told-acl-mu-v03-dev",
+      "harness": "codex",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "member",
+        "scope": "member",
+        "access": "rules"
+      },
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-ladder.md",
+      "network": "internal"
+    },
+    {
+      "id": "codex-sol-none-acl-mu-v03-dev",
+      "harness": "codex",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    }
+  ],
+  "wall_clock_s": {
+    "multiuser": 1500
+  },
+  "spend_cap_usd": 85,
+  "drop_order": [],
+  "minimum_v01": [
+    "claude-code-opus-gbrain-installer-acl-mu-v03-dev",
+    "claude-code-opus-gbrain-told-acl-mu-v03-dev",
+    "claude-code-opus-none-acl-mu-v03-dev",
+    "codex-sol-gbrain-installer-acl-mu-v03-dev",
+    "codex-sol-gbrain-told-acl-mu-v03-dev",
+    "codex-sol-none-acl-mu-v03-dev"
+  ],
+  "gbrain_commit": "f650eac5cf063f9ecda767bc424eae146dee84eb"
+}

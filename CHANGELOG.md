@@ -2,6 +2,17 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.114] - 2026-11-03
+
+### internal-task: installer-cc-codex-acl-2026-11 preregistered (amendment 3), with gbrain's per-member access rules
+
+- **Preregistration.** `docs/benchmarks/2026-11-01-installer-cc-codex/PREREGISTRATION-acl.md` and `prereg-acl.json`: the installer and told cells for Claude Code (Opus 5.5) and Codex (GPT-6.1 Sol) rerun on gbrain `f650eac5` (v0.60.554.0) with access rules and member-bound tokens, and both no-brain cells rerun at the same commit. 306 trials, cap $85. The first run's PREREGISTRATION.md gets an amendment 3 pointer, and nothing in that run changes.
+- **`--access rules` brain build.** `gbrain/build-brain.ts --brain member --access rules` adds one `gbrain access rule add --prefix <split>/` per reader-set source (none on the public source) and `gbrain access member add` per token member. It binds each member token with `gbrain auth rescope --member` and no `--sources`, and leaves public-only unbound. `gbrain/Dockerfile` builds it at `/brains/dev-member-acl`, and `gbrain/entrypoint.sh` serves it under `HE_GBRAIN_ACCESS=rules`.
+- **Cells and preflight.** `runner/contracts.ts` adds `access: "rules"` (only with brain member, scope member and ingest off; HE-GBRAIN-003). `preflight` fails closed (HE-GBRAIN-002) unless every member token is bound to its own member, every page is readable by exactly its world reader set, and a tap probe under each credential returns no row outside its reader set. A row is matched on its source and slug together, so a private-source row under a public page's slug fails. `get_page` under each member token must refuse every page outside that member's reader set and serve one inside it.
+- **The access preflight record.** `preflight` writes `access-preflight-<split>.json` beside `preflight.log`, never next to the sidecar's `tokens.json`, and refuses to write it if it would carry a token value. `run` refuses an access-ruled cell (HE-GBRAIN-002) unless that record passed on the gbrain image id it is about to use, so a resume that rebuilt the image cannot skip the access preflight.
+- **gbrain commit per run.** A preregistration may name `gbrain_commit`. `scripts/run-shard.sh` builds the gbrain image at that commit, and `preflight` and `run` refuse an image recording any other commit (HE-GBRAIN-016). `gbrain/pin.json` is unchanged.
+- **Ladder.** `scripts/gbrain-ladder.ts` adds the rungs `told-acl` (base told) and `installer-acl` (base told-acl).
+
 ## [0.0.113] - 2026-11-03
 
 ### internal-task: installer-cc-codex-2026-11 reported (gbrain's installer against told and no brain, Claude Code on Opus 5.5 and Codex on GPT-6.1 Sol)
