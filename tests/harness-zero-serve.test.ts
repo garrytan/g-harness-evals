@@ -4,7 +4,7 @@
 // credential lands in any file.
 import { describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { candidateHash, resolveSet } from '../harnesses/harness-zero/zero.ts';
 import { adapterLog, files, spawnServe, startFakeMcp, startFakeModel, startProxy, trial, turn, turnLines, UPSTREAM_KEY, waitFor, zeroEnv, type FakeModel } from './fixtures/harness-zero-fakes.ts';
@@ -175,6 +175,57 @@ describe('harness-zero serve', () => {
       expect(turnLines(s.t).at(-1).tool_outcomes).toEqual({ ok: 1, error: 0, unknown: 0 });
     } finally { await s.stop(); }
   }, 30_000);
+
+  test('a hanging tool stops at the per-call limit inside the turn budget; a re-initialize reloads the tool list; a malformed request file is exit 2 and serving goes on', async () => {
+    const s = await serving('zero-min');
+    try {
+      s.world.state.hang = 'read_notes';
+      s.fake.script.push({ calls: [{ name: 'mcp__world__read_notes' }] }, { text: 'gave up' });
+      const began = Date.now();
+      expect(await turn(s.t, { prompt: 'Read.', budget: 4 })).toMatchObject({ exit: 0, reply_text: 'gave up' });
+      expect(Date.now() - began).toBeLessThan(4_000);
+      expect(JSON.stringify(s.fake.seen.at(-1)!.body.messages.at(-1))).toContain('did not answer before the per-call time limit, so it was stopped and not sent again');
+      expect(s.world.calls.filter((c) => c.tool === 'read_notes')).toHaveLength(1);
+      expect(turnLines(s.t).at(-1).tool_outcomes).toEqual({ ok: 0, error: 1, unknown: 0 });
+
+      s.world.state.hang = 'post_message';
+      s.fake.script.push({ calls: [{ name: 'mcp__world__post_message', args: { channel: 'C1', text: 'slow' } }] }, { text: 'unsure' });
+      expect(await turn(s.t, { prompt: 'Post.', budget: 4 })).toMatchObject({ exit: 0, reply_text: 'unsure' });
+      expect(JSON.stringify(s.fake.seen.at(-1)!.body.messages.at(-1))).toContain('The outcome is unknown');
+      expect(s.world.calls.filter((c) => c.tool === 'post_message')).toHaveLength(1);
+      expect(turnLines(s.t).at(-1).tool_outcomes).toEqual({ ok: 0, error: 0, unknown: 1 });
+      s.world.state.hang = null;
+
+      const names = (i: number) => s.fake.seen.at(i)!.body.tools.map((x: { name: string }) => x.name);
+      s.world.state.addTool = true;
+      s.world.state.expireNext = true;
+      s.fake.script.push({ calls: [{ name: 'mcp__world__read_notes' }] }, { calls: [{ name: 'mcp__world__new_tool' }] }, { text: 'new' });
+      expect(await turn(s.t, { prompt: 'Restart.' })).toMatchObject({ exit: 0, reply_text: 'new' });
+      expect(names(-3)).not.toContain('mcp__world__new_tool');
+      expect(names(-2)).toContain('mcp__world__new_tool');
+      expect(s.world.calls.at(-1)!.tool).toBe('new_tool');
+      expect(adapterLog(s.t)).toContain('re-initialized with 5 tools');
+
+      const put = (name: string, body: string) => { writeFileSync(join(s.t.turns, name + '.tmp'), body); renameSync(join(s.t.turns, name + '.tmp'), join(s.t.turns, name)); };
+      const answer = async (name: string) => { await waitFor(() => existsSync(join(s.t.turns, name)), 10_000, name); return JSON.parse(readFileSync(join(s.t.turns, name), 'utf8')); };
+      put('turn-0900.request.json', '{"turn": 900, "prompt"');
+      expect(await answer('turn-0900.response.json')).toMatchObject({ turn: 900, exit: 2, reply_text: null, detail: expect.stringContaining('HE-ZERO-009 turn-0900.request.json is not JSON') });
+      put('turn-0901.request.json', JSON.stringify({ turn: 901, prompt: 'Hi.', channel: { id: 'D1', type: 'dm' } }));
+      expect(await answer('turn-0901.response.json')).toMatchObject({ turn: 901, exit: 2, reply_text: null, detail: expect.stringContaining('HE-ZERO-009 turn-0901.request.json has no actor.member') });
+      for (const [n, body, why] of [
+        [903, 'null', 'is not a JSON object'],
+        [904, JSON.stringify({ turn: 0, prompt: 'Hi.', actor: { member: 'a' }, channel: { id: 'D1', type: 'dm' } }), 'has no turn number'],
+        [905, JSON.stringify({ turn: 905, actor: { member: 'a' }, channel: { id: 'D1', type: 'dm' } }), 'has no prompt'],
+        [906, JSON.stringify({ turn: 906, prompt: 'Hi.', actor: { member: 'a' }, channel: { id: 'C1', type: 'group' } }), 'has no channel id and type'],
+      ] as const) {
+        put(`turn-0${n}.request.json`, body);
+        expect(await answer(`turn-0${n}.response.json`)).toMatchObject({ turn: n, exit: 2, reply_text: null, detail: expect.stringContaining(`HE-ZERO-009 turn-0${n}.request.json ${why}`) });
+      }
+      s.fake.script.push({ text: 'still serving' });
+      expect(await turn(s.t, { prompt: 'Hi.', turn: 902 })).toMatchObject({ exit: 0, reply_text: 'still serving' });
+      expect(s.proc.exitCode).toBeNull();
+    } finally { await s.stop(); }
+  }, 40_000);
 
   test('a failed turn keeps the calls that ran, closing an unfinished batch as unknown; a request the provider rejected is not kept, the calls before it are', async () => {
     const s = await serving('zero-min');

@@ -9,6 +9,7 @@ One directory per harness, each a self-contained Docker image that implements th
 | [qm](qm/) | `yc-software/qm` main `b6786d67`, fetched by commit (tag `v0.1.15`, `7417aa2`, before 2026-10-30) | sidecar (compose: Postgres, core, task) | `harness-eval/qm:dev`, `harness-eval/qm-sandbox:dev` | pass at `v0.1.15`, see README; at `b6786d67` keyless only (fake endpoint: 2 turns, one sandbox command) | 3 turns completed, world-MCP calls logged, session carried at `v0.1.15`; see README |
 | [claude-code](claude-code/) | npm `@anthropic-ai/claude-code@2.1.312` | in-container | `harness-eval/claude-code:dev` | keyless only (fake endpoint through the real proxy) | keyless only: 2 turns, world-MCP call logged, session carried; see README |
 | [codex](codex/) | npm `@openai/codex@0.165.0` | in-container | `harness-eval/codex:dev` | keyless only (fake endpoint through the real proxy) | keyless only: 2 turns, world-MCP call logged, thread carried; see README |
+| [harness-zero](harness-zero/) | `zero.ts` sha256 in `pin.json`, Bun 1.4.3 | in-container, internal network only | `harness-eval/harness-zero:dev` | keyless only (fake endpoints through the real proxy) | keyless only: 3 turns with the `--fake-upstream` smoke, world-MCP call logged, session carried; see README |
 | [_fake](_fake/) | none | in-container | `harness-eval/fake:dev` | protocol fixture for the conformance test | protocol fixture for the serve conformance tests |
 
 ## Build
@@ -20,6 +21,7 @@ docker build -t harness-eval/qm:dev harnesses/qm
 docker build -f harnesses/qm/Dockerfile.sandbox -t harness-eval/qm-sandbox:dev harnesses/qm
 docker build -t harness-eval/claude-code:dev harnesses/claude-code
 docker build -t harness-eval/codex:dev harnesses/codex
+docker build -t harness-eval/harness-zero:dev harnesses/harness-zero
 docker build -t harness-eval/fake:dev harnesses/_fake
 ```
 
@@ -90,7 +92,7 @@ bun harnesses/serve-smoke.ts --harness hermes --trial-id hermes-serve-1 \
   --base-url http://host.docker.internal:8787/hermes-serve-1/anthropic --api-key "$cred"
 ```
 
-The slot `hermes-serve-1` is bound with `$cred` first, as under "Run one trial"; the `_fake` harness makes no model call and needs no proxy.
+The slot `hermes-serve-1` is bound with `$cred` first, as under "Run one trial"; the `_fake` harness makes no model call and needs no proxy. `--fake-upstream` answers model requests from a fake endpoint in the same process instead of a proxy, for harnesses that send non-streamed requests (Harness Zero): `bun harnesses/serve-smoke.ts --harness harness-zero --trial-id zero-smoke-1 --fake-upstream` needs no key.
 
 ## Changelog
 
@@ -105,6 +107,10 @@ Mentions of the project's coordinating agent, its private drive and its agent th
 ### 2026-10-31: the no-gstack arm of the gstack panel
 
 "gstack overlay images" says how `GSTACK_COMMIT=none` builds the no-gstack overlay and how `discovery.sh --arms none,...` adds it as a third arm, with its build lines (OpenClaw, Hermes one-shot and Hermes chat). Why: the panel gained that arm, so the page's "two arms" was no longer the whole panel.
+
+### 2026-10-31: Harness Zero
+
+One row and one build line: `harness-zero`, proven keyless against fake endpoints through the real metering proxy. `serve-smoke.ts` gains `--fake-upstream`, a keyless model endpoint in the same process. Why: Harness Zero is the fully known control harness for the feature runs ([harness-zero/README.md](harness-zero/README.md)).
 
 ### 2026-10-30: QM re-pinned to main b6786d67
 

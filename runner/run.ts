@@ -57,6 +57,7 @@ import { insideGitTree } from '../scripts/sealed/custody.ts';
 import { heldoutSet, isSealed, readManifest } from '../scripts/seal-heldout.ts';
 import { sealedGuard } from './heldout/guard.ts';
 import { GOLDEN_WIRES, type AblationSpec, loadBinding, wireOfModel } from './proxy/ablate.ts';
+import { setNames as zeroSetNames } from '../harnesses/harness-zero/zero.ts';
 
 export { RunnerError };
 
@@ -119,7 +120,8 @@ export interface Cell {
    *  Hermes accept default and the instruction routes route-tool, route-system (Hermes only), route-startup, route-hook and
    *  route-skill (harnesses/routes/README.md). Claude Code and Codex accept default and official-minimal (prompt archaeology:
    *  the harness's own system prompt or base instructions replaced by harnesses/ablation/official-minimal.txt, through the
-   *  adapter; a config value, not a layer of the ablation field). The other harnesses ignore it. */
+   *  adapter; a config value, not a layer of the ablation field). Harness Zero accepts its set names (internal-task,
+   *  harnesses/harness-zero/README.md; HE-ZERO-001 otherwise). The other harnesses ignore it. */
   config?: string;
   repetitions: number;
   /** Planning ceiling, tokens in and out, used only to price the cap: per trial for single-shot slices,
@@ -249,6 +251,13 @@ export interface Manifest {
   gbrain_commit?: string;
 }
 
+/** internal-task: a harness-zero cell's config must be a set zero.ts knows (setNames: features.json, the derived ablations and
+ *  candidates.json); plan and dry-run check it at load, preflight again against the checkout it will run. */
+export function checkZeroConfig(c: Pick<Cell, 'id' | 'harness' | 'config'>): void {
+  if (c.harness !== 'harness-zero' || c.config === undefined || zeroSetNames().includes(c.config)) return;
+  throw new RunnerError('HE-ZERO-001', `cell ${c.id}: config ${JSON.stringify(c.config)} is not a Harness Zero set; fix: use one of ${zeroSetNames().join(', ')}`);
+}
+
 export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
   if (!existsSync(path)) throw new RunnerError('HE-PREREG-001', `preregistration not found: ${path}; fix: pass --prereg <docs/benchmarks/<run>/prereg.json>`);
   const raw = readFileSync(path, 'utf8');
@@ -274,6 +283,10 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
     // config missed cannot happen either (harnesses/codex/README.md).
     if (c.harness === 'codex' && c.network !== 'internal') throw new RunnerError('HE-NET-001', `cell ${c.id}: harness codex needs network "internal" (Codex 0.165.0 calls chatgpt.com directly when its plugins are on; the internal network rules out any direct connection the config missed; harnesses/codex/README.md). fix: add "network": "internal" to the cell`);
     if (c.ablation !== undefined) checkAblation(c);
+    // internal-task: Harness Zero reaches only the proxy, the world and the gbrain tap by design, and its config names a set from
+    // harnesses/harness-zero/config; an unknown set would exit 2 before ready in every trial.
+    if (c.harness === 'harness-zero' && c.network !== 'internal') throw new RunnerError('HE-NET-001', `cell ${c.id}: harness harness-zero needs network "internal" (harnesses/harness-zero/pin.json). fix: add "network": "internal" to the cell`);
+    checkZeroConfig(c);
     if (!prereg.tasks[c.slice] && !c.tasks && c.slice !== 'multiuser') throw new RunnerError('HE-PREREG-004', `cell ${c.id} names slice ${c.slice} but tasks.${c.slice} is missing`);
     const scripted = c.harness_mode === 'scripted';
     if (scripted && (c.harness !== 'scripted' || !['oracle', 'mutations'].includes(c.script ?? '')))
@@ -578,6 +591,7 @@ async function main(argv: string[]): Promise<number> {
     if (sealed) console.log(`SEALED: root and receipt match the manifest's opening (set ${sealed.set}, receipt ${sealed.receipt_sha256.slice(0, 12)}); the world probe reads world ${String(sealed.receipt.world_sha256).slice(0, 12)}`);
     const missing = m.cells.filter(c => c.harness !== 'scripted' && !existsSync(join('harnesses', c.harness, 'pin.json'))).map(c => c.harness);
     if (missing.length) throw new RunnerError('HE-PIN-001', `no harnesses/<name>/pin.json for: ${[...new Set(missing)].join(', ')}; fix: add the pin before any cell runs`);
+    for (const c of m.cells) checkZeroConfig(c);
     for (const k of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']) if (!process.env[k]) console.log(`WARN: HE-PROXY-001 ${k} is not set in this shell; the metering proxy needs it, harness containers never do`);
     requireParticleCells(m.cells.filter((c) => c.harness_mode !== 'scripted'));
     // A harness image built before an adapter edit silently runs the old adapter; compare the image's adapter with the checkout.
@@ -586,7 +600,7 @@ async function main(argv: string[]): Promise<number> {
       const image = flag('--image') ?? `harness-eval/${harness.replace(/^_/, '')}:dev`;
       const { adapterProvenance } = await import('./trial/provenance.ts');
       const p = await adapterProvenance(harness, image);
-      console.log(`ADAPTER: ${harness} image ${image} (${p.image_id.slice(0, 19)}) carries adapter.sh ${p.image_sha256.slice(0, 12)}, the checkout's is ${p.checkout_sha256.slice(0, 12)}: match`);
+      console.log(`ADAPTER: ${harness} image ${image} (${p.image_id.slice(0, 19)}) carries adapter.sh ${p.image_sha256.slice(0, 12)}, the checkout's is ${p.checkout_sha256.slice(0, 12)}: match${p.files ? `; ${Object.keys(p.files).length} more files (zero.ts, pin.json, Dockerfile, config/) match` : ''}`);
     }
     const gbrainCells = m.cells.filter((c) => c.gbrain);
     if (gbrainCells.length) {

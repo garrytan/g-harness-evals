@@ -165,13 +165,14 @@ describe('harness-zero helpers', () => {
     expect(scopeOf('channel:tC1:t1.5')).toBe('channel:tC1');
   });
 
-  test('resolveSet: inherited names are unknown sets; effort-high has no budget to check against max_tokens', () => {
+  test('resolveSet: inherited names are unknown sets and knobs; effort-high has no budget to check against max_tokens', () => {
     expect(() => resolveSet('constructor')).toThrow('HE-ZERO-001');
     expect(() => resolveSet('__proto__')).toThrow('HE-ZERO-001');
-    const c = { ...cfg, candidates: { ...cfg.candidates, sets: { 'zero-small': { features: [], knobs: { max_tokens: 1024 } }, 'zero-small-high': { features: ['effort-high'], knobs: { max_tokens: 1024 } }, 'zero-odd': { features: [], knobs: { wire: { openai: 'toString' } } } } } } as typeof cfg;
+    const c = { ...cfg, candidates: { ...cfg.candidates, sets: { 'zero-small': { features: [], knobs: { max_tokens: 1024 } }, 'zero-small-high': { features: ['effort-high'], knobs: { max_tokens: 1024 } }, 'zero-odd': { features: [], knobs: { wire: { openai: 'toString' } } }, 'zero-proto': { features: [], knobs: { toString: 5 } } } } } as typeof cfg;
     expect(resolveSet('zero-small', c).knobs.max_tokens).toBe(1024);
     expect(resolveSet('zero-small-high', c)).toMatchObject({ features: ['effort-high'], knobs: { max_tokens: 1024 } });
     expect(() => resolveSet('zero-odd', c)).toThrow('HE-ZERO-002 set zero-odd sets wire.openai=toString');
+    expect(() => resolveSet('zero-proto', c)).toThrow('HE-ZERO-002 set zero-proto sets unknown knob toString');
   });
 });
 

@@ -30,6 +30,10 @@
 //   --turns N          1, 2 or 3 turns (default 3)
 //   --ready-timeout S  seconds to wait for the ready file (default 180)
 //   --config NAME      HE_HARNESS_CONFIG for the adapter (QM: pi, pi-probe, pi-strict, pi-command-deny)
+//   --fake-upstream    keyless: answer model requests from a fake endpoint in this process on the docker bridge gateway
+//                      instead of a proxy (non-streamed Anthropic, Responses and Chat Completions requests, the way
+//                      Harness Zero sends them): the first request gets one world list_channels call, every other a short
+//                      text. --base-url then defaults to it and --api-key to a dummy; the requests are counted in smoke.json
 //   --out DIR          output directory
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -52,7 +56,8 @@ if (!harness || !trialId) {
   process.exit(64);
 }
 const image = arg('image', `harness-eval/${harness.replace(/^_/, '')}:dev`)!;
-const baseUrl = arg('base-url', 'http://host.docker.internal:8787/anthropic')!;
+const fakeUpstream = process.argv.includes('--fake-upstream');
+let baseUrl = arg('base-url', 'http://host.docker.internal:8787/anthropic')!;
 const apiKey = arg('api-key', `trial-token:${trialId}`)!;
 const model = arg('model', 'claude-sonnet-5-5')!;
 const budget = Number(arg('budget', '300'));
@@ -99,6 +104,30 @@ const sharedName = arg('channel');
 const shared = world.channels.find((c) => c.kind !== 'dm' && (c.split === 'dev' || c.split === 'both') && c.members.includes(actorA) && c.members.includes(actorB) && (!sharedName || c.name === sharedName));
 if (!shared) { console.error(`no dev channel shared by ${actorA} and ${actorB}${sharedName ? ` named ${sharedName}` : ''}`); process.exit(2); }
 const dmA = (await slack(tokenOf(actorA), 'conversations.open', { users: botUserId })).channel as { id: string; name: string };
+
+// ---- fake model upstream (--fake-upstream) ------------------------------------------------------------
+const fakeRequests: string[] = [];
+if (fakeUpstream) {
+  const fake = Bun.serve({ port: 0, hostname: gateway, async fetch(req) {
+    const path = new URL(req.url).pathname;
+    const body = await req.json().catch(() => ({})) as Record<string, any>;
+    fakeRequests.push(path);
+    const n = fakeRequests.length;
+    const tools = JSON.stringify(body.tools ?? []);
+    const call = n === 1 ? (tools.includes('"call_tool"') ? { name: 'call_tool', args: { name: 'mcp__world__list_channels', arguments: {} } } : tools.includes('mcp__world__list_channels') ? { name: 'mcp__world__list_channels', args: {} } : null) : null;
+    const text = `fake upstream reply ${n}`;
+    const usage = { input_tokens: 1, output_tokens: 1 };
+    if (path.endsWith('/v1/messages')) return Response.json({ id: `msg_fake_${n}`, type: 'message', role: 'assistant', model: body.model, usage, stop_reason: call ? 'tool_use' : 'end_turn',
+      content: call ? [{ type: 'tool_use', id: `toolu_fake_${n}`, name: call.name, input: call.args }] : [{ type: 'text', text }] });
+    if (path.endsWith('/v1/responses')) return Response.json({ id: `resp_fake_${n}`, object: 'response', status: 'completed', model: body.model, usage,
+      output: call ? [{ type: 'function_call', id: `fc_fake_${n}`, call_id: `call_fake_${n}`, name: call.name, arguments: JSON.stringify(call.args) }] : [{ type: 'message', id: `msg_fake_${n}`, role: 'assistant', content: [{ type: 'output_text', text }] }] });
+    if (path.endsWith('/v1/chat/completions')) return Response.json({ id: `chat_fake_${n}`, model: body.model, usage: { prompt_tokens: 1, completion_tokens: 1 }, choices: [{ index: 0, finish_reason: call ? 'tool_calls' : 'stop',
+      message: call ? { role: 'assistant', content: null, tool_calls: [{ id: `call_fake_${n}`, type: 'function', function: { name: call.name, arguments: JSON.stringify(call.args) } }] } : { role: 'assistant', content: text } }] });
+    return Response.json({ error: { type: 'not_found', message: `fake upstream: no route ${path}` } }, { status: 404 });
+  } });
+  if (!arg('base-url')) baseUrl = `http://host.docker.internal:${fake.port}/${trialId}/anthropic`;
+  console.log(`fake upstream on ${gateway}:${fake.port}; HE_MODEL_BASE_URL ${baseUrl}`);
+}
 console.log(`world ${trialId} at ${ws.url}; actors ${actorA}, ${actorB}; shared channel #${shared.name} (${shared.id}); DM ${dmA.id}`);
 
 // ---- container -------------------------------------------------------------------------------------
@@ -252,6 +281,7 @@ async function finish(code: number): Promise<never> {
     world_mcp_events: events.filter((e) => e.via === 'mcp').map((e) => ({ seq: e.seq, tool: e.tool, kind: e.kind, outcome: e.outcome, error: e.error ?? null, args: e.args })),
     bot_messages: (snapshotMessages() ?? []).filter((m) => m.author === bot.member).map((m) => ({ channel: m.channel, ts: m.ts, text: m.text })),
     workspace_files: readdirSync(dirs.workspace).sort(),
+    ...(fakeUpstream ? { fake_upstream: { requests: fakeRequests.length, paths: [...new Set(fakeRequests)] } } : {}),
   };
   writeFileSync(join(out, 'smoke.json'), JSON.stringify(summary, null, 1));
   console.log(`container exit ${containerExit}; ${events.length} world events, ${summary.world_mcp_events.length} through world-MCP; workspace files: ${summary.workspace_files.join(', ') || 'none'}; written to ${out}`);

@@ -47,6 +47,7 @@ import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'no
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { CAPTURE_DUMMY_KEYS } from '../../runner/trial/capture.ts';
+import { resolveSet } from '../../harnesses/harness-zero/zero.ts';
 
 const ROOT = resolve(import.meta.dir, '../..');
 const BRIDGE = '172.17.0.1';
@@ -56,9 +57,25 @@ export const PROVIDERS = {
 } as const;
 
 type Turn = Record<string, unknown>;
-export const SCENARIOS: Record<string, (harness: string) => Turn[]> = {
+/** Harness Zero's world calls: by name under a set without tool-search (zero-min), through tool_search and call_tool under
+ *  a set with it. */
+const zeroSearch = (config: string): boolean => resolveSet(config === 'default' ? undefined : config).features.includes('tool-search');
+const zeroCall = (config: string, tool: string): Turn => !zeroSearch(config)
+  ? { call: tool }
+  : { call: 'call_tool', arguments: { name: `mcp__world__${tool}`, arguments: {} } };
+
+export const SCENARIOS: Record<string, (harness: string, config?: string) => Turn[]> = {
   plain: () => [],
-  tools: (harness) => harness === 'openclaw'
+  tools: (harness, config = 'default') => harness === 'harness-zero'
+    ? !zeroSearch(config)
+      ? [{ call: 'list_channels' }, { call: 'whoami' }, { call: 'search' }, { text: 'done' }]
+      : [
+          { call: 'tool_search', arguments: { query: 'list channels' } },
+          zeroCall(config, 'list_channels'),
+          { call: 'tool_search', arguments: { query: 'gbrain search' } },
+          { text: 'done' },
+        ]
+    : harness === 'openclaw'
     ? [
         { call: 'tool_search', arguments: { query: 'list channels' } },
         { call: 'tool_search', arguments: { query: 'gbrain search' } },
@@ -104,7 +121,10 @@ export const SCENARIOS: Record<string, (harness: string) => Turn[]> = {
       : { call: 'skill_view', arguments: { name: `probe-${kb}k` } }),
     { text: 'done' },
   ],
-  growth: (harness) => Array.from({ length: 30 }, (_, i) => {
+  growth: (harness, config = 'default') => Array.from({ length: 30 }, (_, i) => {
+    // Harness Zero has no shell tool, so its 30 calls are world reads with small results: the record shows whether the
+    // history is kept whole, not how large tool output is handled (output-cap has its own test in harness-zero-serve).
+    if (harness === 'harness-zero') return { ...zeroCall(config, 'list_channels'), usage: { input_tokens: 20000 + i * 6000, output_tokens: 50 } };
     const command = `python3 -c "print('anatomy-growth-${i} ' + 'x' * 60000)"`;
     const usage = { input_tokens: 20000 + i * 6000, output_tokens: 50 };
     if (harness === 'qm') return { call: 'execute', arguments: { command, purpose: 'anatomy growth probe' }, usage };
@@ -177,7 +197,7 @@ if (import.meta.main) {
   const fakePort = 8790 + Math.floor(Math.random() * 100);
 
   const scriptPath = join(out, 'script.json');
-  writeFileSync(scriptPath, JSON.stringify(SCENARIOS[scenario]!(harness), null, 1));
+  writeFileSync(scriptPath, JSON.stringify(SCENARIOS[scenario]!(harness, config), null, 1));
   const fake = spawn(process.execPath, [join(ROOT, PROVIDERS[provider].fake), '--host', BRIDGE, '--port', String(fakePort),
     '--log', join(out, 'fake.ndjson'), '--script', scriptPath, '--require-key-prefix', PROVIDERS[provider].key, '--max-requests', '200', '--max-seconds', '900'],
     { env: cleanEnv(), stdio: ['ignore', openSync(join(out, 'fake.out'), 'a'), openSync(join(out, 'fake.out'), 'a')] });
@@ -200,6 +220,8 @@ if (import.meta.main) {
   };
   if (network === 'internal') cell.network = 'internal';
   if (config !== 'default') cell.config = config;
+  // Harness Zero cells must run on the internal network (HE-NET-001), which also rules out any direct connection out.
+  if (harness === 'harness-zero') cell.network = 'internal';
   if (withGbrain) cell.gbrain = { surface: 'starter' };
   const prereg = { schema_version: 1, run_id: id, question: `internal-task keyless anatomy capture: ${harness} ${config} ${scenario}`, tasks: {}, cells: [cell], wall_clock_s: 3600, spend_cap_usd: 5 };
   const preregPath = join(out, 'prereg.json');

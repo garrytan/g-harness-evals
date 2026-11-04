@@ -477,3 +477,155 @@ describe.skipIf(!haveDocker)('fake adapter, container level', () => {
     }
   }, 120_000);
 });
+
+
+// ---- shared protocol assertions, every adapter ------------------------------------------------------------------------
+// internal-task (build requirement 11): the serve and run protocol of docs/adapters.md, asserted the same way for each adapter
+// below. A fixture supplies what differs: the model upstream, the workload (the prompt that makes a turn reply, outlive its
+// budget, fail at the model, fail in the harness, or post through the world MCP) and the state layout the adapter keeps.
+// The fake-only assertions above are unchanged; file-writing assertions stay fake-only, since Harness Zero has no file
+// tools. Harness Zero's container level is in tests/harness-zero-image.test.ts.
+
+interface Workload { reply: string; budget: string; modelError: string; harnessError: string; post: (args: { channel: string; text: string }) => string }
+interface AdapterFixture { harness: string; adapter: string; model: () => { env: Record<string, string>; stop: () => void }; workload: Workload; state: (keys: string[], turns: number) => string[] }
+
+/** A fake Anthropic Messages endpoint for Harness Zero (JSON, not streamed): [zero:hang] never answers, [zero:401] and
+ *  [zero:400] answer that status, [zero:post <json>] asks for the world's post_message through call_tool, and anything
+ *  else gets a text reply that counts the session's user turns. */
+function zeroUpstream() {
+  let n = 0;
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', async fetch(req) {
+    const body = await req.json() as { model: string; messages: Array<{ role: string; content: Array<{ type: string; text?: string }> }> };
+    const last = body.messages.at(-1)!;
+    const said = last.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+    n++;
+    if (said.includes('[zero:hang]')) return new Promise<Response>(() => {});
+    const status = said.match(/\[zero:(401|400)\]/)?.[1];
+    if (status) return Response.json({ type: 'error', error: { type: status === '401' ? 'authentication_error' : 'invalid_request_error', message: 'conformance' } }, { status: Number(status) });
+    const post = said.match(/\[zero:post (\{.*\})\]/)?.[1];
+    const turns = body.messages.filter((m) => m.role === 'user' && m.content.some((b) => b.type === 'text')).length;
+    const content = post
+      ? [{ type: 'tool_use', id: 'toolu_conformance_' + n, name: 'call_tool', input: { name: 'mcp__world__post_message', arguments: JSON.parse(post) } }]
+      : [{ type: 'text', text: `done, turn ${turns} of this session` }];
+    return Response.json({ id: 'msg_conformance_' + n, type: 'message', role: 'assistant', model: body.model, content, stop_reason: post ? 'tool_use' : 'end_turn', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } });
+  } });
+  return { env: { HE_MODEL_BASE_URL: `http://127.0.0.1:${server.port}/anthropic`, HE_MODEL_NAME: 'claude-opus-5-5' }, stop: () => server.stop(true) };
+}
+
+const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
+const FIXTURES: AdapterFixture[] = [
+  {
+    harness: '_fake', adapter: ADAPTER, model: () => ({ env: {}, stop: () => {} }),
+    workload: { reply: 'hello?', budget: '[fake:sleep 5] hello', modelError: '[fake:model_error] hello', harnessError: '[fake:harness_error] hello',
+      post: (a) => `hello\n[fake:call post_message ${JSON.stringify(a)}]\n` },
+    state: (keys) => ['fake', 'fake/session.json', 'fake/sessions', ...keys.map((k) => `fake/sessions/${k.replace(/:/g, '_')}.json`).sort()],
+  },
+  {
+    harness: 'harness-zero', adapter: join(ROOT, 'harnesses/harness-zero/adapter.sh'), model: zeroUpstream,
+    workload: { reply: 'hello?', budget: '[zero:hang] hello', modelError: '[zero:401] hello', harnessError: '[zero:400] hello', post: (a) => `hello [zero:post ${JSON.stringify(a)}]` },
+    state: (keys, turns) => ['tmp', 'zero', 'zero/sessions', ...keys.map((k) => `zero/sessions/${sha256(k)}.json`).sort(), 'zero/started',
+      ...Array.from({ length: turns }, (_, i) => `zero/started/turn-${String(i + 1).padStart(4, '0')}.request.json`)],
+  },
+];
+
+for (const fx of FIXTURES) {
+  describe(`${fx.harness} adapter, shared protocol, process level`, () => {
+    let ws: WorldServer;
+    let model: ReturnType<AdapterFixture['model']>;
+    beforeAll(() => { ws = startWorld('conformance-shared-' + fx.harness); model = fx.model(); });
+    afterAll(() => { model.stop(); ws.stop(); });
+    const env = (t: Trial): Record<string, string> => ({ ...SERVE_ENV(t), HE_WORLD_MCP_URL: `${ws.url}/mcp`, HE_WORLD_MCP_TOKEN: ws.credentials.bot.token, ...model.env });
+    const startServe = (t: Trial) => spawn('bash', [fx.adapter, 'serve'], { stdio: ['ignore', 'pipe', 'pipe'], env: env(t) });
+    const ask = (turn: number, prompt: string, over: Partial<TurnRequest> = {}) => request(turn, { prompt: `You are the workspace bot. Dana Okafor asks: ${prompt}`, ...over });
+
+    test('run: one turn with stdin closed and no TTY exits 0, logs under HE_LOG_DIR and leaves the workspace unchanged', async () => {
+      const t = trial('Do nothing.');
+      // Not spawnSync: the model upstream and the world answer from this process, so its event loop must keep running.
+      const child = spawn('bash', [fx.adapter, 'run'], { stdio: ['ignore', 'pipe', 'pipe'], env: env(t) });
+      const code = await new Promise<number | null>((res) => child.once('exit', res));
+      expect(code, readFileSync(join(t.logs, 'stderr.log'), 'utf8')).toBe(0);
+      expect(tree(t.workspace)).toEqual(['instruction.md']);
+      for (const f of ['adapter.log', 'stdout.log', 'stderr.log']) expect(existsSync(join(t.logs, f)), f).toBe(true);
+      expect(readdirSync(t.dir).sort()).toEqual(['logs', 'state', 'turns', 'workspace']);
+    }, 30_000);
+
+    test('an entry point other than run or serve is exit 2', () => {
+      const t = trial('');
+      expect(spawnSync('bash', [fx.adapter, 'watch'], { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', env: env(t), timeout: 30_000 }).status).toBe(2);
+    });
+
+    test('serve: ready with the adapter sha256, turns answered in order, one session per conversation and per thread, nothing outside the four directories', async () => {
+      const t = trial('');
+      const child = startServe(t);
+      try {
+        await waitFor(() => existsSync(join(t.logs, 'ready')), 15_000, 'ready file');
+        const ready = JSON.parse(readFileSync(join(t.logs, 'ready'), 'utf8'));
+        expect(ready).toMatchObject({ harness: fx.harness, trial: 'conformance-serve', adapter_sha256: createHash('sha256').update(readFileSync(fx.adapter)).digest('hex') });
+        postRequest(t, ask(1, fx.workload.reply));
+        const r1 = await response(t, 1);
+        expect(r1).toMatchObject({ turn: 1, exit: 0 });
+        expect(r1.reply_text).toContain('turn 1 of this session');
+        expect(Date.parse(r1.ended_at)).toBeGreaterThanOrEqual(Date.parse(r1.started_at));
+        postRequest(t, ask(2, fx.workload.reply, { channel: { id: 'C0NORTH', name: 'north-team', type: 'channel' } }));
+        expect((await response(t, 2)).reply_text).toContain('turn 1 of this session');
+        postRequest(t, ask(3, fx.workload.reply));
+        expect((await response(t, 3)).reply_text).toContain('turn 2 of this session');
+        postRequest(t, ask(4, fx.workload.reply, { ts: '1700000400.000100', thread_ts: '1700000400.000100' }));
+        expect((await response(t, 4)).reply_text).toContain('turn 1 of this session');
+        expect(tree(t.workspace)).toEqual(['instruction.md']);
+        expect(tree(t.turns).filter((p) => p.endsWith('.response.json'))).toEqual(['turn-0001.response.json', 'turn-0002.response.json', 'turn-0003.response.json', 'turn-0004.response.json']);
+        expect(tree(t.turns).some((p) => p.endsWith('.tmp'))).toBe(false);
+        expect(tree(t.state)).toEqual(fx.state(['dm:dana-okafor', 'channel:C0NORTH', 'dm:dana-okafor:t1700000400.000100'], 4));
+        expect(readdirSync(t.dir).sort()).toEqual(['logs', 'state', 'turns', 'workspace']);
+      } finally {
+        expect(await stop(child)).toBe(0);
+      }
+      expect(readFileSync(join(t.logs, 'adapter.log'), 'utf8')).toContain('stopped on signal');
+    }, 60_000);
+
+    test('serve: exit 124 past the turn budget, 3 on a model error, 2 on a harness error, and serving goes on', async () => {
+      const t = trial('');
+      const child = startServe(t);
+      try {
+        await waitFor(() => existsSync(join(t.logs, 'ready')), 15_000, 'ready file');
+        postRequest(t, ask(1, fx.workload.budget, { time_budget_s: 2 }));
+        const r1 = await response(t, 1);
+        expect(r1).toMatchObject({ turn: 1, exit: 124, reply_text: null });
+        expect(Date.parse(r1.ended_at) - Date.parse(r1.started_at)).toBeLessThan(5_000);
+        postRequest(t, ask(2, fx.workload.modelError));
+        expect(await response(t, 2)).toMatchObject({ turn: 2, exit: 3, reply_text: null });
+        postRequest(t, ask(3, fx.workload.harnessError));
+        expect(await response(t, 3)).toMatchObject({ turn: 3, exit: 2, reply_text: null });
+        postRequest(t, ask(4, fx.workload.reply));
+        expect((await response(t, 4)).exit).toBe(0);
+      } finally {
+        expect(await stop(child)).toBe(0);
+      }
+    }, 60_000);
+
+    test('serve: a world-MCP call lands in the event log as the bot', async () => {
+      const t = trial('');
+      const child = startServe(t);
+      try {
+        await waitFor(() => existsSync(join(t.logs, 'ready')), 15_000, 'ready file');
+        const before = ws.log.events.length;
+        const channel = ws.service.channelsFor(ws.service.bot!, 'mcp').find((c) => c.kind !== 'dm')!;
+        const text = `${fx.harness} bot post for shared conformance`;
+        postRequest(t, ask(1, fx.workload.post({ channel: channel.id, text })));
+        expect((await response(t, 1)).exit).toBe(0);
+        const posted = ws.log.events.slice(before).filter((e) => e.tool === 'chat.postMessage');
+        expect(posted.map((e) => [e.actor, e.via, e.kind, e.outcome, (e.args as { text: string }).text])).toEqual([['assistant', 'mcp', 'write', 'ok', text]]);
+      } finally {
+        expect(await stop(child)).toBe(0);
+      }
+    }, 60_000);
+
+    test('serve: SIGTERM before the first turn exits 0', async () => {
+      const t = trial('');
+      const child = startServe(t);
+      await waitFor(() => existsSync(join(t.logs, 'ready')), 15_000, 'ready file');
+      expect(await stop(child)).toBe(0);
+      expect(readFileSync(join(t.logs, 'adapter.log'), 'utf8')).toContain('stopped on signal');
+    }, 30_000);
+  });
+}

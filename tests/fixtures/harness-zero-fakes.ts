@@ -155,11 +155,11 @@ export type FakeModel = ReturnType<typeof startFakeModel>;
 
 export interface McpCall { tool: string; args: Json; session: string | null; answered: boolean }
 /** A fake MCP server. Tools: read_notes (readOnlyHint), lookup_member (unannotated, so not a known read), post_message (write), big_dump
- *  (20 kB of text). tools/list pages after two tools. */
+ *  (20 kB of text), and new_tool once `state.addTool` is set. tools/list pages after two tools. `state.hang` names a tool that never answers. */
 export function startFakeMcp(o: { token: string; sse?: boolean; hold?: boolean; sessions?: boolean; instructions?: string | null }) {
   const calls: McpCall[] = [];
   const sessions = new Set<string>();
-  const state = { initialized: 0, expireNext: false, loseNextWrite: false, rpcErrorNext: false, failInit: false, expireAfter: null as string | null, methods: [] as string[] };
+  const state = { initialized: 0, expireNext: false, loseNextWrite: false, rpcErrorNext: false, failInit: false, expireAfter: null as string | null, hang: null as string | null, addTool: false, methods: [] as string[] };
   const tools = [
     { name: 'read_notes', description: 'Read the team notes.', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true } },
     { name: 'lookup_member', description: 'Look up a member by handle.', inputSchema: { type: 'object', properties: { handle: { type: 'string' } } } },
@@ -186,12 +186,16 @@ export function startFakeMcp(o: { token: string; sse?: boolean; hold?: boolean; 
     }
     if (o.sessions && (!sid || !sessions.has(sid))) return new Response('no such session', { status: 404 });
     if (msg.method === 'notifications/initialized') return new Response(null, { status: 202 });
-    if (msg.method === 'tools/list') return answer({ jsonrpc: '2.0', id: msg.id, result: msg.params?.cursor ? { tools: tools.slice(2) } : { tools: tools.slice(0, 2), nextCursor: 'p2' } });
+    if (msg.method === 'tools/list') {
+      const all = state.addTool ? [...tools, { name: 'new_tool', description: 'A tool added after a restart.', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true } }] : tools;
+      return answer({ jsonrpc: '2.0', id: msg.id, result: msg.params?.cursor ? { tools: all.slice(2) } : { tools: all.slice(0, 2), nextCursor: 'p2' } });
+    }
     if (msg.method !== 'tools/call') return answer({ jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: 'no method' } });
     if (state.expireNext) { state.expireNext = false; if (sid) sessions.delete(sid); return new Response('session expired', { status: 404 }); }
     const { name, arguments: args } = msg.params;
     const call: McpCall = { tool: name, args, session: sid, answered: true };
     calls.push(call);
+    if (state.hang === name) { call.answered = false; await Bun.sleep(20_000); }
     if (name === 'post_message' && state.loseNextWrite) { state.loseNextWrite = false; call.answered = false; return new Response('bad gateway', { status: 502 }); }
     if (state.rpcErrorNext) { state.rpcErrorNext = false; return answer({ jsonrpc: '2.0', id: msg.id, error: { code: -32602, message: 'bad channel' } }); }
     if (state.expireAfter === name) { state.expireAfter = null; state.expireNext = true; }

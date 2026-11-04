@@ -81,7 +81,7 @@ export function resolveSet(input: string | undefined, cfg: ZeroConfig = loadConf
   const knobs: Json = {};
   for (const [k, s] of Object.entries(cfg.features.knobs)) knobs[k] = s.default;
   for (const [k, v] of Object.entries(over)) {
-    const s = cfg.features.knobs[k];
+    const s = Object.hasOwn(cfg.features.knobs, k) ? cfg.features.knobs[k] : undefined;
     if (!s) throw new ZeroError('HE-ZERO-002', `set ${name} sets unknown knob ${k}; fix: use only ${Object.keys(cfg.features.knobs).join(', ')}`);
     if (k === 'wire') {
       const w = (v ?? {}) as Json;
@@ -101,14 +101,20 @@ export function promptFiles(set: ResolvedSet): string[] {
   return ['config/prompts/identity.md', ...LAYERS.filter((l) => set.features.includes('layer-' + l)).map((l) => `config/prompts/${l}.md`)];
 }
 
-/** The candidate hash (R5): zero.ts, the resolved set with every knob and every prompt file the set loads. The set's name
- *  is not an input, so two names for the same behavior share a hash. zero.ts imports Bun built-ins only, so no lockfile. */
+/** The candidate hash (R5): zero.ts, the resolved set with every knob, every prompt file the set loads, adapter.sh, the
+ *  Dockerfile, and pin.json's base image digest and Bun version (the image holds all of them in /opt/harness). The set's
+ *  name is not an input, so two names for the same behavior share a hash. zero.ts imports Bun built-ins only, so no lockfile. */
 export function candidateHash(set: ResolvedSet, dir = HARNESS_DIR): { candidate_sha256: string; inputs: Json } {
   const file = (f: string) => sha256(readFileSync(join(dir, f)));
+  const pin = JSON.parse(readFileSync(join(dir, 'pin.json'), 'utf8'));
   const inputs: Json = {
     zero_ts: file('zero.ts'),
     set: { features: [...set.features].sort(), knobs: Object.fromEntries(Object.entries(set.knobs).sort(([a], [b]) => a.localeCompare(b))) },
     prompts: Object.fromEntries(promptFiles(set).map((f) => [f, file(f)])),
+    adapter_sh: file('adapter.sh'),
+    dockerfile: file('Dockerfile'),
+    base_image_digest: pin.base_image.digest,
+    bun_version: pin.bun_version,
   };
   return { candidate_sha256: sha256(JSON.stringify(inputs)), inputs };
 }
@@ -159,6 +165,9 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 // ---- MCP client ------------------------------------------------------------------------------------------------------
 
 export const MCP_PROTOCOL_VERSION = '2025-06-18';
+/** A tools/call is stopped after this long, or after half the turn's remaining time if that is less, so a stuck tool
+ *  leaves the model time to answer inside the turn budget. */
+export const TOOL_CALL_TIMEOUT_MS = 60_000;
 export interface ToolDef { name: string; description: string; schema: Json; server?: string; tool?: string; readOnly?: boolean }
 interface ToolResult { text: string; isError: boolean; status: 'ok' | 'error' | 'unknown' }
 class SessionExpired extends Error {}
@@ -245,11 +254,14 @@ export class McpClient {
     this.tools = tools;
   }
 
-  /** One tools/call. A session that expired (404) is re-initialized once; only a read tool is then sent again. A write
-   *  whose answer was lost is reported to the model as an unknown outcome and never sent again. */
-  async call(tool: ToolDef, args: Json, signal: AbortSignal): Promise<ToolResult> {
+  /** One tools/call. A session that expired (404) is re-initialized once, which also reloads the tool list; only a read
+   *  tool is then sent again. A write whose answer was lost, or that passed the per-call time limit, is reported to the
+   *  model as an unknown outcome and never sent again; a read that passed the limit is an error and not sent again. A
+   *  re-initialize inside the call runs under the same limit, and one that passes it is HE-ZERO-005. */
+  async call(tool: ToolDef, args: Json, signal: AbortSignal, deadline: number): Promise<ToolResult> {
+    const limited = () => AbortSignal.any([signal, AbortSignal.timeout(Math.min(TOOL_CALL_TIMEOUT_MS, Math.max(0, deadline - Date.now()) / 2))]);
     const once = async (): Promise<ToolResult> => {
-      const r = await this.rpc('tools/call', { name: tool.tool, arguments: args }, signal);
+      const r = await this.rpc('tools/call', { name: tool.tool, arguments: args }, limited());
       const text = (r.content ?? []).map((c: Json) => c.type === 'text' ? c.text : c.type === 'resource' ? JSON.stringify(c.resource) : `[${c.type} omitted]`).join('\n')
         || (r.structuredContent ? JSON.stringify(r.structuredContent) : '');
       return { text, isError: r.isError === true, status: r.isError === true ? 'error' : 'ok' };
@@ -259,7 +271,7 @@ export class McpClient {
       return { text: `${tool.tool} failed: ${String((e as Error).message).slice(0, 200)}`, isError: true, status: 'error' };
     };
     if (this.broken) {
-      try { await this.initialize(signal); this.broken = false; } catch (e2) {
+      try { await this.initialize(limited()); this.broken = false; } catch (e2) {
         if (signal.aborted) throw e2;
         throw new ZeroError('HE-ZERO-005', `MCP server ${this.name} is still down after a failed re-initialize: ${(e2 as Error).message.slice(0, 200)}`);
       }
@@ -268,13 +280,16 @@ export class McpClient {
       return await once();
     } catch (e) {
       if (signal.aborted) throw e;
+      if ((e as Error)?.name === 'TimeoutError') return tool.readOnly
+        ? { text: `${tool.tool} did not answer before the per-call time limit, so it was stopped and not sent again.`, isError: true, status: 'error' }
+        : { text: `${tool.tool} did not answer before the per-call time limit. The outcome is unknown: it may or may not have taken effect. Check before you try it again.`, isError: true, status: 'unknown' };
       if (e instanceof SessionExpired) {
-        try { await this.initialize(signal); } catch (e2) {
+        try { await this.initialize(limited()); } catch (e2) {
           if (signal.aborted) throw e2;
           this.broken = true;
           throw new ZeroError('HE-ZERO-005', `MCP server ${this.name} session expired and re-initialize failed: ${(e2 as Error).message.slice(0, 200)}`);
         }
-        log(`MCP ${this.name}: session expired; re-initialized (${tool.readOnly ? 'read tool sent again' : 'write not sent again'})`);
+        log(`MCP ${this.name}: session expired; re-initialized with ${this.tools.length} tools (${tool.readOnly ? 'read tool sent again' : 'write not sent again'})`);
         if (!tool.readOnly) return { text: `The ${this.name} tool server session expired before ${tool.tool} ran, so it did not run. Call it again if it is still needed.`, isError: true, status: 'error' };
         return await once().catch(failed);
       }
@@ -483,7 +498,7 @@ export function searchTools(catalog: ToolDef[], query: string): ToolDef[] {
 
 export interface Ctx { set: ResolvedSet; model: string; target: ModelTarget; servers: McpClient[]; catalog: ToolDef[] }
 export interface TurnOutcome { exit: 0 | 2 | 3 | 124; reply: string | null; detail?: string; stop: string }
-interface Tally { steps: number; retries: number; calls: Array<{ id: string; call_id: string; tool: string; status: string; ms: number }>; notes_written: number; notes_shown: number }
+interface Tally { steps: number; retries: number; calls: Array<{ id: string; call_id: string; tool: string; via?: string; status: string; ms: number }>; notes_written: number; notes_shown: number }
 
 /** One turn of a session. The session file is written when the turn completes. A turn that fails after a tool call ran
  *  keeps its history, with every call of an unfinished batch closed (a finished call keeps its result, the rest are marked
@@ -507,7 +522,6 @@ export async function runTurn(ctx: Ctx, key: string, prompt: string, budgetS: nu
     session = { key, scope, created_at: new Date(started).toISOString(), turns: 0, wire: ctx.target.wire, system: systemPrompt(ctx.set, ctx.servers, notes), notes_shown: notes.length, history: [] };
   } else session = JSON.parse(readFileSync(sessionPath(key), 'utf8'));
   const client = CLIENTS[ctx.target.wire];
-  const tools = exposedTools(ctx.set, ctx.catalog);
   let reply: string | null = null, stop = 'unknown', outcome: TurnOutcome, kept = 0;
   let pending: { calls: Array<{ id: string }>; results: Array<{ id: string; text: string; isError: boolean }> } | null = null;
   let last: { at: number; ids: string[] } | null = null;
@@ -515,6 +529,7 @@ export async function runTurn(ctx: Ctx, key: string, prompt: string, budgetS: nu
     client.user(session.history, prompt);
     for (;;) {
       if (t.steps >= ctx.set.knobs.step_cap) { stop = 'step_cap'; break; }
+      const tools = exposedTools(ctx.set, ctx.catalog);
       const json = await callModel(ctx.target, client.build({ model: ctx.model, set: ctx.set, tools, session }), ctx.set.knobs.retry_max, deadline, ac.signal, () => t.retries++);
       const step = client.parse(json);
       t.steps++;
@@ -529,9 +544,10 @@ export async function runTurn(ctx: Ctx, key: string, prompt: string, budgetS: nu
         let r: ToolResult;
         if (step.incomplete) r = { text: 'Not run: the response hit the output token limit before this call was complete. Send the call again, shorter.', isError: true, status: 'error' };
         else if (!call.args) r = { text: `Not run: ${call.argError}. Send the call again with a JSON object as arguments.`, isError: true, status: 'error' };
-        else r = await runTool(ctx, call.name, call.args, scope, ac.signal, t);
+        else r = await runTool(ctx, call.name, call.args, scope, ac.signal, deadline, t);
         if (has(ctx.set, 'output-cap')) r.text = capOutput(r.text, ctx.set.knobs.output_cap_bytes);
-        const entry = { id: `${turn}.${t.calls.length + 1}`, call_id: call.id, tool: call.name, status: r.status, ms: Date.now() - began };
+        const viaSearch = call.name === 'call_tool' && has(ctx.set, 'tool-search') && typeof call.args?.name === 'string';
+        const entry = { id: `${turn}.${t.calls.length + 1}`, call_id: call.id, tool: viaSearch ? String(call.args!.name) : call.name, ...(viaSearch ? { via: 'call_tool' } : {}), status: r.status, ms: Date.now() - began };
         t.calls.push(entry);
         log('ZERO_CALL ' + JSON.stringify(entry));
         results.push({ id: call.id, text: r.text, isError: r.isError });
@@ -581,7 +597,7 @@ export async function runTurn(ctx: Ctx, key: string, prompt: string, budgetS: nu
   return outcome;
 }
 
-async function runTool(ctx: Ctx, name: string, args: Json, scope: string, signal: AbortSignal, t: Tally): Promise<ToolResult> {
+async function runTool(ctx: Ctx, name: string, args: Json, scope: string, signal: AbortSignal, deadline: number, t: Tally): Promise<ToolResult> {
   const search = has(ctx.set, 'tool-search');
   if (name === 'save_note' && has(ctx.set, 'scoped-notes')) {
     const text = String(args.text ?? '').trim().slice(0, 1000);
@@ -602,11 +618,13 @@ async function runTool(ctx: Ctx, name: string, args: Json, scope: string, signal
     if (inner in LOCAL_TOOLS) return { text: `call_tool runs tools found with tool_search; call ${inner} directly.`, isError: true, status: 'error' };
     const parsed = parseArgs(args.arguments ?? {});
     if (!parsed.args) return { text: `Not run: call_tool's arguments for ${inner}: ${parsed.argError}. Send them again as a JSON object.`, isError: true, status: 'error' };
-    return runTool(ctx, inner, parsed.args, scope, signal, t);
+    return runTool(ctx, inner, parsed.args, scope, signal, deadline, t);
   }
   const tool = ctx.catalog.find((x) => x.name === name);
   if (!tool) return { text: `There is no tool named ${name}.`, isError: true, status: 'error' };
-  return ctx.servers.find((s) => s.name === tool.server)!.call(tool, args, signal);
+  const r = await ctx.servers.find((s) => s.name === tool.server)!.call(tool, args, signal, deadline);
+  ctx.catalog = ctx.servers.flatMap((s) => s.tools);
+  return r;
 }
 
 // ---- entry points ----------------------------------------------------------------------------------------------------
@@ -653,18 +671,25 @@ async function serve(ctx: Ctx, stop: AbortController): Promise<number> {
       const resp = join(dir, f.replace('.request.json', '.response.json'));
       if (existsSync(resp)) continue;
       const startedAt = new Date().toISOString();
-      let turn = Number(f.slice(5, -13)), out: TurnOutcome;
-      try {
-        const req = JSON.parse(readFileSync(join(dir, f), 'utf8'));
-        turn = Number(req.turn);
-        const key = sessionKey(req), budget = Number(req.time_budget_s || env.HE_TIME_BUDGET_S || 300);
+      let turn = Number(f.slice(5, -13)), out: TurnOutcome, req: Json = {}, bad: string | null = null;
+      try { req = JSON.parse(readFileSync(join(dir, f), 'utf8')); } catch (e) { bad = `is not JSON (${(e as Error).message.slice(0, 120)})`; }
+      bad ??= !req || typeof req !== 'object' ? 'is not a JSON object'
+        : !Number.isInteger(req.turn) || req.turn < 1 ? 'has no turn number'
+        : typeof req.prompt !== 'string' ? 'has no prompt'
+        : typeof req.actor?.member !== 'string' ? 'has no actor.member'
+        : typeof req.channel?.id !== 'string' || !['dm', 'channel'].includes(req.channel.type) ? 'has no channel id and type'
+        : null;
+      if (bad) out = { exit: 2, reply: null, stop: 'bad-request', detail: `HE-ZERO-009 ${f} ${bad}; fix: the runner writes a whole TurnRequest (runner/contracts.ts) and renames it into place` };
+      else try {
+        turn = req.turn;
+        const key = sessionKey(req as Parameters<typeof sessionKey>[0]), budget = Number(req.time_budget_s || env.HE_TIME_BUDGET_S || 300);
         const started = stateDir('started', f);
         if (existsSync(started)) out = { exit: 2, reply: null, stop: 'restarted', detail: `HE-ZERO-006 turn ${turn} was already started by an earlier serve process that ended before answering; its tool calls may have run, so it is not run again` };
         else {
           mkdirSync(stateDir('started'), { recursive: true });
           writeFileSync(started, startedAt);
           log(`turn ${turn}: session ${key}, budget ${budget}s`);
-          out = await runTurn(ctx, key, String(req.prompt), budget, turn, stop.signal);
+          out = await runTurn(ctx, key, req.prompt, budget, turn, stop.signal);
         }
       } catch (e) { out = { exit: 2, reply: null, stop: 'crash', detail: `HE-ZERO-006 crash: ${crashTrace(e)}; trace in zero-trace.log` }; }
       const response = { turn, exit: out.exit, reply_text: out.exit === 0 ? out.reply : null, started_at: startedAt, ended_at: new Date().toISOString(), ...(out.detail ? { detail: out.detail } : {}) };

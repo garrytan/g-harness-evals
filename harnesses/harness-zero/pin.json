@@ -1,0 +1,52 @@
+{
+  "name": "harness-zero",
+  "repo": null,
+  "version": "the zero.ts sha256 below; Harness Zero has no upstream release",
+  "bun_version": "1.4.3",
+  "base_image": {
+    "ref": "oven/bun:1.4.3-slim",
+    "digest": "sha256:14a223fa35747ec728bce300ef85888bc5f7958164d15bbba6a54b22b52a3288"
+  },
+  "integrity": {
+    "zero_ts_sha256": "67a630c4daf775d9b2a8d6f0b16f2a813e1e5703cdeb3344ec82ca6157bd459a",
+    "adapter_sh_sha256": "17dcc32b67aff97bdcf2dfde48edb4ae2218cffc9cb97e5bdba1adfa998c9892",
+    "checked": "tests/harness-zero-image.test.ts compares both with the checkout; at image build the Dockerfile checks bun --version; adapter.sh compares bun --version with bun_version before anything else and exits 2 on a difference; preflight compares zero.ts, adapter.sh and every file under config/ in the image with the checkout (HE-ADAPTER-005)"
+  },
+  "install": "none: zero.ts imports only Bun and node: built-ins, so there is no package, lockfile or install step; the Dockerfile copies zero.ts, adapter.sh, pin.json, the Dockerfile and config/ into /opt/harness",
+  "entry": "/opt/harness/adapter.sh run | serve",
+  "turn_command": "adapter.sh execs bun /opt/harness/zero.ts run|serve; zero.ts runs every turn in-process (no child process per turn)",
+  "model": {
+    "provider": "the last segment of HE_MODEL_BASE_URL: anthropic, openai or particle",
+    "wires": {
+      "anthropic": "POST <base>/v1/messages, x-api-key, anthropic-version 2023-06-01, not streamed; thinking blocks with signatures are kept and sent back",
+      "openai-responses": "POST <base>/v1/responses, Authorization Bearer, not streamed, store false, include reasoning.encrypted_content; reasoning items and call ids are kept and sent back",
+      "chat-completions": "POST <base>/v1/chat/completions, Authorization Bearer, not streamed; tool call ids and reasoning_content are kept and sent back"
+    },
+    "wire_by_provider": "config/features.json knobs.wire: anthropic -> anthropic, openai -> openai-responses, particle -> chat-completions; a set may choose chat-completions for openai",
+    "base_url_env": "HE_MODEL_BASE_URL",
+    "api_key_env": "HE_MODEL_API_KEY, sent as x-api-key (anthropic) or the bearer (openai, particle)",
+    "model_setting": "HE_MODEL_NAME on every request; zero.ts has no other model id and no fallback",
+    "max_tokens": "knob max_tokens, 16000 by default, on every request (max_tokens, max_output_tokens or max_completion_tokens); the proxy's --max-output-tokens must be at least that",
+    "thinking": "only under effort-high: anthropic thinking {type: adaptive} with output_config.effort high, openai reasoning.effort high, chat-completions reasoning_effort high",
+    "retries": "knob retry_max (6): 429, 500, 502, 503, 529 and overloaded_error, and a refused connection, with exponential backoff from 500 ms honoring retry-after and retry-after-ms, never past the turn budget; none on 400, 401, 402, 403 or 422"
+  },
+  "state_paths": [
+    "/harness-state/zero",
+    "/harness-state/tmp"
+  ],
+  "mcp_config_path": "none: zero.ts is its own MCP client (Streamable HTTP, protocol 2025-06-18, JSON or SSE answers, Mcp-Session-Id) to HE_WORLD_MCP_URL and, when set, HE_GBRAIN_MCP_URL, with the bearer from the environment; nothing is written to disk. Tools register as mcp__world__<tool> and mcp__gbrain__<tool>",
+  "topology": "in-container",
+  "network": "internal required: a harness-zero cell without network internal is refused at plan (HE-NET-001), like codex",
+  "multi_user_mode": "one process per trial, one session per conversation key; nothing shared between keys except scoped-notes within one scope",
+  "configs": "HE_HARNESS_CONFIG names a set: zero-min, zero-full (the default when empty), zero-full-no-<slug> for each feature, or a set in config/candidates.json; any other value exits 2 before ready (HE-ZERO-001) and plan, dry-run and preflight refuse it",
+  "serve": {
+    "session_key": "dm:<member> | channel:<id>; :t<thread_ts> appended when TurnRequest.thread_ts is set",
+    "session_store": "/harness-state/zero/sessions/<sha256(key)>.json (the wire-native history, the system prompt fixed at the session's start); notes under /harness-state/zero/notes/<sha256(scope)>.json",
+    "reply_source": "the last assistant text of the turn; null when the turn ended with none (the step cap before any text, or an empty answer)",
+    "exit_mapping": "see the zero.ts header and docs/errors.md HE-ZERO rows: 0 completed (also at the step cap); 124 past the turn budget (the in-flight request is aborted); 3 for 401, 402, 403 and retryable statuses after retries (HE-ZERO-007); 2 for a provider 400 or 422 (HE-ZERO-004), an MCP server that cannot be (re)initialized (HE-ZERO-005), a crash (HE-ZERO-006), a turn an earlier serve process started and never answered (HE-ZERO-006, not run again), a malformed request file (HE-ZERO-009, serving goes on) and SIGTERM during a turn",
+    "telemetry": "one ZERO_TURN JSON line per turn and one ZERO_CALL line per tool call in adapter.log, with no token values"
+  },
+  "gbrain_mcp": "with HE_GBRAIN_MCP_URL and HE_GBRAIN_MCP_TOKEN set, a second MCP server named gbrain is initialized beside world before ready; unset, nothing changes",
+  "gbrain_install": "not implemented: HE_GBRAIN_INSTALL set to any value is HE-ADAPTER-006 and exit 2 before ready, with $HE_LOG_DIR/gbrain-install.json (status error)",
+  "internal_network": "serves on network internal (tests/internal-network-harnesses.test.ts): one turn through the lease-mode proxy on the cell model with a world-MCP post_message landed; from inside the container the proxy port connects and 1.1.1.1:443 and chatgpt.com:443 fail"
+}

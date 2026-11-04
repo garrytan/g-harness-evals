@@ -101,6 +101,16 @@ describe('anatomy receipts in hashes-only mode (blobs/ left out of a public expo
 
 describe('anatomy capture scenarios (internal-task)', () => {
   test('every scenario is a script the fake accepts, for every harness', () => {
-    for (const [name, make] of Object.entries(SCENARIOS)) for (const h of ['openclaw', 'hermes', 'qm']) expect(() => validateScript(make(h)), `${name}/${h}`).not.toThrow();
+    for (const [name, make] of Object.entries(SCENARIOS)) for (const h of ['openclaw', 'hermes', 'qm', 'claude-code', 'harness-zero']) expect(() => validateScript(make(h)), `${name}/${h}`).not.toThrow();
+    for (const [name, make] of Object.entries(SCENARIOS)) for (const c of ['zero-min', 'zero-full']) expect(() => validateScript(make('harness-zero', c)), `${name}/${c}`).not.toThrow();
+  });
+
+  test('Harness Zero calls world tools by name under zero-min and through call_tool under tool-search (internal-task)', () => {
+    expect(SCENARIOS.tools!('harness-zero', 'zero-min').map((t) => t.call ?? 'text')).toEqual(['list_channels', 'whoami', 'search', 'text']);
+    expect(SCENARIOS.tools!('harness-zero', 'zero-full').map((t) => t.call ?? 'text')).toEqual(['tool_search', 'call_tool', 'tool_search', 'text']);
+    const growth = SCENARIOS.growth!('harness-zero', 'zero-full');
+    expect(growth).toHaveLength(30);
+    expect(growth.every((t) => t.call === 'call_tool' && (t.arguments as { name: string }).name === 'mcp__world__list_channels')).toBe(true);
+    expect(SCENARIOS.growth!('harness-zero', 'zero-min').every((t) => t.call === 'list_channels')).toBe(true);
   });
 });
