@@ -272,6 +272,11 @@ describe('seal.ts --from-backup', () => {
     await expect(sealFromBackup({ repo: f.repo, set: 'vlinked', backup: join(t, 'linked.tar.age'), sha256: sha256(linked), tasks: 'v03', slice: 'v03/a.txt', ...co(f), recipient: f.recipient, intakeRoot, log: (l) => lines.push(l) })).rejects.toThrow('is a symbolic link');
     expect(lines).toEqual([expect.stringMatching(/^SEAL: removed the unpacked intake /)]);
     expect(readdirSync(intakeRoot)).toEqual([]);
+    // a refused intake root leaves no signal handlers installed
+    const handlers = () => (['SIGINT', 'SIGTERM', 'SIGHUP'] as const).map((s) => process.listenerCount(s));
+    const before = handlers();
+    await expect(sealFromBackup({ repo: f.repo, set: 'vlinked', backup: join(t, 'linked.tar.age'), sha256: sha256(linked), tasks: 'v03', slice: 'v03/a.txt', ...co(f), recipient: f.recipient, intakeRoot: join(t, 'linked-root'), log: () => undefined })).rejects.toThrow('is a symbolic link');
+    expect(handlers()).toEqual(before);
   }, 60_000);
 
   test('the CLI: success, a forced refusal and SIGTERM leave no plaintext; stale intake is swept by the next run and by cleanup.ts; no decrypted content is printed', async () => {

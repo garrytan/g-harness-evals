@@ -316,14 +316,20 @@ export async function sealFromBackup(o: BackupSealOptions): Promise<Awaited<Retu
   const clone = custodyClone({ dir: o.custody, repo: resolve(o.repo), remote });
   syncCustody(clone, remote);
   const identity = await custodyIdentity({ identityPath: o.identityPath, escrowPath: join(clone, ESCROW_FILE), recipient: readRecipient(o.recipient), env: o.env });
-  const dir = makeIntakeDir(intakeRoot);
   const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
+  let dir = '';
   const onSignal = (sig: (typeof signals)[number]) => {
-    const gone = removeIntakeDir(dir);
+    const gone = !dir || removeIntakeDir(dir);
     process.stderr.write(`SEAL: ${sig}: ${gone ? 'removed the unpacked intake' : 'could not remove the unpacked intake; remove it by hand:'} ${dir}\n`);
     process.exit(128 + constants.signals[sig]);
   };
   for (const s of signals) process.on(s, onSignal);
+  try {
+    dir = makeIntakeDir(intakeRoot);
+  } catch (e) {
+    for (const s of signals) process.off(s, onSignal);
+    throw e;
+  }
   let result: Awaited<ReturnType<typeof sealSet>> | undefined;
   let error: unknown;
   try {

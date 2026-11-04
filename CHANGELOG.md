@@ -2,6 +2,14 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.128] - 2026-11-04
+
+### internal-task: the seal's signal handlers go in before the intake directory exists
+
+- **Fixes a flaky SIGTERM test.** `tests/sealed-intake.test.ts` (the CLI case) sometimes got exit code null instead of 143 in CI on #236. `sealFromBackup` in `scripts/sealed/seal.ts` created the intake directory before it installed its SIGINT, SIGTERM and SIGHUP handlers. The test sends SIGTERM as soon as the directory appears, so a signal in that gap took the default action and killed the process without the cleanup line.
+- The handlers are now installed first. If `makeIntakeDir` refuses, they are removed again before the error is rethrown. With a 300 ms sleep added after the directory is made, the old code fails the way CI did and the new code passes all 8 tests.
+- A new assertion checks that a refused intake root (a symbolic link) leaves no signal handlers behind.
+
 ## [0.0.127] - 2026-11-04
 
 ### internal-task: pregate allowlist for the adapter-baseline fixture copies
