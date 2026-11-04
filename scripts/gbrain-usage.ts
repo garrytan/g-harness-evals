@@ -25,6 +25,8 @@ export interface GbrainUsage {
   latency_ms_median: number;
   errors: number;
   writes: number;
+  /** internal-task: failed write calls by error code (storage_error while member-source page writes fail, #161); absent when none failed. */
+  write_errors?: Record<string, number>;
   cross_scope_reads: { via_gbrain: number; via_world: number };
   scope_leaks: GbrainScopeLeaks;
   pages_by_kind: Record<string, number>;
@@ -95,6 +97,7 @@ export function gbrainUsage(trials: Array<{ events: WorldEvent[] | null; predica
   const pages: number[] = [];
   const latency: number[] = [];
   let withCalls = 0, withList = 0, errors = 0, writes = 0, read = 0, unmapped = 0;
+  const writeErrors: Record<string, number> = {};
   const cross = { via_gbrain: 0, via_world: 0 };
   const leaks: GbrainScopeLeaks = { search_rows: {}, opened_returned: {}, opened_refused: {}, by_grant: {} };
   const byKind: Record<string, number> = {};
@@ -129,12 +132,13 @@ export function gbrainUsage(trials: Array<{ events: WorldEvent[] | null; predica
       if (typeof effect.latency_ms === 'number') latency.push(effect.latency_ms);
       if (e.outcome === 'error') errors += 1;
       if (GBRAIN_WRITE_TOOLS.has(name)) writes += 1;
+      if (GBRAIN_WRITE_TOOLS.has(name) && e.outcome !== 'ok') bump(writeErrors, e.error ?? 'error');
     }
   }
   return {
     trials: trials.length, events_read: read, trials_with_calls: withCalls, trials_with_tools_list: withList,
     calls_total: perTrial.reduce((s, n) => s + n, 0), calls_median_per_trial: median(perTrial), tools,
-    pages_per_call_median: median(pages), latency_ms_median: median(latency), errors, writes, cross_scope_reads: cross,
+    pages_per_call_median: median(pages), latency_ms_median: median(latency), errors, writes, ...(Object.keys(writeErrors).length ? { write_errors: writeErrors } : {}), cross_scope_reads: cross,
     scope_leaks: leaks, pages_by_kind: byKind, unmapped_slugs: unmapped,
   };
 }

@@ -14,7 +14,7 @@ export interface WorldEvent {
   sim_ts: string;
   actor: string | null;
   /** gbrain arm lane D addition: via "gbrain" marks a gbrain MCP request relayed by the world's /gbrain tap. */
-  via: 'slack' | 'mcp' | 'admin' | 'runner' | 'gbrain';
+  via: 'slack' | 'mcp' | 'admin' | 'runner' | 'gbrain' | 'oauth';
   tool: string;
   kind: EventKind;
   args_digest: string;
@@ -25,6 +25,17 @@ export interface WorldEvent {
   /** internal-task (company brain) addition, gbrain events only: whose gbrain token the tap presented upstream: "bot" (the
    *  trial's unscoped token), a member id (that member's granted token) or "public-only" (member scope before the first turn). */
   grant?: string;
+  /** internal-task addition, gbrain events only and only when the upstream carries provider (gbrain-tap.ts): "provider" for QM
+   *  core's memory-provider client, told by its bearer token, "model" for every other call. */
+  caller?: 'provider' | 'model';
+  /** internal-task addition, provider calls only: the member the call named, exactly as sent: arg is the actor tool argument
+   *  (acting_user) or null, header the x-qm-actor request header or null (always null at QM b6786d67, whose provider client
+   *  sends no headers; M2b adds it). */
+  provider_actor?: { arg: unknown; header: string | null };
+  /** internal-task addition, provider tools/call events only: recall (QM's per-turn recall, which carries the provider's maxCharsArg),
+   *  query (the model's own memory search through the provider, which does not), write (a write tool, such as QM's explicit
+   *  capture through the provider's write operation; no delivery is recorded), or unknown (the cell named no max_chars_arg). */
+  provider_op?: 'recall' | 'query' | 'write' | 'unknown';
 }
 
 export function canonical(value: unknown): string {

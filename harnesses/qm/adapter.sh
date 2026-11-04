@@ -104,6 +104,11 @@ rm -f "$HE_LOG_DIR/qm-mcp-server.json"
 # The gbrain arm (docs/gbrain-arm.md): with HE_GBRAIN_MCP_URL and HE_GBRAIN_MCP_TOKEN set, a second server named
 # gbrain is registered the same way (PUT /v1/admin/mcp-servers/gbrain; the URL is the world's /gbrain tap and the
 # token the bot token). Core probes tools/list before saving, so a 2xx proves the harness discovered gbrain.
+# internal-task: under pi-memory-provider gbrain reaches QM only through core's MEMORY_PROVIDER_CONFIG; a gbrain MCP server here would
+# hand the model gbrain tools the cell is defined without, so the runner sets none and the adapter refuses one.
+if [ "$HE_HARNESS_CONFIG" = pi-memory-provider ] && [ -n "${HE_GBRAIN_MCP_URL:-}" ]; then
+  log "config pi-memory-provider registers no gbrain MCP server, but HE_GBRAIN_MCP_URL is set"; exit 2
+fi
 if [ -n "${HE_GBRAIN_MCP_URL:-}" ] && [ -n "${HE_GBRAIN_MCP_TOKEN:-}" ]; then
   node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({ name: "gbrain", url: process.env.HE_GBRAIN_MCP_URL, auth: "bearer", bearerToken: process.env.HE_GBRAIN_MCP_TOKEN, credentialScope: "shared", readOnly: false, enabled: true }))' "$HE_LOG_DIR/qm-gbrain-server.json"
   if node /opt/harness/qm-api.mjs mcp-register "$QM_CORE_URL" "$QM_SIGNING_SECRET" "$QM_ADMIN_ACTOR" gbrain "$HE_LOG_DIR/qm-gbrain-server.json" > "$HE_LOG_DIR/qm-gbrain-register.json" 2>>"$HE_LOG_DIR/stderr.log"; then

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Run one shard of a sharded run on one machine (CREW.md, "Parallelism"). A shard is a set of whole cells of one
-# preregistration run at one commit: this script refuses a dirty checkout, builds the harness images the cells need and
+# preregistration run at one commit: this script refuses a dirty checkout, builds the harness images the cells need (with
+# QM's sandbox image, harness-eval/qm-sandbox:dev from harnesses/qm/Dockerfile.sandbox, when a qm cell is in the shard; such a
+# shard refuses a QM_SANDBOX_IMAGE naming another tag, so the trials run the image it records) and
 # the gbrain sidecar image from this checkout, runs plan (once), preflight and run for exactly those cells under one lease,
 # trials sequential, with a prune loop that deletes graded trials' harness caches every five minutes, and writes
 # <out>/shard.json naming the shard, the machine, the commit and the image ids for scripts/merge-shards.ts.
@@ -115,6 +117,9 @@ log() { printf '%s run-shard[%s]: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$name"
 show_tail() { if [ -n "$sealed_root" ]; then log "log: $1 (custody only; a sealed shard never prints its logs)"; else tail -"$2" "$1" >&2; fi; }
 log "commit $commit, cells $cells, harnesses $harnesses, lease $lease, max_output_tokens $max_output_tokens, out $out"
 [ -z "$gbrain_commit" ] || log "gbrain $gbrain_commit, the preregistration's gbrain_commit (not gbrain/pin.json's)"
+qm_sandbox=harness-eval/qm-sandbox:dev
+case " $harnesses " in *" qm "*) [ "${QM_SANDBOX_IMAGE:-$qm_sandbox}" = "$qm_sandbox" ] || { log "refused: QM_SANDBOX_IMAGE=$QM_SANDBOX_IMAGE; a shard builds and records $qm_sandbox, the tag harnesses/qm/prepare.sh uses when it is unset, so unset it"; exit 2; } ;; esac
+export QM_SANDBOX_IMAGE="$qm_sandbox"
 
 # One exit handler for the prune loop and a sealed shard's copy of the root, installed before the copy is made.
 shard_dir="" shard_root="" prune_pid=""
@@ -148,6 +153,9 @@ if [ "$skip_build" -eq 0 ]; then
   for h in $harnesses; do
     log "building harness-eval/$h:dev from harnesses/$h"
     docker build -q -t "harness-eval/$h:dev" "harnesses/$h" > "$out/build-$h.log" 2>&1 || { show_tail "$out/build-$h.log" 20; log "harness image build failed for $h"; exit 2; }
+    [ "$h" = qm ] || continue
+    log "building $qm_sandbox from harnesses/qm/Dockerfile.sandbox"
+    docker build -q -f harnesses/qm/Dockerfile.sandbox -t "$qm_sandbox" harnesses/qm > "$out/build-qm-sandbox.log" 2>&1 || { show_tail "$out/build-qm-sandbox.log" 20; log "QM sandbox image build failed"; exit 2; }
   done
   log "building $gbrain_image from gbrain/ (embedded=$embedded)"
   args=(--tag "$gbrain_image" --out "$out/gbrain-image")
@@ -157,7 +165,11 @@ if [ "$skip_build" -eq 0 ]; then
   scripts/build-gbrain-image.sh "${args[@]}" > "$out/build-gbrain.log" 2>&1 || { show_tail "$out/build-gbrain.log" 20; [ -z "$shard_root" ] || log "the sealed build log is kept at $out/sealed-root-logs/build-gbrain-image.log (custody only)"; log "gbrain image build failed"; exit 2; }
 fi
 
-images=$(for h in $harnesses; do printf '"%s": "%s", ' "harness-eval/$h:dev" "$(docker image inspect -f '{{.Id}}' "harness-eval/$h:dev")"; done; printf '"%s": "%s"' "$gbrain_image" "$(docker image inspect -f '{{.Id}}' "$gbrain_image")")
+images=""
+for tag in $(for h in $harnesses; do echo "harness-eval/$h:dev"; [ "$h" != qm ] || echo "$qm_sandbox"; done) "$gbrain_image"; do
+  id=$(docker image inspect -f '{{.Id}}' "$tag" 2>/dev/null) && [ -n "$id" ] || { log "image $tag is missing; build it, or run without --skip-build"; exit 2; }
+  images+="${images:+, }\"$tag\": \"$id\""
+done
 if [ "$resume" -eq 1 ] && [ -f "$out/shard.json" ]; then
   recorded=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['commit'])" "$out/shard.json")
   if [ "$recorded" != "$commit" ] && [ "$amendment" != "$commit" ]; then

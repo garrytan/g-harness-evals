@@ -23,7 +23,8 @@
 
 - The cell's `config` reaches the stack as `HE_HARNESS_CONFIG`.
 - `prepare.sh` maps it to `QM_MEMORY_CAPTURE_QUIET_MS` and `QM_PROBE_CONFIG`, plus `QM_HARNESS=pi` as a label for the ready line. `compose.yaml` interpolates them into the core and task services.
-- Accepted values (`pin.json` `configs`): `pi` (the default), `pi-probe`, `pi-strict` and `pi-command-deny`. Any other value, `claude` and `claude-probe` included, exits 2 before the stack starts.
+- Accepted values (`pin.json` `configs`): `pi` (the default), `pi-probe`, `pi-strict`, `pi-command-deny` and `pi-memory-provider`. Any other value, `claude` and `claude-probe` included, exits 2 before the stack starts.
+- `pi-memory-provider` (internal-task, the C4 run): `pi` plus gbrain as QM's per-turn memory provider. The runner gives core `MEMORY_PROVIDER_CONFIG` and a per-trial OAuth client pair through the stack's environment and registers no gbrain MCP server. The model can still search the brain through QM's own memory tool (action `search`), on the provider's credential and whole-brain (`provider_op` `query`). `prepare.sh` exits 2 without the three variables; `adapter.sh` exits 2 if `HE_GBRAIN_MCP_URL` is set. Details: [docs/gbrain-arm.md](../../docs/gbrain-arm.md), "QM's memory-provider cell".
 
 - `pi`: QM's vendored pi-ai loop, model from `PI_MODEL` (set from `HE_MODEL_NAME`).
 - No Codex loop exists at this pin: Codex is only a ChatGPT-subscription model provider inside Pi (`src/agent/agent-run.ts` `CODEX_SUBSCRIPTION_PROVIDER`, `src/model/codex-device-login.ts`).
@@ -112,6 +113,65 @@ Keyless smoke on the images the anatomy captures used ([smoke-b6786d67.json](smo
 - **Sandbox command.** A scripted `execute` with `scope: scratch` ran in a container from `harness-eval/qm-sandbox:dev` and returned `sandbox-ok`, `x86_64`, Debian `12.15`, Node `v24.22.1`, Python `3.11.2`, Claude Code `2.1.210`, `agent.mjs`, `/root/workspace`, exit 0.
 - **A scope has no sandbox until the agent makes one.** `execute` without a scope answered `this scope has no default sandbox; use sandbox list, create, set_default, then retry`. QM behaves the same at `v0.1.15` (`NoDefaultSandboxError`, `src/sandbox/sandbox-routing.ts`), so this is not new.
 
+## gstack on QM (2026-10-31, internal-task for internal-task M1 step 6)
+
+**Raw gstack does not import as a QM skill pack at `b6786d67`.** QM registers it, then refuses it with `pack exceeds max bytes (33554432)`: the tree is 74.9 MiB against a 32 MiB cap. A keyless S1 fixture puts gstack's paste-in router in the org SOUL and reads one staged skill in full. Details, scripts and receipts: [gstack/README.md](gstack/README.md).
+
+## Memory-provider preflight (2026-10-31, internal-task for internal-task M1 step 3)
+
+**QM reached gbrain as a memory provider, with real OAuth client credentials, and the seeded fact showed up in the stored turn.** All 10 checks passed at `b6786d67` against gbrain `a590ad07` (the pin in `gbrain/pin.json`), $0, no model call ([provider-preflight-b6786d67.json](provider-preflight-b6786d67.json)).
+
+**Run it** (keyless; needs Docker, `harness-eval/qm:dev` built at the commit, `harness-eval/gbrain:dev`):
+
+```
+env -i PATH=$PATH HOME=$HOME bun harnesses/qm/provider-preflight.ts [--qm-commit <sha>] [--receipt <file>]
+```
+
+- **Inputs:** `--qm-commit` (default `pin.json` `commit`; the core image's `harness-eval.commit` label must match it, or the script exits 2 with the build command), `--qm-image`, `--gbrain-image`, `--core-port` and `--pg-port` (58080 and 55432, as `compose.yaml`), `--out`.
+- **Re-run at another commit:** `docker build --build-arg QM_COMMIT=<sha> -t harness-eval/qm:dev harnesses/qm`, then `--qm-commit <sha>`. The checks accept both stored-turn shapes: `b6786d67` (recall text in `payload.environment`) and `f3577189` (recall rows in an `untrusted-data` block, plus `memoryRecallOutcomes`, where the gbrain outcome must be `ok` on the good turn and not `ok` on the bad one).
+- **Outputs** under `--out` (default `~/.capy/work/harn15/provider-preflight/<run>`, never committed): `receipt.json`, `events.ndjson` (the world's log: the tap's `gbrain.*` events and the issuer's `oauth.token` events), `stored-turns.json` (every `UserMessage` row of QM's `items` table), `fake.ndjson` (every model request), `core.log`, `<turn>.turn.json`. `--receipt` also writes the receipt where you name it. The script scans the receipt for token shapes and the run's own secrets before writing it.
+
+**What runs.**
+
+- QM core and Postgres from `compose.yaml`, plus a generated override that adds `MEMORY_PROVIDER_CONFIG` and the two client variables. No MCP server is registered, so the provider is QM's only way to gbrain.
+- The model is `scripts/gsta-135/fake-anthropic.ts` with a dummy key. It answers `ok`.
+- The world server runs in process with the gbrain tap and its OAuth issuer (`world/services/oauth-issuer.ts`, off unless the upstream's `provider` block has `clients`). The keyword gbrain sidecar sits behind the tap.
+- Steps: seed one fact with `remember` (straight to the sidecar); a DM turn asking for it; a DM turn in a new thread asking something unrelated; then core recreated with a wrong client secret, and the fact question again.
+
+**The exact `MEMORY_PROVIDER_CONFIG`** (`url` is the world's tap; the port is random per run):
+
+```json
+{"providers":[{"id":"gbrain","type":"mcp","url":"http://127.0.0.1:<world port>/gbrain","timeoutMs":10000,
+  "read":{"tool":"recall","queryArg":"question","maxCharsArg":"max_chars","clientIdEnv":"QM_PF_READ_CLIENT_ID","clientSecretEnv":"QM_PF_READ_CLIENT_SECRET"}}],
+ "routes":[{"provider":"default","scopes":["personal","channel","group","team","org"],"capture":"automatic"},
+  {"provider":"gbrain","scopes":["personal"],"capture":"off","manage":false,"label":"gbrain","failOpen":false}]}
+```
+
+`QM_PF_READ_CLIENT_ID` is `qm-memory-read`; the secret is random per run and never written.
+
+**How the OAuth check works.** QM's client (MCP SDK 1.32.1, `ClientCredentialsProvider`) binds the pair to the issuer `new URL("/", <MCP URL>)` and refuses to send it anywhere else (`src/mcp/mcp-client.ts`). So the world issuer advertises the origin of the request as the client addressed it. QM got a 401 from the tap, read `/.well-known/oauth-protected-resource/gbrain` and `/.well-known/oauth-authorization-server`, and posted `grant_type=client_credentials` with `client_secret_basic`. The issued token then passed the tap like a world token.
+
+**Results at `b6786d67`** (core `sha256:52f1ab3c...`, gbrain `a590ad07` image `sha256:8cf58f10...`):
+
+| Check | Result |
+|---|---|
+| Issuer equals the MCP URL origin | pass |
+| Client-credentials token issued (one, `client_secret_basic`) | pass |
+| `failOpen: false` on the gbrain route | pass |
+| Stored `UserMessage`: `payload.environment` holds the fact under `### gbrain`; `payload.memoryRecall` present | pass |
+| Recall event in the tap's log (`gbrain.recall`, ok, 30 ms) | pass |
+| Unrelated question: recall ran, no fact in the stored turn | pass |
+| Wrong secret: 4 token requests refused `invalid_client`, no token, no recall, no stored turn | pass |
+| Failure visible: the turn answered HTTP 500 | pass |
+
+**What we found** (labelled for M1's preregistration):
+
+- **`max_chars`: gbrain runs the call but ignores the argument.** gbrain at `a590ad07` (0.60.522.0; `mcp.strict_params` default `warn`), and at `32366ac2` in an earlier run of the same script, answers `recall` and adds a text block: `warning: unknown parameter "max_chars" ignored. A future release rejects unknown parameters.` The same happens for QM's default `acting_user` argument. QM joins every text block, so both warnings land in the stored `<environment>` on every turn. A gbrain release that rejects unknown read parameters would fail every recall, and under `failOpen: false` every DM turn.
+- **`recall` with `query` alone is not query-scoped for facts.** gbrain returns the newest saved facts whatever the query (its own `recall_hint` notice says so). `question` ranks facts and returns none for an unrelated question, so the config maps `queryArg` to `question`.
+- **An empty recall is not empty to QM.** For the unrelated question gbrain sent `{"facts":[],...}` plus three notices (degraded keyword search, and the two unknown-parameter warnings). QM stored that 1,139-character environment and a `memoryRecall` record, as for a real hit.
+- **A fail-closed turn says little to the caller.** The wrong-secret turn answered HTTP 500 `{"error":"internal_error"}` in this receipt's run and in 3 of 3 reruns with one connector key for the whole run. One early run, made while the script still drew a new `QM_CONNECTOR_SECRET_KEY` per phase, got HTTP 200 `status: failed` instead; it did not reproduce, so treat it as a preflight artifact. Only core's log names the cause (`InvalidClientError: unknown client or wrong secret`). The user turn was not stored.
+- **The fact reached the model.** The fake's log shows the seed fact in the positive turn's agent request (`model_request_carried_seed_fact`).
+
 ## M0 smoke
 
 Run on 2026-10-22 with `harnesses/run-trial.sh --harness qm --task tasks/hello`, proxy lease `m0-laneb-hermes` (`--allow-models anthropic:claude-sonnet-5-5`, `--max-output-tokens 128000`), task container with stdin from `/dev/null` and no TTY.
@@ -154,6 +214,14 @@ Findings:
 - The MCP registration route needs an `org_admin` grant; with Postgres and no `ADMIN_GRANTS`, core boots with no admin at all and the route answers 403, so `config/core.env` names `harness-admin`.
 
 ## Changelog
+
+### 2026-10-31: memory-provider preflight (internal-task, internal-task M1 step 3)
+
+`provider-preflight.ts` and its receipt: QM core reaches gbrain only through `MEMORY_PROVIDER_CONFIG`, with OAuth client credentials from the world's new issuer, and the stored turn shows the seeded fact. The section lists the inputs, outputs, the exact config and what the run found about `max_chars`.
+
+### 2026-10-31: gstack smoke and S1 probe staging (internal-task, internal-task M1 step 6)
+
+Added the gstack section pointing at `gstack/README.md`: the skill-pack smoke's refusal, the Bun answer, and the keyless S1 fixture.
 
 ### 2026-10-30: re-pinned to main b6786d67 (internal-task, internal-task M1)
 

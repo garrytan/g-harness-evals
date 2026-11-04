@@ -1,0 +1,299 @@
+{
+  "what": "Keyless memory-provider preflight for QM (internal-task, internal-task plan v3, M1 step 3): QM core reaches gbrain only through MEMORY_PROVIDER_CONFIG, authenticated with OAuth client credentials from the world issuer at the MCP URL origin. No paid call: the model endpoint was scripts/gsta-135/fake-anthropic.ts, which refuses any key not starting with the dummy prefix.",
+  "run": "qm-provider-preflight-b6786d67-20261031t202653",
+  "date": "2026-10-31",
+  "command": "env -i PATH=$PATH HOME=$HOME bun harnesses/qm/provider-preflight.ts --receipt <file>",
+  "qm": {
+    "repo": "https://github.com/yc-software/qm",
+    "commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7",
+    "pinned_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7"
+  },
+  "harness_evals_commit": "e9b8c4cd730621de88daa5199021b7b794343b4f",
+  "dirty": false,
+  "images": {
+    "qm_core": {
+      "tag": "harness-eval/qm:dev",
+      "image_id": "sha256:52f1ab3cf8f3594dc4effbaa7a4038ee50c34dcdf3fb44357f141d5134b76f7f",
+      "label_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7"
+    },
+    "gbrain": {
+      "tag": "harness-eval/gbrain:dev",
+      "image_id": "sha256:8cf58f10190ce7b50946d36877c0d85551d87b1ef57bade184439e88205536d2",
+      "gbrain_commit": "a590ad07d15c92669ae30a37835df30d071e5536"
+    },
+    "postgres": {
+      "tag": "pgvector/pgvector:0.8.1-pg16",
+      "image_id": "sha256:33198da2828a14c30348d2ccb4750833d5ed9a44c88d840a0e523d7417120337"
+    }
+  },
+  "model_route": {
+    "endpoint": "scripts/gsta-135/fake-anthropic.ts on 127.0.0.1 (core runs on the host network and reaches it directly)",
+    "model": "claude-haiku-5-5",
+    "key": "a dummy with the fake's required prefix",
+    "requests": 5,
+    "model_request_carried_seed_fact": true
+  },
+  "memory_provider_config": {
+    "providers": [
+      {
+        "id": "gbrain",
+        "type": "mcp",
+        "url": "http://127.0.0.1:<world port>/gbrain",
+        "timeoutMs": 10000,
+        "read": {
+          "tool": "recall",
+          "queryArg": "question",
+          "maxCharsArg": "max_chars",
+          "clientIdEnv": "QM_PF_READ_CLIENT_ID",
+          "clientSecretEnv": "QM_PF_READ_CLIENT_SECRET"
+        }
+      }
+    ],
+    "routes": [
+      {
+        "provider": "default",
+        "scopes": [
+          "personal",
+          "channel",
+          "group",
+          "team",
+          "org"
+        ],
+        "capture": "automatic"
+      },
+      {
+        "provider": "gbrain",
+        "scopes": [
+          "personal"
+        ],
+        "capture": "off",
+        "manage": false,
+        "label": "gbrain",
+        "failOpen": false
+      }
+    ]
+  },
+  "env_given_to_core": {
+    "MEMORY_PROVIDER_CONFIG": "the JSON above, with the world port",
+    "QM_PF_READ_CLIENT_ID": "qm-memory-read",
+    "QM_PF_READ_CLIENT_SECRET": "<random per run, never written>"
+  },
+  "oauth": {
+    "mcp_url": "http://127.0.0.1:<world port>/gbrain",
+    "protected_resource": {
+      "resource": "<MCP URL>",
+      "authorization_servers": [
+        "<MCP URL origin>"
+      ]
+    },
+    "authorization_server": {
+      "issuer": "<MCP URL origin>"
+    },
+    "qm_expected_issuer": "new URL(\"/\", <MCP URL>).href (src/mcp/mcp-client.ts, ClientCredentialsProvider expectedIssuer)",
+    "token_requests": [
+      {
+        "phase": "right",
+        "outcome": "ok",
+        "error": null,
+        "client_id": "qm-memory-read",
+        "auth_method": "client_secret_basic",
+        "resource": "<MCP URL>"
+      },
+      {
+        "phase": "wrong",
+        "outcome": "denied",
+        "error": "invalid_client",
+        "client_id": "qm-memory-read",
+        "auth_method": "client_secret_basic",
+        "resource": "<MCP URL>"
+      },
+      {
+        "phase": "wrong",
+        "outcome": "denied",
+        "error": "invalid_client",
+        "client_id": "qm-memory-read",
+        "auth_method": "client_secret_basic",
+        "resource": "<MCP URL>"
+      },
+      {
+        "phase": "wrong",
+        "outcome": "denied",
+        "error": "invalid_client",
+        "client_id": "qm-memory-read",
+        "auth_method": "client_secret_basic",
+        "resource": "<MCP URL>"
+      },
+      {
+        "phase": "wrong",
+        "outcome": "denied",
+        "error": "invalid_client",
+        "client_id": "qm-memory-read",
+        "auth_method": "client_secret_basic",
+        "resource": "<MCP URL>"
+      }
+    ]
+  },
+  "seed": {
+    "tool": "remember",
+    "fact": "The Heron loading dock gate code is QMPF-4471-HERON.",
+    "entity": "heron-loading-dock",
+    "provenance": "harness-evals QM memory-provider preflight seed (internal-task)",
+    "inserted": true,
+    "via": "the sidecar directly, with its token (not through the tap)"
+  },
+  "turns": {
+    "positive": {
+      "thread": "dm:preflight-positive",
+      "prompt": "What is the gate code for the Heron loading dock?",
+      "http": 200,
+      "status": "ok",
+      "reply": "ok",
+      "error": null,
+      "recall_events": [
+        {
+          "outcome": "ok",
+          "error": null,
+          "args": {
+            "question": "Current message: What is the gate code for the Heron loading dock?",
+            "acting_user": "U1",
+            "max_chars": 6000
+          },
+          "latency_ms": 49
+        }
+      ],
+      "stored_user_turn": {
+        "stored": true,
+        "environment_chars": 1789,
+        "environment_has_seed_fact": true,
+        "memory_recall": {
+          "shown": [
+            {
+              "hash": "d7bf302897fb1f01",
+              "scope": "personal:U1"
+            }
+          ]
+        },
+        "memory_recall_outcomes": null,
+        "untrusted_data_fence": false,
+        "gbrain_section_excerpt": "### gbrain\n{\"facts\":[{\"id\":1,\"fact\":\"The Heron loading dock gate code is QMPF-4471-HERON.\",\"kind\":\"fact\",\"entity_slug\":\"heron-loading-dock\",\"source_id\":\"default\",\"visibility\":\"world\",\"notability\":\"medium\",\"valid_from\":\"2026-10-31T20:27:06.891Z\",\"valid_until\":null,\"expired_at\":null,\"superseded_by\":null,\"consolidated_at\":null,\"consolidated_into\":null,\"source\":\"harness-evals QM memory-provider preflight seed (internal-task)\",\"source_session\":null,\"context\":null,\"confidence\":1,\"created_at\":\"2026-10-31T20:27:07.007Z\",\"fact_id\":\"1\",\"provenance\":\"harness-evals QM memory-provider preflight seed (internal-task)\",\"relevance\":0.8333,\"trust_tier\":\"agent_written\",\"origin\":\"mcp:remember\"}],\"total\":1,\"facts_order\":\"relevance\",\"facts_degraded\":{\"reason\":\"keyword_only_embedding_disabled\"},\"protocol_version\":1}\n[gbrain notice degraded_recall kind=degraded]\nwhy: Recall was degraded (keyword_only_no_embedding_provider): semantic (vector) search did not run, so matches phrased differently from the query can be missing. Treat a thin or empty result as \"not found with a degraded search\", never as \"the brain has nothing on this\". This brain was set up keyword-only by the user's choice; mention it only if the user asks why something was not found. No query text was sent to an embedding provider. If the user wants semantic search, `gbrain doctor --json` names the enable command; turning it on needs their consent.\n[gbrain notice unknown_param kind=info]\nwhy: warning: unknown parameter \"acting_user\" ignored. A future release rejects unknown parameters.\n[gbrain notice unknown_param kind=info]\nwhy: warning: unknown parameter \"max_chars\" ignored. A future release rejects unknown parameters.\n</environment>"
+      }
+    },
+    "unrelated": {
+      "thread": "dm:preflight-unrelated",
+      "prompt": "What time does the Friday all-hands start?",
+      "http": 200,
+      "status": "ok",
+      "reply": "ok",
+      "error": null,
+      "recall_events": [
+        {
+          "outcome": "ok",
+          "error": null,
+          "args": {
+            "question": "Current message: What time does the Friday all-hands start?",
+            "acting_user": "U1",
+            "max_chars": 6000
+          },
+          "latency_ms": 30
+        }
+      ],
+      "stored_user_turn": {
+        "stored": true,
+        "environment_chars": 1139,
+        "environment_has_seed_fact": false,
+        "memory_recall": {
+          "shown": [
+            {
+              "hash": "d3164f6d0fa48d6a",
+              "scope": "personal:U1"
+            }
+          ]
+        },
+        "memory_recall_outcomes": null,
+        "untrusted_data_fence": false,
+        "gbrain_section_excerpt": "### gbrain\n{\"facts\":[],\"total\":0,\"facts_order\":\"relevance\",\"facts_degraded\":{\"reason\":\"keyword_only_embedding_disabled\"},\"protocol_version\":1}\n[gbrain notice degraded_recall kind=degraded]\nwhy: Recall was degraded (keyword_only_no_embedding_provider): semantic (vector) search did not run, so matches phrased differently from the query can be missing. Treat a thin or empty result as \"not found with a degraded search\", never as \"the brain has nothing on this\". This brain was set up keyword-only by the user's choice; mention it only if the user asks why something was not found. No query text was sent to an embedding provider. If the user wants semantic search, `gbrain doctor --json` names the enable command; turning it on needs their consent.\n[gbrain notice unknown_param kind=info]\nwhy: warning: unknown parameter \"acting_user\" ignored. A future release rejects unknown parameters.\n[gbrain notice unknown_param kind=info]\nwhy: warning: unknown parameter \"max_chars\" ignored. A future release rejects unknown parameters.\n</environment>"
+      }
+    },
+    "wrong_credentials": {
+      "thread": "dm:preflight-wrong-credentials",
+      "prompt": "What is the gate code for the Heron loading dock?",
+      "http": 500,
+      "status": null,
+      "reply": null,
+      "error": "{\"reason\":null,\"error\":\"internal_error\"}",
+      "recall_events": [],
+      "stored_user_turn": {
+        "stored": false,
+        "environment_chars": 0,
+        "environment_has_seed_fact": false,
+        "memory_recall": null,
+        "memory_recall_outcomes": null,
+        "untrusted_data_fence": false,
+        "gbrain_section_excerpt": null
+      }
+    }
+  },
+  "max_chars": {
+    "configured": "read.maxCharsArg max_chars",
+    "sent_by_qm": true,
+    "values_seen": [
+      6000
+    ],
+    "gbrain_ran_the_call": true,
+    "max_chars_warning_in_stored_environment": true,
+    "acting_user_warning_in_stored_environment": true
+  },
+  "assertions": [
+    {
+      "id": "seed",
+      "pass": true,
+      "detail": "remember inserted the seed fact"
+    },
+    {
+      "id": "oauth_issuer_matches_mcp_origin",
+      "pass": true,
+      "detail": "MCP URL http://127.0.0.1:46411/gbrain; protected-resource authorization_servers[0] http://127.0.0.1:46411; issuer http://127.0.0.1:46411"
+    },
+    {
+      "id": "oauth_client_credentials_token",
+      "pass": true,
+      "detail": "1 token(s) issued to the right client pair (grant client_credentials, client_secret_basic)"
+    },
+    {
+      "id": "fail_open_false",
+      "pass": true,
+      "detail": "the gbrain route sets failOpen false (preflight only)"
+    },
+    {
+      "id": "positive_turn_ok",
+      "pass": true,
+      "detail": "turn status ok"
+    },
+    {
+      "id": "stored_turn_shows_fact",
+      "pass": true,
+      "detail": "payload.environment contains the seed fact; payload.memoryRecall present"
+    },
+    {
+      "id": "recall_event_logged",
+      "pass": true,
+      "detail": "1 gbrain recall event(s) in the tap's log during the positive turn"
+    },
+    {
+      "id": "negative_unrelated_query",
+      "pass": true,
+      "detail": "unrelated question: turn status ok, 1 recall event(s), stored turn does not show the seed fact"
+    },
+    {
+      "id": "negative_wrong_credentials",
+      "pass": true,
+      "detail": "wrong secret: 4 token request(s) denied, 0 issued, 0 recall event(s), stored turn absent"
+    },
+    {
+      "id": "fail_closed_visible",
+      "pass": true,
+      "detail": "wrong-credential turn: HTTP 500, status null; {\"reason\":null,\"error\":\"internal_error\"}"
+    }
+  ],
+  "pass": true
+}

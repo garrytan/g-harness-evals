@@ -385,7 +385,7 @@ export async function probeGbrainImage(image: string, scratchDir: string, o: { s
  *  as the tap sends them, so the two layers are checked together. */
 export const SOURCE_PROBE_QUERIES = ['incident', 'rate', 'door', 'budget', 'meeting', 'contract', 'ticket', 'update'] as const;
 
-export async function probeSourceGrants(image: string, split: 'dev' | 'heldout', scratchDir: string, queries: readonly string[] = SOURCE_PROBE_QUERIES, scope: 'sources' | 'member-sources' = 'sources'): Promise<{
+export async function probeSourceGrants(image: string, split: 'dev' | 'heldout', scratchDir: string, queries: readonly string[] = SOURCE_PROBE_QUERIES, scope: 'sources' | 'member-sources' = 'sources', brain: 'company' | 'member' = 'company'): Promise<{
   ready_ms: number; image_id: string; members: number; calls: number; rows: number; sources_seen: number;
   /** Every row outside the requester's grant: member, tool, query, slug and source. Empty is the pass. */
   outside: Array<{ member: string; tool: string; query: string; slug: string; source_id: string }>;
@@ -408,8 +408,8 @@ export async function probeSourceGrants(image: string, split: 'dev' | 'heldout',
   token_alone: null | { rows_by_tool: Record<string, number>; slug_reads: Array<{ member: string; slug: string; source_id: string; code: string | null; unscoped_code: string | null; own_slug: string | null; own_code: string | null }> };
 }> {
   const { scopeRequest, SOURCE_SCOPED_TOOLS } = await import('../../world/services/gbrain-tap.ts');
-  const sidecar = await startGbrainSidecar({ trialId: 'preflight', trialSlug: `preflight-${scope}-${split}-${process.pid}`, split, outDir: scratchDir, image, brain: 'company', scope });
-  const fail = (what: string) => new RunnerError('HE-GBRAIN-002', `the company brain for ${split} in ${image} ${what}; fix: rebuild the image (gbrain/README.md, "The company brain")`);
+  const sidecar = await startGbrainSidecar({ trialId: 'preflight', trialSlug: `preflight-${scope}-${brain}-${split}-${process.pid}`, split, outDir: scratchDir, image, brain, scope });
+  const fail = (what: string) => new RunnerError('HE-GBRAIN-002', `the ${brain} brain for ${split} in ${image} ${what}; fix: rebuild the image (gbrain/README.md, "The ${brain} brain")`);
   try {
     if (!sidecar.grants) throw fail(`started under scope "${scope}" without grants`);
     if (scope === 'member-sources' && !sidecar.tokens) throw fail('started under scope "member-sources" without tokens');
@@ -492,6 +492,101 @@ export async function probeSourceGrants(image: string, split: 'dev' | 'heldout',
       if (new Set(sets).size > 1) { differs = true; break; }
     }
     return { ready_ms: sidecar.ready_ms, image_id: sidecar.image_id, members: Object.keys(sidecar.grants.members).length, calls, rows, sources_seen: seen.size, outside, denied, foreign, differs, rows_by_tool, token_alone };
+  } finally {
+    await sidecar.stop(5_000);
+  }
+}
+
+/** C4 ("rows with each layer off"): the four ways a call can reach the member brain, by which scope layer is on. */
+export const SCOPE_LAYERS = ['both', 'token', 'sources', 'neither'] as const;
+export type ScopeLayer = (typeof SCOPE_LAYERS)[number];
+
+/** R40: the most list_pages pages of 100 rows the layer probe reads for one call before it fails closed. */
+export const LIST_PAGES_MAX_PAGES = 1000;
+
+/** R40: list_pages paged to the end, 100 rows a page, from offset 0. Fails closed with fail(...) when a full page
+ *  repeats an earlier one (gbrain ignored the offset) or the pages run past LIST_PAGES_MAX_PAGES, instead of paging forever. */
+export async function listPagesToEnd(page: (offset: number) => Promise<Array<Record<string, unknown>>>, fail: (what: string) => Error): Promise<Array<Record<string, unknown>>> {
+  const rows: Array<Record<string, unknown>> = [];
+  const seen = new Map<string, number>();
+  for (let n = 0; n < LIST_PAGES_MAX_PAGES; n++) {
+    const got = await page(n * 100);
+    rows.push(...got);
+    if (got.length < 100) return rows;
+    const key = JSON.stringify(got);
+    if (seen.has(key)) throw fail(`answered list_pages at offset ${n * 100} with the same rows as at offset ${seen.get(key)! * 100}; gbrain ignored the offset, so the probe stops instead of paging forever`);
+    seen.set(key, n);
+  }
+  throw fail(`still answered full list_pages pages after ${LIST_PAGES_MAX_PAGES} pages (${LIST_PAGES_MAX_PAGES * 100} rows); the probe stops instead of paging forever`);
+}
+
+/** The fact the layer probe seeds into each member's private source, so recall has a DM fact to leak or keep. */
+export const LAYER_PROBE_FACT = (member: string) => `Layer probe: ${member} keeps the spare key in drawer LP-${member}.`;
+
+/**
+ * C4 prereg, Freeze gate 3: rows outside each member's grant with each scope layer off, on a brain with member tokens
+ * and source grants (the member brain by default), keyless. The sidecar starts under scope "member-sources" (and, for the
+ * member brain, live ingestion, whose per-source tokens seed one fact into every private-<member> source with remember, as the
+ * world's ingestion writes a DM). Then, per member, every SOURCE_SCOPED_TOOLS tool (search, query and recall once per query,
+ * list_pages once, paged to the end, HE-GBRAIN-002 when gbrain ignores the offset (listPagesToEnd); and "recall (question)", recall the way QM's memory provider calls it, with question and
+ * max_chars) runs four ways: "both" (the member's rescoped token and its source_ids, what a
+ * member-sources cell's tap sends), "token" (the member token, no source_ids), "sources" (the trial's unscoped token with the
+ * member's source_ids) and "neither" (the unscoped token, no source_ids: what an unscoped caller such as QM's memory provider
+ * under one credential reads). A row is outside when its source_id is not in the member's grant; a row with no source_id is
+ * counted apart. Reports, never refuses: preflight's probeSourceGrants is the gate.
+ */
+export async function probeScopeLayers(image: string, split: 'dev' | 'heldout', scratchDir: string, o: { brain?: 'company' | 'member'; queries?: readonly string[] } = {}): Promise<{
+  image_id: string; brain: 'company' | 'member'; split: 'dev' | 'heldout'; members: number; queries: string[]; seeded: Array<{ member: string; source_id: string; ok: boolean }>;
+  /** layer -> tool -> calls, rows, rows outside the member's grant, rows without a source_id, and how many of the outside rows are seeded facts. */
+  layers: Record<ScopeLayer, Record<string, { calls: number; rows: number; outside: number; unattributed: number; outside_seeded_facts: number }>>;
+  /** Up to 3 outside rows per layer and tool, for the receipt. */
+  examples: Array<{ layer: ScopeLayer; tool: string; member: string; query: string; slug: string; source_id: string }>;
+}> {
+  const brain = o.brain ?? 'member';
+  const queries = [...(o.queries ?? [...SOURCE_PROBE_QUERIES, 'spare key drawer'])];
+  const { scopeRequest, SOURCE_SCOPED_TOOLS } = await import('../../world/services/gbrain-tap.ts');
+  const sidecar = await startGbrainSidecar({ trialId: 'layers', trialSlug: `layers-${brain}-${split}-${process.pid}`, split, outDir: scratchDir, image, brain, scope: 'member-sources', ...(brain === 'member' ? { ingest: 'live' as const } : {}) });
+  const fail = (what: string) => new RunnerError('HE-GBRAIN-002', `the ${brain} brain for ${split} in ${image} ${what}`);
+  try {
+    if (!sidecar.grants || !sidecar.tokens) throw fail('started under scope "member-sources" without grants or tokens');
+    const grants = sidecar.grants.members;
+    const seeded: Array<{ member: string; source_id: string; ok: boolean }> = [];
+    if (sidecar.ingest) for (const member of Object.keys(grants).sort()) {
+      const source_id = `${sidecar.ingest.map.dm_source_prefix}${member}`;
+      const token = sidecar.ingest.tokens.sources[source_id];
+      if (!token) continue;
+      const reply = await callGbrain(sidecar.url, token, 'remember', { fact: LAYER_PROBE_FACT(member), provenance: 'harness-evals layer probe (internal-task)', source_id, request_id: crypto.randomUUID() }) as { status?: unknown } | null;
+      seeded.push({ member, source_id, ok: reply?.status === 'inserted' || reply?.status === 'duplicate' });
+    }
+    const ROW_KEYS = ['results', 'pages', 'facts', 'items'];
+    const rowsOf = (p: unknown): Array<Record<string, unknown>> => Array.isArray(p) ? p : p && typeof p === 'object' ? ROW_KEYS.flatMap((k) => { const v = (p as Record<string, unknown>)[k]; return Array.isArray(v) ? v : []; }) : [];
+    const probeTools = [...SOURCE_SCOPED_TOOLS, 'recall (question)'];
+    const layers = Object.fromEntries(SCOPE_LAYERS.map((l) => [l, Object.fromEntries(probeTools.map((t) => [t, { calls: 0, rows: 0, outside: 0, unattributed: 0, outside_seeded_facts: 0 }]))])) as Record<ScopeLayer, Record<string, { calls: number; rows: number; outside: number; unattributed: number; outside_seeded_facts: number }>>;
+    const examples: Array<{ layer: ScopeLayer; tool: string; member: string; query: string; slug: string; source_id: string }> = [];
+    for (const [member, grant] of Object.entries(grants).sort(([a], [b]) => a.localeCompare(b))) {
+      const memberToken = sidecar.tokens.members[member];
+      if (!memberToken) throw fail(`has a source grant for ${member} but no token for it in tokens.json`);
+      for (const layer of SCOPE_LAYERS) for (const tool of probeTools) for (const query of tool === 'list_pages' ? [''] : queries) {
+        const token = layer === 'both' || layer === 'token' ? memberToken : sidecar.token;
+        const name = tool === 'recall (question)' ? 'recall' : tool;
+        const base = tool === 'list_pages' ? { limit: 100 } : tool === 'recall' ? { query } : tool === 'recall (question)' ? { question: query, max_chars: 6000 } : { query, limit: 50 };
+        const args = layer === 'both' || layer === 'sources' ? scopeRequest({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: base } }, grant).request.params!.arguments as Record<string, unknown> : base;
+        const n = layers[layer][tool]!;
+        const call = async (extra: Record<string, unknown>) => { n.calls++; return rowsOf(await callGbrain(sidecar.url, token, name, { ...args, ...extra })); };
+        const got = tool === 'list_pages' ? await listPagesToEnd((offset) => call({ offset, sort: 'slug' }), fail) : await call({});
+        for (const r of got) {
+          n.rows++;
+          const source_id = typeof r.source_id === 'string' ? r.source_id : '';
+          if (!source_id) { n.unattributed++; continue; }
+          if (grant.includes(source_id)) continue;
+          n.outside++;
+          const text = JSON.stringify(r);
+          if (text.includes('Layer probe:')) n.outside_seeded_facts++;
+          if (examples.filter((e) => e.layer === layer && e.tool === tool).length < 3) examples.push({ layer, tool, member, query, slug: String(r.slug ?? r.id ?? '?'), source_id });
+        }
+      }
+    }
+    return { image_id: sidecar.image_id, brain, split, members: Object.keys(grants).length, queries, seeded, layers, examples };
   } finally {
     await sidecar.stop(5_000);
   }

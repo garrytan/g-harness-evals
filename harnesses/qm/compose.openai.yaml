@@ -1,0 +1,14 @@
+# Merged over compose.yaml by the runner for a QM cell whose model is an OpenAI model (cell model openai:<model>, so the
+# metering proxy route HE_MODEL_BASE_URL ends in /openai). QM core then calls OpenAI through the proxy: OPENAI_BASE_URL is
+# the proxy route plus /v1 (QM replaces the model's https://api.openai.com/v1 with it, src/model/provider-endpoints.ts and
+# pi-models.ts resolveModel at b6786d67) and OPENAI_API_KEY is the per-trial dummy token. MODEL_PROVIDER limits QM's base
+# models to OpenAI's, and the Anthropic pair is cleared, as Hermes clears it for an OpenAI cell. Only HE_MODEL_* is
+# interpolated here, never a real key's variable name. An Anthropic cell does not load this file.
+services:
+  core:
+    environment:
+      OPENAI_API_KEY: ${HE_MODEL_API_KEY}
+      OPENAI_BASE_URL: ${HE_MODEL_BASE_URL}/v1
+      MODEL_PROVIDER: openai
+      ANTHROPIC_API_KEY: ""
+      ANTHROPIC_BASE_URL: ""

@@ -146,6 +146,11 @@ test('gbrain.access "rules" loads with brain member and scope member; elsewhere,
   expect(() => loadPrereg(writePrereg([cell({ surface: 'starter', brain: 'member', scope: 'member', access: 'open' as 'rules' })], 'acl-bad'))).toThrow(/HE-GBRAIN-003 .*access must be "rules" or absent/);
 });
 
+test('gbrain.access "rules" with scope "member-sources" stays HE-GBRAIN-003, with or without live ingestion (qm train merge, internal-task)', () => {
+  expect(() => loadPrereg(writePrereg([cell({ surface: 'starter', brain: 'member', scope: 'member-sources', access: 'rules' })], 'acl-member-sources'))).toThrow(/HE-GBRAIN-003 .*access "rules" needs gbrain.brain "member" and gbrain.scope "member"/);
+  expect(() => loadPrereg(writePrereg([cell({ surface: 'starter', brain: 'member', scope: 'member-sources', ingest: 'live', access: 'rules' })], 'acl-member-sources-live'))).toThrow(/HE-GBRAIN-003 .*access "rules" needs gbrain.brain "member" and gbrain.scope "member"/);
+});
+
 // ---- the preflight verdict ----------------------------------------------------------------------------------------------
 
 describe('access-rules preflight: fails closed on (a), (b) and (c)', () => {

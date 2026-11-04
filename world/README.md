@@ -15,6 +15,7 @@ evaluator-owned event log. Graders read the event log and the world state, never
 | `services/clock/` | the frozen simulation clock |
 | `services/events.ts` | the append-only event log |
 | `services/gbrain-tap.ts` | `POST /gbrain`: relays a harness's gbrain MCP calls to the trial's gbrain sidecar and records them (the gbrain arm, [docs/gbrain-arm.md](../docs/gbrain-arm.md)) |
+| `services/oauth-issuer.ts` | internal-task: an OAuth client-credentials issuer in front of the gbrain tap, for QM's memory provider; off unless the gbrain upstream has a `provider` block |
 | `services/server.ts`, `services/start.ts` | one process serving all of it for one trial |
 | `world-mcp/` | the MCP server (Streamable HTTP, plus a stdio bridge) every harness gets |
 | `types.ts` | record shapes |
@@ -34,6 +35,7 @@ tokens, and serves on `127.0.0.1:8790`:
 | `GET /socket?ticket=<app token>` | the bot | websocket event stream (below) |
 | `POST /mcp` | actors and the bot, by bearer token | world-MCP over Streamable HTTP |
 | `POST /gbrain` | the bot, by its bearer token | the gbrain tap (below); exists only when the server was given a gbrain upstream |
+| `GET /.well-known/oauth-protected-resource[/gbrain]`, `GET /.well-known/oauth-authorization-server`, `POST /oauth/token` | an OAuth client, by client id and secret | internal-task: the client-credentials issuer (below); exists only when the gbrain upstream has a `provider` block, else 404 |
 | `GET /clock` | anyone | the simulation clock |
 | `POST /clock/advance` | runner, admin token | `{"seconds": N}` or `{"to": "<ISO instant>"}`, forward only |
 | `GET /admin/snapshot`, `GET /admin/events`, `POST /admin/fence`, `GET /admin/socket` | runner, admin token | state for graders, the in-memory event list, stop accepting writes (contract item 7), socket connection count |
@@ -115,7 +117,7 @@ Both surfaces call the same `WorldService`, so the rules are identical:
 | `wall_ts` | real time of the call, ISO-8601 UTC |
 | `sim_ts` | simulation clock at the call |
 | `actor` | member id the token resolved to; `null` for runner and admin calls |
-| `via` | `slack`, `mcp`, `gbrain` (a call relayed by the gbrain tap), `runner` (clock) or `admin` (fence) |
+| `via` | `slack`, `mcp`, `gbrain` (a call relayed by the gbrain tap), `oauth` (a token request to the issuer), `runner` (clock) or `admin` (fence) |
 | `tool` | the operation in Slack-method spelling, whichever surface it came through: `conversations.list`, `conversations.history`, `conversations.open`, `chat.postMessage`, `search.messages`, `files.list`, `files.read`, `calendar.list`, `calendar.create`, `mail.list`, `mail.draft`, `request_approval`, `clock.advance`, `admin.fence`; a gbrain call is `gbrain.<tool>`, `gbrain.initialize` or `gbrain.tools/list` |
 | `kind` | `read`, `write`, `deny`, `approval`, `clock`, `admin` |
 | `args_digest` | sha256 of the canonical JSON of `args` |
@@ -158,6 +160,31 @@ the result's JSON content (`_meta` notices are skipped, so a suggested call neve
 as for every event, so a gbrain call inside a turn window is attributed to that turn's requester like a world
 call, and a search whose rows come from a channel the requester is not in is a cross-scope read for the grader
 (lane E). `tests/gbrain-tap.test.ts` proves this against a fake upstream.
+
+QM's memory provider, off unless the upstream carries `provider`: a request whose bearer is one of
+`provider.tokens` (the tokens only QM core's memory-provider client presents: a fixed list recorded under
+`provider.actor`, or the OAuth issuer's issued tokens when `provider.clients` is set) comes from the provider client and
+goes out whole-brain, under the unscoped token with no `source_ids`; every other request is a model call, scoped as
+before. The world refuses provider tokens or clients that overlap its own tokens or name no member.
+Every gbrain event then carries `caller`; a provider event also `provider_actor` (the `acting_user` argument and the
+`x-qm-actor` header as sent; the header is null until M2b, since QM's provider client sends none) and, on `tools/call`,
+`provider_op` (`recall` when the call carries `provider.max_chars_arg`, `query` for the model's memory search, `write`
+for a gbrain write tool, `unknown` without the option); a provider read carries `effect.delivery` (which of
+`effect.facts` reached QM's turn after its cap, error handling and timeout, and which gbrain returned in the text QM
+takes, never a fact only in `_meta`), and a model `tools/call` carries
+`effect.returned_by_gbrain` (the facts gbrain returned, an upper bound on what the model saw). Without
+`provider` the events are unchanged. The design is in [docs/gbrain-arm.md](../docs/gbrain-arm.md), "QM's memory
+provider".
+
+OAuth for QM's memory provider (`services/oauth-issuer.ts`): when the gbrain upstream has a `provider` block
+(client ids, their secrets and the member each acts as), the world also serves OAuth discovery and a
+`client_credentials` token endpoint (`client_secret_basic` or `client_secret_post`). The issuer is the origin the
+client addressed, because QM's MCP client sends its credentials only to `new URL("/", <MCP URL>)`. An issued token
+has no expiry; each client keeps its 32 newest. The tap accepts an issued token as the member its client acts as, and
+world tokens as before. Every token request is one event: `via` `oauth`, `tool` `oauth.token`, `kind` `admin`,
+`args` the grant type, client id and auth method, `outcome` `ok` or `denied` (`invalid_client`,
+`unsupported_grant_type`, or `invalid_request` past 8192 bytes). The secret and the token are never logged. Without
+the block these routes are 404. `tests/oauth-issuer.test.ts` covers it; `harnesses/qm/provider-preflight.ts` uses it.
 
 Company brain, member scope: when the runner hands the tap the company brain's `tokens.json` (one granted
 token per member and a `public_only` token) beside the unscoped token, the tap presents the token of the member

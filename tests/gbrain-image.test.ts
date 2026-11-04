@@ -383,6 +383,34 @@ describe.skipIf(!haveImage)(`the sidecar image ${IMAGE ?? '(HE_GBRAIN_IMAGE unse
     }
   }, 600_000);
 
+  // internal-task (C4 gate 3): a member-brain cell under scope member-sources with live ingestion is probed the same way in preflight.
+  test('probeSourceGrants on the member brain under member-sources: rows on every tool, none outside the grant, either layer alone', async () => {
+    const { probeSourceGrants } = await import('../runner/trial/gbrain.ts');
+    const scratch = mkdtempSync(join(tmpdir(), 'probe-member-sources-'));
+    try {
+      const p = await probeSourceGrants(IMAGE!, 'dev', scratch, ['rate', 'contract'], 'member-sources', 'member');
+      expect(p.outside).toEqual([]);
+      expect(Object.values(p.rows_by_tool).every((n) => n > 0)).toBe(true);
+      expect(Object.values(p.token_alone!.rows_by_tool).every((n) => n > 0)).toBe(true);
+      expect(p.token_alone!.slug_reads.every((r) => r.code !== null && r.unscoped_code === null && r.own_code === null)).toBe(true);
+    } finally { rmSync(scratch, { recursive: true, force: true }); }
+  }, 600_000);
+
+  // internal-task (C4 gate 3, "rows with each layer off"): either layer alone keeps every row inside the grant; with neither, other
+  // members' seeded DM facts come back, which is the exposure of one credential for every member.
+  test('probeScopeLayers on the member brain: 0 rows outside the grant with both layers, the token alone or source_ids alone; seeded DM facts leak with neither', async () => {
+    const { probeScopeLayers, SCOPE_LAYERS } = await import('../runner/trial/gbrain.ts');
+    const scratch = mkdtempSync(join(tmpdir(), 'probe-layers-'));
+    try {
+      const p = await probeScopeLayers(IMAGE!, 'dev', scratch, { queries: ['rate', 'spare key drawer'] });
+      expect(p.seeded.length).toBeGreaterThan(1);
+      expect(p.seeded.every((s) => s.ok)).toBe(true);
+      for (const layer of SCOPE_LAYERS) expect(Object.values(p.layers[layer]).reduce((s, n) => s + n.rows, 0)).toBeGreaterThan(0);
+      for (const layer of ['both', 'token', 'sources'] as const) expect(Object.values(p.layers[layer]).map((n) => n.outside)).toEqual([0, 0, 0, 0, 0]);
+      expect(p.layers.neither['recall (question)']!.outside_seeded_facts).toBeGreaterThan(0);
+    } finally { rmSync(scratch, { recursive: true, force: true }); }
+  }, 600_000);
+
   test('the entrypoint refuses a bad surface, embeddings without OPENAI_BASE_URL, embeddings on the keyword image, and a provider key', () => {
     const refused = (env: string[]) => dockerOut(['run', '--rm', '--user', uidGid(), '-v', `${join(tmp, 'refuse')}:/he-gbrain`, '-e', 'HE_GBRAIN_OUT=/he-gbrain', '-e', 'HE_GBRAIN_SPLIT=dev', ...env.flatMap((e) => ['-e', e]), IMAGE!]);
     mkdirSync(join(tmp, 'refuse'), { recursive: true });

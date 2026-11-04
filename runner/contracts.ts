@@ -211,7 +211,8 @@ export interface GbrainCellConfig {
    *  and makes the tap add source_ids to every search and query (and recall and list_pages, gbrain#8074), the sources the requesting member may read (the public
    *  source before the first turn), so one bot token narrows per request; company brain only. Member-sources addition
    *  (gbrain#8074): "member-sources" does both, the requesting member's token (granted server-side with gbrain auth rescope at
-   *  image build) and that member's source_ids on every narrowed call; company brain only. */
+   *  image build) and that member's source_ids on every narrowed call; company brain, and the member brain, where it
+   *  also satisfies live ingestion's need for the member's own token. */
   scope?: 'member' | 'sources' | 'member-sources';
   /** internal-task addition (the access-rules rerun, gbrain#8134): "rules" serves the member brain built with gbrain's folder rules (one
    *  per source with a reader set, prefix <split>/, the source's readers) and member-bound tokens with no source grant, so the
@@ -315,8 +316,9 @@ export interface TrialGbrain {
   /** Milliseconds from docker run to a healthy sidecar with a token on disk. */
   sidecar_ready_ms: number;
   /** via "gbrain" events in the trial's log: tools/list and initialize, tools/call, and how many fell inside a turn window.
-   *  Degraded counts search, query and recall replies gbrain stamped search_degraded or facts_degraded. */
-  events: { total: number; discovery: number; calls: number; in_turn_calls: number; writes: number; degraded?: number };
+   *  Degraded counts search, query and recall replies gbrain stamped search_degraded or facts_degraded.
+   *  write_errors counts the failed write calls by error code (such as storage_error), present only when one failed. */
+  events: { total: number; discovery: number; calls: number; in_turn_calls: number; writes: number; degraded?: number; write_errors?: Record<string, number> };
 }
 
 /** Lane B bridge addition (docs/gstack-laneb.md): what a Lane B trial adds to its record. The Harbor trial and

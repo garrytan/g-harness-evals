@@ -13,6 +13,9 @@
 #   pi-probe        MEMORY_CAPTURE_QUIET_MS=5000 (the probe cells)
 #   pi-strict       pi-probe plus the org security posture strict, set by adapter.sh serve
 #   pi-command-deny pi-probe plus an org command policy that denies uname, set by adapter.sh serve
+#   pi-memory-provider  pi plus gbrain as QM's per-turn memory provider (internal-task, harnesses/qm/memory-provider.ts): the
+#                   runner hands core MEMORY_PROVIDER_CONFIG and the provider's client pair through the stack's environment
+#                   and registers no gbrain MCP server; refused here when any of the three is missing (presence only)
 set -euo pipefail
 out=$1
 mkdir -p "$out/state/qm"
@@ -22,7 +25,11 @@ case "$config" in
   pi) harness=pi; quiet=180000; probe="" ;;
   pi-probe) harness=pi; quiet=5000; probe="" ;;
   pi-strict|pi-command-deny) harness=pi; quiet=5000; probe=$config ;;
-  *) echo "qm prepare: HE_HARNESS_CONFIG=$config is not a QM config (pi, pi-probe, pi-strict, pi-command-deny)" >&2; exit 2 ;;
+  pi-memory-provider) harness=pi; quiet=180000; probe=""
+    for v in MEMORY_PROVIDER_CONFIG QM_GBRAIN_READ_CLIENT_ID QM_GBRAIN_READ_CLIENT_SECRET; do
+      [ -n "${!v:-}" ] || { echo "qm prepare: HE_HARNESS_CONFIG=pi-memory-provider needs $v from the runner (runner/trial/trial.ts wires it per trial); it is not set" >&2; exit 2; }
+    done ;;
+  *) echo "qm prepare: HE_HARNESS_CONFIG=$config is not a QM config (pi, pi-probe, pi-strict, pi-command-deny, pi-memory-provider)" >&2; exit 2 ;;
 esac
 # Both images must be builds of the pinned commit. The tags are reused across
 # pins, and a v0.1.15 core with HARNESS unset runs QM's mock harness (canned

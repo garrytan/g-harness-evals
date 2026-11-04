@@ -126,6 +126,21 @@ export interface ComposeHarnessOptions extends DockerHarnessOptions {
   /** HE_MODEL_* and the rest of the stack's environment (what harnesses/run-trial.sh exports). */
   stackEnv: Record<string, string>;
   timeBudgetS: number;
+  /** internal-task (QM pi-memory-provider): variables for the core service only, such as MEMORY_PROVIDER_CONFIG and its client pair.
+   *  They reach compose through its process environment and the override names them, so no value is written to a file and
+   *  the task container never sees them. Absent, the override is what it was before. */
+  coreEnv?: Record<string, string>;
+  /** The provider of the cell model (anthropic:claude-opus-5-5 is anthropic). When compose.<provider>.yaml sits beside the
+   *  compose file, it is merged over it before the runner's override (QM: compose.openai.yaml). */
+  modelProvider?: string;
+}
+
+/** The override file of the sidecar topology: the task service serves turns with the serve environment and the turns
+ *  directory; with coreEnv, the core service also gets each of those variables, by name only. */
+export function composeOverride(env: Record<string, string>, turnsDir: string, coreEnv?: Record<string, string>): string {
+  const yamlEnv = Object.entries(env).map(([k, v]) => `      ${k}: ${JSON.stringify(v)}`).join('\n');
+  const core = coreEnv && Object.keys(coreEnv).length ? `  core:\n    environment:\n${Object.keys(coreEnv).map((k) => `      ${k}: \${${k}}`).join('\n')}\n` : '';
+  return `# Written by the runner for one multi-user trial: the task service serves turns instead of running once.\nservices:\n  task:\n    command: ["serve"]\n    environment:\n${yamlEnv}\n    volumes:\n      - ${resolve(turnsDir)}:/he-turns\n${core}`;
 }
 
 /** Sidecar topology: the compose stack is the trial. The task service's command becomes `serve`, the turns
@@ -141,6 +156,7 @@ export async function startComposeHarness(opts: ComposeHarnessOptions): Promise<
     HE_ENTRY: 'serve', HE_TURNS: resolve(opts.dirs.turns), ...opts.env,
     // capture.sh reads the project name to reach the stack's services (QM's pg_dump) with the same name compose used.
     COMPOSE_PROJECT_NAME: project,
+    ...opts.coreEnv,
   };
   const prepare = join(repoRoot, 'harnesses', opts.harness, 'prepare.sh');
   if (existsSync(prepare)) {
@@ -149,9 +165,9 @@ export async function startComposeHarness(opts: ComposeHarnessOptions): Promise<
     for (const line of r.stdout.split('\n')) { const eq = line.indexOf('='); if (eq > 0) env[line.slice(0, eq)] = line.slice(eq + 1); }
   }
   const override = join(opts.dirs.root, 'compose.serve.yaml');
-  const yamlEnv = Object.entries(opts.env).map(([k, v]) => `      ${k}: ${JSON.stringify(v)}`).join('\n');
-  writeFileSync(override, `# Written by the runner for one multi-user trial: the task service serves turns instead of running once.\nservices:\n  task:\n    command: ["serve"]\n    environment:\n${yamlEnv}\n    volumes:\n      - ${resolve(opts.dirs.turns)}:/he-turns\n`);
-  const compose = ['docker', 'compose', '-f', opts.composeFile, '-f', override, '-p', project];
+  writeFileSync(override, composeOverride(opts.env, opts.dirs.turns, opts.coreEnv));
+  const providerFile = opts.modelProvider ? opts.composeFile.replace(/\.yaml$/, `.${opts.modelProvider}.yaml`) : undefined;
+  const compose = ['docker', 'compose', '-f', opts.composeFile, ...(providerFile && existsSync(providerFile) ? ['-f', providerFile] : []), '-f', override, '-p', project];
   const up = await sh([...compose, 'up', '-d', '--no-color'], { env, timeoutMs: (opts.timeBudgetS + 180) * 1000 });
   writeFileSync(join(opts.dirs.logs, 'compose.log'), `${up.stdout}\n${up.stderr}`);
   if (up.status !== 0) {

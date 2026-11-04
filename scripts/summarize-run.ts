@@ -204,7 +204,7 @@ if (gbrainCells.some(([, g]) => g.calls_total > 0 || g.trials_with_tools_list > 
   out.push('|---|---|---|---|---|---|---|---|---|---|---|');
   for (const [cell, g] of gbrainCells) {
     const tools = Object.entries(g.tools).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ') || 'none';
-    out.push(`| ${cell} | ${g.trials_with_calls} | ${g.trials_with_tools_list} | ${g.calls_median_per_trial} / ${g.calls_total} | ${tools} | ${g.pages_per_call_median} | ${g.latency_ms_median} | ${g.errors} | ${g.writes} | ${g.cross_scope_reads.via_gbrain} / ${g.cross_scope_reads.via_world} | ${g.events_read} of ${g.trials} |`);
+    out.push(`| ${cell} | ${g.trials_with_calls} | ${g.trials_with_tools_list} | ${g.calls_median_per_trial} / ${g.calls_total} | ${tools} | ${g.pages_per_call_median} | ${g.latency_ms_median} | ${g.errors} | ${g.writes}${g.write_errors ? ` (failed: ${Object.entries(g.write_errors).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([k, v]) => `${k} ${v}`).join(', ')})` : ''} | ${g.cross_scope_reads.via_gbrain} / ${g.cross_scope_reads.via_world} | ${g.events_read} of ${g.trials} |`);
   }
 } else {
   out.push(`gbrain: no via gbrain event in any cell (${gbrainCells.reduce((s, [, g]) => s + g.events_read, 0)} of ${allRows.length} event logs read).`);

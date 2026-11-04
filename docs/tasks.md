@@ -113,7 +113,7 @@ Every predicate defined must be listed in `required`, ids are unique, turn numbe
 
 Patterns are JavaScript regular expressions; a leading `(?i)` makes the match case-insensitive. Member references are member ids (`dana-okafor`); the grader also recognises handles, emails and Slack ids where the world does.
 
-`[mechanism]` (v0.3, optional): `needed_turn` names the turn whose post carries the fact a later turn needs and `superseded_turn`, for a correction, the turn it supersedes. Both must be turns of the task and differ. The grader never reads it; `scripts/v03/mechanism.ts` uses it to count, per cell and task, how often a gbrain read in the task's last turn returned the fact live ingestion wrote from the needed post, and returned it ahead of the superseded one.
+`[mechanism]` (v0.3, optional): `needed_turn` names the turn whose post carries the fact a later turn needs and `superseded_turn`, for a correction, the turn it supersedes. Both must be turns of the task and differ. The grader never reads it; `scripts/v03/mechanism.ts` uses it to count, per cell and task, how often a gbrain read in the task's last turn returned the fact live ingestion wrote from the needed post, and returned it ahead of the superseded one. With `--provider-aware` it also counts QM's memory-provider recalls apart from the model's memory searches through the provider and its own gbrain calls, and says whether the needed fact was returned and delivered for each ([gbrain-arm.md](gbrain-arm.md), "QM's memory provider").
 
 ## Predicate library (`runner/grade/predicates.ts`)
 

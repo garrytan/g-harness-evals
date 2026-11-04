@@ -50,6 +50,7 @@ import { canonicalLookup } from './pricing/model-pricing.ts';
 import { lookupEmbeddingPrice } from './pricing/embedding-pricing.ts';
 import { taskTurnCount } from './trial/task.ts';
 import { DEFAULT_GBRAIN_IMAGE, SOURCE_PROBE_QUERIES } from './trial/gbrain.ts';
+import { CLIENT_ID_ENV, CLIENT_SECRET_ENV, MEMORY_PROVIDER_CONFIG_NAME, isQmMemoryProvider, providerConfig, memoryProviderWiring } from '../harnesses/qm/memory-provider.ts';
 import { checkPlan, type HeldoutBlock } from './heldout/openings.ts';
 import { openingDiff, publicImageProblem, readJsonFile, readReceipt, receiptProblems, sealedImageProblem, sealedImageTag, sha256 as sha256Of, verifySealedRoot, type OpeningReceipt } from './heldout/sealed.ts';
 import { insideGitTree } from '../scripts/sealed/custody.ts';
@@ -113,7 +114,8 @@ export interface Cell {
   slice: 'multiuser' | 'work' | 'continuity' | 'coding-calibration' | 'hello' | 'smoke';
   split: 'dev' | 'heldout';
   /** Harness-specific configuration name, handed to the adapter as HE_HARNESS_CONFIG. QM accepts pi (the
-   *  default), pi-probe, pi-strict and pi-command-deny (harnesses/qm/pin.json configs). OpenClaw and
+   *  default), pi-probe, pi-strict, pi-command-deny and pi-memory-provider (gbrain as QM's per-turn memory provider,
+   *  no gbrain MCP server; harnesses/qm/memory-provider.ts) (harnesses/qm/pin.json configs). OpenClaw and
    *  Hermes accept default and the instruction routes route-tool, route-system (Hermes only), route-startup, route-hook and
    *  route-skill (harnesses/routes/README.md). Claude Code and Codex accept default and official-minimal (prompt archaeology:
    *  the harness's own system prompt or base instructions replaced by harnesses/ablation/official-minimal.txt, through the
@@ -299,11 +301,22 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
       if (c.gbrain.ingest !== undefined && c.gbrain.ingest !== 'off' && c.gbrain.ingest !== 'live') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.ingest must be "off", "live" or absent; got ${JSON.stringify(c.gbrain.ingest)}`);
       if (c.gbrain.ingest === 'live' && c.gbrain.brain !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.ingest "live" needs gbrain.brain "member"; only the member brain carries the per-source ingest tokens (gbrain/README.md, "The member brain")`);
       if (c.gbrain.ingest === 'live' && c.harness_mode === 'process') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.ingest "live" runs in docker mode only; in process mode the harness runs as the runner's user and could read the ingest tokens under the trial directory. fix: drop harness_mode "process" from the cell`);
-      if (c.gbrain.ingest === 'live' && c.gbrain.scope !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.ingest "live" needs gbrain.scope "member"; without it the tap reads under the trial's unscoped token and every member's ingested DM facts come back to every requester, a leak built into the arm`);
+      // internal-task: "member-sources" keeps the member-token layer of "member" and adds the member's source_ids, so it satisfies the rule too.
+      if (c.gbrain.ingest === 'live' && c.gbrain.scope !== 'member' && c.gbrain.scope !== 'member-sources') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.ingest "live" needs gbrain.scope "member" or "member-sources"; without the member's own token the tap reads under the trial's unscoped token and every member's ingested DM facts come back to every requester, a leak built into the arm`);
       // internal-task (the access-rules rerun): access "rules" is the member brain's read gate; only member tokens read through it.
       if (c.gbrain.access !== undefined && c.gbrain.access !== 'rules') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.access must be "rules" or absent; got ${JSON.stringify(c.gbrain.access)}`);
       if (c.gbrain.access === 'rules' && (c.gbrain.brain !== 'member' || c.gbrain.scope !== 'member')) throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.access "rules" needs gbrain.brain "member" and gbrain.scope "member" (got brain ${JSON.stringify(c.gbrain.brain ?? 'bot-visible')}, scope ${JSON.stringify(c.gbrain.scope ?? 'none')}); only the member brain is built with folder rules, and only the members' own bound tokens read through them`);
       if (c.gbrain.access === 'rules' && c.gbrain.ingest === 'live') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.access "rules" runs without live ingestion; the ingested facts land outside the folder rules, where every member token reads them`);
+    }
+    // internal-task (internal-task plan v3, M1): QM's memory-provider config reaches gbrain only through MEMORY_PROVIDER_CONFIG, so it needs a
+    // QM harness in docker (the client secret stays in the compose stack) and a gbrain sidecar behind the tap, served over MCP.
+    if (c.config === MEMORY_PROVIDER_CONFIG_NAME) {
+      if (c.harness !== 'qm') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: config "${MEMORY_PROVIDER_CONFIG_NAME}" is QM's memory-provider route; harness ${c.harness} has none. fix: drop config or use harness qm`);
+      if (c.slice === 'hello' || c.slice === 'smoke') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: config "${MEMORY_PROVIDER_CONFIG_NAME}" is wired for multi-user trials only; slice ${c.slice} runs through harnesses/run-trial.sh, which passes neither the config nor the provider wiring, so QM would run as plain pi with no gbrain. fix: use slice multiuser`);
+      if (c.harness_mode !== undefined && c.harness_mode !== 'docker') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: config "${MEMORY_PROVIDER_CONFIG_NAME}" runs in docker mode only; the provider's client secret goes to QM core's container and nowhere else. fix: drop harness_mode`);
+      if (!c.gbrain) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: config "${MEMORY_PROVIDER_CONFIG_NAME}" recalls from the trial's gbrain sidecar; the cell carries no gbrain. fix: add gbrain, such as {"surface": "starter", "brain": "member", "scope": "member", "ingest": "live"}`);
+      if (c.gbrain.install !== undefined && c.gbrain.install !== 'mcp') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: config "${MEMORY_PROVIDER_CONFIG_NAME}" reaches gbrain over MCP from QM core; gbrain.install "${c.gbrain.install}" installs into the harness. fix: drop gbrain.install`);
+      if (c.gbrain.access === 'rules') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: config "${MEMORY_PROVIDER_CONFIG_NAME}" with gbrain.access "rules" is untested: the provider reads whole-brain under the trial's unscoped token, which no folder rule binds, and no preregistration has asked for the combination. fix: drop gbrain.access, or preregister the combination with its own preflight`);
     }
   }
   if (!(prereg.spend_cap_usd > 0)) throw new RunnerError('HE-BUDGET-002', 'spend_cap_usd must be > 0; the cap is written into the preregistration, never passed ad hoc');
@@ -456,16 +469,24 @@ export function renderPlan(m: Manifest): string {
     if (c.gbrain?.brain === 'company' && c.preamble !== 'tasks/multiuser/_shared/preamble.gbrain-company.md') lines.push(`WARN: cell ${c.id} serves the company brain with preamble ${c.preamble ?? 'tasks/multiuser/_shared/preamble.md'}, not the company one (tasks/multiuser/_shared/preamble.gbrain-company.md); intended only for a none-style arm on the company brain`);
   }
   // One GBRAIN line per distinct configuration (surface/install/embeddings), naming what each means.
+  // A QM memory-provider cell gets its own line, since gbrain reaches it through MEMORY_PROVIDER_CONFIG and not MCP registration.
   const configs = new Map<string, Cell[]>();
-  for (const c of m.cells) if (c.gbrain) configs.set(gbrainLabel(c.gbrain), [...(configs.get(gbrainLabel(c.gbrain)) ?? []), c]);
-  for (const [label, cs] of configs) {
+  const key = (c: Cell) => `${gbrainLabel(c.gbrain!)}${isQmMemoryProvider(c) ? ' memory-provider' : ''}`;
+  for (const c of m.cells) if (c.gbrain) configs.set(key(c), [...(configs.get(key(c)) ?? []), c]);
+  for (const cs of configs.values()) {
+    const label = gbrainLabel(cs[0]!.gbrain!);
     const g = resolveGbrain(cs[0]!.gbrain!);
     const words = [
       g.surface === 'verbs' ? 'the 7 memory verbs (page search is recall)' : 'the 33-tool starter surface',
-      g.install === 'gbrain-docs' ? "gbrain's documented install applied in the harness container from the image's bundle" : g.install === 'gbrain-installer' ? "gbrain's own installer (gbrain setup <harness> --instructions-only) applied in the harness container from the image's bundle" : 'MCP registration only',
+      isQmMemoryProvider(cs[0]!) ? "QM's memory provider only (MEMORY_PROVIDER_CONFIG: the per-turn recall in personal scope and the model's searches through QM's memory tool, both whole-brain whatever the cell's scope), no gbrain MCP server registered" : g.install === 'gbrain-docs' ? "gbrain's documented install applied in the harness container from the image's bundle" : g.install === 'gbrain-installer' ? "gbrain's own installer (gbrain setup <harness> --instructions-only) applied in the harness container from the image's bundle" : 'MCP registration only',
       g.embeddings === 'off' ? 'keyword-only, no model call' : `query embeddings ${g.embeddings} through the metering proxy, metered per trial (allowance ${embeddingAllowanceUsd(cs[0]!.gbrain).toFixed(4)} per trial in the ceiling)`,
     ];
     lines.push(`GBRAIN: cells ${cs.map((c) => c.id).join(', ')} run with a gbrain sidecar per trial (image ${DEFAULT_GBRAIN_IMAGE} unless --gbrain-image; ${label}: ${words.join('; ')}; docs/gbrain-arm.md)`);
+  }
+  for (const c of m.cells.filter(isQmMemoryProvider)) {
+    const block = memoryProviderWiring({ mcpUrl: '<world /gbrain tap>', actor: '<the bot>', secret: '<per trial>' }).provider;
+    const { clients, tokens, ...tap } = block;
+    lines.push(`QM-PROVIDER: cell ${c.id}: MEMORY_PROVIDER_CONFIG ${JSON.stringify(providerConfig('<world /gbrain tap, as core reaches it>'))}; core gets ${CLIENT_ID_ENV} ${Object.keys(clients).join(', ')} and ${CLIENT_SECRET_ENV} (per trial, never written); tap provider block ${JSON.stringify(tap)}, the OAuth client acting as the bot and its issued tokens; adapter env without HE_GBRAIN_MCP_URL, so no gbrain MCP server is registered`);
   }
   if (m.cost_ceiling_usd > m.spend_cap_usd) lines.push(`WARN: HE-BUDGET-003 cost ceiling ${m.cost_ceiling_usd} exceeds the preregistered cap ${m.spend_cap_usd}; cells past the cap stop incomplete in drop order`);
   return lines.join('\n');
@@ -668,38 +689,44 @@ async function main(argv: string[]): Promise<number> {
           if (problems.length) throw new RunnerError('HE-GBRAIN-002', `access=rules: the access-ruled member brain for ${split} in ${image} fails ${[...new Set(problems.map((p) => `(${p.check})`))].join(', ')}: ${problems.slice(0, 4).map((p) => `(${p.check}) ${p.what}`).join('; ')}${problems.length > 4 ? `; ${problems.length - 4} more in ${record}` : ''}`);
           console.log(`GBRAIN: access=rules split=${split} image ${image} id=${evidence.image_id}: (a) ${expected.token_members.length} member tokens each bound to its own member, public-only unbound; (b) ${summary.rules} folder rules over ${expected.sources.length - 1} sources, the public source none, nothing held or pending, ${summary.pages} pages each readable by exactly the world's reader set (who-can-read named every_source_reader for ${summary.rule_blind} rule-covered pages; it reads page readers only); (c) ${expected.token_members.length + 1} grants x ${SOURCE_PROBE_QUERIES.length} queries over search, query and recall plus list_pages to the end, ${summary.rows} rows (${Object.entries(summary.rows_by_tool).map(([t, n]) => `${t} ${n}`).join(', ')}), 0 outside the grant's reader set, every readable page listed; ${summary.slug_reads} get_page reads under the member tokens, every page outside the reader set refused and one inside it served; record ${record}`);
         }
+        // gbrain#7481 and the member-sources scope, for the company brain; the member brain too, for a live-ingestion cell
+        // under scope "member-sources" (two layers: the member's rescoped token and its source_ids).
+        const probeScoped = async (brain: 'company' | 'member', split: 'dev' | 'heldout') => {
+          // gbrain#7481: a scope "sources" cell needs the per-request source_ids to hold for every member before a paid trial.
+          // A scope "member-sources" cell is probed under the member tokens as well, the way its tap sends calls.
+          for (const scope of ['sources', 'member-sources'] as const) {
+            if (!gbrainCells.some((c) => c.gbrain!.brain === brain && c.split === split && c.gbrain!.scope === scope)) continue;
+            const s = await probeSourceGrants(image, split, join(runDir, `preflight-gbrain-${scope}-${split}${brain === 'company' ? '' : '-member'}`), SOURCE_PROBE_QUERIES, scope, brain);
+            const notDenied = s.denied.filter((d) => d.code !== 'permission_denied');
+            if (s.outside.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the ${brain} brain for ${split} in ${image} returned ${s.outside.length} row(s) outside the requester's source grant under source_ids${scope === 'member-sources' ? ' with the member\'s own token, or under that token alone' : ''} (${s.outside.slice(0, 3).map((o) => `${o.member} ${o.tool} ${JSON.stringify(o.query)} -> ${o.slug} in ${o.source_id}`).join('; ')}); not holding at this commit: ${[...new Set(s.outside.map((o) => o.tool.endsWith('(token alone)') ? 'the rescoped member tokens' : 'gbrain\'s source_ids narrowing'))].join(' and ')}`);
+            if (notDenied.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the ${brain} brain for ${split} in ${image} answered a source_ids list naming a source no connection holds with ${notDenied.map((d) => `${d.code ?? 'rows'} for ${d.member}/${d.source_id}`).slice(0, 3).join(', ')} instead of permission_denied`);
+            const unseen = Object.entries(s.rows_by_tool).filter(([, n]) => !n).map(([t]) => t);
+            if (unseen.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the ${brain} brain for ${split} in ${image} gave 0 rows to ${unseen.join(', ')} over every member; the probe cannot show the source_ids narrowing holds on ${unseen.length === 1 ? 'that tool' : 'those tools'}`);
+            if (s.token_alone) {
+              // The member token is the only guard on a slug read, so it is checked on its own as well.
+              const leaked = s.token_alone.slug_reads.filter((r) => r.code === null || r.code.startsWith('another page'));
+              if (leaked.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the ${brain} brain for ${split} in ${image} returned ${leaked.length} page(s) through get_page under a member's own token from a source outside its grant (${leaked.slice(0, 3).map((r) => `${r.member} -> ${r.slug} in ${r.source_id}`).join('; ')}); the rescoped member tokens do not hold`);
+              const unseenAlone = Object.entries(s.token_alone.rows_by_tool).filter(([, n]) => !n).map(([t]) => t);
+              const unreadable = s.token_alone.slug_reads.filter((r) => r.unscoped_code !== null);
+              if (unreadable.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the ${brain} brain for ${split} in ${image} did not serve the slug outside the member's grant under the unscoped token either (${unreadable.slice(0, 3).map((r) => `${r.member} -> ${r.slug} in ${r.source_id}: ${r.unscoped_code}`).join('; ')}); the member token's refusal of it shows nothing`);
+              const ownRefused = s.token_alone.slug_reads.filter((r) => r.own_code !== null);
+              if (ownRefused.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the ${brain} brain for ${split} in ${image} refused get_page of a page inside the member's own grant (${ownRefused.slice(0, 3).map((r) => `${r.member} -> ${r.own_slug ?? '-'}: ${r.own_code}`).join('; ')}); the refusals outside the grant cannot be told from a broken read`);
+              if (unseenAlone.length || !s.token_alone.slug_reads.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the ${brain} brain for ${split} in ${image} gave ${unseenAlone.length ? `0 rows to ${unseenAlone.join(', ')} under the member tokens alone` : 'no slug outside any member\'s grant to read'}; the probe cannot show the token layer holds`);
+            }
+            if (!s.rows || !s.differs) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the ${brain} brain for ${split} in ${image} gave ${s.rows} row(s) over ${s.calls} scoped calls${s.rows && !s.differs ? ' and the same sources to every member' : ''}; the source_ids narrowing is not observable`);
+            console.log(`GBRAIN: scope=${scope}${brain === 'company' ? '' : ' brain=member'} split=${split}: ${s.members} members x ${SOURCE_PROBE_QUERIES.length} queries over search, query and recall, plus list_pages once per member${scope === 'member-sources' ? ' under each member\'s token (paged to the end under the token alone)' : ''}; ${s.calls} calls in all,${scope === 'member-sources' ? ' with the token-alone repeats and get_page reads,' : ''} ${s.rows} rows (${Object.entries(s.rows_by_tool).map(([t, n]) => `${t} ${n}`).join(', ')}) over ${s.sources_seen} sources, 0 outside the requester's grant; ${s.denied.length} unknown source ids all permission_denied; a federated source outside the member's grant answers rows under the unscoped token in ${s.foreign.filter((f) => f.rows_from_it).length} of ${s.foreign.length} members (gbrain checks the connection's grant, the tap enforces the member's); the narrowing differs between members${s.token_alone ? `; under the member tokens alone (no source_ids) ${Object.entries(s.token_alone.rows_by_tool).map(([t, n]) => `${t} ${n}`).join(', ')} rows, 0 outside the grant, and ${s.token_alone.slug_reads.length} get_page reads of a page outside the member's grant all refused under the member's token and served under the unscoped token, while a page inside the grant was served` : ''}`);
+          }
+        };
         for (const split of memberSplits) {
           const probe = await probeCompanyBrain(image, split, memberPageList(world, split), join(runDir, `preflight-gbrain-member-${split}`), 'member', 'member');
           console.log(`GBRAIN: image ${image} id=${probe.image_id} brain=member scope=member ingest=live split=${split} pages=${probe.listed} (${Object.entries(probe.by_kind).map(([k, v]) => `${k} ${v}`).join(', ')}) under the unscoped token, tokens=${probe.member_tokens} plus public-only: ${probe.member_check}, channel ingest tokens present (no write is tried), ready in ${probe.ready_ms} ms`);
+          await probeScoped('member', split);
         }
         for (const split of companySplits) {
           const scope = gbrainCells.some((c) => c.gbrain!.brain === 'company' && c.split === split && (c.gbrain!.scope === 'member' || c.gbrain!.scope === 'member-sources')) ? 'member' : 'none';
           const probe = await probeCompanyBrain(image, split, companyPageList(world, split), join(runDir, `preflight-gbrain-company-${split}`), scope);
           console.log(`GBRAIN: image ${image} id=${probe.image_id} brain=company scope=${scope} split=${split} pages=${probe.listed} (${Object.entries(probe.by_kind).map(([k, v]) => `${k} ${v}`).join(', ')}) under the unscoped token${scope === 'member' ? `, tokens=${probe.member_tokens} plus public-only: ${probe.member_check}` : ''}, ready in ${probe.ready_ms} ms`);
-          // gbrain#7481: a scope "sources" cell needs the per-request source_ids to hold for every member before a paid trial.
-          // A scope "member-sources" cell is probed under the member tokens as well, the way its tap sends calls.
-          for (const scope of ['sources', 'member-sources'] as const) {
-            if (!gbrainCells.some((c) => c.gbrain!.brain === 'company' && c.split === split && c.gbrain!.scope === scope)) continue;
-            const s = await probeSourceGrants(image, split, join(runDir, `preflight-gbrain-${scope}-${split}`), SOURCE_PROBE_QUERIES, scope);
-            const notDenied = s.denied.filter((d) => d.code !== 'permission_denied');
-            if (s.outside.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the company brain for ${split} in ${image} returned ${s.outside.length} row(s) outside the requester's source grant under source_ids${scope === 'member-sources' ? ' with the member\'s own token, or under that token alone' : ''} (${s.outside.slice(0, 3).map((o) => `${o.member} ${o.tool} ${JSON.stringify(o.query)} -> ${o.slug} in ${o.source_id}`).join('; ')}); not holding at this commit: ${[...new Set(s.outside.map((o) => o.tool.endsWith('(token alone)') ? 'the rescoped member tokens' : 'gbrain\'s source_ids narrowing'))].join(' and ')}`);
-            if (notDenied.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the company brain for ${split} in ${image} answered a source_ids list naming a source no connection holds with ${notDenied.map((d) => `${d.code ?? 'rows'} for ${d.member}/${d.source_id}`).slice(0, 3).join(', ')} instead of permission_denied`);
-            const unseen = Object.entries(s.rows_by_tool).filter(([, n]) => !n).map(([t]) => t);
-            if (unseen.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the company brain for ${split} in ${image} gave 0 rows to ${unseen.join(', ')} over every member; the probe cannot show the source_ids narrowing holds on ${unseen.length === 1 ? 'that tool' : 'those tools'}`);
-            if (s.token_alone) {
-              // The member token is the only guard on a slug read, so it is checked on its own as well.
-              const leaked = s.token_alone.slug_reads.filter((r) => r.code === null || r.code.startsWith('another page'));
-              if (leaked.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the company brain for ${split} in ${image} returned ${leaked.length} page(s) through get_page under a member's own token from a source outside its grant (${leaked.slice(0, 3).map((r) => `${r.member} -> ${r.slug} in ${r.source_id}`).join('; ')}); the rescoped member tokens do not hold`);
-              const unseenAlone = Object.entries(s.token_alone.rows_by_tool).filter(([, n]) => !n).map(([t]) => t);
-              const unreadable = s.token_alone.slug_reads.filter((r) => r.unscoped_code !== null);
-              if (unreadable.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the company brain for ${split} in ${image} did not serve the slug outside the member's grant under the unscoped token either (${unreadable.slice(0, 3).map((r) => `${r.member} -> ${r.slug} in ${r.source_id}: ${r.unscoped_code}`).join('; ')}); the member token's refusal of it shows nothing`);
-              const ownRefused = s.token_alone.slug_reads.filter((r) => r.own_code !== null);
-              if (ownRefused.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the company brain for ${split} in ${image} refused get_page of a page inside the member's own grant (${ownRefused.slice(0, 3).map((r) => `${r.member} -> ${r.own_slug ?? '-'}: ${r.own_code}`).join('; ')}); the refusals outside the grant cannot be told from a broken read`);
-              if (unseenAlone.length || !s.token_alone.slug_reads.length) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the company brain for ${split} in ${image} gave ${unseenAlone.length ? `0 rows to ${unseenAlone.join(', ')} under the member tokens alone` : 'no slug outside any member\'s grant to read'}; the probe cannot show the token layer holds`);
-            }
-            if (!s.rows || !s.differs) throw new RunnerError('HE-GBRAIN-002', `scope=${scope}: the company brain for ${split} in ${image} gave ${s.rows} row(s) over ${s.calls} scoped calls${s.rows && !s.differs ? ' and the same sources to every member' : ''}; the source_ids narrowing is not observable`);
-            console.log(`GBRAIN: scope=${scope} split=${split}: ${s.members} members x ${SOURCE_PROBE_QUERIES.length} queries over search, query and recall, plus list_pages once per member${scope === 'member-sources' ? ' under each member\'s token (paged to the end under the token alone)' : ''}; ${s.calls} calls in all,${scope === 'member-sources' ? ' with the token-alone repeats and get_page reads,' : ''} ${s.rows} rows (${Object.entries(s.rows_by_tool).map(([t, n]) => `${t} ${n}`).join(', ')}) over ${s.sources_seen} sources, 0 outside the requester's grant; ${s.denied.length} unknown source ids all permission_denied; a federated source outside the member's grant answers rows under the unscoped token in ${s.foreign.filter((f) => f.rows_from_it).length} of ${s.foreign.length} members (gbrain checks the connection's grant, the tap enforces the member's); the narrowing differs between members${s.token_alone ? `; under the member tokens alone (no source_ids) ${Object.entries(s.token_alone.rows_by_tool).map(([t, n]) => `${t} ${n}`).join(', ')} rows, 0 outside the grant, and ${s.token_alone.slug_reads.length} get_page reads of a page outside the member's grant all refused under the member's token and served under the unscoped token, while a page inside the grant was served` : ''}`);
-          }
+          await probeScoped('company', split);
         }
       }
     }
@@ -717,6 +744,10 @@ async function main(argv: string[]): Promise<number> {
     const cells = flag('--cells')?.split(',').map((s) => s.trim()).filter(Boolean);
     const liveCells = manifest.cells.filter((c) => c.gbrain?.ingest === 'live' && (cells ? cells.includes(c.id) : true)).map((c) => c.id);
     if (mode === 'process' && liveCells.length) throw new RunnerError('HE-GBRAIN-001', `cells ${liveCells.join(', ')} carry gbrain.ingest "live", which runs in docker mode only; in process mode the harness runs as the runner's user and could read the ingest tokens under the trial directory. fix: run without --harness-mode process`);
+    // internal-task: a pi-memory-provider cell is docker-only too; in process mode core gets no MEMORY_PROVIDER_CONFIG and the cell
+    // registers no gbrain MCP server, so the trial would run with no gbrain at all.
+    const providerCells = manifest.cells.filter((c) => isQmMemoryProvider(c) && (cells ? cells.includes(c.id) : true)).map((c) => c.id);
+    if (mode === 'process' && providerCells.length) throw new RunnerError('HE-GBRAIN-001', `cells ${providerCells.join(', ')} use config "${MEMORY_PROVIDER_CONFIG_NAME}", which runs in docker mode only; in process mode QM core gets no MEMORY_PROVIDER_CONFIG and the trial has no gbrain. fix: run with --harness-mode docker`);
     const sealedRunCells = manifest.sealed ? manifest.cells.filter((c) => c.harness_mode !== 'scripted' && (cells ? cells.includes(c.id) : true)).map((c) => c.id) : [];
     if (mode === 'process' && sealedRunCells.length) throw new RunnerError('HE-SEALED-001', `cells ${sealedRunCells.join(', ')} belong to run ${manifest.run_id}, which opens set ${manifest.sealed!.set} in sealed custody; in process mode the harness runs as the runner's user and could read the opened sealed root and the custody files on this machine, whichever cell it serves. Nothing was opened. fix: run without --harness-mode process`);
     // Capture mode, refused before anything starts unless the run id is a capture run's.

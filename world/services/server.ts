@@ -10,6 +10,7 @@ import { SimClock } from './clock/clock.ts';
 import { EventLog } from './events.ts';
 import { GbrainIngest } from './gbrain-ingest.ts';
 import { handleGbrainRequest, type GbrainUpstream } from './gbrain-tap.ts';
+import { handleOAuthRequest, OAUTH_PATHS, type ProviderOAuth } from './oauth-issuer.ts';
 import { handleSlackApi, tokenFrom } from './slack/slack.ts';
 import { SocketHub, type SocketData } from './slack/socket.ts';
 import { WorldService } from './world.ts';
@@ -98,6 +99,27 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
   let ingest: GbrainIngest | null = null;
   // internal-task: with ingest tokens on the upstream, every message posted from now on is written into the brain (gbrain-ingest.ts).
   const setGbrain = (u: GbrainUpstream | null) => {
+    // internal-task: a provider token that is also a world token would let a model call pass as QM's provider client.
+    const p = u?.provider;
+    const clean = (s: unknown): s is string => typeof s === 'string' && s !== '' && s.trim() === s;
+    const worldToken = (t: string) => tokens.has(t) || t === credentials.admin_token || t === credentials.bot.app_token;
+    if (p && p.clients === undefined) {
+      if (!Array.isArray(p.tokens) || !p.tokens.length || p.tokens.some((t) => typeof t !== 'string' || !t || t.trim() !== t)) throw new Error('gbrain upstream: provider.tokens must be a non-empty list of non-empty tokens without surrounding whitespace');
+      if (typeof p.actor !== 'string') throw new Error('gbrain upstream: provider.actor must name a world member');
+      service.requireMember(p.actor);
+    }
+    // internal-task (#159): the OAuth issuer's shape. tokens is the issuer's map, filled as core asks; each client is checked as a fixed token is.
+    if (p && p.clients !== undefined) {
+      const clients = p.clients && typeof p.clients === 'object' && !Array.isArray(p.clients) ? Object.entries(p.clients) : [];
+      if (!clients.length || clients.some(([id, c]) => !clean(id) || !c || typeof c !== 'object' || !clean(c.secret) || typeof c.member !== 'string')) throw new Error('gbrain upstream: provider.clients must map non-empty client ids to a non-empty secret and a member, without surrounding whitespace');
+      if (!p.tokens || typeof p.tokens !== 'object' || Array.isArray(p.tokens) || Object.entries(p.tokens).some(([t, m]) => !clean(t) || typeof m !== 'string')) throw new Error("gbrain upstream: with provider.clients, provider.tokens must be the issuer's map of issued token to member (empty until a client asks)");
+      for (const [, c] of clients) service.requireMember(c.member);
+      for (const m of Object.values(p.tokens)) service.requireMember(m);
+      if (p.actor !== undefined) service.requireMember(p.actor);
+      if (clients.some(([id, c]) => worldToken(id) || worldToken(c.secret))) throw new Error('gbrain upstream: a provider client id or secret overlaps a world token; the memory-provider client needs its own credential');
+    }
+    if (p && ((p.max_chars !== undefined && !(Number.isInteger(p.max_chars) && p.max_chars > 0)) || (p.timeout_ms !== undefined && !(typeof p.timeout_ms === 'number' && Number.isFinite(p.timeout_ms) && p.timeout_ms > 0)) || [p.max_chars_arg, p.actor_arg].some((s) => s !== undefined && (typeof s !== 'string' || !s)))) throw new Error('gbrain upstream: provider.max_chars must be a positive integer and provider.timeout_ms a positive number, and provider.max_chars_arg and provider.actor_arg non-empty strings');
+    if (p && (Array.isArray(p.tokens) ? p.tokens : Object.keys(p.tokens)).some(worldToken)) throw new Error('gbrain upstream: provider.tokens overlaps a world token; the memory-provider client needs its own credential');
     gbrain = u;
     ingest?.stop();
     ingest = u?.ingest ? new GbrainIngest({ url: u.url, config: u.ingest, service, log }) : null;
@@ -134,6 +156,9 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
       if (path === '/mcp') return handleMcpRequest(req, service, resolveActor);
 
       if (path === '/gbrain' && gbrain) return handleGbrainRequest(req, { upstream: gbrain, resolveActor, log, requester: () => gbrainRequester });
+
+      // internal-task: the issuer exists only under the issuer's shape (provider.clients); the tap then accepts the tokens it issued.
+      if (OAUTH_PATHS.has(path) && gbrain?.provider?.clients) return handleOAuthRequest(req, gbrain.provider as ProviderOAuth, log);
 
       if (path === '/clock' && req.method === 'GET') {
         return Response.json({ now: clock.nowIso(), today: clock.today(), epoch_ms: clock.nowMs(), ...clock.state() });

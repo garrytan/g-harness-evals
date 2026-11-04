@@ -11,6 +11,10 @@
 // searched the brain must show a forwarded embedding line and no degraded stamp, else it is infra_error under
 // HE-GBRAIN-005 and excluded from its rung.
 //
+// QM pi-memory-provider (harnesses/qm/memory-provider.ts): a QM cell with config pi-memory-provider gets a per-trial
+// OAuth client pair, MEMORY_PROVIDER_CONFIG naming the world's /gbrain tap in its core service's environment, the provider block
+// on the gbrain upstream, and no HE_GBRAIN_MCP_* variables, so gbrain is never registered as a model-callable MCP server.
+//
 // A cell that carries ablation binds its slot with the layer map (path resolved from the repository root),
 // and after the meter is read the trial's receipts are copied to <trial dir>/ablation.ndjson and summarized into the
 // record's ablation field. The filter's outcome never changes the termination: the primary analysis is intention to treat.
@@ -25,7 +29,8 @@ import type { World } from '../../world/types.ts';
 import { loadScript, startScriptedHarness } from '../scripted/executor.ts';
 import { type InternalNetwork, startComposeHarness, startDockerHarness } from './docker.ts';
 import { type GbrainSidecar, type InstallViewManifest, checkCompanyGrants, checkCompanyTokens, checkIngestTokens, exportInstallView, startGbrainSidecar, verifyInstallView } from './gbrain.ts';
-import { GBRAIN_WRITE_TOOLS } from '../../world/services/gbrain-tap.ts';
+import { GBRAIN_WRITE_TOOLS, type GbrainUpstream } from '../../world/services/gbrain-tap.ts';
+import { isQmMemoryProvider, memoryProviderWiring, type QmProviderBlock, type QmProviderWiring } from '../../harnesses/qm/memory-provider.ts';
 import { canReadFile } from '../grade/predicates.ts';
 import { HarnessGone, type Harness, makeTrialDirs, startProcessHarness, writeAtomic } from './harness.ts';
 import { RunProxy, embeddingUsage, reconcile, summarizeAblation, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
@@ -193,6 +198,8 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   let infraError: string | null = null;
   const gbrain: ResolvedGbrain | null = cell.gbrain ? resolveGbrain(cell.gbrain) : null;
   let installView: InstallViewManifest | null = null;
+  const memoryProvider = isQmMemoryProvider(cell);
+  let providerWiring: QmProviderWiring | null = null;
   if (cell.gbrain && gbrain) {
     try {
       if (gbrain.embeddings !== 'off' && !proxy) throw new RunnerError('HE-GBRAIN-005', `cell ${cell.id} has embeddings ${gbrain.embeddings} but the trial runs without a metering proxy; the sidecar's embedding calls must be metered`);
@@ -218,7 +225,13 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       infraError = e.message;
       log(infraError);
     }
-    if (sidecar && !infraError) world.server.setGbrain({ url: sidecar.url, token: sidecar.token, ...(sidecar.tokens ? { tokens: { members: sidecar.tokens.members, public_only: sidecar.tokens.public_only } } : {}), ...(sidecar.grants ? { grants: sidecar.grants } : {}), ...(sidecar.ingest ? { ingest: { tokens: sidecar.ingest.tokens.sources, channels: sidecar.ingest.map.channels, dm_source_prefix: sidecar.ingest.map.dm_source_prefix } } : {}) });
+    if (sidecar && !infraError) {
+      if (memoryProvider) {
+        providerWiring = memoryProviderWiring({ mcpUrl: `${world.harnessUrl}/gbrain`, actor: world.botMember.id });
+        log(`QM memory provider: MEMORY_PROVIDER_CONFIG ${JSON.stringify(providerWiring.config)}; client ${Object.keys(providerWiring.provider.clients).join(', ')} acting as ${providerWiring.provider.actor} (secret per trial, never written); no gbrain MCP server is registered`);
+      }
+      world.server.setGbrain(gbrainUpstream(sidecar, providerWiring?.provider));
+    }
   }
   const installKind = installView ? (installView.install ?? 'gbrain-docs') : null;
   const installViewPath = installKind ? installViewDir(ctx.runDir, cell.harness, cell.split, installKind) : null;
@@ -240,7 +253,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     HE_SLACK_API_URL: world.config.slack.api_url,
     HE_SLACK_BOT_TOKEN: world.botToken,
     HE_SLACK_APP_TOKEN: world.config.slack.bot.app_token,
-    ...(sidecar ? { HE_GBRAIN_MCP_URL: `${world.harnessUrl}/gbrain`, HE_GBRAIN_MCP_TOKEN: world.botToken } : {}),
+    ...gbrainHarnessEnv(sidecar, world.harnessUrl, world.botToken, memoryProvider),
     // The adapter copies the bundle view into /workspace before the first turn (docs/adapters.md); unset, nothing changes.
     ...(installViewPath && installKind ? { HE_GBRAIN_INSTALL: installKind, HE_GBRAIN_SPLIT: cell.split, HE_GBRAIN_INSTALL_DIR: docker ? '/he-gbrain-install' : resolve(installViewPath) } : {}),
     ...(docker ? {} : { HE_WORKSPACE_DIR: resolve(dirs.workspace) }),
@@ -282,7 +295,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
         const image = opts.image ?? `harness-eval/${cell.harness.replace(/^_/, '')}:dev`;
         const compose = join(harnessDir, 'compose.yaml');
         harness = existsSync(compose)
-          ? await startComposeHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, composeFile: compose, timeBudgetS: task.time_budget_s, repoRoot: opts.repoRoot, stackEnv: { HE_MODEL_BASE_URL: env.HE_MODEL_BASE_URL!, HE_MODEL_API_KEY: token, HE_MODEL_NAME: modelName, HE_TIME_BUDGET_S: env.HE_TIME_BUDGET_S!, HE_TASK_SLICE: 'multiuser', HE_TRIAL_ID: trial.id, ...(cell.config ? { HE_HARNESS_CONFIG: cell.config } : {}) } })
+          ? await startComposeHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, composeFile: compose, timeBudgetS: task.time_budget_s, repoRoot: opts.repoRoot, stackEnv: { HE_MODEL_BASE_URL: env.HE_MODEL_BASE_URL!, HE_MODEL_API_KEY: token, HE_MODEL_NAME: modelName, HE_TIME_BUDGET_S: env.HE_TIME_BUDGET_S!, HE_TASK_SLICE: 'multiuser', HE_TRIAL_ID: trial.id, ...(cell.config ? { HE_HARNESS_CONFIG: cell.config } : {}) }, ...(providerWiring ? { coreEnv: providerWiring.coreEnv } : {}), modelProvider: provider })
           : await startDockerHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, repoRoot: opts.repoRoot, ...(installViewPath ? { readOnlyMounts: { [installViewPath]: '/he-gbrain-install' } } : {}), ...(network ? { network } : {}), ...(opts.captureDns ? { dns: opts.captureDns } : {}) });
       }
       await harness.waitReady(opts.readyTimeoutS * 1000);
@@ -387,6 +400,19 @@ export const GBRAIN_SEARCH_TOOLS: ReadonlySet<string> = new Set(['gbrain.search'
 
 /** The record's gbrain.ingested from the world's gbrain.ingest events: a skip is outcome ok with effect.skipped and no
  *  fact, a failure any outcome other than ok, and the rest are committed facts. The three counts partition the events. */
+/** The world's gbrain upstream for the trial's sidecar. internal-task: with QM's memory provider wired, its provider block too
+ *  (read by the OAuth issuer and the tap's caller split once #159 and #152 are on main; ignored by a tap without them). */
+export function gbrainUpstream(sidecar: Pick<GbrainSidecar, 'url' | 'token' | 'tokens' | 'grants' | 'ingest'>, provider?: QmProviderBlock): GbrainUpstream {
+  const upstream: GbrainUpstream = { url: sidecar.url, token: sidecar.token, ...(sidecar.tokens ? { tokens: { members: sidecar.tokens.members, public_only: sidecar.tokens.public_only } } : {}), ...(sidecar.grants ? { grants: sidecar.grants } : {}), ...(sidecar.ingest ? { ingest: { tokens: sidecar.ingest.tokens.sources, channels: sidecar.ingest.map.channels, dm_source_prefix: sidecar.ingest.map.dm_source_prefix } } : {}) };
+  return provider ? Object.assign(upstream, { provider }) : upstream;
+}
+
+/** The adapter's gbrain variables: the tap URL and the bot token it registers gbrain under as an MCP server. internal-task: none
+ *  for QM's memory-provider config, where gbrain reaches QM only through MEMORY_PROVIDER_CONFIG. */
+export function gbrainHarnessEnv(sidecar: object | null, harnessUrl: string, botToken: string, memoryProvider: boolean): Record<string, string> {
+  return sidecar && !memoryProvider ? { HE_GBRAIN_MCP_URL: `${harnessUrl}/gbrain`, HE_GBRAIN_MCP_TOKEN: botToken } : {};
+}
+
 export function ingestedCounts(ingests: WorldEvent[]): { ok: number; skipped: number; failed: number } {
   const skipped = ingests.filter((e) => e.outcome === 'ok' && typeof (e.effect as { skipped?: unknown } | undefined)?.skipped === 'string').length;
   const failed = ingests.filter((e) => e.outcome !== 'ok').length;
@@ -404,13 +430,17 @@ export function gbrainSummary(config: ResolvedGbrain | GbrainCellSurface, sideca
   const calls = mine.filter((e) => e.tool !== 'gbrain.initialize' && e.tool !== 'gbrain.tools/list');
   const inTurn = calls.filter((e) => windows.some((w) => e.seq > w.started_seq && e.seq <= w.ended_seq));
   const degraded = calls.filter((e) => GBRAIN_SEARCH_TOOLS.has(e.tool) && typeof (e.effect as { degraded?: unknown } | undefined)?.degraded === 'string').length;
+  const writes = calls.filter((e) => GBRAIN_WRITE_TOOLS.has(e.tool.slice('gbrain.'.length)));
+  // internal-task: a failed write is counted by its error code (storage_error while member-source page writes fail, #161), never silent.
+  const writeErrors: Record<string, number> = {};
+  for (const e of writes) if (e.outcome !== 'ok') writeErrors[e.error ?? 'error'] = (writeErrors[e.error ?? 'error'] ?? 0) + 1;
   return {
     surface: resolved.surface, image: sidecar.image, sidecar_ready_ms: sidecar.ready_ms,
     ...(sidecar.image_id ? { image_id: sidecar.image_id } : {}), ...(sidecar.brain ? { brain: sidecar.brain } : {}), ...(sidecar.scope ? { scope: sidecar.scope } : {}),
     ...(resolved.access ? { access: resolved.access } : {}),
     install: resolved.install, embeddings: resolved.embeddings,
     ...(resolved.ingest !== 'off' ? { ingest: resolved.ingest, ingested: ingestedCounts(ingests) } : {}),
-    events: { total: mine.length, discovery: mine.length - calls.length, calls: calls.length, in_turn_calls: inTurn.length, writes: calls.filter((e) => GBRAIN_WRITE_TOOLS.has(e.tool.slice('gbrain.'.length))).length, ...(resolved.embeddings !== 'off' ? { degraded } : {}) },
+    events: { total: mine.length, discovery: mine.length - calls.length, calls: calls.length, in_turn_calls: inTurn.length, writes: writes.length, ...(Object.keys(writeErrors).length ? { write_errors: writeErrors } : {}), ...(resolved.embeddings !== 'off' ? { degraded } : {}) },
   };
 }
 type GbrainCellSurface = ResolvedGbrain['surface'];
