@@ -84,15 +84,22 @@ async function replay(tap: Tap, events: WorldEvent[], upstream: current.GbrainUp
   return log.events.map((e) => ({ ...e, wall_ts: '', ...(e.effect ? { effect: { ...e.effect, latency_ms: 0 } } : {}) }));
 }
 
-/** world/services/gbrain-tap.ts at BASE, loaded once. Its only imports are types, which Bun strips. */
+/** world/services/gbrain-tap.ts at BASE, from the committed byte copy in tests/fixtures/tap-baselines/<BASE>, so the comparison
+ *  runs without the private history. Where BASE is reachable, the copy must equal it. Its only imports are types, which Bun strips. */
+const BASE_TAP = join(import.meta.dir, 'fixtures', 'tap-baselines', BASE, 'world', 'services', 'gbrain-tap.ts');
+const HAVE_BASE = spawnSync('git', ['cat-file', '-e', BASE + '^{commit}'], { cwd: ROOT }).status === 0;
+test.skipIf(!HAVE_BASE)('the tap baseline in tests/fixtures/tap-baselines/' + BASE + ' is a byte copy of world/services/gbrain-tap.ts at ' + BASE, () => {
+  const show = spawnSync('git', ['show', BASE + ':world/services/gbrain-tap.ts'], { cwd: ROOT, maxBuffer: 64 << 20 });
+  expect(show.status).toBe(0);
+  expect(readFileSync(BASE_TAP).equals(show.stdout)).toBe(true);
+});
+
 let baseTap: Tap | null = null;
 async function loadBase(): Promise<Tap> {
   if (baseTap) return baseTap;
   const dir = join(tmp, 'base', 'world', 'services');
   mkdirSync(dir, { recursive: true });
-  const show = spawnSync('git', ['show', BASE + ':world/services/gbrain-tap.ts'], { cwd: ROOT, maxBuffer: 64 << 20, encoding: 'utf8' });
-  if (show.status !== 0) throw new Error('git show ' + BASE + ' failed (CI checks out with fetch-depth 0): ' + show.stderr);
-  writeFileSync(join(dir, 'gbrain-tap.ts'), show.stdout);
+  writeFileSync(join(dir, 'gbrain-tap.ts'), readFileSync(BASE_TAP));
   return (baseTap = (await import(join(dir, 'gbrain-tap.ts'))) as Tap);
 }
 

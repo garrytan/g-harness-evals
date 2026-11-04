@@ -2,6 +2,14 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.134] - 2026-11-04
+
+### internal-task: the provider-off identity test passes in a clone without the private history
+
+- **A committed tap baseline.** `tests/gbrain-provider-off-identity.test.ts` compares today's tap with the tap at 7da83ed94, the commit where provider-aware scoring started. It used to read that file with `git show 7da83ed94`, and the public export's rewritten history has no such commit, so two tests failed in a keyless clone of the export. The file at that commit is now copied byte for byte into `tests/fixtures/tap-baselines/7da83ed94/`, the same pattern as `tests/fixtures/adapter-baselines/`, and the test loads the old tap from that copy.
+- **The copy is checked where it can be.** A new test checks that the copy still equals the file at 7da83ed94. It is skipped when the commit is not reachable, as in the public clone.
+- **Typecheck.** `tsconfig.json` leaves `tests/fixtures/tap-baselines/**` out, because the copy is old code kept as data.
+
 ## [0.0.133] - 2026-11-04
 
 ### internal-task (internal-task): export v2, the public export scrubs and delinks the current tree and holds pinned files
