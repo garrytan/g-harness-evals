@@ -1,0 +1,598 @@
+{
+  "what": "C4 freeze gate 13 (internal-task): the keyless Sol smoke. One cn-01-tamsin-cold-chain-site trial of each Sol cell (gpt-6.1-sol) through the runner and the real metering proxy, the proxy's OpenAI upstream a fake that answers the Responses and Chat Completions routes and logs each request's model; the Opus memory-provider cell the same way with a fake Anthropic upstream as the control. Hashes-only: no request or response body is stored, only each request's route, model, stream flag, tool count and credential class, and the sha256 of each fake log.",
+  "date": "2026-11-03",
+  "harness_evals_commit": "28d186ca30173c822376f500b5a47f3d952dc217",
+  "dirty": false,
+  "qm_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7",
+  "gbrain_commit": "a590ad07d15c92669ae30a37835df30d071e5536",
+  "images": {
+    "harness-eval/qm:dev": "sha256:02a91393d947174196df85be1fcc2bb9a5bcf18fa2d39234fcd65860788116d0",
+    "harness-eval/qm-sandbox:dev": "sha256:47153d26d66e099d04257e3bb67228d759ae8646cc6cafc1d3afc07940deeffc",
+    "harness-eval/gbrain:dev": "sha256:bfc1a8f74d2c97833fa2800cff9268457dc48912a04c13d4b50a19f07479df0d"
+  },
+  "run": {
+    "run_id": "anatomy-capture-qm-c4-keyless-gates-20261103b",
+    "scratch_prereg_sha256": "c7f28f818a19d4387c98cdc1e30acfef190e44e57a3304641c8ddcc1ab3dcab0",
+    "scratch_prereg": "docs/benchmarks/2026-11-03-qm-c4-told-live/prereg.json with run_id anatomy-capture-qm-c4-keyless-gates-20261103b, spend_cap_usd 20, the cells filtered to the three Sol cells and qm-pi-opus-gbrain-memory-provider-mu-v03-dev, tasks [cn-01-tamsin-cold-chain-site], repetitions 1; every other cell field unchanged (jq over the committed prereg.json)",
+    "command": "env -i PATH=$PATH HOME=$HOME bun runner/run.ts plan --prereg <scratch> --out <dir>; env -i PATH=$PATH HOME=$HOME bun runner/run.ts run --manifest <dir>/manifest.json --lease-usd 20 --max-output-tokens 128000 --capture-upstream anthropic=http://127.0.0.1:18611 --capture-upstream openai=http://127.0.0.1:18612",
+    "fakes": {
+      "anthropic": "scripts/gsta-135/fake-anthropic.ts --host 127.0.0.1 --port 18611 --require-key-prefix <the capture runner Anthropic dummy key> (no script: every answer is the text ok)",
+      "openai": "tests/fixtures/openai-branch/fake-openai.ts --host 127.0.0.1 --port 18612 --expect-key <the capture runner OpenAI dummy key>"
+    },
+    "proxy": "the real metering proxy (runner/proxy/metering-proxy.ts) in lease mode, started by the runner in capture mode (runner/trial/capture.ts): --upstream to the fakes, dummy provider keys, a scratch ledger with a $20 lease of fake usage, never paid",
+    "first_attempt": "run ...-20261103 with --lease-usd 1: every agent request was refused 402 by the proxy before the fake (an Opus reservation at --max-output-tokens 128000 is about $2.87, Sol about $1.38, over a $1 lease); the housekeeping requests were forwarded. All four trials ended model_error with cap_stop. Rerun under this run id with a $20 lease."
+  },
+  "housekeeping": {
+    "sol": [
+      "gpt-5.6-luna"
+    ],
+    "opus": [
+      "claude-haiku-5-5"
+    ],
+    "per_trial": "one housekeeping request per trial in every cell (2 turns, both in one DM session), not one per turn",
+    "utility_models_stand": true
+  },
+  "trials": {
+    "qm-pi-sol-none-mu-v03-dev": {
+      "trial_id": "anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-sol-none-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+      "model": "openai:gpt-6.1-sol",
+      "termination": "completed",
+      "cap_stop": false,
+      "wall_ms": 14242,
+      "proxy_requests": [
+        {
+          "at": "2026-11-04T00:00:17.816Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-5.6-luna",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-sol-none-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 0.154629,
+          "actual_usd": 0.000006,
+          "streamed": true
+        },
+        {
+          "at": "2026-11-04T00:00:17.889Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-sol-none-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 1.3759925,
+          "actual_usd": 0.000054,
+          "streamed": true
+        },
+        {
+          "at": "2026-11-04T00:00:18.885Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-sol-none-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 1.3855675,
+          "actual_usd": 0.000054,
+          "streamed": true
+        }
+      ],
+      "meter": {
+        "meter_id": "trial-token:anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-sol-none-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+        "usd": 0.00011399999999999999,
+        "requests": 3,
+        "proxy_consistent": true
+      },
+      "oauth_token_events": [],
+      "gbrain_events": [],
+      "ingest_events": 0
+    },
+    "qm-pi-sol-gbrain-memory-provider-mu-v03-dev": {
+      "trial_id": "anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+      "model": "openai:gpt-6.1-sol",
+      "termination": "completed",
+      "cap_stop": false,
+      "wall_ms": 19877,
+      "proxy_requests": [
+        {
+          "at": "2026-11-04T00:00:36.898Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-5.6-luna",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 0.154629,
+          "actual_usd": 0.000006,
+          "streamed": true
+        },
+        {
+          "at": "2026-11-04T00:00:36.994Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 1.3759925,
+          "actual_usd": 0.000054,
+          "streamed": true
+        },
+        {
+          "at": "2026-11-04T00:00:38.224Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 1.3855675,
+          "actual_usd": 0.000054,
+          "streamed": true
+        }
+      ],
+      "meter": {
+        "meter_id": "trial-token:anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+        "usd": 0.00011399999999999999,
+        "requests": 3,
+        "proxy_consistent": true
+      },
+      "oauth_token_events": [
+        {
+          "seq": 6,
+          "outcome": "ok",
+          "client_id": "qm-memory-read",
+          "auth_method": "client_secret_basic"
+        }
+      ],
+      "gbrain_events": [
+        {
+          "seq": 7,
+          "tool": "gbrain.initialize",
+          "outcome": "ok",
+          "error": null,
+          "caller": "provider",
+          "provider_op": null,
+          "arg_names": [],
+          "question_chars": null,
+          "max_chars": null,
+          "delivery": null
+        },
+        {
+          "seq": 8,
+          "tool": "gbrain.recall",
+          "outcome": "error",
+          "error": "invalid_params",
+          "caller": "provider",
+          "provider_op": "recall",
+          "arg_names": [
+            "acting_user",
+            "max_chars",
+            "question"
+          ],
+          "question_chars": 2017,
+          "max_chars": 6000,
+          "delivery": {
+            "facts": [],
+            "returned": [],
+            "dropped": "tool_error",
+            "text_chars": 10801,
+            "delivered_chars": 0
+          }
+        },
+        {
+          "seq": 16,
+          "tool": "gbrain.initialize",
+          "outcome": "ok",
+          "error": null,
+          "caller": "provider",
+          "provider_op": null,
+          "arg_names": [],
+          "question_chars": null,
+          "max_chars": null,
+          "delivery": null
+        },
+        {
+          "seq": 17,
+          "tool": "gbrain.recall",
+          "outcome": "error",
+          "error": "invalid_params",
+          "caller": "provider",
+          "provider_op": "recall",
+          "arg_names": [
+            "acting_user",
+            "max_chars",
+            "question"
+          ],
+          "question_chars": 3038,
+          "max_chars": 6000,
+          "delivery": {
+            "facts": [],
+            "returned": [],
+            "dropped": "tool_error",
+            "text_chars": 9194,
+            "delivered_chars": 0
+          }
+        }
+      ],
+      "ingest_events": 4
+    },
+    "qm-pi-sol-gbrain-route-tool-mu-v03-dev": {
+      "trial_id": "anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-sol-gbrain-route-tool-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+      "model": "openai:gpt-6.1-sol",
+      "termination": "completed",
+      "cap_stop": false,
+      "wall_ms": 20391,
+      "proxy_requests": [
+        {
+          "at": "2026-11-04T00:00:56.899Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-5.6-luna",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-sol-gbrain-route-tool-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 0.1547204,
+          "actual_usd": 0.000006,
+          "streamed": true
+        },
+        {
+          "at": "2026-11-04T00:00:56.971Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-sol-gbrain-route-tool-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 1.3883625,
+          "actual_usd": 0.000054,
+          "streamed": true
+        },
+        {
+          "at": "2026-11-04T00:00:58.270Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-sol-gbrain-route-tool-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 1.3999475,
+          "actual_usd": 0.000054,
+          "streamed": true
+        }
+      ],
+      "meter": {
+        "meter_id": "trial-token:anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-sol-gbrain-route-tool-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+        "usd": 0.00011399999999999999,
+        "requests": 3,
+        "proxy_consistent": true
+      },
+      "oauth_token_events": [],
+      "gbrain_events": [
+        {
+          "seq": 1,
+          "tool": "gbrain.initialize",
+          "outcome": "ok",
+          "error": null,
+          "caller": null,
+          "provider_op": null,
+          "arg_names": [],
+          "question_chars": null,
+          "max_chars": null,
+          "delivery": null
+        },
+        {
+          "seq": 2,
+          "tool": "gbrain.tools/list",
+          "outcome": "ok",
+          "error": null,
+          "caller": null,
+          "provider_op": null,
+          "arg_names": [],
+          "question_chars": null,
+          "max_chars": null,
+          "delivery": null
+        },
+        {
+          "seq": 3,
+          "tool": "gbrain.initialize",
+          "outcome": "ok",
+          "error": null,
+          "caller": null,
+          "provider_op": null,
+          "arg_names": [],
+          "question_chars": null,
+          "max_chars": null,
+          "delivery": null
+        },
+        {
+          "seq": 4,
+          "tool": "gbrain.tools/list",
+          "outcome": "ok",
+          "error": null,
+          "caller": null,
+          "provider_op": null,
+          "arg_names": [],
+          "question_chars": null,
+          "max_chars": null,
+          "delivery": null
+        }
+      ],
+      "ingest_events": 4
+    },
+    "qm-pi-opus-gbrain-memory-provider-mu-v03-dev": {
+      "trial_id": "anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-opus-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+      "model": "anthropic:claude-opus-5-5",
+      "termination": "completed",
+      "cap_stop": false,
+      "wall_ms": 20119,
+      "proxy_requests": [
+        {
+          "at": "2026-11-04T00:00:02.215Z",
+          "provider": "anthropic",
+          "route": "/v1/messages",
+          "model": "claude-haiku-5-5",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-opus-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 0.064650125,
+          "actual_usd": 6e-7,
+          "streamed": true
+        },
+        {
+          "at": "2026-11-04T00:00:02.309Z",
+          "provider": "anthropic",
+          "route": "/v1/messages",
+          "model": "claude-opus-5-5",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-opus-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 2.866304,
+          "actual_usd": 0.000024,
+          "streamed": true
+        },
+        {
+          "at": "2026-11-04T00:00:03.665Z",
+          "provider": "anthropic",
+          "route": "/v1/messages",
+          "model": "claude-opus-5-5",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-opus-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 2.896256,
+          "actual_usd": 0.000024,
+          "streamed": true
+        }
+      ],
+      "meter": {
+        "meter_id": "trial-token:anatomy-capture-qm-c4-keyless-gates-20261103b/qm-pi-opus-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+        "usd": 0.0000486,
+        "requests": 3,
+        "proxy_consistent": true
+      },
+      "oauth_token_events": [
+        {
+          "seq": 6,
+          "outcome": "ok",
+          "client_id": "qm-memory-read",
+          "auth_method": "client_secret_basic"
+        }
+      ],
+      "gbrain_events": [
+        {
+          "seq": 7,
+          "tool": "gbrain.initialize",
+          "outcome": "ok",
+          "error": null,
+          "caller": "provider",
+          "provider_op": null,
+          "arg_names": [],
+          "question_chars": null,
+          "max_chars": null,
+          "delivery": null
+        },
+        {
+          "seq": 8,
+          "tool": "gbrain.recall",
+          "outcome": "error",
+          "error": "invalid_params",
+          "caller": "provider",
+          "provider_op": "recall",
+          "arg_names": [
+            "acting_user",
+            "max_chars",
+            "question"
+          ],
+          "question_chars": 2017,
+          "max_chars": 6000,
+          "delivery": {
+            "facts": [],
+            "returned": [],
+            "dropped": "tool_error",
+            "text_chars": 10801,
+            "delivered_chars": 0
+          }
+        },
+        {
+          "seq": 16,
+          "tool": "gbrain.initialize",
+          "outcome": "ok",
+          "error": null,
+          "caller": "provider",
+          "provider_op": null,
+          "arg_names": [],
+          "question_chars": null,
+          "max_chars": null,
+          "delivery": null
+        },
+        {
+          "seq": 17,
+          "tool": "gbrain.recall",
+          "outcome": "error",
+          "error": "invalid_params",
+          "caller": "provider",
+          "provider_op": "recall",
+          "arg_names": [
+            "acting_user",
+            "max_chars",
+            "question"
+          ],
+          "question_chars": 3038,
+          "max_chars": 6000,
+          "delivery": {
+            "facts": [],
+            "returned": [],
+            "dropped": "tool_error",
+            "text_chars": 9194,
+            "delivered_chars": 0
+          }
+        }
+      ],
+      "ingest_events": 4
+    }
+  },
+  "fake_openai_requests": [
+    {
+      "path": "/v1/responses",
+      "model": "gpt-5.6-luna",
+      "stream": true,
+      "tools": 0,
+      "credential": "expected",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    },
+    {
+      "path": "/v1/responses",
+      "model": "gpt-6.1-sol",
+      "stream": true,
+      "tools": 15,
+      "credential": "expected",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    },
+    {
+      "path": "/v1/responses",
+      "model": "gpt-6.1-sol",
+      "stream": true,
+      "tools": 15,
+      "credential": "expected",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    },
+    {
+      "path": "/v1/responses",
+      "model": "gpt-5.6-luna",
+      "stream": true,
+      "tools": 0,
+      "credential": "expected",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    },
+    {
+      "path": "/v1/responses",
+      "model": "gpt-6.1-sol",
+      "stream": true,
+      "tools": 15,
+      "credential": "expected",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    },
+    {
+      "path": "/v1/responses",
+      "model": "gpt-6.1-sol",
+      "stream": true,
+      "tools": 15,
+      "credential": "expected",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    },
+    {
+      "path": "/v1/responses",
+      "model": "gpt-5.6-luna",
+      "stream": true,
+      "tools": 0,
+      "credential": "expected",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    },
+    {
+      "path": "/v1/responses",
+      "model": "gpt-6.1-sol",
+      "stream": true,
+      "tools": 15,
+      "credential": "expected",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    },
+    {
+      "path": "/v1/responses",
+      "model": "gpt-6.1-sol",
+      "stream": true,
+      "tools": 15,
+      "credential": "expected",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    }
+  ],
+  "fake_anthropic_requests": [
+    {
+      "path": "/v1/messages",
+      "status": 200,
+      "model": "claude-haiku-5-5",
+      "tools": 0,
+      "stream": true
+    },
+    {
+      "path": "/v1/messages",
+      "status": 200,
+      "model": "claude-opus-5-5",
+      "tools": 15,
+      "stream": true
+    },
+    {
+      "path": "/v1/messages",
+      "status": 200,
+      "model": "claude-opus-5-5",
+      "tools": 15,
+      "stream": true
+    }
+  ],
+  "fake_log_sha256": {
+    "openai": "29218da1dcd3cb0c0a735346f5cb2642ae1338276a0b458f714f5c313ba649d5",
+    "anthropic": "2955cf1510c82215262e3e5dd49c6a351c8a52082a1cccacb705b202e8a88be9"
+  },
+  "note_memory_provider": "The Sol memory-provider trial's provider recalls failed the same way as the Opus one (gbrain invalid_params, question over 2,000 characters; gate4-seeded-qm-core-trial.json). Gate 13 does not test the provider route, so this is recorded under gate 4.",
+  "assertions": [
+    {
+      "id": "sol_trials_completed",
+      "pass": true,
+      "detail": "qm-pi-sol-none-mu-v03-dev completed; qm-pi-sol-gbrain-memory-provider-mu-v03-dev completed; qm-pi-sol-gbrain-route-tool-mu-v03-dev completed"
+    },
+    {
+      "id": "agent_requests_on_proxy_openai_route",
+      "pass": true,
+      "detail": "6 agent requests, all provider openai, route /v1/responses, forwarded; model gpt-6.1-sol"
+    },
+    {
+      "id": "dummy_token_only",
+      "pass": true,
+      "detail": "9 requests reached the fake OpenAI; every one carried the proxy's dummy key (credential expected), so core presented the per-trial token the proxy requires on the slot and nothing else reached the upstream"
+    },
+    {
+      "id": "housekeeping_model_recorded",
+      "pass": true,
+      "detail": "3 housekeeping request(s), model gpt-5.6-luna (no tools, the session-title call), forwarded and priced as openai:gpt-5.6-luna"
+    },
+    {
+      "id": "metered_on_trial_lease",
+      "pass": true,
+      "detail": "every proxy usage line carries key trial-token:<that trial id> and the run lease anatomy-capture-qm-c4-keyless-gates-20261103b; usd per trial 0.00011399999999999999, 0.00011399999999999999, 0.00011399999999999999, 0.0000486"
+    },
+    {
+      "id": "opus_control",
+      "pass": true,
+      "detail": "Opus memory-provider trial completed; models claude-haiku-5-5, claude-opus-5-5, claude-opus-5-5 on /v1/messages"
+    }
+  ],
+  "pass": true
+}

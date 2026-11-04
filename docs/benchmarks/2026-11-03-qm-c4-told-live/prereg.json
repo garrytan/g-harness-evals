@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "run_id": "qm-c4-told-live-2026-11",
+  "question": "On the 8 public dev continuity and corrections tasks of task set v0.3 (the C4 told-live design), on QM main b6786d67 through Pi with the gbrain sidecar at a590ad07, the dev member brain and live ingestion, on anthropic:claude-opus-5-5 and on openai:gpt-6.1-sol at five repetitions per task: how do member-visible pass and the C4 mechanism count (scripts/v03/mechanism.ts --provider-aware, #152) differ between QM's own notebook memory only (none), gbrain registered as a model-callable MCP server with the brain-first clause and both scope layers (route-tool), and gbrain as QM's per-turn personal-scope memory provider behind QM's default route with no gbrain tools (memory-provider, labelled unscoped by member), Holm-corrected over the three paired comparisons per endpoint. Provider-failure rate stays inside the primary outcome. Secondary, descriptive: model-initiated gbrain calls beside provider recalls with non-empty delivered text, recall p50/p95 latency, gbrain calls per turn, tokens per request, cost per trial, cross-scope reads and write errors.",
+  "gbrain_commit": "a590ad07d15c92669ae30a37835df30d071e5536",
+  "tasks": {},
+  "cells": [
+    {
+      "id": "qm-pi-opus-none-mu-v03-dev",
+      "harness": "qm",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "pi",
+      "utility_models": [
+        "anthropic:claude-haiku-5-5"
+      ],
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    },
+    {
+      "id": "qm-pi-opus-gbrain-memory-provider-mu-v03-dev",
+      "harness": "qm",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "pi-memory-provider",
+      "utility_models": [
+        "anthropic:claude-haiku-5-5"
+      ],
+      "gbrain": {
+        "surface": "starter",
+        "brain": "member",
+        "scope": "member",
+        "ingest": "live"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    },
+    {
+      "id": "qm-pi-opus-gbrain-route-tool-mu-v03-dev",
+      "harness": "qm",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "pi",
+      "utility_models": [
+        "anthropic:claude-haiku-5-5"
+      ],
+      "gbrain": {
+        "surface": "starter",
+        "brain": "member",
+        "scope": "member-sources",
+        "ingest": "live"
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-memory.md",
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    },
+    {
+      "id": "qm-pi-sol-none-mu-v03-dev",
+      "harness": "qm",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "pi",
+      "utility_models": [
+        "openai:gpt-5.6-luna"
+      ],
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    },
+    {
+      "id": "qm-pi-sol-gbrain-memory-provider-mu-v03-dev",
+      "harness": "qm",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "pi-memory-provider",
+      "utility_models": [
+        "openai:gpt-5.6-luna"
+      ],
+      "gbrain": {
+        "surface": "starter",
+        "brain": "member",
+        "scope": "member",
+        "ingest": "live"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    },
+    {
+      "id": "qm-pi-sol-gbrain-route-tool-mu-v03-dev",
+      "harness": "qm",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "pi",
+      "utility_models": [
+        "openai:gpt-5.6-luna"
+      ],
+      "gbrain": {
+        "surface": "starter",
+        "brain": "member",
+        "scope": "member-sources",
+        "ingest": "live"
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-memory.md",
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 5,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      }
+    }
+  ],
+  "wall_clock_s": {
+    "multiuser": 1500
+  },
+  "spend_cap_usd": 56,
+  "drop_order": [],
+  "minimum_v01": [
+    "qm-pi-opus-none-mu-v03-dev",
+    "qm-pi-opus-gbrain-memory-provider-mu-v03-dev",
+    "qm-pi-opus-gbrain-route-tool-mu-v03-dev",
+    "qm-pi-sol-none-mu-v03-dev",
+    "qm-pi-sol-gbrain-memory-provider-mu-v03-dev",
+    "qm-pi-sol-gbrain-route-tool-mu-v03-dev"
+  ]
+}

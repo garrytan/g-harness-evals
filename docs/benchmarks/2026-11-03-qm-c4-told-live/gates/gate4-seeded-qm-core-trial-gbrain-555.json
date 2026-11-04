@@ -1,0 +1,528 @@
+{
+  "what": "C4 freeze gate 4 at gbrain v0.60.555.0 (internal-task, the Captain's K1): the seeded cn-01 trial of both memory-provider cells (Opus, Sol) through the runner, the real metering proxy and fake upstreams, keyless, with the gbrain sidecar image built at a3f46d35 and the scratch preregistration's gbrain_commit set to it. Five variants: QM as wired with and without the member-text trim, and three scratch probes that remove QM's acting_user argument to see what the ranking does at this pin. Never counted.",
+  "date": "2026-11-04",
+  "pass": false,
+  "qm_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7",
+  "gbrain_commit": "a3f46d358d0c8df2dac71e8d73add2a19b1940c7",
+  "gbrain_version": "0.60.555.0",
+  "images": {
+    "harness-eval/qm:dev": "sha256:02a91393d947174196df85be1fcc2bb9a5bcf18fa2d39234fcd65860788116d0",
+    "harness-eval/qm-sandbox:dev": "sha256:47153d26d66e099d04257e3bb67228d759ae8646cc6cafc1d3afc07940deeffc",
+    "harness-eval/gbrain:a3f46d35": "sha256:5b8de2f40cd1ec29f8423b93e62e7329b56dffe28b5b194730d711dcaed96cc0"
+  },
+  "preflight": "runner preflight at the a3f46d35 image: the image records the scratch preregistration's gbrain_commit, serves /health (gbrain 0.60.555.0) and 33 tools on starter (pin 33), member brain 18 pages, public-only 11 of 11",
+  "command": "env -i PATH=$PATH HOME=$HOME bun runner/run.ts plan --prereg <scratch> --out <dir>; env -i PATH=$PATH HOME=$HOME bun runner/run.ts run --manifest <dir>/manifest.json --gbrain-image harness-eval/gbrain:a3f46d35 --lease-usd 20 --max-output-tokens 128000 --capture-upstream anthropic=<fake> --capture-upstream openai=<fake>",
+  "fakes": {
+    "anthropic": "scripts/gsta-135/fake-anthropic.ts on 127.0.0.1, the capture runner Anthropic dummy key required",
+    "openai": "tests/fixtures/openai-branch/fake-openai.ts on 127.0.0.1, the capture runner OpenAI dummy key expected"
+  },
+  "finding": {
+    "summary": "Gate 4 fails at gbrain v0.60.555.0 with QM b6786d67 as wired: every provider recall is refused actor_not_attested (reason argument_without_attestation), with or without the tap trim, so no told fact reaches any turn. QM's MCP memory provider names the member in the acting_user argument (src/memory/mcp-memory-provider.ts:32,57) and sends no x-qm-actor header. gbrain 0.60.546.0 began refusing acting_user unless the call carries x-qm-actor from a client the brain host granted the attest right (behaviour notice qm_attested_actor_gst359; src/core/access/actor.ts:130). gbrain a590ad07 ran the recall and ignored acting_user.",
+    "long_question_at_555": "gbrain v0.60.555.0 still refuses a question over 2,000 characters with invalid_params (src/core/facts/question-recall.ts:30 and :121-123); it suggests the cut but does not apply it. Seen in the probe that removes acting_user.",
+    "told_fact_counts_turn2": {
+      "qm_as_wired_no_trim": [
+        0,
+        0
+      ],
+      "qm_as_wired_member_text_trim": [
+        0,
+        0
+      ],
+      "probe_no_actor_as_shipped_question": [
+        0,
+        0
+      ],
+      "probe_no_actor_trim_only": [
+        0,
+        0
+      ],
+      "probe_no_actor_member_text": [
+        2,
+        2
+      ],
+      "order": [
+        "qm-pi-opus-gbrain-memory-provider-mu-v03-dev",
+        "qm-pi-sol-gbrain-memory-provider-mu-v03-dev"
+      ]
+    },
+    "to_pass": "Either QM sends the member in x-qm-actor through its credential broker and the world grants the C4 client the attest right and links each member (gbrain auth rescope --client <id> --attest-actor qm; gbrain access member link <member> --qm <id>), or the tap drops acting_user. Both are world or harness changes beyond a pin move, so C4 stays at gbrain a590ad07."
+  },
+  "runs": [
+    {
+      "variant": "qm_as_wired_no_trim",
+      "run_id": "anatomy-capture-qm-c4-555-asshipped-20261104",
+      "checkout": "harn31/qm-preregs b25e56dfd4892e8308190e3f88982b3d14c71e17, no tap trim",
+      "tap": "as on the branch: no trim; QM's acting_user argument forwarded",
+      "scratch_prereg_sha256": "3f8bfb4056c1f53920464e60b994e452260780ca5c6dbcbb142240b22ddd04e0",
+      "gbrain_commit_in_scratch_prereg": "a3f46d358d0c8df2dac71e8d73add2a19b1940c7",
+      "trials": [
+        {
+          "trial_id": "anatomy-capture-qm-c4-555-asshipped-20261104/qm-pi-opus-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "termination": "completed",
+          "usd": null,
+          "provider_recalls": [
+            {
+              "seq": 8,
+              "caller": "provider",
+              "outcome": "error",
+              "error": "actor_not_attested",
+              "acting_user_sent": true,
+              "x_qm_actor_header": false,
+              "question_chars": 2017,
+              "question_trim": null,
+              "facts_returned": 0,
+              "told_fact_dock_38_delivered": false,
+              "dropped": "tool_error"
+            },
+            {
+              "seq": 17,
+              "caller": "provider",
+              "outcome": "error",
+              "error": "actor_not_attested",
+              "acting_user_sent": true,
+              "x_qm_actor_header": false,
+              "question_chars": 3038,
+              "question_trim": null,
+              "facts_returned": 0,
+              "told_fact_dock_38_delivered": false,
+              "dropped": "tool_error"
+            }
+          ]
+        },
+        {
+          "trial_id": "anatomy-capture-qm-c4-555-asshipped-20261104/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "termination": "completed",
+          "usd": null,
+          "provider_recalls": [
+            {
+              "seq": 8,
+              "caller": "provider",
+              "outcome": "error",
+              "error": "actor_not_attested",
+              "acting_user_sent": true,
+              "x_qm_actor_header": false,
+              "question_chars": 2017,
+              "question_trim": null,
+              "facts_returned": 0,
+              "told_fact_dock_38_delivered": false,
+              "dropped": "tool_error"
+            },
+            {
+              "seq": 17,
+              "caller": "provider",
+              "outcome": "error",
+              "error": "actor_not_attested",
+              "acting_user_sent": true,
+              "x_qm_actor_header": false,
+              "question_chars": 3038,
+              "question_trim": null,
+              "facts_returned": 0,
+              "told_fact_dock_38_delivered": false,
+              "dropped": "tool_error"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "qm_as_wired_member_text_trim",
+      "run_id": "anatomy-capture-qm-c4-555-trim-20261104",
+      "checkout": "a detached worktree at 3d9472d19d80258b4e67b52374e03b3e8e055ab8, a local merge (not pushed) of harn31/qm-preregs b25e56dfd4892e8308190e3f88982b3d14c71e17 and harn31/qm-tap-trim 82a57d9a6784b22d26b7220b298696886fa34890",
+      "tap": "the member-text trim (82a57d9a); QM's acting_user argument forwarded",
+      "scratch_prereg_sha256": "973454e14c0e1f54a9616b7040a5650d8e946760c36040207ae78499c79c75ba",
+      "gbrain_commit_in_scratch_prereg": "a3f46d358d0c8df2dac71e8d73add2a19b1940c7",
+      "trials": [
+        {
+          "trial_id": "anatomy-capture-qm-c4-555-trim-20261104/qm-pi-opus-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "termination": "completed",
+          "usd": null,
+          "provider_recalls": [
+            {
+              "seq": 8,
+              "caller": "provider",
+              "outcome": "error",
+              "error": "actor_not_attested",
+              "acting_user_sent": true,
+              "x_qm_actor_header": false,
+              "question_chars": 137,
+              "question_trim": {
+                "original_chars": 2017,
+                "trim_only_chars": 2000,
+                "member_text_chars": 137,
+                "sent_chars": 137,
+                "kept": "member_text"
+              },
+              "facts_returned": 0,
+              "told_fact_dock_38_delivered": false,
+              "dropped": "tool_error"
+            },
+            {
+              "seq": 17,
+              "caller": "provider",
+              "outcome": "error",
+              "error": "actor_not_attested",
+              "acting_user_sent": true,
+              "x_qm_actor_header": false,
+              "question_chars": 110,
+              "question_trim": {
+                "original_chars": 3038,
+                "trim_only_chars": 2000,
+                "member_text_chars": 110,
+                "sent_chars": 110,
+                "kept": "member_text"
+              },
+              "facts_returned": 0,
+              "told_fact_dock_38_delivered": false,
+              "dropped": "tool_error"
+            }
+          ]
+        },
+        {
+          "trial_id": "anatomy-capture-qm-c4-555-trim-20261104/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "termination": "completed",
+          "usd": null,
+          "provider_recalls": [
+            {
+              "seq": 8,
+              "caller": "provider",
+              "outcome": "error",
+              "error": "actor_not_attested",
+              "acting_user_sent": true,
+              "x_qm_actor_header": false,
+              "question_chars": 137,
+              "question_trim": {
+                "original_chars": 2017,
+                "trim_only_chars": 2000,
+                "member_text_chars": 137,
+                "sent_chars": 137,
+                "kept": "member_text"
+              },
+              "facts_returned": 0,
+              "told_fact_dock_38_delivered": false,
+              "dropped": "tool_error"
+            },
+            {
+              "seq": 17,
+              "caller": "provider",
+              "outcome": "error",
+              "error": "actor_not_attested",
+              "acting_user_sent": true,
+              "x_qm_actor_header": false,
+              "question_chars": 110,
+              "question_trim": {
+                "original_chars": 3038,
+                "trim_only_chars": 2000,
+                "member_text_chars": 110,
+                "sent_chars": 110,
+                "kept": "member_text"
+              },
+              "facts_returned": 0,
+              "told_fact_dock_38_delivered": false,
+              "dropped": "tool_error"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "probe_no_actor_as_shipped_question",
+      "run_id": "anatomy-capture-qm-c4-555-probe-asshipped-20261104",
+      "checkout": "the same worktree with a scratch, uncommitted edit to world/services/gbrain-tap.ts",
+      "tap": "scratch probe: acting_user removed from every provider recall (gbrain a590ad07 ignored it), question forwarded whole",
+      "scratch_prereg_sha256": "65b981d173811db48d5650457be37e53a4bd74447ae852263dcaec563e5ba2fd",
+      "gbrain_commit_in_scratch_prereg": "a3f46d358d0c8df2dac71e8d73add2a19b1940c7",
+      "trials": [
+        {
+          "trial_id": "anatomy-capture-qm-c4-555-probe-asshipped-20261104/qm-pi-opus-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "termination": "completed",
+          "usd": null,
+          "provider_recalls": [
+            {
+              "seq": 8,
+              "caller": "provider",
+              "outcome": "error",
+              "error": "invalid_params",
+              "acting_user_sent": false,
+              "x_qm_actor_header": false,
+              "question_chars": 2017,
+              "question_trim": {
+                "original_chars": 2017,
+                "trim_only_chars": 2017,
+                "member_text_chars": null,
+                "sent_chars": 2017,
+                "kept": "head"
+              },
+              "facts_returned": 0,
+              "told_fact_dock_38_delivered": false,
+              "dropped": "tool_error"
+            },
+            {
+              "seq": 17,
+              "caller": "provider",
+              "outcome": "error",
+              "error": "invalid_params",
+              "acting_user_sent": false,
+              "x_qm_actor_header": false,
+              "question_chars": 3038,
+              "question_trim": {
+                "original_chars": 3038,
+                "trim_only_chars": 3038,
+                "member_text_chars": null,
+                "sent_chars": 3038,
+                "kept": "head"
+              },
+              "facts_returned": 0,
+              "told_fact_dock_38_delivered": false,
+              "dropped": "tool_error"
+            }
+          ]
+        },
+        {
+          "trial_id": "anatomy-capture-qm-c4-555-probe-asshipped-20261104/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "termination": "completed",
+          "usd": null,
+          "provider_recalls": [
+            {
+              "seq": 8,
+              "caller": "provider",
+              "outcome": "error",
+              "error": "invalid_params",
+              "acting_user_sent": false,
+              "x_qm_actor_header": false,
+              "question_chars": 2017,
+              "question_trim": {
+                "original_chars": 2017,
+                "trim_only_chars": 2017,
+                "member_text_chars": null,
+                "sent_chars": 2017,
+                "kept": "head"
+              },
+              "facts_returned": 0,
+              "told_fact_dock_38_delivered": false,
+              "dropped": "tool_error"
+            },
+            {
+              "seq": 17,
+              "caller": "provider",
+              "outcome": "error",
+              "error": "invalid_params",
+              "acting_user_sent": false,
+              "x_qm_actor_header": false,
+              "question_chars": 3038,
+              "question_trim": {
+                "original_chars": 3038,
+                "trim_only_chars": 3038,
+                "member_text_chars": null,
+                "sent_chars": 3038,
+                "kept": "head"
+              },
+              "facts_returned": 0,
+              "told_fact_dock_38_delivered": false,
+              "dropped": "tool_error"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "probe_no_actor_trim_only",
+      "run_id": "anatomy-capture-qm-c4-555-probe-trimonly-20261104",
+      "checkout": "the same worktree with a scratch, uncommitted edit to world/services/gbrain-tap.ts",
+      "tap": "scratch probe: acting_user removed, question trimmed to its Current message part and 2,000 characters (boilerplate first)",
+      "scratch_prereg_sha256": "93dd2d634f3511f910d5519d83089d9ddc9f898c92a06a5821ad410ecb3a0a3f",
+      "gbrain_commit_in_scratch_prereg": "a3f46d358d0c8df2dac71e8d73add2a19b1940c7",
+      "trials": [
+        {
+          "trial_id": "anatomy-capture-qm-c4-555-probe-trimonly-20261104/qm-pi-opus-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "termination": "completed",
+          "usd": null,
+          "provider_recalls": [
+            {
+              "seq": 8,
+              "caller": "provider",
+              "outcome": "ok",
+              "error": null,
+              "acting_user_sent": false,
+              "x_qm_actor_header": false,
+              "question_chars": 2000,
+              "question_trim": {
+                "original_chars": 2017,
+                "trim_only_chars": 2000,
+                "member_text_chars": null,
+                "sent_chars": 2000,
+                "kept": "current_message"
+              },
+              "facts_returned": 0,
+              "told_fact_dock_38_delivered": false,
+              "dropped": null
+            },
+            {
+              "seq": 17,
+              "caller": "provider",
+              "outcome": "ok",
+              "error": null,
+              "acting_user_sent": false,
+              "x_qm_actor_header": false,
+              "question_chars": 2000,
+              "question_trim": {
+                "original_chars": 3038,
+                "trim_only_chars": 2000,
+                "member_text_chars": null,
+                "sent_chars": 2000,
+                "kept": "current_message"
+              },
+              "facts_returned": 0,
+              "told_fact_dock_38_delivered": false,
+              "dropped": null
+            }
+          ]
+        },
+        {
+          "trial_id": "anatomy-capture-qm-c4-555-probe-trimonly-20261104/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "termination": "completed",
+          "usd": null,
+          "provider_recalls": [
+            {
+              "seq": 8,
+              "caller": "provider",
+              "outcome": "ok",
+              "error": null,
+              "acting_user_sent": false,
+              "x_qm_actor_header": false,
+              "question_chars": 2000,
+              "question_trim": {
+                "original_chars": 2017,
+                "trim_only_chars": 2000,
+                "member_text_chars": null,
+                "sent_chars": 2000,
+                "kept": "current_message"
+              },
+              "facts_returned": 0,
+              "told_fact_dock_38_delivered": false,
+              "dropped": null
+            },
+            {
+              "seq": 17,
+              "caller": "provider",
+              "outcome": "ok",
+              "error": null,
+              "acting_user_sent": false,
+              "x_qm_actor_header": false,
+              "question_chars": 2000,
+              "question_trim": {
+                "original_chars": 3038,
+                "trim_only_chars": 2000,
+                "member_text_chars": null,
+                "sent_chars": 2000,
+                "kept": "current_message"
+              },
+              "facts_returned": 0,
+              "told_fact_dock_38_delivered": false,
+              "dropped": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "probe_no_actor_member_text",
+      "run_id": "anatomy-capture-qm-c4-555-probe-member-20261104",
+      "checkout": "the same worktree with a scratch, uncommitted edit to world/services/gbrain-tap.ts",
+      "tap": "scratch probe: acting_user removed, the member-text trim",
+      "scratch_prereg_sha256": "6e659b47b61083e115a1edfaf09dbb2d4640541e2ef131ae2c044983b5829fdd",
+      "gbrain_commit_in_scratch_prereg": "a3f46d358d0c8df2dac71e8d73add2a19b1940c7",
+      "trials": [
+        {
+          "trial_id": "anatomy-capture-qm-c4-555-probe-member-20261104/qm-pi-opus-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "termination": "completed",
+          "usd": null,
+          "provider_recalls": [
+            {
+              "seq": 8,
+              "caller": "provider",
+              "outcome": "ok",
+              "error": null,
+              "acting_user_sent": false,
+              "x_qm_actor_header": false,
+              "question_chars": 137,
+              "question_trim": {
+                "original_chars": 2017,
+                "trim_only_chars": 2000,
+                "member_text_chars": 137,
+                "sent_chars": 137,
+                "kept": "member_text"
+              },
+              "facts_returned": 1,
+              "told_fact_dock_38_delivered": true,
+              "dropped": null
+            },
+            {
+              "seq": 17,
+              "caller": "provider",
+              "outcome": "ok",
+              "error": null,
+              "acting_user_sent": false,
+              "x_qm_actor_header": false,
+              "question_chars": 110,
+              "question_trim": {
+                "original_chars": 3038,
+                "trim_only_chars": 2000,
+                "member_text_chars": 110,
+                "sent_chars": 110,
+                "kept": "member_text"
+              },
+              "facts_returned": 2,
+              "told_fact_dock_38_delivered": true,
+              "dropped": null
+            }
+          ]
+        },
+        {
+          "trial_id": "anatomy-capture-qm-c4-555-probe-member-20261104/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "termination": "completed",
+          "usd": null,
+          "provider_recalls": [
+            {
+              "seq": 8,
+              "caller": "provider",
+              "outcome": "ok",
+              "error": null,
+              "acting_user_sent": false,
+              "x_qm_actor_header": false,
+              "question_chars": 137,
+              "question_trim": {
+                "original_chars": 2017,
+                "trim_only_chars": 2000,
+                "member_text_chars": 137,
+                "sent_chars": 137,
+                "kept": "member_text"
+              },
+              "facts_returned": 1,
+              "told_fact_dock_38_delivered": true,
+              "dropped": null
+            },
+            {
+              "seq": 17,
+              "caller": "provider",
+              "outcome": "ok",
+              "error": null,
+              "acting_user_sent": false,
+              "x_qm_actor_header": false,
+              "question_chars": 110,
+              "question_trim": {
+                "original_chars": 3038,
+                "trim_only_chars": 2000,
+                "member_text_chars": 110,
+                "sent_chars": 110,
+                "kept": "member_text"
+              },
+              "facts_returned": 2,
+              "told_fact_dock_38_delivered": true,
+              "dropped": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

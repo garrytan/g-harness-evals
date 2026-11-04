@@ -1,0 +1,740 @@
+{
+  "what": "S1 freeze gate 5, keyless staging rerun from main at harness-evals f8efe9dc (internal-task, QM lane, internal-task), through the driver dry run (s1-probe.ts after #254 review round 2) with the fixture repository present: a complete read of careful/SKILL.md in gstack-router, and no gstack file reachable in no-gstack. The e9995eb9 receipt (s1-staging-b6786d67-rerun.json) stays as it was.",
+  "harness_evals_commit": "f8efe9dcfaad589a42ed3a2d05000b6e4417a3a6",
+  "harness_evals_tree": "6084241452280121ead6d38ebe29f3df9e0839cf",
+  "dirty": false,
+  "date": "2026-11-04",
+  "qm_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7",
+  "gstack_ref": "21277291c850765052ea9f80f6be4ccf1f1eb191",
+  "command": "env -i PATH=$PATH HOME=$HOME bun harnesses/qm/gstack/s1-probe.ts --dry-run --inject-fault --skip-build --reps 1 --only s1-r3-k1-opus-gstack-router,s1-r3-k1-opus-no-gstack,s1-r3-k1-sol-gstack-router,s1-r3-k1-sol-no-gstack --work <dir>",
+  "run_id": "anatomy-capture-qm-s1-gstack-probe-dry-run",
+  "images": {
+    "core": {
+      "name": "harness-eval/qm:dev",
+      "id": "sha256:2063b34daa9746ef0bf9404e3ab7e29ec1bf6b1926403a36a3378488ef70f809",
+      "qm_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7"
+    },
+    "sandbox": {
+      "name": "harness-eval/qm-sandbox:dev",
+      "id": "sha256:76a521cb6a7d5ba1b7c40ada92c5aba5441fb7b5bce3f96658e5143e39effd30",
+      "qm_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7"
+    },
+    "gstack-router": {
+      "name": "harness-eval/qm-sandbox:s1-gstack-21277291",
+      "id": "sha256:c7db3b276ed7044e18ed04e677c8db8d59d51170e4b0a5ff28c5473d1f8dbb10",
+      "qm_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7"
+    },
+    "no-gstack": {
+      "name": "harness-eval/qm-sandbox:s1-no-gstack",
+      "id": "sha256:b5bc53d4e898f4fed96575e38ad5c3f35b61538e8d5a4e4f912f954735e3f3c7",
+      "qm_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7"
+    },
+    "built": false
+  },
+  "how": "the S1 driver keyless dry run: the real metering proxy in capture mode (dummy provider keys, runner/trial/capture.ts) in front of scripts/gsta-135/fake-anthropic.ts (Opus) and tests/fixtures/fake-responses.ts (Sol, the Responses API), scripted per arm; one fresh QM stack per turn; request 3 (careful), one repetition, both models and both arms, plus the injected no-default-sandbox fault turn. Core and sandbox images built at this commit (QM b6786d67) with \"docker build -t harness-eval/qm:dev harnesses/qm\" and \"docker build -f harnesses/qm/Dockerfile.sandbox -t harness-eval/qm-sandbox:dev harnesses/qm\" under env -i (HOME, PATH); the arm images rebuilt by the driver (--skip-build skips only core and sandbox).",
+  "output_sha256": {
+    "preflight.json": "28db595ecfe56c55b7c659da938eaa6ad51f7ab4a639e839fd4c118439e97b4d",
+    "summary.json": "d3ec5b6a4ce9893c98b4c85c452f53cb95dd43e6179007228809b4dfea99d35a",
+    "turns.jsonl": "398a497df609995e98a3a58e204d89759eee45665dda4676c2e77d163ab9ddd2",
+    "proxy-usage.ndjson": "d25163f9d1f5df548a10e0ec2dbbb2b5f347f774dac8dc1dcd43f8aa65bde88f",
+    "fake-requests.ndjson": "728a3b8aa40d775333a91649bfe279a8e61b6cb071c6e957f7f0af058c7bd8fb",
+    "fake-responses.ndjson": "07d286fe108d84f7f71b49ae5b6a1c753cdb8fa78552923f274ea3ebfb356867"
+  },
+  "pass": true,
+  "assertions": [
+    {
+      "id": "preflight_ok",
+      "pass": true,
+      "detail": "problems []; image checks [{\"image\":\"harness-eval/qm:dev\",\"gstack_paths\":0,\"skill_md\":0},{\"image\":\"harness-eval/qm-sandbox:s1-gstack-21277291\",\"gstack_paths\":66,\"skill_md\":63},{\"image\":\"harness-eval/qm-sandbox:s1-no-gstack\",\"gstack_paths\":0,\"skill_md\":0}]"
+    },
+    {
+      "id": "careful_complete_read_gstack_router",
+      "pass": true,
+      "detail": "s1-r3-k1-opus-gstack-router: opens [{\"seq\":1,\"skill\":\"careful\",\"via\":\"files\",\"path\":\"/root/workspace/gstack/careful/SKILL.md\",\"cut\":false}], complete_read inline; s1-r3-k1-sol-gstack-router: opens [{\"seq\":1,\"skill\":\"careful\",\"via\":\"files\",\"path\":\"/root/workspace/gstack/careful/SKILL.md\",\"cut\":false}], complete_read inline"
+    },
+    {
+      "id": "router_in_first_prompt_gstack_router_only",
+      "pass": true,
+      "detail": "s1-r3-k1-opus-gstack-router router true gstack_word true; s1-r3-k1-sol-gstack-router router true gstack_word true; s1-r3-k1-opus-no-gstack router false gstack_word false; s1-r3-k1-sol-no-gstack router false gstack_word false"
+    },
+    {
+      "id": "no_gstack_file_reachable_no_gstack",
+      "pass": true,
+      "detail": "no-gstack image 0 and core image 0 gstack paths; no-gstack turns: s1-r3-k1-opus-no-gstack opens 0, audit hits 0, contaminated false; s1-r3-k1-sol-no-gstack opens 0, audit hits 0, contaminated false; no-gstack SOUL 192 characters, is_router false"
+    },
+    {
+      "id": "fixture_same_in_both_arms",
+      "pass": true,
+      "detail": "tree sha256 befe52967dcebff9f953ef9254e8ad13ac3232f9a2d9a22ebb7c6253f4c90db1 (gstack-router befe52967dcebff9f953ef9254e8ad13ac3232f9a2d9a22ebb7c6253f4c90db1, no-gstack befe52967dcebff9f953ef9254e8ad13ac3232f9a2d9a22ebb7c6253f4c90db1), unchanged from the e9995eb9 receipt; head 9db8fa505db65ccd14f1f18a3ed6cd18da405d00"
+    },
+    {
+      "id": "injected_fault_classified",
+      "pass": true,
+      "detail": "[{\"turn_id\":\"s1-r3-fault-opus-gstack-router\",\"fault\":\"remove-default-sandbox\",\"classified\":[\"no-default-sandbox\"],\"termination\":\"ok\"}]"
+    },
+    {
+      "id": "dry_run_checks",
+      "pass": true,
+      "detail": "{\"turns\":true,\"router_only_in_gstack_prompts\":true,\"staged_files\":true,\"usage_reconciled_every_turn\":true,\"housekeeping_on_its_provider\":true,\"matched_opens\":true,\"no_contamination\":true,\"injected_fault_classified\":true,\"nothing_left_behind\":true}; driver exit 0"
+    }
+  ],
+  "careful_manifest": {
+    "sandbox_path": "/root/workspace/gstack/careful/SKILL.md",
+    "chars": 4727,
+    "sha256": "f3dfed24accce14ad5d59a88f2f7f6aa21dc1b3b86416375b39268282807dfa3",
+    "source": "21277291c850:careful/SKILL.md"
+  },
+  "preflight": {
+    "host": {
+      "<private drive>": true,
+      "/home/user/.local/share/gstack": false,
+      "/home/user/.claude/skills": false
+    },
+    "host_enforced": false,
+    "host_note": "dry run on a Capy machine: the host checks are recorded, not enforced (README, S1 probe driver); no container mounts the Capy drive",
+    "image_checks": [
+      {
+        "image": "harness-eval/qm:dev",
+        "id": "sha256:2063b34daa9746ef0bf9404e3ab7e29ec1bf6b1926403a36a3378488ef70f809",
+        "gstack_paths": 0,
+        "skill_md": 0,
+        "skill_files": 31,
+        "claude_skills": 0,
+        "problems": []
+      },
+      {
+        "image": "harness-eval/qm-sandbox:s1-gstack-21277291",
+        "id": "sha256:c7db3b276ed7044e18ed04e677c8db8d59d51170e4b0a5ff28c5473d1f8dbb10",
+        "gstack_paths": 66,
+        "skill_md": 63,
+        "skill_files": 63,
+        "claude_skills": 0,
+        "problems": []
+      },
+      {
+        "image": "harness-eval/qm-sandbox:s1-no-gstack",
+        "id": "sha256:b5bc53d4e898f4fed96575e38ad5c3f35b61538e8d5a4e4f912f954735e3f3c7",
+        "gstack_paths": 0,
+        "skill_md": 0,
+        "skill_files": 0,
+        "claude_skills": 0,
+        "problems": []
+      }
+    ],
+    "fixture": {
+      "path": "/root/workspace/repo",
+      "head": "9db8fa505db65ccd14f1f18a3ed6cd18da405d00",
+      "branch": "feature/session-timeout",
+      "refs": [
+        "41683297b420262a7526741c8b4cda807c075eb3 refs/tags/v0.1.0",
+        "4641851c8902a12c1b140fd28e3eebaf5f5872e7 refs/heads/main",
+        "9db8fa505db65ccd14f1f18a3ed6cd18da405d00 refs/heads/feature/session-timeout",
+        "refs/heads/feature/session-timeout"
+      ],
+      "tree_sha256": "befe52967dcebff9f953ef9254e8ad13ac3232f9a2d9a22ebb7c6253f4c90db1",
+      "files": 7
+    },
+    "fixture_in_images": {
+      "gstack-router": {
+        "tree_sha256": "befe52967dcebff9f953ef9254e8ad13ac3232f9a2d9a22ebb7c6253f4c90db1",
+        "refs": [
+          "41683297b420262a7526741c8b4cda807c075eb3 refs/tags/v0.1.0",
+          "4641851c8902a12c1b140fd28e3eebaf5f5872e7 refs/heads/main",
+          "9db8fa505db65ccd14f1f18a3ed6cd18da405d00 refs/heads/feature/session-timeout",
+          "refs/heads/feature/session-timeout"
+        ]
+      },
+      "no-gstack": {
+        "tree_sha256": "befe52967dcebff9f953ef9254e8ad13ac3232f9a2d9a22ebb7c6253f4c90db1",
+        "refs": [
+          "41683297b420262a7526741c8b4cda807c075eb3 refs/tags/v0.1.0",
+          "4641851c8902a12c1b140fd28e3eebaf5f5872e7 refs/heads/main",
+          "9db8fa505db65ccd14f1f18a3ed6cd18da405d00 refs/heads/feature/session-timeout",
+          "refs/heads/feature/session-timeout"
+        ]
+      }
+    },
+    "soul": {
+      "gstack-router": {
+        "http": 200,
+        "chars": 12186,
+        "sha256": "a6a55a8b31faf7b8cf673feb9916f7591b0b362084c7e7416910824c8ba85af3",
+        "is_router": true,
+        "problems": []
+      },
+      "no-gstack": {
+        "http": 200,
+        "chars": 192,
+        "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b",
+        "is_router": false,
+        "problems": []
+      }
+    },
+    "problems": []
+  },
+  "summary": {
+    "checks": {
+      "turns": true,
+      "router_only_in_gstack_prompts": true,
+      "staged_files": true,
+      "usage_reconciled_every_turn": true,
+      "housekeeping_on_its_provider": true,
+      "matched_opens": true,
+      "no_contamination": true,
+      "injected_fault_classified": true,
+      "nothing_left_behind": true
+    },
+    "complete": false,
+    "missing": [
+      "s1-r1-k1-opus-gstack-router",
+      "s1-r1-k1-opus-no-gstack",
+      "s1-r1-k1-sol-gstack-router",
+      "s1-r1-k1-sol-no-gstack",
+      "s1-r2-k1-opus-gstack-router",
+      "s1-r2-k1-opus-no-gstack",
+      "s1-r2-k1-sol-gstack-router",
+      "s1-r2-k1-sol-no-gstack",
+      "s1-r4-k1-opus-gstack-router",
+      "s1-r4-k1-opus-no-gstack",
+      "s1-r4-k1-sol-gstack-router",
+      "s1-r4-k1-sol-no-gstack",
+      "s1-r5-k1-opus-gstack-router",
+      "s1-r5-k1-opus-no-gstack",
+      "s1-r5-k1-sol-gstack-router",
+      "s1-r5-k1-sol-no-gstack"
+    ],
+    "not_ok": [],
+    "superseded": [],
+    "cells": {
+      "opus/gstack-router": {
+        "turns": 1,
+        "counted": 1,
+        "excluded": [],
+        "matched_opens": 1,
+        "any_opens": 1,
+        "complete_inline": 1,
+        "complete_cut": 0,
+        "complete_pieces": 0,
+        "start_preamble": 1,
+        "start_first_step": 0,
+        "cut_reads": 0,
+        "progress": 0,
+        "progress_possible": 0,
+        "contaminated": [],
+        "router_in_first_prompt": 1,
+        "housekeeping": {
+          "model": "anthropic:claude-haiku-5-5",
+          "requests": 1,
+          "usd": 6e-7
+        },
+        "usage": {
+          "usd": 0.0000726,
+          "input_tokens": 4,
+          "cached_tokens": 0,
+          "output_tokens": 4,
+          "requests": 4
+        },
+        "reconciled": 1,
+        "wall_ms": 908,
+        "by_request": [
+          {
+            "request": 1,
+            "skill": "investigate",
+            "turns": 0,
+            "matched_opens": 0,
+            "progress": 0
+          },
+          {
+            "request": 2,
+            "skill": "review",
+            "turns": 0,
+            "matched_opens": 0,
+            "progress": 0
+          },
+          {
+            "request": 3,
+            "skill": "careful",
+            "turns": 1,
+            "matched_opens": 1,
+            "progress": 0
+          },
+          {
+            "request": 4,
+            "skill": "document-release",
+            "turns": 0,
+            "matched_opens": 0,
+            "progress": 0
+          },
+          {
+            "request": 5,
+            "skill": "learn",
+            "turns": 0,
+            "matched_opens": 0,
+            "progress": 0
+          }
+        ]
+      },
+      "opus/no-gstack": {
+        "turns": 1,
+        "counted": 1,
+        "excluded": [],
+        "matched_opens": 0,
+        "any_opens": 0,
+        "complete_inline": 0,
+        "complete_cut": 0,
+        "complete_pieces": 0,
+        "start_preamble": 0,
+        "start_first_step": 0,
+        "cut_reads": 0,
+        "progress": 0,
+        "progress_possible": 0,
+        "contaminated": [],
+        "router_in_first_prompt": 0,
+        "housekeeping": {
+          "model": "anthropic:claude-haiku-5-5",
+          "requests": 1,
+          "usd": 6e-7
+        },
+        "usage": {
+          "usd": 0.0000246,
+          "input_tokens": 2,
+          "cached_tokens": 0,
+          "output_tokens": 2,
+          "requests": 2
+        },
+        "reconciled": 1,
+        "wall_ms": 586,
+        "by_request": [
+          {
+            "request": 1,
+            "skill": "investigate",
+            "turns": 0,
+            "matched_opens": 0,
+            "progress": 0
+          },
+          {
+            "request": 2,
+            "skill": "review",
+            "turns": 0,
+            "matched_opens": 0,
+            "progress": 0
+          },
+          {
+            "request": 3,
+            "skill": "careful",
+            "turns": 1,
+            "matched_opens": 0,
+            "progress": 0
+          },
+          {
+            "request": 4,
+            "skill": "document-release",
+            "turns": 0,
+            "matched_opens": 0,
+            "progress": 0
+          },
+          {
+            "request": 5,
+            "skill": "learn",
+            "turns": 0,
+            "matched_opens": 0,
+            "progress": 0
+          }
+        ]
+      },
+      "sol/gstack-router": {
+        "turns": 1,
+        "counted": 1,
+        "excluded": [],
+        "matched_opens": 1,
+        "any_opens": 1,
+        "complete_inline": 1,
+        "complete_cut": 0,
+        "complete_pieces": 0,
+        "start_preamble": 1,
+        "start_first_step": 0,
+        "cut_reads": 0,
+        "progress": 0,
+        "progress_possible": 0,
+        "contaminated": [],
+        "router_in_first_prompt": 1,
+        "housekeeping": {
+          "model": "openai:gpt-5.6-luna",
+          "requests": 1,
+          "usd": 0.000288
+        },
+        "usage": {
+          "usd": 0.007547999999999999,
+          "input_tokens": 4800,
+          "cached_tokens": 800,
+          "output_tokens": 160,
+          "requests": 4
+        },
+        "reconciled": 1,
+        "wall_ms": 588,
+        "by_request": [
+          {
+            "request": 1,
+            "skill": "investigate",
+            "turns": 0,
+            "matched_opens": 0,
+            "progress": 0
+          },
+          {
+            "request": 2,
+            "skill": "review",
+            "turns": 0,
+            "matched_opens": 0,
+            "progress": 0
+          },
+          {
+            "request": 3,
+            "skill": "careful",
+            "turns": 1,
+            "matched_opens": 1,
+            "progress": 0
+          },
+          {
+            "request": 4,
+            "skill": "document-release",
+            "turns": 0,
+            "matched_opens": 0,
+            "progress": 0
+          },
+          {
+            "request": 5,
+            "skill": "learn",
+            "turns": 0,
+            "matched_opens": 0,
+            "progress": 0
+          }
+        ]
+      },
+      "sol/no-gstack": {
+        "turns": 1,
+        "counted": 1,
+        "excluded": [],
+        "matched_opens": 0,
+        "any_opens": 0,
+        "complete_inline": 0,
+        "complete_cut": 0,
+        "complete_pieces": 0,
+        "start_preamble": 0,
+        "start_first_step": 0,
+        "cut_reads": 0,
+        "progress": 0,
+        "progress_possible": 0,
+        "contaminated": [],
+        "router_in_first_prompt": 0,
+        "housekeeping": {
+          "model": "openai:gpt-5.6-luna",
+          "requests": 1,
+          "usd": 0.000288
+        },
+        "usage": {
+          "usd": 0.002708,
+          "input_tokens": 2400,
+          "cached_tokens": 400,
+          "output_tokens": 80,
+          "requests": 2
+        },
+        "reconciled": 1,
+        "wall_ms": 474,
+        "by_request": [
+          {
+            "request": 1,
+            "skill": "investigate",
+            "turns": 0,
+            "matched_opens": 0,
+            "progress": 0
+          },
+          {
+            "request": 2,
+            "skill": "review",
+            "turns": 0,
+            "matched_opens": 0,
+            "progress": 0
+          },
+          {
+            "request": 3,
+            "skill": "careful",
+            "turns": 1,
+            "matched_opens": 0,
+            "progress": 0
+          },
+          {
+            "request": 4,
+            "skill": "document-release",
+            "turns": 0,
+            "matched_opens": 0,
+            "progress": 0
+          },
+          {
+            "request": 5,
+            "skill": "learn",
+            "turns": 0,
+            "matched_opens": 0,
+            "progress": 0
+          }
+        ]
+      }
+    },
+    "injected_faults": [
+      {
+        "turn_id": "s1-r3-fault-opus-gstack-router",
+        "fault": "remove-default-sandbox",
+        "classified": [
+          "no-default-sandbox"
+        ],
+        "termination": "ok"
+      }
+    ],
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    }
+  },
+  "turns": [
+    {
+      "turn_id": "s1-r3-k1-opus-gstack-router",
+      "attempt": 1,
+      "model": "anthropic:claude-opus-5-5",
+      "arm": "gstack-router",
+      "request": 3,
+      "skill": "careful",
+      "termination": "ok",
+      "wall_ms": 908,
+      "housekeeping": {
+        "model": "anthropic:claude-haiku-5-5",
+        "requests": 1,
+        "usd": 6e-7
+      },
+      "opens": [
+        {
+          "seq": 1,
+          "skill": "careful",
+          "via": "files",
+          "path": "/root/workspace/gstack/careful/SKILL.md",
+          "cut": false
+        }
+      ],
+      "complete_read": "inline",
+      "start_preamble": true,
+      "audit_hits": 2,
+      "contaminated": false,
+      "faults": [],
+      "first_prompt": {
+        "system_chars": 22077,
+        "router": true,
+        "gstack_word": true
+      },
+      "usage": {
+        "requests": 4,
+        "usd": 0.0000726,
+        "by_model": {
+          "anthropic:claude-haiku-5-5": {
+            "usd": 6e-7,
+            "requests": 1
+          },
+          "anthropic:claude-opus-5-5": {
+            "usd": 0.000072,
+            "requests": 3
+          }
+        }
+      },
+      "proxy_consistent": true
+    },
+    {
+      "turn_id": "s1-r3-k1-opus-no-gstack",
+      "attempt": 1,
+      "model": "anthropic:claude-opus-5-5",
+      "arm": "no-gstack",
+      "request": 3,
+      "skill": "careful",
+      "termination": "ok",
+      "wall_ms": 586,
+      "housekeeping": {
+        "model": "anthropic:claude-haiku-5-5",
+        "requests": 1,
+        "usd": 6e-7
+      },
+      "opens": [],
+      "complete_read": null,
+      "start_preamble": false,
+      "audit_hits": 0,
+      "contaminated": false,
+      "faults": [],
+      "first_prompt": {
+        "system_chars": 10083,
+        "router": false,
+        "gstack_word": false
+      },
+      "usage": {
+        "requests": 2,
+        "usd": 0.0000246,
+        "by_model": {
+          "anthropic:claude-haiku-5-5": {
+            "usd": 6e-7,
+            "requests": 1
+          },
+          "anthropic:claude-opus-5-5": {
+            "usd": 0.000024,
+            "requests": 1
+          }
+        }
+      },
+      "proxy_consistent": true
+    },
+    {
+      "turn_id": "s1-r3-k1-sol-gstack-router",
+      "attempt": 1,
+      "model": "openai:gpt-6.1-sol",
+      "arm": "gstack-router",
+      "request": 3,
+      "skill": "careful",
+      "termination": "ok",
+      "wall_ms": 588,
+      "housekeeping": {
+        "model": "openai:gpt-5.6-luna",
+        "requests": 1,
+        "usd": 0.000288
+      },
+      "opens": [
+        {
+          "seq": 1,
+          "skill": "careful",
+          "via": "files",
+          "path": "/root/workspace/gstack/careful/SKILL.md",
+          "cut": false
+        }
+      ],
+      "complete_read": "inline",
+      "start_preamble": true,
+      "audit_hits": 2,
+      "contaminated": false,
+      "faults": [],
+      "first_prompt": {
+        "system_chars": 22077,
+        "router": true,
+        "gstack_word": true
+      },
+      "usage": {
+        "requests": 4,
+        "usd": 0.007547999999999999,
+        "by_model": {
+          "openai:gpt-5.6-luna": {
+            "usd": 0.000288,
+            "requests": 1
+          },
+          "openai:gpt-6.1-sol": {
+            "usd": 0.007259999999999999,
+            "requests": 3
+          }
+        }
+      },
+      "proxy_consistent": true
+    },
+    {
+      "turn_id": "s1-r3-k1-sol-no-gstack",
+      "attempt": 1,
+      "model": "openai:gpt-6.1-sol",
+      "arm": "no-gstack",
+      "request": 3,
+      "skill": "careful",
+      "termination": "ok",
+      "wall_ms": 474,
+      "housekeeping": {
+        "model": "openai:gpt-5.6-luna",
+        "requests": 1,
+        "usd": 0.000288
+      },
+      "opens": [],
+      "complete_read": null,
+      "start_preamble": false,
+      "audit_hits": 0,
+      "contaminated": false,
+      "faults": [],
+      "first_prompt": {
+        "system_chars": 10083,
+        "router": false,
+        "gstack_word": false
+      },
+      "usage": {
+        "requests": 2,
+        "usd": 0.002708,
+        "by_model": {
+          "openai:gpt-5.6-luna": {
+            "usd": 0.000288,
+            "requests": 1
+          },
+          "openai:gpt-6.1-sol": {
+            "usd": 0.00242,
+            "requests": 1
+          }
+        }
+      },
+      "proxy_consistent": true
+    },
+    {
+      "turn_id": "s1-r3-fault-opus-gstack-router",
+      "attempt": 1,
+      "model": "anthropic:claude-opus-5-5",
+      "arm": "gstack-router",
+      "request": 3,
+      "skill": "careful",
+      "termination": "ok",
+      "wall_ms": 670,
+      "housekeeping": {
+        "model": "anthropic:claude-haiku-5-5",
+        "requests": 1,
+        "usd": 6e-7
+      },
+      "opens": [],
+      "complete_read": null,
+      "start_preamble": false,
+      "audit_hits": 2,
+      "contaminated": false,
+      "faults": [
+        "no-default-sandbox"
+      ],
+      "first_prompt": {
+        "system_chars": 22077,
+        "router": true,
+        "gstack_word": true
+      },
+      "usage": {
+        "requests": 4,
+        "usd": 0.0000726,
+        "by_model": {
+          "anthropic:claude-haiku-5-5": {
+            "usd": 6e-7,
+            "requests": 1
+          },
+          "anthropic:claude-opus-5-5": {
+            "usd": 0.000072,
+            "requests": 3
+          }
+        }
+      },
+      "proxy_consistent": true
+    }
+  ],
+  "rerun": {
+    "lane": "internal-task (QM lane, internal-task)",
+    "harness_evals_commit": "f8efe9dcfaad589a42ed3a2d05000b6e4417a3a6",
+    "harness_evals_tree": "6084241452280121ead6d38ebe29f3df9e0839cf",
+    "base": "main dcbf03e025d6eecb00ab27c4e09ddf01600bf7cd (#254 merged) plus the prereg delta (origin/harn31/qm-preregs at f8efe9dc)",
+    "command": "env -i PATH=$PATH HOME=$HOME bun harnesses/qm/gstack/s1-probe.ts --dry-run --inject-fault --skip-build --reps 1 --only s1-r3-k1-opus-gstack-router,s1-r3-k1-opus-no-gstack,s1-r3-k1-sol-gstack-router,s1-r3-k1-sol-no-gstack --work <dir>",
+    "exact_command": "env -i HOME=/home/user PATH=/home/user/.bun/bin:/usr/local/bin:/usr/bin:/bin bun harnesses/qm/gstack/s1-probe.ts --dry-run --inject-fault --skip-build --reps 1 --only s1-r3-k1-opus-gstack-router,s1-r3-k1-opus-no-gstack,s1-r3-k1-sol-gstack-router,s1-r3-k1-sol-no-gstack --work ~/.capy/work/harn38/work",
+    "driver_exit": 0,
+    "run_complete_flag": {
+      "complete": false,
+      "missing": 16,
+      "note": "complete is false by design under --only: the 16 planned turns outside the four named ones have no record; a dry run exits on its checks, not on completeness (s1-probe.ts main)"
+    },
+    "attempts": 1,
+    "what": "S1 freeze gate 5",
+    "outcome": "pass: careful/SKILL.md read inline and complete in gstack-router (Opus and Sol); 0 gstack paths in core and no-gstack, 0 opens and 0 audit hits in no-gstack; fixture tree sha256 unchanged; every dry-run check true, the injected fault included"
+  }
+}

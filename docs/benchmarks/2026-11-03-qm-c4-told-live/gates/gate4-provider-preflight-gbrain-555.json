@@ -1,0 +1,321 @@
+{
+  "what": "Keyless memory-provider preflight for QM (internal-task, internal-task plan v3, M1 step 3): QM core reaches gbrain only through MEMORY_PROVIDER_CONFIG, authenticated with OAuth client credentials from the world issuer at the MCP URL origin. No paid call: the model endpoint was scripts/gsta-135/fake-anthropic.ts, which refuses any key not starting with the dummy prefix.",
+  "run": "qm-provider-preflight-b6786d67-20261104t023750",
+  "date": "2026-11-04",
+  "command": "env -i PATH=$PATH HOME=$HOME bun harnesses/qm/provider-preflight.ts --receipt <file>",
+  "qm": {
+    "repo": "https://github.com/yc-software/qm",
+    "commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7",
+    "pinned_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7"
+  },
+  "harness_evals_commit": "b25e56dfd4892e8308190e3f88982b3d14c71e17",
+  "dirty": false,
+  "images": {
+    "qm_core": {
+      "tag": "harness-eval/qm:dev",
+      "image_id": "sha256:02a91393d947174196df85be1fcc2bb9a5bcf18fa2d39234fcd65860788116d0",
+      "label_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7"
+    },
+    "gbrain": {
+      "tag": "harness-eval/gbrain:a3f46d35",
+      "image_id": "sha256:5b8de2f40cd1ec29f8423b93e62e7329b56dffe28b5b194730d711dcaed96cc0",
+      "gbrain_commit": "a3f46d358d0c8df2dac71e8d73add2a19b1940c7"
+    },
+    "postgres": {
+      "tag": "pgvector/pgvector:0.8.1-pg16",
+      "image_id": "sha256:33198da2828a14c30348d2ccb4750833d5ed9a44c88d840a0e523d7417120337"
+    }
+  },
+  "model_route": {
+    "endpoint": "scripts/gsta-135/fake-anthropic.ts on 127.0.0.1 (core runs on the host network and reaches it directly)",
+    "model": "claude-haiku-5-5",
+    "key": "a dummy with the fake's required prefix",
+    "requests": 3,
+    "model_request_carried_seed_fact": false
+  },
+  "memory_provider_config": {
+    "providers": [
+      {
+        "id": "gbrain",
+        "type": "mcp",
+        "url": "http://127.0.0.1:<world port>/gbrain",
+        "timeoutMs": 10000,
+        "read": {
+          "tool": "recall",
+          "queryArg": "question",
+          "maxCharsArg": "max_chars",
+          "clientIdEnv": "QM_PF_READ_CLIENT_ID",
+          "clientSecretEnv": "QM_PF_READ_CLIENT_SECRET"
+        }
+      }
+    ],
+    "routes": [
+      {
+        "provider": "default",
+        "scopes": [
+          "personal",
+          "channel",
+          "group",
+          "team",
+          "org"
+        ],
+        "capture": "automatic"
+      },
+      {
+        "provider": "gbrain",
+        "scopes": [
+          "personal"
+        ],
+        "capture": "off",
+        "manage": false,
+        "label": "gbrain",
+        "failOpen": false
+      }
+    ]
+  },
+  "env_given_to_core": {
+    "MEMORY_PROVIDER_CONFIG": "the JSON above, with the world port",
+    "QM_PF_READ_CLIENT_ID": "qm-memory-read",
+    "QM_PF_READ_CLIENT_SECRET": "<random per run, never written>"
+  },
+  "oauth": {
+    "mcp_url": "http://127.0.0.1:<world port>/gbrain",
+    "protected_resource": {
+      "resource": "<MCP URL>",
+      "authorization_servers": [
+        "<MCP URL origin>"
+      ]
+    },
+    "authorization_server": {
+      "issuer": "<MCP URL origin>"
+    },
+    "qm_expected_issuer": "new URL(\"/\", <MCP URL>).href (src/mcp/mcp-client.ts, ClientCredentialsProvider expectedIssuer)",
+    "token_requests": [
+      {
+        "phase": "right",
+        "outcome": "ok",
+        "error": null,
+        "client_id": "qm-memory-read",
+        "auth_method": "client_secret_basic",
+        "resource": "<MCP URL>"
+      },
+      {
+        "phase": "wrong",
+        "outcome": "denied",
+        "error": "invalid_client",
+        "client_id": "qm-memory-read",
+        "auth_method": "client_secret_basic",
+        "resource": "<MCP URL>"
+      },
+      {
+        "phase": "wrong",
+        "outcome": "denied",
+        "error": "invalid_client",
+        "client_id": "qm-memory-read",
+        "auth_method": "client_secret_basic",
+        "resource": "<MCP URL>"
+      },
+      {
+        "phase": "wrong",
+        "outcome": "denied",
+        "error": "invalid_client",
+        "client_id": "qm-memory-read",
+        "auth_method": "client_secret_basic",
+        "resource": "<MCP URL>"
+      },
+      {
+        "phase": "wrong",
+        "outcome": "denied",
+        "error": "invalid_client",
+        "client_id": "qm-memory-read",
+        "auth_method": "client_secret_basic",
+        "resource": "<MCP URL>"
+      },
+      {
+        "phase": "wrong",
+        "outcome": "denied",
+        "error": "invalid_client",
+        "client_id": "qm-memory-read",
+        "auth_method": "client_secret_basic",
+        "resource": "<MCP URL>"
+      },
+      {
+        "phase": "wrong",
+        "outcome": "denied",
+        "error": "invalid_client",
+        "client_id": "qm-memory-read",
+        "auth_method": "client_secret_basic",
+        "resource": "<MCP URL>"
+      }
+    ]
+  },
+  "seed": {
+    "tool": "remember",
+    "fact": "The Heron loading dock gate code is QMPF-4471-HERON.",
+    "entity": "heron-loading-dock",
+    "provenance": "harness-evals QM memory-provider preflight seed (internal-task)",
+    "inserted": true,
+    "via": "the sidecar directly, with its token (not through the tap)"
+  },
+  "turns": {
+    "positive": {
+      "thread": "dm:preflight-positive",
+      "prompt": "What is the gate code for the Heron loading dock?",
+      "http": 500,
+      "status": null,
+      "reply": null,
+      "error": "{\"reason\":null,\"error\":\"internal_error\"}",
+      "recall_events": [
+        {
+          "outcome": "error",
+          "error": "actor_not_attested",
+          "args": {
+            "question": "Current message: What is the gate code for the Heron loading dock?",
+            "acting_user": "U1",
+            "max_chars": 6000
+          },
+          "latency_ms": 10
+        },
+        {
+          "outcome": "error",
+          "error": "actor_not_attested",
+          "args": {
+            "question": "Current message: What is the gate code for the Heron loading dock?",
+            "acting_user": "U1",
+            "max_chars": 6000
+          },
+          "latency_ms": 7
+        }
+      ],
+      "stored_user_turn": {
+        "stored": false,
+        "environment_chars": 0,
+        "environment_has_seed_fact": false,
+        "memory_recall": null,
+        "memory_recall_outcomes": null,
+        "untrusted_data_fence": false,
+        "gbrain_section_excerpt": null
+      }
+    },
+    "unrelated": {
+      "thread": "dm:preflight-unrelated",
+      "prompt": "What time does the Friday all-hands start?",
+      "http": 500,
+      "status": null,
+      "reply": null,
+      "error": "{\"reason\":null,\"error\":\"internal_error\"}",
+      "recall_events": [
+        {
+          "outcome": "error",
+          "error": "actor_not_attested",
+          "args": {
+            "question": "Current message: What time does the Friday all-hands start?",
+            "acting_user": "U1",
+            "max_chars": 6000
+          },
+          "latency_ms": 4
+        },
+        {
+          "outcome": "error",
+          "error": "actor_not_attested",
+          "args": {
+            "question": "Current message: What time does the Friday all-hands start?",
+            "acting_user": "U1",
+            "max_chars": 6000
+          },
+          "latency_ms": 8
+        }
+      ],
+      "stored_user_turn": {
+        "stored": false,
+        "environment_chars": 0,
+        "environment_has_seed_fact": false,
+        "memory_recall": null,
+        "memory_recall_outcomes": null,
+        "untrusted_data_fence": false,
+        "gbrain_section_excerpt": null
+      }
+    },
+    "wrong_credentials": {
+      "thread": "dm:preflight-wrong-credentials",
+      "prompt": "What is the gate code for the Heron loading dock?",
+      "http": 500,
+      "status": null,
+      "reply": null,
+      "error": "{\"reason\":null,\"error\":\"internal_error\"}",
+      "recall_events": [],
+      "stored_user_turn": {
+        "stored": false,
+        "environment_chars": 0,
+        "environment_has_seed_fact": false,
+        "memory_recall": null,
+        "memory_recall_outcomes": null,
+        "untrusted_data_fence": false,
+        "gbrain_section_excerpt": null
+      }
+    }
+  },
+  "max_chars": {
+    "configured": "read.maxCharsArg max_chars",
+    "sent_by_qm": true,
+    "values_seen": [
+      6000
+    ],
+    "gbrain_ran_the_call": false,
+    "max_chars_warning_in_stored_environment": false,
+    "acting_user_warning_in_stored_environment": false
+  },
+  "assertions": [
+    {
+      "id": "seed",
+      "pass": true,
+      "detail": "remember inserted the seed fact"
+    },
+    {
+      "id": "oauth_issuer_matches_mcp_origin",
+      "pass": true,
+      "detail": "MCP URL http://127.0.0.1:46439/gbrain; protected-resource authorization_servers[0] http://127.0.0.1:46439; issuer http://127.0.0.1:46439"
+    },
+    {
+      "id": "oauth_client_credentials_token",
+      "pass": true,
+      "detail": "1 token(s) issued to the right client pair (grant client_credentials, client_secret_basic)"
+    },
+    {
+      "id": "fail_open_false",
+      "pass": true,
+      "detail": "the gbrain route sets failOpen false (preflight only)"
+    },
+    {
+      "id": "positive_turn_ok",
+      "pass": false,
+      "detail": "turn status null"
+    },
+    {
+      "id": "stored_turn_shows_fact",
+      "pass": false,
+      "detail": "payload.environment lacks the seed fact; payload.memoryRecall absent"
+    },
+    {
+      "id": "recall_event_logged",
+      "pass": false,
+      "detail": "2 gbrain recall event(s) in the tap's log during the positive turn"
+    },
+    {
+      "id": "negative_unrelated_query",
+      "pass": false,
+      "detail": "unrelated question: turn status null, 2 recall event(s), stored turn does not show the seed fact"
+    },
+    {
+      "id": "negative_wrong_credentials",
+      "pass": true,
+      "detail": "wrong secret: 6 token request(s) denied, 0 issued, 0 recall event(s), stored turn absent"
+    },
+    {
+      "id": "fail_closed_visible",
+      "pass": true,
+      "detail": "wrong-credential turn: HTTP 500, status null; {\"reason\":null,\"error\":\"internal_error\"}"
+    }
+  ],
+  "pass": false
+}

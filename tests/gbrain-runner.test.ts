@@ -227,6 +227,16 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         if (!c.gbrain) expect(c.preamble).toBeUndefined();
         else { expect(c.model).toBe('anthropic:claude-haiku-5-5'); expect(c.gbrain).toEqual({ surface: 'starter' }); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-ladder.md'); }
       }
+      else if (p.run_id.startsWith('qm-c4-told-live-')) {
+        // internal-task and internal-task (internal-task): QM through Pi on Opus 5.5 and GPT-6.1 Sol, three memory routes (notebook only, gbrain as registered tools, gbrain as QM's per-turn memory provider)
+        // on the 8 C4 told-live tasks, five repetitions, cap $56; the tool route carries the gbrain-memory preamble and the provider route QM's default.
+        expect(c.harness).toBe('qm'); expect(c.task_set).toBe('v0.3'); expect(c.split).toBe('dev'); expect(c.repetitions).toBe(5); expect(c.tasks).toHaveLength(8);
+        expect(p.cells).toHaveLength(6); expect(buildManifest(p, sha256, '2026-11-03T00:00:00Z').trials).toHaveLength(240); expect(p.spend_cap_usd).toBe(56); expect(c.ceiling).toEqual({ input_tokens: 80000, output_tokens: 6000 });
+        expect(['anthropic:claude-opus-5-5', 'openai:gpt-6.1-sol']).toContain(c.model); expect(p.cells.filter((x) => x.model === c.model)).toHaveLength(3);
+        if (!c.gbrain) { expect(c.preamble).toBeUndefined(); continue; }
+        const g = resolveGbrain(c.gbrain); expect(g.surface).toBe('starter'); expect(g.brain).toBe('member'); expect(['member', 'member-sources']).toContain(g.scope);
+        expect(c.preamble).toBe(g.scope === 'member-sources' ? 'tasks/multiuser/_shared/preamble.gbrain-memory.md' : undefined);
+      }
       else expect(c.gbrain).toBeUndefined();
     }
   }

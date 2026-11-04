@@ -1,0 +1,492 @@
+{
+  "what": "C4 freeze gate 4, part 1, rerun at harness-evals e9995eb9 (internal-task, QM lane, internal-task): the seeded cn-01 trial of both memory-provider cells (Opus, Sol) through the runner, the real metering proxy and fake upstreams, keyless, with the member-text trim (trimProviderQuestion) in world/services/gbrain-tap.ts at this commit. Pass: every provider recall accepted and the told fact (Dock 38) delivered on turn 2 in both cells, in the stored turn under ### gbrain and in effect.delivery.facts. The earlier receipts beside this one stay as they were.",
+  "harness_evals_commit": "e9995eb9703b7a96494d0b4bace9949178df51e7",
+  "harness_evals_tree": "28370967f11f20ddf4d7330633eb6c955d446fbe",
+  "dirty": false,
+  "date": "2026-11-03",
+  "qm_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7",
+  "gbrain_commit": "a590ad07d15c92669ae30a37835df30d071e5536",
+  "images": {
+    "harness-eval/qm:dev": "sha256:816af163d29712fef942994a956440cbc1fa86ac80481d616b8176bebaa67aa5",
+    "harness-eval/qm-sandbox:dev": "sha256:0e30c0902459525ea1a37988a7ede16901349459e9b0de3d6b42dee0c8a7b851",
+    "harness-eval/gbrain:dev": "sha256:efd0c8566ed13dd1e0993f007de27d3a18eb031975fd809de9924bb5972dae76"
+  },
+  "run": {
+    "run_id": "anatomy-capture-qm-c4-harn38-rerun-20261103",
+    "scratch_prereg_sha256": "c60f738b1d6a8bbaf762434806f8cd9f6503dddcf73fba9365ba577679f0f54d",
+    "scratch_prereg": "docs/benchmarks/2026-11-03-qm-c4-told-live/prereg.json with run_id anatomy-capture-qm-c4-harn38-rerun-20261103, spend_cap_usd 20, the cells filtered to qm-pi-opus-gbrain-memory-provider-mu-v03-dev and the three Sol cells (minimum_v01 filtered the same way), tasks [cn-01-tamsin-cold-chain-site], repetitions 1; every other cell field unchanged (jq over the committed prereg.json)",
+    "checkout": "the working checkout at e9995eb9703b7a96494d0b4bace9949178df51e7 (branch harn38/qm-gates from origin/harn31/qm-preregs), no local changes",
+    "command": "env -i PATH=$PATH HOME=$HOME bun runner/run.ts plan --prereg <scratch> --out <dir>; env -i PATH=$PATH HOME=$HOME bun runner/run.ts run --manifest <dir>/manifest.json --lease-usd 20 --max-output-tokens 128000 --capture-upstream anthropic=http://127.0.0.1:18611 --capture-upstream openai=http://127.0.0.1:18612",
+    "fakes": {
+      "anthropic": "scripts/gsta-135/fake-anthropic.ts --host 127.0.0.1 --port 18611 --require-key-prefix <the capture runner Anthropic dummy key> (no script: every answer is the text ok)",
+      "openai": "tests/fixtures/openai-branch/fake-openai.ts --host 127.0.0.1 --port 18612 --expect-key <the capture runner OpenAI dummy key>"
+    },
+    "proxy": "the real metering proxy (runner/proxy/metering-proxy.ts) in lease mode, started by the runner in capture mode (runner/trial/capture.ts): --upstream to the fakes, dummy provider keys, a scratch ledger with a $20 lease of fake usage, never paid",
+    "one_run_two_gates": "one runner invocation, one attempt, serves gate 4 (the two memory-provider trials) and gate 13 (the three Sol trials); both receipts name it"
+  },
+  "pass": true,
+  "assertions": [
+    {
+      "id": "opus_trial_completed",
+      "pass": true,
+      "detail": "termination completed"
+    },
+    {
+      "id": "opus_issuer_token",
+      "pass": true,
+      "detail": "1 oauth.token ok client_secret_basic"
+    },
+    {
+      "id": "opus_recalls_accepted",
+      "pass": true,
+      "detail": "seq 8 ok, question 2017 -> 137 (member_text); seq 17 ok, question 3038 -> 110 (member_text); core log recall failures 0"
+    },
+    {
+      "id": "opus_told_fact_delivered_turn2",
+      "pass": true,
+      "detail": "turn 2 recall: told facts from turn 1 (Dock 38) delivered 1 (effect.delivery.facts [[true],[true,true]])"
+    },
+    {
+      "id": "opus_fact_in_stored_turn",
+      "pass": true,
+      "detail": "turn 2 stored UserMessage has a ### gbrain section: true; the told fact in it: true"
+    },
+    {
+      "id": "sol_trial_completed",
+      "pass": true,
+      "detail": "termination completed"
+    },
+    {
+      "id": "sol_issuer_token",
+      "pass": true,
+      "detail": "1 oauth.token ok client_secret_basic"
+    },
+    {
+      "id": "sol_recalls_accepted",
+      "pass": true,
+      "detail": "seq 8 ok, question 2017 -> 137 (member_text); seq 17 ok, question 3038 -> 110 (member_text); core log recall failures 0"
+    },
+    {
+      "id": "sol_told_fact_delivered_turn2",
+      "pass": true,
+      "detail": "turn 2 recall: told facts from turn 1 (Dock 38) delivered 1 (effect.delivery.facts [[true],[true,true]])"
+    },
+    {
+      "id": "sol_fact_in_stored_turn",
+      "pass": true,
+      "detail": "turn 2 stored UserMessage has a ### gbrain section: true; the told fact in it: true"
+    }
+  ],
+  "trials": {
+    "qm-pi-opus-gbrain-memory-provider-mu-v03-dev": {
+      "trial_id": "anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-opus-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+      "model": "anthropic:claude-opus-5-5",
+      "termination": "completed",
+      "cap_stop": false,
+      "wall_ms": 21580,
+      "proxy_requests": [
+        {
+          "at": "2026-11-04T06:00:54.703Z",
+          "provider": "anthropic",
+          "route": "/v1/messages",
+          "model": "claude-haiku-5-5",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-opus-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 0.064650125,
+          "actual_usd": 6e-7,
+          "streamed": true
+        },
+        {
+          "at": "2026-11-04T06:00:54.832Z",
+          "provider": "anthropic",
+          "route": "/v1/messages",
+          "model": "claude-opus-5-5",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-opus-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 2.886576,
+          "actual_usd": 0.000024,
+          "streamed": true
+        },
+        {
+          "at": "2026-11-04T06:00:56.226Z",
+          "provider": "anthropic",
+          "route": "/v1/messages",
+          "model": "claude-opus-5-5",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-opus-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 2.94136,
+          "actual_usd": 0.000024,
+          "streamed": true
+        }
+      ],
+      "meter": {
+        "meter_id": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-opus-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+        "usd": 0.0000486,
+        "requests": 3,
+        "by_model": {
+          "anthropic:claude-haiku-5-5": {
+            "usd": 6e-7,
+            "requests": 1
+          },
+          "anthropic:claude-opus-5-5": {
+            "usd": 0.000048,
+            "requests": 2
+          }
+        },
+        "proxy_consistent": true
+      },
+      "oauth_token_events": [
+        {
+          "seq": 6,
+          "outcome": "ok",
+          "client_id": "qm-memory-read",
+          "auth_method": "client_secret_basic"
+        }
+      ],
+      "gbrain_events": [
+        {
+          "seq": 7,
+          "tool": "gbrain.initialize",
+          "outcome": "ok",
+          "error": null,
+          "caller": "provider",
+          "provider_op": null,
+          "arg_names": [],
+          "question_chars": null,
+          "max_chars": null,
+          "question_trim": null,
+          "delivery": null
+        },
+        {
+          "seq": 8,
+          "tool": "gbrain.recall",
+          "outcome": "ok",
+          "error": null,
+          "caller": "provider",
+          "provider_op": "recall",
+          "arg_names": [
+            "acting_user",
+            "max_chars",
+            "question"
+          ],
+          "question_chars": 137,
+          "max_chars": 6000,
+          "question_trim": {
+            "original_chars": 2017,
+            "trim_only_chars": 2000,
+            "member_text_chars": 137,
+            "sent_chars": 137,
+            "kept": "member_text"
+          },
+          "delivery": {
+            "facts": [
+              true
+            ],
+            "returned": [
+              true
+            ],
+            "cap": 6000,
+            "text_chars": 2373,
+            "delivered_chars": 2373
+          }
+        },
+        {
+          "seq": 16,
+          "tool": "gbrain.initialize",
+          "outcome": "ok",
+          "error": null,
+          "caller": "provider",
+          "provider_op": null,
+          "arg_names": [],
+          "question_chars": null,
+          "max_chars": null,
+          "question_trim": null,
+          "delivery": null
+        },
+        {
+          "seq": 17,
+          "tool": "gbrain.recall",
+          "outcome": "ok",
+          "error": null,
+          "caller": "provider",
+          "provider_op": "recall",
+          "arg_names": [
+            "acting_user",
+            "max_chars",
+            "question"
+          ],
+          "question_chars": 110,
+          "max_chars": 6000,
+          "question_trim": {
+            "original_chars": 3038,
+            "trim_only_chars": 2000,
+            "member_text_chars": 110,
+            "sent_chars": 110,
+            "kept": "member_text"
+          },
+          "delivery": {
+            "facts": [
+              true,
+              true
+            ],
+            "returned": [
+              true,
+              true
+            ],
+            "cap": 6000,
+            "text_chars": 2754,
+            "delivered_chars": 2754
+          }
+        }
+      ],
+      "ingest_events": 4,
+      "stored_user_turns": [
+        {
+          "seq": 0,
+          "environment_chars": 2506,
+          "environment_has_gbrain_section": true,
+          "told_fact_under_gbrain_section": true
+        },
+        {
+          "seq": 2,
+          "environment_chars": 3006,
+          "environment_has_gbrain_section": true,
+          "told_fact_under_gbrain_section": true
+        }
+      ],
+      "core_log_recall_failures": 0,
+      "recall_facts": {
+        "8": [
+          {
+            "told_fact_dock_38": true,
+            "delivered": true,
+            "source": "dana-okafor, a direct message with assistant, 2026-10-14T09:00:00-05:00",
+            "sha256": "b477b37cc314a53ca0ca433f72d153f5f333931ecf41df1371541c0367879368"
+          }
+        ],
+        "17": [
+          {
+            "told_fact_dock_38": false,
+            "delivered": true,
+            "source": "dana-okafor, a direct message with assistant, 2026-10-15T09:00:00-05:00",
+            "sha256": "7e98015a8ef44d8a5a2a7c1fdcf2be35ce1654053dbc07cd7a33832413f398a0"
+          },
+          {
+            "told_fact_dock_38": true,
+            "delivered": true,
+            "source": "dana-okafor, a direct message with assistant, 2026-10-14T09:00:00-05:00",
+            "sha256": "b477b37cc314a53ca0ca433f72d153f5f333931ecf41df1371541c0367879368"
+          }
+        ]
+      }
+    },
+    "qm-pi-sol-gbrain-memory-provider-mu-v03-dev": {
+      "trial_id": "anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+      "model": "openai:gpt-6.1-sol",
+      "termination": "completed",
+      "cap_stop": false,
+      "wall_ms": 24511,
+      "proxy_requests": [
+        {
+          "at": "2026-11-04T06:01:34.136Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-5.6-luna",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 0.154629,
+          "actual_usd": 0.000006,
+          "streamed": true
+        },
+        {
+          "at": "2026-11-04T06:01:34.314Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 1.3823275,
+          "actual_usd": 0.000054,
+          "streamed": true
+        },
+        {
+          "at": "2026-11-04T06:01:35.772Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 1.3996625,
+          "actual_usd": 0.000054,
+          "streamed": true
+        }
+      ],
+      "meter": {
+        "meter_id": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+        "usd": 0.00011399999999999999,
+        "requests": 3,
+        "by_model": {
+          "openai:gpt-5.6-luna": {
+            "usd": 0.000006,
+            "requests": 1
+          },
+          "openai:gpt-6.1-sol": {
+            "usd": 0.000108,
+            "requests": 2
+          }
+        },
+        "proxy_consistent": true
+      },
+      "oauth_token_events": [
+        {
+          "seq": 6,
+          "outcome": "ok",
+          "client_id": "qm-memory-read",
+          "auth_method": "client_secret_basic"
+        }
+      ],
+      "gbrain_events": [
+        {
+          "seq": 7,
+          "tool": "gbrain.initialize",
+          "outcome": "ok",
+          "error": null,
+          "caller": "provider",
+          "provider_op": null,
+          "arg_names": [],
+          "question_chars": null,
+          "max_chars": null,
+          "question_trim": null,
+          "delivery": null
+        },
+        {
+          "seq": 8,
+          "tool": "gbrain.recall",
+          "outcome": "ok",
+          "error": null,
+          "caller": "provider",
+          "provider_op": "recall",
+          "arg_names": [
+            "acting_user",
+            "max_chars",
+            "question"
+          ],
+          "question_chars": 137,
+          "max_chars": 6000,
+          "question_trim": {
+            "original_chars": 2017,
+            "trim_only_chars": 2000,
+            "member_text_chars": 137,
+            "sent_chars": 137,
+            "kept": "member_text"
+          },
+          "delivery": {
+            "facts": [
+              true
+            ],
+            "returned": [
+              true
+            ],
+            "cap": 6000,
+            "text_chars": 2373,
+            "delivered_chars": 2373
+          }
+        },
+        {
+          "seq": 16,
+          "tool": "gbrain.initialize",
+          "outcome": "ok",
+          "error": null,
+          "caller": "provider",
+          "provider_op": null,
+          "arg_names": [],
+          "question_chars": null,
+          "max_chars": null,
+          "question_trim": null,
+          "delivery": null
+        },
+        {
+          "seq": 17,
+          "tool": "gbrain.recall",
+          "outcome": "ok",
+          "error": null,
+          "caller": "provider",
+          "provider_op": "recall",
+          "arg_names": [
+            "acting_user",
+            "max_chars",
+            "question"
+          ],
+          "question_chars": 110,
+          "max_chars": 6000,
+          "question_trim": {
+            "original_chars": 3038,
+            "trim_only_chars": 2000,
+            "member_text_chars": 110,
+            "sent_chars": 110,
+            "kept": "member_text"
+          },
+          "delivery": {
+            "facts": [
+              true,
+              true
+            ],
+            "returned": [
+              true,
+              true
+            ],
+            "cap": 6000,
+            "text_chars": 2754,
+            "delivered_chars": 2754
+          }
+        }
+      ],
+      "ingest_events": 4,
+      "stored_user_turns": [
+        {
+          "seq": 0,
+          "environment_chars": 2506,
+          "environment_has_gbrain_section": true,
+          "told_fact_under_gbrain_section": true
+        },
+        {
+          "seq": 2,
+          "environment_chars": 3006,
+          "environment_has_gbrain_section": true,
+          "told_fact_under_gbrain_section": true
+        }
+      ],
+      "core_log_recall_failures": 0,
+      "recall_facts": {
+        "8": [
+          {
+            "told_fact_dock_38": true,
+            "delivered": true,
+            "source": "dana-okafor, a direct message with assistant, 2026-10-14T09:00:00-05:00",
+            "sha256": "b477b37cc314a53ca0ca433f72d153f5f333931ecf41df1371541c0367879368"
+          }
+        ],
+        "17": [
+          {
+            "told_fact_dock_38": false,
+            "delivered": true,
+            "source": "dana-okafor, a direct message with assistant, 2026-10-15T09:00:00-05:00",
+            "sha256": "7e98015a8ef44d8a5a2a7c1fdcf2be35ce1654053dbc07cd7a33832413f398a0"
+          },
+          {
+            "told_fact_dock_38": true,
+            "delivered": true,
+            "source": "dana-okafor, a direct message with assistant, 2026-10-14T09:00:00-05:00",
+            "sha256": "b477b37cc314a53ca0ca433f72d153f5f333931ecf41df1371541c0367879368"
+          }
+        ]
+      }
+    }
+  }
+}

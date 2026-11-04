@@ -1,0 +1,305 @@
+{
+  "what": "S1 freeze gate 9, keyless, rerun from main at harness-evals f8efe9dc (internal-task, QM lane, internal-task): one gstack-router and one no-gstack Sol turn (gpt-6.1-sol) with the metering proxy in capture mode and its OpenAI upstream a fake that logs each request's model. Run by the S1 driver dry run (the same invocation as s1-staging-b6786d67-main.json), as gate9-sol-smoke.json was; its OpenAI fake is tests/fixtures/fake-responses.ts. The e9995eb9 receipt (gate9-sol-smoke.json) stays as it was.",
+  "harness_evals_commit": "f8efe9dcfaad589a42ed3a2d05000b6e4417a3a6",
+  "harness_evals_tree": "6084241452280121ead6d38ebe29f3df9e0839cf",
+  "dirty": false,
+  "date": "2026-11-04",
+  "qm_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7",
+  "gstack_ref": "21277291c850765052ea9f80f6be4ccf1f1eb191",
+  "command": "env -i PATH=$PATH HOME=$HOME bun harnesses/qm/gstack/s1-probe.ts --dry-run --inject-fault --skip-build --reps 1 --only s1-r3-k1-opus-gstack-router,s1-r3-k1-opus-no-gstack,s1-r3-k1-sol-gstack-router,s1-r3-k1-sol-no-gstack --work <dir>",
+  "run_id": "anatomy-capture-qm-s1-gstack-probe-dry-run",
+  "images": {
+    "core": {
+      "name": "harness-eval/qm:dev",
+      "id": "sha256:2063b34daa9746ef0bf9404e3ab7e29ec1bf6b1926403a36a3378488ef70f809",
+      "qm_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7"
+    },
+    "sandbox": {
+      "name": "harness-eval/qm-sandbox:dev",
+      "id": "sha256:76a521cb6a7d5ba1b7c40ada92c5aba5441fb7b5bce3f96658e5143e39effd30",
+      "qm_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7"
+    },
+    "gstack-router": {
+      "name": "harness-eval/qm-sandbox:s1-gstack-21277291",
+      "id": "sha256:c7db3b276ed7044e18ed04e677c8db8d59d51170e4b0a5ff28c5473d1f8dbb10",
+      "qm_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7"
+    },
+    "no-gstack": {
+      "name": "harness-eval/qm-sandbox:s1-no-gstack",
+      "id": "sha256:b5bc53d4e898f4fed96575e38ad5c3f35b61538e8d5a4e4f912f954735e3f3c7",
+      "qm_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7"
+    },
+    "built": false
+  },
+  "how": "the S1 driver keyless dry run: the real metering proxy in capture mode (dummy provider keys, runner/trial/capture.ts) in front of scripts/gsta-135/fake-anthropic.ts (Opus) and tests/fixtures/fake-responses.ts (Sol, the Responses API), scripted per arm; one fresh QM stack per turn; request 3 (careful), one repetition, both models and both arms, plus the injected no-default-sandbox fault turn. Core and sandbox images built at this commit (QM b6786d67) with \"docker build -t harness-eval/qm:dev harnesses/qm\" and \"docker build -f harnesses/qm/Dockerfile.sandbox -t harness-eval/qm-sandbox:dev harnesses/qm\" under env -i (HOME, PATH); the arm images rebuilt by the driver (--skip-build skips only core and sandbox).",
+  "output_sha256": {
+    "preflight.json": "28db595ecfe56c55b7c659da938eaa6ad51f7ab4a639e839fd4c118439e97b4d",
+    "summary.json": "d3ec5b6a4ce9893c98b4c85c452f53cb95dd43e6179007228809b4dfea99d35a",
+    "turns.jsonl": "398a497df609995e98a3a58e204d89759eee45665dda4676c2e77d163ab9ddd2",
+    "proxy-usage.ndjson": "d25163f9d1f5df548a10e0ec2dbbb2b5f347f774dac8dc1dcd43f8aa65bde88f",
+    "fake-requests.ndjson": "728a3b8aa40d775333a91649bfe279a8e61b6cb071c6e957f7f0af058c7bd8fb",
+    "fake-responses.ndjson": "07d286fe108d84f7f71b49ae5b6a1c753cdb8fa78552923f274ea3ebfb356867"
+  },
+  "pass": true,
+  "assertions": [
+    {
+      "id": "sol_turns_completed",
+      "pass": true,
+      "detail": "s1-r3-k1-sol-gstack-router ok; s1-r3-k1-sol-no-gstack ok"
+    },
+    {
+      "id": "agent_requests_on_proxy_openai_route",
+      "pass": true,
+      "detail": "4 agent requests, provider openai (the proxy /openai route), upstream route /v1/responses, model gpt-6.1-sol, outcome forwarded, status 200; metered on trial-token:s1-r3-k1-sol-gstack-router,trial-token:s1-r3-k1-sol-no-gstack"
+    },
+    {
+      "id": "dummy_token_only",
+      "pass": true,
+      "detail": "6 requests reached the Responses fake, statuses 200, authorization sha256 9378dd4deb23c8e9a1db8ad0fe9b1594c3af01854eab4a30bc43de14810e6c7a = sha256(\"Bearer \" + the capture runner OpenAI dummy key); the fake refuses any other key (requireKeyPrefix)"
+    },
+    {
+      "id": "housekeeping_model_recorded",
+      "pass": true,
+      "detail": "2 housekeeping request(s), model gpt-5.6-luna, outcome forwarded; per turn s1-r3-k1-sol-gstack-router 1, s1-r3-k1-sol-no-gstack 1"
+    },
+    {
+      "id": "reconciled",
+      "pass": true,
+      "detail": "s1-r3-k1-sol-gstack-router proxy_consistent true; s1-r3-k1-sol-no-gstack proxy_consistent true"
+    }
+  ],
+  "housekeeping": {
+    "sol": [
+      "gpt-5.6-luna"
+    ],
+    "expected": "gpt-5.6-luna",
+    "design_stands": true
+  },
+  "fake_responses_requests": [
+    {
+      "path": "/v1/responses",
+      "status": 200,
+      "model": "gpt-5.6-luna",
+      "stream": true,
+      "tools": 0,
+      "authorization_sha256": "9378dd4deb23c8e9a1db8ad0fe9b1594c3af01854eab4a30bc43de14810e6c7a"
+    },
+    {
+      "path": "/v1/responses",
+      "status": 200,
+      "model": "gpt-6.1-sol",
+      "stream": true,
+      "tools": 13,
+      "authorization_sha256": "9378dd4deb23c8e9a1db8ad0fe9b1594c3af01854eab4a30bc43de14810e6c7a"
+    },
+    {
+      "path": "/v1/responses",
+      "status": 200,
+      "model": "gpt-6.1-sol",
+      "stream": true,
+      "tools": 13,
+      "authorization_sha256": "9378dd4deb23c8e9a1db8ad0fe9b1594c3af01854eab4a30bc43de14810e6c7a"
+    },
+    {
+      "path": "/v1/responses",
+      "status": 200,
+      "model": "gpt-6.1-sol",
+      "stream": true,
+      "tools": 13,
+      "authorization_sha256": "9378dd4deb23c8e9a1db8ad0fe9b1594c3af01854eab4a30bc43de14810e6c7a"
+    },
+    {
+      "path": "/v1/responses",
+      "status": 200,
+      "model": "gpt-5.6-luna",
+      "stream": true,
+      "tools": 0,
+      "authorization_sha256": "9378dd4deb23c8e9a1db8ad0fe9b1594c3af01854eab4a30bc43de14810e6c7a"
+    },
+    {
+      "path": "/v1/responses",
+      "status": 200,
+      "model": "gpt-6.1-sol",
+      "stream": true,
+      "tools": 13,
+      "authorization_sha256": "9378dd4deb23c8e9a1db8ad0fe9b1594c3af01854eab4a30bc43de14810e6c7a"
+    }
+  ],
+  "proxy_requests": [
+    {
+      "at": "2026-11-04T13:34:48.268Z",
+      "metered_on": "trial-token:s1-r3-k1-sol-gstack-router",
+      "provider": "openai",
+      "route": "/v1/responses",
+      "model": "gpt-5.6-luna",
+      "outcome": "forwarded",
+      "status": 200,
+      "reserved_usd": 0.1539394,
+      "actual_usd": 0.000288
+    },
+    {
+      "at": "2026-11-04T13:34:48.408Z",
+      "metered_on": "trial-token:s1-r3-k1-sol-gstack-router",
+      "provider": "openai",
+      "route": "/v1/responses",
+      "model": "gpt-6.1-sol",
+      "outcome": "forwarded",
+      "status": 200,
+      "reserved_usd": 1.3899475,
+      "actual_usd": 0.00242
+    },
+    {
+      "at": "2026-11-04T13:34:48.547Z",
+      "metered_on": "trial-token:s1-r3-k1-sol-gstack-router",
+      "provider": "openai",
+      "route": "/v1/responses",
+      "model": "gpt-6.1-sol",
+      "outcome": "forwarded",
+      "status": 200,
+      "reserved_usd": 1.402775,
+      "actual_usd": 0.00242
+    },
+    {
+      "at": "2026-11-04T13:34:48.603Z",
+      "metered_on": "trial-token:s1-r3-k1-sol-gstack-router",
+      "provider": "openai",
+      "route": "/v1/responses",
+      "model": "gpt-6.1-sol",
+      "outcome": "forwarded",
+      "status": 200,
+      "reserved_usd": 1.4037625,
+      "actual_usd": 0.00242
+    },
+    {
+      "at": "2026-11-04T13:35:01.353Z",
+      "metered_on": "trial-token:s1-r3-k1-sol-no-gstack",
+      "provider": "openai",
+      "route": "/v1/responses",
+      "model": "gpt-5.6-luna",
+      "outcome": "forwarded",
+      "status": 200,
+      "reserved_usd": 0.1539394,
+      "actual_usd": 0.000288
+    },
+    {
+      "at": "2026-11-04T13:35:01.523Z",
+      "metered_on": "trial-token:s1-r3-k1-sol-no-gstack",
+      "provider": "openai",
+      "route": "/v1/responses",
+      "model": "gpt-6.1-sol",
+      "outcome": "forwarded",
+      "status": 200,
+      "reserved_usd": 1.359745,
+      "actual_usd": 0.00242
+    }
+  ],
+  "turns": [
+    {
+      "turn_id": "s1-r3-k1-sol-gstack-router",
+      "attempt": 1,
+      "model": "openai:gpt-6.1-sol",
+      "arm": "gstack-router",
+      "request": 3,
+      "skill": "careful",
+      "termination": "ok",
+      "wall_ms": 588,
+      "housekeeping": {
+        "model": "openai:gpt-5.6-luna",
+        "requests": 1,
+        "usd": 0.000288
+      },
+      "opens": [
+        {
+          "seq": 1,
+          "skill": "careful",
+          "via": "files",
+          "path": "/root/workspace/gstack/careful/SKILL.md",
+          "cut": false
+        }
+      ],
+      "complete_read": "inline",
+      "start_preamble": true,
+      "audit_hits": 2,
+      "contaminated": false,
+      "faults": [],
+      "first_prompt": {
+        "system_chars": 22077,
+        "router": true,
+        "gstack_word": true
+      },
+      "usage": {
+        "requests": 4,
+        "usd": 0.007547999999999999,
+        "by_model": {
+          "openai:gpt-5.6-luna": {
+            "usd": 0.000288,
+            "requests": 1
+          },
+          "openai:gpt-6.1-sol": {
+            "usd": 0.007259999999999999,
+            "requests": 3
+          }
+        }
+      },
+      "proxy_consistent": true
+    },
+    {
+      "turn_id": "s1-r3-k1-sol-no-gstack",
+      "attempt": 1,
+      "model": "openai:gpt-6.1-sol",
+      "arm": "no-gstack",
+      "request": 3,
+      "skill": "careful",
+      "termination": "ok",
+      "wall_ms": 474,
+      "housekeeping": {
+        "model": "openai:gpt-5.6-luna",
+        "requests": 1,
+        "usd": 0.000288
+      },
+      "opens": [],
+      "complete_read": null,
+      "start_preamble": false,
+      "audit_hits": 0,
+      "contaminated": false,
+      "faults": [],
+      "first_prompt": {
+        "system_chars": 10083,
+        "router": false,
+        "gstack_word": false
+      },
+      "usage": {
+        "requests": 2,
+        "usd": 0.002708,
+        "by_model": {
+          "openai:gpt-5.6-luna": {
+            "usd": 0.000288,
+            "requests": 1
+          },
+          "openai:gpt-6.1-sol": {
+            "usd": 0.00242,
+            "requests": 1
+          }
+        }
+      },
+      "proxy_consistent": true
+    }
+  ],
+  "rerun": {
+    "lane": "internal-task (QM lane, internal-task)",
+    "harness_evals_commit": "f8efe9dcfaad589a42ed3a2d05000b6e4417a3a6",
+    "harness_evals_tree": "6084241452280121ead6d38ebe29f3df9e0839cf",
+    "base": "main dcbf03e025d6eecb00ab27c4e09ddf01600bf7cd (#254 merged) plus the prereg delta (origin/harn31/qm-preregs at f8efe9dc)",
+    "command": "env -i PATH=$PATH HOME=$HOME bun harnesses/qm/gstack/s1-probe.ts --dry-run --inject-fault --skip-build --reps 1 --only s1-r3-k1-opus-gstack-router,s1-r3-k1-opus-no-gstack,s1-r3-k1-sol-gstack-router,s1-r3-k1-sol-no-gstack --work <dir>",
+    "exact_command": "env -i HOME=/home/user PATH=/home/user/.bun/bin:/usr/local/bin:/usr/bin:/bin bun harnesses/qm/gstack/s1-probe.ts --dry-run --inject-fault --skip-build --reps 1 --only s1-r3-k1-opus-gstack-router,s1-r3-k1-opus-no-gstack,s1-r3-k1-sol-gstack-router,s1-r3-k1-sol-no-gstack --work ~/.capy/work/harn38/work",
+    "driver_exit": 0,
+    "run_complete_flag": {
+      "complete": false,
+      "missing": 16,
+      "note": "complete is false by design under --only: the 16 planned turns outside the four named ones have no record; a dry run exits on its checks, not on completeness (s1-probe.ts main)"
+    },
+    "attempts": 1,
+    "what": "S1 freeze gate 9",
+    "outcome": "pass: both Sol turns completed, 4 agent requests as gpt-6.1-sol on the proxy openai route with the dummy key only, housekeeping gpt-5.6-luna"
+  }
+}

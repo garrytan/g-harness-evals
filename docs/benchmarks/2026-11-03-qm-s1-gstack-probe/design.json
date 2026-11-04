@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "run_id": "qm-s1-gstack-probe-2026-11",
+  "stage": "design",
+  "question": "On QM b6786d67 through Pi, on anthropic:claude-opus-5-5 and, separately, on openai:gpt-6.1-sol, with gstack 21277291c's paste-in router (gstack-harness register generic --print) in QM's org SOUL and gstack's SKILL.md files staged in the member's sandbox: of 15 DM turns per model (5 invented requests that match gstack skills x 3 repetitions), in how many does QM open the matching skill, read it completely and start it? And, against a no-gstack arm on the same requests (R44), how do task progress, tokens, cost and wall time per turn compare? Zero opens stops gstack-on-QM through the router (plan v3 decision 5). Design stage: design.json, not a runnable prereg.json; the probe runs through harnesses/qm/gstack/s1-probe.ts on main since #254 merged as dcbf03e0 (PREREGISTRATION.md, gate 3).",
+  "harness": "qm",
+  "config": "pi",
+  "pins": {
+    "qm": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7",
+    "gstack": "21277291c850765052ea9f80f6be4ccf1f1eb191",
+    "gstack_version": "1.91.345.0"
+  },
+  "models": {
+    "primary": [
+      "anthropic:claude-opus-5-5",
+      "openai:gpt-6.1-sol"
+    ],
+    "utility_models": {
+      "anthropic:claude-opus-5-5": [
+        "anthropic:claude-haiku-5-5"
+      ],
+      "openai:gpt-6.1-sol": [
+        "openai:gpt-5.6-luna"
+      ]
+    },
+    "utility_label": "harness housekeeping, shipped default",
+    "sol_utility_note": "openai:gpt-5.6-luna is read from QM source (auxiliaryModelFor); gate 9 records it",
+    "sol_run_path": "the S1 driver starts core with harnesses/qm/compose.openai.yaml for a Sol turn; the shard path (scripts/run-shard.sh, harnesses/run-trial.sh) merges compose.<provider>.yaml the same way",
+    "sol_dry_run_router_check": "the Responses fake has no prompt match, so a Sol dry-run turn opens its skill unconditionally; on Sol the dry run's router check rests on the recorded first request only (the router in its system prompt)"
+  },
+  "arms": {
+    "gstack-router": {
+      "org_soul": "harnesses/qm/gstack/receipts/s1-router-21277291.md (12,186 characters)",
+      "sandbox_image": "harness-eval/qm-sandbox:s1-gstack-21277291 (Dockerfile.skills, STAGE_GSTACK=1, fixture repository included)",
+      "gstack_files": "63 SKILL.md under /root/workspace/gstack/"
+    },
+    "no-gstack": {
+      "org_soul": "QM's default (192 characters), no router, no gstack text",
+      "sandbox_image": "harness-eval/qm-sandbox:s1-no-gstack (Dockerfile.skills, STAGE_GSTACK=0, same fixture repository)",
+      "gstack_files": "none"
+    }
+  },
+  "design": "2 arms x 2 models: gstack-router and no-gstack, each on anthropic:claude-opus-5-5 and openai:gpt-6.1-sol; 5 requests x 3 repetitions per cell, 60 turns, one lease, cap 20 USD",
+  "cells": [
+    {
+      "id": "opus/gstack-router",
+      "arm": "gstack-router",
+      "model": "anthropic:claude-opus-5-5",
+      "utility_models": [
+        "anthropic:claude-haiku-5-5"
+      ],
+      "turns": 15
+    },
+    {
+      "id": "opus/no-gstack",
+      "arm": "no-gstack",
+      "model": "anthropic:claude-opus-5-5",
+      "utility_models": [
+        "anthropic:claude-haiku-5-5"
+      ],
+      "turns": 15
+    },
+    {
+      "id": "sol/gstack-router",
+      "arm": "gstack-router",
+      "model": "openai:gpt-6.1-sol",
+      "utility_models": [
+        "openai:gpt-5.6-luna"
+      ],
+      "turns": 15
+    },
+    {
+      "id": "sol/no-gstack",
+      "arm": "no-gstack",
+      "model": "openai:gpt-6.1-sol",
+      "utility_models": [
+        "openai:gpt-5.6-luna"
+      ],
+      "turns": 15
+    }
+  ],
+  "turn_id_pattern": "s1-r<n>-k<n>-<opus|sol>-<arm>",
+  "turn_id_note": "r is the request (1 to 5), k the repetition (1 to 3), then the model key and the arm, for example s1-r3-k2-sol-no-gstack; the dry run's injected fault turn s1-r3-fault-opus-gstack-router is outside the 60",
+  "requests": [
+    {
+      "id": 1,
+      "skill": "investigate",
+      "skill_chars": 29581,
+      "fits_inline": false,
+      "text": "Something in my branch broke the login test since yesterday. Can you find out why before I touch anything?"
+    },
+    {
+      "id": 2,
+      "skill": "review",
+      "skill_chars": 58767,
+      "fits_inline": false,
+      "text": "Before I merge, can you review the diff on my feature branch for anything risky?"
+    },
+    {
+      "id": 3,
+      "skill": "careful",
+      "skill_chars": 4727,
+      "fits_inline": true,
+      "text": "I'm about to run a cleanup script on the prod database box. Be extra careful with anything destructive while we work."
+    },
+    {
+      "id": 4,
+      "skill": "document-release",
+      "skill_chars": 16942,
+      "fits_inline": false,
+      "text": "Write up release notes for what changed since the last tag."
+    },
+    {
+      "id": 5,
+      "skill": "learn",
+      "skill_chars": 8351,
+      "fits_inline": true,
+      "text": "Save what we learned today about the flaky retry test so you remember it next time."
+    }
+  ],
+  "requests_invented": true,
+  "repetitions": 3,
+  "turn": "a new DM thread from one member on a fresh QM stack per turn",
+  "run_order": "request by request and repetition by repetition; within each, opus gstack-router, opus no-gstack, sol gstack-router, sol no-gstack (turnPlan in s1-probe.ts), so a cap stop leaves whole pairs on both models",
+  "endpoints": {
+    "primary": "gstack-router turns with a matched open, of 15, task-clustered bootstrap 95% interval over 5 requests (10,000 draws, seed 7); beside it any open, complete reads (inline, cut) and starts (preamble, first step)",
+    "rule": "per model; zero opens in 15 gstack-router turns on both models: CUT-CANDIDATE for gstack-on-QM through the router; one or more matched opens on either model: counts by model to internal-task and internal-task",
+    "r44_comparison": "per request, gstack-router minus no-gstack in progress-marker turns, tokens, cost and wall time per turn, paired on request and repetition, descriptive only (5 clusters: smallest exact two-sided p 0.0625)"
+  },
+  "spend_cap_usd": 20,
+  "spend_cap_status": "approved by the Captain (F1, 2026-11-03), raised from 15 for the Sol arm; one lease for both models",
+  "spend_expected_usd": 11.03,
+  "lane": "qm-measure",
+  "ubicloud": {
+    "vms": 1,
+    "size": "standard-16",
+    "UBI_OWNER": "internal-task",
+    "UBI_TTL_HOURS": 3,
+    "vm_hours_note": "about 1.5 hours per model"
+  },
+  "spend_conservative_usd": 16.65,
+  "schedule_note": "2026-11-03 (Captain, C1): if the probe driver is not ready by 2026-11-05, S1 arrives as a dated addendum to the M1 report",
+  "fixture": {
+    "path": "/root/workspace/repo",
+    "head": "9db8fa505db65ccd14f1f18a3ed6cd18da405d00",
+    "branch": "feature/session-timeout",
+    "files": 7,
+    "tree_sha256": "befe52967dcebff9f953ef9254e8ad13ac3232f9a2d9a22ebb7c6253f4c90db1",
+    "source": "harnesses/qm/gstack/s1-fixture.ts"
+  },
+  "driver": {
+    "branch": "main",
+    "head": "dcbf03e025d6eecb00ab27c4e09ddf01600bf7cd",
+    "on_main": true
+  },
+  "count_sources": [
+    "GET /v1/admin/sessions/:id?scope=personal:<member>&limit=50000",
+    "GET /v1/admin/sessions/:id/llm?scope=personal:<member>&turnSeq=0"
+  ],
+  "image_check": "zero gstack files in core and no-gstack (a path with gstack as a word, or a sha256 match to a staged file); gstack-router exactly the 63 staged files",
+  "turns_total": 60,
+  "reservation_basis": {
+    "usd": 2.98,
+    "source": "internal-task measured QM Opus reservation",
+    "fit_usd": 19.63,
+    "sensitivity_usd": {
+      "3.50": 20.15,
+      "4.00": 20.65
+    },
+    "over_cap": "the last calls stop at the cap as cap_stop turns, counted and excluded, never rerun",
+    "largest": "Opus, 2.98 USD measured",
+    "sol_usd": 1.49,
+    "sol_note": "128,000 output tokens at 10 USD per million (1.28) plus about 0.21 of input (about 105,000 tokens at 2 USD per million, the input share of the Opus reservation)"
+  },
+  "r54": "both frontier models tested; Sol through harnesses/qm/compose.openai.yaml (train 3e0a606f); fallback: Opus only, declared as a gap in our QM wiring, not a QM defect (gate 9)"
+}

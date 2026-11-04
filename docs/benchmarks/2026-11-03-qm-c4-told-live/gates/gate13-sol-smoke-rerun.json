@@ -1,0 +1,547 @@
+{
+  "what": "C4 freeze gate 13, rerun at harness-evals e9995eb9 (internal-task, QM lane, internal-task): the keyless Sol smoke. One cn-01-tamsin-cold-chain-site trial of each Sol cell (gpt-6.1-sol) through the runner and the real metering proxy, the proxy's OpenAI upstream tests/fixtures/openai-branch/fake-openai.ts, which logs each request's model. Hashes-only: no request or response body is stored, only each request's route, model, stream flag, tool count and credential class, and the sha256 of each fake log. The earlier receipt beside this one stays as it was.",
+  "harness_evals_commit": "e9995eb9703b7a96494d0b4bace9949178df51e7",
+  "harness_evals_tree": "28370967f11f20ddf4d7330633eb6c955d446fbe",
+  "dirty": false,
+  "date": "2026-11-03",
+  "qm_commit": "b6786d675f83d9a818c5d5335cc017ffea9ec7a7",
+  "gbrain_commit": "a590ad07d15c92669ae30a37835df30d071e5536",
+  "images": {
+    "harness-eval/qm:dev": "sha256:816af163d29712fef942994a956440cbc1fa86ac80481d616b8176bebaa67aa5",
+    "harness-eval/qm-sandbox:dev": "sha256:0e30c0902459525ea1a37988a7ede16901349459e9b0de3d6b42dee0c8a7b851",
+    "harness-eval/gbrain:dev": "sha256:efd0c8566ed13dd1e0993f007de27d3a18eb031975fd809de9924bb5972dae76"
+  },
+  "run": {
+    "run_id": "anatomy-capture-qm-c4-harn38-rerun-20261103",
+    "scratch_prereg_sha256": "c60f738b1d6a8bbaf762434806f8cd9f6503dddcf73fba9365ba577679f0f54d",
+    "scratch_prereg": "docs/benchmarks/2026-11-03-qm-c4-told-live/prereg.json with run_id anatomy-capture-qm-c4-harn38-rerun-20261103, spend_cap_usd 20, the cells filtered to qm-pi-opus-gbrain-memory-provider-mu-v03-dev and the three Sol cells (minimum_v01 filtered the same way), tasks [cn-01-tamsin-cold-chain-site], repetitions 1; every other cell field unchanged (jq over the committed prereg.json)",
+    "checkout": "the working checkout at e9995eb9703b7a96494d0b4bace9949178df51e7 (branch harn38/qm-gates from origin/harn31/qm-preregs), no local changes",
+    "command": "env -i PATH=$PATH HOME=$HOME bun runner/run.ts plan --prereg <scratch> --out <dir>; env -i PATH=$PATH HOME=$HOME bun runner/run.ts run --manifest <dir>/manifest.json --lease-usd 20 --max-output-tokens 128000 --capture-upstream anthropic=http://127.0.0.1:18611 --capture-upstream openai=http://127.0.0.1:18612",
+    "fakes": {
+      "anthropic": "scripts/gsta-135/fake-anthropic.ts --host 127.0.0.1 --port 18611 --require-key-prefix <the capture runner Anthropic dummy key> (no script: every answer is the text ok)",
+      "openai": "tests/fixtures/openai-branch/fake-openai.ts --host 127.0.0.1 --port 18612 --expect-key <the capture runner OpenAI dummy key>"
+    },
+    "proxy": "the real metering proxy (runner/proxy/metering-proxy.ts) in lease mode, started by the runner in capture mode (runner/trial/capture.ts): --upstream to the fakes, dummy provider keys, a scratch ledger with a $20 lease of fake usage, never paid",
+    "one_run_two_gates": "one runner invocation, one attempt, serves gate 4 (the two memory-provider trials) and gate 13 (the three Sol trials); both receipts name it"
+  },
+  "pass": true,
+  "assertions": [
+    {
+      "id": "sol_trials_completed",
+      "pass": true,
+      "detail": "qm-pi-sol-none-mu-v03-dev completed; qm-pi-sol-gbrain-memory-provider-mu-v03-dev completed; qm-pi-sol-gbrain-route-tool-mu-v03-dev completed"
+    },
+    {
+      "id": "agent_requests_on_proxy_openai_route",
+      "pass": true,
+      "detail": "6 agent requests, provider openai (the proxy /openai route), upstream route /v1/responses, model gpt-6.1-sol, outcome forwarded"
+    },
+    {
+      "id": "dummy_token_only",
+      "pass": true,
+      "detail": "9 requests reached the fake OpenAI; credentials {\"expected\":9} (expected = the proxy's dummy key, so core presented the per-trial token the proxy requires on the slot and nothing else reached the upstream)"
+    },
+    {
+      "id": "housekeeping_model_recorded",
+      "pass": true,
+      "detail": "3 housekeeping request(s), model gpt-5.6-luna, outcome forwarded"
+    },
+    {
+      "id": "metered_on_trial_lease",
+      "pass": true,
+      "detail": "every proxy usage line carries key trial-token:<that trial id> under run anatomy-capture-qm-c4-harn38-rerun-20261103; usd per trial 0.00011399999999999999, 0.00011399999999999999, 0.00011399999999999999"
+    }
+  ],
+  "housekeeping": {
+    "sol": [
+      "gpt-5.6-luna"
+    ],
+    "opus_memory_provider_trial": [
+      "claude-haiku-5-5",
+      "claude-opus-5-5"
+    ],
+    "sol_requests_per_trial": [
+      1,
+      1,
+      1
+    ],
+    "utility_models_stand": true
+  },
+  "fake_openai_requests": [
+    {
+      "path": "/v1/responses",
+      "model": "gpt-5.6-luna",
+      "stream": true,
+      "tools": 0,
+      "credential": "expected",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    },
+    {
+      "path": "/v1/responses",
+      "model": "gpt-6.1-sol",
+      "stream": true,
+      "tools": 15,
+      "credential": "expected",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    },
+    {
+      "path": "/v1/responses",
+      "model": "gpt-6.1-sol",
+      "stream": true,
+      "tools": 15,
+      "credential": "expected",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    },
+    {
+      "path": "/v1/responses",
+      "model": "gpt-5.6-luna",
+      "stream": true,
+      "tools": 0,
+      "credential": "expected",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    },
+    {
+      "path": "/v1/responses",
+      "model": "gpt-6.1-sol",
+      "stream": true,
+      "tools": 15,
+      "credential": "expected",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    },
+    {
+      "path": "/v1/responses",
+      "model": "gpt-6.1-sol",
+      "stream": true,
+      "tools": 15,
+      "credential": "expected",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    },
+    {
+      "path": "/v1/responses",
+      "model": "gpt-5.6-luna",
+      "stream": true,
+      "tools": 0,
+      "credential": "expected",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    },
+    {
+      "path": "/v1/responses",
+      "model": "gpt-6.1-sol",
+      "stream": true,
+      "tools": 15,
+      "credential": "expected",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    },
+    {
+      "path": "/v1/responses",
+      "model": "gpt-6.1-sol",
+      "stream": true,
+      "tools": 15,
+      "credential": "expected",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    }
+  ],
+  "fake_anthropic_requests": [
+    {
+      "path": "/v1/messages",
+      "status": 200,
+      "model": "claude-haiku-5-5",
+      "tools": 0,
+      "stream": true
+    },
+    {
+      "path": "/v1/messages",
+      "status": 200,
+      "model": "claude-opus-5-5",
+      "tools": 15,
+      "stream": true
+    },
+    {
+      "path": "/v1/messages",
+      "status": 200,
+      "model": "claude-opus-5-5",
+      "tools": 15,
+      "stream": true
+    }
+  ],
+  "fake_log_sha256": {
+    "openai": "29218da1dcd3cb0c0a735346f5cb2642ae1338276a0b458f714f5c313ba649d5",
+    "anthropic": "5124217ed35ac5e3747825c131cb4dd617425cfc075fd4605fbfa40f8541b866"
+  },
+  "trials": {
+    "qm-pi-sol-none-mu-v03-dev": {
+      "trial_id": "anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-none-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+      "model": "openai:gpt-6.1-sol",
+      "termination": "completed",
+      "cap_stop": false,
+      "wall_ms": 15298,
+      "proxy_requests": [
+        {
+          "at": "2026-11-04T06:01:11.537Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-5.6-luna",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-none-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 0.154629,
+          "actual_usd": 0.000006,
+          "streamed": true
+        },
+        {
+          "at": "2026-11-04T06:01:11.649Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-none-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 1.3759925,
+          "actual_usd": 0.000054,
+          "streamed": true
+        },
+        {
+          "at": "2026-11-04T06:01:12.671Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-none-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 1.3855675,
+          "actual_usd": 0.000054,
+          "streamed": true
+        }
+      ],
+      "meter": {
+        "meter_id": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-none-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+        "usd": 0.00011399999999999999,
+        "requests": 3,
+        "by_model": {
+          "openai:gpt-5.6-luna": {
+            "usd": 0.000006,
+            "requests": 1
+          },
+          "openai:gpt-6.1-sol": {
+            "usd": 0.000108,
+            "requests": 2
+          }
+        },
+        "proxy_consistent": true
+      },
+      "oauth_token_events": [],
+      "gbrain_events": [],
+      "ingest_events": 0,
+      "stored_user_turns": [
+        {
+          "seq": 0,
+          "environment_chars": 83,
+          "environment_has_gbrain_section": false,
+          "told_fact_under_gbrain_section": false
+        },
+        {
+          "seq": 2,
+          "environment_chars": 83,
+          "environment_has_gbrain_section": false,
+          "told_fact_under_gbrain_section": false
+        }
+      ],
+      "core_log_recall_failures": 0,
+      "recall_facts": {}
+    },
+    "qm-pi-sol-gbrain-memory-provider-mu-v03-dev": {
+      "trial_id": "anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+      "model": "openai:gpt-6.1-sol",
+      "termination": "completed",
+      "cap_stop": false,
+      "wall_ms": 24511,
+      "proxy_requests": [
+        {
+          "at": "2026-11-04T06:01:34.136Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-5.6-luna",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 0.154629,
+          "actual_usd": 0.000006,
+          "streamed": true
+        },
+        {
+          "at": "2026-11-04T06:01:34.314Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 1.3823275,
+          "actual_usd": 0.000054,
+          "streamed": true
+        },
+        {
+          "at": "2026-11-04T06:01:35.772Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 1.3996625,
+          "actual_usd": 0.000054,
+          "streamed": true
+        }
+      ],
+      "meter": {
+        "meter_id": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-gbrain-memory-provider-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+        "usd": 0.00011399999999999999,
+        "requests": 3,
+        "by_model": {
+          "openai:gpt-5.6-luna": {
+            "usd": 0.000006,
+            "requests": 1
+          },
+          "openai:gpt-6.1-sol": {
+            "usd": 0.000108,
+            "requests": 2
+          }
+        },
+        "proxy_consistent": true
+      },
+      "oauth_token_events": [
+        {
+          "seq": 6,
+          "outcome": "ok",
+          "client_id": "qm-memory-read",
+          "auth_method": "client_secret_basic"
+        }
+      ],
+      "gbrain_events": [
+        {
+          "seq": 7,
+          "tool": "gbrain.initialize",
+          "outcome": "ok",
+          "error": null,
+          "caller": "provider",
+          "provider_op": null,
+          "arg_names": [],
+          "question_chars": null,
+          "max_chars": null,
+          "question_trim": null,
+          "delivery": null
+        },
+        {
+          "seq": 8,
+          "tool": "gbrain.recall",
+          "outcome": "ok",
+          "error": null,
+          "caller": "provider",
+          "provider_op": "recall",
+          "arg_names": [
+            "acting_user",
+            "max_chars",
+            "question"
+          ],
+          "question_chars": 137,
+          "max_chars": 6000,
+          "question_trim": {
+            "original_chars": 2017,
+            "trim_only_chars": 2000,
+            "member_text_chars": 137,
+            "sent_chars": 137,
+            "kept": "member_text"
+          },
+          "delivery": {
+            "facts": [
+              true
+            ],
+            "returned": [
+              true
+            ],
+            "cap": 6000,
+            "text_chars": 2373,
+            "delivered_chars": 2373
+          }
+        },
+        {
+          "seq": 16,
+          "tool": "gbrain.initialize",
+          "outcome": "ok",
+          "error": null,
+          "caller": "provider",
+          "provider_op": null,
+          "arg_names": [],
+          "question_chars": null,
+          "max_chars": null,
+          "question_trim": null,
+          "delivery": null
+        },
+        {
+          "seq": 17,
+          "tool": "gbrain.recall",
+          "outcome": "ok",
+          "error": null,
+          "caller": "provider",
+          "provider_op": "recall",
+          "arg_names": [
+            "acting_user",
+            "max_chars",
+            "question"
+          ],
+          "question_chars": 110,
+          "max_chars": 6000,
+          "question_trim": {
+            "original_chars": 3038,
+            "trim_only_chars": 2000,
+            "member_text_chars": 110,
+            "sent_chars": 110,
+            "kept": "member_text"
+          },
+          "delivery": {
+            "facts": [
+              true,
+              true
+            ],
+            "returned": [
+              true,
+              true
+            ],
+            "cap": 6000,
+            "text_chars": 2754,
+            "delivered_chars": 2754
+          }
+        }
+      ],
+      "ingest_events": 4,
+      "stored_user_turns": [
+        {
+          "seq": 0,
+          "environment_chars": 2506,
+          "environment_has_gbrain_section": true,
+          "told_fact_under_gbrain_section": true
+        },
+        {
+          "seq": 2,
+          "environment_chars": 3006,
+          "environment_has_gbrain_section": true,
+          "told_fact_under_gbrain_section": true
+        }
+      ],
+      "core_log_recall_failures": 0,
+      "recall_facts": {
+        "8": [
+          {
+            "told_fact_dock_38": true,
+            "delivered": true,
+            "source": "dana-okafor, a direct message with assistant, 2026-10-14T09:00:00-05:00",
+            "sha256": "b477b37cc314a53ca0ca433f72d153f5f333931ecf41df1371541c0367879368"
+          }
+        ],
+        "17": [
+          {
+            "told_fact_dock_38": false,
+            "delivered": true,
+            "source": "dana-okafor, a direct message with assistant, 2026-10-15T09:00:00-05:00",
+            "sha256": "7e98015a8ef44d8a5a2a7c1fdcf2be35ce1654053dbc07cd7a33832413f398a0"
+          },
+          {
+            "told_fact_dock_38": true,
+            "delivered": true,
+            "source": "dana-okafor, a direct message with assistant, 2026-10-14T09:00:00-05:00",
+            "sha256": "b477b37cc314a53ca0ca433f72d153f5f333931ecf41df1371541c0367879368"
+          }
+        ]
+      }
+    },
+    "qm-pi-sol-gbrain-route-tool-mu-v03-dev": {
+      "trial_id": "anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-gbrain-route-tool-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+      "model": "openai:gpt-6.1-sol",
+      "termination": "completed",
+      "cap_stop": false,
+      "wall_ms": 25240,
+      "proxy_requests": [
+        {
+          "at": "2026-11-04T06:01:59.982Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-5.6-luna",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-gbrain-route-tool-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 0.1547204,
+          "actual_usd": 0.000006,
+          "streamed": true
+        },
+        {
+          "at": "2026-11-04T06:02:00.086Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-gbrain-route-tool-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 1.3883625,
+          "actual_usd": 0.000054,
+          "streamed": true
+        },
+        {
+          "at": "2026-11-04T06:02:01.236Z",
+          "provider": "openai",
+          "route": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "outcome": "forwarded",
+          "status": 200,
+          "metered_on": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-gbrain-route-tool-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+          "reserved_usd": 1.3999475,
+          "actual_usd": 0.000054,
+          "streamed": true
+        }
+      ],
+      "meter": {
+        "meter_id": "trial-token:anatomy-capture-qm-c4-harn38-rerun-20261103/qm-pi-sol-gbrain-route-tool-mu-v03-dev/cn-01-tamsin-cold-chain-site/r1",
+        "usd": 0.00011399999999999999,
+        "requests": 3,
+        "by_model": {
+          "openai:gpt-5.6-luna": {
+            "usd": 0.000006,
+            "requests": 1
+          },
+          "openai:gpt-6.1-sol": {
+            "usd": 0.000108,
+            "requests": 2
+          }
+        },
+        "proxy_consistent": true
+      },
+      "oauth_token_events": [],
+      "gbrain_events": [],
+      "ingest_events": 4,
+      "stored_user_turns": [
+        {
+          "seq": 0,
+          "environment_chars": 83,
+          "environment_has_gbrain_section": false,
+          "told_fact_under_gbrain_section": false
+        },
+        {
+          "seq": 2,
+          "environment_chars": 83,
+          "environment_has_gbrain_section": false,
+          "told_fact_under_gbrain_section": false
+        }
+      ],
+      "core_log_recall_failures": 0,
+      "recall_facts": {}
+    }
+  }
+}

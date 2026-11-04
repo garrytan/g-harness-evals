@@ -33,6 +33,8 @@ Codes like internal-task in receipts name internal work lanes.
   - [2026-11-01-tool-discipline-start/](benchmarks/2026-11-01-tool-discipline-start/report.md): `tool-discipline-start-2026-11`, 2026-11-01; gstack's start hook on OpenClaw and Hermes chat, Opus 5.5, no gstack against gstack `482ffd14` against gstack `b9fda18c` with the hook on, 144 trials, $16.90 of the $28 cap ([preregistration](benchmarks/2026-11-01-tool-discipline-start/PREREGISTRATION.md)). OpenClaw passes, starts 16 of 16 against 1 of 16; Hermes fails, 0 of 16, because its approval gate blocked every start the agent issued; task success 16 of 16 in every arm. The same folder holds the [report](benchmarks/2026-11-01-tool-discipline-start/report-hermes-r2.md) of `tool-discipline-start-hermes-r2-2026-11` ([preregistration](benchmarks/2026-11-01-tool-discipline-start/PREREGISTRATION-hermes-r2.md)), 2026-11-02, a new run id that reruns the Hermes cells with the candidate moved to gstack `e2d9c798` and Tirith 0.4.2 pinned, 72 trials, $5.76 of the $19 cap. Hermes passes, starts 8 of 16 against 0 of 16, all on task 1; task success 16 of 16 in every arm.
   - [2026-11-02-qm-brain-native/](benchmarks/2026-11-02-qm-brain-native/PREREGISTRATION.md): `qm-brain-native-2026-11`, preregistered 2026-11-02; the K8 design preregistration: QM with gbrain (recall, the brain tool, the turn card) against the same authorized notes as files, arms F, R, T, TC and N on Opus 5.5 and GPT-6.1 Sol, with particle-1 as a labelled low-cost primary. Design only: the folder holds `design.json` instead of a `prereg.json`, which comes with the pilot cells, and no trial has run. The corpus and checks are in [world/brain/](../world/brain/README.md).
   - [2026-11-03-investigate-gate/](benchmarks/2026-11-03-investigate-gate/report.md): `gates938-phase3`, 2026-11-02 to 2026-11-03; gstack's /investigate reproduce-first gate (internal-task), no gstack against gstack against gstack with the gate, Opus 5.5 and GPT-6.1 Sol, 11 tasks per model, 162 counted trials, $254.31 of the $300 cap. Pooled H-S +1.28 points [-3.80, +6.35]; the rule reaches FIX (Opus follow 7.1%), the repair does not fit the cap, so NOT ADDED.
+  - [2026-11-03-qm-c4-told-live/](benchmarks/2026-11-03-qm-c4-told-live/PREREGISTRATION.md): `qm-c4-told-live-2026-11`, preregistration frozen 2026-11-04 on main after #254 (`dcbf03e0`); the C4 told-live tasks on QM through Pi, Opus 5.5 and GPT-6.1 Sol, three gbrain routes (QM's notebook only, gbrain as registered tools, gbrain as QM's per-turn memory provider), 240 trials, cap $56.
+  - [2026-11-03-qm-s1-gstack-probe/](benchmarks/2026-11-03-qm-s1-gstack-probe/PREREGISTRATION.md): `qm-s1-gstack-probe-2026-11`, design preregistration frozen 2026-11-04 on main after #254 (`dcbf03e0`), with gate 6's one-VM pre-launch check run at its merge commit before the first turn; whether QM on Opus 5.5 and GPT-6.1 Sol opens gstack skills through gstack's paste-in router, with a no-gstack arm, cap $20. Its folder holds `design.json` instead of a `prereg.json`, because the probe runs through a driver, not the runner.
 - [budget-ledger.md](budget-ledger.md): the program's spend ledger, one row per lane of paid work (written 2026-10-26 beside this index).
 - [comparing-runs.md](comparing-runs.md): how two cells or two runs are compared: the paired, task-clustered estimator, the sign-flip test, Holm, the minimum detectable difference, what "not distinguished at N tasks" means, each comparison script's flags and outputs, and the exact commands every counted run's report names.
 - [decisions.md](decisions.md): the decisions by Garry Tan and the coordinating agent that shaped a counted run, one line each (written 2026-10-26 beside this index).
@@ -54,6 +56,14 @@ Codes like internal-task in receipts name internal work lanes.
 - [ubicloud.md](ubicloud.md): the Ubicloud shard lane: the scripts that put one shard per VM, how a run fans out and comes back, the check lane, costs and limits.
 
 ## Changelog
+
+### 2026-11-04: qm-c4-told-live-2026-11 and qm-s1-gstack-probe-2026-11 frozen (internal-task)
+
+Both benchmarks lines now say the preregistration froze on 2026-11-04 on main after #254 (`dcbf03e0`), and the S1 line names gate 6's pre-launch check. Why: every freeze gate closed, and the freeze-gate receipts moved to each folder's `gates/`.
+
+### 2026-11-03: qm-c4-told-live-2026-11 and qm-s1-gstack-probe-2026-11 listed (internal-task)
+
+The benchmarks list gains a line for each of the two QM M1 draft preregistrations, saying that neither is frozen yet and that the S1 folder holds `design.json` instead of a `prereg.json`. Why: both folders are new on this branch.
 
 ### 2026-11-04: plain names for internal roles
 

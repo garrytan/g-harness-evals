@@ -2,6 +2,13 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.135] - 2026-11-04
+
+- **QM M1 C4 and S1 preregistrations, frozen 2026-11-04 on main after #254 (`dcbf03e0`).** `docs/benchmarks/2026-11-03-qm-c4-told-live/` (`qm-c4-told-live-2026-11`: the C4 told-live tasks on QM through Pi, Opus 5.5 and GPT-6.1 Sol, three gbrain routes, 240 trials, cap $56) and `docs/benchmarks/2026-11-03-qm-s1-gstack-probe/` (`qm-s1-gstack-probe-2026-11`: whether QM opens gstack skills through the paste-in router, with a no-gstack arm, Opus 5.5 and GPT-6.1 Sol, cap $20; `design.json` instead of a `prereg.json`). Each has its register entry under `docs/benchmarks/preregistrations.d/`. No counted trial has run.
+- **Freeze-gate receipts live in each folder's `gates/`, not `results/`.** The register's `results/**` glob is what prereg-order checks against the preregistration's commit, so receipts committed with the preregistration sit outside it and a squash merge keeps main's prereg-order green. S1's `design.json` records the driver as on main at `dcbf03e0`.
+- **C4 freeze gate 5: `harnesses/qm/sandbox-secret-check.ts`.** A keyless check that a sandbox reached through QM's `execute` tool cannot read the provider client secret. Test: `tests/qm-sandbox-secret-check.test.ts`. `tests/gbrain-runner.test.ts` covers the C4 preregistration's cells.
+- Docs: `docs/README.md` lists both preregistrations, `docs/gbrain-arm.md` records gate 4 (failed as shipped, passes with the tap's member-text trim) and gate 5, and `TODOS.md` closes the sandbox-secret item.
+
 ## [0.0.134] - 2026-11-04
 
 ### internal-task: the provider-off identity test passes in a clone without the private history
