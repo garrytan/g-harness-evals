@@ -5,7 +5,7 @@
 // its escrow under a throwaway UBICLOUD_API_KEY value, and a stand-in gh that answers the visibility question. Nothing here
 // is a real task, a real key, a real environment value or a real result.
 import { execFileSync } from 'node:child_process';
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { generateX25519Identity, identityToRecipient } from 'age-encryption';
@@ -190,6 +190,17 @@ export function setRow(f: Fixture, row: Record<string, unknown>) {
 export function commitPush(f: Fixture, msg: string) {
   git(f.repo, 'add', '-A');
   git(f.repo, 'commit', '-q', '-m', msg);
+  git(f.repo, 'push', '-q', 'origin', 'HEAD:main');
+}
+
+/** Record a backup's sha256 for a set in sealed/backups.json on main, committing that file alone, as a seal from the backup does. */
+export function recordBackup(f: Fixture, set: string, sha: string) {
+  const p = join(f.repo, 'sealed', 'backups.json');
+  const doc = existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : { schema_version: 1, backups: [] };
+  doc.backups.push({ set, sha256: sha, what: 'a synthetic backup of the custody tests' });
+  write(p, JSON.stringify(doc, null, 2) + '\n');
+  git(f.repo, 'add', '--', 'sealed/backups.json');
+  git(f.repo, 'commit', '-q', '-m', `record a backup of ${set}`, '--', 'sealed/backups.json');
   git(f.repo, 'push', '-q', 'origin', 'HEAD:main');
 }
 

@@ -32,7 +32,7 @@ test('released content and raw receipts of a set stay refused while a live seale
   w('docs/benchmarks/run8/prereg.json', JSON.stringify({ run_id: 'run8', heldout: { set: 'v8' } }));
   w('docs/benchmarks/run8/results/trials.jsonl', '{}');
   w('docs/benchmarks/run8b/results/manifest.json', JSON.stringify({ sealed: { set: 'v8' } }));
-  const successor = (status: string) => w('tasks/multiuser/v9/heldout/MANIFEST.json', JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: slice }, status }));
+  const successor = (status: string) => w('tasks/multiuser/v9/heldout/MANIFEST.json', JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: slice, heldout_corpus_sha256: slice }, status }));
   successor('open');
   execFileSync('git', ['add', '-A'], { cwd: repo });
   const shared = 'whose world slice or corpus set v9 shares while still in sealed custody';
@@ -55,7 +55,7 @@ test('the default set v0.1 at tasks/multiuser/heldout/ gets the same shared-set 
   w('tasks/multiuser/heldout/t1/task.toml', 'id = "t1"');
   w('docs/benchmarks/run1/prereg.json', JSON.stringify({ run_id: 'run1', heldout: { set: 'v0.1' } }));
   w('docs/benchmarks/run1/results/trials.jsonl', '{}');
-  const successor = (status: string) => w('tasks/multiuser/v9/heldout/MANIFEST.json', JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: slice }, status }));
+  const successor = (status: string) => w('tasks/multiuser/v9/heldout/MANIFEST.json', JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: slice, heldout_corpus_sha256: slice }, status }));
   successor('open');
   execFileSync('git', ['add', '-A'], { cwd: repo });
   const shared = 'whose world slice or corpus set v9 shares while still in sealed custody';
@@ -73,7 +73,7 @@ test('the check refuses ciphertext, an identity, the access log, raw sealed rece
   const w = (p: string, s: string) => { mkdirSync(dirname(join(repo, p)), { recursive: true }); writeFileSync(join(repo, p), s); };
   execFileSync('git', ['init', '-q', repo]);
   const identity = await generateX25519Identity();
-  w('tasks/multiuser/v9/heldout/MANIFEST.json', JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: {} }));
+  w('tasks/multiuser/v9/heldout/MANIFEST.json', JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: 'e'.repeat(64), heldout_corpus_sha256: 'e'.repeat(64) } }));
   w('tasks/multiuser/v1/heldout/MANIFEST.json', JSON.stringify({ schema_version: 1 }));
   w('docs/benchmarks/r1/sealed-results/export.json', '{}');
   w('docs/benchmarks/r1/sealed-results/opening-receipt.json', '{}');

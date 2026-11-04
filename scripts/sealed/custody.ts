@@ -24,7 +24,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { Encrypter } from 'age-encryption';
 import { RunnerError } from '../../runner/errors.ts';
 import { sha256 } from '../../runner/heldout/sealed.ts';
-import { DEFAULT_SET, heldoutSet, heldoutSets, liveSharers, liveSharersAmong, readManifest, type HeldoutManifest, type SealedCommitments } from '../seal-heldout.ts';
+import { BACKUPS_FILE, heldoutSet, heldoutSets, isUnreadable, liveSharers, liveSharersAmong, manifestEntry, manifestSetName, parseManifest, SET_NAME, type ManifestEntry, type SealedCommitments } from '../seal-heldout.ts';
 
 /** The repository whose custody branch holds the ciphertext; it must stay private (checkPrivate). */
 export const CUSTODY_REPO = 'garrytan/harness-evals';
@@ -58,29 +58,33 @@ export interface AccessEvent {
   results_bundle_sha256?: string;
   escrow_sha256?: string;
   /** rekey.ts ("reencrypted") and compare-backups.ts ("compared"): the backup read, and the file written (rekey) or the
-   *  second backup read (compare). */
+   *  second backup read (compare). seal.ts --from-backup ("sealed"): the backup the set was sealed from, which no other
+   *  set's "sealed" line may name. */
   source_sha256?: string;
   output_sha256?: string;
   /** rekey.ts: the age X25519 recipient the backup was re-encrypted to. */
   recipient?: string;
+  /** rekey.ts and compare-backups.ts: the backups bound to the set with --declare-backup (sealed/backups.json records them for no set). */
+  declared_sha256?: string[];
   custodian: string;
 }
 
 export const ACCESS_EVENTS = ['sealed', 'opened', 'resumed', 'exported', 'released', 'escrowed', 'reencrypted', 'compared'] as const;
 
-const EVENT_FIELDS: Record<string, 'string' | 'hex' | 'label' | 'recipient'> = {
+const EVENT_FIELDS: Record<string, 'string' | 'hex' | 'hexlist' | 'label' | 'recipient'> = {
   at: 'string', run_id: 'string', set: 'string', custodian: 'string', prereg_json: 'string', public_ref: 'string', label: 'label',
   candidate_sha256: 'hex', prereg_sha256: 'hex', bundle_sha256: 'hex', opened_event_sha256: 'hex', results_bundle_sha256: 'hex', escrow_sha256: 'hex', public_commit: 'string',
-  source_sha256: 'hex', output_sha256: 'hex', recipient: 'recipient',
+  source_sha256: 'hex', output_sha256: 'hex', recipient: 'recipient', declared_sha256: 'hexlist',
 };
 
-/** A set name, as seal.ts takes it (never "*"). */
-export const SET_NAME = /^[a-z0-9][a-z0-9.-]*$/;
+export { SET_NAME };
 
-/** The exact fields of the two regeneration events (rekey.ts, compare-backups.ts); no other event carries the three new ones. */
+/** The fields of the two regeneration events (rekey.ts, compare-backups.ts); no other event carries the four new ones.
+ *  declared_sha256 is optional: the backups the custodian bound to the set with --declare-backup because sealed/backups.json
+ *  on main records them for no set. */
 const REGENERATION_FIELDS: Record<string, string[]> = {
-  reencrypted: ['schema_version', 'event', 'at', 'run_id', 'set', 'custodian', 'source_sha256', 'output_sha256', 'recipient'],
-  compared: ['schema_version', 'event', 'at', 'run_id', 'set', 'custodian', 'source_sha256', 'output_sha256'],
+  reencrypted: ['schema_version', 'event', 'at', 'run_id', 'set', 'custodian', 'source_sha256', 'output_sha256', 'recipient', 'declared_sha256'],
+  compared: ['schema_version', 'event', 'at', 'run_id', 'set', 'custodian', 'source_sha256', 'output_sha256', 'declared_sha256'],
 };
 
 /** Whether s is an age X25519 recipient: lowercase age1 plus 58 bech32 characters, accepted by the age library's own
@@ -89,6 +93,8 @@ export function isX25519Recipient(s: unknown): s is string {
   if (typeof s !== 'string' || !/^age1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{58}$/.test(s)) return false;
   try { new Encrypter().addRecipient(s); return true; } catch { return false; }
 }
+
+const hexList = (v: unknown) => Array.isArray(v) && v.length > 0 && v.every((d) => typeof d === 'string' && /^[0-9a-f]{64}$/.test(d)) && new Set(v).size === v.length;
 
 /** Schema problems of one access-log line. */
 export function eventProblems(line: string): string[] {
@@ -104,13 +110,19 @@ export function eventProblems(line: string): string[] {
     for (const k of regen) if (['source_sha256', 'output_sha256', 'recipient'].includes(k) && e[k] === undefined) problems.push(`${k} missing`);
     if (e.run_id !== undefined && e.run_id !== '*') problems.push('run_id is not *');
     if (typeof e.set === 'string' && e.set && !SET_NAME.test(e.set)) problems.push('set is not a set name');
-  } else for (const k of ['source_sha256', 'output_sha256', 'recipient']) if (k in e) problems.push(`${k} is only on reencrypted and compared lines`);
+    const read = e.event === 'compared' ? [e.source_sha256, e.output_sha256] : [e.source_sha256];
+    if (hexList(e.declared_sha256) && !(e.declared_sha256 as unknown[]).every((d) => read.includes(d))) problems.push('declared_sha256 names a digest that is not a backup this line read');
+  } else for (const k of ['source_sha256', 'output_sha256', 'recipient', 'declared_sha256']) {
+    if (k === 'source_sha256' && e.event === 'sealed') continue;
+    if (k in e) problems.push(`${k} is only on ${k === 'source_sha256' ? 'sealed, ' : ''}reencrypted and compared lines`);
+  }
   for (const k of ['at', 'run_id', 'set', 'custodian']) if (typeof e[k] !== 'string' || !e[k]) problems.push(`${k} missing`);
   for (const [k, v] of Object.entries(e)) {
     if (k === 'schema_version' || k === 'event') continue;
     const kind = EVENT_FIELDS[k];
     if (!kind) { problems.push(`unknown field ${k}`); continue; }
     if (kind === 'hex' && !(typeof v === 'string' && /^[0-9a-f]{64}$/.test(v))) problems.push(`${k} is not a sha256`);
+    if (kind === 'hexlist' && !hexList(v)) problems.push(`${k} is not a list of distinct sha256 digests`);
     if (kind === 'label' && v !== 'confirmatory' && v !== 'dev') problems.push(`${k} is not confirmatory or dev`);
     if (kind === 'recipient' && !isX25519Recipient(v)) problems.push(`${k} is not an age X25519 recipient`);
     if (kind === 'string' && (typeof v !== 'string' || v.length > 512)) problems.push(`${k} is not a short string`);
@@ -139,9 +151,12 @@ export const netEnv = (): NodeJS.ProcessEnv => ({ ...process.env, GIT_ALLOW_PROT
  *    checkout, does not commit to that bundle's sha256 (a missing, malformed or empty manifest, or one naming another
  *    bundle, counts as none). seal.ts pushes a bundle before the set's manifest can reach main, and every custody push is
  *    compare-and-push, so a caller deciding under the custody lock sees a successor either by its manifest or by its bundle.
+ *  - main and backups: the manifests on that main by set (one that does not parse or validate as such, and counted as a
+ *    live sharer), with the checkout's manifest of set added when main has none, and the text of sealed/backups.json on
+ *    that main (null when it has none), which rekey.ts and compare-backups.ts bind a backup to its set by.
  * release.ts, rekey.ts and compare-backups.ts call it before decrypting and again in decide().
  */
-export function liveSharersCurrent(set: string, repo: string, clone: string, remote = 'origin'): { live: string[]; unknown: string[] } {
+export function liveSharersCurrent(set: string, repo: string, clone: string, remote = 'origin'): { live: string[]; unknown: string[]; main: Map<string, ManifestEntry>; backups: string | null } {
   const urls = [...new Set(checkCustodyRemoteOf(clone, remote))];
   if (urls.length !== 1) throw new RunnerError('HE-SEALED-013', `the custody remote ${remote} of ${clone} has more than one fetch or push URL, so main fetched from it might not be main of the repository the custody branch is pushed to; give the remote one URL. Refused, and nothing was pushed or written`);
   const url = /^[a-z][a-z0-9+.-]*:\/\//i.test(urls[0]!) || /^[^/]*:/.test(urls[0]!) ? urls[0]! : resolve(clone, urls[0]!);
@@ -151,7 +166,8 @@ export function liveSharersCurrent(set: string, repo: string, clone: string, rem
     if (r === 'refs/sealed/main' || (pid && !running(Number(pid)))) spawnSync('git', ['update-ref', '-d', r], { cwd: repo });
   }
   const ref = `refs/sealed/main-${process.pid}`;
-  const main = new Map<string, HeldoutManifest>();
+  const main = new Map<string, ManifestEntry>();
+  let backups: string | null = null;
   try {
     try {
       git(repo, ['fetch', '-q', '--no-tags', '--no-write-fetch-head', url, `+refs/heads/main:${ref}`], netEnv());
@@ -159,25 +175,22 @@ export function liveSharersCurrent(set: string, repo: string, clone: string, rem
       throw new RunnerError('HE-SEALED-011', `could not fetch main from the custody remote into ${repo} to check for a sealed set that shares set ${set}'s world slice or corpus; refused, and nothing was pushed or written`);
     }
     for (const p of git(repo, ['ls-tree', '-r', '--name-only', ref, '--', 'tasks']).split('\n')) {
-      const m = /^tasks\/(?:multiuser\/(?:([^/]+)\/)?|repo\/([^/]+)\/)heldout\/MANIFEST\.json$/.exec(p);
-      if (!m || ['dev', 'heldout', '_shared'].includes(m[1] ?? '')) continue;
-      try {
-        const manifest = JSON.parse(git(repo, ['show', `${ref}:${p}`])) as HeldoutManifest | null;
-        if (manifest && typeof manifest === 'object') main.set(m[1] ?? m[2] ?? DEFAULT_SET, manifest);
-      } catch { /* seal-heldout.ts --check reports a malformed manifest */ }
+      const name = manifestSetName(p);
+      if (name) main.set(name, parseManifest(git(repo, ['show', `${ref}:${p}`])));
     }
+    if (git(repo, ['ls-tree', '--name-only', ref, '--', BACKUPS_FILE])) backups = git(repo, ['show', `${ref}:${BACKUPS_FILE}`]);
   } finally {
     spawnSync('git', ['update-ref', '-d', ref], { cwd: repo });
   }
-  const local = readManifest(heldoutSet(set, repo));
+  const local = manifestEntry(heldoutSet(set, repo));
   if (!main.has(set) && local) main.set(set, local);
-  const checkout = new Map(heldoutSets(repo).map((s) => [s.name, readManifest(s)]));
-  const commits = (m: HeldoutManifest | null | undefined) => (m?.sealed ?? (m as { released?: SealedCommitments } | null | undefined)?.released)?.bundle_sha256;
+  const checkout = new Map(heldoutSets(repo).map((s) => [s.name, manifestEntry(s)]));
+  const commits = (m: ManifestEntry | null | undefined) => (!m || isUnreadable(m) ? undefined : (m.sealed ?? (m as { released?: SealedCommitments }).released)?.bundle_sha256);
   const unknown = readdirSync(clone).filter((d) => d !== set && d !== '.git' && existsSync(join(clone, d, 'bundle.tar.age'))).filter((d) => {
     const bundle = sha256(readFileSync(join(clone, d, 'bundle.tar.age')));
     return commits(main.get(d)) !== bundle && commits(checkout.get(d)) !== bundle;
   }).sort();
-  return { live: [...new Set([...liveSharers(set, repo), ...liveSharersAmong(set, main)])].sort(), unknown };
+  return { live: [...new Set([...liveSharers(set, repo), ...liveSharersAmong(set, main)])].sort(), unknown, main, backups };
 }
 
 /** Whether a path (or its nearest existing ancestor) is inside a git work tree. */

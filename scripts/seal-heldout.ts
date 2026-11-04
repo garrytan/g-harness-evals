@@ -25,13 +25,23 @@
 // has no world: world_manifest_sha256, world_json_sha256 and the sealed block's world_slice_sha256 and
 // heldout_corpus_sha256 are null, so a change to world/seed never touches it. Set names are unique across kinds.
 //
+// internal-task: a retired set can name the set that replaced it ("replaced_by": "v0.3-gen6"). The live-sharer guard keeps a set
+// protected while any set in its replaced_by chain is in sealed custody and not retired as a replaced set, whatever the
+// digests, and counts a manifest that does not parse or validate as a live sharer. --check validates replaced_by, refuses a
+// sealed set that is retired with no replaced_by, compares every sealed set's status with the base branch (the merge base
+// with origin/main, or main; it fails closed when it cannot read it), and checks sealed/backups.json, the sha256 of the
+// backup each set was sealed from, which rekey.ts and compare-backups.ts bind a backup to --set by, and which only grows
+// against the base.
+//
 //   bun scripts/seal-heldout.ts [--task-set v0.2]    write that set's manifest
 //   bun scripts/seal-heldout.ts --check              check every sealed set, and refuse an unsealed tree; exit 1 on any problem
 //   bun scripts/seal-heldout.ts --check --task-set v0.2   check one set
 
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { RunnerError } from '../runner/errors.ts';
 
 const ROOT = join(import.meta.dir, '..');
 const WORLD_MANIFEST = join(ROOT, 'world', 'seed', 'MANIFEST.json');
@@ -58,6 +68,8 @@ export interface HeldoutSet {
 export const OPENING_STATUSES = ['planned', 'opened', 'withdrawn', 'superseded'] as const;
 export const OPENING_LABELS = ['confirmatory', 'dev'] as const;
 export const SET_STATUSES = ['open', 'spent', 'retired'] as const;
+/** A set name, as seal.ts takes it (never "*"). */
+export const SET_NAME = /^[a-z0-9][a-z0-9.-]*$/;
 
 /** One registered experiment that runs a held-out cell of the set. No opening number: runner/heldout/openings.ts derives it. */
 export interface OpeningRow {
@@ -120,6 +132,8 @@ export interface HeldoutManifest extends Partial<OpeningsLedger> {
   /** Absent for a plaintext set; "sealed" when the set is held in sealed custody. */
   custody?: 'sealed';
   sealed?: SealedCommitments;
+  /** On a retired set: the set that replaced it (a reseal such as v0.3-gen6 for v0.3). */
+  replaced_by?: string;
   generated_at: string;
   /** The world the set was written against; null for a repo set, which has no world. */
   world_manifest_sha256: string | null;
@@ -165,21 +179,254 @@ export function setNameProblems(root = ROOT): string[] {
 
 /** sha256 of nothing: the corpus digest of a set sealed without corpus pages, which two unrelated sets can share. */
 const EMPTY_SHA256 = createHash('sha256').digest('hex');
+const HEX64 = /^[0-9a-f]{64}$/;
 
-/** Other sets in sealed custody, not retired, whose world slice or corpus digest equals one of set name's (sealed or
- *  released), the digest of nothing aside. While one exists, set name takes no opening and no release: either would expose that set's content (a
- *  reseal such as v0.3-gen6 shares its slice, corpus and unchanged tasks with the retired set it replaces). */
-export function liveSharersAmong(name: string, manifests: Map<string, HeldoutManifest>): string[] {
-  const digests = (m: HeldoutManifest | undefined) => {
-    const s = (m?.sealed ?? (m as { released?: SealedCommitments } | undefined)?.released) as Partial<SealedCommitments> | undefined;
+/** A held-out MANIFEST.json that exists but does not parse, or parses to something the custody guards cannot read
+ *  (manifestReadProblem). Every guard counts its set as live, so a broken manifest never hides a sealed set. */
+export interface UnreadableManifest { unreadable: string }
+export type ManifestEntry = HeldoutManifest | UnreadableManifest;
+export const isUnreadable = (m: ManifestEntry | undefined): m is UnreadableManifest => typeof (m as UnreadableManifest | undefined)?.unreadable === 'string';
+
+/** Why parsed manifest JSON is not readable by the custody guards (not an object, a custody other than "sealed", no sealed
+ *  block, a sealed block without custody "sealed", a sealed or released digest that is not a sha256, a multiuser set in sealed custody without both a world slice and
+ *  a corpus digest, an unknown status, a replaced_by that is not a set name), or undefined. Every other check of the manifest is seal-heldout.ts --check's. */
+export function manifestReadProblem(m: unknown): string | undefined {
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return 'it is not a JSON object';
+  const x = m as Record<string, unknown>;
+  if (x.custody !== undefined && x.custody !== 'sealed') return 'custody is not "sealed" or absent';
+  if (x.custody === 'sealed' && x.sealed === undefined) return 'custody is "sealed" but it has no sealed block';
+  if (x.custody !== 'sealed' && x.sealed !== undefined) return 'it has a sealed block but custody is not "sealed"; a released set keeps its commitments under released';
+  for (const k of ['sealed', 'released'] as const) {
+    const b = x[k];
+    if (b === undefined) continue;
+    if (!b || typeof b !== 'object' || Array.isArray(b)) return `${k} is not an object`;
+    for (const d of ['bundle_sha256', 'world_slice_sha256', 'heldout_corpus_sha256']) {
+      const v = (b as Record<string, unknown>)[d];
+      if (v !== undefined && v !== null && !(typeof v === 'string' && HEX64.test(v))) return `${k}.${d} is not a sha256`;
+    }
+  }
+  if (x.custody === 'sealed' && x.kind !== 'repo' && !['world_slice_sha256', 'heldout_corpus_sha256'].every((d) => typeof (x.sealed as Record<string, unknown>)[d] === 'string')) return 'sealed lacks world_slice_sha256 or heldout_corpus_sha256; a multiuser set in sealed custody commits to both its world slice and its corpus';
+  if (x.status !== undefined && !(SET_STATUSES as readonly unknown[]).includes(x.status)) return `status is not one of ${SET_STATUSES.join(', ')}`;
+  if (x.replaced_by !== undefined && !(typeof x.replaced_by === 'string' && SET_NAME.test(x.replaced_by))) return 'replaced_by is not a set name';
+  return undefined;
+}
+
+/** A manifest's text as the custody guards read it; null text (a file that could not be read) is unreadable too. */
+export function parseManifest(text: string | null): ManifestEntry {
+  if (text === null) return { unreadable: 'it could not be read' };
+  let m: unknown;
+  try { m = JSON.parse(text); } catch { return { unreadable: 'it is not JSON' }; }
+  const problem = manifestReadProblem(m);
+  return problem ? { unreadable: problem } : (m as HeldoutManifest);
+}
+
+/** The set's manifest as the custody guards read it: undefined when there is no MANIFEST.json. */
+export function manifestEntry(set: HeldoutSet): ManifestEntry | undefined {
+  if (!existsSync(set.manifest)) return undefined;
+  try { return parseManifest(readFileSync(set.manifest, 'utf8')); } catch { return { unreadable: 'it could not be read' }; }
+}
+
+/** Every held-out set under root that has a MANIFEST.json, by name, readable or not. */
+export function manifestEntries(root = ROOT): Map<string, ManifestEntry> {
+  return new Map(heldoutSets(root).flatMap((s): [string, ManifestEntry][] => { const m = manifestEntry(s); return m ? [[s.name, m]] : []; }));
+}
+
+/** The set a repository path names when it is a held-out MANIFEST.json (tasks/multiuser/heldout/ is v0.1), else undefined. */
+export function manifestSetName(path: string): string | undefined {
+  const m = /^tasks\/(?:multiuser\/(?:([^/]+)\/)?|repo\/([^/]+)\/)heldout\/MANIFEST\.json$/.exec(path);
+  if (!m || ['dev', 'heldout', '_shared'].includes(m[1] ?? '')) return undefined;
+  return m[1] ?? m[2] ?? DEFAULT_SET;
+}
+
+/** Whether a set in sealed custody stops protecting what it shares: only when it is retired as a replaced set, naming its
+ *  successor in replaced_by (a released set has left sealed custody). */
+const retiredAsReplaced = (m: HeldoutManifest) => m.status === 'retired' && typeof m.replaced_by === 'string';
+
+/**
+ * The other sets that keep set name from an opening or a release, each as its name, or as its name and the reason in
+ * parentheses when it does not share a digest; callers name the set by the label's first word.
+ *  - A set in sealed custody, not retired, whose world slice or corpus digest equals one of name's (sealed or released),
+ *    the digest of nothing aside: a reseal such as v0.3-gen6 shares its slice, corpus and unchanged tasks with the retired
+ *    set it replaces.
+ *  - A set in name's replaced_by chain that is in sealed custody and not retired as a replaced set, whatever its digests:
+ *    a later reseal can change the slice and keep the task bodies. A chain that names a set with no manifest, or loops,
+ *    counts too.
+ *  - Any other set whose MANIFEST.json does not parse or validate (fail closed).
+ */
+export function liveSharersAmong(name: string, manifests: Map<string, ManifestEntry>): string[] {
+  const digests = (m: ManifestEntry | undefined) => {
+    if (!m || isUnreadable(m)) return [];
+    const s = (m.sealed ?? (m as { released?: SealedCommitments }).released) as Partial<SealedCommitments> | undefined;
     return [s?.world_slice_sha256, s?.heldout_corpus_sha256].filter((d): d is string => typeof d === 'string' && d.length > 0 && d !== EMPTY_SHA256);
   };
   const mine = new Set(digests(manifests.get(name)));
-  return [...manifests].filter(([n, m]) => n !== name && m.custody === 'sealed' && m.status !== 'retired' && digests(m).some((d) => mine.has(d))).map(([n]) => n).sort();
+  const out = new Map<string, string>();
+  for (const [n, m] of manifests) {
+    if (n === name) continue;
+    if (isUnreadable(m)) out.set(n, `${n} (its MANIFEST.json does not parse or validate: ${m.unreadable}; it counts as live until it does)`);
+    else if (m.custody === 'sealed' && m.status !== 'retired' && digests(m).some((d) => mine.has(d))) out.set(n, n);
+  }
+  const own = manifests.get(name);
+  if (isUnreadable(own)) out.set(name, `${name} (its own MANIFEST.json does not parse or validate: ${own.unreadable}; it counts as live until it does)`);
+  const seen = new Set([name]);
+  for (let n = own && !isUnreadable(own) ? own.replaced_by : undefined; n !== undefined;) {
+    if (seen.has(n)) { if (!out.has(n)) out.set(n, `${n} (${name}'s replaced_by chain loops)`); break; }
+    seen.add(n);
+    const m = manifests.get(n);
+    if (!m) { out.set(n, `${n} (${name}'s replaced_by chain names it, and it has no manifest)`); break; }
+    if (isUnreadable(m)) break;
+    if (m.custody === 'sealed' && !retiredAsReplaced(m) && !out.has(n)) out.set(n, `${n} (${name}'s replaced_by chain names it)`);
+    n = m.replaced_by;
+  }
+  return [...out.values()].sort();
 }
 
+/** Whether a liveSharersAmong list for set counts set itself because its own manifest does not parse or validate. */
+export const ownUnreadable = (set: string, live: string[]): boolean => live.some((l) => l.startsWith(`${set} (its own MANIFEST.json`));
+
+/** The set a refusal names to use instead: the first live sharer that shares a digest (its label is its set name) or that a
+ *  replaced_by chain names, or undefined when none is. A set with no manifest, a chain that loops and a manifest that does
+ *  not parse or validate are never a target. */
+export const liveTarget = (live: string[]): string | undefined => live.map((l) => /^([a-z0-9][a-z0-9.-]*)(?: \([a-z0-9][a-z0-9.-]*'s replaced_by chain names it\))?$/.exec(l)?.[1]).find((t) => t !== undefined);
+
 export function liveSharers(name: string, root = ROOT): string[] {
-  return liveSharersAmong(name, new Map(heldoutSets(root).flatMap((s): [string, HeldoutManifest][] => { const m = readManifest(s); return m ? [[s.name, m]] : []; })));
+  return liveSharersAmong(name, manifestEntries(root));
+}
+
+/**
+ * --check across sets, on one tree: replaced_by names another set with a manifest, never loops, and sits only on a retired
+ * set; and a set in sealed custody that is retired names its successor in replaced_by (release.ts turns a released set into
+ * a plaintext manifest with a released block, so a sealed set reaches retired no other way).
+ */
+export function replacementProblems(manifests: Map<string, ManifestEntry>): string[] {
+  const problems: string[] = [];
+  const next = (n: string) => { const m = manifests.get(n); return m && !isUnreadable(m) ? m.replaced_by : undefined; };
+  for (const [n, m] of manifests) {
+    if (isUnreadable(m)) continue;
+    if (m.custody === 'sealed' && m.status === 'retired' && m.replaced_by === undefined) problems.push(`set ${n} is in sealed custody and retired with no replaced_by; a sealed set retires only through scripts/sealed/release.ts, which writes a released block, or as a replaced set that names its successor in replaced_by`);
+    if (m.replaced_by === undefined) continue;
+    if (m.status !== 'retired') problems.push(`set ${n}: replaced_by sits only on a retired set (status is ${m.status ?? 'absent'})`);
+    if (!manifests.has(m.replaced_by)) { problems.push(`set ${n}: replaced_by names ${m.replaced_by}, which has no held-out manifest`); continue; }
+    const path = [n];
+    for (let x = next(n); x !== undefined && manifests.has(x); x = next(x)) {
+      if (x === n) { problems.push(`set ${n}: the replaced_by chain loops (${[...path, n].join(' -> ')})`); break; }
+      if (path.includes(x)) break;
+      path.push(x);
+    }
+  }
+  return problems;
+}
+
+const STATUS_STEPS: Record<string, string[]> = { open: ['open', 'spent', 'retired'], spent: ['spent', 'retired'], retired: ['retired'] };
+
+/**
+ * --check against the base branch, for every set the base holds in sealed custody: its status goes open -> spent -> retired
+ * or open -> retired and never leaves spent or retired; it leaves sealed custody only with the released block release.ts
+ * writes (released bundle, world slice and corpus digests equal to the base's sealed ones, and the base's tree_sha256, so
+ * the plaintext tree --check compares is the one sealed); while it stays in sealed custody its sealed bundle, world slice
+ * and corpus digests and its tree_sha256 never change; replaced_by never changes once set, and is set only to a set that is
+ * in sealed custody and not retired on the base and in the head (a live reseal already on the base); its manifest stays. A
+ * base manifest that does not parse or validate fails closed.
+ */
+export function statusTransitionProblems(base: Map<string, ManifestEntry>, head: Map<string, ManifestEntry>): string[] {
+  const problems: string[] = [];
+  for (const [n, b] of base) {
+    if (isUnreadable(b)) { problems.push(`set ${n}: its MANIFEST.json on the base does not parse or validate (${b.unreadable}), so the status check cannot compare it and fails closed`); continue; }
+    if (b.custody !== 'sealed') continue;
+    const h = head.get(n);
+    if (!h) { problems.push(`set ${n}: its MANIFEST.json is gone; a sealed set's manifest stays`); continue; }
+    if (isUnreadable(h)) { problems.push(`set ${n}: its MANIFEST.json does not parse or validate (${h.unreadable}), so the status check cannot compare it and fails closed`); continue; }
+    if (b.status !== undefined && !STATUS_STEPS[b.status]!.includes(h.status as string)) problems.push(`set ${n}: status went ${b.status} -> ${h.status ?? 'absent'}; a sealed set goes open -> spent -> retired or open -> retired and never leaves spent or retired`);
+    const rel = (h as { released?: Partial<SealedCommitments> }).released;
+    const changed = h.custody !== 'sealed' ? [] : [...(['bundle_sha256', 'world_slice_sha256', 'heldout_corpus_sha256'] as const).filter((k) => (h.sealed?.[k] ?? null) !== (b.sealed?.[k] ?? null)).map((k) => `sealed.${k}`), ...(h.tree_sha256 !== b.tree_sha256 ? ['tree_sha256'] : [])];
+    if (changed.length) problems.push(`set ${n}: its sealed commitments (${changed.join(', ')}) changed while it stays in sealed custody; they never change once sealed`);
+    if (h.custody !== 'sealed' && !(rel && (['bundle_sha256', 'world_slice_sha256', 'heldout_corpus_sha256'] as const).every((k) => (rel[k] ?? null) === (b.sealed?.[k] ?? null)) && h.tree_sha256 === b.tree_sha256)) problems.push(`set ${n} left sealed custody without the released block scripts/sealed/release.ts writes (released bundle, world slice and corpus digests equal to the base's sealed ones, and the base's tree_sha256)`);
+    if (b.replaced_by !== undefined && h.replaced_by !== b.replaced_by) problems.push(`set ${n}: replaced_by changed from ${b.replaced_by} to ${h.replaced_by ?? 'absent'}; it never changes once set`);
+    if (b.replaced_by === undefined && h.replaced_by !== undefined) {
+      const live = (t: ManifestEntry | undefined) => !!t && !isUnreadable(t) && t.custody === 'sealed' && t.status !== 'retired';
+      if (!live(head.get(h.replaced_by))) problems.push(`set ${n}: replaced_by newly names ${h.replaced_by}, which is not in sealed custody or is retired; a set is retired as replaced only by a live reseal`);
+      else if (!live(base.get(h.replaced_by))) problems.push(`set ${n}: replaced_by newly names ${h.replaced_by}, which the base does not hold in sealed custody and not retired; a set is retired as replaced only by a live reseal that is already on the base`);
+    }
+  }
+  return problems;
+}
+
+/** The held-out manifests at the merge base of HEAD with origin/main (or main), as runner/heldout/openings.ts finds the
+ *  base, and the text of sealed/backups.json there (null when the base has none); throws when git cannot name or read it. */
+export function baseManifests(root = ROOT): { manifests: Map<string, ManifestEntry>; backups: string | null } {
+  const g = (args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024 });
+  const mainRef = ['refs/remotes/origin/main', 'refs/heads/main'].find((r) => { try { g(['rev-parse', '--verify', '--quiet', r]); return true; } catch { return false; } });
+  if (!mainRef) throw new Error('no origin/main or main');
+  const base = g(['merge-base', 'HEAD', mainRef]).trim();
+  const out = new Map<string, ManifestEntry>();
+  for (const p of g(['ls-tree', '-r', '--name-only', base, '--', 'tasks']).split('\n')) {
+    const name = manifestSetName(p);
+    if (name) out.set(name, parseManifest(g(['show', `${base}:${p}`])));
+  }
+  return { manifests: out, backups: g(['ls-tree', '--name-only', base, '--', BACKUPS_FILE]).trim() ? g(['show', `${base}:${BACKUPS_FILE}`]) : null };
+}
+
+/** sealed/backups.json is append-only: every entry of the base's file (base null: no file, nothing to compare) is still in
+ *  the head's file (head null: no file) with the same set, sha256 and what. A base file that does not parse fails closed. */
+export function backupsAppendProblems(base: string | null, head: string | null): string[] {
+  if (base === null) return [];
+  const list = (text: string) => { try { const d = JSON.parse(text); return Array.isArray(d?.backups) ? (d.backups as Array<Partial<BackupCommitment> | null>) : undefined; } catch { return undefined; } };
+  const was = list(base);
+  if (!was) return [`${BACKUPS_FILE} on the base does not parse as a list of backups, so the append-only check cannot compare it and fails closed`];
+  const now = head === null ? [] : list(head);
+  if (!now) return [`${BACKUPS_FILE} does not parse as a list of backups, so the append-only check cannot compare it with the base and fails closed`];
+  return was.filter((b) => !now.some((h) => h?.set === b?.set && h?.sha256 === b?.sha256 && h?.what === b?.what))
+    .map((b) => `${BACKUPS_FILE}: the base's entry for set ${b?.set ?? 'absent'} (sha256 ${String(b?.sha256 ?? 'absent').slice(0, 12)}) is gone or changed; the file is append-only, so every entry stays as it was`);
+}
+
+/** replacementProblems on the work tree, and statusTransitionProblems and backupsAppendProblems against the base branch; a
+ *  base that cannot be read is a problem (fail closed). */
+export function governanceProblems(root = ROOT): string[] {
+  const head = manifestEntries(root);
+  let base: ReturnType<typeof baseManifests>;
+  try { base = baseManifests(root); } catch { return [...replacementProblems(head), "the status check could not read the base branch's manifests (no origin/main or main, or no merge base with HEAD); it fails closed. Fetch main (git fetch origin main) and run it again"]; }
+  const backups = join(root, BACKUPS_FILE);
+  return [...replacementProblems(head), ...statusTransitionProblems(base.manifests, head), ...backupsAppendProblems(base.backups, existsSync(backups) ? readFileSync(backups, 'utf8') : null)];
+}
+
+/** The public record of which backup each set was sealed from (seal.ts --from-backup appends to it). */
+export const BACKUPS_FILE = 'sealed/backups.json';
+export interface BackupCommitment { set: string; sha256: string; what: string }
+
+/** Problems of sealed/backups.json's text (null: no file, which records nothing), against the sets that have a manifest:
+ *  schema_version 1, a list of { set, sha256, what } naming such a set, 64 lowercase hex characters, a reason, and each
+ *  backup recorded once. */
+export function backupsProblems(text: string | null, sets: Set<string>): string[] {
+  if (text === null) return [];
+  let doc: { schema_version?: unknown; backups?: unknown };
+  try { doc = JSON.parse(text); } catch { return [`${BACKUPS_FILE} does not parse as JSON`]; }
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return [`${BACKUPS_FILE} is not a JSON object`];
+  const problems: string[] = [];
+  if (doc.schema_version !== 1) problems.push(`${BACKUPS_FILE}: schema_version is not 1`);
+  if (!Array.isArray(doc.backups)) return [...problems, `${BACKUPS_FILE}: backups is not a list`];
+  const seen = new Set<string>();
+  for (const [i, b] of (doc.backups as Array<Partial<BackupCommitment> | null>).entries()) {
+    const at = `${BACKUPS_FILE}: backups[${i}]`;
+    if (!(typeof b?.set === 'string' && sets.has(b.set))) problems.push(`${at}: set ${JSON.stringify(b?.set)} names no held-out set with a manifest`);
+    if (!(typeof b?.sha256 === 'string' && HEX64.test(b.sha256))) problems.push(`${at}: sha256 is not 64 lowercase hex characters`);
+    else if (seen.has(b.sha256)) problems.push(`${at}: sha256 ${b.sha256.slice(0, 12)} is recorded twice; a backup belongs to one set`);
+    else seen.add(b.sha256);
+    if (!(typeof b?.what === 'string' && b.what.trim())) problems.push(`${at}: what is missing (say which backup it is and how the set was sealed from it)`);
+  }
+  return problems;
+}
+
+/** The commitments in sealed/backups.json's text on main (none when there is no file); refused (HE-SEALED-006) when it does
+ *  not parse, is not well formed or records one sha256 more than once, since a backup is bound to a set by it. */
+export function recordedBackups(text: string | null): BackupCommitment[] {
+  if (text === null) return [];
+  let doc: { backups?: unknown };
+  try { doc = JSON.parse(text); } catch { throw new RunnerError('HE-SEALED-006', `${BACKUPS_FILE} on main does not parse as JSON; nothing binds a backup to a set until it does. Nothing was decrypted`); }
+  const list = Array.isArray(doc?.backups) ? (doc.backups as Array<Partial<BackupCommitment> | null>) : null;
+  if (!list || !list.every((b) => typeof b?.set === 'string' && typeof b.sha256 === 'string' && HEX64.test(b.sha256))) throw new RunnerError('HE-SEALED-006', `${BACKUPS_FILE} on main is not a list of { set, sha256, what }; nothing binds a backup to a set until it is. Nothing was decrypted`);
+  const twice = list.map((b) => b!.sha256!).find((s, i, all) => all.indexOf(s) !== i);
+  if (twice) throw new RunnerError('HE-SEALED-006', `${BACKUPS_FILE} on main records sha256 ${twice.slice(0, 12)} more than once; a backup belongs to one set, so nothing binds it until it is recorded once. Nothing was decrypted`);
+  return list as BackupCommitment[];
 }
 
 /** The openings ledger of a manifest, or undefined when the set has none yet. */
@@ -324,12 +571,18 @@ export function manifestProblems(set: HeldoutSet = heldoutSet()): string[] {
   const rel = relative(ROOT, set.manifest);
   const stray = set.kind === 'repo' ? (existsSync(set.dir) ? walk(set.dir) : []).filter((p) => p !== set.manifest) : [];
   const strayProblem = `plaintext in a repo set's held-out directory: ${stray.length} file(s) beside MANIFEST.json under ${relative(ROOT, set.dir)}; a repo set's held-out tree exists only inside custody (scripts/sealed/seal.ts --kind repo), and a released one lives in ${relative(ROOT, set.tree)}`;
+  if (!committed && existsSync(set.manifest)) {
+    const entry = manifestEntry(set);
+    return [`${relative(set.root, set.manifest)} does not parse or validate: ${isUnreadable(entry) ? entry.unreadable : 'it is not JSON'}`];
+  }
   if (!committed) {
     if (set.kind === 'repo') return [...(stray.length ? [strayProblem] : []), `${rel} is missing; a repo set's manifest is written by scripts/sealed/seal.ts --kind repo`];
     const n = heldoutTasks(set).length;
     return n ? [`unsealed: ${relative(ROOT, set.dir)} (${n} tasks) has no MANIFEST.json; run bun scripts/seal-heldout.ts${set.name === DEFAULT_SET ? '' : ` --task-set ${set.name}`}`] : [`${rel} is missing; run bun scripts/seal-heldout.ts${set.name === DEFAULT_SET ? '' : ` --task-set ${set.name}`}`];
   }
   if (committed.custody !== undefined && committed.custody !== 'sealed') return [`custody must be "sealed" or absent (got ${JSON.stringify(committed.custody)})`];
+  const readProblem = manifestReadProblem(committed);
+  if (readProblem) return [`${relative(set.root, set.manifest)} does not parse or validate: ${readProblem}`];
   const kind = committed.kind ?? 'multiuser';
   if (kind !== set.kind) return [`kind is ${JSON.stringify(committed.kind ?? null)}, but the manifest sits under tasks/${set.kind}/; a ${set.kind} set's manifest says ${set.kind === 'repo' ? '"kind": "repo"' : 'no kind, or "kind": "multiuser"'}`];
   if (isSealed(committed)) {
@@ -364,6 +617,8 @@ if (import.meta.main) {
   if (argv.includes('--check')) {
     let failed = false;
     for (const p of setNameProblems()) { failed = true; console.error(`HE-TASK-SEAL: ${p}`); }
+    const backups = join(ROOT, BACKUPS_FILE);
+    for (const p of [...governanceProblems(), ...backupsProblems(existsSync(backups) ? readFileSync(backups, 'utf8') : null, new Set(manifestEntries().keys()))]) { failed = true; console.error(`HE-TASK-SEAL: ${p}`); }
     for (const set of sets) {
       const problems = manifestProblems(set);
       if (problems.length) {

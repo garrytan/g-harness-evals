@@ -23,7 +23,9 @@
  * plaintext set. A "released" line goes to the access log. Nothing is committed in the public repository: the custodian
  * commits the release on a branch and opens its pull request, after which the full per-task numbers can be written from
  * the released receipts. It refuses, before anything is decrypted or written, while another set in sealed custody and not
- * retired shares its world slice or corpus digest (a reseal and the set it replaced; the empty-corpus digest never counts;
+ * retired shares its world slice or corpus digest, while a set in its replaced_by chain is in sealed custody and not retired
+ * as a replaced set, or while another set's manifest does not parse or validate (a reseal and the set it replaced; the
+ * empty-corpus digest never counts;
  * checked again before the first write and before the "released" push, so a reseal that reaches main meanwhile is seen),
  * when the access log has an "opened" line for
  * a run of the set with no "exported" line (a released set takes no export, so that run would never get a decision or an
@@ -47,7 +49,7 @@ import { gunzipSync } from 'node:zlib';
 import { dirname, join, relative, resolve } from 'node:path';
 import { RunnerError } from '../../runner/errors.ts';
 import { bundleEntryProblem, decryptWith, sha256, unpackTar, type TarEntry } from '../../runner/heldout/sealed.ts';
-import { heldoutSet, openingsLedger, readManifest, walk, type HeldoutManifest } from '../seal-heldout.ts';
+import { heldoutSet, openingsLedger, ownUnreadable, readManifest, walk, type HeldoutManifest } from '../seal-heldout.ts';
 import { compareAndPush, CUSTODY_REF, custodyClone, ESCROW_FILE, liveSharersCurrent, readAccessLog, syncCustody, type AccessEvent } from './custody.ts';
 import { custodyIdentity } from './identity.ts';
 import { entriesDigest } from './export.ts';
@@ -69,8 +71,9 @@ export async function releaseSet(o: ReleaseOptions): Promise<{ runs: string[]; t
   syncCustody(clone, remote);
   const refuseShared = (outcome: string) => {
     const { live, unknown } = liveSharersCurrent(o.set, repo, clone, remote);
-    if (live.length) fail(`set ${o.set} shares its world slice or corpus with ${live.join(', ')}, still in sealed custody and not retired; releasing ${o.set} would publish that set's content. Release it after the retirement of ${live.join(', ')} is on main and in this checkout. ${outcome}`);
     if (unknown.length) fail(`set ${o.set}: ${unknown.join(', ')} ha${unknown.length === 1 ? 's' : 've'} a bundle on ${CUSTODY_REF} and no manifest on main or in this checkout that commits to ${unknown.length === 1 ? 'its' : 'their'} sha256, so whether ${unknown.length === 1 ? 'it shares' : 'they share'} the world slice or corpus of ${o.set} is unknown; releasing ${o.set} could publish that set's content. Release it once ${unknown.length === 1 ? 'that manifest is' : 'those manifests are'} on main and in this checkout. ${outcome}`);
+    if (ownUnreadable(o.set, live)) fail(`set ${o.set}: its own MANIFEST.json on main or in this checkout does not parse or validate, so it counts as live; fix it first. ${outcome}`);
+    if (live.length) fail(`set ${o.set} shares its world slice or corpus with ${live.join(', ')}, still in sealed custody and not retired; releasing ${o.set} would publish that set's content. Release it after the retirement of ${live.join(', ')} is on main and in this checkout. ${outcome}`);
   };
   refuseShared('Nothing was decrypted or written');
   const bench = join(repo, 'docs', 'benchmarks');

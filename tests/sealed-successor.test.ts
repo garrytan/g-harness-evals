@@ -16,7 +16,7 @@
 // without a bundle, or a reseal that lands after the release (seal.ts does not check released sets).
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { encryptTo, sha256 } from '../runner/heldout/sealed.ts';
 import { heldoutSet, readManifest } from '../scripts/seal-heldout.ts';
@@ -37,7 +37,7 @@ describe('the successor of a set, seen through the custody remote and the custod
   const bundles = new Map<string, Uint8Array>();
   const successor = (name: string, status: string, bundle?: Uint8Array) => {
     mkdirSync(dirname(sibling(name)), { recursive: true });
-    writeFileSync(sibling(name), JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: readManifest(heldoutSet(SET, f.repo))!.sealed!.world_slice_sha256, ...(bundle ? { bundle_sha256: sha256(bundle) } : {}) }, status }));
+    writeFileSync(sibling(name), JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: readManifest(heldoutSet(SET, f.repo))!.sealed!.world_slice_sha256, heldout_corpus_sha256: readManifest(heldoutSet(SET, f.repo))!.sealed!.world_slice_sha256, ...(bundle ? { bundle_sha256: sha256(bundle) } : {}) }, status }));
   };
   /** What seal.ts pushes first: the bundle and its sealed line, before the set's manifest can reach main. */
   const bundleOf = async (name: string) => { const b = await encryptTo(f.recipient, new TextEncoder().encode(`synthetic bundle of ${name}`)); bundles.set(name, b); return b; };
@@ -118,6 +118,47 @@ describe('the successor of a set, seen through the custody remote and the custod
     successor('vsyn-pending', 'retired', bundles.get('vsyn-pending'));
     commitPush(f, 'the pending reseal reaches main, retired');
     expect(await refusedRelease(missingIdentity())).not.toMatch(/no manifest on main|shares its world slice/);
+    expect(regeneration()).toBe('no refusal');
+  }, 120_000);
+
+  test('a successor named by replaced_by blocks release and regeneration whatever its digests, and so does a manifest on main that does not parse', async () => {
+    const own = sibling(SET);
+    const original = readFileSync(own, 'utf8');
+    try {
+      writeFileSync(own, JSON.stringify({ ...JSON.parse(original), status: 'retired', replaced_by: 'vsyn-heir' }, null, 2) + '\n');
+      mkdirSync(dirname(sibling('vsyn-heir')), { recursive: true });
+      writeFileSync(sibling('vsyn-heir'), JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: '7'.repeat(64), heldout_corpus_sha256: '6'.repeat(64) }, status: 'open' }));
+      commitPush(f, 'vsyn retired as replaced by a reseal with other digests');
+      const heir = "vsyn-heir (vsyn's replaced_by chain names it)";
+      expect(await refusedRelease(missingIdentity())).toBe(`HE-SEALED-008 set vsyn shares its world slice or corpus with ${heir}, still in sealed custody and not retired; releasing vsyn would publish that set's content. Release it after the retirement of ${heir} is on main and in this checkout. Nothing was decrypted or written`);
+      expect(regeneration()).toBe(`HE-SEALED-006 set vsyn shares its world slice or corpus with ${heir}, still in sealed custody and not retired; a backup of vsyn holds that set's content, so name it with --set vsyn-heir. Nothing was decrypted`);
+      // a checkout from before that reached main still sees it, through main fetched from the custody remote
+      git(f.repo, 'reset', '-q', '--hard', 'HEAD~1');
+      expect(regeneration()).toStartWith(`HE-SEALED-006 set vsyn shares its world slice or corpus with ${heir}`);
+      resetToMain();
+      writeFileSync(own, original);
+      rmSync(dirname(dirname(sibling('vsyn-heir'))), { recursive: true, force: true });
+      commitPush(f, 'undo the synthetic replacement');
+      mkdirSync(dirname(sibling('vsyn-broken')), { recursive: true });
+      writeFileSync(sibling('vsyn-broken'), '{ not json');
+      commitPush(f, 'a manifest that does not parse, for a set with no bundle');
+      git(f.repo, 'reset', '-q', '--hard', 'HEAD~1');
+      expect(regeneration()).toBe('HE-SEALED-006 set vsyn shares its world slice or corpus with vsyn-broken (its MANIFEST.json does not parse or validate: it is not JSON; it counts as live until it does), still in sealed custody and not retired; a backup of vsyn holds that set\'s content, so fix the MANIFEST.json named above first. Nothing was decrypted');
+      resetToMain();
+      rmSync(dirname(dirname(sibling('vsyn-broken'))), { recursive: true, force: true });
+      commitPush(f, 'undo the manifest that does not parse');
+      writeFileSync(own, JSON.stringify({ ...JSON.parse(original), replaced_by: null }, null, 2) + '\n');
+      commitPush(f, "vsyn's own manifest does not validate on main");
+      git(f.repo, 'reset', '-q', '--hard', 'HEAD~1');
+      const self = 'set vsyn: its own MANIFEST.json on main or in this checkout does not parse or validate, so it counts as live; fix it first.';
+      expect(await refusedRelease(missingIdentity())).toBe(`HE-SEALED-008 ${self} Nothing was decrypted or written`);
+      expect(regeneration()).toBe(`HE-SEALED-006 ${self} Nothing was decrypted`);
+    } finally {
+      resetToMain();
+      writeFileSync(own, original);
+      for (const s of ['vsyn-heir', 'vsyn-broken']) rmSync(dirname(dirname(sibling(s))), { recursive: true, force: true });
+      if (git(f.repo, 'status', '--porcelain')) commitPush(f, 'undo the synthetic replacement');
+    }
     expect(regeneration()).toBe('no refusal');
   }, 120_000);
 });

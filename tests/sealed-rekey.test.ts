@@ -16,7 +16,8 @@ import { compareAndPush, eventProblems, isX25519Recipient, openedRuns, readAcces
 import { rekeyBackup } from '../scripts/sealed/rekey.ts';
 import { compareBackups, publicFamilies, reportLines, type CompareOptions } from '../scripts/sealed/compare-backups.ts';
 import { openRun } from '../scripts/sealed/open.ts';
-import { candidate, cloneCustody, co, commitPush, ENV_VALUE, git as fixtureGit, makeFixture, register, ROOT, SCRUBBED_ENV, SET, type Fixture } from './sealed-fixture.ts';
+import { sealFromBackup } from '../scripts/sealed/seal.ts';
+import { candidate, cloneCustody, co, commitPush, ENV_VALUE, git as fixtureGit, makeFixture, recordBackup, register, ROOT, SCRUBBED_ENV, SET, type Fixture } from './sealed-fixture.ts';
 
 const CANARY = { task: 'Numbat canary task body 6620', notes: 'Numbat canary task notes 3391', slice: 'Numbat canary slice 0457', audit: 'Numbat canary audit 7718', page: 'Numbat canary corpus page 2284', brief: 'Numbat canary brief 5530', readme: 'Numbat canary tasks readme 9043' };
 const TASK_IDS = ['ix-01-alpha', 'ix-02-beta', 'sx-01-gamma', 'qq-01-delta', 'qq-02-epsilon', 'loner', 'wxyzq-01-odd'];
@@ -51,8 +52,9 @@ describe('rekey.ts and compare-backups.ts', () => {
     printed.push(r.stdout + r.stderr);
     return r;
   };
-  /** A backup of base's tree after edit: GNU tar of the named roots under src (flags, e.g. -z), encrypted to recipient. */
-  async function backup(name: string, edit: (src: string) => void = () => {}, o: { flags?: string[]; root?: string; paths?: string[]; recipient?: string } = {}) {
+  /** A backup of base's tree after edit: GNU tar of the named roots under src (flags, e.g. -z), encrypted to recipient, and
+   *  recorded for o.record (default SET; null records it for no set) in sealed/backups.json on main. */
+  async function backup(name: string, edit: (src: string) => void = () => {}, o: { flags?: string[]; root?: string; paths?: string[]; recipient?: string; record?: string | null } = {}) {
     const src = join(f.tmp, 'trees', name);
     cpSync(base.dir, src, { recursive: true });
     edit(src);
@@ -60,6 +62,7 @@ describe('rekey.ts and compare-backups.ts', () => {
     const bytes = await encryptTo(o.recipient ?? f.recipient, tar);
     const file = join(f.tmp, `${name}.tar.age`);
     writeFileSync(file, bytes);
+    if (o.record !== null) recordBackup(f, o.record ?? SET, sha256(bytes));
     return { tar, file, sha: sha256(bytes) };
   }
   const compare = async (b: { file: string; sha: string }, o: Partial<CompareOptions> = {}, a: { file: string; sha: string } = base) => {
@@ -122,9 +125,17 @@ describe('rekey.ts and compare-backups.ts', () => {
     expect(line({ ...re, extra: 1 })).toEqual(['unknown field extra']);
     expect(line({ ...re, set: '*' })).toEqual(['set is not a set name']);
     expect(line({ ...re, set: 'Bad Set' })).toEqual(['set is not a set name']);
-    expect(line({ event: 'opened', source_sha256: h })).toEqual(['source_sha256 is only on reencrypted and compared lines']);
+    expect(line({ event: 'opened', source_sha256: h })).toEqual(['source_sha256 is only on sealed, reencrypted and compared lines']);
+    expect(line({ event: 'sealed', bundle_sha256: h, source_sha256: h })).toEqual([]);
     expect(line({ event: 'sealed', bundle_sha256: h, output_sha256: h })).toEqual(['output_sha256 is only on reencrypted and compared lines']);
     expect(line({ event: 'escrowed', set: '*', recipient: author.recipient })).toEqual(['recipient is only on reencrypted and compared lines']);
+    // declared_sha256 (--declare-backup): a list of the line's own backup digests, on these two events only
+    const h2 = sha256('y');
+    expect(line({ ...re, output_sha256: h2, declared_sha256: [h] })).toEqual([]);
+    expect(line({ event: 'compared', source_sha256: h, output_sha256: h2, declared_sha256: [h2, h] })).toEqual([]);
+    expect(line({ ...re, output_sha256: h2, declared_sha256: [h2] })).toEqual(['declared_sha256 names a digest that is not a backup this line read']);
+    for (const bad of ['x', [], [h, h], ['abc']]) expect(line({ ...re, declared_sha256: bad })).toEqual(['declared_sha256 is not a list of distinct sha256 digests']);
+    expect(line({ event: 'opened', declared_sha256: [h] })).toEqual(['declared_sha256 is only on reencrypted and compared lines']);
   });
 
   test('rekey refusals leave no output file and no access-log line', async () => {
@@ -148,7 +159,7 @@ describe('rekey.ts and compare-backups.ts', () => {
     const sibling = join(f.repo, 'tasks', 'multiuser', `${SET}-next`, 'heldout', 'MANIFEST.json');
     try {
       const slice = JSON.parse(readFileSync(join(f.repo, 'tasks', 'multiuser', SET, 'heldout', 'MANIFEST.json'), 'utf8')).sealed.world_slice_sha256;
-      write(sibling, JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: slice }, status: 'open' }));
+      write(sibling, JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: slice, heldout_corpus_sha256: slice }, status: 'open' }));
       await expect(lib({})).rejects.toThrow(`HE-SEALED-006 set ${SET} shares its world slice or corpus with ${SET}-next, still in sealed custody and not retired; a backup of ${SET} holds that set's content, so name it with --set ${SET}-next. Nothing was decrypted`);
       await expect(compare(await backup('shared-set'))).rejects.toThrow(`HE-SEALED-006 set ${SET} shares its world slice or corpus with ${SET}-next`);
       // a checkout from before the reseal reached main is refused too: the check also reads a fresh fetch of origin/main
@@ -200,11 +211,11 @@ describe('rekey.ts and compare-backups.ts', () => {
   test('a refused push writes nothing (rekey) and prints nothing (compare); a write that fails after the push leaves no file and says the line was pushed', async () => {
     const before = logLength();
     const dir = join(f.work, 'push-refused');
+    const same = await backup('same-push');
     rejectHook(true);
     try {
       await expect(rekeyBackup({ repo: f.repo, set: SET, backup: base.file, sha256: base.sha, to: author.recipient, out: join(dir, 'out.tar.age'), recipient: f.recipient, ...co(f) })).rejects.toThrow(/^HE-SEALED-006 the push to origin refs\/heads\/custody was rejected 5 times .*the backup was decrypted and re-encrypted in memory only; nothing was written$/);
       expect(existsSync(dir)).toBe(false);
-      const same = await backup('same-push');
       const r = cli('compare-backups.ts', ['--a', base.file, '--a-sha256', base.sha, '--b', same.file, '--b-sha256', same.sha, '--tasks', 'v03/selected/tasks', '--set', SET]);
       expect(r.status).toBe(2);
       expect(r.stdout).toBe('');
@@ -221,6 +232,80 @@ describe('rekey.ts and compare-backups.ts', () => {
     } finally { chmodSync(ro, 0o700); }
     expect(logLength()).toBe(before + 1);
     expect(readAccessLog(fresh()).at(-1)!.event).toBe('reencrypted');
+  }, 240_000);
+
+  test('a backup is bound to --set by sealed/backups.json on main, or by --declare-backup, which the access-log line records', async () => {
+    const before = logLength();
+    const loose = await backup('bind-loose', () => {}, { record: null });
+    const elsewhere = await backup('bind-elsewhere', () => {}, { record: 'vother' });
+    let k = 0;
+    const rekey = (b: { file: string; sha: string }, o: Record<string, unknown> = {}) => rekeyBackup({ repo: f.repo, set: SET, backup: b.file, sha256: b.sha, to: author.recipient, out: join(f.work, 'bind', `out-${++k}.tar.age`), recipient: f.recipient, ...co(f), custodian: 'internal-task', ...o } as never);
+    const NONE = (flag: string, b: { file: string; sha: string }) => `HE-SEALED-006 ${flag} ${b.file} has sha256 ${b.sha.slice(0, 12)}, which sealed/backups.json on main records for no set, so nothing binds it to set ${SET}; if it is a backup of ${SET}, say so with --declare-backup ${b.sha} (the access-log line records it). Nothing was decrypted`;
+    await expect(rekey(loose)).rejects.toThrow(NONE('--from-backup', loose));
+    await expect(rekey(elsewhere)).rejects.toThrow(`HE-SEALED-006 --from-backup ${elsewhere.file} has sha256 ${elsewhere.sha.slice(0, 12)}, which sealed/backups.json on main records for vother, not for ${SET} or a set it replaced; --set names the set the backup belongs to, and --declare-backup cannot override a recorded binding. Nothing was decrypted`);
+    await expect(rekey(elsewhere, { declared: [elsewhere.sha] })).rejects.toThrow('records for vother, not for');
+    await expect(rekey(loose, { declared: [base.sha] })).rejects.toThrow(`HE-SEALED-006 --declare-backup ${base.sha.slice(0, 12)} is not the sha256 of a backup this run reads; nothing was decrypted`);
+    await expect(compare(loose)).rejects.toThrow(NONE('--b', loose));
+    await expect(compare(base, {}, loose)).rejects.toThrow(NONE('--a', loose));
+    expect(logLength()).toBe(before);
+    expect(existsSync(join(f.work, 'bind'))).toBe(false);
+    // declared: accepted, and the line names the declared digest
+    await rekey(loose, { declared: [loose.sha.toUpperCase()] });
+    expect(readAccessLog(fresh()).at(-1)).toMatchObject({ event: 'reencrypted', source_sha256: loose.sha, declared_sha256: [loose.sha] });
+    expect((await compare(loose, { declared: [loose.sha] })).exitCode).toBe(0);
+    expect(readAccessLog(fresh()).at(-1)).toMatchObject({ event: 'compared', source_sha256: base.sha, output_sha256: loose.sha, declared_sha256: [loose.sha] });
+    // a reseal: --set names the new set, a is the backup the set it replaced was sealed from, b the reseal's own
+    const old = join(f.repo, 'tasks', 'multiuser', `${SET}-old`, 'heldout', 'MANIFEST.json');
+    write(old, JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: '7'.repeat(64), heldout_corpus_sha256: '7'.repeat(64) }, status: 'retired', replaced_by: SET }));
+    commitPush(f, 'a synthetic set that SET replaced');
+    try {
+      const gen5 = await backup('bind-gen5', () => {}, { record: `${SET}-old` });
+      const gen6 = await backup('bind-gen6', (s) => write(join(s, 'v03', 'audits', 'ix-01-alpha.audit.json'), 'rerendered'));
+      expect((await compare(gen6, { allowGroup: ['v03/audits'] }, gen5)).exitCode).toBe(0);
+      await rekey(gen5);
+      await expect(compare(gen5, {}, gen6)).rejects.toThrow(`HE-SEALED-006 --b ${gen5.file} has sha256 ${gen5.sha.slice(0, 12)}, which sealed/backups.json on main records for ${SET}-old, not for ${SET}; --set names the set the backup belongs to`);
+      // the CLI takes --declare-backup, repeatable on compare-backups.ts
+      const cliArgs = ['--a', loose.file, '--a-sha256', loose.sha, '--b', gen6.file, '--b-sha256', gen6.sha, '--tasks', 'v03/selected/tasks', '--allow-group', 'v03/audits', '--set', SET];
+      expect(cli('compare-backups.ts', cliArgs).stderr).toStartWith(NONE('--a', loose));
+      expect(cli('compare-backups.ts', [...cliArgs, '--declare-backup', 'abc']).stderr).toStartWith('HE-RUN-002 --declare-backup must be 64 hex characters');
+      const ok = cli('compare-backups.ts', [...cliArgs, '--declare-backup', loose.sha, '--declare-backup', gen6.sha]);
+      expect(ok.status, ok.stderr).toBe(0);
+      expect(readAccessLog(fresh()).at(-1)).toMatchObject({ event: 'compared', source_sha256: loose.sha, output_sha256: gen6.sha, declared_sha256: [loose.sha, gen6.sha] });
+      // Value: protects=a backup recorded for a replaced set does not bind once that set has a "released" line; fails_when=rekey or compare-backups decrypts gen5 after the replaced set was released; why_new=only --set's access-log state was checked; seam=none; no_claim=an opened run of the replaced set (the same check, refuseOpenedVia).
+      compareAndPush(cloneCustody(f, 'release-old'), { message: () => 'synthetic release of the replaced set', decide: () => ({ schema_version: 1, event: 'released', at: 'now', run_id: '*', set: `${SET}-old`, bundle_sha256: sha256('old'), custodian: 'synthetic' }) });
+      const VIA = `HE-SEALED-006 set ${SET}-old, which ${SET} replaced and a backup is recorded for, has a "released" line in the access log on refs/heads/custody; regeneration is for a set that was never opened. Nothing was decrypted`;
+      await expect(rekey(gen5)).rejects.toThrow(VIA);
+      await expect(compare(gen6, { allowGroup: ['v03/audits'] }, gen5)).rejects.toThrow(VIA);
+    } finally {
+      rmSync(dirname(dirname(old)), { recursive: true, force: true });
+      commitPush(f, 'remove the synthetic replaced set');
+    }
+    expect(logLength()).toBe(before + 6);
+  }, 240_000);
+
+  test('rekey: a backup that another set\'s "sealed" line names as its source is bound to that set, so --declare-backup cannot bind it before sealed/backups.json reaches main', async () => {
+    const src = await backup('seal-source-rekey', () => {}, { record: null });
+    compareAndPush(cloneCustody(f, 'seal-source-rekey'), { message: () => 'synthetic seal of vsealed from a backup', decide: () => ({ schema_version: 1, event: 'sealed', at: 'now', run_id: '*', set: 'vsealed', bundle_sha256: sha256('vsealed'), source_sha256: src.sha, custodian: 'synthetic' }) });
+    const before = logLength();
+    const out = join(f.work, 'seal-source', 'rekey.tar.age');
+    await expect(rekeyBackup({ repo: f.repo, set: SET, backup: src.file, sha256: src.sha, to: author.recipient, out, recipient: f.recipient, ...co(f), custodian: 'internal-task', declared: [src.sha] })).rejects.toThrow(`HE-SEALED-006 --from-backup ${src.file} has sha256 ${src.sha.slice(0, 12)}, which a "sealed" line in the access log on refs/heads/custody records for vsealed, not for ${SET} or a set it replaced; --set names the set the backup belongs to, and --declare-backup cannot override a recorded binding. Nothing was decrypted`);
+    expect(existsSync(dirname(out))).toBe(false);
+    expect(logLength()).toBe(before);
+  }, 120_000);
+
+  test('compare-backups: a --b that another set\'s "sealed" line names as its source is refused even when declared, and a backup a "compared" line names cannot seal another set', async () => {
+    const src = await backup('seal-source-compare', () => {}, { record: null });
+    compareAndPush(cloneCustody(f, 'seal-source-compare'), { message: () => 'synthetic seal of vsealed2 from a backup', decide: () => ({ schema_version: 1, event: 'sealed', at: 'now', run_id: '*', set: 'vsealed2', bundle_sha256: sha256('vsealed2'), source_sha256: src.sha, custodian: 'synthetic' }) });
+    const before = logLength();
+    await expect(compare(src, { declared: [src.sha] })).rejects.toThrow(`HE-SEALED-006 --b ${src.file} has sha256 ${src.sha.slice(0, 12)}, which a "sealed" line in the access log on refs/heads/custody records for vsealed2, not for ${SET}; --set names the set the backup belongs to`);
+    expect(logLength()).toBe(before);
+    const own = await backup('compared-own', (s) => { for (const t of TASK_IDS.slice(0, 4)) { write(join(tasksDir(s), t, 'task.toml'), `# synthetic, not counted\nid = "${t}"\nkind = "fix"\n`); write(join(tasksDir(s), t, 'environment', 'Dockerfile'), 'FROM scratch\nLABEL harness-eval.sealed=true\n'); } }, { record: null });
+    await compare(own, { declared: [own.sha] });
+    expect(readAccessLog(fresh()).at(-1)).toMatchObject({ event: 'compared', set: SET, output_sha256: own.sha });
+    const intakeRoot = join(f.tmp, 'intake-compared');
+    await expect(sealFromBackup({ repo: f.repo, set: 'vcompared', kind: 'repo', backup: own.file, sha256: own.sha, tasks: 'v03/selected/tasks', ...co(f), recipient: f.recipient, intakeRoot })).rejects.toThrow(`the access log on refs/heads/custody has a "compared" line for set ${SET} that names this backup (sha256 ${own.sha.slice(0, 12)}); a backup belongs to one set, so it cannot seal vcompared. Nothing was pushed`);
+    expect(existsSync(join(fresh(), 'vcompared'))).toBe(false);
+    expect(existsSync(join(f.repo, 'tasks', 'repo', 'vcompared'))).toBe(false);
   }, 240_000);
 
   test('compare-backups: tasks, non-task entries, slice records and corpus pages, with exit codes 0, 1 and 3', async () => {
@@ -369,7 +454,7 @@ describe('rekey.ts and compare-backups.ts', () => {
       write(join(s, 'v03', 'zz-secret-fam', 'notes.txt'), 'the same family name with dashes\n');
     };
     const fa = await backup('ff-a', (s) => famTree(s));
-    const field = { tasks: ['v03/selected/tasks', 'v03/candidates'], familyField: true, allowFamily: ['approval_relay'], publicFamilies: ['approval_relay', 'synthesis', 'continuity'], manifest: 'v03/GEN6-MANIFEST.json', manifestCommit: ['proof.template_commit=HEAD'] };
+    const field = { tasks: ['v03/selected/tasks', 'v03/candidates'], familyField: true, allowFamily: ['approval_relay'], publicFamilies: ['approval_relay', 'synthesis', 'continuity'], manifest: 'v03/GEN6-MANIFEST.json', manifestCommit: [`proof.template_commit=${head}`] };
     const sel = 'v03/selected/tasks', cand = 'v03/candidates';
 
     // only approval_relay tasks changed, in both task directories: pass, with counts by family and a manifest match
@@ -429,7 +514,7 @@ describe('rekey.ts and compare-backups.ts', () => {
 
     // the CLI takes the same flags
     const b = await backup('ff-cli', (s) => famTree(s, { body: { 'ix-01-alpha': 'rerendered' } }));
-    const r = cli('compare-backups.ts', ['--a', fa.file, '--a-sha256', fa.sha, '--b', b.file, '--b-sha256', b.sha, '--tasks', sel, '--tasks', cand, '--family-field', '--allow-family', 'approval_relay', '--manifest', field.manifest, '--manifest-commit', 'proof.template_commit=HEAD', '--set', SET]);
+    const r = cli('compare-backups.ts', ['--a', fa.file, '--a-sha256', fa.sha, '--b', b.file, '--b-sha256', b.sha, '--tasks', sel, '--tasks', cand, '--family-field', '--allow-family', 'approval_relay', '--manifest', field.manifest, '--manifest-commit', `proof.template_commit=${head}`, '--set', SET]);
     expect(r.status).toBe(0);
     expect(r.stdout).toContain(`COMPARE: manifest key proof.template_commit names commit ${head}: match`);
     expect(r.stdout).toContain(`COMPARE: family ${h('synthesis')} in ${cand}: same 1, changed 0, added 0, removed 0 task(s)`);

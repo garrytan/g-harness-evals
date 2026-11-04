@@ -20,6 +20,8 @@
  * and the directory is removed and checked gone on every exit, with one line saying so. --include packs a file of the
  * backup at extras/<path> in the bundle and lists its sha256 under sealed.extras in the manifest. --exposures adds a JSON
  * list of exposures to the manifest's openings ledger; --custodian names the custodian in the access log's "sealed" line.
+ * After a seal from a backup, the backup's sha256 is appended for the set to sealed/backups.json in the checkout (the
+ * custodian commits it with the manifest); rekey.ts and compare-backups.ts bind a backup to its set by that file on main.
  *
  * It refuses unless the repository is private (gh api repos/garrytan/harness-evals -q .private; HE-SEALED-013), and works
  * on the custody branch only through the isolated custody clone (default ~/.capy/work/custody/harness-evals;
@@ -46,14 +48,14 @@
  * directory 0700, the file 0600, beside the default custody clone and outside every checkout; when that directory is
  * inside a git work tree no log is written and the line says so). sealSet's thrown errors keep the full message for callers.
  */
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { constants } from 'node:os';
 import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
 import { RunnerError } from '../../runner/errors.ts';
 import { randomBytes } from 'node:crypto';
 import { corpusDigest, decryptWith, encryptTo, OPAQUE_SALT_FILE, packTar, safeRelPath, sha256, sliceProblems, sliceRecords, WORLD_COLLECTIONS, type TarEntry, type WorldSlice } from '../../runner/heldout/sealed.ts';
-import { heldoutSet, openingsLedger, readManifest, SET_KINDS, treeFiles, walk, type Exposure, type HeldoutManifest, type SetKind } from '../seal-heldout.ts';
-import { checkPrivate, compareAndPush, CUSTODY_REF, CUSTODY_REPO, custodyClone, DEFAULT_CUSTODY_CLONE, ESCROW_FILE, insideGitTree, PUBLIC_TREES, syncCustody } from './custody.ts';
+import { BACKUPS_FILE, heldoutSet, openingsLedger, readManifest, recordedBackups, SET_KINDS, treeFiles, walk, type BackupCommitment, type Exposure, type HeldoutManifest, type SetKind } from '../seal-heldout.ts';
+import { checkPrivate, compareAndPush, CUSTODY_REF, CUSTODY_REPO, custodyClone, DEFAULT_CUSTODY_CLONE, ESCROW_FILE, insideGitTree, liveSharersCurrent, PUBLIC_TREES, readAccessLog, syncCustody } from './custody.ts';
 import { custodyIdentity } from './identity.ts';
 import { backupEntries, INTAKE_ROOT, makeIntakeDir, removeIntakeDir, sweepStaleIntake, writeBackup } from './intake.ts';
 import type { World } from '../../world/types.ts';
@@ -109,6 +111,9 @@ export interface SealOptions {
   exposures?: Exposure[];
   /** The access-log line's custodian (default scripts/sealed/seal.ts), as open.ts --custodian. */
   custodian?: string;
+  /** seal.ts --from-backup: the backup's sha256, recorded as the "sealed" line's source_sha256 and refused under the custody
+   *  lock when another set's "sealed" line, or a "reencrypted" or "compared" line, already names it. */
+  sourceSha256?: string;
 }
 
 /** seal.ts --from-backup: tasks, slice, corpus and include are paths under the unpacked backup. */
@@ -249,7 +254,9 @@ export async function sealSet(o: SealOptions): Promise<{ manifest: HeldoutManife
     message: () => `seal ${o.set}`,
     decide: () => {
       if (existsSync(bundlePath)) fail(`${CUSTODY_REF} already holds ${bundleRel}; a sealed bundle is never replaced, so new content is a new set`);
-      return { schema_version: 1, event: 'sealed', at: now(), run_id: '*', set: o.set, bundle_sha256: sha256(ciphertext), custodian: o.custodian ?? 'scripts/sealed/seal.ts' };
+      const taken = o.sourceSha256 ? readAccessLog(clone).find((e) => e.set !== o.set && (e.event === 'sealed' ? e.source_sha256 === o.sourceSha256 : (e.event === 'reencrypted' || e.event === 'compared') && [e.source_sha256, e.output_sha256].includes(o.sourceSha256))) : undefined;
+      if (taken) fail(`the access log on ${CUSTODY_REF} ${taken.event === 'sealed' ? `records set ${taken.set} as sealed from this backup` : `has a "${taken.event}" line for set ${taken.set} that names this backup`} (sha256 ${o.sourceSha256!.slice(0, 12)}); a backup belongs to one set, so it cannot seal ${o.set}. Nothing was pushed`);
+      return { schema_version: 1, event: 'sealed', at: now(), run_id: '*', set: o.set, bundle_sha256: sha256(ciphertext), ...(o.sourceSha256 ? { source_sha256: o.sourceSha256 } : {}), custodian: o.custodian ?? 'scripts/sealed/seal.ts' };
     },
     stage: () => { mkdirSync(dirname(bundlePath), { recursive: true }); writeFileSync(bundlePath, ciphertext); return [bundleRel]; },
   });
@@ -303,6 +310,14 @@ export async function sealFromBackup(o: BackupSealOptions): Promise<Awaited<Retu
   const want = (o.sha256 ?? '').toLowerCase();
   if (!want) fail('--from-backup needs --sha256, the sha256 of the backup file; nothing was decrypted');
   if (!/^[0-9a-f]{64}$/.test(want)) fail('--sha256 must be 64 hex characters; nothing was decrypted');
+  const backupsPath = join(resolve(o.repo), BACKUPS_FILE);
+  let commitments: { schema_version: 1; backups: BackupCommitment[] } = { schema_version: 1, backups: [] };
+  if (existsSync(backupsPath)) {
+    try { commitments = JSON.parse(readFileSync(backupsPath, 'utf8')); } catch { fail(`${BACKUPS_FILE} in the checkout does not parse as JSON; the seal records this backup there, so fix it first. Nothing was decrypted`); }
+    if (commitments?.schema_version !== 1 || !Array.isArray(commitments?.backups) || !commitments.backups.every((b) => typeof b?.set === 'string' && typeof b.sha256 === 'string')) fail(`${BACKUPS_FILE} in the checkout is not a list of backups; the seal records this backup there, so fix it first. Nothing was decrypted`);
+    const elsewhere = commitments.backups.find((b) => b.sha256 === want && b.set !== o.set);
+    if (elsewhere) fail(`${BACKUPS_FILE} records this backup for set ${elsewhere.set}; a backup belongs to one set, so it cannot seal ${o.set}. Nothing was decrypted`);
+  }
   const intakeRoot = o.intakeRoot ?? INTAKE_ROOT;
   const stale = sweepStaleIntake(intakeRoot);
   if (stale.removed.length) log(`SEAL: removed ${stale.removed.length} stale intake director${stale.removed.length === 1 ? 'y' : 'ies'} an earlier run left: ${stale.removed.join(', ')}`);
@@ -315,6 +330,8 @@ export async function sealFromBackup(o: BackupSealOptions): Promise<Awaited<Retu
   const remote = o.remote ?? 'origin';
   const clone = custodyClone({ dir: o.custody, repo: resolve(o.repo), remote });
   syncCustody(clone, remote);
+  const onMain = recordedBackups(liveSharersCurrent(o.set, resolve(o.repo), clone, remote).backups).find((b) => b.sha256 === want && b.set !== o.set);
+  if (onMain) fail(`${BACKUPS_FILE} on main records this backup for set ${onMain.set}; a backup belongs to one set, so it cannot seal ${o.set}. Nothing was decrypted`);
   const identity = await custodyIdentity({ identityPath: o.identityPath, escrowPath: join(clone, ESCROW_FILE), recipient: readRecipient(o.recipient), env: o.env });
   const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
   let dir = '';
@@ -344,6 +361,7 @@ export async function sealFromBackup(o: BackupSealOptions): Promise<Awaited<Retu
     };
     result = await sealSet({
       ...o,
+      sourceSha256: want,
       tasks: under('--tasks', o.tasks, 'dir'),
       slice: o.slice ? under('--slice', o.slice, 'file') : undefined,
       corpus: o.corpus ? under('--corpus', o.corpus, 'dir') : undefined,
@@ -355,6 +373,27 @@ export async function sealFromBackup(o: BackupSealOptions): Promise<Awaited<Retu
   }
   const gone = removeIntakeDir(dir);
   for (const s of signals) process.off(s, onSignal);
+  if (result && !error) {
+    const entry = { set: o.set, sha256: want, what: `the backup set ${o.set} was sealed from (scripts/sealed/seal.ts --from-backup, custodian ${o.custodian ?? 'scripts/sealed/seal.ts'})` };
+    try {
+      const current: { schema_version: 1; backups: BackupCommitment[] } = existsSync(backupsPath) ? JSON.parse(readFileSync(backupsPath, 'utf8')) : { schema_version: 1, backups: [] };
+      if (!Array.isArray(current?.backups)) throw new Error('it is no longer a list of backups');
+      if (!current.backups.some((b) => b?.set === o.set && b?.sha256 === want)) {
+        current.backups.push(entry);
+        mkdirSync(dirname(backupsPath), { recursive: true });
+        const tmp = `${backupsPath}.${process.pid}-${randomBytes(4).toString('hex')}`;
+        try {
+          writeFileSync(tmp, JSON.stringify(current, null, 2) + '\n');
+          renameSync(tmp, backupsPath);
+        } catch (e) {
+          rmSync(tmp, { force: true });
+          throw e;
+        }
+      }
+    } catch (e) {
+      log(`SEAL: the seal succeeded, but ${BACKUPS_FILE} could not be updated (${e instanceof Error ? e.message : String(e)}); add this entry by hand and commit it with the manifest: ${JSON.stringify(entry)}`);
+    }
+  }
   log(gone ? `SEAL: removed the unpacked intake ${dir} (checked: it no longer exists)` : `SEAL: could not remove the unpacked intake ${dir}; remove it by hand`);
   if (!gone && result && !error) return result;
   if (!gone) throw new SealRefusal(`the unpacked intake ${dir} could not be removed${error ? `; the seal also failed: ${error instanceof Error ? error.message : String(error)}` : ''}`, error instanceof SealRefusal ? error.count : 1);

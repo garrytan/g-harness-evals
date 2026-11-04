@@ -16,7 +16,9 @@
  *   - a set's released files (tasks/multiuser/<set>/sealed-world/, task directories beside MANIFEST.json; v0.1's are
  *     tasks/multiuser/heldout/) while its
  *     MANIFEST.json still says custody "sealed", or while another set in sealed custody and not retired shares its world
- *     slice or corpus digest (a reseal and the set it replaced; the empty-corpus digest never counts);
+ *     slice or corpus digest (a reseal and the set it replaced; the empty-corpus digest never counts), or while a set in its
+ *     replaced_by chain is in sealed custody and not retired as a replaced set. A MANIFEST.json that does not parse or
+ *     validate counts as sealed, and as a live sharer of every other set (fail closed);
  *   - repo sets: any file under tasks/repo/<set>/heldout/ but MANIFEST.json, whatever the manifest says (a repo
  *     set's held-out tree exists only inside custody; release writes it to tasks/repo/<set>/released/), and a repo set's
  *     released files (tasks/repo/<set>/released/, tasks/repo/<set>/sealed-bundle/) while its MANIFEST.json says "sealed"
@@ -28,7 +30,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
-import { DEFAULT_SET, liveSharersAmong, type HeldoutManifest } from './seal-heldout.ts';
+import { DEFAULT_SET, isUnreadable, liveSharersAmong, manifestSetName, parseManifest, type ManifestEntry } from './seal-heldout.ts';
 import { IDENTITY_MARKER } from './sealed/custody.ts';
 
 export interface Finding { path: string; kind: string }
@@ -47,17 +49,20 @@ export function publicationFindings(repo: string, ref?: string): Finding[] {
   const marker = IDENTITY_MARKER.source;
   const grep = g(['grep', '-l', '-z', '-a', '-E', marker, ...(ref ? [ref] : []), '--']);
   for (const hit of grep.stdout.split('\0').filter(Boolean)) out.push({ path: ref ? hit.slice(ref.length + 1) : hit, kind: 'an age identity' });
-  const sealedSets = new Set<string>();
-  const manifests = new Map<string, HeldoutManifest>();
+  // A manifest that does not parse or validate counts as sealed, and as a live sharer of every other set (fail closed).
+  const manifests = new Map<string, ManifestEntry>();
   for (const f of files) {
-    const m = /^tasks\/(?:multiuser\/(?:([^/]+)\/)?|repo\/([^/]+)\/)heldout\/MANIFEST\.json$/.exec(f);
-    if (!m || ['dev', 'heldout', '_shared'].includes(m[1] ?? '')) continue;
-    const name = m[1] ?? m[2] ?? DEFAULT_SET;
-    try { const man = JSON.parse(read(f) ?? '{}') as HeldoutManifest; manifests.set(name, man); if (man.custody === 'sealed') sealedSets.add(name); } catch { /* seal-heldout.ts --check reports a malformed manifest */ }
+    const name = manifestSetName(f);
+    if (name) manifests.set(name, parseManifest(read(f)));
   }
-  // A released set whose world slice or corpus a live sealed set shares (a reseal and the set it replaced) stays protected.
+  // A released set whose world slice or corpus a live sealed set shares, or that a live set in its replaced_by chain
+  // replaced, stays protected.
   const sharedWith = (set: string) => liveSharersAmong(set, manifests)[0];
-  const custodyNote = (set: string) => (sealedSets.has(set) ? 'which is still in sealed custody' : sharedWith(set) ? `whose world slice or corpus set ${sharedWith(set)} shares while still in sealed custody` : undefined);
+  const custodyNote = (set: string) => {
+    const m = manifests.get(set);
+    if (isUnreadable(m)) return `whose MANIFEST.json does not parse or validate (${m.unreadable}), so it counts as still in sealed custody`;
+    return m?.custody === 'sealed' ? 'which is still in sealed custody' : sharedWith(set) ? `whose world slice or corpus set ${sharedWith(set)} shares while still in sealed custody` : undefined;
+  };
   const protectedKind = (set: string) => (custodyNote(set) ? `released content of set ${set}, ${custodyNote(set)}` : undefined);
   // A run whose preregistration opens a set still in sealed custody, or one a live sealed set shares, publishes only its
   // sealed-results/ export until release.

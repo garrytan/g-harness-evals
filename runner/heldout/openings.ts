@@ -35,7 +35,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, normalize } from 'node:path';
 import { RunnerError } from '../errors.ts';
 import { loadManifest as loadRegistry } from '../prereg/prereg.ts';
-import { DEFAULT_SET, heldoutSet, heldoutSets, liveSharers, openingsLedger, readManifest, type OpeningRow, type OpeningsLedger } from '../../scripts/seal-heldout.ts';
+import { DEFAULT_SET, heldoutSet, heldoutSets, liveSharers, liveTarget, openingsLedger, readManifest, type OpeningRow, type OpeningsLedger } from '../../scripts/seal-heldout.ts';
 
 /** A preregistered claim a sealed opening decides (scripts/sealed/export.ts): one entry of a comparison file in the run's raw
  *  results, matched by field values, and the decision rule. Every claim is a primary decision and all of them form one
@@ -373,7 +373,7 @@ export function checkOpenings(root: string, legacy = legacyList()): string[] {
     }
     const live = derived.openings.some((o) => o.status === 'planned') ? liveSharers(set.name, root) : [];
     for (const o of derived.openings) {
-      if (o.status === 'planned' && live.length) problems.push(`set ${set.name}: ${o.run_id} is a planned opening of a set whose world slice or corpus ${live.join(', ')} shares while still in sealed custody and not retired; opening it would expose that set, so run it on ${live[0]} (HE-HELDOUT-003)`);
+      if (o.status === 'planned' && live.length) problems.push(`set ${set.name}: ${o.run_id} is a planned opening of a set whose world slice or corpus ${live.join(', ')} shares while still in sealed custody and not retired; opening it would expose that set, so ${liveTarget(live) ? `run it on ${liveTarget(live)}` : 'fix the MANIFEST.json named above first'} (HE-HELDOUT-003)`);
       if (o.status === 'planned' && o.label === 'confirmatory' && ledger.status !== 'open') problems.push(`set ${set.name}: ${o.run_id} is a planned confirmatory opening of a set whose status is ${ledger.status}; mark a set's rows opened before the set is spent or retired, or label the run dev with a reason (HE-HELDOUT-003)`);
       if (o.confirmatory_rank !== null && o.confirmatory_rank > ledger.opening_budget) problems.push(`set ${set.name}: ${o.run_id} is confirmatory opening ${o.confirmatory_rank} against a budget of ${ledger.opening_budget} (preregistration first added at ${o.prereg_commit?.slice(0, 12) ?? 'no first-parent commit'}); label it dev with a reason, or withdraw it`);
     }
@@ -429,7 +429,7 @@ export function checkPlan(prereg: PreregLike, digest: string, root: string, lega
   if (!COUNTED.has(row.status)) throw new RunnerError('HE-HELDOUT-002', `run ${prereg.run_id}: its row in the openings ledger of set ${setName} is ${row.status}; a ${row.status} registration does not open the set. fix: register a new run id`);
   if (legacyEntry) return [line(derive(), 'registered before internal-task (runner/heldout/legacy-preregistrations.json), accepted as its backfilled row')];
   const live = row.status === 'planned' ? liveSharers(setName, root) : [];
-  if (live.length) throw new RunnerError('HE-HELDOUT-003', `run ${prereg.run_id} plans an opening of set ${setName}, which shares its world slice or corpus with ${live.join(', ')}, still in sealed custody and not retired; opening ${setName} would expose that set. fix: run it on ${live[0]}`);
+  if (live.length) throw new RunnerError('HE-HELDOUT-003', `run ${prereg.run_id} plans an opening of set ${setName}, which shares its world slice or corpus with ${live.join(', ')}, still in sealed custody and not retired; opening ${setName} would expose that set. fix: ${liveTarget(live) ? `run it on ${liveTarget(live)}` : 'fix the MANIFEST.json named above first'}`);
   for (const k of ['label', 'reason', 'candidate_sha256'] as const) {
     if ((block![k] ?? null) !== (row[k] ?? null)) throw new RunnerError('HE-HELDOUT-002', `run ${prereg.run_id}: heldout.${k} is ${JSON.stringify(block![k] ?? null)} but its row in ${rel(root, set.manifest)} says ${JSON.stringify(row[k] ?? null)}; fix: make the row match the preregistration`);
   }

@@ -592,7 +592,7 @@ describe('admission while main moves, and release against open', () => {
   test('release refuses, before decrypting or writing anything, while a live sealed set shares the world slice or corpus', async () => {
     const sibling = join(f.repo, 'tasks', 'multiuser', 'vsyn-next', 'heldout', 'MANIFEST.json');
     const slice = readManifest(heldoutSet(SET, f.repo))!.sealed!.world_slice_sha256;
-    const write = (status: string) => { mkdirSync(dirname(sibling), { recursive: true }); writeFileSync(sibling, JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: slice }, status })); };
+    const write = (status: string) => { mkdirSync(dirname(sibling), { recursive: true }); writeFileSync(sibling, JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: slice, heldout_corpus_sha256: slice }, status })); };
     const status = () => git(f.repo, 'status', '--porcelain', '--untracked-files=all');
     try {
       write('open');
@@ -615,7 +615,7 @@ describe('admission while main moves, and release against open', () => {
       const raced = await refusedRelease({ beforePush: () => {
         if (pushes++) return;
         mkdirSync(dirname(sibling), { recursive: true });
-        writeFileSync(sibling, JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: slice }, status: 'open' }));
+        writeFileSync(sibling, JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: slice, heldout_corpus_sha256: slice }, status: 'open' }));
         compareAndPush(cloneCustody(f, 'cells-release-shared-race'), { message: () => 'another set moves custody', decide: () => ({ schema_version: 1, event: 'opened', at: 't', run_id: 'other-run', set: 'vsyn-other', label: 'dev', custodian: 'test' }) });
       } });
       expect(raced).toBe('HE-SEALED-008 set vsyn shares its world slice or corpus with vsyn-next, still in sealed custody and not retired; releasing vsyn would publish that set\'s content. Release it after the retirement of vsyn-next is on main and in this checkout. The released files are in this checkout, where check-sealed-publication.ts refuses them; the manifest is left sealed and the released line was not pushed');

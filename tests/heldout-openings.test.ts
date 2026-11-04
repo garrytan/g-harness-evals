@@ -173,7 +173,7 @@ describe('checkPlan refusals', () => {
   test('HE-HELDOUT-003: a planned opening, dev or confirmatory, of a set whose world slice or corpus a live sealed set shares', () => {
     const dir = repo({ status: 'retired' });
     const slice = 'a'.repeat(64);
-    setLedger(dir, { sealed: { world_slice_sha256: slice, heldout_corpus_sha256: 'b'.repeat(64) } });
+    setLedger(dir, { released: { world_slice_sha256: slice, heldout_corpus_sha256: 'b'.repeat(64) } });
     const successor = (status: string) => write(dir, 'tasks/multiuser/v9/heldout/MANIFEST.json', JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: slice, heldout_corpus_sha256: 'c'.repeat(64) }, status }));
     successor('open');
     const d = addExperiment(dir, 'd-2026', dev());

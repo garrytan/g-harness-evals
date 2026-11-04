@@ -7,14 +7,21 @@
  *   bun scripts/sealed/compare-backups.ts --a <file.tar.age> --a-sha256 <hex> --b <file.tar.age> --b-sha256 <hex>
  *        --tasks <dir in the backup, such as v03/selected/tasks> [--tasks <dir> ...] [--family-field] [--allow-family <family> ...]
  *        [--manifest <file in backup b> --manifest-commit <key>=<commit> ...]
- *        [--slice <file in the backup>] [--corpus <dir in the backup>] [--allow-group <group> ...] [--allow-family-pages] --set <old set>
- *        [--custodian <name>] [--custody <clone>] [--identity <drive copy>] [--recipient sealed/recipient.txt]
- *        [--repo <checkout>] [--remote origin]
+ *        [--slice <file in the backup>] [--corpus <dir in the backup>] [--allow-group <group> ...] [--allow-family-pages] --set <set>
+ *        [--declare-backup <hex> ...] [--custodian <name>] [--custody <clone>] [--identity <drive copy>]
+ *        [--recipient sealed/recipient.txt] [--repo <checkout>] [--remote origin]
+ *
+ * internal-task: backup a is the old set's backup and backup b the reseal's, and both must bind to --set (rekey.ts bindBackups,
+ * by sealed/backups.json on main). b binds when the file records it for --set; a when it records it for --set or for a set
+ * whose replaced_by chain reaches --set. After a reseal, --set names the reseal: gen5 (recorded for v0.3, which v0.3-gen6
+ * replaced) against gen6 (recorded for v0.3-gen6) with --set v0.3-gen6. Before the reseal, --set names the old set and b,
+ * recorded for no set yet, needs --declare-backup <b's sha256> (repeatable), which the "compared" line lists under
+ * declared_sha256. A backup recorded for any other set is refused, declared or not.
  *
  * Both digests are required (64 hex characters, uppercase accepted, not equal to each other) and checked before anything
  * is decrypted; then the private check, both backups' sha256, the set's state on the custody branch (a bundle, no opened
- * run, no "released" line), the identity from custodyIdentity after the escrow check, and both backups decrypted in memory
- * and parsed with backupEntries (rekey.ts openBackups). No plaintext is written to disk.
+ * run, no "released" line, and the same for a replaced set a binds through), the identity from custodyIdentity after the
+ * escrow check, and both backups decrypted in memory and parsed with backupEntries (rekey.ts openBackups). No plaintext is written to disk.
  *
  * What is compared. Directories are normalized: a directory listed in the tar or implied by a path is a directory.
  *   - Tasks: each immediate subdirectory of each --tasks (repeatable; counted per directory when there are several). Its
@@ -53,7 +60,7 @@ import { isAbsolute, join, normalize, resolve } from 'node:path';
 import { sha256, WORLD_COLLECTIONS } from '../../runner/heldout/sealed.ts';
 import { compareAndPush, CUSTODY_REF } from './custody.ts';
 import type { BackupEntry } from './intake.ts';
-import { checkSetName, openBackups, parseFlags, readRecipient, refusalLine, refuseSetState, wantDigest, type CustodianOptions } from './rekey.ts';
+import { checkSetName, openBackups, parseFlags, readRecipient, refusalLine, wantDigest, type CustodianOptions } from './rekey.ts';
 import { SealRefusal } from './seal.ts';
 
 export interface CompareOptions extends CustodianOptions {
@@ -249,7 +256,7 @@ export async function compareBackups(o: CompareOptions): Promise<CompareResult> 
   const pub = new Set(o.familyField ? (o.publicFamilies ?? publicFamilies(resolve(o.repo))) : []);
   const label = (f: string) => (!o.familyField ? familyLabel(f) : f === NO_PREFIX || f === MOVED || (FIELD_FAMILY.test(f) && (pub.has(f) || allowed.includes(f))) ? f : sha256(f).slice(0, 12));
   checkSetName(o.set);
-  const { clone, plain } = await openBackups(o, [{ flag: '--a', file: o.a, sha256: aSha }, { flag: '--b', file: o.b, sha256: bSha }]);
+  const { clone, plain, declared, recheck } = await openBackups(o, [{ flag: '--a', file: o.a, sha256: aSha }, { flag: '--b', file: o.b, sha256: bSha, own: true }]);
   const [A, Bk] = plain.map((p) => normalized(p.entries)) as [Map<string, Item>, Map<string, Item>];
   const digests = taskDirs.map((tasks) => {
     const d = [taskDigests(A, tasks), taskDigests(Bk, tasks)] as const;
@@ -338,8 +345,8 @@ export async function compareBackups(o: CompareOptions): Promise<CompareResult> 
     remote: o.remote ?? 'origin',
     message: () => `compare two backups of ${o.set}`,
     decide: () => {
-      refuseSetState(clone, o.set, 'Nothing was pushed or printed', resolve(o.repo), o.remote ?? 'origin');
-      return { schema_version: 1, event: 'compared', at: now(), run_id: '*', set: o.set, source_sha256: aSha, output_sha256: bSha, custodian: o.custodian ?? 'scripts/sealed/compare-backups.ts' };
+      recheck('Nothing was pushed or printed');
+      return { schema_version: 1, event: 'compared', at: now(), run_id: '*', set: o.set, source_sha256: aSha, output_sha256: bSha, ...(declared.length ? { declared_sha256: declared } : {}), custodian: o.custodian ?? 'scripts/sealed/compare-backups.ts' };
     },
     onFailure: 'both backups were decrypted in memory only and nothing was printed',
   });
@@ -379,18 +386,19 @@ export function reportLines(r: CompareResult): string[] {
 
 if (import.meta.main) {
   const argv = process.argv.slice(2);
-  const usage = 'usage: bun scripts/sealed/compare-backups.ts --a <file.tar.age> --a-sha256 <hex> --b <file.tar.age> --b-sha256 <hex> --tasks <dir in the backup> [--tasks <dir> ...] [--family-field] [--allow-family <family> ...] [--manifest <file in backup b> --manifest-commit <key>=<commit> ...] [--slice <file in the backup>] [--corpus <dir in the backup>] [--allow-group <group> ...] [--allow-family-pages] --set <old set> [--custodian <name>] [--custody <clone>] [--identity <drive copy>] [--recipient sealed/recipient.txt] [--repo <checkout>] [--remote origin]';
+  const usage = 'usage: bun scripts/sealed/compare-backups.ts --a <file.tar.age> --a-sha256 <hex> --b <file.tar.age> --b-sha256 <hex> --tasks <dir in the backup> [--tasks <dir> ...] [--family-field] [--allow-family <family> ...] [--manifest <file in backup b> --manifest-commit <key>=<commit> ...] [--slice <file in the backup>] [--corpus <dir in the backup>] [--allow-group <group> ...] [--allow-family-pages] --set <set> [--declare-backup <hex> ...] [--custodian <name>] [--custody <clone>] [--identity <drive copy>] [--recipient sealed/recipient.txt] [--repo <checkout>] [--remote origin]';
   const usageError = (msg: string): never => { console.error(`HE-RUN-002 ${msg}; ${usage}`); process.exit(2); };
-  const { flag, all } = parseFlags(argv, ['a', 'a-sha256', 'b', 'b-sha256', 'tasks', 'allow-family', 'manifest', 'manifest-commit', 'slice', 'corpus', 'allow-group', 'set', 'custodian', 'custody', 'identity', 'recipient', 'repo', 'remote'], ['tasks', 'allow-family', 'manifest-commit', 'allow-group'], usage, ['allow-family-pages', 'family-field']);
+  const { flag, all } = parseFlags(argv, ['a', 'a-sha256', 'b', 'b-sha256', 'tasks', 'allow-family', 'manifest', 'manifest-commit', 'slice', 'corpus', 'allow-group', 'set', 'declare-backup', 'custodian', 'custody', 'identity', 'recipient', 'repo', 'remote'], ['tasks', 'allow-family', 'manifest-commit', 'allow-group', 'declare-backup'], usage, ['allow-family-pages', 'family-field']);
   for (const k of ['a-sha256', 'b-sha256']) {
     if (!flag(k)) usageError(`--${k} <hex> is required, the sha256 of the backup file; nothing was decrypted`);
     if (!/^[0-9a-fA-F]{64}$/.test(flag(k)!)) usageError(`--${k} must be 64 hex characters; nothing was decrypted`);
   }
+  if (all('declare-backup').some((d) => !/^[0-9a-fA-F]{64}$/.test(d))) usageError('--declare-backup must be 64 hex characters, the sha256 of a backup; nothing was decrypted');
   const need = ['a', 'b', 'tasks', 'set'].filter((k) => !flag(k));
   if (need.length) usageError(`missing --${need.join(', --')}`);
   const repo = flag('repo') ?? join(import.meta.dir, '..', '..');
   try {
-    const r = await compareBackups({ repo, set: flag('set')!, a: flag('a')!, aSha256: flag('a-sha256')!, b: flag('b')!, bSha256: flag('b-sha256')!, tasks: all('tasks'), familyField: flag('family-field') === 'true', allowFamily: all('allow-family'), manifest: flag('manifest'), manifestCommit: all('manifest-commit'), slice: flag('slice'), corpus: flag('corpus'), allowGroup: all('allow-group'), allowFamilyPages: flag('allow-family-pages') === 'true', recipient: readRecipient(flag('recipient') ?? join(repo, 'sealed', 'recipient.txt')), custodian: flag('custodian'), custody: flag('custody'), identityPath: flag('identity'), remote: flag('remote') });
+    const r = await compareBackups({ repo, set: flag('set')!, a: flag('a')!, aSha256: flag('a-sha256')!, b: flag('b')!, bSha256: flag('b-sha256')!, tasks: all('tasks'), familyField: flag('family-field') === 'true', allowFamily: all('allow-family'), manifest: flag('manifest'), manifestCommit: all('manifest-commit'), slice: flag('slice'), corpus: flag('corpus'), allowGroup: all('allow-group'), allowFamilyPages: flag('allow-family-pages') === 'true', declared: all('declare-backup'), recipient: readRecipient(flag('recipient') ?? join(repo, 'sealed', 'recipient.txt')), custodian: flag('custodian'), custody: flag('custody'), identityPath: flag('identity'), remote: flag('remote') });
     for (const l of reportLines(r)) console.log(l);
     process.exit(r.exitCode);
   } catch (e) {

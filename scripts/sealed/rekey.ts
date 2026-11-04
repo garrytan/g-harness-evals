@@ -22,13 +22,21 @@
  * (the file written) and recipient (--to). It changes no other custody file and is not an opening. The CLI prints one
  * line with the two sha256 values and the custody commit, never content and never a path inside the tar.
  *
- * openBackups, wantDigest and checkSetName are shared with scripts/sealed/compare-backups.ts.
+ * internal-task: the backup must belong to --set. sealed/backups.json on main (fetched from the custody remote with the shared-set
+ * check) records the sha256 of the backup each set was sealed from; the backup binds when it is recorded for --set or for a
+ * set whose replaced_by chain reaches --set. A replaced set it binds through must share its world slice or corpus with no
+ * other live set, on main or in the checkout, and must have no opened run and no "released" line. A backup recorded for any
+ * other set is refused. One recorded for no set binds
+ * only with --declare-backup <its sha256>, and the access-log line lists it under declared_sha256.
+ *
+ * openBackups, bindBackups, wantDigest and checkSetName are shared with scripts/sealed/compare-backups.ts.
  */
 import { closeSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync, existsSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { RunnerError } from '../../runner/errors.ts';
 import { decryptWith, encryptTo, sha256 } from '../../runner/heldout/sealed.ts';
+import { BACKUPS_FILE, isUnreadable, liveSharersAmong, liveTarget, manifestEntries, ownUnreadable, recordedBackups, type BackupCommitment, type ManifestEntry } from '../seal-heldout.ts';
 import { checkPrivate, compareAndPush, CUSTODY_REF, CUSTODY_REPO, custodyClone, ESCROW_FILE, insideGitTree, isX25519Recipient, liveSharersCurrent, openedRuns, readAccessLog, SET_NAME, syncCustody } from './custody.ts';
 import { custodyIdentity } from './identity.ts';
 import { backupEntries, type BackupEntry } from './intake.ts';
@@ -53,6 +61,8 @@ export interface CustodianOptions {
   /** Where UBICLOUD_API_KEY is read for the escrow check (default process.env). */
   env?: Record<string, string | undefined>;
   now?: () => string;
+  /** --declare-backup: sha256 digests of backups sealed/backups.json records for no set, bound to the set by the custodian. */
+  declared?: string[];
 }
 
 export interface RekeyOptions extends CustodianOptions {
@@ -88,25 +98,96 @@ export function checkSetName(set: string): void {
  * and again in decide() under the custody lock, so an opening or release that lands meanwhile is seen. The shared-set
  * check reads the manifests of the --repo checkout and of main fetched fresh from the custody remote, and refuses while
  * another set has a bundle on the custody branch and no manifest on main or in the checkout that commits to its sha256
- * (liveSharersCurrent).
+ * (liveSharersCurrent). Returns what liveSharersCurrent read from main.
  */
-export function refuseSetState(clone: string, set: string, outcome: string, repo: string, remote: string): void {
-  const { live, unknown } = liveSharersCurrent(set, repo, clone, remote);
-  if (live.length) fail(`set ${set} shares its world slice or corpus with ${live.join(', ')}, still in sealed custody and not retired; a backup of ${set} holds that set's content, so name it with --set ${live[0]}. ${outcome}`);
+export function refuseSetState(clone: string, set: string, outcome: string, repo: string, remote: string): { main: Map<string, ManifestEntry>; backups: string | null } {
+  const { live, unknown, main, backups } = liveSharersCurrent(set, repo, clone, remote);
   if (unknown.length) fail(`set ${set}: ${unknown.join(', ')} ha${unknown.length === 1 ? 's' : 've'} a bundle on ${CUSTODY_REF} and no manifest on main or in this checkout that commits to ${unknown.length === 1 ? 'its' : 'their'} sha256, so whether ${unknown.length === 1 ? 'it shares' : 'they share'} the world slice or corpus of ${set} is unknown; a backup of ${set} could hold that set's content, so run this once ${unknown.length === 1 ? 'that manifest is' : 'those manifests are'} on main. ${outcome}`);
+  if (ownUnreadable(set, live)) fail(`set ${set}: its own MANIFEST.json on main or in this checkout does not parse or validate, so it counts as live; fix it first. ${outcome}`);
+  const target = liveTarget(live);
+  if (live.length) fail(`set ${set} shares its world slice or corpus with ${live.join(', ')}, still in sealed custody and not retired; a backup of ${set} holds that set's content, so ${target ? `name it with --set ${target}` : 'fix the MANIFEST.json named above first'}. ${outcome}`);
   if (readAccessLog(clone).some((e) => e.event === 'released' && e.set === set)) fail(`set ${set} has a "released" line in the access log on ${CUSTODY_REF}; regeneration is for a sealed set that was never opened. ${outcome}`);
   const opened = openedRuns(clone, set).size;
   if (opened) fail(`set ${set} has ${opened} opened run(s) in the access log on ${CUSTODY_REF}; regeneration is for a sealed set that was never opened. ${outcome}`);
   if (!existsSync(join(clone, set, 'bundle.tar.age'))) fail(`${CUSTODY_REF} has no ${set}/bundle.tar.age; --set names the sealed set the backup belongs to. ${outcome}`);
+  return { main, backups };
+}
+
+/**
+ * Bind each backup to set by its recorded commitments (sealed/backups.json on main, and each "sealed" line's source_sha256 in
+ * the access log on the custody branch, which names the backup a set was sealed from before backups.json reaches main): a
+ * backup binds when they record it for set,
+ * or, unless own (compare-backups.ts --b, the reseal's backup), for a set whose replaced_by chain in manifests reaches set
+ * (--a, the backup of the set a reseal replaced), while no set but set shares that replaced set's world slice or corpus
+ * in manifests or in checkout (the --repo checkout's manifests, where a pending set may be sealed). A backup recorded for
+ * any other set is refused, declared or not; one recorded for no set binds only when declared names its sha256. Returns
+ * the declared digests that bound a backup, for the access-log line, and the replaced sets a backup bound through, which
+ * openBackups checks in the access log. Refuses a declared digest that is not one of the backups.
+ */
+export function bindBackups(set: string, backups: Array<{ flag: string; file: string; sha256: string; own?: boolean }>, declared: string[], manifests: Map<string, ManifestEntry>, recorded: BackupCommitment[], checkout: Map<string, ManifestEntry>, outcome = 'Nothing was decrypted'): { declared: string[]; via: string[] } {
+  const named = declared.map((d) => d.toLowerCase());
+  for (const d of named) if (!backups.some((b) => b.sha256 === d)) fail(`--declare-backup ${d.slice(0, 12)} is not the sha256 of a backup this run reads; nothing was decrypted`);
+  const reaches = (from: string) => {
+    const seen = new Set<string>();
+    for (let n = from; ;) {
+      const m = manifests.get(n);
+      const next = m && !isUnreadable(m) ? m.replaced_by : undefined;
+      if (next === undefined || seen.has(next)) return false;
+      if (next === set) return true;
+      seen.add(next);
+      n = next;
+    }
+  };
+  const replaced = [...manifests.keys()].filter((n) => n !== set && reaches(n));
+  const used: string[] = [];
+  const through: string[] = [];
+  for (const b of backups) {
+    const from = recorded.filter((c) => c.sha256 === b.sha256);
+    const sets = [...new Set(from.map((c) => c.set))];
+    if (named.includes(b.sha256)) used.push(b.sha256);
+    if (sets.includes(set)) continue;
+    const via = b.own ? undefined : sets.find((s) => replaced.includes(s));
+    if (via) {
+      const others = [...new Set([...liveSharersAmong(via, manifests), ...liveSharersAmong(via, checkout)])].filter((l) => l.split(' ')[0] !== set).sort();
+      if (others.length) fail(`${b.flag} ${b.file} is recorded for ${via}, which ${set} replaced, but ${via} also shares its world slice or corpus with ${others.join(', ')}, still in sealed custody and not retired; a backup of ${via} holds that set's content too. ${outcome}`);
+      through.push(via);
+      continue;
+    }
+    if (sets.length) fail(`${b.flag} ${b.file} has sha256 ${b.sha256.slice(0, 12)}, which ${from.every((c) => c.what === SEALED_SOURCE) ? `a "sealed" line in the access log on ${CUSTODY_REF} records for` : `${BACKUPS_FILE} on main records for`} ${sets.join(', ')}, not for ${set}${b.own ? '' : ' or a set it replaced'}; --set names the set the backup belongs to, and --declare-backup cannot override a recorded binding. ${outcome}`);
+    if (!named.includes(b.sha256)) fail(`${b.flag} ${b.file} has sha256 ${b.sha256.slice(0, 12)}, which ${BACKUPS_FILE} on main records for no set, so nothing binds it to set ${set}; if it is a backup of ${set}, say so with --declare-backup ${b.sha256} (the access-log line records it). ${outcome}`);
+  }
+  return { declared: [...new Set(used)], via: [...new Set(through)] };
+}
+
+const SEALED_SOURCE = 'the source_sha256 of a "sealed" access-log line';
+
+/** sealed/backups.json's commitments on main and, for each "sealed" line in the access log of clone, its source_sha256 for
+ *  its set. */
+function recordedBindings(clone: string, backups: string | null): BackupCommitment[] {
+  return [...recordedBackups(backups), ...readAccessLog(clone).flatMap((e) => e.event === 'sealed' && e.source_sha256 ? [{ set: e.set, sha256: e.source_sha256, what: SEALED_SOURCE }] : [])];
+}
+
+/** Refuse a replaced set a backup bound through (bindBackups via) when the access log on the custody branch has a "released"
+ *  line for it or it has an opened run, as refuseSetState does for --set. */
+export function refuseOpenedVia(clone: string, set: string, via: string[], outcome: string): void {
+  for (const v of via) {
+    if (readAccessLog(clone).some((e) => e.event === 'released' && e.set === v)) fail(`set ${v}, which ${set} replaced and a backup is recorded for, has a "released" line in the access log on ${CUSTODY_REF}; regeneration is for a set that was never opened. ${outcome}`);
+    const opened = openedRuns(clone, v).size;
+    if (opened) fail(`set ${v}, which ${set} replaced and a backup is recorded for, has ${opened} opened run(s) in the access log on ${CUSTODY_REF}; regeneration is for a set that was never opened. ${outcome}`);
+  }
 }
 
 /**
  * After the argument checks: the repository must be private, each backup's sha256 must equal its digest (checked for
- * every backup before any is decrypted), the custody clone is synced, the set must pass refuseSetState, the identity comes
+ * every backup before any is decrypted), the custody clone is synced, the set must pass refuseSetState, each backup must
+ * bind to the set (bindBackups, by sealed/backups.json on the main refuseSetState read and the access log's "sealed" lines,
+ * or o.declared), each replaced set a
+ * backup bound through must pass refuseOpenedVia, the identity comes
  * from custodyIdentity after the escrow check, and each backup is decrypted in memory (a failure is a refusal naming the
- * flag) and parsed whole with backupEntries, which refuses an unsafe tar. Writes nothing.
+ * flag) and parsed whole with backupEntries, which refuses an unsafe tar. Writes nothing. Returns the declared digests
+ * that bound a backup, for the access-log line.
  */
-export async function openBackups(o: CustodianOptions, backups: Array<{ flag: string; file: string; sha256: string }>): Promise<{ clone: string; plain: Array<{ bytes: Uint8Array; entries: BackupEntry[] }> }> {
+export async function openBackups(o: CustodianOptions, backups: Array<{ flag: string; file: string; sha256: string; own?: boolean }>): Promise<{ clone: string; plain: Array<{ bytes: Uint8Array; entries: BackupEntry[] }>; declared: string[]; recheck: (outcome: string) => void }> {
   checkPrivate(CUSTODY_REPO, o.gh);
   const ciphertexts = backups.map((b) => {
     const bytes = new Uint8Array(readFileSync(b.file));
@@ -116,14 +197,21 @@ export async function openBackups(o: CustodianOptions, backups: Array<{ flag: st
   const remote = o.remote ?? 'origin';
   const clone = custodyClone({ dir: o.custody, repo: resolve(o.repo), remote });
   syncCustody(clone, remote);
-  refuseSetState(clone, o.set, 'Nothing was decrypted', resolve(o.repo), remote);
+  const onMain = refuseSetState(clone, o.set, 'Nothing was decrypted', resolve(o.repo), remote);
+  const bound = bindBackups(o.set, backups, o.declared ?? [], onMain.main, recordedBindings(clone, onMain.backups), manifestEntries(resolve(o.repo)));
+  refuseOpenedVia(clone, o.set, bound.via, 'Nothing was decrypted');
+  const declared = bound.declared;
   const identity = await custodyIdentity({ identityPath: o.identityPath, escrowPath: join(clone, ESCROW_FILE), recipient: readRecipient(o.recipient), env: o.env });
   const plain: Array<{ bytes: Uint8Array; entries: BackupEntry[] }> = [];
   for (const [i, c] of ciphertexts.entries()) {
     const bytes = await decryptWith(identity, c).catch((): never => fail(`${backups[i]!.flag} ${backups[i]!.file} did not decrypt with the custody identity; nothing was written`));
     plain.push({ bytes, entries: backupEntries(bytes) });
   }
-  return { clone, plain };
+  const recheck = (outcome: string) => {
+    const fresh = refuseSetState(clone, o.set, outcome, resolve(o.repo), remote);
+    refuseOpenedVia(clone, o.set, bindBackups(o.set, backups, o.declared ?? [], fresh.main, recordedBindings(clone, fresh.backups), manifestEntries(resolve(o.repo)), outcome).via, outcome);
+  };
+  return { clone, plain, declared, recheck };
 }
 
 export async function rekeyBackup(o: RekeyOptions): Promise<{ sourceSha256: string; outputSha256: string; commit: string; out: string }> {
@@ -134,7 +222,7 @@ export async function rekeyBackup(o: RekeyOptions): Promise<{ sourceSha256: stri
   const out = resolve(o.out);
   if (lstatSync(out, { throwIfNoEntry: false })) fail(`--out ${out} exists; rekey.ts never overwrites a file. Nothing was decrypted`);
   if (insideGitTree(out)) fail(`--out ${out} is inside a git work tree; a re-encrypted backup is kept outside every checkout. Nothing was decrypted`);
-  const { clone, plain } = await openBackups(o, [{ flag: '--from-backup', file: o.backup, sha256: want }]);
+  const { clone, plain, declared, recheck } = await openBackups(o, [{ flag: '--from-backup', file: o.backup, sha256: want }]);
   const ciphertext = await encryptTo(o.to, plain[0]!.bytes);
   const outputSha256 = sha256(ciphertext);
   const now = o.now ?? (() => new Date().toISOString());
@@ -142,8 +230,8 @@ export async function rekeyBackup(o: RekeyOptions): Promise<{ sourceSha256: stri
     remote: o.remote ?? 'origin',
     message: () => `reencrypt a backup of ${o.set}`,
     decide: () => {
-      refuseSetState(clone, o.set, 'Nothing was pushed or written', resolve(o.repo), o.remote ?? 'origin');
-      return { schema_version: 1, event: 'reencrypted', at: now(), run_id: '*', set: o.set, source_sha256: want, output_sha256: outputSha256, recipient: o.to, custodian: o.custodian ?? 'scripts/sealed/rekey.ts' };
+      recheck('Nothing was pushed or written');
+      return { schema_version: 1, event: 'reencrypted', at: now(), run_id: '*', set: o.set, source_sha256: want, output_sha256: outputSha256, recipient: o.to, ...(declared.length ? { declared_sha256: declared } : {}), custodian: o.custodian ?? 'scripts/sealed/rekey.ts' };
     },
     onFailure: 'the backup was decrypted and re-encrypted in memory only; nothing was written',
   });
@@ -202,19 +290,20 @@ export function refusalLine(e: unknown, what: string): string {
 
 if (import.meta.main) {
   const argv = process.argv.slice(2);
-  const usage = 'usage: bun scripts/sealed/rekey.ts --from-backup <file.tar.age> --sha256 <hex> --to <age1 recipient> --out <path> --set <set> [--custodian <name>] [--custody <clone>] [--identity <drive copy>] [--recipient sealed/recipient.txt] [--repo <checkout>] [--remote origin]';
+  const usage = 'usage: bun scripts/sealed/rekey.ts --from-backup <file.tar.age> --sha256 <hex> --to <age1 recipient> --out <path> --set <set> [--declare-backup <hex>] [--custodian <name>] [--custody <clone>] [--identity <drive copy>] [--recipient sealed/recipient.txt] [--repo <checkout>] [--remote origin]';
   const usageError = (msg: string): never => { console.error(`HE-RUN-002 ${msg}; ${usage}`); process.exit(2); };
-  const { flag } = parseFlags(argv, ['from-backup', 'sha256', 'to', 'out', 'set', 'custodian', 'custody', 'identity', 'recipient', 'repo', 'remote'], [], usage);
+  const { flag } = parseFlags(argv, ['from-backup', 'sha256', 'to', 'out', 'set', 'declare-backup', 'custodian', 'custody', 'identity', 'recipient', 'repo', 'remote'], [], usage);
   const repo = flag('repo') ?? join(import.meta.dir, '..', '..');
   const recipient = flag('recipient') ?? join(repo, 'sealed', 'recipient.txt');
   if (!flag('sha256')) usageError('--sha256 <hex> is required, the sha256 of the backup file the author sent; nothing was decrypted');
   if (!/^[0-9a-fA-F]{64}$/.test(flag('sha256')!)) usageError('--sha256 must be 64 hex characters; nothing was decrypted');
+  if (flag('declare-backup') !== undefined && !/^[0-9a-fA-F]{64}$/.test(flag('declare-backup')!)) usageError('--declare-backup must be 64 hex characters, the sha256 of the backup; nothing was decrypted');
   const need = ['from-backup', 'to', 'out', 'set'].filter((k) => !flag(k));
   if (need.length) usageError(`missing --${need.join(', --')}`);
   if (!isX25519Recipient(flag('to'))) usageError('--to must be an age X25519 recipient (age1 and 58 bech32 characters); nothing was decrypted');
   if (flag('to') === readRecipient(recipient)) usageError('--to is the custody recipient; re-encrypt to the author\'s own recipient. Nothing was decrypted');
   try {
-    const r = await rekeyBackup({ repo, set: flag('set')!, backup: flag('from-backup')!, sha256: flag('sha256')!, to: flag('to')!, out: flag('out')!, recipient, custodian: flag('custodian'), custody: flag('custody'), identityPath: flag('identity'), remote: flag('remote') });
+    const r = await rekeyBackup({ repo, set: flag('set')!, backup: flag('from-backup')!, sha256: flag('sha256')!, to: flag('to')!, out: flag('out')!, recipient, declared: flag('declare-backup') ? [flag('declare-backup')!] : [], custodian: flag('custodian'), custody: flag('custody'), identityPath: flag('identity'), remote: flag('remote') });
     console.log(`REKEY: backup sha256 ${r.sourceSha256} re-encrypted to the --to recipient as sha256 ${r.outputSha256}; "reencrypted" access-log line pushed to ${CUSTODY_REF} in ${r.commit}`);
   } catch (e) {
     console.error(refusalLine(e, 'rekey'));

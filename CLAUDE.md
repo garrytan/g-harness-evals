@@ -26,7 +26,7 @@ Explain the task, the setting that changed the outcome, and the limit of the res
 - `tests/`: `bun test tests/`.
 - `scripts/`: documentation checks.
 - `world/`: the simulated company: `seed/` (messy-company-v1 import, `world.json`, manifest), `services/` (Slack mock, clock, event log, one process per trial), `world-mcp/` (the MCP server every harness gets).
-- `sealed/`: `recipient.txt`, the public age recipient of the held-out custody identity, one line; `tests/sealed-recipient.test.ts` checks its shape. The identity itself is not in the repository.
+- `sealed/`: `recipient.txt`, the public age recipient of the held-out custody identity, one line; `tests/sealed-recipient.test.ts` checks its shape. `backups.json`, the sha256 of the backup each sealed set was sealed from ([docs/sealed-custody.md](docs/sealed-custody.md)). The identity itself is not in the repository.
 - `harnesses/<name>/`: each harness's image, adapter and `pin.json`. `tasks/`: the task sets with their oracles and seals. `runner/proxy/` and `runner/ledger/`: the metering proxy and the budget ledger.
 - Planned (see the plan's repository layout): `runner/egress/`. Run results live under `docs/benchmarks/<run>/results/`, not in a top-level `results/`.
 

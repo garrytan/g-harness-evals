@@ -21,7 +21,7 @@ import { readAccessLog } from '../scripts/sealed/custody.ts';
 import { backupEntries, makeIntakeDir, sweepStaleIntake, writeBackup } from '../scripts/sealed/intake.ts';
 import { releaseSet } from '../scripts/sealed/release.ts';
 import { sealFromBackup } from '../scripts/sealed/seal.ts';
-import { candidate, cloneCustody, co, ENV_VALUE, makeFixture, register, ROOT, SCRUBBED_ENV, SECRETS, SET, sliceDoc, type Fixture } from './sealed-fixture.ts';
+import { candidate, cloneCustody, co, ENV_VALUE, git, makeFixture, recordBackup, register, ROOT, SCRUBBED_ENV, SECRETS, SET, sliceDoc, type Fixture } from './sealed-fixture.ts';
 
 const tmps: string[] = [];
 afterAll(() => { for (const d of tmps) rmSync(d, { recursive: true, force: true }); });
@@ -80,6 +80,13 @@ describe('seal.ts --from-backup', () => {
   let intakeRoot = '';
   let backupSha = '';
   const lines: string[] = [];
+  const forgetBackups = () => {
+    rmSync(join(f.repo, 'sealed', 'backups.json'), { force: true });
+    if (!git(f.repo, 'ls-files', '--', 'sealed/backups.json')) return;
+    git(f.repo, 'rm', '-q', '--cached', '--', 'sealed/backups.json');
+    git(f.repo, 'commit', '-q', '-m', 'forget the recorded backups', '--', 'sealed/backups.json');
+    git(f.repo, 'push', '-q', 'origin', 'HEAD:main');
+  };
 
   beforeAll(async () => {
     f = await makeFixture(2, async (fx) => {
@@ -101,6 +108,7 @@ describe('seal.ts --from-backup', () => {
     const m = readManifest(set)!;
     expect(sealedProblems(m, set)).toEqual([]);
     expect(m.sealed!.task_count).toBe(40);
+    expect(JSON.parse(readFileSync(join(f.repo, 'sealed', 'backups.json'), 'utf8'))).toEqual({ schema_version: 1, backups: [{ set: SET, sha256: backupSha, what: `the backup set ${SET} was sealed from (scripts/sealed/seal.ts --from-backup, custodian internal-task)` }] });
     const corpus = join(src, 'v03', 'corpus-seal');
     expect(m.sealed!.heldout_corpus_sha256).toBe(corpusDigest(corpus));
     expect(Object.keys(m.sealed!.extras!)).toEqual(['extras/v03/selected/exclusions.json']);
@@ -193,12 +201,14 @@ describe('seal.ts --from-backup', () => {
   });
 
   test('--exposures refuses an exposure with a missing field or a bad date before anything is sealed', async () => {
+    forgetBackups();
     await expect(sealFromBackup({ repo: f.repo, set: 'vexpose', backup: join(f.tmp, 'backup.tar.age'), sha256: backupSha, tasks: 'v03/selected/tasks', slice: 'v03/world/slice.json', ...co(f), recipient: f.recipient, intakeRoot, exposures: [{ date: '28-10-2026', kind: 'generator' } as never] })).rejects.toThrow('--exposures: exposures[0]: recipient is missing; exposures[0]: what is missing; exposures[0]: source is missing; exposures[0]: date must be YYYY-MM-DD');
     expect(readdirSync(intakeRoot)).toEqual([]);
     expect(existsSync(join(cloneCustody(f, 'check-expose'), 'vexpose'))).toBe(false);
   }, 60_000);
 
   test('a backup with no --sha256, a malformed one or another digest is refused before anything is decrypted or unpacked', async () => {
+    forgetBackups();
     // a missing or malformed digest is refused before the stale sweep, so a stale directory it would remove stays
     const stale = join(intakeRoot, 'intake-2147483646-1-0000000e');
     mkdirSync(stale, { recursive: true });
@@ -218,6 +228,24 @@ describe('seal.ts --from-backup', () => {
     await expect(sealFromBackup({ repo: f.repo, set: 'vdigest', backup: join(f.tmp, 'backup.tar.age'), sha256: backupSha, tasks: '../outside', slice: 'v03/world/slice.json', ...co(f), recipient: f.recipient, intakeRoot })).rejects.toThrow('must be a path under the unpacked backup');
     await expect(sealFromBackup({ repo: f.repo, set: 'vdigest', backup: join(f.tmp, 'backup.tar.age'), sha256: backupSha, tasks: 'v03/selected/tasks', slice: '/etc/passwd', ...co(f), recipient: f.recipient, intakeRoot })).rejects.toThrow('must be a path under the unpacked backup');
     expect(existsSync(join(cloneCustody(f, 'check-digest'), 'vdigest'))).toBe(false);
+  }, 60_000);
+
+  test('a sealed/backups.json that does not parse, is not a list or records this backup for another set is refused before anything is decrypted', async () => {
+    const p = join(f.repo, 'sealed', 'backups.json');
+    const before = existsSync(p) ? readFileSync(p, 'utf8') : null;
+    for (const [text, message] of [
+      ['{ not json', 'HE-SEALED-006 sealed/backups.json in the checkout does not parse as JSON; the seal records this backup there, so fix it first. Nothing was decrypted'],
+      [JSON.stringify({ schema_version: 1 }), 'HE-SEALED-006 sealed/backups.json in the checkout is not a list of backups; the seal records this backup there, so fix it first. Nothing was decrypted'],
+      [JSON.stringify({ schema_version: 1, backups: [null] }), 'HE-SEALED-006 sealed/backups.json in the checkout is not a list of backups; the seal records this backup there, so fix it first. Nothing was decrypted'],
+      [JSON.stringify({ schema_version: 1, backups: [{ set: 'vother', sha256: backupSha, what: 'a synthetic backup' }] }), 'HE-SEALED-006 sealed/backups.json records this backup for set vother; a backup belongs to one set, so it cannot seal vbackups. Nothing was decrypted'],
+    ] as const) {
+      write(p, text);
+      await expect(sealFromBackup({ repo: f.repo, set: 'vbackups', backup: join(f.tmp, 'backup.tar.age'), sha256: backupSha, tasks: 'v03/selected/tasks', slice: 'v03/world/slice.json', ...co(f), recipient: f.recipient, intakeRoot })).rejects.toThrow(message);
+      expect(readFileSync(p, 'utf8')).toBe(text);
+      expect(readdirSync(intakeRoot)).toEqual([]);
+    }
+    if (before === null) rmSync(p); else write(p, before);
+    expect(existsSync(join(cloneCustody(f, 'check-backups'), 'vbackups'))).toBe(false);
   }, 60_000);
 
   test('unpacking refuses tar-slip paths, symbolic and hard links and devices, and writes nothing outside the intake directory', async () => {
@@ -280,6 +308,7 @@ describe('seal.ts --from-backup', () => {
   }, 60_000);
 
   test('the CLI: success, a forced refusal and SIGTERM leave no plaintext; stale intake is swept by the next run and by cleanup.ts; no decrypted content is printed', async () => {
+    forgetBackups();
     const home = join(f.tmp, 'cli-home');
     const intake = join(home, '.capy', 'work', 'custody', 'intake');
     const env = { PATH: `${join(f.gh, '..')}:${process.env.PATH}`, HOME: home, UBICLOUD_API_KEY: ENV_VALUE };
@@ -294,7 +323,9 @@ describe('seal.ts --from-backup', () => {
     // a stale intake directory from a killed run is reported and removed by the next run
     const stale = join(intake, 'intake-2147483646-1-deadbeef');
     write(join(stale, 'v03', 'leftover.md'), CANARY.residue);
-    const ok = run(cli('vintake', ['--tasks', 'v03/selected/tasks', '--include', 'v03/selected/exclusions.json', '--sha256', backupSha, '--exposures', join(f.work, 'exposures.json')]));
+    const cliBackup = join(f.tmp, 'cli-backup.tar.age');
+    const cliSha = sha256(await backupOf(src, f.recipient, cliBackup));
+    const ok = run(cli('vintake', ['--tasks', 'v03/selected/tasks', '--include', 'v03/selected/exclusions.json', '--sha256', cliSha, '--exposures', join(f.work, 'exposures.json')], cliBackup));
     expect(ok.status).toBe(0);
     expect(ok.stdout).toContain(`SEAL: removed 1 stale intake directory an earlier run left: ${stale}`);
     expect(ok.stdout).toMatch(/SEAL: removed the unpacked intake \S+ \(checked: it no longer exists\)\nsealed set vintake: 40 tasks, .*, 1 extra file\(s\)\n/);
@@ -335,6 +366,7 @@ describe('seal.ts --from-backup', () => {
     rmSync(stale, { recursive: true });
     expect(readdirSync(intake)).toEqual([]);
     // a refusal after unpacking (no task directory directly under --tasks) prints its code, a count and the log path
+    rmSync(join(f.repo, 'sealed', 'backups.json'), { force: true });
     const refused = run(cli('vrefused', ['--tasks', 'v03/selected', '--sha256', backupSha]));
     expect(refused.status).toBe(2);
     expect(refused.stdout).toMatch(/^SEAL: removed the unpacked intake \S+ \(checked: it no longer exists\)\n$/);
@@ -367,4 +399,24 @@ describe('seal.ts --from-backup', () => {
     const all = printed.join('\n');
     for (const s of [...Object.values(CANARY), SECRETS.corpusLine, SECRETS.ledgerCode, 'ix-01-synthetic', 'syn-vault-notes', 'exclusions.json"']) expect(all).not.toContain(s);
   }, 240_000);
+
+  test('a backup that main records for another set is refused before anything is decrypted, even when the checkout does not record it', async () => {
+    const p = join(f.repo, 'sealed', 'backups.json');
+    forgetBackups();
+    recordBackup(f, 'vmain', backupSha);
+    rmSync(p);
+    await expect(sealFromBackup({ repo: f.repo, set: 'vonmain', backup: join(f.tmp, 'backup.tar.age'), sha256: backupSha, tasks: 'v03/selected/tasks', slice: 'v03/world/slice.json', ...co(f), recipient: f.recipient, intakeRoot })).rejects.toThrow('HE-SEALED-006 sealed/backups.json on main records this backup for set vmain; a backup belongs to one set, so it cannot seal vonmain. Nothing was decrypted');
+    expect(readdirSync(intakeRoot)).toEqual([]);
+    expect(existsSync(p)).toBe(false);
+    expect(existsSync(join(cloneCustody(f, 'check-onmain'), 'vonmain'))).toBe(false);
+  }, 60_000);
+
+  test('a backup another set was sealed from is refused under the custody lock, even when neither main nor the checkout records it', async () => {
+    forgetBackups();
+    expect(readAccessLog(cloneCustody(f, 'check-source')).find((e) => e.event === 'sealed' && e.set === SET)?.source_sha256).toBe(backupSha);
+    await expect(sealFromBackup({ repo: f.repo, set: 'vrace', backup: join(f.tmp, 'backup.tar.age'), sha256: backupSha, tasks: 'v03/selected/tasks', slice: 'v03/world/slice.json', corpus: 'v03/corpus-seal', ...co(f), recipient: f.recipient, intakeRoot })).rejects.toThrow(`the access log on refs/heads/custody records set ${SET} as sealed from this backup (sha256 ${backupSha.slice(0, 12)}); a backup belongs to one set, so it cannot seal vrace. Nothing was pushed`);
+    expect(readdirSync(intakeRoot)).toEqual([]);
+    expect(existsSync(join(cloneCustody(f, 'check-race'), 'vrace'))).toBe(false);
+    expect(existsSync(join(f.repo, 'tasks', 'multiuser', 'vrace'))).toBe(false);
+  }, 60_000);
 });
