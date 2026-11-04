@@ -396,7 +396,7 @@ test('a repo task body planted under tasks/repo/<set>/heldout/ is refused by the
   // gstack-pregate's own guard reads .gstack/pregate.json: tasks/repo/*/heldout/** is sealed and MANIFEST.json is exempt
   const sealed = JSON.parse(readFileSync(join(ROOT, '.gstack', 'pregate.json'), 'utf8')).sealed as { paths: string[]; allow_paths: string[] };
   expect(sealed.paths).toContain('tasks/repo/*/heldout/**');
-  expect(sealed.allow_paths).toEqual(['tasks/repo/*/heldout/MANIFEST.json']);
+  expect(sealed.allow_paths).toEqual(['tasks/repo/*/heldout/MANIFEST.json', 'tasks/multiuser/*/heldout/MANIFEST.json']);
   // a gstack older than 1.91.311.0 refuses sealed.allow_paths as an unknown key, so the ship policy requires that release
   const minGstack = (JSON.parse(readFileSync(join(import.meta.dir, '..', '.gstack', 'ship-policy.json'), 'utf8')) as { min_gstack_version: string }).min_gstack_version.split('.').map(Number);
   const allowPathsRelease = [1, 91, 311, 0];

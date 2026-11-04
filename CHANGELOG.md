@@ -2,6 +2,19 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.121] - 2026-11-04
+
+### internal-task (internal-task step 5): the public-export tool, with fail-closed gates
+
+- **New: `scripts/public-export/`.** It builds what the public garrytan/harness-evals repo would hold, in two modes. Tree mode exports one commit's tree. History mode rewrites the private main history with git-filter-repo, then checks every blob and commit message. Nothing is pushed: the tool writes a local repository, value-free reports and `commit-map.tsv` (each private commit with its public id, `(pruned)` or `(not published)`), and exits non-zero when any gate fails.
+- **What goes out is listed, not guessed.** `publication/manifest.json` gives every kept path a class and excludes the rest (`config/local-paths.json`, sealed records, `changelog.d/`, `docs/plans/2026-10-21-harness-eval-v0/` and the B1 excludes). `publication/scrub-table.json` replaces thread codes, drive paths, the four CHANGELOG custody ids from #236's redaction notes, machine ids and Ubicloud VM names in every old blob. `publication/README.md` explains each file.
+- **Gates fail closed.** Secret scan (pinned gitleaks), custody ids short or full, internal markers, licence files, the prereg ledger (regenerated in a clean clone with exactly one public commit, then `prereg.ts --public`), the tip tree matching the tree export, and owner e-mail addresses. Reports name the rule, the file and the line, never the matched value.
+- **Captain's rulings of 2026-11-03.** Two hosted product names (G1) are withheld until Garry rules. The history pass replaces them with `[name withheld]` without changing any digit, and both gates block on any match left. `docs/report-v0.1.md` drops the two names with a dated note and no number changed. The gen6 heldout `MANIFEST.json` is redacted in both modes, since no published hash pins its bytes. Machine ids and VM names block in history. Crew chatter blocks in the final tree and is only listed for history.
+- `package.json`'s description now names the five harnesses compared. This re-applies G1 to package.json after #235's fragment conversion; the version is unchanged.
+- `.gstack/pregate.json` now seals multi-user held-out plaintext (`tasks/multiuser/*/heldout/**`, with each set's `MANIFEST.json` allowed), so a pregate refuses it the way it refuses repo held-out bodies. The same glob also refuses new files under a multi-user `heldout/` and edits to the spent v0.2 held-out set.
+- Tests: `tests/public-export.test.ts` and `tests/public-export-cli.test.ts` (fixture repositories in tree and history mode, every custody id caught short and full, each G1 name and its look-alikes, the commit map). `tests/sealed-repo.test.ts` expects the new multi-user allow path.
+- Not done here: the current private tree still fails the tree gate (thread codes, crew chatter, machine ids, licence files, the CHANGELOG custody ids until #236 lands, the G1 names in README.md, CLAUDE.md and compendium.md until #235 lands). Those files change in their own PRs; this tool only reports them.
+
 ## [0.0.120] - 2026-11-03
 
 ### Public readiness, steps 3 and 4: private-repo scrubs, hashes-only anatomy receipts, and the preregistration ledger
