@@ -6,6 +6,14 @@
 # build is listed as not checked; a docker run that fails, or a preflight that checked no image, is a failure. Exit: the
 # golden check's code, or 5 when an image fails the preflight, its search could not run, or no image was checked.
 set -euo pipefail
+# A fresh VM user is not in the docker group in this multiplexed SSH session yet (bootstrap.sh's usermod), so the
+# preflight's docker calls failed after ablation-golden.sh (which re-enters on its own) and no image was checked.
+# Re-enter with the group, as ablation-golden.sh, vm-shard.sh and checks.sh do.
+if [ -z "${HE_PRESMOKE_IN_DOCKER_GROUP:-}" ] && getent group docker >/dev/null && ! id -nG | grep -qw docker \
+  && id -nG "${USER:-$(id -un)}" | grep -qw docker; then
+  export HE_PRESMOKE_IN_DOCKER_GROUP=1
+  exec sg docker -c "bash $(printf %q "$(realpath "$0")")${*:+ $(printf '%q ' "$@")}"
+fi
 cd "$(dirname "$0")/../.."
 bash scripts/ablation-golden.sh "$@"
 rc=0 checked=0

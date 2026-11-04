@@ -2,6 +2,13 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.122] - 2026-11-04
+
+### internal-task: prompt-archaeology-2026-11 amendment 3
+
+- `scripts/prompt-archaeology/pre-smoke.sh`: re-enters under `sg docker` when the user is in the docker group but the SSH session is not, as `ablation-golden.sh` already does. On the second launch the clean-arm preflight could not reach the docker socket, read all four images as not built, and stopped every shard before any key, lease or trial.
+- `docs/benchmarks/2026-11-01-prompt-archaeology/PREREGISTRATION.md`: amendment 3, dated 2026-11-03. It re-pins `pre-smoke.sh` (sha256 `95c13532`) and, after #236's comment-only scrubs, `runner/proxy/ablate.ts`, `scripts/ablation-golden.sh` and `scripts/prompt-archaeology/tables.ts`. It names the eleven pull requests merged since `216cb6c9d`, and runs the third launch at this amendment's merge commit after a one-VM keyless pre-smoke, with canary shard `cc-a` first. Cells, leases, the $548.50 cap and the analysis are unchanged.
+
 ## [0.0.121] - 2026-11-04
 
 ### internal-task (internal-task step 5): the public-export tool, with fail-closed gates

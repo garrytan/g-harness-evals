@@ -7,7 +7,7 @@ Status: **frozen** (2026-11-02, America/Los_Angeles), written before any counted
 - **41 cells, 1,640 trials, cap $458.50** (the sum of 15 shard leases). All 20 public v0.3 multi-user dev tasks, 2 repetitions, every cell.
 - `bun runner/run.ts dry-run --prereg docs/benchmarks/2026-11-01-prompt-archaeology/prereg.json` prints 1,640 trials in 41 cells, `task_set=v0.3 split=dev network=internal` on every cell line, 110 member turns per cell, and a planning ceiling of $1,645.60.
   - The ceiling prices every turn at the per-turn token ceiling at list price, so it is far above the cap (`HE-BUDGET-003` warning). **The leases bind, not the ceiling.** They come from the calibration's measured cost.
-- **Lane cap $600** (internal-task, 2026-11-01). Calibration spent $32.39. This run, its smokes and the joint-cut run's reserve commit $563.52, leaving $4.09.
+- **Lane cap $600** (HARN-1, 2026-11-01). Calibration spent $32.39. This run, its smokes and the joint-cut run's reserve commit $563.52, leaving $4.09.
 - **Models:** `anthropic:claude-opus-5-5` on Claude Code, OpenClaw and Hermes Agent; `openai:gpt-6.1-sol` at reasoning effort medium on Codex. No Haiku, Sonnet, luna or Particle arm.
 - **No gstack and no gbrain in any cell.** Under R44 every arm here is the no-gstack arm. This is not a gstack or gbrain comparison.
   - **Clean arms (CREW rule, 2026-11-01).** A cell counts only if its agent can't reach a gstack skill. Trials run in the harness containers on Ubicloud VMs: no Capy drive is mounted and no gstack is installed there.
@@ -21,7 +21,7 @@ Status: **frozen** (2026-11-02, America/Los_Angeles), written before any counted
 The draft named five gates. Each is met on main at `3cf4fde13`.
 
 1. **Hermes memory fix.** `7ef48385e` (in #188) treats Hermes's `MEMORY.md` insert as never removed. No map or map sha256 changed. The docker golden check shows Hermes minimal at 0 partial requests on both wires, below the 5 percent bound.
-2. **OpenClaw on Sol.** internal-task train #171 (`memory.search.provider none` in `openclaw.openai.json`) is on main. The golden check for the Sol cells asserts zero `/v1/embeddings` calls (`530868111`, in #188).
+2. **OpenClaw on Sol.** HARN-13 train #171 (`memory.search.provider none` in `openclaw.openai.json`) is on main. The golden check for the Sol cells asserts zero `/v1/embeddings` calls (`530868111`, in #188).
 3. **PR 1a and PR 1b on main.** Both merged as one area wave, #188 (`3cf4fde13`). This file was rebuilt there with `build-prereg.ts`. The commit-binding rules below apply to this file's merge commit.
 4. **Map paragraphs.** Decided: no per-paragraph sha256 in the maps. The paragraph-split filter checks each removable paragraph's anchor and length (see Limits).
 5. **Clean arms.** `scripts/prompt-archaeology/pre-smoke.sh` and `clean-arm-audit.ts` are on main (#188).
@@ -30,13 +30,13 @@ The draft named five gates. Each is met on main at `3cf4fde13`.
 
 **The program's second job is to find out what each harness has engineered into it, and whether that context changes success or cost** (CREW.md, Purpose).
 
-- Every harness ships a long hidden prompt and tool manual. internal-task's anatomy pages count its bytes; nothing yet says which parts matter.
-- A layer that costs thousands of tokens on every request and changes nothing is pure cost. A two-line rule that lifts the pass rate is worth copying. **Harness Zero (internal-task) gets the answer as a candidate keep-or-cut list.**
+- Every harness ships a long hidden prompt and tool manual. HARN-15's anatomy pages count its bytes; nothing yet says which parts matter.
+- A layer that costs thousands of tokens on every request and changes nothing is pure cost. A two-line rule that lifts the pass rate is worth copying. **Harness Zero (HARN-22) gets the answer as a candidate keep-or-cut list.**
 
 ## Approval
 
-- **Plan:** internal-task autoplan, plan v3 with its round-2 resolutions. Garry approved it on 2026-10-31 ("Do it", relayed by the Captain, gate_rev 1, rec_hash `8f7de63a84c3`).
-- **Design option B** (internal-task, 2026-11-01): all 20 tasks by 2 repetitions, lane cap raised to $600. internal-task placed it inside Garry's approved plan, so it does not go back to Garry.
+- **Plan:** HARN-20 autoplan, plan v3 with its round-2 resolutions. Garry approved it on 2026-10-31 ("Do it", relayed by the Captain, gate_rev 1, rec_hash `8f7de63a84c3`).
+- **Design option B** (HARN-1, 2026-11-01): all 20 tasks by 2 repetitions, lane cap raised to $600. HARN-1 placed it inside Garry's approved plan, so it does not go back to Garry.
 - No counted trial starts until this preregistration is merged to main, in its own pull request (CREW.md: preregistration and results never share a pull request).
 
 ## Question
@@ -101,7 +101,7 @@ Each cell names its map and the map's sha256. The proxy recomputes the sha256 at
 
 **All 20 public v0.3 multi-user dev tasks** under `tasks/multiuser/v0.3/dev/` run in every cell, listed in each cell's `tasks`. The rule's output is [calibration/task-rule.json](calibration/task-rule.json).
 
-**The replacement rule (internal-task, 2026-11-01): every task runs, whatever its calibration pass rate.**
+**The replacement rule (HARN-1, 2026-11-01): every task runs, whatever its calibration pass rate.**
 
 - **Removing a layer can only show as a drop.** A task at 100 percent in the full cell can still fall when a layer goes, so it carries information. A floor task is the only kind a removal cannot move, and pooled over the four full cells the calibration has no family at 0 percent (in their own full cells, Hermes corrections and Codex approval_relay are at 0).
 - **Keeping every task keeps scope_isolation in the run.** That family is the cross-scope half of the safety bound (below). Under the plan's rule it would have left.
@@ -145,11 +145,11 @@ Every cell: `slice multiuser`, `split dev`, `task_set v0.3`, the 20 tasks, 2 rep
 |---|---|
 | `harnesses/ablation/manifest.json` | `66d1d6472f846b02e174be16728e6a32b008be1e88652b06d613a35d3955c370` |
 | `harnesses/ablation/official-minimal.txt` | `0149604cd565ede2faf78b5522357589ec1e459153447e1eea49d0046526c4c9` |
-| `runner/proxy/ablate.ts` | `bbf6891e59890a39c3263c3152e5a79cd9e7d5764d737de8b71863d2a92a4914` |
-| `scripts/ablation-golden.sh` | `9111b44fe86b167577228629cf25433867c17ea98bd151155efe9d8667919e40` |
-| `scripts/prompt-archaeology/pre-smoke.sh` | `65569573d992f4934ac10c06f0fb30876d45cb7af58bf1b500c0517f92ca9d67` |
+| `runner/proxy/ablate.ts` | `149cbe5343cb89fd3b3bb2ba1b58c7e8a252c19559da64a2a41b98e29a580223` |
+| `scripts/ablation-golden.sh` | `d5987463444edc68b57700cc1a878b0224195d31ebcd4ea30c83fb2edc4fbb5b` |
+| `scripts/prompt-archaeology/pre-smoke.sh` | `95c13532a668064e12740f1c52efa1db1de483315e905085f4054f0170c00e57` |
 | `scripts/prompt-archaeology/clean-arm-audit.ts` | `252551c023583f361cff4251a1de8aaff1492d62f2057fb78bca418069ecbf4a` |
-| `scripts/prompt-archaeology/tables.ts` | `bf64b3a964a9f69b475666092df85f585d1cfb5b3bdc2582ca1ef01a07ccc438` |
+| `scripts/prompt-archaeology/tables.ts` | `3465fc2b9ffc909ca3ad5d6385aeefb086dce0f69c8551f9de5b2bee3f54f940` |
 <!-- /build-prereg:pins -->
 
 **`runner/proxy/ablate.ts` is frozen at the sha256 in the table above,** the version on main after #188. A change to it before the run ends is an amendment.
@@ -162,7 +162,7 @@ Every cell: `slice multiuser`, `split dev`, `task_set v0.3`, the 20 tasks, 2 rep
 - The run executes at this preregistration's merge commit on main, from a worktree pinned there, never at a branch commit.
 - Before the fan-out, the run log lists every pull request merged between this branch's base and the merge commit, with its paths. One that touches `runner`, `harnesses`, `world`, `scripts`, `tasks/multiuser/v0.3/dev`, `tasks/multiuser/_shared`, `package.json` or `bun.lock` needs a dated amendment naming it, committed before any cell runs.
 - The report asserts that every shard's `shard.json` and `shard-vm.json` name the merge commit, that `scratch_prereg` is false, and that the manifest's `prereg_sha256` is this `prereg.json`'s sha256 there.
-- While this preregistration gates, internal-task holds merges that touch runner, harnesses, gbrain, scripts or tasks. The hold ends when it merges.
+- While this preregistration gates, HARN-7 holds merges that touch runner, harnesses, gbrain, scripts or tasks. The hold ends when it merges.
 
 </details>
 
@@ -201,7 +201,7 @@ The fan-out manifest is [lease-plan.json](lease-plan.json) in the form `scripts/
 <details>
 <summary><b>How each shard runs</b></summary>
 
-- `scripts/ubicloud/fanout.sh` with `UBI_OWNER=internal-task`, after `scripts/ubicloud/ubi-runner.sh usage`. 15 VMs need 240 vCPUs; if quota is short, `--max-vcpus` batches them.
+- `scripts/ubicloud/fanout.sh` with `UBI_OWNER=HARN-20`, after `scripts/ubicloud/ubi-runner.sh usage`. 15 VMs need 240 vCPUs; if quota is short, `--max-vcpus` batches them.
 - Options: `--pre-smoke scripts/prompt-archaeology/pre-smoke.sh --smoke-lease-usd 6`, as in [lease-plan.json](lease-plan.json). The pre-smoke script runs `scripts/ablation-golden.sh` first, then the clean-arm preflight.
 - **The golden check runs on every VM** after the image build and before the smoke: all six maps, full and minimal, keyless, against the fakes. A failure exits 4, no counted trial runs, and the VM is destroyed. Its log ships with the results.
 - **Smoke:** one uncounted trial per cell of the shard, under a scratch ledger and a $6 smoke lease. The calibration's derived $3 Sol smoke lease failed with two Sol reservations in flight, so the lease is set, not derived. Every smoke trial must end `completed`, or the counted shard does not start.
@@ -217,7 +217,7 @@ The fan-out manifest is [lease-plan.json](lease-plan.json) in the form `scripts/
 <!-- build-prereg:budget -->
 | Item | USD |
 |---|---:|
-| Lane cap (internal-task, 2026-11-01) | $600.00 |
+| Lane cap (HARN-1, 2026-11-01) | $600.00 |
 | Calibration spend ([calibration/lane-spend-line.jsonl](calibration/lane-spend-line.jsonl)) | $32.39 |
 | **Left** | **$567.61** |
 | This run: 15 shard leases (the cap in prereg.json) | $458.50 |
@@ -287,7 +287,7 @@ Each verdict is for removing that one layer alone, **on v0.3 multi-user dev task
 - **Claude Code and Codex:** cost deltas with intervals; keeps whose observed pass drop is at least that pair's MDD (23.1 and 12.4 points); cut verdicts.
 - **OpenClaw and Hermes: cost deltas plus large keeps** (pass drop at least 12.4 and 15.5 points). Their cut verdicts, if any, go in the full table only: the calibration put a typical layer's cut within reach in 2 to 4 percent of comparisons, because their per-trial cost is noisy.
 - **Every harness:** keep (safety) is named in the headline, because it blocks a cut. Smaller keeps, cut candidates and unclear verdicts stay in the full table, each beside the MDD.
-- The same rule governs the summary of the internal-task handoff, which stays labelled candidate-only.
+- The same rule governs the summary of the HARN-22 handoff, which stays labelled candidate-only.
 
 <details>
 <summary><b>Why the MDD matters here</b></summary>
@@ -319,9 +319,9 @@ Each verdict is for removing that one layer alone, **on v0.3 multi-user dev task
 
 ## Deviations from the plan
 
-- **Task rule.** All 20 tasks run, replacing plan decision 6's 10 to 90 percent rule (internal-task, design B; reasoning under Tasks).
-- **Repetitions and cap.** 2 repetitions, not 3, and a $600 lane cap, not $500 (internal-task, design B).
-- **OpenClaw housekeeping at its shipped default.** Opus cells declare `anthropic:claude-haiku-5-5` in `utility_models`: harness housekeeping, shipped default; metered, not an arm, not scored. This supersedes plan resolution 4 (utility model pinned to the cell model) under internal-task's 2026-11-01 rule.
+- **Task rule.** All 20 tasks run, replacing plan decision 6's 10 to 90 percent rule (HARN-1, design B; reasoning under Tasks).
+- **Repetitions and cap.** 2 repetitions, not 3, and a $600 lane cap, not $500 (HARN-1, design B).
+- **OpenClaw housekeeping at its shipped default.** Opus cells declare `anthropic:claude-haiku-5-5` in `utility_models`: harness housekeeping, shipped default; metered, not an arm, not scored. This supersedes plan resolution 4 (utility model pinned to the cell model) under HARN-1's 2026-11-01 rule.
 - **Claude Code `ANTHROPIC_SMALL_FAST_MODEL` is pinned to the cell model** by its adapter. An existing pin that published results already used; it stays until one adapter PR changes it for every lane.
 - **OpenClaw on OpenAI pins `utilityModel` to the cell model** in `harnesses/openclaw/config/openclaw.openai.json`. The shipped default would be `openai/gpt-5.6-luna`. Existing pin, kept for the same reason.
 - **Hermes `image_input_mode: text` in every cell**, on both wires, so the browser tool's description is the same text-only header in every Hermes request.
@@ -345,7 +345,7 @@ Each verdict is for removing that one layer alone, **on v0.3 multi-user dev task
 
 **Committed now, in this directory:**
 
-- [calibration/](calibration/): the calibration's merged `trials.jsonl` and `manifest.json`, `summary.md` and `summary.json`, the per-shard run summaries, `prompt-archaeology-tables` (.md and .json), `calibration-analysis.json`, `design-options.json`, `projection.json`, `shards.json`, the lane-spend line, the scratch preregistration and scripts under `inputs/`, and the calibration report [calibration/calibration.md](calibration/calibration.md). Ledgers, proxy logs and per-trial trees stay in the internal-task work directory.
+- [calibration/](calibration/): the calibration's merged `trials.jsonl` and `manifest.json`, `summary.md` and `summary.json`, the per-shard run summaries, `prompt-archaeology-tables` (.md and .json), `calibration-analysis.json`, `design-options.json`, `projection.json`, `shards.json`, the lane-spend line, the scratch preregistration and scripts under `inputs/`, and the calibration report [calibration/calibration.md](calibration/calibration.md). Ledgers, proxy logs and per-trial trees stay in the HARN-20 work directory.
 - [calibration/task-rule.json](calibration/task-rule.json): the task rule's output.
 - [mdd.md](mdd.md) and [mdd.json](mdd.json): the MDD table.
 - [lease-plan.json](lease-plan.json) and [budget.json](budget.json): shards, leases and the lane-cap fit.
@@ -358,7 +358,7 @@ The results and the report come in a later pull request than this preregistratio
 
 Each amendment is dated and committed before any cell it affects runs. It ships in its own pull request, merged to main before those cells, and an affected shard resumes with `--resume --amendment <commit>`.
 
-**Amendment 1, 2026-11-03, before any counted trial: the lane-cap fit counts smoke leases at their caps, and the joint-cut reserve is a planned claim.** The cap check in [Budget and drop order](#budget-and-drop-order) counted the 15 one-trial smokes at their projected spend ($8.37). Each smoke actually runs under its own $6 lease on a scratch ledger, $90 in all. Counted that way, the run's leases, the smoke leases and the joint-cut reserve add up to $645.15, which is over the $567.61 left in the lane. The smoke lease stays at $6, because the proxy reserves a call's worst case before forwarding it ($2.92 for Opus, $1.45 for Sol), and the calibration's $3 Sol smoke lease already failed with two reservations in flight. So the fit is restated instead (Captain, 2026-11-03, on internal-task's proposal):
+**Amendment 1, 2026-11-03, before any counted trial: the lane-cap fit counts smoke leases at their caps, and the joint-cut reserve is a planned claim.** The cap check in [Budget and drop order](#budget-and-drop-order) counted the 15 one-trial smokes at their projected spend ($8.37). Each smoke actually runs under its own $6 lease on a scratch ledger, $90 in all. Counted that way, the run's leases, the smoke leases and the joint-cut reserve add up to $645.15, which is over the $567.61 left in the lane. The smoke lease stays at $6, because the proxy reserves a call's worst case before forwarding it ($2.92 for Opus, $1.45 for Sol), and the calibration's $3 Sol smoke lease already failed with two reservations in flight. So the fit is restated instead (Captain, 2026-11-03, on HARN-20's proposal):
 
 - **Enforced bound for this run:** 15 shard leases ($458.50) plus 15 smoke leases ($90.00) = **$548.50**, against the **$567.61** left. Every lease is a hard cap: the proxy refuses a reservation that would pass it, so one launch of every shard can't spend more than $548.50. A shard that fails before its first trial is relaunched (see [Sharding and leases](#sharding-and-leases)) and runs its smoke again under a new $6 smoke lease, so each relaunch can add up to $6.
 - **Joint-cut reserve ($96.65): a planned claim, not enforced.** Nothing in this run holds it. The joint-cut run (`prompt-archaeology-jointcut-2026-11`) is re-costed at its own preregistration against the lane's actual remaining spend after this run. If it doesn't fit then, that preregistration says so and goes to the Captain; it doesn't borrow from this run's leases.
@@ -366,18 +366,42 @@ Each amendment is dated and committed before any cell it affects runs. It ships 
 - **Relaunches and resumes.** A relaunch or `--resume` of a shard reruns its smoke under a new $6 lease unless `--no-smoke` is passed. Every `--resume` in this run passes `--no-smoke`. Before a full relaunch starts, the run log adds up the committed leases: the 15 shard leases, every smoke lease already opened, and the new one. If that total would pass the $567.61 left, the relaunch goes to the Captain first.
 - **Unchanged:** cells, tasks, repetitions, shard leases, the $6 smoke leases, the drop order, the analysis and the verdict rules. `budget.json` and the generated budget table above stay as the preregistration built them, and this amendment is the reading of record for the lane-cap fit. It names no cell, so the run executes at #230's merge commit.
 
-**Amendment 2, 2026-11-03, before any trial of the relaunch: the first launch was lost, and the relaunch replicates its controller state.** The first launch of this run (15 shards at `216cb6c9d`, started 11:52Z) lost its controller machine at about 12:20Z. Three wakes of it, the last at 14:35Z, failed. Each VM accepts only an SSH key that existed on that machine, so no shard could be reattached. The Captain had all 15 VMs destroyed unread at 15:00Z. The incident note is in the Captain drive at `handoffs/internal-task/counted-run-1/INCIDENT.md`. No trial of that launch has a receipt, so none is counted, reported or merged.
+**Amendment 2, 2026-11-03, before any trial of the relaunch: the first launch was lost, and the relaunch replicates its controller state.** The first launch of this run (15 shards at `216cb6c9d`, started 11:52Z) lost its controller machine at about 12:20Z. Three wakes of it, the last at 14:35Z, failed. Each VM accepts only an SSH key that existed on that machine, so no shard could be reattached. The Captain had all 15 VMs destroyed unread at 15:00Z. The incident note is in the Captain drive at `handoffs/HARN-20/counted-run-1/INCIDENT.md`. No trial of that launch has a receipt, so none is counted, reported or merged.
 
 - **Sunk spend:** the shard ledgers and proxy logs were on the VMs, so the spend can't be reconciled from the proxy. It is booked in the Captain's program ledger at its upper bound, the leases that launch could open: $458.50 in shard leases plus $90.00 in smoke leases, **$548.50**. VM time was 2,819 minutes, about $23.62 at list price, outside the model cap.
 - **Cap (Captain, 2026-11-03):** the relaunch gets a fresh $548.50 bound (the same 15 shard leases and 15 smoke leases). The Captain covers it from the program cap, above the $600 lane cap. Amendment 1's bound, relaunch rule and drop order apply to the relaunch as written, counting only the relaunch's own leases. Launch 1's sunk $548.50 is not in those sums.
 - **What runs:** the same 41 cells, tasks, repetitions, shard plan and analysis, at the same commit `216cb6c9d`. The relaunch's worktree stays at that commit, so pull requests merged to main since then don't reach it. This is a new launch of `prompt-archaeology-2026-11`, not a resume: every shard starts from an empty results directory.
 - **No single point of failure (CREW.md, Ubicloud VMs):**
   - The fan-out runs on one Capy machine (the controller). A second Capy machine (the backup) holds a copy of the controller's per-VM state: `~/.local/state/ubi-runner/` and each shard's `shard-vm.json`. The copy is made with Capy's machine-to-machine file transfer once every VM is up. SSH private keys stay on those two machines. They never go on any drive or into the repository.
-  - The VM-to-shard map (each `shard-vm.json`, which holds no key) is also kept in the Captain drive under `handoffs/internal-task/counted-run-2/map/`.
+  - The VM-to-shard map (each `shard-vm.json`, which holds no key) is also kept in the Captain drive under `handoffs/HARN-20/counted-run-2/map/`.
   - Every 20 minutes the backup pulls each shard's `results` and `smoke` directories with `ubi-runner.sh pull`, so results leave each VM while the run goes. These live pulls copy each `ledger.sqlite` without the WAL checkpoint that teardown runs first, so a ledger restored from one can miss its latest entries.
   - If the controller dies, the backup reattaches every shard whose VM is still up with `run-shard.sh --attach`. A shard that has already finished was pulled to the controller and destroyed, so the backup's copy of it can be up to about 20 minutes older than its final results. If the backup dies, a new backup gets a fresh copy from the controller.
   - Until the state copy lands (about 10 minutes after launch), the controller is still the only holder of the keys. If it dies in that window, the VMs are destroyed and the loss is reported as in launch 1.
 - **Reported:** the results pull request's deviations section names both launches, the sunk $548.50, and every restart, reattach and pull failure of the relaunch.
+
+**Amendment 3, 2026-11-03, before any trial of the third launch: the second launch stopped at the keyless pre-smoke, `pre-smoke.sh` is fixed, and the third launch runs at this amendment's merge commit with one canary shard first.** The second launch (amendment 2's relaunch: 15 shards at `216cb6c9d`, started 21:17Z) stopped on every shard before any key, smoke lease or trial. Each shard passed bootstrap and the ablation golden check (6 of 6 maps). Then `scripts/prompt-archaeology/pre-smoke.sh`'s clean-arm preflight reported all four harness images as "not built by the golden check; not checked", then "FAIL, no harness image was checked", and `scripts/ubicloud/run-shard.sh` exited 4. Teardown destroyed all 15 VMs.
+
+- **Cause.** `scripts/ubicloud/ubi-runner.sh` reuses one SSH connection per VM (ControlMaster), so the docker group that `bootstrap.sh` adds with `usermod` never reaches that session. `ablation-golden.sh`, `vm-shard.sh` and `checks.sh` each re-enter under `sg docker`. `pre-smoke.sh` did not, so its `docker image inspect` calls failed on the docker socket and the preflight misread the images as not built.
+- **Fix.** `pre-smoke.sh` now re-enters under `sg docker` the same way `ablation-golden.sh` does (8 added lines, no other change). Its sha256 moves from `65569573d992f4934ac10c06f0fb30876d45cb7af58bf1b500c0517f92ca9d67` to `95c13532a668064e12740f1c52efa1db1de483315e905085f4054f0170c00e57`. The pinned-file table above is generated by `build-prereg.ts`. Rerunning it changes that row and three more, listed under the next bullet. `prereg.json` is byte-identical (sha256 `f35010fb42de05048aff70e66bcb96e2172173bf016422129ce177d7b02a940a`), so the manifest's `prereg_sha256` doesn't change.
+- **Three more pinned files change, in comments only.** #236 (public-readiness scrubs) took thread codes out of the header comments of `runner/proxy/ablate.ts` (2 comment lines), `scripts/ablation-golden.sh` (1) and `scripts/prompt-archaeology/tables.ts` (1). No code line changed. Their sha256s move: `ablate.ts` from `bbf6891e59890a39c3263c3152e5a79cd9e7d5764d737de8b71863d2a92a4914` to `149cbe5343cb89fd3b3bb2ba1b58c7e8a252c19559da64a2a41b98e29a580223`, `ablation-golden.sh` from `9111b44fe86b167577228629cf25433867c17ea98bd151155efe9d8667919e40` to `d5987463444edc68b57700cc1a878b0224195d31ebcd4ea30c83fb2edc4fbb5b`, and `tables.ts` from `bf64b3a964a9f69b475666092df85f585d1cfb5b3bdc2582ca1ef01a07ccc438` to `3465fc2b9ffc909ca3ad5d6385aeefb086dce0f69c8551f9de5b2bee3f54f940`. The generated table above now carries those values, and the freeze on `ablate.ts` applies at its new sha256. The layer maps, `official-minimal.txt` and `clean-arm-audit.ts` are unchanged.
+- **Spend.** The second launch opened no lease and made no model call: $0 committed and $0 in smoke leases. Its VM time was about $2.38 at list price, outside the model cap. Launch 1's $548.50 stays sunk.
+- **Cap.** The third launch gets the same bound as amendment 2's relaunch: 15 shard leases ($458.50) plus 15 smoke leases ($90.00), **$548.50**, counting only the third launch's own leases. Amendment 1's relaunch rule and drop order apply as written.
+- **Commit.** Every cell runs at this amendment's merge commit on main, from a worktree pinned there. This is a new launch of `prompt-archaeology-2026-11`, not a resume: every shard starts from an empty results directory. Under the commit binding in [Fixed now](#fixed-now), these eleven pull requests merged to main after `216cb6c9d` touch `runner`, `world`, `scripts` or `package.json`:
+  - #239 and #245 (qm-brain-native): the new `world/brain/` module, `scripts/qm-brain-power.ts` and one table row in `world/README.md` (#239). Outside `world/brain/` itself, only `scripts/qm-brain-power.ts` and `tests/brain-corpus.test.ts` import it. Nothing under `runner/` does.
+  - #241: `gbrain/build-install.ts`, the gbrain installer views.
+  - #232 (the access-rules rerun): `runner/run.ts`, `runner/contracts.ts`, `runner/trial/trial.ts`, `runner/trial/gbrain.ts`, `runner/README.md`, `scripts/run-shard.sh`, `scripts/gbrain-ladder.ts`, and `gbrain/Dockerfile`, `gbrain/build-brain.ts`, `gbrain/entrypoint.sh` and `gbrain/README.md`. Every runner and script change there is gated on a cell's `gbrain` or `access` field or a top-level `gbrain_commit`. This run has no gbrain cell, no `access` field and no `gbrain_commit`.
+  - #231, #243 (amendment 1), #235, #244 and #246 (amendment 2): `package.json`'s version line only.
+  - #236 (public-readiness scrubs, merged 22:23Z, before this amendment's merge hold started): comment and docs text in `runner/`, `scripts/`, `gbrain/`, `harnesses/README.md` and `world/README.md`. Its one code change under `runner/` is in `runner/prereg/prereg.ts`: it speeds up the CI order check and adds a `--public` mode. The runner loads `prereg.ts` only through `runner/heldout/openings.ts`, for `loadManifest`, which is byte-identical. `attestPreregistration` (called by the gstack Lane B path, not by this run) is byte-identical too. #236 also changed code outside every shard's path: `scripts/anatomy/store.ts`, `scripts/sealed/identity.ts` and `scripts/sealed/keygen.ts`, and the new `scripts/local-paths.ts` and `scripts/prereg-ledger.ts`. `runner/run.ts`, `scripts/merge-shards.ts`, `scripts/summarize-run.ts` and `scripts/compare-run.ts` import none of them. No other file under `runner/`, `scripts/run-shard.sh`, `scripts/ubicloud/`, `scripts/merge-shards.ts`, `scripts/summarize-run.ts` or `scripts/compare-run.ts` changed a code line.
+  - #242 (public-export tool): new files under `scripts/public-export/` and `package.json`'s version line. Its other files (`publication/`, `tests/`, `docs/sealed-custody.md`, `.gstack/pregate.json`, `CHANGELOG.md` and `VERSION`) are outside those paths. Nothing in a shard runs them.
+  - Across the eleven merges, `package.json` changed only its version line (0.0.110 to 0.0.121).
+  - The `gbrain/` files from #232 and #241 go into the `harness-eval/gbrain:dev` image that `scripts/run-shard.sh` builds and records on every shard. No cell of this run starts a gbrain sidecar.
+
+  No change reaches a cell of this run. `tasks/multiuser/v0.3/dev`, `tasks/multiuser/_shared` and `bun.lock` are unchanged since `216cb6c9d`. Under `harnesses`, only `harnesses/README.md` changed (#236). Before the fan-out, the run log lists every pull request merged after `10344b840` (#242, the last main commit this amendment was checked against) up to its merge commit. One that touches `runner`, `harnesses`, `world`, `scripts`, `tasks/multiuser/v0.3/dev`, `tasks/multiuser/_shared`, `package.json` or `bun.lock` needs another dated amendment before any cell runs.
+- **One-VM pre-smoke first.** Before any shard starts, `pre-smoke.sh` at the sha256 pinned above runs on one fresh standard-16 VM, keyless, through the same multiplexed SSH path (`ubi-runner.sh up`, `sync`, `bootstrap.sh`, then `pre-smoke.sh`). All four images must show clean, or the third launch doesn't start. That VM is destroyed after the check. It costs VM time only, about $0.15.
+- **Staged start (Captain, 2026-11-03).** One canary shard, `cc-a`, starts first. The other 14 shards start only after `cc-a` has finished at least one scored trial and the backup machine has pulled its results off the VM. Staging changes start times only. The shards, cells, leases and analysis are unchanged, no cell is split across machines, and trials stay sequential within each shard.
+- **Controller state.** As in amendment 2: a backup Capy machine holds a copy of the controller's per-VM state and pulls every shard's `results` and `smoke` directories every 20 minutes. The VM-to-shard map (no keys) goes in the Captain drive under `handoffs/HARN-33/counted-run-3/map/` as each VM comes up. HARN-33 took over this run from HARN-20 on 2026-11-03, so the third launch's fan-out sets `UBI_OWNER=HARN-33` in place of the `UBI_OWNER=HARN-20` in [Sharding and leases](#sharding-and-leases).
+- **Reported.** The results pull request's deviations section names all three launches, this pre-smoke bug and its VM cost, the staged start, and every restart, reattach and pull failure of the third launch.
+- **Unchanged:** cells, tasks, repetitions, the shard plan, shard and smoke leases, the drop order, the analysis and the verdict rules.
 
 ## Disclosures
 
