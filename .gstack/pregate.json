@@ -251,6 +251,7 @@
   },
   "empty_lanes": [
     "docs/**/*.md",
+    "scripts/check-links-allow.txt",
     "scripts/ubicloud/README.md"
   ],
   "selection": {},
@@ -265,10 +266,19 @@
     {
       "finding": "env.kv",
       "paths": [
-        "harnesses/codex/config/config.toml"
+        "harnesses/codex/config/config.toml",
+        "tests/fixtures/adapter-baselines/*/harnesses/codex/config/config.toml"
       ],
       "pattern": "HE_MODEL_API_KEY\"$",
       "reason": "Codex env_key names the environment variable the adapter reads its proxy bearer from; the line holds a variable name, not a value"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tests/fixtures/adapter-baselines/*/harnesses/openclaw/pin.json"
+      ],
+      "pattern": "agent:main:dm:<member> \\| agent:main:channel:<id> \\(HE_SESSION_SCOPE=turn: agent:main:turn:<NNNN>\\); :t<thread_ts> appended when TurnRequest\\.thread_ts is set \\(a task turn with thread = \\\\\"new\\\\\" opens a new session in the same conversation\\)\",$",
+      "reason": "verbatim copy of main's harnesses/openclaw/pin.json description text"
     },
     {
       "finding": "env.kv",

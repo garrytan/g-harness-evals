@@ -2,6 +2,15 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.127] - 2026-11-04
+
+### internal-task: pregate allowlist for the adapter-baseline fixture copies
+
+- `.gstack/pregate.json`: the codex `env_key` allowlist entry now also covers `tests/fixtures/adapter-baselines/*/harnesses/codex/config/config.toml`, with the same pattern (the line names the `HE_MODEL_API_KEY` variable, not a value).
+- A new `env.kv` entry covers `tests/fixtures/adapter-baselines/*/harnesses/openclaw/pin.json`. Its pattern starts at the `session_key` value and matches only main's fixed description text, to the end of the line.
+- `scripts/check-links-allow.txt` joins `empty_lanes`, so an edit to it runs no local pregate test lane. CI's `python3 scripts/check-links.py` still checks it on every pull request.
+- Why: export v2 (harn25/export-v2) commits these fixtures as byte copies of main's harness files. pregate reads its allowlist from the base branch only, so these entries must reach main before export v2 is gated.
+
 ## [0.0.126] - 2026-11-04
 
 ### internal-task: Harness Zero core (PR 1a of 3)
