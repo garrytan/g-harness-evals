@@ -1,13 +1,25 @@
 # S1 probe fixture: the QM sandbox image with gstack's raw SKILL.md files staged
 # at /root/workspace/gstack/<skill>/SKILL.md, the paths the paste-in router in
-# the org SOUL names. Built by harnesses/qm/gstack/s1-stage.ts from a context
-# directory holding gstack/ at one pinned gstack commit (each file read with
-# git show <commit>:<path>). /root is the scope's home volume in QM's local
-# backend; Docker copies the image's /root into a new empty volume, so every
-# sandbox QM creates from this image starts with the files in its workspace.
+# the org SOUL names. Built by harnesses/qm/gstack/s1-stage.ts and s1-probe.ts
+# from a context directory holding gstack/ at one pinned gstack commit (each
+# file read with git show <commit>:<path>) and, for the probe, repo/ (the
+# fixture repository from s1-fixture.ts). /root is the scope's home volume in
+# QM's local backend; Docker copies the image's /root into a new empty volume,
+# so every sandbox QM creates from this image starts with the files in its
+# workspace.
+#
+# STAGE_GSTACK=1 (the default) stages gstack/; STAGE_GSTACK=0 builds the
+# probe's no-gstack arm from the same file: the fixture repository only, and no
+# gstack path anywhere in the image. The context is bind-mounted for one RUN
+# instead of copied, so a skipped directory leaves nothing in any layer.
 ARG BASE=harness-eval/qm-sandbox:dev
 FROM ${BASE}
 ARG GSTACK_COMMIT
 ARG GSTACK_VERSION
-COPY gstack/ /root/workspace/gstack/
-LABEL org.harness-eval.gstack.commit="${GSTACK_COMMIT}" org.harness-eval.gstack.version="${GSTACK_VERSION}" org.harness-eval.gstack.overlay="qm-s1-skills"
+ARG STAGE_GSTACK=1
+RUN --mount=type=bind,source=.,target=/ctx \
+    mkdir -p /root/workspace \
+    && if [ "${STAGE_GSTACK}" = 1 ]; then cp -a /ctx/gstack /root/workspace/gstack; \
+    elif [ "${STAGE_GSTACK}" != 0 ]; then echo "STAGE_GSTACK must be 0 or 1" >&2; exit 2; fi \
+    && if [ -d /ctx/repo ]; then cp -a /ctx/repo /root/workspace/repo; fi
+LABEL org.harness-eval.gstack.commit="${GSTACK_COMMIT}" org.harness-eval.gstack.version="${GSTACK_VERSION}" org.harness-eval.gstack.staged="${STAGE_GSTACK}" org.harness-eval.gstack.overlay="qm-s1-skills"

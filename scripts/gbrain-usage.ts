@@ -13,9 +13,8 @@ import type { WorldEvent } from '../world/services/events.ts';
 
 export const GBRAIN_WRITE_TOOLS = new Set(['remember', 'forget', 'put_page', 'edit_page', 'capture', 'add_timeline_entry', 'cancel_write_request', 'cancel_job', 'mute_notice']);
 
-export interface GbrainUsage {
-  trials: number;
-  events_read: number;
+/** The call counts of one caller's gbrain events over the trials given. */
+export interface GbrainCallCounts {
   trials_with_calls: number;
   trials_with_tools_list: number;
   calls_total: number;
@@ -27,10 +26,19 @@ export interface GbrainUsage {
   writes: number;
   /** internal-task: failed write calls by error code (storage_error while member-source page writes fail, #161); absent when none failed. */
   write_errors?: Record<string, number>;
-  cross_scope_reads: { via_gbrain: number; via_world: number };
-  scope_leaks: GbrainScopeLeaks;
   pages_by_kind: Record<string, number>;
   unmapped_slugs: number;
+}
+
+/** The top-level call counts are the model's own gbrain events (caller "model" or untagged). provider holds the same counts
+ *  for QM's memory-provider client (caller "provider"), present only when some trial's log has a provider event. Cross-scope
+ *  reads and scope leaks come from the predicate evidence and are not split by caller. */
+export interface GbrainUsage extends GbrainCallCounts {
+  trials: number;
+  events_read: number;
+  cross_scope_reads: { via_gbrain: number; via_world: number };
+  scope_leaks: GbrainScopeLeaks;
+  provider?: GbrainCallCounts;
 }
 
 export interface GbrainScopeLeaks {
@@ -70,6 +78,8 @@ export function scopeLeaks(predicates: PredicateResult[], events: WorldEvent[] |
 export const isGbrainEvent = (e: WorldEvent): boolean => (e.via as string) === 'gbrain';
 /** A tools/call, as opposed to initialize and tools/list. */
 export const isGbrainCall = (e: WorldEvent): boolean => isGbrainEvent(e) && e.tool.startsWith('gbrain.') && e.tool !== 'gbrain.initialize' && e.tool !== 'gbrain.tools/list';
+/** A tools/call the model made: QM's memory-provider client (caller "provider") is not the model. */
+export const isModelGbrainCall = (e: WorldEvent): boolean => isGbrainCall(e) && e.caller !== 'provider';
 
 export const median = (xs: number[]): number => {
   if (!xs.length) return 0;
@@ -91,30 +101,20 @@ export function crossScopeReadsBySurface(predicates: PredicateResult[]): { via_g
   return out;
 }
 
-export function gbrainUsage(trials: Array<{ events: WorldEvent[] | null; predicates: PredicateResult[] }>, worlds?: { dev: WorldData; heldout: WorldData }): GbrainUsage {
+/** Call counts over each read trial's gbrain events, already narrowed to one caller. */
+function callCounts(logs: WorldEvent[][], worlds?: { dev: WorldData; heldout: WorldData }): GbrainCallCounts {
   const tools: Record<string, number> = {};
   const perTrial: number[] = [];
   const pages: number[] = [];
   const latency: number[] = [];
-  let withCalls = 0, withList = 0, errors = 0, writes = 0, read = 0, unmapped = 0;
+  let withCalls = 0, withList = 0, errors = 0, writes = 0, unmapped = 0;
   const writeErrors: Record<string, number> = {};
-  const cross = { via_gbrain: 0, via_world: 0 };
-  const leaks: GbrainScopeLeaks = { search_rows: {}, opened_returned: {}, opened_refused: {}, by_grant: {} };
   const byKind: Record<string, number> = {};
-  for (const t of trials) {
-    const split = crossScopeReadsBySurface(t.predicates);
-    cross.via_gbrain += split.via_gbrain;
-    cross.via_world += split.via_world;
-    const l = scopeLeaks(t.predicates, t.events);
-    for (const key of ['search_rows', 'opened_returned', 'opened_refused', 'by_grant'] as const) {
-      for (const [k, v] of Object.entries(l[key])) leaks[key][k] = (leaks[key][k] ?? 0) + v;
-    }
-    if (!t.events) continue;
-    read += 1;
-    const calls = t.events.filter(isGbrainCall);
+  for (const events of logs) {
+    const calls = events.filter(isGbrainCall);
     perTrial.push(calls.length);
     if (calls.length) withCalls += 1;
-    if (t.events.some((e) => isGbrainEvent(e) && e.tool === 'gbrain.tools/list')) withList += 1;
+    if (events.some((e) => isGbrainEvent(e) && e.tool === 'gbrain.tools/list')) withList += 1;
     for (const e of calls) {
       const name = e.tool.slice('gbrain.'.length);
       tools[name] = (tools[name] ?? 0) + 1;
@@ -136,9 +136,33 @@ export function gbrainUsage(trials: Array<{ events: WorldEvent[] | null; predica
     }
   }
   return {
-    trials: trials.length, events_read: read, trials_with_calls: withCalls, trials_with_tools_list: withList,
+    trials_with_calls: withCalls, trials_with_tools_list: withList,
     calls_total: perTrial.reduce((s, n) => s + n, 0), calls_median_per_trial: median(perTrial), tools,
-    pages_per_call_median: median(pages), latency_ms_median: median(latency), errors, writes, ...(Object.keys(writeErrors).length ? { write_errors: writeErrors } : {}), cross_scope_reads: cross,
-    scope_leaks: leaks, pages_by_kind: byKind, unmapped_slugs: unmapped,
+    pages_per_call_median: median(pages), latency_ms_median: median(latency), errors, writes, ...(Object.keys(writeErrors).length ? { write_errors: writeErrors } : {}),
+    pages_by_kind: byKind, unmapped_slugs: unmapped,
+  };
+}
+
+const isProviderEvent = (e: WorldEvent): boolean => isGbrainEvent(e) && e.caller === 'provider';
+
+export function gbrainUsage(trials: Array<{ events: WorldEvent[] | null; predicates: PredicateResult[] }>, worlds?: { dev: WorldData; heldout: WorldData }): GbrainUsage {
+  const cross = { via_gbrain: 0, via_world: 0 };
+  const leaks: GbrainScopeLeaks = { search_rows: {}, opened_returned: {}, opened_refused: {}, by_grant: {} };
+  for (const t of trials) {
+    const split = crossScopeReadsBySurface(t.predicates);
+    cross.via_gbrain += split.via_gbrain;
+    cross.via_world += split.via_world;
+    const l = scopeLeaks(t.predicates, t.events);
+    for (const key of ['search_rows', 'opened_returned', 'opened_refused', 'by_grant'] as const) {
+      for (const [k, v] of Object.entries(l[key])) leaks[key][k] = (leaks[key][k] ?? 0) + v;
+    }
+  }
+  const logs = trials.flatMap((t) => (t.events ? [t.events] : []));
+  const provider = logs.some((events) => events.some(isProviderEvent));
+  return {
+    trials: trials.length, events_read: logs.length,
+    ...callCounts(logs.map((events) => events.filter((e) => !isProviderEvent(e))), worlds),
+    cross_scope_reads: cross, scope_leaks: leaks,
+    ...(provider ? { provider: callCounts(logs.map((events) => events.filter(isProviderEvent)), worlds) } : {}),
   };
 }

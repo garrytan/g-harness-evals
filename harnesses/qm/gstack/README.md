@@ -1,11 +1,12 @@
 # gstack on QM
 
-**Raw gstack does not import into QM at `b6786d67`.** QM refuses the pack at its 32 MiB byte cap, so the plan's S1 probe uses gstack's paste-in router instead. Both runs below are keyless and cost $0.
+**Raw gstack does not import into QM at `b6786d67`.** QM refuses the pack at its 32 MiB byte cap, so the plan's S1 probe uses gstack's paste-in router instead. The smoke, the staging run and the probe driver's dry run below are keyless and cost $0.
 
 This folder holds two things:
 
 - **internal-task overlay** (`Dockerfile`, `adapter.sh`): an image that runs `gstack-harness register qm` before the counted adapter. Unchanged here.
 - **internal-task M1 step 6 scripts** (`smoke.ts`, `s1-stage.ts`, `qm-stack.ts`, `Dockerfile.skills`): the skill-pack smoke and the S1 probe fixture, with receipts in [receipts/](receipts/).
+- **S1 probe driver** (`s1-probe.ts`, `s1-count.ts`, `s1-fixture.ts`): the two-arm probe, below.
 
 ## Smoke: register, catalog, import
 
@@ -103,27 +104,48 @@ env -i PATH=$PATH HOME=$HOME bun harnesses/qm/gstack/s1-stage.ts
 - **Writes:** the staging manifest (path, source, bytes, characters, SHA-256, fits inline), the image id, the SOUL and sandbox responses, the turn, and the read evidence from the fake's log and the stored session.
 - **Exit:** 0 only when the router reached the system prompt and the complete read matched byte for byte.
 
-### Proposed paid probe (not run)
+## S1 probe driver
 
-internal-task preregisters and runs this under its $3 cap. This setup has QM-Pi on `claude-haiku-5-5`, the router in the org SOUL, the staged sandbox image, and a default sandbox per member. Each request below is a new DM thread.
+**What it is:** `s1-probe.ts` runs the S1 probe preregistered under `docs/benchmarks/2026-11-03-qm-s1-gstack-probe/`. It asks QM five ordinary requests that match gstack skills, three times each, with and without gstack, on Opus 5.5 and on GPT-6.1 Sol, and counts how often QM opens and starts the matching skill. That is 4 cells of 15 turns. It is the probe's gate 3; no paid turn has run.
 
-| # | Member request (invented) | Matching skill | Characters | Fits inline |
-|---|---|---|---|---|
-| 1 | "Something in my branch broke the login test since yesterday. Can you find out why before I touch anything?" | `investigate` | 29,581 | no |
-| 2 | "Before I merge, can you review the diff on my feature branch for anything risky?" | `review` | 58,767 | no |
-| 3 | "I'm about to run a cleanup script on the prod database box. Be extra careful with anything destructive while we work." | `careful` | 4,727 | yes |
-| 4 | "Write up release notes for what changed since the last tag." | `document-release` | 16,942 | no |
-| 5 | "Save what we learned today about the flaky retry test so you remember it next time." | `learn` | 8,351 | yes |
+- **Two arms, one Dockerfile.** `gstack-router` puts the router in the org SOUL and runs on `harness-eval/qm-sandbox:s1-gstack-21277291` (the 63 staged files). `no-gstack` leaves the SOUL alone and runs on `harness-eval/qm-sandbox:s1-no-gstack`. Both come from [Dockerfile.skills](Dockerfile.skills); `STAGE_GSTACK=0` leaves gstack out of every layer.
+- **Same fixture in both.** `s1-fixture.ts` writes a small invented Node repository at `/root/workspace/repo`: a tag, work after it, and a feature branch whose last commit breaks the login test. Its objects are written from fixed text, so the head is `9db8fa50` on every machine.
+- **One turn = one fresh stack.** Each turn gets its own proxy slot and trial token, Postgres and core, a default sandbox, one new DM, then teardown of only what it created. Every turn runs under one metering lease.
+- **Models:** `anthropic:claude-opus-5-5` and `openai:gpt-6.1-sol`. Each turn's slot also allows QM's housekeeping model for that provider (harness housekeeping, shipped default): `claude-haiku-5-5` beside Opus, `gpt-5.6-luna` beside Sol. Every turn record names it and counts its requests.
+- **Sol wiring:** a Sol turn starts core with [../compose.openai.yaml](../compose.openai.yaml) over `compose.yaml`, as the runner does, so core reaches OpenAI through the proxy's `/openai` route with the trial token.
 
-- **Requests 1, 2 and 4** need a repository. Stage a small git repo in the workspace, or count only opens for them.
-- **Size:** 5 requests times 3 repetitions is 15 turns. M1 serve smoke turns on Sonnet cost $0.009 to $0.058 each ([../README.md](../README.md)), so 15 Haiku turns should sit well under $3. The meter decides.
+**Preflight before any paid call** (CREW.md, "Clean no-gstack and no-brain arms"). A failed check exits 3 before the proxy starts.
 
-How to count, from each turn's stored session (`GET /v1/admin/sessions/:id?scope=personal:<member>`):
+- **Host:** no `~/.capy/drive`, `~/.local/share/gstack` or `~/.claude/skills`. A dry run records these but does not enforce them.
+- **Images:** every `SKILL.md` and gstack path in the core image and both arm images, listed as root. Core and `no-gstack` must have none. `gstack-router` must have exactly the 63 staged files, with the manifest's sha256.
+- **Fixture:** the same tree sha256 and refs in both arm images.
+- **SOUL:** one keyless stack per arm. `gstack-router` reads back the 12,186-character router; `no-gstack` reads back QM's own default SOUL (192 characters), with no gstack in it.
 
-- **Open:** a `tool_result` entry with `action: read` whose `path` is a staged `/root/workspace/gstack/*/SKILL.md`. An `execute` call that reads such a path (`cat`, `sed`, `head`) also counts.
-- **Matched open:** the opened skill is the preregistered one for that request.
-- **Complete read, inline:** the entry has no `output` field and `bytes` equals the staged file's characters.
-- **Complete read, cut:** the entry has `output.shownChars < output.chars`. It is complete only if later reads (the parked `tool-output/` copy, then `execute` pieces) cover every line.
-- **Start:** after the open, the agent takes the skill's first step. Preregister one observable marker per skill, such as a `git log` or test run for `investigate`, or `git diff` for `review`.
-- **Fixture fault, not zero use:** `[no such file`, `[not in the computer's workspace`, `this scope has no default sandbox`, or the router missing from the system prompt. Rerun the trial; never count it as no open.
-- **Report:** opens, matched opens, complete reads and starts, each over 15 turns with its denominator. S1 goes ahead only if members open skills (plan v3, Big decision 5).
+**Counting** (`s1-count.ts`, pure functions over the stored session):
+
+- **Open:** a `files` read of a staged `<skill>/SKILL.md` that QM answered with the file, or a clean `cat`, `sed` or `head` of one. The root `SKILL.md` is counted apart.
+- **Complete read:** inline (one uncut read, `bytes` equal to the staged characters), or cut (the cut read plus later reads of the path or the parked `tool-output/` copy deliver every line).
+- **Start:** the skill's own gstack command (preamble) or first-step command, only after a matched open.
+- **Progress:** each request's preregistered marker, inside the fixture repository; a memory `add` or `edit` for request 5.
+- **Audit:** any call naming `gstack` or `SKILL.md`. In `no-gstack` it marks the turn contaminated.
+- **Fixture faults:** a staged path answered with no file, `this scope has no default sandbox`, or the router missing from the first model request's system prompt (read from `GET /v1/admin/sessions/:id/llm?turnSeq=0`). Faulted turns are named and left out of the counts.
+
+**Keyless dry run, $0.** The proxy runs in capture mode in front of `scripts/gsta-135/fake-anthropic.ts` (Opus) and `tests/fixtures/fake-responses.ts` (Sol), scripted to open the matched skill and run its start command in `gstack-router` only. `--inject-fault` adds one turn whose default sandbox is removed before the DM. The run exits 0 only when every check in `summary.json` holds.
+
+```bash
+env -i PATH=$PATH HOME=$HOME bun harnesses/qm/gstack/s1-probe.ts --dry-run --inject-fault
+```
+
+The paid run takes the ledger and the lease instead (`--ledger <file> --lease-usd 20`), from a VM with no Capy drive.
+
+| Input | Default | What it is |
+|---|---|---|
+| `--work` | `~/.capy/work/qm-s1-probe` | Build context, per-turn stack state and logs, the dry run's ledger |
+| `--out` | `<work>/results`; a dry run gets a fresh `<work>/dry-run-results-<time>` | `preflight.json` (a later invocation writes `preflight-<time>.json`), `turns.jsonl`, `turns/<id>/` (turn record, stored session, first-turn model requests), `summary.json` (built from every record, latest attempt per turn), proxy usage log. A restart resumes: turns with a record are skipped, and records of another run id refuse the directory |
+| `--gstack` | `<work>/gstack-src` | A gstack git directory holding `21277291c`; fetched by sha when missing |
+| `--skip-build` | off | Use the existing `harness-eval/qm:dev` and `harness-eval/qm-sandbox:dev`; the arm images are always rebuilt |
+| `--reps`, `--only`, `--repair` | 3, all, none | Repetitions; named turns only; a rerun after a named repair (the turn's next attempt, `-r<n>`) |
+| `--ledger`, `--lease-usd`, `--new-run` | none, 20 | Paid run only; the lease is capped at $20 (Captain F1) |
+
+- **Order:** request by request and repetition by repetition, each model's `gstack-router` turn and then its `no-gstack` turn. A cap stop ends the run as incomplete; nothing is rerun. A paid run exits 1 when it is incomplete (`complete` in `summary.json`).
+- **Tears down:** each turn's pg, core and the sandboxes it created. `summary.json` lists any container, volume or network the run left behind.

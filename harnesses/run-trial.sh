@@ -14,7 +14,9 @@
 #   --image TAG           image to run instead of the default
 #   --task DIR            task directory with instruction.md and grader/check.sh
 #   --trial-id ID         HE_TRIAL_ID; also names the output directory
-#   --base-url URL        HE_MODEL_BASE_URL (provider-specific proxy base)
+#   --base-url URL        HE_MODEL_BASE_URL (provider-specific proxy base, <proxy>/<slot>/<provider>; a compose
+#                         harness also loads harnesses/NAME/compose.<provider>.yaml when it exists, as the runner
+#                         does: QM's compose.openai.yaml for an openai cell)
 #   --api-key TOKEN       HE_MODEL_API_KEY (the per-trial dummy token, never a real key)
 #   --model NAME          HE_MODEL_NAME (default claude-sonnet-5-5)
 #   --time-budget S       HE_TIME_BUDGET_S (default: task.toml time_budget_s, else 300)
@@ -71,19 +73,23 @@ if [ -f "harnesses/$harness/compose.yaml" ]; then
   # NAME=value lines; they stay in this process and the stack, never on disk.
   project="he-$(echo "$trial" | tr -c 'a-z0-9\n' '-')"
   export COMPOSE_PROJECT_NAME="$project"
+  # The provider is the proxy route's last segment (runner/trial/docker.ts merges compose.<provider>.yaml the same way).
+  provider=${base_url%/}; provider=${provider##*/}
+  compose_files=(-f "harnesses/$harness/compose.yaml")
+  if [[ $provider =~ ^[a-z]+$ ]] && [ -f "harnesses/$harness/compose.$provider.yaml" ]; then compose_files+=(-f "harnesses/$harness/compose.$provider.yaml"); fi
   if [ -x "harnesses/$harness/prepare.sh" ]; then
     # A refusal (QM: a stale or missing image) stops the trial before the stack starts.
     prep_out=$("harnesses/$harness/prepare.sh" "$abs_out") || { prep=$?; echo "run-trial: harnesses/$harness/prepare.sh refused (exit $prep)" >&2; exit 2; }
     while IFS= read -r line; do [ -n "$line" ] && export "$line"; done <<< "$prep_out"
   fi
-  timeout -k 10 "$((budget + 180))" docker compose -f "harnesses/$harness/compose.yaml" -p "$project" up \
+  timeout -k 10 "$((budget + 180))" docker compose "${compose_files[@]}" -p "$project" up \
     --abort-on-container-exit --exit-code-from task --no-color </dev/null > "$abs_out/logs/compose.log" 2>&1
   code=$?
-  docker compose -f "harnesses/$harness/compose.yaml" -p "$project" logs --no-color core > "$abs_out/logs/core.log" 2>&1 || true
+  docker compose "${compose_files[@]}" -p "$project" logs --no-color core > "$abs_out/logs/core.log" 2>&1 || true
   # capture.sh pulls world state the stack holds outside /workspace (QM's
   # sandbox) into the workspace and removes per-trial leftovers.
   if [ -x "harnesses/$harness/capture.sh" ]; then "harnesses/$harness/capture.sh" "$abs_out" 2>>"$abs_out/logs/adapter.log" || true; fi
-  docker compose -f "harnesses/$harness/compose.yaml" -p "$project" down -v --remove-orphans >/dev/null 2>&1 || true
+  docker compose "${compose_files[@]}" -p "$project" down -v --remove-orphans >/dev/null 2>&1 || true
 else
 timeout -k 10 "$((budget + 60))" docker run -i --rm --name "he-$trial" \
   --user "$(id -u):$(id -g)" \

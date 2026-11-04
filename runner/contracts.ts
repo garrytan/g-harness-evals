@@ -317,9 +317,14 @@ export interface TrialGbrain {
   sidecar_ready_ms: number;
   /** via "gbrain" events in the trial's log: tools/list and initialize, tools/call, and how many fell inside a turn window.
    *  Degraded counts search, query and recall replies gbrain stamped search_degraded or facts_degraded.
-   *  write_errors counts the failed write calls by error code (such as storage_error), present only when one failed. */
-  events: { total: number; discovery: number; calls: number; in_turn_calls: number; writes: number; degraded?: number; write_errors?: Record<string, number> };
+   *  write_errors counts the failed write calls by error code (such as storage_error), present only when one failed.
+   *  The top-level counts are the model's own events (caller "model" or untagged). provider holds the same counts for QM's
+   *  memory-provider client (caller "provider"), present only when the log has a provider event; records written before it
+   *  counted provider events in the top-level figures. */
+  events: TrialGbrainEvents & { provider?: TrialGbrainEvents };
 }
+
+export interface TrialGbrainEvents { total: number; discovery: number; calls: number; in_turn_calls: number; writes: number; degraded?: number; write_errors?: Record<string, number> }
 
 /** Lane B bridge addition (docs/gstack-laneb.md): what a Lane B trial adds to its record. The Harbor trial and
  *  the Lane B proxy session it ran under, the verifier's reward, Harbor's exception class and the agent's error class (never

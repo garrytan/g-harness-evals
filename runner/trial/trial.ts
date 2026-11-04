@@ -21,7 +21,7 @@
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import type { GradeResult, HarnessMode, Termination, TrialAblation, TrialEvidence, TrialEmbeddingUsage, TrialGbrain, TrialGbrainInstall, TrialRecord, TrialUsage, TurnWindow } from '../contracts.ts';
+import type { GradeResult, HarnessMode, Termination, TrialAblation, TrialEvidence, TrialEmbeddingUsage, TrialGbrain, TrialGbrainEvents, TrialGbrainInstall, TrialRecord, TrialUsage, TurnWindow } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
 import { cellModels, taskDirFor, resolveGbrain, type Cell, type ResolvedGbrain, type Trial } from '../run.ts';
 import type { WorldEvent } from '../../world/services/events.ts';
@@ -421,26 +421,32 @@ export function ingestedCounts(ingests: WorldEvent[]): { ok: number; skipped: nu
 
 /** What the trial's log says about the sidecar: how many gbrain events, how many were tool calls, how many of those
  *  fell inside a turn window (started_seq, ended_seq], how many were writes, how many search replies gbrain stamped
- *  degraded. The events themselves are the record. Surface, install and embeddings are the resolved cell fields. */
+ *  degraded. The events themselves are the record. Surface, install and embeddings are the resolved cell fields. Every count
+ *  is split by caller: QM memory-provider events go to events.provider, the rest stay top level as the model's. */
 export function gbrainSummary(config: ResolvedGbrain | GbrainCellSurface, sidecar: Pick<GbrainSidecar, 'image' | 'ready_ms'> & Partial<Pick<GbrainSidecar, 'image_id' | 'brain' | 'scope'>>, events: WorldEvent[], windows: TurnWindow[]): TrialGbrain {
   const resolved: ResolvedGbrain = typeof config === 'string' ? resolveGbrain({ surface: config }) : config;
   const mine = events.filter((e) => e.via === 'gbrain');
   // The world's own writes into the brain are runner events, not gbrain ones; they are counted apart from the harness's calls.
   const ingests = events.filter((e) => e.via === 'runner' && e.tool === 'gbrain.ingest');
-  const calls = mine.filter((e) => e.tool !== 'gbrain.initialize' && e.tool !== 'gbrain.tools/list');
-  const inTurn = calls.filter((e) => windows.some((w) => e.seq > w.started_seq && e.seq <= w.ended_seq));
-  const degraded = calls.filter((e) => GBRAIN_SEARCH_TOOLS.has(e.tool) && typeof (e.effect as { degraded?: unknown } | undefined)?.degraded === 'string').length;
-  const writes = calls.filter((e) => GBRAIN_WRITE_TOOLS.has(e.tool.slice('gbrain.'.length)));
-  // internal-task: a failed write is counted by its error code (storage_error while member-source page writes fail, #161), never silent.
-  const writeErrors: Record<string, number> = {};
-  for (const e of writes) if (e.outcome !== 'ok') writeErrors[e.error ?? 'error'] = (writeErrors[e.error ?? 'error'] ?? 0) + 1;
+  const count = (own: WorldEvent[]): TrialGbrainEvents => {
+    const calls = own.filter((e) => e.tool !== 'gbrain.initialize' && e.tool !== 'gbrain.tools/list');
+    const inTurn = calls.filter((e) => windows.some((w) => e.seq > w.started_seq && e.seq <= w.ended_seq));
+    const degraded = calls.filter((e) => GBRAIN_SEARCH_TOOLS.has(e.tool) && typeof (e.effect as { degraded?: unknown } | undefined)?.degraded === 'string').length;
+    const writes = calls.filter((e) => GBRAIN_WRITE_TOOLS.has(e.tool.slice('gbrain.'.length)));
+    // internal-task: a failed write is counted by its error code (storage_error while member-source page writes fail, #161), never silent.
+    const writeErrors: Record<string, number> = {};
+    for (const e of writes) if (e.outcome !== 'ok') writeErrors[e.error ?? 'error'] = (writeErrors[e.error ?? 'error'] ?? 0) + 1;
+    return { total: own.length, discovery: own.length - calls.length, calls: calls.length, in_turn_calls: inTurn.length, writes: writes.length, ...(Object.keys(writeErrors).length ? { write_errors: writeErrors } : {}), ...(resolved.embeddings !== 'off' ? { degraded } : {}) };
+  };
+  // QM's memory-provider client (caller "provider") is counted apart, so the top-level counts are the model's own gbrain use.
+  const provider = mine.filter((e) => e.caller === 'provider');
   return {
     surface: resolved.surface, image: sidecar.image, sidecar_ready_ms: sidecar.ready_ms,
     ...(sidecar.image_id ? { image_id: sidecar.image_id } : {}), ...(sidecar.brain ? { brain: sidecar.brain } : {}), ...(sidecar.scope ? { scope: sidecar.scope } : {}),
     ...(resolved.access ? { access: resolved.access } : {}),
     install: resolved.install, embeddings: resolved.embeddings,
     ...(resolved.ingest !== 'off' ? { ingest: resolved.ingest, ingested: ingestedCounts(ingests) } : {}),
-    events: { total: mine.length, discovery: mine.length - calls.length, calls: calls.length, in_turn_calls: inTurn.length, writes: writes.length, ...(Object.keys(writeErrors).length ? { write_errors: writeErrors } : {}), ...(resolved.embeddings !== 'off' ? { degraded } : {}) },
+    events: { ...count(mine.filter((e) => e.caller !== 'provider')), ...(provider.length ? { provider: count(provider) } : {}) },
   };
 }
 type GbrainCellSurface = ResolvedGbrain['surface'];

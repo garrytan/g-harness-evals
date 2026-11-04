@@ -36,6 +36,11 @@ export interface WorldEvent {
    *  query (the model's own memory search through the provider, which does not), write (a write tool, such as QM's explicit
    *  capture through the provider's write operation; no delivery is recorded), or unknown (the cell named no max_chars_arg). */
   provider_op?: 'recall' | 'query' | 'write' | 'unknown';
+  /** C4 gate 4 deviation, provider recall events only, present when the tap trimmed the recall's question before forwarding
+   *  (trimProviderQuestion in gbrain-tap.ts): the length QM sent, the length of the Current message part alone (trim only,
+   *  capped), the member's own text between our preamble's markers (null when absent), the length gbrain got, and which
+   *  part was kept. */
+  question_trim?: { original_chars: number; trim_only_chars: number; member_text_chars: number | null; sent_chars: number; kept: 'member_text' | 'current_message' | 'head' };
 }
 
 export function canonical(value: unknown): string {

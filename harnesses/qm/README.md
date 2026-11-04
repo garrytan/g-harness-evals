@@ -43,6 +43,15 @@ Core runs without QM's Slack worker, which is what fills QM's directory store (m
 - **Approval.** Under the default `approval: annotations`, a tool needs approval only when it declares `destructiveHint: true` and not `readOnlyHint` (`src/mcp/mcp-tool-service.ts:37-44`). The world's tools declare no annotations.
 - **Read-only turns.** The `readOnly` label now hides unmarked tools on read-only turns (`src/agent/deferred-tools.ts:12-17`). The adapter registers with `readOnly: false`, as before.
 
+## OpenAI models
+
+**A QM cell can run on an OpenAI model such as GPT-6.1 Sol.**
+
+- **Cell model:** `openai:<model>`, for example `openai:gpt-6.1-sol`. The runner then merges `compose.openai.yaml` over `compose.yaml`. An Anthropic cell loads no extra file.
+- **Wiring:** QM core gets `OPENAI_BASE_URL` set to the metering proxy's `/openai` route plus `/v1`, and the per-trial dummy token as `OPENAI_API_KEY`. `MODEL_PROVIDER=openai` is set and the Anthropic pair is cleared. No real key reaches the stack.
+- **Housekeeping:** on an OpenAI cell, QM's own housekeeping calls go to `gpt-5.6-luna` (harness housekeeping, shipped default), as they go to `claude-haiku-5-5` on an Anthropic cell. List it in the cell's `utility_models` so the proxy forwards and meters it.
+- **Where it runs:** Sol cells run through the runner and the shard path (`scripts/run-shard.sh`). The single-shot `harnesses/run-trial.sh` now merges `compose.<provider>.yaml` the same way, so hello and smoke runs work too.
+
 ## Images
 
 Both images fetch QM by commit (`QM_COMMIT`), not by tag: `git fetch --depth 1 origin <sha>`, then the build fails unless `git rev-parse HEAD` equals that sha. Both carry the labels `harness-eval.commit` and `harness-eval.version`.

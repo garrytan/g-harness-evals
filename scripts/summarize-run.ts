@@ -198,26 +198,32 @@ for (const cell of cells) {
   (summary.cells as Record<string, unknown>)[cell] = { n: ts.length, passes, pass_rate: probe ? null : rate.rate, ci95: probe ? null : [rate.lower, rate.upper], task_clusters: rate.clusters, ...(probe ? { probe: true } : {}), consent_violations: cv, approval_stops: stops.length, valid_approval_stops: validStops, terminations: Object.fromEntries(term), excluded, cross_scope_read_failures: xscope, refused_requests: refused, usd_total: total, usd_median: median(usage.map((u) => u.usd)), usd_per_success: passes ? total / passes : null, tokens, wall_median_s: wall, trial_ids: everything.map((t) => t.trial_id), gbrain };
 }
 out.push('');
+const counts = (m: Record<string, number>) => Object.entries(m).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([k, v]) => `${k} ${v}`).join(', ') || '0';
+const sum = (m: Record<string, number>) => Object.values(m).reduce((s, n) => s + n, 0);
 const gbrainCells = cells.map((cell) => [cell, (summary.cells as Record<string, { gbrain: ReturnType<typeof gbrainUsage> }>)[cell]!.gbrain] as const);
-if (gbrainCells.some(([, g]) => g.calls_total > 0 || g.trials_with_tools_list > 0)) {
+if (gbrainCells.some(([, g]) => g.calls_total > 0 || g.trials_with_tools_list > 0 || g.provider)) {
   out.push('| Cell | Trials with gbrain calls | Trials that listed tools | Calls (median / trial, total) | Tools called | Pages per call (median) | Latency (median ms) | Errors | Writes | Cross-scope reads via gbrain / via world | Event logs read |');
   out.push('|---|---|---|---|---|---|---|---|---|---|---|');
   for (const [cell, g] of gbrainCells) {
     const tools = Object.entries(g.tools).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ') || 'none';
     out.push(`| ${cell} | ${g.trials_with_calls} | ${g.trials_with_tools_list} | ${g.calls_median_per_trial} / ${g.calls_total} | ${tools} | ${g.pages_per_call_median} | ${g.latency_ms_median} | ${g.errors} | ${g.writes}${g.write_errors ? ` (failed: ${Object.entries(g.write_errors).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([k, v]) => `${k} ${v}`).join(', ')})` : ''} | ${g.cross_scope_reads.via_gbrain} / ${g.cross_scope_reads.via_world} | ${g.events_read} of ${g.trials} |`);
   }
+  const providerCells = gbrainCells.filter(([, g]) => g.provider);
+  if (providerCells.length) {
+    out.push('', 'The table counts the model\'s own gbrain calls. QM\'s memory-provider client (caller provider) is counted apart:', '');
+    for (const [cell, g] of providerCells) out.push(`- ${cell}: ${g.provider!.calls_total} provider call(s) in ${g.provider!.trials_with_calls} trial(s) (${counts(g.provider!.tools)}), ${g.provider!.errors} error(s), ${g.provider!.writes} write(s)`);
+  }
 } else {
   out.push(`gbrain: no via gbrain event in any cell (${gbrainCells.reduce((s, [, g]) => s + g.events_read, 0)} of ${allRows.length} event logs read).`);
 }
 out.push('');
-const counts = (m: Record<string, number>) => Object.entries(m).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([k, v]) => `${k} ${v}`).join(', ') || '0';
-const sum = (m: Record<string, number>) => Object.values(m).reduce((s, n) => s + n, 0);
-if (gbrainCells.some(([, g]) => g.unmapped_slugs > 0 || sum(g.scope_leaks.by_grant) > 0)) {
+if (gbrainCells.some(([, g]) => g.unmapped_slugs + (g.provider?.unmapped_slugs ?? 0) > 0 || sum(g.scope_leaks.by_grant) > 0)) {
   out.push('| Cell | Unreadable rows from search/query (by kind) | Unreadable pages opened, returned (by kind) | Unreadable pages opened, refused by gbrain (by kind) | Offending reads by grant | Pages returned by kind | Unmapped slugs |');
   out.push('|---|---|---|---|---|---|---|');
   for (const [cell, g] of gbrainCells) {
     const l = g.scope_leaks;
-    const unmapped = g.unmapped_slugs ? `${g.unmapped_slugs} (nonzero: map these slugs before publishing this cell's leak counts)` : '0';
+    const unmappedSlugs = g.unmapped_slugs + (g.provider?.unmapped_slugs ?? 0);
+    const unmapped = unmappedSlugs ? `${unmappedSlugs} (nonzero: map these slugs before publishing this cell's leak counts)` : '0';
     out.push(`| ${cell} | ${sum(l.search_rows)}: ${counts(l.search_rows)} | ${sum(l.opened_returned)}: ${counts(l.opened_returned)} | ${sum(l.opened_refused)}: ${counts(l.opened_refused)} | ${counts(l.by_grant)} | ${counts(g.pages_by_kind)} | ${unmapped} |`);
   }
   out.push('');

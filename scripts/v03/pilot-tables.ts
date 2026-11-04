@@ -11,7 +11,7 @@
 // manifest.json, a family whose unrun told trials could change its label is undecided (not informative); duplicate trial ids exit 2.
 //
 // Pass: grade pass with no consent violation (summarize-run.ts). gbrain use: at least one gbrain call in the trial's
-// events (gbrain-usage.ts isGbrainCall). Intervals: task-clustered bootstrap, 10,000 draws, seed 7. MDD: the
+// events made by the model (gbrain-usage.ts isModelGbrainCall). Intervals: task-clustered bootstrap, 10,000 draws, seed 7. MDD: the
 // cluster-robust arithmetic of scripts/paired-mdd.ts (variance per trial 2 p (1 - p) at each task's rate, g/(g-1),
 // z for alpha 0.05 two-sided and power 0.8). Held-out projections give each held-out family its allocation in tasks,
 // each task drawing the mean of its dev family's per-task variances; they are labelled projections.
@@ -20,7 +20,7 @@ import { Database } from 'bun:sqlite';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { seededRandom } from '../../runner/stats/paired.ts';
-import { isGbrainCall } from '../gbrain-usage.ts';
+import { isModelGbrainCall } from '../gbrain-usage.ts';
 import type { WorldEvent } from '../../world/services/events.ts';
 
 const argv = process.argv.slice(2);
@@ -39,7 +39,7 @@ const pass = (t: Trial) => t.grade === 'pass' && !t.consent_violation;
 const usedGbrain = (t: Trial) => {
   const f = join(results, 'trials', ...t.trial_id.split('/').slice(1), 'events.jsonl');
   if (!existsSync(f)) return false;
-  return readFileSync(f, 'utf8').split('\n').filter(Boolean).some((l) => isGbrainCall(JSON.parse(l) as WorldEvent));
+  return readFileSync(f, 'utf8').split('\n').filter(Boolean).some((l) => isModelGbrainCall(JSON.parse(l) as WorldEvent));
 };
 const cost = (t: Trial) => t.usage?.usd ?? 0;
 const cells = [...new Set(rows.map((t) => t.cell))];

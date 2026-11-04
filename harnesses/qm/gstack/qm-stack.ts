@@ -1,13 +1,15 @@
 // Keyless QM core stack and signed admin client for the gstack-on-QM scripts
-// (smoke.ts, s1-stage.ts). The stack is harnesses/qm/compose.yaml with only the
-// pg and core services up: no task container, no world. Core gets a dummy
-// model key and the URL of the fake Anthropic endpoint, never a real key.
+// (smoke.ts, s1-stage.ts, s1-probe.ts). The stack is harnesses/qm/compose.yaml
+// with only the pg and core services up: no task container, no world. Core gets
+// either a dummy model key and the URL of the fake Anthropic endpoint, or the
+// metering proxy's per-trial token and slot URL (s1-probe.ts); never a real key.
 // Requests are signed the way harnesses/qm/qm-api.mjs signs them:
 // x-signature = v0=HMAC-SHA256(secret, "v0:<ts>:<METHOD>\n<path>\n<body>").
 import { createHmac } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { TRIAL_TOKEN_PREFIX } from '../../../runner/trial/proxy.ts';
 
 export const ROOT = resolve(import.meta.dir, '..', '..', '..');
 export const COMPOSE_FILE = join(ROOT, 'harnesses', 'qm', 'compose.yaml');
@@ -50,6 +52,9 @@ export function qmClient(url: string, secret: string, actor = ADMIN_ACTOR): QmCa
 export interface StackOptions {
   out: string; project: string; modelBaseUrl: string; modelKey: string;
   modelName?: string; corePort?: number; pgPort?: number; coreImage?: string; sandboxImage?: string;
+  /** The cell model's provider. compose.<provider>.yaml beside compose.yaml is merged over it, as runner/trial/docker.ts
+   *  does (compose.openai.yaml: core calls OpenAI through modelBaseUrl + /v1 with modelKey). */
+  modelProvider?: string;
 }
 /** down() removes only the sandbox containers passed to own() (QM's machineId is the container name), never another stack's or a trial's. createSandbox owns the machineId the call returns; when the call returns none, down() removes, once core is stopped, only the sandboxes that appeared after the call started and whose name carries the sandbox id the call returned (attributeSandboxes), and leaves every other one in place with a line on stderr. */
 export interface Stack { url: string; secret: string; project: string; coreImage: string; sandboxImage: string; own(machineId: string): void; createSandbox(create: () => Promise<Call>): Promise<Call>; down(): void }
@@ -109,7 +114,7 @@ export function lockHost(keys: string[], dir = '/tmp'): () => void {
 }
 
 export async function upStack(o: StackOptions): Promise<Stack> {
-  if (!o.modelKey.startsWith(DUMMY_KEY_PREFIX)) throw new Error('the stack takes only a dummy model key (' + DUMMY_KEY_PREFIX + '...)');
+  if (!o.modelKey.startsWith(DUMMY_KEY_PREFIX) && !o.modelKey.startsWith(TRIAL_TOKEN_PREFIX)) throw new Error('the stack takes only a dummy model key (' + DUMMY_KEY_PREFIX + '...) or a metering proxy trial token (' + TRIAL_TOKEN_PREFIX + '...), never a provider key');
   const dirs = { state: join(o.out, 'state'), logs: join(o.out, 'logs'), turns: join(o.out, 'turns'), workspace: join(o.out, 'workspace') };
   for (const d of Object.values(dirs)) mkdirSync(d, { recursive: true });
   const corePort = o.corePort ?? 58080;
@@ -127,7 +132,9 @@ export async function upStack(o: StackOptions): Promise<Stack> {
     HE_MODEL_API_KEY: o.modelKey, HE_MODEL_BASE_URL: o.modelBaseUrl, HE_MODEL_NAME: o.modelName ?? 'claude-haiku-5-5',
     QM_CORE_PORT: String(corePort), QM_PG_PORT: String(pgPort), QM_IMAGE: coreImage, QM_SANDBOX_IMAGE: sandboxImage,
   };
-  const dc = (...args: string[]) => spawnSync('docker', ['compose', '-f', COMPOSE_FILE, '-p', o.project, ...args], { encoding: 'utf8', env, maxBuffer: 256 * 1024 * 1024 });
+  const providerFile = o.modelProvider ? COMPOSE_FILE.replace(/\.yaml$/, '.' + o.modelProvider + '.yaml') : null;
+  const files = ['-f', COMPOSE_FILE, ...(providerFile && existsSync(providerFile) ? ['-f', providerFile] : [])];
+  const dc = (...args: string[]) => spawnSync('docker', ['compose', ...files, '-p', o.project, ...args], { encoding: 'utf8', env, maxBuffer: 256 * 1024 * 1024 });
   const unlock = lockHost([o.project, 'port-' + corePort, 'port-' + pgPort]);
   const url = `http://127.0.0.1:${corePort}`;
   const owned = new Set<string>();

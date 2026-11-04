@@ -172,7 +172,10 @@ Every gbrain event then carries `caller`; a provider event also `provider_actor`
 for a gbrain write tool, `unknown` without the option); a provider read carries `effect.delivery` (which of
 `effect.facts` reached QM's turn after its cap, error handling and timeout, and which gbrain returned in the text QM
 takes, never a fact only in `_meta`), and a model `tools/call` carries
-`effect.returned_by_gbrain` (the facts gbrain returned, an upper bound on what the model saw). Without
+`effect.returned_by_gbrain` (the facts gbrain returned, an upper bound on what the model saw). A provider
+recall whose question is over gbrain's 2,000-character limit is the one body the tap changes (`trimProviderQuestion`,
+a C4 gate 4 deviation): it forwards the member's own text between the preamble markers, else the text after the last
+`Current message: `, cut to 2,000 characters, and records `question_trim` on the event. Without
 `provider` the events are unchanged. The design is in [docs/gbrain-arm.md](../docs/gbrain-arm.md), "QM's memory
 provider".
 
