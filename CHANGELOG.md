@@ -2,6 +2,13 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.124] - 2026-11-04
+
+### internal-task: the Opus gstack steps finding gains internal-task's hook-test result
+
+- `findings/2026-11-02-opus-gstack-steps-not-followed.md`: an update section at the top, from internal-task's preregistered run `gates938-phase3` (#244). The verdict is still FIX-METHOD, because the reproduce-first gate did not bind Opus 5.5, which wrote source through Bash past it 40 times, and the gate is NOT ADDED. It keeps the lost-trial caveat next to Opus's +7.14 (about -0.3 had the 11 reaped trials counted) and Sol's floor (no gstack 1 of 22). The Captain's call that the skill-steps cut does not go to Garry is recorded, and the closing Disclosures section gains the OpenAI line, since GPT-6.1 Sol results now appear.
+- `README.md` and `findings/README.md`: the finding's lines name the hook test's result.
+
 ## [0.0.123] - 2026-11-04
 
 ### internal-task qm train: QM gstack smoke, provider preflight, provider-aware scoring, C4 wiring (internal-task)

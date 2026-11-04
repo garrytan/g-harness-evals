@@ -6,12 +6,12 @@
 
 ## Found so far, on a frontier model (Opus 5.5)
 
-- **gstack's skills reach Opus 5.5, but their steps don't run.** In three checks, the skill text loaded in every gstack session, and no session ran a single skill step: **0 of 46** (descriptive; Wilson 95% upper bound about 0.077). gstack cost about **2 times** as much per trial as no gstack. Caveat: the deciding check used easy tasks (14 of 16 passes on every arm), and the hard check is void ([report](docs/benchmarks/2026-11-01-opus-gstack-follow/report.md)). Verdict FIX-METHOD: no gstack already passed nearly every task, so these runs had no room to show a gain, and hook-enforced steps on harder tasks are under test ([finding](findings/2026-11-02-opus-gstack-steps-not-followed.md)).
+- **gstack's skills reach Opus 5.5, but their steps don't run.** In three checks, the skill text loaded in every gstack session, and no session ran a single skill step: **0 of 46** (descriptive; Wilson 95% upper bound about 0.077). gstack cost about **2 times** as much per trial as no gstack. Caveat: the deciding check used easy tasks (14 of 16 passes on every arm), and the hard check is void ([report](docs/benchmarks/2026-11-01-opus-gstack-follow/report.md)). Verdict FIX-METHOD: no gstack already passed nearly every task, so these runs had no room to show a gain ([finding](findings/2026-11-02-opus-gstack-steps-not-followed.md)). A hook that blocks edits until a failing repro runs didn't fix it: Opus wrote source through Bash, past the hook, 40 times, and the hook is not added to gstack ([report](docs/benchmarks/2026-11-03-investigate-gate/report.md)).
 - **A start hook gets agents to run gstack's start command.** On Hermes, with gstack v1.92.57.0 and the Tirith scanner pinned: **8 of 16** trials against 0 of 16 for gstack without the hook, **+0.50 [0.21, 0.72]**, all 8 on one of the three tasks. On OpenClaw: 16 of 16 against 1 of 16. Task success was 16 of 16 in every arm, so these tasks can't show a success gain ([Hermes rerun](docs/benchmarks/2026-11-01-tool-discipline-start/report-hermes-r2.md), [first panel](docs/benchmarks/2026-11-01-tool-discipline-start/report.md)).
 - **Our v0.3 multi-user tasks are too easy for Opus 5.5.** Four of six task families scored above 90 percent. Only corrections (9 of 40) and approval relay (26 of 30) landed in the 10 to 90 percent band. So the sealed v0.3 set stays unopened, and the next set must put facts where only memory reaches them ([report](docs/benchmarks/2026-10-31-v03-opus-dev/report.md)).
 - **Scoping a shared brain still matters on Opus.** With one bot-wide gbrain token, search returned 123 (OpenClaw) and 121 (Hermes) rows the asker was not allowed to see. Scoped to the asker: 0 (same report, descriptive).
 
-**All four are dev runs or uncounted checks on public tasks.** They steer our work and prove nothing on unseen tasks. No GPT-6.1 Sol arm has reported yet. Older results on Sonnet 5.5 and Haiku 5.5 are in the [appendix](#appendix-sonnethaiku-runs-appendix-grade-not-frontier-evidence).
+**All four rest on dev runs, uncounted checks or, for the hook test, one preregistered run, all on public tasks.** They steer our work and prove nothing on unseen tasks. The hook test is the first line here with a GPT-6.1 Sol arm, and every Sol arm in it sat near the floor. Older results on Sonnet 5.5 and Haiku 5.5 are in the [appendix](#appendix-sonnethaiku-runs-appendix-grade-not-frontier-evidence).
 
 ## What each harness sends the model
 
@@ -263,7 +263,7 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 
 | Question | Where to start |
 |---|---|
-| What did the newest frontier runs find? | [gstack follow-rate](docs/benchmarks/2026-11-01-opus-gstack-follow/report.md), [start hook](docs/benchmarks/2026-11-01-tool-discipline-start/report-hermes-r2.md), [v0.3 on Opus](docs/benchmarks/2026-10-31-v03-opus-dev/report.md) |
+| What did the newest frontier runs find? | [investigate gate](docs/benchmarks/2026-11-03-investigate-gate/report.md), [gstack follow-rate](docs/benchmarks/2026-11-01-opus-gstack-follow/report.md), [start hook](docs/benchmarks/2026-11-01-tool-discipline-start/report-hermes-r2.md), [v0.3 on Opus](docs/benchmarks/2026-10-31-v03-opus-dev/report.md) |
 | What exactly did the first counted cell find, with its limits in one page? | [docs/report-v0.1.md](docs/report-v0.1.md) |
 | Which results are written up as standalone claims, each with its grade, cost, Why null? and replication commands? | [findings/README.md](findings/README.md) |
 | What is the trial contract every runner, adapter and grader implements? | [docs/methodology.md](docs/methodology.md) |
@@ -394,6 +394,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 **Contributing.** Outside code is read as text and rewritten by maintainers, never merged as is; bug reports need a repro on current main or a failing test ([CONTRIBUTING.md](CONTRIBUTING.md)). Report security issues privately ([SECURITY.md](SECURITY.md)). Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Changelog
+
+### 2026-11-03: Opus gstack steps line names the hook test
+
+The Opus gstack steps line in "Found so far" gains the hook-enforced test's result (internal-task, #244): Opus wrote source through Bash past the hook 40 times, and the hook is not added, with a link to its report. "Where to read next" links the same report first among the newest frontier runs. The note under "Found so far" now says the hook test is a preregistered run and the first line with a GPT-6.1 Sol arm. Why: the finding file now carries that result, and that run is now the newest frontier run.
 
 ### 2026-11-02: installer rung for Claude Code and Codex reported
 

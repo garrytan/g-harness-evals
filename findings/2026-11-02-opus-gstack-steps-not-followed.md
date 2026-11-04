@@ -8,15 +8,34 @@ repo_commit: b7d6e3684d64a99ad1841d0db0e6f38dddc258ce
 prereg: "none. Decision rules frozen before the first trial of each run, committed with the receipts: docs/benchmarks/2026-11-01-opus-gstack-follow/results/gn-follow-2026-11/decision-rule.md (sha256 in decision-rule.sha256), gn-follow-preset-2026-11/decision-rule.md, gn-hard-follow-2026-11/decision-rule.md"
 data: "in-repo receipts, no separate bundle. trials.jsonl sha256: gn-follow-2026-11 11d6ddfaaf73fa48346e011547c2f4ba5ffe8f68b97852ba0ccd967820433594; gn-follow-preset-2026-11 901c7d1357e69bdde717550b64d6b20d7dc5cfa10eeba97a2e066b5078923242; gn-hard-follow-2026-11/gstack 36cdcc60818ffb77a2c1c1000ad08d279f81f3c4fd40b510762b2f2011cbe20c; gn-hard-follow-2026-11/none c42b301c7e21b94d336a36a49443697718817f086ab2b549641053d19df7e92c"
 author: "internal-task, from internal-task's report (#224)"
-reviewed_by: "internal-task claim check with a GPT-6.1 Sol reader, 2026-11-02, PASS-WITH-EDITS (edits applied in this version); recheck PASS 2026-11-02"
-disclosures: "Garry's disclosure line is in the closing Disclosures section at the end of the file. Anthropic gets no line. No OpenAI model was tested, so there is no OpenAI line."
+reviewed_by: "internal-task claim check with a GPT-6.1 Sol reader, 2026-11-02, PASS-WITH-EDITS (edits applied in this version); recheck PASS 2026-11-02; internal-task update checked 2026-11-03 by one GPT-6.1 Sol claim-check reader in two rounds, edits applied"
+disclosures: "The gstack and OpenAI disclosure lines are in the closing Disclosures section at the end of the file. Anthropic gets no line."
 ---
 
 # Told to run gstack's /investigate, /qa, /review or /ship, Claude Opus 5.5 loaded the skill text every time and ran none of its steps: 0 of 46 gstack sessions across three uncounted checks (deciding check 0 of 16, Wilson 95% upper bound 0.194), at about twice the cost per trial of no gstack
 
-**Status:** draft, not posted. Claim check PASS-WITH-EDITS (2026-11-02), edits applied; the recheck of the edited lines passed the same day. Opus 5.5 only: no GPT-6.1 Sol arm ran.
+**Status:** draft, not posted. Claim check PASS-WITH-EDITS (2026-11-02), edits applied; the recheck of the edited lines passed the same day. The three original checks ran Opus 5.5 only. The 2026-11-03 update below adds internal-task's preregistered run, which ran Opus 5.5 and GPT-6.1 Sol; its claim check is under Claim check.
 
 **gstack's skill text reached Opus 5.5 in every session, and Opus did not run its steps.** In 46 gstack sessions across three checks, no session ran a single step of the skill it was told to use. The checks are small and their tasks were easy for Opus 5.5, so this says the steps were not followed, not that following them would or would not help.
+
+## Update, 2026-11-03: the hook-enforced test (internal-task)
+
+**Verdict: FIX-METHOD. A hook that blocks source edits until a failing repro has run did not get Opus 5.5 to follow /investigate's reproduce-first step, because Opus wrote source through Bash, past the gate, 40 times.** The gate is NOT ADDED to gstack. Source: internal-task's preregistered run `gates938-phase3` ([report](../docs/benchmarks/2026-11-03-investigate-gate/report.md), #244, merged as `62c468066`).
+
+- **How Opus got past the gate.** The gate wrote state in all 28 of Opus's gated sessions and denied edits 25 times. Opus then changed source through Bash 40 times, which the gate does not treat as an edit. Opus bound a hypothesis in 13 of 28 gated sessions. GPT-6.1 Sol bound one in 33 of 33, with no Bash-edit bypass.
+- **Follow.** With the gate, Opus followed reproduce-first in 2 of 28 sessions (7.1%), under the prereg's 75% bar. With gstack and no gate, Opus followed in 4 of 28. Sol followed in 29 of 33 with the gate, but already in 25 of 32 without it and 18 of 22 with no gstack.
+- **Pass rate, gate minus no gate.** Pooled: +1.28 points, 95% CI [-3.80, +6.35]. KEEP needed at least +10 with the lower bound above 0.
+  - **Opus: +7.14 [0.0, +16.67], but about -0.3 if the 11 Opus trials lost to the VM reaper had counted.** They are INFRA under the prereg, so +7.14 stands as reported, but it does not support a gain. The 0.0 bound is structural: the gate matched or beat no gate in all 10 Opus units.
+  - **Sol: -3.22 [-9.66, 0.0].** Sol's no-gstack arm sat near the floor, passing 1 of 22 (4.5%), and every Sol arm sat near zero. That makes a gain hard to detect on Sol, not impossible.
+- Opus with no gstack passed 6 of 19 (31.6%), clearly below the top, so on Opus this run had headroom.
+- **Clean control.** 0 of 41 no-gstack sessions read any gstack file.
+- **Spend:** $254.31 of the $300 cap. The prereg's repair and rerun do not fit under the cap, and internal-task confirmed there is no rerun.
+
+The report's verdict line, word for word:
+
+> `Verdict: FIX-METHOD (gate Bash-mediated source writes as edits; pick tasks where Sol N is well above the floor)`
+
+**What it means for this finding.** internal-task was the one ceiling-raise R61 allows. On Opus it had headroom, but the gate did not bind, so it did not cleanly test enforcing skill steps with a hook. On Sol, every arm stayed near the floor. The Captain decided on 2026-11-03 that the skill-steps cut does not go to Garry; no prereg rule makes that call. The open test is a gate that also treats Bash-mediated source writes as edits.
 
 ## What we found
 
@@ -86,7 +105,9 @@ disclosures: "Garry's disclosure line is in the closing Disclosures section at t
 1. **Exposure: yes, it reached the model.** The router and the invoked skill were listed in all 48 gstack sessions, and the body-load gate passed at rate 1 in all three runs. Claude Code's own prompt reached the model in the preset and hard runs (6,340 and 6,338 characters in their dry runs). The model acted on the top of the skill, then skipped every step.
 2. **Fit: the right kinds of task, but too easy.** The dev tasks are the four skills' own types, but every arm passed 14 of 16. SWE-bench Verified bug fixes are what `/investigate` is written for, and Opus 5.5 still solved all 8 with no gstack, so that check is VOID.
 3. **Power and saturation: the follow measure has power; the pass rate has none.** The deciding run's upper bound (0.194) is well below the 0.60 STOP line. The pass-rate contrast has no power. The no-gstack control passed 14 of 16 in both dev runs (87.5%) and 8 of 8 in the hard check. Every dev task sat at 0 of 2 or 2 of 2 on the control, so a paired test has no informative task, and a two-proportion MDD at 16 sessions per arm (80% power, two-sided 0.05) is about 33 points, more than the 12.5 points of headroom. The hard control has no headroom. Per-skill bounds are wide, about 0.49 at 0 of 4.
-4. **Model: frontier only.** Opus 5.5 is the only model tested. GPT-6.1 Sol was not run. There is no Haiku or Sonnet arm.
+4. **Model: frontier only.** Opus 5.5 is the only model tested in these three checks. GPT-6.1 Sol was not run in them (internal-task, in the update above, ran both). There is no Haiku or Sonnet arm.
+
+**Verdict on 2026-11-02, before internal-task's results.**
 
 FIX-METHOD (R61): gstack's skill step procedures (/investigate, /qa, /review, /ship) on Opus 5.5, as delivered by skill text alone. The headline fact stands: 0 of 46 gstack sessions ran any step, an observed zero with power (deciding check 0 of 16, upper bound 0.194). But the null rests on saturation, because the no-gstack control passed 14 of 16 on the dev tasks and 8 of 8 on the hard check. The hard check was meant to raise the ceiling, but it ran before R61, without a headroom check first, and came back VOID. internal-task ruled that it does not count as R61's one attempt. The ceiling-raise is internal-task, which tests hook-enforced steps on tasks where no gstack sits clearly below the top, with a headroom pilot first. If internal-task has headroom and the skill-text arm still shows no gain over no gstack, the cut of steps delivered as text alone goes to Garry.
 
@@ -94,7 +115,7 @@ FIX-METHOD (R61): gstack's skill step procedures (/investigate, /qa, /review, /s
 
 > CUT-CANDIDATE: gstack's skill step procedures (/investigate, /qa, /review, /ship) on Opus 5.5, as delivered by skill text alone. The body loads in every session, and 0 of 46 gstack sessions across three checks ran any step (0 of 30 with Claude Code's own system prompt; /investigate 0 of 22; under the preset, /qa, /review and /ship are each 0 of 4, so per-skill bounds are wide (about 0.49)). The deciding run (preset, STOP, 0 of 16) is on gstack-native-v1 dev tasks that Opus 5.5 nearly saturates. The hard-task check was VOID (no-gstack passed 8/8), so its 0 of 14 is descriptive. The fix to test is enforcing the steps with hooks, or dropping them.
 
-**What happens next.** The fix under test is hook-enforced steps: hooks that make the harness run the skill's steps instead of leaving them to the text (Garry approved A1 on internal-task, "GStack Minder plans hook-enforced steps", with "Do it" on 2026-11-02; the plan is tracked as internal-task). internal-task is running it as internal-task, which is also the ceiling-raise R61 asks for. Its results will follow in a later finding.
+**What happened next.** The fix tested next was hook-enforced steps: hooks that make the harness run the skill's steps instead of leaving them to the text (Garry approved A1 on internal-task, "GStack Minder plans hook-enforced steps", with "Do it" on 2026-11-02; the plan is tracked as internal-task). internal-task ran it as internal-task, the ceiling-raise R61 asks for. Its results are in the update at the top of this file.
 
 ## Limits and threats
 
@@ -151,6 +172,7 @@ FIX-METHOD (R61): gstack's skill step procedures (/investigate, /qa, /review, /s
 - **2026-11-02, PASS-WITH-EDITS.** A cross-family claim check by the gstack-evals crew (internal-task, one round, with a GPT-6.1 Sol reader) on a clean clone at `f40a60f`. `recompute.py` printed MATCH, all four digests matched, and every count, interval, cost and token median matched the receipts. Its seven line edits are applied here.
 - **2026-11-02, recheck at `bbfa08f`: PASS.** The gstack-evals crew read every edited line, and asked for one README wording edit, which is applied.
 - **2026-11-02, R61 recheck: PASS-WITH-EDITS.** After the verdict changed to FIX-METHOD, the gstack-evals crew (internal-task) read the verdict paragraph and the README, index and CHANGELOG lines that carry it. It asked for three exact-string edits, which are applied, and no further recheck.
+- **2026-11-03, internal-task update: two review rounds, edits applied.** One GPT-6.1 Sol claim-check reader read the update against internal-task's report at `62c468066`. Round 1 asked for two edits: Sol's result is described as a floor effect, not as no headroom, and the quoted verdict line now matches the report byte for byte. Round 2 asked for this record. Both rounds' edits are applied.
 
 ## Chart and post
 
@@ -166,7 +188,7 @@ xychart-beta
 
 The post carries the closing Disclosures section at its end; the X hook carries none.
 
-**X hook (draft, not posted):** We told Claude Opus 5.5 to use gstack's /investigate, /qa, /review and /ship skills. The skill text loaded every time. In 46 sessions it ran none of the skills' steps, and its trials cost about twice as much on average. Caveat: the tasks were easy for Opus 5.5. Next: hooks that enforce the steps. (uncounted checks, Opus 5.5 only)
+**X hook (draft, not posted):** We told Claude Opus 5.5 to use gstack's /investigate, /qa, /review and /ship skills. The skill text loaded every time. In 46 sessions it ran none of the skills' steps, and its trials cost about twice as much on average. Caveat: the tasks were easy for Opus 5.5. Then we tried a hook that blocks edits until a failing repro runs. Opus wrote its fixes through Bash instead, past the hook, 40 times. (three uncounted checks and one preregistered run)
 
 ## Changelog
 
@@ -177,8 +199,11 @@ The post carries the closing Disclosures section at its end; the X hook carries 
 - 2026-11-02: the verdict is FIX-METHOD under R61 (internal-task's decision), naming internal-task as the ceiling-raise. internal-task's CUT-CANDIDATE line is kept word for word as the original reading from before R61.
 - 2026-11-02: internal-task's R61 recheck edits applied (PASS-WITH-EDITS). The verdict paragraph says the hard check ran before R61 and that internal-task ruled it does not count as R61's one attempt, and it names the cut that goes to Garry as the cut of steps delivered as text alone, if the skill-text arm shows no gain over no gstack. The recheck is recorded under Claim check.
 
+- 2026-11-03: an update from internal-task's preregistered run (#244): verdict FIX-METHOD, the gate NOT ADDED, Opus's 40 Bash edits past the gate, the lost-trial caveat on Opus's +7.14, Sol's floor, and the Captain's call that the skill-steps cut does not go to Garry. The status line, the X hook and the model line in Why null? now name the GPT-6.1 Sol arm, and the Disclosures section gains the OpenAI line.
+
 ## Disclosures
 
 - The repository and the evaluation are run by Garry Tan. The gstack-evals crew, which runs the claim check, is also his, so the check is not independent of him.
-- No OpenAI model was tested, so there is no OpenAI line. Anthropic gets no line.
+- Anthropic gets no line.
 - gstack is Garry Tan's own project.
+- Disclosure: OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.
