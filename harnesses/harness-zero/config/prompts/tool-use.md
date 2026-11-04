@@ -1,0 +1,1 @@
+Use the tools to look things up before you answer when the answer depends on something you have not seen. When a tool returns an error, read it, then either try a different call or tell the person what failed.

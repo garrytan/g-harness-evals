@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "frozen": "This file is frozen by PR 1a (internal-task): the feature slugs, zero-min, zero-full, zero-full-minus-layers (zero-full with every layer-* switch off, the bundled-layers cell), the knobs and the derivation rule. The Phase C loop never writes it; it writes config/candidates.json only.",
+  "derivation": "zero-full-no-<slug> is zero-full without <slug>, one per feature, derived by setNames() in zero.ts; HE_HARNESS_CONFIG empty means zero-full.",
+  "core": [
+    "loop",
+    "sessions",
+    "model pinning (HE_MODEL_NAME only)",
+    "MCP",
+    "step cap",
+    "one-line identity",
+    "retries"
+  ],
+  "features": [
+    {
+      "slug": "caching",
+      "effect": "anthropic: cache_control on the system block and on the last message block; openai-responses and chat-completions: prompt_cache_key per session key (on or off only)"
+    },
+    {
+      "slug": "tool-search",
+      "effect": "the MCP tools are not sent; tool_search and call_tool are sent instead, and searched tool schemas arrive in tool results, after the cached prefix"
+    },
+    {
+      "slug": "layer-tool-use",
+      "effect": "appends config/prompts/tool-use.md to the system prompt"
+    },
+    {
+      "slug": "layer-safety",
+      "effect": "appends config/prompts/safety.md to the system prompt"
+    },
+    {
+      "slug": "layer-scope",
+      "effect": "appends config/prompts/scope.md to the system prompt"
+    },
+    {
+      "slug": "layer-style",
+      "effect": "appends config/prompts/style.md to the system prompt"
+    },
+    {
+      "slug": "layer-planning",
+      "effect": "appends config/prompts/planning.md to the system prompt"
+    },
+    {
+      "slug": "scoped-notes",
+      "effect": "adds the save_note tool; a new session's system prompt lists the notes saved in the same scope (the session key without :t<thread_ts>)"
+    },
+    {
+      "slug": "output-cap",
+      "effect": "tool results longer than output_cap_bytes are cut, with a marker that says how much was cut (lossy)"
+    },
+    {
+      "slug": "mcp-instructions",
+      "effect": "appends each MCP server's initialize instructions to the system prompt"
+    },
+    {
+      "slug": "effort-high",
+      "effect": "anthropic: thinking adaptive with output_config.effort high; openai-responses: reasoning.effort high; chat-completions: reasoning_effort high"
+    }
+  ],
+  "sets": {
+    "zero-min": [],
+    "zero-full": [
+      "caching",
+      "tool-search",
+      "layer-tool-use",
+      "layer-safety",
+      "layer-scope",
+      "layer-style",
+      "layer-planning",
+      "scoped-notes",
+      "output-cap",
+      "mcp-instructions",
+      "effort-high"
+    ],
+    "zero-full-minus-layers": [
+      "caching",
+      "tool-search",
+      "scoped-notes",
+      "output-cap",
+      "mcp-instructions",
+      "effort-high"
+    ]
+  },
+  "knobs": {
+    "step_cap": {
+      "default": 40,
+      "min": 1,
+      "max": 200,
+      "what": "model requests per turn"
+    },
+    "retry_max": {
+      "default": 6,
+      "min": 0,
+      "max": 10,
+      "what": "retries of one model request on 429, 500, 502, 503, 529 or overloaded, inside the turn budget"
+    },
+    "output_cap_bytes": {
+      "default": 8000,
+      "min": 500,
+      "max": 1000000,
+      "what": "tool result size kept under output-cap"
+    },
+    "max_tokens": {
+      "default": 16000,
+      "min": 1024,
+      "max": 32768,
+      "what": "output token cap per request (under the proxy's --max-output-tokens)"
+    },
+    "wire": {
+      "default": {
+        "anthropic": "anthropic",
+        "openai": "openai-responses",
+        "particle": "chat-completions"
+      },
+      "what": "the wire client per provider (the last segment of HE_MODEL_BASE_URL)"
+    }
+  }
+}

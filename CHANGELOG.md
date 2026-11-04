@@ -2,6 +2,22 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.126] - 2026-11-04
+
+### internal-task: Harness Zero core (PR 1a of 3)
+
+- `harnesses/harness-zero/zero.ts` (new): Harness Zero, a minimal harness with no runtime dependencies beyond Bun built-ins. It speaks three wires (Anthropic Messages, OpenAI Responses, chat completions for Particle), runs MCP tool calls against the world and gbrain servers over JSON or SSE, and serves the file queue the runner uses. Each turn writes one token-free `ZERO_TURN` line to `adapter.log` (steps, stop reason, retries, tool calls and their outcomes, notes written and shown).
+- Exit mapping: a provider 400 or 422 on a request Harness Zero built exits 2 with HE-ZERO-004 and the request id; proxy refusals, 401, a budget refusal, a failed Responses object, and 429 or 5xx after retries are used up exit 3 with HE-ZERO-007. A model answer that breaks off mid-body is retried when its status is 200 or retryable.
+- MCP client: an expired session is re-initialized once and only a known read tool is sent again; a write whose answer was lost, or that was cut off when a turn ended, is reported as an unknown outcome and never replayed. A JSON-RPC error is a definite tool error. A tool counts as a read only when the server marks it read-only or it is on the audited world read list. A failed re-initialize stays HE-ZERO-005 on later calls until the server is back. An SSE answer is read at its event, so a server that keeps the stream open does not hang the call. Under tool-search, `call_tool` arguments sent as a JSON string are parsed, and arguments that are not an object are refused and not run.
+- Sessions and notes: sessions are kept per DM member or channel, and per thread. Notes are scoped to the DM or channel only (the thread suffix is stripped by its numeric form, so ids starting with "t" keep their own scope). A turn that fails after a tool call ran keeps the calls in its history. When the provider rejects a request (HE-ZERO-004), the rejected request is not kept, but the calls that ran before it are, with the last batch's results replaced by a dropped marker, so a write is not forgotten and repeated. A turn that an earlier serve process started and never answered is answered exit 2 (HE-ZERO-006) and is not run again. Session history is not trimmed, so a conversation longer than the model's context window fails with HE-ZERO-004 (accepted for v0.3's three-turn trials; bounding it is a later feature switch).
+- Step cap: when the cap is hit before the model answers without tool calls, the turn exits 0 with no reply and stop reason `step_cap`. An answer with no text and no calls keeps the provider's stop reason when it was cut off at the output limit, and is `empty` otherwise.
+- `effort-high` on the Anthropic wire sends `thinking: {type: adaptive}` with `output_config.effort: high`. Opus 5.5 refuses `thinking.type: enabled` with a 400, so there is no thinking budget knob; the fake upstream now answers `enabled` with the same 400.
+- `config/features.json` (new, frozen): the feature switches, `zero-min`, `zero-full`, `zero-full-minus-layers` (zero-full with the five prompt layers off), the knobs and the rule that derives `zero-full-no-<feature>` sets. `config/candidates.json` (new) is the only file the Phase C loop may write (today `zero-lean`, `zero-conservative` and `zero-control`). Unknown sets, knobs out of range and wire mismatches each print one HE-ZERO-001 to 003 line with the fix, and exit 2 before ready.
+- `explain` prints the first request body, its size and a local token estimate; `--count-tokens <proxy url>` asks the Anthropic count route for the exact number. The candidate hash covers zero.ts, the resolved set with every knob, and every prompt file the set loads.
+- `config/prompts/` (new): the identity prompt and one file per prompt layer.
+- `tests/harness-zero-config.test.ts`, `tests/harness-zero-serve.test.ts`, `tests/harness-zero-wire.test.ts` and `tests/fixtures/harness-zero-fakes.ts` (new): keyless tests through the real metering proxy against a strict fake upstream and a fake MCP server (49 tests).
+- Not yet runnable by the runner: the adapter, image and provenance come in PR 1b.
+
 ## [0.0.125] - 2026-11-04
 
 ### internal-task step 1: the Ubicloud merge lane refuses forks, outside authors and other repos, and reads the ship receipt from the Captain drive
