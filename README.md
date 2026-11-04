@@ -11,7 +11,7 @@
 - **Our v0.3 multi-user tasks are too easy for Opus 5.5.** Four of six task families scored above 90 percent. Only corrections (9 of 40) and approval relay (26 of 30) landed in the 10 to 90 percent band. So the sealed v0.3 set stays unopened, and the next set must put facts where only memory reaches them ([report](docs/benchmarks/2026-10-31-v03-opus-dev/report.md)).
 - **Scoping a shared brain still matters on Opus.** With one bot-wide gbrain token, search returned 123 (OpenClaw) and 121 (Hermes) rows the asker was not allowed to see. Scoped to the asker: 0 (same report, descriptive).
 
-**All four rest on dev runs, uncounted checks or, for the hook test, one preregistered run, all on public tasks.** They steer our work and prove nothing on unseen tasks. The hook test is the first line here with a GPT-6.1 Sol arm, and every Sol arm in it sat near the floor. Older results on Sonnet 5.5 and Haiku 5.5 are in the [appendix](#appendix-sonnethaiku-runs-appendix-grade-not-frontier-evidence).
+**All four rest on dev runs, uncounted checks or, for the hook test, one preregistered run, all on public tasks.** They steer our work and prove nothing on unseen tasks. GPT-6.1 Sol has reported in three runs so far: the Codex cells of the two installer rungs (dev, Current results) and the Sol arms of `gates938-phase3`, the hook test ([report](docs/benchmarks/2026-11-03-investigate-gate/report.md)), where every Sol arm sat near the floor. Older results on Sonnet 5.5 and Haiku 5.5 are in the [appendix](#appendix-sonnethaiku-runs-appendix-grade-not-frontier-evidence).
 
 ## What each harness sends the model
 
@@ -222,6 +222,7 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 - The start-hook panel got OpenClaw to run gstack's start command (16 of 16), while Hermes blocked it at an approval card. Its three tasks showed no success difference for gstack, all at the ceiling.
 - The Hermes rerun, with gstack v1.92.57.0's new start command and Tirith pinned, got Hermes to run it in 8 of 16, against 0 of 16 for gstack without the hook. All 8 were on task 1, and success was again 16 of 16 in every arm.
 - The Claude Code and Codex installer rung found gbrain's installer raised cross-scope exposure on Claude Code (Opus 5.5) against told, and could not tell on Codex (GPT-6.1 Sol). gbrain had no access rules, so it returned channel pages to non-members, and that cut Claude Code's pass rate (41 of 44 failures in its gbrain cells failed only the cross-scope check).
+- Its rerun with gbrain's per-member access rules on (`installer-cc-codex-acl-2026-11`) found no cross-scope return in any of 204 gbrain trials, so installer and told can't be told apart on exposure. Every gbrain cell then passed at least as often as no brain (Claude Code installer 50 against 46 of 51, Codex installer 49 against 43). Multi-member gbrain needs the access rules.
 - All are dev.
 
 | Run | Date | Model | Question | Result | Spend | Status | Report |
@@ -235,6 +236,7 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 | `tool-discipline-start-2026-11` | 2026-11-01 | **Opus 5.5** | Does gstack's start hook make OpenClaw and Hermes run a skill's start command, at what cost, with no success drop, against gstack without it and no gstack? | OpenClaw: pass, starts 16 of 16 against 1 of 16, +0.94 [0.64, 0.99]. Hermes: fail, 0 of 16; the agent issued the command 8 of 8 times on task 1 and Hermes's approval card (Tirith scan, our 1 s config) blocked it. Success 16 of 16 in every arm, +0.00 [-0.19, 0.19]. OpenClaw cost 3 to 5 times no gstack per trial | $16.90 of $28 | dev | [report](docs/benchmarks/2026-11-01-tool-discipline-start/report.md) |
 | `tool-discipline-start-hermes-r2-2026-11` | 2026-11-02 | **Opus 5.5** | Rerun of the Hermes cells: with gstack `e2d9c798` (v1.92.57.0, a start command Tirith allows) and Tirith 0.4.2 pinned, does the start hook make Hermes run a skill's start command? | Hermes: pass, starts 8 of 16 against 0 of 16, +0.50 [0.21, 0.72], all 8 on task 1 (task 2: 0 of 8, secondary bar missed). Success 16 of 16 in every arm, +0.00 [-0.19, 0.19]. Why null? verdict FIX-METHOD | $5.76 of $19 | dev | [report](docs/benchmarks/2026-11-01-tool-discipline-start/report-hermes-r2.md) |
 | `installer-cc-codex-2026-11` | 2026-11-02 | **Opus 5.5**, GPT-6.1 Sol | When gbrain's own installer sets up Claude Code (Opus 5.5) or Codex (GPT-6.1 Sol), does the agent read across scope through gbrain more or less often than when told about gbrain? | Claude Code: the installer raises cross-scope exposure via gbrain, 33 of 51 against 20 of 51, +25 [+8, +45], p 0.039. Codex: can't tell apart at 17 tasks, 17 against 9 of 51, +16 [+2, +33], p 0.125 (detects about 25 points). gbrain without access rules is default-open. Descriptive: Claude Code pass 46 (none), 31 (told), 27 (installer) of 51, with 41 of the 44 gbrain-cell failures failing only the cross-scope check. Why null? verdict FIX-METHOD | $56.67 of $155 (+ $1.73 smokes, $0.70 costing smoke) | dev | [report](docs/benchmarks/2026-11-01-installer-cc-codex/report.md) |
+| `installer-cc-codex-acl-2026-11` | 2026-11-03 | **Opus 5.5**, GPT-6.1 Sol | The same six cells with gbrain's per-member access rules on and each token bound to its member (gbrain v0.60.554.0): does the installer still read across scope more than told? | Exposure 0 of 51 in all four gbrain cells, so not distinguished by construction on both hosts. Descriptive, against no brain: pass Claude Code 46 (none), 49 (told), 50 (installer), +8 [+0, +22] for installer; Codex 43, 45, 49, +12 [+0, +24]. Why null? verdicts KEEP (gbrain with access rules) and FIX-METHOD (installer against told, saturated) | $55.57 of $85 (+ $1.61 smokes) | dev | [report](docs/benchmarks/2026-11-01-installer-cc-codex/report-acl.md) |
 
 ### How to read these numbers
 
@@ -244,9 +246,9 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 - Only a held-out set's first counted opening is confirmatory; a later opening is dev because whoever designed it had seen that set's results ([Corrections](#corrections), 2026-10-28).
 - The maths (95 percent task-clustered intervals, paired differences, sign-flip tests, Holm) and the openings ledger: [docs/methods.md](docs/methods.md#how-to-read-the-numbers).
 
-**Spend so far.** Spend across every lane, from the lease ledgers: $615.49 committed of the $2,000 program cap ([docs/budget-ledger.md](docs/budget-ledger.md)).
+**Spend so far.** Spend across every lane, from the lease ledgers: $672.67 committed of the $2,000 program cap ([docs/budget-ledger.md](docs/budget-ledger.md)).
 
-- That is $536.90 in the program's lane ledger plus $78.59 from the two v0.2 runs' committed ledgers that the lane ledger does not yet list.
+- That is $594.08 in the program's lane ledger plus $78.59 from the two v0.2 runs' committed ledgers that the lane ledger does not yet list.
 - Every dollar is the metering proxy's list-price meter; the provider-side check has never been performed (Known limits).
 
 ## Known limits
@@ -394,6 +396,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 **Contributing.** Outside code is read as text and rewritten by maintainers, never merged as is; bug reports need a repro on current main or a failing test ([CONTRIBUTING.md](CONTRIBUTING.md)). Report security issues privately ([SECURITY.md](SECURITY.md)). Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Changelog
+
+### 2026-11-03: installer rung rerun with access rules reported
+
+The v0.3 runs table gains a row for run `installer-cc-codex-acl-2026-11`, and the So what list gains a line for it. The spend line, and its twin in `docs/methods.md`, moves to $672.67: the repository's lane ledger copy gains this run's line ($57.1805127). Why: the run is complete and its report is in the tree. The note under "Found so far" again lists the runs where GPT-6.1 Sol has reported, keeps the hook test's facts, and no longer calls the hook test the first line with a Sol arm. Why: the first installer rung (`installer-cc-codex-2026-11`) reported Sol arms before the hook test, which is `gates938-phase3`.
 
 ### 2026-11-03: Opus gstack steps line names the hook test
 

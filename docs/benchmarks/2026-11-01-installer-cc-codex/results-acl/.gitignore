@@ -1,0 +1,27 @@
+# Evaluator-owned receipts are committed; harness state, workspaces, raw harness logs and per-trial tokens are not.
+**/trials/*/*/*/state/
+**/trials/*/*/*/workspace/
+**/trials/*/*/*/logs/*
+!**/trials/*/*/*/logs/adapter.log
+**/trials/*/*/*/trial.json
+*.sqlite-shm
+*.sqlite-wal
+**/trials/*/*/*/compose.serve.yaml
+# The gbrain sidecar's per-trial token and logs, and every preflight's token and sidecar logs, stay out of the repository.
+**/trials/*/*/*/gbrain/
+*preflight-*/
+**/ingest-tokens.json
+**/tokens.json
+# Per-trial hook receipts of the installer cells (issue #153): the install record, ready (turn_hook "ran") and the hook's own run.
+# Small and token-free.
+!**/trials/*/*/*/logs/gbrain-install.json
+!**/trials/*/*/*/logs/ready
+!**/trials/*/*/*/logs/gbrain-hook.claude-code.json
+# Codex's hook-run record is left out: its trust_key line reads as a secret-named value to gstack-pregate's scanner. Its
+# content (the hook ran at ready and printed the rule) is also in each trial's ready file and trials.jsonl.
+# The installer's settings.json.bak (the pre-hook settings, listed in the view manifest) is left out under pregate's
+# scratch-name rule.
+**/settings.json.bak
+# The shard, smoke, fan-out and attach logs this run's report cites (the repository's root rule ignores *.log).
+!*.log
+!**/*.log

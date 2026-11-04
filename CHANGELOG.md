@@ -2,6 +2,10 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.129] - 2026-11-04
+
+- **installer-cc-codex-acl-2026-11 reported: with gbrain's per-member access rules on, cross-scope exposure via gbrain is 0 of 51 in all four gbrain cells, so installer against told is not distinguished on Claude Code or Codex.** Amendment 3 of the installer rung reran the six cells on gbrain `f650eac5` (v0.60.554.0) with an access-ruled member brain and member-bound tokens: 306 trials on six Ubicloud shards from `289aa043666f` (#232), $55.57 of the $85 cap plus $1.61 of smokes. Every gbrain cell passed at least as often as no brain (Claude Code 46, 49, 50 of 51; Codex 43, 45, 49), and both no-brain cells matched the first run. The report audits the 39 returns the grader left unmapped (all the asker's own facts and memory pages), keeps the sqlite ledgers in the project drive with their sha256 in `results-acl/ledgers.sha256`, and ends Why null? with KEEP for gbrain with access rules and FIX-METHOD for installer against told (saturated). The first run's report and the docs index no longer say the rerun waits on #229; the README runs table, So what list and spend line ($672.67) gain the run.
+
 ## [0.0.128] - 2026-11-04
 
 ### internal-task: the seal's signal handlers go in before the intake directory exists

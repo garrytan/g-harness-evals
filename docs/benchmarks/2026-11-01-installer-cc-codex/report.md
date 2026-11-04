@@ -37,7 +37,7 @@ Installer minus told, paired by task and repetition, all 17 tasks. Task-clustere
 - **Where it moved.** Claude Code's installer rose in 7 tasks: `si-02`, `si-04` and `cn-03` went 0 to 3 of 3; `ar-02` 1 to 3; `si-01`, `cn-02` and `cn-04` 0 to 1. It fell in one, `sy-03`, 1 to 0. Codex rose in 4: `si-02` and `si-03` 0 to 3, `si-01` and `cr-01` 0 to 1.
 - **Declared limits** (as preregistered): gbrain run from the shell goes around the tap, and facts returned only in `_meta.brain_hot_memory` are not counted. A pattern scan of the harness transcripts found no shell command that ran gbrain in any cell ([results/transcript-audit.md](results/transcript-audit.md)).
 
-**Exposure counts per cell (for internal-task).** Source: `exposure.counts`.
+**Exposure counts per cell (for GBRA-108).** Source: `exposure.counts`.
 
 | Cell | Trials with exposure | Returned cross-scope records, by tool | Refused | Unmapped | No value |
 |---|---|---|---|---|---|
@@ -103,16 +103,16 @@ Two results get a cycle (CREW.md "Why null?", with R61): the Codex primary null,
 
 - The no-brain cells of this run stay the control. Even with the fix, pass has about 5 trials of room per Claude Code cell, so the rerun can show the drop going away, not a gain.
 - **No gain claim without a ceiling-raise (R61).** A gain in pass would need harder or held-out tasks scored on substance. That is not planned here; the rerun asks only whether the drop goes away.
-- **Planned, not in this PR:** a follow-up amendment for that rerun, opened right after #229 merges. #229 makes the installer views accept the hook launcher that gbrain 0.60.550.0 and later install, so the rerun cannot run without it. The four cells cost $41.99 here (installer and told, both hosts), so about $42 at 3 repetitions, with the same clean-arms preflight.
+- **Done as amendment 3:** the rerun ran as `installer-cc-codex-acl-2026-11` (#232, after #229), with both no-brain cells rerun too. With the access rules on, exposure was 0 of 51 in all four gbrain cells: [report-acl.md](report-acl.md).
 
-## gbrain specifics (for internal-task)
+## gbrain specifics (for GBRA-108)
 
 - **Default-open.** One bot token, scope none, no access rules: gbrain returned channel pages to non-members in 33, 20, 17 and 9 trials of the four gbrain cells. Nothing was refused, because nothing was ruled.
 - **The installer makes the agent search more.** Calls per trial, median: Claude Code 3 (installer) vs 1 (told); Codex 6 vs 2. Totals 189 vs 84 and 331 vs 135.
 - **Tools used** ([results/summary.md](results/summary.md)): Claude Code installer `search` 130, `recall` 32, `remember` 22, `forget` 3, `list_pages` 1, `whoami` 1. Codex installer `search` 216, `get_page` 80, `remember` 16, `recall` 8, `whoami` 5, `context_pack` 4, `forget` 2.
 - **Codex installer errors: 52 of 331 calls.** `gbrain.search` returned `invalid_params` 42 times and `permission_denied` 10 times. No other gbrain cell had an error.
 - **The hook.** Claude Code and Codex both ran `env GBRAIN_HOOK_LANE=turn-rule /harness-state/.local/bin/gbrain hook user-prompt` (`--harness codex` for Codex). Installer view digests `216369f12c46` (Claude Code) and `b70990e406a3` (Codex), 5 files each.
-- **Codex hook path caveat (from internal-task).** The pin is older than v0.60.547.0, after which gbrain's post-upgrade no longer rewrites Codex hooks. So the Codex hook path here differs from current gbrain.
+- **Codex hook path caveat (from GBRA-108).** The pin is older than v0.60.547.0, after which gbrain's post-upgrade no longer rewrites Codex hooks. So the Codex hook path here differs from current gbrain.
 - **Cost of the installer, paired, different machines.** Claude Code +$0.0561 per trial [+$0.0382, +$0.0768], +71,599 input tokens [+47,308, +97,445]. Codex +$0.0329 [+$0.0212, +$0.0446], +79,785 tokens [+49,444, +108,249]. Wall per turn +3.0 s [+1.7, +4.2] and +4.4 s [+3.5, +5.2], confounded with the machine ([results/comparisons.gbrain.md](results/comparisons.gbrain.md), cost table).
 
 ## Per cell
@@ -165,20 +165,20 @@ All preregistered checks pass.
 
 ## Clean arms
 
-- **Image preflight before the costing smoke** (amendment 2, accepted by internal-task 2026-11-02): both harness images show only two perl "sigstack" headers; the gbrain image shows those headers plus gbrain's own repository files; no `.capy` directory ([results/clean-arms-preflight/](results/clean-arms-preflight/)).
+- **Image preflight before the costing smoke** (amendment 2, accepted by HARN-1 2026-11-02): both harness images show only two perl "sigstack" headers; the gbrain image shows those headers plus gbrain's own repository files; no `.capy` directory ([results/clean-arms-preflight/](results/clean-arms-preflight/)).
 - **Per-shard preflight on all six counted VMs:** the same 2 matches per harness image and 10 per gbrain image, no `.capy` directory (`results/<shard>.preflight-gstack.txt`, `results/shard-preflight.out`). It ran during the counted trials (Deviations).
 - **Audit: 0 of 306 trials** contain "gstack" in any stored file or harness transcript (405 Claude Code turn transcripts, 342 Claude Code session files, 342 Codex session files), leaving out the installed gbrain binary ([results/transcript-audit.md](results/transcript-audit.md)). So no cell is contaminated.
 
 ## Deviations
 
-- **Clean-arms preflight matches, accepted by internal-task 2026-11-02 (amendment 2).**
+- **Clean-arms preflight matches, accepted by HARN-1 2026-11-02 (amendment 2).**
   - Both harness images: `/usr/lib/x86_64-linux-gnu/perl/5.36.0/bits/sigstack.ph` and `.../bits/types/struct_sigstack.ph`, substring matches.
   - The gbrain sidecar image: the same perl headers (5.40.1), `/opt/gbrain/.gstack/` (`ship-policy.json`, `pregate.json`, `redact-allowlist`), `src/core/ingestion/sources/gstack-learnings.ts`, `src/core/calibration/gstack-coupling.ts` and two tests. None is a gstack skill.
   - **Trial-time binary:** installer cells copy the gbrain binary into the harness's HOME, and it holds gbrain's compiled `gstack-coupling` and `gstack-learnings` source. The harness could reach it with its shell. The audit above found no trace of a read.
-- **Cap raised from $100 to $155 before any counted trial (amendment 1).** The costing smoke projected $152.12 at 1.25 times, so the stop rule fired. internal-task approved the new cap; nothing else changed. The run used $56.67.
-- **Fan-out attempt 1 (14:17Z to 14:33Z) ran no counted trial.** Its smoke lease was $1, below the per-call reservation ($3.04 Opus, $1.62 Sol), so the proxy refused all 9 calls with 402 (`cap_stop`). $0 model spend, VMs $0.6454, all destroyed. Operator error (internal-task). Relaunched at 14:36Z at the same commit with a $5 smoke lease ([results/attempt1/](results/attempt1/)).
+- **Cap raised from $100 to $155 before any counted trial (amendment 1).** The costing smoke projected $152.12 at 1.25 times, so the stop rule fired. HARN-1 approved the new cap; nothing else changed. The run used $56.67.
+- **Fan-out attempt 1 (14:17Z to 14:33Z) ran no counted trial.** Its smoke lease was $1, below the per-call reservation ($3.04 Opus, $1.62 Sol), so the proxy refused all 9 calls with 402 (`cap_stop`). $0 model spend, VMs $0.6454, all destroyed. Operator error (HARN-13). Relaunched at 14:36Z at the same commit with a $5 smoke lease ([results/attempt1/](results/attempt1/)).
 - **Per-shard gstack preflight ran during the counted trials,** at 15:07:51Z to 15:08:08Z, because the first check hung on an ssh call. Trials had started at 14:44Z to 14:48Z. It found no new match, so no trial is in question.
-- **internal-task's controlling machine restarted, about 15:10Z to 17:03Z.** The six VMs kept running `vm-shard.sh` at `9a2ac40b391d`; the restart touched only the local pollers. Every shard had finished before the reattach (last trial 15:34:36Z). Each was reattached with `run-shard.sh --attach` from the worktree pinned at `9a2ac40b391d` (`results/<shard>.attach.log`). The attach log does not print a commit; the VM runner's own log does, and it loaded `9a2ac40b391d` throughout.
+- **HARN-13's controlling machine restarted, about 15:10Z to 17:03Z.** The six VMs kept running `vm-shard.sh` at `9a2ac40b391d`; the restart touched only the local pollers. Every shard had finished before the reattach (last trial 15:34:36Z). Each was reattached with `run-shard.sh --attach` from the worktree pinned at `9a2ac40b391d` (`results/<shard>.attach.log`). The attach log does not print a commit; the VM runner's own log does, and it loaded `9a2ac40b391d` throughout.
 - **Shard smoke spend.** The lane's drive note says $1.7284; the six smoke ledgers sum to $1.7290 ($1.7290408). This report uses the ledgers.
 
 ## Limits
