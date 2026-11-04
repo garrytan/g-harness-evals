@@ -1,0 +1,59 @@
+// OpenClaw config for one headless trial on a Particle cell (internal-task). JSON5.
+// OpenClaw's generic openai-completions provider (Chat Completions) over the
+// metering proxy at HE_MODEL_BASE_URL/v1, where the proxy serves POST
+// /v1/chat/completions for Particle; the @openclaw/particle-provider plugin is
+// not installed. The model is fixed to the cell model, and the two secrets and
+// the model name come from the adapter's environment by ${VAR} substitution so
+// this file never holds a key. Particle spends output on reasoning_content
+// before any visible text, so maxTokens is 128000, the cap the OpenAI cells
+// state and every shard's proxy runs (Particle's own default is 32000 and it
+// clamps above 131072, docs.particle.ai/models); max_completion_tokens is the
+// field Particle documents. reasoning: true makes OpenClaw send reasoning_effort,
+// and thinkingDefault medium sets it to medium, the value every harness on the
+// cell sends (Particle serves medium at its high tier). Particle reports usage
+// in the stream, which OpenClaw does not ask a custom endpoint for unless told.
+// utilityModel maps the housekeeping model to the cell model, and
+// memory.search.provider none keeps the memory indexer on keyword search, so
+// no /v1/embeddings call is made (Particle has no embeddings route). Copied to
+// /harness-state/openclaw/openclaw.json by adapter.sh when HE_MODEL_BASE_URL
+// ends in /particle.
+{
+  models: {
+    mode: "merge",
+    providers: {
+      particle: {
+        baseUrl: "${HE_MODEL_BASE_URL}/v1",
+        apiKey: "${HE_MODEL_API_KEY}",
+        api: "openai-completions",
+        models: [
+          {
+            id: "${HE_MODEL_NAME}",
+            name: "${HE_MODEL_NAME}",
+            reasoning: true,
+            input: ["text"],
+            contextWindow: 1048576,
+            maxTokens: 128000,
+            compat: {
+              maxTokensField: "max_completion_tokens",
+              supportsUsageInStreaming: true,
+            },
+          },
+        ],
+      },
+    },
+  },
+  agents: {
+    defaults: {
+      model: { primary: "particle/${HE_MODEL_NAME}" },
+      utilityModel: "particle/${HE_MODEL_NAME}",
+      thinkingDefault: "medium",
+      workspace: "/workspace",
+      // As in openclaw.json: agent --local (serve) would otherwise seed the
+      // first-run bootstrap ritual into /workspace and the first prompt.
+      skipBootstrap: true,
+    },
+  },
+  memory: {
+    search: { provider: "none" },
+  },
+}

@@ -3,7 +3,19 @@
 // sharded by whole cells across machines, each shard a clean checkout at the same commit running `plan` itself, trials
 // sequential within a shard).
 //
-//   bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...] [--sealed-root <dir>]
+//   bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...] [--sealed-root <dir>] [--partial]
+//
+// --partial (internal-task, plan decision 9's stop rule): a run that stopped on its cap is reported from what exists and is never
+// resumed or backfilled. The merge then accepts manifest trials that no shard recorded, writes them, in manifest order,
+// to unstarted.json ({ run_id, count, trials: [{ id, cell }], cap_stops }) and writes trials.jsonl with the recorded trials
+// only. Each cell with unstarted trials must show its own cap stop: its recorded trials are an unbroken start of its
+// manifest order and the last of them has cap_stop (the runner records the refused trial and stops), backed by a cap
+// refusal under that trial's key at or after its started_at in its shard's proxy-usage.ndjson (cap_stop alone can come from
+// an earlier attempt, runner/trial/proxy.ts summarizeUsage; see TODOS.md). A cell with no
+// record, with a hole before a later record, or whose last record is not a cap stop, is refused: a shard lost to a crash or a failed copy-back is finished with run --resume. This assumes one cell per shard
+// with trials in manifest order, as internal-task runs; a multi-cell shard's later cells have no record after a cap stop and are
+// refused. cap_stops lists the evidence per cell ({ cell, shard, cap_stop_trial }). Every other refusal still applies.
+// Without --partial a missing trial is a refusal.
 //
 // What it builds, refusing (exit 2, naming the offender) rather than guessing:
 //   manifest.json      the first shard's; every other shard's manifest must agree once created_at is removed (run_id,
@@ -22,7 +34,8 @@
 //                      written by whoever dispatched the shard) when it carries one, null otherwise; a shard.json whose
 //                      name is not the --shard name is a refusal
 // compare-run.ts --pair gbrain reads shards.json to label every cost and latency row with the machines the two cells ran on.
-// Nothing is written until every check has passed, and an --out that already holds trials.jsonl is refused.
+// Nothing is written until every check has passed, and an --out that already holds trials.jsonl, unstarted.json or a
+// proxy usage log is refused.
 // A sealed run (its manifest.json has a "sealed" block, docs/sealed-custody.md) is merged inside custody with
 // --sealed-root <the opened root>, or refused under HE-SEALED-001: a refusal names trial ids, which carry task ids, so
 // under the sealed output guard it goes whole to <out>/merge-shards.sealed.log and the terminal gets the merged counts only.
@@ -31,8 +44,10 @@
 // (HE-SEALED-003) a root whose opening-receipt.json is missing or names another opening than the manifest's. A manifest,
 // trials.jsonl or receipt that is not JSON is refused naming the file, the line and the parser's error class only.
 
-import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import type { UsageLine } from '../runner/proxy/metering-proxy.ts';
+import { isCapRefusal } from '../runner/trial/proxy.ts';
 import type { TrialRecord } from '../runner/contracts.ts';
 import { RunnerError } from '../runner/errors.ts';
 import { sealedGuard } from '../runner/heldout/guard.ts';
@@ -41,6 +56,7 @@ import { insideGitTree } from './sealed/custody.ts';
 
 export interface ShardInput { name: string; dir: string }
 export interface ShardInfo { name: string; machine: string | null; commit: string | null; images: unknown; source: string; trials: number; cells: string[] }
+export interface CapStopEvidence { cell: string; shard: string; cap_stop_trial: string }
 export interface ShardsFile { cells: Record<string, string>; shards: Record<string, ShardInfo> }
 
 export class MergeError extends Error {}
@@ -51,7 +67,9 @@ const PER_SHARD_FILES = ['ledger.sqlite', 'proxy.log', 'proxy-usage.ndjson', 'ab
 const perShard = (entry: string) => PER_SHARD_FILES.includes(entry) || /^reconcile.*\.json$/.test(entry) || /^preflight-/.test(entry) || entry === 'gbrain-install' || entry === 'laneb';
 
 /** Plan the merge without writing: every refusal is raised here. */
-export function planMerge(out: string, shards: ShardInput[]): { manifest: { run_id: string; trials: Array<{ id: string; cell: string }> }; rows: TrialRecord[]; shardsFile: ShardsFile; copies: Array<{ from: string; to: string }> } {
+export interface MergeOptions { partial?: boolean }
+
+export function planMerge(out: string, shards: ShardInput[], options: MergeOptions = {}): { manifest: { run_id: string; trials: Array<{ id: string; cell: string }> }; rows: TrialRecord[]; shardsFile: ShardsFile; copies: Array<{ from: string; to: string }>; unstarted: Array<{ id: string; cell: string }>; capStops: CapStopEvidence[] } {
   if (!shards.length) throw new MergeError('no shards: pass --shard <name>=<dir> at least once');
   const names = new Set<string>();
   for (const s of shards) {
@@ -61,6 +79,8 @@ export function planMerge(out: string, shards: ShardInput[]): { manifest: { run_
     for (const f of ['manifest.json', 'trials.jsonl']) if (!existsSync(join(s.dir, f))) throw new MergeError(`shard ${s.name}: ${join(s.dir, f)} is missing`);
   }
   if (existsSync(join(out, 'trials.jsonl'))) throw new MergeError(`${out} already holds trials.jsonl; merge into an empty directory`);
+  const stale = existsSync(out) ? readdirSync(out).filter((f) => f === 'unstarted.json' || /(^|[.])proxy-usage[.]ndjson$/.test(f)) : [];
+  if (stale.length) throw new MergeError(`${out} already holds ${stale.slice(0, 3).join(', ')} from an earlier merge; merge into an empty directory`);
   type Sealed = { set: string; receipt_sha256?: string; receipt: OpeningReceipt };
   const manifests = shards.map((s) => readJsonFile<{ run_id: string; created_at?: string; sealed?: Sealed; trials: Array<{ id: string; cell: string }> } & Record<string, unknown>>(join(s.dir, 'manifest.json')));
   const strip = ({ created_at: _c, sealed: _s, ...rest }: Record<string, unknown>) => rest;
@@ -97,11 +117,32 @@ export function planMerge(out: string, shards: ShardInput[]): { manifest: { run_
   }
   const planned = new Set(first.trials.map((t) => t.id));
   const missing = first.trials.filter((t) => !owner.has(t.id)).map((t) => t.id);
-  if (missing.length) throw new MergeError(`${missing.length} manifest trial(s) in no shard: ${missing.slice(0, 20).join(', ')}${missing.length > 20 ? `, and ${missing.length - 20} more` : ''}; an incomplete shard is finished with run --resume before the merge`);
+  const shardLogs = new Map<string, UsageLine[]>();
+  const capRefusedAfterStart = (dir: string, t: TrialRecord) => {
+    const log = join(dir, 'proxy-usage.ndjson');
+    if (!shardLogs.has(dir)) shardLogs.set(dir, existsSync(log) ? readFileSync(log, 'utf8').split('\n').flatMap((l) => { try { return [JSON.parse(l) as UsageLine]; } catch { return []; } }) : []);
+    const keys = [t.usage?.meter_id, `trial-token:${t.trial_id}`, `sk-trial-${t.trial_id}`].filter(Boolean);
+    const start = t.started_at ? Date.parse(t.started_at) : -Infinity;
+    return shardLogs.get(dir)!.some((row) => keys.includes(row.key) && Date.parse(row.at) >= start && isCapRefusal(row));
+  };
+  const capStops: CapStopEvidence[] = [];
+  const unexplained: string[] = [];
+  for (const cell of [...new Set(first.trials.filter((t) => !owner.has(t.id)).map((t) => t.cell))]) {
+    const planned = first.trials.filter((t) => t.cell === cell);
+    const gap = planned.findIndex((t) => !owner.has(t.id));
+    const last = gap > 0 ? rowsById.get(planned[gap - 1]!.id)! : undefined;
+    const late = planned.slice(gap).find((t) => owner.has(t.id));
+    if (late) unexplained.push(`${cell} (${planned[gap]!.id} is missing but the later ${late.id} was recorded)`);
+    else if (last?.cap_stop && capRefusedAfterStart(shards.find((s) => s.name === owner.get(last.trial_id))!.dir, last)) capStops.push({ cell, shard: owner.get(last.trial_id)!, cap_stop_trial: last.trial_id });
+    else if (last?.cap_stop) unexplained.push(`${cell} (last record ${last.trial_id} has cap_stop, but shard ${owner.get(last.trial_id)}'s proxy-usage.ndjson shows no cap refusal for it at or after its started_at)`);
+    else unexplained.push(last ? `${cell} (last record ${last.trial_id} is not a cap stop)` : `${cell} (no recorded trial)`);
+  }
+  if (options.partial && unexplained.length) throw new MergeError(`${missing.length} manifest trial(s) in no shard, and ${unexplained.length} cell(s) with unstarted trials show no cap stop: ${unexplained.slice(0, 10).join('; ')}${unexplained.length > 10 ? '; ...' : ''}. --partial merges only cells that stopped on their cap (the last recorded trial has cap_stop and a cap refusal at or after its started_at in its shard's proxy-usage.ndjson); an incomplete shard without one is finished with run --resume before the merge`);
+  if (missing.length && !options.partial) throw new MergeError(`${missing.length} manifest trial(s) in no shard: ${missing.slice(0, 20).join(', ')}${missing.length > 20 ? `, and ${missing.length - 20} more` : ''}; an incomplete shard is finished with run --resume before the merge, or, after a cap stop that is never resumed, merged with --partial`);
   const stray = [...owner.keys()].filter((id) => !planned.has(id));
   if (stray.length) throw new MergeError(`${stray.length} trial(s) not in the manifest: ${stray.slice(0, 20).map((id) => `${id} (shard ${owner.get(id)})`).join(', ')}`);
   const cells: Record<string, string> = {};
-  for (const t of first.trials) cells[t.cell] = owner.get(t.id)!;
+  for (const t of first.trials) if (owner.has(t.id)) cells[t.cell] = owner.get(t.id)!;
   const copies: Array<{ from: string; to: string }> = [];
   const trialDirs = new Map<string, string>();
   shards.forEach((s, i) => {
@@ -120,12 +161,13 @@ export function planMerge(out: string, shards: ShardInput[]): { manifest: { run_
     if (i > 0) copies.push({ from: join(s.dir, 'manifest.json'), to: join(out, `${s.name}.manifest.json`) });
     if (i === 0 && existsSync(join(s.dir, 'gbrain-install'))) copies.push({ from: join(s.dir, 'gbrain-install'), to: join(out, 'gbrain-install') });
   });
-  const rows = first.trials.map((t) => rowsById.get(t.id)!);
-  return { manifest: first, rows, shardsFile: { cells, shards: infos }, copies };
+  const rows = first.trials.filter((t) => rowsById.has(t.id)).map((t) => rowsById.get(t.id)!);
+  const unstarted = first.trials.filter((t) => !owner.has(t.id)).map((t) => ({ id: t.id, cell: t.cell }));
+  return { manifest: first, rows, shardsFile: { cells, shards: infos }, copies, unstarted, capStops };
 }
 
-export function mergeShards(out: string, shards: ShardInput[]): ShardsFile {
-  const plan = planMerge(out, shards);
+export function mergeShards(out: string, shards: ShardInput[], options: MergeOptions = {}): ShardsFile & { unstarted: number } {
+  const plan = planMerge(out, shards, options);
   mkdirSync(out, { recursive: true });
   for (const c of plan.copies) {
     // A preflight directory is a sidecar's own out directory: its bearer token (`token`) and, on a brain with member tokens,
@@ -137,7 +179,8 @@ export function mergeShards(out: string, shards: ShardInput[]): ShardsFile {
   cpSync(join(shards[0]!.dir, 'manifest.json'), join(out, 'manifest.json'));
   writeFileSync(join(out, 'trials.jsonl'), plan.rows.map((t) => JSON.stringify(t)).join('\n') + '\n');
   writeFileSync(join(out, 'shards.json'), JSON.stringify(plan.shardsFile, null, 1) + '\n');
-  return plan.shardsFile;
+  if (options.partial) writeFileSync(join(out, 'unstarted.json'), JSON.stringify({ run_id: plan.manifest.run_id, count: plan.unstarted.length, trials: plan.unstarted, cap_stops: plan.capStops }, null, 1) + '\n');
+  return { ...plan.shardsFile, unstarted: plan.unstarted.length };
 }
 
 if (import.meta.main) {
@@ -145,8 +188,9 @@ if (import.meta.main) {
   const out = argv[argv.indexOf('--out') + 1];
   const shards: ShardInput[] = [];
   argv.forEach((a, i) => { if (a === '--shard') { const v = argv[i + 1] ?? ''; const eq = v.indexOf('='); if (eq < 1) { console.error(`--shard takes <name>=<dir>, not ${JSON.stringify(v)}`); process.exit(2); } shards.push({ name: v.slice(0, eq), dir: v.slice(eq + 1) }); } });
+  const partial = argv.includes('--partial');
   if (!argv.includes('--out') || !out || !shards.length) {
-    console.error('usage: bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...] [--sealed-root <dir>]');
+    console.error('usage: bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...] [--sealed-root <dir>] [--partial]');
     process.exit(2);
   }
   const sealedRoot = argv.includes('--sealed-root') ? argv[argv.indexOf('--sealed-root') + 1] : undefined;
@@ -167,12 +211,13 @@ if (import.meta.main) {
     const differs = openingDiff(quiet(() => readJsonFile<OpeningReceipt>(receiptPath)), sealed.receipt);
     if (differs.length) refuse(`HE-SEALED-003 ${receiptPath} is not the opening the shards were planned with (run ${sealedRun.run_id}; it differs in ${differs.join(', ')}); pass that run's opened root`);
   }
-  if (sealed) sealedGuard({ root: sealedRoot!, set: sealed.set, repoRoot: process.cwd(), preregJson: sealed.receipt?.prereg_json, logFile: join(out, 'merge-shards.sealed.log'), allow: [/^Merged \d+ shard\(s\) into /, /^\| /], label: 'scripts/merge-shards.ts' });
+  if (sealed) sealedGuard({ root: sealedRoot!, set: sealed.set, repoRoot: process.cwd(), preregJson: sealed.receipt?.prereg_json, logFile: join(out, 'merge-shards.sealed.log'), allow: [/^Merged \d+ shard\(s\) into /, /^\| /, /^Partial merge: \d+ manifest trial/], label: 'scripts/merge-shards.ts' });
   try {
-    const f = mergeShards(out, shards);
+    const f = mergeShards(out, shards, { partial });
     const cellsOf = (name: string) => Object.entries(f.cells).filter(([, s]) => s === name).map(([c]) => c);
     console.log([`Merged ${shards.length} shard(s) into ${out}: ${Object.keys(f.cells).length} cells, ${Object.values(f.shards).reduce((s, i) => s + i.trials, 0)} trials.`, '', '| Shard | Machine | Commit | Trials | Cells |', '|---|---|---|---|---|',
       ...Object.values(f.shards).map((i) => `| ${i.name} | ${i.machine ?? 'unknown'} | ${i.commit ?? 'unknown'} | ${i.trials} | ${cellsOf(i.name).join(', ')} |`)].join('\n'));
+    if (partial) console.log(`Partial merge: ${f.unstarted} manifest trial(s) unstarted, listed in ${join(out, 'unstarted.json')}; nothing was backfilled.`);
   } catch (e) {
     if (e instanceof MergeError || e instanceof RunnerError) { console.error(e instanceof MergeError ? `merge-shards: ${e.message}` : e.message); process.exit(2); }
     throw e;

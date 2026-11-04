@@ -49,11 +49,15 @@ services:
       CONNECTOR_SECRET_KEY: ${QM_CONNECTOR_SECRET_KEY}
       LOCAL_SANDBOX_IMAGE: ${QM_SANDBOX_IMAGE:-harness-eval/qm-sandbox:dev}
       DOCKER_HOST: unix:///var/run/docker.sock
-      ANTHROPIC_API_KEY: ${HE_MODEL_API_KEY}
-      ANTHROPIC_BASE_URL: ${HE_MODEL_BASE_URL}
+      # prepare.sh sets the QM_* overrides on a Particle cell only (no model provider, so core requires no Anthropic key;
+      # empty Anthropic values; the custom model id); unset, every value is the one an Anthropic cell always had
+      # (MODEL_PROVIDER anthropic is config/core.env's value).
+      MODEL_PROVIDER: ${QM_MODEL_PROVIDER-anthropic}
+      ANTHROPIC_API_KEY: ${QM_ANTHROPIC_API_KEY-${HE_MODEL_API_KEY}}
+      ANTHROPIC_BASE_URL: ${QM_ANTHROPIC_BASE_URL-${HE_MODEL_BASE_URL}}
       # The model of QM's one agent loop (Pi). QM removed the Claude harness and the HARNESS variable upstream
       # (yc-software/qm#2768), so core reads neither HARNESS nor CLAUDE_MODEL at the pin.
-      PI_MODEL: ${HE_MODEL_NAME:-claude-sonnet-5-5}
+      PI_MODEL: ${QM_PI_MODEL:-${HE_MODEL_NAME:-claude-sonnet-5-5}}
       # QM's automatic memory capture waits this long after a turn before extracting facts; the shipped default
       # (180 s) stays for held-out cells, and prepare.sh sets 5 s for the probe configs only (harnesses/qm/README.md).
       MEMORY_CAPTURE_QUIET_MS: ${QM_MEMORY_CAPTURE_QUIET_MS:-180000}

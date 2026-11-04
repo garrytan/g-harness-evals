@@ -49,3 +49,17 @@ printf 'QM_HARNESS=%s\n' "$harness"
 printf 'QM_MEMORY_CAPTURE_QUIET_MS=%s\n' "$quiet"
 printf 'QM_PROBE_CONFIG=%s\n' "$probe"
 printf 'HE_HARNESS_CONFIG=%s\n' "$config"
+# internal-task: a Particle cell (HE_MODEL_BASE_URL ending in /particle, runner/trial/proxy.ts baseUrlFor) runs Pi on the custom
+# provider adapter.sh registers before the first turn (model custom/particle/<model>, protocol openai: Chat Completions at
+# <base>/v1), and core gets no model provider and no Anthropic credential (MODEL_PROVIDER=anthropic would make core refuse to
+# start without ANTHROPIC_API_KEY, src/deployment/secret-schema.ts at the pin). Every other cell prints nothing more, so compose.yaml interpolates
+# exactly what it did before.
+base_url=${HE_MODEL_BASE_URL:-}
+case "${base_url%/}" in
+  */particle)
+    printf 'QM_PI_MODEL=custom/particle/%s\n' "${HE_MODEL_NAME:?HE_MODEL_NAME must be set on a Particle cell}"
+    printf 'QM_MODEL_PROVIDER=\n'
+    printf 'QM_ANTHROPIC_API_KEY=\n'
+    printf 'QM_ANTHROPIC_BASE_URL=\n'
+    ;;
+esac

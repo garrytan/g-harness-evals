@@ -71,10 +71,13 @@ mkdir -p "$OPENCLAW_STATE_DIR/exec"
 # internal-task: the provider is the cell model's prefix, which the runner puts in the proxy URL as its last path segment
 # (<proxy>/<slot>/<provider>, runner/trial/proxy.ts baseUrlFor). An OpenAI cell gets config/openclaw.openai.json: OpenClaw's
 # bundled openai provider on its shipped Responses API at HE_MODEL_BASE_URL/v1, the utility model mapped to the cell model and
-# reasoning effort medium (pin.json model_openai). Any other URL keeps the Anthropic config and turn arguments unchanged.
+# reasoning effort medium (pin.json model_openai). internal-task: a Particle cell (URL ending in /particle) gets config/openclaw.particle.json,
+# OpenClaw's generic openai-completions provider at HE_MODEL_BASE_URL/v1 with the same mapping, an output cap of 128000 and the
+# memory indexer on keyword search (pin.json model_particle). Any other URL keeps the Anthropic config and turn arguments unchanged.
 provider=anthropic config_template=$harness_dir/config/openclaw.json
 case "${HE_MODEL_BASE_URL%/}" in
   */openai) provider=openai config_template=$harness_dir/config/openclaw.openai.json ;;
+  */particle) provider=particle config_template=$harness_dir/config/openclaw.particle.json ;;
 esac
 [ -e "$OPENCLAW_CONFIG_PATH" ] || cp "$config_template" "$OPENCLAW_CONFIG_PATH"
 
@@ -373,6 +376,9 @@ fi
 # A model error is a provider status, a proxy refusal, a rate limit or an auth
 # failure in the envelope or on stderr; everything else that fails is OpenClaw's.
 model_error_pattern='"status":\s*(401|402|403|404|429|5[0-9]{2})|metering proxy|rate.?limit|overloaded|api error|authentication|invalid.*api.?key|HTTP (401|402|403|404|429|5[0-9]{2})'
+# internal-task: a Particle cell uses this pattern unchanged, so a provider 400 is exit 2 as on every other cell. Plan decision 12
+# (a Particle 400 with code invalid_value or unsupported_parameter is model_error) belongs to the runner, which reads the
+# metering proxy's record of the upstream status and code; OpenClaw's output does not carry error.code.
 
 if [ "$entry" = "run" ]; then
   [ -r "$HE_WORKSPACE_DIR/instruction.md" ] || { log "no readable $HE_WORKSPACE_DIR/instruction.md"; exit 2; }

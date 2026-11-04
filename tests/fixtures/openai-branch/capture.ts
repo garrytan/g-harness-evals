@@ -89,7 +89,7 @@ export async function captureProcess(o: { harness: Harness; entry: Entry; harnes
     HE_WORKSPACE_DIR: join(dir, 'workspace'), HE_SESSION_STATE_DIR: join(dir, 'state'), HE_LOG_DIR: join(dir, 'logs'), HE_TURNS_DIR: join(dir, 'turns'),
     HE_MODEL_BASE_URL: o.baseUrl, HE_MODEL_API_KEY: TOKEN, HE_MODEL_NAME: o.model, HE_TIME_BUDGET_S: '60', HE_TRIAL_ID: 'golden',
     HE_TASK_SLICE: o.entry === 'run' ? 'smoke' : 'multiuser', ...(o.entry === 'serve' ? { HE_WORLD_MCP_URL: WORLD.url, HE_WORLD_MCP_TOKEN: WORLD.token } : {}) };
-  if (o.harness === 'hermes' && !/\/openai\/?$/.test(o.baseUrl) && !existsSync('/opt/harness/config/config.yaml')) {
+  if (o.harness === 'hermes' && !/\/(openai|particle)\/?$/.test(o.baseUrl) && !existsSync('/opt/harness/config/config.yaml')) {
     mkdirSync(join(dir, 'state', 'hermes'));
     writeFileSync(join(dir, 'state', 'hermes', 'config.yaml'), readFileSync(join(o.harnessDir, 'config', 'config.yaml')));
   }

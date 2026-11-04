@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Test stand-in for the hermes CLI on a refused request (tests/particle-branch.test.ts). A chat turn prints what Hermes
+# v2026.9.24 printed in the image on 2026-10-31 when the fake Particle endpoint (tests/fixtures/particle/fake-particle.ts)
+# answered with Particle's error body for the status in $HOME/stub-refused-status (400, 402 or 429; HOME is the trial's
+# state dir, because the adapter passes the CLI no test variable), then exits 1. Every other command goes to the stand-in in
+# ../../openai-branch/stub/.
+set -euo pipefail
+if [ "${1:-}" != chat ]; then exec "$(dirname "$0")/../../openai-branch/stub/hermes" "$@"; fi
+case "$(cat "$HOME/stub-refused-status")" in
+  400)
+    echo "Attempt 1/3 failed: HTTP 400: Invalid value for 'reasoning_effort'"
+    echo "custom rejected the request and retrying won't help: HTTP 400: Invalid value for 'reasoning_effort'" ;;
+  402)
+    echo "Billing or credits exhausted: HTTP 402: Your credit balance is empty. Add credits to continue." ;;
+  429)
+    for i in 1 2 3; do echo "Attempt $i/3 failed: HTTP 429: Rate limit exceeded: the serving fleet is at capacity"; done
+    echo "Final error: HTTP 429: Rate limit exceeded: the serving fleet is at capacity" ;;
+esac
+exit 1

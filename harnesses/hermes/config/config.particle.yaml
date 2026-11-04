@@ -1,0 +1,49 @@
+# Hermes Agent config for one headless trial on a Particle cell (internal-task).
+# Copied to $HERMES_HOME/config.yaml (under /harness-state) by adapter.sh when
+# HE_MODEL_BASE_URL ends in /particle. Particle speaks OpenAI Chat Completions,
+# so the model runs on Hermes's custom-endpoint provider (transport
+# chat_completions) through the custom_providers entry below; the adapter
+# selects it with --provider custom:particle. Secrets are not here: the adapter
+# exports OPENAI_API_KEY (the per-trial proxy token) and OPENAI_BASE_URL (the
+# proxy plus /v1), which Hermes expands into this file at load time. On a
+# custom endpoint Hermes sends no reasoning field and no output cap of its own,
+# so extra_body adds both to every request: reasoning_effort medium, the value
+# every harness on the cell sends (Particle serves medium at its high tier),
+# and max_completion_tokens 128000, the cap the OpenAI cells run under, because
+# Particle spends output on reasoning_content before any visible text.
+# Everything else is as in config.yaml.
+_config_version: 46
+
+model:
+  provider: "custom:particle"
+  default: "particle-1"
+  base_url: "${OPENAI_BASE_URL}"
+  # Particle-1's window (docs.particle.ai/models), as the OpenClaw and QM Particle configs declare it. Without it Hermes asks
+  # the endpoint's /models and falls back to 256,000 (agent/model_metadata.py), so it would compress at a quarter of the window.
+  context_length: 1048576
+
+custom_providers:
+  - name: "particle"
+    base_url: "${OPENAI_BASE_URL}"
+    key_env: "OPENAI_API_KEY"
+    extra_body:
+      reasoning_effort: "medium"
+      max_completion_tokens: 128000
+
+terminal:
+  backend: "local"
+  cwd: "/workspace"
+  timeout: 180
+  home_mode: "profile"
+
+display:
+  streaming: false
+
+# Nothing that needs a person: no update checks, no telemetry prompts.
+auto_update: false
+check_for_updates: false
+
+# No lazy pip installs at turn time (Bedrock's boto3, edge-tts): the trial
+# network has no package index, and no task uses those features (internal-task).
+security:
+  allow_lazy_installs: false

@@ -137,7 +137,7 @@ describe('harnesses/qm/compose.yaml carries the prepared variables', () => {
 
   test('core reads PI_MODEL and MEMORY_CAPTURE_QUIET_MS with the shipped defaults, and no HARNESS or CLAUDE_MODEL (gone at b6786d67)', () => {
     expect(core).toContain('MEMORY_CAPTURE_QUIET_MS: ${QM_MEMORY_CAPTURE_QUIET_MS:-180000}');
-    expect(core).toMatch(/PI_MODEL: \$\{HE_MODEL_NAME/);
+    expect(core).toContain('PI_MODEL: ${QM_PI_MODEL:-${HE_MODEL_NAME:-claude-sonnet-5-5}}');
     expect(core).not.toMatch(/^\s+HARNESS:/m);
     expect(core).not.toMatch(/CLAUDE_MODEL:/);
     expect(readFileSync(join(ROOT, 'harnesses/qm/config/core.env'), 'utf8')).not.toMatch(/^(HARNESS|CLAUDE_MODEL)=/m);

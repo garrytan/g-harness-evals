@@ -82,13 +82,18 @@ describe('wrapper-lib.sh: the start hook switch, the pinned tree, the config see
     expect(on.status).toBe(2);
     expect(on.log).toContain('says GSTACK_IMAGE_START_HOOK=on but has no');
   });
-  test('the config seed copies the counted adapter\'s template only when the file is absent, the OpenAI one for an /openai URL', () => {
+  test('the config seed copies the counted adapter\'s template only when the file is absent, the OpenAI one for an /openai URL and the Particle one for a /particle URL', () => {
     const cfg = join(ROOT, 'harnesses', 'hermes', 'config');
     const a = withLib('wrap_seed_config "$HE_LOG_DIR/c.yaml" config.yaml config.openai.yaml', { GSTACK_WRAP_CONFIG_DIR: cfg, HE_MODEL_BASE_URL: 'http://p/slot/anthropic' });
     expect(read(join(a.dir, 'c.yaml'))).toBe(read(join(cfg, 'config.yaml')));
     expect(a.log).toContain('config: seeded ' + a.dir + '/c.yaml from ' + cfg + '/config.yaml before registration');
     const o = withLib('wrap_seed_config "$HE_LOG_DIR/c.yaml" config.yaml config.openai.yaml', { GSTACK_WRAP_CONFIG_DIR: cfg, HE_MODEL_BASE_URL: 'http://p/slot/openai/' });
     expect(read(join(o.dir, 'c.yaml'))).toBe(read(join(cfg, 'config.openai.yaml')));
+    const p = withLib('wrap_seed_config "$HE_LOG_DIR/c.yaml" config.yaml config.openai.yaml', { GSTACK_WRAP_CONFIG_DIR: cfg, HE_MODEL_BASE_URL: 'http://p/slot/particle' });
+    expect(read(join(p.dir, 'c.yaml'))).toBe(read(join(cfg, 'config.particle.yaml')));
+    const ocCfg = join(ROOT, 'harnesses', 'openclaw', 'config');
+    const oc = withLib('wrap_seed_config "$HE_LOG_DIR/c.json" openclaw.json openclaw.openai.json', { GSTACK_WRAP_CONFIG_DIR: ocCfg, HE_MODEL_BASE_URL: 'http://p/slot/particle/' });
+    expect(read(join(oc.dir, 'c.json'))).toBe(read(join(ocCfg, 'openclaw.particle.json')));
     const kept = withLib('echo mine > "$HE_LOG_DIR/c.yaml"; wrap_seed_config "$HE_LOG_DIR/c.yaml" config.yaml config.openai.yaml', { GSTACK_WRAP_CONFIG_DIR: cfg });
     expect(read(join(kept.dir, 'c.yaml'))).toBe('mine\n');
     expect(kept.log).toContain('already exists, left as it is');

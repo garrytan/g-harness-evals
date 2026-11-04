@@ -159,6 +159,8 @@ export interface UsageLine {
   reasoning_effort?: string; thinking_type?: string; thinking_budget_tokens?: number;
   /** Particle only: the model id the response echoed (particle-ai/particle-1 for a request naming particle-1). Recorded, never checked or priced. */
   served_model?: string;
+  /** Particle only, on a non-2xx answer: its JSON `error.code` and `error.type` when each is a short token. Nothing else from the body is logged. runner/trial/trial.ts `trialTermination` reads `error_code` (internal-task plan decision 12); `error_type` is for the reader of the log. */
+  error_code?: string; error_type?: string;
 }
 
 /** The values a usage line may carry for OpenAI `reasoning.effort` / `reasoning_effort` and Anthropic `thinking.type`. */
@@ -215,6 +217,17 @@ function echoedModel(text: string, streamed: boolean): string | undefined {
     try { last = pick(JSON.parse(line.slice(5).trim())) ?? last; } catch { /* [DONE] or a broken line */ }
   }
   return last;
+}
+
+const jsonOrNull = (text: string): unknown => { try { return JSON.parse(text); } catch { return null; } };
+
+/** Particle only: `error.code` and `error.type` of a non-2xx JSON answer, each kept only when it is a short token, so no message text reaches the usage line. */
+function upstreamError(body: unknown): Pick<UsageLine, 'error_code' | 'error_type'> {
+  const e = (body as { error?: unknown } | null)?.error;
+  if (!e || typeof e !== 'object' || Array.isArray(e)) return {};
+  const token = (v: unknown) => (typeof v === 'string' && /^[A-Za-z0-9._-]{1,64}$/.test(v) ? v : undefined);
+  const { code, type } = e as Record<string, unknown>;
+  return { ...(token(code) ? { error_code: code as string } : {}), ...(token(type) ? { error_type: type as string } : {}) };
 }
 
 /** 0.0.0.0, ::, [::], *, an empty host, or any spelling the URL parser canonicalizes to one of them (0, 0.0, 00.0.0.0, ::0,
@@ -510,14 +523,14 @@ export class MeteringProxy {
       ...(Number.isSafeInteger(budget) && budget >= 0 ? { thinking_budget_tokens: budget as number } : {}),
     };
     /** `unfinished`: `cost` is the partial usage of a stream that ended before its final usage, charged at no less than the reservation. */
-    const settle = (cost: ReturnType<typeof usageCost>, status: number, isStream: boolean, cached?: number, written?: number, reason?: string, unfinished = false, served?: string) => {
+    const settle = (cost: ReturnType<typeof usageCost>, status: number, isStream: boolean, cached?: number, written?: number, reason?: string, unfinished = false, served?: string, upstream: Pick<UsageLine, 'error_code' | 'error_type'> = {}) => {
       const charged = !!bounded && (!cost || unfinished);
       if (entry) p.lease.settle(entry, cost && unfinished ? { ...cost, unfinished } : cost);
       const usd = !cost ? reserved : unfinished ? Math.max(reserved, cost.usd) : cost.usd;
       this.charge(key, prov, bounded?.model ?? null, usd, charged);
       this.log({ at, key, provider: prov, route, model: bounded?.model ?? model, outcome: 'forwarded', ...(reason ? { reason } : {}), status, reserved_usd: reserved, actual_usd: usd,
         input_tokens: cost?.input_tokens, output_tokens: cost?.output_tokens, ...(cost && cached !== undefined ? { cached_tokens: cached } : {}), ...(cost && written !== undefined ? { cache_write_tokens: written } : {}), charged_reservation: charged, streamed: isStream, ...knobs,
-        ...(served ? { served_model: served } : {}) });
+        ...(served ? { served_model: served } : {}), ...upstream });
     };
     // The upstream never answered, or its non-streamed body broke off: usage is unknown, so the reservation is charged.
     const failed = (message: string) => {
@@ -545,7 +558,7 @@ export class MeteringProxy {
           const over = !!unfinished && !!cost && cost.usd > reserved;
           const reason = !bounded || (cost && !unfinished) ? undefined
             : `${unfinished ?? 'the stream carried no usage'}${over ? '; charged its partial usage, which cost more than the reservation' : ''}`;
-          settle(cost, res.status, true, cachedTokens(u), cacheWriteTokens(u), reason, !!unfinished, prov === 'particle' ? echoedModel(text, true) : undefined);
+          settle(cost, res.status, true, cachedTokens(u), cacheWriteTokens(u), reason, !!unfinished, prov === 'particle' ? echoedModel(text, true) : undefined, prov === 'particle' && !res.ok ? upstreamError(jsonOrNull(text)) : {});
         },
       ).finally(done);
       return new Response(client, { status: res.status, headers: out });
@@ -565,7 +578,7 @@ export class MeteringProxy {
       cost = { usd: 0, input_tokens: 0, output_tokens: 0 };
       reason = `HTTP ${res.status} ${notBilled}: ${PROVIDER_ERROR_NOT_BILLED}`;
     } else if (!cost && bounded) reason = 'the response carried no usage';
-    settle(cost, res.status, false, cachedTokens(parsedBody?.usage), cacheWriteTokens(parsedBody?.usage), reason, false, prov === 'particle' ? echoedModel(text, false) : undefined);
+    settle(cost, res.status, false, cachedTokens(parsedBody?.usage), cacheWriteTokens(parsedBody?.usage), reason, false, prov === 'particle' ? echoedModel(text, false) : undefined, prov === 'particle' && !res.ok ? upstreamError(parsedBody) : {});
     return new Response(text, { status: res.status, headers: out });
   }
 }

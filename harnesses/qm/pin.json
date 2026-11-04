@@ -15,6 +15,24 @@
     "api_key_env": "ANTHROPIC_API_KEY (set from HE_MODEL_API_KEY)",
     "config_path": "config/core.env"
   },
+  "model_particle": {
+    "provider": "custom provider particle (QM's own route for an OpenAI-compatible endpoint, src/model/custom-providers.ts at the pin), registered by adapter.sh before the first turn",
+    "model": "custom/particle/<HE_MODEL_NAME> as core's PI_MODEL (prepare.sh QM_PI_MODEL); the request names the upstream id particle-1",
+    "api": "openai-completions (custom provider protocol openai, pi-ai 0.82.0-qm.3)",
+    "route": "POST <HE_MODEL_BASE_URL>/v1/chat/completions, streamed with stream_options.include_usage",
+    "registration": "PUT /v1/admin/custom-providers/particle as harness-admin: {name, protocol: openai, baseUrl: <HE_MODEL_BASE_URL>/v1, models: [{id: <HE_MODEL_NAME>, reasoning: true, contextWindow: 1048576, maxTokens: 128000}], apiKey: <HE_MODEL_API_KEY>, validate: false}; the request file holds the token and is deleted after the call; qm-custom-provider-register.json keeps the 200 (hasKey true, no key)",
+    "core_environment": "prepare.sh prints QM_PI_MODEL, and empty QM_MODEL_PROVIDER, QM_ANTHROPIC_API_KEY and QM_ANTHROPIC_BASE_URL for a /particle URL only; compose.yaml reads them for core and falls back to the old values when unset. MODEL_PROVIDER=anthropic would make core refuse to start without ANTHROPIC_API_KEY (src/deployment/secret-schema.ts)",
+    "selected_when": "HE_MODEL_BASE_URL ends in /particle (runner/trial/proxy.ts baseUrlFor); any other URL prints no override, so an Anthropic cell's core environment is unchanged (tests/particle-branch.test.ts)",
+    "reasoning_effort": "medium",
+    "reasoning_setting": "QM's default effort auto is medium for a non-Anthropic model (applyTurnEffort and defaultInteractiveThinkingLevel, src/agent/agent-run.ts and src/model/pi-models.ts), and pi-ai's openai-completions sends it as top-level reasoning_effort for a model with reasoning true; observed reasoning_effort medium on every request",
+    "max_output_tokens": 128000,
+    "max_output_tokens_note": "the custom model's maxTokens 128000, which pi-ai sends as max_completion_tokens (simple-options.js: maxTokens defaults to the model's); the cap the OpenAI cells run under. A custom model without maxTokens would default to 8192, too low for Particle's reasoning",
+    "auxiliary_models": "no Haiku call: auxiliaryModelFor finds no auxiliary model for provider particle, so title, detect, judge and screen calls name the cell model (src/model/pi-models.ts); the ack-emoji call is Anthropic-only and is skipped without an Anthropic key (pickAckEmoji, src/agent/agent-run.ts). Observed: one side call and one agent turn, both naming particle-1",
+    "refusal_fallback": "on a provider refusal or model_unavailable error Pi retries the turn on claude-opus-5 (REFUSAL_FALLBACK_MODEL_IDS, src/agent/agent-run.ts:833); core holds no Anthropic key on a Particle cell, so the retry reaches no model and the turn fails as a model error",
+    "embeddings": "none: QM's memory embedder is an org setting (embeddingModelId, src/resolution/config-store.ts), unset here",
+    "observed_keyless": "2026-10-31, images harness-eval/qm:dev and qm-sandbox:dev built at the pin, the checkout's adapter mounted in the task container, one run turn through compose.yaml straight against tests/fixtures/particle/fake-particle.ts (the proxy's Particle route was not on main yet): exit 0, reply ok, two POST <base>/v1/chat/completions naming particle-1 (stream true, include_usage true, reasoning_effort medium, max_completion_tokens 128000; one side call with no tools, one agent turn with 13 tools), and an Anthropic trap URL on the fake was never called (tests/particle-branch.test.ts)",
+    "error_mapping": "qm-api.mjs maps a failed turn whose reason names the provider or model to exit 3, unchanged; Pi words every provider error that way, so on a Particle cell any provider 400 is exit 3, wider than plan decision 12. The runner applies decision 12 from the metering proxy record once that follow-up lands, and overrides this"
+  },
   "state_paths": [
     "postgres database qm (sessions, memory, runs)",
     "/data on the core service (bound to /harness-state/qm)",

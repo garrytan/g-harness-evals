@@ -43,6 +43,19 @@ Core runs without QM's Slack worker, which is what fills QM's directory store (m
 - **Approval.** Under the default `approval: annotations`, a tool needs approval only when it declares `destructiveHint: true` and not `readOnlyHint` (`src/mcp/mcp-tool-service.ts:37-44`). The world's tools declare no annotations.
 - **Read-only turns.** The `readOnly` label now hides unmarked tools on read-only turns (`src/agent/deferred-tools.ts:12-17`). The adapter registers with `readOnly: false`, as before.
 
+## Particle cells (internal-task)
+
+**QM can run Particle-1.** On a Particle cell the runner's URL ends in `/<slot>/particle`. Pi at `b6786d67` has custom model providers: protocol `openai` is pi-ai's `openai-completions`, Chat Completions at any base URL (`src/model/custom-providers.ts`). With no Anthropic key, QM makes no Haiku call: the auxiliary model for a provider with no auxiliary model is the cell model (`auxiliaryModelFor`, `src/model/pi-models.ts`), and the Anthropic-only ack call is skipped without an Anthropic key (`pickAckEmoji`, `src/agent/agent-run.ts`). An Anthropic cell's stack is unchanged.
+
+- **`prepare.sh`** prints four overrides for a Particle URL only: `QM_PI_MODEL=custom/particle/<model>`, and empty `QM_MODEL_PROVIDER`, `QM_ANTHROPIC_API_KEY` and `QM_ANTHROPIC_BASE_URL`. With `MODEL_PROVIDER=anthropic` core refuses to start without an Anthropic key (`src/deployment/secret-schema.ts`).
+- **`compose.yaml`** reads those overrides for core and falls back to the old values when they are unset. `docker compose config` for an Anthropic cell is the same as before.
+- **`adapter.sh`** registers the provider before the first turn: `PUT /v1/admin/custom-providers/particle` as `harness-admin`, protocol `openai`, base URL `$HE_MODEL_BASE_URL/v1`, the cell model with reasoning on and `maxTokens` 128,000, and the per-trial token as its key. The request file holds the token, so it is written mode 0600 outside the trial's logs and deleted after the call.
+- **Requests.** Pi sends `reasoning_effort: medium` (its `auto` effort is medium for a non-Anthropic model) and `max_completion_tokens` 128,000 on every request, streamed with usage.
+- **Caveat.** On a provider refusal or `model_unavailable` error, Pi retries the turn on `claude-opus-5` (`REFUSAL_FALLBACK_MODEL_IDS`, `src/agent/agent-run.ts`). On a Particle cell core has no Anthropic key, so that retry cannot reach a model, and the turn fails as a model error.
+- **Errors.** QM's turn mapping is unchanged: `qm-api.mjs` maps any failed turn whose reason names the provider or model to exit 3. Pi words every provider error that way, so on a Particle cell any provider 400 is exit 3, wider than plan decision 12. The runner applies decision 12 from the metering proxy's record and overrides this (HE-MODEL-002, [docs/errors.md](../../docs/errors.md)): an exit 3 on a 400 outside the listed codes becomes `harness_error` unless the trial also logged a 429, a 5xx or a failed request.
+
+Keyless proof (2026-10-31, `tests/particle-branch.test.ts`): one `run` turn through the compose stack, straight against a fake Particle endpoint, because the proxy's Particle route was not on main yet. The turn completed. Both requests (one side call, one agent turn) named `particle-1` with effort medium and `max_completion_tokens` 128,000. An Anthropic trap URL on the fake was never called. No paid Particle call has been made.
+
 ## OpenAI models
 
 **A QM cell can run on an OpenAI model such as GPT-6.1 Sol.**
@@ -223,6 +236,10 @@ Findings:
 - The MCP registration route needs an `org_admin` grant; with Postgres and no `ADMIN_GRANTS`, core boots with no admin at all and the route answers 403, so `config/core.env` names `harness-admin`.
 
 ## Changelog
+
+### 2026-10-31: Particle cells (internal-task)
+
+The "Particle cells" section: `prepare.sh`, `compose.yaml` and `adapter.sh` run Pi on a custom `openai` provider for a Particle URL, with no Anthropic key. Why: internal-task's cheap row runs Particle-1 on QM if a keyless check shows no Anthropic call, and it does (`tests/particle-branch.test.ts`).
 
 ### 2026-10-31: memory-provider preflight (internal-task, internal-task M1 step 3)
 

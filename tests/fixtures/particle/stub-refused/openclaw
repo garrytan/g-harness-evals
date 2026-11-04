@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Test stand-in for the openclaw CLI on a refused request (tests/particle-branch.test.ts). An agent turn prints what
+# OpenClaw 2026.10.6 printed in the image on 2026-10-31 when the fake Particle endpoint (tests/fixtures/particle/fake-particle.ts)
+# answered with Particle's error body for the status in $HOME/stub-refused-status (400, 402 or 429; HOME is the trial's
+# state dir, because the adapter passes the CLI no test variable): the run's error line on stderr and the error envelope on
+# stdout, then exit 1. A 429 is retried by OpenClaw first; this prints the error it surfaces once the retries run out. Every
+# other command goes to the stand-in in ../../openai-branch/stub/.
+set -euo pipefail
+if [ "${1:-}" != agent ]; then exec "$(dirname "$0")/../../openai-branch/stub/openclaw" "$@"; fi
+case "$(cat "$HOME/stub-refused-status")" in
+  400)
+    echo "[agent/embedded] embedded run agent end: runId=stub isError=true model=particle-1 provider=particle error=LLM request rejected: Invalid value for 'reasoning_effort' rawError=400 Invalid value for 'reasoning_effort'" >&2
+    message="LLM request rejected: Invalid value for 'reasoning_effort'" ;;
+  402)
+    echo "[agent/embedded] embedded run agent end: runId=stub isError=true model=particle-1 provider=particle error=particle (particle-1) returned a billing error rawError=402 Your credit balance is empty. Add credits to continue." >&2
+    message="particle (particle-1) returned a billing error, check your account's balance and usage limits before trying again." ;;
+  429)
+    echo "[agent/embedded] embedded run agent end: runId=stub isError=true model=particle-1 provider=particle error=Rate limit exceeded: the serving fleet is at capacity; Retry-After: 1 seconds rawError=429 Rate limit exceeded: the serving fleet is at capacity; Retry-After: 1 seconds" >&2
+    message="Rate limit exceeded: the serving fleet is at capacity; Retry-After: 1 seconds" ;;
+esac
+printf '{"ok":false,"status":"error","final":"","payloads":[],"error":{"message":%s,"kind":"exception"}}\n' "$(printf '%s' "$message" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
+exit 1

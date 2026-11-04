@@ -76,6 +76,9 @@ wrap_log "approval: approvals.mode=manual approvals.timeout=1 (an interactive se
 # `gstack: none` line and runs this block unchanged, so its session has the
 # same approval disposition. The lines above this comment keep their numbers:
 # discovery.sh records the approval line's number in every panel manifest.
+# Chat mode runs the Anthropic config only. A Particle cell (internal-task) would send Messages requests to the Particle route, the
+# proxy would refuse them, and the trial would read as a model error, so it stops here as a harness error instead.
+case "${HE_MODEL_BASE_URL%/}" in */particle) wrap_fail "chat mode runs the Anthropic config only; a Particle cell needs the oneshot image (HE_GSTACK_HERMES_MODE=oneshot)" ;; esac
 harness_dir=/opt/harness
 model_sed=$(printf '%s' "$HE_MODEL_NAME" | sed 's/[|&\\]/\\&/g')
 for template in "$harness_dir/config/config.yaml" "$harness_dir/config/config.openai.yaml"; do

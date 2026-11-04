@@ -26,6 +26,20 @@ On an OpenAI cell (plan decision 1 of internal-task: Codex, OpenClaw and Hermes 
 
 Keyless proof (2026-10-29, `tests/openai-branch.test.ts`): through the real proxy in lease mode with `--allow-models openai:gpt-6-luna` and a fake Responses endpoint upstream, `run` and `serve` completed with every model request naming `gpt-6-luna`, none refused, and a model off the allowlist exited 3. The same test checks that an Anthropic cell's config, turn arguments, environment, response and ready file are identical to `c1c7ed1b3` except `adapter_sha256`, the config's `security.allow_lazy_installs: false` block and the cell model in `model.default` (internal-task, `tests/fixtures/model-defaults.ts`). No paid OpenAI call has been made yet.
 
+## Particle cells (internal-task)
+
+On a Particle-1 cell (cell model `particle:particle-1`, the cheap row of internal-task) the runner's URL ends in `/<slot>/particle`. Particle speaks only OpenAI Chat Completions over HTTP. An Anthropic or OpenAI URL keeps its own branch above.
+
+- **Provider.** `--provider custom:particle`: the `custom_providers` entry named `particle` in `config/config.particle.yaml`, Hermes's custom-endpoint provider on the `chat_completions` transport. `openai-api` would use the Responses API, which Particle serves only over WebSocket.
+- **Credentials.** The adapter exports `OPENAI_API_KEY` and `OPENAI_BASE_URL` as on an OpenAI cell, and no Anthropic variables. Hermes expands them into the config. Every model call is `POST /v1/chat/completions` through the proxy, naming `particle-1`.
+- **Reasoning effort and output cap.** On a custom endpoint Hermes sends neither, so the entry's `extra_body` adds `reasoning_effort: medium` and `max_completion_tokens: 128000` to the agent's requests. Particle serves medium at its high tier, the same tier it uses when no effort is sent. 128,000 is the cap the OpenAI cells run under. Particle spends output on `reasoning_content` first, so a low cap returns no visible text.
+- **Side calls.** Every auxiliary task inherits the main model. The `run` entry's title call sends `reasoning_effort: none`, no tools and no cap, as Hermes ships it.
+- **Errors.** A Particle cell uses the same model-error pattern as every other cell, so a provider 400 is exit 2, harness error. Plan decision 12 (a Particle 400 with code `invalid_value` or `unsupported_parameter` is a model error) is applied by the runner from the metering proxy's record, because Hermes's output drops the error code. A 402 or 429 is exit 3, as before.
+- **gstack chat mode.** The gstack overlay's chat mode runs the Anthropic config only, so it stops a Particle cell as a harness error before any model request. Particle cells run the oneshot image.
+- **Metadata probes.** As on the other cells, Hermes probes the endpoint for a local model server's routes. They name no model.
+
+Keyless proof (2026-10-31, `tests/particle-branch.test.ts`): the image ran straight against a fake Particle endpoint (`tests/fixtures/particle/fake-particle.ts`), because the proxy's Particle route was not on main yet. `run` and `serve` completed. Every model request named `particle-1`, and the agent turn sent effort medium and `max_completion_tokens` 128,000. There was no embeddings call and no Anthropic call. Particle's 400, 402 and 429 error bodies from the fake exited 2, 3 and 3. The same test checks that an OpenAI cell's turn arguments, environment, response and ready file equal main's at `3a9b403be`. No paid Particle call has been made.
+
 ## Instruction routes (internal-task)
 
 `HE_HARNESS_CONFIG` (the cell's `config`) names the route that carries `/opt/harness/routes/instruction.md` (a byte copy of [harnesses/routes/instruction.md](../routes/instruction.md), gbrain's per-turn brain-first rule). Unset, empty or `default` leaves the adapter byte-identical to before; any other value exits 2 (HE-ADAPTER-007).
@@ -77,6 +91,10 @@ Findings:
 - The 36 refused requests per trial in the proxy's usage log are Hermes's model-discovery probes, 12 per turn, refused 403 at $0 (the M0 finding).
 
 ## Changelog
+
+### 2026-10-31: Particle cells (internal-task)
+
+The adapter gives a Particle cell `config/config.particle.yaml` and `--provider custom:particle` with `OPENAI_API_KEY` and `OPENAI_BASE_URL` (Chat Completions, effort medium and an output cap of 128,000 through `extra_body`). A provider 400 is exit 2 as on every cell; plan decision 12 is the runner's. Why: internal-task's cheap row runs Particle-1 on Hermes. `tests/particle-branch.test.ts` holds the proof and the OpenAI-cell goldens.
 
 ### 2026-10-31: the cell model in `model.default` (internal-task)
 

@@ -38,6 +38,21 @@ Keyless proof (2026-10-29, `tests/openai-branch.test.ts`): through the real prox
 - **OpenAI cells: declared deviation.** The shipped default would be `openai/gpt-5.6-luna`, but `config/openclaw.openai.json` keeps its existing pin of `utilityModel` to the cell model (internal-task). Published results already used that pin, so it stays until one adapter PR changes it for every lane at once, and each preregistration declares it as a deviation.
 - **Not housekeeping.** The occasional Sonnet call on older Haiku cells (4 of 200 Haiku trials in gbrain-arm, 1 of 75 in gbrain-memory, refused in several gbrain runs) came from the pinned `model.primary`, not from `utilityModel`. It now names the cell model.
 
+## Particle cells (internal-task)
+
+On a Particle-1 cell (cell model `particle:particle-1`, the cheap row of internal-task) the runner's URL ends in `/<slot>/particle`. Particle speaks only OpenAI Chat Completions over HTTP, so the adapter uses OpenClaw's generic `openai-completions` provider. The `@openclaw/particle-provider` plugin is not installed, so the image is unchanged. An Anthropic or OpenAI URL keeps its own branch above.
+
+- **Config.** `config/openclaw.particle.json` is copied. It defines a provider `particle` at `${HE_MODEL_BASE_URL}/v1` with `${HE_MODEL_API_KEY}`, so every model call is `POST /v1/chat/completions` (SSE) through the proxy, naming `particle-1`.
+- **Turn.** `--model particle/<HE_MODEL_NAME>` in `run` and `serve`.
+- **Housekeeping model.** `agents.defaults.utilityModel` is the cell model (`openclaw models status --json` reports it from config).
+- **Reasoning effort.** The model row has `reasoning: true` and `thinkingDefault` is medium, so every request sends `reasoning_effort: medium`. Particle serves medium at its high tier, the same tier it uses when no effort is sent.
+- **Output cap.** `maxTokens: 128000`, sent as `max_completion_tokens`: the cap the OpenAI cells state and the shards' proxy runs. Particle spends output on `reasoning_content` first, so a low cap returns no visible text. Its own default is 32,000.
+- **Usage.** `compat.supportsUsageInStreaming: true`, so OpenClaw asks for usage in the stream. It does not for an unknown endpoint by default.
+- **Memory.** `memory.search.provider: "none"` in this template itself: the memory indexer searches by keyword and never calls `/v1/embeddings`, which Particle does not serve.
+- **Errors.** A Particle cell uses the same model-error pattern as every other cell, so a provider 400 is exit 2, harness error. Plan decision 12 (a Particle 400 with code `invalid_value` or `unsupported_parameter` is a model error) is applied by the runner from the metering proxy's record, because OpenClaw's output does not carry the error code. A 429 is exit 3 once OpenClaw's retries run out. A 402 is exit 2, as on every cell: the pattern does not match OpenClaw's `status=402` billing line.
+
+Keyless proof (2026-10-31, `tests/particle-branch.test.ts`): the image ran straight against a fake Particle endpoint (`tests/fixtures/particle/fake-particle.ts`), because the proxy's Particle route was not on main yet. `run` and `serve` each completed a turn on one `POST /v1/chat/completions` naming `particle-1` with effort medium and `max_completion_tokens` 128,000. There was no other request, no embeddings call and no Anthropic call. Particle's 400 and 402 error bodies from the fake exited 2; a 429 was retried until the 120 s budget ran out (exit 124). The same test checks that an OpenAI cell's turn arguments, environment, response and ready file equal main's at `3a9b403be`. No paid Particle call has been made.
+
 ## Instruction routes (internal-task)
 
 `HE_HARNESS_CONFIG` (the cell's `config`) names the route that carries `/opt/harness/routes/instruction.md` (a byte copy of [harnesses/routes/instruction.md](../routes/instruction.md), gbrain's per-turn brain-first rule). Unset, empty or `default` leaves the adapter byte-identical to before; any other value exits 2 (HE-ADAPTER-007).
@@ -87,6 +102,10 @@ Findings:
 - A fifth of each turn's input is OpenClaw's own tool catalog and system prompt (about 24,000 to 32,000 tokens per call before the conversation), mostly served from the prompt cache after the first call.
 
 ## Changelog
+
+### 2026-10-31: Particle cells (internal-task)
+
+The adapter gives a Particle cell `config/openclaw.particle.json` (the generic `openai-completions` provider, the housekeeping model mapped to the cell model, effort medium, an output cap of 128,000, memory search by keyword) and `--model particle/<model>`. A provider 400 is exit 2 as on every cell; plan decision 12 is the runner's. Why: internal-task's cheap row runs Particle-1 on OpenClaw. `tests/particle-branch.test.ts` holds the proof and the OpenAI-cell goldens.
 
 ### 2026-10-31: the cell model as the primary model; housekeeping at its shipped default (internal-task)
 

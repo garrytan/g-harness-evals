@@ -145,6 +145,8 @@ The harness must complete a turn with stdin closed and no TTY: the runner starts
 
 Any other code is `infra_error`. The adapter maps the harness's own exit codes and output onto these four; each `adapter.sh` documents its mapping in comments. An adapter that cannot tell a model error from a harness error reports 2.
 
+On a Particle cell the runner reads Particle's answers from the proxy's usage lines and can override this table (HE-MODEL-002, [errors](errors.md)): a 400 with `error.code` `invalid_value` or `unsupported_parameter`, or any 402, makes the trial `model_error` whatever the exit, and an exit 3 on any other 400 is `harness_error` unless the trial also logged a 429, a 5xx or a failed request. No adapter sees Particle's `error.code`, so none of them changes.
+
 ## Logs
 
 Everything the harness prints goes to `$HE_LOG_DIR/stdout.log` and `$HE_LOG_DIR/stderr.log`. The adapter's own lines go to `$HE_LOG_DIR/adapter.log`, each with a UTC timestamp, the harness name and the trial id. A harness-native transcript (OpenClaw's JSON envelope, QM's turn result) goes beside them, and on a gbrain-docs cell `gbrain-install.json` (above). Nothing is written to `/workspace` except by the harness doing the task and, on a gbrain-docs cell, the adapter's copy of gbrain's documented install before the first turn.
@@ -171,6 +173,10 @@ The slot `t1` is bound with `$cred` first, as above.
 `bun test tests/adapter-conformance.test.ts` proves the protocol on the fake harness. For `run`: exit 0, 2, 3 and 124 under the conditions above; nothing written outside `/workspace`, `/harness-state` and `$HE_LOG_DIR` (at the process level by listing the temp tree, at the container level with `docker diff`); state in `/harness-state`; a stdin-closed, no-TTY run that completes; a no-op instruction that leaves the workspace untouched. For `serve`: the ready file appears; requests are answered in order with the right session key and a per-session turn counter; a sleep past a 2 s budget yields 124 within the kill grace, `[fake:model_error]` yields 3 and `[fake:harness_error]` yields 2 while the loop keeps serving; a `[fake:call post_message ...]` marker lands as a `chat.postMessage` event by the bot in an in-process world; nothing is written outside the four writable places and no `.tmp` file is left; SIGTERM at idle, both before any turn has run and after turns, and SIGTERM during a turn end the process with exit 0 within seconds. The container-level test runs the same through `docker run ... serve` and `docker stop`. Container-level tests skip when no Docker daemon is reachable; the whole file runs in about 12 s.
 
 ## Changelog
+
+### 2026-11-01: Particle error codes can override the exit table (internal-task)
+
+A paragraph under "Exit codes" says that on a Particle cell the runner's HE-MODEL-002 rule, read from the proxy's usage lines, can override the exit-code table. The adapters did not change. Why: plan decision 12 counts a listed Particle 400 or a 402 as a model error and any other 400 as the harness's fail, and no adapter sees Particle's `error.code`.
 
 ### 2026-10-30: QM at main b6786d67
 

@@ -67,6 +67,28 @@ until curl -fsS "$QM_CORE_URL/healthz" >/dev/null 2>&1; do
 done
 log "core healthy"
 
+# internal-task: a Particle cell (HE_MODEL_BASE_URL ending in /particle) runs Pi on a custom provider, QM's own route for an
+# OpenAI-compatible endpoint (src/model/custom-providers.ts at the pin): PUT /v1/admin/custom-providers/particle as the trial's
+# admin, protocol openai (pi-ai's openai-completions, Chat Completions at <base>/v1), the cell model with reasoning on and an
+# output cap of 128000, and the per-trial token as its key (validate false: no key check against the proxy). core's PI_MODEL is
+# custom/particle/<model> (prepare.sh), which resolves once the provider exists, and core holds no Anthropic credential, so the
+# auxiliary model is the cell model (auxiliaryModelFor finds no auxiliary model for provider particle). The request body holds
+# the token, so it is written mode 0600 outside HE_LOG_DIR (the logs go into the results) and removed once the PUT returns.
+case "${HE_MODEL_BASE_URL%/}" in
+  */particle)
+    provider_req=$(umask 077 && mktemp)
+    node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({ name: "Particle through the metering proxy", protocol: "openai", baseUrl: process.env.HE_MODEL_BASE_URL.replace(/\/+$/, "") + "/v1", models: [{ id: process.env.HE_MODEL_NAME, name: process.env.HE_MODEL_NAME, reasoning: true, contextWindow: 1048576, maxTokens: 128000 }], apiKey: process.env.HE_MODEL_API_KEY, validate: false }))' "$provider_req"
+    if node /opt/harness/qm-api.mjs admin-put "$QM_CORE_URL" "$QM_SIGNING_SECRET" "$QM_ADMIN_ACTOR" /v1/admin/custom-providers/particle "$provider_req" > "$HE_LOG_DIR/qm-custom-provider-register.json" 2>>"$HE_LOG_DIR/stderr.log"; then
+      rm -f "$provider_req"
+      log "custom provider particle registered for custom/particle/${HE_MODEL_NAME:-}"
+    else
+      rm -f "$provider_req"
+      log "custom provider registration failed: $(head -c 400 "$HE_LOG_DIR/qm-custom-provider-register.json")"
+      exit 2
+    fi
+    ;;
+esac
+
 if [ "$entry" = "run" ]; then
   [ -r "$HE_WORKSPACE_DIR/instruction.md" ] || { log "no readable $HE_WORKSPACE_DIR/instruction.md"; exit 2; }
   node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({ actor: { externalId: process.argv[2] }, conversation: { kind: "dm", threadRef: process.argv[3] }, text_file: process.argv[4] }))' \

@@ -162,11 +162,13 @@ wrap_gstack_pinned() {
 # adapter would then find a file and skip its template, and the trial would
 # run without the harness settings. The template is picked the way both
 # counted adapters pick it: an HE_MODEL_BASE_URL ending in /openai takes the
-# OpenAI template. GSTACK_WRAP_CONFIG_DIR (default /opt/harness/config) is
-# for tests.
+# OpenAI template, and one ending in /particle takes the Particle template,
+# named like the OpenAI one with particle for openai (config.particle.yaml,
+# openclaw.particle.json). GSTACK_WRAP_CONFIG_DIR (default /opt/harness/config)
+# is for tests.
 wrap_seed_config() {
   local dir=${GSTACK_WRAP_CONFIG_DIR:-/opt/harness/config} template=$2 url=${HE_MODEL_BASE_URL:-}
-  case "${url%/}" in */openai) template=$3 ;; esac
+  case "${url%/}" in */openai) template=$3 ;; */particle) template=${3/openai/particle} ;; esac
   if [ -e "$1" ]; then wrap_log "config: $1 already exists, left as it is"; return 0; fi
   [ -r "$dir/$template" ] || wrap_fail "no config template $dir/$template to seed $1 with"
   cp "$dir/$template" "$1" || wrap_fail "could not copy $dir/$template to $1"

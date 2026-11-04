@@ -20,7 +20,7 @@ import { type InternalNetwork, ensureInternalNetwork, internalNetworkName, remov
 import { RunProxy, reconcile, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
 import { DEFAULT_PREAMBLE_PATH, loadPreamble } from './task.ts';
 import { type CaptureConfig, captureDnsGapLine, captureLine, captureSummary } from './capture.ts';
-import { type GradeFn, appendRecord, loadGrader, runTrial } from './trial.ts';
+import { type GradeFn, appendRecord, loadGrader, runTrial, trialTermination } from './trial.ts';
 import { writeAtomic } from './harness.ts';
 
 export interface RunOptions {
@@ -191,11 +191,12 @@ async function runSingleShot(o: { cell: Cell; trial: Trial; trialDir: string; pr
   const result = existsSync(resultPath) ? JSON.parse(readFileSync(resultPath, 'utf8')) as { termination: Termination; grade: 'pass' | 'fail'; wall_ms: number; exit_code: number } : null;
   let usage = null;
   let capStop = false;
+  let lines: ReturnType<RunProxy['usageLines']> = [];
   const paths: Record<string, string> = { dir: o.trialDir, result: resultPath, logs: join(o.trialDir, 'logs') };
   if (o.proxy) {
     const meter = await o.proxy.finalize(key);
     await o.proxy.unbind(slot);
-    const lines = o.proxy.usageLines(key);
+    lines = o.proxy.usageLines(key);
     const s = summarizeUsage(key, meter, lines);
     usage = s.usage; capStop = s.cap_stop;
     paths.usage = join(o.trialDir, 'usage.json'); paths.reconcile = join(o.trialDir, 'reconcile.json');
@@ -203,12 +204,14 @@ async function runSingleShot(o: { cell: Cell; trial: Trial; trialDir: string; pr
     writeAtomic(paths.usage, JSON.stringify(usage, null, 1) + '\n');
     writeAtomic(paths.reconcile, JSON.stringify(reconcile(key, meter, lines), null, 1) + '\n');
   }
+  const decided: { termination: Termination; note?: string } = result ? trialTermination({ cellModel: cell.model, fromExits: result.termination, since: new Date(started).toISOString(), lines, capStop }) : { termination: capStop ? 'model_error' : 'infra_error' };
+  if (decided.note) o.log(decided.note);
   const ended = Date.now();
   return {
     trial_id: trial.id, cell: cell.id, task: trial.task, harness: cell.harness, harness_mode: 'smoke', model: cell.model, script: null,
-    termination: capStop ? 'model_error' : result?.termination ?? 'infra_error', grade: result?.grade ?? 'n/a', consent_violation: false, approval_stop: false, effects: [], predicates: [],
+    termination: decided.termination, grade: result?.grade ?? 'n/a', consent_violation: false, approval_stop: false, effects: [], predicates: [],
     cap_stop: capStop, turns: { planned: 1, run: result ? 1 : 0, exits: result ? [result.exit_code] : [] }, usage, wall_ms: ended - started,
     started_at: new Date(started).toISOString(), ended_at: new Date(ended).toISOString(), paths,
-    ...(result ? {} : { error: `HE-RUN-006 harnesses/run-trial.sh exited ${r.status} without result.json: ${(r.stderr || '').trim().slice(-300)}` }),
+    ...(result ? (decided.note ? { error: decided.note } : {}) : { error: `HE-RUN-006 harnesses/run-trial.sh exited ${r.status} without result.json: ${(r.stderr || '').trim().slice(-300)}` }),
   };
 }

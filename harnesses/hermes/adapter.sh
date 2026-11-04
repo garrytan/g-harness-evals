@@ -55,11 +55,15 @@ mkdir -p "$HERMES_HOME"
 # internal-task: the provider is the cell model's prefix, which the runner puts in the proxy URL as its last path segment
 # (<proxy>/<slot>/<provider>, runner/trial/proxy.ts baseUrlFor). An OpenAI cell gets config/config.openai.yaml and Hermes's
 # openai-api provider on its shipped Responses transport at HE_MODEL_BASE_URL/v1 with reasoning effort medium (pin.json
-# model_openai; `openai` is Hermes's alias for openrouter at this pin, hermes_cli/providers.py). Any other URL keeps the
-# anthropic provider, its config and its variables unchanged; the Anthropic lines stay as the gstack overlay copies them.
+# model_openai; `openai` is Hermes's alias for openrouter at this pin, hermes_cli/providers.py). internal-task: a Particle cell (URL
+# ending in /particle) gets config/config.particle.yaml and its custom_providers entry custom:particle, Hermes's custom-endpoint
+# provider on the chat_completions transport at HE_MODEL_BASE_URL/v1 with OPENAI_* and no Anthropic variables (pin.json
+# model_particle). Any other URL keeps the anthropic provider, its config and its variables unchanged; the Anthropic lines stay as
+# the gstack overlay copies them.
 provider=anthropic
 case "${HE_MODEL_BASE_URL%/}" in
   */openai) provider=openai-api; [ -e "$HERMES_HOME/config.yaml" ] || cp "$harness_dir/config/config.openai.yaml" "$HERMES_HOME/config.yaml" ;;
+  */particle) provider=custom:particle; [ -e "$HERMES_HOME/config.yaml" ] || cp "$harness_dir/config/config.particle.yaml" "$HERMES_HOME/config.yaml" ;;
 esac
 [ -e "$HERMES_HOME/config.yaml" ] || cp /opt/harness/config/config.yaml "$HERMES_HOME/config.yaml"
 # internal-task: while config.yaml is still exactly one of the templates, its model.default is set to the cell model, as --model
@@ -78,8 +82,9 @@ done
 # The anthropic provider reads these two variables; nothing is written to .env.
 export ANTHROPIC_API_KEY="$HE_MODEL_API_KEY"
 export ANTHROPIC_BASE_URL="$HE_MODEL_BASE_URL"
-# The openai-api provider reads its own two instead; an OpenAI cell keeps no Anthropic credential in Hermes's environment.
-if [ "$provider" = openai-api ]; then
+# The openai-api provider reads its own two instead, and the Particle config expands the same two into its custom_providers entry;
+# an OpenAI or Particle cell keeps no Anthropic credential in Hermes's environment.
+if [ "$provider" = openai-api ] || [ "$provider" = custom:particle ]; then
   unset ANTHROPIC_API_KEY ANTHROPIC_BASE_URL
   export OPENAI_API_KEY="$HE_MODEL_API_KEY" OPENAI_BASE_URL="${HE_MODEL_BASE_URL%/}/v1"
 fi
@@ -92,6 +97,9 @@ log "hermes ${hermes_version%%$'\n'*} model=$provider/$HE_MODEL_NAME budget=${HE
 # A model error is a proxy refusal, an Anthropic or OpenAI SDK error class (both SDKs use these names)
 # or an HTTP status on stderr or in the result record; everything else that fails is Hermes's.
 model_error_pattern='metering proxy|AuthenticationError|PermissionDeniedError|RateLimitError|APIStatusError|APIConnectionError|InternalServerError|Error code: (401|402|403|404|429|5[0-9]{2})|HTTP (401|402|403|404|429|5[0-9]{2})'
+# internal-task: a Particle cell uses this pattern unchanged, so a provider 400 is exit 2 as on every other cell. Plan decision 12
+# (a Particle 400 with code invalid_value or unsupported_parameter is model_error) belongs to the runner, which reads the
+# metering proxy's record of the upstream status and code; Hermes's own output drops error.code (agent/api_error_summary.py).
 
 cd "$HE_WORKSPACE_DIR"
 

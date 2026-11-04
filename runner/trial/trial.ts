@@ -161,6 +161,31 @@ export function foreignModels(cellModel: string, byModel: Record<string, unknown
   return [...seen].sort();
 }
 
+/** The codes of a Particle 400 that plan decision 12 counts as a model error (the request is one the model refuses, not a harness bug). */
+export const PARTICLE_MODEL_ERROR_CODES: readonly string[] = ['invalid_value', 'unsupported_parameter'];
+
+/** How a trial ends, after its exits are classified. A proxy cap stop or a foreign model is model_error and an infra or
+ *  semantic failure is infra_error, as before. internal-task plan decision 12, on a Particle cell: the proxy's record of
+ *  Particle's answers decides, not the adapter's exit, because no adapter sees Particle's error.code (OpenClaw and Hermes
+ *  exit 2 on any 400, QM exits 3 on any provider error). A 400 with a listed code, or any 402, is model_error. Any other
+ *  400 keeps the exit classification, except that an exit 3 (QM's mapping) becomes harness_error when the trial logged no
+ *  429, 5xx or failed request that could have caused it. Proxy refusals leave the exit classification as it is, and so
+ *  does an exam_fault. Only lines from this attempt count (at or after `since`): the usage log is append-only across a
+ *  --resume, and the trial key does not change. */
+export function trialTermination(o: { cellModel: string; fromExits: Termination; since: string; lines: ReadonlyArray<{ at?: string; provider: string; outcome: string; status?: number; error_code?: string }>; capStop?: boolean; modelMismatch?: boolean; infra?: boolean }): { termination: Termination; note?: string } {
+  if (o.capStop || o.modelMismatch) return { termination: 'model_error' };
+  if (o.infra) return { termination: 'infra_error' };
+  if (!o.cellModel.toLowerCase().startsWith('particle:') || o.fromExits === 'exam_fault') return { termination: o.fromExits };
+  const lines = o.lines.filter((l) => l.at === undefined || l.at >= o.since);
+  const answers = lines.filter((l) => l.provider === 'particle' && l.outcome === 'forwarded' && (l.status === 400 || l.status === 402));
+  const named = (l: { status?: number; error_code?: string }) => `HTTP ${l.status} ${l.error_code ?? '(no error.code)'}`;
+  const refused = answers.find((l) => l.status === 402 || PARTICLE_MODEL_ERROR_CODES.includes(l.error_code ?? ''));
+  if (refused) return { termination: 'model_error', note: `HE-MODEL-002 Particle answered ${named(refused)}, a model error under internal-task plan decision 12; the trial is model_error and leaves the scored rows` };
+  const providerFailure = lines.some((l) => l.outcome === 'failed' || l.status === 429 || (l.status !== undefined && l.status >= 500));
+  if (answers.length && o.fromExits === 'model_error' && !providerFailure) return { termination: 'harness_error', note: `HE-MODEL-002 Particle answered ${named(answers[0]!)}, which plan decision 12 does not count as a model error; the harness's exit 3 is harness_error` };
+  return { termination: o.fromExits };
+}
+
 export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   const { cell, trial, opts, log } = ctx;
   const started = Date.now();
@@ -381,7 +406,9 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   if (semanticError) { error = semanticError; log(semanticError); }
 
   const exits = windows.map((w) => w.exit);
-  const termination: Termination = capStop || modelMismatch ? 'model_error' : infraError || semanticError ? 'infra_error' : classify(exits, readyFailure, endedEarly, grade.approval_stop);
+  const decided = trialTermination({ cellModel: cell.model, fromExits: classify(exits, readyFailure, endedEarly, grade.approval_stop), since: started_at, lines: proxy ? proxy.usageLines(key) : [], capStop, modelMismatch, infra: !!(infraError || semanticError) });
+  if (decided.note) { log(decided.note); error = error ? `${error}; ${decided.note}` : decided.note; }
+  const termination = decided.termination;
   const ended = Date.now();
   return {
     trial_id: trial.id, cell: cell.id, task: trial.task, harness: cell.harness, harness_mode: mode, model: cell.model, script: trial.script ?? null,
