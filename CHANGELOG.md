@@ -2,6 +2,10 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.131] - 2026-11-04
+
+- CI carry: CI's `checks` job now uploads a tested-tree record (`tree.json`, written by `scripts/ci-tree-json.ts` from bun's JUnit report), and `.gstack/pregate.json` declares the `ci/checks` run profile and maps the /ship lane `bun test tests/` to it under `ship_lanes_from`, with `git ls-files 'tests/*.test.ts'` as the inventory the run must cover. When a green CI run already tested the exact tree, /ship and gstack-pregate count the full suite as passed instead of running it again. `tree.json` also lists `skipped_files`, the test files with any test CI skipped (such as the ones that need harness images, a drive path or an installed gstack), and the lane's `per_file` runner (`bun test {files}`) reruns those files whole on the /ship machine instead of counting them as covered. A test that also skips on that machine (no image or drive there either) still runs nowhere. `.gstack/ship-policy.json` raises `min_gstack_version` to 1.94.4.0, because older gstack rejects the new keys.
+
 ## [0.0.130] - 2026-11-04
 
 ### internal-task: sealed custody hardening (internal-task items 1 to 4)

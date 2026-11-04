@@ -2,6 +2,28 @@
   "$schema": "https://github.com/garrytan/gstack/docs/pregate.md#pregate-v1",
   "runner": "bun test {files}",
   "timeout_s": 2400,
+  "run_profiles": {
+    "ci/checks": {
+      "workflow": "ci.yml",
+      "events": [
+        "pull_request",
+        "push"
+      ],
+      "jobs": [
+        "checks"
+      ],
+      "artifact": "checks-tree"
+    }
+  },
+  "ship_lanes_from": {
+    "bun test tests/": {
+      "profiles": [
+        "ci/checks"
+      ],
+      "inventory": "git ls-files 'tests/*.test.ts'",
+      "per_file": "bun test {files}"
+    }
+  },
   "dependencies": {
     "scripts/secondary-endpoints.ts": [
       "tests/scripts-gbrain.test.ts"
@@ -24,6 +46,9 @@
     "scripts/gbrain-ladder.ts": [
       "tests/scripts-gbrain.test.ts",
       "tests/gbrain-runner.test.ts"
+    ],
+    "scripts/ci-tree-json.ts": [
+      "tests/ci-tree-json.test.ts"
     ],
     "scripts/reconcile-provider.ts": [
       "tests/reconcile-provider.test.ts"

@@ -29,6 +29,20 @@ test('pregate timeout_s comes with a gstack floor of 1.91.364.0 or later', () =>
   expect(firstDiff === -1 || (floor[firstDiff] ?? 0) > release[firstDiff]).toBe(true);
 });
 
+// Value: protects=ship_lanes_from and run_profiles (gstack 1.94.0.0, CI carry) come with a ship-policy floor at 1.94.4.0
+// or later, the R66 roll-out release, so a crew machine on an older gstack is told to upgrade instead of refusing the
+// whole policy as an unknown key; fails_when=either key stays in .gstack/pregate.json while min_gstack_version drops
+// below 1.94.4.0; why_new=gstack 1.93.x lists no ship_lanes_from key and rejects pregate.json with PREGATE_CONFIG_INVALID;
+// seam=none; no_claim=gstack's own parsing.
+test('pregate CI carry keys come with a gstack floor of 1.94.4.0 or later', () => {
+  const pregate = JSON.parse(readFileSync(join(ROOT, '.gstack', 'pregate.json'), 'utf8')) as Record<string, unknown>;
+  if (!('ship_lanes_from' in pregate) && !('run_profiles' in pregate)) return;
+  const floor = (JSON.parse(readFileSync(join(ROOT, '.gstack', 'ship-policy.json'), 'utf8')) as { min_gstack_version: string }).min_gstack_version.split('.').map(Number);
+  const release = [1, 94, 4, 0];
+  const firstDiff = release.findIndex((n, i) => (floor[i] ?? 0) !== n);
+  expect(firstDiff === -1 || (floor[firstDiff] ?? 0) > release[firstDiff]).toBe(true);
+});
+
 // Value: protects=no Markdown page but CHANGELOG.md names the current release, so a pull request renumbered after another
 // merges changes only VERSION, package.json and CHANGELOG.md, which gstack's receipt carry counts as release metadata;
 // fails_when=a page (README's version line, a hub page's opening, a page changelog entry) writes v<VERSION> or
