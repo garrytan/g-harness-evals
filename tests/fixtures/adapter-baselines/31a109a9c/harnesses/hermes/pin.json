@@ -1,0 +1,79 @@
+{
+  "name": "hermes",
+  "repo": "https://github.com/NousResearch/hermes-agent",
+  "version": "v2026.9.24",
+  "commit": "f97608f178d1ffeca59860195ab7da295f7c8e5f",
+  "soul_md": {
+    "path": "SOUL.md at the pinned commit (https://raw.githubusercontent.com/NousResearch/hermes-agent/<commit>/SOUL.md)",
+    "sha256": "36c1f5a2e92cd1d018311eaf4c8f1e8886672eae78212e033c681d0e3d5d506f",
+    "bytes": 667,
+    "note": "Hermes's default identity file (identity slot 1 of agent/prompt_builder.py), written into HERMES_HOME on Hermes's first run and byte-identical to /opt/harness/src/SOUL.md and /root/.hermes/SOUL.md in the harness image; the gbrain image build fetches it at this commit and checks the sha256, and gbrain/build-install.ts seeds the hermes installer's HERMES_HOME with it before gbrain setup hermes --instructions-only, because gbrain appends its brain-first block to an existing SOUL.md and writes nothing into an empty HERMES_HOME (internal-task)"
+  },
+  "install": "git clone --branch v2026.9.24 <repo> /opt/harness/src && uv venv /opt/harness/venv && uv pip install '/opt/harness/src[anthropic,mcp]'",
+  "entry": "/opt/harness/adapter.sh run | serve",
+  "turn_command": "hermes chat --query-file /workspace/instruction.md --oneshot --provider anthropic --model claude-sonnet-5-5",
+  "model": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-5-5",
+    "api": "anthropic-messages",
+    "base_url_env": "ANTHROPIC_BASE_URL (set from HE_MODEL_BASE_URL)",
+    "api_key_env": "ANTHROPIC_API_KEY (set from HE_MODEL_API_KEY)",
+    "config_path": "config/config.yaml"
+  },
+  "model_openai": {
+    "provider": "openai-api",
+    "model": "the cell's model from HE_MODEL_NAME (gpt-6-luna in the pilot); --provider openai-api --model <HE_MODEL_NAME> on every turn",
+    "api": "codex_responses",
+    "route": "POST <HE_MODEL_BASE_URL>/v1/responses, streamed (SSE), through the OpenAI SDK",
+    "base_url_env": "OPENAI_BASE_URL (set from HE_MODEL_BASE_URL + /v1)",
+    "api_key_env": "OPENAI_API_KEY (set from HE_MODEL_API_KEY)",
+    "config_path": "config/config.openai.yaml",
+    "selected_when": "HE_MODEL_BASE_URL ends in /openai, the provider segment of the runner's <proxy>/<slot>/<provider> (runner/trial/proxy.ts baseUrlFor); any other URL keeps config/config.yaml, ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL and --provider anthropic byte for byte (tests/openai-branch.test.ts golden captures from c1c7ed1b3)",
+    "provider_name": "openai-api is Hermes's direct OpenAI API-key provider (the hermes_cli/auth.py registry row; transport codex_responses and base_url_env_var OPENAI_BASE_URL in hermes_cli/providers.py HERMES_OVERLAYS); `--provider openai` would resolve to openrouter, the legacy alias in hermes_cli/providers.py _ALIAS_GROUPS",
+    "turn_command": "hermes chat --query-file /workspace/instruction.md --oneshot --provider openai-api --model gpt-6-luna",
+    "serve_turn_command": "hermes chat --query-file <log>/turns/turn-NNNN.prompt.md --continue <key> --create-if-missing --oneshot --quiet --format stream-json --provider openai-api --model gpt-6-luna --run-budget <budget>",
+    "reasoning_effort": "medium",
+    "reasoning_setting": "agent.reasoning_effort: medium in config.openai.yaml, sent on the agent's turn as reasoning {effort: medium, summary: auto}; Hermes's own default sends the same. The one-shot title call (auxiliary.title_generation, provider auto = the main model) sends reasoning {effort: none} with no tools, as Hermes ships it",
+    "auxiliary_models": "every auxiliary task defaults to provider auto, the main model (hermes_cli/config_defaults.py auxiliary; title_generation.prefer_fast_model false), so side calls name the cell model; observed: the title call named gpt-6-luna",
+    "max_output_tokens": "none stated: on the openai-api provider Hermes sends no output cap, so the proxy writes its own (observed 2026-10-29 through the lease-mode proxy: at --max-output-tokens 100000 the request upstream carried 100000, at 128000 it carried 128000; the 32768 recorded before was the proxy's default filled in). Every shard runs --max-output-tokens 128000, so each request reserves 128000 output tokens",
+    "shipped_defaults": "everything else is Hermes's: model metadata from its catalog (context 1,050,000 for gpt-6-luna, logged as a hardcoded catalog match for a custom endpoint), the Responses transport, retries and tools",
+    "rig_limitation": "Hermes classes the proxy host (host.docker.internal) as a local model server (agent/model_metadata.py is_local_endpoint) and probes it for a local server's metadata: GET /api/v1/models, /api/tags, /v1/props, /props, /version, /models and POST /api/show, which the proxy refuses 403 with no model at $0, and GET /v1/models and /v1/models/<model>, which it forwards as free metadata reads. The same probes are refused on an Anthropic cell; no setting turns them off at this pin. They never name a model, so HE-MODEL-001 does not count them (docs/errors.md)",
+    "observed_keyless": "2026-10-29, image harness-eval/hermes built at c1c7ed1b3 with the checkout's adapter, config/ and pin.json mounted, through runner/proxy/metering-proxy.ts in lease mode (--allow-models openai:gpt-6-luna, --upstream openai=<fake Responses endpoint, tests/fixtures/openai-branch/fake-openai.ts>, placeholder upstream key, a slot bound with a per-trial token): run completed with exit 0 on two POST /v1/responses naming gpt-6-luna (the title call and the agent turn), serve with exit 0 on one, all forwarded and priced, no refused line that names a model, only the metadata probes above refused, and the fake saw only the proxy's placeholder key; a cell model off the allowlist (gpt-6.1-sol) was refused 403 and the adapter exited 3 (tests/openai-branch.test.ts)"
+  },
+  "state_paths": [
+    "/harness-state/hermes"
+  ],
+  "mcp_config_path": "/harness-state/hermes/config.yaml#mcp_servers.world (appended at serve start: url HE_WORLD_MCP_URL, headers.Authorization: Bearer HE_WORLD_MCP_TOKEN; tools register as mcp__world__<tool>; the image installs the `mcp` extra so the client SDK is present)",
+  "topology": "in-container",
+  "terminal_backend": "local",
+  "multi_user_mode": "CLI with one named session per conversation (dm:<member>, channel:<id>) in one HERMES_HOME; the gateway and its per-user sessions are not used",
+  "serve_turn_command": "hermes chat --query-file <log>/turns/turn-NNNN.prompt.md --continue <key> --create-if-missing --oneshot --quiet --format stream-json --provider anthropic --model claude-sonnet-5-5 --run-budget <budget>",
+  "serve": {
+    "session_key": "dm:<member> | channel:<id> (session title; hermes chat -c <title> --create-if-missing); :t<thread_ts> appended when TurnRequest.thread_ts is set (a task turn with thread = \"new\" opens a new session in the same conversation)",
+    "session_store": "/harness-state/hermes/state.db and sessions/",
+    "shared_between_sessions": "whatever Hermes's own memory shares across sessions; not configured by the adapter",
+    "reply_source": "stream-json terminal `result` record (text, exit_code, error, tokens)",
+    "exit_mapping": "hermes exit 0 -> 0; outer timeout -> 124; proxy refusal, Anthropic SDK error class or HTTP status on stderr or in the result -> 3; else 2"
+  },
+  "gbrain_mcp": "with HE_GBRAIN_MCP_URL and HE_GBRAIN_MCP_TOKEN set at serve start, an mcp_servers.gbrain block (url, headers.Authorization: Bearer <token>, timeout 120, connect_timeout 60) is appended beside world in /harness-state/hermes/config.yaml; tools register as mcp__gbrain__<tool>; `hermes mcp list` is logged. Unset, the config is byte-identical to a cell without gbrain",
+  "gbrain_install": {
+    "variables": "HE_GBRAIN_INSTALL=gbrain-docs with HE_GBRAIN_SPLIT (dev | heldout) and HE_GBRAIN_INSTALL_DIR (/he-gbrain-install, the exported view mounted read-only by the runner); the install ladder's docs rungs (docs/gbrain-arm.md)",
+    "source_commands": [
+      "gbrain skillpack scaffold --all --workspace /workspace (gbrain INSTALL_FOR_AGENTS.md step 5, 'cd <workspace> && gbrain skillpack scaffold --all'; the workspace is explicit because the cd form does not resolve an empty directory at the pin)",
+      "gbrain compile-context --target hermes --include-core --out .hermes.md against the split's bot-visible brain (gbrain docs/mcp/HERMES.md 'Always-loaded core memory': the project context file Hermes reads; the docs write it at the git root, which for a trial workspace with no repository is the cwd)"
+    ],
+    "applied_by": "adapter.sh before the harness is prepared (before the world-MCP wiring and ready): the manifest must name this harness and HE_GBRAIN_SPLIT and its view_digest must match its file list; every listed file is checked against its sha256, copied from <view>/workspace/<x> to /workspace/<x> (skills/ at the pinned gbrain commit, the full bundle of 64 skills in 127 files) and <view>/.hermes.md to /workspace/.hermes.md (dev 18 pages, held-out 25) and checked again; an existing destination is refused as skillpack scaffold refuses to overwrite",
+    "destinations": [
+      "/workspace/.hermes.md",
+      "/workspace/skills"
+    ],
+    "record": "$HE_LOG_DIR/gbrain-install.json (status, code, harness, split, dir, view_digest, files, destinations, copied, error) and ready.gbrain_install {status, files, view_digest, destinations}; ready.adapter_sha256 is the sha256 of the adapter file that ran",
+    "failure": "HE-ADAPTER-006, exit 2 before ready, the code and reason in gbrain-install.json and adapter.log",
+    "loaded_by_harness": {
+      ".hermes.md": "yes: Hermes v2026.9.24 agent/prompt_builder.py build_context_files_prompt (lines 1733-1759) loads one project context file, first match wins, .hermes.md/HERMES.md before AGENTS.md, CLAUDE.md and .cursorrules; _find_hermes_md (lines 139-148) looks in the cwd and, only inside a git repository, its parents up to the root, so in /workspace (no repository) it reads /workspace/.hermes.md exactly. The cwd is terminal.cwd from config/config.yaml (/workspace) through agent/runtime_cwd.py resolve_context_cwd (line 105), else the process cwd, and the adapter runs hermes from /workspace. The content is injection-scanned (_scan_context_content, line 81: a match blocks the file) and capped by context_file_max_chars (hermes_cli/config_defaults.py line 498, null scales with the context window, floor 20K chars). hermes chat does not set skip_context_files (only --ignore-rules does, hermes_cli/main.py line 1822). Observed keylessly in the image after the install: build_context_files_prompt(cwd='/workspace') returns '# Project Context' with a '## .hermes.md' section holding every kept page heading of the dev view, 2889 chars, nothing blocked (tests/adapter-install.test.ts)",
+      "skills": "no: Hermes reads skills from HERMES_HOME/skills (/harness-state/hermes/skills; hermes_constants.py get_skills_dir, line 1473), skills.external_dirs (agent/skill_utils.py get_external_skills_dirs, line 359) and, for a project, only <git root>/.hermes/skills or <git root>/.agents/skills when that root is in skills.trusted_project_dirs (agent/skill_utils.py lines 431-437, _candidate_project_skills_dirs line 495 and get_project_skills_dirs line 517; get_all_skills_dirs, line 420, excludes project dirs). /workspace/skills is none of these and /workspace has no git root, so the scaffolded skills are copied as documented and not loaded. Observed keylessly: get_all_skills_dirs() is ['/harness-state/hermes/skills'] and get_project_skills_dirs() is [] with the skills in place (tests/adapter-install.test.ts)"
+    },
+    "unset": "with HE_GBRAIN_INSTALL unset nothing of this runs; the only difference from a cell without it is the adapter_sha256 field every ready file now carries"
+  },
+  "internal_network": "serves on network \"internal\" on a gpt-6-luna cell, the same-model control for Codex (tests/internal-network-harnesses.test.ts, 2026-10-29): one turn through the lease-mode proxy with a world-MCP post_message landed through tool_call (on this provider Hermes defers MCP tools behind tool_search); from inside the container the proxy port connects and 1.1.1.1:443 and chatgpt.com:443 fail. Without security.allow_lazy_installs: false Hermes tried to lazy-install boto3 (provider.bedrock) and edge-tts from pypi.org during the turn, about 30 s until DNS failed each time, and the turn took 60 to 110 s against a fake that answers at once; both configs now set it (exists at this pin, hermes_cli/config_defaults.py, read by tools/lazy_deps.py), and the same test turn takes about 12 s. Hermes still tries to download the tirith scanner, which fails there and falls back to pattern matching; security.tirith_enabled stays on because turning it off changes how Hermes gates dangerous commands"
+}

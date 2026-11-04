@@ -181,7 +181,7 @@ The part under test is the untold install: gbrain registered beside the harness 
 ## Claim check
 
 - **2026-11-01, PASS-WITH-EDITS.** A cross-family claim check by the gstack-evals crew (internal-task, reviewer GPT-6.1 Sol, one round). A clean-machine rerun of every command in Replicate it at `912dd49f` matched every table row, and an independent recomputation from `trials.jsonl` and the tap logs agreed on every count, rate, p and Holm value. Sealed guard clear.
-- What it changed: the causal and exposure wording, the two cost percentages (they had mixed in told cells), the ladder controls and MDDs, the MDD caveat, the run total's open reservations, the frozen next-step rule, the price-check date and the disclosures. The docs rungs were added on the Captain's ruling. The recheck of these edited lines is below.
+- What it changed: the causal and exposure wording, the two cost percentages (they had mixed in told cells), the ladder controls and MDDs, the MDD caveat, the run total's open reservations, the frozen next-step rule, the price-check date and the disclosures. The docs rungs were added on the coordinating agent's ruling. The recheck of these edited lines is below.
 - **2026-11-01, recheck at `79102d528`.** The gstack-evals crew (internal-task) read every edited line and recomputed every new count: EDITS, two lines. The H1 now names the MCP-server route, since the 4 of 799 counts only that route. The X hook said "called 4 times"; gbrain was called 5 times in 4 trials, so it now says "called in 4". The disclosures add Ubicloud and Capy and name the claim checker as Garry's.
 
 ## Chart and post
@@ -207,6 +207,7 @@ The post carries the closing Disclosures section at its end; the X hook carries 
 - 2026-11-01: the recheck's line edits applied, and Garry's disclosure lines added in a closing Disclosures section at the end of the file, which now also holds the file's other disclosure bullets.
 - 2026-11-01: marked dev background for the Opus 5.5 reruns; the verdict line replaced (Sonnet and Haiku only).
 - 2026-11-02: the title line now says the finding rests on Sonnet/Haiku only and is not frontier evidence. The front-matter disclosures line is removed, since front matter renders at the top of the page, and Disclosures drops its internal bookkeeping sentence. No number changed.
+- 2026-11-04: internal role names replaced with plain ones (the coordinating agent, the project's private drive, agent threads); no number, link or claim changed, because the public export blocks internal role names in prose.
 
 ## Disclosures
 

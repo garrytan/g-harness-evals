@@ -145,7 +145,7 @@ The paid run takes the ledger and the lease instead (`--ledger <file> --lease-us
 | `--gstack` | `<work>/gstack-src` | A gstack git directory holding `21277291c`; fetched by sha when missing |
 | `--skip-build` | off | Use the existing `harness-eval/qm:dev` and `harness-eval/qm-sandbox:dev`; the arm images are always rebuilt |
 | `--reps`, `--only`, `--repair` | 3, all, none | Repetitions; named turns only; a rerun after a named repair (the turn's next attempt, `-r<n>`) |
-| `--ledger`, `--lease-usd`, `--new-run` | none, 20 | Paid run only; the lease is capped at $20 (Captain F1) |
+| `--ledger`, `--lease-usd`, `--new-run` | none, 20 | Paid run only; the lease is capped at $20 (coordinating agent's decision F1) |
 
 - **Order:** request by request and repetition by repetition, each model's `gstack-router` turn and then its `no-gstack` turn. A cap stop ends the run as incomplete; nothing is rerun. A paid run exits 1 when it is incomplete (`complete` in `summary.json`).
 - **Tears down:** each turn's pg, core and the sandboxes it created. `summary.json` lists any container, volume or network the run left behind.

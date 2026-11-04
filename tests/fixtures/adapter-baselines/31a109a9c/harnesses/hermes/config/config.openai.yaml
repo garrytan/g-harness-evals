@@ -1,0 +1,33 @@
+# Hermes Agent config for one headless trial on an OpenAI cell (internal-task).
+# Written from pin.json model_openai. Copied to $HERMES_HOME/config.yaml (under
+# /harness-state) by adapter.sh when HE_MODEL_BASE_URL ends in /openai.
+# Secrets are not here: the adapter exports OPENAI_API_KEY (the per-trial proxy
+# token) and OPENAI_BASE_URL (the proxy plus /v1) in the process environment,
+# which the openai-api provider reads. Reasoning effort is medium, the value
+# every harness on the cell sends; everything else is as in config.yaml.
+_config_version: 46
+
+model:
+  provider: "openai-api"
+  default: "gpt-6-luna"
+
+agent:
+  reasoning_effort: "medium"
+
+terminal:
+  backend: "local"
+  cwd: "/workspace"
+  timeout: 180
+  home_mode: "profile"
+
+display:
+  streaming: false
+
+# Nothing that needs a person: no update checks, no telemetry prompts.
+auto_update: false
+check_for_updates: false
+
+# No lazy pip installs at turn time (Bedrock's boto3, edge-tts): the trial
+# network has no package index, and no task uses those features (internal-task).
+security:
+  allow_lazy_installs: false

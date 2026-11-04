@@ -67,18 +67,28 @@ mkdirSync(codexBin);
 writeFileSync(join(codexBin, 'codex'), CODEX_STUB);
 chmodSync(join(codexBin, 'codex'), 0o755);
 
-/** harnesses/<h> at BASE, extracted once per harness. */
-const baseDirs: Partial<Record<Harness, string>> = {};
+/** harnesses/<h> at BASE, from the committed byte copy in tests/fixtures/adapter-baselines/<BASE> (README.md left out), so the
+ *  comparison runs without the private history. Where BASE is reachable, the copy must equal it file for file. */
+const BASE_DIR = join(import.meta.dir, 'fixtures', 'adapter-baselines', BASE, 'harnesses');
 function baseDir(h: Harness): string {
-  if (baseDirs[h]) return baseDirs[h]!;
-  const out = join(tmp, 'base-' + h);
-  mkdirSync(out, { recursive: true });
-  const archive = spawnSync('git', ['archive', BASE, 'harnesses/' + h], { cwd: ROOT, maxBuffer: 64 << 20 });
-  if (archive.status !== 0) throw new Error('git archive ' + BASE + ' failed (CI checks out with fetch-depth 0): ' + archive.stderr);
-  const untar = spawnSync('tar', ['-x', '-C', out], { input: archive.stdout });
-  if (untar.status !== 0) throw new Error('tar failed: ' + untar.stderr);
-  return (baseDirs[h] = join(out, 'harnesses', h));
+  return join(BASE_DIR, h);
 }
+
+const HAVE_BASE = spawnSync('git', ['cat-file', '-e', BASE + '^{commit}'], { cwd: ROOT }).status === 0;
+test.skipIf(!HAVE_BASE)('the adapter baselines in tests/fixtures/adapter-baselines/' + BASE + ' are byte copies of harnesses/ at ' + BASE, () => {
+  for (const h of HARNESSES) {
+    const want = spawnSync('git', ['ls-tree', '-r', '--name-only', BASE, 'harnesses/' + h], { cwd: ROOT, encoding: 'utf8' }).stdout.split('\n').filter((p) => p && !p.endsWith('/README.md'));
+    const have: string[] = [];
+    const walk = (dir: string) => { for (const name of readdirSync(dir)) { const p = join(dir, name); if (statSync(p).isDirectory()) walk(p); else have.push(relative(join(BASE_DIR, '..'), p)); } };
+    walk(baseDir(h));
+    expect(have.sort()).toEqual(want.sort());
+    for (const p of want) {
+      expect(readFileSync(join(BASE_DIR, '..', p)).equals(spawnSync('git', ['show', BASE + ':' + p], { cwd: ROOT, maxBuffer: 64 << 20 }).stdout)).toBe(true);
+      const mode = spawnSync('git', ['ls-tree', BASE, p], { cwd: ROOT, encoding: 'utf8' }).stdout.split(' ')[0];
+      expect((statSync(join(BASE_DIR, '..', p)).mode & 0o100) !== 0).toBe(mode === '100755');
+    }
+  }
+});
 
 const REQUEST = { turn: 1, trial_id: 'om', prompt: 'Say ok.', actor: { member: 'dana-okafor', slack_user_id: 'U0DANA', name: 'Dana Okafor', role: 'Account Manager', team: 'team-north' },
   channel: { id: 'D0DANA', name: 'dana-okafor', type: 'dm' }, text: 'Say ok.', ts: '1790000000.000100', thread_ts: null, sim_now: '2026-10-29T09:00:00-07:00', time_budget_s: 30 };

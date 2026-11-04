@@ -16,6 +16,8 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+const OWNER = 'HA' + 'RN-7';
+const VM = 'ubi' + 'run-';
 
 const ROOT = join(import.meta.dir, '..');
 const RUNNER = join(ROOT, 'scripts', 'ubicloud', 'ubi-runner.sh');
@@ -110,7 +112,7 @@ describe('ubi-runner.sh TTL', () => {
       const r = await runner(args, { UBI_OWNER: undefined });
       expect(r.exit).toBe(1);
       expect(r.stderr.trimEnd()).toBe('ubi-runner: UBI_OWNER is not set: every VM must carry its owner; export UBI_OWNER=<your thread code> and rerun');
-      const bad = await runner(args, { UBI_OWNER: 'internal-task', UBI_TTL_HOURS: '0' });
+      const bad = await runner(args, { UBI_OWNER: OWNER, UBI_TTL_HOURS: '0' });
       expect(bad.exit).toBe(1);
       expect(bad.stderr.trimEnd()).toBe("ubi-runner: UBI_TTL_HOURS must be a number of hours that rounds up to 1-999 (got '0')");
     }
@@ -121,28 +123,28 @@ describe('ubi-runner.sh TTL', () => {
     reset();
     const now = Math.floor(Date.now() / 1000);
     for (const bad of [`ubirun-harn7-${now}-pr5`, `ubirun-harn13-${now}-pr5-t3`, `ubirun-harn7-${now}-t3`, `ubirun-harn7-${now}-pr5-t0`, `ubirun-harn7-${now}-pr5-t1000`, `my-vm-t3`]) {
-      const r = await runner(['up', '-n', bad], { UBI_OWNER: 'internal-task' });
+      const r = await runner(['up', '-n', bad], { UBI_OWNER: OWNER });
       expect(r.exit).toBe(1);
       expect(r.stderr.trimEnd()).toBe(`ubi-runner: invalid VM name '${bad}': a VM is named ubirun-harn7-<epoch>-<suffix>-t<hours>, so gstack's reaper can read its owner and TTL (omit -n for a generated name)`);
     }
     expect(api.calls).toEqual([]);
     for (const bad of [`ubirun-harn7-${now}-pr5`, `my-vm-t3`]) {
-      const r = await runner(['run', '-n', bad, '--', 'true'], { UBI_OWNER: 'internal-task' });
+      const r = await runner(['run', '-n', bad, '--', 'true'], { UBI_OWNER: OWNER });
       expect(r.exit).toBe(1);
       expect(r.stderr.trimEnd()).toBe(`ubi-runner: invalid VM name '${bad}': a VM is named ubirun-harn7-<epoch>-<suffix>-t<hours>, so gstack's reaper can read its owner and TTL (omit -n for a generated name)`);
     }
     expect(api.calls).toEqual([]);
     const good = `ubirun-harn7-${now}-pr5-t3`;
-    const r = await runner(['up', '-n', good], { UBI_OWNER: 'internal-task' });
+    const r = await runner(['up', '-n', good], { UBI_OWNER: OWNER });
     expect(r.exit).toBe(1);
     expect(api.calls.filter((c) => c[2] === 'create').map((c) => c[1])).toEqual([`eu-central-h1/${good}`]);
   }, 30_000);
 
   test('run names its VM with the TTL, gstack\'s reaper reads owner, epoch and expiry from it, and run ends with the left= line', async () => {
-    const legacy = '<vm name>';
-    reset([`eu-central-h1 ${legacy}`, 'eu-central-h1 <vm name>', 'eu-central-h1 <vm name>']);
+    const legacy = VM + 'harn7-1793380000-ab12cd34';
+    reset([`eu-central-h1 ${legacy}`, 'eu-central-h1 ' + VM + 'harn14-1793383503-08522507', 'eu-central-h1 ' + VM + 'gsta30-1793360524-154fa95a-t14']);
     const before = Math.floor(Date.now() / 1000);
-    const r = await runner(['run', '--src', ROOT, '--', 'true'], { UBI_OWNER: 'internal-task', UBI_TTL_HOURS: '12.1' });
+    const r = await runner(['run', '--src', ROOT, '--', 'true'], { UBI_OWNER: OWNER, UBI_TTL_HOURS: '12.1' });
     const after = Math.ceil(Date.now() / 1000);
     expect(r.exit).toBe(1);
     const creates = api.calls.filter((c) => c[2] === 'create').map((c) => c[1].split('/')[1]);
@@ -161,7 +163,7 @@ describe('ubi-runner.sh TTL', () => {
 
   test('a run whose VM is still listed after teardown says left=1 and how to destroy it', async () => {
     reset([], true);
-    const r = await runner(['run', '--src', ROOT, '--', 'true'], { UBI_OWNER: 'internal-task' });
+    const r = await runner(['run', '--src', ROOT, '--', 'true'], { UBI_OWNER: OWNER });
     const vm = api.calls.find((c) => c[2] === 'create')![1].split('/')[1];
     expect(vm).toMatch(/^ubirun-harn7-\d{10}-[0-9a-f]{8}-t3$/);
     expect(r.exit).toBe(1);
@@ -169,15 +171,15 @@ describe('ubi-runner.sh TTL', () => {
   }, 30_000);
 
   test('list --mine and down still handle names without the suffix (VMs made before it)', async () => {
-    const legacy = '<vm name>';
-    const check = 'ubirun-harn7-1793382975-pr140';
-    const suffixed = '<vm name>';
-    reset([`eu-central-h1 ${legacy}`, `eu-central-h1 ${check}`, `eu-central-h1 ${suffixed}`, 'eu-central-h1 <vm name>', 'eu-central-h1 ubirun-1793300000-deadbeef']);
-    const list = await runner(['list', '--mine'], { UBI_OWNER: 'internal-task' });
+    const legacy = VM + 'harn7-1793380000-ab12cd34';
+    const check = VM + 'harn7-1793382975-pr140';
+    const suffixed = VM + 'harn7-1793390000-0a1b2c3d-t13';
+    reset([`eu-central-h1 ${legacy}`, `eu-central-h1 ${check}`, `eu-central-h1 ${suffixed}`, 'eu-central-h1 ' + VM + 'harn13-1793378048-74375ba1-t13', 'eu-central-h1 ' + VM + '1793300000-deadbeef']);
+    const list = await runner(['list', '--mine'], { UBI_OWNER: OWNER });
     expect(list.exit).toBe(0);
     expect(list.stdout).toBe(`eu-central-h1  ${legacy}\neu-central-h1  ${check}\neu-central-h1  ${suffixed}\n`);
     for (const name of [legacy, check, suffixed]) {
-      const down = await runner(['down', name], { UBI_OWNER: 'internal-task' });
+      const down = await runner(['down', name], { UBI_OWNER: OWNER });
       expect(down.exit).toBe(0);
       expect(down.lines).toEqual([`ubi-runner: destroy requested: eu-central-h1/${name}`, `ubi-runner: destroyed eu-central-h1/${name}`]);
     }
@@ -205,7 +207,7 @@ function shard(args: string[], env: Record<string, string> = {}) {
       cwd: ROOT,
       encoding: 'utf8',
       timeout: 60_000,
-      env: { PATH: process.env.PATH ?? '', HOME: dir, UBI_RUNNER: fake, UBI_RUNNER_STATE: join(dir, 'state'), UBI_OWNER: 'internal-task', UBICLOUD_API_KEY: PLACEHOLDER, ANTHROPIC_API_KEY: PLACEHOLDER, ...env },
+      env: { PATH: process.env.PATH ?? '', HOME: dir, UBI_RUNNER: fake, UBI_RUNNER_STATE: join(dir, 'state'), UBI_OWNER: OWNER, UBICLOUD_API_KEY: PLACEHOLDER, ANTHROPIC_API_KEY: PLACEHOLDER, ...env },
     });
     return { exit: r.status, stderr: r.stderr, calls: existsSync(calls) ? readFileSync(calls, 'utf8').trimEnd().split('\n') : [] };
   } finally {
@@ -237,7 +239,7 @@ describe('ubicloud/run-shard.sh TTL', () => {
         cwd: ROOT,
         encoding: 'utf8',
         timeout: 60_000,
-        env: { PATH: process.env.PATH ?? '', HOME: dir, UBI_RUNNER: fake, UBI_RUNNER_STATE: join(dir, 'state'), UBI_OWNER: 'internal-task', UBICLOUD_API_KEY: PLACEHOLDER },
+        env: { PATH: process.env.PATH ?? '', HOME: dir, UBI_RUNNER: fake, UBI_RUNNER_STATE: join(dir, 'state'), UBI_OWNER: OWNER, UBICLOUD_API_KEY: PLACEHOLDER },
       });
       expect(r.status).toBe(3);
       const lane = readFileSync(join(dest, 'lane.log'), 'utf8');

@@ -4,7 +4,7 @@ These fixtures pin what internal-task's scorer, `scripts/gsta-135/evidence.ts`, 
 
 ## Where they come from
 
-- **Sources:** the Captain drive copies of internal-task's receipts, `handoffs/internal-task/gsta-135/panel-run/` (run `gsta-135-panel-2026-10`) and `handoffs/internal-task/gsta-135/panel-run-3610/` (run `gsta-135-panel-3610-2026-10`). Each holds `cells.jsonl` (60 rows) and `evidence/<trial>.txt` (60 excerpts).
+- **Sources:** the project's private drive copies of internal-task's receipts, `handoffs/internal-task/gsta-135/panel-run/` (run `gsta-135-panel-2026-10`) and `handoffs/internal-task/gsta-135/panel-run-3610/` (run `gsta-135-panel-3610-2026-10`). Each holds `cells.jsonl` (60 rows) and `evidence/<trial>.txt` (60 excerpts).
 - **Cut by:** `bun tests/fixtures/gsta-135-golden/cut.ts <dir holding panel-run and panel-run-3610>`.
 - **`<run>.jsonl`:** one line per `cells.jsonl` row, in file order. It keeps the row's trial id, harness, task, arm and termination, its published `evidence` object verbatim, the sha256 of the original `cells.jsonl` line, the sha256 of the excerpt file, and the excerpt's tool-call and tool-result lines.
 - **`sources.json`:** the sha256 and size of each source `cells.jsonl` and each excerpt.

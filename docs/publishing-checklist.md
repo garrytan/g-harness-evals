@@ -48,7 +48,7 @@ Every committed results tree holds evaluator-owned files only: `events.jsonl`, `
 
 ### Merge record
 
-The pull requests merged from #21 to #78 (55 of them by GitHub's pull request list on 2026-10-25; #28 and #31 were closed without merging and #77 was still open) landed on the GitHub Actions checks (and, from 2026-10-24, the Ubicloud lane's `ubicloud/checks` status) plus the Captain's receipts checks. From 2026-10-25 every pull request also carries a gstack /ship receipt on its head before it merges: the PR body ends with `GSTACK_RESULT: skill=ship status=<s> run=<dir>` and the head sha the pass ran on, the pass's artifacts are kept under the Captain drive's `handoffs/<thread>/ship/<pr>/`, and a push after the pass needs a new one.
+The pull requests merged from #21 to #78 (55 of them by GitHub's pull request list on 2026-10-25; #28 and #31 were closed without merging and #77 was still open) landed on the GitHub Actions checks (and, from 2026-10-24, the Ubicloud lane's `ubicloud/checks` status) plus the coordinating agent's receipts checks. From 2026-10-25 every pull request also carries a gstack /ship receipt on its head before it merges: the PR body ends with `GSTACK_RESULT: skill=ship status=<s> run=<dir>` and the head sha the pass ran on, the pass's artifacts are kept under the project's private drive's `handoffs/<thread>/ship/<pr>/`, and a push after the pass needs a new one.
 
 ### Held-out tasks
 
@@ -83,6 +83,10 @@ Superseded on 2026-11-02 by the export plan in the status note at the top. The 2
 
 ## Changelog
 
+### 2026-11-04: plain names for internal roles
+
+Mentions of the project's coordinating agent, its private drive and its agent threads now use those plain names instead of internal role names. No number, link or claim changes. Why: the page is published, and the public export blocks internal role names in prose.
+
 ### 2026-11-02: status note for the public export
 
 A status note at the top says the public repository is a curated export and lists the settled decisions: disclosures, spent held-out sets, privately attested preregistration order and Claude Code captures. The interests risk and the v0.2 held-out question are marked resolved, and the old recommendation is marked superseded. The 2026-10-24 audit text is otherwise unchanged.
@@ -93,7 +97,7 @@ Added "Sealed custody: before any visibility change": the custody branch moves o
 
 ### 2026-10-25: merge record (internal-task)
 
-harness-evals v0.0.7. Added the merge record: the 55 pull requests merged from #21 to #78 landed on CI plus the Captain's receipts checks; from 2026-10-25 every pull request carries a gstack /ship receipt on its head before merge.
+harness-evals v0.0.7. Added the merge record: the 55 pull requests merged from #21 to #78 landed on CI plus the coordinating agent's receipts checks; from 2026-10-25 every pull request carries a gstack /ship receipt on its head before merge.
 
 ### 2026-10-24: first version (internal-task)
 

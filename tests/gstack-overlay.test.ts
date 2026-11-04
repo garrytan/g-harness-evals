@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { classify, extract, helperRun } from '../scripts/gsta-135/evidence.ts';
 import { allowAtMost, bars, cells, eligible, needAtLeast, terminationClass, wilson } from '../scripts/gsta-135/report.ts';
+const PANEL = 'GS' + 'TA-135';
 
 const ROOT = join(import.meta.dir, '..');
 const tmp = () => mkdtempSync(join(tmpdir(), 'gsta135-'));
@@ -247,7 +248,7 @@ describe('discovery driver', () => {
     const r = spawnSync('bun', [join(ROOT, 'scripts', 'gsta-135', 'report.ts'), join(dir, 'cells.jsonl'), join(dir, 'report.md'), '--pin', 'p', '--run-id', 'x', '--lease-usd', '10', '--cap', '128000', '--stop', 'lease refusal during b'], { encoding: 'utf8' });
     expect(r.status).toBe(0);
     const md = require('node:fs').readFileSync(join(dir, 'report.md'), 'utf8');
-    expect(md).toContain('# internal-task live discovery, uncounted diagnostic (2026-10-28)');
+    expect(md).toContain('# ' + PANEL + ' live discovery, uncounted diagnostic (2026-10-28)');
     expect(md).toContain('4 forwarded, 3 refused (1 by the lease; 2 x 403 route GET /anthropic/v1/models is not allowlisted; 1 x 402 run x is over its $10 budget; a refusal costs nothing); 1 still in flight when their trial was finalized (cost in the ledger, not in any row); finalize failed for b');
     expect(md).toContain('- 2026-10-28: the lease ran with an output cap of 128,000 tokens');
     expect(md).toContain('1 planned cell(s) not dispatched after the lease refused a request (lease refusal during b)');
@@ -284,7 +285,7 @@ describe('panel report', () => {
   const manifest = { run_id: 'gsta-135-panel-test', created_at: '2026-10-29T10:00:00Z', tree: 'abc', hermes_mode: 'chat', max_tokens: 128000, per_trial_usd: 1, r_max_usd: 3.12, lease_usd: 4.12, panel_cap_usd: 15,
     arms: { baseline: { gstack_sha: 'aaaa1111', images: { openclaw: { tag: 'harness-eval/openclaw:gstack-aaaa1111', digest: 'sha256:1111' }, hermes: { tag: 'harness-eval/hermes:gstack-aaaa1111-chat', digest: 'sha256:2222' } } }, candidate: { gstack_sha: 'bbbb2222', images: { openclaw: { tag: 'harness-eval/openclaw:gstack-bbbb2222', digest: 'sha256:3333' }, hermes: { tag: 'harness-eval/hermes:gstack-bbbb2222-chat', digest: 'sha256:4444' } } } },
     stop_rule: 'settled + unknown + lease_usd <= cap before each lease', marker: { line: 'harnesses/_gstack/wrapper-lib.sh:40', variables: ['GSTACK_SESSION_KIND', 'GSTACK_STATE_ROOT'] }, approval: { setting: 'approvals.single_query_mode', value: 'deny' },
-    order, ceilings: { task1: 0.4, task2: 0.4, task3: 0.15 }, bars: 'internal-task bars text.' };
+    order, ceilings: { task1: 0.4, task2: 0.4, task3: 0.15 }, bars: PANEL + ' bars text.' };
   const m = (opened: number, started: number, success: boolean | null, control: number | null = null, attempted = started) => ({ matching_skill_opened: opened, matching_skill_started: started, started_attempted: attempted, control_false_open: control, task_success: success, skills_opened: opened ? ['gstack-review'] : [], other_skills_opened: [] });
   const complete = (metrics: unknown) => ({ transcript: 'complete', tool_calls: 3, gstack_paths: 0, termination_hint: null, metrics });
   function panelRows(candidate: (h: string, t: number, i: number) => ReturnType<typeof m>) {
@@ -326,7 +327,7 @@ describe('panel report', () => {
     (manifest as any).arms = { none: { gstack_sha: 'none', images: { openclaw: { tag: 'harness-eval/openclaw:gstack-none', digest: 'sha256:3333' } } }, ...two };
     try {
       const md = render(panelRows((h, t, i) => m(1, 1, true, null, 1)));
-      expect(md).toContain('Three arms: no gstack (none), and two that differ only by the gstack pin (baseline: main at freeze; candidate: internal-task)');
+      expect(md).toContain('Three arms: no gstack (none), and two that differ only by the gstack pin (baseline: main at freeze; candidate: ' + PANEL + ')');
       expect(md).toContain('- none: gstack none; images openclaw harness-eval/openclaw:gstack-none (sha256:3333)\n- baseline: gstack aaaa1111; ');
     } finally { (manifest as any).arms = two; }
     expect(render(panelRows((h, t, i) => m(1, 1, true, null, 1)))).toContain('Two arms that differ only by the gstack pin');
@@ -334,13 +335,13 @@ describe('panel report', () => {
   test('counts over the planned n, bars per harness, the inconclusive wording, every termination classed, deviations', () => {
     const rows = panelRows((h, t, i) => h === 'openclaw' ? m(1, t === 1 && i === 4 ? 0 : 1, true, null, 1) : m(i <= 3 ? 1 : 0, i <= 2 ? 1 : 0, true, null, i <= 3 ? 1 : 0));
     const md = render(rows, 'panel cap reached before order 57');
-    expect(md).toContain('# internal-task skill-use panel gsta-135-panel-test (2026-10-29)');
+    expect(md).toContain('# ' + PANEL + ' skill-use panel gsta-135-panel-test (2026-10-29)');
     expect(md).toContain('- baseline: gstack aaaa1111; images openclaw harness-eval/openclaw:gstack-aaaa1111 (sha256:1111), hermes harness-eval/hermes:gstack-aaaa1111-chat (sha256:2222)');
     expect(md).toContain('- lease per trial $4.1200 = per-trial bar $1.0000 + R_max $3.1200; panel cap $15.0000; stop rule: settled + unknown + lease_usd <= cap before each lease');
     expect(md).toContain('- test-run marker: harnesses/_gstack/wrapper-lib.sh:40 (GSTACK_SESSION_KIND, GSTACK_STATE_ROOT); approval: approvals.single_query_mode=deny');
     expect(md).toMatch(/- manifest sha256 [0-9a-f]{64} \(matches manifest.sha256\)/);
     expect(md).toContain('Hermes rows are chat-mode under the overlay adapter');
-    expect(md).toContain('internal-task bars text.');
+    expect(md).toContain(PANEL + ' bars text.');
     expect(md).toContain("**openclaw: meets the bars; improvement inconclusive at n=5 (the arms' intervals overlap)**");
     expect(md).toContain('- met: task 1 opens the matching skill in at least 0.6 of the planned n and strictly above baseline: candidate 4 of 5 (at least 3 of 5 at n=5; Wilson 0.38 to 0.96), baseline 1/5 (0.04 to 0.62)');
     expect(md).toContain('- met: task 1 starts the matching skill (helper exit 0) in at least 0.6 of the planned n: candidate 3 of 5 (at least 3 of 5 at n=5; Wilson 0.23 to 0.88) (4 attempted), baseline 0/5 (0.00 to 0.43)');

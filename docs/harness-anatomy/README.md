@@ -113,6 +113,7 @@ Each number links to a record below. A **record** is one capture turned into JSO
 
 ## Changelog
 
+- 2026-11-03: added a closing Disclosures section with the line for each product the page features, word for word from the shared disclosures list, because every page that features a tested product carries its disclosure line.
 - 2026-10-31: added free count_tokens counts for the three Opus recaptures (216 calls, $0), so every frontier recapture has a token count (internal-task).
 - 2026-10-31: added Codex (its own page and a row in the first-request table), the frontier recaptures on Opus 5.5 and GPT-6.1 Sol with one model per capture, and the output-cap probe, because the harness-evals cells now run frontier models and Codex runs on the Responses API (internal-task).
 

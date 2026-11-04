@@ -35,7 +35,7 @@ Codes like internal-task in receipts name internal work lanes.
   - [2026-11-03-investigate-gate/](benchmarks/2026-11-03-investigate-gate/report.md): `gates938-phase3`, 2026-11-02 to 2026-11-03; gstack's /investigate reproduce-first gate (internal-task), no gstack against gstack against gstack with the gate, Opus 5.5 and GPT-6.1 Sol, 11 tasks per model, 162 counted trials, $254.31 of the $300 cap. Pooled H-S +1.28 points [-3.80, +6.35]; the rule reaches FIX (Opus follow 7.1%), the repair does not fit the cap, so NOT ADDED.
 - [budget-ledger.md](budget-ledger.md): the program's spend ledger, one row per lane of paid work (written 2026-10-26 beside this index).
 - [comparing-runs.md](comparing-runs.md): how two cells or two runs are compared: the paired, task-clustered estimator, the sign-flip test, Holm, the minimum detectable difference, what "not distinguished at N tasks" means, each comparison script's flags and outputs, and the exact commands every counted run's report names.
-- [decisions.md](decisions.md): the decisions by Garry Tan and the Captain that shaped a counted run, one line each (written 2026-10-26 beside this index).
+- [decisions.md](decisions.md): the decisions by Garry Tan and the coordinating agent that shaped a counted run, one line each (written 2026-10-26 beside this index).
 - [errors.md](errors.md): every error code the runner, proxy and adapters print, what it means, the fix, and where it lives.
 - [gbrain-arm.md](gbrain-arm.md): the gbrain arm: what a sidecar per trial runs, the world's `/gbrain` tap, the install ladder, how the arm is wired into the runner and adapters, the smoke evidence, and the status of each gbrain run.
 - [gbrain-evals-conventions.md](gbrain-evals-conventions.md): which conventions this repository takes from gbrain-evals as they are, which it adapts, and which it leaves out, with the reason for each.
@@ -54,6 +54,10 @@ Codes like internal-task in receipts name internal work lanes.
 - [ubicloud.md](ubicloud.md): the Ubicloud shard lane: the scripts that put one shard per VM, how a run fans out and comes back, the check lane, costs and limits.
 
 ## Changelog
+
+### 2026-11-04: plain names for internal roles
+
+Mentions of the project's coordinating agent, its private drive and its agent threads now use those plain names instead of internal role names. No number, link or claim changes. Why: the page is published, and the public export blocks internal role names in prose.
 
 ### 2026-11-03: installer-cc-codex-acl-2026-11 reported (internal-task)
 

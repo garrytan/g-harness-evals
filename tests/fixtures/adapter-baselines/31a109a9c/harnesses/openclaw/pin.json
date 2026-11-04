@@ -1,0 +1,64 @@
+{
+  "name": "openclaw",
+  "repo": "https://github.com/openclaw/openclaw",
+  "version": "2026.10.6",
+  "commit": null,
+  "install": "npm install -g --prefix /opt/harness openclaw@2026.10.6 --allow-scripts=openclaw",
+  "entry": "/opt/harness/adapter.sh run | serve",
+  "turn_command": "openclaw agent exec --message-file /workspace/instruction.md --cwd /workspace --config <state>/openclaw.json --state-dir <state>/exec --model anthropic/claude-sonnet-5-5 --json",
+  "model": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-5-5",
+    "api": "anthropic-messages",
+    "base_url_env": "HE_MODEL_BASE_URL",
+    "api_key_env": "HE_MODEL_API_KEY",
+    "config_path": "config/openclaw.json"
+  },
+  "model_openai": {
+    "provider": "openai",
+    "model": "the cell's model from HE_MODEL_NAME (gpt-6-luna in the pilot); --model openai/<HE_MODEL_NAME> on every turn",
+    "api": "openai-responses",
+    "route": "POST <HE_MODEL_BASE_URL>/v1/responses, streamed (SSE); no other route was sent in a run or serve turn",
+    "base_url_env": "HE_MODEL_BASE_URL + /v1 (models.providers.openai.baseUrl \"${HE_MODEL_BASE_URL}/v1\")",
+    "api_key_env": "HE_MODEL_API_KEY (models.providers.openai.apiKey \"${HE_MODEL_API_KEY}\")",
+    "config_path": "config/openclaw.openai.json",
+    "selected_when": "HE_MODEL_BASE_URL ends in /openai, the provider segment of the runner's <proxy>/<slot>/<provider> (runner/trial/proxy.ts baseUrlFor); any other URL keeps config/openclaw.json and --model anthropic/<model> byte for byte (tests/openai-branch.test.ts golden captures from c1c7ed1b3)",
+    "turn_command": "openclaw agent exec --message-file /workspace/instruction.md --cwd /workspace --config <state>/openclaw.json --state-dir <state>/exec --model openai/gpt-6-luna --json",
+    "serve_turn_command": "openclaw agent --local --session-key agent:main:<key> --message-file <log>/turns/turn-NNNN.prompt.md --model openai/gpt-6-luna --timeout <budget> --json",
+    "reasoning_effort": "medium",
+    "reasoning_setting": "agents.defaults.thinkingDefault: medium, sent as reasoning {effort: medium, summary: auto}; OpenClaw's own default for gpt-6-luna is also medium (docs/providers/openai/models.md in the package) and was observed the same without the key",
+    "utility_model": "agents.defaults.utilityModel openai/<HE_MODEL_NAME>. Without it OpenClaw resolves the openai provider's declared small model openai/gpt-5.6-luna (extensions/openai/openclaw.plugin.json defaultUtilityModel, in dist/openclaw.plugin-*.mjs), which the cell's allowlist refuses; `openclaw models status --json` reports utilityModel {ref: openai/gpt-6-luna, source: config} with the key and {ref: openai/gpt-5.6-luna, source: provider-default} without it. On an Anthropic cell the same resolution gives claude-haiku-5-5 (the documented housekeeping call), unchanged",
+    "max_output_tokens": "128000, OpenClaw's catalog value for gpt-6-luna: the model row sets no maxTokens, so every request states max_output_tokens 128000 itself (observed 2026-10-29 through the proxy at --max-output-tokens 128000, the cap every shard runs; against a cap of 100000 the same request was refused for stating 128000, so the value is OpenClaw's and not the proxy's fill-in). The Anthropic template keeps its row's 16384 unchanged",
+    "shipped_defaults": "everything else is OpenClaw's: the catalog row for the model merged under the configured row (context window 1,050,000, active input budget 272,000, cost, reasoning support), SSE transport (params.transport unset; WebSocket is opt-in), the OpenClaw embedded runtime (a custom endpoint never selects the Codex app-server runtime, docs/providers/openai/runtimes.md), the openai-responses request shaping and tools",
+    "observed_keyless": "2026-10-29, image harness-eval/openclaw built at c1c7ed1b3 with the checkout's adapter, config/ and pin.json mounted, through runner/proxy/metering-proxy.ts in lease mode (--allow-models openai:gpt-6-luna, --upstream openai=<fake Responses endpoint, tests/fixtures/openai-branch/fake-openai.ts>, placeholder upstream key, a slot bound with a per-trial token): run and serve each completed one turn with exit 0 on one POST /v1/responses naming gpt-6-luna (stream true, reasoning effort medium, max_output_tokens 128000 with the proxy at --max-output-tokens 128000), forwarded and priced, zero refused lines, and the fake saw only the proxy's placeholder key; a cell model off the allowlist (gpt-6.1-sol) was refused 403 and the adapter exited 3 (tests/openai-branch.test.ts)"
+  },
+  "state_paths": [
+    "/harness-state/openclaw"
+  ],
+  "mcp_config_path": "/harness-state/openclaw/openclaw.json#mcp.servers.world (written by `openclaw mcp set world <json>` at serve start: url HE_WORLD_MCP_URL, transport streamable-http, header Authorization: Bearer HE_WORLD_MCP_TOKEN; `openclaw mcp probe` logged to openclaw-mcp-probe.log)",
+  "topology": "in-container",
+  "multi_user_mode": "embedded agent with one session per conversation (agent:main:dm:<member>, agent:main:channel:<id>) in one OPENCLAW_STATE_DIR; the gateway and its channel routing are not used, and `agent exec` cannot select a session at this version. HE_SESSION_SCOPE=turn (cell field session_scope, internal-task v0.2 pilot) keys every turn as agent:main:turn:<NNNN> instead: the memoryless contrast; the pinned OpenClaw version is unchanged",
+  "serve_turn_command": "openclaw agent --local --session-key agent:main:<key> --message-file <log>/turns/turn-NNNN.prompt.md --model anthropic/claude-sonnet-5-5 --timeout <budget> --json",
+  "serve": {
+    "session_key": "agent:main:dm:<member> | agent:main:channel:<id> (HE_SESSION_SCOPE=turn: agent:main:turn:<NNNN>); :t<thread_ts> appended when TurnRequest.thread_ts is set (a task turn with thread = \"new\" opens a new session in the same conversation)",
+    "session_store": "/harness-state/openclaw/agents/main/agent/openclaw-agent.sqlite (sessionFile = the key)",
+    "shared_between_sessions": "whatever OpenClaw's own memory and workspace files share; not configured by the adapter",
+    "reply_source": "JSON envelope payloads[].text (meta.agentMeta carries usage and sessionId)",
+    "exit_mapping": "0 and status ok -> 0; outer timeout or status timeout -> 124; provider status, proxy refusal, rate limit or auth error in the envelope or stderr -> 3; else 2",
+    "workspace": "agents.defaults.skipBootstrap: true in config/openclaw.json, so agent --local seeds no bootstrap files into /workspace (agent exec sets the same itself)"
+  },
+  "gbrain_mcp": "with HE_GBRAIN_MCP_URL and HE_GBRAIN_MCP_TOKEN set at serve start, `openclaw mcp set gbrain <json>` writes /harness-state/openclaw/openclaw.json#mcp.servers.gbrain beside world (url HE_GBRAIN_MCP_URL, transport streamable-http, header Authorization: Bearer HE_GBRAIN_MCP_TOKEN); `openclaw mcp probe` and `openclaw mcp list` are logged. Unset, the config is byte-identical to a cell without gbrain",
+  "gbrain_install": {
+    "variables": "HE_GBRAIN_INSTALL=gbrain-docs with HE_GBRAIN_SPLIT (dev | heldout) and HE_GBRAIN_INSTALL_DIR (/he-gbrain-install, the exported view mounted read-only by the runner); the install ladder's docs rungs (docs/gbrain-arm.md)",
+    "source_command": "gbrain skillpack scaffold --harness openclaw --workspace /workspace (gbrain INSTALL_FOR_AGENTS.md step 5 and docs/mcp/OPENCLAW.md at gbrain/pin.json's commit), run once at gbrain image build by gbrain/build-install.ts into the bundle's openclaw/workspace; the view's manifest.json lists every file with its sha256 and a view_digest",
+    "applied_by": "adapter.sh before the harness is prepared (before the world-MCP wiring and ready): the manifest must name this harness and HE_GBRAIN_SPLIT and its view_digest must match its file list; every listed file is checked against its sha256, copied from <view>/workspace/<x> to /workspace/<x> (skills/ at the pinned gbrain commit: the five core skills in 30 files from gbrain 0.60.456.0, 64 skills in 127 files before that) and checked again; an existing destination is refused as skillpack scaffold refuses to overwrite",
+    "destinations": [
+      "/workspace/skills"
+    ],
+    "record": "$HE_LOG_DIR/gbrain-install.json (status, code, harness, split, dir, view_digest, files, destinations, copied, error) and ready.gbrain_install {status, files, view_digest, destinations}; ready.adapter_sha256 is the sha256 of the adapter file that ran",
+    "failure": "HE-ADAPTER-006, exit 2 before ready, the code and reason in gbrain-install.json and adapter.log",
+    "loaded_by_harness": "yes: OpenClaw 2026.10.6 resolves the agent's skill roots from agents.defaults.workspace (/workspace in config/openclaw.json) in src/skills/loading/workspace-skill-roots.ts resolveWorkspaceSkillDirectories (dist/workspace-skill-roots-*.mjs lines 18-27 in the installed package): <workspace>/skills with source openclaw-workspace and <workspace>/.agents/skills, beside the bundled skills, the managed /harness-state/openclaw/skills and plugin roots (src/skills/loading/workspace-skill-sources.ts). Observed keylessly in the image after the install: `openclaw skills list --json` reports workspaceDir /workspace and all 64 scaffolded skills with source openclaw-workspace, eligible and modelVisible, brain-ops among them, and notes that /workspace/skills shadows the bundled skill-creator (tests/adapter-install.test.ts). Whether a skill is read in a turn is the model's choice and is read from the trial's prompt or OpenClaw's envelope in the paid smoke",
+    "unset": "with HE_GBRAIN_INSTALL unset nothing of this runs; the only difference from a cell without it is the adapter_sha256 field every ready file now carries"
+  },
+  "internal_network": "serves on network \"internal\" on a gpt-6-luna cell, the same-model control for Codex (tests/internal-network-harnesses.test.ts, 2026-10-29): one turn through the lease-mode proxy with a world-MCP post_message landed through tool_call (on this provider OpenClaw defers MCP tools behind tool_search; the world tool's name there is world__post_message); from inside the container the proxy port connects and 1.1.1.1:443 and chatgpt.com:443 fail"
+}

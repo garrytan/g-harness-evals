@@ -4,7 +4,7 @@ You label the items in the labels template (sample.ts writes it as labels-templa
 
 For each item, set every field in "label" to true or false, or to "unknown" when the receipt cannot decide it. Set "labeller" to your model id. Use "notes" for one short reason whenever a label is true or unknown.
 
-You may open the source receipt to check context. For source=events the locator is a path relative to the repository root plus #seq (the line or sequence in events.jsonl). For source=gsta135 the locator points into docs/tool-discipline/receipts/gsta-135/<run>/evidence/<trial>.txt (the labellers read the same files from the Captain drive copy). Native discovery stores are also in tests/fixtures/gsta-135. Read-only.
+You may open the source receipt to check context. For source=events the locator is a path relative to the repository root plus #seq (the line or sequence in events.jsonl). For source=gsta135 the locator points into docs/tool-discipline/receipts/gsta-135/<run>/evidence/<trial>.txt (the labellers read the same files from the private drive copy). Native discovery stores are also in tests/fixtures/gsta-135. Read-only.
 
 ## Kinds (per call)
 - **phantom_tool**: the model called a tool name that does not exist or was not offered (the harness answered "not found" / "unknown tool" for the tool itself, e.g. "Tool skills_read not found"). A missing file, channel or user is NOT a phantom tool.

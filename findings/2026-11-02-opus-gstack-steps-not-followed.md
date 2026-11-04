@@ -35,7 +35,7 @@ The report's verdict line, word for word:
 
 > `Verdict: FIX-METHOD (gate Bash-mediated source writes as edits; pick tasks where Sol N is well above the floor)`
 
-**What it means for this finding.** internal-task was the one ceiling-raise R61 allows. On Opus it had headroom, but the gate did not bind, so it did not cleanly test enforcing skill steps with a hook. On Sol, every arm stayed near the floor. The Captain decided on 2026-11-03 that the skill-steps cut does not go to Garry; no prereg rule makes that call. The open test is a gate that also treats Bash-mediated source writes as edits.
+**What it means for this finding.** internal-task was the one ceiling-raise R61 allows. On Opus it had headroom, but the gate did not bind, so it did not cleanly test enforcing skill steps with a hook. On Sol, every arm stayed near the floor. The coordinating agent decided on 2026-11-03 that the skill-steps cut does not go to Garry; no prereg rule makes that call. The open test is a gate that also treats Bash-mediated source writes as edits.
 
 ## What we found
 
@@ -121,7 +121,7 @@ FIX-METHOD (R61): gstack's skill step procedures (/investigate, /qa, /review, /s
 
 - **Easy tasks.** The STOP decision holds for the gstack-native-v1 dev tasks, which Opus 5.5 nearly saturates. It is not a finding about held-out or hard tasks.
 - **Small n and wide per-skill bounds.** 16 sessions per arm per run, from 8 tasks. Wilson intervals treat sessions as independent; a task-clustered interval would be wider.
-- **Uncounted checks.** No preregistration pull request: each run's rule was frozen in the Captain's drive before its first trial, from scratch branches that were never merged (`fec132d37`, `e1016ca4d`, `bee55a72`).
+- **Uncounted checks.** No preregistration pull request: each run's rule was frozen in the project's private drive before its first trial, from scratch branches that were never merged (`fec132d37`, `e1016ca4d`, `bee55a72`).
 - **One harness, one route.** Claude Code through the Claude Agent SDK and Lane B's slash-command wrapper. The baseline run gave the model the SDK's two-line stub prompt, which may understate following; that is why the preset run decides.
 - **Agent patches.** The preset and hard runs patched Lane B's pinned agent (preset prompt; in the hard run also a base-diff fix and a task-id parse fix). Tasks, arms and grading were unchanged.
 - **One preflight overlapped trials.** The hard check's live preflight ran on the gstack VM during two trials, so their wall times may be perturbed. One of them later timed out; the other try of that task also timed out with no preflight running.
@@ -198,8 +198,8 @@ The post carries the closing Disclosures section at its end; the X hook carries 
 - 2026-11-02: the internal-task claim check's edits applied (PASS-WITH-EDITS): the fix's citation, the verdict's source, the pass-rate power with the control rate and MDD, the preamble count, the cost wording, the X hook's cost words and the expected rerun result, plus a placebo cost bullet.
 - 2026-11-02: the verdict is FIX-METHOD under R61 (internal-task's decision), naming internal-task as the ceiling-raise. internal-task's CUT-CANDIDATE line is kept word for word as the original reading from before R61.
 - 2026-11-02: internal-task's R61 recheck edits applied (PASS-WITH-EDITS). The verdict paragraph says the hard check ran before R61 and that internal-task ruled it does not count as R61's one attempt, and it names the cut that goes to Garry as the cut of steps delivered as text alone, if the skill-text arm shows no gain over no gstack. The recheck is recorded under Claim check.
-
-- 2026-11-03: an update from internal-task's preregistered run (#244): verdict FIX-METHOD, the gate NOT ADDED, Opus's 40 Bash edits past the gate, the lost-trial caveat on Opus's +7.14, Sol's floor, and the Captain's call that the skill-steps cut does not go to Garry. The status line, the X hook and the model line in Why null? now name the GPT-6.1 Sol arm, and the Disclosures section gains the OpenAI line.
+- 2026-11-03: an update from internal-task's preregistered run (#244): verdict FIX-METHOD, the gate NOT ADDED, Opus's 40 Bash edits past the gate, the lost-trial caveat on Opus's +7.14, Sol's floor, and the coordinating agent's call that the skill-steps cut does not go to Garry. The status line, the X hook and the model line in Why null? now name the GPT-6.1 Sol arm, and the Disclosures section gains the OpenAI line.
+- 2026-11-04: internal role names replaced with plain ones (the coordinating agent, the project's private drive, agent threads); no number, link or claim changed, because the public export blocks internal role names in prose.
 
 ## Disclosures
 

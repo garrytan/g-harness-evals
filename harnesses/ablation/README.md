@@ -2,7 +2,7 @@
 
 **A layer map says, byte by byte, which part of a harness's built-in prompt belongs to which layer.** The metering proxy uses it to cut one layer out of every request, so a cell can test what that layer buys. One map per harness, wire and model, generated from keyless recaptures and coded by two agents of different model families.
 
-- Plan: decisions 1, 3, 4 and 9 of the internal-task plan (the approved copy is in the Captain's drive, handoffs/internal-task/autoplan/plan.md).
+- Plan: decisions 1, 3, 4 and 9 of the internal-task plan (the approved copy is in the project's private drive, handoffs/internal-task/autoplan/plan.md).
 - Captures: [docs/harness-anatomy](../../docs/harness-anatomy/README.md), records `*-opus` and `*-sol`.
 - Code: [scripts/ablation/maps.ts](../../scripts/ablation/maps.ts) (units and anchors), [scripts/ablation/gen-anchors.ts](../../scripts/ablation/gen-anchors.ts) (candidates), [scripts/ablation/settle.ts](../../scripts/ablation/settle.ts) (agreement, settling, maps).
 - Check: [tests/ablation-maps.test.ts](../../tests/ablation-maps.test.ts).
