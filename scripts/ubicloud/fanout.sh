@@ -117,11 +117,18 @@ if [ "$dry" -eq 1 ]; then
 fi
 
 mkdir -p "$dest"
-declare -A pid_of exit_of tries_of
+declare -A pid_of exit_of tries_of told
 queue=("${shards[@]}")
 running=0
 stopping=0
-on_signal() { stopping=1; log "interrupted: forwarding to ${#pid_of[@]} shard process(es); each copies its results back and destroys its VM"; local p; for p in "${!pid_of[@]}"; do kill -TERM "$p" 2>/dev/null || true; done; }
+# An interrupt usually comes as several signals (a cancelled operation or a closed terminal sends TERM, HUP and INT to the
+# group): the first is logged once, and each shard gets one TERM, so a second never cuts into its copy-back and VM destroy.
+on_signal() {
+  local p
+  [ "$stopping" = 1 ] || log "interrupted: forwarding to ${#pid_of[@]} shard process(es); each copies its results back and destroys its VM"
+  stopping=1
+  for p in "${!pid_of[@]}"; do [ -n "${told[$p]:-}" ] || { told[$p]=1; kill -TERM "$p" 2>/dev/null || true; }; done
+}
 trap on_signal INT TERM HUP QUIT
 t0=$(date +%s)
 launch() {

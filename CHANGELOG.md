@@ -2,6 +2,20 @@
 
 What each harness-evals release changed. Versions follow `VERSION` and `package.json`.
 
+## [0.0.136] - 2026-11-04
+
+### internal-task: lane follow-up: land's pin gets bun install and a clean environment, release-field conflicts restamp, a closing-keyword guard, and `merge: direct`
+
+- **Behavior change: `.gstack/ship-policy.json` sets `"merge": "direct"`.** `merge-pass.sh --land` reads the merge mode from the base branch's policy (train when the key is absent). Under direct it runs `gstack-ship-queue land --pr <n> --pin <receipted head>`, requires the PR to read MERGED afterwards, and the merge-log gate ends `land-pin`. Before READY it skips a body whose `gstack-ship-receipt` block does not name the head and a head that changed VERSION, CHANGELOG.md, `.gstack/version-path` or the package.json version (land --pin refuses both); after READY it reads the hold file and the closing-keyword check again, right before land --pin. A stamp left from train mode (second parent on main, same-modulo-stamps by `gstack-tree-receipt`) is a skip that says to reset the branch to its pin, whose receipt still holds; any other merge commit needs a new /ship. Direct mode runs no check on the combined tree before a merge, so main's own checks after each merge catch two pull requests that break it together. The stamp path is unchanged for train mode. `min_gstack_version` moves from 1.91.364.0 to 1.95.0.0, the release that introduced the `merge` key. `stamp_files` is unchanged (internal-task is fixed in gstack 1.95.x).
+- `merge-pass.sh --land`: the pin runs `bun install --frozen-lockfile` before `gstack-pregate`, under a 900-second timeout, and bun, the pregate and `ship-queue ready` run with the keys and the lane's own variables (`HE_MERGE_HOLD`, `HE_CI_LOG_DIR`, `UBI_OWNER`, `UBI_TTL_HOURS` and the rest listed in `pinned()`) removed from their environment.
+- Train mode: a CONFLICTING head whose only conflicts (by `git merge-tree`) are `VERSION`, `package.json` or `CHANGELOG.md` is stamped or restamped, and the log line says `over release-field conflicts (<files>)`.
+- **Behavior change: closing-keyword guard.** Before any stamp or merge, the lane reads the PR title, body and commit messages (all of them, through the REST list from 100 commits) for close/fix/resolve keywords before `#<m>`, `GH-<m>`, `<owner>/<repo>#<m>` or a URL. It skips the PR while a referenced issue or PR is open or unreadable, and logs every close it lets through as `<UTC> #<n> closed <owner/repo>#<m> on merge <sha> (<where>)`.
+- Receipt search: an unsearchable `<code>` or `<code>/ship` entry in the receipts directory exits 1 before the PR list is read; an unsearchable `<code>/ship/<n>` skips only PR n. A failed stamp-check fetch is a skip retried next cycle.
+- `pr-watch.sh`: `--hold-file` (default `HE_MERGE_HOLD`); `--merge` without a hold file exits 2, a missing hold file merges nothing and raises one event until the file is back, and the active hold is read first so `frozen=<m>` constituents are skipped.
+- `pr-check.sh` takes its lock under the git common dir, so it runs from a worktree. `fanout.sh` logs an interrupt once and sends one TERM per shard.
+- `.gitignore`: `/.public-export-tools/`, where the public export tools are downloaded.
+- Tests: `tests/merge-pass.test.ts`, `tests/pr-watch.test.ts`, `tests/lane-guard.test.ts`, `tests/fanout-interrupt.test.ts` and `tests/pr-check-worktree.test.ts` (new).
+
 ## [0.0.135] - 2026-11-04
 
 - **QM M1 C4 and S1 preregistrations, frozen 2026-11-04 on main after #254 (`dcbf03e0`).** `docs/benchmarks/2026-11-03-qm-c4-told-live/` (`qm-c4-told-live-2026-11`: the C4 told-live tasks on QM through Pi, Opus 5.5 and GPT-6.1 Sol, three gbrain routes, 240 trials, cap $56) and `docs/benchmarks/2026-11-03-qm-s1-gstack-probe/` (`qm-s1-gstack-probe-2026-11`: whether QM opens gstack skills through the paste-in router, with a no-gstack arm, Opus 5.5 and GPT-6.1 Sol, cap $20; `design.json` instead of a `prereg.json`). Each has its register entry under `docs/benchmarks/preregistrations.d/`. No counted trial has run.
