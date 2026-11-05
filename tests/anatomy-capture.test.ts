@@ -114,3 +114,12 @@ describe('anatomy capture scenarios (internal-task)', () => {
     expect(SCENARIOS.growth!('harness-zero', 'zero-min').every((t) => t.call === 'list_channels')).toBe(true);
   });
 });
+
+describe('capture.ts network for harness-zero', () => {
+  test('a harness-zero capture refuses --network bridge before anything starts, since its cells run only on the internal network', () => {
+    const r = Bun.spawnSync([process.execPath, join(import.meta.dir, '../scripts/anatomy/capture.ts'), '--harness', 'harness-zero', '--config', 'zero-min', '--network', 'bridge'],
+      { env: { HOME: process.env.HOME ?? '/tmp', PATH: process.env.PATH ?? '' }, stdout: 'pipe', stderr: 'pipe' });
+    expect(r.exitCode).toBe(64);
+    expect(r.stderr.toString()).toContain('harness-zero runs only on the internal network (HE-NET-001)');
+  });
+});

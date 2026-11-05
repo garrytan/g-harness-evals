@@ -25,8 +25,8 @@
 // states its own cap (refused, the trial ends model_error) or leaves it to the proxy (forwarded with the lower value).
 // --model defaults to claude-haiku-5-5 on anthropic and gpt-6.1-sol on openai.
 // --network internal puts the harness on the run's internal docker network (no
-// route out, no DNS), as counted Codex cells run (HE-NET-001); it is the default
-// for codex and the only network the runner allows it. The egress sink cannot be
+// route out, no DNS), as counted Codex and Harness Zero cells run (HE-NET-001); it is
+// the default for codex and harness-zero and the only network the runner allows them. The egress sink cannot be
 // reached from the internal network, so there --egress defaults to off and the
 // network itself is the egress control.
 //
@@ -164,9 +164,14 @@ if (import.meta.main) {
   const config = arg('config', 'default')!;
   const task = arg('task', 'si-01-marrow-agrisupply-site')!;
   const provider = arg('provider', 'anthropic')! as keyof typeof PROVIDERS;
-  const network = arg('network', harness === 'codex' ? 'internal' : 'bridge')!;
+  const internalOnly = harness === 'codex' || harness === 'harness-zero';
+  const network = arg('network', internalOnly ? 'internal' : 'bridge')!;
   if (!Object.hasOwn(PROVIDERS, provider) || !['bridge', 'internal'].includes(network)) {
     console.error('capture.ts: --provider is anthropic or openai, --network is bridge or internal');
+    process.exit(64);
+  }
+  if (harness === 'harness-zero' && network !== 'internal') {
+    console.error('capture.ts: harness-zero runs only on the internal network (HE-NET-001); drop --network or pass --network internal');
     process.exit(64);
   }
   if (provider === 'openai' && (scenario === 'growth' || scenario === 'retry')) {
@@ -220,8 +225,6 @@ if (import.meta.main) {
   };
   if (network === 'internal') cell.network = 'internal';
   if (config !== 'default') cell.config = config;
-  // Harness Zero cells must run on the internal network (HE-NET-001), which also rules out any direct connection out.
-  if (harness === 'harness-zero') cell.network = 'internal';
   if (withGbrain) cell.gbrain = { surface: 'starter' };
   const prereg = { schema_version: 1, run_id: id, question: `internal-task keyless anatomy capture: ${harness} ${config} ${scenario}`, tasks: {}, cells: [cell], wall_clock_s: 3600, spend_cap_usd: 5 };
   const preregPath = join(out, 'prereg.json');

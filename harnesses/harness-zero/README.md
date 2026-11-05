@@ -78,7 +78,7 @@ bun harnesses/harness-zero/zero.ts explain --config zero-full --diff zero-full-n
 - **Budget:** the request in flight is aborted; exit 124.
 - A failed turn keeps the tool calls that already ran, so the next turn sees them. A call it did not finish is marked unknown. A turn the provider rejected, or one that failed before any tool call, leaves the session as it was. A note saved during it stays saved.
 - **MCP writes are never sent twice.** If a write's answer is lost, the model is told the outcome is unknown.
-- **A stuck tool is stopped.** Each MCP tool call gets 60 s, or half the turn's remaining time if that is less, so the model can still answer inside the budget. A stopped read is an error; a stopped write is an unknown outcome. Neither is sent again. Re-initializing a tool server inside a call (after an expired session or a failed server) gets the same limit; one that does not finish in time is HE-ZERO-005.
+- **A stuck tool is stopped.** Each MCP tool call gets 60 s, or half the turn's remaining time if that is less, so the model can still answer inside the budget. A stopped read is an error; a stopped write is an unknown outcome. Neither is sent again. The limit covers the whole call: re-initializing a tool server inside it (after an expired session or a failed server) and a read sent again share it. A re-initialize that does not finish in time is HE-ZERO-005; one that finishes after the limit ran out leaves the call not sent, reported to the model as an error.
 - **A restarted MCP session reloads its tools.** After a re-initialize, the next model request lists the server's current tools.
 
 ## What it leaves behind

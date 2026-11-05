@@ -217,6 +217,10 @@ describe('harness-zero serve', () => {
         [904, JSON.stringify({ turn: 0, prompt: 'Hi.', actor: { member: 'a' }, channel: { id: 'D1', type: 'dm' } }), 'has no turn number'],
         [905, JSON.stringify({ turn: 905, actor: { member: 'a' }, channel: { id: 'D1', type: 'dm' } }), 'has no prompt'],
         [906, JSON.stringify({ turn: 906, prompt: 'Hi.', actor: { member: 'a' }, channel: { id: 'C1', type: 'group' } }), 'has no channel id and type'],
+        [907, JSON.stringify({ turn: 907, prompt: 'Hi.', actor: { member: 'a' }, channel: { id: 'D1', type: 'dm' }, time_budget_s: 'soon' }), 'has no positive time_budget_s'],
+        [908, JSON.stringify({ turn: 908, prompt: 'Hi.', actor: { member: 'a' }, channel: { id: 'D1', type: 'dm' }, time_budget_s: -5 }), 'has no positive time_budget_s'],
+        [909, JSON.stringify({ turn: 909, prompt: 'Hi.', actor: { member: 'a' }, channel: { id: 'D1', type: 'dm' }, time_budget_s: 0 }), 'has no positive time_budget_s'],
+        [910, JSON.stringify({ turn: 910, prompt: 'Hi.', actor: { member: 'a' }, channel: { id: 'D1', type: 'dm' }, time_budget_s: { toString: 0, valueOf: 0 } }), 'has no positive time_budget_s'],
       ] as const) {
         put(`turn-0${n}.request.json`, body);
         expect(await answer(`turn-0${n}.response.json`)).toMatchObject({ turn: n, exit: 2, reply_text: null, detail: expect.stringContaining(`HE-ZERO-009 turn-0${n}.request.json ${why}`) });

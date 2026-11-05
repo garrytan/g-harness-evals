@@ -4,7 +4,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ablationName, candidateHash, capOutput, diffPaths, firstRequest, isReadOnly, KNOWN_FEATURES, loadConfig, parseRpc, promptFiles, redact, resolveSet, scopeOf, setNames, wireFor } from '../harnesses/harness-zero/zero.ts';
+import { ablationName, candidateHash, capOutput, diffPaths, firstRequest, isReadOnly, KNOWN_FEATURES, loadConfig, McpClient, parseRpc, promptFiles, redact, resolveSet, scopeOf, setNames, wireFor } from '../harnesses/harness-zero/zero.ts';
 import { harnessCopy, runZero, startFakeModel, startProxy, trial, ZERO_DIR, zeroEnv } from './fixtures/harness-zero-fakes.ts';
 
 const cfg = loadConfig();
@@ -202,4 +202,32 @@ describe('harness-zero explain', () => {
       expect(refused.stderr).toContain('HE-ZERO-003 --count-tokens needs the anthropic wire');
     } finally { fake.stop(); await proxy.stop(); }
   }, 30_000);
+});
+
+describe('harness-zero MCP per-call limit', () => {
+  test('a session-expired read, its re-initialize and the read sent again share one per-call limit', async () => {
+    let inits = 0, calls = 0;
+    const json = (id: number, result: unknown, headers: Record<string, string> = {}) => Response.json({ jsonrpc: '2.0', id, result }, { headers });
+    const server = Bun.serve({ port: 0, hostname: '127.0.0.1', async fetch(req) {
+      const msg = await req.json();
+      if (msg.method === 'initialize') {
+        if (++inits > 1) await Bun.sleep(600);
+        return json(msg.id, { protocolVersion: '2025-06-18' }, { 'mcp-session-id': 's' + inits });
+      }
+      if (msg.method === 'notifications/initialized') return new Response(null, { status: 202 });
+      if (msg.method === 'tools/list') return json(msg.id, { tools: [{ name: 'read_thing', inputSchema: { type: 'object' } }] });
+      if (++calls === 1) return new Response('gone', { status: 404 });
+      await Bun.sleep(600);
+      return json(msg.id, { content: [{ type: 'text', text: 'late' }] });
+    } });
+    try {
+      const client = new McpClient('fake', `http://127.0.0.1:${server.port}/mcp`, 'dummy');
+      await client.initialize();
+      const t0 = Date.now();
+      const r = await client.call({ ...client.tools[0]!, readOnly: true }, {}, new AbortController().signal, Date.now() + 2000);
+      expect(r).toMatchObject({ isError: true, status: 'error', text: expect.stringContaining('read_thing failed') });
+      expect(Date.now() - t0).toBeLessThan(1150);
+      expect([inits, calls]).toEqual([2, 2]);
+    } finally { server.stop(true); }
+  }, 10_000);
 });

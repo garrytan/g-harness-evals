@@ -33,7 +33,8 @@ describe('harness-zero pin and adapter, process level', () => {
     expect(PIN.integrity.zero_ts_sha256).toBe(sha(join(ZERO_DIR, 'zero.ts')));
     expect(PIN.integrity.adapter_sh_sha256).toBe(sha(join(ZERO_DIR, 'adapter.sh')));
     const dockerfile = readFileSync(join(ZERO_DIR, 'Dockerfile'), 'utf8');
-    expect(dockerfile).toContain('ARG BUN_IMAGE=' + PIN.base_image.ref + '@' + PIN.base_image.digest + '\n');
+    expect(dockerfile).toContain('\nFROM ' + PIN.base_image.ref + '@' + PIN.base_image.digest + '\n');
+    expect(dockerfile).not.toMatch(/^ARG /m);
     expect(dockerfile).toContain('test "$(bun --version)" = "' + PIN.bun_version + '"');
     expect(Bun.version).toBe(PIN.bun_version);
     expect(PIN).toMatchObject({ name: 'harness-zero', topology: 'in-container', state_paths: ['/harness-state/zero', '/harness-state/tmp'] });
@@ -69,6 +70,10 @@ describe('harness-zero pin and adapter, process level', () => {
     expect(r.status).toBe(2);
     expect(r.stderr).toContain('HE-ZERO-008 HE_MODEL_NAME is not set');
     expect(r.stderr + r.stdout + adapterLog(t)).not.toContain('abababababababababababababababab');
+    t = trial();
+    r = adapter(t, { HE_TIME_BUDGET_S: 'abc' });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain('HE-ZERO-008 HE_TIME_BUDGET_S is not a positive number of seconds');
     t = trial();
     expect(adapter(t, { HE_SESSION_SCOPE: 'turn' }).status).toBe(2);
     expect(adapterLog(t)).toContain('HE_SESSION_SCOPE=turn is not supported');

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Harness Zero (internal-task): the smallest agent harness we can reason about whole. One Bun process, Bun built-ins only (no
+// Harness Zero (HARN-22): the smallest agent harness we can reason about whole. One Bun process, Bun built-ins only (no
 // npm packages, no provider SDKs), three hand-written wire clients, an MCP client, and a set of switchable features read
 // from config/features.json and config/candidates.json. Protocol: docs/adapters.md. Exit 0 completed, 2 harness error,
 // 3 model error, 124 wall clock.
@@ -256,12 +256,13 @@ export class McpClient {
 
   /** One tools/call. A session that expired (404) is re-initialized once, which also reloads the tool list; only a read
    *  tool is then sent again. A write whose answer was lost, or that passed the per-call time limit, is reported to the
-   *  model as an unknown outcome and never sent again; a read that passed the limit is an error and not sent again. A
-   *  re-initialize inside the call runs under the same limit, and one that passes it is HE-ZERO-005. */
+   *  model as an unknown outcome and never sent again; a read that passed the limit is an error and not sent again. The
+   *  limit covers the whole call: a re-initialize and a read sent again share it, and a re-initialize that passes it is
+   *  HE-ZERO-005. */
   async call(tool: ToolDef, args: Json, signal: AbortSignal, deadline: number): Promise<ToolResult> {
-    const limited = () => AbortSignal.any([signal, AbortSignal.timeout(Math.min(TOOL_CALL_TIMEOUT_MS, Math.max(0, deadline - Date.now()) / 2))]);
+    const limit = AbortSignal.any([signal, AbortSignal.timeout(Math.min(TOOL_CALL_TIMEOUT_MS, Math.max(0, deadline - Date.now()) / 2))]);
     const once = async (): Promise<ToolResult> => {
-      const r = await this.rpc('tools/call', { name: tool.tool, arguments: args }, limited());
+      const r = await this.rpc('tools/call', { name: tool.tool, arguments: args }, limit);
       const text = (r.content ?? []).map((c: Json) => c.type === 'text' ? c.text : c.type === 'resource' ? JSON.stringify(c.resource) : `[${c.type} omitted]`).join('\n')
         || (r.structuredContent ? JSON.stringify(r.structuredContent) : '');
       return { text, isError: r.isError === true, status: r.isError === true ? 'error' : 'ok' };
@@ -271,9 +272,13 @@ export class McpClient {
       return { text: `${tool.tool} failed: ${String((e as Error).message).slice(0, 200)}`, isError: true, status: 'error' };
     };
     if (this.broken) {
-      try { await this.initialize(limited()); this.broken = false; } catch (e2) {
+      try { await this.initialize(limit); this.broken = false; } catch (e2) {
         if (signal.aborted) throw e2;
         throw new ZeroError('HE-ZERO-005', `MCP server ${this.name} is still down after a failed re-initialize: ${(e2 as Error).message.slice(0, 200)}`);
+      }
+      if (limit.aborted) {
+        if (signal.aborted) throw signal.reason;
+        return { text: `${tool.tool} was not sent: re-initializing the ${this.name} tool server used up the per-call time limit.`, isError: true, status: 'error' };
       }
     }
     try {
@@ -284,7 +289,7 @@ export class McpClient {
         ? { text: `${tool.tool} did not answer before the per-call time limit, so it was stopped and not sent again.`, isError: true, status: 'error' }
         : { text: `${tool.tool} did not answer before the per-call time limit. The outcome is unknown: it may or may not have taken effect. Check before you try it again.`, isError: true, status: 'unknown' };
       if (e instanceof SessionExpired) {
-        try { await this.initialize(limited()); } catch (e2) {
+        try { await this.initialize(limit); } catch (e2) {
           if (signal.aborted) throw e2;
           this.broken = true;
           throw new ZeroError('HE-ZERO-005', `MCP server ${this.name} session expired and re-initialize failed: ${(e2 as Error).message.slice(0, 200)}`);
@@ -650,6 +655,8 @@ async function setup(entry: string): Promise<Ctx> {
   const set = resolveSet(env.HE_HARNESS_CONFIG);
   const missing = ['HE_MODEL_BASE_URL', 'HE_MODEL_API_KEY', 'HE_MODEL_NAME'].filter((v) => !env[v]);
   if (missing.length) throw new ZeroError('HE-ZERO-008', `${missing.join(', ')} not set; fix: set them as docs/adapters.md "Environment" says`);
+  const envBudget = Number(env.HE_TIME_BUDGET_S ?? 300);
+  if (!(Number.isFinite(envBudget) && envBudget > 0)) throw new ZeroError('HE-ZERO-008', 'HE_TIME_BUDGET_S is not a positive number of seconds; fix: set it as docs/adapters.md "Environment" says');
   const { wire } = wireFor(env.HE_MODEL_BASE_URL!, set);
   const servers = await startMcp(entry === 'serve');
   log(`harness-zero set=${set.name} candidate=${candidateHash(set).candidate_sha256.slice(0, 12)} wire=${wire} model=${env.HE_MODEL_NAME} features=${set.features.join(',') || 'none'} entry=${entry}`);
@@ -673,16 +680,18 @@ async function serve(ctx: Ctx, stop: AbortController): Promise<number> {
       const startedAt = new Date().toISOString();
       let turn = Number(f.slice(5, -13)), out: TurnOutcome, req: Json = {}, bad: string | null = null;
       try { req = JSON.parse(readFileSync(join(dir, f), 'utf8')); } catch (e) { bad = `is not JSON (${(e as Error).message.slice(0, 120)})`; }
+      const budget = req?.time_budget_s === undefined ? Number(env.HE_TIME_BUDGET_S ?? 300) : req.time_budget_s;
       bad ??= !req || typeof req !== 'object' ? 'is not a JSON object'
         : !Number.isInteger(req.turn) || req.turn < 1 ? 'has no turn number'
         : typeof req.prompt !== 'string' ? 'has no prompt'
         : typeof req.actor?.member !== 'string' ? 'has no actor.member'
         : typeof req.channel?.id !== 'string' || !['dm', 'channel'].includes(req.channel.type) ? 'has no channel id and type'
+        : typeof budget !== 'number' || !Number.isFinite(budget) || budget <= 0 ? 'has no positive time_budget_s'
         : null;
       if (bad) out = { exit: 2, reply: null, stop: 'bad-request', detail: `HE-ZERO-009 ${f} ${bad}; fix: the runner writes a whole TurnRequest (runner/contracts.ts) and renames it into place` };
       else try {
         turn = req.turn;
-        const key = sessionKey(req as Parameters<typeof sessionKey>[0]), budget = Number(req.time_budget_s || env.HE_TIME_BUDGET_S || 300);
+        const key = sessionKey(req as Parameters<typeof sessionKey>[0]);
         const started = stateDir('started', f);
         if (existsSync(started)) out = { exit: 2, reply: null, stop: 'restarted', detail: `HE-ZERO-006 turn ${turn} was already started by an earlier serve process that ended before answering; its tool calls may have run, so it is not run again` };
         else {
@@ -705,7 +714,7 @@ async function serve(ctx: Ctx, stop: AbortController): Promise<number> {
 async function run(ctx: Ctx, stop: AbortController): Promise<number> {
   const path = join(env.HE_WORKSPACE_DIR ?? '/workspace', 'instruction.md');
   if (!existsSync(path)) throw new ZeroError('HE-ZERO-008', `no readable ${path}; fix: the runner copies the task instruction.md into the workspace`);
-  const out = await runTurn(ctx, 'run:' + trial(), readFileSync(path, 'utf8'), Number(env.HE_TIME_BUDGET_S || 300), 1, stop.signal);
+  const out = await runTurn(ctx, 'run:' + trial(), readFileSync(path, 'utf8'), Number(env.HE_TIME_BUDGET_S ?? 300), 1, stop.signal);
   if (out.exit === 0) { process.stdout.write((out.reply ?? '') + '\n'); log(`completed (${out.stop})`); } else log(`exit ${out.exit}: ${out.detail}`);
   return out.exit;
 }
