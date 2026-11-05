@@ -93,7 +93,7 @@ Frozen at the end of Phase C, in PR 3, in `config/candidates.json`:
 
 ## Budget and stopping rule
 
-- **Budget:** one pass. Every preregistered cell runs once: 7 Opus cells of 100 trials, 2 Sol cells of 60, and the conditional Sol cell of 60. Leases and the cap are in the run's preregistration. The cap is $213, which covers the leases ($212.50) (raised by the Captain on 2026-11-01 from the $161 first drafted, because Opus `zero-min` measured $0.38 a trial against the plan's $0.20). The whole plan's model cap stays $500.
+- **Budget:** one pass. Every preregistered cell runs once: 7 Opus cells of 100 trials, 2 Sol cells of 60, and the conditional Sol cell of 60. Leases and the cap are in the run's preregistration. The cap is $213, which covers the leases ($212.50) (raised by the coordinating agent on 2026-11-01 from the $161 first drafted, because Opus `zero-min` measured $0.38 a trial against the plan's $0.20). The whole plan's model cap stays $500.
 - **Stop when:** every cell has run, or a shard's lease is spent. A cell stopped by its lease is partial (HE-BUDGET-001), and every verdict that depends on it is can't tell. No ablation is added, rerun or extended in this loop.
 
 ## Re-confirmation and release (R3, R6)
