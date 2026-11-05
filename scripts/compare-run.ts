@@ -25,7 +25,11 @@
 // so cells of different models or repetition counts are never paired. One baseline per model. A pair whose trial ended as
 // model_error, infra_error or exam_fault on either side, or that is missing on either side, leaves both sides with its reason,
 // and each comparison carries the count and ids as excluded (methodology item 9). Without --baseline every cell is paired
-// with every other and every trial counts, as before.
+// with every other and every trial counts, as before. On the pairs it keeps, each --baseline comparison also carries
+// endpoints (scripts/baseline-endpoints.ts): the pass-rate interval's half-width, the paired cost-per-trial difference, the
+// cost-per-trial and cost-per-success ratios and the cached-share difference with task-clustered bootstrap intervals (same
+// seed and draws), and the broken and fixed tasks; and the file carries repricing, per baseline cell: its proxy lines
+// priced with every input token at the plain input rate, over what they cost, with the cache-read share by request gap.
 //
 // Statistics kit: the run is analysed with runner/stats/ as it stood at its preregistration commit, or the kit a dated
 // amendment names in its registry entry (runner/stats/kit.ts). With --against the --results run's preregistration
@@ -94,6 +98,7 @@ import { join } from 'node:path';
 import { installerNotApplied, type GbrainCellConfig, type TrialRecord } from '../runner/contracts.ts';
 import type { Observation, PairedDelta } from '../runner/stats/paired.ts';
 import { loadPairedKit, statsKitFor } from '../runner/stats/kit.ts';
+import { pairEndpoints, readUsageLines, repricing } from './baseline-endpoints.ts';
 import { sealedGuard } from '../runner/heldout/guard.ts';
 import { openingDiff, readJsonFile, readJsonLines, type OpeningReceipt } from '../runner/heldout/sealed.ts';
 import { RunnerError } from '../runner/errors.ts';
@@ -167,7 +172,7 @@ if (useRegraded) {
 }
 const repoRoot = join(import.meta.dir, '..');
 const statsKit = statsKitFor(results, repoRoot, manifest.run_id);
-const { clusteredPairedDelta, exactMcNemar, holmAdjusted, nonInferiorityP, pairObservations } = await loadPairedKit(statsKit, repoRoot);
+const { clusteredPairedDelta, exactMcNemar, holmAdjusted, nonInferiorityP, pairObservations, seededRandom } = await loadPairedKit(statsKit, repoRoot);
 const familyOf = new Map<string, string>();
 for (const t of rows) {
   if (familyOf.has(t.task)) continue;
@@ -528,7 +533,7 @@ if (baselines) {
   for (let i = 0; i < cells.length; i++) for (let j = i + 1; j < cells.length; j++) pairs.push({ a: cells[i]!, b: cells[j]! });
 }
 const EXCLUDED_TERMINATIONS = new Set(['model_error', 'infra_error', 'exam_fault']);
-const baselineObs = (a: string, b: string): [Observation[], Observation[]] => {
+const baselineObs = (a: string, b: string) => {
   const byId = (cell: string) => {
     const m = new Map<string, (typeof inScope)[number]>();
     for (const t of inScope.filter((t) => t.cell === cell)) {
@@ -547,14 +552,21 @@ const baselineObs = (a: string, b: string): [Observation[], Observation[]] => {
     sides[0].push({ id, cluster, value: reason ? null : pass(x!), eligible: !reason, reason });
     sides[1].push({ id, cluster, value: reason ? null : pass(y!), eligible: !reason, reason });
   }
-  return sides;
+  return { sides, A, B };
 };
+const kit = { clusteredPairedDelta, seededRandom };
 const deltas = pairs.map(({ a, b }) => {
-  const [oa, ob] = baselines ? baselineObs(a, b) : [obs(a), obs(b)];
+  const base = baselines ? baselineObs(a, b) : null;
+  const [oa, ob] = base ? base.sides : [obs(a), obs(b)];
   const pairing = pairObservations(oa, ob);
   const d = clusteredPairedDelta(pairing.pairs, { seed, draws });
-  return { a, b, delta: d.delta, ci95: d.ci95, p: d.p_two_sided, p_method: d.p_method, n_clusters: d.n_clusters, n_pairs: d.n_pairs, mean_a: d.mean_a, mean_b: d.mean_b, ...noninferiority(a, b, d), excluded: baselines ? pairing.excluded : undefined };
+  const endpoints = base
+    ? { pass_half_width: d.ci95 ? (d.ci95[1] - d.ci95[0]) / 2 : null, ...pairEndpoints(pairing.pairs.map((p) => ({ id: p.id, task: p.cluster, a: base.A.get(p.id)!, b: base.B.get(p.id)! })), pass, kit, { seed, draws }) }
+    : undefined;
+  return { a, b, delta: d.delta, ci95: d.ci95, p: d.p_two_sided, p_method: d.p_method, n_clusters: d.n_clusters, n_pairs: d.n_pairs, mean_a: d.mean_a, mean_b: d.mean_b, ...noninferiority(a, b, d), excluded: base ? pairing.excluded : undefined, endpoints };
 });
+const usageLines = baselines ? readUsageLines(results) : null;
+const repriced = baselines ? Object.fromEntries(baselines.map((c) => [c, repricing(c, inScope.filter((t) => t.cell === c), EXCLUDED_TERMINATIONS, usageLines!, kit, { seed, draws })])) : null;
 const adjusted = holmAdjusted(deltas.map((d) => d.p));
 const lines = [
   `Scope: ${families ? `families ${families.join(', ')}` : 'all families'}; grading ${useRegraded ? 'regraded' : 'as recorded'}; seed ${seed}, ${draws} draws.`,
@@ -563,6 +575,21 @@ const lines = [
   '|---|---|---|---|---|---|---|---|---|',
   ...deltas.map((d, i) => `| ${d.a} | ${d.b} | ${(100 * d.mean_a).toFixed(0)}% | ${(100 * d.mean_b).toFixed(0)}% | ${pts(d.delta)} [${d.ci95 ? `${pts(d.ci95[0])}, ${pts(d.ci95[1])}` : 'n/a'}] | ${d.p.toFixed(3)} (${d.p_method}) | ${adjusted[i]!.toFixed(3)} | ${d.n_clusters} | ${d.n_pairs} |`),
 ];
-if (baselines) lines.push('', 'Excluded pairs (model_error, infra_error or exam_fault on either side, or missing on either side): ' + deltas.map((d) => `${d.b} vs ${d.a}: ${d.excluded!.length}`).join('; ') + '.');
+if (baselines) {
+  const ci = (c: [number, number] | null, f: (x: number) => string) => (c ? `[${f(c[0])}, ${f(c[1])}]` : '[n/a]');
+  const usd = (x: number | null) => (x === null ? 'n/a' : `$${x.toFixed(4)}`);
+  const signedUsd = (x: number) => `${x >= 0 ? '+' : '-'}$${Math.abs(x).toFixed(4)}`;
+  const r2 = (x: number) => x.toFixed(2);
+  const share = (x: number | null) => (x === null ? 'n/a' : `${(100 * x).toFixed(0)}%`);
+  const ratioCell = (r: { estimate: number | null; ci95: [number, number] | null }) => `${r.estimate === null ? 'n/a' : r2(r.estimate)} ${ci(r.ci95, r2)}`;
+  lines.push('', 'Excluded pairs (model_error, infra_error or exam_fault on either side, or missing on either side): ' + deltas.map((d) => `${d.b} vs ${d.a}: ${d.excluded!.length}`).join('; ') + '.',
+    '', 'Cost, cache and tasks on the same pairs (B against A; intervals task-clustered, same seed and draws; ratios are B over A):', '',
+    '| A | B | Pass half-width (points) | USD per trial A, B | B minus A USD [95% CI] | Cost per trial ratio [95% CI] | Cost per success A, B | Cost per success ratio [95% CI] | Cached share A, B | B minus A (points) [95% CI] | Broken | Fixed | Cost pairs |',
+    '|---|---|---|---|---|---|---|---|---|---|---|---|---|',
+    ...deltas.map(({ a, b, endpoints: e }) => `| ${a} | ${b} | ${e!.pass_half_width === null ? 'n/a' : (100 * e!.pass_half_width).toFixed(1)} | ${usd(e!.usd_per_trial?.mean_a ?? null)}, ${usd(e!.usd_per_trial?.mean_b ?? null)} | ${e!.usd_per_trial ? `${signedUsd(e!.usd_per_trial.delta)} ${ci(e!.usd_per_trial.ci95, signedUsd)}` : 'n/a'} | ${ratioCell(e!.usd_per_trial_ratio)} | ${usd(e!.usd_per_success.a)}, ${usd(e!.usd_per_success.b)} | ${ratioCell(e!.usd_per_success.ratio)} | ${share(e!.cached_share.a)}, ${share(e!.cached_share.b)} | ${e!.cached_share.difference.estimate === null ? 'n/a' : pts(e!.cached_share.difference.estimate)} ${ci(e!.cached_share.difference.ci95, pts)} | ${e!.tasks.broken.length} | ${e!.tasks.fixed.length} | ${e!.cost_pairs} |`),
+    '', 'Caching repricing per baseline cell (every input token at the plain input rate, over actual cost; cache-read share by gap since the previous request):', '',
+    '| Cell | Trials | Excluded | Actual USD per trial | Repriced USD per trial | Repriced over actual [95% CI] | Cache-read share by gap |', '|---|---|---|---|---|---|---|',
+    ...Object.values(repriced!).map((r) => `| ${r.cell} | ${r.trials} | ${r.excluded.length} | ${usd(r.actual_per_trial)} | ${usd(r.repriced_per_trial)} | ${r.ratio ? ratioCell(r.ratio) : `n/a (${'note' in r ? r.note : ''})`} | ${r.cache_by_gap.map((g) => `${g.bucket}: ${share(g.cached_share)} of ${g.input_tokens.toLocaleString()} (${g.requests} requests)`).join('; ') || 'n/a'} |`));
+}
 console.log(lines.join('\n'));
-writeFileSync(join(results, `comparisons${against ? '.against-' + (readRows(against)[0]?.trial_id.split('/')[0] ?? 'other') : ''}${suffix}`), JSON.stringify({ scope: families, ...(baselines ? { baselines } : {}), grading: useRegraded ? 'regraded' : 'as recorded', seed, draws, stats_kit: statsKit, comparisons: deltas.map((d, i) => ({ ...d, holm_p: adjusted[i] })) }, null, 1) + '\n');
+writeFileSync(join(results, `comparisons${against ? '.against-' + (readRows(against)[0]?.trial_id.split('/')[0] ?? 'other') : ''}${suffix}`), JSON.stringify({ scope: families, ...(baselines ? { baselines, repricing: repriced } : {}), grading: useRegraded ? 'regraded' : 'as recorded', seed, draws, stats_kit: statsKit, comparisons: deltas.map((d, i) => ({ ...d, holm_p: adjusted[i] })) }, null, 1) + '\n');

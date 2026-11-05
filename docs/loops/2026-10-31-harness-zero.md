@@ -106,3 +106,5 @@ Frozen at the end of Phase C, in PR 3, in `config/candidates.json`:
 ## Amendments
 
 Dated, newest last, each committed before the iterations it affects.
+
+- **2026-11-05, amendment 1** ([the run's preregistration](../benchmarks/2026-10-31-harness-zero-select/PREREGISTRATION.md), "Amendment 1"): the frozen surface adds `scripts/baseline-endpoints.ts` and `scripts/merge-shards.ts`, and the binding hash is the extended list's value at that amendment's merge commit. "Within ±F" and "not below -F" read the point estimate. "Harm" is defined, the ceiling gate's cost-only cut also needs the pass-rate point estimate not below -F, and the prior guide reads about 4 to 15 points. The hash bullet's preregistration base is `d0102206fe38` (main after #278), not `896f2534b`; the 17-path value is the same at both. No rule above is rewritten; the amendment says how each one reads `comparisons.json`.

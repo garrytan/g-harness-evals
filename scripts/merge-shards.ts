@@ -3,7 +3,7 @@
 // sharded by whole cells across machines, each shard a clean checkout at the same commit running `plan` itself, trials
 // sequential within a shard).
 //
-//   bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...] [--sealed-root <dir>] [--partial [--vm-lost <cell> ...]]
+//   bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...] [--sealed-root <dir>] [--partial [--vm-lost <cell> ...]] [--skipped-by-rule <cell>[=<reason>] ...]
 //
 // --partial (internal-task, plan decision 9's stop rule): a run that stopped on its cap is reported from what exists and is never
 // resumed or backfilled. The merge then accepts manifest trials that no shard recorded, writes them, in manifest order,
@@ -19,6 +19,11 @@
 // --vm-lost <cell> (with --partial; matrix-mu-2026-11, whose preregistration refuses --resume): a cell whose VM was lost
 // mid-run is merged with no trial at all, its shard left out, and listed in unstarted.json's vm_lost. Its partial trials
 // are reported from the backup copy, apart from the comparisons. A named cell with any recorded trial is refused.
+// --skipped-by-rule <cell>[=<reason>] (with or without --partial; harness-zero-select-2026-11's conditional no-eh-sol cell): a
+// planned cell that the preregistration's own conditional rule did not run is merged with no trial. It must be in the manifest,
+// have no recorded trial and not also be --vm-lost. Its trials are neither missing nor unstarted, and shards.json records it
+// under skipped_by_rule ({ cell, reason, planned_trials }), with "the preregistration's conditional rule did not run this
+// cell" as the reason when none is given. A missing cell that is not named is still refused.
 //
 // What it builds, refusing (exit 2, naming the offender) rather than guessing:
 //   manifest.json      the first shard's; every other shard's manifest must agree once created_at is removed (run_id,
@@ -60,7 +65,8 @@ import { insideGitTree } from './sealed/custody.ts';
 export interface ShardInput { name: string; dir: string }
 export interface ShardInfo { name: string; machine: string | null; commit: string | null; images: unknown; source: string; trials: number; cells: string[] }
 export interface CapStopEvidence { cell: string; shard: string; cap_stop_trial: string }
-export interface ShardsFile { cells: Record<string, string>; shards: Record<string, ShardInfo> }
+export interface SkippedByRule { cell: string; reason: string; planned_trials: number }
+export interface ShardsFile { cells: Record<string, string>; shards: Record<string, ShardInfo>; skipped_by_rule?: SkippedByRule[] }
 
 export class MergeError extends Error {}
 
@@ -70,7 +76,7 @@ const PER_SHARD_FILES = ['ledger.sqlite', 'proxy.log', 'proxy-usage.ndjson', 'ab
 const perShard = (entry: string) => PER_SHARD_FILES.includes(entry) || /^reconcile.*\.json$/.test(entry) || /^preflight-/.test(entry) || entry === 'gbrain-install' || entry === 'laneb';
 
 /** Plan the merge without writing: every refusal is raised here. */
-export interface MergeOptions { partial?: boolean; vmLost?: string[] }
+export interface MergeOptions { partial?: boolean; vmLost?: string[]; skippedByRule?: Array<{ cell: string; reason: string }> }
 
 export function planMerge(out: string, shards: ShardInput[], options: MergeOptions = {}): { manifest: { run_id: string; trials: Array<{ id: string; cell: string }> }; rows: TrialRecord[]; shardsFile: ShardsFile; copies: Array<{ from: string; to: string }>; unstarted: Array<{ id: string; cell: string }>; capStops: CapStopEvidence[]; vmLost: string[] } {
   if (!shards.length) throw new MergeError('no shards: pass --shard <name>=<dir> at least once');
@@ -119,7 +125,17 @@ export function planMerge(out: string, shards: ShardInput[], options: MergeOptio
     infos[s.name] = { name: s.name, machine: typeof meta.machine === 'string' ? meta.machine : null, commit: typeof meta.commit === 'string' ? meta.commit : null, images: meta.images ?? null, source: s.dir, trials: rows.length, cells: [...new Set(rows.map((t) => t.cell))].sort() };
   }
   const planned = new Set(first.trials.map((t) => t.id));
-  const missing = first.trials.filter((t) => !owner.has(t.id)).map((t) => t.id);
+  const skipped = options.skippedByRule ?? [];
+  const skippedCells = skipped.map((s) => s.cell);
+  const twice = skippedCells.filter((c, i) => skippedCells.indexOf(c) !== i);
+  if (twice.length) throw new MergeError(`--skipped-by-rule names cell(s) twice: ${[...new Set(twice)].join(', ')}`);
+  const unknownSkipped = skippedCells.filter((c) => !first.trials.some((t) => t.cell === c));
+  if (unknownSkipped.length) throw new MergeError(`--skipped-by-rule names cell(s) not in the manifest: ${unknownSkipped.join(', ')}`);
+  const recordedSkipped = skippedCells.filter((c) => first.trials.some((t) => t.cell === c && owner.has(t.id)));
+  if (recordedSkipped.length) throw new MergeError(`--skipped-by-rule cell(s) ${recordedSkipped.join(', ')} have recorded trials in the shards given; a cell the preregistration's rule skipped has none`);
+  const lostAndSkipped = skippedCells.filter((c) => (options.vmLost ?? []).includes(c));
+  if (lostAndSkipped.length) throw new MergeError(`cell(s) ${lostAndSkipped.join(', ')} named by both --vm-lost and --skipped-by-rule; a cell is one or the other`);
+  const missing = first.trials.filter((t) => !owner.has(t.id) && !skippedCells.includes(t.cell)).map((t) => t.id);
   const shardLogs = new Map<string, UsageLine[]>();
   const capRefusedAfterStart = (dir: string, t: TrialRecord) => {
     const log = join(dir, 'proxy-usage.ndjson');
@@ -137,7 +153,7 @@ export function planMerge(out: string, shards: ShardInput[], options: MergeOptio
   const capStops: CapStopEvidence[] = [];
   const unexplained: string[] = [];
   for (const cell of [...new Set(first.trials.filter((t) => !owner.has(t.id)).map((t) => t.cell))]) {
-    if (vmLost.includes(cell)) continue;
+    if (vmLost.includes(cell) || skippedCells.includes(cell)) continue;
     const planned = first.trials.filter((t) => t.cell === cell);
     const gap = planned.findIndex((t) => !owner.has(t.id));
     const last = gap > 0 ? rowsById.get(planned[gap - 1]!.id)! : undefined;
@@ -172,8 +188,9 @@ export function planMerge(out: string, shards: ShardInput[], options: MergeOptio
     if (i === 0 && existsSync(join(s.dir, 'gbrain-install'))) copies.push({ from: join(s.dir, 'gbrain-install'), to: join(out, 'gbrain-install') });
   });
   const rows = first.trials.filter((t) => rowsById.has(t.id)).map((t) => rowsById.get(t.id)!);
-  const unstarted = first.trials.filter((t) => !owner.has(t.id)).map((t) => ({ id: t.id, cell: t.cell }));
-  return { manifest: first, rows, shardsFile: { cells, shards: infos }, copies, unstarted, capStops, vmLost };
+  const unstarted = first.trials.filter((t) => !owner.has(t.id) && !skippedCells.includes(t.cell)).map((t) => ({ id: t.id, cell: t.cell }));
+  const skippedByRule = skipped.map((s) => ({ cell: s.cell, reason: s.reason, planned_trials: first.trials.filter((t) => t.cell === s.cell).length }));
+  return { manifest: first, rows, shardsFile: { cells, shards: infos, ...(skippedByRule.length ? { skipped_by_rule: skippedByRule } : {}) }, copies, unstarted, capStops, vmLost };
 }
 
 export function mergeShards(out: string, shards: ShardInput[], options: MergeOptions = {}): ShardsFile & { unstarted: number } {
@@ -200,8 +217,16 @@ if (import.meta.main) {
   argv.forEach((a, i) => { if (a === '--shard') { const v = argv[i + 1] ?? ''; const eq = v.indexOf('='); if (eq < 1) { console.error(`--shard takes <name>=<dir>, not ${JSON.stringify(v)}`); process.exit(2); } shards.push({ name: v.slice(0, eq), dir: v.slice(eq + 1) }); } });
   const partial = argv.includes('--partial');
   const vmLost = argv.flatMap((a, i) => (a === '--vm-lost' ? [argv[i + 1] ?? ''] : []));
+  const skippedByRule = argv.flatMap((a, i) => {
+    if (a !== '--skipped-by-rule') return [];
+    const v = argv[i + 1] ?? '';
+    const eq = v.indexOf('=');
+    const cell = eq < 0 ? v : v.slice(0, eq);
+    if (!cell || cell.startsWith('--')) { console.error(`--skipped-by-rule takes <cell>[=<reason>], not ${JSON.stringify(v)}`); process.exit(2); }
+    return [{ cell, reason: (eq < 0 ? '' : v.slice(eq + 1).trim()) || "the preregistration's conditional rule did not run this cell" }];
+  });
   if (!argv.includes('--out') || !out || !shards.length) {
-    console.error('usage: bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...] [--sealed-root <dir>] [--partial [--vm-lost <cell> ...]]');
+    console.error('usage: bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...] [--sealed-root <dir>] [--partial [--vm-lost <cell> ...]] [--skipped-by-rule <cell>[=<reason>] ...]');
     process.exit(2);
   }
   const sealedRoot = argv.includes('--sealed-root') ? argv[argv.indexOf('--sealed-root') + 1] : undefined;
@@ -224,10 +249,11 @@ if (import.meta.main) {
   }
   if (sealed) sealedGuard({ root: sealedRoot!, set: sealed.set, repoRoot: process.cwd(), preregJson: sealed.receipt?.prereg_json, logFile: join(out, 'merge-shards.sealed.log'), allow: [/^Merged \d+ shard\(s\) into /, /^\| /, /^Partial merge: \d+ manifest trial/], label: 'scripts/merge-shards.ts' });
   try {
-    const f = mergeShards(out, shards, { partial, vmLost });
+    const f = mergeShards(out, shards, { partial, vmLost, skippedByRule });
     const cellsOf = (name: string) => Object.entries(f.cells).filter(([, s]) => s === name).map(([c]) => c);
     console.log([`Merged ${shards.length} shard(s) into ${out}: ${Object.keys(f.cells).length} cells, ${Object.values(f.shards).reduce((s, i) => s + i.trials, 0)} trials.`, '', '| Shard | Machine | Commit | Trials | Cells |', '|---|---|---|---|---|',
       ...Object.values(f.shards).map((i) => `| ${i.name} | ${i.machine ?? 'unknown'} | ${i.commit ?? 'unknown'} | ${i.trials} | ${cellsOf(i.name).join(', ')} |`)].join('\n'));
+    for (const s of f.skipped_by_rule ?? []) console.log(`Skipped by rule: ${s.cell} (${s.planned_trials} planned trials, none run): ${s.reason}`);
     if (partial) console.log(`Partial merge: ${f.unstarted} manifest trial(s) unstarted, listed in ${join(out, 'unstarted.json')}; nothing was backfilled.`);
   } catch (e) {
     if (e instanceof MergeError || e instanceof RunnerError) { console.error(e instanceof MergeError ? `merge-shards: ${e.message}` : e.message); process.exit(2); }

@@ -2,7 +2,7 @@
 
 Status: written 2026-10-31 (America/Los_Angeles), before any counted trial of this run. Run id `harness-zero-select-2026-11`. Cells are in [prereg.json](prereg.json). The rules (verdicts, floor, candidates) are in the loop file, [docs/loops/2026-10-31-harness-zero.md](../../loops/2026-10-31-harness-zero.md).
 
-**Revised 2026-11-04 by internal-task**, internal-task's successor, after PR 1a (#179), PR 1b and 1c (#255) and their review follow-ups (#266) merged. What changed: the base, the owner, the clean-arm preflight and audit, the "Why null?" rule, the disclosure line, controller replication and the R71 tally. No cell, task, repetition, lease or cap changed.
+**Revised 2026-11-04 by HARN-26**, HARN-22's successor, after PR 1a (#179), PR 1b and 1c (#255) and their review follow-ups (#266) merged. What changed: the base, the owner, the clean-arm preflight and audit, the "Why null?" rule, the disclosure line, controller replication and the R71 tally. No cell, task, repetition, lease or cap changed.
 
 Dry-run, `bun runner/run.ts dry-run --prereg docs/benchmarks/2026-10-31-harness-zero-select/prereg.json` at `896f2534b` (main after #277) plus this change: **880 trials in 10 cells**, `task_set=v0.3 split=dev network=internal` on every cell line, planning ceiling $955.90 against the $213 cap. The ceiling prices every turn at 80,000 input and 6,000 output tokens at list price, so it is far above expected spend ($166.40, Leases and spend). The HE-BUDGET-003 warning's drop-order clause applies only to the conditional Sol cell; each shard stops at its own lease.
 
@@ -30,7 +30,7 @@ WARN: HE-BUDGET-003 cost ceiling 955.9 exceeds the preregistered cap 213; cells 
 
 ## Approval
 
-The plan this run executes is internal-task's plan in the Captain's drive (`handoffs/internal-task/plan-v2-full.md`, autoplan run `run-20261031175814`, gate rev 1). Garry Tan approved it with every recommendation on 2026-10-31 ("Do it"). This is its Phase C: the "Keep rule" section and implementation steps 5 and 6. internal-task took the plan over from internal-task on 2026-11-03 (CREW.md rotation, R70), with the same approval. The build requirements from the round-2 review (`handoffs/internal-task/build-requirements.md`, items 14 to 16) are met here: the conditional rows are in the budget, the Opus shard timeout comes from the smoke, and `zero-control` is frozen in PR 3. Items 23 to 25 are met here too: the "Why null?" sections (Endpoints), clean arms (Fixed now) and the OpenAI disclosure line (Disclosures).
+The plan this run executes is HARN-22's plan in the Captain's drive (`handoffs/HARN-22/plan-v2-full.md`, autoplan run `run-20261031175814`, gate rev 1). Garry Tan approved it with every recommendation on 2026-10-31 ("Do it"). This is its Phase C: the "Keep rule" section and implementation steps 5 and 6. HARN-26 took the plan over from HARN-22 on 2026-11-03 (CREW.md rotation, R70), with the same approval. The build requirements from the round-2 review (`handoffs/HARN-22/build-requirements.md`, items 14 to 16) are met here: the conditional rows are in the budget, the Opus shard timeout comes from the smoke, and `zero-control` is frozen in PR 3. Items 23 to 25 are met here too: the "Why null?" sections (Endpoints), clean arms (Fixed now) and the OpenAI disclosure line (Disclosures).
 
 ## Why this run
 
@@ -100,18 +100,18 @@ On the 20 public dev tasks of task set v0.3:
 
 **Gates (plan, "Dependency gates").**
 
-- **G1, internal-task's per-layer keep or cut list: not landed.** Fallback applied: the five layers are one bundled cell, `zero-full-minus-layers`, inside the cap (up to $20, build requirement 14). The prompt files stay as written in PR 1a. internal-task's list is cited in PR 3 when it lands.
-- **G2, internal-task's token waterfall: not landed.** Fallback applied: Harness Zero's own count_tokens capture ([anatomy page](../../harness-anatomy/harness-zero.md)) sets the defaults. `tool-search` and `output-cap` keep their PR 1a defaults, and compaction stays out: the capture shows no compaction by design and gives no reason to add it.
+- **G1, HARN-20's per-layer keep or cut list: not landed.** Fallback applied: the five layers are one bundled cell, `zero-full-minus-layers`, inside the cap (up to $20, build requirement 14). The prompt files stay as written in PR 1a. HARN-20's list is cited in PR 3 when it lands.
+- **G2, HARN-21's token waterfall: not landed.** Fallback applied: Harness Zero's own count_tokens capture ([anatomy page](../../harness-anatomy/harness-zero.md)) sets the defaults. `tool-search` and `output-cap` keep their PR 1a defaults, and compaction stays out: the capture shows no compaction by design and gives no reason to add it.
 
 **Runner and commit binding.** The run executes from a worktree pinned at this preregistration's merge commit on main, never a branch commit. Preconditions, all on main: PR 1a (#179, `4ab7934d0`, including the `effort-high` fix and the `zero-full-minus-layers` set), PR 1b and 1c (#255, `16333de83`) and their review follow-ups (#266, `127bed8c6`), and compare-run's `--baseline` mode (#277, merged at `896f2534b558`). `BASE` is the first parent of this preregistration's squash merge commit on main. Before the fan-out, `git diff --stat BASE <merge commit>`, with no path filter, must list exactly this pull request's files; any other change needs a dated amendment naming it, committed before any cell runs. The report asserts that every shard's `shard.json` and `shard-vm.json` name that commit (or an amendment's commit for the cells it names), that every `shard-vm.json` has `scratch_prereg` false, and that the manifest's `prereg_sha256` equals the sha256 of `prereg.json` at that commit. Any other value is a deviation, and that cell is not reported as part of this run. The loop file's frozen-surface hash is computed at the same commit.
 
-**Sharding (CREW.md: Parallelism, Pinned checkouts, Shards run on Ubicloud).** Ten shards, one cell each, named in the table, so no cell is split across machines. Each runs on its own standard-16 Ubicloud VM through `scripts/ubicloud/fanout.sh` ([docs/ubicloud.md](../../ubicloud.md)) with `UBI_OWNER=internal-task`, after `scripts/ubicloud/ubi-runner.sh usage`. Each VM checks out this preregistration's merge commit detached (a dirty tree is refused), builds the images, runs the lane's one-trial smoke, then `scripts/run-shard.sh` for its cell; results come back to `<dest>/<shard>/results`, are merged with `scripts/merge-shards.ts`, and the VM is destroyed on every exit. PR 3 runs `scripts/merge-shards.ts` at this preregistration's merge commit. Each fan-out runs as a Capy background operation with a registered wait. After any stop, `UBI_OWNER=internal-task scripts/ubicloud/ubi-runner.sh list --mine` must show no VM left. A shard that fails before its first trial is relaunched at the same commit; a shard interrupted mid-run resumes with `--resume` under the same lease, and the resume log names the commit it loaded. Every restart goes in the report's deviations.
+**Sharding (CREW.md: Parallelism, Pinned checkouts, Shards run on Ubicloud).** Ten shards, one cell each, named in the table, so no cell is split across machines. Each runs on its own standard-16 Ubicloud VM through `scripts/ubicloud/fanout.sh` ([docs/ubicloud.md](../../ubicloud.md)) with `UBI_OWNER=HARN-26`, after `scripts/ubicloud/ubi-runner.sh usage`. Each VM checks out this preregistration's merge commit detached (a dirty tree is refused), builds the images, runs the lane's one-trial smoke, then `scripts/run-shard.sh` for its cell; results come back to `<dest>/<shard>/results`, are merged with `scripts/merge-shards.ts`, and the VM is destroyed on every exit. PR 3 runs `scripts/merge-shards.ts` at this preregistration's merge commit. Each fan-out runs as a Capy background operation with a registered wait. After any stop, `UBI_OWNER=HARN-26 scripts/ubicloud/ubi-runner.sh list --mine` must show no VM left. A shard that fails before its first trial is relaunched at the same commit; a shard interrupted mid-run resumes with `--resume` under the same lease, and the resume log names the commit it loaded. Every restart goes in the report's deviations.
 
 **No single point of failure (CREW.md, Ubicloud VMs and Token budget and rotation).**
 
 - **Pre-launch check:** before the first fan-out, every pre-launch script runs once on a single fresh VM through the same SSH path the fan-out uses. That VM is destroyed after the check.
 - **Controller state is replicated** as in `prompt-archaeology-2026-11` amendment 2 ([its preregistration](../2026-11-01-prompt-archaeology/PREREGISTRATION.md)). Once each fan-out's VMs are up, a second Capy machine (the backup) gets a copy of `~/.local/state/ubi-runner/` and each shard's `shard-vm.json`, through Capy's machine-to-machine file transfer. SSH private keys stay on those two machines and never go on a drive or into the repository.
-- **The VM-to-shard map** (each `shard-vm.json`, which holds no key) is also kept in the Captain drive under `handoffs/internal-task/phase-c/map/`.
+- **The VM-to-shard map** (each `shard-vm.json`, which holds no key) is also kept in the Captain drive under `handoffs/HARN-26/phase-c/map/`.
 - **Results leave each VM while the run goes:** every 20 minutes the backup pulls each shard's `results` and `smoke` directories with `ubi-runner.sh pull`. A live pull copies `ledger.sqlite` without teardown's WAL checkpoint, so a ledger restored from one can miss its latest entries.
 - **If the controller dies,** the backup reattaches every shard whose VM is still up with `run-shard.sh --attach`. Every reattach and pull failure goes in the report's deviations.
 - **VM TTL:** `UBI_TTL_HOURS` is 7 for the Opus manifests and 5 for the Sol manifest, above each `--timeout-hours` (Shard timeout, below).
@@ -131,7 +131,7 @@ Within a shard, trials run in manifest order (task by task, repetitions in seque
 - **Why it moved:** Opus `zero-min` measured $0.38 a trial in the smokes, against the plan's $0.20. So the plan's $134 row is now $138.89 expected, and the leases need $212.50.
 - **The plan's hard model cap stays $500.** The Phase D preregistration is sized against what is left under $500 after Phase C's actual metered spend, not after its leases.
 - Ubicloud VMs (about $0.50 an hour each) are outside the cap.
-- **R71 ($2,000 per eval, all-in).** Harness Zero is one eval, booked at $808 all-in (the Captain, 2026-11-04): paid calls, VMs and the threads' own model use for the whole plan (build, smokes, Phases C and D). The running tally is in the Captain drive at `reports/internal-task.md`. It is checked before each fan-out. A cap stop ends that cell as incomplete, and it is never retried.
+- **R71 ($2,000 per eval, all-in).** Harness Zero is one eval, booked at $808 all-in (the Captain, 2026-11-04): paid calls, VMs and the threads' own model use for the whole plan (build, smokes, Phases C and D). The running tally is in the Captain drive at `reports/HARN-26.md`. It is checked before each fan-out. A cap stop ends that cell as incomplete, and it is never retried.
 
 **Lease rule** (as in host-harness-pilot-2026-10): smoke cost per trial × trials × 1.25, plus one maximum per-call reservation, rounded up to the next $0.05. Reservation: $0.50 per Opus shard (the smokes' largest Opus reservation was $0.478: the proxy's input estimate, request bytes ÷ 3 at the $5 per million cache-write rate, plus the 16,000-token `max_tokens` at $20 per million), $0.30 per Sol shard (largest $0.271). Leases are not moved between shards and change only by a dated amendment.
 
@@ -182,7 +182,7 @@ Within a shard, trials run in manifest order (task by task, repetitions in seque
 
 ## Costing smokes
 
-Plan step 4, in two runs. **First run:** one uncounted trial of `ar-01-thornbury-rate-hollis` per cell kind, no gstack, no brain, run on 2026-11-01 UTC: one `scripts/run-shard.sh` invocation on a Capy machine's Docker, from a worktree pinned at `e2423f100`, a commit of `harn-22/zero-anatomy` from before that branch was rebased (it is no longer on any branch; internal-task's spend file records it), a scratch preregistration (`harness-zero-costing-smoke-2026-10`), one ledger lease of $15 and `--max-output-tokens 128000`. The results are scratch and not committed; internal-task's spend file in the Captain's drive carries the ledger summary.
+Plan step 4, in two runs. **First run:** one uncounted trial of `ar-01-thornbury-rate-hollis` per cell kind, no gstack, no brain, run on 2026-11-01 UTC: one `scripts/run-shard.sh` invocation on a Capy machine's Docker, from a worktree pinned at `e2423f100`, a commit of `harn-22/zero-anatomy` from before that branch was rebased (it is no longer on any branch; HARN-22's spend file records it), a scratch preregistration (`harness-zero-costing-smoke-2026-10`), one ledger lease of $15 and `--max-output-tokens 128000`. The results are scratch and not committed; HARN-22's spend file in the Captain's drive carries the ledger summary.
 
 | Cell | Termination | Grade | Requests | Input / output / cached tokens | Cost | Wall | Steps per turn | Retries |
 |---|---|---|---:|---|---:|---:|---|---:|
@@ -218,7 +218,7 @@ The inferential unit is the task cluster. Every interval is a task-clustered boo
 - **Paired differences:** each ablation minus its model's baseline (`zero-full-a` on Opus, `zero-full` on Sol), paired by task and repetition (`clusteredPairedDelta` in `runner/stats/paired.ts`). They are computed with `bun scripts/compare-run.ts --results <dir> --baseline zero-full-a-opus-none-mu-v03-dev,zero-full-sol-none-mu-v03-dev` (the `--baseline` mode from #277). Each baseline is paired only with the other cells on its model. A pair where either side ended `model_error`, `infra_error` or `exam_fault`, or has no trial, is excluded on both sides and listed. compare-run runs in `--baseline` mode only on the counted results directory; the published `comparisons.json` must carry the `baselines` key, and any default-mode run is made on a copy of the directory, never on the counted one.
 - **Verdicts:** keep, cut or can't tell per switch, by the loop file's rules, with breaks and fixes counted apart (R2). The verdicts are decisions under a preregistered rule, not significance tests, so no multiplicity correction applies; every verdict sentence carries the word "dev".
 - **Statistics kit:** kit v2, `runner/stats/` as it stands at this preregistration's merge commit (#262; [runner/stats/README.md](../../../runner/stats/README.md), "Which kit analyses a run"). `compare-run.ts` records it as `stats_kit` in the comparisons file. The verdicts read intervals, not p-values, so kit v2's p-value changes don't move a verdict rule.
-- **"Why null?" (CREW.md, build requirement 23).** PR 3 gets one "Why null?" section for each cut or can't-tell verdict. Each section covers, in one cycle: exposure (did the switch reach the request, from the `ready` file and a captured request), task fit, power and saturation (F, the half-width, n and the ceiling) and the model (frontier only). It ends with one line: KEEP, FIX-METHOD (naming the fix) or CUT-CANDIDATE (naming the switch to shut off). A null that rests on saturation is FIX-METHOD with one named ceiling-raise, not CUT-CANDIDATE (R61). The verdict lines go to internal-task in the report to the Captain, and no null is softened.
+- **"Why null?" (CREW.md, build requirement 23).** PR 3 gets one "Why null?" section for each cut or can't-tell verdict. Each section covers, in one cycle: exposure (did the switch reach the request, from the `ready` file and a captured request), task fit, power and saturation (F, the half-width, n and the ceiling) and the model (frontier only). It ends with one line: KEEP, FIX-METHOD (naming the fix) or CUT-CANDIDATE (naming the switch to shut off). A null that rests on saturation is FIX-METHOD with one named ceiling-raise, not CUT-CANDIDATE (R61). The verdict lines go to HARN-1 in the report to the Captain, and no null is softened.
 
 **Detectable-difference method.** The floor F is the half-width of the paired interval of `zero-full-b` minus `zero-full-a`. A pass-rate change within ±F is treated as no change; a keep on pass rate needs the whole interval below zero. So the smallest pass-rate loss this design can call a keep is about F plus the ablation's own half-width. The report states F, each ablation's half-width, and the point estimate of `zero-full-b` minus `zero-full-a` (a large point gap between two identical cells is itself a finding about noise).
 
@@ -237,6 +237,71 @@ Under `docs/benchmarks/2026-10-31-harness-zero-select/results/`: the merged `tri
 ## Amendments
 
 Each amendment is dated and committed before any cell it affects runs. It ships in its own pull request, merged to main before those cells, and an affected shard resumes with `--resume --amendment <commit>`.
+
+### Amendment 1, 2026-11-05 (America/Los_Angeles): frozen analysis code, two rule readings, errata
+
+Written by HARN-26 after this preregistration merged to main as `e3eee2c6ac13` (#276), and before any counted trial. It closes open notes R2-1, R2-2, R2-8, R3-3, R3-4 and R3-5 and corrects R2-4, R2-5, R2-6, R3-1 and R3-2 from #276's review. **No cell, task, repetition, lease, cap, shard or `prereg.json` changes.** The dry-run above still prints the same block byte for byte at this amendment's head.
+
+**What it changes, in one line:** every verdict input now has frozen, tested code, the conditional Sol cell can be merged when its rule skips it, and the two readings the rules left open are fixed before the data exist.
+
+**1. New analysis code (R2-1, R3-3).**
+
+- `scripts/baseline-endpoints.ts`, called by `scripts/compare-run.ts --baseline`, computes the inputs the verdict rules read beyond pass rate. Each comparison in `comparisons.json` gets `endpoints`, on the same pairs as its pass-rate difference (same task and repetition, a `model_error`, `infra_error` or `exam_fault` or a missing trial on either side excluded on both sides):
+  - `pass_half_width`: the half-width of the pass-rate interval. On `zero-full-b` against `zero-full-a` it is F; on each ablation it is the half-width the report prints beside F.
+  - `usd_per_trial`: the paired cost-per-trial difference (proxy-priced `usage.usd`, `clusteredPairedDelta`, the same estimator as pass rate).
+  - `usd_per_trial_ratio`: total spend, ablation over baseline, for the ceiling gate's cost-only keep.
+  - `usd_per_success`: each side's spend over its passes, and the ratio, ablation over baseline.
+  - `cached_share`: each side's cached input tokens over its input tokens, and the ablation minus the baseline.
+  - `tasks`: broken and fixed tasks. A task is broken when it passes in more than half of its kept pairs in the baseline and in at most half in the ablation (3 of 5 against at most 2 of 5 on Opus, 2 of 3 against at most 1 of 3 on Sol), and fixed the other way. A task that lost a pair to an exclusion is judged on the pairs it kept (R3-5).
+  - A pair with no usage record on either side leaves the cost and cache endpoints only, listed under `cost_excluded`.
+- **Ratio intervals.** A task-clustered percentile bootstrap: each draw resamples tasks with replacement, sums each side over the drawn tasks' pairs and recomputes the ratio. Seed 7, 10,000 draws, with the kit's `seededRandom` in the same task order and draw sequence as `clusteredPairedDelta`, so each draw resamples the same tasks as the pass-rate interval. A draw with a zero denominator (no pass on one side of a cost-per-success draw) is counted, and any such draw leaves the interval null, never dropped.
+- **Caching repricing.** `comparisons.json` also carries `repricing`, one entry per baseline cell. Every forwarded proxy line of the cell's scored trials (from each shard's `<shard>.proxy-usage.ndjson` beside `trials.jsonl`) is priced again with every input token at the plain input rate and output at the output rate, at the metering ledger's price for the line's model, long-prompt tier included. Repriced over actual is the no-caching ratio, with the same interval. A trial whose lines don't add up to its usage record's input, output and cached tokens is excluded with its reason, and so is a trial with a line that has no price or no `actual_usd`. A line the proxy charged its reservation (a forwarded answer with no or partial usage, or a failed upstream call) costs what the meter charged whatever caching does, so its `actual_usd` goes into both actual and repriced, and `charged_reservation` counts those lines and their spend. The cache-read share is split by the gap since the trial's previous request: the first request, at most 300 seconds (the 5-minute TTL), and longer.
+- `scripts/merge-shards.ts --skipped-by-rule <cell>[=<reason>]` merges a planned cell that this preregistration's conditional rule did not run, with no trial. The cell must be in the manifest, have no recorded trial and not be `--vm-lost`. `shards.json` records it under `skipped_by_rule` with the reason and its 60 planned trials. A missing cell that is not named still refuses, with or without `--partial`.
+- Tests: `tests/compare-run-baseline-endpoints.test.ts` and `tests/merge-shards-skipped-by-rule.test.ts`, keyless, on synthetic trials.
+
+**2. Exact commands for PR 3**, run from a worktree pinned at this amendment's merge commit on main. The shards still execute at `e3eee2c6ac13`: nothing a shard VM loads changed (`run-shard.sh` and `fanout.sh` only name these scripts in comments and printed hints), so no shard resumes with `--amendment`.
+
+```sh
+bun scripts/merge-shards.ts --out docs/benchmarks/2026-10-31-harness-zero-select/results \
+  --shard zf-a-opus=<dest>/zf-a-opus/results --shard zf-b-opus=<dest>/zf-b-opus/results --shard zm-opus=<dest>/zm-opus/results \
+  --shard no-eh-opus=<dest>/no-eh-opus/results --shard no-ts-opus=<dest>/no-ts-opus/results --shard no-sn-opus=<dest>/no-sn-opus/results \
+  --shard no-ly-opus=<dest>/no-ly-opus/results --shard zf-sol=<dest>/zf-sol/results --shard zm-sol=<dest>/zm-sol/results \
+  --skipped-by-rule "zero-full-no-effort-high-sol-none-mu-v03-dev=Opus did not keep effort-high (loop file, Sol)"
+bun scripts/compare-run.ts --results docs/benchmarks/2026-10-31-harness-zero-select/results \
+  --baseline zero-full-a-opus-none-mu-v03-dev,zero-full-sol-none-mu-v03-dev
+```
+
+- `<dest>` is each fan-out's destination. If `no-eh-sol` runs, the merge drops `--skipped-by-rule` and adds `--shard no-eh-sol=<dest>/no-eh-sol/results`. If a cell stopped on its lease, the merge adds `--partial` (HE-BUDGET-001, as above).
+- `summarize-run.ts` and the ceiling gate's run-log line are unchanged.
+
+**3. Frozen surface and hash.** The loop file's path list gains `scripts/baseline-endpoints.ts` and `scripts/merge-shards.ts`, so merge-shards is now inside the hash (the loop file said it was not). The hash is computed the same way as before, with the two paths added:
+
+```sh
+git ls-tree -r <commit> -- tasks/multiuser/v0.3/dev tasks/multiuser/_shared/preamble.md world runner/grade runner/proxy \
+  runner/pricing runner/ledger runner/trial runner/stats harnesses/harness-zero/zero.ts harnesses/harness-zero/adapter.sh \
+  harnesses/harness-zero/Dockerfile harnesses/harness-zero/pin.json harnesses/harness-zero/config/features.json \
+  harnesses/harness-zero/config/prompts scripts/summarize-run.ts scripts/compare-run.ts \
+  scripts/baseline-endpoints.ts scripts/merge-shards.ts | sha256sum
+```
+
+- **At this preregistration's merge commit `e3eee2c6ac13`:** the loop file's original 17 paths give `5233f36825c8951b5c295a01c48da6415652b505e182f028b3452e1a0f1af339` (217 entries), the value #276 stated. The new list gives `0f27a9437acca567a26843d66a7343089bca8a68807cdea6fcec81f0fa31d492` (218 entries; `scripts/baseline-endpoints.ts` did not exist yet).
+- **At this amendment's head:** the new list gives `8c6aeb9e357060a0463e4b48cff46997f1690e9b79ed3c47167a8fbc5eb9e2e7` (219 entries).
+- **What binds:** the new list's value at this amendment's merge commit on main, recorded in the run log's first line and in PR 3. It must equal the head value above. If it doesn't, a commit between this head and the merge touched a frozen path, and no counted cell starts until a dated amendment names that change.
+
+**4. Rule readings (R2-2, R2-8, R3-4).**
+
+- **"Within ±F" (cut) and "not below -F" (keep's cost clause) read the ablation's point estimate.** Why: the Detectable-difference method already treats ±F as a band for the estimate ("a pass-rate change within ±F is treated as no change"), and it puts the interval test only on keep ("needs the whole interval below zero"). Each ablation has about the same n as the floor pair, so its interval is about 2F wide. Requiring the whole interval inside [-F, +F] could almost never be met, which would make cut unreachable. Keep still needs the whole pass-rate interval below zero, as written. The report prints each ablation's `pass_half_width` beside F, as the method requires.
+- **"Harm"** in "a switch whose drop shows harm is never cut" means any one of: a pass-rate point estimate below -F; more than 2 broken tasks; or a paired cost-per-trial difference above zero with its interval excluding zero. Each is already a condition the cut rule checks, so the sentence restates the rule and adds no new test.
+- **Ceiling gate, cost-only cut** gets a pass-rate condition: cut also needs the pass-rate point estimate not below -F. Without it, 5 of 5 falling to 3 of 5 on every task (a 40-point loss, no broken task) could be cut on cost (R3-4). F still comes from `zero-full-b`, which runs in either mode. Near a ceiling F can be 0, and then any loss leaves the switch can't tell. That is the intent: no switch is cut on cost while it lost pass rate.
+- **How each rule reads the file.** Cost level or lower: `usd_per_trial.delta` at or below 0, or `usd_per_trial.ci95` includes 0. Keep on cost per success: `usd_per_success.ratio.estimate` above 1.10 with `ci95` above 1.00. Cost-only keep: `usd_per_trial_ratio` the same way. Broken tasks: `tasks.broken`. Opus caching: `repricing.zero-full-a-opus-none-mu-v03-dev.ratio`. Sol caching: `zero-full` Sol minus `zero-min` Sol is minus the `zero-min-sol` comparison's `cached_share.difference`, so keep needs that estimate at or below -0.10 with its interval wholly below 0. A rule that needs an interval which is null is not met, so the switch falls through to can't tell.
+
+**5. Errata, dated 2026-11-05.** Each corrects text above; the original text stays as written.
+
+- **R2-4 (Leases and spend, unrounded-cost bullet):** three Sol rows differ by a cent from the shown cost per trial times 60, not two. `zero-full` Sol and the conditional `zero-full-no-effort-high` Sol both use $0.0639, and `zero-min` Sol differs too.
+- **R2-5 (loop file, Noise floor, prior guide):** in #145, harness pairs at 20 tasks by 5 repetitions had half-widths of about 4 to 15 points (4.5 to 15), not 4 to 17. The 16.5 was the told-minus-none comparison.
+- **R2-6 (Leases and spend, R71 bullet):** the $808 booking counts from 2026-11-03 13:30 UTC, not over the whole plan (build, smokes, Phases C and D).
+- **R3-1 (Fixed now, Gates, G1):** "up to $20, build requirement 14" is requirement 14's allowance, not the cell's cost. `zero-full-minus-layers` is $23.67 expected with a $30.10 lease, as the cost and lease tables say. Those tables are the right ones: the leases sum to $212.50 under the $213 cap, and the dry-run's $121 per Opus cell is a planning ceiling that prices no expected cost. No cap or lease changes.
+- **R3-2 (the dry-run line, and the loop file's hash bullet):** both name `896f2534b` (main after #277) as the base. The base is `d0102206fe38` (main after #278), the first parent of the merge commit `e3eee2c6ac13`. The dry-run output and the 17-path hash are the same at both commits.
 
 ## Disclosures
 
