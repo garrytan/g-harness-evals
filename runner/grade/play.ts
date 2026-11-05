@@ -6,7 +6,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { join, resolve } from 'node:path';
-import type { Script, ScriptedTurn, TrialEvidence, TurnWindow, WorldSnapshot } from '../contracts.ts';
+import { expiryWindows, type Script, type ScriptedTurn, type TrialEvidence, type TurnWindow, type WorldSnapshot } from '../contracts.ts';
 import { createWorldServer, type WorldServer } from '../../world/services/server.ts';
 import { loadWorld } from '../../world/services/world.ts';
 import type { World } from '../../world/types.ts';
@@ -74,7 +74,7 @@ export async function playScript(taskDir: string, task: Task, script: Script, op
   const worldPath = opts.worldPath ?? DEFAULT_WORLD_PATH;
   const world = opts.world ?? loadWorld(worldPath);
   const trialId = opts.trialId ?? `t-${task.id}-${script.id}`.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60);
-  const ws = createWorldServer({ world, split: task.split, trialId, actors: task.actors, eventsPath: null });
+  const ws = createWorldServer({ world, split: task.split, trialId, actors: task.actors, eventsPath: null, ...(task.world?.retire.length ? { retire: task.world.retire } : {}) });
   const bot = ws.service.bot!;
   const client = new Client({ name: 'scripted-harness', version: '0' });
   const turns: TurnWindow[] = [];
@@ -87,6 +87,7 @@ export async function playScript(taskDir: string, task: Task, script: Script, op
       const actor = ws.service.requireMember(turn.actor);
       const actorToken = tokenOf(ws, turn.actor);
       if (turn.advance_clock_s) await admin(ws, '/clock/advance', { method: 'POST', body: JSON.stringify({ seconds: turn.advance_clock_s }) });
+      if (turn.expire_turns?.length) await admin(ws, '/admin/expire', { method: 'POST', body: JSON.stringify({ turn: n, windows: expiryWindows(turn.expire_turns, turns.map((t) => t.request_ts)) }) });
       let channelId: string;
       if (turn.channel === 'dm') {
         const opened = await slackCall(ws, actorToken, 'conversations.open', { users: bot.slack_id });

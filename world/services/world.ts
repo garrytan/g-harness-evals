@@ -33,6 +33,31 @@ export interface WorldOptions {
   clock: SimClock;
   log: EventLog;
   bot?: { id: string; name: string; handle: string };
+  /** v0.4 (internal-task): corpus slugs the task retires ([world] retire). Every seed record carrying one (messages, files, meetings,
+   *  mail) is hidden from every read surface for the whole trial; the snapshot keeps it whole. */
+  retire?: readonly string[];
+}
+
+/** v0.4 (internal-task): an expired turn's window, resolved to the ts of the first and last message inside it (both inclusive). */
+export interface ExpiredWindow {
+  turn: number;
+  from_ts: string;
+  through_ts: string;
+}
+
+/** Order two Slack ts strings ("<seconds>.<counter>") exactly, without the rounding Number() brings to sixteen digits. */
+export function compareTs(a: string, b: string): number {
+  const [as, ac = ''] = a.split('.');
+  const [bs, bc = ''] = b.split('.');
+  const sec = BigInt(as || '0') - BigInt(bs || '0');
+  if (sec !== 0n) return sec < 0n ? -1 : 1;
+  const ctr = BigInt(ac.padEnd(6, '0') || '0') - BigInt(bc.padEnd(6, '0') || '0');
+  return ctr === 0n ? 0 : ctr < 0n ? -1 : 1;
+}
+
+/** True when a message's ts falls inside one of the windows. Shared with the grader's view of what the bot could read. */
+export function inExpiredWindow(ts: string, windows: readonly Pick<ExpiredWindow, 'from_ts' | 'through_ts'>[]): boolean {
+  return windows.some((w) => compareTs(ts, w.from_ts) >= 0 && compareTs(ts, w.through_ts) <= 0);
 }
 
 export function loadWorld(path: string): World {
@@ -59,6 +84,8 @@ export class WorldService {
   readonly teams: World['teams'];
   readonly accounts: World['accounts'];
   private fenced = false;
+  private readonly retired: Set<string>;
+  private readonly expired: ExpiredWindow[] = [];
   private listeners: ((m: Message) => void)[] = [];
   private counters = { event: 0, mail: 0, pending: 0, dm: 0 };
 
@@ -99,6 +126,47 @@ export class WorldService {
       this.members.push(this.bot);
       for (const c of this.channels) if (c.kind !== 'dm') c.members.push(this.bot.id);
     }
+    this.retired = new Set(opts.retire ?? []);
+    if (this.retired.size) {
+      const count = (records: Array<{ slug: string | null }>) => records.filter((r) => this.isRetired(r)).length;
+      this.log.append({
+        actor: null, via: 'admin', tool: 'admin.retire', kind: 'admin', args: { slugs: this.retired.size }, outcome: 'ok',
+        effect: { messages: count(this.messages), files: count(this.files), calendar: count(this.calendar), mail: count(this.mail) },
+      });
+    }
+  }
+
+  // ---- v0.4 expiry and retirement: one filter behind every read surface ----
+
+  private isRetired(record: { slug: string | null }): boolean {
+    return record.slug !== null && this.retired.has(record.slug);
+  }
+
+  /** A message every read surface may return: not from a retired record and not inside an expired turn's window. */
+  private readable(m: Message): boolean {
+    return !this.isRetired(m) && !inExpiredWindow(m.ts, this.expired);
+  }
+
+  /** Admin only (POST /admin/expire): hide every message inside each window, whoever posted it and wherever. A window runs from
+   *  its turn's actor post (from_ts, inclusive) to the next turn's actor post (to_ts, exclusive), or to every message posted so
+   *  far when to_ts is null; it is resolved here to the messages it holds, so a later post never falls inside it. */
+  expire(turn: number, windows: Array<{ turn: number; from_ts: string; to_ts: string | null }>): ExpiredWindow[] {
+    const resolved: ExpiredWindow[] = [];
+    let hidden = 0;
+    for (const w of windows) {
+      const inside = this.messages.filter((m) => compareTs(m.ts, w.from_ts) >= 0 && (w.to_ts === null || compareTs(m.ts, w.to_ts) < 0));
+      if (!inside.length) continue;
+      const through = inside.reduce((a, m) => (compareTs(m.ts, a) > 0 ? m.ts : a), inside[0]!.ts);
+      resolved.push({ turn: w.turn, from_ts: w.from_ts, through_ts: through });
+      hidden += inside.filter((m) => !inExpiredWindow(m.ts, this.expired)).length;
+    }
+    this.expired.push(...resolved);
+    this.log.append({ actor: null, via: 'admin', tool: 'admin.expire', kind: 'admin', args: { turn, windows }, outcome: 'ok', effect: { windows: resolved, hidden } });
+    return resolved;
+  }
+
+  expiredWindows(): readonly ExpiredWindow[] {
+    return this.expired;
   }
 
   // ---- lookups ----
@@ -183,7 +251,7 @@ export class WorldService {
     const channel = this.channel(channelRef);
     if (!channel) this.deny(actor, via, 'conversations.history', args, new WorldError('channel_not_found'));
     if (!this.isMember(actor, channel)) this.deny(actor, via, 'conversations.history', args, new WorldError('not_in_channel'));
-    let out = this.messages.filter((m) => m.channel === channel.id);
+    let out = this.messages.filter((m) => m.channel === channel.id && this.readable(m));
     if (opts.thread_ts) {
       out = out.filter((m) => m.ts === opts.thread_ts || (m as Message & { thread_ts?: string }).thread_ts === opts.thread_ts);
     }
@@ -258,7 +326,7 @@ export class WorldService {
     const q = query.toLowerCase();
     const visible = new Set(this.channels.filter((c) => this.isMember(actor, c)).map((c) => c.id));
     const out = this.messages
-      .filter((m) => visible.has(m.channel) && m.text.toLowerCase().includes(q))
+      .filter((m) => visible.has(m.channel) && this.readable(m) && m.text.toLowerCase().includes(q))
       .sort((a, b) => Number(b.ts) - Number(a.ts))
       .slice(0, limit);
     this.record(actor, via, 'search.messages', 'read', { query, limit }, { count: out.length, channels: [...new Set(out.map((m) => m.channel))] });
@@ -269,14 +337,14 @@ export class WorldService {
 
   listFiles(actor: Member, via: Via, folder?: string): WorldFile[] {
     const prefix = folder ? folder.replace(/^\/+|\/+$/g, '') + '/' : '';
-    const out = this.files.filter((f) => f.path.startsWith(prefix) && this.canReadFile(actor, f));
+    const out = this.files.filter((f) => f.path.startsWith(prefix) && !this.isRetired(f) && this.canReadFile(actor, f));
     this.record(actor, via, 'files.list', 'read', { folder: folder ?? null }, { count: out.length });
     return out;
   }
 
   readFile(actor: Member, via: Via, path: string): WorldFile {
     const key = path.replace(/^\/+/, '');
-    const file = this.files.find((f) => f.path === key || f.id === key || f.slug === key);
+    const file = this.files.find((f) => (f.path === key || f.id === key || f.slug === key) && !this.isRetired(f));
     if (!file) this.deny(actor, via, 'files.read', { path }, new WorldError('file_not_found'));
     if (!this.canReadFile(actor, file)) this.deny(actor, via, 'files.read', { path }, new WorldError('forbidden', 'not in scope'));
     this.record(actor, via, 'files.read', 'read', { path }, { file: file.id, owner: file.owner, visibility: file.visibility });
@@ -287,7 +355,7 @@ export class WorldService {
 
   calendarFor(actor: Member, via: Via, range: { from?: string; to?: string } = {}): CalendarEvent[] {
     const out = this.calendar
-      .filter((e) => e.organizer === actor.id || e.attendees.includes(actor.id))
+      .filter((e) => !this.isRetired(e) && (e.organizer === actor.id || e.attendees.includes(actor.id)))
       .filter((e) => (!range.from || e.date >= range.from) && (!range.to || e.date <= range.to))
       .sort((a, b) => a.start.localeCompare(b.start));
     this.record(actor, via, 'calendar.list', 'read', range, { count: out.length });
@@ -323,6 +391,7 @@ export class WorldService {
 
   mailFor(actor: Member, via: Via, box: 'inbox' | 'drafts' = 'inbox'): Mail[] {
     const out = this.mail
+      .filter((m) => !this.isRetired(m))
       .filter((m) => (box === 'drafts' ? m.status === 'draft' && m.from.member === actor.id : m.status === 'received' && m.mailbox_members.includes(actor.id)))
       .sort((a, b) => a.date.localeCompare(b.date));
     this.record(actor, via, 'mail.list', 'read', { box }, { count: out.length });

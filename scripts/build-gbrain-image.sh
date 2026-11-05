@@ -3,7 +3,7 @@
 # "Checking a gbrain commit"):
 #
 #   scripts/build-gbrain-image.sh [--gbrain <full sha or branch>] [--tag <image tag>] [--out <dir>] [--embedded] [--dry-run] [--no-cache]
-#                                 [--sealed-root <dir>]
+#                                 [--sealed-root <dir>] [--world <tasks/multiuser/<set>/world/world.json>]
 #
 # Default: the keyword target (gbrain at the pin in gbrain/pin.json, four keyword brains, the install bundle) tagged
 # harness-eval/gbrain:dev, no key anywhere. --embedded also builds the embedded target: it starts the metering proxy on every
@@ -28,6 +28,14 @@
 # any other tag is refused, so a plaintext run on this machine never picks up the sealed brains.
 # The docker build output then goes to <dir>/logs/build-gbrain-image.log, and a failure prints the stage and that path,
 # never the log's last lines (docs/sealed-custody.md, "What may print").
+#
+# --world <file> (internal-task v0.4, docs/tasks.md "A set with its own world") builds the keyword target from a task set's own
+# world, tasks/multiuser/<set>/world/world.json, and its dev brain pages, <set>/corpus/dev/, which replace the public dev
+# corpus pages. The world file must sit at that place in this checkout. The build gets the world's directory and the
+# corpus directory as the named contexts world-input and dev-corpus, and their digests as WORLD_SHA256 and DEV_CORPUS_SHA256
+# (the Dockerfile checks both and records dev_corpus_sha256 in image.json). The image is tagged
+# harness-eval/gbrain:world-<first 12 of the world sha256>, the tag the runner defaults to for that set's dev gbrain cells
+# and checks against those digests (HE-GBRAIN-002). It refuses --sealed-root and --embedded.
 # --dry-run prints the paths and digests, never file contents. The image is never pushed: an image built with --sealed-root
 # holds the plaintext heldout corpus and stays on the machine that built it.
 set -euo pipefail
@@ -41,6 +49,8 @@ dry=0
 nocache=
 sealed_root=
 sealed_args=()
+world_file=
+world_args=()
 model=$(jq -r '.embeddings.model' gbrain/pin.json)
 # The installer rung: the hermes installer's SOUL.md seed is Hermes's own file at the pinned Hermes commit, checked by sha256 in the build.
 hermes_args=(--build-arg "HERMES_COMMIT=$(jq -r '.commit' harnesses/hermes/pin.json)" --build-arg "HERMES_SOUL_SHA256=$(jq -r '.soul_md.sha256' harnesses/hermes/pin.json)")
@@ -53,10 +63,12 @@ while [ $# -gt 0 ]; do
     --dry-run) dry=1; shift ;;
     --no-cache) nocache=--no-cache; shift ;;
     --sealed-root) sealed_root="$2"; shift 2 ;;
+    --world) world_file="$2"; shift 2 ;;
     -h|--help) sed -n '2,/^set -euo pipefail/{/^set /!p}' "$0"; exit 0 ;;
     *) echo "unknown option $1 (see --help)" >&2; exit 2 ;;
   esac
 done
+[ -z "$world_file" ] || [ -z "$sealed_root" ] || { echo "build-gbrain-image: --world does not work with --sealed-root: a set's own world is a public dev world" >&2; exit 2; }
 if [ -n "$sealed_root" ]; then
   [ "$embedded" = 0 ] || { echo "build-gbrain-image: --sealed-root does not work with --embedded: the embedded brains are built inside the checkout's gbrain/.build and are not supported for sealed sets yet (docs/sealed-custody.md)" >&2; exit 2; }
   [ -d "$sealed_root" ] || { echo "build-gbrain-image: --sealed-root $sealed_root is not a directory" >&2; exit 2; }
@@ -77,6 +89,19 @@ if [ -n "$sealed_root" ]; then
   [ "$tag" = "harness-eval/gbrain:sealed-$sealed_run_id" ] || { echo "build-gbrain-image: a --sealed-root build is tagged harness-eval/gbrain:sealed-$sealed_run_id, never $tag" >&2; exit 2; }
   sealed_args=(--build-context "world-input=$sealed_root/world" --build-context "heldout-corpus=$sealed_root/corpus"
     --build-arg "SEALED_WORLD_SHA256=$sealed_world" --build-arg "SEALED_CORPUS_SHA256=$sealed_corpus" --label harness-eval.sealed=true)
+fi
+if [ -n "$world_file" ]; then
+  [ "$embedded" = 0 ] || { echo "build-gbrain-image: --world does not work with --embedded yet: the embedded brains are built from the public world" >&2; exit 2; }
+  [ -f "$world_file" ] || { echo "build-gbrain-image: --world $world_file is not a file" >&2; exit 2; }
+  world_rel=$(realpath --relative-to="$root" "$world_file")
+  [[ "$world_rel" =~ ^tasks/multiuser/[a-z0-9][a-z0-9.-]*(/[a-z0-9][a-z0-9.-]*)?/world/world\.json$ ]] || { echo "build-gbrain-image: --world names $world_rel; a set's world is tasks/multiuser/<task_set>/world/world.json in this checkout" >&2; exit 2; }
+  world_corpus="$root/$(dirname "$(dirname "$world_rel")")/corpus"
+  [ -d "$world_corpus/dev" ] || { echo "build-gbrain-image: $world_rel has no dev brain pages beside it ($world_corpus/dev/)" >&2; exit 2; }
+  world_sha=$(sha256sum "$root/$world_rel" | cut -d' ' -f1)
+  world_corpus_sha=$(cd "$world_corpus" && find . -type f -printf '%P\n' | LC_ALL=C sort | xargs -r -d '\n' sha256sum | sha256sum | cut -d' ' -f1)
+  [ "$tag" != harness-eval/gbrain:dev ] || tag="harness-eval/gbrain:world-${world_sha:0:12}"
+  world_args=(--build-context "world-input=$root/$(dirname "$world_rel")" --build-context "dev-corpus=$world_corpus"
+    --build-arg "WORLD_SHA256=$world_sha" --build-arg "DEV_CORPUS_SHA256=$world_corpus_sha")
 fi
 [ -n "$out" ] || out="$root/gbrain/.build"
 mkdir -p "$out"
@@ -108,7 +133,8 @@ plan() {
   echo "tag:               $tag"
   echo "output:            $out (build.log${embedded:+, ledger.sqlite, proxy-usage.ndjson, brains/<split>-embedded})"
   [ -z "$sealed_root" ] || echo "sealed root:       $sealed_root (world_sha256 $sealed_world, heldout_corpus_sha256 $sealed_corpus, both match opening-receipt.json)"
-  echo "keyword build:     docker build $nocache --build-arg GBRAIN_COMMIT=$gbrain ${hermes_args[*]}${sealed_root:+ ${sealed_args[*]}} --target keyword -t $tag -f gbrain/Dockerfile ."
+  [ -z "$world_file" ] || echo "set world:         $world_rel (world_sha256 $world_sha, dev_corpus_sha256 $world_corpus_sha)"
+  echo "keyword build:     docker build $nocache --build-arg GBRAIN_COMMIT=$gbrain ${hermes_args[*]}${sealed_root:+ ${sealed_args[*]}}${world_file:+ ${world_args[*]}} --target keyword -t $tag -f gbrain/Dockerfile ."
   if [ "$embedded" = 1 ]; then
     echo "embedded build:    docker build --build-arg GBRAIN_COMMIT=$gbrain --target builder -t $tag-builder -f gbrain/Dockerfile ."
     echo "                   metering proxy on <docker bridge gateway>:<port> with the gbrain-image slot bound, ledger $out/ledger.sqlite, lease \$1, run id gbrain-image-embed-<ts>, allow-models $model"
@@ -129,8 +155,13 @@ command -v bun >/dev/null || { echo "HE-GBRAIN-007 bun is not installed" >&2; ex
 : > "$log"
 
 echo "[build-gbrain-image] keyword target: gbrain $gbrain -> $tag (log $log)${sealed_root:+, sealed root $sealed_root}"
-docker build $nocache --build-arg "GBRAIN_COMMIT=$gbrain" "${hermes_args[@]}" ${sealed_args[@]+"${sealed_args[@]}"} --target keyword -t "$tag" -f gbrain/Dockerfile . >> "$log" 2>&1 || fail "docker build of the keyword target failed"
+docker build $nocache --build-arg "GBRAIN_COMMIT=$gbrain" "${hermes_args[@]}" ${sealed_args[@]+"${sealed_args[@]}"} ${world_args[@]+"${world_args[@]}"} --target keyword -t "$tag" -f gbrain/Dockerfile . >> "$log" 2>&1 || fail "docker build of the keyword target failed"
 docker run --rm --entrypoint cat "$tag" /opt/sidecar/image.json > "$out/image.json"
+if [ -n "$world_file" ]; then
+  got_world=$(jq -r '.world_sha256 // empty' "$out/image.json"); got_corpus=$(jq -r '.dev_corpus_sha256 // empty' "$out/image.json")
+  [ "$got_world" = "$world_sha" ] && [ "$got_corpus" = "$world_corpus_sha" ] || fail "image $tag records world ${got_world:-none} and dev corpus ${got_corpus:-none}, $world_rel has world $world_sha and dev corpus $world_corpus_sha"
+  echo "[build-gbrain-image] set world $world_rel: image records world ${world_sha:0:12} and dev corpus ${world_corpus_sha:0:12}, both match"
+fi
 echo "[build-gbrain-image] keyword image $(docker image inspect -f '{{.Id}}' "$tag") gbrain $(jq -r '.gbrain_commit' "$out/image.json" | cut -c1-12) ($(jq -r '.gbrain_version' "$out/image.json"))"
 [ "$embedded" = 1 ] || exit 0
 

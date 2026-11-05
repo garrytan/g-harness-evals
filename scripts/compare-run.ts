@@ -106,7 +106,7 @@ import { taskFamily } from '../runner/grade/task.ts';
 import { trialGbrainExposure } from '../runner/grade/index.ts';
 import type { TrialEvidence, TurnWindow, WorldSnapshot } from '../runner/contracts.ts';
 import type { WorldEvent } from '../world/services/events.ts';
-import { isSealedCell, resolveGbrain, taskDirFor } from '../runner/run.ts';
+import { isSealedCell, resolveGbrain, setWorldPath, setWorldPinProblem, taskDirFor } from '../runner/run.ts';
 import { COMPARE_ENDPOINTS, ENDPOINT_LABEL, endpointValue, ladderPairs, readShards, shardsLabel, type Endpoint } from './gbrain-ladder.ts';
 
 function arg(name: string, fallback?: string): string | undefined {
@@ -143,6 +143,11 @@ if (manifest.sealed && againstManifest?.sealed) {
   const differs = manifest.sealed.set !== againstManifest.sealed.set ? ['set'] : openingDiff(manifest.sealed.receipt, againstManifest.sealed.receipt);
   if (differs.length) { console.error(`HE-SEALED-003 --against ${against} was planned with another opening than --results ${results} (it differs in ${differs.join(', ')}); a sealed run is compared only with its own opening`); process.exit(2); }
 }
+const repoRoot = join(import.meta.dir, '..');
+for (const [dir, m] of [[results, manifest], ...(against ? [[against, againstManifest!] as const] : [])] as const) {
+  const pinProblem = setWorldPinProblem(dir, m.cells, repoRoot);
+  if (pinProblem) { console.error(`HE-RUN-008 ${pinProblem}`); process.exit(2); }
+}
 const rows = [...readRows(results), ...(against ? readRows(against) : [])];
 const sealedRoot = arg('sealed-root');
 if (manifest.sealed && !sealedRoot) { console.error(`HE-SEALED-001 ${results} was planned with a sealed root (set ${manifest.sealed.set}); compare it inside custody with --sealed-root <the opened root> (docs/sealed-custody.md)`); process.exit(2); }
@@ -170,7 +175,6 @@ if (useRegraded) {
     if (r.regraded && r.regraded_result) regraded.set(r.trial_id, { ...r.regraded_result, predicates: r.predicates });
   }
 }
-const repoRoot = join(import.meta.dir, '..');
 const statsKit = statsKitFor(results, repoRoot, manifest.run_id);
 const { clusteredPairedDelta, exactMcNemar, holmAdjusted, nonInferiorityP, pairObservations, seededRandom } = await loadPairedKit(statsKit, repoRoot);
 const familyOf = new Map<string, string>();
@@ -236,7 +240,7 @@ if (pairMode === 'gbrain') {
         if (counted !== events.length || events.some((e, i) => e.seq !== i + 1)) return { value: null, problem: `${t.trial_id}: events.jsonl holds ${events.length} event(s) in seq order 1..n ${events.every((e, i) => e.seq === i + 1) ? 'yes' : 'no'}, the snapshot counts ${typeof counted === 'number' ? counted : 'none'}` };
         const evidence: TrialEvidence = {
           trial_id: t.trial_id, task_dir: taskDirFor(cell, t.task, sealed ? join(sealedRoot!, 'tasks') : join(repoRoot, 'tasks')), split: cell.split,
-          world_path: manifest.sealed && sealedRoot ? join(sealedRoot, 'world', 'world.json') : join(repoRoot, 'world', 'seed', 'world.json'), bot_member: 'assistant',
+          world_path: manifest.sealed && sealedRoot ? join(sealedRoot, 'world', 'world.json') : setWorldPath(cell, join(repoRoot, 'tasks')) ?? join(repoRoot, 'world', 'seed', 'world.json'), bot_member: 'assistant',
           snapshot, events, turns,
         };
         return { value: trialGbrainExposure(evidence) };

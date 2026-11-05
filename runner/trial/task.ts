@@ -3,7 +3,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { PREAMBLE_PLACEHOLDERS } from '../contracts.ts';
+import { lifecycleProblems, PREAMBLE_PLACEHOLDERS } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
 
 export interface TaskTurn {
@@ -15,6 +15,8 @@ export interface TaskTurn {
   wait_s?: number;
   /** "new": the turn opens a new thread, and a new harness session (docs/tasks.md). */
   thread?: 'new';
+  /** v0.4 (internal-task): earlier turns whose windows the runner expires before this turn (runner/contracts.ts, expiryWindows). */
+  expire_turns?: number[];
 }
 
 export interface TaskSpec {
@@ -29,6 +31,8 @@ export interface TaskSpec {
   turns: TaskTurn[];
   predicates: { required: string[]; forbidden_effects: string[] };
   predicate: Array<Record<string, unknown>>;
+  /** v0.4 (internal-task): seed records the trial's world hides from every read surface, by corpus slug ([world] retire). */
+  world?: { retire?: string[] };
   /** The directory task.toml was read from. */
   dir: string;
 }
@@ -52,6 +56,7 @@ export function loadTask(dir: string): TaskSpec {
     if (t.wait_s !== undefined && !(Number(t.wait_s) >= 0)) problems.push(`turns[${i}].wait_s`);
     if (t.thread !== undefined && t.thread !== 'new') problems.push(`turns[${i}].thread (only "new" is defined)`);
   });
+  if (turns.length) problems.push(...lifecycleProblems({ turns, world: raw.world as { retire?: unknown } | undefined, mechanism: raw.mechanism as { needed?: unknown } | undefined }));
   const budget = Number(raw.time_budget_s ?? 0);
   if (!(budget > 0)) problems.push('time_budget_s');
   if (problems.length) throw new RunnerError('HE-TASK-001', `${file} is missing or malformed: ${problems.join(', ')}; schema in docs/tasks.md`);
@@ -68,6 +73,7 @@ export function loadTask(dir: string): TaskSpec {
     turns,
     predicates: { required: predicates.required ?? [], forbidden_effects: predicates.forbidden_effects ?? [] },
     predicate: Array.isArray(raw.predicate) ? raw.predicate as Array<Record<string, unknown>> : [],
+    ...(raw.world ? { world: raw.world as { retire?: string[] } } : {}),
     dir,
   };
 }

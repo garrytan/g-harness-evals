@@ -4,7 +4,7 @@
 
 import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { TurnRequest, TurnResponse, TurnWindow } from '../contracts.ts';
+import { expiryWindows, type TurnRequest, type TurnResponse, type TurnWindow } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
 import { HarnessGone, type Harness, awaitResponse, writeRequest } from './harness.ts';
 import { composePrompt, type TaskSpec } from './task.ts';
@@ -43,6 +43,10 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
     const turn = o.task.turns[i]!;
     const n = i + 1;
     if (turn.advance_clock_s) { const now = await o.world.advanceClock(Number(turn.advance_clock_s)); o.log(`turn ${n}: clock advanced ${turn.advance_clock_s} s to ${now}`); }
+    if (turn.expire_turns?.length) {
+      const held = await o.world.expire(n, expiryWindows(turn.expire_turns, windows.map((w) => w.request_ts)));
+      o.log(`turn ${n}: expired the windows of turn(s) ${turn.expire_turns.join(', ')} (${held} of ${turn.expire_turns.length} held messages)`);
+    }
 
     const actor = o.world.actor(turn.actor);
     let channelId: string;

@@ -60,7 +60,7 @@ import { DEFAULT_GBRAIN_IMAGE, SOURCE_PROBE_QUERIES } from './trial/gbrain.ts';
 import { CLIENT_ID_ENV, CLIENT_SECRET_ENV, MEMORY_PROVIDER_CONFIG_NAME, isQmMemoryProvider, providerConfig, memoryProviderWiring } from '../harnesses/qm/memory-provider.ts';
 import { checkPlan, type HeldoutBlock } from './heldout/openings.ts';
 import { planReplication, type ReplicationOf } from './heldout/replication.ts';
-import { openingDiff, publicImageProblem, readJsonFile, readReceipt, receiptProblems, sealedImageProblem, sealedImageTag, sha256 as sha256Of, verifySealedRoot, type OpeningReceipt } from './heldout/sealed.ts';
+import { corpusDigest, openingDiff, publicImageProblem, readJsonFile, readReceipt, receiptProblems, sealedImageProblem, sealedImageTag, sha256 as sha256Of, verifySealedRoot, type OpeningReceipt } from './heldout/sealed.ts';
 import { insideGitTree } from '../scripts/sealed/custody.ts';
 import { heldoutSet, isSealed, readManifest } from '../scripts/seal-heldout.ts';
 import { sealedGuard } from './heldout/guard.ts';
@@ -207,6 +207,71 @@ export function taskSetDir(cell: Pick<Cell, 'task_set' | 'split'>, tasksRoot = '
   return set === DEFAULT_TASK_SET ? join(tasksRoot, 'multiuser', cell.split) : join(tasksRoot, 'multiuser', set, cell.split);
 }
 
+/** internal-task v0.4: a multi-user task set may carry its own world beside its split trees, tasks/multiuser/<task_set>/world/world.json
+ *  (with world/facts.json and the dev brain pages corpus/dev/ beside it; the rehearsal set, tasks/multiuser/v0.4/rehearsal/,
+ *  is the first). A dev cell of that set reads it as the trial world, the grader's world and the preflight probe's world;
+ *  a held-out cell never does, so a sealed or held-out cell keeps the sealed root's world or world/seed/world.json. A set
+ *  with no world/ directory, and every set before v0.4, is unchanged. */
+export function setWorldPath(cell: Pick<Cell, 'task_set' | 'split'>, tasksRoot = 'tasks'): string | undefined {
+  const set = taskSetName(cell);
+  if (cell.split !== 'dev' || set === DEFAULT_TASK_SET) return undefined;
+  const path = join(tasksRoot, 'multiuser', set, 'world', 'world.json');
+  return existsSync(path) ? path : undefined;
+}
+
+/** The gbrain image tag scripts/build-gbrain-image.sh --world gives the brains built from a set's world. */
+export const worldImageTag = (worldSha256: string): string => `harness-eval/gbrain:world-${worldSha256.slice(0, 12)}`;
+
+export interface SetWorld { path: string; sha256: string; corpus_sha256: string; image: string }
+
+/** The set world a run's gbrain cells share, or undefined when they read none. One gbrain image holds the brains of one
+ *  world, so gbrain cells that read different worlds are refused (HE-GBRAIN-002); the other cells may mix worlds freely. */
+export function gbrainSetWorld(cells: Array<Pick<Cell, 'id' | 'task_set' | 'split' | 'gbrain'>>, tasksRoot = 'tasks'): SetWorld | undefined {
+  const gbrainCells = cells.filter((c) => c.gbrain);
+  const paths = [...new Set(gbrainCells.map((c) => setWorldPath(c, tasksRoot) ?? 'the run world'))];
+  if (paths.length > 1) throw new RunnerError('HE-GBRAIN-002', `gbrain cells ${gbrainCells.map((c) => c.id).join(', ')} read different worlds (${paths.join(', ')}); one gbrain image holds one world's brains. fix: put the cells of a set with its own world in a run of their own`);
+  const path = gbrainCells.length ? setWorldPath(gbrainCells[0]!, tasksRoot) : undefined;
+  if (!path) return undefined;
+  const sha256 = sha256Of(readFileSync(path));
+  return { path, sha256, corpus_sha256: corpusDigest(join(dirname(path), '..', 'corpus')), image: worldImageTag(sha256) };
+}
+
+/** The HE-GBRAIN-002 message body when a gbrain image was not built from the set world its cells read and that world's dev
+ *  corpus pages, or, for cells that read no set world, when it was built from one; else null. */
+export function setWorldImageProblem(image: string, inputs: { world_sha256?: string | null; dev_corpus_sha256?: string | null; heldout_corpus_sha256?: string | null; sealed?: boolean } | null, world: SetWorld | undefined): string | null {
+  if (!world) return inputs?.dev_corpus_sha256 ? `gbrain image ${image} was built from a task set's own world (world ${String(inputs.world_sha256 ?? 'unrecorded').slice(0, 12)}, dev corpus ${inputs.dev_corpus_sha256.slice(0, 12)}) and these cells read the run's world, so its dev brains would hold another world's pages. fix: pass --gbrain-image with a build of the run's world (scripts/build-gbrain-image.sh tags harness-eval/gbrain:dev)` : null;
+  if (inputs && inputs.sealed !== true && inputs.heldout_corpus_sha256 == null && inputs.world_sha256 === world.sha256 && inputs.dev_corpus_sha256 === world.corpus_sha256) return null;
+  const got = inputs ? `world ${String(inputs.world_sha256 ?? 'unrecorded').slice(0, 12)} and dev corpus ${String(inputs.dev_corpus_sha256 ?? 'public').slice(0, 12)}${inputs.sealed === true || inputs.heldout_corpus_sha256 != null ? ', from a sealed root' : ''}` : 'no readable /opt/sidecar/image.json';
+  return `gbrain image ${image} has ${got}; the cells read ${world.path} (world ${world.sha256.slice(0, 12)}, dev corpus ${world.corpus_sha256.slice(0, 12)}), so its dev brains would not hold that world's pages. fix: scripts/build-gbrain-image.sh --world ${world.path}, which tags ${world.image}, then run without --gbrain-image (or pass --gbrain-image ${world.image})`;
+}
+
+/** results/<run>/set-worlds.json: the set world each dev cell of a set with its own world reads, as { <cell id>: { path,
+ *  sha256 } } with the path relative to the repository. The first dispatch writes it; a resume, regrade.ts, summarize-run.ts
+ *  and compare-run.ts refuse (HE-RUN-008) when it is missing for such a cell or a world on disk no longer has its digest, so
+ *  a world edited after a run never silently regrades, summarizes or compares that run's trials against other records. */
+export const SET_WORLDS_FILE = 'set-worlds.json';
+
+export function setWorldPins(cells: Array<Pick<Cell, 'id' | 'task_set' | 'split'>>, repoRoot: string): Record<string, { path: string; sha256: string }> {
+  const out: Record<string, { path: string; sha256: string }> = {};
+  for (const c of cells) {
+    const p = setWorldPath(c, join(repoRoot, 'tasks'));
+    if (p) out[c.id] = { path: relative(repoRoot, p), sha256: sha256Of(readFileSync(p)) };
+  }
+  return out;
+}
+
+/** The HE-RUN-008 message body when a run directory's set-worlds.json does not match the set worlds its cells read now. */
+export function setWorldPinProblem(runDir: string, cells: Array<Pick<Cell, 'id' | 'task_set' | 'split'>>, repoRoot: string): string | null {
+  const now = setWorldPins(cells, repoRoot);
+  const file = join(runDir, SET_WORLDS_FILE);
+  if (!existsSync(file)) return Object.keys(now).length ? `${file} is missing, so the set world cells ${Object.keys(now).join(', ')} read is not pinned; fix: rerun those cells under a new run id` : null;
+  const pinned = JSON.parse(readFileSync(file, 'utf8')) as Record<string, { path: string; sha256: string }>;
+  const ids = [...new Set([...Object.keys(now), ...Object.keys(pinned)])].sort();
+  const changed = ids.filter((id) => now[id]?.path !== pinned[id]?.path || now[id]?.sha256 !== pinned[id]?.sha256);
+  if (!changed.length) return null;
+  return `the set world of cell(s) ${changed.map((id) => `${id} (recorded ${pinned[id] ? `${pinned[id]!.path} ${pinned[id]!.sha256.slice(0, 12)}` : 'none'}, now ${now[id] ? `${now[id]!.path} ${now[id]!.sha256.slice(0, 12)}` : 'none'})`).join(', ')} changed since the run; fix: check out the commit the run recorded`;
+}
+
 /** The directory of one task of a cell. Every reader of a task directory (manifest, trial, report scripts) goes through here. */
 export function taskDirFor(cell: Pick<Cell, 'task_set' | 'split'>, task: string, tasksRoot = 'tasks'): string {
   return join(taskSetDir(cell, tasksRoot), task);
@@ -279,7 +344,7 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
   for (const c of prereg.cells) {
     const unknown = Object.keys(c).filter((k) => !CELL_KEYS.has(k));
     if (unknown.length) throw new RunnerError('HE-PREREG-007', `cell ${String(c.id)}: unknown key(s) ${unknown.join(', ')}; allowed: ${[...CELL_KEYS].join(', ')}`);
-    if (c.task_set !== undefined && (typeof c.task_set !== 'string' || !/^[a-z0-9][a-z0-9.-]*$/.test(c.task_set))) throw new RunnerError('HE-PREREG-007', `cell ${c.id}: task_set must be a name such as "v0.1" or "v0.2" (got ${JSON.stringify(c.task_set)})`);
+    if (c.task_set !== undefined && (typeof c.task_set !== 'string' || !/^[a-z0-9][a-z0-9.-]*(\/[a-z0-9][a-z0-9.-]*)?$/.test(c.task_set))) throw new RunnerError('HE-PREREG-007', `cell ${c.id}: task_set must be a name such as "v0.1", "v0.2" or "v0.4/rehearsal" (got ${JSON.stringify(c.task_set)})`);
     if (c.session_scope !== undefined && !['conversation', 'turn'].includes(c.session_scope)) throw new RunnerError('HE-PREREG-007', `cell ${c.id}: session_scope must be "conversation" or "turn" (got ${JSON.stringify(c.session_scope)})`);
     if (c.utility_models !== undefined && (!Array.isArray(c.utility_models) || !c.utility_models.length || c.utility_models.some((m) => typeof m !== 'string' || !/^[a-z]+:[A-Za-z0-9._-]+$/.test(m)))) throw new RunnerError('HE-PREREG-007', `cell ${c.id}: utility_models must be a non-empty list of provider:model ids (got ${JSON.stringify(c.utility_models)})`);
     if (c.network !== undefined) {
@@ -622,16 +687,22 @@ async function main(argv: string[]): Promise<number> {
       const p = await adapterProvenance(harness, image);
       console.log(`ADAPTER: ${harness} image ${image} (${p.image_id.slice(0, 19)}) carries adapter.sh ${p.image_sha256.slice(0, 12)}, the checkout's is ${p.checkout_sha256.slice(0, 12)}: match${p.files ? `; ${Object.keys(p.files).length} more files (zero.ts, pin.json, Dockerfile, config/) match` : ''}`);
     }
+    for (const c of m.cells.filter((c) => setWorldPath(c))) console.log(`WORLD: cell ${c.id} (task set ${taskSetName(c)}, dev) reads the set world ${setWorldPath(c)} (${sha256Of(readFileSync(setWorldPath(c)!)).slice(0, 12)}) as its trial and grading world`);
     const gbrainCells = m.cells.filter((c) => c.gbrain);
     if (gbrainCells.length) {
-      const image = flag('--gbrain-image') ?? (sealed ? sealedImageTag(sealed.receipt) : DEFAULT_GBRAIN_IMAGE);
+      const setWorld = gbrainSetWorld(gbrainCells);
+      const image = flag('--gbrain-image') ?? setWorld?.image ?? (sealed ? sealedImageTag(sealed.receipt) : DEFAULT_GBRAIN_IMAGE);
       const { gbrainImagePresent, gbrainImageCommit, gbrainImageInputs, imageCommitProblem, preregCommitProblem, installerHookProblem, probeGbrainImage, exportInstallView } = await import('./trial/gbrain.ts');
-      if (!gbrainImagePresent(image)) throw new RunnerError('HE-GBRAIN-002', `gbrain sidecar image ${image} is not present for cells ${gbrainCells.map((c) => c.id).join(', ')}; fix: scripts/build-gbrain-image.sh ${sealed ? '--sealed-root <the sealed root>' : `--tag ${image}`}`);
+      if (!gbrainImagePresent(image)) throw new RunnerError('HE-GBRAIN-002', `gbrain sidecar image ${image} is not present for cells ${gbrainCells.map((c) => c.id).join(', ')}; fix: scripts/build-gbrain-image.sh ${setWorld ? `--world ${setWorld.path}` : sealed ? '--sealed-root <the sealed root>' : `--tag ${image}`}`);
       // A sealed run needs the image built from its root; a run with no sealed root refuses an image built from one.
       const inputs = gbrainImageInputs(image);
-      const imageProblem = sealed ? sealedImageProblem(image, inputs, sealed.receipt) : publicImageProblem(image, inputs);
+      // internal-task v0.4: cells of a set with its own world need the image built from that world and its dev corpus pages.
+      const worldProblem = setWorldImageProblem(image, inputs, setWorld);
+      if (worldProblem) throw new RunnerError('HE-GBRAIN-002', worldProblem);
+      if (setWorld) console.log(`WORLD: gbrain image ${image} was built from the set world ${setWorld.sha256.slice(0, 12)} and its dev corpus ${setWorld.corpus_sha256.slice(0, 12)}`);
+      const imageProblem = setWorld ? null : sealed ? sealedImageProblem(image, inputs, sealed.receipt) : publicImageProblem(image, inputs);
       if (imageProblem) throw new RunnerError('HE-SEALED-005', imageProblem);
-      if (sealed) console.log(`SEALED: gbrain image ${image} was built from the sealed world ${String(sealed.receipt.world_sha256).slice(0, 12)} and corpus ${String(sealed.receipt.heldout_corpus_sha256).slice(0, 12)}`);
+      if (sealed && !setWorld) console.log(`SEALED: gbrain image ${image} was built from the sealed world ${String(sealed.receipt.world_sha256).slice(0, 12)} and corpus ${String(sealed.receipt.heldout_corpus_sha256).slice(0, 12)}`);
       const pin = JSON.parse(readFileSync(join('gbrain', 'pin.json'), 'utf8')) as { gbrain: { commit: string }; surfaces: Record<string, { tools: number }>; embeddings: { model: string }; install?: { installer?: { turn_hook_expected?: boolean } } };
       // The image records the gbrain commit it was built from (/opt/sidecar/image.json); a counted run's cells, the told cells
       // with no install view included, run the pinned commit or not at all, and the run log says which.
@@ -706,7 +777,7 @@ async function main(argv: string[]): Promise<number> {
         const { probeCompanyBrain, probeSourceGrants } = await import('./trial/gbrain.ts');
         const { companyPageList, memberPageList } = await import('../gbrain/build-brain.ts');
         const { worldAt, DEFAULT_WORLD_PATH } = await import('./trial/world.ts');
-        const world = worldAt(sealed ? sealed.worldPath : DEFAULT_WORLD_PATH);
+        const world = worldAt(setWorld?.path ?? (sealed ? sealed.worldPath : DEFAULT_WORLD_PATH));
         // internal-task (the access-rules rerun): before any trial, keyless, for each split an access-ruled cell runs on: (a) every member
         // token is bound to exactly its member and public-only to nobody, (b) the rules give every page the world's reader set, (c) a
         // probe under each token the tap presents returns nothing outside that reader set. Any miss is HE-GBRAIN-002.
@@ -793,11 +864,15 @@ async function main(argv: string[]): Promise<number> {
     const sealed = sealedContextFor(manifest, flag, dirname(path));
     if (sealed) installSealedGuard(sealed, join(dirname(path), 'sealed-console.log'), 'run');
     // A sealed run's trials default to the sealed image tag, and run repeats preflight's image check (HE-SEALED-005).
-    const gbrainImage = flag('--gbrain-image') ?? (sealed ? sealedImageTag(sealed.receipt) : undefined);
+    const setWorld = gbrainSetWorld(manifest.cells.filter((c) => cells ? cells.includes(c.id) : true));
+    const gbrainImage = flag('--gbrain-image') ?? setWorld?.image ?? (sealed ? sealedImageTag(sealed.receipt) : undefined);
     if (manifest.cells.some((c) => c.gbrain && (cells ? cells.includes(c.id) : true))) {
       const { gbrainImageCommit, gbrainImageInputs, gbrainImagePresent, preregCommitProblem } = await import('./trial/gbrain.ts');
       const image = gbrainImage ?? DEFAULT_GBRAIN_IMAGE;
-      const problem = sealed ? sealedImageProblem(image, gbrainImageInputs(image), sealed.receipt) : gbrainImagePresent(image) ? publicImageProblem(image, gbrainImageInputs(image)) : null;
+      const inputs = sealed || setWorld || gbrainImagePresent(image) ? gbrainImageInputs(image) : undefined;
+      const worldProblem = inputs === undefined ? null : setWorldImageProblem(image, inputs, setWorld);
+      if (worldProblem) throw new RunnerError('HE-GBRAIN-002', worldProblem);
+      const problem = setWorld || inputs === undefined ? null : sealed ? sealedImageProblem(image, inputs, sealed.receipt) : publicImageProblem(image, inputs);
       if (problem) throw new RunnerError('HE-SEALED-005', problem);
       // internal-task: run repeats preflight's check of the preregistration's gbrain_commit; an image it cannot read counts as another commit.
       if (manifest.gbrain_commit) {

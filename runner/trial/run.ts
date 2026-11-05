@@ -15,7 +15,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import type { HarnessMode, Termination, TrialRecord } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
-import { cellModels, isSealedCell, type Cell, type Manifest, type Trial } from '../run.ts';
+import { SET_WORLDS_FILE, cellModels, gbrainSetWorld, isSealedCell, setWorldPath, setWorldPinProblem, setWorldPins, type Cell, type Manifest, type Trial } from '../run.ts';
 import { type InternalNetwork, ensureInternalNetwork, internalNetworkName, removeInternalNetwork } from './docker.ts';
 import { RunProxy, reconcile, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
 import { DEFAULT_PREAMBLE_PATH, loadPreamble } from './task.ts';
@@ -86,6 +86,15 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
   const sealedPath = (cell: Cell, p: string | undefined) => (p !== undefined && opts.sealedRoot && isSealedCell(cell, opts.sealedSet) ? join(opts.sealedRoot, p) : p);
   const done = new Set(opts.resume ? readRecords(runDir).map((r) => r.trial_id) : []);
   if (!opts.resume && existsSync(join(runDir, 'trials.jsonl')) && readRecords(runDir).length) throw new RunnerError('HE-RUN-003', `${join(runDir, 'trials.jsonl')} already holds trials; fix: pass --resume to continue this run, or plan a new run id`);
+  const pinFile = join(runDir, SET_WORLDS_FILE);
+  const repoRoot = resolve(opts.repoRoot ?? '.');
+  if (existsSync(pinFile) || done.size) {
+    const problem = setWorldPinProblem(runDir, manifest.cells, repoRoot);
+    if (problem) throw new RunnerError('HE-RUN-008', problem);
+  } else {
+    const pins = setWorldPins(manifest.cells, repoRoot);
+    if (Object.keys(pins).length) writeAtomic(pinFile, JSON.stringify(pins, null, 1) + '\n');
+  }
   const selected = manifest.trials.filter((t) => !opts.cells || opts.cells.includes(t.cell));
   const pending = selected.filter((t) => !done.has(t.id));
   const skipped = selected.filter((t) => done.has(t.id)).map((t) => t.id);
@@ -150,7 +159,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       const record = isSingleShot(cell)
         ? await runSingleShot({ cell, trial, trialDir, proxy, log, image: opts.image, repoRoot: opts.repoRoot })
         : await runTrial({ cell, trial, runDir, trialDir, proxy, grade, log, opts: {
-          harnessMode: opts.harnessMode, adapter: opts.adapter, image: opts.image, gbrainImage: opts.gbrainImage, preamble: preambleFor(cell), worldPath: opts.worldPath, readyTimeoutS: opts.readyTimeoutS ?? 180,
+          harnessMode: opts.harnessMode, adapter: opts.adapter, image: opts.image, gbrainImage: opts.gbrainImage ?? (cell.gbrain ? gbrainSetWorld([cell], join(opts.repoRoot ?? '.', 'tasks'))?.image : undefined), preamble: preambleFor(cell), worldPath: setWorldPath(cell, join(opts.repoRoot ?? '.', 'tasks')) ?? opts.worldPath, readyTimeoutS: opts.readyTimeoutS ?? 180,
           turnGraceS: opts.turnGraceS ?? 60, stopGraceS: opts.stopGraceS ?? 60, harnessEnv: opts.harnessEnv, captureDns: opts.capture?.dns ?? undefined, repoRoot: opts.repoRoot, ...(network ? { network } : {}) } });
       appendRecord(runDir, record);
       records.push(record);

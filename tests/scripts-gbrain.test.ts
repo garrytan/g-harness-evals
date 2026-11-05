@@ -15,6 +15,7 @@ import { noteAnsweredTurn } from '../runner/trial/trial.ts';
 import type { WorldEvent } from '../world/services/events.ts';
 import { crossScopeReadsBySurface, gbrainUsage, scopeLeaks } from '../scripts/gbrain-usage.ts';
 import { loadWorldData } from '../runner/grade/predicates.ts';
+import { SET_WORLDS_FILE, setWorldPins } from '../runner/run.ts';
 import { DEFAULT_WORLD_PATH } from '../runner/grade/play.ts';
 import { designMdd, LADDER_DESIGN, pairedMdd } from '../scripts/paired-mdd.ts';
 import { clusteredPairedDelta, seededRandom } from '../runner/stats/paired.ts';
@@ -503,6 +504,46 @@ describe('install ladder: rungs and neighbour pairs', () => {
     expect(shardsLabel(null, 'a', 'b')).toBe('shards unknown (no shards.json)');
     writeFileSync(join(dir, 'shards.json'), JSON.stringify({ a: 'alpha' }));
     expect(() => readShards(dir)).toThrow('expected { cells: { <cell id>: <shard name> }, shards: { <name>: {...} } }');
+  });
+});
+
+describe('compare-run exposure on a task set with its own world', () => {
+  test('a v0.4/rehearsal gbrain cell maps its pages against the rehearsal world, not world/seed/world.json', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-setworld-exposure-'));
+    const TASK = 'rx-04-7ntjqa', PAGE = 'dev/chats/2026-04-02-sierra-dreyness';
+    const cells = [{ id: 'oc-none' }, { id: 'oc-gbrain-mcp', gbrain: { surface: 'starter' } }].map((c) => ({ ...c, harness: 'oc', model: 'm1', slice: 'multiuser', split: 'dev' as const, task_set: 'v0.4/rehearsal', repetitions: 1 }));
+    writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ schema_version: 1, run_id: RUN, cells, trials: [] }));
+    writeFileSync(join(dir, SET_WORLDS_FILE), JSON.stringify(setWorldPins(cells, ROOT)));
+    writeFileSync(join(dir, 'trials.jsonl'), cells.map((c) => JSON.stringify(trial(c.id, 'oc', 'm1', TASK, 1, true, 0.1, 60, 1000))).join('\n') + '\n');
+    const tdir = join(dir, 'trials', 'oc-gbrain-mcp', TASK, 'r1');
+    mkdirSync(tdir, { recursive: true });
+    const events = [{ seq: 1, actor: 'assistant', via: 'gbrain', tool: 'gbrain.search', kind: 'read', args: {}, outcome: 'ok', effect: { pages: [PAGE] } }];
+    const world = JSON.parse(readFileSync(join(ROOT, 'tasks', 'multiuser', 'v0.4', 'rehearsal', 'world', 'world.json'), 'utf8')) as { channels: Array<{ id: string; name: string; kind: string; members: string[]; source_slugs?: string[] }> };
+    const channels = world.channels.filter((c) => c.source_slugs?.includes(PAGE.replace(/^dev\//, ''))).map(({ id, name, kind, members }) => ({ id, name, kind, members }));
+    expect(channels).toHaveLength(1);
+    writeFileSync(join(tdir, 'snapshot.json'), JSON.stringify({ channels, messages: [], calendar: [], mail: [], pending_actions: [], events: events.length }));
+    writeFileSync(join(tdir, 'turns.jsonl'), [1, 2].map((n) => JSON.stringify({ turn: n, actor: 'florian-lorthorpe', channel: 'D1', channel_name: 'dm', started_seq: n - 1, ended_seq: n, exit: 0, reply_ts: null, reply_text: 'ok' })).join('\n') + '\n');
+    writeFileSync(join(tdir, 'events.jsonl'), events.map((e) => JSON.stringify(e)).join('\n') + '\n');
+    const r = run('compare-run.ts', ['--results', dir, '--pair', 'gbrain', '--design', 'ladder', '--families', 'memory_scope', '--draws', '1000']);
+    expect(r.status).toBe(0);
+    const counts = JSON.parse(readFileSync(join(dir, 'comparisons.gbrain.memory_scope.json'), 'utf8')).exposure.counts.find((c: { cell: string }) => c.cell === 'oc-gbrain-mcp');
+    expect(counts).toMatchObject({ scored: 1, no_value: 0, unmapped: 0 });
+  });
+
+  test('a missing or changed set-worlds.json pin refuses with HE-RUN-008 before anything is graded', () => {
+    const cells = [{ id: 'oc-none' }, { id: 'oc-gbrain-mcp', gbrain: { surface: 'starter' } }].map((c) => ({ ...c, harness: 'oc', model: 'm1', slice: 'multiuser', split: 'dev' as const, task_set: 'v0.4/rehearsal', repetitions: 1 }));
+    const pins = setWorldPins(cells, ROOT);
+    expect(Object.keys(pins)).toEqual(['oc-none', 'oc-gbrain-mcp']);
+    for (const pinFile of [null, JSON.stringify({ ...pins, 'oc-gbrain-mcp': { ...pins['oc-gbrain-mcp']!, sha256: '0'.repeat(64) } })]) {
+      const dir = mkdtempSync(join(tmpdir(), 'he-setworld-pin-'));
+      writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ schema_version: 1, run_id: RUN, cells, trials: [] }));
+      writeFileSync(join(dir, 'trials.jsonl'), cells.map((c) => JSON.stringify(trial(c.id, 'oc', 'm1', 'rx-04-7ntjqa', 1, true, 0.1, 60, 1000))).join('\n') + '\n');
+      if (pinFile) writeFileSync(join(dir, SET_WORLDS_FILE), pinFile);
+      const r = run('compare-run.ts', ['--results', dir, '--pair', 'gbrain', '--design', 'ladder', '--families', 'memory_scope', '--draws', '1000']);
+      expect(r.status).toBe(2);
+      expect(r.stderr).toContain('HE-RUN-008');
+      expect(existsSync(join(dir, 'comparisons.gbrain.memory_scope.json'))).toBe(false);
+    }
   });
 });
 

@@ -9,7 +9,7 @@ import { createWorldServer, type WorldServer } from '../../world/services/server
 import { writeTrialConfig, type TrialConfig } from '../../world/services/start.ts';
 import { loadWorld } from '../../world/services/world.ts';
 import type { Member, Split, World } from '../../world/types.ts';
-import type { WorldSnapshot } from '../contracts.ts';
+import type { ExpiryWindowRequest, WorldSnapshot } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
 
 export const DEFAULT_WORLD_PATH = join('world', 'seed', 'world.json');
@@ -59,6 +59,8 @@ export interface TrialWorldOptions {
   /** With reachableFromContainers, bind this gateway (the run's internal network) instead of the bridge gateway. */
   gatewayAddress?: string;
   clockReference?: string;
+  /** v0.4 (internal-task): the task's [world] retire slugs, hidden from every read surface from construction on. */
+  retire?: readonly string[];
 }
 
 export interface SlackReply { ok: boolean; error?: string; [k: string]: unknown }
@@ -79,6 +81,7 @@ export class TrialWorld {
       hostname: listenHost(opts.reachableFromContainers, opts.gatewayAddress), port: 0,
       eventsPath: join(opts.outDir, 'events.jsonl'),
       ...(opts.clockReference ? { clockReference: opts.clockReference } : {}),
+      ...(opts.retire?.length ? { retire: opts.retire } : {}),
     });
     const port = new URL(this.server.url).port;
     const baseUrl = opts.reachableFromContainers ? `http://${CONTAINER_HOST}:${port}` : `http://127.0.0.1:${port}`;
@@ -144,6 +147,15 @@ export class TrialWorld {
     const res = await this.admin('/admin/gbrain/requester', { method: 'POST', body: JSON.stringify({ member }) });
     const body = await res.json() as { ok: boolean; error?: string };
     if (!body.ok) throw new RunnerError('HE-WORLD-001', `the world refused gbrain requester ${member}: ${body.error}`);
+  }
+
+  /** v0.4 (internal-task): expire earlier turns' windows through the admin route, before the turn that carries expire_turns; the world
+   *  logs it as an admin.expire event. Returns how many windows held messages. */
+  async expire(turn: number, windows: ExpiryWindowRequest[]): Promise<number> {
+    const res = await this.admin('/admin/expire', { method: 'POST', body: JSON.stringify({ turn, windows }) });
+    const body = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` })) as { ok: boolean; windows?: unknown[]; error?: string };
+    if (!body.ok) throw new RunnerError('HE-WORLD-001', `the world refused to expire turn ${turn}'s windows: ${body.error}`);
+    return body.windows?.length ?? 0;
   }
 
   async fence(): Promise<void> {

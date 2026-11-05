@@ -130,16 +130,16 @@ export function gbrainImageCommit(image = DEFAULT_GBRAIN_IMAGE, run: (argv: stri
  *  and sealed, whether it was built from a sealed root; when image.json has no sealed field, the image's
  *  harness-eval.sealed label decides); when image.json cannot be read, sealed true with null digests if the label says
  *  sealed, else null. */
-export function gbrainImageInputs(image = DEFAULT_GBRAIN_IMAGE, run: (argv: string[]) => { status: number | null; stdout: string } = (argv) => spawnSync('docker', argv, { encoding: 'utf8' })): { world_sha256: string | null; heldout_corpus_sha256: string | null; sealed: boolean } | null {
+export function gbrainImageInputs(image = DEFAULT_GBRAIN_IMAGE, run: (argv: string[]) => { status: number | null; stdout: string } = (argv) => spawnSync('docker', argv, { encoding: 'utf8' })): { world_sha256: string | null; heldout_corpus_sha256: string | null; sealed: boolean; dev_corpus_sha256?: string } | null {
   const label = () => run(['image', 'inspect', '-f', '{{index .Config.Labels "harness-eval.sealed"}}', image]).stdout?.trim() === 'true';
   // an unreadable image.json still leaves the label, so a sealed build is never read as public
   const unread = () => (label() ? { world_sha256: null, heldout_corpus_sha256: null, sealed: true } : null);
   const r = run(['run', '--rm', '--entrypoint', 'cat', image, '/opt/sidecar/image.json']);
   if (r.status !== 0) return unread();
-  let j: { world_sha256?: string; heldout_corpus_sha256?: string | null; sealed?: unknown };
+  let j: { world_sha256?: string; heldout_corpus_sha256?: string | null; sealed?: unknown; dev_corpus_sha256?: string | null };
   try { j = JSON.parse(r.stdout) as typeof j; } catch { return unread(); }
   const sealed = j.sealed === true || (j.sealed !== false && label());
-  return { world_sha256: j.world_sha256 ?? null, heldout_corpus_sha256: j.heldout_corpus_sha256 ?? null, sealed };
+  return { world_sha256: j.world_sha256 ?? null, heldout_corpus_sha256: j.heldout_corpus_sha256 ?? null, sealed, ...(j.dev_corpus_sha256 ? { dev_corpus_sha256: j.dev_corpus_sha256 } : {}) };
 }
 
 /** preflight's installer-hook gate: when gbrain/pin.json's install.installer.turn_hook_expected is true, an installer view whose

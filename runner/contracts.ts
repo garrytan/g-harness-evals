@@ -149,6 +149,125 @@ export interface Script {
   turns: ScriptedTurn[];
 }
 
+// ---- v0.4 (internal-task) lifecycle: per-turn expiry, per-task retirement and the [mechanism] table ---------------
+
+/** v0.4 addition: one needed fact of a task's [mechanism] table, written in task.toml as [[mechanism.needed]]. The fact is
+ *  carried either by a turn's post (turn) or by a seed record the task retires (slug, which must also be in [world] retire),
+ *  and consumer_turn is the turn that needs it. pattern is a regular expression the fact's text matches (a leading (?i)
+ *  means case-insensitive). Never graded: fact_readable_at_ask and the v0.4 set checks read it. */
+export interface MechanismFact {
+  turn?: number;
+  slug?: string;
+  pattern: string;
+  consumer_turn: number;
+}
+
+/** The [mechanism] table: v0.3's needed_turn and superseded_turn (scripts/v03/mechanism.ts), and v0.4's needed facts. */
+export interface TaskMechanism {
+  needed_turn?: number;
+  superseded_turn?: number;
+  needed?: MechanismFact[];
+}
+
+/** v0.4: the syntax of a slug in [world] retire and [[mechanism.needed]].slug, as world records carry it: two or more
+ *  segments of lower-case letters, digits and hyphens joined by "/", for example chats/north-team-random. */
+export const RETIRE_SLUG = /^[a-z0-9][a-z0-9-]*(\/[a-z0-9][a-z0-9-]*)+$/;
+
+/** v0.4: opaque codes for lifecycle shape problems. A problem names the field position and one of these codes and never
+ *  quotes the value, so a held-out slug or fact pattern cannot reach an error message, a log or a CI transcript. */
+export const LIFECYCLE_CODES = {
+  EXPIRE_TYPE: 'expire_turns is a non-empty list of turn numbers',
+  EXPIRE_DUPLICATE: 'a turn is listed twice in one expire_turns',
+  EXPIRE_NOT_EARLIER: 'an expired turn must come before the turn that carries expire_turns',
+  EXPIRE_ASK_TURN: 'an ask turn (a consumer_turn of [[mechanism.needed]], or the last turn) never expires',
+  EXPIRE_TWICE: 'a turn is expired by more than one turn',
+  RETIRE_TYPE: '[world] retire is a non-empty list of slugs',
+  RETIRE_SLUG_SYNTAX: 'a retired slug is not lower-case segments joined by "/"',
+  RETIRE_DUPLICATE: 'a slug is listed twice in [world] retire',
+  MECHANISM_TYPE: '[[mechanism.needed]] is a non-empty list of tables with pattern and consumer_turn',
+  MECHANISM_SOURCE: 'a needed fact names exactly one of turn or slug',
+  MECHANISM_TURN_RANGE: 'a needed fact names a turn the task does not have',
+  MECHANISM_ORDER: 'a needed fact is carried by a turn before its consumer_turn',
+  MECHANISM_SLUG: 'a needed fact\'s slug is not a well-formed slug listed in [world] retire',
+  MECHANISM_PATTERN: 'a needed fact\'s pattern is not a valid regular expression',
+} as const;
+export type LifecycleCode = keyof typeof LIFECYCLE_CODES;
+
+const lifecycle = (where: string, code: LifecycleCode) => `${where}: ${code} (${LIFECYCLE_CODES[code]})`;
+const isTurnNumber = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 1;
+
+/** The lifecycle shape rules, shared by the grader's task parser (runner/grade/task.ts) and the runner's (runner/trial/task.ts).
+ *  Shape only: whether a slug names a seed record and whether a fact is reachable are the set checks' work. */
+export function lifecycleProblems(task: { turns: Array<{ expire_turns?: unknown }>; world?: { retire?: unknown }; mechanism?: { needed?: unknown } }): string[] {
+  const problems: string[] = [];
+  const n = task.turns.length;
+  const retire = task.world?.retire;
+  const retired = new Set<string>();
+  if (retire !== undefined) {
+    if (!Array.isArray(retire) || !retire.length) problems.push(lifecycle('world.retire', 'RETIRE_TYPE'));
+    else retire.forEach((s, i) => {
+      if (typeof s !== 'string' || !RETIRE_SLUG.test(s)) problems.push(lifecycle(`world.retire[${i}]`, 'RETIRE_SLUG_SYNTAX'));
+      else if (retired.has(s)) problems.push(lifecycle(`world.retire[${i}]`, 'RETIRE_DUPLICATE'));
+      else retired.add(s);
+    });
+  }
+  const asks = new Set<number>([n]);
+  const needed = task.mechanism?.needed;
+  if (needed !== undefined) {
+    if (!Array.isArray(needed) || !needed.length) problems.push(lifecycle('mechanism.needed', 'MECHANISM_TYPE'));
+    else needed.forEach((raw, i) => {
+      const at = `mechanism.needed[${i}]`;
+      const f = (raw ?? {}) as Record<string, unknown>;
+      if (typeof raw !== 'object' || raw === null || typeof f.pattern !== 'string' || !f.pattern || !isTurnNumber(f.consumer_turn)) { problems.push(lifecycle(at, 'MECHANISM_TYPE')); return; }
+      const consumer = f.consumer_turn as number;
+      if (consumer > n) problems.push(lifecycle(`${at}.consumer_turn`, 'MECHANISM_TURN_RANGE'));
+      else asks.add(consumer);
+      try { new RegExp((f.pattern as string).replace(/^\(\?i\)/, '')); } catch { problems.push(lifecycle(`${at}.pattern`, 'MECHANISM_PATTERN')); }
+      if ((f.turn === undefined) === (f.slug === undefined)) { problems.push(lifecycle(at, 'MECHANISM_SOURCE')); return; }
+      if (f.turn !== undefined) {
+        if (!isTurnNumber(f.turn) || f.turn > n) problems.push(lifecycle(`${at}.turn`, 'MECHANISM_TURN_RANGE'));
+        else if (f.turn >= consumer) problems.push(lifecycle(`${at}.turn`, 'MECHANISM_ORDER'));
+      } else if (typeof f.slug !== 'string' || !retired.has(f.slug)) problems.push(lifecycle(`${at}.slug`, 'MECHANISM_SLUG'));
+    });
+  }
+  const expiredBy = new Set<number>();
+  task.turns.forEach((t, i) => {
+    if (t.expire_turns === undefined) return;
+    const at = `turns[${i}].expire_turns`;
+    const list = t.expire_turns;
+    if (!Array.isArray(list) || !list.length || !list.every(isTurnNumber)) { problems.push(lifecycle(at, 'EXPIRE_TYPE')); return; }
+    const seen = new Set<number>();
+    list.forEach((k, j) => {
+      const where = `${at}[${j}]`;
+      if (seen.has(k)) { problems.push(lifecycle(where, 'EXPIRE_DUPLICATE')); return; }
+      seen.add(k);
+      if (k >= i + 1) problems.push(lifecycle(where, 'EXPIRE_NOT_EARLIER'));
+      else if (asks.has(k)) problems.push(lifecycle(where, 'EXPIRE_ASK_TURN'));
+      else if (expiredBy.has(k)) problems.push(lifecycle(where, 'EXPIRE_TWICE'));
+      else expiredBy.add(k);
+    });
+  });
+  return problems;
+}
+
+/** v0.4: the windows the runner asks the world to expire before the turn that carries expire_turns. Turn k's window runs from
+ *  its actor post to the next actor post, so the bot's reply and every post or DM it made while working on turn k fall
+ *  inside it; when turn k + 1 is the carrying turn, whose post is not made yet, the window runs to the latest message
+ *  (to_ts null). requestTs holds the actor post ts of every turn played so far, turn 1 first. */
+export interface ExpiryWindowRequest {
+  turn: number;
+  from_ts: string;
+  to_ts: string | null;
+}
+
+export function expiryWindows(expire: readonly number[], requestTs: readonly string[]): ExpiryWindowRequest[] {
+  return expire.map((k) => {
+    const from = requestTs[k - 1];
+    if (from === undefined) throw new Error(`expire_turns names turn ${k}, which has not been played`);
+    return { turn: k, from_ts: from, to_ts: requestTs[k] ?? null };
+  });
+}
+
 // ---- M1 lane A additions: what the runner writes about a trial -------------------------------------
 
 /** M1 lane A addition: the placeholders the runner fills in tasks/multiuser/_shared/preamble.md, so the

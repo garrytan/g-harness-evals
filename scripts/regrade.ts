@@ -16,9 +16,11 @@
 //
 // Exit codes: 0 when every selected trial was regraded and none changed grade, consent_violation or
 // approval_stop; 1 when any selected trial could not be regraded or changed (one line per such trial, with the
-// failed predicates that moved); 2 on a usage error (no trials.jsonl, a missing flag value, an unknown cell).
+// failed predicates that moved); 2 on a usage error (no trials.jsonl, a missing flag value, an unknown cell) or when a
+// set world the run pinned in set-worlds.json changed since the run (HE-RUN-008).
 //
-// regradeResults() is the same check as a function, for scripts that replicate a run.
+// regradeResults() is the same check as a function, for scripts that replicate a run; it throws RunnerError HE-RUN-008
+// for a set-world pin mismatch.
 
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -27,7 +29,8 @@ import { gunzipSync } from 'node:zlib';
 import type { PredicateResult, TrialEvidence, TrialRecord, TurnWindow, WorldSnapshot } from '../runner/contracts.ts';
 import { gradeTrial } from '../runner/grade/index.ts';
 import type { WorldEvent } from '../world/services/events.ts';
-import { taskDirFor, type Trial } from '../runner/run.ts';
+import { RunnerError } from '../runner/errors.ts';
+import { setWorldPath, setWorldPinProblem, taskDirFor, type Trial } from '../runner/run.ts';
 import { trialDirFor } from '../runner/trial/run.ts';
 
 export class RegradeUsageError extends Error {}
@@ -83,6 +86,8 @@ export async function regradeResults(opts: { results: string; cells?: string[]; 
   const repoRoot = opts.repoRoot ?? resolve(import.meta.dir, '..');
   if (!existsSync(join(results, 'trials.jsonl'))) throw new RegradeUsageError(`no trials.jsonl in ${results}`);
   const manifest = JSON.parse(readFileSync(join(results, 'manifest.json'), 'utf8')) as { cells: Array<{ id: string; split: 'dev' | 'heldout'; task_set?: string }> };
+  const pinProblem = setWorldPinProblem(results, manifest.cells, repoRoot);
+  if (pinProblem) throw new RunnerError('HE-RUN-008', pinProblem);
   const records = jsonl<TrialRecord>(readFileSync(join(results, 'trials.jsonl'), 'utf8'));
   const unknown = (opts.cells ?? []).filter((c) => !records.some((r) => r.cell === c));
   if (unknown.length) throw new RegradeUsageError(`--cells names cells with no trials in ${join(results, 'trials.jsonl')}: ${unknown.join(', ')}`);
@@ -121,7 +126,7 @@ export async function regradeResults(opts: { results: string; cells?: string[]; 
         trial_id: rec.trial_id,
         task_dir: taskDirFor(cell, rec.task, join(repoRoot, 'tasks')),
         split: cell.split,
-        world_path: join(repoRoot, 'world', 'seed', 'world.json'),
+        world_path: setWorldPath(cell, join(repoRoot, 'tasks')) ?? join(repoRoot, 'world', 'seed', 'world.json'),
         bot_member: 'assistant',
         snapshot: JSON.parse(snapshot!) as WorldSnapshot,
         events: jsonl<WorldEvent>(events!),
@@ -170,6 +175,10 @@ if (import.meta.main) {
   try {
     report = await regradeResults({ results, cells });
   } catch (e) {
+    if (e instanceof RunnerError) {
+      console.error(e.message);
+      process.exit(2);
+    }
     if (!(e instanceof RegradeUsageError)) throw e;
     console.error(`${e.message}\n${usage}`);
     process.exit(2);

@@ -37,6 +37,8 @@
 //   <name>.reconcile*.json, <name>.preflight-*/ (without tokens.json or ingest-tokens.json: the brain's tokens stay on the shard), <name>.laneb/ (a Lane B
 //                      shard's Lane B run root: Harbor jobs, Lane B proxy sessions and ledger, docs/gstack-laneb.md), <name>.gbrain-install/ (the first shard's gbrain-install/ is also copied
 //                      under its own name), <name>.shard.json: each shard's own files under its name
+//   set-worlds.json    the shards' set-world pins (runner/run.ts SET_WORLDS_FILE), which must be identical; absent when no
+//                      shard has one
 //   shards.json        { cells: { <cell id>: <shard name> }, shards: { <name>: { machine, commit, images, source, trials,
 //                      cells } } }, machine, commit and images from the shard's shard.json ({name, machine, commit, images},
 //                      written by whoever dispatched the shard) when it carries one, null otherwise; a shard.json whose
@@ -61,6 +63,7 @@ import { RunnerError } from '../runner/errors.ts';
 import { sealedGuard } from '../runner/heldout/guard.ts';
 import { openingDiff, readJsonFile, readJsonLines, type OpeningReceipt } from '../runner/heldout/sealed.ts';
 import { insideGitTree } from './sealed/custody.ts';
+import { SET_WORLDS_FILE } from '../runner/run.ts';
 
 export interface ShardInput { name: string; dir: string }
 export interface ShardInfo { name: string; machine: string | null; commit: string | null; images: unknown; source: string; trials: number; cells: string[] }
@@ -187,6 +190,10 @@ export function planMerge(out: string, shards: ShardInput[], options: MergeOptio
     if (i > 0) copies.push({ from: join(s.dir, 'manifest.json'), to: join(out, `${s.name}.manifest.json`) });
     if (i === 0 && existsSync(join(s.dir, 'gbrain-install'))) copies.push({ from: join(s.dir, 'gbrain-install'), to: join(out, 'gbrain-install') });
   });
+  const pinFiles = shards.map((s) => join(s.dir, SET_WORLDS_FILE)).filter((f) => existsSync(f));
+  const pins = pinFiles.map((f) => readFileSync(f, 'utf8'));
+  if (pins.some((p) => p !== pins[0])) throw new MergeError(`${SET_WORLDS_FILE} differs between shards; every shard must run at the same commit`);
+  if (pinFiles.length) copies.push({ from: pinFiles[0]!, to: join(out, SET_WORLDS_FILE) });
   const rows = first.trials.filter((t) => rowsById.has(t.id)).map((t) => rowsById.get(t.id)!);
   const unstarted = first.trials.filter((t) => !owner.has(t.id) && !skippedCells.includes(t.cell)).map((t) => ({ id: t.id, cell: t.cell }));
   const skippedByRule = skipped.map((s) => ({ cell: s.cell, reason: s.reason, planned_trials: first.trials.filter((t) => t.cell === s.cell).length }));

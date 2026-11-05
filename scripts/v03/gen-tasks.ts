@@ -85,11 +85,11 @@ export function view(world: World, split: 'dev' | 'heldout'): View {
 }
 
 export function dmName(member: string): string { return 'dm:' + [BOT_ID, member].sort().join('+'); }
-const teamChannel = (v: View, m: Member) => v.channels.find((c) => c.kind === 'team' && c.members.includes(m.id) && c.cluster === m.cluster) ?? v.channels.find((c) => c.kind === 'team' && c.members.includes(m.id));
-const randomChannel = (v: View, m: Member) => v.channels.find((c) => c.kind === 'random' && c.members.includes(m.id) && c.cluster === m.cluster) ?? v.channels.find((c) => c.kind === 'random' && c.members.includes(m.id));
-const first = (v: View, id: string) => v.members.get(id)?.first ?? id;
-const nameOf = (v: View, id: string) => v.members.get(id)?.name ?? id;
-const entityName = (v: View, e: string) => v.accounts.find((a) => a.id === e)?.name ?? v.members.get(e)?.name ?? e;
+export const teamChannel = (v: View, m: Member) => v.channels.find((c) => c.kind === 'team' && c.members.includes(m.id) && c.cluster === m.cluster) ?? v.channels.find((c) => c.kind === 'team' && c.members.includes(m.id));
+export const randomChannel = (v: View, m: Member) => v.channels.find((c) => c.kind === 'random' && c.members.includes(m.id) && c.cluster === m.cluster) ?? v.channels.find((c) => c.kind === 'random' && c.members.includes(m.id));
+export const first = (v: View, id: string) => v.members.get(id)?.first ?? id;
+export const nameOf = (v: View, id: string) => v.members.get(id)?.name ?? id;
+export const entityName = (v: View, e: string) => v.accounts.find((a) => a.id === e)?.name ?? v.members.get(e)?.name ?? e;
 
 /** Where a fact's record lives, for the oracle's read and for scope checks. */
 export function recordOf(v: View, f: Fact): { call: { tool: string; args: Record<string, unknown> }; channel: Channel | null; botVisible: boolean; where: string } {
@@ -179,7 +179,7 @@ export function guardNot(pattern: string, others: string[]): string {
   return '(?i)(?=' + value + ')(?<!' + MARKED + IN_SENTENCE + '*)(?<!' + DENIED_BEFORE + IN_CLAUSE_NO_BUT + '*)' + value + '(?!' + IN_SENTENCE + '*' + MARKED + ')(?!' + IN_CLAUSE + '*(?<!' + other + sinceOther + '*)' + DENIED_AFTER + '(?!\\s+(?:(?:a|an|the)\\s+)?' + other + '))';
 }
 
-const LABEL: Record<Attribute, string> = {
+export const LABEL: Record<Attribute, string> = {
   seat_count: 'seat count', renewal_date: 'renewal date', signing_date: 'signing date', ticket: 'ticket number', contact: 'main contact', owner: 'owner',
   meeting_time: 'meeting time', product: 'product', site: 'site', deadline: 'deadline', discount: 'discount', rate: 'per-seat rate', contract_value: 'contract value', payment_terms: 'payment terms',
 };
@@ -213,7 +213,7 @@ const dropSeg = (turn: number, key: string) => (o: OTurn[]) => { const c = clone
 const addSeg = (turn: number, text: string) => (o: OTurn[]) => { const c = clone(o); c[turn - 1]!.segments.push({ key: 'mut', text }); return c; };
 const addCall = (turn: number, call: Call, at: 'start' | 'end' = 'end') => (o: OTurn[]) => { const c = clone(o); if (at === 'start') c[turn - 1]!.calls.unshift(call); else c[turn - 1]!.calls.push(call); return c; };
 const dropCall = (turn: number, tool: string) => (o: OTurn[]) => { const c = clone(o); c[turn - 1]!.calls = c[turn - 1]!.calls.filter((x) => x.tool !== tool); return c; };
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+export const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 function readersOfConversation(v: View, channel: string, actor: string): string[] {
   if (channel === 'dm') return [actor];
@@ -221,7 +221,7 @@ function readersOfConversation(v: View, channel: string, actor: string): string[
 }
 
 /** A channel the member cannot read, for a cross-scope mutation: prefer the given ones. */
-function outsideChannel(v: View, member: string, prefer: Array<Channel | null | undefined>): Call {
+export function outsideChannel(v: View, member: string, prefer: Array<Channel | null | undefined>): Call {
   const c = prefer.find((x) => x && x.kind !== 'dm' && !x.members.includes(member)) ?? v.channels.find((x) => !x.members.includes(member) && x.kind === 'team');
   if (c) return { tool: 'read_channel', args: { channel: '#' + c.name } };
   const other = v.employees.find((e) => e.id !== member);
@@ -233,10 +233,10 @@ function outsideChannel(v: View, member: string, prefer: Array<Channel | null | 
 
 const OPENERS = ['Quick check:', 'Before I update the account sheet:', 'One for the tracker:', 'Can you help with something?', 'Sanity check before my 10:00:', 'Small one:'];
 const CLOSERS = ['Thanks.', 'I need it for the QBR deck.', 'Need it before the customer call.', 'Putting it in the weekly notes.', 'Thank you!', ''];
-const ack = (v: View, actor: string, rng: Rng) => first(v, actor) + ': ' + rng.pick(['noted, thanks.', 'got it, nothing for me to do.', 'understood.', 'thanks, noted.']);
+export const ack = (v: View, actor: string, rng: Rng) => first(v, actor) + ': ' + rng.pick(['noted, thanks.', 'got it, nothing for me to do.', 'understood.', 'thanks, noted.']);
 
 /** "seat count for the 2026 renewal at Quarrendon", or, when the about phrase already names the account, the label with it. */
-function refOf(v: View, f: Fact): string {
+export function refOf(v: View, f: Fact): string {
   const name = entityName(v, f.entity);
   return f.about.toLowerCase().includes(name.toLowerCase()) ? LABEL[f.attribute] + ' (' + f.about + ')' : LABEL[f.attribute] + ' for ' + f.about + ' at ' + name;
 }

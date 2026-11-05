@@ -73,7 +73,7 @@ import { taskFamily } from '../runner/grade/task.ts';
 import { taskDirFor } from '../runner/run.ts';
 import { loadWorldData } from '../runner/grade/predicates.ts';
 import { DEFAULT_WORLD_PATH } from '../runner/grade/play.ts';
-import { isSealedCell } from '../runner/run.ts';
+import { isSealedCell, setWorldPath, setWorldPinProblem } from '../runner/run.ts';
 import { sealedGuard } from '../runner/heldout/guard.ts';
 import { readJsonFile, readJsonLines, sealedPaths } from '../runner/heldout/sealed.ts';
 import { RunnerError } from '../runner/errors.ts';
@@ -98,6 +98,11 @@ const manifestPath = join(results, 'manifest.json');
 const runManifest = existsSync(manifestPath) ? parsed(() => readJsonFile<{ cells: Array<{ id: string; split: 'dev' | 'heldout'; task_set?: string }>; sealed?: { set: string } }>(manifestPath)) : null;
 const manifestCells = runManifest?.cells ?? [];
 const repoRoot = join(import.meta.dir, '..');
+const pinProblem = setWorldPinProblem(results, manifestCells, repoRoot);
+if (pinProblem) {
+  console.error(`HE-RUN-008 ${pinProblem}`);
+  process.exit(2);
+}
 const sealedSet = runManifest?.sealed?.set;
 const sealedRoot = arg('sealed-root');
 if (sealedSet && !sealedRoot) { console.error(`HE-SEALED-001 ${results} was planned with a sealed root (set ${sealedSet}); summarize it inside custody with --sealed-root <the opened root> (docs/sealed-custody.md)`); process.exit(2); }
@@ -168,6 +173,12 @@ const eventsOf = (t: TrialRecord): WorldEvent[] | null => {
 const cells = [...new Set(allRows.map((t) => t.cell))];
 const isProbeCell = (cell: string) => { const ts = rows.filter((t) => t.cell === cell); return ts.length > 0 && ts.every((t) => familyOf(t) === 'product_probe'); };
 const worlds = { dev: loadWorldData(worldPath, 'dev'), heldout: loadWorldData(worldPath, 'heldout') };
+// internal-task v0.4: a dev cell of a set with its own world (runner/run.ts setWorldPath) reads that world's slug tables.
+const worldsFor = (cell: string) => {
+  const c = manifestCells.find((m) => m.id === cell);
+  const p = c ? setWorldPath(c, join(repoRoot, 'tasks')) : undefined;
+  return p ? { dev: loadWorldData(p, 'dev'), heldout: loadWorldData(p, 'heldout') } : worlds;
+};
 const out: string[] = [];
 const summary: Record<string, unknown> = { run: allRows[0]?.trial_id.split('/')[0], grading: useRegraded ? 'regraded' : 'as recorded', seed, cells: {} as Record<string, unknown> };
 out.push(`| Cell | n (tasks x reps) | Passes | Pass rate [95% CI, task-clustered] | Excluded (model, infra, exam errors) | Consent violations | Approval stops (valid) | Terminations | Cross-scope read failures | Refused requests | USD total | USD median/trial | USD per success | Tokens in / out / cached | Wall median |`);
@@ -194,7 +205,7 @@ for (const cell of cells) {
   const probe = isProbeCell(cell);
   const rateCell = probe ? 'probe cell: per-task table below, no pooled rate' : `${pct(rate.rate)} [${pct(rate.lower)}, ${pct(rate.upper)}]`;
   out.push(`| ${cell} | ${n} | ${passes} | ${rateCell} | ${excluded} | ${cv} | ${stops.length} (${validStops}) | ${[...term.entries()].map(([k, v]) => `${k} ${v}`).join(', ')} | ${xscope} | ${refused} | ${usd(total)} | ${usd(median(usage.map((u) => u.usd)))} | ${perSuccess} | ${tokens.i.toLocaleString()} / ${tokens.o.toLocaleString()} / ${tokens.c.toLocaleString()} | ${wall.toFixed(0)} s |`);
-  const gbrain = gbrainUsage(everything.map((t) => ({ events: eventsOf(t), predicates: view(t).predicates })), worlds);
+  const gbrain = gbrainUsage(everything.map((t) => ({ events: eventsOf(t), predicates: view(t).predicates })), worldsFor(cell));
   (summary.cells as Record<string, unknown>)[cell] = { n: ts.length, passes, pass_rate: probe ? null : rate.rate, ci95: probe ? null : [rate.lower, rate.upper], task_clusters: rate.clusters, ...(probe ? { probe: true } : {}), consent_violations: cv, approval_stops: stops.length, valid_approval_stops: validStops, terminations: Object.fromEntries(term), excluded, cross_scope_read_failures: xscope, refused_requests: refused, usd_total: total, usd_median: median(usage.map((u) => u.usd)), usd_per_success: passes ? total / passes : null, tokens, wall_median_s: wall, trial_ids: everything.map((t) => t.trial_id), gbrain };
 }
 out.push('');

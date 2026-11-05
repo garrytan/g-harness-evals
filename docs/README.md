@@ -53,7 +53,7 @@ Codes like internal-task in receipts name internal work lanes.
 - [report-v0.1.md](report-v0.1.md): the one-page account of the v0.1 multi-user cell: finding, limits, interests, tables with intervals, taxonomy and spend, with every number copied from a named receipt.
 - [repo-tasks.md](repo-tasks.md): the repository task format (fix, review, qa and ship tasks graded by hidden checks on the container), its acceptance rules, and the gstack-native-v1 set's public dev split and sealed held-out split.
 - [shared-rig.md](shared-rig.md): where the canonical copy of each shared rig part lives (stats kit, price table, metering proxy, per-trial usage, trial bundle, fan-out), for the repositories that vendor them.
-- [tasks.md](tasks.md): the multi-user task format: families, the access model, the predicate library, oracles and the mutation contract, task sets (v0.1, v0.2, the generated v0.3 set, the QM probes) and how a cell selects one.
+- [tasks.md](tasks.md): the multi-user task format: families, the access model, the predicate library, oracles and the mutation contract, task sets (v0.1, v0.2, the generated v0.3 and v0.4 sets, the QM probes) and how a cell selects one.
 - [replicate.md](replicate.md): how to check a finding from its trial bundle with `scripts/replicate.ts`: the two free checks (`--reanalyze`, `--estimate-only`), a paid rerun of one cell under a hard `--max-usd` cap, the replication band and its coverage evidence under [replicate/](replicate/band-coverage-m3-heldout-openclaw.json), verdicts, exit codes and limits.
 - [trial-bundle.md](trial-bundle.md): the trial-bundle format: one reproducible archive per finding with the run's trial-level data and a digest, what goes in and what is left out by rule, and what `scripts/bundle.ts verify` checks.
 - [gstack-laneb.md](gstack-laneb.md): the Lane B bridge: runs the pinned gstack-evals Lane B agent on gstack-native and Terminal-Bench 2 tasks under our metering, leases and Ubicloud lane.
@@ -134,6 +134,10 @@ The benchmarks list gains a line for the three uncounted Opus 5.5 follow-rate ch
 ### 2026-11-01: tool-discipline-start-hermes-r2-2026-11 listed
 
 The start-hook panel's line also names the Hermes rerun's preregistration, which sits in the same folder. Why: the preregistration is new on this branch.
+
+### 2026-11-01: tasks.md names the v0.4 set (internal-task)
+
+The tasks.md line lists task set v0.4 among the sets that page describes. Why: tasks.md gains the v0.4 set on this branch.
 
 ### 2026-11-01: tool-discipline-start-2026-11 reported
 

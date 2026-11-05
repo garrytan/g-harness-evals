@@ -10,13 +10,19 @@ import type { Script } from '../runner/contracts.ts';
 import { gradeTrial } from '../runner/grade/index.ts';
 import { playScript } from '../runner/grade/play.ts';
 import { loadTask, type Task } from '../runner/grade/task.ts';
+import { expectedFailures } from '../scripts/v04/check-set.ts';
 import { world } from './world-helpers.ts';
 
 const ROOT = join(import.meta.dir, '..', 'tasks', 'multiuser');
 const SPLITS = ['dev', 'heldout'] as const;
 const V02_FAMILIES = ['continuity', 'synthesis', 'corrections', 'approval_relay'];
-/** v0.3 (internal-task) adds scope isolation and shared channel to the four v0.2 families; its held-out tree is sealed, so only dev is read here. */
-const SET_FAMILIES: Record<string, string[]> = { 'v0.3': ['scope_isolation', 'shared_channel', 'synthesis', 'continuity', 'corrections', 'approval_relay'] };
+/** v0.3 (internal-task) adds scope isolation and shared channel to the four v0.2 families; its held-out tree is sealed, so only dev is read here.
+ *  v0.4 (internal-task) keeps corrections and approval relay and replaces the other four with families whose needed fact is gone
+ *  from the readable world at ask time (docs/tasks.md). */
+const SET_FAMILIES: Record<string, string[]> = {
+  'v0.3': ['scope_isolation', 'shared_channel', 'synthesis', 'continuity', 'corrections', 'approval_relay'],
+  'v0.4': ['corrections', 'approval_relay', 'expired_recall', 'memory_scope', 'session_synthesis', 'retired_record'],
+};
 
 /** Task sets: v0.1 at the root, then every tasks/multiuser/<set>/ that holds a dev or heldout directory. */
 const SETS: Array<{ name: string; root: string }> = [
@@ -85,6 +91,22 @@ describe('task set v0.3', () => {
       families.set(t.family, (families.get(t.family) ?? 0) + 1);
     }
     expect([...families.entries()].sort()).toEqual([['approval_relay', 3], ['continuity', 4], ['corrections', 4], ['scope_isolation', 4], ['shared_channel', 2], ['synthesis', 3]]);
+  });
+});
+
+describe('task set v0.4', () => {
+  test('96 public dev tasks: 16 per family, 4 per family at each level L1 to L4; no held-out plaintext', () => {
+    const root = join(ROOT, 'v0.4');
+    expect(taskDirs(root, 'dev')).toHaveLength(96);
+    expect(taskDirs(root, 'heldout')).toHaveLength(0);
+    const cells = new Map<string, number>();
+    for (const dir of taskDirs(root, 'dev')) {
+      const t = loadTask(dir);
+      const level = (JSON.parse(readFileSync(join(dir, 'spec.json'), 'utf8')) as { level: number }).level;
+      cells.set(t.family + ' L' + level, (cells.get(t.family + ' L' + level) ?? 0) + 1);
+    }
+    expect([...cells.keys()]).toHaveLength(24);
+    for (const n of cells.values()) expect(n).toBe(4);
   });
 });
 
@@ -183,8 +205,11 @@ for (const { set, dir } of allTasks) {
         expect(script.id).toBe(id);
         const evidence = await playScript(dir, task, script, { world });
         const grade = await gradeTrial(evidence, task);
-        const failed = grade.predicates.filter((p) => !p.passed).map((p) => p.id);
-        expect(failed, grade.predicates.filter((p) => !p.passed).map((p) => `${p.id}: ${p.evidence}`).join('\n')).toEqual([id]);
+        const failed = grade.predicates.filter((p) => !p.passed).map((p) => p.id).sort();
+        // v0.4: a mutation that itself copies a needed fact back into the world also fails fact_readable_at_ask, which is
+        // what that secondary predicate is for (scripts/v04/check-set.ts, expectedFailures).
+        const want = set.name === 'v0.4' ? expectedFailures(task, readScript(join(dir, 'oracle.json')), script) : [id];
+        expect(failed, grade.predicates.filter((p) => !p.passed).map((p) => `${p.id}: ${p.evidence}`).join('\n')).toEqual(want);
         // A mutation of a secondary predicate fails only that predicate and leaves the grade a pass.
         expect(grade.grade).toBe(task.predicates.secondary?.includes(id) ? 'pass' : 'fail');
         expect(grade.consent_violation).toBe(task.predicates.forbidden_effects.includes(id as never));

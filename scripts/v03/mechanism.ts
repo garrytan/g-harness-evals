@@ -64,7 +64,7 @@ export function factOfTurn(task: Task, turn: number, facts: Fact[], channelIds: 
 export function trialMechanism(task: Task, events: Ev[], channelIds: Map<string, string>): { read: boolean; needed: boolean; ahead: boolean | null } {
   const m = task.mechanism!;
   const facts = ingestedFacts(events);
-  const needed = factOfTurn(task, m.needed_turn, facts, channelIds);
+  const needed = factOfTurn(task, m.needed_turn!, facts, channelIds);
   const superseded = m.superseded_turn ? factOfTurn(task, m.superseded_turn, facts, channelIds) : undefined;
   const starts = turnStarts(events);
   const last = task.turns.length;
@@ -99,7 +99,7 @@ export function trialProviderMechanism(task: Task, events: Ev[], channelIds: Map
   provider_delivery_unknown: number;
   model_calls: number; model_read: boolean; model_returned_by_gbrain: boolean;
 } {
-  const needed = factOfTurn(task, task.mechanism!.needed_turn, ingestedFacts(events), channelIds);
+  const needed = factOfTurn(task, task.mechanism!.needed_turn!, ingestedFacts(events), channelIds);
   const starts = turnStarts(events);
   const last = task.turns.length;
   const end = events.find((e) => e.tool === 'gbrain.requester' && !(e.args as { member?: unknown })?.member && starts.length > 0 && e.seq > starts[starts.length - 1]!)?.seq ?? Infinity;
@@ -154,7 +154,7 @@ export function mechanism(resultsDir: string, tasksDir: string, channelIds: Map<
   for (const rec of records) {
     if (!tasks.has(rec.task)) tasks.set(rec.task, existsSync(join(tasksDir, rec.task, 'task.toml')) ? loadTask(join(tasksDir, rec.task)) : null);
     const task = tasks.get(rec.task);
-    if (!task?.mechanism) continue;
+    if (task?.mechanism?.needed_turn === undefined) continue;
     if (task.turns.some((t) => t.channel !== 'dm' && !channelIds.has(t.channel))) throw new Error('MECH-CHANNEL-UNKNOWN');
     const key = rec.task + '\t' + rec.cell;
     const row = rows.get(key) ?? { cell: rec.cell, task: rec.task, trials: 0, passes: 0, consumer_read: 0, returned_needed: 0, needed_ahead: task.mechanism.superseded_turn ? 0 : null };

@@ -4,13 +4,16 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { z } from 'zod';
+import { lifecycleProblems } from '../contracts.ts';
 
-export const FAMILIES = ['scope_isolation', 'shared_channel', 'org_security', 'handoff', 'scheduled', 'continuity', 'synthesis', 'corrections', 'approval_relay', 'product_probe'] as const;
+export const FAMILIES = ['scope_isolation', 'shared_channel', 'org_security', 'handoff', 'scheduled', 'continuity', 'synthesis', 'corrections', 'approval_relay', 'product_probe',
+  'expired_recall', 'memory_scope', 'session_synthesis', 'retired_record'] as const;
 export type Family = (typeof FAMILIES)[number];
 
 export const PREDICATE_KINDS = [
   'reply_matches', 'reply_not_matches', 'message_posted', 'no_message_posted', 'no_cross_scope_reads', 'event', 'no_event',
   'approval_requested', 'no_write_before', 'calendar_created', 'draft_created', 'digest_posted', 'custom',
+  'fact_readable_at_ask',
 ] as const;
 export type PredicateKind = (typeof PREDICATE_KINDS)[number];
 
@@ -47,6 +50,7 @@ const predicateSchema = z.discriminatedUnion('kind', [
   z.object({ ...base, kind: z.literal('draft_created'), turn: turnRef, to: z.string().min(1), pattern: regexString, only_recipients: z.array(z.string().min(1)).min(1).optional() }).strict(),
   z.object({ ...base, kind: z.literal('digest_posted'), channel: z.string().min(1), after_sim_ts: z.string().min(1), pattern: regexString, sources: z.array(z.string().min(1)).min(1), not_pattern: regexString.optional() }).strict(),
   z.object({ ...base, kind: z.literal('custom'), module: z.string().min(1) }).strict(),
+  z.object({ ...base, kind: z.literal('fact_readable_at_ask') }).strict(),
 ]);
 
 export type Predicate = z.infer<typeof predicateSchema>;
@@ -60,7 +64,14 @@ const turnSchema = z.object({
   /** internal-task: "new" posts the actor's message as a new thread root, hands the harness thread_ts = that ts, and posts
    *  the bot's reply in the thread; every adapter opens a new session for it (docs/tasks.md). */
   thread: z.literal('new').optional(),
+  /** v0.4 (internal-task): before this turn the runner expires every message inside these earlier turns' windows (runner/contracts.ts,
+   *  lifecycleProblems for the shape rules). */
+  expire_turns: z.array(z.number()).optional(),
 }).strict();
+
+/** v0.4 (internal-task): one [[mechanism.needed]] entry (MechanismFact in runner/contracts.ts). Values are checked by lifecycleProblems,
+ *  whose problems never quote them. */
+const neededFactSchema = z.object({ turn: z.number().optional(), slug: z.string().optional(), pattern: z.string(), consumer_turn: z.number() }).strict();
 
 const taskSchema = z.object({
   id: z.string().regex(/^[a-z]{2}-\d{2}-[a-z0-9-]+$/, 'ids look like si-01-north-renewal'),
@@ -77,7 +88,10 @@ const taskSchema = z.object({
   finance: z.object({ pattern: regexString, allowed: z.array(memberId).min(1) }).strict().optional(),
   /** v0.3 (internal-task): the turn whose post carries the fact a later turn needs, and for a correction the turn it
    *  supersedes; read by scripts/v03/mechanism.ts, never graded. */
-  mechanism: z.object({ needed_turn: turnRef, superseded_turn: turnRef.optional() }).strict().optional(),
+  mechanism: z.object({ needed_turn: turnRef.optional(), superseded_turn: turnRef.optional(), needed: z.array(neededFactSchema).optional() }).strict()
+    .refine((m) => m.needed_turn !== undefined || m.needed !== undefined, 'give needed_turn (v0.3) or [[mechanism.needed]] (v0.4)').optional(),
+  /** v0.4 (internal-task): seed records the trial's world hides from every read surface, by corpus slug. */
+  world: z.object({ retire: z.array(z.string()) }).strict().optional(),
 }).strict();
 
 export type Task = z.infer<typeof taskSchema>;
@@ -141,6 +155,12 @@ export function parseTask(text: string, file = 'task.toml'): Task {
   task.turns.forEach((t, i) => {
     if (!task.actors.includes(t.actor)) problems.push(`turns[${i}].actor: "${t.actor}" is not in actors`);
   });
+  problems.push(...lifecycleProblems(task));
+  for (const p of task.predicate) {
+    if (p.kind !== 'fact_readable_at_ask') continue;
+    if (!task.predicates.secondary?.includes(p.id)) problems.push(`predicate "${p.id}": fact_readable_at_ask never grades; list it in predicates.secondary`);
+    if (!task.mechanism?.needed) problems.push(`predicate "${p.id}": fact_readable_at_ask reads the [[mechanism.needed]] facts and the task has none`);
+  }
   if (task.mechanism) {
     for (const [field, n] of [['needed_turn', task.mechanism.needed_turn], ['superseded_turn', task.mechanism.superseded_turn]] as const) {
       if (n !== undefined && n > nTurns) problems.push(`mechanism.${field} = ${n} but the task has ${nTurns} turn(s)`);

@@ -212,7 +212,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   // An internal cell's world, sidecar and harness container use the run's internal network and its gateway.
   if (cell.network === 'internal' && (!docker || !opts.network)) throw new RunnerError('HE-NET-001', `cell ${cell.id} has network "internal" but the trial ${docker ? 'was given no internal network' : `runs in ${mode} mode`}; fix: run it through executeRun in docker mode`);
   const network = cell.network === 'internal' ? opts.network : undefined;
-  const world = new TrialWorld({ trialId: trial.id, split: cell.split, actors: task.actors, outDir: dirs.root, worldPath: opts.worldPath, reachableFromContainers: docker, ...(network ? { gatewayAddress: network.gateway } : {}) });
+  const world = new TrialWorld({ trialId: trial.id, split: cell.split, actors: task.actors, outDir: dirs.root, worldPath: opts.worldPath, reachableFromContainers: docker, ...(task.world?.retire?.length ? { retire: task.world.retire } : {}), ...(network ? { gatewayAddress: network.gateway } : {}) });
   log(`world for ${trial.id} at ${world.localUrl} (harness sees ${world.harnessUrl}); ${task.turns.length} turns, budget ${task.time_budget_s} s per turn`);
   const proxy = mode === 'scripted' ? null : ctx.proxy;
 

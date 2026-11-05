@@ -25,6 +25,20 @@
 // no gbrain) and use and cross-scope from a stated assumption, every task at one per-trial rate p (0.10, 0.25 and 0.50,
 // the last the widest a binary endpoint gets), each row saying which it is. Nothing here reads a results directory
 // for anything but counting.
+//
+//   bun scripts/paired-mdd.ts --project --results <frozen-dev results> --pair <told-live cell>:<none cell> [--pair ...] [--families a,b]
+//     [--tasks 36] [--reps 3] [--alpha 0.025] [--holm-family 2] [--power 0.8] [--threshold 15]
+//
+// The v0.4 power gate (internal-task, plan decision 9(c)): a target-design projection of the minimum detectable difference for
+// told-live against none, per harness, from fresh frozen-dev rows. The estimator is named in PROJECTION_ESTIMATOR and in the
+// output: per task, the difference of the two arms' pass rates; the task-clustered variance of those differences is split by
+// the method of moments into a between-task part (the variance of the true per-task differences, floored at 0) and a
+// within-task part (each arm's unbiased binomial variance, so a task needs at least two scored trials per arm), and the two
+// parts are scaled to the target design: SE = sqrt((between + within / reps) / tasks). The test is two-sided at alpha per
+// opening (0.025) divided by the Holm family (the two harnesses), the level Holm's first step uses and every test of the
+// family meets, with power 0.8. Beside each projected difference: the fewest repetitions at the target task count, and the
+// fewest tasks at the target repetitions, that bring it to the threshold (15 points). Families default to the five v0.4
+// primary families; model, infrastructure and exam errors are excluded (methodology item 9).
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -33,6 +47,7 @@ import { minimumDiscordantForSignificance, normalQuantile } from '../runner/stat
 import { loadTask } from '../runner/grade/task.ts';
 import { taskDirFor } from '../runner/run.ts';
 import { ENDPOINTS, ENDPOINT_LABEL, endpointValue, type Endpoint } from './gbrain-ladder.ts';
+import { PRIMARY_FAMILIES as V04_PRIMARY_FAMILIES } from './v04/next-round.ts';
 
 export const LADDER_DESIGN = { tasks: 20, reps: 5 } as const;
 export const GBRAIN_ARM_RESULTS = join('docs', 'benchmarks', '2026-10-24-gbrain-arm', 'results');
@@ -93,7 +108,132 @@ export function pairedMdd(rows: TrialRecord[], cells: Array<{ id: string; harnes
   });
 }
 
-if (import.meta.main && process.argv.includes('--ladder')) {
+/** internal-task: the estimator of the target-design projection, printed with every projection. */
+export const PROJECTION_ESTIMATOR = 'task-clustered variance of per-task paired differences (told-live minus none), split by the method of moments into a between-task part and a within-task binomial part, scaled to the target design';
+export const PROJECTION_DEFAULTS = { tasks: 36, reps: 3, alpha: 0.025, holmFamily: 2, power: 0.8, threshold: 0.15 } as const;
+export type ProjectionOptions = { [K in keyof typeof PROJECTION_DEFAULTS]?: number };
+
+/** One task's scored outcomes (1 pass, 0 fail) in each arm: a is told-live, b is none. */
+export interface PairedTaskOutcomes { task: string; a: number[]; b: number[] }
+
+export interface MddProjection {
+  harness: string;
+  tasks_used: number;
+  /** Tasks with fewer than two scored trials in an arm: their within-task variance cannot be estimated. */
+  tasks_excluded: number;
+  rate_a: number | null;
+  rate_b: number | null;
+  /** Mean over tasks of the per-task difference, a minus b. */
+  mean_difference: number | null;
+  /** Variance of the true per-task differences between tasks, floored at 0. */
+  between_task_variance: number | null;
+  /** Mean within-task variance of one paired difference (one trial per arm). */
+  within_task_variance: number | null;
+  tasks: number;
+  reps: number;
+  /** alpha divided by the Holm family size: the level of Holm's first step. */
+  alpha_per_test: number;
+  power: number;
+  /** Projected standard error and minimum detectable difference at the target design, in pass-rate units. */
+  se: number | null;
+  mdd: number | null;
+  threshold: number;
+  /** Fewest repetitions per arm at the target task count, and fewest tasks at the target repetitions, that bring the
+   *  difference to the threshold; null when no number of repetitions can (the between-task part alone is too large). */
+  reps_needed: number | null;
+  tasks_needed: number | null;
+}
+
+/** The v0.4 power gate's target-design projection for one harness (PROJECTION_ESTIMATOR). Pass-rate scale. */
+export function projectMdd(harness: string, outcomes: PairedTaskOutcomes[], options: ProjectionOptions = {}): MddProjection {
+  const o = { ...PROJECTION_DEFAULTS, ...options };
+  const alphaTest = o.alpha / o.holmFamily;
+  const z = normalQuantile(1 - alphaTest / 2) + normalQuantile(o.power);
+  const used = outcomes.filter((t) => t.a.length >= 2 && t.b.length >= 2);
+  const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
+  const base = {
+    harness, tasks_used: used.length, tasks_excluded: outcomes.length - used.length,
+    rate_a: used.length ? mean(used.flatMap((t) => t.a)) : null, rate_b: used.length ? mean(used.flatMap((t) => t.b)) : null,
+    tasks: o.tasks, reps: o.reps, alpha_per_test: alphaTest, power: o.power, threshold: o.threshold,
+  };
+  const empty = { mean_difference: null, between_task_variance: null, within_task_variance: null, se: null, mdd: null, reps_needed: null, tasks_needed: null };
+  if (used.length < 2) return { ...base, ...empty };
+  const unbiased = (xs: number[]) => { const p = mean(xs); return (p * (1 - p) * xs.length) / (xs.length - 1); };
+  const perTask = used.map((t) => {
+    const va = unbiased(t.a), vb = unbiased(t.b);
+    return { d: mean(t.a) - mean(t.b), sampling: va / t.a.length + vb / t.b.length, within: va + vb };
+  });
+  const dBar = mean(perTask.map((t) => t.d));
+  const spread = perTask.reduce((s, t) => s + (t.d - dBar) ** 2, 0) / (perTask.length - 1);
+  const between = Math.max(0, spread - mean(perTask.map((t) => t.sampling)));
+  const within = mean(perTask.map((t) => t.within));
+  const variance = between + within / o.reps;
+  const stats = { ...base, mean_difference: dBar, between_task_variance: between, within_task_variance: within };
+  if (variance <= 0) return { ...stats, se: null, mdd: null, reps_needed: null, tasks_needed: null };
+  const se = Math.sqrt(variance / o.tasks);
+  const target = (o.threshold / z) ** 2;
+  const slack = target * o.tasks - between;
+  return {
+    ...stats, se, mdd: z * se,
+    reps_needed: slack <= 0 ? null : Math.max(1, Math.ceil(within / slack - 1e-9)),
+    tasks_needed: Math.max(2, Math.ceil(variance / target - 1e-9)),
+  };
+}
+
+if (import.meta.main && process.argv.includes('--project')) {
+  const argv = process.argv;
+  const arg = (name: string, fallback?: string): string | undefined => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : fallback; };
+  const results = arg('results');
+  const pairs = argv.flatMap((a, i) => (a === '--pair' && argv[i + 1] ? [argv[i + 1]!.split(':')] : []));
+  if (!results || !existsSync(join(results, 'trials.jsonl')) || !existsSync(join(results, 'manifest.json')) || !pairs.length || pairs.some((p) => p.length !== 2 || !p[0] || !p[1])) {
+    console.error('usage: bun scripts/paired-mdd.ts --project --results <dir> --pair <told-live cell>:<none cell> [--pair ...] [--families a,b] [--tasks 36] [--reps 3] [--alpha 0.025] [--holm-family 2] [--power 0.8] [--threshold 15]');
+    process.exit(2);
+  }
+  const num = (name: string, fallback: number) => Number(arg(name, String(fallback)));
+  const options = { tasks: num('tasks', PROJECTION_DEFAULTS.tasks), reps: num('reps', PROJECTION_DEFAULTS.reps), alpha: num('alpha', PROJECTION_DEFAULTS.alpha), holmFamily: num('holm-family', PROJECTION_DEFAULTS.holmFamily), power: num('power', PROJECTION_DEFAULTS.power), threshold: num('threshold', 100 * PROJECTION_DEFAULTS.threshold) / 100 };
+  const whole = (x: number) => Number.isInteger(x) && x > 0;
+  const share = (x: number) => Number.isFinite(x) && x > 0 && x < 1;
+  if (!whole(options.tasks) || !whole(options.reps) || !whole(options.holmFamily) || !share(options.alpha) || !share(options.power) || !share(options.threshold)) {
+    console.error('paired-mdd --project: --tasks, --reps and --holm-family take whole numbers above 0, --alpha and --power a number between 0 and 1, --threshold points between 0 and 100');
+    process.exit(2);
+  }
+  const families = arg('families')?.split(',').map((s) => s.trim()) ?? [...V04_PRIMARY_FAMILIES];
+  const rows = readFileSync(join(results, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord);
+  const cells = (JSON.parse(readFileSync(join(results, 'manifest.json'), 'utf8')) as { cells: Array<{ id: string; harness: string; split: 'dev' | 'heldout'; task_set?: string }> }).cells;
+  const tasksRoot = join(import.meta.dir, '..', 'tasks');
+  const familyOf = new Map<string, string>();
+  const EXCLUDED = new Set(['model_error', 'infra_error', 'exam_fault']);
+  const pts = (x: number | null) => (x === null ? 'n/a' : `${(100 * x).toFixed(1)} points`);
+  const rate = (x: number | null) => (x === null ? 'n/a' : `${(100 * x).toFixed(0)}%`);
+  const table: Array<{ a: string; b: string; p: MddProjection }> = [];
+  for (const [a, b] of pairs as Array<[string, string]>) {
+    const ca = cells.find((c) => c.id === a), cb = cells.find((c) => c.id === b);
+    if (!ca || !cb || ca.harness !== cb.harness) {
+      console.error(`paired-mdd --project: ${a}:${b} must name two cells of the manifest on one harness`);
+      process.exit(2);
+    }
+    const scored = (cell: typeof ca) => rows.filter((t) => {
+      if (t.cell !== cell.id || EXCLUDED.has(t.termination)) return false;
+      const key = `${cell.task_set ?? ''}/${cell.split}/${t.task}`;
+      if (!familyOf.has(key)) familyOf.set(key, loadTask(taskDirFor(cell, t.task, tasksRoot)).family);
+      return families.includes(familyOf.get(key)!);
+    });
+    const ra = scored(ca), rb = scored(cb);
+    const pass = (t: TrialRecord) => (t.grade === 'pass' && !t.consent_violation ? 1 : 0);
+    const tasks = [...new Set([...ra, ...rb].map((t) => t.task))].sort();
+    table.push({ a, b, p: projectMdd(ca.harness, tasks.map((task) => ({ task, a: ra.filter((t) => t.task === task).map(pass), b: rb.filter((t) => t.task === task).map(pass) })), options) });
+  }
+  const thr = String(+(100 * options.threshold).toFixed(1));
+  console.log([
+    `Projected minimum detectable difference for told-live against none at a target design (v0.4 power gate), from ${results}.`,
+    `Estimator: ${PROJECTION_ESTIMATOR}: SE = sqrt((between-task variance + within-task variance / repetitions) / tasks).`,
+    `Target: ${options.tasks} tasks by ${options.reps} repetitions per arm; two-sided alpha ${options.alpha} per opening, Holm over ${options.holmFamily} harnesses (each test at ${options.alpha / options.holmFamily}, Holm's first step); power ${options.power}; threshold ${thr} points. Families: ${families.join(', ')}. Model, infrastructure and exam errors excluded.`,
+    '',
+    `| Harness | Told-live cell | None cell | Tasks used (excluded) | Told-live | None | Mean difference | Between-task variance | Within-task variance | Projected SE | Projected MDD | Repetitions for ${thr} points at ${options.tasks} tasks | Tasks for ${thr} points at ${options.reps} repetitions |`,
+    '|---|---|---|---|---|---|---|---|---|---|---|---|---|',
+    ...table.map(({ a, b, p }) => `| ${p.harness} | ${a} | ${b} | ${p.tasks_used} (${p.tasks_excluded}) | ${rate(p.rate_a)} | ${rate(p.rate_b)} | ${pts(p.mean_difference)} | ${p.between_task_variance === null ? 'n/a' : p.between_task_variance.toFixed(4)} | ${p.within_task_variance === null ? 'n/a' : p.within_task_variance.toFixed(4)} | ${pts(p.se)} | ${pts(p.mdd)} | ${p.reps_needed ?? (p.mdd === null ? 'n/a' : `not reachable at ${options.tasks} tasks`)} | ${p.tasks_needed ?? 'n/a'} |`),
+  ].join('\n'));
+} else if (import.meta.main && process.argv.includes('--ladder')) {
   const arg = (name: string, fallback?: string): string | undefined => { const i = process.argv.indexOf(`--${name}`); return i >= 0 ? process.argv[i + 1] : fallback; };
   const options = { alpha: Number(arg('alpha', '0.05')), power: Number(arg('power', '0.8')), designReps: arg('reps') ? Number(arg('reps')) : undefined };
   const repoRoot = join(import.meta.dir, '..');

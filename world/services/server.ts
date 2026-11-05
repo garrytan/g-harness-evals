@@ -39,6 +39,8 @@ export interface WorldServerOptions {
   port?: number;
   /** The gbrain sidecar behind POST /gbrain (docs/gbrain-arm.md); absent, the route does not exist. setGbrain changes it later. */
   gbrain?: GbrainUpstream | null;
+  /** v0.4 (internal-task): the task's [world] retire slugs, hidden from every read surface from construction on. */
+  retire?: readonly string[];
 }
 
 export function mintCredentials(trialId: string, actors: string[], botMember = 'assistant'): TrialCredentials {
@@ -81,6 +83,7 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
   const service = new WorldService({
     world, split: opts.split, trialId: opts.trialId, clock, log,
     bot: { id: credentials.bot.member, name: credentials.bot.member, handle: credentials.bot.member },
+    ...(opts.retire?.length ? { retire: opts.retire } : {}),
   });
   for (const a of credentials.actors) service.requireMember(a.member);
   const socket = new SocketHub(service);
@@ -184,6 +187,17 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
       if (path === '/admin/fence' && req.method === 'POST') {
         service.fence();
         return Response.json({ ok: true, fenced: true });
+      }
+      if (path === '/admin/expire' && req.method === 'POST') {
+        // v0.4 (internal-task): the runner expires earlier turns' windows before the turn that carries expire_turns; admin token only.
+        const body = (await req.json().catch(() => ({}))) as { turn?: unknown; windows?: unknown };
+        const isTs = (v: unknown): v is string => typeof v === 'string' && /^\d+\.\d{1,6}$/.test(v);
+        const windows = Array.isArray(body.windows) ? body.windows as Array<{ turn?: unknown; from_ts?: unknown; to_ts?: unknown }> : null;
+        if (!Number.isInteger(body.turn) || !windows?.length || !windows.every((w) => Number.isInteger(w?.turn) && isTs(w.from_ts) && (w.to_ts === null || isTs(w.to_ts)))) {
+          return Response.json({ ok: false, error: 'expire takes {turn, windows: [{turn, from_ts, to_ts | null}]}' }, { status: 400 });
+        }
+        const resolved = service.expire(body.turn as number, windows as Array<{ turn: number; from_ts: string; to_ts: string | null }>);
+        return Response.json({ ok: true, windows: resolved });
       }
       if (path === '/admin/socket') return Response.json({ connections: socket.connections, unacked: socket.unacked.size });
       if (path === '/admin/gbrain/requester' && req.method === 'POST') {

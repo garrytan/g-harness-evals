@@ -40,6 +40,7 @@ tokens, and serves on `127.0.0.1:8790`:
 | `POST /clock/advance` | runner, admin token | `{"seconds": N}` or `{"to": "<ISO instant>"}`, forward only |
 | `GET /admin/snapshot`, `GET /admin/events`, `POST /admin/fence`, `GET /admin/socket` | runner, admin token | state for graders, the in-memory event list, stop accepting writes (contract item 7), socket connection count |
 | `POST /admin/gbrain/requester` | runner, admin token | `{"member": "<id>"}` or `{"member": null}`, the member whose gbrain token the tap presents under member scope (below); logged as a `gbrain.requester` admin event |
+| `POST /admin/expire` | runner, admin token | v0.4: `{"turn": N, "windows": [{"turn": k, "from_ts": "<ts>", "to_ts": "<ts>" or null}]}`, hide every message inside each window from every read surface (below); logged as an `admin.expire` admin event |
 | `POST /admin/gbrain/flush` | tests and tools, admin token | waits (up to the queue's 120 s deadline, which this server's idle timeout matches) until every message posted so far is written into the brain by the live ingestion (below) and answers `{ok, ingest, written, skipped, failed}`; `ingest: "off"` with nothing written when the trial has no ingestion. The runner's trial world calls the module in process instead |
 | `GET /healthz` | anyone | liveness |
 
@@ -105,6 +106,31 @@ Both surfaces call the same `WorldService`, so the rules are identical:
   team to anyone; it is logged as a read with no channel target.
 - Denied calls are logged as `deny` events with the reason, so a cross-scope attempt is evidence even though
   it returned nothing.
+
+## Expiry and retirement (v0.4)
+
+v0.4 tasks need a fact that is gone from the readable world when it is asked for. Two primitives do this, the
+same for every harness and every arm.
+
+- **Per-turn expiry** stands for a workspace retention policy or a deleted message. A turn of a task can carry
+  `expire_turns = [k, ..]`. Before that turn, the runner calls `POST /admin/expire`, and every message inside
+  turn k's window disappears. The window runs from turn k's actor post up to turn k + 1's actor post, so the
+  bot's reply, its thread replies and every post or DM it made anywhere while working on turn k are inside it.
+  When turn k + 1 is the carrying turn itself, the window runs to the newest message. The world resolves each
+  window to the messages it holds when it is applied, so later posts never fall inside it.
+- **Per-task retirement** stands for an archived channel or a removed file. A task can carry
+  `[world] retire = ["<slug>", ..]`. Every seed record with that corpus slug (chat messages, files, meetings
+  and mail) is hidden from construction on, and one `admin.retire` event records how many of each kind, never
+  the slugs. Channels stay listed, since `source_slugs` is a list on the channel and not a record's slug.
+
+Both live in `WorldService` behind one filter. Channel history with every option (`thread_ts`, `oldest`,
+`latest`, `limit`), `conversations.replies`, search, `list_files`, `read_file` (by path, id or slug),
+`calendar_list` and `mail_list` all apply it, so the Slack routes and world-MCP agree, for actors and the bot
+alike. A retired file reads as `file_not_found`. Only the admin token reaches `POST /admin/expire`; bot, actor
+and app tokens get 401, and there is no route or tool for retirement at all. The snapshot keeps every message,
+meeting and mail whole, so grading reads the same records with or without expiry. The grader's secondary
+`fact_readable_at_ask` rebuilds the bot's view at an ask turn from the `admin.expire` events and the task's
+`[world] retire` (docs/tasks.md).
 
 ## The event log
 
@@ -244,8 +270,10 @@ re-import when the messy-company-v1 checkout is present at `~/.capy/work/harness
 `$MESSY_COMPANY_V1`), Slack conformance (membership on reads, a post in history and in the log, DM
 visibility, threads, the socket), clock determinism and the admin-only advance, and world-MCP scope over
 HTTP and stdio (a member cannot read another's private notes, team files follow team scope, approval
-requests record and do nothing, a fenced world refuses writes), and the gbrain tap against a fake sidecar
-(authentication, header swap, event shape per tool, upstream errors, batches). The MCP tests use the official
+requests record and do nothing, a fenced world refuses writes), the gbrain tap against a fake sidecar
+(authentication, header swap, event shape per tool, upstream errors, batches), and v0.4 expiry and retirement
+(`tests/v04-world-lifecycle.test.ts`: Slack and world-MCP parity with thread replies, a window holding the bot's
+reply and side posts, admin-only control, retirement of every record kind). The MCP tests use the official
 client SDK over both transports.
 
 ## Not built yet
@@ -260,8 +288,8 @@ client SDK over both transports.
   eng-r2-outside-1) decides that.
 - **Persistence.** State lives in the process; the snapshot endpoint is the hand-off to graders. There is no
   SQLite copy yet, and no replay of socket envelopes.
-- **Thread fidelity.** Threads are flat replies with `thread_ts`; reactions, edits, deletes, files and
-  reply counts are not modelled, and `search.messages` is a substring match.
+- **Thread fidelity.** Threads are flat replies with `thread_ts`; reactions, edits, files and reply counts are
+  not modelled (v0.4 expiry hides whole turn windows, not single messages), and `search.messages` is a substring match.
 - **Egress and isolation.** The admin endpoints are protected by a token only; the per-trial network
   namespace (contract item 6) is the real boundary and belongs to `runner/egress`.
 - **Time zone.** One fixed offset; no DST.

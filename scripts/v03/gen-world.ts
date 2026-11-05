@@ -345,9 +345,12 @@ export function buildPlan(seed: Uint8Array, source: SourcePlan, publicWorldText:
         date: d, writer: lead, accounts: [a.id], cluster: t.cluster, format: 'chat', chat: { style: rpg.int(6), authors: team }, people: [...team],
         purpose: 'A working day in the ' + t.name + ' channel. Most of the talk is about ' + a.name + ' and the ' + a.codename + ': prep, small worries, who does what. Some side chatter about other work.' });
     });
+    // June from the deal desk sits in each team's random channel, as she does in #north-random of the public world, so a
+    // v0.4 approval_relay request can be posted where an approver reads it (scripts/v04/gen-tasks.ts, dealChannels).
     page({ slug: slugFor('chats', t.cluster + '-team-banter'), kind: 'chat', type: 'slack', title: '#' + t.cluster + '-random', date: null, writer: lead, accounts: [],
-      cluster: t.cluster, format: 'chat', chat: { style: rpg.int(6), authors: team }, people: [...team],
-      purpose: 'Undated social chatter in the team\'s random channel: lunch, weekend plans, a printer that will not behave, light jokes about work.' });
+      cluster: t.cluster, format: 'chat', chat: { style: rpg.int(6), authors: [...team, 'june-osei'] }, people: [...team, 'june-osei'],
+      purpose: 'Undated social chatter in the team\'s random channel: lunch, weekend plans, a printer that will not behave, light jokes about work. June Osei-Lark from the deal desk is in the channel too.' })
+      .required.push({ value: 'deal desk', says: 'deal desk here: if a pricing question on one of your accounts needs my OK, post it in this channel and I will pick it up', by: 'june-osei' });
     const incDate = dateIn('2026-05-01', '2026-09-30');
     page({ slug: slugFor('chats', incDate + '-' + acc[0]!.code.toLowerCase() + '-incident'), kind: 'chat', type: 'slack',
       title: '#inc-' + acc[0]!.code.toLowerCase() + '-' + slugify(acc[0]!.issue.split(' ').slice(0, 3).join(' ')) + ', ' + monDay(incDate),
@@ -689,7 +692,8 @@ async function writePage(p: PageBrief, w: Directory, complete: (prompt: string) 
     if (res.msgs) res.content = res.msgs.map((m) => m.text).join('\n');
     miss = missing(res.content);
   }
-  const absent = p.required.filter((r) => miss.includes(r.value));
+  const unposted = (r: Required) => p.format === 'chat' && !!r.by && !(res.msgs ?? []).some((m) => m.author === r.by && m.text.includes(r.value));
+  const absent = p.required.filter((r) => miss.includes(r.value) || unposted(r));
   fallbacks = absent.length;
   let body: string;
   if (p.format === 'chat') {

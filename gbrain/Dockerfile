@@ -40,6 +40,10 @@
 # /opt/sidecar/image.json records world_sha256, heldout_corpus_sha256 and sealed. A default build (no named contexts, empty
 # arguments) produces the public image as before, with world_sha256 of the public world, heldout_corpus_sha256 null and
 # sealed false. A sealed image holds the plaintext heldout corpus and stays on the machine that built it.
+# internal-task v0.4: build-gbrain-image.sh --world passes a task set's own world as world-input and its dev pages as the named
+# context dev-corpus=<set>/corpus, with WORLD_SHA256 and DEV_CORPUS_SHA256; the build checks both, copies the dev pages over
+# the public ones and records dev_corpus_sha256 in image.json. The heldout brains of such an image are built from the public
+# world, since a set's own world is dev only. A build with neither argument is unchanged.
 ARG GBRAIN_COMMIT=a590ad07d15c92669ae30a37835df30d071e5536
 ARG GBRAIN_VERSION=
 ARG CORPUS_COMMIT=6999ebc9da0ac784ac05995b586d22293544e924
@@ -51,11 +55,17 @@ COPY world/seed/world.json /world.json
 # The sealed heldout corpus overlay, empty by default; a named context heldout-corpus=<dir> holding heldout/ replaces it.
 FROM scratch AS heldout-corpus
 
+# A task set's own dev corpus pages (internal-task v0.4, build-gbrain-image.sh --world), empty by default; a named context
+# dev-corpus=<dir> holding dev/ replaces it.
+FROM scratch AS dev-corpus
+
 FROM oven/bun:1.4.4-debian AS base
 ARG GBRAIN_COMMIT
 ARG GBRAIN_VERSION
 ARG SEALED_WORLD_SHA256=
 ARG SEALED_CORPUS_SHA256=
+ARG WORLD_SHA256=
+ARG DEV_CORPUS_SHA256=
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git jq \
     && rm -rf /var/lib/apt/lists/*
 # A shallow fetch of exactly the pinned commit (a full sha or a branch name; GitHub serves both).
@@ -75,9 +85,10 @@ COPY --from=world-input /world.json /opt/sidecar/world/seed/world.json
 # The world's digest goes into image.json; a sealed build stops here when the world it received is not the receipt's.
 RUN world_sha256="$(sha256sum /opt/sidecar/world/seed/world.json | cut -d' ' -f1)" \
     && if [ -n "$SEALED_WORLD_SHA256" ] && [ "$world_sha256" != "$SEALED_WORLD_SHA256" ]; then echo "HE-SEALED-005 world.json has sha256 $world_sha256, SEALED_WORLD_SHA256 asks for $SEALED_WORLD_SHA256" >&2; exit 1; fi \
+    && if [ -n "$WORLD_SHA256" ] && [ "$world_sha256" != "$WORLD_SHA256" ]; then echo "world.json has sha256 $world_sha256, WORLD_SHA256 asks for $WORLD_SHA256" >&2; exit 1; fi \
     && sealed=false && if [ -n "$SEALED_WORLD_SHA256" ]; then sealed=true; fi \
-    && jq -c --arg w "$world_sha256" --arg c "$SEALED_CORPUS_SHA256" --argjson s "$sealed" \
-         '. + {world_sha256: $w, heldout_corpus_sha256: (if $c == "" then null else $c end), sealed: $s}' /opt/sidecar/image.json > /tmp/image.json \
+    && jq -c --arg w "$world_sha256" --arg c "$SEALED_CORPUS_SHA256" --argjson s "$sealed" --arg d "$DEV_CORPUS_SHA256" \
+         '. + {world_sha256: $w, heldout_corpus_sha256: (if $c == "" then null else $c end), sealed: $s} + (if $d == "" then {} else {dev_corpus_sha256: $d} end)' /opt/sidecar/image.json > /tmp/image.json \
     && mv /tmp/image.json /opt/sidecar/image.json
 
 FROM base AS corpus
@@ -99,6 +110,15 @@ RUN if [ -n "$SEALED_CORPUS_SHA256" ]; then \
       && if [ -d /opt/heldout-overlay/heldout ]; then cp -a /opt/heldout-overlay/heldout/. "$heldout/"; fi; \
     fi \
     && rm -rf /opt/heldout-overlay
+# A --world build (DEV_CORPUS_SHA256 set) checks its dev overlay the same way and copies its dev pages over the public ones.
+ARG DEV_CORPUS_SHA256=
+COPY --from=dev-corpus / /opt/dev-overlay/
+RUN if [ -n "$DEV_CORPUS_SHA256" ]; then \
+      got="$(cd /opt/dev-overlay && find . -type f -printf '%P\n' | LC_ALL=C sort | xargs -r -d '\n' sha256sum | sha256sum | cut -d' ' -f1)" \
+      && if [ "$got" != "$DEV_CORPUS_SHA256" ]; then echo "the dev corpus overlay has digest $got, DEV_CORPUS_SHA256 asks for $DEV_CORPUS_SHA256" >&2; exit 1; fi \
+      && cp -a /opt/dev-overlay/dev/. /opt/corpus/eval/data/messy-company-v1/corpus/dev/; \
+    fi \
+    && rm -rf /opt/dev-overlay
 
 # The brain builder: gbrain plus the corpus, nothing built yet. scripts/build-gbrain-image.sh --embedded runs this stage as a
 # container with /brain bind-mounted and OPENAI_BASE_URL pointing at the metering proxy to build the embedded brains.
@@ -117,8 +137,11 @@ RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split
 FROM builder AS brain-heldout
 ARG GBRAIN_COMMIT
 ARG CORPUS_COMMIT
-RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split heldout \
-      --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging \
+ARG WORLD_SHA256=
+COPY world/seed/world.json /opt/sidecar/world/public-world.json
+RUN w=/opt/sidecar/world/seed/world.json && if [ -n "$WORLD_SHA256" ]; then w=/opt/sidecar/world/public-world.json; fi \
+    && env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split heldout \
+      --corpus /opt/corpus --world "$w" --out /brain --staging /tmp/staging \
       --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT"
 
 FROM builder AS brain-dev-company
@@ -131,8 +154,11 @@ RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split
 FROM builder AS brain-heldout-company
 ARG GBRAIN_COMMIT
 ARG CORPUS_COMMIT
-RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split heldout --brain company \
-      --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging \
+ARG WORLD_SHA256=
+COPY world/seed/world.json /opt/sidecar/world/public-world.json
+RUN w=/opt/sidecar/world/seed/world.json && if [ -n "$WORLD_SHA256" ]; then w=/opt/sidecar/world/public-world.json; fi \
+    && env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split heldout --brain company \
+      --corpus /opt/corpus --world "$w" --out /brain --staging /tmp/staging \
       --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT"
 
 FROM builder AS brain-dev-member
@@ -145,8 +171,11 @@ RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split
 FROM builder AS brain-heldout-member
 ARG GBRAIN_COMMIT
 ARG CORPUS_COMMIT
-RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split heldout --brain member \
-      --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging \
+ARG WORLD_SHA256=
+COPY world/seed/world.json /opt/sidecar/world/public-world.json
+RUN w=/opt/sidecar/world/seed/world.json && if [ -n "$WORLD_SHA256" ]; then w=/opt/sidecar/world/public-world.json; fi \
+    && env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split heldout --brain member \
+      --corpus /opt/corpus --world "$w" --out /brain --staging /tmp/staging \
       --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT"
 
 # internal-task (the access-rules rerun): the dev member brain with reads gated by gbrain folder rules and member-bound tokens instead of

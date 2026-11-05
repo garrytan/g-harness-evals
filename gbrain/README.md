@@ -17,7 +17,7 @@ The gbrain arm of the multi-user evaluation asks whether a harness does better o
 From the repository root (the Dockerfile copies `gbrain/`, `world/types.ts` and `world/seed/world.json`; the root `.dockerignore` keeps the context to those):
 
 ```sh
-docker build -f gbrain/Dockerfile -t harness-eval/gbrain:dev .      # or: scripts/build-gbrain-image.sh [--gbrain <sha>] [--tag <tag>] [--embedded]
+docker build -f gbrain/Dockerfile -t harness-eval/gbrain:dev .      # or: scripts/build-gbrain-image.sh [--gbrain <sha>] [--tag <tag>] [--embedded] [--world <file>]
 ```
 
 The build fetches gbrain at the pinned commit (`--build-arg GBRAIN_COMMIT=<sha or branch>` for another; `GBRAIN_VERSION` is checked only when set, so a candidate commit builds without editing this file), runs `bun install --frozen-lockfile`, fetches the messy-company-v1 corpus from gbrain-evals at `6999ebc9` with a sparse checkout, and builds each of the six brains (the bot-visible, company and member brain per split), and at a gbrain commit with the `access` command the dev access-ruled member brain (internal-task), in its own stage at `/brain` (gbrain records absolute paths inside a brain, so it is served from the path it was built at). The build fails when a page world.json lists is missing from the corpus or when an import count differs from the page count (per source for a company brain). A company brain takes about 95 s on a 4-core machine (39 `sources add` and up to 28 `import` calls, then 16 `auth create` and `auth rescope` pairs); the install stage (`build-install.ts`, below) about 3 s; the image takes about 6 minutes warm and is about 1.7 GB. `/opt/sidecar/image.json` inside the image records the resolved gbrain commit and the checkout's VERSION.
@@ -92,6 +92,10 @@ With scope `member-sources` the entrypoint copies both `tokens.json` and `manife
 In a trial the runner does all of this (runner/trial/gbrain.ts) and the harness never reaches the sidecar: it reaches `POST /gbrain` on the world server, which authenticates it as the bot, swaps in the sidecar token (or, under member scope, the requesting member's token) and records the call ([world/README.md](../world/README.md)).
 
 ## Changelog
+
+### 2026-11-05: build-gbrain-image.sh --world in the Build line (internal-task)
+
+The Build command's comment lists `--world <file>`, which builds a task set's own world into the image (docs/tasks.md, "A set with its own world"). Why: the flag is new on this branch.
 
 ### 2026-11-02: the access-ruled member brain
 
