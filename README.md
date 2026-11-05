@@ -11,7 +11,7 @@
 - **Our v0.3 multi-user tasks are too easy for Opus 5.5.** Four of six task families scored above 90 percent. Only corrections (9 of 40) and approval relay (26 of 30) landed in the 10 to 90 percent band. So the sealed v0.3 set stays unopened, and the next set must put facts where only memory reaches them ([report](docs/benchmarks/2026-10-31-v03-opus-dev/report.md)).
 - **Scoping a shared brain still matters on Opus.** With one bot-wide gbrain token, search returned 123 (OpenClaw) and 121 (Hermes) rows the asker was not allowed to see. Scoped to the asker: 0 (same report, descriptive).
 
-**All four rest on dev runs, uncounted checks or, for the hook test, one preregistered run, all on public tasks.** They steer our work and prove nothing on unseen tasks. GPT-6.1 Sol has reported in four runs so far: the Codex cells of the two installer rungs (dev, Current results), the Sol arms of `gates938-phase3`, the hook test ([report](docs/benchmarks/2026-11-03-investigate-gate/report.md)), where every Sol arm sat near the floor, and the Sol cells of `prompt-archaeology-2026-11` ([report](docs/benchmarks/2026-11-01-prompt-archaeology/report.md)). Older results on Sonnet 5.5 and Haiku 5.5 are in the [appendix](#appendix-sonnethaiku-runs-appendix-grade-not-frontier-evidence).
+**All four rest on dev runs, uncounted checks or, for the hook test, one preregistered run, all on public tasks.** They steer our work and prove nothing on unseen tasks. GPT-6.1 Sol has reported in five runs so far: the Codex cells of the two installer rungs (dev, Current results), the Sol arms of `gates938-phase3`, the hook test ([report](docs/benchmarks/2026-11-03-investigate-gate/report.md)), where every Sol arm sat near the floor, the Sol cells of `prompt-archaeology-2026-11` ([report](docs/benchmarks/2026-11-01-prompt-archaeology/report.md)), and the Sol cells of `matrix-mu-2026-11` ([report](docs/benchmarks/2026-11-04-matrix-mu/report.md)). Older results on Sonnet 5.5 and Haiku 5.5 are in the [appendix](#appendix-sonnethaiku-runs-appendix-grade-not-frontier-evidence).
 
 ## What each harness sends the model
 
@@ -224,6 +224,7 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 - The Claude Code and Codex installer rung found gbrain's installer raised cross-scope exposure on Claude Code (Opus 5.5) against told, and could not tell on Codex (GPT-6.1 Sol). gbrain had no access rules, so it returned channel pages to non-members, and that cut Claude Code's pass rate (41 of 44 failures in its gbrain cells failed only the cross-scope check).
 - Its rerun with gbrain's per-member access rules on (`installer-cc-codex-acl-2026-11`) found no cross-scope return in any of 204 gbrain trials, so installer and told can't be told apart on exposure. Every gbrain cell then passed at least as often as no brain (Claude Code installer 50 against 46 of 51, Codex installer 49 against 43). Multi-member gbrain needs the access rules.
 - The prompt-archaeology run (`prompt-archaeology-2026-11`) cut one layer of each harness's built-in prompt at a time. No layer measurably bought pass rate on these tasks, but most trials sat at or near the ceiling or near the floor. Claude Code's memory-and-skills text and tool-description advice, and Codex's identity text, cost money for nothing detected (single-layer cuts, pending the joint-cut run).
+- The harness x model matrix (`matrix-mu-2026-11`) ran seven harness and model pairs on all 20 dev tasks. No two harnesses could be told apart on pass rate on Opus 5.5 or GPT-6.1 Sol, because 14 of 20 tasks scored the same in every cell. OpenClaw on Opus paid about twice as much per pass as the other Opus harnesses.
 - All are dev.
 
 | Run | Date | Model | Question | Result | Spend | Status | Report |
@@ -239,6 +240,7 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 | `installer-cc-codex-2026-11` | 2026-11-02 | **Opus 5.5**, **GPT-6.1 Sol** | When gbrain's own installer sets up Claude Code (Opus 5.5) or Codex (GPT-6.1 Sol), does the agent read across scope through gbrain more or less often than when told about gbrain? | Claude Code: the installer raises cross-scope exposure via gbrain, 33 of 51 against 20 of 51, +25 [+8, +45], p 0.039. Codex: can't tell apart at 17 tasks, 17 against 9 of 51, +16 [+2, +33], p 0.125 (detects about 25 points). gbrain without access rules is default-open. Descriptive: Claude Code pass 46 (none), 31 (told), 27 (installer) of 51, with 41 of the 44 gbrain-cell failures failing only the cross-scope check. Why null? verdict FIX-METHOD | $56.67 of $155 (+ $1.73 smokes, $0.70 costing smoke) | dev | [report](docs/benchmarks/2026-11-01-installer-cc-codex/report.md) |
 | `installer-cc-codex-acl-2026-11` | 2026-11-03 | **Opus 5.5**, **GPT-6.1 Sol** | The same six cells with gbrain's per-member access rules on and each token bound to its member (gbrain v0.60.554.0): does the installer still read across scope more than told? | Exposure 0 of 51 in all four gbrain cells, so not distinguished by construction on both hosts. Descriptive, against no brain: pass Claude Code 46 (none), 49 (told), 50 (installer), +8 [+0, +22] for installer; Codex 43, 45, 49, +12 [+0, +24]. Why null? verdicts KEEP (gbrain with access rules) and FIX-METHOD (installer against told, saturated) | $55.57 of $85 (+ $1.61 smokes) | dev | [report](docs/benchmarks/2026-11-01-installer-cc-codex/report-acl.md) |
 | `prompt-archaeology-2026-11` | 2026-11-04 | **Opus 5.5**, GPT-6.1 Sol | The proxy removes one layer of each harness's built-in prompt (identity, tool guide, tool descriptions, safety, memory and skills, work habits, style) at a time. What does each cut do to pass rate and cost per trial against the full prompt? | No keep on pass rate in any pair (every Holm p 1.000). Cuts: Claude Code memory-skills -$0.033 [-$0.046, -$0.022] per trial (19 percent) and tool-descriptions -$0.013 (8 percent); Codex identity -$0.004 (3 percent). Codex's other single layers each cost 5 to 7.5 points, all on approval relay. Hermes keep (safety) on 5 of 7 arms, all from one task. 22 of 40 trials per cell in families at or near the ceiling. Why null? verdicts CUT-CANDIDATE (the three single-layer cuts and the Claude Code and OpenClaw minimal prompts), FIX-METHOD (the rest), KEEP (Hermes safety) | $328.76 of $548.50 (incl. $11.46 smokes); launch 1's $548.50 sunk | dev | [report](docs/benchmarks/2026-11-01-prompt-archaeology/report.md) |
+| `matrix-mu-2026-11` | 2026-11-05 | **Opus 5.5**, **GPT-6.1 Sol** | With the model held fixed, how do pass rate and cost per pass differ between harnesses: Claude Code, OpenClaw, Hermes and QM on Opus 5.5, and Codex, OpenClaw and Hermes on GPT-6.1 Sol (20 dev tasks, 4 reps)? | All six primary pairs can't tell apart (every Holm p 1); largest gaps +3.9 [+0.0, +11.8] (OpenClaw over Codex) and +3.8 [+0.0, +10.0] (Hermes over Codex) on Sol; MDD 7.7 to 14.2 points. Pass 71.3% to 78.8%; 14 of 20 tasks scored the same in every cell. Cost per pass on Opus: OpenClaw $0.44 [$0.33, $0.63], Claude Code $0.22, Hermes $0.24, QM $0.19 (descriptive). OpenClaw cells incomplete (sy-03 cap stops). Why null? verdict FIX-METHOD | $99.01 of $156.27 (+ $3.73 smokes earlier), VMs $6.36 | dev | [report](docs/benchmarks/2026-11-04-matrix-mu/report.md) |
 
 ### How to read these numbers
 
@@ -248,9 +250,9 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 - Only a held-out set's first counted opening is confirmatory; a later opening is dev because whoever designed it had seen that set's results ([Corrections](#corrections), 2026-10-28).
 - The maths (95 percent task-clustered intervals, paired differences, sign-flip tests, Holm) and the openings ledger: [docs/methods.md](docs/methods.md#how-to-read-the-numbers).
 
-**Spend so far.** Spend across every lane, from the lease ledgers: $1,549.93 committed of the $2,000 program cap ([docs/budget-ledger.md](docs/budget-ledger.md)).
+**Spend so far.** Spend across every lane, from the lease ledgers: $1,648.94 committed of the $2,000 program cap ([docs/budget-ledger.md](docs/budget-ledger.md)).
 
-- That is $1,471.34 in the program's lane ledger plus $78.59 from the two v0.2 runs' committed ledgers that the lane ledger does not yet list.
+- That is $1,570.35 in the program's lane ledger plus $78.59 from the two v0.2 runs' committed ledgers that the lane ledger does not yet list.
 - Every dollar is the metering proxy's list-price meter; the provider-side check has never been performed (Known limits).
 
 ## Known limits
@@ -412,6 +414,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 **Contributing.** Outside code is read as text and rewritten by maintainers, never merged as is; bug reports need a repro on current main or a failing test ([CONTRIBUTING.md](CONTRIBUTING.md)). Report security issues privately ([SECURITY.md](SECURITY.md)). Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Changelog
+
+### 2026-11-05: harness x model matrix reported
+
+The v0.3 runs table gains a row for run `matrix-mu-2026-11`, and the So what list gains a line for it. The note under "Found so far" now counts five runs with GPT-6.1 Sol results, adding this one. The spend line, and its twin in `docs/methods.md`, moves to $1,648.94: the repository's lane ledger copy gains this run's line ($99.01). Why: the run is complete and its report is in the tree.
 
 ### 2026-11-04: check a finding yourself
 

@@ -54,6 +54,7 @@ Regenerate this page with `bun scripts/budget-ledger.ts` after appending a line 
 | 2026-11-03 | `internal-task` | $548.50 | not recorded | not recorded | `15 Ubicloud shard ledgers of prompt-archaeology-2026-11 launch 1 (VM-local, destroyed unread 2026-11-03T15:00Z after the controller machine died)` | prompt-archaeology-2026-11 launch 1 at 216cb6c9d (prereg #230): 15 shards launched 11:52Z, destroyed 15:00Z, results unrecoverable, 0 trials counted. committed_usd is the upper bound, the 15 shard leases ($458.50) plus the 15 smoke leases ($90.00); the actual spend is unknown because the ledgers were lost. Sunk; amendment 2 relaunched the run. |
 | 2026-11-03 | `internal-task` | $0.00 | 0 | 0 | `15 Ubicloud shard ledgers of prompt-archaeology-2026-11 launch 2 (no lease opened)` | prompt-archaeology-2026-11 launch 2 at 216cb6c9d: every shard stopped at the keyless pre-smoke before any key, smoke lease or trial; no model spend. VM list price $2.38. |
 | 2026-11-04 | `internal-task` | $328.7642478 | 1640 | 20906 | `docs/benchmarks/2026-11-01-prompt-archaeology/results/<shard>.ledger.sqlite and <shard>.smoke.ledger.sqlite (15 Ubicloud shards, shard leases $458.50 and smoke leases $90.00 under the $548.50 bound; run prompt-archaeology-2026-11)` | prompt-archaeology-2026-11 launch 3 at ef4c99775 (amendment 3, #249): 1640 of 1640 counted trials, 41 cells x 40 (1638 completed, 2 timeout). Shard leases $317.3085 (20,243 ledger entries), smoke leases $11.4557 (663), no cap_stop, no overshoot. he-c relaunched once (GitHub fetch reset in its gbrain image build, before any smoke lease); cx-a resumed once with --resume --no-smoke under its $19 lease (VM docker cgroup error at trial 53). VM list price $17.71 plus the one-VM pre-smoke. |
+| 2026-11-05 | `internal-task` | $99.0056039 | 560 | 7081 | `docs/benchmarks/2026-11-04-matrix-mu/results/<shard>.ledger.sqlite (7 Ubicloud shards, leases $148.46 under the $156.27 cap; run matrix-mu-2026-11)` | matrix-mu-2026-11 counted run at de7f7cdbc947 (#263): 560 of 560 trials recorded, 554 completed and 6 cap_stop model_error on sy-03 (openclaw-opus r3 and r4, openclaw-sol r1 to r4). Per shard: cc-opus $13.2346, oc-opus $26.6127, he-opus $15.3320, qm-opus $10.7478, cx-sol $9.4236, oc-sol $12.4437, he-sol $11.2113 (7,081 ledger entries). cx-sol and oc-sol relaunched once into new destinations after their first VMs' gbrain image build hit HTTP 429 before any lease spend. Not on this line: the smokes that set the leases, $3.10 (internal-task, 2026-11-01) and $0.63 (internal-task, 2026-11-04). Ubicloud: 9 standard-16 VMs, list price $6.36, all destroyed. |
 
 "Not recorded" means the line carries no such field; the counts are the lane's own and the totals below add only what was recorded.
 
@@ -68,9 +69,9 @@ The lane ledger above is the drive record copied verbatim (numbers a line wrote 
 
 ## Program total
 
-Lane ledger only: 46 lanes, $1,471.341208 committed (the sum of `committed_usd` over every line, to six decimals), 14,317 recorded trials and 159,597 recorded requests, against the $2,000 program cap set on 2026-10-22 ([docs/methodology.md](methodology.md), item 11); $528.66 of the cap remains.
+Lane ledger only: 47 lanes, $1,570.346812 committed (the sum of `committed_usd` over every line, to six decimals), 14,877 recorded trials and 166,678 recorded requests, against the $2,000 program cap set on 2026-10-22 ([docs/methodology.md](methodology.md), item 11); $429.65 of the cap remains.
 
-Combined: $1,549.929986 committed, the lane total plus the 2 run ledger row(s) above ($78.588778), against the same $2,000 cap; $450.07 remains.
+Combined: $1,648.93559 committed, the lane total plus the 2 run ledger row(s) above ($78.588778), against the same $2,000 cap; $351.06 remains.
 
 Uncounted smokes, scratch leases and infrastructure outside the paid-call lane (Ubicloud VM time) appear only where a line's note names them.
 

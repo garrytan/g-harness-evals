@@ -1,0 +1,22 @@
+[build-gbrain-image] keyword target: gbrain a590ad07d15c92669ae30a37835df30d071e5536 -> harness-eval/gbrain:dev (log /home/ubi/shard/results/gbrain-image/build.log)
+HE-GBRAIN-007 docker build of the keyword target failed (gbrain a590ad07d15c92669ae30a37835df30d071e5536, tag harness-eval/gbrain:dev); failing stage: brain-dev-company; last lines of /home/ubi/shard/results/gbrain-image/build.log:
+#23 CANCELED
+
+#22 [brain-heldout-member 1/1] RUN env -i PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bun-node-fallback-bin" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split heldout --brain member       --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging       --gbrain "bun /opt/gbrain/src/cli.ts" --commit "a590ad07d15c92669ae30a37835df30d071e5536" --corpus-commit "6999ebc9da0ac784ac05995b586d22293544e924"
+#22 CANCELED
+
+#20 [brain-dev-company 1/1] RUN env -i PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bun-node-fallback-bin" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split dev --brain company       --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging       --gbrain "bun /opt/gbrain/src/cli.ts" --commit "a590ad07d15c92669ae30a37835df30d071e5536" --corpus-commit "6999ebc9da0ac784ac05995b586d22293544e924"
+#20 14.37 gbrain import private-dana-okafor: 3 pages (readers 1)
+#20 CANCELED
+------
+ > [install 3/6] RUN mkdir -p /opt/sidecar/hermes && curl -fsSL "https://raw.githubusercontent.com/NousResearch/hermes-agent/f97608f178d1ffeca59860195ab7da295f7c8e5f/SOUL.md" -o /opt/sidecar/hermes/SOUL.md     && echo "36c1f5a2e92cd1d018311eaf4c8f1e8886672eae78212e033c681d0e3d5d506f  /opt/sidecar/hermes/SOUL.md" | sha256sum -c --quiet:
+2.605 curl: (22) The requested URL returned error: 429
+------
+Dockerfile:181
+--------------------
+ 180 |     COPY --from=brain-heldout /brain /brains/heldout
+ 181 | >>> RUN mkdir -p /opt/sidecar/hermes && curl -fsSL "https://raw.githubusercontent.com/NousResearch/hermes-agent/$HERMES_COMMIT/SOUL.md" -o /opt/sidecar/hermes/SOUL.md \
+ 182 | >>>     && echo "$HERMES_SOUL_SHA256  /opt/sidecar/hermes/SOUL.md" | sha256sum -c --quiet
+ 183 |     COPY harnesses/claude-code/config/settings.json /opt/sidecar/claude-code/settings.json
+--------------------
+ERROR: failed to build: failed to solve: process "/bin/sh -c mkdir -p /opt/sidecar/hermes && curl -fsSL \"https://raw.githubusercontent.com/NousResearch/hermes-agent/$HERMES_COMMIT/SOUL.md\" -o /opt/sidecar/hermes/SOUL.md     && echo \"$HERMES_SOUL_SHA256  /opt/sidecar/hermes/SOUL.md\" | sha256sum -c --quiet" did not complete successfully: exit code: 22

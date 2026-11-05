@@ -1,0 +1,60 @@
+# Matrix analysis: matrix-mu-2026-11
+
+**Incomplete run.** 560 of 560 planned trials recorded; 0 never started (listed below). Reported from what exists; nothing was backfilled.
+
+Method: task-mean estimator (each task's mean pass over its scored repetitions, then the mean over tasks); task-clustered percentile bootstrap intervals (tasks resampled with replacement); paired differences and differences of differences from runner/stats/paired.ts clusteredPairedDelta with one item per task, p from its task-level sign-flip test; Holm across the primary family only. Seed 7, 10000 draws, alpha 0.05. Faults: harness_error counts as a fail; model_error, infra_error and exam_fault are excluded and counted. Differences are B minus A in percentage points. No ranks: rows follow the preregistered spec.
+
+## Cells
+
+| Cell | Pass rate (task mean) [95% CI] | Tasks / scored trials | Reps per task | Floor / ceiling tasks | Excluded (model / infra / exam) | Harness errors (fail) | Unstarted | USD total | USD per pass | Tokens per trial (in / out / cache read) | Cache-write share | Wall median (s) | World-MCP calls per trial | Trials with a world-MCP call |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Claude Code, Opus 5.5 | 76.3% [57.5%, 92.5%] | 20 / 80 | 4 | 4 / 14 | 0 / 0 / 0 | 0 | 0 | $13.2346 | $0.2170 | 246914 / 2485 / 233085 | 41.7% | 40.1 | 9.863 (80 logs) | 80 of 80 (100.0%) |
+| OpenClaw, Opus 5.5 (plus Haiku housekeeping, shipped default) | 76.3% [58.8%, 91.3%] | 20 / 78 | 2 to 4 | 3 / 13 | 2 / 0 / 0 | 0 | 0 | $26.6127 | $0.4435 | 393667 / 2726 / 352116 | 62.4% | 99.4 | 8.537 (80 logs) | 80 of 80 (100.0%) |
+| Hermes, Opus 5.5 | 78.8% [60.0%, 95.0%] | 20 / 80 | 4 | 3 / 15 | 0 / 0 / 0 | 0 | 0 | $15.3320 | $0.2434 | 304703 / 2569 / 288171 | 43.0% | 64.6 | 9.6 (80 logs) | 80 of 80 (100.0%) |
+| QM (Pi), Opus 5.5 (plus Haiku housekeeping, shipped default; default bridge) | 72.5% [53.8%, 88.8%] | 20 / 80 | 4 | 4 / 12 | 0 / 0 / 0 | 0 | 0 | $10.7478 | $0.1853 | 118117 / 1481 / 106463 | n/a | 40.1 | 5.725 (80 logs) | 68 of 80 (85.0%) |
+| Codex, GPT-6.1 Sol | 71.3% [51.2%, 90.0%] | 20 / 80 | 4 | 5 / 14 | 0 / 0 / 0 | 0 | 0 | $9.4236 | $0.1653 | 180395 / 793 / 142125 | 81.2% | 30.1 | 8.65 (80 logs) | 80 of 80 (100.0%) |
+| OpenClaw, GPT-6.1 Sol | 73.7% [53.9%, 90.8%] | 19 / 76 | 4 | 4 / 13 | 4 / 0 / 0 | 0 | 0 | $12.4437 (incl. $1.4432 logged after a trial's meter closed) | $0.2222 | 193636 / 634 / 154502 | n/a | 83.6 | 3.763 (80 logs) | 64 of 80 (80.0%) |
+| Hermes, GPT-6.1 Sol | 75.0% [56.3%, 91.3%] | 20 / 80 | 4 | 4 / 14 | 0 / 0 / 0 | 0 | 0 | $11.2113 | $0.1869 | 275105 / 1012 / 232381 | 76.1% | 81.5 | 11.4 (80 logs) | 80 of 80 (100.0%) |
+
+Cache-write share: from scripts/anatomy/cost-split.ts over the run's proxy usage logs (split refused: cost split refused: 1 charged usage row(s) are not forwarded requests (outcome failed) and cannot be split into components). USD total counts every recorded trial, excluded ones included, plus charged rows from earlier, interrupted attempts of a trial, from planned trials with no record, and logged after a trial's meter closed; USD per pass divides it by scored passes.
+- QM (Pi), Opus 5.5 (plus Haiku housekeeping, shipped default; default bridge): cache-write share not published: 23.6% of this cell's charged dollars could not be split into components.
+- OpenClaw, GPT-6.1 Sol: cache-write share not published: a trial of this cell does not reconcile with its charged rows.
+
+## Primary comparisons (Holm across 6)
+
+| Comparison | A | B | A / B task mean | B minus A [95% CI] | Tasks paired | Tasks dropped | p (sign-flip) | Holm step | Holm p | Verdict |
+|---|---|---|---|---|---|---|---|---|---|---|
+| opus-cc-vs-openclaw | claude-code-opus-none-mu-v03-dev | openclaw-opus-none-mu-v03-dev | 76.3% / 76.3% | +0.0 [-7.5, +7.5] | 20 | 0 | 1 | 3 | 1 | can't tell apart |
+| opus-cc-vs-hermes | claude-code-opus-none-mu-v03-dev | hermes-opus-none-mu-v03-dev | 76.3% / 78.8% | +2.5 [-2.5, +8.8] | 20 | 0 | 0.75 | 2 | 1 | can't tell apart |
+| opus-openclaw-vs-hermes | openclaw-opus-none-mu-v03-dev | hermes-opus-none-mu-v03-dev | 76.3% / 78.8% | +2.5 [-5.0, +10.0] | 20 | 0 | 1 | 4 | 1 | can't tell apart |
+| sol-codex-vs-openclaw | codex-sol-none-mu-v03-dev | openclaw-sol-none-mu-v03-dev | 69.7% / 73.7% | +3.9 [+0.0, +11.8] | 19 | 1 | 1 | 5 | 1 | can't tell apart |
+| sol-codex-vs-hermes | codex-sol-none-mu-v03-dev | hermes-sol-none-mu-v03-dev | 71.3% / 75.0% | +3.8 [+0.0, +10.0] | 20 | 0 | 0.5 | 1 | 1 | can't tell apart |
+| sol-openclaw-vs-hermes | openclaw-sol-none-mu-v03-dev | hermes-sol-none-mu-v03-dev | 73.7% / 73.7% | +0.0 [-10.5, +9.2] | 19 | 1 | 1 | 6 | 1 | can't tell apart |
+
+## Secondary comparisons (no Holm, no test)
+
+| Comparison | A | B | A / B task mean | B minus A [95% CI] | Tasks paired | Tasks dropped | Label |
+|---|---|---|---|---|---|---|---|
+| opus-qm-vs-cc | qm-pi-opus-none-mu-v03-dev | claude-code-opus-none-mu-v03-dev | 72.5% / 76.3% | +3.8 [-2.5, +10.0] | 20 | 0 | secondary, no Holm, no test |
+| opus-qm-vs-openclaw | qm-pi-opus-none-mu-v03-dev | openclaw-opus-none-mu-v03-dev | 72.5% / 76.3% | +3.8 [-5.0, +12.5] | 20 | 0 | secondary, no Holm, no test |
+| opus-qm-vs-hermes | qm-pi-opus-none-mu-v03-dev | hermes-opus-none-mu-v03-dev | 72.5% / 78.8% | +6.3 [-2.5, +16.3] | 20 | 0 | secondary, no Holm, no test |
+| openclaw-opus-vs-sol | openclaw-opus-none-mu-v03-dev | openclaw-sol-none-mu-v03-dev | 77.6% / 73.7% | -3.9 [-19.7, +10.5] | 19 | 1 | secondary, no Holm, no test |
+| hermes-opus-vs-sol | hermes-opus-none-mu-v03-dev | hermes-sol-none-mu-v03-dev | 78.8% / 75.0% | -3.8 [-13.8, +5.0] | 20 | 0 | secondary, no Holm, no test |
+
+## Terminations per cell
+
+| Cell | completed | timeout | approval_stop | harness_error | model_error | infra_error | exam_fault | Cap stops | USD by model |
+|---|---|---|---|---|---|---|---|---|---|
+| Claude Code, Opus 5.5 | 80 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | anthropic:claude-opus-5-5 $13.2346 |
+| OpenClaw, Opus 5.5 (plus Haiku housekeeping, shipped default) | 78 | 0 | 0 | 0 | 2 | 0 | 0 | 2 | anthropic:claude-opus-5-5 $26.6127 |
+| Hermes, Opus 5.5 | 80 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | anthropic:claude-opus-5-5 $15.3320 |
+| QM (Pi), Opus 5.5 (plus Haiku housekeeping, shipped default; default bridge) | 80 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | anthropic:claude-haiku-5-5 $0.0141, anthropic:claude-opus-5-5 $10.7336 |
+| Codex, GPT-6.1 Sol | 80 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | openai:gpt-6.1-sol $9.4236 |
+| OpenClaw, GPT-6.1 Sol | 76 | 0 | 0 | 0 | 4 | 0 | 0 | 4 | openai:gpt-6.1-sol $12.4437 |
+| Hermes, GPT-6.1 Sol | 80 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | openai:gpt-6.1-sol $11.2113 |
+
+## Tasks dropped from comparisons
+
+- sol-codex-vs-openclaw: sy-03-marrow-fieldworks-ticket-numbers (no scored trial in openclaw-sol-none-mu-v03-dev)
+- sol-openclaw-vs-hermes: sy-03-marrow-fieldworks-ticket-numbers (no scored trial in openclaw-sol-none-mu-v03-dev)
+- openclaw-opus-vs-sol: sy-03-marrow-fieldworks-ticket-numbers (no scored trial in openclaw-sol-none-mu-v03-dev)

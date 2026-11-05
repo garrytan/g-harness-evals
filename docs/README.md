@@ -37,7 +37,7 @@ Codes like internal-task in receipts name internal work lanes.
   - [2026-11-03-investigate-gate/](benchmarks/2026-11-03-investigate-gate/report.md): `gates938-phase3`, 2026-11-02 to 2026-11-03; gstack's /investigate reproduce-first gate (internal-task), no gstack against gstack against gstack with the gate, Opus 5.5 and GPT-6.1 Sol, 11 tasks per model, 162 counted trials, $254.31 of the $300 cap. Pooled H-S +1.28 points [-3.80, +6.35]; the rule reaches FIX (Opus follow 7.1%), the repair does not fit the cap, so NOT ADDED.
   - [2026-11-03-qm-c4-told-live/](benchmarks/2026-11-03-qm-c4-told-live/PREREGISTRATION.md): `qm-c4-told-live-2026-11`, preregistration frozen 2026-11-04 on main after #254 (`dcbf03e0`); the C4 told-live tasks on QM through Pi, Opus 5.5 and GPT-6.1 Sol, three gbrain routes (QM's notebook only, gbrain as registered tools, gbrain as QM's per-turn memory provider), 240 trials, cap $56.
   - [2026-11-03-qm-s1-gstack-probe/](benchmarks/2026-11-03-qm-s1-gstack-probe/PREREGISTRATION.md): `qm-s1-gstack-probe-2026-11`, design preregistration frozen 2026-11-04 on main after #254 (`dcbf03e0`), with gate 6's one-VM pre-launch check run at its merge commit before the first turn; whether QM on Opus 5.5 and GPT-6.1 Sol opens gstack skills through gstack's paste-in router, with a no-gstack arm, cap $20. Its folder holds `design.json` instead of a `prereg.json`, because the probe runs through a driver, not the runner.
-  - [2026-11-04-matrix-mu/](benchmarks/2026-11-04-matrix-mu/PREREGISTRATION.md): `matrix-mu-2026-11`, preregistered 2026-11-04; the harness x model matrix on the 20 public v0.3 dev tasks: Claude Code, OpenClaw, Hermes and QM on Opus 5.5, Codex, OpenClaw and Hermes on GPT-6.1 Sol, 7 cells, 4 repetitions, 560 trials, cap $160 with smokes included. The Particle-1 row left this run under its drop order and becomes its own later run. No trial has run.
+  - [2026-11-04-matrix-mu/](benchmarks/2026-11-04-matrix-mu/PREREGISTRATION.md): `matrix-mu-2026-11`, preregistered 2026-11-04; the harness x model matrix on the 20 public v0.3 dev tasks: Claude Code, OpenClaw, Hermes and QM on Opus 5.5, Codex, OpenClaw and Hermes on GPT-6.1 Sol, 7 cells, 4 repetitions, 560 trials, cap $160 with smokes included. The Particle-1 row left this run under its drop order and becomes its own later run. Reported 2026-11-05 ([report](benchmarks/2026-11-04-matrix-mu/report.md)): 560 trials at `de7f7cdbc947`, $99.01 of the $156.27 cap. All six primary pairs can't tell apart (every Holm p 1, MDD 7.7 to 14.2 points), 14 of 20 tasks scored the same in every cell, both OpenClaw cells are incomplete (sy-03 cap stops), and OpenClaw on Opus cost $0.44 per pass against $0.19 to $0.24 for the other Opus harnesses. Why null? verdict FIX-METHOD.
 - [budget-ledger.md](budget-ledger.md): the program's spend ledger, one row per lane of paid work (written 2026-10-26 beside this index).
 - [comparing-runs.md](comparing-runs.md): how two cells or two runs are compared: the paired, task-clustered estimator, the sign-flip test, Holm, the minimum detectable difference, what "not distinguished at N tasks" means, each comparison script's flags and outputs, and the exact commands every counted run's report names.
 - [decisions.md](decisions.md): the decisions by Garry Tan and the coordinating agent that shaped a counted run, one line each (written 2026-10-26 beside this index).
@@ -62,6 +62,10 @@ Codes like internal-task in receipts name internal work lanes.
 - [ubicloud.md](ubicloud.md): the Ubicloud shard lane: the scripts that put one shard per VM, how a run fans out and comes back, the check lane, costs and limits.
 
 ## Changelog
+
+### 2026-11-05: matrix-mu-2026-11 reported (internal-task)
+
+The matrix-mu line now links the report and gives its result, in place of "No trial has run". Why: the run is complete and its report is in the tree.
 
 ### 2026-11-04: replicate.md listed (internal-task)
 
