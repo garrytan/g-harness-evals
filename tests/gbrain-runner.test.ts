@@ -237,6 +237,13 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         const g = resolveGbrain(c.gbrain); expect(g.surface).toBe('starter'); expect(g.brain).toBe('member'); expect(['member', 'member-sources']).toContain(g.scope);
         expect(c.preamble).toBe(g.scope === 'member-sources' ? 'tasks/multiuser/_shared/preamble.gbrain-memory.md' : undefined);
       }
+      else if (p.run_id.startsWith('harness-zero-select-')) {
+        // internal-task Phase C: Harness Zero ablations on the v0.3 dev split, no gstack and no brain, internal network; Opus at five repetitions, Sol at three.
+        expect(c.harness).toBe('harness-zero'); expect(c.task_set).toBe('v0.3'); expect(c.split).toBe('dev'); expect(c.network).toBe('internal'); expect(c.tasks).toBeUndefined();
+        expect(c.gbrain).toBeUndefined(); expect(c.preamble).toBeUndefined(); expect(c.ceiling).toEqual({ input_tokens: 80000, output_tokens: 6000 });
+        expect(c.repetitions).toBe(c.model === 'anthropic:claude-opus-5-5' ? 5 : 3); expect(['anthropic:claude-opus-5-5', 'openai:gpt-6.1-sol']).toContain(c.model);
+        expect(p.cells).toHaveLength(10); expect(buildManifest(p, sha256, '2026-10-31T00:00:00Z').trials).toHaveLength(880);
+      }
       else expect(c.gbrain).toBeUndefined();
     }
   }
