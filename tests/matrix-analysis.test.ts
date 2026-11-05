@@ -268,6 +268,47 @@ describe('matrix-analysis (internal-task)', () => {
     expect(oc.world_mcp).toEqual({ trials: 2, trials_with_event_log: 2, calls: 2, calls_per_trial: 1, trials_with_call: 2, share_with_call: 1 });
     expect(readFileSync(join(merged, 'matrix-analysis.md'), 'utf8')).toContain(`- oc-opus (4): ${unstartedIds.join(', ')}`);
   });
+
+  test('a cell whose VM was lost merges with --partial --vm-lost and no trial: listed in vm_lost, its comparisons untested', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'matrix-vm-lost-'));
+    const full = cell('cc-opus', { t1: '11', t2: '10', t3: '00' });
+    const lost = cell('oc-opus', { t1: '11', t2: '10', t3: '00' });
+    const manifest = { ...manifestFor([...full, ...lost]), created_at: '2026-11-01T00:00:00.000Z' };
+    for (const [name, rows] of [['a', full], ['b', lost.slice(0, 2)]] as const) {
+      const d = join(dir, name);
+      mkdirSync(d, { recursive: true });
+      writeFileSync(join(d, 'manifest.json'), JSON.stringify(manifest));
+      writeFileSync(join(d, 'trials.jsonl'), rows.map((t) => JSON.stringify(t)).join('\n') + '\n');
+      writeFileSync(join(d, 'proxy-usage.ndjson'), '');
+    }
+    const merge = (out: string, shards: string[], extra: string[]) => spawnSync(process.execPath, ['scripts/merge-shards.ts', '--out', join(dir, out), ...shards.flatMap((s) => ['--shard', `${s}=${join(dir, s)}`]), ...extra], { cwd: ROOT, encoding: 'utf8', env: CLEAN_ENV });
+    const noFlag = merge('no-flag', ['a'], ['--partial']);
+    expect(noFlag.status).toBe(2);
+    expect(noFlag.stderr).toContain('oc-opus (no recorded trial)');
+    const noPartial = merge('no-partial', ['a'], ['--vm-lost', 'oc-opus']);
+    expect(noPartial.status).toBe(2);
+    expect(noPartial.stderr).toContain('--vm-lost needs --partial');
+    const withRecords = merge('with-records', ['a', 'b'], ['--partial', '--vm-lost', 'oc-opus']);
+    expect(withRecords.status).toBe(2);
+    expect(withRecords.stderr).toContain('--vm-lost cell(s) oc-opus have recorded trials');
+    const unknown = merge('unknown', ['a'], ['--partial', '--vm-lost', 'qm-opus']);
+    expect(unknown.status).toBe(2);
+    expect(unknown.stderr).toContain('not in the manifest: qm-opus');
+
+    const ok = merge('merged', ['a'], ['--partial', '--vm-lost', 'oc-opus']);
+    expect(ok.status).toBe(0);
+    const merged = join(dir, 'merged');
+    expect(JSON.parse(readFileSync(join(merged, 'unstarted.json'), 'utf8'))).toEqual({ run_id: RUN, count: 6, trials: lost.map((t) => ({ id: t.trial_id, cell: 'oc-opus' })), cap_stops: [], vm_lost: ['oc-opus'] });
+    expect(Object.keys(JSON.parse(readFileSync(join(merged, 'shards.json'), 'utf8')).shards)).toEqual(['a']);
+    const spec = join(dir, 'spec.json');
+    writeFileSync(spec, JSON.stringify(specFor(['cc-opus', 'oc-opus'])));
+    const res = spawnSync(process.execPath, ['scripts/matrix-analysis.ts', '--results', merged, '--spec', spec], { cwd: ROOT, encoding: 'utf8', env: CLEAN_ENV });
+    expect(res.status).toBe(0);
+    const a = JSON.parse(readFileSync(join(merged, 'matrix-analysis.json'), 'utf8'));
+    expect(a.cells.find((c: { id: string }) => c.id === 'oc-opus').trials.recorded).toBe(0);
+    expect(a.primary.comparisons[0].tested).toBe(false);
+    expect(a.primary.comparisons[0].tasks_paired).toBe(0);
+  });
 test('the CLI refuses a sealed run and a results directory with no manifest.json, writing nothing', () => {
     const dir = mkdtempSync(join(tmpdir(), 'matrix-refuse-'));
     const records = cell('cc-opus', { t1: '1' });
@@ -486,5 +527,43 @@ test('loadResults keeps a row a resumed proxy appended after a cut-off line, kee
     expect(() => input.eventsOf(trialAt('matrix-test/cc-opus/t1/r1'))).toThrow(/line 1 is not JSON/);
     writeFileSync(join(res, 'bak.proxy-usage.ndjson'), '{"at":"5","key":"k","actual_usd":1}\r\n{"at":"7","key":"k","act');
     expect(() => loadResults(res, manifestFor([]))).toThrow(/bak\.proxy-usage\.ndjson shares rows with .*b\.proxy-usage\.ndjson/);
+  });
+test('matrix-analysis refuses a merged results directory missing the proxy usage log of a shard with spend, or holding one cut short', () => {
+    const res = mkdtempSync(join(tmpdir(), 'matrix-copyback-'));
+    const records = [...cell('cc-opus', { t1: '1' }), ...cell('oc-opus', { t1: '0' })];
+    writeFileSync(join(res, 'manifest.json'), JSON.stringify(manifestFor(records)));
+    writeFileSync(join(res, 'trials.jsonl'), records.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    writeFileSync(join(res, 'shards.json'), JSON.stringify({ cells: { 'cc-opus': 'cc', 'oc-opus': 'oc' }, shards: { cc: {}, oc: {} } }));
+    writeFileSync(join(res, 'cc.proxy-usage.ndjson'), '{"at":"1","key":"k","actual_usd":0.1}\n');
+    const spec = join(res, 'spec.json');
+    writeFileSync(spec, JSON.stringify(specFor(['cc-opus', 'oc-opus'])));
+    const run = () => spawnSync(process.execPath, ['scripts/matrix-analysis.ts', '--results', res, '--spec', spec], { cwd: ROOT, encoding: 'utf8', env: CLEAN_ENV });
+    const spent = records.map((r) => ({ ...r, usage: { usd: 0.1 } }) as unknown as TrialRecord);
+    writeFileSync(join(res, 'trials.jsonl'), spent.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    writeFileSync(join(res, 'cc.proxy-usage.ndjson'), JSON.stringify({ at: '1', key: `trial-token:${spent[0]!.trial_id}`, actual_usd: 0.1 }) + '\n');
+    const lost = run();
+    expect(lost.status).toBe(2);
+    expect(lost.stderr).toContain('matrix-analysis: refused: shards.json lists 1 shard(s) with spend whose proxy usage log is not in');
+    expect(lost.stderr).toContain('oc.proxy-usage.ndjson');
+    expect(existsSync(join(res, 'matrix-analysis.json'))).toBe(false);
+    writeFileSync(join(res, 'oc.proxy-usage.ndjson'), '{"at":"2","key":"k","actual_usd":0.2}\n');
+    const cut = run();
+    expect(cut.status).toBe(2);
+    expect(cut.stderr).toContain(`1 trial(s) with spend have no row in their shard's proxy usage log, so the log that came back is cut short (a copy taken while the shard ran): ${spent[1]!.trial_id} (shard oc)`);
+    writeFileSync(join(res, 'oc.proxy-usage.ndjson'), JSON.stringify({ at: '2', key: `trial-token:${spent[1]!.trial_id}`, actual_usd: 0.1 }) + '\n');
+    expect(run().status).toBe(0);
+  });
+test('matrix-analysis reads a missing proxy usage log as empty when every trial of that shard recorded $0', () => {
+    const res = mkdtempSync(join(tmpdir(), 'matrix-zero-shard-'));
+    const records = [...cell('cc-opus', { t1: '1' }), ...cell('oc-opus', { t1: 'H' })].map((r) => ({ ...r, usage: { usd: r.cell === 'cc-opus' ? 0.1 : 0 } }) as unknown as TrialRecord);
+    writeFileSync(join(res, 'manifest.json'), JSON.stringify(manifestFor(records)));
+    writeFileSync(join(res, 'trials.jsonl'), records.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    writeFileSync(join(res, 'shards.json'), JSON.stringify({ cells: { 'cc-opus': 'cc', 'oc-opus': 'oc' }, shards: { cc: {}, oc: {} } }));
+    writeFileSync(join(res, 'cc.proxy-usage.ndjson'), JSON.stringify({ at: '1', key: `trial-token:${records[0]!.trial_id}`, actual_usd: 0.1 }) + '\n');
+    const input = loadResults(res, manifestFor(records));
+    expect(input.records.map((t) => t.termination)).toEqual(records.map((t) => t.termination));
+    expect(input.usageRows).toHaveLength(1);
+    writeFileSync(join(res, 'trials.jsonl'), records.map((r) => JSON.stringify(r.cell === 'oc-opus' ? { ...r, usage: { usd: 0.0042 } } : r)).join('\n') + '\n');
+    expect(() => loadResults(res, manifestFor(records))).toThrow(/shards\.json lists 1 shard\(s\) with spend whose proxy usage log is not in .*oc\.proxy-usage\.ndjson/);
   });
 });

@@ -117,7 +117,7 @@ if [ "$dry" -eq 1 ]; then
 fi
 
 mkdir -p "$dest"
-declare -A pid_of exit_of tries_of told
+declare -A pid_of exit_of tries_of told log_start
 queue=("${shards[@]}")
 running=0
 stopping=0
@@ -136,6 +136,7 @@ launch() {
   IFS=$'\t' read -r name cells lease <<<"$line"
   mkdir -p "$dest/$name"
   tries_of[$name]=$(( ${tries_of[$name]:-0} + 1 ))
+  log_start[$name]=$(stat -c %s "$dest/$name/lane.log" 2>/dev/null || echo 0)
   log "launching shard $name (cells $cells, lease \$$lease, try ${tries_of[$name]}); log $dest/$name/fanout.log"
   bash -c "$(run_cmd "$name" "$cells" "$lease")" > "$dest/$name/fanout.log" 2>&1 &
   pid_of[$!]=$line
@@ -152,7 +153,7 @@ while [ ${#queue[@]} -gt 0 ] || [ "$running" -gt 0 ]; do
   [ -n "${done_pid:-}" ] || continue
   line=${pid_of[$done_pid]}; unset 'pid_of[$done_pid]'; running=$(( running - 1 ))
   IFS=$'\t' read -r name cells lease <<<"$line"
-  if [ "$rc" -eq 3 ] && [ "$stopping" -eq 0 ] && grep -q 'quota refused' "$dest/$name/lane.log" 2>/dev/null && [ "${tries_of[$name]}" -lt 3 ]; then
+  if [ "$rc" -eq 3 ] && [ "$stopping" -eq 0 ] && tail -c +$(( ${log_start[$name]:-0} + 1 )) "$dest/$name/lane.log" 2>/dev/null | grep -q 'quota refused' && [ "${tries_of[$name]}" -lt 3 ]; then
     log "shard $name was refused for vCPU quota; queued again (after the next shard finishes)"
     queue+=("$line"); [ "$running" -gt 0 ] || sleep 60
     continue

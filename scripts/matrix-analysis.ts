@@ -45,7 +45,10 @@
 // A spec that names a cell the manifest lacks, a primary family of the wrong size, a duplicate id, a dangling reference
 // or a run_id other than the manifest's is refused (exit 2), and so is a trials.jsonl with a duplicate trial id, a trial
 // the manifest does not plan, or a cell or task that differs from the plan. A results directory with no manifest.json is
-// refused (the sealed check and the unstarted list both read it), and so is a sealed run: this script prints task ids, so
+// refused (the sealed check and the unstarted list both read it), and so is a merged results directory whose shards.json
+// names a shard with spend and no <shard>.proxy-usage.ndjson beside it (a usage log that did not come back from its VM; a shard
+// whose trials all recorded $0 may have none, since the proxy creates the file on its first row, and reads as empty) or whose log has
+// no row for a trial of that shard that recorded spend (a copy cut short while the shard ran), and a sealed run: this script prints task ids, so
 // it reads the manifest first and opens nothing else of a sealed run. A line that is not JSON is HE-RUN-007 naming the file
 // and line, never the parser's message; a cut-off line of a usage or event log (the last line, or a usage-log line the resumed proxy ran into) is skipped and counted instead.
 //
@@ -481,7 +484,8 @@ function readLog<T>(file: string, counts: { truncated: number }, appended: boole
 }
 
 /** Read a results directory after its manifest: records (strict), event logs and usage logs (a cut-off line skipped and
- *  counted in input.truncated). No trials.jsonl reads as no records. Two usage logs that share a row (a copy, whole or cut
+ *  counted in input.truncated). A merged directory (shards.json present) needs the usage log of every listed shard with spend,
+ *  holding a row for every trial of that shard whose record shows spend; a $0 shard's missing log reads as empty. No trials.jsonl reads as no records. Two usage logs that share a row (a copy, whole or cut
  *  off) are refused: rows are per-trial and timestamped, so a row in two logs is a copy, and identical rows within one log
  *  are counted as separate requests. */
 export function loadResults(results: string, manifest: MatrixManifest): MatrixInput {
@@ -500,6 +504,14 @@ export function loadResults(results: string, manifest: MatrixManifest): MatrixIn
     for (const r of rows) if (seenIn.has(r)) throw new RunnerError('HE-RUN-007', `${join(results, f)} shares rows with ${join(results, seenIn.get(r)!)}; a copied usage log would count its requests twice, so remove the copy`);
     for (const r of rows) seenIn.set(r, f);
   });
+  if (existsSync(join(results, 'shards.json'))) {
+    const { cells = {}, shards = {} } = readJsonFile<{ cells?: Record<string, string>; shards?: Record<string, unknown> }>(join(results, 'shards.json'));
+    const lost = Object.keys(shards).filter((s) => !logs.includes(`${s}.proxy-usage.ndjson`) && records.some((t) => cells[t.cell] === s && (t.usage?.usd ?? 0) > 0));
+    if (lost.length) throw new SpecError(`shards.json lists ${lost.length} shard(s) with spend whose proxy usage log is not in ${results}: ${lost.map((s) => `${s}.proxy-usage.ndjson`).join(', ')}; without it every USD figure of that shard's cells is a silent lower bound, so copy the shard's proxy-usage.ndjson back and merge again`);
+    const keysIn = new Map(logs.map((f, i) => [f, new Set(parsed[i]!.map((r) => r.key))]));
+    const unmetered = records.filter((t) => (t.usage?.usd ?? 0) > 0 && cells[t.cell] && ![t.usage?.meter_id, `trial-token:${t.trial_id}`, `sk-trial-${t.trial_id}`].some((k) => k && keysIn.get(`${cells[t.cell]}.proxy-usage.ndjson`)?.has(k)));
+    if (unmetered.length) throw new SpecError(`${unmetered.length} trial(s) with spend have no row in their shard's proxy usage log, so the log that came back is cut short (a copy taken while the shard ran): ${unmetered.slice(0, 5).map((t) => `${t.trial_id} (shard ${cells[t.cell]})`).join(', ')}${unmetered.length > 5 ? ', ...' : ''}; copy the shard's final proxy-usage.ndjson back and merge again`);
+  }
   const usageRows = logs.length ? parsed.flat() : null;
   return { manifest, records, eventsOf, usageRows, truncated: { get usage_logs() { return truncated.usage_logs.truncated; }, get event_logs() { return truncated.event_logs.truncated; } } };
 }

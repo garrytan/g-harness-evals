@@ -298,6 +298,11 @@ else
   fi
   if [ -n "$scratch_prereg" ]; then run_id=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['run_id'])" "$scratch_prereg"); else run_id=$(git -C "$root" show "$commit:$prereg" | python3 -c "import json,sys; print(json.load(sys.stdin)['run_id'])"); fi
   [ "$resume" -eq 0 ] || [ -f "$dest/results/shard.json" ] || { echo "run-shard (ubicloud): --resume needs an earlier attempt's $dest/results/shard.json" >&2; exit 2; }
+  read_key='import json,sys; print(json.load(sys.stdin).get("shard_resume", ""))'
+  if [ -n "$scratch_prereg" ]; then shard_resume=$(python3 -c "$read_key" < "$scratch_prereg"); else shard_resume=$(git -C "$root" show "$commit:$prereg" | python3 -c "$read_key"); fi
+  if [ "$shard_resume" = refused ] && { [ "$resume" -eq 1 ] || [[ " ${extra[*]-} " == *" --resume "* ]] || [ -f "$dest/results/shard.json" ] || [ -n "$(jq1 launched_at)" ]; }; then
+    echo "run-shard (ubicloud): run $run_id's preregistration sets shard_resume refused: an interrupted shard ends its cell as incomplete and is never resumed or relaunched into $dest (merge with scripts/merge-shards.ts --partial --vm-lost <cell>)" >&2; exit 2
+  fi
   log "shard $name: commit $commit, run $run_id, cells $cells, lease \$$lease, ${scratch_prereg:+scratch }preregistration $prereg, $size${location:+ in $location}, dest $dest"
 
   # 2. a clean detached checkout to sync

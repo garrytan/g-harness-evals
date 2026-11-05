@@ -102,6 +102,10 @@ print(c or '')
 PY
 ) || exit 2
 out="${out:-results/$run_id}"
+shard_resume=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("shard_resume", ""))' "$prereg")
+if [ "$shard_resume" = refused ] && { [ "$resume" -eq 1 ] || [ -f "$out/shard.json" ] || [ -s "$out/trials.jsonl" ]; }; then
+  echo "run-shard: run $run_id's preregistration sets shard_resume refused: an interrupted shard ends its cell as incomplete and is never resumed or rerun into $out" >&2; exit 2
+fi
 mkdir -p "$out"
 harnesses=$(python3 - "$prereg" "$cells" <<'PY'
 import json, sys
