@@ -18,6 +18,10 @@ if os.path.exists(ALLOW_FILE):
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 # results/ is gitignored scratch (runs, exported install bundle views with their own placeholder links); never checked.
 SKIP_DIRS = {".git", "node_modules", "results"}
+# Fragment files render into a generated file elsewhere (scripts/fold-hub-fragments.ts), so their links resolve from there.
+RENDERED_FROM = {os.path.join(ROOT, "todos.d"): ROOT}
+# Generated files are checked through their fragments: between folds they may still carry an item whose file and link target a pull request deleted.
+GENERATED = {os.path.join(ROOT, "TODOS.md")}
 problems = []
 for dirpath, dirnames, filenames in os.walk(ROOT):
     dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
@@ -25,6 +29,8 @@ for dirpath, dirnames, filenames in os.walk(ROOT):
         if not name.endswith(".md"):
             continue
         path = os.path.join(dirpath, name)
+        if path in GENERATED:
+            continue
         text = open(path, encoding="utf-8").read()
         for m in LINK.finditer(text):
             target = m.group(1)
@@ -33,7 +39,8 @@ for dirpath, dirnames, filenames in os.walk(ROOT):
             target = target.split("#", 1)[0]
             if not target:
                 continue
-            resolved = os.path.normpath(os.path.join(dirpath, target))
+            base = RENDERED_FROM.get(dirpath, dirpath) if name != "README.md" else dirpath
+            resolved = os.path.normpath(os.path.join(base, target))
             if not os.path.exists(resolved) and (os.path.relpath(path, ROOT), m.group(1)) not in ALLOW:
                 problems.append(f"{os.path.relpath(path, ROOT)}: broken link {m.group(1)}")
 for p in problems:

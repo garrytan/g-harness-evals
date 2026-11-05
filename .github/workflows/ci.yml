@@ -1,7 +1,8 @@
 # Keyless CI. Nothing here needs a secret: typecheck, unit tests for the vendored
-# statistics kit and the preregistration checker and the documentation link check in
-# one job (an estimated 9 to 11 minutes; with the preregistration-order step it took 12
-# to 15 minutes in late October 2026); the preregistration-order check in a
+# statistics kit and the preregistration checker, the documentation link check and the
+# hub-fragment check (scripts/fold-hub-fragments.ts --check) in one job (an estimated
+# 9 to 11 minutes; with the preregistration-order step it took 12 to 15 minutes in late
+# October 2026); the preregistration-order check in a
 # parallel job of its own (about 5 minutes); and a docker job
 # (internal-task) that builds the gbrain sidecar image from the pull request's own checkout
 # and runs tests/gbrain-image.test.ts against it, about 15 minutes, still keyless,
@@ -52,6 +53,10 @@ jobs:
           if-no-files-found: error
       - name: Documentation links
         run: python3 scripts/check-links.py
+      - name: Hub fragments (TODOS.md matches todos.d/, or its fold is still pending at land)
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: bun scripts/fold-hub-fragments.ts --check --base "$BASE"
 
   # Every experiment in docs/benchmarks/preregistrations.json (and preregistrations.d/)
   # must have its preregistration committed before any of its result files. It reads git
