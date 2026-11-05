@@ -66,6 +66,13 @@ export interface TurnWindow {
   /** Slack ts of the bot reply the runner posted, null when the turn produced none. */
   reply_ts: string | null;
   reply_text: string | null;
+  /** internal-task (H10) addition: the Slack thread ts the turn was posted in, null for a top-level message. Optional until the
+   *  runner writes it (H10 PR 5), so turns.jsonl files written before it still parse. */
+  thread_ts?: string | null;
+  /** internal-task (H10) addition: the turn's session, `<channel id>` for a top-level message or `<channel id>:<thread_ts>` in a
+   *  thread, the same key every adapter derives from the TurnRequest (harnesses/routes/README.md, "Sessions"). Optional until
+   *  the runner writes it (H10 PR 5). */
+  session_key?: string;
 }
 
 /** GET /admin/snapshot as the world returns it after the fence. Files are not in the snapshot; graders
@@ -408,4 +415,90 @@ export interface TrialRecord {
   laneb?: TrialLaneB;
   /** Prompt archaeology addition: set on a trial of a cell that carries ablation. */
   ablation?: TrialAblation;
+}
+
+// ---- internal-task (H10) additions: instruction routes on four harnesses ---------------------------------------
+
+/** The drivers a cell's config may name. `cli` is the harness's own CLI and the default when the config names none; the two
+ *  `sdk-*` drivers run Claude Code through the Agent SDK with its `claude_code` system prompt preset or with no system prompt
+ *  set (harnesses/routes/README.md). A driver prefix is legal on claude-code only. */
+export const ROUTE_DRIVERS = ['cli', 'sdk-preset', 'sdk-default'] as const;
+export type RouteDriver = (typeof ROUTE_DRIVERS)[number];
+
+/** The instruction routes a cell's config may name (harnesses/routes/README.md, "Routes on four harnesses"). `default` (or an
+ *  empty config) changes nothing. Whether a harness supports a route is the adapter's call: it refuses one it does not
+ *  implement with HE-ADAPTER-007. The two slot routes need `@<slot_id>`; no other route takes one. */
+export const ROUTE_NAMES = [
+  'default', 'route-tool', 'route-hook', 'route-once', 'route-system', 'route-startup', 'route-skill', 'route-told',
+  'route-placebo', 'route-slot-told', 'route-slot-skill',
+] as const;
+export type RouteName = (typeof ROUTE_NAMES)[number];
+export const SLOT_ROUTES: readonly RouteName[] = ['route-slot-told', 'route-slot-skill'];
+/** A slot id: lowercase letters, digits and hyphens, starting with a letter or digit, at most 63 characters. It is a directory
+ *  name under harnesses/routes/slots/, so it can never hold a slash or `..`. */
+export const SLOT_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
+
+export interface RouteConfig {
+  driver: RouteDriver;
+  route: RouteName;
+  slot?: string;
+}
+
+/** Parse a cell's config, `[<driver>+]<route>[@<slot_id>]` (docs/adapters.md, "Route config"), for the named harness. Throws an
+ *  Error whose message starts with HE-ADAPTER-007 for an unknown driver or route, a driver prefix on any harness but
+ *  claude-code, a slot route without a valid slot id, and a slot id on any other route. */
+export function parseRouteConfig(config: string, harness: string): RouteConfig {
+  const refuse = (why: string): never => { throw new Error(`HE-ADAPTER-007 HE_HARNESS_CONFIG=${config} ${why}`); };
+  if (config === '') return { driver: 'cli', route: 'default' };
+  const plus = config.indexOf('+');
+  const driverText = plus < 0 ? 'cli' : config.slice(0, plus);
+  if (!(ROUTE_DRIVERS as readonly string[]).includes(driverText)) refuse(`names no known driver (${ROUTE_DRIVERS.join(', ')})`);
+  if (plus >= 0 && harness !== 'claude-code') refuse(`carries a driver prefix, which only claude-code takes (harness ${harness})`);
+  const rest = plus < 0 ? config : config.slice(plus + 1);
+  const at = rest.indexOf('@');
+  const routeText = at < 0 ? rest : rest.slice(0, at);
+  if (!(ROUTE_NAMES as readonly string[]).includes(routeText)) refuse(`names no known route (${ROUTE_NAMES.join(', ')})`);
+  const route = routeText as RouteName;
+  const driver = driverText as RouteDriver;
+  if (!SLOT_ROUTES.includes(route)) {
+    if (at >= 0) refuse(`gives a slot id, which only ${SLOT_ROUTES.join(' and ')} take`);
+    return { driver, route };
+  }
+  const slot = at < 0 ? '' : rest.slice(at + 1);
+  if (!SLOT_ID.test(slot)) refuse(`needs @<slot_id> matching ${SLOT_ID} for ${route}`);
+  return { driver, route, slot };
+}
+
+/** What a route adapter records about each turn it answered (docs/adapters.md, "Per-turn route status"). An exposure receipt
+ *  only: the scorer derives session and session turn from the task's own turn order (TurnWindow.session_key), never from this. */
+export interface RouteTurnStatus {
+  /** The cell's config string as the adapter received it. */
+  config: string;
+  driver: RouteDriver;
+  route: RouteName;
+  /** The adapter's session key for the turn, the same definition as TurnWindow.session_key. */
+  session_key: string;
+  /** 1-based count of the turns this adapter has handed to the session, this one included. */
+  session_turn: number;
+  /** Hook routes (route-hook, route-once, route-placebo): whether the emit flag said the hook prints its bytes this turn.
+   *  null on every other route. */
+  emitted: boolean | null;
+}
+
+/** internal-task (H10) addition to the metering proxy's usage line: copies of the rule (or the placebo) in one forwarded request, by
+ *  where they sit. Counts only, never the text. Declared here, written by H10 PR 5. */
+export interface RouteCopies {
+  system: number;
+  user: number;
+  tool_result: number;
+  history: number;
+}
+
+/** harnesses/<name>/provenance.json: every checkout-owned file the harness image copies under /opt/harness, with its path
+ *  in the checkout (repository-relative) and in the image. Installed runtimes (npm packages, a source checkout, a venv, a
+ *  downloaded binary) are not listed; their pin.json versions cover them. H10 PR 5 compares each listed file's sha256 in the
+ *  checkout with the same file in the image (HE-ADAPTER-005). */
+export interface HarnessProvenanceManifest {
+  harness: string;
+  files: Array<{ checkout: string; image: string }>;
 }
