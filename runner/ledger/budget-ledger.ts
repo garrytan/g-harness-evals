@@ -73,7 +73,7 @@ import { closeSync, copyFileSync, existsSync, fsyncSync, mkdirSync, openSync, re
 import { hostname, userInfo } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { Database } from 'bun:sqlite';
-import { ANTHROPIC_CACHE_WRITE_1H_MULT, canonicalLookup } from '../pricing/model-pricing.ts';
+import { ANTHROPIC_CACHE_WRITE_1H_MULT, canonicalLookup, ownRow } from '../pricing/model-pricing.ts';
 import { lookupEmbeddingPrice } from '../pricing/embedding-pricing.ts';
 
 export const DEFAULT_PROGRAM_CAP_USD = 500;
@@ -1173,9 +1173,9 @@ export const HARNESS_CHAT_PRICES: Record<string, { input: number; output: number
 };
 
 /** A dated API snapshot (`gpt-4o-2024-08-06`) is billed at its family's list price. */
-export const chatPrice = (id: string) => {
+export const chatPrice = (id: string): ChatPrice | undefined => {
   const undated = id.replace(/-\d{4}-?\d{2}-?\d{2}$/, '');
-  return CHAT_PRICE_OVERRIDES[id] ?? CHAT_PRICE_OVERRIDES[undated] ?? HARNESS_CHAT_PRICES[id] ?? HARNESS_CHAT_PRICES[undated]
+  return ownRow(CHAT_PRICE_OVERRIDES, id) ?? ownRow(CHAT_PRICE_OVERRIDES, undated) ?? ownRow(HARNESS_CHAT_PRICES, id) ?? ownRow(HARNESS_CHAT_PRICES, undated)
     ?? canonicalLookup(id) ?? canonicalLookup(undated);
 };
 

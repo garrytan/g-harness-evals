@@ -1,39 +1,26 @@
 /**
- * model-pricing.ts — single source of truth for paid cloud CHAT/completion
- * model pricing (USD per 1M tokens, input | output).
+ * model-pricing.ts: chat and completion list prices (USD per 1M tokens),
+ * read from one dated JSON table beside this file.
  *
- * Every chat-pricing site in the codebase derives its numbers from this table:
- *   - anthropic-pricing.ts          (bare-keyed Anthropic view + estimateMaxCostUsd)
- *   - takes-quality-eval/pricing.ts (curated fail-closed allowlist)
- *   - eval-contradictions/cost-tracker.ts (silent-Haiku-fallback view)
- *   - cross-modal-eval/runner.ts    (multi-provider eval panel)
- *   - skillopt/preflight.ts         (Sonnet-fallback warn-only estimate)
- * The bare-keyed `ANTHROPIC_PRICING` view is itself consumed by budget/budget-tracker.ts
- * and cycle/budget-meter.ts — so those inherit canonical too.
- *
- * The dollar amounts live HERE ONCE — update prices in this file only. Each
- * consumer keeps its own key allowlist and miss-handling policy (fail-closed
- * vs warn-only vs null); this module owns the values, not the policy. Because
- * every other table is DERIVED from this one (not a hand-copied duplicate),
- * cross-table price drift — the kind that left Opus 4.7 at $15/$75 in one table
- * for months — is structurally impossible. test/model-pricing.test.ts pins that:
- * its "drift guard" asserts each derived view still equals canonical (a
- * regression trip-wire if anyone later re-hardcodes a view back into a duplicate)
- * and that the cross-modal panel models are all present in canonical.
- *
- * Prices verified 2026-07-26 against published provider pricing:
- *   - Anthropic: https://platform.claude.com/docs/en/about-claude/models/overview
- *   - OpenAI:    https://openai.com/api/pricing
- *   - Google:    https://ai.google.dev/gemini-api/docs/pricing
- * The dream-budget audit JSONL snapshots the rate per call, so historical
- * estimates stay reproducible even after this table changes.
+ * The rates live in runner/pricing/prices-<date>.json (PRICE_TABLE_FILE):
+ * one row per provider:model id with input, output, cache write, cache read,
+ * the long-prompt tier where a provider bills one, and the source URL and
+ * date each price was read from. Change a price by adding a new dated file
+ * and pointing PRICE_TABLE_FILE at it, never by editing a dated file in
+ * place; priceTableIdentity() gives the file and its sha256 so a run or a
+ * bundle can record which table priced it. The metering ledger
+ * (runner/ledger/budget-ledger.ts chatPrice) keeps its own override rows and
+ * falls back to this table.
  *
  * Scope: PAID CLOUD chat models only. Free/local providers (llama-server,
- * zero-cost rerankers) are intentionally absent — callers treat those as
- * zero-cost elsewhere. Embeddings live in embedding-pricing.ts (different unit:
- * per-MTok, char-based).
+ * zero-cost rerankers) are intentionally absent: callers treat those as
+ * zero-cost elsewhere. Embeddings live in embedding-pricing.ts (a single
+ * per-token rate with its own lookup rules).
  */
 
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { RunnerError } from '../errors.ts';
 import { splitProviderModelId } from './model-id.ts';
 
 export interface ModelPricing {
@@ -111,184 +98,93 @@ export function priceAtPromptSize(pricing: ModelPricing, inputTokens: number | n
 
 /** Anthropic prompt-cache multipliers (verified 2026-08 against published
  * provider pricing): reads bill 0.1x the base input rate; 5-minute-TTL
- * writes bill 1.25x. Exported so the drift guard can assert every
- * anthropic: row's cache fields stay derived from its input rate. */
+ * writes bill 1.25x. The price table states every row's cache rates;
+ * tests/price-table.test.ts asserts each anthropic: row still follows them. */
 export const ANTHROPIC_CACHE_READ_MULT = 0.1;
 export const ANTHROPIC_CACHE_WRITE_5M_MULT = 1.25;
 /** Anthropic 1-hour-TTL cache writes bill 2x the base input rate. */
 export const ANTHROPIC_CACHE_WRITE_1H_MULT = 2;
-function anthro(input: number, output: number, cacheReadMult = ANTHROPIC_CACHE_READ_MULT): ModelPricing {
-  return {
-    input,
-    output,
-    cache_read: input * cacheReadMult,
-    cache_write: input * ANTHROPIC_CACHE_WRITE_5M_MULT,
-  };
+
+/** The dated price table this module reads, in runner/pricing/. */
+export const PRICE_TABLE_FILE = 'prices-2026-11-04.json';
+const PRICE_TABLE_BYTES = readFileSync(new URL(`./${PRICE_TABLE_FILE}`, import.meta.url));
+
+/** The price table's repository path and the sha256 of its bytes, for a run or bundle to record. */
+export function priceTableIdentity(): { file: string; sha256: string } {
+  return { file: `runner/pricing/${PRICE_TABLE_FILE}`, sha256: createHash('sha256').update(PRICE_TABLE_BYTES).digest('hex') };
 }
 
-/** Per-model cache-read multiplier overrides. Anthropic bills cache hits at
- *  ANTHROPIC_CACHE_READ_MULT (0.1x) except where listed here. Keys match
- *  CANONICAL_PRICING keys; the drift guard asserts both directions. */
-export const ANTHROPIC_CACHE_READ_MULT_OVERRIDES: Record<string, number> = {
-  // Fable 5.1 bills cache hits at 0.025x base input ($0.25/MTok on $10).
-  'anthropic:claude-fable-5-1': 0.025,
-  // Opus 5.5 bills cache hits at 0.05x base input ($0.20/MTok on $4),
-  // verified 2026-10-01 against the published Opus 5.5 price list.
-  'anthropic:claude-opus-5-5': 0.05,
-};
+/**
+ * Parse a price table into canonical rows keyed `provider:model`, in file
+ * order. Throws HE-PIN-004 on anything a price could silently go wrong with:
+ * text that is not JSON, a row that is not an object, a missing or negative
+ * rate, a duplicate or case-colliding key, a long-prompt tier without a
+ * positive whole threshold or with every rate zero, or a row with no source
+ * URL or a source date that is not a real calendar day.
+ * A null cache rate leaves the field absent, so consumers fall back to input.
+ */
+export function parsePriceTable(text: string, file = PRICE_TABLE_FILE): Record<string, ModelPricing> {
+  const refuse = (why: string) => new RunnerError('HE-PIN-004', `price table runner/pricing/${file}: ${why}; fix: correct the table, or add a new dated prices-<date>.json`);
+  let table: { rows?: unknown } | null;
+  try { table = JSON.parse(text) as { rows?: unknown } | null; } catch (e) { throw refuse(`not JSON (${(e as Error).message})`); }
+  if (!table || typeof table !== 'object' || !Array.isArray(table.rows) || table.rows.length === 0) throw refuse('no rows');
+  const out: Record<string, ModelPricing> = {};
+  const folded = new Set<string>();
+  for (const [index, raw] of (table.rows as unknown[]).entries()) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw refuse(`row ${index} must be an object`);
+    const row = raw as Record<string, unknown>;
+    const key = `${row.provider}:${row.model}`;
+    const bad = (why: string) => refuse(`${key}: ${why}`);
+    if (typeof row.provider !== 'string' || !row.provider || typeof row.model !== 'string' || !row.model) throw bad('provider and model must be non-empty strings');
+    if (folded.has(key.toLowerCase())) throw bad('duplicate key (case-insensitive)');
+    folded.add(key.toLowerCase());
+    if (typeof row.source_url !== 'string' || !row.source_url.startsWith('https://')) throw bad('source_url must be an https URL');
+    const date = row.source_date;
+    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || new Date(Date.parse(`${date}T00:00:00Z`) || 0).toISOString().slice(0, 10) !== date)
+      throw bad('source_date must be a real YYYY-MM-DD date');
+    const rates = (r: Record<string, unknown>, where: string) => {
+      const rate = (field: string, optional: boolean) => {
+        const v = r[field];
+        if (optional && v === null) return undefined;
+        if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) throw bad(`${where}${field} must be a non-negative number${optional ? ' or null' : ''}`);
+        return v;
+      };
+      const cacheRead = rate('cache_read', true);
+      const cacheWrite = rate('cache_write', true);
+      return { input: rate('input', false)!, output: rate('output', false)!,
+        ...(cacheRead !== undefined ? { cache_read: cacheRead } : {}), ...(cacheWrite !== undefined ? { cache_write: cacheWrite } : {}) };
+    };
+    const pricing: ModelPricing = rates(row, '');
+    if (row.long_prompt !== null) {
+      const tier = row.long_prompt as Record<string, unknown> | undefined;
+      if (!tier || typeof tier !== 'object') throw bad('long_prompt must be an object or null');
+      if (!Number.isInteger(tier.threshold_tokens) || (tier.threshold_tokens as number) <= 0) throw bad('long_prompt.threshold_tokens must be a positive whole number');
+      const long = rates(tier, 'long_prompt.');
+      if ([long.input, long.output, long.cache_read ?? 0, long.cache_write ?? 0].every(v => v === 0)) throw bad('long_prompt rates must not all be zero');
+      pricing.long_prompt = { threshold_tokens: tier.threshold_tokens as number, ...long };
+    }
+    out[key] = pricing;
+  }
+  return out;
+}
 
 /**
- * Canonical price table. Keys are provider-prefixed (`provider:model`),
- * matching the exact id strings consumers pass. One physical model may carry
- * more than one key when a provider ships multiple id spellings (e.g.
- * `google:gemini-2.0-flash` plus the legacy `google:gemini-2-flash` alias) —
- * keep aliases in lockstep; the drift guard asserts they agree.
+ * Canonical price table, read from PRICE_TABLE_FILE. Keys are
+ * provider-prefixed (`provider:model`), matching the exact id strings
+ * consumers pass. One physical model may carry more than one key when a
+ * provider ships multiple id spellings (e.g. `google:gemini-2.0-flash` plus
+ * the legacy `google:gemini-2-flash` alias); the table keeps them in lockstep.
  */
-export const CANONICAL_PRICING: Record<string, ModelPricing> = {
-  // ── Anthropic ──────────────────────────────────────────────────────────
-  // All Anthropic rows carry derived cache_read/cache_write fields (#4218);
-  // see the anthro() helper + multiplier constants above.
-  // Fable 5: Anthropic's top tier, above Opus. $10 in / $50 out.
-  'anthropic:claude-fable-5':             anthro(10.00, 50.00),
-  // Fable 5.1: same $10/$50 sticker as Fable 5, but cache hits bill 0.025x
-  // ($0.25/MTok) instead of 0.1x — the only rate that changed.
-  'anthropic:claude-fable-5-1':           anthro(10.00, 50.00, ANTHROPIC_CACHE_READ_MULT_OVERRIDES['anthropic:claude-fable-5-1']),
-  // Opus 4.x/5: $5 in / $25 out. Opus 5 (new generation) shares the same
-  // per-token rate as 4.8 (released 2026-05-28) — closes gbrain#1819.
-  // Opus 5.5 (released 2026-09-22): $4 in / $20 out, cache writes 1.25x
-  // ($5). Fast mode ($8/$40) is not modeled. Closes gbrain#5359.
-  'anthropic:claude-opus-5-5':            anthro( 4.00, 20.00, ANTHROPIC_CACHE_READ_MULT_OVERRIDES['anthropic:claude-opus-5-5']),
-  'anthropic:claude-opus-5':              anthro( 5.00, 25.00),
-  'anthropic:claude-opus-4-8':            anthro( 5.00, 25.00),
-  'anthropic:claude-opus-4-7':            anthro( 5.00, 25.00),
-  'anthropic:claude-opus-4-6':            anthro( 5.00, 25.00),
-  // Sonnet 5 / 5.5: $2 in / $10 out. Anthropic made Sonnet 5's launch
-  // price the standard rate — the scheduled 2026-09-01 increase to $3/$15
-  // did not happen (pricing page footnote). Sonnet 5.5 (released
-  // 2026-09-28) ships at the same rate.
-  'anthropic:claude-sonnet-5-5':          anthro( 2.00, 10.00),
-  'anthropic:claude-sonnet-5':            anthro( 2.00, 10.00),
-  'anthropic:claude-sonnet-4-6':          anthro( 3.00, 15.00),
-  // Haiku 5.5: $0.10 in / $0.50 out for prompts up to 100,000 tokens
-  // (platform.claude.com/docs/en/about-claude/pricing, checked 2026-10-11).
-  // Longer prompts bill 5x on every rate ($0.50 in / $0.625 5m cache write /
-  // $0.05 cache read / $2.50 out) — the `long_prompt` tier, selected per
-  // request by priceAtPromptSize() (#6448 item 1). The 1h cache-write rate
-  // ($0.20 / $1.00) is 2x input, ANTHROPIC_CACHE_WRITE_1H_MULT. The default facts extraction model on
-  // Anthropic-keyed installs.
-  'anthropic:claude-haiku-5-5':           {
-    ...anthro( 0.10,  0.50),
-    long_prompt: { threshold_tokens: ANTHROPIC_LONG_PROMPT_THRESHOLD_TOKENS, ...anthro( 0.50,  2.50) },
-  },
-  // Haiku 4.5 — both the dateless canonical id and the dated snapshot.
-  'anthropic:claude-haiku-4-5':           anthro( 1.00,  5.00),
-  'anthropic:claude-haiku-4-5-20251001':  anthro( 1.00,  5.00),
-  'anthropic:claude-3-5-sonnet-20241022': anthro( 3.00, 15.00),
-  'anthropic:claude-3-5-haiku-20241022':  anthro( 0.80,  4.00),
+export const CANONICAL_PRICING: Record<string, ModelPricing> = parsePriceTable(PRICE_TABLE_BYTES.toString('utf8'));
 
-  // ── OpenAI ─────────────────────────────────────────────────────────────
-  'openai:gpt-4o':                        { input:  2.50, output: 10.00 },
-  'openai:gpt-4o-mini':                   { input:  0.15, output:  0.60 },
-  'openai:gpt-5':                         { input:  5.00, output: 20.00 },
-  // gpt-5.2: rates from the OpenAI recipe chat touchpoint (verified
-  // 2026-04-20). Needed here because it's the cross-modal DEFAULT_SLOTS
-  // slot-A model — without a canonical entry estimateCost silently drops
-  // slot A from the --max-usd pre-flight and est_cost_usd audit rows.
-  'openai:gpt-5.2':                       { input:  1.25, output: 10.00 },
-  'openai:gpt-5.5':                       { input:  4.00, output: 16.00 },
-  // gpt-5.6 family (GA 2026-07-09; rates cross-checked 2026-08-17 across
-  // aggregator trackers — re-verify against platform.openai.com/pricing at
-  // next release). The bare `gpt-5.6` id is OpenAI's rolling alias for the
-  // family flagship (sol). These rows are LOAD-BEARING for latest-model
-  // discovery (src/core/ai/openai-latest.ts): only priced ids are eligible
-  // as defaults, so budget caps never fail closed on a discovered model.
-  'openai:gpt-5.6':                       { input:  5.00, output: 30.00 },
-  'openai:gpt-5.6-sol':                   { input:  5.00, output: 30.00 },
-  'openai:gpt-5.6-terra':                 { input:  2.50, output: 15.00 },
-  'openai:gpt-5.6-luna':                  { input:  0.20, output:  1.20 },
-  // gpt-6.1-sol: list rate from platform.openai.com/docs/models/gpt-6.1-sol
-  // (checked 2026-10-06; short-context standard tier). Priced so the fence
-  // repair default (#6188) meters exactly; it is NOT a tier default yet
-  // (openai-latest.ts METERED_ONLY keeps discovery on the gpt-5.6 family).
-  'openai:gpt-6.1-sol':                   { input:  2.00, output: 10.00 },
-  // gpt-6-luna: the short-context standard rates the metering proxy prices it at
-  // (runner/ledger/budget-ledger.ts, developers.openai.com/api/docs/pricing,
-  // checked 2026-10-05). Here so a preregistration's planning ceiling prices
-  // the Codex, OpenClaw and Hermes cells on it.
-  'openai:gpt-6-luna':                    { input:  0.10, output:  0.50 },
-
-  // ── Particle ───────────────────────────────────────────────────────────
-  // Particle-1 (the cheap row): requests name `particle-1` at
-  // api.particle.ai/v1/chat/completions; responses echo
-  // `particle-ai/particle-1`. PEAK list rates (docs.particle.ai, checked
-  // 2026-10-31): $0.25 in, $0.03 cached in, $1.00 out per 1M tokens;
-  // reasoning tokens bill as output. Off-peak (20:30 to 04:00 New York)
-  // bills 50% of these, and the metering proxy cannot see which period a
-  // request got, so metered Particle spend is an upper bound until it is
-  // reconciled against Particle's billing. The metering proxy and ledger
-  // price it from this row (budget-ledger.ts chatPrice).
-  'particle:particle-1':                  { input:  0.25, output:  1.00, cache_read: 0.03 },
-
-  // ── Google ─────────────────────────────────────────────────────────────
-  // `gemini-1.5-pro` was retired by Google (#3510); kept so historical
-  // usage/audit rows still price. Not a valid default — it's deliberately
-  // absent from the google recipe's chat list.
-  'google:gemini-1.5-pro':                { input:  1.25, output:  5.00 },
-  // The whole `gemini-2.0` family was retired the same way; kept for the same
-  // reason, and equally absent from the recipe's chat list. `gemini-2-flash`
-  // is the legacy id spelling of `gemini-2.0-flash` — keep the pair in
-  // lockstep (the drift guard asserts they agree).
-  'google:gemini-2.0-flash':              { input:  0.10, output:  0.40 },
-  'google:gemini-2-flash':                { input:  0.10, output:  0.40 },
-  // Gemini 2.5 Flash / Flash-Lite: the live successors, and what the recipe
-  // lists today. Rates from Google's published pricing (2026-08-02).
-  'google:gemini-2.5-flash':              { input:  0.30, output:  2.50 },
-  'google:gemini-2.5-flash-lite':         { input:  0.10, output:  0.40 },
-
-  // ── Together / DeepSeek (cross-modal-eval panel) ───────────────────────
-  'together:meta-llama/Llama-3.3-70B-Instruct-Turbo': { input: 0.88, output: 0.88 },
-  // `deepseek-chat` was retired by DeepSeek 2026-07-24 (#1255); kept so
-  // historical usage/audit rows still price. New calls use the v4 names.
-  'deepseek:deepseek-chat':               { input:  0.14, output:  0.28 },
-  // DeepSeek (verified 2026-10-05 at https://api-docs.deepseek.com/quick_start/pricing):
-  // PEAK cache-miss rates, an upper bound. DeepSeek bills half these rates
-  // off-peak (outside 01:00-04:00 and 06:00-10:00 UTC on weekdays); a static
-  // row cannot know the hour and a cap must bound the worst case, so caps
-  // and estimates use peak. `deepseek-flash` (DeepSeek-V4.1-Flash) is the
-  // current name; the legacy `deepseek-v4-flash` is served by the same model
-  // and billed at the Flash price, so the pair stays in lockstep.
-  'deepseek:deepseek-flash':              { input:  0.30, output:  1.20 },
-  'deepseek:deepseek-v4-flash':           { input:  0.30, output:  1.20 },
-  'deepseek:deepseek-v4-pro':             { input:  1.32, output:  3.96 },
-  // ── Z.ai / GLM (via LiteLLM proxy) ───────────────────────────────────
-  // GLM-5.2 from Z.ai: $1.40/M input, $4.40/M output (verified 2026-08-16
-  // against OpenRouter provider listings — z.ai's own direct rates).
-  'litellm:z-ai/glm-5.2':                 { input: 1.40, output: 4.40 },
-
-  // ── OpenRouter (router-prefixed, own catalogue rate) ────────────────────
-  // Static entries pulled from OpenRouter's published `/api/v1/models`
-  // catalogue (verified 2026-08-17; re-checked 2026-10-05), NOT aliased to the inner vendor's
-  // direct rate — a router bills its own spread, and canonicalLookup's
-  // nested-id miss (see doc comment below) exists precisely to stop a
-  // router-prefixed id from silently matching the vendor's key instead.
-  // These are exact-key entries for the router id itself, so that miss
-  // path is untouched; only ids listed here resolve, everything else still
-  // returns undefined and the caller's no-pricing refusal still applies.
-  //
-  // Scoped to the three models this fork's OpenRouter fallback tier
-  // actually routes through (model-fallback-probe.ts's FALLBACK map) —
-  // add more entries here as needed rather than fetching the catalogue
-  // live; see PR discussion on gbrain#3848 for why a dynamic fetch/cache
-  // didn't merge (default-on network behavior, new pricing-source surface).
-  //
-  // deepseek/deepseek-v4-flash-0731 re-verified 2026-10-05 against the
-  // catalogue's own rate ($0.0152 in / $1.28 out), which no longer matches
-  // the vendor row above: a router row is read from the router, never
-  // copied from the vendor.
-  'openrouter:deepseek/deepseek-v4-flash-0731': { input: 0.0152, output: 1.28 },
-  'openrouter:qwen/qwen3.7-flash':              { input: 0.03,  output: 0.13 },
-  'openrouter:qwen/qwen3.6-plus':               { input: 0.325, output: 1.95 },
-};
+/** Per-model cache-read multipliers where an anthropic: row's cache reads
+ *  are not ANTHROPIC_CACHE_READ_MULT (0.1x) of its input rate, derived from
+ *  the table (Fable 5.1: 0.025x; Opus 5.5: 0.05x). */
+export const ANTHROPIC_CACHE_READ_MULT_OVERRIDES: Record<string, number> = Object.fromEntries(
+  Object.entries(CANONICAL_PRICING)
+    .filter(([key, p]) => key.startsWith('anthropic:') && p.cache_read !== undefined && Math.abs(p.cache_read - p.input * ANTHROPIC_CACHE_READ_MULT) > 1e-9)
+    .map(([key, p]) => [key, p.cache_read! / p.input]),
+);
 
 /**
  * Resolve a model id to its canonical pricing, or `undefined` on miss.
@@ -311,22 +207,27 @@ export function canonicalLookup(
   if (!modelId) return undefined;
   // 1. Exact key — colon form, already-canonical ids, and slash-bearing model
   //    tails carried verbatim as keys (e.g. together:.../Llama-3.3-70B-...).
-  const direct = CANONICAL_PRICING[modelId];
+  const direct = ownRow(CANONICAL_PRICING, modelId);
   if (direct) return direct;
   // 2. Normalize bare/slash via the shared splitter (colon-first precedence).
   const { provider, model } = splitProviderModelId(modelId);
   if (!model) return undefined;
   const key = provider ? `${provider}:${model}` : `anthropic:${model}`;
-  const normalized = CANONICAL_PRICING[key];
+  const normalized = ownRow(CANONICAL_PRICING, key);
   if (normalized) return normalized;
   // 3. #4123 (TODOS P3 case-sensitivity): case-insensitive fallback, folding
   //    BOTH sides — some canonical keys carry cased model tails verbatim
   //    (Llama-3.3-70B-...), so folding only the probe would miss those. Exact
   //    matches above stay first, so all-lowercase lookups pay nothing new.
-  //    Safe only while no two canonical keys collide case-insensitively —
-  //    pinned by test/model-pricing.test.ts.
+  //    Safe only while no two canonical keys collide case-insensitively,
+  //    which parsePriceTable refuses.
   const folded = canonicalFoldedView();
-  return folded[modelId.toLowerCase()] ?? folded[key.toLowerCase()];
+  return ownRow(folded, modelId.toLowerCase()) ?? ownRow(folded, key.toLowerCase());
+}
+
+/** A table's own row for a key, so ids such as `toString` or `__proto__` miss instead of returning Object.prototype members. */
+export function ownRow<T>(table: Record<string, T>, key: string): T | undefined {
+  return Object.hasOwn(table, key) ? table[key] : undefined;
 }
 
 let _canonicalFoldedView: Record<string, ModelPricing> | null = null;
