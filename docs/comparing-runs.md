@@ -36,13 +36,14 @@ Every script takes `--results <dir>` pointing at a directory that holds `trials.
 
 ### scripts/compare-run.ts
 
-Three ways to call it, one estimator:
+Four ways to call it, one estimator:
 
 - `bun scripts/compare-run.ts --results <dir> [--regraded] [--families a,b] [--seed 7] [--draws 10000]`: every pair of cells in the run, B minus A in pass-rate points, interval, sign-flip p, Holm-adjusted p across the pairs, clusters and pairs. Writes `comparisons.json`, or `comparisons.<families joined by ->.json` when `--families` restricts the tasks (so `comparisons.scope_isolation-shared_channel-org_security-handoff.json` is the output of `--families scope_isolation,shared_channel,org_security,handoff`), with `.regraded` before `.json` under `--regraded`.
 - `bun scripts/compare-run.ts --results <run A> --against <run B> [--families ...]`: pairs each harness's cell in A with its cell in B on the same tasks and repetition indices, for a model effect or a between-run stability check. Writes `comparisons.against-<run B's run id>[.<families>].json`. It needs exactly one matching cell per harness on each side; the company brain report records that it could not pair against the gbrain arm, which has two `none` cells per harness.
+- `bun scripts/compare-run.ts --results <dir> --baseline <cell>[,<cell>...] [--families ...]`: only each baseline cell against every other cell on its model, B minus the baseline, so cells of different models are never paired. One baseline per model. A pair whose trial ended as `model_error`, `infra_error` or `exam_fault` on either side, or is missing on either side (a repetition only one cell ran included), is excluded on both sides, and each comparison lists the excluded pairs with their reasons. Writes `comparisons.json` (named for `--families` and `--regraded` as in the first mode) with a `baselines` key. Written for `harness-zero-select-2026-11`, where each ablation is paired with `zero-full` on its model.
 - `bun scripts/compare-run.ts --results <dir> --pair gbrain [--design arm|ladder] [--families ...] [--require-exposure]`: the within-run gbrain designs. The arm design pairs each gbrain cell against the one cell without gbrain for the same harness, configuration and model, over two scopes (the primary families, by default scope_isolation, shared_channel, org_security and handoff, and all tasks), Holm across the harness pairs of one model. The ladder design pairs each install rung against its ladder neighbour within harness and model on four endpoints (pass, gbrain use, a cross-scope read via gbrain, and exposure via gbrain: a gbrain read in any turn that returned a record that turn's requester may not read), Holm per endpoint over the comparisons of one harness on one model, with a descriptive none table and paired cost, wall and input-token rows labelled with the shards the two cells ran on (from `shards.json`). The design is chosen from the manifest (a verbs, docs, installer or embedded cell makes it the ladder) and `--design` overrides. Writes `comparisons.gbrain[.<families>].json`; the `comparisons.gbrain.md` files are the saved printout. The ladder output records under `exposure` whether that endpoint is ready, with its problems; `--require-exposure`, accepted only with the ladder design, exits 2 after writing when it is not (a scored trial with no exposure value, an unmapped returned page or fact, or a grader commit that is unknown, dirty or not the commit `shards.json` records for every cell; [gbrain-arm.md](gbrain-arm.md), "The paired comparison and the report scripts").
 
-Defaults are seed 7 and 10,000 draws; every report that names them says the same two numbers. One known difference between the paths, recorded in [TODOS.md](../TODOS.md): without `--pair` the script does not exclude `model_error`, `infra_error` or `exam_fault` trials, while `--pair gbrain` and `summarize-run.ts` do, so `comparisons.json` can show a cell with more pairs than `comparisons.gbrain.json` does (the company brain run's OpenClaw scoped cell: 100 against 95).
+Defaults are seed 7 and 10,000 draws; every report that names them says the same two numbers. One known difference between the paths, recorded in [TODOS.md](../TODOS.md): without `--pair` or `--baseline` the script does not exclude `model_error`, `infra_error` or `exam_fault` trials, while `--pair gbrain`, `--baseline` and `summarize-run.ts` do, so `comparisons.json` can show a cell with more pairs than `comparisons.gbrain.json` does (the company brain run's OpenClaw scoped cell: 100 against 95).
 
 ### scripts/paired-mdd.ts
 
@@ -149,6 +150,10 @@ From a checkout at the results commit, with `--results docs/benchmarks/2026-10-2
 - `compare-run.ts` without `--pair` and the other paths disagree on exclusions until the TODOS item is closed; read the pairs column.
 
 ## Changelog
+
+### 2026-11-05: compare-run --baseline (internal-task)
+
+The compare-run list gains `--baseline`, and the known-difference note names it. Why: `harness-zero-select-2026-11` pairs each ablation with `zero-full` on its own model, with model, infra and exam errors excluded. The default mode pairs every cell with every other, so it can't pair an Opus cell at 5 repetitions with a Sol cell at 3, and it counts those errors as fails.
 
 ### 2026-11-04: statistics kit v2 (internal-task)
 

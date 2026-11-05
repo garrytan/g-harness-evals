@@ -7,6 +7,10 @@
 //   bun scripts/compare-run.ts --results <run A> --against <run B>   pairs each harness's cell in A with its cell in B
 //                                                                     (same tasks and repetition indices), for a model effect
 //
+//   bun scripts/compare-run.ts --results <run> --baseline <cell>[,<cell>...]
+//                                                                     each named cell against every other cell on its
+//                                                                     model (B minus the baseline), see below
+//
 //   bun scripts/compare-run.ts --results <run> --pair gbrain       within-run gbrain arm: for each (harness, config, model)
 //                                                                     the cell with gbrain against the cell without it
 //   bun scripts/compare-run.ts --results <run> --pair gbrain [--design ladder]
@@ -16,6 +20,12 @@
 // Prints a Markdown table (delta = B minus A in pass-rate points, 95% cluster bootstrap interval, two-sided
 // sign-flip p, Holm-adjusted p, clusters, pairs) and writes comparisons.json beside trials.jsonl. Intervals and
 // p-values only; whether a difference is reported as a difference is the preregistration's decision sentence.
+//
+// --baseline (harness-zero-select-2026-11's Endpoints): only the pairs of a baseline cell with each other cell of the same model,
+// so cells of different models or repetition counts are never paired. One baseline per model. A pair whose trial ended as
+// model_error, infra_error or exam_fault on either side, or that is missing on either side, leaves both sides with its reason,
+// and each comparison carries the count and ids as excluded (methodology item 9). Without --baseline every cell is paired
+// with every other and every trial counts, as before.
 //
 // Statistics kit: the run is analysed with runner/stats/ as it stood at its preregistration commit, or the kit a dated
 // amendment names in its registry entry (runner/stats/kit.ts). With --against the --results run's preregistration
@@ -100,7 +110,7 @@ function arg(name: string, fallback?: string): string | undefined {
 }
 const results = arg('results');
 if (!results || !existsSync(join(results, 'trials.jsonl'))) {
-  console.error('usage: bun scripts/compare-run.ts --results <results/<run-id>> [--regraded] [--families a,b] [--seed N] [--draws N] [--against <results>] [--pair gbrain]');
+  console.error('usage: bun scripts/compare-run.ts --results <results/<run-id>> [--regraded] [--families a,b] [--seed N] [--draws N] [--against <results>] [--baseline <cell>[,<cell>...]] [--pair gbrain]');
   process.exit(2);
 }
 const pairMode = arg('pair');
@@ -114,6 +124,9 @@ const draws = Number(arg('draws', '10000'));
 const useRegraded = process.argv.includes('--regraded');
 const familiesArg = arg('families');
 const against = arg('against');
+const baselines = process.argv.includes('--baseline') ? (arg('baseline') ?? '').split(',').filter(Boolean) : undefined;
+if (baselines && !baselines.length) { console.error('--baseline needs one or more cell ids'); process.exit(2); }
+if (baselines && (against || pairMode)) { console.error('--baseline pairs cells within one run; drop --against and --pair'); process.exit(2); }
 const parsed = <T>(read: () => T): T => { try { return read(); } catch (e) { if (!(e instanceof RunnerError)) throw e; console.error(e.message); process.exit(2); } };
 const readRows = (dir: string) => parsed(() => readJsonLines<TrialRecord>(join(dir, 'trials.jsonl')));
 type RunManifest = { run_id?: string; cells: Array<{ id: string; harness: string; model: string; config?: string; split: 'dev' | 'heldout'; task_set?: string; gbrain?: GbrainCellConfig; preamble?: string }>; sealed?: { set: string; receipt: OpeningReceipt } };
@@ -501,17 +514,46 @@ const obs = (cell: string): Observation[] => inScope.filter((t) => t.cell === ce
 const cellOrder = new Map(manifest.cells.map((c, i) => [c.id, i]));
 const cells = [...new Set(inScope.map((t) => t.cell))].sort((x, y) => (cellOrder.get(x) ?? Number.MAX_SAFE_INTEGER) - (cellOrder.get(y) ?? Number.MAX_SAFE_INTEGER));
 const pairs: Array<{ a: string; b: string }> = [];
-if (against) {
+if (baselines) {
+  const modelOf = new Map(manifest.cells.map((c) => [c.id, c.model]));
+  for (const b of baselines) if (!modelOf.has(b)) { console.error(`--baseline ${b} is not a cell of ${results}/manifest.json`); process.exit(2); }
+  const models = baselines.map((b) => modelOf.get(b)!);
+  if (new Set(models).size !== models.length) { console.error(`--baseline names two cells on one model (${baselines.join(', ')}); give one baseline per model`); process.exit(2); }
+  for (const a of baselines) for (const b of cells) if (b !== a && modelOf.get(b) === modelOf.get(a)) pairs.push({ a, b });
+} else if (against) {
   const other = new Set(readRows(against).map((t) => t.cell));
   const harnessOf = (cell: string) => cell.split('-')[0]!;
   for (const a of cells) if (!other.has(a)) for (const b of cells) if (other.has(b) && harnessOf(a) === harnessOf(b)) pairs.push({ a, b });
 } else {
   for (let i = 0; i < cells.length; i++) for (let j = i + 1; j < cells.length; j++) pairs.push({ a: cells[i]!, b: cells[j]! });
 }
+const EXCLUDED_TERMINATIONS = new Set(['model_error', 'infra_error', 'exam_fault']);
+const baselineObs = (a: string, b: string): [Observation[], Observation[]] => {
+  const byId = (cell: string) => {
+    const m = new Map<string, (typeof inScope)[number]>();
+    for (const t of inScope.filter((t) => t.cell === cell)) {
+      const id = `${t.task}/${rep(t)}`;
+      if (m.has(id)) { console.error(`--baseline: ${cell} has two trials for ${id}`); process.exit(2); }
+      m.set(id, t);
+    }
+    return m;
+  };
+  const A = byId(a), B = byId(b);
+  const sides: [Observation[], Observation[]] = [[], []];
+  for (const id of new Set([...A.keys(), ...B.keys()])) {
+    const x = A.get(id), y = B.get(id);
+    const reason = !x ? `missing in ${a}` : !y ? `missing in ${b}` : EXCLUDED_TERMINATIONS.has(x.termination) ? `${a} ${x.termination}` : EXCLUDED_TERMINATIONS.has(y.termination) ? `${b} ${y.termination}` : undefined;
+    const cluster = (x ?? y)!.task;
+    sides[0].push({ id, cluster, value: reason ? null : pass(x!), eligible: !reason, reason });
+    sides[1].push({ id, cluster, value: reason ? null : pass(y!), eligible: !reason, reason });
+  }
+  return sides;
+};
 const deltas = pairs.map(({ a, b }) => {
-  const pairing = pairObservations(obs(a), obs(b));
+  const [oa, ob] = baselines ? baselineObs(a, b) : [obs(a), obs(b)];
+  const pairing = pairObservations(oa, ob);
   const d = clusteredPairedDelta(pairing.pairs, { seed, draws });
-  return { a, b, delta: d.delta, ci95: d.ci95, p: d.p_two_sided, p_method: d.p_method, n_clusters: d.n_clusters, n_pairs: d.n_pairs, mean_a: d.mean_a, mean_b: d.mean_b, ...noninferiority(a, b, d) };
+  return { a, b, delta: d.delta, ci95: d.ci95, p: d.p_two_sided, p_method: d.p_method, n_clusters: d.n_clusters, n_pairs: d.n_pairs, mean_a: d.mean_a, mean_b: d.mean_b, ...noninferiority(a, b, d), excluded: baselines ? pairing.excluded : undefined };
 });
 const adjusted = holmAdjusted(deltas.map((d) => d.p));
 const lines = [
@@ -521,5 +563,6 @@ const lines = [
   '|---|---|---|---|---|---|---|---|---|',
   ...deltas.map((d, i) => `| ${d.a} | ${d.b} | ${(100 * d.mean_a).toFixed(0)}% | ${(100 * d.mean_b).toFixed(0)}% | ${pts(d.delta)} [${d.ci95 ? `${pts(d.ci95[0])}, ${pts(d.ci95[1])}` : 'n/a'}] | ${d.p.toFixed(3)} (${d.p_method}) | ${adjusted[i]!.toFixed(3)} | ${d.n_clusters} | ${d.n_pairs} |`),
 ];
+if (baselines) lines.push('', 'Excluded pairs (model_error, infra_error or exam_fault on either side, or missing on either side): ' + deltas.map((d) => `${d.b} vs ${d.a}: ${d.excluded!.length}`).join('; ') + '.');
 console.log(lines.join('\n'));
-writeFileSync(join(results, `comparisons${against ? '.against-' + (readRows(against)[0]?.trial_id.split('/')[0] ?? 'other') : ''}${suffix}`), JSON.stringify({ scope: families, grading: useRegraded ? 'regraded' : 'as recorded', seed, draws, stats_kit: statsKit, comparisons: deltas.map((d, i) => ({ ...d, holm_p: adjusted[i] })) }, null, 1) + '\n');
+writeFileSync(join(results, `comparisons${against ? '.against-' + (readRows(against)[0]?.trial_id.split('/')[0] ?? 'other') : ''}${suffix}`), JSON.stringify({ scope: families, ...(baselines ? { baselines } : {}), grading: useRegraded ? 'regraded' : 'as recorded', seed, draws, stats_kit: statsKit, comparisons: deltas.map((d, i) => ({ ...d, holm_p: adjusted[i] })) }, null, 1) + '\n');
