@@ -1,0 +1,392 @@
+{
+ "entries": [
+  {
+   "sessionId": "d71a110e-debf-4f1c-80c2-f1c58ad875a2",
+   "seq": 0,
+   "parentSeq": null,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-04 12:30 PST (America/Los_Angeles)\n</environment>",
+    "text": "Save what we learned today about the flaky retry test so you remember it next time.",
+    "runId": "596b9e94-fec6-4d99-ad3e-5bb07db4f856"
+   },
+   "scopeLabel": "personal:U1",
+   "createdAt": 1793824260158
+  },
+  {
+   "sessionId": "d71a110e-debf-4f1c-80c2-f1c58ad875a2",
+   "seq": 1,
+   "parentSeq": 0,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "58dbe722-003e-4196-893c-3a4f39cee46c",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "textSignature": "{\"v\":1,\"id\":\"msg_01d0c7ab029917ee016aeb9605907087d2b5269736d2872a4f\",\"phase\":\"commentary\"}",
+    "text": "I’ll look back for what we learned about the flaky retry test and save the takeaway for next time.\n",
+    "runId": "596b9e94-fec6-4d99-ad3e-5bb07db4f856",
+    "step": {
+     "id": "58dbe722-003e-4196-893c-3a4f39cee46c",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   },
+   "scopeLabel": "personal:U1",
+   "createdAt": 1793824262328
+  },
+  {
+   "sessionId": "d71a110e-debf-4f1c-80c2-f1c58ad875a2",
+   "seq": 2,
+   "parentSeq": 1,
+   "type": "tool_call",
+   "payload": {
+    "name": "memory",
+    "wire": {
+     "message": {
+      "id": "58dbe722-003e-4196-893c-3a4f39cee46c",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"read\",\"name\":\"memory\"}"
+    },
+    "action": "read",
+    "runId": "596b9e94-fec6-4d99-ad3e-5bb07db4f856",
+    "callId": "call_DkI35CXci94w8m05Uh5CtaWQ|fc_01d0c7ab029917ee016aeb9605fa5c87d2913d0c1768057612",
+    "tool": "skills",
+    "step": {
+     "id": "58dbe722-003e-4196-893c-3a4f39cee46c",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   },
+   "scopeLabel": "personal:U1",
+   "createdAt": 1793824262368
+  },
+  {
+   "sessionId": "d71a110e-debf-4f1c-80c2-f1c58ad875a2",
+   "seq": 3,
+   "parentSeq": 2,
+   "type": "tool_result",
+   "payload": {
+    "name": "memory",
+    "bytes": 3896,
+    "found": true,
+    "action": "read",
+    "sourceScopeId": "org:harness-eval",
+    "result": "# memory — search, write, and curate what you remember\n\nEverything here goes through the typed `memory` tool. Memory is NOT a file: writing\n`memory/MEMORY.md` with `files` action `write` or shell commands lands on your computer's disk and is\nsilently lost — the tool is the one real path.\n\nEvery turn already auto-recalls a bounded selection from your notebooks into \"## What you remember\" and\nauto-extracts facts after you reply. This skill is for what the automatic path misses:\n\n- **Search** (`action: \"search\"`) — what you remember is bigger than what auto-recall\n  injects. Search spans every notebook this conversation may read (personal, channel,\n  org); when more than one is in reach, each hit is tagged with the notebook it came\n  from. Matching is substring-based (all terms must match), so prefer distinctive terms\n  (a name, a project) over sentences.\n  An empty result means those terms found no match, not that nothing is recorded. Try fewer terms or alternate wording before concluding a fact is absent.\n- **Read another notebook** (`action: \"read\", scope: \"channel:…\"`) — use the exact\n  scope ID from a search result to load that authorized notebook. `search` accepts\n  `scope` too, to narrow a query. Omit it to search all authorized notebooks or read\n  the current notebook. Access comes from this turn's sharing policy; naming a\n  scope never grants access. Other notebooks are read-only.\n- **Write now** (`action: \"add\"`, `facts: [{text}, …]`) — when the user corrects you or tells you\n  something they'll expect you to know later, persist it immediately instead of hoping\n  post-turn extraction catches it. Write self-contained facts (who/what, with enough\n  context to be useful cold). Duplicates are dropped; `added` in the reply is the count\n  actually new.\n- **Curate** (`action: \"edit\"` with `facts: [{id, text}, …]`, `action: \"delete\"` with\n  `ids`) — search or read to get each fact's `#id`, then fix facts that changed and delete\n  stale, duplicate, or wrong ones. A call naming any id that isn't in this conversation's\n  notebook changes nothing and lists the bad ids. Curation is for quality — merging\n  duplicates, deleting disproven facts — not for deleting things the user asked you to\n  remember.\n\nThe notebook you write is this conversation's own (your personal one in a DM, the\nchannel's in a channel). Other authorized notebooks can be searched/read, not rewritten here.\n\nThe org-admin write path uses the self-API instead, called with\n`$AGENT_API_URL` and `$AGENT_API_TOKEN` (both already in your environment on every turn —\nif they are unset, this instance has no self-API; say so rather than pretending).\n\n## Org-wide notebook (admins)\n\nWhen the chatting user is an org admin, the self-API additionally accepts the org-wide\nnotebook as a target:\n\n```bash\ncurl -fsS -X POST \"$AGENT_API_URL/v1/memory/facts\" \\\n  -H \"x-agent-capability: $AGENT_API_TOKEN\" \\\n  -H \"content-type: application/json\" \\\n  -d '{\"scope\":\"org\",\"facts\":[\"...\"]}'\n```\n\n(`?scope=org` on `GET /v1/memory/self`; `\"scope\":\"org\"` in the body of `PATCH /v1/memory/facts`\nwith `{\"facts\":[{\"id\",\"text\"}]}` or `DELETE /v1/memory/facts` with `{\"ids\":[…]}` to curate.)\nThose writes land in the notebook every conversation in the org recalls, so confirm the\nwording with the admin before writing and keep personal facts out of it. A `403 org\nmemory writes require an org admin` means the user isn't one — say so rather than\nretrying (`GET $AGENT_API_URL/v1/admin/whoami` answers it definitively).\n\n## Failure modes\n\n- \"memory isn't available in this conversation\" — this conversation's memory policy\n  forbids it; don't retry, just say memory is off here.\n- On a read-only wake (a heartbeat glance), memory can be searched and read but not\n  written — save the fact on a normal turn instead.\n- `401 unauthorized` from the self-API — your token expired mid-turn; this resolves on\n  the next turn.\n",
+    "runId": "596b9e94-fec6-4d99-ad3e-5bb07db4f856",
+    "callId": "call_DkI35CXci94w8m05Uh5CtaWQ|fc_01d0c7ab029917ee016aeb9605fa5c87d2913d0c1768057612",
+    "tool": "skills",
+    "isError": false
+   },
+   "scopeLabel": "personal:U1",
+   "createdAt": 1793824262426
+  },
+  {
+   "sessionId": "d71a110e-debf-4f1c-80c2-f1c58ad875a2",
+   "seq": 4,
+   "parentSeq": 3,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "1b2bec19-db8d-4a18-a536-531d8c8a45fa",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"search\",\"query\":\"retry\",\"limit\":30}"
+    },
+    "limit": 30,
+    "query": "retry",
+    "action": "search",
+    "runId": "596b9e94-fec6-4d99-ad3e-5bb07db4f856",
+    "callId": "call_pbuWyGSZvnM3VyOxhvyWUnhC|fc_01d0c7ab029917ee016aeb96087fdc87d28f8891271fd5dbc5",
+    "tool": "memory",
+    "step": {
+     "id": "1b2bec19-db8d-4a18-a536-531d8c8a45fa",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   },
+   "scopeLabel": "personal:U1",
+   "createdAt": 1793824264740
+  },
+  {
+   "sessionId": "d71a110e-debf-4f1c-80c2-f1c58ad875a2",
+   "seq": 5,
+   "parentSeq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "1b2bec19-db8d-4a18-a536-531d8c8a45fa",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"query\":\"retry\",\"limit\":30}"
+    },
+    "limit": 30,
+    "query": "retry",
+    "runId": "596b9e94-fec6-4d99-ad3e-5bb07db4f856",
+    "callId": "call_rX5r9wqzC9MJeAbWiVdg9Xqc|fc_01d0c7ab029917ee016aeb96087fc887d2b84f5eabb174bac9",
+    "tool": "history",
+    "step": {
+     "id": "1b2bec19-db8d-4a18-a536-531d8c8a45fa",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   },
+   "scopeLabel": "personal:U1",
+   "createdAt": 1793824264754
+  },
+  {
+   "sessionId": "d71a110e-debf-4f1c-80c2-f1c58ad875a2",
+   "seq": 6,
+   "parentSeq": 5,
+   "type": "tool_result",
+   "payload": {
+    "count": 0,
+    "query": "retry",
+    "action": "search",
+    "result": "[no remembered facts match \"retry\"]",
+    "runId": "596b9e94-fec6-4d99-ad3e-5bb07db4f856",
+    "callId": "call_pbuWyGSZvnM3VyOxhvyWUnhC|fc_01d0c7ab029917ee016aeb96087fdc87d28f8891271fd5dbc5",
+    "tool": "memory",
+    "isError": false
+   },
+   "scopeLabel": "personal:U1",
+   "createdAt": 1793824264766
+  },
+  {
+   "sessionId": "d71a110e-debf-4f1c-80c2-f1c58ad875a2",
+   "seq": 7,
+   "parentSeq": 6,
+   "type": "tool_result",
+   "payload": {
+    "count": 3,
+    "query": "retry",
+    "result": "- tool_call#5 (2026-11-04T20:31:04.754Z): {\"limit\":30,\"query\":\"retry\",\"runId\":\"596b9e94-fec6-4d99-ad3e-5bb07db4f856\",\"callId\":\"call_rX5r9wqzC9MJeAbWiVdg9Xqc|fc_01d0c7ab029917ee016aeb96087fc887d2b84f5eabb174bac9\",\"tool\":\"history\"}\n- tool_call#4 (2026-11-04T20:31:04.740Z): {\"limit\":30,\"query\":\"retry\",\"action\":\"search\",\"runId\":\"596b9e94-fec6-4d99-ad3e-5bb07db4f856\",\"callId\":\"call_pbuWyGSZvnM3VyOxhvyWUnhC|fc_01d0c7ab029917ee016aeb96087fdc87d28f8891271fd5dbc5\",\"tool\":\"memory\"}\n- user#0 (2026-11-04T20:31:00.158Z) Dana Okafor: Save what we learned today about the flaky retry test so you remember it next time.",
+    "runId": "596b9e94-fec6-4d99-ad3e-5bb07db4f856",
+    "callId": "call_rX5r9wqzC9MJeAbWiVdg9Xqc|fc_01d0c7ab029917ee016aeb96087fc887d2b84f5eabb174bac9",
+    "tool": "history",
+    "isError": false
+   },
+   "scopeLabel": "personal:U1",
+   "createdAt": 1793824264782
+  },
+  {
+   "sessionId": "d71a110e-debf-4f1c-80c2-f1c58ad875a2",
+   "seq": 8,
+   "parentSeq": 7,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "ab1005ef-e868-4639-8a49-2688188463b0",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"search\",\"query\":\"flaky\",\"limit\":20}"
+    },
+    "limit": 20,
+    "query": "flaky",
+    "action": "search",
+    "runId": "596b9e94-fec6-4d99-ad3e-5bb07db4f856",
+    "callId": "call_ZziFAehMSs4DmBYKLSsTDAAF|fc_01d0c7ab029917ee016aeb960b4ea087d29873838fcb374cd1",
+    "tool": "memory",
+    "step": {
+     "id": "ab1005ef-e868-4639-8a49-2688188463b0",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   },
+   "scopeLabel": "personal:U1",
+   "createdAt": 1793824267520
+  },
+  {
+   "sessionId": "d71a110e-debf-4f1c-80c2-f1c58ad875a2",
+   "seq": 9,
+   "parentSeq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "ab1005ef-e868-4639-8a49-2688188463b0",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"query\":\"test\",\"limit\":20}"
+    },
+    "limit": 20,
+    "query": "test",
+    "runId": "596b9e94-fec6-4d99-ad3e-5bb07db4f856",
+    "callId": "call_4qgkiKrr6Hegwiz9t7esocl4|fc_01d0c7ab029917ee016aeb960b4eb887d2a7b1e2c0eb8ae286",
+    "tool": "history",
+    "step": {
+     "id": "ab1005ef-e868-4639-8a49-2688188463b0",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   },
+   "scopeLabel": "personal:U1",
+   "createdAt": 1793824267524
+  },
+  {
+   "sessionId": "d71a110e-debf-4f1c-80c2-f1c58ad875a2",
+   "seq": 10,
+   "parentSeq": 9,
+   "type": "tool_result",
+   "payload": {
+    "count": 0,
+    "query": "flaky",
+    "action": "search",
+    "result": "[no remembered facts match \"flaky\"]",
+    "runId": "596b9e94-fec6-4d99-ad3e-5bb07db4f856",
+    "callId": "call_ZziFAehMSs4DmBYKLSsTDAAF|fc_01d0c7ab029917ee016aeb960b4ea087d29873838fcb374cd1",
+    "tool": "memory",
+    "isError": false
+   },
+   "scopeLabel": "personal:U1",
+   "createdAt": 1793824267537
+  },
+  {
+   "sessionId": "d71a110e-debf-4f1c-80c2-f1c58ad875a2",
+   "seq": 11,
+   "parentSeq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "ab1005ef-e868-4639-8a49-2688188463b0",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"search\",\"query\":\"test\",\"limit\":20}"
+    },
+    "limit": 20,
+    "query": "test",
+    "action": "search",
+    "runId": "596b9e94-fec6-4d99-ad3e-5bb07db4f856",
+    "callId": "call_tgy8QwiTBAFI0N2PhsmPLrqL|fc_01d0c7ab029917ee016aeb960b4ec887d2bacab30803b87e9e",
+    "tool": "memory",
+    "step": {
+     "id": "ab1005ef-e868-4639-8a49-2688188463b0",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 2
+    }
+   },
+   "scopeLabel": "personal:U1",
+   "createdAt": 1793824267545
+  },
+  {
+   "sessionId": "d71a110e-debf-4f1c-80c2-f1c58ad875a2",
+   "seq": 12,
+   "parentSeq": 11,
+   "type": "tool_result",
+   "payload": {
+    "count": 2,
+    "query": "test",
+    "result": "- tool_call#9 (2026-11-04T20:31:07.524Z): {\"limit\":20,\"query\":\"test\",\"runId\":\"596b9e94-fec6-4d99-ad3e-5bb07db4f856\",\"callId\":\"call_4qgkiKrr6Hegwiz9t7esocl4|fc_01d0c7ab029917ee016aeb960b4eb887d2a7b1e2c0eb8ae286\",\"tool\":\"history\"}\n- user#0 (2026-11-04T20:31:00.158Z) Dana Okafor: Save what we learned today about the flaky retry test so you remember it next time.",
+    "runId": "596b9e94-fec6-4d99-ad3e-5bb07db4f856",
+    "callId": "call_4qgkiKrr6Hegwiz9t7esocl4|fc_01d0c7ab029917ee016aeb960b4eb887d2a7b1e2c0eb8ae286",
+    "tool": "history",
+    "isError": false
+   },
+   "scopeLabel": "personal:U1",
+   "createdAt": 1793824267552
+  },
+  {
+   "sessionId": "d71a110e-debf-4f1c-80c2-f1c58ad875a2",
+   "seq": 13,
+   "parentSeq": 12,
+   "type": "tool_result",
+   "payload": {
+    "count": 0,
+    "query": "test",
+    "action": "search",
+    "result": "[no remembered facts match \"test\"]",
+    "runId": "596b9e94-fec6-4d99-ad3e-5bb07db4f856",
+    "callId": "call_tgy8QwiTBAFI0N2PhsmPLrqL|fc_01d0c7ab029917ee016aeb960b4ec887d2bacab30803b87e9e",
+    "tool": "memory",
+    "isError": false
+   },
+   "scopeLabel": "personal:U1",
+   "createdAt": 1793824267612
+  },
+  {
+   "sessionId": "d71a110e-debf-4f1c-80c2-f1c58ad875a2",
+   "seq": 14,
+   "parentSeq": 13,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "15b8303d-9b95-465c-9823-c4c758ac6228",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "textBlock": {
+     "textSignature": "{\"v\":1,\"id\":\"msg_01d0c7ab029917ee016aeb960ccefc87d28fb444f61dddf1f8\",\"phase\":\"final_answer\"}"
+    },
+    "workStartedAt": 1793824259695,
+    "workFinishedAt": 1793824269766,
+    "text": "I couldn’t find today’s retry-test findings in our available history or memory. Can you paste the takeaway—especially the cause and the fix or workaround? I’ll save it for next time.",
+    "runId": "596b9e94-fec6-4d99-ad3e-5bb07db4f856",
+    "step": {
+     "id": "15b8303d-9b95-465c-9823-c4c758ac6228",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 0
+    }
+   },
+   "scopeLabel": "personal:U1",
+   "createdAt": 1793824269768
+  }
+ ]
+}

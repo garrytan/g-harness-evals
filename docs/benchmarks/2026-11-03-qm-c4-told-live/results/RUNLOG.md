@@ -1,0 +1,22 @@
+# qm-c4-told-live-2026-11 run log (HARN-38)
+
+- Prereg merged on main as f5491d7d02f34dad833abeab54d02141a0ee5a64 (#258, v0.0.135, 19:14:12Z 2026-11-04). Freeze base dcbf03e025d6eecb00ab27c4e09ddf01600bf7cd.
+- PRs merged between the freeze base and the merge commit:
+  - #257 (1931b35b, export v2). The only file it changed under the run's paths is harnesses/qm/gstack/README.md (one line); its other changes are under scripts/public-export/ and docs.
+  - #260 (3773d3ba, a test-only tap baseline). It changed tests/fixtures/tap-baselines/, tests/gbrain-provider-off-identity.test.ts and tsconfig.json.
+  - #258's land stamp changed stamp files only.
+  - No pinned file changed: gbrain-tap.ts, mechanism.ts, the preambles and s1-fixture.ts are untouched.
+- Pre-launch one-VM check: passed at ae558be (Subagent 6). scripts/ubicloud changed between ae558be and f5491d7d only in README.md.
+- Controller: primary Capy machine, worktree /workspace/c4-run pinned at f5491d7d. Backup: Subagent 9's machine held the per-VM state and pulled every 20 min.
+- 19:19:51Z: canary qm-opus VM ubirun-harn38-1793819991-fab903da-t6 created (UBI_TTL_HOURS=6, --timeout-hours 5). Smoke: 3/3 completed, $0.3276. Counted run started 19:31:17Z.
+- 19:38:10Z: the backup pulled 11 completed, passing qm-opus trials off the VM. The staged-start condition was met.
+- ~19:41Z: qm-sol VM ubirun-harn38-1793821312-c232ec28-t6 created. Smoke completed. Counted run started 19:52:43Z.
+- ~20:30Z: the controller machine restarted, and both fanout processes died. The runners on the VMs kept running from f5491d7d, so the shards were unaffected.
+- 20:36:03Z: both shards reattached with run-shard.sh --attach from /workspace/c4-run at f5491d7d (qm-opus at 90 trials, qm-sol at 65).
+- 21:02:26Z: qm-opus finished: 120/120 completed, run 1h31m07s, VM life 1h42m35s, $0.8631 list price, VM destroyed.
+- 21:20:26Z: qm-sol finished: 120/120 completed, run 1h27m40s, VM life 1h38m34s, $0.8296 list price, VM destroyed.
+- Spend from the meter:
+  - qm-opus: $15.1556 of the $32 lease (1162 requests), smoke $0.3276.
+  - qm-sol: $8.6080 of the $24 lease (1318 requests), smoke $0.0883.
+  - Counted total $23.76 of the $56 cap. No overshoot.
+- list --mine is empty after both shards.

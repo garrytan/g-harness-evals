@@ -11,7 +11,7 @@
 - **Our v0.3 multi-user tasks are too easy for Opus 5.5.** Four of six task families scored above 90 percent. Only corrections (9 of 40) and approval relay (26 of 30) landed in the 10 to 90 percent band. So the sealed v0.3 set stays unopened, and the next set must put facts where only memory reaches them ([report](docs/benchmarks/2026-10-31-v03-opus-dev/report.md)).
 - **Scoping a shared brain still matters on Opus.** With one bot-wide gbrain token, search returned 123 (OpenClaw) and 121 (Hermes) rows the asker was not allowed to see. Scoped to the asker: 0 (same report, descriptive).
 
-**All four rest on dev runs, uncounted checks or, for the hook test, one preregistered run, all on public tasks.** They steer our work and prove nothing on unseen tasks. GPT-6.1 Sol has reported in five runs so far: the Codex cells of the two installer rungs (dev, Current results), the Sol arms of `gates938-phase3`, the hook test ([report](docs/benchmarks/2026-11-03-investigate-gate/report.md)), where every Sol arm sat near the floor, the Sol cells of `prompt-archaeology-2026-11` ([report](docs/benchmarks/2026-11-01-prompt-archaeology/report.md)), and the Sol cells of `matrix-mu-2026-11` ([report](docs/benchmarks/2026-11-04-matrix-mu/report.md)). Older results on Sonnet 5.5 and Haiku 5.5 are in the [appendix](#appendix-sonnethaiku-runs-appendix-grade-not-frontier-evidence).
+**All four rest on dev runs, uncounted checks or, for the hook test, one preregistered run, all on public tasks.** They steer our work and prove nothing on unseen tasks. GPT-6.1 Sol has reported in seven runs so far: the Codex cells of the two installer rungs (dev, Current results), the Sol arms of `gates938-phase3`, the hook test ([report](docs/benchmarks/2026-11-03-investigate-gate/report.md)), where every Sol arm sat near the floor, the Sol cells of `prompt-archaeology-2026-11` ([report](docs/benchmarks/2026-11-01-prompt-archaeology/report.md)), the Sol cells of `matrix-mu-2026-11` ([report](docs/benchmarks/2026-11-04-matrix-mu/report.md)), and the Sol arms of the two QM M1 runs, `qm-c4-told-live-2026-11` ([report](docs/benchmarks/2026-11-03-qm-c4-told-live/report.md)) and `qm-s1-gstack-probe-2026-11` ([report](docs/benchmarks/2026-11-03-qm-s1-gstack-probe/report.md)). Older results on Sonnet 5.5 and Haiku 5.5 are in the [appendix](#appendix-sonnethaiku-runs-appendix-grade-not-frontier-evidence).
 
 ## What each harness sends the model
 
@@ -101,7 +101,7 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 |---|---|
 | OpenClaw | [openclaw/openclaw](https://github.com/openclaw/openclaw) 2026.10.6, installed from npm ([harnesses/openclaw/pin.json](harnesses/openclaw/pin.json)) |
 | Hermes Agent | [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) v2026.9.24, commit `f97608f` ([harnesses/hermes/pin.json](harnesses/hermes/pin.json)) |
-| QM | [yc-software/qm](https://github.com/yc-software/qm) v0.1.15, commit `7417aa2a`, in every published cell: its Pi engine in every cell and its Claude Agent SDK engine in the inner-harness run and the two probe runs. The harness is now pinned to main `b6786d67`, where Pi is QM's only engine; nothing counted has run there yet, only keyless captures ([harnesses/qm/pin.json](harnesses/qm/pin.json)) |
+| QM | [yc-software/qm](https://github.com/yc-software/qm) v0.1.15, commit `7417aa2a`, in every published cell before QM M1: its Pi engine in every cell and its Claude Agent SDK engine in the inner-harness run and the two probe runs. The harness is now pinned to main `b6786d67`, where Pi is QM's only engine; QM M1's two runs, `qm-c4-told-live-2026-11` (counted) and `qm-s1-gstack-probe-2026-11` (probe), ran there ([harnesses/qm/pin.json](harnesses/qm/pin.json)) |
 | Claude Code | [anthropics/claude-code](https://www.npmjs.com/package/@anthropic-ai/claude-code) 2.1.312 from npm; first counted run `host-harness-pilot-2026-10` (dev) ([harnesses/claude-code/pin.json](harnesses/claude-code/pin.json)) |
 | Codex | [openai/codex](https://github.com/openai/codex) 0.165.0 from npm; first counted run `host-harness-pilot-2026-10` (dev). It speaks only OpenAI's Responses API, so it is compared only with OpenClaw and Hermes on the same OpenAI model ([harnesses/codex/pin.json](harnesses/codex/pin.json)) |
 | Not run | Two products in the original plan expose no headless API; nothing on this page measures them |
@@ -174,13 +174,15 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 
 ### QM runs
 
-**So what:** QM's two inner engines can't be told apart on pass, and the Claude SDK one costs more per trial. QM keeps memory and sandboxes per person; OpenClaw and Hermes shared a DM file across members. Dev and probe rows.
+**So what:** QM's two inner engines can't be told apart on pass, and the Claude SDK one costs more per trial. QM keeps memory and sandboxes per person; OpenClaw and Hermes shared a DM file across members. Dev and probe rows. On Opus 5.5 and GPT-6.1 Sol (M1), neither gbrain route beat QM's own notebook on pass, and Sol opened gstack skills through the paste-in router far more often than Opus (11 of 15 against 2 of 15), with no skill first step on either.
 
 | Run | Date | Model | Question | Result | Spend | Status | Report |
 |---|---|---|---|---|---|---|---|
 | `qm-inner-harness-2026-10` | 2026-10-25 | Haiku 5.5 | QM over Pi against QM over the Claude Agent SDK | Claude minus Pi +4 on pass; inconclusive | $1.25 of $25 | dev | [report](docs/benchmarks/2026-10-25-qm-inner-harness/report.md) |
 | `qm-probes-2026-10` | 2026-10-25 | Haiku 5.5 | Nine product probes of QM's claims | 3 of 3 on memory, DM sandbox and posture; channel sandbox 0 of 3 | $0.37 of $15 | dev split (probes) | [report](docs/benchmarks/2026-10-25-qm-probes/report.md) |
 | `qm-probes-qp07-2026-10` | 2026-10-25 | Haiku 5.5 | The channel-sandbox probe, roster seeded | 3 of 3 on both QM engines | $0.04 of $1 | dev split (probes) | [report](docs/benchmarks/2026-10-25-qm-probes-qp07/report.md) |
+| `qm-c4-told-live-2026-11` | 2026-11-04 | Opus 5.5, GPT-6.1 Sol | QM's notebook only, gbrain as tools, gbrain as QM's per-turn memory provider | Pass not distinguished on either model; provider -17.5 [-43, 0] (Opus) and -12.5 [-38, 0] (Sol) against notebook only, all from unscoped reads; notebook already at 20 of 20 on continuity | $23.76 of $56 | dev, counted | [report](docs/benchmarks/2026-11-03-qm-c4-told-live/report.md) |
+| `qm-s1-gstack-probe-2026-11` | 2026-11-04 | Opus 5.5, GPT-6.1 Sol | Does QM open gstack skills through the paste-in router? | Matched opens Opus 2 of 15 [0, 40], Sol 11 of 15 [33, 100]; no-gstack 0; no first step on either | $2.73 of $20 | dev split (probe) | [report](docs/benchmarks/2026-11-03-qm-s1-gstack-probe/report.md) |
 
 <details>
 <summary>Details for the QM runs</summary>
@@ -188,6 +190,8 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 - `qm-inner-harness-2026-10`, 2 x 100 (held-out, Haiku), v0.1 held-out, opening 5: dev; trials overlapped with `gbrain-verbs-2026-10`. Claude minus Pi on pass, 16 tasks: +4 [-6, +15] (66 against 63 of 80), p 0.688, under the 14.5-point minimum detectable difference: inconclusive. Cost per trial 2.7 times at the median ($0.0083 against $0.0033), 11 s longer; the SDK's `Agent` tool never called. Spend $1.25 of $25. [results](docs/benchmarks/2026-10-25-qm-inner-harness/results/)
 - `qm-probes-2026-10`, 6 cells, 96 trials (Haiku), dev split (probes). Nine product probes of QM's memory, sandbox and org-setting claims, with OpenClaw and Hermes on the shared claims. Counts of 3 per probe and cell, no pooled rate: memory within and across scopes 3 of 3 on both QM engines; DM sandboxes per scope 3 of 3; channel sandbox 0 of 3 on both (a rig limitation, finding F5); strict posture and command denylist 3 of 3; OpenClaw and Hermes shared the DM file across members, 0 of 3 each. Spend $0.37 of $15. [results](docs/benchmarks/2026-10-25-qm-probes/results/)
 - `qm-probes-qp07-2026-10`, 2 x 3 (Haiku), dev split (probes). The channel-sandbox probe with the roster seeded from the world: 3 of 3 on both QM engines; a product check, not a rate. One declared deviation (below). Spend $0.04 of $1. [results](docs/benchmarks/2026-10-25-qm-probes-qp07/results/)
+- `qm-c4-told-live-2026-11`, 6 cells, 240 trials (Opus 5.5 and GPT-6.1 Sol, 40 per cell), dev, counted, on two Ubicloud shards. Member-visible pass: `none` 25 of 40 on both models, `memory-provider` 18 (Opus) and 20 (Sol), `route-tool` 28 and 36; no pass difference distinguished (every Holm p 0.375 or more). The one distinguished difference: Opus `route-tool` minus `none` in the mechanism count, +70 [43, 93], Holm p 0.047, where `none` is 0 by construction (it has no gbrain path). Every `memory-provider` figure uses the tap's member-text trim, which matches QM as shipped at qm `066319ee` (qm#3005, merged 2026-11-05) or later. The M1 runs used the pinned QM, which predates that merge; as shipped, the provider delivered no told fact. Why null? verdicts FIX-METHOD for both routes (saturated). Spend $23.76 of $56. [results](docs/benchmarks/2026-11-03-qm-c4-told-live/results/)
+- `qm-s1-gstack-probe-2026-11`, 4 cells, 60 DM turns (Opus 5.5 and GPT-6.1 Sol), dev split (probe). Matched opens with gstack's paste-in router: Opus 2 of 15 [0, 40], Sol 11 of 15 [33, 100]; no-gstack 0 of 15 on both, with no contaminated turn. Sol tried the skill's own start command in 10 of 15, Opus in 0; no skill first step on either model. Why null? verdict FIX-METHOD (a QM-native gstack edition). Spend $2.73 of $20. [results](docs/benchmarks/2026-11-03-qm-s1-gstack-probe/results/)
 
 </details>
 
@@ -250,9 +254,9 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 - Only a held-out set's first counted opening is confirmatory; a later opening is dev because whoever designed it had seen that set's results ([Corrections](#corrections), 2026-10-28).
 - The maths (95 percent task-clustered intervals, paired differences, sign-flip tests, Holm) and the openings ledger: [docs/methods.md](docs/methods.md#how-to-read-the-numbers).
 
-**Spend so far.** Spend across every lane, from the lease ledgers: $1,648.94 committed of the $2,000 program cap ([docs/budget-ledger.md](docs/budget-ledger.md)).
+**Spend so far.** Spend across every lane, from the lease ledgers: $1,675.85 committed of the $2,000 program cap ([docs/budget-ledger.md](docs/budget-ledger.md)).
 
-- That is $1,570.35 in the program's lane ledger plus $78.59 from the two v0.2 runs' committed ledgers that the lane ledger does not yet list.
+- That is $1,573.08 in the program's lane ledger plus $102.77 from three runs' committed ledgers that the lane ledger does not yet list: the two v0.2 runs and `qm-c4-told-live-2026-11`.
 - Every dollar is the metering proxy's list-price meter; the provider-side check has never been performed (Known limits).
 
 ## Known limits
@@ -414,6 +418,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 **Contributing.** Outside code is read as text and rewritten by maintainers, never merged as is; bug reports need a repro on current main or a failing test ([CONTRIBUTING.md](CONTRIBUTING.md)). Report security issues privately ([SECURITY.md](SECURITY.md)). Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Changelog
+
+### 2026-11-04: QM M1 reported
+
+The QM runs table gains rows for runs `qm-c4-told-live-2026-11` and `qm-s1-gstack-probe-2026-11`, its So what line gains a sentence for them, and its details gain a line for each. The QM row of the harnesses table says both runs ran at the `b6786d67` pin, instead of "nothing counted has run there yet". The note under "Found so far" now counts six runs with GPT-6.1 Sol results, adding these two. The spend line, and its twin in `docs/methods.md`, moves to $1,576.84 (at this change): `docs/budget-ledger.md` gains a run ledger row for `qm-c4-told-live-2026-11` ($24.17948, its smokes included), and the lane ledger gains a `internal-task` line for `qm-s1-gstack-probe-2026-11` ($2.7329148; its results have no `trials.jsonl`, so the receipts manifest does not list it). Why: both runs are complete and their reports are in the tree.
 
 ### 2026-11-05: harness x model matrix reported
 

@@ -1,0 +1,152 @@
+{
+  "run_id": "qm-s1-gstack-probe-2026-11",
+  "turn_id": "s1-r1-k1-sol-gstack-router",
+  "model": "openai:gpt-6.1-sol",
+  "housekeeping": {
+    "model": "openai:gpt-5.6-luna",
+    "requests": 1,
+    "usd": 0.000067
+  },
+  "arm": "gstack-router",
+  "request": 1,
+  "skill": "investigate",
+  "rep": 1,
+  "attempt": 1,
+  "dry_run": false,
+  "started_at": "2026-11-04T20:00:04.656Z",
+  "ended_at": "2026-11-04T20:00:53.796Z",
+  "wall_ms": 33796,
+  "termination": "ok",
+  "images": {
+    "core": "sha256:a64844019ed717c103e68560540c53b7192b239dc4e0b77625e4cc96ae9f5194",
+    "sandbox": "harness-eval/qm-sandbox:s1-gstack-21277291",
+    "sandbox_id": "sha256:d8db6e5b533241b33171e4bf189b4950fb26380a5f00f6edc58b9c93aad61274"
+  },
+  "soul": {
+    "chars": 12186,
+    "sha256": "a6a55a8b31faf7b8cf673feb9916f7591b0b362084c7e7416910824c8ba85af3",
+    "problems": []
+  },
+  "sandbox": {
+    "create_http": 201,
+    "default_http": 200,
+    "machine_id": "qm-sbx-sandbox-90f01557-5f31-49a8-950c-9374caab-39153c"
+  },
+  "turn": {
+    "http": 200,
+    "status": "ok",
+    "session_id": "2721f9ff-f7d6-430b-bffb-d833dd965802"
+  },
+  "first_prompt": {
+    "system_chars": 22077,
+    "router": true,
+    "gstack_word": true
+  },
+  "counts": {
+    "opens": [
+      {
+        "seq": 2,
+        "skill": "investigate",
+        "via": "execute",
+        "path": "/root/workspace/gstack/investigate/SKILL.md",
+        "cut": true
+      },
+      {
+        "seq": 4,
+        "skill": "investigate",
+        "via": "execute",
+        "path": "/root/workspace/gstack/investigate/SKILL.md",
+        "cut": false
+      },
+      {
+        "seq": 6,
+        "skill": "investigate",
+        "via": "execute",
+        "path": "/root/workspace/gstack/investigate/SKILL.md",
+        "cut": false
+      }
+    ],
+    "open_any": true,
+    "open_matched": true,
+    "root_reads": 0,
+    "complete_read": null,
+    "cut_reads": 0,
+    "read_after_cut": false,
+    "start_preamble": true,
+    "start_first_step": false,
+    "progress": true,
+    "audit": [
+      {
+        "seq": 2,
+        "tool": "execute",
+        "text": "cat /root/workspace/gstack/SKILL.md && printf '\\n---INVESTIGATE---\\n' && cat /root/workspace/gstack/investigate/SKILL.md"
+      },
+      {
+        "seq": 4,
+        "tool": "execute",
+        "text": "pwd; ls -la; sed -n '1,230p' /root/workspace/gstack/investigate/SKILL.md"
+      },
+      {
+        "seq": 6,
+        "tool": "execute",
+        "text": "cat /root/workspace/gstack/investigate/sections/preamble.md; sed -n '230,355p' /root/workspace/gstack/investigate/SKILL.md; cd /root/workspace/repo && git status --short && git branch --show-current && git log -8 --oneline && ls -la"
+      },
+      {
+        "seq": 8,
+        "tool": "execute",
+        "text": "~/.claude/skills/gstack/bin/gstack-skill-start --skill investigate --model claude; cd /root/workspace/repo; cat README.md package.json; find src test -type f -maxdepth 3 -print; git log -5 --format=fuller; git show HEAD; cat src/* test/*; ls /root/workspace/gstack/bin/gstack* 2>/dev/null | head"
+      },
+      {
+        "seq": 12,
+        "tool": "execute",
+        "text": "cd /root/workspace/repo; npm test; printf '\\n--- Parent revision, evaluated in memory ---\\n'; node <<'NODE'\nconst cp = require('node:child_process');\nconst vm = require('node:vm');\nconst src = cp.execFileSync('git', ['show', 'HEAD^:src/auth.js'], {encoding:'utf8'});\nconst test = cp.execFileSync('git"
+      }
+    ],
+    "contaminated": false,
+    "faults": []
+  },
+  "usage": {
+    "meter_id": "trial-token:s1-r1-k1-sol-gstack-router",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0738631,
+    "input_tokens": 100824,
+    "output_tokens": 1100,
+    "cached_tokens": 78526,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.000067,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0737961,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "reconcile": {
+    "meter_id": "trial-token:s1-r1-k1-sol-gstack-router",
+    "meter": {
+      "requests": 7,
+      "usd": 0.0738631,
+      "unpriced": 0,
+      "undrained": 0
+    },
+    "usage_lines": {
+      "requests": 7,
+      "usd": 0.0738631,
+      "refused": 0
+    },
+    "proxy_consistent": true,
+    "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+  }
+}

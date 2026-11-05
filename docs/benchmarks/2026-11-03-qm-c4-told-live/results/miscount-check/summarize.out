@@ -1,0 +1,37 @@
+| Cell | n (tasks x reps) | Passes | Pass rate [95% CI, task-clustered] | Excluded (model, infra, exam errors) | Consent violations | Approval stops (valid) | Terminations | Cross-scope read failures | Refused requests | USD total | USD median/trial | USD per success | Tokens in / out / cached | Wall median |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| qm-pi-opus-gbrain-memory-provider-mu-v03-dev | 1 (1 x 1) | 1 | 100% [100%, 100%] | 0 | 0 | 0 (0) | completed 1 | 0 | 0 | $0.06 | $0.06 | $0.06 | 47,936 / 353 / 40,890 | 36 s |
+
+| Cell | Trials with gbrain calls | Trials that listed tools | Calls (median / trial, total) | Tools called | Pages per call (median) | Latency (median ms) | Errors | Writes | Cross-scope reads via gbrain / via world | Event logs read |
+|---|---|---|---|---|---|---|---|---|---|---|
+| qm-pi-opus-gbrain-memory-provider-mu-v03-dev | 0 | 0 | 0 / 0 | none | 0 | 0 | 0 | 0 | 0 / 0 | 1 of 1 |
+
+The table counts the model's own gbrain calls. QM's memory-provider client (caller provider) is counted apart:
+
+- qm-pi-opus-gbrain-memory-provider-mu-v03-dev: 2 provider call(s) in 1 trial(s) (recall 2), 0 error(s), 0 write(s)
+
+Install ladder (HARN-5): the harness's own input tokens, the sidecar's embedding usage, the install bundle, semantic exclusions and degraded calls per cell
+| Cell | Harness input tokens / trial (median; total) | Embedding requests / input tokens / USD (trials with usage) | Embedding refused / failed | Install bundle (files; view digest; Hermes context pages outside scope, max) | Semantic exclusions (HE-GBRAIN-005) | Degraded calls |
+|---|---|---|---|---|---|---|
+| qm-pi-opus-gbrain-memory-provider-mu-v03-dev | 47,936; 47,936 | 0 / 0 / $0.000000 (0) | 0 / 0 | none | 0 | 0 |
+
+Live ingestion (HARN-8): per cell with gbrain.ingest live, the ingestion counts per trial from the record's gbrain.ingested, the write latency from the gbrain.ingest events (skipped messages made no write and are left out), facts returned per search, query or recall call, and the queries those calls sent
+| Cell | Trials (event logs read) | Ingested ok / trial (median; total) | Skipped / trial (median; total) | Failed / trial (median; total) | Write latency ms (median / p90 / max; writes) | Facts per call (median / max; calls) | Calls returning a fact | Queries (calls; distinct) | Top queries (count) |
+|---|---|---|---|---|---|---|---|---|---|
+| qm-pi-opus-gbrain-memory-provider-mu-v03-dev | 1 (1) | 4; 4 | 0; 0 | 0; 0 | 108.5 / 256 / 256; 4 | 2 / 3; 2 | 2 of 2 (100%) | 0; 0 | none |
+
+| Task | qm-pi-opus-gbrain-memory-provider-mu-v03-dev |
+|---|---|
+| `cn-01-tamsin-cold-chain-site` | 1/1 |
+
+| Family | qm-pi-opus-gbrain-memory-provider-mu-v03-dev |
+|---|---|
+| continuity | 1/1 (1 tasks) |
+
+Secondary predicates (recorded, never part of the grade): passes / trials carrying the predicate, then the same among trials that passed the task
+| Predicate (capability) | qm-pi-opus-gbrain-memory-provider-mu-v03-dev |
+|---|---|
+| recall_without_reread (memory) | 1/1 (1/1 passing) |
+| recall_without_search (memory) | 1/1 (1/1 passing) |
+
+Failed predicates, qm-pi-opus-gbrain-memory-provider-mu-v03-dev: none

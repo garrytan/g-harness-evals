@@ -1,0 +1,33 @@
+# Evaluator-owned receipts are committed; harness state, workspaces, raw harness logs and per-trial tokens are not.
+# (Copied from the v03-pilot results, plus QM's stored user rows and core log, which the C4 preregistration publishes.)
+trials/*/*/*/state/
+trials/*/*/*/workspace/
+trials/*/*/*/logs/*
+!trials/*/*/*/logs/adapter.log
+!trials/*/*/*/logs/core.log
+!trials/*/*/*/logs/qm-user-messages.jsonl
+# The sandbox manifest and capture log are the report's E1 receipts (no sandbox was created in any trial).
+!trials/*/*/*/logs/qm-sandboxes.json
+!trials/*/*/*/logs/capture.log
+trials/*/*/*/trial.json
+*.sqlite-shm
+*.sqlite-wal
+trials/*/*/*/compose.serve.yaml
+# The sidecar's per-trial token, tokens.json and run directory, and every preflight's token and sidecar logs, stay out.
+trials/*/*/*/gbrain/
+preflight-*/
+*preflight-*/
+**/ingest-tokens.json
+**/tokens.json
+# The run, proxy and lane logs of each shard are receipts this report cites (the repository's root rule ignores *.log).
+!run.log
+!run-*.log
+!proxy.log
+!proxy-*.log
+!*.run.log
+!*.proxy.log
+!*.preflight.log
+!*.plan.log
+!*.run-shard.log
+!*.smoke-lease.log
+!*.lane.log

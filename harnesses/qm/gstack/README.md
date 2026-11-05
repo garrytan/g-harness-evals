@@ -106,7 +106,7 @@ env -i PATH=$PATH HOME=$HOME bun harnesses/qm/gstack/s1-stage.ts
 
 ## S1 probe driver
 
-**What it is:** `s1-probe.ts` runs the S1 probe preregistered under `docs/benchmarks/2026-11-03-qm-s1-gstack-probe/`. It asks QM five ordinary requests that match gstack skills, three times each, with and without gstack, on Opus 5.5 and on GPT-6.1 Sol, and counts how often QM opens and starts the matching skill. That is 4 cells of 15 turns. It is the probe's gate 3; no paid turn has run.
+**What it is:** `s1-probe.ts` runs the S1 probe preregistered under `docs/benchmarks/2026-11-03-qm-s1-gstack-probe/`. It asks QM five ordinary requests that match gstack skills, three times each, with and without gstack, on Opus 5.5 and on GPT-6.1 Sol, and counts how often QM opens and starts the matching skill. That is 4 cells of 15 turns. It is the probe's gate 3. The paid run, `qm-s1-gstack-probe-2026-11` (60 turns, 2026-11-04), is reported in [its report](../../../docs/benchmarks/2026-11-03-qm-s1-gstack-probe/report.md).
 
 - **Two arms, one Dockerfile.** `gstack-router` puts the router in the org SOUL and runs on `harness-eval/qm-sandbox:s1-gstack-21277291` (the 63 staged files). `no-gstack` leaves the SOUL alone and runs on `harness-eval/qm-sandbox:s1-no-gstack`. Both come from [Dockerfile.skills](Dockerfile.skills); `STAGE_GSTACK=0` leaves gstack out of every layer.
 - **Same fixture in both.** `s1-fixture.ts` writes a small invented Node repository at `/root/workspace/repo`: a tag, work after it, and a feature branch whose last commit breaks the login test. Its objects are written from fixed text, so the head is `9db8fa50` on every machine.

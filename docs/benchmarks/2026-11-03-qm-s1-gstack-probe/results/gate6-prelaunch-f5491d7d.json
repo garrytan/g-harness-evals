@@ -1,0 +1,270 @@
+{
+  "what": "S1 freeze gate 6: one-VM pre-launch check at the merge commit before the first turn (PREREGISTRATION.md, gate 6)",
+  "run_id": "qm-s1-gstack-probe-2026-11",
+  "commit": "f5491d7d02f34dad833abeab54d02141a0ee5a64",
+  "lane": "HARN-38 (qm-measure)",
+  "vm": {
+    "name": "ubirun-harn38-1793820503-b4d527fb-t3",
+    "size": "standard-16",
+    "location": "eu-central-h1",
+    "UBI_OWNER": "HARN-38",
+    "UBI_TTL_HOURS": 3,
+    "destroyed": true
+  },
+  "path": "scripts/ubicloud/ubi-runner.sh up / sync / ssh / pull / down from the pinned worktree; the same path the counted run uses",
+  "keys": "absent on the VM for every step (keys_absent step); the dry run ran under env -i",
+  "steps": [
+    {
+      "step": "sync_clone",
+      "rc": 0,
+      "seconds": 15,
+      "started": "2026-11-04T19:28:07Z",
+      "ended": "2026-11-04T19:28:22Z",
+      "command": "git clone -q --no-checkout <repo> sync/harness-evals && git -C sync/harness-evals checkout -q --detach f5491d7d02f34dad833abeab54d02141a0ee5a64 (clean check)",
+      "pass": true
+    },
+    {
+      "step": "usage",
+      "rc": 0,
+      "seconds": 1,
+      "started": "2026-11-04T19:28:22Z",
+      "ended": "2026-11-04T19:28:23Z",
+      "command": "UBI_OWNER=HARN-38 scripts/ubicloud/ubi-runner.sh usage",
+      "pass": true
+    },
+    {
+      "step": "up",
+      "rc": 0,
+      "seconds": 30,
+      "started": "2026-11-04T19:28:23Z",
+      "ended": "2026-11-04T19:28:53Z",
+      "command": "UBI_OWNER=HARN-38 UBI_TTL_HOURS=3 scripts/ubicloud/ubi-runner.sh up -s standard-16",
+      "pass": true
+    },
+    {
+      "step": "sync",
+      "rc": 0,
+      "seconds": 72,
+      "started": "2026-11-04T19:28:53Z",
+      "ended": "2026-11-04T19:30:05Z",
+      "command": "ubi-runner.sh sync <vm> sync/harness-evals work/harness-evals",
+      "pass": true
+    },
+    {
+      "step": "bootstrap",
+      "rc": 0,
+      "seconds": 55,
+      "started": "2026-11-04T19:30:05Z",
+      "ended": "2026-11-04T19:31:00Z",
+      "command": "ubi-runner.sh ssh <vm> 'cd ~/work/harness-evals && bash scripts/ubicloud/bootstrap.sh'",
+      "pass": true
+    },
+    {
+      "step": "docker_group_reentry",
+      "rc": 0,
+      "seconds": 0,
+      "started": "2026-11-04T19:31:00Z",
+      "ended": "2026-11-04T19:31:00Z",
+      "command": "ubi-runner.sh ssh <vm> 'id -nG; id -nG $USER; sg docker -c \"docker version --format {{.Server.Version}} && id -nG\"' (as scripts/ubicloud/checks.sh:16-19)",
+      "pass": true
+    },
+    {
+      "step": "checkout",
+      "rc": 0,
+      "seconds": 6,
+      "started": "2026-11-04T19:31:01Z",
+      "ended": "2026-11-04T19:31:07Z",
+      "command": "git checkout -q --detach f5491d7d02f34dad833abeab54d02141a0ee5a64; HEAD and clean tree asserted",
+      "pass": true
+    },
+    {
+      "step": "bun_install",
+      "rc": 0,
+      "seconds": 0,
+      "started": "2026-11-04T19:31:07Z",
+      "ended": "2026-11-04T19:31:07Z",
+      "command": "bun install --frozen-lockfile",
+      "pass": true
+    },
+    {
+      "step": "build_core",
+      "rc": 0,
+      "seconds": 64,
+      "started": "2026-11-04T19:31:07Z",
+      "ended": "2026-11-04T19:32:11Z",
+      "command": "sg docker -c 'env -i HOME PATH docker build -t harness-eval/qm:dev harnesses/qm'",
+      "pass": true
+    },
+    {
+      "step": "build_sandbox",
+      "rc": 0,
+      "seconds": 85,
+      "started": "2026-11-04T19:32:11Z",
+      "ended": "2026-11-04T19:33:36Z",
+      "command": "sg docker -c 'env -i HOME PATH docker build -f harnesses/qm/Dockerfile.sandbox -t harness-eval/qm-sandbox:dev harnesses/qm'",
+      "pass": true
+    },
+    {
+      "step": "host_clean",
+      "rc": 0,
+      "seconds": 0,
+      "started": "2026-11-04T19:33:36Z",
+      "ended": "2026-11-04T19:33:36Z",
+      "command": "test ! -e for ~/.capy/drive ~/.local/share/gstack ~/.claude/skills",
+      "pass": true
+    },
+    {
+      "step": "keys_absent",
+      "rc": 0,
+      "seconds": 0,
+      "started": "2026-11-04T19:33:36Z",
+      "ended": "2026-11-04T19:33:36Z",
+      "command": "presence test (NAME:+x) for ANTHROPIC_API_KEY OPENAI_API_KEY PARTICLE_API_KEY; no ~/.ubirun-env",
+      "pass": true
+    },
+    {
+      "step": "dry_run",
+      "rc": 0,
+      "seconds": 1047,
+      "started": "2026-11-04T19:33:36Z",
+      "ended": "2026-11-04T19:51:03Z",
+      "command": "sg docker -c 'env -i HOME=$HOME PATH=$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin bun harnesses/qm/gstack/s1-probe.ts --dry-run --inject-fault --skip-build --work ~/s1g6/work --out ~/s1g6/results' (detached, polled; arm images built by the driver)",
+      "pass": true
+    },
+    {
+      "step": "image_ids",
+      "rc": 0,
+      "seconds": 0,
+      "started": "2026-11-04T19:51:03Z",
+      "ended": "2026-11-04T19:51:03Z",
+      "command": "docker image inspect --format {{.Id}} on the four images",
+      "pass": true
+    },
+    {
+      "step": "pull",
+      "rc": 0,
+      "seconds": 3,
+      "started": "2026-11-04T19:51:03Z",
+      "ended": "2026-11-04T19:51:06Z",
+      "command": "ubi-runner.sh pull <vm> s1g6/results and the build and dry-run logs",
+      "pass": true
+    },
+    {
+      "step": "down",
+      "rc": 0,
+      "seconds": 6,
+      "started": "2026-11-04T19:51:06Z",
+      "ended": "2026-11-04T19:51:12Z",
+      "command": "ubi-runner.sh down <vm>",
+      "pass": true
+    },
+    {
+      "step": "list_mine",
+      "rc": 0,
+      "seconds": 1,
+      "started": "2026-11-04T19:51:12Z",
+      "ended": "2026-11-04T19:51:13Z",
+      "command": "UBI_OWNER=HARN-38 ubi-runner.sh list --mine",
+      "pass": true
+    }
+  ],
+  "images": {
+    "core": "sha256:3d0d362f037730bb9b8e9adf45abfff4a449b674864f3ff015422ed797c4e613",
+    "sandbox": "sha256:33a898893895d95711b3156557e0efe6e4fc8f9c831dbd315864d94d7e7ce888",
+    "gstack-router": "sha256:2484625a86ed377d86e707187ea4dd217100042188d6d9b29d4684b41440a7cc",
+    "no-gstack": "sha256:611b99e9aa158ea05b2199238c326c714e7a70619e111b1f7a59427adfee8951"
+  },
+  "image_names": {
+    "core": "harness-eval/qm:dev",
+    "sandbox": "harness-eval/qm-sandbox:dev",
+    "gstack-router": "harness-eval/qm-sandbox:s1-gstack-21277291",
+    "no-gstack": "harness-eval/qm-sandbox:s1-no-gstack"
+  },
+  "preflight": {
+    "problems": [],
+    "gstack_skill_files": {
+      "harness-eval/qm:dev": 0,
+      "harness-eval/qm-sandbox:s1-gstack-21277291": 63,
+      "harness-eval/qm-sandbox:s1-no-gstack": 0
+    },
+    "fixture_tree_sha256": {
+      "gstack-router": "befe52967dcebff9f953ef9254e8ad13ac3232f9a2d9a22ebb7c6253f4c90db1",
+      "no-gstack": "befe52967dcebff9f953ef9254e8ad13ac3232f9a2d9a22ebb7c6253f4c90db1"
+    },
+    "soul": {
+      "gstack-router": {
+        "chars": 12186,
+        "is_router": true,
+        "problems": []
+      },
+      "no-gstack": {
+        "chars": 192,
+        "is_router": false,
+        "problems": []
+      }
+    }
+  },
+  "dry_run": {
+    "turns": 61,
+    "turns_recorded": 60,
+    "complete": true,
+    "checks": {
+      "turns": true,
+      "router_only_in_gstack_prompts": true,
+      "staged_files": true,
+      "usage_reconciled_every_turn": true,
+      "housekeeping_on_its_provider": true,
+      "matched_opens": true,
+      "no_contamination": true,
+      "injected_fault_classified": true,
+      "nothing_left_behind": true
+    },
+    "injected_faults": [
+      {
+        "turn_id": "s1-r3-fault-opus-gstack-router",
+        "fault": "remove-default-sandbox",
+        "classified": [
+          "no-default-sandbox"
+        ],
+        "termination": "ok"
+      }
+    ],
+    "cells": {
+      "opus/gstack-router": {
+        "matched_opens": 15,
+        "counted": 15,
+        "router_in_first_prompt": 15,
+        "contaminated": [],
+        "housekeeping": "anthropic:claude-haiku-5-5"
+      },
+      "opus/no-gstack": {
+        "matched_opens": 0,
+        "counted": 15,
+        "router_in_first_prompt": 0,
+        "contaminated": [],
+        "housekeeping": "anthropic:claude-haiku-5-5"
+      },
+      "sol/gstack-router": {
+        "matched_opens": 15,
+        "counted": 15,
+        "router_in_first_prompt": 15,
+        "contaminated": [],
+        "housekeeping": "openai:gpt-5.6-luna"
+      },
+      "sol/no-gstack": {
+        "matched_opens": 0,
+        "counted": 15,
+        "router_in_first_prompt": 0,
+        "contaminated": [],
+        "housekeeping": "openai:gpt-5.6-luna"
+      }
+    }
+  },
+  "token_scan_of_pulled_results": "clean (0 hits, 194 files)",
+  "list_mine_after_down": [
+    "eu-central-h1  ubirun-harn38-1793821312-c232ec28-t6",
+    "eu-central-h1  ubirun-harn38-1793819991-fab903da-t6"
+  ],
+  "list_mine_note": "this check's VM is gone; the two -t6 VMs listed were created by another HARN-38 process (not this subagent) and were left alone",
+  "verdict": "pass"
+}
