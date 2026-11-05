@@ -50,7 +50,7 @@ export const ANALYSES: Record<string, { script: string; args: string[] }> = {
   'compare-run': { script: 'scripts/compare-run.ts', args: ['--seed', '7'] },
 };
 
-const TOOL_ROOT = resolve(import.meta.dir, '..');
+export const TOOL_ROOT = resolve(import.meta.dir, '..');
 export const sha256 = (b: Uint8Array | string): string => createHash('sha256').update(b).digest('hex');
 const enc = new TextEncoder();
 const utf8 = (b: Uint8Array) => Buffer.from(b).toString('utf8');
@@ -248,7 +248,7 @@ export function collect(opts: BuildOptions): { entries: TarEntry[]; manifest: Bu
   return { entries, manifest };
 }
 
-function runAnalyses(root: string, entries: TarEntry[], ids: string[]): string {
+export function runAnalyses(toolRoot: string, entries: TarEntry[], ids: string[]): string {
   for (const id of ids) if (!Object.hasOwn(ANALYSES, id)) throw new RunnerError('HE-BUNDLE-001', `--analysis ${id} is not one of ${Object.keys(ANALYSES).join(', ')}`);
   const dir = mkdtempSync(join(tmpdir(), 'trial-bundle-'));
   try {
@@ -256,7 +256,7 @@ function runAnalyses(root: string, entries: TarEntry[], ids: string[]): string {
     let out = '';
     for (const id of ids) {
       const a = ANALYSES[id]!;
-      const r = spawnSync(process.execPath, [join(TOOL_ROOT, a.script), '--results', join(dir, 'results'), ...a.args], { cwd: TOOL_ROOT, encoding: 'utf8', env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: process.env.HOME ?? '/tmp' }, maxBuffer: 256 * 1024 * 1024 });
+      const r = spawnSync(process.execPath, [join(toolRoot, a.script), '--results', join(dir, 'results'), ...a.args], { cwd: toolRoot, encoding: 'utf8', env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: process.env.HOME ?? '/tmp' }, maxBuffer: 256 * 1024 * 1024 });
       if (r.status !== 0) throw new RunnerError('HE-BUNDLE-001', `analysis ${id} exited ${r.status}: ${(r.stderr || '').trim().split('\n')[0]}`);
       out += `## ${id}\n\n${r.stdout.split(dir).join('<bundle>')}\n`;
     }
@@ -288,7 +288,7 @@ export function build(opts: BuildOptions & { out: string }): { path: string; sha
   const { entries, manifest } = collect(opts);
   const extra: TarEntry[] = [];
   if (opts.analyses?.length) {
-    const output = runAnalyses(opts.root, entries, opts.analyses);
+    const output = runAnalyses(TOOL_ROOT, entries, opts.analyses);
     extra.push({ path: 'analysis.json', data: enc.encode(JSON.stringify({ steps: opts.analyses.map((id) => ({ id, ...ANALYSES[id]! })), expected_output_sha256: sha256(output) }, null, 2) + '\n') });
     extra.push({ path: 'expected-output.txt', data: enc.encode(output) });
   }
@@ -368,7 +368,7 @@ export function verify(archivePath: string, opts: VerifyOptions = {}): { sha256:
       if (odd) diffs.push(`analysis.json names ${odd}`);
       else if (!ids.length) diffs.push('analysis.json lists no steps');
       else if (repeated) diffs.push(`analysis.json repeats step ${repeated}`);
-      else if (runAnalyses(opts.root ?? process.cwd(), again.entries, ids) !== utf8(entries.find((e) => e.path === 'expected-output.txt')?.data ?? new Uint8Array())) diffs.push(`expected-output.txt is not what the checked-in analyzers print (if summarize-run or compare-run changed since the generator commit ${String(manifest.generator?.commit ?? 'unknown').slice(0, 12)}, run verify --rebuild from that commit)`);
+      else if (runAnalyses(TOOL_ROOT, again.entries, ids) !== utf8(entries.find((e) => e.path === 'expected-output.txt')?.data ?? new Uint8Array())) diffs.push(`expected-output.txt is not what the checked-in analyzers print (if summarize-run or compare-run changed since the generator commit ${String(manifest.generator?.commit ?? 'unknown').slice(0, 12)}, run verify --rebuild from that commit)`);
     }
     if (diffs.length) throw new RunnerError('HE-BUNDLE-008', `the repository at ${manifest.receipts_commit.slice(0, 12)} gives ${diffs.length} file difference(s), first: ${diffs[0]}`);
   }

@@ -7,11 +7,12 @@
 ```sh
 bun runner/run.ts plan      --prereg docs/benchmarks/<run>/prereg.json [--out results/<run-id>]
 bun runner/run.ts dry-run   --prereg <file>
+bun runner/run.ts plan|dry-run --replication-of <run id> --cells <id,id> --reps <n> --run-id <new id> [--out <dir>]
 bun runner/run.ts preflight --manifest results/<run-id>/manifest.json [--gbrain-image <tag>] [--gbrain-commit <sha>] [--cells a,b]
 bun runner/run.ts run       --manifest results/<run-id>/manifest.json [options]
 ```
 
-`plan` expands the preregistration into `manifest.json`: one preallocated trial id per cell, task and repetition, and the cost ceiling priced from the pinned price table. A run id is used once (HE-RUN-003). `dry-run` prints the same without writing.
+`plan` expands the preregistration into `manifest.json`: one preallocated trial id per cell, task and repetition, and the cost ceiling priced from the pinned price table. A run id is used once (HE-RUN-003). `dry-run` prints the same without writing. With `--replication-of` instead of `--prereg`, `plan` and `dry-run` plan named cells of a registered held-out run again from its registered `prereg.json`, under a new run id, with no openings-ledger row, and only when every held-out set those cells run is public (HE-REPL-001 to 003, docs/errors.md "Replication"); `scripts/replicate.ts` plans its paid reruns this way (docs/replicate.md).
 
 A cell names `harness`, `model` (`provider:model`), `slice`, `split`, `repetitions` and a `ceiling` in tokens. For a multi-user cell the ceiling is per turn and a trial is priced as turns x ceiling, with the turn count read from each task's `task.toml`. Tasks come from `cell.tasks`, else `tasks.<slice>` in the preregistration, else every directory under `tasks/multiuser/[<task_set>/]<split>/`; `task_set` (default `v0.1`, the root; `v0.2` is `tasks/multiuser/v0.2/`) is printed on every multi-user cell line, an explicit list naming tasks the set does not hold is refused once with HE-PREREG-004, and a key outside the Cell interface is refused with HE-PREREG-007. `session_scope: "turn"` passes `HE_SESSION_SCOPE=turn` to the adapter (a fresh harness session per turn, the memoryless contrast; OpenClaw only, docs/adapters.md). `utility_models` lists the models the harness is documented to call for its own housekeeping beside the cell's model (QM's and OpenClaw's `claude-haiku-5-5` request per turn); HE-MODEL-001 treats them as the cell's own, the proxy forwards and prices them when the run's allowlist admits them, and the plan prints them on the cell line. Optional fields: `harness_mode` (`docker`, the default; `process`; `scripted`), `adapter` (process mode: the script to run), and for scripted cells `harness: "scripted"`, `model: "none"` and `script: "oracle"` or `"mutations"`, which expands to one trial per task's `oracle.json` or per `mutations/<predicate-id>.json`. Scripted cells cost nothing.
 
@@ -136,6 +137,10 @@ The scripts that turn `results/<run>/trials.jsonl` into report tables, all keyle
 **Spend reconciliation.** `bun scripts/reconcile-provider.ts --results <dir> [--results <dir> ...] [--write] [--api-key-id <apikey_...>]` sums a run's priced proxy lines per UTC day and model, cross-checks them against `trials.jsonl` and the lease ledger (a difference over a cent is reported and exits 1), prints the per-day sheet in the console's shape, and, with `ANTHROPIC_ADMIN_KEY` in the environment, fetches the Admin API's usage report (by model and api key) and cost report for the span and compares them with the proxy totals pooled per day across every run given, because runs that share a day and a key are one bucket to the provider; the verdict is a relative residual per day and model against the 1% bar with a status (`performed`, `performed_mismatch`, `performed_unattributed` without `--api-key-id`, `performed_no_data`, `not_performed`), a day that ended less than 24 hours before the fetch left out. `--write` saves `results/spend-reconciliation.json` (the sheet, the cross-check, the provider rows for the chosen key only, and the labelled `provider_reconciliation` line); `--provider-fixture` replays a recorded response for tests and refuses `--write`. Every byte out passes a tripwire against the key value and a redaction of key-shaped strings. HE-RECONCILE-001 to 004 in docs/errors.md.
 
 ## Changelog
+
+### 2026-11-04: plan and dry-run with --replication-of (internal-task)
+
+The command block gains the `plan|dry-run --replication-of` line, and the paragraph under it says what a replication plan does and where its refusals are listed (HE-REPL-001 to 003). Why: `runner/run.ts` takes the flag on this branch, and `scripts/replicate.ts` plans its paid reruns with it.
 
 ### 2026-11-04: one dated price table (internal-task)
 

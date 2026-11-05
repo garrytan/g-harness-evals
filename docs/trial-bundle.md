@@ -63,4 +63,4 @@ H1 (`m3-heldout-2026-10`) shows why there are two commits: its preregistration w
 
 ## Where it is used
 
-A finding file's `data:` line names a bundle and its sha256. `scripts/replicate.ts --bundle <path>` (docs/replicate.md, PR 2) reads a bundle to re-analyze a finding or rerun one of its cells. Until the repository is public, outsiders get the archive by hand and pass its local path.
+A finding file's `data:` line names a bundle and its sha256. `scripts/replicate.ts --bundle <path>` ([replicate.md](replicate.md)) reads a bundle to re-analyze a finding or rerun one of its cells. Until the repository is public, outsiders get the archive by hand and pass its local path.

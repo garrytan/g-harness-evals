@@ -11,6 +11,7 @@
  *
  *   bun runner/run.ts plan    --prereg <file> [--out results/<run-id>]
  *   bun runner/run.ts dry-run --prereg <file>
+ *   bun runner/run.ts plan|dry-run --replication-of <run id> --cells <id,id> --reps <n> --run-id <new id> [--out <dir>]
  *   bun runner/run.ts preflight --manifest results/<run-id>/manifest.json [--gbrain-image <tag>] [--image <tag>] [--ledger <file>] [--cells a,b]
  *   bun runner/run.ts run --manifest results/<run-id>/manifest.json [--harness-mode docker|process|scripted]
  *       [--adapter <script>] [--image <tag>] [--gbrain-image <tag>] [--resume] [--stop-on-cap] [--cells a,b] [--ledger <file>]
@@ -20,6 +21,12 @@
  * plan and dry-run refuse a run with held-out cells unless its opening is in the set's openings ledger and within
  * budget (HE-HELDOUT-001 to 004, runner/heldout/openings.ts); a run's own row passes every time while it is opened or its
  * set is open, so shard planning and resume of the same run id are unchanged.
+ *
+ * Replication (internal-task, runner/heldout/replication.ts): --replication-of plans named cells of a registered held-out run
+ * again from its registered prereg.json, under a new run id and --reps repetitions, and records replication_of in the
+ * manifest. It is no opening and writes no ledger row, so it is accepted only when every held-out set the cells run is
+ * public: out of sealed custody, spent or retired, plaintext in the tree, and sharing no digest with a live sealed set
+ * (HE-REPL-001 to 003). preflight and run do not re-check held-out openings, so they take such a manifest as any other.
  *
  * Sealed custody (docs/sealed-custody.md): a held-out cell of a sealed set (its MANIFEST.json says
  * "custody": "sealed") needs --sealed-root <dir> and --opening-receipt <file> on plan, dry-run, preflight and run
@@ -52,6 +59,7 @@ import { taskTurnCount } from './trial/task.ts';
 import { DEFAULT_GBRAIN_IMAGE, SOURCE_PROBE_QUERIES } from './trial/gbrain.ts';
 import { CLIENT_ID_ENV, CLIENT_SECRET_ENV, MEMORY_PROVIDER_CONFIG_NAME, isQmMemoryProvider, providerConfig, memoryProviderWiring } from '../harnesses/qm/memory-provider.ts';
 import { checkPlan, type HeldoutBlock } from './heldout/openings.ts';
+import { planReplication, type ReplicationOf } from './heldout/replication.ts';
 import { openingDiff, publicImageProblem, readJsonFile, readReceipt, receiptProblems, sealedImageProblem, sealedImageTag, sha256 as sha256Of, verifySealedRoot, type OpeningReceipt } from './heldout/sealed.ts';
 import { insideGitTree } from '../scripts/sealed/custody.ts';
 import { heldoutSet, isSealed, readManifest } from '../scripts/seal-heldout.ts';
@@ -249,6 +257,8 @@ export interface Manifest {
   sealed?: { set: string; receipt_sha256: string; receipt: OpeningReceipt };
   /** internal-task: the preregistration's gbrain_commit, copied at plan; present only when the preregistration names one. */
   gbrain_commit?: string;
+  /** internal-task: a replication of a past held-out run (runner/heldout/replication.ts), planned from its registered prereg.json. */
+  replication_of?: ReplicationOf;
 }
 
 /** internal-task: a harness-zero cell's config must be a set zero.ts knows (setNames: features.json, the derived ablations and
@@ -547,9 +557,18 @@ async function main(argv: string[]): Promise<number> {
   const all = (name: string) => rest.map((a, i) => (a === name ? rest[i + 1] : undefined)).filter((v): v is string => v !== undefined);
   if (cmd === 'plan' || cmd === 'dry-run') {
     const path = flag('--prereg');
-    if (!path) throw new RunnerError('HE-RUN-002', 'missing --prereg <file>');
-    const { prereg, sha256 } = loadPrereg(path);
-    const heldout = checkPlan(prereg, sha256, process.cwd());
+    const of = flag('--replication-of');
+    if (has('--replication-of')) {
+      if (has('--prereg')) throw new RunnerError('HE-REPL-001', '--prereg and --replication-of were both given; a replication plans from the registered prereg.json of the run it names. fix: drop --prereg');
+      if (!of || of.startsWith('--')) throw new RunnerError('HE-REPL-001', '--replication-of needs the run id of a registered held-out run; fix: --replication-of <run id> --cells <id,id> --reps <n> --run-id <new id>');
+    } else {
+      const stray = ['--cells', '--reps', '--run-id'].filter(has);
+      if (stray.length) throw new RunnerError('HE-REPL-001', `${stray.join(', ')} ${stray.length > 1 ? 'belong' : 'belongs'} to --replication-of; plan otherwise runs every cell of --prereg as preregistered. fix: add --replication-of <run id>, or drop ${stray.join(', ')}`);
+      if (!path) throw new RunnerError('HE-RUN-002', 'missing --prereg <file>');
+    }
+    const replication = of ? planReplication({ root: process.cwd(), of, cells: flag('--cells'), reps: flag('--reps'), runId: flag('--run-id'), load: loadPrereg }) : undefined;
+    const { prereg, sha256 } = replication ?? loadPrereg(path!);
+    const heldout = replication ? replication.lines : checkPlan(prereg, sha256, process.cwd());
     const sealedSets = sealedSetsOf(prereg.cells);
     if (sealedSets.length > 1) throw new RunnerError('HE-SEALED-001', `run ${prereg.run_id} runs held-out cells of more than one sealed set (${sealedSets.join(', ')}); one run opens one set`);
     const sealed = sealedSets.length ? openSealedContext({ sealedRoot: flag('--sealed-root'), receiptPath: flag('--opening-receipt'), set: sealedSets[0]!, runId: prereg.run_id, preregSha: sha256, candidate: prereg.heldout?.candidate_sha256, label: prereg.heldout?.label }) : undefined;
@@ -560,6 +579,7 @@ async function main(argv: string[]): Promise<number> {
     if (sealed) installSealedGuard(sealed, cmd === 'plan' ? join(planOut, 'sealed-console.log') : join(sealed.root, 'logs', 'dry-run.log'), cmd);
     const manifest = buildManifest(prereg, sha256, undefined, sealed ? { sealedRoot: sealed.root, sealedSet: sealed.set } : {});
     if (sealed) manifest.sealed = { set: sealed.set, receipt_sha256: sealed.receipt_sha256, receipt: sealed.receipt };
+    if (replication) manifest.replication_of = replication.replication_of;
     console.log(renderPlan(manifest));
     for (const line of heldout) console.log(line);
     if (sealed) console.log(`SEALED: set ${sealed.set} opened for run ${prereg.run_id} (receipt ${sealed.receipt_sha256.slice(0, 12)}, bundle ${sealed.receipt.bundle_sha256.slice(0, 12)}, tree ${sealed.receipt.tree_sha256.slice(0, 12)}, world ${String(sealed.receipt.world_sha256).slice(0, 12)}); sealed cells read the root, task paths are stored relative to it`);
@@ -808,7 +828,7 @@ async function main(argv: string[]): Promise<number> {
     });
     return result.exit;
   }
-  throw new RunnerError('HE-RUN-002', 'usage: bun runner/run.ts plan|dry-run --prereg <file> | preflight --manifest <file> | run --manifest <file> [options] [--sealed-root <dir> --opening-receipt <file>]');
+  throw new RunnerError('HE-RUN-002', 'usage: bun runner/run.ts plan|dry-run --prereg <file> | plan|dry-run --replication-of <run id> --cells <id,id> --reps <n> --run-id <new id> | preflight --manifest <file> | run --manifest <file> [options] [--sealed-root <dir> --opening-receipt <file>]');
 }
 
 if (import.meta.main) {

@@ -54,6 +54,7 @@ Codes like internal-task in receipts name internal work lanes.
 - [repo-tasks.md](repo-tasks.md): the repository task format (fix, review, qa and ship tasks graded by hidden checks on the container), its acceptance rules, and the gstack-native-v1 set's public dev split and sealed held-out split.
 - [shared-rig.md](shared-rig.md): where the canonical copy of each shared rig part lives (stats kit, price table, metering proxy, per-trial usage, trial bundle, fan-out), for the repositories that vendor them.
 - [tasks.md](tasks.md): the multi-user task format: families, the access model, the predicate library, oracles and the mutation contract, task sets (v0.1, v0.2, the generated v0.3 set, the QM probes) and how a cell selects one.
+- [replicate.md](replicate.md): how to check a finding from its trial bundle with `scripts/replicate.ts`: the two free checks (`--reanalyze`, `--estimate-only`), a paid rerun of one cell under a hard `--max-usd` cap, the replication band and its coverage evidence under [replicate/](replicate/band-coverage-m3-heldout-openclaw.json), verdicts, exit codes and limits.
 - [trial-bundle.md](trial-bundle.md): the trial-bundle format: one reproducible archive per finding with the run's trial-level data and a digest, what goes in and what is left out by rule, and what `scripts/bundle.ts verify` checks.
 - [gstack-laneb.md](gstack-laneb.md): the Lane B bridge: runs the pinned gstack-evals Lane B agent on gstack-native and Terminal-Bench 2 tasks under our metering, leases and Ubicloud lane.
 - [gstack-native-format.md](gstack-native-format.md): the gstack-native repo task format the bridge materializes.
@@ -61,6 +62,10 @@ Codes like internal-task in receipts name internal work lanes.
 - [ubicloud.md](ubicloud.md): the Ubicloud shard lane: the scripts that put one shard per VM, how a run fans out and comes back, the check lane, costs and limits.
 
 ## Changelog
+
+### 2026-11-04: replicate.md listed (internal-task)
+
+Added the line for the new page on checking a finding with `scripts/replicate.ts`, with its band coverage evidence under `replicate/`. Why: the index says one line per page, and the page is new on this branch.
 
 ### 2026-11-05: harness-zero-select-2026-11 listed (internal-task)
 

@@ -55,7 +55,7 @@ Defaults are seed 7 and 10,000 draws; every report that names them says the same
 
 ### scripts/regrade.ts
 
-`bun scripts/regrade.ts --results <dir> [--out trials.regraded.jsonl]`: grades every trial again from its stored evidence (`snapshot.json`, `events.jsonl`, `turns.jsonl`) with the grader at the current commit and writes one line per trial with the original and new grade, consent violation, approval stop and predicates, plus the grader commit. Nothing in the run directory is rewritten: a regrade is a labelled second reading, never a replacement of the preregistered grader's record, and every report that shows regraded numbers keeps the as-recorded ones as primary.
+`bun scripts/regrade.ts --results <dir> [--cells a,b] [--out <file>]` (default `<dir>/trials.regraded.jsonl`): grades every trial again from its stored evidence (`snapshot.json`, `events.jsonl`, `turns.jsonl`) with the grader at the current commit and writes one line per trial with the original and new grade, consent violation, approval stop and predicates, plus the grader commit. Nothing in the run directory is rewritten: a regrade is a labelled second reading, never a replacement of the preregistered grader's record, and every report that shows regraded numbers keeps the as-recorded ones as primary. It finds each trial under `--results` (so a moved or unpacked bundle works), reads `snapshot.json`, `events.jsonl` and `turns.jsonl` plain or gzipped, and exits 0 when every selected trial regraded unchanged, 1 when any trial could not be regraded or its grade, consent violation or approval stop changed (one line per trial names what moved), and 2 on a usage error. `scripts/replicate.ts` uses it as the grader check of a rerun (docs/replicate.md).
 
 ### scripts/taxonomy.ts
 
@@ -150,6 +150,10 @@ From a checkout at the results commit, with `--results docs/benchmarks/2026-10-2
 - `compare-run.ts` without `--pair` and the other paths disagree on exclusions until the TODOS item is closed; read the pairs column.
 
 ## Changelog
+
+### 2026-11-04: regrade.ts flags, exit codes and bundles (internal-task)
+
+The `scripts/regrade.ts` entry gains `--cells`, the default `--out` file, its exit codes, how it finds trials in a moved or unpacked results directory and reads gzipped evidence, and that `scripts/replicate.ts` uses it as a rerun's grader check. Why: the script changed on this branch so a relocated trial bundle regrades the same.
 
 ### 2026-11-05: compare-run --baseline (internal-task)
 

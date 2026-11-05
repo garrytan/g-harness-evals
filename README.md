@@ -285,6 +285,20 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 | How do I report a bug, a security issue or a question about a number? | [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md) |
 | What is still open? | [TODOS.md](TODOS.md) |
 
+## Check a finding yourself
+
+**A run that ships a trial bundle can be checked with one command.** No published finding ships one yet: today's findings point at their in-repo receipts. Two checks are free; the third reruns one cell with your own key under a hard cap.
+
+```sh
+bun scripts/replicate.ts --bundle <archive> --sha256 <digest> --reanalyze        # free: the finding's tables, byte for byte
+bun scripts/replicate.ts --bundle <archive> --sha256 <digest> --estimate-only    # free: what a rerun costs
+bun scripts/replicate.ts --bundle <archive> --sha256 <digest> --cell <id> --max-usd 5   # paid: WITHIN BAND or OUTSIDE BAND
+```
+
+- **A paid rerun** needs Linux, Docker and your provider key. It never spends past `--max-usd`.
+- **The tooling example** is H1's OpenClaw cell (Sonnet 5.5, withdrawn from publication under R54): about $3.50 and 30 minutes at 1 rep. It moves to the first frontier finding when one merges.
+- Details, the band and every exit code: [docs/replicate.md](docs/replicate.md).
+
 ## Run the keyless checks
 
 **The keyless checks call no model API, and CI runs the type check, the test suite, the link check and the preregistration-order check on every pull request.** Most take seconds. The full test suite took about 25 minutes on a 4-core machine. The preregistration-order check walks all of main's history: about 5 minutes on GitHub's runners, and much longer on a small machine. Install [Bun](https://bun.sh/) and Python 3, clone, run:
@@ -312,7 +326,7 @@ bun scripts/publish-audit.ts        # token shapes in the tree and every blob of
 bun scripts/gbrain-check.ts --gbrain <ref>
 ```
 
-- **Paid reruns are not an outside path yet.** The proxy reads the provider key from its own environment and refuses any call without a ledger lease under a cap ([runner/README.md](runner/README.md)). Our counted runs used the program's own ledger, kept outside the repository, and Ubicloud shards. A direct-key path for outside reruns is being designed and does not exist yet, as each finding's Replicate it section says.
+- **Paid reruns are not an outside path yet.** The proxy reads the provider key from its own environment and refuses any call without a ledger lease under a cap ([runner/README.md](runner/README.md)). Our counted runs used the program's own ledger, kept outside the repository, and Ubicloud shards. A direct-key path now exists for runs that ship a trial bundle (`scripts/replicate.ts`, [Check a finding yourself](#check-a-finding-yourself)). No published finding ships a bundle yet, so each finding's Replicate it section, written before the tool, still says its paid rerun is not open.
 - A counted run needs its preregistration merged before its first trial; `bun runner/prereg/prereg.ts` checks that against main's history.
 - What a run costs, from the ledgers: a 300-trial run of three harnesses on 20 tasks was $1.84 on Haiku and $35.67 on Sonnet; a 400-trial four-cell Haiku run with gbrain was $3.36 to $3.47; the 900-trial v0.2 held-out run on both models was $76.60 by proxy usage ($77.04 committed). The paid gbrain check runs about $0.35. Sharded runs go to Ubicloud ([docs/ubicloud.md](docs/ubicloud.md)). Full text: [docs/methods.md](docs/methods.md#what-paid-work-costs).
 
@@ -398,6 +412,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 **Contributing.** Outside code is read as text and rewritten by maintainers, never merged as is; bug reports need a repro on current main or a failing test ([CONTRIBUTING.md](CONTRIBUTING.md)). Report security issues privately ([SECURITY.md](SECURITY.md)). Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Changelog
+
+### 2026-11-04: check a finding yourself
+
+A new section, "Check a finding yourself", shows the three `scripts/replicate.ts` commands for a run that ships a trial bundle: two free checks and a paid one-cell rerun under a hard cap, with H1's OpenClaw cell as the tooling example. It says no published finding ships a bundle yet. The "Paid reruns are not an outside path yet" line now says the direct-key path exists for bundled runs. No number changes. Why: internal-task adds the replicate tool.
 
 ### 2026-11-04: prompt archaeology reported
 
