@@ -139,7 +139,9 @@ export function claimEntry(c: HeldoutClaim, file: unknown): Record<string, unkno
  * default, and secondary): a superiority claim enters with its two-sided p and is accepted when its Holm-adjusted p is
  * at most alpha and the estimate points in the claimed direction; a noninferiority claim enters with its one-sided p
  * against the preregistered margin (compare-run.ts --margin, from the cluster bootstrap) and is accepted when its
- * Holm-adjusted p is at most alpha. A claim in dropped (its gate failed, failedGates) enters no family and is "dropped".
+ * Holm-adjusted p is at most alpha. A noninferiority p of null (every paired difference zero, so the bootstrap cannot
+ * bound the difference; runner/stats kit v2) enters its family as 1, and the claim is rejected. A claim in dropped (its
+ * gate failed, failedGates) enters no family and is "dropped".
  */
 export function decide(claims: HeldoutClaim[], read: (source: string) => unknown, alpha: number, dropped: ReadonlySet<string> = new Set()): Decision[] {
   const familyOf = (c: HeldoutClaim) => c.family ?? 'primary';
@@ -157,16 +159,17 @@ export function decide(claims: HeldoutClaim[], read: (source: string) => unknown
       if (typeof c.margin !== 'number' || c.margin < 0) throw new RunnerError('HE-SEALED-007', `claim ${c.id}: a noninferiority claim needs a margin >= 0`);
       if (!ni || ni.margin !== c.margin || ni.direction !== want) throw new RunnerError('HE-SEALED-007', `claim ${c.id}: the matched entry has no noninferiority p for margin ${c.margin} (${want}); compare-run.ts needs --margin <a>,<b>,${c.margin},${want}`);
       p = ni.p;
+      if (p === null) return { c, estimate, interval, p: null, holmP: 1 };
     }
     if (typeof p !== 'number') throw new RunnerError('HE-SEALED-007', `claim ${c.id}: the matched entry has no numeric p`);
-    return { c, estimate, interval, p };
+    return { c, estimate, interval, p, holmP: p };
   });
   const holm = new Map<string, number>();
   const size = new Map<string, number>();
   for (const fam of CLAIM_FAMILIES) {
     const members = rows.filter((r) => familyOf(r.c) === fam);
     size.set(fam, members.length);
-    if (members.length) holmAdjusted(members.map((r) => r.p)).forEach((x, i) => holm.set(members[i]!.c.id, x));
+    if (members.length) holmAdjusted(members.map((r) => r.holmP)).forEach((x, i) => holm.set(members[i]!.c.id, x));
   }
   return claims.map((c) => {
     const family = familyOf(c);

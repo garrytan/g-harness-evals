@@ -1,10 +1,26 @@
 # Statistics kit
 
-Vendored from [gbrain-evals](https://github.com/garrytan/gbrain-evals) v0.10.128 (`6999ebc9`), `eval/runner/stats/`, MIT. Unchanged apart from the import paths in the tests.
+From [gbrain-evals](https://github.com/garrytan/gbrain-evals) v0.10.128 (`6999ebc9`), `eval/runner/stats/`, MIT. Kit v2 (internal-task, 2026-11) takes back the fixes [gstack-evals](#private-link-removed) made to its copy of this kit, at `81daa79a`. Each changed line is marked `gstack-evals:` in `paired.ts`, `rows.ts` and `gates.ts`, and each file's header names its source.
 
-- `gates.ts`: a preregistered comparison family with four gate kinds. `exact` is a correctness or safety assertion that one violating item fails. `noninferiority` passes only when the candidate is shown to be no worse than the baseline by more than a stated tolerance. `superiority` passes only when it is shown to beat the baseline by more than a preregistered minimum effect. `exploratory` is reported with intervals and never decides. Holm correction covers the confirmatory comparisons.
-- `paired.ts`: paired observations, a cluster-aware bootstrap (a resampled cluster carries every item inside it), exact McNemar, one-sided p-values and a power note.
+- `gates.ts`: a preregistered comparison family with four gate kinds. `exact` is a correctness or safety assertion that one violating item fails. `noninferiority` passes only when the candidate is shown to be no worse than the baseline by more than a stated tolerance. `superiority` passes only when the clustered sign-flip p is at or below alpha (after Holm) and the point estimate reaches the preregistered minimum effect. `exploratory` is reported with intervals and never decides. Holm correction covers the confirmatory comparisons.
+- `paired.ts`: paired observations, a cluster-aware bootstrap (a resampled cluster carries every item inside it), the exact sign-flip test over clusters (enumerated up to 20 clusters, Monte Carlo above), exact McNemar, Holm, one-sided p-values and a power note.
 - `rows.ts`: row to observation mapping and eligibility.
 - `exact.ts`, `fixed-sequence.ts`: helpers.
+- `sign-flip.ts`, `task-means.ts`, `sizing.ts`: shared files vendored unchanged from gstack-evals at `81daa79a`. `marginShiftedSignFlipP` is a one-sided non-inferiority test over task clusters. `pairTaskMeans` pairs two arms on per-task means under a preregistered missing-cell rule, and `pairTrials` keeps trial-level pairing. `sizing.ts` gives tasks needed, the SD a number of tasks covers and the minimum detectable difference for a one-sided paired test, plus gstack-evals' plan tables as code. Their comments name gstack-evals' test paths; the tests here are `tests/stats-sign-flip.test.ts`, `tests/stats-task-means.test.ts` and `tests/stats-sizing.test.ts`.
+- `kit.ts`: which kit analyses a run (below).
 
 In this repository the cluster is the task: five trials of one task are one cluster, and across-task claims use task-clustered intervals (plan contract item 10).
+
+## What kit v2 changes
+
+- **No p-value when nothing varies.** When every paired difference is zero, the bootstrap is now empty, so `nonInferiorityP` and `superiorityP` return null and `gates.ts` calls the comparison inconclusive with the reason. Before, the single bootstrap draw 0 gave p = 0 for any tolerance above 0, so two arms at a ceiling "showed" non-inferiority. The interval stays [0, 0] and the two-sided sign-flip p stays 1.
+- **`superiorityP` is the exact one-sided clustered sign-flip p**, or 1 when the point estimate falls short of the minimum effect. Before, it was the share of bootstrap draws at or below the minimum effect, which runs anti-conservative on few tasks: ten tasks where B wins three and ties seven gave about 0.03, while the exact sign-flip p is 0.125.
+- **A system failure is scored by the comparison's direction** (`rows.ts`). A failure with no metric value scores 0 only when higher is better. Otherwise it takes the comparison's preregistered `failure_value`, or the comparison is blocked, since 0 would be the best latency or cost.
+- **Exploratory comparisons are blocked on their own** (`gates.ts`): a dashboard metric that cannot pair no longer blocks the family's verdict. **The cluster minimum is checked first**, so a comparison with too few clusters is inconclusive and an interval can no longer fail it.
+- An eligible observation with no value names its reason when it blocks pairing.
+
+## Which kit analyses a run
+
+A run is analysed with `runner/stats/` as it stood at its preregistration commit: the last commit that touched `runner/stats/` at or before the commit that first added the run's preregistration file. So every run preregistered before kit v2 (`v03-opus-dev-2026-10` and `laneb-tb2-replication-2026-10` among them) keeps the kit it was preregistered with. A dated amendment that moves a run to another kit adds `"stats_kit": { "commit": "<sha>", "amendment": "<file>, <date>" }` to the run's entry in `docs/benchmarks/preregistrations.d/`.
+
+`scripts/compare-run.ts` looks the kit up with `statsKitFor` (the registry entry whose id is the manifest's `run_id`, else the one whose results globs cover the directory), loads that commit's `paired.ts` with `loadPairedKit` when it differs from this checkout's, and records the choice as `stats_kit` in every comparisons file. A directory no entry covers uses this checkout's kit, with `source: "checkout"` and the reason. Only `compare-run.ts` picks the kit this way: the other scripts that import `runner/stats/` (among them `secondary-endpoints.ts`, `matrix-analysis.ts`, `summarize-run.ts` and `sealed/export.ts`) run this checkout's kit and record no `stats_kit`. The old-kit against new-kit rerun of every published comparison is [docs/stats-kit-v2-rerun.md](../../docs/stats-kit-v2-rerun.md).

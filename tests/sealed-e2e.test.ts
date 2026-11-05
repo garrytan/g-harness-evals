@@ -71,8 +71,9 @@ test('seal, open, run, export under embargo, leak scan, release', async () => {
   expect(exp.cells).toBeUndefined();
   expect(exp.per_task).toBeUndefined();
   expect((exp.decisions as Array<Record<string, unknown>>).map((d) => Object.keys(d).sort())).toEqual([['claim', 'decision', 'sentence'], ['claim', 'decision', 'sentence']]);
-  // identical cells: no superiority, and noninferiority within ten points through compare-run --margin, in one Holm family
-  expect((exp.decisions as Array<{ claim: string; decision: string }>).map((d) => [d.claim, d.decision])).toEqual([['C1', 'reject'], ['C2', 'accept']]);
+  // identical cells: no superiority, and no noninferiority either, since every paired difference is zero and compare-run
+  // --margin then has no p (runner/stats kit v2); both claims in one Holm family
+  expect((exp.decisions as Array<{ claim: string; decision: string }>).map((d) => [d.claim, d.decision])).toEqual([['C1', 'reject'], ['C2', 'reject']]);
   const comparisons = JSON.parse(readFileSync(join(results, 'comparisons.json'), 'utf8')) as { comparisons: Array<{ a?: string; b?: string; delta: number; ci95: [number, number]; noninferiority?: { margin: number; direction: string; p: number } }> };
   expect(comparisons.comparisons[0]!.noninferiority).toMatchObject({ margin: 0.1, direction: 'higher' });
   expect(readdirSync(out).sort()).toEqual(['README.md', 'export.json', 'opening-receipt.json']);
@@ -84,7 +85,7 @@ test('seal, open, run, export under embargo, leak scan, release', async () => {
   }
   // under the embargo a decision sentence is the bit and the preregistered wording: no estimate, interval or Holm p in any
   // serialized public file, and none of the estimate's digits
-  expect((exp.decisions as Array<{ sentence: string }>).map((d) => d.sentence)).toEqual(['C1: rejected. The candidate cell passes more often than the base cell.', 'C2: accepted. The candidate cell passes no less often than the base cell, within ten points.']);
+  expect((exp.decisions as Array<{ sentence: string }>).map((d) => d.sentence)).toEqual(['C1: rejected. The candidate cell passes more often than the base cell.', 'C2: rejected. The candidate cell passes no less often than the base cell, within ten points.']);
   const claimed = comparisons.comparisons.find((c) => c.a === 'base' && c.b === 'cand')!;
   const pts = (x: number) => `${x >= 0 ? '+' : ''}${(100 * x).toFixed(1)}`;
   for (const p of filesUnder(out)) {

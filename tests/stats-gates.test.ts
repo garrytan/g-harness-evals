@@ -71,10 +71,11 @@ describe('three gates', () => {
   });
 
   test('exploratory dashboards never change the verdict', () => {
-    const a = rows(800, () => ({ recall: 1, latency: 10 }));
-    const b = rows(800, () => ({ recall: 1, latency: 900 }));
+    // Kit v2: recall varies. Identical all-pass arms passed only through the p = 0 bug fixed in runner/stats/paired.ts.
+    const a = rows(800, i => ({ recall: i % 10 === 0 ? 0 : 1, latency: 10 }));
+    const b = rows(800, i => ({ recall: i % 10 === 1 ? 0 : 1, latency: 900 }));
     const d = evaluateFamily(a, b, family([
-      { id: 'recall', metric: 'recall', gate: 'noninferiority', direction: 'higher', tolerance: 0.01, cluster_by: 'concept' },
+      { id: 'recall', metric: 'recall', gate: 'noninferiority', direction: 'higher', tolerance: 0.05, cluster_by: 'concept' },
       { id: 'latency', metric: 'latency', gate: 'exploratory', direction: 'lower' },
     ]));
     expect(d.verdict).toBe('pass');
@@ -99,12 +100,14 @@ describe('three gates', () => {
   });
 
   test('a missing pair or changed eligibility blocks the family', () => {
+    // Kit v2: a gating comparison, since an exploratory one that cannot pair no longer blocks the family.
+    const gate = family([{ id: 'recall', metric: 'recall', gate: 'exact', assertion: { kind: 'no_item_regression', direction: 'higher' } }]);
     const a = rows(100, () => ({ recall: 1 }));
-    const missing = evaluateFamily(a, a.slice(1), family([{ id: 'recall', metric: 'recall', gate: 'exploratory' }]));
+    const missing = evaluateFamily(a, a.slice(1), gate);
     expect(missing.verdict).toBe('blocked');
     expect(missing.reasons[0]).toContain('missing in B: q0');
     const b = a.map((r, i) => i === 5 ? { ...r, error: 'provider down', error_origin: 'dependency' } : r);
-    const changed = evaluateFamily(a, b, family([{ id: 'recall', metric: 'recall', gate: 'exploratory' }]));
+    const changed = evaluateFamily(a, b, gate);
     expect(changed.verdict).toBe('blocked');
     expect(changed.reasons[0]).toContain('eligibility differs for q5');
   });
@@ -115,7 +118,7 @@ describe('row eligibility', () => {
   test('system failures stay in the denominator as zeros; infrastructure failures and abstention items are ineligible', () => {
     expect(toObservation({ question_id: 'q', recall_all: 1 }, sel)).toMatchObject({ eligible: true, value: 1 });
     expect(toObservation({ question_id: 'q', recall_all_hit: true }, { ...sel, metric: 'recall_all_hit' })).toMatchObject({ eligible: true, value: 1 });
-    expect(toObservation({ question_id: 'q', error: 'boom', error_origin: 'sut' }, sel)).toMatchObject({ eligible: true, value: 0 });
+    expect(toObservation({ question_id: 'q', error: 'boom', error_origin: 'sut' }, { ...sel, direction: 'higher' })).toMatchObject({ eligible: true, value: 0 });
     expect(toObservation({ question_id: 'q', error: 'boom', error_origin: 'harness' }, sel)).toMatchObject({ eligible: false, reason: 'harness error' });
     expect(toObservation({ question_id: 'q', error: 'boom' }, sel)).toMatchObject({ eligible: false, reason: 'error without a known origin' });
     expect(toObservation({ question_id: 'q_abs', is_abs: true, abs_noise: 0 }, sel)).toMatchObject({ eligible: false, reason: 'excluded by is_abs=true' });

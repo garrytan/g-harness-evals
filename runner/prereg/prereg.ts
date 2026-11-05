@@ -64,6 +64,11 @@ export interface ManifestEntry {
    */
   preregistered_on_main?: false;
   reason?: string;
+  /**
+   * The statistics kit a dated amendment chose for this experiment, instead of `runner/stats/` at the preregistration
+   * commit (runner/stats/kit.ts): the kit commit, and the amendment's file and date.
+   */
+  stats_kit?: { commit: string; amendment: string };
 }
 
 export interface OrderProblem {

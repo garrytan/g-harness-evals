@@ -131,6 +131,7 @@ describe('compare-run --pair gbrain', () => {
     expect(r.stdout).toContain('All tasks (secondary)');
     const out = JSON.parse(readFileSync(join(dir, 'comparisons.gbrain.json'), 'utf8'));
     expect(out.pair).toBe('gbrain');
+    expect(out.stats_kit).toMatchObject({ source: 'checkout' });
     expect(out.not_paired).toEqual(['c on m1: 0 gbrain cell(s), 1 without']);
     expect(out.scopes.map((s: { scope: string }) => s.scope)).toEqual(['primary', 'all']);
     const primary = out.scopes[0];

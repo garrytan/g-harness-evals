@@ -23,6 +23,8 @@ harness-evals v0.0.12. This page says how two cells or two runs are compared in 
 - [paired.ts](../runner/stats/paired.ts): `pairObservations` (both sides must hold the same item ids and the same eligibility on each item, or the pairing refuses rather than shrinking the denominator), `clusteredPairedDelta` (the bootstrap interval and the sign-flip p above; it also reports the cluster-robust standard error, the naive one, and the design effect between them), `exactMcNemar` (wins, losses and the exact two-sided p over the discordant pairs), `minimumDiscordantForSignificance` (the six-cluster bar), `holmAdjusted`, `normalQuantile` and `powerNote`.
 - [gates.ts](../runner/stats/gates.ts): the four gate kinds a preregistered comparison family can declare (exact, noninferiority, superiority, exploratory) with Holm over the confirmatory ones. The harness-evals preregistrations state their bar as a decision sentence in prose and the scripts report intervals and p values, so this file is available but no counted run has been judged through a gates family file.
 - [exact.ts](../runner/stats/exact.ts): Clopper-Pearson binomial bounds. [fixed-sequence.ts](../runner/stats/fixed-sequence.ts): hierarchical testing in a preregistered order, kept apart from Holm. [rows.ts](../runner/stats/rows.ts): row to observation mapping and the eligibility rule.
+- [sign-flip.ts](../runner/stats/sign-flip.ts), [task-means.ts](../runner/stats/task-means.ts), [sizing.ts](../runner/stats/sizing.ts): shared with gstack-evals, vendored from it unchanged (the margin-shifted sign-flip test for non-inferiority, pairing on per-task means, and sizing arithmetic).
+- **Which kit analyses a run.** Kit v2 (2026-11-04) takes gstack-evals' fixes: no p when every paired difference is zero, `superiorityP` as the exact one-sided sign-flip p, failures scored by the comparison's direction, and the gate-order fixes in `gates.ts` ([runner/stats/README.md](../runner/stats/README.md)). A run is analysed with the kit at its preregistration commit unless a dated amendment names another ([kit.ts](../runner/stats/kit.ts)), and `compare-run.ts` records the kit it used as `stats_kit` in each comparisons file. The old-kit and new-kit rerun of every published comparison is [stats-kit-v2-rerun.md](stats-kit-v2-rerun.md).
 
 ## The scripts
 
@@ -147,6 +149,10 @@ From a checkout at the results commit, with `--results docs/benchmarks/2026-10-2
 - `compare-run.ts` without `--pair` and the other paths disagree on exclusions until the TODOS item is closed; read the pairs column.
 
 ## Changelog
+
+### 2026-11-04: statistics kit v2 (internal-task)
+
+The kit section lists the three files shared with gstack-evals and says which kit analyses a run, since kit v2 changes how the kit decides four kinds of case and every run preregistered before it keeps the old kit.
 
 ### 2026-10-27: gbrain-memory-2026-10 recall re-reading (internal-task)
 

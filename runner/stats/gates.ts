@@ -1,3 +1,11 @@
+// From gbrain-evals v0.10.128 (6999ebc9), eval/runner/stats/. MIT License, Copyright (c) 2026 Garry Tan.
+// Kit v2 (internal-task) takes these changes back from gstack-evals (#private-link-removed) at 81daa79abcf86ddbd15409da0b78cd4d98e835b4, src/runner/stats/gates.ts.
+// gstack-evals changes (U2), each marked "gstack-evals:": an inconclusive comparison with no p-value says why
+// (NO_VARIATION); an exploratory comparison that cannot pair is blocked alone instead of blocking the family; and the
+// cluster minimum is checked before an interval can fail a comparison, so too few clusters is always inconclusive;
+// superiority is decided by the clustered sign-flip p plus the point estimate (plan v3.2); and a comparison may
+// preregister failure_value, the score of a system failure that left no metric value. An exact gate may state its
+// metric's direction, so a crash on a higher-is-better metric scores 0 and fails it rather than blocking the family.
 /**
  * Three-gate comparison policy over a preregistered family (plan amendment 4).
  *
@@ -12,11 +20,10 @@
  *                   -tolerance). Failing to find a difference is not proof of
  *                   equivalence, so a wide interval is "inconclusive", not a
  *                   pass. An interval entirely below -tolerance is a fail.
- *   superiority     A claimed improvement. B passes only when it is shown to
- *                   beat A by more than the preregistered minimum effect: the
- *                   Holm-adjusted one-sided p-value is at or below alpha
- *                   (equivalently, the lower interval bound clears
- *                   +min_effect). An interval entirely on the losing side of
+ *   superiority     A claimed improvement. B passes only when the
+ *                   Holm-adjusted one-sided clustered sign-flip p-value is at
+ *                   or below alpha and the point estimate is at least the
+ *                   preregistered minimum effect (plan v3.2). An interval entirely on the losing side of
  *                   zero is a fail; anything else short of a pass is
  *                   "inconclusive".
  *   exploratory     Dashboards. Reported with intervals and unadjusted
@@ -41,10 +48,10 @@ export type ExactAssertion =
   | { kind: 'no_item_regression'; direction: Direction };
 
 export type ComparisonSpec =
-  | { id: string; metric: string; gate: 'exact'; assertion: ExactAssertion; cluster_by?: string; description?: string }
-  | { id: string; metric: string; gate: 'noninferiority'; direction: Direction; tolerance: number; cluster_by: string; description?: string }
-  | { id: string; metric: string; gate: 'superiority'; direction: Direction; min_effect: number; cluster_by: string; description?: string }
-  | { id: string; metric: string; gate: 'exploratory'; direction?: Direction; cluster_by?: string; description?: string };
+  | { id: string; metric: string; gate: 'exact'; assertion: ExactAssertion; direction?: Direction; cluster_by?: string; failure_value?: number; description?: string }
+  | { id: string; metric: string; gate: 'noninferiority'; direction: Direction; tolerance: number; cluster_by: string; failure_value?: number; description?: string }
+  | { id: string; metric: string; gate: 'superiority'; direction: Direction; min_effect: number; cluster_by: string; failure_value?: number; description?: string }
+  | { id: string; metric: string; gate: 'exploratory'; direction?: Direction; cluster_by?: string; failure_value?: number; description?: string };
 
 export interface ComparisonFamily {
   schema_version: 1;
@@ -55,7 +62,7 @@ export interface ComparisonFamily {
   alpha: number;
   seed: number;
   draws: number;
-  /** Fewer clusters than this makes a noninferiority result inconclusive. Default 10. */
+  /** Fewer clusters than this makes a noninferiority or superiority result inconclusive, never a pass or a fail. Default 10. */
   min_clusters?: number;
   id_field: string;
   exclude_when?: string[];
@@ -95,6 +102,8 @@ export interface FamilyDecision {
 }
 
 const finite = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
+// gstack-evals: the reason for a comparison where every paired difference is zero.
+const NO_VARIATION = 'every paired difference is zero, so the bootstrap cannot bound the difference and no p-value exists; this is not evidence of equivalence';
 const text = (x: unknown): x is string => typeof x === 'string' && x.trim().length > 0;
 
 export function validateFamily(value: unknown): ComparisonFamily {
@@ -119,10 +128,13 @@ export function validateFamily(value: unknown): ComparisonFamily {
     if (!text(c?.id) || ids.has(c.id)) problems.push(`${label}: id missing or duplicated`);
     ids.add(c?.id);
     if (!text(c?.metric)) problems.push(`${label}: metric required`);
+    if (c?.failure_value !== undefined && !finite(c.failure_value)) problems.push(`${label}: failure_value must be a finite number`);
     if (c?.gate === 'exact') {
       const a = c.assertion as ExactAssertion | undefined;
       if (!a || !['every_b_equals', 'b_at_most', 'b_at_least', 'no_item_regression'].includes(a.kind)) problems.push(`${label}: exact gate needs an assertion`);
       else if (a.kind === 'no_item_regression' ? !['higher', 'lower'].includes(a.direction) : !finite(a.value)) problems.push(`${label}: assertion needs ${a.kind === 'no_item_regression' ? 'a direction' : 'a finite value'}`);
+      if (c.direction !== undefined && !['higher', 'lower'].includes(c.direction)) problems.push(`${label}: direction must be higher or lower`);
+      else if (c.direction !== undefined && a?.kind === 'no_item_regression' && c.direction !== a.direction) problems.push(`${label}: direction ${c.direction} contradicts the assertion's direction ${a.direction}`);
     } else if (c?.gate === 'noninferiority') {
       if (!['higher', 'lower'].includes(c.direction)) problems.push(`${label}: direction must be higher or lower`);
       if (!finite(c.tolerance) || c.tolerance < 0) problems.push(`${label}: tolerance must be a finite number >= 0, in metric units`);
@@ -164,7 +176,8 @@ export function evaluateFamily(aRows: readonly Row[], bRows: readonly Row[], fam
   validateFamily(family);
   const minClusters = family.min_clusters ?? 10;
   const pair = (spec: ComparisonSpec) => {
-    const selection = { idField: family.id_field, metric: spec.metric, clusterBy: spec.cluster_by, excludeWhen: family.exclude_when };
+    const direction = spec.gate === 'exact' && spec.assertion.kind === 'no_item_regression' ? spec.assertion.direction : spec.direction;
+    const selection = { idField: family.id_field, metric: spec.metric, clusterBy: spec.cluster_by, excludeWhen: family.exclude_when, direction, failureValue: spec.failure_value };
     return pairObservations(aRows.map(r => toObservation(r, selection)), bRows.map(r => toObservation(r, selection)));
   };
   const results: ComparisonResult[] = [];
@@ -174,8 +187,10 @@ export function evaluateFamily(aRows: readonly Row[], bRows: readonly Row[], fam
     try { paired.set(spec.id, pair(spec)); }
     catch (error) {
       const problems = error instanceof PairingError ? error.problems : [String(error)];
-      blocked.push(`${spec.id}: ${problems[0]}${problems.length > 1 ? ` (+${problems.length - 1} more)` : ''}`);
       results.push({ id: spec.id, metric: spec.metric, gate: spec.gate, status: 'blocked', reasons: problems });
+      // gstack-evals: an exploratory comparison that cannot pair is blocked alone; it never blocks the family's verdict.
+      if (spec.gate === 'exploratory') continue;
+      blocked.push(`${spec.id}: ${problems[0]}${problems.length > 1 ? ` (+${problems.length - 1} more)` : ''}`);
     }
   }
   const holmFamily = family.comparisons.filter(c => c.gate === 'noninferiority' || c.gate === 'superiority').map(c => c.id);
@@ -198,7 +213,8 @@ export function evaluateFamily(aRows: readonly Row[], bRows: readonly Row[], fam
     results.push(result);
   }
   if (exactFailures.length) {
-    for (const spec of family.comparisons) if (spec.gate !== 'exact') {
+    // gstack-evals: a blocked exploratory comparison keeps its blocked status.
+    for (const spec of family.comparisons) if (spec.gate !== 'exact' && paired.has(spec.id)) {
       results.push({ id: spec.id, metric: spec.metric, gate: spec.gate, status: 'skipped', reasons: ['an exact correctness or safety gate failed first'] });
     }
     return { family_id: family.family_id, verdict: 'fail', reasons: exactFailures, alpha: family.alpha, holm_family: holmFamily, comparisons: order(results, family) };
@@ -206,7 +222,8 @@ export function evaluateFamily(aRows: readonly Row[], bRows: readonly Row[], fam
 
   const statistical: Array<{ spec: Extract<ComparisonSpec, { gate: 'noninferiority' | 'superiority' | 'exploratory' }>; stats: PairedDelta; result: ComparisonResult }> = [];
   for (const spec of family.comparisons) {
-    if (spec.gate === 'exact') continue;
+    // gstack-evals: skip a blocked exploratory comparison.
+    if (spec.gate === 'exact' || !paired.has(spec.id)) continue;
     const { pairs, excluded } = paired.get(spec.id)!;
     const stats = clusteredPairedDelta(pairs, { seed: family.seed, draws: family.draws });
     const binary = pairs.every(p => (p.a === 0 || p.a === 1) && (p.b === 0 || p.b === 1));
@@ -235,33 +252,41 @@ export function evaluateFamily(aRows: readonly Row[], bRows: readonly Row[], fam
       const spec = s.spec;
       r.tolerance = spec.tolerance;
       r.p_noninferiority = confirmP[i];
-      if (orientedUpper !== null && orientedUpper < -spec.tolerance) {
-        r.status = 'fail';
-        r.reasons.push(`the whole 95% interval is worse than the tolerance of ${spec.tolerance}`);
-      } else if (s.stats.n_clusters < minClusters) {
+      // gstack-evals: the cluster minimum comes first, so too few clusters can neither pass nor fail.
+      if (s.stats.n_clusters < minClusters) {
         r.status = 'inconclusive';
         r.reasons.push(`${s.stats.n_clusters} clusters is below the family minimum of ${minClusters}`);
+      } else if (orientedUpper !== null && orientedUpper < -spec.tolerance) {
+        r.status = 'fail';
+        r.reasons.push(`the whole 95% interval is worse than the tolerance of ${spec.tolerance}`);
       } else if (confirmP[i] !== null && adjusted[i] <= family.alpha) {
         r.status = 'pass';
       } else {
         r.status = 'inconclusive';
-        r.reasons.push(`non-inferiority within ${spec.tolerance} not shown (Holm p = ${adjusted[i].toFixed(4)} > ${family.alpha}); this is not evidence of a regression or of equivalence`);
+        // gstack-evals: say why when there is no p-value at all.
+        r.reasons.push(confirmP[i] === null ? NO_VARIATION : `non-inferiority within ${spec.tolerance} not shown (Holm p = ${adjusted[i].toFixed(4)} > ${family.alpha}); this is not evidence of a regression or of equivalence`);
       }
     } else {
       const spec = s.spec as Extract<ComparisonSpec, { gate: 'superiority' }>;
       r.min_effect = spec.min_effect;
       r.p_superiority = confirmP[i];
-      if (orientedUpper !== null && orientedUpper < 0) {
-        r.status = 'fail';
-        r.reasons.push('the whole 95% interval is on the losing side of zero');
-      } else if (s.stats.n_clusters < minClusters) {
+      // gstack-evals: the cluster minimum comes first here too.
+      if (s.stats.n_clusters < minClusters) {
         r.status = 'inconclusive';
         r.reasons.push(`${s.stats.n_clusters} clusters is below the family minimum of ${minClusters}`);
+      } else if (orientedUpper !== null && orientedUpper < 0) {
+        r.status = 'fail';
+        r.reasons.push('the whole 95% interval is on the losing side of zero');
       } else if (confirmP[i] !== null && adjusted[i] <= family.alpha) {
         r.status = 'pass';
       } else {
         r.status = 'inconclusive';
-        r.reasons.push(`an improvement larger than ${spec.min_effect} is not shown (Holm p = ${adjusted[i].toFixed(4)} > ${family.alpha}); this is not evidence of a loss`);
+        // gstack-evals: say why when there is no p-value at all.
+        // gstack-evals: the sign-flip p and the point estimate decide superiority, so the reason names the one that fell short.
+        const estimate = sign * s.stats.delta;
+        r.reasons.push(confirmP[i] === null ? NO_VARIATION
+          : estimate < spec.min_effect - 1e-12 ? `the point estimate ${estimate.toFixed(4)} is below the minimum effect of ${spec.min_effect}, so p_superiority is 1 (the sign-flip p is in stats); this is not evidence of a loss`
+          : `an improvement of at least ${spec.min_effect} is not shown (point estimate ${estimate.toFixed(4)}, Holm sign-flip p = ${adjusted[i].toFixed(4)}, alpha ${family.alpha}); this is not evidence of a loss`);
       }
     }
     if (r.status !== 'pass') reasons.push(`${s.spec.id}: ${r.status}`);

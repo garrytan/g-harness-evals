@@ -17,6 +17,10 @@
 // sign-flip p, Holm-adjusted p, clusters, pairs) and writes comparisons.json beside trials.jsonl. Intervals and
 // p-values only; whether a difference is reported as a difference is the preregistration's decision sentence.
 //
+// Statistics kit: the run is analysed with runner/stats/ as it stood at its preregistration commit, or the kit a dated
+// amendment names in its registry entry (runner/stats/kit.ts). With --against the --results run's preregistration
+// chooses. Every comparisons file records the choice under stats_kit (commit, source, and the preregistration commit).
+//
 // --pair gbrain pairs trial by trial (same task, repetitions matched by order within the task) over two scopes:
 // the primary endpoint (the capable families, scope_isolation, shared_channel, org_security and handoff, or
 // --families) and all tasks as a secondary. A cell is the gbrain arm when its manifest entry has a truthy
@@ -78,7 +82,8 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
 import { installerNotApplied, type GbrainCellConfig, type TrialRecord } from '../runner/contracts.ts';
-import { clusteredPairedDelta, exactMcNemar, holmAdjusted, nonInferiorityP, pairObservations, type Observation, type PairedDelta } from '../runner/stats/paired.ts';
+import type { Observation, PairedDelta } from '../runner/stats/paired.ts';
+import { loadPairedKit, statsKitFor } from '../runner/stats/kit.ts';
 import { sealedGuard } from '../runner/heldout/guard.ts';
 import { openingDiff, readJsonFile, readJsonLines, type OpeningReceipt } from '../runner/heldout/sealed.ts';
 import { RunnerError } from '../runner/errors.ts';
@@ -111,7 +116,7 @@ const familiesArg = arg('families');
 const against = arg('against');
 const parsed = <T>(read: () => T): T => { try { return read(); } catch (e) { if (!(e instanceof RunnerError)) throw e; console.error(e.message); process.exit(2); } };
 const readRows = (dir: string) => parsed(() => readJsonLines<TrialRecord>(join(dir, 'trials.jsonl')));
-type RunManifest = { cells: Array<{ id: string; harness: string; model: string; config?: string; split: 'dev' | 'heldout'; task_set?: string; gbrain?: GbrainCellConfig; preamble?: string }>; sealed?: { set: string; receipt: OpeningReceipt } };
+type RunManifest = { run_id?: string; cells: Array<{ id: string; harness: string; model: string; config?: string; split: 'dev' | 'heldout'; task_set?: string; gbrain?: GbrainCellConfig; preamble?: string }>; sealed?: { set: string; receipt: OpeningReceipt } };
 const manifest = parsed(() => readJsonFile<RunManifest>(join(results, 'manifest.json')));
 if (against && !existsSync(join(against, 'manifest.json'))) { console.error(`--against ${against} has no manifest.json; compare-run reads both runs' manifests to check how each was planned`); process.exit(2); }
 const againstManifest = against ? parsed(() => readJsonFile<RunManifest>(join(against, 'manifest.json'))) : undefined;
@@ -148,6 +153,8 @@ if (useRegraded) {
   }
 }
 const repoRoot = join(import.meta.dir, '..');
+const statsKit = statsKitFor(results, repoRoot, manifest.run_id);
+const { clusteredPairedDelta, exactMcNemar, holmAdjusted, nonInferiorityP, pairObservations } = await loadPairedKit(statsKit, repoRoot);
 const familyOf = new Map<string, string>();
 for (const t of rows) {
   if (familyOf.has(t.task)) continue;
@@ -362,7 +369,7 @@ if (pairMode === 'gbrain') {
       ...(!shards ? ['no shards.json, so the commit the run executed at is unknown'] : Object.entries(runCommits).filter(([, c]) => c !== graderCommit).map(([cell, c]) => `cell ${cell} ran at ${c ?? 'a commit shards.json does not record'}, not the grader commit`)),
     ];
     console.log(lines.join('\n'));
-    writeFileSync(join(results, `comparisons.gbrain${suffix}`), JSON.stringify({ pair: 'gbrain', design: 'ladder', grading: useRegraded ? 'regraded' : 'as recorded', exposure: { grader_commit: graderCommit, grader_dirty: graderDirty, run_commits: runCommits, graded: 'live, with this checkout\'s grader, tasks and world', ready: exposureProblems.length === 0, problems: exposureProblems, counts: exposureCounts }, seed, draws, shards, exclusions: [...EXCLUDED, ...(installerCells.size ? ['installer_not_applied'] : [])], not_paired: ladder.unpaired, rungs: ladder.rungs, pairs: ladder.pairs, scopes: out, cost: costRows, none_table: noneTable }, null, 1) + '\n');
+    writeFileSync(join(results, `comparisons.gbrain${suffix}`), JSON.stringify({ pair: 'gbrain', design: 'ladder', grading: useRegraded ? 'regraded' : 'as recorded', exposure: { grader_commit: graderCommit, grader_dirty: graderDirty, run_commits: runCommits, graded: 'live, with this checkout\'s grader, tasks and world', ready: exposureProblems.length === 0, problems: exposureProblems, counts: exposureCounts }, seed, draws, stats_kit: statsKit, shards, exclusions: [...EXCLUDED, ...(installerCells.size ? ['installer_not_applied'] : [])], not_paired: ladder.unpaired, rungs: ladder.rungs, pairs: ladder.pairs, scopes: out, cost: costRows, none_table: noneTable }, null, 1) + '\n');
     if (process.argv.includes('--require-exposure') && exposureProblems.length) {
       console.error(`--require-exposure: ${exposureProblems.join('; ')}; the exposure endpoint cannot decide until these are fixed`);
       process.exit(2);
@@ -483,7 +490,7 @@ if (pairMode === 'gbrain') {
         '| Harness | Model | gbrain cell | Pair | Task | Side | Reason | gbrain calls (gbrain cell) |', '|---|---|---|---|---|---|---|---|', ...excludedRows] : ['Excluded pairs: none.']));
   }
   console.log(lines.join('\n'));
-  writeFileSync(join(results, `comparisons.gbrain${suffix}`), JSON.stringify({ pair: 'gbrain', grading: useRegraded ? 'regraded' : 'as recorded', seed, draws, not_paired: skipped, scopes: out }, null, 1) + '\n');
+  writeFileSync(join(results, `comparisons.gbrain${suffix}`), JSON.stringify({ pair: 'gbrain', grading: useRegraded ? 'regraded' : 'as recorded', seed, draws, stats_kit: statsKit, not_paired: skipped, scopes: out }, null, 1) + '\n');
   process.exit(0);
 }
 
@@ -515,4 +522,4 @@ const lines = [
   ...deltas.map((d, i) => `| ${d.a} | ${d.b} | ${(100 * d.mean_a).toFixed(0)}% | ${(100 * d.mean_b).toFixed(0)}% | ${pts(d.delta)} [${d.ci95 ? `${pts(d.ci95[0])}, ${pts(d.ci95[1])}` : 'n/a'}] | ${d.p.toFixed(3)} (${d.p_method}) | ${adjusted[i]!.toFixed(3)} | ${d.n_clusters} | ${d.n_pairs} |`),
 ];
 console.log(lines.join('\n'));
-writeFileSync(join(results, `comparisons${against ? '.against-' + (readRows(against)[0]?.trial_id.split('/')[0] ?? 'other') : ''}${suffix}`), JSON.stringify({ scope: families, grading: useRegraded ? 'regraded' : 'as recorded', seed, draws, comparisons: deltas.map((d, i) => ({ ...d, holm_p: adjusted[i] })) }, null, 1) + '\n');
+writeFileSync(join(results, `comparisons${against ? '.against-' + (readRows(against)[0]?.trial_id.split('/')[0] ?? 'other') : ''}${suffix}`), JSON.stringify({ scope: families, grading: useRegraded ? 'regraded' : 'as recorded', seed, draws, stats_kit: statsKit, comparisons: deltas.map((d, i) => ({ ...d, holm_p: adjusted[i] })) }, null, 1) + '\n');
