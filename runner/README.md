@@ -125,6 +125,10 @@ The scripts that turn `results/<run>/trials.jsonl` into report tables, all keyle
 
 ## Changelog
 
+### 2026-11-01: the tripwire decodes `\u` escapes (internal-task)
+
+`proxy/sanitize.ts` `findLeaks` now reads a request body as sent and again with every `\u` escape decoded, at any depth of JSON encoding, in linear time. Why: a forbidden marker written as `\u` escapes in a JSON body used to pass the tripwire (`tests/proxy-tripwire-escape.test.ts` failed before the change).
+
 ### 2026-11-02: the access-ruled member brain and a preregistration's gbrain_commit
 
 The gbrain cell paragraph adds `access: "rules"` with its preflight and the record `run` requires, and the preregistration field `gbrain_commit` (HE-GBRAIN-016). The `--gbrain-image` row, the record's `gbrain` row and "Sharded runs" say what each does there. Why: run `installer-cc-codex-acl-2026-11` uses both, and this page did not name them.

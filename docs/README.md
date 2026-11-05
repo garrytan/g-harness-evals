@@ -7,6 +7,7 @@ Codes like internal-task in receipts name internal work lanes.
 ## Pages
 
 - [adapters.md](adapters.md): the adapter protocol. What a harness's `adapter.sh` receives, how a `run` turn and a `serve` trial proceed, which exit codes mean what, and how the conformance test checks an adapter against the fake harness.
+- [attack/fence-matrix.md](attack/fence-matrix.md): the keyless gbrain fence matrix: which gbrain reads wrap third-party text in gbrain's quote fence and which return it raw, at six gbrain commits, with the receipts and the script that measures it.
 - [benchmarks/](benchmarks/): one folder per counted run, each with `PREREGISTRATION.md`, `prereg.json`, and for every run that has executed, `report.md` and `results/`. One folder, `2026-11-01-opus-gstack-follow/`, holds uncounted checks instead: a report and `results/`, with no preregistration. `2026-11-03-investigate-gate/` holds a report and `results/` for a run preregistered outside this repository (internal-task, in the org drive), so it has no `PREREGISTRATION.md` here either. The order check reads `preregistrations.json` and `preregistrations.d/`. Folders, by run id and the dates the trials ran (UTC):
   - [2026-10-22-m0-smoke/](benchmarks/2026-10-22-m0-smoke/PREREGISTRATION.md): `m0-smoke-2026-10`, preregistered 2026-10-22; the M0 smoke, preregistration only, no results directory.
   - [2026-10-23-m2-pilot/](benchmarks/2026-10-23-m2-pilot/report.md): `m2-pilot-2026-10`, 2026-10-22 to 2026-10-23; the dev-split pilot, three harnesses on Sonnet, 150 trials, a pilot and not a comparison.
@@ -59,6 +60,10 @@ Codes like internal-task in receipts name internal work lanes.
 - [ubicloud.md](ubicloud.md): the Ubicloud shard lane: the scripts that put one shard per VM, how a run fans out and comes back, the check lane, costs and limits.
 
 ## Changelog
+
+### 2026-11-03: attack/fence-matrix.md listed (internal-task)
+
+Added the line for the gbrain fence matrix page, which lands without the memory-poisoning eval it was built for.
 
 ### 2026-11-04: matrix-mu-2026-11 listed (internal-task)
 
