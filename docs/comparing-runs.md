@@ -77,7 +77,7 @@ A side of a `--pair` may join several cells of one harness with `+` (`--pair a1+
 
 ### scripts/v04/clean-arm-audit.ts
 
-`bun scripts/v04/clean-arm-audit.ts audit --results <dir> [--out <file>]`: per cell and arm, the trials whose files (tool traces, turn requests and responses, adapter logs, the world snapshot) name a gstack path, mention gstack, or mention `.capy/drive`. An arm with a trial that names a gstack path is contaminated (CREW.md, "Clean no-gstack and no-brain arms"); exit 1 when any arm is. A harness's own bundled `SKILL.md` files have no gstack path segment and do not count. `preflight` is the before-run side, which `scripts/run-shard.sh --clean-arm-preflight` runs on each shard: no Capy drive and no gstack install on the machine or in the harness images.
+`bun scripts/v04/clean-arm-audit.ts audit --results <dir> [--out <file>]`: per cell and arm, the trials whose files (tool traces, turn requests and responses, adapter logs, the world snapshot) name a gstack path, mention gstack, or mention `.capy/drive`. An arm with a trial that names a gstack path is contaminated (CREW.md, "Clean no-gstack and no-brain arms"); exit 1 when any arm is. It exits 2 before counting when a trial recorded in `trials.jsonl` has no directory, or its directory holds no non-empty auditable file (`events.jsonl`, a turn request or response, a file under `logs/`, `snapshot.json`, each optionally `.gz`; `grade.json`, `usage.json`, `reconcile.json` and `turns.jsonl` do not count), because such a trial cannot be shown clean. gstack matches only where it starts a word (`gstack`, `gstack-ship`, `.gstack`, `gstack/SKILL.md`), never inside one such as `sigstack.ph`, in the audit and the preflight alike. A harness's own bundled `SKILL.md` files have no gstack path segment and do not count. `preflight` is the before-run side, which `scripts/run-shard.sh --clean-arm-preflight` runs on each shard: no Capy drive and no gstack install on the machine or in the harness images.
 
 ## Reading a comparisons row
 
@@ -160,6 +160,10 @@ From a checkout at the results commit, with `--results docs/benchmarks/2026-10-2
 - `compare-run.ts` without `--pair` and the other paths disagree on exclusions until the TODOS item is closed; read the pairs column.
 
 ## Changelog
+
+### 2026-11-06: clean-arm-audit.ts refusals and the gstack word rule (internal-task)
+
+The `scripts/v04/clean-arm-audit.ts` section says the audit exits 2 for a recorded trial with no directory or no non-empty auditable file, and that gstack matches only where it starts a word. Why: this branch adds the empty-directory refusal and the word rule (amendment 1 of `v04-cal-r1-2026-11`), and the section did not name the missing-directory refusal either.
 
 ### 2026-11-06: merge-shards.ts --cells, paired-mdd.ts pooled pair sides, clean-arm-audit.ts (internal-task)
 
