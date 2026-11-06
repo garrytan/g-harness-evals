@@ -61,8 +61,8 @@
  * mismatch or a layer the map does not name. Every generation request on that slot then has those layers cut out by
  * runner/proxy/ablate.ts after it is parsed and before the output cap is injected and the request priced and
  * reserved, and each forwarded request appends one receipt line to the file (spans' sha256, never text). A slot bound
- * without `ablation` is forwarded exactly as before. Usage lines carry `cache_write_tokens` when Anthropic reports
- * cache_creation_input_tokens.
+ * without `ablation` is forwarded exactly as before. Usage lines carry `cache_write_tokens` (usage-line schema v1,
+ * below).
  *
  * The proxy never listens on a wildcard address (0.0.0.0, ::, or an empty
  * host): the runner binds it to the loopback, or to the docker bridge gateway
@@ -71,12 +71,19 @@
  * Standalone (lease mode):
  *   bun runner/proxy/metering-proxy.ts --listen 172.17.0.1:8787 --budget-ledger <file> --lease-usd <n> --run-id <id>
  *     [--usage-log <file>] [--allow-models openai:gpt-4.1-mini,...] [--max-output-tokens 32768] [--free-count-tokens]
- *     [--forbidden-markers <file>] [--streaming meter|refuse] [--upstream openai=http://...] [--new-run] [--control-token <t>] [--ablation-log <file>]
+ *     [--forbidden-markers <file>] [--streaming meter|refuse] [--upstream openai=http://...] [--new-run] [--control-token <t>] [--ablation-log <file>] [--log-sections]
  *   bun runner/proxy/metering-proxy.ts summary --budget-ledger <file> --run-id <id>
  *
  * One lease ledger can hold a cell's reruns: each run id is its own lease, the
  * output cap is recorded with the lease, and `--new-run` closes a lease still
  * open in the file before opening the next one.
+ *
+ * Usage-line schema v1 (internal-task): every forwarded line carries cache_write_tokens, cache_write_1h_tokens and
+ * reasoning_tokens (0 when the provider reported none), read after the request was charged. With --log-sections a
+ * forwarded Anthropic /v1/messages, OpenAI /v1/responses or /v1/chat/completions line also carries `sections` (the
+ * request's byte partition and digests, read before the proxy changes the body) and `tools_called`, or
+ * `sections_error` when they could not be read (runner/proxy/sections.ts). Neither changes what is forwarded, reserved
+ * or charged, and neither writes request or response text.
  */
 import { appendFileSync, readFileSync } from 'node:fs';
 import { BudgetExceededError, BudgetRun, ledgerStatus, priceRequest, readBody, reservationUsd, sseIncomplete, sseUsage, usageCost, type BudgetAllowance } from '../ledger/budget-ledger.ts';
@@ -84,6 +91,7 @@ import { BudgetExceededError, BudgetRun, ledgerStatus, priceRequest, readBody, r
 export { sseIncomplete, sseUsage };
 import { findLeaks } from './sanitize.ts';
 import type { AblationBinding, AblationReceipt, AblationSpec } from './ablate.ts';
+import { requestSections, responseExtras, sectionRoute, type RequestSections } from './sections.ts';
 
 export const UPSTREAM: Record<string, string> = { anthropic: 'https://api.anthropic.com', openai: 'https://api.openai.com', voyage: 'https://api.voyageai.com', particle: 'https://api.particle.ai' };
 export type ProviderName = 'anthropic' | 'openai' | 'voyage' | 'particle';
@@ -147,21 +155,31 @@ export interface LeasePolicy {
   freeCountTokens?: boolean;
   /** Append-only per-request layer-filter receipts (ndjson, runner/proxy/ablate.ts); a bind with an ablation map is refused without it. */
   ablationLog?: string;
+  /** internal-task: write sections and tools_called on forwarded chat lines (--log-sections); off by default. */
+  logSections?: boolean;
 }
 
 export interface UsageLine {
   at: string; key: string; provider: string; route: string; model: string | null;
   outcome: 'forwarded' | 'refused' | 'failed';
   reason?: string; status?: number; reserved_usd?: number; actual_usd?: number; input_tokens?: number; output_tokens?: number; cached_tokens?: number; charged_reservation?: boolean; streamed?: boolean;
-  /** Anthropic's cache_creation_input_tokens, when the usage reported it (OpenAI reports cache reads only). */
+  /** Usage-line schema v1, on every forwarded line: Anthropic cache_creation_input_tokens plus OpenAI input or prompt
+   *  tokens detail cache_write_tokens, 0 when the provider reported none. The ablation tables read it as the cache write. */
   cache_write_tokens?: number;
   /** What the request asked for: OpenAI `reasoning.effort` (or chat-completions `reasoning_effort`), Anthropic `thinking.type` and `thinking.budget_tokens`. */
   reasoning_effort?: string; thinking_type?: string; thinking_budget_tokens?: number;
   /** Particle only: the model id the response echoed (particle-ai/particle-1 for a request naming particle-1). Recorded, never checked or priced. */
   served_model?: string;
+  /** Usage-line schema v1 (internal-task), on every forwarded line beside cache_write_tokens: its 1-hour part and reasoning tokens, 0 when absent. */
+  cache_write_1h_tokens?: number; reasoning_tokens?: number;
+  /** With --log-sections, on forwarded chat lines: the request's sections and the tools the response called, or why they could not be read. */
+  tools_called?: string[]; sections?: RequestSections; sections_error?: string;
   /** Particle only, on a non-2xx answer: its JSON `error.code` and `error.type` when each is a short token. Nothing else from the body is logged. runner/trial/trial.ts `trialTermination` reads `error_code` (internal-task plan decision 12); `error_type` is for the reader of the log. */
   error_code?: string; error_type?: string;
 }
+
+/** The internal-task fields of a line that reported no usage worth reading (a count_tokens call). */
+const NO_EXTRAS = { cache_write_tokens: 0, cache_write_1h_tokens: 0, reasoning_tokens: 0 };
 
 /** The values a usage line may carry for OpenAI `reasoning.effort` / `reasoning_effort` and Anthropic `thinking.type`. */
 export const REASONING_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
@@ -198,13 +216,6 @@ function cachedTokens(usage: unknown): number | undefined {
   const u = usage as Record<string, any>;
   const n = (v: unknown) => (typeof v === 'number' ? v : 0);
   return n(u.cache_read_input_tokens) + n(u.prompt_tokens_details?.cached_tokens) + n(u.input_tokens_details?.cached_tokens);
-}
-
-/** Cache-write tokens Anthropic reported (cache_creation_input_tokens), for the usage line; undefined when the usage has no such field. */
-function cacheWriteTokens(usage: unknown): number | undefined {
-  if (!usage || typeof usage !== 'object') return undefined;
-  const v = (usage as Record<string, unknown>).cache_creation_input_tokens;
-  return typeof v === 'number' ? v : undefined;
 }
 
 /** The model id a Chat Completions response echoed (the body's `model`, or the last streamed chunk's), when it is a plain id. */
@@ -348,7 +359,7 @@ export class MeteringProxy {
     const p = this.options.policy;
     const run = p ? ledgerStatus({ ledgerPath: p.lease.ledgerPath, runId: p.lease.runId }).run : null;
     return { mode: p ? 'lease' : 'in-process', run_id: p?.lease.runId ?? null, lease_usd: p?.lease.budgetUsd ?? null, committed_usd: run?.committed_usd ?? null,
-      max_output_tokens: p ? p.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS : null, ...this.counts };
+      max_output_tokens: p ? p.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS : null, log_sections: p?.logSections === true, ...this.counts };
   }
 
   private async control(path: string, req: Request): Promise<Response> {
@@ -441,7 +452,7 @@ export class MeteringProxy {
       return json(502, 'product_error', `upstream failed: ${(e as Error).message}`);
     }
     const text = await res.text();
-    this.log({ at, key, provider: 'anthropic', route, model, outcome: 'forwarded', status: res.status, reserved_usd: 0, actual_usd: 0, reason: 'count_tokens: free, never metered' });
+    this.log({ at, key, provider: 'anthropic', route, model, outcome: 'forwarded', status: res.status, reserved_usd: 0, actual_usd: 0, reason: 'count_tokens: free, never metered', ...NO_EXTRAS });
     const out = new Headers(res.headers);
     for (const h of ['content-encoding', 'content-length', 'transfer-encoding']) out.delete(h);
     return new Response(text, { status: res.status, headers: out });
@@ -484,6 +495,12 @@ export class MeteringProxy {
       const filter = await import('./ablate.ts');
       if (filter.GENERATION_ROUTES.includes(route)) receipt = filter.ablate(ablation, route, body);
     }
+    // internal-task: the sections are read from the body the filter left (the bytes billed), before the proxy adds stream_options or an output cap.
+    let request: { sections: RequestSections } | { error: string } | null = null;
+    if (p.logSections && body && sectionRoute(prov, route)) {
+      try { request = { sections: requestSections(body, Buffer.byteLength(receipt ? JSON.stringify(body) : raw!), prov, route) }; }
+      catch (e) { request = { error: `request sections: ${(e as Error).message.slice(0, 200)}` }; }
+    }
     if (streamed && (prov === 'openai' || prov === 'particle') && route === '/v1/chat/completions') body!.stream_options = { ...(body!.stream_options ?? {}), include_usage: true };
     const fields = body ? outputFields(prov, route) : [];
     const cap = p.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
@@ -522,15 +539,16 @@ export class MeteringProxy {
       ...(thinking !== undefined ? { thinking_type: thinking } : {}),
       ...(Number.isSafeInteger(budget) && budget >= 0 ? { thinking_budget_tokens: budget as number } : {}),
     };
-    /** `unfinished`: `cost` is the partial usage of a stream that ended before its final usage, charged at no less than the reservation. */
-    const settle = (cost: ReturnType<typeof usageCost>, status: number, isStream: boolean, cached?: number, written?: number, reason?: string, unfinished = false, served?: string, upstream: Pick<UsageLine, 'error_code' | 'error_type'> = {}) => {
+    /** `unfinished`: `cost` is the partial usage of a stream that ended before its final usage, charged at no less than the reservation.
+     *  `response`: the parsed body, or a stream's text, which the usage-line schema v1 fields are read from once the request is charged. */
+    const settle = (cost: ReturnType<typeof usageCost>, status: number, isStream: boolean, response: unknown, cached?: number, reason?: string, unfinished = false, served?: string, upstream: Pick<UsageLine, 'error_code' | 'error_type'> = {}) => {
       const charged = !!bounded && (!cost || unfinished);
       if (entry) p.lease.settle(entry, cost && unfinished ? { ...cost, unfinished } : cost);
       const usd = !cost ? reserved : unfinished ? Math.max(reserved, cost.usd) : cost.usd;
       this.charge(key, prov, bounded?.model ?? null, usd, charged);
       this.log({ at, key, provider: prov, route, model: bounded?.model ?? model, outcome: 'forwarded', ...(reason ? { reason } : {}), status, reserved_usd: reserved, actual_usd: usd,
-        input_tokens: cost?.input_tokens, output_tokens: cost?.output_tokens, ...(cost && cached !== undefined ? { cached_tokens: cached } : {}), ...(cost && written !== undefined ? { cache_write_tokens: written } : {}), charged_reservation: charged, streamed: isStream, ...knobs,
-        ...(served ? { served_model: served } : {}), ...upstream });
+        input_tokens: cost?.input_tokens, output_tokens: cost?.output_tokens, ...(cost && cached !== undefined ? { cached_tokens: cached } : {}), charged_reservation: charged, streamed: isStream, ...knobs,
+        ...(served ? { served_model: served } : {}), ...upstream, ...lineExtrasFor(prov, route, response, request) });
     };
     // The upstream never answered, or its non-streamed body broke off: usage is unknown, so the reservation is charged.
     const failed = (message: string) => {
@@ -558,7 +576,7 @@ export class MeteringProxy {
           const over = !!unfinished && !!cost && cost.usd > reserved;
           const reason = !bounded || (cost && !unfinished) ? undefined
             : `${unfinished ?? 'the stream carried no usage'}${over ? '; charged its partial usage, which cost more than the reservation' : ''}`;
-          settle(cost, res.status, true, cachedTokens(u), cacheWriteTokens(u), reason, !!unfinished, prov === 'particle' ? echoedModel(text, true) : undefined, prov === 'particle' && !res.ok ? upstreamError(jsonOrNull(text)) : {});
+          settle(cost, res.status, true, text, cachedTokens(u), reason, !!unfinished, prov === 'particle' ? echoedModel(text, true) : undefined, prov === 'particle' && !res.ok ? upstreamError(jsonOrNull(text)) : {});
         },
       ).finally(done);
       return new Response(client, { status: res.status, headers: out });
@@ -578,8 +596,21 @@ export class MeteringProxy {
       cost = { usd: 0, input_tokens: 0, output_tokens: 0 };
       reason = `HTTP ${res.status} ${notBilled}: ${PROVIDER_ERROR_NOT_BILLED}`;
     } else if (!cost && bounded) reason = 'the response carried no usage';
-    settle(cost, res.status, false, cachedTokens(parsedBody?.usage), cacheWriteTokens(parsedBody?.usage), reason, false, prov === 'particle' ? echoedModel(text, false) : undefined, prov === 'particle' && !res.ok ? upstreamError(parsedBody) : {});
+    settle(cost, res.status, false, parsedBody, cachedTokens(parsedBody?.usage), reason, false, prov === 'particle' ? echoedModel(text, false) : undefined, prov === 'particle' && !res.ok ? upstreamError(parsedBody) : {});
     return new Response(text, { status: res.status, headers: out });
+  }
+}
+
+/** internal-task: the fields a forwarded line adds, read after the request was charged so they can never change a charge;
+ *  `request` is null without --log-sections or off the chat routes. Never throws. */
+export function lineExtrasFor(prov: string, route: string, response: unknown, request: { sections: RequestSections } | { error: string } | null): Partial<UsageLine> {
+  try {
+    const x = responseExtras(prov, route, response, request && 'sections' in request ? request.sections.tools_declared.map(t => t.name) : []);
+    const counts = { cache_write_tokens: x.cache_write_tokens, cache_write_1h_tokens: x.cache_write_1h_tokens, reasoning_tokens: x.reasoning_tokens };
+    if (!request) return counts;
+    return 'error' in request ? { ...counts, sections_error: request.error } : { ...counts, tools_called: x.tools_called, sections: request.sections };
+  } catch (e) {
+    return { ...NO_EXTRAS, ...(request ? { sections_error: `response extras: ${(e as Error).message.slice(0, 200)}` } : {}) };
   }
 }
 
@@ -607,7 +638,7 @@ export class ProxyControl {
 export interface ProxyCliArgs {
   host: string; port: number; ledger: string; leaseUsd: number; runId: string; usageLog: string | null;
   allowModels: string[] | null; maxOutputTokens: number | null; forbiddenMarkers: string[]; streaming: 'meter' | 'refuse'; upstream: Partial<Record<ProviderName, string>>; newRun: boolean;
-  controlToken: string | null; freeCountTokens: boolean; ablationLog: string | null;
+  controlToken: string | null; freeCountTokens: boolean; ablationLog: string | null; logSections: boolean;
 }
 
 export function parseProxyArgs(argv: string[]): ProxyCliArgs {
@@ -633,7 +664,7 @@ export function parseProxyArgs(argv: string[]): ProxyCliArgs {
     allowModels: one('--allow-models') ? one('--allow-models')!.split(',').map(s => s.trim()).filter(Boolean) : null,
     maxOutputTokens: one('--max-output-tokens') ? Number(one('--max-output-tokens')) : null,
     forbiddenMarkers: markersFile ? readFileSync(markersFile, 'utf8').split('\n').map(s => s.trim()).filter(Boolean) : [],
-    streaming, upstream, newRun: argv.includes('--new-run'), freeCountTokens: argv.includes('--free-count-tokens'), controlToken: one('--control-token') ?? process.env.SHOOTOUT_PROXY_CONTROL_TOKEN ?? null,
+    streaming, upstream, newRun: argv.includes('--new-run'), freeCountTokens: argv.includes('--free-count-tokens'), logSections: argv.includes('--log-sections'), controlToken: one('--control-token') ?? process.env.SHOOTOUT_PROXY_CONTROL_TOKEN ?? null,
     ablationLog: one('--ablation-log') ?? null,
   };
 }
@@ -641,7 +672,7 @@ export function parseProxyArgs(argv: string[]): ProxyCliArgs {
 export function startLeaseProxy(a: ProxyCliArgs, env: Record<string, string | undefined> = process.env): MeteringProxy {
   const lease = BudgetRun.openLease({ runId: a.runId, leaseUsd: a.leaseUsd, ledgerPath: a.ledger, runner: 'metering-proxy', maxOutputTokens: a.maxOutputTokens, newRun: a.newRun });
   const proxy = new MeteringProxy({ hostname: a.host, port: a.port, upstream: a.upstream, controlToken: a.controlToken,
-    policy: { lease, env, allowModels: a.allowModels, maxOutputTokens: a.maxOutputTokens ?? undefined, forbiddenMarkers: a.forbiddenMarkers, streaming: a.streaming, usageLog: a.usageLog ?? `${lease.ledgerPath}.usage.ndjson`, freeCountTokens: a.freeCountTokens, ...(a.ablationLog ? { ablationLog: a.ablationLog } : {}) } });
+    policy: { lease, env, allowModels: a.allowModels, maxOutputTokens: a.maxOutputTokens ?? undefined, forbiddenMarkers: a.forbiddenMarkers, streaming: a.streaming, usageLog: a.usageLog ?? `${lease.ledgerPath}.usage.ndjson`, freeCountTokens: a.freeCountTokens, logSections: a.logSections, ...(a.ablationLog ? { ablationLog: a.ablationLog } : {}) } });
   proxy.start();
   return proxy;
 }

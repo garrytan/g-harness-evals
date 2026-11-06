@@ -305,7 +305,7 @@ export function analyzeMatrix(input: MatrixInput, spec: MatrixSpec) {
     }
     const cacheNote = shareNote(c.id);
     const sc = cacheNote === null ? split?.cells[c.id] : undefined;
-    const splitTotal = sc ? sc.uncached_input_usd + sc.cache_read_usd + sc.cache_write_usd + sc.output_usd : 0;
+    const splitTotal = sc ? sc.uncached_input_usd + sc.cache_read_usd + sc.cache_write_usd + sc.output_usd + sc.embedding_usd : 0;
     const tokens = (k: 'input_tokens' | 'output_tokens' | 'cached_tokens') => sum(rows.map((t) => (fromRecord(t) ? t.usage?.[k] ?? 0 : sum((currentRows.get(t.trial_id) ?? []).map((r) => r[k] ?? 0)))));
     return {
       id: c.id, label: c.label ?? c.id, harness: manifestCell?.harness ?? rows[0]?.harness ?? null, model: manifestCell?.model ?? rows[0]?.model ?? null,

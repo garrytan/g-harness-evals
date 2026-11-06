@@ -9,6 +9,8 @@
 // listens on one network, so internal and default-bridge harness cells run in separate invocations (--cells); HE-NET-001.
 //
 // A manifest with an ablation cell starts the proxy with the run-level receipt log, results/<run>/ablation.ndjson.
+// The one proxy logs sections for every request or none, so the model-calling cells of one invocation agree on
+// log_sections (HE-PROXY-005); run-summary.json records log_sections: true when it is on.
 
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
@@ -128,6 +130,10 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
     if (compose.length) throw new RunnerError('HE-NET-001', `cells ${ids(compose)} have network "internal" but run a compose stack (harnesses/<name>/compose.yaml), which the runner does not move onto the internal network. fix: drop network from those cells`);
     if (internal.some(isSingleShot)) throw new RunnerError('HE-NET-001', `cells ${ids(internal.filter(isSingleShot))} have network "internal" but run a single-shot slice through harnesses/run-trial.sh, which uses the default bridge. fix: drop network from those cells`);
   }
+  const proxied = pendingCells.filter((c) => modeFor(c) !== 'scripted');
+  const sectioned = proxied.filter((c) => c.log_sections === true);
+  if (sectioned.length && sectioned.length < proxied.length) throw new RunnerError('HE-PROXY-005', `cells ${sectioned.map((c) => c.id).join(', ')} set log_sections and cells ${proxied.filter((c) => c.log_sections !== true).map((c) => c.id).join(', ')} do not; the run's one metering proxy logs sections for every request or for none. fix: run each group in its own invocation with --cells`);
+  const logSections = sectioned.length > 0;
   const records: TrialRecord[] = [];
   let proxy: RunProxy | null = null;
   let network: InternalNetwork | null = null;
@@ -145,10 +151,10 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       proxy = await RunProxy.start({
         runId: manifest.run_id, runDir, ledgerPath: opts.ledgerPath ?? join(runDir, 'ledger.sqlite'), leaseUsd: opts.leaseUsd ?? manifest.spend_cap_usd,
         allowModels: [...new Set([...manifest.cells.flatMap(cellModels), ...embeddingModels])], maxOutputTokens: opts.maxOutputTokens,
-        reachableFromContainers: docker || embeddingModels.length > 0, ...(network ? { gatewayAddress: network.gateway } : {}), env: opts.proxyEnv, newRun: opts.newLease, capture: opts.capture,
+        reachableFromContainers: docker || embeddingModels.length > 0, ...(network ? { gatewayAddress: network.gateway } : {}), env: opts.proxyEnv, newRun: opts.newLease, capture: opts.capture, logSections,
         ...(manifest.cells.some((c) => c.ablation) ? { ablationLog: true } : {}),
       });
-      log(`metering proxy on port ${proxy.port}, lease $${opts.leaseUsd ?? manifest.spend_cap_usd} in ${proxy.ledgerPath}`);
+      log(`metering proxy on port ${proxy.port}, lease $${opts.leaseUsd ?? manifest.spend_cap_usd} in ${proxy.ledgerPath}${logSections ? ', log_sections on' : ''}`);
     }
     for (const planned of pending) {
       const cell = cells.get(planned.cell);
@@ -174,7 +180,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
     if (proxy) await proxy.stop();
     if (network) log(await removeInternalNetwork(network.name) ? `internal network ${network.name} removed` : `internal network ${network.name} not removed (a container is still attached); fix: docker network rm ${network.name}`);
   }
-  const summary = { run_id: manifest.run_id, finished_at: new Date().toISOString(), trials_recorded: readRecords(runDir).length, trials_planned: manifest.trials.length, cap_stop: capStop, complete: readRecords(runDir).length === manifest.trials.length && !capStop, ...(opts.capture ? { capture: captureSummary(opts.capture) } : {}) };
+  const summary = { run_id: manifest.run_id, finished_at: new Date().toISOString(), trials_recorded: readRecords(runDir).length, trials_planned: manifest.trials.length, cap_stop: capStop, complete: readRecords(runDir).length === manifest.trials.length && !capStop, ...(logSections ? { log_sections: true } : {}), ...(opts.capture ? { capture: captureSummary(opts.capture) } : {}) };
   writeAtomic(join(runDir, 'run-summary.json'), JSON.stringify(summary, null, 1) + '\n');
   log(`run ${manifest.run_id}: ${records.length} trials recorded this invocation; ${summary.trials_recorded}/${summary.trials_planned} total${capStop ? '; incomplete (cap stop)' : ''}`);
   return { exit, records, skipped, cap_stop: capStop };

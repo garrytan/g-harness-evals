@@ -66,6 +66,7 @@ Design only: the folder holds `design.json` instead of a `prereg.json`, and no t
 - [trial-bundle.md](trial-bundle.md): the trial-bundle format: one reproducible archive per finding with the run's trial-level data and a digest, what goes in and what is left out by rule, and what `scripts/bundle.ts verify` checks.
 - [gstack-laneb.md](gstack-laneb.md): the Lane B bridge: runs the pinned gstack-evals Lane B agent on gstack-native and Terminal-Bench 2 tasks under our metering, leases and Ubicloud lane.
 - [gstack-native-format.md](gstack-native-format.md): the gstack-native repo task format the bridge materializes.
+- [token-waterfall/README.md](token-waterfall/README.md): the token waterfall: where a harness's money goes, split by billing class and by content section, the avoidable-looking patterns the miner counts, and the scripts that build it.
 - [tool-discipline/](tool-discipline/README.md): free mining over committed receipts of invented tools, bad arguments, wrong names, broken helper calls and skipped gstack skill starts, with the hand-check rules, the labellers' agreement and what each harness replies to a bad call ([replies.md](tool-discipline/replies.md)).
 - [ubicloud.md](ubicloud.md): the Ubicloud shard lane: the scripts that put one shard per VM, how a run fans out and comes back, the check lane, costs and limits.
 
@@ -170,6 +171,10 @@ The benchmarks list gains the start-hook panel's folder, preregistration only. W
 ### 2026-10-31: tool-discipline/ listed
 
 Added the line for the new tool-discipline pages. Why: the index says one line per page, and the pages were new.
+
+### 2026-10-31: token-waterfall/README.md listed
+
+Added the line for the new token waterfall page. Why: the index says one line per page, and the page was new.
 
 ### 2026-10-29: repo-tasks.md listed
 

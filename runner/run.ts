@@ -17,6 +17,11 @@
  *       [--adapter <script>] [--image <tag>] [--gbrain-image <tag>] [--resume] [--stop-on-cap] [--cells a,b] [--ledger <file>]
  *       [--lease-usd <n>] [--new-lease] [--max-output-tokens <n>] [--preamble <file>] [--ready-timeout-s <n>]
  *       [--turn-grace-s <n>] [--harness-env K=V ...] [--capture-upstream anthropic|openai=<url> ...] [--capture-dns <ip>]
+ *   bun runner/run.ts check-sections --manifest results/<run-id>/manifest.json
+ *
+ * check-sections (internal-task) is the one-trial smoke's check for cells with log_sections: every forwarded chat line of those
+ * cells' trials in the run's proxy-usage.ndjson carries sections and the cache-write fields, else exit 2 (HE-PROXY-005). A manifest with no such
+ * cell passes and says so.
  *
  * plan and dry-run refuse a run with held-out cells unless its opening is in the set's openings ledger and within
  * budget (HE-HELDOUT-001 to 004, runner/heldout/openings.ts); a run's own row passes every time while it is opened or its
@@ -164,9 +169,13 @@ export interface Cell {
    *  by the layer map (harnesses/ablation/<harness>.<wire>.layers.json, path from the repository root) whose sha256 the
    *  preregistration names (runner/proxy/ablate.ts). An empty layer list is the full cell: filter on, nothing removed. */
   ablation?: AblationSpec;
+  /** internal-task: start the run's metering proxy with --log-sections, so every forwarded chat line carries the request's sections
+   *  and the tools the response called (runner/proxy/sections.ts). One proxy serves an invocation, so its cells must agree
+   *  (HE-PROXY-005). Absent or false, the usage lines carry only the billing-class fields every line has. */
+  log_sections?: boolean;
 }
 
-const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'config', 'repetitions', 'ceiling', 'tasks', 'harness_mode', 'script', 'adapter', 'gbrain', 'preamble', 'task_set', 'session_scope', 'utility_models', 'network', 'ablation']);
+const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'config', 'repetitions', 'ceiling', 'tasks', 'harness_mode', 'script', 'adapter', 'gbrain', 'preamble', 'task_set', 'session_scope', 'utility_models', 'network', 'ablation', 'log_sections']);
 export const DEFAULT_TASK_SET = 'v0.1';
 
 /** The Particle cells whose harness pin has no model_particle entry, the declaration an adapter makes when it routes
@@ -347,6 +356,9 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
     if (c.task_set !== undefined && (typeof c.task_set !== 'string' || !/^[a-z0-9][a-z0-9.-]*(\/[a-z0-9][a-z0-9.-]*)?$/.test(c.task_set))) throw new RunnerError('HE-PREREG-007', `cell ${c.id}: task_set must be a name such as "v0.1", "v0.2" or "v0.4/rehearsal" (got ${JSON.stringify(c.task_set)})`);
     if (c.session_scope !== undefined && !['conversation', 'turn'].includes(c.session_scope)) throw new RunnerError('HE-PREREG-007', `cell ${c.id}: session_scope must be "conversation" or "turn" (got ${JSON.stringify(c.session_scope)})`);
     if (c.utility_models !== undefined && (!Array.isArray(c.utility_models) || !c.utility_models.length || c.utility_models.some((m) => typeof m !== 'string' || !/^[a-z]+:[A-Za-z0-9._-]+$/.test(m)))) throw new RunnerError('HE-PREREG-007', `cell ${c.id}: utility_models must be a non-empty list of provider:model ids (got ${JSON.stringify(c.utility_models)})`);
+    if (c.log_sections !== undefined && typeof c.log_sections !== 'boolean') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: log_sections must be true, false or absent (got ${JSON.stringify(c.log_sections)})`);
+    if (c.log_sections === true && c.split === 'heldout') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: log_sections cannot run on a held-out split; its unsalted digests would let a published usage log confirm held-out content. fix: drop log_sections from the cell`);
+    if (c.log_sections === true && c.harness_mode === 'scripted') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: log_sections needs a cell that calls a model; a scripted cell calls none. fix: drop log_sections from the cell`);
     if (c.network !== undefined) {
       if (c.network !== 'internal') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: network must be "internal" or absent, the default docker bridge (got ${JSON.stringify(c.network)})`);
       if (c.harness_mode === 'scripted' || c.harness_mode === 'process') throw new RunnerError('HE-NET-001', `cell ${c.id}: network "internal" needs a harness container; harness_mode "${c.harness_mode}" runs none. fix: drop network or harness_mode`);
@@ -551,7 +563,7 @@ export function renderPlan(m: Manifest): string {
   for (const c of m.cells) {
     const mine = m.trials.filter((t) => t.cell === c.id);
     const turns = mine.reduce((a, t) => a + (t.turns ?? 0), 0);
-    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.utility_models ? ` utility_models=${c.utility_models.join(',')}` : ''}${c.config ? ` config=${c.config}` : ''}${c.network ? ` network=${c.network}` : ''}${c.ablation ? ` ablation=${c.ablation.layers.join(',') || 'none'} map=${c.ablation.map} map_sha256=${c.ablation.map_sha256.slice(0, 12)}` : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${gbrainLabel(c.gbrain)}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}${c.gbrain.ingest ? ` ingest=${c.gbrain.ingest}` : ''}${c.gbrain.access ? ` access=${c.gbrain.access}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
+    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.utility_models ? ` utility_models=${c.utility_models.join(',')}` : ''}${c.config ? ` config=${c.config}` : ''}${c.network ? ` network=${c.network}` : ''}${c.ablation ? ` ablation=${c.ablation.layers.join(',') || 'none'} map=${c.ablation.map} map_sha256=${c.ablation.map_sha256.slice(0, 12)}` : ''}${c.log_sections ? ' log_sections' : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${gbrainLabel(c.gbrain)}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}${c.gbrain.ingest ? ` ingest=${c.gbrain.ingest}` : ''}${c.gbrain.access ? ` access=${c.gbrain.access}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
   }
   for (const c of m.cells) {
     if (c.gbrain?.brain === 'company' && c.preamble !== 'tasks/multiuser/_shared/preamble.gbrain-company.md') lines.push(`WARN: cell ${c.id} serves the company brain with preamble ${c.preamble ?? 'tasks/multiuser/_shared/preamble.md'}, not the company one (tasks/multiuser/_shared/preamble.gbrain-company.md); intended only for a none-style arm on the company brain`);
@@ -903,7 +915,21 @@ async function main(argv: string[]): Promise<number> {
     });
     return result.exit;
   }
-  throw new RunnerError('HE-RUN-002', 'usage: bun runner/run.ts plan|dry-run --prereg <file> | plan|dry-run --replication-of <run id> --cells <id,id> --reps <n> --run-id <new id> | preflight --manifest <file> | run --manifest <file> [options] [--sealed-root <dir> --opening-receipt <file>]');
+  if (cmd === 'check-sections') {
+    const { manifest, path } = loadManifest(flag('--manifest'));
+    const cells = manifest.cells.filter((c) => c.log_sections === true).map((c) => c.id);
+    if (!cells.length) { console.log(`SECTIONS: not requested by any cell of ${manifest.run_id}`); return 0; }
+    const { sectionsSmokeProblems } = await import('./trial/proxy.ts');
+    const usage = join(dirname(path), 'proxy-usage.ndjson');
+    const sectioned = new Set(cells);
+    const lines = (existsSync(usage) ? readFileSync(usage, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [])
+      .filter((l) => typeof l.key === 'string' && sectioned.has(l.key.replace(/^(sk-trial-|trial-token:)/, '').split('/')[1]));
+    const problems = sectionsSmokeProblems(lines);
+    if (problems.length) throw new RunnerError('HE-PROXY-005', `cells ${cells.join(', ')} set log_sections, but ${usage} fails the sections check: ${problems.slice(0, 5).join('; ')}${problems.length > 5 ? `; and ${problems.length - 5} more` : ''}`);
+    console.log(`SECTIONS: ok run=${manifest.run_id} cells=${cells.join(',')} chat_lines=${lines.filter((l) => l.outcome === 'forwarded' && typeof l.sections === 'object').length}`);
+    return 0;
+  }
+  throw new RunnerError('HE-RUN-002', 'usage: bun runner/run.ts plan|dry-run --prereg <file> | plan|dry-run --replication-of <run id> --cells <id,id> --reps <n> --run-id <new id> | preflight --manifest <file> | run --manifest <file> [options] [--sealed-root <dir> --opening-receipt <file>] | check-sections --manifest <file>');
 }
 
 if (import.meta.main) {

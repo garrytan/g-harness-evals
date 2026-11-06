@@ -61,6 +61,53 @@ describe('cost split (internal-task)', () => {
   });
 });
 
+const FIX = 'tests/fixtures/waterfall';
+const ndjson = (p: string) => readFileSync(join(ROOT, p), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+
+describe('cost split on current receipts (internal-task)', () => {
+  test('trial-token: keys from the host-harness pilot match their trials.jsonl rows', () => {
+    const split = costSplit(ndjson(`${FIX}/cc-none.proxy-usage.ndjson`), ndjson(`${FIX}/trials.jsonl`).filter((t) => t.cell.startsWith('claude-code')));
+    expect(split.trials_checked).toBe(1);
+    expect(split.trials_unmatched).toBe(0);
+    expect(split.max_trial_usd_difference).toBeLessThanOrEqual(0.000001);
+    expect(split.cells['claude-code-haiku-none-mu-v03-dev']!.requests).toBe(5);
+    expect(split.cells['claude-code-haiku-none-mu-v03-dev']!.inferred_requests).toBe(5);
+  });
+
+  test("Hermes's free model-listing lines (forwarded, model null, $0) are skipped and counted, never priced", () => {
+    const rows = ndjson(`${FIX}/he-luna.proxy-usage.ndjson`) as UsageRow[];
+    expect(rows.some((r) => r.outcome === 'forwarded' && r.model === null)).toBe(true);
+    const split = costSplit(rows, ndjson(`${FIX}/trials.jsonl`).filter((t) => t.cell.startsWith('hermes')));
+    expect(split.uncharged_rows_skipped).toBe(5);
+    expect(split.cells['hermes-luna-none-mu-v03-dev']!.requests).toBe(6);
+    expect(split.trials_unmatched).toBe(0);
+    expect(split.max_trial_usd_difference).toBeLessThanOrEqual(0.000001);
+  });
+
+  test('measured cache writes (contract fields) are used as reported, 1-hour writes at 2x input', () => {
+    const usd = (5_000 * 2 + 6_000 * 2.5 + 4_000 * 4 + 20_000 * 0.2 + 500 * 10) / 1e6;
+    const c = splitRow(row({ input_tokens: 35_000, cached_tokens: 20_000, output_tokens: 500, actual_usd: usd, cache_write_tokens: 10_000, cache_write_1h_tokens: 4_000, reasoning_tokens: 0 }));
+    expect(c.cache_write_tokens).toBe(10_000);
+    expect(c.cache_write_1h_tokens).toBe(4_000);
+    expect(c.cache_write_1h_usd).toBeCloseTo(4_000 * 4 / 1e6, 12);
+    expect(c.measured_requests).toBe(1);
+    expect(c.inferred_requests).toBe(0);
+    expect(Math.abs(c.remainder_usd)).toBeLessThan(1e-9);
+  });
+
+  test('embeddings, failed charged reservations and reservation-only dollars each keep their own component', () => {
+    const emb = splitRow(row({ provider: 'openai', route: '/v1/embeddings', model: 'text-embedding-3-small', input_tokens: 17, output_tokens: undefined, cached_tokens: undefined, actual_usd: 3.4e-7 }));
+    expect([emb.embedding_requests, emb.embedding_tokens, emb.embedding_usd, emb.uncached_input_tokens]).toEqual([1, 17, 3.4e-7, 0]);
+    const failed = splitRow(row({ outcome: 'failed', input_tokens: undefined, output_tokens: undefined, cached_tokens: undefined, actual_usd: 0.39, charged_reservation: true }));
+    expect([failed.failed_requests, failed.failed_usd, failed.cache_write_tokens]).toEqual([1, 0.39, 0]);
+    const unknown = splitRow(row({ input_tokens: undefined, output_tokens: undefined, cached_tokens: undefined, actual_usd: 0.38, charged_reservation: true }));
+    expect([unknown.unknown_requests, unknown.unknown_usd, unknown.uncached_input_tokens, unknown.cache_write_tokens]).toEqual([1, 0.38, 0, 0]);
+    expect(splitRow(row({ route: '/v1/messages/count_tokens', input_tokens: undefined, output_tokens: undefined, actual_usd: 0 })).requests).toBe(0);
+    expect(splitRow(row({ outcome: 'failed', input_tokens: undefined, output_tokens: undefined, actual_usd: 0 })).requests).toBe(0);
+  });
+
+});
+
 describe('cost split on current trial records (internal-task)', () => {
   const id = 'r/cell-a/t1/r1';
   const current = (o: Partial<UsageRow> = {}) => row({ key: `trial-token:${id}`, input_tokens: 1_000, actual_usd: 0.002, ...o });
@@ -111,10 +158,12 @@ describe('cost split on current trial records (internal-task)', () => {
     expect(split.unallocated_share['cell-a']).toBe(0);
   });
 
-  test('a charged /v1/embeddings row is all uncached input', () => {
+  test('a charged /v1/embeddings row is its own embedding component, and the shares count it', () => {
     const c = splitRow(current({ provider: 'openai', route: '/v1/embeddings', model: 'text-embedding-3-small', actual_usd: 0.00002 }));
-    expect(c.uncached_input_usd).toBe(0.00002);
+    expect(c.embedding_usd).toBe(0.00002);
+    expect(c.uncached_input_usd).toBe(0);
     expect(c.remainder_usd).toBe(0);
+    expect(costSplit([current({ provider: 'openai', route: '/v1/embeddings', model: 'text-embedding-3-small', actual_usd: 0.00002 })], [trial(0.00002)]).shares['cell-a']!.embedding).toBe(1);
   });
 
   test('refuses a charged row that matches no trial, a charged row that is not a forwarded request, and a trial whose dollars do not reconcile', () => {

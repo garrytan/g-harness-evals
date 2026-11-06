@@ -22,12 +22,15 @@
 // A run with an ablation cell starts the proxy with --ablation-log <run dir>/ablation.ndjson (outside every agent
 // mount), and each trial slot of such a cell is bound with its map, map sha256 and layers. summarizeAblation reads the
 // trial key's receipts into TrialRecord.ablation.
+// internal-task: a run of cells with log_sections starts the proxy with --log-sections and checks /__proxy/status says so before
+// any trial; sectionsSmokeProblems is the check the one-trial smoke runs on its usage log (bun runner/run.ts check-sections).
 
 import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Meter, UsageLine } from '../proxy/metering-proxy.ts';
 import { HOUSEKEEPING_FAMILY, type AblationReceipt, type AblationSpec, type Wire } from '../proxy/ablate.ts';
+import { sectionRoute } from '../proxy/sections.ts';
 import type { TrialAblation, TrialEmbeddingUsage, TrialUsage } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
 import { CONTAINER_HOST, listenHost } from './world.ts';
@@ -51,6 +54,8 @@ export interface RunProxyOptions {
   /** Capture mode: forward to these fake upstreams (the proxy's --upstream) and give the proxy dummy provider keys
    *  instead of `env`'s, keeping only PATH and HOME from it (runner/trial/capture.ts). */
   capture?: CaptureConfig;
+  /** internal-task: the proxy's --log-sections, from the cells' log_sections; start() refuses a proxy whose status disagrees. */
+  logSections?: boolean;
   startTimeoutMs?: number;
   /** Start the proxy with --ablation-log <runDir>/ablation.ndjson so trial slots can be bound with a layer map. */
   ablationLog?: boolean;
@@ -113,6 +118,7 @@ export class RunProxy {
     if (opts.newRun) args.push('--new-run');
     const ablationLog = opts.ablationLog ? join(opts.runDir, 'ablation.ndjson') : null;
     if (ablationLog) args.push('--ablation-log', ablationLog);
+    if (opts.logSections) args.push('--log-sections');
     for (const [provider, url] of Object.entries(opts.capture?.upstream ?? {})) args.push('--upstream', `${provider}=${url}`);
     const proc = Bun.spawn(args, { stdin: 'ignore', stdout: logFd, stderr: logFd, env: proxyProcessEnv(opts) as Record<string, string> });
     const deadline = Date.now() + (opts.startTimeoutMs ?? 20_000);
@@ -120,8 +126,14 @@ export class RunProxy {
       if (proc.exitCode !== null) break;
       try {
         const res = await fetch(`http://${host}:${port}/__proxy/status`);
-        if (res.ok) return new RunProxy(proc, port, host, controlToken, usageLog, opts.ledgerPath, opts.reachableFromContainers, ablationLog);
-      } catch { /* not listening yet */ }
+        if (res.ok) {
+          const logSections = ((await res.json()) as { log_sections?: unknown }).log_sections === true;
+          if (logSections === !!opts.logSections) return new RunProxy(proc, port, host, controlToken, usageLog, opts.ledgerPath, opts.reachableFromContainers, ablationLog);
+          proc.kill('SIGKILL');
+          await proc.exited;
+          throw new RunnerError('HE-PROXY-003', `the metering proxy on ${host}:${port} reports log_sections ${logSections}, but the cells ask for ${!!opts.logSections}; fix: run a checkout whose runner/proxy/metering-proxy.ts knows --log-sections`);
+        }
+      } catch (e) { if (e instanceof RunnerError) throw e; /* not listening yet */ }
       await Bun.sleep(50);
     }
     proc.kill('SIGKILL');
@@ -184,6 +196,21 @@ export class RunProxy {
     const dead = await Promise.race([this.proc.exited.then(() => true), Bun.sleep(5_000).then(() => false)]);
     if (!dead) { this.proc.kill('SIGKILL'); await this.proc.exited; }
   }
+}
+
+/** internal-task: why a usage log of a run whose cells set log_sections fails the one-trial smoke: no forwarded chat line, or a
+ *  forwarded chat line (Anthropic /v1/messages, OpenAI /v1/responses or /v1/chat/completions, Particle /v1/chat/completions) without sections or without the
+ *  cache-write fields. Empty when every chat line carries them. */
+export function sectionsSmokeProblems(lines: UsageLine[]): string[] {
+  const chat = lines.filter((l) => l.outcome === 'forwarded' && sectionRoute(l.provider, l.route));
+  if (!chat.length) return ['no forwarded chat line in the usage log'];
+  return chat.flatMap((l, i) => {
+    const missing = [
+      ...(l.sections_error !== undefined ? [`sections_error (${l.sections_error})`] : l.sections?.v !== 1 ? ['sections'] : []),
+      ...(['cache_write_tokens', 'cache_write_1h_tokens', 'reasoning_tokens'] as const).filter((k) => typeof l[k] !== 'number'),
+    ];
+    return missing.length ? [`chat line ${i + 1} of ${chat.length} (${l.provider} ${l.route}, key ${l.key}) lacks ${missing.join(', ')}`] : [];
+  });
 }
 
 /** A refusal the ledger issued because the lease or the program cap would be crossed (not an unpriced model or a bad route). */

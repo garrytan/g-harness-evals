@@ -45,7 +45,7 @@ function args(name: string): string[] {
   return out;
 }
 
-async function startProxy(dir: string) {
+export async function startProxy(dir: string) {
   if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in this shell; the proxy needs it (it is never printed)');
   const port = 18700 + Math.floor(Math.random() * 200);
   const control = randomBytes(16).toString('hex');

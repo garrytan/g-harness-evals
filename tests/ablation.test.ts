@@ -364,14 +364,14 @@ describe('the layer maps on the recorded corpus', () => {
 // ---- the proxy -----------------------------------------------------------------------------------------------------
 
 let proxies = 0;
-function startProxy(o: { ablationLog?: boolean; usage?: Record<string, number>; allowModels?: string[] } = {}) {
+function startProxy(o: { ablationLog?: boolean; usage?: Record<string, number>; allowModels?: string[]; logSections?: boolean } = {}) {
   const n = ++proxies;
   const lease = BudgetRun.openLease({ runId: `ablation-${n}`, leaseUsd: 10_000, ledgerPath: join(tmp, `ledger-${n}.sqlite`), runner: 'test', maxOutputTokens: 128_000, newRun: true });
   const sent: string[] = [];
   const fetchImpl = (async (_u: string, init: RequestInit) => { sent.push(String(init.body)); return Response.json({ usage: o.usage ?? { input_tokens: 10, output_tokens: 1 } }); }) as unknown as typeof fetch;
   const usageLog = join(tmp, `usage-${n}.ndjson`);
   const ablationLog = join(tmp, `ablation-${n}.ndjson`);
-  const proxy = new MeteringProxy({ fetchImpl, controlToken: 'ctl', policy: { lease, env: { ANTHROPIC_API_KEY: 'dummy', OPENAI_API_KEY: 'dummy' }, maxOutputTokens: 128_000, usageLog, ...(o.ablationLog === false ? {} : { ablationLog }), ...(o.allowModels ? { allowModels: o.allowModels } : {}) } });
+  const proxy = new MeteringProxy({ fetchImpl, controlToken: 'ctl', policy: { lease, env: { ANTHROPIC_API_KEY: 'dummy', OPENAI_API_KEY: 'dummy' }, maxOutputTokens: 128_000, usageLog, ...(o.ablationLog === false ? {} : { ablationLog }), ...(o.allowModels ? { allowModels: o.allowModels } : {}), ...(o.logSections ? { logSections: true } : {}) } });
   proxy.start();
   const base = `http://127.0.0.1:${proxy.port}`;
   const post = (slot: string, r: { provider: string; route: string; body: unknown }) => fetch(`${base}/${slot}/${r.provider}${r.route}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(r.body) }).then(async (res) => { await res.text(); return res.status; });
@@ -441,14 +441,31 @@ describe('the metering proxy with the filter', () => {
     } finally { p.proxy.stop(); }
   });
 
-  test('a usage line without cache_creation_input_tokens carries no cache_write_tokens, and neither does TrialUsage', async () => {
+  test.skipIf(HASHES_ONLY.has(CC_LAYERS))('with log_sections, the sections describe the filtered body the ledger priced, not the body the client sent', async () => {
+    const p = startProxy({ logSections: true });
+    try {
+      const file = 'claude-code.anthropic-messages.layers.json';
+      await p.control.bind('full', 'k-full', undefined, undefined, specFor(file, []));
+      await p.control.bind('min', 'k-min', undefined, undefined, specFor(file, allLayers(file)));
+      const r = CORPUS.find((x) => x.map === file)!;
+      const noCap = { ...r, body: { ...r.body, max_tokens: undefined } };
+      expect(await p.post('full', noCap)).toBe(200);
+      expect(await p.post('min', noCap)).toBe(200);
+      const beforeCap = (s: string) => bytes(JSON.stringify({ ...JSON.parse(s), max_tokens: undefined }));
+      const [full, min] = p.usage().map((l) => l.sections!);
+      expect([full!.body_bytes, min!.body_bytes]).toEqual([beforeCap(p.sent[0]!), beforeCap(p.sent[1]!)]);
+      expect(min!.body_bytes).toBeLessThan(full!.body_bytes);
+    } finally { p.proxy.stop(); }
+  });
+
+  test('a usage line without cache_creation_input_tokens carries cache_write_tokens 0 (usage-line schema v1), and TrialUsage sums it to 0', async () => {
     const p = startProxy({ ablationLog: false });
     try {
       await p.control.bind('s', 'k');
       expect(await p.post('s', CORPUS[0]!)).toBe(200);
       const lines = p.usage();
-      expect('cache_write_tokens' in lines[0]!).toBe(false);
-      expect('cache_write_tokens' in summarizeUsage('k', await p.proxy.finalize('k'), lines).usage).toBe(false);
+      expect(lines[0]!.cache_write_tokens).toBe(0);
+      expect(summarizeUsage('k', await p.proxy.finalize('k'), lines).usage.cache_write_tokens).toBe(0);
     } finally { p.proxy.stop(); }
   });
 });

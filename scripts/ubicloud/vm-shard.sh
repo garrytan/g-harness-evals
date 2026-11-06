@@ -181,8 +181,14 @@ print(f'smoke: {len(rows)} trial(s), {len(bad)} not completed, ${usd:.4f}')
 sys.exit(1 if bad or not rows else 0)
 PY
     smoke_ok=$?
-    if [ "$rc" -ne 0 ] || [ "$smoke_ok" -ne 0 ]; then
-      log "smoke failed (run-shard exit $rc, trials check $smoke_ok); the counted run does not start"
+    # internal-task: when the cells set log_sections, every forwarded chat line of the smoke carries sections and the cache-write fields.
+    sections_ok=0
+    if [ -f "$shard/smoke/results/manifest.json" ] && python3 -c "import json,sys; sys.exit(0 if any(c.get('log_sections') is True for c in json.load(open(sys.argv[1])).get('cells', [])) else 1)" "$shard/smoke/results/manifest.json"; then
+      bun runner/run.ts check-sections --manifest "$shard/smoke/results/manifest.json" > "$shard/smoke/sections.log" 2>&1; sections_ok=$?
+      while IFS= read -r l; do log "$l"; done < "$shard/smoke/sections.log"
+    fi
+    if [ "$rc" -ne 0 ] || [ "$smoke_ok" -ne 0 ] || [ "$sections_ok" -ne 0 ]; then
+      log "smoke failed (run-shard exit $rc, trials check $smoke_ok, sections check $sections_ok); the counted run does not start"
       finish 4
     fi
     [ ${#sealed[@]} -gt 0 ] || build_flag=(--skip-build)
