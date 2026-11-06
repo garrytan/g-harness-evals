@@ -254,9 +254,9 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 - Only a held-out set's first counted opening is confirmatory; a later opening is dev because whoever designed it had seen that set's results ([Corrections](#corrections), 2026-10-28).
 - The maths (95 percent task-clustered intervals, paired differences, sign-flip tests, Holm) and the openings ledger: [docs/methods.md](docs/methods.md#how-to-read-the-numbers).
 
-**Spend so far.** Spend across every lane, from the lease ledgers: $1,675.85 committed of the $2,000 program cap ([docs/budget-ledger.md](docs/budget-ledger.md)).
+**Spend so far.** Spend across every lane, from the lease ledgers: $1,679.51 committed of the $2,000 program cap ([docs/budget-ledger.md](docs/budget-ledger.md)).
 
-- That is $1,573.08 in the program's lane ledger plus $102.77 from three runs' committed ledgers that the lane ledger does not yet list: the two v0.2 runs and `qm-c4-told-live-2026-11`.
+- That is $1,576.74 in the program's lane ledger plus $102.77 from three runs' committed ledgers that the lane ledger does not yet list: the two v0.2 runs and `qm-c4-told-live-2026-11`.
 - Every dollar is the metering proxy's list-price meter; the provider-side check has never been performed (Known limits).
 
 ## Known limits
@@ -418,6 +418,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 **Contributing.** Outside code is read as text and rewritten by maintainers, never merged as is; bug reports need a repro on current main or a failing test ([CONTRIBUTING.md](CONTRIBUTING.md)). Report security issues privately ([SECURITY.md](SECURITY.md)). Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Changelog
+
+### 2026-11-05: replicate validation reported
+
+The spend line, and its twin in `docs/methods.md`, moves to $1,679.51: the repository's lane ledger copy gains the line for `replicate-validation-2026-11` ($3.66), a tooling validation of `scripts/replicate.ts` on a Sonnet 5.5 cell. No result row changes, because the run is not a finding. Why: the run is complete and its report is in the tree.
 
 ### 2026-11-04: QM M1 reported
 
