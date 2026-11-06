@@ -53,6 +53,8 @@ Defaults are seed 7 and 10,000 draws; every report that names them says the same
 
 A side of a `--pair` may join several cells of one harness with `+` (`--pair a1+a2:b1+b2`), and their tasks are pooled into that side. The v0.4 frozen-dev read keeps one cell per family and level, so each harness's pair joins its frozen primary-family cells.
 
+`bun scripts/paired-mdd.ts --h10 --task-set <set> --tasks <id,...> [--split dev] [--reps 1] [--repetition-pairs 4] [--placement-pairs 3] [--base-repetition 0.95] [--base-placement 0.9] [--alpha 0.025] [--power 0.8] [--sims 1000] [--seed 7] [--family-b <rate,...> [--family-b-alpha 0.0071]]` is H10's power check (internal-task). No data exists yet for the one-time hook on frontier models, so it simulates from stated rates instead of measuring. It reads each task's member turns and repeat turns from the task's own turn order (`structuralSessions` in `scripts/instruction-followed-h10.ts`) and finds the smallest effect, on a one-point grid, whose simulated power under the scorer's exact two-sided sign-flip test over tasks reaches `--power`. It prints the per-task structure and one row per contrast: family A's repetition (route-once against route-hook, repeat turns only) and placement (route-once against route-system, all member turns), plus one family B row per `--family-b` control rate. A task with no repeat turn adds no repetition cluster. Prints Markdown only.
+
 ### scripts/secondary-endpoints.ts
 
 `bun scripts/secondary-endpoints.ts --results <dir> [--seed 7] [--draws 10000] [--families a,b]`: the same pairing as `compare-run --pair gbrain` over five secondary endpoints (cross-scope read by any route, cross-scope read via gbrain, hidden-fact leak, consent violation, continuity pass), Holm within one model per endpoint. Written for the v0.2 held-out run. Writes `secondary-endpoints.json`.
@@ -172,6 +174,10 @@ The `scripts/v04/clean-arm-audit.ts` section says the audit exits 2 for a record
 ### 2026-11-06: merge-shards.ts --cells, paired-mdd.ts pooled pair sides, clean-arm-audit.ts (internal-task)
 
 The `scripts/merge-shards.ts` section describes `--cells` for a run that ran a subset of its preregistered cells; the `scripts/paired-mdd.ts` section says a pair side may join several cells of one harness with `+`; a new section describes `scripts/v04/clean-arm-audit.ts`. Why: the v0.4 calibration rounds and frozen-dev read run the cells a fixed rule picks from a preregistration of every cell, and the CREW rule on clean control arms.
+
+### 2026-11-05: paired-mdd.ts --h10 (internal-task)
+
+The `scripts/paired-mdd.ts` section describes `--h10`, the simulated minimum detectable difference for H10's family A and family B contrasts. Why: H10 PR 5 added the mode, and this page described only the other three.
 
 ### 2026-11-05: compare-run --baseline endpoints and repricing, merge-shards --skipped-by-rule (internal-task)
 

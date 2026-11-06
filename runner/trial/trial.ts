@@ -37,6 +37,7 @@ import { RunProxy, embeddingUsage, reconcile, summarizeAblation, summarizeUsage,
 import { wireOfModel } from '../proxy/ablate.ts';
 import { loadTask, type TaskSpec } from './task.ts';
 import { flushIngestAfterFence, runTurns } from './turns.ts';
+import { cellRoute } from './routes.ts';
 import { TrialWorld, worldAt } from './world.ts';
 
 /** Where preflight exports each gbrain-docs cell's bundle view, and where the trial reads it. */
@@ -303,7 +304,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
 
   try {
     // The harness slot is bound inside the cleanup try, so nothing thrown from here on can leave a live token behind.
-    if (proxy) await proxy.bind(slot, key, token, cellModels(cell), cell.ablation ? { ...cell.ablation, map: resolve(opts.repoRoot ?? '.', cell.ablation.map), ...(cell.utility_models ? { utility_models: cell.utility_models } : {}) } : undefined);
+    if (proxy) await proxy.bind(slot, key, token, cellModels(cell), cell.ablation ? { ...cell.ablation, map: resolve(opts.repoRoot ?? '.', cell.ablation.map), ...(cell.utility_models ? { utility_models: cell.utility_models } : {}) } : undefined, cellRoute(cell) !== null);
     writeFileSync(paths.turns!, '');
     try {
       if (infraError) throw new HarnessGone(null, infraError);

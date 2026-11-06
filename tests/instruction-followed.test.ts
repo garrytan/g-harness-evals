@@ -3,7 +3,7 @@
 // the task list (the v0.3 pilot's informative-family rule applied to v03-pilot-2026-10's trials.jsonl), the cost per trial it budgets from, the
 // told-arm reference share, the cells of prereg.json and the script's sha256.
 
-import { describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -11,6 +11,9 @@ import { join } from 'node:path';
 import type { TurnWindow } from '../runner/contracts.ts';
 import type { WorldEvent } from '../world/services/events.ts';
 import { analyse, markdown, turnOutcomes } from '../scripts/instruction-followed.ts';
+import { analyse as analyseH10, exposure, markdown as markdownH10, structuralSessions } from '../scripts/instruction-followed-h10.ts';
+import { loadTask } from '../runner/trial/task.ts';
+import type { UsageLine } from '../runner/proxy/metering-proxy.ts';
 
 const ROOT = join(import.meta.dir, '..');
 const RUN_DIR = join(ROOT, 'docs', 'benchmarks', '2026-10-31-anatomy-instruction-route');
@@ -238,3 +241,162 @@ describe('anatomy-instruction-route-2026-11: the preregistration matches its rec
     expect(text).toContain(createHash('sha256').update(readFileSync(SCRIPT)).digest('hex'));
   });
 });
+
+// ---- internal-task (H10) PR 5: scripts/instruction-followed-h10.ts --------------------------------------------------------------
+
+const H10_TASKS = ['cn-01-tamsin-cold-chain-site', 'cn-02-tansleigh-packaging-deadline', 'cn-03-marrow-agrisupply-site', 'cn-04-quarrendon-site', 'sc-01-central-random-two-asks', 'sc-02-north-team-two-asks', 'cr-01-marrow-agrisupply-site-retraction', 'cr-02-quarrendon-seat-count-retraction', 'cr-03-brackenwater-renewal-date-retraction', 'cr-04-marrow-agrisupply-seat-count'];
+
+describe('H10: sessions come from the task\'s own turn order', () => {
+  test('the 10 H10 tasks give 30 member turns and 10 repeat turns over 9 tasks; cn-03 contributes no repeat turn', () => {
+    const per = H10_TASKS.map((t) => ({ t, s: structuralSessions(loadTask(join(ROOT, 'tasks', 'multiuser', 'v0.3', 'dev', t)).turns) }));
+    expect(per.reduce((a, x) => a + x.s.length, 0)).toBe(30);
+    const repeats = per.map((x) => x.s.filter((s) => s.session_turn >= 2).length);
+    expect(repeats.reduce((a, b) => a + b, 0)).toBe(10);
+    expect(repeats.filter((n) => n > 0)).toHaveLength(9);
+    const cn03 = per.find((x) => x.t.startsWith('cn-03'))!.s;
+    expect(cn03.map((s) => s.session_turn)).toEqual([1, 1, 1, 1]);
+    expect(cn03[3]!.session).toMatch(/^dm:.*:t4$/);
+    expect(per.find((x) => x.t.startsWith('cr-01'))!.s.map((s) => s.session_turn)).toEqual([1, 2, 3]);
+  });
+  test('a thread = "new" turn opens its own session; a later top-level turn rejoins the channel\'s', () => {
+    expect(structuralSessions([{ actor: 'a', channel: 'c' }, { actor: 'b', channel: 'c', thread: 'new' }, { actor: 'a', channel: 'c' }, { actor: 'a', channel: 'dm' }]))
+      .toEqual([{ session: '#c', session_turn: 1 }, { session: '#c:t2', session_turn: 1 }, { session: '#c', session_turn: 2 }, { session: 'dm:a', session_turn: 1 }]);
+  });
+});
+
+describe('H10: exposure from the proxy route copies', () => {
+  const line = (at: string, c: Partial<Record<'system' | 'user' | 'tool_result' | 'history' | 'listing', number>>, extra: Partial<UsageLine> = {}): UsageLine =>
+    ({ at, key: 'k', provider: 'anthropic', route: '/v1/messages', model: 'm', outcome: 'forwarded', route_copies: { system: 0, user: 0, tool_result: 0, history: 0, listing: 0, ...c }, ...extra });
+  test('rule routes: discovery is the first request carrying a copy and load equals it; the control has neither', () => {
+    expect(exposure('route-hook', [line('2', {}), line('1', { user: 1 })])).toEqual({ discovery: true, load: true });
+    expect(exposure('route-system', [line('1', {}), line('2', { system: 1 })])).toEqual({ discovery: false, load: false });
+    expect(exposure('route-tool', [line('1', { user: 1 })])).toEqual({ discovery: null, load: null });
+  });
+  test('skill routes: discovery is the listing on the first request, load any copy of the rule in the turn; housekeeping is left out', () => {
+    expect(exposure('route-skill', [line('1', { listing: 1 }), line('2', { tool_result: 1 })])).toEqual({ discovery: true, load: true });
+    expect(exposure('route-told', [line('0', { user: 3 }, { housekeeping: true, route_copies: undefined }), line('1', { listing: 0 })])).toEqual({ discovery: false, load: false });
+    expect(exposure('route-skill', [])).toEqual({ discovery: null, load: null });
+  });
+});
+
+describe('H10: the scorer on synthetic trials', () => {
+  // T1: dm:a, dm:b, dm:a (turn 3 repeats); T2: #c, #c in a new thread, #c (turn 3 repeats); T3: dm:a, dm:b, #c (no repeat).
+  const TURNS: Record<string, Array<{ actor: string; channel: string; thread?: 'new' }>> = {
+    t1: [{ actor: 'a', channel: 'dm' }, { actor: 'b', channel: 'dm' }, { actor: 'a', channel: 'dm' }],
+    t2: [{ actor: 'a', channel: 'c' }, { actor: 'b', channel: 'c', thread: 'new' }, { actor: 'a', channel: 'c' }],
+    t3: [{ actor: 'a', channel: 'dm' }, { actor: 'b', channel: 'dm' }, { actor: 'a', channel: 'c' }],
+  };
+  const firsts: Record<string, boolean[]> = { t1: [true, true, false], t2: [true, true, false], t3: [true, true, true] };
+  const CELLS = [
+    { id: 'cc-tool', config: 'route-tool', follows: () => false },
+    { id: 'cc-hook', config: 'route-hook', follows: () => true },
+    { id: 'cc-once', config: 'route-once', follows: (task: string, i: number) => firsts[task]![i]! },
+    { id: 'cc-system', config: 'route-system', follows: () => true },
+  ];
+  const dir = mkdtempSync(join(tmpdir(), 'h10-scorer-'));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  const rows: string[] = [];
+  const usage: string[] = [];
+  for (const c of CELLS) {
+    for (const task of Object.keys(TURNS)) {
+      const trialId = `h10-fx/${c.id}/${task}/r1`;
+      const t = trial(TURNS[task]!.map((_, i) => (c.follows(task, i) ? ['gbrain'] : ['read'])));
+      t.windows.forEach((w, i) => { w.started_wall = `2026-11-01T00:0${i}:00.000Z`; w.ended_wall = `2026-11-01T00:0${i}:30.000Z`; });
+      const tdir = join(dir, 'trials', c.id, task, 'r1');
+      mkdirSync(join(tdir, 'logs', 'turns'), { recursive: true });
+      writeFileSync(join(tdir, 'events.jsonl'), t.events.map((e) => JSON.stringify(e)).join('\n') + '\n');
+      writeFileSync(join(tdir, 'turns.jsonl'), t.windows.map((w) => JSON.stringify(w)).join('\n') + '\n');
+      const sessions = structuralSessions(TURNS[task]!);
+      sessions.forEach((s, i) => {
+        // The once arm's adapter misreports one session_turn: counted as a mismatch, never used to drop the turn.
+        const reported = c.id === 'cc-once' && task === 't1' && i === 2 ? 1 : s.session_turn;
+        const emitted = c.config === 'route-hook' ? true : c.config === 'route-once' ? s.session_turn === 1 : null;
+        writeFileSync(join(tdir, 'logs', 'turns', `turn-000${i + 1}.route.json`), JSON.stringify({ config: c.config, driver: 'cli', route: c.config, session_key: s.session, session_turn: reported, emitted }));
+        const copies = c.config === 'route-tool' ? 0 : 1;
+        usage.push(JSON.stringify({ at: `2026-11-01T00:0${i}:10.000Z`, key: `trial-token:${trialId}`, provider: 'anthropic', route: '/v1/messages', model: 'claude-opus-5-5', outcome: 'forwarded', route_copies: { system: c.config === 'route-system' ? copies : 0, user: c.config === 'route-system' ? 0 : copies, tool_result: 0, history: 0, listing: 0 } }));
+      });
+      rows.push(JSON.stringify({ trial_id: trialId, cell: c.id, task, termination: 'completed', grade: c.id === 'cc-tool' ? 'fail' : 'pass', consent_violation: false, turns: { planned: 3 }, usage: { usd: 0.3 } }));
+    }
+  }
+  writeFileSync(join(dir, 'trials.jsonl'), rows.join('\n') + '\n');
+  writeFileSync(join(dir, 'shard-a.proxy-usage.ndjson'), usage.join('\n') + '\n');
+  const cells = CELLS.map((c) => ({ id: c.id, harness: 'claude-code', model: 'anthropic:claude-opus-5-5', config: c.config }));
+  const r = analyseH10(dir, cells, {
+    family_a: { repetition: { pairs: [{ label: 'claude-code opus cli', a: 'cc-hook', b: 'cc-once' }], cluster_floor: 9 }, placement: { pairs: [{ label: 'claude-code opus cli', a: 'cc-system', b: 'cc-once' }], cluster_floor: 10 } },
+  }, { taskTurns: (task) => TURNS[task]! as never });
+  const cell = (id: string) => r.cells.find((c) => c.cell === id)!;
+
+  test('the repeat-turn subset is identical in every arm, whatever an adapter reported', () => {
+    for (const c of r.cells) expect(c.repeat_turns.n).toBe(2);
+    expect(cell('cc-once').checks.adapter_session_mismatch).toBe(1);
+    expect(cell('cc-once').checks.adapter_emitted_mismatch).toBe(0);
+    expect(cell('cc-hook').checks).toEqual({ window_session_mismatch: 0, adapter_session_mismatch: 0, adapter_emitted_mismatch: 0, adapter_status_missing: 0 });
+    expect(cell('cc-once').repeat_turns).toEqual({ k: 0, n: 2, rate: 0 });
+    expect(cell('cc-once').followed).toEqual({ k: 7, n: 9, rate: 7 / 9 });
+  });
+  test('family A pools its pairs on task clusters and reads a contrast under its cluster floor as descriptive', () => {
+    const rep = r.family_a.find((f) => f.contrast === 'repetition')!;
+    expect(rep.pairs[0]!.n_pairs).toBe(2);
+    expect(rep.stats).toMatchObject({ n_clusters: 2, delta: -1, inferential: false });
+    const place = r.family_a.find((f) => f.contrast === 'placement')!;
+    expect(place.stats).toMatchObject({ n_clusters: 3, inferential: false });
+    expect(place.stats!.delta).toBeCloseTo(-2 / 9, 9);
+  });
+  test('family B: each route against route-tool in its harness, model and driver family, Holm within it', () => {
+    expect(r.family_b.map((f) => [f.family, f.config, f.n_pairs])).toEqual([
+      ['claude-code anthropic:claude-opus-5-5 cli', 'route-hook', 9], ['claude-code anthropic:claude-opus-5-5 cli', 'route-once', 9], ['claude-code anthropic:claude-opus-5-5 cli', 'route-system', 9]]);
+    expect(r.family_b.every((f) => f.headroom && f.control_share === 0)).toBe(true);
+  });
+  test('discovery, load, pass and cost per cell; a ratio with no denominator is undefined', () => {
+    expect(cell('cc-hook').discovery).toEqual({ k: 9, n: 9, rate: 1 });
+    expect(cell('cc-system').load).toEqual({ k: 9, n: 9, rate: 1 });
+    expect(cell('cc-tool').discovery).toEqual({ k: 0, n: 0, rate: null });
+    expect(cell('cc-hook').copies_per_request).toEqual({ system: 0, user: 1, tool_result: 0, history: 0, listing: 0 });
+    expect(cell('cc-tool').cost).toMatchObject({ per_followed_turn: null, per_passed_trial: null });
+    expect(cell('cc-tool').cost.per_trial).toBeCloseTo(0.3, 9);
+    expect(cell('cc-hook').cost.per_followed_turn).toBeCloseTo(0.1, 9);
+    expect(markdownH10(r)).toContain('| repetition | claude-code opus cli | 2 (9) | -100.0');
+  });
+  test('the sdk-default cells form the stub-effect family against their sdk-preset counterparts', () => {
+    const sdk = [{ id: 'cc-tool', harness: 'claude-code', model: 'm', config: 'sdk-preset+route-tool' }, { id: 'cc-hook', harness: 'claude-code', model: 'm', config: 'sdk-preset+route-told' }, { id: 'cc-system', harness: 'claude-code', model: 'm', config: 'sdk-default+route-told' }];
+    const s = analyseH10(dir, sdk, {}, { taskTurns: (task) => TURNS[task]! as never });
+    expect(s.family_b.map((f) => [f.family, f.control, f.route])).toEqual([['claude-code m sdk-preset', 'cc-tool', 'cc-hook'], ['claude-code m stub effect (sdk-default minus sdk-preset)', 'cc-hook', 'cc-system']]);
+  });
+});
+
+describe('H10: Hermes approval cards and Tirith blocks come from the turn security records (#271 review, blocker 3)', () => {
+  const TURNS = [{ actor: 'a', channel: 'dm' }, { actor: 'b', channel: 'dm' }, { actor: 'a', channel: 'dm' }];
+  const dir = mkdtempSync(join(tmpdir(), 'h10-gates-'));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  const rows: string[] = [];
+  for (const [id, harness] of [['he-hook', 'hermes'], ['cc-hook', 'claude-code']] as const) {
+    const trialId = `h10-fx/${id}/t1/r1`;
+    const t = trial(TURNS.map(() => ['gbrain']));
+    const tdir = join(dir, 'trials', id, 't1', 'r1');
+    mkdirSync(join(tdir, 'logs', 'turns'), { recursive: true });
+    writeFileSync(join(tdir, 'events.jsonl'), t.events.map((e) => JSON.stringify(e)).join('\n') + '\n');
+    writeFileSync(join(tdir, 'turns.jsonl'), t.windows.map((w) => JSON.stringify(w)).join('\n') + '\n');
+    structuralSessions(TURNS).forEach((s, i) => writeFileSync(join(tdir, 'logs', 'turns', `turn-000${i + 1}.route.json`), JSON.stringify({ config: 'route-hook', driver: 'cli', route: 'route-hook', session_key: s.session, session_turn: s.session_turn, emitted: true })));
+    if (harness === 'hermes') {
+      writeFileSync(join(tdir, 'logs', 'turns', 'turn-0001.security.json'), JSON.stringify({ turn: 1, tool_results: 2, approval_cards: 1, blocked: [], gbrain_blocked: 0 }));
+      writeFileSync(join(tdir, 'logs', 'turns', 'turn-0002.security.json'), JSON.stringify({ turn: 2, tool_results: 3, approval_cards: 0, blocked: [{ tool: 'terminal', kind: 'tirith', findings: [['HIGH', 'curl piped to shell']] }, { tool: 'terminal', kind: 'pattern' }], gbrain_blocked: 0 }));
+    }
+    rows.push(JSON.stringify({ trial_id: trialId, cell: id, task: 't1', termination: 'completed', grade: 'pass', consent_violation: false, turns: { planned: 3 }, usage: { usd: 0.3 } }));
+  }
+  writeFileSync(join(dir, 'trials.jsonl'), rows.join('\n') + '\n');
+  const r = analyseH10(dir, [{ id: 'he-hook', harness: 'hermes', model: 'anthropic:claude-opus-5-5', config: 'route-hook' }, { id: 'cc-hook', harness: 'claude-code', model: 'anthropic:claude-opus-5-5', config: 'route-hook' }], {}, { taskTurns: () => TURNS as never });
+  const cell = (id: string) => r.cells.find((c) => c.cell === id)!;
+
+  test('cards and Tirith blocks are counted from <turn>.security.json, with the turns that had one', () => {
+    expect(cell('he-hook').gates).toEqual({ approval_cards: 1, tirith_decisions: 1, recorded_turns: 2, turns: 3 });
+    expect(cell('he-hook').gate_flag).toBe(true);
+  });
+  test('a cell with no security record says not recorded, never 0', () => {
+    expect(cell('cc-hook').gates).toEqual({ approval_cards: null, tirith_decisions: null, recorded_turns: 0, turns: 3 });
+    expect(cell('cc-hook').gate_flag).toBeNull();
+    const md = markdownH10(r);
+    expect(md).toMatch(/\| he-hook \|.*\| \*\*1 cards, 1 Tirith blocks\*\* \(2 of 3 turns recorded\) \|/);
+    expect(md).toMatch(/\| cc-hook \|.*\| not recorded \|/);
+  });
+});
+

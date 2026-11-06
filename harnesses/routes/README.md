@@ -4,7 +4,7 @@
 
 - **Supported:** OpenClaw 4 of 5 routes, Hermes 5 of 5.
 - **Not supported:** `route-system` on OpenClaw. OpenClaw 2026.10.6 has no config key that adds text to the system prompt, so the adapter refuses that cell (exit 2, HE-ADAPTER-007) and the preregistration drops it.
-- **H10 (internal-task) is the contract for four harnesses.** OpenClaw, Hermes, Claude Code and Codex, with a one-time hook, a placebo, a driver prefix for Claude Code and skill-route slots. It is written below under "Routes on four harnesses". The adapters build it in later H10 pull requests; until then each adapter refuses a route it does not run yet.
+- **H10 (internal-task) is the contract for four harnesses.** OpenClaw, Hermes, Claude Code and Codex, with a one-time hook, a placebo, a driver prefix for Claude Code and skill-route slots. It is written below under "Routes on four harnesses". All four run it now, Claude Code on the cli driver (its Agent SDK drivers come in H10 PR 4); each adapter refuses a route it does not run yet.
 
 ## The instruction
 
@@ -77,9 +77,10 @@ On the first request of a session each route places the instruction once or not 
 
 ## Routes on four harnesses (H10, internal-task)
 
-**Status: a contract, not yet built.** Today only the internal-task-a routes above run, on OpenClaw and Hermes. Claude Code and Codex read `HE_HARNESS_CONFIG` only for `default` and internal-task-b's `official-minimal`, which is not a route and stays outside this grammar.
+**Status: built on all four harnesses: OpenClaw and Hermes (H10 PR 2), and Claude Code on the cli driver and Codex (H10 PR 3).** The Claude Code Agent SDK drivers come in H10 PR 4. Claude Code and Codex also read internal-task's `official-minimal`, which is not a route and stays outside this grammar.
 
-- **Who builds what:** H10 PR 2 does OpenClaw and Hermes, PR 3 the Claude Code CLI and Codex, PR 4 the Claude Code Agent SDK drivers.
+- **Who builds what:** H10 PR 2 does OpenClaw and Hermes (done), PR 3 the Claude Code CLI and Codex (done), PR 4 the Claude Code Agent SDK drivers.
+- **OpenClaw and Hermes:** what each adapter writes, its receipts and its golden captures are in the harness READMEs, "H10 routes" ([OpenClaw](../openclaw/README.md), [Hermes](../hermes/README.md)).
 - **No silent runs:** until then, an adapter refuses any route it does not run (exit 2, HE-ADAPTER-007).
 - **Grammar:** a cell's config is `[<driver>+]<route>[@<slot_id>]`, parsed by `parseRouteConfig` in [runner/contracts.ts](../../runner/contracts.ts). The grammar and the per-turn status are in [docs/adapters.md](../../docs/adapters.md), "Route config".
 
@@ -90,12 +91,12 @@ Every rule route delivers the same 289 bytes of `instruction.md` (sha256 `4a81cb
 | `route-tool` (control) | nothing written | same | same | same |
 | `route-hook` (per-turn hook) | `before_prompt_build` plugin, `prependContext` | `pre_llm_call` shell hook | `UserPromptSubmit` hook, `additionalContext` | `UserPromptSubmit` hook in `hooks.json`, with its trust table |
 | `route-once` (one-time hook) | the same hook, emitting only on a session's first member turn | same | same | same |
-| `route-system` | **not supported** (HE-ADAPTER-007) | `agent.system_prompt` | `--append-system-prompt`, passed on every turn, `--resume` included | `developer_instructions` only if Codex 0.165.0 accepts it under `--strict-config`, else refused |
+| `route-system` | **not supported** (HE-ADAPTER-007) | `agent.system_prompt` | `--append-system-prompt`, passed on every turn, `--resume` included | `developer_instructions` in `config.toml` (Codex 0.165.0 accepts it under `--strict-config`; below) |
 | `route-startup` | `/workspace/AGENTS.md` | `SOUL.md` | `$CLAUDE_CONFIG_DIR/CLAUDE.md` | `$CODEX_HOME/AGENTS.md` |
 | `route-skill` (untold skill) | `brain-first` skill | same | `$CLAUDE_CONFIG_DIR/skills/brain-first/` | `$CODEX_HOME/skills/brain-first/` |
 | `route-told` (told skill) | the same skill, plus one fixed sentence in the cell's preamble file ("Use the brain-first skill."), sha pinned; the runner's per-cell preamble carries it, not the adapter | same | same | same |
 | `route-placebo` | per-turn hook carrying `placebo.md` | same | same | same |
-| `route-slot-told@<id>`, `route-slot-skill@<id>` | slot bundle as the skill (later runs only) | same | slot bundle in `$CLAUDE_CONFIG_DIR/skills/` | slot bundle in `$CODEX_HOME/skills/` (later runs only) |
+| `route-slot-told@<id>`, `route-slot-skill@<id>` | slot bundle as the skill (later runs only) | same | slot bundle in `$CLAUDE_CONFIG_DIR/skills/` | slot bundle in `$CODEX_HOME/skills/` (later runs only; refused today) |
 
 **Drivers (Claude Code only).**
 
@@ -140,8 +141,7 @@ The adapter records `session_key`, `session_turn` and `emitted` per turn (`Route
 
 The one-time hook's single copy has to stay in the session's history, or "1 copy against N" means nothing.
 
-- **Shown:** OpenClaw and Hermes ("Later requests" above: a hook copy stays in each user message in the history).
-- **Not yet shown:** Claude Code's `additionalContext` on `--resume`, and Codex's hook context on resume.
+- **Shown:** all four harnesses. OpenClaw and Hermes ("Later requests" above: a hook copy stays in each user message in the history); their H10 golden captures on gpt-6.1-sol show the once copy on every later request of the session, cr-01's repeat turns included. Claude Code and Codex (H10 PR 3's cr-01 golden capture, below: the one-time copy from turn 1 is in every request of turns 2 and 3, on `--resume` and on `codex exec resume`).
 - **The gate:** a harness enters the repetition pairs only if its cr-01 golden capture shows the once copy carried on the repeat turn. One that fails drops from the pairs before any spend, declared.
 
 ### Golden captures
@@ -159,6 +159,35 @@ They assert:
 - copies carried in history. The one-time hook gives 1 copy on every later request in the session. The per-turn hook gives N copies on turn N. On cn-03 both hooks emit on every turn.
 
 A route whose golden capture does not match is refused before any trial.
+
+### Claude Code and Codex: where the bytes land (H10 PR 3)
+
+Keyless golden captures, `tests/instruction-route-cc-codex.test.ts`. Each image (`harness-eval/claude-code:dev`, `harness-eval/codex:dev`, the checkout's adapter and `routes/` mounted over `/opt/harness`) serves cn-02, cr-01 and cn-03 turn by turn against a fake model endpoint in the test process. The fake answers turn 1's first request with one shell tool call, so turn 1 has a tool-call follow-up. Claude Code runs `claude-opus-5-5` (Messages API, `max_tokens` 128,000), Codex `gpt-6.1-sol` (Responses API, reasoning effort `medium`, no output cap of its own). No key and no model.
+
+Where one copy sits, per route:
+
+| Route | Claude Code 2.1.312, cli | Codex 0.165.0 |
+|---|---|---|
+| default, `route-tool` | nowhere | nowhere |
+| `route-system` | the request's top-level `system` field | a `developer` message near the top of `input`, before the session's first prompt |
+| `route-startup` | the session's first `user` message, in the `<system-reminder>` block before the first prompt | a `user` message (`# AGENTS.md instructions`) before the first prompt |
+| `route-hook`, `route-once` | a `system`-role message right after the turn's prompt (`UserPromptSubmit hook additional context: <rule>`) | a `developer` message right after the turn's prompt |
+| `route-placebo` | the same place as `route-hook`, the placebo bytes | same |
+| `route-skill`, `route-told` | the skill listing only (`brain-first` and its description) | the `<skills_instructions>` listing only |
+
+Copies of the rule per request, on a session's turn N (the test asserts each one, on every request of every turn):
+
+| Route | Turn 1 | Turn 1 tool-call follow-up | Turn N > 1 of the same session |
+|---|---|---|---|
+| default, `route-tool`, `route-skill`, `route-told` | 0 | 0 | 0 |
+| `route-system`, `route-startup` | 1 | 1 | 1 |
+| `route-hook` (placebo bytes for `route-placebo`) | 1 | 1 | **N**: 1 in this turn, N-1 in history |
+| `route-once` | 1 | 1 | **1**, in history; this turn emits none |
+
+- **History carry holds on both.** On cr-01 (three turns in one channel), the one-time copy from turn 1 is in every request of turns 2 and 3. So both harnesses qualify for family A's repetition pair.
+- **cn-03:** all four turns are session firsts (the last opens a new thread), so both hook routes emit on every turn and no request carries history.
+- **cn-02:** the third turn resumes the first DM: `route-hook` carries 2 copies there, `route-once` 1.
+- **Per-turn receipts match.** Every turn's `RouteTurnStatus` gives the session key (`<channel id>[:<thread_ts>]`), the session turn and `emitted` the table implies.
 
 ### Skill-route slots
 
@@ -192,9 +221,20 @@ bun scripts/gsta-135/fake-anthropic.ts --host 172.17.0.1 --port 8798 --log resul
 bun harnesses/serve-smoke.ts --harness hermes --trial-id routes-hermes-route-hook --config route-hook --turns 1 \
   --base-url http://host.docker.internal:8798/anthropic --api-key trial-token:dummy --model claude-haiku-5-5 --budget 60
 env -i PATH=$PATH HOME=$HOME bun test tests/instruction-route.test.ts
+docker build -t harness-eval/claude-code:dev harnesses/claude-code
+docker build -t harness-eval/codex:dev harnesses/codex
+env -i PATH=$PATH HOME=$HOME bun test tests/instruction-route-cc-codex.test.ts
 ```
 
 ## Changelog
+
+### 2026-11-01: Claude Code and Codex run the H10 routes (internal-task, H10 PR 3)
+
+"Routes on four harnesses" now says Claude Code (cli driver) and Codex are built, the Codex `route-system` cell names `developer_instructions` (Codex 0.165.0 accepts it under `--strict-config`), history carry is shown on both, and the new "Claude Code and Codex: where the bytes land" gives the golden captures on cn-02, cr-01 and cn-03. Why: H10 PR 3 builds those adapters, and the prereg cites these placements and the history-carry gate.
+
+### 2026-11-01: H10 routes built on OpenClaw and Hermes (internal-task)
+
+"Routes on four harnesses" now says the contract runs on OpenClaw and Hermes and links their "H10 routes" sections. "History carry gates repetition" cites their golden captures. Why: H10 PR 2 built both adapters' routes.
 
 ### 2026-11-01: the H10 route contract on four harnesses, the placebo and slots (internal-task)
 

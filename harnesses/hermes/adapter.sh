@@ -27,7 +27,7 @@ mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
 log() { printf '%s hermes[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" | tee -a "$HE_LOG_DIR/adapter.log" >&2; }
 now() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
-# internal-task: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
+# HARN-5: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
 # preflight compares the same hash in the image with the checkout, HE-ADAPTER-005).
 adapter_sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)
 # config/ sits beside this file (/opt/harness in the image), so a checkout's adapter run on the host reads the checkout's OpenAI
@@ -40,22 +40,32 @@ case "$entry" in
   *) log "unknown entry point: $entry; 'run' and 'serve' are implemented"; exit 2 ;;
 esac
 
-# internal-task: HE_HARNESS_CONFIG (the cell's config) names the instruction route, applied below after the gbrain install. Unset,
-# empty or default changes nothing; any other value that is not a route is refused here, before anything is written.
+# HARN-15: HE_HARNESS_CONFIG (the cell's config) names the instruction route, applied below after the gbrain install. Unset,
+# empty or default changes nothing; any other value that is not a route is refused here, before anything is written. HARN-18
+# (H10) adds route-once and route-placebo (the route-hook hook, docs/adapters.md "Emit flag"), route-told (the route-skill skill;
+# the told sentence is in the cell's preamble, which the runner carries) and the slot routes route-slot-told@<id> and
+# route-slot-skill@<id> (the bundle byte-copied under routes/slots/<id>/, its bundle_sha256 re-checked here). The grammar is
+# [<driver>+]<route>[@<slot_id>] (runner/contracts.ts parseRouteConfig); a driver prefix is Claude Code's only.
 instruction_route=${HE_HARNESS_CONFIG:-default}
+route_slot=''
 case "$instruction_route" in
-  default|route-tool|route-system|route-startup|route-hook|route-skill) ;;
-  *) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route is not a Hermes config (default, route-tool, route-system, route-startup, route-hook, route-skill)"; exit 2 ;;
+  default|route-tool|route-system|route-startup|route-hook|route-once|route-placebo|route-skill|route-told) ;;
+  *+*) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route names a driver; only claude-code takes a driver prefix (docs/adapters.md, \"Route config\")"; exit 2 ;;
+  route-slot-told@*|route-slot-skill@*)
+    route_slot=${instruction_route#*@}
+    [[ "$route_slot" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || { log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route needs @<slot_id> matching [a-z0-9][a-z0-9-]{0,62}"; exit 2; } ;;
+  *) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route is not a Hermes config (default, route-tool, route-system, route-startup, route-hook, route-once, route-placebo, route-skill, route-told, route-slot-told@<id>, route-slot-skill@<id>)"; exit 2 ;;
 esac
+route_name=${instruction_route%@*}
 
 # HERMES_HOME holds config, memories, skills, sessions and logs: all state.
 export HOME="$HE_SESSION_STATE_DIR"
 export HERMES_HOME="$HE_SESSION_STATE_DIR/hermes"
 mkdir -p "$HERMES_HOME"
-# internal-task: the provider is the cell model's prefix, which the runner puts in the proxy URL as its last path segment
+# HARN-13: the provider is the cell model's prefix, which the runner puts in the proxy URL as its last path segment
 # (<proxy>/<slot>/<provider>, runner/trial/proxy.ts baseUrlFor). An OpenAI cell gets config/config.openai.yaml and Hermes's
 # openai-api provider on its shipped Responses transport at HE_MODEL_BASE_URL/v1 with reasoning effort medium (pin.json
-# model_openai; `openai` is Hermes's alias for openrouter at this pin, hermes_cli/providers.py). internal-task: a Particle cell (URL
+# model_openai; `openai` is Hermes's alias for openrouter at this pin, hermes_cli/providers.py). HARN-16: a Particle cell (URL
 # ending in /particle) gets config/config.particle.yaml and its custom_providers entry custom:particle, Hermes's custom-endpoint
 # provider on the chat_completions transport at HE_MODEL_BASE_URL/v1 with OPENAI_* and no Anthropic variables (pin.json
 # model_particle). Any other URL keeps the anthropic provider, its config and its variables unchanged; the Anthropic lines stay as
@@ -66,7 +76,7 @@ case "${HE_MODEL_BASE_URL%/}" in
   */particle) provider=custom:particle; [ -e "$HERMES_HOME/config.yaml" ] || cp "$harness_dir/config/config.particle.yaml" "$HERMES_HOME/config.yaml" ;;
 esac
 [ -e "$HERMES_HOME/config.yaml" ] || cp /opt/harness/config/config.yaml "$HERMES_HOME/config.yaml"
-# internal-task: while config.yaml is still exactly one of the templates, its model.default is set to the cell model, as --model
+# HARN-20: while config.yaml is still exactly one of the templates, its model.default is set to the cell model, as --model
 # is on every turn, so no request names another model. The templates' default (claude-sonnet-5-5, gpt-6-luna) otherwise
 # shows up in Hermes's metadata read GET /v1/models/<default> beside the one for the cell model (keyless capture,
 # 2026-10-31). Each template has exactly one "  default:" line. Any other config.yaml (one a home already had, or the gstack
@@ -97,18 +107,18 @@ log "hermes ${hermes_version%%$'\n'*} model=$provider/$HE_MODEL_NAME budget=${HE
 # A model error is a proxy refusal, an Anthropic or OpenAI SDK error class (both SDKs use these names)
 # or an HTTP status on stderr or in the result record; everything else that fails is Hermes's.
 model_error_pattern='metering proxy|AuthenticationError|PermissionDeniedError|RateLimitError|APIStatusError|APIConnectionError|InternalServerError|Error code: (401|402|403|404|429|5[0-9]{2})|HTTP (401|402|403|404|429|5[0-9]{2})'
-# internal-task: a Particle cell uses this pattern unchanged, so a provider 400 is exit 2 as on every other cell. Plan decision 12
+# HARN-16: a Particle cell uses this pattern unchanged, so a provider 400 is exit 2 as on every other cell. Plan decision 12
 # (a Particle 400 with code invalid_value or unsupported_parameter is model_error) belongs to the runner, which reads the
 # metering proxy's record of the upstream status and code; Hermes's own output drops error.code (agent/api_error_summary.py).
 
 cd "$HE_WORKSPACE_DIR"
 
-# internal-task, the install ladder (docs/gbrain-arm.md): under HE_GBRAIN_INSTALL=gbrain-docs or gbrain-installer the runner mounts the
+# HARN-5, the install ladder (docs/gbrain-arm.md): under HE_GBRAIN_INSTALL=gbrain-docs or gbrain-installer the runner mounts the
 # exported view of gbrain's install read-only at HE_GBRAIN_INSTALL_DIR (/he-gbrain-install) and names the split in HE_GBRAIN_SPLIT.
 # Before the harness starts, every file the view's manifest lists is checked against its sha256 and copied to where the gbrain
 # command would have written it. gbrain-docs: workspace/x to /workspace/x (`gbrain skillpack scaffold --all`, skills/ at this
 # commit) and the split's compiled context to /workspace/.hermes.md (`gbrain compile-context --target hermes --include-core`,
-# the file Hermes's prompt builder reads from the cwd). gbrain-installer (internal-task): home/SOUL.md to $HERMES_HOME/SOUL.md, Hermes's
+# the file Hermes's prompt builder reads from the cwd). gbrain-installer (GBRA-188): home/SOUL.md to $HERMES_HOME/SOUL.md, Hermes's
 # own SOUL.md at the pinned Hermes commit with the brain-first block `gbrain setup hermes --instructions-only` appended. Hermes seeds that
 # default SOUL.md into HERMES_HOME when `hermes --version` runs above, the "ran Hermes once" the installer needs, so the copy replaces a
 # SOUL.md whose sha256 equals the seed the bundle records and refuses any other content. At gbrain#7489's per-turn-hook head the
@@ -271,7 +281,7 @@ PY
   gbrain_install_json=$(printf ',"gbrain_install":{"status":"ok","install":"%s","files":%s,"view_digest":"%s","destinations":"%s"%s}' "$HE_GBRAIN_INSTALL" "$install_files" "$install_digest" "$install_dests" "$turn_hook_json")
 fi
 
-# internal-task, the instruction routes (harnesses/routes/README.md). One instruction text, routes/instruction.md beside this file
+# HARN-15, the instruction routes (harnesses/routes/README.md). One instruction text, routes/instruction.md beside this file
 # (/opt/harness/routes in the image; a byte copy of harnesses/routes/instruction.md, checked here against the sha256 the
 # preregistration cites), goes to Hermes through the route HE_HARNESS_CONFIG names. route-tool writes nothing: the gbrain MCP
 # tool descriptions stay the only carrier. route-system sets agent.system_prompt in the config.yaml this adapter wrote (Hermes's
@@ -280,20 +290,27 @@ fi
 # instruction and a newline to $HERMES_HOME/SOUL.md, Hermes's identity file, only while it is the default Hermes seeded during
 # hermes --version (its sha256 equals pin.json soul_md.sha256, the same check the gbrain installer path makes). route-skill writes
 # $HERMES_HOME/skills/brain-first/SKILL.md (a fixed description of at most 57 characters, which Hermes shows whole, and the
-# instruction as the body). route-hook appends a marked hooks.pre_llm_call block whose command is
-# /bin/echo '{"context":<instruction>}' and writes shell-hooks-allowlist.json approving exactly that command (refused when the
-# config already has hooks: or an allowlist exists; HERMES_ACCEPT_HOOKS stays unset), then hermes hooks doctor, kept as
-# $HE_LOG_DIR/instruction-route.hermes.log, must report the hook healthy. $HE_LOG_DIR/instruction-route.json records the route,
+# instruction as the body); route-told writes the same skill. The slot routes copy the bundle's skill/<skill_name>/ from
+# routes/slots/<id>/ to $HERMES_HOME/skills/<skill_name>/ after re-checking its bundle_sha256 (the full shape check is host-side,
+# scripts/routes/slot-check.ts). The hook routes (route-hook, route-once, route-placebo; HARN-18) append a marked
+# hooks.pre_llm_call block whose command is /bin/sh routes/he-route-hook.sh <emit flag> <bytes file> (the instruction, or
+# routes/placebo.md on route-placebo, each checked against its committed sha256) and write shell-hooks-allowlist.json approving
+# exactly that command (refused when the config already has hooks: or an allowlist exists; HERMES_ACCEPT_HOOKS stays unset). The
+# script keeps no state: it prints {"context": <bytes>} when the flag the serve loop writes before every member turn reads
+# emit=1, and nothing otherwise. Then hermes hooks doctor, run with the flag at emit=1 and kept as
+# $HE_LOG_DIR/instruction-route.hermes.log, must report the hook healthy and its synthetic run valid JSON. $HE_LOG_DIR/instruction-route.json records the route,
 # the instruction's sha256 and bytes, every file written with its sha256, and the hook status; any failure is HE-ADAPTER-007 and
 # exit 2 before ready. Default (unset, empty or default): nothing here runs and nothing is written.
 route_json=''
 if [ "$instruction_route" != default ]; then
   set +e
-  route_line=$(python3 - "$instruction_route" "$harness_dir/routes" "$harness_dir/pin.json" "$HE_LOG_DIR/instruction-route.json" <<'PY'
-import datetime, hashlib, json, os, sys
-route, routes, pin, out = sys.argv[1:5]
+  route_line=$(python3 - "$route_name" "$harness_dir/routes" "$harness_dir/pin.json" "$HE_LOG_DIR/instruction-route.json" "$HE_SESSION_STATE_DIR/he-route/emit" "$route_slot" <<'PY'
+import datetime, hashlib, json, os, shlex, sys
+route, routes, pin, out, emit_flag, slot = sys.argv[1:7]
 home = os.environ["HERMES_HOME"]
 EXPECTED_SHA256 = "4a81cb9b35d6ad6f205723618f15e6c3dc66586cbb41f0ebc72141b74669230f"
+PLACEBO_SHA256 = "b66810fe132a2a9988100dcd01a9c8a03665265ff01555f17cd9b1955047dd34"
+HOOK_EMITS = {"route-hook": "every member turn", "route-once": "the first member turn of each session", "route-placebo": "every member turn, the placebo bytes"}
 SKILL_NAME, SKILL_DESCRIPTION = "brain-first", "Check GBrain first, before answering any turn."
 BEGIN, END = "# he:instruction-route:begin", "# he:instruction-route:end"
 sha = lambda data: hashlib.sha256(data).hexdigest()
@@ -368,16 +385,52 @@ elif route == "route-startup":
     rec["replaced_seed"] = {"path": soul, "sha256": seed}
     body = open(soul, "rb").read()
     append(soul, (b"" if body.endswith(b"\n") else b"\n") + b"\n" + text + b"\n")
-elif route == "route-skill":
+elif route in ("route-skill", "route-told"):
     rec["setting"] = "a skill $HERMES_HOME/skills/%s/SKILL.md: frontmatter name and a fixed description, the instruction bytes as the body" % SKILL_NAME
     rec["skill"] = {"name": SKILL_NAME, "description": SKILL_DESCRIPTION, "description_chars": len(SKILL_DESCRIPTION)}
+    if route == "route-told":
+        rec["told"] = "the same skill as route-skill; the told sentence is in the cell's preamble file, which the runner carries, not the adapter"
     put(os.path.join(home, "skills", SKILL_NAME, "SKILL.md"), ("---\nname: %s\ndescription: %s\n---\n\n" % (SKILL_NAME, SKILL_DESCRIPTION)).encode() + text + b"\n")
-elif route == "route-hook":
-    rec["setting"] = "config.yaml hooks.pre_llm_call: a shell hook whose command echoes {\"context\": <instruction>}, approved in shell-hooks-allowlist.json"
-    payload = json.dumps({"context": text.decode("utf-8")}, separators=(",", ":"))
-    if "'" in payload:
-        refuse("the instruction holds a single quote, which the echo command cannot carry")
-    command = "/bin/echo '%s'" % payload
+elif route in ("route-slot-told", "route-slot-skill"):
+    bundle = os.path.join(routes, "slots", slot)
+    rec["slot"] = {"slot_id": slot, "bundle": bundle, "bundle_sha256": None, "skill_name": None}
+    try:
+        meta = json.load(open(os.path.join(bundle, "slot.json")))
+    except (OSError, ValueError) as e:
+        refuse("no readable slot bundle %s in the image (routes/slots/%s/slot.json): %s" % (slot, slot, e))
+    names = []
+    for d, _, fs in os.walk(bundle):
+        names += [os.path.relpath(os.path.join(d, f), bundle) for f in fs]
+    names = sorted((n for n in names if n != "slot.json"), key=lambda n: n.encode())
+    listing = "".join("%s  %s\n" % (sha(open(os.path.join(bundle, n), "rb").read()), n) for n in names)
+    rec["slot"].update(bundle_sha256=sha(listing.encode()), skill_name=meta.get("skill_name"))
+    if sha(listing.encode()) != meta.get("bundle_sha256"):
+        refuse("the slot bundle's files give bundle_sha256 %s, not slot.json's %s; rebuild the image from the checkout" % (sha(listing.encode()), meta.get("bundle_sha256")))
+    skill = meta.get("skill_name") or ""
+    prefix = os.path.join("skill", skill) + os.sep
+    if not skill or "/" in skill or skill.startswith(".") or not any(n.startswith(prefix) for n in names):
+        refuse("slot.json's skill_name %r names no skill/<name>/ directory in the bundle" % skill)
+    rec["setting"] = "the slot bundle %s: skill/%s/ copied to $HERMES_HOME/skills/%s/ after its bundle_sha256 re-check%s" % (slot, skill, skill, "; the told sentence is in the cell's preamble" if route == "route-slot-told" else "")
+    for n in names:
+        if n.startswith(prefix):
+            put(os.path.join(home, "skills", skill, n[len(prefix):]), open(os.path.join(bundle, n), "rb").read())
+elif route in HOOK_EMITS:
+    source = os.path.join(routes, "instruction.md")
+    if route == "route-placebo":
+        source = os.path.join(routes, "placebo.md")
+        rec["placebo"] = {"path": source, "sha256": None, "bytes": None}
+        try:
+            placebo = open(source, "rb").read()
+        except OSError as e:
+            refuse("no readable placebo file: %s" % e)
+        rec["placebo"].update(sha256=sha(placebo), bytes=len(placebo))
+        if sha(placebo) != PLACEBO_SHA256:
+            refuse("the placebo file's sha256 is %s, not the committed %s; rebuild the image from the checkout" % (sha(placebo), PLACEBO_SHA256))
+    script = os.path.join(routes, "he-route-hook.sh")
+    if not os.path.isfile(script):
+        refuse("the hook script %s is missing" % script)
+    rec["setting"] = "config.yaml hooks.pre_llm_call: the shell hook routes/he-route-hook.sh, which prints {\"context\": <%s>} when the emit flag reads emit=1, on %s; approved in shell-hooks-allowlist.json" % ("placebo" if route == "route-placebo" else "instruction", HOOK_EMITS[route])
+    command = " ".join(shlex.quote(p) for p in ("/bin/sh", script, emit_flag, source))
     if "\nhooks:" in "\n" + current.decode("utf-8"):
         refuse("%s already has a hooks: section" % config)
     allowlist = os.path.join(home, "shell-hooks-allowlist.json")
@@ -387,7 +440,7 @@ elif route == "route-hook":
     append(config, ((b"" if current.endswith(b"\n") or not current else b"\n") + b"\n" + block.encode()))
     approved = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
     put(allowlist, (json.dumps({"approvals": [{"event": "pre_llm_call", "command": command, "approved_at": approved, "script_mtime_at_approval": None}]}, indent=2) + "\n").encode())
-    rec["hook"] = {"event": "pre_llm_call", "command": command, "status": "pending"}
+    rec["hook"] = {"event": "pre_llm_call", "command": command, "status": "pending", "emit_flag": emit_flag, "emits": HOOK_EMITS[route], "script_sha256": sha(open(script, "rb").read())}
 rec.update(status="ok", code=None)
 write()
 print("ok %s %d" % (rec["instruction"]["sha256"], len(rec["files"])))
@@ -399,18 +452,23 @@ PY
   [ "$route_code" -eq 0 ] || exit 2
   read -r _ route_sha route_files <<< "$route_line"
   route_hook_json=''
-  if [ "$instruction_route" = route-hook ]; then
+  if [ "$route_name" = route-hook ] || [ "$route_name" = route-once ] || [ "$route_name" = route-placebo ]; then
+    # The flag reads emit=1 while doctor fires the hook once on a synthetic payload, so its JSON reply is checked too; the serve
+    # loop writes the flag again before every member turn.
+    mkdir -p "$HE_SESSION_STATE_DIR/he-route"
+    printf 'emit=1' > "$HE_SESSION_STATE_DIR/he-route/emit"
     set +e
     hermes hooks doctor > "$HE_LOG_DIR/instruction-route.hermes.log" 2>&1
     route_doctor_code=$?
     set -e
+    rm -f "$HE_SESSION_STATE_DIR/he-route/emit"
     route_doctor_line=$(python3 - "$HE_LOG_DIR/instruction-route.hermes.log" "$HE_LOG_DIR/instruction-route.json" "$route_doctor_code" <<'PY'
 import json, os, sys
 log_path, rec_path, code = sys.argv[1], sys.argv[2], int(sys.argv[3])
 text = open(log_path).read()
-ok = code == 0 and "[pre_llm_call]" in text and "All shell hooks look healthy" in text and "/bin/echo" in text
+ok = code == 0 and "[pre_llm_call]" in text and "All shell hooks look healthy" in text and "he-route-hook.sh" in text and "produced valid JSON" in text
 rec = json.load(open(rec_path))
-detail = "hermes hooks doctor: pre_llm_call hook healthy" if ok else "hermes hooks doctor exit %d: %s" % (code, " | ".join(l.strip() for l in text.splitlines() if l.strip())[:400])
+detail = "hermes hooks doctor: pre_llm_call hook healthy, valid JSON on its synthetic run" if ok else "hermes hooks doctor exit %d: %s" % (code, " | ".join(l.strip() for l in text.splitlines() if l.strip())[:400])
 rec["hook"].update(status="healthy" if ok else "error", doctor_exit=code, detail=detail)
 if not ok:
     rec.update(status="error", code="HE-ADAPTER-007", error="the route-hook shell hook is not healthy: " + detail)
@@ -422,11 +480,54 @@ PY
     log "instruction route hook: $route_doctor_line"
     route_hook_json=',"hook":"healthy"'
   fi
-  route_json=$(printf ',"instruction_route":{"route":"%s","instruction_sha256":"%s","files":%s%s}' "$instruction_route" "$route_sha" "$route_files" "$route_hook_json")
+  # HARN-18 (H10): Hermes's command-approval setting and the Tirith scanner this cell runs with, recorded before any turn in
+  # $HE_LOG_DIR/hermes-security.json and named in ready.instruction_route (approvals: the single-query mode serve turns run
+  # under; tirith: the version, or absent). Tirith is pinned in the image (pin.json tirith; TIRITH_BIN names it, so Hermes never
+  # downloads one, and TIRITH_OFFLINE=1 stops Tirith's own threat-DB download); the receipt says whether the binary here is the
+  # pinned one. A receipt only: no H10 claim depends on the scanner, because the scored action is an MCP call.
+  security_line=$(python3 - "$HERMES_HOME/config.yaml" "$harness_dir/pin.json" "$HE_LOG_DIR/hermes-security.json" <<'PY'
+import hashlib, json, os, re, subprocess, sys
+config, pin, out = sys.argv[1:4]
+text = open(config, encoding="utf-8").read() if os.path.isfile(config) else ""
+approvals = {"mode": "smart", "single_query_mode": "deny", "source": "Hermes's defaults at the pin (hermes_cli/config_defaults.py approvals); config.yaml has no approvals: block"}
+if re.search(r"^approvals:", text, re.M):
+    try:
+        import yaml
+        block = (yaml.safe_load(text) or {}).get("approvals") or {}
+        approvals = {"mode": block.get("mode", "smart"), "single_query_mode": block.get("single_query_mode", "deny"), "source": "config.yaml approvals: block over Hermes's defaults"}
+    except ImportError:
+        approvals = {"mode": None, "single_query_mode": None, "source": "config.yaml has an approvals: block this python3 cannot parse (no PyYAML)"}
+approvals["serve_turns"] = "hermes chat --oneshot is a single-query session (hermes_cli/oneshot.py sets HERMES_SINGLE_QUERY_SESSION=1), so no approval card is shown: approvals.single_query_mode decides each terminal command, and deny blocks one the dangerous-command patterns or Tirith flag (tools/approval.py _unattended_deny). MCP tool calls, gbrain's included, do not pass this gate"
+pinned = json.load(open(pin)).get("tirith") or {}
+path = os.environ.get("TIRITH_BIN") or None
+tirith = {"enabled": not re.search(r"^\s+tirith_enabled:\s*false", text, re.M), "bin": path, "offline": os.environ.get("TIRITH_OFFLINE") or None, "present": False,
+          "version": None, "sha256": None, "pin_version": pinned.get("version"), "pin_binary_sha256": pinned.get("binary_sha256"), "matches_pin": False}
+if path and os.path.isfile(path):
+    tirith["present"] = True
+    tirith["sha256"] = hashlib.sha256(open(path, "rb").read()).hexdigest()
+    try:
+        tirith["version"] = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=20).stdout.strip() or None
+    except (OSError, subprocess.SubprocessError) as e:
+        tirith["version_error"] = str(e)
+    tirith["matches_pin"] = tirith["version"] == "tirith %s" % pinned.get("version") and tirith["sha256"] in (pinned.get("binary_sha256") or {}).values()
+with open(out + ".tmp", "w") as f:
+    json.dump({"approvals": approvals, "tirith": tirith}, f)
+os.replace(out + ".tmp", out)
+print("%s %s" % (approvals["single_query_mode"], (tirith["version"] or "unknown").replace("tirith ", "") if tirith["present"] else "absent"))
+PY
+)
+  read -r route_approvals route_tirith <<< "$security_line"
+  log "instruction route security: approvals.single_query_mode=$route_approvals tirith=$route_tirith (hermes-security.json)"
+  route_json=$(printf ',"instruction_route":{"route":"%s","instruction_sha256":"%s","files":%s%s,"approvals":"%s","tirith":"%s"}' "$instruction_route" "$route_sha" "$route_files" "$route_hook_json" "$route_approvals" "$route_tirith")
 fi
 
 if [ "$entry" = "run" ]; then
   [ -r "$HE_WORKSPACE_DIR/instruction.md" ] || { log "no readable $HE_WORKSPACE_DIR/instruction.md"; exit 2; }
+  # The single-shot turn is its session's first and only turn, so every hook route (route-once included) emits on it; the
+  # doctor check above removed the flag, and only the serve loop's route_turn writes it per turn.
+  case "$route_name" in
+    route-hook|route-once|route-placebo) printf 'emit=1' > "$HE_SESSION_STATE_DIR/he-route/emit" ;;
+  esac
   set +e
   timeout -k 60 "$HE_TIME_BUDGET_S" hermes chat \
     --query-file "$HE_WORKSPACE_DIR/instruction.md" \
@@ -544,6 +645,72 @@ os.rename(resp + ".tmp", resp)
 PY
 }
 
+# HARN-18 (H10), route cells only. route_turn, before each member turn: count the turn in its session (the adapter's session
+# key; a session's first member turn is session_turn 1), write the emit flag the hook routes read (route-hook and route-placebo
+# emit=1 on every turn, route-once emit=1 on session_turn 1 only, the temp file renamed into place) and the turn's
+# RouteTurnStatus to $HE_LOG_DIR/turns/<turn>.route.json: config, driver (cli), route, session_key in the TurnWindow form
+# (<channel id>, or <channel id>:<thread_ts> in a thread), session_turn and emitted (null off the hook routes). Arguments: request
+# path, adapter session key, turn name.
+route_turn() {
+  python3 - "$1" "$2" "$instruction_route" "$route_name" "$HE_SESSION_STATE_DIR/he-route" "$HE_LOG_DIR/turns/$3.route.json" <<'PY'
+import json, os, sys
+req, key, config, route, state, out = sys.argv[1:7]
+r = json.load(open(req))
+os.makedirs(state, exist_ok=True)
+def put(path, text):
+    with open(path + ".tmp", "w") as f:
+        f.write(text)
+    os.replace(path + ".tmp", path)
+sessions_path = os.path.join(state, "sessions.json")
+try:
+    sessions = json.load(open(sessions_path))
+except (OSError, ValueError):
+    sessions = {}
+sessions[key] = sessions.get(key, 0) + 1
+put(sessions_path, json.dumps(sessions, sort_keys=True))
+emitted = None
+if route in ("route-hook", "route-once", "route-placebo"):
+    emitted = route != "route-once" or sessions[key] == 1
+    put(os.path.join(state, "emit"), "emit=1" if emitted else "emit=0")
+session_key = r["channel"]["id"] + (":" + str(r["thread_ts"]) if r.get("thread_ts") else "")
+put(out, json.dumps({"config": config, "driver": "cli", "route": route, "session_key": session_key, "session_turn": sessions[key], "emitted": emitted}))
+PY
+}
+# turn_security, after each member turn and before its response: every approval card or blocked command the turn's stream-json
+# shows, from its tool results, to $HE_LOG_DIR/turns/<turn>.security.json. kind is tirith (a "Security scan" block), pattern (the
+# dangerous-command patterns), approval (a card asking for a person) or other; for Tirith the finding titles are kept, never the
+# command. A blocked gbrain call would be an infrastructure absence, not a non-compliant turn (expected: none). Arguments: turn
+# name, turn number.
+turn_security() {
+  python3 - "$HE_LOG_DIR/turns/$1.hermes.jsonl" "$2" "$HE_LOG_DIR/turns/$1.security.json" <<'PY'
+import json, os, re, sys
+events, turn, out = sys.argv[1:4]
+results, decisions = 0, []
+for line in (open(events, encoding="utf-8") if os.path.isfile(events) else []):
+    try:
+        ev = json.loads(line)
+    except ValueError:
+        continue
+    if ev.get("type") != "tool_result":
+        continue
+    results += 1
+    text = str(ev.get("output") or "")
+    if "Asking the user for approval" in text:
+        decisions.append({"tool": ev.get("name"), "kind": "approval"})
+    elif "BLOCKED" in text:
+        kind = "tirith" if "Security scan" in text else "pattern" if "flagged as dangerous" in text else "other"
+        d = {"tool": ev.get("name"), "kind": kind}
+        if kind == "tirith":
+            d["findings"] = re.findall(r"\[([A-Z]+)\] ([^:;\n]{1,120})", text)[:10]
+        decisions.append(d)
+rec = {"turn": int(turn), "tool_results": results, "approval_cards": sum(d["kind"] == "approval" for d in decisions),
+       "blocked": [d for d in decisions if d["kind"] != "approval"], "gbrain_blocked": sum("gbrain" in str(d.get("tool")) for d in decisions)}
+with open(out + ".tmp", "w") as f:
+    json.dump(rec, f)
+os.replace(out + ".tmp", out)
+PY
+}
+
 stopping=0
 trap 'stopping=1' TERM INT
 printf '{"harness":"hermes","version":"%s","trial":"%s","ready_at":"%s","session_keys":"hermes chat -c dm:<member> | channel:<id>","adapter_sha256":"%s"%s}\n' "${HERMES_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$adapter_sha256" "$gbrain_install_json$route_json" > "$HE_LOG_DIR/ready.tmp"
@@ -563,6 +730,7 @@ if r.get("thread_ts"): key = key + ":t" + str(r["thread_ts"])
 print(r["turn"], r.get("time_budget_s") or os.environ["HE_TIME_BUDGET_S"], key)
 ' "$req")
     log "turn $turn: session $key, budget ${budget}s"
+    [ "$instruction_route" = default ] || route_turn "$req" "$key" "$name"
     started=$(now)
     set +e
     serve_turn "$req" "$key" "$name" "$budget" &
@@ -582,6 +750,7 @@ print(r["turn"], r.get("time_budget_s") or os.environ["HE_TIME_BUDGET_S"], key)
       143) code=2; detail="stopped by SIGTERM during the turn" ;;
       *) code=2; detail="harness error" ;;
     esac
+    [ "$instruction_route" = default ] || turn_security "$name" "$turn"
     write_response "$resp" "$turn" "$code" "$HE_LOG_DIR/turns/$name.reply.txt" "$started" "$ended" "$detail"
     log "turn $turn: exit $code${detail:+ ($detail)}"
   done

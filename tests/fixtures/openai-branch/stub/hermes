@@ -6,8 +6,11 @@
 # image every other command runs the pinned CLI, so the config the adapter
 # writes is Hermes's own. On a host without the pinned CLI (the process-level
 # golden test) --version prints $HERMES_VERSION and `mcp list` succeeds, and
-# `hooks doctor` reports one healthy pre_llm_call hook, or an unhealthy one
-# with exit 1 when HE_STUB_HOOKS_DOCTOR=broken. Every invocation's arguments go
+# `hooks doctor` does what Hermes's doctor does for each pre_llm_call command in
+# $HERMES_HOME/config.yaml: prints it, runs it once with a JSON payload on stdin
+# and reports empty or valid JSON stdout as healthy; with
+# HE_STUB_HOOKS_DOCTOR=broken it reports the hook not allowlisted and exits 1.
+# Every invocation's arguments go
 # to $HE_LOG_DIR/stub-calls.jsonl (tests/instruction-route.test.ts compares them).
 set -euo pipefail
 python3 -c 'import json, sys; print(json.dumps(sys.argv[1:]))' "$@" >> "$HE_LOG_DIR/stub-calls.jsonl"
@@ -17,8 +20,31 @@ if [ "${1:-}" != chat ]; then
     --version) echo "Hermes Agent $HERMES_VERSION" ;;
     mcp) ;;
     hooks)
-      if [ "${HE_STUB_HOOKS_DOCTOR:-}" = broken ]; then printf '[pre_llm_call] /bin/echo (stub)\n  not allowlisted\n'; exit 1; fi
-      printf '[pre_llm_call] /bin/echo (stub)\n  allowlisted\nAll shell hooks look healthy\n' ;;
+      python3 - "$HERMES_HOME/config.yaml" "${HE_STUB_HOOKS_DOCTOR:-}" <<'PY'
+import json, re, shlex, subprocess, sys
+config, mode = sys.argv[1:3]
+commands = []
+for m in re.finditer(r"^\s*- command: (.+)$", open(config, encoding="utf-8").read(), re.M):
+    v = m.group(1).strip()
+    commands.append(json.loads(v) if v.startswith('"') else v.strip("'"))
+problems = 0
+for c in commands:
+    print("  [pre_llm_call] %s" % c)
+    if mode == "broken":
+        print("      not allowlisted (stub)")
+        problems += 1
+        continue
+    out = subprocess.run(shlex.split(c), input='{"hook_event_name": "pre_llm_call"}', capture_output=True, text=True).stdout.strip()
+    try:
+        ok = not out or isinstance(json.loads(out), dict)
+    except ValueError:
+        ok = False
+    print("      allowlisted (stub)\n      " + (("produced valid JSON on synthetic payload" if out else "ran clean with empty stdout") if ok else "stdout was not valid JSON"))
+    problems += not ok
+print("%d issue(s) found." % problems if problems else "All shell hooks look healthy.")
+sys.exit(1 if problems else 0)
+PY
+      ;;
     *) echo "hermes stub: no host stand-in for: $*" >&2; exit 2 ;;
   esac
   exit 0
@@ -28,6 +54,21 @@ import json, os, re, sys
 env = {k: v for k, v in sorted(os.environ.items()) if re.match(r"^(ANTHROPIC_|OPENAI_|HERMES_HOME$|HOME$)", k)}
 print(json.dumps({"argv": sys.argv[1:], "env": env}))
 PY
+# internal-task: on a hook route (the adapter's emit flag exists) fire each pre_llm_call hook as Hermes would before the turn's model call
+# and record the flag and the sha256 of the context it returned (null for none) to $HE_LOG_DIR/stub-emit.jsonl.
+if [ -e "${HE_SESSION_STATE_DIR:-/harness-state}/he-route/emit" ]; then
+  python3 - "$HERMES_HOME/config.yaml" "${HE_SESSION_STATE_DIR:-/harness-state}/he-route/emit" >> "$HE_LOG_DIR/stub-emit.jsonl" <<'PY'
+import hashlib, json, re, shlex, subprocess, sys
+config, flag = sys.argv[1:3]
+contexts = []
+for m in re.finditer(r"^\s*- command: (.+)$", open(config, encoding="utf-8").read(), re.M):
+    v = m.group(1).strip()
+    out = subprocess.run(shlex.split(json.loads(v) if v.startswith('"') else v.strip("'")), input='{"hook_event_name": "pre_llm_call"}', capture_output=True, text=True).stdout.strip()
+    context = json.loads(out).get("context") if out else None
+    contexts.append(hashlib.sha256(context.encode()).hexdigest() if context else None)
+print(json.dumps({"emit": open(flag).read(), "context_sha256": contexts}))
+PY
+fi
 case " $* " in
   *" stream-json "*) printf '{"type":"result","text":"ok","exit_code":0}\n' ;;
   *) printf 'ok\n' ;;

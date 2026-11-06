@@ -21,7 +21,7 @@ On an OpenAI cell (plan decision 1 of internal-task: Codex, OpenClaw and Hermes 
 - **Config.** `config/config.openai.yaml` is copied instead of `config/config.yaml`: the same file with provider `openai-api`, model `gpt-6-luna` (rewritten to the cell model, as above) and `agent.reasoning_effort: medium`.
 - **Side calls.** Every auxiliary task inherits the main model, so the title call also names the cell model. It sends `reasoning.effort: none`, as Hermes ships it.
 - **Output cap.** On this provider Hermes states no output cap, so the proxy writes its own: 128,000 under the shards' `--max-output-tokens 128000` (observed 2026-10-29: with the proxy at 100,000 the request upstream carried 100,000, at 128,000 it carried 128,000). The 32,768 recorded before was the proxy's default being filled in.
-- **Network.** The same-model control for Codex, so it runs on the internal network too. The serve smoke there passes (`tests/internal-network-harnesses.test.ts`), with MCP tools behind `tool_search` and `tool_call` on this provider. Both configs set `security.allow_lazy_installs: false`, so Hermes no longer tries to pip-install `boto3` (Bedrock) and `edge-tts` from PyPI during a turn. On the internal network those attempts failed on DNS and added about 55 s to every turn. Hermes still tries to download its `tirith` scanner and falls back to pattern matching; `security.tirith_enabled` is left on, because turning it off changes how Hermes gates dangerous commands (`pin.json` `internal_network`).
+- **Network.** The same-model control for Codex, so it runs on the internal network too. The serve smoke there passes (`tests/internal-network-harnesses.test.ts`), with MCP tools behind `tool_search` and `tool_call` on this provider. Both configs set `security.allow_lazy_installs: false`, so Hermes no longer tries to pip-install `boto3` (Bedrock) and `edge-tts` from PyPI during a turn. On the internal network those attempts failed on DNS and added about 55 s to every turn. Until H10 PR 2 Hermes also tried to download its `tirith` scanner, failed there and fell back to pattern matching. The image now carries a pinned Tirith, so no download is tried ("Behavior changes" below). `security.tirith_enabled` is left on, because turning it off changes how Hermes gates dangerous commands (`pin.json` `internal_network`).
 - **Metadata probes.** Hermes still probes the proxy for a local model server's routes (`/api/tags`, `/props`, `/api/show` and others), as on an Anthropic cell. The proxy refuses them at $0 and they name no model. Hermes also reads `GET /v1/models` and `GET /v1/models/<model>`, which the proxy forwards as free metadata reads; the second is sent for the cell model and for `model.default`, which is why the adapter writes the cell model there. `pin.json` `model_openai` records this and each choice with its source.
 
 Keyless proof (2026-10-29, `tests/openai-branch.test.ts`): through the real proxy in lease mode with `--allow-models openai:gpt-6-luna` and a fake Responses endpoint upstream, `run` and `serve` completed with every model request naming `gpt-6-luna`, none refused, and a model off the allowlist exited 3. The same test checks that an Anthropic cell's config, turn arguments, environment, response and ready file are identical to `c1c7ed1b3` except `adapter_sha256`, the config's `security.allow_lazy_installs: false` block and the cell model in `model.default` (internal-task, `tests/fixtures/model-defaults.ts`). No paid OpenAI call has been made yet.
@@ -51,6 +51,40 @@ Keyless proof (2026-10-31, `tests/particle-branch.test.ts`): the image ran strai
 - `route-skill`: `$HERMES_HOME/skills/brain-first/SKILL.md`, a fixed short description and the instruction as the body.
 
 Each route writes `$HE_LOG_DIR/instruction-route.json` and adds `instruction_route` to `ready`. Where each route's bytes land in the model request, and why: [harnesses/routes/README.md](../routes/README.md).
+
+## H10 routes (internal-task)
+
+**The H10 route set runs on Hermes.** The contract is in [harnesses/routes/README.md](../routes/README.md), "Routes on four harnesses".
+
+- **`route-once`:** the `route-hook` hook, emitting only on the first member turn of each session.
+- **`route-placebo`:** the same hook carrying `routes/placebo.md` (289 bytes, a byte copy of [harnesses/routes/placebo.md](../routes/placebo.md), sha256 checked) on every member turn.
+- **`route-told`:** the `route-skill` skill. The told sentence is in the cell's preamble, which the runner carries.
+- **`route-slot-told@<id>`, `route-slot-skill@<id>`:** the bundle byte-copied under `routes/slots/<id>/` goes to `$HERMES_HOME/skills/<skill_name>/` after the adapter re-checks its `bundle_sha256` with python3. The full shape check runs on the host (`scripts/routes/slot-check.ts`). No bundle is in the image yet.
+- **Refused (HE-ADAPTER-007, exit 2):** a driver prefix (Claude Code only), a malformed slot id, a missing slot bundle or one whose files do not match `bundle_sha256`, and a placebo file off its sha256.
+
+**Emit flag.** The hook is `routes/he-route-hook.sh`, a stateless `/bin/sh` script. Hermes runs it as `/bin/sh <routes>/he-route-hook.sh <flag file> <bytes file>` from the marked `hooks.pre_llm_call` block, approved in `shell-hooks-allowlist.json`. It prints `{"context": <bytes>}` when the flag reads `emit=1` and nothing otherwise. Before each member turn the adapter counts the turn in its session (`$HE_SESSION_STATE_DIR/he-route/sessions.json`) and writes the flag (`he-route/emit`). `hermes hooks doctor` runs at start with the flag at `emit=1` and must report the hook healthy.
+
+**Per-turn status.** On every route but `default`, `$HE_LOG_DIR/turns/<turn>.route.json` holds `config`, `driver` (`cli`), `route`, `session_key` (`<channel id>` or `<channel id>:<thread_ts>`), `session_turn` and `emitted` (null off the hook routes).
+
+**Security receipts.** Compliance is a gbrain MCP call, which neither the approval gate nor Tirith sees. The receipts show that:
+
+- `$HE_LOG_DIR/hermes-security.json`: the effective `approvals.mode` and `approvals.single_query_mode`, and Tirith's path, version, sha256 and whether it matches the pin.
+- `ready.instruction_route` adds `approvals` and `tirith` (the version).
+- `turns/<turn>.security.json`: tool results, approval cards, blocked commands and blocked gbrain calls for the turn. A blocked gbrain call is an infrastructure absence, never a non-compliant turn. Expected: 0.
+
+**Golden captures** (`tests/instruction-route.test.ts`, "H10 golden"): keyless, against a fake Responses endpoint, with `HE_MODEL_NAME=gpt-6.1-sol`, on cn-02, cr-01 and cn-03 plus a gbrain tool-call follow-up on turn 1. Every agent request names `gpt-6.1-sol` with `reasoning.effort: medium`. Hermes states no output cap on this provider, so the proxy fills in its own, as on gpt-6-luna. The route-once copy stays in the session history on every later turn, so Hermes qualifies for the repetition pairs.
+
+## Behavior changes
+
+### Tirith pinned in the image (internal-task, H10 PR 2)
+
+**Every Hermes cell from this image runs the Tirith scanner on the agent's own terminal commands.** Before, the image had no Tirith: on the internal network Hermes's download failed and it gated commands by pattern matching only.
+
+- **What:** Tirith 0.4.2 from its GitHub release, checked by sha256 at build (`pin.json` `tirith`), at `/opt/tirith/bin/tirith`, not on PATH.
+- **No download at trial time:** `TIRITH_BIN=/opt/tirith/bin/tirith` is an explicit path, which Hermes treats as authoritative and never replaces. `TIRITH_OFFLINE=1` stops Tirith's own threat-database update, so a verdict depends on the pinned binary alone.
+- **How it gates:** a serve turn is a single-query session, so Hermes's default `approvals.single_query_mode: deny` decides each terminal command with no approval card: the dangerous-command patterns first, then Tirith. A Tirith block or warning blocks the command. The adapter writes no `approvals:` block.
+- **What it does not touch:** MCP tool calls, gbrain's included, never pass this gate.
+- **Comparability:** Hermes cells from this image differ from every earlier Hermes receipt in this one way. H10's preregistration says so for its Hermes block.
 
 ## M0 smoke
 
@@ -91,6 +125,10 @@ Findings:
 - The 36 refused requests per trial in the proxy's usage log are Hermes's model-discovery probes, 12 per turn, refused 403 at $0 (the M0 finding).
 
 ## Changelog
+
+### 2026-11-01: H10 routes and the Tirith pin (internal-task)
+
+The "H10 routes" and "Behavior changes" sections. `route-once`, `route-placebo`, `route-told` and the slot routes, the emit flag and `routes/he-route-hook.sh`, the per-turn route status, the approval and Tirith receipts, and Tirith 0.4.2 pinned in the image with no trial-time download. Why: H10 runs the route test on frontier models on four harnesses, and its Hermes block needs one fixed scanner.
 
 ### 2026-10-31: Particle cells (internal-task)
 

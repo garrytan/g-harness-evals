@@ -43,7 +43,7 @@ mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
 log() { printf '%s codex[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" | tee -a "$HE_LOG_DIR/adapter.log" >&2; }
 now() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
-# internal-task: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
+# HARN-5: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
 # preflight compares the same hash in the image with the checkout, HE-ADAPTER-005).
 adapter_sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)
 harness_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -73,6 +73,24 @@ if [ -n "${HE_GBRAIN_INSTALL:-}" ] && [ "$HE_GBRAIN_INSTALL" != gbrain-installer
   exit 2
 fi
 
+# H10 (HARN-18): HE_HARNESS_CONFIG names the instruction route, [<driver>+]<route>[@<slot_id>] (docs/adapters.md, "Route config",
+# the grammar parseRouteConfig in runner/contracts.ts reads), applied below once config.toml is written. Unset, empty or default
+# changes nothing; official-minimal (HARN-20, below) is no route.
+# A driver prefix is claude-code's alone, and the slot routes run on Claude Code only in H10 (Codex takes a slot
+# bundle in a later run), so both stop here. A route beside HE_GBRAIN_INSTALL is refused too: the installer writes gbrain's own rule
+# into AGENTS.md and its own UserPromptSubmit hook, so the cell would carry two carriers. Every refusal is HE-ADAPTER-007, exit 2,
+# before anything is written.
+route_config=${HE_HARNESS_CONFIG:-} route=${HE_HARNESS_CONFIG:-default}
+refuse_route() { log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$route_config $1"; exit 2; }
+[[ $route != *+* ]] || refuse_route "carries a driver prefix, which only claude-code takes (harness codex)"
+case "$route" in
+  official-minimal) route=default ;;
+  default|route-tool|route-hook|route-once|route-system|route-startup|route-skill|route-told|route-placebo) ;;
+  route-slot-told@*|route-slot-skill@*) refuse_route "is a slot route, which H10 runs on claude-code only; codex takes a slot bundle in a later run" ;;
+  *) refuse_route "is not a codex config (default, official-minimal) and names no known codex route (route-tool, route-hook, route-once, route-system, route-startup, route-skill, route-told, route-placebo)" ;;
+esac
+if [ "$route" != default ] && [ -n "${HE_GBRAIN_INSTALL:-}" ]; then refuse_route "is a route and HE_GBRAIN_INSTALL=$HE_GBRAIN_INSTALL writes gbrain's own rule into AGENTS.md and hooks.json; a route cell runs without gbrain.install"; fi
+
 # CODEX_HOME holds config.toml, the thread store (sessions/ and the state and thread history databases), skills and logs:
 # all state. TMPDIR moves Codex's scratch files off the image.
 export HOME="$HE_SESSION_STATE_DIR"
@@ -86,15 +104,14 @@ version=$(cli_version)
 log "codex-cli ${version:-unknown} (pin.json $pin_version) model=he-proxy/$HE_MODEL_NAME budget=${HE_TIME_BUDGET_S}s entry=$entry"
 [ "$version" = "$pin_version" ] || { log "codex-cli ${version:-unknown} is not the pinned $pin_version"; exit 2; }
 
-# internal-task: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Codex's own base instructions with one fixed text,
+# HARN-20: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Codex's own base instructions with one fixed text,
 # ablation/official-minimal.txt beside this file (/opt/harness/ablation in the image; a byte copy of
 # harnesses/ablation/official-minimal.txt, checked against pin.json official_minimal.sha256), named by model_instructions_file at
-# the top of config.toml. Unset, empty or default adds nothing, so config.toml is byte-identical to before; any other value, or a
-# text file with another sha256, is HE-ADAPTER-007 and exit 2 before ready.
+# the top of config.toml. Unset, empty or default adds nothing, so config.toml is byte-identical to before; any other value is a
+# route (parsed above, which refuses an unknown one), and a text file with another sha256 is HE-ADAPTER-007 and exit 2 before ready.
 model_instructions_file=''
 official_minimal_json=''
 case "${HE_HARNESS_CONFIG:-default}" in
-  default) ;;
   official-minimal)
     om_file="$harness_dir/ablation/official-minimal.txt"
     om_expected=$(jq -r '.official_minimal.sha256 // empty' "$harness_dir/pin.json")
@@ -107,7 +124,6 @@ case "${HE_HARNESS_CONFIG:-default}" in
     official_minimal_json=,\"official_minimal\":$(jq -cn --arg path "$om_file" --arg sha "$om_sha" --argjson bytes "$(wc -c < "$om_file")" '{path: $path, sha256: $sha, bytes: $bytes}')
     log "HE_HARNESS_CONFIG=official-minimal: model_instructions_file = $om_file (sha256 $om_sha)"
     ;;
-  *) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$HE_HARNESS_CONFIG is not a codex config (default, official-minimal)"; exit 2 ;;
 esac
 
 # config.toml from the template and pin.json codex_config: the cell model in every model key Codex reads, the proxy as the
@@ -158,7 +174,7 @@ fi
 mv "$CODEX_HOME/config.toml.tmp" "$CODEX_HOME/config.toml"
 log "config written to $CODEX_HOME/config.toml (mcp_servers $mcp_servers)"
 
-# internal-task, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
+# HARN-13, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
 # the exported view of what `gbrain setup codex --instructions-only` wrote at gbrain image build (gbrain#7989) read-only at
 # HE_GBRAIN_INSTALL_DIR. Setup ran there with HOME=/harness-state and CODEX_HOME=/harness-state/codex, so every path in it is this
 # container's: home/codex/AGENTS.md (the brain-first block, Codex's global instructions), home/codex/hooks.json (the
@@ -178,9 +194,10 @@ log "config written to $CODEX_HOME/config.toml (mcp_servers $mcp_servers)"
 gbrain_install_json='' hook_heartbeat=''
 if [ "${HE_GBRAIN_INSTALL:-}" = gbrain-installer ]; then
   set +e
-  install_line=$(node - "${HE_GBRAIN_INSTALL_DIR:-/he-gbrain-install}" "$HE_SESSION_STATE_DIR" "${HE_GBRAIN_SPLIT:-}" "$HE_LOG_DIR" <<'JS'
+  install_line=$(node - "${HE_GBRAIN_INSTALL_DIR:-/he-gbrain-install}" "$HE_SESSION_STATE_DIR" "${HE_GBRAIN_SPLIT:-}" "$HE_LOG_DIR" "$harness_dir/trust-hash.cjs" <<'JS'
 const fs = require("fs"), path = require("path"), crypto = require("crypto"), cp = require("child_process");
-const [view, state, split, logs] = process.argv.slice(2);
+const [view, state, split, logs, trustJs] = process.argv.slice(2);
+const { trustedHash, trustKey } = require(trustJs);
 const out = path.join(logs, "gbrain-install.json"), codexHome = path.join(state, "codex");
 const sha = (b) => crypto.createHash("sha256").update(b).digest("hex");
 const rec = { status: "error", code: "HE-ADAPTER-006", harness: "codex", split, install: "gbrain-installer", dir: view, view_digest: null, files: 0, destinations: [], copied: [], error: null };
@@ -249,9 +266,8 @@ if (inst.turn_hook) {
   const ours = groups.map((g, index) => ({ index, h: (g.hooks ?? [])[0] })).filter((g) => typeof g.h?.command === "string" && g.h.command.includes("GBRAIN_HOOK_LANE=turn-rule"));
   if (ours.length !== 1) refuse("hooks.json holds " + ours.length + " gbrain turn-rule UserPromptSubmit groups, not one");
   const { index, h } = ours[0];
-  const canonical = (v) => Array.isArray(v) ? "[" + v.map(canonical).join(",") + "]" : v && typeof v === "object" ? "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + canonical(v[k])).join(",") + "}" : JSON.stringify(v);
-  const trusted = "sha256:" + sha(canonical({ event_name: "user_prompt_submit", hooks: [{ type: "command", command: h.command, timeout: h.timeout, async: false }] }));
-  const key = path.join(codexHome, "hooks.json") + ":user_prompt_submit:" + index + ":0";
+  const trusted = trustedHash(h.command, h.timeout);
+  const key = trustKey(path.join(codexHome, "hooks.json"), index);
   const config = fs.readFileSync(path.join(codexHome, "config.toml"), "utf8");
   if (!config.includes("[hooks.state." + JSON.stringify(key) + "]\ntrusted_hash = " + JSON.stringify(trusted) + "\n")) refuse("config.toml has no [hooks.state." + JSON.stringify(key) + "] trusting the hook with " + trusted + ", so Codex would not run it");
   const r = cp.spawnSync("sh", ["-c", h.command], { input: JSON.stringify({ hook_event_name: "UserPromptSubmit", prompt: "", session_id: "he-install-check" }), cwd: state, encoding: "utf8", timeout: 60000,
@@ -279,6 +295,115 @@ JS
 fi
 # The number of times gbrain's turn hook has run in this state dir: one heartbeat line per UserPromptSubmit.
 hook_runs() { cat "$hook_heartbeat" 2>/dev/null | grep -c '"event":"user-prompt"' || true; }
+
+# H10 (HARN-18), the instruction routes (harnesses/routes/README.md, "Routes on four harnesses"). One instruction, routes/instruction.md
+# beside this file (/opt/harness/routes in the image, a byte copy of harnesses/routes/instruction.md checked against the sha256 the
+# preregistration cites; routes/placebo.md likewise), reaches Codex through the route the config names:
+#   route-tool                  nothing written: the gbrain MCP tool descriptions stay the only carrier
+#   route-system                developer_instructions = <instruction> as a top-level key of config.toml, inserted before its first
+#                               table. Codex 0.165.0 declares it in ConfigToml (codex-rs config/src/config_toml.rs, "Developer
+#                               instructions inserted as a developer role message") and loads it under --strict-config
+#   route-startup               $CODEX_HOME/AGENTS.md, the instruction bytes alone (Codex's global instructions)
+#   route-skill, route-told     $CODEX_HOME/skills/brain-first/SKILL.md: name, the fixed description, the instruction as the body
+#                               (route-told's sentence is in the cell's preamble, which the runner writes, not this adapter)
+#   route-hook, route-once,     $CODEX_HOME/hooks.json with one UserPromptSubmit group running routes/he-route-hook.sh, trusted by a
+#   route-placebo               [hooks.state] table appended to config.toml (trust-hash.cjs, the helper the installer check uses);
+#                               the script prints the instruction (the placebo for route-placebo) as additionalContext when the
+#                               turn's emit flag is 1, which route_turn writes before each turn (always 1, or 1 only on a session's
+#                               first turn for route-once). The hook is run once here with the flag set and must print the bytes
+# $HE_LOG_DIR/instruction-route.json records the route, the bytes' sha256, every file written and the hook check; ready carries
+# instruction_route. A destination that already exists, a config.toml that already sets developer_instructions or hooks, a bytes
+# file with another sha256 or a hook that does not print its bytes is HE-ADAPTER-007, exit 2 before ready. Default writes nothing.
+route_json=''
+route_emit="$HE_SESSION_STATE_DIR/he-route/emit" route_sessions="$HE_SESSION_STATE_DIR/he-route/sessions.json"
+if [ "$route" != default ]; then
+  set +e
+  route_line=$(node - "$route" "$harness_dir" "$CODEX_HOME" "$route_emit" "$HE_LOG_DIR/instruction-route.json" "$route_config" <<'JS'
+const fs = require("fs"), path = require("path"), crypto = require("crypto"), cp = require("child_process");
+const [route, harness, codexHome, emit, out, config] = process.argv.slice(2);
+const SHA = { "instruction.md": "4a81cb9b35d6ad6f205723618f15e6c3dc66586cbb41f0ebc72141b74669230f", "placebo.md": "b66810fe132a2a9988100dcd01a9c8a03665265ff01555f17cd9b1955047dd34" };
+const sha = (b) => crypto.createHash("sha256").update(b).digest("hex");
+const routes = path.join(harness, "routes"), configToml = path.join(codexHome, "config.toml");
+const bytesFile = route === "route-placebo" ? "placebo.md" : "instruction.md";
+const rec = { status: "error", code: "HE-ADAPTER-007", harness: "codex", config, driver: "cli", route, slot: null, bytes: { path: path.join(routes, bytesFile), sha256: null, bytes: null }, setting: null, files: [], hook: null, error: null };
+const write = () => { fs.writeFileSync(out + ".tmp", JSON.stringify(rec, null, 1) + "\n"); fs.renameSync(out + ".tmp", out); };
+const refuse = (msg) => { rec.error = msg; write(); console.log("HE-ADAPTER-007 the instruction route could not be applied: " + msg); process.exit(1); };
+const record = (p) => { const b = fs.readFileSync(p); rec.files.push({ path: p, sha256: sha(b), bytes: b.length }); };
+const put = (p, body) => { if (fs.existsSync(p)) refuse("the destination exists and the route does not overwrite it: " + p); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, body); record(p); };
+let text;
+try { text = fs.readFileSync(rec.bytes.path); } catch (e) { refuse("no readable " + bytesFile + ": " + e.message); }
+Object.assign(rec.bytes, { sha256: sha(text), bytes: text.length });
+if (rec.bytes.sha256 !== SHA[bytesFile]) refuse("routes/" + bytesFile + "'s sha256 is " + rec.bytes.sha256 + ", not the committed " + SHA[bytesFile] + "; rebuild the image from the checkout");
+const toml = fs.readFileSync(configToml, "utf8");
+let hook = "none";
+if (route === "route-tool") rec.setting = "none: the instruction is written nowhere; the gbrain MCP tool descriptions are the only carrier";
+else if (route === "route-system") {
+  rec.setting = "config.toml developer_instructions, the instruction bytes as a TOML basic string, inserted before the first table";
+  const lines = toml.split("\n");
+  if (lines.some((l) => /^\s*developer_instructions\s*=/.test(l))) refuse(configToml + " already sets developer_instructions");
+  const first = lines.findIndex((l) => /^\s*\[/.test(l));
+  if (first < 0) refuse(configToml + " has no table to insert developer_instructions before");
+  lines.splice(first, 0, "developer_instructions = " + JSON.stringify(text.toString("utf8")), "");
+  fs.writeFileSync(configToml, lines.join("\n"));
+  record(configToml);
+} else if (route === "route-startup") { rec.setting = "$CODEX_HOME/AGENTS.md, the instruction bytes alone"; put(path.join(codexHome, "AGENTS.md"), text); }
+else if (route === "route-skill" || route === "route-told") {
+  rec.setting = "a skill $CODEX_HOME/skills/brain-first/SKILL.md: frontmatter name and a fixed description, the instruction bytes as the body";
+  put(path.join(codexHome, "skills", "brain-first", "SKILL.md"), Buffer.concat([Buffer.from("---\nname: brain-first\ndescription: Check GBrain first, before answering any turn.\n---\n\n"), text, Buffer.from("\n")]));
+} else {
+  rec.setting = "hooks.json UserPromptSubmit, trusted in config.toml: routes/he-route-hook.sh prints routes/" + bytesFile + " as additionalContext when the turn's emit flag is 1 (" + (route === "route-once" ? "a session's first turn only" : "every turn") + ")";
+  if (/^\s*\[hooks[.\]]/m.test(toml)) refuse(configToml + " already has a [hooks] table");
+  const script = path.join(routes, "he-route-hook.sh");
+  if (/\s/.test(script + emit + rec.bytes.path)) refuse("a hook path holds whitespace: " + script + " " + emit + " " + rec.bytes.path);
+  const command = "sh " + script + " " + emit + " " + rec.bytes.path, timeout = 30, hooksJson = path.join(codexHome, "hooks.json");
+  put(hooksJson, JSON.stringify({ hooks: { UserPromptSubmit: [{ hooks: [{ type: "command", command, timeout }] }] } }, null, 2) + "\n");
+  const { trustTable } = require(path.join(harness, "trust-hash.cjs"));
+  fs.appendFileSync(configToml, "\n" + trustTable(hooksJson, 0, command, timeout));
+  record(configToml);
+  fs.mkdirSync(path.dirname(emit), { recursive: true });
+  fs.writeFileSync(emit, "emit=1");
+  const r = cp.spawnSync("sh", ["-c", command], { input: JSON.stringify({ hook_event_name: "UserPromptSubmit", prompt: "", session_id: "he-route-check" }), encoding: "utf8", timeout: 30000 });
+  fs.rmSync(emit, { force: true });
+  let context = null;
+  try { context = JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch {}
+  if (r.status !== 0 || context !== text.toString("utf8")) refuse("the route hook " + command + " exited " + r.status + " and did not print routes/" + bytesFile + " as additionalContext with the flag set");
+  rec.hook = { command, timeout, trust: trustTable(hooksJson, 0, command, timeout).trim(), check: "printed the bytes with emit=1" };
+  hook = "checked";
+}
+rec.status = "ok"; rec.code = null;
+write();
+console.log("ok " + rec.bytes.sha256 + " " + rec.files.length + " " + hook);
+JS
+)
+  route_code=$?
+  set -e
+  log "instruction route $route_config: ${route_line:-HE-ADAPTER-007 the instruction route could not be applied: the route step failed before it could report; see stderr.log}"
+  [ "$route_code" -eq 0 ] || exit 2
+  read -r _ route_sha route_files route_hook <<< "$route_line"
+  route_json=$(printf ',"instruction_route":{"config":"%s","driver":"cli","route":"%s","bytes_sha256":"%s","files":%s,"hook":"%s"}' "$route_config" "$route" "$route_sha" "$route_files" "$route_hook")
+fi
+
+# Before each turn of a route cell: count the turn against its session (the adapter's key, so the count follows the Codex thread
+# it resumes), write the emit flag for a hook route (temp file, then rename) and record the turn's RouteTurnStatus
+# (runner/contracts.ts) at <stem>.route.json, with session_key in TurnWindow's form (<channel id>[:<thread_ts>]). Arguments:
+# file stem, adapter key, window key. Default does nothing.
+route_turn() {
+  [ "$route" != default ] || return 0
+  node - "$route_sessions" "$route_emit" "$1.route.json" "$2" "$3" "$route_config" "$route" <<'JS'
+const fs = require("fs"), path = require("path");
+const [sessions, emit, out, key, windowKey, config, route] = process.argv.slice(2);
+const atomic = (p, body) => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p + ".tmp", body); fs.renameSync(p + ".tmp", p); };
+const counts = fs.existsSync(sessions) ? JSON.parse(fs.readFileSync(sessions, "utf8")) : {};
+const n = (counts[key] ?? 0) + 1;
+counts[key] = n;
+atomic(sessions, JSON.stringify(counts));
+const hook = ["route-hook", "route-once", "route-placebo"].includes(route);
+const emitted = hook ? (route === "route-once" ? n === 1 : true) : null;
+if (hook) atomic(emit, emitted ? "emit=1" : "emit=0");
+atomic(out, JSON.stringify({ config, driver: "cli", route, session_key: windowKey, session_turn: n, emitted }) + "\n");
+console.log("session_turn " + n + " emitted " + emitted);
+JS
+}
 
 cd "$HE_WORKSPACE_DIR"
 stopping=0
@@ -309,11 +434,12 @@ http_status() {
   fi
 }
 
-# One Codex turn. Arguments: prompt file, session key (empty for run), file stem, budget, kill grace. Sets turn_code and
-# turn_detail; the reply is in <stem>.reply.txt, the JSONL events in <stem>.codex.jsonl, a summary in <stem>.status.json.
+# One Codex turn. Arguments: prompt file, session key (empty for run), file stem, budget, kill grace, and the session key in
+# TurnWindow's form for the route status. Sets turn_code and turn_detail; the reply is in <stem>.reply.txt, the JSONL events in
+# <stem>.codex.jsonl, a summary in <stem>.status.json.
 codex_turn() {
-  local prompt=$1 key=$2 stem=$3 budget=$4 grace=$5
-  local events="$stem.codex.jsonl" err="$stem.stderr.log" thread='' marker deadline timed_out=0 stopped=0 code v status failed st
+  local prompt=$1 key=$2 stem=$3 budget=$4 grace=$5 window_key=$6
+  local events="$stem.codex.jsonl" err="$stem.stderr.log" thread='' marker deadline timed_out=0 stopped=0 code v status failed st route_status
   local -a args
   turn_detail=''
   : > "$stem.reply.txt"
@@ -325,6 +451,10 @@ codex_turn() {
     args=(exec resume "$thread" --json --skip-git-repo-check --strict-config -)
   else
     args=(exec --json --skip-git-repo-check --strict-config -C "$HE_WORKSPACE_DIR" -)
+  fi
+  if [ "$route" != default ]; then
+    if ! route_status=$(route_turn "$stem" "${key:-run:$HE_TRIAL_ID}" "$window_key"); then turn_code=2; turn_detail="the route status for this turn could not be written"; return; fi
+    log "turn ${stem##*/}: route $route $route_status"
   fi
   marker="$HE_TRIAL_ID.${stem##*/}.$$.$RANDOM"
   [ -z "$hook_heartbeat" ] || hook_before=$(hook_runs)
@@ -383,7 +513,7 @@ codex_turn() {
 
 if [ "$entry" = run ]; then
   [ -r "$HE_WORKSPACE_DIR/instruction.md" ] || { log "no readable $HE_WORKSPACE_DIR/instruction.md"; exit 2; }
-  codex_turn "$HE_WORKSPACE_DIR/instruction.md" '' "$HE_LOG_DIR/run" "$HE_TIME_BUDGET_S" 60
+  codex_turn "$HE_WORKSPACE_DIR/instruction.md" '' "$HE_LOG_DIR/run" "$HE_TIME_BUDGET_S" 60 "run:$HE_TRIAL_ID"
   [ "$turn_code" -ne 143 ] || turn_code=2
   log "exit $turn_code${turn_detail:+ ($turn_detail)}"
   exit "$turn_code"
@@ -393,7 +523,7 @@ fi
 : "${HE_TURNS_DIR:=/he-turns}"
 mkdir -p "$HE_TURNS_DIR" "$HE_LOG_DIR/turns"
 printf '{"harness":"codex","version":"%s","trial":"%s","ready_at":"%s","session_keys":"codex exec (first turn of a key) | codex exec resume <thread id>; dm:<member> | channel:<id>","mcp_servers":%s,"adapter_sha256":"%s"%s}\n' \
-  "$version" "$HE_TRIAL_ID" "$(now)" "$mcp_servers" "$adapter_sha256" "$official_minimal_json$gbrain_install_json" > "$HE_LOG_DIR/ready.tmp"
+  "$version" "$HE_TRIAL_ID" "$(now)" "$mcp_servers" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do
@@ -406,10 +536,11 @@ while [ "$stopping" -eq 0 ]; do
     budget=$(jq -r '.time_budget_s // empty' "$req"); budget=${budget:-$HE_TIME_BUDGET_S}
     # A thread turn (thread_ts set; thread = "new" in task.toml) is a new session in the same conversation.
     key=$(jq -r 'if .channel.type == "dm" then "dm:" + .actor.member else "channel:" + .channel.id end + (if .thread_ts then ":t" + (.thread_ts | tostring) else "" end)' "$req")
+    window_key=$(jq -r '.channel.id + (if .thread_ts then ":" + (.thread_ts | tostring) else "" end)' "$req")
     jq -j '.prompt' "$req" > "$HE_LOG_DIR/turns/$name.prompt.md"
     log "turn $turn: session $key, budget ${budget}s"
     started=$(now)
-    codex_turn "$HE_LOG_DIR/turns/$name.prompt.md" "$key" "$HE_LOG_DIR/turns/$name" "$budget" 5
+    codex_turn "$HE_LOG_DIR/turns/$name.prompt.md" "$key" "$HE_LOG_DIR/turns/$name" "$budget" 5 "$window_key"
     ended=$(now)
     code=$turn_code
     [ "$code" -ne 143 ] || code=2

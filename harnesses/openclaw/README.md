@@ -65,6 +65,22 @@ Keyless proof (2026-10-31, `tests/particle-branch.test.ts`): the image ran strai
 
 Each route writes `$HE_LOG_DIR/instruction-route.json` and adds `instruction_route` to `ready`. Where each route's bytes land in the model request, and why: [harnesses/routes/README.md](../routes/README.md).
 
+## H10 routes (internal-task)
+
+**The H10 route set runs on OpenClaw, except `route-system`.** The contract is in [harnesses/routes/README.md](../routes/README.md), "Routes on four harnesses".
+
+- **`route-once`:** the `route-hook` plugin, emitting only on the first member turn of each session.
+- **`route-placebo`:** the same plugin carrying `routes/placebo.md` (289 bytes, a byte copy of [harnesses/routes/placebo.md](../routes/placebo.md), sha256 checked) on every member turn.
+- **`route-told`:** the `route-skill` skill. The told sentence is in the cell's preamble, which the runner carries.
+- **`route-slot-told@<id>`, `route-slot-skill@<id>`:** the bundle byte-copied under `routes/slots/<id>/` goes to `/workspace/skills/<skill_name>/` after the adapter re-checks its `bundle_sha256`. The full shape check runs on the host (`scripts/routes/slot-check.ts`). No bundle is in the image yet.
+- **Refused (HE-ADAPTER-007, exit 2):** `route-system` as before, a driver prefix (Claude Code only), every H10 route on the `run` entry, a malformed slot id, a missing slot bundle or one whose files do not match `bundle_sha256`, and a placebo file off its sha256.
+
+**Emit flag.** The plugin `he-instruction-route` keeps no state. The adapter fills two placeholders in its `index.js`: the route's bytes and the path of the emit flag. `before_prompt_build` returns the bytes as `prependContext` when the flag reads `emit=1` and nothing otherwise. Before each member turn the adapter counts the turn in its session (`$HE_SESSION_STATE_DIR/he-route/sessions.json`) and writes the flag (`he-route/emit`).
+
+**Per-turn status.** On every route but `default`, `$HE_LOG_DIR/turns/<turn>.route.json` holds `config`, `driver` (`cli`), `route`, `session_key` (`<channel id>` or `<channel id>:<thread_ts>`), `session_turn` and `emitted` (null off the hook routes).
+
+**Golden captures** (`tests/instruction-route.test.ts`, "H10 golden"): keyless, against a fake Responses endpoint, with `HE_MODEL_NAME=gpt-6.1-sol`, on cn-02, cr-01 and cn-03 plus a gbrain tool-call follow-up on turn 1. Every agent request names `gpt-6.1-sol` with `reasoning.effort: medium` and `max_output_tokens: 128000`. The route-once copy stays in the session history on every later turn, so OpenClaw qualifies for the repetition pairs.
+
 ## M0 smoke
 
 Run on 2026-10-22 with `harnesses/run-trial.sh --harness openclaw --task tasks/hello`, proxy lease `m0-laneb` (`--allow-models anthropic:claude-sonnet-5-5`, default 32768 output-token cap), container run as the host user with stdin from `/dev/null` and no TTY.
@@ -102,6 +118,10 @@ Findings:
 - A fifth of each turn's input is OpenClaw's own tool catalog and system prompt (about 24,000 to 32,000 tokens per call before the conversation), mostly served from the prompt cache after the first call.
 
 ## Changelog
+
+### 2026-11-01: H10 routes (internal-task)
+
+The "H10 routes" section. `route-once`, `route-placebo`, `route-told` and the slot routes, the emit flag read by the `he-instruction-route` plugin, and the per-turn route status. Why: H10 runs the route test on frontier models on four harnesses.
 
 ### 2026-10-31: Particle cells (internal-task)
 

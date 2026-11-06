@@ -41,7 +41,7 @@
 
 ## Named setting
 
-- **`security.tirith_enabled` stays on**, Hermes's own default. tirith is not installed in the image, so Hermes prints "tirith security scanner enabled but not available" and gates commands by pattern matching instead. Turning it off would change how Hermes gates dangerous commands. Garry kept this on 2026-10-30.
+- **`security.tirith_enabled` stays on**, Hermes's own default. tirith is not installed in the image, so Hermes prints "tirith security scanner enabled but not available" and gates commands by pattern matching instead. Turning it off would change how Hermes gates dangerous commands. Garry kept this on 2026-10-30. That held for every Hermes receipt before H10 (internal-task); from H10 PR 2 the image pins Tirith 0.4.2 and Hermes runs it ([Hermes README](../../harnesses/hermes/README.md#behavior-changes)).
 
 ## Failures and retries (measured)
 

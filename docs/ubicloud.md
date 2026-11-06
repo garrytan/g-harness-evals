@@ -12,6 +12,7 @@ All under [scripts/ubicloud/](../scripts/ubicloud/), beside the check lane ([scr
 - `vm-shard.sh`: the VM side, started by `run-shard.sh`: `git checkout --detach <commit>` (a dirty tree is refused, as `scripts/run-shard.sh` refuses one), `bun install --frozen-lockfile`, the smoke, then `scripts/run-shard.sh` for the shard. It records phase times and its exit code for the controller.
 - `smoke-lease.ts`: prints the default smoke lease for a shard's harness cells at an output cap, using the proxy's own price lookup and reservation formula from `runner/ledger/budget-ledger.ts` in the pinned checkout. `run-shard.sh` ships it beside `vm-shard.sh`, which runs it when `--smoke-lease-usd` is not given (Limits, "Smoke").
 - `fanout.sh`: one `run-shard.sh` per shard from one manifest, in parallel, with the quota check, a table at the end and the merge command.
+- `wave2-admit.ts` (internal-task, H10): which preregistered conditional wave-2 blocks run, from what wave 1 actually spent. It sums the committed dollars over every wave-1 ledger given (`--ledger`, counted and smoke), subtracts that from the blocks file's `cap_usd`, and walks the blocks in order. A block whose precondition does not hold is skipped; one whose counted plus smoke ceiling (both from its own `prereg.json`) does not fit what is left is dropped whole, never split. With `--out` (which needs `--commit` and `--dest`) it clears earlier `*.fanout.json` files there and writes one `fanout.sh` manifest per admitted block. A missing ledger, a file that is not a SQLite ledger, a missing block preregistration or a blocks file without a positive `cap_usd` and a `blocks` list is HE-BUDGET-004 ([docs/errors.md](errors.md)).
 
 ## One shard
 
@@ -122,6 +123,10 @@ The VM's phases: create to ready 82 s (19 s on an earlier VM the same evening), 
 ### 2026-11-06: a shard can preflight clean control arms
 
 The repository's `scripts/run-shard.sh` gains `--clean-arm-preflight` (pass it after `--` in a fan-out manifest's options; it reaches the smoke and the counted step). Why: CREW.md, "Clean no-gstack and no-brain arms".
+
+### 2026-11-05: wave2-admit.ts (internal-task)
+
+"The scripts" lists `scripts/ubicloud/wave2-admit.ts`, which admits H10's wave-2 blocks against the run's cap from wave 1's ledgers. Why: H10 PR 5 added it beside `fanout.sh`, whose manifests it writes.
 
 ### 2026-11-04: the lane lands each pull request at its own head
 

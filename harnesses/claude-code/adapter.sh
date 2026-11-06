@@ -82,15 +82,42 @@ if [ -n "${HE_GBRAIN_INSTALL:-}" ] && [ "$HE_GBRAIN_INSTALL" != gbrain-installer
   exit 2
 fi
 
+# H10 (internal-task): HE_HARNESS_CONFIG names the instruction route, [<driver>+]<route>[@<slot_id>] (docs/adapters.md, "Route config",
+# the grammar parseRouteConfig in runner/contracts.ts reads), applied below once CLAUDE_CONFIG_DIR exists. Unset, empty or default
+# changes nothing; official-minimal (internal-task, below) is no route.
+# This adapter runs the cli driver only: sdk-preset and sdk-default come with the Agent SDK driver (H10 PR 4), so
+# a cell that names one stops here rather than running the CLI in its place. A route beside HE_GBRAIN_INSTALL is refused too: the
+# installer writes its own rule into CLAUDE.md and settings.json, so the cell would carry two carriers. Every refusal is
+# HE-ADAPTER-007, exit 2, before anything is written.
+route_config=${HE_HARNESS_CONFIG:-} route_driver=cli route=${HE_HARNESS_CONFIG:-default} route_slot='' route_at=0
+refuse_route() { log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$route_config $1"; exit 2; }
+if [[ $route == *+* ]]; then route_driver=${route%%+*}; route=${route#*+}; fi
+if [[ $route == *@* ]]; then route_at=1; route_slot=${route#*@}; route=${route%%@*}; fi
+case "$route_driver" in
+  cli) ;;
+  sdk-preset|sdk-default) refuse_route "names the $route_driver driver, which runs Claude Code through the Agent SDK (H10 PR 4); this adapter runs the cli driver only" ;;
+  *) refuse_route "names no known driver (cli, sdk-preset, sdk-default)" ;;
+esac
+case "$route" in
+  official-minimal)
+    [ "$route_config" = official-minimal ] || refuse_route "is official-minimal with a driver prefix or a slot id; that config takes neither"
+    route=default ;;
+  default|route-tool|route-hook|route-once|route-system|route-startup|route-skill|route-told|route-placebo)
+    [ "$route_at" -eq 0 ] || refuse_route "gives a slot id, which only route-slot-told and route-slot-skill take" ;;
+  route-slot-told|route-slot-skill)
+    [[ $route_slot =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || refuse_route "needs @<slot_id> matching ^[a-z0-9][a-z0-9-]{0,62}\$ for $route" ;;
+  *) refuse_route "is not a claude-code config (default, official-minimal) and names no known route (route-tool, route-hook, route-once, route-system, route-startup, route-skill, route-told, route-placebo, route-slot-told, route-slot-skill)" ;;
+esac
+if [ "$route" != default ] && [ -n "${HE_GBRAIN_INSTALL:-}" ]; then refuse_route "is a route and HE_GBRAIN_INSTALL=$HE_GBRAIN_INSTALL writes gbrain's own rule into CLAUDE.md and settings.json; a route cell runs without gbrain.install"; fi
+
 # internal-task: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Claude Code's own system prompt with one fixed text,
 # ablation/official-minimal.txt beside this file (/opt/harness/ablation in the image; a byte copy of
 # harnesses/ablation/official-minimal.txt, checked against pin.json official_minimal.sha256), passed as --system-prompt on every
-# turn. Unset, empty or default adds nothing, so the adapter's files and command lines are as before; any other value, or a text
-# file with another sha256, is HE-ADAPTER-007 and exit 2 before ready.
+# turn. Unset, empty or default adds nothing, so the adapter's files and command lines are as before; any other value is a route (parsed
+# above, which refuses an unknown one), and a text file with another sha256 is HE-ADAPTER-007 and exit 2 before ready.
 system_prompt_args=()
 official_minimal_json=''
 case "${HE_HARNESS_CONFIG:-default}" in
-  default) ;;
   official-minimal)
     om_file="$harness_dir/ablation/official-minimal.txt"
     om_expected=$(node -e 'process.stdout.write(String(require(process.argv[1]).official_minimal?.sha256 ?? ""))' "$harness_dir/pin.json")
@@ -103,7 +130,6 @@ case "${HE_HARNESS_CONFIG:-default}" in
     official_minimal_json=$(printf ',"official_minimal":{"path":"%s","sha256":"%s","bytes":%s}' "$om_file" "$om_sha" "$(wc -c < "$om_file" | tr -d ' ')")
     log "HE_HARNESS_CONFIG=official-minimal: --system-prompt from $om_file (sha256 $om_sha)"
     ;;
-  *) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$HE_HARNESS_CONFIG is not a claude-code config (default, official-minimal)"; exit 2 ;;
 esac
 
 # HOME and CLAUDE_CONFIG_DIR hold settings, sessions (projects/<cwd>/<session id>.jsonl), memory and skills: all state.
@@ -235,6 +261,127 @@ fi
 # The number of times gbrain's turn hook has run in this state dir: one heartbeat line per UserPromptSubmit.
 hook_runs() { cat "$hook_heartbeat" 2>/dev/null | grep -c '"event":"user-prompt"' || true; }
 
+# H10 (internal-task), the instruction routes on the cli driver (harnesses/routes/README.md, "Routes on four harnesses"). One instruction,
+# routes/instruction.md beside this file (/opt/harness/routes in the image, a byte copy of harnesses/routes/instruction.md checked
+# against the sha256 the preregistration cites; routes/placebo.md likewise), reaches Claude Code through the route the config names:
+#   route-tool                  nothing written: the gbrain MCP tool descriptions stay the only carrier
+#   route-system                --append-system-prompt <instruction> on every turn, --resume included (run_turn)
+#   route-startup               $CLAUDE_CONFIG_DIR/CLAUDE.md, the instruction bytes alone (Claude Code's user memory)
+#   route-skill, route-told     $CLAUDE_CONFIG_DIR/skills/brain-first/SKILL.md: name, the fixed description, the instruction as the
+#                               body (route-told's sentence is in the cell's preamble, which the runner writes, not this adapter)
+#   route-hook, route-once,     a UserPromptSubmit hook in settings.json running routes/he-route-hook.sh, which prints the
+#   route-placebo               instruction (the placebo for route-placebo) as additionalContext when the turn's emit flag is 1;
+#                               route_turn writes the flag before each turn (always 1, or 1 only on a session's first turn for
+#                               route-once). The hook is run once here with the flag set and must print the bytes; the flag is
+#                               then removed
+#   route-slot-told@<id>,       the slot bundle's skill/<name>/ from routes/slots/<id>/ copied to $CLAUDE_CONFIG_DIR/skills/<name>/,
+#   route-slot-skill@<id>       after its bundle_sha256 is recomputed with sha256sum and equals slot.json's (the full shape check is
+#                               scripts/routes/slot-check.ts, host side, in preflight)
+# $HE_LOG_DIR/instruction-route.json records the route, the bytes' sha256, every file written and the hook check; ready carries
+# instruction_route. A destination that already exists, a settings.json that is not this adapter's seed, a bytes file with another
+# sha256 or a hook that does not print its bytes is HE-ADAPTER-007, exit 2 before ready. Default writes nothing and records nothing.
+route_json='' route_system_text=''
+route_emit="$HE_SESSION_STATE_DIR/he-route/emit" route_sessions="$HE_SESSION_STATE_DIR/he-route/sessions.json"
+if [ "$route" != default ]; then
+  set +e
+  route_line=$(node - "$route" "$route_slot" "$harness_dir" "$CLAUDE_CONFIG_DIR" "$route_emit" "$HE_LOG_DIR/instruction-route.json" "$route_config" "$route_driver" <<'JS'
+const fs = require("fs"), path = require("path"), crypto = require("crypto"), cp = require("child_process");
+const [route, slot, harness, claude, emit, out, config, driver] = process.argv.slice(2);
+const SHA = { "instruction.md": "4a81cb9b35d6ad6f205723618f15e6c3dc66586cbb41f0ebc72141b74669230f", "placebo.md": "b66810fe132a2a9988100dcd01a9c8a03665265ff01555f17cd9b1955047dd34" };
+const sha = (b) => crypto.createHash("sha256").update(b).digest("hex");
+const routes = path.join(harness, "routes");
+const bytesFile = route === "route-placebo" ? "placebo.md" : "instruction.md";
+const rec = { status: "error", code: "HE-ADAPTER-007", harness: "claude-code", config, driver, route, slot: slot || null, bytes: { path: path.join(routes, bytesFile), sha256: null, bytes: null }, setting: null, files: [], hook: null, error: null };
+const write = () => { fs.writeFileSync(out + ".tmp", JSON.stringify(rec, null, 1) + "\n"); fs.renameSync(out + ".tmp", out); };
+const refuse = (msg) => { rec.error = msg; write(); console.log("HE-ADAPTER-007 the instruction route could not be applied: " + msg); process.exit(1); };
+const fresh = (p) => { if (fs.existsSync(p)) refuse("the destination exists and the route does not overwrite it: " + p); };
+const put = (p, body) => { fresh(p); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, body); rec.files.push({ path: p, sha256: sha(body), bytes: body.length }); };
+let text;
+try { text = fs.readFileSync(rec.bytes.path); } catch (e) { refuse("no readable " + bytesFile + ": " + e.message); }
+Object.assign(rec.bytes, { sha256: sha(text), bytes: text.length });
+if (rec.bytes.sha256 !== SHA[bytesFile]) refuse("routes/" + bytesFile + "'s sha256 is " + rec.bytes.sha256 + ", not the committed " + SHA[bytesFile] + "; rebuild the image from the checkout");
+let hook = "none";
+if (route === "route-tool") rec.setting = "none: the instruction is written nowhere; the gbrain MCP tool descriptions are the only carrier";
+else if (route === "route-system") rec.setting = "--append-system-prompt <instruction> on every claude -p turn, --resume included";
+else if (route === "route-startup") { rec.setting = "$CLAUDE_CONFIG_DIR/CLAUDE.md, the instruction bytes alone"; put(path.join(claude, "CLAUDE.md"), text); }
+else if (route === "route-skill" || route === "route-told") {
+  rec.setting = "a skill $CLAUDE_CONFIG_DIR/skills/brain-first/SKILL.md: frontmatter name and a fixed description, the instruction bytes as the body";
+  put(path.join(claude, "skills", "brain-first", "SKILL.md"), Buffer.concat([Buffer.from("---\nname: brain-first\ndescription: Check GBrain first, before answering any turn.\n---\n\n"), text, Buffer.from("\n")]));
+} else if (route === "route-slot-told" || route === "route-slot-skill") {
+  const bundle = path.join(routes, "slots", slot);
+  let meta;
+  try { meta = JSON.parse(fs.readFileSync(path.join(bundle, "slot.json"), "utf8")); } catch (e) { refuse("no readable slot.json for slot " + slot + " under " + bundle + ": " + e.message); }
+  if (meta.slot_id !== slot) refuse("slot.json names slot_id " + JSON.stringify(meta.slot_id) + ", not " + slot);
+  if (typeof meta.skill_name !== "string" || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(meta.skill_name)) refuse("slot.json skill_name " + JSON.stringify(meta.skill_name) + " is not a skill name");
+  const r = cp.spawnSync("sh", ["-c", "find . -type f ! -path ./slot.json | sed 's|^\\./||' | LC_ALL=C sort | xargs -d '\\n' sha256sum | sha256sum"], { cwd: bundle, encoding: "utf8" });
+  const digest = (r.stdout || "").split(" ")[0];
+  if (r.status !== 0 || digest !== meta.bundle_sha256) refuse("slot " + slot + "'s bundle_sha256 is " + (digest || "unreadable") + ", slot.json says " + meta.bundle_sha256);
+  rec.slot_bundle_sha256 = digest;
+  rec.setting = "the slot bundle's skill/" + meta.skill_name + "/ copied to $CLAUDE_CONFIG_DIR/skills/" + meta.skill_name + "/ (bundle_sha256 rechecked)";
+  const src = path.join(bundle, "skill", meta.skill_name), dest = path.join(claude, "skills", meta.skill_name);
+  if (!fs.existsSync(path.join(src, "SKILL.md"))) refuse("the slot bundle has no skill/" + meta.skill_name + "/SKILL.md");
+  fresh(dest);
+  const walk = (rel) => { for (const name of fs.readdirSync(path.join(src, rel)).sort()) { const r2 = path.join(rel, name); if (fs.statSync(path.join(src, r2)).isDirectory()) walk(r2); else put(path.join(dest, r2), fs.readFileSync(path.join(src, r2))); } };
+  walk("");
+} else {
+  rec.setting = "settings.json hooks.UserPromptSubmit: routes/he-route-hook.sh prints routes/" + bytesFile + " as additionalContext when the turn's emit flag is 1 (" + (route === "route-once" ? "a session's first turn only" : "every turn") + ")";
+  const settings = path.join(claude, "settings.json");
+  const seed = fs.readFileSync(path.join(harness, "config", "settings.json"));
+  if (!fs.existsSync(settings) || !fs.readFileSync(settings).equals(seed)) refuse(settings + " is not this adapter's seed (config/settings.json), so the route would merge into settings it did not write");
+  const script = path.join(routes, "he-route-hook.sh");
+  if (/\s/.test(script + emit + rec.bytes.path)) refuse("a hook path holds whitespace: " + script + " " + emit + " " + rec.bytes.path);
+  const command = "sh " + script + " " + emit + " " + rec.bytes.path;
+  const s = JSON.parse(seed.toString("utf8"));
+  s.hooks = { UserPromptSubmit: [{ hooks: [{ type: "command", command }] }] };
+  const body = Buffer.from(JSON.stringify(s, null, 2) + "\n");
+  fs.writeFileSync(settings, body);
+  rec.files.push({ path: settings, sha256: sha(body), bytes: body.length });
+  fs.mkdirSync(path.dirname(emit), { recursive: true });
+  fs.writeFileSync(emit, "emit=1");
+  const r = cp.spawnSync("sh", ["-c", command], { input: JSON.stringify({ hook_event_name: "UserPromptSubmit", prompt: "", session_id: "he-route-check" }), encoding: "utf8", timeout: 30000 });
+  fs.rmSync(emit, { force: true });
+  let context = null;
+  try { context = JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch {}
+  if (r.status !== 0 || context !== text.toString("utf8")) refuse("the route hook " + command + " exited " + r.status + " and did not print routes/" + bytesFile + " as additionalContext with the flag set");
+  rec.hook = { command, check: "printed the bytes with emit=1" };
+  hook = "checked";
+}
+rec.status = "ok"; rec.code = null;
+write();
+console.log("ok " + rec.bytes.sha256 + " " + rec.files.length + " " + hook);
+JS
+)
+  route_code=$?
+  set -e
+  log "instruction route $route_config: ${route_line:-HE-ADAPTER-007 the instruction route could not be applied: the route step failed before it could report; see stderr.log}"
+  [ "$route_code" -eq 0 ] || exit 2
+  read -r _ route_sha route_files route_hook <<< "$route_line"
+  if [ "$route" = route-system ]; then route_system_text=$(cat "$harness_dir/routes/instruction.md"); fi
+  route_json=$(printf ',"instruction_route":{"config":"%s","driver":"%s","route":"%s","bytes_sha256":"%s","files":%s,"hook":"%s"}' "$route_config" "$route_driver" "$route" "$route_sha" "$route_files" "$route_hook")
+fi
+
+# Before each turn of a route cell: count the turn against its session (the adapter's key, so the count follows the session id
+# Claude Code resumes), write the emit flag for a hook route (temp file, then rename) and record the turn's RouteTurnStatus
+# (runner/contracts.ts) at <prefix>.route.json, with session_key in TurnWindow's form (<channel id>[:<thread_ts>]). Arguments:
+# file prefix, adapter key, window key. Default does nothing.
+route_turn() {
+  [ "$route" != default ] || return 0
+  node - "$route_sessions" "$route_emit" "$1.route.json" "$2" "$3" "$route_config" "$route_driver" "$route" <<'JS'
+const fs = require("fs"), path = require("path");
+const [sessions, emit, out, key, windowKey, config, driver, route] = process.argv.slice(2);
+const atomic = (p, body) => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p + ".tmp", body); fs.renameSync(p + ".tmp", p); };
+const counts = fs.existsSync(sessions) ? JSON.parse(fs.readFileSync(sessions, "utf8")) : {};
+const n = (counts[key] ?? 0) + 1;
+counts[key] = n;
+atomic(sessions, JSON.stringify(counts));
+const hook = ["route-hook", "route-once", "route-placebo"].includes(route);
+const emitted = hook ? (route === "route-once" ? n === 1 : true) : null;
+if (hook) atomic(emit, emitted ? "emit=1" : "emit=0");
+atomic(out, JSON.stringify({ config, driver, route, session_key: windowKey, session_turn: n, emitted }) + "\n");
+console.log("session_turn " + n + " emitted " + emitted);
+JS
+}
+
 # The model goes through the proxy with the per-trial token. Every model setting the CLI reads at this pin names the cell
 # model, so no background, subagent, classifier or alias call can ask for another; model substitution is switched off.
 export ANTHROPIC_BASE_URL="$HE_MODEL_BASE_URL"
@@ -310,11 +457,13 @@ stop_session() {
   pkill -KILL -s "$sid" 2>/dev/null || true
 }
 
-# One turn. Arguments: file prefix for this turn's logs, prompt file, session key, budget, kill grace. Sets turn_code and
-# turn_detail; the reply is in <prefix>.reply.txt. The session id is UUIDv5 of the key: --session-id the first time, --resume
-# once its transcript exists (the CLI refuses a --session-id it already holds).
+# One turn. Arguments: file prefix for this turn's logs, prompt file, session key, budget, kill grace, and the session key in
+# TurnWindow's form for the route status. Sets turn_code and turn_detail; the reply is in <prefix>.reply.txt. The session id is
+# UUIDv5 of the key: --session-id the first time, --resume once its transcript exists (the CLI refuses a --session-id it already
+# holds). route-system adds --append-system-prompt with the instruction to every turn, --resume included.
 run_turn() {
-  local prefix=$1 prompt=$2 key=$3 budget=$4 grace=$5 sid flag deadline timed_out=0 stopped=0 code line
+  local prefix=$1 prompt=$2 key=$3 budget=$4 grace=$5 window_key=$6 sid flag deadline timed_out=0 stopped=0 code line route_status
+  local -a route_args=()
   sid=$(node -e '
 const h = require("crypto").createHash("sha1").update(Buffer.from("6ba7b8119dad11d180b400c04fd430c8", "hex")).update("harness-evals:claude-code:" + process.argv[1]).digest();
 h[6] = (h[6] & 0x0f) | 0x50; h[8] = (h[8] & 0x3f) | 0x80;
@@ -322,10 +471,15 @@ const x = h.subarray(0, 16).toString("hex");
 process.stdout.write([x.slice(0, 8), x.slice(8, 12), x.slice(12, 16), x.slice(16, 20), x.slice(20)].join("-"));' "$key")
   if compgen -G "$CLAUDE_CONFIG_DIR/projects/*/$sid.jsonl" >/dev/null; then flag=--resume; else flag=--session-id; fi
   log "session $key: $flag $sid"
+  if [ "$route" != default ]; then
+    if ! route_status=$(route_turn "$prefix" "$key" "$window_key"); then turn_code=2; turn_detail="the route status for this turn could not be written"; return 0; fi
+    log "session $key: route $route $route_status"
+  fi
+  [ "$route" != route-system ] || route_args=(--append-system-prompt "$route_system_text")
   [ -z "$hook_heartbeat" ] || hook_before=$(hook_runs)
   set +e
   setsid claude -p --output-format stream-json --verbose --model "$HE_MODEL_NAME" --permission-mode bypassPermissions \
-    --disallowedTools WebSearch,WebFetch --mcp-config "$mcp_config" --strict-mcp-config "${system_prompt_args[@]}" "$flag" "$sid" \
+    --disallowedTools WebSearch,WebFetch --mcp-config "$mcp_config" --strict-mcp-config "${system_prompt_args[@]}" "$flag" "$sid" "${route_args[@]}" \
     < "$prompt" > "$prefix.claude.jsonl" 2> >(tee -a "$prefix.stderr.log" >&2) &
   turn_pid=$!
   deadline=$((SECONDS + budget))
@@ -400,7 +554,7 @@ JS
 if [ "$entry" = "run" ]; then
   [ -r "$HE_WORKSPACE_DIR/instruction.md" ] || { log "no readable $HE_WORKSPACE_DIR/instruction.md"; exit 2; }
   [ "$stopping" -eq 0 ] || { log "stopped by SIGTERM before the turn"; exit 2; }
-  run_turn "$HE_LOG_DIR/run" "$HE_WORKSPACE_DIR/instruction.md" "run:$HE_TRIAL_ID" "$HE_TIME_BUDGET_S" 60
+  run_turn "$HE_LOG_DIR/run" "$HE_WORKSPACE_DIR/instruction.md" "run:$HE_TRIAL_ID" "$HE_TIME_BUDGET_S" 60 "run:$HE_TRIAL_ID"
   case "$turn_code" in
     0) cat "$HE_LOG_DIR/run.reply.txt"; echo; log "completed" ;;
     124) log "wall clock exceeded (HE_TIME_BUDGET_S=$HE_TIME_BUDGET_S)" ;;
@@ -425,7 +579,7 @@ fs.renameSync(resp + ".tmp", resp);' "$@"
 }
 
 printf '{"harness":"claude-code","version":"%s","trial":"%s","ready_at":"%s","session_keys":"claude -p --session-id|--resume UUIDv5(dm:<member> | channel:<id>)","mcp_servers":"%s","adapter_sha256":"%s"%s}\n' \
-  "$claude_version" "$HE_TRIAL_ID" "$(now)" "${mcp_servers[*]}" "$adapter_sha256" "$official_minimal_json$gbrain_install_json" > "$HE_LOG_DIR/ready.tmp"
+  "$claude_version" "$HE_TRIAL_ID" "$(now)" "${mcp_servers[*]}" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do
@@ -434,15 +588,15 @@ while [ "$stopping" -eq 0 ]; do
     [ "$stopping" -eq 0 ] || break
     base=${req%.request.json}; name=$(basename "$base"); resp="$base.response.json"
     [ -e "$resp" ] && continue
-    read -r turn budget key < <(node -e '
+    read -r turn budget key window_key < <(node -e '
 const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
 let key = r.channel.type === "dm" ? "dm:" + r.actor.member : "channel:" + r.channel.id;
 if (r.thread_ts) key += ":t" + r.thread_ts;
-console.log([r.turn, r.time_budget_s || process.env.HE_TIME_BUDGET_S, key].join(" "));' "$req")
+console.log([r.turn, r.time_budget_s || process.env.HE_TIME_BUDGET_S, key, r.channel.id + (r.thread_ts ? ":" + r.thread_ts : "")].join(" "));' "$req")
     node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).prompt)' "$req" > "$HE_LOG_DIR/turns/$name.prompt.md"
     log "turn $turn: session $key, budget ${budget}s"
     started=$(now)
-    run_turn "$HE_LOG_DIR/turns/$name" "$HE_LOG_DIR/turns/$name.prompt.md" "$key" "$budget" 5
+    run_turn "$HE_LOG_DIR/turns/$name" "$HE_LOG_DIR/turns/$name.prompt.md" "$key" "$budget" 5 "$window_key"
     ended=$(now)
     write_response "$resp" "$turn" "$turn_code" "$HE_LOG_DIR/turns/$name.reply.txt" "$started" "$ended" "$turn_detail"
     log "turn $turn: exit $turn_code${turn_detail:+ ($turn_detail)}"

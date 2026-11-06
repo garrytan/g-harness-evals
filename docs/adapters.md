@@ -27,7 +27,7 @@ The runner sets these variables. An adapter must not require anything else.
 | `HE_TASK_SLICE` | `multiuser`, `work`, `continuity`, `coding` or `smoke`. Informational. |
 | `HE_TRIAL_ID` | The preallocated trial id. Used in log lines and as the harness's thread or session reference. |
 | `HE_SESSION_SCOPE` | `conversation` (default, absent unless the cell sets `session_scope`) or `turn`. Serve only. `turn` keys the harness session per turn (`turn:<NNNN>`) instead of per conversation: the memoryless contrast cell of the v0.2 pilot. Implemented by the OpenClaw adapter; Hermes and QM exit 2 on `turn` so a cell that asks for it never runs per-conversation sessions in silence. |
-| `HE_HARNESS_CONFIG` | The cell's `config` string, empty when the cell has none. Serve and run. QM reads it in `prepare.sh`: `pi` (default) runs QM as shipped; `pi-probe` adds a 5 s memory capture quiet time; `pi-strict` and `pi-command-deny` add an admin PUT before the first turn (`harnesses/qm/pin.json` `configs`); any other value exits 2. OpenClaw and Hermes read it as the instruction route: unset, empty or `default` changes nothing (byte-identical to the adapters before, `tests/instruction-route.test.ts`); `route-tool`, `route-system` (Hermes only; OpenClaw 2026.10.6 has no such setting), `route-startup`, `route-hook` and `route-skill` deliver `/opt/harness/routes/instruction.md` through the carrier [harnesses/routes/README.md](../harnesses/routes/README.md) names and record it in `$HE_LOG_DIR/instruction-route.json` and `ready.instruction_route`; any other value exits 2 (HE-ADAPTER-007). Claude Code and Codex read it as internal-task's ablation config: unset, empty or `default` adds nothing; `official-minimal` replaces the harness's own system prompt (Claude Code) or base instructions (Codex) with `ablation/official-minimal.txt`, checked against `pin.json` `official_minimal.sha256`; any other value exits 2 (HE-ADAPTER-007). H10's grammar for all four harnesses, `[<driver>+]<route>[@<slot_id>]`, is under "Route config" below. Harness Zero reads it as its set: `zero-min`, `zero-full` (unset or empty), `zero-full-no-<slug>` or a set in `harnesses/harness-zero/config/candidates.json`; any other value exits 2 before ready (HE-ZERO-001), and plan, dry-run and preflight refuse such a cell. |
+| `HE_HARNESS_CONFIG` | The cell's `config` string, empty when the cell has none. Serve and run. QM reads it in `prepare.sh`: `pi` (default) runs QM as shipped; `pi-probe` adds a 5 s memory capture quiet time; `pi-strict` and `pi-command-deny` add an admin PUT before the first turn (`harnesses/qm/pin.json` `configs`); any other value exits 2. OpenClaw and Hermes read it as the instruction route: unset, empty or `default` changes nothing (byte-identical to the adapters before, `tests/instruction-route.test.ts`); `route-tool`, `route-system` (Hermes only; OpenClaw 2026.10.6 has no such setting), `route-startup`, `route-hook` and `route-skill` deliver `/opt/harness/routes/instruction.md` through the carrier [harnesses/routes/README.md](../harnesses/routes/README.md) names and record it in `$HE_LOG_DIR/instruction-route.json` and `ready.instruction_route`; any other value exits 2 (HE-ADAPTER-007). Claude Code and Codex read it as internal-task's ablation config: unset, empty or `default` adds nothing; `official-minimal` replaces the harness's own system prompt (Claude Code) or base instructions (Codex) with `ablation/official-minimal.txt`, checked against `pin.json` `official_minimal.sha256`. All four harnesses (Claude Code on the cli driver) also read H10's grammar, `[<driver>+]<route>[@<slot_id>]`, under "Route config" below; on Claude Code and Codex any other value exits 2 (HE-ADAPTER-007). Harness Zero reads it as its set: `zero-min`, `zero-full` (unset or empty), `zero-full-no-<slug>` or a set in `harnesses/harness-zero/config/candidates.json`; any other value exits 2 before ready (HE-ZERO-001), and plan, dry-run and preflight refuse such a cell. |
 | `HE_WORKSPACE_DIR` | Optional, defaults to `/workspace`. Exists so the process-level conformance test can run an adapter outside a container. Runners never set it. |
 
 For `serve` the runner also sets:
@@ -101,7 +101,7 @@ Every adapter appends `:t<thread_ts>` to its session key when `TurnRequest.threa
 
 ### Route config (H10, internal-task)
 
-**Status: a contract, not yet built.** H10's adapter pull requests (2 to 4) implement it, and H10 PR 5 has the runner write the TurnWindow fields. Until an adapter implements a route, it refuses it with HE-ADAPTER-007. The route table per harness is in [harnesses/routes/README.md](../harnesses/routes/README.md), "Routes on four harnesses".
+**Status: built on all four harnesses: OpenClaw and Hermes (H10 PR 2), and Claude Code on the cli driver and Codex (H10 PR 3).** H10 PR 5 has the runner write the TurnWindow fields, and PR 4 brings the Claude Code Agent SDK drivers. Until an adapter implements a route, it refuses it with HE-ADAPTER-007. The route table per harness is in [harnesses/routes/README.md](../harnesses/routes/README.md), "Routes on four harnesses".
 
 **Grammar.** A cell's `config` reaches the adapter as `HE_HARNESS_CONFIG`, as today, so there is no new cell key and no runner change.
 
@@ -145,7 +145,10 @@ It is an exposure receipt only. The scorer never reads it to choose which turns 
 - `thread_ts`: the Slack thread ts the turn was posted in, or `null` for a top-level message.
 - `session_key`: `<channel id>`, or `<channel id>:<thread_ts>` in a thread.
 
-The metering proxy's usage line also gains two optional fields, `route_copies` (copies of the rule or placebo by location: `system`, `user`, `tool_result`, `history`) and `housekeeping`. They are declared now and written by H10 PR 5.
+The metering proxy's usage line also gains two optional fields, written only on a route cell's slot (runner/trial/routes.ts) when the run has a route cell, so every other line is byte-identical to before (`tests/metering-proxy-route-copies.test.ts`):
+
+- `route_copies`: copies of the rule or placebo in the forwarded request by location (`system`, `user` for the current member turn, `tool_result`, `history` for everything earlier), plus `listing`, copies of a skill description outside tool results. Counts only. `scripts/instruction-followed-h10.ts` reads discovery and load from them.
+- `housekeeping: true`: a request for a model other than the cell's own (a harness's utility model). It carries no `route_copies`, and count_tokens and refused lines carry neither field.
 
 ### gbrain beside world
 
@@ -224,6 +227,14 @@ The slot `t1` is bound with `$cred` first, as above.
 The same file also runs the shared `run` and `serve` assertions once per adapter that has a fixture: today `_fake` and `harness-zero`. A fixture supplies the model upstream, the workload (the prompt that makes a turn reply, pass its budget, fail at the model, fail in the harness or post through the world MCP) and the state layout the adapter keeps. The fake-only assertions above do not change. File-writing assertions stay fake-only, because Harness Zero has no file tools.
 
 ## Changelog
+
+### 2026-11-01: the proxy writes route copies and housekeeping (internal-task)
+
+"Route config" now says when the usage line carries `route_copies` (with its `listing` count) and `housekeeping`, and what each location means. Why: H10 PR 5 builds the proxy side of the contract, and the scorer reads discovery and load from it.
+
+### 2026-11-01: Claude Code and Codex read the route config (internal-task, H10 PR 3)
+
+The `HE_HARNESS_CONFIG` row and "Route config" say Claude Code (cli driver) and Codex now implement the grammar, the emit flag and the per-turn route status. Why: H10 PR 3 builds those two adapters.
 
 ### 2026-11-01: route config grammar, emit flag, per-turn route status and TurnWindow session fields
 

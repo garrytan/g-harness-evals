@@ -72,6 +72,7 @@
  *   bun runner/proxy/metering-proxy.ts --listen 172.17.0.1:8787 --budget-ledger <file> --lease-usd <n> --run-id <id>
  *     [--usage-log <file>] [--allow-models openai:gpt-4.1-mini,...] [--max-output-tokens 32768] [--free-count-tokens]
  *     [--forbidden-markers <file>] [--streaming meter|refuse] [--upstream openai=http://...] [--new-run] [--control-token <t>] [--ablation-log <file>] [--log-sections]
+ *     [--route-texts <file.json>]
  *   bun runner/proxy/metering-proxy.ts summary --budget-ledger <file> --run-id <id>
  *
  * One lease ledger can hold a cell's reruns: each run id is its own lease, the
@@ -84,12 +85,21 @@
  * request's byte partition and digests, read before the proxy changes the body) and `tools_called`, or
  * `sections_error` when they could not be read (runner/proxy/sections.ts). Neither changes what is forwarded, reserved
  * or charged, and neither writes request or response text.
+ *
+ * Route copies (internal-task, H10): with `--route-texts <file.json>` ({copies: [text, ...], listing: [text, ...]}) a slot bound
+ * with `routes: true` gets two more fields on each forwarded or failed usage line: `route_copies`, the occurrences of the
+ * `copies` texts (the rule and the placebo) in the request by where they sit (routeCopies), plus `listing`, the occurrences
+ * of the `listing` texts (skill descriptions) outside tool results; and `housekeeping: true` on a request for a model other
+ * than the slot's first bound model (a harness's own utility model), which carries no route_copies. count_tokens and
+ * refused lines never carry either. Counts only: no text from the request reaches the log. Without the flag, or on a slot
+ * bound without `routes`, every line is byte-identical to the proxy before this change.
  */
 import { appendFileSync, readFileSync } from 'node:fs';
 import { BudgetExceededError, BudgetRun, ledgerStatus, priceRequest, readBody, reservationUsd, sseIncomplete, sseUsage, usageCost, type BudgetAllowance } from '../ledger/budget-ledger.ts';
 
 export { sseIncomplete, sseUsage };
 import { findLeaks } from './sanitize.ts';
+import type { RouteCopies } from '../contracts.ts';
 import type { AblationBinding, AblationReceipt, AblationSpec } from './ablate.ts';
 import { requestSections, responseExtras, sectionRoute, type RequestSections } from './sections.ts';
 
@@ -153,16 +163,28 @@ export interface LeasePolicy {
   usageLog?: string;
   /** Forward POST /anthropic/v1/messages/count_tokens free (COUNT_TOKENS_ROUTE); off by default. */
   freeCountTokens?: boolean;
+  /** internal-task (H10): the texts whose copies a slot bound with `routes` counts (routeCopies). Unset, nothing is counted. */
+  routeTexts?: RouteTexts;
   /** Append-only per-request layer-filter receipts (ndjson, runner/proxy/ablate.ts); a bind with an ablation map is refused without it. */
   ablationLog?: string;
   /** internal-task: write sections and tools_called on forwarded chat lines (--log-sections); off by default. */
   logSections?: boolean;
 }
 
+/** internal-task (H10): `copies` are the rule and placebo bytes (harnesses/routes/instruction.md, placebo.md); `listing` the skill
+ *  descriptions a skill route lists (discovery). */
+export interface RouteTexts { copies: string[]; listing: string[] }
+
 export interface UsageLine {
   at: string; key: string; provider: string; route: string; model: string | null;
   outcome: 'forwarded' | 'refused' | 'failed';
   reason?: string; status?: number; reserved_usd?: number; actual_usd?: number; input_tokens?: number; output_tokens?: number; cached_tokens?: number; charged_reservation?: boolean; streamed?: boolean;
+  /** internal-task (H10), on a slot bound with `routes` under --route-texts: copies of the rule or placebo in the forwarded request by
+   *  location, plus `listing`, copies of a skill description outside tool results (routeCopies). Counts only. */
+  route_copies?: RouteCopies & { listing: number };
+  /** internal-task (H10), same slots: a request for a model other than the slot's first bound model, a harness housekeeping call
+   *  (shipped default model, metered, never scored). It carries no route_copies. */
+  housekeeping?: boolean;
   /** Usage-line schema v1, on every forwarded line: Anthropic cache_creation_input_tokens plus OpenAI input or prompt
    *  tokens detail cache_write_tokens, 0 when the provider reported none. The ablation tables read it as the cache write. */
   cache_write_tokens?: number;
@@ -216,6 +238,63 @@ function cachedTokens(usage: unknown): number | undefined {
   const u = usage as Record<string, any>;
   const n = (v: unknown) => (typeof v === 'number' ? v : 0);
   return n(u.cache_read_input_tokens) + n(u.prompt_tokens_details?.cached_tokens) + n(u.input_tokens_details?.cached_tokens);
+}
+
+/** Non-overlapping occurrences of each text in every string under `value` (strings, arrays and object values, recursively). */
+function occurrences(value: unknown, texts: readonly string[]): number {
+  if (typeof value === 'string') {
+    let n = 0;
+    for (const t of texts) { if (!t) continue; for (let i = value.indexOf(t); i >= 0; i = value.indexOf(t, i + t.length)) n++; }
+    return n;
+  }
+  if (Array.isArray(value)) return value.reduce((s: number, v) => s + occurrences(v, texts), 0);
+  if (value && typeof value === 'object') return Object.values(value).reduce((s: number, v) => s + occurrences(v, texts), 0);
+  return 0;
+}
+
+/** Whether a message's content holds a tool result (an Anthropic tool_result block). */
+const holdsToolResult = (content: unknown) => Array.isArray(content) && content.some((b) => (b as { type?: unknown } | null)?.type === 'tool_result');
+
+/**
+ * internal-task (H10): copies of the route texts in one request body, by where they sit. Anthropic Messages (`system`, `messages`),
+ * OpenAI Responses (`instructions`, `input`) and Chat Completions (`messages`) are read; any other body counts nothing.
+ *  - system: the system prompt (`system`, `instructions`, a system or developer message);
+ *  - tool_result: a tool's answer anywhere in the request (Anthropic tool_result blocks, a Responses `*_output` item, a Chat
+ *    Completions tool message);
+ *  - user: the current member turn, the trailing run of user messages that hold text and no tool result (the last such run
+ *    in the request), so a tool-call follow-up still reads the turn's own message as current;
+ *  - history: everything else, earlier user turns and assistant output;
+ *  - listing: copies of the listing texts in system, user and history (a skill description in the skills list).
+ */
+export function routeCopies(body: Record<string, unknown> | undefined, texts: RouteTexts): RouteCopies & { listing: number } {
+  const out = { system: 0, user: 0, tool_result: 0, history: 0, listing: 0 };
+  if (!body) return out;
+  const add = (where: 'system' | 'user' | 'tool_result' | 'history', value: unknown) => {
+    out[where] += occurrences(value, texts.copies);
+    if (where !== 'tool_result') out.listing += occurrences(value, texts.listing);
+  };
+  add('system', body.system);
+  add('system', body.instructions);
+  type Item = { role?: unknown; type?: unknown; content?: unknown };
+  const items: Item[] = typeof body.input === 'string' ? [{ role: 'user', content: body.input }]
+    : Array.isArray(body.input) ? body.input as Item[] : Array.isArray(body.messages) ? body.messages as Item[] : [];
+  const isUserText = (m: Item) => m?.role === 'user' && !holdsToolResult(m.content) && (typeof m.content === 'string' || Array.isArray(m.content));
+  let last = -1;
+  for (let i = items.length - 1; i >= 0 && last < 0; i--) if (isUserText(items[i]!)) last = i;
+  let first = last;
+  while (first > 0 && isUserText(items[first - 1]!)) first--;
+  items.forEach((m, i) => {
+    if (!m || typeof m !== 'object') return;
+    if (m.role === 'system' || m.role === 'developer') return add('system', m.content);
+    if (m.role === 'tool' || (typeof m.type === 'string' && m.type.endsWith('_output'))) return add('tool_result', m);
+    if (m.role === 'user' && holdsToolResult(m.content)) {
+      const blocks = m.content as Array<{ type?: unknown }>;
+      add('tool_result', blocks.filter((b) => b?.type === 'tool_result'));
+      return add('history', blocks.filter((b) => b?.type !== 'tool_result'));
+    }
+    add(i >= first && i <= last && last >= 0 ? 'user' : 'history', m);
+  });
+  return out;
 }
 
 /** The model id a Chat Completions response echoed (the body's `model`, or the last streamed chunk's), when it is a plain id. */
@@ -286,15 +365,16 @@ export class MeteringProxy {
   /** Slots whose provider requests are charged to a ledger allowance (slot builds), not one ledger entry each. */
   readonly allowances = new Map<string, BudgetAllowance>();
   readonly counts = { forwarded: 0, refused: 0, failed: 0, tripwires: 0 };
-  private bindings = new Map<string, { key: string; token: string | null; models: string[] | null; ablation: AblationBinding | null }>();
+  private bindings = new Map<string, { key: string; token: string | null; models: string[] | null; ablation: AblationBinding | null; routes?: boolean }>();
   private inflight = new Map<string, number>();
   private waiters = new Map<string, Array<() => void>>();
   /** `transform` (in-process mode) rewrites a response body after it is metered: a mutant that drops a model's output, for example. */
   constructor(private options: { fetchImpl?: typeof fetch; hostname?: string; port?: number; upstream?: Partial<Record<ProviderName, string>>; policy?: LeasePolicy; controlToken?: string | null; transform?: (slot: string, target: string, text: string) => string } = {}) {}
   get port(): number { return this.server!.port as number; }
   /** Charge the slot's provider requests to `key` (a cell id) from now on; with `token`, only requests presenting it; with `models`, only requests for those provider:model ids;
-   *  with `ablation` (lease mode), the bound layers are cut from every generation request (runner/proxy/ablate.ts). */
-  bind(slot: string, key: string, token: string | null = null, models: string[] | null = null, ablation: AblationBinding | null = null) { this.bindings.set(slot, { key, token, models, ablation }); }
+   *  with `ablation` (lease mode), the bound layers are cut from every generation request (runner/proxy/ablate.ts); with
+   *  `routes` (internal-task), count route copies on its usage lines when the proxy has route texts. */
+  bind(slot: string, key: string, token: string | null = null, models: string[] | null = null, ablation: AblationBinding | null = null, routes = false) { this.bindings.set(slot, { key, token, models, ablation, ...(routes ? { routes } : {}) }); }
   /** With `key`, only drops the binding if it is still that key: a released slot may already be bound to the next cell. */
   unbind(slot: string, key?: string) { if (key === undefined || this.bindings.get(slot)?.key === key) this.bindings.delete(slot); }
   private meter(key: string): Meter { let m = this.meters.get(key); if (!m) this.meters.set(key, m = newMeter()); return m; }
@@ -346,7 +426,7 @@ export class MeteringProxy {
         let streaming = false;
         try {
           const r = this.options.policy
-            ? await this.forwardLeased(req, prov, rest, url.search, key, send, () => { streaming = true; return () => this.settled(key); }, slot, binding?.models ?? null, binding?.ablation ?? null)
+            ? await this.forwardLeased(req, prov, rest, url.search, key, send, () => { streaming = true; return () => this.settled(key); }, slot, binding?.models ?? null, binding?.ablation ?? null, binding?.routes === true)
             : await this.forwardInProcess(req, slot, prov, rest, url.search, key, send);
           return r;
         } finally { if (!streaming) this.settled(key); }
@@ -364,7 +444,7 @@ export class MeteringProxy {
 
   private async control(path: string, req: Request): Promise<Response> {
     if (this.options.controlToken && req.headers.get('x-proxy-control') !== this.options.controlToken) return json(403, 'invalid_request', 'control endpoints need the x-proxy-control token');
-    let body: { slot?: string; key?: string; token?: string; models?: unknown; ablation?: unknown; timeout_ms?: number };
+    let body: { slot?: string; key?: string; token?: string; models?: unknown; ablation?: unknown; routes?: unknown; timeout_ms?: number };
     try { body = await req.json() as typeof body; } catch { return json(400, 'invalid_request', 'control body is not JSON'); }
     if (path === '/__proxy/bind' && body.slot && body.key) {
       if (body.models !== undefined && (!Array.isArray(body.models) || body.models.some(m => typeof m !== 'string' || !/^[a-z]+:[A-Za-z0-9._-]+$/.test(m)))) return json(400, 'invalid_request', 'bind models must be a list of provider:model ids');
@@ -374,7 +454,7 @@ export class MeteringProxy {
         try { ablation = (await import('./ablate.ts')).loadBinding(body.ablation as AblationSpec); }
         catch (e) { return json(400, 'invalid_request', `bind ablation refused: ${(e as Error).message}`); }
       }
-      this.bind(body.slot, body.key, typeof body.token === 'string' && body.token ? body.token : null, body.models === undefined ? null : body.models as string[], ablation);
+      this.bind(body.slot, body.key, typeof body.token === 'string' && body.token ? body.token : null, body.models === undefined ? null : body.models as string[], ablation, body.routes === true);
       return Response.json({ ok: true });
     }
     if (path === '/__proxy/unbind' && body.slot) { this.unbind(body.slot); return Response.json({ ok: true }); }
@@ -459,7 +539,7 @@ export class MeteringProxy {
   }
 
   /** Lease mode: allowlist, tripwire, output cap, price, reserve, inject the key, forward, settle. Every refusal happens before forwarding. */
-  private async forwardLeased(req: Request, prov: ProviderName, route: string, search: string, key: string, send: Send, beginStream: () => () => void, slot: string, slotModels: string[] | null, ablation: AblationBinding | null = null): Promise<Response> {
+  private async forwardLeased(req: Request, prov: ProviderName, route: string, search: string, key: string, send: Send, beginStream: () => () => void, slot: string, slotModels: string[] | null, ablation: AblationBinding | null = null, routes = false): Promise<Response> {
     const p = this.options.policy!;
     const at = new Date().toISOString();
     const refuse = (status: number, kind: string, reason: string, model: string | null = null) => {
@@ -534,10 +614,15 @@ export class MeteringProxy {
     const known = (v: unknown, values: readonly string[]) => (typeof v === 'string' && values.includes(v) ? v : undefined);
     const effort = known(body?.reasoning?.effort, REASONING_EFFORTS) ?? known(body?.reasoning_effort, REASONING_EFFORTS);
     const thinking = known(body?.thinking?.type, THINKING_TYPES), budget = body?.thinking?.budget_tokens;
+    // internal-task (H10): route copies ride with the knobs onto every forwarded or failed line of a routes slot, and only there.
+    const named = bounded?.model ?? model;
+    const housekeeping = !!named && !!slotModels?.length && slotModels[0] !== `${prov}:${named}`;
+    const routeFields = !routes || !p.routeTexts || !body ? {} : housekeeping ? { housekeeping: true } : { route_copies: routeCopies(body, p.routeTexts) };
     const knobs = {
       ...(effort !== undefined ? { reasoning_effort: effort } : {}),
       ...(thinking !== undefined ? { thinking_type: thinking } : {}),
       ...(Number.isSafeInteger(budget) && budget >= 0 ? { thinking_budget_tokens: budget as number } : {}),
+      ...routeFields,
     };
     /** `unfinished`: `cost` is the partial usage of a stream that ended before its final usage, charged at no less than the reservation.
      *  `response`: the parsed body, or a stream's text, which the usage-line schema v1 fields are read from once the request is charged. */
@@ -639,6 +724,8 @@ export interface ProxyCliArgs {
   host: string; port: number; ledger: string; leaseUsd: number; runId: string; usageLog: string | null;
   allowModels: string[] | null; maxOutputTokens: number | null; forbiddenMarkers: string[]; streaming: 'meter' | 'refuse'; upstream: Partial<Record<ProviderName, string>>; newRun: boolean;
   controlToken: string | null; freeCountTokens: boolean; ablationLog: string | null; logSections: boolean;
+  /** internal-task (H10): --route-texts <file.json>, null without it. */
+  routeTexts: RouteTexts | null;
 }
 
 export function parseProxyArgs(argv: string[]): ProxyCliArgs {
@@ -659,12 +746,21 @@ export function parseProxyArgs(argv: string[]): ProxyCliArgs {
     upstream[prov as ProviderName] = base.replace(/\/$/, '');
   });
   const markersFile = one('--forbidden-markers');
+  const routeTextsFile = one('--route-texts');
+  let routeTexts: RouteTexts | null = null;
+  if (routeTextsFile) {
+    const t = JSON.parse(readFileSync(routeTextsFile, 'utf8')) as Partial<RouteTexts>;
+    const texts = (v: unknown) => Array.isArray(v) && v.every((s) => typeof s === 'string' && s.length > 0);
+    if (!texts(t.copies) || !texts(t.listing ?? [])) throw new Error('--route-texts must name a JSON file {"copies": [text, ...], "listing": [text, ...]} of non-empty strings');
+    routeTexts = { copies: t.copies!, listing: t.listing ?? [] };
+  }
   return {
     host: listen.slice(0, at), port, ledger, leaseUsd: Number(lease), runId, usageLog: one('--usage-log') ?? null,
     allowModels: one('--allow-models') ? one('--allow-models')!.split(',').map(s => s.trim()).filter(Boolean) : null,
     maxOutputTokens: one('--max-output-tokens') ? Number(one('--max-output-tokens')) : null,
     forbiddenMarkers: markersFile ? readFileSync(markersFile, 'utf8').split('\n').map(s => s.trim()).filter(Boolean) : [],
     streaming, upstream, newRun: argv.includes('--new-run'), freeCountTokens: argv.includes('--free-count-tokens'), logSections: argv.includes('--log-sections'), controlToken: one('--control-token') ?? process.env.SHOOTOUT_PROXY_CONTROL_TOKEN ?? null,
+    routeTexts,
     ablationLog: one('--ablation-log') ?? null,
   };
 }
@@ -672,7 +768,7 @@ export function parseProxyArgs(argv: string[]): ProxyCliArgs {
 export function startLeaseProxy(a: ProxyCliArgs, env: Record<string, string | undefined> = process.env): MeteringProxy {
   const lease = BudgetRun.openLease({ runId: a.runId, leaseUsd: a.leaseUsd, ledgerPath: a.ledger, runner: 'metering-proxy', maxOutputTokens: a.maxOutputTokens, newRun: a.newRun });
   const proxy = new MeteringProxy({ hostname: a.host, port: a.port, upstream: a.upstream, controlToken: a.controlToken,
-    policy: { lease, env, allowModels: a.allowModels, maxOutputTokens: a.maxOutputTokens ?? undefined, forbiddenMarkers: a.forbiddenMarkers, streaming: a.streaming, usageLog: a.usageLog ?? `${lease.ledgerPath}.usage.ndjson`, freeCountTokens: a.freeCountTokens, logSections: a.logSections, ...(a.ablationLog ? { ablationLog: a.ablationLog } : {}) } });
+    policy: { lease, env, allowModels: a.allowModels, maxOutputTokens: a.maxOutputTokens ?? undefined, forbiddenMarkers: a.forbiddenMarkers, streaming: a.streaming, usageLog: a.usageLog ?? `${lease.ledgerPath}.usage.ndjson`, freeCountTokens: a.freeCountTokens, logSections: a.logSections, ...(a.ablationLog ? { ablationLog: a.ablationLog } : {}), ...(a.routeTexts ? { routeTexts: a.routeTexts } : {}) } });
   proxy.start();
   return proxy;
 }

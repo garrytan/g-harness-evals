@@ -30,6 +30,7 @@ RUN npm install -g --prefix /opt/harness --allow-scripts=@anthropic-ai/claude-co
 
 COPY config/ /opt/harness/config/
 COPY ablation/ /opt/harness/ablation/
+COPY routes/ /opt/harness/routes/
 COPY adapter.sh pin.json /opt/harness/
 RUN chmod 0555 /opt/harness/adapter.sh && mkdir -p /workspace /harness-state
 

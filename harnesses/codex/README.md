@@ -23,7 +23,7 @@ The sandbox mode and the reasoning effort are named settings; Garry kept both on
 
 Every key was checked with `--strict-config` at this pin (`pin.json` `config_keys_confirmed`), and every turn runs with it.
 
-**Official-minimal (internal-task).** A cell with `config: "official-minimal"` (`HE_HARNESS_CONFIG`) adds `model_instructions_file` as the first top-level key of `config.toml`. It names `ablation/official-minimal.txt`, a byte copy of [harnesses/ablation/official-minimal.txt](../ablation/official-minimal.txt) that the adapter checks against `pin.json` `official_minimal.sha256`. At 0.165.0 on gpt-6 models the text replaces Codex's base instructions, the first developer message of the request (there is no `instructions` field). The tools item and the skills, multi-agent and environment messages stay. A container turn with the key runs under `--strict-config`. Unset, empty or `default` leaves `config.toml` byte-identical; any other value exits 2 (HE-ADAPTER-007). Tests: `tests/official-minimal.test.ts`.
+**Official-minimal (internal-task).** A cell with `config: "official-minimal"` (`HE_HARNESS_CONFIG`) adds `model_instructions_file` as the first top-level key of `config.toml`. It names `ablation/official-minimal.txt`, a byte copy of [harnesses/ablation/official-minimal.txt](../ablation/official-minimal.txt) that the adapter checks against `pin.json` `official_minimal.sha256`. At 0.165.0 on gpt-6 models the text replaces Codex's base instructions, the first developer message of the request (there is no `instructions` field). The tools item and the skills, multi-agent and environment messages stay. A container turn with the key runs under `--strict-config`. Unset, empty or `default` leaves `config.toml` byte-identical. Any other value must be an H10 route (below), or the adapter exits 2 (HE-ADAPTER-007). Tests: `tests/official-minimal.test.ts`.
 
 **Exit mapping.** 0 when codex exits 0 with `turn.completed`. 124 when the budget runs out: the turn runs under `setsid`, the adapter signals its process group, then kills every process the turn started. 3 when `turn.failed` carries an HTTP status, or says `Connection failed: error sending request` (the proxy unreachable after the retries; Claude Code and Hermes map that to 3 too). Codex 0.165.0 prints most statuses as `unexpected status NNN`, a 400 as the raw error body and a 500 as "We're currently experiencing high demand". 2 for anything else, including an MCP transport error and a CLI version other than the pin.
 
@@ -37,11 +37,31 @@ Every key was checked with `--strict-config` at this pin (`pin.json` `config_key
 - **Network.** With plugins on, Codex calls chatgpt.com and three other hosts at startup. With this config the only connections are the proxy and the MCP servers. Every Codex cell runs on the internal network anyway: preregistration refuses one without `network: "internal"` (HE-NET-001). The serve smoke there passes (`tests/internal-network-harnesses.test.ts`).
 - **Skills.** A skill goes in `$CODEX_HOME/skills/<name>/SKILL.md`, and `$<name>` in the prompt invokes it.
 
+## Instruction routes (H10)
+
+`HE_HARNESS_CONFIG` names the route that carries the 289-byte gbrain rule ([harnesses/routes/README.md](../routes/README.md), "Routes on four harnesses"). Unset, empty or `default` changes nothing: `config.toml` and every `codex` command line stay as they were (`tests/instruction-route-cc-codex.test.ts`).
+
+- **`route-tool`:** nothing written. The control.
+- **`route-system`:** `developer_instructions = <rule>` as a top-level key of `$CODEX_HOME/config.toml`, inserted before its first table.
+  - Codex 0.165.0 declares the key in `ConfigToml` (`codex-rs/config/src/config_toml.rs` at tag `rust-v0.165.0`: "Developer instructions inserted as a `developer` role message"), and the pinned binary loads it under `--strict-config`.
+  - The rule lands in a `developer` message near the top of the request's `input`, before the session's first prompt, once per request, `resume` included.
+  - `config/config.toml` itself is unchanged: the adapter writes the key only on a `route-system` cell, so every other cell's config stays byte-identical.
+- **`route-startup`:** `$CODEX_HOME/AGENTS.md`, the rule bytes alone. It lands in a `user` message before the first prompt, once per request.
+- **`route-skill`, `route-told`:** the `brain-first` skill in `$CODEX_HOME/skills/`. Only its listing is in the request until the model opens it. `route-told`'s sentence is in the cell's preamble, written by the runner.
+- **`route-hook`, `route-once`, `route-placebo`:** `$CODEX_HOME/hooks.json` holds one `UserPromptSubmit` group running `routes/he-route-hook.sh`, trusted by a `[hooks.state]` table appended to `config.toml`. The trust hash comes from `trust-hash.cjs`, the same helper the gbrain installer check uses. The script prints the rule (the placebo for `route-placebo`) as `additionalContext` when the adapter's emit flag says so: every turn, or only a session's first turn for `route-once`. Codex records it as a `developer` message right after the turn's prompt and keeps it in the thread's history on `resume`.
+- **Not run on Codex:** a driver prefix (Claude Code's only) and the slot routes (Claude Code only in H10).
+- **Records.** `$HE_LOG_DIR/instruction-route.json` and `ready.instruction_route`; each serve turn writes `turns/turn-NNNN.route.json` (`RouteTurnStatus`).
+- **Refusals (HE-ADAPTER-007, exit 2 before ready):** an unknown config, a driver prefix, a slot route, a route beside `HE_GBRAIN_INSTALL`, a rule or placebo file with another sha256, a destination that already exists, a `config.toml` that already sets `developer_instructions` or a `[hooks]` table, and a hook that does not print its bytes.
+
 ## Tests
 
 `bun test tests/codex-adapter.test.ts`, keyless. The process level runs the adapter against a stub `codex`. The container level builds the image and runs `serve` through the real metering proxy in lease mode into `tests/fixtures/fake-responses.ts`, with an in-process world.
 
 ## Changelog
+
+### 2026-11-01: instruction routes (internal-task, H10 PR 3)
+
+Added "Instruction routes (H10)": the adapter reads `HE_HARNESS_CONFIG` and runs every H10 route Codex supports, `route-system` through `developer_instructions`. The trust-hash computation moved into `trust-hash.cjs`, shared by the gbrain installer check and the hook routes. The image copies `routes/` and `trust-hash.cjs`. Why: H10 measures where an instruction must live on Codex with gpt-6.1-sol.
 
 ### 2026-11-02: the gbrain hook launcher (internal-task-a, internal-task-b)
 

@@ -177,6 +177,9 @@ describe('the multi-user trial loop in process mode', () => {
     expect(msg(t1!.reply_ts)?.thread_ts ?? null).toBeNull();
     expect(msg(t3!.reply_ts)?.thread_ts ?? null).toBeNull();
     expect(t1!.reply_text).not.toContain('new session');
+    // internal-task (H10): every TurnWindow carries its thread_ts and session key, the channel, or the channel and thread ts.
+    expect(ev.turns.map((t) => t.thread_ts)).toEqual([null, t2!.request_ts, null]);
+    expect(ev.turns.map((t) => t.session_key)).toEqual([t1!.channel, `${t2!.channel}:${t2!.request_ts}`, t3!.channel]);
   }, 60_000);
 
   test('no ready file within the timeout is an infra_error with HE-ADAPTER-002', async () => {

@@ -1,6 +1,8 @@
 // The turn loop: for each turn in task.toml, move the clock if asked, post the actor's message into the world
 // through the Slack mock with that actor's token, hand the harness a TurnRequest, wait for its TurnResponse,
 // post the reply as the bot, and record a TurnWindow with the event seqs that bracket the harness's work.
+// internal-task (H10): every TurnWindow also carries the turn's thread_ts and session_key (`<channel id>`, or
+// `<channel id>:<thread_ts>` for a turn that opened a thread), the session definition of harnesses/routes/README.md.
 
 import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -106,7 +108,8 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
     const ended_seq = o.world.lastSeq;
     const ended_wall = new Date().toISOString();
 
-    const base = { turn: n, actor: actor.member.id, slack_user_id: actor.slack_user_id, channel: channelId, channel_name: channelName, channel_type: channelType, text: turn.text, request_ts: ts, started_wall, ended_wall, started_seq, ended_seq };
+    const base = { turn: n, actor: actor.member.id, slack_user_id: actor.slack_user_id, channel: channelId, channel_name: channelName, channel_type: channelType, text: turn.text, request_ts: ts, started_wall, ended_wall, started_seq, ended_seq,
+      thread_ts: threadTs, session_key: threadTs ? `${channelId}:${threadTs}` : channelId };
     if (gone) {
       o.log(`turn ${n}: ${gone.message}`);
       record({ ...base, exit: gone.exit === 3 ? 3 : 2, reply_ts: null, reply_text: null });

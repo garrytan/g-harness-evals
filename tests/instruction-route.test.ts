@@ -32,6 +32,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { withCellModelDefaults } from './fixtures/model-defaults.ts';
 import { withTextImageMode } from './fixtures/hermes-image-mode.ts';
+import { parseTask } from '../runner/grade/task.ts';
+import { stream, toolNames } from './fixtures/fake-responses.ts';
+import { bundleSha256 } from '../scripts/routes/slot-check.ts';
+import { world } from './world-helpers.ts';
 
 const ROOT = join(import.meta.dir, '..');
 const BASE = '31a109a9c';
@@ -86,7 +90,7 @@ test.skipIf(!HAVE_BASE)('the adapter baselines in tests/fixtures/adapter-baselin
 });
 
 interface Run { exit: number | null; files: Map<string, Buffer>; ready: Record<string, any> | null; route: Record<string, any> | null; calls: string[][]; root: string; log: string }
-interface Opts { harness: Harness; entry: Entry; harnessDir?: string; config?: string; baseUrl?: string; env?: Record<string, string>; seed?: (root: string) => void; pathPrefix?: string }
+interface Opts { harness: Harness; entry: Entry; harnessDir?: string; config?: string; baseUrl?: string; env?: Record<string, string>; seed?: (root: string) => void; pathPrefix?: string; requests?: Array<Record<string, any>> }
 
 /** One adapter run on this host. Serve posts one turn after ready and stops on SIGTERM; run is one turn. */
 async function runAdapter(o: Opts): Promise<Run> {
@@ -116,13 +120,16 @@ async function runAdapter(o: Opts): Promise<Run> {
   } else {
     const child = spawn('bash', [adapter, 'serve'], { env, stdio: ['ignore', 'ignore', 'ignore'] });
     const exited = new Promise<number | null>(res => child.once('exit', code => res(code)));
-    const deadline = Date.now() + 30_000;
+    const deadline = Date.now() + 60_000;
     const wait = async (p: string) => { while (!existsSync(p) && child.exitCode === null && Date.now() < deadline) await Bun.sleep(50); };
     await wait(join(d.logs, 'ready'));
     if (child.exitCode === null) {
-      writeFileSync(join(d.turns, 'turn-0001.request.json.tmp'), JSON.stringify(REQUEST));
-      renameSync(join(d.turns, 'turn-0001.request.json.tmp'), join(d.turns, 'turn-0001.request.json'));
-      await wait(join(d.turns, 'turn-0001.response.json'));
+      for (const req of o.requests ?? [REQUEST]) {
+        const file = 'turn-' + String(req.turn).padStart(4, '0');
+        writeFileSync(join(d.turns, file + '.request.json.tmp'), JSON.stringify(req));
+        renameSync(join(d.turns, file + '.request.json.tmp'), join(d.turns, file + '.request.json'));
+        await wait(join(d.turns, file + '.response.json'));
+      }
       child.kill('SIGTERM');
     }
     exit = await Promise.race([exited, Bun.sleep(15_000).then(() => { child.kill('SIGKILL'); return null; })]);
@@ -194,10 +201,12 @@ describe('the instruction file and the image layout', () => {
     }
   });
 
-  test('the route-hook plugin template: one placeholder, the id in all three files, before_prompt_build returning prependContext', () => {
+  test('the hook-route plugin template: each placeholder once, the id in all three files, before_prompt_build returning prependContext only on emit=1', () => {
     const [index, manifest, pkg] = PLUGIN_FILES.map(p => readFileSync(join(ROOT, p), 'utf8'));
     expect(index!.split('"__HE_INSTRUCTION__"').length).toBe(2);
-    expect(index).toContain("api.on('before_prompt_build', () => ({ prependContext: RULE }))");
+    expect(index!.split('"__HE_EMIT_FLAG__"').length).toBe(2);
+    expect(index).toContain("api.on('before_prompt_build', () => (emit() ? { prependContext: TEXT } : undefined))");
+    expect(index).toContain("readFileSync(FLAG, 'utf8').trim() === 'emit=1'");
     expect(JSON.parse(manifest!).id).toBe('he-instruction-route');
     expect(JSON.parse(pkg!)).toMatchObject({ name: 'he-instruction-route', type: 'module', openclaw: { extensions: ['./index.js'] } });
   });
@@ -247,13 +256,16 @@ describe.skipIf(!NODE || !HAVE_PY)('default config: byte-identical to the adapte
   }
 });
 
-/** The workspace and state files a route run has that the default run does not, or with other bytes. */
+/** The workspace and state files a route run has that the default run does not, or with other bytes. state/he-route/ is the
+ *  adapter's per-turn session count and emit flag (internal-task), checked on its own in routed(). */
 function changed(route: Run, def: Run): Record<string, Buffer> {
   const out: Record<string, Buffer> = {};
-  for (const [rel, b] of route.files) if (/^(workspace|state)\//.test(rel) && !(def.files.get(rel)?.equals(b))) out[rel] = b;
-  for (const rel of def.files.keys()) if (/^(workspace|state)\//.test(rel) && !route.files.has(rel)) out[rel] = Buffer.from('<deleted>');
+  const counted = (rel: string) => /^(workspace|state)\//.test(rel) && !rel.startsWith('state/he-route/');
+  for (const [rel, b] of route.files) if (counted(rel) && !(def.files.get(rel)?.equals(b))) out[rel] = b;
+  for (const rel of def.files.keys()) if (counted(rel) && !route.files.has(rel)) out[rel] = Buffer.from('<deleted>');
   return out;
 }
+const HOOK_ROUTES = ['route-hook', 'route-once', 'route-placebo'];
 
 describe.skipIf(!NODE || !HAVE_PY)('each route writes exactly its bytes', () => {
   const defaults = new Map<string, Run>();
@@ -273,6 +285,16 @@ describe.skipIf(!NODE || !HAVE_PY)('each route writes exactly its bytes', () => 
     const { instruction_route: _, ...rest } = r.ready!;
     const { ...def } = (await defaultRun(h, baseUrl)).ready!;
     expect({ ...rest, ready_at: 0 }).toEqual({ ...def, ready_at: 0 });
+    // internal-task: the one serve turn is session dm:alice's first; its RouteTurnStatus and, on a hook route, the emit flag.
+    const emitted = HOOK_ROUTES.includes(route) ? true : null;
+    expect(JSON.parse(r.files.get('logs/turns/turn-0001.route.json')!.toString())).toEqual({ config: route, driver: 'cli', route, session_key: 'D0ALICE', session_turn: 1, emitted });
+    expect(JSON.parse(r.files.get('state/he-route/sessions.json')!.toString())).toEqual({ 'dm:alice': 1 });
+    expect(r.files.get('state/he-route/emit')?.toString()).toBe(emitted ? 'emit=1' : undefined);
+    if (h === 'hermes') {
+      expect(r.ready!.instruction_route).toMatchObject({ approvals: 'deny', tirith: 'absent' });
+      expect(JSON.parse(r.files.get('logs/hermes-security.json')!.toString())).toMatchObject({ approvals: { mode: 'smart', single_query_mode: 'deny' }, tirith: { present: false, pin_version: '0.4.2' } });
+      expect(JSON.parse(r.files.get('logs/turns/turn-0001.security.json')!.toString())).toEqual({ turn: 1, tool_results: 0, approval_cards: 0, blocked: [], gbrain_blocked: 0 });
+    }
     return { r, diff: changed(r, await defaultRun(h, baseUrl)) };
   };
 
@@ -300,7 +322,8 @@ describe.skipIf(!NODE || !HAVE_PY)('each route writes exactly its bytes', () => 
     const { r, diff } = await routed('openclaw', 'route-hook');
     const dir = 'state/openclaw/he-instruction-route/';
     expect(Object.keys(diff).sort()).toEqual([dir + 'index.js', dir + 'openclaw.plugin.json', dir + 'package.json']);
-    expect(JSON.parse(/const RULE = (".*");/.exec(diff[dir + 'index.js']!.toString())![1]!)).toBe(INSTRUCTION.toString());
+    expect(JSON.parse(/const TEXT = (".*");/.exec(diff[dir + 'index.js']!.toString())![1]!)).toBe(INSTRUCTION.toString());
+    expect(JSON.parse(/const FLAG = (".*");/.exec(diff[dir + 'index.js']!.toString())![1]!)).toBe(join(r.root, 'state', 'he-route', 'emit'));
     expect(diff[dir + 'package.json']).toEqual(readFileSync(join(ROOT, PLUGIN_FILES[2]!)));
     const plugin = join(r.root, dir.slice(0, -1));
     expect(r.calls.filter(c => c[0] === 'plugins' || c[0] === 'config')).toEqual([
@@ -337,7 +360,8 @@ describe.skipIf(!NODE || !HAVE_PY)('each route writes exactly its bytes', () => 
   test('hermes route-hook: the marked pre_llm_call block, the allowlist approving exactly its command, hooks doctor run', async () => {
     const { r, diff } = await routed('hermes', 'route-hook');
     expect(Object.keys(diff).sort()).toEqual(['state/hermes/config.yaml', 'state/hermes/shell-hooks-allowlist.json']);
-    const command = "/bin/echo '" + JSON.stringify({ context: INSTRUCTION.toString() }) + "'";
+    const routes = join(ROOT, 'harnesses', 'hermes', 'routes');
+    const command = ['/bin/sh', join(routes, 'he-route-hook.sh'), join(r.root, 'state', 'he-route', 'emit'), join(routes, 'instruction.md')].join(' ');
     const block = '\n# he:instruction-route:begin\nhooks:\n  pre_llm_call:\n    - command: ' + JSON.stringify(command) + '\n      timeout: 10\n# he:instruction-route:end\n';
     const def = (await defaultRun('hermes')).files.get('state/hermes/config.yaml')!.toString();
     const template = withCellModelDefaults('hermes', readFileSync(join(ROOT, 'harnesses', 'hermes', 'config', 'config.yaml'), 'utf8'), MODEL);
@@ -345,8 +369,8 @@ describe.skipIf(!NODE || !HAVE_PY)('each route writes exactly its bytes', () => 
     const allow = JSON.parse(diff['state/hermes/shell-hooks-allowlist.json']!.toString());
     expect(allow.approvals).toHaveLength(1);
     expect(allow.approvals[0]).toMatchObject({ event: 'pre_llm_call', command, script_mtime_at_approval: null });
-    expect(JSON.parse(command.slice("/bin/echo '".length, -1)).context).toBe(INSTRUCTION.toString());
     expect(r.calls).toContainEqual(['hooks', 'doctor']);
+    expect(r.files.get('logs/instruction-route.hermes.log')!.toString()).toContain('produced valid JSON on synthetic payload');
     expect(r.ready!.instruction_route.hook).toBe('healthy');
   }, 60_000);
 });
@@ -434,6 +458,152 @@ describe.skipIf(!NODE || !HAVE_PY)('hermes model.default (internal-task)', () =>
     expect(config).toContain('  default: "other-model"\n');
     expect(config).not.toContain('claude-haiku-5-5');
   }, 60_000);
+});
+
+describe.skipIf(!NODE || !HAVE_PY)('H10 (internal-task): route-once, route-placebo, route-told and the slot routes on the host', () => {
+  const PLACEBO_SHA256 = 'b66810fe132a2a9988100dcd01a9c8a03665265ff01555f17cd9b1955047dd34';
+  const placebo = readFileSync(join(ROOT, 'harnesses', 'routes', 'placebo.md'));
+  const seed = (h: Harness) => (h === 'hermes' ? seedSoul : undefined);
+  const refused = (r: Run, text: string) => {
+    expect(r.exit, r.log).toBe(2);
+    expect(r.ready).toBeNull();
+    expect(r.log).toContain('HE-ADAPTER-007');
+    expect(r.log).toContain(text);
+  };
+
+  test('the placebo copies in both build contexts are byte copies of harnesses/routes/placebo.md, and both adapters pin its sha256', () => {
+    expect(sha(placebo)).toBe(PLACEBO_SHA256);
+    for (const h of HARNESSES) {
+      expect(readFileSync(join(ROOT, 'harnesses', h, 'routes', 'placebo.md'))).toEqual(placebo);
+      expect(readFileSync(join(ROOT, 'harnesses', h, 'adapter.sh'), 'utf8')).toContain('PLACEBO_SHA256 = "' + PLACEBO_SHA256 + '"');
+    }
+  });
+
+  test('hermes he-route-hook.sh keeps no state: {"context": <bytes>} on emit=1, nothing on emit=0 or with no flag', () => {
+    const dir = mkdtempSync(join(tmp, 'hook-script-'));
+    const flag = join(dir, 'emit');
+    const run = () => spawnSync('/bin/sh', [join(ROOT, 'harnesses', 'hermes', 'routes', 'he-route-hook.sh'), flag, join(ROOT, 'harnesses', 'hermes', 'routes', 'placebo.md')],
+      { input: '{"hook_event_name":"pre_llm_call"}', encoding: 'utf8', env: { PATH: '/usr/local/bin:/usr/bin:/bin' } });
+    expect(run().stdout).toBe('');
+    writeFileSync(flag, 'emit=1');
+    expect(JSON.parse(run().stdout)).toEqual({ context: placebo.toString('utf8') });
+    writeFileSync(flag, 'emit=0');
+    const r = run();
+    expect([r.status, r.stdout]).toEqual([0, '']);
+  });
+
+  test('hermes run entry: each hook route fires its bytes on the single-shot turn (#271 review, blocker 4)', async () => {
+    for (const config of ['route-hook', 'route-once', 'route-placebo']) {
+      const r = await runAdapter({ harness: 'hermes', entry: 'run', config, seed: seed('hermes') });
+      expect(r.exit, r.log).toBe(0);
+      const bytes = config === 'route-placebo' ? placebo : INSTRUCTION;
+      expect(JSON.parse(r.files.get('logs/stub-emit.jsonl')?.toString() ?? 'null')).toEqual({ emit: 'emit=1', context_sha256: [sha(bytes)] });
+    }
+  }, 120_000);
+
+  for (const h of HARNESSES) {
+    test(h + ' route-once and route-placebo: the route-hook carrier with the emit flag; placebo carries placebo.md', async () => {
+      for (const config of ['route-once', 'route-placebo']) {
+        const r = await runAdapter({ harness: h, entry: 'serve', config, seed: seed(h) });
+        expect(r.exit, r.log).toBe(0);
+        expect(r.ready!.instruction_route).toMatchObject({ route: config, instruction_sha256: INSTRUCTION_SHA256, hook: h === 'openclaw' ? 'loaded' : 'healthy' });
+        expect(r.route!.hook).toMatchObject({ emit_flag: join(r.root, 'state', 'he-route', 'emit'), emits: config === 'route-once' ? 'the first member turn of each session' : 'every member turn, the placebo bytes' });
+        expect(JSON.parse(r.files.get('logs/turns/turn-0001.route.json')!.toString())).toEqual({ config, driver: 'cli', route: config, session_key: 'D0ALICE', session_turn: 1, emitted: true });
+        const bytes = config === 'route-placebo' ? placebo : INSTRUCTION;
+        if (config === 'route-placebo') expect(r.route!.placebo).toMatchObject({ sha256: PLACEBO_SHA256, bytes: 289 });
+        if (h === 'openclaw') {
+          const index = r.files.get('state/openclaw/he-instruction-route/index.js')!.toString();
+          expect(JSON.parse(/const TEXT = (".*");/.exec(index)![1]!)).toBe(bytes.toString());
+        } else {
+          const block = r.files.get('state/hermes/config.yaml')!.toString();
+          expect(block).toContain(JSON.stringify(['/bin/sh', join(ROOT, 'harnesses', 'hermes', 'routes', 'he-route-hook.sh'), join(r.root, 'state', 'he-route', 'emit'), join(ROOT, 'harnesses', 'hermes', 'routes', config === 'route-placebo' ? 'placebo.md' : 'instruction.md')].join(' ')));
+        }
+        // The stub ran the installed hook on the turn: the flag said emit=1 and the hook returned the route's bytes.
+        expect(JSON.parse(r.files.get('logs/stub-emit.jsonl')!.toString())).toEqual({ emit: 'emit=1', context_sha256: [sha(bytes)] });
+      }
+    }, 120_000);
+
+    test(h + ' route-told: the route-skill skill, nothing else; the told sentence is the preamble\'s, not the adapter\'s', async () => {
+      const r = await runAdapter({ harness: h, entry: 'serve', config: 'route-told', seed: seed(h) });
+      expect(r.exit, r.log).toBe(0);
+      const path = h === 'openclaw' ? 'workspace/skills/brain-first/SKILL.md' : 'state/hermes/skills/brain-first/SKILL.md';
+      expect(r.files.get(path)).toEqual(SKILL_MD);
+      expect(r.route!.files.map((f: any) => f.path)).toEqual([join(r.root, path)]);
+      expect(r.route!.told).toContain("the cell's preamble file");
+      expect(JSON.parse(r.files.get('logs/turns/turn-0001.route.json')!.toString())).toMatchObject({ route: 'route-told', emitted: null });
+    }, 60_000);
+
+    test(h + ': the emit flag over cn-02, cr-01 and cn-03 for route-hook and route-once, turn by turn, matches each task\'s own sessions', async () => {
+      for (const task of GOLDEN_TASKS) {
+        const reqs = goldenRequests(task);
+        const n = sessionTurns(reqs);
+        for (const config of ['route-hook', 'route-once']) {
+          const r = await runAdapter({ harness: h, entry: 'serve', config, seed: seed(h), requests: reqs });
+          expect(r.exit, r.log).toBe(0);
+          const status = reqs.map((q) => JSON.parse(r.files.get('logs/turns/turn-000' + q.turn + '.route.json')!.toString()));
+          expect(status.map((s) => [s.session_key, s.session_turn])).toEqual(reqs.map((q, i) => [q.channel.id + (q.thread_ts ? ':' + q.thread_ts : ''), n[i]]));
+          const want = n.map((k) => config === 'route-hook' || k === 1);
+          expect(status.map((s) => s.emitted)).toEqual(want);
+          const fired = r.files.get('logs/stub-emit.jsonl')!.toString().trim().split('\n').map((l) => JSON.parse(l));
+          expect(fired).toEqual(want.map((e) => ({ emit: e ? 'emit=1' : 'emit=0', context_sha256: [e ? INSTRUCTION_SHA256 : null] })));
+        }
+      }
+    }, 300_000);
+
+    test(h + ': a driver prefix and a tampered placebo are refused', async () => {
+      refused(await runAdapter({ harness: h, entry: 'serve', config: 'sdk-preset+route-hook' }), 'only claude-code takes a driver prefix');
+      const dir = join(tmp, 'tampered-placebo-' + h);
+      cpSync(join(ROOT, 'harnesses', h), dir, { recursive: true });
+      writeFileSync(join(dir, 'routes', 'placebo.md'), Buffer.concat([placebo, Buffer.from(' ')]));
+      const r = await runAdapter({ harness: h, entry: 'serve', harnessDir: dir, config: 'route-placebo', seed: seed(h) });
+      refused(r, 'not the committed ' + PLACEBO_SHA256);
+      expect(r.route).toMatchObject({ status: 'error', code: 'HE-ADAPTER-007', files: [] });
+    }, 60_000);
+  }
+
+  test('openclaw: route-once, route-placebo, route-told and the slot routes are refused on the run entry', async () => {
+    for (const config of ['route-once', 'route-placebo', 'route-told', 'route-slot-skill@geva-fixture']) {
+      const r = await runAdapter({ harness: 'openclaw', entry: 'run', config });
+      refused(r, 'serve entry only');
+      expect([...r.files.keys()].filter((k) => !k.startsWith('logs/') && k !== 'workspace/instruction.md')).toEqual([]);
+    }
+  }, 60_000);
+
+  for (const h of HARNESSES) describe(h + ' slot routes', () => {
+    const skills = h === 'openclaw' ? 'workspace/skills/' : 'state/hermes/skills/';
+    /** The harness directory with a slot bundle byte-copied under routes/slots/<id>/, as H10 PR 6 does for Claude Code. */
+    function withSlot(edit?: (bundle: string) => void): string {
+      const dir = mkdtempSync(join(tmp, h + '-slot-'));
+      cpSync(join(ROOT, 'harnesses', h), dir, { recursive: true });
+      const bundle = join(dir, 'routes', 'slots', 'geva-fixture');
+      mkdirSync(join(bundle, 'skill', 'brain-first', 'references'), { recursive: true });
+      writeFileSync(join(bundle, 'skill', 'brain-first', 'SKILL.md'), SKILL_MD);
+      writeFileSync(join(bundle, 'skill', 'brain-first', 'references', 'notes.md'), 'Reference notes.\n');
+      writeFileSync(join(bundle, 'slot.json'), JSON.stringify({ slot_id: 'geva-fixture', owner: 'internal-task', skill_name: 'brain-first', description: 'Check GBrain first, before answering any turn.', told_sentence: 'Use the brain-first skill.', bundle_sha256: bundleSha256(bundle), source: 'garrytan/gstack-evals@0000000', notes: '' }));
+      edit?.(bundle);
+      return dir;
+    }
+    test('route-slot-skill and route-slot-told copy skill/<name>/ to the harness skill directory after the bundle_sha256 re-check', async () => {
+      for (const config of ['route-slot-skill@geva-fixture', 'route-slot-told@geva-fixture']) {
+        const dir = withSlot();
+        const r = await runAdapter({ harness: h, entry: 'serve', harnessDir: dir, config, seed: seed(h) });
+        expect(r.exit, r.log).toBe(0);
+        expect(r.files.get(skills + 'brain-first/SKILL.md')).toEqual(SKILL_MD);
+        expect(r.files.get(skills + 'brain-first/references/notes.md')!.toString()).toBe('Reference notes.\n');
+        expect(r.route!.slot).toMatchObject({ slot_id: 'geva-fixture', skill_name: 'brain-first', bundle_sha256: bundleSha256(join(dir, 'routes', 'slots', 'geva-fixture')) });
+        expect(r.ready!.instruction_route.route).toBe(config);
+        expect(JSON.parse(r.files.get('logs/turns/turn-0001.route.json')!.toString())).toMatchObject({ config, route: config.split('@')[0], emitted: null });
+      }
+    }, 60_000);
+    test('a missing bundle, a bundle whose files do not match bundle_sha256 and a malformed slot id are refused', async () => {
+      refused(await runAdapter({ harness: h, entry: 'serve', config: 'route-slot-skill@geva-fixture', seed: seed(h) }), 'no readable slot bundle geva-fixture');
+      const dir = withSlot((b) => writeFileSync(join(b, 'skill', 'brain-first', 'references', 'notes.md'), 'changed\n'));
+      const r = await runAdapter({ harness: h, entry: 'serve', harnessDir: dir, config: 'route-slot-skill@geva-fixture', seed: seed(h) });
+      refused(r, 'not slot.json');
+      expect(r.files.has(skills + 'brain-first/SKILL.md')).toBe(false);
+      refused(await runAdapter({ harness: h, entry: 'serve', config: 'route-slot-told@Bad_Id' }), 'needs @<slot_id>');
+    }, 60_000);
+  });
 });
 
 /** Async docker: the fake endpoint below serves from this event loop, so spawnSync would starve it. */
@@ -555,5 +725,189 @@ describe('where each route puts the instruction, over two turns and a tool-call 
       }
       console.log('SURFACE_COUNTS ' + h + ' ' + JSON.stringify(SURFACE_COUNTS[h]));
     }, 1_800_000);
+  }
+});
+
+// ---- H10 (internal-task) golden captures: the hook routes, the emit flag and history carry on gpt-6.1-sol ----------------------------
+
+/** cn-02 (a DM resume), cr-01 (three turns in one channel) and cn-03 (four session firsts, the last a new thread), the three session
+ *  patterns of harnesses/routes/README.md "Golden captures", as TurnRequests built from each task.toml the way runner/trial/turns.ts
+ *  builds them: a DM is the member's own DM channel, a channel turn its seed channel id, thread = "new" a new thread rooted at the
+ *  turn's own ts. The prompt is the turn's text alone (the preamble does not move where the route's bytes land). */
+const GOLDEN_TASKS = ['cn-02-tansleigh-packaging-deadline', 'cr-01-marrow-agrisupply-site-retraction', 'cn-03-marrow-agrisupply-site'] as const;
+const GOLDEN_MODEL = 'gpt-6.1-sol';
+const PLACEBO = readFileSync(join(ROOT, 'harnesses', 'routes', 'placebo.md'));
+function goldenRequests(task: string): Array<Record<string, any>> {
+  const t = parseTask(readFileSync(join(ROOT, 'tasks', 'multiuser', 'v0.3', 'dev', task, 'task.toml'), 'utf8'), task);
+  return t.turns.map((turn, i) => {
+    const m = world.members.find((x) => x.id === turn.actor)!;
+    const ts = '1790000' + String(100 + i) + '.000100';
+    const channel = turn.channel === 'dm' ? { id: 'D' + m.slack_id.slice(1), name: 'dm:' + m.id, type: 'dm' } : { id: world.channels.find((c) => c.name === turn.channel)!.id, name: turn.channel, type: 'channel' };
+    return { turn: i + 1, trial_id: 'golden-' + task, prompt: turn.text, actor: { member: m.id, slack_user_id: m.slack_id, name: m.name, role: m.role, team: m.team }, channel, text: turn.text, ts,
+      thread_ts: turn.thread === 'new' ? ts : null, sim_now: '2026-10-29T09:00:00-07:00', time_budget_s: 90 };
+  });
+}
+/** The session each turn opens or continues, and its 1-based place in it, from the task's own turn order (the scorer's definition). */
+function sessionTurns(reqs: Array<Record<string, any>>): number[] {
+  const seen = new Map<string, number>();
+  return reqs.map((r) => { const k = r.channel.id + (r.thread_ts ? ':' + r.thread_ts : ''); seen.set(k, (seen.get(k) ?? 0) + 1); return seen.get(k)!; });
+}
+
+/** A fake MCP server for both world (/world) and gbrain (/gbrain): tools search and get_page; every tools/call is counted by path. */
+function fakeMcp(host: string): { port: number; calls: Record<string, number>; stop: () => void } {
+  const calls: Record<string, number> = {};
+  const server = Bun.serve({ port: 0, hostname: host, idleTimeout: 0, async fetch(req) {
+    if (req.method !== 'POST') return new Response(null, { status: 405 });
+    const path = new URL(req.url).pathname;
+    const body = await req.json() as { id?: number; method?: string; params?: { protocolVersion?: string } };
+    if (body.id === undefined) return new Response(null, { status: 202 });
+    if (body.method === 'tools/call') calls[path] = (calls[path] ?? 0) + 1;
+    const result = body.method === 'initialize' ? { protocolVersion: body.params?.protocolVersion ?? '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'fake' + path.replace('/', '-'), version: '0' } }
+      : body.method === 'tools/list' ? { tools: ['search', 'get_page'].map((name) => ({ name, description: name + ' the brain', inputSchema: { type: 'object', properties: { query: { type: 'string' } } } })) }
+      : body.method === 'tools/call' ? { content: [{ type: 'text', text: 'No pages matched.' }] } : {};
+    return new Response('event: message\ndata: ' + JSON.stringify({ jsonrpc: '2.0', id: body.id, result }) + '\n\n', { headers: { 'content-type': 'text/event-stream' } });
+  } });
+  return { port: server.port as number, calls, stop: () => server.stop(true) };
+}
+
+interface GoldenRequest { turn: number; body: Record<string, any> }
+/** A fake OpenAI Responses endpoint on the bridge gateway. The first request of turn 1 that offers tools gets one gbrain search (the
+ *  tool directly, or the harness's tool_call bridge: on this provider both OpenClaw and Hermes defer MCP tools behind tool_search),
+ *  so turn 1 has a tool-call follow-up; every other request gets "ok". */
+function fakeGoldenModel(host: string): { port: number; requests: GoldenRequest[]; setTurn: (n: number) => void; stop: () => void } {
+  const requests: GoldenRequest[] = [];
+  let turn = 0, called = false;
+  const server = Bun.serve({ port: 0, hostname: host, idleTimeout: 0, async fetch(req) {
+    const url = new URL(req.url);
+    if (req.method !== 'POST' || !url.pathname.endsWith('/v1/responses')) return Response.json({ error: { type: 'invalid_request_error', message: 'no route ' + url.pathname } }, { status: 404 });
+    const body = await req.json() as Record<string, any>;
+    requests.push({ turn, body });
+    const names = toolNames(body);
+    let output: Array<Record<string, unknown>> = [{ type: 'message', id: 'msg_golden_' + requests.length, role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'ok', annotations: [] }] }];
+    const direct = names.find((n) => n.includes('gbrain') && n.endsWith('search'));
+    if (names.length && turn === 1 && !called && (direct || names.includes('tool_call'))) {
+      called = true;
+      // OpenClaw's tool_call takes {id, args} and names MCP tools <server>__<tool>; Hermes's takes {calls: [{name, arguments}]} and
+      // names them mcp__<server>__<tool>.
+      const bridge = (body.tools as any[]).find((t) => t?.name === 'tool_call');
+      const query = { query: 'Marrow Agrisupply' };
+      const [name, args] = direct ? [direct, query] : bridge?.parameters?.properties?.id ? ['tool_call', { id: 'gbrain__search', args: query }] : ['tool_call', { calls: [{ name: 'mcp__gbrain__search', arguments: query }] }];
+      output = [{ type: 'function_call', id: 'fc_golden_' + requests.length, call_id: 'call_golden_' + requests.length, name, arguments: JSON.stringify(args), status: 'completed' }];
+    }
+    return new Response(stream('resp_golden_' + requests.length, String(body.model ?? ''), output), { headers: { 'content-type': 'text/event-stream' } });
+  } });
+  return { port: server.port as number, requests, setTurn: (n) => { turn = n; if (n === 1) called = false; }, stop: () => server.stop(true) };
+}
+
+/** Copies of needle in one Responses request, by where they sit: system (instructions, system and developer items), user messages
+ *  (all of them, and current: the ones holding this turn's prompt; the rest are history), and tool results (function_call_output).
+ *  OpenClaw adds a runtime-context user message after the turn's own, so the turn's message is found by its text, not its place. */
+interface Where { system: number; user: number; current: number; tool_result: number }
+function where(body: Record<string, any>, needle: string, prompt: string): Where {
+  const count = (s: unknown) => (typeof s === 'string' ? s.split(needle).length - 1 : 0);
+  const text = (c: unknown): string => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((p: any) => (typeof p?.text === 'string' ? p.text : '')).join('\n') : '');
+  const out: Where = { system: count(body.instructions), user: 0, current: 0, tool_result: 0 };
+  for (const item of Array.isArray(body.input) ? body.input : typeof body.input === 'string' ? [{ role: 'user', content: body.input }] : []) {
+    if (item?.type === 'function_call_output') out.tool_result += count(typeof item.output === 'string' ? item.output : JSON.stringify(item.output));
+    else if (item?.role === 'system' || item?.role === 'developer') out.system += count(text(item.content));
+    else if (item?.role === 'user') { const t = text(item.content); out.user += count(t); if (t.includes(prompt)) out.current += count(t); }
+  }
+  return out;
+}
+
+const GOLDEN_ARMS: Record<Harness, string[]> = { openclaw: ['route-tool', 'route-hook', 'route-once', 'route-placebo', 'route-startup', 'route-skill'], hermes: ['route-tool', 'route-hook', 'route-once', 'route-placebo', 'route-system', 'route-startup', 'route-skill'] };
+/** What the goldens saw, printed per harness for harnesses/routes/README.md. */
+const GOLDEN_SEEN: Record<string, unknown> = {};
+
+describe('H10 golden captures on ' + GOLDEN_MODEL + ': cn-02, cr-01 and cn-03 with a gbrain tool-call follow-up (docker, the harness images; skipped without them)', () => {
+  async function trial(h: Harness, config: string, task: string) {
+    const gateway = spawnSync('docker', ['network', 'inspect', 'bridge', '--format', '{{(index .IPAM.Config 0).Gateway}}'], { encoding: 'utf8' }).stdout.trim();
+    const model = fakeGoldenModel(gateway);
+    const mcp = fakeMcp(gateway);
+    const reqs = goldenRequests(task);
+    const root = mkdtempSync(join(tmp, 'golden-' + h + '-' + config + '-'));
+    const d = { workspace: join(root, 'workspace'), state: join(root, 'state'), logs: join(root, 'logs'), turns: join(root, 'turns') };
+    for (const p of Object.values(d)) mkdirSync(p, { recursive: true });
+    const hd = join(ROOT, 'harnesses', h);
+    const name = 'he-golden-' + h + '-' + config + '-' + task.slice(0, 5) + '-' + process.pid;
+    const env: Record<string, string> = { HE_LOG_DIR: '/he-logs', HE_TURNS_DIR: '/he-turns', HE_TRIAL_ID: name, HE_TASK_SLICE: 'multiuser', HE_TIME_BUDGET_S: '90', HE_HARNESS_CONFIG: config,
+      HE_MODEL_BASE_URL: 'http://host.docker.internal:' + model.port + '/golden/openai', HE_MODEL_API_KEY: 'trial-token:golden.dummy', HE_MODEL_NAME: GOLDEN_MODEL,
+      HE_WORLD_MCP_URL: 'http://host.docker.internal:' + mcp.port + '/world', HE_WORLD_MCP_TOKEN: 'world-token-golden',
+      HE_GBRAIN_MCP_URL: 'http://host.docker.internal:' + mcp.port + '/gbrain', HE_GBRAIN_MCP_TOKEN: 'world-token-golden' };
+    const args = ['run', '-d', '--name', name, '--user', process.getuid!() + ':' + process.getgid!(), '--add-host', 'host.docker.internal:host-gateway',
+      '-v', d.workspace + ':/workspace', '-v', d.state + ':/harness-state', '-v', d.logs + ':/he-logs', '-v', d.turns + ':/he-turns',
+      '-v', join(hd, 'adapter.sh') + ':/opt/harness/adapter.sh:ro', '-v', join(hd, 'config') + ':/opt/harness/config:ro', '-v', join(hd, 'routes') + ':/opt/harness/routes:ro', '-v', join(hd, 'pin.json') + ':/opt/harness/pin.json:ro'];
+    for (const [k, v] of Object.entries(env)) args.push('-e', k + '=' + v);
+    await docker(['rm', '-f', name]);
+    const log = () => (existsSync(join(d.logs, 'adapter.log')) ? readFileSync(join(d.logs, 'adapter.log'), 'utf8').slice(-3000) : '(no adapter.log)');
+    try {
+      expect((await docker([...args, 'harness-eval/' + h + ':dev', 'serve'])).status).toBe(0);
+      const deadline = Date.now() + 300_000;
+      while (!existsSync(join(d.logs, 'ready')) && Date.now() < deadline) await Bun.sleep(250);
+      expect(existsSync(join(d.logs, 'ready')), log()).toBe(true);
+      for (const r of reqs) {
+        model.setTurn(r.turn);
+        const file = 'turn-000' + r.turn;
+        writeFileSync(join(d.turns, file + '.request.json.tmp'), JSON.stringify(r));
+        renameSync(join(d.turns, file + '.request.json.tmp'), join(d.turns, file + '.request.json'));
+        while (!existsSync(join(d.turns, file + '.response.json')) && Date.now() < deadline) await Bun.sleep(250);
+        expect(JSON.parse(readFileSync(join(d.turns, file + '.response.json'), 'utf8')).exit, log()).toBe(0);
+      }
+      model.setTurn(0);
+    } finally {
+      await docker(['rm', '-f', name]);
+      model.stop();
+      mcp.stop();
+    }
+    const read = (p: string) => JSON.parse(readFileSync(join(d.logs, p), 'utf8'));
+    return { reqs, requests: model.requests, gbrainCalls: mcp.calls['/gbrain'] ?? 0, ready: read('ready'), status: reqs.map((r) => read('turns/turn-000' + r.turn + '.route.json')),
+      security: h === 'hermes' ? { trial: read('hermes-security.json'), turns: reqs.map((r) => read('turns/turn-000' + r.turn + '.security.json')) } : null };
+  }
+
+  for (const h of HARNESSES) {
+    for (const config of GOLDEN_ARMS[h]) {
+      test.skipIf(!haveImage(h))(h + ' ' + config + ': emitted per turn, copies by location on every request, history carry, the follow-up adds none', async () => {
+        const hook = HOOK_ROUTES.includes(config);
+        const needle = (config === 'route-placebo' ? PLACEBO : INSTRUCTION).toString('utf8');
+        const seen: Record<string, unknown> = {};
+        for (const task of GOLDEN_TASKS) {
+          const t = await trial(h, config, task);
+          const n = sessionTurns(t.reqs);
+          expect(t.ready.instruction_route).toMatchObject({ route: config, instruction_sha256: INSTRUCTION_SHA256 });
+          // The adapter's per-turn status agrees with the task's own session structure.
+          expect(t.status.map((s) => [s.session_key, s.session_turn])).toEqual(t.reqs.map((r, i) => [r.channel.id + (r.thread_ts ? ':' + r.thread_ts : ''), n[i]]));
+          expect(t.status.map((s) => s.emitted)).toEqual(n.map((k) => (!hook ? null : config === 'route-once' ? k === 1 : true)));
+          // The agent requests (the ones that offer tools); housekeeping calls are listed apart.
+          const agent = t.requests.filter((r) => toolNames(r.body).length > 0 && r.turn > 0);
+          const rows = agent.map((r) => { const prompt = t.reqs[r.turn - 1]!.prompt as string; return { turn: r.turn, session_turn: n[r.turn - 1]!, rule: where(r.body, INSTRUCTION.toString('utf8'), prompt), placebo: where(r.body, PLACEBO.toString('utf8'), prompt), follow_up: where(r.body, 'No pages matched.', prompt).tool_result > 0 }; });
+          expect(new Set(rows.map((r) => r.turn))).toEqual(new Set(t.reqs.map((r) => r.turn)));
+          expect(rows.some((r) => r.turn === 1 && r.follow_up), 'turn 1 has a tool-call follow-up carrying the gbrain result').toBe(true);
+          expect(t.gbrainCalls).toBeGreaterThanOrEqual(1);
+          for (const r of agent) expect(r.body.model).toBe(GOLDEN_MODEL);
+          for (const row of rows) {
+            const w = config === 'route-placebo' ? row.placebo : row.rule;
+            expect(w.tool_result).toBe(0);
+            if (config === 'route-placebo') expect(row.rule.system + row.rule.user + row.rule.tool_result).toBe(0);
+            if (config === 'route-hook' || config === 'route-placebo') { expect(w.system).toBe(0); expect([w.user, w.current]).toEqual([row.session_turn, 1]); }
+            else if (config === 'route-once') { expect(w.system).toBe(0); expect([w.user, w.current]).toEqual([1, row.session_turn === 1 ? 1 : 0]); }
+            else { expect(w.user).toBe(0); expect(w.system).toBe(config === 'route-system' || config === 'route-startup' ? 1 : 0); }
+          }
+          if (t.security) {
+            expect(t.security.trial.tirith).toMatchObject({ present: true, version: 'tirith 0.4.2', matches_pin: true, offline: '1' });
+            expect(t.security.trial.approvals).toMatchObject({ mode: 'smart', single_query_mode: 'deny' });
+            expect(t.ready.instruction_route).toMatchObject({ approvals: 'deny', tirith: '0.4.2' });
+            expect(t.security.turns[0]).toMatchObject({ approval_cards: 0, blocked: [], gbrain_blocked: 0 });
+            expect(t.security.turns[0].tool_results).toBeGreaterThanOrEqual(1);
+          }
+          const housekeeping = t.requests.filter((r) => toolNames(r.body).length === 0);
+          const sent = agent[0]!.body;
+          seen[task] = { requests: rows.map((r) => { const w = config === 'route-placebo' ? r.placebo : r.rule; return [r.turn, r.session_turn, w.system, w.current, w.user - w.current, r.follow_up ? 1 : 0]; }),
+            emitted: t.status.map((s) => s.emitted), housekeeping: { requests: housekeeping.length, copies: housekeeping.reduce((a, r) => { const w = where(r.body, needle, ''); return a + w.system + w.user; }, 0) },
+            sent: { model: sent.model, reasoning: sent.reasoning ?? null, max_output_tokens: sent.max_output_tokens ?? null } };
+        }
+        GOLDEN_SEEN[h + ' ' + config] = seen;
+        console.log('GOLDEN ' + h + ' ' + config + ' ' + JSON.stringify(seen));
+      }, 1_800_000);
+    }
   }
 });

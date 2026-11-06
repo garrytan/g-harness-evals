@@ -32,6 +32,22 @@ import json, os, re, sys
 env = {k: v for k, v in sorted(os.environ.items()) if re.match(r"^(ANTHROPIC_|OPENAI_|OPENCLAW_|HOME$)", k)}
 print(json.dumps({"argv": sys.argv[1:], "env": env}))
 PY
+# internal-task: on a hook route (the adapter's emit flag exists) run the installed he-instruction-route plugin's before_prompt_build as
+# OpenClaw would for the turn and record the flag and the sha256 of the prependContext it returned (null for none) to
+# $HE_LOG_DIR/stub-emit.jsonl.
+plugin="${OPENCLAW_STATE_DIR:-}/he-instruction-route/index.js" flag="${HE_SESSION_STATE_DIR:-/harness-state}/he-route/emit"
+if [ -e "$flag" ] && [ -e "$plugin" ]; then
+  node --input-type=module -e '
+    const [plugin, flag] = process.argv.slice(1);
+    const { createHash } = await import("node:crypto");
+    const { readFileSync } = await import("node:fs");
+    const handlers = {};
+    (await import(plugin)).default.register({ on: (name, fn) => { handlers[name] = fn; } });
+    const out = await handlers.before_prompt_build({}, {});
+    const text = out && out.prependContext;
+    console.log(JSON.stringify({ emit: readFileSync(flag, "utf8"), context_sha256: [text ? createHash("sha256").update(text).digest("hex") : null] }));
+  ' "$plugin" "$flag" >> "$HE_LOG_DIR/stub-emit.jsonl"
+fi
 if [ "${2:-}" = exec ]; then
   printf '{"ok":true,"status":"ok","final":"ok","payloads":[{"text":"ok"}]}\n'
 else

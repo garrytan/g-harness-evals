@@ -534,6 +534,9 @@ export interface TrialRecord {
   laneb?: TrialLaneB;
   /** Prompt archaeology addition: set on a trial of a cell that carries ablation. */
   ablation?: TrialAblation;
+  /** internal-task (H10) addition: the digest of the harness's provenance manifest (runner/trial/provenance.ts provenanceDigest) at
+   *  the runner's checkout, on harnesses that have harnesses/<name>/provenance.json. preflight showed the image carries the same files. */
+  provenance_sha256?: string;
 }
 
 // ---- internal-task (H10) additions: instruction routes on four harnesses ---------------------------------------
@@ -605,7 +608,8 @@ export interface RouteTurnStatus {
 }
 
 /** internal-task (H10) addition to the metering proxy's usage line: copies of the rule (or the placebo) in one forwarded request, by
- *  where they sit. Counts only, never the text. Declared here, written by H10 PR 5. */
+ *  where they sit. Counts only, never the text. Written by runner/proxy/metering-proxy.ts routeCopies (H10 PR 5), which adds a
+ *  `listing` count (copies of a skill description outside tool results) beside these four. */
 export interface RouteCopies {
   system: number;
   user: number;

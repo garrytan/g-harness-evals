@@ -42,12 +42,18 @@
 // family meets, with power 0.8. Beside each projected difference: the fewest repetitions at the target task count, and the
 // fewest tasks at the target repetitions, that bring it to the threshold (15 points). Families default to the five v0.4
 // primary families; model, infrastructure and exam errors are excluded (methodology item 9).
+//
+//   bun scripts/paired-mdd.ts --h10 --task-set v0.3 --tasks <id,...> [options]
+//
+// H10 (internal-task): family A's minimum detectable difference by simulation on the preregistered tasks' session structure (9
+// repetition clusters and 10 placement clusters on the 10 H10 tasks), from stated assumed rates; see simulateMdd below.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { TrialRecord } from '../runner/contracts.ts';
-import { minimumDiscordantForSignificance, normalQuantile } from '../runner/stats/paired.ts';
+import { minimumDiscordantForSignificance, normalQuantile, seededRandom } from '../runner/stats/paired.ts';
 import { loadTask } from '../runner/grade/task.ts';
+import { structuralSessions } from './instruction-followed-h10.ts';
 import { taskDirFor } from '../runner/run.ts';
 import { ENDPOINTS, ENDPOINT_LABEL, endpointValue, type Endpoint } from './gbrain-ladder.ts';
 
@@ -68,6 +74,81 @@ export function designMdd(p: number, design: { tasks: number; reps: number } = L
   if (g < 2 || p <= 0 || p >= 1) return { se_null: null, mdd: null };
   const se = Math.sqrt((g / (g - 1)) * (2 * p * (1 - p)) / n);
   return { se_null: se, mdd: (normalQuantile(1 - alpha / 2) + normalQuantile(power)) * se };
+}
+
+// internal-task (H10): the minimum detectable difference of family A (and, from a stated control rate, of a family B contrast) on the
+// real session structure of the preregistered tasks, by simulation, because no data exists for the one-time hook at frontier.
+//
+//   bun scripts/paired-mdd.ts --h10 --task-set v0.3 --tasks <id,...> [--split dev] [--reps 1] [--repetition-pairs 4]
+//     [--placement-pairs 3] [--base-repetition 0.95] [--base-placement 0.9] [--alpha 0.025] [--power 0.8] [--sims 1000]
+//     [--seed 7] [--family-b <control rate>[,<rate>...] --family-b-alpha 0.0071]
+//
+// Structure: each task's member turns and repeat turns (session_turn 2 or more) from its own turn order
+// (scripts/instruction-followed-h10.ts structuralSessions), times --reps. Assumption, printed with the table: in each pair the
+// comparator arm (route-hook for repetition, route-system for placement, route-tool for family B) follows a turn with the base
+// rate and the other arm with the base rate minus the effect (plus it, for family B), each turn independent given the arm.
+// Test: the scorer's (per task, each pair's mean difference, the mean over pairs, the exact two-sided sign-flip test over tasks),
+// rejecting at --alpha (Holm's first step for a family of two: 0.025). The MDD is the smallest effect on a one-point grid whose
+// simulated power reaches --power; null when none up to the base rate does. Tasks with no repeat turn add no cluster to
+// repetition (cn-03), which is why it has 9 clusters on the 10 tasks.
+
+export interface H10Structure { task: string; turns: number; repeat_turns: number }
+
+/** Each task's member turns and repeat turns from its task.toml (the scorer's structural sessions). */
+export function h10Structure(tasks: string[], cell: { task_set?: string; split: 'dev' | 'heldout' }, tasksRoot = 'tasks'): H10Structure[] {
+  return tasks.map((task) => {
+    const turns = loadTask(taskDirFor(cell, task, tasksRoot)).turns;
+    return { task, turns: turns.length, repeat_turns: structuralSessions(turns).filter((s) => s.session_turn >= 2).length };
+  });
+}
+
+/** Exact two-sided sign-flip p of the mean of per-cluster differences (all 2^g patterns). */
+export function exactSignFlipP(diffs: number[]): number {
+  const g = diffs.length;
+  if (!g || diffs.every((d) => d === 0)) return 1;
+  const observed = Math.abs(diffs.reduce((s, d) => s + d, 0));
+  let hits = 0;
+  for (let i = 0; i < 2 ** g; i++) {
+    let sum = 0;
+    for (let j = 0; j < g; j++) sum += ((i >>> j) & 1) ? -diffs[j]! : diffs[j]!;
+    if (Math.abs(sum) >= observed - 1e-12) hits++;
+  }
+  return hits / 2 ** g;
+}
+
+export interface SimulatedMdd { clusters: number; turns_per_pair: number; pairs: number; base: number; alpha: number; power: number; min_p: number; mdd: number | null; power_at: Record<string, number> }
+
+/** Simulated power of the pooled sign-flip test for an effect on the given per-task turn counts (tasks with 0 turns drop). */
+export function simulateMdd(turnsPerTask: number[], o: { pairs: number; base: number; alpha: number; power: number; sims: number; seed: number; direction?: -1 | 1 }): SimulatedMdd {
+  const counts = turnsPerTask.filter((n) => n > 0);
+  const rng = seededRandom(o.seed);
+  const dir = o.direction ?? -1;
+  const powerAt = (effect: number): number => {
+    const pb = Math.min(1, Math.max(0, o.base + dir * effect));
+    let rejected = 0;
+    for (let s = 0; s < o.sims; s++) {
+      const diffs = counts.map((n) => {
+        let total = 0;
+        for (let k = 0; k < o.pairs; k++) {
+          let d = 0;
+          for (let t = 0; t < n; t++) d += (rng() < pb ? 1 : 0) - (rng() < o.base ? 1 : 0);
+          total += d / n;
+        }
+        return total / o.pairs;
+      });
+      if (exactSignFlipP(diffs) <= o.alpha) rejected++;
+    }
+    return rejected / o.sims;
+  };
+  const room = dir < 0 ? o.base : 1 - o.base;
+  let mdd: number | null = null;
+  const curve: Record<string, number> = {};
+  for (let pt = 1; pt <= Math.round(100 * room); pt++) {
+    const p = powerAt(pt / 100);
+    if (pt % 10 === 0) curve[String(pt)] = p;
+    if (p >= o.power) { mdd = pt / 100; break; }
+  }
+  return { clusters: counts.length, turns_per_pair: counts.reduce((s, n) => s + n, 0), pairs: o.pairs, base: o.base, alpha: o.alpha, power: o.power, min_p: 2 / 2 ** counts.length, mdd, power_at: curve };
 }
 
 export const PRIMARY_FAMILIES = ['scope_isolation', 'shared_channel', 'org_security', 'handoff'];
@@ -241,6 +322,35 @@ if (import.meta.main && process.argv.includes('--project')) {
     `| Harness | Told-live cell | None cell | Tasks used (excluded) | Told-live | None | Mean difference | Between-task variance | Within-task variance | Projected SE | Projected MDD | Repetitions for ${thr} points at ${options.tasks} tasks | Tasks for ${thr} points at ${options.reps} repetitions |`,
     '|---|---|---|---|---|---|---|---|---|---|---|---|---|',
     ...table.map(({ a, b, p }) => `| ${p.harness} | ${a} | ${b} | ${p.tasks_used} (${p.tasks_excluded}) | ${rate(p.rate_a)} | ${rate(p.rate_b)} | ${pts(p.mean_difference)} | ${p.between_task_variance === null ? 'n/a' : p.between_task_variance.toFixed(4)} | ${p.within_task_variance === null ? 'n/a' : p.within_task_variance.toFixed(4)} | ${pts(p.se)} | ${pts(p.mdd)} | ${p.reps_needed ?? (p.mdd === null ? 'n/a' : `not reachable at ${options.tasks} tasks`)} | ${p.tasks_needed ?? 'n/a'} |`),
+  ].join('\n'));
+} else if (import.meta.main && process.argv.includes('--h10')) {
+  const arg = (name: string, fallback?: string): string | undefined => { const i = process.argv.indexOf(`--${name}`); return i >= 0 ? process.argv[i + 1] : fallback; };
+  const tasks = arg('tasks')?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
+  if (!tasks.length) { console.error('usage: bun scripts/paired-mdd.ts --h10 --task-set <set> --tasks <id,...> [--split dev] [--reps 1] [--repetition-pairs 4] [--placement-pairs 3] [--base-repetition 0.95] [--base-placement 0.9] [--alpha 0.025] [--power 0.8] [--sims 1000] [--seed 7] [--family-b <rate,...> --family-b-alpha <a>]'); process.exit(2); }
+  const reps = Number(arg('reps', '1'));
+  const structure = h10Structure(tasks, { task_set: arg('task-set'), split: (arg('split', 'dev') as 'dev' | 'heldout') });
+  const common = { power: Number(arg('power', '0.8')), sims: Number(arg('sims', '1000')), seed: Number(arg('seed', '7')) };
+  const alpha = Number(arg('alpha', '0.025'));
+  const rows: Array<{ contrast: string; m: SimulatedMdd; assumption: string }> = [];
+  const repetition = simulateMdd(structure.map((s) => s.repeat_turns * reps), { ...common, alpha, pairs: Number(arg('repetition-pairs', '4')), base: Number(arg('base-repetition', '0.95')) });
+  rows.push({ contrast: 'A: repetition (route-once minus route-hook, repeat turns)', m: repetition, assumption: `route-hook follows ${pct(repetition.base)} of repeat turns; route-once lower by the effect` });
+  const placement = simulateMdd(structure.map((s) => s.turns * reps), { ...common, alpha, pairs: Number(arg('placement-pairs', '3')), base: Number(arg('base-placement', '0.9')) });
+  rows.push({ contrast: 'A: placement (route-once minus route-system, all member turns)', m: placement, assumption: `route-system follows ${pct(placement.base)} of turns; route-once lower by the effect` });
+  for (const rate of (arg('family-b')?.split(',') ?? []).map(Number)) {
+    const m = simulateMdd(structure.map((s) => s.turns * reps), { ...common, alpha: Number(arg('family-b-alpha', '0.0071')), pairs: 1, base: rate, direction: 1 });
+    rows.push({ contrast: 'B: a route against its control (all member turns)', m, assumption: `the control follows ${pct(rate)} of turns; the route higher by the effect` });
+  }
+  function pct(x: number) { return `${(100 * x).toFixed(0)}%`; }
+  const pts = (x: number | null) => (x === null ? 'none up to the ceiling' : `${(100 * x).toFixed(0)} points`);
+  console.log([
+    `Minimum detectable difference for H10 (internal-task), simulated on the session structure of ${tasks.length} tasks (${arg('task-set') ?? 'v0.1'} ${arg('split', 'dev')}) at ${reps} repetition(s): ${common.sims} simulations per effect, seed ${common.seed}, power ${common.power}; per task the mean over pairs of each pair's mean difference, exact two-sided sign-flip test over tasks; turns independent given the arm (an assumption).`,
+    '',
+    '| Task | Member turns | Repeat turns |', '|---|---|---|',
+    ...structure.map((s) => `| ${s.task} | ${s.turns} | ${s.repeat_turns} |`),
+    `| all | ${structure.reduce((a, s) => a + s.turns, 0)} | ${structure.reduce((a, s) => a + s.repeat_turns, 0)} over ${structure.filter((s) => s.repeat_turns > 0).length} tasks |`,
+    '',
+    '| Contrast | Assumption | Task clusters | Turns per pair | Pairs | Alpha | Smallest possible p | Minimum detectable difference | Power at 10, 20, 30 points |', '|---|---|---|---|---|---|---|---|---|',
+    ...rows.map((r) => `| ${r.contrast} | ${r.assumption} | ${r.m.clusters} | ${r.m.turns_per_pair} | ${r.m.pairs} | ${r.m.alpha} | ${r.m.min_p.toFixed(4)} | ${pts(r.m.mdd)} | ${['10', '20', '30'].map((k) => (r.m.power_at[k] === undefined ? '-' : r.m.power_at[k]!.toFixed(2))).join(', ')} |`),
   ].join('\n'));
 } else if (import.meta.main && process.argv.includes('--ladder')) {
   const arg = (name: string, fallback?: string): string | undefined => { const i = process.argv.indexOf(`--${name}`); return i >= 0 ? process.argv[i + 1] : fallback; };

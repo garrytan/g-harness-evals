@@ -1,0 +1,1 @@
+Note: this conversation takes place in a team workspace. Messages come from several people, in direct messages and shared channels, and each one is shown with its sender and the channel it was posted in. Times are stated in the workspace's local time zone. This note repeats on every turn.

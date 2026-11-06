@@ -17,7 +17,21 @@
 - **Provider check.** The adapter exits 2 at startup, with the reason in `adapter.log`, unless `HE_MODEL_BASE_URL` ends in `/anthropic` (the runner's `<proxy>/<slot>/anthropic` route). The CLI speaks only the Messages API.
 - **Network.** It serves on the internal network: a turn through the proxy, a world-MCP call, no direct connection out (`tests/internal-network-harnesses.test.ts`).
 - **Skills** live at `$CLAUDE_CONFIG_DIR/skills/<name>/SKILL.md` and run as `/<name>` or through the Skill tool.
-- **Official-minimal (internal-task).** A cell with `config: "official-minimal"` (`HE_HARNESS_CONFIG`) passes `--system-prompt` with the fixed text in `ablation/official-minimal.txt` on every turn. That file is a byte copy of [harnesses/ablation/official-minimal.txt](../ablation/official-minimal.txt), and the adapter checks it against `pin.json` `official_minimal.sha256`. At 2.1.312 the text replaces the third system block, the CLI's own prompt. The billing header, the SDK identity line, the system-role message and the tool descriptions stay. Unset, empty or `default` changes nothing; any other value exits 2 (HE-ADAPTER-007). Tests: `tests/official-minimal.test.ts`.
+- **Official-minimal (internal-task).** A cell with `config: "official-minimal"` (`HE_HARNESS_CONFIG`) passes `--system-prompt` with the fixed text in `ablation/official-minimal.txt` on every turn. That file is a byte copy of [harnesses/ablation/official-minimal.txt](../ablation/official-minimal.txt), and the adapter checks it against `pin.json` `official_minimal.sha256`. At 2.1.312 the text replaces the third system block, the CLI's own prompt. The billing header, the SDK identity line, the system-role message and the tool descriptions stay. Unset, empty or `default` changes nothing. Any other value must be an H10 route (below), or the adapter exits 2 (HE-ADAPTER-007). Tests: `tests/official-minimal.test.ts`.
+
+## Instruction routes (H10)
+
+`HE_HARNESS_CONFIG` names the route that carries the 289-byte gbrain rule, `[<driver>+]<route>[@<slot_id>]` ([harnesses/routes/README.md](../routes/README.md), "Routes on four harnesses"). Unset, empty or `default` changes nothing: every file and every `claude` command line stay as they were (`tests/instruction-route-cc-codex.test.ts`).
+
+- **Driver.** This adapter runs the `cli` driver (`claude -p`), the default when the config names none. `sdk-preset` and `sdk-default` come with the Agent SDK driver (H10 PR 4); until then they exit 2.
+- **`route-tool`:** nothing written. The control.
+- **`route-system`:** `--append-system-prompt <rule>` on every turn, `--resume` included. The rule lands in the request's `system` field, once per request.
+- **`route-startup`:** `$CLAUDE_CONFIG_DIR/CLAUDE.md`, the rule bytes alone. It lands in the session's first user message, in the `<system-reminder>` block before the first prompt, once per request.
+- **`route-skill`, `route-told`:** the `brain-first` skill in `$CLAUDE_CONFIG_DIR/skills/`. Only its name and description are in the request until the model opens it. `route-told`'s sentence is in the cell's preamble, written by the runner.
+- **`route-hook`, `route-once`, `route-placebo`:** a `UserPromptSubmit` hook in `settings.json` runs `routes/he-route-hook.sh`. It prints the rule (the placebo for `route-placebo`) as `additionalContext` when the adapter's per-turn emit flag says so: every turn, or only a session's first turn for `route-once`. Claude Code puts it in a `system`-role message right after the turn's prompt and keeps it in the session's history on `--resume`. So the per-turn hook carries N copies on a session's turn N, and the one-time hook 1 copy on every later request.
+- **`route-slot-told@<id>`, `route-slot-skill@<id>`:** the slot bundle's skill from `routes/slots/<id>/`, copied to `$CLAUDE_CONFIG_DIR/skills/` after the adapter recomputes its `bundle_sha256`.
+- **Records.** `$HE_LOG_DIR/instruction-route.json` and `ready.instruction_route` name the route, the bytes' sha256, every file written and the hook check. Each serve turn writes `turns/turn-NNNN.route.json` (`RouteTurnStatus`: session key, session turn, emitted).
+- **Refusals (HE-ADAPTER-007, exit 2 before ready):** an unknown config, an SDK driver, a route beside `HE_GBRAIN_INSTALL`, a rule or placebo file with another sha256, a destination that already exists, a `settings.json` that is not the seed, a hook that does not print its bytes, and a slot bundle whose digest does not match.
 
 Exit mapping:
 
@@ -37,9 +51,13 @@ Keyless, against a fake Anthropic endpoint and through the metering proxy in lea
 - MCP tools are deferred behind `ToolSearch`; the model can still call `mcp__world__<tool>` by name.
 - The Bash tool refuses a standalone `sleep`.
 
-No paid trial has run on this harness yet.
+**Paid trials so far:** the 200 counted trials of run `host-harness-pilot-2026-10` ([report](../../docs/benchmarks/2026-10-30-host-harness-pilot/report.md)), on `claude-haiku-5-5` through the CLI (`claude -p`), in a no-brain cell and a gbrain `told` cell. No Agent SDK cell has run.
 
 ## Changelog
+
+### 2026-11-01: instruction routes on the cli driver (internal-task, H10 PR 3)
+
+Added "Instruction routes (H10)": the adapter reads `HE_HARNESS_CONFIG` and runs every H10 route on the `cli` driver, with the emit flag, the per-turn route status and the slot copy. The image copies `routes/` to `/opt/harness/routes/`. Replaced the stale "No paid trial has run on this harness yet" with the host-harness pilot's 200 Haiku trials. Why: H10 measures where an instruction must live on Claude Code with Opus 5.5.
 
 ### 2026-11-02: the gbrain hook launcher (internal-task-a, internal-task-b)
 

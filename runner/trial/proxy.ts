@@ -25,10 +25,10 @@
 // internal-task: a run of cells with log_sections starts the proxy with --log-sections and checks /__proxy/status says so before
 // any trial; sectionsSmokeProblems is the check the one-trial smoke runs on its usage log (bun runner/run.ts check-sections).
 
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
-import type { Meter, UsageLine } from '../proxy/metering-proxy.ts';
+import type { Meter, RouteTexts, UsageLine } from '../proxy/metering-proxy.ts';
 import { HOUSEKEEPING_FAMILY, type AblationReceipt, type AblationSpec, type Wire } from '../proxy/ablate.ts';
 import { sectionRoute } from '../proxy/sections.ts';
 import type { TrialAblation, TrialEmbeddingUsage, TrialUsage } from '../contracts.ts';
@@ -54,6 +54,9 @@ export interface RunProxyOptions {
   /** Capture mode: forward to these fake upstreams (the proxy's --upstream) and give the proxy dummy provider keys
    *  instead of `env`'s, keeping only PATH and HOME from it (runner/trial/capture.ts). */
   capture?: CaptureConfig;
+  /** internal-task (H10): count route copies on slots bound with `routes` (the proxy's --route-texts, written to <runDir>/route-texts.json).
+   *  Unset, the proxy's command line and every usage line are as before. */
+  routeTexts?: RouteTexts;
   /** internal-task: the proxy's --log-sections, from the cells' log_sections; start() refuses a proxy whose status disagrees. */
   logSections?: boolean;
   startTimeoutMs?: number;
@@ -120,6 +123,11 @@ export class RunProxy {
     if (ablationLog) args.push('--ablation-log', ablationLog);
     if (opts.logSections) args.push('--log-sections');
     for (const [provider, url] of Object.entries(opts.capture?.upstream ?? {})) args.push('--upstream', `${provider}=${url}`);
+    if (opts.routeTexts) {
+      const file = join(opts.runDir, 'route-texts.json');
+      writeFileSync(file, JSON.stringify(opts.routeTexts, null, 1) + '\n');
+      args.push('--route-texts', file);
+    }
     const proc = Bun.spawn(args, { stdin: 'ignore', stdout: logFd, stderr: logFd, env: proxyProcessEnv(opts) as Record<string, string> });
     const deadline = Date.now() + (opts.startTimeoutMs ?? 20_000);
     while (Date.now() < deadline) {
@@ -162,10 +170,11 @@ export class RunProxy {
 
   /** Charge the slot to `key`; with `token`, the proxy forwards only requests that present it; with `models` (provider:model
    *  ids), only requests for those models, inside the run-wide --allow-models; with `ablation`, the proxy
-   *  checks the map's sha256 (a mismatch fails the bind) and cuts the layers out of the slot's requests. */
-  bind(slot: string, key: string, token?: string, models?: string[], ablation?: AblationSpec) {
+   *  checks the map's sha256 (a mismatch fails the bind) and cuts the layers out of the slot's requests; with `routes`
+   *  (internal-task), the slot's usage lines carry route copies when the proxy has route texts. */
+  bind(slot: string, key: string, token?: string, models?: string[], ablation?: AblationSpec, routes = false) {
     if (ablation && this.ablationLog) this.ablationFrom.set(key, existsSync(this.ablationLog) ? statSync(this.ablationLog).size : 0);
-    return this.control('/__proxy/bind', { slot, key, ...(token ? { token } : {}), ...(models ? { models } : {}), ...(ablation ? { ablation } : {}) });
+    return this.control('/__proxy/bind', { slot, key, ...(token ? { token } : {}), ...(models ? { models } : {}), ...(ablation ? { ablation } : {}), ...(routes ? { routes } : {}) });
   }
   unbind(slot: string) { return this.control('/__proxy/unbind', { slot }); }
   finalize(key: string, timeoutMs = 30_000): Promise<Meter> { return this.control('/__proxy/finalize', { key, timeout_ms: timeoutMs }) as Promise<Meter>; }

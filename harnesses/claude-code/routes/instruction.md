@@ -1,0 +1,1 @@
+GBrain: before answering this turn, check GBrain first (`search` or `query` on the `gbrain` MCP server) for the people, companies, projects, meetings and decisions it touches. Results span every source it holds: use only what the current requester may see. Then answer and finish the task.

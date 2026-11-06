@@ -33,7 +33,7 @@ mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
 log() { printf '%s openclaw[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" | tee -a "$HE_LOG_DIR/adapter.log" >&2; }
 now() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
-# internal-task: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
+# HARN-5: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
 # preflight compares the same hash in the image with the checkout, HE-ADAPTER-005).
 adapter_sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)
 # config/ sits beside this file (/opt/harness in the image), so a checkout's adapter run on the host reads the checkout's templates.
@@ -45,20 +45,30 @@ case "$entry" in
   *) log "unknown entry point: $entry; 'run' and 'serve' are implemented"; exit 2 ;;
 esac
 
-# internal-task: HE_HARNESS_CONFIG (the cell's config) names the instruction route, applied below after the gbrain install. Unset,
+# HARN-15: HE_HARNESS_CONFIG (the cell's config) names the instruction route, applied below after the gbrain install. Unset,
 # empty or `default` changes nothing. A value that is not a route, a route OpenClaw has no setting for, or on the run entry a
-# route that writes into the task workspace (startup, skill) or a plugin its state dir would not see (hook) is refused here,
-# before anything is written.
+# route that writes into the task workspace (startup, skill, told) or a plugin its state dir would not see (the hook routes) is
+# refused here, before anything is written. HARN-18 (H10) adds route-once and route-placebo (the same hook, docs/adapters.md
+# "Emit flag") and route-told (the route-skill skill; the told sentence is in the cell's preamble, which the runner carries). The
+# slot routes route-slot-told@<id> and route-slot-skill@<id> take the bundle byte-copied under routes/slots/<id>/, its
+# bundle_sha256 re-checked here (harnesses/routes/slots/README.md). The grammar is [<driver>+]<route>[@<slot_id>]
+# (runner/contracts.ts parseRouteConfig); a driver prefix is Claude Code's only.
 instruction_route=${HE_HARNESS_CONFIG:-default}
+route_slot=''
 case "$instruction_route" in
-  default|route-tool|route-startup|route-hook|route-skill) ;;
+  default|route-tool|route-startup|route-hook|route-once|route-placebo|route-skill|route-told) ;;
+  route-slot-told@*|route-slot-skill@*)
+    route_slot=${instruction_route#*@}
+    [[ "$route_slot" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || { log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route needs @<slot_id> matching [a-z0-9][a-z0-9-]{0,62}"; exit 2; } ;;
   route-system) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=route-system is not supported: OpenClaw 2026.10.6 has no config setting that adds text to the system prompt (harnesses/routes/README.md)"; exit 2 ;;
-  *) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route is not an OpenClaw config (default, route-tool, route-startup, route-hook, route-skill)"; exit 2 ;;
+  *+*) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route names a driver; only claude-code takes a driver prefix (docs/adapters.md, \"Route config\")"; exit 2 ;;
+  *) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route is not an OpenClaw config (default, route-tool, route-startup, route-hook, route-once, route-placebo, route-skill, route-told, route-slot-told@<id>, route-slot-skill@<id>)"; exit 2 ;;
 esac
+route_name=${instruction_route%@*}
 if [ "$entry" = run ]; then
   case "$instruction_route" in
-    route-hook) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=route-hook is applied for the serve entry only; the run entry's state dir would not see the plugin"; exit 2 ;;
-    route-startup|route-skill) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route is applied for the serve entry only; on the run entry it would write into the task workspace"; exit 2 ;;
+    route-hook|route-once|route-placebo) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route is applied for the serve entry only; the run entry's state dir would not see the plugin"; exit 2 ;;
+    route-startup|route-skill|route-told|route-slot-told@*|route-slot-skill@*) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route is applied for the serve entry only; on the run entry it would write into the task workspace"; exit 2 ;;
   esac
 fi
 
@@ -68,10 +78,10 @@ export HOME="$HE_SESSION_STATE_DIR"
 export OPENCLAW_STATE_DIR="$HE_SESSION_STATE_DIR/openclaw"
 export OPENCLAW_CONFIG_PATH="$OPENCLAW_STATE_DIR/openclaw.json"
 mkdir -p "$OPENCLAW_STATE_DIR/exec"
-# internal-task: the provider is the cell model's prefix, which the runner puts in the proxy URL as its last path segment
+# HARN-13: the provider is the cell model's prefix, which the runner puts in the proxy URL as its last path segment
 # (<proxy>/<slot>/<provider>, runner/trial/proxy.ts baseUrlFor). An OpenAI cell gets config/openclaw.openai.json: OpenClaw's
 # bundled openai provider on its shipped Responses API at HE_MODEL_BASE_URL/v1, the utility model mapped to the cell model and
-# reasoning effort medium (pin.json model_openai). internal-task: a Particle cell (URL ending in /particle) gets config/openclaw.particle.json,
+# reasoning effort medium (pin.json model_openai). HARN-16: a Particle cell (URL ending in /particle) gets config/openclaw.particle.json,
 # OpenClaw's generic openai-completions provider at HE_MODEL_BASE_URL/v1 with the same mapping, an output cap of 128000 and the
 # memory indexer on keyword search (pin.json model_particle). Any other URL keeps the Anthropic config and turn arguments unchanged.
 provider=anthropic config_template=$harness_dir/config/openclaw.json
@@ -83,11 +93,11 @@ esac
 
 log "openclaw $(openclaw --version 2>/dev/null | head -1) model=$provider/$HE_MODEL_NAME budget=${HE_TIME_BUDGET_S}s entry=$entry"
 
-# internal-task, the install ladder (docs/gbrain-arm.md): under HE_GBRAIN_INSTALL=gbrain-docs or gbrain-installer the runner mounts the
+# HARN-5, the install ladder (docs/gbrain-arm.md): under HE_GBRAIN_INSTALL=gbrain-docs or gbrain-installer the runner mounts the
 # exported view of gbrain's install read-only at HE_GBRAIN_INSTALL_DIR (/he-gbrain-install) and names the split in HE_GBRAIN_SPLIT.
 # Before the harness starts, every file the view's manifest lists is checked against its sha256 and copied to where the gbrain
 # command would have written it: `gbrain skillpack scaffold --harness openclaw --workspace /workspace` (gbrain-docs; workspace/x to
-# /workspace/x, skills/ at this commit) or `gbrain setup openclaw --workspace /workspace --instructions-only` (gbrain-installer, internal-task;
+# /workspace/x, skills/ at this commit) or `gbrain setup openclaw --workspace /workspace --instructions-only` (gbrain-installer, GBRA-188;
 # workspace/AGENTS.md to /workspace/AGENTS.md, the brain-first block OpenClaw loads as a workspace bootstrap file, and at gbrain#7489's
 # per-turn-hook head state/gbrain/gbrain-turn-rule/* to $OPENCLAW_STATE_DIR/gbrain/gbrain-turn-rule/*, the hook-only plugin whose
 # before_prompt_build handler puts the rule next to every user turn); the manifest's install kind must equal HE_GBRAIN_INSTALL.
@@ -246,26 +256,34 @@ PY
   gbrain_install_json=$(printf ',"gbrain_install":{"status":"ok","install":"%s","files":%s,"view_digest":"%s","destinations":"%s"%s}' "$HE_GBRAIN_INSTALL" "$install_files" "$install_digest" "$install_dests" "$turn_hook_json")
 fi
 
-# internal-task, the instruction routes (harnesses/routes/README.md). One instruction text, routes/instruction.md beside this file
+# HARN-15, the instruction routes (harnesses/routes/README.md). One instruction text, routes/instruction.md beside this file
 # (/opt/harness/routes in the image; a byte copy of harnesses/routes/instruction.md, checked here against the sha256 the
 # preregistration cites), goes to OpenClaw through the route HE_HARNESS_CONFIG names. route-tool writes nothing: the gbrain MCP
 # tool descriptions stay the only carrier. route-startup writes the instruction as /workspace/AGENTS.md, the workspace
 # bootstrap file OpenClaw injects into the system prompt's Project Context. route-skill writes
 # /workspace/skills/brain-first/SKILL.md (a fixed short description, the instruction as the body), a workspace skill OpenClaw
-# lists in the system prompt. route-hook copies routes/he-instruction-route, a hook-only plugin whose before_prompt_build returns
-# the instruction as prependContext, to $OPENCLAW_STATE_DIR/he-instruction-route and installs it the way the gbrain turn-rule
-# plugin is installed above (plugins install --link, enable, allowConversationAccess); openclaw plugins inspect
-# he-instruction-route --runtime --json, kept as $HE_LOG_DIR/instruction-route.openclaw.json, must report it loaded and enabled
-# with before_prompt_build. A destination that already exists is refused. $HE_LOG_DIR/instruction-route.json records the route,
+# lists in the system prompt; route-told writes the same skill (its told sentence is in the cell's preamble, not here). The slot
+# routes copy the bundle's skill/<skill_name>/ from routes/slots/<id>/ to /workspace/skills/<skill_name>/ after re-checking its
+# bundle_sha256 (the full shape check is host-side, scripts/routes/slot-check.ts). The hook
+# routes (route-hook, route-once, route-placebo; HARN-18) copy routes/he-instruction-route, a hook-only plugin, to
+# $OPENCLAW_STATE_DIR/he-instruction-route with two placeholders filled: the route's bytes (routes/instruction.md, or
+# routes/placebo.md on route-placebo, each checked against its committed sha256) and the path of the emit flag
+# ($HE_SESSION_STATE_DIR/he-route/emit). Its before_prompt_build keeps no state: it returns the bytes as prependContext when the
+# flag reads emit=1 and nothing otherwise; the serve loop writes the flag before every member turn. The plugin is installed the
+# way the gbrain turn-rule plugin is installed above (plugins install --link, enable, allowConversationAccess); openclaw plugins
+# inspect he-instruction-route --runtime --json, kept as $HE_LOG_DIR/instruction-route.openclaw.json, must report it loaded and
+# enabled with before_prompt_build. A destination that already exists is refused. $HE_LOG_DIR/instruction-route.json records the route,
 # the instruction's sha256 and bytes, every file written with its sha256, and the hook status; any failure is HE-ADAPTER-007 and
 # exit 2 before ready. Default (unset, empty or default): nothing here runs and nothing is written.
 route_json=''
 if [ "$instruction_route" != default ]; then
   set +e
-  route_line=$(python3 - "$instruction_route" "$harness_dir/routes" "$HE_WORKSPACE_DIR" "$HE_LOG_DIR/instruction-route.json" <<'PY'
+  route_line=$(python3 - "$route_name" "$harness_dir/routes" "$HE_WORKSPACE_DIR" "$HE_LOG_DIR/instruction-route.json" "$HE_SESSION_STATE_DIR/he-route/emit" "$route_slot" <<'PY'
 import hashlib, json, os, sys
-route, routes, workspace, out = sys.argv[1:5]
+route, routes, workspace, out, emit_flag, slot = sys.argv[1:7]
 EXPECTED_SHA256 = "4a81cb9b35d6ad6f205723618f15e6c3dc66586cbb41f0ebc72141b74669230f"
+PLACEBO_SHA256 = "b66810fe132a2a9988100dcd01a9c8a03665265ff01555f17cd9b1955047dd34"
+HOOK_EMITS = {"route-hook": "every member turn", "route-once": "the first member turn of each session", "route-placebo": "every member turn, the placebo bytes"}
 SKILL_NAME, SKILL_DESCRIPTION = "brain-first", "Check GBrain first, before answering any turn."
 sha = lambda data: hashlib.sha256(data).hexdigest()
 rec = {"status": "error", "code": "HE-ADAPTER-007", "harness": "openclaw", "route": route, "instruction": {"path": os.path.join(routes, "instruction.md"), "sha256": None, "bytes": None}, "setting": None, "files": [], "hook": None, "error": None}
@@ -297,25 +315,60 @@ if route == "route-tool":
 elif route == "route-startup":
     rec["setting"] = "the workspace bootstrap file /workspace/AGENTS.md, the instruction bytes alone"
     put(os.path.join(workspace, "AGENTS.md"), text)
-elif route == "route-skill":
+elif route in ("route-skill", "route-told"):
     rec["setting"] = "a workspace skill /workspace/skills/%s/SKILL.md: frontmatter name and a fixed description, the instruction bytes as the body" % SKILL_NAME
     rec["skill"] = {"name": SKILL_NAME, "description": SKILL_DESCRIPTION}
+    if route == "route-told":
+        rec["told"] = "the same skill as route-skill; the told sentence is in the cell's preamble file, which the runner carries, not the adapter"
     put(os.path.join(workspace, "skills", SKILL_NAME, "SKILL.md"), ("---\nname: %s\ndescription: %s\n---\n\n" % (SKILL_NAME, SKILL_DESCRIPTION)).encode() + text + b"\n")
-elif route == "route-hook":
+elif route in ("route-slot-told", "route-slot-skill"):
+    bundle = os.path.join(routes, "slots", slot)
+    rec["slot"] = {"slot_id": slot, "bundle": bundle, "bundle_sha256": None, "skill_name": None}
+    try:
+        meta = json.load(open(os.path.join(bundle, "slot.json")))
+    except (OSError, ValueError) as e:
+        refuse("no readable slot bundle %s in the image (routes/slots/%s/slot.json): %s" % (slot, slot, e))
+    names = []
+    for d, _, fs in os.walk(bundle):
+        names += [os.path.relpath(os.path.join(d, f), bundle) for f in fs]
+    names = sorted((n for n in names if n != "slot.json"), key=lambda n: n.encode())
+    listing = "".join("%s  %s\n" % (sha(open(os.path.join(bundle, n), "rb").read()), n) for n in names)
+    rec["slot"].update(bundle_sha256=sha(listing.encode()), skill_name=meta.get("skill_name"))
+    if sha(listing.encode()) != meta.get("bundle_sha256"):
+        refuse("the slot bundle's files give bundle_sha256 %s, not slot.json's %s; rebuild the image from the checkout" % (sha(listing.encode()), meta.get("bundle_sha256")))
+    skill = meta.get("skill_name") or ""
+    prefix = os.path.join("skill", skill) + os.sep
+    if not skill or "/" in skill or skill.startswith(".") or not any(n.startswith(prefix) for n in names):
+        refuse("slot.json's skill_name %r names no skill/<name>/ directory in the bundle" % skill)
+    rec["setting"] = "the slot bundle %s: skill/%s/ copied to /workspace/skills/%s/ after its bundle_sha256 re-check%s" % (slot, skill, skill, "; the told sentence is in the cell's preamble" if route == "route-slot-told" else "")
+    for n in names:
+        if n.startswith(prefix):
+            put(os.path.join(workspace, "skills", skill, n[len(prefix):]), open(os.path.join(bundle, n), "rb").read())
+elif route in HOOK_EMITS:
     plugin = os.path.join(os.environ["OPENCLAW_STATE_DIR"], "he-instruction-route")
-    rec["setting"] = "the hook-only plugin he-instruction-route: before_prompt_build returns the instruction bytes as prependContext"
-    literal = json.dumps(text.decode("utf-8"))
+    payload = text
+    if route == "route-placebo":
+        rec["placebo"] = {"path": os.path.join(routes, "placebo.md"), "sha256": None, "bytes": None}
+        try:
+            payload = open(rec["placebo"]["path"], "rb").read()
+        except OSError as e:
+            refuse("no readable placebo file: %s" % e)
+        rec["placebo"].update(sha256=sha(payload), bytes=len(payload))
+        if sha(payload) != PLACEBO_SHA256:
+            refuse("the placebo file's sha256 is %s, not the committed %s; rebuild the image from the checkout" % (sha(payload), PLACEBO_SHA256))
+    rec["setting"] = "the hook-only plugin he-instruction-route: before_prompt_build returns the %s bytes as prependContext when the emit flag reads emit=1, on %s" % ("placebo" if route == "route-placebo" else "instruction", HOOK_EMITS[route])
     for name in ("package.json", "openclaw.plugin.json", "index.js"):
         try:
             data = open(os.path.join(routes, "he-instruction-route", name), "rb").read()
         except OSError as e:
             refuse("the plugin template is incomplete: %s" % e)
         if name == "index.js":
-            if data.count(b'"__HE_INSTRUCTION__"') != 1:
-                refuse("the plugin template's index.js does not carry the placeholder exactly once")
-            data = data.replace(b'"__HE_INSTRUCTION__"', literal.encode())
+            for marker, value in ((b'"__HE_INSTRUCTION__"', payload.decode("utf-8")), (b'"__HE_EMIT_FLAG__"', emit_flag)):
+                if data.count(marker) != 1:
+                    refuse("the plugin template's index.js does not carry the placeholder %s exactly once" % marker.decode())
+                data = data.replace(marker, json.dumps(value).encode())
         put(os.path.join(plugin, name), data)
-    rec["hook"] = {"plugin_dir": plugin, "status": "pending", "commands": ["openclaw plugins install --link %s --force --accept-capabilities" % plugin, "openclaw plugins enable he-instruction-route", "openclaw config set plugins.entries.he-instruction-route.hooks.allowConversationAccess true"]}
+    rec["hook"] = {"plugin_dir": plugin, "status": "pending", "emit_flag": emit_flag, "emits": HOOK_EMITS[route], "commands": ["openclaw plugins install --link %s --force --accept-capabilities" % plugin, "openclaw plugins enable he-instruction-route", "openclaw config set plugins.entries.he-instruction-route.hooks.allowConversationAccess true"]}
 rec.update(status="ok", code=None)
 write()
 print("ok %s %d" % (rec["instruction"]["sha256"], len(rec["files"])))
@@ -327,7 +380,7 @@ PY
   [ "$route_code" -eq 0 ] || exit 2
   read -r _ route_sha route_files <<< "$route_line"
   route_hook_json=''
-  if [ "$instruction_route" = route-hook ]; then
+  if [ "$instruction_route" = route-hook ] || [ "$instruction_route" = route-once ] || [ "$instruction_route" = route-placebo ]; then
     set +e
     route_err="$HE_LOG_DIR/instruction-route.openclaw.log"
     route_plugin="$OPENCLAW_STATE_DIR/he-instruction-route"
@@ -376,7 +429,7 @@ fi
 # A model error is a provider status, a proxy refusal, a rate limit or an auth
 # failure in the envelope or on stderr; everything else that fails is OpenClaw's.
 model_error_pattern='"status":\s*(401|402|403|404|429|5[0-9]{2})|metering proxy|rate.?limit|overloaded|api error|authentication|invalid.*api.?key|HTTP (401|402|403|404|429|5[0-9]{2})'
-# internal-task: a Particle cell uses this pattern unchanged, so a provider 400 is exit 2 as on every other cell. Plan decision 12
+# HARN-16: a Particle cell uses this pattern unchanged, so a provider 400 is exit 2 as on every other cell. Plan decision 12
 # (a Particle 400 with code invalid_value or unsupported_parameter is model_error) belongs to the runner, which reads the
 # metering proxy's record of the upstream status and code; OpenClaw's output does not carry error.code.
 
@@ -482,6 +535,38 @@ write_response() {
   ' "$resp" "$turn" "$code" "$reply_file" "$started" "$ended" "$detail"
 }
 
+# HARN-18 (H10), route cells only: before each member turn, count the turn in its session (the adapter's session key; a
+# session's first member turn is session_turn 1), write the emit flag the hook routes read (route-hook and route-placebo emit=1
+# on every turn, route-once emit=1 on session_turn 1 only, the temp file renamed into place) and the turn's RouteTurnStatus to
+# $HE_LOG_DIR/turns/<turn>.route.json: config, driver (cli), route, session_key in the TurnWindow form (<channel id>, or
+# <channel id>:<thread_ts> in a thread), session_turn and emitted (null off the hook routes). Arguments: request path, adapter
+# session key, turn name. Default cells never call it.
+route_turn() {
+  python3 - "$1" "$2" "$instruction_route" "$route_name" "$HE_SESSION_STATE_DIR/he-route" "$HE_LOG_DIR/turns/$3.route.json" <<'PY'
+import json, os, sys
+req, key, config, route, state, out = sys.argv[1:7]
+r = json.load(open(req))
+os.makedirs(state, exist_ok=True)
+def put(path, text):
+    with open(path + ".tmp", "w") as f:
+        f.write(text)
+    os.replace(path + ".tmp", path)
+sessions_path = os.path.join(state, "sessions.json")
+try:
+    sessions = json.load(open(sessions_path))
+except (OSError, ValueError):
+    sessions = {}
+sessions[key] = sessions.get(key, 0) + 1
+put(sessions_path, json.dumps(sessions, sort_keys=True))
+emitted = None
+if route in ("route-hook", "route-once", "route-placebo"):
+    emitted = route != "route-once" or sessions[key] == 1
+    put(os.path.join(state, "emit"), "emit=1" if emitted else "emit=0")
+session_key = r["channel"]["id"] + (":" + str(r["thread_ts"]) if r.get("thread_ts") else "")
+put(out, json.dumps({"config": config, "driver": "cli", "route": route, "session_key": session_key, "session_turn": sessions[key], "emitted": emitted}))
+PY
+}
+
 stopping=0
 trap 'stopping=1' TERM INT
 if [ "$HE_SESSION_SCOPE" = turn ]; then session_keys='agent:main:turn:<NNNN>'; else session_keys='agent:main:dm:<member> | agent:main:channel:<id>'; fi
@@ -501,6 +586,7 @@ while [ "$stopping" -eq 0 ]; do
       process.stdout.write([r.turn, r.time_budget_s || process.env.HE_TIME_BUDGET_S, key].join(" ") + "\n");
     ' "$req")
     log "turn $turn: session $key, budget ${budget}s"
+    [ "$instruction_route" = default ] || route_turn "$req" "$key" "$name"
     started=$(now)
     set +e
     serve_turn "$req" "$key" "$name" "$budget" &

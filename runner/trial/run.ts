@@ -24,6 +24,8 @@ import { DEFAULT_PREAMBLE_PATH, loadPreamble } from './task.ts';
 import { type CaptureConfig, captureDnsGapLine, captureLine, captureSummary } from './capture.ts';
 import { type GradeFn, appendRecord, loadGrader, runTrial, trialTermination } from './trial.ts';
 import { writeAtomic } from './harness.ts';
+import { checkoutProvenance } from './provenance.ts';
+import { routeTextsFor } from './routes.ts';
 
 export interface RunOptions {
   harnessMode: HarnessMode;
@@ -152,6 +154,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
         runId: manifest.run_id, runDir, ledgerPath: opts.ledgerPath ?? join(runDir, 'ledger.sqlite'), leaseUsd: opts.leaseUsd ?? manifest.spend_cap_usd,
         allowModels: [...new Set([...manifest.cells.flatMap(cellModels), ...embeddingModels])], maxOutputTokens: opts.maxOutputTokens,
         reachableFromContainers: docker || embeddingModels.length > 0, ...(network ? { gatewayAddress: network.gateway } : {}), env: opts.proxyEnv, newRun: opts.newLease, capture: opts.capture, logSections,
+        routeTexts: routeTextsFor(manifest.cells, opts.repoRoot),
         ...(manifest.cells.some((c) => c.ablation) ? { ablationLog: true } : {}),
       });
       log(`metering proxy on port ${proxy.port}, lease $${opts.leaseUsd ?? manifest.spend_cap_usd} in ${proxy.ledgerPath}${logSections ? ', log_sections on' : ''}`);
@@ -167,6 +170,9 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
         : await runTrial({ cell, trial, runDir, trialDir, proxy, grade, log, opts: {
           harnessMode: opts.harnessMode, adapter: opts.adapter, image: opts.image, gbrainImage: opts.gbrainImage ?? (cell.gbrain ? gbrainSetWorld([cell], join(opts.repoRoot ?? '.', 'tasks'))?.image : undefined), preamble: preambleFor(cell), worldPath: setWorldPath(cell, join(opts.repoRoot ?? '.', 'tasks')) ?? opts.worldPath, readyTimeoutS: opts.readyTimeoutS ?? 180,
           turnGraceS: opts.turnGraceS ?? 60, stopGraceS: opts.stopGraceS ?? 60, harnessEnv: opts.harnessEnv, captureDns: opts.capture?.dns ?? undefined, repoRoot: opts.repoRoot, ...(network ? { network } : {}) } });
+      // internal-task (H10): the harness's provenance-manifest digest (runner/trial/provenance.ts), on harnesses that have one.
+      const provenance = checkoutProvenance(cell.harness, opts.repoRoot);
+      if (provenance) record.provenance_sha256 = provenance.digest;
       appendRecord(runDir, record);
       records.push(record);
       log(`trial ${trial.id}: termination=${record.termination} grade=${record.grade} consent_violation=${record.consent_violation} wall_ms=${record.wall_ms}${record.usage ? ` usd=${record.usage.usd.toFixed(4)}` : ''}${record.cap_stop ? ' cap_stop' : ''}`);

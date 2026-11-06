@@ -69,6 +69,7 @@ import { corpusDigest, openingDiff, publicImageProblem, readJsonFile, readReceip
 import { insideGitTree } from '../scripts/sealed/custody.ts';
 import { heldoutSet, isSealed, readManifest } from '../scripts/seal-heldout.ts';
 import { sealedGuard } from './heldout/guard.ts';
+import { seededRandom } from './stats/paired.ts';
 import { GOLDEN_WIRES, type AblationSpec, loadBinding, wireOfModel } from './proxy/ablate.ts';
 import { setNames as zeroSetNames } from '../harnesses/harness-zero/zero.ts';
 
@@ -134,7 +135,9 @@ export interface Cell {
    *  route-skill (harnesses/routes/README.md). Claude Code and Codex accept default and official-minimal (prompt archaeology:
    *  the harness's own system prompt or base instructions replaced by harnesses/ablation/official-minimal.txt, through the
    *  adapter; a config value, not a layer of the ablation field). Harness Zero accepts its set names (internal-task,
-   *  harnesses/harness-zero/README.md; HE-ZERO-001 otherwise). The other harnesses ignore it. */
+   *  harnesses/harness-zero/README.md; HE-ZERO-001 otherwise). The other harnesses ignore it. internal-task (H10): on the four route
+   *  harnesses a config that parses as [<driver>+]<route>[@<slot_id>] (runner/contracts.ts parseRouteConfig) makes a route cell,
+   *  whose proxy slot counts route copies (runner/trial/routes.ts) and whose slot bundle preflight checks. */
   config?: string;
   repetitions: number;
   /** Planning ceiling, tokens in and out, used only to price the cap: per trial for single-shot slices,
@@ -298,11 +301,17 @@ export interface Prereg {
   minimum_v01: string[];
   /** Required when a cell runs a held-out split, unless the preregistration is on the legacy list (runner/heldout/openings.ts). */
   heldout?: HeldoutBlock;
+  /** internal-task (H10): the order trials run in, baked into manifest.json by plan (interleaveTrials). Absent, cell by cell as listed. */
+  order?: RunOrder;
   /** internal-task: the full gbrain commit this run's gbrain image is built at, when it is not gbrain/pin.json's (the pin stays the earlier
    *  run's). scripts/run-shard.sh builds the image at it, and preflight and run refuse an image that records another (HE-GBRAIN-016).
    *  Absent: the pin, as before. */
   gbrain_commit?: string;
 }
+
+/** internal-task (H10): `interleave-task` runs, repetition by repetition, the tasks in a seeded order and within each task its cells
+ *  in a seeded order, so a drift in the provider over a shard's hours falls on every cell alike. */
+export interface RunOrder { kind: 'interleave-task'; seed: number }
 
 export interface Trial {
   id: string;
@@ -329,6 +338,9 @@ export interface Manifest {
   trial_hours_at_cap: number;
   /** Sealed custody: the set whose held-out cells read the sealed root, and the opening receipt plan was given (and its sha256). */
   sealed?: { set: string; receipt_sha256: string; receipt: OpeningReceipt };
+  /** internal-task (H10): the preregistered order `trials` is already in. run dispatches trials in manifest order, so --resume
+   *  (which skips recorded trials) and --cells (which filters) keep it. */
+  order?: RunOrder;
   /** internal-task: the preregistration's gbrain_commit, copied at plan; present only when the preregistration names one. */
   gbrain_commit?: string;
   /** internal-task: a replication of a past held-out run (runner/heldout/replication.ts), planned from its registered prereg.json. */
@@ -420,6 +432,10 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
     }
   }
   if (!(prereg.spend_cap_usd > 0)) throw new RunnerError('HE-BUDGET-002', 'spend_cap_usd must be > 0; the cap is written into the preregistration, never passed ad hoc');
+  if (prereg.order !== undefined) {
+    const o = prereg.order as Partial<RunOrder> | null;
+    if (!o || typeof o !== 'object' || o.kind !== 'interleave-task' || !Number.isSafeInteger(o.seed) || Object.keys(o).some((k) => k !== 'kind' && k !== 'seed')) throw new RunnerError('HE-PREREG-008', `order must be {"kind": "interleave-task", "seed": <integer>} or absent (got ${JSON.stringify(prereg.order)})`);
+  }
   return { prereg, sha256: createHash('sha256').update(raw).digest('hex') };
 }
 
@@ -548,7 +564,26 @@ export function buildManifest(prereg: Prereg, sha256: string, now = new Date().t
     hours += (trials.filter((t) => t.cell === cell.id).length * (prereg.wall_clock_s[cell.slice] ?? 0)) / 3600;
   }
   const ceiling = +Object.values(perCell).reduce((a, b) => a + b, 0).toFixed(2);
-  return { schema_version: 1, run_id: prereg.run_id, prereg_sha256: sha256, created_at: now, cells: prereg.cells, trials, cost_ceiling_usd: ceiling, per_cell_ceiling_usd: perCell, spend_cap_usd: prereg.spend_cap_usd, trial_hours_at_cap: +hours.toFixed(1), ...(prereg.gbrain_commit ? { gbrain_commit: prereg.gbrain_commit } : {}) };
+  const ordered = prereg.order ? interleaveTrials(trials, prereg.cells.map((c) => c.id), prereg.order.seed) : trials;
+  return { schema_version: 1, run_id: prereg.run_id, prereg_sha256: sha256, created_at: now, cells: prereg.cells, trials: ordered, cost_ceiling_usd: ceiling, per_cell_ceiling_usd: perCell, spend_cap_usd: prereg.spend_cap_usd, trial_hours_at_cap: +hours.toFixed(1), ...(prereg.order ? { order: prereg.order } : {}), ...(prereg.gbrain_commit ? { gbrain_commit: prereg.gbrain_commit } : {}) };
+}
+
+/** internal-task (H10): the interleave-task order. For each repetition in ascending order, the tasks (sorted, then shuffled) and within
+ *  each task its trials (in cell order, then shuffled), all from one seeded generator (runner/stats/paired.ts seededRandom), so
+ *  the same preregistration gives the same order on every machine. */
+export function interleaveTrials(trials: Trial[], cellOrder: string[], seed: number): Trial[] {
+  const rng = seededRandom(seed);
+  const shuffle = <T>(xs: T[]): T[] => { for (let i = xs.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [xs[i], xs[j]] = [xs[j]!, xs[i]!]; } return xs; };
+  const byBytes = (a: string, b: string) => Buffer.compare(Buffer.from(a), Buffer.from(b));
+  const rank = (t: Trial) => cellOrder.indexOf(t.cell);
+  const out: Trial[] = [];
+  for (const rep of [...new Set(trials.map((t) => t.repetition))].sort((a, b) => a - b)) {
+    const mine = trials.filter((t) => t.repetition === rep);
+    for (const task of shuffle([...new Set(mine.map((t) => t.task))].sort(byBytes))) {
+      out.push(...shuffle(mine.filter((t) => t.task === task).sort((a, b) => rank(a) - rank(b) || byBytes(a.id, b.id))));
+    }
+  }
+  return out;
 }
 
 function listMutations(taskDir: string, cellId: string): Array<{ name: string; path: string }> {
@@ -583,6 +618,7 @@ export function renderPlan(m: Manifest): string {
     ];
     lines.push(`GBRAIN: cells ${cs.map((c) => c.id).join(', ')} run with a gbrain sidecar per trial (image ${DEFAULT_GBRAIN_IMAGE} unless --gbrain-image; ${label}: ${words.join('; ')}; docs/gbrain-arm.md)`);
   }
+  if (m.order) lines.push(`ORDER: ${m.order.kind} seed=${m.order.seed}: trials run repetition by repetition, tasks in a seeded order and each task's cells in a seeded order; --resume and --cells keep it`);
   for (const c of m.cells.filter(isQmMemoryProvider)) {
     const block = memoryProviderWiring({ mcpUrl: '<world /gbrain tap>', actor: '<the bot>', secret: '<per trial>' }).provider;
     const { clients, tokens, ...tap } = block;
@@ -600,7 +636,7 @@ export function loadManifest(path: string | undefined): { manifest: Manifest; pa
 /** The terminal lines a sealed plan, dry-run, preflight or run may print (runner/heldout/guard.ts): the plan's run, cell
  *  and gbrain lines, the opening and preflight lines, run-level counts and progress counts. Trial and turn lines, which
  *  name tasks, channels and grades, go to the log file only. */
-const SEALED_RUN_ALLOW = [/^(RUN|CELL|GBRAIN|HELDOUT|SEALED|MANIFEST|PREFLIGHT|ADAPTER): /, /^WARN: (HE-BUDGET-003|HE-PROXY-001|cell \S+ serves)/, /^run \S+: \d+ trials (to run|recorded)/, /^metering proxy on port/, /^progress: \d+ of \d+ trials/];
+const SEALED_RUN_ALLOW = [/^(RUN|CELL|GBRAIN|HELDOUT|SEALED|MANIFEST|PREFLIGHT|ADAPTER|PROVENANCE|ORDER|SLOT): /, /^WARN: (HE-BUDGET-003|HE-PROXY-001|cell \S+ serves)/, /^run \S+: \d+ trials (to run|recorded)/, /^metering proxy on port/, /^progress: \d+ of \d+ trials/];
 
 function installSealedGuard(sealed: SealedContext, logFile: string, label: string): void {
   sealedGuard({ root: sealed.root, set: sealed.set, repoRoot: process.cwd(), preregJson: sealed.receipt.prereg_json, logFile: resolve(logFile), allow: SEALED_RUN_ALLOW, label: `runner/run.ts ${label}` });
@@ -693,11 +729,35 @@ async function main(argv: string[]): Promise<number> {
     requireParticleCells(m.cells.filter((c) => c.harness_mode !== 'scripted'));
     // A harness image built before an adapter edit silently runs the old adapter; compare the image's adapter with the checkout.
     const dockerCells = m.cells.filter((c) => c.harness !== 'scripted' && (c.harness_mode ?? 'docker') === 'docker' && !existsSync(join('harnesses', c.harness, 'compose.yaml')));
+    // internal-task (H10): a harness with harnesses/<name>/provenance.json is compared file by file, and the digests and image ids go
+    // to preflight-provenance.json beside the manifest (merge-shards keeps it per shard) as receipts.
+    const receipts: Record<string, unknown> = {};
     for (const harness of [...new Set(dockerCells.map((c) => c.harness))]) {
       const image = flag('--image') ?? `harness-eval/${harness.replace(/^_/, '')}:dev`;
-      const { adapterProvenance } = await import('./trial/provenance.ts');
-      const p = await adapterProvenance(harness, image);
+      const { adapterProvenance, harnessProvenance, readProvenanceManifest } = await import('./trial/provenance.ts');
+      if (!readProvenanceManifest(harness)) {
+        const p = await adapterProvenance(harness, image);
       console.log(`ADAPTER: ${harness} image ${image} (${p.image_id.slice(0, 19)}) carries adapter.sh ${p.image_sha256.slice(0, 12)}, the checkout's is ${p.checkout_sha256.slice(0, 12)}: match${p.files ? `; ${Object.keys(p.files).length} more files (zero.ts, pin.json, Dockerfile, config/) match` : ''}`);
+        continue;
+      }
+      const p = await harnessProvenance(harness, image);
+      receipts[harness] = p;
+      console.log(`PROVENANCE: ${harness} image ${image} (${p.image_id.slice(0, 19)}) carries all ${p.files.length} files of harnesses/${harness}/provenance.json at the checkout's sha256; manifest digest ${p.digest}`);
+    }
+    if (Object.keys(receipts).length) writeFileSync(join(runDir, 'preflight-provenance.json'), JSON.stringify({ run_id: m.run_id, checked_at: new Date().toISOString(), harnesses: receipts }, null, 1) + '\n');
+    // internal-task (H10): a slot route's bundle passes the host-side check (scripts/routes/slot-check.ts), and the byte copy the image
+    // builds from, harnesses/<harness>/routes/slots/<id>/, has the same bundle_sha256 (HE-ADAPTER-007).
+    const { cellRoute } = await import('./trial/routes.ts');
+    const slotCells = m.cells.map((c) => ({ c, r: cellRoute(c) })).filter((x) => x.r?.slot);
+    for (const { c, r } of slotCells) {
+      const { checkSlot, bundleSha256 } = await import('../scripts/routes/slot-check.ts');
+      let slot: { bundle_sha256: string; skill_name: string };
+      try { slot = checkSlot(join('harnesses', 'routes', 'slots', r!.slot!)); }
+      catch (e) { throw new RunnerError('HE-ADAPTER-007', `cell ${c.id}: ${(e as Error).message.replace(/^HE-ADAPTER-007 /, '')}`); }
+      const copy = join('harnesses', c.harness, 'routes', 'slots', r!.slot!);
+      const copySha = existsSync(copy) ? bundleSha256(copy) : null;
+      if (copySha !== slot.bundle_sha256) throw new RunnerError('HE-ADAPTER-007', `cell ${c.id}: ${copy} ${copySha ? `has bundle_sha256 ${copySha.slice(0, 12)}, not the bundle's ${slot.bundle_sha256.slice(0, 12)}` : 'does not exist'}; fix: byte-copy harnesses/routes/slots/${r!.slot} there (harnesses/routes/README.md, "Skill-route slots") and rebuild the image`);
+      console.log(`SLOT: cell ${c.id} slot ${r!.slot} (skill ${slot.skill_name}) passes slot-check, and ${copy} matches bundle_sha256 ${slot.bundle_sha256.slice(0, 12)}`);
     }
     for (const c of m.cells.filter((c) => setWorldPath(c))) console.log(`WORLD: cell ${c.id} (task set ${taskSetName(c)}, dev) reads the set world ${setWorldPath(c)} (${sha256Of(readFileSync(setWorldPath(c)!)).slice(0, 12)}) as its trial and grading world`);
     const gbrainCells = m.cells.filter((c) => c.gbrain);
