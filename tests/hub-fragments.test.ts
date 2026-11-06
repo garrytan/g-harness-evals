@@ -3,7 +3,7 @@
 // pass a pull request whose fold is still pending and fail a hand edit.
 import { afterAll, afterEach, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { check, fold, FragmentError, parseTodo, readFragmentsDir, renderTodos, TARGETS, TODOS_HEADER, type Fragments } from '../scripts/fold-hub-fragments.ts';
@@ -180,7 +180,7 @@ test('check-links resolves todos.d/ item links from the root, todos.d/README.md 
   expect(r.status).toBe(1);
 });
 
-test("the repository's todos.d/ files parse and TODOS.md opens with the generated-file header", () => {
+test.skipIf(!existsSync(join(ROOT, 'todos.d')))("the repository's todos.d/ files (left out of the public export) parse and TODOS.md opens with the generated-file header", () => {
   const t = TARGETS.find((x) => x.output === 'TODOS.md')!;
   expect(() => t.render(readFragmentsDir(ROOT, t.dir))).not.toThrow();
   expect(readFileSync(join(ROOT, 'TODOS.md'), 'utf8').split('\n')[0]).toBe(TODOS_HEADER);

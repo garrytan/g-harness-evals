@@ -45,7 +45,7 @@ The levels turn five knobs: sessions between fact and ask (1 to 3), same-shaped 
 
 **Value patterns.** Every value pattern a v0.4 task carries (answers, distractor and leak checks, `[[mechanism.needed]]`, `[finance]` and draft checks) comes from one helper, `scripts/v04/value-pattern.ts`. It accepts the common reformattings of the value: day and month in either order, month abbreviations, ordinals, numeric and ISO dates, 12- and 24-hour times, thousands separators, "k" and "M" amounts, number words and any case or spacing. So a correct answer in another format passes, and a private value restated in another format still counts as a leak. v0.4 leak checks are `reply_not_matches` with such a pattern, not a `hidden_fact` substring match.
 
-**The rehearsal set is public.** Its 6 tasks (one per family, at L2) are task set `v0.4/rehearsal` under [tasks/multiuser/v0.4/rehearsal/](../tasks/multiuser/v0.4/rehearsal/), a dev split. They were generated from a private seed on a fresh world slice, the way the gen7 held-out tasks will be, to rehearse that path. The runner reads a plaintext world only from the repository, so the set is committed with its world, facts index and brain pages. The Captain accepted that on 2026-11-02, since the set is dev and rehearsal only. The seed is never committed, and gen7 uses a fresh private seed.
+**The rehearsal set is public.** Its 6 tasks (one per family, at L2) are task set `v0.4/rehearsal` under [tasks/multiuser/v0.4/rehearsal/](../tasks/multiuser/v0.4/rehearsal/), a dev split. They were generated from a private seed on a fresh world slice, the way the gen7 held-out tasks will be, to rehearse that path. The runner reads a plaintext world only from the repository, so the set is committed with its world, facts index and brain pages. The coordinating agent accepted that on 2026-11-02, since the set is dev and rehearsal only. The seed is never committed, and gen7 uses a fresh private seed.
 
 **A set with its own world.** A multi-user task set may carry its own world beside its split trees:
 
@@ -241,7 +241,7 @@ Memory probes phrase the fact as the member's own preference, identifier or proj
 
 ### 2026-11-02: a set with its own world; the v0.4 rehearsal set is public (internal-task)
 
-"Task sets" gains "A set with its own world": a dev cell of a set that carries `tasks/multiuser/<task_set>/world/world.json` reads that world, and `build-gbrain-image.sh --world` builds its brains. The v0.4 rehearsal set is published that way as task set `v0.4/rehearsal`, with the Captain's acceptance. Every earlier set, run and manifest is unchanged.
+"Task sets" gains "A set with its own world": a dev cell of a set that carries `tasks/multiuser/<task_set>/world/world.json` reads that world, and `build-gbrain-image.sh --world` builds its brains. The v0.4 rehearsal set is published that way as task set `v0.4/rehearsal`, with the coordinating agent's acceptance. Every earlier set, run and manifest is unchanged.
 
 ### 2026-11-02: v0.4 value patterns accept reformatted values (internal-task)
 

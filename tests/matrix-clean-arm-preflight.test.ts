@@ -60,7 +60,7 @@ describe('scripts/matrix/clean-arm-preflight.sh', () => {
     expect(host.stdout).toMatch(/host FAIL, present: .*\.capy .*\.claude\/skills\/gstack/);
   });
   test('fails a mount file that names a .capy path, and a mount file it cannot read', () => {
-    const named = preflight({ root: (root) => appendFileSync(join(root, 'runner/trial/docker.ts'), "\n// '-v', '<private drive>:/drive'\n") });
+    const named = preflight({ root: (root) => appendFileSync(join(root, 'runner/trial/docker.ts'), "\n// '-v', '/root/.capy/drive:/drive'\n") });
     expect(named.status).toBe(5);
     expect(named.stdout).toContain('mounts FAIL, runner/trial/docker.ts:');
     const missing = preflight({ root: (root) => rmSync(join(root, 'harnesses/qm/compose.yaml')) });
