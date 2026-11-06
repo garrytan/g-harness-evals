@@ -507,7 +507,7 @@ describe('install ladder: rungs and neighbour pairs', () => {
   });
 });
 
-describe('compare-run exposure on a task set with its own world', () => {
+describe.skipIf(!existsSync(join(ROOT, 'tasks', 'multiuser', 'v0.4', 'rehearsal', 'world', 'world.json')))('compare-run exposure on a task set with its own world', () => {
   test('a v0.4/rehearsal gbrain cell maps its pages against the rehearsal world, not world/seed/world.json', () => {
     const dir = mkdtempSync(join(tmpdir(), 'he-setworld-exposure-'));
     const TASK = 'rx-04-7ntjqa', PAGE = 'dev/chats/2026-04-02-sierra-dreyness';

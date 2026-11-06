@@ -50,7 +50,10 @@ import { minimumDiscordantForSignificance, normalQuantile } from '../runner/stat
 import { loadTask } from '../runner/grade/task.ts';
 import { taskDirFor } from '../runner/run.ts';
 import { ENDPOINTS, ENDPOINT_LABEL, endpointValue, type Endpoint } from './gbrain-ladder.ts';
-import { PRIMARY_FAMILIES as V04_PRIMARY_FAMILIES } from './v04/next-round.ts';
+
+/** The five v0.4 primary families, the --families default. A copy of scripts/v04/next-round.ts PRIMARY_FAMILIES, which the
+ *  public export leaves out; tests/v04-mdd-projection.test.ts keeps the two equal. */
+export const V04_PRIMARY_FAMILIES = ['corrections', 'approval_relay', 'expired_recall', 'memory_scope', 'session_synthesis'] as const;
 
 export const LADDER_DESIGN = { tasks: 20, reps: 5 } as const;
 export const GBRAIN_ARM_RESULTS = join('docs', 'benchmarks', '2026-10-24-gbrain-arm', 'results');

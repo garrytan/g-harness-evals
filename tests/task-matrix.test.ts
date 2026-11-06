@@ -10,10 +10,13 @@ import type { Script } from '../runner/contracts.ts';
 import { gradeTrial } from '../runner/grade/index.ts';
 import { playScript } from '../runner/grade/play.ts';
 import { loadTask, type Task } from '../runner/grade/task.ts';
-import { expectedFailures } from '../scripts/v04/check-set.ts';
 import { world } from './world-helpers.ts';
 
 const ROOT = join(import.meta.dir, '..', 'tasks', 'multiuser');
+/** The public export leaves out tasks/multiuser/v0.4/ and scripts/v04/, so the v0.4 checks run only where both exist. */
+const V04 = existsSync(join(ROOT, 'v0.4'));
+const CHECK_SET = '../scripts/v04/check-set.ts';
+const { expectedFailures } = (V04 ? await import(CHECK_SET) : {}) as { expectedFailures: (task: Task, oracle: Script, mutation: Script) => string[] };
 const SPLITS = ['dev', 'heldout'] as const;
 const V02_FAMILIES = ['continuity', 'synthesis', 'corrections', 'approval_relay'];
 /** v0.3 (internal-task) adds scope isolation and shared channel to the four v0.2 families; its held-out tree is sealed, so only dev is read here.
@@ -94,7 +97,7 @@ describe('task set v0.3', () => {
   });
 });
 
-describe('task set v0.4', () => {
+describe.skipIf(!V04)('task set v0.4', () => {
   test('96 public dev tasks: 16 per family, 4 per family at each level L1 to L4; no held-out plaintext', () => {
     const root = join(ROOT, 'v0.4');
     expect(taskDirs(root, 'dev')).toHaveLength(96);
