@@ -14,6 +14,7 @@ import { loadTask, parseTask, TaskError } from '../runner/grade/task.ts';
 import { checkTask } from '../scripts/v03/check-set.ts';
 import { corpusOf, generate, guardNot, writeTask } from '../scripts/v03/gen-tasks.ts';
 import { factOfTurn, mechanism, trialMechanism } from '../scripts/v03/mechanism.ts';
+import { overlap } from '../scripts/v03/overlap.ts';
 import { insideCheckout } from '../scripts/v03/paths.ts';
 import { safeLine } from '../scripts/v03/quiet.ts';
 import type { Fact, FactsFile } from '../scripts/v03/types.ts';
@@ -49,6 +50,42 @@ describe('gen-tasks', () => {
       for (const t of generate({ world, facts, split: 'dev', seed: devSeed, counts: COUNTS, ids: 'named' })) writeTask(join(tmp, t.id), t.id, 'dev', t.built);
       expect(tree(tmp)).toEqual(tree(join(V03, 'dev')));
     } finally { rmSync(tmp, { recursive: true, force: true }); }
+  });
+
+  test('the second dev draw is exactly what the generator writes from its published seed, and its overlap file is current', () => {
+    const draw = join(V03, 'dev-draw-2');
+    const seed = createHash('sha256').update(readFileSync(join(draw, 'dev.seed'))).digest('hex');
+    const tmp = mkdtempSync(join(tmpdir(), 'v03-dev-draw-2-'));
+    try {
+      for (const t of generate({ world, facts, split: 'dev', seed, counts: COUNTS, ids: 'named' })) writeTask(join(tmp, t.id), t.id, 'dev', t.built);
+      expect(tree(tmp)).toEqual(tree(join(draw, 'dev')));
+    } finally { rmSync(tmp, { recursive: true, force: true }); }
+    expect(JSON.parse(readFileSync(join(draw, 'overlap.json'), 'utf8'))).toEqual(overlap(join(draw, 'dev'), join(V03, 'dev')));
+  });
+
+  test('overlap counts repeated items, requesters, identical directories and fact-free tasks on hand-built trees', () => {
+    const a = mkdtempSync(join(tmpdir(), 'v03-ov-a-')), b = mkdtempSync(join(tmpdir(), 'v03-ov-b-'));
+    const task = (root: string, id: string, family: string, requester: string, facts: string[], values: string[], toml = id) => {
+      mkdirSync(join(root, id));
+      writeFileSync(join(root, id, 'spec.json'), JSON.stringify({ id: 'same', family, requester, facts, expects: values.map((value) => ({ value })) }));
+      writeFileSync(join(root, id, 'task.toml'), toml);
+    };
+    try {
+      task(a, 'sy-01-x', 'synthesis', 'r1', ['f1', 'f2'], ['v1']);
+      task(b, 'sy-09-y', 'synthesis', 'r2', ['f2', 'f1'], ['v1']);
+      task(a, 'si-01-x', 'scope_isolation', 'r1', ['f3'], ['v3']);
+      task(b, 'si-02-y', 'scope_isolation', 'r1', ['f3'], ['v4']);
+      task(a, 'sc-01-x', 'shared_channel', 'r1', ['f3', 'f9'], ['v5']);
+      task(a, 'cn-01-x', 'continuity', 'r1', [], ['Bay 1'], 'same');
+      task(b, 'cn-01-x', 'continuity', 'r1', [], ['Bay 1'], 'same');
+      const o = overlap(a, b);
+      const t = (id: string) => o.per_task.find((x) => x.id === id)!;
+      expect(t('sy-01-x')).toMatchObject({ same_id: false, identical: [], same_family_and_facts: ['sy-09-y'], same_family_and_answers: ['sy-09-y'], same_item_and_requester: [], shares_a_fact: ['sy-09-y'] });
+      expect(t('si-01-x')).toMatchObject({ same_family_and_facts: ['si-02-y'], same_family_and_answers: [], same_item_and_requester: ['si-02-y'] });
+      expect(t('sc-01-x')).toMatchObject({ same_family_and_facts: [], shares_a_fact: ['si-02-y'] });
+      expect(t('cn-01-x')).toMatchObject({ same_id: true, identical: ['cn-01-x'], same_family_and_facts: [], same_item_and_requester: [], shares_a_fact: [] });
+      expect(o).toMatchObject({ n_tasks: 4, n_against: 3, same_id: 1, identical: 1, fact_backed: 3, same_family_and_facts: 2, same_family_and_answers: 2, repeated_item: 3, repeated_item_same_requester: 1, shares_a_fact: 3, facts_used: 4, facts_used_against: 3, facts_in_common: 3 });
+    } finally { rmSync(a, { recursive: true, force: true }); rmSync(b, { recursive: true, force: true }); }
   });
 
   test('same seed, same tasks; another seed, other tasks', () => {
