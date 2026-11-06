@@ -14,10 +14,12 @@ Each run has its own run id, directory and `prereg.json`, all written by `script
 |---|---|---:|---:|---|---|
 | `v04-cal-r1-2026-11` | [2026-11-02-v04-cal-r1](PREREGISTRATION.md) | 96 | 576 | the rule, round 1 (all six families at L2) | $170, shared |
 | `v04-cal-r2-2026-11` | [2026-11-02-v04-cal-r2](../2026-11-02-v04-cal-r2/PREREGISTRATION.md) | 96 | 576 | the rule, round 2 | $170, shared |
-| `v04-cal-r3-2026-11` | [2026-11-02-v04-cal-r3](../2026-11-02-v04-cal-r3/PREREGISTRATION.md) | 96 | 576 | the rule, round 3 | $170, shared |
-| `v04-cal-r4-2026-11` | [2026-11-02-v04-cal-r4](../2026-11-02-v04-cal-r4/PREREGISTRATION.md) | 96 | 576 | the rule, round 4 (confirmation only) | $170, shared |
+| `v04-cal-r3-2026-11` | [2026-11-02-v04-cal-r3](../2026-11-02-v04-cal-r3/PREREGISTRATION.md) | 96 | 576 | the rule, round 3 | $170, shared ($350 from amendment 3) |
+| `v04-cal-r4-2026-11` | [2026-11-02-v04-cal-r4](../2026-11-02-v04-cal-r4/PREREGISTRATION.md) | 96 | 576 | the rule, round 4 (confirmation only) | $170, shared ($350 from amendment 3) |
 | `v04-transfer-2026-11` | [2026-11-02-v04-transfer](../2026-11-02-v04-transfer/PREREGISTRATION.md) | 4 | 36 | all cells run | $27, inside the $170 |
-| `v04-frozen-dev-2026-11` | [2026-11-02-v04-frozen-dev](../2026-11-02-v04-frozen-dev/PREREGISTRATION.md) | 192 | 1,152 | the frozen levels at the stop | $240 |
+| `v04-frozen-dev-2026-11` | [2026-11-02-v04-frozen-dev](../2026-11-02-v04-frozen-dev/PREREGISTRATION.md) | 192 | 1,152 | the frozen levels at the stop | $240 ($247 from amendment 3) |
+
+Amendment 3 (2026-11-06) raises the shared calibration cap to $350 before round 3 (rounds 1 and 2 run under $170) and the frozen-dev read's cap to $247. Each calibration round's own `spend_cap_usd` stays $170. The details are at the top of "Budget".
 
 - **Why a run id per round.** A trial id is `<run id>/<cell>/<task>/r<n>`. A confirmation rerun repeats a cell, so two rounds in one run id would give two trials one id.
 - **Why the transfer check is its own run.** Its gbrain cells read the rehearsal world, and one gbrain image holds one world's brains (HE-GBRAIN-002).
@@ -236,6 +238,58 @@ Run `v04-frozen-dev-2026-11`, after the stop, on the families frozen in band, ea
 
 ## Budget
 
+**Amendment 3 (2026-11-06): the caps rise, because real cost ran about 30 percent over the cell costs.** Committed before round 3 starts. Round 2 runs under the caps as first written.
+
+- **Decision, verbatim:** "Captain internal-task, 2026-11-06: calibration cap $170→$350 and lane cap $610→$790 under R71; cause: round-1 real cost ran 29% over the preregistered cell costs; frozen-dev cap re-priced at observed cost"
+- **Evidence.** From the shard ledgers: round 1 cost $69.2313 against $53.76 expected at the cell costs (+28.8 percent), and the transfer check $17.7093 against $13.44 (+31.8 percent).
+- **Why it matters.** Round 2's pick is $64.00 at the cell costs against $83.03 cap remaining. At the same overrun it costs about $82.40, which leaves nothing for round 3 under $170. Corrections alone could freeze, and the fallback would end the loop.
+
+| Cap | As first written | From amendment 3 |
+|---|---:|---:|
+| Calibration rounds 1 to 4 and the transfer check (shared) | $170 | **$350** |
+| Frozen-dev read | $240 | **$247** |
+| internal-task lane | $610 | **$790** |
+
+Generation ($12) and smokes ($32) are unchanged.
+
+- **Lane.** $148.2351 + $350 + $247 + $12 + $32 = **$789.2351, within $790** ($0.7649 to spare).
+- **The frozen-dev cap, re-priced at observed cost.**
+  - A family moves one level a round and round 4 only confirms. So after round 2 the dearest frozen set is corrections L3, approval relay L2 and the other four at L4: $158.72 at the cell costs, $209.19 at the transfer check's +31.8 percent.
+  - Under $240 the lease rule scales that read's leases to fit. Two shards (`fd-he-scoped`, `fd-he-untold`) would then reach their leases at +31.8 percent plus the last reservation as measured in round 1 ($3.54, not the $2.80 below).
+  - Under $247 every shard fits. $247 is also the most the $790 lane leaves.
+  - All six at L4 is no longer reachable. It would cost $242.93 at +31.8 percent.
+- **What does not change.**
+  - `cell-costs.json`, the calibration rule, the lease rule, tasks, graders, preambles, pins and world.
+  - The `prereg.json` of the four calibration rounds and the transfer check, byte for byte.
+  - The cell costs stay as written because `next-round.ts` replays every round from them. The cap pays for the overrun; the cells are not re-priced.
+- **Each calibration round's own `spend_cap_usd` stays $170.** It is now a per-round ceiling, not the shared cap. No round can pick more than $92.16 at the cell costs, so its leases (1.5 times, plus $3 a shard) stay at or under $153, and the $170 never binds.
+  - `prereg-cells.ts shards` refuses a cap remaining above a run's own cap. From round 3 its `--cap-remaining` is the lesser of the cap remaining and $170.
+  - `next-round.ts` and the round file get the cap remaining itself.
+- **Cap remaining before round 3:** $350 less the counted spend of round 1 ($69.25), the transfer check ($17.72) and round 2, each shard ledger rounded up to the cent.
+- **Which commit runs.**
+  - Rounds 3 and 4 keep running from amendment 1's merge commit (`2aabafbf`). Their `prereg.json` is unchanged.
+  - The frozen-dev read's `prereg.json` now says $247, so that read runs from this amendment's merge commit.
+  - Between `2aabafbf` and this amendment's base: #301 (pregate lanes for another run, no runner change) and #293. #293 adds an opt-in `log_sections` cell field to the runner and the metering proxy, a smoke check for it and more usage-line fields. No v0.4 cell sets `log_sections`, so a v0.4 trial runs as before.
+  - No frozen-dev row is compared with a calibration row ("The frozen-dev read"), so the move mixes no rows. The frozen-dev report lists every pull request in that range.
+- **R71, all in, at the new caps.** Eval v0.4, counted from 2026-11-03 13:30 UTC. Own model use at 1,000 credits = $1.
+
+| Item | Spent by 2026-11-06 16:30 UTC | At caps |
+|---|---:|---:|
+| Calibration and transfer, model calls | $86.94 | $350.00 |
+| Frozen-dev read | $0 | $247.00 |
+| Generation and audit | $1.67 | $12.00 |
+| Smokes | $3.79 | $32.00 |
+| Ubicloud VMs (list price) | $3.84 | $30.00 booked |
+| Sealed opening 1 (only if calibration passes; booked by internal-task, accepted 2026-11-04) | $0 | $650.00 |
+| Own model use, internal-task (174,362 credits; thread closed) | $174.36 | $174.36 |
+| Own model use, internal-task with subagents (214,772 credits) | $214.77 | $464.77 ($250 more booked) |
+| Own model use, internal-task after 13:30 UTC on 2026-11-03 (two short turns, not measured) | | $25.00 allowance |
+| **Total** | **$485.37** | **$1,985.13 of $2,000** |
+
+- Round 2 is in flight. Its spend is inside the $350.
+- An earlier figure of about $1,470 (internal-task-a's report to internal-task-b, 2026-11-06) started from internal-task-c's $1,290 booking, which left about $186 for own use. Own use is already $389. This table replaces that figure.
+- **The $14.87 left is the only slack.** If internal-task-a's own use would pass 464,772 credits, or VMs would pass $30, internal-task-a goes back to internal-task-b before the next paid step. A cap stop ends its cells incomplete, and they are never retried.
+
 **Re-priced from real turn counts.** Costs use each task's turn count (`tasks/multiuser/v0.4/README.md`, "Turns per task") times the repetitions times the plan's per-turn costs: OpenClaw told $0.13, Hermes told $0.09, OpenClaw none $0.13, Hermes none $0.07. told-scoped and untold-gbrain are priced as told. [cell-costs.json](cell-costs.json) (schema `harness-evals/v04-cell-costs@1`) holds one round of every calibration cell. The real turn counts are lower than the plan's 5.5 at L2, so every figure is below the plan's.
 
 | Item | Expected | Cap |
@@ -268,10 +322,11 @@ A frozen-dev family costs exactly twice its calibration round at the same level.
 **The lane.** internal-task's lane cap is $610, with $148.2351 committed before v0.4 (the 13 internal-task rows of `harness-eval/ledger/lane-spend.jsonl` in the project drive).
 
 - Committed plus every cap: $148.2351 + $170 + $240 + $12 + $32 = **$602.2351, within $610** ($7.7649 to spare).
-- **No cap rises.** Every expected figure sits below its cap.
+- **No cap rises.** Every expected figure sits below its cap. (As first written. Amendment 3, 2026-11-06, raises the calibration, frozen-dev and lane caps; see the top of "Budget".)
 
 ## Leases and the cap
 
+- **Amendment 3 (2026-11-06):** from round 3 the shared calibration cap is $350 and the frozen-dev read's cap is $247. Read $350 for $170 and $247 for $240 below, except for each round's own `spend_cap_usd`. The details are at the top of "Budget".
 - **Cap remaining before round 1:** $170 less the transfer check's leases ($27) = **$143.00**.
 - **Cap remaining before a later round:** $170 less the counted spend so far of the transfer check (its leases while it is still open) and of every earlier round, from the shards' ledgers, each rounded up to the cent. Smokes are outside it.
 - **A shard's lease** is 1.5 times its expected cost at the cell costs, rounded up to whole dollars, plus $3 for the proxy's last reservation (an Opus call at a 128,000-token output cap reserves about $2.80). If a round's leases would pass the cap remaining, each shard instead gets its expected cost plus a reserve for its last reservation plus its share of what is left, in whole cents. The reserve is $3, or an equal share of the cap remaining less the pick's expected cost when that is less than $3 a shard. Only a pick whose expected cost passes the cap remaining is refused, before any shard starts, and the rule never makes one, so every pick it makes gets its shards. So **a round's leases never pass the cap remaining, and calibration spend never passes $170.** The frozen-dev read uses the same rule against $240.
@@ -368,6 +423,8 @@ The set-world gbrain build the transfer check needs is already on main (#288): a
 ## Amendments
 
 Dated, newest last, each committed before the rounds it affects.
+
+Amendment 3 (2026-11-06, the caps) is written at the top of "Budget", next to the figures it changes.
 
 **2026-11-06 (amendment 1): two fixes to the clean-arm checks, and every v0.4 run now starts from this amendment's merge commit.** Both fixes are in `scripts/v04/clean-arm-audit.ts`, which runs the preflight and the audit in "Clean control arms".
 
