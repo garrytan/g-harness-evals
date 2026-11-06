@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "run_id": "waterfall-frontier-2026-11",
+  "question": "On the 20 public dev tasks of task set v0.3, two repetitions per task, with no brain and no gstack, each harness at its pinned defaults and the metering proxy logging request sections: does the paired per-task cost gap from host-harness-pilot-2026-10 (#145: Claude Code and Codex cheaper per trial than OpenClaw and Hermes Agent, measured on claude-haiku-5-5 and gpt-6-luna) hold on anthropic:claude-opus-5-5 and openai:gpt-6.1-sol, and which billing classes and content sections explain it? Contrasts are within one model only: on Opus 5.5, Claude Code 2.1.312 against OpenClaw 2026.10.6, Hermes Agent v2026.9.24 and QM main@b6786d67 (Pi); on GPT-6.1 Sol, Codex 0.165.0 against OpenClaw and Hermes Agent. Each is dollars per trial and dollars per success with task-clustered 95% intervals, beside the pass-rate difference. Descriptive: no ranks, no causal or waste verdicts. A dev run on public tasks, not a held-out opening.",
+  "tasks": {},
+  "cells": [
+    {
+      "id": "claude-code-opus-none-mu-v03-dev",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "repetitions": 2,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal",
+      "log_sections": true
+    },
+    {
+      "id": "openclaw-opus-none-mu-v03-dev",
+      "harness": "openclaw",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "repetitions": 2,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "utility_models": [
+        "anthropic:claude-haiku-5-5"
+      ],
+      "network": "internal",
+      "log_sections": true
+    },
+    {
+      "id": "hermes-opus-none-mu-v03-dev",
+      "harness": "hermes",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "repetitions": 2,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal",
+      "log_sections": true
+    },
+    {
+      "id": "qm-pi-opus-none-mu-v03-dev",
+      "harness": "qm",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "pi",
+      "repetitions": 2,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "utility_models": [
+        "anthropic:claude-haiku-5-5"
+      ],
+      "log_sections": true
+    },
+    {
+      "id": "codex-sol-none-mu-v03-dev",
+      "harness": "codex",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "repetitions": 2,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal",
+      "log_sections": true
+    },
+    {
+      "id": "openclaw-sol-none-mu-v03-dev",
+      "harness": "openclaw",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "repetitions": 2,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal",
+      "log_sections": true
+    },
+    {
+      "id": "hermes-sol-none-mu-v03-dev",
+      "harness": "hermes",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "repetitions": 2,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal",
+      "log_sections": true
+    }
+  ],
+  "wall_clock_s": {
+    "multiuser": 1500
+  },
+  "spend_cap_usd": 150,
+  "drop_order": [],
+  "minimum_v01": [
+    "claude-code-opus-none-mu-v03-dev",
+    "openclaw-opus-none-mu-v03-dev",
+    "hermes-opus-none-mu-v03-dev",
+    "qm-pi-opus-none-mu-v03-dev",
+    "codex-sol-none-mu-v03-dev",
+    "openclaw-sol-none-mu-v03-dev",
+    "hermes-sol-none-mu-v03-dev"
+  ]
+}

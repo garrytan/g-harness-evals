@@ -1,0 +1,127 @@
+{
+  "model": "claude-opus-5-5",
+  "counter": "anthropic count_tokens through the metering proxy (free)",
+  "command": "bun scripts/waterfall/calibrate.ts --receipts <dir> [--receipts <dir> ...] --model claude-opus-5-5",
+  "inputs": [
+    {
+      "name": "docs/harness-anatomy/receipts/anatomy-capture-claude-code-default-plain-20261030t060651",
+      "requests": 2
+    },
+    {
+      "name": "docs/harness-anatomy/receipts/anatomy-capture-claude-code-default-growth-20261030t061104",
+      "requests": 32
+    },
+    {
+      "name": "docs/harness-anatomy/receipts/anatomy-capture-claude-code-default-tools-gbrain-20261030t060806",
+      "requests": 5
+    },
+    {
+      "name": "docs/harness-anatomy/receipts/anatomy-capture-openclaw-default-plain-20261030t023443",
+      "requests": 2
+    },
+    {
+      "name": "docs/harness-anatomy/receipts/anatomy-capture-openclaw-default-growth-20261030t024529",
+      "requests": 32
+    },
+    {
+      "name": "docs/harness-anatomy/receipts/anatomy-capture-openclaw-default-tools-gbrain-20261030t023658",
+      "requests": 4
+    },
+    {
+      "name": "docs/harness-anatomy/receipts/anatomy-capture-hermes-default-plain-20261030t023914",
+      "requests": 2
+    },
+    {
+      "name": "docs/harness-anatomy/receipts/anatomy-capture-hermes-default-growth-20261030t024643",
+      "requests": 34
+    },
+    {
+      "name": "docs/harness-anatomy/receipts/anatomy-capture-hermes-default-tools-gbrain-20261030t024130",
+      "requests": 2
+    },
+    {
+      "name": "docs/harness-anatomy/receipts/anatomy-capture-qm-pi-plain-20261031t010849",
+      "requests": 4
+    },
+    {
+      "name": "docs/harness-anatomy/receipts/anatomy-capture-qm-pi-growth-20261031t011000",
+      "requests": 34
+    }
+  ],
+  "sections": {
+    "system": {
+      "n": 152,
+      "bytes": 2365767,
+      "tokens_per_byte": {
+        "pooled": 0.3537,
+        "sd": 0.017
+      },
+      "use": "point"
+    },
+    "tools": {
+      "n": 148,
+      "bytes": 4055504,
+      "tokens_per_byte": {
+        "pooled": 0.3494,
+        "sd": 0.007
+      },
+      "use": "point"
+    },
+    "user_text": {
+      "n": 153,
+      "bytes": 667059,
+      "tokens_per_byte": {
+        "pooled": 0.3319
+      },
+      "use": "point"
+    },
+    "tool_result": {
+      "n": 126,
+      "bytes": 29425984,
+      "tokens_per_byte": {
+        "pooled": 0.988,
+        "median": 0.458,
+        "min": 0.368,
+        "max": 0.999,
+        "sd": 0.291
+      },
+      "use": "range"
+    },
+    "assistant_text": {
+      "n": 9,
+      "bytes": 22168,
+      "tokens_per_byte": {
+        "pooled": 0.327
+      },
+      "use": "point"
+    },
+    "tool_use": {
+      "n": 126,
+      "bytes": 253446,
+      "tokens_per_byte": {
+        "pooled": 0.5192
+      },
+      "use": "point"
+    },
+    "opaque": {
+      "n": 0,
+      "bytes": 0,
+      "tokens_per_byte": null,
+      "use": "bytes_only"
+    },
+    "media": {
+      "n": 0,
+      "bytes": 0,
+      "tokens_per_byte": null,
+      "use": "bytes_only"
+    }
+  },
+  "use": {
+    "point": "tokens = bytes x tokens_per_byte.pooled, labelled an estimate",
+    "range": "no point estimate; tokens reported as the range bytes x tokens_per_byte.min to bytes x tokens_per_byte.max. The growth captures' tool outputs are synthetic filler, so the pooled rate is not used",
+    "bytes_only": "no calibration data; bytes only",
+    "other": "JSON framing and settings are not counted by calibrate.ts; bytes only",
+    "openai": "no free counter for OpenAI models; every section of an openai:gpt-6.1-sol request is reported in bytes only, labelled uncalibrated"
+  },
+  "provenance": "Rates transcribed from internal-task's calibrate.ts output (count_tokens on claude-opus-5-5, run by the parent thread; not committed). n and bytes per section recomputed from the eleven committed receipt directories above with `bun scripts/waterfall/calibrate.ts ... --dry-run`; the input set is the one whose request counts match the table's n for every section. Bytes do not depend on the counter. Token sums, the baseline count and the statistics not listed here were not transcribed."
+}
