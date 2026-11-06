@@ -224,7 +224,7 @@ test('grantFor: no tokens means the bot token; member scope presents public-only
   expect(grantFor({ url: 'u', token: 't', tokens: MEMBER_TOKENS }, 'nobody')).toEqual({ grant: 'nobody', token: null });
 });
 
-// internal-task (internal-task): scope "member-sources" carries both layers, the member's own token and its source_ids.
+// internal-task-a (internal-task-b): scope "member-sources" carries both layers, the member's own token and its source_ids.
 test('grantFor: with member tokens and source grants both set, the requester\'s token goes out with its sources; public-only before any turn', () => {
   const grants = { members: { 'june-osei': ['private-june-osei', 'public'] }, public: ['public'] };
   expect(grantFor({ url: 'u', token: 't', tokens: MEMBER_TOKENS, grants }, null)).toEqual({ grant: 'public-only', token: MEMBER_TOKENS.public_only, sources: ['public'] });

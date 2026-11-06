@@ -1,4 +1,4 @@
-// internal-task (internal-task M1 step 3): the pure parts of harnesses/qm/provider-preflight.ts. The docker run itself is the receipt
+// internal-task-a (internal-task-b M1 step 3): the pure parts of harnesses/qm/provider-preflight.ts. The docker run itself is the receipt
 // harnesses/qm/provider-preflight-b6786d67.json; these pin the config it gives QM, how a stored turn is read in both QM
 // shapes (b6786d67, and f3577189's untrusted-data fence and memoryRecallOutcomes), the assertions and the secret scan.
 

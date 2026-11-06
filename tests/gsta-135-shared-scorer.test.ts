@@ -1,4 +1,4 @@
-// internal-task's shared-scorer changes to internal-task's internal-task files, each checked to
+// internal-task-a's shared-scorer changes to internal-task-b's internal-task-c files, each checked to
 // be backward-compatible: lease.ts's three-arm order (the two-arm default
 // pinned byte for byte), fake-anthropic.ts's raw_tool turn, evidence.ts's
 // exported readers and opt-in raw fields, discovery.sh's three-arm panel
@@ -25,7 +25,7 @@ const rows = (file: string) => readFileSync(file, 'utf8').split('\n').filter(Boo
 const ENV = { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', HOME: process.env.HOME ?? tmp };
 
 describe('lease.ts panel order', () => {
-  test('the two-arm default is internal-task\'s order byte for byte (sha256 pinned from the pre-internal-task code), with or without the explicit arm list', () => {
+  test('the two-arm default is internal-task-a\'s order byte for byte (sha256 pinned from the pre-internal-task-b code), with or without the explicit arm list', () => {
     expect(sha256(JSON.stringify(panelOrder(5)))).toBe('eafe2d1281fc3b5bd34c1e19ac709ed46826f77fb8f83386f050cebabc9bfdca');
     expect(sha256(JSON.stringify(panelOrder(8)))).toBe('a52b5e7e4c927fb4d4d703311632eff74aea03c96168f9e6330cdaa4741497ab');
     expect(JSON.stringify(panelOrder(8, PANEL_ARMS))).toBe(JSON.stringify(panelOrder(8)));

@@ -1,4 +1,4 @@
-// internal-task (internal-task plan v3, M1): an OAuth 2.0 client-credentials issuer in front of the gbrain tap, for QM's memory
+// internal-task-a (internal-task-b plan v3, M1): an OAuth 2.0 client-credentials issuer in front of the gbrain tap, for QM's memory
 // provider (harnesses/qm/provider-preflight.ts). It exists only when the gbrain upstream carries a `provider` block;
 // without one none of these routes exist and the world answers them 404 exactly as before (tests/oauth-issuer.test.ts).
 //

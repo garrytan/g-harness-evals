@@ -1,4 +1,4 @@
-# Hermes Agent config for one headless trial on an OpenAI cell (internal-task).
+# Hermes Agent config for one headless trial on an OpenAI cell (HARN-13).
 # Written from pin.json model_openai. Copied to $HERMES_HOME/config.yaml (under
 # /harness-state) by adapter.sh when HE_MODEL_BASE_URL ends in /openai.
 # Secrets are not here: the adapter exports OPENAI_API_KEY (the per-trial proxy
@@ -11,7 +11,7 @@ model:
   provider: "openai-api"
   default: "gpt-6-luna"
 
-# Screenshots off the model's own vision (internal-task): text keeps Hermes from asking
+# Screenshots off the model's own vision (HARN-20): text keeps Hermes from asking
 # models.dev whether the model can see images, which otherwise sets the
 # browser_exec description's header from the network (the vision header when
 # models.dev answers, the text-only one when egress is refused), so the prompt
@@ -35,6 +35,6 @@ auto_update: false
 check_for_updates: false
 
 # No lazy pip installs at turn time (Bedrock's boto3, edge-tts): the trial
-# network has no package index, and no task uses those features (internal-task).
+# network has no package index, and no task uses those features (HARN-13).
 security:
   allow_lazy_installs: false

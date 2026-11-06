@@ -126,7 +126,7 @@ function factRowOf(r: unknown): GbrainFact | null {
   return { fact, ...(id !== undefined ? { id } : {}), ...(typeof o.source_id === 'string' ? { source_id: o.source_id } : {}) };
 }
 
-/** internal-task correction (internal-task): the saved facts a search, query or recall reply carries, read from _meta.retrieval.saved_facts
+/** internal-task-a correction (internal-task-b): the saved facts a search, query or recall reply carries, read from _meta.retrieval.saved_facts
  *  when present, from recall's own facts array, from query's fact rows (internal-task), and otherwise from the prose
  *  "Saved facts (remember): ..." block whose lines begin "- ". The tap used to read only the JSON blocks and so never saw a
  *  remembered fact (the remember-then-search check always read "not found"); facts are recorded as their own kind, never as
@@ -167,7 +167,7 @@ export interface GbrainEffect {
   sources?: string[];
   /** internal-task: gbrain's degraded stamp on a search, query or recall reply, when present. */
   degraded?: string;
-  /** internal-task correction (internal-task): the saved facts the reply carried beside its rows, when any; never counted in pages or count. */
+  /** internal-task-a correction (internal-task-b): the saved facts the reply carried beside its rows, when any; never counted in pages or count. */
   facts?: GbrainFact[];
 }
 
@@ -237,7 +237,7 @@ export interface GbrainTapOptions {
   fetchImpl?: typeof fetch;
 }
 
-/** internal-task: which token the tap presents for this request, named as the event's grant. internal-task: under scope "sources" the
+/** internal-task-a: which token the tap presents for this request, named as the event's grant. internal-task-b: under scope "sources" the
  *  token is always the unscoped one and sources lists the requester's granted source ids (the public sources outside turns);
  *  null sources for a member the grants do not cover. */
 export function grantFor(upstream: GbrainUpstream, requester: string | null): { grant: string; token: string | null; sources?: string[] | null } {

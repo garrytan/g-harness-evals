@@ -6,7 +6,7 @@ This is the R7 preregistration ([methodology](../methodology.md), item 14) of in
 
 ## What the loop changes and why
 
-- **Owner:** internal-task (Harness Zero), which took over from internal-task on 2026-11-03. The system it steers is [harnesses/harness-zero](../../harnesses/harness-zero/README.md), a harness whose every feature beyond the bare loop is a named switch.
+- **Owner:** internal-task-a (Harness Zero), which took over from internal-task-b on 2026-11-03. The system it steers is [harnesses/harness-zero](../../harnesses/harness-zero/README.md), a harness whose every feature beyond the bare loop is a named switch.
 - **Question:** which Harness Zero switches earn their keep on the 20 public v0.3 dev tasks at frontier models, judged on pass rate and cost?
 - **Proposer:** a fixed schedule, not a model. Every change the loop measures is named here before the first trial: one ablation cell per tested switch, plus one bundled cell for the five prompt layers. internal-task applies the verdict rules below mechanically and writes the result. No change is added after the first trial except by a dated amendment.
 

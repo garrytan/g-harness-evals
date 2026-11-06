@@ -138,12 +138,12 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-ladder.md'); expect(c.repetitions).toBe(10);
       }
       else if (p.run_id.startsWith('gbrain-installer-')) {
-        // internal-task installer rung (internal-task): told against installer only, starter surface, keyword search; told carries the ladder's preamble, installer the default one.
+        // internal-task-a installer rung (internal-task-b): told against installer only, starter surface, keyword search; told carries the ladder's preamble, installer the default one.
         const g = resolveGbrain(c.gbrain!); expect(g.surface).toBe('starter'); expect(g.embeddings).toBe('off'); expect(['mcp', 'gbrain-installer']).toContain(g.install); expect(g.brain).toBe('bot-visible');
         expect(c.preamble).toBe(g.install === 'mcp' ? 'tasks/multiuser/_shared/preamble.gbrain-ladder.md' : undefined); expect(c.repetitions).toBe(5);
       }
       else if (p.run_id.startsWith('gbrain-scoped-')) {
-        // internal-task told-scoped rung (gbrain#7481): told-company against told-scoped on the company brain, starter surface, keyword search, internal-task's company told clause in both.
+        // internal-task-a told-scoped rung (gbrain#7481): told-company against told-scoped on the company brain, starter surface, keyword search, internal-task-b's company told clause in both.
         const g = resolveGbrain(c.gbrain!); expect(g.surface).toBe('starter'); expect(g.embeddings).toBe('off'); expect(g.install).toBe('mcp'); expect(g.brain).toBe('company'); expect(['none', 'sources']).toContain(g.scope);
         expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-company.md'); expect(c.repetitions).toBe(5);
       }
@@ -228,7 +228,7 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         else { expect(c.model).toBe('anthropic:claude-haiku-5-5'); expect(c.gbrain).toEqual({ surface: 'starter' }); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-ladder.md'); }
       }
       else if (p.run_id.startsWith('qm-c4-told-live-')) {
-        // internal-task and internal-task (internal-task): QM through Pi on Opus 5.5 and GPT-6.1 Sol, three memory routes (notebook only, gbrain as registered tools, gbrain as QM's per-turn memory provider)
+        // internal-task-a and internal-task-b (internal-task-c): QM through Pi on Opus 5.5 and GPT-6.1 Sol, three memory routes (notebook only, gbrain as registered tools, gbrain as QM's per-turn memory provider)
         // on the 8 C4 told-live tasks, five repetitions, cap $56; the tool route carries the gbrain-memory preamble and the provider route QM's default.
         expect(c.harness).toBe('qm'); expect(c.task_set).toBe('v0.3'); expect(c.split).toBe('dev'); expect(c.repetitions).toBe(5); expect(c.tasks).toHaveLength(8);
         expect(p.cells).toHaveLength(6); expect(buildManifest(p, sha256, '2026-11-03T00:00:00Z').trials).toHaveLength(240); expect(p.spend_cap_usd).toBe(56); expect(c.ceiling).toEqual({ input_tokens: 80000, output_tokens: 6000 });
@@ -555,7 +555,7 @@ describe.skipIf(!haveCompany)('the fake harness in docker with the company brain
   }, 120_000);
 });
 
-test('gbrain.scope "member-sources" (internal-task, internal-task): accepted on the company brain, shown on the plan line, and named in the refusal of a bad scope', () => {
+test('gbrain.scope "member-sources" (internal-task-a, internal-task-b): accepted on the company brain, shown on the plan line, and named in the refusal of a bad scope', () => {
   const { prereg: p, sha256 } = loadPrereg(writePrereg([
     cell({ id: 'fake-both', gbrain: { surface: 'starter', brain: 'company', scope: 'member-sources' }, tasks: ['fx-leak'], preamble: 'tasks/multiuser/_shared/preamble.gbrain-company.md' }),
   ], 'gb-member-sources'));

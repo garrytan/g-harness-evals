@@ -8,12 +8,12 @@ repo_commit: 912dd49f4895179454c4b622efc165f5ec6b8a7e
 prereg: docs/benchmarks/2026-10-24-gbrain-arm/PREREGISTRATION.md at ac9e41ba9eb7d0c7b5bd7e05057a4b79fa69f899, amendments 79fe30b529a170ad88fa46ebbf8bb631953fb459 and 072131d7eb856a7b2e5189c3f34fe5b82eadc2fd; docs/benchmarks/2026-10-25-gbrain-ladder/PREREGISTRATION.md at e278fb0e6a7a786f847b059a1d29cab48e67fa1e, amendment 4099179fee404305a03712b8d262339d712f20d1
 data: in-repo receipts, no separate bundle. gbrain-arm results/trials.jsonl sha256 964f6512ae8f04ac9d8614405b2acc5c564b607e87c3d99591666e71b1dda530; gbrain-ladder results/trials.jsonl sha256 5b073cae9223a41cff2543e5086bf191ea834b98d5efde492a0c830eb14b3e4c
 author: internal-task
-reviewed_by: internal-task claim check with a GPT-6.1 Sol reviewer, 2026-11-01, PASS-WITH-EDITS (edits applied in this version); internal-task recheck of the edited lines at 79102d528, 2026-11-01, its line edits applied; reproduced_by: internal-task clean-machine rerun at 912dd49f, every table row matched
+reviewed_by: internal-task-a claim check with a GPT-6.1 Sol reviewer, 2026-11-01, PASS-WITH-EDITS (edits applied in this version); internal-task-b recheck of the edited lines at 79102d528, 2026-11-01, its line edits applied; reproduced_by: internal-task-a clean-machine rerun at 912dd49f, every table row matched
 ---
 
 # Sonnet/Haiku only, not frontier evidence: Installed as an MCP server and never mentioned, gbrain was called in 4 of 799 scored trials (0.5%, 95% CI 0.2% to 1.3%) across OpenClaw, Hermes Agent and QM on Claude Sonnet 5.5 and Haiku 5.5 (dev), and pass rate showed no change we could detect (untold minus none -6 to +8 points, every interval touching or crossing zero; none-cell controls 69% to 99%; nominal MDD 4.6 to 16.5 points)
 
-**Status:** dev background for the Opus 5.5 reruns in internal-task's v0.4 and internal-task's H10, not for publication on its own: it rests on Sonnet 5.5 and Haiku 5.5 only. Claim check PASS-WITH-EDITS (2026-11-01), edits applied. The edited lines were rechecked the same day, and the recheck's line edits are applied. Disclosures answered by Garry, in the closing Disclosures section at the end of the file.
+**Status:** dev background for the Opus 5.5 reruns in internal-task-a's v0.4 and internal-task-b's H10, not for publication on its own: it rests on Sonnet 5.5 and Haiku 5.5 only. Claim check PASS-WITH-EDITS (2026-11-01), edits applied. The edited lines were rechecked the same day, and the recheck's line edits are applied. Disclosures answered by Garry, in the closing Disclosures section at the end of the file.
 
 **If you install gbrain's MCP server beside a harness and don't tell the harness to use it, it was called in 4 of 799 scored trials.** Registration can still change what the model sees without a call. This is a dev result on two Claude models and one task set, and it does not show gbrain is useless: told, the same harnesses used it in 76% to 96% of trials.
 

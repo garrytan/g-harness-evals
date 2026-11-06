@@ -1,4 +1,4 @@
-// internal-task (internal-task M1): the world's OAuth client-credentials issuer for QM's memory provider (world/services/oauth-issuer.ts).
+// internal-task-a (internal-task-b M1): the world's OAuth client-credentials issuer for QM's memory provider (world/services/oauth-issuer.ts).
 // Off by default: without a provider block on the gbrain upstream every OAuth path answers the world's 404 and the tap its
 // 401, byte for byte what main answered before the issuer existed (captured on main 5a9c066f). With the block, QM's own
 // client (MCP SDK 1.32.1, the version and integrity QM's package-lock pins at b6786d67, ClientCredentialsProvider with

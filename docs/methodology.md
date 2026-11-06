@@ -1,6 +1,6 @@
 # Methodology: the trial contract
 
-This is the contract every runner, adapter, world service and grader in this repository implements. It is the "Trial contract" section of the approved plan (plan v2), kept here as the normative copy; a change to it is a plan amendment and is recorded in the changelog below. Open questions the review raised against it are tracked in TODOS.md by finding id (for example the actor principal on world-MCP calls, the inbound-message transport for multi-user trials, per-protocol proxy coverage, and the clock interface for harness schedulers).
+This is the contract every runner, adapter, world service and grader in this repository implements. It is the "Trial contract" section of the approved plan ([plan v2](plans/2026-10-21-harness-eval-v0/plan.md)), kept here as the normative copy; a change to it is a plan amendment and is recorded in the changelog below. Open questions the review raised against it are tracked in [TODOS.md](../TODOS.md) by finding id (for example the actor principal on world-MCP calls, the inbound-message transport for multi-user trials, per-protocol proxy coverage, and the clock interface for harness schedulers).
 
 Terms: a **trial** is one harness attempt at one task from a frozen image; a **cell** is one harness, one slice, one model, one configuration; a **run** is a preregistered set of cells with one manifest; the **world** is the simulated company (services, data, clock) a trial acts on.
 

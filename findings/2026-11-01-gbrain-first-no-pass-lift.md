@@ -8,12 +8,12 @@ repo_commit: 912dd49f4895179454c4b622efc165f5ec6b8a7e
 prereg: docs/benchmarks/2026-10-25-v02-heldout/PREREGISTRATION.md at 4777693426d9a5b54b720a0fe44f4541ab4d1719 (#72), amendment facd960fae498286632f3f694aba29acb3f99782 (#76), the commit every shard ran from
 data: in-repo receipts, no separate bundle. v02-heldout results/trials.jsonl sha256 c63a008c20c14d87045f7bcf02bec769252bb7b0acaf71dbe141cc0646bdcf38
 author: internal-task
-reviewed_by: internal-task claim check with a GPT-6.1 Sol reviewer, 2026-11-01, PASS-WITH-EDITS (edits applied in this version); internal-task recheck of the edited lines at 79102d528, 2026-11-01, its line edits applied; reproduced_by: internal-task clean-machine rerun at 912dd49f, every table row matched
+reviewed_by: internal-task-a claim check with a GPT-6.1 Sol reviewer, 2026-11-01, PASS-WITH-EDITS (edits applied in this version); internal-task-b recheck of the edited lines at 79102d528, 2026-11-01, its line edits applied; reproduced_by: internal-task-a clean-machine rerun at 912dd49f, every table row matched
 ---
 
 # Sonnet/Haiku only, not frontier evidence: On 15 held-out multi-user tasks, telling OpenClaw, Hermes Agent and QM to consult gbrain first showed no pass-rate gain we could detect on Claude Sonnet 5.5 (+0 [-7, +8], -5 [-16, +4], +3 [-19, +25] points; controls 56%, 67%, 51%; nominal MDD 10 to 13 points; confirmatory, custody by digest only), and cross-scope reads were higher in all three told cells (+16 [+1, +33], +15 [+3, +31], +11 [-1, +27] points; none survives Holm)
 
-**Status:** dev background for the Opus 5.5 reruns in internal-task's v0.4 and internal-task's H10, not for publication on its own: it rests on Sonnet 5.5 and Haiku 5.5 only. Claim check PASS-WITH-EDITS (2026-11-01), edits applied. The edited lines were rechecked the same day, and the recheck's line edits are applied. Disclosures answered by Garry, in the closing Disclosures section at the end of the file.
+**Status:** dev background for the Opus 5.5 reruns in internal-task-a's v0.4 and internal-task-b's H10, not for publication on its own: it rests on Sonnet 5.5 and Haiku 5.5 only. Claim check PASS-WITH-EDITS (2026-11-01), edits applied. The edited lines were rechecked the same day, and the recheck's line edits are applied. Disclosures answered by Garry, in the closing Disclosures section at the end of the file.
 
 **A brain-first instruction got the harnesses to use gbrain in almost every trial, but on these tasks it showed no pass-rate gain we could detect on Sonnet 5.5.** The intervals are wide: a gain of up to 8, 4 and 25 points is not ruled out. This is one model and one task set.
 
@@ -78,7 +78,7 @@ reviewed_by: internal-task claim check with a GPT-6.1 Sol reviewer, 2026-11-01, 
 
 ## Cost
 
-- **Total eval spend: $76.60** by proxy usage ($77.04 committed in the nine shard ledgers, $0.43 of it a reservation left open) on 9,605 priced requests, against the $135 cap (nine leases, $135 as preregistered and $137 after one raise). Sonnet cells $72.74, Haiku cells $3.86.
+Sonnet cells $72.74, Haiku cells $3.86.
 - Per trial, per success and tokens per Sonnet cell: the table above. "Tokens in" counts uncached input, cache writes and cache reads together.
 - **Price table** (USD per million tokens, the same rows in `runner/ledger/budget-ledger.ts` at the preregistration and amendment commits; rows checked against the providers' pricing pages on 2026-10-02 (Haiku on 2026-10-08), per `runner/ledger/budget-ledger.ts`):
 

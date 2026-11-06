@@ -182,7 +182,7 @@ async function main(): Promise<number> {
   const ok = evidence.router_in_system_prompt && evidence.complete_read.delivered && 'identical' in evidence.complete_read && evidence.complete_read.identical;
   const routerOut = join(dirname(out), routerName);
   const receipt = {
-    what: 'S1 probe staging for gstack on QM (internal-task, internal-task plan v3 M1 step 6, d3b), keyless: raw gstack skill texts staged in the QM sandbox, the paste-in router in the org SOUL, one scripted turn reading staged SKILL.md files. The model endpoint was scripts/gsta-135/fake-anthropic.ts, which refuses any key not starting with ' + DUMMY_KEY_PREFIX + '.',
+    what: 'S1 probe staging for gstack on QM (internal-task-a, internal-task-b plan v3 M1 step 6, d3b), keyless: raw gstack skill texts staged in the QM sandbox, the paste-in router in the org SOUL, one scripted turn reading staged SKILL.md files. The model endpoint was scripts/gsta-135/fake-anthropic.ts, which refuses any key not starting with ' + DUMMY_KEY_PREFIX + '.',
     command: 'env -i PATH=$PATH HOME=$HOME bun harnesses/qm/gstack/s1-stage.ts' + process.argv.slice(2).map(a => ' ' + a).join(''),
     date: new Date().toISOString(),
     qm: { commit: imageInfo(stack.coreImage).qm_commit, inline_tool_result_chars: QM_INLINE_CHARS, inline_source: 'src/sessions/tool-output.ts:10-11 (DEFAULT_INLINE_TOKENS 4096, CHARS_PER_TOKEN 4), cutToolOutput' },

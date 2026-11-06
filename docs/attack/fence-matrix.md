@@ -1,6 +1,6 @@
 # The gbrain fence matrix
 
-**Which gbrain reads wrap third-party text in gbrain's quote fence, and which hand it back raw, at six gbrain commits, from 15d3dc54 to 83c8a14e.** `scripts/attack/fence-matrix.ts` measures it with no model and no key. internal-task used it as an acceptance check for gbrain#8367. It was built for the memory-poisoning eval (internal-task), which stopped on 2026-11-01 before any trial ran, so it now stands alone as a keyless check.
+**Which gbrain reads wrap third-party text in gbrain's quote fence, and which hand it back raw, at six gbrain commits, from 15d3dc54 to 83c8a14e.** `scripts/attack/fence-matrix.ts` measures it with no model and no key. internal-task-a used it as an acceptance check for gbrain#8367. It was built for the memory-poisoning eval (internal-task-b), which stopped on 2026-11-01 before any trial ran, so it now stands alone as a keyless check.
 
 **The answer at 83c8a14e (0.60.538.0, gbrain#8380):**
 
@@ -226,7 +226,7 @@ These are the 2026-10-31 builds. The committed JSON now comes from the 2026-11-0
 2. **A fresh federated source plus `import` (works, not chosen).** `sources add probe --path <dir under .gbrain> --federated --force`, then `import <dir> --source probe --no-embed --allow-noncanonical-root`, before `serve`: the page imports and `search` finds it. `import` into the copy's existing default source is refused with the same identity error.
 3. **A per-trial build of the slice plus the overlay:** not needed.
 
-**PR #161 (internal-task, internal-task) covers route 1 for trials.** Its `gbrain/rebind-sources.ts` runs the same self-transfer in one process for the default source and every federated source, from `gbrain/entrypoint.sh`. `fence-sidecar.sh` re-stamps only the default source, the one the probes write to.
+**PR #161 (internal-task-a, internal-task-b) covers route 1 for trials.** Its `gbrain/rebind-sources.ts` runs the same self-transfer in one process for the default source and every federated source, from `gbrain/entrypoint.sh`. `fence-sidecar.sh` re-stamps only the default source, the one the probes write to.
 
 ### `remember` on the copy
 
@@ -267,7 +267,7 @@ The table gains 83c8a14e, the descriptive cells' commit: it reads exactly as 1e7
 
 ### 2026-11-01: gbrain#8367 (1e763e28) added, every image rebuilt and rerun (internal-task)
 
-The table gains 1e763e28, H3's "after" arm: 0 raw of 53 cells, as internal-task reported, with the cells gbrain#8377 lists named as untested. All five images were rebuilt and the matrix rerun from a clean tree; the four earlier commits' cells are unchanged. The tool-call classifier now reads gbrain's nameless `[tool call, arguments omitted]` as replaced. A new corpus-diff receipt compares ebcaefd3 and 1e763e28. Why: amendment (f) of the internal-task plan adds 1e763e28 as an arm, and the preregistration reports, per surface, whether the matrix matches internal-task's count.
+The table gains 1e763e28, H3's "after" arm: 0 raw of 53 cells, as internal-task-a reported, with the cells gbrain#8377 lists named as untested. All five images were rebuilt and the matrix rerun from a clean tree; the four earlier commits' cells are unchanged. The tool-call classifier now reads gbrain's nameless `[tool call, arguments omitted]` as replaced. A new corpus-diff receipt compares ebcaefd3 and 1e763e28. Why: amendment (f) of the internal-task-b plan adds 1e763e28 as an arm, and the preregistration reports, per surface, whether the matrix matches internal-task-a's count.
 
 ### 2026-10-31: first version (internal-task)
 

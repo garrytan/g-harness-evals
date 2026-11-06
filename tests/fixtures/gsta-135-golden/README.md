@@ -1,6 +1,6 @@
-# internal-task golden fixtures (internal-task)
+# internal-task-a golden fixtures (internal-task-b)
 
-These fixtures pin what internal-task's scorer, `scripts/gsta-135/evidence.ts`, published for both internal-task panels, so the backward-compatible changes internal-task makes to it (exported readers and types, optional raw fields) can be shown to change no metric. `tests/gsta-135-golden.test.ts` reads them.
+These fixtures pin what internal-task-a's scorer, `scripts/gsta-135/evidence.ts`, published for both internal-task-b panels, so the backward-compatible changes internal-task-c makes to it (exported readers and types, optional raw fields) can be shown to change no metric. `tests/gsta-135-golden.test.ts` reads them.
 
 ## Where they come from
 

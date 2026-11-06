@@ -1,4 +1,4 @@
-// internal-task (internal-task plan v3, M1 step 5): the QM config pi-memory-provider, gbrain as QM's per-turn memory provider.
+// internal-task-a (internal-task-b plan v3, M1 step 5): the QM config pi-memory-provider, gbrain as QM's per-turn memory provider.
 //
 // In this config gbrain reaches QM only through MEMORY_PROVIDER_CONFIG: QM core recalls from gbrain for personal scope on
 // every DM turn and puts the reply in the turn's environment block. No gbrain MCP server is registered (plan v3, decision 1),

@@ -48,7 +48,7 @@ mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
 log() { printf '%s claude-code[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" | tee -a "$HE_LOG_DIR/adapter.log" >&2; }
 now() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
-# HARN-5: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
+# internal-task: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
 # preflight compares the same hash in the image with the checkout, HE-ADAPTER-005).
 adapter_sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)
 harness_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -82,7 +82,7 @@ if [ -n "${HE_GBRAIN_INSTALL:-}" ] && [ "$HE_GBRAIN_INSTALL" != gbrain-installer
   exit 2
 fi
 
-# HARN-20: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Claude Code's own system prompt with one fixed text,
+# internal-task: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Claude Code's own system prompt with one fixed text,
 # ablation/official-minimal.txt beside this file (/opt/harness/ablation in the image; a byte copy of
 # harnesses/ablation/official-minimal.txt, checked against pin.json official_minimal.sha256), passed as --system-prompt on every
 # turn. Unset, empty or default adds nothing, so the adapter's files and command lines are as before; any other value, or a text
@@ -115,7 +115,7 @@ export TMPDIR="$HE_SESSION_STATE_DIR/tmp" CLAUDE_TMPDIR="$HE_SESSION_STATE_DIR/t
 mkdir -p "$CLAUDE_CONFIG_DIR" "$TMPDIR"
 [ -e "$CLAUDE_CONFIG_DIR/settings.json" ] || cp "$harness_dir/config/settings.json" "$CLAUDE_CONFIG_DIR/settings.json"
 
-# HARN-13, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
+# internal-task, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
 # the exported view of what `gbrain setup claude-code --instructions-only` wrote at gbrain image build (gbrain#7989) read-only at
 # HE_GBRAIN_INSTALL_DIR. Setup ran there with HOME=/harness-state and CLAUDE_CONFIG_DIR=/harness-state/claude, so every path in it is
 # this container's: home/claude/CLAUDE.md (the brain-first block, Claude Code's user memory), home/claude/settings.json (this

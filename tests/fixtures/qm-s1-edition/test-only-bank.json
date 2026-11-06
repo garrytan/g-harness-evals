@@ -1,0 +1,709 @@
+{
+  "schema": "qm-s1-edition-bank/1",
+  "bank_id": "qm-s1-edition-test-only-1",
+  "test_only": true,
+  "note": "TEST-ONLY templates for the generator and grader tests. Not the private task bank; never used in a counted run.",
+  "templates": [
+    {
+      "id": "test-inv-pagination",
+      "family": "investigate",
+      "request": "The pagination tests in {{project}} started failing sometime this week. Can you find the root cause? Please don't change any code yet, just tell me what broke.",
+      "vars": {
+        "project": [
+          "ledger-ui",
+          "shelf-api",
+          "atlas-web"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Add pagination helpers",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"1.2.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nList pages for the {{project}} dashboard. Run the tests with npm test.\n",
+            "src/config.js": "module.exports = {\n  defaultPerPage: 10,\n  maxPerPage: 100,\n};\n",
+            "src/paginate.js": "const { defaultPerPage, maxPerPage } = require('./config');\n\nfunction pageCount(total, perPage = defaultPerPage) {\n  const size = Math.min(perPage, maxPerPage);\n  return Math.ceil(total / size);\n}\n\nfunction pageSlice(items, page, perPage = defaultPerPage) {\n  const size = Math.min(perPage, maxPerPage);\n  const start = (page - 1) * size;\n  return items.slice(start, start + size);\n}\n\nmodule.exports = { pageCount, pageSlice };\n",
+            "src/format.js": "function formatCount(n) {\n  return String(n);\n}\n\nmodule.exports = { formatCount };\n",
+            "test/paginate.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { pageCount, pageSlice } = require('../src/paginate');\n\ntest('a partial last page still counts as a page', () => {\n  assert.strictEqual(pageCount(101, 10), 11);\n});\n\ntest('an exact multiple has no extra page', () => {\n  assert.strictEqual(pageCount(100, 10), 10);\n});\n\ntest('page two starts after the first page', () => {\n  assert.deepStrictEqual(pageSlice([1, 2, 3, 4, 5], 2, 2), [3, 4]);\n});\n"
+          }
+        },
+        {
+          "branch": "main",
+          "message": "Show counts with thousands separators",
+          "files": {
+            "src/format.js": "function formatCount(n) {\n  return Number(n).toLocaleString('en-US');\n}\n\nmodule.exports = { formatCount };\n",
+            "test/format.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { formatCount } = require('../src/format');\n\ntest('counts are shown with grouping', () => {\n  assert.strictEqual(formatCount(1234), '1,234');\n});\n"
+          }
+        },
+        {
+          "branch": "main",
+          "message": "Raise the default page size to 20",
+          "files": {
+            "src/config.js": "module.exports = {\n  defaultPerPage: 20,\n  maxPerPage: 100,\n};\n"
+          }
+        },
+        {
+          "branch": "main",
+          "message": "Simplify the page math",
+          "files": {
+            "src/paginate.js": "const { defaultPerPage, maxPerPage } = require('./config');\n\nfunction clampSize(perPage) {\n  return Math.min(perPage, maxPerPage);\n}\n\nfunction pageCount(total, perPage = defaultPerPage) {\n  return Math.floor(total / clampSize(perPage));\n}\n\nfunction pageSlice(items, page, perPage = defaultPerPage) {\n  const size = clampSize(perPage);\n  const start = (page - 1) * size;\n  return items.slice(start, start + size);\n}\n\nmodule.exports = { pageCount, pageSlice };\n"
+          }
+        },
+        {
+          "branch": "main",
+          "message": "Mention the page size limit in the README",
+          "files": {
+            "README.md": "# {{project}}\n\nList pages for the {{project}} dashboard. Run the tests with npm test.\n\nPages hold at most 100 rows.\n"
+          }
+        }
+      ],
+      "checkout": "main",
+      "key": {
+        "cause": {
+          "file": "src/paginate.js",
+          "aliases": [
+            "pageCount",
+            "page math"
+          ],
+          "mechanism": [
+            "Math.floor",
+            "floor",
+            "rounds down",
+            "rounding down",
+            "round down",
+            "truncat*",
+            "Math.ceil",
+            "ceil"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/config.js",
+            "aliases": [
+              "defaultPerPage",
+              "default page size"
+            ],
+            "mechanism": [
+              "default page size",
+              "defaultPerPage",
+              "page size to 20",
+              "perPage to 20",
+              "20 per page",
+              "default of 20"
+            ]
+          },
+          {
+            "file": "src/format.js",
+            "aliases": [
+              "formatCount"
+            ],
+            "mechanism": [
+              "locale*",
+              "toLocaleString",
+              "thousands separator*",
+              "grouping",
+              "number format*"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "test-inv-token-expiry",
+      "family": "investigate",
+      "request": "Since yesterday everyone on {{project}} gets logged out right after signing in, and the token tests fail. Can you track down what's causing it? Don't fix anything yet.",
+      "vars": {
+        "project": [
+          "relay-auth",
+          "kiln-sso"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Issue and check login tokens",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"0.9.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nLogin tokens for {{project}}.\n",
+            "src/clock.js": "function now() {\n  return Date.now();\n}\n\nmodule.exports = { now };\n",
+            "src/session.js": "const TTL_SECONDS = 3600;\n\nmodule.exports = { TTL_SECONDS };\n",
+            "src/token.js": "const { now } = require('./clock');\nconst { TTL_SECONDS } = require('./session');\n\nfunction issue(userId, at = now()) {\n  return { userId, expiresAt: at + TTL_SECONDS * 1000 };\n}\n\nfunction isExpired(token, at = now()) {\n  return at >= token.expiresAt;\n}\n\nmodule.exports = { issue, isExpired };\n",
+            "test/token.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { issue, isExpired } = require('../src/token');\n\nconst T0 = 1800000000000;\n\ntest('a fresh token is not expired', () => {\n  assert.strictEqual(isExpired(issue('u1', T0), T0 + 1000), false);\n});\n\ntest('a token expires after its lifetime', () => {\n  assert.strictEqual(isExpired(issue('u1', T0), T0 + 2 * 3600 * 1000), true);\n});\n"
+          }
+        },
+        {
+          "branch": "main",
+          "message": "Read time through an injectable clock",
+          "files": {
+            "src/clock.js": "let source = () => Date.now();\n\nfunction now() {\n  return source();\n}\n\nfunction setClock(fn) {\n  source = fn || (() => Date.now());\n}\n\nmodule.exports = { now, setClock };\n"
+          }
+        },
+        {
+          "branch": "main",
+          "message": "Shorten sessions to 30 minutes",
+          "files": {
+            "src/session.js": "const TTL_SECONDS = 1800;\n\nmodule.exports = { TTL_SECONDS };\n"
+          }
+        },
+        {
+          "branch": "main",
+          "message": "Store token expiry in seconds for the mobile client",
+          "files": {
+            "src/token.js": "const { now } = require('./clock');\nconst { TTL_SECONDS } = require('./session');\n\nfunction issue(userId, at = now()) {\n  return { userId, expiresAt: Math.floor(at / 1000) + TTL_SECONDS };\n}\n\nfunction isExpired(token, at = now()) {\n  return at >= token.expiresAt;\n}\n\nmodule.exports = { issue, isExpired };\n"
+          }
+        }
+      ],
+      "checkout": "main",
+      "key": {
+        "cause": {
+          "file": "src/token.js",
+          "aliases": [
+            "isExpired",
+            "expiresAt"
+          ],
+          "mechanism": [
+            "second*",
+            "millisecond*",
+            "unit*",
+            "/ 1000",
+            "* 1000",
+            "ms"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/clock.js",
+            "aliases": [
+              "setClock",
+              "injectable clock"
+            ],
+            "mechanism": [
+              "setClock",
+              "injectable clock",
+              "clock source",
+              "source()",
+              "mock clock"
+            ]
+          },
+          {
+            "file": "src/session.js",
+            "aliases": [
+              "TTL_SECONDS",
+              "session length"
+            ],
+            "mechanism": [
+              "1800",
+              "30 minutes",
+              "thirty minutes",
+              "shorter session*",
+              "shortened",
+              "TTL_SECONDS"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "test-rev-bulk-discount",
+      "family": "review",
+      "request": "Can you review my feature/bulk-discount branch against main before I merge it? Tell me what needs fixing.",
+      "vars": {
+        "project": [
+          "till-pricing",
+          "basket-core"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Price orders",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"1.4.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nOrder pricing for {{project}}.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 1.4.0\n\n- Subtotals.\n",
+            "src/price.js": "function subtotal(items) {\n  let total = 0;\n  for (const item of items) total += item.price * item.qty;\n  return total;\n}\n\nmodule.exports = { subtotal };\n",
+            "src/cart.js": "function removeOutOfStock(items, stock) {\n  return items.filter((item) => stock[item.sku] > 0);\n}\n\nmodule.exports = { removeOutOfStock };\n",
+            "test/price.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { subtotal } = require('../src/price');\n\ntest('subtotal adds price times quantity', () => {\n  assert.strictEqual(subtotal([{ price: 2, qty: 3 }, { price: 1.5, qty: 2 }]), 9);\n});\n"
+          }
+        },
+        {
+          "branch": "feature/bulk-discount",
+          "from": "main",
+          "message": "Add a bulk discount",
+          "files": {
+            "src/price.js": "const { roundToCents } = require('./money');\n\nconst BULK_MIN_QTY = 10;\nconst BULK_RATE = 0.05;\n\nfunction subtotal(items) {\n  let total = 0;\n  for (const item of items) total += item.price * item.qty;\n  return total;\n}\n\nfunction itemCount(items) {\n  return items.reduce((n, item) => n + item.qty, 0);\n}\n\nfunction bulkDiscount(items) {\n  if (itemCount(items) > BULK_MIN_QTY) {\n    return roundToCents(subtotal(items) * BULK_RATE);\n  }\n  return 0;\n}\n\nmodule.exports = { subtotal, itemCount, bulkDiscount };\n",
+            "src/money.js": "function roundToCents(amount) {\n  return Math.round((amount + Number.EPSILON) * 100) / 100;\n}\n\nmodule.exports = { roundToCents };\n",
+            "test/price.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { subtotal, bulkDiscount } = require('../src/price');\n\ntest('subtotal adds price times quantity', () => {\n  assert.strictEqual(subtotal([{ price: 2, qty: 3 }, { price: 1.5, qty: 2 }]), 9);\n});\n\ntest('a bulk order gets 5 percent off', () => {\n  assert.strictEqual(bulkDiscount([{ price: 10, qty: 12 }]), 6);\n});\n",
+            "README.md": "# {{project}}\n\nOrder pricing for {{project}}.\n\n## Bulk discount\n\nOrders of 10 or more items get 5 percent off the subtotal, rounded to the cent.\n"
+          }
+        },
+        {
+          "branch": "feature/bulk-discount",
+          "message": "Key cart lines by sku and variant",
+          "files": {
+            "src/cart.js": "function removeOutOfStock(items, stock) {\n  return items.filter((item) => stock[item.sku] > 0);\n}\n\nfunction lineKey(item) {\n  return item.sku + '|' + (item.variant == null ? '' : item.variant);\n}\n\nmodule.exports = { removeOutOfStock, lineKey };\n",
+            "CHANGELOG.md": "# Changelog\n\n## 1.5.0\n\n- Bulk discount for orders of 10 or more items.\n- Cart line keys.\n\n## 1.4.0\n\n- Subtotals.\n"
+          }
+        }
+      ],
+      "checkout": "feature/bulk-discount",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "src/price.js",
+          "lines": [
+            17,
+            17
+          ],
+          "symbols": [
+            "bulkDiscount",
+            "BULK_MIN_QTY"
+          ],
+          "mechanism": [
+            ">=",
+            "off-by-one",
+            "off by one",
+            "exactly 10",
+            "10 or more",
+            "ten or more",
+            "boundary",
+            "greater than or equal",
+            "strictly greater"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/cart.js",
+            "lines": [
+              6,
+              6
+            ],
+            "symbols": [
+              "lineKey",
+              "== null",
+              "loose equality"
+            ]
+          },
+          {
+            "file": "src/money.js",
+            "lines": [
+              2,
+              2
+            ],
+            "symbols": [
+              "roundToCents",
+              "EPSILON"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "test-rev-csv-export",
+      "family": "review",
+      "request": "Please review feature/csv-export against main before it goes in. Anything I should fix?",
+      "vars": {
+        "project": [
+          "quarry-reports",
+          "harbor-sales"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Sales report rows",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"2.0.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nSales reports for {{project}}.\n",
+            "src/report.js": "function salesRows(orders) {\n  return orders.map((o) => ({ id: o.id, customer: o.customer, total: o.total, placed: o.placed }));\n}\n\nmodule.exports = { salesRows };\n",
+            "src/routes.js": "const { salesRows } = require('./report');\n\nfunction register(app) {\n  app.get('/sales', (req, res) => res.json(salesRows(req.orders)));\n}\n\nmodule.exports = { register };\n",
+            "test/report.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { salesRows } = require('../src/report');\n\ntest('sales rows keep the order fields', () => {\n  assert.deepStrictEqual(salesRows([{ id: 1, customer: 'Ana', total: 5, placed: 'x', extra: true }]), [{ id: 1, customer: 'Ana', total: 5, placed: 'x' }]);\n});\n"
+          }
+        },
+        {
+          "branch": "feature/csv-export",
+          "from": "main",
+          "message": "Export sales as CSV",
+          "files": {
+            "src/csv.js": "const { cell } = require('./cell');\n\nfunction toCsv(rows) {\n  if (!rows.length) return '';\n  const header = Object.keys(rows[0]);\n  const lines = [header.join(',')];\n  for (const row of rows) lines.push(header.map((key) => cell(row[key])).join(','));\n  return lines.join('\\r\\n') + '\\r\\n';\n}\n\nmodule.exports = { toCsv };\n",
+            "src/cell.js": "const { isoDay } = require('./dates');\n\nfunction cell(value) {\n  if (value instanceof Date) return isoDay(value);\n  return String(value ?? '');\n}\n\nmodule.exports = { cell };\n",
+            "src/dates.js": "function isoDay(date) {\n  return date.toISOString().slice(0, 10);\n}\n\nmodule.exports = { isoDay };\n",
+            "src/routes.js": "const { salesRows } = require('./report');\nconst { toCsv } = require('./csv');\n\nfunction register(app) {\n  app.get('/sales', (req, res) => res.json(salesRows(req.orders)));\n  app.get('/sales.csv', (req, res) => res.type('text/csv').send(toCsv(salesRows(req.orders))));\n}\n\nmodule.exports = { register };\n",
+            "test/csv.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { toCsv } = require('../src/csv');\n\ntest('rows become CSV with a header', () => {\n  const rows = [{ id: 1, total: 9.5, placed: new Date('2026-10-01T12:00:00Z') }];\n  assert.strictEqual(toCsv(rows), 'id,total,placed\\r\\n1,9.5,2026-10-01\\r\\n');\n});\n",
+            "README.md": "# {{project}}\n\nSales reports for {{project}}.\n\n## CSV export\n\nGET /sales.csv returns the sales rows as RFC 4180 CSV: CRLF line endings, dates as YYYY-MM-DD.\n",
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"2.1.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+          }
+        }
+      ],
+      "checkout": "feature/csv-export",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "src/cell.js",
+          "lines": [
+            5,
+            5
+          ],
+          "symbols": [
+            "cell"
+          ],
+          "mechanism": [
+            "escap*",
+            "quot*",
+            "comma*",
+            "double quote*",
+            "newline*",
+            "delimiter"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/csv.js",
+            "lines": [
+              8,
+              8
+            ],
+            "symbols": [
+              "CRLF",
+              "\\r\\n"
+            ]
+          },
+          {
+            "file": "src/dates.js",
+            "lines": [
+              2,
+              2
+            ],
+            "symbols": [
+              "isoDay",
+              "slice(0, 10)",
+              "toISOString"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "test-plan-gift-message",
+      "family": "plan",
+      "request": "I want customers of {{project}} to be able to add a gift message to their orders. Before anyone writes code, can you look through the repo and give me a plan?",
+      "vars": {
+        "project": [
+          "parcel-shop",
+          "mugworks"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Orders, checkout and receipts",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"3.1.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nThe {{project}} storefront backend.\n",
+            "MIGRATIONS.md": "# Migrations\n\nMigrations run in filename order. A merged migration is never edited: every schema change is a new numbered file.\n",
+            "migrations/0001_create_customers.sql": "CREATE TABLE customers (id TEXT PRIMARY KEY, email TEXT NOT NULL);\n",
+            "migrations/0002_create_orders.sql": "CREATE TABLE orders (id TEXT PRIMARY KEY, customer_id TEXT REFERENCES customers(id), total NUMERIC NOT NULL);\n",
+            "src/receipt.js": "function receiptLines(order) {\n  return [\n    'ORDER ' + order.id,\n    ...order.items.map((i) => i.qty + ' x ' + i.name + ' ' + (i.price * i.qty).toFixed(2)),\n    'TOTAL ' + order.total.toFixed(2),\n  ];\n}\n\nmodule.exports = { receiptLines };\n",
+            "test/receipt.test.js": "// Finance parses these receipts line by line; the format is fixed.\nconst test = require('node:test');\nconst assert = require('node:assert');\nconst { receiptLines } = require('../src/receipt');\n\ntest('receipt text is exactly what finance parses', () => {\n  const order = { id: 'A1', total: 7, items: [{ qty: 2, name: 'Mug', price: 3.5 }] };\n  assert.deepStrictEqual(receiptLines(order), ['ORDER A1', '2 x Mug 7.00', 'TOTAL 7.00']);\n});\n",
+            "src/db.js": "module.exports = { pool: { max: 10, idleMs: 30000 } };\n",
+            "src/email.js": "function confirmation(order) {\n  return 'Thanks for order ' + order.id + '.';\n}\n\nmodule.exports = { confirmation };\n",
+            ".eslintrc.json": "{\n  \"extends\": \"eslint:recommended\",\n  \"env\": {\n    \"node\": true\n  }\n}\n",
+            "config/flags.json": "{\n  \"dark_mode\": true\n}\n"
+          }
+        },
+        {
+          "branch": "main",
+          "message": "Order status column",
+          "files": {
+            "migrations/0003_add_order_status.sql": "ALTER TABLE orders ADD COLUMN status TEXT NOT NULL DEFAULT 'new';\n"
+          }
+        },
+        {
+          "branch": "main",
+          "message": "Checkout v2 behind a flag",
+          "files": {
+            "config/flags.json": "{\n  \"checkout_v2\": false,\n  \"dark_mode\": true\n}\n",
+            "src/checkout/index.js": "const flags = require('../../config/flags.json');\n\nmodule.exports = flags.checkout_v2 ? require('./v2') : require('./v1');\n",
+            "src/checkout/v1.js": "function placeOrder(cart) {\n  return { items: cart.items, total: cart.total };\n}\n\nmodule.exports = { placeOrder };\n",
+            "src/checkout/v2.js": "function placeOrder(cart, options = {}) {\n  return { items: cart.items, total: cart.total, notes: options.notes ?? null };\n}\n\nmodule.exports = { placeOrder };\n"
+          }
+        }
+      ],
+      "checkout": "main",
+      "key": {
+        "constraints": [
+          {
+            "id": "new-migration",
+            "description": "The schema change goes in a new migration (0004): migrations run in filename order and a merged migration is never edited.",
+            "all_of": [
+              [
+                "migration*"
+              ],
+              [
+                "0004",
+                "new migration",
+                "new numbered",
+                "next migration",
+                "never edit*",
+                "not edit*",
+                "don't edit*",
+                "do not edit*",
+                "filename order",
+                "add a migration"
+              ]
+            ]
+          },
+          {
+            "id": "checkout-flag",
+            "description": "Checkout has two paths chosen by the checkout_v2 flag (off), so the gift message must work in v1 and v2 or be gated.",
+            "all_of": [
+              [
+                "checkout_v2",
+                "checkout v2",
+                "v2 checkout"
+              ],
+              [
+                "flag*",
+                "both",
+                "v1"
+              ]
+            ]
+          },
+          {
+            "id": "receipt-pinned",
+            "description": "test/receipt.test.js pins the receipt text that finance parses, so existing receipt lines must not change.",
+            "all_of": [
+              [
+                "receipt*"
+              ],
+              [
+                "test*",
+                "pinned",
+                "pins",
+                "exact*",
+                "format",
+                "finance",
+                "pars*"
+              ]
+            ]
+          }
+        ],
+        "distractors": [
+          {
+            "id": "dark-mode",
+            "description": "The dark_mode flag.",
+            "all_of": [
+              [
+                "dark_mode",
+                "dark mode"
+              ]
+            ]
+          },
+          {
+            "id": "email",
+            "description": "The confirmation email in src/email.js.",
+            "all_of": [
+              [
+                "email*"
+              ]
+            ]
+          },
+          {
+            "id": "db-pool",
+            "description": "The database pool settings in src/db.js.",
+            "all_of": [
+              [
+                "db.js",
+                "connection pool",
+                "pool"
+              ]
+            ]
+          },
+          {
+            "id": "lint",
+            "description": "The ESLint config.",
+            "all_of": [
+              [
+                "eslint*",
+                "lint*"
+              ]
+            ]
+          },
+          {
+            "id": "readme",
+            "description": "The README.",
+            "all_of": [
+              [
+                "readme"
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "test-plan-rate-limit",
+      "family": "plan",
+      "request": "We need per-user rate limiting on the {{project}} API. Can you look through the repo and write me a plan before anyone starts coding?",
+      "vars": {
+        "project": [
+          "beacon-api",
+          "dynamo-gateway"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "API skeleton",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"0.4.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nThe {{project}} HTTP API.\n",
+            "ARCHITECTURE.md": "# Architecture\n\nMiddleware runs in the order listed in src/app.js. Anything that needs the signed-in user runs after auth.\n",
+            "src/app.js": "// Middleware runs in this order. Anything that needs req.user must come after auth.\nconst order = ['requestId', 'cors', 'auth', 'routes'];\n\nmodule.exports = { order };\n",
+            "src/cors.js": "module.exports = { origins: ['https://app.example.test'] };\n",
+            "src/logger.js": "module.exports = { level: 'info' };\n",
+            "src/metrics.js": "module.exports = { prefix: 'api_' };\n",
+            "Dockerfile": "FROM node:24-slim\nCOPY . /app\nCMD [\"node\", \"/app/src/app.js\"]\n",
+            "config/flags.json": "{\n  \"new_search\": true\n}\n"
+          }
+        },
+        {
+          "branch": "main",
+          "message": "Health check for the load balancer",
+          "files": {
+            "src/health.js": "function exempt(path) {\n  return path === '/health';\n}\n\nmodule.exports = { exempt };\n",
+            "test/health.test.js": "// The load balancer polls /health every second, so it must never be rate limited.\nconst test = require('node:test');\nconst assert = require('node:assert');\nconst { exempt } = require('../src/health');\n\ntest('/health is exempt from limits', () => {\n  assert.strictEqual(exempt('/health'), true);\n});\n"
+          }
+        },
+        {
+          "branch": "main",
+          "message": "Add the rate limit flag, off until ops signs off",
+          "files": {
+            "config/flags.json": "{\n  \"new_search\": true,\n  \"rate_limit_enforce\": false\n}\n",
+            "docs/flags.md": "# Flags\n\n- rate_limit_enforce: off. Until ops turns it on, a limiter only logs what it would block (shadow mode).\n- new_search: on.\n"
+          }
+        }
+      ],
+      "checkout": "main",
+      "key": {
+        "constraints": [
+          {
+            "id": "after-auth",
+            "description": "The limiter needs the user, so it goes after auth in the middleware order in src/app.js.",
+            "all_of": [
+              [
+                "after auth*",
+                "after the auth",
+                "following auth",
+                "behind auth",
+                "auth runs first",
+                "after authentication",
+                "middleware order",
+                "order of middleware",
+                "order array",
+                "after 'auth'"
+              ]
+            ]
+          },
+          {
+            "id": "shadow-mode",
+            "description": "rate_limit_enforce is off, so the limiter ships logging only (shadow mode) until ops turns it on.",
+            "all_of": [
+              [
+                "rate_limit_enforce",
+                "enforce flag",
+                "shadow*",
+                "log only",
+                "log-only",
+                "logging only",
+                "logs only",
+                "dry run",
+                "dry-run"
+              ]
+            ]
+          },
+          {
+            "id": "health-exempt",
+            "description": "test/health.test.js pins that /health is never rate limited.",
+            "all_of": [
+              [
+                "health*"
+              ],
+              [
+                "exempt*",
+                "skip*",
+                "exclude*",
+                "never",
+                "bypass*",
+                "allowlist*",
+                "pinned",
+                "test*"
+              ]
+            ]
+          }
+        ],
+        "distractors": [
+          {
+            "id": "cors",
+            "description": "The CORS origins.",
+            "all_of": [
+              [
+                "cors"
+              ]
+            ]
+          },
+          {
+            "id": "logger",
+            "description": "The logger level.",
+            "all_of": [
+              [
+                "logger*"
+              ]
+            ]
+          },
+          {
+            "id": "metrics",
+            "description": "The metrics prefix.",
+            "all_of": [
+              [
+                "metrics*"
+              ]
+            ]
+          },
+          {
+            "id": "new-search",
+            "description": "The new_search flag.",
+            "all_of": [
+              [
+                "new_search",
+                "new search"
+              ]
+            ]
+          },
+          {
+            "id": "docker",
+            "description": "The Dockerfile.",
+            "all_of": [
+              [
+                "dockerfile",
+                "docker*"
+              ]
+            ]
+          },
+          {
+            "id": "request-id",
+            "description": "The requestId middleware.",
+            "all_of": [
+              [
+                "requestId",
+                "request id",
+                "request-id"
+              ]
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

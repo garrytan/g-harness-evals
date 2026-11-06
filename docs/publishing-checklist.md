@@ -1,6 +1,6 @@
 # Publishing checklist: making harness-evals public
 
-harness-evals v0.0.7, audited 2026-10-24 (internal-task), with the merge record added 2026-10-25 (internal-task). This page records what was checked before the repository can be made public, how to run the check again, what remains for the owner to decide, and the one-line recommendation. It changes nothing: visibility is Garry Tan's decision and is not flipped by this work.
+harness-evals v0.0.7, audited 2026-10-24 (internal-task-a), with the merge record added 2026-10-25 (internal-task-b). This page records what was checked before the repository can be made public, how to run the check again, what remains for the owner to decide, and the one-line recommendation. It changes nothing: visibility is Garry Tan's decision and is not flipped by this work.
 
 **Status, 2026-11-02: the plan changed.** This repository stays private. The public repository is to be a separate, curated export of main: a publication manifest will decide what goes out, a history filter will keep only those paths, and secret, marker and sealed-file gates will fail closed on the exported tree and history. That tooling is planned and not yet in this tree. The custody branch never leaves this repository. The decisions below are settled:
 

@@ -1,4 +1,4 @@
-// internal-task (internal-task plan v3, C4 wiring): the gbrain upstream a real pi-memory-provider trial builds (runner/trial/trial.ts
+// internal-task-a (internal-task-b plan v3, C4 wiring): the gbrain upstream a real pi-memory-provider trial builds (runner/trial/trial.ts
 // gbrainUpstream with harnesses/qm/memory-provider.ts's block) passes the world's setGbrain, QM core's client gets a token from
 // the world's OAuth issuer (#159) and the tap takes that token as the provider (#152). A provider call goes out whole-brain,
 // under the trial's unscoped token with no source_ids, whatever the cell's scope; model calls keep both scope layers. Keyless:

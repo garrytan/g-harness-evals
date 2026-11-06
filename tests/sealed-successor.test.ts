@@ -1,4 +1,4 @@
-// internal-task, sealed custody (internal-task): release and regeneration see a successor set through the custody remote and the
+// internal-task-a, sealed custody (internal-task-b): release and regeneration see a successor set through the custody remote and the
 // custody branch, not through the public checkout's remote.
 //
 // Value: protects=release.ts and rekey.ts/compare-backups.ts (refuseSetState) refuse a set while a live successor shares

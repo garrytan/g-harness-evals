@@ -1,4 +1,4 @@
-# Skill-route slots: the internal-task hand-off (internal-task)
+# Skill-route slots: the internal-task-a hand-off (internal-task-b)
 
 **A slot lets gstack-evals (internal-task) put its own skill in front of the H10 rule test.** gstack-evals hands over a skill bundle. H10 runs it as two arms on Claude Code and scores it with the same instruction-followed rule as every other route. The route contract is in [../README.md](../README.md), "Skill-route slots".
 

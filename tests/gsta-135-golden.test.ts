@@ -1,4 +1,4 @@
-// internal-task's golden test for the shared-scorer changes to internal-task's
+// internal-task-a's golden test for the shared-scorer changes to internal-task-b's
 // scripts/gsta-135/evidence.ts: both internal-task panels (panel-run and
 // panel-run-3610, 60 trials each) re-scored from their published receipts,
 // every metric field of every row compared with the published cells.jsonl.

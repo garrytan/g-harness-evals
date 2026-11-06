@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Keyless memory-provider preflight for QM (internal-task, internal-task plan v3, M1 step 3). harnesses/qm/README.md, "Memory-provider
+// Keyless memory-provider preflight for QM (internal-task-a, internal-task-b plan v3, M1 step 3). harnesses/qm/README.md, "Memory-provider
 // preflight", lists the inputs, the outputs and the exact MEMORY_PROVIDER_CONFIG.
 //
 //   env -i PATH=$PATH HOME=$HOME bun harnesses/qm/provider-preflight.ts [--qm-commit <sha>] [--qm-image <tag>]
@@ -320,7 +320,7 @@ if (import.meta.main) {
       stored_user_turn: { stored: s.stored, environment_chars: s.environment_chars, environment_has_seed_fact: s.environment_has_fact, memory_recall: s.memory_recall, memory_recall_outcomes: s.memory_recall_outcomes, untrusted_data_fence: s.untrusted_fence, gbrain_section_excerpt: s.gbrain_section },
     });
     const receipt = {
-      what: 'Keyless memory-provider preflight for QM (internal-task, internal-task plan v3, M1 step 3): QM core reaches gbrain only through MEMORY_PROVIDER_CONFIG, authenticated with OAuth client credentials from the world issuer at the MCP URL origin. No paid call: the model endpoint was scripts/gsta-135/fake-anthropic.ts, which refuses any key not starting with the dummy prefix.',
+      what: 'Keyless memory-provider preflight for QM (internal-task-a, internal-task-b plan v3, M1 step 3): QM core reaches gbrain only through MEMORY_PROVIDER_CONFIG, authenticated with OAuth client credentials from the world issuer at the MCP URL origin. No paid call: the model endpoint was scripts/gsta-135/fake-anthropic.ts, which refuses any key not starting with the dummy prefix.',
       run: id,
       date: new Date().toISOString().slice(0, 10),
       command: 'env -i PATH=$PATH HOME=$HOME bun harnesses/qm/provider-preflight.ts' + (qmCommit !== pin.commit ? ' --qm-commit ' + qmCommit : '') + (receiptPath ? ' --receipt <file>' : ''),

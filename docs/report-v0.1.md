@@ -64,7 +64,7 @@ The same paragraph shape for each harness; a difference is named only where the 
 
 ## Spend, and what is proven about it
 
-The three v0.1 runs spent $16.69, $35.67 and $1.84 (lease ledgers of $150, $200 and $50); program spend to date is $55.19 of the $2,000 cap, per the sensitivity report's spend line. For every run the proxy's usage log, the per-trial `usage.json` sums and the lease ledger agree to the cent ([spend-reconciliation.json](benchmarks/2026-10-24-m3-heldout/results/spend-reconciliation.json) in each results directory). What is not proven is that the provider billed the same: the check against Anthropic's Admin API needs an Admin API key the runs did not have, so each file says `not_performed` and carries the per-day sheet to check against the console by hand ([methodology item 3](methodology.md), amended 2026-10-24). Every figure above is therefore the proxy's list-price meter.
+For every run the proxy's usage log, the per-trial `usage.json` sums and the lease ledger agree to the cent ([spend-reconciliation.json](benchmarks/2026-10-24-m3-heldout/results/spend-reconciliation.json) in each results directory). What is not proven is that the provider billed the same: the check against Anthropic's Admin API needs an Admin API key the runs did not have, so each file says `not_performed` and carries the per-day sheet to check against the console by hand ([methodology item 3](methodology.md), amended 2026-10-24). Every figure above is therefore the proxy's list-price meter.
 
 ## The gbrain arm
 
@@ -72,7 +72,7 @@ The three v0.1 runs spent $16.69, $35.67 and $1.84 (lease ledgers of $150, $200 
 
 ## What is next
 
-A v0.2 task slice is under way (`tasks/multiuser/v0.2`, four new families: continuity, synthesis, corrections, approval relay) because pass rate at this difficulty cannot carry a harness comparison on Sonnet; the items that did separate harnesses were retrieval across several channels and the approval relay. Open work in TODOS.md: a scheduler-capable simulation clock so the scheduled family can count; per-member delegated access instead of one bot token; the reply rubric from the plan, scored separately from world state; the semantic (embedding) gbrain variant metered through the proxy; the methodology item 9 decision on a refusal without the approval tool, and whether a not-found reply counts as one; the provider-side spend check once an Admin key exists.
+A v0.2 task slice is under way (`tasks/multiuser/v0.2`, four new families: continuity, synthesis, corrections, approval relay) because pass rate at this difficulty cannot carry a harness comparison on Sonnet; the items that did separate harnesses were retrieval across several channels and the approval relay. Open work in [TODOS.md](../TODOS.md): a scheduler-capable simulation clock so the scheduled family can count; per-member delegated access instead of one bot token; the reply rubric from the plan, scored separately from world state; the semantic (embedding) gbrain variant metered through the proxy; the methodology item 9 decision on a refusal without the approval tool, and whether a not-found reply counts as one; the provider-side spend check once an Admin key exists.
 
 ## Reproduce and inspect
 

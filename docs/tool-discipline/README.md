@@ -1,6 +1,6 @@
 # Tool discipline: invented tools, bad arguments, wrong names, broken helper calls and skipped skill starts
 
-internal-task, free mining over committed receipts. Plan: internal-task.
+internal-task-a, free mining over committed receipts. Plan: internal-task-b.
 
 - **Held-out receipts are included.** The mined runs include the published results of the spent v0.1 and v0.2 held-out sets (405 of the 764 hand-checked items). This is descriptive mining, so it makes no held-out claim.
 - **That is an exposure.** labels.jsonl and the examples below name held-out tasks and their failing calls, so both sets' MANIFEST.json ledgers record it (methodology item 14, R4).
@@ -16,7 +16,7 @@ internal-task, free mining over committed receipts. Plan: internal-task.
 - **Wrong names are the most common failed world call.** On the older Haiku and Sonnet receipts, about 0.1% to 1% of world calls name a channel, file or person that does not exist. The commonest causes are a person's handle used where a DM channel id is needed, and a guessed file path.
 - **Bad arguments show up only for gbrain.** The world server rejects a malformed call before it writes its log, so the logs cannot see malformed world calls at all. Every malformed call they do see is a gbrain call, for example `gbrain.search` with a `match` argument it does not take.
 
-**What this means for gstack:** the start step is skipped, not broken. Better description text has not changed that (internal-task). internal-task's route run (#147) found that a per-turn hook gets an instruction followed 97% to 100% of the time. That is the route to test next.
+**What this means for gstack:** the start step is skipped, not broken. Better description text has not changed that (internal-task-a). internal-task-b's route run (#147) found that a per-turn hook gets an instruction followed 97% to 100% of the time. That is the route to test next.
 
 ## Rates for frontier models (Opus 5.5)
 

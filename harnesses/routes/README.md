@@ -1,4 +1,4 @@
-# Instruction routes (internal-task, internal-task)
+# Instruction routes (internal-task-a, internal-task-b)
 
 **One instruction text, five ways in.** The OpenClaw and Hermes adapters read the cell's `config` (`HE_HARNESS_CONFIG`) and deliver the same bytes through the route it names. Unset, empty or `default` changes nothing: every file the adapter writes and every CLI command it runs stay byte-identical to the adapter before this change (`tests/instruction-route.test.ts`).
 
@@ -77,7 +77,7 @@ On the first request of a session each route places the instruction once or not 
 
 ## Routes on four harnesses (H10, internal-task)
 
-**Status: a contract, not yet built.** Today only the internal-task routes above run, on OpenClaw and Hermes. Claude Code and Codex read `HE_HARNESS_CONFIG` only for `default` and internal-task's `official-minimal`, which is not a route and stays outside this grammar.
+**Status: a contract, not yet built.** Today only the internal-task-a routes above run, on OpenClaw and Hermes. Claude Code and Codex read `HE_HARNESS_CONFIG` only for `default` and internal-task-b's `official-minimal`, which is not a route and stays outside this grammar.
 
 - **Who builds what:** H10 PR 2 does OpenClaw and Hermes, PR 3 the Claude Code CLI and Codex, PR 4 the Claude Code Agent SDK drivers.
 - **No silent runs:** until then, an adapter refuses any route it does not run (exit 2, HE-ADAPTER-007).

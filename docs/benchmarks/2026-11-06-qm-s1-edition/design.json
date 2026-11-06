@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "run_id": "qm-s1-edition-2026-11",
+  "stage": "design",
+  "issue": "internal-task",
+  "question": "Does QM with gstack's QM-native edition (gstack-investigate, gstack-review, gstack-plan) solve more invented single-turn coding requests than plain QM, pooled over Opus 5.5 and GPT-6.1 Sol?",
+  "harness": "qm",
+  "models": [
+    "anthropic:claude-opus-5-5",
+    "openai:gpt-6.1-sol"
+  ],
+  "arms": {
+    "plain": {
+      "in_rule": true,
+      "layer": false,
+      "soul": "qm-default"
+    },
+    "edition": {
+      "in_rule": true,
+      "layer": "gstack qm/sandbox/skills/gstack-* at the pinned edition commit",
+      "soul": "qm-default"
+    },
+    "forced": {
+      "in_rule": false,
+      "diagnostic": true,
+      "layer": "as edition",
+      "soul": "the matched skill's SKILL.md body, frontmatter removed"
+    }
+  },
+  "families": {
+    "investigate": 24,
+    "review": 24,
+    "plan": 24
+  },
+  "tasks_total": 72,
+  "repetitions": 6,
+  "repetitions_fallback_by_cost_rule": 4,
+  "counted_trials": 1728,
+  "forced_trials": 144,
+  "headroom_check": {
+    "arm": "plain",
+    "tasks": 72,
+    "repetitions": 1,
+    "trials": 144,
+    "pass_band_success": [
+      0.15,
+      0.75
+    ],
+    "cap_usd": 45
+  },
+  "exposure_pilot": {
+    "arm": "edition",
+    "tasks": 3,
+    "trials": 6,
+    "cap_usd": 10
+  },
+  "primary_endpoint": "task success per trial (0 or 1), graded on substance by harnesses/qm/gstack/edition-grade.ts",
+  "rule": {
+    "statistic": "edition minus plain success: per task, averaged over repetitions and over both models, then over tasks",
+    "test": "two-sided sign-flip permutation over 72 task clusters (48 if plan leaves the verdict)",
+    "interval": "task-clustered bootstrap 95 percent, 10000 draws, seed 7",
+    "keep": "pooled difference > 0 and p < 0.05 and each model's point estimate >= 0",
+    "otherwise": "CUT, no second attempt",
+    "incomplete": "no verdict when any model lacks a counted record for a task in either rule arm at the design repetition count (a missing shard, arm or task, or a cap stop)",
+    "cost_in_rule": false
+  },
+  "secondary_descriptive": [
+    "per-model differences",
+    "open_matched",
+    "open_any",
+    "complete_read",
+    "first_step",
+    "forced minus plain",
+    "forced minus edition",
+    "cost per task and per success",
+    "tokens",
+    "wall time",
+    "reply length",
+    "exclusion rate per arm (flag > 5 points)"
+  ],
+  "mdd_points": {
+    "pooled_no_interaction": 6.7,
+    "full_rule_interaction_sd_0_4": 10.6,
+    "plan_left_out_48_tasks": { "pooled_no_interaction": 8.2, "full_rule_interaction_sd_0_4": 11.4 },
+    "plan_judge_fails_calibration": "plan leaves the verdict; the primary pools the 48 investigate and review tasks; plan is reported with the alias key as named, descriptive",
+    "source": "power_rule.py, Captain drive handoffs/internal-task/autoplan/"
+  },
+  "exclusions": {
+    "excluded": [
+      "model_error",
+      "infra_error"
+    ],
+    "failures": [
+      "context_length",
+      "timeout",
+      "turn_error"
+    ],
+    "infra_rerun": "at most once after a named repair; the first record counts unless it ended infra_error, any other rerun does not count, and every attempt's spend counts",
+    "model_error_when": "the turn's last provider call failed"
+  },
+  "command_approval": {
+    "handling": "approve each pending command once, same in every arm, at most 5 per trial",
+    "route": "POST /v1/turns with approval {requestId, approved: true, scope: once} (QM 850599e9 src/api/routes/turns.ts:334)"
+  },
+  "sharding": {
+    "cells": "(model, task block): 2 models x 4 blocks of 18 tasks (6 per family)",
+    "vms": 8,
+    "order": "seeded interleave of arms and repetitions within a cell",
+    "split_cells": false,
+    "canary_first": true
+  },
+  "caps_usd": {
+    "headroom": 45,
+    "pilot": 10,
+    "main": 520,
+    "forced": 45,
+    "vms": 40,
+    "own_model_use": 850,
+    "all_in": 1510
+  },
+  "pins_freeze_at_pilot": [
+    "qm_sha",
+    "edition_commit",
+    "edition_file_sha256",
+    "image_digests",
+    "first_step_markers",
+    "task_bank_publication"
+  ],
+  "pins_freeze_at_main": [
+    "judge_model_and_prompt",
+    "repetitions",
+    "task_replacements"
+  ],
+  "task_bank_sha256": {
+    "bank.json": "3b3cfbd7b83205e4589e377337f8f869591beeb96ea3ee176ea637b073d660ad",
+    "seed.txt": "c7e3dc087c8153956852d3f73f6ec4072b55db00037943f9e0b63f314f2ca423",
+    "bank_id": "qm-s1-edition-2026-11-v1"
+  },
+  "approval": {
+    "autoplan_run": "run-20261105232312",
+    "gate_rev": 1,
+    "rec_hash": "94ce35cddbc9",
+    "owner_reply": "Do it",
+    "date": "2026-11-05"
+  }
+}

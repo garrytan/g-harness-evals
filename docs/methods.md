@@ -10,7 +10,7 @@ harness-evals v0.0.29. This page holds the full statements behind the plain summ
 - Every figure is copied from the report named in its row and the receipts under that run's `results/`; [docs/receipts-manifest.json](../docs/receipts-manifest.json) carries each run's preregistration commit, trial count, ledgers and the sha256 of its `trials.jsonl`.
 - Status says whether a run was its held-out set's first counted opening; the details name the set and which counted opening of that set it was, numbered in the order the preregistrations merged on main by `runner/heldout/openings.ts` (`bun runner/heldout/openings.ts` prints the ledger). Only a first opening is confirmatory; a later opening of the same set is dev, because whoever designed it had already seen that set's results, so its intervals hold for those tasks but cannot confirm the claim ([Corrections](../README.md#corrections), 2026-10-28). A pilot or a probe run uses the dev split.
 
-Spend across every lane, from the lease ledgers: $1,679.51 committed of the $2,000 program cap ([docs/budget-ledger.md](../docs/budget-ledger.md): $1,576.74 in the program's lane ledger plus $102.77 from three runs' committed ledgers that the lane ledger does not yet list, the two v0.2 runs and `qm-c4-told-live-2026-11`). Every dollar is the metering proxy's list-price meter; the provider-side check has never been performed (Known limits).
+Every dollar is the metering proxy's list-price meter; the provider-side check has never been performed (Known limits).
 
 ## How the harnesses compare, in full
 
@@ -74,7 +74,7 @@ New section "How preregistration order is checked": the prereg ledger, the attes
 
 ### 2026-10-31: instruction-route run in the gbrain paragraph (internal-task)
 
-"How gbrain compares, in full" gains run `anatomy-instruction-route-2026-11`: where gbrain's rule enters decides whether the bot checks gbrain first, each harness against its own control, with the cross-scope reads and the lower pass on the OpenClaw hook marked descriptive. The spend line moves to $406.78, split as the re-rendered budget page splits it. Why: the README's "How gbrain compares" gained the run, and this paragraph is where the README sends readers for every reference.
+"How gbrain compares, in full" gains run `anatomy-instruction-route-2026-11`: where gbrain's rule enters decides whether the bot checks gbrain first, each harness against its own control, with the cross-scope reads and the lower pass on the OpenClaw hook marked descriptive. Why: the README's "How gbrain compares" gained the run, and this paragraph is where the README sends readers for every reference.
 
 ### 2026-10-29: Claude Code and Codex (internal-task)
 

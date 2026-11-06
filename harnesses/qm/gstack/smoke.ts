@@ -144,7 +144,7 @@ async function main(): Promise<number> {
   const coreLog = !coreUrl && existsSync(join(work, 'stack', 'core.log')) ? readFileSync(join(work, 'stack', 'core.log'), 'utf8') : '';
   const result = outcome(calls);
   const receipt = {
-    what: 'gstack-on-QM smoke (internal-task, internal-task plan v3 M1 step 6): raw gstack repository registered, catalogued and imported as a QM org skill pack. ' + (coreUrl ? 'External core: its model endpoint and commit were not checked.' : 'Keyless: the model endpoint was scripts/gsta-135/fake-anthropic.ts, which refuses any key not starting with ' + DUMMY_KEY_PREFIX + '.'),
+    what: 'gstack-on-QM smoke (internal-task-a, internal-task-b plan v3 M1 step 6): raw gstack repository registered, catalogued and imported as a QM org skill pack. ' + (coreUrl ? 'External core: its model endpoint and commit were not checked.' : 'Keyless: the model endpoint was scripts/gsta-135/fake-anthropic.ts, which refuses any key not starting with ' + DUMMY_KEY_PREFIX + '.'),
     command: 'env -i PATH=$PATH HOME=$HOME bun harnesses/qm/gstack/smoke.ts' + process.argv.slice(2).map(a => ' ' + a).join(''),
     started, finished: new Date().toISOString(),
     qm: { commit: qmCommit, fetch_limits: QM_FETCH_LIMITS, limits_source: 'src/skills/pack-fetcher.ts:155-157 at b6786d67' + (coreUrl ? ' (assumed: the external core was not checked)' : '') },

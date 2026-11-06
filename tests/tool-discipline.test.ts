@@ -1,6 +1,6 @@
 // internal-task tool discipline classifier (scripts/tool-discipline/). Fixtures under tests/fixtures/tool-discipline/ are cut from
 // real receipts: benchmarks/ holds a few verbatim events.jsonl lines per trial (with a trials.jsonl line cut down to trial_id,
-// cell, task, harness, model and termination); gsta-135/ holds whole internal-task evidence excerpts (internal-task's drive copies) and
+// cell, task, harness, model and termination); gsta-135/ holds whole internal-task-a evidence excerpts (internal-task-b's drive copies) and
 // cells.jsonl lines cut down to the fields normalize.ts reads. One positive and one near miss per kind per harness where the
 // data has one; the helper-command cases at the end are synthetic and say so. Keyless; nothing is spawned with keys.
 import { describe, expect, test } from 'bun:test';

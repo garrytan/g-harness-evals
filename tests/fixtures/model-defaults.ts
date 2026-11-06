@@ -7,7 +7,7 @@
 //   anthropic/claude-haiku-5-5 (internal-task, 2026-11-01).
 //   Hermes (adapter.sh): model.default in the config copy is the cell model, the answering model, not a housekeeping model.
 export const OPENCLAW_COMMENT_OLD = '// by adapter.sh so OpenClaw can write beside it if it wants to.\n';
-export const OPENCLAW_COMMENT_NEW = OPENCLAW_COMMENT_OLD.slice(0, -1) + ' model.primary\n// is the cell model from HE_MODEL_NAME (internal-task). utilityModel is unset on\n// purpose: OpenClaw\'s housekeeping model stays its shipped default,\n// anthropic/claude-haiku-5-5 (internal-task, 2026-11-01).\n';
+export const OPENCLAW_COMMENT_NEW = OPENCLAW_COMMENT_OLD.slice(0, -1) + ' model.primary\n// is the cell model from HE_MODEL_NAME (internal-task-a). utilityModel is unset on\n// purpose: OpenClaw\'s housekeeping model stays its shipped default,\n// anthropic/claude-haiku-5-5 (internal-task-b, 2026-11-01).\n';
 
 function replaceOnce(text: string, from: string, to: string): string {
   if (!text.includes(from)) throw new Error('model-defaults: the older config has no ' + JSON.stringify(from));

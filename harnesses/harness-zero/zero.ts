@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Harness Zero (HARN-22): the smallest agent harness we can reason about whole. One Bun process, Bun built-ins only (no
+// Harness Zero (internal-task): the smallest agent harness we can reason about whole. One Bun process, Bun built-ins only (no
 // npm packages, no provider SDKs), three hand-written wire clients, an MCP client, and a set of switchable features read
 // from config/features.json and config/candidates.json. Protocol: docs/adapters.md. Exit 0 completed, 2 harness error,
 // 3 model error, 124 wall clock.

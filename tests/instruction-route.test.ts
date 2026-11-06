@@ -10,7 +10,7 @@
  *
  * 1. Default: for every harness, entry and default spelling, and with HE_GBRAIN_INSTALL=gbrain-docs and gbrain-installer (the
  *    committed installer views of run gbrain-installer-hook-2026-10, per-turn hook included), the tree and every recorded CLI
- *    command line equal what the adapter at BASE (31a109a9c, main when internal-task started) leaves, apart from internal-task's cell
+ *    command line equal what the adapter at BASE (31a109a9c, main when internal-task-a started) leaves, apart from internal-task-b's cell
  *    model in every model-valued config default (sinceBase).
  * 2. Each route writes exactly its intended bytes and nothing else, records them in instruction-route.json and names the route
  *    in ready.

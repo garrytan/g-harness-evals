@@ -8,7 +8,7 @@ repo_commit: 912dd49f4895179454c4b622efc165f5ec6b8a7e
 prereg: docs/benchmarks/2026-10-24-m3-heldout/PREREGISTRATION.md at 3c7e7653b864fa916ce76852af7d20af9e947d6e (no amendments); docs/benchmarks/2026-10-24-m3-sensitivity-haiku/PREREGISTRATION.md at 3cf1fac2d16e51e552ba42d7ffa2001a0bda13e3 (no amendments)
 data: in-repo receipts, no separate bundle. m3-heldout results/trials.jsonl sha256 033e67a8922e251abdd8a42a985352fc998d3b10577772339a608a7d1aaa3757; m3-sensitivity-haiku results/trials.jsonl sha256 b6933ae3d8bfb8b1745d7332bfd0e01f57b2f5c9860e1db8c86fecac0859d968
 author: internal-task
-reviewed_by: internal-task claim check with a GPT-6.1 Sol reviewer, 2026-11-01, PASS-WITH-EDITS (edits applied in this version); internal-task recheck of the edited lines at 79102d528, 2026-11-01, its line edits applied; reproduced_by: internal-task clean-machine rerun at 912dd49f, every table row matched
+reviewed_by: internal-task-a claim check with a GPT-6.1 Sol reviewer, 2026-11-01, PASS-WITH-EDITS (edits applied in this version); internal-task-b recheck of the edited lines at 79102d528, 2026-11-01, its line edits applied; reproduced_by: internal-task-a clean-machine rerun at 912dd49f, every table row matched
 ---
 
 # Sonnet/Haiku only, not frontier evidence: On 16 held-out multi-user tasks, OpenClaw, Hermes Agent and QM showed no pass-rate difference we could detect on Claude Sonnet 5.5 (77, 73 and 71 of 80; controls 96%, 91%, 89%; nominal MDD 4.6 to 7.2 points, which this saturated set could not reach; largest gap -8 points [-21, +3]; confirmatory)
@@ -70,7 +70,7 @@ reviewed_by: internal-task claim check with a GPT-6.1 Sol reviewer, 2026-11-01, 
 
 ## Cost
 
-- **Total eval spend: $37.51.** Sonnet run $35.67 on 2,499 priced requests (lease $200); Haiku run $1.84 on 2,587 requests (lease $50). Ledger-committed, equal to settled; no open reservation.
+Ledger-committed, equal to settled; no open reservation.
 - Per trial, per success and tokens per cell: the table above. "Tokens in" counts uncached input, cache writes and cache reads together, as the provider reported them; "cache reads" is the part billed at the cache-read rate.
 - **Price table** (USD per million tokens, list price; the same rows in `runner/ledger/budget-ledger.ts` at both preregistration commits; rows checked against the providers' pricing pages on 2026-10-02 (Haiku on 2026-10-08), per `runner/ledger/budget-ledger.ts`):
 

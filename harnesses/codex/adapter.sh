@@ -43,7 +43,7 @@ mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
 log() { printf '%s codex[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" | tee -a "$HE_LOG_DIR/adapter.log" >&2; }
 now() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
-# HARN-5: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
+# internal-task: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
 # preflight compares the same hash in the image with the checkout, HE-ADAPTER-005).
 adapter_sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)
 harness_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -86,7 +86,7 @@ version=$(cli_version)
 log "codex-cli ${version:-unknown} (pin.json $pin_version) model=he-proxy/$HE_MODEL_NAME budget=${HE_TIME_BUDGET_S}s entry=$entry"
 [ "$version" = "$pin_version" ] || { log "codex-cli ${version:-unknown} is not the pinned $pin_version"; exit 2; }
 
-# HARN-20: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Codex's own base instructions with one fixed text,
+# internal-task: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Codex's own base instructions with one fixed text,
 # ablation/official-minimal.txt beside this file (/opt/harness/ablation in the image; a byte copy of
 # harnesses/ablation/official-minimal.txt, checked against pin.json official_minimal.sha256), named by model_instructions_file at
 # the top of config.toml. Unset, empty or default adds nothing, so config.toml is byte-identical to before; any other value, or a
@@ -158,7 +158,7 @@ fi
 mv "$CODEX_HOME/config.toml.tmp" "$CODEX_HOME/config.toml"
 log "config written to $CODEX_HOME/config.toml (mcp_servers $mcp_servers)"
 
-# HARN-13, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
+# internal-task, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
 # the exported view of what `gbrain setup codex --instructions-only` wrote at gbrain image build (gbrain#7989) read-only at
 # HE_GBRAIN_INSTALL_DIR. Setup ran there with HOME=/harness-state and CODEX_HOME=/harness-state/codex, so every path in it is this
 # container's: home/codex/AGENTS.md (the brain-first block, Codex's global instructions), home/codex/hooks.json (the

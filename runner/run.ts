@@ -396,7 +396,7 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
       if (c.gbrain.access === 'rules' && (c.gbrain.brain !== 'member' || c.gbrain.scope !== 'member')) throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.access "rules" needs gbrain.brain "member" and gbrain.scope "member" (got brain ${JSON.stringify(c.gbrain.brain ?? 'bot-visible')}, scope ${JSON.stringify(c.gbrain.scope ?? 'none')}); only the member brain is built with folder rules, and only the members' own bound tokens read through them`);
       if (c.gbrain.access === 'rules' && c.gbrain.ingest === 'live') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.access "rules" runs without live ingestion; the ingested facts land outside the folder rules, where every member token reads them`);
     }
-    // internal-task (internal-task plan v3, M1): QM's memory-provider config reaches gbrain only through MEMORY_PROVIDER_CONFIG, so it needs a
+    // internal-task-a (internal-task-b plan v3, M1): QM's memory-provider config reaches gbrain only through MEMORY_PROVIDER_CONFIG, so it needs a
     // QM harness in docker (the client secret stays in the compose stack) and a gbrain sidecar behind the tap, served over MCP.
     if (c.config === MEMORY_PROVIDER_CONFIG_NAME) {
       if (c.harness !== 'qm') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: config "${MEMORY_PROVIDER_CONFIG_NAME}" is QM's memory-provider route; harness ${c.harness} has none. fix: drop config or use harness qm`);

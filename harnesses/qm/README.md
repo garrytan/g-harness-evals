@@ -104,7 +104,7 @@ Core runs with `NODE_ENV=development`.
 
 Not done: the `admin` and `web-ui` services, Slack, the egress proxy, and the model gateway (`MODEL_GATEWAY_URL` wants LiteLLM-style `/v1/models` and `/model_group/info` discovery, which the metering proxy does not serve; the direct `ANTHROPIC_BASE_URL` override works instead). QM's MCP connector registration is done in `serve` (above). The per-trial `CREATE DATABASE trial_x TEMPLATE qm_seed` reset from the plan is replaced by a fresh Postgres container per trial, which is slower (about 10 s to healthy plus migrations) but equivalent for isolation.
 
-## Re-pin to main b6786d67 (2026-10-30, internal-task for internal-task M1)
+## Re-pin to main b6786d67 (2026-10-30, internal-task-a for internal-task-b M1)
 
 **The adapter runs QM at `b6786d67` with two config changes and no API change.** QM's routes, signing and admin bodies the adapter uses still work; the Claude loop is gone and MCP tools now hide behind a search tool. Checked against `git diff 7417aa2a b6786d67` (211 commits).
 
@@ -135,11 +135,11 @@ Keyless smoke on the images the anatomy captures used ([smoke-b6786d67.json](smo
 - **Sandbox command.** A scripted `execute` with `scope: scratch` ran in a container from `harness-eval/qm-sandbox:dev` and returned `sandbox-ok`, `x86_64`, Debian `12.15`, Node `v24.22.1`, Python `3.11.2`, Claude Code `2.1.210`, `agent.mjs`, `/root/workspace`, exit 0.
 - **A scope has no sandbox until the agent makes one.** `execute` without a scope answered `this scope has no default sandbox; use sandbox list, create, set_default, then retry`. QM behaves the same at `v0.1.15` (`NoDefaultSandboxError`, `src/sandbox/sandbox-routing.ts`), so this is not new.
 
-## gstack on QM (2026-10-31, internal-task for internal-task M1 step 6)
+## gstack on QM (2026-10-31, internal-task-a for internal-task-b M1 step 6)
 
 **Raw gstack does not import as a QM skill pack at `b6786d67`.** QM registers it, then refuses it with `pack exceeds max bytes (33554432)`: the tree is 74.9 MiB against a 32 MiB cap. A keyless S1 fixture puts gstack's paste-in router in the org SOUL and reads one staged skill in full. Details, scripts and receipts: [gstack/README.md](gstack/README.md).
 
-## Memory-provider preflight (2026-10-31, internal-task for internal-task M1 step 3)
+## Memory-provider preflight (2026-10-31, internal-task-a for internal-task-b M1 step 3)
 
 **QM reached gbrain as a memory provider, with real OAuth client credentials, and the seeded fact showed up in the stored turn.** All 10 checks passed at `b6786d67` against gbrain `a590ad07` (the pin in `gbrain/pin.json`), $0, no model call ([provider-preflight-b6786d67.json](provider-preflight-b6786d67.json)).
 
@@ -241,15 +241,15 @@ Findings:
 
 The "Particle cells" section: `prepare.sh`, `compose.yaml` and `adapter.sh` run Pi on a custom `openai` provider for a Particle URL, with no Anthropic key. Why: internal-task's cheap row runs Particle-1 on QM if a keyless check shows no Anthropic call, and it does (`tests/particle-branch.test.ts`).
 
-### 2026-10-31: memory-provider preflight (internal-task, internal-task M1 step 3)
+### 2026-10-31: memory-provider preflight (internal-task-a, internal-task-b M1 step 3)
 
 `provider-preflight.ts` and its receipt: QM core reaches gbrain only through `MEMORY_PROVIDER_CONFIG`, with OAuth client credentials from the world's new issuer, and the stored turn shows the seeded fact. The section lists the inputs, outputs, the exact config and what the run found about `max_chars`.
 
-### 2026-10-31: gstack smoke and S1 probe staging (internal-task, internal-task M1 step 6)
+### 2026-10-31: gstack smoke and S1 probe staging (internal-task-a, internal-task-b M1 step 6)
 
 Added the gstack section pointing at `gstack/README.md`: the skill-pack smoke's refusal, the Bun answer, and the keyless S1 fixture.
 
-### 2026-10-30: re-pinned to main b6786d67 (internal-task, internal-task M1)
+### 2026-10-30: re-pinned to main b6786d67 (internal-task-a, internal-task-b M1)
 
 QM fetched by commit in both images, the core and sandbox builds re-derived from QM's own Dockerfiles at that commit, the `claude` and `claude-probe` configs dropped (QM removed its Claude harness), every QM change between the two pins listed, and a keyless turn and sandbox command run in the built images.
 

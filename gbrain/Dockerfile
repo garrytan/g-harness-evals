@@ -193,7 +193,7 @@ RUN if env -i PATH="$PATH" HOME=/tmp bun /opt/gbrain/src/cli.ts access --help 2>
       mkdir -p /brain && printf '{"access":"rules","unavailable":"gbrain %s has no access command"}\n' "$GBRAIN_COMMIT" > /brain/unavailable.json; \
     fi
 
-# internal-task: the install bundle, built from the gbrain checkout and the two bot-visible brains, keyless. internal-task: the installer
+# internal-task-a: the install bundle, built from the gbrain checkout and the two bot-visible brains, keyless. internal-task-b: the installer
 # section runs gbrain setup <harness> --instructions-only; for Hermes the build HERMES_HOME is seeded first with Hermes's own
 # SOUL.md at the pinned Hermes commit (harnesses/hermes/pin.json soul_md: what Hermes's first run writes into HERMES_HOME, which
 # gbrain never creates), fetched here and checked against the pinned sha256. For Claude Code and Codex (gbrain#7989) setup runs

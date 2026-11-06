@@ -107,16 +107,16 @@ export const FIXTURE_COMMITS: Array<{ ref: string; date: string; message: string
   { ref: FIXTURE_BRANCH, date: '1793638800 -0800', message: 'Add a 15-minute session timeout to login', files: { 'src/auth.js': AUTH_BROKEN, 'src/session.js': SESSION } },
 ];
 
-const gitEnv = () => ({ PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: process.env.HOME ?? '/', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' });
+export const gitEnv = () => ({ PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: process.env.HOME ?? '/', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' });
 
-function git(dir: string, args: string[], input?: string): string {
+export function git(dir: string, args: string[], input?: string): string {
   const r = spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8', input, env: gitEnv() });
   if (r.status !== 0) throw new Error('fixture: git ' + args.join(' ') + ' failed: ' + r.stderr);
   return r.stdout.trim();
 }
 
 /** A tree object for a path map, built bottom-up with mktree. */
-function writeTree(dir: string, files: Files): string {
+export function writeTree(dir: string, files: Files): string {
   const entries: string[] = [];
   const subdirs = new Map<string, Files>();
   for (const [path, text] of Object.entries(files)) {

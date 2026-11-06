@@ -1,4 +1,4 @@
-// internal-task, sealed custody (internal-task items 1, 2 and 4): a retired set names the set that replaced it, a sealed set's status
+// internal-task-a, sealed custody (internal-task-b items 1, 2 and 4): a retired set names the set that replaced it, a sealed set's status
 // moves only forward and retires only through a release or a replacement, and a manifest that does not parse or validate
 // counts as a live sharer.
 //

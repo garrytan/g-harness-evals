@@ -1,6 +1,6 @@
 # tasks/multiuser/v0.3
 
-Task set v0.3 (internal-task): the set the owed confirmations C1 to C4 (internal-task's plan, decision 5) run on at its first sealed opening. It has six families and two parts:
+Task set v0.3 (internal-task-a): the set the owed confirmations C1 to C4 (internal-task-b's plan, decision 5) run on at its first sealed opening. It has six families and two parts:
 
 - `dev/`: 20 public tasks for adapter work and the dev pilot, written by `scripts/v03/gen-tasks.ts` from the published seed in `dev.seed` against the public world's dev records (`world/seed/world.json`) and the facts indexed in `dev-facts.json` (from the hand-written `dev-facts.source.json` by `scripts/v03/index-facts.ts`). `tests/v03-generators.test.ts` regenerates the tree and fails if it differs by a byte.
 - `heldout/`: up to 40 tasks (the family quotas in `scripts/v03/select.ts`; selection stops below 30) and a held-out world slice of their own, generated the same way on the author's machine from a private seed and sealed before anyone reads them. Only the sealed commitments (`heldout/MANIFEST.json`) will ever be committed in plaintext; until the set is sealed this directory does not exist. **That first seal is retired unopened.** The approval relay tasks were re-rendered with the fixed template (the coordinating agent's decision of 2026-10-30, option A), and the regenerated held-out set is sealed as `v0.3-gen6`, with its commitments in [../v0.3-gen6/heldout/MANIFEST.json](../v0.3-gen6/heldout/MANIFEST.json). The first opening runs on `v0.3-gen6`.

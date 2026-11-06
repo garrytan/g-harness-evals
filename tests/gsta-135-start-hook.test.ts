@@ -1,4 +1,4 @@
-// internal-task's start hook arm (gstack internal-task, opt-in, b9fda18c): the overlay
+// internal-task-a's start hook arm (gstack internal-task-b, opt-in, b9fda18c): the overlay
 // wrapper's image switch, pinned-tree check, config seed and hook status gate
 // (harnesses/_gstack/wrapper-lib.sh, both overlay adapters with stub gstack
 // checkouts, no docker), the overlay Dockerfiles' build arg and label, and

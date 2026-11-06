@@ -43,7 +43,7 @@ Every key was checked with `--strict-config` at this pin (`pin.json` `config_key
 
 ## Changelog
 
-### 2026-11-02: the gbrain hook launcher (internal-task, internal-task)
+### 2026-11-02: the gbrain hook launcher (internal-task-a, internal-task-b)
 
 The installer line says the adapter also places gbrain#8424's hook launcher, alone in its directory. Why: from gbrain `2c469d1b` the hook command runs gbrain through `.gbrain/hook-launcher/gbrain-hook`, which refuses to run beside any other file, and the image build refused it as a file setup should not have written, so no view reached the adapter.
 

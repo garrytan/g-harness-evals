@@ -155,7 +155,7 @@ All five live in `tests/gates-938-audit.test.ts` on `harn14/gates-938` (`570cd01
 
 ## 7. Deviations and amendments
 
-internal-task comment ids are given in brackets. The plan file is pilot-plan.md in the Captain drive (handoffs/internal-task/gates-938/), and the prereg is frozen at sha256 `9fbafda9...5b1485`.
+internal-task-a comment ids are given in brackets. The plan file is pilot-plan.md in the Captain drive (handoffs/internal-task-b/gates-938/), and the prereg is frozen at sha256 `9fbafda9...5b1485`.
 
 - **Pilot plan** [icm_01M6DVVJ8D7W81MJ0EEMBH7YMW], posted before the first paid pilot trial.
 - **Amendment 1** [icm_01M6DYM4KXXS39YYMT354CXSD8]:

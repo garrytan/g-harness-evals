@@ -33,7 +33,7 @@ What each harness-evals release changed. Versions follow `VERSION` and `package.
 
 ## [0.0.133] - 2026-11-04
 
-### internal-task (internal-task): export v2, the public export scrubs and delinks the current tree and holds pinned files
+### internal-task-a (internal-task-b): export v2, the public export scrubs and delinks the current tree and holds pinned files
 
 - **The current tree is scrubbed too.** Tree and history mode now apply the scrub table (work-lane codes, machine and VM ids, the drive path, custody ids, the owner email, links into private repositories, the G1 names) to the current version of every published file, not only to old blobs. A file a hash pins stays byte-identical. That covers every file the preregistration ledger hashes, and every file whose sha256 a published file carries. `<out>/rewrites.tsv` lists each rewrite and each held file with what pins it.
 - **Links into unpublished paths become plain text.** The delink step turns a Markdown link into a path the export leaves out into its link text, so `scripts/check-links.py` passes on the public clone. A link inside a pinned file stays, listed in `scripts/check-links-allow.txt`.
@@ -78,7 +78,7 @@ The driver for the S1 probe (`docs/benchmarks/2026-11-03-qm-s1-gstack-probe/`, g
 
 ## [0.0.130] - 2026-11-04
 
-### internal-task: sealed custody hardening (internal-task items 1 to 4)
+### internal-task-a: sealed custody hardening (internal-task-b items 1 to 4)
 
 - **A replaced set stays protected by its reseal.** A held-out `MANIFEST.json` can name the set that replaced it in `replaced_by` (v0.3 now names v0.3-gen6). While any set in that chain is in sealed custody and not retired, the old set takes no opening and no release, and its released files stay off main, whatever the digests say.
 - **Sealed statuses only move forward.** `bun scripts/seal-heldout.ts --check` compares every sealed set with the merge base: `open` -> `spent` -> `retired` or `open` -> `retired`, never back. A set leaves custody only with the released block `release.ts` writes, with the sealed digests and tree unchanged. `replaced_by` is set once, to a live reseal, and never changes. A sealed set retired with no `replaced_by` fails. An unreadable base fails closed.
@@ -89,7 +89,7 @@ The driver for the S1 probe (`docs/benchmarks/2026-11-03-qm-s1-gstack-probe/`, g
 
 ## [0.0.129] - 2026-11-04
 
-- **installer-cc-codex-acl-2026-11 reported: with gbrain's per-member access rules on, cross-scope exposure via gbrain is 0 of 51 in all four gbrain cells, so installer against told is not distinguished on Claude Code or Codex.** Amendment 3 of the installer rung reran the six cells on gbrain `f650eac5` (v0.60.554.0) with an access-ruled member brain and member-bound tokens: 306 trials on six Ubicloud shards from `289aa043666f` (#232), $55.57 of the $85 cap plus $1.61 of smokes. Every gbrain cell passed at least as often as no brain (Claude Code 46, 49, 50 of 51; Codex 43, 45, 49), and both no-brain cells matched the first run. The report audits the 39 returns the grader left unmapped (all the asker's own facts and memory pages), keeps the sqlite ledgers in the project drive with their sha256 in `results-acl/ledgers.sha256`, and ends Why null? with KEEP for gbrain with access rules and FIX-METHOD for installer against told (saturated). The first run's report and the docs index no longer say the rerun waits on #229; the README runs table, So what list and spend line ($672.67) gain the run.
+- **installer-cc-codex-acl-2026-11 reported: with gbrain's per-member access rules on, cross-scope exposure via gbrain is 0 of 51 in all four gbrain cells, so installer against told is not distinguished on Claude Code or Codex.** Amendment 3 of the installer rung reran the six cells on gbrain `f650eac5` (v0.60.554.0) with an access-ruled member brain and member-bound tokens: 306 trials on six Ubicloud shards from `289aa043666f` (#232), $55.57 of the $85 cap plus $1.61 of smokes. Every gbrain cell passed at least as often as no brain (Claude Code 46, 49, 50 of 51; Codex 43, 45, 49), and both no-brain cells matched the first run. The report audits the 39 returns the grader left unmapped (all the asker's own facts and memory pages), keeps the sqlite ledgers in the project drive with their sha256 in `results-acl/ledgers.sha256`, and ends Why null? with KEEP for gbrain with access rules and FIX-METHOD for installer against told (saturated).
 
 ## [0.0.128] - 2026-11-04
 
@@ -137,14 +137,14 @@ The driver for the S1 probe (`docs/benchmarks/2026-11-03-qm-s1-gstack-probe/`, g
 
 ## [0.0.124] - 2026-11-04
 
-### internal-task: the Opus gstack steps finding gains internal-task's hook-test result
+### internal-task-a: the Opus gstack steps finding gains internal-task-b's hook-test result
 
 - `findings/2026-11-02-opus-gstack-steps-not-followed.md`: an update section at the top, from internal-task's preregistered run `gates938-phase3` (#244). The verdict is still FIX-METHOD, because the reproduce-first gate did not bind Opus 5.5, which wrote source through Bash past it 40 times, and the gate is NOT ADDED. It keeps the lost-trial caveat next to Opus's +7.14 (about -0.3 had the 11 reaped trials counted) and Sol's floor (no gstack 1 of 22). The Captain's call that the skill-steps cut does not go to Garry is recorded, and the closing Disclosures section gains the OpenAI line, since GPT-6.1 Sol results now appear.
 - `README.md` and `findings/README.md`: the finding's lines name the hook test's result.
 
 ## [0.0.123] - 2026-11-04
 
-### internal-task qm train: QM gstack smoke, provider preflight, provider-aware scoring, C4 wiring (internal-task)
+### internal-task-a qm train: QM gstack smoke, provider preflight, provider-aware scoring, C4 wiring (internal-task-b)
 
 One train (R46) carries four internal-task pull requests for QM M1, merged unchanged with merge commits: #157, #159, #152 and #172. Everything new is keyless and off by default; no counted run, task, grader or preregistration changes.
 
@@ -185,7 +185,7 @@ Five findings from #176's /ship review, fixed as one audited R40 list (internal-
 
 ## [0.0.121] - 2026-11-04
 
-### internal-task (internal-task step 5): the public-export tool, with fail-closed gates
+### internal-task-a (internal-task-b step 5): the public-export tool, with fail-closed gates
 
 - **New: `scripts/public-export/`.** It builds what the public garrytan/harness-evals repo would hold, in two modes. Tree mode exports one commit's tree. History mode rewrites the private main history with git-filter-repo, then checks every blob and commit message. Nothing is pushed: the tool writes a local repository, value-free reports and `commit-map.tsv` (each private commit with its public id, `(pruned)` or `(not published)`), and exits non-zero when any gate fails.
 - **What goes out is listed, not guessed.** `publication/manifest.json` gives every kept path a class and excludes the rest (`config/local-paths.json`, sealed records, `changelog.d/`, `docs/plans/2026-10-21-harness-eval-v0/` and the B1 excludes). `publication/scrub-table.json` replaces thread codes, drive paths, the four CHANGELOG custody ids from #236's redaction notes, machine ids and Ubicloud VM names in every old blob. `publication/README.md` explains each file.
@@ -214,7 +214,7 @@ Five findings from #176's /ship review, fixed as one audited R40 list (internal-
 
 ## [0.0.118] - 2026-11-03
 
-### internal-task: internal-task results for gstack's /investigate reproduce-first gate (NOT ADDED)
+### internal-task-a: internal-task-b results for gstack's /investigate reproduce-first gate (NOT ADDED)
 
 - `docs/benchmarks/2026-11-03-investigate-gate/` (new): the report and `results/` for run `gates938-phase3`. No gstack, gstack, and gstack with the gate, on Opus 5.5 and GPT-6.1 Sol, 11 tasks per model, 162 counted trials, $254.31 of the $300 cap.
 - The outcome is NOT ADDED. The prereg's FIX clause fires because Opus followed reproduce-first in 2 of 28 gate sessions (7.1%), and the repair and rerun FIX allows don't fit the cap. Pooled H-S is +1.28 points [-3.80, +6.35]. Opus H-S is +7.14, but about -0.3 if the 11 trials lost to the VM reaper had counted.
@@ -260,7 +260,7 @@ Five findings from #176's /ship review, fixed as one audited R40 list (internal-
 - gbrain here is default-open. It had no access rules and one bot token, so it returned channel pages to people outside the channel. Claude Code's pass rate was 46 of 51 with no brain, 31 told and 27 installer; 41 of the 44 gbrain-cell failures failed only the cross-scope check. Codex pass did not move (43, 42, 42).
 - Why null? ends with FIX-METHOD for both results. The fix is to rerun installer and told on gbrain 0.60.554.0 (or 0.60.551.0) with the fixture's scopes as gbrain access rules, each trial's token bound to its member, and a keyless per-member `gbrain access check` that fails closed before any trial. That amendment opens after #229 merges.
 - `results/` (new): merged trials and trial trees, per-shard ledgers, proxy logs and spend reconciliations, summary and comparisons, the exposure MDD and cost-interval scripts with their outputs, the transcript audit, the attempt 1 and costing-smoke receipts, and run notes.
-- `docs/ledger/lane-spend.jsonl` gains the costing smoke ($0.7040168) and the counted run ($58.3979376), and `docs/budget-ledger.md` is re-rendered. The README's spend line, with its twin in `docs/methods.md`, moves to $615.49. The README's v0.3 runs table and So what list, and `docs/README.md`, list the run, and `docs/receipts-manifest.json` covers it.
+- `docs/ledger/lane-spend.jsonl` gains the costing smoke ($0.7040168) and the counted run ($58.3979376), and `docs/budget-ledger.md` is re-rendered. The README's v0.3 runs table and So what list, and `docs/README.md`, list the run, and `docs/receipts-manifest.json` covers it.
 
 ## [0.0.112] - 2026-11-03
 
@@ -294,13 +294,13 @@ Five findings from #176's /ship review, fixed as one audited R40 list (internal-
 ### internal-task: finding file on Opus 5.5 and gstack's skill steps
 
 - `findings/2026-11-02-opus-gstack-steps-not-followed.md` (new): told to use gstack's /investigate, /qa, /review or /ship, Claude Opus 5.5 loaded the skill text every time and ran none of its steps, in 0 of 46 gstack sessions across internal-task's three uncounted checks (#224). The deciding check was 0 of 16 on dev tasks that Opus 5.5 nearly saturates, and the hard-task check was VOID. gstack cost about twice as much per trial as no gstack.
-- Under R61 the verdict is FIX-METHOD, because the null rests on saturation. internal-task (hook-enforced steps on tasks with headroom, a headroom pilot first) is the ceiling-raise, and if it has headroom and the skill-text arm still shows no gain over no gstack, the cut of steps delivered as text alone goes to Garry. The report's CUT-CANDIDATE line is kept word for word as the original reading, with a note that no frozen rule produced it. It names the fix under test (hook-enforced steps, internal-task, run as internal-task), audits the clean no-gstack arm, and ends with the gstack disclosure line. Opus 5.5 only; no GPT-6.1 Sol arm. Draft, not posted. The gstack-evals claim check passed with edits, which are applied, and its recheck passed.
+- Under R61 the verdict is FIX-METHOD, because the null rests on saturation. internal-task-a (hook-enforced steps on tasks with headroom, a headroom pilot first) is the ceiling-raise, and if it has headroom and the skill-text arm still shows no gain over no gstack, the cut of steps delivered as text alone goes to Garry. The report's CUT-CANDIDATE line is kept word for word as the original reading, with a note that no frozen rule produced it. It names the fix under test (hook-enforced steps, internal-task-b, run as internal-task-a), audits the clean no-gstack arm, and ends with the gstack disclosure line. Opus 5.5 only; no GPT-6.1 Sol arm. Draft, not posted. The gstack-evals claim check passed with edits, which are applied, and its recheck passed.
 - README's "Found so far" gains a line for the finding, with a link.
 - `findings/README.md`: a row and a status bullet for the file, and the template line names its Clean control arm section. "Coming next" names the hook-enforced steps run, and says the Lane B replication, a Haiku 5.5 comparability rerun, gets no finding file.
 
 ## [0.0.105] - 2026-11-02
 
-### internal-task (internal-task): the gbrain hook launcher in the Claude Code and Codex installer views
+### internal-task-a (internal-task-b): the gbrain hook launcher in the Claude Code and Codex installer views
 
 - **The gbrain image builds again at gbrain v0.60.547.0 and v0.60.550.0.** From gbrain#8424 (`2c469d1b`), `gbrain setup claude-code|codex --instructions-only` also writes `.gbrain/hook-launcher/gbrain-hook`. The turn-rule hook runs gbrain through this small `sh` launcher, so Bun never reads the session directory's `bunfig.toml` or `.env`. `gbrain/build-install.ts` compared setup's files against a fixed list and failed the build on the extra file.
 - `gbrain/build-install.ts` keeps the launcher in the view (mode 0755) and lists it in `installer.turn_hook.files` when the commands in the files setup wrote name it. It refuses a launcher that no command runs, and a command that names another launcher. gbrain#8437 (`8352e7f0`) also starts the stdio MCP entry and the other hook lanes through the launcher. Under `--instructions-only` setup writes none of them, and any such command is checked the same way.
@@ -338,7 +338,7 @@ Five findings from #176's /ship review, fixed as one audited R40 list (internal-
 - `docs/benchmarks/2026-11-01-tool-discipline-start/report-hermes-r2.md` (new): Hermes passes. With the candidate on gstack `e2d9c798` (v1.92.57.0, whose start command Tirith allows) and Tirith 0.4.2 pinned, the candidate ran gstack's start command in 8 of 16 trials, against 0 of 16 for gstack without the hook: +0.50 [0.21, 0.72]. All 8 starts were on task 1; on task 2 no arm opened a skill, so the secondary bar is missed.
 - Task success was 16 of 16 in every arm, so these tasks show no success difference for gstack, at the ceiling. The report's Why null? section ends with a FIX-METHOD verdict. The fix is tasks below the success ceiling and a second task Hermes routes to a skill.
 - `results-hermes-r2/` (new): the run's receipts. Manifest and sha256, cells.jsonl, ledger, proxy usage and log, run log, both preflight logs, the gate files (clean-arms.jsonl, tirith-fence.jsonl, runtime-preflight.json), the panel-score verdict and clean-arm audit as md and JSON, per-trial evidence and adapter logs, and register-checks.jsonl (each trial's installed-HEAD, start_hook, approval and GSTACK_CAPY lines).
-- `docs/ledger/lane-spend.jsonl` gains the run's line ($5.757495), and `docs/budget-ledger.md` is re-rendered. The README's v0.3 runs table gains the run's row, and its spend line, with its twin in `docs/methods.md`, moves to $556.38.
+- `docs/ledger/lane-spend.jsonl` gains the run's line ($5.757495), and `docs/budget-ledger.md` is re-rendered.
 
 ## [0.0.102] - 2026-11-02
 
@@ -384,7 +384,7 @@ Five findings from #176's /ship review, fixed as one audited R40 list (internal-
 
 - The three finding files rest on Sonnet 5.5 and Haiku 5.5 only, and these evals now test frontier models only (Opus 5.5 and GPT-6.1 Sol). Each verdict line now reads "No R48 verdict: Sonnet/Haiku only (R54); frontier rerun pending", with the earlier reading kept beside it.
 - `2026-11-01-model-vs-harness.md` is marked not for publication. Its title, lead, chart and X hook keep only the Sonnet 5.5 harness comparison; the Sonnet minus Haiku contrast moved to the appendix.
-- `2026-11-01-untold-gbrain-unused.md` and `2026-11-01-gbrain-first-no-pass-lift.md` are marked dev background for the Opus 5.5 reruns in internal-task's v0.4 and internal-task's H10.
+- `2026-11-01-untold-gbrain-unused.md` and `2026-11-01-gbrain-first-no-pass-lift.md` are marked dev background for the Opus 5.5 reruns in internal-task-a's v0.4 and internal-task-b's H10.
 - Garry's disclosure lines moved from under each title to a closing Disclosures section at the end of each file, same words, one line per bullet. The file's other disclosure bullets moved into that section too, and the X hooks carry none.
 - `findings/README.md` and README's "Found so far" say the same: no verdicts, no Sonnet-for-Haiku claim, and the models each line rests on.
 - README's "How the harnesses compare" and `docs/methods.md` mark the Sonnet-for-Haiku shift as background only.
@@ -394,7 +394,7 @@ Five findings from #176's /ship review, fixed as one audited R40 list (internal-
 ### internal-task: README brought up to date with the v0.3 results on main
 
 - `README.md`: the Next list reports `v03-opus-dev-2026-10` (#209): Outcome B, so opening 1 on v0.3 does not run. Only 2 of 6 families are informative on Opus 5.5 (corrections 9 of 40, approval relay 26 of 30), and the Why null? verdict is FIX-METHOD. It links internal-task's reseal record (#204) in place of the two "clearance pending" lines, and says gen6 stays sealed and unopened (0 of 2 openings) while the v0.4 plan waits for Garry's gate.
-- The v0.3 runs table gains the run's row ($126.5320: $125.5162 trials of the $274 cap, $1.0159 smokes), and its So what line leads with the outcome as bullets, keeping the start-hook panel's line. The harness table's gbrain and Models rows name the run. README's own changelog records the page change. The spend line is main's ($550.63), unchanged here.
+- The v0.3 runs table gains the run's row ($126.5320: $125.5162 trials of the $274 cap, $1.0159 smokes), and its So what line leads with the outcome as bullets, keeping the start-hook panel's line. The harness table's gbrain and Models rows name the run. README's own changelog records the page change.
 
 ## [0.0.96] - 2026-11-01
 
@@ -403,7 +403,7 @@ Five findings from #176's /ship review, fixed as one audited R40 list (internal-
 - `docs/benchmarks/2026-11-01-tool-discipline-start/report.md` (new): OpenClaw passes, Hermes fails. With gstack's start hook on, OpenClaw ran the skill's start command in 16 of 16 trials, against 1 of 16 without it: +0.94 [0.64, 0.99]. On Hermes the agent issued the command in 8 of 8 task-1 trials, and Hermes blocked every one. Its Tirith scan flags gstack's start preamble, and our preregistered chat-mode approval config (manual, 1 s) denied it.
 - Task success was 16 of 16 in every arm, so these tasks show no success difference for gstack, at the ceiling. On OpenClaw, gstack cost 3 to 5 times as much per trial as no gstack (ratios of medians). The report's Why null? section ends with a FIX-METHOD verdict.
 - `results/` (new): the run's receipts. Manifest and sha256, cells.jsonl, ledger, proxy usage and log, run log, both preflight logs per pin, the panel-score verdict as md and JSON, per-trial evidence and adapter logs, register-checks.jsonl (each trial's installed-HEAD and start_hook lines), and hermes-approval/ (the blocked rows, Hermes's own detector result and the Tirith download counts).
-- `docs/ledger/lane-spend.jsonl` gains the run's line ($16.900854), and `docs/budget-ledger.md` is re-rendered. The README's v0.3 runs table gains the run's row, and its spend line, with its twin in `docs/methods.md`, moves to $550.63.
+- `docs/ledger/lane-spend.jsonl` gains the run's line ($16.900854), and `docs/budget-ledger.md` is re-rendered.
 
 ## [0.0.95] - 2026-11-01
 
@@ -438,7 +438,7 @@ Five findings from #176's /ship review, fixed as one audited R40 list (internal-
 
 ## [0.0.92] - 2026-11-01
 
-### internal-task: tool-discipline classifier, free rates and harness replies; three-arm internal-task panel with a no-gstack arm
+### internal-task-a: tool-discipline classifier, free rates and harness replies; three-arm internal-task-b panel with a no-gstack arm
 
 - `docs/tool-discipline/` (new): free mining over committed receipts of five failure kinds: invented tools, bad arguments, wrong names, broken helper calls and skipped skill starts. The README leads with the Opus 5.5 rates from internal-task's three runs (132 trials): Opus read a gstack skill and skipped the start helper in 28 of 29 chances, and all 5 invented tools were `skills_read` on OpenClaw. `labels.jsonl` holds 764 hand-checked items from two labellers, `agreement.md` their agreement, `LABEL-RULES.md` the rules, `replies.md` what each harness answers to a bad call, and `receipts/gsta-135/` the panel receipts the rates come from.
 - Held-out receipts are disclosed: 405 of the 764 hand-checked items come from the spent v0.1 and v0.2 held-out sets. The mining makes no held-out claim, and both sets' `MANIFEST.json` ledgers record the exposure.
@@ -468,15 +468,15 @@ Five findings from #176's /ship review, fixed as one audited R40 list (internal-
 ### internal-task: v03-ar-reread-2026-10 reported, the re-read gate passes
 
 - `docs/benchmarks/2026-10-30-v03-ar-reread/report.md`: the report. Endpoint 1 is a Pass: approval relay 17 of 30 in the two deciding told cells (`scope: member-sources`, gbrain `a590ad07`), 56.7% [40.0%, 80.0%], inside the 10 to 90 percent rule, with no defect candidate. So the v0.3 set shows 5 of 6 families informative, with the mixed-config caveat the preregistration requires. The unscoped copy, outside the rule, passed 0 of 30. Dev data on public tasks; no claim about a harness, gbrain or any held-out candidate.
-- The report's Caveats section discloses the brain build bug (internal-task, internal-task): the scoped brain could not have accepted a write to a member source. No trial made a gbrain write and no predicate depends on one, so the result stands.
+- The report's Caveats section discloses the brain build bug (internal-task-a, internal-task-b): the scoped brain could not have accepted a write to a member source. No trial made a gbrain write and no predicate depends on one, so the result stands.
 - The report names internal-task's reseal record (#150, merged as `47bf4d98b`): set v0.3-gen6 at custody commit `custody commit (private)` (main names only this short form), bundle sha256 `fc246287329e`. Only the author's per-file hash list shows that only approval relay candidates changed. The custodian's comparison printed counts only, and the record does not name `58186ff41`. So the seal clearance for opening 1 is pending a family-scoped comparison by the custodian, internal-task, inside custody, showing that only the approval relay candidates differ from the retired seal and that they were generated at `58186ff41`. The gate note (lead and item 3, updated 2026-11-01 UTC) and README's Next line say the same. Once given, the clearance covers only the `member-sources` config this read used.
 - `docs/benchmarks/2026-10-30-v03-ar-reread/results/`: the merged results of the four shards (60 trials, all `completed`), with per-shard ledgers, proxy logs and preflight logs. Excluded by #142's rules, narrowed to leave out all harness state: `trial.json` and the harness state files hold the simulated world's per-trial Slack-shaped credentials.
 - `docs/benchmarks/2026-10-29-v03-pilot/2026-10-31-ar-reread-gate.md`: the dated gate note.
-- `README.md` and `docs/receipts-manifest.json`: the Next line, the v0.3 runs row, the `v03-pilot-2026-10` row's approval relay note (now re-measured, not "not yet re-measured") and the regenerated manifest. The spend line and the budget page are unchanged at $406.78, because main's lane ledger already lists this run's line. This run spent $1.3889 ($1.3060 counted under the $4 cap, $0.0828 smokes).
+- `README.md` and `docs/receipts-manifest.json`: the Next line, the v0.3 runs row, the `v03-pilot-2026-10` row's approval relay note (now re-measured, not "not yet re-measured") and the regenerated manifest. This run spent $1.3889 ($1.3060 counted under the $4 cap, $0.0828 smokes).
 
 ## [0.0.89] - 2026-11-01
 
-### internal-task: release and regeneration see a successor through the custody remote and the custody branch (internal-task, #191, #194)
+### internal-task-a: release and regeneration see a successor through the custody remote and the custody branch (internal-task-b, #191, #194)
 
 - `scripts/sealed/custody.ts` `liveSharersCurrent`: main for the shared-set check is fetched from the custody clone's remote, never through the public checkout's own remote, which may be a stale fork. That remote must resolve to one fetch and push URL, and a `url.<base>.insteadOf` rule in the checkout that rewrites it is refused (HE-SEALED-013). Main goes into a ref of the process, `refs/sealed/main-<pid>`, which is deleted afterwards along with any stale one.
 - A reseal blocks release and regeneration from the moment its bundle is on the custody branch. `release.ts` (HE-SEALED-008) and rekey.ts and compare-backups.ts (HE-SEALED-006) refuse while another set has a bundle there and no manifest on main or in the checkout that commits to that bundle's sha256. A malformed, empty or JSON null manifest, or one naming another bundle, counts as none. They check before decrypting and again under the custody lock, so a reseal that lands during a release stops its released line.
@@ -485,7 +485,7 @@ Five findings from #176's /ship review, fixed as one audited R40 list (internal-
 
 ## [0.0.88] - 2026-11-01
 
-### internal-task: compare-backups counts by task.toml family and checks a manifest commit (internal-task)
+### internal-task-a: compare-backups counts by task.toml family and checks a manifest commit (internal-task-b)
 
 - `scripts/sealed/compare-backups.ts` `--family-field`: a task's family is the top-level `family` key of its `task.toml`, not its id prefix. Use it when task ids are opaque and share one prefix. A task whose family differs between the two backups, or whose `task.toml` reads in one backup and not the other, counts as `(moved)` and always fails.
 - `--tasks` may repeat. With more than one, every family count is per directory. The report prints each directory by the group-label rule, so a segment that names a hidden family prints as its digest.
@@ -527,7 +527,7 @@ Five findings from #176's /ship review, fixed as one audited R40 list (internal-
 
 Train gbrain-wiring: one release for #161, #156, #151 and #158, each merged unchanged into one branch. Their own version claims (0.0.73 to 0.0.75) are retired.
 
-### internal-task: page writes work on a copied brain (internal-task)
+### internal-task-a: page writes work on a copied brain (internal-task-b)
 
 - Every gbrain image refused page writes (`put_page`, `capture`, `add_timeline_entry`, `edit_page`). The bot-visible brain's default source answered `recovery_required`. A member or company brain's sources answered `storage_error`, because their checkouts stayed in the build stage's `/tmp/staging`. `remember` was never affected, because it writes only to the database.
 - `gbrain/build-brain.ts`: a company or member brain keeps each source's checkout inside the brain, at `<brain>/sources/<id>`, so the checkouts travel into the image and back to `/brain`.
@@ -598,7 +598,7 @@ Train gbrain-wiring: one release for #161, #156, #151 and #158, each merged unch
 - `scripts/instruction-route-secondary.ts` (new): route evidence per cell (route record, ready file and hook status); per-cell means with task-clustered intervals for pass, USD, forwarded requests, input, output and cached tokens; each route's paired difference against `route-tool` in the same measures; and the surface-table arithmetic of the bytes each route adds per trial. Descriptive: no Holm, no decision sentence. It stops on a scored trial with no partner trial, on two trials for one task and repetition, on a proxy-log request count that differs from `usage.json`, and on empty inputs. A pair with an excluded side leaves the pairing and is counted in `left_pairing`; a cell or comparison left with nothing renders as `n/a` or `no pairs`, and a cell with one task gets no interval. A hook request goes to the turn whose wall window holds it, and only when none does to a window widened by one second. `tests/instruction-route-secondary.test.ts` (new) covers each of these on hand-built results.
 - `tests/instruction-route-results.test.ts` (new): rebuilds both endpoint files (JSON and Markdown) from the committed receipts, and checks that every shard names `ba456e687`, that `prereg.json` and the manifest's hash equal the hash at that commit, and that every hook reported live.
 - `scripts/publish-audit.ts`: the four route records are kept per-trial receipts, at their own place in the trial layout only (`tests/publish-audit.test.ts` covers both).
-- `docs/ledger/lane-spend.jsonl` gains the fourteen drive lines it was missing (2026-10-28 to 2026-10-31) and this run's line ($4.494518, 5,790 requests). Six drive lines wrote numbers as strings; they are copied as numbers. `scripts/budget-ledger.ts` now treats a lane line whose `ledger` text names a run's whole id as listing that run, so the v0.3 pilot is counted once. An id or results directory followed by more run-id characters (`.retry`, `:smoke`, `-hook`) names a different run and does not count (`tests/budget-ledger.test.ts` covers both). `docs/budget-ledger.md` and `docs/receipts-manifest.json` are regenerated; the manifest now also lists this run (`v03-pilot-2026-10`, `host-harness-pilot-2026-10` and `v03-installer-dev-2026-10` came in with #142 and #145, and the lane ledger now names them). The combined program total moves from $382.48 to $406.78, and docs/methods.md carries the same spend line as README.
+- `docs/ledger/lane-spend.jsonl` gains the fourteen drive lines it was missing (2026-10-28 to 2026-10-31) and this run's line ($4.494518, 5,790 requests). Six drive lines wrote numbers as strings; they are copied as numbers. `scripts/budget-ledger.ts` now treats a lane line whose `ledger` text names a run's whole id as listing that run, so the v0.3 pilot is counted once. An id or results directory followed by more run-id characters (`.retry`, `:smoke`, `-hook`) names a different run and does not count (`tests/budget-ledger.test.ts` covers both). `docs/budget-ledger.md` and `docs/receipts-manifest.json` are regenerated; the manifest now also lists this run (`v03-pilot-2026-10`, `host-harness-pilot-2026-10` and `v03-installer-dev-2026-10` came in with #142 and #145, and the lane ledger now names them).
 - README: a row in the v0.3 runs table, a bullet in "How gbrain compares" and the spend line.
 
 ## [0.0.72] - 2026-10-31
@@ -627,7 +627,7 @@ Train gbrain-wiring: one release for #161, #156, #151 and #158, each merged unch
 ### internal-task: v03-ar-reread-2026-10 amendment 1, the two pull requests merged between the preregistration's base and its merge
 
 - `docs/benchmarks/2026-10-30-v03-ar-reread/PREREGISTRATION.md`: adds Amendment 1 (2026-10-31) under Amendments. The commit-binding check before the fan-out found #155 and #154 on main's first-parent history between the branch base `6c8fcfe77` and the merge commit's first parent `5a9c066f3`. The amendment names both with their paths, as the commit-binding section requires.
-- #155 (internal-task, the Lane B TB2 replication preregistration) touches none of the listed paths. #154 (internal-task, QM re-pinned to `b6786d67`) touches 16 files under `runner`, `harnesses` and `scripts`: QM files, a `prepare.sh` refusal path in `harnesses/run-trial.sh` that OpenClaw and Hermes never reach, the HE-MODEL-001 fix hint, comments, and the anatomy capture lane.
+- #155 (internal-task-a, the Lane B TB2 replication preregistration) touches none of the listed paths. #154 (internal-task-b, QM re-pinned to `b6786d67`) touches 16 files under `runner`, `harnesses` and `scripts`: QM files, a `prepare.sh` refusal path in `harnesses/run-trial.sh` that OpenClaw and Hermes never reach, the HE-MODEL-001 fix hint, comments, and the anatomy capture lane.
 - No cell, task, preamble, grader, pin, world file, lease, cap, endpoint or rule changes. The run still executes at the merge commit `eb630bd46`. Docs only.
 
 ## [0.0.68] - 2026-10-31
@@ -657,7 +657,7 @@ Train gbrain-wiring: one release for #161, #156, #151 and #158, each merged unch
 
 ## [0.0.66] - 2026-10-31
 
-### internal-task (internal-task M1): QM re-pinned to main b6786d67
+### internal-task-a (internal-task-b M1): QM re-pinned to main b6786d67
 
 - `harnesses/qm/Dockerfile` and `Dockerfile.sandbox`: QM is fetched by commit (`QM_COMMIT=b6786d675f83d9a818c5d5335cc017ffea9ec7a7`; QM has no release tag past `v0.1.15`), and the build fails unless `git rev-parse HEAD` equals it. Both images carry `harness-eval.commit` and `harness-eval.version=main@b6786d67`; core also sets `GIT_SHA`. The core build follows QM's `deploy/core/Dockerfile` at that commit (base digest, `npm ci --ignore-scripts`, three more `cli/src` files); the sandbox build follows `fly/Dockerfile` and `local/Dockerfile` (base digest, the agent daemon's new path, the CLI version check).
 - QM removed its Claude harness and the `HARNESS` variable (yc-software/qm#2768). `prepare.sh` drops the `claude` and `claude-probe` configs (they now exit 2 like any unknown config), `compose.yaml` and `config/core.env` drop `HARNESS` and `CLAUDE_MODEL`, and `runner/run.ts`, `harnesses/serve-smoke.ts`, `docs/adapters.md` and `docs/errors.md` stop listing them. Published `qm-claude` results keep their `v0.1.15` pin.
@@ -708,7 +708,7 @@ Train gbrain-wiring: one release for #161, #156, #151 and #158, each merged unch
 - Endpoint 6 fails. Four of six families are informative in the told arm, and the gate needs five; corrections is 1 of 40 and approval relay 0 of 30. The three approval relay tasks are task defects (`results/defects.json`): both readers for ar-01 and ar-02, where the grant comes from an approver who holds no record of the figure, and the second reader for ar-03. So the seal at custody commit `custody commit (private)` is not cleared.
 - `docs/benchmarks/2026-10-29-v03-pilot/2026-10-30-opening-1-gate.md` (new): the dated note on the gate's result, beside the pilot's report.
 - Opening 1 at the pilot's design is $30.46 at the largest per-call reservation, $0.46 over its $30 cap, with the measured installer cost replacing the pilot's stand-in.
-- `docs/receipts-manifest.json` and `docs/budget-ledger.md` are regenerated, so they list this run and the other results directories already on main (the v0.3 pilot and the host-harness pilot). The combined spend on the budget page, README and docs/methods.md moves from $361.73 to $382.48.
+- `docs/receipts-manifest.json` and `docs/budget-ledger.md` are regenerated, so they list this run and the other results directories already on main (the v0.3 pilot and the host-harness pilot).
 - No runner, task, grader, world or gbrain file changes.
 
 ## [0.0.59] - 2026-10-30
@@ -736,7 +736,7 @@ Train gbrain-wiring: one release for #161, #156, #151 and #158, each merged unch
 
 ### internal-task: instruction-route test flake
 
-- `tests/instruction-route.test.ts`: the default-config tests compare every file an adapter writes with the adapter at `31a109a9c`. `logs/stderr.log` gets the adapter's log lines through a process-substitution `tee` that bash never waits for, so the test's walk could read it before the last lines (`turn 1: exit 0`, `serve: stopped on signal`) landed. Under pregate load the comparison failed on that line (2 of 4 pregate runs on #132, reported by internal-task through internal-task). The comparison now drops those two lines from `stderr.log` only. `adapter.log` is written by a foreground `tee` and keeps them, and each serve run now asserts that `adapter.log` contains the shutdown line. No adapter or runner file changes.
+- `tests/instruction-route.test.ts`: the default-config tests compare every file an adapter writes with the adapter at `31a109a9c`. `logs/stderr.log` gets the adapter's log lines through a process-substitution `tee` that bash never waits for, so the test's walk could read it before the last lines (`turn 1: exit 0`, `serve: stopped on signal`) landed. Under pregate load the comparison failed on that line (2 of 4 pregate runs on #132, reported by internal-task-a through internal-task-b). The comparison now drops those two lines from `stderr.log` only. `adapter.log` is written by a foreground `tee` and keeps them, and each serve run now asserts that `adapter.log` contains the shutdown line. No adapter or runner file changes.
 
 ## [0.0.56] - 2026-10-30
 
@@ -852,7 +852,7 @@ Train gbrain-wiring: one release for #161, #156, #151 and #158, each merged unch
 
 ## [0.0.46] - 2026-10-30
 
-### internal-task: build-install leaves Hermes's allowlist lock out of the gbrain bundle (internal-task, for gbrain#7989)
+### internal-task-a: build-install leaves Hermes's allowlist lock out of the gbrain bundle (internal-task-b, for gbrain#7989)
 
 - gbrain#7989 (internal-task) takes Hermes's own flock during `gbrain setup hermes`. That leaves an empty `home/shell-hooks-allowlist.json.lock` next to `config.yaml` and `shell-hooks-allowlist.json`. Hermes keeps the file, and gbrain correctly does not unlink it. Before this change, `gbrain/build-install.ts` read the lock as an instruction file without the brain-first block and stopped the image build.
 - `buildInstaller` now deletes the lock from the Hermes installer bundle when it is present and logs that it did. It is Hermes's runtime state, not an install file. Leaving it in the bundle would list it in the installer view, and the Hermes adapter refuses any view path without a documented destination. Commits before #7989 write no lock, and nothing changes for them.
@@ -940,7 +940,7 @@ Train gbrain-wiring: one release for #161, #156, #151 and #158, each merged unch
 
 ### internal-task: task set v0.3 sealed
 
-- **v0.3's 40 held-out tasks are sealed.** The custodian (internal-task) sealed them from internal-task's encrypted backup (gen5, sha256 1e69dc119598...) with `scripts/sealed/seal.ts --from-backup --sha256`. The bundle is on the custody branch at custody commit (private) as `v0.3/bundle.tar.age`. The unpacked plaintext was removed by seal.ts.
+- **v0.3's 40 held-out tasks are sealed.** The custodian (internal-task-a) sealed them from internal-task-b's encrypted backup (gen5, sha256 1e69dc119598...) with `scripts/sealed/seal.ts --from-backup --sha256`. The bundle is on the custody branch at custody commit (private) as `v0.3/bundle.tar.age`. The unpacked plaintext was removed by seal.ts.
 - **`tasks/multiuser/v0.3/heldout/MANIFEST.json`** carries only commitments: the bundle, tree, world slice and corpus digests, the exclusion log as one extra file, 40 tasks, and the recipient. No task body, task id or slice text is in the tree; `bun scripts/seal-heldout.ts --check` confirms it.
 - **Openings ledger:** `opening_budget` 2, `alpha_per_opening` 0.025, `status` open, no openings yet (the v0.3 spec). Six exposures are listed: the generator and auditor models, the proxy logs, the response caches, the quiet logs and the author.
 - Every result on this set carries the label "procedural custody" (docs/sealed-custody.md).
@@ -1038,7 +1038,7 @@ Train gbrain-wiring: one release for #161, #156, #151 and #158, each merged unch
 
 ## [0.0.30] - 2026-10-28
 
-### internal-task: internal-task skill-use panel tooling (items 1 to 6 of internal-task's spec; main took 0.0.25 to 0.0.29 with #105, #106, #103, #104 and #109 while this PR was in review; autoplan run-20261028172513, approved by Garry "take all recommendations and continue")
+### internal-task-a: internal-task-b skill-use panel tooling (items 1 to 6 of internal-task-b's spec; main took 0.0.25 to 0.0.29 with #105, #106, #103, #104 and #109 while this PR was in review; autoplan run-20261028172513, approved by Garry "take all recommendations and continue")
 
 - `harnesses/hermes/gstack/adapter.sh`, `harnesses/hermes/gstack/Dockerfile`: a chat-mode overlay (`--build-arg HE_GSTACK_HERMES_MODE=chat`, tag suffix `-chat`) that runs `hermes chat --query-file` under a pseudo terminal with a FIFO the adapter holds open, a state.db watcher that types `/exit` once the transcript is complete, the counted adapter's turn block copied line for line (diffed by a test), and `approvals.mode: manual`, `approvals.timeout: 1` in the config copy so a flagged command fails closed in one second instead of waiting on a card; `/etc/profile.d/bun.sh`, because Hermes's terminal tool starts a login shell whose `/etc/profile` dropped `/opt/bun/bin` (found by the runtime preflight: in the discovery run Hermes's own shell could not have run a Bun-backed helper). The counted adapter, pin and image are untouched; the one-shot overlay is unchanged.
 - `harnesses/_gstack/wrapper-lib.sh`: `wrap_mark_test_run` exports `GSTACK_SESSION_KIND=spawned GSTACK_EPHEMERAL=1 GSTACK_STATE_ROOT=/harness-state/.gstack` on one line (logged with its line number for the manifest; each name has a reader in gstack's lib or bin at the pin, asserted by a test; `GSTACK_CAPY` is never set) and `wrap_runtime_check` logs `runtime: ok|degraded` against gstack's supported Bun minimum.
@@ -1099,7 +1099,7 @@ Train gbrain-wiring: one release for #161, #156, #151 and #158, each merged unch
 - `docs/benchmarks/2026-10-28-gbrain-memory-fix-b/report.md` (new): the primary is not distinguished on any harness or model (Sonnet +5 [-15, +30], +23 [+0, +50], +0 [-8, +8] points for OpenClaw, Hermes and QM); `cr-05-pellow-seat-retraction` moved from 0 of 5 in every Sonnet live cell in the memory run to 4, 5 and 1 of 5 while every none cell stayed at 0, a gbrain read returned the correction ahead of the retracted figure in 11 of 15 Sonnet live trials, and every live `cr-05` pass came in such a trial; all nine predictions held; one deviation cost VM time (the controller stopped polling for about two hours, about $3.78 of the $9.02 VM list price).
 - `scripts/between-run.ts` (new, keyless): the between-run table of secondary 4, each run's own task-clustered interval over the shared tasks, none cells first, the task x cell matrix, no difference interval and no test. Tested in `tests/between-run.test.ts`.
 - `scripts/memory-fix-per-trial.ts` (new, keyless): the mechanism counts per live `cr-05` and `cn-05` trial beside each trial's grade, with `memory-fix-mechanism.ts`'s counting function unchanged. Tested in `tests/memory-fix-per-trial.test.ts`.
-- `docs/ledger/lane-spend.jsonl` copied from the drive (21 lines: this run's and two earlier lanes' not yet copied, internal-task's at $0 and internal-task's internal-task at $0.9435), `docs/budget-ledger.md` and `docs/receipts-manifest.json` regenerated; README's Current results row ("Set and status": dev, the v0.2 set's third opening and a retest of gbrain#7744 on the tasks it was built against), spend line, gbrain pin row, How gbrain compares (ten runs, the fix run's result, detectable differences 8.5 to 17.7 points), Known limits (the v0.2 set has served three runs) and changelog; a status note at the top of the report; `docs/gbrain-arm.md` points at the report.
+
 
 ## [0.0.23] - 2026-10-28
 
@@ -1110,7 +1110,7 @@ Train gbrain-wiring: one release for #161, #156, #151 and #158, each merged unch
 
 ## [0.0.22] - 2026-10-28
 
-### internal-task: internal-task overlay images and the live discovery driver (uncounted diagnostic)
+### internal-task-a: internal-task-b overlay images and the live discovery driver (uncounted diagnostic)
 
 - `harnesses/{openclaw,hermes,qm}/gstack/Dockerfile`: overlay images `harness-eval/<h>:gstack-<pin8>` built FROM the counted `:dev` images with Bun 1.4.2 at /opt/bun and a gstack checkout at /opt/gstack fetched by sha (`GSTACK_COMMIT`, default bd8907d6; the build fails when HEAD is not that commit), `bun install --frozen-lockfile`, one `./setup --host <h> --no-browser` at build so the per-trial step takes seconds, the tree opened to the host uid. The counted adapters, pins, images, `run-trial.sh` and `compose.yaml` are untouched; the overlay carries its own tag.
 - `harnesses/<h>/gstack/adapter.sh` with `harnesses/_gstack/wrapper-lib.sh`: the wrapper registers gstack with the harness before the first turn the way internal-task's install step does (OpenClaw: `./setup --host openclaw` with OPENCLAW_STATE_DIR as the adapter exports it, the root the exec turn reads; Hermes: HERMES_HOME; QM: `gstack-harness register qm --yes` through core's admin API with the adapter's own actor and secret), logs only to `$HE_LOG_DIR/gstack-register.log`, exits 2 before any model request when setup's last line is not `gstack ready (<h>)`, and execs the counted adapter (kept as `adapter.real.sh`) with the budget less the registration time.
@@ -1141,7 +1141,7 @@ Train gbrain-wiring: one release for #161, #156, #151 and #158, each merged unch
 
 ### internal-task: gbrain-memory-fix-2026-10 preregistered, gbrain pinned at gbrain#7744's head 81692dc6
 
-- `docs/benchmarks/2026-10-27-gbrain-memory-fix/` (new): `PREREGISTRATION.md` and `prereg.json` for run `gbrain-memory-fix-2026-10`, gbrain-memory-2026-10's twelve cells (OpenClaw, Hermes and QM via Pi, none and gbrain-told-live, Sonnet 5.5 and Haiku 5.5) on its eight sealed held-out continuity and corrections tasks, 5 repetitions, 480 trials, cap $70 within a $120 lane. It records the Captain's assignment and Garry's approval, the in-sample statement (the tasks are held out for the harnesses, not for gbrain; every task in internal-task's disclosure ledger with its first date), the keyless go/no-go and its result (the recall rung at the pin from `main` `4aad966f7`: 0 controls lost against master, `cr-05` 27 of 27 former misses against a target of 20), predictions, and a planned amendment: no counted trial until internal-task's metering-proxy bind fix has merged and the Captain lifts the freeze, then a dated amendment moves the execution commit to one containing it. `docs/benchmarks/preregistrations.d/gbrain-memory-fix.json` (new) registers it for the prereg-order check. No trial has run.
+- `docs/benchmarks/2026-10-27-gbrain-memory-fix/` (new): `PREREGISTRATION.md` and `prereg.json` for run `gbrain-memory-fix-2026-10`, gbrain-memory-2026-10's twelve cells (OpenClaw, Hermes and QM via Pi, none and gbrain-told-live, Sonnet 5.5 and Haiku 5.5) on its eight sealed held-out continuity and corrections tasks, 5 repetitions, 480 trials, cap $70 within a $120 lane. It records the Captain's assignment and Garry's approval, the in-sample statement (the tasks are held out for the harnesses, not for gbrain; every task in internal-task-a's disclosure ledger with its first date), the keyless go/no-go and its result (the recall rung at the pin from `main` `4aad966f7`: 0 controls lost against master, `cr-05` 27 of 27 former misses against a target of 20), predictions, and a planned amendment: no counted trial until internal-task-b's metering-proxy bind fix has merged and the Captain lifts the freeze, then a dated amendment moves the execution commit to one containing it. `docs/benchmarks/preregistrations.d/gbrain-memory-fix.json` (new) registers it for the prereg-order check. No trial has run.
 - `gbrain/pin.json`: the pin moves from `b06ac32b` (0.60.465.0, master, the memory run's pin, kept first in `previous`) to `81692dc623f3e220d1ea04b078b3aed903bd086f` (0.60.472.0), the head of gbrain#7744 (open, unmerged; eight commits on master at `beb49f32`); `search.saved_facts_supersede` is on by default at that commit and unset in the built brains. The `Dockerfile` default `GBRAIN_COMMIT`, `gbrain/README.md`, `tests/gbrain-image.test.ts` and the README pins table follow.
 - `docs/gbrain-arm.md`: "Pins for the fix run", and three keyless rows in the commits-checked table (`0c568a61`, `7ff7cbb5` and `81692dc6`, 35 of 35 each).
 
@@ -1305,7 +1305,7 @@ Train gbrain-wiring: one release for #161, #156, #151 and #158, each merged unch
 
 - `harnesses/qm/qm-directory.mjs` reads the bot's channels and their rosters from the world's Slack API (recorded in the trial's event log before turn 1) and `adapter.sh` pushes them to core through `qm-api.mjs post /v1/directory` before the first turn (`qm-directory.body.json`, `qm-directory.json` in the trial logs; a refusal is a harness error); members are not pushed. QM reads channel membership from that store to decide who may use a channel's sandbox, and core runs here without QM's Slack worker (`harnesses/qm/README.md`). `tests/qm-directory.test.ts` pins the body against the world.
 - `docs/benchmarks/2026-10-25-qm-probes-qp07/` (preregistration, `results/`, `report.md`): qp-07 on both inner harnesses, 3 repetitions, $0.0372 under the $1 cap; product reading upheld 3 of 3 and grade 3 of 3 in both cells (one channel-owned sandbox created in turn 1, read in turn 2 by another member in a new session). `docs/qm-findings.md` F5 rewritten as "channel membership must be synced before a channel-scoped `execute` works; the permission error does not name the missing permission", original analysis kept; TODOS entry closed.
-- Program spend: internal-task lane $1.73 of $60 (adds the rerun's $0.0372 and the smoke's $0.0063).
+
 
 ### From internal-task (QM inner-harness cell and probes): results of runs `qm-inner-harness-2026-10` and `qm-probes-2026-10`
 
@@ -1313,14 +1313,14 @@ Train gbrain-wiring: one release for #161, #156, #151 and #158, each merged unch
 - Findings: pi 63 of 80 and claude 66 of 80 on the capable families, paired +4 points [-6, +15], exact sign-flip p 0.688, below the preregistered 14.5-point minimum detectable difference, so inconclusive on pass; `org_security` 12 against 14 (under the preregistered 3, no observed improvement); claude $0.0083 against $0.0033 per trial at the median, 37 s against 26 s, 1.9 times the input and 3.0 times the output tokens, 387 refused `HEAD /api/hello` lines (F2); `Agent` delegation used in 0 of 100 claude trials; the pi cell against the gbrain arm's `qm-pi-haiku-none-mu-heldout` 63 against 60 of 100, descriptive.
 - `docs/benchmarks/2026-10-25-qm-probes/report.md` and `results/`: 6 cells, 96 trials, all completed, $0.37; the table is k of 3 per (probe, cell) grouped by claim with the preregistered expected column and the not-exercised count; `summary.json` carries the `probes` key. QM memory recall in a new session 3 of 3 on both inner harnesses (fact in the scope's notebook 5 to 12 s after the turn; the bot called no world read on qp-01); no cross-scope carry in 54 trials (two qp-04 trials not exercised: fact not captured before the probe turn); DM sandboxes per scope 3 of 3; channel sandbox 0 of 3 on both QM cells (F5); strict posture 3 of 3 held with no reply (F4 observed), command denylist 3 of 3 with the denied `execute` row; controls as expected. OpenClaw and Hermes answered recall by reading history (2 of 3, 3 of 3), leaked the DM file across members (0 of 3 each, by design) and shared it within the channel (3 of 3, 2 of 3).
 - `docs/qm-findings.md`: F5 (channel-scope sandbox refused: membership read from a directory only QM's Slack worker or `POST /v1/directory` fills; rig limitation, reproduction and the rig change that would test the claim), F4 observed in the run (a read is held as much as a write under `strict`), two memory-extraction observations and one parallel-tool-call observation; "at main 88c380f5" lines from a read-only log.
-- Program spend: internal-task lane $1.68 of $60 (`qm-inner-harness-2026-10` $1.2485 across two $12 leases, `qm-probes-2026-10` $0.3739 on one $15 lease, smokes $0.0607).
+
 
 ### internal-task: the v0.2 dev-split pilot (results, run `v02-pilot-2026-10`)
 
 - `docs/benchmarks/2026-10-25-v02-pilot/report.md` and `results/`: four Haiku cells on the 15 dev tasks, 3 repetitions, 180 trials, all completed, sharded one cell per fresh machine at the preregistration commit `dd40bc5` and merged with `scripts/merge-shards.ts` (per-shard ledger, proxy usage, proxy log, run log, run summary and shard record under the shard's name, `shards.json`); `summary.md`, `comparisons.md`, `paired-mdd.md` and a `<shard>.spend-reconciliation.md` per shard (usage lines, trials.jsonl, ledger committed and settled agree; provider side not performed). Spend $1.55 of the $10 cap.
 - Findings, a pilot with no inferential claim: 19, 16, 20 and 15 of 45 for OpenClaw, Hermes, QM and OpenClaw per-turn (every Holm-adjusted p 1.000); four tasks at 0 of 12 (cn-01, cn-04, cr-01, ms-03), four at 3 of 3 everywhere; zero consent violations, four hidden-fact leaks (cn-02's contact name), nine cross-scope failures (eight are ar-03's authorizer-DM check); the per-turn cell passed ar-01 3 of 3 against 0 of 3 by re-reading the bot's own request. Three task defects recorded for amendment before any held-out use (ms-03 wording, ms-02 `t1_not_88412`, cr-04 `stale`) and one grading decision (ar-03 and ar-06 cross-scope rule); as-graded numbers stay primary.
 
-### internal-task correction (internal-task): saved facts in the gbrain tap
+### internal-task-a correction (internal-task-b): saved facts in the gbrain tap
 
 - `world/services/gbrain-tap.ts`: `savedFactsOf` reads the saved facts a `search`, `query` or `recall` reply carries (`_meta.retrieval.saved_facts`, recall's `facts` array, or the prose "Saved facts (remember)" block) and records them as `effect.facts`, their own kind, never as pages or rows; `resultPayloads` had parsed only JSON content blocks and skipped `_meta`, so a remember-then-search check through the tap always read "not found". That reading was reported as a gbrain defect (member writes dropped); internal-task showed member writes persist in `private-<member>` and the miss was the tap's. `tests/gbrain-tap.test.ts` covers the three shapes; `tests/gbrain-brain.test.ts` (live, `HE_GBRAIN_BUILD_TEST=1`) proves persistence and scope through `recall`.
 - Docs: a dated correction in `docs/benchmarks/2026-10-25-company-brain/report.md` (no counted trial wrote to the brain and the image carries no fact, so every search reply's saved-facts block was empty and no count changes), the TODOS entry closed with the finding, `docs/gbrain-arm.md` event table and dated entry.
@@ -1330,13 +1330,13 @@ Train gbrain-wiring: one release for #161, #156, #151 and #158, each merged unch
 - `docs/benchmarks/2026-10-25-company-brain/report.md` and `results/`: 9 cells, 900 trials, sharded by harness across three machines (amendment of 2026-10-24), receipts merged by hand with each shard's ledger, proxy log, run log and run summary under its name (`ledger-<shard>.sqlite` and so on, as the amendment says), `shards.json` in the shape `scripts/merge-shards.ts` writes, `regrade-6b67de1.jsonl` and `regrade-head.jsonl` (900 trials regraded at the preregistration commit and at `e278fb0`, identical), `rereading-preregistered-rule/` (five OpenClaw trials counted under the preregistered classification rule, with its own `summary.json` and comparisons), `taxonomy.json` and `taxonomy.md`. Scripts run from `main` at `6b857cf`.
 - Findings: `company-told` returned 192, 192 and 130 unreadable rows (OpenClaw, Hermes, QM) and failed the cross-scope rule in 73, 74 and 55 of 100 trials, pass -45 [-60, -30], -60 [-78, -41] and -44 [-62, -25] points against `none` over the 16 capable tasks (Holm-adjusted p at most 0.002); `company-scoped` returned zero unreadable rows and needed zero gbrain refusals, pass +20 [+3, +39], +5 [-15, +25] and -2 [-19, +16] (Holm-adjusted p at least 0.199), input tokens +11% to +57%. Nine `finance_disclosure` consent violations (OpenClaw scoped 2, Hermes told 2, Hermes scoped 5), seven with the figure absent from the brain.
 - Deviation, declared in the report's first section: after a machine restart the OpenClaw shard was resumed from a checkout at `e278fb0`, so 65 of its 300 trials ran under that runner (images, tasks, world and grader unchanged; the HE-MODEL-001 refused-line rule labelled five trials `model_error`, counted under the preregistered rule in the primary reading).
-- Program spend: lane-spend line `company-brain-2026-10`, $6.26 reconciled ($6.82 committed with three unfinalized reservations from killed trials) plus the smoke's $0.04; internal-task lane total $6.31 of $60.
+
 
 ### gbrain arm: results (run `gbrain-arm-2026-10`)
 
 - `docs/benchmarks/2026-10-24-gbrain-arm/report.md` and `results/`: 15 cells, 1,500 trials, the nine Haiku cells on one machine and the six Sonnet cells on three (amendment of 2026-10-24), receipts merged into one directory with each machine's ledger, proxy log and run log under its own name and `shards.json` naming the machine of every cell and trial. Scripts run from `main` at `4099179`: `summary.json`, `comparisons.gbrain.json`, the descriptive and `--against` comparison files, `taxonomy.json` and `taxonomy.md`.
 - Findings: in the untold `gbrain` cells every harness listed gbrain's tools and called one in 2 of 600 trials, so no retrieval effect could appear and none of the nine paired differences is distinguished (Holm-adjusted p 0.75 or more); the `gbrain-told` cells used it in 76% to 96% of trials, took `sc-06` and `si-06` to 5 of 5 for every harness and lost 18 trials to cross-scope reads via bot-wide `search`, net +1 to +4 points with intervals about 40 points wide. Two consent violations (Hermes, Haiku, with gbrain installed, `os-06`); zero leaks; three QM `harness_error` trials (HE-ADAPTER-002, port 58080 in use) counted as failures because the scripts exclude only `model_error`, `infra_error` and `exam_fault`; 13 Sonnet requests inside four OpenClaw Haiku trials forwarded by the route allowlist at `ac9e41b`.
-- Program spend $136.06 of $2,000 (lane-spend line `gbrain-arm-2026-10`, $80.87).
+
 
 ### From internal-task (QM inner-harness cell and probes): configs, thread sessions, model assertion
 

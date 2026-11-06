@@ -1,4 +1,4 @@
-// internal-task (internal-task plan v3, M1 step 5, the C4 told-live run): the runner wiring for QM's memory-provider cell and for live
+// internal-task-a (internal-task-b plan v3, M1 step 5, the C4 told-live run): the runner wiring for QM's memory-provider cell and for live
 // ingestion under the two-layer scope "member-sources", keyless.
 //   1. The draft's three cells load and dry-run: none, memory-provider (config pi-memory-provider) and route-tool (scope
 //      member-sources with ingest live, which main refused with HE-GBRAIN-003).

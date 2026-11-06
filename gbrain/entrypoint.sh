@@ -13,7 +13,7 @@
 #                     with sources (internal-task, gbrain#7481), the company brain's manifest.json (its grants map members to source
 #                     ids, no tokens) is copied to $HE_GBRAIN_OUT/manifest.json and the world's tap adds source_ids per request
 #                     for the world's tap to present per requesting member; member needs brain company; with member-sources
-#                     (internal-task, internal-task) both files are copied and the tap presents the member's token and its source_ids
+#                     (internal-task-a, internal-task-b) both files are copied and the tap presents the member's token and its source_ids
 #   HE_GBRAIN_ACCESS  none (default) | rules: with rules (internal-task; member brain and member scope only) serves /brains/<split>-member-acl,
 #                     the member brain whose reads are gated by gbrain folder rules and member-bound tokens (gbrain/build-brain.ts
 #                     --access rules); its tokens.json is copied the same way

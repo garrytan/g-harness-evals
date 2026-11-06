@@ -161,7 +161,7 @@ test('installerHookProblem: with the pin expecting a hook, an installer view wit
   expect(installerHookProblem(blockOnly, {})).toBeNull();
   // A candidate named by --gbrain-commit (gbrain-check) is not held to the pin's expectation.
   expect(installerHookProblem(blockOnly, expecting, 'cd9da1ce170ecae739fa28855e9133b6c60b78c2')).toBeNull();
-  // internal-task: the committed pin is gbrain master at gbrain#8425's merge (2c469d1b, the internal-task hotfix, after gbrain#7489 and gbrain#7898), which carries the per-turn hook, so the
+  // internal-task-a: the committed pin is gbrain master at gbrain#8425's merge (2c469d1b, the internal-task-b hotfix, after gbrain#7489 and gbrain#7898), which carries the per-turn hook, so the
   // pin expects one and preflight refuses a block-only installer view at this pin (HE-GBRAIN-006).
   const pin = JSON.parse(readFileSync(join(ROOT, 'gbrain', 'pin.json'), 'utf8')) as { gbrain: { commit: string }; install: { installer: { turn_hook_expected: boolean } } };
   expect(pin.gbrain.commit).toBe('2c469d1bfc0e096646b2a2b1caba4fdea4592f00');
@@ -362,7 +362,7 @@ describe.skipIf(!haveImage)(`the sidecar image ${IMAGE ?? '(HE_GBRAIN_IMAGE unse
     }
   }, 180_000);
 
-  // internal-task (internal-task, gbrain#8074): the preflight source-grant probe, under the list alone and under the member tokens plus the list,
+  // internal-task-a (internal-task-b, gbrain#8074): the preflight source-grant probe, under the list alone and under the member tokens plus the list,
   // answers rows on every source-scoped tool and none outside the requester's grant.
   test('probeSourceGrants: under scope sources and member-sources every source-scoped tool gives rows and none lies outside the grant', async () => {
     const { probeSourceGrants } = await import('../runner/trial/gbrain.ts');

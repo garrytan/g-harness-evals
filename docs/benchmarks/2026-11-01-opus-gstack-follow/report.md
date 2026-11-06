@@ -9,7 +9,7 @@
 - **Pooled 0 of 46 is descriptive only.** Its Wilson 95% upper bound is about 0.077. It is not a preregistered test, and the runs used different tasks and system prompts. By skill, `/investigate` is 0 of 22 (4 + 4 + 14).
 - **gstack cost about 2 times as much per trial** as no gstack in every run: a mean of $0.28 against $0.13 to $0.14 on the dev tasks, and $0.46 against $0.22 on the hard tasks.
 
-**What these runs are.** These are uncounted checks, run from scratch branches that were never merged (`fec132d37`, `e1016ca4d`, `bee55a72`). Per internal-task, no preregistration pull request was used. Instead, each run's decision rule was frozen in the Captain's drive before its first trial, and the plan approval and the hard check's rule sha are on internal-task.
+**What these runs are.** These are uncounted checks, run from scratch branches that were never merged (`fec132d37`, `e1016ca4d`, `bee55a72`). Per internal-task-a, no preregistration pull request was used. Instead, each run's decision rule was frozen in the Captain's drive before its first trial, and the plan approval and the hard check's rule sha are on internal-task-b.
 
 Every number below is recomputed by [results/recompute.py](results/recompute.py) from the receipts under [results/](results/), with its output in [recompute.out](results/recompute.out).
 
@@ -44,7 +44,7 @@ Terms used below:
 **Followed 0 of 16 on every arm. Decision: STOP.**
 
 - **One change from the stub run:** the agent passes `system_prompt={"type": "preset", "preset": "claude_code"}`, so Claude Code 2.1.312 uses its own system prompt.
-- **It reached the model.** In the $0 dry run, every captured request carried a 6,340-character system prompt with Claude Code's guidance block, against 137 characters with the unpatched agent (preset, stub).
+- **It reached the model.** In the $0 dry run, every captured request carried a 6,340-character system prompt with Claude Code's guidance block, against 137 characters with the unpatched agent ([preset](results/gn-follow-preset-2026-11/dry-run/preset-system-prompt.txt), [stub](results/gn-follow-preset-2026-11/dry-run/stub-system-prompt.txt)).
 - **The paid trials show it too.** The median first request grew by about 2,150 to 2,250 tokens on every arm: gstack 40,614 to 42,768, none 20,578 to 22,812, placebo 39,535 to 41,781 (`laneb.first_req_prompt_tokens`).
 - **Same tasks, arms and tries as the stub run:** 48 trials.
 
