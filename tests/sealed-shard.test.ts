@@ -107,6 +107,7 @@ describe('ubicloud/run-shard.sh sealed upload and cleanup', () => {
       '    *"tail -c +"*"run-shard.log"*) cat > /dev/null; echo "' + SHARD_CANARY + '" ;;',
       '    *) cat > /dev/null ;;',
       '  esac ;;',
+      '  pull) mkdir -p "$3/$(basename "$2")" ;;',
       '  *) cat > /dev/null 2>&1 < /dev/null || true ;;',
       'esac',
     ].join('\n'));

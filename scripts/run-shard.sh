@@ -32,6 +32,11 @@
 # refuse an image that records another commit (HE-GBRAIN-016). The ubicloud wrappers pass the preregistration through, so
 # they need no flag for it.
 #
+# When the shard's gbrain cells are dev cells of a task set with its own world (tasks/multiuser/<task_set>/world/world.json,
+# docs/tasks.md "A set with its own world"), the gbrain image is built with build-gbrain-image.sh --world <that file> and
+# tagged harness-eval/gbrain:world-<first 12 of its sha256> in place of harness-eval/gbrain:dev, and preflight and run get
+# that tag, the one the runner expects for those cells. gbrain cells that read different worlds are refused (HE-GBRAIN-002).
+#
 # --sealed-root and --opening-receipt (docs/sealed-custody.md; both or neither) run a sealed heldout set from a
 # custodian's root outside the checkout. The shard works on its own private copy of the root (in a mktemp -d directory
 # under TMPDIR, mode 0700, refused inside a git work tree), made after the checks and removed on every exit bash can trap
@@ -121,6 +126,28 @@ log() { printf '%s run-shard[%s]: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$name"
 show_tail() { if [ -n "$sealed_root" ]; then log "log: $1 (custody only; a sealed shard never prints its logs)"; else tail -"$2" "$1" >&2; fi; }
 log "commit $commit, cells $cells, harnesses $harnesses, lease $lease, max_output_tokens $max_output_tokens, out $out"
 [ -z "$gbrain_commit" ] || log "gbrain $gbrain_commit, the preregistration's gbrain_commit (not gbrain/pin.json's)"
+# The gbrain cells of a dev split whose task set carries its own world (tasks/multiuser/<task_set>/world/world.json, v0.4)
+# read that world, as runner/run.ts setWorldPath decides, so their image is built with build-gbrain-image.sh --world and
+# tagged harness-eval/gbrain:world-<first 12 of its sha256>, the tag the runner expects for them, unless --gbrain-image names one.
+set_world=$(python3 - "$prereg" "$cells" <<'PY'
+import hashlib, json, os, sys
+p = json.load(open(sys.argv[1])); want = set(sys.argv[2].split(','))
+paths = set()
+for c in p['cells']:
+    if c['id'] not in want or not c.get('gbrain'): continue
+    s = c.get('task_set') or 'v0.1'
+    w = os.path.join('tasks', 'multiuser', s, 'world', 'world.json')
+    paths.add(w if c.get('split') == 'dev' and s != 'v0.1' and os.path.isfile(w) else '')
+if len(paths) > 1: sys.exit('run-shard: HE-GBRAIN-002 this shard\'s gbrain cells read different worlds (%s); one gbrain image holds one world\'s brains' % ', '.join(sorted(x or 'the run world' for x in paths)))
+w = paths.pop() if paths else ''
+print(w and w + ' harness-eval/gbrain:world-' + hashlib.sha256(open(w, 'rb').read()).hexdigest()[:12])
+PY
+) || exit 2
+world_file=${set_world% *}
+if [ -n "$world_file" ]; then
+  [ "$gbrain_image" != harness-eval/gbrain:dev ] || gbrain_image=${set_world#* }
+  log "gbrain cells read the set world $world_file; gbrain image $gbrain_image"
+fi
 qm_sandbox=harness-eval/qm-sandbox:dev
 case " $harnesses " in *" qm "*) [ "${QM_SANDBOX_IMAGE:-$qm_sandbox}" = "$qm_sandbox" ] || { log "refused: QM_SANDBOX_IMAGE=$QM_SANDBOX_IMAGE; a shard builds and records $qm_sandbox, the tag harnesses/qm/prepare.sh uses when it is unset, so unset it"; exit 2; } ;; esac
 export QM_SANDBOX_IMAGE="$qm_sandbox"
@@ -166,6 +193,7 @@ if [ "$skip_build" -eq 0 ]; then
   [ "$embedded" -eq 1 ] && args+=(--embedded)
   [ -z "$gbrain_commit" ] || args+=(--gbrain "$gbrain_commit")
   [ -z "$shard_root" ] || args+=(--sealed-root "$shard_root")
+  [ -z "$world_file" ] || args+=(--world "$world_file")
   scripts/build-gbrain-image.sh "${args[@]}" > "$out/build-gbrain.log" 2>&1 || { show_tail "$out/build-gbrain.log" 20; [ -z "$shard_root" ] || log "the sealed build log is kept at $out/sealed-root-logs/build-gbrain-image.log (custody only)"; log "gbrain image build failed"; exit 2; }
 fi
 

@@ -64,7 +64,11 @@
 #      from the VM, <dest>/results/shard-vm.json is written beside shard.json (VM name, size, location, timings, exit,
 #      list-price cost), and the VM is destroyed. shard-vm.json says cleanup "pending" from creation, "done" with
 #      destroyed_at only after ubi-runner.sh down exits 0, and "failed" (the VM id appended to <dest>/cleanup-pending) when
-#      down fails; a sealed shard's poll lines carry the trial count only, never a log line.
+#      down fails; a sealed shard's poll lines carry the trial count only, never a log line. When the pull of the results
+#      tree fails or <dest>/results is missing afterwards (any exit but 4, where the counted run never started), the VM is
+#      not destroyed: its id goes to <dest>/cleanup-pending, shard-vm.json keeps cleanup "pending" with a cleanup_reason,
+#      and the VM's TTL ends it unless --attach pulls and destroys it first. A VM that answers that it holds no
+#      ~/shard/results (a failure before the counted run wrote any) is destroyed as before.
 #   --attach (with --dest) rejoins a VM an earlier invocation of this script left running (this machine slept or the
 #   controller died): it reads the VM name (and whether the shard is sealed) from <dest>/shard-vm.json, polls, pulls,
 #   deletes ~/sealed when sealed and destroys as above. A sealed attach whose --dest is inside a git work tree is refused
@@ -193,6 +197,7 @@ teardown() {
   set +e
   [ -z "$scratch" ] || rm -rf "$scratch"
   [ -n "$vm" ] || return 0
+  local results_pulled=1
   if [ "$launched" -eq 1 ] && [ "$exited" -eq 0 ]; then
     if [ "$workload" = gstack-laneb ]; then
       # the Lane B shard drains its meter and writes its records after the signal (vm-shard.sh waits for vm-run.sh and
@@ -208,7 +213,7 @@ teardown() {
     log "checkpointing ledgers and copying the results tree back to $dest"
     vssh 'for f in $(find ~/shard -name ledger.sqlite 2>/dev/null); do bun -e "const {Database}=require(\"bun:sqlite\"); const db=new Database(process.argv[1]); db.exec(\"PRAGMA wal_checkpoint(TRUNCATE)\"); db.close(); console.log(\"checkpointed\", process.argv[1])" "$f"; done' 2>>"$dest/lane.log" | stamp | tee -a "$dest/lane.log" >&2
     t_pull0=$(now)
-    bash "$runner" pull "$vm" "shard/results" "$dest" 2>/dev/null || log "WARNING: no shard/results on the VM to pull (the run never started, or the VM is gone)"
+    bash "$runner" pull "$vm" "shard/results" "$dest" 2>/dev/null || { results_pulled=0; log "WARNING: no shard/results on the VM to pull (the run never started, or the VM is gone)"; }
     bash "$runner" pull "$vm" "shard/smoke" "$dest" 2>/dev/null || log "WARNING: no shard/smoke on the VM to pull"
     for f in vm-shard.out phases.json exit bun-install.log prereg.json; do bash "$runner" pull "$vm" "shard/$f" "$dest" 2>/dev/null || true; done
     t_pull1=$(now)
@@ -239,6 +244,20 @@ PY
   if [ "$sealed" -eq 1 ]; then
     log "sealed: deleting ~/sealed (the sealed root and receipt) from $vm"
     vssh 'rm -rf ~/sealed' < /dev/null 2>>"$dest/lane.log" || log "WARNING: rm -rf ~/sealed on $vm failed; the VM is destroyed next"
+  fi
+  # A shard that got past the smoke (any exit but 4) has results only on the VM until this pull, so a failed pull or a
+  # missing <dest>/results keeps the VM: destroying it would lose them. The VM id goes to cleanup-pending, shard-vm.json
+  # keeps cleanup "pending" with the reason, and the VM's TTL bounds its life. A VM that answers that it has no
+  # ~/shard/results (a checkout, install or smoke-lease failure before the counted run) has nothing to lose and is destroyed.
+  if [ "$launched" -eq 1 ] && [ "$rc" != 4 ] && { [ "$results_pulled" -eq 0 ] || [ ! -d "$dest/results" ]; }; then
+    if vssh 'if [ -d ~/shard/results ]; then echo shard-results=yes; else echo shard-results=no; fi' < /dev/null 2>>"$dest/lane.log" | grep -qx 'shard-results=no'; then
+      log "no shard/results on $vm (exit $rc: the counted run wrote none), so there is nothing to keep it for"
+    else
+      log "WARNING: the results tree did not come back from $vm, so $vm is NOT destroyed (its TTL ends it); pull it with run-shard.sh --attach --dest $dest, or bash $runner pull $vm shard/results $dest, then bash $runner down $vm. The VM id is in $dest/cleanup-pending"
+      printf '%s\n' "$vm" >> "$dest/cleanup-pending"
+      jset "exit=$rc" "cleanup=\"pending\"" "cleanup_reason=\"results not pulled; VM kept\""
+      return 0
+    fi
   fi
   t_down0=$(now)
   log "destroying $vm"

@@ -229,7 +229,7 @@ describe('ubicloud/run-shard.sh TTL', () => {
     try {
       const calls = join(dir, 'calls');
       const fake = join(dir, 'ubi-runner.sh');
-      writeFileSync(fake, ['#!/usr/bin/env bash', `echo "$1" >> "${calls}"`, 'case $1 in ssh) cat >/dev/null; echo "::trials 0" ;; owner) echo harn7 ;; esac'].join('\n') + '\n');
+      writeFileSync(fake, ['#!/usr/bin/env bash', `echo "$1" >> "${calls}"`, 'case $1 in ssh) cat >/dev/null; echo "::trials 0" ;; pull) mkdir -p "$4/$(basename "$3")" ;; owner) echo harn7 ;; esac'].join('\n') + '\n');
       chmodSync(fake, 0o755);
       const dest = join(dir, 'dest');
       mkdirSync(dest);
