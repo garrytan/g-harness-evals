@@ -106,7 +106,7 @@ Version: see [VERSION](VERSION) for the release, and [CHANGELOG.md](CHANGELOG.md
 | Codex | [openai/codex](https://github.com/openai/codex) 0.165.0 from npm; first counted run `host-harness-pilot-2026-10` (dev). It speaks only OpenAI's Responses API, so it is compared only with OpenClaw and Hermes on the same OpenAI model ([harnesses/codex/pin.json](harnesses/codex/pin.json)) |
 | Not run | Two products in the original plan expose no headless API; nothing on this page measures them |
 | Models | `claude-sonnet-5-5` and `claude-haiku-5-5`, plus `gpt-6-luna` for the OpenAI cells of `host-harness-pilot-2026-10` and `claude-opus-5-5` for `v03-opus-dev-2026-10`; one fixed model per cell, every call through the metering proxy under a ledger lease; the harness containers see only the proxy and a per-trial dummy token |
-| gbrain, the sidecar in the brain runs | [garrytan/gbrain](https://github.com/garrytan/gbrain), pinned today at `a590ad07` (0.60.522.0, master at the merge of gbrain#8074, which makes `recall` and `list_pages` honour per-request source scope), for runs `v03-ar-reread-2026-10` and `v03-opus-dev-2026-10`; each counted run names the commit it built, from `f241216c` (0.60.413.0) in the gbrain arm to `81692dc6` (0.60.472.0, gbrain#7744's head before it merged) in `gbrain-memory-fix-2026-10b` and the v0.3 dev pilot, and `32366ac2` (0.60.498.0) in `v03-installer-dev-2026-10` and `host-harness-pilot-2026-10` ([gbrain/pin.json](gbrain/pin.json), fields `commit` and `previous`). gbrain is a knowledge brain served to the harness as a second MCP server, not a harness under test |
+| gbrain, the sidecar in the brain runs | [garrytan/gbrain](https://github.com/garrytan/gbrain), pinned today at `2c469d1b` (0.60.547.0, master at the merge of gbrain#8425, the internal-task security hotfix for gbrain's hooks), for the v0.4 runs; each counted run names the commit it built, from `f241216c` (0.60.413.0) in the gbrain arm to `81692dc6` (0.60.472.0, gbrain#7744's head before it merged) in `gbrain-memory-fix-2026-10b` and the v0.3 dev pilot, `32366ac2` (0.60.498.0) in `v03-installer-dev-2026-10` and `host-harness-pilot-2026-10`, and `a590ad07` (0.60.522.0) in `v03-ar-reread-2026-10` and `v03-opus-dev-2026-10` ([gbrain/pin.json](gbrain/pin.json), fields `commit` and `previous`). gbrain is a knowledge brain served to the harness as a second MCP server, not a harness under test |
 
 - Every harness runs headlessly in `serve` mode. The runner plays each member's messages through a Slack mock on a simulation clock, and the harness answers through one world-MCP server ([docs/adapters.md](docs/adapters.md)).
 - One bot token, no per-member access, the same preamble for every harness ([docs/methodology.md](docs/methodology.md), the trial contract). Full text: [docs/methods.md](docs/methods.md#how-every-harness-runs).
@@ -418,6 +418,10 @@ Not corrected anywhere yet, listed so the gap is visible: the company-brain run'
 **Contributing.** Outside code is read as text and rewritten by maintainers, never merged as is; bug reports need a repro on current main or a failing test ([CONTRIBUTING.md](CONTRIBUTING.md)). Report security issues privately ([SECURITY.md](SECURITY.md)). Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Changelog
+
+### 2026-11-06: gbrain pinned at 2c469d1b for v0.4
+
+The gbrain row of the pins table names the new pin, `2c469d1b` (0.60.547.0, the internal-task hotfix), for the v0.4 runs, and adds `a590ad07` to the commits earlier runs built. Why: the v0.4 preregistration pins every gbrain arm to the internal-task hotfix or later.
 
 ### 2026-11-05: replicate validation reported
 

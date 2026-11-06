@@ -9,7 +9,8 @@
 #     "size": "standard-16", "options": ["--gbrain-image", "harness-eval/gbrain:dev"],
 #     "shards": [ { "name": "oc-a", "cells": "cell-1,cell-2", "lease_usd": 5 }, ... ] }
 # size and options are optional; options go to every run-shard.sh as given (--embedded, --gbrain-image, --amendment,
-# --smoke-lease-usd, --smoke-task, --no-smoke, --resume, or "--" followed by arguments for the repository's run-shard.sh).
+# --smoke-lease-usd, --smoke-task, --smoke-first-cell, --no-smoke, --resume, or "--" followed by arguments for the
+# repository's run-shard.sh).
 # A sealed run (docs/sealed-custody.md) adds "sealed_root": "<custodian's sealed root>" and "opening_receipt":
 # "<its opening-receipt.json>", both or neither (one alone is exit 2); every run-shard.sh then gets --sealed-root and
 # --opening-receipt with the paths expanded, and each shard uploads, uses and deletes its own copy on its VM. fanout.sh

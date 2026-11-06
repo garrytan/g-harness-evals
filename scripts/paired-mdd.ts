@@ -29,6 +29,9 @@
 //   bun scripts/paired-mdd.ts --project --results <frozen-dev results> --pair <told-live cell>:<none cell> [--pair ...] [--families a,b]
 //     [--tasks 36] [--reps 3] [--alpha 0.025] [--holm-family 2] [--power 0.8] [--threshold 15]
 //
+// A side of a --pair may join several cells of one harness with + (the v0.4 frozen-dev read keeps one cell per family and
+// level, so one harness's told-live side is its frozen families' told-live cells); their tasks are pooled into that side.
+//
 // The v0.4 power gate (internal-task, plan decision 9(c)): a target-design projection of the minimum detectable difference for
 // told-live against none, per harness, from fresh frozen-dev rows. The estimator is named in PROJECTION_ESTIMATOR and in the
 // output: per task, the difference of the two arms' pass rates; the task-clustered variance of those differences is split by
@@ -207,18 +210,21 @@ if (import.meta.main && process.argv.includes('--project')) {
   const rate = (x: number | null) => (x === null ? 'n/a' : `${(100 * x).toFixed(0)}%`);
   const table: Array<{ a: string; b: string; p: MddProjection }> = [];
   for (const [a, b] of pairs as Array<[string, string]>) {
-    const ca = cells.find((c) => c.id === a), cb = cells.find((c) => c.id === b);
-    if (!ca || !cb || ca.harness !== cb.harness) {
-      console.error(`paired-mdd --project: ${a}:${b} must name two cells of the manifest on one harness`);
+    const side = (ids: string) => ids.split('+').map((id) => cells.find((c) => c.id === id));
+    const sa = side(a), sb = side(b);
+    const ca = sa[0];
+    if (!ca || [...sa, ...sb].some((c) => !c || c.harness !== ca.harness) || new Set([...a.split('+'), ...b.split('+')]).size !== sa.length + sb.length) {
+      console.error(`paired-mdd --project: ${a}:${b} must name two cells of the manifest on one harness (a side may join several cells of that harness with +, each once)`);
       process.exit(2);
     }
-    const scored = (cell: typeof ca) => rows.filter((t) => {
-      if (t.cell !== cell.id || EXCLUDED.has(t.termination)) return false;
+    const scored = (group: typeof sa) => rows.filter((t) => {
+      const cell = group.find((c) => c!.id === t.cell);
+      if (!cell || EXCLUDED.has(t.termination)) return false;
       const key = `${cell.task_set ?? ''}/${cell.split}/${t.task}`;
       if (!familyOf.has(key)) familyOf.set(key, loadTask(taskDirFor(cell, t.task, tasksRoot)).family);
       return families.includes(familyOf.get(key)!);
     });
-    const ra = scored(ca), rb = scored(cb);
+    const ra = scored(sa), rb = scored(sb);
     const pass = (t: TrialRecord) => (t.grade === 'pass' && !t.consent_violation ? 1 : 0);
     const tasks = [...new Set([...ra, ...rb].map((t) => t.task))].sort();
     table.push({ a, b, p: projectMdd(ca.harness, tasks.map((task) => ({ task, a: ra.filter((t) => t.task === task).map(pass), b: rb.filter((t) => t.task === task).map(pass) })), options) });

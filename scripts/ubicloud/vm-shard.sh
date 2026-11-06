@@ -6,7 +6,7 @@
 # scripts/run-shard.sh for the shard under its lease with --skip-build, and writes ~/shard/exit with the exit code.
 #
 #   vm-shard.sh --commit <sha> --prereg <path on the VM> --name <shard> --cells a,b --lease-usd <n>
-#               [--smoke-lease-usd <n>] [--smoke-task <task id>] [--no-smoke] [--resume] [--amendment <sha>]
+#               [--smoke-lease-usd <n>] [--smoke-task <task id>] [--smoke-first-cell] [--no-smoke] [--resume] [--amendment <sha>]
 #               [--embedded] [--gbrain-image <tag>] [--sealed-root <path on the VM> --opening-receipt <path on the VM>]
 #               [--workload harness|gstack-laneb] [-- <extra run-shard.sh arguments>]
 #
@@ -26,6 +26,10 @@
 # output cap at the model's list price plus an input allowance, doubled, at least $1): a lease below one reservation refuses
 # the smoke's first call. Pass a figure to override it.
 #
+# --smoke-first-cell smokes only the first harness cell in --cells order (one trial) instead of every harness cell of the
+# shard (one trial each, the default). Use it when every cell of a shard shares the harness, the arm and the smoke task,
+# so the other smoke trials would prove the same images, adapter and proxy wiring again.
+#
 # Phase timestamps go to ~/shard/phases.json (epoch seconds), the smoke's results to ~/shard/smoke/results and the shard's
 # to ~/shard/results. The model keys are in this process's environment only (read from ~/.ubirun-env by the launcher,
 # which deletes the file before this script starts); nothing here prints them, and run-shard.sh hands them only to the
@@ -40,7 +44,7 @@ if [ -z "${HE_SHARD_IN_DOCKER_GROUP:-}" ] && getent group docker >/dev/null && !
   exec sg docker -c "bash $(printf %q "$0") $(printf '%q ' "$@")"
 fi
 
-commit="" prereg="" name="" cells="" lease="" smoke_lease="" smoke_task="" smoke=1 resume=0 amendment="" workload=harness
+commit="" prereg="" name="" cells="" lease="" smoke_lease="" smoke_task="" smoke=1 smoke_first=0 resume=0 amendment="" workload=harness
 extra=() image=() sealed=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -51,6 +55,7 @@ while [ $# -gt 0 ]; do
     --lease-usd) lease="$2"; shift 2 ;;
     --smoke-lease-usd) smoke_lease="$2"; shift 2 ;;
     --smoke-task) smoke_task="$2"; shift 2 ;;
+    --smoke-first-cell) smoke_first=1; shift ;;
     --no-smoke) smoke=0; shift ;;
     --resume) resume=1; shift ;;
     --amendment) amendment="$2"; shift 2 ;;
@@ -130,13 +135,15 @@ if [ "$smoke" -eq 1 ]; then
     [ "$lease_rc" -eq 0 ] && [ -n "$smoke_lease" ] || { log "smoke lease: could not be derived; pass --smoke-lease-usd"; finish 2; }
     log "smoke lease: \$$smoke_lease (derived from the proxy's reservation at $max_out output tokens; --smoke-lease-usd overrides)"
   fi
-  python3 - "$prereg" "$cells" "$name" "$smoke_task" "$smoke_lease" "$smoke_prereg" <<'PY' || finish 2
+  python3 - "$prereg" "$cells" "$name" "$smoke_task" "$smoke_lease" "$smoke_prereg" "$smoke_first" <<'PY' || finish 2
 import json, os, sys
-src, cells, name, task, lease, out = sys.argv[1:7]
-p = json.load(open(src)); want = set(cells.split(','))
+src, cells, name, task, lease, out, first = sys.argv[1:8]
+p = json.load(open(src)); order = cells.split(','); want = set(order)
 cells_out = [dict(c) for c in p['cells'] if c['id'] in want and c.get('harness') != 'scripted' and c.get('harness_mode') != 'scripted']
 if not cells_out:
     print('vm-shard: no harness cell to smoke (scripted cells are free); skipping the smoke'); open(out, 'w').write(''); sys.exit(0)
+if first == '1':
+    cells_out = [min(cells_out, key=lambda c: order.index(c['id']))]
 for c in cells_out:
     c['split'] = 'dev'
     c['repetitions'] = 1

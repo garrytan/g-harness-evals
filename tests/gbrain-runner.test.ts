@@ -244,6 +244,14 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         expect(c.repetitions).toBe(c.model === 'anthropic:claude-opus-5-5' ? 5 : 3); expect(['anthropic:claude-opus-5-5', 'openai:gpt-6.1-sol']).toContain(c.model);
         expect(p.cells).toHaveLength(10); expect(buildManifest(p, sha256, '2026-10-31T00:00:00Z').trials).toHaveLength(880);
       }
+      else if (p.run_id.startsWith('v04-')) {
+        // internal-task (v0.4 PR B): the calibration rounds, the transfer check and the frozen-dev read on Opus 5.5; told-live and untold-gbrain on the member brain under member scope
+        // with live ingestion (the memory preamble and the plain one), told-scoped on the company brain under member-sources (the company preamble), none with no brain; tests/v04-prereg.test.ts pins the rest.
+        expect(c.model).toBe('anthropic:claude-opus-5-5'); expect(c.split).toBe('dev'); expect(['v0.4', 'v0.4/rehearsal']).toContain(c.task_set!);
+        if (!c.gbrain) expect(c.preamble).toBeUndefined();
+        else if (c.gbrain.brain === 'company') { expect(c.gbrain).toEqual({ surface: 'starter', brain: 'company', scope: 'member-sources' }); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-company.md'); }
+        else { expect(c.gbrain).toEqual({ surface: 'starter', brain: 'member', scope: 'member', ingest: 'live' }); expect(['tasks/multiuser/_shared/preamble.gbrain-memory.md', 'tasks/multiuser/_shared/preamble.md']).toContain(c.preamble!); }
+      }
       else expect(c.gbrain).toBeUndefined();
     }
   }

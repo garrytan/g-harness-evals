@@ -161,10 +161,10 @@ test('installerHookProblem: with the pin expecting a hook, an installer view wit
   expect(installerHookProblem(blockOnly, {})).toBeNull();
   // A candidate named by --gbrain-commit (gbrain-check) is not held to the pin's expectation.
   expect(installerHookProblem(blockOnly, expecting, 'cd9da1ce170ecae739fa28855e9133b6c60b78c2')).toBeNull();
-  // internal-task: the committed pin is gbrain master at gbrain#8074's merge (a590ad07, after gbrain#7489 and gbrain#7898), which carries the per-turn hook, so the
+  // internal-task: the committed pin is gbrain master at gbrain#8425's merge (2c469d1b, the internal-task hotfix, after gbrain#7489 and gbrain#7898), which carries the per-turn hook, so the
   // pin expects one and preflight refuses a block-only installer view at this pin (HE-GBRAIN-006).
   const pin = JSON.parse(readFileSync(join(ROOT, 'gbrain', 'pin.json'), 'utf8')) as { gbrain: { commit: string }; install: { installer: { turn_hook_expected: boolean } } };
-  expect(pin.gbrain.commit).toBe('a590ad07d15c92669ae30a37835df30d071e5536');
+  expect(pin.gbrain.commit).toBe('2c469d1bfc0e096646b2a2b1caba4fdea4592f00');
   expect(pin.install.installer.turn_hook_expected).toBe(true);
 });
 

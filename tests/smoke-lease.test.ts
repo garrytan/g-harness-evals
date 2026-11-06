@@ -134,8 +134,10 @@ function vmShard(cellIds: string, args: string[]) {
   });
   const read = (rel: string) => (existsSync(join(home, rel)) ? readFileSync(join(home, rel), 'utf8') : '');
   const calls = read('calls.log').split('\n').filter(Boolean);
-  const smokeCap = existsSync(join(home, 'shard', 'smoke', 'prereg.json')) ? JSON.parse(read('shard/smoke/prereg.json')).spend_cap_usd : undefined;
-  const result = { code: r.status, out: r.stdout + r.stderr, calls, smokeCap, bunLog: read('bun.log'), exitFile: read('shard/exit').trim() };
+  const smokePrereg = existsSync(join(home, 'shard', 'smoke', 'prereg.json')) ? JSON.parse(read('shard/smoke/prereg.json')) : undefined;
+  const smokeCap = smokePrereg?.spend_cap_usd;
+  const smokeCells = smokePrereg?.cells.map((c: { id: string }) => c.id);
+  const result = { code: r.status, out: r.stdout + r.stderr, calls, smokeCap, smokeCells, bunLog: read('bun.log'), exitFile: read('shard/exit').trim() };
   rmSync(home, { recursive: true, force: true });
   return result;
 }
@@ -181,6 +183,27 @@ describe('vm-shard.sh smoke lease', () => {
     expect(r.out).toContain('no list price for anthropic:no-such-model-9 (cell unknown)');
     expect(r.out).toContain('smoke lease: could not be derived; pass --smoke-lease-usd');
     expect(r.calls).toEqual([]);
+  }, 30_000);
+});
+
+// Value: protects=--smoke-first-cell smokes only the first harness cell in --cells order (one trial) and the default still
+// smokes every harness cell of the shard; fails_when=the flag is ignored, picks by preregistration order instead of the
+// shard's, picks a scripted cell, or the default changes; why_new=the flag is new (#225's /ship review: a v0.4 shard smoked
+// six cells under a $4 lease); seam=the fake run-shard.sh above; no_claim=the real smoke run.
+describe('vm-shard.sh --smoke-first-cell', () => {
+  test('the default smokes every harness cell of the shard; the flag smokes only the first in --cells order', () => {
+    const all = vmShard('opus,scripted,sonnet', ['--smoke-lease-usd', '2']);
+    expect(all.code).toBe(0);
+    expect(all.smokeCells).toEqual(['sonnet', 'opus']);
+    expect(all.calls[0]).toContain('--name smoke-s1 --cells sonnet,opus --lease-usd 2 ');
+
+    const first = vmShard('opus,scripted,sonnet', ['--smoke-lease-usd', '2', '--smoke-first-cell']);
+    expect(first.code).toBe(0);
+    expect(first.smokeCells).toEqual(['opus']);
+    expect(first.calls[0]).toContain('--name smoke-s1 --cells opus --lease-usd 2 ');
+    expect(first.calls[1]).toContain('--name s1 --cells opus,scripted,sonnet --lease-usd 7 ');
+
+    expect(vmShard('scripted,sonnet,opus', ['--smoke-lease-usd', '2', '--smoke-first-cell']).smokeCells).toEqual(['sonnet']);
   }, 30_000);
 });
 
@@ -243,5 +266,7 @@ describe('ubicloud/run-shard.sh smoke lease flag', () => {
     const given = laneRun(['--smoke-lease-usd', '2.5']);
     expect(given.code).toBe(0);
     expect(given.launch).toContain('--smoke-lease-usd 2.5');
+    expect(unset.launch).not.toContain('--smoke-first-cell');
+    expect(laneRun(['--smoke-first-cell']).launch).toContain('--smoke-first-cell');
   }, 60_000);
 });

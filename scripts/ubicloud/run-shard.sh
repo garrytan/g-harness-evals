@@ -6,7 +6,8 @@
 #
 #   scripts/ubicloud/run-shard.sh --commit <sha> --prereg <path in the repo at that commit, or a scratch file> --name <shard>
 #       --cells a,b --lease-usd <n> --dest <local directory> [--size standard-16] [--location eu-central-h1] [--storage GiB]
-#       [--smoke-lease-usd <n>] [--smoke-task <task id>] [--no-smoke] [--embedded] [--gbrain-image <tag>] [--amendment <sha>]
+#       [--smoke-lease-usd <n>] [--smoke-task <task id>] [--smoke-first-cell] [--no-smoke] [--embedded] [--gbrain-image <tag>]
+#       [--amendment <sha>]
 #       [--resume] [--attach] [--poll-seconds 30] [--timeout-hours 12] [--sealed-root <local dir> --opening-receipt <local file>]
 #       [--workload harness|gstack-laneb] [--laneb-root <dir from scripts/gstack-laneb/fetch.ts>]
 #       [--pre-smoke <script in the repository, e.g. scripts/ablation-golden.sh>] [-- <extra arguments for scripts/run-shard.sh>]
@@ -85,7 +86,7 @@ root=$(cd "$here/../.." && pwd)
 runner=${UBI_RUNNER:-$here/ubi-runner.sh}
 
 commit="" prereg="" name="" cells="" lease="" dest="" size=standard-16 location="" storage="" smoke_lease="" smoke_task="" smoke=1
-embedded=0 gbrain_image="" amendment="" resume=0 attach=0 poll=30 timeout_h=12 sealed_root="" opening_receipt="" sealed=0
+smoke_first=0 embedded=0 gbrain_image="" amendment="" resume=0 attach=0 poll=30 timeout_h=12 sealed_root="" opening_receipt="" sealed=0
 workload=harness laneb_root="$HOME/.capy/work/gstack-laneb" pre_smoke=""
 extra=()
 while [ $# -gt 0 ]; do
@@ -101,6 +102,7 @@ while [ $# -gt 0 ]; do
     --storage) storage=$2; shift 2 ;;
     --smoke-lease-usd) smoke_lease=$2; shift 2 ;;
     --smoke-task) smoke_task=$2; shift 2 ;;
+    --smoke-first-cell) smoke_first=1; shift ;;
     --no-smoke) smoke=0; shift ;;
     --embedded) embedded=1; shift ;;
     --gbrain-image) gbrain_image=$2; shift 2 ;;
@@ -407,6 +409,7 @@ else
   vm_args=(--commit "$commit" --prereg "$remote_prereg" --name "$name" --cells "$cells" --lease-usd "$lease")
   [ -z "$smoke_lease" ] || vm_args+=(--smoke-lease-usd "$smoke_lease")
   [ -z "$smoke_task" ] || vm_args+=(--smoke-task "$smoke_task")
+  [ "$smoke_first" -eq 0 ] || vm_args+=(--smoke-first-cell)
   [ "$smoke" -eq 1 ] || vm_args+=(--no-smoke)
   [ "$resume" -eq 0 ] || vm_args+=(--resume)
   [ -z "$amendment" ] || vm_args+=(--amendment "$amendment")

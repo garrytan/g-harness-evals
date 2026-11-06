@@ -10,6 +10,12 @@
 #   scripts/run-shard.sh --prereg docs/benchmarks/<run>/prereg.json --name <shard> --cells a,b --lease-usd <n>
 #                        [--out results/<run-id>] [--embedded] [--gbrain-image <tag>] [--skip-build] [--resume]
 #                        [--amendment <commit>] [--max-output-tokens <n>] [--sealed-root <dir> --opening-receipt <file>]
+#                        [--clean-arm-preflight]
+#
+# --clean-arm-preflight (internal-task, v0.4; CREW.md "Clean no-gstack and no-brain arms") runs scripts/v04/clean-arm-audit.ts
+# preflight before plan: no Capy drive mounted and no gstack installed on this machine or inside the shard's harness images.
+# It writes <out>/preflight-clean-arm.json (merge-shards.ts keeps it as <shard>.preflight-clean-arm.json) and stops the
+# shard with exit 2, before any trial, when anything is found.
 #
 # --max-output-tokens (default 128000, what Hermes states on every call) is passed to the runner's proxy: a call that states
 # more is refused and a call that states none gets it, and the proxy reserves input plus that many output tokens against the
@@ -53,7 +59,7 @@
 set -euo pipefail
 
 prereg="" name="" cells="" lease="" out="" embedded=0 gbrain_image="harness-eval/gbrain:dev" skip_build=0 resume=0 amendment="" max_output_tokens=128000
-sealed_root="" opening_receipt=""
+sealed_root="" opening_receipt="" clean_arm=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --prereg) prereg="$2"; shift 2 ;;
@@ -69,6 +75,7 @@ while [ $# -gt 0 ]; do
     --max-output-tokens) max_output_tokens="$2"; shift 2 ;;
     --sealed-root) sealed_root="$2"; shift 2 ;;
     --opening-receipt) opening_receipt="$2"; shift 2 ;;
+    --clean-arm-preflight) clean_arm=1; shift ;;
     *) echo "run-shard: unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -220,6 +227,13 @@ else
   [ -z "$sealed_root" ] || sealed_json=$(printf ', "sealed": true, "opening_receipt_sha256": "%s"' "$(sha256sum "$opening_receipt" | cut -d' ' -f1)")
   printf '{"name": "%s", "machine": "%s", "commit": "%s", "cells": "%s", "lease_usd": %s, "started_at": "%s", "images": {%s}%s}\n' \
     "$name" "$(hostname)" "$commit" "$cells" "$lease" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$images" "$sealed_json" > "$out/shard.json"
+fi
+
+if [ "$clean_arm" -eq 1 ] && [ -n "$harnesses" ]; then
+  clean_args=()
+  for h in $harnesses; do clean_args+=(--image "harness-eval/$h:dev"); done
+  log "clean-arm preflight: no Capy drive and no gstack on this machine or in harness images $harnesses"
+  bun scripts/v04/clean-arm-audit.ts preflight --out "$out/preflight-clean-arm.json" "${clean_args[@]}" 2>&1 | tee -a "$out/run-shard.log" >&2 || { rc=${PIPESTATUS[0]}; if [ "$rc" -eq 1 ]; then log "clean-arm preflight failed: gstack or a Capy drive is reachable ($out/preflight-clean-arm.json); the shard does not start"; else log "clean-arm preflight could not run (exit $rc; see run-shard.log): the arms cannot be shown clean; the shard does not start"; fi; exit 2; }
 fi
 
 if [ ! -f "$out/manifest.json" ]; then
