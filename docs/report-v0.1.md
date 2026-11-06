@@ -72,7 +72,7 @@ The three v0.1 runs spent $16.69, $35.67 and $1.84 (lease ledgers of $150, $200 
 
 ## What is next
 
-A v0.2 task slice is under way (`tasks/multiuser/v0.2`, four new families: continuity, synthesis, corrections, approval relay) because pass rate at this difficulty cannot carry a harness comparison on Sonnet; the items that did separate harnesses were retrieval across several channels and the approval relay. Open work in [TODOS.md](../TODOS.md): a scheduler-capable simulation clock so the scheduled family can count; per-member delegated access instead of one bot token; the reply rubric from the plan, scored separately from world state; the semantic (embedding) gbrain variant metered through the proxy; the methodology item 9 decision on a refusal without the approval tool, and whether a not-found reply counts as one; the provider-side spend check once an Admin key exists.
+A v0.2 task slice is under way (`tasks/multiuser/v0.2`, four new families: continuity, synthesis, corrections, approval relay) because pass rate at this difficulty cannot carry a harness comparison on Sonnet; the items that did separate harnesses were retrieval across several channels and the approval relay. Open work in TODOS.md: a scheduler-capable simulation clock so the scheduled family can count; per-member delegated access instead of one bot token; the reply rubric from the plan, scored separately from world state; the semantic (embedding) gbrain variant metered through the proxy; the methodology item 9 decision on a refusal without the approval tool, and whether a not-found reply counts as one; the provider-side spend check once an Admin key exists.
 
 ## Reproduce and inspect
 
