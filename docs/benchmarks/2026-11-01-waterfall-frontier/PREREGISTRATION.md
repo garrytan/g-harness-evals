@@ -8,7 +8,7 @@ This is a dev run on the 20 public tasks of task set v0.3 ([the set's README](..
 
 ## Approval
 
-internal-task's plan (autoplan run `internal-task-waterfall-20261031175703`, gate rev 2) was approved as-is with the plan-v3 fixes. Garry Tan's words on 2026-10-31, relayed by the Harness Evals Captain:
+HARN-21's plan (its autoplan run of 2026-10-31, whose run directory is named HARN-21 followed by `-waterfall-20261031175703`, gate rev 2) was approved as-is with the plan-v3 fixes. Garry Tan's words on 2026-10-31, relayed by the Harness Evals Captain:
 
 > "Do it. But also I generally don't care about the smaller models. Maybe consider ignoring haiku"
 
@@ -51,10 +51,10 @@ Seven cells, one shard and one VM each:
 
 **Cells.** Every cell is `slice` `multiuser`, `split` `dev`, `task_set` `v0.3`, 2 repetitions, docker mode, `log_sections: true`, no `gbrain`, no `preamble` override, and the per-turn planning ceiling of every v0.3 run (80,000 input and 6,000 output tokens).
 
-- **`utility_models`.** The OpenClaw and QM Opus cells carry `["anthropic:claude-haiku-5-5"]`. On an Anthropic cell both harnesses resolve their housekeeping model to `claude-haiku-5-5` as shipped (OpenClaw's provider default for `agents.defaults.utilityModel`, `harnesses/openclaw/pin.json` `model_openai.utility_model`; QM's session-title call, `harnesses/qm/README.md`). This is what `v02-heldout-2026-10` did for its Sonnet cells. Without it those calls are refused and counted under HE-MODEL-001, which changes what the harness does. Their dollars stay in the cell's spend and are shown as their own model row in the billing axis, labelled "harness housekeeping, shipped default". They are never an arm or a scored number; the model under test is the answering model (crew decision, internal-task, 2026-11-01). If a shipped housekeeping default cannot run at all (for example every call ends `model_error`), that cell's housekeeping model is pinned to the cell model, and the change is declared as a deviation in a dated amendment before the cell's counted trials, or in the report's deviations section if it is found mid-shard.
+- **`utility_models`.** The OpenClaw and QM Opus cells carry `["anthropic:claude-haiku-5-5"]`. On an Anthropic cell both harnesses resolve their housekeeping model to `claude-haiku-5-5` as shipped (OpenClaw's provider default for `agents.defaults.utilityModel`, `harnesses/openclaw/pin.json` `model_openai.utility_model`; QM's session-title call, `harnesses/qm/README.md`). This is what `v02-heldout-2026-10` did for its Sonnet cells. Without it those calls are refused and counted under HE-MODEL-001, which changes what the harness does. Their dollars stay in the cell's spend and are shown as their own model row in the billing axis, labelled "harness housekeeping, shipped default". They are never an arm or a scored number; the model under test is the answering model (crew decision, HARN-1, 2026-11-01). If a shipped housekeeping default cannot run at all (for example every call ends `model_error`), that cell's housekeeping model is pinned to the cell model, and the change is declared as a deviation in a dated amendment before the cell's counted trials, or in the report's deviations section if it is found mid-shard.
 - **No other cell carries `utility_models`.** Claude Code's adapter sets every model setting the CLI reads to the cell model. Hermes Agent's auxiliary tasks default to the main model. On Sol, OpenClaw's housekeeping model is mapped to the cell model (`config/openclaw.openai.json`) and Codex sets every model-valued key to the cell model. Any other model named in a forwarded request is refused and counted.
 - **QM** runs `config: "pi"`, the only agent loop at `b6786d67` and the configuration every earlier QM-Pi cell ran, with QM's 180 s memory-capture quiet time.
-- **No gbrain, no gstack.** None of these cells installs either. gstack's token cost comes from mining internal-task's gstack-native pilot receipts once its results merge, a separate and free analysis.
+- **No gbrain, no gstack.** None of these cells installs either. gstack's token cost comes from mining HARN-14's gstack-native pilot receipts once its results merge, a separate and free analysis.
 
 **Output cap and ceilings.** The per-turn `ceiling` in `prereg.json` only prices the planning ceiling; the runner never stops or truncates a turn at it (`runner/run.ts`, `Cell.ceiling`). The one limit that can cut a reply short is the metering proxy's `--max-output-tokens`, and every shard runs it at 128,000:
 
@@ -64,7 +64,7 @@ Seven cells, one shard and one VM each:
 - QM no longer runs at 16,384. `v02-heldout-2026-10` lowered QM's cap because QM at `v0.1.15` stated no `max_tokens`. At `b6786d67` QM states 128000, which a 16,384 cap would refuse.
 - **Check.** Each costing smoke and each VM smoke (Smokes, below) must end `completed` with no refused chat request. A harness that states more than 128,000 on Opus or Sol fails its smoke, and the cap moves to that value by a dated amendment before any counted cell runs.
 
-**Harnesses.** Images built on each shard from this preregistration's merge commit on main (`harnesses/*/pin.json`), unchanged from the host-harness pilot for Claude Code, Codex, OpenClaw and Hermes Agent, and from internal-task's re-pin for QM:
+**Harnesses.** Images built on each shard from this preregistration's merge commit on main (`harnesses/*/pin.json`), unchanged from the host-harness pilot for Claude Code, Codex, OpenClaw and Hermes Agent, and from HARN-15's re-pin for QM:
 
 - **Claude Code 2.1.312** (native binary sha256 `4f4178ce41d8`). Turn command and configured deviations as in the host-harness pilot: `bypassPermissions`, no web tools, `CLAUDE_CODE_MAX_RETRIES=2`, non-essential traffic, autoupdater, telemetry and error reporting off, every model setting set to the cell model, model fallback off.
 - **Codex 0.165.0** (native binary sha256 `c06a67fd8ac7`). `codex exec --json --skip-git-repo-check --strict-config`, every model-valued key set to the cell model, reasoning effort `medium`, `danger-full-access`, `approval_policy = never`, web search, plugins, analytics and update checks off, retries 1.
@@ -94,24 +94,24 @@ Every harness keeps its own system prompt, tools, context management and compact
 **Sharding (CREW.md: Parallelism, Pinned checkouts, Shards run on Ubicloud).**
 
 - Seven shards, one cell each, named in the Design table. No cell is split across machines and no two cells share one.
-- Each runs on its own ephemeral standard-16 Ubicloud VM through `scripts/ubicloud/fanout.sh` ([docs/ubicloud.md](../../ubicloud.md)) with `UBI_OWNER=internal-task`, after `scripts/ubicloud/ubi-runner.sh usage`. The fan-out runs as a background operation with a registered wait.
+- Each runs on its own ephemeral standard-16 Ubicloud VM through `scripts/ubicloud/fanout.sh` ([docs/ubicloud.md](../../ubicloud.md)) with `UBI_OWNER=HARN-21`, after `scripts/ubicloud/ubi-runner.sh usage`. The fan-out runs as a background operation with a registered wait.
 - Each VM checks the repository out detached at this preregistration's merge commit (a dirty tree is refused), builds the images from it, runs its one-trial smoke, runs `bun runner/run.ts check-sections` on the smoke's manifest, and only then runs `scripts/run-shard.sh` for its cell with `-- --max-output-tokens 128000`. `vm-shard.sh` stops the shard (exit 4) if the smoke did not complete or any forwarded chat line of the smoke lacks sections or the cache-write fields (HE-PROXY-005).
-- Results are copied back to `<dest>/<shard>/results` and merged with `scripts/merge-shards.ts`; the VM is destroyed on every exit, and `UBI_OWNER=internal-task scripts/ubicloud/ubi-runner.sh list --mine` is checked after every stop.
+- Results are copied back to `<dest>/<shard>/results` and merged with `scripts/merge-shards.ts`; the VM is destroyed on every exit, and `UBI_OWNER=HARN-21 scripts/ubicloud/ubi-runner.sh list --mine` is checked after every stop.
 - A shard that fails before its first trial is relaunched at the same commit. A shard interrupted mid-run resumes at the same commit under the same lease, from its own ledger (`results/ledger.sqlite`, copied back from the VM or from the backup below), and the resume log names the commit it loaded. A shard whose ledger cannot be read is not resumed on a fresh ledger: it stops, and its cell follows the incomplete-cell rule.
 - **The controller's state is replicated** as in `prompt-archaeology-2026-11` amendment 2 ([its preregistration](../2026-11-01-prompt-archaeology/PREREGISTRATION.md)): once every VM is up, a second Capy machine gets a copy of `~/.local/state/ubi-runner/` and each shard's `shard-vm.json`, and can reattach with `run-shard.sh --attach` if the controller dies. SSH private keys stay on those two machines and never go on a drive or into the repository.
 - **Run order within a shard:** the cell's trials in manifest order (task by task, repetitions in sequence), one at a time.
 
 **Smokes.**
 
-- **Costing smoke, before this preregistration merges.** One uncounted trial per cell of the lane's default task, `ar-01-thornbury-rate-hollis` (3 turns against v0.3's average of 2.75), all seven cells at this pull request's head with `--max-output-tokens 128000`, under a scratch ledger. Six cells run in one internal-network invocation and QM in its own. Its per-cell cost sets the leases (below), and it must also pass `check-sections`. Its results are scratch and are not committed; internal-task's completion report carries the summary.
+- **Costing smoke, before this preregistration merges.** One uncounted trial per cell of the lane's default task, `ar-01-thornbury-rate-hollis` (3 turns against v0.3's average of 2.75), all seven cells at this pull request's head with `--max-output-tokens 128000`, under a scratch ledger. Six cells run in one internal-network invocation and QM in its own. Its per-cell cost sets the leases (below), and it must also pass `check-sections`. Its results are scratch and are not committed; HARN-21's completion report carries the summary.
 - **VM smoke.** One uncounted trial of the same task per shard, under the scratch ledger and lease `scripts/ubicloud/smoke-lease.ts` derives ($6.00 per Opus shard and $3.00 per Sol shard, a reservation ceiling, not a spend estimate). The smoke must end `completed` and pass `check-sections`, or the counted shard does not start. A smoke is relaunched at the same commit only for a named infrastructure cause, at most twice, each noted in the run log.
 - Smoke spend is outside the $150 cap and is charged to the lane's smoke lines (Leases and spend).
 
 **Leases and spend.**
 
-- **Cap.** `spend_cap_usd` is $150 for the counted trials. The Captain set it on 2026-10-31, after the costing smoke, in place of the $120 first drafted: at $120 the lease rule gave h = 1.20, below its 1.25 floor ("150. Keep all seven cells. The lane stays $200."). It sits inside internal-task's $200 lane, which also covers both rounds of smokes, preflights (no model calls), the seven Ubicloud VMs and the conditional Particle amendment.
+- **Cap.** `spend_cap_usd` is $150 for the counted trials. The Captain set it on 2026-10-31, after the costing smoke, in place of the $120 first drafted: at $120 the lease rule gave h = 1.20, below its 1.25 floor ("150. Keep all seven cells. The lane stays $200."). It sits inside HARN-21's $200 lane, which also covers both rounds of smokes, preflights (no model calls), the seven Ubicloud VMs and the conditional Particle amendment.
 - **Lease rule.** For each shard, lease = smoke cost of one trial x 40 trials x h + the shard's largest per-call reservation, rounded up to the next $0.05.
-  - h is 2 (the 2x headroom internal-task's plan asks for) if the seven leases then fit in $150. Otherwise h is the largest multiple of 0.01 below 2 for which they fit.
+  - h is 2 (the 2x headroom HARN-21's plan asks for) if the seven leases then fit in $150. Otherwise h is the largest multiple of 0.01 below 2 for which they fit.
   - If h would fall below 1.25 (the host-harness pilot's multiplier), no shard starts. The Captain chooses a larger cap or fewer cells, and the choice is a dated amendment.
 - **Reservation.** The proxy reserves each call at its input size (at least the request's byte length) plus the 128,000-token output cap at list price (`reservationUsd`, `runner/ledger/budget-ledger.ts`). The input is priced at the cache-write rate wherever that is above the input rate (always on OpenAI, and on Anthropic when the request sets `cache_control`). The largest reservations in the host-harness pilot imply bodies of up to about 230,000 counted tokens on the Anthropic branch and about 300,000 on the OpenAI branch (oc-luna's $0.1709 at the 128,000 cap). Priced on Opus 5.5 ($5 per million for a cache write, $20 output) the first is about $3.70 a call, so the Opus shards keep $4.00. A request with a 1-hour cache write would reserve its input at $8 per million (about $4.40 for that body); the pilot sent none on either branch. On GPT-6.1 Sol the second is above the 272,000-token long-prompt threshold ($5 cache write, $15 output), so it is about $3.42 a call and the Sol shards keep $3.50, which covers a body of up to about 316,000 counted tokens. A larger call only ends its shard's lease a call early.
 - **Break-even** is (lease minus reservation) / 40: a shard finishes inside its lease while its cell averages less than that per trial.
@@ -248,7 +248,7 @@ Five contrasts, each B minus A, inside one model:
 
 `particle:particle-1` on OpenClaw and Hermes Agent, 20 tasks x 1 repetition, labelled secondary and never a headline.
 
-- **Added only by a dated amendment**, committed before its cells run, and only after internal-task's Particle proxy route and price row are on main and the key exists in the operator's environment.
+- **Added only by a dated amendment**, committed before its cells run, and only after HARN-16's Particle proxy route and price row are on main and the key exists in the operator's environment.
 - **Dropped without regret** if those are late. The headline does not wait for it.
 - **Claude Code and Codex get no cheap row.**
 - Its spend comes from the lane's Particle line, never from the $150 cap.
@@ -277,3 +277,41 @@ Under `docs/benchmarks/2026-11-01-waterfall-frontier/results/`:
 ## Amendments
 
 Each amendment is dated and committed before any cell it affects runs. It ships in its own pull request, merged to main before those cells, and an affected shard resumes with `--resume --amendment <commit>`.
+
+**Amendment 1, 2026-11-06, before any VM smoke or counted trial: HARN-32 runs the fan-out, shards resume by `--attach` first, two resume limits are stated, and the run's spend is booked.** HARN-32 took over this lane from HARN-21, which wrote this preregistration. This amendment names no cell and changes no cell, task, repetition, lease, cap, smoke, analysis step or endpoint. So every cell runs at this preregistration's merge commit on main, `8f72e440f306d0ce1fd7e3cbac58a44276a69a2c` (#303), as written in [Runner and commit binding](#fixed-now). The diff check there passed on 2026-11-06: `git diff --stat 205c1432b6 8f72e440f3` lists exactly #303's six files.
+
+- **Owner.** Every Ubicloud call of this run sets `UBI_OWNER=HARN-32`, in place of `UBI_OWNER=HARN-21` in Sharding: `ubi-runner.sh usage`, the fan-out, every `list --mine` check, `--attach`, `--resume` and `down`. No VM of this run is HARN-21's.
+- **VM lifetime.** Every VM, smoke and shard alike, launches with `UBI_TTL_HOURS=14`, so the reaper's 3-hour default never applies. `run-shard.sh` refuses a TTL that is not longer than `--timeout-hours` (12 here) and stops a shard 30 minutes before its VM's TTL ends, so the results come back before the reaper can act. 14 hours covers the 12-hour shard timeout plus bootstrap, image builds and the VM smoke.
+- **Resume rule (CREW.md, Ubicloud shard lane interim rule).** This replaces the resume sentence in Sharding:
+  - A shard whose controller process is gone (the controller machine died or slept) is rejoined first with `run-shard.sh --attach --dest <dest>`. That rejoins the same VM, commit, lease and ledger, and its teardown checkpoints the ledger and pulls a fresh copy.
+  - **One owner per shard.** `--attach` takes no lock, so only one machine polls a shard at a time. Before attaching, the attaching machine confirms that no `run-shard.sh` for that dest is still running there or on the other machine (`pgrep -f -- "--dest <dest>"`). When the backup attaches, its dest becomes the dest of record for that shard: the controller attaches to it no more, and the backup's `results` tree and `shard-vm.json` are the ones merged, resumed from and copied back.
+  - `--resume` is used only when that shard's `shard-vm.json` says `cleanup` `done`: the VM is destroyed and its `results` tree came back through teardown. With `cleanup` `pending` or `failed`, the shard is attached, never resumed, and `shard-vm.json` is never moved aside by hand.
+  - A resume runs at the recorded commit `8f72e440f3` (`run-shard.sh` refuses any other HEAD without `--amendment`), under the same lease, from the ledger that came back with `cleanup` `done`. Its log line names the commit it loaded. Every attach, resume and restart goes in the run log and the report's deviations section.
+- **Backup copy, and limit 1: a live pull is never a resume source (fc/fix-check#2).** Sharding's "the backup below" is set up here.
+  - Once every VM is up, a second Capy machine gets a copy of `~/.local/state/ubi-runner/` and each shard's `shard-vm.json`, refreshed after any VM change. SSH private keys stay on the controller and that machine.
+  - Every 20 minutes the backup pulls each shard's `results` tree off its VM into `<backup>/<shard>/live-pull/`, outside every `--dest`, without the per-trial `state/` and `workspace/` directories (as the resume upload leaves them out). The VM-to-shard map (VM name, shard, commit, no keys) goes to `handoffs/HARN-32/waterfall/map/` in the Captain drive as each VM comes up.
+  - **Limit.** A live pull copies `ledger.sqlite` while the shard writes it in WAL mode, so the copy can miss entries still in `ledger.sqlite-wal` or be torn by a checkpoint, and it can be up to one pull interval stale, which understates spend. A live-pulled `trials.jsonl` can end in a half-written line, which every count from it ignores. So a `live-pull` directory is evidence for the report only. It is never passed as `--dest`, and no shard resumes from it. The only ledger a resume uses is the one that came back with `cleanup` `done`.
+- **Limit 2: a lost VM or an unreadable ledger drops its cell's trials from the merge (fc/fix-check#1).** A shard whose VM is lost before its results came back, or whose ledger cannot be read, is not resumed, and its cell is incomplete.
+  - `scripts/merge-shards.ts` accepts such a cell only with `--partial --vm-lost <cell>`. That leaves the shard out and merges the cell with no trial (it refuses a `--vm-lost` cell with any recorded trial), and lists it under `unstarted.json`'s `vm_lost`.
+  - So the cell has no row in `results/trials.jsonl`, and the cap-stop table in the incomplete-cell rule, which groups those rows, would leave it out. The report adds that cell to the table with 0 rows, and takes its scheduled count from the manifest and its attempted and completed counts from its shard's `lane.log` and the freshest copy of its `trials.jsonl`.
+  - The freshest copy is the teardown copy in `<dest>/results` when its results came back (an unreadable ledger with `cleanup` `done`), and the backup's live pull only when they never did.
+  - Its contrasts are inconclusive under the incomplete-cell rule. Its partial trials are reported from that copy, labelled with which one it is, apart from the waterfall figures and the contrasts.
+- **Particle.** The conditional Particle secondary is not added, and no Particle dollars are booked. The headline doesn't wait for it.
+- **Spend booking (R71, Captain approval 2026-11-06).** The Captain booked this run at **$633** all-in since 2026-11-03 13:30 UTC, inside R71's $2,000 line. This booking replaces the $200 lane table in [Leases and spend](#fixed-now) as the reading of record for the lane: that table priced the VM smokes at $4.00, but each smoke runs under its own `smoke-lease.ts` lease, and the VMs at $20.00, below the ceiling at the shard timeout.
+
+  | Line | Booked | Basis |
+  |---|---:|---|
+  | Spent: HARN-21's own model use | $116.00 | at most: an upper bound, because its whole-thread total can't be split by date |
+  | Spent: HARN-32's own model use | $90.00 | about $90 at the booking (about $95 when this amendment was written) |
+  | Spent: paid model calls, judges and VMs | $0.00 | none in the window; the costing smoke ran on 2026-10-31, before it |
+  | Counted trials | $150.00 | the seven shard leases, which sum to exactly `spend_cap_usd` |
+  | VM smokes | $33.00 | `smoke-lease.ts` leases, a reservation ceiling: 4 Opus shards at $6.00 and 3 Sol shards at $3.00 |
+  | Ubicloud VMs | $44.00 | 7 standard-16 VMs x 12.5 hours x about $0.50 an hour (list price $0.00831 a minute) |
+  | HARN-32's remaining own model use | $200.00 | fan-out, merge, analysis, the results pull request and its review |
+  | Particle | $0.00 | not added |
+  | **Total** | **$633.00** | about $1,367 left under $2,000; expected all-in about $500 |
+
+  - The VM line is a planning bound, not a cap. The TTL's hard bound is 14 hours a VM, about $49 for seven.
+  - Before any paid step that would take the booked total past $633 (a smoke relaunch, a shard relaunch, a resume, or VM time past 12.5 hours a VM), HARN-32 goes back to the Captain first. A cap stop is final and is never rerun.
+- **One wording edit above.** In [Approval](#approval), the autoplan run id joined HARN-21's code to the run's name with a hyphen, which the public export stops on. It now names the run by its date and name, with the code standing alone. No other line above this section changes.
+- **Reported.** The results pull request's deviations section names this amendment, every attach, resume and restart, and any lost VM, with the commit each runner process loaded.
