@@ -1,8 +1,19 @@
 # S1 probe: does QM open gstack skills through gstack's paste-in router, on Opus 5.5 and GPT-6.1 Sol?
 
-Status: **results** of `qm-s1-gstack-probe-2026-11` (internal-task-a, internal-task-b, 2026-11-04), preregistered in [PREREGISTRATION.md](PREREGISTRATION.md) and frozen on main at `f5491d7d` (#258). Part of QM M1; the C4 memory results are in [the M1 report](../2026-11-03-qm-c4-told-live/report.md).
+Status: **results** of `qm-s1-gstack-probe-2026-11` (HARN-38, GST-358, 2026-11-04), preregistered in [PREREGISTRATION.md](PREREGISTRATION.md) and frozen on main at `f5491d7d` (#258). Part of QM M1; the C4 memory results are in [the M1 report](../2026-11-03-qm-c4-told-live/report.md).
 
-**The answer: Sol opens the matching gstack skill through the router; Opus mostly doesn't; neither model reaches a skill's first step.** Under the prereg's rule, opens on either model send the counts to internal-task-a and internal-task-b for the QM edition decision. The router does not stop here.
+**QM has moved since this run (status note, 2026-11-06).** The results below are for QM `b6786d67`. Current QM may behave differently, and the re-measurement is named below.
+
+- **What S1 ran:** QM `b6786d67` (2026-10-30), the M1 pin. QM main has since moved 238 commits, to `18593c65` as of 2026-11-06.
+- **Commits since `b6786d67` that can change an S1 finding:**
+  - `e0aabb59` (qm#2899): lets the agent save and edit skills through its skills tool.
+  - `aad84a57` (qm#3008): lets native app skills run over brokered app connections.
+  - `c9d5acd5` (qm#2940): locks the skill name while a skill is saved or promoted.
+- **The M1 memory findings have their own list** (seven commits, including the gbrain recipe, qm#2838), in [the M1 report](../2026-11-03-qm-c4-told-live/report.md). Its summary finding, "As shipped, QM's gbrain provider delivers no told fact on either model", is a statement about `b6786d67`, not about current QM.
+- **Re-measurement:** GST-1514 for skills ([its preregistration](../2026-11-06-qm-s1-edition/PREREGISTRATION.md)) and M2b for memory. Neither has frozen a QM pin yet: GST-1514 sets its QM SHA (`066319ee` or later) in its pilot amendment, and M2b's draft preregistration names QM `037018e2`.
+- **No number or verdict in this report changes.**
+
+**The answer: Sol opens the matching gstack skill through the router; Opus mostly doesn't; neither model reaches a skill's first step.** Under the prereg's rule, opens on either model send the counts to GSTA-36 and CAPY-1 for the QM edition decision. The router does not stop here.
 
 - **Matched opens, router arm:** Opus 5.5 2/15 [0, 40]; GPT-6.1 Sol 11/15 [33, 100]. No-gstack arm: 0/15 on both, and 0 contaminated turns.
 - **Starts:** Sol tried the skill's own gstack command in 10/15 [33, 93]; Opus in 0/15. The skill's first-step command: 0 of 9 eligible turns on both models.
@@ -122,7 +133,7 @@ The probe is not null on opens for Sol. It is null on starts for Opus and on fir
 ## 8. Pins and receipts
 
 - **Run commit** `f5491d7d02f34dad833abeab54d02141a0ee5a64`; **QM** `b6786d67`; **gstack** `21277291c` (1.91.345.0), 63 staged files, router sha256 `a6a55a8b...` ([results/preflight.json](results/preflight.json)).
-- **VMs:** `<vm name>` (gate 6) and `<vm name>` (run), standard-16, `UBI_OWNER=internal-task`, `UBI_TTL_HOURS=3`.
+- **VMs:** `ubirun-harn38-1793820503-b4d527fb-t3` (gate 6) and `ubirun-harn38-1793821974-99cb850c-t3` (run), standard-16, `UBI_OWNER=HARN-38`, `UBI_TTL_HOURS=3`.
 - **Gate 6 pre-launch check** at `f5491d7d`: the keyless dry run of all 60 turns plus the injected fault passed every check ([results/gate6-prelaunch-f5491d7d.json](results/gate6-prelaunch-f5491d7d.json)).
 - **Files:** [results/turns.jsonl](results/turns.jsonl) and `results/turns/` (stored session, usage and counts per turn), [results/summary.json](results/summary.json), the ledger, proxy log and usage, the preflights, [results/driver.log](results/driver.log), [results/vm-loop.log](results/vm-loop.log), [results/controller.log](results/controller.log), [results/RUNLOG.md](results/RUNLOG.md).
 

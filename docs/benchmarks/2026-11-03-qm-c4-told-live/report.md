@@ -1,6 +1,22 @@
 # QM M1: gbrain as QM's memory, on the C4 told-live tasks, on Opus 5.5 and GPT-6.1 Sol
 
-Status: **results** of the counted run `qm-c4-told-live-2026-11` (internal-task-a, internal-task-b, 2026-11-04), preregistered in [PREREGISTRATION.md](PREREGISTRATION.md) and frozen on main at `f5491d7d` (#258). The S1 gstack probe ran in the same lane; it is summarized in section 8 and reported in full in [its own report](../2026-11-03-qm-s1-gstack-probe/report.md).
+Status: **results** of the counted run `qm-c4-told-live-2026-11` (HARN-38, GST-358, 2026-11-04), preregistered in [PREREGISTRATION.md](PREREGISTRATION.md) and frozen on main at `f5491d7d` (#258). The S1 gstack probe ran in the same lane; it is summarized in section 8 and reported in full in [its own report](../2026-11-03-qm-s1-gstack-probe/report.md).
+
+**QM has moved since this run (status note, 2026-11-06).** The counted results below are for QM `b6786d67`. Current QM may behave differently, and the re-measurement is named below.
+
+- **What M1 ran:** QM `b6786d67` (2026-10-30). QM main has since moved 238 commits, to `18593c65` as of 2026-11-06.
+- **The summary finding "As shipped, QM's gbrain provider delivers no told fact on either model" is a statement about `b6786d67`, not about current QM.**
+- **Commits since `b6786d67` that can change a `memory-provider` finding:**
+  - `f3577189` (qm#2837): makes provider recall safe, with quoted recall and an attested actor.
+  - `037018e2` (qm#2838): adds the gbrain memory recipe and meets gbrain's QM provider contract.
+  - `066319ee` (qm#3005): asks a provider with the member's own message, under a question limit. M1's member-text trim is labelled as matching it (section 4).
+  - `9848ee51` (qm#2694): captures memory only from person-authored turns.
+  - `a1b35369` (qm#2987): keeps automatic capture to 20 facts per write and gives provider writes 30 seconds.
+  - `b286d5dc` (qm#2754): changes recall ranking (a binary sketch, then an exact rerank of the best candidates).
+  - `5546fa13` (qm#3111): skips inbox sync turns when a provider pre-check finds nothing new.
+- **The S1 gstack probe has its own list** (the skills tool's save and edit, qm#2899, and two more), in [its report](../2026-11-03-qm-s1-gstack-probe/report.md).
+- **Re-measurement:** M2b for memory and GST-1514 for skills. Neither has frozen a QM pin yet: M2b's draft preregistration names QM `037018e2`, and GST-1514 sets its QM SHA (`066319ee` or later) in its pilot amendment.
+- **No number or verdict in this report changes.**
 
 **The answer: neither gbrain route moved member-visible pass by a distinguishable amount, on either model.** Every pass comparison has a Holm-adjusted p of 0.375 or more.
 
@@ -184,10 +200,10 @@ Paired on task and repetition, 40 pairs, 8 task clusters. MDE is the difference 
 | World member-source ingestion (live, into `private-<member>`) | 0 of 2 | 0 of 2 | [gate4-seeded-memory-provider-cn01.json](https://github.com/garrytan/harness-evals/blob/32e2baa0303b1a3a60861ba24e2fdc9a6465eec2/docs/benchmarks/2026-11-04-qm-m2b/gates/gate4-seeded-memory-provider-cn01.json) `variants.asshipped`, attested cells |
 | Explicit `memory` `add` by the model on turn 1 | 1 of 2 | 1 of 2 | same file, `variants.seeded` (`explicit_writes` 1) |
 | Automatic capture, as shipped | never fired | never fired | M2b `PREREGISTRATION.md`, gate 5 |
-| Automatic capture, internal-task's QA settings | 1 of 2 | 1 of 2 | [gate4-capture-cn01.json](https://github.com/garrytan/harness-evals/blob/32e2baa0303b1a3a60861ba24e2fdc9a6465eec2/docs/benchmarks/2026-11-04-qm-m2b/gates/gate4-capture-cn01.json) `variants.capture`, attested cells |
+| Automatic capture, CAPY-1's QA settings | 1 of 2 | 1 of 2 | [gate4-capture-cn01.json](https://github.com/garrytan/harness-evals/blob/32e2baa0303b1a3a60861ba24e2fdc9a6465eec2/docs/benchmarks/2026-11-04-qm-m2b/gates/gate4-capture-cn01.json) `variants.capture`, attested cells |
 
 - **Member-source ingestion, 0 of 2: the recipe client reads only gbrain's default source.** Live ingestion writes Dana's DM into `private-dana-okafor` (`gate4-seeded-memory-provider-cn01.json` `reading`).
-- **With internal-task's QA settings, 1 of 2, but the notebook holds it too.** The `none` cells' question turn shows the told fact from the notebook on both models (`gate4-capture-cn01.json` `variants.capture`, `notebook.question_turn_shows_notebook_fact` true).
+- **With CAPY-1's QA settings, 1 of 2, but the notebook holds it too.** The `none` cells' question turn shows the told fact from the notebook on both models (`gate4-capture-cn01.json` `variants.capture`, `notebook.question_turn_shows_notebook_fact` true).
 - **The trim changes none of these rows:** ingestion 0 of 2 (`variants.trim`), explicit add 1 of 2 (`variants.seeded-trim`), capture 1 of 2 (`variants.capture-trim`).
 
 ## 7. Sol arms (R54) and housekeeping
@@ -212,7 +228,7 @@ Paired on task and repetition, 40 pairs, 8 task clusters. MDE is the difference 
 
 **The leftover risk never fired in this lane, and every VM was destroyed.** The C4 shard logs record no leftover count before VM destroy. S1's driver records one per invocation, and only its last invocation's record survived.
 
-- **The risk:** a sandbox-create call that loses its response gives `harnesses/qm/gstack/qm-stack.ts` no machine id, so teardown skips that sandbox and leaves its container, `qm-home-*` volume and `qm-net-*` network (#176 outside-voice#2; accepted as a named risk by internal-task, 2026-11-03).
+- **The risk:** a sandbox-create call that loses its response gives `harnesses/qm/gstack/qm-stack.ts` no machine id, so teardown skips that sandbox and leaves its container, `qm-home-*` volume and `qm-net-*` network (#176 outside-voice#2; accepted as a named risk by HARN-1, 2026-11-03).
 - **C4 shards don't use `qm-stack.ts`.** The runner's `harnesses/qm/capture.sh` lists sandboxes by docker label after each trial and removes each container, volume and network. In all 240 trials it found none: every `logs/qm-sandboxes.json` is `[]` and every `logs/capture.log` says "no sandbox container was created". The C4 tasks never start a sandbox.
 - **S1 does use `qm-stack.ts`, and every create answered.** All 60 turns record `sandbox.create_http` 201 with a `machine_id` ([S1 turns.jsonl](../2026-11-03-qm-s1-gstack-probe/results/turns.jsonl)), so the skip path was never taken.
 - **S1's leftover check:** the driver diffs every docker container, volume and network name before and after an invocation. The last invocation (request 5, 12 turns) left none ([S1 summary.json](../2026-11-03-qm-s1-gstack-probe/results/summary.json) `leftover`). The earlier four invocations rewrote the same file, so their checks are lost. Gate 6's dry run of all 60 turns plus the injected fault, on a fresh VM at `f5491d7d`, left nothing (`nothing_left_behind` true in [gate6-prelaunch-f5491d7d.json](../2026-11-03-qm-s1-gstack-probe/results/gate6-prelaunch-f5491d7d.json)).
@@ -233,7 +249,7 @@ Paired on task and repetition, 40 pairs, 8 task clusters. MDE is the difference 
    - The negative point estimates are the unscoped exposure, not lost recall: set aside the provider-only cross-scope failures (7 on Opus, 5 on Sol) and `memory-provider` is 25/40 on both, equal to `none`.
 4. **Model:** Opus 5.5 and GPT-6.1 Sol, the same picture on each. Housekeeping models are not scored.
 
-**Separately from the verdict, two defects for internal-task-a and internal-task-b:** as shipped at the M1 pin, QM's recall question exceeds gbrain's 2,000-character limit (fixed at qm `066319ee`, qm#3005, merged 2026-11-05, after the M1 runs) and the refusal is hidden, and the unscoped provider reads other members' DM facts into a member's turn.
+**Separately from the verdict, two defects for CAPY-1 and GBRA-108:** as shipped at the M1 pin, QM's recall question exceeds gbrain's 2,000-character limit (fixed at qm `066319ee`, qm#3005, merged 2026-11-05, after the M1 runs) and the refusal is hidden, and the unscoped provider reads other members' DM facts into a member's turn.
 
 **Verdict (`memory-provider`, resting on Opus 5.5 and GPT-6.1 Sol): FIX-METHOD.** The null rests on saturation (R61). Ceiling-raise: rerun on told-fact tasks where QM's notebook does not already hold the answer at the consumer turn, after a cheap `none`-only headroom check that must score clearly below 20/20.
 
@@ -294,7 +310,7 @@ Paired on task and repetition, 40 pairs, 8 task clusters. MDE is the difference 
 - **Run commit:** `f5491d7d02f34dad833abeab54d02141a0ee5a64` (#258). Freeze base `dcbf03e0` (#254). Between them: #257 (export v2; under the run's paths only `harnesses/qm/gstack/README.md`, one line) and #260 (test-only tap baseline), as the run log lists.
 - **QM** `b6786d67` (`harnesses/qm/pin.json`); **gbrain** `a590ad07`, 0.60.522.0 (`gbrain/pin.json`); embeddings off.
 - **Binding assertions pass** ([results/analysis/binding-check.json](results/analysis/binding-check.json)): each shard's `shard.json` and `shard-vm.json` name `f5491d7d`, `scratch_prereg` is false, both manifests' `prereg_sha256` equals `prereg.json`'s (`f4238897...`), `gbrain_commit` is `a590ad07`, and `shard.json` records an image id for `harness-eval/qm-sandbox:dev`.
-- **VMs:** `<vm name>` (qm-opus) and `<vm name>` (qm-sol), standard-16, `UBI_OWNER=internal-task`, `UBI_TTL_HOURS=6`.
+- **VMs:** `ubirun-harn38-1793819991-fab903da-t6` (qm-opus) and `ubirun-harn38-1793821312-c232ec28-t6` (qm-sol), standard-16, `UBI_OWNER=HARN-38`, `UBI_TTL_HOURS=6`.
 
 ## 15. What to use and what to avoid
 
