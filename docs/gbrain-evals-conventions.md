@@ -58,7 +58,13 @@ Read again at gbrain-evals `README.md` of 2026-10-26 (its changelog's newest ent
 | "Best foot forward" framing and a known-limits section written for one product | Every harness gets the same treatment; Known limits is about the method (proxy-side spend proof, the private repository, Hermes's discovery probes, the three declared deviations) | Left out, as the plan decided on 2026-10-22 |
 | Changelog entries naming the gbrain version under test | Changelog entries naming the harness-evals `VERSION` | The pins live in `harnesses/*/pin.json` and `gbrain/pin.json`; the version that changes with a page is this repository's |
 
+The `docs/budget-ledger.md` row above records the page as it was on 2026-10-26 and is unchanged.
+
 ## Changelog
+
+### 2026-11-06: the budget ledger page no longer states a program cap (internal-task)
+
+The table itself is unchanged.
 
 ### 2026-11-04: plain names for internal roles
 

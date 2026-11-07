@@ -60,6 +60,10 @@ Paid work needs `ANTHROPIC_API_KEY` in the proxy's environment only and a ledger
 
 ## Changelog
 
+### 2026-11-06: spend line no longer names a program cap (internal-task)
+
+The spend line reports the program-wide total as a figure, not as spend against a $2,000 program cap.
+
 ### 2026-11-02: preregistration order for the public repository
 
 New section "How preregistration order is checked": the prereg ledger, the attested-ordering label, the strict rule after the ledger commit, and the rule that the ledger is written once.
