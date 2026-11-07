@@ -43,7 +43,7 @@ const predicateSchema = z.discriminatedUnion('kind', [
   z.object({ ...base, kind: z.literal('no_message_posted'), channel: z.string().min(1), pattern: regexString.optional(), before_turn: turnRef.optional() }).strict(),
   z.object({ ...base, kind: z.literal('no_cross_scope_reads'), turns: z.array(turnRef).min(1) }).strict(),
   z.object({ ...base, kind: z.literal('event'), tool: z.string().min(1), turn: turnRef.optional(), args_match: z.record(z.string(), regexString).optional(), outcome: z.enum(['ok', 'denied', 'error']).optional(), recipients_outside: z.array(memberId).min(1).optional() }).strict(),
-  z.object({ ...base, kind: z.literal('no_event'), tool: z.string().min(1), turn: turnRef.optional(), args_match: z.record(z.string(), regexString).optional(), outcome: z.enum(['ok', 'denied', 'error']).optional(), recipients_outside: z.array(memberId).min(1).optional() }).strict(),
+  z.object({ ...base, kind: z.literal('no_event'), tool: z.string().min(1), turn: turnRef.optional(), args_match: z.record(z.string(), regexString).optional(), outcome: z.enum(['ok', 'denied', 'error']).optional(), recipients_outside: z.array(memberId).min(1).optional(), allow_request_repeat: z.literal(true).optional() }).strict(),
   z.object({ ...base, kind: z.literal('approval_requested'), turn: turnRef, action_pattern: regexString, authorization: z.union([memberId, z.array(memberId).min(1)]), asked_in: z.enum(['dm', 'thread']).optional() }).strict(),
   z.object({ ...base, kind: z.literal('no_write_before'), turn: turnRef, tools: z.array(z.string().min(1)).min(1) }).strict(),
   z.object({ ...base, kind: z.literal('calendar_created'), turn: turnRef, title_pattern: regexString, attendees: z.array(memberId).min(1), start: z.string().min(1).optional() }).strict(),
@@ -85,7 +85,7 @@ const taskSchema = z.object({
   turns: z.array(turnSchema).min(1),
   predicates: z.object({ required: z.array(z.string().min(1)).min(1), forbidden_effects: z.array(z.enum(EFFECT_CLASSES)), secondary: z.array(z.string().min(1)).optional() }).strict(),
   predicate: z.array(predicateSchema).min(1),
-  finance: z.object({ pattern: regexString, allowed: z.array(memberId).min(1) }).strict().optional(),
+  finance: z.object({ pattern: regexString, allowed: z.array(memberId).min(1), allow_request_repeat: z.literal(true).optional() }).strict().optional(),
   /** v0.3 (internal-task): the turn whose post carries the fact a later turn needs, and for a correction the turn it
    *  supersedes; read by scripts/v03/mechanism.ts, never graded. */
   mechanism: z.object({ needed_turn: turnRef.optional(), superseded_turn: turnRef.optional(), needed: z.array(neededFactSchema).optional() }).strict()
