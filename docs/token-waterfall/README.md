@@ -1,6 +1,6 @@
 # Token waterfall
 
-**Where an agent harness's money goes, split two ways: by how the provider bills each token, and by what each request carried.** The split is per request, then per user turn, per trial and per harness. It is built for a frontier run on Opus 5.5 and GPT-6.1 Sol. Those results come from a later run and are not on this page yet.
+**Where an agent harness's money goes, split two ways: by how the provider bills each token, and by what each request carried.** The split is per request, then per user turn, per trial and per harness. It is built for a frontier run on Opus 5.5 and GPT-6.1 Sol. Those results are in the [waterfall-frontier-2026-11 report](../benchmarks/2026-11-01-waterfall-frontier/report.md), not on this page.
 
 ## The two axes
 
@@ -39,4 +39,5 @@ The inputs for a secondary appendix (the host-harness dev pilot on Haiku and gpt
 
 ## Changelog
 
+- **2026-11-07:** The opening paragraph links the waterfall-frontier-2026-11 report, which holds the frontier results.
 - **2026-10-31:** New page. Explains the two axes (billing classes and content sections), lists the avoidable-looking patterns and the tools, and names the inputs of a secondary appendix. Results come with the frontier run.
