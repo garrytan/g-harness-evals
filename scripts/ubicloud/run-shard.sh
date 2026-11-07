@@ -9,8 +9,37 @@
 #       [--smoke-lease-usd <n>] [--smoke-task <task id>] [--smoke-first-cell] [--no-smoke] [--embedded] [--gbrain-image <tag>]
 #       [--amendment <sha>]
 #       [--resume] [--attach] [--poll-seconds 30] [--timeout-hours 12] [--sealed-root <local dir> --opening-receipt <local file>]
-#       [--workload harness|gstack-laneb] [--laneb-root <dir from scripts/gstack-laneb/fetch.ts>]
+#       [--workload harness|gstack-laneb|qm-driver] [--laneb-root <dir from scripts/gstack-laneb/fetch.ts>]
+#       [--replicate-seconds 1200] [--replicate-to <dir>]
 #       [--pre-smoke <script in the repository, e.g. scripts/ablation-golden.sh>] [-- <extra arguments for scripts/run-shard.sh>]
+#
+# Mid-run replication (CREW R16: no paid run may depend on one controller machine's local state). Every
+# --replicate-seconds (default 1200, or UBI_REPLICATE_SECONDS; 0 turns it off) while the shard runs, the VM's ~/shard/results
+# is pulled into a staging directory and merged over <dest>/results only when the pull brings back results/ and exits 0 or 1
+# (tar's exit 1 says a live log changed while it was read), so a failed or cut pull never touches the last good copy and the
+# merge keeps what the VM lacks (a --resume upload leaves out state/ and workspace/); a failure is logged and retried at the next
+# interval, never fatal. The teardown pull goes through the same staging. With --replicate-to <dir> (or UBI_REPLICATE_TO;
+# meant for a Capy drive folder, which outlives this machine), <dest> is mirrored to <dir>/<shard> after each replication
+# and at teardown (without per-trial state/ and workspace/, and only after a scan finds no key-shaped text), and one line
+# per VM event (created, attached, kept, destroyed, down-failed: shard, VM, owner, created_at, dest) is appended to
+# <dir>/vm-map.jsonl as it happens, the created line as soon as the VM exists. --replicate-to is refused for a sealed shard.
+#
+# --workload qm-driver runs the QM S1 edition driver (harnesses/qm/gstack/s1e-probe.ts) on the VM in place of
+# scripts/run-shard.sh: its keyless --dry-run as the smoke (no key, no spend; it builds the rig images, so the counted run
+# gets --skip-build; --no-smoke skips it), a ledger at ~/shard/results/ledger.sqlite created with the shard's lease as its
+# program cap when missing, then the driver with --ledger, --lease-usd <the shard's lease>, --out ~/shard/results,
+# --work ~/shard/work and every argument after -- passed through as given (--stage, --shards, --tasks, --seed, --models,
+# --only and so on; the driver enforces the stage caps). Records are turns.jsonl lines. Sealed flags and --embedded are
+# refused. --resume uploads <dest>/results (with its ledger and turns.jsonl) and needs <dest>/results/run.json.
+#
+# Any launch but --attach (a fresh one or a --resume) into a --dest whose cleanup-pending still lists a VM (kept after a
+# failed final pull, so it may hold results <dest> lacks) is refused with exit 2, naming the VM and the recovery:
+# --attach --dest <dest> (pull, then down). A new launch would overwrite shard-vm.json and lose track of the VM. Stale
+# entries are pruned first (scripts/ubicloud/prune-pending.sh). The same launches are refused with exit 2, before any VM
+# call, when <replicate-to>/<name>/shard-vm.json names a VM other than <dest>/shard-vm.json's whose cleanup is not "done"
+# (say, a run whose controller died): the first mirror would overwrite the only copy of its results. They are refused too,
+# before any VM call, when <dest>/shard-vm.json names a VM whose cleanup is not "done": a controller that died mid-run
+# leaves it "pending" while the VM may still be running and spending its lease.
 #
 # --pre-smoke runs a keyless check script from the pinned checkout on the VM after bootstrap and before any key
 # reaches the VM, the smoke or the shard: bash <script> in the repository, its output in <dest>/lane.log. It is off unless
@@ -88,6 +117,7 @@ runner=${UBI_RUNNER:-$here/ubi-runner.sh}
 commit="" prereg="" name="" cells="" lease="" dest="" size=standard-16 location="" storage="" smoke_lease="" smoke_task="" smoke=1
 smoke_first=0 embedded=0 gbrain_image="" amendment="" resume=0 attach=0 poll=30 timeout_h=12 sealed_root="" opening_receipt="" sealed=0
 workload=harness laneb_root="$HOME/.capy/work/gstack-laneb" pre_smoke=""
+rep_s=${UBI_REPLICATE_SECONDS:-1200} replicate_to=${UBI_REPLICATE_TO:-}
 extra=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -116,6 +146,8 @@ while [ $# -gt 0 ]; do
     --workload) workload=$2; shift 2 ;;
     --laneb-root) laneb_root=$2; shift 2 ;;
     --pre-smoke) pre_smoke=$2; shift 2 ;;
+    --replicate-seconds) rep_s=$2; shift 2 ;;
+    --replicate-to) replicate_to=$2; shift 2 ;;
     -h|--help) sed -n '2,/^set -euo pipefail/{/^set /!p}' "$0"; exit 0 ;;
     --) shift; extra=("$@"); break ;;
     *) echo "run-shard (ubicloud): unknown argument $1 (see --help)" >&2; exit 2 ;;
@@ -130,8 +162,13 @@ case $workload in harness) ;; gstack-laneb)
   [ "$resume" -eq 0 ] && [ "$embedded" -eq 0 ] || { echo "run-shard (ubicloud): --resume and --embedded do not apply to --workload gstack-laneb (docs/gstack-laneb.md)" >&2; exit 2; }
   [ -z "$sealed_root" ] && [ -z "$opening_receipt" ] || { echo "run-shard (ubicloud): --workload gstack-laneb runs public sets only; held-out (sealed) Lane B runs are not supported yet (docs/gstack-laneb.md, Known limits)" >&2; exit 2; }
   [ "$attach" -eq 1 ] || { [ -d "$laneb_root/gstack-evals" ] && [ -d "$laneb_root/arms" ]; } || { echo "run-shard (ubicloud): --laneb-root $laneb_root needs gstack-evals/ and arms/ (bun scripts/gstack-laneb/fetch.ts --out $laneb_root)" >&2; exit 2; } ;;
-  *) echo "run-shard (ubicloud): --workload must be harness or gstack-laneb" >&2; exit 2 ;;
+  qm-driver)
+  [ "$embedded" -eq 0 ] && [ -z "$sealed_root" ] && [ -z "$opening_receipt" ] || { echo "run-shard (ubicloud): --workload qm-driver takes no --embedded, --sealed-root or --opening-receipt" >&2; exit 2; } ;;
+  *) echo "run-shard (ubicloud): --workload must be harness, gstack-laneb or qm-driver" >&2; exit 2 ;;
 esac
+[[ "$rep_s" =~ ^[0-9]+$ ]] || { echo "run-shard (ubicloud): --replicate-seconds must be a whole number of seconds (0 turns replication off)" >&2; exit 2; }
+[ -z "$replicate_to" ] || [ -z "$sealed_root" ] || { echo "run-shard (ubicloud): --replicate-to is refused for a sealed shard; its raw results stay in --dest (docs/sealed-custody.md)" >&2; exit 2; }
+case $workload in qm-driver) records=turns.jsonl record_file=run.json ;; *) records=trials.jsonl record_file=shard.json ;; esac
 if [ "$attach" -eq 0 ]; then
   [ -n "$commit" ] && [ -n "$prereg" ] && [ -n "$name" ] && [ -n "$cells" ] && [ -n "$lease" ] || { echo "run-shard (ubicloud): --commit, --prereg, --name, --cells, --lease-usd and --dest are required" >&2; exit 2; }
   [ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "run-shard (ubicloud): ANTHROPIC_API_KEY is not set in this shell; the metering proxy on the VM needs it" >&2; exit 2; }
@@ -152,6 +189,29 @@ fi
 [ -n "${UBI_OWNER:-}" ] || { echo "run-shard (ubicloud): set UBI_OWNER to your thread code so the VM carries its owner" >&2; exit 2; }
 [ -n "${UBICLOUD_API_KEY:-${UBICLOUD_API_TOKEN:-}}" ] || { echo "run-shard (ubicloud): UBICLOUD_API_KEY is not set" >&2; exit 2; }
 [ -f "$runner" ] || { echo "run-shard (ubicloud): ubi-runner.sh not found at $runner" >&2; exit 2; }
+# A VM kept after a failed final pull may hold results <dest> lacks; a new launch would overwrite shard-vm.json and lose track of it.
+if [ "$attach" -eq 0 ] && [ -s "$dest/cleanup-pending" ]; then
+  [ ! -f "$here/prune-pending.sh" ] || UBI_RUNNER=$runner bash "$here/prune-pending.sh" "$dest" >&2 || true
+  if [ -s "$dest/cleanup-pending" ]; then
+    kept=$(sort -u "$dest/cleanup-pending" | paste -sd' ' -)
+    echo "run-shard (ubicloud): refused: $dest has a kept VM ($kept, in $dest/cleanup-pending) that may still hold this shard's results; a new launch would overwrite shard-vm.json and lose track of it. Recover first: scripts/ubicloud/run-shard.sh --attach --dest $dest (pulls the results, then downs the VM), or bash $runner pull <vm> shard/results $dest then bash $runner down <vm>; then scripts/ubicloud/prune-pending.sh $dest" >&2
+    exit 2
+  fi
+fi
+# A mirror of another VM that was never cleaned up may be the only copy of that run's results; the first mirror would replace it.
+if [ "$attach" -eq 0 ] && [ -n "$replicate_to" ] && [ -f "$replicate_to/$name/shard-vm.json" ]; then
+  other=$(python3 - "$replicate_to/$name/shard-vm.json" "$dest/shard-vm.json" <<'PY'
+import json, os, sys
+r = json.load(open(sys.argv[1]))
+mine = json.load(open(sys.argv[2])).get('vm') if os.path.exists(sys.argv[2]) else None
+if r.get('vm') and r['vm'] != mine and r.get('cleanup') != 'done': print(r['vm'])
+PY
+) || other="unreadable shard-vm.json"
+  if [ -n "$other" ]; then
+    echo "run-shard (ubicloud): refused: $replicate_to/$name holds the mirror of another VM ($other) whose cleanup is not done, maybe a run whose controller died; this launch's first mirror would overwrite it. Recover first: scripts/ubicloud/run-shard.sh --attach --dest <its dest> on the machine that launched it (vm-map.jsonl names the dest), or copy $replicate_to/$name out and move it aside, or use a new --replicate-to" >&2
+    exit 2
+  fi
+fi
 [[ "$timeout_h" =~ ^[1-9][0-9]{0,2}$ ]] && [ "$timeout_h" -le 998 ] || { echo "run-shard (ubicloud): --timeout-hours must be a whole number of hours from 1 to 998" >&2; exit 2; }
 # The VM's name carries its TTL (-t<hours>, ubi-runner.sh's header), after which gstack's reaper destroys it whoever owns it,
 # so it must outlive the shard: --timeout-hours plus an hour for the stop, the copy back and the teardown (13 for the default
@@ -168,6 +228,11 @@ case $size in standard-2) rate=0.00104 ;; standard-4) rate=0.00208 ;; standard-8
 
 mkdir -p "$dest"
 dest=$(cd "$dest" && pwd)
+if [ -n "$replicate_to" ]; then
+  mkdir -p "$replicate_to" && replicate_to=$(cd "$replicate_to" && pwd) || { echo "run-shard (ubicloud): --replicate-to $replicate_to cannot be created" >&2; exit 2; }
+  case $replicate_to/ in "$dest"/*) echo "run-shard (ubicloud): --replicate-to must be outside --dest" >&2; exit 2 ;; esac
+  case $dest/ in "$replicate_to/${name:-attach}"/*) echo "run-shard (ubicloud): --dest must be outside $replicate_to/${name:-attach}, where the mirror replaces what it finds" >&2; exit 2 ;; esac
+fi
 export TZ=UTC
 stamp() { local line; while IFS= read -r line; do printf '%(%Y-%m-%dT%H:%M:%SZ)T %s\n' -1 "$line"; done; }
 log() { printf '%(%Y-%m-%dT%H:%M:%SZ)T run-shard[%s]: %s\n' -1 "${name:-attach}" "$*" | tee -a "$dest/lane.log" >&2; }
@@ -190,6 +255,53 @@ remote_home=/home/ubi
 repo_dir=$remote_home/work/harness-evals
 now() { date +%s; }
 lines() { if [ -f "$1" ]; then wc -l < "$1"; else echo 0; fi; }
+# pull_results: ~/shard/results into <dest>/results through <dest>/.pull. It fails when the pull exits above 1 or brings
+# back no results/; exit 1 is tar's "file changed as we read it" on a live log, after a complete extract. The staged copy is
+# merged over <dest>/results, so a failed, cut or empty pull never removes what an earlier pull brought back, and files the
+# VM never had (a --resume upload leaves out each trial's state/ and workspace/) stay. A *.sqlite that comes back without
+# its -wal or -shm (teardown checkpoints and closes the ledger) drops the local one, which an earlier pull left and which
+# would replay old pages over the newer database.
+pull_results() {
+  local rc=0 db s
+  rm -rf "$dest/.pull"
+  bash "$runner" pull "$vm" shard/results "$dest/.pull" 2>/dev/null || rc=$?
+  if [ "$rc" -gt 1 ] || [ ! -d "$dest/.pull/results" ]; then rm -rf "$dest/.pull"; return 1; fi
+  while IFS= read -r db; do
+    for s in -wal -shm; do [ -e "$dest/.pull/results/$db$s" ] || rm -f "$dest/results/$db$s"; done
+  done < <(cd "$dest/.pull/results" && find . -name '*.sqlite')
+  mkdir -p "$dest/results" && cp -a "$dest/.pull/results/." "$dest/results/" && rm -rf "$dest/.pull"
+}
+# mirror: <dest> to <replicate-to>/<shard> (without per-trial state/ and workspace/), staged locally and scanned for
+# key-shaped text first, then swapped in whole; a failure or a hit keeps the previous mirror and is logged.
+key_shapes='sk-''ant-(api|admin|oat)[0-9]{2}-[A-Za-z0-9_-]{16,}|sk-''(proj|svcacct|admin)-[A-Za-z0-9_-]{16,}'
+mirror() {
+  [ -n "$replicate_to" ] || return 0
+  local stage=$dest/.mirror to=$replicate_to/${name:-attach} hits
+  rm -rf "$stage" && mkdir -p "$stage" &&
+    tar -C "$dest" -cf - --exclude=./.pull --exclude=./.mirror --exclude='./results/trials/*/*/*/state' --exclude='./results/trials/*/*/*/workspace' . | tar -C "$stage" -xf - ||
+    { log "WARNING: replicate: staging $dest for $to failed; the previous mirror stays"; rm -rf "$stage"; return 1; }
+  hits=$(grep -rIlE "$key_shapes" "$stage" 2>/dev/null | sed "s#^$stage/##" | head -3 | paste -sd' ' -)
+  if [ -n "$hits" ]; then log "WARNING: replicate: key-shaped text in $hits; $to keeps the previous mirror"; rm -rf "$stage"; return 1; fi
+  rm -rf "$to.new" "$to.old" && cp -a "$stage" "$to.new" && { [ ! -d "$to" ] || mv "$to" "$to.old"; } && mv "$to.new" "$to" && rm -rf "$to.old" "$stage" ||
+    { log "WARNING: replicate: mirroring $dest to $to failed; retried at the next interval"; rm -rf "$stage" "$to.new"; return 1; }
+}
+# map_event <event>: one line in <replicate-to>/vm-map.jsonl (shard, VM, owner, created_at, dest), and shard-vm.json beside it.
+map_event() {
+  [ -n "$replicate_to" ] || return 0
+  python3 - "$replicate_to/vm-map.jsonl" "$1" "${name:-}" "$vm" "$dest" "$replicate_to/${name:-attach}" "$dest/shard-vm.json" <<'PY' || log "WARNING: replicate: could not append to $replicate_to/vm-map.jsonl"
+import json, os, sys, time
+p, event, shard, vm, dest, replica, svj = sys.argv[1:]
+d = json.load(open(svj)) if os.path.exists(svj) else {}
+row = {'at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'event': event, 'shard': shard, 'vm': vm, 'owner': d.get('owner'),
+       'created_at': d.get('created_at'), 'dest': dest, 'replica': replica, 'workload': d.get('workload'), 'commit': d.get('commit')}
+with open(p, 'a') as f: f.write(json.dumps(row) + '\n')
+PY
+  mkdir -p "$replicate_to/${name:-attach}" && cp "$dest/shard-vm.json" "$replicate_to/${name:-attach}/shard-vm.json" 2>/dev/null || true
+}
+replicate() {
+  if pull_results; then log "replicate: $(lines "$dest/results/$records") records in $dest/results"; else log "WARNING: replicate: the pull from $vm failed or brought back no results/; $dest/results keeps the last good copy; retried in ${rep_s}s"; fi
+  mirror || true
+}
 
 vm="" scratch="" launched=0 exited=0 rc=3 t_create="" t_ready="" t_sync0="" t_sync1="" t_boot0="" t_boot1="" t_pull0="" t_pull1=""
 # seconds between two epoch values, or null when either is missing (for the timings in shard-vm.json)
@@ -215,14 +327,14 @@ teardown() {
     log "checkpointing ledgers and copying the results tree back to $dest"
     vssh 'for f in $(find ~/shard -name ledger.sqlite 2>/dev/null); do bun -e "const {Database}=require(\"bun:sqlite\"); const db=new Database(process.argv[1]); db.exec(\"PRAGMA wal_checkpoint(TRUNCATE)\"); db.close(); console.log(\"checkpointed\", process.argv[1])" "$f"; done' 2>>"$dest/lane.log" | stamp | tee -a "$dest/lane.log" >&2
     t_pull0=$(now)
-    bash "$runner" pull "$vm" "shard/results" "$dest" 2>/dev/null || { results_pulled=0; log "WARNING: no shard/results on the VM to pull (the run never started, or the VM is gone)"; }
+    pull_results || { results_pulled=0; log "WARNING: no shard/results on the VM to pull (the run never started, or the VM is gone)"; }
     bash "$runner" pull "$vm" "shard/smoke" "$dest" 2>/dev/null || log "WARNING: no shard/smoke on the VM to pull"
     for f in vm-shard.out phases.json exit bun-install.log prereg.json; do bash "$runner" pull "$vm" "shard/$f" "$dest" 2>/dev/null || true; done
     t_pull1=$(now)
     for f in run-shard.log run.stdout.log run.log vm-shard.out; do [ -f "$dest/results/$f" ] && cp "$dest/results/$f" "$dest/$f"; done
     [ -f "$dest/exit" ] && rc=$(cat "$dest/exit") && [ "$rc" != interrupted ] || true
     [ "$rc" = interrupted ] && rc=130
-    log "pull took $(( t_pull1 - t_pull0 ))s; $(lines "$dest/results/trials.jsonl") trial lines in $dest/results/trials.jsonl"
+    log "pull took $(( t_pull1 - t_pull0 ))s; $(lines "$dest/results/$records") record lines in $dest/results/$records"
   fi
   # phases.json from the VM: checkout_start/end, smoke_start/end, run_start/end (epoch seconds).
   local ph="$dest/phases.json" checkout_s="" image_s="" smoke_s="" run_s=""
@@ -258,6 +370,7 @@ PY
       log "WARNING: the results tree did not come back from $vm, so $vm is NOT destroyed (its TTL ends it); pull it with run-shard.sh --attach --dest $dest, or bash $runner pull $vm shard/results $dest, then bash $runner down $vm. The VM id is in $dest/cleanup-pending"
       printf '%s\n' "$vm" >> "$dest/cleanup-pending"
       jset "exit=$rc" "cleanup=\"pending\"" "cleanup_reason=\"results not pulled; VM kept\""
+      map_event kept; mirror
       return 0
     fi
   fi
@@ -273,7 +386,8 @@ PY
     log "WARNING: down $vm failed (exit $down_rc); the VM id is kept in $dest/cleanup-pending for a sweep: bash $runner list --mine, then down $vm"
     printf '%s\n' "$vm" >> "$dest/cleanup-pending"
     jset "exit=$rc" "cleanup=\"failed\""
-    [ -f "$dest/results/shard.json" ] && cp "$dest/shard-vm.json" "$dest/results/shard-vm.json"
+    [ -f "$dest/results/$record_file" ] && cp "$dest/shard-vm.json" "$dest/results/shard-vm.json"
+    map_event down-failed; mirror
     return 0
   fi
   local created=${t_create:-$(jq1 created_epoch)} life=null minutes="" cost=""
@@ -285,16 +399,22 @@ PY
   jset "exit=$rc" "cleanup=\"done\"" "destroyed_at=\"$(date -u -d @$t_down1 +%Y-%m-%dT%H:%M:%SZ)\"" \
     "timings_s={\"create_to_ready\": $(span "$t_create" "$t_ready"), \"sync\": $(span "$t_sync0" "$t_sync1"), \"bootstrap\": $(span "$t_boot0" "$t_boot1"), \"checkout_install\": ${checkout_s:-null}, \"image_build\": ${image_s:-null}, \"smoke\": ${smoke_s:-null}, \"run\": ${run_s:-null}, \"pull\": $(span "$t_pull0" "$t_pull1"), \"destroy\": $(( t_down1 - t_down0 )), \"vm_life\": $life}" \
     "cost={\"vm_minutes\": ${minutes:-null}, \"rate_usd_per_min\": ${rate:-null}, \"ipv4_usd_per_min\": $(awk 'BEGIN{printf "%.8f", 3/43200}'), \"list_price_usd\": ${cost:-null}, \"basis\": \"Ubicloud Germany list price per minute, VM life from create to confirmed destroy rounded up to the minute, plus the public IPv4 at USD 3 a month pro rata; the CLI reports no per-VM cost\"}"
-  [ -f "$dest/results/shard.json" ] && cp "$dest/shard-vm.json" "$dest/results/shard-vm.json"
-  log "shard ${name:-?}: exit $rc, $(lines "$dest/results/trials.jsonl") trial lines, run $(fmt "${run_s:-}"), VM life $(fmt "$([ "$life" = null ] || echo "$life")") on $size, list price ${cost:+\$}${cost:-?}; $dest/shard-vm.json"
+  [ -f "$dest/results/$record_file" ] && cp "$dest/shard-vm.json" "$dest/results/shard-vm.json"
+  if [ -s "$dest/cleanup-pending" ]; then grep -vxF -- "$vm" "$dest/cleanup-pending" > "$dest/cleanup-pending.tmp"; mv "$dest/cleanup-pending.tmp" "$dest/cleanup-pending"; [ -s "$dest/cleanup-pending" ] || rm -f "$dest/cleanup-pending"; fi
+  map_event destroyed
+  log "shard ${name:-?}: exit $rc, $(lines "$dest/results/$records") record lines, run $(fmt "${run_s:-}"), VM life $(fmt "$([ "$life" = null ] || echo "$life")") on $size, list price ${cost:+\$}${cost:-?}; $dest/shard-vm.json"
+  mirror
   return 0
 }
 
 if [ "$attach" -eq 1 ]; then
   vm=$(jq1 vm); size=$(jq1 size); name=$(jq1 name)
   [ "$(jq1 sealed)" != True ] || sealed=1
-  [ "$(jq1 workload)" != gstack-laneb ] || workload=gstack-laneb
+  case $(jq1 workload) in gstack-laneb|qm-driver) workload=$(jq1 workload) ;; esac
+  case $workload in qm-driver) records=turns.jsonl record_file=run.json ;; esac
+  [ "$sealed" -eq 0 ] || [ -z "$replicate_to" ] || { echo "run-shard (ubicloud): --replicate-to is refused for a sealed shard; its raw results stay in --dest (docs/sealed-custody.md)" >&2; exit 2; }
   [ -n "$vm" ] || { echo "run-shard (ubicloud): --attach needs $dest/shard-vm.json (or $dest/results/shard-vm.json) with a vm field" >&2; exit 2; }
+  [ -z "$replicate_to" ] || case $dest/ in "$replicate_to/${name:-attach}"/*) echo "run-shard (ubicloud): --dest must be outside $replicate_to/${name:-attach}, where the mirror replaces what it finds" >&2; exit 2 ;; esac
   # A sealed lane's raw logs and results come back to --dest, so an attach rechecks it once it knows the lane is sealed.
   if [ "$sealed" -eq 1 ] && git -C "$dest" rev-parse --is-inside-work-tree >/dev/null 2>&1; then echo "HE-SEALED-002 run-shard (ubicloud): --dest $dest is inside a git work tree and $vm runs a sealed shard, whose raw logs and results come back there; nothing was polled or pulled and $vm is still running. Move $dest outside every checkout and attach from there, or destroy the VM (its results are lost): bash $runner down $vm" >&2; exit 2; fi
   case $size in standard-2) rate=0.00104 ;; standard-4) rate=0.00208 ;; standard-8) rate=0.00416 ;; standard-16) rate=0.00831 ;; standard-30) rate=0.01559 ;; standard-60) rate=0.03117 ;; *) rate="" ;; esac
@@ -302,6 +422,7 @@ if [ "$attach" -eq 1 ]; then
   trap 'exit 130' INT TERM HUP QUIT
   launched=1
   log "attaching to $vm ($size), results under $dest"
+  map_event attached
 else
   # 1. commit and preregistration
   full=$(git -C "$root" rev-parse --verify --quiet "$commit^{commit}" || true)
@@ -318,11 +439,19 @@ else
     echo "run-shard (ubicloud): $prereg is neither a path in the repository at $commit nor a readable file" >&2; exit 2
   fi
   if [ -n "$scratch_prereg" ]; then run_id=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['run_id'])" "$scratch_prereg"); else run_id=$(git -C "$root" show "$commit:$prereg" | python3 -c "import json,sys; print(json.load(sys.stdin)['run_id'])"); fi
-  [ "$resume" -eq 0 ] || [ -f "$dest/results/shard.json" ] || { echo "run-shard (ubicloud): --resume needs an earlier attempt's $dest/results/shard.json" >&2; exit 2; }
+  [ "$resume" -eq 0 ] || [ -f "$dest/results/$record_file" ] || { echo "run-shard (ubicloud): --resume needs an earlier attempt's $dest/results/$record_file" >&2; exit 2; }
   read_key='import json,sys; print(json.load(sys.stdin).get("shard_resume", ""))'
   if [ -n "$scratch_prereg" ]; then shard_resume=$(python3 -c "$read_key" < "$scratch_prereg"); else shard_resume=$(git -C "$root" show "$commit:$prereg" | python3 -c "$read_key"); fi
   if [ "$shard_resume" = refused ] && { [ "$resume" -eq 1 ] || [[ " ${extra[*]-} " == *" --resume "* ]] || [ -f "$dest/results/shard.json" ] || [ -n "$(jq1 launched_at)" ]; }; then
     echo "run-shard (ubicloud): run $run_id's preregistration sets shard_resume refused: an interrupted shard ends its cell as incomplete and is never resumed or relaunched into $dest (merge with scripts/merge-shards.ts --partial --vm-lost <cell>)" >&2; exit 2
+  fi
+  # A VM this dest launched and never cleaned up may still be running under its lease; a new launch would overwrite shard-vm.json and lose track of it.
+  if [ -f "$dest/shard-vm.json" ]; then
+    live=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['vm'] if d.get('vm') and d.get('cleanup') != 'done' else '')" "$dest/shard-vm.json" 2>/dev/null) || live="unreadable shard-vm.json"
+    if [ -n "$live" ]; then
+      echo "run-shard (ubicloud): refused: $dest/shard-vm.json names a VM ($live) whose cleanup is not done, so it may still be running and spending its lease; a new launch would overwrite shard-vm.json and lose track of it. Recover first: scripts/ubicloud/run-shard.sh --attach --dest $dest (pulls the results, then downs the VM); if bash $runner list (every owner) no longer shows it, move $dest/shard-vm.json aside" >&2
+      exit 2
+    fi
   fi
   log "shard $name: commit $commit, run $run_id, cells $cells, lease \$$lease, ${scratch_prereg:+scratch }preregistration $prereg, $size${location:+ in $location}, dest $dest"
 
@@ -346,7 +475,8 @@ else
   trap teardown EXIT
   trap 'exit 130' INT TERM HUP QUIT
   location=$(sed -n 's/^LOCATION=//p' "${UBI_RUNNER_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/ubi-runner}/$vm/env" | tr -d "'" || true)
-  jset "name=\"$name\"" "vm=\"$vm\"" "size=\"$size\"" "location=\"$location\"" "owner=\"$(bash "$runner" owner)\"" "commit=\"$commit\"" "run_id=\"$run_id\"" "cells=\"$cells\"" "lease_usd=$lease" "prereg=\"$prereg\"" "scratch_prereg=$([ -n "$scratch_prereg" ] && echo true || echo false)" "sealed=$([ "$sealed" -eq 1 ] && echo true || echo false)" "workload=\"$workload\"" "created_at=\"$(date -u -d @$t_create +%Y-%m-%dT%H:%M:%SZ)\"" "created_epoch=$t_create" "ready_at=\"$(date -u -d @$t_ready +%Y-%m-%dT%H:%M:%SZ)\"" "dest=\"$dest\"" "cleanup=\"pending\""
+  jset "name=\"$name\"" "vm=\"$vm\"" "size=\"$size\"" "location=\"$location\"" "owner=\"$(bash "$runner" owner)\"" "commit=\"$commit\"" "run_id=\"$run_id\"" "cells=\"$cells\"" "lease_usd=$lease" "prereg=\"$prereg\"" "scratch_prereg=$([ -n "$scratch_prereg" ] && echo true || echo false)" "sealed=$([ "$sealed" -eq 1 ] && echo true || echo false)" "workload=\"$workload\"" "created_at=\"$(date -u -d @$t_create +%Y-%m-%dT%H:%M:%SZ)\"" "created_epoch=$t_create" "ready_at=\"$(date -u -d @$t_ready +%Y-%m-%dT%H:%M:%SZ)\"" "dest=\"$dest\"" "cleanup=\"pending\"" "cleanup_reason=null"
+  map_event created
   log "VM $vm ready in $(( t_ready - t_create ))s; $dest/shard-vm.json records it (run-shard.sh --attach --dest $dest rejoins it)"
 
   t_sync0=$(now)
@@ -438,11 +568,11 @@ if [[ "$vm" =~ -([0-9]{10})-.+-t([0-9]{1,3})$ ]]; then
     log "$vm's TTL ends at $(date -u -d @$(( ttl_stop + 1800 )) +%Y-%m-%dT%H:%M:%SZ); the shard is stopped by $(date -u -d @"$ttl_stop" +%Y-%m-%dT%H:%M:%SZ) so its results come back first"
   fi
 fi
-fails=0 polls=0 last_count=-1
+fails=0 polls=0 last_count=-1 last_rep=$(now)
 while :; do
   sleep "$poll"
   polls=$(( polls + 1 ))
-  if [ "$workload" = gstack-laneb ]; then count_cmd='find ~/shard/results/laneb/jobs -mindepth 3 -maxdepth 3 -name result.json 2>/dev/null | wc -l'; else count_cmd='wc -l < ~/shard/results/trials.jsonl 2>/dev/null || echo 0'; fi
+  if [ "$workload" = gstack-laneb ]; then count_cmd='find ~/shard/results/laneb/jobs -mindepth 3 -maxdepth 3 -name result.json 2>/dev/null | wc -l'; else count_cmd="wc -l < ~/shard/results/$records 2>/dev/null || echo 0"; fi
   out=$(vssh "cat ~/shard/exit 2>/dev/null; echo \"::trials \$($count_cmd)\"" 2>/dev/null) || { fails=$(( fails + 1 )); [ $(( fails % 10 )) -eq 0 ] && log "WARNING: $fails consecutive SSH failures to $vm"; [ "$(now)" -lt "$deadline" ] || { log "timeout after $timeout_h h"; exit 3; }; continue; }
   fails=0
   for f in results/run-shard.log results/run.stdout.log results/run.log vm-shard.out; do
@@ -454,7 +584,7 @@ while :; do
   if [ "$count" != "$last_count" ] || [ $(( polls % 20 )) -eq 0 ]; then
     # A sealed shard's log lines can name sealed tasks, so the controller prints only the count (docs/sealed-custody.md).
     # A Lane B shard's logs can name its tasks too, so it prints only the count of finished Harbor trials.
-    if [ "$workload" = gstack-laneb ]; then log "poll: $count finished Harbor trials"; elif [ "$sealed" -eq 1 ]; then log "poll: $count trial lines"; else log "poll: $count trial lines, $(tail -1 "$dest/run-shard.log" 2>/dev/null | cut -c1-160)"; fi
+    if [ "$workload" = gstack-laneb ]; then log "poll: $count finished Harbor trials"; elif [ "$sealed" -eq 1 ]; then log "poll: $count trial lines"; elif [ "$workload" = qm-driver ]; then log "poll: $count turn records, $(tail -1 "$dest/run.stdout.log" 2>/dev/null | cut -c1-160)"; else log "poll: $count trial lines, $(tail -1 "$dest/run-shard.log" 2>/dev/null | cut -c1-160)"; fi
     last_count=$count
   fi
   code=$(printf '%s\n' "$out" | sed -n '1{/^::trials/!p}')
@@ -464,6 +594,7 @@ while :; do
     log "the shard on $vm exited $rc"
     break
   fi
+  if [ "$rep_s" -gt 0 ] && [ $(( $(now) - last_rep )) -ge "$rep_s" ]; then replicate; last_rep=$(now); fi
   [ "$(now)" -lt "$deadline" ] || { log "timeout after $timeout_h h; stopping the shard"; exit 3; }
 done
 exit "$rc"

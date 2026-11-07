@@ -2,7 +2,8 @@
 # Fan a sharded run out to Ubicloud: one scripts/ubicloud/run-shard.sh (one VM) per shard, all in parallel, from one
 # manifest (docs/ubicloud.md). One command starts a twelve-cell run.
 #
-#   scripts/ubicloud/fanout.sh --manifest <file.json> [--max-vcpus N] [--parallel N] [--dry-run] [--workload harness|gstack-laneb]
+#   scripts/ubicloud/fanout.sh --manifest <file.json> [--max-vcpus N] [--parallel N] [--dry-run]
+#       [--workload harness|gstack-laneb|qm-driver] [--replicate-to <dir>] [--replicate-seconds 1200]
 #
 # The manifest is JSON:
 #   { "commit": "<sha>", "prereg": "docs/benchmarks/<run>/prereg.json", "dest": "<local results root>",
@@ -11,6 +12,8 @@
 # size and options are optional; options go to every run-shard.sh as given (--embedded, --gbrain-image, --amendment,
 # --smoke-lease-usd, --smoke-task, --smoke-first-cell, --no-smoke, --resume, or "--" followed by arguments for the
 # repository's run-shard.sh).
+# A shard may add "args": [...], passed after options and a "--" (added when options has none) to its run-shard.sh only,
+# so they reach the shard's workload as given.
 # A sealed run (docs/sealed-custody.md) adds "sealed_root": "<custodian's sealed root>" and "opening_receipt":
 # "<its opening-receipt.json>", both or neither (one alone is exit 2); every run-shard.sh then gets --sealed-root and
 # --opening-receipt with the paths expanded, and each shard uploads, uses and deletes its own copy on its VM. fanout.sh
@@ -18,6 +21,21 @@
 # --workload gstack-laneb (docs/gstack-laneb.md) passes the same flag to every run-shard.sh, which runs the shard's
 # cells through the Lane B bridge (cells are <model>.<arm>; put --laneb-root in options when the fetched root is not at the
 # default). run-shard.sh refuses sealed flags for this workload; the count-only polling and the VM cleanup are unchanged.
+# --workload qm-driver passes the same flag: each shard runs harnesses/qm/gstack/s1e-probe.ts on its VM (the driver's
+# keyless --dry-run as the smoke, then the driver under the shard's lease with its "args" passed through; the driver
+# enforces the stage caps). Records are turns.jsonl lines, so the end prints the results directories, not a merge command.
+# --replicate-seconds (or UBI_REPLICATE_SECONDS; run-shard.sh's default is 1200) and --replicate-to (or UBI_REPLICATE_TO;
+# meant for a Capy drive folder) go to every run-shard.sh: each shard's results are pulled into <dest>/<name>/results on
+# that interval while it runs, <dest>/<name> is mirrored to <replicate-to>/<name>, and <replicate-to>/vm-map.jsonl gets a
+# line per VM event as it happens (CREW R16). The manifest is copied to <replicate-to>/fanout-manifest.json at start.
+# Refused for a sealed manifest.
+#
+# At start, each shard's <dest>/<name>/cleanup-pending is pruned (scripts/ubicloud/prune-pending.sh). A shard whose
+# cleanup-pending still lists a VM (kept after a failed final pull, so it may hold results) refuses the whole fan-out with
+# exit 2 before any VM is created, naming the VM and the recovery (run-shard.sh --attach: pull, then down): a new launch
+# would overwrite its shard-vm.json and lose track of the VM. A shard whose <replicate-to>/<name>/shard-vm.json names a VM
+# other than <dest>/<name>/shard-vm.json's, with cleanup not "done", refuses it the same way: the first mirror would
+# overwrite what may be the only copy of that VM's results.
 # Each shard runs as a background process with its own log at <dest>/<name>/fanout.log, its lane log at
 # <dest>/<name>/lane.log and its results at <dest>/<name>/results, which is what scripts/merge-shards.ts takes.
 #
@@ -27,15 +45,17 @@
 # every shard is launched (or --parallel of them at a time) and a shard refused for quota ("quota refused" in its lane
 # log) is queued again after the next shard finishes, up to three times.
 #
-# On exit it prints one row per shard (shard, cells, exit, trials, wall time of the run and of the VM, VM list price), the
-# totals, and the merge command; the exit code is 0 only when every shard exited 0. An interrupt is forwarded to every
+# On exit it prints one row per shard (shard, cells, exit, trials, wall time of the run and of the VM, VM list price), one
+# "kept:" line per shard whose VM was left running (run-shard.sh kept it after a failed final pull, or its down failed:
+# shard, VM, reason, cleanup-pending path, recovery), the totals with the kept count, and the merge command; the exit code
+# is 0 only when every shard exited 0 and no VM was kept. An interrupt is forwarded to every
 # shard, each of which copies its results back and destroys its VM before exiting. Needs UBICLOUD_API_KEY, UBI_OWNER,
 # ANTHROPIC_API_KEY (and OPENAI_API_KEY for --embedded, PARTICLE_API_KEY for Particle cells) in the environment, python3 and
 # bash 5.1 or later.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 runner=${UBI_RUNNER:-$here/ubi-runner.sh}
-manifest="" max_vcpus=${UBI_MAX_VCPUS:-} parallel="" dry=0 workload=harness
+manifest="" max_vcpus=${UBI_MAX_VCPUS:-} parallel="" dry=0 workload=harness rep_to=${UBI_REPLICATE_TO:-} rep_s=${UBI_REPLICATE_SECONDS:-}
 while [ $# -gt 0 ]; do
   case "$1" in
     --manifest) manifest=$2; shift 2 ;;
@@ -43,12 +63,16 @@ while [ $# -gt 0 ]; do
     --parallel) parallel=$2; shift 2 ;;
     --dry-run) dry=1; shift ;;
     --workload) workload=$2; shift 2 ;;
-    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    --replicate-to) rep_to=$2; shift 2 ;;
+    --replicate-seconds) rep_s=$2; shift 2 ;;
+    -h|--help) sed -n '2,/^set -euo pipefail/{/^set /!p}' "$0"; exit 0 ;;
     *) echo "fanout: unknown argument $1 (see --help)" >&2; exit 2 ;;
   esac
 done
 [ -n "$manifest" ] && [ -f "$manifest" ] || { echo "fanout: --manifest <file.json> is required" >&2; exit 2; }
-case $workload in harness|gstack-laneb) ;; *) echo "fanout: --workload must be harness or gstack-laneb" >&2; exit 2 ;; esac
+case $workload in harness|gstack-laneb|qm-driver) ;; *) echo "fanout: --workload must be harness, gstack-laneb or qm-driver" >&2; exit 2 ;; esac
+[ -z "$rep_s" ] || [[ "$rep_s" =~ ^[0-9]+$ ]] || { echo "fanout: --replicate-seconds must be a whole number of seconds" >&2; exit 2; }
+rep_to=${rep_to/#\~/$HOME}
 [ -n "${UBI_OWNER:-}" ] || { echo "fanout: set UBI_OWNER to your thread code so the VMs carry their owner" >&2; exit 2; }
 # The sealed flags, shell-quoted, or nothing; checked here because a failure inside the mapfile below would not stop the script.
 sealed=$(python3 - "$manifest" <<'PY'
@@ -61,11 +85,12 @@ if 'sealed_root' in m:
     print(' '.join(shlex.quote(a) for a in ('--sealed-root', p('sealed_root'), '--opening-receipt', p('opening_receipt'))))
 PY
 ) || exit 2
+[ -z "$sealed" ] || [ -z "$rep_to" ] || { echo "fanout: --replicate-to is refused for a sealed manifest; sealed raw results stay in dest (docs/sealed-custody.md)" >&2; exit 2; }
 export TZ=UTC
 log() { printf '%(%Y-%m-%dT%H:%M:%SZ)T fanout: %s\n' -1 "$*" >&2; }
 
 # The manifest, flattened: header fields, then one tab-separated line per shard.
-mapfile -t head < <(python3 - "$manifest" <<'PY'
+flat=$(python3 - "$manifest" <<'PY'
 import json, os, shlex, sys
 m = json.load(open(sys.argv[1]))
 for k in ('commit', 'prereg', 'dest', 'shards'):
@@ -76,13 +101,18 @@ if len(set(names)) != len(names): sys.exit('fanout: shard names repeat')
 cells = [c for s in m['shards'] for c in s['cells'].split(',')]
 if len(set(cells)) != len(cells): sys.exit('fanout: a cell appears in two shards')
 print(m['commit']); print(m['prereg']); print(os.path.expanduser(m['dest'])); print(m.get('size', 'standard-16'))
-print(' '.join(shlex.quote(o) for o in m.get('options', [])))
+opts = m.get('options', [])
+print(' '.join(shlex.quote(o) for o in opts))
 for s in m['shards']:
     for k in ('name', 'cells', 'lease_usd'):
         if k not in s: sys.exit(f"fanout: shard {s.get('name', '?')} lacks {k}")
-    print(f"{s['name']}\t{s['cells']}\t{s['lease_usd']}")
+    a = s.get('args', [])
+    if not isinstance(a, list) or not all(isinstance(x, str) for x in a): sys.exit(f"fanout: shard {s['name']}: args must be a list of strings")
+    tail = ([] if '--' in opts else ['--']) + a if a else []
+    print(f"{s['name']}\t{s['cells']}\t{s['lease_usd']}\t{' '.join(shlex.quote(x) for x in tail)}")
 PY
-)
+) || exit 2
+mapfile -t head <<<"$flat"
 commit=${head[0]} prereg=${head[1]} dest=${head[2]} size=${head[3]} options=${head[4]}
 shards=("${head[@]:5}")
 n=${#shards[@]}
@@ -107,17 +137,55 @@ fi
 [ "$parallel" -gt "$n" ] && parallel=$n
 
 run_cmd() {
-  local name=$1 cells=$2 lease=$3
-  printf '%s --commit %s --prereg %s --name %s --cells %s --lease-usd %s --dest %s --size %s %s' "$here/run-shard.sh" "$(printf %q "$commit")" "$(printf %q "$prereg")" "$(printf %q "$name")" "$(printf %q "$cells")" "$(printf %q "$lease")" "$(printf %q "$dest/$name")" "$(printf %q "$size")" "${sealed:+$sealed }$([ "$workload" = harness ] || printf -- '--workload %s ' "$workload")$options"
+  local name=$1 cells=$2 lease=$3 sargs=${4:-}
+  printf '%s --commit %s --prereg %s --name %s --cells %s --lease-usd %s --dest %s --size %s %s' "$here/run-shard.sh" "$(printf %q "$commit")" "$(printf %q "$prereg")" "$(printf %q "$name")" "$(printf %q "$cells")" "$(printf %q "$lease")" "$(printf %q "$dest/$name")" "$(printf %q "$size")" "${sealed:+$sealed }$([ "$workload" = harness ] || printf -- '--workload %s ' "$workload")$([ -z "$rep_to" ] || printf -- '--replicate-to %q ' "$rep_to")$([ -z "$rep_s" ] || printf -- '--replicate-seconds %s ' "$rep_s")$options${sargs:+ $sargs}"
 }
 merge_cmd() { printf 'bun scripts/merge-shards.ts --out <merged results dir>'; local line name; for line in "${shards[@]}"; do IFS=$'\t' read -r name _ _ <<<"$line"; printf ' --shard %s=%s/%s/results' "$name" "$dest" "$name"; done; echo; }
+# qm-driver results are turns.jsonl, which merge-shards.ts does not read, so that workload gets the results directories.
+results_dirs() { local line name; for line in "${shards[@]}"; do IFS=$'\t' read -r name _ <<<"$line"; printf '%s/%s/results ' "$dest" "$name"; done; echo; }
 if [ "$dry" -eq 1 ]; then
-  for line in "${shards[@]}"; do IFS=$'\t' read -r name cells lease <<<"$line"; echo "$(run_cmd "$name" "$cells" "$lease") > $dest/$name/fanout.log 2>&1 &"; done
-  echo "then: $(merge_cmd)"
+  for line in "${shards[@]}"; do IFS=$'\t' read -r name cells lease sargs <<<"$line"; echo "$(run_cmd "$name" "$cells" "$lease" "$sargs") > $dest/$name/fanout.log 2>&1 &"; done
+  if [ "$workload" = qm-driver ]; then echo "then: read $(results_dirs)"; else echo "then: $(merge_cmd)"; fi
   exit 0
 fi
 
 mkdir -p "$dest"
+# Stale cleanup-pending entries go first; a launch into a shard that still has a kept VM is refused before any VM exists.
+dests=(); for line in "${shards[@]}"; do IFS=$'\t' read -r name _ <<<"$line"; [ ! -s "$dest/$name/cleanup-pending" ] || dests+=("$dest/$name"); done
+if [ ${#dests[@]} -gt 0 ]; then
+  UBI_RUNNER=$runner bash "$here/prune-pending.sh" "${dests[@]}" >&2 || true
+  bad=0
+  for d in "${dests[@]}"; do
+    [ -s "$d/cleanup-pending" ] || continue
+    bad=1
+    echo "fanout: refused: $d has a kept VM ($(sort -u "$d/cleanup-pending" | paste -sd' ' -), in $d/cleanup-pending) that may still hold its results; a new launch would overwrite shard-vm.json and lose track of it. Recover first: $here/run-shard.sh --attach --dest $d (pulls the results, then downs the VM), then $here/prune-pending.sh $d" >&2
+  done
+  [ "$bad" -eq 0 ] || exit 2
+fi
+if [ -n "$rep_to" ]; then
+  bad=0
+  for line in "${shards[@]}"; do
+    IFS=$'\t' read -r name _ <<<"$line"
+    [ -f "$rep_to/$name/shard-vm.json" ] || continue
+    other=$(python3 - "$rep_to/$name/shard-vm.json" "$dest/$name/shard-vm.json" <<'PY'
+import json, os, sys
+r = json.load(open(sys.argv[1]))
+mine = json.load(open(sys.argv[2])).get('vm') if os.path.exists(sys.argv[2]) else None
+if r.get('vm') and r['vm'] != mine and r.get('cleanup') != 'done': print(r['vm'])
+PY
+) || other="unreadable shard-vm.json"
+    [ -n "$other" ] || continue
+    bad=1
+    echo "fanout: refused: $rep_to/$name holds the mirror of another VM ($other) whose cleanup is not done, maybe a run whose controller died; this fan-out's first mirror would overwrite it. Recover first: $here/run-shard.sh --attach --dest <its dest> on the machine that launched it (vm-map.jsonl names the dest), or copy $rep_to/$name out and move it aside, or use a new --replicate-to" >&2
+  done
+  [ "$bad" -eq 0 ] || exit 2
+fi
+if [ -n "$rep_to" ]; then
+  mkdir -p "$rep_to" && rep_to=$(cd "$rep_to" && pwd) && cp "$manifest" "$rep_to/fanout-manifest.json" || { echo "fanout: --replicate-to $rep_to cannot be written" >&2; exit 2; }
+  log "replicating each shard to $rep_to/<shard> every ${rep_s:-1200}s; VM map $rep_to/vm-map.jsonl"
+else
+  log "WARNING: no --replicate-to (or UBI_REPLICATE_TO): results and the VM map stay on this machine only (CREW R16); pass a Capy drive folder for a paid run"
+fi
 declare -A pid_of exit_of tries_of told log_start
 queue=("${shards[@]}")
 running=0
@@ -133,13 +201,13 @@ on_signal() {
 trap on_signal INT TERM HUP QUIT
 t0=$(date +%s)
 launch() {
-  local line=$1 name cells lease
-  IFS=$'\t' read -r name cells lease <<<"$line"
+  local line=$1 name cells lease sargs
+  IFS=$'\t' read -r name cells lease sargs <<<"$line"
   mkdir -p "$dest/$name"
   tries_of[$name]=$(( ${tries_of[$name]:-0} + 1 ))
   log_start[$name]=$(stat -c %s "$dest/$name/lane.log" 2>/dev/null || echo 0)
   log "launching shard $name (cells $cells, lease \$$lease, try ${tries_of[$name]}); log $dest/$name/fanout.log"
-  bash -c "$(run_cmd "$name" "$cells" "$lease")" > "$dest/$name/fanout.log" 2>&1 &
+  bash -c "$(run_cmd "$name" "$cells" "$lease" "$sargs")" > "$dest/$name/fanout.log" 2>&1 &
   pid_of[$!]=$line
   running=$(( running + 1 ))
 }
@@ -153,7 +221,7 @@ while [ ${#queue[@]} -gt 0 ] || [ "$running" -gt 0 ]; do
   set +e; wait -n -p done_pid "${!pid_of[@]}"; rc=$?; set -e
   [ -n "${done_pid:-}" ] || continue
   line=${pid_of[$done_pid]}; unset 'pid_of[$done_pid]'; running=$(( running - 1 ))
-  IFS=$'\t' read -r name cells lease <<<"$line"
+  IFS=$'\t' read -r name cells lease _ <<<"$line"
   if [ "$rc" -eq 3 ] && [ "$stopping" -eq 0 ] && tail -c +$(( ${log_start[$name]:-0} + 1 )) "$dest/$name/lane.log" 2>/dev/null | grep -q 'quota refused' && [ "${tries_of[$name]}" -lt 3 ]; then
     log "shard $name was refused for vCPU quota; queued again (after the next shard finishes)"
     queue+=("$line"); [ "$running" -gt 0 ] || sleep 60
@@ -164,22 +232,28 @@ while [ ${#queue[@]} -gt 0 ] || [ "$running" -gt 0 ]; do
 done
 if [ "$stopping" -eq 1 ]; then for line in "${queue[@]}"; do IFS=$'\t' read -r name _ _ <<<"$line"; exit_of[$name]=interrupted; done; fi
 
-# The table, from each shard's shard-vm.json and trials.jsonl.
-python3 - "$dest" "$(( $(date +%s) - t0 ))" "${shards[@]}" <<'PY'
+# The table, from each shard's shard-vm.json and trials.jsonl (turns.jsonl for qm-driver), then one "kept:" line per VM
+# left running; it exits 3 when there is one.
+set +e
+python3 - "$dest" "$(( $(date +%s) - t0 ))" "$here" "$runner" "${shards[@]}" <<'PY'
 import json, os, sys
-dest, wall, *shards = sys.argv[1:]
+dest, wall, here, runner, *shards = sys.argv[1:]
 def fmt(s):
     if s is None: return '?'
     s = int(s); return f'{s // 3600}h{s % 3600 // 60:02d}m' if s >= 3600 else f'{s // 60}m{s % 60:02d}s'
 hdr = ('shard', 'cells', 'exit', 'trials', 'run', 'vm life', 'size', 'vm cost')
-rows = []; total_cost = 0.0; total_trials = 0; bad = 0
+rows = []; kept = []; total_cost = 0.0; total_trials = 0; bad = 0
 for line in shards:
-    name, cells, lease = line.split('\t')
+    name, cells = line.split('\t')[:2]
     d = os.path.join(dest, name)
     p = os.path.join(d, 'shard-vm.json')
     vm = json.load(open(p)) if os.path.exists(p) else {}
-    tp = os.path.join(d, 'results', 'trials.jsonl')
-    trials = sum(1 for _ in open(tp)) if os.path.exists(tp) else 0
+    tp = next((q for q in (os.path.join(d, 'results', f) for f in ('trials.jsonl', 'turns.jsonl')) if os.path.exists(q)), None)
+    trials = sum(1 for _ in open(tp)) if tp else 0
+    if vm.get('cleanup') == 'failed' or (vm.get('cleanup') == 'pending' and vm.get('cleanup_reason')):
+        reason = vm.get('cleanup_reason') if vm.get('cleanup') == 'pending' else 'down failed'
+        fix = f'{here}/run-shard.sh --attach --dest {d} (pulls the results, then downs the VM)' if vm.get('cleanup') == 'pending' else f'bash {runner} down {vm.get("vm")}'
+        kept.append(f'kept: shard {name}  vm {vm.get("vm", "?")}  reason "{reason}"  cleanup-pending {os.path.join(d, "cleanup-pending")}; recover: {fix}')
     ex = vm.get('exit')
     if ex != 0: bad += 1
     cost = (vm.get('cost') or {}).get('list_price_usd')
@@ -190,9 +264,14 @@ w = [max(len(r[i]) for r in rows + [hdr]) for i in range(len(hdr))]
 line = lambda r: '  '.join(c.ljust(w[i]) for i, c in enumerate(r))
 print(line(hdr))
 for r in rows: print(line(r))
-print('total: %d shard(s), %d trials, %d not exit 0, VM list price $%.4f, fan-out wall time %s' % (len(rows), total_trials, bad, total_cost, fmt(wall)))
+for k in kept: print(k)
+print('total: %d shard(s), %d trials, %d not exit 0, %d kept VM(s), VM list price $%.4f, fan-out wall time %s' % (len(rows), total_trials, bad, len(kept), total_cost, fmt(wall)))
+sys.exit(3 if kept else 0)
 PY
-echo "merge: $(merge_cmd)"
+table_rc=$?
+set -e
+if [ "$workload" = qm-driver ]; then echo "results: $(results_dirs)"; else echo "merge: $(merge_cmd)"; fi
+[ "$table_rc" -eq 0 ] || exit 1
 for name in "${!exit_of[@]}"; do [ "${exit_of[$name]}" = 0 ] || exit 1; done
 [ ${#exit_of[@]} -eq "$n" ] || exit 1
 exit 0

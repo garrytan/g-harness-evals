@@ -8,7 +8,14 @@
 #   vm-shard.sh --commit <sha> --prereg <path on the VM> --name <shard> --cells a,b --lease-usd <n>
 #               [--smoke-lease-usd <n>] [--smoke-task <task id>] [--smoke-first-cell] [--no-smoke] [--resume] [--amendment <sha>]
 #               [--embedded] [--gbrain-image <tag>] [--sealed-root <path on the VM> --opening-receipt <path on the VM>]
-#               [--workload harness|gstack-laneb] [-- <extra run-shard.sh arguments>]
+#               [--workload harness|gstack-laneb|qm-driver] [-- <extra run-shard.sh arguments>]
+#
+# --workload qm-driver: the smoke is harnesses/qm/gstack/s1e-probe.ts --dry-run without any key (the S1 fakes behind the
+# proxy in capture mode, no spend; it builds the rig images, so the counted run gets --skip-build), its output and results
+# under ~/shard/smoke/results. The counted run creates ~/shard/results/ledger.sqlite with the shard's lease as its program
+# cap when it is missing (a --resume brings the earlier one back), then runs s1e-probe.ts with --ledger, --lease-usd, --out
+# ~/shard/results, --work ~/shard/work and the arguments after -- as given; its output goes to ~/shard/results/run.stdout.log.
+# The driver enforces the stage caps (--stage, --shards). Sealed flags are refused.
 #
 # --workload gstack-laneb (docs/gstack-laneb.md): the smoke is the bridge's keyless smoke
 # (scripts/gstack-laneb/smoke.sh against the pinned fake upstream, no spend; it installs Harbor at its pin) and the shard
@@ -112,6 +119,34 @@ if [ "$workload" = gstack-laneb ]; then
   trap - TERM HUP
   phase run_end
   log "vm-run.sh exited $rc"
+  finish "$rc"
+fi
+
+if [ "$workload" = qm-driver ]; then
+  [ ${#sealed[@]} -eq 0 ] || { log "qm-driver takes no sealed flags"; finish 2; }
+  mkdir -p "$shard/results"
+  build_flag=()
+  if [ "$smoke" -eq 1 ]; then
+    mkdir -p "$shard/smoke/results"
+    phase smoke_start
+    log "smoke: bun harnesses/qm/gstack/s1e-probe.ts --dry-run (keyless, fake upstream)"
+    env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u PARTICLE_API_KEY bun harnesses/qm/gstack/s1e-probe.ts --dry-run --work "$shard/smoke/work" --out "$shard/smoke/results" > "$shard/smoke/results/run.stdout.log" 2>&1
+    rc=$?
+    phase smoke_end
+    [ "$rc" -eq 0 ] || { tail -5 "$shard/smoke/results/run.stdout.log"; log "smoke failed (exit $rc); the counted run does not start"; finish 4; }
+    build_flag=(--skip-build)
+  fi
+  ledger=$shard/results/ledger.sqlite
+  if [ ! -f "$ledger" ]; then
+    bun runner/ledger/budget-ledger.ts init --budget-ledger "$ledger" --program-cap-usd "$lease" --reason "qm-driver shard $name" || { log "ledger init failed"; finish 2; }
+  fi
+  args=(--ledger "$ledger" --lease-usd "$lease" --out "$shard/results" --work "$shard/work" ${build_flag[@]+"${build_flag[@]}"} ${extra[@]+"${extra[@]}"})
+  phase run_start
+  log "run: bun harnesses/qm/gstack/s1e-probe.ts ${args[*]}"
+  bun harnesses/qm/gstack/s1e-probe.ts "${args[@]}" >> "$shard/results/run.stdout.log" 2>&1
+  rc=$?
+  phase run_end
+  log "s1e-probe.ts exited $rc"
   finish "$rc"
 fi
 
