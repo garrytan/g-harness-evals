@@ -244,6 +244,16 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         expect(c.repetitions).toBe(c.model === 'anthropic:claude-opus-5-5' ? 5 : 3); expect(['anthropic:claude-opus-5-5', 'openai:gpt-6.1-sol']).toContain(c.model);
         expect(p.cells).toHaveLength(10); expect(buildManifest(p, sha256, '2026-10-31T00:00:00Z').trials).toHaveLength(880);
       }
+      else if (p.run_id.startsWith('harness-zero-h2h-')) {
+        // internal-task Phase D: Harness Zero's frozen candidates against the field on the second v0.3 dev draw, Opus 5.5 and GPT-6.1 Sol, no gstack; the gbrain trio
+        // (lean with mcp-instructions on and off, Claude Code) on Opus is told on the member brain under member-sources with the memory preamble, three repetitions.
+        expect(c.task_set).toBe('v0.3/dev-draw-2'); expect(c.split).toBe('dev'); expect(c.tasks).toBeUndefined(); expect(c.ceiling).toEqual({ input_tokens: 80000, output_tokens: 6000 });
+        expect(c.network).toBe(c.harness === 'qm' ? undefined : 'internal'); expect(['anthropic:claude-opus-5-5', 'openai:gpt-6.1-sol']).toContain(c.model);
+        expect(p.cells).toHaveLength(15); expect(buildManifest(p, sha256, '2026-11-06T00:00:00Z').trials).toHaveLength(1260); expect(p.spend_cap_usd).toBe(364.84);
+        if (!c.gbrain) { expect(c.preamble).toBeUndefined(); continue; }
+        expect(['harness-zero', 'claude-code']).toContain(c.harness); expect(c.model).toBe('anthropic:claude-opus-5-5'); expect(c.repetitions).toBe(3);
+        expect(c.gbrain).toEqual({ surface: 'starter', brain: 'member', scope: 'member-sources' }); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-memory.md');
+      }
       else if (p.run_id.startsWith('v04-')) {
         // internal-task (v0.4 PR B): the calibration rounds, the transfer check and the frozen-dev read on Opus 5.5; told-live and untold-gbrain on the member brain under member scope
         // with live ingestion (the memory preamble and the plain one), told-scoped on the company brain under member-sources (the company preamble), none with no brain; tests/v04-prereg.test.ts pins the rest.
