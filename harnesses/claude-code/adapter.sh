@@ -11,7 +11,9 @@
 #          conversations.
 #
 # Every turn runs `claude -p --output-format stream-json --verbose` in its own
-# session (setsid) with the prompt on stdin. Exit mapping (pin.json
+# session (setsid) with the prompt on stdin; on the sdk-preset and sdk-default
+# drivers (HE_HARNESS_CONFIG, H10) it runs sdk-driver.ts instead, which drives the
+# same CLI through the Agent SDK and prints the same stream-json records. Exit mapping (pin.json
 # serve.exit_mapping):
 #   0    claude exited 0 with a result record that is not an error, every
 #        configured MCP server connected, the CLI version is pin.json's
@@ -48,7 +50,7 @@ mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
 log() { printf '%s claude-code[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" | tee -a "$HE_LOG_DIR/adapter.log" >&2; }
 now() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
-# internal-task: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
+# HARN-5: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
 # preflight compares the same hash in the image with the checkout, HE-ADAPTER-005).
 adapter_sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)
 harness_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -82,20 +84,20 @@ if [ -n "${HE_GBRAIN_INSTALL:-}" ] && [ "$HE_GBRAIN_INSTALL" != gbrain-installer
   exit 2
 fi
 
-# H10 (internal-task): HE_HARNESS_CONFIG names the instruction route, [<driver>+]<route>[@<slot_id>] (docs/adapters.md, "Route config",
+# H10 (HARN-18): HE_HARNESS_CONFIG names the instruction route, [<driver>+]<route>[@<slot_id>] (docs/adapters.md, "Route config",
 # the grammar parseRouteConfig in runner/contracts.ts reads), applied below once CLAUDE_CONFIG_DIR exists. Unset, empty or default
-# changes nothing; official-minimal (internal-task, below) is no route.
-# This adapter runs the cli driver only: sdk-preset and sdk-default come with the Agent SDK driver (H10 PR 4), so
-# a cell that names one stops here rather than running the CLI in its place. A route beside HE_GBRAIN_INSTALL is refused too: the
-# installer writes its own rule into CLAUDE.md and settings.json, so the cell would carry two carriers. Every refusal is
-# HE-ADAPTER-007, exit 2, before anything is written.
+# changes nothing; official-minimal (HARN-20, below) is no route.
+# The driver prefix picks what runs each turn: cli (the default) is `claude -p`; sdk-preset and sdk-default run the
+# same CLI through the Agent SDK (sdk-driver.ts, H10 PR 4) with the claude_code system prompt preset or with no system prompt set.
+# route-system is refused on the SDK drivers: H10 runs no SDK system cell, and the SDK can append to the preset only. A route beside
+# HE_GBRAIN_INSTALL is refused too: the installer writes its own rule into CLAUDE.md and settings.json, so the cell would carry two
+# carriers. Every refusal is HE-ADAPTER-007, exit 2, before anything is written.
 route_config=${HE_HARNESS_CONFIG:-} route_driver=cli route=${HE_HARNESS_CONFIG:-default} route_slot='' route_at=0
 refuse_route() { log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$route_config $1"; exit 2; }
 if [[ $route == *+* ]]; then route_driver=${route%%+*}; route=${route#*+}; fi
 if [[ $route == *@* ]]; then route_at=1; route_slot=${route#*@}; route=${route%%@*}; fi
 case "$route_driver" in
-  cli) ;;
-  sdk-preset|sdk-default) refuse_route "names the $route_driver driver, which runs Claude Code through the Agent SDK (H10 PR 4); this adapter runs the cli driver only" ;;
+  cli|sdk-preset|sdk-default) ;;
   *) refuse_route "names no known driver (cli, sdk-preset, sdk-default)" ;;
 esac
 case "$route" in
@@ -108,9 +110,10 @@ case "$route" in
     [[ $route_slot =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || refuse_route "needs @<slot_id> matching ^[a-z0-9][a-z0-9-]{0,62}\$ for $route" ;;
   *) refuse_route "is not a claude-code config (default, official-minimal) and names no known route (route-tool, route-hook, route-once, route-system, route-startup, route-skill, route-told, route-placebo, route-slot-told, route-slot-skill)" ;;
 esac
+if [ "$route_driver" != cli ] && [ "$route" = route-system ]; then refuse_route "is route-system on the $route_driver driver; H10 runs route-system on the cli driver only (--append-system-prompt)"; fi
 if [ "$route" != default ] && [ -n "${HE_GBRAIN_INSTALL:-}" ]; then refuse_route "is a route and HE_GBRAIN_INSTALL=$HE_GBRAIN_INSTALL writes gbrain's own rule into CLAUDE.md and settings.json; a route cell runs without gbrain.install"; fi
 
-# internal-task: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Claude Code's own system prompt with one fixed text,
+# HARN-20: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Claude Code's own system prompt with one fixed text,
 # ablation/official-minimal.txt beside this file (/opt/harness/ablation in the image; a byte copy of
 # harnesses/ablation/official-minimal.txt, checked against pin.json official_minimal.sha256), passed as --system-prompt on every
 # turn. Unset, empty or default adds nothing, so the adapter's files and command lines are as before; any other value is a route (parsed
@@ -141,7 +144,7 @@ export TMPDIR="$HE_SESSION_STATE_DIR/tmp" CLAUDE_TMPDIR="$HE_SESSION_STATE_DIR/t
 mkdir -p "$CLAUDE_CONFIG_DIR" "$TMPDIR"
 [ -e "$CLAUDE_CONFIG_DIR/settings.json" ] || cp "$harness_dir/config/settings.json" "$CLAUDE_CONFIG_DIR/settings.json"
 
-# internal-task, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
+# HARN-13, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
 # the exported view of what `gbrain setup claude-code --instructions-only` wrote at gbrain image build (gbrain#7989) read-only at
 # HE_GBRAIN_INSTALL_DIR. Setup ran there with HOME=/harness-state and CLAUDE_CONFIG_DIR=/harness-state/claude, so every path in it is
 # this container's: home/claude/CLAUDE.md (the brain-first block, Claude Code's user memory), home/claude/settings.json (this
@@ -261,7 +264,7 @@ fi
 # The number of times gbrain's turn hook has run in this state dir: one heartbeat line per UserPromptSubmit.
 hook_runs() { cat "$hook_heartbeat" 2>/dev/null | grep -c '"event":"user-prompt"' || true; }
 
-# H10 (internal-task), the instruction routes on the cli driver (harnesses/routes/README.md, "Routes on four harnesses"). One instruction,
+# H10 (HARN-18), the instruction routes on the cli driver (harnesses/routes/README.md, "Routes on four harnesses"). One instruction,
 # routes/instruction.md beside this file (/opt/harness/routes in the image, a byte copy of harnesses/routes/instruction.md checked
 # against the sha256 the preregistration cites; routes/placebo.md likewise), reaches Claude Code through the route the config names:
 #   route-tool                  nothing written: the gbrain MCP tool descriptions stay the only carrier
@@ -409,6 +412,30 @@ if [ "$claude_version" != "$pinned_version" ]; then
   exit 2
 fi
 
+# The Agent SDK drivers (H10 PR 4): sdk-driver.ts beside this file runs each turn with the @anthropic-ai/claude-agent-sdk that
+# package-lock.json installed next to it, driving this CLI binary (pathToClaudeCodeExecutable). That SDK must be pin.json's
+# sdk_driver.version and name this CLI's pin as its claudeCodeVersion, or the cell would run an SDK other than the recorded one: exit
+# 2 before ready. ready carries the driver and the SDK version.
+sdk_json='' claude_bin=''
+if [ "$route_driver" != cli ]; then
+  claude_bin=$(command -v claude)
+  if ! sdk_line=$(node -e '
+const fs = require("fs"), path = require("path");
+const [dir, cli] = process.argv.slice(1);
+const want = require(path.join(dir, "pin.json")).sdk_driver?.version;
+let got = {};
+try { got = JSON.parse(fs.readFileSync(path.join(dir, "node_modules", "@anthropic-ai", "claude-agent-sdk", "package.json"), "utf8")); } catch (e) { console.log("no readable @anthropic-ai/claude-agent-sdk beside " + path.join(dir, "sdk-driver.ts") + ": " + e.message); process.exit(1); }
+if (!fs.existsSync(path.join(dir, "sdk-driver.ts"))) { console.log("no " + path.join(dir, "sdk-driver.ts")); process.exit(1); }
+if (got.version !== want) { console.log("@anthropic-ai/claude-agent-sdk is " + got.version + ", pin.json sdk_driver.version says " + want); process.exit(1); }
+if (got.claudeCodeVersion !== cli) { console.log("@anthropic-ai/claude-agent-sdk " + got.version + " bundles claude-code " + got.claudeCodeVersion + ", not the pinned " + cli); process.exit(1); }
+process.stdout.write(got.version);' "$harness_dir" "$pinned_version"); then
+    log "driver $route_driver: ${sdk_line:-the Agent SDK check failed; see stderr.log}"
+    exit 2
+  fi
+  log "driver $route_driver: sdk-driver.ts on @anthropic-ai/claude-agent-sdk $sdk_line, driving $claude_bin"
+  sdk_json=$(printf ',"sdk":{"driver":"%s","agent_sdk_version":"%s","claude":"%s"}' "$route_driver" "$sdk_line" "$claude_bin")
+fi
+
 cd "$HE_WORKSPACE_DIR"
 
 # The MCP servers in Claude Code's own --mcp-config format (Streamable HTTP with the per-trial bot token the world minted; in
@@ -463,7 +490,7 @@ stop_session() {
 # holds). route-system adds --append-system-prompt with the instruction to every turn, --resume included.
 run_turn() {
   local prefix=$1 prompt=$2 key=$3 budget=$4 grace=$5 window_key=$6 sid flag deadline timed_out=0 stopped=0 code line route_status
-  local -a route_args=()
+  local -a route_args=() turn_cmd=()
   sid=$(node -e '
 const h = require("crypto").createHash("sha1").update(Buffer.from("6ba7b8119dad11d180b400c04fd430c8", "hex")).update("harness-evals:claude-code:" + process.argv[1]).digest();
 h[6] = (h[6] & 0x0f) | 0x50; h[8] = (h[8] & 0x3f) | 0x80;
@@ -476,11 +503,16 @@ process.stdout.write([x.slice(0, 8), x.slice(8, 12), x.slice(12, 16), x.slice(16
     log "session $key: route $route $route_status"
   fi
   [ "$route" != route-system ] || route_args=(--append-system-prompt "$route_system_text")
+  if [ "$route_driver" = cli ]; then
+    turn_cmd=(claude -p --output-format stream-json --verbose --model "$HE_MODEL_NAME" --permission-mode bypassPermissions \
+      --disallowedTools WebSearch,WebFetch --mcp-config "$mcp_config" --strict-mcp-config "${system_prompt_args[@]}" "$flag" "$sid" "${route_args[@]}")
+  else
+    turn_cmd=(node --disable-warning=ExperimentalWarning "$harness_dir/sdk-driver.ts" --driver "$route_driver" --claude "$claude_bin" \
+      --model "$HE_MODEL_NAME" --mcp-config "$mcp_config" "$flag" "$sid")
+  fi
   [ -z "$hook_heartbeat" ] || hook_before=$(hook_runs)
   set +e
-  setsid claude -p --output-format stream-json --verbose --model "$HE_MODEL_NAME" --permission-mode bypassPermissions \
-    --disallowedTools WebSearch,WebFetch --mcp-config "$mcp_config" --strict-mcp-config "${system_prompt_args[@]}" "$flag" "$sid" "${route_args[@]}" \
-    < "$prompt" > "$prefix.claude.jsonl" 2> >(tee -a "$prefix.stderr.log" >&2) &
+  setsid "${turn_cmd[@]}" < "$prompt" > "$prefix.claude.jsonl" 2> >(tee -a "$prefix.stderr.log" >&2) &
   turn_pid=$!
   deadline=$((SECONDS + budget))
   while kill -0 "$turn_pid" 2>/dev/null; do
@@ -579,7 +611,7 @@ fs.renameSync(resp + ".tmp", resp);' "$@"
 }
 
 printf '{"harness":"claude-code","version":"%s","trial":"%s","ready_at":"%s","session_keys":"claude -p --session-id|--resume UUIDv5(dm:<member> | channel:<id>)","mcp_servers":"%s","adapter_sha256":"%s"%s}\n' \
-  "$claude_version" "$HE_TRIAL_ID" "$(now)" "${mcp_servers[*]}" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json" > "$HE_LOG_DIR/ready.tmp"
+  "$claude_version" "$HE_TRIAL_ID" "$(now)" "${mcp_servers[*]}" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json$sdk_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do

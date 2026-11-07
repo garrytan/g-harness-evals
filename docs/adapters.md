@@ -101,7 +101,7 @@ Every adapter appends `:t<thread_ts>` to its session key when `TurnRequest.threa
 
 ### Route config (H10, internal-task)
 
-**Status: built on all four harnesses: OpenClaw and Hermes (H10 PR 2), and Claude Code on the cli driver and Codex (H10 PR 3).** H10 PR 5 has the runner write the TurnWindow fields, and PR 4 brings the Claude Code Agent SDK drivers. Until an adapter implements a route, it refuses it with HE-ADAPTER-007. The route table per harness is in [harnesses/routes/README.md](../harnesses/routes/README.md), "Routes on four harnesses".
+**Status: built on all four harnesses: OpenClaw and Hermes (H10 PR 2), Codex (H10 PR 3), and Claude Code on both drivers, `cli` (H10 PR 3) and the Agent SDK drivers `sdk-preset` and `sdk-default` (H10 PR 4).** H10 PR 5 has the runner write the TurnWindow fields. Until an adapter implements a route, it refuses it with HE-ADAPTER-007. The route table per harness is in [harnesses/routes/README.md](../harnesses/routes/README.md), "Routes on four harnesses".
 
 **Grammar.** A cell's `config` reaches the adapter as `HE_HARNESS_CONFIG`, as today, so there is no new cell key and no runner change.
 
@@ -227,6 +227,10 @@ The slot `t1` is bound with `$cred` first, as above.
 The same file also runs the shared `run` and `serve` assertions once per adapter that has a fixture: today `_fake` and `harness-zero`. A fixture supplies the model upstream, the workload (the prompt that makes a turn reply, pass its budget, fail at the model, fail in the harness or post through the world MCP) and the state layout the adapter keeps. The fake-only assertions above do not change. File-writing assertions stay fake-only, because Harness Zero has no file tools.
 
 ## Changelog
+
+### 2026-11-01: the Claude Code Agent SDK drivers (internal-task, H10 PR 4)
+
+"Route config" says Claude Code now runs the `sdk-preset` and `sdk-default` drivers. Why: H10 PR 4 adds the Agent SDK driver (harnesses/claude-code/README.md, "Agent SDK driver").
 
 ### 2026-11-01: the proxy writes route copies and housekeeping (internal-task)
 

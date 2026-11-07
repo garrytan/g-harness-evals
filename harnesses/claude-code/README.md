@@ -23,7 +23,7 @@
 
 `HE_HARNESS_CONFIG` names the route that carries the 289-byte gbrain rule, `[<driver>+]<route>[@<slot_id>]` ([harnesses/routes/README.md](../routes/README.md), "Routes on four harnesses"). Unset, empty or `default` changes nothing: every file and every `claude` command line stay as they were (`tests/instruction-route-cc-codex.test.ts`).
 
-- **Driver.** This adapter runs the `cli` driver (`claude -p`), the default when the config names none. `sdk-preset` and `sdk-default` come with the Agent SDK driver (H10 PR 4); until then they exit 2.
+- **Driver.** `cli` (`claude -p`) is the default when the config names none. `sdk-preset` and `sdk-default` run each turn through the Agent SDK driver instead ("Agent SDK driver" below). Every route runs on every driver except `route-system`, which is `cli` only.
 - **`route-tool`:** nothing written. The control.
 - **`route-system`:** `--append-system-prompt <rule>` on every turn, `--resume` included. The rule lands in the request's `system` field, once per request.
 - **`route-startup`:** `$CLAUDE_CONFIG_DIR/CLAUDE.md`, the rule bytes alone. It lands in the session's first user message, in the `<system-reminder>` block before the first prompt, once per request.
@@ -31,7 +31,31 @@
 - **`route-hook`, `route-once`, `route-placebo`:** a `UserPromptSubmit` hook in `settings.json` runs `routes/he-route-hook.sh`. It prints the rule (the placebo for `route-placebo`) as `additionalContext` when the adapter's per-turn emit flag says so: every turn, or only a session's first turn for `route-once`. Claude Code puts it in a `system`-role message right after the turn's prompt and keeps it in the session's history on `--resume`. So the per-turn hook carries N copies on a session's turn N, and the one-time hook 1 copy on every later request.
 - **`route-slot-told@<id>`, `route-slot-skill@<id>`:** the slot bundle's skill from `routes/slots/<id>/`, copied to `$CLAUDE_CONFIG_DIR/skills/` after the adapter recomputes its `bundle_sha256`.
 - **Records.** `$HE_LOG_DIR/instruction-route.json` and `ready.instruction_route` name the route, the bytes' sha256, every file written and the hook check. Each serve turn writes `turns/turn-NNNN.route.json` (`RouteTurnStatus`: session key, session turn, emitted).
-- **Refusals (HE-ADAPTER-007, exit 2 before ready):** an unknown config, an SDK driver, a route beside `HE_GBRAIN_INSTALL`, a rule or placebo file with another sha256, a destination that already exists, a `settings.json` that is not the seed, a hook that does not print its bytes, and a slot bundle whose digest does not match.
+- **Refusals (HE-ADAPTER-007, exit 2 before ready):** an unknown config, `route-system` on an SDK driver, a route beside `HE_GBRAIN_INSTALL`, a rule or placebo file with another sha256, a destination that already exists, a `settings.json` that is not the seed, a hook that does not print its bytes, and a slot bundle whose digest does not match.
+
+## Agent SDK driver (H10)
+
+On `sdk-preset` and `sdk-default`, each turn runs [sdk-driver.ts](sdk-driver.ts) instead of `claude -p`, in the same process session, budget and exit mapping. **It drives the same pinned CLI binary**, so only the driver changes.
+
+- **SDK pin.** `@anthropic-ai/claude-agent-sdk` `0.3.312` ([package.json](package.json), [package-lock.json](package-lock.json)), the release whose `claudeCodeVersion` is `2.1.312`. Its manifest's linux-x64 checksum is this image's CLI sha256, so it bundles the same binary. The build checks all three.
+- **Installed lean.** `npm ci --omit=optional --legacy-peer-deps`: no bundled copy of the CLI, no peer packages (the SDK imports only node builtins). The driver passes `pathToClaudeCodeExecutable: /opt/harness/bin/claude`.
+- **Same settings as `cli`, except setting sources.** bypassPermissions, `WebSearch` and `WebFetch` disallowed, the adapter's `mcp.json` with strict MCP config, the adapter's UUIDv5 session id (`sessionId` first, `resume` after). `settingSources: ["user"]` (the CLI's `--setting-sources=user`) loads only `$CLAUDE_CONFIG_DIR`'s settings, `CLAUDE.md` and skills. The `cli` driver passes no `--setting-sources`, so it also loads the workspace's `CLAUDE.md`, `.claude/settings.json`, `.claude/settings.local.json` and project skills. No task workspace ships those files today; a task, or a turn that writes them for a later turn, would reach the model under `cli` and not under `sdk-preset` or `sdk-default`.
+- **System prompt.** `sdk-preset` sets `systemPrompt: {type: "preset", preset: "claude_code"}`. `sdk-default` sets none.
+- **Output.** Every SDK message is printed as one JSON line: the CLI's own init, assistant, user and result records, read by the same parser.
+- **SIGTERM.** The driver aborts the query, the SDK stops the CLI, and the driver exits 143. The turn is then exit 2.
+- **Checked before ready.** The installed SDK version must match `pin.json` `sdk_driver.version`, and its `claudeCodeVersion` the CLI pin, or exit 2. `ready.sdk` names the driver and SDK version.
+
+**What the model gets, per driver** (observed keylessly, `tests/claude-code-sdk-driver.test.ts`, Opus 5.5, `route-skill`):
+
+| Driver | System field | User agent |
+|---|---|---|
+| `cli` | billing header (`cc_entrypoint=sdk-cli`), `the Agent SDK identity line`, then a 6,210-character guidance block with `When the user types /<skill-name>, invoke it via Skill.` | `claude-cli/2.1.312 (external, sdk-cli)` |
+| `sdk-preset` | the same identity line and guidance block, byte for byte; the billing header says `cc_entrypoint=sdk-ts` | `claude-cli/2.1.312 (external, sdk-ts, agent-sdk/0.3.312)` |
+| `sdk-default` | the stub: the `sdk-ts` billing header and the identity line, no guidance block | same as `sdk-preset` |
+
+- **The rest of the request is the same** under all three: messages, model, `max_tokens`, thinking, effort, tool names.
+- **One tool text differs:** the Bash tool's `run_in_background` default timeout reads 600000 ms under `cli` and 1800000 ms under both SDK drivers.
+- **The skill listing** (`brain-first`) is in a system-reminder of the first user message under all three, byte-identical. So the stub contrast changes only the guidance block.
 
 Exit mapping:
 
@@ -54,6 +78,10 @@ Keyless, against a fake Anthropic endpoint and through the metering proxy in lea
 **Paid trials so far:** the 200 counted trials of run `host-harness-pilot-2026-10` ([report](../../docs/benchmarks/2026-10-30-host-harness-pilot/report.md)), on `claude-haiku-5-5` through the CLI (`claude -p`), in a no-brain cell and a gbrain `told` cell. No Agent SDK cell has run.
 
 ## Changelog
+
+### 2026-11-01: the Agent SDK driver (internal-task, H10 PR 4)
+
+Added "Agent SDK driver": `sdk-preset` and `sdk-default` run each turn through `sdk-driver.ts` on `@anthropic-ai/claude-agent-sdk` 0.3.312, driving the same CLI binary, and the table of what each driver's system field holds. The image installs the SDK from `package-lock.json`. `route-system` is refused on the SDK drivers. Why: H10 block B compares the preset with the stub on Opus.
 
 ### 2026-11-01: instruction routes on the cli driver (internal-task, H10 PR 3)
 

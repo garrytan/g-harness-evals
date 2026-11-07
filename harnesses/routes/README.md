@@ -4,7 +4,7 @@
 
 - **Supported:** OpenClaw 4 of 5 routes, Hermes 5 of 5.
 - **Not supported:** `route-system` on OpenClaw. OpenClaw 2026.10.6 has no config key that adds text to the system prompt, so the adapter refuses that cell (exit 2, HE-ADAPTER-007) and the preregistration drops it.
-- **H10 (internal-task) is the contract for four harnesses.** OpenClaw, Hermes, Claude Code and Codex, with a one-time hook, a placebo, a driver prefix for Claude Code and skill-route slots. It is written below under "Routes on four harnesses". All four run it now, Claude Code on the cli driver (its Agent SDK drivers come in H10 PR 4); each adapter refuses a route it does not run yet.
+- **H10 (internal-task) is the contract for four harnesses.** OpenClaw, Hermes, Claude Code and Codex, with a one-time hook, a placebo, a driver prefix for Claude Code and skill-route slots. It is written below under "Routes on four harnesses". All four run it now, Claude Code on both its cli and Agent SDK drivers; each adapter refuses a route it does not run yet.
 
 ## The instruction
 
@@ -77,9 +77,9 @@ On the first request of a session each route places the instruction once or not 
 
 ## Routes on four harnesses (H10, internal-task)
 
-**Status: built on all four harnesses: OpenClaw and Hermes (H10 PR 2), and Claude Code on the cli driver and Codex (H10 PR 3).** The Claude Code Agent SDK drivers come in H10 PR 4. Claude Code and Codex also read internal-task's `official-minimal`, which is not a route and stays outside this grammar.
+**Status: built on all four harnesses: OpenClaw and Hermes (H10 PR 2), Codex (H10 PR 3), and Claude Code on both drivers, `cli` (H10 PR 3) and the Agent SDK drivers `sdk-preset` and `sdk-default` (H10 PR 4).** Claude Code and Codex also read internal-task's `official-minimal`, which is not a route and stays outside this grammar.
 
-- **Who builds what:** H10 PR 2 does OpenClaw and Hermes (done), PR 3 the Claude Code CLI and Codex (done), PR 4 the Claude Code Agent SDK drivers.
+- **Who builds what:** H10 PR 2 does OpenClaw and Hermes (done), PR 3 the Claude Code CLI and Codex (done), PR 4 the Claude Code Agent SDK drivers (done; `route-system` stays `cli` only).
 - **OpenClaw and Hermes:** what each adapter writes, its receipts and its golden captures are in the harness READMEs, "H10 routes" ([OpenClaw](../openclaw/README.md), [Hermes](../hermes/README.md)).
 - **No silent runs:** until then, an adapter refuses any route it does not run (exit 2, HE-ADAPTER-007).
 - **Grammar:** a cell's config is `[<driver>+]<route>[@<slot_id>]`, parsed by `parseRouteConfig` in [runner/contracts.ts](../../runner/contracts.ts). The grammar and the per-turn status are in [docs/adapters.md](../../docs/adapters.md), "Route config".
@@ -227,6 +227,10 @@ env -i PATH=$PATH HOME=$HOME bun test tests/instruction-route-cc-codex.test.ts
 ```
 
 ## Changelog
+
+### 2026-11-01: the Claude Code Agent SDK drivers (internal-task, H10 PR 4)
+
+"Routes on four harnesses" and the H10 line at the top say the `sdk-preset` and `sdk-default` drivers are built, with `route-system` on the `cli` driver only. Why: H10 PR 4 adds the Agent SDK driver.
 
 ### 2026-11-01: Claude Code and Codex run the H10 routes (internal-task, H10 PR 3)
 

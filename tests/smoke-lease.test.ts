@@ -41,11 +41,11 @@ function run(cells: string, extra: string[] = []): { code: number | null; out: s
 }
 
 describe('smoke-lease.ts', () => {
-  test('Sonnet 5.5 at the 128000 default: $1.38 a call, $3.00 lease', () => {
+  test('Sonnet 5.5 at the 128000 default: $1.48 a call, $3.00 lease', () => {
     const r = run('sonnet');
     expect(r.code).toBe(0);
     expect(r.out).toBe('3.00');
-    expect(r.err).toContain('one call reserves up to $1.38');
+    expect(r.err).toContain('one call reserves up to $1.48');
   });
 
   test('Haiku 5.5 stays at the $1 floor and Opus 5.5 needs $6', () => {
@@ -67,7 +67,7 @@ describe('smoke-lease.ts', () => {
 
   test('a smaller output cap lowers the figure', () => {
     expect(run('sonnet', ['--max-output-tokens', '16000']).out).toBe('1.00');
-    expect(run('opus', ['--max-output-tokens', '64000']).out).toBe('3.00');
+    expect(run('opus', ['--max-output-tokens', '64000']).out).toBe('3.50');
   });
 
   test('a model without a list price is exit 2 with the cell named', () => {

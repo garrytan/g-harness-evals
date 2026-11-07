@@ -16,9 +16,15 @@
 //   3. Walk the blocks in order. A block whose precondition does not hold is skipped (it was dropped in the prereg). A block
 //      is admitted only when its counted ceiling plus its smoke ceiling fits what is left; one that does not fit is dropped,
 //      never split, and the walk goes on to the next block.
-//   Ceilings come from each block's own prereg.json, never typed in: counted = plan's cost_ceiling_usd (runner/run.ts
-//   buildManifest), smoke = one member turn per harness cell at its per-turn ceiling (the one-trial smoke on a one-turn task),
-//   each rounded up to the cent.
+//   Ceilings come from each block's own prereg.json, never typed in, and each leaves room for one more proxy call after the
+//   planned spend. The metering proxy reserves a call's worst case against its lease before forwarding it (input plus the
+//   whole output cap at list price), so a lease that cannot hold one reservation on top of what is spent refuses the call
+//   while the VM keeps billing. R is the largest such reservation among the block's harness cells (smoke-lease.ts
+//   callReservationUsd: 50,000 input tokens at the dearest cache-write rate the proxy applies, and the last
+//   --max-output-tokens cap in the block's options as run-shard.sh reads it, 128,000 when not given; about $2.96 for
+//   Opus 5.5 and $1.41 for GPT-6.1 Sol). counted = plan's cost_ceiling_usd (runner/run.ts
+//   buildManifest) plus R; smoke = one member turn per harness cell at its per-turn ceiling (the one-trial smoke on a
+//   one-turn task) plus R. Each is rounded up to the cent.
 //   4. Print one line per block (ADMIT, SKIP or DROP) with its run id and both leases, and with --out first remove every
 //      *.fanout.json an earlier run left there (CLEARED lines), then write each admitted block's fan-out manifest
 //      (scripts/ubicloud/fanout.sh: one shard named after the block holding all its cells, lease_usd the counted ceiling,
@@ -27,9 +33,10 @@
 
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ledgerStatus } from '../../runner/ledger/budget-ledger.ts';
+import { chatPrice, ledgerStatus, reservationUsd } from '../../runner/ledger/budget-ledger.ts';
 import { RunnerError } from '../../runner/errors.ts';
 import { buildManifest, ceilingUsd, loadPrereg } from '../../runner/run.ts';
+import { callReservationUsd, SHARD_MAX_OUTPUT_TOKENS } from './smoke-lease.ts';
 
 export interface BlockSpec { id: string; prereg: string; precondition: { holds: boolean; note?: string }; size?: string; options?: string[] }
 export interface WavesFile { cap_usd: number; blocks: BlockSpec[] }
@@ -50,13 +57,21 @@ export function settledSpend(ledgers: string[]): { total: number; by_ledger: Arr
   return { total: by.reduce((a, b) => a + b.usd, 0), by_ledger: by };
 }
 
-/** A block's counted and smoke ceilings from its own preregistration. */
+/** A block's counted and smoke ceilings from its own preregistration, each with room for one more proxy call (see the header). */
 export function blockCeilings(block: BlockSpec, tasksRoot?: string): BlockCeilings {
   if (!existsSync(block.prereg)) throw new RunnerError('HE-BUDGET-004', `block ${block.id}: ${block.prereg} does not exist`);
   const { prereg, sha256 } = loadPrereg(block.prereg);
   const manifest = buildManifest(prereg, sha256, undefined, tasksRoot ? { tasksRoot } : {});
   const harnessCells = prereg.cells.filter((c) => c.harness_mode !== 'scripted');
-  return { id: block.id, run_id: prereg.run_id, cells: prereg.cells.map((c) => c.id), counted_usd: upToCent(manifest.cost_ceiling_usd), smoke_usd: upToCent(harnessCells.reduce((a, c) => a + ceilingUsd(c), 0)) };
+  const options = block.options ?? [];
+  const maxOutputTokens = options.includes('--max-output-tokens') ? Number(options[options.lastIndexOf('--max-output-tokens') + 1]) : SHARD_MAX_OUTPUT_TOKENS;
+  if (!Number.isInteger(maxOutputTokens) || maxOutputTokens < 1) throw new RunnerError('HE-BUDGET-004', `block ${block.id}: --max-output-tokens in its options must be a positive whole number`);
+  const call = Math.max(0, ...harnessCells.map((c) => {
+    const usd = callReservationUsd({ chatPrice, reservationUsd }, c.model, maxOutputTokens);
+    if (usd === null) throw new RunnerError('HE-BUDGET-004', `block ${block.id}: the metering proxy has no price for ${c.model} (cell ${c.id})`);
+    return usd;
+  }));
+  return { id: block.id, run_id: prereg.run_id, cells: prereg.cells.map((c) => c.id), counted_usd: upToCent(manifest.cost_ceiling_usd + call), smoke_usd: upToCent(harnessCells.reduce((a, c) => a + ceilingUsd(c), 0) + call) };
 }
 
 /** Walk the blocks in order against the headroom (see the header). */
