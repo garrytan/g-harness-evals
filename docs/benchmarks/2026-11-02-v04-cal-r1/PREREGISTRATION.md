@@ -4,7 +4,7 @@ Status: written 2026-11-02 (UTC), before any trial of any run named here. Run id
 
 **In one line: this file preregisters the whole v0.4 calibration loop on Opus 5.5 (up to four rounds), the transfer check on the rehearsal set, and the frozen-dev read of all four arms. A fixed rule picks each round's cells from cells preregistered here, so no round needs a new pull request.**
 
-> **gbrain pin: `2c469d1bfc0e096646b2a2b1caba4fdea4592f00` (0.60.547.0), the internal-task-a hotfix (gbrain#8425's merge, the gbrain#8424 security fix).** Every gbrain arm runs on it ("The gbrain pin"). It carries gbrain#8367's quote fence ("The quote fence"), and not internal-task-b, the follow-up for the stdio MCP server and the remaining hook lanes, which the v0.4 arms do not run ("Known open item: internal-task-b").
+> **gbrain pin: `2c469d1bfc0e096646b2a2b1caba4fdea4592f00` (0.60.547.0), the GBRA-277 hotfix (gbrain#8425's merge, the gbrain#8424 security fix).** Every gbrain arm runs on it ("The gbrain pin"). It carries gbrain#8367's quote fence ("The quote fence"), and not GBRA-279, the follow-up for the stdio MCP server and the remaining hook lanes, which the v0.4 arms do not run ("Known open item: GBRA-279").
 
 ## The six runs
 
@@ -30,14 +30,14 @@ Amendment 3 (2026-11-06) raises the shared calibration cap to $350 before round 
 
 The Opus dev read on v0.3 (`v03-opus-dev-2026-10`, PR #209, outcome B) found that Opus 5.5 saturates most v0.3 families. Every needed fact was still readable when it was asked for, so memory could not show. Its verdict was "FIX-METHOD: v0.4 tasks must put the needed fact where only memory reaches it at ask time".
 
-- v0.4 (PR A, internal-task) builds those tasks: six families at four difficulty levels, 96 public dev tasks, plus 6 rehearsal tasks.
+- v0.4 (PR A, HARN-12) builds those tasks: six families at four difficulty levels, 96 public dev tasks, plus 6 rehearsal tasks.
 - Before a held-out set is generated, each family must be tuned so Opus lands between 10 and 90 percent. That is this loop.
 - Then the frozen-dev read measures all four arms on fresh rows, so opening 1 can be sized from real variance.
 
 ## Approval
 
-- **Garry, through the Captain:** the v0.4 plan, revision 2 (`handoffs/internal-task/autoplan/v04/plan-active.md` in the Captain drive), with its decisions 1 to 9 and its caps.
-- **The Captain, 2026-11-01:** told-live and told-scoped run on the internal-task-a hotfix gbrain version or later. internal-task-b pins all gbrain arms, untold included, to that version, so untold differs from told-live only in its preamble.
+- **Garry, through the Captain:** the v0.4 plan, revision 2 (`handoffs/HARN-12/autoplan/v04/plan-active.md` in the Captain drive), with its decisions 1 to 9 and its caps.
+- **The Captain, 2026-11-01:** told-live and told-scoped run on the GBRA-277 hotfix gbrain version or later. HARN-12 pins all gbrain arms, untold included, to that version, so untold differs from told-live only in its preamble.
 - **The Captain, 2026-11-02:** the rehearsal set ships public with its world (deviation 2, below).
 
 ## Arms
@@ -69,7 +69,7 @@ All four arms are exactly plan decision 5. The model is `anthropic:claude-opus-5
 
 ## The gbrain pin
 
-- **gbrain commit and version:** `2c469d1bfc0e096646b2a2b1caba4fdea4592f00` (0.60.547.0), master at the merge of gbrain#8425, the internal-task hotfix for gbrain#8424. It is the release v0.60.547.0 (published 2026-11-02T09:21:37Z, not a draft), and its `package.json` and `VERSION` read 0.60.547.0. It contains `a590ad07`, the pin every v0.3 run used (GitHub compare: 619 commits ahead, 0 behind). This pull request moves `gbrain/pin.json` and the `Dockerfile` default to it, and every v0.4 `prereg.json` names it as `gbrain_commit`, so `scripts/run-shard.sh` builds the gbrain image at it and preflight and run refuse an image built at any other commit (HE-GBRAIN-016).
+- **gbrain commit and version:** `2c469d1bfc0e096646b2a2b1caba4fdea4592f00` (0.60.547.0), master at the merge of gbrain#8425, the GBRA-277 hotfix for gbrain#8424. It is the release v0.60.547.0 (published 2026-11-02T09:21:37Z, not a draft), and its `package.json` and `VERSION` read 0.60.547.0. It contains `a590ad07`, the pin every v0.3 run used (GitHub compare: 619 commits ahead, 0 behind). This pull request moves `gbrain/pin.json` and the `Dockerfile` default to it, and every v0.4 `prereg.json` names it as `gbrain_commit`, so `scripts/run-shard.sh` builds the gbrain image at it and preflight and run refuse an image built at any other commit (HE-GBRAIN-016).
 - **What the hotfix changes:** every setup-lane and turn-rule hook now starts gbrain through `<config dir>/hook-launcher/gbrain-hook`, from the launcher's own directory, so Bun no longer reads the session directory's `bunfig.toml` preload or `.env`.
 - **One version for every gbrain arm:** told-live, told-scoped and untold-gbrain, in the calibration rounds, the transfer check and the frozen-dev read.
 - **Dev brains** (calibration and frozen-dev), built from `world/seed/world.json` (`38dad8866745`) by `scripts/build-gbrain-image.sh` at the pin, tag `harness-eval/gbrain:dev` (image `3a57b22846d7` on the preregistration machine; each shard builds its own):
@@ -78,9 +78,9 @@ All four arms are exactly plan decision 5. The model is `anthropic:claude-opus-5
 - **Rehearsal brains** (transfer check), built from `tasks/multiuser/v0.4/rehearsal/world/world.json` (`babe36472c2a`, dev corpus `cd2548f8bba9`) with `--world`, tag `harness-eval/gbrain:world-babe36472c2a` (image `dcf2b4dfd7d7` on the preregistration machine):
   - member brain (`/brains/dev-member`, 26 pages) page-list digest: `eda5251ea8b5`
 - **The page-list digest** is the first 12 hex characters of the sha256 of the brain's `manifest.json` pages, one `<source_path> <sha256>` line each, sorted: `jq -r '.pages[] | "\(.source_path) \(.sha256)"' /brains/<brain>/manifest.json | sort | sha256sum` inside the image. It depends on the world and the build, not on the gbrain version.
-- **Keyless check at the pin**, 2026-11-02 (UTC): `bun scripts/gbrain-check.ts --gbrain 2c469d1b --expect-hook` against `harness-eval/gbrain:check-2c469d1bfc0e` (the dev world). Result: **37 of 37, 0 pin diffs, 67 s.** It covers 479 scoped calls over search, query, recall and list_pages on the dev company brain (3,140 rows, none outside the requester's grant), the told-live path (6 messages ingested live, the turn-1 DM back to its member and not to another member through search, query and recall) and the OpenClaw and Hermes installer views with the per-turn hook. Receipts: `handoffs/internal-task-a/prereg-keyless/2c469d1bfc0e/` in the Captain's drive. **Rechecked after the merge with main**, 2026-11-06 (UTC), same command: **37 of 37, 0 pin diffs, 61 s**, the same 479 scoped calls and 3,140 rows with none outside the grant. The image's Claude Code and Codex installer views now build, each keeping the hook launcher among its hook files. Receipts: `handoffs/internal-task-b/prereg-keyless/2c469d1bfc0e/`.
+- **Keyless check at the pin**, 2026-11-02 (UTC): `bun scripts/gbrain-check.ts --gbrain 2c469d1b --expect-hook` against `harness-eval/gbrain:check-2c469d1bfc0e` (the dev world). Result: **37 of 37, 0 pin diffs, 67 s.** It covers 479 scoped calls over search, query, recall and list_pages on the dev company brain (3,140 rows, none outside the requester's grant), the told-live path (6 messages ingested live, the turn-1 DM back to its member and not to another member through search, query and recall) and the OpenClaw and Hermes installer views with the per-turn hook. Receipts: `handoffs/HARN-12/prereg-keyless/2c469d1bfc0e/` in the Captain's drive. **Rechecked after the merge with main**, 2026-11-06 (UTC), same command: **37 of 37, 0 pin diffs, 61 s**, the same 479 scoped calls and 3,140 rows with none outside the grant. The image's Claude Code and Codex installer views now build, each keeping the hook launcher among its hook files. Receipts: `handoffs/HARN-42/prereg-keyless/2c469d1bfc0e/`.
 - **Not covered by that check: the rehearsal world.** The check's own tasks read the dev world. For the transfer check, each shard's runner preflight probes the rehearsal image's brains before its first trial, and the report checks the preflight log against the digest above.
-- **The Claude Code and Codex installer views keep the hook launcher.** gbrain#8424's launcher, `.gbrain/hook-launcher/gbrain-hook`, is among the files `gbrain setup claude-code|codex --instructions-only` writes at this pin. internal-task (#229, on main) made `gbrain/build-install.ts` keep it as one of the hook's files, so both views build (docs/gbrain-arm.md, "The Claude Code and Codex installer"). No v0.4 cell uses an installer view.
+- **The Claude Code and Codex installer views keep the hook launcher.** gbrain#8424's launcher, `.gbrain/hook-launcher/gbrain-hook`, is among the files `gbrain setup claude-code|codex --instructions-only` writes at this pin. GST-970 (#229, on main) made `gbrain/build-install.ts` keep it as one of the hook's files, so both views build (docs/gbrain-arm.md, "The Claude Code and Codex installer"). No v0.4 cell uses an installer view.
 - Every shard's preflight log names its image id and the brains it probed. The report checks each against the digests above.
 
 ### The quote fence (gbrain#8367, in this pin)
@@ -91,12 +91,12 @@ All four arms are exactly plan decision 5. The model is `anthropic:claude-opus-5
 - **The needed facts still match through the fence.** `tests/v04-quote-fence.test.ts` (keyless) wraps every needed fact a v0.4 turn carries (dev and rehearsal) in the fence gbrain returned at this pin (`tests/fixtures/gbrain-fence/2c469d1b.json`, from the keyless check's ingest trial) and checks that its `[[mechanism.needed]]` pattern still matches. Needed facts carried by a retired seed record (`slug`) are not ingested facts, and this test does not cover them.
 - **What it may change.** The fence tells the model the text is source material, not instructions. That can change how a harness treats a fact it reads back, and so told-live's pass rate. Every v0.4 gbrain arm has the same fence, and none has no brain, so the comparisons inside v0.4 are on the same gbrain. A comparison with a v0.3 told row crosses the fence, and the report says so wherever it makes one.
 
-## Known open item: internal-task
+## Known open item: GBRA-279
 
-- **internal-task is not in this pin.** It is the follow-up hotfix for the lanes gbrain#8425 did not cover: the stdio MCP server `gbrain setup` registers still starts script-mode gbrain in the session directory (gbrain#8426), the SessionStart hook runs git in the session checkout before its receipt gate (core.fsmonitor, gbrain#8427), and the bootstrap capture lanes and plugin hooks still bypass the launcher (gbrain#8428). All three were open on 2026-11-02.
+- **GBRA-279 is not in this pin.** It is the follow-up hotfix for the lanes gbrain#8425 did not cover: the stdio MCP server `gbrain setup` registers still starts script-mode gbrain in the session directory (gbrain#8426), the SessionStart hook runs git in the session checkout before its receipt gate (core.fsmonitor, gbrain#8427), and the bootstrap capture lanes and plugin hooks still bypass the launcher (gbrain#8428). All three were open on 2026-11-02.
 - **What it means for these runs.** The v0.4 arms reach gbrain only over the MCP route of this repository's sidecar: `gbrain serve --http` in `harness-eval/gbrain`, started by `gbrain/entrypoint.sh` from a directory in that image that no trial writes to, reached by the harness over HTTP through the world tap. No v0.4 cell installs `gbrain setup`'s stdio MCP server or any gbrain hook in a harness. So the unfixed lanes are not on any v0.4 trial's path.
-- **What it does not mean.** This says nothing about gbrain installed the way a user installs it today. A user's harness that runs `gbrain setup`'s stdio server or hooks is still exposed until internal-task ships. The v0.4 runs do not test that route.
-- A later gbrain with internal-task does not replace this pin mid-loop. A move would be a dated amendment before the rounds it affects.
+- **What it does not mean.** This says nothing about gbrain installed the way a user installs it today. A user's harness that runs `gbrain setup`'s stdio server or hooks is still exposed until GBRA-279 ships. The v0.4 runs do not test that route.
+- A later gbrain with GBRA-279 does not replace this pin mid-loop. A move would be a dated amendment before the rounds it affects.
 
 ## The calibration rule
 
@@ -151,7 +151,7 @@ The rule is `scripts/v04/next-round.ts` (keyless, tested over every row in `test
 - a family still rerunning after a short round is INCOMPLETE;
 - any other family is DROPPED, reported with its last state, its level and its pending verdict, written "pending <VERDICT>" (for example "pending CEILING" or "pending FROZEN").
 
-**Round records.** Before each round starts, internal-task runs `bun scripts/v04/next-round.ts --round <round files so far> --cap-remaining <usd> --costs docs/benchmarks/2026-11-02-v04-cal-r1/cell-costs.json --out docs/benchmarks/<that round's directory>/round/decision.json` and the shard plan (below), commits both under `round/` and pushes them before the fan-out. After the round, `bun scripts/v04/round-results.ts --results <merged results> --decision <decision.json> --out <round directory>/round/round-<n>.json` writes the round file the next decision replays. `next-round.ts` refuses a round file whose families, levels or cap-limited flag differ from what the rule picked. Round records land on main with the results pull request.
+**Round records.** Before each round starts, HARN-12 runs `bun scripts/v04/next-round.ts --round <round files so far> --cap-remaining <usd> --costs docs/benchmarks/2026-11-02-v04-cal-r1/cell-costs.json --out docs/benchmarks/<that round's directory>/round/decision.json` and the shard plan (below), commits both under `round/` and pushes them before the fan-out. After the round, `bun scripts/v04/round-results.ts --results <merged results> --decision <decision.json> --out <round directory>/round/round-<n>.json` writes the round file the next decision replays. `next-round.ts` refuses a round file whose families, levels or cap-limited flag differ from what the rule picked. Round records land on main with the results pull request.
 
 **Round 1, as the rule picks it now:** all six families at L2, 24 cells, 96 told-live and 48 none trials, $53.76 at the cell costs, cap remaining $143.00, not cap-limited.
 
@@ -166,7 +166,7 @@ The calibration loop is a loop in the sense of [methodology](../../methodology.m
 - **Candidate hash (R5):** not applicable. The loop selects a level, not a candidate. The gbrain pin and preambles above are fixed for every round.
 - **Noise floor (R1):** the confirmation rerun. A verdict needs the same observation twice in a row at one level.
 - **Keep rule (R1, R2):** the transition table above.
-- **Budget and stop:** the stop above, at most 4 rounds, under the $170 cap.
+- **Budget and stop:** the stop above, at most 4 rounds, under the $170 cap for rounds 1 and 2 and the shared $350 cap from round 3 (amendment 3, at the top of "Budget").
 - **Re-confirmation (R3):** the frozen-dev read re-runs every frozen family on fresh rows, and only a sealed held-out opening, under its own preregistration, can carry a claim.
 - **Baselines (R6):** round 1's rates at L2 are reported beside the frozen levels.
 - **Release:** each round's decision and round file are pushed before the next round. The report publishes all rounds at the end.
@@ -175,7 +175,7 @@ The calibration loop is a loop in the sense of [methodology](../../methodology.m
 
 After round 1, the report counts, per harness and primary family, the none trials in which the harness wrote or read its own memory: a call to its own memory tool, or a memory file it wrote in its state directory (OpenClaw's `MEMORY.md` or `memory/*.md` and its memory search; Hermes's memory tool).
 
-- If, on a harness, none used its own memory in at most 5 percent of trials in every primary family while told-live's gbrain use is above 5 percent, internal-task tells the Captain before held-out generation. On that harness, told-live against none then measures "memory present against absent", and the Captain decides whether to proceed.
+- If, on a harness, none used its own memory in at most 5 percent of trials in every primary family while told-live's gbrain use is above 5 percent, HARN-12 tells the Captain before held-out generation. On that harness, told-live against none then measures "memory present against absent", and the Captain decides whether to proceed.
 - The check changes no round. The loop continues while the Captain decides.
 
 ## Terminal verdicts and the fallback (plan decision 9)
@@ -191,8 +191,8 @@ After round 1, the report counts, per harness and primary family, the none trial
 **The fallback, by the number of primary families frozen:**
 
 - **4 or 5:** gate (a) of opening 1 holds. Held-out generation runs at the frozen levels.
-- **3:** nothing is sealed yet. internal-task asks the Captain whether to seal a reduced, labelled set or calibrate a harder axis (L5: five sessions and cross-member interference) under a new approval.
-- **2 or fewer:** the report says so plainly, sends a "Why null?" verdict to internal-task, and stops.
+- **3:** nothing is sealed yet. HARN-12 asks the Captain whether to seal a reduced, labelled set or calibrate a harder axis (L5: five sessions and cross-member interference) under a new approval.
+- **2 or fewer:** the report says so plainly, sends a "Why null?" verdict to HARN-1, and stops.
 - Never a fallback to Haiku, Sonnet or Particle-1 as the basis of a claim.
 
 ## What is reported per harness
@@ -224,7 +224,7 @@ Run `v04-frozen-dev-2026-11`, after the stop, on the families frozen in band, ea
 - **Fresh rows only.** No calibration row enters the frozen-dev tables or the MDD.
 - **Reported per arm and harness:** pass rates with intervals; untold-gbrain's gbrain call rate; told-live against none, told-scoped against none and untold-gbrain against none, all descriptive; told-live against told-scoped and untold-gbrain against told-live, descriptive; retired record per arm, outside the primary families; `fact_readable_at_ask` passes counted apart.
 - **The projected MDD (gate (c)).** `bun scripts/paired-mdd.ts --project --results <frozen-dev results> --pair <told-live cells>:<none cells>`, one pair per harness, each side joining that harness's frozen primary-family cells with `+`. Estimator `PROJECTION_ESTIMATOR` (task-clustered variance of per-task paired differences, split into between-task and within-task parts, scaled to the target design). Two-sided alpha 0.0125 (0.025 per opening, Holm over the two harnesses), power 0.8, defaults 36 tasks by 3 repetitions, threshold 15 points. **Primary families only** (the script's default; retired record never enters).
-- **The untold verdict** (plan decision 9): "untold route: CUT-CANDIDATE confirmed on Opus" goes to internal-task only if untold-gbrain calls gbrain in fewer than 5 percent of frozen-dev trials on both harnesses and its pass rate is within the frozen-dev interval of none's. The call rate is an upper bound for real use, since the readable world is empty by design.
+- **The untold verdict** (plan decision 9): "untold route: CUT-CANDIDATE confirmed on Opus" goes to HARN-1 only if untold-gbrain calls gbrain in fewer than 5 percent of frozen-dev trials on both harnesses and its pass rate is within the frozen-dev interval of none's. The call rate is an upper bound for real use, since the readable world is empty by design.
 
 ## The five open review Highs, and where each is fixed
 
@@ -240,7 +240,7 @@ Run `v04-frozen-dev-2026-11`, after the stop, on the families frozen in band, ea
 
 **Amendment 3 (2026-11-06): the caps rise, because real cost ran about 30 percent over the cell costs.** Committed before round 3 starts. Round 2 runs under the caps as first written.
 
-- **Decision, verbatim:** "Captain internal-task, 2026-11-06: calibration cap $170→$350 and lane cap $610→$790 under R71; cause: round-1 real cost ran 29% over the preregistered cell costs; frozen-dev cap re-priced at observed cost"
+- **Decision, verbatim:** "Captain HARN-1, 2026-11-06: calibration cap $170→$350 and lane cap $610→$790 under R71; cause: round-1 real cost ran 29% over the preregistered cell costs; frozen-dev cap re-priced at observed cost"
 - **Evidence.** From the shard ledgers: round 1 cost $69.2313 against $53.76 expected at the cell costs (+28.8 percent), and the transfer check $17.7093 against $13.44 (+31.8 percent).
 - **Why it matters.** Round 2's pick is $64.00 at the cell costs against $83.03 cap remaining. At the same overrun it costs about $82.40, which leaves nothing for round 3 under $170. Corrections alone could freeze, and the fallback would end the loop.
 
@@ -248,7 +248,7 @@ Run `v04-frozen-dev-2026-11`, after the stop, on the families frozen in band, ea
 |---|---:|---:|
 | Calibration rounds 1 to 4 and the transfer check (shared) | $170 | **$350** |
 | Frozen-dev read | $240 | **$247** |
-| internal-task lane | $610 | **$790** |
+| HARN-12 lane | $610 | **$790** |
 
 Generation ($12) and smokes ($32) are unchanged.
 
@@ -280,15 +280,15 @@ Generation ($12) and smokes ($32) are unchanged.
 | Generation and audit | $1.67 | $12.00 |
 | Smokes | $3.79 | $32.00 |
 | Ubicloud VMs (list price) | $3.84 | $30.00 booked |
-| Sealed opening 1 (only if calibration passes; booked by internal-task, accepted 2026-11-04) | $0 | $650.00 |
-| Own model use, internal-task (174,362 credits; thread closed) | $174.36 | $174.36 |
-| Own model use, internal-task with subagents (214,772 credits) | $214.77 | $464.77 ($250 more booked) |
-| Own model use, internal-task after 13:30 UTC on 2026-11-03 (two short turns, not measured) | | $25.00 allowance |
+| Sealed opening 1 (only if calibration passes; booked by HARN-30, accepted 2026-11-04) | $0 | $650.00 |
+| Own model use, HARN-30 (174,362 credits; thread closed) | $174.36 | $174.36 |
+| Own model use, HARN-42 with subagents (214,772 credits) | $214.77 | $464.77 ($250 more booked) |
+| Own model use, HARN-12 after 13:30 UTC on 2026-11-03 (two short turns, not measured) | | $25.00 allowance |
 | **Total** | **$485.37** | **$1,985.13 of $2,000** |
 
 - Round 2 is in flight. Its spend is inside the $350.
-- An earlier figure of about $1,470 (internal-task-a's report to internal-task-b, 2026-11-06) started from internal-task-c's $1,290 booking, which left about $186 for own use. Own use is already $389. This table replaces that figure.
-- **The $14.87 left is the only slack.** If internal-task-a's own use would pass 464,772 credits, or VMs would pass $30, internal-task-a goes back to internal-task-b before the next paid step. A cap stop ends its cells incomplete, and they are never retried.
+- An earlier figure of about $1,470 (HARN-42's report to HARN-1, 2026-11-06) started from HARN-30's $1,290 booking, which left about $186 for own use. Own use is already $389. This table replaces that figure.
+- **The $14.87 left is the only slack.** If HARN-42's own use would pass 464,772 credits, or VMs would pass $30, HARN-42 goes back to HARN-1 before the next paid step. A cap stop ends its cells incomplete, and they are never retried.
 
 **Re-priced from real turn counts.** Costs use each task's turn count (`tasks/multiuser/v0.4/README.md`, "Turns per task") times the repetitions times the plan's per-turn costs: OpenClaw told $0.13, Hermes told $0.09, OpenClaw none $0.13, Hermes none $0.07. told-scoped and untold-gbrain are priced as told. [cell-costs.json](cell-costs.json) (schema `harness-evals/v04-cell-costs@1`) holds one round of every calibration cell. The real turn counts are lower than the plan's 5.5 at L2, so every figure is below the plan's.
 
@@ -319,7 +319,7 @@ Per family and level, one calibration round costs (cents shown as dollars):
 
 A frozen-dev family costs exactly twice its calibration round at the same level.
 
-**The lane.** internal-task's lane cap is $610, with $148.2351 committed before v0.4 (the 13 internal-task rows of `harness-eval/ledger/lane-spend.jsonl` in the project drive).
+**The lane.** HARN-12's lane cap is $610, with $148.2351 committed before v0.4 (the 13 HARN-12 rows of `harness-eval/ledger/lane-spend.jsonl` in the project drive).
 
 - Committed plus every cap: $148.2351 + $170 + $240 + $12 + $32 = **$602.2351, within $610** ($7.7649 to spare).
 - **No cap rises.** Every expected figure sits below its cap. (As first written. Amendment 3, 2026-11-06, raises the calibration, frozen-dev and lane caps; see the top of "Budget".)
@@ -354,22 +354,22 @@ A frozen-dev family costs exactly twice its calibration round at the same level.
 
 So no shard needs splitting at any level, and every shard stays under 4 hours.
 
-- **On Ubicloud** through `scripts/ubicloud/fanout.sh` ([docs/ubicloud.md](../../ubicloud.md)), one standard-16 VM per shard, `UBI_OWNER=internal-task`, after `scripts/ubicloud/ubi-runner.sh usage`, as a Capy background operation with a registered wait.
+- **On Ubicloud** through `scripts/ubicloud/fanout.sh` ([docs/ubicloud.md](../../ubicloud.md)), one standard-16 VM per shard, `UBI_OWNER=HARN-42`, after `scripts/ubicloud/ubi-runner.sh usage`, as a Capy background operation with a registered wait.
 - Each VM checks out the merge commit detached, builds the harness and gbrain images from it, runs the smoke, then `scripts/run-shard.sh` for its cells with `--max-output-tokens 128000 --clean-arm-preflight`.
 - **At most 8 shards open at once.** A round and the transfer check together are 6.
 - **Smokes.** One per shard, uncounted, on a dev task under a scratch ledger and a **$4 lease** (`--smoke-lease-usd 4`). A calibration or frozen-dev shard smokes one trial of the first cell in the shard plan's order (`--smoke-first-cell`; every cell of such a shard shares its harness, arm and smoke task), on the cheapest task, `rr-01-l1-quarrendon-ticket-retired` (2 turns). A transfer-check shard holds both arms of its harness, so it smokes without `--smoke-first-cell`: one trial of each of its 2 cells (told-live and none), on `rx-06-wv2db9` (2 turns). Open smoke leases at $4 each plus the closed smokes' actual spend stay within $32; the fan-out's `--parallel` is lowered when they would not. A smoke must end `completed` or its shard does not start. A shard that fails before its first trial is relaunched at the same commit at most twice, each with a new smoke.
-- **After each round:** `UBI_OWNER=internal-task scripts/ubicloud/ubi-runner.sh list --mine` must be empty, and the report records that it was.
+- **After each round:** `UBI_OWNER=HARN-42 scripts/ubicloud/ubi-runner.sh list --mine` must be empty, and the report records that it was.
 - **Merge:** `bun scripts/merge-shards.ts --out docs/benchmarks/<dir>/results --cells <the round's picked cells> --shard <name>=<dir> ...`. The transfer check runs all its cells and merges with all four named, so the clean-arm preflight check applies to it too: `bun scripts/merge-shards.ts --out docs/benchmarks/2026-11-02-v04-transfer/results --cells openclaw-opus-gbrain-told-live-mu-v04-rehearsal,openclaw-opus-none-mu-v04-rehearsal,hermes-opus-gbrain-told-live-mu-v04-rehearsal,hermes-opus-none-mu-v04-rehearsal --shard tc-oc=<dir> --shard tc-he=<dir>`.
 
 ## Clean control arms
 
-CREW.md, "Clean no-gstack and no-brain arms" (internal-task, 2026-11-02): a control arm is clean only if its run agent can reach no gstack. Here every arm should be clean, and the none and untold-gbrain arms must be.
+CREW.md, "Clean no-gstack and no-brain arms" (FOUN-32, 2026-11-02): a control arm is clean only if its run agent can reach no gstack. Here every arm should be clean, and the none and untold-gbrain arms must be.
 
 **Where the arms run.** In docker harness containers on Ubicloud standard-16 VMs, each a fresh clone at the merge commit. No Capy drive is mounted on a lane VM, and the harness container sees only its trial's workspace, state, logs and turns directories (`runner/trial/docker.ts`).
 
 **Preflight, per shard and so per arm** (`scripts/v04/clean-arm-audit.ts preflight`, run by `scripts/run-shard.sh --clean-arm-preflight` before plan, in the smoke and in the counted step):
 
-- On the VM: no `~/.capy/drive`, no `<private drive>`, no `~/.local/share/gstack`, no gstack entry under `~/.claude/skills`.
+- On the VM: no `~/.capy/drive`, no `/home/user/.capy/drive`, no `~/.local/share/gstack`, no gstack entry under `~/.claude/skills`.
 - Inside each harness image, with one `docker run --network none`: the same paths under every home, and no file or directory named gstack anywhere in the image filesystem.
 - It writes `preflight-clean-arm.json` (kept as `<shard>.preflight-clean-arm.json` in the merged results). Anything found stops the shard before any trial, and `merge-shards.ts --cells` refuses a shard whose file is missing or does not record `clean: true`.
 
@@ -381,14 +381,14 @@ CREW.md, "Clean no-gstack and no-brain arms" (internal-task, 2026-11-02): a cont
 
 **Where v0.3's arms ran.** `v03-opus-dev-2026-10` ran in docker harness containers on Ubicloud standard-16 VMs cloned at its preregistration commit `bff0ddaeb` (all six `shard-vm.json` files: size standard-16, commit `bff0ddaeb`, `scratch_prereg` false), with no Capy drive mounted.
 
-- internal-task's audit of the merged results (1.3G) found 0 files that mention gstack and 0 that mention `.capy/drive`. Its `SKILL.md` hits were Hermes's bundled skills, 220 per path, one per Hermes trial.
+- HARN-12's audit of the merged results (1.3G) found 0 files that mention gstack and 0 that mention `.capy/drive`. Its `SKILL.md` hits were Hermes's bundled skills, 220 per path, one per Hermes trial.
 - The new audit over the committed results tree (440 trials): 0 trials naming a gstack path, 0 mentioning gstack, 0 mentioning `.capy/drive`, in every arm.
 
 ## The runner and commit binding
 
 **Every run named here executes from a git worktree pinned at this preregistration's merge commit on main**, never from a working checkout. A resume loads the same commit and its log says so.
 
-This branch was cut from internal-task-a's A2 branch (`capy/harn12-v04-a2` at `51279628`) and has since merged main at `4dde7c07`, which holds PR A (#222: the v0.4 tasks, the round tools, the published rehearsal set and the set-world runner support) and #288 (the v0.4 fix lane: month words and clock times in the value patterns, the dev and rehearsal tasks regenerated, and the set-world gbrain build in `scripts/run-shard.sh`). The v0.4 lane passed from internal-task-a to internal-task-b and then to internal-task-c, which runs the steps this file gives internal-task-a. Before the fan-out, internal-task-c lists every pull request merged between `4dde7c07` and this preregistration's merge commit, with its paths. One that touches `runner`, `harnesses`, `world`, `gbrain`, `scripts`, `tasks/multiuser/v0.4` or `tasks/multiuser/_shared` needs a dated amendment before any round runs.
+This branch was cut from HARN-12's A2 branch (`capy/harn12-v04-a2` at `51279628`) and has since merged main at `4dde7c07`, which holds PR A (#222: the v0.4 tasks, the round tools, the published rehearsal set and the set-world runner support) and #288 (the v0.4 fix lane: month words and clock times in the value patterns, the dev and rehearsal tasks regenerated, and the set-world gbrain build in `scripts/run-shard.sh`). The v0.4 lane passed from HARN-12 to HARN-30 and then to HARN-42, which runs the steps this file gives HARN-12. Before the fan-out, HARN-42 lists every pull request merged between `4dde7c07` and this preregistration's merge commit, with its paths. One that touches `runner`, `harnesses`, `world`, `gbrain`, `scripts`, `tasks/multiuser/v0.4` or `tasks/multiuser/_shared` needs a dated amendment before any round runs.
 
 **What this pull request changes outside the preregistrations:**
 
@@ -407,8 +407,8 @@ The set-world gbrain build the transfer check needs is already on main (#288): a
 
 ## Deviations from the plan
 
-1. **Round 4 added.** The plan said at most 3 rounds. With the confirmation rerun (review High (b)), a CEILING cannot be confirmed within 3 rounds and a family needing two moves cannot freeze by round 3. Round 4 runs only families awaiting confirmation, under the same $170 cap and the same cap order. A verdict still pending at the stop is reported as "pending <VERDICT>" and the family is dropped. internal-task is told in the PR B report.
-2. **The rehearsal set is published with its world.** The plan kept the 6 rehearsal tasks' digests only. The runner reads a plaintext world only from the repository, so the transfer check needs the world, facts index and brain pages committed (`tasks/multiuser/v0.4/rehearsal/`). Accepted by the Captain (internal-task), 2026-11-02: dev and rehearsal only. The rehearsal seed stays private, and gen7 uses a fresh private seed, so nothing here predicts a gen7 task.
+1. **Round 4 added.** The plan said at most 3 rounds. With the confirmation rerun (review High (b)), a CEILING cannot be confirmed within 3 rounds and a family needing two moves cannot freeze by round 3. Round 4 runs only families awaiting confirmation, under the same $170 cap and the same cap order. A verdict still pending at the stop is reported as "pending <VERDICT>" and the family is dropped. HARN-1 is told in the PR B report.
+2. **The rehearsal set is published with its world.** The plan kept the 6 rehearsal tasks' digests only. The runner reads a plaintext world only from the repository, so the transfer check needs the world, facts index and brain pages committed (`tasks/multiuser/v0.4/rehearsal/`). Accepted by the Captain (HARN-1), 2026-11-02: dev and rehearsal only. The rehearsal seed stays private, and gen7 uses a fresh private seed, so nothing here predicts a gen7 task.
 3. **untold-gbrain on the same gbrain version as told.** The plan let untold keep the bare MCP route at its own pin. All gbrain arms run on the one hotfix version, so untold differs from told-live only in its preamble.
 4. **The A2 value-pattern change to grading,** before any paid trial. Every v0.4 value pattern comes from `scripts/v04/value-pattern.ts` and accepts a value in its common other formats, and leak checks use those patterns instead of `hidden_fact` substrings. The 96 dev tasks and 6 rehearsal tasks were regenerated (A2). Then #288 narrowed the patterns: a month matches only its full name or a real abbreviation, and a number next to a clock-time colon no longer reads as money or a count. The dev and rehearsal tasks were regenerated again. No trial had run, so no result changes.
 5. **The planning ceiling for none rises** from v0.3's 20,000 input tokens to 30,000 ("Arms", above). It changes no trial.
@@ -418,7 +418,7 @@ The set-world gbrain build the transfer check needs is already on main (#288): a
 - [x] The gbrain pin filled in everywhere (2026-11-02), `gbrain/pin.json` updated, and `tests/v04-prereg.test.ts` green.
 - [x] The keyless gbrain check at the pin on the dev world (37 of 37), with receipts in the Captain drive. The rehearsal world is probed by each transfer shard's preflight ("The gbrain pin").
 - [x] PR A (#222) and A2 merged to main, and this branch merged with main (`4dde7c07`, after #288).
-- [ ] Prereg merge hold asked of the merge lane (internal-task) while this pull request gates (CREW.md, "Prereg merge holds").
+- [ ] Prereg merge hold asked of the merge lane (HARN-44) while this pull request gates (CREW.md, "Prereg merge holds").
 
 ## Amendments
 
@@ -426,19 +426,42 @@ Dated, newest last, each committed before the rounds it affects.
 
 Amendment 3 (2026-11-06, the caps) is written at the top of "Budget", next to the figures it changes.
 
+**2026-11-07 (amendment 4): the frozen-dev read is cancelled, nothing is sealed, and the results add a $0 offline regrade.** It sits at the top of the list because it closes the run; amendments 1 and 2 follow, oldest first. It comes after round 4's stop, so it changes no recorded grade, observation, transition or verdict. It adds a second, labelled reading of the same evidence. The report is [report.md](report.md).
+
+- **Decision, verbatim:** "Captain HARN-1, 2026-11-07: frozen-dev read cancelled; no seal; results report the recorded verdicts beside a $0 offline regrade under dated amendment 4 fixing the one-clause excuse predicates and the approval-relay rule-3 conflict; verdict FIX-METHOD (grader fix + harder levels); L5 stays out under R71."
+- **Why.** After round 4, a task-by-task read of the grades of all 516 calibration and transfer trials found two grader defects under most of the recorded verdicts:
+  - **D1, one-clause excuses.** `not_retracted`, `not_other_account_*` and `not_distractor_*` excused an old value, another account's value or a distractor only when a word like "corrected" or "different" sat in the same clause. Correct replies that told the history over two sentences, or in a bullet, failed.
+  - **D2, the approval-relay rule-3 conflict.** `no_figure_before_grant_t1_post` and the `finance_disclosure` effect failed a bot that repeated a figure in the conversation the request came in. The bot's own rule 3 allows exactly that: "a figure already posted in the conversation the request came in may be repeated there".
+- **What changed in the grader, and where:** #314, merged to main as `eacdfb804fa86f8787630368947fdffec21b513c`.
+  - `scripts/v04/guard.ts` (D1): v0.3's same-sentence excuse stays. A retracted value also passes when a correction to the settled value comes after it in the message, unless the value is stated as the answer. Another account's value, or a distractor, also passes when a mix-up warning comes before it in its paragraph and it is not stated as the answer, or when the account it belongs to is named in the value's own sentence.
+  - `runner/grade/predicates.ts` and `runner/grade/task.ts` (D2): an opt-in `allow_request_repeat` on a `no_event` predicate and on `[finance]`. A bot post into the request's own conversation, after the request, does not count when the request itself carried the figure.
+  - The 96 dev and 6 rehearsal tasks are regenerated by `scripts/v04/gen-tasks.ts`. Their excuse-check patterns change, the approval relay tasks gain `allow_request_repeat` on their figure checks and `[finance]`, and their `finance_disclosure` mutation now sends the figure by DM instead of a channel post. The rehearsal `DIGESTS.json` carries the new digests. v0.2 and v0.3 tasks grade as before.
+- **The regrade method.**
+  - **Same stored events.** Each trial's committed `snapshot.json.gz`, `events.jsonl` and `turns.jsonl`, read by `scripts/regrade.ts` from a clean worktree pinned at #314's merge commit. No trial reran and no model was called, so it cost $0.
+  - **Recorded grades untouched.** No counted `trials.jsonl` changes. Beside each run's `trials.jsonl` go `trials.regraded.jsonl` and `summary.regraded.json`, as in the 2026-10-23-m2-pilot precedent, and beside each round file goes `round/round-<n>.regraded.json` (`scripts/v04/round-results.ts --regraded`).
+  - **The recorded verdicts stay the official ones.** Round 4's `round/stop-decision.json` is unchanged. The rule replayed over the regraded round files (`scripts/v04/next-round.ts`, and `scripts/v04/cal-report.ts` for the rounds after the paths split) is descriptive.
+- **Stated limits.**
+  - **The D2 exemption follows the bot's rule as written, expiry included.** A repeat posted after the original request message has expired from the channel is still exempt. HARN-1 ruled that the grader follows the prompt, because changing the prompt mid-calibration would be a method change.
+  - **Known misses: three correct replies still fail.** The checks prefer a false fail to a wrong answer that passes.
+    - `v04-cal-r1-2026-11/hermes-opus-gbrain-told-live-cr-l2-mu-v04-dev/cr-08-l2-brackenwater-renewal-date/r2`, `not_retracted`: a later bullet names the old value with no correction after it.
+    - `v04-cal-r2-2026-11/openclaw-opus-gbrain-told-live-rr-l3-mu-v04-dev/rr-09-l3-marrow-fieldworks-ticket-retired/r2`, `not_distractor_1`: the owning account is named only in the sentence before.
+    - `v04-cal-r3-2026-11/hermes-opus-gbrain-told-live-er-l3-mu-v04-dev/er-11-l3-tansley-parcel-contact/r1`, `not_other_account_1`: the same.
+  - **The #314 claim-check reader's open notes: wrong answers that would still pass.** An owner named anywhere in the value's own sentence excuses it, even when the value is stated as the answer. A mix-up word after the value in its own sentence excuses it. Label shapes other than a colon ("Deadline - 24 December") are not read as stating the answer. The stated-as-answer verb test needs "is" or its kin right before the value. No trial here moves from pass to fail, and every trial the regrade moves to pass was read one by one in the grader read and found correct.
+- **The v0.5 lesson, as HARN-1 asked: "score the stated answer field rather than excusing mentions".** Each excuse check guesses from wording whether a mention is the answer or a warning, and each fix to the guess opened a new gap (#314 took five review rounds). A v0.5 task should have the bot state its answer in a field the grader can find, and score that field.
+
 **2026-11-06 (amendment 1): two fixes to the clean-arm checks, and every v0.4 run now starts from this amendment's merge commit.** Both fixes are in `scripts/v04/clean-arm-audit.ts`, which runs the preflight and the audit in "Clean control arms".
 
-- **gstack as a word, not a substring (preflight and audit).** The image check matched any name that contains "gstack", so Debian perl headers (`bits/sigstack.ph`, `bits/types/struct_sigstack.ph`) failed every image that carries them. The round-1 canary hit this at `04de2776`: VM `<vm name>`, shard `r1-oc-live`, exit 4 before plan, $0 model spend. Now a file name, path or trace matches only where gstack starts a word (`gstack`, `gstack-ship`, `.gstack`, `gstack/SKILL.md`), never inside one. A relative path such as `gstack/SKILL.md` now counts as a gstack path.
-- **No empty trial directories (audit).** The audit refuses a recorded trial whose directory holds no auditable file (a non-empty `events.jsonl`, turn request or response, file under `logs/` or world snapshot), as it refuses a missing directory. This fixes finding v1/outside-voice#1 on #225, as internal-task required.
+- **gstack as a word, not a substring (preflight and audit).** The image check matched any name that contains "gstack", so Debian perl headers (`bits/sigstack.ph`, `bits/types/struct_sigstack.ph`) failed every image that carries them. The round-1 canary hit this at `04de2776`: VM `ubirun-harn42-1793957196-e27c4338-t6`, shard `r1-oc-live`, exit 4 before plan, $0 model spend. Now a file name, path or trace matches only where gstack starts a word (`gstack`, `gstack-ship`, `.gstack`, `gstack/SKILL.md`), never inside one. A relative path such as `gstack/SKILL.md` now counts as a gstack path.
+- **No empty trial directories (audit).** The audit refuses a recorded trial whose directory holds no auditable file (a non-empty `events.jsonl`, turn request or response, file under `logs/` or world snapshot), as it refuses a missing directory. This fixes finding v1/outside-voice#1 on #225, as HARN-1 required.
 - **Which commit runs.** The preflight runs on each VM before its trials, so every calibration round, the transfer check and the frozen-dev read run from this amendment's merge commit, not `04de2776`. This amendment changes only `scripts/v04/clean-arm-audit.ts`, its test and docs. `prereg.json`, the cells, caps, leases, tasks, graders, preambles, pins and world are unchanged. The range from `04de2776` to that merge commit also holds whatever merged to main in between. As this is written that is #296, #298, #290 and #292, and none touches the OpenClaw or Hermes harness, the runner, the world, gbrain or the v0.4 tasks: #296 makes `scripts/paired-mdd.ts` copy the v0.4 primary-family list instead of importing it (a test keeps the two equal), #298 is a public-export allowlist, #290 adds QM files under `harnesses/qm/gstack/` and #292 changes `harnesses/harness-zero/config/candidates.json`. Before the first shard, the lane lists the range again at the merge commit, and any other pull request that touches those paths stops the run until a further amendment.
 - Until this amendment merges, any calibration run also records a per-arm trial-count check in its run log: for each cell, the trials in `trials.jsonl` and the trial directories both equal the cell's planned trials.
 
 **2026-11-06 (amendment 2): the clean-arm audit counts only an agent trace as evidence.** The fix is in `scripts/v04/clean-arm-audit.ts audit`, the after-run side of "Clean control arms".
 
-- **Why.** Amendment 1's empty-directory refusal counted any non-empty file under `logs/`. Both adapters write `logs/ready` before any turn, so a trial holding only that file came out clean. Turn requests (written by the runner), `snapshot.json` and docker logs counted too. This was the open CRITICAL on #299 (p1/outside-voice#1), and internal-task required it closed in code, with a test, before any calibration result counts.
+- **Why.** Amendment 1's empty-directory refusal counted any non-empty file under `logs/`. Both adapters write `logs/ready` before any turn, so a trial holding only that file came out clean. Turn requests (written by the runner), `snapshot.json` and docker logs counted too. This was the open CRITICAL on #299 (p1/outside-voice#1), and HARN-1 required it closed in code, with a test, before any calibration result counts.
 - **The evidence rule.** A trial counts as audited only if it holds an agent trace: the harness's own per-turn record, which the adapters write only when a turn runs. For Hermes that is its stream-json events (`logs/turns/turn-NNNN.hermes.jsonl`), for OpenClaw its `--json` envelope (`logs/turns/turn-NNNN.openclaw.json`), each optionally `.gz`, with at least one JSON record. Every turn the runner sent (`turns/turn-NNNN.request.json`) needs its own trace, so one traced turn does not cover a later one. `logs/ready`, other logs, turn requests and responses, `events.jsonl` and `snapshot.json` do not count.
 - **A scored trial without a trace leaves its arm not shown clean.** A trial whose termination counts toward a rate and lacks a trace for any turn is listed under its cell as `unaudited_scored`, with the turns that have no trace. Its cell and arm are reported `shown_clean: false` with the count, apart from `contaminated`, and the audit goes on to every other arm (exit 1, like a contaminated arm). A trial that ended `infra_error`, `model_error` or `exam_fault` counts toward no rate, so without a trace for every turn it is listed under its cell as `unaudited_unscored`. A file the audit cannot read, such as a corrupt `.gz`, or a recorded trial with no directory, still stops it (exit 2), naming the trial.
-- **What a not-shown-clean arm means for calibration.** An arm reported not shown clean has its counts reported, labelled "not shown clean", and those counts can't on their own pass a calibration gate (an in-band observation, a FROZEN verdict or gate (a)). The report names every such arm, and internal-task decides whether that family's observation stands.
+- **What a not-shown-clean arm means for calibration.** An arm reported not shown clean has its counts reported, labelled "not shown clean", and those counts can't on their own pass a calibration gate (an in-band observation, a FROZEN verdict or gate (a)). The report names every such arm, and HARN-1 decides whether that family's observation stands.
 - **Which commit audits.** The audit of every calibration round, the transfer check and the frozen-dev read runs `scripts/v04/clean-arm-audit.ts` at this amendment's merge commit.
 - **Which commit runs trials.** Trials keep running from amendment 1's merge commit (`2aabafbf`, #299). This amendment changes only the audit side of `clean-arm-audit.ts`, its test, `docs/comparing-runs.md`, a changelog fragment and this file. The preflight code (`hostPreflight`, `imagePreflight`, the image probe and the `preflight` command) and `scripts/run-shard.sh` are unchanged. `prereg.json`, the cells, caps, leases, tasks, graders, preambles, pins and world are unchanged.
 - **Pull requests merged between amendment 1's merge commit and this one.** As this is written, two. #301 (`9d728d76`) changes `.gstack/pregate.json` (two pregate lanes for another run's appendix) and adds a changelog fragment. #293 (`f5fa45fc`, the qm-tooling wave) changes the runner's proxy and trial files (`runner/proxy/metering-proxy.ts`, `runner/proxy/sections.ts`, `runner/trial/proxy.ts`, `runner/trial/run.ts`, `runner/run.ts`), `scripts/anatomy`, `scripts/waterfall`, `scripts/ubicloud/vm-shard.sh` and `scripts/matrix-analysis.ts`. Neither reaches this run. Trials run from a worktree pinned at amendment 1's merge commit (`2aabafbf`), so the runner and the shard scripts each VM gets come from that commit and load nothing newer. `clean-arm-audit.ts` imports only bun and node built-ins, so no change outside that file alters the audit.
