@@ -231,18 +231,25 @@ describe.skipIf(!haveImage)('claude-code Agent SDK driver (docker, ' + IMAGE + '
     if (process.env.HE_SDK_CAPTURE_OUT) writeFileSync(process.env.HE_SDK_CAPTURE_OUT, JSON.stringify(capture, null, 1) + '\n');
     console.log('SDK_SYSTEM_CAPTURE ' + JSON.stringify(Object.fromEntries(Object.entries(capture).map(([k, v]) => [k, { blocks: v.system.map((s) => s.length), heads: v.system.map((s) => s.slice(0, 80)), user_agent: v.user_agent, listing_in: v.listing_in, tools: v.tool_names.length, max_tokens: v.max_tokens }]))));
     const [cli, preset, stub] = CONFIGS.map((c) => capture[c]!);
-    const billing = (entry: string) => new RegExp('^the billing header: cc_version=' + CLI_VERSION.replace(/\./g, '\\.') + '\\.[0-9a-f]+; cc_entrypoint=' + entry + ';$');
-    const IDENTITY = "the Agent SDK identity line";
+    const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
+    const BILLING_HEADER_NAME_SHA256 = '0385b570c92841a6d2f4f2c00eefcfd50672878b8e471e2ace10e34bffc39614';
+    const IDENTITY_SHA256 = '0d7062851dd7bd7e66d4be4f12ac4951e3d2f587ec408295333a49963bd3f6b7';
+    const expectBilling = (block: string, entry: string) => {
+      const colon = block.indexOf(': ');
+      expect(colon).toBeGreaterThan(0);
+      expect(sha256(block.slice(0, colon))).toBe(BILLING_HEADER_NAME_SHA256);
+      expect(block.slice(colon + 2)).toMatch(new RegExp('^cc_version=' + CLI_VERSION.replace(/\./g, '\\.') + '\\.[0-9a-f]+; cc_entrypoint=' + entry + ';$'));
+    };
     // cli: billing header (cc_entrypoint=sdk-cli), the identity line, then the guidance block with the skill rule internal-task sized.
     expect(cli.system).toHaveLength(3);
-    expect(cli.system[0]).toMatch(billing('sdk-cli'));
-    expect(cli.system[1]!.trim()).toBe(IDENTITY);
+    expectBilling(cli.system[0]!, 'sdk-cli');
+    expect(sha256(cli.system[1]!.trim())).toBe(IDENTITY_SHA256);
     expect(cli.system[2]).toContain('When the user types `/<skill-name>`, invoke it via Skill.');
     expect(cli.system[2]!.length).toBe(6210);
     expect(cli.user_agent).toBe('claude-cli/' + CLI_VERSION + ' (external, sdk-cli)');
     // sdk-preset: the same identity line and guidance block byte for byte; only the entrypoint in the billing header and the user agent differ.
     expect(preset.system).toHaveLength(3);
-    expect(preset.system[0]).toMatch(billing('sdk-ts'));
+    expectBilling(preset.system[0]!, 'sdk-ts');
     expect(preset.system.slice(1)).toEqual(cli.system.slice(1));
     expect(preset.user_agent).toBe('claude-cli/' + CLI_VERSION + ' (external, sdk-ts, agent-sdk/' + SDK_VERSION + ')');
     // sdk-default: the stub, the billing header and the identity line with no guidance block.

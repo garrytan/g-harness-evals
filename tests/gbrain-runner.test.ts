@@ -165,6 +165,14 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         expect(c.gbrain).toEqual({ surface: 'starter' }); expect(c.config).toMatch(/^route-(tool|system|startup|hook|skill)$/); expect(c.tasks).toHaveLength(13);
         expect(p.cells).toHaveLength(9); expect(buildManifest(p, sha256, '2026-10-31T00:00:00Z').trials).toHaveLength(585); expect(c.ceiling).toEqual({ input_tokens: 80000, output_tokens: 6000 });
       }
+      else if (p.run_id.startsWith('h10-instruction-placement-')) {
+        // H10 (internal-task): one instruction placed through each route on Claude Code (cli and SDK drivers) on Opus 5.5 and Codex, Hermes and OpenClaw on gpt-6.1-sol, the bot-visible starter brain, 10 v0.3 dev tasks, one repetition; told cells carry the route-told preamble.
+        expect(c.task_set).toBe('v0.3'); expect(c.split).toBe('dev'); expect(c.repetitions).toBe(1); expect(c.network).toBe('internal'); expect(c.gbrain).toEqual({ surface: 'starter' });
+        expect(['claude-code', 'codex', 'hermes', 'openclaw']).toContain(c.harness); expect(c.model).toBe(c.harness === 'claude-code' ? 'anthropic:claude-opus-5-5' : 'openai:gpt-6.1-sol');
+        expect(c.config).toMatch(/^((sdk-preset|sdk-default)\+)?route-(tool|hook|once|system|startup|told|skill|placebo)$/); if (c.harness !== 'claude-code') expect(c.config).toMatch(/^route-/);
+        expect(c.preamble).toBe(c.config!.endsWith('route-told') ? 'tasks/multiuser/_shared/preamble.route-told.md' : undefined); expect(c.tasks).toHaveLength(10);
+        expect(p.cells).toHaveLength(30); expect(buildManifest(p, sha256, '2026-11-07T00:00:00Z').trials).toHaveLength(300); expect(c.ceiling).toEqual({ input_tokens: 80000, output_tokens: 6000 });
+      }
       else if (p.run_id.startsWith('v03-pilot-')) {
         // internal-task: the v0.3 dev pilot copies its source cells (told, told-company, told-scoped, verbs-told; none and gbrain-told-live) onto the v0.3 dev split, Haiku, five repetitions; no installer cell (gbrain#7489 is not in the pin).
         expect(c.task_set).toBe('v0.3'); expect(c.split).toBe('dev'); expect(c.repetitions).toBe(5); expect(c.model).toBe('anthropic:claude-haiku-5-5');

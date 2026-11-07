@@ -1,0 +1,1002 @@
+{
+  "schema_version": 1,
+  "run_id": "h10-instruction-placement-2026-11",
+  "question": "On the 10 public v0.3 dev tasks chosen for in-session repetition (cn-01 to cn-04, sc-01, sc-02, cr-01 to cr-04; 30 member turns, 10 repeat turns in 9 tasks), with the gbrain sidecar on the starter surface, for Claude Code 2.1.312 on anthropic:claude-opus-5-5 (cli driver, and the Agent SDK driver with the claude_code preset or with systemPrompt unset) and Codex 0.165.0, Hermes Agent v2026.9.24 (serve) and OpenClaw 2026.10.6 on openai:gpt-6.1-sol, one repetition: when gbrain's 289-byte brain-first rule (harnesses/routes/instruction.md, sha256 4a81cb9b...) reaches the model through each route a harness supports (route-tool: none, the control; route-hook: a per-turn hook; route-once: the same hook on a session's first member turn only; route-system: the system prompt setting; route-startup: the startup file; route-skill: an untold brain-first skill; route-told: the same skill plus one preamble sentence; route-placebo: the per-turn hook carrying 289 bytes of neutral text), in what share of member turns does the agent call gbrain before its first reply of the turn (scripts/instruction-followed-h10.ts)? Family B, per harness, model and driver, Holm within each: each route minus its own control, paired on task and turn, plus the stub-effect family (sdk-default minus sdk-preset on told and on skill). Family A, pooled over preregistered pairs, Holm over two: repetition (route-once minus route-hook on repeat turns, 9-cluster floor) and placement (route-once minus route-system on all member turns). Discovery, load, pass and cost are descriptive. Between-harness differences are harness-and-model differences. Dev, no claim beyond these tasks.",
+  "tasks": {},
+  "wall_clock_s": {
+    "multiuser": 1500
+  },
+  "spend_cap_usd": 150,
+  "drop_order": [],
+  "minimum_v01": [
+    "claude-code-opus-gbrain-route-tool-mu-v03-dev",
+    "claude-code-opus-gbrain-route-hook-mu-v03-dev",
+    "claude-code-opus-gbrain-route-once-mu-v03-dev",
+    "claude-code-opus-gbrain-route-system-mu-v03-dev",
+    "claude-code-opus-gbrain-route-startup-mu-v03-dev",
+    "claude-code-opus-gbrain-sdk-preset-route-tool-mu-v03-dev",
+    "claude-code-opus-gbrain-sdk-preset-route-told-mu-v03-dev",
+    "claude-code-opus-gbrain-sdk-preset-route-skill-mu-v03-dev",
+    "claude-code-opus-gbrain-sdk-default-route-told-mu-v03-dev",
+    "claude-code-opus-gbrain-sdk-default-route-skill-mu-v03-dev",
+    "codex-sol-gbrain-route-tool-mu-v03-dev",
+    "codex-sol-gbrain-route-hook-mu-v03-dev",
+    "codex-sol-gbrain-route-once-mu-v03-dev",
+    "codex-sol-gbrain-route-system-mu-v03-dev",
+    "codex-sol-gbrain-route-startup-mu-v03-dev",
+    "codex-sol-gbrain-route-told-mu-v03-dev",
+    "codex-sol-gbrain-route-skill-mu-v03-dev",
+    "codex-sol-gbrain-route-placebo-mu-v03-dev",
+    "hermes-sol-gbrain-route-tool-mu-v03-dev",
+    "hermes-sol-gbrain-route-hook-mu-v03-dev",
+    "hermes-sol-gbrain-route-once-mu-v03-dev",
+    "hermes-sol-gbrain-route-system-mu-v03-dev",
+    "hermes-sol-gbrain-route-startup-mu-v03-dev",
+    "hermes-sol-gbrain-route-skill-mu-v03-dev",
+    "hermes-sol-gbrain-route-placebo-mu-v03-dev",
+    "openclaw-sol-gbrain-route-tool-mu-v03-dev",
+    "openclaw-sol-gbrain-route-hook-mu-v03-dev",
+    "openclaw-sol-gbrain-route-once-mu-v03-dev",
+    "openclaw-sol-gbrain-route-startup-mu-v03-dev",
+    "openclaw-sol-gbrain-route-skill-mu-v03-dev"
+  ],
+  "order": {
+    "kind": "interleave-task",
+    "seed": 20261107
+  },
+  "analysis": {
+    "family_a": {
+      "repetition": {
+        "pairs": [
+          {
+            "label": "claude-code opus cli",
+            "a": "claude-code-opus-gbrain-route-hook-mu-v03-dev",
+            "b": "claude-code-opus-gbrain-route-once-mu-v03-dev"
+          },
+          {
+            "label": "codex sol",
+            "a": "codex-sol-gbrain-route-hook-mu-v03-dev",
+            "b": "codex-sol-gbrain-route-once-mu-v03-dev"
+          },
+          {
+            "label": "hermes sol",
+            "a": "hermes-sol-gbrain-route-hook-mu-v03-dev",
+            "b": "hermes-sol-gbrain-route-once-mu-v03-dev"
+          },
+          {
+            "label": "openclaw sol",
+            "a": "openclaw-sol-gbrain-route-hook-mu-v03-dev",
+            "b": "openclaw-sol-gbrain-route-once-mu-v03-dev"
+          }
+        ],
+        "cluster_floor": 9
+      },
+      "placement": {
+        "pairs": [
+          {
+            "label": "claude-code opus cli",
+            "a": "claude-code-opus-gbrain-route-system-mu-v03-dev",
+            "b": "claude-code-opus-gbrain-route-once-mu-v03-dev"
+          },
+          {
+            "label": "hermes sol",
+            "a": "hermes-sol-gbrain-route-system-mu-v03-dev",
+            "b": "hermes-sol-gbrain-route-once-mu-v03-dev"
+          },
+          {
+            "label": "codex sol",
+            "a": "codex-sol-gbrain-route-system-mu-v03-dev",
+            "b": "codex-sol-gbrain-route-once-mu-v03-dev"
+          }
+        ],
+        "cluster_floor": 10
+      }
+    },
+    "headroom_max": 0.25
+  },
+  "cells": [
+    {
+      "id": "claude-code-opus-gbrain-route-tool-mu-v03-dev",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-tool",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "claude-code-opus-gbrain-route-hook-mu-v03-dev",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-hook",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "claude-code-opus-gbrain-route-once-mu-v03-dev",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-once",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "claude-code-opus-gbrain-route-system-mu-v03-dev",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-system",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "claude-code-opus-gbrain-route-startup-mu-v03-dev",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-startup",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "claude-code-opus-gbrain-sdk-preset-route-tool-mu-v03-dev",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "sdk-preset+route-tool",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "claude-code-opus-gbrain-sdk-preset-route-told-mu-v03-dev",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "sdk-preset+route-told",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal",
+      "preamble": "tasks/multiuser/_shared/preamble.route-told.md"
+    },
+    {
+      "id": "claude-code-opus-gbrain-sdk-preset-route-skill-mu-v03-dev",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "sdk-preset+route-skill",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "claude-code-opus-gbrain-sdk-default-route-told-mu-v03-dev",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "sdk-default+route-told",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal",
+      "preamble": "tasks/multiuser/_shared/preamble.route-told.md"
+    },
+    {
+      "id": "claude-code-opus-gbrain-sdk-default-route-skill-mu-v03-dev",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "sdk-default+route-skill",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "codex-sol-gbrain-route-tool-mu-v03-dev",
+      "harness": "codex",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-tool",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "codex-sol-gbrain-route-hook-mu-v03-dev",
+      "harness": "codex",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-hook",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "codex-sol-gbrain-route-once-mu-v03-dev",
+      "harness": "codex",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-once",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "codex-sol-gbrain-route-system-mu-v03-dev",
+      "harness": "codex",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-system",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "codex-sol-gbrain-route-startup-mu-v03-dev",
+      "harness": "codex",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-startup",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "codex-sol-gbrain-route-told-mu-v03-dev",
+      "harness": "codex",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-told",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal",
+      "preamble": "tasks/multiuser/_shared/preamble.route-told.md"
+    },
+    {
+      "id": "codex-sol-gbrain-route-skill-mu-v03-dev",
+      "harness": "codex",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-skill",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "codex-sol-gbrain-route-placebo-mu-v03-dev",
+      "harness": "codex",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-placebo",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "hermes-sol-gbrain-route-tool-mu-v03-dev",
+      "harness": "hermes",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-tool",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "hermes-sol-gbrain-route-hook-mu-v03-dev",
+      "harness": "hermes",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-hook",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "hermes-sol-gbrain-route-once-mu-v03-dev",
+      "harness": "hermes",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-once",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "hermes-sol-gbrain-route-system-mu-v03-dev",
+      "harness": "hermes",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-system",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "hermes-sol-gbrain-route-startup-mu-v03-dev",
+      "harness": "hermes",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-startup",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "hermes-sol-gbrain-route-skill-mu-v03-dev",
+      "harness": "hermes",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-skill",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "hermes-sol-gbrain-route-placebo-mu-v03-dev",
+      "harness": "hermes",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-placebo",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "openclaw-sol-gbrain-route-tool-mu-v03-dev",
+      "harness": "openclaw",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-tool",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "openclaw-sol-gbrain-route-hook-mu-v03-dev",
+      "harness": "openclaw",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-hook",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "openclaw-sol-gbrain-route-once-mu-v03-dev",
+      "harness": "openclaw",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-once",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "openclaw-sol-gbrain-route-startup-mu-v03-dev",
+      "harness": "openclaw",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-startup",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    },
+    {
+      "id": "openclaw-sol-gbrain-route-skill-mu-v03-dev",
+      "harness": "openclaw",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3",
+      "config": "route-skill",
+      "gbrain": {
+        "surface": "starter"
+      },
+      "tasks": [
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "cr-01-marrow-agrisupply-site-retraction",
+        "cr-02-quarrendon-seat-count-retraction",
+        "cr-03-brackenwater-renewal-date-retraction",
+        "cr-04-marrow-agrisupply-seat-count"
+      ],
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal"
+    }
+  ]
+}

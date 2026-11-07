@@ -49,6 +49,7 @@ Codes like internal-task in receipts name internal work lanes.
   - [2026-11-06-harness-zero-h2h/](benchmarks/2026-11-06-harness-zero-h2h/PREREGISTRATION.md): `harness-zero-h2h-2026-11`, preregistered 2026-11-06; Harness Zero's Phase D, its frozen lean candidate against Claude Code, OpenClaw, Hermes Agent and QM on Opus 5.5 and against Codex, OpenClaw and Hermes Agent on GPT-6.1 Sol, plus the baselines and a gbrain trio, on the second v0.3 dev draw (`v0.3/dev-draw-2`, labelled dev, same item pool): 15 cells, 1,260 trials, cap $364.84. Preregistration only, no results yet.
   - [2026-11-06-prompt-archaeology-joint/](benchmarks/2026-11-06-prompt-archaeology-joint/PREREGISTRATION.md): `prompt-archaeology-joint-probe-2026-11` and `prompt-archaeology-joint-2026-11`, preregistered 2026-11-06; the joint-cut follow-up to prompt-archaeology-2026-11: its cuts applied together (Claude Code joint and minimal, OpenClaw minimal and Codex no-identity, plus OpenClaw minimal on GPT-6.1 Sol as a secondary pair) on the v0.4 dev tasks of the five primary families at L2 or L3, Opus 5.5 and GPT-6.1 Sol, no gstack and no gbrain. It supersedes the earlier run's joint-cut sketch and retires run id `prompt-archaeology-jointcut-2026-11`. Preregistration only, no results yet.
 Design only: the folder holds `design.json` instead of a `prereg.json`, and no trial has run. Preregistration only, no results yet.
+  - [2026-11-07-h10-instruction-placement/](benchmarks/2026-11-07-h10-instruction-placement/PREREGISTRATION.md): `h10-instruction-placement-2026-11`, preregistered 2026-11-07; where an instruction must live to be obeyed: gbrain's 289-byte brain-first rule through each route (none, per-turn hook, one-time hook, system prompt, startup file, untold and told skill, placebo hook) on Claude Code (Opus 5.5, cli and Agent SDK drivers) and Codex, Hermes and OpenClaw (GPT-6.1 Sol), 10 public v0.3 dev tasks, 30 cells, 300 trials, cap $150 with smokes included. Both conditional blocks (particle-1, the internal-task slot) dropped before the preregistration. Preregistration only, no results yet.
 - [budget-ledger.md](budget-ledger.md): the program's spend ledger, one row per lane of paid work (written 2026-10-26 beside this index).
 - [comparing-runs.md](comparing-runs.md): how two cells or two runs are compared: the paired, task-clustered estimator, the sign-flip test, Holm, the minimum detectable difference, what "not distinguished at N tasks" means, each comparison script's flags and outputs, and the exact commands every counted run's report names.
 - [decisions.md](decisions.md): the decisions by Garry Tan and the coordinating agent that shaped a counted run, one line each (written 2026-10-26 beside this index).
@@ -74,6 +75,10 @@ Design only: the folder holds `design.json` instead of a `prereg.json`, and no t
 - [ubicloud.md](ubicloud.md): the Ubicloud shard lane: the scripts that put one shard per VM, how a run fans out and comes back, the check lane, costs and limits.
 
 ## Changelog
+
+### 2026-11-07: h10-instruction-placement-2026-11 listed (internal-task)
+
+The benchmarks list gains a line for the H10 instruction-placement preregistration, saying that no trial has run and that both conditional blocks dropped. Why: the folder is new on this branch.
 
 ### 2026-11-06: prompt-archaeology-joint preregistration listed (internal-task)
 

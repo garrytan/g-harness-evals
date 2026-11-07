@@ -49,7 +49,7 @@ On `sdk-preset` and `sdk-default`, each turn runs [sdk-driver.ts](sdk-driver.ts)
 
 | Driver | System field | User agent |
 |---|---|---|
-| `cli` | billing header (`cc_entrypoint=sdk-cli`), `the Agent SDK identity line`, then a 6,210-character guidance block with `When the user types /<skill-name>, invoke it via Skill.` | `claude-cli/2.1.312 (external, sdk-cli)` |
+| `cli` | billing header (`cc_entrypoint=sdk-cli`), the 62-character Agent SDK identity line (sha256 `0d7062851dd7`), then a 6,210-character guidance block with `When the user types /<skill-name>, invoke it via Skill.` | `claude-cli/2.1.312 (external, sdk-cli)` |
 | `sdk-preset` | the same identity line and guidance block, byte for byte; the billing header says `cc_entrypoint=sdk-ts` | `claude-cli/2.1.312 (external, sdk-ts, agent-sdk/0.3.312)` |
 | `sdk-default` | the stub: the `sdk-ts` billing header and the identity line, no guidance block | same as `sdk-preset` |
 
