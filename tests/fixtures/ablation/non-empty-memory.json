@@ -1,0 +1,102 @@
+{
+ "note": "internal-task (plan fix F1): non-empty memory on the Claude Code and Codex layer maps, keyless. Every capture behind the maps started with empty memory, so each case edits the recorded corpus requests (tests/ablation.test.ts CORPUS) the way a trial with persisted memory would, and names how the filter (runner/proxy/ablate.ts) must classify each request per arm. counted: matched means an agent-turn request with no did-not-take and no partial; unmatched means it counts against treatment validity (joint-gate.ts validityOf). The memory text is never removed. Placements: Claude Code's MEMORY.md index after its # Memory section (its own prompt says MEMORY.md is loaded into context each session), and a recalled memory as a system-reminder part of the first user message; Codex's memory summary as an extra developer part, and its memories pipeline (memories.extract_model and memories.consolidation_model, both the cell model; features.memories is off at the current pin) as a request no map family names.",
+ "memory": "## MEMORY.md\n\n- [Marrow staging host](marrow-staging-host.md) - staging.marrow.example, deploys go through #ops\n- [Dana's updates](dana-updates.md) - short status updates with links to every changed page\n\n",
+ "cases": [
+  {
+   "id": "claude-code-memory-index-in-system",
+   "map": "claude-code.anthropic-messages.layers.json",
+   "edit": "system-before",
+   "block": 2,
+   "before": "# Environment\n -",
+   "arms": {
+    "joint": [
+     "tool-descriptions",
+     "memory-skills"
+    ],
+    "minimal": "all"
+   },
+   "expect": {
+    "family": "agent",
+    "kind": "agent-turn",
+    "unknown_family": false,
+    "did_not_take": false,
+    "partial": false,
+    "insert_spans": [
+     "agent.system[2].s5"
+    ],
+    "counted": "matched"
+   }
+  },
+  {
+   "id": "claude-code-recalled-memory-user-part",
+   "map": "claude-code.anthropic-messages.layers.json",
+   "edit": "user-part",
+   "wrap": [
+    "<system-reminder>\nContents of MEMORY.md (user's auto-memory, persists across conversations):\n\n",
+    "</system-reminder>"
+   ],
+   "arms": {
+    "joint": [
+     "tool-descriptions",
+     "memory-skills"
+    ],
+    "minimal": "all"
+   },
+   "expect": {
+    "family": "agent",
+    "kind": "agent-turn",
+    "unknown_family": false,
+    "did_not_take": false,
+    "partial": false,
+    "insert_spans": [],
+    "counted": "matched"
+   }
+  },
+  {
+   "id": "codex-memory-summary-developer-part",
+   "map": "codex.openai-responses.layers.json",
+   "edit": "developer-part",
+   "developer": 1,
+   "wrap": [
+    "<memory_summary>\n",
+    "</memory_summary>"
+   ],
+   "arms": {
+    "full": [],
+    "no-identity": [
+     "identity"
+    ]
+   },
+   "expect": {
+    "family": "agent",
+    "kind": "agent-turn",
+    "unknown_family": false,
+    "did_not_take": false,
+    "partial": false,
+    "insert_spans": [],
+    "counted": "matched"
+   }
+  },
+  {
+   "id": "codex-memories-pipeline-request",
+   "map": "codex.openai-responses.layers.json",
+   "edit": "pipeline",
+   "instructions": "You are a memory writing agent. Read the rollout below and write durable memories as short notes.\n",
+   "arms": {
+    "full": [],
+    "no-identity": [
+     "identity"
+    ]
+   },
+   "expect": {
+    "family": null,
+    "kind": null,
+    "unknown_family": true,
+    "did_not_take": false,
+    "partial": false,
+    "insert_spans": [],
+    "counted": "unmatched"
+   }
+  }
+ ]
+}

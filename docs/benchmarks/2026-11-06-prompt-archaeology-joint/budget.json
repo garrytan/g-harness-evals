@@ -1,0 +1,58 @@
+{
+  "eval": "prompt-archaeology-2026-11 (R71 ceiling $2,000 all-in, counted from 2026-11-03T13:30Z)",
+  "r71": {
+    "ceiling_usd": 2000,
+    "spent_usd": 1133.03,
+    "remaining_usd": 866.97,
+    "lane_cap_usd": 500,
+    "cap_usd": 500,
+    "rule": "cap = min($500, $2,000 minus the tally); all-in: paid model calls, judges, Ubicloud VMs and the thread and subagents' own model use; a cap stop is final"
+  },
+  "items": {
+    "own_model_use": {
+      "expected_usd": 120,
+      "bound_usd": 150
+    },
+    "ubicloud_vms": {
+      "expected_usd": 10.14,
+      "expected_all_l3_usd": 12.26,
+      "bound_usd": 25
+    },
+    "probe": {
+      "projected_usd": 43.82,
+      "bound_usd": 69.5,
+      "basis": "the sum of the probe shard leases, the spend cap in prereg-probe.json; no smoke leases"
+    },
+    "main": {
+      "projected_all_l2_usd": 150.59,
+      "projected_all_l3_usd": 204.09,
+      "bound_usd": 245,
+      "basis": "the spend cap in prereg.json: every main shard lease plus any smoke lease, sized after the gate"
+    },
+    "reserve_usd": 10.5
+  },
+  "total_bound_usd": 500,
+  "cap_order_planning": {
+    "all_l2": {
+      "primary_leases_usd": 230,
+      "with_openclaw_sol_usd": 303,
+      "without_codex_identity_usd": 190.5,
+      "primary_projected_usd": 150.59,
+      "outcome": "the four primary pairs fit; the OpenClaw Sol pair does not run"
+    },
+    "all_l3": {
+      "primary_leases_usd": 305,
+      "with_openclaw_sol_usd": 399,
+      "without_codex_identity_usd": 253,
+      "primary_projected_usd": 204.09,
+      "outcome": "P1 to P3 do not fit at 80 trials per cell; no main run, report with the MDD"
+    },
+    "note": "planning only, from launch 3 costs per turn; the binding check uses the probe's measured costs per turn after the gate"
+  },
+  "vm_hours_est": {
+    "probe": 4.8,
+    "main_all_l2": 15.3,
+    "main_all_l3": 19.5
+  },
+  "vm_basis": "launch 3 wall time per turn of the cell each arm is priced from, times the v0.4 turns, plus 0.5 hour per VM for bootstrap, image builds, the golden check and the clean-arm preflight, at $0.00837944 a minute (the list rate the earlier run budgeted); primary main shards only"
+}
