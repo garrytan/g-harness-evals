@@ -1,0 +1,52 @@
+{
+  "name": "dsh",
+  "repo": "https://github.com/deepseek-ai/deepseek-harness",
+  "version": "0.2.2-rc.1",
+  "integrity": {
+    "npm_package": "@deepseek-ai/dsh@0.2.2-rc.1",
+    "npm_integrity": "sha512-ijR9UEVYkG15Q/Q79JzvzLBzQOQfc63VLr9n6flpwHPhr5IKn2UxthnSoto/P9l7qGd7pPvI1Ra6TW7LH3oKpg==",
+    "lockfile": "package-lock.json beside this file: 725 entries (654 packages installed on linux-x64), each by integrity hash; npm ci refuses a tarball whose hash differs",
+    "checked": "at image build: npm ci against the lockfile, then dsh --version must print 0.2.2-rc.1; the adapter compares dsh --version with this file's version before anything else and exits 2 on a difference"
+  },
+  "release_status": "developer preview: npm dist-tag latest is 0.2.2-rc.1 (published 2026-11-04), and the upstream README warns of compatibility-breaking changes, so any re-pin is a new run",
+  "install": "npm ci in /opt/harness on node:24-bookworm-slim with --allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,node-pty (dsh's engines field asks for node >= 24.9.0)",
+  "entry": "/opt/harness/adapter.sh run | serve",
+  "turn_command": "dsh --profile headless --patch /opt/harness/config/patch.yml --json --permission-mode danger-full-access - < /workspace/instruction.md",
+  "serve_turn_command": "dsh --profile headless --patch /opt/harness/config/patch.yml --json --permission-mode danger-full-access [--session-id <id>] - < <log>/turns/turn-NNNN.prompt.md, under setsid with the adapter's own wall clock (budget, then SIGTERM to the session and SIGKILL 5 s later)",
+  "model": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-5-5 (the adapter's default; every cell sets HE_MODEL_NAME and config/patch.yml's agent-default-model follows it)",
+    "api": "anthropic-messages through dsh's pi-ai adapter (@anthropic-ai/sdk 0.129.0): POST <base>/v1/messages, streamed",
+    "base_url": "llm-pi-ai providers.anthropic.baseURL = HE_MODEL_BASE_URL (config/patch.yml)",
+    "api_key_env": "ANTHROPIC_API_KEY (set from HE_MODEL_API_KEY), named by providers.anthropic.apiKeyEnv",
+    "routes_registered": "anthropic only; dsh's DeepSeek routes (llm-deepseek, llm-deepseek-account) stay mounted with no key, and the headless profile disables the account route",
+    "max_tokens": "128000 on agent requests for claude-opus-5-5 (observed against a fake endpoint); 4096 on the session-title request",
+    "thinking": "{type: adaptive, display: summarized} by default (observed); not changed",
+    "side_requests": "one session-title request per new Session (dsh-session-title-first-prompt-llm, no tools, max_tokens 4096) on the cell model; kept as dsh ships it",
+    "retries": "retryPolicy {mode: normal, maxRetries: 2} on the anthropic route instead of dsh's 5 (observed: a 500 was tried 6 times over 18 s by default, 3 times in 3 s with the setting; a closed port ends in 3 s with code TRANSPORT)",
+    "config_path": "config/patch.yml"
+  },
+  "state_paths": [
+    "/harness-state/dsh",
+    "/harness-state/dsh-sessions.json",
+    "/harness-state/tmp"
+  ],
+  "mcp_config_path": "config/patch.yml inserts one @deepseek-ai/dsh-mcp-client row per server (he-mcp-world, he-mcp-gbrain): transport streamable-http, url and Authorization: Bearer <token> from HE_WORLD_MCP_URL/TOKEN (HE_GBRAIN_MCP_URL/TOKEN), failOnStartupError true; a row whose URL is unset is disabled. Tools register as mcp__world__<tool> and mcp__gbrain__<tool>",
+  "topology": "in-container",
+  "multi_user_mode": "CLI, one dsh Session per conversation in one DSH_HOME; no daemon",
+  "serve": {
+    "session_key": "dm:<member> | channel:<id>; :t<thread_ts> appended when TurnRequest.thread_ts is set",
+    "session_id": "dsh makes the Session id (session-<uuid>) on a key's first turn; the adapter reads it from the session event and keeps key -> id in /harness-state/dsh-sessions.json; later turns pass --session-id <id>, which adopts that persisted Session",
+    "session_store": "/harness-state/dsh/sessions (dsh-session-persistence-jsonl)",
+    "reply_source": "the --json final event's text",
+    "exit_mapping": "HE_MODEL_BASE_URL not ending in /anthropic -> 2 at startup; turn outlived its budget -> 124; no session or final event (a crash, an MCP server that failed at startup) -> 2; a configured MCP server's tool call whose error result starts with a transport failure -> 2; final reason error whose message starts with an HTTP status or whose code is TRANSPORT -> 3; any other error reason or a non-zero dsh exit -> 2; else 0. SIGTERM during a turn -> 2"
+  },
+  "mcp_checks": "before ready the adapter POSTs a JSON-RPC tools/list with the bearer to each configured server (up to 5 attempts) and exits 2 if one does not answer; failOnStartupError true makes dsh itself stop before its first model request when a server cannot be reached",
+  "deviations": [
+    "--permission-mode danger-full-access: the shipped preset with no sandbox and approval never, since no approval can be answered in a headless turn; the container is the sandbox, as for the other harnesses",
+    "tool-web disabled: no web_fetch, as no other harness has web tools",
+    "DSH_TELEMETRY_DISABLED=1: no session telemetry to dsh's OpenTelemetry collector",
+    "retryPolicy maxRetries 2 instead of 5 (model.retries)"
+  ],
+  "credentials": "none on disk: no .credentials.yaml in the image (checked at build) or the state directory; the headless profile disables dsh's credential store and the anthropic route reads ANTHROPIC_API_KEY, the per-trial token"
+}

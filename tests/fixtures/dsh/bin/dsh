@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# A stand-in for the dsh CLI at the pinned version, for tests/dsh-adapter.test.ts. It speaks the --json event shape
+# `dsh --profile headless --json` prints at 0.2.2-rc.1 (a session event, a final event), keeps one directory per Session
+# under DSH_HOME/sessions/ and refuses a --session-id it does not hold, as dsh does. It never calls a model. Markers in the
+# prompt choose the outcome:
+#   [stub:api_error N]   a final error event whose message starts with HTTP status N (code PI_AI_ERROR), exit 1
+#   [stub:unreachable]   a final error event with code TRANSPORT ("Connection error."), exit 1
+#   [stub:other_error]   a final error event with neither (code TOOL_LOOP), exit 1
+#   [stub:startup_fail]  nothing on stdout and exit 1, as dsh does when an MCP server with failOnStartupError is down
+#   [stub:crash]         a session event, then exit 1 with no final event
+#   [stub:garbage]       output that is not JSON, exit 0
+#   [stub:sleep N]       a child in its own process group sleeps N seconds while the stub waits for it
+#   [stub:mcp_http]      a call to mcp__world__post_message whose error result is 0.2.2-rc.1's text for an HTTP 502, then completed
+#   [stub:mcp_timeout]   the same with the MCP SDK's text past toolCallTimeoutMs
+#   [stub:mcp_tool_error] the same call answered with the tool's own error result, whose text holds a network word
+#                        ("ENOTFOUND") that must not read as a transport failure
+# STUB_DSH_VERSION sets the --version answer; STUB_LOG gets one JSON line per turn.
+set -euo pipefail
+version=${STUB_DSH_VERSION:-0.2.2-rc.1}
+if [ "${1:-}" = --version ]; then echo "$version"; exit 0; fi
+sid=''
+args=("$@")
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --session-id) sid=$2; shift ;;
+  esac
+  shift
+done
+tty=false; [ -t 0 ] && tty=true
+prompt=$(cat)
+if [ -n "${STUB_LOG:-}" ]; then
+  node -e '
+const [log, tty, pid, ...args] = process.argv.slice(1);
+const e = process.env;
+const pick = ["HOME", "DSH_HOME", "TMPDIR", "DSH_TELEMETRY_DISABLED", "HE_MODEL_NAME", "HE_MODEL_BASE_URL"];
+require("fs").appendFileSync(log, JSON.stringify({ args, cwd: process.cwd(), tty: tty === "true", pid: Number(pid), sid: Number(require("child_process").execSync("ps -o sid= -p " + pid).toString().trim()),
+  env: Object.fromEntries(pick.map((m) => [m, e[m] ?? null])), api_key_is_trial_token: !!e.ANTHROPIC_API_KEY && e.ANTHROPIC_API_KEY === e.HE_MODEL_API_KEY }) + "\n");
+' "$STUB_LOG" "$tty" "$$" "${args[@]}"
+fi
+if [[ "$prompt" == *"[stub:startup_fail]"* ]]; then echo "dsh: plugin he-mcp-world failed to start: ECONNREFUSED" >&2; exit 1; fi
+if [[ "$prompt" == *"[stub:garbage]"* ]]; then echo "this is not json"; exit 0; fi
+sessions="$DSH_HOME/sessions"
+if [ -n "$sid" ]; then
+  [ -d "$sessions/$sid" ] || { echo "dsh: unknown session id $sid" >&2; exit 1; }
+else
+  mkdir -p "$sessions"
+  sid="session-stub-$(( $(ls "$sessions" | wc -l) + 1 ))"
+  mkdir "$sessions/$sid"
+fi
+echo "$prompt" >> "$sessions/$sid/log"
+turn=$(wc -l < "$sessions/$sid/log" | tr -d ' ')
+j() { node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$1"; }
+printf '{"type":"session","sessionId":"%s","cwd":"%s"}\n' "$sid" "$PWD"
+printf '{"type":"status","phase":"turn_start","turn":1}\n'
+if [[ "$prompt" =~ \[stub:sleep\ ([0-9]+)\] ]]; then
+  set -m
+  sleep "${BASH_REMATCH[1]}" &
+  set +m
+  wait
+fi
+if [[ "$prompt" == *"[stub:crash]"* ]]; then echo "stub: crashed" >&2; exit 1; fi
+mcp_error=''
+[[ "$prompt" == *"[stub:mcp_http]"* ]] && mcp_error='Error: Error POSTing to endpoint: bad gateway'
+[[ "$prompt" == *"[stub:mcp_timeout]"* ]] && mcp_error='MCP error -32001: Request timed out'
+[[ "$prompt" == *"[stub:mcp_tool_error]"* ]] && mcp_error='{"error":"user_not_found","message":"no member ENOTFOUND"}'
+if [ -n "$mcp_error" ]; then
+  printf '{"type":"tool_call","callId":"toolu_stub_1","tool":"mcp__world__post_message","input":{"channel":"C0","text":"x"}}\n'
+  printf '{"type":"tool_result","callId":"toolu_stub_1","status":"error","result":%s}\n' "$(j "$mcp_error")"
+fi
+final_error() { printf '{"type":"final","sessionId":"%s","reason":{"kind":"error","error":{"message":%s,"code":"%s"}},"text":""}\n' "$sid" "$(j "$1")" "$2"; echo "dsh: $2: $1" >&2; exit 1; }
+if [[ "$prompt" =~ \[stub:api_error\ ([0-9]+)\] ]]; then final_error "${BASH_REMATCH[1]} {\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"metering proxy: refused\"}}" PI_AI_ERROR; fi
+if [[ "$prompt" == *"[stub:unreachable]"* ]]; then final_error "Connection error." TRANSPORT; fi
+if [[ "$prompt" == *"[stub:other_error]"* ]]; then final_error "the agent loop stopped" TOOL_LOOP; fi
+printf '{"type":"final","sessionId":"%s","reason":{"kind":"completed"},"text":%s}\n' "$sid" "$(j "stub reply: session $sid turn $turn model $HE_MODEL_NAME")"
