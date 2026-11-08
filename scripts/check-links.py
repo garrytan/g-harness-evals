@@ -20,6 +20,8 @@ LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 SKIP_DIRS = {".git", "node_modules", "results"}
 # Fragment files render into a generated file elsewhere (scripts/fold-hub-fragments.ts), so their links resolve from there.
 RENDERED_FROM = {os.path.join(ROOT, "todos.d"): ROOT}
+# The report template is copied to docs/benchmarks/<run>/report.md before use, so its links resolve from a run folder.
+COPIED_TO = {os.path.join(ROOT, "docs", "report-template.md"): os.path.join(ROOT, "docs", "benchmarks", "<run>")}
 # Generated files are checked through their fragments: between folds they may still carry an item whose file and link target a pull request deleted.
 GENERATED = {os.path.join(ROOT, "TODOS.md")}
 problems = []
@@ -39,7 +41,7 @@ for dirpath, dirnames, filenames in os.walk(ROOT):
             target = target.split("#", 1)[0]
             if not target:
                 continue
-            base = RENDERED_FROM.get(dirpath, dirpath) if name != "README.md" else dirpath
+            base = COPIED_TO.get(path, RENDERED_FROM.get(dirpath, dirpath) if name != "README.md" else dirpath)
             resolved = os.path.normpath(os.path.join(base, target))
             if not os.path.exists(resolved) and (os.path.relpath(path, ROOT), m.group(1)) not in ALLOW:
                 problems.append(f"{os.path.relpath(path, ROOT)}: broken link {m.group(1)}")

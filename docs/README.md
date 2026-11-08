@@ -56,6 +56,7 @@ Design only: the folder holds `design.json` instead of a `prereg.json`, and no t
 - [errors.md](errors.md): every error code the runner, proxy and adapters print, what it means, the fix, and where it lives.
 - [gbrain-arm.md](gbrain-arm.md): the gbrain arm: what a sidecar per trial runs, the world's `/gbrain` tap, the install ladder, how the arm is wired into the runner and adapters, the smoke evidence, and the status of each gbrain run.
 - [gbrain-evals-conventions.md](gbrain-evals-conventions.md): which conventions this repository takes from gbrain-evals as they are, which it adapts, and which it leaves out, with the reason for each.
+- [glossary.md](glossary.md): plain meanings for the verdict words (KEEP, FIX-METHOD, CUT-CANDIDATE), the calls on a comparison, the metric names and the run terms, with a table mapping older reports' words to these.
 - [methodology.md](methodology.md): the trial contract, the normative copy of the plan's contract section: isolation, metering, grading, termination and grade as separate fields, metrics, budget, artifacts, with its amendments in the changelog.
 - [methods.md](methods.md): the fine print behind the README's plain summaries: how to read the numbers (intervals, paired differences, sign-flip tests, Holm, the openings ledger), the complete harness and gbrain comparison text, the complete limits, how every harness runs, the world and the tasks, what paid work costs, and what a results directory holds. Moved word for word from the README on 2026-10-28.
 - [plans/](plans/2026-10-21-harness-eval-v0/plan.md): the approved plan (v2), its review record, decisions D1 to D10, findings, open tasks and every reviewer file, one folder per plan.
@@ -63,8 +64,10 @@ Design only: the folder holds `design.json` instead of a `prereg.json`, and no t
 - [qm-findings.md](qm-findings.md): product observations about QM v0.1.15 from the source read, the smokes, the inner-harness run and the probe suite, each with its trials and smallest reproduction.
 - [receipts-manifest.json](receipts-manifest.json): the machine-readable receipts list, one entry per counted run with its preregistration commits and hashed artifacts (generated 2026-10-26 beside this index).
 - [report-v0.1.md](report-v0.1.md): the one-page account of the v0.1 multi-user cell: finding, limits, interests, tables with intervals, taxonomy and spend, with every number copied from a named receipt.
+- [report-standard.md](report-standard.md): how every new report is written: the TL;DR block at the top, the metric names, the interval rule, feeding the scoreboard and the reports index, and disclosures last. [report-template.md](report-template.md) is the skeleton to copy.
+- [reports-index.md](reports-index.md): every run folder, one table per grade (frontier, method, appendix), with its question, status, claim check, verdict and what supersedes it. `scripts/scoreboard/build.ts` generates it from [scoreboard/reports.json](scoreboard/reports.json); it holds no result numbers.
 - [repo-tasks.md](repo-tasks.md): the repository task format (fix, review, qa and ship tasks graded by hidden checks on the container), its acceptance rules, and the gstack-native-v1 set's public dev split and sealed held-out split.
-- [scoreboard.md](scoreboard.md): "Which harness should I use?": one generated table per task set with each harness and model's pass rate, cost per solved task, cost per trial and median time per trial, the run's preregistered calls, caveats, receipts and disclosures. `scripts/scoreboard/build.ts` writes it and the README's scoreboard block from [scoreboard/entries/](scoreboard/entries/matrix-mu-2026-11.json); do not edit it by hand.
+- [scoreboard.md](scoreboard.md): "Which harness should I use?": one generated section per task set with each harness and model's pass rate, cost per solved task, cost per trial and median time per trial, the run's preregistered calls, caveats, receipts and disclosures, plus a "Same tasks, other runs" table for later runs on the same task set. `scripts/scoreboard/build.ts` writes it and the README's scoreboard block from [scoreboard/entries/](scoreboard/entries/matrix-mu-2026-11.json); do not edit it by hand.
 - [shared-rig.md](shared-rig.md): where the canonical copy of each shared rig part lives (stats kit, price table, metering proxy, per-trial usage, trial bundle, fan-out), for the repositories that vendor them.
 - [tasks.md](tasks.md): the multi-user task format: families, the access model, the predicate library, oracles and the mutation contract, task sets (v0.1, v0.2, the generated v0.3 and v0.4 sets, the QM probes) and how a cell selects one.
 - [replicate.md](replicate.md): how to check a finding from its trial bundle with `scripts/replicate.ts`: the two free checks (`--reanalyze`, `--estimate-only`), a paid rerun of one cell under a hard `--max-usd` cap, the replication band and its coverage evidence under [replicate/](replicate/band-coverage-m3-heldout-openclaw.json), verdicts, exit codes and limits.
@@ -76,6 +79,14 @@ Design only: the folder holds `design.json` instead of a `prereg.json`, and no t
 - [ubicloud.md](ubicloud.md): the Ubicloud shard lane: the scripts that put one shard per VM, how a run fans out and comes back, the check lane, costs and limits.
 
 ## Changelog
+
+### 2026-11-08: scoreboard line names the other-runs table (internal-task)
+
+The scoreboard.md line now says the page has one section per task set and a "Same tasks, other runs" table. Why: the generator gained that table on this branch, so "one generated table per task set" no longer described the page.
+
+### 2026-11-07: glossary, report standard and reports index listed (internal-task)
+
+The pages list gains lines for glossary.md, report-standard.md with its template, and the generated reports-index.md. Why: the pages are new on this branch.
 
 ### 2026-11-07: prompt-archaeology-joint results listed (internal-task)
 

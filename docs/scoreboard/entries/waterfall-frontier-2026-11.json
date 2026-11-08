@@ -1,0 +1,137 @@
+{
+  "schema": "harness-evals/scoreboard-entry@1",
+  "run_id": "waterfall-frontier-2026-11",
+  "report": "docs/benchmarks/2026-11-01-waterfall-frontier/report.md",
+  "role": "other",
+  "results_pr": "#316",
+  "claim_check": { "pr": "#316", "reader": "the author's pre-review pass (fixes in b784400844; reader and model not recorded)" },
+  "task_set": {
+    "id": "v0.3-dev-public",
+    "label": "20 public v0.3 multi-user dev tasks",
+    "split": "dev",
+    "public": true
+  },
+  "family": {
+    "file": "results/contrasts.json",
+    "path": "contrasts",
+    "label": "preregistered cost contrasts, B minus A in dollars per trial",
+    "kind": "cost_per_trial",
+    "interval": "dollars_per_trial.ci95"
+  },
+  "lead_note": "A cost run: its preregistered contrasts compare cost per trial between harnesses on the same model, so its calls are about cost, not pass rate.",
+  "fields": {
+    "passes": {
+      "file": "results/summary.json",
+      "path": "cells.{cell}.passes"
+    },
+    "scored": {
+      "file": "results/summary.json",
+      "path": "cells.{cell}.n"
+    },
+    "pass_rate": {
+      "file": "results/summary.json",
+      "path": "cells.{cell}.pass_rate"
+    },
+    "pass_ci95": {
+      "file": "results/summary.json",
+      "path": "cells.{cell}.ci95"
+    },
+    "usd_per_solved": {
+      "file": "results/summary.json",
+      "path": "cells.{cell}.usd_per_success"
+    },
+    "usd_per_solved_ci95": {
+      "file": "results/contrasts.json",
+      "path": "contrasts[a={cell}].dollars_per_success.a.ci95"
+    },
+    "usd_per_trial": {
+      "file": "results/report-extras.json",
+      "path": "cells[cell={cell}].usd_per_trial"
+    },
+    "wall_median_s": {
+      "file": "results/summary.json",
+      "path": "cells.{cell}.wall_median_s"
+    }
+  },
+  "cells": [
+    {
+      "id": "claude-code-opus-none-mu-v03-dev",
+      "harness": "Claude Code",
+      "version": "2.1.312",
+      "model": "Opus 5.5",
+      "overrides": {
+        "usd_per_solved_ci95": {
+          "file": "results/contrasts.json",
+          "path": "contrasts[a=openclaw-opus-none-mu-v03-dev].dollars_per_success.b.ci95"
+        }
+      }
+    },
+    {
+      "id": "openclaw-opus-none-mu-v03-dev",
+      "harness": "OpenClaw",
+      "version": "2026.10.6",
+      "model": "Opus 5.5",
+      "caveats": [
+        "Lists Haiku as its housekeeping model (shipped default); it made no housekeeping calls."
+      ]
+    },
+    {
+      "id": "hermes-opus-none-mu-v03-dev",
+      "harness": "Hermes Agent",
+      "version": "v2026.9.24",
+      "model": "Opus 5.5"
+    },
+    {
+      "id": "qm-pi-opus-none-mu-v03-dev",
+      "harness": "QM (Pi loop)",
+      "version": "main@b6786d67",
+      "model": "Opus 5.5",
+      "caveats": [
+        "Ran on the default Docker bridge while the other cells ran on the internal network, so the network is not held fixed in QM's contrast.",
+        "Uses Haiku for housekeeping (shipped default, metered inside its cost)."
+      ]
+    },
+    {
+      "id": "codex-sol-none-mu-v03-dev",
+      "harness": "Codex",
+      "version": "0.165.0",
+      "model": "GPT-6.1 Sol",
+      "overrides": {
+        "usd_per_solved_ci95": {
+          "file": "results/contrasts.json",
+          "path": "contrasts[a=openclaw-sol-none-mu-v03-dev].dollars_per_success.b.ci95"
+        }
+      }
+    },
+    {
+      "id": "openclaw-sol-none-mu-v03-dev",
+      "harness": "OpenClaw",
+      "version": "2026.10.6",
+      "model": "GPT-6.1 Sol",
+      "caveats": [
+        "One request's stream timed out before its final usage, so the proxy kept its full reservation; that charge is in this cell's cost."
+      ]
+    },
+    {
+      "id": "hermes-sol-none-mu-v03-dev",
+      "harness": "Hermes Agent",
+      "version": "v2026.9.24",
+      "model": "GPT-6.1 Sol"
+    }
+  ],
+  "caveats": [
+    "Dev tasks at these pins: a result here is not a held-out confirmation.",
+    "Two tries per task.",
+    "Each cell ran alone on its own Ubicloud VM, so wall-time differences are confounded with the machine.",
+    "Every cell is a plain harness: no gstack, no gbrain.",
+    "Cost per solved task is the cell's whole spend at list price through our metering proxy, divided by its passes.",
+    "On GPT-6.1 Sol the proxy bills every uncached prompt token at the cache-write rate, above OpenAI's input list price, because OpenAI caches prompts on its own; the Sol cells' costs include that rate.",
+    "Calls come only from the run's preregistered cost contrasts, each within one model; rows are in the run's own order, which is not a ranking."
+  ],
+  "disclosures": [
+    "OpenAI",
+    "OpenClaw",
+    "Hermes",
+    "QM"
+  ]
+}

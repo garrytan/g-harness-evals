@@ -1,18 +1,21 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { buildAll, buildTable, callFor, getPath, loadEntries, modelLines, renderPage, type Comparison } from '../scripts/scoreboard/build.ts';
-import { validateEntry } from '../scripts/scoreboard/schema.ts';
+import {
+  benchmarkFolders, buildAll, buildTable, callFor, costCallFor, getPath, loadEntries, modelLines, renderPage, renderReadmeBlock, renderReportsIndex, usd, withoutUnindexed, type Comparison,
+} from '../scripts/scoreboard/build.ts';
+import { validateEntry, validateReports, type ReportRow } from '../scripts/scoreboard/schema.ts';
 
 const root = join(import.meta.dir, '..');
 const readJson = (p: string) => JSON.parse(readFileSync(join(root, p), 'utf8'));
 
 describe('scoreboard', () => {
-  const { page, readme, tables } = buildAll(root);
+  const { page, readme, reportsIndex, tables } = buildAll(root);
 
-  test('docs/scoreboard.md and the README block match the committed data (run bun scripts/scoreboard/build.ts)', () => {
+  test('docs/scoreboard.md, docs/reports-index.md and the README block match the committed data (run bun scripts/scoreboard/build.ts)', () => {
     expect(readFileSync(join(root, 'docs/scoreboard.md'), 'utf8')).toBe(page);
     expect(readFileSync(join(root, 'README.md'), 'utf8')).toBe(readme);
+    expect(withoutUnindexed(readFileSync(join(root, 'docs/reports-index.md'), 'utf8'))).toBe(withoutUnindexed(reportsIndex));
   });
 
   test('the matrix-mu entry renders, with each disclosure line it names copied onto the page', () => {
@@ -48,15 +51,28 @@ describe('scoreboard', () => {
     expect(() => buildTable(matrixMu(), read)).toThrow(/non-empty list/);
   });
 
+  const costEdit = (passes: number | null, cost: 'keep' | 'null', interval: 'keep' | 'null') => editedJson((p, doc) => {
+    const cell = doc.cells.find((c: { id: string }) => c.id === 'codex-sol-none-mu-v03-dev');
+    if (p.endsWith('matrix-analysis.json')) {
+      if (passes !== null) cell.pass_rate.passes = passes;
+      if (cost === 'null') cell.cost.usd_per_pass = null;
+    }
+    if (p.endsWith('report-extras.json') && interval === 'null') cell.ci95 = null;
+  });
+
   test('a cell with no passes renders "no solved tasks" instead of failing', () => {
-    const id = 'codex-sol-none-mu-v03-dev';
-    const read = editedJson((p, doc) => {
-      const cell = doc.cells.find((c: { id: string }) => c.id === id);
-      if (p.endsWith('matrix-analysis.json')) cell.cost.usd_per_pass = null;
-      if (p.endsWith('report-extras.json')) cell.ci95 = null;
-    });
-    const t = buildTable(matrixMu(), read);
-    expect(renderPage([t], readJson('docs/scoreboard/disclosures.json').lines)).toContain('| Codex | 0.165.0 | GPT-6.1 Sol | 71.3% [51.2%, 90.0%] | 57 / 80 | no solved tasks |');
+    const t = buildTable(matrixMu(), costEdit(0, 'null', 'null'));
+    expect(renderPage([t], readJson('docs/scoreboard/disclosures.json').lines)).toContain('| Codex | 0.165.0 | GPT-6.1 Sol | 71.3% [51.2%, 90.0%] | 0 / 80 | no solved tasks |');
+  });
+
+  test('a cost without its interval, or an interval without its cost, fails the build', () => {
+    expect(() => buildTable(matrixMu(), costEdit(null, 'keep', 'null'))).toThrow(/without its 95% range, or the reverse/);
+    expect(() => buildTable(matrixMu(), costEdit(null, 'null', 'keep'))).toThrow(/without its 95% range, or the reverse/);
+  });
+
+  test('"no solved tasks" needs zero passes, and zero passes needs no cost', () => {
+    expect(() => buildTable(matrixMu(), costEdit(null, 'null', 'null'))).toThrow(/has 57 passes, so its cost per solved task must be a number/);
+    expect(() => buildTable(matrixMu(), costEdit(0, 'keep', 'keep'))).toThrow(/has 0 passes, so its cost per solved task must be null/);
   });
 
   test('cost per trial is the whole spend over the trials recorded, timed-out charges included', () => {
@@ -74,7 +90,7 @@ describe('scoreboard', () => {
   });
 
   test('every rendered call equals the verdict field of its preregistered family', () => {
-    for (const t of tables) {
+    for (const t of tables.filter((x) => x.entry.family.kind !== 'cost_per_trial')) {
       const base = dirname(t.entry.report);
       const family = getPath(readJson(join(base, t.entry.family.file)), t.entry.family.path) as Comparison[];
       const modelOf = new Map(t.entry.cells.map((c) => [c.id, c.model]));
@@ -113,6 +129,119 @@ describe('scoreboard', () => {
     expect(cc.usd_per_solved).toBe(cell.cost.usd_per_pass);
     expect(page).toContain(`| Claude Code | 2.1.312 | Opus 5.5 | 76.3% [57.5%, 92.5%] | 61 / 80 |`);
   });
+const waterfall = () => tables.find((x) => x.entry.run_id === 'waterfall-frontier-2026-11')!;
+
+  test('every cost call says what its contrast\'s 95% range says, from both sides', () => {
+    for (const t of tables.filter((x) => x.entry.family.kind === 'cost_per_trial')) {
+      const contrasts = getPath(readJson(join(dirname(t.entry.report), t.entry.family.file)), t.entry.family.path) as Record<string, unknown>[];
+      const harnessOf = new Map(t.entry.cells.map((c) => [c.id, c.harness]));
+      expect(contrasts.length).toBeGreaterThan(0);
+      for (const c of contrasts) {
+        const [lo, hi] = getPath(c, t.entry.family.interval!) as [number, number];
+        const rowA = t.rows.find((r) => r.id === c.a)!;
+        const rowB = t.rows.find((r) => r.id === c.b)!;
+        const [forB, forA] = hi < 0 ? ['cheaper per trial than', 'costs more per trial than'] : lo > 0 ? ['costs more per trial than', 'cheaper per trial than'] : ["cost per trial: can't tell apart from", "cost per trial: can't tell apart from"];
+        expect(rowB.call).toMatch(new RegExp(`${forB} [^;]*${harnessOf.get(String(c.a))!.replace(/[()]/g, '\\$&')}`));
+        expect(rowA.call).toMatch(new RegExp(`${forA} [^;]*${harnessOf.get(String(c.b))!.replace(/[()]/g, '\\$&')}`));
+      }
+    }
+  });
+
+  test('the waterfall rows match the per-cell table in its report after rounding', () => {
+    const t = waterfall();
+    const report = readFileSync(join(root, t.entry.report), 'utf8');
+    const extras = readJson(join(dirname(t.entry.report), 'results/report-extras.json')).cells as { cell: string; shard: string }[];
+    const r2 = (x: string) => usd(Number(x), 2);
+    for (const r of t.rows) {
+      const shard = extras.find((c) => c.cell === r.id)!.shard;
+      const line = report.split('\n').find((l) => l.includes(`(\`${shard}\`) |`))!;
+      const [, passes, rate, , perTrial, perPass, , wall] = line.split('|').slice(1).map((s) => s.trim());
+      const [cost, lo, hi] = perPass!.match(/[\d.]+/g)!;
+      const wallMedian = wall!.split(' ')[0];
+      expect(`${r.passes}`).toBe(passes!);
+      expect(`${(r.pass_rate * 100).toFixed(1)}% [${(r.pass_ci95[0] * 100).toFixed(1)}%, ${(r.pass_ci95[1] * 100).toFixed(1)}%]`).toBe(rate!);
+      expect(usd(r.usd_per_trial, 3)).toBe(usd(Number(perTrial!.slice(1)), 3));
+      expect(`${usd(r.usd_per_solved!)} [${usd(r.usd_per_solved_ci95![0])}, ${usd(r.usd_per_solved_ci95![1])}]`).toBe(`${r2(cost!)} [${r2(lo!)}, ${r2(hi!)}]`);
+      expect(r.wall_median_s.toFixed(1)).toBe(wallMedian!);
+    }
+  });
+
+  test('other runs show on the page under their task set\'s main table and never in the README', () => {
+    const t = waterfall();
+    expect(t.entry.role).toBe('other');
+    expect(page.indexOf('### Same tasks, other runs')).toBeGreaterThan(page.indexOf('## 20 public v0.3 multi-user dev tasks'));
+    expect(page).toContain(`**Receipts, ${t.entry.run_id}:**`);
+    expect(renderReadmeBlock(tables)).not.toContain(t.entry.run_id);
+  });
+
+  test('an other entry with no main entry on its task set is refused', () => {
+    const t = structuredClone(waterfall());
+    t.entry.task_set.id = 'nowhere';
+    expect(() => renderPage([t], readJson('docs/scoreboard/disclosures.json').lines)).toThrow(/no main entry has task set nowhere/);
+  });
+
+  test('a main entry needs tasks, same_everywhere and mdd; an other entry does not', () => {
+    const bad = structuredClone(matrixMu()) as unknown as Record<string, unknown>;
+    delete bad.mdd;
+    expect(() => validateEntry(bad, 'fixture')).toThrow(/a main entry needs mdd/);
+    const other = readJson('docs/scoreboard/entries/waterfall-frontier-2026-11.json');
+    expect(other.tasks).toBeUndefined();
+    expect(() => validateEntry(other, 'fixture')).not.toThrow();
+  });
+
+  test('the matrix-mu lead note quotes its report', () => {
+    const e = matrixMu();
+    expect(readFileSync(join(root, e.report), 'utf8')).toContain(e.lead_note.replace(/ \(descriptive, no test\)\.$/, '.'));
+  });
+
+  test("the README's own Disclosures section carries every featured subject's line", () => {
+    const { lines } = readJson('docs/scoreboard/disclosures.json') as { lines: Record<string, string> };
+    const text = readFileSync(join(root, 'README.md'), 'utf8');
+    const start = text.indexOf('\n## Disclosures\n');
+    expect(start).toBeGreaterThan(0);
+    const next = text.indexOf('\n## ', start + 1);
+    const section = text.slice(start, next < 0 ? undefined : next);
+    const featured = new Set(tables.filter((t) => t.entry.role === 'main').flatMap((t) => t.entry.disclosures));
+    expect(featured.size).toBeGreaterThan(0);
+    for (const s of featured) {
+      const shortOpenClaw = s === 'OpenClaw' && section.includes(lines.OpenAI!) && section.includes(lines.OpenClaw!.replace(` ${lines.OpenAI!.replace(/^Disclosure: /, '')}`, ''));
+      expect(section.includes(lines[s]!) || shortOpenClaw).toBe(true);
+    }
+  });
+});
+
+describe('reports index', () => {
+  const doc = readJson('docs/scoreboard/reports.json') as { reports: ReportRow[] };
+
+  test('reports.json holds no numbers', () => {
+    const numbers: string[] = [];
+    const walk = (v: unknown, path: string): void => {
+      if (typeof v === 'number') numbers.push(path);
+      else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) walk(x, `${path}.${k}`);
+    };
+    walk(doc, 'reports.json');
+    expect(numbers).toEqual([]);
+    expect(() => validateReports({ ...doc, reports: [{ ...doc.reports[0]!, passes: 3 }] }, 'fixture')).toThrow(/holds no numbers/);
+  });
+
+  test('every verdict_quote is an exact substring of its report', () => {
+    const quoted = doc.reports.filter((r) => r.verdict_quote !== null);
+    expect(quoted.length).toBeGreaterThan(0);
+    for (const r of quoted) expect(readFileSync(join(root, 'docs/benchmarks', r.folder, r.report!), 'utf8')).toContain(r.verdict_quote!);
+  });
+
+  test("every row's folder exists", () => {
+    for (const r of doc.reports) expect(existsSync(join(root, 'docs/benchmarks', r.folder))).toBe(true);
+  });
+
+  test('a run folder with no row is listed as not yet indexed, and the check ignores that list', () => {
+    const rows = doc.reports.filter((r) => r.folder !== '2026-11-04-matrix-mu');
+    const folders = benchmarkFolders(root);
+    const page = renderReportsIndex(rows, folders);
+    expect(page).toContain('## Not yet indexed\n\nRun folders');
+    expect(page).toContain('- [2026-11-04-matrix-mu](benchmarks/2026-11-04-matrix-mu/)');
+    expect(withoutUnindexed(page)).toBe(withoutUnindexed(renderReportsIndex(rows, folders.filter((f) => f !== '2026-11-04-matrix-mu'))));
+  });
 });
 
 describe('callFor', () => {
@@ -138,6 +267,18 @@ describe('callFor', () => {
     const untested: Comparison[] = [{ a: 'a', b: 'b', verdict: "can't tell apart", tested: false }];
     expect(callFor('a', modelOf, harnessOf, untested, [])).toBe('not tested: B');
     expect(modelLines([{ id: 'a', model: 'M' }, { id: 'b', model: 'M' }], untested)).toEqual(['**M:** 1 preregistered pairs: 1 not tested.']);
+  });
+
+  test('cost calls read the interval of b minus a from each side', () => {
+    const contrasts = [
+      { a: 'a', b: 'b', d: { ci: [-0.2, -0.1] } },
+      { a: 'c', b: 'b', d: { ci: [-0.01, 0.01] } },
+      { a: 'q', b: 'b', d: { ci: [0.02, 0.06] } },
+    ];
+    expect(costCallFor('b', harnessOf, contrasts, 'd.ci')).toBe("cheaper per trial than A; cost per trial: can't tell apart from C; costs more per trial than Q");
+    expect(costCallFor('a', harnessOf, contrasts, 'd.ci')).toBe('costs more per trial than B');
+    expect(costCallFor('q', harnessOf, contrasts, 'd.ci')).toBe('cheaper per trial than B');
+    expect(costCallFor('d', harnessOf, contrasts, 'd.ci')).toBe('not compared');
   });
 
   test('a cell with no comparison on its model says not compared', () => {
