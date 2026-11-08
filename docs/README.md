@@ -64,6 +64,7 @@ Design only: the folder holds `design.json` instead of a `prereg.json`, and no t
 - [receipts-manifest.json](receipts-manifest.json): the machine-readable receipts list, one entry per counted run with its preregistration commits and hashed artifacts (generated 2026-10-26 beside this index).
 - [report-v0.1.md](report-v0.1.md): the one-page account of the v0.1 multi-user cell: finding, limits, interests, tables with intervals, taxonomy and spend, with every number copied from a named receipt.
 - [repo-tasks.md](repo-tasks.md): the repository task format (fix, review, qa and ship tasks graded by hidden checks on the container), its acceptance rules, and the gstack-native-v1 set's public dev split and sealed held-out split.
+- [scoreboard.md](scoreboard.md): "Which harness should I use?": one generated table per task set with each harness and model's pass rate, cost per solved task, cost per trial and median time per trial, the run's preregistered calls, caveats, receipts and disclosures. `scripts/scoreboard/build.ts` writes it and the README's scoreboard block from [scoreboard/entries/](scoreboard/entries/matrix-mu-2026-11.json); do not edit it by hand.
 - [shared-rig.md](shared-rig.md): where the canonical copy of each shared rig part lives (stats kit, price table, metering proxy, per-trial usage, trial bundle, fan-out), for the repositories that vendor them.
 - [tasks.md](tasks.md): the multi-user task format: families, the access model, the predicate library, oracles and the mutation contract, task sets (v0.1, v0.2, the generated v0.3 and v0.4 sets, the QM probes) and how a cell selects one.
 - [replicate.md](replicate.md): how to check a finding from its trial bundle with `scripts/replicate.ts`: the two free checks (`--reanalyze`, `--estimate-only`), a paid rerun of one cell under a hard `--max-usd` cap, the replication band and its coverage evidence under [replicate/](replicate/band-coverage-m3-heldout-openclaw.json), verdicts, exit codes and limits.
@@ -75,6 +76,10 @@ Design only: the folder holds `design.json` instead of a `prereg.json`, and no t
 - [ubicloud.md](ubicloud.md): the Ubicloud shard lane: the scripts that put one shard per VM, how a run fans out and comes back, the check lane, costs and limits.
 
 ## Changelog
+
+### 2026-11-07: scoreboard page listed (internal-task)
+
+The pages list gains a line for scoreboard.md, the generated "Which harness should I use?" page. Why: the page is new on this branch.
 
 ### 2026-11-07: h10-instruction-placement-2026-11 reported
 

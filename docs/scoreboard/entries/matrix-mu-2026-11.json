@@ -1,0 +1,168 @@
+{
+  "schema": "harness-evals/scoreboard-entry@1",
+  "run_id": "matrix-mu-2026-11",
+  "report": "docs/benchmarks/2026-11-04-matrix-mu/report.md",
+  "role": "main",
+  "results_pr": "#279",
+  "claim_check": {
+    "pr": "#279",
+    "reader": "claim-check reader, Opus 5.5, round 1 (findings fixed before merge)"
+  },
+  "task_set": {
+    "id": "v0.3-dev-public",
+    "label": "20 public v0.3 multi-user dev tasks",
+    "split": "dev",
+    "public": true
+  },
+  "tasks": {
+    "file": "results/report-extras.json",
+    "path": "tasks.total"
+  },
+  "same_everywhere": [
+    {
+      "file": "results/report-extras.json",
+      "path": "tasks.passed_every_rep_in_every_cell"
+    },
+    {
+      "file": "results/report-extras.json",
+      "path": "tasks.never_passed_in_any_cell"
+    }
+  ],
+  "mdd": {
+    "file": "results/report-extras.json",
+    "path": "primary[*].mdd_alpha_0_05"
+  },
+  "mdd_holm": {
+    "file": "results/report-extras.json",
+    "path": "primary[*].mdd_first_holm_step"
+  },
+  "family": {
+    "file": "results/matrix-analysis.json",
+    "path": "primary.comparisons",
+    "label": "preregistered primary family, Holm-adjusted"
+  },
+  "secondary": {
+    "file": "results/matrix-analysis.json",
+    "path": "secondary"
+  },
+  "lead_note": "Cost per solved task and median time per trial do differ between harnesses (descriptive, no test).",
+  "verdict": {
+    "word": "FIX-METHOD",
+    "quote": "Why null? verdict: FIX-METHOD."
+  },
+  "fields": {
+    "passes": {
+      "file": "results/matrix-analysis.json",
+      "path": "cells[id={cell}].pass_rate.passes"
+    },
+    "scored": {
+      "file": "results/matrix-analysis.json",
+      "path": "cells[id={cell}].pass_rate.scored_trials"
+    },
+    "pass_rate": {
+      "file": "results/matrix-analysis.json",
+      "path": "cells[id={cell}].pass_rate.estimate"
+    },
+    "pass_ci95": {
+      "file": "results/matrix-analysis.json",
+      "path": "cells[id={cell}].pass_rate.ci95"
+    },
+    "usd_per_solved": {
+      "file": "results/matrix-analysis.json",
+      "path": "cells[id={cell}].cost.usd_per_pass"
+    },
+    "usd_per_solved_ci95": {
+      "file": "results/report-extras.json",
+      "path": "cells[id={cell}].ci95"
+    },
+    "usd_per_trial": {
+      "file": "results/matrix-analysis.json",
+      "path": "cells[id={cell}].cost.usd_total",
+      "per": {
+        "file": "results/matrix-analysis.json",
+        "path": "cells[id={cell}].trials.recorded"
+      }
+    },
+    "wall_median_s": {
+      "file": "results/matrix-analysis.json",
+      "path": "cells[id={cell}].wall_ms.median",
+      "scale": 0.001
+    }
+  },
+  "cells": [
+    {
+      "id": "claude-code-opus-none-mu-v03-dev",
+      "harness": "Claude Code",
+      "version": "2.1.312",
+      "model": "Opus 5.5"
+    },
+    {
+      "id": "openclaw-opus-none-mu-v03-dev",
+      "harness": "OpenClaw",
+      "version": "2026.10.6",
+      "model": "Opus 5.5",
+      "caveats": [
+        "Incomplete cell: the last task's final reps ended in a cap stop, so scored trials are fewer than planned.",
+        "Lists Haiku as its housekeeping model (shipped default); it made no housekeeping calls."
+      ]
+    },
+    {
+      "id": "hermes-opus-none-mu-v03-dev",
+      "harness": "Hermes Agent",
+      "version": "v2026.9.24",
+      "model": "Opus 5.5"
+    },
+    {
+      "id": "qm-pi-opus-none-mu-v03-dev",
+      "harness": "QM (Pi loop)",
+      "version": "main@b6786d67",
+      "model": "Opus 5.5",
+      "caveats": [
+        "Ran on the default Docker bridge, so the network was not held fixed and QM's comparisons are secondary and untested.",
+        "Uses Haiku for housekeeping (shipped default, metered inside its cost)."
+      ]
+    },
+    {
+      "id": "codex-sol-none-mu-v03-dev",
+      "harness": "Codex",
+      "version": "0.165.0",
+      "model": "GPT-6.1 Sol"
+    },
+    {
+      "id": "openclaw-sol-none-mu-v03-dev",
+      "harness": "OpenClaw",
+      "version": "2026.10.6",
+      "model": "GPT-6.1 Sol",
+      "caveats": [
+        "Incomplete cell: every rep of the last task ended in a cap stop, so that task drops from its comparisons.",
+        "Cost per solved task is the headline figure; its interval uses each trial record's own cost, which leaves out one timed-out charge logged after its trial closed."
+      ],
+      "overrides": {
+        "usd_per_solved_interval_basis": {
+          "file": "results/report-extras.json",
+          "path": "cells[id={cell}].usd_per_pass"
+        }
+      }
+    },
+    {
+      "id": "hermes-sol-none-mu-v03-dev",
+      "harness": "Hermes Agent",
+      "version": "v2026.9.24",
+      "model": "GPT-6.1 Sol"
+    }
+  ],
+  "caveats": [
+    "Dev tasks at these pins: a result here is not a held-out confirmation.",
+    "Claude Code and Codex are each model's own harness; they can't run the same model, so they are never compared with each other.",
+    "Every cell is a plain harness: no gstack, no gbrain.",
+    "Cost per solved task is the cell's whole spend at list price through our metering proxy, divided by its scored passes; spend includes excluded trials.",
+    "Time is the median wall-clock time per trial, one trial at a time on one VM per cell.",
+    "Calls come only from the run's preregistered comparisons; rows are in the run's own order, which is not a ranking."
+  ],
+  "disclosures": [
+    "OpenAI",
+    "OpenClaw",
+    "Hermes",
+    "QM"
+  ]
+}
