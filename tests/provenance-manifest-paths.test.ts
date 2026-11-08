@@ -8,6 +8,7 @@ const MANIFESTS = [
   'harnesses/hermes/provenance.json',
   'harnesses/claude-code/provenance.json',
   'harnesses/codex/provenance.json',
+  'harnesses/dsh/provenance.json',
 ];
 
 describe('provenance manifest paths', () => {

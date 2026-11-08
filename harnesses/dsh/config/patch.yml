@@ -1,0 +1,58 @@
+# harness-evals overlay for dsh's shipped `headless` profile, applied on every turn with
+# `dsh --profile headless --patch /opt/harness/config/patch.yml`. Every value that changes per trial is
+# read from the adapter's environment (`!!js process.env.*`), so this file never holds a token or a URL.
+# A patch row replaces the targeted row's whole `config`; rows not named here stay as dsh ships them.
+
+# The cell model on the anthropic route, for every agent the headless runner creates.
+- id: agent-default-model
+  config:
+    provider: anthropic
+    model: !!js process.env.HE_MODEL_NAME
+
+# One provider route, anthropic, through the metering proxy with the per-trial token (ANTHROPIC_API_KEY
+# is set from HE_MODEL_API_KEY). Two retries instead of dsh's five, so an unreachable proxy or a refused
+# request ends the turn as a model error within seconds (the Claude Code adapter does the same).
+- id: llm-pi-ai
+  config:
+    providers:
+      anthropic:
+        apiKeyEnv: ANTHROPIC_API_KEY
+        baseURL: !!js process.env.HE_MODEL_BASE_URL
+        retryPolicy:
+          mode: normal
+          maxRetries: 2
+
+# No web tools, as no other harness has them: web_fetch reaches the internet directly.
+- id: tool-web
+  disabled: true
+
+# The world-MCP server (and gbrain, on a gbrain cell) over Streamable HTTP with the per-trial bot token.
+# Tools register as mcp__world__<tool> and mcp__gbrain__<tool>. failOnStartupError stops dsh before its
+# first model request when a server cannot be reached, so a turn never runs without its tools.
+- insert:
+    - id: he-mcp-world
+      name: '@deepseek-ai/dsh-mcp-client'
+      disabled: !!js "!process.env.HE_WORLD_MCP_URL"
+      config:
+        transport: streamable-http
+        serverName: world
+        url: !!js "process.env.HE_WORLD_MCP_URL ?? 'http://unset.invalid/'"
+        headers:
+          Authorization: !!js "'Bearer ' + (process.env.HE_WORLD_MCP_TOKEN ?? '')"
+        toolCallTimeoutMs: 120000
+        closeTimeoutMs: 5000
+        expandTemplates: false
+        failOnStartupError: true
+    - id: he-mcp-gbrain
+      name: '@deepseek-ai/dsh-mcp-client'
+      disabled: !!js "!process.env.HE_GBRAIN_MCP_URL"
+      config:
+        transport: streamable-http
+        serverName: gbrain
+        url: !!js "process.env.HE_GBRAIN_MCP_URL ?? 'http://unset.invalid/'"
+        headers:
+          Authorization: !!js "'Bearer ' + (process.env.HE_GBRAIN_MCP_TOKEN ?? '')"
+        toolCallTimeoutMs: 120000
+        closeTimeoutMs: 5000
+        expandTemplates: false
+        failOnStartupError: true
