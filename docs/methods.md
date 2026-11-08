@@ -10,7 +10,7 @@ harness-evals v0.0.29. This page holds the full statements behind the plain summ
 - Every figure is copied from the report named in its row and the receipts under that run's `results/`; [docs/receipts-manifest.json](../docs/receipts-manifest.json) carries each run's preregistration commit, trial count, ledgers and the sha256 of its `trials.jsonl`.
 - Status says whether a run was its held-out set's first counted opening; the details name the set and which counted opening of that set it was, numbered in the order the preregistrations merged on main by `runner/heldout/openings.ts` (`bun runner/heldout/openings.ts` prints the ledger). Only a first opening is confirmatory; a later opening of the same set is dev, because whoever designed it had already seen that set's results, so its intervals hold for those tasks but cannot confirm the claim ([Corrections](../README.md#corrections), 2026-10-28). A pilot or a probe run uses the dev split.
 
-Every dollar is the metering proxy's list-price meter; the provider-side check has never been performed (Known limits).
+It leaves out H10's $5.50 first launch and smoke measurement (settled $3.89 plus an open $1.61 reservation), whose ledgers sit in the run's `smoke-measurement/` folder, which the receipts manifest does not read. Every dollar is the metering proxy's list-price meter; the provider-side check has never been performed (Known limits).
 
 ## How the harnesses compare, in full
 
