@@ -15,7 +15,8 @@
 //   zero-full-a. The ceiling gate reads zero-full-a's pass rate in summary.json.
 // - Candidates: lean, conservative and zero-control from the verdicts (loop file, "Candidates"), plus the Sol sets when
 //   Sol's caching or effort-high verdict differs from Opus's. Each must equal its set in harnesses/harness-zero/config/
-//   candidates.json, and its candidate_sha256 is computed with zero.ts's own candidateHash.
+//   candidates.json. Its candidate_sha256, and the zero-full and zero-min baselines', is the hash this run froze, read
+//   from candidates.json's candidate_sha256_phase_d (zero.ts at c2cadabce267), since internal-task moved the live hashes.
 // - Design sensitivity for Phase D (preregistration, Endpoints): every 3-of-5 repetition subset, the same repetitions
 //   on both sides, paired interval of zero-full-b minus zero-full-a with the kit's clusteredPairedDelta (seed 7, 10,000
 //   draws); median and 90th percentile (nearest rank, the 9th of 10) of the half-widths.
@@ -33,7 +34,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { candidateHash, loadConfig, resolveSet } from '../../../harnesses/harness-zero/zero.ts';
+import { loadConfig } from '../../../harnesses/harness-zero/zero.ts';
 import { clusteredPairedDelta } from '../../../runner/stats/paired.ts';
 
 const DIR = 'docs/benchmarks/2026-10-31-harness-zero-select';
@@ -170,11 +171,13 @@ if (sol.caching!.verdict !== opus.caching!.verdict || sol['effort-high']!.verdic
 }
 
 const zeroCfg = loadConfig();
+const phaseD = readJson<{ candidate_sha256_phase_d: Record<string, string> }>(join(zeroCfg.dir, 'config', 'candidates.json')).candidate_sha256_phase_d;
+const frozenHash = (name: string) => { const h = phaseD[name]; if (!h) throw new Error(`candidates.json candidate_sha256_phase_d has no hash for ${name}`); return h; };
 const frozen = Object.fromEntries(Object.entries(sets).map(([name, features]) => {
   if (JSON.stringify(zeroCfg.candidates.sets[name]) !== JSON.stringify(features)) throw new Error(`candidates.json ${name} is ${JSON.stringify(zeroCfg.candidates.sets[name])}, the verdicts give ${JSON.stringify(features)}`);
-  return [name, { features, candidate_sha256: candidateHash(resolveSet(name, zeroCfg)).candidate_sha256 }];
+  return [name, { features, candidate_sha256: frozenHash(name) }];
 }));
-const baselineHashes = Object.fromEntries(['zero-full', 'zero-min'].map((n) => [n, candidateHash(resolveSet(n, zeroCfg)).candidate_sha256]));
+const baselineHashes = Object.fromEntries(['zero-full', 'zero-min'].map((n) => [n, frozenHash(n)]));
 
 const passOf = (t: Trial) => !EXCLUDED.has(t.termination) && t.grade === 'pass' && !t.consent_violation ? 1 : 0;
 const sensitivity = (() => {

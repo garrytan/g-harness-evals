@@ -1,5 +1,6 @@
 // Writes the tree.json that gstack's CI carry reads (gstack docs/pregate.md#ci-carry; the "ci/checks" run profile in
-// .gstack/pregate.json): this run, its attempt and event, the commit it tested and that commit's tree, and every test file
+// .gstack/pregate.json): this run, its attempt and event, the runner OS (RUNNER_OS, which the profile's "os" must match), the
+// commit it tested and that commit's tree, and every test file
 // bun ran with the test count, taken from bun's JUnit report. A pull_request run tests GitHub's merge commit, so `sha` is
 // that commit and `head_sha` the pull request's head (PR_HEAD_SHA); a push run names the pushed commit for both.
 // `skipped_files` lists the files with any skipped test on the runner, which the carry does not count as covered.
@@ -56,6 +57,7 @@ if (import.meta.main) {
       run_id: Number(env('GITHUB_RUN_ID')),
       run_attempt: Number(env('GITHUB_RUN_ATTEMPT')),
       event: env('GITHUB_EVENT_NAME'),
+      os: env('RUNNER_OS'),
       sha,
       head_sha: process.env.PR_HEAD_SHA || sha,
       tree: git('rev-parse', 'HEAD^{tree}'),

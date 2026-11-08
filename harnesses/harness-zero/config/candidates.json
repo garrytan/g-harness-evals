@@ -1,13 +1,24 @@
 {
   "schema_version": 1,
-  "note": "The only Harness Zero config file the Phase C loop may write. Each set is a feature list, or {features, knobs} to change a knob. Frozen by harness-zero-select-2026-11 (PR 3) from docs/benchmarks/2026-10-31-harness-zero-select/results/verdicts.md (dev verdicts): zero-lean is zero-full minus every cut and can't-tell switch, zero-conservative is zero-full minus the cut switches, zero-control equals zero-lean, and the -sol sets apply GPT-6.1 Sol's own caching verdict. zero-lean-mcp-instructions is zero-lean plus mcp-instructions, added after the freeze (internal-task) for Phase D's gbrain pair (lean with mcp-instructions on and off); it is not a Phase C candidate. candidate_sha256 is each set's hash at the freeze. Version policy for zero-control: any change to its features, knobs, prompt files or another input of its candidate hash (zero.ts, adapter.sh, the Dockerfile, pin.json's base image digest and Bun version) gives it a new name and a new hash; tests/harness-zero-config.test.ts fails while zero-control's hash differs from the one recorded here.",
+  "note": "The only Harness Zero config file the Phase C loop may write. Each set is a feature list, or {features, knobs} to change a knob. Frozen by harness-zero-select-2026-11 (PR 3) from docs/benchmarks/2026-10-31-harness-zero-select/results/verdicts.md (dev verdicts): zero-lean is zero-full minus every cut and can't-tell switch, zero-conservative is zero-full minus the cut switches, zero-control equals zero-lean, and the -sol sets apply GPT-6.1 Sol's own caching verdict. zero-lean-mcp-instructions is zero-lean plus mcp-instructions, added after the freeze (internal-task-a) for Phase D's gbrain pair (lean with mcp-instructions on and off); it is not a Phase C candidate. candidate_sha256 is each set's hash at the freeze. Version policy for zero-control: any change to its features, knobs, prompt files or another input of its candidate hash (zero.ts, adapter.sh, the Dockerfile, pin.json's base image digest and Bun version) gives it a new name and a new hash; tests/harness-zero-config.test.ts fails while zero-control's hash differs from the one recorded here. One exception is on record: internal-task-b changed only zero.ts's empty-config default, every named set kept its name and its first request (the version-policy exception test in tests/harness-zero-config.test.ts checks this against tests/fixtures/harness-zero/first-requests-phase-d.json), and the old hashes stay in candidate_sha256_phase_d. A held-out preregistration names the current candidate_sha256.",
   "candidate_sha256": {
+    "zero-lean": "296ed734dc29507d253636c579ac78f49280a8ae2999fedeac456d05f5ad45e2",
+    "zero-conservative": "f7eeecf78ac8e17888a4c606cbacfa69b170e79789170247dce98171179bda3f",
+    "zero-control": "296ed734dc29507d253636c579ac78f49280a8ae2999fedeac456d05f5ad45e2",
+    "zero-lean-sol": "a53118b65086e85e7471583ac87a3690f966a448653f560ce5464180ea605abb",
+    "zero-conservative-sol": "f7eeecf78ac8e17888a4c606cbacfa69b170e79789170247dce98171179bda3f",
+    "zero-lean-mcp-instructions": "b380befa0fcfd8ecb47d7ed1dfca81d5103356e91ae1a825fe59799f913a1617"
+  },
+  "candidate_sha256_phase_d_note": "The hashes harness-zero-select-2026-11 and harness-zero-h2h-2026-11 froze, from zero.ts at main c2cadabce267. internal-task changed only the empty-config default in zero.ts, so every named set sends the same first request (tests/fixtures/harness-zero/first-requests-phase-d.json) and keeps its name; candidate_sha256 above is the current code. Finished runs keep these hashes in their own receipts. zero-full and zero-min are the two baselines harness-zero-select-2026-11 compared against, recorded here so its report-extras.ts reproduces the committed results.",
+  "candidate_sha256_phase_d": {
     "zero-lean": "56edb1a8f806b688494989cc37d11cd64d30f6ddd1764932c598040d548c6a15",
     "zero-conservative": "f58dba6fb1ab6ad8616420fe48e82a4f99e25c7ba5da39912bf2ba61852888ee",
     "zero-control": "56edb1a8f806b688494989cc37d11cd64d30f6ddd1764932c598040d548c6a15",
     "zero-lean-sol": "6fdc88d8dd93bfb3c132b8f78c07a169a43dd4e054ceeb5d6b2436fd2ad67bc8",
     "zero-conservative-sol": "f58dba6fb1ab6ad8616420fe48e82a4f99e25c7ba5da39912bf2ba61852888ee",
-    "zero-lean-mcp-instructions": "82dbd0fb6b8f583c9c2a6b95c1bb1e24d0cb43d3d389f4807df266a39ac2691d"
+    "zero-lean-mcp-instructions": "82dbd0fb6b8f583c9c2a6b95c1bb1e24d0cb43d3d389f4807df266a39ac2691d",
+    "zero-full": "2736ecd9efb9989ddbf93a5746521723210a6e00ffa43ca4b4c3728d3e23e575",
+    "zero-min": "f9f3a51ee80c8137ce0c5ee2b6f61c0bb9580aa41e4c1a433271f66eebb1e584"
   },
   "sets": {
     "zero-lean": ["caching", "scoped-notes"],

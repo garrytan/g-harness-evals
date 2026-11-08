@@ -7,7 +7,8 @@
 //
 // Keyless, read-only against the runs, deterministic apart from generated_at. For every docs/benchmarks/*/results/
 // trials.jsonl it records: the run id (results/manifest.json run_id, else the prefix of the first trial_id), the report
-// path, the preregistration with the commit that added it and every later commit that touched it (the amendments, with
+// path (the run's own report.md, else the report REPORT_ELSEWHERE names for it), results/UNCOUNTED.md under uncounted when
+// the run marks itself uncounted, the preregistration with the commit that added it and every later commit that touched it (the amendments, with
 // their committer dates and subjects), the trial count and the count per cell, the sha256 of trials.jsonl, every
 // *.sqlite ledger under results/ with its sha256 and the spend it commits, every proxy-usage*.ndjson with its sha256,
 // and whether summary.json and taxonomy.json are present.
@@ -65,6 +66,8 @@ export interface RunRow {
   directory: string;
   run_id: string | null;
   report: string | null;
+  /** results/UNCOUNTED.md when the run directory marks itself uncounted (a cancelled or voided run whose trials count toward nothing). */
+  uncounted: string | null;
   preregistration: { path: string | null; first_commit: string | null; amendments: Amendment[] };
   trials: number;
   cells: Record<string, number>;
@@ -101,6 +104,14 @@ export interface SealedRunRow {
   problems: string[];
 }
 export interface Manifest { schema_version: number; generated_at: string; generator: string; runs: RunRow[]; sealed_runs?: SealedRunRow[] }
+
+/** Runs with no report.md of their own whose results another run's report covers. */
+export const REPORT_ELSEWHERE: Record<string, string> = {
+  'docs/benchmarks/2026-11-02-v04-cal-r2': 'docs/benchmarks/2026-11-02-v04-cal-r1/report.md',
+  'docs/benchmarks/2026-11-02-v04-cal-r3': 'docs/benchmarks/2026-11-02-v04-cal-r1/report.md',
+  'docs/benchmarks/2026-11-02-v04-cal-r4': 'docs/benchmarks/2026-11-02-v04-cal-r1/report.md',
+  'docs/benchmarks/2026-11-02-v04-transfer': 'docs/benchmarks/2026-11-02-v04-cal-r1/report.md',
+};
 
 const sha256 = (buf: Buffer) => createHash('sha256').update(buf).digest('hex');
 const round6 = (x: number) => Number(x.toFixed(6));
@@ -205,10 +216,13 @@ export function buildRun(root: string, directory: string): RunRow {
 
   const prereg = join(dir, 'PREREGISTRATION.md');
   const report = join(dir, 'report.md');
+  const uncounted = join(results, 'UNCOUNTED.md');
+  const elsewhere = REPORT_ELSEWHERE[directory];
   return {
     directory,
     run_id: runId,
-    report: existsSync(report) ? rel(report) : null,
+    report: existsSync(report) ? rel(report) : elsewhere && existsSync(join(root, elsewhere)) ? elsewhere : null,
+    uncounted: existsSync(uncounted) ? rel(uncounted) : null,
     preregistration: existsSync(prereg) ? { path: rel(prereg), ...preregistrationHistory(root, rel(prereg)) } : { path: null, first_commit: null, amendments: [] },
     trials,
     cells: sortedCells,

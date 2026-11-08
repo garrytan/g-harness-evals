@@ -18,7 +18,7 @@ set -euo pipefail
 mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
 log() { printf '%s harness-zero[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" | tee -a "$HE_LOG_DIR/adapter.log" >&2; }
-# internal-task: the sha256 of this adapter file goes into the ready file (preflight compares it with the image, HE-ADAPTER-005).
+# HARN-5: the sha256 of this adapter file goes into the ready file (preflight compares it with the image, HE-ADAPTER-005).
 adapter_sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)
 harness_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
@@ -56,6 +56,6 @@ bun_version=$(bun --version)
 if [ "$bun_version" != "$pinned_bun" ]; then log "HE-ZERO-008 bun $bun_version is not pin.json's $pinned_bun; fix: docker build -t harness-eval/harness-zero:dev harnesses/harness-zero"; exit 2; fi
 
 export HE_ZERO_ADAPTER_SHA256="$adapter_sha256"
-log "harness-zero adapter $adapter_sha256 bun $bun_version entry=$entry config=${HE_HARNESS_CONFIG:-zero-full}"
+log "harness-zero adapter $adapter_sha256 bun $bun_version entry=$entry config=${HE_HARNESS_CONFIG:-zero-full-no-mcp-instructions}"
 cd "$HE_WORKSPACE_DIR"
 exec bun "$harness_dir/zero.ts" "$entry"

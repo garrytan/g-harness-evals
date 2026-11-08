@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { testedFiles } from '../scripts/ci-tree-json';
@@ -31,7 +31,7 @@ function repo(): { dir: string; head: string; tree: string } {
 function run(dir: string, env: Record<string, string>, junit = JUNIT) {
   writeFileSync(join(dir, 'junit.xml'), junit);
   const out = join(dir, 'out', 'tree.json');
-  const r = spawnSync(process.execPath, [SCRIPT, '--junit', join(dir, 'junit.xml'), '--out', out], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: dir, GITHUB_RUN_ID: '42', GITHUB_RUN_ATTEMPT: '2', ...env } });
+  const r = spawnSync(process.execPath, [SCRIPT, '--junit', join(dir, 'junit.xml'), '--out', out], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: dir, GITHUB_RUN_ID: '42', GITHUB_RUN_ATTEMPT: '2', RUNNER_OS: 'Linux', ...env } });
   return { status: r.status, stderr: r.stderr, out };
 }
 
@@ -101,7 +101,7 @@ test('writes tree.json for the commit the run tested', () => {
   const { dir, head, tree } = repo();
   const r = run(dir, { GITHUB_SHA: head, GITHUB_EVENT_NAME: 'pull_request', PR_HEAD_SHA: 'a'.repeat(40) });
   expect(r.status).toBe(0);
-  expect(JSON.parse(readFileSync(r.out, 'utf8'))).toEqual({ run_id: 42, run_attempt: 2, event: 'pull_request', sha: head, head_sha: 'a'.repeat(40), tree, files: ['tests/a.test.ts', 'tests/b&c.test.ts'], tests: 5, skipped_files: ['tests/b&c.test.ts'] });
+  expect(JSON.parse(readFileSync(r.out, 'utf8'))).toEqual({ run_id: 42, run_attempt: 2, event: 'pull_request', os: 'Linux', sha: head, head_sha: 'a'.repeat(40), tree, files: ['tests/a.test.ts', 'tests/b&c.test.ts'], tests: 5, skipped_files: ['tests/b&c.test.ts'] });
   const push = run(dir, { GITHUB_SHA: head, GITHUB_EVENT_NAME: 'push' });
   expect(JSON.parse(readFileSync(push.out, 'utf8')).head_sha).toBe(head);
 });
@@ -117,4 +117,15 @@ test('refuses a HEAD other than GITHUB_SHA and a report with no tests', () => {
   const empty = run(dir, { GITHUB_SHA: head, GITHUB_EVENT_NAME: 'push' }, '<testsuites tests="0"></testsuites>');
   expect(empty.status).toBe(1);
   expect(empty.stderr).toContain('names no test file');
+});
+
+// Value: protects=no tree.json is written without the runner OS, so gstack's carry never meets a record with no os and
+// refuses it as os_mismatch after the fact; fails_when=os falls back to an empty or default value when RUNNER_OS is unset;
+// why_new=tree.json's os field (internal-task); seam=a throwaway git repository; no_claim=gstack's own os check.
+test('refuses to write tree.json when RUNNER_OS is unset', () => {
+  const { dir, head } = repo();
+  const r = run(dir, { GITHUB_SHA: head, GITHUB_EVENT_NAME: 'push', RUNNER_OS: '' });
+  expect(r.status).toBe(1);
+  expect(r.stderr).toContain('RUNNER_OS is not set');
+  expect(existsSync(r.out)).toBe(false);
 });

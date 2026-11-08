@@ -8,8 +8,8 @@
     "digest": "sha256:14a223fa35747ec728bce300ef85888bc5f7958164d15bbba6a54b22b52a3288"
   },
   "integrity": {
-    "zero_ts_sha256": "ec99bdbaa9682085b4b6ce9e9dea7aa8b0d59823a3322e94792df1d243c836f7",
-    "adapter_sh_sha256": "17dcc32b67aff97bdcf2dfde48edb4ae2218cffc9cb97e5bdba1adfa998c9892",
+    "zero_ts_sha256": "42af3c9f5907fd64d65d9d9153d803af2057731d0ec892593a247c25ae6dc04b",
+    "adapter_sh_sha256": "4ffc3ce31503ccbb12c5e0ca26cdb41540fc70ab910f026c1e3b705bb6b34765",
     "checked": "tests/harness-zero-image.test.ts compares both with the checkout; at image build the Dockerfile checks bun --version; adapter.sh compares bun --version with bun_version before anything else and exits 2 on a difference; preflight compares zero.ts, adapter.sh, pin.json, the Dockerfile and every file under config/ in the image with the checkout (HE-ADAPTER-005); the Dockerfile has no build arguments, so the base image is always the pinned digest"
   },
   "install": "none: zero.ts imports only Bun and node: built-ins, so there is no package, lockfile or install step; the Dockerfile copies zero.ts, adapter.sh, pin.json, the Dockerfile and config/ into /opt/harness",
@@ -38,7 +38,7 @@
   "topology": "in-container",
   "network": "internal required: a harness-zero cell without network internal is refused at plan (HE-NET-001), like codex",
   "multi_user_mode": "one process per trial, one session per conversation key; nothing shared between keys except scoped-notes within one scope",
-  "configs": "HE_HARNESS_CONFIG names a set: zero-min, zero-full (the default when empty), zero-full-no-<slug> for each feature, or a set in config/candidates.json; any other value exits 2 before ready (HE-ZERO-001) and plan, dry-run and preflight refuse it",
+  "configs": "HE_HARNESS_CONFIG names a set: zero-min, zero-full, zero-full-no-<slug> (zero-full-no-mcp-instructions is the default when empty) for each feature, or a set in config/candidates.json; any other value exits 2 before ready (HE-ZERO-001) and plan, dry-run and preflight refuse it",
   "serve": {
     "session_key": "dm:<member> | channel:<id>; :t<thread_ts> appended when TurnRequest.thread_ts is set",
     "session_store": "/harness-state/zero/sessions/<sha256(key)>.json (the wire-native history, the system prompt fixed at the session's start); notes under /harness-state/zero/notes/<sha256(scope)>.json",

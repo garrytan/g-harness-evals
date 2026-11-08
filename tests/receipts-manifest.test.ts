@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Database } from 'bun:sqlite';
-import { buildManifest, compareManifests, readLedger, renderManifest } from '../scripts/receipts-manifest.ts';
+import { REPORT_ELSEWHERE, buildManifest, compareManifests, readLedger, renderManifest } from '../scripts/receipts-manifest.ts';
 
 const RUN = 'docs/benchmarks/2026-01-02-unit';
 
@@ -76,6 +76,7 @@ describe('receipts manifest', () => {
     const run = m.runs[0]!;
     expect(run.run_id).toBe('unit-2026-01');
     expect(run.report).toBe(`${RUN}/report.md`);
+    expect(run.uncounted).toBeNull();
     expect(run.trials).toBe(3);
     expect(run.cells).toEqual({ 'a-cell': 2, 'b-cell': 1 });
     expect(run.trials_jsonl_sha256).toBe(sha(trials));
@@ -94,6 +95,23 @@ describe('receipts manifest', () => {
     expect(good!.ledger_open_reservations_usd).toBe(0.25);
     expect(good!.requests).toBe(2);
     expect(good!.leases).toEqual([{ run_id: 'unit-2026-01', budget_usd: 2, committed_usd: 0.75, overshoot_usd: 0, started_at: '2026-01-02T00:00:00Z', finished_at: null }]);
+  });
+
+  test('a run with results/UNCOUNTED.md is marked uncounted, and a report-less run takes the report REPORT_ELSEWHERE names', () => {
+    const dir = repo();
+    populate(dir);
+    writeFileSync(join(dir, RUN, 'results', 'UNCOUNTED.md'), '# uncounted\n');
+    const covered = 'docs/benchmarks/2026-11-02-v04-cal-r2', cover = 'docs/benchmarks/2026-11-02-v04-cal-r1/report.md';
+    expect(REPORT_ELSEWHERE[covered]).toBe(cover);
+    mkdirSync(join(dir, covered, 'results'), { recursive: true });
+    writeFileSync(join(dir, covered, 'results', 'trials.jsonl'), trial('a-cell', 1) + '\n');
+    const row = () => buildManifest(dir).runs.find((r) => r.directory === covered)!;
+    expect(row().report).toBeNull();
+    mkdirSync(join(dir, 'docs/benchmarks/2026-11-02-v04-cal-r1'), { recursive: true });
+    writeFileSync(join(dir, cover), '# report\n');
+    expect(row().report).toBe(cover);
+    expect(row().uncounted).toBeNull();
+    expect(buildManifest(dir).runs.find((r) => r.directory === RUN)!.uncounted).toBe(`${RUN}/results/UNCOUNTED.md`);
   });
 
   test('the run id comes from results/manifest.json when present, else from the trial_id prefix', () => {

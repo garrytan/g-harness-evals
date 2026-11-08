@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Harness Zero (internal-task): the smallest agent harness we can reason about whole. One Bun process, Bun built-ins only (no
+// Harness Zero (HARN-22): the smallest agent harness we can reason about whole. One Bun process, Bun built-ins only (no
 // npm packages, no provider SDKs), three hand-written wire clients, an MCP client, and a set of switchable features read
 // from config/features.json and config/candidates.json. Protocol: docs/adapters.md. Exit 0 completed, 2 harness error,
 // 3 model error, 124 wall clock.
@@ -60,6 +60,8 @@ export function loadConfig(dir = HARNESS_DIR): ZeroConfig {
 
 /** zero-full-no-<slug>: zero-full without one feature. */
 export const ablationName = (slug: string) => 'zero-full-no-' + slug;
+/** The set an empty config picks: zero-full with mcp-instructions off (Phase D found it cost more and bought nothing). */
+export const DEFAULT_SET = ablationName('mcp-instructions');
 
 /** Every valid set name, in order: features.json's sets, one ablation per feature, then candidates.json's sets. The
  *  runner's dry-run and preflight read valid names from here. */
@@ -69,7 +71,7 @@ export function setNames(cfg: ZeroConfig = loadConfig()): string[] {
 
 /** The features and every knob of a set; HE-ZERO-001 for an unknown name, HE-ZERO-002 for a bad feature or knob. */
 export function resolveSet(input: string | undefined, cfg: ZeroConfig = loadConfig()): ResolvedSet {
-  const name = input?.trim() || 'zero-full';
+  const name = input?.trim() || DEFAULT_SET;
   const slugs = cfg.features.features.map((f) => f.slug);
   const ablated = name.startsWith('zero-full-no-') && slugs.includes(name.slice(13)) ? (cfg.features.sets['zero-full'] ?? []).filter((s) => s !== name.slice(13)) : undefined;
   const spec = (Object.hasOwn(cfg.features.sets, name) ? cfg.features.sets[name] as SetSpec : undefined) ?? (Object.hasOwn(cfg.candidates.sets, name) ? cfg.candidates.sets[name] : undefined) ?? ablated;
