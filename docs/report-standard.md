@@ -2,6 +2,20 @@
 
 How every new report in docs/benchmarks/ is written. It makes a report readable in 30 seconds and checkable in 5 minutes. Reports in run folders dated before this standard merged keep their text; the [reports index](reports-index.md) gives their status.
 
+## How we test, in brief
+
+Every report rests on these rules. They moved here from the README on 2026-11-08.
+
+- **Frontier models only.** Opus 5.5 and GPT-6.1 Sol carry every result. Older Sonnet and Haiku runs are kept, labelled appendix, and carry no verdict.
+- **Preregistered.** Each run's question, tasks, comparisons and stop rules are committed before its first trial, and nothing they cover changes afterwards. In the public copy, that order is our own record; its commit dates can't prove it.
+- **Metered.** Every model call goes through our metering proxy, which counts tokens and dollars at list price. The harness never sees a real API key. Cost per solved task comes from this meter.
+- **A no-gstack arm in every head-to-head.** Any test of gstack runs the same model, harness and tasks with gstack not installed, and an audit checks that this arm never read a gstack file. gbrain tests keep a no-brain arm the same way.
+- **Graded on what happened.** Tasks run inside a simulated company with channels, files and mail. The grader reads the world's state and event log afterwards, never the agent's account of what it did.
+- **A claim check before results publish.** A reviewer traces every number and takeaway in a report to its receipt before the report merges. The [reports index](reports-index.md) shows which reports have one.
+- **A cross-family judge.** Where a run scores answers with a model, the judge comes from a different model family than the model under test, and it must agree with labelled examples before its scores count. This applies to runs preregistered from November 8, 2026.
+- **Recheckable without a key.** Each recent report ends with a "Reproduce and inspect" section that rebuilds its tables from the receipts in the repository ([CONTRIBUTING.md](../CONTRIBUTING.md#re-read-a-runs-receipts)). A tool for rerunning one cell with your own key is described in [replicate.md](replicate.md), but no published result ships the trial bundle it needs yet.
+- Known limits and the statistics: [methods.md](methods.md#known-limits-in-full).
+
 ## The top of the report
 
 Every report opens with a TL;DR block, before any other heading. Copy [report-template.md](report-template.md).

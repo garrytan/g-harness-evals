@@ -52,6 +52,7 @@ Design only: the folder holds `design.json` instead of a `prereg.json`, and no t
   - [2026-11-07-h10-instruction-placement/](benchmarks/2026-11-07-h10-instruction-placement/PREREGISTRATION.md): `h10-instruction-placement-2026-11`, preregistered 2026-11-07; where an instruction must live to be obeyed: gbrain's 289-byte brain-first rule through each route (none, per-turn hook, one-time hook, system prompt, startup file, untold and told skill, placebo hook) on Claude Code (Opus 5.5, cli and Agent SDK drivers) and Codex, Hermes and OpenClaw (GPT-6.1 Sol), 10 public v0.3 dev tasks, 30 cells, 300 trials, cap $150 with smokes included. Both conditional blocks (particle-1, the internal-task slot) dropped before the preregistration. Amendment 1 re-costed the leases and raised the cap to $250 before any counted trial. Reported 2026-11-07 ([report](benchmarks/2026-11-07-h10-instruction-placement/report.md)): 300 of 300 trials at `fc5547d2b433`, $60.57 of the $250 cap, 0 cap stops. On GPT-6.1 Sol the hook, system prompt and startup file reached 30 of 30 turns against 4 to 6 with no rule; the untold skill worked on Codex and OpenClaw and was never opened on Hermes or Claude Code; Claude Code's own no-rule control sat at 17 to 18 of 30. Why null? verdicts CUT-CANDIDATE (untold skill on Hermes and Claude Code) and FIX-METHOD (one-time copy, Claude Code stub).
 - [budget-ledger.md](budget-ledger.md): the program's spend ledger, one row per lane of paid work (written 2026-10-26 beside this index).
 - [comparing-runs.md](comparing-runs.md): how two cells or two runs are compared: the paired, task-clustered estimator, the sign-flip test, Holm, the minimum detectable difference, what "not distinguished at N tasks" means, each comparison script's flags and outputs, and the exact commands every counted run's report names.
+- [corrections.md](corrections.md): every correction to a published result, newest first, each pointing at the report that carries it. Moved from the front page on 2026-11-08.
 - [decisions.md](decisions.md): the decisions by Garry Tan and the coordinating agent that shaped a counted run, one line each (written 2026-10-26 beside this index).
 - [errors.md](errors.md): every error code the runner, proxy and adapters print, what it means, the fix, and where it lives.
 - [gbrain-arm.md](gbrain-arm.md): the gbrain arm: what a sidecar per trial runs, the world's `/gbrain` tap, the install ladder, how the arm is wired into the runner and adapters, the smoke evidence, and the status of each gbrain run.
@@ -79,6 +80,10 @@ Design only: the folder holds `design.json` instead of a `prereg.json`, and no t
 - [ubicloud.md](ubicloud.md): the Ubicloud shard lane: the scripts that put one shard per VM, how a run fans out and comes back, the check lane, costs and limits.
 
 ## Changelog
+
+### 2026-11-08: corrections page listed
+
+The pages list gains a line for corrections.md. Why: the README rewrite for newcomers moved the corrections list off the front page into its own page.
 
 ### 2026-11-08: scoreboard line names the other-runs table (internal-task)
 

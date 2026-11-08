@@ -4,6 +4,18 @@
 
 Each file follows the shared finding template used across our eval repositories: front matter (grade, commit, preregistration, data digests), then a status line, What we found, How it works, Setup, Result, Cost, Why null?, Limits, Replicate it, What is held out, Claim check, Chart and post, Changelog, and a closing Disclosures section with Garry's lines. The model-vs-harness and gbrain-first files have a Haiku 5.5 appendix, graded dev, just before the Disclosures section. The Opus gstack steps file adds an Update, 2026-11-03 section before What we found and a Clean control arm section after Limits.
 
+
+## Topic findings (frontier models)
+
+**Short pages for outside readers, one per lesson the front page states.** Each opens with two or three takeaways, gives the evidence and its main caveat, links an addendum with the details, and links the full reports. Every number is copied from a report that passed a claim check; these pages do not use the template above.
+
+- [Where to put a rule so an agent follows it](rule-placement/README.md): from the instruction-placement run (Opus 5.5 and GPT-6.1 Sol).
+- [With the model fixed, harnesses differ on cost more than on pass rate](harness-cost/README.md): from the harness matrix and the cost breakdown runs.
+- [A shared brain needs per-person access rules](shared-brain-access/README.md): from the installer runs on Claude Code and Codex, with and without gbrain's access rules.
+- [Test prompt cuts on tasks the agent can fail](prompt-cuts/README.md): from the prompt archaeology run and its follow-up on harder tasks.
+
+## Claim files
+
 | Finding | Grade | Claim, short |
 |---|---|---|
 | [2026-11-01-model-vs-harness](2026-11-01-model-vs-harness.md) | confirmatory (Sonnet 5.5); dev (Haiku 5.5) | OpenClaw, Hermes Agent and QM showed no pass-rate difference we could detect on Sonnet 5.5 on the v0.1 held-out tasks (the Sonnet minus Haiku contrast is appendix only) |
@@ -17,6 +29,10 @@ Each file follows the shared finding template used across our eval repositories:
 - **Coming next:** nothing for the Opus gstack steps finding until a gate that also covers Bash-mediated writes is tested. The Lane B Terminal-Bench 2 replication gets no finding file: it is a Haiku 5.5 comparability rerun, and its report, in open pull request #181, carries that label.
 
 ## Changelog
+
+### 2026-11-08: topic findings for outside readers
+
+Added four short topic pages, each with an addendum, and a section that lists them. Why: the README now states four lessons for readers who have never seen the repository, and each lesson needs one page to link to.
 
 ### 2026-11-03: Opus gstack steps finding updated
 

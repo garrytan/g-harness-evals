@@ -58,6 +58,38 @@ bun scripts/seal-heldout.ts --check
 - `bun runner/prereg/prereg.ts` reads git history and can take a long time on a clean clone.
 - **CI is the reference.** If your local result differs from the GitHub Actions run on the same commit, trust CI and say so in your report.
 
+## Re-read a run's receipts
+
+**These scripts rebuild a counted run's tables from the receipts committed under its results/ folder.** They call no model. Each recent report's "Reproduce and inspect" section names the exact commands for that run.
+
+```sh
+bun scripts/summarize-run.ts --results docs/benchmarks/2026-10-24-m3-heldout/results                  # tables per cell
+bun scripts/compare-run.ts --results docs/benchmarks/2026-10-24-gbrain-arm/results --pair gbrain      # paired comparisons
+bun scripts/taxonomy.ts --results docs/benchmarks/2026-10-24-m3-heldout/results                       # failure modes
+bun scripts/receipts-manifest.ts --check                                                              # receipts match their recorded hashes
+bun scripts/publish-audit.ts                                                                          # token shapes in the tree and history; fails closed
+
+# Check a gbrain commit against the install ladder's structural facts (builds the sidecar image; about 200 s cold)
+bun scripts/gbrain-check.ts --gbrain <ref>
+```
+
+- summarize-run.ts can rewrite receipts in the folder it reads. Put them back with `git checkout -- <results folder>`.
+- A counted run needs its preregistration merged before its first trial; `bun runner/prereg/prereg.ts` checks that against main's history.
+
+## Find your way around
+
+- `docs/benchmarks/<run>/` holds each run: the preregistration (committed before the first trial), the report, and `results/` with one record per trial, the comparison files, the proxy log and the lease ledgers. What each file is: [docs/methods.md](docs/methods.md#what-a-results-directory-holds).
+- `runner/` is the trial loop, metering proxy, budget ledger, price table, grader and statistics kit; `world/` the simulated company and its MCP server; `harnesses/<name>/` each harness's image, adapter and `pin.json` ([harnesses/README.md](harnesses/README.md) lists the pins); `gbrain/` the sidecar image; `tasks/multiuser/` the task sets with their oracles and seals; `scripts/` the report, audit and check tooling; `tests/` runs keyless in CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
+- **To add a harness,** implement the adapter contract in [docs/adapters.md](docs/adapters.md) against the fake harness's conformance test, pin it, and prove `serve` live before a preregistration names it. **To add a task,** follow [docs/tasks.md](docs/tasks.md); a held-out task is sealed before any counted run spends it.
+- The trial contract every runner, adapter and grader implements is [docs/methodology.md](docs/methodology.md). How a run is compared with another, and which commands made each table: [docs/comparing-runs.md](docs/comparing-runs.md). What was decided, and when: [docs/decisions.md](docs/decisions.md).
+- How the world and tasks work in full, and how every harness runs: [docs/methods.md](docs/methods.md). Every page under docs/, one line each: [docs/README.md](docs/README.md).
+- The plan this repository executes and its review record are in [docs/plans/2026-10-21-harness-eval-v0/](docs/plans/2026-10-21-harness-eval-v0/); open tasks are in [TODOS.md](TODOS.md); the survey of earlier harness comparisons is [compendium.md](compendium.md); error codes are in [docs/errors.md](docs/errors.md); [CHANGELOG.md](CHANGELOG.md) records each release.
+- The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)), and the world is built from gbrain-evals' `messy-company-v1` dataset.
+
+## Licences
+
+Code is MIT ([LICENSE](LICENSE)). Reports, findings, docs and our own data are CC BY 4.0 ([LICENSES/CC-BY-4.0.txt](LICENSES/CC-BY-4.0.txt)). Third-party text keeps its own licence: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) lists each upstream and the paths that carry its text.
+
 ## Maintainer-only work
 
 Outside contributors can't do these, and pull requests that change them are not taken:
@@ -67,7 +99,7 @@ Outside contributors can't do these, and pull requests that change them are not 
 - **Preregistrations.** They are committed before a run's results, and nothing they cover changes afterwards.
 - **Held-out sets.** Bodies of sets still in use are sealed; spent sets are published, labelled spent.
 
-You can still re-read every published run's receipts with the keyless scripts in the README.
+You can still re-read every published run's receipts with the keyless scripts above ([Re-read a run's receipts](#re-read-a-runs-receipts)).
 
 ## Docs style
 
