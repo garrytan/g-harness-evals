@@ -88,6 +88,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
+      # The job holds a full-history checkout, the export stage, the public clone and docker builds at once, and the
+      # runner's free disk ran out on a results PR with 526 MB of receipts (#333). Remove preinstalled toolchains this
+      # job never uses before the checkout; df -h before and after shows what it freed.
+      - name: Free runner disk
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
