@@ -34,6 +34,7 @@ import { ANTHROPIC_CELL, TOKEN, capture, captureProcess, dockerEnv, goldenOf, go
 import { responseStream, type FakeRequest } from './fixtures/openai-branch/fake-openai.ts';
 import { withCellModelDefaults } from './fixtures/model-defaults.ts';
 import { withTextImageMode } from './fixtures/hermes-image-mode.ts';
+import { codeless } from './fixtures/export-codes.ts';
 
 const ROOT = join(import.meta.dir, '..');
 const HARNESSES: Harness[] = ['openclaw', 'hermes'];
@@ -92,14 +93,14 @@ describe.skipIf(!NODE || !HAVE_PY)('an Anthropic cell is unchanged from c1c7ed1b
         const c = await captureProcess({ harness: h, entry, harnessDir: harnessDir(h), ...ANTHROPIC_CELL, env: hostEnv(h) });
         expect(c.exit, c.logs).toBe(0);
         expect(c.turns).toHaveLength(1);
-        expect(JSON.stringify(c.turns, null, 1)).toBe(JSON.stringify(golden.turns, null, 1));
-        expect(JSON.stringify(c.response)).toBe(JSON.stringify(golden.response));
-        expect(JSON.stringify(c.ready)).toBe(JSON.stringify(golden.ready));
+        expect(codeless(JSON.stringify(c.turns, null, 1))).toBe(codeless(JSON.stringify(golden.turns, null, 1)));
+        expect(codeless(JSON.stringify(c.response))).toBe(codeless(JSON.stringify(golden.response)));
+        expect(codeless(JSON.stringify(c.ready))).toBe(codeless(JSON.stringify(golden.ready)));
         if (h === 'openclaw' && entry === 'serve') {
-          expect(c.config).toBe(intended('openclaw', JSON.parse(readFileSync(goldenPath('openclaw', 'run'), 'utf8')).config));
-          expect(c.mcp).toEqual([{ name: 'world', definition: JSON.parse(golden.config).mcp.servers.world }]);
+          expect(codeless(c.config)).toBe(codeless(intended('openclaw', JSON.parse(readFileSync(goldenPath('openclaw', 'run'), 'utf8')).config)));
+          expect(codeless(JSON.stringify(c.mcp))).toBe(codeless(JSON.stringify([{ name: 'world', definition: JSON.parse(golden.config).mcp.servers.world }])));
         } else {
-          expect(c.config).toBe(intended(h, golden.config));
+          expect(codeless(c.config)).toBe(codeless(intended(h, golden.config)));
         }
         const sha = sha256(join(harnessDir(h), 'adapter.sh'));
         expect(sha).not.toBe(golden.adapter_sha256);
@@ -118,7 +119,7 @@ describe('an Anthropic cell is unchanged from c1c7ed1b3 apart from Hermes turnin
         const c = await capture({ harness: h, entry, harnessDir: harnessDir(h), image: image(h), ...ANTHROPIC_CELL, name: `he-oai-golden-${h}-${entry}-${process.pid}` });
         expect(c.exit).toBe(0);
         const { adapter_sha256: goldenSha, ...rest } = golden;
-        expect(JSON.stringify(goldenOf(c), null, 1)).toBe(JSON.stringify({ ...rest, config: intended(h, rest.config) }, null, 1));
+        expect(codeless(JSON.stringify(goldenOf(c), null, 1))).toBe(codeless(JSON.stringify({ ...rest, config: intended(h, rest.config) }, null, 1)));
         const sha = sha256(join(harnessDir(h), 'adapter.sh'));
         expect(sha).not.toBe(goldenSha);
         if (entry === 'serve') expect(c.adapter_sha256).toBe(sha);

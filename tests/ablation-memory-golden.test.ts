@@ -26,6 +26,8 @@ const FIXTURE = JSON.parse(readFileSync(join(ROOT, 'tests', 'fixtures', 'ablatio
 const MEMORY = FIXTURE.memory;
 const bytes = (s: string) => Buffer.byteLength(s, 'utf8');
 const mapOf = (file: string) => JSON.parse(readFileSync(join(DIR, file), 'utf8')) as LayerMap;
+// The public copy keeps only the hashes of the Claude Code captures behind a map (scripts/anatomy/store.ts isHashesOnly), so a case on such a map is skipped there.
+const hashesOnly = (file: string) => (mapOf(file).sources as Array<{ receipts: string }>).some((s) => isHashesOnly(join(ROOT, s.receipts)));
 const specFor = (file: string, layers: string[] | 'all'): AblationSpec => ({ map: join(DIR, file), map_sha256: MANIFEST.maps.find((m) => m.file === file)!.sha256, layers: layers === 'all' ? [...mapLayers(mapOf(file))] : layers });
 
 interface Req { scenario: string; row: number; route: string; body: Record<string, any> }
@@ -56,7 +58,7 @@ const texts = (v: unknown): string[] => (typeof v === 'string' ? [v] : Array.isA
 
 describe('non-empty memory on the Claude Code and Codex layer maps (golden fixture)', () => {
   for (const c of FIXTURE.cases) {
-    test(c.id, () => {
+    test.skipIf(hashesOnly(c.map))(c.id, () => {
       const reqs = corpus(c.map);
       expect(reqs.length).toBeGreaterThan(1);
       for (const r of c.edit === 'pipeline' ? reqs.slice(0, 1) : reqs) for (const [arm, layers] of Object.entries(c.arms)) {

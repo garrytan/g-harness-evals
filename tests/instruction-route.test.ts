@@ -36,6 +36,7 @@ import { parseTask } from '../runner/grade/task.ts';
 import { stream, toolNames } from './fixtures/fake-responses.ts';
 import { bundleSha256 } from '../scripts/routes/slot-check.ts';
 import { world } from './world-helpers.ts';
+import { codelessFiles } from './fixtures/export-codes.ts';
 
 const ROOT = join(import.meta.dir, '..');
 const BASE = '31a109a9c';
@@ -222,11 +223,11 @@ describe.skipIf(!NODE || !HAVE_PY)('default config: byte-identical to the adapte
       test(h + ' ' + entry + ': unset, empty and "default" leave every file and every CLI command line as ' + BASE + ' does', async () => {
         const base = await runAdapter({ harness: h, entry, harnessDir: baseDir(h) });
         expect(base.exit, base.log).toBe(0);
-        const want = sinceBase(h, normalised(base, baseDir(h)));
+        const want = codelessFiles(sinceBase(h, normalised(base, baseDir(h))));
         for (const config of [undefined, '', 'default']) {
           const r = await runAdapter({ harness: h, entry, config });
           expect(r.exit, r.log).toBe(0);
-          expect(normalised(r, join(ROOT, 'harnesses', h))).toEqual(want);
+          expect(codelessFiles(normalised(r, join(ROOT, 'harnesses', h)))).toEqual(want);
           expect(r.route).toBeNull();
           if (entry === 'serve') expect(r.files.get('logs/adapter.log')!.toString()).toContain('serve: stopped on signal');
           expect(want['logs/stub-calls.jsonl']).toContain('"' + (h === 'openclaw' ? 'agent' : 'chat') + '"');
@@ -241,7 +242,7 @@ describe.skipIf(!NODE || !HAVE_PY)('default config: byte-identical to the adapte
       expect(base.ready!.gbrain_install.status).toBe('ok');
       const r = await runAdapter({ harness: h, entry: 'serve', env });
       expect(r.exit, r.log).toBe(0);
-      expect(normalised(r, join(ROOT, 'harnesses', h))).toEqual(sinceBase(h, normalised(base, baseDir(h))));
+      expect(codelessFiles(normalised(r, join(ROOT, 'harnesses', h)))).toEqual(codelessFiles(sinceBase(h, normalised(base, baseDir(h)))));
     }, 120_000);
     test(h + ' serve with HE_GBRAIN_INSTALL=gbrain-installer (the committed hook view): unchanged from ' + BASE, async () => {
       const env = { HE_GBRAIN_INSTALL: 'gbrain-installer', HE_GBRAIN_SPLIT: 'heldout', HE_GBRAIN_INSTALL_DIR: installerView(h) };
@@ -251,7 +252,7 @@ describe.skipIf(!NODE || !HAVE_PY)('default config: byte-identical to the adapte
       expect(base.ready!.gbrain_install.turn_hook).toBe(h === 'openclaw' ? 'loaded' : 'healthy');
       const r = await runAdapter({ harness: h, entry: 'serve', env, seed });
       expect(r.exit, r.log).toBe(0);
-      expect(normalised(r, join(ROOT, 'harnesses', h))).toEqual(sinceBase(h, normalised(base, baseDir(h))));
+      expect(codelessFiles(normalised(r, join(ROOT, 'harnesses', h)))).toEqual(codelessFiles(sinceBase(h, normalised(base, baseDir(h)))));
     }, 120_000);
   }
 });

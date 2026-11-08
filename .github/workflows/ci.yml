@@ -7,6 +7,8 @@
 # (internal-task) that builds the gbrain sidecar image from the pull request's own checkout
 # and runs tests/gbrain-image.test.ts against it, about 15 minutes, still keyless,
 # run only when a file the image or its tests depend on changed (the `changes` job).
+# The public-export job exports this tree as the public repository would get it and checks it keyless (about 30
+# minutes, in parallel).
 # Paid runs (live harness trials) are manual, run on a trusted pushed SHA with a
 # reserved budget, and land receipts in the repo. Actions are pinned to commit SHAs;
 # Bun is pinned by bun-version.
@@ -75,6 +77,62 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Preregistration order
         run: bun runner/prereg/prereg.ts
+
+  # The public export (publication/README.md) of this pull request's tree, keyless: every export gate on the tree (the
+  # pass rule is scripts/public-export/ci-gate.ts), then the export tree committed on top of the public repository's
+  # history, where a keyless install, typecheck, link check and test run must pass, so a change that would break the
+  # public repository fails here and not at the next export. It uploads tree-report.md only; the report JSON and the
+  # held-*.tsv files carry held codes and stay on the runner.
+  public-export:
+    if: github.repository == 'garrytan/harness-evals'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.3
+      - name: Install (frozen lockfile)
+        run: bun install --frozen-lockfile
+      - name: Cache the pinned export tools
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/harness-evals/public-export
+          key: >-
+            public-export-tools-${{ hashFiles('scripts/public-export/tools.lock') }}
+      - name: Pinned export tools (checksum-verified)
+        run: bun scripts/public-export/export.ts tools
+      # The export reads the source's identities from refs/heads/main, which a pull request checkout does not create.
+      - name: Export tree (keyless; exit 1 is a gate verdict the next step reads)
+        run: |
+          git update-ref refs/heads/main HEAD
+          rc=0
+          bun scripts/public-export/export.ts tree --source . --rev HEAD --cutover "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --out "$RUNNER_TEMP/export" --no-trufflehog || rc=$?
+          [ "$rc" -le 1 ]
+      - name: Export gates
+        run: bun scripts/public-export/ci-gate.ts --report "$RUNNER_TEMP/export/report/tree-report.json" --summary "$GITHUB_STEP_SUMMARY"
+      - name: Upload the export report (Markdown only)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: public-export-report
+          path: ${{ runner.temp }}/export/report/tree-report.md
+          if-no-files-found: ignore
+      # The export commit becomes the clone's main, as it would be after the push, so a test that reads its base from main or
+      # origin/main (the sealed governance checks) compares the export with itself, not with the public copy before it.
+      - name: The export tree on top of the public history
+        run: |
+          git clone -q --single-branch --branch main --no-tags https://github.com/garrytan/g-harness-evals.git "$RUNNER_TEMP/public"
+          cd "$RUNNER_TEMP/public"
+          git fetch -q --no-tags "$RUNNER_TEMP/export/stage" main
+          tip=$(git -c user.name=ci -c user.email=ci@invalid commit-tree FETCH_HEAD^{tree} -p HEAD -m "export tree of $GITHUB_SHA")
+          git checkout -q -B main "$tip"
+          git update-ref -d refs/remotes/origin/main
+      - name: Keyless install, typecheck, links and tests on the export tree
+        working-directory: ${{ runner.temp }}/public
+        run: env -i HOME="$HOME" PATH="$PATH" LANG=C.UTF-8 bash -c 'bun install --frozen-lockfile && bunx tsc --noEmit && python3 scripts/check-links.py && bun test tests/'
 
   # Which paths changed, so the docker job runs only when the sidecar image, its build, the fake harness it drives or the
   # image tests could have changed: a pull request is compared with its base, a push to main with the commit before it.

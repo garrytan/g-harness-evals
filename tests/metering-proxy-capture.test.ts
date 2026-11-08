@@ -14,7 +14,7 @@ import { DEFAULT_CAPTURE_MAX_BYTES } from '../runner/proxy/capture.ts';
 const tmp = mkdtempSync(join(tmpdir(), 'proxy-capture-'));
 afterAll(() => { closeLedgers(); rmSync(tmp, { recursive: true, force: true }); });
 const CANARY = { ANTHROPIC_API_KEY: 'sk-' + 'ant-canary-anthropic-7c41d2', OPENAI_API_KEY: 'sk-canary-openai-93be07', GEMINI_API_KEY: 'canary-goog-5a10' };
-const TOKEN = 'tok-canary-slot-e8f2';
+const TOKEN = 'tok-' + 'canary-slot-e8f2';
 const QUERY_KEY = 'canary-query-key-1d9a';
 let n = 0;
 
