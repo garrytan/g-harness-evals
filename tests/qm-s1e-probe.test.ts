@@ -107,14 +107,14 @@ describe('s1e order, approvals and resume', () => {
   const tasks = DRY_RUN_TASKS.map((t) => ({ ...t, repo_dir: '/tmp/' + t.id }));
   test('every (task, arm, model, rep) once, in the same seeded order on every call, with the arms interleaved', () => {
     const a = trialPlan(tasks, ['plain', 'edition'], ['opus'], 3, 1514);
-    expect(a.length).toBe(18);
-    expect(new Set(a.map((t) => t.trial_id)).size).toBe(18);
+    expect(a.length).toBe(12);
+    expect(new Set(a.map((t) => t.trial_id)).size).toBe(12);
     expect(trialPlan(tasks, ['plain', 'edition'], ['opus'], 3, 1514).map((t) => t.trial_id)).toEqual(a.map((t) => t.trial_id));
     expect(trialPlan(tasks, ['plain', 'edition'], ['opus'], 3, 7).map((t) => t.trial_id)).not.toEqual(a.map((t) => t.trial_id));
-    const firstHalf = a.slice(0, 9).map((t) => t.arm);
+    const firstHalf = a.slice(0, 6).map((t) => t.arm);
     expect(firstHalf).toContain('plain');
     expect(firstHalf).toContain('edition');
-    expect(a[0]!.trial_id).toMatch(/^dry-(inv|rev|plan)-01-(plain|edition)-opus-k[123]$/);
+    expect(a[0]!.trial_id).toMatch(/^dry-(rev|plan)-01-(plain|edition)-opus-k[123]$/);
   });
 
   test('each pending command is approved once; a repeat, an empty list or the sixth approval stops the trial', () => {

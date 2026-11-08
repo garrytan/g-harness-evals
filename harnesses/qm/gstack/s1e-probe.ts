@@ -3,7 +3,7 @@
 // and repetition, in a seeded order that interleaves the arms, and writes one turn record per trial to turns.jsonl. The
 // arms, on QM through Pi as S1 ran it (harnesses/qm, pinned in harnesses/qm/pin.json):
 //   plain    QM as shipped: default SOUL, no edition text in any layer.
-//   edition  gstack's QM edition at EDITION_REF (internal-task): the three qm/sandbox/skills/gstack-* folders copied into a
+//   edition  gstack's QM edition at EDITION_REF (internal-task): the qm/sandbox/skills/gstack-* folders edition.json lists, copied into a
 //            deploy dir's sandbox/skills/ and sent as the deployment layer qm up would send (PUT /v1/deployment-layer;
 //            QM file:line citations in the README), with QM's default SOUL. First-step markers come from qm/edition.json.
 //   forced   edition, plus the matched skill's whole SKILL.md body as the org SOUL (PUT /v1/admin/scopes/org:<org>/soul).
@@ -58,8 +58,9 @@ export function leaseProblem(dryRun: boolean, stage: string | undefined, shards:
 }
 export const DESIGN = join(ROOT, 'docs', 'benchmarks', '2026-11-06-qm-s1-edition', 'design.json');
 export const TEST_FIXTURES = join(ROOT, 'tests', 'fixtures', 'qm-s1e');
-/** gstack's QM edition (internal-task, gstack#4049): the commit every arm that installs it is pinned to. */
-export const EDITION_REF = 'eaf1701da2d68b5c03136ff530aa228013eedb7c';
+/** gstack's QM edition (internal-task): the commit every arm that installs it is pinned to, gstack main as the pilot amendment
+ *  re-pinned it (gstack-review and gstack-plan; gstack-investigate was retired). */
+export const EDITION_REF = '6cf00aee9c0fdedc722f35c1f0032c3db9404104';
 const EDITION_REPO = 'https://github.com/garrytan/gstack';
 /** Names qm up skips in a deploy dir (cli/src/deployment-layer.ts JUNK_FILE at 850599e9). */
 const JUNK_FILE = /^(?:\.DS_Store|Thumbs\.db|\._.*)$/;
@@ -68,9 +69,8 @@ const MEMBER = 'U1', SCOPE = 'personal:' + MEMBER, PROJECT = 'qm-s1e-probe';
 const GSTACK_WORD = /(?:^|[^a-z])gstack/i;
 const sha256 = (s: string | Buffer) => createHash('sha256').update(s).digest('hex');
 
-/** Test-only requests for the dry run's generated tasks, one per family. Not the task bank. */
+/** Test-only requests for the dry run's generated tasks, one per family the amended bank keeps. Not the task bank. */
 export const DRY_RUN_TASKS: Array<Omit<Task, 'repo_dir'>> = [
-  { id: 'dry-inv-01', family: 'investigate', request: '(test-only) The login test started failing on my branch. Can you find out why before I change anything?', first_step: { skill: 'investigate' } },
   { id: 'dry-rev-01', family: 'review', request: '(test-only) Can you look over the diff on my branch for anything risky before I merge?', first_step: { skill: 'review' } },
   { id: 'dry-plan-01', family: 'plan', request: '(test-only) I want to add a password reset flow. Can you write a short plan first?', first_step: { skill: 'plan' } },
 ];

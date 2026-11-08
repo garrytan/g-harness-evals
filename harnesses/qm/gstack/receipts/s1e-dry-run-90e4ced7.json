@@ -1,0 +1,957 @@
+{
+  "what": "Keyless dry run of harnesses/qm/gstack/s1e-probe.ts against gstack QM edition eaf1701d (internal-task-a) at QM main 90e4ced7, the SHA the internal-task-b pilot amendment pins. Scripted fake models behind the metering proxy in capture mode; no paid call. Produced by: env -i HOME=$HOME PATH=$PATH bun harnesses/qm/gstack/s1e-probe.ts --dry-run --inject-fault --skip-build --work <dir>, after docker build of harnesses/qm (core) and harnesses/qm/Dockerfile.sandbox at the amendment tree. The first attempt at this SHA failed at evidence read-back (QM #2964/#2971 answer GET /v1/admin/sessions/:id with items, not entries); this run is after the converter in harnesses/qm/gstack/s1-count.ts entryFromItem.",
+  "date": "2026-11-07T06:56:03.314Z",
+  "run_id": "anatomy-capture-qm-s1-edition-dry-run",
+  "qm_commit": "90e4ced75dba0f711e9737e5bb2f2d718870fb0f",
+  "images": {
+    "core": {
+      "name": "harness-eval/qm:dev",
+      "id": "sha256:107dbba0d103cf7d6c8a88090a41f94cffb962edb4a2184230396f6d0347a723",
+      "qm_commit": "90e4ced75dba0f711e9737e5bb2f2d718870fb0f"
+    },
+    "sandbox": {
+      "name": "harness-eval/qm-sandbox:dev",
+      "id": "sha256:861f144029b41da96f662d269c5ab1a215310976d2cda276bafbc836b1620573",
+      "qm_commit": "90e4ced75dba0f711e9737e5bb2f2d718870fb0f"
+    },
+    "tasks": {
+      "dry-inv-01": {
+        "image": "harness-eval/qm-sandbox:s1e-150920701ffc",
+        "id": "sha256:ee47983cac5890f095f1f4162d8447f865e5d415cc71fcd1a4b8e82c2b4490c4",
+        "tree_sha256": "befe52967dcebff9f953ef9254e8ad13ac3232f9a2d9a22ebb7c6253f4c90db1"
+      },
+      "dry-rev-01": {
+        "image": "harness-eval/qm-sandbox:s1e-18688cc27caf",
+        "id": "sha256:58dea8b0db4df9ab252353c6b80a807ff41a235529d325eae3d789c373a12b84",
+        "tree_sha256": "befe52967dcebff9f953ef9254e8ad13ac3232f9a2d9a22ebb7c6253f4c90db1"
+      },
+      "dry-plan-01": {
+        "image": "harness-eval/qm-sandbox:s1e-970ffacfd5d3",
+        "id": "sha256:036bfe042ce562eecb5be31f99e53011f8b7652906973907191f4d417bbbffaa",
+        "tree_sha256": "befe52967dcebff9f953ef9254e8ad13ac3232f9a2d9a22ebb7c6253f4c90db1"
+      }
+    },
+    "note": "Local image ids from this machine; nothing was pushed to a registry. Every arm uses the same images: the arms differ by deployment layer and SOUL, not by image."
+  },
+  "edition_ref": "eaf1701da2d68b5c03136ff530aa228013eedb7c",
+  "edition_manifest_sha256": "1a562d46dcf5f3ce7af0c4689e2e691a667c0db7b9b0c2fda8ecd36c8dcf3a75",
+  "edition_repo_files": {
+    "qm/README.md": "58fa62c52059c8d931a315b465ed019997310e9db1bf938ecd803cc0e03fd291",
+    "qm/edition.json": "1a562d46dcf5f3ce7af0c4689e2e691a667c0db7b9b0c2fda8ecd36c8dcf3a75"
+  },
+  "layer_body": {
+    "sha256": "d7b9a938d2cf67a4d326f762ff7d30d1d9c335578e56e6cfadaa7036d2f26f5a",
+    "matches_qm_cli_90e4ced7_deploymentLayerBody": true,
+    "how": "QM cli/src/deployment-layer.ts deploymentLayerBody(<work>/deploy/sandbox) at yc-software/qm 90e4ced7 run with bun gives the same sha256 as the driver's JSON.stringify(layerBundle(edition))"
+  },
+  "edition_files": [
+    {
+      "name": "gstack-investigate",
+      "description": "Use when a test fails, code errors or output is wrong: find and prove the root cause before any fix, then fix it with a regression test. (gstack)",
+      "body_chars": 4763,
+      "marker": "\\bgit\\s+log\\b",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "5eb9030fe895db3ca2705485da3fb36f382565885853f9ebbb60f2effe332aad",
+          "chars": 4957
+        }
+      ]
+    },
+    {
+      "name": "gstack-review",
+      "description": "Use before merging a branch or PR: review the diff for bugs that pass CI but break production, fix the obvious ones and ask about the rest. (gstack)",
+      "body_chars": 10944,
+      "marker": "diff-base\\.sh|\\bgit\\s+(diff|merge-base)\\b",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "fe79e2113dcb647293d91ff4c050fdce72e2cf9925ff7dc7d71abe0f9ac90958",
+          "chars": 11136
+        },
+        {
+          "path": "scripts/diff-base.sh",
+          "sha256": "78728ae9c8282f4cecef0a56f5c2ccd4122c0f60805e8a964076a67909eae765",
+          "chars": 1919
+        }
+      ]
+    },
+    {
+      "name": "gstack-plan",
+      "description": "Use before building a feature: challenge the scope, then review architecture, code quality, tests and performance, and end with a plan to build. (gstack)",
+      "body_chars": 7657,
+      "marker": "\\bgit\\s+log\\b",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "9dc375055b0efe230e09933504581c7f0ee5f81db529a2907dccf083ef4204fe",
+          "chars": 7852
+        }
+      ]
+    }
+  ],
+  "task_images": [
+    {
+      "image": "harness-eval/qm:dev",
+      "problems": []
+    },
+    {
+      "image": "harness-eval/qm-sandbox:s1e-150920701ffc",
+      "git": "/usr/bin/git\ngit version 2.39.5",
+      "problems": []
+    },
+    {
+      "image": "harness-eval/qm-sandbox:s1e-18688cc27caf",
+      "git": "/usr/bin/git\ngit version 2.39.5",
+      "problems": []
+    },
+    {
+      "image": "harness-eval/qm-sandbox:s1e-970ffacfd5d3",
+      "git": "/usr/bin/git\ngit version 2.39.5",
+      "problems": []
+    }
+  ],
+  "checks": {
+    "claim0_index_lists_whole_descriptions": true,
+    "claim0_skill_call_returns_body_whole": true,
+    "claim1_review_path_rewritten": true,
+    "claim1_synced_diff_base_runs": true,
+    "git_on_path": true,
+    "trials": true,
+    "all_ok": true,
+    "edition_opens_reads_and_steps": true,
+    "forced_body_in_prompt": true,
+    "plain_untouched": true,
+    "no_contamination": true,
+    "one_approval_each": true,
+    "edition_tree_synced": true,
+    "usage_reconciled": true,
+    "injected_fault_caught": true,
+    "nothing_left_behind": true
+  },
+  "cells": {
+    "anthropic:claude-opus-5-5/plain": {
+      "trials": 3,
+      "ok": 3,
+      "by_status": {
+        "ok": 3,
+        "turn_error": 0,
+        "model_error": 0,
+        "infra_error": 0,
+        "context_length": 0,
+        "timeout": 0
+      },
+      "not_ok": [],
+      "open_matched": 0,
+      "open_any": 0,
+      "complete_read": 0,
+      "first_step": 0,
+      "approvals_answered": 3,
+      "contaminated": [],
+      "usd": 0.00021960000000000003,
+      "wall_s": 4.689
+    },
+    "anthropic:claude-opus-5-5/edition": {
+      "trials": 3,
+      "ok": 3,
+      "by_status": {
+        "ok": 3,
+        "turn_error": 0,
+        "model_error": 0,
+        "infra_error": 0,
+        "context_length": 0,
+        "timeout": 0
+      },
+      "not_ok": [],
+      "open_matched": 3,
+      "open_any": 3,
+      "complete_read": 3,
+      "first_step": 3,
+      "approvals_answered": 3,
+      "contaminated": [],
+      "usd": 0.00029160000000000004,
+      "wall_s": 4.748
+    },
+    "anthropic:claude-opus-5-5/forced": {
+      "trials": 3,
+      "ok": 3,
+      "by_status": {
+        "ok": 3,
+        "turn_error": 0,
+        "model_error": 0,
+        "infra_error": 0,
+        "context_length": 0,
+        "timeout": 0
+      },
+      "not_ok": [],
+      "open_matched": 0,
+      "open_any": 0,
+      "complete_read": 3,
+      "first_step": 3,
+      "approvals_answered": 3,
+      "contaminated": [],
+      "usd": 0.00021960000000000003,
+      "wall_s": 5.904
+    },
+    "openai:gpt-6.1-sol/plain": {
+      "trials": 3,
+      "ok": 3,
+      "by_status": {
+        "ok": 3,
+        "turn_error": 0,
+        "model_error": 0,
+        "infra_error": 0,
+        "context_length": 0,
+        "timeout": 0
+      },
+      "not_ok": [],
+      "open_matched": 0,
+      "open_any": 0,
+      "complete_read": 0,
+      "first_step": 0,
+      "approvals_answered": 3,
+      "contaminated": [],
+      "usd": 0.023507999999999998,
+      "wall_s": 4.598
+    },
+    "openai:gpt-6.1-sol/edition": {
+      "trials": 3,
+      "ok": 3,
+      "by_status": {
+        "ok": 3,
+        "turn_error": 0,
+        "model_error": 0,
+        "infra_error": 0,
+        "context_length": 0,
+        "timeout": 0
+      },
+      "not_ok": [],
+      "open_matched": 3,
+      "open_any": 3,
+      "complete_read": 3,
+      "first_step": 3,
+      "approvals_answered": 3,
+      "contaminated": [],
+      "usd": 0.030767999999999997,
+      "wall_s": 4.948
+    },
+    "openai:gpt-6.1-sol/forced": {
+      "trials": 3,
+      "ok": 3,
+      "by_status": {
+        "ok": 3,
+        "turn_error": 0,
+        "model_error": 0,
+        "infra_error": 0,
+        "context_length": 0,
+        "timeout": 0
+      },
+      "not_ok": [],
+      "open_matched": 0,
+      "open_any": 0,
+      "complete_read": 3,
+      "first_step": 3,
+      "approvals_answered": 3,
+      "contaminated": [],
+      "usd": 0.023507999999999998,
+      "wall_s": 5.177
+    }
+  },
+  "trials": [
+    {
+      "trial_id": "dry-inv-01-edition-opus-k1",
+      "arm": "edition",
+      "family": "investigate",
+      "model": "anthropic:claude-opus-5-5",
+      "status": "ok",
+      "counts": {
+        "open_matched": true,
+        "open_any": true,
+        "complete_read": true,
+        "first_step": true,
+        "approvals_answered": 1,
+        "contaminated": false
+      },
+      "opens": [
+        {
+          "seq": 1,
+          "skill": "gstack-investigate",
+          "via": "skill"
+        }
+      ],
+      "read_whole": true,
+      "complete_via": "inline",
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_runs": [
+        {
+          "seq": 3,
+          "command": "cd /root/workspace/repo && git log --oneline -20 --",
+          "code": 0,
+          "output": "9db8fa5 Add a 15-minute session timeout to login\n4641851 Trim whitespace around usernames at login\nc75d29a Document password reset\n70bcaa6 Add retry helper for flaky network calls\n5174718 Add login with hashed passwords\n\n[exit 0]"
+        }
+      ],
+      "approvals": [
+        {
+          "command": "rm -rf /tmp/s1e-approval-probe",
+          "http": 200,
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "trial_id": "dry-inv-01-edition-sol-k1",
+      "arm": "edition",
+      "family": "investigate",
+      "model": "openai:gpt-6.1-sol",
+      "status": "ok",
+      "counts": {
+        "open_matched": true,
+        "open_any": true,
+        "complete_read": true,
+        "first_step": true,
+        "approvals_answered": 1,
+        "contaminated": false
+      },
+      "opens": [
+        {
+          "seq": 1,
+          "skill": "gstack-investigate",
+          "via": "skill"
+        }
+      ],
+      "read_whole": true,
+      "complete_via": "inline",
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_runs": [
+        {
+          "seq": 3,
+          "command": "cd /root/workspace/repo && git log --oneline -20 --",
+          "code": 0,
+          "output": "9db8fa5 Add a 15-minute session timeout to login\n4641851 Trim whitespace around usernames at login\nc75d29a Document password reset\n70bcaa6 Add retry helper for flaky network calls\n5174718 Add login with hashed passwords\n\n[exit 0]"
+        }
+      ],
+      "approvals": [
+        {
+          "command": "rm -rf /tmp/s1e-approval-probe",
+          "http": 200,
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "trial_id": "dry-inv-01-forced-opus-k1",
+      "arm": "forced",
+      "family": "investigate",
+      "model": "anthropic:claude-opus-5-5",
+      "status": "ok",
+      "counts": {
+        "open_matched": false,
+        "open_any": false,
+        "complete_read": true,
+        "first_step": true,
+        "approvals_answered": 1,
+        "contaminated": false
+      },
+      "opens": [],
+      "read_whole": false,
+      "complete_via": "soul",
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_runs": [
+        {
+          "seq": 1,
+          "command": "cd /root/workspace/repo && git log --oneline -20 --",
+          "code": 0,
+          "output": "9db8fa5 Add a 15-minute session timeout to login\n4641851 Trim whitespace around usernames at login\nc75d29a Document password reset\n70bcaa6 Add retry helper for flaky network calls\n5174718 Add login with hashed passwords\n\n[exit 0]"
+        }
+      ],
+      "approvals": [
+        {
+          "command": "rm -rf /tmp/s1e-approval-probe",
+          "http": 200,
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "trial_id": "dry-inv-01-forced-sol-k1",
+      "arm": "forced",
+      "family": "investigate",
+      "model": "openai:gpt-6.1-sol",
+      "status": "ok",
+      "counts": {
+        "open_matched": false,
+        "open_any": false,
+        "complete_read": true,
+        "first_step": true,
+        "approvals_answered": 1,
+        "contaminated": false
+      },
+      "opens": [],
+      "read_whole": false,
+      "complete_via": "soul",
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_runs": [
+        {
+          "seq": 1,
+          "command": "cd /root/workspace/repo && git log --oneline -20 --",
+          "code": 0,
+          "output": "9db8fa5 Add a 15-minute session timeout to login\n4641851 Trim whitespace around usernames at login\nc75d29a Document password reset\n70bcaa6 Add retry helper for flaky network calls\n5174718 Add login with hashed passwords\n\n[exit 0]"
+        }
+      ],
+      "approvals": [
+        {
+          "command": "rm -rf /tmp/s1e-approval-probe",
+          "http": 200,
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "trial_id": "dry-inv-01-plain-opus-k1",
+      "arm": "plain",
+      "family": "investigate",
+      "model": "anthropic:claude-opus-5-5",
+      "status": "ok",
+      "counts": {
+        "open_matched": false,
+        "open_any": false,
+        "complete_read": false,
+        "first_step": false,
+        "approvals_answered": 1,
+        "contaminated": false
+      },
+      "opens": [],
+      "read_whole": false,
+      "complete_via": null,
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_runs": [],
+      "approvals": [
+        {
+          "command": "rm -rf /tmp/s1e-approval-probe",
+          "http": 200,
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "trial_id": "dry-inv-01-plain-sol-k1",
+      "arm": "plain",
+      "family": "investigate",
+      "model": "openai:gpt-6.1-sol",
+      "status": "ok",
+      "counts": {
+        "open_matched": false,
+        "open_any": false,
+        "complete_read": false,
+        "first_step": false,
+        "approvals_answered": 1,
+        "contaminated": false
+      },
+      "opens": [],
+      "read_whole": false,
+      "complete_via": null,
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_runs": [],
+      "approvals": [
+        {
+          "command": "rm -rf /tmp/s1e-approval-probe",
+          "http": 200,
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "trial_id": "dry-plan-01-edition-opus-k1",
+      "arm": "edition",
+      "family": "plan",
+      "model": "anthropic:claude-opus-5-5",
+      "status": "ok",
+      "counts": {
+        "open_matched": true,
+        "open_any": true,
+        "complete_read": true,
+        "first_step": true,
+        "approvals_answered": 1,
+        "contaminated": false
+      },
+      "opens": [
+        {
+          "seq": 1,
+          "skill": "gstack-plan",
+          "via": "skill"
+        }
+      ],
+      "read_whole": true,
+      "complete_via": "inline",
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_runs": [
+        {
+          "seq": 3,
+          "command": "cd /root/workspace/repo && git log --oneline -10",
+          "code": 0,
+          "output": "9db8fa5 Add a 15-minute session timeout to login\n4641851 Trim whitespace around usernames at login\nc75d29a Document password reset\n70bcaa6 Add retry helper for flaky network calls\n5174718 Add login with hashed passwords\n\n[exit 0]"
+        }
+      ],
+      "approvals": [
+        {
+          "command": "rm -rf /tmp/s1e-approval-probe",
+          "http": 200,
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "trial_id": "dry-plan-01-edition-sol-k1",
+      "arm": "edition",
+      "family": "plan",
+      "model": "openai:gpt-6.1-sol",
+      "status": "ok",
+      "counts": {
+        "open_matched": true,
+        "open_any": true,
+        "complete_read": true,
+        "first_step": true,
+        "approvals_answered": 1,
+        "contaminated": false
+      },
+      "opens": [
+        {
+          "seq": 1,
+          "skill": "gstack-plan",
+          "via": "skill"
+        }
+      ],
+      "read_whole": true,
+      "complete_via": "inline",
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_runs": [
+        {
+          "seq": 3,
+          "command": "cd /root/workspace/repo && git log --oneline -10",
+          "code": 0,
+          "output": "9db8fa5 Add a 15-minute session timeout to login\n4641851 Trim whitespace around usernames at login\nc75d29a Document password reset\n70bcaa6 Add retry helper for flaky network calls\n5174718 Add login with hashed passwords\n\n[exit 0]"
+        }
+      ],
+      "approvals": [
+        {
+          "command": "rm -rf /tmp/s1e-approval-probe",
+          "http": 200,
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "trial_id": "dry-plan-01-forced-opus-k1",
+      "arm": "forced",
+      "family": "plan",
+      "model": "anthropic:claude-opus-5-5",
+      "status": "ok",
+      "counts": {
+        "open_matched": false,
+        "open_any": false,
+        "complete_read": true,
+        "first_step": true,
+        "approvals_answered": 1,
+        "contaminated": false
+      },
+      "opens": [],
+      "read_whole": false,
+      "complete_via": "soul",
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_runs": [
+        {
+          "seq": 1,
+          "command": "cd /root/workspace/repo && git log --oneline -10",
+          "code": 0,
+          "output": "9db8fa5 Add a 15-minute session timeout to login\n4641851 Trim whitespace around usernames at login\nc75d29a Document password reset\n70bcaa6 Add retry helper for flaky network calls\n5174718 Add login with hashed passwords\n\n[exit 0]"
+        }
+      ],
+      "approvals": [
+        {
+          "command": "rm -rf /tmp/s1e-approval-probe",
+          "http": 200,
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "trial_id": "dry-plan-01-forced-sol-k1",
+      "arm": "forced",
+      "family": "plan",
+      "model": "openai:gpt-6.1-sol",
+      "status": "ok",
+      "counts": {
+        "open_matched": false,
+        "open_any": false,
+        "complete_read": true,
+        "first_step": true,
+        "approvals_answered": 1,
+        "contaminated": false
+      },
+      "opens": [],
+      "read_whole": false,
+      "complete_via": "soul",
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_runs": [
+        {
+          "seq": 1,
+          "command": "cd /root/workspace/repo && git log --oneline -10",
+          "code": 0,
+          "output": "9db8fa5 Add a 15-minute session timeout to login\n4641851 Trim whitespace around usernames at login\nc75d29a Document password reset\n70bcaa6 Add retry helper for flaky network calls\n5174718 Add login with hashed passwords\n\n[exit 0]"
+        }
+      ],
+      "approvals": [
+        {
+          "command": "rm -rf /tmp/s1e-approval-probe",
+          "http": 200,
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "trial_id": "dry-plan-01-plain-opus-k1",
+      "arm": "plain",
+      "family": "plan",
+      "model": "anthropic:claude-opus-5-5",
+      "status": "ok",
+      "counts": {
+        "open_matched": false,
+        "open_any": false,
+        "complete_read": false,
+        "first_step": false,
+        "approvals_answered": 1,
+        "contaminated": false
+      },
+      "opens": [],
+      "read_whole": false,
+      "complete_via": null,
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_runs": [],
+      "approvals": [
+        {
+          "command": "rm -rf /tmp/s1e-approval-probe",
+          "http": 200,
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "trial_id": "dry-plan-01-plain-sol-k1",
+      "arm": "plain",
+      "family": "plan",
+      "model": "openai:gpt-6.1-sol",
+      "status": "ok",
+      "counts": {
+        "open_matched": false,
+        "open_any": false,
+        "complete_read": false,
+        "first_step": false,
+        "approvals_answered": 1,
+        "contaminated": false
+      },
+      "opens": [],
+      "read_whole": false,
+      "complete_via": null,
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_runs": [],
+      "approvals": [
+        {
+          "command": "rm -rf /tmp/s1e-approval-probe",
+          "http": 200,
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "trial_id": "dry-rev-01-edition-opus-k1",
+      "arm": "edition",
+      "family": "review",
+      "model": "anthropic:claude-opus-5-5",
+      "status": "ok",
+      "counts": {
+        "open_matched": true,
+        "open_any": true,
+        "complete_read": true,
+        "first_step": true,
+        "approvals_answered": 1,
+        "contaminated": false
+      },
+      "opens": [
+        {
+          "seq": 1,
+          "skill": "gstack-review",
+          "via": "skill"
+        }
+      ],
+      "read_whole": true,
+      "complete_via": "inline",
+      "path_rewrite": {
+        "expected": true,
+        "dir": "/root/workspace/.agent-skills/6e131ac88727da7b7af64787/391f531e335517bf/gstack-review",
+        "rewritten": true
+      },
+      "first_step_runs": [
+        {
+          "seq": 3,
+          "command": "cd /root/workspace/repo && sh /root/workspace/.agent-skills/*/*/gstack-review/scripts/diff-base.sh main",
+          "code": 0,
+          "output": "BRANCH: feature/session-timeout\nBASE: main\nMERGE_BASE: 4641851c8902a12c1b140fd28e3eebaf5f5872e7\n== commits since base\n9db8fa5 Add a 15-minute session timeout to login\n== diff stat (working tree against merge base)\n src/auth.js    |  7 +++++--\n src/session.js | 10 ++++++++++\n 2 files changed, 15 inse"
+        }
+      ],
+      "approvals": [
+        {
+          "command": "rm -rf /tmp/s1e-approval-probe",
+          "http": 200,
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "trial_id": "dry-rev-01-edition-sol-k1",
+      "arm": "edition",
+      "family": "review",
+      "model": "openai:gpt-6.1-sol",
+      "status": "ok",
+      "counts": {
+        "open_matched": true,
+        "open_any": true,
+        "complete_read": true,
+        "first_step": true,
+        "approvals_answered": 1,
+        "contaminated": false
+      },
+      "opens": [
+        {
+          "seq": 1,
+          "skill": "gstack-review",
+          "via": "skill"
+        }
+      ],
+      "read_whole": true,
+      "complete_via": "inline",
+      "path_rewrite": {
+        "expected": true,
+        "dir": "/root/workspace/.agent-skills/c957a14df44ef509be2b9a42/b497cfad504d872a/gstack-review",
+        "rewritten": true
+      },
+      "first_step_runs": [
+        {
+          "seq": 3,
+          "command": "cd /root/workspace/repo && sh /root/workspace/.agent-skills/*/*/gstack-review/scripts/diff-base.sh main",
+          "code": 0,
+          "output": "BRANCH: feature/session-timeout\nBASE: main\nMERGE_BASE: 4641851c8902a12c1b140fd28e3eebaf5f5872e7\n== commits since base\n9db8fa5 Add a 15-minute session timeout to login\n== diff stat (working tree against merge base)\n src/auth.js    |  7 +++++--\n src/session.js | 10 ++++++++++\n 2 files changed, 15 inse"
+        }
+      ],
+      "approvals": [
+        {
+          "command": "rm -rf /tmp/s1e-approval-probe",
+          "http": 200,
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "trial_id": "dry-rev-01-forced-opus-k1",
+      "arm": "forced",
+      "family": "review",
+      "model": "anthropic:claude-opus-5-5",
+      "status": "ok",
+      "counts": {
+        "open_matched": false,
+        "open_any": false,
+        "complete_read": true,
+        "first_step": true,
+        "approvals_answered": 1,
+        "contaminated": false
+      },
+      "opens": [],
+      "read_whole": false,
+      "complete_via": "soul",
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_runs": [
+        {
+          "seq": 1,
+          "command": "cd /root/workspace/repo && git diff --stat main",
+          "code": 0,
+          "output": " src/auth.js    |  7 +++++--\n src/session.js | 10 ++++++++++\n 2 files changed, 15 insertions(+), 2 deletions(-)\n\n[exit 0]"
+        }
+      ],
+      "approvals": [
+        {
+          "command": "rm -rf /tmp/s1e-approval-probe",
+          "http": 200,
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "trial_id": "dry-rev-01-forced-sol-k1",
+      "arm": "forced",
+      "family": "review",
+      "model": "openai:gpt-6.1-sol",
+      "status": "ok",
+      "counts": {
+        "open_matched": false,
+        "open_any": false,
+        "complete_read": true,
+        "first_step": true,
+        "approvals_answered": 1,
+        "contaminated": false
+      },
+      "opens": [],
+      "read_whole": false,
+      "complete_via": "soul",
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_runs": [
+        {
+          "seq": 1,
+          "command": "cd /root/workspace/repo && git diff --stat main",
+          "code": 0,
+          "output": " src/auth.js    |  7 +++++--\n src/session.js | 10 ++++++++++\n 2 files changed, 15 insertions(+), 2 deletions(-)\n\n[exit 0]"
+        }
+      ],
+      "approvals": [
+        {
+          "command": "rm -rf /tmp/s1e-approval-probe",
+          "http": 200,
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "trial_id": "dry-rev-01-plain-opus-k1",
+      "arm": "plain",
+      "family": "review",
+      "model": "anthropic:claude-opus-5-5",
+      "status": "ok",
+      "counts": {
+        "open_matched": false,
+        "open_any": false,
+        "complete_read": false,
+        "first_step": false,
+        "approvals_answered": 1,
+        "contaminated": false
+      },
+      "opens": [],
+      "read_whole": false,
+      "complete_via": null,
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_runs": [],
+      "approvals": [
+        {
+          "command": "rm -rf /tmp/s1e-approval-probe",
+          "http": 200,
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "trial_id": "dry-rev-01-plain-sol-k1",
+      "arm": "plain",
+      "family": "review",
+      "model": "openai:gpt-6.1-sol",
+      "status": "ok",
+      "counts": {
+        "open_matched": false,
+        "open_any": false,
+        "complete_read": false,
+        "first_step": false,
+        "approvals_answered": 1,
+        "contaminated": false
+      },
+      "opens": [],
+      "read_whole": false,
+      "complete_via": null,
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_runs": [],
+      "approvals": [
+        {
+          "command": "rm -rf /tmp/s1e-approval-probe",
+          "http": 200,
+          "status": "ok"
+        }
+      ]
+    }
+  ],
+  "injected_fault": [
+    {
+      "trial_id": "dry-fault-edition-in-plain-opus",
+      "contaminated": true,
+      "problems": [
+        "deployment layer holds 4 skill file(s)",
+        "first prompt lists gstack-investigate",
+        "first prompt lists gstack-review",
+        "first prompt lists gstack-plan"
+      ]
+    }
+  ],
+  "leftover": {
+    "containers": [],
+    "volumes": [],
+    "networks": []
+  }
+}

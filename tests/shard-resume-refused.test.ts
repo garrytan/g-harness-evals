@@ -128,7 +128,7 @@ describe('shard_resume refused: a lost VM is never resumed (matrix-mu-2026-11)',
 
   test('without shard_resume, both scripts let a resume past the check', () => {
     const s = setup({});
-    expect(s.ubi(['--resume'], true).err).not.toContain('shard_resume refused');
+    expect(s.ubi(['--resume'], true, { name: 's1', vm: 'he-s1-done', cleanup: 'done' }).err).not.toContain('shard_resume refused');
     expect(s.calls()).not.toBe('');
     expect(s.direct(['--resume'], { shardJson: true, trials: true }).err).not.toContain('shard_resume refused');
   }, 60_000);

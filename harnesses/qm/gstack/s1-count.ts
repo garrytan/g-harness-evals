@@ -58,6 +58,37 @@ const AUDIT = /(?<![a-z])gstack|SKILL\.md/i;
 const CUT_MARKER = /…\[output cut: showing the first (\d+) and last (\d+) of (\d+) chars\. The full output is in (tool-output\/[\w/]+);[^\]]*\]…/;
 
 export interface Entry { seq: number; type: string; payload?: Record<string, unknown> }
+
+/** QM after #2964 and #2971 (2026-11-03) answers GET /v1/admin/sessions/:id with items, not entries. This is QM b6786d67's
+ *  own read-side converter (src/sessions/items.ts entryFromItem at b6786d67), so a newer QM's items reach these counters in
+ *  the entry shape they were written for. A column the wire omits counts as null. */
+export function entryFromItem(item: Record<string, unknown>): Entry {
+  const seq = typeof item.seq === 'number' ? item.seq : typeof item.seq === 'string' && item.seq.trim() !== '' ? Number(item.seq) : NaN;
+  if (!Number.isFinite(seq)) throw new Error('entryFromItem: item seq ' + JSON.stringify(item.seq ?? null) + ' is not a number, so the session cannot be counted');
+  const obj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+  const col = (k: string): unknown => (item[k] === undefined ? null : item[k]);
+  const kind = String(item.kind ?? '');
+  const payload: Record<string, unknown> = { ...(obj(item.body) ? item.body : {}) };
+  if (col('blobSha')) payload.output = { ...(obj(payload.output) ? payload.output : {}), blob: col('blobSha') };
+  const put = (key: string, value: unknown) => { if (value != null) payload[key] = value; };
+  const ENTRY_TYPES: Record<string, string> = { UserMessage: 'user', SteeringMessage: 'user', AgentMessage: 'assistant', Reasoning: 'thinking', ToolCall: 'tool_call', ToolResult: 'tool_result', Elicitation: 'approval_request', ElicitationResponse: 'approval_resolved' };
+  const TEXT_KEYS: Record<string, string> = { UserMessage: 'text', SteeringMessage: 'text', AgentMessage: 'text', ContextCompaction: 'text', Reasoning: 'thinking', ToolResult: 'result', Error: 'message' };
+  let type = ENTRY_TYPES[kind] ?? 'system';
+  if (kind === 'AgentMessage') { if (col('variant') === 'narration') type = 'text'; else if (col('variant') === 'files_delivered') type = 'delivery'; }
+  const textKey = TEXT_KEYS[kind];
+  if (textKey && (col('text') !== null || !(textKey in payload))) put(textKey, col('text') ?? '');
+  put('runId', col('turnId')); put('callId', col('callId')); put('tool', col('tool')); put('requestId', col('elicitId')); put('isError', col('isError'));
+  put('hidden', col('hidden')); put('ts', col('externalId')); put('throughSeq', col('throughSeq')); put('approved', col('approved'));
+  if (kind === 'SteeringMessage') payload.steered = true;
+  if (type === 'system') {
+    const SYSTEM_KINDS: Record<string, string> = { ContextCompaction: 'context_summary', Retraction: 'message_revision', Error: 'turn_failure', Stop: 'turn_stopped' };
+    payload.kind = SYSTEM_KINDS[kind] ?? (payload.kind === 'goal_cancelled' ? 'goal_cancelled' : 'wake');
+  }
+  put('cause', col('wakeCause'));
+  const wire = payload.wire;
+  if (col('step') != null || (obj(wire) && obj(wire.message))) payload.step = { ...(obj(wire) && obj(wire.message) ? wire.message : {}), ...(col('step') == null ? {} : { index: col('step') }) };
+  return { seq, type, payload };
+}
 export interface StagedFile { sandbox_path: string; chars: number; text?: string }
 export interface Call { seq: number; callId: string | null; tool: string; args: Record<string, unknown>; raw: string; result: Record<string, unknown> | null; resultSeq: number | null }
 

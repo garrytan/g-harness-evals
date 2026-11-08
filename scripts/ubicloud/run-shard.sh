@@ -39,7 +39,10 @@
 # call, when <replicate-to>/<name>/shard-vm.json names a VM other than <dest>/shard-vm.json's whose cleanup is not "done"
 # (say, a run whose controller died): the first mirror would overwrite the only copy of its results. They are refused too,
 # before any VM call, when <dest>/shard-vm.json names a VM whose cleanup is not "done": a controller that died mid-run
-# leaves it "pending" while the VM may still be running and spending its lease.
+# leaves it "pending" while the VM may still be running and spending its lease. The refusal says to run --attach first,
+# which pulls the results and the ledger at teardown and records cleanup "done". A --resume is refused, before any VM
+# call, unless <dest>/shard-vm.json says cleanup "done": a ledger from a mid-run pull can be up to one replicate interval
+# stale, so a resume from it would understate spend (#294 open note t4#2).
 #
 # --pre-smoke runs a keyless check script from the pinned checkout on the VM after bootstrap and before any key
 # reaches the VM, the smoke or the shard: bash <script> in the repository, its output in <dest>/lane.log. It is off unless
@@ -449,7 +452,16 @@ else
   if [ -f "$dest/shard-vm.json" ]; then
     live=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['vm'] if d.get('vm') and d.get('cleanup') != 'done' else '')" "$dest/shard-vm.json" 2>/dev/null) || live="unreadable shard-vm.json"
     if [ -n "$live" ]; then
-      echo "run-shard (ubicloud): refused: $dest/shard-vm.json names a VM ($live) whose cleanup is not done, so it may still be running and spending its lease; a new launch would overwrite shard-vm.json and lose track of it. Recover first: scripts/ubicloud/run-shard.sh --attach --dest $dest (pulls the results, then downs the VM); if bash $runner list (every owner) no longer shows it, move $dest/shard-vm.json aside" >&2
+      echo "run-shard (ubicloud): refused: $dest/shard-vm.json names a VM ($live) whose cleanup is not done, so it may still be running and spending its lease; a new launch would overwrite shard-vm.json and lose track of it, and a --resume would upload a ledger that can miss spend since the last mid-run pull. Run --attach first: it pulls the results and the ledger at teardown, downs the VM and records cleanup done, and then a launch or a --resume can go ahead. The attach: scripts/ubicloud/run-shard.sh --attach --dest $dest. Only if the attach cannot reach the VM and the project's VM list (every owner) no longer shows it, move $dest/shard-vm.json aside. The list: bash $runner list" >&2
+      exit 2
+    fi
+  fi
+  # A --resume uploads <dest>/results with its ledger, which is complete only after a teardown pull (cleanup "done"); a
+  # mid-run pull can be up to one replicate interval stale, so the resumed shard would start under its cap by that much.
+  if [ "$resume" -eq 1 ]; then
+    resume_cleanup=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('cleanup') or 'not recorded')" "$dest/shard-vm.json" 2>/dev/null) || resume_cleanup="no readable $dest/shard-vm.json"
+    if [ "$resume_cleanup" != done ]; then
+      echo "run-shard (ubicloud): refused: --resume needs $dest/shard-vm.json with cleanup \"done\" (here: $resume_cleanup), so the uploaded ledger is the one the teardown pull brought back and not a mid-run pull that can miss spend. Run --attach first when shard-vm.json names the VM: scripts/ubicloud/run-shard.sh --attach --dest $dest. Without shard-vm.json this dest cannot say which VM ran or whether it is gone; find it in <replicate-to>/vm-map.jsonl, and do not resume from here" >&2
       exit 2
     fi
   fi
@@ -552,7 +564,10 @@ else
   printf '#!/usr/bin/env bash\nset -u\ncd ~/shard\n. ~/.ubirun-env\nrm -f ~/.ubirun-env\nsetsid nohup bash -l ~/shard/bin/vm-shard.sh %s > ~/shard/vm-shard.out 2>&1 < /dev/null &\necho $! > ~/shard/pid\necho "launched pid $(cat ~/shard/pid)"\n' "$qargs" | vssh 'cat > ~/shard/bin/launch.sh'
   vssh 'bash ~/shard/bin/launch.sh && ! test -e ~/.ubirun-env && echo "key file deleted"' 2>&1 | stamp | tee -a "$dest/lane.log" >&2
   launched=1
-  jset "launched_at=\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
+  launched_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  jset "launched_at=\"$launched_at\""
+  # The lease history fanout.sh sums against a stage cap: one line per launch, never rewritten (jset keeps only the latest).
+  python3 -c 'import json, sys; p, lease, at, vm, res, rid = sys.argv[1:]; e = {"lease_usd": float(lease), "launched_at": at, "vm": vm, "resume": res == "1"}; e.update({"reservation": rid} if rid else {}); open(p, "a").write(json.dumps(e) + "\n")' "$dest/leases.jsonl" "$lease" "$launched_at" "$vm" "$resume" "${UBI_LEASE_RESERVATION:-}"
   log "vm-shard.sh running detached on $vm; tail -f $dest/run-shard.log (and run.stdout.log, run.log, vm-shard.out)"
 fi
 

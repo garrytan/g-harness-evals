@@ -14,6 +14,11 @@
 # repository's run-shard.sh).
 # A shard may add "args": [...], passed after options and a "--" (added when options has none) to its run-shard.sh only,
 # so they reach the shard's workload as given.
+# "stage_cap_usd": <n> (required for --workload qm-driver) is the preregistered cap of the stage the shards run. The shards'
+# lease_usd values, plus every lease the shards of the same dest ever started (each <dest>/<shard>/leases.jsonl, append-only;
+# a shard named here and relaunched with --resume counts once), must sum to at most the cap, or the fan-out exits 2 before
+# any VM call, the quota read included. So a canary and the rest of a stage go to the same dest. Before the first launch it
+# checks again under a lock on <dest>/.stage-cap.lock and reserves each shard's lease (stage_cap below).
 # A sealed run (docs/sealed-custody.md) adds "sealed_root": "<custodian's sealed root>" and "opening_receipt":
 # "<its opening-receipt.json>", both or neither (one alone is exit 2); every run-shard.sh then gets --sealed-root and
 # --opening-receipt with the paths expanded, and each shard uploads, uses and deletes its own copy on its VM. fanout.sh
@@ -35,7 +40,9 @@
 # exit 2 before any VM is created, naming the VM and the recovery (run-shard.sh --attach: pull, then down): a new launch
 # would overwrite its shard-vm.json and lose track of the VM. A shard whose <replicate-to>/<name>/shard-vm.json names a VM
 # other than <dest>/<name>/shard-vm.json's, with cleanup not "done", refuses it the same way: the first mirror would
-# overwrite what may be the only copy of that VM's results.
+# overwrite what may be the only copy of that VM's results. A shard whose <dest>/<name>/shard-vm.json names a VM whose
+# cleanup is not "done" (a controller that died mid-run) refuses it too, before any launch, with run-shard.sh's advice:
+# run-shard.sh --attach first, which pulls the results and the ledger and records cleanup "done".
 # Each shard runs as a background process with its own log at <dest>/<name>/fanout.log, its lane log at
 # <dest>/<name>/lane.log and its results at <dest>/<name>/results, which is what scripts/merge-shards.ts takes.
 #
@@ -89,8 +96,89 @@ PY
 export TZ=UTC
 log() { printf '%(%Y-%m-%dT%H:%M:%SZ)T fanout: %s\n' -1 "$*" >&2; }
 
+# The stage cap (stage_cap_usd, required for --workload qm-driver): this manifest's leases plus every lease the shards of
+# this dest ever started must fit the cap. Each <dest>/<shard>/leases.jsonl is append-only (run-shard.sh adds a line per
+# launch, fanout.sh one per reserved shard), so a relaunch or a shard-vm.json moved aside never drops an earlier lease. A
+# reservation and the launch that used it count once, and a --resume (read only before "--" in options) continues its
+# shard's latest lease. A dest from before leases.jsonl counts its shard-vm.json lease. "check" runs before any VM call;
+# "reserve" runs before the first launch under an exclusive lock on <dest>/.stage-cap.lock (waiting up to
+# UBI_STAGE_LOCK_SECONDS, default 300), checks again and appends one reservation per shard it launches fresh, printing
+# "<shard><TAB><reservation>" lines, so two fan-outs on one dest cannot spend the same budget.
+stage_cap() {
+  python3 - "$manifest" "$workload" "$1" <<'PY'
+import fcntl, json, os, sys, time
+m = json.load(open(sys.argv[1])); workload, mode = sys.argv[2], sys.argv[3]
+num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
+cap = m.get('stage_cap_usd')
+if workload == 'qm-driver' and cap is None:
+    sys.exit('fanout: --workload qm-driver needs "stage_cap_usd" in the manifest (the preregistered cap of the stage these shards run), so the summed leases are checked before any VM call')
+if cap is None: sys.exit(0)
+if not num(cap): sys.exit('fanout: stage_cap_usd must be a number above 0')
+shards = m['shards']
+bad = [str(s.get('name', '?')) for s in shards if not num(s.get('lease_usd'))]
+if bad: sys.exit('fanout: with stage_cap_usd every lease_usd must be a number above 0 (not ' + ', '.join(bad) + ')')
+names = [s['name'] for s in shards]
+total = sum(s['lease_usd'] for s in shards)
+dest = os.path.expanduser(m['dest'])
+opts = m.get('options', [])
+resume = '--resume' in (opts[:opts.index('--')] if '--' in opts else opts)
+when = 'before any VM call' if mode == 'check' else 'before any VM was created'
+if mode == 'reserve':
+    os.makedirs(dest, exist_ok=True)
+    lp = os.path.join(dest, '.stage-cap.lock')
+    lock = open(lp, 'a')
+    wait = float(os.environ.get('UBI_STAGE_LOCK_SECONDS') or 300)
+    t0 = time.time()
+    while True:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except BlockingIOError:
+            if time.time() - t0 >= wait: sys.exit('fanout: refused %s: another fan-out holds the stage lock %s after %gs, so its reservations are not written yet; run this one when that fan-out has launched its shards' % (when, lp, wait))
+            time.sleep(0.5)
+def leases(d):
+    p = os.path.join(dest, d, 'leases.jsonl')
+    if os.path.isfile(p):
+        units = {}
+        for i, line in enumerate(open(p), 1):
+            if not line.strip(): continue
+            try:
+                e = json.loads(line)
+                lease = float(e.get('lease_usd') or 0)
+            except (ValueError, TypeError, AttributeError):
+                sys.exit('fanout: refused %s: %s line %d is unreadable, so its lease cannot be counted against stage_cap_usd' % (when, p, i))
+            if e.get('resume'): continue
+            k = e.get('reservation') or 'line %d' % i
+            units[k] = max(units.get(k, 0.0), lease)
+        return list(units.values())
+    q = os.path.join(dest, d, 'shard-vm.json')
+    if not os.path.isfile(q): return []
+    try: v = json.load(open(q))
+    except ValueError: sys.exit('fanout: refused %s: %s is unreadable, so its lease cannot be counted against stage_cap_usd' % (when, q))
+    return [float(v.get('lease_usd') or 0)] if v.get('launched_at') else []
+earlier = {}
+for d in sorted(os.listdir(dest)) if os.path.isdir(dest) else []:
+    if not os.path.isdir(os.path.join(dest, d)): continue
+    u = leases(d)
+    if resume and d in names: u = u[:-1]
+    if u: earlier[d] = sum(u)
+spent = sum(earlier.values())
+if total + spent > cap + 1e-9:
+    prior = ' plus $%g launched earlier from %s (%s)' % (spent, dest, ', '.join(earlier)) if earlier else ''
+    sys.exit('fanout: refused %s: the shard leases sum to $%g%s, above the stage cap of $%g (stage_cap_usd); lower lease_usd' % (when, total, prior, cap))
+if mode == 'reserve' and not resume:
+    stamp = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    for s in shards:
+        rid = '%s-%d-%s' % (stamp, os.getpid(), s['name'])
+        os.makedirs(os.path.join(dest, s['name']), exist_ok=True)
+        with open(os.path.join(dest, s['name'], 'leases.jsonl'), 'a') as f:
+            f.write(json.dumps({'reservation': rid, 'lease_usd': s['lease_usd'], 'reserved_at': stamp, 'by': 'fanout.sh', 'resume': False}) + '\n')
+        print(s['name'] + '\t' + rid)
+PY
+}
+
 # The manifest, flattened: header fields, then one tab-separated line per shard.
-flat=$(python3 - "$manifest" <<'PY'
+flat=$(python3 - "$manifest" "$workload" <<'PY'
 import json, os, shlex, sys
 m = json.load(open(sys.argv[1]))
 for k in ('commit', 'prereg', 'dest', 'shards'):
@@ -112,6 +200,7 @@ for s in m['shards']:
     print(f"{s['name']}\t{s['cells']}\t{s['lease_usd']}\t{' '.join(shlex.quote(x) for x in tail)}")
 PY
 ) || exit 2
+stage_cap check || exit 2
 mapfile -t head <<<"$flat"
 commit=${head[0]} prereg=${head[1]} dest=${head[2]} size=${head[3]} options=${head[4]}
 shards=("${head[@]:5}")
@@ -150,6 +239,19 @@ if [ "$dry" -eq 1 ]; then
 fi
 
 mkdir -p "$dest"
+# A shard whose own shard-vm.json names a VM that was never cleaned up (a controller that died mid-run) refuses the whole
+# fan-out, as run-shard.sh refuses that shard: the VM may still be running under its lease. Checked for every shard before
+# any launches, so no other shard's VM is created first.
+bad=0
+for line in "${shards[@]}"; do
+  IFS=$'\t' read -r name _ <<<"$line"
+  [ -f "$dest/$name/shard-vm.json" ] || continue
+  live=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['vm'] if d.get('vm') and d.get('cleanup') != 'done' else '')" "$dest/$name/shard-vm.json" 2>/dev/null) || live="unreadable shard-vm.json"
+  [ -n "$live" ] || continue
+  bad=1
+  echo "fanout: refused: $dest/$name/shard-vm.json names a VM ($live) whose cleanup is not done, so it may still be running and spending its lease. Run --attach first: it pulls the results and the ledger at teardown, downs the VM and records cleanup done, and then the fan-out can go ahead. The attach: $here/run-shard.sh --attach --dest $dest/$name. Only if the attach cannot reach the VM and the project's VM list (every owner) no longer shows it, move $dest/$name/shard-vm.json aside (its leases.jsonl keeps the lease in the stage sum). The list: bash $runner list" >&2
+done
+[ "$bad" -eq 0 ] || exit 2
 # Stale cleanup-pending entries go first; a launch into a shard that still has a kept VM is refused before any VM exists.
 dests=(); for line in "${shards[@]}"; do IFS=$'\t' read -r name _ <<<"$line"; [ ! -s "$dest/$name/cleanup-pending" ] || dests+=("$dest/$name"); done
 if [ ${#dests[@]} -gt 0 ]; then
@@ -186,6 +288,9 @@ if [ -n "$rep_to" ]; then
 else
   log "WARNING: no --replicate-to (or UBI_REPLICATE_TO): results and the VM map stay on this machine only (CREW R16); pass a Capy drive folder for a paid run"
 fi
+reservations=$(stage_cap reserve) || exit 2
+declare -A rid_of=()
+while IFS=$'\t' read -r rname rid; do [ -z "$rname" ] || rid_of[$rname]=$rid; done <<<"$reservations"
 declare -A pid_of exit_of tries_of told log_start
 queue=("${shards[@]}")
 running=0
@@ -207,7 +312,7 @@ launch() {
   tries_of[$name]=$(( ${tries_of[$name]:-0} + 1 ))
   log_start[$name]=$(stat -c %s "$dest/$name/lane.log" 2>/dev/null || echo 0)
   log "launching shard $name (cells $cells, lease \$$lease, try ${tries_of[$name]}); log $dest/$name/fanout.log"
-  bash -c "$(run_cmd "$name" "$cells" "$lease" "$sargs")" > "$dest/$name/fanout.log" 2>&1 &
+  UBI_LEASE_RESERVATION=${rid_of[$name]:-} bash -c "$(run_cmd "$name" "$cells" "$lease" "$sargs")" > "$dest/$name/fanout.log" 2>&1 &
   pid_of[$!]=$line
   running=$(( running + 1 ))
 }

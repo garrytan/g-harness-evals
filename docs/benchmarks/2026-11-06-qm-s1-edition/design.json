@@ -3,7 +3,7 @@
   "run_id": "qm-s1-edition-2026-11",
   "stage": "design",
   "issue": "internal-task",
-  "question": "Does QM with gstack's QM-native edition (gstack-investigate, gstack-review, gstack-plan) solve more invented single-turn coding requests than plain QM, pooled over Opus 5.5 and GPT-6.1 Sol?",
+  "question": "Does QM with gstack's QM-native edition (gstack-review, gstack-plan; gstack-investigate was dropped by amendment 1) solve more invented single-turn coding requests than plain QM, pooled over Opus 5.5 and GPT-6.1 Sol?",
   "harness": "qm",
   "models": [
     "anthropic:claude-opus-5-5",
@@ -28,20 +28,29 @@
     }
   },
   "families": {
-    "investigate": 24,
     "review": 24,
     "plan": 24
   },
-  "tasks_total": 72,
-  "repetitions": 6,
-  "repetitions_fallback_by_cost_rule": 4,
+  "tasks_total": 48,
+  "repetitions": 9,
+  "repetitions_fallback_by_cost_rule": 6,
   "counted_trials": 1728,
-  "forced_trials": 144,
+  "forced_trials": 96,
+  "review_only_fallback": {
+    "when": "before the main stage starts, if (a) the plan judge fails its calibration on blind set A or C against the existing pass bar, or (b) gstack-plan leaves the QM edition on gstack main (the layer is then re-pinned); nothing switches once the main stage starts",
+    "families": { "review": 24 },
+    "tasks_total": 24,
+    "repetitions": 18,
+    "repetitions_fallback_by_cost_rule": 12,
+    "counted_trials": 1728,
+    "forced_trials": 48,
+    "caps": "unchanged"
+  },
   "headroom_check": {
     "arm": "plain",
-    "tasks": 72,
+    "tasks": 48,
     "repetitions": 1,
-    "trials": 144,
+    "trials": 96,
     "pass_band_success": [
       0.15,
       0.75
@@ -50,14 +59,14 @@
   },
   "exposure_pilot": {
     "arm": "edition",
-    "tasks": 3,
-    "trials": 6,
+    "tasks": 2,
+    "trials": 4,
     "cap_usd": 10
   },
   "primary_endpoint": "task success per trial (0 or 1), graded on substance by harnesses/qm/gstack/edition-grade.ts",
   "rule": {
     "statistic": "edition minus plain success: per task, averaged over repetitions and over both models, then over tasks",
-    "test": "two-sided sign-flip permutation over 72 task clusters (48 if plan leaves the verdict)",
+    "test": "two-sided sign-flip permutation over 48 task clusters (24 under the review-only fallback)",
     "interval": "task-clustered bootstrap 95 percent, 10000 draws, seed 7",
     "keep": "pooled difference > 0 and p < 0.05 and each model's point estimate >= 0",
     "otherwise": "CUT, no second attempt",
@@ -66,6 +75,7 @@
   },
   "secondary_descriptive": [
     "per-model differences",
+    "per-family differences (review, plan), labelled secondary",
     "open_matched",
     "open_any",
     "complete_read",
@@ -79,11 +89,17 @@
     "exclusion rate per arm (flag > 5 points)"
   ],
   "mdd_points": {
-    "pooled_no_interaction": 6.7,
-    "full_rule_interaction_sd_0_4": 10.6,
-    "plan_left_out_48_tasks": { "pooled_no_interaction": 8.2, "full_rule_interaction_sd_0_4": 11.4 },
-    "plan_judge_fails_calibration": "plan leaves the verdict; the primary pools the 48 investigate and review tasks; plan is reported with the alias key as named, descriptive",
-    "source": "power_rule.py, Captain drive handoffs/internal-task/autoplan/"
+    "convention": "full rule; power_amendment.json mdd_full_rule",
+    "pooled_no_interaction": 7.1,
+    "full_rule_no_interaction": 7.1,
+    "full_rule_interaction_sd_0_4": 10.7,
+    "cost_rule_fallback_48x6": { "pooled_no_interaction": 8.2, "full_rule_interaction_sd_0_4": 11.8 },
+    "per_family_24x9_secondary": { "pooled_no_interaction": 9.9, "full_rule_interaction_sd_0_4": 13.0, "note": "labelled secondary; neither family carries a verdict alone" },
+    "review_only_fallback_24x18": { "pooled_no_interaction": 7.7, "full_rule_interaction_sd_0_4": 11.7 },
+    "review_only_cost_rule_fallback_24x12": { "pooled_no_interaction": 8.8, "full_rule_interaction_sd_0_4": 12.4 },
+    "plan_judge_fails_calibration": "before the main stage: the review-only fallback (24 tasks x 18 repetitions)",
+    "source": "power/power_amendment.py, output power/power_amendment.json (each configuration seeded fresh with seed 11); the original 72-task figures were power/power_rule.py",
+    "original_72x6": { "pooled_no_interaction": 6.7, "full_rule_interaction_sd_0_4": 10.6 }
   },
   "exclusions": {
     "excluded": [
@@ -103,7 +119,7 @@
     "route": "POST /v1/turns with approval {requestId, approved: true, scope: once} (QM 850599e9 src/api/routes/turns.ts:334)"
   },
   "sharding": {
-    "cells": "(model, task block): 2 models x 4 blocks of 18 tasks (6 per family)",
+    "cells": "(model, task block): 2 models x 4 blocks of 12 tasks (6 per family; 6 review tasks per block under the review-only fallback)",
     "vms": 8,
     "order": "seeded interleave of arms and repetitions within a cell",
     "split_cells": false,
@@ -142,5 +158,46 @@
     "rec_hash": "94ce35cddbc9",
     "owner_reply": "Do it",
     "date": "2026-11-05"
+  },
+  "pilot_amendment": {
+    "date": "2026-11-06",
+    "qm_sha": "90e4ced75dba0f711e9737e5bb2f2d718870fb0f",
+    "edition_commit": "6cf00aee9c0fdedc722f35c1f0032c3db9404104",
+    "edition_commit_note": "gstack main on 2026-11-07 07:39 UTC; contains eaf1701d (the design's draft pin), ef99eb5a (#4110, /investigate retired) and 3742ee95 (#4108, standalone /plan-eng-review cut)",
+    "edition_file_sha256": {
+      "qm/edition.json": "404818e6fc2ab3e2000800206da1397e4f9f2fc927bd7323dc5dede151fe5205",
+      "qm/README.md": "bbe3f688a72d93cd61f6fdcbc931c328411c1f2f5c0887c8b31eb4bd1e479f28",
+      "qm/sandbox/skills/gstack-review/SKILL.md": "d25690404277c61df7c57e359858518f6e05de3e56bd4abea71b337b675034d3",
+      "qm/sandbox/skills/gstack-review/scripts/diff-base.sh": "78728ae9c8282f4cecef0a56f5c2ccd4122c0f60805e8a964076a67909eae765",
+      "qm/sandbox/skills/gstack-plan/SKILL.md": "9dc375055b0efe230e09933504581c7f0ee5f81db529a2907dccf083ef4204fe"
+    },
+    "first_step_markers": {
+      "review": "diff-base\\.sh|\\bgit\\s+(diff|merge-base)\\b",
+      "plan": "\\bgit\\s+log\\b"
+    },
+    "image_digests": {
+      "note": "local image ids from the dry run's build; every arm uses the same images; each shard VM builds from the amendment commit and records its own ids in preflight.json",
+      "core": "sha256:107dbba0d103cf7d6c8a88090a41f94cffb962edb4a2184230396f6d0347a723",
+      "sandbox_base": "sha256:861f144029b41da96f662d269c5ab1a215310976d2cda276bafbc836b1620573",
+      "dry_run_tasks": {
+        "dry-rev-01": "sha256:a6cf320380de74f70952b5dfee0e9dbd1d0dd8c5cfa79e2db72e2dcdc12ad34d",
+        "dry-plan-01": "sha256:2cc09fdbfa21f229e7065088140c272b2a02317572820edf3cc7cf05da78b320"
+      }
+    },
+    "task_bank_publication": ["bank/bank.json", "bank/bank-review-plan.json", "bank/seed.txt"],
+    "reduced_bank_sha256": {
+      "review_plan_48": "d7adb136519d30f1ba5f07d645f3ecf354e97e77bd2494b97d9022abff9e1976",
+      "review_only_24": "d8ce0440032a32430a39eab9bf1cc30cd64f813d4c8dec8cc502c1790acdbde0",
+      "how": "bank.json with the dropped families' templates removed, everything else unchanged, written as JSON.stringify(bank, null, 2) plus a newline (that serialization reproduces bank.json byte for byte)"
+    },
+    "removed_templates": ["inv-01", "inv-02", "inv-03", "inv-04", "inv-05", "inv-06", "inv-07", "inv-08", "inv-09", "inv-10", "inv-11", "inv-12", "inv-13", "inv-14", "inv-15", "inv-16", "inv-17", "inv-18", "inv-19", "inv-20", "inv-21", "inv-22", "inv-23", "inv-24"],
+    "skill_tool": "skills with action read (src/agent/agent-tools.ts:156)",
+    "command_approval_route": "POST /v1/turns, src/api/routes/turns.ts:340 at 90e4ced7",
+    "session_read": "GET /v1/admin/sessions/:id answers items; harnesses/qm/gstack/s1-count.ts entryFromItem maps them to entries",
+    "dry_run_receipt": "harnesses/qm/gstack/receipts/s1e-dry-run-6cf00aee.json",
+    "dry_run_receipt_history": "harnesses/qm/gstack/receipts/s1e-dry-run-90e4ced7.json (edition eaf1701d, three skills)",
+    "stage_caps_usd": { "headroom": 45, "pilot": 10, "main": 520, "forced": 45 },
+    "plan_judge_metering": "required in the main amendment: judge calls go through the metering proxy under the main stage's per-shard leases",
+    "secondary_per_family": "review and plan each reported apart, labelled secondary (24 x 9 each, MDD 9.9, 13.0 with interaction); neither carries a verdict alone"
   }
 }

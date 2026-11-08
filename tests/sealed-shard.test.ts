@@ -319,7 +319,7 @@ describe('ubicloud/run-shard.sh sealed upload and cleanup', () => {
       expect(at(failed.log, 'ssh vm1 rm -rf ~/sealed')).toBeLessThan(at(failed.log, 'down vm1'));
 
       const resumed = lane(['--sealed-root', s.root, '--opening-receipt', s.receipt, '--resume'], {
-        prepare: (dir) => { mkdirSync(join(dir, 'dest', 'results'), { recursive: true }); writeFileSync(join(dir, 'dest', 'results', 'shard.json'), '{}\n'); },
+        prepare: (dir) => { mkdirSync(join(dir, 'dest', 'results'), { recursive: true }); writeFileSync(join(dir, 'dest', 'results', 'shard.json'), '{}\n'); writeFileSync(join(dir, 'dest', 'shard-vm.json'), JSON.stringify({ vm: 'vm0', sealed: true, cleanup: 'done' }) + '\n'); },
       });
       expect(resumed.code).toBe(0);
       expect(at(resumed.log, 'unpack vm1 shard')).toBeGreaterThan(-1);

@@ -30,7 +30,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileS
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { DUMMY_KEY_PREFIX, ORG_SCOPE, ROOT, imageInfo, lockHost, qmClient, upStack, type Call } from './qm-stack.ts';
-import { ARMS, REQUESTS, SKILL_ROOT, countTurn, type Arm, type Entry, type Request, type StagedFile, type TurnCounts } from './s1-count.ts';
+import { ARMS, REQUESTS, SKILL_ROOT, countTurn, entryFromItem, type Arm, type Entry, type Request, type StagedFile, type TurnCounts } from './s1-count.ts';
 import { FIXTURE_PATH, FIXTURE_REFS_COMMAND, FIXTURE_TREE_COMMAND, buildFixture, type Fixture } from './s1-fixture.ts';
 import { RunProxy, reconcile, summarizeUsage, trialKey, trialSlug, trialToken } from '../../../runner/trial/proxy.ts';
 import { CAPTURE_DUMMY_KEYS } from '../../../runner/trial/capture.ts';
@@ -285,8 +285,12 @@ export function runStatus(planIds: string[], latest: Array<{ turn_id: string; at
 
 /** The stored session is evidence only from a 200 answer whose body holds an entries array. */
 export function sessionEvidence(res: { http: number; body: unknown }): { entries: Entry[] } | { error: string } {
-  const entries = (res.body as { entries?: unknown } | null)?.entries;
-  return res.http === 200 && Array.isArray(entries) ? { entries: entries as Entry[] } : { error: 'GET session answered ' + res.http + ' ' + JSON.stringify(res.body ?? null).slice(0, 300) };
+  const body = res.body as { entries?: unknown; items?: unknown; hasMore?: unknown } | null;
+  if (res.http === 200 && Array.isArray(body?.entries)) return { entries: body.entries as Entry[] };
+  if (res.http === 200 && Array.isArray(body?.items) && body.hasMore !== true) {
+    try { return { entries: (body.items as Array<Record<string, unknown>>).map(entryFromItem) }; } catch (e) { return { error: (e as Error).message }; }
+  }
+  return { error: 'GET session answered ' + res.http + ' ' + JSON.stringify(res.body ?? null).slice(0, 300) };
 }
 
 /** A sandbox QM did not create (no 2xx, no id) or did not select as the member's default stops the turn before the DM. */

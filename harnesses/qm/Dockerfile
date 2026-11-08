@@ -13,7 +13,7 @@
 ARG NODE_IMAGE=node:24.22.1-alpine3.24@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53
 FROM ${NODE_IMAGE} AS src
 ARG QM_REPO=https://github.com/yc-software/qm
-ARG QM_COMMIT=b6786d675f83d9a818c5d5335cc017ffea9ec7a7
+ARG QM_COMMIT=90e4ced75dba0f711e9737e5bb2f2d718870fb0f
 RUN apk add --no-cache git \
     && git init -q /src && cd /src \
     && git remote add origin "${QM_REPO}" \
@@ -28,9 +28,23 @@ COPY --from=src /src/deploy/connector-sdk ./deploy/connector-sdk
 RUN npm ci --prefix deploy/connector-sdk --ignore-scripts --no-audit --no-fund \
     && node deploy/connector-sdk/build.mjs
 
+FROM ${NODE_IMAGE} AS web-ui-build
+WORKDIR /app/plugins/web-ui
+ARG WEB_UI_BASE=/
+ENV WEB_UI_BASE=$WEB_UI_BASE
+ENV NODE_OPTIONS=--max-old-space-size=4096
+COPY --from=src /src/plugins/web-ui/package.json /src/plugins/web-ui/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY --from=src /src/plugins/web-ui/index.html /src/plugins/web-ui/shared.html /src/plugins/web-ui/vite.config.ts /src/plugins/web-ui/tsconfig.json ./
+COPY --from=src /src/plugins/web-ui/public ./public
+COPY --from=src /src/plugins/web-ui/src ./src
+COPY --from=src /src/plugins/chassis/src /app/plugins/chassis/src
+COPY --from=src /src/docs/images/slack-app-config-token-setup.gif /app/docs/images/slack-app-config-token-setup.gif
+RUN npm run build
+
 FROM ${NODE_IMAGE}
-ARG QM_VERSION=main@b6786d67
-ARG QM_COMMIT=b6786d675f83d9a818c5d5335cc017ffea9ec7a7
+ARG QM_VERSION=main@90e4ced7
+ARG QM_COMMIT=90e4ced75dba0f711e9737e5bb2f2d718870fb0f
 LABEL org.opencontainers.image.title="harness-eval QM harness (core + adapter)" \
       harness-eval.harness="qm" \
       harness-eval.version="${QM_VERSION}" \
@@ -43,11 +57,16 @@ COPY --from=src /src/package.json /src/package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund && rm -rf /root/.npm /tmp/node-compile-cache
 COPY --from=connector-sdk-build /app/.generated/connector-sdk ./.generated/connector-sdk
 COPY --from=src /src/src ./src
-COPY --from=src /src/cli/src/canonical-json.ts /src/cli/src/credential-paths.ts /src/cli/src/render-job-command.ts /src/cli/src/render-source.ts /src/cli/src/scope-storage-key.ts /src/cli/src/tool-descriptor.ts ./cli/src/
+COPY --from=src /src/cli/src/canonical-json.ts /src/cli/src/credential-paths.ts /src/cli/src/render-job-command.ts /src/cli/src/render-source.ts /src/cli/src/scope-storage-key.ts /src/cli/src/tool-descriptor.ts /src/cli/src/web-release.ts ./cli/src/
 COPY --from=src /src/cli/templates/slack-manifest.json ./cli/templates/slack-manifest.json
 COPY --from=src /src/skills-seed ./skills-seed
 COPY --from=src /src/plugins/onboarding ./plugins/onboarding
 COPY --from=src /src/plugins/chassis ./plugins/chassis
+COPY --from=src /src/plugins/auth/src ./plugins/auth/src
+COPY --from=src /src/plugins/portal/src ./plugins/portal/src
+COPY --from=src /src/plugins/web-ui/server ./plugins/web-ui/server
+COPY --from=src /src/plugins/web-ui/src/app-edit.ts ./plugins/web-ui/src/app-edit.ts
+COPY --from=web-ui-build /app/plugins/web-ui/dist-web ./plugins/web-ui/dist-web
 COPY --from=src /src/tsconfig.json ./
 
 COPY config/ /opt/harness/config/

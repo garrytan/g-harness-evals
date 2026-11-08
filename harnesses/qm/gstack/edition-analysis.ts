@@ -235,7 +235,7 @@ export function renderMarkdown(r: Analysis): string {
     for (const [m, d] of [...Object.entries(c.per_model), ['pooled', c.pooled] as const]) lines.push('| ' + m + ' | ' + (d ? d.n_tasks : 0) + ' | ' + pct(d?.mean_a) + ' | ' + pct(d?.mean_b) + ' | ' + pct(d?.delta) + ' | ' + iv(d?.ci95 ?? null) + ' | ' + (d ? d.p_two_sided.toFixed(4) : 'n/a') + ' |');
     lines.push('');
   };
-  table('Primary: edition minus plain', r.primary, 'Decides the verdict.' + (r.plan_judge_fallback ? ' Plan tasks are left out of it, because their grades came from the alias judge (a deviation): it pools the investigate and review tasks only.' : ''));
+  table('Primary: edition minus plain', r.primary, 'Decides the verdict.' + (r.plan_judge_fallback ? ' Plan tasks are left out of it, because their grades came from the alias judge (a deviation): it uses the review tasks only.' : ''));
   for (const [f, c] of Object.entries(r.by_family)) table('By family: ' + f, c, 'Descriptive.' + (f === 'plan' && r.plan_judge_fallback ? ' Plan grades came from the deterministic alias judge, which checks that constraints are named, not respected (a deviation), so plan is outside the verdict.' : ''));
   table('Forced exposure minus plain', r.forced.vs_plain, 'Descriptive, outside the win rule.');
   table('Forced exposure minus edition', r.forced.vs_edition, 'Descriptive, outside the win rule.');

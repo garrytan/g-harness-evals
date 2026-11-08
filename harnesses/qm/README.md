@@ -1,8 +1,9 @@
 # QM harness
 
-**[QM](https://github.com/yc-software/qm) at main commit `b6786d675f83d9a818c5d5335cc017ffea9ec7a7`, through Pi.**
+**[QM](https://github.com/yc-software/qm) at main commit `90e4ced75dba0f711e9737e5bb2f2d718870fb0f`, through Pi.**
 
-- **Pin:** `main@b6786d67` (2026-10-30). QM has no release tag past `v0.1.15`. Pi is QM's only agent loop at this commit (below).
+- **Pin:** `main@90e4ced7` (2026-11-07 UTC), set by the S1 edition rerun's pilot amendment ([below](#re-pin-to-main-90e4ced7-2026-11-06-gst-1514-pilot-amendment)). QM has no release tag past `v0.1.15`. Most sections below were written at `b6786d67` and say so.
+- **The `serve` entry does not work at this pin:** QM refuses MCP servers on private network addresses, so the world MCP server can't be registered (below). A build-arg alone does not get around this: `prepare.sh` refuses any image whose `harness-eval.commit` label differs from `pin.json`'s commit, and this Dockerfile copies files that `b6786d67` lacks. A multi-user cell runs from a worktree at the last main commit before the pilot amendment merged, where `pin.json`, the Dockerfile and the image label all name `b6786d675f83d9a818c5d5335cc017ffea9ec7a7`.
 - **Older cells:** cells before 2026-10-30 ran tag `v0.1.15` (commit `7417aa2a`); their results keep that pin.
 - **Topology:** QM is a service, so this is the sidecar topology of the [adapter protocol](../../docs/adapters.md). `compose.yaml` runs Postgres (`pgvector/pgvector:0.8.1-pg16`), QM core, and a task container whose entrypoint is `adapter.sh` (`HE_ENTRY` selects `run` or `serve`). Both entry points are implemented.
 - **Signing:** `qm-api.mjs` signs every request to core the way QM's own plugins do (`x-timestamp`, `x-signature = v0=HMAC-SHA256(secret, "v0:<ts>:<METHOD>\n<path>\n<body>")`).
@@ -103,6 +104,16 @@ Core runs with `NODE_ENV=development`.
 4. **Required secrets.** Core refuses to start with a durable store unless `CONNECTOR_SECRET_KEY` is set (trial qm-hello-1). Minted per trial by `prepare.sh`.
 
 Not done: the `admin` and `web-ui` services, Slack, the egress proxy, and the model gateway (`MODEL_GATEWAY_URL` wants LiteLLM-style `/v1/models` and `/model_group/info` discovery, which the metering proxy does not serve; the direct `ANTHROPIC_BASE_URL` override works instead). QM's MCP connector registration is done in `serve` (above). The per-trial `CREATE DATABASE trial_x TEMPLATE qm_seed` reset from the plan is replaced by a fresh Postgres container per trial, which is slower (about 10 s to healthy plus migrations) but equivalent for isolation.
+
+## Re-pin to main 90e4ced7 (2026-11-06, internal-task pilot amendment)
+
+**The S1 edition driver runs at `90e4ced7`; the adapter's `serve` entry does not.** The pilot amendment of [qm-s1-edition](../../docs/benchmarks/2026-11-06-qm-s1-edition/PREREGISTRATION.md#amendments) pins the newest QM main, 265 commits after `b6786d67`.
+
+- **Core build.** QM's `deploy/core/Dockerfile` gained a web UI build stage; `Dockerfile` follows it (the `web-ui-build` stage and the `cli/src/web-release.ts`, `plugins/auth/src`, `plugins/portal/src`, `plugins/web-ui` files it copies).
+- **Session reads.** QM #2964 and #2971 answer `GET /v1/admin/sessions/:id` with `items`, not `entries`. The gstack driver maps them back (`gstack/s1-count.ts` `entryFromItem`, a port of QM `b6786d67`'s own converter).
+- **Checked:** the keyless S1 edition dry run passes at this pin ([receipt](gstack/receipts/s1e-dry-run-6cf00aee.json), edition `6cf00aee`; the earlier [receipt](gstack/receipts/s1e-dry-run-90e4ced7.json) ran edition `eaf1701d`): core starts, the deployment layer installs, skills load, sandbox commands run, and a floor-rule command is approved once through `POST /v1/turns`.
+- **Broken: world-MCP registration.** QM #2801 (2026-10-30, after `b6786d67`) sends MCP and OAuth requests through `publicFetch` (`src/util/network.ts:98`, used by `src/mcp/mcp-client.ts:103` and `src/connectors/oauth.ts:74`), which refuses any host that resolves to a private address, with no setting to allow one. A keyless anatomy capture (`scripts/anatomy/capture.ts --harness qm --scenario plain --egress off`, 2026-11-07) got `400 {"error":"unreachable","message":"tools/list against host.docker.internal:<port> failed: ... resolves to a private network address"}` from `PUT /v1/admin/mcp-servers/world`, so `adapter.sh serve` exits 2 before `ready`. The gbrain memory provider's OAuth goes through the same guard and was not tried.
+- **Not re-checked at this pin:** `adapter.sh run`, the Particle branch and the provider preflight.
 
 ## Re-pin to main b6786d67 (2026-10-30, internal-task-a for internal-task-b M1)
 
@@ -236,6 +247,10 @@ Findings:
 - The MCP registration route needs an `org_admin` grant; with Postgres and no `ADMIN_GRANTS`, core boots with no admin at all and the route answers 403, so `config/core.env` names `harness-admin`.
 
 ## Changelog
+
+### 2026-11-06: re-pinned to main 90e4ced7 (internal-task pilot amendment)
+
+Both images and `pin.json` name QM `90e4ced7`, the core build follows QM's new web UI stage, and the "Re-pin to main 90e4ced7" section says what was checked at the pin and that the `serve` entry's world-MCP registration fails there. Why: the S1 edition rerun pins the newest QM main.
 
 ### 2026-10-31: Particle cells (internal-task)
 

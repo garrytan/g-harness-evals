@@ -101,7 +101,7 @@ SOFTWARE.
 ## QM
 
 - **What:** an agent harness under test. We captured its system prompts, its session-title prompt and its tool schemas.
-- **Versions:** v0.1.15, commit `7417aa2a` (every published cell), and main at `b6786d675f83d9a818c5d5335cc017ffea9ec7a7` (keyless captures only) ([harnesses/qm/pin.json](harnesses/qm/pin.json)).
+- **Versions:** v0.1.15, commit `7417aa2a` (every published cell), main at `b6786d675f83d9a818c5d5335cc017ffea9ec7a7` (keyless captures only), and main at `90e4ced75dba0f711e9737e5bb2f2d718870fb0f` (the internal-task pilot amendment's pin) ([harnesses/qm/pin.json](harnesses/qm/pin.json)).
 - **Upstream:** https://github.com/yc-software/qm
 - **Licence:** MIT (the same text at both commits).
 - **Copyright:** Copyright (c) 2026 QM contributors
