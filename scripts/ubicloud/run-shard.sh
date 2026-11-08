@@ -9,7 +9,7 @@
 #       [--smoke-lease-usd <n>] [--smoke-task <task id>] [--smoke-first-cell] [--no-smoke] [--embedded] [--gbrain-image <tag>]
 #       [--amendment <sha>]
 #       [--resume] [--attach] [--poll-seconds 30] [--timeout-hours 12] [--sealed-root <local dir> --opening-receipt <local file>]
-#       [--workload harness|gstack-laneb|qm-driver] [--laneb-root <dir from scripts/gstack-laneb/fetch.ts>]
+#       [--workload harness|gstack-laneb|qm-driver|frontier-harbor] [--install-check] [--laneb-root <dir from scripts/gstack-laneb/fetch.ts>]
 #       [--replicate-seconds 1200] [--replicate-to <dir>]
 #       [--pre-smoke <script in the repository, e.g. scripts/ablation-golden.sh>] [-- <extra arguments for scripts/run-shard.sh>]
 #
@@ -49,6 +49,15 @@
 # given (put it in the fan-out manifest's options). A non-zero exit stops the lane with exit 4 before the smoke, so no
 # trial runs. scripts/ablation-golden.sh, the layer filter's docker golden check, is the one in use. It must be a .sh file
 # under scripts/ at the commit, and is refused for --attach and --workload gstack-laneb.
+#
+# --workload frontier-harbor (scripts/frontier-harbor/README.md) runs the frontier Harbor path on the VM: vm-shard.sh clones
+# Terminal-Bench 2.1 at pin.json's commit, runs the keyless install check as the smoke (--no-smoke skips it), then
+# scripts/frontier-harbor/vm-run.sh for the shard under its lease, the arguments after -- passed through (--stage <name>,
+# --done <file>). The shard needs ANTHROPIC_API_KEY and OPENAI_API_KEY here. With --install-check the lane is the keyless
+# install check alone (the preregistration must be scripts/frontier-harbor/install-check-prereg.json): no key is required
+# here and none goes to the VM; its results (install-check.json, agents/, baselines/, probe/) come back to <dest>/results.
+# --embedded and the sealed flags are refused. A --resume uploads <dest>/results, and vm-run.sh skips every trial already
+# in its trials.jsonl. Stopping the shard waits up to 240 s for vm-run.sh to drain its meter and write its records.
 #
 # --workload gstack-laneb (docs/gstack-laneb.md) runs the shard's cells through the Lane B bridge instead of the
 # harness runner: the --laneb-root directory (default ~/.capy/work/gstack-laneb: the pinned gstack-evals checkout, the arm
@@ -119,7 +128,7 @@ runner=${UBI_RUNNER:-$here/ubi-runner.sh}
 
 commit="" prereg="" name="" cells="" lease="" dest="" size=standard-16 location="" storage="" smoke_lease="" smoke_task="" smoke=1
 smoke_first=0 embedded=0 gbrain_image="" amendment="" resume=0 attach=0 poll=30 timeout_h=12 sealed_root="" opening_receipt="" sealed=0
-workload=harness laneb_root="$HOME/.capy/work/gstack-laneb" pre_smoke=""
+workload=harness laneb_root="$HOME/.capy/work/gstack-laneb" pre_smoke="" install_check=0
 rep_s=${UBI_REPLICATE_SECONDS:-1200} replicate_to=${UBI_REPLICATE_TO:-}
 extra=()
 while [ $# -gt 0 ]; do
@@ -147,6 +156,7 @@ while [ $# -gt 0 ]; do
     --sealed-root) sealed_root=$2; shift 2 ;;
     --opening-receipt) opening_receipt=$2; shift 2 ;;
     --workload) workload=$2; shift 2 ;;
+    --install-check) install_check=1; shift ;;
     --laneb-root) laneb_root=$2; shift 2 ;;
     --pre-smoke) pre_smoke=$2; shift 2 ;;
     --replicate-seconds) rep_s=$2; shift 2 ;;
@@ -167,14 +177,18 @@ case $workload in harness) ;; gstack-laneb)
   [ "$attach" -eq 1 ] || { [ -d "$laneb_root/gstack-evals" ] && [ -d "$laneb_root/arms" ]; } || { echo "run-shard (ubicloud): --laneb-root $laneb_root needs gstack-evals/ and arms/ (bun scripts/gstack-laneb/fetch.ts --out $laneb_root)" >&2; exit 2; } ;;
   qm-driver)
   [ "$embedded" -eq 0 ] && [ -z "$sealed_root" ] && [ -z "$opening_receipt" ] || { echo "run-shard (ubicloud): --workload qm-driver takes no --embedded, --sealed-root or --opening-receipt" >&2; exit 2; } ;;
-  *) echo "run-shard (ubicloud): --workload must be harness, gstack-laneb or qm-driver" >&2; exit 2 ;;
+  frontier-harbor)
+  [ "$embedded" -eq 0 ] && [ -z "$sealed_root" ] && [ -z "$opening_receipt" ] || { echo "run-shard (ubicloud): --workload frontier-harbor takes no --embedded, --sealed-root or --opening-receipt" >&2; exit 2; } ;;
+  *) echo "run-shard (ubicloud): --workload must be harness, gstack-laneb, qm-driver or frontier-harbor" >&2; exit 2 ;;
 esac
+[ "$install_check" -eq 0 ] || [ "$workload" = frontier-harbor ] || { echo "run-shard (ubicloud): --install-check applies only to --workload frontier-harbor" >&2; exit 2; }
 [[ "$rep_s" =~ ^[0-9]+$ ]] || { echo "run-shard (ubicloud): --replicate-seconds must be a whole number of seconds (0 turns replication off)" >&2; exit 2; }
 [ -z "$replicate_to" ] || [ -z "$sealed_root" ] || { echo "run-shard (ubicloud): --replicate-to is refused for a sealed shard; its raw results stay in --dest (docs/sealed-custody.md)" >&2; exit 2; }
 case $workload in qm-driver) records=turns.jsonl record_file=run.json ;; *) records=trials.jsonl record_file=shard.json ;; esac
 if [ "$attach" -eq 0 ]; then
   [ -n "$commit" ] && [ -n "$prereg" ] && [ -n "$name" ] && [ -n "$cells" ] && [ -n "$lease" ] || { echo "run-shard (ubicloud): --commit, --prereg, --name, --cells, --lease-usd and --dest are required" >&2; exit 2; }
-  [ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "run-shard (ubicloud): ANTHROPIC_API_KEY is not set in this shell; the metering proxy on the VM needs it" >&2; exit 2; }
+  [ "$install_check" -eq 1 ] || [ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "run-shard (ubicloud): ANTHROPIC_API_KEY is not set in this shell; the metering proxy on the VM needs it" >&2; exit 2; }
+  [ "$workload" != frontier-harbor ] || [ "$install_check" -eq 1 ] || [ -n "${OPENAI_API_KEY:-}" ] || { echo "run-shard (ubicloud): --workload frontier-harbor needs OPENAI_API_KEY in this shell for its OpenAI cells" >&2; exit 2; }
   [ "$embedded" -eq 0 ] || [ -n "${OPENAI_API_KEY:-}" ] || { echo "run-shard (ubicloud): --embedded needs OPENAI_API_KEY in this shell" >&2; exit 2; }
   if [ -n "$sealed_root" ] || [ -n "$opening_receipt" ]; then
     [ -n "$sealed_root" ] && [ -n "$opening_receipt" ] || { echo "run-shard (ubicloud): --sealed-root and --opening-receipt go together; give both or neither" >&2; exit 2; }
@@ -316,8 +330,8 @@ teardown() {
   [ -n "$vm" ] || return 0
   local results_pulled=1
   if [ "$launched" -eq 1 ] && [ "$exited" -eq 0 ]; then
-    if [ "$workload" = gstack-laneb ]; then
-      # the Lane B shard drains its meter and writes its records after the signal (vm-shard.sh waits for vm-run.sh and
+    if [ "$workload" = gstack-laneb ] || [ "$workload" = frontier-harbor ]; then
+      # the Lane B and frontier Harbor shards drain its meter and writes its records after the signal (vm-shard.sh waits for vm-run.sh and
       # then writes ~/shard/exit), so wait for the exit file itself, up to 240 s
       log "stopping the shard on $vm (SIGTERM to its process group, up to 240 s for its records)"
       vssh 'pid=$(cat ~/shard/pid 2>/dev/null); [ -n "$pid" ] && kill -TERM -- -"$pid" 2>/dev/null; for i in $(seq 240); do [ -f ~/shard/exit ] && break; sleep 1; done; [ -f ~/shard/exit ] || echo interrupted > ~/shard/exit; cat ~/shard/exit' 2>>"$dest/lane.log" | stamp | tee -a "$dest/lane.log" >&2
@@ -413,7 +427,8 @@ PY
 if [ "$attach" -eq 1 ]; then
   vm=$(jq1 vm); size=$(jq1 size); name=$(jq1 name)
   [ "$(jq1 sealed)" != True ] || sealed=1
-  case $(jq1 workload) in gstack-laneb|qm-driver) workload=$(jq1 workload) ;; esac
+  case $(jq1 workload) in gstack-laneb|qm-driver|frontier-harbor) workload=$(jq1 workload) ;; esac
+  [ "$(jq1 install_check)" != True ] || install_check=1
   case $workload in qm-driver) records=turns.jsonl record_file=run.json ;; esac
   [ "$sealed" -eq 0 ] || [ -z "$replicate_to" ] || { echo "run-shard (ubicloud): --replicate-to is refused for a sealed shard; its raw results stay in --dest (docs/sealed-custody.md)" >&2; exit 2; }
   [ -n "$vm" ] || { echo "run-shard (ubicloud): --attach needs $dest/shard-vm.json (or $dest/results/shard-vm.json) with a vm field" >&2; exit 2; }
@@ -487,7 +502,7 @@ else
   trap teardown EXIT
   trap 'exit 130' INT TERM HUP QUIT
   location=$(sed -n 's/^LOCATION=//p' "${UBI_RUNNER_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/ubi-runner}/$vm/env" | tr -d "'" || true)
-  jset "name=\"$name\"" "vm=\"$vm\"" "size=\"$size\"" "location=\"$location\"" "owner=\"$(bash "$runner" owner)\"" "commit=\"$commit\"" "run_id=\"$run_id\"" "cells=\"$cells\"" "lease_usd=$lease" "prereg=\"$prereg\"" "scratch_prereg=$([ -n "$scratch_prereg" ] && echo true || echo false)" "sealed=$([ "$sealed" -eq 1 ] && echo true || echo false)" "workload=\"$workload\"" "created_at=\"$(date -u -d @$t_create +%Y-%m-%dT%H:%M:%SZ)\"" "created_epoch=$t_create" "ready_at=\"$(date -u -d @$t_ready +%Y-%m-%dT%H:%M:%SZ)\"" "dest=\"$dest\"" "cleanup=\"pending\"" "cleanup_reason=null"
+  jset "name=\"$name\"" "vm=\"$vm\"" "size=\"$size\"" "location=\"$location\"" "owner=\"$(bash "$runner" owner)\"" "commit=\"$commit\"" "run_id=\"$run_id\"" "cells=\"$cells\"" "lease_usd=$lease" "prereg=\"$prereg\"" "scratch_prereg=$([ -n "$scratch_prereg" ] && echo true || echo false)" "sealed=$([ "$sealed" -eq 1 ] && echo true || echo false)" "workload=\"$workload\"" "install_check=$([ "$install_check" -eq 1 ] && echo true || echo false)" "created_at=\"$(date -u -d @$t_create +%Y-%m-%dT%H:%M:%SZ)\"" "created_epoch=$t_create" "ready_at=\"$(date -u -d @$t_ready +%Y-%m-%dT%H:%M:%SZ)\"" "dest=\"$dest\"" "cleanup=\"pending\"" "cleanup_reason=null"
   map_event created
   log "VM $vm ready in $(( t_ready - t_create ))s; $dest/shard-vm.json records it (run-shard.sh --attach --dest $dest rejoins it)"
 
@@ -534,7 +549,8 @@ else
   # 5. the keys, over SSH only, into a 0600 file the launcher reads and deletes. Only the model keys go (PARTICLE_API_KEY
   # for Particle cells); the custody identity (a file in the project-user drive, never in the environment) never
   # reaches the VM, which gets the opened plaintext and never decrypts.
-  { for k in ANTHROPIC_API_KEY OPENAI_API_KEY PARTICLE_API_KEY; do if [ -n "${!k:-}" ]; then printf 'export %s=%q\n' "$k" "${!k}"; fi; done; } | vssh 'umask 077 && cat > ~/.ubirun-env'
+  # The frontier Harbor install check is keyless: the file is written empty.
+  { [ "$install_check" -eq 1 ] || for k in ANTHROPIC_API_KEY OPENAI_API_KEY PARTICLE_API_KEY; do if [ -n "${!k:-}" ]; then printf 'export %s=%q\n' "$k" "${!k}"; fi; done; } | vssh 'umask 077 && cat > ~/.ubirun-env'
 
   if [ "$resume" -eq 1 ]; then
     log "resume: uploading $dest/results (without harness state and workspaces) to the VM"
@@ -559,6 +575,7 @@ else
   [ -z "$gbrain_image" ] || vm_args+=(--gbrain-image "$gbrain_image")
   [ "$sealed" -eq 0 ] || vm_args+=(--sealed-root "$remote_home/sealed/root" --opening-receipt "$remote_home/sealed/opening-receipt.json")
   [ "$workload" = harness ] || vm_args+=(--workload "$workload")
+  [ "$install_check" -eq 0 ] || vm_args+=(--install-check)
   [ ${#extra[@]} -eq 0 ] || vm_args+=(-- "${extra[@]}")
   qargs=$(printf '%q ' "${vm_args[@]}")
   printf '#!/usr/bin/env bash\nset -u\ncd ~/shard\n. ~/.ubirun-env\nrm -f ~/.ubirun-env\nsetsid nohup bash -l ~/shard/bin/vm-shard.sh %s > ~/shard/vm-shard.out 2>&1 < /dev/null &\necho $! > ~/shard/pid\necho "launched pid $(cat ~/shard/pid)"\n' "$qargs" | vssh 'cat > ~/shard/bin/launch.sh'
@@ -587,7 +604,7 @@ fails=0 polls=0 last_count=-1 last_rep=$(now)
 while :; do
   sleep "$poll"
   polls=$(( polls + 1 ))
-  if [ "$workload" = gstack-laneb ]; then count_cmd='find ~/shard/results/laneb/jobs -mindepth 3 -maxdepth 3 -name result.json 2>/dev/null | wc -l'; else count_cmd="wc -l < ~/shard/results/$records 2>/dev/null || echo 0"; fi
+  if [ "$workload" = gstack-laneb ]; then count_cmd='find ~/shard/results/laneb/jobs -mindepth 3 -maxdepth 3 -name result.json 2>/dev/null | wc -l'; elif [ "$install_check" -eq 1 ]; then count_cmd='wc -l < ~/shard/results/agents/trials.jsonl 2>/dev/null || echo 0'; else count_cmd="wc -l < ~/shard/results/$records 2>/dev/null || echo 0"; fi
   out=$(vssh "cat ~/shard/exit 2>/dev/null; echo \"::trials \$($count_cmd)\"" 2>/dev/null) || { fails=$(( fails + 1 )); [ $(( fails % 10 )) -eq 0 ] && log "WARNING: $fails consecutive SSH failures to $vm"; [ "$(now)" -lt "$deadline" ] || { log "timeout after $timeout_h h"; exit 3; }; continue; }
   fails=0
   for f in results/run-shard.log results/run.stdout.log results/run.log vm-shard.out; do
@@ -599,7 +616,7 @@ while :; do
   if [ "$count" != "$last_count" ] || [ $(( polls % 20 )) -eq 0 ]; then
     # A sealed shard's log lines can name sealed tasks, so the controller prints only the count (docs/sealed-custody.md).
     # A Lane B shard's logs can name its tasks too, so it prints only the count of finished Harbor trials.
-    if [ "$workload" = gstack-laneb ]; then log "poll: $count finished Harbor trials"; elif [ "$sealed" -eq 1 ]; then log "poll: $count trial lines"; elif [ "$workload" = qm-driver ]; then log "poll: $count turn records, $(tail -1 "$dest/run.stdout.log" 2>/dev/null | cut -c1-160)"; else log "poll: $count trial lines, $(tail -1 "$dest/run-shard.log" 2>/dev/null | cut -c1-160)"; fi
+    if [ "$workload" = gstack-laneb ]; then log "poll: $count finished Harbor trials"; elif [ "$sealed" -eq 1 ]; then log "poll: $count trial lines"; elif [ "$workload" = frontier-harbor ]; then log "poll: $count trial lines, $(tail -1 "$dest/run.stdout.log" 2>/dev/null | cut -c1-160)"; elif [ "$workload" = qm-driver ]; then log "poll: $count turn records, $(tail -1 "$dest/run.stdout.log" 2>/dev/null | cut -c1-160)"; else log "poll: $count trial lines, $(tail -1 "$dest/run-shard.log" 2>/dev/null | cut -c1-160)"; fi
     last_count=$count
   fi
   code=$(printf '%s\n' "$out" | sed -n '1{/^::trials/!p}')

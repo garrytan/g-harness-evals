@@ -72,7 +72,7 @@
  *   bun runner/proxy/metering-proxy.ts --listen 172.17.0.1:8787 --budget-ledger <file> --lease-usd <n> --run-id <id>
  *     [--usage-log <file>] [--allow-models openai:gpt-4.1-mini,...] [--max-output-tokens 32768] [--free-count-tokens]
  *     [--forbidden-markers <file>] [--streaming meter|refuse] [--upstream openai=http://...] [--new-run] [--control-token <t>] [--ablation-log <file>] [--log-sections]
- *     [--route-texts <file.json>]
+ *     [--route-texts <file.json>] [--refuse-hosted-tools] [--capture-bodies <dir> [--capture-max-bytes <n>]]
  *   bun runner/proxy/metering-proxy.ts summary --budget-ledger <file> --run-id <id>
  *
  * One lease ledger can hold a cell's reruns: each run id is its own lease, the
@@ -93,8 +93,28 @@
  * than the slot's first bound model (a harness's own utility model), which carries no route_copies. count_tokens and
  * refused lines never carry either. Counts only: no text from the request reaches the log. Without the flag, or on a slot
  * bound without `routes`, every line is byte-identical to the proxy before this change.
+ *
+ * Effort (internal-task): every forwarded or failed line records the effort fields the request set, each as sent
+ * (runner/proxy/effort.ts): `reasoning_effort`, `output_config_effort`, `thinking_type`, `thinking_budget_tokens`, and
+ * `unrecognized_effort_fields` for a field whose value is not a known one. Record only: no request is refused or changed
+ * for its effort. `effortCounts` turns a trial's lines into calls per effort setting.
+ *
+ * Hosted web tools (internal-task): with `--refuse-hosted-tools` a request that declares a provider-hosted search or fetch tool
+ * (runner/proxy/hosted-tools.ts) is refused with HTTP 400 and HE-PROXY-006 before it is priced or forwarded, and its
+ * refused line names the declarations in its reason. Without the flag nothing changes.
+ *
+ * Request-body capture (internal-task): a lease proxy started with `--capture-bodies <root>` accepts a bind with `capture: "<dir>"`,
+ * a directory under the root (the trial's directory). Every request the proxy then sends upstream for that slot is appended to
+ * `<root>/<dir>/proxy-requests.ndjson` first, hash-chained and capped at `--capture-max-bytes` (256 MiB by default), with no
+ * header and no query string (runner/proxy/capture.ts). Finalizing the slot's key closes the file. A capture that cannot be
+ * written refuses the request (HE-PROXY-007) and releases its reservation. Without the flag, or on a slot bound without
+ * `capture`, nothing is written.
+ *
+ * Output cap: `--max-output-tokens` sets the cap for one proxy start (and its lease); set it to the harness's own
+ * max output, since a request naming more is refused. Without it the cap is DEFAULT_MAX_OUTPUT_TOKENS.
  */
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { BudgetExceededError, BudgetRun, ledgerStatus, priceRequest, readBody, reservationUsd, sseIncomplete, sseUsage, usageCost, type BudgetAllowance } from '../ledger/budget-ledger.ts';
 
 export { sseIncomplete, sseUsage };
@@ -102,6 +122,11 @@ import { findLeaks } from './sanitize.ts';
 import type { RouteCopies } from '../contracts.ts';
 import type { AblationBinding, AblationReceipt, AblationSpec } from './ablate.ts';
 import { requestSections, responseExtras, sectionRoute, type RequestSections } from './sections.ts';
+import { effortFields } from './effort.ts';
+import { hostedWebTools } from './hosted-tools.ts';
+import { BodyCapture, CAPTURE_FILE, DEFAULT_CAPTURE_MAX_BYTES } from './capture.ts';
+
+export { effortCounts, effortFields, REASONING_EFFORTS, THINKING_TYPES } from './effort.ts';
 
 export const UPSTREAM: Record<string, string> = { anthropic: 'https://api.anthropic.com', openai: 'https://api.openai.com', voyage: 'https://api.voyageai.com', particle: 'https://api.particle.ai' };
 export type ProviderName = 'anthropic' | 'openai' | 'voyage' | 'particle';
@@ -169,6 +194,12 @@ export interface LeasePolicy {
   ablationLog?: string;
   /** internal-task: write sections and tools_called on forwarded chat lines (--log-sections); off by default. */
   logSections?: boolean;
+  /** internal-task: refuse a request that declares a provider-hosted web tool (--refuse-hosted-tools, HE-PROXY-006); off by default. */
+  refuseHostedTools?: boolean;
+  /** internal-task: the directory a bind's `capture` names a trial directory under (--capture-bodies); unset, a bind with `capture` is refused. */
+  captureRoot?: string;
+  /** internal-task: the size cap of one capture file (--capture-max-bytes), DEFAULT_CAPTURE_MAX_BYTES when unset. */
+  captureMaxBytes?: number;
 }
 
 /** internal-task (H10): `copies` are the rule and placebo bytes (harnesses/routes/instruction.md, placebo.md); `listing` the skill
@@ -188,8 +219,9 @@ export interface UsageLine {
   /** Usage-line schema v1, on every forwarded line: Anthropic cache_creation_input_tokens plus OpenAI input or prompt
    *  tokens detail cache_write_tokens, 0 when the provider reported none. The ablation tables read it as the cache write. */
   cache_write_tokens?: number;
-  /** What the request asked for: OpenAI `reasoning.effort` (or chat-completions `reasoning_effort`), Anthropic `thinking.type` and `thinking.budget_tokens`. */
-  reasoning_effort?: string; thinking_type?: string; thinking_budget_tokens?: number;
+  /** What the request asked for (runner/proxy/effort.ts): OpenAI `reasoning.effort` (or chat-completions `reasoning_effort`), Anthropic `output_config.effort`,
+   *  `thinking.type` and `thinking.budget_tokens`, each only when its value is a known one; `unrecognized_effort_fields` names the request paths set to anything else. */
+  reasoning_effort?: string; output_config_effort?: string; thinking_type?: string; thinking_budget_tokens?: number; unrecognized_effort_fields?: string[];
   /** Particle only: the model id the response echoed (particle-ai/particle-1 for a request naming particle-1). Recorded, never checked or priced. */
   served_model?: string;
   /** Usage-line schema v1 (internal-task), on every forwarded line beside cache_write_tokens: its 1-hour part and reasoning tokens, 0 when absent. */
@@ -202,10 +234,6 @@ export interface UsageLine {
 
 /** The internal-task fields of a line that reported no usage worth reading (a count_tokens call). */
 const NO_EXTRAS = { cache_write_tokens: 0, cache_write_1h_tokens: 0, reasoning_tokens: 0 };
-
-/** The values a usage line may carry for OpenAI `reasoning.effort` / `reasoning_effort` and Anthropic `thinking.type`. */
-export const REASONING_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
-export const THINKING_TYPES = ['enabled', 'disabled', 'adaptive'] as const;
 
 /** The tail of the reason the proxy writes on a 5xx it settled at $0 (scripts/gsta-135/lease.ts reads it). */
 export const PROVIDER_ERROR_NOT_BILLED = 'a provider error envelope that is not billed, settled at $0';
@@ -365,7 +393,8 @@ export class MeteringProxy {
   /** Slots whose provider requests are charged to a ledger allowance (slot builds), not one ledger entry each. */
   readonly allowances = new Map<string, BudgetAllowance>();
   readonly counts = { forwarded: 0, refused: 0, failed: 0, tripwires: 0 };
-  private bindings = new Map<string, { key: string; token: string | null; models: string[] | null; ablation: AblationBinding | null; routes?: boolean }>();
+  private bindings = new Map<string, { key: string; token: string | null; models: string[] | null; ablation: AblationBinding | null; routes?: boolean; capture?: string }>();
+  private captures: BodyCapture | null = null;
   private inflight = new Map<string, number>();
   private waiters = new Map<string, Array<() => void>>();
   /** `transform` (in-process mode) rewrites a response body after it is metered: a mutant that drops a model's output, for example. */
@@ -374,7 +403,7 @@ export class MeteringProxy {
   /** Charge the slot's provider requests to `key` (a cell id) from now on; with `token`, only requests presenting it; with `models`, only requests for those provider:model ids;
    *  with `ablation` (lease mode), the bound layers are cut from every generation request (runner/proxy/ablate.ts); with
    *  `routes` (internal-task), count route copies on its usage lines when the proxy has route texts. */
-  bind(slot: string, key: string, token: string | null = null, models: string[] | null = null, ablation: AblationBinding | null = null, routes = false) { this.bindings.set(slot, { key, token, models, ablation, ...(routes ? { routes } : {}) }); }
+  bind(slot: string, key: string, token: string | null = null, models: string[] | null = null, ablation: AblationBinding | null = null, routes = false, capture: string | null = null) { this.bindings.set(slot, { key, token, models, ablation, ...(routes ? { routes } : {}), ...(capture ? { capture } : {}) }); }
   /** With `key`, only drops the binding if it is still that key: a released slot may already be bound to the next cell. */
   unbind(slot: string, key?: string) { if (key === undefined || this.bindings.get(slot)?.key === key) this.bindings.delete(slot); }
   private meter(key: string): Meter { let m = this.meters.get(key); if (!m) this.meters.set(key, m = newMeter()); return m; }
@@ -392,6 +421,7 @@ export class MeteringProxy {
     }
     const m = this.meters.get(key) ?? newMeter();
     this.meters.delete(key);
+    this.captures?.close(key);
     if (this.inflight.get(key)) m.undrained = this.inflight.get(key);
     return m;
   }
@@ -426,7 +456,7 @@ export class MeteringProxy {
         let streaming = false;
         try {
           const r = this.options.policy
-            ? await this.forwardLeased(req, prov, rest, url.search, key, send, () => { streaming = true; return () => this.settled(key); }, slot, binding?.models ?? null, binding?.ablation ?? null, binding?.routes === true)
+            ? await this.forwardLeased(req, prov, rest, url.search, key, send, () => { streaming = true; return () => this.settled(key); }, slot, binding?.models ?? null, binding?.ablation ?? null, binding?.routes === true, binding?.capture ?? null)
             : await this.forwardInProcess(req, slot, prov, rest, url.search, key, send);
           return r;
         } finally { if (!streaming) this.settled(key); }
@@ -439,12 +469,12 @@ export class MeteringProxy {
     const p = this.options.policy;
     const run = p ? ledgerStatus({ ledgerPath: p.lease.ledgerPath, runId: p.lease.runId }).run : null;
     return { mode: p ? 'lease' : 'in-process', run_id: p?.lease.runId ?? null, lease_usd: p?.lease.budgetUsd ?? null, committed_usd: run?.committed_usd ?? null,
-      max_output_tokens: p ? p.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS : null, log_sections: p?.logSections === true, ...this.counts };
+      max_output_tokens: p ? p.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS : null, log_sections: p?.logSections === true, refuse_hosted_tools: p?.refuseHostedTools === true, capture_bodies: !!p?.captureRoot, ...this.counts };
   }
 
   private async control(path: string, req: Request): Promise<Response> {
     if (this.options.controlToken && req.headers.get('x-proxy-control') !== this.options.controlToken) return json(403, 'invalid_request', 'control endpoints need the x-proxy-control token');
-    let body: { slot?: string; key?: string; token?: string; models?: unknown; ablation?: unknown; routes?: unknown; timeout_ms?: number };
+    let body: { slot?: string; key?: string; token?: string; models?: unknown; ablation?: unknown; routes?: unknown; capture?: unknown; timeout_ms?: number };
     try { body = await req.json() as typeof body; } catch { return json(400, 'invalid_request', 'control body is not JSON'); }
     if (path === '/__proxy/bind' && body.slot && body.key) {
       if (body.models !== undefined && (!Array.isArray(body.models) || body.models.some(m => typeof m !== 'string' || !/^[a-z]+:[A-Za-z0-9._-]+$/.test(m)))) return json(400, 'invalid_request', 'bind models must be a list of provider:model ids');
@@ -454,7 +484,17 @@ export class MeteringProxy {
         try { ablation = (await import('./ablate.ts')).loadBinding(body.ablation as AblationSpec); }
         catch (e) { return json(400, 'invalid_request', `bind ablation refused: ${(e as Error).message}`); }
       }
-      this.bind(body.slot, body.key, typeof body.token === 'string' && body.token ? body.token : null, body.models === undefined ? null : body.models as string[], ablation, body.routes === true);
+      let capture: string | null = null;
+      if (body.capture !== undefined) {
+        const root = this.options.policy?.captureRoot;
+        if (!root) return json(400, 'invalid_request', 'bind capture needs a lease proxy started with --capture-bodies');
+        const dir = typeof body.capture === 'string' && body.capture ? resolve(root, body.capture) : null;
+        const rel = dir === null ? '' : relative(resolve(root), dir);
+        if (dir === null || isAbsolute(body.capture as string) || rel === '' || rel.startsWith('..') || isAbsolute(rel)) return json(400, 'invalid_request', 'bind capture must name a directory under the --capture-bodies root, relative to it');
+        try { mkdirSync(dir, { recursive: true }); } catch (e) { return json(400, 'invalid_request', `bind capture refused: ${(e as Error).message}`); }
+        capture = join(dir, CAPTURE_FILE);
+      }
+      this.bind(body.slot, body.key, typeof body.token === 'string' && body.token ? body.token : null, body.models === undefined ? null : body.models as string[], ablation, body.routes === true, capture);
       return Response.json({ ok: true });
     }
     if (path === '/__proxy/unbind' && body.slot) { this.unbind(body.slot); return Response.json({ ok: true }); }
@@ -539,7 +579,7 @@ export class MeteringProxy {
   }
 
   /** Lease mode: allowlist, tripwire, output cap, price, reserve, inject the key, forward, settle. Every refusal happens before forwarding. */
-  private async forwardLeased(req: Request, prov: ProviderName, route: string, search: string, key: string, send: Send, beginStream: () => () => void, slot: string, slotModels: string[] | null, ablation: AblationBinding | null = null, routes = false): Promise<Response> {
+  private async forwardLeased(req: Request, prov: ProviderName, route: string, search: string, key: string, send: Send, beginStream: () => () => void, slot: string, slotModels: string[] | null, ablation: AblationBinding | null = null, routes = false, capture: string | null = null): Promise<Response> {
     const p = this.options.policy!;
     const at = new Date().toISOString();
     const refuse = (status: number, kind: string, reason: string, model: string | null = null) => {
@@ -569,6 +609,12 @@ export class MeteringProxy {
     }
     const streamed = body?.stream === true;
     if (streamed && (p.streaming ?? 'meter') === 'refuse') return refuse(400, 'invalid_request', 'streaming is disabled for this cell', model);
+    const hosted = p.refuseHostedTools ? hostedWebTools(body) : [];
+    if (hosted.length) {
+      const reason = `HE-PROXY-006 the request declares a provider-hosted web tool (${hosted.join(', ')}); this proxy refuses hosted search and fetch, which run outside the trial's egress rules and audit (docs/errors.md). fix: turn the harness's hosted web tools off`;
+      this.log({ at, key, provider: prov, route, model, outcome: 'refused', reason, status: 400, ...effortFields(body) });
+      return json(400, 'invalid_request', reason);
+    }
     // The layer filter edits the parsed body before the output cap is injected and the request is priced and reserved.
     let receipt: Omit<AblationReceipt, 'at' | 'key'> | null = null;
     if (ablation && body) {
@@ -610,20 +656,11 @@ export class MeteringProxy {
     if (prov === 'anthropic') { headers.set('x-api-key', realKey); if (!headers.has('anthropic-version')) headers.set('anthropic-version', '2023-06-01'); }
     else headers.set('authorization', `Bearer ${realKey}`);
     if (outBody !== undefined) headers.set('content-type', 'application/json');
-    // Only known enum values reach the usage log; anything else a request carries in these fields is omitted.
-    const known = (v: unknown, values: readonly string[]) => (typeof v === 'string' && values.includes(v) ? v : undefined);
-    const effort = known(body?.reasoning?.effort, REASONING_EFFORTS) ?? known(body?.reasoning_effort, REASONING_EFFORTS);
-    const thinking = known(body?.thinking?.type, THINKING_TYPES), budget = body?.thinking?.budget_tokens;
     // internal-task (H10): route copies ride with the knobs onto every forwarded or failed line of a routes slot, and only there.
     const named = bounded?.model ?? model;
     const housekeeping = !!named && !!slotModels?.length && slotModels[0] !== `${prov}:${named}`;
     const routeFields = !routes || !p.routeTexts || !body ? {} : housekeeping ? { housekeeping: true } : { route_copies: routeCopies(body, p.routeTexts) };
-    const knobs = {
-      ...(effort !== undefined ? { reasoning_effort: effort } : {}),
-      ...(thinking !== undefined ? { thinking_type: thinking } : {}),
-      ...(Number.isSafeInteger(budget) && budget >= 0 ? { thinking_budget_tokens: budget as number } : {}),
-      ...routeFields,
-    };
+    const knobs = { ...effortFields(body), ...routeFields };
     /** `unfinished`: `cost` is the partial usage of a stream that ended before its final usage, charged at no less than the reservation.
      *  `response`: the parsed body, or a stream's text, which the usage-line schema v1 fields are read from once the request is charged. */
     const settle = (cost: ReturnType<typeof usageCost>, status: number, isStream: boolean, response: unknown, cached?: number, reason?: string, unfinished = false, served?: string, upstream: Pick<UsageLine, 'error_code' | 'error_type'> = {}) => {
@@ -644,6 +681,13 @@ export class MeteringProxy {
       return json(502, 'product_error', `upstream failed: ${message}`);
     };
     if (receipt && p.ablationLog) appendFileSync(p.ablationLog, JSON.stringify({ at, key, ...receipt }) + '\n');
+    if (capture) {
+      try { (this.captures ??= new BodyCapture(p.captureMaxBytes ?? DEFAULT_CAPTURE_MAX_BYTES)).write(capture, key, route, body ?? null); }
+      catch (e) {
+        if (entry) p.lease.settle(entry, { usd: 0, input_tokens: 0, output_tokens: 0 });
+        return refuse(500, 'product_error', `HE-PROXY-007 the request body could not be captured, so it was not sent: ${(e as Error).message.slice(0, 200)}`, model);
+      }
+    }
     let res: Response;
     try { res = await send(target, { method: req.method, headers, body: outBody, timeout: false, signal: AbortSignal.timeout(UPSTREAM_DEADLINE_MS) } as RequestInit); }
     catch (e) { return failed((e as Error).message); }
@@ -707,7 +751,7 @@ export class ProxyControl {
     if (!res.ok) throw new Error(`metering proxy ${path}: HTTP ${res.status}`);
     return res.json();
   }
-  bind(slot: string, key: string, token?: string, models?: string[], ablation?: AblationSpec) { return this.post('/__proxy/bind', { slot, key, ...(token ? { token } : {}), ...(models ? { models } : {}), ...(ablation ? { ablation } : {}) }); }
+  bind(slot: string, key: string, token?: string, models?: string[], ablation?: AblationSpec, capture?: string) { return this.post('/__proxy/bind', { slot, key, ...(token ? { token } : {}), ...(models ? { models } : {}), ...(ablation ? { ablation } : {}), ...(capture ? { capture } : {}) }); }
   unbind(slot: string) { return this.post('/__proxy/unbind', { slot }); }
   finalize(key: string, timeoutMs = 30_000) { return this.post('/__proxy/finalize', { key, timeout_ms: timeoutMs }) as Promise<Meter>; }
   /** Run `fn` with the slot's provider calls charged to `key`; returns its result and the key's meter. */
@@ -724,6 +768,10 @@ export interface ProxyCliArgs {
   host: string; port: number; ledger: string; leaseUsd: number; runId: string; usageLog: string | null;
   allowModels: string[] | null; maxOutputTokens: number | null; forbiddenMarkers: string[]; streaming: 'meter' | 'refuse'; upstream: Partial<Record<ProviderName, string>>; newRun: boolean;
   controlToken: string | null; freeCountTokens: boolean; ablationLog: string | null; logSections: boolean;
+  /** internal-task: --refuse-hosted-tools, off without it. */
+  refuseHostedTools: boolean;
+  /** internal-task: --capture-bodies <dir> and --capture-max-bytes <n>, null without them. */
+  captureBodies: string | null; captureMaxBytes: number | null;
   /** internal-task (H10): --route-texts <file.json>, null without it. */
   routeTexts: RouteTexts | null;
 }
@@ -754,12 +802,17 @@ export function parseProxyArgs(argv: string[]): ProxyCliArgs {
     if (!texts(t.copies) || !texts(t.listing ?? [])) throw new Error('--route-texts must name a JSON file {"copies": [text, ...], "listing": [text, ...]} of non-empty strings');
     routeTexts = { copies: t.copies!, listing: t.listing ?? [] };
   }
+  const maxOutput = one('--max-output-tokens');
+  const captureMax = one('--capture-max-bytes');
+  if (captureMax !== undefined && !(Number.isSafeInteger(Number(captureMax)) && Number(captureMax) > 0)) throw new Error('--capture-max-bytes must be a positive whole number of bytes');
+  if (captureMax !== undefined && !one('--capture-bodies')) throw new Error('--capture-max-bytes needs --capture-bodies <dir>');
+  if (maxOutput !== undefined && !(Number.isSafeInteger(Number(maxOutput)) && Number(maxOutput) > 0)) throw new Error('--max-output-tokens must be a positive whole number of tokens (the harness\'s own max output)');
   return {
     host: listen.slice(0, at), port, ledger, leaseUsd: Number(lease), runId, usageLog: one('--usage-log') ?? null,
     allowModels: one('--allow-models') ? one('--allow-models')!.split(',').map(s => s.trim()).filter(Boolean) : null,
-    maxOutputTokens: one('--max-output-tokens') ? Number(one('--max-output-tokens')) : null,
+    maxOutputTokens: maxOutput !== undefined ? Number(maxOutput) : null,
     forbiddenMarkers: markersFile ? readFileSync(markersFile, 'utf8').split('\n').map(s => s.trim()).filter(Boolean) : [],
-    streaming, upstream, newRun: argv.includes('--new-run'), freeCountTokens: argv.includes('--free-count-tokens'), logSections: argv.includes('--log-sections'), controlToken: one('--control-token') ?? process.env.SHOOTOUT_PROXY_CONTROL_TOKEN ?? null,
+    streaming, upstream, newRun: argv.includes('--new-run'), freeCountTokens: argv.includes('--free-count-tokens'), logSections: argv.includes('--log-sections'), refuseHostedTools: argv.includes('--refuse-hosted-tools'), captureBodies: one('--capture-bodies') ?? null, captureMaxBytes: captureMax !== undefined ? Number(captureMax) : null, controlToken: one('--control-token') ?? process.env.SHOOTOUT_PROXY_CONTROL_TOKEN ?? null,
     routeTexts,
     ablationLog: one('--ablation-log') ?? null,
   };
@@ -768,7 +821,7 @@ export function parseProxyArgs(argv: string[]): ProxyCliArgs {
 export function startLeaseProxy(a: ProxyCliArgs, env: Record<string, string | undefined> = process.env): MeteringProxy {
   const lease = BudgetRun.openLease({ runId: a.runId, leaseUsd: a.leaseUsd, ledgerPath: a.ledger, runner: 'metering-proxy', maxOutputTokens: a.maxOutputTokens, newRun: a.newRun });
   const proxy = new MeteringProxy({ hostname: a.host, port: a.port, upstream: a.upstream, controlToken: a.controlToken,
-    policy: { lease, env, allowModels: a.allowModels, maxOutputTokens: a.maxOutputTokens ?? undefined, forbiddenMarkers: a.forbiddenMarkers, streaming: a.streaming, usageLog: a.usageLog ?? `${lease.ledgerPath}.usage.ndjson`, freeCountTokens: a.freeCountTokens, logSections: a.logSections, ...(a.ablationLog ? { ablationLog: a.ablationLog } : {}), ...(a.routeTexts ? { routeTexts: a.routeTexts } : {}) } });
+    policy: { lease, env, allowModels: a.allowModels, maxOutputTokens: a.maxOutputTokens ?? undefined, forbiddenMarkers: a.forbiddenMarkers, streaming: a.streaming, usageLog: a.usageLog ?? `${lease.ledgerPath}.usage.ndjson`, freeCountTokens: a.freeCountTokens, logSections: a.logSections, ...(a.refuseHostedTools ? { refuseHostedTools: true } : {}), ...(a.captureBodies ? { captureRoot: resolve(a.captureBodies), ...(a.captureMaxBytes ? { captureMaxBytes: a.captureMaxBytes } : {}) } : {}), ...(a.ablationLog ? { ablationLog: a.ablationLog } : {}), ...(a.routeTexts ? { routeTexts: a.routeTexts } : {}) } });
   proxy.start();
   return proxy;
 }

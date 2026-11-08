@@ -8,7 +8,16 @@
 #   vm-shard.sh --commit <sha> --prereg <path on the VM> --name <shard> --cells a,b --lease-usd <n>
 #               [--smoke-lease-usd <n>] [--smoke-task <task id>] [--smoke-first-cell] [--no-smoke] [--resume] [--amendment <sha>]
 #               [--embedded] [--gbrain-image <tag>] [--sealed-root <path on the VM> --opening-receipt <path on the VM>]
-#               [--workload harness|gstack-laneb|qm-driver] [-- <extra run-shard.sh arguments>]
+#               [--workload harness|gstack-laneb|qm-driver|frontier-harbor] [--install-check] [-- <extra run-shard.sh arguments>]
+#
+# --workload frontier-harbor (scripts/frontier-harbor/README.md): Terminal-Bench 2.1 is cloned at pin.json's commit into
+# ~/terminal-bench-2-1. With --install-check the lane is the keyless install check and nothing else:
+# scripts/frontier-harbor/install-check.sh ~/shard/results with every key unset (fake upstream, no spend), its output in
+# ~/shard/results/run.stdout.log and its exit code the shard's. Otherwise the smoke is that same keyless install check
+# into ~/shard/smoke (--no-smoke skips it; exit 4 when it fails), then scripts/frontier-harbor/vm-run.sh for the shard
+# under its lease with --out ~/shard/results and the arguments after -- passed through (--stage <name>, --done <file>),
+# its output in ~/shard/results/run.stdout.log.
+# Sealed flags are refused.
 #
 # --workload qm-driver: the smoke is harnesses/qm/gstack/s1e-probe.ts --dry-run without any key (the S1 fakes behind the
 # proxy in capture mode, no spend; it builds the rig images, so the counted run gets --skip-build), its output and results
@@ -51,7 +60,7 @@ if [ -z "${HE_SHARD_IN_DOCKER_GROUP:-}" ] && getent group docker >/dev/null && !
   exec sg docker -c "bash $(printf %q "$0") $(printf '%q ' "$@")"
 fi
 
-commit="" prereg="" name="" cells="" lease="" smoke_lease="" smoke_task="" smoke=1 smoke_first=0 resume=0 amendment="" workload=harness
+commit="" prereg="" name="" cells="" lease="" smoke_lease="" smoke_task="" smoke=1 smoke_first=0 resume=0 amendment="" workload=harness install_check=0
 extra=() image=() sealed=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -71,11 +80,13 @@ while [ $# -gt 0 ]; do
     --sealed-root) sealed+=(--sealed-root "$2"); shift 2 ;;
     --opening-receipt) sealed+=(--opening-receipt "$2"); shift 2 ;;
     --workload) workload="$2"; shift 2 ;;
+    --install-check) install_check=1; shift ;;
     --) shift; extra+=("$@"); break ;;
     *) echo "vm-shard: unknown argument $1" >&2; exit 2 ;;
   esac
 done
 [ -n "$commit" ] && [ -n "$prereg" ] && [ -n "$name" ] && [ -n "$cells" ] && [ -n "$lease" ] || { echo "vm-shard: --commit, --prereg, --name, --cells and --lease-usd are required" >&2; exit 2; }
+[ "$install_check" -eq 0 ] || [ "$workload" = frontier-harbor ] || { echo "vm-shard: --install-check applies only to --workload frontier-harbor" >&2; exit 2; }
 
 shard=$HOME/shard
 mkdir -p "$shard"
@@ -114,6 +125,53 @@ if [ "$workload" = gstack-laneb ]; then
   # This script keeps waiting for it instead of dying, so ~/shard/exit appears only once the records exist.
   trap 'log "signal received; waiting for vm-run.sh to write its records"' TERM HUP
   HE_LANEB_HARBOR_READY=$smoke bash scripts/gstack-laneb/vm-run.sh --prereg "$prereg" --name "$name" --cells "$cells" --lease-usd "$lease" --out "$shard/results" --laneb-root "$HOME/laneb" &
+  child=$!
+  while :; do wait "$child"; rc=$?; kill -0 "$child" 2>/dev/null || break; done
+  trap - TERM HUP
+  phase run_end
+  log "vm-run.sh exited $rc"
+  finish "$rc"
+fi
+
+if [ "$workload" = frontier-harbor ]; then
+  [ ${#sealed[@]} -eq 0 ] || { log "frontier-harbor takes no sealed flags"; finish 2; }
+  if [ "$install_check" -eq 1 ] && [ "$(realpath "$prereg")" != "$(realpath scripts/frontier-harbor/install-check-prereg.json)" ]; then log "--install-check runs scripts/frontier-harbor/install-check-prereg.json; the manifest names $prereg"; finish 2; fi
+  planned=$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); print(",".join(next((s["cells"] for s in p["shards"] if s["name"] == sys.argv[2]), [])))' "$prereg" "$name")
+  [ "$planned" = "$cells" ] || { log "shard $name of $prereg has cells '$planned', not the manifest's '$cells'"; finish 2; }
+  read -r tb_repo tb_commit <<< "$(python3 -c 'import json,sys; t=json.load(open(sys.argv[1]))["terminal_bench"]; print(t["repo"], t["commit"])' scripts/frontier-harbor/pin.json)"
+  tb21=$HOME/terminal-bench-2-1
+  if [ "$(git -C "$tb21" rev-parse HEAD 2>/dev/null)" != "$tb_commit" ]; then
+    rm -rf "$tb21"
+    git clone --quiet --filter=blob:none "$tb_repo" "$tb21" > "$shard/tb21-clone.log" 2>&1 && git -C "$tb21" checkout --quiet "$tb_commit" || { log "cloning terminal-bench-2-1 at $tb_commit failed"; finish 3; }
+  fi
+  log "terminal-bench-2-1 at $(git -C "$tb21" rev-parse HEAD)"
+  keyless=(env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u PARTICLE_API_KEY -u UBICLOUD_API_KEY)
+  if [ "$install_check" -eq 1 ]; then
+    mkdir -p "$shard/results"
+    phase run_start
+    log "install check: scripts/frontier-harbor/install-check.sh (keyless, fake upstream)"
+    "${keyless[@]}" bash scripts/frontier-harbor/install-check.sh "$shard/results" ${extra[@]+"${extra[@]}"} > "$shard/results/run.stdout.log" 2>&1
+    rc=$?
+    phase run_end
+    tail -3 "$shard/results/run.stdout.log"
+    log "install-check.sh exited $rc"
+    finish "$rc"
+  fi
+  if [ "$smoke" -eq 1 ]; then
+    mkdir -p "$shard/smoke/results"
+    phase smoke_start
+    log "smoke: scripts/frontier-harbor/install-check.sh (keyless, fake upstream)"
+    "${keyless[@]}" bash scripts/frontier-harbor/install-check.sh "$shard/smoke/results" > "$shard/smoke/results/run.stdout.log" 2>&1
+    rc=$?
+    phase smoke_end
+    [ "$rc" -eq 0 ] || { tail -5 "$shard/smoke/results/run.stdout.log"; log "smoke failed (exit $rc); the counted run does not start"; finish 4; }
+  fi
+  phase run_start
+  log "run: scripts/frontier-harbor/vm-run.sh --prereg $prereg --name $name --lease-usd $lease ${extra[*]-}"
+  # The controller's SIGTERM reaches the whole process group; vm-run.sh traps it, drains its meter and writes its records.
+  trap 'log "signal received; waiting for vm-run.sh to write its records"' TERM HUP
+  mkdir -p "$shard/results"
+  bash scripts/frontier-harbor/vm-run.sh --prereg "$prereg" --name "$name" --lease-usd "$lease" --out "$shard/results" --tb21 "$tb21" ${extra[@]+"${extra[@]}"} >> "$shard/results/run.stdout.log" 2>&1 &
   child=$!
   while :; do wait "$child"; rc=$?; kill -0 "$child" 2>/dev/null || break; done
   trap - TERM HUP

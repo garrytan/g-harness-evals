@@ -1,0 +1,649 @@
+{
+ "schema": "frontier-harbor-pin/1",
+ "note": "What the frontier Harbor path runs (internal-task plan, Implementation steps 1 and 2). materialize.ts checks every task against these digests; agents.py reads harnesses and models; vm-run.sh installs Harbor from the wheel below and refuses another hash; egress.py applies the blocklist. A change here is a reviewed pin change, made before the preregistration it serves.",
+ "harbor": {
+  "version": "0.24.0",
+  "source": "PyPI",
+  "wheel": "harbor-0.24.0-py3-none-any.whl",
+  "wheel_url": "https://files.pythonhosted.org/packages/9e/63/0e3d788e8d1ed116125507c6a01e3fb95cf82be71f2ea7040a1458709d21/harbor-0.24.0-py3-none-any.whl",
+  "wheel_sha256": "23b7ba616a3aae4eff561ced5e2c51c7186f2981e53a770dea9c689d3969877c",
+  "uploaded": "2026-10-05T05:04:42Z",
+  "requires_python": ">=3.12",
+  "licence": "Apache-2.0 (wheel metadata License-Expression and github.com/harbor-framework/harbor LICENSE, checked 2026-11-07)",
+  "dependencies": {
+   "file": "scripts/frontier-harbor/harbor-requirements.txt",
+   "sha256": "a0282f3628f30dd3123b77464c490eaded534fab54ec9c2fb4af990ebde5691d",
+   "how": "uv 0.13.4 pip compile of harbor==0.24.0 for Python 3.12 on x86_64-manylinux_2_28 with --generate-hashes; the harbor line keeps only the pinned wheel hash. vm-run.sh installs it with uv pip install --require-hashes --only-binary :all:, so every package around the wheel is pinned by version and hash and nothing is built from source.",
+   "uv": "0.13.4"
+  }
+ },
+ "terminal_bench": {
+  "repo": "https://github.com/harbor-framework/terminal-bench-2-1",
+  "commit": "d49e28f1e4ddd13d289e85a5f312a66750951932",
+  "committed": "2026-07-11T20:57:47-07:00",
+  "git_tree": "8b021d396346a995a511911784eb3589794e8659",
+  "tasks_dir": "tasks",
+  "licence": "Apache-2.0 (LICENSE at the commit)"
+ },
+ "task_selection": {
+  "rule": "the Terminal-Bench 2.1 tasks whose pooled pass rate over DeepSeek-V4.1-Flash at high effort, pooled across the five harnesses at the top of that model on the board (mini-swe-agent, Kimi Code, Hermes, Pi, Claude Code; 3 attempts each, so 15 trials per task), is below the threshold. 52 of the 87 scored TB2.1 tasks qualify.",
+  "threshold": 0.95,
+  "source": {
+   "board": "Harness Leaderboard (Joel Niklaus, Hugging Face Space joelniklaus/harness-leaderboard), board v0.1.1",
+   "space_commit": "b684fc09f34badf8454e19b59d1d7ba3b2f76d06",
+   "index": "index/public.json generated 2026-11-07T13:08:58Z",
+   "trials": "the public bucket trials-*.jsonl of the -full- runs on DeepSeek-V4.1-Flash high, read 2026-11-07 by internal-task (~/.capy/work/hl/analyze.py on its machine)",
+   "derived_file": "handoffs/internal-task/data/difficulty_ds_high.json in the Harness Evals Captain drive",
+   "derived_file_sha256": "ca4a485fc7b83b92ee40fee88b7eeab9f6276b595e2a282c16dc401f20e02cee",
+   "licence": "the Space is Apache-2.0 (its README); the bucket states no licence of its own, so only the derived per-task rates of the selected tasks are kept here, never the leaderboard trial files",
+   "attribution": "Task list derived from the Harness Leaderboard by Joel Niklaus (Apache-2.0)."
+  },
+  "tree_sha256": "76b4a01e975dbdafff0570b829aaaaaf854a827ec13100ad892e4e1c2cddec9f",
+  "tree_rule": "sha256 over the 52 task ids in sorted order, one line '<task id>\\0<source digest>\\n' each; a source digest is treeDigest of tasks/<id>/ at the commit (scripts/gstack-laneb/pinned/quick/laneb/runner/materialize.ts: sha256 over '<relative path>\\0<file sha256>\\n' for every file, sorted)",
+  "image_digests": "registry-1.docker.io manifest digests of each task.toml docker_image tag, resolved 2026-11-07; materialize.ts rewrites docker_image to <repo>@<digest>",
+  "tasks": {
+   "adaptive-rejection-sampler": {
+    "source_digest": "a8b802f559c3bc0677563d514eae252e7b57683449afa8efc582b7077f051021",
+    "image": "alexgshaw/adaptive-rejection-sampler:20251031",
+    "image_digest": "sha256:985bed39e8448bc95f138b5f766b59003a95c4be171c96af8e76448338f3dd8f",
+    "pooled_pass_rate": 0.3333
+   },
+   "bn-fit-modify": {
+    "source_digest": "9f2748f428c4fb73fdce966a372f6da3b42ab1282868772cae93b855fe739dfc",
+    "image": "alexgshaw/bn-fit-modify:20251031",
+    "image_digest": "sha256:5aeb11ca6e802b83816c9a31f055ac9d028309a853509400c2e3139ac2d8380d",
+    "pooled_pass_rate": 0.8667
+   },
+   "build-cython-ext": {
+    "source_digest": "ce0f89c3805d092ba9ae319a496cbe0c979919738755a2bb5ab72aa6dd7d2312",
+    "image": "alexgshaw/build-cython-ext:20251031",
+    "image_digest": "sha256:3612a38fadb89a96f74a1a951fb0b0af734198fd160571eeaba6401593234594",
+    "pooled_pass_rate": 0.8667
+   },
+   "caffe-cifar-10": {
+    "source_digest": "5ff6c4ec52b78d3ec79a5cf1962ae2daa43f4a31263b4ff92441086c5dfbcf34",
+    "image": "alexgshaw/caffe-cifar-10:20260403",
+    "image_digest": "sha256:929a6d631b592c82e0d0f5d4a65cf03c946dc554cfc9bb09916e82076e7d3215",
+    "pooled_pass_rate": 0.6667
+   },
+   "cancel-async-tasks": {
+    "source_digest": "d8e7d0f51f44a0b306d1a968d9dc77558d38488e06a450ef7750cac920943dc3",
+    "image": "alexgshaw/cancel-async-tasks:20251031",
+    "image_digest": "sha256:84c7fae6b256dcc56a350790e2a9715eefc7dad662a9d8e8a472363aa71ef18d",
+    "pooled_pass_rate": 0.8
+   },
+   "chess-best-move": {
+    "source_digest": "5b0d4b7e997cac29a34e0989932f2e838cf8ed0c8107a59ecf0b3ed7fe711a07",
+    "image": "alexgshaw/chess-best-move:20251031",
+    "image_digest": "sha256:bb447f94d9e2a8ed879f85c85a514b213b7418f9fe11fd7b2428a0b0e436e647",
+    "pooled_pass_rate": 0.8667
+   },
+   "cobol-modernization": {
+    "source_digest": "f76bc379de8a659319df5cca7f239316831a6b8199f459ba477faddecf890020",
+    "image": "alexgshaw/cobol-modernization:20251031",
+    "image_digest": "sha256:593ab9df3d83f771e927888b2d9436b380cdf7ec4d0af2a9f0802d541edebba0",
+    "pooled_pass_rate": 0.9333
+   },
+   "code-from-image": {
+    "source_digest": "513b32e6d885ad2f6663e766d147b143e359439037e3c85c64079f84c1ec1a1c",
+    "image": "alexgshaw/code-from-image:20251031",
+    "image_digest": "sha256:2be9cdb746ed18c1b2b1404032efae0b2235a1b8fc479ef17730c95409d89f76",
+    "pooled_pass_rate": 0.7333
+   },
+   "compile-compcert": {
+    "source_digest": "bd6ad25d2e2468ec6aa729cef4b69b168457ea83b1c68755d385b7c664851f24",
+    "image": "alexgshaw/compile-compcert:20260403",
+    "image_digest": "sha256:f60236a4fe55bbb3c573210fe0fcd91551f4ee97c417453cd4985be074b35411",
+    "pooled_pass_rate": 0.9333
+   },
+   "configure-git-webserver": {
+    "source_digest": "b9434fa978d6bed39d4a0c803e94caeef6d619e4f5cb0bd743fe9ca88d204b52",
+    "image": "alexgshaw/configure-git-webserver:20251031",
+    "image_digest": "sha256:9e48389b917fd4650dda1f64406bd7198bbf20dc1c6b0e5c4d81a3c16369f88c",
+    "pooled_pass_rate": 0.5333
+   },
+   "dna-assembly": {
+    "source_digest": "f9e06c80239b3c578b284c65c256eae5b3c1ac7bd590d0b5b17967b4311db91d",
+    "image": "alexgshaw/dna-assembly:20251031",
+    "image_digest": "sha256:d1adf6835f1dd91205ba70e452c699d0aea601010038e5617f370716efb50569",
+    "pooled_pass_rate": 0.5333
+   },
+   "dna-insert": {
+    "source_digest": "68ff7204d20050edc200480d0c9441a1897fcf606ebda1472177dc00218bcd8b",
+    "image": "alexgshaw/dna-insert:20251031",
+    "image_digest": "sha256:4dd8760694e355de85ecf03605cb487ccdb33322f6afad513d2920829baa33b2",
+    "pooled_pass_rate": 0.8667
+   },
+   "extract-moves-from-video": {
+    "source_digest": "375d39f44caa146f53ea3453dffacbdd1f064400ce72540da383015a4b8b824f",
+    "image": "alexgshaw/extract-moves-from-video:20260403",
+    "image_digest": "sha256:74ef87375ce2b6332ca9fe0180eb541b64cf4ef4188edd5b1be22c272e5a5b4b",
+    "pooled_pass_rate": 0.0
+   },
+   "feal-differential-cryptanalysis": {
+    "source_digest": "346d6a5838153c76a2bc753d0d47723e0c90a81f6b20a4c67a4c0cf8a08c53b9",
+    "image": "alexgshaw/feal-differential-cryptanalysis:20251031",
+    "image_digest": "sha256:bea93bafe9eab601ca58729f5735a13f8339f52055322d1cf840e3742b54a287",
+    "pooled_pass_rate": 0.9333
+   },
+   "feal-linear-cryptanalysis": {
+    "source_digest": "93b293f8eccfeffb683fd1be3d3daeadfea4a3a85ae925e3f6d8b3cd0a19870a",
+    "image": "alexgshaw/feal-linear-cryptanalysis:20251031",
+    "image_digest": "sha256:ea78749a8422c6228d26c8753f45906a6a2df089906764b7e3c3e27e8f718ee7",
+    "pooled_pass_rate": 0.9333
+   },
+   "filter-js-from-html": {
+    "source_digest": "e70f6729bf79cb048221af0c093e70a0e4bdd67e5d0ce1f616a8e21d1522d187",
+    "image": "alexgshaw/filter-js-from-html:20251031",
+    "image_digest": "sha256:92acda0f124b988036a6f426ce0bc47fac19f5efe9fc5e6ea3ea52ccb075d0a4",
+    "pooled_pass_rate": 0.2
+   },
+   "financial-document-processor": {
+    "source_digest": "e67f587f4e09acb2853b5bdbdd2d4a88a80d40226f5ad90433d08a073928488b",
+    "image": "alexgshaw/financial-document-processor:20251031",
+    "image_digest": "sha256:ef6c9cfaaf14cdd200163008a188d5baa9f626f3bfb8d3e7d6f30c08518e6251",
+    "pooled_pass_rate": 0.8667
+   },
+   "gcode-to-text": {
+    "source_digest": "7e6a272bf8ce5a23c26d7d401b3e2030e99434678952325b89010522257a7f5b",
+    "image": "alexgshaw/gcode-to-text:20251031",
+    "image_digest": "sha256:0979ef40c6a3e8c4e7ab5b6c2524c74625a84799e15cd45dd98dcf83b11efd4d",
+    "pooled_pass_rate": 0.1333
+   },
+   "gpt2-codegolf": {
+    "source_digest": "fd63ccf1f1e465d2f4d1de0d907b802041edc8910d4537f48daedaafb4f336a8",
+    "image": "alexgshaw/gpt2-codegolf:20251031",
+    "image_digest": "sha256:537e7bd26b02db5c761230515fa09dc05f89403c6737fbdae4b5793ebc2c7066",
+    "pooled_pass_rate": 0.0667
+   },
+   "headless-terminal": {
+    "source_digest": "e254c9746bb25640a7a84ba16819c3251a7c12f685bb86273f31d38c3291a371",
+    "image": "alexgshaw/headless-terminal:20251031",
+    "image_digest": "sha256:eb7e209672bf6cef2785fafd9e13509b10626c327bcc2b37f5bf40ca83eaf3aa",
+    "pooled_pass_rate": 0.8
+   },
+   "install-windows-3.11": {
+    "source_digest": "f27efc3e41b18c2e1ea3eb997d56a15e2d408c03afc2aa12c10fc1c8d1da0be3",
+    "image": "alexgshaw/install-windows-3.11:20251031",
+    "image_digest": "sha256:c6695097316ef8810abce0545e347e65354aef9d51d4f7f662c3242e742f6a3e",
+    "pooled_pass_rate": 0.6667
+   },
+   "large-scale-text-editing": {
+    "source_digest": "44578b217a1d100851690c2b91d007075527214f3ec813ad3a7366c1247d1793",
+    "image": "alexgshaw/large-scale-text-editing:20251031",
+    "image_digest": "sha256:719adca3f1388220546ce6a155eee56eff3c4fe318183100320606a210f6b59c",
+    "pooled_pass_rate": 0.8
+   },
+   "largest-eigenval": {
+    "source_digest": "a44676fd54c5715791d6f9cc9942eb54c748292b5a3255612211e3e8750da731",
+    "image": "alexgshaw/largest-eigenval:20251031",
+    "image_digest": "sha256:cb9e3e3b09d0783f3bbcfeec8d77bc32d3791204fb2be6650b19be4fbc082b2e",
+    "pooled_pass_rate": 0.2667
+   },
+   "llm-inference-batching-scheduler": {
+    "source_digest": "d21a38034b60eaef78916c63f408268830007b1de55fe2575c001f6f7ef54fa6",
+    "image": "alexgshaw/llm-inference-batching-scheduler:20251031",
+    "image_digest": "sha256:19e79aa49be4e55dccca1dde966515ebe6852314b6010bcb9230afb48b996774",
+    "pooled_pass_rate": 0.8667
+   },
+   "mailman": {
+    "source_digest": "5ed6cb9cb14f7e7bb533b711111f5039449a44d9b6a1b9a939a0d2adf8046d2c",
+    "image": "alexgshaw/mailman:20251031",
+    "image_digest": "sha256:04fac73db7e2b4f49d43f09fbc2266a94d70131f07efa1393d370abc059f4094",
+    "pooled_pass_rate": 0.8667
+   },
+   "make-doom-for-mips": {
+    "source_digest": "5d79295b318e62ac16546f1ce15b32d18b60c3407b2b99089420263ba89d269e",
+    "image": "alexgshaw/make-doom-for-mips:20251031",
+    "image_digest": "sha256:80a9459f1b94b692ea8346f68e6b864f6c4d984fbdf6ffd68ad332308300c2ec",
+    "pooled_pass_rate": 0.0
+   },
+   "make-mips-interpreter": {
+    "source_digest": "2c928527cf7bfe4aae92844eaaf42cccf42458b98adc496657ad735415355f24",
+    "image": "alexgshaw/make-mips-interpreter:20251031",
+    "image_digest": "sha256:082fc8821b317f30fdfbf8d08d528874ce331c03e8083aef0406d48cdd7132a2",
+    "pooled_pass_rate": 0.6667
+   },
+   "mcmc-sampling-stan": {
+    "source_digest": "ded0570e646ca22f012f7a5b9064a97c018e6aa1756192141cb64b6b48e2e1d7",
+    "image": "alexgshaw/mcmc-sampling-stan:20251031",
+    "image_digest": "sha256:073fc36a3347b4f6b43bd6e98339542c41ed531c771af8bee40ba10f00cfabaf",
+    "pooled_pass_rate": 0.9333
+   },
+   "model-extraction-relu-logits": {
+    "source_digest": "0604cc2341b03f2a1c6ce59ecb9674d7ca993ccb9ecfefbdb358a6a5e80b669b",
+    "image": "alexgshaw/model-extraction-relu-logits:20251031",
+    "image_digest": "sha256:52fe1f089f38650f0dc22d7531ee6e01ebd526de1b349aaa2ecb331dca9fabce",
+    "pooled_pass_rate": 0.3333
+   },
+   "modernize-scientific-stack": {
+    "source_digest": "60c7c9fb8012da569a6b1606b8576551eb83bcc5a7c325534a0518db7e6df041",
+    "image": "alexgshaw/modernize-scientific-stack:20251031",
+    "image_digest": "sha256:64e69cee13bf6b0b9016e735b51891bce996a60f1e2d1a005bf12c949e221d71",
+    "pooled_pass_rate": 0.9333
+   },
+   "mteb-retrieve": {
+    "source_digest": "77aaf05f4e17c47d9ce3a79d4fe22e66cdbd9bfb865afc45a9d6f34b54046b26",
+    "image": "alexgshaw/mteb-retrieve:20260430",
+    "image_digest": "sha256:41bdc22a2ebb9b043b1c12283e383c8dec2a8f183bc99ca680377b666cc7c3b4",
+    "pooled_pass_rate": 0.8
+   },
+   "nginx-request-logging": {
+    "source_digest": "cec7bad6092450cebd2b58154665975c95ec01aca647101f7a46efaa76029f2c",
+    "image": "alexgshaw/nginx-request-logging:20251031",
+    "image_digest": "sha256:693e64431a0dbf45952e8b91a298d54fd60247e501c6623fb8fa3ebc07fc3d3d",
+    "pooled_pass_rate": 0.8
+   },
+   "overfull-hbox": {
+    "source_digest": "16d5b73e9954175f2f78afd6d29fff599af0389b0122046935276cc6fa4c9f02",
+    "image": "alexgshaw/overfull-hbox:20260403",
+    "image_digest": "sha256:7dca952bb6736194a736b5110945f48842eafa8551e24468f1dddeed0daee799",
+    "pooled_pass_rate": 0.8
+   },
+   "path-tracing": {
+    "source_digest": "af598444aec572437aee5b6dca505ad1113565911f5800dee69d1c0f8c22a252",
+    "image": "alexgshaw/path-tracing:20251031",
+    "image_digest": "sha256:4b44725102cd627dfa895191a5a30d16dae3c5623bb43da6459f79135db6b482",
+    "pooled_pass_rate": 0.9333
+   },
+   "path-tracing-reverse": {
+    "source_digest": "f13a47061fa60795a0e5b64abe365ba7d72ff3a670f8a9603c3da27257cbfb0b",
+    "image": "alexgshaw/path-tracing-reverse:20251031",
+    "image_digest": "sha256:7911e42479d8f6d8af1248bc52442a0efbc5a33e3ecf535fdc20d252a2c64142",
+    "pooled_pass_rate": 0.9333
+   },
+   "protein-assembly": {
+    "source_digest": "d6e5fd118b576c119748ce4848b8e5b7cb70835adcad3393b7853dd9e64e70a3",
+    "image": "alexgshaw/protein-assembly:20260403",
+    "image_digest": "sha256:602c467ae6b661a73441b960d9fa7130f068f4c6041d37ef8632611733d83f4a",
+    "pooled_pass_rate": 0.6667
+   },
+   "pytorch-model-cli": {
+    "source_digest": "89bcda06f19de3b0fc1a844a32e5ec386092eb5e2c91ff7d62d457ba4b67b26d",
+    "image": "alexgshaw/pytorch-model-cli:20251031",
+    "image_digest": "sha256:c996884b5fb5fb2c0c07d67da2c4f974f271f07234ed28e1a868240375c57a67",
+    "pooled_pass_rate": 0.1333
+   },
+   "pytorch-model-recovery": {
+    "source_digest": "4e5e772f9ace60a8bc5c18c7a52ab9f62f1d5a513a2437bfb3bffda910a275c3",
+    "image": "alexgshaw/pytorch-model-recovery:20260430",
+    "image_digest": "sha256:7c2bb52851cef25bdc3939e473496d25fbf11fd0cb7ab58bcf3cefcb751cdc0e",
+    "pooled_pass_rate": 0.8
+   },
+   "query-optimize": {
+    "source_digest": "8689cbcc90af7e71dffcdc25e33928987a6c7ff524bf1e1deba7ddd67a59fdfc",
+    "image": "alexgshaw/query-optimize:20251031",
+    "image_digest": "sha256:28de7da87004eab5b29bd5eaf1823579bc5b73ccea4b80349a5623185770da14",
+    "pooled_pass_rate": 0.3333
+   },
+   "raman-fitting": {
+    "source_digest": "7bd37240addbf1dc3da7fcc7c66c5904f26d18d5231564fded9936d50ddcd74e",
+    "image": "alexgshaw/raman-fitting:20251031",
+    "image_digest": "sha256:401fa95d5d491f44a473eda9d2c52930f9565cc889c796eabcb6e20fec26852e",
+    "pooled_pass_rate": 0.2
+   },
+   "regex-chess": {
+    "source_digest": "ca5d7c646126910795af79a4ec98573d954e82d38cef17e68c43705502cbc7a9",
+    "image": "alexgshaw/regex-chess:20251031",
+    "image_digest": "sha256:e3b6d61d2d3930fbbdc5f7bf091a7f8b7f6125e1951ef8a7dbe165b1ef62942c",
+    "pooled_pass_rate": 0.7333
+   },
+   "sam-cell-seg": {
+    "source_digest": "6d4f738c96211c1b131047a44062bdb0bd2daf7748ef0f2176a4f616a999aed5",
+    "image": "alexgshaw/sam-cell-seg:20251031",
+    "image_digest": "sha256:d76bdeef19d8113f4094013249c982eca93e62e46130484846269b2d378879d0",
+    "pooled_pass_rate": 0.8667
+   },
+   "sanitize-git-repo": {
+    "source_digest": "2b20ec5f4e138e496c058b8c51031d198f22df6482e184837a951c7efee000d3",
+    "image": "alexgshaw/sanitize-git-repo:20251031",
+    "image_digest": "sha256:4b5234da5bb0d67f3b0bf8db40a2883c07a5219f62b64c2bf9ff1ac84cd0f672",
+    "pooled_pass_rate": 0.4
+   },
+   "schemelike-metacircular-eval": {
+    "source_digest": "f027dbb33107d7934fb1462b00b6006d3c8df06a23c01134739838b06968db7c",
+    "image": "alexgshaw/schemelike-metacircular-eval:20251031",
+    "image_digest": "sha256:b485be38bf80d56c1a4cd9da95bbf7ec129dc03f6786b86c0525518a96f6d1db",
+    "pooled_pass_rate": 0.8667
+   },
+   "sqlite-db-truncate": {
+    "source_digest": "1f75acf2999a36842f623497b1097898c46bd225481cd268299c59b8da8320fd",
+    "image": "alexgshaw/sqlite-db-truncate:20251031",
+    "image_digest": "sha256:aabac93c93bd1f310e6a6fb893911d7735026ed18491c72133c9196a09092ca4",
+    "pooled_pass_rate": 0.9333
+   },
+   "torch-pipeline-parallelism": {
+    "source_digest": "dc2b7ce9960daf1b3019a9a2f47f54bd6afe0d759d255ff1345c5de081920325",
+    "image": "alexgshaw/torch-pipeline-parallelism:20251031",
+    "image_digest": "sha256:3cb7b39d86f1704b20e668851da0b08b34b3270c01d583f136d65190984a8d1b",
+    "pooled_pass_rate": 0.4667
+   },
+   "torch-tensor-parallelism": {
+    "source_digest": "1a687bdc1faa4268fde30d13f5e3c925335177de41d73b5e45a0c924c22d2c5e",
+    "image": "alexgshaw/torch-tensor-parallelism:20251031",
+    "image_digest": "sha256:c50ac169e11465f41b49749fe87e4487f24d31a0c39c0906cd3242cc5499c690",
+    "pooled_pass_rate": 0.9333
+   },
+   "train-fasttext": {
+    "source_digest": "8f1526b1292c39ae51dd8171c0e534664584786bacd2e98b39a5acf375d81762",
+    "image": "alexgshaw/train-fasttext:20251031",
+    "image_digest": "sha256:3c77da9617e7fa577de04aef73fb1ac3114be32d7ffef72609c83929d842b157",
+    "pooled_pass_rate": 0.0
+   },
+   "tune-mjcf": {
+    "source_digest": "eeab4883e4118bfc0a4d57edb4074c2f09c8b61a387b123ab58cbd3786f125f7",
+    "image": "alexgshaw/tune-mjcf:20251031",
+    "image_digest": "sha256:56c197739db2db79562384581fcc9d3d71e6c171bf052104b1a7ee0282e7c3cf",
+    "pooled_pass_rate": 0.1333
+   },
+   "video-processing": {
+    "source_digest": "9f02e5da47f9ffd86e1aa0388b18a3109e08077e140e604500e56458336f3145",
+    "image": "alexgshaw/video-processing:20251031",
+    "image_digest": "sha256:a2c0f39e3ab04e67ac6e49cad9167bb0d987babe32511768c01aa0c6905a875f",
+    "pooled_pass_rate": 0.4667
+   },
+   "winning-avg-corewars": {
+    "source_digest": "dce4d7e95f3f996a69529f95924addac6c03f22abe310add5aed7fccaf5d6df2",
+    "image": "alexgshaw/winning-avg-corewars:20251031",
+    "image_digest": "sha256:ad7a6b1c53aed59e10916c692aa7e2ae00042a4283187430aee1e3e79f72d5c6",
+    "pooled_pass_rate": 0.6
+   },
+   "write-compressor": {
+    "source_digest": "25e0550eb2829b63a4d28085e85c48b26e53c54ef59028f6f945bf243106f877",
+    "image": "alexgshaw/write-compressor:20251031",
+    "image_digest": "sha256:3618e1f8a997b437c09cd3dbaac736705809c05f6f12f584b65722175970ebe1",
+    "pooled_pass_rate": 0.6
+   }
+  }
+ },
+ "kept_selection": {
+  "rule": "the Terminal-Bench 2.1 tasks whose pooled pass rate on the same board data as task_selection (DeepSeek-V4.1-Flash high, five harnesses, 15 trials per task) is at or above the threshold, sorted by sha256('<seed>\\0<id>') as lowercase hex, ties by id; the first 8. 35 of the 87 scored TB2.1 tasks qualify. A kept-stage cell runs these 8 at 1 attempt, reported separately from the 52 (internal-task plan, Big decisions 2).",
+  "threshold": 0.95,
+  "seed": "harn50-frontier-2026-11-07",
+  "count": 8,
+  "source": "task_selection.source (the same derived file, sha256 ca4a485fc7b83b92ee40fee88b7eeab9f6276b595e2a282c16dc401f20e02cee)",
+  "tree_sha256": "47c98e487839b4eebcff24187475ece5669259165873816eba3c02268d1fb039",
+  "tree_rule": "as task_selection.tree_rule, over these 8 tasks",
+  "image_digests": "registry-1.docker.io manifest digests of each task.toml docker_image tag, resolved 2026-11-07",
+  "order": [
+   "hf-model-inference",
+   "count-dataset-tokens",
+   "portfolio-optimization",
+   "polyglot-rust-c",
+   "circuit-fibsqrt",
+   "mteb-leaderboard",
+   "extract-elf",
+   "password-recovery"
+  ],
+  "tasks": {
+   "circuit-fibsqrt": {
+    "source_digest": "60ab201bc5d167f0172082a3698ae7ae98124b542e913ca1c0cee80f8cc16f3d",
+    "image": "alexgshaw/circuit-fibsqrt:20251031",
+    "image_digest": "sha256:29783439f529eaed2145592f15af7a2281161528860392a382c825489030ae3a",
+    "pooled_pass_rate": 1.0
+   },
+   "count-dataset-tokens": {
+    "source_digest": "4518b447a6294cc02060f18f30db5a3a6fdcaa64b17df17116660339ddbfa632",
+    "image": "alexgshaw/count-dataset-tokens:20251031",
+    "image_digest": "sha256:9c513c4ba342bd95be501f6f5eadd4806a2b18749c87c251615825100130232d",
+    "pooled_pass_rate": 1.0
+   },
+   "extract-elf": {
+    "source_digest": "82ef26abbb443eeddf714717ddd00bda201ca164619278f173ef1426e4cd9c00",
+    "image": "alexgshaw/extract-elf:20251031",
+    "image_digest": "sha256:6932e4cb318464307eacd497ef8dc617eaf551b6a90231f815ec0b911895cfed",
+    "pooled_pass_rate": 1.0
+   },
+   "hf-model-inference": {
+    "source_digest": "0684884122ee15df75357c2993c081baf00dbf2376f9fcc21d7d766d9d849db1",
+    "image": "alexgshaw/hf-model-inference:20260430",
+    "image_digest": "sha256:0ef475aebda8abb8cbf3a1d97aee8ac4b09ca9720550e25a4a46a47930cd3bad",
+    "pooled_pass_rate": 1.0
+   },
+   "mteb-leaderboard": {
+    "source_digest": "059106a0e9b5da4f7fe50054fa189031e2fdb4b4b816148804e068610c481625",
+    "image": "alexgshaw/mteb-leaderboard:20260430",
+    "image_digest": "sha256:a8538f4882ff132e0a20a75be3fffc07164318a7425ad19a6b4bf5268107feb4",
+    "pooled_pass_rate": 1.0
+   },
+   "password-recovery": {
+    "source_digest": "3ce49b7e478c3a0f6757b571d495cdcc664bed9ad4d12a472e8672e71cf92877",
+    "image": "alexgshaw/password-recovery:20251031",
+    "image_digest": "sha256:15fcd84bf3b06270ee148211cc6da6599b13ec2f41ac1d0894cf75c2225872ee",
+    "pooled_pass_rate": 1.0
+   },
+   "polyglot-rust-c": {
+    "source_digest": "eff7a9bab2b9ced5a4367f2cca9d03996b39f126243d4b2c3376f555fe3929ce",
+    "image": "alexgshaw/polyglot-rust-c:20251031",
+    "image_digest": "sha256:3ba84f0e138a4b65e58c53f920a0fc852571e6402901c3bdbb876e9dab6e6c5e",
+    "pooled_pass_rate": 1.0
+   },
+   "portfolio-optimization": {
+    "source_digest": "20952156de2b92ac4647b2a174622a67e9ff1a56ce1f100c8e15cabc07d6deb7",
+    "image": "alexgshaw/portfolio-optimization:20251031",
+    "image_digest": "sha256:93461db3cec697c31585941a3b9387c1398495aa1ff0aee2ac752c7230b50ef8",
+    "pooled_pass_rate": 1.0
+   }
+  }
+ },
+ "shared_order": {
+  "seed": "harn50-frontier-2026-11-07",
+  "rule": "the 52 task ids sorted by sha256('<seed>\\0<id>') as lowercase hex, ties by id (none occur); every cell uses this order, so the first n tasks of any cut are a paired uniform random subset",
+  "order": [
+   "adaptive-rejection-sampler",
+   "llm-inference-batching-scheduler",
+   "torch-tensor-parallelism",
+   "filter-js-from-html",
+   "cobol-modernization",
+   "write-compressor",
+   "gpt2-codegolf",
+   "chess-best-move",
+   "sam-cell-seg",
+   "protein-assembly",
+   "financial-document-processor",
+   "train-fasttext",
+   "schemelike-metacircular-eval",
+   "model-extraction-relu-logits",
+   "gcode-to-text",
+   "overfull-hbox",
+   "caffe-cifar-10",
+   "configure-git-webserver",
+   "make-mips-interpreter",
+   "mteb-retrieve",
+   "regex-chess",
+   "pytorch-model-cli",
+   "nginx-request-logging",
+   "torch-pipeline-parallelism",
+   "path-tracing",
+   "winning-avg-corewars",
+   "video-processing",
+   "dna-assembly",
+   "modernize-scientific-stack",
+   "tune-mjcf",
+   "extract-moves-from-video",
+   "mcmc-sampling-stan",
+   "compile-compcert",
+   "sanitize-git-repo",
+   "headless-terminal",
+   "mailman",
+   "bn-fit-modify",
+   "build-cython-ext",
+   "feal-linear-cryptanalysis",
+   "raman-fitting",
+   "code-from-image",
+   "dna-insert",
+   "feal-differential-cryptanalysis",
+   "install-windows-3.11",
+   "make-doom-for-mips",
+   "cancel-async-tasks",
+   "pytorch-model-recovery",
+   "path-tracing-reverse",
+   "large-scale-text-editing",
+   "sqlite-db-truncate",
+   "largest-eigenval",
+   "query-optimize"
+  ]
+ },
+ "harnesses": {
+  "claude-code": {
+   "kind": "wrapped",
+   "pin": "harnesses/claude-code/pin.json",
+   "adapter": "harnesses/claude-code/adapter.sh",
+   "version": "2.1.312",
+   "package": "@anthropic-ai/claude-code",
+   "npm_integrity": "sha512-/gx8byG8VOm4YoNuT5tal/Ov5Z5oydJzZkmHCJcBFLbNGGpyYDbKA/CNdB+iIKwcLQC8pVwBoj6Dt7H3L2J5bw==",
+   "native_binary_sha256": "4f4178ce41d83e23341ebfbaecdbcf8ea6bf7baea0690025abe49eeec3a5d01d",
+   "install": "Harbor ClaudeCode.install: downloads.claude.ai bootstrap.sh 2.1.312 (the native binary); agents.py then requires the installed binary sha256 to equal native_binary_sha256, the binary of @anthropic-ai/claude-code-linux-x64@2.1.312 (checked 2026-11-07)",
+   "harbor_class": "harbor.agents.installed.claude_code:ClaudeCode",
+   "licence": "proprietary: (c) Anthropic PBC, use subject to Anthropic legal agreements (package LICENSE.md)"
+  },
+  "codex": {
+   "kind": "wrapped",
+   "pin": "harnesses/codex/pin.json",
+   "adapter": "harnesses/codex/adapter.sh",
+   "config": "harnesses/codex/config/config.toml",
+   "version": "0.165.0",
+   "package": "@openai/codex",
+   "npm_integrity": "sha512-aiwtQVp2KBhJld966CuU5bVfQ46VNB4mNTl6giX3WGZdt4euI3tv2RUqJpnupPNA8DXHg2z+RoQ0Zfw87dy8Lw==",
+   "install": "Harbor Codex.install: npm install -g @openai/codex@0.165.0 (Node 22 through nvm on glibc images)",
+   "harbor_class": "harbor.agents.installed.codex:Codex",
+   "licence": "Apache-2.0",
+   "max_context_window": {
+    "value": 872000,
+    "source": "codex-rs/models-manager/models.json at rust-v0.165.0 (gpt-6-astra line 35, gpt-6.1-sol line 207: context_window 272000, max_context_window 872000)",
+    "clamp": "codex-rs/models-manager/src/model_info.rs:19-27 at rust-v0.165.0: with_config_overrides sets context_window to min(model_context_window, max_context_window), so model_context_window = 1050000 becomes 872000"
+   }
+  },
+  "hermes": {
+   "kind": "wrapped",
+   "pin": "harnesses/hermes/pin.json",
+   "adapter": "harnesses/hermes/adapter.sh",
+   "config": "harnesses/hermes/config/config.yaml and config.openai.yaml",
+   "version": "v2026.9.24",
+   "commit": "f97608f178d1ffeca59860195ab7da295f7c8e5f",
+   "install": "agents.py: the pinned commit own scripts/install.sh (raw.githubusercontent.com/NousResearch/hermes-agent/<commit>/scripts/install.sh) with --skip-setup --branch v2026.9.24, then hermes version must name the tag",
+   "harbor_class": "harbor.agents.installed.hermes:Hermes",
+   "licence": "MIT",
+   "anthropic": {
+    "version": "0.87.0",
+    "wheel_sha256": "e2669b86d42c739d3df163f873c51719552e263a3d85179297180fb4fa00a236",
+    "why": "Hermes v2026.9.24 needs the anthropic SDK for its native Anthropic provider and imports it lazily (agent/anthropic_adapter.py _require_sdk); install.sh's locked [all] sync leaves it out (pyproject.toml [all] note: removed 2026-05-12, covered by lazy-install), and our config turns lazy installs off, so the first install check failed hermes-opus with \"The 'anthropic' package is required for the Anthropic provider\".",
+    "install": "agents.py FrontierHermes.install: after install.sh, uv sync --locked --extra all --extra anthropic in the checkout against its venv (Hermes's own uv.lock: anthropic==0.87.0, the pyproject extra and tools/lazy_deps.py pin, hash-verified); then the venv must import anthropic 0.87.0"
+   }
+  },
+  "openclaw": {
+   "kind": "wrapped",
+   "pin": "harnesses/openclaw/pin.json",
+   "adapter": "harnesses/openclaw/adapter.sh",
+   "config": "harnesses/openclaw/config/openclaw.json and openclaw.openai.json",
+   "version": "2026.10.6",
+   "package": "openclaw",
+   "npm_integrity": "sha512-jSpQPa2Jw5rG0J2GC07j9+qHtVYIuoHjgccU88JeS+p7188sBCnvIJeuaiNPHj1zsWkuHcBv443QiEUh7qrxwA==",
+   "install": "agents.py FrontierOpenClaw: Harbor OpenClaw.install with Node 24 through nvm (nvm install 24, the newest 24.x at install time, recorded in harness_settings.json install_checks.node) instead of Harbor's Node 22, because openclaw 2026.10.6 declares engines node >=24.22.1 <25 and its preinstall refuses Node 22; then npm install -g openclaw@2026.10.6",
+   "harbor_class": "harbor.agents.installed.openclaw:OpenClaw",
+   "housekeeping_default": "anthropic/claude-haiku-5-5 (OpenClaw shipped utility model on an Anthropic provider; harnesses/openclaw/config/openclaw.json leaves utilityModel unset, internal-task 2026-11-01)",
+   "licence": "MIT",
+   "node_major": 24
+  },
+  "pi": {
+   "kind": "stock",
+   "version": "1.5.0",
+   "package": "@earendil-works/pi-coding-agent",
+   "npm_integrity": "sha512-xNDZ5kqowO6Z03FS2gwAkPEGk1ssxVcYKQ6qZId84mFEvwACvvyc2l0vAMOS+c5zvxLRMLBE9r4y44IGYkMJaQ==",
+   "published": "2026-11-02T11:05:09Z",
+   "repo": "https://github.com/earendil-works/pi",
+   "why": "latest npm release on 2026-11-07; we have no Pi adapter of our own",
+   "install": "Harbor Pi.install: Node through nvm, npm install -g --ignore-scripts @earendil-works/pi-coding-agent@1.5.0",
+   "harbor_class": "harbor.agents.installed.pi:Pi",
+   "licence": "MIT"
+  },
+  "mini-swe-agent": {
+   "kind": "stock",
+   "version": "2.4.6",
+   "package": "mini-swe-agent (PyPI)",
+   "wheel_sha256": "a35463c553ac825c7773b03cfa69cd44958e3af20155dcc5711fdf9e4c67cd54",
+   "published": "2026-07-23T03:12:59Z",
+   "repo": "https://github.com/SWE-agent/mini-swe-agent",
+   "why": "latest PyPI release on 2026-11-07, also the version on the leaderboard",
+   "install": "Harbor MiniSweAgent.install with LiteLLM pinned by agents.py: uv tool install mini-swe-agent==2.4.6 --with litellm[mcp]==1.108.2 --with orjson --with fastapi",
+   "harbor_class": "harbor.agents.installed.mini_swe_agent:MiniSweAgent",
+   "licence": "MIT",
+   "litellm": "litellm[mcp]==1.108.2",
+   "litellm_note": "agents.py pins LiteLLM: Harbor installs the newest litellm unpinned, and litellm 1.108.2 (newest on 2026-11-07) imports mcp on its Anthropic path while declaring it only in its mcp and proxy extras; the mcp extra is installed with it"
+  }
+ },
+ "models": {
+  "anthropic:claude-opus-5-5": {
+   "provider": "anthropic",
+   "context_window": 1000000,
+   "max_output_tokens": 128000,
+   "source": "platform.claude.com/docs/en/about-claude/models/overview, read 2026-11-07 (Context window 1M tokens, Max output 128K tokens, adaptive thinking always on)"
+  },
+  "anthropic:claude-fable-5-1": {
+   "provider": "anthropic",
+   "context_window": 1000000,
+   "max_output_tokens": 128000,
+   "source": "platform.claude.com/docs/en/about-claude/models/overview, read 2026-11-07 (Context window 1M tokens, Max output 128K tokens, adaptive thinking always on)"
+  },
+  "openai:gpt-6.1-sol": {
+   "provider": "openai",
+   "context_window": 1050000,
+   "max_output_tokens": 128000,
+   "source": "developers.openai.com/api/docs/models/gpt-6.1-sol, read 2026-11-07 (1,050,000 context window, 128,000 max output tokens)"
+  },
+  "openai:gpt-6-astra": {
+   "provider": "openai",
+   "context_window": 1050000,
+   "max_output_tokens": 128000,
+   "source": "developers.openai.com/api/docs/models/gpt-6-astra, read 2026-11-07 (1,050,000 context window, 128,000 max output tokens)"
+  }
+ },
+ "effort": {
+  "level": "high",
+  "anthropic": "adaptive thinking plus output_config.effort = high, set through each harness own setting",
+  "openai": "reasoning effort high (Responses reasoning.effort or chat reasoning_effort), set through each harness own setting"
+ },
+ "egress": {
+  "how": "Harbor 0.24.0 docker environments know three network modes (public, no-network, allowlist) and no blocklist. egress.py subclasses Harbor DockerEnvironment: its egress sidecar (a copy of Harbor harbor-docker-egress-control-sidecar, gost 3 transparent proxy plus nftables, Apache-2.0) gains a blocklist service, the sidecar runs for every trial, and the public mode (every TB2.1 phase, allow_internet = true) redirects all TCP from the task containers through gost, which sniffs the TLS SNI or the HTTP Host of each connection and refuses a host on the list. Non-TCP egress other than DNS is rejected, as in Harbor allowlist mode. A trial whose sidecar cannot start (no nftables inet) fails instead of running unblocked.",
+  "blocklist": [
+   "tbench.ai",
+   "*.tbench.ai",
+   "harborframework.com",
+   "*.harborframework.com",
+   "joelniklaus-harness-leaderboard.hf.space",
+   "datasets-server.huggingface.co",
+   "api.anthropic.com",
+   "api.openai.com",
+   "generativelanguage.googleapis.com",
+   "aiplatform.googleapis.com",
+   "*-aiplatform.googleapis.com"
+  ],
+  "why": {
+   "tbench.ai": "Terminal-Bench site and leaderboard",
+   "harborframework.com": "Harbor hub, which serves the TB2.1 dataset",
+   "joelniklaus-harness-leaderboard.hf.space": "the leaderboard Space, which serves public trajectories",
+   "datasets-server.huggingface.co": "the Hugging Face dataset viewer API",
+   "api.anthropic.com": "direct provider host: every model call must go through the metering proxy",
+   "api.openai.com": "direct provider host",
+   "generativelanguage.googleapis.com": "direct provider host (Gemini API; approved delta 2026-11-07)",
+   "aiplatform.googleapis.com": "direct provider host (Vertex AI; approved delta), with its regional *-aiplatform.googleapis.com hosts"
+  },
+  "limits": "A blocklist by host name cannot block one path of a shared host without TLS interception, which would change every task image trust store. So github.com (harbor-framework/terminal-bench-2-1, laude-institute/terminal-bench, laude-institute/terminal-bench-2), raw.githubusercontent.com, codeload.github.com and huggingface.co (datasets zai-org/terminal-bench-2-verified, openguardrails/terminal-bench-2.1-deepseek-v4-flash-trajectories, the leaderboard bucket) stay reachable, because tasks use those hosts for legitimate downloads. Fetches from them are caught by the audit of captured requests (plan step 5), where a confirmed answer-key receipt scores a fail. A client that hides its SNI (ECH) or connects by IP literal with no SNI and no Host header is not matched; DNS is not filtered."
+ },
+ "broker": {
+  "how": "vm-run.sh runs broker.ts on 127.0.0.1: at agent setup each installed-agent class asks it for its trial slot; the broker binds slot <trial> in the metering proxy (key trial-token:<trial>, a fresh token trial-token:<trial>.<32 hex>, the cell model plus the harness housekeeping model as the slot model list) with the proxy control token it alone holds, and returns only the token and the base URL. The token is the only credential the container sees."
+ },
+ "licences": {
+  "harbor": "Apache-2.0",
+  "terminal_bench_2_1": "Apache-2.0",
+  "atif_scan": "MIT (github.com/huggingface/atif-scan LICENSE and PyPI atif-scan 0.8.21 metadata, main at 400cb9d7572bfd8baf11bd1669930fa015836fa0, checked 2026-11-07; not vendored or run here)",
+  "harness_leaderboard_space": "Apache-2.0 (read only)",
+  "mini_swe_agent": "MIT",
+  "pi": "MIT",
+  "hermes": "MIT",
+  "openclaw": "MIT",
+  "codex": "Apache-2.0",
+  "claude_code": "proprietary (Anthropic)",
+  "gost": "MIT (go-gost/gost, in the Harbor sidecar image)"
+ }
+}

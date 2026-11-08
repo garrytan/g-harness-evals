@@ -1,0 +1,42 @@
+# Adapted from Harbor 0.24.0's egress sidecar gost.yaml (Apache-2.0). Changed for the frontier Harbor path (internal-task):
+# a second transparent service on :12346 whose bypass is the blocklist (whitelist false: a matched host is refused,
+# everything else passes). Harbor's allowlist service on :12345 is unchanged. addr, so_mark and file.path must stay in
+# sync with bin/network-policy.
+services:
+  - name: transparent-egress
+    addr: ":12345"
+    bypass: allowlist
+    metadata:
+      so_mark: 114514
+    handler:
+      type: red
+      metadata:
+        sniffing: true
+        sniffing.timeout: 5s
+        sniffing.fallback: true
+    listener:
+      type: red
+  - name: transparent-blocklist
+    addr: ":12346"
+    bypass: blocklist
+    metadata:
+      so_mark: 114514
+    handler:
+      type: red
+      metadata:
+        sniffing: true
+        sniffing.timeout: 5s
+        sniffing.fallback: true
+    listener:
+      type: red
+
+bypasses:
+  - name: allowlist
+    whitelist: true
+    reload: 1s
+    file:
+      path: /opt/egress-sidecar/allowlist.txt
+  - name: blocklist
+    whitelist: false
+    file:
+      path: /opt/egress-sidecar/blocklist.txt

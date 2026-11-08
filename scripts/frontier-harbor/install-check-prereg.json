@@ -1,0 +1,177 @@
+{
+  "schema": "frontier-harbor/1",
+  "run_id": "frontier-install-check",
+  "task_list": {
+    "file": "scripts/frontier-harbor/pin.json"
+  },
+  "shared_order_seed": "harn50-frontier-2026-11-07",
+  "cap_usd": 300,
+  "reserve_usd": 30,
+  "concurrency": 4,
+  "cells": [
+    {
+      "id": "cc-opus",
+      "model": "anthropic:claude-opus-5-5",
+      "harness": "claude-code",
+      "attempts": 1,
+      "tasks": {
+        "from": 4,
+        "to": 5
+      },
+      "stage": "core",
+      "priority": 1
+    },
+    {
+      "id": "cc-fable",
+      "model": "anthropic:claude-fable-5-1",
+      "harness": "claude-code",
+      "attempts": 1,
+      "tasks": {
+        "from": 4,
+        "to": 5
+      },
+      "stage": "core",
+      "priority": 2
+    },
+    {
+      "id": "codex-sol",
+      "model": "openai:gpt-6.1-sol",
+      "harness": "codex",
+      "attempts": 1,
+      "tasks": {
+        "from": 4,
+        "to": 5
+      },
+      "stage": "core",
+      "priority": 3
+    },
+    {
+      "id": "codex-astra",
+      "model": "openai:gpt-6-astra",
+      "harness": "codex",
+      "attempts": 1,
+      "tasks": {
+        "from": 4,
+        "to": 5
+      },
+      "stage": "core",
+      "priority": 4
+    },
+    {
+      "id": "hermes-opus",
+      "model": "anthropic:claude-opus-5-5",
+      "harness": "hermes",
+      "attempts": 1,
+      "tasks": {
+        "from": 4,
+        "to": 5
+      },
+      "stage": "core",
+      "priority": 5
+    },
+    {
+      "id": "hermes-sol",
+      "model": "openai:gpt-6.1-sol",
+      "harness": "hermes",
+      "attempts": 1,
+      "tasks": {
+        "from": 4,
+        "to": 5
+      },
+      "stage": "core",
+      "priority": 6
+    },
+    {
+      "id": "openclaw-opus",
+      "model": "anthropic:claude-opus-5-5",
+      "harness": "openclaw",
+      "attempts": 1,
+      "tasks": {
+        "from": 4,
+        "to": 5
+      },
+      "stage": "core",
+      "priority": 7
+    },
+    {
+      "id": "openclaw-sol",
+      "model": "openai:gpt-6.1-sol",
+      "harness": "openclaw",
+      "attempts": 1,
+      "tasks": {
+        "from": 4,
+        "to": 5
+      },
+      "stage": "core",
+      "priority": 8
+    },
+    {
+      "id": "pi-opus",
+      "model": "anthropic:claude-opus-5-5",
+      "harness": "pi",
+      "attempts": 1,
+      "tasks": {
+        "from": 4,
+        "to": 5
+      },
+      "stage": "core",
+      "priority": 9
+    },
+    {
+      "id": "pi-sol",
+      "model": "openai:gpt-6.1-sol",
+      "harness": "pi",
+      "attempts": 1,
+      "tasks": {
+        "from": 4,
+        "to": 5
+      },
+      "stage": "core",
+      "priority": 10
+    },
+    {
+      "id": "mswe-opus",
+      "model": "anthropic:claude-opus-5-5",
+      "harness": "mini-swe-agent",
+      "attempts": 1,
+      "tasks": {
+        "from": 4,
+        "to": 5
+      },
+      "stage": "core",
+      "priority": 11
+    },
+    {
+      "id": "mswe-sol",
+      "model": "openai:gpt-6.1-sol",
+      "harness": "mini-swe-agent",
+      "attempts": 1,
+      "tasks": {
+        "from": 4,
+        "to": 5
+      },
+      "stage": "core",
+      "priority": 12
+    }
+  ],
+  "shards": [
+    {
+      "name": "install-check",
+      "cells": [
+        "cc-opus",
+        "cc-fable",
+        "codex-sol",
+        "codex-astra",
+        "hermes-opus",
+        "hermes-sol",
+        "openclaw-opus",
+        "openclaw-sol",
+        "pi-opus",
+        "pi-sol",
+        "mswe-opus",
+        "mswe-sol"
+      ],
+      "lease_usd": 200
+    }
+  ]
+}

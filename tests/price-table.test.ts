@@ -29,6 +29,9 @@ const fixture = JSON.parse(readFileSync(new URL('./fixtures/price-table/identity
  */
 const FLOAT_NOISE_ROWS = ['anthropic:claude-sonnet-4-6', 'anthropic:claude-haiku-5-5', 'anthropic:claude-3-5-sonnet-20241022', 'anthropic:claude-3-5-haiku-20241022'];
 
+/** Rows a later dated table added, each reviewed in its own test below; every other row is held to the fixture. prices-2026-11-07: gpt-6-astra (internal-task). */
+const ADDED_AFTER_FIXTURE = ['openai:gpt-6-astra'];
+
 /** Same shape and keys; every number within `relTol` of its counterpart (0 means bit-identical). */
 function close(actual: unknown, expected: unknown, relTol: number, path = ''): string[] {
   if (typeof expected === 'number' && typeof actual === 'number') {
@@ -64,9 +67,10 @@ describe('the dated price table changes no effective price', () => {
     expect(changed.length).toBe(33);
   });
 
-  test('the table holds the same keys in the same order, and the exported constants are unchanged', () => {
+  test('the table holds the same keys in the same order, apart from rows added by later dated tables, and the exported constants are unchanged', () => {
     const { CANONICAL_PRICING: before, ...constants } = fixture.exports;
-    expect(Object.keys(CANONICAL_PRICING)).toEqual(Object.keys(before));
+    expect(Object.keys(CANONICAL_PRICING).filter(k => !ADDED_AFTER_FIXTURE.includes(k))).toEqual(Object.keys(before));
+    for (const key of ADDED_AFTER_FIXTURE) expect(Object.hasOwn(before, key)).toBe(false);
     for (const [key, row] of Object.entries(before)) {
       expect(close(CANONICAL_PRICING[key], row, FLOAT_NOISE_ROWS.includes(key) ? 1e-15 : 0, key)).toEqual([]);
     }

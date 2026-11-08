@@ -1,0 +1,45 @@
+{
+  "_shape": "Hermes Agent on claude-opus-5-5 over Anthropic Messages, reduced to the fields the proxy reads: no thinking or output_config field (matrix-mu receipts: no thinking field on any of 946 Opus calls), and Hermes's own client-side function tool named web_search (harnesses/ablation/hermes.anthropic-messages.layers.json), which runs in the container and is not a hosted tool. Not a byte capture.",
+  "model": "claude-opus-5-5",
+  "max_tokens": 32000,
+  "stream": true,
+  "system": "(system prompt omitted)",
+  "tools": [
+    {
+      "name": "terminal",
+      "description": "Run a command in the terminal.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ]
+      }
+    },
+    {
+      "name": "web_search",
+      "description": "Search the web.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": "Fix the failing test in /app."
+    }
+  ]
+}

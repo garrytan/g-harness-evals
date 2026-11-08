@@ -6,10 +6,10 @@ const j = (...parts: string[]) => parts.join('');
 describe('publish-audit: the scanner', () => {
   test('finds every token shape it is asked for and reports a redacted sample', () => {
     const hits: Hit[] = []; const counts: Record<string, number> = {};
-    const text = [j('xox', 'b-', '1234567890-abcdefghij'), j('sk-', 'ant-', 'api03-', 'Z'.repeat(30)), j('gbrain', '_', '0123456789abcdef0123'), 'Authorization: Bearer ' + 'q'.repeat(40), j('gh', 'p_', 'A'.repeat(36)), j('AKIA', 'ABCDEFGHIJKLMNOP')].join(' ');
+    const text = [j('xox', 'b-', '1234567890-abcdefghij'), j('sk-', 'ant-', 'api03-', 'Z'.repeat(30)), j('gbrain', '_', '0123456789abcdef0123'), 'Authorization: Bearer ' + 'q'.repeat(40), j('gh', 'p_', 'A'.repeat(36)), j('AKIA', 'ABCDEFGHIJKLMNOP'), j('AI', 'za', 'Q'.repeat(35))].join(' ');
     scanText(text, 'unit', hits, counts);
     expect(Object.keys(TOKEN_PATTERNS).length).toBeGreaterThanOrEqual(8);
-    expect(counts).toMatchObject({ slack_bot: 1, anthropic: 1, gbrain: 1, bearer: 1, github: 1, aws: 1 });
+    expect(counts).toMatchObject({ slack_bot: 1, anthropic: 1, gbrain: 1, bearer: 1, github: 1, aws: 1, google: 1 });
     expect(hits.every((h) => h.sample.length < 24 && !h.sample.includes('Z'.repeat(10)))).toBe(true);
   });
   test('allowlists trial tokens and the test suite placeholders, nothing else', () => {

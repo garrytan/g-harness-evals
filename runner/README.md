@@ -118,7 +118,7 @@ What the plan still asks for on top of this (TODOS): egress enforcement and per-
 
 ## Price table
 
-Chat list prices live in one dated file, `runner/pricing/prices-2026-11-04.json`. `model-pricing.ts` reads it at import and refuses a malformed one (`parsePriceTable`, HE-PIN-004). The metering ledger prices a model from its own `CHAT_PRICE_OVERRIDES` or `HARNESS_CHAT_PRICES` row when it has one and falls back to this table, so for those models the ledger's row, not this file, is what a run was metered at.
+Chat list prices live in one dated file, `runner/pricing/prices-2026-11-07.json` (earlier tables stay beside it, unchanged). `model-pricing.ts` reads it at import and refuses a malformed one (`parsePriceTable`, HE-PIN-004). The metering ledger prices a model from its own `CHAT_PRICE_OVERRIDES` or `HARNESS_CHAT_PRICES` row when it has one and falls back to this table, so for those models the ledger's row, not this file, is what a run was metered at.
 
 - **One row per `provider:model` id.** Input, output, cache write (5-minute), cache read, and a long-prompt tier where the provider bills one, all in US dollars per million tokens. A `null` cache rate means none is modelled, so consumers charge the input rate.
 - **Long prompts.** A row's `long_prompt` applies to the whole request once its prompt (input plus cache reads and writes) is over `threshold_tokens`. In this table only `claude-haiku-5-5` has one.

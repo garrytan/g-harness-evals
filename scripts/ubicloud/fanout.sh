@@ -3,7 +3,7 @@
 # manifest (docs/ubicloud.md). One command starts a twelve-cell run.
 #
 #   scripts/ubicloud/fanout.sh --manifest <file.json> [--max-vcpus N] [--parallel N] [--dry-run]
-#       [--workload harness|gstack-laneb|qm-driver] [--replicate-to <dir>] [--replicate-seconds 1200]
+#       [--workload harness|gstack-laneb|qm-driver|frontier-harbor] [--replicate-to <dir>] [--replicate-seconds 1200]
 #
 # The manifest is JSON:
 #   { "commit": "<sha>", "prereg": "docs/benchmarks/<run>/prereg.json", "dest": "<local results root>",
@@ -29,6 +29,12 @@
 # --workload qm-driver passes the same flag: each shard runs harnesses/qm/gstack/s1e-probe.ts on its VM (the driver's
 # keyless --dry-run as the smoke, then the driver under the shard's lease with its "args" passed through; the driver
 # enforces the stage caps). Records are turns.jsonl lines, so the end prints the results directories, not a merge command.
+# --workload frontier-harbor passes the same flag: each shard runs scripts/frontier-harbor/vm-run.sh on its VM after the
+# keyless install check as its smoke; a shard's "args" reach vm-run.sh (--stage <name>, --done <file>). Put
+# --install-check in options for the keyless install check alone (prereg scripts/frontier-harbor/install-check-prereg.json,
+# no key needed or sent); its shard "args" then reach install-check.sh (--baselines all runs oracle and nop on every pinned
+# task). Its records are vm-run.sh's trials.jsonl, which merge-shards.ts does not read, so the end prints
+# the results directories.
 # --replicate-seconds (or UBI_REPLICATE_SECONDS; run-shard.sh's default is 1200) and --replicate-to (or UBI_REPLICATE_TO;
 # meant for a Capy drive folder) go to every run-shard.sh: each shard's results are pulled into <dest>/<name>/results on
 # that interval while it runs, <dest>/<name> is mirrored to <replicate-to>/<name>, and <replicate-to>/vm-map.jsonl gets a
@@ -77,7 +83,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$manifest" ] && [ -f "$manifest" ] || { echo "fanout: --manifest <file.json> is required" >&2; exit 2; }
-case $workload in harness|gstack-laneb|qm-driver) ;; *) echo "fanout: --workload must be harness, gstack-laneb or qm-driver" >&2; exit 2 ;; esac
+case $workload in harness|gstack-laneb|qm-driver|frontier-harbor) ;; *) echo "fanout: --workload must be harness, gstack-laneb, qm-driver or frontier-harbor" >&2; exit 2 ;; esac
 [ -z "$rep_s" ] || [[ "$rep_s" =~ ^[0-9]+$ ]] || { echo "fanout: --replicate-seconds must be a whole number of seconds" >&2; exit 2; }
 rep_to=${rep_to/#\~/$HOME}
 [ -n "${UBI_OWNER:-}" ] || { echo "fanout: set UBI_OWNER to your thread code so the VMs carry their owner" >&2; exit 2; }
@@ -230,11 +236,12 @@ run_cmd() {
   printf '%s --commit %s --prereg %s --name %s --cells %s --lease-usd %s --dest %s --size %s %s' "$here/run-shard.sh" "$(printf %q "$commit")" "$(printf %q "$prereg")" "$(printf %q "$name")" "$(printf %q "$cells")" "$(printf %q "$lease")" "$(printf %q "$dest/$name")" "$(printf %q "$size")" "${sealed:+$sealed }$([ "$workload" = harness ] || printf -- '--workload %s ' "$workload")$([ -z "$rep_to" ] || printf -- '--replicate-to %q ' "$rep_to")$([ -z "$rep_s" ] || printf -- '--replicate-seconds %s ' "$rep_s")$options${sargs:+ $sargs}"
 }
 merge_cmd() { printf 'bun scripts/merge-shards.ts --out <merged results dir>'; local line name; for line in "${shards[@]}"; do IFS=$'\t' read -r name _ _ <<<"$line"; printf ' --shard %s=%s/%s/results' "$name" "$dest" "$name"; done; echo; }
-# qm-driver results are turns.jsonl, which merge-shards.ts does not read, so that workload gets the results directories.
+# qm-driver results are turns.jsonl and frontier-harbor's are vm-run.sh's trials.jsonl, neither of which merge-shards.ts
+# reads, so those workloads get the results directories.
 results_dirs() { local line name; for line in "${shards[@]}"; do IFS=$'\t' read -r name _ <<<"$line"; printf '%s/%s/results ' "$dest" "$name"; done; echo; }
 if [ "$dry" -eq 1 ]; then
   for line in "${shards[@]}"; do IFS=$'\t' read -r name cells lease sargs <<<"$line"; echo "$(run_cmd "$name" "$cells" "$lease" "$sargs") > $dest/$name/fanout.log 2>&1 &"; done
-  if [ "$workload" = qm-driver ]; then echo "then: read $(results_dirs)"; else echo "then: $(merge_cmd)"; fi
+  case $workload in qm-driver|frontier-harbor) echo "then: read $(results_dirs)" ;; *) echo "then: $(merge_cmd)" ;; esac
   exit 0
 fi
 
@@ -375,7 +382,7 @@ sys.exit(3 if kept else 0)
 PY
 table_rc=$?
 set -e
-if [ "$workload" = qm-driver ]; then echo "results: $(results_dirs)"; else echo "merge: $(merge_cmd)"; fi
+case $workload in qm-driver|frontier-harbor) echo "results: $(results_dirs)" ;; *) echo "merge: $(merge_cmd)" ;; esac
 [ "$table_rc" -eq 0 ] || exit 1
 for name in "${!exit_of[@]}"; do [ "${exit_of[$name]}" = 0 ] || exit 1; done
 [ ${#exit_of[@]} -eq "$n" ] || exit 1

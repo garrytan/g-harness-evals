@@ -36,6 +36,7 @@ export const TOKEN_PATTERNS: Record<string, RegExp> = {
   bearer: /\bBearer\s+[A-Za-z0-9._~+\/-]{20,}=*/g,
   github: new RegExp(p('gh', 'p_[A-Za-z0-9]{30,}|github_', 'pat_[A-Za-z0-9_]{30,}'), 'g'),
   aws: new RegExp(p('AKIA', '[0-9A-Z]{16}'), 'g'),
+  google: new RegExp(p('AI', 'za[0-9A-Za-z_-]{35}'), 'g'),
 };
 /** Trial tokens are per-trial dummies minted by the runner; the harness containers see nothing else. */
 /** Reviewed non-secrets: the test suite's placeholder bearer values (tests/metering-proxy.test.ts) and templated headers. */

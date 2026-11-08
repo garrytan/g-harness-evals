@@ -1,0 +1,66 @@
+{
+  "schema": "frontier-harbor/1",
+  "run_id": "frontier-fixture",
+  "task_list": {
+    "file": "scripts/frontier-harbor/pin.json"
+  },
+  "shared_order_seed": "harn50-frontier-2026-11-07",
+  "cap_usd": 500,
+  "reserve_usd": 50,
+  "concurrency": 4,
+  "cells": [
+    {
+      "id": "opus-cc",
+      "model": "anthropic:claude-opus-5-5",
+      "harness": "claude-code",
+      "attempts": 2,
+      "tasks": {
+        "from": 0,
+        "to": 52
+      },
+      "stage": "core",
+      "priority": 1
+    },
+    {
+      "id": "sol-codex",
+      "model": "openai:gpt-6.1-sol",
+      "harness": "codex",
+      "attempts": 1,
+      "tasks": {
+        "from": 0,
+        "to": 52
+      },
+      "stage": "core",
+      "priority": 2
+    },
+    {
+      "id": "opus-pi",
+      "model": "anthropic:claude-opus-5-5",
+      "harness": "pi",
+      "attempts": 1,
+      "tasks": {
+        "from": 0,
+        "to": 20
+      },
+      "stage": "extension",
+      "priority": 5
+    }
+  ],
+  "shards": [
+    {
+      "name": "s1",
+      "cells": [
+        "opus-cc",
+        "opus-pi"
+      ],
+      "lease_usd": 250
+    },
+    {
+      "name": "s2",
+      "cells": [
+        "sol-codex"
+      ],
+      "lease_usd": 150
+    }
+  ]
+}

@@ -17,6 +17,7 @@
 - [gbrain-evals and gbrain: statistics kit, proxy, ledger, price table](#gbrain-evals-and-gbrain-statistics-kit-proxy-ledger-price-table)
 - [gbrain-evals: the synthetic world](#gbrain-evals-the-synthetic-world)
 - [gstack-evals: pinned Lane B files](#gstack-evals-pinned-lane-b-files)
+- [Harness Leaderboard: TB2.1 answer-key fingerprints](#harness-leaderboard-tb21-answer-key-fingerprints)
 - [Credits: Terminal-Bench 2 and SWE-bench Verified](#credits-terminal-bench-2-and-swe-bench-verified)
 - [Claude Code](#claude-code)
 
@@ -485,6 +486,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~
 
+## Harness Leaderboard: TB2.1 answer-key fingerprints
+
+- **What:** an unmodified copy of the leaderboard's answer-key fingerprint list for Terminal-Bench 2.1, used by the contamination audit (`scripts/frontier-harbor/audit.ts`), which also follows the leaderboard's matching rules in `hlb/answer_keys.py`.
+- **Version:** Hugging Face Space `joelniklaus/harness-leaderboard`, commit `b684fc09f34badf8454e19b59d1d7ba3b2f76d06`, file `hlb/data/answer-keys/terminal-bench-2.1.json`, sha256 `0c5c5de6b5aac19ce02e707fa737026a9ff3d9c3b38e2f275eb0be1b8b9e139b`.
+- **Upstream:** https://huggingface.co/spaces/joelniklaus/harness-leaderboard (Joel Niklaus).
+- **Licence:** Apache License 2.0, as the Space's README states. The Space has no LICENSE or NOTICE file; the licence text is in the [Codex](#codex) section above.
+- **Copyright:** the Space states no copyright line.
+- **Paths:** `scripts/frontier-harbor/answer-keys/terminal-bench-2.1.json`, with its notice in [scripts/frontier-harbor/answer-keys/NOTICE.md](scripts/frontier-harbor/answer-keys/NOTICE.md).
+- The file holds hashes of Terminal-Bench 2.1 lines (task commit `d49e28f1e4ddd13d289e85a5f312a66750951932`), never the lines themselves, so no Terminal-Bench task text enters this repository through it.
+
 ## Credits: Terminal-Bench 2 and SWE-bench Verified
 
 We use these benchmarks' task ids and public numbers. We don't redistribute their task text.
@@ -493,6 +504,10 @@ We use these benchmarks' task ids and public numbers. We don't redistribute thei
   - We keep task ids, per-task source digests and per-task leaderboard numbers only, in `scripts/gstack-laneb/pinned/quick/laneb/tasks/tasks.json` and `final.json`.
   - The leaderboard numbers come from the Terminal-Bench 2 leaderboard (Hugging Face `harborframework/terminal-bench-2-leaderboard`).
   - No task instructions, tests or solutions are in this repository.
+- **Terminal-Bench 2.1** (Apache License 2.0, https://github.com/harbor-framework/terminal-bench-2-1, commit `d49e28f1e4ddd13d289e85a5f312a66750951932`).
+  - We keep task ids, per-task source and image digests and per-task pooled pass rates only, in `scripts/frontier-harbor/pin.json`. Task directories are materialized at run time and never committed.
+  - The 52-task list and the 8-task kept sample are derived from the Harness Leaderboard by Joel Niklaus (Hugging Face Space `joelniklaus/harness-leaderboard`, Apache-2.0, commit `b684fc09f34badf8454e19b59d1d7ba3b2f76d06`, board v0.1.1), from its public bucket `joelniklaus/harness-leaderboard` (index `index/public.json` generated 2026-11-07T13:08:58Z, the `-full-` DeepSeek-V4.1-Flash high runs only). The bucket states no licence of its own, so we keep only the derived per-task rates of the tasks we use, never its trial files.
+  - The runs use Harbor 0.24.0 (Apache License 2.0, https://github.com/harbor-framework/harbor), installed from its hash-pinned wheel at run time and not vendored here.
 - **SWE-bench Verified** (SWE-bench code: MIT, https://github.com/SWE-bench/SWE-bench, Copyright (c) 2023 Carlos E Jimenez, John Yang, Alexander Wettig, Shunyu Yao, Kexin Pei, Ofir Press, Karthik R Narasimhan).
   - We keep instance ids only, in `docs/benchmarks/2026-11-01-opus-gstack-follow/`.
   - Task content is fetched at run time and never redistributed. Problem statements and patches come from the upstream projects, under their own licences.

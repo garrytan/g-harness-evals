@@ -1,0 +1,131 @@
+#!/bin/sh
+# Adapted from Harbor 0.24.0's egress sidecar bin/network-policy (Apache-2.0). Changed for the frontier Harbor path
+# (internal-task): allow-all no longer removes the nftables rules; it sends every controlled TCP connection through gost's
+# blocklist service (:12346), which refuses the hosts in blocklist.txt and passes the rest. deny-all and allow use
+# Harbor's allowlist service (:12345) as before. Non-TCP egress other than DNS to the resolver is rejected in every mode.
+set -eu
+
+ALLOWLIST=/opt/egress-sidecar/allowlist.txt
+BLOCKLIST=/opt/egress-sidecar/blocklist.txt
+ALLOW_PORT=12345
+BLOCK_PORT=12346
+GOST_MARK=114514
+NFTABLES_RULESET_NAME=gost_egress
+RELOAD_WAIT=2
+
+usage() {
+  cat <<'EOF'
+Usage:
+  network-policy show
+  network-policy allow-all      (frontier-harbor: everything except the blocklist)
+  network-policy deny-all
+  network-policy allow [TARGET...]
+  network-policy rules
+EOF
+}
+
+ensure_file() {
+  mkdir -p "$(dirname "$ALLOWLIST")"
+  touch "$ALLOWLIST"
+}
+
+nft_dns_rules() {
+  action="$1"
+  awk -v action="$action" '
+    /^nameserver[[:space:]]+/ {
+      ns = $2
+      sub(/%.*/, "", ns)
+      if (ns ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {
+        printf "    ip daddr %s udp dport 53 %s\n", ns, action
+        printf "    ip daddr %s tcp dport 53 %s\n", ns, action
+      } else if (ns ~ /:/) {
+        printf "    ip6 daddr %s udp dport 53 %s\n", ns, action
+        printf "    ip6 daddr %s tcp dport 53 %s\n", ns, action
+      }
+    }
+  ' /etc/resolv.conf
+}
+
+setup_nftables() {
+  port="$1"
+  nft --file - <<EOF
+add table inet $NFTABLES_RULESET_NAME
+flush table inet $NFTABLES_RULESET_NAME
+
+table inet $NFTABLES_RULESET_NAME {
+  chain output {
+    type nat hook output priority dstnat; policy accept;
+
+    meta mark $GOST_MARK return
+    fib daddr type local return
+$(nft_dns_rules return)
+    meta l4proto tcp redirect to :$port
+  }
+
+  chain egress {
+    type filter hook output priority filter; policy accept;
+
+    meta mark $GOST_MARK accept
+    fib daddr type local accept
+$(nft_dns_rules accept)
+    ip protocol icmp accept
+    ip6 nexthdr icmpv6 accept
+    meta l4proto != tcp reject
+  }
+}
+EOF
+}
+
+nftables_port() {
+  nft list table inet "$NFTABLES_RULESET_NAME" 2>/dev/null | sed -n 's/.*redirect to :\([0-9]*\).*/\1/p' | head -1
+}
+
+show() {
+  case "$(nftables_port)" in
+    "$BLOCK_PORT") echo "mode: blocklist (everything except blocklist.txt)"; nl --body-numbering=a "$BLOCKLIST" ;;
+    "$ALLOW_PORT")
+      echo "mode: controlled egress (allowlist)"
+      if [ -s "$ALLOWLIST" ]; then nl --body-numbering=a "$ALLOWLIST"; else echo "(empty: deny all controlled TCP egress)"; fi ;;
+    *) echo "mode: no rules (the sidecar is not enforcing)" ;;
+  esac
+}
+
+ensure_file
+
+cmd="${1:-}"
+case "$cmd" in
+  show)
+    show
+    ;;
+  allow-all)
+    : > "$ALLOWLIST"
+    setup_nftables "$BLOCK_PORT"
+    echo "ok: allow all egress except the blocklist"
+    ;;
+  deny-all)
+    : > "$ALLOWLIST"
+    sleep "$RELOAD_WAIT"
+    setup_nftables "$ALLOW_PORT"
+    echo "ok: deny all controlled TCP egress"
+    ;;
+  allow)
+    shift
+    : > "$ALLOWLIST"
+    for item in "$@"; do
+      if [ -n "$item" ]; then
+        printf '%s\n' "$item" >> "$ALLOWLIST"
+      fi
+    done
+    sleep "$RELOAD_WAIT"
+    setup_nftables "$ALLOW_PORT"
+    echo "ok: allowlist applied"
+    show
+    ;;
+  rules)
+    nft list table inet "$NFTABLES_RULESET_NAME" 2>/dev/null || echo "mode: no rules"
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac

@@ -24,7 +24,7 @@ scripts/ubicloud/run-shard.sh \
   --name oc-a --cells openclaw-haiku-none-mu-heldout,openclaw-haiku-told-mu-heldout --lease-usd 5 \
   --dest ~/.capy/work/<run>/oc-a [--gbrain-image <tag>] [--embedded] [--amendment <sha>] [--resume] \
   [--size standard-16] [--smoke-lease-usd <n>] [--smoke-task <dev task id>] [--smoke-first-cell] [--no-smoke] [--pre-smoke <scripts/....sh>] \
-  [--workload harness|gstack-laneb|qm-driver] [--replicate-to <dir>] [--replicate-seconds 1200] \
+  [--workload harness|gstack-laneb|qm-driver|frontier-harbor] [--install-check] [--replicate-to <dir>] [--replicate-seconds 1200] \
   [-- <arguments for scripts/run-shard.sh>]
 ```
 
@@ -36,7 +36,7 @@ Run it as a background operation with a timeout covering the whole shard and reg
 
 ```sh
 scripts/ubicloud/fanout.sh --manifest ~/.capy/work/<run>/fanout.json [--max-vcpus N] [--parallel N] [--dry-run] \
-  [--workload harness|gstack-laneb|qm-driver] [--replicate-to <drive folder>] [--replicate-seconds 1200]
+  [--workload harness|gstack-laneb|qm-driver|frontier-harbor] [--replicate-to <drive folder>] [--replicate-seconds 1200]
 ```
 
 with a manifest such as
@@ -175,6 +175,20 @@ The `wave2-admit.ts` bullet says each block ceiling is the planned spend plus R,
 ### 2026-11-06: `--smoke-first-cell` smokes one cell per shard
 
 `run-shard.sh` and `vm-shard.sh` take `--smoke-first-cell` (put it in a fan-out manifest's options, before `--`): the smoke runs only the first harness cell in the shard's `--cells` order, one trial, instead of one trial for every harness cell. Off unless given, so the default smoke is unchanged. Why: a v0.4 calibration or frozen-dev shard's cells share the harness, the arm and the smoke task (a transfer-check shard holds both arms of its harness, so its manifest leaves the flag off and smokes each cell), so six smoke trials proved the same wiring six times, and their spend plus one Opus reservation passed the $4 smoke lease (#225's /ship review). Tested in `tests/smoke-lease.test.ts`.
+
+### The frontier-harbor workload
+
+`--workload frontier-harbor` runs the frontier Harbor path ([scripts/frontier-harbor/README.md](../scripts/frontier-harbor/README.md)) on each VM in place of `scripts/run-shard.sh`.
+
+- **Setup:** `vm-shard.sh` clones Terminal-Bench 2.1 at `pin.json`'s commit into `~/terminal-bench-2-1` and checks that the manifest's cells are the preregistration's cells for that shard.
+- **Smoke:** the keyless install check (`scripts/frontier-harbor/install-check.sh`, fake upstream, every key unset, no spend). A failure exits 4 before any paid call. `--no-smoke` skips it.
+- **Run:** `scripts/frontier-harbor/vm-run.sh` under the shard's lease (less the recorded spend of the shard's trials in its `--done` files, so a later stage cannot reuse money an earlier stage spent), `--out ~/shard/results`, with a shard's `args` passed through (`--stage <name>`, `--done <file>`). Its output goes to `~/shard/results/run.stdout.log`. `run-shard.sh` needs `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`.
+- **Install check alone:** put `--install-check` in the manifest's `options` and use `scripts/frontier-harbor/install-check-prereg.json` as the preregistration. No key is required on the controller and none goes to the VM (the key file is written empty). The results (`install-check.json`, `agents/`, `baselines/`, `probe/`) come back to `<dest>/<shard>/results`. A shard's `args` of `--baselines all` run oracle and nop on every pinned task instead of three: the run's baseline gate before its first paid trial.
+- **Records:** `vm-run.sh`'s `trials.jsonl`, which `merge-shards.ts` does not read, so the fan-out ends by printing the results directories. On teardown the controller waits up to 240 s for the shard's exit file, as for Lane B. `--embedded` and the sealed flags are refused.
+
+### 2026-11-07: the frontier-harbor workload
+
+`run-shard.sh`, `vm-shard.sh` and `fanout.sh` take `--workload frontier-harbor`, and `run-shard.sh` takes `--install-check` for the keyless install check alone. Why: the internal-task install check and shards go through the standard fan-out, with results leaving the VM while it runs and the VM destroyed on every exit, instead of a hand-driven VM.
 
 ### 2026-11-06: a shard can preflight clean control arms
 

@@ -8,6 +8,7 @@ From [gbrain-evals](https://github.com/garrytan/gbrain-evals) v0.10.128 (`6999eb
 - `exact.ts`, `fixed-sequence.ts`: helpers.
 - `sign-flip.ts`, `task-means.ts`, `sizing.ts`: shared files vendored unchanged from gstack-evals at `81daa79a`. `marginShiftedSignFlipP` is a one-sided non-inferiority test over task clusters. `pairTaskMeans` pairs two arms on per-task means under a preregistered missing-cell rule, and `pairTrials` keeps trial-level pairing. `sizing.ts` gives tasks needed, the SD a number of tasks covers and the minimum detectable difference for a one-sided paired test, plus gstack-evals' plan tables as code. Their comments name gstack-evals' test paths; the tests here are `tests/stats-sign-flip.test.ts`, `tests/stats-task-means.test.ts` and `tests/stats-sizing.test.ts`.
 - `kit.ts`: which kit analyses a run (below).
+- `frontier.ts`: our own addition, not vendored. Rerun flip and harness flip (the Harness Leaderboard's noise view), pass^k and pass@k, a task bootstrap of a mean, cost per solve and the paired cost-per-solve ratio with task bootstrap intervals, and the bootstrap lower bound that `nonInferiorityP` compares with the margin. `scripts/frontier-harbor/analyze.ts` uses it with this checkout's kit; tests in `tests/stats-frontier.test.ts`.
 
 In this repository the cluster is the task: five trials of one task are one cluster, and across-task claims use task-clustered intervals (plan contract item 10).
 
