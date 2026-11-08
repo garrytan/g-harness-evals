@@ -1,0 +1,21 @@
+prompt-archaeology-joint-probe-2026-11 run log
+2026-11-07T11:57Z launch: commit fc277b2c44471dead06a6f445afe06f093a184a3 (#307 merge, merge lane notice), worktree <lane work>/pin-fc277b2c (detached, never moved)
+prereg docs/benchmarks/2026-11-06-prompt-archaeology-joint/prereg-probe.json, build-prereg --check 0 stale, probe cap $69.50
+shards probe-cc $20.50 (12 cells), probe-oc $36.00 (11 cells), probe-cx $13.00 (11 cells); standard-16; --pre-smoke scripts/prompt-archaeology/pre-smoke.sh --no-smoke
+UBI_OWNER=<lane>; usage before launch: 54 vCPUs in use, 48 needed
+replicate-to the lane handoff folder (probe-replica)
+dropped tasks for the gate (prereg drop rule, #314 PR body): cr-08-l2-brackenwater-renewal-date, er-11-l3-tansley-parcel-contact
+2026-11-07T14:11:20Z probe done: fanout exit 0, 3 shards exit 0, 132 trials (probe-cc 46, probe-oc 43, probe-cx 43), 0 kept VMs, list --mine empty; VM list price $2.0865; wall 2h12m
+probe spend from shard ledgers (actual_usd): probe-cc $16.4722, probe-oc $33.2445, probe-cx $11.0289, total $60.7456 under the $69.50 cap
+merged with scripts/merge-shards.ts into <lane work>/probe/merged (34 cells, 132 trials, every shard at fc277b2c)
+gate: joint-gate.ts --dropped-tasks (cr-08-l2-brackenwater-renewal-date, er-11-l3-tansley-parcel-contact) -> pass, exit 0, --check ok
+  families: cr l3 (2/12), er l2 (4/12), ms l2 (2/12); ar out (0/12, 0/12); ss out (0/12, 0/10)
+  pairs: P1 run, P2 run (claude-code full 8/12); P3 drop-floor (openclaw-opus full 0/12); P4 drop-floor (codex-sol full 0/12)
+  validity: all four cells 100% fully matched
+  cells: 9 (claude-code full, joint, minimal x cr-l3, er-l2, ms-l2)
+note: openclaw and codex full arms passed 0 of their scored probe trials in every family; claude-code full passed 11 of 40. The cells have no gbrain (prereg lines 16 and 107), so they match the v0.4 lane's "none" condition (0 to 37.5% pooled), not told-live.
+the v0.4 lane defect list read at 2026-11-07T14:11:20Z: PR #317 (draft, head 43e6b23dbf) report.md "Three known misses stay false fails (amendment 4, Stated limits)" = cr-08, rr-09, er-11; its 7 other told-live fails are not grader defects. No further task to drop. rr-09 is retired record, not in this run.
+MDD from the probe (claude-code full rates at the chosen levels: cr 2/4, er 4/4, ms 2/4; 12 tasks x 4): 29.1 points at Holm alpha 0.0125, 24.4 at alpha 0.05 (er at 4/4 adds no variance)
+main leases (lease-plan.json main.rule): claude-code full arm $0.08307 per turn over 179 probe turns; each shard 3 cells, 48 trials, 208 turns, expected $17.2794, lease $27.50 (x1.4 + $2.9214, up to $0.50); cc-full, cc-joint, cc-minimal $27.50 each = $82.50 of $245; P3, P4 dropped by the gate; P5 not run (no --with-secondary)
+main TTL: probe claude-code mean 61.7 s per trial x 48 / 3600 x 1.5 -> ceil 2, + 1 = UBI_TTL_HOURS 3
+main size: 12 tasks x 4 repetitions = 48 trials per arm (prereg Size: "or 12 if only three families are in"); repetitions unchanged at 4
