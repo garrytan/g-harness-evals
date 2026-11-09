@@ -4,20 +4,20 @@
 // oracle.json), with one line of evidence each.
 //
 //   bun scripts/taxonomy.ts --results <results/<run-id>> [--regraded] [--tasks tasks/multiuser] [--world world/seed/world.json]
-//                           [--calibration <hand-labels.jsonl>] [--annotations <file>] [--trial <id>]
+//                           [--calibration <hand-labels.jsonl>] [--annotations <file>] [--trial <id>] [--out <dir>]
 //
 // Labels are observations, not diagnoses: each one is the first rule that matches a fixed list of facts recorded
 // beside it (which of the oracle's sources the harness read inside the turn window, whether the reply declines or says
 // it found nothing, which writes the world refused, whether the turn produced a reply at all). A reader who disagrees
 // with a rule has the facts to relabel. Predicates that need a harness capability no harness has (digest_posted,
 // capability "scheduler") are set apart as by_construction so they never blend into the retrieval and procedure counts.
-// Writes taxonomy.json and taxonomy.md beside trials.jsonl; keyless; deterministic. --calibration takes a JSONL of
+// Writes taxonomy.json and taxonomy.md beside trials.jsonl, or into --out <dir>; keyless; deterministic. --calibration takes a JSONL of
 // hand labels ({trial_id, predicate, label}), by default <run>/taxonomy-calibration.jsonl beside the results directory, and reports
 // agreement, so the rule list can be checked against a person. --trial <id> prints one failed trial's observations and exits.
 // A run folder may carry taxonomy-annotations.jsonl ({task, predicate?, trial_id?, note}) naming task or grader defects
 // the run's report already records; a matching failure is labelled exam_defect with the rule's own label kept beside it.
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
@@ -26,7 +26,7 @@ import type { WorldEvent } from '../world/services/events.ts';
 import { compileRegex, loadTask, type Predicate, type Task } from '../runner/grade/task.ts';
 import { loadWorldData, type WorldData } from '../runner/grade/predicates.ts';
 
-export const TAXONOMY_VERSION = '1.0.0';
+export const TAXONOMY_VERSION = '1.1.0';
 
 /** The closed label set, in the order the rules are tried. */
 export const LABELS = {
@@ -55,6 +55,7 @@ export const LABELS = {
   read_but_wrong: 'every oracle source was read and the reply did not match the expected pattern',
   no_receipts: 'the trial failed but its events.jsonl or turns.jsonl is not in the results tree, so nothing could be observed',
   exam_defect: 'a task or grader defect recorded in the run\'s taxonomy-annotations.jsonl explains the failure; the receipts are unchanged',
+  forbidden_event: 'an event the task forbids in that turn happened (a matching tool call the world accepted, or one it denied, as the predicate\'s outcome field says)',
   unclassified: 'no rule matched; see the observations',
 } as const;
 export type Label = keyof typeof LABELS;
@@ -242,6 +243,12 @@ export function classify(ctx: Ctx, trial: TrialRecord, result: PredicateResult):
     if (obs.not_found_language) return done('read_not_found', `${where}: read ${sourcesRead.join(', ') || 'nothing (oracle reads nothing)'}; reply says not found: "${obs.reply_excerpt}"`);
     return done('read_but_wrong', `${where}: read ${sourcesRead.join(', ') || 'nothing (oracle reads nothing)'}; reply: "${obs.reply_excerpt}"; grader: ${result.evidence.slice(0, 100)}`);
   }
+  if (kind === 'no_event' && def && 'tool' in def) {
+    const cited = new Set([...result.evidence.matchAll(/seq=(\d+)/g)].map((m) => Number(m[1])));
+    const rematch = !cited.size && !('recipients_outside' in def && def.recipients_outside);
+    const hits = cited.size ? ctx.events.filter((e) => cited.has(e.seq)) : rematch ? events.filter((e) => e.tool === def.tool && (!def.outcome || e.outcome === def.outcome) && Object.entries(def.args_match ?? {}).every(([k, re]) => compileRegex(re).test(str(args(e)[k])))) : [];
+    if (hits.length) return done('forbidden_event', `${where}: ${hits.map((e) => `seq=${e.seq} ${e.tool} ${e.outcome} args ${str(args(e)).slice(0, 120)}`).join('; ')}`);
+  }
   return done('unclassified', `${where}: ${result.evidence.slice(0, 200)}`);
 }
 
@@ -389,7 +396,7 @@ export function renderMarkdown(r: RunTaxonomy): string {
 
 if (import.meta.main) {
   const results = arg('results');
-  if (!results || !existsSync(join(results, 'trials.jsonl'))) { console.error('usage: bun scripts/taxonomy.ts --results <results/<run-id>> [--regraded] [--tasks <dir>] [--world <world.json>] [--calibration <jsonl>] [--annotations <file>] [--trial <id>]'); process.exit(2); }
+  if (!results || !existsSync(join(results, 'trials.jsonl'))) { console.error('usage: bun scripts/taxonomy.ts --results <results/<run-id>> [--regraded] [--tasks <dir>] [--world <world.json>] [--calibration <jsonl>] [--annotations <file>] [--trial <id>] [--out <dir>]'); process.exit(2); }
   const root = resolve(import.meta.dir, '..');
   const r = taxonomyForRun(results, { regraded: process.argv.includes('--regraded'), tasksRoot: arg('tasks', join(root, 'tasks', 'multiuser'))!, worldPath: arg('world', join(root, 'world', 'seed', 'world.json'))!, calibration: arg('calibration') ?? join(results, '..', 'taxonomy-calibration.jsonl'), annotations: arg('annotations') });
   const only = arg('trial');
@@ -401,8 +408,10 @@ if (import.meta.main) {
   }
   const md = renderMarkdown(r);
   const suffix = r.grading === 'regraded' ? '.regraded' : '';
-  writeFileSync(join(results, `taxonomy${suffix}.json`), JSON.stringify(r, null, 1) + '\n');
-  writeFileSync(join(results, `taxonomy${suffix}.md`), md);
+  const out = arg('out') ?? results;
+  mkdirSync(out, { recursive: true });
+  writeFileSync(join(out, `taxonomy${suffix}.json`), JSON.stringify(r, null, 1) + '\n');
+  writeFileSync(join(out, `taxonomy${suffix}.md`), md);
   process.stdout.write(md.split('### Every failed predicate')[0]!);
-  console.error(`[taxonomy] wrote ${join(results, `taxonomy${suffix}.json`)} and .md`);
+  console.error(`[taxonomy] wrote ${join(out, `taxonomy${suffix}.json`)} and .md`);
 }

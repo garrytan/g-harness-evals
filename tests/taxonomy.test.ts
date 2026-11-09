@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { PredicateResult, TrialRecord, TurnWindow } from '../runner/contracts.ts';
@@ -135,6 +136,30 @@ describe('taxonomy: approvals, writes and digests', () => {
   });
 });
 
+describe('taxonomy 1.1.0: forbidden_event (no_event predicates)', () => {
+  const t = loadTask(join(tasksRoot, 'dev', 'si-01-quarrendon-seats'));
+  const synthetic = { ...t, predicate: [...(t.predicate ?? []), { id: 'ne', kind: 'no_event' as const, tool: 'mail.draft', turn: 2 }] } as typeof t;
+  const mk = (events: WorldEvent[], exit: 0 | 2 = 0) => ({ task: synthetic, world: loadWorldData(worldPath, 'dev'), oracle: null, events, turns: [turn(2, 'dana-okafor', 'north-team', 0, events.length, 'Done.', exit)], snapshotChannels: null, bot: 'assistant' } as Ctx);
+  const draft = () => { seq = 0; return ev('mail.draft', 'write', { to: 'x@example.com', subject: 'Quarrendon' }); };
+
+  test('the event the grader cites by seq is the evidence; with no seq cited the predicate fields are matched again', () => {
+    const f = classify(mk([draft()]), trial(), failed('ne', 'required', '1 mail.draft event(s) in turn 2: seq=1'));
+    expect(f.label).toBe('forbidden_event');
+    expect(f.evidence).toBe('turn 2: seq=1 mail.draft ok args {"to":"x@example.com","subject":"Quarrendon"}');
+    expect(classify(mk([draft()]), trial(), failed('ne', 'required', 'no seq in this evidence')).label).toBe('forbidden_event');
+  });
+
+  // pregate-literal: TAXONOMY_VERSION='1.0.0' names the earlier classifier version whose labels this test pins
+  test('the rule sits just before unclassified, so every label 1.0.0 gave stays as it was', () => {
+    expect(Object.keys(LABELS).filter((l) => l !== 'forbidden_event')).toEqual(['harness_error', 'model_error', 'timeout', 'infra_error', 'consent_violation', 'acted_before_approval', 'approval_not_requested', 'approval_message_missing', 'approval_misrecorded', 'cross_scope_read', 'leak', 'forbidden_content', 'digest_not_fired', 'digest_wrong', 'tool_error', 'wrong_target', 'wrong_content', 'action_not_taken', 'no_reply', 'refused', 'source_not_read', 'read_not_found', 'read_but_wrong', 'no_receipts', 'exam_defect', 'unclassified']);
+    expect(Object.keys(LABELS).slice(-2)).toEqual(['forbidden_event', 'unclassified']);
+    expect(classify(mk([draft()], 2), trial(), failed('ne', 'required', 'seq=1')).label).toBe('harness_error');
+    expect(classify(mk([draft()]), trial({ termination: 'infra_error' }), failed('ne', 'required', 'seq=1')).label).toBe('infra_error');
+    expect(classify(mk([draft()]), trial(), failed('answer_seats', 'required', 'seq=1 did not match')).label).toBe('read_but_wrong');
+    expect(classify(mk([]), trial(), failed('ne', 'required', 'turn 2 is not in the evidence')).label).toBe('unclassified');
+  });
+});
+
 describe('taxonomy: a results tree', () => {
   test('writes counts per cell, keeps capability predicates apart, applies annotations and reports calibration', () => {
     const dir = mkdtempSync(join(tmpdir(), 'taxonomy-')); dirs.push(dir);
@@ -168,5 +193,22 @@ describe('taxonomy: a results tree', () => {
     expect(md).toContain('### Provenance');
     expect(md).toContain('1 of 2 hand-labelled failures agree');
     expect(Object.keys(LABELS)).toContain('unclassified');
+  });
+
+  test('--out writes taxonomy.json and taxonomy.md into the named directory and leaves the results tree untouched; without it they land beside trials.jsonl', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'taxonomy-out-')); dirs.push(dir);
+    const results = join(dir, 'results'); mkdirSync(results, { recursive: true });
+    writeFileSync(join(results, 'trials.jsonl'), JSON.stringify(trial({ trial_id: 'run/cell/si-01-quarrendon-seats/r1', predicates: [failed('answer_seats')] })) + '\n');
+    const run = (...extra: string[]) => spawnSync(process.execPath, ['scripts/taxonomy.ts', '--results', results, ...extra], { cwd: root, env: { PATH: process.env.PATH, HOME: process.env.HOME }, encoding: 'utf8' });
+    const out = join(dir, 'layer1', 'run', 'results');
+    expect(run('--out', out).status).toBe(0);
+    expect(existsSync(join(results, 'taxonomy.json'))).toBe(false);
+    expect(existsSync(join(results, 'taxonomy.md'))).toBe(false);
+    const r = JSON.parse(readFileSync(join(out, 'taxonomy.json'), 'utf8'));
+    expect(r.counts).toMatchObject({ failed_trials: 1, trials_without_logs: ['run/cell/si-01-quarrendon-seats/r1'] });
+    expect(readFileSync(join(out, 'taxonomy.md'), 'utf8')).toContain('## Failure taxonomy: run');
+    expect(run().status).toBe(0);
+    const beside = JSON.parse(readFileSync(join(results, 'taxonomy.json'), 'utf8'));
+    expect({ ...beside, generated_at: '' }).toEqual({ ...r, generated_at: '' });
   });
 });

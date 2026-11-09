@@ -1,0 +1,64 @@
+{
+  "version": "fixture-analysis-1",
+  "classes": [
+    {
+      "id": "did_not_look",
+      "name": "Did not look",
+      "group": "agent",
+      "definition": "The bot acted without reading the source that held what the turn needed.",
+      "include": "No read of the needed source inside the turn.",
+      "exclude": "It read the source and then misused it.",
+      "typical_stage": "retrieve",
+      "prevention": {
+        "gbrain": [
+          "B1",
+          "B3"
+        ],
+        "gstack": [
+          "G1"
+        ]
+      }
+    },
+    {
+      "id": "unscoped_brain_search",
+      "name": "Brain result crossed scope",
+      "group": "brain",
+      "definition": "A brain search returned another member's private content and the bot used it.",
+      "include": "The leaked text came from a brain result.",
+      "exclude": "The leaked text came from a world read.",
+      "typical_stage": "retrieve",
+      "prevention": {
+        "gbrain": [],
+        "gstack": []
+      }
+    },
+    {
+      "id": "wrong_figure",
+      "name": "Wrong figure",
+      "group": "agent",
+      "definition": "The bot read the right source and reported a different figure.",
+      "include": "The figure in the reply differs from the source.",
+      "exclude": "The source itself held the wrong figure.",
+      "typical_stage": "decide",
+      "prevention": {
+        "gbrain": [],
+        "gstack": [
+          "G7"
+        ]
+      }
+    },
+    {
+      "id": "grader_defect",
+      "name": "Grader defect",
+      "group": "task_or_grader",
+      "definition": "The grader failed a reply that met the task.",
+      "include": "The reply meets the task text and the grader rejects it.",
+      "exclude": "The reply misses part of the task.",
+      "typical_stage": "reply",
+      "prevention": {
+        "gbrain": [],
+        "gstack": []
+      }
+    }
+  ]
+}
