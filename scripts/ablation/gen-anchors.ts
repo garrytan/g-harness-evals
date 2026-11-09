@@ -8,6 +8,9 @@
 //
 //   bun scripts/ablation/gen-anchors.ts [--record <record dir name>]... [--out <candidates.json>] [--items <coder input.json>]
 //
+// Both outputs carry raw harness text, so both must be outside the repository;
+// settle.ts writes the hashes-only coding/items.json that is committed.
+//
 // For each recaptured (harness, wire, model) in COMBOS it reads
 // docs/harness-anatomy/records/<record>/*.json, unpacks each scenario's
 // receipts with scripts/anatomy/store.ts (checking the log's sha256 against
@@ -32,7 +35,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type AnatomyRecord, type LogRow, type Wire, parseLog, splitSections, systemBlocks } from '../anatomy/dissect.ts';
 import { unpack } from '../anatomy/store.ts';
-import { type Location, ROOT, byteLen, locKey, resolveAnchors, sha256, units } from './maps.ts';
+import { type Location, ROOT, byteLen, locKey, privateTextPath, resolveAnchors, sha256, units } from './maps.ts';
 
 export interface Combo { harness: string; wire: Wire; model: string; record: string }
 export const COMBOS: Combo[] = [
@@ -269,6 +272,9 @@ if (import.meta.main) {
   const argv = process.argv.slice(2);
   const many = (n: string) => argv.flatMap((a, i) => (a === n && argv[i + 1] ? [argv[i + 1]!] : []));
   const pick = many('--record');
+  for (const p of [...many('--out'), ...many('--items')]) {
+    try { privateTextPath(p); } catch (e) { console.error(`GEN: ${(e as Error).message}`); process.exit(2); }
+  }
   const all = COMBOS.filter((c) => !pick.length || pick.includes(c.record)).map(generate);
   for (const cc of all) {
     const coded = cc.candidates.filter((c) => !c.fixed);

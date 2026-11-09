@@ -10,8 +10,14 @@
 // path (the run's own report.md, else the report REPORT_ELSEWHERE names for it), results/UNCOUNTED.md under uncounted when
 // the run marks itself uncounted, the preregistration with the commit that added it and every later commit that touched it (the amendments, with
 // their committer dates and subjects), the trial count and the count per cell, the sha256 of trials.jsonl, every
-// *.sqlite ledger under results/ with its sha256 and the spend it commits, every proxy-usage*.ndjson with its sha256,
-// and whether summary.json and taxonomy.json are present.
+// *.sqlite ledger under results/ with its sha256, request count and leases, every proxy-usage*.ndjson with its sha256,
+// and whether summary.json and taxonomy.json are present. The manifest carries no spend: ledgerSpend below is the one
+// spend query, which the private program ledger (private/spend/budget-ledger.ts) runs on the ledgers themselves.
+//
+// A run of the private-by-hash result class keeps its billing artifacts (ledger and usage log) private and commits
+// results/private-by-hash.json, the post-run attestation runner/prereg/private-by-hash.ts writes and checks. Its row
+// carries result_class 'private-by-hash' and the attested artifacts (name, schema, private location, sha256); other rows
+// carry no result_class key, so the manifest of a repository without such runs is unchanged.
 //
 // Each run also records the window its trials ran in (earliest started_at, latest ended_at) and, for a run
 // with held-out cells, its set, opening number, label, status and reason as runner/heldout/openings.ts derives them from
@@ -19,13 +25,13 @@
 // on the same set with a trial that ran while one of its own trials ran (started_at to ended_at).
 //
 // Ledger spend follows runner/ledger/budget-ledger.ts: an entry's committed spend is its settled actual_usd, or its
-// full reservation while unsettled, so ledger_committed_usd is SUM(COALESCE(actual_usd, reserved_usd)) over the
-// entries table, which is what the lease's runs.committed_usd and the program row accumulate. ledger_settled_usd is
-// the sum of actual_usd alone and ledger_open_reservations_usd the reservations never settled (a machine restart mid
-// request leaves one open; the ledger can only overstate spend). Each lease in the runs table is listed under leases.
-// A ledger that cannot be opened or queried records the error string in ledger_committed_usd instead of a number.
-// Ledgers are read from an in-memory copy of their bytes, so the receipts tree gains no -shm or -wal files; dollar sums
-// are rounded to six decimals so the file is stable across SQLite builds.
+// full reservation while unsettled, so committed_usd is SUM(COALESCE(actual_usd, reserved_usd)) over the entries
+// table, which is what the lease's runs.committed_usd and the program row accumulate. settled_usd is the sum of
+// actual_usd alone and open_reservations_usd the reservations never settled (a machine restart mid request leaves one
+// open; the ledger can only overstate spend). Each lease in the runs table is listed under leases, by run id and
+// window. A ledger that cannot be opened or queried records the error string in read_error. Ledgers are read from an
+// in-memory copy of their bytes, so the receipts tree gains no -shm or -wal files; dollar sums are rounded to six
+// decimals so they are stable across SQLite builds.
 //
 // Sealed custody: a sealed opening publishes no trials.jsonl until its set retires; its public export lives at
 // docs/benchmarks/<run>/sealed-results/ (scripts/sealed/export.ts). Each such directory gets a row under sealed_runs (the
@@ -46,21 +52,23 @@ import { deriveSet, registeredHeldout } from '../runner/heldout/openings.ts';
 import { heldoutSet, heldoutSets, readManifest } from './seal-heldout.ts';
 
 export const MANIFEST_VERSION = 1;
+export const PRIVATE_BY_HASH_FILE = 'private-by-hash.json';
 export const OUTPUT_FILE = 'docs/receipts-manifest.json';
 const BENCHMARKS_DIR = 'docs/benchmarks';
 
 export interface Amendment { commit: string; date: string; subject: string }
-export interface Lease { run_id: string; budget_usd: number; committed_usd: number; overshoot_usd: number; started_at: string | null; finished_at: string | null }
+export interface Lease { run_id: string; started_at: string | null; finished_at: string | null }
 export interface LedgerRow {
   path: string;
   sha256: string;
-  /** SUM(COALESCE(actual_usd, reserved_usd)) over entries, or the error string when the ledger could not be read. */
-  ledger_committed_usd: number | string;
-  ledger_settled_usd: number | null;
-  ledger_open_reservations_usd: number | null;
   requests: number | null;
   leases: Lease[] | null;
+  /** The error that stopped the read, when the file could not be opened or queried as a lease ledger. */
+  read_error: string | null;
 }
+export interface LedgerSpend { committed_usd: number; settled_usd: number; open_reservations_usd: number; leases: Array<{ run_id: string; budget_usd: number; committed_usd: number; overshoot_usd: number }> }
+/** An artifact a private-by-hash run keeps private, as its results attestation names it. */
+export interface PrivateArtifact { name: string; schema: string; location: string; sha256: string }
 export interface HashedFile { path: string; sha256: string }
 export interface RunRow {
   directory: string;
@@ -78,6 +86,8 @@ export interface RunRow {
   taxonomy: boolean;
   trials_window: { first_started_at: string; last_ended_at: string } | null;
   heldout: HeldoutOpening | null;
+  result_class?: 'private-by-hash';
+  private_artifacts?: PrivateArtifact[];
 }
 export interface HeldoutOpening {
   set: string;
@@ -140,27 +150,47 @@ export function preregistrationHistory(root: string, relPath: string): { first_c
   return { first_commit: first, amendments };
 }
 
-/** Committed, settled and open spend of one lease ledger, or the error that stopped the read. The file's bytes are read
- *  into memory and the header's journal flags (bytes 18 and 19) set to rollback mode before deserializing, because a
- *  committed ledger still marked WAL would otherwise make every read-only open drop -shm and -wal files into the receipts
- *  tree; nothing on disk is touched. */
+/** A read-only in-memory open of a lease ledger's bytes. The header's journal flags (bytes 18 and 19) are set to rollback
+ *  mode before deserializing, because a committed ledger still marked WAL would otherwise make every read-only open drop
+ *  -shm and -wal files into the receipts tree; nothing on disk is touched. */
+function withLedger<T>(bytes: Buffer, read: (db: Database) => T): T {
+  const copy = Buffer.from(bytes);
+  if (copy.length >= 20) { copy[18] = 1; copy[19] = 1; }
+  const db = Database.deserialize(copy, { readonly: true });
+  try { return read(db); } finally { db.close(); }
+}
+
+/** Request count and leases of one lease ledger, or the error that stopped the read. No spend: see ledgerSpend. */
 export function readLedger(path: string, bytes: Buffer = readFileSync(path)): Omit<LedgerRow, 'path' | 'sha256'> {
-  let db: Database | null = null;
   try {
-    const copy = Buffer.from(bytes);
-    if (copy.length >= 20) { copy[18] = 1; copy[19] = 1; }
-    db = Database.deserialize(copy, { readonly: true });
-    const agg = db.query(`SELECT COALESCE(SUM(COALESCE(actual_usd, reserved_usd)), 0) AS committed_usd, COALESCE(SUM(actual_usd), 0) AS settled_usd,
-      COALESCE(SUM(CASE WHEN actual_usd IS NULL THEN reserved_usd ELSE 0 END), 0) AS open_usd, COUNT(*) AS requests FROM entries`).get() as
-      { committed_usd: number; settled_usd: number; open_usd: number; requests: number };
-    const leases = (db.query('SELECT run_id, budget_usd, committed_usd, overshoot_usd, started_at, finished_at FROM runs ORDER BY run_id').all() as Lease[])
-      .map((r) => ({ ...r, committed_usd: round6(r.committed_usd), overshoot_usd: round6(r.overshoot_usd) }));
-    return { ledger_committed_usd: round6(agg.committed_usd), ledger_settled_usd: round6(agg.settled_usd), ledger_open_reservations_usd: round6(agg.open_usd), requests: agg.requests, leases };
+    return withLedger(bytes, (db) => ({
+      requests: (db.query('SELECT COUNT(*) AS requests FROM entries').get() as { requests: number }).requests,
+      leases: db.query('SELECT run_id, started_at, finished_at FROM runs ORDER BY run_id').all() as Lease[],
+      read_error: null,
+    }));
   } catch (e) {
-    return { ledger_committed_usd: e instanceof Error ? e.message : String(e), ledger_settled_usd: null, ledger_open_reservations_usd: null, requests: null, leases: null };
-  } finally {
-    db?.close();
+    return { requests: null, leases: null, read_error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/** Committed, settled and open spend of one lease ledger, and each lease's budget, committed and overshoot. Throws when the
+ *  file cannot be read as a ledger, so a caller can never count an unreadable ledger as zero. */
+export function ledgerSpend(bytes: Buffer): LedgerSpend {
+  return withLedger(bytes, (db) => {
+    const agg = db.query(`SELECT COALESCE(SUM(COALESCE(actual_usd, reserved_usd)), 0) AS committed_usd, COALESCE(SUM(actual_usd), 0) AS settled_usd,
+      COALESCE(SUM(CASE WHEN actual_usd IS NULL THEN reserved_usd ELSE 0 END), 0) AS open_usd FROM entries`).get() as { committed_usd: number; settled_usd: number; open_usd: number };
+    const leases = (db.query('SELECT run_id, budget_usd, committed_usd, overshoot_usd FROM runs ORDER BY run_id').all() as LedgerSpend['leases'])
+      .map((r) => ({ ...r, committed_usd: round6(r.committed_usd), overshoot_usd: round6(r.overshoot_usd) }));
+    return { committed_usd: round6(agg.committed_usd), settled_usd: round6(agg.settled_usd), open_reservations_usd: round6(agg.open_usd), leases };
+  });
+}
+
+/** The private artifacts a private-by-hash run's results/private-by-hash.json attests, or null for any other run. */
+export function privateArtifacts(results: string): PrivateArtifact[] | null {
+  const path = join(results, PRIVATE_BY_HASH_FILE);
+  if (!existsSync(path)) return null;
+  const att = JSON.parse(readFileSync(path, 'utf8')) as { artifacts?: PrivateArtifact[] };
+  return (att.artifacts ?? []).map((a) => ({ name: a.name, schema: a.schema, location: a.location, sha256: a.sha256 }));
 }
 
 /** The files under dir that the repository would hold: tracked and untracked-but-not-ignored, as git sees them, so a
@@ -214,6 +244,7 @@ export function buildRun(root: string, directory: string): RunRow {
   const ledgers = files.filter((f) => f.endsWith('.sqlite')).map((f) => { const bytes = readFileSync(f); return { path: rel(f), sha256: sha256(bytes), ...readLedger(f, bytes) }; });
   const proxyLogs = files.filter((f) => /(^|[./-])proxy-usage([.-][^/]*)?\.ndjson$/.test(f.slice(f.lastIndexOf('/') + 1))).map((f) => ({ path: rel(f), sha256: sha256(readFileSync(f)) }));
 
+  const attested = privateArtifacts(results);
   const prereg = join(dir, 'PREREGISTRATION.md');
   const report = join(dir, 'report.md');
   const uncounted = join(results, 'UNCOUNTED.md');
@@ -233,6 +264,7 @@ export function buildRun(root: string, directory: string): RunRow {
     taxonomy: existsSync(join(results, 'taxonomy.json')),
     trials_window: firstStarted && lastEnded ? { first_started_at: firstStarted, last_ended_at: lastEnded } : null,
     heldout: null,
+    ...(attested ? { result_class: 'private-by-hash' as const, private_artifacts: attested } : {}),
   };
 }
 

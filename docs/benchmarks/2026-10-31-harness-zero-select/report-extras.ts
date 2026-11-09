@@ -6,8 +6,9 @@
 //   bun docs/benchmarks/2026-10-31-harness-zero-select/report-extras.ts --audit <dest>
 //
 // Default mode reads results/comparisons.json, summary.json, shards.json, trials.jsonl, each trial's adapter.log, each
-// shard's proxy-usage.ndjson, shard.json, shard-vm.json and manifest, raw-audit.json and this run's entry in
-// docs/receipts-manifest.json. It writes results/report-extras.json and results/verdicts.md. With --check it writes
+// shard's proxy-usage.ndjson, shard.json, shard-vm.json and manifest, raw-audit.json, this run's entry in
+// docs/receipts-manifest.json (which lists each ledger and its request count) and the spend of each ledger, read with
+// scripts/receipts-manifest.ts's ledgerSpend (the manifest carries no spend). It writes results/report-extras.json and results/verdicts.md. With --check it writes
 // nothing and exits 1 when either differs from what is on disk.
 //
 // - Verdicts: the loop file's rules (docs/loops/2026-10-31-harness-zero.md, "Keep rule") as Amendment 1 section 4 says
@@ -36,6 +37,7 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from '
 import { join } from 'node:path';
 import { loadConfig } from '../../../harnesses/harness-zero/zero.ts';
 import { clusteredPairedDelta } from '../../../runner/stats/paired.ts';
+import { ledgerSpend } from '../../../scripts/receipts-manifest.ts';
 
 const DIR = 'docs/benchmarks/2026-10-31-harness-zero-select';
 const RES = join(DIR, 'results');
@@ -202,10 +204,10 @@ for (const shard of Object.keys(shardsFile.shards)) for (const l of lines(join(R
   const cell = u.key.split('/')[1]!;
   usage.set(cell, [...(usage.get(cell) ?? []), u]);
 }
-const manifest = readJson<{ runs: Array<{ directory: string; ledgers: Array<{ path: string; ledger_committed_usd: number; requests: number; leases: Array<{ budget_usd: number; overshoot_usd: number }> }> }> }>('docs/receipts-manifest.json');
+const manifest = readJson<{ runs: Array<{ directory: string; ledgers: Array<{ path: string; requests: number }> }> }>('docs/receipts-manifest.json');
 const runEntry = manifest.runs.find((r) => r.directory === DIR);
 if (!runEntry) throw new Error(`docs/receipts-manifest.json has no entry for ${DIR}; run bun scripts/receipts-manifest.ts first`);
-const ledgerOf = (path: string) => { const l = runEntry.ledgers.find((x) => x.path === path); if (!l) throw new Error(`no manifest ledger ${path}`); return l; };
+const ledgerOf = (path: string) => { const l = runEntry.ledgers.find((x) => x.path === path); if (!l) throw new Error(`no manifest ledger ${path}`); return { ...l, ...ledgerSpend(readFileSync(path)) }; };
 const preregSha = sha256(readFileSync(join(DIR, 'prereg.json')));
 type RawCell = { trials_with_gstack: number; candidate_sha256: Record<string, number>; session_files_with_output_cap_marker: number; session_files: number; system_prompts: Record<string, { bytes: number; sessions: number }> };
 const raw = existsSync(join(RES, 'raw-audit.json')) ? readJson<{ cells: Record<string, RawCell> }>(join(RES, 'raw-audit.json')) : null;
@@ -251,7 +253,7 @@ const cells = Object.entries(shardsFile.shards).map(([shard, s]) => {
     approval_stops: ts.filter((t) => t.approval_stop).map((t) => t.trial_id), consent_violations: ts.filter((t) => t.consent_violation).map((t) => t.trial_id),
     hidden_fact_leaks: ts.filter((t) => t.predicates?.some((p) => p.id === 'no_leak' && !p.passed)).map((t) => t.trial_id),
     clean_arm_trials_with_gstack: rc?.trials_with_gstack ?? null,
-    spend: { lease_usd: shardJson.lease_usd, committed_usd: ledger.ledger_committed_usd, requests: ledger.requests, overshoot_usd: ledger.leases.reduce((x, l) => x + l.overshoot_usd, 0), smoke_committed_usd: smoke.ledger_committed_usd, smoke_lease_usd: smoke.leases.reduce((x, l) => x + l.budget_usd, 0) },
+    spend: { lease_usd: shardJson.lease_usd, committed_usd: ledger.committed_usd, requests: ledger.requests, overshoot_usd: ledger.leases.reduce((x, l) => x + l.overshoot_usd, 0), smoke_committed_usd: smoke.committed_usd, smoke_lease_usd: smoke.leases.reduce((x, l) => x + l.budget_usd, 0) },
   };
 });
 

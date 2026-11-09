@@ -77,6 +77,8 @@ jobs:
           name: checks-tree
           path: ${{ runner.temp }}/checks-tree/tree.json
           if-no-files-found: error
+      - name: Private spend tests (program spend renderer; the public copy has no private/)
+        run: if [ -d private/spend ]; then bun test private/spend/; fi
       - name: Documentation links
         run: python3 scripts/check-links.py
       - name: Hub fragments (TODOS.md matches todos.d/, or its fold is still pending at land)

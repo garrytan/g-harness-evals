@@ -31,6 +31,10 @@
  * ancestry in the public history, and a declared deviation does not excuse it. The
  * ledger is written once: a history where more than one commit changed it fails.
  *
+ * Both modes also run `checkPrivateByHash` (runner/prereg/private-by-hash.ts) over every experiment of the
+ * private-by-hash result class: its preregistration pins the private billing outputs and no hash, and its results
+ * attestation names the unchanged preregistration and exactly those outputs.
+ *
  * The CLI also runs `checkOpenings` (runner/heldout/openings.ts) over the
  * held-out openings ledgers: every registered experiment with a held-out cell has
  * exactly one ledger row, every row names such an experiment, rows follow
@@ -69,6 +73,12 @@ export interface ManifestEntry {
    * commit (runner/stats/kit.ts): the kit commit, and the amendment's file and date.
    */
   stats_kit?: { commit: string; amendment: string };
+  /**
+   * The private-by-hash result class (runner/prereg/private-by-hash.ts): the run's ledger and usage log stay private, its
+   * preregistration pins them by name, schema and location only, and results/private-by-hash.json attests their sha256
+   * after the run. Absent for a run that publishes its billing artifacts.
+   */
+  result_class?: 'private-by-hash';
 }
 
 export interface OrderProblem {
@@ -373,16 +383,25 @@ function publicMain(entries: ManifestEntry[], ledgerPath: string): number {
   return failed;
 }
 
+async function privateByHashMain(entries: ManifestEntry[]): Promise<number> {
+  const registered = entries.filter(e => e.result_class === 'private-by-hash').length;
+  const problems = registered ? (await import('./private-by-hash.ts')).checkPrivateByHash(entries) : [];
+  for (const p of problems) console.error(`prereg-private-by-hash: ${p.id}: ${p.problem}`);
+  console.log(`prereg-private-by-hash: ${registered} experiments, ${problems.length} problems`);
+  return problems.length;
+}
+
 if (import.meta.main) {
   const entries = loadManifest();
   if (process.argv.includes('--public')) {
     const at = process.argv.indexOf('--ledger');
     const failed = publicMain(entries, at >= 0 ? process.argv[at + 1]! : LEDGER_PATH);
+    const privateByHash = await privateByHashMain(entries);
     const { checkOpenings } = await import('../heldout/openings.ts');
     const openings = checkOpenings(process.cwd());
     for (const p of openings) console.error(`heldout-openings: ${p}`);
     console.log(`heldout-openings: ${openings.length} problems`);
-    process.exit(failed === 0 && openings.length === 0 ? 0 : 1);
+    process.exit(failed === 0 && privateByHash === 0 && openings.length === 0 ? 0 : 1);
   }
   const all = checkOrder(entries);
   const problems = all.filter(p => !p.warning);
@@ -390,9 +409,10 @@ if (import.meta.main) {
   for (const p of problems) console.error(`prereg-order: ${p.id}: ${p.file}: ${p.problem}`);
   for (const w of warnings) console.error(`prereg-order: warning: ${w.id}: ${w.file}: ${w.problem}`);
   console.log(`prereg-order: ${entries.length} experiments checked, ${problems.length} problems, ${warnings.length} warnings`);
+  const privateByHash = await privateByHashMain(entries);
   const { checkOpenings } = await import('../heldout/openings.ts');
   const openings = checkOpenings(process.cwd());
   for (const p of openings) console.error(`heldout-openings: ${p}`);
   console.log(`heldout-openings: ${openings.length} problems`);
-  process.exit(problems.length === 0 && openings.length === 0 ? 0 : 1);
+  process.exit(problems.length === 0 && privateByHash === 0 && openings.length === 0 ? 0 : 1);
 }

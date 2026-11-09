@@ -79,9 +79,9 @@ Tool definitions and the world MCP tools' descriptions are fixed as protocol-and
 
 - `<harness>.<wire>.layers.json`: the settled map, valid against [layers.schema.json](layers.schema.json).
 - `manifest.json`: each map's sha256. The proxy checks it at bind time and refuses a mismatch.
-- `coding/items.json`: what each coder saw: every distinct candidate text and where it occurs.
+- `coding/items.json`: what each coder saw: every distinct candidate text and where it occurs. An item Claude Code sent carries `text_sha256`, the sha256 of its text, instead of the text, because Claude Code's prompt is not ours to publish. The item id is the first 16 hex characters of the same digest.
 - `coding/opus.json`, `coding/sol.json`: the two coders' raw codes, with model ids.
-- `agreement.json`: percent agreement and Cohen's kappa, per harness, per map and overall, and every disagreement with how it was settled.
+- `agreement.json`: percent agreement and Cohen's kappa, per harness, per map and overall, and every disagreement with how it was settled. A disagreement on a Claude Code item carries the item's `text_sha256` instead of its text. Every number comes from the item ids, their contexts and the two coder files, so these public files re-derive it (`tests/ablation-public-form.test.ts`).
 
 ## Re-running for a new pin
 
@@ -89,11 +89,11 @@ A coding item is keyed by the sha256 of its text, so text that did not change ke
 
 1. Recapture keyless on the cell's model and wire (`scripts/anatomy/capture.ts`) on a clean tree, and publish (`scripts/anatomy/publish.sh`).
 2. Point the row in `COMBOS` (`scripts/ablation/gen-anchors.ts`) at the new record.
-3. Run `bun scripts/ablation/gen-anchors.ts --items <file>`. It prints any anchor that does not resolve in every captured request.
-4. Run `bun scripts/ablation/settle.ts --missing <file>` to list the items with no codes yet.
+3. Run `bun scripts/ablation/gen-anchors.ts --items <file>`, with the file outside the repository: it holds raw harness text. It prints any anchor that does not resolve in every captured request.
+4. Run `bun scripts/ablation/settle.ts --missing <file>` to list the items with no codes yet. This file holds raw text too, so it must also be outside the repository.
 5. Give two coders of different model families this README and only those items. Append their codes to `coding/opus.json` and `coding/sol.json`, with their model ids.
-6. Run `bun scripts/ablation/settle.ts`. It writes the maps, `agreement.json` and `manifest.json`.
-7. Run `bun test tests/ablation-maps.test.ts`.
+6. Run `bun scripts/ablation/settle.ts`. It writes the maps, the hashes-only `coding/items.json` and `agreement.json`, and `manifest.json`. It writes the hashes-only form whatever inputs are present. To keep the raw items and agreement for the coders, add `--with-private-text --out <dir>`; the script refuses a directory inside the repository.
+7. Run `bun test tests/ablation-maps.test.ts tests/ablation-public-form.test.ts`.
 8. A changed map has a new sha256. A preregistration names the sha256 it runs, so a changed map means a new run or a dated amendment.
 
 ## Limits

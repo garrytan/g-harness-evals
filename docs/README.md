@@ -61,6 +61,7 @@ Design only: the folder holds `design.json` instead of a `prereg.json`, and no t
 - [methodology.md](methodology.md): the trial contract, the normative copy of the plan's contract section: isolation, metering, grading, termination and grade as separate fields, metrics, budget, artifacts, with its amendments in the changelog.
 - [methods.md](methods.md): the fine print behind the README's plain summaries: how to read the numbers (intervals, paired differences, sign-flip tests, Holm, the openings ledger), the complete harness and gbrain comparison text, the complete limits, how every harness runs, the world and the tasks, what paid work costs, and what a results directory holds. Moved word for word from the README on 2026-10-28.
 - [plans/](plans/2026-10-21-harness-eval-v0/plan.md): the approved plan (v2), its review record, decisions D1 to D10, findings, open tasks and every reviewer file, one folder per plan.
+- [private-by-hash.md](private-by-hash.md): the private-by-hash result class. How a run keeps its ledger and usage log private and publishes only their hashes: what its preregistration pins, the results attestation it commits after the run, and the checks in CI and the private lane.
 - [publishing-checklist.md](publishing-checklist.md): what was audited before the repository can be made public (`bun scripts/publish-audit.ts`), how to run it again, the merge record, and what the owner still decides.
 - [qm-findings.md](qm-findings.md): product observations about QM v0.1.15 from the source read, the smokes, the inner-harness run and the probe suite, each with its trials and smallest reproduction.
 - [receipts-manifest.json](receipts-manifest.json): the machine-readable receipts list, one entry per counted run with its preregistration commits and hashed artifacts (generated 2026-10-26 beside this index).
@@ -80,6 +81,10 @@ Design only: the folder holds `design.json` instead of a `prereg.json`, and no t
 - [ubicloud.md](ubicloud.md): the Ubicloud shard lane: the scripts that put one shard per VM, how a run fans out and comes back, the check lane, costs and limits.
 
 ## Changelog
+
+### 2026-11-08: private-by-hash.md listed
+
+A line for the new private-by-hash.md page, which explains the result class for runs whose billing artifacts stay private.
 
 ### 2026-11-08: scoreboard line says the README block is optional
 

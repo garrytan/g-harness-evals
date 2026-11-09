@@ -18,11 +18,20 @@
 // next one starts. A span that may be absent (presence "when_present") is
 // skipped when its anchor is not found.
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { Wire } from '../anatomy/dissect.ts';
 
 export const ROOT = resolve(import.meta.dir, '../..');
+
+const real = (p: string): string => { let q = resolve(p); const rest: string[] = []; while (!existsSync(q)) { rest.unshift(basename(q)); q = dirname(q); } return join(realpathSync(q), ...rest); };
+const within = (child: string, parent: string) => { const r = relative(real(parent), real(child)); return r === '' || (!r.startsWith('..') && !isAbsolute(r)); };
+
+/** A path raw harness text may be written to: outside the repository and outside every other output directory given. Throws otherwise. */
+export function privateTextPath(path: string, outputs: string[] = []): string {
+  for (const dir of [ROOT, ...outputs]) if (within(path, dir)) throw new Error(`${path} is inside ${dir === ROOT ? 'the repository' : dir}; raw harness text goes only to a path outside it`);
+  return resolve(path);
+}
 export const LAYERS = ['identity', 'tool-guide', 'tool-descriptions', 'safety', 'memory-skills', 'work-habits', 'style'] as const;
 export const NEVER_REMOVED = ['protocol-and-discovery', 'runtime-environment'] as const;
 export type Layer = (typeof LAYERS)[number];

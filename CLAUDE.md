@@ -24,6 +24,7 @@ Explain the task, the setting that changed the outcome, and the limit of the res
 - `runner/stats/`: the statistics kit (vendored from gbrain-evals, MIT).
 - `runner/prereg/`: the preregistration-order checker.
 - `tests/`: `bun test tests/`.
+- `private/`: private-only material the public copy leaves out: the program spend computation (`spend/budget-ledger.ts`, which renders `docs/budget-ledger.md`; its tests run with `bun test private/spend/`, which CI runs only where the folder exists) and the private outputs of private-by-hash runs (`docs/private-by-hash.md`).
 - `scripts/`: the report, audit and check tooling (run summaries and comparisons, link, receipt and publish checks), the shard runner (`run-shard.sh`, `ubicloud/`), the scoreboard generator (`scoreboard/build.ts`, which writes `docs/scoreboard.md`, and the README's scoreboard block when the README has the markers, from `docs/scoreboard/entries/`, and `docs/reports-index.md` from `docs/scoreboard/reports.json`) and the sealed held-out tools (`seal-heldout.ts`, `sealed/`).
 - `world/`: the simulated company: `seed/` (messy-company-v1 import, `world.json`, manifest), `services/` (Slack mock, clock, event log, one process per trial), `world-mcp/` (the MCP server every harness gets).
 - `sealed/`: `recipient.txt`, the public age recipient of the held-out custody identity, one line; `tests/sealed-recipient.test.ts` checks its shape. `backups.json`, the sha256 of the backup each sealed set was sealed from ([docs/sealed-custody.md](docs/sealed-custody.md)). The identity itself is not in the repository.

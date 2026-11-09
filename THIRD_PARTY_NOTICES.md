@@ -519,5 +519,5 @@ We use these benchmarks' task ids and public numbers. We don't redistribute thei
   - `docs/harness-anatomy/receipts/anatomy-capture-claude-code-*/blobs/`
   - the Claude Agent SDK and Claude Code parts of `docs/harness-anatomy/receipts/anatomy-capture-qm-claude-plain-20261030t024424/blobs/` (a mixed capture, also listed under QM)
   - `docs/benchmarks/2026-11-01-opus-gstack-follow/results/gn-follow-preset-2026-11/dry-run/preset-system-prompt.txt`
-  - the Claude Code spans in `harnesses/ablation/coding/items.json`
+  - the Claude Code spans of the ablation coder input, which `harnesses/ablation/coding/items.json` and `agreement.json` carry only as sha256 values (`scripts/ablation/settle.ts` writes the raw text only to a directory outside the repository)
 - Built harness images are never published. We publish Dockerfiles only.

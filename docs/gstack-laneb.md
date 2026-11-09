@@ -17,15 +17,16 @@ Terms used below:
 
 | File | What it does |
 |---|---|
-| `scripts/gstack-laneb/pin.json` | Every pin: the gstack-evals commit and tag, Harbor, the arm tar digests, the TB2 commit and tree digest, and the sha256 of every Lane B file we use. |
+| `scripts/gstack-laneb/pin.json` | Every pin: the gstack-evals commit and tag, Harbor, the arm tar digests, the TB2 commit and tree digest (`tb2.final_tree_sha256`), and the sha256 of every Lane B file we use. |
 | `scripts/gstack-laneb/pinned/` | Byte copies of the Lane B files the bridge imports (with Lane B's LICENSE). A test checks them against pin.json. |
-| `scripts/gstack-laneb/fetch.ts` | Fetches gstack-evals at the pinned commit, checks every pinned file, builds the arms with Lane B's `arms/build.sh`, and accepts each arm only as the pinned tar or, for gstack, a pack-equivalent rebuild that pin.json lists as a dated deviation (below). `--tb2` also fetches Terminal-Bench 2. |
+| `scripts/gstack-laneb/fetch.ts` | Fetches gstack-evals at the pinned commit, checks every pinned file, builds the arms with Lane B's `arms/build.sh`, and accepts each arm only as the pinned tar or, for gstack, a pack-equivalent rebuild that pin.json lists as a dated deviation (below). `--tb2` also fetches Terminal-Bench 2 and checks its tree digest (below, Fetching Terminal-Bench 2). |
 | `scripts/gstack-laneb/plan.ts` | Reads a preregistration (schema `gstack-laneb/1`), lists cells and trial ids, and prints each shard's lease. |
 | `scripts/gstack-laneb/materialize.ts` | `native` and `tb2` write Harbor task directories; `job` writes the shard's Harbor job (retries off, one trial at a time). |
 | `scripts/gstack-laneb/vm-run.sh` | Runs one shard: proxies, ledgers, the Harbor job, then the trial records. |
 | `scripts/gstack-laneb/to-trials.ts` | `attest` records the preregistration attestation before the first session, `convert` turns Harbor results into `trials.jsonl`, `gates` computes the body-load gate. |
 | `scripts/gstack-laneb/smoke.sh` | Keyless end-to-end smoke on the toy fixture with a fake upstream. |
 | `tests/gstack-laneb.test.ts` | Keyless tests for all of the above. |
+| `tests/gstack-laneb-fetch.test.ts` | Keyless, offline tests of the Terminal-Bench 2 fetch against local `file://` fixture repositories of synthetic files; one case against the real upstream runs only with `HE_LANEB_TB2_NETWORK=1`. |
 | `tests/fixtures/gstack-native/repo/toy/dev/toy-fix-calc/` | A hand-written toy task for the smoke and the tests. |
 
 ## Native tasks grade in a separate container
@@ -65,7 +66,7 @@ Claude Code (trial container)
    ```
    bun scripts/gstack-laneb/fetch.ts --out ~/.capy/work/gstack-laneb --tb2
    ```
-   It prints digests and counts only. Exit 2 with `HE-LANEB-002` means an arm is neither its pinned tar nor a listed deviation, and nothing was copied. `--pinned-arms <dir>` offers pinned `<arm>.tar.gz` files to use by digest before any rebuild.
+   It prints digests and counts only. Exit 2 with `HE-LANEB-002` means an arm is neither its pinned tar nor a listed deviation, and nothing was copied; `HE-LANEB-009` means the Terminal-Bench 2 fetch failed (below). `--pinned-arms <dir>` offers pinned `<arm>.tar.gz` files to use by digest before any rebuild. `<out>/fetch.json` exists only after a run that finished: it is deleted first and written last.
 2. **Smoke** (no key, no spend):
    ```
    HE_LANEB_HARBOR_READY=1 bash scripts/gstack-laneb/smoke.sh --laneb-root ~/.capy/work/gstack-laneb --network public
@@ -82,6 +83,18 @@ Claude Code (trial container)
    ```
    The manifest is the usual one ([ubicloud.md](ubicloud.md)) with cells named `<model>.<arm>`; put `--laneb-root <dir>` in its options when the fetched root is not at `~/.capy/work/gstack-laneb`. Each VM runs the keyless smoke, then `vm-run.sh` under the shard's lease. `--resume` and `--embedded` are refused for this workload.
 5. **Merge** with `scripts/merge-shards.ts` as for any run. Each record carries a `laneb` block (arm, Harbor trial, session, body-load probe, Lane B's meter and the delta). Then run `to-trials.ts gates --results <merged dir>`.
+
+## Fetching Terminal-Bench 2
+
+**The TB2 copy is used only after its digest matches the pin.** `fetch.ts --tb2` fetches `laude-institute/terminal-bench-2` at `tb2.commit` and computes `tb2.final_tree_sha256` on the copy: Lane B's `treeDigest` of each of the 20 task directories in `final.json`, combined by the rule in pin.json (`treeOf`). These are the same per-task digests `materialize.ts tb2` checks later.
+
+- **A new directory per attempt.** Each attempt fetches into `<out>/.terminal-bench-2.gen-<random>`, never a directory an earlier run left (leftovers are deleted first). Only a copy whose digest matches replaces `<out>/terminal-bench-2`, so a failed fetch leaves an earlier checked copy as it was.
+- **fetch.json last.** An earlier `<out>/fetch.json` is deleted before anything is fetched. The new one, with the arm digests and the `tb2` record (url, commit, digest, task count, the route and the attempts), is written to a temporary file in `<out>` and renamed into place after everything else passed. A rerun that fails leaves no fetch.json at all, so nothing shows an earlier success beside a current failure.
+- **Bounded and unattended.** Every network git step runs without prompts (`GIT_TERMINAL_PROMPT=0`, no askpass, ssh in batch mode, no pager) and with only PATH, HOME, git and proxy settings in its environment, so no model key reaches git. Each attempt has a deadline (10 minutes) and the whole fetch another (30 minutes). A network error or an attempt deadline is retried at most twice. A digest or commit mismatch is never retried.
+- **Errors carry no credentials.** A failure names the url, the commit and, for a mismatch, the first 12 hex characters of the pinned and the computed digest. Credentials are removed from the url and from git's output first: `user:token@` in a url, `x-access-token:`, `ghp_`, `gho_` and `github_pat_` shaped tokens, and Authorization headers.
+- **Never inside this repository.** With `--tb2`, an `--out` inside this checkout is refused before anything is fetched (HE-LANEB-003), so no TB2 task file can be committed. The default root, `~/.capy/work/gstack-laneb`, is outside it.
+
+**The credential is the lane's existing gh login, not a new secret.** The first attempt uses the machine's own git configuration. On a Capy machine (the lane's machines), the system git config already sends github.com through Capy's git proxy with a stored credential, and that is how the private `garrytan/gstack-evals` fetch has always authenticated. If git reports an authentication failure, the fetch moves once to the gh CLI login on that machine: git's credential helper is set to `gh auth git-credential` for the remaining attempts. This is the same gh login `scripts/ubicloud/pr-check.sh` posts `ubicloud/checks` under and `merge-pass.sh` merges with. A retry after a network error also goes through it when `gh auth status` succeeds. No token is read, passed on a command line, printed or logged. Ubicloud shard VMs never fetch: `run-shard.sh` streams the fetched root to the VM without its `.git`. The gstack-evals fetch follows the same policy.
 
 ## What a shard writes
 
@@ -123,8 +136,14 @@ So the counted gstack arm is a **pack-equivalent rebuild**, recorded in `pin.jso
 
 ## Error codes
 
-`HE-LANEB-001` to `HE-LANEB-008`, listed in [errors.md](errors.md#lane-b-bridge-harn-14).
+`HE-LANEB-001` to `HE-LANEB-009`, listed in [errors.md](errors.md#lane-b-bridge-harn-14).
 
 ## Disclosures
 
 gstack is Garry Tan's own project.
+
+## Changelog
+
+### 2026-11-08: the Terminal-Bench 2 fetch checks its digest before use and records fetch.json last (internal-task)
+
+New section "Fetching Terminal-Bench 2". `fetch.ts --tb2` now fetches into a new generation directory per attempt and moves it into place only after `tb2.final_tree_sha256` matches. fetch.json is deleted before a run and written last by rename. Every network git step runs without prompts, under per-attempt and overall deadlines, with at most two retries of a transient failure and none of a mismatch. Errors name the url, commit and digest prefixes with credentials removed, an `--out` inside the repository is refused with `--tb2`, and an authentication failure falls back to the lane's gh login. New error code HE-LANEB-009 and new tests in `tests/gstack-laneb-fetch.test.ts`. Why: the old fetch reused whatever directory an earlier run left, never checked the pinned digest, could wait on a credential prompt, and wrote fetch.json in place, so a failed rerun could sit beside an earlier success record.

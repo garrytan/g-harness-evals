@@ -165,6 +165,23 @@ describe('the prereg ledger', () => {
     expect(checkPublic([X], { ...ledger, cutover: 'soon' }, dir)[0]!.status).toBe('failed');
   });
 
+  test('prereg.ts --public fails a new out-of-order experiment that declares the private deviation flag, which the private check only warns about', async () => {
+    const { dir, ledger } = preCutover();
+    await Bun.sleep(1100);
+    const declared = { ...Y, preregistered_on_main: false as const, reason: 'preregistered on a branch, squash-merged with the results' };
+    commit(dir, { [Y.preregistration]: 'the rule', 'docs/y/results/trials.jsonl': '{}\n', 'docs/benchmarks/preregistrations.json': JSON.stringify({ schema_version: 1, experiments: [X, declared] }) }, 'y prereg and results together');
+    expect(ledger.experiments.map((e) => e.id)).toEqual(['x']);
+    const run = (...args: string[]) => spawnSync(process.execPath, [join(ROOT, 'runner', 'prereg', 'prereg.ts'), ...args], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: dir } });
+    const pub = run('--public');
+    expect(pub.status).toBe(1);
+    expect(pub.stderr).toContain('prereg-public: y: docs/y/results/trials.jsonl: added in ');
+    expect(pub.stdout).toContain('prereg-public: 2 experiments, 1 attested, 0 strict, 1 failed');
+    expect(pub.stdout).toContain(`prereg-public: x: ${ATTESTED}`);
+    const priv = run();
+    expect(priv.status).toBe(0);
+    expect(priv.stderr).toContain('prereg-order: warning: y: docs/y/results/trials.jsonl');
+  }, 20_000);
+
   test('scripts/prereg-ledger.ts writes the ledger, and --check fails once a result file changes', () => {
     const dir = repo();
     commit(dir, { [X.preregistration]: 'the rule', 'docs/benchmarks/preregistrations.json': JSON.stringify({ schema_version: 1, experiments: [X] }) }, 'preregister x (#7)');

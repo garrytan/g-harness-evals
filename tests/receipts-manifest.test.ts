@@ -1,6 +1,7 @@
 // The receipts manifest generator (scripts/receipts-manifest.ts) over a temporary repository: run id, cells, hashes,
-// the preregistration's first commit and amendments, ledger spend read from a lease ledger, the error string for a
-// file that is not a ledger, and --check's comparison that ignores generated_at.
+// the preregistration's first commit and amendments, a lease ledger's requests and leases (and no spend), the error
+// string for a file that is not a ledger, ledgerSpend's query, a private-by-hash run's attested artifacts, and --check's
+// comparison that ignores generated_at.
 import { describe, expect, test } from 'bun:test';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -8,7 +9,7 @@ import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Database } from 'bun:sqlite';
-import { REPORT_ELSEWHERE, buildManifest, compareManifests, readLedger, renderManifest } from '../scripts/receipts-manifest.ts';
+import { REPORT_ELSEWHERE, buildManifest, compareManifests, ledgerSpend, readLedger, renderManifest } from '../scripts/receipts-manifest.ts';
 
 const RUN = 'docs/benchmarks/2026-01-02-unit';
 
@@ -67,7 +68,7 @@ function populate(dir: string): { first: string; amendment: string; trials: stri
 }
 
 describe('receipts manifest', () => {
-  test('one row per run with results, with run id, cells, hashes, prereg history and ledger spend', () => {
+  test('one row per run with results, with run id, cells, hashes, prereg history, and ledger requests and leases without spend', () => {
     const dir = repo();
     const { first, amendment, trials } = populate(dir);
     const m = buildManifest(dir, '2026-01-03T00:00:00.000Z');
@@ -87,14 +88,36 @@ describe('receipts manifest', () => {
     expect(run.proxy_usage_logs[1]!.sha256).toBe(sha('{"at":"2026-01-02T00:00:01Z"}\n'));
     expect(run.ledgers.map((l) => l.path)).toEqual([`${RUN}/results/broken.sqlite`, `${RUN}/results/ledger.sqlite`]);
     const [broken, good] = run.ledgers;
-    expect(typeof broken!.ledger_committed_usd).toBe('string');
+    expect(typeof broken!.read_error).toBe('string');
     expect(broken!.leases).toBeNull();
     expect(broken!.sha256).toBe(sha('not a database\n'));
-    expect(good!.ledger_committed_usd).toBe(0.75);
-    expect(good!.ledger_settled_usd).toBe(0.5);
-    expect(good!.ledger_open_reservations_usd).toBe(0.25);
+    expect(good!.read_error).toBeNull();
     expect(good!.requests).toBe(2);
-    expect(good!.leases).toEqual([{ run_id: 'unit-2026-01', budget_usd: 2, committed_usd: 0.75, overshoot_usd: 0, started_at: '2026-01-02T00:00:00Z', finished_at: null }]);
+    expect(good!.leases).toEqual([{ run_id: 'unit-2026-01', started_at: '2026-01-02T00:00:00Z', finished_at: null }]);
+    expect(run.result_class).toBeUndefined();
+    expect(renderManifest(m)).not.toMatch(/_usd"/);
+  });
+
+  test('ledgerSpend is the one spend query: committed, settled and open spend and each lease, and it throws on a file that is not a ledger', () => {
+    const dir = repo();
+    populate(dir);
+    expect(ledgerSpend(readFileSync(join(dir, RUN, 'results', 'ledger.sqlite')))).toEqual({ committed_usd: 0.75, settled_usd: 0.5, open_reservations_usd: 0.25, leases: [{ run_id: 'unit-2026-01', budget_usd: 2, committed_usd: 0.75, overshoot_usd: 0 }] });
+    expect(() => ledgerSpend(readFileSync(join(dir, RUN, 'results', 'broken.sqlite')))).toThrow();
+  });
+
+  test('a private-by-hash run lists the artifacts its results attestation names, and its row has no ledger or usage log', () => {
+    const dir = repo();
+    populate(dir);
+    for (const f of ['ledger.sqlite', 'broken.sqlite', 'proxy-usage.ndjson', 'nested/x.proxy-usage.ndjson']) execFileSync('rm', [join(dir, RUN, 'results', f)]);
+    const artifacts = [
+      { name: 'ledger', schema: 'ledger-sqlite/1', location: 'private/spend/runs/unit-2026-01/ledger.sqlite', sha256: sha('synthetic ledger'), rows: 2 },
+      { name: 'usage', schema: 'proxy-usage-ndjson/1', location: 'private/spend/runs/unit-2026-01/proxy-usage.ndjson', sha256: sha('synthetic usage'), rows: 1 },
+    ];
+    writeFileSync(join(dir, RUN, 'results', 'private-by-hash.json'), JSON.stringify({ schema: 'harness-evals-private-by-hash-attestation/1', run_id: 'unit-2026-01', artifacts }));
+    const run = buildManifest(dir).runs[0]!;
+    expect(run.result_class).toBe('private-by-hash');
+    expect(run.private_artifacts).toEqual(artifacts.map(({ rows: _r, ...a }) => a));
+    expect([run.ledgers, run.proxy_usage_logs]).toEqual([[], []]);
   });
 
   test('a run with results/UNCOUNTED.md is marked uncounted, and a report-less run takes the report REPORT_ELSEWHERE names', () => {
@@ -131,7 +154,8 @@ describe('receipts manifest', () => {
     const bytes = readFileSync(path);
     expect([bytes[18], bytes[19]]).toEqual([2, 2]);
     execFileSync('rm', ['-f', path + '-shm', path + '-wal']);
-    expect(readLedger(path).ledger_committed_usd).toBe(1.5);
+    expect(readLedger(path).requests).toBe(1);
+    expect(ledgerSpend(readFileSync(path)).committed_usd).toBe(1.5);
     expect(() => readFileSync(path + '-shm')).toThrow();
     expect(() => readFileSync(path + '-wal')).toThrow();
   });
