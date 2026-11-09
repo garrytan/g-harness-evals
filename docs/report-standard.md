@@ -48,7 +48,7 @@ A run on a task set that already has a main entry adds a `"role": "other"` entry
 
 Every new run folder also gets a row in docs/scoreboard/reports.json. Until it has one, the [reports index](reports-index.md) lists it as not yet indexed.
 
-Run `bun scripts/scoreboard/build.ts` and commit the regenerated pages and README block in the same PR.
+Run `bun scripts/scoreboard/build.ts` and commit the regenerated pages, and the README block if the README has scoreboard markers, in the same PR.
 
 ## The end of the report
 

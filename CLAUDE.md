@@ -24,7 +24,7 @@ Explain the task, the setting that changed the outcome, and the limit of the res
 - `runner/stats/`: the statistics kit (vendored from gbrain-evals, MIT).
 - `runner/prereg/`: the preregistration-order checker.
 - `tests/`: `bun test tests/`.
-- `scripts/`: the report, audit and check tooling (run summaries and comparisons, link, receipt and publish checks), the shard runner (`run-shard.sh`, `ubicloud/`), the scoreboard generator (`scoreboard/build.ts`, which writes `docs/scoreboard.md` and the README's scoreboard block from `docs/scoreboard/entries/`, and `docs/reports-index.md` from `docs/scoreboard/reports.json`) and the sealed held-out tools (`seal-heldout.ts`, `sealed/`).
+- `scripts/`: the report, audit and check tooling (run summaries and comparisons, link, receipt and publish checks), the shard runner (`run-shard.sh`, `ubicloud/`), the scoreboard generator (`scoreboard/build.ts`, which writes `docs/scoreboard.md`, and the README's scoreboard block when the README has the markers, from `docs/scoreboard/entries/`, and `docs/reports-index.md` from `docs/scoreboard/reports.json`) and the sealed held-out tools (`seal-heldout.ts`, `sealed/`).
 - `world/`: the simulated company: `seed/` (messy-company-v1 import, `world.json`, manifest), `services/` (Slack mock, clock, event log, one process per trial), `world-mcp/` (the MCP server every harness gets).
 - `sealed/`: `recipient.txt`, the public age recipient of the held-out custody identity, one line; `tests/sealed-recipient.test.ts` checks its shape. `backups.json`, the sha256 of the backup each sealed set was sealed from ([docs/sealed-custody.md](docs/sealed-custody.md)). The identity itself is not in the repository.
 - `harnesses/<name>/`: each harness's image, adapter and `pin.json`. `tasks/`: the task sets with their oracles and seals. `runner/proxy/` and `runner/ledger/`: the metering proxy and the budget ledger.
@@ -34,7 +34,7 @@ Explain the task, the setting that changed the outcome, and the limit of the res
 
 The hub pages in `docs/` have two parts: the current state on top, in present tense, never naming the current release version (point at `VERSION` and `CHANGELOG.md` instead; a past version an older page opens with is history and stays as it is); and a `## Changelog` at the bottom, newest first, one dated entry per change saying what changed on that page and why. A page changelog entry carries no version number, and a change that only moves the version adds no entry: a version written into a page changes whenever a pull request is renumbered after another one merges, and gstack then counts the page as changed product and will not carry the /ship receipt across the base merge (`.gstack/ship-policy.json` lists the files that may differ by a version stamp). Replace a superseded claim instead of appending an update beside it, and add the changelog entry in the same commit.
 
-README.md is written for someone who has never seen the repository, and holds only the findings: one or two sentences on what the repository is, the takeaways (each linking its page under `findings/`), the generated scoreboard block, one line pointing at the method, and the disclosures. It has no page changelog and no process or history text; its changes are recorded through `changelog.d/` like any other change.
+README.md is written for someone who has never seen the repository, and holds only the findings: one or two sentences on what the repository is, the harness rankings (hand-written from the generated scoreboard page; `tests/scoreboard.test.ts` checks each row), the takeaways (each linking its page under `findings/`), one line pointing at the method, and the disclosures. It has no page changelog and no process or history text; its changes are recorded through `changelog.d/` like any other change.
 
 ## Shape of a benchmark report
 
@@ -48,7 +48,7 @@ README.md is written for someone who has never seen the repository, and holds on
 
 - Grade world state and evaluator-owned event logs, never the agent's reply. The reply gets its own rubric score, reported separately.
 - Name the denominator. Pass rate, pass^k, pass@k, consent-violation rate and cost per success answer different questions; never combine them.
-- Report intervals and n beside every figure; cluster by task; a harness at ceiling or floor is uninformative, not a tie. No ranks, no composite.
+- Report intervals and n beside every figure; cluster by task; a harness at ceiling or floor is uninformative, not a tie. No composite. No ranks, with one exception: the README's harness rankings rank each harness by cost per solved task, and rows whose 95% ranges overlap share a rank (Garry and internal-task, 2026-11-08). Pass rates there are still reported as intervals with n.
 - Record termination, grade and effects as separate fields. A harness error is the harness's fault but not a wrong answer; a model or infrastructure error is excluded with its count published.
 - Preregister before the first counted cell. Amendments are dated and committed before the cells they affect. A changed allowlist, model revision or pin is a new run.
 - Spend through the ledger. A cap stop is an incomplete run, recorded as such, never backfilled or retried to change a verdict.

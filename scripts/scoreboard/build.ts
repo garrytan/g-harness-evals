@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
-// Builds docs/scoreboard.md and the README's scoreboard block from docs/scoreboard/entries/*.json and the
+// Builds docs/scoreboard.md, and the README's scoreboard block when the README has the markers, from docs/scoreboard/entries/*.json and the
 // committed results files each entry points at, and docs/reports-index.md from docs/scoreboard/reports.json.
 // Every number comes from a results file; nothing is typed.
 // Usage: bun scripts/scoreboard/build.ts            (write)
-//        bun scripts/scoreboard/build.ts --check    (exit 1 when a committed page or the README block differs)
+//        bun scripts/scoreboard/build.ts --check    (exit 1 when a committed page, or a README block that exists, differs)
 // --check skips the reports index's "Not yet indexed" list, so a new run folder with no row never fails it.
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -318,7 +318,7 @@ export function loadEntries(root: string): Entry[] {
   return readdirSync(dir).filter((f) => f.endsWith('.json')).sort().map((f) => validateEntry(JSON.parse(readFileSync(join(dir, f), 'utf8')), `docs/scoreboard/entries/${f}`));
 }
 
-export function buildAll(root: string): { page: string; readme: string; reportsIndex: string; tables: Table[] } {
+export function buildAll(root: string): { page: string; readme: string; readmeBlock: boolean; reportsIndex: string; tables: Table[] } {
   const cache = new Map<string, unknown>();
   const readJson = (p: string) => { if (!cache.has(p)) cache.set(p, JSON.parse(readFileSync(join(root, p), 'utf8'))); return cache.get(p); };
   const entries = loadEntries(root);
@@ -329,28 +329,29 @@ export function buildAll(root: string): { page: string; readme: string; reportsI
   const readmePath = join(root, 'README.md');
   const current = readFileSync(readmePath, 'utf8');
   const i = current.indexOf(README_START), j = current.indexOf(README_END);
-  if (i < 0 || j < i) throw new Error('README.md has no scoreboard markers');
-  const readme = current.slice(0, i) + renderReadmeBlock(tables) + current.slice(j + README_END.length);
+  if ((i < 0) !== (j < 0) || j < i) throw new Error('README.md has a broken pair of scoreboard markers');
+  const readme = i < 0 ? current : current.slice(0, i) + renderReadmeBlock(tables) + current.slice(j + README_END.length);
   const folders = benchmarkFolders(root);
   const reportsIndex = renderReportsIndex(loadReports(root, folders), folders);
-  return { page, readme, reportsIndex, tables };
+  return { page, readme, readmeBlock: i >= 0, reportsIndex, tables };
 }
 
 if (import.meta.main) {
   const root = join(import.meta.dir, '..', '..');
-  const { page, readme, reportsIndex } = buildAll(root);
+  const { page, readme, readmeBlock, reportsIndex } = buildAll(root);
   const same = (a: string, b: string) => a === b;
   const targets: [string, string, (a: string, b: string) => boolean][] = [
     [join(root, 'docs/scoreboard.md'), page, same],
-    [join(root, 'README.md'), readme, same],
+    ...(readmeBlock ? [[join(root, 'README.md'), readme, same] as [string, string, (a: string, b: string) => boolean]] : []),
     [join(root, 'docs/reports-index.md'), reportsIndex, (a, b) => withoutUnindexed(a) === withoutUnindexed(b)],
   ];
+  if (!readmeBlock) console.log('scoreboard: README.md has no scoreboard markers, so the README block is skipped (tests/scoreboard.test.ts checks its ranking figures)');
   if (process.argv.includes('--check')) {
     const stale = targets.filter(([p, want, eq]) => !existsSync(p) || !eq(readFileSync(p, 'utf8'), want)).map(([p]) => relative(root, p));
     if (stale.length) { console.error(`scoreboard: out of date: ${stale.join(', ')}; run bun scripts/scoreboard/build.ts`); process.exit(1); }
     console.log('scoreboard: up to date');
   } else {
     for (const [p, want] of targets) writeFileSync(p, want);
-    console.log('scoreboard: wrote docs/scoreboard.md, docs/reports-index.md and the README block');
+    console.log('scoreboard: wrote docs/scoreboard.md and docs/reports-index.md, and the README block if it has one');
   }
 }

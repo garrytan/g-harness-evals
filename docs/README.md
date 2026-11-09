@@ -68,7 +68,7 @@ Design only: the folder holds `design.json` instead of a `prereg.json`, and no t
 - [report-standard.md](report-standard.md): how every new report is written: the TL;DR block at the top, the metric names, the interval rule, feeding the scoreboard and the reports index, and disclosures last. [report-template.md](report-template.md) is the skeleton to copy.
 - [reports-index.md](reports-index.md): every run folder, one table per grade (frontier, method, appendix), with its question, status, claim check, verdict and what supersedes it. `scripts/scoreboard/build.ts` generates it from [scoreboard/reports.json](scoreboard/reports.json); it holds no result numbers.
 - [repo-tasks.md](repo-tasks.md): the repository task format (fix, review, qa and ship tasks graded by hidden checks on the container), its acceptance rules, and the gstack-native-v1 set's public dev split and sealed held-out split.
-- [scoreboard.md](scoreboard.md): "Which harness should I use?": one generated section per task set with each harness and model's pass rate, cost per solved task, cost per trial and median time per trial, the run's preregistered calls, caveats, receipts and disclosures, plus a "Same tasks, other runs" table for later runs on the same task set. `scripts/scoreboard/build.ts` writes it and the README's scoreboard block from [scoreboard/entries/](scoreboard/entries/matrix-mu-2026-11.json); do not edit it by hand.
+- [scoreboard.md](scoreboard.md): "Which harness should I use?": one generated section per task set with each harness and model's pass rate, cost per solved task, cost per trial and median time per trial, the run's preregistered calls, caveats, receipts and disclosures, plus a "Same tasks, other runs" table for later runs on the same task set. `scripts/scoreboard/build.ts` writes it (and a README scoreboard block, when the README has the markers) from [scoreboard/entries/](scoreboard/entries/matrix-mu-2026-11.json); do not edit it by hand.
 - [shared-rig.md](shared-rig.md): where the canonical copy of each shared rig part lives (stats kit, price table, metering proxy, per-trial usage, trial bundle, fan-out), for the repositories that vendor them.
 - [tasks.md](tasks.md): the multi-user task format: families, the access model, the predicate library, oracles and the mutation contract, task sets (v0.1, v0.2, the generated v0.3 and v0.4 sets, the QM probes) and how a cell selects one.
 - [replicate.md](replicate.md): how to check a finding from its trial bundle with `scripts/replicate.ts`: the two free checks (`--reanalyze`, `--estimate-only`), a paid rerun of one cell under a hard `--max-usd` cap, the replication band and its coverage evidence under [replicate/](replicate/band-coverage-m3-heldout-openclaw.json), verdicts, exit codes and limits.
@@ -80,6 +80,10 @@ Design only: the folder holds `design.json` instead of a `prereg.json`, and no t
 - [ubicloud.md](ubicloud.md): the Ubicloud shard lane: the scripts that put one shard per VM, how a run fans out and comes back, the check lane, costs and limits.
 
 ## Changelog
+
+### 2026-11-08: scoreboard line says the README block is optional
+
+The scoreboard.md line now says `scripts/scoreboard/build.ts` writes a README scoreboard block only when the README has the markers. Why: the README is now the public copy's README, with hand-written harness rankings and no markers, and the generator leaves a README without markers as it is.
 
 ### 2026-11-08: corrections page listed
 

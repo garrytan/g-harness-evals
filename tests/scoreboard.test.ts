@@ -12,10 +12,32 @@ const readJson = (p: string) => JSON.parse(readFileSync(join(root, p), 'utf8'));
 describe('scoreboard', () => {
   const { page, readme, reportsIndex, tables } = buildAll(root);
 
-  test('docs/scoreboard.md, docs/reports-index.md and the README block match the committed data (run bun scripts/scoreboard/build.ts)', () => {
+  test('docs/scoreboard.md, docs/reports-index.md and any README block match the committed data (run bun scripts/scoreboard/build.ts)', () => {
     expect(readFileSync(join(root, 'docs/scoreboard.md'), 'utf8')).toBe(page);
     expect(readFileSync(join(root, 'README.md'), 'utf8')).toBe(readme);
     expect(withoutUnindexed(readFileSync(join(root, 'docs/reports-index.md'), 'utf8'))).toBe(withoutUnindexed(reportsIndex));
+  });
+
+  test("each row of the README's hand-written harness rankings matches its harness and model on the generated scoreboard page", () => {
+    const text = readFileSync(join(root, 'README.md'), 'utf8');
+    const start = text.indexOf('\n## Harness rankings\n');
+    expect(start).toBeGreaterThan(-1);
+    const section = text.slice(start, text.indexOf('\n## ', start + 1));
+    const tableStart = page.indexOf('| Harness | Version | Model | Pass rate');
+    expect(tableStart).toBeGreaterThan(-1);
+    const pageRows = new Map(page.slice(tableStart, page.indexOf('\n\n', tableStart)).split('\n').map((l) => l.split('|').map((c) => c.trim())).map((c) => [`${c[1]} / ${c[3]}`, c]));
+    let model = '';
+    let rows = 0;
+    for (const line of section.split('\n')) {
+      model = /^\*\*(.+)\*\*$/.exec(line)?.[1] ?? model;
+      if (!/^\| \d/.test(line)) continue;
+      const [, , harness, pass, cost, time] = line.split('|').map((c) => c.trim());
+      const row = pageRows.get(`${harness} / ${model}`);
+      expect(row).toBeDefined();
+      expect([pass, cost, time]).toEqual([row![4], row![6], row![8]]);
+      rows++;
+    }
+    expect(rows).toBe(7);
   });
 
   test('the matrix-mu entry renders, with each disclosure line it names copied onto the page', () => {
