@@ -4,7 +4,50 @@
 
 ## Harness rankings
 
-Pass rates couldn't be told apart in any tested pair on these 20 public multi-user tasks (QM's pairs were not tested; a gap under 7.7 to 14.2 points could hide), so the ranking is cost and speed. Rows whose cost ranges overlap share a rank. Brackets are 95% ranges.
+Two task sets, each ranked on its own. **Never compare numbers across task sets:** different tasks give different pass rates. Within each model, rows are ranked by cost per solved task, and rows whose cost ranges overlap share a rank. Brackets are 95% ranges.
+
+### 52 public Terminal-Bench 2.1 coding tasks (frontier-harness-2026-11)
+
+Each harness was compared only with its model's home harness: Claude Code on Opus 5.5, Codex on GPT-6.1 Sol. Each cell scored 102 to 104 trials (52 tasks, 51 for Pi, two tries each). **One pair was behind on pass rate: OpenClaw on Opus, against Claude Code.** The other five passed within 15 points, though the difference intervals against the home harness for Hermes and Pi on Opus, and OpenClaw on Sol, sit wholly below zero. The ranking is by cost per solved task, whatever the pass rate.
+
+**Opus 5.5**
+
+| Rank | Harness | Pass rate [95% range] | Cost per solved task [95% range] | Median time per trial |
+|---|---|---|---|---|
+| 1 | Pi | 81.4% [71.6%, 90.2%] | $0.62 [$0.35, $0.95] | 196.4 s |
+| 1 | Claude Code | 88.5% [79.8%, 96.2%] | $0.63 [$0.41, $0.89] | 252.0 s |
+| 1† | OpenClaw | 76.0% [64.4%, 86.5%] | $0.88 [$0.57, $1.29] | 287.8 s |
+| 1 | Hermes Agent | 81.7% [72.1%, 91.3%] | $0.88 [$0.54, $1.38] | 427.0 s |
+
+†Behind Claude Code on pass rate, the run's one preregistered "behind" call. It shares rank 1 on cost only.
+
+**GPT-6.1 Sol**
+
+| Rank | Harness | Pass rate [95% range] | Cost per solved task [95% range] | Median time per trial |
+|---|---|---|---|---|
+| 1 | Pi | 80.4% [70.6%, 90.2%] | $0.23 [$0.17, $0.31] | 220.5 s |
+| 1 | Codex | 83.7% [74.0%, 92.3%] | $0.34 [$0.25, $0.46] | 279.2 s |
+| 1* | Hermes Agent | 85.6% [76.9%, 93.3%] | $0.43 [$0.31, $0.60] | 438.5 s |
+| 1* | OpenClaw | 76.0% [64.4%, 86.5%] | $0.61 [$0.40, $0.95] | 325.6 s |
+
+*Hermes Agent's and OpenClaw's cost ranges clear Pi's (Hermes's starts just above Pi's top; both round to $0.31), but they overlap Codex's, so they share Codex's rank.
+
+- These are dev results on public tasks at the pinned versions, not held-out confirmation. The cost differences are descriptive, with no test.
+- Claude Code and Codex are each model's own harness. They can't run the same model, so they are never compared with each other.
+- Every cell is a plain harness: no gstack, no gbrain.
+- OpenClaw on Opus's behind call depends on two choices: with every provider refusal removed, or under amendment 4's outage classification alone, it is inconclusive.
+- Under amendment 4's outage classification alone, 3 of 6 calls change: OpenClaw on Opus becomes inconclusive, OpenClaw on Sol becomes behind, and Pi on Sol becomes inconclusive.
+- A GitHub outage hit 353 runs at grade time (kept sample included). 351 were rerun and replaced; the lease stopped the other 2 reruns, so those 2 trials are excluded, though both runs' spend stays in cost. Cost per solved task leaves out the replaced runs' spend, and their passes aren't counted either.
+- Claude Code on Opus is near the ceiling, so there is little room above it.
+- 4 Hermes trials (2 in these cells) are scored as fails because Hermes's web tools reached the answer key.
+- Pi's pairs have 51 tasks: one task crashes Pi's adapter.
+- Trials ran 4 at a time per VM, so time per trial is contended.
+- A planned matrix that adds particle-1 next to these frontier models will extend these rankings.
+- Full tables and receipts: [scoreboard](docs/scoreboard.md) and [frontier report](docs/benchmarks/2026-11-07-frontier-harness/report.md).
+
+### 20 public v0.3 multi-user dev tasks (matrix-mu-2026-11)
+
+Pass rates couldn't be told apart in any tested pair on these 20 public multi-user tasks (QM's pairs were not tested; a gap under 7.7 to 14.2 points could hide), so the ranking is cost and speed. Rows whose cost ranges overlap share a rank.
 
 **Opus 5.5**
 
@@ -94,3 +137,5 @@ Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
 Disclosure: OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.
 
 Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI.
+
+Disclosure: Y Combinator, which Garry Tan runs, is an investor in Particle, which makes particle-1.

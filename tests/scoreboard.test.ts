@@ -23,21 +23,31 @@ describe('scoreboard', () => {
     const start = text.indexOf('\n## Harness rankings\n');
     expect(start).toBeGreaterThan(-1);
     const section = text.slice(start, text.indexOf('\n## ', start + 1));
-    const tableStart = page.indexOf('| Harness | Version | Model | Pass rate', page.indexOf('(matrix-mu-2026-11, '));
-    expect(tableStart).toBeGreaterThan(-1);
-    const pageRows = new Map(page.slice(tableStart, page.indexOf('\n\n', tableStart)).split('\n').map((l) => l.split('|').map((c) => c.trim())).map((c) => [`${c[1]} / ${c[3]}`, c]));
+    const pageRowsFor = (runId: string) => {
+      const tableStart = page.indexOf('| Harness | Version | Model | Pass rate', page.indexOf(`(${runId}, `));
+      expect(tableStart).toBeGreaterThan(-1);
+      return new Map(page.slice(tableStart, page.indexOf('\n\n', tableStart)).split('\n').map((l) => l.split('|').map((c) => c.trim())).map((c) => [`${c[1]} / ${c[3]}`, c]));
+    };
+    let pageRows: Map<string, string[]> | undefined;
     let model = '';
-    let rows = 0;
+    const rows: Record<string, number> = {};
+    let runId = '';
     for (const line of section.split('\n')) {
+      const heading = /^### .*\(([a-z0-9-]+)\)$/.exec(line);
+      if (heading) {
+        runId = heading[1]!;
+        pageRows = pageRowsFor(runId);
+        model = '';
+      }
       model = /^\*\*(.+)\*\*$/.exec(line)?.[1] ?? model;
       if (!/^\| \d/.test(line)) continue;
       const [, , harness, pass, cost, time] = line.split('|').map((c) => c.trim());
-      const row = pageRows.get(`${harness} / ${model}`);
+      const row = pageRows?.get(`${harness} / ${model}`);
       expect(row).toBeDefined();
       expect([pass, cost, time]).toEqual([row![4], row![6], row![8]]);
-      rows++;
+      rows[runId] = (rows[runId] ?? 0) + 1;
     }
-    expect(rows).toBe(7);
+    expect(rows).toEqual({ 'frontier-harness-2026-11': 8, 'matrix-mu-2026-11': 7 });
   });
 
   test('the matrix-mu entry renders, with each disclosure line it names copied onto the page', () => {

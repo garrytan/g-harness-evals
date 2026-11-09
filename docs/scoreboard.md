@@ -36,7 +36,7 @@ One section per task set. **Never compare numbers across task sets:** different 
 - Calls come only from the run's preregistered comparisons; rows are in the run's own order, which is not a ranking.
 - Why null? verdict: **CUT-CANDIDATE**. See [the glossary below](#how-to-read-this) and the report.
 
-**Receipts:** [report](benchmarks/2026-11-07-frontier-harness/report.md) · [analysis.json](benchmarks/2026-11-07-frontier-harness/results/analysis/analysis.json) · results PR #337 · claim check: claim-check reader, Opus 5.5 (the /ship fix-check on the cost fix, R51; 3 informational findings, no number changed) on #337
+**Receipts:** [report](benchmarks/2026-11-07-frontier-harness/report.md) · [analysis.json](benchmarks/2026-11-07-frontier-harness/results/analysis/analysis.json) · results PR #337 · claim check: claim-check reader, Opus 5.5, round 2 (HIGH findings fixed before merge), then the /ship fix-check on the cost fix (3 informational findings, no number changed) on #337
 
 ## 20 public v0.3 multi-user dev tasks (matrix-mu-2026-11, dev, public)
 
