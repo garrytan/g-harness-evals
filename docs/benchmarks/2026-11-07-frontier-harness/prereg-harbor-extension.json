@@ -1,0 +1,104 @@
+{
+  "schema": "frontier-harbor/1",
+  "run_id": "frontier-harness-2026-11",
+  "task_list": {
+    "file": "scripts/frontier-harbor/pin.json"
+  },
+  "shared_order_seed": "harn50-frontier-2026-11-07",
+  "cap_usd": 870,
+  "reserve_usd": 0,
+  "concurrency": 4,
+  "cells": [
+    {
+      "id": "astra-codex",
+      "model": "openai:gpt-6-astra",
+      "harness": "codex",
+      "attempts": 1,
+      "tasks": {
+        "from": 0,
+        "to": 52
+      },
+      "stage": "extension",
+      "priority": 1
+    },
+    {
+      "id": "astra-openclaw",
+      "model": "openai:gpt-6-astra",
+      "harness": "openclaw",
+      "attempts": 1,
+      "tasks": {
+        "from": 0,
+        "to": 52
+      },
+      "stage": "extension",
+      "priority": 2
+    },
+    {
+      "id": "fable-cc",
+      "model": "anthropic:claude-fable-5-1",
+      "harness": "claude-code",
+      "attempts": 1,
+      "tasks": {
+        "from": 0,
+        "to": 52
+      },
+      "stage": "extension",
+      "priority": 3
+    },
+    {
+      "id": "fable-openclaw",
+      "model": "anthropic:claude-fable-5-1",
+      "harness": "openclaw",
+      "attempts": 1,
+      "tasks": {
+        "from": 0,
+        "to": 52
+      },
+      "stage": "extension",
+      "priority": 4
+    }
+  ],
+  "shards": [
+    {
+      "name": "astra",
+      "cells": [
+        "astra-codex",
+        "astra-openclaw"
+      ],
+      "lease_usd": 450
+    },
+    {
+      "name": "fable",
+      "cells": [
+        "fable-cc",
+        "fable-openclaw"
+      ],
+      "lease_usd": 420
+    }
+  ],
+  "stages": [
+    {
+      "name": "probe",
+      "trials": {
+        "astra-codex": {
+          "attempts": [
+            1
+          ],
+          "tasks": {
+            "from": 0,
+            "to": 6
+          }
+        },
+        "fable-cc": {
+          "attempts": [
+            1
+          ],
+          "tasks": {
+            "from": 0,
+            "to": 6
+          }
+        }
+      }
+    }
+  ]
+}

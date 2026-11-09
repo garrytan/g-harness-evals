@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
-  benchmarkFolders, buildAll, buildTable, callFor, costCallFor, getPath, loadEntries, modelLines, renderPage, renderReadmeBlock, renderReportsIndex, usd, withoutUnindexed, type Comparison,
+  benchmarkFolders, buildAll, buildTable, callFor, callPhrase, costCallFor, getPath, loadEntries, modelLines, renderPage, renderReadmeBlock, renderReportsIndex, usd, withoutUnindexed, type Comparison,
 } from '../scripts/scoreboard/build.ts';
 import { validateEntry, validateReports, type ReportRow } from '../scripts/scoreboard/schema.ts';
 
@@ -23,7 +23,7 @@ describe('scoreboard', () => {
     const start = text.indexOf('\n## Harness rankings\n');
     expect(start).toBeGreaterThan(-1);
     const section = text.slice(start, text.indexOf('\n## ', start + 1));
-    const tableStart = page.indexOf('| Harness | Version | Model | Pass rate');
+    const tableStart = page.indexOf('| Harness | Version | Model | Pass rate', page.indexOf('(matrix-mu-2026-11, '));
     expect(tableStart).toBeGreaterThan(-1);
     const pageRows = new Map(page.slice(tableStart, page.indexOf('\n\n', tableStart)).split('\n').map((l) => l.split('|').map((c) => c.trim())).map((c) => [`${c[1]} / ${c[3]}`, c]));
     let model = '';
@@ -51,12 +51,47 @@ describe('scoreboard', () => {
     }
   });
 
+  test('the frontier-harness entry renders, with each disclosure line it names copied onto the page', () => {
+    const entry = validateEntry(readJson('docs/scoreboard/entries/frontier-harness-2026-11.json'), 'frontier-harness-2026-11.json');
+    expect(tables.map((t) => t.entry.run_id)).toContain(entry.run_id);
+    const { lines } = readJson('docs/scoreboard/disclosures.json') as { lines: Record<string, string> };
+    expect(entry.disclosures.length).toBeGreaterThan(0);
+    for (const s of entry.disclosures) {
+      expect(lines[s]).toBeDefined();
+      expect(page).toContain(lines[s]!);
+    }
+  });
+
   const matrixMu = () => loadEntries(root).find((e) => e.run_id === 'matrix-mu-2026-11')!;
   const editedJson = (edit: (path: string, doc: Record<string, any>) => void) => (p: string) => {
     const doc = structuredClone(readJson(p));
     edit(p, doc);
     return doc;
   };
+
+  const withWords = (verdictOf: (cell: string) => string) => editedJson((p, doc) => {
+    if (p.endsWith('matrix-analysis.json')) for (const c of doc.cells) c.call = verdictOf(c.id);
+  });
+  const matrixMuWithWords = () => {
+    const e = matrixMu();
+    e.family = { ...e.family, verdict: { file: 'results/matrix-analysis.json', path: 'cells[id={cell}].call' }, words: { 'within-15': 'within 15 points', inconclusive: "can't tell apart" } };
+    return e;
+  };
+
+  test('a family can read each comparison\'s verdict from the analysis and map it to a glossary call word', () => {
+    const t = buildTable(matrixMuWithWords(), withWords(() => 'within-15'));
+    const pair = (getPath(readJson('docs/benchmarks/2026-11-04-matrix-mu/results/matrix-analysis.json'), 'primary.comparisons') as Comparison[])[0]!;
+    expect(t.rows.find((r) => r.id === pair.a)!.call).toContain('within 15 points of');
+    expect(t.rows.find((r) => r.id === pair.b)!.call).toContain('at most 15 points ahead of');
+    expect(t.model_lines.join(' ')).toContain('within 15 points');
+  });
+
+  test('an analysis verdict with no mapped call word fails the build, and a mapped word outside the glossary is refused', () => {
+    expect(() => buildTable(matrixMuWithWords(), withWords(() => 'saturated'))).toThrow(/verdict "saturated" has no call word in family.words/);
+    const bad = matrixMuWithWords();
+    bad.family.words = { 'within-15': 'within-15' };
+    expect(() => validateEntry(bad, 'fixture')).toThrow(/family.words.within-15 is "within-15", not a call word/);
+  });
 
   test('a featured subject with no disclosure line is refused', () => {
     expect(() => renderPage(tables, {})).toThrow(/no disclosure line/);
@@ -114,18 +149,23 @@ describe('scoreboard', () => {
   test('every rendered call equals the verdict field of its preregistered family', () => {
     for (const t of tables.filter((x) => x.entry.family.kind !== 'cost_per_trial')) {
       const base = dirname(t.entry.report);
-      const family = getPath(readJson(join(base, t.entry.family.file)), t.entry.family.path) as Comparison[];
+      const { a: aKey = 'a', b: bKey = 'b', verdict: verdictSrc, words } = t.entry.family;
+      const raw = getPath(readJson(join(base, t.entry.family.file)), t.entry.family.path) as Record<string, string>[];
+      const family = raw.map((c) => {
+        const v = verdictSrc ? getPath(readJson(join(base, verdictSrc.file)), verdictSrc.path.replaceAll('{cell}', c[aKey]!)) as string : c.verdict!;
+        return { a: c[aKey]!, b: c[bKey]!, verdict: words ? words[v]! : v };
+      });
       const modelOf = new Map(t.entry.cells.map((c) => [c.id, c.model]));
       const harnessOf = new Map(t.entry.cells.map((c) => [c.id, c.harness]));
       const sameModel = family.filter((c) => modelOf.get(c.a) === modelOf.get(c.b));
       expect(sameModel.length).toBeGreaterThan(0);
       for (const c of sameModel) {
-        const verdict = c.verdict!;
+        const verdict = c.verdict;
+        expect(verdict).toBeDefined();
         const rowA = t.rows.find((r) => r.id === c.a)!;
         const rowB = t.rows.find((r) => r.id === c.b)!;
-        const lead = verdict === "can't tell apart" ? "can't tell apart from" : `${verdict}:`;
-        expect(rowA.call).toContain(lead);
-        expect(rowB.call).toContain(lead);
+        expect(rowA.call).toContain(callPhrase(verdict, 'a'));
+        expect(rowB.call).toContain(callPhrase(verdict, 'b'));
         expect(rowA.call).toContain(harnessOf.get(c.b)!);
         expect(rowB.call).toContain(harnessOf.get(c.a)!);
       }
@@ -277,8 +317,15 @@ describe('callFor', () => {
   const secondary: Comparison[] = [{ a: 'q', b: 'a', tested: null }];
 
   test('groups by verdict, names the other harness whichever side it is on, and skips cross-model pairs', () => {
-    expect(callFor('a', modelOf, harnessOf, primary, secondary)).toBe("can't tell apart from B; behind: C");
-    expect(callFor('c', modelOf, harnessOf, primary, secondary)).toBe('behind: A');
+    expect(callFor('a', modelOf, harnessOf, primary, secondary)).toBe("can't tell apart from B; ahead of C");
+    expect(callFor('c', modelOf, harnessOf, primary, secondary)).toBe('behind A');
+  });
+
+  test('directional calls read a against b from a\'s row and invert on b\'s row', () => {
+    const within: Comparison[] = [{ a: 'b', b: 'a', verdict: 'within 15 points', tested: true }, { a: 'c', b: 'a', verdict: 'within 15 points', tested: true }, { a: 'q', b: 'a', verdict: 'ahead', tested: true }];
+    expect(callFor('b', modelOf, harnessOf, within, [])).toBe('within 15 points of A');
+    expect(callFor('a', modelOf, harnessOf, within, [])).toBe('at most 15 points ahead of B, C; behind Q');
+    expect(callFor('q', modelOf, harnessOf, within, [])).toBe('ahead of A');
   });
 
   test('a cell with only an untested secondary interval says so', () => {

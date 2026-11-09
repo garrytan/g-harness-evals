@@ -1,0 +1,1152 @@
+{
+ "run_id": "frontier-harness-2026-11",
+ "method": {
+  "estimator": "task mean (each task's mean pass over its scored attempts, then the mean over tasks); task-clustered percentile bootstrap intervals; pairs from runner/stats/paired.ts clusteredPairedDelta over per-task means of the attempts scored in both cells, Holm within model across primary pairs for the two-sided sign-flip p and for the one-sided non-inferiority p",
+  "seed": 7,
+  "draws": 10000,
+  "alpha": 0.05,
+  "ni_margin": 0.15,
+  "saturated_at": 0.95,
+  "min_paired_tasks": 10,
+  "drift_threshold": 0.1,
+  "wall_time": "median over scored trials, contended (trials of a shard may overlap)",
+  "cost": "recorded USD of every trial record of the cell (excluded ones included; a run a rerun replaced is not a record) over scored passes"
+ },
+ "verdict_rules": {
+  "home": "the model's home harness; every other cell of the model is compared with it",
+  "incomplete": "the cell or its home cell has a planned trial with no record, or the pair has fewer than min_paired_tasks (10 by default) tasks with an attempt scored in both cells: reported from what exists, no claim",
+  "descriptive": "an extension cell (descriptive in the spec, for example one attempt per task): estimate and intervals only, no test and no non-inferiority claim",
+  "behind": "a primary pair whose two-sided task-level sign-flip p, Holm-adjusted across the model's primary pairs, is at or below alpha with the cell below its home",
+  "within-15": "a primary pair that is not behind and whose one-sided non-inferiority p at a 15-point margin (the share of task-bootstrap draws of cell minus home at or below -15 points), Holm-adjusted across the model's primary pairs, is at or below alpha",
+  "saturated": "a primary pair that is neither behind nor within-15 and whose home cell averages at least saturated_at (95% by default) on the paired tasks, or where no paired task differs: a ceiling, not a tie",
+  "inconclusive": "every other primary pair: the data show neither that the cell is within 15 points of its home nor that it is behind"
+ },
+ "trials_planned": 784,
+ "trials_recorded": 784,
+ "trials_outside_spec": 64,
+ "trials_unstarted": 0,
+ "complete": true,
+ "lookup_fails": 3,
+ "tasks": {
+  "total": 49,
+  "passed_every_attempt_in_every_cell": [
+   "adaptive-rejection-sampler",
+   "bn-fit-modify",
+   "caffe-cifar-10",
+   "cancel-async-tasks",
+   "cobol-modernization",
+   "code-from-image",
+   "compile-compcert",
+   "feal-differential-cryptanalysis",
+   "financial-document-processor",
+   "large-scale-text-editing",
+   "llm-inference-batching-scheduler",
+   "modernize-scientific-stack",
+   "overfull-hbox",
+   "path-tracing",
+   "path-tracing-reverse",
+   "regex-chess",
+   "sqlite-db-truncate",
+   "torch-tensor-parallelism",
+   "tune-mjcf",
+   "write-compressor"
+  ],
+  "never_passed_in_any_cell": [
+   "make-doom-for-mips"
+  ]
+ },
+ "models": [
+  {
+   "id": "opus",
+   "label": "Opus 5.5",
+   "home": "opus-cc",
+   "primary_cells": [
+    "opus-cc",
+    "opus-hermes",
+    "opus-openclaw",
+    "opus-pi"
+   ],
+   "noise": {
+    "rerun_flip": {
+     "estimate": 0.098639,
+     "ci95": [
+      0.044218,
+      0.159864
+     ],
+     "tasks": 49
+    },
+    "harness_flip": {
+     "estimate": 0.147959,
+     "ci95": [
+      0.088435,
+      0.207483
+     ],
+     "tasks": 49
+    },
+    "harness_minus_rerun": 0.04932
+   },
+   "drift": {
+    "cell": "opus-cc",
+    "tasks": 48,
+    "attempt_1": 0.916667,
+    "attempt_2": 0.875,
+    "delta": -0.041667,
+    "ci95": [
+     -0.104167,
+     0
+    ],
+    "threshold": 0.1,
+    "exceeds": false
+   }
+  },
+  {
+   "id": "sol",
+   "label": "GPT-6.1 Sol",
+   "home": "sol-codex",
+   "primary_cells": [
+    "sol-codex",
+    "sol-hermes",
+    "sol-openclaw",
+    "sol-pi"
+   ],
+   "noise": {
+    "rerun_flip": {
+     "estimate": 0.090136,
+     "ci95": [
+      0.047619,
+      0.136054
+     ],
+     "tasks": 49
+    },
+    "harness_flip": {
+     "estimate": 0.144558,
+     "ci95": [
+      0.086735,
+      0.209184
+     ],
+     "tasks": 49
+    },
+    "harness_minus_rerun": 0.054422
+   },
+   "drift": {
+    "cell": "sol-codex",
+    "tasks": 49,
+    "attempt_1": 0.836735,
+    "attempt_2": 0.816327,
+    "delta": -0.020408,
+    "ci95": [
+     -0.081633,
+     0.040816
+    ],
+    "threshold": 0.1,
+    "exceeds": false
+   }
+  }
+ ],
+ "cells": [
+  {
+   "id": "opus-cc",
+   "label": "Claude Code",
+   "model": "opus",
+   "harness": "claude-code",
+   "attempts": 2,
+   "descriptive": false,
+   "trials": {
+    "planned": 98,
+    "recorded": 98,
+    "scored": 97,
+    "excluded": {
+     "model_error": 1,
+     "infra_error": 0,
+     "exam_fault": 0
+    },
+    "harness_error_as_fail": 4,
+    "lookup_fails": 0,
+    "cap_stop": 1,
+    "unstarted": []
+   },
+   "terminations": {
+    "completed": 87,
+    "timeout": 6,
+    "approval_stop": 0,
+    "harness_error": 4,
+    "model_error": 1,
+    "infra_error": 0,
+    "exam_fault": 0
+   },
+   "pass_rate": {
+    "estimate": 0.897959,
+    "ci95": [
+     0.806122,
+     0.969388
+    ],
+    "tasks": 49,
+    "scored_trials": 97,
+    "passes": 87
+   },
+   "reliability": {
+    "k": 2,
+    "pass_hat_k": {
+     "estimate": 0.875,
+     "ci95": [
+      0.770833,
+      0.958333
+     ],
+     "tasks": 48
+    },
+    "pass_at_k": {
+     "estimate": 0.916667,
+     "ci95": [
+      0.833333,
+      0.979167
+     ],
+     "tasks": 48
+    },
+    "tasks_with_fewer_than_k": 1
+   },
+   "rerun_flip": {
+    "estimate": 0.041667,
+    "ci95": [
+     0,
+     0.104167
+    ],
+    "tasks": 48
+   },
+   "cost": {
+    "usd_total": 56.048663,
+    "solves": 87,
+    "usd_per_solve": 0.644238,
+    "ci95": [
+     0.418257,
+     0.925482
+    ],
+    "note": null
+   },
+   "wall_s_median_contended": 250.7,
+   "verdict": "home",
+   "reason": "home harness of Opus 5.5"
+  },
+  {
+   "id": "opus-hermes",
+   "label": "Hermes",
+   "model": "opus",
+   "harness": "hermes",
+   "attempts": 2,
+   "descriptive": false,
+   "trials": {
+    "planned": 98,
+    "recorded": 98,
+    "scored": 98,
+    "excluded": {
+     "model_error": 0,
+     "infra_error": 0,
+     "exam_fault": 0
+    },
+    "harness_error_as_fail": 5,
+    "lookup_fails": 0,
+    "cap_stop": 0,
+    "unstarted": []
+   },
+   "terminations": {
+    "completed": 85,
+    "timeout": 8,
+    "approval_stop": 0,
+    "harness_error": 5,
+    "model_error": 0,
+    "infra_error": 0,
+    "exam_fault": 0
+   },
+   "pass_rate": {
+    "estimate": 0.826531,
+    "ci95": [
+     0.72449,
+     0.918367
+    ],
+    "tasks": 49,
+    "scored_trials": 98,
+    "passes": 81
+   },
+   "reliability": {
+    "k": 2,
+    "pass_hat_k": {
+     "estimate": 0.77551,
+     "ci95": [
+      0.653061,
+      0.877551
+     ],
+     "tasks": 49
+    },
+    "pass_at_k": {
+     "estimate": 0.877551,
+     "ci95": [
+      0.77551,
+      0.959184
+     ],
+     "tasks": 49
+    },
+    "tasks_with_fewer_than_k": 0
+   },
+   "rerun_flip": {
+    "estimate": 0.102041,
+    "ci95": [
+     0.020408,
+     0.183673
+    ],
+    "tasks": 49
+   },
+   "cost": {
+    "usd_total": 73.358417,
+    "solves": 81,
+    "usd_per_solve": 0.905659,
+    "ci95": [
+     0.544556,
+     1.429631
+    ],
+    "note": null
+   },
+   "wall_s_median_contended": 427,
+   "verdict": "within-15",
+   "reason": "Holm non-inferiority p 0.04439556 <= 0.05"
+  },
+  {
+   "id": "opus-openclaw",
+   "label": "OpenClaw",
+   "model": "opus",
+   "harness": "openclaw",
+   "attempts": 2,
+   "descriptive": false,
+   "trials": {
+    "planned": 98,
+    "recorded": 98,
+    "scored": 98,
+    "excluded": {
+     "model_error": 0,
+     "infra_error": 0,
+     "exam_fault": 0
+    },
+    "harness_error_as_fail": 6,
+    "lookup_fails": 0,
+    "cap_stop": 0,
+    "unstarted": []
+   },
+   "terminations": {
+    "completed": 86,
+    "timeout": 6,
+    "approval_stop": 0,
+    "harness_error": 6,
+    "model_error": 0,
+    "infra_error": 0,
+    "exam_fault": 0
+   },
+   "pass_rate": {
+    "estimate": 0.765306,
+    "ci95": [
+     0.653061,
+     0.867347
+    ],
+    "tasks": 49,
+    "scored_trials": 98,
+    "passes": 75
+   },
+   "reliability": {
+    "k": 2,
+    "pass_hat_k": {
+     "estimate": 0.714286,
+     "ci95": [
+      0.591837,
+      0.836735
+     ],
+     "tasks": 49
+    },
+    "pass_at_k": {
+     "estimate": 0.816327,
+     "ci95": [
+      0.693878,
+      0.918367
+     ],
+     "tasks": 49
+    },
+    "tasks_with_fewer_than_k": 0
+   },
+   "rerun_flip": {
+    "estimate": 0.102041,
+    "ci95": [
+     0.020408,
+     0.183673
+    ],
+    "tasks": 49
+   },
+   "cost": {
+    "usd_total": 67.870204,
+    "solves": 75,
+    "usd_per_solve": 0.904936,
+    "ci95": [
+     0.58348,
+     1.351188
+    ],
+    "note": null
+   },
+   "wall_s_median_contended": 282.6,
+   "verdict": "behind",
+   "reason": "Holm p 0.03719628 <= 0.05, delta -0.132653"
+  },
+  {
+   "id": "opus-pi",
+   "label": "Pi",
+   "model": "opus",
+   "harness": "pi",
+   "attempts": 2,
+   "descriptive": false,
+   "trials": {
+    "planned": 98,
+    "recorded": 98,
+    "scored": 96,
+    "excluded": {
+     "model_error": 0,
+     "infra_error": 2,
+     "exam_fault": 0
+    },
+    "harness_error_as_fail": 0,
+    "lookup_fails": 0,
+    "cap_stop": 0,
+    "unstarted": []
+   },
+   "terminations": {
+    "completed": 89,
+    "timeout": 7,
+    "approval_stop": 0,
+    "harness_error": 0,
+    "model_error": 0,
+    "infra_error": 2,
+    "exam_fault": 0
+   },
+   "pass_rate": {
+    "estimate": 0.822917,
+    "ci95": [
+     0.729167,
+     0.916667
+    ],
+    "tasks": 48,
+    "scored_trials": 96,
+    "passes": 79
+   },
+   "reliability": {
+    "k": 2,
+    "pass_hat_k": {
+     "estimate": 0.75,
+     "ci95": [
+      0.625,
+      0.875
+     ],
+     "tasks": 48
+    },
+    "pass_at_k": {
+     "estimate": 0.895833,
+     "ci95": [
+      0.8125,
+      0.979167
+     ],
+     "tasks": 48
+    },
+    "tasks_with_fewer_than_k": 0
+   },
+   "rerun_flip": {
+    "estimate": 0.145833,
+    "ci95": [
+     0.0625,
+     0.25
+    ],
+    "tasks": 48
+   },
+   "cost": {
+    "usd_total": 50.388467,
+    "solves": 79,
+    "usd_per_solve": 0.637829,
+    "ci95": [
+     0.353277,
+     0.986491
+    ],
+    "note": null
+   },
+   "wall_s_median_contended": 193,
+   "verdict": "within-15",
+   "reason": "Holm non-inferiority p 0.00989901 <= 0.05"
+  },
+  {
+   "id": "sol-codex",
+   "label": "Codex",
+   "model": "sol",
+   "harness": "codex",
+   "attempts": 2,
+   "descriptive": false,
+   "trials": {
+    "planned": 98,
+    "recorded": 98,
+    "scored": 98,
+    "excluded": {
+     "model_error": 0,
+     "infra_error": 0,
+     "exam_fault": 0
+    },
+    "harness_error_as_fail": 2,
+    "lookup_fails": 0,
+    "cap_stop": 0,
+    "unstarted": []
+   },
+   "terminations": {
+    "completed": 96,
+    "timeout": 0,
+    "approval_stop": 0,
+    "harness_error": 2,
+    "model_error": 0,
+    "infra_error": 0,
+    "exam_fault": 0
+   },
+   "pass_rate": {
+    "estimate": 0.826531,
+    "ci95": [
+     0.72449,
+     0.918367
+    ],
+    "tasks": 49,
+    "scored_trials": 98,
+    "passes": 81
+   },
+   "reliability": {
+    "k": 2,
+    "pass_hat_k": {
+     "estimate": 0.795918,
+     "ci95": [
+      0.673469,
+      0.897959
+     ],
+     "tasks": 49
+    },
+    "pass_at_k": {
+     "estimate": 0.857143,
+     "ci95": [
+      0.755102,
+      0.938776
+     ],
+     "tasks": 49
+    },
+    "tasks_with_fewer_than_k": 0
+   },
+   "rerun_flip": {
+    "estimate": 0.061224,
+    "ci95": [
+     0,
+     0.142857
+    ],
+    "tasks": 49
+   },
+   "cost": {
+    "usd_total": 27.616432,
+    "solves": 81,
+    "usd_per_solve": 0.340944,
+    "ci95": [
+     0.243727,
+     0.475713
+    ],
+    "note": null
+   },
+   "wall_s_median_contended": 258.5,
+   "verdict": "home",
+   "reason": "home harness of GPT-6.1 Sol"
+  },
+  {
+   "id": "sol-hermes",
+   "label": "Hermes",
+   "model": "sol",
+   "harness": "hermes",
+   "attempts": 2,
+   "descriptive": false,
+   "trials": {
+    "planned": 98,
+    "recorded": 98,
+    "scored": 97,
+    "excluded": {
+     "model_error": 1,
+     "infra_error": 0,
+     "exam_fault": 0
+    },
+    "harness_error_as_fail": 2,
+    "lookup_fails": 1,
+    "cap_stop": 1,
+    "unstarted": []
+   },
+   "terminations": {
+    "completed": 93,
+    "timeout": 2,
+    "approval_stop": 0,
+    "harness_error": 2,
+    "model_error": 1,
+    "infra_error": 0,
+    "exam_fault": 0
+   },
+   "pass_rate": {
+    "estimate": 0.857143,
+    "ci95": [
+     0.765306,
+     0.938776
+    ],
+    "tasks": 49,
+    "scored_trials": 97,
+    "passes": 83
+   },
+   "reliability": {
+    "k": 2,
+    "pass_hat_k": {
+     "estimate": 0.8125,
+     "ci95": [
+      0.6875,
+      0.916667
+     ],
+     "tasks": 48
+    },
+    "pass_at_k": {
+     "estimate": 0.895833,
+     "ci95": [
+      0.8125,
+      0.979167
+     ],
+     "tasks": 48
+    },
+    "tasks_with_fewer_than_k": 1
+   },
+   "rerun_flip": {
+    "estimate": 0.083333,
+    "ci95": [
+     0.020833,
+     0.166667
+    ],
+    "tasks": 48
+   },
+   "cost": {
+    "usd_total": 35.161493,
+    "solves": 83,
+    "usd_per_solve": 0.423632,
+    "ci95": [
+     0.29617,
+     0.599799
+    ],
+    "note": null
+   },
+   "wall_s_median_contended": 424.2,
+   "verdict": "within-15",
+   "reason": "Holm non-inferiority p 0.00029997 <= 0.05"
+  },
+  {
+   "id": "sol-openclaw",
+   "label": "OpenClaw",
+   "model": "sol",
+   "harness": "openclaw",
+   "attempts": 2,
+   "descriptive": false,
+   "trials": {
+    "planned": 98,
+    "recorded": 98,
+    "scored": 98,
+    "excluded": {
+     "model_error": 0,
+     "infra_error": 0,
+     "exam_fault": 0
+    },
+    "harness_error_as_fail": 2,
+    "lookup_fails": 0,
+    "cap_stop": 0,
+    "unstarted": []
+   },
+   "terminations": {
+    "completed": 93,
+    "timeout": 3,
+    "approval_stop": 0,
+    "harness_error": 2,
+    "model_error": 0,
+    "infra_error": 0,
+    "exam_fault": 0
+   },
+   "pass_rate": {
+    "estimate": 0.755102,
+    "ci95": [
+     0.642857,
+     0.867347
+    ],
+    "tasks": 49,
+    "scored_trials": 98,
+    "passes": 74
+   },
+   "reliability": {
+    "k": 2,
+    "pass_hat_k": {
+     "estimate": 0.714286,
+     "ci95": [
+      0.591837,
+      0.836735
+     ],
+     "tasks": 49
+    },
+    "pass_at_k": {
+     "estimate": 0.795918,
+     "ci95": [
+      0.673469,
+      0.897959
+     ],
+     "tasks": 49
+    },
+    "tasks_with_fewer_than_k": 0
+   },
+   "rerun_flip": {
+    "estimate": 0.081633,
+    "ci95": [
+     0.020408,
+     0.163265
+    ],
+    "tasks": 49
+   },
+   "cost": {
+    "usd_total": 45.596828,
+    "solves": 74,
+    "usd_per_solve": 0.616173,
+    "ci95": [
+     0.389,
+     0.977575
+    ],
+    "note": null
+   },
+   "wall_s_median_contended": 319.5,
+   "verdict": "within-15",
+   "reason": "Holm non-inferiority p 0.0159984 <= 0.05"
+  },
+  {
+   "id": "sol-pi",
+   "label": "Pi",
+   "model": "sol",
+   "harness": "pi",
+   "attempts": 2,
+   "descriptive": false,
+   "trials": {
+    "planned": 98,
+    "recorded": 98,
+    "scored": 96,
+    "excluded": {
+     "model_error": 0,
+     "infra_error": 2,
+     "exam_fault": 0
+    },
+    "harness_error_as_fail": 0,
+    "lookup_fails": 0,
+    "cap_stop": 0,
+    "unstarted": []
+   },
+   "terminations": {
+    "completed": 96,
+    "timeout": 0,
+    "approval_stop": 0,
+    "harness_error": 0,
+    "model_error": 0,
+    "infra_error": 2,
+    "exam_fault": 0
+   },
+   "pass_rate": {
+    "estimate": 0.791667,
+    "ci95": [
+     0.677083,
+     0.885417
+    ],
+    "tasks": 48,
+    "scored_trials": 96,
+    "passes": 76
+   },
+   "reliability": {
+    "k": 2,
+    "pass_hat_k": {
+     "estimate": 0.729167,
+     "ci95": [
+      0.604167,
+      0.854167
+     ],
+     "tasks": 48
+    },
+    "pass_at_k": {
+     "estimate": 0.854167,
+     "ci95": [
+      0.75,
+      0.9375
+     ],
+     "tasks": 48
+    },
+    "tasks_with_fewer_than_k": 0
+   },
+   "rerun_flip": {
+    "estimate": 0.125,
+    "ci95": [
+     0.041667,
+     0.229167
+    ],
+    "tasks": 48
+   },
+   "cost": {
+    "usd_total": 17.242457,
+    "solves": 76,
+    "usd_per_solve": 0.226874,
+    "ci95": [
+     0.166154,
+     0.309653
+    ],
+    "note": null
+   },
+   "wall_s_median_contended": 212.7,
+   "verdict": "within-15",
+   "reason": "Holm non-inferiority p 0.0159984 <= 0.05"
+  }
+ ],
+ "pairs": [
+  {
+   "id": "opus-hermes vs opus-cc",
+   "model": "opus",
+   "cell": "opus-hermes",
+   "home": "opus-cc",
+   "family": "primary",
+   "tasks_paired": 49,
+   "tasks_dropped": 0,
+   "dropped": [],
+   "attempts_dropped_pairwise": 1,
+   "mean_home": 0.897959,
+   "mean_cell": 0.826531,
+   "delta": -0.071429,
+   "ci95": [
+    -0.142857,
+    -0.010204
+   ],
+   "lower_bound_90": -0.132653,
+   "p_two_sided": 0.09179082,
+   "p_method": "monte-carlo-sign-flip",
+   "ni_margin": 0.15,
+   "p_noninferiority": 0.02219778,
+   "tested": true,
+   "untested_reason": null,
+   "power": {
+    "alpha": 0.05,
+    "mde": 0.100057,
+    "note": "with 49 pairs in 49 clusters, a two-sided 0.05 test has 80% power for an absolute change of about 0.1001; the observed delta is below that size, so a null result here is not evidence of no effect"
+   },
+   "power_first_holm_step": {
+    "alpha": 0.016667,
+    "mde": 0.115557,
+    "note": "with 49 pairs in 49 clusters, a two-sided 0.016666666666666666 test has 80% power for an absolute change of about 0.1156; the observed delta is below that size, so a null result here is not evidence of no effect"
+   },
+   "harness_flip": {
+    "estimate": 0.102041,
+    "ci95": [
+     0.040816,
+     0.173469
+    ],
+    "tasks": 49
+   },
+   "cost_per_solve_ratio": {
+    "tasks": 49,
+    "ratio": 1.4058,
+    "ci95": [
+     1.0529,
+     1.8263
+    ],
+    "undefined_draws": 0,
+    "note": null
+   },
+   "home_saturated": false,
+   "holm_p": 0.12778722,
+   "holm_p_noninferiority": 0.04439556
+  },
+  {
+   "id": "opus-openclaw vs opus-cc",
+   "model": "opus",
+   "cell": "opus-openclaw",
+   "home": "opus-cc",
+   "family": "primary",
+   "tasks_paired": 49,
+   "tasks_dropped": 0,
+   "dropped": [],
+   "attempts_dropped_pairwise": 1,
+   "mean_home": 0.897959,
+   "mean_cell": 0.765306,
+   "delta": -0.132653,
+   "ci95": [
+    -0.234694,
+    -0.05102
+   ],
+   "lower_bound_90": -0.214286,
+   "p_two_sided": 0.01239876,
+   "p_method": "monte-carlo-sign-flip",
+   "ni_margin": 0.15,
+   "p_noninferiority": 0.35806419,
+   "tested": true,
+   "untested_reason": null,
+   "power": {
+    "alpha": 0.05,
+    "mde": 0.134088,
+    "note": "with 49 pairs in 49 clusters, a two-sided 0.05 test has 80% power for an absolute change of about 0.1341; the observed delta is below that size, so a null result here is not evidence of no effect"
+   },
+   "power_first_holm_step": {
+    "alpha": 0.016667,
+    "mde": 0.15486,
+    "note": "with 49 pairs in 49 clusters, a two-sided 0.016666666666666666 test has 80% power for an absolute change of about 0.1549; the observed delta is below that size, so a null result here is not evidence of no effect"
+   },
+   "harness_flip": {
+    "estimate": 0.163265,
+    "ci95": [
+     0.081633,
+     0.255102
+    ],
+    "tasks": 49
+   },
+   "cost_per_solve_ratio": {
+    "tasks": 49,
+    "ratio": 1.4047,
+    "ci95": [
+     1.1921,
+     1.7067
+    ],
+    "undefined_draws": 0,
+    "note": null
+   },
+   "home_saturated": false,
+   "holm_p": 0.03719628,
+   "holm_p_noninferiority": 0.35806419
+  },
+  {
+   "id": "opus-pi vs opus-cc",
+   "model": "opus",
+   "cell": "opus-pi",
+   "home": "opus-cc",
+   "family": "primary",
+   "tasks_paired": 48,
+   "tasks_dropped": 1,
+   "dropped": [
+    {
+     "task": "pytorch-model-recovery",
+     "reason": "no scored attempt in opus-pi"
+    }
+   ],
+   "attempts_dropped_pairwise": 3,
+   "mean_home": 0.895833,
+   "mean_cell": 0.833333,
+   "delta": -0.0625,
+   "ci95": [
+    -0.125,
+    -0.010417
+   ],
+   "lower_bound_90": -0.114583,
+   "p_two_sided": 0.06389361,
+   "p_method": "monte-carlo-sign-flip",
+   "ni_margin": 0.15,
+   "p_noninferiority": 0.00329967,
+   "tested": true,
+   "untested_reason": null,
+   "power": {
+    "alpha": 0.05,
+    "mde": 0.07941,
+    "note": "with 48 pairs in 48 clusters, a two-sided 0.05 test has 80% power for an absolute change of about 0.0794; the observed delta is below that size, so a null result here is not evidence of no effect"
+   },
+   "power_first_holm_step": {
+    "alpha": 0.016667,
+    "mde": 0.091712,
+    "note": "with 48 pairs in 48 clusters, a two-sided 0.016666666666666666 test has 80% power for an absolute change of about 0.0917; the observed delta is below that size, so a null result here is not evidence of no effect"
+   },
+   "harness_flip": {
+    "estimate": 0.083333,
+    "ci95": [
+     0.03125,
+     0.145833
+    ],
+    "tasks": 48
+   },
+   "cost_per_solve_ratio": {
+    "tasks": 48,
+    "ratio": 0.9731,
+    "ci95": [
+     0.7443,
+     1.1828
+    ],
+    "undefined_draws": 0,
+    "note": null
+   },
+   "home_saturated": false,
+   "holm_p": 0.12778722,
+   "holm_p_noninferiority": 0.00989901
+  },
+  {
+   "id": "sol-hermes vs sol-codex",
+   "model": "sol",
+   "cell": "sol-hermes",
+   "home": "sol-codex",
+   "family": "primary",
+   "tasks_paired": 49,
+   "tasks_dropped": 0,
+   "dropped": [],
+   "attempts_dropped_pairwise": 1,
+   "mean_home": 0.826531,
+   "mean_cell": 0.857143,
+   "delta": 0.030612,
+   "ci95": [
+    -0.030612,
+    0.102041
+   ],
+   "lower_bound_90": -0.020408,
+   "p_two_sided": 0.5630437,
+   "p_method": "monte-carlo-sign-flip",
+   "ni_margin": 0.15,
+   "p_noninferiority": 0.00009999,
+   "tested": true,
+   "untested_reason": null,
+   "power": {
+    "alpha": 0.05,
+    "mde": 0.094994,
+    "note": "with 49 pairs in 49 clusters, a two-sided 0.05 test has 80% power for an absolute change of about 0.0950; the observed delta is below that size, so a null result here is not evidence of no effect"
+   },
+   "power_first_holm_step": {
+    "alpha": 0.016667,
+    "mde": 0.10971,
+    "note": "with 49 pairs in 49 clusters, a two-sided 0.016666666666666666 test has 80% power for an absolute change of about 0.1097; the observed delta is below that size, so a null result here is not evidence of no effect"
+   },
+   "harness_flip": {
+    "estimate": 0.091837,
+    "ci95": [
+     0.030612,
+     0.153061
+    ],
+    "tasks": 49
+   },
+   "cost_per_solve_ratio": {
+    "tasks": 49,
+    "ratio": 1.2425,
+    "ci95": [
+     1.0102,
+     1.5175
+    ],
+    "undefined_draws": 0,
+    "note": null
+   },
+   "home_saturated": false,
+   "holm_p": 1,
+   "holm_p_noninferiority": 0.00029997
+  },
+  {
+   "id": "sol-openclaw vs sol-codex",
+   "model": "sol",
+   "cell": "sol-openclaw",
+   "home": "sol-codex",
+   "family": "primary",
+   "tasks_paired": 49,
+   "tasks_dropped": 0,
+   "dropped": [],
+   "attempts_dropped_pairwise": 0,
+   "mean_home": 0.826531,
+   "mean_cell": 0.755102,
+   "delta": -0.071429,
+   "ci95": [
+    -0.142857,
+    -0.010204
+   ],
+   "lower_bound_90": -0.132653,
+   "p_two_sided": 0.0609939,
+   "p_method": "monte-carlo-sign-flip",
+   "ni_margin": 0.15,
+   "p_noninferiority": 0.01549845,
+   "tested": true,
+   "untested_reason": null,
+   "power": {
+    "alpha": 0.05,
+    "mde": 0.091339,
+    "note": "with 49 pairs in 49 clusters, a two-sided 0.05 test has 80% power for an absolute change of about 0.0913; the observed delta is below that size, so a null result here is not evidence of no effect"
+   },
+   "power_first_holm_step": {
+    "alpha": 0.016667,
+    "mde": 0.105489,
+    "note": "with 49 pairs in 49 clusters, a two-sided 0.016666666666666666 test has 80% power for an absolute change of about 0.1055; the observed delta is below that size, so a null result here is not evidence of no effect"
+   },
+   "harness_flip": {
+    "estimate": 0.091837,
+    "ci95": [
+     0.040816,
+     0.153061
+    ],
+    "tasks": 49
+   },
+   "cost_per_solve_ratio": {
+    "tasks": 49,
+    "ratio": 1.8073,
+    "ci95": [
+     1.5003,
+     2.1998
+    ],
+    "undefined_draws": 0,
+    "note": null
+   },
+   "home_saturated": false,
+   "holm_p": 0.1829817,
+   "holm_p_noninferiority": 0.0159984
+  },
+  {
+   "id": "sol-pi vs sol-codex",
+   "model": "sol",
+   "cell": "sol-pi",
+   "home": "sol-codex",
+   "family": "primary",
+   "tasks_paired": 48,
+   "tasks_dropped": 1,
+   "dropped": [
+    {
+     "task": "pytorch-model-recovery",
+     "reason": "no scored attempt in sol-pi"
+    }
+   ],
+   "attempts_dropped_pairwise": 2,
+   "mean_home": 0.822917,
+   "mean_cell": 0.791667,
+   "delta": -0.03125,
+   "ci95": [
+    -0.125,
+    0.0625
+   ],
+   "lower_bound_90": -0.114583,
+   "p_two_sided": 0.68453155,
+   "p_method": "monte-carlo-sign-flip",
+   "ni_margin": 0.15,
+   "p_noninferiority": 0.0079992,
+   "tested": true,
+   "untested_reason": null,
+   "power": {
+    "alpha": 0.05,
+    "mde": 0.140861,
+    "note": "with 48 pairs in 48 clusters, a two-sided 0.05 test has 80% power for an absolute change of about 0.1409; the observed delta is below that size, so a null result here is not evidence of no effect"
+   },
+   "power_first_holm_step": {
+    "alpha": 0.016667,
+    "mde": 0.162683,
+    "note": "with 48 pairs in 48 clusters, a two-sided 0.016666666666666666 test has 80% power for an absolute change of about 0.1627; the observed delta is below that size, so a null result here is not evidence of no effect"
+   },
+   "harness_flip": {
+    "estimate": 0.166667,
+    "ci95": [
+     0.083333,
+     0.260417
+    ],
+    "tasks": 48
+   },
+   "cost_per_solve_ratio": {
+    "tasks": 48,
+    "ratio": 0.6534,
+    "ci95": [
+     0.4813,
+     0.8435
+    ],
+    "undefined_draws": 0,
+    "note": null
+   },
+   "home_saturated": false,
+   "holm_p": 1,
+   "holm_p_noninferiority": 0.0159984
+  }
+ ]
+}

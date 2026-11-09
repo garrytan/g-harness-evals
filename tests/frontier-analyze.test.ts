@@ -60,6 +60,28 @@ describe('hand-computed cell and pair', () => {
     expect(cc.wall_s_median_contended).toBe(1.5);
   });
 
+  test('cost per solve leaves out the USD of a run a rerun replaced unless cost_with_replaced (merge-stages.ts frontier.replaced_usd)', () => {
+    const rows = cell('opus-cc', 'claude-code', { t1: '11', t2: '10', t3: '11', t4: '00' }, 1);
+    (rows[0] as TrialRecord & { frontier: object }).frontier = { replaced_usd: 2 };
+    const input = { records: [...rows, ...records.filter((t) => t.cell === 'opus-hermes')], manifest: null };
+    const cc = (a: ReturnType<typeof analyzeFrontier>) => a.cells.find((x) => x.id === 'opus-cc')!;
+    const plain = analyzeFrontier(input, spec);
+    expect(cc(plain).cost).toMatchObject({ usd_total: 8, solves: 5, usd_per_solve: 1.6 });
+    expect(plain.method.cost).toContain('not a record');
+    const all = analyzeFrontier({ ...input, cost_with_replaced: true }, spec);
+    expect(cc(all).cost).toMatchObject({ usd_total: 10, solves: 5, usd_per_solve: 2 });
+    expect(all.method.cost).toContain('--cost-with-replaced');
+  });
+
+  test('cost per solve counts the first run of a rerun its lease stopped with or without cost_with_replaced (merge-stages.ts frontier.first_run_usd)', () => {
+    const rows = cell('opus-cc', 'claude-code', { t1: '11', t2: '10', t3: '11', t4: '00' }, 1);
+    (rows[0] as TrialRecord & { frontier: object }).frontier = { first_run_usd: 2 };
+    const input = { records: [...rows, ...records.filter((t) => t.cell === 'opus-hermes')], manifest: null };
+    const cc = (a: ReturnType<typeof analyzeFrontier>) => a.cells.find((x) => x.id === 'opus-cc')!;
+    expect(cc(analyzeFrontier(input, spec)).cost).toMatchObject({ usd_total: 10, solves: 5, usd_per_solve: 2 });
+    expect(cc(analyzeFrontier({ ...input, cost_with_replaced: true }, spec)).cost).toMatchObject({ usd_total: 10, solves: 5, usd_per_solve: 2 });
+  });
+
   test('the infra attempt drops from both cells of the pair', () => {
     expect(pair.attempts_dropped_pairwise).toBe(1);
     expect(pair.tasks_paired).toBe(4);
@@ -94,6 +116,11 @@ describe('hand-computed cell and pair', () => {
     expect(he.verdict).toBe('inconclusive');
   });
 
+  test('task lists: passed every scored attempt in every cell, and never passed in any cell', () => {
+    expect(a.tasks).toEqual({ total: 4, passed_every_attempt_in_every_cell: ['t1'], never_passed_in_any_cell: ['t4'] });
+    const b = analyzeFrontier({ records, manifest: null, lookup_fails: [`${RUN}/opus-hermes/t1/r1`] }, spec);
+    expect(b.tasks.passed_every_attempt_in_every_cell).toEqual([]);
+  });
   test('a confirmed answer-key lookup turns a pass into a fail', () => {
     const b = analyzeFrontier({ records, manifest: null, lookup_fails: [`${RUN}/opus-hermes/t1/r1`] }, spec);
     const h = b.cells.find((c) => c.id === 'opus-hermes')!;

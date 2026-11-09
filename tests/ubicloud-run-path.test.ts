@@ -31,8 +31,8 @@ const baseEnv = (dir: string, runner: string) => ({ PATH: process.env.PATH ?? '/
 // exits 1 (tar's "file changed as we read it"), db:<line> adds ledger.sqlite and wal:<line> adds ledger.sqlite with its
 // -wal and -shm, empty brings back nothing, fails exits 1 with nothing. The shard reports
 // exit 0 once exitAfter pulls have happened; each poll records whether vm-map.jsonl was already in the replicate dir.
-// seed is a file put in <dest> before the launch that the VM never has.
-function shard(o: { pulls: string[]; exitAfter: number; seed?: string }) {
+// seed and seeds are files put in <dest> before the launch that the VM never has; workload is passed as --workload.
+function shard(o: { pulls: string[]; exitAfter: number; seed?: string; seeds?: string[]; workload?: string }) {
   const dir = tmp('he-ubi-runpath-');
   const repo = join(dir, 'repo');
   mkdirSync(join(repo, 'scripts', 'ubicloud'), { recursive: true });
@@ -66,9 +66,9 @@ function shard(o: { pulls: string[]; exitAfter: number; seed?: string }) {
     'esac',
   ].join('\n'));
   const dest = join(dir, 'dest');
-  if (o.seed) { mkdirSync(dirname(join(dest, o.seed)), { recursive: true }); writeFileSync(join(dest, o.seed), 'local only\n'); }
-  const r = spawnSync('bash', [join(repo, 'scripts', 'ubicloud', 'run-shard.sh'), '--commit', commit, '--prereg', join(dir, 'prereg.json'), '--name', 's1', '--cells', 'c1', '--lease-usd', '1', '--dest', dest, '--poll-seconds', '1', '--replicate-seconds', '1', '--replicate-to', rep],
-    { cwd: dir, encoding: 'utf8', timeout: 120_000, env: { ...baseEnv(dir, runner), ANTHROPIC_API_KEY: PLACEHOLDER, TMPDIR: dir }, stdio: ['ignore', 'pipe', 'pipe'] });
+  for (const s of [...(o.seed ? [o.seed] : []), ...(o.seeds ?? [])]) { mkdirSync(dirname(join(dest, s)), { recursive: true }); writeFileSync(join(dest, s), 'local only\n'); }
+  const r = spawnSync('bash', [join(repo, 'scripts', 'ubicloud', 'run-shard.sh'), '--commit', commit, '--prereg', join(dir, 'prereg.json'), '--name', 's1', '--cells', 'c1', '--lease-usd', '1', '--dest', dest, '--poll-seconds', '1', '--replicate-seconds', '1', '--replicate-to', rep, ...(o.workload ? ['--workload', o.workload] : [])],
+    { cwd: dir, encoding: 'utf8', timeout: 120_000, env: { ...baseEnv(dir, runner), ANTHROPIC_API_KEY: PLACEHOLDER, ...(o.workload ? { OPENAI_API_KEY: PLACEHOLDER } : {}), TMPDIR: dir }, stdio: ['ignore', 'pipe', 'pipe'] });
   return {
     code: r.status, err: r.stderr, dest, rep,
     calls: read(join(dir, 'calls.log')).split('\n').filter(Boolean),
@@ -126,6 +126,19 @@ describe('ubicloud/run-shard.sh mid-run replication', () => {
     expect(read(join(r.dest, 'results', 'ledger.sqlite'))).toBe('v2\n');
     expect(existsSync(join(r.dest, 'results', 'ledger.sqlite-wal'))).toBe(false);
     expect(existsSync(join(r.dest, 'results', 'ledger.sqlite-shm'))).toBe(false);
+  }, 120_000);
+
+  test('a frontier-harbor mirror leaves out proxy-capture/ and results/run/, which stay in the dest', () => {
+    const capture = join('results', 'trials', 'c1', 't1', 'a1', 'harbor', 'proxy-capture', 'proxy-requests.ndjson');
+    const record = join('results', 'trials', 'c1', 't1', 'a1', 'harbor', 'result.json');
+    const job = join('results', 'run', 'jobs', 'c1__a1', 't1__x', 'result.json');
+    const r = shard({ pulls: ['ok:v1', 'ok:v2'], exitAfter: 1, seeds: [capture, record, job], workload: 'frontier-harbor' });
+    expect(r.code, r.err).toBe(0);
+    for (const f of [capture, record, job]) expect(read(join(r.dest, f))).toBe('local only\n');
+    expect(read(join(r.rep, 's1', 'results', 'trials.jsonl'))).toBe('v2\n');
+    expect(read(join(r.rep, 's1', record))).toBe('local only\n');
+    expect(existsSync(join(r.rep, 's1', capture))).toBe(false);
+    expect(existsSync(join(r.rep, 's1', 'results', 'run'))).toBe(false);
   }, 120_000);
 
   test('key-shaped text in the results stops the mirror and keeps the previous one', () => {

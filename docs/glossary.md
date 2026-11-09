@@ -20,6 +20,7 @@ A Sonnet-, Haiku- or luna-only result carries no verdict (R54).
 |---|---|
 | **Can't tell apart** | The preregistered test found no difference after adjusting for the number of comparisons. It does not mean equal: the run had less than an 80% chance to detect a gap smaller than its MDD. |
 | **Behind** / **ahead** | The preregistered test found a difference, in that direction, after the adjustment. |
+| **Within N points** / **at most N points ahead** | The preregistered non-inferiority test showed, after the adjustment, that a harness is no more than N points below the one it is compared with, N being the margin the preregistration set. Read from the other side, that one is at most N points ahead. It does not mean equal or better. |
 | **Cheaper per trial** / **costs more per trial** | A preregistered cost contrast whose 95% range is wholly below or wholly above zero. |
 | **Cost per trial: can't tell apart** | A preregistered cost contrast whose 95% range includes zero. |
 | **Interval only, not tested** | The report gives a range for this pair, but the preregistration made no test of it. Read it as a description, not a finding. |

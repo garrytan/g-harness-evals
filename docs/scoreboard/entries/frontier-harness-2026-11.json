@@ -1,0 +1,162 @@
+{
+  "schema": "harness-evals/scoreboard-entry@1",
+  "run_id": "frontier-harness-2026-11",
+  "report": "docs/benchmarks/2026-11-07-frontier-harness/report.md",
+  "role": "main",
+  "results_pr": "#337",
+  "claim_check": { "pr": "#337", "reader": "claim-check reader, Opus 5.5 (the /ship fix-check on the cost fix, R51; 3 informational findings, no number changed)" },
+  "task_set": {
+    "id": "terminal-bench-2.1-dev-public",
+    "label": "52 public Terminal-Bench 2.1 dev tasks",
+    "split": "dev",
+    "public": true
+  },
+  "tasks": {
+    "file": "results/analysis/analysis.json",
+    "path": "cells[id=opus-cc].pass_rate.tasks"
+  },
+  "same_everywhere": [
+    {
+      "file": "results/analysis/analysis.json",
+      "path": "tasks.passed_every_attempt_in_every_cell"
+    },
+    {
+      "file": "results/analysis/analysis.json",
+      "path": "tasks.never_passed_in_any_cell"
+    }
+  ],
+  "mdd": {
+    "file": "results/analysis/analysis.json",
+    "path": "pairs[*].power.mde"
+  },
+  "mdd_holm": {
+    "file": "results/analysis/analysis.json",
+    "path": "pairs[*].power_first_holm_step.mde"
+  },
+  "family": {
+    "file": "results/analysis/analysis.json",
+    "path": "pairs",
+    "label": "preregistered primary family, each harness against its model's home harness, Holm-adjusted within each model",
+    "a": "cell",
+    "b": "home",
+    "verdict": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].verdict"
+    },
+    "words": {
+      "within-15": "within 15 points",
+      "behind": "behind",
+      "inconclusive": "can't tell apart"
+    }
+  },
+  "lead_note": "Each harness is compared only with its model's home harness: Claude Code on Opus 5.5, Codex on GPT-6.1 Sol.",
+  "verdict": {
+    "word": "CUT-CANDIDATE",
+    "quote": "Why null? verdict: CUT-CANDIDATE (OpenClaw on Opus)"
+  },
+  "fields": {
+    "passes": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].pass_rate.passes"
+    },
+    "scored": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].pass_rate.scored_trials"
+    },
+    "pass_rate": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].pass_rate.estimate"
+    },
+    "pass_ci95": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].pass_rate.ci95"
+    },
+    "usd_per_solved": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].cost.usd_per_solve"
+    },
+    "usd_per_solved_ci95": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].cost.ci95"
+    },
+    "usd_per_trial": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].cost.usd_total",
+      "per": {
+        "file": "results/analysis/analysis.json",
+        "path": "cells[id={cell}].trials.recorded"
+      }
+    },
+    "wall_median_s": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].wall_s_median_contended"
+    }
+  },
+  "cells": [
+    {
+      "id": "opus-cc",
+      "harness": "Claude Code",
+      "version": "2.1.312",
+      "model": "Opus 5.5"
+    },
+    {
+      "id": "opus-hermes",
+      "harness": "Hermes Agent",
+      "version": "v2026.9.24",
+      "model": "Opus 5.5"
+    },
+    {
+      "id": "opus-openclaw",
+      "harness": "OpenClaw",
+      "version": "2026.10.6",
+      "model": "Opus 5.5"
+    },
+    {
+      "id": "opus-pi",
+      "harness": "Pi",
+      "version": "1.5.0",
+      "model": "Opus 5.5"
+    },
+    {
+      "id": "sol-codex",
+      "harness": "Codex",
+      "version": "0.165.0",
+      "model": "GPT-6.1 Sol"
+    },
+    {
+      "id": "sol-hermes",
+      "harness": "Hermes Agent",
+      "version": "v2026.9.24",
+      "model": "GPT-6.1 Sol"
+    },
+    {
+      "id": "sol-openclaw",
+      "harness": "OpenClaw",
+      "version": "2026.10.6",
+      "model": "GPT-6.1 Sol"
+    },
+    {
+      "id": "sol-pi",
+      "harness": "Pi",
+      "version": "1.5.0",
+      "model": "GPT-6.1 Sol"
+    }
+  ],
+  "caveats": [
+    "Dev tasks at these pins (public): a result here is not a held-out confirmation.",
+    "Claude Code on Opus is near the ceiling (90.4% at stage 0), so there is little room above it.",
+    "353 of the 896 trials (kept sample included) hit a GitHub outage at grade time and 351 were rerun once; under amendment 4's classification alone three calls change (OpenClaw on Opus, OpenClaw on Sol, Pi on Sol).",
+    "OpenClaw on Opus's behind call depends on two choices: with every provider refusal removed, or under amendment 4's outage classification alone, it is inconclusive.",
+    "Trials ran 4 at a time per VM, so time per trial is contended.",
+    "Pi's pairs have 51 tasks: pytorch-model-recovery crashes Pi's adapter, so that task drops from both Pi comparisons.",
+    "4 Hermes trials (2 in these cells, 2 in the kept sample) are scored as fails after a reader blind to the harness confirmed they received the answer key through Hermes's web tools (one through a delegate_task sub-agent).",
+    "Every cell is a plain harness: no gstack, no gbrain.",
+    "Cost per solved task is the cell's recorded spend at list price through our metering proxy (excluded trials included) divided by its scored passes, leaving out the 351 outage runs a rerun replaced, whose passes are not counted either; the outage hit every cell but Codex. The report also gives the figure with all spend. Cost per trial divides the same spend by the cell's recorded trials.",
+    "Calls come only from the run's preregistered comparisons; rows are in the run's own order, which is not a ranking."
+  ],
+  "disclosures": [
+    "OpenAI",
+    "OpenClaw",
+    "Hermes"
+  ]
+}

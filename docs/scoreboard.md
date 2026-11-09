@@ -4,6 +4,40 @@
 
 One section per task set. **Never compare numbers across task sets:** different tasks give different pass rates. Every number below is read from a committed results file; the receipts line under each table names the files.
 
+## 52 public Terminal-Bench 2.1 dev tasks (frontier-harness-2026-11, dev, public)
+
+23 of 52 tasks scored the same in every cell; this run had less than an 80% chance to detect a gap smaller than 7.5 to 13.3 points (8.7 to 15.3 at the first Holm step). Each harness is compared only with its model's home harness: Claude Code on Opus 5.5, Codex on GPT-6.1 Sol.
+
+- **Opus 5.5:** 3 preregistered pairs: 2 within 15 points, 1 behind.
+- **GPT-6.1 Sol:** 3 preregistered pairs: 3 within 15 points.
+
+| Harness | Version | Model | Pass rate [95% range] | Passes / scored | Cost per solved task [95% range] | Cost per trial | Median time per trial | Preregistered call |
+|---|---|---|---|---|---|---|---|---|
+| Claude Code | 2.1.312 | Opus 5.5 | 88.5% [79.8%, 96.2%] | 91 / 103 | $0.63 [$0.41, $0.89] | $0.550 | 252.0 s | at most 15 points ahead of Hermes Agent, Pi; ahead of OpenClaw |
+| Hermes Agent | v2026.9.24 | Opus 5.5 | 81.7% [72.1%, 91.3%] | 85 / 104 | $0.88 [$0.54, $1.38] | $0.723 | 427.0 s | within 15 points of Claude Code |
+| OpenClaw | 2026.10.6 | Opus 5.5 | 76.0% [64.4%, 86.5%] | 79 / 104 | $0.88 [$0.57, $1.29] | $0.668 | 287.8 s | behind Claude Code |
+| Pi | 1.5.0 | Opus 5.5 | 81.4% [71.6%, 90.2%] | 83 / 102 | $0.62 [$0.35, $0.95] | $0.494 | 196.4 s | within 15 points of Claude Code |
+| Codex | 0.165.0 | GPT-6.1 Sol | 83.7% [74.0%, 92.3%] | 87 / 104 | $0.34 [$0.25, $0.46] | $0.283 | 279.2 s | at most 15 points ahead of Hermes Agent, OpenClaw, Pi |
+| Hermes Agent | v2026.9.24 | GPT-6.1 Sol | 85.6% [76.9%, 93.3%] | 88 / 103 | $0.43 [$0.31, $0.60] | $0.366 | 438.5 s | within 15 points of Codex |
+| OpenClaw | 2026.10.6 | GPT-6.1 Sol | 76.0% [64.4%, 86.5%] | 79 / 104 | $0.61 [$0.40, $0.95] | $0.464 | 325.6 s | within 15 points of Codex |
+| Pi | 1.5.0 | GPT-6.1 Sol | 80.4% [70.6%, 90.2%] | 82 / 102 | $0.23 [$0.17, $0.31] | $0.182 | 220.5 s | within 15 points of Codex |
+
+**Caveats:**
+
+- Dev tasks at these pins (public): a result here is not a held-out confirmation.
+- Claude Code on Opus is near the ceiling (90.4% at stage 0), so there is little room above it.
+- 353 of the 896 trials (kept sample included) hit a GitHub outage at grade time and 351 were rerun once; under amendment 4's classification alone three calls change (OpenClaw on Opus, OpenClaw on Sol, Pi on Sol).
+- OpenClaw on Opus's behind call depends on two choices: with every provider refusal removed, or under amendment 4's outage classification alone, it is inconclusive.
+- Trials ran 4 at a time per VM, so time per trial is contended.
+- Pi's pairs have 51 tasks: pytorch-model-recovery crashes Pi's adapter, so that task drops from both Pi comparisons.
+- 4 Hermes trials (2 in these cells, 2 in the kept sample) are scored as fails after a reader blind to the harness confirmed they received the answer key through Hermes's web tools (one through a delegate_task sub-agent).
+- Every cell is a plain harness: no gstack, no gbrain.
+- Cost per solved task is the cell's recorded spend at list price through our metering proxy (excluded trials included) divided by its scored passes, leaving out the 351 outage runs a rerun replaced, whose passes are not counted either; the outage hit every cell but Codex. The report also gives the figure with all spend. Cost per trial divides the same spend by the cell's recorded trials.
+- Calls come only from the run's preregistered comparisons; rows are in the run's own order, which is not a ranking.
+- Why null? verdict: **CUT-CANDIDATE**. See [the glossary below](#how-to-read-this) and the report.
+
+**Receipts:** [report](benchmarks/2026-11-07-frontier-harness/report.md) · [analysis.json](benchmarks/2026-11-07-frontier-harness/results/analysis/analysis.json) · results PR #337 · claim check: claim-check reader, Opus 5.5 (the /ship fix-check on the cost fix, R51; 3 informational findings, no number changed) on #337
+
 ## 20 public v0.3 multi-user dev tasks (matrix-mu-2026-11, dev, public)
 
 **Saturated task set.** On these tasks pass rate can't separate the harnesses: 14 of 20 tasks scored the same in every cell, and this run had less than an 80% chance to detect a gap smaller than 7.7 to 14.2 points (9.5 to 17.6 at the first Holm step). What it does show is cost: OpenClaw on Opus paid about twice as much per pass as the other Opus harnesses (descriptive, no test).
@@ -77,6 +111,8 @@ Each of these runs used the same task set on its own dates, repetitions and mach
 - **Pass rate:** each task's share of passing scored tries, averaged over the tasks.
 - **95% range:** the task-clustered bootstrap interval: tasks are resampled with replacement, so a few lucky tasks can't narrow it.
 - **Can't tell apart:** the run's preregistered test, adjusted for the number of comparisons (Holm), found no difference. It does not mean equal: the run had less than an 80% chance to detect a gap smaller than its minimum detectable difference.
+- **Behind / ahead of:** the run's preregistered test, adjusted for the number of comparisons (Holm), found a gap in that direction.
+- **Within N points of:** the run's preregistered non-inferiority test, adjusted (Holm), showed the harness is no more than N points below the one it is compared with, N being the margin the preregistration set. Read from the other row it says **at most N points ahead of**. It does not mean equal.
 - **Interval only, not tested:** the run reports a range for this pair but its preregistration made no test of it.
 - **Cheaper per trial / costs more per trial:** the run's preregistered cost contrast has a 95% range wholly below or wholly above zero. **Cost per trial: can't tell apart:** that range includes zero.
 - **Cost per solved task:** what the cell spent at list price, metered by our proxy, divided by its passes. **Cost per trial** is the same spend divided by the trials recorded.

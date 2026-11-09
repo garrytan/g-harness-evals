@@ -3,7 +3,7 @@
 // with the home harness, cost per solve and the results table.
 //
 //   bun scripts/frontier-harbor/analyze.ts --results <merged results dir> --spec <spec.json> [--out <dir>]
-//       [--lookup-fails <file>]
+//       [--lookup-fails <file>] [--cost-with-replaced]
 //
 // Reads <results>/trials.jsonl (runner/contracts.ts TrialRecord) and <results>/manifest.json when it exists. Writes
 // analysis.json and analysis.md to --out (default: the results directory). Intervals, never ranks.
@@ -16,7 +16,7 @@
 // Per cell: the pass rate is the task mean (each task's mean over its scored attempts, then the mean over tasks) with a
 // task-clustered percentile bootstrap interval; rerun flip 2k(n-k)/(n(n-1)) per task with two or more scored attempts,
 // averaged over tasks; pass^k and pass@k with k the cell's planned attempts, over tasks with k scored attempts; cost per
-// solve, the cell's recorded USD (excluded trials included) over its scored passes, with a task bootstrap interval; and
+// solve, the cell's recorded USD (excluded trials included, and the first run of a rerun its lease stopped, merge-stages.ts frontier.first_run_usd; with --cost-with-replaced, also each run a rerun replaced) over its scored passes, with a task bootstrap interval; and
 // the median wall time of scored trials, labelled contended because trials of a shard may overlap.
 //
 // Pairs. Every cell of a model is paired with the model's home cell (third-party minus home). A pair keeps, per task, the
@@ -66,7 +66,7 @@ export interface FrontierSpec {
   models: FrontierModel[];
   cells: FrontierCell[];
 }
-export interface FrontierInput { records: TrialRecord[]; manifest: MatrixManifest | null; lookup_fails?: string[] }
+export interface FrontierInput { records: TrialRecord[]; manifest: MatrixManifest | null; lookup_fails?: string[]; cost_with_replaced?: boolean }
 
 export class SpecError extends Error {}
 
@@ -214,11 +214,15 @@ export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
       const m = attempts.get(t.task) ?? new Map<number, 0 | 1 | null>();
       m.set(numbers.get(t)!, value(t));
       attempts.set(t.task, m);
-      usdByTask.set(t.task, (usdByTask.get(t.task) ?? 0) + (t.usage?.usd ?? 0));
+      usdByTask.set(t.task, (usdByTask.get(t.task) ?? 0) + (t.usage?.usd ?? 0) + ((t as { frontier?: { first_run_usd?: number } }).frontier?.first_run_usd ?? 0) + (input.cost_with_replaced ? (t as { frontier?: { replaced_usd?: number } }).frontier?.replaced_usd ?? 0 : 0));
     }
     const unstarted = input.manifest ? input.manifest.trials.filter((t) => t.cell === c.id && !recorded.has(t.id)).map((t) => t.id) : [];
     data.set(c.id, { spec: c, rows, attempts, usdByTask, unstarted });
   }
+  const mainCells = [...data.values()].filter((d) => !d.spec.descriptive);
+  const taskIds = [...new Set(mainCells.flatMap((d) => [...d.attempts.keys()]))].sort(byKey);
+  const inEveryCell = (want: 0 | 1) => taskIds.filter((task) => mainCells.every((d) => { const s = scoredOf(d.attempts.get(task)); return s.length > 0 && s.every((v) => v === want); }));
+  const taskLists = { total: taskIds.length, passed_every_attempt_in_every_cell: inEveryCell(1), never_passed_in_any_cell: inEveryCell(0) };
 
   const cellStats = (d: CellData) => {
     const c = d.spec;
@@ -340,12 +344,13 @@ export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
       estimator: "task mean (each task's mean pass over its scored attempts, then the mean over tasks); task-clustered percentile bootstrap intervals; pairs from runner/stats/paired.ts clusteredPairedDelta over per-task means of the attempts scored in both cells, Holm within model across primary pairs for the two-sided sign-flip p and for the one-sided non-inferiority p",
       seed, draws, alpha, ni_margin: NI_MARGIN, saturated_at: saturatedAt, min_paired_tasks: minPaired, drift_threshold: spec.drift_threshold ?? null,
       wall_time: 'median over scored trials, contended (trials of a shard may overlap)',
-      cost: 'recorded USD of every trial of the cell (excluded ones included) over scored passes',
+      cost: input.cost_with_replaced ? 'recorded USD of every trial of the cell (excluded ones included) plus each run a rerun replaced (frontier.replaced_usd, --cost-with-replaced), over scored passes' : 'recorded USD of every trial record of the cell (excluded ones included; a run a rerun replaced is not a record) over scored passes',
     },
     verdict_rules: VERDICT_RULES,
     trials_planned: planned, trials_recorded: input.records.length - outside, trials_outside_spec: outside, trials_unstarted: unstarted,
     complete: planned === null ? null : unstarted === 0,
     lookup_fails: lookups.size,
+    tasks: taskLists,
     models, cells: withVerdicts, pairs,
   };
 }
@@ -425,9 +430,9 @@ function lookupList(file: string): string[] {
 
 if (import.meta.main) {
   const arg = (n: string) => { const i = process.argv.indexOf(`--${n}`); return i >= 0 ? process.argv[i + 1] : undefined; };
-  const results = arg('results'), specPath = arg('spec'), out = arg('out') ?? results, lookupFile = arg('lookup-fails');
+  const results = arg('results'), specPath = arg('spec'), out = arg('out') ?? results, lookupFile = arg('lookup-fails'), withReplaced = process.argv.includes('--cost-with-replaced');
   if (!results || !specPath || !existsSync(join(results, 'trials.jsonl')) || !existsSync(specPath)) {
-    console.error('usage: bun scripts/frontier-harbor/analyze.ts --results <merged results dir with trials.jsonl> --spec <spec.json> [--out <dir>] [--lookup-fails <file>]');
+    console.error('usage: bun scripts/frontier-harbor/analyze.ts --results <merged results dir with trials.jsonl> --spec <spec.json> [--out <dir>] [--lookup-fails <file>] [--cost-with-replaced]');
     process.exit(2);
   }
   let analysis: FrontierAnalysis;
@@ -435,7 +440,7 @@ if (import.meta.main) {
     const manifest = existsSync(join(results, 'manifest.json')) ? readJsonFile<MatrixManifest>(join(results, 'manifest.json')) : null;
     if (manifest?.sealed) { console.error(`analyze: ${results} was planned with a sealed root; this script prints task ids and does not run on sealed results`); process.exit(2); }
     const records = readJsonLines<TrialRecord>(join(results, 'trials.jsonl'));
-    analysis = analyzeFrontier({ records, manifest, lookup_fails: lookupFile ? lookupList(lookupFile) : [] }, readJsonFile<FrontierSpec>(specPath));
+    analysis = analyzeFrontier({ records, manifest, lookup_fails: lookupFile ? lookupList(lookupFile) : [], cost_with_replaced: withReplaced }, readJsonFile<FrontierSpec>(specPath));
   } catch (e) {
     if (e instanceof SpecError) { console.error(`analyze: refused: ${e.message}`); process.exit(2); }
     if (e instanceof RunnerError) { console.error(`analyze: ${e.message}`); process.exit(2); }

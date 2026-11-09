@@ -8,6 +8,8 @@ export const CELL_FIELDS = ['passes', 'scored', 'pass_rate', 'pass_ci95', 'usd_p
 export type CellField = (typeof CELL_FIELDS)[number];
 export type OptionalCellField = 'usd_per_solved_interval_basis';
 
+export const CALL_WORD = /^(can't tell apart|behind|ahead|within \d+ points)$/;
+
 export interface EntryCell {
   id: string;
   harness: string;
@@ -29,7 +31,7 @@ export interface Entry {
   same_everywhere?: Source[];
   mdd?: Source;
   mdd_holm?: Source;
-  family: Source & { label: string; kind?: 'verdict' | 'cost_per_trial'; interval?: string };
+  family: Source & { label: string; kind?: 'verdict' | 'cost_per_trial'; interval?: string; a?: string; b?: string; verdict?: Source; words?: Record<string, string> };
   secondary?: Source;
   lead_note: string;
   verdict?: { word: 'KEEP' | 'FIX-METHOD' | 'CUT-CANDIDATE'; quote: string };
@@ -56,6 +58,8 @@ export function validateEntry(e: unknown, where: string): Entry {
   if (x?.role === 'other' && x.verdict) errors.push(`${where}: only a main entry carries a verdict`);
   if (x?.family?.kind !== undefined && x.family.kind !== 'verdict' && x.family.kind !== 'cost_per_trial') errors.push(`${where}: family.kind must be verdict or cost_per_trial`);
   if (x?.family?.kind === 'cost_per_trial' && !x.family.interval) errors.push(`${where}: a cost_per_trial family needs interval, the path to each contrast's 95% range`);
+  if (x?.family?.verdict && (!x.family.verdict.file || !x.family.verdict.path)) errors.push(`${where}: family.verdict needs file and path`);
+  for (const [k, w] of Object.entries(x?.family?.words ?? {})) if (!CALL_WORD.test(w)) errors.push(`${where}: family.words.${k} is ${JSON.stringify(w)}, not a call word from docs/glossary.md`);
   for (const f of CELL_FIELDS) if (!x?.fields?.[f]?.file || !x.fields[f].path) errors.push(`${where}: fields.${f} needs file and path`);
   if (!Array.isArray(x?.cells) || x.cells.length === 0) errors.push(`${where}: cells must be a non-empty list`);
   for (const c of x?.cells ?? []) for (const k of ['id', 'harness', 'version', 'model'] as const) if (typeof c[k] !== 'string' || !c[k]) errors.push(`${where}: cell ${c.id ?? '?'} needs ${k}`);

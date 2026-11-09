@@ -186,6 +186,10 @@ The `wave2-admit.ts` bullet says each block ceiling is the planned spend plus R,
 - **Install check alone:** put `--install-check` in the manifest's `options` and use `scripts/frontier-harbor/install-check-prereg.json` as the preregistration. No key is required on the controller and none goes to the VM (the key file is written empty). The results (`install-check.json`, `agents/`, `baselines/`, `probe/`) come back to `<dest>/<shard>/results`. A shard's `args` of `--baselines all` run oracle and nop on every pinned task instead of three: the run's baseline gate before its first paid trial.
 - **Records:** `vm-run.sh`'s `trials.jsonl`, which `merge-shards.ts` does not read, so the fan-out ends by printing the results directories. On teardown the controller waits up to 240 s for the shard's exit file, as for Lane B. `--embedded` and the sealed flags are refused.
 
+### 2026-11-08: a frontier-harbor mirror skips request captures
+
+For a `--workload frontier-harbor` shard, the mid-run mirror to `--replicate-to` leaves out every `proxy-capture/` directory and `results/run/` (Harbor's job tree). The mid-run mirror keeps the ledger and the VM map, and the trial records (`trials.jsonl`, `run-summary.json` and the per-trial records) reach it only after `vm-run.sh` writes them at `finish()`. The pull into `--dest` still brings the captures and the job tree back, during the run and at teardown. Why: internal-task's stage-0 mirror (140 trials) pushed a 2 GB Capy drive over its limit, and the main stage is about seven times larger. Tested in `tests/ubicloud-run-path.test.ts`.
+
 ### 2026-11-07: the frontier-harbor workload
 
 `run-shard.sh`, `vm-shard.sh` and `fanout.sh` take `--workload frontier-harbor`, and `run-shard.sh` takes `--install-check` for the keyless install check alone. Why: the internal-task install check and shards go through the standard fan-out, with results leaving the VM while it runs and the VM destroyed on every exit, instead of a hand-driven VM.

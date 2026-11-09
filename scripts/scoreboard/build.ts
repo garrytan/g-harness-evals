@@ -64,14 +64,26 @@ const range = (r: [number, number], f: (x: number) => string) => `[${f(r[0])}, $
 
 const verdictOf = (c: Comparison) => (c.tested === false ? 'not tested' : c.verdict ?? 'no verdict recorded');
 
+export function callPhrase(verdict: string, side: 'a' | 'b'): string {
+  if (verdict === "can't tell apart") return "can't tell apart from";
+  if (verdict === 'behind') return side === 'a' ? 'behind' : 'ahead of';
+  if (verdict === 'ahead') return side === 'a' ? 'ahead of' : 'behind';
+  const within = /^within (\d+) points$/.exec(verdict);
+  if (within) return side === 'a' ? `${verdict} of` : `at most ${within[1]} points ahead of`;
+  return `${verdict}:`;
+}
+
 export function callFor(cell: string, modelOf: Map<string, string>, harnessOf: Map<string, string>, primary: Comparison[], secondary: Comparison[]): string {
   const sameModel = (c: Comparison) => (c.a === cell || c.b === cell) && modelOf.get(c.a) === modelOf.get(c.b);
   const other = (c: Comparison) => harnessOf.get(c.a === cell ? c.b : c.a) ?? (c.a === cell ? c.b : c.a);
   const mine = primary.filter(sameModel);
   if (mine.length) {
-    const byVerdict = new Map<string, string[]>();
-    for (const c of mine) byVerdict.set(verdictOf(c), [...(byVerdict.get(verdictOf(c)) ?? []), other(c)]);
-    return [...byVerdict].map(([v, names]) => (v === "can't tell apart" ? `can't tell apart from ${names.join(', ')}` : `${v}: ${names.join(', ')}`)).join('; ');
+    const byPhrase = new Map<string, string[]>();
+    for (const c of mine) {
+      const phrase = callPhrase(verdictOf(c), c.a === cell ? 'a' : 'b');
+      byPhrase.set(phrase, [...(byPhrase.get(phrase) ?? []), other(c)]);
+    }
+    return [...byPhrase].map(([phrase, names]) => `${phrase} ${names.join(', ')}`).join('; ');
   }
   const untested = secondary.filter((c) => sameModel(c) && !c.tested);
   if (untested.length) return `interval only, not tested (vs ${untested.map(other).join(', ')})`;
@@ -123,7 +135,15 @@ export function buildTable(entry: Entry, readJson: (path: string) => unknown): T
   if (missing.length) throw new Error(`${entry.run_id}: disclosures must list ${missing.join(', ')}`);
   const family = list(read(entry.family), entry.family.path) as Record<string, unknown>[];
   const costFamily = entry.family.kind === 'cost_per_trial';
-  const primary = costFamily ? [] : (family as unknown as Comparison[]);
+  const { a: aKey = 'a', b: bKey = 'b', verdict: verdictSrc, words } = entry.family;
+  const primary: Comparison[] = costFamily ? [] : family.map((c) => {
+    const [a, b] = [c[aKey], c[bKey]];
+    if (typeof a !== 'string' || typeof b !== 'string') throw new Error(`${entry.run_id}: a comparison in ${entry.family.path} has no string ${aKey} and ${bKey}`);
+    const raw = verdictSrc ? read(verdictSrc, a) : c.verdict;
+    const verdict = words && typeof raw === 'string' ? words[raw] : raw;
+    if (words && verdict === undefined && c.tested !== false) throw new Error(`${entry.run_id}: ${a} vs ${b}: verdict ${JSON.stringify(raw)} has no call word in family.words`);
+    return { a, b, verdict: verdict as string | null | undefined, tested: c.tested as boolean | null | undefined };
+  });
   const secondary = entry.secondary ? (read(entry.secondary) as Comparison[]) : [];
   const modelOf = new Map(entry.cells.map((c) => [c.id, c.model]));
   const harnessOf = new Map(entry.cells.map((c) => [c.id, c.harness]));
@@ -226,6 +246,8 @@ export function renderPage(tables: Table[], disclosures: Record<string, string>)
     '- **Pass rate:** each task\'s share of passing scored tries, averaged over the tasks.',
     '- **95% range:** the task-clustered bootstrap interval: tasks are resampled with replacement, so a few lucky tasks can\'t narrow it.',
     '- **Can\'t tell apart:** the run\'s preregistered test, adjusted for the number of comparisons (Holm), found no difference. It does not mean equal: the run had less than an 80% chance to detect a gap smaller than its minimum detectable difference.',
+    '- **Behind / ahead of:** the run\'s preregistered test, adjusted for the number of comparisons (Holm), found a gap in that direction.',
+    '- **Within N points of:** the run\'s preregistered non-inferiority test, adjusted (Holm), showed the harness is no more than N points below the one it is compared with, N being the margin the preregistration set. Read from the other row it says **at most N points ahead of**. It does not mean equal.',
     '- **Interval only, not tested:** the run reports a range for this pair but its preregistration made no test of it.',
     '- **Cheaper per trial / costs more per trial:** the run\'s preregistered cost contrast has a 95% range wholly below or wholly above zero. **Cost per trial: can\'t tell apart:** that range includes zero.',
     '- **Cost per solved task:** what the cell spent at list price, metered by our proxy, divided by its passes. **Cost per trial** is the same spend divided by the trials recorded.',

@@ -289,13 +289,18 @@ pull_results() {
   mkdir -p "$dest/results" && cp -a "$dest/.pull/results/." "$dest/results/" && rm -rf "$dest/.pull"
 }
 # mirror: <dest> to <replicate-to>/<shard> (without per-trial state/ and workspace/), staged locally and scanned for
-# key-shaped text first, then swapped in whole; a failure or a hit keeps the previous mirror and is logged.
+# key-shaped text first, then swapped in whole; a failure or a hit keeps the previous mirror and is logged. A
+# frontier-harbor shard's mirror also leaves out every proxy-capture/ directory and results/run/ (Harbor's job tree, the
+# only mid-run copy of the trial results, which vm-run.sh writes as records at finish()): a full run's request bodies do
+# not fit a 2 GB Capy drive (internal-task stage 0). The pull
+# into <dest> still brings them back, and so does the teardown pull.
 key_shapes='sk-''ant-(api|admin|oat)[0-9]{2}-[A-Za-z0-9_-]{16,}|sk-''(proj|svcacct|admin)-[A-Za-z0-9_-]{16,}'
 mirror() {
   [ -n "$replicate_to" ] || return 0
-  local stage=$dest/.mirror to=$replicate_to/${name:-attach} hits
+  local stage=$dest/.mirror to=$replicate_to/${name:-attach} hits skip=()
+  [ "$workload" != frontier-harbor ] || skip=(--exclude=proxy-capture --exclude=./results/run)
   rm -rf "$stage" && mkdir -p "$stage" &&
-    tar -C "$dest" -cf - --exclude=./.pull --exclude=./.mirror --exclude='./results/trials/*/*/*/state' --exclude='./results/trials/*/*/*/workspace' . | tar -C "$stage" -xf - ||
+    tar -C "$dest" -cf - --exclude=./.pull --exclude=./.mirror --exclude='./results/trials/*/*/*/state' --exclude='./results/trials/*/*/*/workspace' ${skip[@]+"${skip[@]}"} . | tar -C "$stage" -xf - ||
     { log "WARNING: replicate: staging $dest for $to failed; the previous mirror stays"; rm -rf "$stage"; return 1; }
   hits=$(grep -rIlE "$key_shapes" "$stage" 2>/dev/null | sed "s#^$stage/##" | head -3 | paste -sd' ' -)
   if [ -n "$hits" ]; then log "WARNING: replicate: key-shaped text in $hits; $to keeps the previous mirror"; rm -rf "$stage"; return 1; fi

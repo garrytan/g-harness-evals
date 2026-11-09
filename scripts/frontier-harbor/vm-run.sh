@@ -5,8 +5,17 @@
 # nftables; scripts/frontier-harbor/install-check.sh runs it keyless against a fake upstream.
 #
 #   scripts/frontier-harbor/vm-run.sh --prereg <prereg.json> --name <shard> --lease-usd <n> --out <results dir>
-#       --tb21 <terminal-bench-2-1 checkout at the pinned commit> [--stage <name>] [--done <trials.jsonl> ...]
-#       [--fake-upstream] [--uncounted <reason>]
+#       --tb21 <terminal-bench-2-1 checkout at the pinned commit> [--stage <name> | --rerun <list.json> [--rerun-stage <name>] [--no-earlier-rerun]]
+#       [--done <trials.jsonl> ...] [--fake-upstream] [--uncounted <reason>]
+#
+# --rerun (amendment 4 of frontier-harness-2026-11) runs the listed trials of the shard once more under their own ids,
+# in a fresh results directory, as the stage rerun1 (jobs <cell>__a<n>__rerun1, lease <run_id>:<shard>:rerun1): plan.ts
+# check-shard --rerun and jobs --rerun, each told the stage with --rerun-stage. The --done files must hold every planned
+# trial of the shard (every earlier stage's trials.jsonl), whose spend counts, with an earlier rerun stage's records in
+# --done or --own.
+# --rerun-stage rerun1-a<m> (amendment 6) names the stage of a later list's first rerun, so its lease is its own. check-shard
+# refuses it unless --done or --own holds a record of the shard from an earlier rerun stage, or --no-earlier-rerun says
+# that stage ran none of the shard's trials.
 #
 # --stage runs only that preregistered stage's trials of the shard (plan.ts stages). Without it the shard's every trial
 # runs. Either way a trial already recorded in <out>/trials.jsonl, or in a --done file (an earlier stage's results from
@@ -42,11 +51,14 @@ set -euo pipefail
 umask 077
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
-prereg="" name="" lease="" out="" tb21="" fake=0 uncounted="" stage=""
+prereg="" name="" lease="" out="" tb21="" fake=0 uncounted="" stage="" rerun="" rerun_stage="" no_earlier_rerun=0
 done_files=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --stage) stage=$2; shift 2 ;;
+    --rerun) rerun=$(cd "$(dirname "$2")" && pwd)/$(basename "$2"); shift 2 ;;
+    --rerun-stage) rerun_stage="$2"; shift 2 ;;
+    --no-earlier-rerun) no_earlier_rerun=1; shift ;;
     --done) done_files+=("$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"); shift 2 ;;
     --prereg) prereg=$2; shift 2 ;;
     --name) name=$2; shift 2 ;;
@@ -102,12 +114,17 @@ trap 'on_signal 130' INT
 trap 'on_signal 129' HUP
 
 # 1. the shard against the preregistration, before anything else; earlier stages' spend counts against the lease
+[ -z "$rerun" ] || [ -z "$stage" ] || { echo "vm-run (frontier): --rerun takes no --stage" >&2; exit 2; }
 stage_arg=()
-[ -z "$stage" ] || stage_arg=(--stage "$stage")
+plan_arg=()
+[ -z "$stage" ] || { stage_arg=(--stage "$stage"); plan_arg=(--stage "$stage"); }
+[ -z "$rerun_stage" ] || [ -n "$rerun" ] || { echo "vm-run (frontier): --rerun-stage needs --rerun" >&2; exit 2; }
+[ -z "$rerun" ] || { stage=${rerun_stage:-rerun1}; stage_arg=(--stage "$stage"); plan_arg=(--rerun "$rerun" --rerun-stage "$stage"); }
+[ "$no_earlier_rerun" -eq 0 ] || plan_arg+=(--no-earlier-rerun)
 done_args=()
 [ ! -f "$out/trials.jsonl" ] || done_args+=(--own "$out/trials.jsonl")
 for f in ${done_files[@]+"${done_files[@]}"}; do done_args+=(--done "$f"); done
-(cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/plan.ts check-shard --prereg "$prereg" --name "$name" --lease-usd "$lease" ${stage_arg[@]+"${stage_arg[@]}"} ${done_args[@]+"${done_args[@]}"} 2>>"$out/run.log") | tee -a "$out/run-shard.log" || { say "the shard, its stage or its lease does not match the preregistration (run.log); nothing ran"; exit 2; }
+(cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/plan.ts check-shard --prereg "$prereg" --name "$name" --lease-usd "$lease" ${plan_arg[@]+"${plan_arg[@]}"} ${done_args[@]+"${done_args[@]}"} 2>>"$out/run.log") | tee -a "$out/run-shard.log" || { say "the shard, its stage or its lease does not match the preregistration (run.log); nothing ran"; exit 2; }
 read -r run_id ids models <<< "$(cd "$repo" && "${safe_env[@]}" bun -e '
 const { loadPlan } = await import("./scripts/frontier-harbor/plan.ts");
 const p = loadPlan(process.argv[1]); const s = p.shards.find((x) => x.name === process.argv[2]);
@@ -221,7 +238,7 @@ PY
 }
 
 # 7. the Harbor jobs, one per cell and attempt, in plan.ts order
-jobs=$(cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/plan.ts jobs --prereg "$prereg" --name "$name" --run "$run" --broker-url http://127.0.0.1:8791 ${stage_arg[@]+"${stage_arg[@]}"} ${done_args[@]+"${done_args[@]}"} 2>>"$out/run.log") || { say "plan.ts jobs refused (run.log)"; exit 3; }
+jobs=$(cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/plan.ts jobs --prereg "$prereg" --name "$name" --run "$run" --broker-url http://127.0.0.1:8791 ${plan_arg[@]+"${plan_arg[@]}"} ${done_args[@]+"${done_args[@]}"} 2>>"$out/run.log") || { say "plan.ts jobs refused (run.log)"; exit 3; }
 say "harbor: $(printf '%s\n' "$jobs" | grep -c .) job(s); logs in $run/harbor.log and $run/jobs"
 harbor_env=("${safe_env[@]}" "PYTHONPATH=$here")
 [ -z "${DOCKER_HOST:-}" ] || harbor_env+=("DOCKER_HOST=$DOCKER_HOST")

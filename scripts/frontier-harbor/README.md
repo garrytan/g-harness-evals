@@ -21,6 +21,9 @@
 | [egress.py](egress.py), [egress-sidecar/](egress-sidecar/) | Harbor's docker environment with a blocklist added to its egress sidecar |
 | [vm-run.sh](vm-run.sh) | runs one shard |
 | [to-trials.ts](to-trials.ts) | Harbor results into trial records, with requested and sent effort and infra classes |
+| [merge-stages.ts](merge-stages.ts) | merges a staged run's shard directories into one results directory, with the exclusion list and rerun records |
+| [subset.ts](subset.ts) | a copy of merged results without some trials (tasks, a Harbor exception, first runs in a time window, or a trial list), or with one harness's infra errors on one task scored as fails, for the sensitivity lines |
+| [refusals.ts](refusals.ts) | lists the trials with a provider safety refusal, read the same way in every harness from each harness's own refusal marker |
 | [fake-upstream.ts](fake-upstream.ts) | keyless model upstream for the install check |
 | [install-check.sh](install-check.sh), [install-check.json](install-check.json) | the one-VM install check and its receipt |
 | [install-check-prereg.json](install-check-prereg.json) | the install check's own preregistration (one cell per agent class and model) |
@@ -59,6 +62,12 @@
 - **Never twice:** jobs leaves out every trial already in the shard's `trials.jsonl` or in a `--done <trials.jsonl>` file, so the main stage skips what stage 0 recorded, on the same VM or another.
 - **One lease per stage:** a stage runs under `<run_id>:<shard>:<stage>` and the main stage under `<run_id>:<shard>`. Its lease is the planned lease less what the shard's other stages recorded. A later stage refuses to start until every trial of the shard's earlier stages is in the results directory's `trials.jsonl` or a `--done` file.
 - **Records:** each trial record carries its `stage`. A later stage keeps the first `attestation.json` and appends its own to `attestations.jsonl`.
+
+### Reruns and the staged merge
+
+- **Ungraded trials:** a trial whose verifier output has no pytest summary line and shows a failed download from github.com is an `infra_error` with infra class `verifier_unavailable`, excluded pairwise and counted (amendments 4 and 6). `to-trials.ts scan-verifier` applies the same rule to records already written and writes the list; `--previous` names an earlier list and `--rerun-out` writes the trials it missed. A listed trial is rerun once with `vm-run.sh --rerun <list>` (`--rerun-stage rerun1-a<m>` for a later list), and a rerun that hits the rule again is never rerun.
+- **Rerun:** `vm-run.sh --rerun <list.json>` (with `plan.ts check-shard --rerun` and `jobs --rerun`) runs the listed trials of a shard once more, in a fresh results directory, with their ids unchanged. Records carry `stage` `rerun1` and `rerun` 1, under the lease `<run_id>:<shard>:rerun1`. Every listed trial's first run must be in a `--done` file, and its spend counts against the planned lease.
+- **Merge:** `merge-stages.ts --out <dir> --shard <name>:<label>=<dir> ... [--exclude <list.json> --rerun <name>:<label>=<dir> ...]` merges a shard's stage directories, which `merge-shards.ts` refuses. A listed trial takes its rerun record, or is written as excluded when it has none. A rerun its lease stopped (`lease_refused`) replaces nothing: its record keeps the first run's spend as `frontier.first_run_usd`, which `analyze.ts` counts in cost per solve. The shard directories are never rewritten.
 
 ### The kept sample
 
