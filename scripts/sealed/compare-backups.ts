@@ -148,7 +148,7 @@ const objectId = (repo: string, hex: string) => {
 export function publicFamilies(repo: string): string[] {
   const out = new Set<string>();
   try {
-    const blobs = execFileSync('git', ['ls-tree', '-r', '-z', 'HEAD', '--', 'tasks'], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\0').filter((e) => e.endsWith('/task.toml') && e.split(' ')[1] === 'blob').map((e) => e.split('\t')[0]!.split(' ')[2]!);
+    const blobs = execFileSync('git', ['ls-tree', '-r', '-z', 'HEAD', '--', 'tasks'], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 1 << 28 }).split('\0').filter((e) => e.endsWith('/task.toml') && e.split(' ')[1] === 'blob').map((e) => e.split('\t')[0]!.split(' ')[2]!);
     const batch = execFileSync('git', ['cat-file', '--batch'], { cwd: repo, input: blobs.join('\n'), stdio: ['pipe', 'pipe', 'ignore'], maxBuffer: 1 << 28 });
     for (let i = 0; i < batch.length;) {
       const nl = batch.indexOf(10, i);

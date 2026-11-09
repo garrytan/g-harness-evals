@@ -631,6 +631,22 @@ describe('rekey.ts and compare-backups.ts', () => {
     expect(() => publicFamilies(join(f.tmp, 'not-a-repo'))).toThrow('HE-SEALED-006 --family-field reads the task.toml families committed at HEAD in --repo');
   });
 
+  test('publicFamilies reads a tasks/ tree whose ls-tree listing is larger than 1 MiB', () => {
+    const repo = join(f.tmp, 'big-tasks-repo');
+    write(join(repo, 'tasks', 'big', 'task.toml'), 'family = "big_fam"\n');
+    fixtureGit(repo, 'init', '-q', '-b', 'main');
+    fixtureGit(repo, 'config', 'user.email', 'custody-test@example.invalid');
+    fixtureGit(repo, 'config', 'user.name', 'custody test');
+    fixtureGit(repo, 'add', '-A');
+    const blob = execFileSync('git', ['hash-object', '-w', '--stdin'], { cwd: repo, input: 'x\n', encoding: 'utf8', env: SCRUBBED_ENV }).trim();
+    const deep = 'd'.repeat(180);
+    const lines = Array.from({ length: 8000 }, (_, i) => `100644 ${blob}\ttasks/many/${deep}/f${i}.txt`).join('\n') + '\n';
+    execFileSync('git', ['update-index', '--index-info'], { cwd: repo, input: lines, env: SCRUBBED_ENV });
+    fixtureGit(repo, 'commit', '-q', '-m', 'synthetic');
+    expect(execFileSync('git', ['ls-tree', '-r', '-z', 'HEAD', '--', 'tasks'], { cwd: repo, maxBuffer: 1 << 28, env: SCRUBBED_ENV }).length).toBeGreaterThan(1 << 20);
+    expect(publicFamilies(repo)).toEqual(['big_fam']);
+  });
+
   test('no decrypted text, task id or path below the second segment reached stdout or stderr', () => {
     const all = printed.join('\n');
     expect(all).toContain('COMPARE: ');
