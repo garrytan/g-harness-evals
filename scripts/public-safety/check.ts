@@ -12,7 +12,7 @@ import { isPublicRemote } from './lib/hook.ts';
 import { Boundary, escapeControls } from './lib/output.ts';
 import { exactHit, loadPack, packHits, type LoadedPack } from './lib/pack.ts';
 import { PsError, runSync } from './lib/proc.ts';
-import { catBlobs, catObjects, compileRules, expand, leafHits, nameKind, ruleApplies, type CompiledRule, type MarkerRule } from './lib/scan.ts';
+import { catBlobs, catObjects, compileRules, expand, leafHits, nameKind, ruleApplies, ruleLines, type CompiledRule, type MarkerRule } from './lib/scan.ts';
 import { gitleaks, gitleaksStdin, readLock, readyTool, type ReadyTool } from './lib/tools.ts';
 
 export const DIR = import.meta.dir;
@@ -27,7 +27,7 @@ export interface ClassesFile {
   deny: { globs: string[]; except?: string[]; reason: string }[];
   classes: { name: string; globs: string[]; content_class: string }[];
 }
-export interface AllowEntry { code: string; path: string; line: number; blob: string; reason: string; date: string }
+export interface AllowEntry { code: string; path: string; line: number | number[]; member?: string; blob: string; reason: string; date: string }
 export type Where =
   | { kind: 'blob'; path: string; blob: string; member?: string }
   | { kind: 'path'; path: string; blob?: string; n: number }
@@ -64,7 +64,8 @@ export function loadAllow(path = join(DIR, 'allow.json')): AllowEntry[] {
   if (j.schema !== 'harness-evals-public-safety-allow/1') throw new Error('allow.json: unknown schema');
   for (const e of j.entries) {
     if (!RULES.codes[e.code]?.allow) throw new Error('allow.json: an entry names a code that is not allowlistable');
-    if (!/^[0-9a-f]{40}$/.test(e.blob) || !/^\d{4}-\d{2}-\d{2}$/.test(e.date) || !e.reason?.trim() || !e.path || !Number.isInteger(e.line)) throw new Error('allow.json: every entry needs a code, path, line, blob id, reason and date');
+    const lines = Array.isArray(e.line) ? e.line : [e.line];
+    if (!/^[0-9a-f]{40}$/.test(e.blob) || !/^\d{4}-\d{2}-\d{2}$/.test(e.date) || !e.reason?.trim() || !e.path || !lines.length || !lines.every((l) => Number.isInteger(l) && l >= 0) || (e.member !== undefined && typeof e.member !== 'string')) throw new Error('allow.json: every entry needs a code, path, line or list of lines, blob id, reason and date');
   }
   return j.entries;
 }
@@ -174,6 +175,13 @@ export async function scanRange(ctx: Ctx, base: string, head: string): Promise<{
       refs.set(dst!, rs);
     }
   }
+  const known = [...refs.keys()].filter((o) => !blobSize.has(o));
+  if (known.length) {
+    for (const l of git(ctx, ['cat-file', '--batch-check=%(objectname) %(objecttype) %(objectsize)'], 'git cat-file --batch-check', known.join('\n') + '\n', 300_000).toString('latin1').split('\n')) {
+      const [o, t, s] = l.split(' ');
+      if (t === 'blob') blobSize.set(o!, Number(s));
+    }
+  }
   const meta: { text: string; where: Where }[] = [];
   enter('commits');
   for await (const o of catObjects(ctx.gitDir, commits, ctx.env)) {
@@ -199,10 +207,18 @@ export async function scanRange(ctx: Ctx, base: string, head: string): Promise<{
   const seenFile = join(CACHE_ROOT, 'seen', ctx.gate.slice(0, 12) + '-' + (ctx.pack ? ctx.pack.sha256.slice(0, 12) : 'none') + '.txt');
   const seen = ctx.noCache ? new Set<string>() : loadSeen(seenFile);
   const dirty = new Set<string>();
-  const add = (h: Hit) => {
+  // An allowlist entry admits its code in its blob (and member) at its listed lines only. A rule reports the first line it
+  // matches in a leaf, so when an entry applies, every line the rule matches must be listed; the first unlisted one is
+  // reported.
+  const add = (h: Hit, every?: () => number[]) => {
     if (h.where.kind === 'blob') {
       const w = h.where;
-      if (RULES.codes[h.code]?.allow && ctx.allow.some((e) => e.code === h.code && e.path === w.path && e.blob === w.blob)) return;
+      const listed = RULES.codes[h.code]?.allow ? ctx.allow.filter((e) => e.code === h.code && e.path === w.path && e.blob === w.blob && e.member === w.member).flatMap((e) => (Array.isArray(e.line) ? e.line : [e.line])) : [];
+      if (listed.length) {
+        const open = (every ? every() : [h.line ?? 0]).find((l) => !listed.includes(l));
+        if (open === undefined) return;
+        h = { ...h, line: open };
+      }
       dirty.add(w.blob);
     }
     hits.push(h);
@@ -221,11 +237,12 @@ export async function scanRange(ctx: Ctx, base: string, head: string): Promise<{
   }
   const glDir = join(ctx.work, 'leaves');
   mkdirSync(glDir, { recursive: true });
-  const chunks: { start: number; oid: string; member?: string }[][] = [];
+  type Mapped = { start: number; oid: string; member?: string; meta?: string[] };
+  const chunks: Mapped[][] = [];
   let parts: Buffer[] = [Buffer.from(GITLEAKS_TEXT_HEAD)];
   let size = 0;
   let line = GITLEAKS_HEAD_LINES + 1;
-  let map: { start: number; oid: string; member?: string }[] = [];
+  let map: Mapped[] = [];
   const flush = () => {
     if (!map.length) return;
     writeFileSync(join(glDir, String(chunks.length)), Buffer.concat(parts));
@@ -249,11 +266,12 @@ export async function scanRange(ctx: Ctx, base: string, head: string): Promise<{
       const lv = views.map((v) => ({ ...v, kind: nameKind(v.path, leaf.member) }));
       const ok = (r: MarkerRule, v: (typeof lv)[number]) => ruleApplies(r, v.kind, v.cls ?? 'unclassified') && !allowPath(r, v.path);
       for (const h of leafHits(leaf.data, [], COMPILED, (r) => lv.some((v) => ok(r, v)))) {
-        const rule = RULES.rules.find((r) => r.id === h.rule)!;
-        for (const v of lv) if (ok(rule, v)) add({ code: rule.code, where: { kind: 'blob', path: v.path, blob: oid, member }, line: h.line });
+        const compiled = COMPILED.find((c) => c.rule.id === h.rule)!;
+        const rule = compiled.rule as GateRule;
+        for (const v of lv) if (ok(rule, v)) add({ code: rule.code, where: { kind: 'blob', path: v.path, blob: oid, member }, line: h.line }, () => ruleLines(leaf.data, compiled));
       }
       if (ctx.pack) for (const h of packHits(ctx.pack, leaf.data, leaf.format === 'text')) for (const v of lv) add({ code: h.code, where: { kind: 'blob', path: v.path, blob: oid, member }, line: h.line });
-      map.push({ start: line, oid, member });
+      map.push({ start: line, oid, member, meta: leaf.meta ? leaf.data.toString('utf8').split('\n') : undefined });
       parts.push(leaf.data, Buffer.from('\n'));
       let nl = 0;
       for (let i = leaf.data.indexOf(10); i >= 0; i = leaf.data.indexOf(10, i + 1)) nl++;
@@ -276,6 +294,8 @@ export async function scanRange(ctx: Ctx, base: string, head: string): Promise<{
       let i = cm.length - 1;
       while (i > 0 && cm[i]!.start > at) i--;
       const m = cm[i]!;
+      const flagged = m.meta?.[at - m.start];
+      if (flagged) ctx.boundary.withhold(flagged);
       for (const path of refs.get(m.oid)!) add({ code: 'PS-GITLEAKS', where: { kind: 'blob', path, blob: m.oid, member: m.member }, line: at - m.start + 1 });
     }
   }
@@ -328,7 +348,10 @@ export function render(b: Boundary, hits: Hit[]): Rendered[] {
   const seen = new Set<string>();
   const out: Rendered[] = [];
   const ci = !!process.env.GITHUB_ACTIONS;
-  for (const h of hits) if (h.code === 'PS-GITLEAKS' && h.where.kind === 'path') b.withhold(h.where.path);
+  for (const h of hits) {
+    if (h.code === 'PS-GITLEAKS' && h.where.kind === 'path') b.withhold(h.where.path);
+    if (h.code === 'PS-GITLEAKS' && h.where.kind === 'ref') b.withhold(h.where.ref);
+  }
   for (const h of hits) {
     const info = RULES.codes[h.code] ?? RULES.codes['PS-INTERNAL']!;
     let locator = locatorOf(b, h.where);
@@ -357,7 +380,7 @@ const USAGE = [
   '  bun scripts/public-safety/check.ts --pr-text <file> [--private-pack <path>] [--pin <path>] [--json]',
   '  bun scripts/public-safety/check.ts --hook <remote-name> <remote-url> --private-pack <path> [--pin <path>]   (pre-push lines on stdin)',
   '  bun scripts/public-safety/check.ts --doctor [--pack <path>] [--pin <path>]',
-  '  bun scripts/public-safety/check.ts --allow <code> <path>:<line> --reason <text>',
+  '  bun scripts/public-safety/check.ts --allow <code> <path>:<line>[,<line>...] --reason <text>',
 ].join('\n');
 
 export interface Args { mode: 'range' | 'text' | 'hook' | 'doctor' | 'allow'; base?: string; head?: string; ref?: string; text?: string; remote?: string; url?: string; pack?: string; pin?: string; json: boolean; noCache: boolean; allowCode?: string; allowAt?: string; reason?: string }
@@ -459,9 +482,10 @@ async function run(argv: string[]): Promise<number> {
     ctx.gitDir = gitDirOf(env);
     const jobs: { ref: string; base: string | null; head: string; n: number }[] = [];
     const hits: Hit[] = [];
+    const refTexts: { text: string; where: Where }[] = [];
     if (a.mode === 'range') {
       enter('refs');
-      if (a.ref) refCheck(ctx, a.ref, 1, hits);
+      if (a.ref) refCheck(ctx, a.ref, 1, hits, refTexts);
       const base = resolveCommit(ctx, a.base!, 'PS-BASE', 'the base');
       const head = resolveCommit(ctx, a.head!, 'PS-USAGE', '--head');
       jobs.push({ ref: a.ref ?? a.head!, base, head, n: 1 });
@@ -474,7 +498,7 @@ async function run(argv: string[]): Promise<number> {
         const [, lsha, rref, rsha, extra] = l.trim().split(/\s+/);
         if (!lsha || !rsha || extra !== undefined || !/^[0-9a-f]{40,64}$/.test(lsha) || !/^[0-9a-f]{40,64}$/.test(rsha)) throw usage('malformed pre-push line ' + ++n);
         n++;
-        if (!refCheck(ctx, rref!, n, hits)) continue;
+        if (!refCheck(ctx, rref!, n, hits, refTexts)) continue;
         if (ZERO.test(lsha)) { jobs.push({ ref: rref!, base: null, head: lsha, n }); continue; }
         let base: string;
         if (ZERO.test(rsha)) {
@@ -487,7 +511,8 @@ async function run(argv: string[]): Promise<number> {
     }
     const lines: string[] = [];
     const scanned = jobs.filter((j) => j.base);
-    if (scanned.length) ctx.gl = readyGitleaks(env, work);
+    if (scanned.length || refTexts.length) ctx.gl = readyGitleaks(env, work);
+    if (refTexts.length) glMeta(ctx, refTexts, hits);
     for (const j of jobs) {
       if (!j.base) { lines.push(receipt(j.ref, j.head, 0)); continue; }
       const t0 = Date.now();
@@ -504,9 +529,12 @@ async function run(argv: string[]): Promise<number> {
   }
 }
 
-function refCheck(ctx: Ctx, ref: string, n: number, hits: Hit[]): boolean {
-  if (refProblem(ref, ctx.env)) { hits.push({ code: 'PS-REF', where: { kind: 'ref', ref, n } }); return false; }
-  scanText(ctx, ref, 'ref-name', { kind: 'ref', ref, n }, hits);
+// A ref name, refused or not, goes through the same rule, pack and gitleaks scan as a message.
+function refCheck(ctx: Ctx, ref: string, n: number, hits: Hit[], texts: { text: string; where: Where }[]): boolean {
+  const where: Where = { kind: 'ref', ref, n };
+  scanText(ctx, ref, 'ref-name', where, hits);
+  texts.push({ text: ref, where });
+  if (refProblem(ref, ctx.env)) { hits.push({ code: 'PS-REF', where }); return false; }
   return true;
 }
 
@@ -529,12 +557,13 @@ function allowEntry(a: Args, env: Record<string, string>): number {
   const code = a.allowCode!;
   if (!RULES.codes[code]) throw usage('unknown code ' + JSON.stringify(code));
   if (!RULES.codes[code]!.allow) throw usage(code + ' is not allowlistable');
-  const m = /^(.+):(\d+)$/.exec(a.allowAt!);
-  if (!m) throw usage('the location must be <path>:<line>');
+  const m = /^(.+):(\d+(?:,\d+)*)$/.exec(a.allowAt!);
+  if (!m) throw usage('the location must be <path>:<line> or <path>:<line>,<line>,...');
+  const lines = [...new Set(m[2]!.split(',').map(Number))];
   const top = runSync(['git', 'rev-parse', '--show-toplevel'], { op: 'git rev-parse', timeoutMs: 30_000, env }).stdout.toString('utf8').trim() || process.cwd();
   const file = resolve(m[1]!);
   if (!existsSync(file) || !statSync(file).isFile()) throw usage('no file at the given path');
-  const entry: AllowEntry = { code, path: relative(top, file), line: Number(m[2]), blob: blobId(readFileSync(file)), reason: a.reason!.trim(), date: new Date().toISOString().slice(0, 10) };
+  const entry: AllowEntry = { code, path: relative(top, file), line: lines.length === 1 ? lines[0]! : lines, blob: blobId(readFileSync(file)), reason: a.reason!.trim(), date: new Date().toISOString().slice(0, 10) };
   boundary.out(JSON.stringify(entry));
   return 0;
 }

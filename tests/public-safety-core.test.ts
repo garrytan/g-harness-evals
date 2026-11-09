@@ -42,6 +42,62 @@ test('every rule finds its own canary inside a .gz inside a .tar, at the right l
   }
 });
 
+test('gzip FNAME, FCOMMENT and FEXTRA, every tar header text field, pax and GNU records and bytes after the end are scanned', () => {
+  const canary = RULES.rules.find((r) => r.id === 'drive-path')!.canary!;
+  const found = (buf: Buffer) => expand(buf).leaves.some((l) => leafHits(l.data, [], COMPILED, () => true).some((h) => h.rule === 'drive-path'));
+  const hdr = (o: { name: string; type?: string; size?: number; linkname?: string; uname?: string; gname?: string; prefix?: string }) => {
+    const h = Buffer.alloc(512);
+    h.write(o.name, 0, 100);
+    h.write('0000644\0', 100);
+    h.write('0000000\0', 108);
+    h.write('0000000\0', 116);
+    h.write((o.size ?? 0).toString(8).padStart(11, '0') + '\0', 124);
+    h.write('00000000000\0', 136);
+    h.write('        ', 148);
+    h.write(o.type ?? '0', 156);
+    if (o.linkname) h.write(o.linkname, 157, 100);
+    h.write('ustar\0', 257);
+    h.write('00', 263);
+    if (o.uname) h.write(o.uname, 265, 32);
+    if (o.gname) h.write(o.gname, 297, 32);
+    if (o.prefix) h.write(o.prefix, 345, 155);
+    let sum = 0;
+    for (const b of h) sum += b;
+    h.write(sum.toString(8).padStart(6, '0') + '\0 ', 148);
+    return h;
+  };
+  const rec = (o: Parameters<typeof hdr>[0], data = Buffer.alloc(0)) => Buffer.concat([hdr({ ...o, size: data.length }), data, Buffer.alloc((512 - (data.length % 512)) % 512)]);
+  const tar = (...recs: Buffer[]) => Buffer.concat([...recs, Buffer.alloc(1024)]);
+  const pax = (key: string, value: string) => { const body = ' ' + key + '=' + value + '\n'; let n = body.length + 2; while (String(n).length + body.length !== n) n++; return Buffer.from(n + body); };
+  const plain = rec({ name: 'a.txt' }, Buffer.from('plain\n'));
+  const short = canary.slice(0, 31);
+  expect(found(tar(plain))).toBe(false);
+  const tars: [string, Buffer][] = [
+    ['linkname', tar(rec({ name: 'link', type: '2', linkname: canary.slice(0, 99) }))],
+    ['uname', tar(rec({ name: 'a.txt', uname: short }, Buffer.from('plain\n')))],
+    ['gname', tar(rec({ name: 'a.txt', gname: short }, Buffer.from('plain\n')))],
+    ['prefix', tar(rec({ name: 'a.txt', prefix: canary.slice(0, 154) }, Buffer.from('plain\n')))],
+    ['pax extended record', tar(rec({ name: 'PaxHeaders/a.txt', type: 'x' }, pax('comment', canary)), plain)],
+    ['pax global header', tar(rec({ name: 'PaxHeaders/global', type: 'g' }, pax('comment', canary)), plain)],
+    ['GNU long name', tar(rec({ name: '././@LongLink', type: 'L' }, Buffer.from(canary + '\0')), plain)],
+    ['GNU long link', tar(rec({ name: '././@LongLink', type: 'K' }, Buffer.from(canary + '\0')), rec({ name: 'link', type: '2', linkname: 'x' }))],
+    ['bytes after the end-of-archive marker', Buffer.concat([tar(plain), Buffer.from('trailer ' + canary + '\n')])],
+    ['an entry after one all-zero block', Buffer.concat([plain, Buffer.alloc(512), rec({ name: 'b.txt' }, Buffer.from(canary + '\n')), Buffer.alloc(1024)])],
+  ];
+  for (const [what, buf] of tars) { expect([what, found(buf)]).toEqual([what, true]); expect([what, expand(buf).problems]).toEqual([what, []]); }
+  const gz = (data: Buffer, fields: { extra?: string; name?: string; comment?: string }) => {
+    const raw = gzipSync(data);
+    const head = Buffer.from(raw.subarray(0, 10));
+    head[3] = (fields.extra ? 4 : 0) | (fields.name ? 8 : 0) | (fields.comment ? 16 : 0);
+    const extra = fields.extra ? Buffer.concat([Buffer.from([fields.extra.length & 255, fields.extra.length >> 8]), Buffer.from(fields.extra)]) : Buffer.alloc(0);
+    const z = (s?: string) => (s ? Buffer.from(s + '\0') : Buffer.alloc(0));
+    return Buffer.concat([head, extra, z(fields.name), z(fields.comment), raw.subarray(10)]);
+  };
+  expect(found(gzipSync(Buffer.from('plain\n')))).toBe(false);
+  for (const fields of [{ name: canary }, { comment: canary }, { extra: canary }]) expect([fields, found(gz(Buffer.from('plain\n'), fields))]).toEqual([fields, true]);
+  expect(found(Buffer.concat([gzipSync(Buffer.from('one\n')), gz(Buffer.from('two\n'), { name: canary })]))).toBe(true);
+});
+
 test('rules.json carries no private-pack rule and no thread-code rule, and every code has a fix and a docs section', () => {
   const ids = RULES.rules.map((r) => r.id);
   for (const id of ['owner-email', 'custody-sha', 'proprietary-prompt', 'benchmark-canary', 'private-repo-link', 'thread-code']) expect(ids).not.toContain(id);
@@ -114,6 +170,8 @@ test('the identity gate allows GitHub noreply forms only, in author, committer a
     expect(identityProblems(mk(NOREPLY, bad), allowed, null)).toEqual([{ code: 'PS-IDENTITY', field: 'committer' }]);
   }
   expect(identityProblems(mk(NOREPLY, NOREPLY, ['Co-authored-by: X <dev@example.com>', 'Signed-off-by: Y <' + NOREPLY + '>', 'signed-off-by: Z']), allowed, null)).toEqual([{ code: 'PS-IDENTITY', field: 'co-authored-by#1' }, { code: 'PS-IDENTITY', field: 'signed-off-by#3' }]);
+  const others = ['Reported-by: R <dev@example.com>', 'Reviewed-by: V <' + NOREPLY + '>', 'Helped-by: h dev2@example.com, ' + NOREPLY, 'Link: https://example.com/@someone', 'Cc: <x@example.com> <' + NOREPLY + '>'];
+  expect(identityProblems(mk(NOREPLY, NOREPLY, others), allowed, null)).toEqual([{ code: 'PS-IDENTITY', field: 'reported-by#1' }, { code: 'PS-IDENTITY', field: 'helped-by#3' }, { code: 'PS-IDENTITY', field: 'cc#5' }]);
   const listed = '7+listed@users.noreply.github.com';
   const p = buildPack({ gateTree: GATE_TREE, identities: [listed] });
   expect(identityProblems(mk(listed, NOREPLY), allowed, parsePack(Buffer.from(p.json), p.sha))).toEqual([{ code: 'PS-PRIVATE-IDENTITY', field: 'author' }]);
@@ -142,6 +200,7 @@ test('classes refuse by default: unclassified and denied paths, formats a class 
   const classes = JSON.parse(readFileSync(join(GATE, 'classes.json'), 'utf8'));
   expect(classify('docs/methods.md')).toEqual({ kind: 'class', name: 'docs', content_class: 'docs' });
   expect(classify('changelog.d/x.md').kind).toBe('class');
+  for (const p of ['.githooks/pre-push', '.githooks/lib/run.sh']) expect(classify(p)).toEqual({ kind: 'class', name: 'git-hooks', content_class: 'code' });
   expect(classify('docs/benchmarks/r1/results/trials.jsonl')).toMatchObject({ content_class: 'receipts' });
   for (const p of ['weird.bin', 'random/dir/file.txt', 'Makefile']) expect(classify(p)).toEqual({ kind: 'unclassified' });
   for (const p of ['publication/scrub-table.json', 'tasks/multiuser/v0.3/heldout/t1.json', 'a/b/x.age-key', 'docs/ledger/lanes.json', '.env', 'scripts/public-export/export.ts']) expect(classify(p)).toEqual({ kind: 'denied' });

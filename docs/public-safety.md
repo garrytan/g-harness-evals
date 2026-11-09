@@ -18,10 +18,12 @@ It replaces the weekly export's scrub checks. The rules that are safe to publish
 - **Lane bring-up**, once per checkout and safe to repeat:
   `bun scripts/public-safety/check.ts --doctor [--pack <path>] [--pin <path>]`
   It verifies the pack against its pin, extracts the gate tree the pack pins into `~/.cache/harness-evals/public-safety/<tree>/`, readies gitleaks, installs `.git/hooks/pre-push.local` (and a `pre-push` that runs it, through gstack's managed hook when gstack is installed), probes this checkout's commit identity, and checks that a canary push through the installed hook is refused. It prints exactly `public-safety: ok` or `public-safety: fail <codes>`, and it never sets `core.hooksPath`.
-- **CI** runs the branch form on the pull request range, keyless, with `--json`: `bun scripts/public-safety/check.ts --base <base sha> --head <head sha> --json`. When `GITHUB_ACTIONS` is set, key-class and private-class findings print only their code and a correlation id; the same id appears at the end of the finding line in a local run.
-- **An allowlist entry** for a public-rule finding: `bun scripts/public-safety/check.ts --allow <code> <path>:<line> --reason <text>` prints an `allow.json` entry bound to the file's current blob id. Any later edit to the file needs a new decision.
+- **CI** runs the branch form on the pull request range, keyless: `bun scripts/public-safety/check.ts --base <base sha> --head <head sha>`. [CI and the private lane](#ci-and-the-private-lane) says which copy of the gate runs. When `GITHUB_ACTIONS` is set, key-class and private-class findings print only their code and a correlation id; the same id appears at the end of the finding line in a local run.
+- **An allowlist entry** for a public-rule finding: `bun scripts/public-safety/check.ts --allow <code> <path>:<line>[,<line>...] --reason <text>` prints an `allow.json` entry bound to the code, the file's current blob id and those lines (an entry may also name a container `member`). It admits that code at those lines only: if the rule matches any other line of the file, the first unlisted line is reported. Any later edit to the file needs a new decision.
 
 The hook runs the cached, pinned copy of the gate, never the checkout's own `check.ts`. A branch that edits `check.ts`, `rules.json`, `allow.json` or a hook file cannot weaken the check that admits it: a gate change takes effect for pushes only after the private pack pins its new tree. Pushing with `--no-verify` to a public remote is forbidden.
+
+What counts as text to scan: every blob a new commit puts at a path, a blob the base already holds included (it is checked against the new path's class and rules); every commit message, header and identity, where the identity gate reads the author, the committer and every `Key: value` message line that carries an email address; every pushed ref name, refused or not, through the rules, the pack and gitleaks; and inside archives, every gzip member's FEXTRA, FNAME and FCOMMENT field, every tar header text field (name, link target, owner and group names, prefix), GNU long-name and long-link records, pax extended and global records, and anything after the first all-zero block. A name gitleaks flags (a path, a tar member or a ref) is withheld from every output channel.
 
 ## Exit codes
 
@@ -54,6 +56,24 @@ Deleting the file in a new commit does not help. Rewrite the branch so no commit
 - `classes.json`: path classes, deny rules, allowed formats and size budgets. Refuses by default.
 - `allow.json`: blob-bound exceptions to public-rule findings, each with a reason and a date.
 - `tools.lock` and `gitleaks.toml`: the pinned gitleaks and its configuration.
+
+## CI and the private lane
+
+- **`public-safety`** (`.github/workflows/public-safety.yml`) runs on pull request opened, edited, synchronize and reopened. It runs the base commit's copy of `scripts/public-safety` (`git archive <base sha>`) over base..head and over the title and body. This is the check branch protection requires, together with `private-admission`. On `pull_request` GitHub runs the pull request's own copy of the workflow file, so a pull request that edits the workflow could skip this check: that is why it only detects, and private-admission's `PS-POLICY-CHANGE` is the binding check for an edit under `scripts/public-safety/`, `.githooks/`, `.github/workflows/` or `.gstack/pregate.json`.
+- **`public-safety-push`** is the same job on a push to any branch. It runs the default branch head's copy of the gate, fetched from origin, never the pushed branch's previous head, over before..after (a new branch starts at its merge base with main). Its distinct name keeps it from standing in for the pull request check on the same head. Branch protection does not require it.
+- **`private-admission`** is posted by the private lane after it scans each public head with the private pack. Its states and codes are documented in the private repository.
+- **`private-admission-watch`** (`.github/workflows/private-admission-watch.yml`, `scripts/public-safety/watch-private-admission.ts`) runs every 10 minutes. On every open pull request head with no final `private-admission` status whose newest pending status, or failing that its head push, is over 30 minutes old, it posts state `error` with the [PS-PRIV-UNAVAILABLE](#ps-priv-unavailable) description. The lane's next verdict replaces it.
+- **`pr-text`** (`.github/workflows/pr-text.yml`) is an alert, not a required check. On every issue comment, review, review comment and issue, it runs main's `check.ts --pr-text` on the event payload's text alone and fails visibly on a hit, so a maintainer edits or hides the text. Outside text is untrusted data and is never executed.
+
+## Docs-only fast path
+
+CI's checks job skips typecheck and `bun test tests/` for a docs-only change and still runs the link and hub-fragment checks. `scripts/ci/docs-only.ts` decides, from the base commit's copy. It is an allowlist. Every path the change adds, edits, deletes or renames (both names of a rename) must be a regular file on this list:
+
+- `README.md`;
+- a Markdown file under `docs/`, except anything under `docs/benchmarks/` or `docs/scoreboard/`, any `PREREGISTRATION*.md`, any `AMENDMENTS.md`, and any file whose sha256 (old or new content) a committed file holds;
+- `findings/<name>.md`.
+
+And no file under `tests/` or `scripts/` may name it: no whole word equal to its basename or one of its directory names, no glob matching it (so `git ls-files '*.md'` names every Markdown file), and no `.md` or `md` word. `changelog.d/` and `todos.d/` fragments are never docs-only. Anything else, or anything the script cannot decide, means the full run. `bun scripts/ci/docs-only.ts --audit` counts the files that qualify on a tree.
 
 ## Codes
 
@@ -168,9 +188,9 @@ Allowlistable with a blob-bound `allow.json` entry.
 <a id="ps-identity"></a>
 ### PS-IDENTITY
 
-A commit's author, committer, Co-authored-by or Signed-off-by address is not `noreply@github.com` or `<digits>+<login>@users.noreply.github.com`. The gate never prints the address.
+A commit's author or committer address, or an address in any message line of the form `Key: value` (Co-authored-by, Signed-off-by, Reported-by, Cc and every other trailer), is not `noreply@github.com` or `<digits>+<login>@users.noreply.github.com`. A Co-authored-by or Signed-off-by line with no address fails too. The gate never prints the address.
 
-**Fix:** Commit with a GitHub noreply address (<id>+<login>@users.noreply.github.com) as author, committer and in every trailer, then rewrite the branch.
+**Fix:** Commit with a GitHub noreply address (<id>+<login>@users.noreply.github.com) as author and committer, and use one in every message line of the form Key: value that carries an address (Co-authored-by, Signed-off-by and any other trailer), then rewrite the branch.
 
 Not allowlistable.
 
@@ -390,6 +410,15 @@ The installed hook refused a push as `PS-HOOK-<exit>`: the pinned gate exited wi
 
 Not allowlistable.
 
+<a id="ps-priv-unavailable"></a>
+### PS-PRIV-UNAVAILABLE
+
+The `private-admission` status of a pull request head, posted by the watcher: the private lane has posted no final verdict for 30 minutes. The description is exactly `PS-PRIV-UNAVAILABLE: private lane unavailable; maintainers re-run private-admission for this head`; it names no internal thread or command.
+
+**Fix:** Nothing to change in the pull request. A maintainer re-runs the private lane for that head with the command in the private repository's `private/admission/README.md`; its verdict replaces the error.
+
+Not allowlistable.
+
 <a id="ps-hook-receipt"></a>
 ### PS-HOOK-RECEIPT
 
@@ -401,4 +430,5 @@ Not allowlistable.
 
 ## Changelog
 
+- 2026-11-08: follow-up to the first version. Archive member names gitleaks flags are withheld everywhere; gzip header fields, every tar header field, pax and GNU records and bytes after the end are scanned; an allowlist entry binds to its lines; a base blob at a new path gets that path's rules; ref names go through gitleaks; the identity gate reads every trailer with an address; a push runs main's gate as `public-safety-push`; new sections on CI and the private lane (with PS-PRIV-UNAVAILABLE) and on the docs-only allowlist.
 - 2026-11-08: first version: the admission gate, its rules, classes, private pack reader, hook and doctor, replacing the weekly export's checks in front of every public push.

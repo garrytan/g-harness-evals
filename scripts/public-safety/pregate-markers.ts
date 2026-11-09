@@ -1,10 +1,12 @@
 #!/usr/bin/env bun
 /**
  * The public tree's .gstack/pregate.json, generated from the public-safety rules (R11). The private repository's
- * pregate.json is copied unchanged except for its sealed block: answer_markers become exactly the regexes of
+ * pregate.json is copied unchanged except for its sealed block: answer_markers become the regexes of
  * scripts/public-safety/rules.json (each rule's regex or regexes; ignore_case or an i flag wraps a regex in (?i:...)),
- * and local_paths is true, so gstack-pregate's sealed check and pre-push hook refuse the same value-free patterns that
- * public CI refuses. Every key must be one gstack-pregate accepts, and every marker must pass its sealed-config limits
+ * followed by every key-shape marker the source already has (a literal prefix of three or more letters, digits, _ or -
+ * and then only bracket classes with a count, like the age secret key marker), and local_paths is true, so
+ * gstack-pregate's sealed check and pre-push hook refuse the same value-free patterns that public CI refuses. Any other
+ * source marker is dropped: it may be private, and check.ts with the private pack covers it. Every key must be one gstack-pregate accepts, and every marker must pass its sealed-config limits
  * (64 markers of 1 to 256 characters, each a valid regex); anything else throws instead of writing a config gstack
  * would refuse. The export's tree staging (scripts/public-export/export.ts) writes the result into the public tree.
  *
@@ -46,7 +48,23 @@ export function markersOf(rules: unknown): string[] {
   return out;
 }
 
-/** The public pregate.json object: the given config with sealed.answer_markers from the rules and sealed.local_paths true. */
+export const KEY_SHAPE = /^[A-Za-z0-9_-]{3,}(?:\[[^\]\\]+\](?:\{\d+(?:,\d*)?\}|\+))+$/;
+
+/** The public answer markers: the rules' markers, then the source's key-shape markers, within gstack-pregate's limits. */
+export function publicMarkers(rules: unknown, source: unknown): string[] {
+  if (source !== undefined && (!Array.isArray(source) || source.some((m) => typeof m !== 'string'))) throw new Error(PREGATE_PATH + ': sealed.answer_markers must be an array of strings');
+  const out = markersOf(rules);
+  for (const m of (source ?? []) as string[]) {
+    if (!KEY_SHAPE.test(m) || out.includes(m)) continue;
+    if (m.length > MAX_REGEX) throw new Error(PREGATE_PATH + ': a marker must be 1 to ' + MAX_REGEX + ' characters');
+    try { new RegExp(m); } catch (e) { throw new Error(PREGATE_PATH + ': a key-shape marker is not a valid regex (' + (e as Error).message + ')'); }
+    out.push(m);
+  }
+  if (out.length > MAX_MARKERS) throw new Error(RULES_PATH + ' and ' + PREGATE_PATH + ': ' + out.length + ' markers; gstack-pregate takes at most ' + MAX_MARKERS);
+  return out;
+}
+
+/** The public pregate.json object: the given config with sealed.answer_markers from publicMarkers and sealed.local_paths true. */
 export function publicPregate(rules: unknown, pregate: unknown): Record<string, unknown> {
   if (!pregate || typeof pregate !== 'object' || Array.isArray(pregate)) throw new Error(PREGATE_PATH + ': expected a JSON object');
   const config = pregate as Record<string, unknown>;
@@ -54,7 +72,7 @@ export function publicPregate(rules: unknown, pregate: unknown): Record<string, 
   const sealed = config.sealed ?? {};
   if (typeof sealed !== 'object' || Array.isArray(sealed)) throw new Error(PREGATE_PATH + ': sealed must be an object');
   for (const k of Object.keys(sealed)) if (!SEALED_KEYS.includes(k)) throw new Error(PREGATE_PATH + ': gstack-pregate does not accept the key sealed.' + k);
-  return { ...config, sealed: { ...sealed, answer_markers: markersOf(rules), local_paths: true } };
+  return { ...config, sealed: { ...sealed, answer_markers: publicMarkers(rules, (sealed as Record<string, unknown>).answer_markers), local_paths: true } };
 }
 
 /** The file text the export writes: two-space JSON with a trailing newline, as the source file is written. */

@@ -2,7 +2,9 @@
 // private lane has gone quiet for 30 minutes. These tests drive it with a fake GitHub client and a fake fetch; no
 // network, no real token.
 import { describe, expect, test } from 'bun:test';
-import { CONTEXT, description, MAX_DESCRIPTION, restClient, watch, type GitHub, type OpenPull, type Status } from '../scripts/public-safety/watch-private-admission.ts';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { CONTEXT, DESCRIPTION, MAX_DESCRIPTION, restClient, watch, type GitHub, type OpenPull, type Status } from '../scripts/public-safety/watch-private-admission.ts';
 
 const NOW = Date.parse('2026-11-08T12:00:00Z');
 const ago = (min: number) => new Date(NOW - min * 60_000).toISOString();
@@ -20,14 +22,18 @@ function fake(pulls: OpenPull[], statuses: Record<string, Status[]>, committed: 
 }
 
 describe('description', () => {
-  test('fits GitHub\'s 140-character limit by shortening the sha, and keeps the re-run command', () => {
-    for (const pr of [1, 342, 99999]) {
-      const d = description(pr, sha('a'));
-      expect(d.length).toBeLessThanOrEqual(MAX_DESCRIPTION);
-      expect(d).toStartWith('PS-PRIV-UNAVAILABLE: private lane unavailable; internal-task re-runs: bun private/admission/lane.ts --pr ' + pr + ' --head aaaaaaa');
-    }
-    expect(description(342, sha('a')).length).toBe(MAX_DESCRIPTION);
-    expect(description(7, 'abc1234')).toBe('PS-PRIV-UNAVAILABLE: private lane unavailable; internal-task re-runs: bun private/admission/lane.ts --pr 7 --head abc1234');
+  test('is the fixed public text within GitHub\'s 140-character limit, naming no internal thread code or command', () => {
+    expect(DESCRIPTION).toBe('PS-PRIV-UNAVAILABLE: private lane unavailable; maintainers re-run private-admission for this head');
+    expect(DESCRIPTION.length).toBeLessThanOrEqual(MAX_DESCRIPTION);
+    expect(DESCRIPTION.replace('PS-PRIV-UNAVAILABLE', '')).not.toMatch(/\b[A-Z]{2,}-\d+\b/);
+    expect(DESCRIPTION).not.toContain('lane.ts');
+  });
+
+  test('docs/public-safety.md documents PS-PRIV-UNAVAILABLE under its own anchor with the exact description', () => {
+    const doc = readFileSync(join(import.meta.dir, '..', 'docs', 'public-safety.md'), 'utf8');
+    expect(doc).toContain('<a id="ps-priv-unavailable"></a>\n### PS-PRIV-UNAVAILABLE');
+    expect(doc).toContain('`' + DESCRIPTION + '`');
+    for (const s of ['## CI and the private lane', '## Docs-only fast path', '`pr-text`', '`public-safety-push`']) expect(doc).toContain(s);
   });
 });
 
@@ -36,7 +42,7 @@ describe('watch', () => {
     const { gh, posted } = fake([{ number: 1, head: sha('1'), createdAt: ago(120) }, { number: 2, head: sha('2'), createdAt: ago(120) }], {}, { [sha('1')]: ago(31), [sha('2')]: ago(10) });
     const v = await watch(gh, NOW);
     expect(v.map((x) => [x.number, x.action])).toEqual([[1, 'posted'], [2, 'waiting']]);
-    expect(posted).toEqual([{ sha: sha('1'), state: 'error', context: CONTEXT, description: description(1, sha('1')) }]);
+    expect(posted).toEqual([{ sha: sha('1'), state: 'error', context: CONTEXT, description: DESCRIPTION }]);
   });
 
   test('a new pull request of an old commit counts from its creation', async () => {

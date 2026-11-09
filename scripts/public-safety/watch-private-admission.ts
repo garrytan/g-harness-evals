@@ -3,7 +3,7 @@
  * The private-admission watcher. The private lane posts a `private-admission` commit status on each public pull request
  * head; when it is down, the status would stay pending (or never appear) and the pull request could not merge without
  * anyone being told why. Every 10 minutes the public workflow .github/workflows/private-admission-watch.yml runs this
- * script, which posts state `error` with a PS-PRIV-UNAVAILABLE description on every open pull request head that has no
+ * script, which posts state `error` with the PS-PRIV-UNAVAILABLE description on every open pull request head that has no
  * final private-admission status (success, failure or error) and whose newest pending status, or failing that its head
  * push, is older than 30 minutes. A later run of the private lane replaces the error with its own verdict.
  *
@@ -29,12 +29,9 @@ export interface GitHub {
 }
 export interface Verdict { number: number; head: string; action: 'posted' | 'final' | 'waiting'; since?: string }
 
-/** The error description, at most 140 characters: the head sha is shortened (never below 7 characters) before anything is cut. */
-export function description(pr: number, sha: string): string {
-  const text = (s: string) => 'PS-PRIV-UNAVAILABLE: private lane unavailable; internal-task re-runs: bun private/admission/lane.ts --pr ' + pr + ' --head ' + s;
-  const room = MAX_DESCRIPTION - text('').length;
-  return text(sha.slice(0, Math.max(room, 7))).slice(0, MAX_DESCRIPTION);
-}
+/** The error description. It is public, so it names no internal thread or lane; private/admission/README.md holds the
+ *  exact re-run command. */
+export const DESCRIPTION = 'PS-PRIV-UNAVAILABLE: private lane unavailable; maintainers re-run private-admission for this head';
 
 /** One open pull request: post the error, or say why not. */
 export async function check(gh: GitHub, pull: OpenPull, now: number, dryRun: boolean): Promise<Verdict> {
@@ -43,7 +40,7 @@ export async function check(gh: GitHub, pull: OpenPull, now: number, dryRun: boo
   if (newest && newest.state !== 'pending') return { number: pull.number, head: pull.head, action: 'final' };
   const since = newest ? newest.createdAt : [await gh.committedAt(pull.head), pull.createdAt].sort((a, b) => Date.parse(b) - Date.parse(a))[0]!;
   if (!(now - Date.parse(since) >= STALE_MS)) return { number: pull.number, head: pull.head, action: 'waiting', since };
-  if (!dryRun) await gh.postStatus(pull.head, { state: 'error', context: CONTEXT, description: description(pull.number, pull.head) });
+  if (!dryRun) await gh.postStatus(pull.head, { state: 'error', context: CONTEXT, description: DESCRIPTION });
   return { number: pull.number, head: pull.head, action: 'posted', since };
 }
 

@@ -77,6 +77,20 @@ test.skipIf(!READY)('gitleaks still reads a range or a PR text whose bytes sniff
   expect(check(['--pr-text', join(dir, 'deep.md')], { cwd: dir }).stdout).toContain('PS-GITLEAKS text:2 ');
 }, 120_000);
 
+test.skipIf(!READY)('a ref name goes through gitleaks like a message, and a flagged ref name is never printed', () => {
+  const r = fresh();
+  r.commit({ 'docs/new.md': '# New\n' }, 'add a page');
+  const tok = tokenCanary();
+  for (const ref of ['refs/heads/feature-' + tok, 'refs/tags/' + tok]) {
+    const outs = [range(r, ['--ref', ref]), range(r, ['--ref', ref, '--json']), range(r, ['--ref', ref], { GITHUB_ACTIONS: 'true' })];
+    expect(outs[0]!.status).toBe(1);
+    expect(outs[0]!.stdout).toMatch(/^PS-GITLEAKS ref#1:1 /m);
+    expect(outs[0]!.stdout).not.toContain('PUBLIC_SAFETY: ok');
+    for (const o of outs) for (const s of [tok, tok.slice(4), tok.slice(-12)]) expect(o.all).not.toContain(s);
+  }
+  expect(range(r, ['--ref', 'refs/tags/' + tok]).stdout).toMatch(/^PS-REF ref#1:0 /m);
+}, 120_000);
+
 test.skipIf(!READY)('a file name with a newline cannot forge a seen-cache record that skips a later secret blob', () => {
   const r = fresh();
   const leak = 'k ' + keyCanary() + '\n';
@@ -96,6 +110,20 @@ test.skipIf(!READY)('a credential that only gitleaks recognizes in a file name i
   expect(out.stdout).toContain('PS-CLASS');
   expect(out.all).not.toContain(tok);
   expect(range(r, [], { GITHUB_ACTIONS: 'true' }).all).not.toContain(tok);
+}, 120_000);
+
+test.skipIf(!READY)('a credential only gitleaks recognizes in a .tar.gz member name is withheld from every other finding on every channel', () => {
+  const r = fresh();
+  const tok = tokenCanary();
+  const member = tarOf([{ name: 'inner/' + tok + '.txt', data: Buffer.from('see ' + drive() + '\n') }]);
+  r.commit({ 'docs/benchmarks/r1/results/state.tar.gz': gzipSync(member) }, 'add');
+  const outs = [range(r), range(r, ['--json']), range(r, [], { GITHUB_ACTIONS: 'true' })];
+  expect(outs[0]!.status).toBe(1);
+  expect(outs[0]!.stdout).toMatch(/^PS-GITLEAKS docs\/benchmarks\/r1\/results\/state\.tar\.gz\|gunzip\|names:1 /m);
+  expect(outs[0]!.stdout).toMatch(/^PS-DRIVE-PATH obj:[0-9a-f]{12}:1 /m);
+  expect(JSON.parse(outs[1]!.stdout).findings.map((f: { code: string }) => f.code)).toContain('PS-DRIVE-PATH');
+  expect(outs[2]!.stdout).toMatch(/^PS-GITLEAKS corr=[0-9a-f]{12}$/m);
+  for (const o of outs) for (const s of [tok, tok.slice(4), tok.slice(-12)]) expect(o.all).not.toContain(s);
 }, 120_000);
 
 test.skipIf(!READY)('a secret in a file name and in a tar member name never reaches stdout, stderr, --json or the trace', () => {
@@ -261,6 +289,47 @@ test.skipIf(!READY)('--allow writes a blob-bound entry that admits that file onl
   r.commit({ 'docs/a.md': 'see ' + drive() + '\nmore\n' });
   expect(check(['--base', 'main', '--head', 'feature', '--no-cache'], { cwd: r.dir, script }).status).toBe(1);
   for (const code of ['PS-PRIVATE-VALUE', 'PS-IDENTITY', 'PS-NOPE']) expect(check(['--allow', code, 'docs/a.md:1', '--reason', 'x'], { cwd: r.dir, script }).status).toBe(2);
+}, 120_000);
+
+test.skipIf(!READY)('a blob already on the base that appears at a new path is checked against the new path\'s class and path rules', () => {
+  const spend = (JSON.parse(readFileSync(join(GATE, 'rules.json'), 'utf8')).rules as { id: string; canary: string }[]).find((x) => x.id === 'program-spend-total')!.canary;
+  const r = repo(join(tmp, 'r' + ++n));
+  const report = '# Report\n\n' + spend + '\n';
+  r.commit({ 'docs/benchmarks/r1/report.md': report, 'docs/methods.md': '# Methods\n' }, 'base');
+  r.g('checkout', '-q', '-b', 'feature');
+  r.commit({ 'docs/copy.md': report }, 'copy');
+  const out = range(r, ['--no-cache']);
+  expect(out.status).toBe(1);
+  expect(out.stdout).toMatch(/^PS-SPEND-TOTAL docs\/copy\.md:3 /m);
+  expect(out.stdout).not.toContain('docs/benchmarks/r1/report.md');
+  const s = repo(join(tmp, 'r' + ++n));
+  s.commit({ 'docs/benchmarks/r1/report.md': report }, 'base');
+  s.g('checkout', '-q', '-b', 'feature');
+  s.commit({ 'docs/benchmarks/r2/report.md': report }, 'copy within the allowed folder');
+  expect(range(s, ['--no-cache']).status).toBe(0);
+}, 120_000);
+
+test.skipIf(!READY)('an allowlist entry admits its code at its listed lines only, not every hit of that code in the blob', () => {
+  const iso = join(tmp, 'allow-lines-gate');
+  cpSync(GATE, join(iso, 'scripts', 'public-safety'), { recursive: true });
+  const script = join(iso, 'scripts', 'public-safety', 'check.ts');
+  const allowFile = join(iso, 'scripts', 'public-safety', 'allow.json');
+  const r = fresh();
+  r.commit({ 'docs/a.md': 'see ' + drive() + '\nplain\nand ' + drive() + '\n' });
+  const withEntry = (at: string) => {
+    const e = JSON.parse(check(['--allow', 'PS-DRIVE-PATH', 'docs/a.md:' + at, '--reason', 'a quoted example'], { cwd: r.dir, script }).stdout);
+    writeFileSync(allowFile, JSON.stringify({ schema: 'harness-evals-public-safety-allow/1', entries: [e] }));
+    return { e, out: check(['--base', 'main', '--head', 'feature', '--no-cache'], { cwd: r.dir, script }) };
+  };
+  const one = withEntry('1');
+  expect(one.e.line).toBe(1);
+  expect(one.out.status).toBe(1);
+  expect(one.out.stdout).toMatch(/^PS-DRIVE-PATH docs\/a\.md:3 /m);
+  const both = withEntry('1,3');
+  expect(both.e.line).toEqual([1, 3]);
+  expect(both.out.status).toBe(0);
+  writeFileSync(allowFile, JSON.stringify({ schema: 'harness-evals-public-safety-allow/1', entries: [{ ...both.e, line: [] }] }));
+  expect(check(['--base', 'main', '--head', 'feature', '--no-cache'], { cwd: r.dir, script }).status).toBe(3);
 }, 120_000);
 
 test.skipIf(!READY)('cold start: the gate folder alone, with no publication/ or scripts/public-export/, runs and passes a clean range', () => {

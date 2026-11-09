@@ -1,5 +1,6 @@
 // Git object helpers computed in-process: blob and tree ids (so the gate can name its own tree without git), and the
-// commit parser behind the identity gate.
+// commit parser behind the identity gate, which reads every `Key: value` line of the message whose value carries an
+// email address, plus Co-authored-by and Signed-off-by lines that carry none.
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -34,9 +35,13 @@ export function parseCommit(raw: Buffer): Commit {
   const message = cut >= 0 ? text.slice(cut + 2) : '';
   const field = (k: string) => { const m = new RegExp('^' + k + ' (.*)$', 'm').exec(header); return m ? person(m[1]!) : null; };
   const trailers: { key: string; email: string }[] = [];
-  for (const m of message.matchAll(/^[ \t]*(co-authored-by|signed-off-by)[ \t]*:[ \t]*(.*)$/gim)) {
-    const email = /<([^>]*)>/.exec(m[2]!)?.[1] ?? m[2]!.trim();
-    trailers.push({ key: m[1]!.toLowerCase(), email });
+  for (const m of message.matchAll(/^[ \t]*([A-Za-z][A-Za-z0-9-]*)[ \t]*:[ \t]*(.*)$/gm)) {
+    const key = m[1]!.toLowerCase();
+    const value = m[2]!;
+    const bracketed = [...value.matchAll(/<([^<>]*@[^<>]*)>/g)].map((x) => x[1]!);
+    const emails = bracketed.length ? bracketed : (value.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g) ?? []);
+    for (const email of emails) trailers.push({ key, email });
+    if (!emails.length && (key === 'co-authored-by' || key === 'signed-off-by')) trailers.push({ key, email: /<([^>]*)>/.exec(value)?.[1] ?? value.trim() });
   }
   return { author: field('author'), committer: field('committer'), header, message, trailers };
 }

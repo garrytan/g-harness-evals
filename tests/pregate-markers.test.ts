@@ -4,7 +4,7 @@
 import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { markersOf, PREGATE_KEYS, PREGATE_PATH, publicPregate, renderPublicPregate, RULES_PATH, SEALED_KEYS } from '../scripts/public-safety/pregate-markers.ts';
+import { KEY_SHAPE, markersOf, PREGATE_KEYS, PREGATE_PATH, publicMarkers, publicPregate, renderPublicPregate, RULES_PATH, SEALED_KEYS } from '../scripts/public-safety/pregate-markers.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
 const RULES = {
@@ -43,10 +43,27 @@ describe('publicPregate', () => {
     const { sealed, ...rest } = out;
     const { sealed: sourceSealed, ...sourceRest } = SOURCE;
     expect(rest).toEqual(sourceRest);
-    expect(sealed).toEqual({ ...sourceSealed, answer_markers: markersOf(RULES), local_paths: true });
+    expect(sealed).toEqual({ ...sourceSealed, answer_markers: publicMarkers(RULES, sourceSealed.answer_markers), local_paths: true });
     expect(Object.keys(out).every((k) => k === '$schema' || PREGATE_KEYS.includes(k))).toBe(true);
     expect(Object.keys(sealed).every((k) => SEALED_KEYS.includes(k))).toBe(true);
     expect(renderPublicPregate(JSON.stringify(RULES), JSON.stringify(SOURCE))).toBe(JSON.stringify(out, null, 2) + '\n');
+  });
+
+  test('keeps the age secret key marker and every other key-shape marker the source has, after the generated ones, and drops the rest', () => {
+    const age = (SOURCE.sealed.answer_markers as string[]).find((m) => m.startsWith('AGE-SECRET-KEY-'))!;
+    expect(age).toBeDefined();
+    expect(KEY_SHAPE.test(age)).toBe(true);
+    const out = (publicPregate(RULES, SOURCE) as { sealed: { answer_markers: string[] } }).sealed.answer_markers;
+    expect(out).toEqual([...markersOf(RULES), age]);
+    const source = ['SYNTH-KEY-[0-9A-Z]{20}', 'synth_tok_[A-Za-z0-9]{8}[a-f]+', '(?i:\\bsomeone private\\b)', 'held-literal-token', '[a-z]{12}', age];
+    expect(publicMarkers(RULES, source)).toEqual([...markersOf(RULES), 'synth_tok_[A-Za-z0-9]{8}[a-f]+', age]);
+  });
+
+  test('refuses a merged list over 64 markers, and a source marker list that is not strings', () => {
+    const rules = { rules: Array.from({ length: 64 }, (_, i) => ({ id: 'r' + i, regex: 'canary-' + i })) };
+    expect(publicMarkers(rules, [])).toHaveLength(64);
+    expect(() => publicMarkers(rules, ['AGE-SECRET-KEY-1[QPZ]{58}'])).toThrow('65 markers; gstack-pregate takes at most 64');
+    expect(() => publicMarkers(RULES, 'x')).toThrow('sealed.answer_markers must be an array of strings');
   });
 
   test('refuses a key gstack-pregate does not accept', () => {
@@ -63,6 +80,7 @@ test.skipIf(!publicTree && !existsSync(rulesFile))('the public tree\'s pregate.j
   const generated = markersOf(rules);
   expect(generated.length).toBeGreaterThan(0);
   if (!publicTree) return;
-  expect(SOURCE.sealed.answer_markers).toEqual(generated);
+  expect(SOURCE.sealed.answer_markers).toEqual(publicMarkers(rules, SOURCE.sealed.answer_markers));
+  expect((SOURCE.sealed.answer_markers as string[]).some((m) => m.startsWith('AGE-SECRET-KEY-'))).toBe(true);
   expect(SOURCE.sealed.local_paths).toBe(true);
 });

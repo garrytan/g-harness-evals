@@ -1,7 +1,12 @@
 # The public-safety gate, in the public repository only (the private repository runs the export gates instead). Every
-# pull request event that can change what a merge publishes (opened, edited, synchronize, reopened) and every push runs
-# the base commit's copy of scripts/public-safety against the head as data, so a pull request cannot loosen the gate
-# that judges it, and checks the pull request title and body, so a title or body edit re-runs the verdict. Keyless,
+# pull request event that can change what a merge publishes (opened, edited, synchronize, reopened) runs the base
+# commit's copy of scripts/public-safety against the head as data, so a pull request cannot loosen the gate that judges
+# it, and checks the pull request title and body, so a title or body edit re-runs the verdict. Every push runs the
+# default branch head's copy (fetched from origin), never the pushed branch's previous head, which the same author
+# controls. The two report as different checks: `public-safety` for a pull request, the one branch protection requires,
+# and `public-safety-push` for a push, which only detects. On pull_request GitHub runs the pull request's own copy of
+# this workflow, so a pull request that edits it can skip this gate; private-admission (PS-POLICY-CHANGE) is the binding
+# check for such a change. Keyless,
 # read-only, never pull_request_target. check.ts exits 0 pass, 1 rejected, 2 usage, 3 tool failure, and prints rule codes
 # only under GitHub Actions. Bun runs with the gate copy's own (empty) bunfig.toml and tsconfig.json and no .env file, so
 # nothing in the head's checkout configures the run.
@@ -18,6 +23,7 @@ permissions:
 
 jobs:
   public-safety:
+    name: ${{ github.event_name == 'push' && 'public-safety-push' || 'public-safety' }}
     if: github.repository == 'garrytan/g-harness-evals'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -47,16 +53,25 @@ jobs:
           for sha in "$base" "$head"; do git cat-file -e "$sha^{commit}" 2>/dev/null || git fetch -q --no-tags origin "$sha"; done
           echo "base=$base" >> "$GITHUB_OUTPUT"
           echo "head=$head" >> "$GITHUB_OUTPUT"
-      - name: The base commit's gate
+      # The gate copy: the base commit on a pull request, the default branch head on a push.
+      - name: The gate copy
         id: gate
         if: steps.range.outputs.skip != 'true'
         env:
           BASE: ${{ steps.range.outputs.base }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            gate="$BASE"
+          else
+            git fetch -q --no-tags origin "+refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH"
+            gate=$(git rev-parse --verify "refs/remotes/origin/$DEFAULT_BRANCH^{commit}")
+          fi
+          echo "gate=$gate" >> "$GITHUB_OUTPUT"
           mkdir -p "$RUNNER_TEMP/gate"
-          git archive "$BASE" scripts/public-safety | tar -x -C "$RUNNER_TEMP/gate"
-          test -f "$RUNNER_TEMP/gate/scripts/public-safety/check.ts" || { echo "::error title=public-safety::the base commit has no scripts/public-safety/check.ts"; exit 1; }
+          git archive "$gate" scripts/public-safety | tar -x -C "$RUNNER_TEMP/gate"
+          test -f "$RUNNER_TEMP/gate/scripts/public-safety/check.ts" || { echo "::error title=public-safety::the gate commit has no scripts/public-safety/check.ts"; exit 1; }
           : > "$RUNNER_TEMP/gate/bunfig.toml"
           echo '{}' > "$RUNNER_TEMP/gate/tsconfig.json"
       - name: Diff gate (base..head)

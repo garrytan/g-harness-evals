@@ -1,14 +1,15 @@
 // The value-free scanning core of the public-safety gate, shared with the public export: stream objects out of git,
 // open gzip and tar containers within a budget, and match marker rules. Every finding names a rule, a path, a blob and a
 // container member, never the text that matched.
-import { gunzipSync, inflateSync } from 'node:zlib';
+import { gunzipSync, inflateRawSync, inflateSync } from 'node:zlib';
 import { sniff, type Format } from './format.ts';
 import { spawnBounded } from './proc.ts';
 
 export const BUDGET = { maxDepth: 4, maxContainerBytes: 512 * 2 ** 20, maxFileBytes: 2 * 2 ** 30, maxMembers: 200_000 };
 export type Budget = typeof BUDGET;
 export type ProblemKind = 'unsupported' | 'corrupt' | 'over-budget';
-export interface Leaf { member: string; format: Format; data: Buffer }
+// A meta leaf is archive metadata (member names, header fields) whose lines can reappear inside locators.
+export interface Leaf { member: string; format: Format; data: Buffer; meta?: boolean }
 export interface Problem { member: string; kind: ProblemKind; detail: string }
 export interface Expansion { format: Format; leaves: Leaf[]; problems: Problem[]; containers: number }
 
@@ -18,36 +19,75 @@ interface TarEntry { name: string; kind: 'file' | 'dir' | 'link' | 'other'; type
 
 const cstr = (b: Buffer) => { const z = b.indexOf(0); return (z >= 0 ? b.subarray(0, z) : b).toString('utf8'); };
 
-export function tarEntries(buf: Buffer): { entries: TarEntry[]; error?: string } {
+// Every text field of every tar header (link targets, owner names, a name that a long-name or pax record replaced),
+// the GNU long-name and long-link records, the pax extended and global records, and whatever follows the first all-zero
+// block once whole zero blocks are skipped: none of it is a member, so expand() scans it as metadata leaves.
+export interface TarScan { entries: TarEntry[]; meta: string[]; trailing?: Buffer; error?: string }
+
+export function tarEntries(buf: Buffer): TarScan {
   const entries: TarEntry[] = [];
+  const meta: string[] = [];
   let off = 0;
   let longName: string | undefined;
   let paxPath: string | undefined;
   while (off + 512 <= buf.length) {
     const h = buf.subarray(off, off + 512);
-    if (h.every((b) => b === 0)) return { entries };
+    if (h.every((b) => b === 0)) {
+      let rest = off + 512;
+      while (rest + 512 <= buf.length && buf.subarray(rest, rest + 512).every((b) => b === 0)) rest += 512;
+      const trailing = buf.subarray(rest);
+      return { entries, meta, trailing: trailing.some((b) => b !== 0) ? trailing : undefined };
+    }
     const stored = parseInt(cstr(h.subarray(148, 156)).trim(), 8);
     let sum = 0;
     for (let i = 0; i < 512; i++) sum += i >= 148 && i < 156 ? 32 : h[i]!;
-    if (stored !== sum) return { entries, error: 'tar header checksum does not match' };
-    if (h[124]! & 0x80) return { entries, error: 'tar entry uses a base-256 size' };
+    if (stored !== sum) return { entries, meta, error: 'tar header checksum does not match' };
+    if (h[124]! & 0x80) return { entries, meta, error: 'tar entry uses a base-256 size' };
     const size = parseInt(cstr(h.subarray(124, 136)).trim() || '0', 8);
-    if (!Number.isFinite(size) || size < 0) return { entries, error: 'tar entry size is not a number' };
+    if (!Number.isFinite(size) || size < 0) return { entries, meta, error: 'tar entry size is not a number' };
     const start = off + 512;
-    if (start + size > buf.length) return { entries, error: 'tar entry runs past the end of the archive' };
+    if (start + size > buf.length) return { entries, meta, error: 'tar entry runs past the end of the archive' };
     const data = buf.subarray(start, start + size);
     off = start + Math.ceil(size / 512) * 512;
     const typeflag = h[156] === 0 ? '0' : String.fromCharCode(h[156]!);
-    if (typeflag === 'L') { longName = cstr(data); continue; }
-    if (typeflag === 'x') { paxPath = /(?:^|\n)\d+ path=([^\n]*)\n/.exec(data.toString('utf8'))?.[1]; continue; }
-    if (typeflag === 'g') continue;
     const prefix = cstr(h.subarray(345, 500));
-    const name = paxPath ?? longName ?? (prefix ? prefix + '/' : '') + cstr(h.subarray(0, 100));
+    const own = (prefix ? prefix + '/' : '') + cstr(h.subarray(0, 100));
+    meta.push(...[cstr(h.subarray(157, 257)), cstr(h.subarray(265, 297)), cstr(h.subarray(297, 329))].filter(Boolean));
+    if ('LKxg'.includes(typeflag)) {
+      meta.push(own, data.toString('utf8'));
+      if (typeflag === 'L') longName = cstr(data);
+      if (typeflag === 'x') paxPath = /(?:^|\n)\d+ path=([^\n]*)\n/.exec(data.toString('utf8'))?.[1];
+      continue;
+    }
+    const name = paxPath ?? longName ?? own;
+    if (name !== own) meta.push(own);
     longName = paxPath = undefined;
     const kind = typeflag === '0' || typeflag === '7' ? 'file' : typeflag === '5' ? 'dir' : typeflag === '1' || typeflag === '2' ? 'link' : 'other';
     entries.push({ name, kind, typeflag, data });
   }
-  return { entries, error: 'tar archive has no end-of-archive marker' };
+  return { entries, meta, error: 'tar archive has no end-of-archive marker' };
+}
+
+// The FEXTRA, FNAME and FCOMMENT fields of every member of a gzip stream; gunzipSync decodes the members but drops them.
+function gzipHeaders(buf: Buffer, maxOutputLength: number): Buffer[] {
+  const out: Buffer[] = [];
+  let off = 0;
+  while (off + 10 <= buf.length && buf[off] === 0x1f && buf[off + 1] === 0x8b) {
+    const flags = buf[off + 3]!;
+    let p = off + 10;
+    if (flags & 4) { const n = buf.readUInt16LE(p); out.push(buf.subarray(p + 2, p + 2 + n)); p += 2 + n; }
+    for (const bit of [8, 16]) {
+      if (!(flags & bit)) continue;
+      const z = buf.indexOf(0, p);
+      if (z < 0) throw new Error('gzip header field has no terminator');
+      out.push(buf.subarray(p, z));
+      p = z + 1;
+    }
+    if (flags & 2) p += 2;
+    const r = inflateRawSync(buf.subarray(p), { info: true, maxOutputLength } as object) as unknown as { engine: { bytesWritten: number } };
+    off = p + r.engine.bytesWritten + 8;
+  }
+  return out;
 }
 
 export function expand(data: Buffer, budget: Budget = BUDGET): Expansion {
@@ -85,22 +125,28 @@ export function expand(data: Buffer, budget: Budget = BUDGET): Expansion {
     if (format === 'gzip') {
       out.containers++;
       let decoded: Buffer;
+      let header: Buffer[];
       try {
         decoded = gunzipSync(buf, { maxOutputLength: budget.maxContainerBytes });
+        header = gzipHeaders(buf, budget.maxContainerBytes);
       } catch (e) {
         const big = (e as { code?: string }).code === 'ERR_BUFFER_TOO_LARGE';
         out.problems.push({ member, kind: big ? 'over-budget' : 'corrupt', detail: big ? 'gzip expands past ' + budget.maxContainerBytes + ' bytes' : 'gzip stream does not decode' });
         out.leaves.push({ member, format, data: buf });
         return;
       }
+      if (header.length) out.leaves.push({ member: (member ? member + '|' : '') + 'gzip-header', format: 'text', data: Buffer.from(header.map((b) => b.toString('utf8')).join('\n')), meta: true });
       visit(decoded, member ? member + '|gunzip' : 'gunzip', depth + 1);
       return;
     }
     if (format === 'tar') {
       out.containers++;
-      const { entries, error } = tarEntries(buf);
+      const { entries, meta, trailing, error } = tarEntries(buf);
       if (error) { out.problems.push({ member, kind: 'corrupt', detail: error }); out.leaves.push({ member, format, data: buf }); return; }
-      out.leaves.push({ member: member ? member + '|names' : 'names', format: 'text', data: Buffer.from(entries.map((e) => e.name).join('\n')) });
+      const at = (s: string) => (member ? member + '|' : '') + s;
+      out.leaves.push({ member: at('names'), format: 'text', data: Buffer.from(entries.map((e) => e.name).join('\n')), meta: true });
+      if (meta.length) out.leaves.push({ member: at('headers'), format: 'text', data: Buffer.from(meta.join('\n')), meta: true });
+      if (trailing) visit(trailing, at('trailing'), depth + 1);
       for (const e of entries) {
         if (++members > budget.maxMembers) { out.problems.push({ member, kind: 'over-budget', detail: 'more than ' + budget.maxMembers + ' archive members' }); return; }
         const m = (member ? member + '|' : '') + e.name;
@@ -176,7 +222,7 @@ const PROSE = new Set(['md', 'markdown', 'txt', 'rst']);
 const CODE = new Set(['ts', 'tsx', 'js', 'mjs', 'cjs', 'sh', 'bash', 'py']);
 
 export function nameKind(path: string, member: string): 'prose' | 'code' | 'other' {
-  const segs = member.split('|').filter((s) => s && s !== 'gunzip' && s !== 'names');
+  const segs = member.split('|').filter((s) => s && !['gunzip', 'names', 'headers', 'gzip-header', 'trailing'].includes(s));
   const name = (segs.length ? segs[segs.length - 1]! : path).replace(/\.gz$/, '');
   const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
   return PROSE.has(ext) ? 'prose' : CODE.has(ext) ? 'code' : 'other';
@@ -187,6 +233,20 @@ export function ruleApplies(rule: MarkerRule, kind: 'prose' | 'code' | 'other' |
   if (rule.scope === 'all') return true;
   if (kind === 'message' || kind === 'prose') return true;
   return rule.scope === 'prose-and-code' && kind === 'code';
+}
+
+// Every line one compiled rule matches in a leaf, in order.
+export function ruleLines(data: Buffer, c: CompiledRule): number[] {
+  const at = new Set<number>();
+  for (const l of c.literals) for (let i = data.indexOf(l); i >= 0; i = data.indexOf(l, i + 1)) at.add(i);
+  if (c.regexes.length) {
+    const text = data.toString('latin1');
+    for (const { re } of c.regexes) {
+      const g = new RegExp(re.source, re.flags.replace('g', '') + 'g');
+      for (let m = g.exec(text); m; m = g.exec(text)) { at.add(m.index); if (!m[0]) g.lastIndex++; }
+    }
+  }
+  return [...new Set([...at].sort((a, b) => a - b).map((o) => lineAt(data, o)))];
 }
 
 // One pass over a leaf: which rules and needles hit, with the line of the first hit.
