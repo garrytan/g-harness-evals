@@ -53,10 +53,12 @@ test('corpus and layer1 data files are left out of review, and their scripts and
     'docs/benchmarks/x/corpus/README.md',
     'docs/benchmarks/x/layer1/notes.md',
   ];
+  // Stand-in paths only: gstack keeps an excluded file in review when a reviewed code file names its full path
+  // (named-by-code), so a real experiment's data path written here would put that file back in /ship's review diff.
   const dropped = [
-    'docs/benchmarks/2026-11-09-failure-mining/corpus/manifest.jsonl',
-    'docs/benchmarks/2026-11-09-failure-mining/layer1/2026-10-23-m2-pilot/results/labels.json',
-    'docs/benchmarks/2026-11-09-failure-mining/layer1/2026-10-23-m2-pilot/labels.jsonl',
+    'docs/benchmarks/x/corpus/manifest.jsonl',
+    'docs/benchmarks/x/layer1/run/results/taxonomy.json',
+    'docs/benchmarks/x/layer1/run/labels.jsonl',
   ];
   expect(reviewed([...kept, ...dropped])).toEqual([...kept].sort());
 });
