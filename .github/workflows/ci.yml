@@ -8,7 +8,9 @@
 # and runs tests/gbrain-image.test.ts against it, about 15 minutes, still keyless,
 # run only when a file the image or its tests depend on changed (the `changes` job).
 # The public-export job exports this tree as the public repository would get it and checks it keyless (about 30
-# minutes, in parallel).
+# minutes, in parallel). In the public repository a docs-only change (scripts/ci/docs-only.ts, run from the base
+# commit before anything from the head is installed) skips the checks job's typecheck and tests; the job still runs the
+# link and hub-fragment checks and reports success, so every required check reports.
 # Paid runs (live harness trials) are manual, run on a trusted pushed SHA with a
 # reserved budget, and land receipts in the repo. Actions are pinned to commit SHAs;
 # Bun is pinned by bun-version.
@@ -34,20 +36,42 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.4.3
+      # Public repository only. The base commit's copy decides, with bun reading no bunfig.toml, tsconfig.json or .env from
+      # the head; anything but a clean docs_only=true (no base copy, an error, an unknown base) means the full run.
+      - name: Docs-only change
+        id: docs
+        if: github.repository == 'garrytan/g-harness-evals'
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          d="$RUNNER_TEMP/docs-only"
+          mkdir -p "$d" && : > "$d/bunfig.toml" && echo '{}' > "$d/tsconfig.json"
+          verdict=docs_only=false
+          if [[ "$BASE" =~ ^[0-9a-f]{40}$ && ! "$BASE" =~ ^0+$ ]] && git show "$BASE:scripts/ci/docs-only.ts" > "$d/docs-only.ts" 2>/dev/null; then
+            verdict=$(bun --no-env-file --config="$d/bunfig.toml" --tsconfig-override="$d/tsconfig.json" "$d/docs-only.ts" --base "$BASE" --head "$HEAD_SHA" --tree HEAD) || verdict=docs_only=false
+          fi
+          [ "$verdict" = docs_only=true ] || verdict=docs_only=false
+          echo "$verdict" >> "$GITHUB_OUTPUT"
+          if [ "$verdict" = docs_only=true ]; then echo "Docs-only change: typecheck and tests skipped." >> "$GITHUB_STEP_SUMMARY"; fi
       - name: Install (frozen lockfile)
         run: bun install --frozen-lockfile
       - name: Typecheck
+        if: steps.docs.outputs.docs_only != 'true'
         run: bunx tsc --noEmit
       - name: Tests (statistics kit, preregistration checker)
+        if: steps.docs.outputs.docs_only != 'true'
         run: bash scripts/run-tests.sh --junit-dir "$RUNNER_TEMP/junit"
       # gstack's CI carry (.gstack/pregate.json run_profiles "ci/checks", ship_lanes_from): this job's tested-tree record
       # lets /ship and gstack-pregate count the "bun test tests/" lane as passed at the identical tree instead of
       # running it again. Written only after the tests pass.
       - name: Tested tree record (tree.json)
+        if: steps.docs.outputs.docs_only != 'true'
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: bun scripts/ci-tree-json.ts --junit "$RUNNER_TEMP/junit/builders.xml" --junit "$RUNNER_TEMP/junit/main.xml" --junit "$RUNNER_TEMP/junit/serial.xml" --out "$RUNNER_TEMP/checks-tree/tree.json"
       - name: Upload the tested tree
+        if: steps.docs.outputs.docs_only != 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: checks-tree

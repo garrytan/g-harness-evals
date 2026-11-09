@@ -1,0 +1,74 @@
+# The public-safety gate, in the public repository only (the private repository runs the export gates instead). Every
+# pull request event that can change what a merge publishes (opened, edited, synchronize, reopened) and every push runs
+# the base commit's copy of scripts/public-safety against the head as data, so a pull request cannot loosen the gate
+# that judges it, and checks the pull request title and body, so a title or body edit re-runs the verdict. Keyless,
+# read-only, never pull_request_target. check.ts exits 0 pass, 1 rejected, 2 usage, 3 tool failure, and prints rule codes
+# only under GitHub Actions. Bun runs with the gate copy's own (empty) bunfig.toml and tsconfig.json and no .env file, so
+# nothing in the head's checkout configures the run.
+name: public-safety
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches: ['**']
+
+permissions:
+  contents: read
+
+jobs:
+  public-safety:
+    if: github.repository == 'garrytan/g-harness-evals'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.3
+      # A pull request is judged from its base to its head. A push is judged from the commit before it; a new branch (zero
+      # before) or a force push whose before commit is gone is judged from its merge base with main.
+      - name: Base and head from the event
+        id: range
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            base=$(jq -r '.pull_request.base.sha' "$GITHUB_EVENT_PATH")
+            head=$(jq -r '.pull_request.head.sha' "$GITHUB_EVENT_PATH")
+          else
+            base=$(jq -r '.before' "$GITHUB_EVENT_PATH")
+            head=$(jq -r '.after' "$GITHUB_EVENT_PATH")
+            if [[ "$head" =~ ^0+$ ]]; then echo "skip=true" >> "$GITHUB_OUTPUT"; echo "branch deleted: nothing to check"; exit 0; fi
+            if [[ "$base" =~ ^0+$ ]] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then base=$(git merge-base origin/main "$head"); fi
+          fi
+          for sha in "$base" "$head"; do git cat-file -e "$sha^{commit}" 2>/dev/null || git fetch -q --no-tags origin "$sha"; done
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "head=$head" >> "$GITHUB_OUTPUT"
+      - name: The base commit's gate
+        id: gate
+        if: steps.range.outputs.skip != 'true'
+        env:
+          BASE: ${{ steps.range.outputs.base }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/gate"
+          git archive "$BASE" scripts/public-safety | tar -x -C "$RUNNER_TEMP/gate"
+          test -f "$RUNNER_TEMP/gate/scripts/public-safety/check.ts" || { echo "::error title=public-safety::the base commit has no scripts/public-safety/check.ts"; exit 1; }
+          : > "$RUNNER_TEMP/gate/bunfig.toml"
+          echo '{}' > "$RUNNER_TEMP/gate/tsconfig.json"
+      - name: Diff gate (base..head)
+        if: steps.range.outputs.skip != 'true'
+        env:
+          BASE: ${{ steps.range.outputs.base }}
+          HEAD_SHA: ${{ steps.range.outputs.head }}
+        run: bun --no-env-file --config="$RUNNER_TEMP/gate/bunfig.toml" --tsconfig-override="$RUNNER_TEMP/gate/tsconfig.json" "$RUNNER_TEMP/gate/scripts/public-safety/check.ts" --base "$BASE" --head "$HEAD_SHA"
+      # The title and body come from the event payload, never from a shell expression, so their text is data.
+      - name: Pull request text gate (title and body)
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.gate.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          jq -r '.pull_request.title, "", (.pull_request.body // "")' "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/pr-text.txt"
+          bun --no-env-file --config="$RUNNER_TEMP/gate/bunfig.toml" --tsconfig-override="$RUNNER_TEMP/gate/tsconfig.json" "$RUNNER_TEMP/gate/scripts/public-safety/check.ts" --pr-text "$RUNNER_TEMP/pr-text.txt"

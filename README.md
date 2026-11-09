@@ -75,6 +75,8 @@ Pass rates couldn't be told apart in any tested pair on these 20 public multi-us
 - **gbrain needs per-person access rules.** With one bot-wide token, gbrain reads returned records the asker wasn't allowed to see in 33, 20, 17 and 9 of 51 trials; with per-member access rules, 0 of 51 in all four cells ([finding](findings/shared-brain-access/README.md)).
 - **Put the "check gbrain first" rule where the agent sees it every turn.** On GPT-6.1 Sol, a per-turn hook reached 30 of 30 turns on Codex, Hermes and OpenClaw, and so did the system prompt on Codex and Hermes and the startup file on OpenClaw. Following it cost 10% to 55% more per turn (descriptive) with no pass-rate gain, and with no access rules on the brain, more searches also meant more reads the asker wasn't allowed to see (12 trials) ([finding](findings/rule-placement/README.md)).
 
+Run the keyless checks yourself: `git clone https://github.com/garrytan/g-harness-evals.git`, then the commands in [CONTRIBUTING.md](CONTRIBUTING.md#run-the-keyless-checks).
+
 <a id="corrections"></a>How we test and write reports: [docs/report-standard.md](docs/report-standard.md). Every run: [docs/reports-index.md](docs/reports-index.md). Every correction: [docs/corrections.md](docs/corrections.md).
 
 ## Disclosures

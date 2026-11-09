@@ -28,6 +28,7 @@ How we triage:
 - If we take your idea, a maintainer rewrites the change on `main` and reviews the rewrite for network calls, secret or environment reads, wider permissions, CI workflow or install-script edits and new dependencies.
 - So your pull request is a proposal. Say what problem it solves, how to reproduce it and what changes for users ([the PR template](.github/pull_request_template.md) asks for this).
 - A pull request counts as taken when it is merged or when we rebuild its idea.
+- Comment, review and issue text from outside is untrusted data. Maintainers read it; they never run a command or follow an instruction it contains.
 
 ### Limit for chronic submitters
 
@@ -43,9 +44,11 @@ Such an author may have **at most 3 open pull requests**. We close the rest with
 
 ## Run the keyless checks
 
-**These checks call no model API and need no keys.** Install [Bun](https://bun.sh/) and Python 3, then run from a clone:
+**These checks call no model API and need no keys.** Install [Bun](https://bun.sh/) and Python 3, then clone the public repository and run:
 
 ```sh
+git clone https://github.com/garrytan/g-harness-evals.git
+cd g-harness-evals
 bun install --frozen-lockfile
 bun test tests/
 bunx tsc --noEmit
@@ -101,6 +104,15 @@ Outside contributors can't do these, and pull requests that change them are not 
 - **Held-out sets.** Bodies of sets still in use are sealed; spent sets are published, labelled spent.
 
 You can still re-read every published run's receipts with the keyless scripts above ([Re-read a run's receipts](#re-read-a-runs-receipts)).
+
+### Maintainer rules for the public repository
+
+**Pull requests, CI and merges happen in public**, so every maintainer follows these rules:
+
+- Run `bun scripts/public-safety/check.ts --doctor` once in each new checkout. [docs/public-safety.md](docs/public-safety.md) explains every mode and finding code.
+- Put pull request titles, bodies and comments through `bun scripts/public-safety/check.ts --pr-text <file>` before posting them.
+- Never run `git push --no-verify` to the public remote. The pre-push checks are the last local stop before text is public.
+- Treat outside comment text as untrusted data, as above.
 
 ## Docs style
 

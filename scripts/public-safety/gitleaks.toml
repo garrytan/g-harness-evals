@@ -1,0 +1,22 @@
+# gitleaks configuration for the public-safety gate (scripts/public-safety). The default rules apply in full; the
+# allowlist below only removes findings that are not credentials. The gate writes every blob under an opaque file name,
+# so path-scoped allowances cannot apply here: a proven false positive in one file gets a blob-bound allow.json entry.
+title = "harness-evals public safety"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Per-trial proxy keys are logged as trial-token:<trial id>; the bearer token is never logged, and the tests' trial-token:<id>.<hex> values are fixtures"
+regexTarget = "match"
+regexes = ['''^trial-token:[A-Za-z0-9._-]+["']?$''']
+
+[[allowlists]]
+description = "Receipts before 2026-10-26 logged the trial key as sk-trial-<trial id>, the trial id behind a fixed prefix (runner/README.md, Proxy slot)"
+regexTarget = "secret"
+regexes = ['''^sk-trial-[A-Za-z0-9._-]+$''']
+
+[[allowlists]]
+description = "Provider prompt-cache session ids in captured request bodies, not credentials"
+regexTarget = "match"
+regexes = ['''^prompt_cache_key":"[A-Za-z0-9_-]+"$''']

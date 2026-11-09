@@ -1,0 +1,37 @@
+# The private-admission watcher, in the public repository only. Every 10 minutes it marks each open pull request head
+# that has no final private-admission status, and whose newest pending status or head push is over 30 minutes old,
+# with state error and a PS-PRIV-UNAVAILABLE description naming the re-run command
+# (scripts/public-safety/watch-private-admission.ts). The private lane's next verdict replaces it. It runs main's code
+# with the workflow token, which may write commit statuses and nothing else.
+name: private-admission-watch
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  statuses: write
+  pull-requests: read
+  contents: read
+
+concurrency:
+  group: private-admission-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    if: github.repository == 'garrytan/g-harness-evals'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.3
+      - name: Mark stale private-admission statuses
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun scripts/public-safety/watch-private-admission.ts --repo "$GITHUB_REPOSITORY"

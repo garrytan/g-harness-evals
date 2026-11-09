@@ -1,0 +1,46 @@
+{
+  "schema": "harness-evals-public-safety-classes/1",
+  "note": "Admission classes for the public repository, derived from the retired export manifest's content classes. Deny rules win over classes, the first class whose globs match a path is its class, and a path that matches neither is refused (PS-CLASS). Each content class lists the formats it allows (lib/format.ts sniffs them from the bytes; PS-FORMAT) and a size budget in bytes (PS-SIZE). Budgets sit well above the largest file of each class on 2026-11-08.",
+  "content_classes": {
+    "code": {"formats":["text","empty"],"max_bytes":2097152,"description":"Source, scripts and tests we wrote"},
+    "config": {"formats":["text","empty"],"max_bytes":1048576,"description":"Build, CI, lint and tool configuration"},
+    "docs": {"formats":["text","empty"],"max_bytes":2097152,"description":"Prose we wrote: README, methods, findings, run reports and preregistrations"},
+    "receipts": {"formats":["text","empty","gzip","sqlite","tar"],"max_bytes":99614720,"description":"Raw run evidence: trials, logs, ledgers, snapshots, manifests and captured state"},
+    "fixtures": {"formats":["text","empty","gzip","sqlite","tar"],"max_bytes":16777216,"description":"Test fixtures and snapshots"},
+    "task-dev": {"formats":["text","empty"],"max_bytes":4194304,"description":"Public development tasks, graders and preambles"},
+    "task-spent": {"formats":["text","empty"],"max_bytes":1048576,"description":"Held-out sets whose opening budget is spent (v0.1 and v0.2), published and labelled spent"},
+    "commitments": {"formats":["text"],"max_bytes":1048576,"description":"Sealed-set commitments: hashes and ledgers only, never task text"},
+    "world-data": {"formats":["text","empty","gzip"],"max_bytes":16777216,"description":"The synthetic company world"},
+    "third-party-MIT": {"formats":["text","empty","gzip","sqlite","tar"],"max_bytes":16777216,"description":"Verbatim MIT text from a harness or package, shipped with its notice"},
+    "third-party-Apache": {"formats":["text","empty","gzip"],"max_bytes":4194304,"description":"Verbatim Apache-2.0 text, shipped with its licence and NOTICE"}
+  },
+  "deny": [
+    {"globs":["publication/**","scripts/public-export/**","tests/public-export*.test.ts"],"reason":"The retired export's rules and tool: its scrub table holds the values it replaced, and its tool carries the private rule shapes"},
+    {"globs":["**/*.age","**/*.age-key","**/access-log.jsonl","**/custody/**","**/sealed-world/**","**/bundle.tar*","docs/sealed-records/**"],"reason":"Sealed custody material and its records stay private"},
+    {"globs":["tasks/multiuser/v0.3/heldout/**","tasks/multiuser/v0.3-gen6/**"],"except":["tasks/multiuser/v0.3/heldout/MANIFEST.json","tasks/multiuser/v0.3-gen6/heldout/MANIFEST.json"],"reason":"Sealed held-out sets: only their hash manifests are public"},
+    {"globs":["scripts/v04/**","tasks/multiuser/v0.4/**","tasks/multiuser/v0.4*/**","tests/v04-*.test.ts"],"reason":"The v0.4 generator and its tasks stay private until their held-out set is spent"},
+    {"globs":["docs/benchmarks/2026-10-30-laneb-tb2-replication/results/**","**/laneb/tasks/**","jobs/**","**/jobs/**/solution/**","**/solution/solve.sh","scripts/gstack-laneb/**","tests/gstack-laneb.test.ts"],"reason":"Benchmark task copies with oracle solutions, and byte copies from a repository that is not public"},
+    {"globs":["docs/harness-anatomy/receipts/anatomy-capture-claude-code-*/blobs/**","docs/harness-anatomy/receipts/anatomy-capture-qm-claude-*/blobs/**","**/preset-system-prompt*.txt","**/stub-system-prompt.txt"],"reason":"Raw captures of a proprietary system prompt; their hashes stay in capture.json"},
+    {"globs":["docs/budget-ledger.md","docs/ledger/**","scripts/budget-ledger.ts","tests/budget-ledger.test.ts","docs/benchmarks/**/spend-internal.md"],"reason":"The program spend ledger, its renderer and a run's internal spend note stay private"},
+    {"globs":["**/.env","**/.env.*","**/*.local.json",".capy/**","**/drive-paths*.json","**/*.drive.json","config/local-paths.json","screening/**",".bun/**","**/node_modules/**"],"reason":"Machine-local configuration, screening data and package caches"}
+  ],
+  "classes": [
+    {"name":"licence-texts","globs":["LICENSES/**"],"content_class":"docs"},
+    {"name":"openclaw-text","globs":["docs/harness-anatomy/receipts/anatomy-capture-openclaw-*/**","docs/harness-anatomy/records/openclaw-*","docs/harness-anatomy/records/openclaw-*/**","tests/fixtures/anatomy/openclaw-*","tests/fixtures/gsta-135/gsta135-openclaw-*/**"],"content_class":"third-party-MIT"},
+    {"name":"hermes-text","globs":["docs/harness-anatomy/receipts/anatomy-capture-hermes-*/**","docs/harness-anatomy/records/hermes-*","docs/harness-anatomy/records/hermes-*/**","tests/fixtures/anatomy/hermes-*","tests/fixtures/gsta-135/gsta135-hermes-*/**","docs/benchmarks/**/SOUL.md"],"content_class":"third-party-MIT"},
+    {"name":"qm-pi-text","globs":["docs/harness-anatomy/receipts/anatomy-capture-qm-*/**","docs/harness-anatomy/records/qm-*","docs/harness-anatomy/records/qm-*/**"],"content_class":"third-party-MIT"},
+    {"name":"codex-text","globs":["docs/harness-anatomy/receipts/anatomy-capture-codex-*/**","docs/harness-anatomy/records/codex-*","docs/harness-anatomy/records/codex-*/**"],"content_class":"third-party-Apache"},
+    {"name":"task-upstream-code","globs":["tasks/repo/*/LICENSES/**","tasks/repo/*/dev/*/environment/**"],"content_class":"third-party-MIT"},
+    {"name":"heldout-spent","globs":["tasks/multiuser/heldout/**","tasks/multiuser/v0.2/heldout/**"],"content_class":"task-spent"},
+    {"name":"sealed-commitments","globs":["tasks/multiuser/v0.3/heldout/MANIFEST.json","tasks/multiuser/v0.3-gen6/heldout/MANIFEST.json","tasks/repo/*/heldout/MANIFEST.json","sealed/recipient.txt","sealed/backups.json"],"content_class":"commitments"},
+    {"name":"tasks","globs":["tasks/**"],"content_class":"task-dev"},
+    {"name":"world-seed","globs":["world/seed/**"],"content_class":"world-data"},
+    {"name":"run-reports","globs":["docs/benchmarks/*/*.md","docs/benchmarks/*/*/*.md"],"content_class":"docs"},
+    {"name":"run-receipts","globs":["docs/benchmarks/**","docs/harness-anatomy/receipts/**","docs/harness-anatomy/records/**","docs/harness-anatomy/cap-probe/**","docs/harness-anatomy/cost/**","docs/harness-anatomy/count-tokens/**","docs/tool-discipline/receipts/**","docs/tool-discipline/replies/**","docs/tool-discipline/*.jsonl","docs/ledger/**","docs/receipts-manifest.json"],"content_class":"receipts"},
+    {"name":"hub-fragments","globs":["changelog.d/**","todos.d/**"],"content_class":"docs"},
+    {"name":"docs","globs":["docs/**","findings/**","*.md","LICENSE","LICENSE-*","VERSION",".github/ISSUE_TEMPLATE/**",".github/PULL_REQUEST_TEMPLATE*",".github/*.md"],"content_class":"docs"},
+    {"name":"fixtures","globs":["tests/fixtures/**","tests/__snapshots__/**"],"content_class":"fixtures"},
+    {"name":"code","globs":["runner/**","scripts/**","harnesses/**","gbrain/**","world/**","tests/**"],"content_class":"code"},
+    {"name":"config","globs":["package.json","bun.lock","tsconfig.json",".gitignore",".dockerignore",".editorconfig",".github/**",".gstack/**"],"content_class":"config"}
+  ]
+}
