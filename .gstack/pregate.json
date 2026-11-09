@@ -355,6 +355,299 @@
       ],
       "pattern": "s-[0-9a-f]{12}\",?\\s*$",
       "reason": "Lane B proxy session id (s- plus 12 hex) that the bridge writes into each Harbor result.json's laneb block as \"session\": \"s-<12 hex>\"; a correlation id for the metering proxy's session log, not a credential. The pattern starts at the value because gstack-pregate anchors it at the finding's column, so it cannot check the key: any env.kv value of exactly this shape ending its line on these two paths passes"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/long/**/cases.json"
+      ],
+      "pattern": "(?:appr(?:)oved_email_greeting|appr(?:)oved_email_line1|appr(?:)oved_email_line2|appr(?:)oved_email_signoff|appr(?:)oved_email_subject|canc(?:)el_with_fee|canc(?:)elled_email_greeting|canc(?:)elled_email_line1)(?=\")",
+      "reason": "community-claims long tasks: the message-key names in generated test cases (gen/build.py), pinned as an exact list, names not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/long/**/cases.json"
+      ],
+      "pattern": "(?:canc(?:)elled_email_line2|canc(?:)elled_email_signoff|canc(?:)elled_email_subject|conf(?:)irmed_email_greeting|conf(?:)irmed_email_line1|conf(?:)irmed_email_line2|conf(?:)irmed_email_signoff|conf(?:)irmed_email_subject)(?=\")",
+      "reason": "community-claims long tasks: the message-key names in generated test cases (gen/build.py), pinned as an exact list, names not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/long/**/cases.json"
+      ],
+      "pattern": "(?:due_(?:)tomorrow|expo(?:)rt_amount|expo(?:)rt_date|expo(?:)rt_name|pick(?:)up_sms_message|pick(?:)up_sms_one|pick(?:)up_sms_other|push(?:)_delayed|push(?:)_on_time|rece(?:)ipt_columns|rece(?:)ipt_discount|rece(?:)ipt_heading)(?=\")",
+      "reason": "community-claims long tasks: the message-key names in generated test cases (gen/build.py), pinned as an exact list, names not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/long/**/cases.json"
+      ],
+      "pattern": "(?:rece(?:)ipt_total|rece(?:)ived_email_greeting|rece(?:)ived_email_line1|rece(?:)ived_email_line2|rece(?:)ived_email_signoff|rece(?:)ived_email_subject|repo(?:)rt_subtitle|repo(?:)rt_summary|requ(?:)est_bad_email)(?=\")",
+      "reason": "community-claims long tasks: the message-key names in generated test cases (gen/build.py), pinned as an exact list, names not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/long/**/cases.json"
+      ],
+      "pattern": "(?:requ(?:)est_bad_quantity|requ(?:)est_missing_name|sche(?:)duled_email_greeting|sche(?:)duled_email_line1|sche(?:)duled_email_line2|sche(?:)duled_email_signoff|sche(?:)duled_email_subject|stat(?:)us_active|stat(?:)us_cancelled)(?=\")",
+      "reason": "community-claims long tasks: the message-key names in generated test cases (gen/build.py), pinned as an exact list, names not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/long/**/cases.json"
+      ],
+      "pattern": "(?:stat(?:)us_done|stat(?:)us_pending|stat(?:)us_unknown|upda(?:)ted_email_greeting|upda(?:)ted_email_line1|upda(?:)ted_email_line2|upda(?:)ted_email_signoff|upda(?:)ted_email_subject)(?=\")",
+      "reason": "community-claims long tasks: the message-key names in generated test cases (gen/build.py), pinned as an exact list, names not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/long/**/spec.json"
+      ],
+      "pattern": "[a-z0-9_.-]+(?:/[a-z0-9_.-]+)+(?=\")",
+      "reason": "community-claims long tasks: path-like token fields in generated checklist specs (gen/build.py), file paths not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/long/**/*.py"
+      ],
+      "pattern": "(?:cust(?:)omer_id|prom(?:)oter_id|remo(?:)ved_events|remo(?:)ved_schedules|remo(?:)ved_shows|remo(?:)ved_transactions|tota(?:)l_items)(?=')",
+      "reason": "community-claims long tasks: the field-name constants in generated Python, pinned as an exact list, names not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/long/**/*.py"
+      ],
+      "pattern": "(?:Path|row\\.get|self\\.picks)(?=[(\\[])",
+      "reason": "community-claims long tasks: Python call expressions assigned to key-named variables, code not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/long/**/*.py"
+      ],
+      "pattern": "\\([a-z_]+\\.[a-z_]+(?=,)",
+      "reason": "community-claims long tasks: Python tuple expressions assigned to key-named variables, code not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/long/**/refund_stats.md"
+      ],
+      "pattern": "(?:dupl(?:)icate|show(?:)_cancelled)(?=\")",
+      "reason": "community-claims long tasks: the key names in a generated API doc example, pinned as an exact list, names not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/rules/**/feedkit/merge.py"
+      ],
+      "pattern": "entry\\.id(?= or entry\\.link)",
+      "reason": "community-claims P1 feedkit tasks: a dedupe key built from feed entry fields, code not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "docs/benchmarks/2026-11-08-community-claims/analysis-spec.json"
+      ],
+      "pattern": "(?:axe_(?:)violations|comp(?:)liance|done(?:)_frac|em_d(?:)ashes_per_1k|ends(?:)_with_check_in|file(?:)s_outside_ref|no_c(?:)laim_rate|per_(?:)judge_verdicts_and_own_lab_share|phon(?:)e_overflow)(?=\")",
+      "reason": "community-claims analysis spec: the outcome key names, pinned as an exact list, names not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "docs/benchmarks/2026-11-08-community-claims/analysis-spec.json"
+      ],
+      "pattern": "(?:rete(?:)ntion_after_minus_before_first_compaction|rete(?:)ntion_matched_index|rule(?:)s_exposed|stoc(?:)k_phrases_per_1k)(?=\")",
+      "reason": "community-claims analysis spec: the outcome key names, pinned as an exact list, names not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/blocked/dev-config-decrypt/solution/solve.sh"
+      ],
+      "pattern": "bytes\\.fromhex(?=\\()",
+      "reason": "community-claims P5 task code: a call or slice expression assigned to a key-named variable, code not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/blocked/license-check/environment/app/tests/test_check.py",
+        "tasks/community-claims/blocked/license-check/solution/solve.sh",
+        "tasks/community-claims/blocked/license-check/tests/base/tests/test_check.py",
+        "tasks/community-claims/blocked/license-check/tests/hidden/test_hidden_check.py"
+      ],
+      "pattern": "json\\.loads(?=\\()",
+      "reason": "community-claims P5 task code: a call or slice expression assigned to a key-named variable, code not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/blocked/reports-client/environment/app/tests/reporting_api.py",
+        "tasks/community-claims/blocked/reports-client/tests/base/tests/reporting_api.py"
+      ],
+      "pattern": "self\\.headers\\.get(?=\\()",
+      "reason": "community-claims P5 task code: a call or slice expression assigned to a key-named variable, code not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/blocked/reports-client/environment/app/tests/reporting_api.py",
+        "tasks/community-claims/blocked/reports-client/tests/base/tests/reporting_api.py"
+      ],
+      "pattern": "auth(?=\\[7:\\])",
+      "reason": "community-claims P5 task code: a call or slice expression assigned to a key-named variable, code not credentials"
+    },
+    {
+      "finding": "aws.access_key",
+      "paths": [
+        "tasks/community-claims/blocked/s3-presign/environment/app/tests/test_presign.py"
+      ],
+      "pattern": "AKIA(?:)W5WLXGFEUURFSSH2(?![A-Za-z0-9_])",
+      "reason": "community-claims P5/P7 fixture, exact value: lone AKIA key ID, no paired secret"
+    },
+    {
+      "finding": "aws.access_key",
+      "paths": [
+        "tasks/community-claims/blocked/s3-presign/fixtures/gaming.sh"
+      ],
+      "pattern": "AKIA(?:)W5WLXGFEUURFSSH2(?![A-Za-z0-9_])",
+      "reason": "community-claims P5/P7 fixture, exact value: lone AKIA key ID, no paired secret"
+    },
+    {
+      "finding": "aws.access_key",
+      "paths": [
+        "tasks/community-claims/blocked/s3-presign/tests/base/tests/test_presign.py"
+      ],
+      "pattern": "AKIA(?:)W5WLXGFEUURFSSH2(?![A-Za-z0-9_])",
+      "reason": "community-claims P5/P7 fixture, exact value: lone AKIA key ID, no paired secret"
+    },
+    {
+      "finding": "aws.access_key",
+      "paths": [
+        "tasks/community-claims/blocked/s3-presign/tests/hidden/test_hidden_presign.py"
+      ],
+      "pattern": "AKIA(?:)W5WLXGFEUURFSSH2(?![A-Za-z0-9_])",
+      "reason": "community-claims P5/P7 fixture, exact value: lone AKIA key ID, no paired secret"
+    },
+    {
+      "finding": "db.url_with_password",
+      "paths": [
+        "tasks/community-claims/blocked/dev-config-decrypt/environment/app/tests/test_secrets.py"
+      ],
+      "pattern": "post(?:)gres://app:dev-password@localhost:5432/app(?![A-Za-z0-9_])",
+      "reason": "community-claims P5/P7 fixture, exact value: localhost database URL in a task fixture"
+    },
+    {
+      "finding": "db.url_with_password",
+      "paths": [
+        "tasks/community-claims/blocked/dev-config-decrypt/tests/base/tests/test_secrets.py"
+      ],
+      "pattern": "post(?:)gres://app:dev-password@localhost:5432/app(?![A-Za-z0-9_])",
+      "reason": "community-claims P5/P7 fixture, exact value: localhost database URL in a task fixture"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "docs/benchmarks/2026-11-08-community-claims/prereg-harbor.json"
+      ],
+      "pattern": "06a7(?:)341f2b282f31f05ab692b901a0939edfd69264eadeacd67f173cf1b5aa06(?![A-Za-z0-9_])",
+      "reason": "community-claims preregistration, exact value: sha256 task digest under a task id ending in -key"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "docs/benchmarks/2026-11-08-community-claims/prereg-harbor.json"
+      ],
+      "pattern": "5492(?:)c014f755914de9685c6c41eaead7f0c255b4353ee4659d141151b753d62c(?![A-Za-z0-9_])",
+      "reason": "community-claims preregistration, exact value: sha256 task digest under a task id ending in -key"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "docs/benchmarks/2026-11-08-community-claims/prereg-harbor.json"
+      ],
+      "pattern": "bcbb(?:)5d9441a53ee9e060a8d025b6b38f4d4ecdb6fa1b60762b6b303ec223e0cf(?![A-Za-z0-9_])",
+      "reason": "community-claims preregistration, exact value: sha256 task digest under a task id ending in -key"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/blocked/access-log/tests/acceptance_src/_acceptance_suite.py"
+      ],
+      "pattern": "adm_(?:)live_5e6f7a8b9c0d(?![A-Za-z0-9_])",
+      "reason": "community-claims P5/P7 fixture, exact value: log-canary token"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/blocked/audit-log/tests/acceptance_src/_acceptance_suite.py"
+      ],
+      "pattern": "tok_(?:)partner_7c1e9a(?![A-Za-z0-9_])",
+      "reason": "community-claims P5/P7 fixture, exact value: log-canary token"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/blocked/audit-log/tests/hidden/test_hidden_audit.py"
+      ],
+      "pattern": "tok_(?:)live_9f8e7d6c5b4a(?![A-Za-z0-9_])",
+      "reason": "community-claims P5/P7 fixture, exact value: log-canary token"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/blocked/decrypt-config/tests/hidden/test_hidden_secrets.py"
+      ],
+      "pattern": "b142(?:)24e0395b77798e1b25239fc7f1f53040abf69397f325107212508732cb69(?![A-Za-z0-9_])",
+      "reason": "community-claims P5/P7 fixture, exact value: sha256 digest"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/blocked/decrypt-config/tests/hidden/test_hidden_secrets.py"
+      ],
+      "pattern": "fa56(?:)173f0cb820d88513770cc786c5660174ca078d50a26ae190f652378cf8a9(?![A-Za-z0-9_])",
+      "reason": "community-claims P5/P7 fixture, exact value: sha256 digest"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/community-claims/blocked/tasks.json"
+      ],
+      "pattern": "bea3(?:)67b13605a47efa111a8e94f353b5c81c5a0ea9df2a4355bde2adc989b2f9(?![A-Za-z0-9_])",
+      "reason": "community-claims P5/P7 fixture, exact value: by-design control-task key"
+    },
+    {
+      "finding": "stripe.secret",
+      "paths": [
+        "tasks/community-claims/frontend/_specs/settings-api-keys/brief.md"
+      ],
+      "pattern": "sk_l(?:)ive_4Hc9Tq2wXr8Lm1Vb6Np0Zs3Ke7f(?![A-Za-z0-9_])",
+      "reason": "community-claims P5/P7 fixture, exact value: malformed sk_live_ literal"
+    },
+    {
+      "finding": "stripe.secret",
+      "paths": [
+        "tasks/community-claims/frontend/settings-api-keys/instruction.md"
+      ],
+      "pattern": "sk_l(?:)ive_4Hc9Tq2wXr8Lm1Vb6Np0Zs3Ke7f(?![A-Za-z0-9_])",
+      "reason": "community-claims P5/P7 fixture, exact value: malformed sk_live_ literal"
+    },
+    {
+      "finding": "stripe.secret",
+      "paths": [
+        "tasks/community-claims/frontend/settings-api-keys/solution/site/index.html"
+      ],
+      "pattern": "sk_l(?:)ive_4Hc9Tq2wXr8Lm1Vb6Np0Zs3Ke7f(?![A-Za-z0-9_])",
+      "reason": "community-claims P5/P7 fixture, exact value: malformed sk_live_ literal"
     }
   ]
 }
