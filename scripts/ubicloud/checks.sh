@@ -3,7 +3,8 @@
 #
 #   bash scripts/ubicloud/checks.sh          (from the repository root, after bootstrap.sh)
 #
-# checks job: bun install --frozen-lockfile; bunx tsc --noEmit; bun test tests/; python3 scripts/check-links.py;
+# checks job: bun install --frozen-lockfile; bunx tsc --noEmit; scripts/run-tests.sh (bun test tests/ in
+# parallel phases); python3 scripts/check-links.py;
 # bun runner/prereg/prereg.ts. Then the crew's seal check from CREW.md, bun scripts/seal-heldout.ts --check (every sealed
 # set), which the workflow covers through tests/heldout-manifest.test.ts. Then the docker-e2e job when docker-applies.sh
 # says the workflow would run it: scripts/build-gbrain-image.sh --tag harness-eval/gbrain:pr-<sha12> --out
@@ -37,7 +38,7 @@ step() {
 
 step install bun install --frozen-lockfile
 step typecheck bunx tsc --noEmit
-step tests bun test tests/
+if [ -f scripts/run-tests.sh ]; then step tests bash scripts/run-tests.sh; else step tests bun test tests/; fi
 step links python3 scripts/check-links.py
 step prereg bun runner/prereg/prereg.ts
 if [ -f scripts/seal-heldout.ts ]; then step seal bun scripts/seal-heldout.ts --check; fi

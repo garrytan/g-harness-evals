@@ -209,7 +209,7 @@ describe('discovery.sh three-arm panel', () => {
   chmodSync(join(bareBin, 'docker'), 0o755);
   const bareEnv = { ...ENV, PATH: bareBin + ':' + ENV.PATH };
   const run = (id: string, arms: string, extra: string[] = [], env: Record<string, string> = ENV, dry = true) =>
-    spawnSync('bash', [sh, '--arms', arms, '--gstack-dir', repo, '--run-id', id, '--ceilings', ceilings, '--runtime-preflight', noRuntime, ...(dry ? ['--dry-run'] : []), ...extra], { cwd: ROOT, env, encoding: 'utf8' });
+    spawnSync('bash', [sh, '--arms', arms, '--gstack-dir', repo, '--run-id', id, '--ceilings', ceilings, '--runtime-preflight', noRuntime, ...(dry ? ['--dry-run'] : []), ...extra], { cwd: ROOT, env: { ...env, HOME: tmp }, encoding: 'utf8' });
   const outDir = (id: string, dry = true) => join(ROOT, 'results/gsta-135/runs', id + (dry ? '-dry-run' : ''));
   const three = 'none,baseline:' + c1 + ',candidate:' + c2, two = 'baseline:' + c1 + ',candidate:' + c2;
 

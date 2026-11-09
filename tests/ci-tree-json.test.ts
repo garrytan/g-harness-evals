@@ -106,6 +106,41 @@ test('writes tree.json for the commit the run tested', () => {
   expect(JSON.parse(readFileSync(push.out, 'utf8')).head_sha).toBe(head);
 });
 
+// Value: protects=tree.json still covers the whole suite when scripts/run-tests.sh splits it into phases with a JUnit
+// report each; fails_when=only the first or last --junit is read, tests are not summed, or skipped_files drops a phase;
+// why_new=the parallel test step (internal-task); seam=a throwaway git repository; no_claim=bun's own JUnit output format.
+test('merges several --junit reports into one record', () => {
+  const { dir, head, tree } = repo();
+  const late = '<testsuites name="bun test" tests="2" skipped="1"><testsuite name="tests/z.test.ts" file="./tests/z.test.ts" tests="2" skipped="1"></testsuite></testsuites>';
+  writeFileSync(join(dir, 'junit.xml'), JUNIT);
+  writeFileSync(join(dir, 'late.xml'), late);
+  const out = join(dir, 'out', 'tree.json');
+  const r = spawnSync(process.execPath, [SCRIPT, '--junit', join(dir, 'junit.xml'), '--junit', join(dir, 'late.xml'), '--out', out], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: dir, GITHUB_RUN_ID: '42', GITHUB_RUN_ATTEMPT: '1', RUNNER_OS: 'Linux', GITHUB_SHA: head, GITHUB_EVENT_NAME: 'push' } });
+  expect(r.status).toBe(0);
+  const rec = JSON.parse(readFileSync(out, 'utf8'));
+  expect({ tree: rec.tree, files: rec.files, tests: rec.tests, skipped_files: rec.skipped_files }).toEqual({ tree, files: ['tests/a.test.ts', 'tests/b&c.test.ts', 'tests/z.test.ts'], tests: 6, skipped_files: ['tests/b&c.test.ts', 'tests/z.test.ts'] });
+});
+
+// Value: protects=tree.json never counts a flag as a report or one report twice; fails_when=--junit takes a following flag
+// as its path, a valueless trailing --junit is dropped, or a repeated report is summed twice; why_new=the internal-task review
+// (adversarial finding 4); seam=a throwaway git repository; no_claim=bun's own JUnit output format.
+test('refuses a flag as a --junit value and a report given twice', () => {
+  const { dir, head } = repo();
+  writeFileSync(join(dir, 'junit.xml'), JUNIT);
+  const out = join(dir, 'out', 'tree.json');
+  const env = { PATH: process.env.PATH ?? '', HOME: dir, GITHUB_RUN_ID: '42', GITHUB_RUN_ATTEMPT: '1', RUNNER_OS: 'Linux', GITHUB_SHA: head, GITHUB_EVENT_NAME: 'push' };
+  const run = (...args: string[]) => spawnSync(process.execPath, [SCRIPT, ...args], { cwd: dir, encoding: 'utf8', env });
+  const cases: [string[], string][] = [
+    [['--junit', '--out', out], '--junit needs a report path, not --out'],
+    [['--junit', join(dir, 'junit.xml'), '--out', out, '--junit'], '--junit needs a report path, not nothing'],
+    [['--junit', join(dir, 'junit.xml'), '--junit', './junit.xml', '--out', out], 'a --junit report is given twice'],
+  ];
+  for (const [args, message] of cases) {
+    const r = run(...args);
+    expect({ args, status: r.status, message: r.stderr.includes(message), written: existsSync(out) }).toEqual({ args, status: 2, message: true, written: false });
+  }
+});
+
 // Value: protects=no tree.json is written for a commit the job did not test or for a report with no tests, so CI carry
 // never vouches for the wrong tree or an empty run; fails_when=the HEAD check or the empty-report check is dropped;
 // why_new=the ci/checks run profile; seam=a throwaway git repository; no_claim=gstack's own no_tests refusal.

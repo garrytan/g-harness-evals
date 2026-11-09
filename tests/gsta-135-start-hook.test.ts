@@ -257,7 +257,7 @@ describe('discovery.sh --start-hook candidate', () => {
   const env = (extra: Record<string, string> = {}) => ({ ...ENV, PATH: bin + ':' + ENV.PATH, STUB_MAP: map, ...extra });
   const three = 'none,baseline:' + c1 + ',candidate:' + c2;
   const runD = (id: string, extra: string[], e: Record<string, string>, arms = three) =>
-    spawnSync('bash', [sh, '--arms', arms, '--gstack-dir', repo, '--run-id', id, '--ceilings', ceilings, '--runtime-preflight', noRuntime, '--hermes-mode', 'chat', '--dry-run', ...extra], { cwd: ROOT, env: e, encoding: 'utf8' });
+    spawnSync('bash', [sh, '--arms', arms, '--gstack-dir', repo, '--run-id', id, '--ceilings', ceilings, '--runtime-preflight', noRuntime, '--hermes-mode', 'chat', '--dry-run', ...extra], { cwd: ROOT, env: { ...e, HOME: tmp }, encoding: 'utf8' });
   const outDir = (id: string) => join(ROOT, 'results/gsta-135/runs', id + '-dry-run');
 
   test('the candidate\'s images take the -hook tags, the manifest records start_hook per arm and the rule, 144 rows at --trials 8', () => {

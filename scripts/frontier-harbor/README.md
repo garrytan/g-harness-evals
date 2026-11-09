@@ -13,19 +13,19 @@
 |---|---|
 | [pin.json](pin.json) | Harbor wheel and its hashed lock, TB2.1 commit, the 52 tasks with digests, the shared order, the kept sample, harness versions, model limits, the blocklist, licences |
 | [harbor-requirements.txt](harbor-requirements.txt) | every package Harbor installs with, by version and sha256 (`uv pip install --require-hashes`) |
-| materialize.ts | copies the pinned tasks into a run root with each image pinned by digest |
-| plan.ts | reads a `frontier-harbor/1` preregistration: cells, trial ids, shard leases, Harbor jobs |
+| [materialize.ts](materialize.ts) | copies the pinned tasks into a run root with each image pinned by digest |
+| [plan.ts](plan.ts) | reads a `frontier-harbor/1` preregistration: cells, trial ids, shard leases, Harbor jobs |
 | [frontier_settings.py](frontier_settings.py) | renders each harness's settings and its `harness_settings.json` record (no Harbor import) |
 | [agents.py](agents.py) | the Harbor installed-agent classes |
 | [broker.ts](broker.ts) | binds each trial's slot in the metering proxy with a fresh token |
 | [egress.py](egress.py), [egress-sidecar/](egress-sidecar/) | Harbor's docker environment with a blocklist added to its egress sidecar |
 | [vm-run.sh](vm-run.sh) | runs one shard |
-| to-trials.ts | Harbor results into trial records, with requested and sent effort and infra classes |
+| [to-trials.ts](to-trials.ts) | Harbor results into trial records, with requested and sent effort and infra classes |
 | [fake-upstream.ts](fake-upstream.ts) | keyless model upstream for the install check |
 | [install-check.sh](install-check.sh), [install-check.json](install-check.json) | the one-VM install check and its receipt |
 | [install-check-prereg.json](install-check-prereg.json) | the install check's own preregistration (one cell per agent class and model) |
 | [egress-probe/](egress-probe/) | a do-nothing task whose verifier checks the blocklist from inside a task container (install check step 3) |
-| audit.ts, [answer-keys/](answer-keys/) | the contamination audit over captured requests: the benchmark canary, Harness Leaderboard answer-key fingerprints (Apache-2.0, see its NOTICE.md), benchmark-fetch requests and gstack file reads |
+| [audit.ts](audit.ts), [answer-keys/](answer-keys/) | the contamination audit over captured requests: the benchmark canary, Harness Leaderboard answer-key fingerprints (Apache-2.0, see its NOTICE.md), benchmark-fetch requests and gstack file reads |
 | [analyze.ts](analyze.ts) | the harness x model analysis: pass rates with intervals, the noise view, paired comparisons and cost per solve (uses `runner/stats/frontier.ts`) |
 
 ## The preregistration (`frontier-harbor/1`)

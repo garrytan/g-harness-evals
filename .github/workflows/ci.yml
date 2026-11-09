@@ -39,14 +39,14 @@ jobs:
       - name: Typecheck
         run: bunx tsc --noEmit
       - name: Tests (statistics kit, preregistration checker)
-        run: bun test tests/ --reporter=junit --reporter-outfile="$RUNNER_TEMP/junit.xml"
+        run: bash scripts/run-tests.sh --junit-dir "$RUNNER_TEMP/junit"
       # gstack's CI carry (.gstack/pregate.json run_profiles "ci/checks", ship_lanes_from): this job's tested-tree record
       # lets /ship and gstack-pregate count the "bun test tests/" lane as passed at the identical tree instead of
       # running it again. Written only after the tests pass.
       - name: Tested tree record (tree.json)
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: bun scripts/ci-tree-json.ts --junit "$RUNNER_TEMP/junit.xml" --out "$RUNNER_TEMP/checks-tree/tree.json"
+        run: bun scripts/ci-tree-json.ts --junit "$RUNNER_TEMP/junit/builders.xml" --junit "$RUNNER_TEMP/junit/main.xml" --junit "$RUNNER_TEMP/junit/serial.xml" --out "$RUNNER_TEMP/checks-tree/tree.json"
       - name: Upload the tested tree
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

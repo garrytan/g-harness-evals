@@ -459,7 +459,7 @@ describe('panel driver', () => {
   let counters = 0;
   const stubEnv = (extra: Record<string, string> = {}) => ({ ...baseEnv, PATH: stubBin + ':' + baseEnv.PATH, STUB_MAP: stubMap, STUB_COUNTER: join(tmp, 'stub-counter-' + ++counters), ...extra });
   const run = (id: string, arms: string, extra: string[] = [], env: Record<string, string> = baseEnv, dry = true) =>
-    spawnSync('bash', [sh, '--arms', arms, '--gstack-dir', repo, '--run-id', id, '--ceilings', ceilings, ...(extra.includes('--runtime-preflight') ? [] : ['--runtime-preflight', noRuntime]), ...(dry ? ['--dry-run'] : []), ...extra], { cwd: ROOT, env, encoding: 'utf8' });
+    spawnSync('bash', [sh, '--arms', arms, '--gstack-dir', repo, '--run-id', id, '--ceilings', ceilings, ...(extra.includes('--runtime-preflight') ? [] : ['--runtime-preflight', noRuntime]), ...(dry ? ['--dry-run'] : []), ...extra], { cwd: ROOT, env: { ...env, HOME: tmp }, encoding: 'utf8' });
   const outDir = (id: string, dry = true) => join(ROOT, 'results/gsta-135/runs', id + (dry ? '-dry-run' : ''));
   test('refuses a candidate that does not contain the baseline, before the key', () => {
     const id = 'test-panel-mb-' + process.pid;

@@ -2,12 +2,13 @@
 // .gstack/pregate.json): this run, its attempt and event, the runner OS (RUNNER_OS, which the profile's "os" must match), the
 // commit it tested and that commit's tree, and every test file
 // bun ran with the test count, taken from bun's JUnit report. A pull_request run tests GitHub's merge commit, so `sha` is
-// that commit and `head_sha` the pull request's head (PR_HEAD_SHA); a push run names the pushed commit for both.
+// that commit and `head_sha` the pull request's head (PR_HEAD_SHA); a push run names the pushed commit for both. With
+// several --junit reports (scripts/run-tests.sh writes one per phase) the record covers them all.
 // `skipped_files` lists the files with any skipped test on the runner, which the carry does not count as covered.
-// Usage: bun scripts/ci-tree-json.ts --junit <bun junit.xml> --out <tree.json>
+// Usage: bun scripts/ci-tree-json.ts --junit <bun junit.xml> [--junit <bun junit.xml>]... --out <tree.json>
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 const unescape = (s: string) => s.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
@@ -43,16 +44,22 @@ function git(...args: string[]): string {
 
 if (import.meta.main) {
   const arg = (name: string) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : undefined; };
-  const junitPath = arg('--junit');
+  const junitPaths = process.argv.flatMap((a, i) => (a === '--junit' ? [process.argv[i + 1] ?? ''] : []));
   const out = arg('--out');
   const env = (name: string) => { const v = process.env[name]; if (!v) throw new Error(`${name} is not set`); return v; };
-  if (!junitPath || !out) { console.error('usage: bun scripts/ci-tree-json.ts --junit <bun junit.xml> --out <tree.json>'); process.exit(2); }
+  if (!junitPaths.length || !out) { console.error('usage: bun scripts/ci-tree-json.ts --junit <bun junit.xml> [--junit <bun junit.xml>]... --out <tree.json>'); process.exit(2); }
+  const notPath = junitPaths.find((p) => !p || p.startsWith('-'));
+  if (notPath !== undefined) { console.error(`ci-tree-json: --junit needs a report path, not ${notPath || 'nothing'}`); process.exit(2); }
+  if (new Set(junitPaths.map((p) => resolve(p))).size !== junitPaths.length) { console.error(`ci-tree-json: a --junit report is given twice: ${junitPaths.join(' ')}`); process.exit(2); }
   try {
     const sha = env('GITHUB_SHA');
     const head = git('rev-parse', 'HEAD');
     if (head !== sha) throw new Error(`HEAD is ${head}, not GITHUB_SHA ${sha}: tree.json must describe the commit this run tested`);
-    const { files, tests, skipped_files } = testedFiles(readFileSync(junitPath, 'utf8'));
-    if (!files.length || tests === 0) throw new Error(`${junitPath} names no test file or no test`);
+    const reports = junitPaths.map((p) => testedFiles(readFileSync(p, 'utf8')));
+    const files = [...new Set(reports.flatMap((r) => r.files))].sort();
+    const tests = reports.reduce((n, r) => n + r.tests, 0);
+    const skipped_files = [...new Set(reports.flatMap((r) => r.skipped_files))].sort();
+    if (!files.length || tests === 0) throw new Error(`${junitPaths.join(' + ')} names no test file or no test`);
     const record = {
       run_id: Number(env('GITHUB_RUN_ID')),
       run_attempt: Number(env('GITHUB_RUN_ATTEMPT')),
