@@ -41,3 +41,22 @@ test('stage-folder trial data is left out of review, and a jsonl in a non-stage 
   ];
   expect(reviewed([...kept, ...dropped])).toEqual([...kept].sort());
 });
+
+// Value: protects=the corpus and layer1 exclusions hide only experiment input data (jsonl, and json under layer1), so a
+// script or markdown file in those folders still reaches /ship's readers, and `**/` also matches a file directly in the
+// folder; fails_when=a pattern is widened to corpus/** or layer1/**, or the data extensions are dropped;
+// why_new=internal-task's preregistration commits a 15 MB corpus manifest and 29 MB of layer-1 labels, over the 2 MB review
+// ceiling; seam=a throwaway git repository and git's own glob pathspecs; no_claim=the prereg's own hash and row-count check.
+test('corpus and layer1 data files are left out of review, and their scripts and notes are still reviewed', () => {
+  const kept = [
+    'docs/benchmarks/x/corpus/build.ts',
+    'docs/benchmarks/x/corpus/README.md',
+    'docs/benchmarks/x/layer1/notes.md',
+  ];
+  const dropped = [
+    'docs/benchmarks/2026-11-09-failure-mining/corpus/manifest.jsonl',
+    'docs/benchmarks/2026-11-09-failure-mining/layer1/2026-10-23-m2-pilot/results/labels.json',
+    'docs/benchmarks/2026-11-09-failure-mining/layer1/2026-10-23-m2-pilot/labels.jsonl',
+  ];
+  expect(reviewed([...kept, ...dropped])).toEqual([...kept].sort());
+});
