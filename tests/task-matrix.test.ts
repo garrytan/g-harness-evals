@@ -10,6 +10,7 @@ import type { Script } from '../runner/contracts.ts';
 import { gradeTrial } from '../runner/grade/index.ts';
 import { playScript } from '../runner/grade/play.ts';
 import { loadTask, type Task } from '../runner/grade/task.ts';
+import { cellTasks, setWorldPath, type Cell, type Prereg } from '../runner/run.ts';
 import { world } from './world-helpers.ts';
 
 const ROOT = join(import.meta.dir, '..', 'tasks', 'multiuser');
@@ -26,7 +27,13 @@ const SET_FAMILIES: Record<string, string[]> = {
   'v0.3': ['scope_isolation', 'shared_channel', 'synthesis', 'continuity', 'corrections', 'approval_relay'],
   'v0.3.1': ['scope_isolation', 'shared_channel', 'synthesis', 'continuity', 'corrections', 'approval_relay'],
   'v0.4': ['corrections', 'approval_relay', 'expired_recall', 'memory_scope', 'session_synthesis', 'retired_record'],
+  /** company-v2 and personal-v2: v0.4 templates generated with expiry off, so every fact stays readable (docs/tasks.md). */
+  'company-v2': ['corrections', 'approval_relay', 'memory_scope', 'session_synthesis'],
+  'personal-v2': ['expired_recall', 'corrections'],
 };
+/** The public export leaves these sets out with the v0.4 generator they come from (publication/manifest.json). */
+const COMPANY_V2 = existsSync(join(ROOT, 'company-v2'));
+const PERSONAL_V2 = existsSync(join(ROOT, 'personal-v2'));
 
 /** Task sets: v0.1 at the root, then every tasks/multiuser/<set>/ that holds a dev or heldout directory. */
 const SETS: Array<{ name: string; root: string }> = [
@@ -111,6 +118,55 @@ describe.skipIf(!V04)('task set v0.4', () => {
     }
     expect([...cells.keys()]).toHaveLength(24);
     for (const n of cells.values()) expect(n).toBe(4);
+  });
+});
+
+/** Tasks per family and level of a generated set, from each task's spec.json (own corrections counted by its template). */
+function cellsOf(root: string): Map<string, number> {
+  const cells = new Map<string, number>();
+  for (const dir of taskDirs(root, 'dev')) {
+    const t = loadTask(dir);
+    const spec = JSON.parse(readFileSync(join(dir, 'spec.json'), 'utf8')) as { level: number; template?: string; expire?: boolean };
+    expect(spec.expire, t.id).toBe(false);
+    expect(t.turns.some((x) => x.expire_turns), t.id).toBe(false);
+    const key = (spec.template ?? t.family) + ' L' + spec.level;
+    cells.set(key, (cells.get(key) ?? 0) + 1);
+  }
+  return cells;
+}
+
+describe.skipIf(!COMPANY_V2)('task set company-v2', () => {
+  test('60 public dev tasks: corrections, approval relay, memory scope and session synthesis, 15 each at L4, nothing expired; no held-out plaintext', () => {
+    const root = join(ROOT, 'company-v2');
+    expect(taskDirs(root, 'dev')).toHaveLength(60);
+    expect(taskDirs(root, 'heldout')).toHaveLength(0);
+    const cells = cellsOf(root);
+    expect([...cells.keys()].sort()).toEqual(['approval_relay', 'corrections', 'memory_scope', 'session_synthesis'].map((f) => f + ' L4').sort());
+    for (const n of cells.values()) expect(n).toBe(15);
+  });
+
+  test('a cell selects it with task_set, reads the public world, and can list one family by id', () => {
+    const cell = { id: 'c', harness: 'scripted', model: 'none', slice: 'multiuser', split: 'dev', repetitions: 1, ceiling: { input_tokens: 0, output_tokens: 0 }, task_set: 'company-v2' } as Cell;
+    const prereg = { tasks: {} } as unknown as Prereg;
+    const tasksRoot = join(ROOT, '..', '..', 'tasks');
+    const all = cellTasks(prereg, cell, tasksRoot);
+    expect(all).toHaveLength(60);
+    expect(setWorldPath(cell, tasksRoot)).toBeUndefined();
+    const cr = all.filter((t) => /^cr-\d{2}-l4-/.test(t));
+    expect(cr).toHaveLength(15);
+    expect(cellTasks(prereg, { ...cell, tasks: cr }, tasksRoot)).toEqual(cr);
+    expect(() => cellTasks(prereg, { ...cell, tasks: ['cr-05-l2-thornbury-deadline'] }, tasksRoot)).toThrow('HE-PREREG-004');
+  });
+});
+
+describe.skipIf(!PERSONAL_V2)('task set personal-v2', () => {
+  test('60 public dev tasks: expired recall and own corrections, 15 each at L4 and L5, nothing expired; no held-out plaintext', () => {
+    const root = join(ROOT, 'personal-v2');
+    expect(taskDirs(root, 'dev')).toHaveLength(60);
+    expect(taskDirs(root, 'heldout')).toHaveLength(0);
+    const cells = cellsOf(root);
+    expect([...cells.keys()].sort()).toEqual(['expired_recall', 'own_corrections'].flatMap((f) => [4, 5].map((l) => f + ' L' + l)).sort());
+    for (const n of cells.values()) expect(n).toBe(15);
   });
 });
 

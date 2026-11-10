@@ -1,0 +1,164 @@
+{
+  "name": "dsh",
+  "repo": "https://github.com/deepseek-ai/deepseek-harness",
+  "package": "https://www.npmjs.com/package/@deepseek-ai/dsh",
+  "version": "0.2.2-rc.1",
+  "release": "developer preview: on 2026-11-08 the npm dist-tags latest and next both point at 0.2.2-rc.1 (alpha at 0.2.2-alpha.3); 0.2.2-rc.1 was published 2026-11-04",
+  "source_commit": "66491b05e3f05ad35bcdd4f6cd7ed26041d9e3db (tag dsh-v0.2.2-rc.1); the docs cited in this file were read at this commit",
+  "license": {
+    "spdx": "MIT",
+    "evidence": "LICENSE at the source commit ('MIT License', 'Copyright (c) 2026 DeepSeek') and the npm package's license field MIT; THIRD_PARTY_NOTICES.md in the repository lists the vendored third-party code"
+  },
+  "integrity": {
+    "npm_package": "@deepseek-ai/dsh@0.2.2-rc.1",
+    "npm_integrity": "sha512-ijR9UEVYkG15Q/Q79JzvzLBzQOQfc63VLr9n6flpwHPhr5IKn2UxthnSoto/P9l7qGd7pPvI1Ra6TW7LH3oKpg==",
+    "lockfile": "harnesses/dsh/package-lock.json pins every package (724 entries besides the root) by version and integrity; the CLI's own dependency ranges (for example @deepseek-ai/cordis ~4.1.0) are resolved there once, not at build time",
+    "checked": "at image build: npm ci verifies every tarball against the lock, the installed package and dsh --version must equal this version, and dsh-mcp-client must be present; the adapter compares dsh --version with this file's version before anything else and exits 2 on a difference (tests/dsh-adapter.test.ts)"
+  },
+  "install": "package.json and package-lock.json copied to /opt/harness/dsh on node:24-bookworm-slim (the package's engines field asks for node >= 24.9.0), then npm ci --strict-allow-scripts; /opt/harness/bin/dsh links node_modules/.bin/dsh. Every plugin the profile names ships inside this install (the dsh package depends on the base and headless bundles, and the image build checks that @deepseek-ai/dsh-mcp-client is present), so the adapter runs no `dsh plugin add` and no package manager at build or run time",
+  "install_scripts": {
+    "run": [
+      "@deepseek-ai/dsh-subprocess-local (install: node scripts/ensure-spawn-helper.mjs, for node-pty's spawn-helper)",
+      "koffi (install: its cnoke --prebuild step, which picks a prebuilt binary)",
+      "node-pty (install: node scripts/prebuild.js || node-gyp rebuild; postinstall: node scripts/post-install.js)"
+    ],
+    "skipped": [
+      "protobufjs (postinstall: node scripts/postinstall)",
+      "@google/genai (preinstall: echo 'preinstall: no-op')"
+    ],
+    "how": "package.json allowScripts; --strict-allow-scripts fails the build when the lock brings an install script the field does not name"
+  },
+  "topology": "in-container",
+  "entry": "/opt/harness/adapter.sh run | serve",
+  "turn_command": "dsh --profile headless --json --permission-mode workspace-write --approval-policy never - < /workspace/instruction.md, cwd /workspace, under setsid with the adapter's wall clock",
+  "serve_turn_command": "dsh --profile headless --json --permission-mode workspace-write --approval-policy never [--session-id <id>] - < <log>/turns/turn-NNNN.prompt.md, cwd /workspace; --session-id names the dsh Session recorded for the turn's key, omitted on the key's first turn; budget, then SIGTERM to the process group and SIGKILL 5 s later, then every process carrying the turn's HE_DSH_TURN marker is killed",
+  "headless_profile": "dsh's own one-shot profile (docs/cli-help.md; packages/bundle/headless/README.md): one task per invocation, --json writes newline-delimited events (session, status, thinking, text, tool_call, tool_result, final, and error), --session-id adopts a persisted Session, so a new key starts without it and the id is read from the opening session event. The shipped headless profile disables the managed credential store: API-key routes read the launch environment, then <cwd>/.env, then $DSH_HOME/.env",
+  "multi_user_mode": "CLI, one dsh Session per conversation, all under one DSH_HOME; no server (headless opens no port). Session keys dm:<member> and channel:<id>, with :t<thread_ts> for a thread turn; the key -> session id map is /harness-state/dsh-sessions.json",
+  "session_scope": "conversation only; HE_SESSION_SCOPE=turn exits 2",
+  "profile_path": "/harness-state/.dsh/profiles/headless/cordis.patch.yml, the profile's user patch layer, applied after the shipped @deepseek-ai/dsh-base and @deepseek-ai/dsh-headless bundle layers; rendered at start from config/route.<route>.patch.yml, config/base.patch.yml and (serve) the MCP rows, and copied to $HE_LOG_DIR/cordis.patch.yml; `dsh --profile headless --dump-config` must compose it before ready and its output is kept as $HE_LOG_DIR/dsh-config.yml",
+  "profile_patch": {
+    "agent-default-model": "provider he-<route>, model HE_MODEL_NAME (shipped: deepseek-official / deepseek-flash)",
+    "llm-pi-ai": "one hand-declared provider he-<route> on the proxy route with apiKeyEnv HE_MODEL_API_KEY, reasoning high, the cell model with maxTokens 128000 and reasoningEfforts {high: high}; the config override replaces the plugin's whole config, so no catalog provider is configured",
+    "llm-deepseek, llm-deepseek-account, plugin-package-inventory-deepseek": "disabled: the direct DeepSeek API-key and account adapters (the deepseek-official route) and the package list they send to DeepSeek's API; the cell model is reached only through he-<route>",
+    "web, web-search-deepseek, web-deepseek-api, web-fetch-http, tool-web": "disabled: no web search and no web fetch tool, as on every harness",
+    "agent-instructions": "disabled: see instruction_files",
+    "session-telemetry-otel": "mode DISABLED (shipped FEEDBACK_ONLY: capture session history only when feedback is submitted, sent to DSH_TELEMETRY_OTLP_URL or https://dsh-otel-collector.deepseeksvc.com/v1/logs per packages/bundle/base/cordis.patch.yml); the adapter also sets DSH_TELEMETRY_MODE=DISABLED and unsets DSH_TELEMETRY_OTLP_URL",
+    "mcp-world, mcp-gbrain (serve)": "see mcp_config_path and gbrain_mcp"
+  },
+  "model_anthropic": {
+    "provider": "anthropic",
+    "model": "claude-opus-5-5 (the cell's HE_MODEL_NAME)",
+    "api": "anthropic-messages",
+    "route": "POST <HE_MODEL_BASE_URL>/v1/messages, streamed",
+    "selected_when": "HE_MODEL_BASE_URL ends in /anthropic",
+    "config": "config/route.anthropic.patch.yml: provider he-anthropic, baseURL HE_MODEL_BASE_URL, compat.forceAdaptiveThinking true",
+    "reasoning": "thinking {type: adaptive} and output_config {effort: high} on every request; compat.forceAdaptiveThinking makes pi-ai send adaptive thinking for a model id its own catalog does not list",
+    "replay": "the signed thinking block is sent back first in the assistant tool_use message",
+    "max_output_tokens": "max_tokens 128000 on agent requests"
+  },
+  "model_openai": {
+    "provider": "openai",
+    "model": "gpt-6.1-sol",
+    "api": "openai-responses (dsh's pi-ai speaks both OpenAI wires; Responses keeps encrypted reasoning across tool turns)",
+    "route": "POST <HE_MODEL_BASE_URL>/v1/responses, streamed",
+    "selected_when": "HE_MODEL_BASE_URL ends in /openai",
+    "config": "config/route.openai.patch.yml: provider he-openai, baseURL HE_MODEL_BASE_URL/v1",
+    "reasoning": "reasoning {effort: high}, store false, include [reasoning.encrypted_content]",
+    "replay": "the reasoning item with its encrypted_content is sent back in input on the tool turn",
+    "max_output_tokens": "max_output_tokens 128000 on agent requests"
+  },
+  "model_particle": {
+    "provider": "particle",
+    "model": "particle-1",
+    "api": "openai-completions",
+    "route": "POST <HE_MODEL_BASE_URL>/v1/chat/completions, streamed with stream_options.include_usage",
+    "selected_when": "HE_MODEL_BASE_URL ends in /particle",
+    "config": "config/route.particle.patch.yml: provider he-particle, baseURL HE_MODEL_BASE_URL/v1, compat supportsDeveloperRole false (system role), supportsStore false, supportsReasoningEffort true, maxTokensField max_completion_tokens",
+    "reasoning": "reasoning_effort high (Particle's high tier)",
+    "replay": "reasoning_content is sent back on the assistant tool-call message (pi-ai replays the field the stream used)",
+    "max_output_tokens": "max_completion_tokens 128000 on agent requests, the proxy's cap"
+  },
+  "model_openrouter": {
+    "provider": "openrouter",
+    "model": "deepseek/deepseek-v4.1-flash-1017 (DeepSeek's own model, the harness's native family, runs through this route)",
+    "api": "openai-completions",
+    "route": "POST <HE_MODEL_BASE_URL>/v1/chat/completions, streamed with stream_options.include_usage; HE_MODEL_BASE_URL ends in /openrouter and HE_MODEL_NAME is the bare OpenRouter id",
+    "selected_when": "HE_MODEL_BASE_URL ends in /openrouter",
+    "config": "config/route.openrouter.patch.yml: provider he-openrouter, baseURL HE_MODEL_BASE_URL/v1, compat thinkingFormat openrouter, supportsDeveloperRole false, supportsStore false",
+    "reasoning": "reasoning {effort: high} (OpenRouter's normalized reasoning object)",
+    "replay": "DeepSeek reasoning goes back on tool turns: pi-ai stores the reasoning_details OpenRouter streams with each assistant message and sends them back on that message in every later request of the Session, the tool-call message included and across --session-id resumes; OpenRouter passes them to the provider as its reasoning content. Observed keyless (tests/dsh-adapter.test.ts); whether OpenRouter's DeepSeek endpoint accepts them live is a paid question",
+    "max_output_tokens": "max_completion_tokens 128000 on agent requests",
+    "interface": "coded against the shared OpenRouter route interface (another lane builds the proxy route); proven against tests/fixtures/dsh/fake-upstream.ts at <fake>/<slot>/openrouter, not through the proxy"
+  },
+  "effort": "high on every route (route reasoning high, the model's only declared level). The existing pins vary (Claude Code sends medium, OpenClaw's Particle row medium); the brief for this harness asks for high where the harness passes one",
+  "housekeeping_model": {
+    "what": "dsh's session-title plugin (session-title-llm, @deepseek-ai/dsh-session-title-first-prompt-llm) sends one request without tools after the first human message of each new Session: max output 4096 tokens, the same reasoning level",
+    "model": "shipped default: no provider/model override, so it uses the exact route and model of the Session's own main request, the cell model. It runs on every route, so it stays at its shipped default and is metered as the cell model (the proxy cannot tell it from an agent call, so no housekeeping flag)",
+    "deviation": "none"
+  },
+  "mcp_config_path": "/harness-state/.dsh/profiles/headless/cordis.patch.yml, an `insert` row {id: mcp-world, name: '@deepseek-ai/dsh-mcp-client', config: {serverName: world, transport: streamable-http, url: HE_WORLD_MCP_URL, headers.Authorization: !!js '`Bearer ${process.env.HE_WORLD_MCP_TOKEN}`', failOnStartupError: true, toolCallTimeoutMs: 120000}}; the bearer is read from the environment when the plugin loads, so the file holds no token. tools/list is probed with curl before ready ($HE_LOG_DIR/mcp-probe.world.json)",
+  "world_mcp": "dsh has an MCP client plugin, @deepseek-ai/dsh-mcp-client (packages/mcp/mcp-client/README.md: stdio and Streamable HTTP, tools as mcp__<serverName>__<tool>, plugin activation waits for the connection and the first tool discovery), so no pass-through plugin is needed",
+  "gbrain_mcp": "with HE_GBRAIN_MCP_URL and HE_GBRAIN_MCP_TOKEN set at serve start, a second insert row mcp-gbrain of the same shape (serverName gbrain, bearer from HE_GBRAIN_MCP_TOKEN) is added and probed; unset, the profile is byte-identical to a cell without gbrain. No gbrain install rung: HE_GBRAIN_INSTALL exits 2 (HE-ADAPTER-006)",
+  "tools": {
+    "native": [
+      "bash",
+      "create_goal",
+      "edit",
+      "get_goal",
+      "glob",
+      "grep",
+      "interrupt_agent",
+      "job_kill",
+      "job_list",
+      "job_output",
+      "list_agents",
+      "read",
+      "read_image",
+      "send_message",
+      "skill",
+      "subagent",
+      "subagent_fork",
+      "todo_write",
+      "update_goal",
+      "workflow",
+      "working_directory",
+      "write"
+    ],
+    "with_mcp": [
+      "list_mcp_resource_templates",
+      "list_mcp_resources",
+      "read_mcp_resource",
+      "mcp__world__<every world tool>"
+    ],
+    "disabled": "web_search and web_fetch (tool-web and its providers are off)",
+    "observed": "the tool names in the first agent request of the serve test on OpenRouter (tests/dsh-adapter.test.ts, keyless): the 22 native tools, the 3 MCP resource tools and the 15 world tools, 40 in all; no web or fetch tool"
+  },
+  "permissions": {
+    "preset": "--permission-mode workspace-write --approval-policy never on every invocation: dsh's workspace-write preset with approvals off, so a call that would need approval is rejected rather than asked. The sandbox root is the working directory, /workspace; no --add-dir",
+    "sandbox": "dsh-sandbox-local confines every shell command. In the container it runs on Landlock (stderr 'landlock-run: partial enforcement (older Landlock ABI)' on this machine's kernel; the image has no bwrap): writes in /workspace succeed, writes to /opt/harness and /harness-state are denied. dsh's own process (sessions, profile) is not sandboxed",
+    "shell_environment": "observed keyless: `env` run through the bash tool inside the container showed neither the per-trial token nor any *_API_KEY canary",
+    "matches": "Codex's workspace-write with approvals never; Claude Code runs bypassPermissions without a sandbox"
+  },
+  "instruction_files": {
+    "shipped": "dsh-agent-instructions (on in dsh-base) loads $DSH_HOME/AGENTS.md and $DSH_AGENTS_HOME/AGENTS.md, then AGENTS.md, CLAUDE.md, AGENTS.local.md and CLAUDE.local.md in every directory from the project root (.git, else the working directory) down to the working directory, into the first request (packages/context/agent-instructions/README.md). Observed: with the plugin on, a /workspace/AGENTS.md reached the first request",
+    "here": "disabled in config/base.patch.yml, so no instruction file reaches the agent; DSH_HOME and DSH_AGENTS_HOME are under the empty /harness-state anyway. Observed in the container tests: with AGENTS.md, CLAUDE.md and AGENTS.local.md seeded in /workspace, no request carried their marker",
+    "skills": "dsh-skill-filesystem stays on (shipped): it scans <project>/.dsh/skills, <project>/.agents/skills, $DSH_HOME/skills and $DSH_AGENTS_HOME/skills (packages/skill/skill-filesystem/README.md) and lists each skill's name and description in a reminder until the skill tool loads one. The user roots are empty at trial start; a skill a task leaves in its workspace's .agents/skills is listed (observed: the seeded skill's description reached the first request, its body did not)"
+  },
+  "state_paths": [
+    "/harness-state/.dsh",
+    "/harness-state/.agents",
+    "/harness-state/dsh-sessions.json",
+    "/harness-state/tmp"
+  ],
+  "environment": "HOME=/harness-state, DSH_HOME=/harness-state/.dsh, DSH_AGENTS_HOME=/harness-state/.agents, TMPDIR=/harness-state/tmp, DSH_TELEMETRY_MODE=DISABLED; the headless profile reads API keys from the launch environment, then <cwd>/.env, then $DSH_HOME/.env, and the routes name only HE_MODEL_API_KEY",
+  "exit_mapping": "dsh exit 0 with final.reason.kind completed -> 0; budget -> 124 (process group TERM, KILL after the grace, 60 s for run and 5 s for serve, then survivors killed by marker); a final error whose message starts with an HTTP status ('NNN: <body>', pi-ai's form for a provider or proxy 4xx or 5xx; observed keyless for a 400 with code INVALID_REQUEST) -> 3; code TRANSPORT (the endpoint unreachable, observed) -> 3; any other error code (UNKNOWN_MODEL observed), an error event outside a turn, no final event, a version other than this pin, an unsupported route, config or scope -> 2. A failed tool call (an MCP error included) is the model's to handle and does not change the exit; the count is in each turn's status.json",
+  "configs": "HE_HARNESS_CONFIG unset, empty or default only; any other value exits 2 (HE-ADAPTER-007): no instruction route and no ablation config are implemented for dsh",
+  "network": "default bridge or internal: dsh needs only the proxy and the world. The plugins that would call DeepSeek-hosted services in the shipped composition (the DeepSeek model adapters and package inventory, DeepSeek web search, session telemetry) are off",
+  "deviations": [
+    "agent-instructions disabled (shipped on): no auto-loaded instruction file, so only the composed prompt instructs the agent",
+    "web search and web fetch disabled (shipped on, DeepSeek-hosted search)",
+    "session telemetry DISABLED (shipped FEEDBACK_ONLY)",
+    "the DeepSeek API-key and account adapters and the package inventory disabled; the cell model goes through a hand-declared pi-ai provider on the proxy"
+  ],
+  "observed_keyless": "image harness-eval/dsh:dev built from this checkout, run against tests/fixtures/dsh/fake-upstream.ts and an in-process world, no key: see tests/dsh-adapter.test.ts"
+}

@@ -85,3 +85,30 @@ test("the Fable 5.2 run's analysis.json files are left out of review, and other 
   ];
   expect(reviewed([...kept, ...dropped])).toEqual([...kept].sort());
 });
+
+// Value: protects=the company-v2 and personal-v2 exclusions hide only the JSON files under each set's dev/ folder (task
+// specs, oracles and mutations, at any depth), so each task's task.toml, the set's README.md, dev.seed and clusters.json,
+// and JSON in any other set or folder still reach /ship's readers; fails_when=a pattern is dropped, widened to the whole
+// set or to tasks/multiuser/**, or loses its dev/ anchor; why_new=#378's two generated task sets put its review diff over
+// the 2 MB review ceiling, and 3,850,576 bytes of it are these 1,695 JSON files; seam=a throwaway git repository and git's own glob
+// pathspecs; no_claim=the task generator's own --check.
+test('company-v2 and personal-v2 dev task JSON is left out of review, and task.toml files, set-level files and other sets are still reviewed', () => {
+  // Stand-in paths only, as above: a real task path named here would keep that file in /ship's review diff.
+  const kept = [
+    'tasks/multiuser/company-v2/dev/stand-in/task.toml',
+    'tasks/multiuser/company-v2/README.md',
+    'tasks/multiuser/company-v2/dev.seed',
+    'tasks/multiuser/company-v2/clusters.json',
+    'tasks/multiuser/personal-v2/dev/stand-in/task.toml',
+    'tasks/multiuser/personal-v2/clusters.json',
+    'tasks/multiuser/company-v2/heldout/stand-in/spec.json',
+    'tasks/multiuser/company-v3/dev/stand-in/spec.json',
+  ];
+  const dropped = [
+    'tasks/multiuser/company-v2/dev/stand-in/spec.json',
+    'tasks/multiuser/company-v2/dev/stand-in/mutations/not_bait.json',
+    'tasks/multiuser/personal-v2/dev/stand-in/oracle.json',
+    'tasks/multiuser/personal-v2/dev/stand-in/mutations/item_x.json',
+  ];
+  expect(reviewed([...kept, ...dropped])).toEqual([...kept].sort());
+});
