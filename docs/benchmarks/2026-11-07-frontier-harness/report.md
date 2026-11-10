@@ -160,7 +160,8 @@ Pass rate per cell under the lines the amendments asked for (task mean [95% rang
 - **Refusals (same detector as the core):** Astra: Codex 1 (that trial's tests still passed, but a harness error counts as a fail), OpenClaw 1. Fable: Claude Code 2, OpenClaw 4.
 - **Sensitivity lines (amendment 3):** without the 3 drifted tasks, OpenClaw minus Codex on Astra is -10.2 [-22.4, +2.0] and OpenClaw minus Claude Code on Fable -6.1 [-18.4, +6.1]; without Harbor-labelled refusals (4 trials), -11.8 [-23.5, 0.0] and -6.0 [-18.0, +6.0]. Per-cell rates are in results/extension/sensitivity-without-drifted-tasks and sensitivity-without-refusals.
 - **Each pair's two cells ran one after the other** as separate Harbor jobs, not alternating task by task (see Deviations).
-- **Audit:** 4 extension trials flagged, all on llm-inference-batching-scheduler, all canary-only. The blind reader marked them unclear because the file shows no excerpt. The canary sits in the header of the task's own /app/scripts/cost_model.py, as in the core, so none is an answer-key receipt. 0 gstack reads. The outage signature found 0 extension trials ([results/extension/verifier-unavailable-a6.json](results/extension/verifier-unavailable-a6.json)).
+- **Audit:** 4 extension trials flagged, all on llm-inference-batching-scheduler, all canary-only. The blind reader marked them unclear because the file shows no excerpt. The canary sits in the header of the task's own /app/scripts/cost_model.py, as in the core, so none is an answer-key receipt. 0 gstack reads. The outage signature found 0 extension trials (results/extension/verifier-unavailable-a6.json).
+- **In the public copy:** the extension result files under results/extension/ publish in the next public export, so until then this section's numbers have no public receipts.
 
 ## Noise, drift and the kept sample
 
@@ -205,7 +206,8 @@ Why null? verdict: CUT-CANDIDATE (OpenClaw on Opus)
 
 ## Reproduce and inspect
 
-- **Merged results:** [results/merged/trials.jsonl](results/merged/trials.jsonl) and [manifest.json](results/merged/manifest.json), from scripts/frontier-harbor/merge-stages.ts over stage 0, the main stage and both rerun stages with [results/verifier-unavailable-a6.json](results/verifier-unavailable-a6.json).
+- **Merged results:** results/merged/trials.jsonl and results/merged/manifest.json, from scripts/frontier-harbor/merge-stages.ts over stage 0, the main stage and both rerun stages with [results/verifier-unavailable-a6.json](results/verifier-unavailable-a6.json).
+- **In the public copy:** the per-trial result files under results/merged/ and results/extension/ publish in the next public export; the analyses, audit and outage lists above are published now.
 - **Per stage and shard:** results/{stage0,main,rerun,rerun-a6}/<shard>/trials.jsonl.
 - **Analyses:** [results/analysis](results/analysis/analysis.md) (headline) and results/analysis-kept, plus one results/sensitivity-<line> folder (and its -kept twin) per line in the sensitivity table, each from scripts/frontier-harbor/analyze.ts with [analysis-spec.json](analysis-spec.json) (or analysis-spec-kept.json) and the confirmed answer-key list [results/lookup-fails.json](results/lookup-fails.json). Each subset folder's subset.json names the rule (scripts/frontier-harbor/subset.ts).
 - **Outage lists:** [results/verifier-unavailable.json](results/verifier-unavailable.json) (amendment 4), [results/verifier-unavailable-a6.json](results/verifier-unavailable-a6.json) and [results/verifier-unavailable-a6-rerun.json](results/verifier-unavailable-a6-rerun.json) (amendment 6), from scripts/frontier-harbor/to-trials.ts scan-verifier.
@@ -213,7 +215,7 @@ Why null? verdict: CUT-CANDIDATE (OpenClaw on Opus)
 - **Cost with all spend:** [results/sensitivity-cost-with-replaced-runs](results/sensitivity-cost-with-replaced-runs/analysis.md), analyze.ts --cost-with-replaced on the merged results, which adds each replaced outage run's spend (frontier.replaced_usd from merge-stages.ts).
 - **Outage window and Hermes web tools:** [results/outage-window.json](results/outage-window.json) and [results/hermes-web-tools.json](results/hermes-web-tools.json), from [receipts.py](receipts.py) over the stage directories' trial logs, with the trial ids behind the in-window, agent-log and web-tool counts (the other buckets are the rest of the merge).
 - **Audit:** [results/audit.json](results/audit.json) from scripts/frontier-harbor/audit.ts.
-- **Extension:** [results/extension/](results/extension/analysis/analysis.md): merged with merge-stages.ts --prereg-sha (amendment 5), analysed with [analysis-spec-extension.json](analysis-spec-extension.json), with its own audit.json and refusals.json.
+- **Extension:** results/extension/analysis/analysis.md: merged with merge-stages.ts --prereg-sha (amendment 5), analysed with [analysis-spec-extension.json](analysis-spec-extension.json), with its own audit.json and refusals.json.
 
 ## Disclosures
 
