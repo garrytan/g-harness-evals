@@ -40,7 +40,7 @@ step() {
 
 step install bun install --frozen-lockfile
 if [ "${HE_DOCS_ONLY:-}" = true ]; then
-  step docs-tests bun test tests/version.test.ts tests/scoreboard.test.ts
+  step docs-tests bun test tests/version.test.ts tests/scoreboard.test.ts tests/readme-settings.test.ts
   step links python3 scripts/check-links.py
   step prereg bun runner/prereg/prereg.ts
   echo "checks: pass after $(( $(date +%s) - t_all ))s"

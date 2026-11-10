@@ -26,7 +26,6 @@ import { createHash } from 'node:crypto';
 export const DOCS: readonly string[] = [
   'README.md',
   'docs/comparing-runs.md',
-  'docs/corrections.md',
   'docs/gbrain-evals-conventions.md',
   'docs/harness-anatomy/claude-code.md',
   'docs/harness-anatomy/codex.md',
@@ -44,8 +43,8 @@ export const DOCS: readonly string[] = [
   'findings/2026-11-02-opus-gstack-steps-not-followed.md',
 ];
 
-/** The tests a docs-only change still runs: tests/version.test.ts reads every Markdown page, tests/scoreboard.test.ts the README. */
-export const DOC_TESTS: readonly string[] = ['tests/version.test.ts', 'tests/scoreboard.test.ts'];
+/** The tests a docs-only change still runs: tests/version.test.ts reads every Markdown page, tests/scoreboard.test.ts and tests/readme-settings.test.ts the README. */
+export const DOC_TESTS: readonly string[] = ['tests/version.test.ts', 'tests/scoreboard.test.ts', 'tests/readme-settings.test.ts'];
 
 /** Whether a path is on the list. */
 export const listed = (p: string): boolean => DOCS.includes(p);

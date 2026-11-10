@@ -59,7 +59,7 @@ function readsOf(path: string, text: string, f = ''): boolean {
 describe('the docs-only list', () => {
   test('only the listed pages are docs; nearby pages, fragments, preregistrations and agent files are not', () => {
     for (const p of DOCS) expect(listed(p)).toBe(true);
-    for (const p of ['docs/methods.md', 'docs/methodology.md', 'docs/README.md', 'findings/README.md', 'docs/benchmarks/run/report.md', 'docs/scoreboard.md', 'docs/plans/x/PREREGISTRATION.md', 'docs/loops/TEMPLATE.md', 'changelog.d/item.md', 'todos.d/item.md', 'AGENTS.md', 'CLAUDE.md', 'CHANGELOG.md', 'TODOS.md', 'docs/corrections.txt', './README.md', 'docs/harness-anatomy/README.md']) expect(listed(p)).toBe(false);
+    for (const p of ['docs/methods.md', 'docs/methodology.md', 'docs/corrections.md', 'docs/README.md', 'findings/README.md', 'docs/benchmarks/run/report.md', 'docs/scoreboard.md', 'docs/plans/x/PREREGISTRATION.md', 'docs/loops/TEMPLATE.md', 'changelog.d/item.md', 'todos.d/item.md', 'AGENTS.md', 'CLAUDE.md', 'CHANGELOG.md', 'TODOS.md', 'docs/comparing-runs.txt', './README.md', 'docs/harness-anatomy/README.md']) expect(listed(p)).toBe(false);
   });
 
   test('no listed page is agent-loaded, a preregistration, a plan, a loop, a result or a receipt (R81)', () => {
@@ -85,7 +85,7 @@ describe('the docs-only list', () => {
     const inside = readFileSync(join(ROOT, 'tests', 'scoreboard.test.ts'), 'utf8');
     expect(readsOf('README.md', inside)).toBe(true);
     expect(readsOf('README.md', "readFileSync(join(ROUTES, 'README.md'))")).toBe(false);
-    for (const g of Object.keys(GLOB_OUTSIDE_SUITE)) expect([g, readsOf('docs/corrections.md', readFileSync(join(ROOT, g), 'latin1'))]).toEqual([g, true]);
+    for (const g of Object.keys(GLOB_OUTSIDE_SUITE)) expect([g, readsOf('docs/comparing-runs.md', readFileSync(join(ROOT, g), 'latin1'))]).toEqual([g, true]);
     expect(readsOf('docs/harness-anatomy/qm.md', "readFileSync(join(ANATOMY, 'qm.md'))")).toBe(true);
     expect(readsOf('docs/harness-anatomy/qm.md', "spawnSync('git', ['ls-files', '*.md'])")).toBe(true);
   }, 60_000);
@@ -119,8 +119,8 @@ describe('the docs-only list', () => {
 describe('docs-only verdicts', () => {
   test('a pinned page, a symlink, an unlisted path and an empty change disqualify', () => {
     const side = (path: string, mode = '100644') => ({ path, mode, sha256: sha256(path) });
-    expect(disqualifier([side('docs/corrections.md')], new Set())).toBeNull();
-    expect(disqualifier([side('docs/corrections.md')], new Set([sha256('docs/corrections.md')]))).toEqual({ path: 'docs/corrections.md', why: 'its sha256 is pinned by a committed file' });
+    expect(disqualifier([side('docs/comparing-runs.md')], new Set())).toBeNull();
+    expect(disqualifier([side('docs/comparing-runs.md')], new Set([sha256('docs/comparing-runs.md')]))).toEqual({ path: 'docs/comparing-runs.md', why: 'its sha256 is pinned by a committed file' });
     expect(disqualifier([side('README.md', '120000')], new Set())?.why).toBe('not a regular file');
     expect(disqualifier([side('README.md'), side('docs/methods.md')], new Set())).toEqual({ path: 'docs/methods.md', why: 'not on the docs-only list' });
     expect(disqualifier([{ path: 'README.md', mode: '100644', sha256: null }], new Set())?.why).toBe('content unknown');
@@ -137,18 +137,18 @@ describe('docs-only CLI', () => {
   const branch = (name: string, from: string, edit: () => void) => { git('checkout', '-q', '-b', name, from); edit(); const h = commit(name); git('checkout', '-q', 'main'); return h; };
   git('init', '-q', '-b', 'main');
   write('README.md', '# readme\n');
-  write('docs/corrections.md', '# corrections\n');
+  write('docs/comparing-runs.md', '# comparing runs\n');
   write('docs/shared-rig.md', '# pinned\n');
   write('docs/methods.md', '# methods\n');
   write('receipts/pins.json', JSON.stringify({ pinned: sha256('# pinned\n') }) + '\n');
   const base = commit('base');
-  const edited = branch('edit', base, () => { write('README.md', '# readme, edited\n'); write('docs/corrections.md', '# corrections, edited\n'); });
-  const deleted = branch('delete', base, () => { git('rm', '-q', 'docs/corrections.md'); });
-  const renamed = branch('rename', base, () => { git('mv', 'docs/corrections.md', 'docs/corrections-2.md'); });
+  const edited = branch('edit', base, () => { write('README.md', '# readme, edited\n'); write('docs/comparing-runs.md', '# comparing runs, edited\n'); });
+  const deleted = branch('delete', base, () => { git('rm', '-q', 'docs/comparing-runs.md'); });
+  const renamed = branch('rename', base, () => { git('mv', 'docs/comparing-runs.md', 'docs/comparing-runs-2.md'); });
   const unlisted = branch('unlisted', base, () => write('docs/methods.md', '# methods, edited\n'));
   const pinned = branch('pinned', base, () => write('docs/shared-rig.md', '# pinned, edited\n'));
   const fragment = branch('fragment', base, () => { write('README.md', '# readme, edited\n'); write('changelog.d/x.md', '- a fragment\n'); });
-  const linked = branch('symlink', base, () => { rmSync(join(dir, 'docs/corrections.md')); symlinkSync('../README.md', join(dir, 'docs/corrections.md')); });
+  const linked = branch('symlink', base, () => { rmSync(join(dir, 'docs/comparing-runs.md')); symlinkSync('../README.md', join(dir, 'docs/comparing-runs.md')); });
 
   test('prints docs_only=true for listed pages edited or deleted, and names the docs checks', () => {
     for (const head of [edited, deleted]) {
@@ -159,7 +159,7 @@ describe('docs-only CLI', () => {
   });
 
   test('prints docs_only=false for a rename off the list, an unlisted page, a pinned page, a fragment beside a page and a symlink', () => {
-    const cases: [string, string][] = [[renamed, 'docs/corrections-2.md: not on the docs-only list'], [unlisted, 'docs/methods.md: not on the docs-only list'], [pinned, 'docs/shared-rig.md: its sha256 is pinned by a committed file'], [fragment, 'changelog.d/x.md: not on the docs-only list'], [linked, 'docs/corrections.md: not a regular file']];
+    const cases: [string, string][] = [[renamed, 'docs/comparing-runs-2.md: not on the docs-only list'], [unlisted, 'docs/methods.md: not on the docs-only list'], [pinned, 'docs/shared-rig.md: its sha256 is pinned by a committed file'], [fragment, 'changelog.d/x.md: not on the docs-only list'], [linked, 'docs/comparing-runs.md: not a regular file']];
     for (const [head, why] of cases) {
       const r = cli(dir, '--base', base, '--head', head, '--tree', head);
       expect(r.stdout).toBe('docs_only=false\n');
