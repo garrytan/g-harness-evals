@@ -6,15 +6,15 @@ summary: "Pilot, one Opus 5.5 run per repo and arm. The prompt found 1 verified 
 status: open
 grade: "pilot (one Opus 5.5 run per repo and arm, no statistical claim)"
 repo_commit: "garrytan/gstack-evals d7746509c0489d775300ed94363e0afec37281d1 (main, the merge of PR 303; the body matches it, with the format changes in README.md)"
-prereg: "none for this pilot. The preregistered test is in preparation: gstack-evals #290 (repository not yet public)"
-data: "the records listed under Record, from gstack-evals #303 (repository not yet public)"
+prereg: "none for this pilot. The preregistered test is in preparation: gstack-evals #290, https://github.com/garrytan/gstack-evals/pull/290"
+data: "the records listed under Record, from gstack-evals #303, https://github.com/garrytan/gstack-evals/pull/303"
 author: "gstack-evals crew"
 model: anthropic/claude-opus-5-5
 date: 2026-11-09
 reviewed_by: "see The claim check"
 disclosures: "The disclosure lines are in the closing Disclosures section at the end of the file."
 links:
-  - gstack-evals #290 (repository not yet public)
+  - https://github.com/garrytan/gstack-evals/pull/290
   - https://x.com/Voxyz_ai/status/2119444845890617507
   - https://x.com/steveruizok/status/2116552016218710389
   - https://x.com/poteto/status/2119521036660314339
@@ -25,7 +25,7 @@ links:
 
 **Guest finding from the gstack-evals crew**, who ran this pilot and wrote this page.
 
-This is a pilot. Each repo and arm ran once, on Claude Opus 5.5 at high reasoning, so every count on this page is small and none is a measured rate. The gap between pstack and plain words in round 2 is noise. The preregistered test that decides these questions is in preparation as draft pull request gstack-evals #290 (repository not yet public). This page makes no statistical claim.
+This is a pilot. Each repo and arm ran once, on Claude Opus 5.5 at high reasoning, so every count on this page is small and none is a measured rate. The gap between pstack and plain words in round 2 is noise. The preregistered test that decides these questions is in preparation as draft pull request [gstack-evals #290](https://github.com/garrytan/gstack-evals/pull/290). This page makes no statistical claim.
 
 ## What we found
 
