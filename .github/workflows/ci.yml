@@ -8,9 +8,10 @@
 # and runs tests/gbrain-image.test.ts against it, about 15 minutes, still keyless,
 # run only when a file the image or its tests depend on changed (the `changes` job).
 # The public-export job exports this tree as the public repository would get it and checks it keyless (about 30
-# minutes, in parallel). In the public repository a docs-only change (scripts/ci/docs-only.ts, run from the base
-# commit before anything from the head is installed) skips the checks job's typecheck and tests; the job still runs the
-# link and hub-fragment checks and reports success, so every required check reports.
+# minutes, in parallel). A docs-only change (scripts/ci/docs-only.ts, run from the base commit before anything from the
+# head is installed: every changed path is on its list of human-facing pages, none of them pinned) skips the checks
+# job's typecheck and tests and runs the docs checks instead (the two tests that read the README and every Markdown page,
+# the link and hub-fragment checks), and the job reports success, so every required check reports.
 # Paid runs (live harness trials) are manual, run on a trusted pushed SHA with a
 # reserved budget, and land receipts in the repo. Actions are pinned to commit SHAs;
 # Bun is pinned by bun-version.
@@ -36,11 +37,10 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.4.3
-      # Public repository only. The base commit's copy decides, with bun reading no bunfig.toml, tsconfig.json or .env from
-      # the head; anything but a clean docs_only=true (no base copy, an error, an unknown base) means the full run.
+      # The base commit's copy decides, with bun reading no bunfig.toml, tsconfig.json or .env from the head; anything but a
+      # clean docs_only=true (no base copy, an error, an unknown base) means the full run.
       - name: Docs-only change
         id: docs
-        if: github.repository == 'garrytan/g-harness-evals'
         env:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -53,9 +53,13 @@ jobs:
           fi
           [ "$verdict" = docs_only=true ] || verdict=docs_only=false
           echo "$verdict" >> "$GITHUB_OUTPUT"
-          if [ "$verdict" = docs_only=true ]; then echo "Docs-only change: typecheck and tests skipped." >> "$GITHUB_STEP_SUMMARY"; fi
+          if [ "$verdict" = docs_only=true ]; then echo "Docs-only change: typecheck and tests skipped; the docs checks ran." >> "$GITHUB_STEP_SUMMARY"; fi
       - name: Install (frozen lockfile)
         run: bun install --frozen-lockfile
+      # scripts/ci/docs-only.ts DOC_TESTS: the tests that read the README and every Markdown page.
+      - name: Docs checks (docs-only change)
+        if: steps.docs.outputs.docs_only == 'true'
+        run: bun test tests/version.test.ts tests/scoreboard.test.ts
       - name: Typecheck
         if: steps.docs.outputs.docs_only != 'true'
         run: bunx tsc --noEmit

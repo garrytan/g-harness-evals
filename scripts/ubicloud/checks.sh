@@ -9,6 +9,8 @@
 # set), which the workflow covers through tests/heldout-manifest.test.ts. Then the docker-e2e job when docker-applies.sh
 # says the workflow would run it: scripts/build-gbrain-image.sh --tag harness-eval/gbrain:pr-<sha12> --out
 # /tmp/gbrain-build, HE_GBRAIN_IMAGE=<tag> bun test tests/gbrain-image.test.ts, and the build log's tail on failure.
+# With HE_DOCS_ONLY=true (pr-check.sh sets it from the base commit's scripts/ci/docs-only.ts) only install, the docs
+# checks (scripts/ci/docs-only.ts DOC_TESTS), links and prereg run, as in ci.yml.
 # Every step prints "step <name>: ok (<n>s)" or "step <name>: failed (exit <code>, <n>s)", and the last line is
 # "checks: pass after <n>s" or "checks: fail at <step> (exit <code>) after <n>s"; pr-check.sh reads those lines.
 set -uo pipefail
@@ -37,6 +39,13 @@ step() {
 }
 
 step install bun install --frozen-lockfile
+if [ "${HE_DOCS_ONLY:-}" = true ]; then
+  step docs-tests bun test tests/version.test.ts tests/scoreboard.test.ts
+  step links python3 scripts/check-links.py
+  step prereg bun runner/prereg/prereg.ts
+  echo "checks: pass after $(( $(date +%s) - t_all ))s"
+  exit 0
+fi
 step typecheck bunx tsc --noEmit
 if [ -f scripts/run-tests.sh ]; then step tests bash scripts/run-tests.sh; else step tests bun test tests/; fi
 step links python3 scripts/check-links.py

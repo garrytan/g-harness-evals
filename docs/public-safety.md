@@ -67,13 +67,15 @@ Deleting the file in a new commit does not help. Rewrite the branch so no commit
 
 ## Docs-only fast path
 
-CI's checks job skips typecheck and `bun test tests/` for a docs-only change and still runs the link and hub-fragment checks. `scripts/ci/docs-only.ts` decides, from the base commit's copy. It is an allowlist. Every path the change adds, edits, deletes or renames (both names of a rename) must be a regular file on this list:
+CI's checks job and the private lane's `ubicloud/checks` skip typecheck and `bun test tests/` for a docs-only change. They run the docs checks instead: `bun test tests/version.test.ts tests/scoreboard.test.ts` (the two tests that read the README or every Markdown page), plus the link, hub-fragment and preregistration order checks that run anyway. `scripts/ci/docs-only.ts` decides, always from the base commit's copy, so a change can't add its own pages to the list.
 
-- `README.md`;
-- a Markdown file under `docs/`, except anything under `docs/benchmarks/` or `docs/scoreboard/`, any `PREREGISTRATION*.md`, any `AMENDMENTS.md`, and any file whose sha256 (old or new content) a committed file holds;
-- `findings/<name>.md`.
+The rule is an explicit list (`DOCS` in the script), not a pattern. Every path the change adds, edits, deletes or renames (both names of a rename) must be a regular file on that list, and no committed file may hold the sha256 of its old or new content. Today the list has 18 human-facing pages: `README.md`, a handful of guides under `docs/`, the six `docs/harness-anatomy/` pages and four `findings/` write-ups.
 
-And no file under `tests/` or `scripts/` may name it: no whole word equal to its basename or one of its directory names, no glob matching it (so `git ls-files '*.md'` names every Markdown file), and no `.md` or `md` word. `changelog.d/` and `todos.d/` fragments are never docs-only. Anything else, or anything the script cannot decide, means the full run. `bun scripts/ci/docs-only.ts --audit` counts the files that qualify on a tree.
+- **What stays off the list:** anything an agent loads as instructions (AGENTS.md, CLAUDE.md, SKILL.md, CREW.md, prompts, templates, rubrics), preregistrations, plans, results, receipts and `changelog.d/` or `todos.d/` fragments. Those keep the full run (R81).
+- **How a page joins:** a reviewed change to `scripts/ci/docs-only.ts`, which is code and gets the full run. `tests/docs-only.test.ts` fails if a listed page is missing, pinned or read by any test or script outside the docs checks.
+- **How to check it:** `bun scripts/ci/docs-only.ts --audit` counts the listed pages that qualify on a tree. The test runs it on the real tree and expects every listed page to qualify. The word-match rule this replaced qualified 0 of the 1,481 Markdown files on main at 847f77a, so the fast path never ran.
+
+Anything the script can't decide means the full run.
 
 ## Codes
 

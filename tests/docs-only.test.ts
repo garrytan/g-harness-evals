@@ -1,122 +1,212 @@
-// scripts/ci/docs-only.ts decides whether public CI may skip typecheck and the test suite for a change. The rule is an
-// allowlist of human-facing docs that no file under tests/ or scripts/ names; these tests pin the list, the naming rule
-// (basename, directory names, globs, the .md extension), the pin check and the CLI on a scratch repository, including
-// deletions and renames. Keyless; every spawned process gets PATH, HOME and TMPDIR only.
+// scripts/ci/docs-only.ts decides whether a change skips the typecheck and the test suite and runs only the docs checks.
+// The rule is an explicit list of human-facing pages (DOCS) plus the pin check. These tests pin the list against the real
+// tree (every page is there, none is pinned, none is agent-loaded, a preregistration or a result, and no test or script
+// outside the docs checks reads one), the --audit count on the real tree against a floor, the docs checks CI and the lane
+// run, and the CLI on a scratch repository, including deletions, renames and pins. Keyless; every spawned process gets
+// PATH, HOME and TMPDIR only.
+//
+// Value: protects=a docs-only change skips the suite only when every path is a listed human-facing page that no skipped
+// test reads, so main cannot go red on a change that ran no tests; fails_when=a listed page is missing, pinned,
+// agent-loaded, a preregistration or a result, a test or script outside the docs checks reads one, the docs checks CI or
+// the lane runs drift from DOC_TESTS, or --audit falls to 0 (the old word match qualified 0 of 1,481 at 847f77a); why_new=the
+// word-match classifier could never fire; seam=git on the checkout and on a scratch repository; no_claim=which pages a
+// person would call human-facing.
 import { afterAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { disqualifier, listed, namer, sha256, type Reader } from '../scripts/ci/docs-only.ts';
+import { dirname, join, posix, resolve } from 'node:path';
+import { disqualifier, DOC_TESTS, DOCS, listed, pinnedAt, sha256 } from '../scripts/ci/docs-only.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
+const LANE = join(ROOT, 'scripts', 'ubicloud', 'pr-check.sh');
 const scratch: string[] = [];
 afterAll(() => { for (const d of scratch) rmSync(d, { recursive: true, force: true }); });
+const env = { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: tmpdir(), TMPDIR: tmpdir() };
+const cli = (cwd: string, ...args: string[]) => spawnSync('bun', [join(ROOT, 'scripts', 'ci', 'docs-only.ts'), ...args], { cwd, encoding: 'utf8', env });
+const gitIn = (cwd: string, ...args: string[]) => {
+  const r = spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...env, GIT_CONFIG_NOSYSTEM: '1' }, maxBuffer: 1 << 30 });
+  if (r.status !== 0) throw new Error(r.stderr);
+  return r.stdout;
+};
 
-const real = (path: string): Reader => ({ path, text: readFileSync(join(ROOT, path), 'utf8') });
-const UNRELATED: Reader = { path: 'tests/unrelated.test.ts', text: "import { join } from 'node:path';\nexpect(load(join('area', 'notes.txt'))).toBe(1);\n" };
-const verdict = (paths: string[], readers: Reader[], pinned: string[] = []) => disqualifier(paths.map((path) => ({ path, mode: '100644', sha256: sha256(path) })), namer(readers), new Set(pinned));
+// The files the docs checks run or read, which may read a listed page: DOC_TESTS, the scripts they run, the link and hub
+// fragments checks, and this classifier with its test.
+const DOCS_CHECKS = [...DOC_TESTS, 'scripts/scoreboard/', 'scripts/check-links.py', 'scripts/check-links-allow.txt', 'scripts/fold-hub-fragments.ts', 'scripts/ci/docs-only.ts', 'tests/docs-only.test.ts'];
+const inDocsChecks = (f: string) => DOCS_CHECKS.some((d) => (d.endsWith('/') ? f.startsWith(d) : f === d));
+// Files that name every Markdown page by a '*.md' glob but run outside the suite a docs-only change skips, each with why.
+const GLOB_OUTSIDE_SUITE: Record<string, string> = {
+  'scripts/public-safety/classes.json': 'path classes for the public-safety workflow, which runs on every pull request whatever docs-only says',
+  'scripts/public-safety/rules.json': 'rules for the same public-safety workflow',
+  'scripts/publish-audit.ts': 'run by scripts/bundle.ts and scripts/replicate.ts at publish time, never by the suite on this tree',
+  'tests/sealed-custody.test.ts': 'the glob is a fake gbrain import counting pages in its own scratch directory',
+};
 
-describe('docs-only list', () => {
-  test('README.md, Markdown under docs/ and findings/<name>.md are listed; results, preregistrations, amendments and fragments are not', () => {
-    for (const p of ['README.md', 'docs/methods.md', 'docs/guides/deep/page.md', 'findings/claim.md']) expect(listed(p)).toBe(true);
-    for (const p of ['docs/benchmarks/run/report.md', 'docs/scoreboard/x.md', 'docs/plans/x/PREREGISTRATION.md', 'docs/PREREGISTRATION-v2.md', 'docs/plans/x/AMENDMENTS.md', 'changelog.d/item.md', 'todos.d/item.md', 'findings/sub/x.md', 'CHANGELOG.md', 'docs/methods.txt', 'tests/fixtures/notes.md', 'notes/README.md']) expect(listed(p)).toBe(false);
+// The ways a test or script names a page it reads: a nested page by its path, its quoted basename or "/<basename>"
+// (join(DIR, 'x.md') was the read the first classifier missed); the top-level README by a join of the repository root with
+// 'README.md' or a read of 'README.md' from the root (other directories have README.md files of their own); and every
+// Markdown page by a quoted '*.md' glob.
+function readsOf(path: string, text: string, f = ''): boolean {
+  if (!(f in GLOB_OUTSIDE_SUITE) && /['"\x60][^'"\x60\s]*\*\.md['"\x60]/.test(text)) return true;
+  if (path.includes('/')) {
+    const b = posix.basename(path);
+    return [path, "'" + b + "'", '"' + b + '"', '\x60' + b + '\x60', '/' + b].some((n) => text.includes(n));
+  }
+  const q = "['\"\x60]" + path.replace(/\./g, '\\.') + "['\"\x60]";
+  return new RegExp("(?:\\b(?:ROOT|root|REPO|repo_root|repoRoot|REPO_ROOT)\\s*,\\s*|import\\.meta\\.dir\\s*,\\s*['\"]\\.\\.['\"]\\s*,\\s*|readFileSync\\(\\s*|open\\(\\s*)" + q).test(text);
+}
+
+describe('the docs-only list', () => {
+  test('only the listed pages are docs; nearby pages, fragments, preregistrations and agent files are not', () => {
+    for (const p of DOCS) expect(listed(p)).toBe(true);
+    for (const p of ['docs/methods.md', 'docs/methodology.md', 'docs/README.md', 'findings/README.md', 'docs/benchmarks/run/report.md', 'docs/scoreboard.md', 'docs/plans/x/PREREGISTRATION.md', 'docs/loops/TEMPLATE.md', 'changelog.d/item.md', 'todos.d/item.md', 'AGENTS.md', 'CLAUDE.md', 'CHANGELOG.md', 'TODOS.md', 'docs/corrections.txt', './README.md', 'docs/harness-anatomy/README.md']) expect(listed(p)).toBe(false);
   });
 
-  test('an unread docs/ page qualifies', () => {
-    expect(verdict(['docs/guides/unread.md'], [UNRELATED])).toBeNull();
+  test('no listed page is agent-loaded, a preregistration, a plan, a loop, a result or a receipt (R81)', () => {
+    for (const p of DOCS) {
+      expect([p, /(^|\/)(AGENTS|CLAUDE|SKILL|CREW|TEMPLATE|PREREGISTRATION[^/]*|AMENDMENTS)\.md$/.test(p)]).toEqual([p, false]);
+      expect([p, /^docs\/(benchmarks|scoreboard|plans|loops)\/|(^|\/)(receipts|results|evidence|prompts?)\//.test(p)]).toEqual([p, false]);
+      expect([p, p.endsWith('.md')]).toEqual([p, true]);
+    }
   });
 
-  test('a changelog.d or todos.d fragment is never docs-only, read or not', () => {
-    expect(verdict(['changelog.d/item.md'], [UNRELATED])).toEqual({ path: 'changelog.d/item.md', why: 'not on the docs-only list' });
-    expect(verdict(['todos.d/item.md'], [])?.why).toBe('not on the docs-only list');
+  test('every listed page is a regular file on the real tree that no committed file pins', () => {
+    const tree = new Map(gitIn(ROOT, 'ls-tree', '-r', '-z', '--full-tree', 'HEAD').split('\0').filter(Boolean).map((e) => [e.slice(e.indexOf('\t') + 1), e.split(' ')[0]]));
+    for (const p of DOCS) expect([p, tree.get(p)]).toEqual([p, '100644']);
+    const hashes = DOCS.map((p) => sha256(readFileSync(join(ROOT, p))));
+    expect([...pinnedAt(['HEAD'], hashes)]).toEqual([]);
+  }, 60_000);
+
+  test('no test or script outside the docs checks reads a listed page', () => {
+    const files = gitIn(ROOT, 'ls-files', '-z', '--', 'tests', 'scripts').split('\0').filter((f) => f && !inDocsChecks(f));
+    const texts = files.map((f) => ({ f, text: readFileSync(join(ROOT, f), 'latin1') }));
+    const readers = DOCS.flatMap((p) => texts.filter(({ f, text }) => readsOf(p, text, f)).map(({ f }) => p + ' <- ' + f));
+    expect(readers).toEqual([]);
+    const inside = readFileSync(join(ROOT, 'tests', 'scoreboard.test.ts'), 'utf8');
+    expect(readsOf('README.md', inside)).toBe(true);
+    expect(readsOf('README.md', "readFileSync(join(ROUTES, 'README.md'))")).toBe(false);
+    for (const g of Object.keys(GLOB_OUTSIDE_SUITE)) expect([g, readsOf('docs/corrections.md', readFileSync(join(ROOT, g), 'latin1'))]).toEqual([g, true]);
+    expect(readsOf('docs/harness-anatomy/qm.md', "readFileSync(join(ANATOMY, 'qm.md'))")).toBe(true);
+    expect(readsOf('docs/harness-anatomy/qm.md', "spawnSync('git', ['ls-files', '*.md'])")).toBe(true);
+  }, 60_000);
+
+  test('--audit on the real tree counts every listed page as qualifying, above a floor', () => {
+    const r = cli(ROOT, '--audit');
+    const m = r.stdout.match(/^(\d+) of (\d+) Markdown files at HEAD qualify for the docs-only path \((\d+) of the (\d+) listed docs present before the pin check\)\n$/);
+    expect(m).not.toBeNull();
+    const [qualify, markdown, present, total] = m!.slice(1).map(Number);
+    expect(qualify).toBeGreaterThanOrEqual(15);
+    expect([qualify, present, total]).toEqual([DOCS.length, DOCS.length, DOCS.length]);
+    expect(markdown).toBeGreaterThan(qualify!);
+  }, 60_000);
+
+  test('CI and the private lane run exactly DOC_TESTS for a docs-only change', () => {
+    const line = 'bun test ' + DOC_TESTS.join(' ');
+    const ci = readFileSync(join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8');
+    expect(ci).toContain("if: steps.docs.outputs.docs_only == 'true'\n        run: " + line + '\n');
+    expect(ci).not.toContain("if: github.repository == 'garrytan/g-harness-evals'\n        env:\n          BASE");
+    expect(readFileSync(join(ROOT, 'scripts', 'ubicloud', 'checks.sh'), 'utf8')).toContain('if [ "${HE_DOCS_ONLY:-}" = true ]; then\n  step docs-tests ' + line + '\n');
   });
 
-  test('a docs/benchmarks or docs/scoreboard file does not qualify', () => {
-    expect(verdict(['docs/benchmarks/run/report.md'], [])?.why).toBe('not on the docs-only list');
-    expect(verdict(['docs/scoreboard/x.md'], [])?.why).toBe('not on the docs-only list');
+  test.skipIf(!existsSync(LANE))('pr-check.sh passes the base commit\'s verdict to checks.sh (private repository only: publication/manifest.json keeps pr-check.sh out of the public copy)', () => {
+    const lane = readFileSync(LANE, 'utf8');
+    expect(lane).toContain('git -C "$src" show "$base:scripts/ci/docs-only.ts" > "$scratch/docs-only/docs-only.ts"');
+    expect(lane).toContain('[ "$docs_only" = docs_only=true ] || docs_only=docs_only=false');
+    expect(lane).toContain('--env "HE_DOCS_ONLY=${docs_only#docs_only=}"');
   });
+});
 
-  test('tests/version.test.ts lists every Markdown file through git ls-files, so every version-bearing page is ineligible', () => {
-    const version = real('tests/version.test.ts');
-    expect(version.text).toContain("'ls-files', '*.md'");
-    for (const p of ['README.md', 'docs/guides/unread.md', 'docs/methods.md', 'findings/claim.md']) expect(verdict([p], [UNRELATED, version])).toEqual({ path: p, why: 'named by tests/version.test.ts' });
-  });
-
-  test('docs/tool-discipline/README.md is named by tests/tool-discipline-receipts.test.ts and does not qualify', () => {
-    const reader = real('tests/tool-discipline-receipts.test.ts');
-    expect(reader.text).not.toContain('docs/tool-discipline/README.md');
-    expect(verdict(['docs/tool-discipline/README.md'], [reader])).toEqual({ path: 'docs/tool-discipline/README.md', why: 'named by tests/tool-discipline-receipts.test.ts' });
-  });
-
-  test('a basename, a directory name, a glob or the .md extension names a path; a longer word does not', () => {
-    const r = (text: string): Reader[] => [{ path: 'scripts/r.ts', text }];
-    expect(verdict(['docs/guides/unread.md'], r("readFileSync('unread.md')"))?.why).toBe('named by scripts/r.ts');
-    expect(verdict(['docs/guides/unread.md'], r('// see the guides folder.'))?.why).toBe('named by scripts/r.ts');
-    expect(verdict(['docs/guides/unread.md'], r("const d = join(ROOT, 'docs');"))?.why).toBe('named by scripts/r.ts');
-    expect(verdict(['docs/guides/unread.md'], r("new Bun.Glob('guides/*.md')"))?.why).toBe('named by scripts/r.ts');
-    expect(verdict(['docs/guides/unread.md'], r("glob('un*')"))?.why).toBe('named by scripts/r.ts');
-    expect(verdict(['docs/guides/unread.md'], r("files.filter((f) => f.endsWith('.md'))"))?.why).toBe('named by scripts/r.ts');
-    expect(verdict(['docs/guides/unread.md'], r("const ext = 'md';"))?.why).toBe('named by scripts/r.ts');
-    expect(verdict(['docs/guides/unread.md'], r("run('docs-only', 'guidesx', 'unread.mdx', 'x * y')"))).toBeNull();
-  });
-
-  test('a file whose sha256 a committed file pins does not qualify, nor does a symlink or an empty change', () => {
-    expect(verdict(['docs/guides/unread.md'], [UNRELATED], [sha256('docs/guides/unread.md')])).toEqual({ path: 'docs/guides/unread.md', why: 'its sha256 is pinned by a committed file' });
-    expect(disqualifier([{ path: 'docs/guides/unread.md', mode: '120000', sha256: null }], namer([]), new Set())?.why).toBe('not a regular file');
-    expect(disqualifier([], namer([]), new Set())).toEqual({ path: '', why: 'no changed paths' });
+describe('docs-only verdicts', () => {
+  test('a pinned page, a symlink, an unlisted path and an empty change disqualify', () => {
+    const side = (path: string, mode = '100644') => ({ path, mode, sha256: sha256(path) });
+    expect(disqualifier([side('docs/corrections.md')], new Set())).toBeNull();
+    expect(disqualifier([side('docs/corrections.md')], new Set([sha256('docs/corrections.md')]))).toEqual({ path: 'docs/corrections.md', why: 'its sha256 is pinned by a committed file' });
+    expect(disqualifier([side('README.md', '120000')], new Set())?.why).toBe('not a regular file');
+    expect(disqualifier([side('README.md'), side('docs/methods.md')], new Set())).toEqual({ path: 'docs/methods.md', why: 'not on the docs-only list' });
+    expect(disqualifier([{ path: 'README.md', mode: '100644', sha256: null }], new Set())?.why).toBe('content unknown');
+    expect(disqualifier([], new Set())).toEqual({ path: '', why: 'no changed paths' });
   });
 });
 
 describe('docs-only CLI', () => {
-  const env = { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: tmpdir(), TMPDIR: tmpdir() };
   const dir = mkdtempSync(join(tmpdir(), 'docs-only-'));
   scratch.push(dir);
-  const git = (...args: string[]) => {
-    const r = spawnSync('git', args, { cwd: dir, encoding: 'utf8', env: { ...env, GIT_CONFIG_NOSYSTEM: '1' } });
-    if (r.status !== 0) throw new Error(r.stderr);
-    return r.stdout.trim();
-  };
+  const git = (...args: string[]) => gitIn(dir, ...args).trim();
   const write = (p: string, text: string) => { mkdirSync(dirname(join(dir, p)), { recursive: true }); writeFileSync(join(dir, p), text); };
   const commit = (msg: string) => { git('add', '-A'); git('-c', 'user.name=fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-q', '-m', msg); return git('rev-parse', 'HEAD'); };
-  const run = (...args: string[]) => spawnSync('bun', [join(ROOT, 'scripts', 'ci', 'docs-only.ts'), ...args], { cwd: dir, encoding: 'utf8', env });
   const branch = (name: string, from: string, edit: () => void) => { git('checkout', '-q', '-b', name, from); edit(); const h = commit(name); git('checkout', '-q', 'main'); return h; };
   git('init', '-q', '-b', 'main');
-  write('docs/guide.md', '# guide\n');
-  write('docs/area/tested.md', '# tested\n');
-  write('docs/pinned.md', '# pinned\n');
+  write('README.md', '# readme\n');
+  write('docs/corrections.md', '# corrections\n');
+  write('docs/shared-rig.md', '# pinned\n');
+  write('docs/methods.md', '# methods\n');
   write('receipts/pins.json', JSON.stringify({ pinned: sha256('# pinned\n') }) + '\n');
-  write('tests/t.test.ts', "load('area', 'tested.md');\n");
   const base = commit('base');
-  const edited = branch('edit', base, () => write('docs/guide.md', '# guide, edited\n'));
-  const renamedUnread = branch('rename-unread', base, () => { git('mv', 'docs/guide.md', 'docs/guide-2.md'); });
-  const read = branch('read', base, () => write('docs/area/tested.md', '# tested, edited\n'));
-  const deleted = branch('delete', base, () => { git('rm', '-q', 'docs/area/tested.md'); });
-  const renamed = branch('rename', base, () => { git('mv', 'docs/area/tested.md', 'docs/moved.md'); });
-  const pinned = branch('pinned', base, () => write('docs/pinned.md', '# pinned, edited\n'));
-  const fragment = branch('fragment', base, () => write('changelog.d/x.md', '- a fragment\n'));
-  const linked = branch('symlink', base, () => { rmSync(join(dir, 'docs/guide.md')); symlinkSync('../tests/t.test.ts', join(dir, 'docs/guide.md')); });
+  const edited = branch('edit', base, () => { write('README.md', '# readme, edited\n'); write('docs/corrections.md', '# corrections, edited\n'); });
+  const deleted = branch('delete', base, () => { git('rm', '-q', 'docs/corrections.md'); });
+  const renamed = branch('rename', base, () => { git('mv', 'docs/corrections.md', 'docs/corrections-2.md'); });
+  const unlisted = branch('unlisted', base, () => write('docs/methods.md', '# methods, edited\n'));
+  const pinned = branch('pinned', base, () => write('docs/shared-rig.md', '# pinned, edited\n'));
+  const fragment = branch('fragment', base, () => { write('README.md', '# readme, edited\n'); write('changelog.d/x.md', '- a fragment\n'); });
+  const linked = branch('symlink', base, () => { rmSync(join(dir, 'docs/corrections.md')); symlinkSync('../README.md', join(dir, 'docs/corrections.md')); });
 
-  test('prints docs_only=true for an unread doc edited or renamed', () => {
-    expect(run('--base', base, '--head', edited, '--tree', edited).stdout).toBe('docs_only=true\n');
-    expect(run('--base', base, '--head', renamedUnread, '--tree', renamedUnread).stdout).toBe('docs_only=true\n');
+  test('prints docs_only=true for listed pages edited or deleted, and names the docs checks', () => {
+    for (const head of [edited, deleted]) {
+      const r = cli(dir, '--base', base, '--head', head, '--tree', head);
+      expect(r.stdout).toBe('docs_only=true\n');
+      expect(r.stderr).toContain('the docs checks run: ' + DOC_TESTS.join(' '));
+    }
   });
 
-  test('prints docs_only=false when a read doc is edited, deleted or renamed, a pinned doc changes, a fragment is added or a doc becomes a symlink', () => {
-    const cases: [string, string][] = [[read, 'docs/area/tested.md: named by tests/t.test.ts'], [deleted, 'docs/area/tested.md: named by tests/t.test.ts'], [renamed, 'docs/area/tested.md: named by tests/t.test.ts'], [pinned, 'docs/pinned.md: its sha256 is pinned by a committed file'], [fragment, 'changelog.d/x.md: not on the docs-only list'], [linked, 'docs/guide.md: not a regular file']];
+  test('prints docs_only=false for a rename off the list, an unlisted page, a pinned page, a fragment beside a page and a symlink', () => {
+    const cases: [string, string][] = [[renamed, 'docs/corrections-2.md: not on the docs-only list'], [unlisted, 'docs/methods.md: not on the docs-only list'], [pinned, 'docs/shared-rig.md: its sha256 is pinned by a committed file'], [fragment, 'changelog.d/x.md: not on the docs-only list'], [linked, 'docs/corrections.md: not a regular file']];
     for (const [head, why] of cases) {
-      const r = run('--base', base, '--head', head, '--tree', head);
+      const r = cli(dir, '--base', base, '--head', head, '--tree', head);
       expect(r.stdout).toBe('docs_only=false\n');
       expect(r.stderr).toContain(why);
     }
   });
 
   test('fails closed on a revision it cannot resolve, and exits 2 without arguments', () => {
-    expect(run('--base', 'no-such-rev', '--head', read).stdout).toBe('docs_only=false\n');
-    expect(run().status).toBe(2);
+    expect(cli(dir, '--base', 'no-such-rev', '--head', edited).stdout).toBe('docs_only=false\n');
+    expect(cli(dir).status).toBe(2);
   });
 
-  test('--audit counts the listed docs that qualify', () => {
-    expect(run('--audit', '--tree', base).stdout).toBe('1 of 3 Markdown files at ' + base + ' qualify for the docs-only path (3 on the docs-only list before the reader and pin checks)\n');
+  test('--audit counts the listed pages that qualify', () => {
+    expect(cli(dir, '--audit', '--tree', base).stdout).toBe('2 of 4 Markdown files at ' + base + ' qualify for the docs-only path (3 of the ' + DOCS.length + ' listed docs present before the pin check)\n');
   });
+});
+
+describe.skipIf(!existsSync(LANE))('the private lane verdict', () => {
+  test('pr-check.sh asks the base commit\'s copy, so a head that rewrites the classifier still gets the full run', () => {
+    const lines = readFileSync(LANE, 'utf8').split('\n');
+    const start = lines.findIndex((l) => l.startsWith("# The base commit's copy of scripts/ci/docs-only.ts decides"));
+    const end = lines.findIndex((l, i) => i > start && l.startsWith('[ "$docs_only" = docs_only=true ]'));
+    expect([start > 0, end > start]).toEqual([true, true]);
+    const repo = mkdtempSync(join(tmpdir(), 'docs-only-lane-'));
+    scratch.push(repo);
+    const git = (...args: string[]) => gitIn(repo, ...args).trim();
+    const commit = (msg: string) => { git('add', '-A'); git('-c', 'user.name=fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-q', '-m', msg); return git('rev-parse', 'HEAD'); };
+    git('init', '-q', '-b', 'main');
+    mkdirSync(join(repo, 'scripts', 'ci'), { recursive: true });
+    writeFileSync(join(repo, 'scripts', 'ci', 'docs-only.ts'), readFileSync(join(ROOT, 'scripts', 'ci', 'docs-only.ts')));
+    writeFileSync(join(repo, 'README.md'), '# readme\n');
+    const base = commit('base');
+    writeFileSync(join(repo, 'README.md'), '# readme, edited\n');
+    const docs = commit('docs');
+    git('checkout', '-q', base);
+    writeFileSync(join(repo, 'scripts', 'ci', 'docs-only.ts'), "console.log('docs_only=true');\n");
+    const lying = commit('lying classifier');
+    const verdict = (sha: string, b = base) => {
+      const s = mkdtempSync(join(tmpdir(), 'docs-only-lane-scratch-'));
+      scratch.push(s);
+      const script = ['set -euo pipefail', 'src=$1; base=$2; sha=$3; scratch=$4', ...lines.slice(start, end + 1), 'echo "$docs_only"'].join('\n');
+      const r = spawnSync('bash', ['-c', script, 'lane', repo, b, sha, s], { encoding: 'utf8', env });
+      expect(r.status).toBe(0);
+      return r.stdout.trim();
+    };
+    expect(verdict(docs)).toBe('docs_only=true');
+    expect(verdict(lying)).toBe('docs_only=false');
+    expect(verdict(docs, '0000000000000000000000000000000000000000')).toBe('docs_only=false');
+  }, 60_000);
 });

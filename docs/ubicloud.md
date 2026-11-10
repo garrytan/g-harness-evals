@@ -170,6 +170,10 @@ The VM's phases: create to ready 82 s (19 s on an earlier VM the same evening), 
 
 ## Changelog
 
+### 2026-11-09: merge-pass merges over REST, reads holds cheaply and always logs; docs-only runs in the lane
+
+`scripts/ubicloud/merge-pass.sh --rest` reads and merges through GitHub's REST API with `gh-rest.sh`, so the lane keeps its tested merge rule when the GraphQL quota runs out. The hold read stops at the first open line and remembers merged ones, and every merge is logged to `internal-task-a/merges.log` unless `--merge-log` says otherwise; a log it can't write stops the pass first. `pr-check.sh` asks the base commit's `scripts/ci/docs-only.ts` whether a change is docs-only and passes the answer to `checks.sh`, which then runs only the docs checks. Why: from 2026-11-07 the lane merged through an untested drive script that dropped six of merge-pass's guards and logged none of 18 merges after #327 (internal-task-b audit, item 10).
+
 ### 2026-11-07: a stage ledger across dests; the qm-driver stage cap comes from the preregistration; the mirror leaves out the smoke's gstack checkout
 
 "A fan-out" gains the stage ledger and the preregistered cap for `--workload qm-driver`, and "Results leave the VM while it runs" says the mirror leaves out `smoke/work/gstack-edition`. Why: the stage sum was keyed on the dest, so a stage split across dests, or a one-off `run-shard.sh` launch, escaped it; `stage_cap_usd` was not tied to the preregistered caps or to `--stage`; and each qm-driver shard's final mirror was refused because the smoke's gstack checkout holds gstack's key-shaped test text, so the drive kept only the last mid-run copy. Tested in `tests/ubicloud-stage-cap.test.ts` and `tests/ubicloud-mirror-smoke-edition.test.ts`.
