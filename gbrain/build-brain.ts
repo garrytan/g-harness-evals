@@ -581,16 +581,28 @@ export function buildScopedBrain(o: BuildOptions, kind: ScopedBrainKind): Compan
   const members: Record<string, string> = {};
   let publicOnly = '';
   const bindings: AccessBinding[] = [];
-  for (const g of grants) {
-    const created = run([...o.gbrain, 'auth', 'create', g.token_name], env, `gbrain auth create ${g.token_name}`);
+  let unscoped: string[] = [];
+  const mint = (name: string, bind: string[]): string => {
+    let created: { stdout: string; stderr: string };
+    try {
+      created = run([...o.gbrain, 'auth', 'create', name, ...(bind.length ? bind : unscoped)], env, `gbrain auth create ${name}`);
+    } catch (e) {
+      if (bind.length || unscoped.length || !/credential_scope_required/.test(String(e))) throw e;
+      unscoped = ['--reads-unscoped', '--yes'];
+      return mint(name, bind);
+    }
     const token = /gbrain_[0-9a-f]+/.exec(created.stdout + created.stderr)?.[0];
-    if (!token) throw new Error(`gbrain auth create ${g.token_name} printed no token`);
+    if (!token) throw new Error(`gbrain auth create ${name} printed no token`);
+    return token;
+  };
+  for (const g of grants) {
+    const token = mint(g.token_name, o.access === 'rules' && g.member !== 'public-only' ? ['--member', g.member] : []);
     if (o.access !== 'rules') run([...o.gbrain, 'auth', 'rescope', '--token', g.token_name, '--sources', g.sources.join(',')], env, `gbrain auth rescope ${g.token_name}`);
     else if (g.member !== 'public-only') run([...o.gbrain, 'auth', 'rescope', '--token', g.token_name, '--member', g.member], env, `gbrain auth rescope ${g.token_name}`);
     if (o.access === 'rules') bindings.push({ token_name: g.token_name, member: g.member === 'public-only' ? null : g.member });
     if (g.member === 'public-only') publicOnly = token; else members[g.member] = token;
   }
-  log(`gbrain auth: ${Object.keys(members).length} member tokens and public-only minted and ${o.access === 'rules' ? 'bound (public-only bound to nobody)' : 'granted'}`);
+  log(`gbrain auth: ${Object.keys(members).length} member tokens and public-only minted and ${o.access === 'rules' ? `bound (public-only bound to nobody${unscoped.length ? ', marked --reads-unscoped' : ''})` : 'granted'}`);
   const tokens: CompanyTokens = { schema_version: 1, brain: kind, split: o.split, members, public_only: publicOnly };
   const tokensPath = join(o.out, 'tokens.json');
   writeFileSync(tokensPath, JSON.stringify(tokens, null, 1) + '\n', { mode: 0o600 });
@@ -599,9 +611,7 @@ export function buildScopedBrain(o: BuildOptions, kind: ScopedBrainKind): Compan
   if (kind === 'member') {
     const ingestSources: Record<string, string> = {};
     for (const g of ingestGrants) {
-      const created = run([...o.gbrain, 'auth', 'create', g.token_name], env, `gbrain auth create ${g.token_name}`);
-      const token = /gbrain_[0-9a-f]+/.exec(created.stdout + created.stderr)?.[0];
-      if (!token) throw new Error(`gbrain auth create ${g.token_name} printed no token`);
+      const token = mint(g.token_name, []);
       run([...o.gbrain, 'auth', 'rescope', '--token', g.token_name, '--sources', g.source], env, `gbrain auth rescope ${g.token_name}`);
       ingestSources[g.source] = token;
     }

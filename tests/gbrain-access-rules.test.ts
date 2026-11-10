@@ -21,10 +21,12 @@ afterAll(() => rmSync(tmp, { recursive: true, force: true }));
 // ---- the build, against a stand-in --------------------------------------------------------------------------------------
 
 /** A gbrain stand-in: appends each argv (and the names of any key-like variables it was given, never a value) to argvLog, and
- *  answers the way gbrain 0.60.554.0 does for the commands the scoped build runs. */
-function writeStandIn(dir: string, argvLog: string): string {
+ *  answers the way gbrain 0.60.554.0 does for the commands the scoped build runs. With refuse "gst363" it also refuses an
+ *  auth create bound to nobody once a member exists, the way gbrain with internal-task does, unless it carries --reads-unscoped;
+ *  with refuse "always" it refuses that create even then. */
+function writeStandIn(dir: string, argvLog: string, refuse: 'none' | 'gst363' | 'always' = 'none'): string {
   const path = join(dir, 'gbrain-standin.ts');
-  writeFileSync(path, `import { appendFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+  writeFileSync(path, `import { appendFileSync, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 const argv = process.argv.slice(2);
 const keyish = Object.keys(process.env).filter((k) => /KEY|SECRET|TOKEN/.test(k));
@@ -32,6 +34,12 @@ appendFileSync(${JSON.stringify(argvLog)}, JSON.stringify({ argv, keyish }) + '\
 const count = (d) => existsSync(d) ? readdirSync(d).reduce((n, e) => { const p = join(d, e); return n + (statSync(p).isDirectory() ? count(p) : e.endsWith('.md') ? 1 : 0); }, 0) : 0;
 const flag = (n) => argv[argv.indexOf(n) + 1];
 const [a, b] = argv;
+const refuse = ${JSON.stringify(refuse)};
+const hasMembers = readFileSync(${JSON.stringify(argvLog)}, 'utf8').includes('"access","member","add"');
+if (refuse !== 'none' && a === 'auth' && b === 'create' && hasMembers && !argv.includes('--member') && (refuse === 'always' || !argv.includes('--reads-unscoped'))) {
+  console.error('Error [credential_scope_required]: This brain serves several people, so the token ' + argv[2] + ' was not created bound to nobody; nothing was created.');
+  process.exit(1);
+}
 if (a === '--version') console.log('gbrain 0.60.554.0');
 else if (a === 'import') console.log(JSON.stringify({ status: 'success', imported: count(argv[1]), errors: 0, source_id: flag('--source') }));
 else if (a === 'auth' && b === 'create') console.log('Token: gbrain_' + Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join(''));
@@ -49,11 +57,11 @@ function corpusFor(dir: string): string {
   return dir;
 }
 
-function build(name: string, access?: 'rules'): { manifest: CompanyBrainManifest; calls: Array<{ argv: string[]; keyish: string[] }>; out: string } {
+function build(name: string, access?: 'rules', refuse: 'none' | 'gst363' | 'always' = 'none'): { manifest: CompanyBrainManifest; calls: Array<{ argv: string[]; keyish: string[] }>; out: string } {
   const dir = join(tmp, name);
   mkdirSync(dir, { recursive: true });
   const argvLog = join(dir, 'argv.jsonl');
-  const standIn = writeStandIn(dir, argvLog);
+  const standIn = writeStandIn(dir, argvLog, refuse);
   const out = join(dir, 'brain');
   const manifest = buildBrain({ split: 'dev', brain: 'member', ...(access ? { access } : {}), corpus: corpusFor(join(dir, 'corpus')), worldPath: join(ROOT, 'world', 'seed', 'world.json'), out, staging: join(dir, 'staging'), gbrain: ['bun', standIn], commit: 'test', corpusCommit: 'test', corpusRepo: 'test', log: () => undefined }) as CompanyBrainManifest;
   const calls = readFileSync(argvLog, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { argv: string[]; keyish: string[] });
@@ -83,6 +91,9 @@ describe('build-brain --access rules (gbrain stand-in)', () => {
     expect(memberRescopes.some((r) => r.includes('--sources'))).toBe(false);
     expect(rescopes.some((r) => r.includes('public-only'))).toBe(false);
     expect(acl.calls.some((c) => c.argv.join(' ') === 'auth create public-only')).toBe(true);
+    const creates = acl.calls.filter((c) => c.argv[0] === 'auth' && c.argv[1] === 'create').map((c) => c.argv);
+    expect(creates.filter((a) => a[2]!.startsWith('member-'))).toEqual(members.map((m) => ['auth', 'create', `member-${m}`, '--member', m]));
+    expect(creates.filter((a) => !a[2]!.startsWith('member-')).every((a) => a.length === 3)).toBe(true);
     // the per-source ingest tokens keep their one write source
     expect(rescopes.filter((r) => r[3]!.startsWith('ingest-')).every((r) => r[4] === '--sources')).toBe(true);
   });
@@ -116,6 +127,30 @@ describe('build-brain --access rules (gbrain stand-in)', () => {
     const memberRescopes = plain.calls.filter((c) => c.argv[0] === 'auth' && c.argv[1] === 'rescope' && c.argv[3]!.startsWith('member-'));
     expect(memberRescopes.length).toBe(members.length);
     expect(memberRescopes.every((c) => c.argv[4] === '--sources' && !c.argv.includes('--member'))).toBe(true);
+    expect(plain.calls.filter((c) => c.argv[0] === 'auth' && c.argv[1] === 'create').every((c) => c.argv.length === 3)).toBe(true);
+  });
+
+  test('against a gbrain that refuses unbound tokens (internal-task), public-only and the ingest tokens are created --reads-unscoped --yes; members stay bound', () => {
+    const strict = build('acl-gst363', 'rules', 'gst363');
+    const creates = strict.calls.filter((c) => c.argv[0] === 'auth' && c.argv[1] === 'create').map((c) => c.argv);
+    expect(creates.filter((a) => a[2]!.startsWith('member-'))).toEqual(members.map((m) => ['auth', 'create', `member-${m}`, '--member', m]));
+    expect(creates.filter((a) => a[2] === 'public-only')).toEqual([['auth', 'create', 'public-only'], ['auth', 'create', 'public-only', '--reads-unscoped', '--yes']]);
+    const ingest = creates.filter((a) => a[2]!.startsWith('ingest-'));
+    expect(ingest.length).toBeGreaterThan(0);
+    expect(ingest.every((a) => a.length === 5 && a[3] === '--reads-unscoped' && a[4] === '--yes')).toBe(true);
+    expect(new Set(ingest.map((a) => a[2])).size).toBe(ingest.length);
+    const tokens = JSON.parse(readFileSync(join(strict.out, 'tokens.json'), 'utf8'));
+    expect(Object.keys(tokens.members)).toEqual(members);
+    expect(tokens.public_only).toMatch(/^gbrain_[0-9a-f]+$/);
+    expect(Object.keys(JSON.parse(readFileSync(join(strict.out, 'ingest-tokens.json'), 'utf8')).sources).length).toBe(ingest.length);
+    expect(strict.manifest.bindings).toEqual(acl.manifest.bindings);
+  });
+
+  test('a refusal of the --reads-unscoped retry stops the build instead of retrying again', () => {
+    expect(() => build('acl-always', 'rules', 'always')).toThrow(/gbrain auth create public-only exited 1[\s\S]*credential_scope_required/);
+    const calls = readFileSync(join(tmp, 'acl-always', 'argv.jsonl'), 'utf8').trim().split('\n').map((l) => (JSON.parse(l) as { argv: string[] }).argv);
+    expect(calls.filter((a) => a[1] === 'create' && a[2] === 'public-only')).toEqual([['auth', 'create', 'public-only'], ['auth', 'create', 'public-only', '--reads-unscoped', '--yes']]);
+    expect(calls.some((a) => a[1] === 'create' && a[2]!.startsWith('ingest-'))).toBe(false);
   });
 
   test('--access rules is refused on the bot-visible brain and with any value but rules', () => {
