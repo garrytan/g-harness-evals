@@ -152,6 +152,12 @@ describe('bundle build', () => {
     try { expect(code(() => collect({ root, run: S, finding: 'ls', local: true }))).toStartWith('HE-BUNDLE-002 docs/benchmarks/2026-01-04-local-sealed/prereg.json opens set v9'); } finally { rmSync(join(root, S), { recursive: true }); rmSync(join(root, 'tasks'), { recursive: true }); }
   });
 
+  test('--local still runs the sealed-publication scan when the run directory has tracked files', () => {
+    put(`${RUN}/sealed-results/raw-receipt.json`, '{}');
+    commit('tracked raw sealed receipt');
+    try { expect(code(() => collect({ root, run: RUN, finding: 'fixture', local: true }))).toBe(`HE-BUNDLE-002 ${RUN} holds material sealed custody keeps off main (1 path(s), first ${RUN}/sealed-results/raw-receipt.json: a raw sealed receipt (a sealed-results/ directory holds export.json, opening-receipt.json and README.md only)); fix: a run on a set in sealed custody is bundled from its sealed-results export only, after release`); } finally { rmSync(join(root, RUN, 'sealed-results'), { recursive: true }); commit('drop raw sealed receipt'); }
+  });
+
   test('--local refuses a run on a released set whose world slice a live sealed set shares', () => {
     const S = 'docs/benchmarks/2026-01-07-shared';
     const w = 'a'.repeat(64);

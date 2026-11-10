@@ -156,6 +156,7 @@ serve() {
       # A turn killed right after it was spawned may not have opened its reply file yet.
       reply=$(cat "$resp.reply" 2>/dev/null || true); rm -f "$resp.reply"
       ended=$(now)
+      if [[ "$ended" < "$started" ]]; then ended=$started; fi
       detail=""
       case "$code" in
         0) ;;

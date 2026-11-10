@@ -221,7 +221,7 @@ describe('paid rerun through the real metering proxy (fake upstream)', () => {
     expect(r.spend.committed_usd).toBeLessThanOrEqual(10);
     expect(r.band.lo).toBe(12);
     expect(r.rerun_bundle.sha256).toMatch(/^[0-9a-f]{64}$/);
-  }, 300_000);
+  }, 120_000);
 
   test('a cap stop is INCOMPLETE (exit 3), leaves the cap-stopped trial out and spends no more than the cap', async () => {
     const out = newOut('capstop');

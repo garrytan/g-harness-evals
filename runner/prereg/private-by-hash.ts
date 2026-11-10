@@ -50,7 +50,7 @@ const sha256 = (b: string | Buffer) => createHash('sha256').update(b).digest('he
 const HEX64 = /\b[0-9a-f]{64}\b/i;
 const BLOCK = /^```json private-by-hash\n([\s\S]*?)\n```$/gm;
 const shape = (a: Output) => JSON.stringify([a.name, a.schema, a.location]);
-const git = (cwd: string, args: string[]) => { try { return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return null; } };
+const git = (cwd: string, args: string[]) => { try { return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024 }).trim(); } catch { return null; } };
 
 /** The results attestation's path for a preregistration: results/private-by-hash.json in the same run folder. */
 export const attestationPath = (preregistration: string) => join(dirname(preregistration), 'results', PRIVATE_BY_HASH_FILE);

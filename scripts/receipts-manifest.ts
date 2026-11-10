@@ -128,7 +128,7 @@ const round6 = (x: number) => Number(x.toFixed(6));
 
 function git(root: string, args: string[]): string | null {
   try {
-    return execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    return execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024 });
   } catch {
     return null;
   }

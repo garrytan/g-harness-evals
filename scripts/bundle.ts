@@ -179,7 +179,8 @@ export function collect(opts: BuildOptions): { entries: TarEntry[]; manifest: Bu
   const profile = hasTrials ? PROFILE_RESULTS : PROFILE_SEALED_EXPORT;
   if (opts.local && hasTrials && exportFiles.length) throw new RunnerError('HE-BUNDLE-002', `${run} has local results beside a sealed-results export; fix: a released run is bundled from main, not with --local`);
 
-  const findings = [...publicationFindings(root, receiptsCommit ?? undefined), ...(receiptsCommit ? publicationFindings(root, 'HEAD') : [])].filter((f) => f.path === run || f.path.startsWith(`${run}/`));
+  const tracksRun = !opts.local || git(root, ['ls-files', '-z', '--', run]) !== '';
+  const findings = tracksRun ? [...publicationFindings(root, receiptsCommit ?? undefined), ...(receiptsCommit ? publicationFindings(root, 'HEAD') : [])].filter((f) => f.path === run || f.path.startsWith(`${run}/`)) : [];
   if (findings.length) throw new RunnerError('HE-BUNDLE-002', `${run} holds material sealed custody keeps off main (${findings.length} path(s), first ${findings[0]!.path}: ${findings[0]!.kind}); fix: a run on a set in sealed custody is bundled from its sealed-results export only, after release`);
 
   let keep: string[];

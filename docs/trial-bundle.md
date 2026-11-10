@@ -50,7 +50,7 @@ H1 (`m3-heldout-2026-10`) shows why there are two commits: its preregistration w
 - **A token** (HE-BUNDLE-003): every file is scanned with publish-audit's token patterns and allowlist before it is packed. A hit stops the build and names the file and the pattern, never the token. A token in committed receipts is a leak: stop, do not strip and retry, and report the path and pattern to internal-task.
 - **A bad flag or an unreadable run** (HE-BUNDLE-001).
 
-`--local` bundles a fresh rerun whose results are not committed: the same rule over the files `git ls-files --cached --others --exclude-standard` lists, so git-ignored files are left out as a commit would leave them, and the same scan. A symbolic link, or a file under a linked directory, is refused (HE-BUNDLE-001), never followed. A committed link or submodule is refused the same way.
+`--local` bundles a fresh rerun whose results are not committed: the same rule over the files `git ls-files --cached --others --exclude-standard` lists, so git-ignored files are left out as a commit would leave them, and the same scan. When none of the run directory's files are tracked, the `check-sealed-publication.ts` scan is skipped, because it only reports tracked paths; the custody-material and token checks still run on every file. A symbolic link, or a file under a linked directory, is refused (HE-BUNDLE-001), never followed. A committed link or submodule is refused the same way.
 
 ## What verify checks
 
