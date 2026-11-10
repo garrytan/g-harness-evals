@@ -1,8 +1,19 @@
 # docs/
 
-harness-evals v0.0.12. The index of this directory: one line per page, saying what the page answers. The repository's own front page is [../README.md](../README.md); the writing rules every page follows are in [../CLAUDE.md](../CLAUDE.md). Every published number on these pages is tied to a committed receipt, and [receipts-manifest.json](receipts-manifest.json) is the machine-readable list of those receipts.
+harness-evals v0.0.12. The index of this directory: one line per page, saying what the page answers. The repository's own front page is [../README.md](../README.md); the writing rules every page follows are in [../CLAUDE.md](../CLAUDE.md). Every published number on these pages is tied to a committed record of the tries behind it (a receipt), and [receipts-manifest.json](receipts-manifest.json) is the machine-readable list of those receipts.
 
-Codes like internal-task in receipts name internal work lanes.
+## Start here
+
+New to this repository? Read these first:
+
+- [../README.md](../README.md): what we tested, the harness rankings and what we found.
+- [scoreboard.md](scoreboard.md): the full results tables behind the README's rankings, with every caveat.
+- [../findings/README.md](../findings/README.md): short pages, one per lesson, each with its evidence.
+- [glossary.md](glossary.md): plain meanings for the words our reports use.
+- [replicate.md](replicate.md): how to check a finding yourself, for free or with your own API key.
+- [methodology.md](methodology.md): the rules every run follows, from running the tasks to grading them.
+
+Everything below is the full list, including one folder per run. Codes like internal-task in older records are internal ids for pieces of work, and you can ignore them.
 
 ## Pages
 
@@ -83,6 +94,10 @@ Codes like internal-task in receipts name internal work lanes.
 - [ubicloud.md](ubicloud.md): the Ubicloud shard lane: the scripts that put one shard per VM, how a run fans out and comes back, the check lane, costs and limits.
 
 ## Changelog
+
+### 2026-11-09: a "Start here" list for newcomers
+
+The page opens with six pages to read first, explains "receipt" in plain words, and says the internal ids in older records can be ignored. Why: Garry asked that the README and the pages it sends readers to make sense to someone who has used Claude Code a few times.
 
 ### 2026-11-09: failure-mining-2026-11 results
 
