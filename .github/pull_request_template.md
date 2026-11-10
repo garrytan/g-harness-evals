@@ -26,5 +26,5 @@
 - [ ] `bun test tests/`
 - [ ] `bunx tsc --noEmit`
 - [ ] `python3 scripts/check-links.py`
-- [ ] `bun runner/prereg/prereg.ts`
+- [ ] `bun runner/prereg/prereg.ts` (private repository only; it fails in the public copy)
 - [ ] `bun scripts/seal-heldout.ts --check`

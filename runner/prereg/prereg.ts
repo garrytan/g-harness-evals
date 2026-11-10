@@ -30,6 +30,17 @@
  * attested privately, not publicly verifiable". Every other experiment needs strict
  * ancestry in the public history, and a declared deviation does not excuse it. The
  * ledger is written once: a history where more than one commit changed it fails.
+ * In the public history each first-add commit counts as the commit on HEAD's
+ * first-parent line that brought it in, so a preregistration and results that one
+ * merge brought in together fail. With `--commit-map <tsv> --source <private clone>`
+ * (the export passes both), a receipt's attestation, which names a private commit,
+ * is checked at its public commit: the commit map's entry when this history holds
+ * it, else that of the merge that brought the commit into the source main. The
+ * source's committed publication/prereg-exceptions.json may name exceptions to one
+ * rule only, same-landing (a result file that reached main in the preregistration's
+ * commit), each for one experiment and an exact path set, and only after the check
+ * proves the private order the exception states; every use is printed, and an
+ * exception no result file used fails.
  *
  * Both modes also run `checkPrivateByHash` (runner/prereg/private-by-hash.ts) over every experiment of the
  * private-by-hash result class: its preregistration pins the private billing outputs and no hash, and its results
@@ -79,6 +90,13 @@ export interface ManifestEntry {
    * after the run. Absent for a run that publishes its billing artifacts.
    */
   result_class?: 'private-by-hash';
+}
+
+/** The public copy's commit map (report/commit-map.tsv from scripts/public-export: each private main commit, then its
+ *  public id, "(not published)" or "(pruned)") and the private clone of main it was written from. */
+export interface Publication {
+  map: Map<string, string>;
+  source: string;
 }
 
 export interface OrderProblem {
@@ -166,6 +184,192 @@ function attestationIn(cwd: string, file: string): Attestation | null {
   }
 }
 
+/** For a commit HEAD reaches: the oldest commit on HEAD's first-parent line that has it as an ancestor, which is the
+ *  commit itself when it is on that line and otherwise the merge that brought it in. Judged by the commit graph
+ *  (rev-list --ancestry-path), never by dates; null when HEAD does not reach the commit. */
+export function firstParentLanding(repo: string): (commit: string) => string | null {
+  const parents = new Map<string, string[]>();
+  for (const row of git(repo, ['rev-list', '--parents', 'HEAD']).split('\n').filter(Boolean)) {
+    const [commit, ...ps] = row.split(' ');
+    parents.set(commit!, ps);
+  }
+  const landing = new Map<string, string>();
+  for (const f of git(repo, ['rev-list', '--first-parent', '--reverse', 'HEAD']).split('\n').filter(Boolean)) {
+    const stack = [f];
+    while (stack.length) {
+      const c = stack.pop()!;
+      if (landing.has(c)) continue;
+      landing.set(c, f);
+      stack.push(...(parents.get(c) ?? []));
+    }
+  }
+  return commit => landing.get(commit) ?? landing.get(tryGit(repo, ['rev-parse', '--verify', '-q', `${commit}^{commit}`]) ?? '') ?? null;
+}
+
+const HEX40 = /^[0-9a-f]{40}$/;
+
+/** The public commit of a private commit an attestation names: its own commit-map entry when this history holds that
+ *  commit, else the entry of its first-parent landing in the source main. Fails closed, with the reason, when the source
+ *  main does not reach the commit or the landing is not published in this history. Without a publication, a commit
+ *  counts only when this history holds it. */
+const heldIn = (cwd: string) => {
+  const seen = new Map<string, boolean>();
+  return (c: string | undefined): boolean => {
+    if (!c || !HEX40.test(c)) return false;
+    if (!seen.has(c)) seen.set(c, tryGit(cwd, ['merge-base', '--is-ancestor', c, 'HEAD']) !== null);
+    return seen.get(c)!;
+  };
+};
+const mapState = (to: string | undefined) => (!to ? 'not in the commit map' : HEX40.test(to) ? `mapped to ${to.slice(0, 12)}, which this history does not hold` : to);
+
+/** Where a path reached main: the commit that added it, the first-parent commit that brought that add into main, and
+ *  the public commit it is judged at. */
+export interface Placement { added: string; merge: string; commit: string }
+
+/** With a publication, the placement of a path from the --source private history: each commit there that adds it,
+ *  taken at its first-parent landing (the earliest landing on the first-parent line when several commits add it), at
+ *  that landing's public commit. Never the path's first appearance in this public history, which an export hold can move
+ *  later. Fails closed when the source never adds the path or its landing is not published here. */
+export function sourcePlacement(cwd: string, pub: Publication): (path: string) => Placement | { problem: string } {
+  const held = heldIn(cwd);
+  const landing = firstParentLanding(pub.source);
+  const order = new Map(git(pub.source, ['rev-list', '--first-parent', '--reverse', 'HEAD']).split('\n').filter(Boolean).map((c, i) => [c, i] as const));
+  const adds = new Map<string, string[]>();
+  for (const chunk of (tryGit(pub.source, ['log', '--diff-filter=A', '--no-renames', '--format=%x00%H', '--name-only', 'HEAD']) ?? '').split('\0')) {
+    const [commit, ...paths] = chunk.split('\n').filter(Boolean);
+    if (commit) for (const path of paths) (adds.get(path) ?? adds.set(path, []).get(path)!).push(commit);
+  }
+  return path => {
+    const found = (adds.get(path) ?? []).map(added => ({ added, merge: landing(added) })).filter((x): x is { added: string; merge: string } => !!x.merge).sort((a, b) => order.get(a.merge)! - order.get(b.merge)!)[0];
+    if (!found) return { problem: `no commit on the source main adds ${path}` };
+    const to = pub.map.get(found.merge);
+    if (!held(to)) return { problem: `${path} was added in ${found.added.slice(0, 12)}, and ${found.merge.slice(0, 12)}, the first-parent commit that brought it into the source main, is ${mapState(to)}` };
+    return { ...found, commit: to! };
+  };
+}
+
+export function publicCommit(cwd: string, pub?: Publication): (commit: string) => { commit: string } | { problem: string } {
+  const held = heldIn(cwd);
+  if (!pub) return commit => (held(commit) ? { commit } : { problem: `${commit.slice(0, 12)} is not in this history; give --commit-map and --source to map it through the export's commit map` });
+  const landing = firstParentLanding(pub.source);
+  return commit => {
+    const own = pub.map.get(commit);
+    if (held(own)) return { commit: own! };
+    const merge = landing(commit);
+    if (!merge) return { problem: `${commit.slice(0, 12)} is not published, and no commit on the source main's first-parent line has it as an ancestor` };
+    const to = pub.map.get(merge);
+    if (held(to)) return { commit: to! };
+    return { problem: `${commit.slice(0, 12)} is not published, and ${merge.slice(0, 12)}, the first-parent commit that brought it into the source main, is ${mapState(to)}` };
+  };
+}
+
+export function readCommitMap(path: string): Map<string, string> {
+  return new Map(readFileSync(path, 'utf8').split('\n').slice(1).filter(Boolean).map(line => line.split('\t') as [string, string]));
+}
+
+export const EXCEPTIONS_PATH = 'publication/prereg-exceptions.json';
+
+/** A reviewed exception to the public order check, from EXCEPTIONS_PATH as committed at the --source clone's HEAD. It
+ *  waives one rule, same-landing: a result file of `experiment`, matching one of `paths`, that reached main in the same
+ *  commit as the preregistration. It holds only when the source proves the private order it states: the preregistration
+ *  was first added in `preregistration_commit`, which is a strict ancestor of `results_commit` and of each waived file's
+ *  first add, all of which reached the source main in `merge`, whose public commit is where they all landed. */
+export interface OrderException {
+  id: string;
+  experiment: string;
+  run?: string;
+  paths: string[];
+  waives: 'same-landing';
+  preregistration_commit: string;
+  results_commit: string;
+  merge: string;
+  reason: string;
+  approved: string;
+}
+
+export function readExceptions(source: string): { exceptions: OrderException[]; problems: string[] } {
+  const text = tryGit(source, ['show', `HEAD:${EXCEPTIONS_PATH}`]);
+  if (text === null) return { exceptions: [], problems: [] };
+  let list: OrderException[];
+  try {
+    list = (JSON.parse(text) as { exceptions: OrderException[] }).exceptions;
+  } catch {
+    return { exceptions: [], problems: [`${EXCEPTIONS_PATH} is not JSON`] };
+  }
+  if (!Array.isArray(list)) return { exceptions: [], problems: [`${EXCEPTIONS_PATH} has no exceptions list`] };
+  const text1 = (v: unknown) => typeof v === 'string' && v.trim() !== '';
+  const problems = list.flatMap((e, i) => {
+    const missing = [
+      !text1(e?.id) && 'an id',
+      list.findIndex(x => x?.id === e?.id) !== i && 'an id no other entry uses',
+      !text1(e?.experiment) && 'an experiment',
+      !(Array.isArray(e?.paths) && e.paths.length > 0 && e.paths.every(text1)) && 'paths',
+      e?.waives !== 'same-landing' && 'waives: "same-landing", the one rule an exception can waive',
+      ...(['preregistration_commit', 'results_commit', 'merge'] as const).map(k => !HEX40.test(String(e?.[k])) && `a full ${k}`),
+      !text1(e?.reason) && 'a reason',
+      !text1(e?.approved) && 'an approval',
+    ].filter(Boolean);
+    return missing.length ? [`${EXCEPTIONS_PATH}: ${text1(e?.id) ? e.id : `entry ${i + 1}`} needs ${missing.join(', ')}`] : [];
+  });
+  return problems.length ? { exceptions: [], problems } : { exceptions: list, problems: [] };
+}
+
+/** The same-landing exceptions, checked against the source: `excuse` returns null when no exception names the experiment
+ *  and file, the reason when one does but its private order does not hold, and the exception when it does. `uses` keeps
+ *  every file each exception excused. */
+function exceptionCheck(pub: Publication, exceptions: OrderException[]) {
+  const landing = firstParentLanding(pub.source);
+  const isStrictAncestor = ancestry(pub.source);
+  const uses = new Map<string, string[]>(exceptions.map(e => [e.id, []]));
+  const proven = new Map<string, { problem: string | null; adds: Map<string, string> }>();
+  const prove = (e: OrderException, preregistration: string) => {
+    if (!proven.has(e.id)) {
+      const short = (c: string | null | undefined) => (c ? c.slice(0, 12) : 'no commit');
+      const why: string[] = [];
+      const added = (tryGit(pub.source, ['log', '--diff-filter=A', '--no-renames', '--format=%H', '--', preregistration]) ?? '').split('\n').filter(Boolean).pop();
+      if (added !== e.preregistration_commit) why.push(`the source first adds ${preregistration} in ${short(added)}, not ${short(e.preregistration_commit)}`);
+      if (!isStrictAncestor(e.preregistration_commit, e.results_commit)) why.push(`${short(e.preregistration_commit)} is not a strict ancestor of ${short(e.results_commit)} in the source`);
+      for (const c of [e.preregistration_commit, e.results_commit]) if (landing(c) !== e.merge) why.push(`${short(c)} reached the source main in ${short(landing(c))}, not ${short(e.merge)}`);
+      const adds = new Map<string, string>();
+      const log = tryGit(pub.source, ['log', '--diff-filter=A', '--no-renames', '--format=%x00%H', '--name-only', '--', ...e.paths.map(p => `:(glob)${p}`)]) ?? '';
+      for (const chunk of log.split('\0')) {
+        const [commit, ...paths] = chunk.split('\n').filter(Boolean);
+        if (commit) for (const path of paths) adds.set(path, commit);
+      }
+      proven.set(e.id, { problem: why.length ? why.join('; ') : null, adds });
+    }
+    return proven.get(e.id)!;
+  };
+  const excuse = (entry: ManifestEntry, file: string, landedAt: string): { exception: OrderException } | { problem: string } | null => {
+    const e = exceptions.find(x => x.experiment === entry.id && x.paths.some(p => new Bun.Glob(p).match(file)));
+    if (!e) return null;
+    const { problem, adds } = prove(e, entry.preregistration);
+    const add = adds.get(file);
+    const why = [
+      problem,
+      !add ? 'the source has no commit that adds this file' : !isStrictAncestor(e.preregistration_commit, add) ? `its first add ${add.slice(0, 12)} in the source is not after ${e.preregistration_commit.slice(0, 12)}` : landing(add) !== e.merge ? `its first add ${add.slice(0, 12)} did not reach the source main in ${e.merge.slice(0, 12)}` : null,
+      pub.map.get(e.merge) !== landedAt ? `${e.merge.slice(0, 12)} is published as ${pub.map.get(e.merge)?.slice(0, 12) ?? 'nothing'}, not as ${landedAt.slice(0, 12)}, where this file landed` : null,
+    ].filter(Boolean);
+    if (why.length) return { problem: `exception ${e.id} does not hold: ${why.join('; ')}` };
+    uses.get(e.id)!.push(file);
+    return { exception: e };
+  };
+  return { excuse, uses };
+}
+
+/** How the public check reads commits: each path at its placement (from the source when there is a publication, else
+ *  its first add in this history at its first-parent landing here), each attestation commit at its public commit;
+ *  `excuse` applies the same-landing exceptions. */
+interface PublicView {
+  landing: (commit: string) => string | null;
+  placed?: (path: string) => Placement | { problem: string };
+  named: (commit: string) => { commit: string } | { problem: string };
+  excuse?: (entry: ManifestEntry, file: string, landedAt: string) => { exception: OrderException } | { problem: string } | null;
+  /** With a publication, strict ancestry in the --source clone: an attestation's private commit must contain the
+   *  preregistration's private first add there, because commits on one branch share a public landing. */
+  inSource?: (older: string, newer: string) => boolean;
+}
+
 const isShallow = (cwd: string) => tryGit(cwd, ['rev-parse', '--is-shallow-repository']) === 'true';
 const SHALLOW: OrderProblem = { id: '*', file: '*', problem: 'shallow clone: run with full history (actions/checkout fetch-depth: 0)' };
 
@@ -174,8 +378,14 @@ export function checkOrder(entries: ManifestEntry[], cwd = process.cwd()): Order
   return orderProblems(entries, cwd, firstAddCommits(cwd));
 }
 
-function orderProblems(entries: ManifestEntry[], cwd: string, adds: Map<string, string>): OrderProblem[] {
+function orderProblems(entries: ManifestEntry[], cwd: string, adds: Map<string, string>, view?: PublicView): OrderProblem[] {
   const isStrictAncestor = ancestry(cwd);
+  const place = (path: string, commit: string): Placement | { problem: string } => {
+    if (view?.placed) return view.placed(path);
+    const merge = view?.landing(commit) ?? commit;
+    return { added: commit, merge, commit: merge };
+  };
+  const describe = (p: Placement) => `${p.added.slice(0, 12)}${p.merge !== p.added ? ` (brought into main by ${p.merge.slice(0, 12)})` : ''}${p.commit !== p.merge ? `, published as ${p.commit.slice(0, 12)}` : ''}`;
   const problems: OrderProblem[] = [];
   for (const entry of entries) {
     const preCommit = adds.get(entry.preregistration);
@@ -183,21 +393,36 @@ function orderProblems(entries: ManifestEntry[], cwd: string, adds: Map<string, 
       problems.push({ id: entry.id, file: entry.preregistration, problem: 'preregistration is not committed' });
       continue;
     }
+    const pre = place(entry.preregistration, preCommit);
+    if ('problem' in pre) {
+      problems.push({ id: entry.id, file: entry.preregistration, problem: pre.problem });
+      continue;
+    }
     const declared = entry.preregistered_on_main === false && typeof entry.reason === 'string' && entry.reason.trim() !== '';
     for (const glob of entry.results) {
       for (const file of trackedFiles(cwd, glob)) {
         const resultCommit = adds.get(file);
         if (!resultCommit) continue;
-        if (!isStrictAncestor(preCommit, resultCommit)) {
-          const problem = `added in ${resultCommit.slice(0, 12)}, not after the preregistration commit ${preCommit.slice(0, 12)}`;
-          problems.push(declared ? { id: entry.id, file, problem: `${problem} (declared: ${entry.reason!.trim()})`, warning: true } : { id: entry.id, file, problem });
+        const res = place(file, resultCommit);
+        if ('problem' in res) problems.push({ id: entry.id, file, problem: res.problem });
+        else if (!isStrictAncestor(pre.commit, res.commit)) {
+          const excused = pre.commit === res.commit ? (view?.excuse?.(entry, file, res.commit) ?? null) : null;
+          const problem = `added in ${describe(res)}, not after the preregistration commit ${describe(pre)}${excused && 'problem' in excused ? `; ${excused.problem}` : ''}`;
+          if (!excused || 'problem' in excused) problems.push(declared ? { id: entry.id, file, problem: `${problem} (declared: ${entry.reason!.trim()})`, warning: true } : { id: entry.id, file, problem });
         }
         const attestation = attestationIn(cwd, file);
         if (attestation) {
           if (attestation.preregistration !== entry.preregistration) {
             problems.push({ id: entry.id, file, problem: `attests ${attestation.preregistration}, expected ${entry.preregistration}` });
-          } else if (preCommit !== attestation.preregistration_commit && !isStrictAncestor(preCommit, attestation.preregistration_commit)) {
-            problems.push({ id: entry.id, file, problem: `attestation names ${attestation.preregistration_commit.slice(0, 12)}, which does not contain the preregistration` });
+          } else {
+            const named = view ? view.named(attestation.preregistration_commit) : { commit: attestation.preregistration_commit };
+            const published = 'commit' in named && named.commit !== attestation.preregistration_commit ? `, published as ${named.commit.slice(0, 12)}` : '';
+            if ('problem' in named) problems.push({ id: entry.id, file, problem: `attestation: ${named.problem}` });
+            else if (view?.inSource && attestation.preregistration_commit !== pre.added && !view.inSource(pre.added, attestation.preregistration_commit)) {
+              problems.push({ id: entry.id, file, problem: `attestation names ${attestation.preregistration_commit.slice(0, 12)}, which does not contain the preregistration (first added in ${pre.added.slice(0, 12)} in the source)` });
+            } else if ((view?.placed ? pre.commit : preCommit) !== named.commit && !isStrictAncestor(view?.placed ? pre.commit : preCommit, named.commit)) {
+              problems.push({ id: entry.id, file, problem: `attestation names ${attestation.preregistration_commit.slice(0, 12)}${published}, which does not contain the preregistration` });
+            }
           }
         }
       }
@@ -240,6 +465,8 @@ export interface PublicResult {
   problems: string[];
   /** An attested experiment's declared deviation, from the ledger. */
   deviation?: string;
+  /** Each same-landing exception this experiment used, with the files it excused. */
+  exceptions?: { exception: OrderException; files: string[] }[];
 }
 
 const sha256 = (data: string | Buffer) => createHash('sha256').update(data).digest('hex');
@@ -323,14 +550,21 @@ export function buildLedger(entries: ManifestEntry[], cutover: string, cwd = pro
  *  hash as the ledger says in the commit that wrote the ledger; result files added after that commit need strict ancestry.
  *  Every other experiment needs strict ancestry (strict), whatever deviation it declares. Every experiment fails when more
  *  than one commit wrote the ledger file (ledgerWrites), since a rewritten ledger could move the cutover or add an entry.
- *  A result file no commit adds (a merge brought it in) fails its experiment, since its order can't be checked. */
-export function checkPublic(entries: ManifestEntry[], ledger: Ledger, cwd = process.cwd(), ledgerPath = LEDGER_PATH): PublicResult[] {
+ *  A result file no commit adds (a merge brought it in) fails its experiment, since its order can't be checked.
+ *  Strict ancestry is judged between first-parent landings (firstParentLanding), so the preregistration must have
+ *  reached main in a commit strictly before the one that brought in the result; the same commit fails. An attestation's
+ *  private commit is checked at its public commit (publicCommit, through the publication's commit map). */
+export function checkPublic(entries: ManifestEntry[], ledger: Ledger, cwd = process.cwd(), ledgerPath = LEDGER_PATH, publication?: Publication): PublicResult[] {
   if (isShallow(cwd)) return [{ id: '*', status: 'failed', problems: [SHALLOW.problem] }];
   if (Number.isNaN(Date.parse(ledger.cutover))) return [{ id: '*', status: 'failed', problems: [`ledger cutover ${ledger.cutover} is not an ISO-8601 instant`] }];
   const adds = firstAddCommits(cwd);
   const at = ledgerSnapshot(cwd, ledgerPath);
   const writes = at.rev ? ledgerWrites(cwd, ledgerPath) : 0;
   if (writes > 1) return [{ id: '*', status: 'failed', problems: [`${ledgerPath} was changed in ${writes} commits; the ledger is written once and never edited`] }];
+  const read = publication ? readExceptions(publication.source) : { exceptions: [], problems: [] };
+  if (read.problems.length) return [{ id: '*', status: 'failed', problems: read.problems }];
+  const exceptions = publication && read.exceptions.length ? exceptionCheck(publication, read.exceptions) : null;
+  const view: PublicView = { landing: firstParentLanding(cwd), placed: publication ? sourcePlacement(cwd, publication) : undefined, named: publicCommit(cwd, publication), excuse: exceptions?.excuse, inSource: publication ? ancestry(publication.source) : undefined };
   const byId = new Map(ledger.experiments.map(e => [e.id, e]));
   const out: PublicResult[] = ledger.experiments.filter(l => !entries.some(e => e.id === l.id)).map(l => ({ id: l.id, status: 'failed' as const, problems: ['the ledger names an experiment the manifest does not list'] }));
   for (const entry of entries) {
@@ -346,14 +580,23 @@ export function checkPublic(entries: ManifestEntry[], ledger: Ledger, cwd = proc
         if (sha256(contentAt(cwd, at, entry.preregistration)) !== l.prereg_sha256) problems.push('ledger hash mismatch: the preregistration differs from the ledger');
         if (sha256(resultManifest(entry, cwd, adds, at).text) !== l.result_manifest_sha256) problems.push('ledger hash mismatch: the result files differ from the ledger');
         const later = entry.results.flatMap(glob => trackedFiles(cwd, glob)).filter(file => adds.has(file) && !at.contains(adds.get(file)!));
-        if (later.length) problems.push(...orderProblems([{ id: entry.id, preregistration: entry.preregistration, results: later }], cwd, adds).map(p => `${p.file}: ${p.problem}`));
+        if (later.length) problems.push(...orderProblems([{ id: entry.id, preregistration: entry.preregistration, results: later }], cwd, adds, view).map(p => `${p.file}: ${p.problem}`));
       }
       out.push({ id: entry.id, status: problems.length ? 'failed' : 'attested', problems, ...(l.declared_deviation ? { deviation: l.declared_deviation } : {}) });
       continue;
     }
-    const problems = [...unadded, ...orderProblems([{ id: entry.id, preregistration: entry.preregistration, results: entry.results }], cwd, adds).map(p => `${p.file}: ${p.problem}`)];
+    const problems = [...unadded, ...orderProblems([{ id: entry.id, preregistration: entry.preregistration, results: entry.results }], cwd, adds, view).map(p => `${p.file}: ${p.problem}`)];
     if (l) problems.unshift(`the ledger entry is dated after the cutover (${l.prereg_merged_at} > ${ledger.cutover}), so strict ancestry applies`);
     out.push({ id: entry.id, status: problems.length ? 'failed' : 'strict', problems });
+  }
+  for (const e of read.exceptions) {
+    const files = exceptions!.uses.get(e.id)!;
+    const result = out.find(r => r.id === e.experiment);
+    if (!files.length || !result) {
+      out.push({ id: e.experiment, status: 'failed', problems: [`exception ${e.id} in ${EXCEPTIONS_PATH} excused no result file; remove it`] });
+      continue;
+    }
+    result.exceptions = [...(result.exceptions ?? []), { exception: e, files }];
   }
   return out;
 }
@@ -371,15 +614,20 @@ export function loadManifest(root = process.cwd()): ManifestEntry[] {
   return [...read(main), ...extra];
 }
 
-function publicMain(entries: ManifestEntry[], ledgerPath: string): number {
-  const results = checkPublic(entries, readLedger(ledgerPath), process.cwd(), ledgerPath);
+function publicMain(entries: ManifestEntry[], ledgerPath: string, publication?: Publication): number {
+  const results = checkPublic(entries, readLedger(ledgerPath), process.cwd(), ledgerPath, publication);
   for (const r of results) {
     if (r.status === 'attested') console.log(`prereg-public: ${r.id}: ${ATTESTED}${r.deviation ? `; declared deviation: ${r.deviation}` : ''}`);
     else if (r.status === 'strict') console.log(`prereg-public: ${r.id}: strict ancestry`);
     else for (const p of r.problems) console.error(`prereg-public: ${r.id}: ${p}`);
   }
+  const used = results.flatMap(r => (r.exceptions ?? []).map(u => ({ id: r.id, ...u })));
+  for (const u of used) {
+    const e = u.exception;
+    console.log(`prereg-public: exception ${e.id}: ${u.id}: ${u.files.length} result file(s) under ${e.paths.join(', ')} reached main in the preregistration's commit (${e.merge.slice(0, 12)}); same-landing waived after the source showed ${e.preregistration_commit.slice(0, 12)} adds the preregistration and is a strict ancestor of ${e.results_commit.slice(0, 12)} and of each file's first add. Reason: ${e.reason}`);
+  }
   const failed = results.filter(r => r.status === 'failed').length;
-  console.log(`prereg-public: ${entries.length} experiments, ${results.filter(r => r.status === 'attested').length} attested, ${results.filter(r => r.status === 'strict').length} strict, ${failed} failed`);
+  console.log(`prereg-public: ${entries.length} experiments, ${results.filter(r => r.status === 'attested').length} attested, ${results.filter(r => r.status === 'strict').length} strict, ${failed} failed${used.length ? `, ${used.length} exception(s) used` : ''}`);
   return failed;
 }
 
@@ -394,8 +642,13 @@ async function privateByHashMain(entries: ManifestEntry[]): Promise<number> {
 if (import.meta.main) {
   const entries = loadManifest();
   if (process.argv.includes('--public')) {
-    const at = process.argv.indexOf('--ledger');
-    const failed = publicMain(entries, at >= 0 ? process.argv[at + 1]! : LEDGER_PATH);
+    const flag = (name: string) => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined);
+    const [commitMap, source] = [flag('--commit-map'), flag('--source')];
+    if (!commitMap !== !source) {
+      console.error('usage: bun runner/prereg/prereg.ts --public [--ledger <path>] [--commit-map <commit-map.tsv> --source <private clone of main>] (--commit-map and --source go together)');
+      process.exit(64);
+    }
+    const failed = publicMain(entries, flag('--ledger') ?? LEDGER_PATH, commitMap && source ? { map: readCommitMap(commitMap), source } : undefined);
     const privateByHash = await privateByHashMain(entries);
     const { checkOpenings } = await import('../heldout/openings.ts');
     const openings = checkOpenings(process.cwd());

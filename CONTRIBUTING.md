@@ -53,13 +53,12 @@ bun install --frozen-lockfile
 bun test tests/
 bunx tsc --noEmit
 python3 scripts/check-links.py
-bun runner/prereg/prereg.ts
 bun scripts/seal-heldout.ts --check
 ```
 
 - `bun test tests/` takes about 25 minutes on a 4 vCPU machine.
 - `bash scripts/run-tests.sh` runs the same files in parallel phases, as CI does, in about 9 minutes on a 4 vCPU machine.
-- `bun runner/prereg/prereg.ts` reads git history and can take a long time on a clean clone.
+- **The preregistration order check isn't in this list.** `bun runner/prereg/prereg.ts` checks each receipt's attestation against commits this public copy never holds, so it fails here and the public CI doesn't run it. The private repository runs it on every pull request, and the export's preregistration check verifies the order, with the private history, before every push to this repository.
 - **CI is the reference.** If your local result differs from the GitHub Actions run on the same commit, trust CI and say so in your report.
 
 ## Re-read a run's receipts
@@ -78,7 +77,7 @@ bun scripts/gbrain-check.ts --gbrain <ref>
 ```
 
 - summarize-run.ts can rewrite receipts in the folder it reads. Put them back with `git checkout -- <results folder>`.
-- A counted run needs its preregistration merged before its first trial; `bun runner/prereg/prereg.ts` checks that against main's history.
+- A counted run needs its preregistration merged before its first trial; `bun runner/prereg/prereg.ts` checks that against main's history in the private repository, and the export's preregistration check verifies it before every public push.
 
 ## Find your way around
 

@@ -2,13 +2,16 @@
 // a preregistration committed before its results passes, attested by the ledger or by strict ancestry; an experiment
 // after the cutover with its preregistration and results in one commit fails; a ledger whose hashes or dates disagree
 // with the history fails; a ledger changed in a second commit fails; writing a ledger that would leave out an experiment
-// refuses.
+// refuses. Across merges, as the export publishes them (main's first-parent line only, with a commit map): a preregistration
+// a merge brought in passes before results a later merge brought in, with the receipts' attestations mapped through the
+// commit map; results first, results in the preregistration's commit, or both brought in by one merge fail; an attestation
+// commit with no published first-parent landing fails closed.
 import { describe, expect, test } from 'bun:test';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ATTESTED, buildLedger, checkPublic, type Ledger, LEDGER_PATH, type ManifestEntry } from '../runner/prereg/prereg.ts';
+import { ATTESTED, buildLedger, checkOrder, checkPublic, type Ledger, LEDGER_PATH, type ManifestEntry, type Publication, type PublicResult } from '../runner/prereg/prereg.ts';
 
 const ROOT = join(import.meta.dir, '..');
 const X: ManifestEntry = { id: 'x', preregistration: 'docs/x/PREREGISTRATION.md', results: ['docs/x/results/**'] };
@@ -198,4 +201,277 @@ describe('the prereg ledger', () => {
     expect(refused.status).toBe(1);
     expect(refused.stderr).toContain('prereg-ledger: x: preregistration merged');
   });
+});
+
+const NO_LEDGER: Ledger = { schema_version: 1, note: '', label: ATTESTED, cutover: '2000-01-01T00:00:00.000Z', experiments: [] };
+const git = (dir: string, ...args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim();
+const attest = (commit: string) => JSON.stringify({ preregistration_attestation: { preregistration: X.preregistration, preregistration_commit: commit } });
+const SUMMARY = 'docs/x/results/run-summary.json';
+
+/** A pull request: the commits run on a branch off main, which then lands as a plain merge. Returns the branch commits
+ *  and the merge. */
+function pr(dir: string, name: string, commits: ((ids: string[]) => Record<string, string>)[]): { ids: string[]; merge: string } {
+  git(dir, 'checkout', '-q', '-b', name, 'main');
+  const ids: string[] = [];
+  for (const files of commits) ids.push(commit(dir, files(ids), `${name} ${ids.length + 1}`));
+  git(dir, 'checkout', '-q', 'main');
+  git(dir, 'merge', '-q', '--no-ff', '--no-edit', name);
+  return { ids, merge: git(dir, 'rev-parse', 'HEAD') };
+}
+
+/** What history mode publishes: main's first-parent line, each commit with its own tree, and a commit map from every
+ *  private main commit to its public id or "(not published)". The private objects stay in the object store unreachable,
+ *  as a commit map row naming a rewritten branch commit main does not hold would. */
+function exportFirstParent(src: string, held?: string): { dir: string; publication: Publication } {
+  const dir = repo();
+  git(dir, 'fetch', '-q', src, 'main:refs/private/main');
+  const map = new Map<string, string>();
+  let parent = '';
+  const index = { ...process.env, GIT_INDEX_FILE: join(dir, '.git', 'held-index') };
+  const without = (tree: string) => {
+    if (!held) return tree;
+    execFileSync('git', ['read-tree', tree], { cwd: dir, env: index });
+    execFileSync('git', ['rm', '-r', '-q', '--cached', '--ignore-unmatch', held], { cwd: dir, env: index });
+    return execFileSync('git', ['write-tree'], { cwd: dir, env: index, encoding: 'utf8' }).trim();
+  };
+  for (const c of git(dir, 'rev-list', '--first-parent', '--reverse', 'refs/private/main').split('\n')) {
+    parent = git(dir, 'commit-tree', without(git(dir, 'rev-parse', `${c}^{tree}`)), ...(parent ? ['-p', parent] : []), '-m', `public: ${git(dir, 'log', '-1', '--format=%s', c)}`);
+    map.set(c, parent);
+  }
+  if (held) parent = git(dir, 'commit-tree', 'refs/private/main^{tree}', '-p', parent, '-m', `a later export releases ${held}`);
+  git(dir, 'update-ref', 'refs/heads/main', parent);
+  git(dir, 'reset', '-q', '--hard', 'main');
+  git(dir, 'update-ref', '-d', 'refs/private/main');
+  for (const c of git(src, 'rev-list', 'main').split('\n')) if (!map.has(c)) map.set(c, '(not published)');
+  return { dir, publication: { map, source: src } };
+}
+
+/** The frontier-harness shape: x preregistered on one pull request's branch and its results, whose receipt attests the
+ *  branch commit, on a later pull request's branch; both land as plain merges. */
+function frontier(): { src: string; pre: string; preMerge: string; resultsMerge: string } {
+  const src = repo();
+  commit(src, { 'README.md': 'base', 'docs/benchmarks/preregistrations.json': JSON.stringify({ schema_version: 1, experiments: [X] }) }, 'base');
+  const p = pr(src, 'prereg', [() => ({ [X.preregistration]: 'the rule' }), () => ({ 'docs/x/notes.md': 'notes' })]);
+  commit(src, { 'docs/other.md': 'unrelated' }, 'an unrelated main commit');
+  const r = pr(src, 'results', [() => ({ [SUMMARY]: attest(p.ids[0]!), 'docs/x/results/trials.jsonl': '{}\n' })]);
+  return { src, pre: p.ids[0]!, preMerge: p.merge, resultsMerge: r.merge };
+}
+
+describe('the public check across merges, mapped through the commit map', () => {
+  test('a preregistration on a merged branch passes before results a later merge brought in, with the attestation mapped through the merge that published it', () => {
+    const { src, pre, preMerge } = frontier();
+    expect(checkOrder([X], src)).toEqual([]);
+    const { dir, publication } = exportFirstParent(src);
+    expect(publication.map.get(pre)).toBe('(not published)');
+    expect(checkPublic([X], NO_LEDGER, dir, LEDGER_PATH, publication)).toEqual([{ id: 'x', status: 'strict', problems: [] }]);
+    const phantom = new Map(publication.map).set(pre, pre);
+    expect(checkPublic([X], NO_LEDGER, dir, LEDGER_PATH, { ...publication, map: phantom })[0]!.status).toBe('strict');
+    expect(checkPublic([X], NO_LEDGER, dir)[0]).toEqual({ id: 'x', status: 'failed', problems: [`${SUMMARY}: attestation: ${pre.slice(0, 12)} is not in this history; give --commit-map and --source to map it through the export's commit map`] });
+    expect(publication.map.get(preMerge)).not.toBe('(not published)');
+  });
+
+  test('prereg.ts --public takes the commit map and the private clone, and refuses one without the other', () => {
+    const { src } = frontier();
+    const { dir, publication } = exportFirstParent(src);
+    writeFileSync(join(dir, LEDGER_PATH), JSON.stringify(NO_LEDGER));
+    const map = join(dir, '..', `${dir.split('/').pop()}-commit-map.tsv`);
+    writeFileSync(map, 'private\tpublic\n' + [...publication.map].map(([a, b]) => `${a}\t${b}\n`).join(''));
+    const run = (...args: string[]) => spawnSync(process.execPath, [join(ROOT, 'runner', 'prereg', 'prereg.ts'), '--public', ...args], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: dir } });
+    const mapped = run('--commit-map', map, '--source', src);
+    expect(mapped.stdout).toContain('prereg-public: x: strict ancestry');
+    expect(mapped.stdout).toContain('prereg-public: 1 experiments, 0 attested, 1 strict, 0 failed');
+    expect(run().stderr).toContain('prereg-public: x: docs/x/results/run-summary.json: attestation: ');
+    expect(run('--commit-map', map).status).toBe(64);
+  });
+
+  test('results added before the preregistration fail', () => {
+    const src = repo();
+    commit(src, { 'README.md': 'base' }, 'base');
+    pr(src, 'results', [() => ({ 'docs/x/results/trials.jsonl': '{}\n' })]);
+    pr(src, 'prereg', [() => ({ [X.preregistration]: 'the rule' })]);
+    const { dir, publication } = exportFirstParent(src);
+    const [x] = checkPublic([X], NO_LEDGER, dir, LEDGER_PATH, publication);
+    expect(x!.status).toBe('failed');
+    expect(x!.problems).toHaveLength(1);
+    expect(x!.problems[0]).toContain('docs/x/results/trials.jsonl: added in ');
+    expect(x!.problems[0]).toContain('not after the preregistration commit');
+  });
+
+  test('a preregistration and results added in the same commit fail', () => {
+    const src = repo();
+    commit(src, { 'README.md': 'base' }, 'base');
+    const both = commit(src, { [X.preregistration]: 'the rule', 'docs/x/results/trials.jsonl': '{}\n' }, 'x prereg and results together');
+    const { dir, publication } = exportFirstParent(src);
+    const pub = publication.map.get(both)!.slice(0, 12);
+    const b = both.slice(0, 12);
+    expect(checkPublic([X], NO_LEDGER, dir, LEDGER_PATH, publication)[0]).toEqual({ id: 'x', status: 'failed', problems: [`docs/x/results/trials.jsonl: added in ${b}, published as ${pub}, not after the preregistration commit ${b}, published as ${pub}`] });
+  });
+
+  test('a preregistration and results on one branch, brought in by one merge, fail: they reach main in the same commit', () => {
+    const src = repo();
+    commit(src, { 'README.md': 'base' }, 'base');
+    const { ids, merge } = pr(src, 'both', [() => ({ [X.preregistration]: 'the rule' }), (ids) => ({ [SUMMARY]: attest(ids[0]!) })]);
+    expect(checkOrder([X], src)).toEqual([]);
+    const { dir, publication } = exportFirstParent(src);
+    const pub = publication.map.get(merge)!.slice(0, 12);
+    const m = merge.slice(0, 12);
+    expect(checkPublic([X], NO_LEDGER, dir, LEDGER_PATH, publication)[0]).toEqual({ id: 'x', status: 'failed', problems: [`${SUMMARY}: added in ${ids[1]!.slice(0, 12)} (brought into main by ${m}), published as ${pub}, not after the preregistration commit ${ids[0]!.slice(0, 12)} (brought into main by ${m}), published as ${pub}`] });
+    expect(checkPublic([X], NO_LEDGER, src)[0]).toEqual({ id: 'x', status: 'failed', problems: [`${SUMMARY}: added in ${ids[1]!.slice(0, 12)} (brought into main by ${merge.slice(0, 12)}), not after the preregistration commit ${ids[0]!.slice(0, 12)} (brought into main by ${merge.slice(0, 12)})`] });
+  });
+
+  test('results held out of one export and released in a later one are judged at their private landing, not where they first appear in public', () => {
+    const src = repo();
+    commit(src, { 'README.md': 'base' }, 'base');
+    const { ids, merge } = pr(src, 'both', [() => ({ [X.preregistration]: 'the rule' }), () => ({ 'docs/x/results/trials.jsonl': '{}\n' })]);
+    commit(src, { 'docs/other.md': 'later' }, 'a later main commit');
+    const { dir, publication } = exportFirstParent(src, 'docs/x/results');
+    const publicAdd = git(dir, 'log', '--diff-filter=A', '--format=%H', '--', 'docs/x/results/trials.jsonl');
+    expect(publicAdd).not.toBe(publication.map.get(merge));
+    expect(git(dir, 'log', '-1', '--format=%s', publicAdd)).toBe('a later export releases docs/x/results');
+    expect(checkPublic([X], NO_LEDGER, dir)[0]!.status).toBe('strict');
+    const pub = publication.map.get(merge)!.slice(0, 12);
+    const [x] = checkPublic([X], NO_LEDGER, dir, LEDGER_PATH, publication);
+    expect(x).toEqual({ id: 'x', status: 'failed', problems: [`docs/x/results/trials.jsonl: added in ${ids[1]!.slice(0, 12)} (brought into main by ${merge.slice(0, 12)}), published as ${pub}, not after the preregistration commit ${ids[0]!.slice(0, 12)} (brought into main by ${merge.slice(0, 12)}), published as ${pub}`] });
+    commit(src, { 'publication/prereg-exceptions.json': JSON.stringify({ exceptions: [{ id: 'x-one-merge', experiment: 'x', paths: ['docs/x/results/**'], waives: 'same-landing', preregistration_commit: ids[0], results_commit: ids[1], merge, reason: 'r', approved: 'test' }] }) }, 'record the exception');
+    const later = exportFirstParent(src, 'docs/x/results');
+    expect(checkPublic([X], NO_LEDGER, later.dir, LEDGER_PATH, later.publication)[0]).toMatchObject({ id: 'x', status: 'strict', problems: [], exceptions: [{ files: ['docs/x/results/trials.jsonl'] }] });
+    const { src: headline } = frontier();
+    const held = exportFirstParent(headline, 'docs/x/results');
+    expect(checkPublic([X], NO_LEDGER, held.dir, LEDGER_PATH, held.publication)).toEqual([{ id: 'x', status: 'strict', problems: [] }]);
+  });
+
+  test('an attestation naming a branch commit from before the preregistration fails, though both land in one merge', () => {
+    const src = repo();
+    commit(src, { 'README.md': 'base' }, 'base');
+    const p = pr(src, 'prereg', [() => ({ 'docs/x/notes.md': 'before the preregistration' }), () => ({ [X.preregistration]: 'the rule' })]);
+    pr(src, 'results', [() => ({ [SUMMARY]: attest(p.ids[0]!), 'docs/x/results/trials.jsonl': '{}\n' })]);
+    const early = p.ids[0]!.slice(0, 12);
+    expect(checkOrder([X], src)).toEqual([{ id: 'x', file: SUMMARY, problem: `attestation names ${early}, which does not contain the preregistration` }]);
+    const { dir, publication } = exportFirstParent(src);
+    expect(publication.map.get(p.ids[0]!)).toBe('(not published)');
+    expect(checkPublic([X], NO_LEDGER, dir, LEDGER_PATH, publication)[0]).toEqual({ id: 'x', status: 'failed', problems: [`${SUMMARY}: attestation names ${early}, which does not contain the preregistration (first added in ${p.ids[1]!.slice(0, 12)} in the source)`] });
+  });
+
+  test('an attestation commit with no published first-parent landing fails closed', () => {
+    const { src, pre, preMerge } = frontier();
+    const { dir, publication } = exportFirstParent(src);
+    const status = (map: Map<string, string>) => checkPublic([X], NO_LEDGER, dir, LEDGER_PATH, { ...publication, map })[0]!;
+    const because = (r: PublicResult, state: string) => {
+      expect(r.status).toBe('failed');
+      expect(r.problems.length).toBeGreaterThan(0);
+      for (const p of r.problems) expect(p).toContain(`${preMerge.slice(0, 12)}, the first-parent commit that brought it into the source main, is ${state}`);
+    };
+    because(status(new Map(publication.map).set(preMerge, '(pruned)')), '(pruned)');
+    because(status(new Map(publication.map).set(preMerge, pre)), `mapped to ${pre.slice(0, 12)}, which this history does not hold`);
+    const unmapped = new Map(publication.map);
+    unmapped.delete(preMerge);
+    because(status(unmapped), 'not in the commit map');
+    const stray = repo();
+    commit(stray, { 'README.md': 'base', [X.preregistration]: 'the rule' }, 'base with x preregistered');
+    git(stray, 'checkout', '-q', '-b', 'never-merged');
+    const lost = commit(stray, { 'docs/x/draft.md': 'draft' }, 'a branch commit that never reaches main');
+    git(stray, 'checkout', '-q', 'main');
+    commit(stray, { [SUMMARY]: attest(lost) }, 'x results attesting the unmerged commit');
+    const out = exportFirstParent(stray);
+    expect(checkPublic([X], NO_LEDGER, out.dir, LEDGER_PATH, out.publication)[0]).toEqual({ id: 'x', status: 'failed', problems: [`${SUMMARY}: attestation: ${lost.slice(0, 12)} is not published, and no commit on the source main's first-parent line has it as an ancestor`] });
+  });
+});
+
+describe('a same-landing exception from publication/prereg-exceptions.json', () => {
+  const E: ManifestEntry = { id: 'e-extension', preregistration: 'docs/e/prereg-extension.json', results: ['docs/e/results/**'] };
+  const EXT = 'docs/e/results/extension/**';
+  const exceptionsFile = (src: string, list: object[]) => commit(src, { 'publication/prereg-exceptions.json': JSON.stringify({ schema: 'harness-evals-prereg-exceptions/1', exceptions: list }, null, 2) }, 'record the exceptions');
+  /** The frontier extension's shape: an amendment and its results added on one branch, landed by one merge. */
+  function oneMerge(extra: Record<string, string> = {}): { src: string; base: string; pre: string; res: string; merge: string; exception: Record<string, unknown> } {
+    const src = repo();
+    const base = commit(src, { 'README.md': 'base' }, 'base');
+    const { ids, merge } = pr(src, 'extension', [() => ({ [E.preregistration]: 'amendment 3' }), () => ({ 'docs/e/results/extension/analysis.json': '{}', ...extra })]);
+    const exception = { id: 'e-extension-one-merge', experiment: E.id, run: 'e', paths: [EXT], waives: 'same-landing', preregistration_commit: ids[0], results_commit: ids[1], merge, reason: 'amendment and results came in one merge; privately the amendment is a strict ancestor of the results', approved: 'test' };
+    return { src, base, pre: ids[0]!, res: ids[1]!, merge, exception };
+  }
+  const check = (src: string, entries: ManifestEntry[]) => {
+    const { dir, publication } = exportFirstParent(src);
+    return checkPublic(entries, NO_LEDGER, dir, LEDGER_PATH, publication);
+  };
+
+  test('the extension case passes with the exception, and every use is recorded; without it, it fails', () => {
+    const { src, merge, exception } = oneMerge();
+    const [without] = check(src, [E]);
+    expect(without!.status).toBe('failed');
+    expect(without!.problems[0]).toContain('docs/e/results/extension/analysis.json: added in ');
+    exceptionsFile(src, [exception]);
+    const [withIt] = check(src, [E]);
+    expect(withIt).toMatchObject({ id: E.id, status: 'strict', problems: [], exceptions: [{ exception: { id: 'e-extension-one-merge', merge }, files: ['docs/e/results/extension/analysis.json'] }] });
+  });
+
+  test('prereg.ts --public prints each use of an exception with its reason', () => {
+    const { src, exception } = oneMerge();
+    commit(src, { 'docs/benchmarks/preregistrations.json': JSON.stringify({ schema_version: 1, experiments: [E] }) }, 'manifest');
+    exceptionsFile(src, [exception]);
+    const { dir, publication } = exportFirstParent(src);
+    writeFileSync(join(dir, LEDGER_PATH), JSON.stringify(NO_LEDGER));
+    const map = join(dir, '..', `${dir.split('/').pop()}-commit-map.tsv`);
+    writeFileSync(map, 'private\tpublic\n' + [...publication.map].map(([a, b]) => `${a}\t${b}\n`).join(''));
+    const out = spawnSync(process.execPath, [join(ROOT, 'runner', 'prereg', 'prereg.ts'), '--public', '--commit-map', map, '--source', src], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: dir } });
+    expect(out.stdout).toContain(`prereg-public: exception e-extension-one-merge: e-extension: 1 result file(s) under ${EXT} reached main in the preregistration's commit`);
+    expect(out.stdout).toContain('Reason: amendment and results came in one merge');
+    expect(out.stdout).toContain('prereg-public: 1 experiments, 0 attested, 1 strict, 0 failed, 1 exception(s) used');
+  });
+
+  test('another experiment with a same-landing order still fails while the exception exists, even with results under its paths', () => {
+    const { src, exception } = oneMerge();
+    const F: ManifestEntry = { id: 'f', preregistration: 'docs/f/prereg.json', results: ['docs/e/results/extension/f/**'] };
+    pr(src, 'f', [() => ({ [F.preregistration]: 'the rule' }), () => ({ 'docs/e/results/extension/f/analysis.json': '{}' })]);
+    exceptionsFile(src, [exception]);
+    const [e, f] = check(src, [E, F]);
+    expect(e!.status).toBe('strict');
+    expect(e!.exceptions![0]!.files).toEqual(['docs/e/results/extension/analysis.json']);
+    expect(f!.status).toBe('failed');
+    expect(f!.problems).toHaveLength(1);
+    expect(f!.problems[0]).toMatch(/^docs\/e\/results\/extension\/f\/analysis\.json: added in [^;]+, not after the preregistration commit [^;]+$/);
+  });
+
+  test('a file of the same experiment outside the exception paths with a same-landing order still fails', () => {
+    const { src, exception } = oneMerge({ 'docs/e/results/core.json': '{}' });
+    exceptionsFile(src, [exception]);
+    const [e] = check(src, [E]);
+    expect(e!.status).toBe('failed');
+    expect(e!.problems).toHaveLength(1);
+    expect(e!.problems[0]).toMatch(/^docs\/e\/results\/core\.json: added in [^;]+, not after the preregistration commit [^;]+$/);
+    expect(e!.exceptions![0]!.files).toEqual(['docs/e/results/extension/analysis.json']);
+  });
+
+  test('results added before the preregistration inside the exception paths still fail', () => {
+    const src = repo();
+    commit(src, { 'README.md': 'base' }, 'base');
+    commit(src, { 'docs/e/results/extension/early.json': '{}' }, 'a result before the amendment');
+    const { ids, merge } = pr(src, 'extension', [() => ({ [E.preregistration]: 'amendment 3' }), () => ({ 'docs/e/results/extension/analysis.json': '{}' })]);
+    exceptionsFile(src, [{ id: 'e-extension-one-merge', experiment: E.id, paths: [EXT], waives: 'same-landing', preregistration_commit: ids[0], results_commit: ids[1], merge, reason: 'r', approved: 'test' }]);
+    const [e] = check(src, [E]);
+    expect(e!.status).toBe('failed');
+    expect(e!.problems).toHaveLength(1);
+    expect(e!.problems[0]).toMatch(/^docs\/e\/results\/extension\/early\.json: added in [^;]+, not after the preregistration commit [^;]+$/);
+  });
+
+  test('the exception fails when the private order it states is false', () => {
+    const { src, base, pre, exception } = oneMerge();
+    exceptionsFile(src, [{ ...exception, results_commit: base }]);
+    const [e] = check(src, [E]);
+    expect(e!.status).toBe('failed');
+    expect(e!.problems[0]).toContain(`exception e-extension-one-merge does not hold: ${pre.slice(0, 12)} is not a strict ancestor of ${base.slice(0, 12)} in the source`);
+    expect(e!.exceptions).toBeUndefined();
+  });
+
+  test('an exception that excuses nothing, or waives any other rule, fails', () => {
+    const { src, exception } = frontierWith();
+    exceptionsFile(src, [exception]);
+    expect(check(src, [X]).find((r) => r.id === 'x' && r.problems.length)).toEqual({ id: 'x', status: 'failed', problems: ['exception x-unused in publication/prereg-exceptions.json excused no result file; remove it'] });
+    exceptionsFile(src, [{ ...exception, waives: 'results-first' }]);
+    expect(check(src, [X])).toEqual([{ id: '*', status: 'failed', problems: ['publication/prereg-exceptions.json: x-unused needs waives: "same-landing", the one rule an exception can waive'] }]);
+  });
+
+  function frontierWith(): { src: string; exception: Record<string, unknown> } {
+    const { src, pre, preMerge } = frontier();
+    return { src, exception: { id: 'x-unused', experiment: X.id, paths: ['docs/x/results/**'], waives: 'same-landing', preregistration_commit: pre, results_commit: pre, merge: preMerge, reason: 'r', approved: 'test' } };
+  }
 });
