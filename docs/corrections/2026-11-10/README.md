@@ -87,4 +87,4 @@ opus-gstack-follow (2026-11-01) and investigate-gate (2026-11-03) ran on Harbor 
 bash scripts/corrections/reproduce-2026-11-10.sh <scratch dir> --check
 ```
 
-It runs scripts/corrections/harbor-cut.ts over the run's committed proxy logs and ledgers, scripts/frontier-harbor/subset.ts and analyze.ts on the corrected copies, and scripts/corrections/tables-2026-11-10.ts to collect [sensitivity.json](sensitivity.json). It needs the frontier-harness per-trial results (results/merged/ and results/extension/merged/). The public copy holds those back for one export, so there the reproducer cannot run.
+It runs scripts/corrections/harbor-cut.ts over the run's committed proxy logs and ledgers, scripts/frontier-harbor/subset.ts and analyze.ts on the corrected copies, and scripts/corrections/tables-2026-11-10.ts to collect [sensitivity.json](sensitivity.json). It needs the frontier-harness per-trial results (results/merged/ and results/extension/merged/). The public copy keeps scripts/frontier-harbor/subset.ts private, so there the byte-for-byte rebuild cannot run.
