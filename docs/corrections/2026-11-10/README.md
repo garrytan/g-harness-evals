@@ -4,7 +4,7 @@
 
 **You should read Pi's frontier rows with the sensitivity below beside them.** Pi never started on one of the 52 tasks, so the preregistered rules dropped that task from Pi's pairs. Scored as Pi fails instead, both Pi rows still pass within the 15-point margin, though on Opus only just (Holm-adjusted p 0.043 against 0.05).
 
-All of this is about the frontier-harness results (pull request #337). Every number here is rebuilt keylessly from committed receipts by `bash scripts/corrections/reproduce-2026-11-10.sh <scratch dir> --check`, which compares its output with [sensitivity.json](sensitivity.json). Nothing under docs/benchmarks/ was edited: each report and trials.jsonl is byte-identical.
+All of this is about the frontier-harness results (pull request #337). Every number here, the 15 s cut's lower bound included, is rebuilt keylessly from committed receipts by `bash scripts/corrections/reproduce-2026-11-10.sh <scratch dir> --check`, which compares its output with [sensitivity.json](sensitivity.json). Nothing under docs/benchmarks/ was edited: each report and trials.jsonl is byte-identical.
 
 ## What changed, in one list
 
@@ -50,7 +50,7 @@ The footnote under the GPT-6.1 Sol table said Hermes Agent's and OpenClaw's cost
 - under the 2026-11-09 reservation correction, Hermes's range starts at $0.29, below Pi's top;
 - with both corrections, at $0.2813, below Pi's top;
 - at the 15 s cut's upper bound (all 39 cut charges removed), at $0.3052, below Pi's top;
-- at the 15 s cut's lower bound alone (only the 7 resent charges removed), Hermes Agent is $0.4313 [$0.3108, $0.5940], whose range starts above Pi's top, so the two ranges do not overlap. This one figure comes from rerunning analyze.ts with only those 7 charges removed; the reproducer does not rebuild it.
+- at the 15 s cut's lower bound alone (only the 7 resent charges removed), Hermes Agent is $0.4313 [$0.3108, $0.5940], whose range starts above Pi's top, so the two ranges do not overlap. The reproducer rebuilds this figure too: it reruns analyze.ts with only those 7 charges removed (sensitivity.json, `lower_bound_resent_cuts_removed`).
 
 OpenClaw's range still clears Pi's. The footnote now says this, and no rank moves: Hermes Agent's and OpenClaw's ranges overlap Codex's either way, so all four rows share rank 1.
 

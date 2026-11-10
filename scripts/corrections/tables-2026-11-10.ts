@@ -83,6 +83,7 @@ const result = {
     cuts: (main.cuts as Cut[]).concat(ext.cuts as Cut[]).map((c) => ({ trial_id: c.trial_id, at: c.at, rules: c.rules, streamed: c.streamed, duration_s: c.duration_s,
       resend_gap_s: c.resend_gap_s, usd: c.usd, field: c.field, termination: c.termination, grade: c.grade })),
     cut_removed: changes(published, analysis(join(S, 'cut-an'))),
+    lower_bound_resent_cuts_removed: changes(published, analysis(join(S, 'resent-an'))),
     cut_and_reservation_removed: changes(published, analysis(join(S, 'both-an'))),
     all_spend_cut_removed: changes(analysis(join(FR, 'sensitivity-cost-with-replaced-runs')), analysis(join(S, 'cut-an-allspend'))),
     post_hoc_drop_cut_trials_that_failed: changes(published, analysis(join(S, 'drop-failed-an'))),

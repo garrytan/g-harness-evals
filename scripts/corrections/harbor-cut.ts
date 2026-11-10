@@ -5,7 +5,7 @@
 // sees the client go away, so it finishes the upstream call, records it and pays for it, and the harness usually sends
 // the same request again.
 //
-//   bun scripts/corrections/harbor-cut.ts --results <run results dir> --merged <merged results dir> --out <dir>
+//   bun scripts/corrections/harbor-cut.ts --results <run results dir> --merged <merged results dir> --out <dir> [--resent-only]
 //
 // It reads every proxy-usage.ndjson under --results with the ledger.sqlite beside it (entries.created_at and settled_at
 // give each paid call's upstream duration) and every trials.jsonl under --results (frontier.harbor_trial maps a Harbor
@@ -19,7 +19,8 @@
 //
 // Writes cuts.json (per cell and per cut), trials.jsonl (the merged records with each cut's paid cost taken out of that
 // field; every other field as recorded) and cut-trials-all.json and cut-trials-failed.json (the trials whose counted run
-// had a cut, for subset.ts --drop-trials). Never writes --results or --merged.
+// had a cut, for subset.ts --drop-trials). With --resent-only it keeps only the cuts the harness sent again (resend_15s),
+// the correction's lower bound. Never writes --results or --merged.
 import { Database } from 'bun:sqlite';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -138,7 +139,7 @@ export function applyCuts(cuts: Array<{ key: string; trial_id: string; usd: numb
 if (import.meta.main) {
   const arg = (n: string) => { const i = process.argv.indexOf('--' + n); return i < 0 ? undefined : process.argv[i + 1]; };
   if (!arg('results') || !arg('merged') || !arg('out')) {
-    console.error('usage: bun scripts/corrections/harbor-cut.ts --results <run results dir> --merged <merged results dir> --out <dir>');
+    console.error('usage: bun scripts/corrections/harbor-cut.ts --results <run results dir> --merged <merged results dir> --out <dir> [--resent-only]');
     process.exit(2);
   }
   const results = resolve(arg('results')!), merged = resolve(arg('merged')!), out = resolve(arg('out')!);
@@ -148,6 +149,7 @@ if (import.meta.main) {
     console.error(`${s.unmatched} paid request(s) have no ledger entry, so they can't be timed; refusing to write corrected trials`);
     process.exit(1);
   }
+  if (process.argv.includes('--resent-only')) s.cuts = s.cuts.filter((c) => c.resend_gap_s !== null);
   const records = jsonLines<TrialRow>(join(merged, 'trials.jsonl'));
   const byId = new Map(records.map((t) => [t.trial_id, t]));
   const r7 = (x: number) => Math.round(x * 1e7) / 1e7;

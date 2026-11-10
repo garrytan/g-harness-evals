@@ -49,7 +49,9 @@ describe('the published prose quotes sensitivity.json', () => {
     expect(md).toContain(`| ${range(c.published.usd_per_solve, c.published.usd_per_solve_ci95, usd)} | ${range(c.now.usd_per_solve, c.now.usd_per_solve_ci95, usd)} |`);
     const p = cut.cut_removed.pairs['sol-hermes vs sol-codex'];
     expect(md).toContain(`| ${range(p.published.cost_ratio, p.published.cost_ratio_ci95, ratio)} | ${range(p.now.cost_ratio, p.now.cost_ratio_ci95, ratio)} |`);
-    for (const k of ['cut_removed', 'cut_and_reservation_removed', 'all_spend_cut_removed', 'post_hoc_drop_cut_trials_that_failed', 'post_hoc_drop_all_cut_trials']) {
+    const lb = cut.lower_bound_resent_cuts_removed.cells['sol-hermes'];
+    expect(md).toContain(`only the 7 resent charges removed), Hermes Agent is ${range(lb.now.usd_per_solve, lb.now.usd_per_solve_ci95, usd)}`);
+    for (const k of ['cut_removed', 'lower_bound_resent_cuts_removed', 'cut_and_reservation_removed', 'all_spend_cut_removed', 'post_hoc_drop_cut_trials_that_failed', 'post_hoc_drop_all_cut_trials']) {
       expect(cut[k].verdict_flips).toEqual([]);
       expect(cut[k].readme_rank_flips).toEqual([]);
     }

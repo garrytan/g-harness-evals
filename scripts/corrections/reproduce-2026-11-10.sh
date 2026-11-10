@@ -24,6 +24,9 @@ run scripts/corrections/harbor-cut.ts --results "$R/extension" --merged "$R/exte
 links "$R/merged" "$S/cut-res" "trials.jsonl"; cp "$S/cut/trials.jsonl" "$S/cut-res/"
 an "$S/cut-res" "$S/cut-an"
 an "$S/cut-res" "$S/cut-an-allspend" --cost-with-replaced
+run scripts/corrections/harbor-cut.ts --results "$R" --merged "$R/merged" --out "$S/resent" --resent-only > /dev/null
+links "$R/merged" "$S/resent-res" "trials.jsonl"; cp "$S/resent/trials.jsonl" "$S/resent-res/"
+an "$S/resent-res" "$S/resent-an"
 run scripts/corrections/reservation-cost.ts --results "$S/cut-res" --out "$S/both" > /dev/null
 links "$R/merged" "$S/both-res" "trials.jsonl"; cp "$S/both/trials.jsonl" "$S/both-res/"
 an "$S/both-res" "$S/both-an"
