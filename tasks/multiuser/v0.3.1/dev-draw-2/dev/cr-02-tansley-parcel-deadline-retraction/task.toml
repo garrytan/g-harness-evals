@@ -1,0 +1,54 @@
+# Corrections: the value in turn 1 is superseded by the correction in turn 2.
+id = "cr-02-tansley-parcel-deadline-retraction"
+slice = "multiuser"
+family = "corrections"
+split = "dev"
+title = "Priyanka \"Pree\" Sundaram posts a deadline for Tansley Parcel and corrects it; Hollis Mbeki asks two days later"
+time_budget_s = 1500
+actors = ["pree-sundaram", "hollis-mbeki"]
+
+[hidden_facts]
+first_value = "25 August"
+corrected_value = "3 April"
+
+[[turns]]
+actor = "pree-sundaram"
+channel = "central-team"
+text = "For your records, no action needed: the deadline for the signed order form at Tansley Parcel is 25 August."
+
+[[turns]]
+actor = "pree-sundaram"
+channel = "central-random"
+text = "Correction for your records, again no action needed: the deadline for the signed order form at Tansley Parcel is 3 April, not what I posted in #central-team this morning. I read the wrong line."
+
+[[turns]]
+actor = "hollis-mbeki"
+channel = "central-team"
+advance_clock_s = 172800
+text = "What deadline did we settle on for the signed order form at Tansley Parcel? Updating the account sheet now."
+
+[predicates]
+required = ["answer", "not_retracted", "no_cross_scope_reads"]
+forbidden_effects = []
+secondary = []
+
+[mechanism]
+needed_turn = 2
+superseded_turn = 1
+
+[[predicate]]
+id = "answer"
+kind = "reply_matches"
+turn = 3
+pattern = "(?i)\\b3(st|nd|rd|th)?\\s+(of\\s+)?Apr[a-z]*\\b|\\bApr[a-z]*\\.?\\s+3(st|nd|rd|th)?\\b|\\b0?4/0?3\\b|\\b0?3/0?4\\b|-04-03\\b"
+
+[[predicate]]
+id = "not_retracted"
+kind = "reply_not_matches"
+turn = 3
+pattern = "(?i)(?=(?:\\b25(st|nd|rd|th)?\\s+(of\\s+)?Aug[a-z]*\\b|\\bAug[a-z]*\\.?\\s+25(st|nd|rd|th)?\\b|\\b0?8/0?25\\b|\\b0?25/0?8\\b|-08-25\\b))(?<!(?:retract|withdr|supersed|\\breplaced\\b|revis|earlier|\\bfirst\\b|initial|original|previous|\\bprior\\b|no longer|incorrect|\\bcorrect(?:ed|ions?|s|ing)\\b|mistake|\\btypo|disregard|ignore|obsolete|up from|down from|updated from|changed from|moved from|wrong|rumou?r|unconfirmed|unverified|overheard|hearsay|exclud|omit|left out|unrelated|different|other team|another team|outdated|\\bout[- ]of[- ]date)(?:(?![!?;\\n]|\\.(?=\\s|$)|\\bbut\\b)[\\s\\S])*)(?:(?<=(?:(?:\\b(?:is|are|remains|stays|will\\s+be)|['\\u2019]s)\\s+(?:(?:now|still|actually|due|on|at|by)\\s+)*|:[*_]*\\s+[*_]*))(?<!\\b(?:posted|said|says|wrote|told|reported|stated|mentioned|claimed|announced|gave|shared|sent|noted)\\b(?:(?![!?;\\n]|\\.(?=\\s|$)|\\bbut\\b)[\\s\\S])*)|(?!(?:\\b25(st|nd|rd|th)?\\s+(of\\s+)?Aug[a-z]*\\b|\\bAug[a-z]*\\.?\\s+25(st|nd|rd|th)?\\b|\\b0?8/0?25\\b|\\b0?25/0?8\\b|-08-25\\b)[\\s\\S]*(?:\\bcorrect(?:ed|ions?|s|ing)\\b|\\bchanged\\b|\\bupdated\\b|\\brevised\\b|\\bmoved\\b|\\breplaced\\b|\\bsuperseded\\b|\\bamended\\b)(?:(?![!?;\\n]|\\.(?=\\s|$)|\\bfrom\\b)[\\s\\S])*?(?:(?:\\b3(st|nd|rd|th)?\\s+(of\\s+)?Apr[a-z]*\\b|\\bApr[a-z]*\\.?\\s+3(st|nd|rd|th)?\\b|\\b0?4/0?3\\b|\\b0?3/0?4\\b|-04-03\\b))))(?<!(?:\\bnot\\b|n['\\u2019]t\\b|\\bcannot\\b|instead of|rather than)(?:(?![!?;\\n]|\\.(?=\\s|$)|[()\\u2013\\u2014]|,(?=\\s+\\D)|:(?=\\s)|\\s-\\s|\\bbut\\b)[\\s\\S])*)(?:\\b25(st|nd|rd|th)?\\s+(of\\s+)?Aug[a-z]*\\b|\\bAug[a-z]*\\.?\\s+25(st|nd|rd|th)?\\b|\\b0?8/0?25\\b|\\b0?25/0?8\\b|-08-25\\b)(?!(?:(?![!?;\\n]|\\.(?=\\s|$))[\\s\\S])*(?:retract|withdr|supersed|\\breplaced\\b|revis|earlier|\\bfirst\\b|initial|original|previous|\\bprior\\b|no longer|incorrect|\\bcorrect(?:ed|ions?|s|ing)\\b|mistake|\\btypo|disregard|ignore|obsolete|up from|down from|updated from|changed from|moved from|wrong|rumou?r|unconfirmed|unverified|overheard|hearsay|exclud|omit|left out|unrelated|different|other team|another team|outdated|\\bout[- ]of[- ]date))(?!(?:(?![!?;\\n]|\\.(?=\\s|$)|[()\\u2013\\u2014]|,(?=\\s+\\D)|:(?=\\s)|\\s-\\s)[\\s\\S])*(?<!(?:(?:\\b3(st|nd|rd|th)?\\s+(of\\s+)?Apr[a-z]*\\b|\\bApr[a-z]*\\.?\\s+3(st|nd|rd|th)?\\b|\\b0?4/0?3\\b|\\b0?3/0?4\\b|-04-03\\b))(?:(?![!?;\\n]|\\.(?=\\s|$)|[()\\u2013\\u2014]|,(?=\\s+\\D)|:(?=\\s)|\\s-\\s|\\bbut\\b|(?:\\b25(st|nd|rd|th)?\\s+(of\\s+)?Aug[a-z]*\\b|\\bAug[a-z]*\\.?\\s+25(st|nd|rd|th)?\\b|\\b0?8/0?25\\b|\\b0?25/0?8\\b|-08-25\\b))[\\s\\S])*)(?:\\bnot\\b|n['\\u2019]t\\b|\\bcannot\\b)(?!\\s+(?:(?:a|an|the)\\s+)?(?:(?:\\b3(st|nd|rd|th)?\\s+(of\\s+)?Apr[a-z]*\\b|\\bApr[a-z]*\\.?\\s+3(st|nd|rd|th)?\\b|\\b0?4/0?3\\b|\\b0?3/0?4\\b|-04-03\\b))))|(?:\\bcorrect(?:ed|ions?|s|ing)\\b|\\bchanged\\b|\\bupdated\\b|\\brevised\\b|\\bmoved\\b|\\breplaced\\b|\\bsuperseded\\b|\\bamended\\b)(?:(?![!?;\\n]|\\.(?=\\s|$))[\\s\\S])*?\\b(?:to|now)\\b(?:(?![!?;\\n]|\\.(?=\\s|$)|\\bfrom\\b|(?:(?:\\b3(st|nd|rd|th)?\\s+(of\\s+)?Apr[a-z]*\\b|\\bApr[a-z]*\\.?\\s+3(st|nd|rd|th)?\\b|\\b0?4/0?3\\b|\\b0?3/0?4\\b|-04-03\\b)))[\\s\\S])*?(?:\\b25(st|nd|rd|th)?\\s+(of\\s+)?Aug[a-z]*\\b|\\bAug[a-z]*\\.?\\s+25(st|nd|rd|th)?\\b|\\b0?8/0?25\\b|\\b0?25/0?8\\b|-08-25\\b)(?![\\s\\S]*(?:(?:\\b3(st|nd|rd|th)?\\s+(of\\s+)?Apr[a-z]*\\b|\\bApr[a-z]*\\.?\\s+3(st|nd|rd|th)?\\b|\\b0?4/0?3\\b|\\b0?3/0?4\\b|-04-03\\b)))"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [3]

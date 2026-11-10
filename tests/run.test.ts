@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildManifest, loadPrereg, renderPlan, RunnerError, type Prereg } from '../runner/run.ts';
+import { buildManifest, loadPrereg, renderPlan, RunnerError, staleTaskSetWarnings, type Prereg } from '../runner/run.ts';
 
 const base: Prereg = {
   schema_version: 1,
@@ -121,6 +121,25 @@ describe('multi-user cells', () => {
       return;
     }
     throw new Error('expected a refusal');
+  });
+
+  test('a dev cell on a v0.3 task set gets a WARN pointing at v0.3.1, and v0.3.1 resolves the same task ids under tasks/multiuser/v0.3.1/', () => {
+    const TASKS = join(import.meta.dir, '..', 'tasks');
+    const at = (id: string, task_set: string, task: string) => ({ ...mu.cells[0]!, id, task_set, tasks: [task] });
+    const sets = { ...mu, cells: [
+      at('old', 'v0.3', 'cr-01-marrow-agrisupply-site-retraction'), at('old-draw-2', 'v0.3/dev-draw-2', 'cr-01-marrow-fieldworks-seat-count'),
+      at('new', 'v0.3.1', 'cr-01-marrow-agrisupply-site-retraction'), at('new-draw-2', 'v0.3.1/dev-draw-2', 'cr-01-marrow-fieldworks-seat-count'),
+      at('v02', 'v0.2', readdirSync(join(TASKS, 'multiuser', 'v0.2', 'dev')).sort()[0]!),
+    ] };
+    const { prereg, sha256 } = loadPrereg(write(sets));
+    const m = buildManifest(prereg, sha256, '2026-11-09T00:00:00Z', { tasksRoot: TASKS });
+    expect(m.trials.find((t) => t.cell === 'new')!.task_dir).toBe(join(TASKS, 'multiuser', 'v0.3.1', 'dev', 'cr-01-marrow-agrisupply-site-retraction'));
+    expect(m.trials.find((t) => t.cell === 'new-draw-2')!.task_dir).toBe(join(TASKS, 'multiuser', 'v0.3.1', 'dev-draw-2', 'dev', 'cr-01-marrow-fieldworks-seat-count'));
+    expect(renderPlan(m)).not.toContain('WARN: cell ');
+    expect(staleTaskSetWarnings(m.cells)).toEqual([
+      'WARN: cell old names task set v0.3, whose not_retracted and not_distractor checks fail some correct replies; use v0.3.1, the same tasks with fixed checks (tasks/multiuser/v0.3.1/README.md)',
+      'WARN: cell old-draw-2 names task set v0.3/dev-draw-2, whose not_retracted and not_distractor checks fail some correct replies; use v0.3.1/dev-draw-2, the same tasks with fixed checks (tasks/multiuser/v0.3.1/README.md)',
+    ]);
   });
 
   test('unknown cell keys, a bad task_set value and a bad session_scope are refused with HE-PREREG-007; session_scope turn is printed', () => {

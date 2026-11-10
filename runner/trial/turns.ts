@@ -1,6 +1,8 @@
 // The turn loop: for each turn in task.toml, move the clock if asked, post the actor's message into the world
 // through the Slack mock with that actor's token, hand the harness a TurnRequest, wait for its TurnResponse,
-// post the reply as the bot, and record a TurnWindow with the event seqs that bracket the harness's work.
+// post the reply as the bot, and record a TurnWindow with the event seqs that bracket the harness's work. A turn on which the
+// bot already posted in the turn's channel (any thread) during the window gets no runner post: its reply_text is a wrap-up for
+// whoever launched the harness, kept in the record with reply_withheld = 'bot_posted' and never graded (internal-task).
 // internal-task (H10): every TurnWindow also carries the turn's thread_ts and session_key (`<channel id>`, or
 // `<channel id>:<thread_ts>` for a turn that opened a thread), the session definition of harnesses/routes/README.md.
 
@@ -87,7 +89,7 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
     };
     // Under member scope the brain answers this turn as the requester; the setting persists through wait_s
     // until the next turn's bracket, and the trial clears it after the last turn.
-    if (o.world.gbrainScoped) await o.world.setGbrainRequester(actor.member.id);
+    if (o.world.gbrainScoped) await o.world.setGbrainRequester(actor.member.id, channelId);
     // Under live ingestion the actor's message (and everything posted before it) is in the brain before the harness
     // gets the turn; a write the brain refused ends the trial as an exam fault, never a silent gap.
     if (o.world.gbrainLive) {
@@ -126,13 +128,16 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
     o.onAnswered?.(n, exit);
     let reply_ts: string | null = null;
     const reply_text = typeof response.reply_text === 'string' && response.reply_text.trim() ? response.reply_text : null;
-    if (reply_text) {
+    const botPosted = o.world.events.some((e) => e.seq > started_seq && e.seq <= ended_seq && e.actor === bot.id && e.tool === 'chat.postMessage' && e.kind === 'write' && e.outcome === 'ok'
+      && (e.effect?.channel === channelId || e.effect?.channel === channelName));
+    const withheld = reply_text !== null && botPosted;
+    if (reply_text && !withheld) {
       const r = await o.world.slack(o.world.botToken, 'chat.postMessage', { channel: channelId, text: reply_text, ...(threadTs ? { thread_ts: threadTs } : {}) });
       if (r.ok) reply_ts = String(r.ts);
       else o.log(`turn ${n}: the world refused the bot reply: ${r.error}`);
     }
-    record({ ...base, exit, reply_ts, reply_text });
-    o.log(`turn ${n}: exit ${exit}${reply_ts ? `, reply ts ${reply_ts}` : ', no reply'}${response.detail ? ` (${response.detail})` : ''}`);
+    record({ ...base, exit, reply_ts, reply_text, ...(withheld ? { reply_withheld: 'bot_posted' as const } : {}) });
+    o.log(`turn ${n}: exit ${exit}${reply_ts ? `, reply ts ${reply_ts}` : withheld ? ', reply withheld: the bot posted in the conversation during the turn' : ', no reply'}${response.detail ? ` (${response.detail})` : ''}`);
     // The reply and every post the harness made during the turn are in the brain before the next turn (or the fence).
     if (o.world.gbrainLive) {
       const f = await o.world.flushGbrainIngest();

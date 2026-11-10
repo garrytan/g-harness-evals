@@ -5,13 +5,23 @@
 //
 //   bun scripts/receipts-manifest.ts [--check] [--root <repo>] [--out <file>]
 //
-// Keyless, read-only against the runs, deterministic apart from generated_at. For every docs/benchmarks/*/results/
-// trials.jsonl it records: the run id (results/manifest.json run_id, else the prefix of the first trial_id), the report
+// Keyless, read-only against the runs, deterministic apart from generated_at. A run directory docs/benchmarks/<run>/ gets
+// a row when a trials.jsonl sits anywhere under its results/. The run's record is results/trials.jsonl; else
+// results/merged/trials.jsonl (the merge of per-stage or per-shard copies, as the frontier runs keep them); else the
+// shallowest trials.jsonl under results/, the first in path order among equals. A record other than results/trials.jsonl is
+// named under trials_jsonl, and every other trials.jsonl in the run directory (per-stage copies, a second experiment's
+// results, calibration or probe trials) is listed with its sha256 under other_trials_jsonl, so an edit to any committed
+// trials.jsonl changes the manifest; both keys are absent when they would be empty, so a run with one results/trials.jsonl
+// has the row it always had. A trials.jsonl whose records are not trial records (it has records and none carries a cell
+// or a grade, such as another tool's output saved under that name) is never a run's record or one of its other files: it is
+// listed under not_trial_records with its path, sha256 and the reason (the key is absent while there are none), so it
+// gives no run a row and no run id, and an edit to it still fails --check. For the record it records: the run id (the manifest.json beside it, else the prefix of the
+// first trial_id), the report
 // path (the run's own report.md, else the report REPORT_ELSEWHERE names for it), results/UNCOUNTED.md under uncounted when
 // the run marks itself uncounted, the preregistration with the commit that added it and every later commit that touched it (the amendments, with
 // their committer dates and subjects), the trial count and the count per cell, the sha256 of trials.jsonl, every
 // *.sqlite ledger under results/ with its sha256, request count and leases, every proxy-usage*.ndjson with its sha256,
-// and whether summary.json and taxonomy.json are present. The manifest carries no spend: ledgerSpend below is the one
+// and whether summary.json and taxonomy.json sit beside the record. The manifest carries no spend: ledgerSpend below is the one
 // spend query, which the private program ledger (private/spend/budget-ledger.ts) runs on the ledgers themselves.
 //
 // A run of the private-by-hash result class keeps its billing artifacts (ledger and usage log) private and commits
@@ -42,13 +52,16 @@
 //
 // --check recomputes the manifest and exits 1 when it differs from the committed file, generated_at excepted, so a
 // results tree edited after the manifest was written is caught; exit 2 when the committed file is missing or unreadable.
+// Both modes also exit 1 when a registered experiment (docs/benchmarks/preregistrations.json and preregistrations.d/) has
+// a committed trials.jsonl under its results globs that no row hashes, naming the experiment and the file.
 
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { Database } from 'bun:sqlite';
 import { deriveSet, registeredHeldout } from '../runner/heldout/openings.ts';
+import { loadManifest } from '../runner/prereg/prereg.ts';
 import { heldoutSet, heldoutSets, readManifest } from './seal-heldout.ts';
 
 export const MANIFEST_VERSION = 1;
@@ -80,6 +93,10 @@ export interface RunRow {
   trials: number;
   cells: Record<string, number>;
   trials_jsonl_sha256: string;
+  /** The record's path when it is not results/trials.jsonl. */
+  trials_jsonl?: string;
+  /** Every other trials.jsonl in the run directory, with its sha256. */
+  other_trials_jsonl?: HashedFile[];
   ledgers: LedgerRow[];
   proxy_usage_logs: HashedFile[];
   summary_json: boolean;
@@ -113,7 +130,9 @@ export interface SealedRunRow {
   decisions: Array<{ claim: string; decision: string }>;
   problems: string[];
 }
-export interface Manifest { schema_version: number; generated_at: string; generator: string; runs: RunRow[]; sealed_runs?: SealedRunRow[] }
+/** A trials.jsonl under docs/benchmarks/ that holds no trial records, hashed so an edit to it still fails --check. */
+export interface NotTrialRecords { path: string; sha256: string; reason: string }
+export interface Manifest { schema_version: number; generated_at: string; generator: string; runs: RunRow[]; sealed_runs?: SealedRunRow[]; not_trial_records?: NotTrialRecords[] }
 
 /** Runs with no report.md of their own whose results another run's report covers. */
 export const REPORT_ELSEWHERE: Record<string, string> = {
@@ -211,10 +230,37 @@ function walk(root: string, dir: string): string[] {
   return out;
 }
 
-export function buildRun(root: string, directory: string): RunRow {
+const namedTrials = (f: string) => f.endsWith('/trials.jsonl');
+export const NOT_TRIAL_RECORDS_REASON = 'no record carries a cell or a grade, so the file holds no trial records (runner/contracts.ts TrialRecord) and is not a run record';
+
+/** False for a file with at least one record and none carrying a cell or a grade (another tool's output named trials.jsonl). */
+export function holdsTrialRecords(path: string): boolean {
+  let records = 0;
+  for (const l of readFileSync(path, 'utf8').split('\n')) {
+    if (!l.trim()) continue;
+    records++;
+    let t: unknown;
+    try { t = JSON.parse(l); } catch { continue; }
+    if (!!t && typeof t === 'object' && ('cell' in t || 'grade' in t)) return true;
+  }
+  return records === 0;
+}
+const isTrials = (f: string) => namedTrials(f) && holdsTrialRecords(f);
+
+/** The run's record among the trials.jsonl files under results/ (absolute paths): results/trials.jsonl, else
+ *  results/merged/trials.jsonl, else the shallowest, first in path order. Null when results/ holds none. */
+export function runRecord(results: string, files: string[]): string | null {
+  const under = files.filter((f) => isTrials(f) && f.startsWith(results + '/')).sort();
+  const preferred = [join(results, 'trials.jsonl'), join(results, 'merged', 'trials.jsonl')].find((f) => under.includes(f));
+  if (preferred) return preferred;
+  const depth = (f: string) => f.split('/').length;
+  return under.length ? under.reduce((best, f) => (depth(f) < depth(best) ? f : best)) : null;
+}
+
+export function buildRun(root: string, directory: string, inRun: string[] = walk(root, join(root, directory))): RunRow {
   const dir = join(root, directory);
   const results = join(dir, 'results');
-  const trialsPath = join(results, 'trials.jsonl');
+  const trialsPath = runRecord(results, inRun) ?? join(results, 'trials.jsonl');
   const trialsBytes = readFileSync(trialsPath);
   const cells: Record<string, number> = {};
   let trials = 0;
@@ -233,14 +279,15 @@ export function buildRun(root: string, directory: string): RunRow {
   const sortedCells = Object.fromEntries(Object.keys(cells).sort().map((k) => [k, cells[k]!]));
 
   let runId: string | null = null;
-  const manifestPath = join(results, 'manifest.json');
+  const manifestPath = join(dirname(trialsPath), 'manifest.json');
   if (existsSync(manifestPath)) {
     try { runId = (JSON.parse(readFileSync(manifestPath, 'utf8')) as { run_id?: string }).run_id ?? null; } catch { runId = null; }
   }
   runId ??= firstTrialId ? firstTrialId.split('/')[0]! : null;
 
-  const files = walk(root, results);
+  const files = inRun.filter((f) => f.startsWith(results + '/'));
   const rel = (p: string) => relative(root, p).split('\\').join('/');
+  const others = inRun.filter((f) => isTrials(f) && f !== trialsPath).map((f) => ({ path: rel(f), sha256: sha256(readFileSync(f)) }));
   const ledgers = files.filter((f) => f.endsWith('.sqlite')).map((f) => { const bytes = readFileSync(f); return { path: rel(f), sha256: sha256(bytes), ...readLedger(f, bytes) }; });
   const proxyLogs = files.filter((f) => /(^|[./-])proxy-usage([.-][^/]*)?\.ndjson$/.test(f.slice(f.lastIndexOf('/') + 1))).map((f) => ({ path: rel(f), sha256: sha256(readFileSync(f)) }));
 
@@ -258,10 +305,12 @@ export function buildRun(root: string, directory: string): RunRow {
     trials,
     cells: sortedCells,
     trials_jsonl_sha256: sha256(trialsBytes),
+    ...(trialsPath !== join(results, 'trials.jsonl') ? { trials_jsonl: rel(trialsPath) } : {}),
+    ...(others.length ? { other_trials_jsonl: others } : {}),
     ledgers,
     proxy_usage_logs: proxyLogs,
-    summary_json: existsSync(join(results, 'summary.json')),
-    taxonomy: existsSync(join(results, 'taxonomy.json')),
+    summary_json: existsSync(join(dirname(trialsPath), 'summary.json')),
+    taxonomy: existsSync(join(dirname(trialsPath), 'taxonomy.json')),
     trials_window: firstStarted && lastEnded ? { first_started_at: firstStarted, last_ended_at: lastEnded } : null,
     heldout: null,
     ...(attested ? { result_class: 'private-by-hash' as const, private_artifacts: attested } : {}),
@@ -269,9 +318,9 @@ export function buildRun(root: string, directory: string): RunRow {
 }
 
 /** A run's trial intervals (started_at to ended_at), merged where they overlap, sorted by start. */
-function trialIntervals(root: string, directory: string): Array<[number, number]> {
+function trialIntervals(root: string, run: RunRow): Array<[number, number]> {
   const spans: Array<[number, number]> = [];
-  for (const line of readFileSync(join(root, directory, 'results', 'trials.jsonl'), 'utf8').split('\n')) {
+  for (const line of readFileSync(join(root, run.trials_jsonl ?? `${run.directory}/results/trials.jsonl`), 'utf8').split('\n')) {
     if (!line.trim()) continue;
     const t = JSON.parse(line) as { started_at?: string; ended_at?: string };
     if (t.started_at && t.ended_at) spans.push([Date.parse(t.started_at), Date.parse(t.ended_at)]);
@@ -304,7 +353,7 @@ function attachOpenings(root: string, runs: RunRow[]): void {
       if (run) run.heldout = { set: set.name, opening: o.number, label: o.label, status: o.status, reason: o.reason, concurrent_with: [] };
     }
   }
-  const intervals = new Map(runs.filter((r) => r.heldout).map((r) => [r, trialIntervals(root, r.directory)]));
+  const intervals = new Map(runs.filter((r) => r.heldout).map((r) => [r, trialIntervals(root, r)]));
   for (const [run, mine] of intervals) {
     run.heldout!.concurrent_with = [...intervals].filter(([o, theirs]) => o !== run && o.heldout!.set === run.heldout!.set && overlaps(mine, theirs)).map(([o]) => o.run_id!).sort();
   }
@@ -345,11 +394,18 @@ export function buildManifest(root: string, generatedAt: string = new Date().toI
   const base = join(root, BENCHMARKS_DIR);
   const runs: RunRow[] = [];
   const sealed: SealedRunRow[] = [];
+  const notTrials: NotTrialRecords[] = [];
   for (const name of readdirSync(base).sort()) {
+    if (!statSync(join(base, name)).isDirectory()) continue;
     const directory = `${BENCHMARKS_DIR}/${name}`;
     if (existsSync(join(base, name, 'sealed-results', 'export.json'))) sealed.push(buildSealedRun(root, directory));
-    if (!existsSync(join(base, name, 'results', 'trials.jsonl'))) continue;
-    runs.push(buildRun(root, directory));
+    const inRun = walk(root, join(base, name));
+    for (const f of inRun.filter((f) => namedTrials(f) && !holdsTrialRecords(f))) {
+      notTrials.push({ path: relative(root, f).split('\\').join('/'), sha256: sha256(readFileSync(f)), reason: NOT_TRIAL_RECORDS_REASON });
+    }
+    const results = join(base, name, 'results');
+    if (!existsSync(results) || !runRecord(results, inRun)) continue;
+    runs.push(buildRun(root, directory, inRun));
   }
   attachOpenings(root, runs);
   if (sealed.length) {
@@ -360,10 +416,21 @@ export function buildManifest(root: string, generatedAt: string = new Date().toI
       for (const s of sealed.filter((x) => x.set === set)) s.opening = d?.openings.find((o) => o.run_id === s.run_id)?.number ?? null;
     }
   }
-  return { schema_version: MANIFEST_VERSION, generated_at: generatedAt, generator: 'scripts/receipts-manifest.ts', runs, ...(sealed.length ? { sealed_runs: sealed } : {}) };
+  return { schema_version: MANIFEST_VERSION, generated_at: generatedAt, generator: 'scripts/receipts-manifest.ts', runs, ...(sealed.length ? { sealed_runs: sealed } : {}), ...(notTrials.length ? { not_trial_records: notTrials } : {}) };
 }
 
 export const renderManifest = (m: Manifest) => JSON.stringify(m, null, 2) + '\n';
+
+/** A committed trials.jsonl under a registered experiment's results globs that no row of the manifest hashes, one line
+ *  per file. Empty when every registered experiment's trials are in the manifest, or when the repository has no registry. */
+export function unhashedRegisteredTrials(root: string, m: Manifest): string[] {
+  if (!existsSync(join(root, BENCHMARKS_DIR, 'preregistrations.json'))) return [];
+  const hashed = new Set([...m.runs.flatMap((r) => [r.trials_jsonl ?? `${r.directory}/results/trials.jsonl`, ...(r.other_trials_jsonl ?? []).map((o) => o.path)]), ...(m.not_trial_records ?? []).map((n) => n.path)]);
+  return loadManifest(root).flatMap((e) => {
+    const listed = e.results.length ? git(root, ['ls-files', '-z', '--', ...e.results]) ?? '' : '';
+    return listed.split('\0').filter((f) => (f === 'trials.jsonl' || namedTrials(f)) && !hashed.has(f)).map((f) => `${e.id}: ${f} has no row in ${OUTPUT_FILE}`);
+  });
+}
 
 /** Equal apart from generated_at; the first differing run directory (or the top level) when not. */
 export function compareManifests(a: Manifest, b: Manifest): { same: boolean; where: string | null } {
@@ -374,6 +441,7 @@ export function compareManifests(a: Manifest, b: Manifest): { same: boolean; whe
     const x = a.runs.find((r) => r.directory === d), y = b.runs.find((r) => r.directory === d);
     if (JSON.stringify(x) !== JSON.stringify(y)) return { same: false, where: d };
   }
+  if (JSON.stringify(a.not_trial_records) !== JSON.stringify(b.not_trial_records)) return { same: false, where: 'not_trial_records' };
   return { same: false, where: 'top level' };
 }
 
@@ -383,15 +451,19 @@ if (import.meta.main) {
   const root = resolve(flag('root') ?? resolve(import.meta.dir, '..'));
   const out = resolve(root, flag('out') ?? OUTPUT_FILE);
   const fresh = buildManifest(root);
+  const unhashed = unhashedRegisteredTrials(root, fresh);
+  for (const u of unhashed) console.error(`receipts-manifest: registered trials with no row: ${u}`);
   if (argv.includes('--check')) {
     if (!existsSync(out)) { console.error(`receipts-manifest: ${relative(root, out)} is missing; run bun scripts/receipts-manifest.ts`); process.exit(2); }
     let committed: Manifest;
     try { committed = JSON.parse(readFileSync(out, 'utf8')) as Manifest; } catch (e) { console.error(`receipts-manifest: cannot read ${relative(root, out)}: ${e instanceof Error ? e.message : String(e)}`); process.exit(2); }
     const { same, where } = compareManifests(committed, fresh);
     if (!same) { console.error(`receipts-manifest: ${relative(root, out)} differs from the results tree at ${where}; run bun scripts/receipts-manifest.ts and commit the result`); process.exit(1); }
+    if (unhashed.length) process.exit(1);
     console.log(`receipts-manifest: ${relative(root, out)} matches ${fresh.runs.length} run(s)`);
   } else {
     writeFileSync(out, renderManifest(fresh));
     console.log(`receipts-manifest: wrote ${relative(root, out)} (${fresh.runs.length} runs, ${fresh.runs.reduce((n, r) => n + r.ledgers.length, 0)} ledgers)`);
+    if (unhashed.length) process.exit(1);
   }
 }

@@ -34,6 +34,7 @@ One section per task set. **Never compare numbers across task sets:** different 
 - Every cell is a plain harness: no gstack, no gbrain.
 - Cost per solved task is the cell's recorded spend at list price through our metering proxy (excluded trials included) divided by its scored passes, leaving out the 351 outage runs a rerun replaced, whose passes are not counted either; the outage hit every cell but Codex. The report also gives the figure with all spend. Cost per trial divides the same spend by the cell's recorded trials.
 - Calls come only from the run's preregistered comparisons; rows are in the run's own order, which is not a ranking.
+- Corrected 2026-11-09 (docs/corrections/2026-11-09/README.md): without reservation charges for streams that never finished, cost per solved task on Sol is Codex $0.31 [$0.23, $0.40], Hermes Agent $0.38 [$0.29, $0.51] and OpenClaw $0.50 [$0.37, $0.68]. No call or rank changes.
 - Why null? verdict: **CUT-CANDIDATE**. See [the glossary below](#how-to-read-this) and the report.
 
 **Receipts:** [report](benchmarks/2026-11-07-frontier-harness/report.md) · [analysis.json](benchmarks/2026-11-07-frontier-harness/results/analysis/analysis.json) · results PR #337 · claim check: claim-check reader, Opus 5.5, round 2 (HIGH findings fixed before merge), then the /ship fix-check on the cost fix (3 informational findings, no number changed) on #337
@@ -63,6 +64,9 @@ One section per task set. **Never compare numbers across task sets:** different 
 - Cost per solved task is the cell's whole spend at list price through our metering proxy, divided by its scored passes; spend includes excluded trials.
 - Time is the median wall-clock time per trial, one trial at a time on one VM per cell.
 - Calls come only from the run's preregistered comparisons; rows are in the run's own order, which is not a ranking.
+- Settings as each harness ships: Claude Code and OpenClaw on Opus use adaptive thinking at effort medium, QM adaptive at effort low, Hermes Agent no thinking; every Sol cell uses reasoning effort medium.
+- Corrected 2026-11-09 (docs/corrections/2026-11-09/README.md): with the runner's own posted text withheld from grading and the v0.3.1 excuse checks, Opus pass counts become Claude Code 64/80, OpenClaw 67/78, Hermes Agent 66/80 and QM 60/80, and cost per solved task $0.21, $0.40, $0.23 and $0.18; OpenClaw on Sol without reservation charges is $0.17. No call or rank changes.
+- Median time includes our rig starting and stopping each harness; in-turn medians are in the 2026-11-09 correction (QM 24.0 s, Claude Code 39.0 s).
 - OpenClaw, Opus 5.5: Incomplete cell: the last task's final reps ended in a cap stop, so scored trials are fewer than planned.
 - OpenClaw, Opus 5.5: Lists Haiku as its housekeeping model (shipped default); it made no housekeeping calls.
 - QM (Pi loop), Opus 5.5: Ran on the default Docker bridge, so the network was not held fixed and QM's comparisons are secondary and untested.

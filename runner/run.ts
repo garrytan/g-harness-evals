@@ -98,11 +98,13 @@ export interface ResolvedGbrain {
   ingest: 'off' | 'live';
   /** internal-task: present only on a cell of the access-ruled member brain. */
   access?: 'rules';
+  /** internal-task: present only on a cell that sends shared-channel remembers to the channel's source. */
+  channel_remember?: 'conversation';
 }
 
 /** The cell's gbrain configuration with every default filled in; the cell itself is not changed. */
 export function resolveGbrain(c: GbrainCellConfig): ResolvedGbrain {
-  return { surface: c.surface, install: c.install ?? 'mcp', embeddings: c.embeddings ?? 'off', brain: c.brain ?? 'bot-visible', scope: c.scope ?? 'none', ingest: c.ingest ?? 'off', ...(c.access ? { access: c.access } : {}) };
+  return { surface: c.surface, install: c.install ?? 'mcp', embeddings: c.embeddings ?? 'off', brain: c.brain ?? 'bot-visible', scope: c.scope ?? 'none', ingest: c.ingest ?? 'off', ...(c.access ? { access: c.access } : {}), ...(c.channel_remember === 'conversation' ? { channel_remember: 'conversation' as const } : {}) };
 }
 
 /** What plan prints for a gbrain cell: <surface>/<install>/<embeddings>. */
@@ -419,6 +421,12 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
       if (c.gbrain.access !== undefined && c.gbrain.access !== 'rules') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.access must be "rules" or absent; got ${JSON.stringify(c.gbrain.access)}`);
       if (c.gbrain.access === 'rules' && (c.gbrain.brain !== 'member' || c.gbrain.scope !== 'member')) throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.access "rules" needs gbrain.brain "member" and gbrain.scope "member" (got brain ${JSON.stringify(c.gbrain.brain ?? 'bot-visible')}, scope ${JSON.stringify(c.gbrain.scope ?? 'none')}); only the member brain is built with folder rules, and only the members' own bound tokens read through them`);
       if (c.gbrain.access === 'rules' && c.gbrain.ingest === 'live') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.access "rules" runs without live ingestion; the ingested facts land outside the folder rules, where every member token reads them`);
+      // internal-task: channel_remember chooses the token of a shared-channel remember, so it exists only where the tap presents member tokens.
+      if (c.gbrain.channel_remember !== undefined && c.gbrain.channel_remember !== 'member' && c.gbrain.channel_remember !== 'conversation') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.channel_remember must be "member", "conversation" or absent; got ${JSON.stringify(c.gbrain.channel_remember)}`);
+      if (c.gbrain.channel_remember !== undefined && c.gbrain.scope !== 'member' && c.gbrain.scope !== 'member-sources') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.channel_remember needs gbrain.scope "member" or "member-sources" (got ${JSON.stringify(c.gbrain.scope ?? 'none')}); only there does a remember carry the requesting member's token`);
+      if (c.gbrain.channel_remember === 'conversation' && c.gbrain.brain !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.channel_remember "conversation" needs gbrain.brain "member"; only the member brain carries the per-source ingest tokens it writes with`);
+      if (c.gbrain.channel_remember === 'conversation' && c.gbrain.access === 'rules') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.channel_remember "conversation" runs without access "rules"; a channel-source fact lands outside the folder rules, where every member token reads it`);
+      if (c.gbrain.channel_remember === 'conversation' && c.harness_mode === 'process') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.channel_remember "conversation" runs in docker mode only; in process mode the harness runs as the runner's user and could read the ingest tokens under the trial directory. fix: drop harness_mode "process" from the cell`);
     }
     // internal-task-a (internal-task-b plan v3, M1): QM's memory-provider config reaches gbrain only through MEMORY_PROVIDER_CONFIG, so it needs a
     // QM harness in docker (the client secret stays in the compose stack) and a gbrain sidecar behind the tap, served over MCP.
@@ -593,12 +601,19 @@ function listMutations(taskDir: string, cellId: string): Array<{ name: string; p
   return files.map((f) => ({ name: `mut-${basename(f, '.json')}`, path: join(dir, f) }));
 }
 
+/** internal-task: one WARN line per dev cell that names a v0.3 task set, pointing at v0.3.1 (the same tasks with fixed excuse
+ *  checks). Printed beside the plan rather than in it, so renderPlan's output for existing manifests is unchanged. */
+export function staleTaskSetWarnings(cells: Array<Pick<Cell, 'id' | 'slice' | 'split' | 'task_set'>>): string[] {
+  return cells.filter((c) => c.slice === 'multiuser' && c.split === 'dev' && /^v0\.3(\/|$)/.test(taskSetName(c)))
+    .map((c) => `WARN: cell ${c.id} names task set ${taskSetName(c)}, whose not_retracted and not_distractor checks fail some correct replies; use ${taskSetName(c).replace(/^v0\.3/, 'v0.3.1')}, the same tasks with fixed checks (tasks/multiuser/v0.3.1/README.md)`);
+}
+
 export function renderPlan(m: Manifest): string {
   const lines = [`RUN: ${m.run_id} trials=${m.trials.length} cells=${m.cells.length} ceiling_usd=${m.cost_ceiling_usd} cap_usd=${m.spend_cap_usd} trial_hours_at_cap=${m.trial_hours_at_cap}`];
   for (const c of m.cells) {
     const mine = m.trials.filter((t) => t.cell === c.id);
     const turns = mine.reduce((a, t) => a + (t.turns ?? 0), 0);
-    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.utility_models ? ` utility_models=${c.utility_models.join(',')}` : ''}${c.config ? ` config=${c.config}` : ''}${c.network ? ` network=${c.network}` : ''}${c.ablation ? ` ablation=${c.ablation.layers.join(',') || 'none'} map=${c.ablation.map} map_sha256=${c.ablation.map_sha256.slice(0, 12)}` : ''}${c.log_sections ? ' log_sections' : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${gbrainLabel(c.gbrain)}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}${c.gbrain.ingest ? ` ingest=${c.gbrain.ingest}` : ''}${c.gbrain.access ? ` access=${c.gbrain.access}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
+    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.utility_models ? ` utility_models=${c.utility_models.join(',')}` : ''}${c.config ? ` config=${c.config}` : ''}${c.network ? ` network=${c.network}` : ''}${c.ablation ? ` ablation=${c.ablation.layers.join(',') || 'none'} map=${c.ablation.map} map_sha256=${c.ablation.map_sha256.slice(0, 12)}` : ''}${c.log_sections ? ' log_sections' : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${gbrainLabel(c.gbrain)}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}${c.gbrain.ingest ? ` ingest=${c.gbrain.ingest}` : ''}${c.gbrain.access ? ` access=${c.gbrain.access}` : ''}${c.gbrain.channel_remember ? ` channel_remember=${c.gbrain.channel_remember}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
   }
   for (const c of m.cells) {
     if (c.gbrain?.brain === 'company' && c.preamble !== 'tasks/multiuser/_shared/preamble.gbrain-company.md') lines.push(`WARN: cell ${c.id} serves the company brain with preamble ${c.preamble ?? 'tasks/multiuser/_shared/preamble.md'}, not the company one (tasks/multiuser/_shared/preamble.gbrain-company.md); intended only for a none-style arm on the company brain`);
@@ -694,6 +709,7 @@ async function main(argv: string[]): Promise<number> {
     if (sealed) manifest.sealed = { set: sealed.set, receipt_sha256: sealed.receipt_sha256, receipt: sealed.receipt };
     if (replication) manifest.replication_of = replication.replication_of;
     console.log(renderPlan(manifest));
+    for (const line of staleTaskSetWarnings(manifest.cells)) console.log(line);
     for (const line of heldout) console.log(line);
     if (sealed) console.log(`SEALED: set ${sealed.set} opened for run ${prereg.run_id} (receipt ${sealed.receipt_sha256.slice(0, 12)}, bundle ${sealed.receipt.bundle_sha256.slice(0, 12)}, tree ${sealed.receipt.tree_sha256.slice(0, 12)}, world ${String(sealed.receipt.world_sha256).slice(0, 12)}); sealed cells read the root, task paths are stored relative to it`);
     if (cmd === 'plan') {

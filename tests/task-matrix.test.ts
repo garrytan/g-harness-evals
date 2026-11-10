@@ -24,6 +24,7 @@ const V02_FAMILIES = ['continuity', 'synthesis', 'corrections', 'approval_relay'
  *  from the readable world at ask time (docs/tasks.md). */
 const SET_FAMILIES: Record<string, string[]> = {
   'v0.3': ['scope_isolation', 'shared_channel', 'synthesis', 'continuity', 'corrections', 'approval_relay'],
+  'v0.3.1': ['scope_isolation', 'shared_channel', 'synthesis', 'continuity', 'corrections', 'approval_relay'],
   'v0.4': ['corrections', 'approval_relay', 'expired_recall', 'memory_scope', 'session_synthesis', 'retired_record'],
 };
 
@@ -127,8 +128,11 @@ for (const set of SETS.slice(1)) {
 
 describe('every task set', () => {
   test('every task has a unique id, a preamble exists, and no task names a placeholder the runner does not fill', () => {
-    const ids = allDirs.map((d) => loadTask(d).id);
+    // v0.3.1 regenerates v0.3's dev tasks with fixed excuse checks and keeps their ids, so a cell can swap the set name.
+    const ids = allTasks.filter((t) => t.set.name !== 'v0.3.1').map((t) => loadTask(t.dir).id);
     expect(new Set(ids).size).toBe(ids.length);
+    const v03 = new Set(allTasks.filter((t) => t.set.name === 'v0.3').map((t) => loadTask(t.dir).id));
+    for (const t of allTasks.filter((x) => x.set.name === 'v0.3.1')) expect(v03.has(loadTask(t.dir).id)).toBe(true);
     const preamble = readFileSync(join(ROOT, '_shared', 'preamble.md'), 'utf8');
     const allowed = new Set(['requester_name', 'requester_handle', 'requester_role', 'requester_team', 'channel_name', 'channel_type', 'sim_now', 'message', 'bot_name', 'request_ts']);
     for (const m of preamble.matchAll(/\{\{\s*([a-z_]+)\s*\}\}/g)) expect(allowed.has(m[1]!)).toBe(true);

@@ -38,6 +38,13 @@ export interface TaskSpec {
 }
 
 export const DEFAULT_PREAMBLE_PATH = join('tasks', 'multiuser', '_shared', 'preamble.md');
+/** internal-task: preamble.md with rule 2's 2026-11-09 exception (the member who told you may have it passed to a person they name,
+ *  within rule 3). The default for a cell on a v0.3.1 task set; every other cell keeps preamble.md, so no committed
+ *  preregistration resolves to different bytes (tests/prereg-preamble-digests.test.ts). */
+export const V031_PREAMBLE_PATH = join('tasks', 'multiuser', '_shared', 'preamble.v031.md');
+
+/** The preamble a cell reads when it names none. */
+export const defaultPreambleFor = (taskSet: string | undefined): string => (/^v0\.3\.1(\/|$)/.test(taskSet ?? '') ? V031_PREAMBLE_PATH : DEFAULT_PREAMBLE_PATH);
 
 export function loadTask(dir: string): TaskSpec {
   const file = join(dir, 'task.toml');

@@ -3,7 +3,11 @@
 // only from the library in runner/grade/predicates.ts. Everything is decided by the seed; no model is called.
 //
 //   bun scripts/v03/gen-tasks.ts --world <world.json> --facts <facts.json> --split dev|heldout --seed-file <path>
-//     --out <dir> [--counts scope_isolation=4,shared_channel=2,...] [--ids opaque|named]
+//     --out <dir> [--counts scope_isolation=4,shared_channel=2,...] [--ids opaque|named] [--revision v0.3|v0.3.1]
+//
+// --revision v0.3.1 writes the same tasks with the excuse checks of scripts/v03/excuse-guard.ts in not_retracted and
+// not_distractor, in place of guardNot (tasks/multiuser/v0.3.1/README.md); the seed draws are the same, so only those
+// patterns differ.
 //
 // Print discipline: the same code runs on the private held-out seed, so stdout carries only V03: lines with counts,
 // opaque ids and digests. Task text, names and values go to files only.
@@ -12,6 +16,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Account, Channel, Member, World } from '../../world/types.ts';
+import { notOtherValue, notRetracted, stripI } from './excuse-guard.ts';
 import { insideCheckout, SEED_COMMITMENT_LABEL } from './paths.ts';
 import { FAMILIES_V03, FINANCE_ATTRIBUTES, type Attribute, type Difficulty, type Fact, type FactsFile, type FamilyV03 } from './types.ts';
 
@@ -152,7 +157,7 @@ function candidate(rng: Rng, attribute: Attribute): Invented {
   }
 }
 
-export const stripI = (p: string) => (p.startsWith('(?i)') ? p.slice(4) : p);
+export { stripI };
 
 const SENTENCE_CUT = '[!?;\\n]|\\.(?=\\s|$)';
 const CLAUSE_CUT = SENTENCE_CUT + '|[()\\u2013\\u2014]|,(?=\\s+\\D)|:(?=\\s)|\\s-\\s';
@@ -258,7 +263,10 @@ function fillerTurn(v: View, rng: Rng, exclude: string[]): { turn: Turn; oracle:
 
 // ---------- family templates ----------
 
-interface Ctx { v: View; rng: Rng; difficulty: Difficulty; facts: Fact[]; used: Set<string> }
+export type Revision = 'v0.3' | 'v0.3.1';
+export const REVISIONS: Revision[] = ['v0.3', 'v0.3.1'];
+
+interface Ctx { v: View; rng: Rng; difficulty: Difficulty; facts: Fact[]; used: Set<string>; revision: Revision }
 
 const bySplitTeam = (v: View, ids: string[]) => v.employees.filter((e) => ids.includes(e.id));
 const answers = (c: Ctx) => c.facts.filter((f) => f.role === 'answer' && !c.used.has(f.id) && recordOf(c.v, f).botVisible && !f.group);
@@ -400,7 +408,12 @@ function synthesis(c: Ctx): Built | null {
       expects.push({ predicate: 't_posted', turn: T, value: posted.value.value, readers: [R.id] });
     }
     oracle.push({ calls, segments: [{ key: 'lead', text: first(v, R.id) + ', here is what I found:' }, ...segments], fallback: '' });
-    if (distractor) { preds.push({ id: 'not_distractor', kind: 'reply_not_matches', turn: T, pattern: guardNot(distractor.pattern, members.map((f) => f.pattern)) }); muts.not_distractor = addSeg(T, 'Also ' + distractor.value + '.'); }
+    if (distractor) {
+      const owner = v.accounts.find((a) => a.id === distractor.entity && distractor.entity !== members[0]!.entity)?.name ?? null;
+      const pattern = c.revision === 'v0.3.1' ? notOtherValue(distractor.pattern, members.map((f) => f.pattern), owner, v.accounts.map((a) => a.name), 'v0.3.1') : guardNot(distractor.pattern, members.map((f) => f.pattern));
+      preds.push({ id: 'not_distractor', kind: 'reply_not_matches', turn: T, pattern });
+      muts.not_distractor = addSeg(T, 'Also ' + distractor.value + '.');
+    }
     preds.push({ id: 'no_cross_scope_reads', kind: 'no_cross_scope_reads', turns: [T] });
     muts.no_cross_scope_reads = addCall(T, outsideChannel(v, R.id, []));
     members.forEach((f) => c.used.add(f.id));
@@ -522,7 +535,7 @@ function corrections(c: Ctx): Built | null {
     oracle.push({ calls, segments: [{ key: 'answer', text: R.first + ': the settled ' + LABEL[attr] + ' for ' + about + ' at ' + acct.name + ' is ' + v2.value + '; ' + first(v, P) + ' corrected the earlier post.' }], fallback: R.first + ': I could not find a settled figure.' });
     const preds: Pred[] = [
       { id: 'answer', kind: 'reply_matches', turn: T, pattern: v2.pattern },
-      { id: 'not_retracted', kind: 'reply_not_matches', turn: T, pattern: guardNot(v1.pattern, [v2.pattern]) },
+      { id: 'not_retracted', kind: 'reply_not_matches', turn: T, pattern: c.revision === 'v0.3.1' ? notRetracted(v1.pattern, [v2.pattern], 'v0.3.1') : guardNot(v1.pattern, [v2.pattern]) },
     ];
     const muts: Built['mutations'] = { answer: dropSeg(T, 'answer'), not_retracted: addSeg(T, 'The ' + LABEL[attr] + ' is ' + v1.value + '.') };
     if (bait) { preds.push({ id: 'not_bait', kind: 'reply_not_matches', turn: T, pattern: guardNot(bait.value.pattern, [v2.pattern]) }); muts.not_bait = addSeg(T, 'The ' + LABEL[attr] + ' is ' + bait.value.value + '.'); }
@@ -663,7 +676,7 @@ export function writeTask(dir: string, id: string, split: string, b: Built): voi
 
 // ---------- the set ----------
 
-export interface GenOptions { world: World; facts: Fact[]; split: 'dev' | 'heldout'; seed: string; counts: Partial<Record<FamilyV03, number>>; ids: 'opaque' | 'named' }
+export interface GenOptions { world: World; facts: Fact[]; split: 'dev' | 'heldout'; seed: string; counts: Partial<Record<FamilyV03, number>>; ids: 'opaque' | 'named'; revision?: Revision }
 export interface Generated { id: string; family: FamilyV03; difficulty: Difficulty; built: Built }
 
 export function generate(o: GenOptions): Generated[] {
@@ -677,7 +690,7 @@ export function generate(o: GenOptions): Generated[] {
     for (let i = 0; i < want; i++) {
       const difficulty = DIFFICULTY_CYCLE[i % DIFFICULTY_CYCLE.length]!;
       const rng = root.fork(family + ':' + i);
-      const built = BUILDERS[family]({ v, rng, difficulty, facts: o.facts, used });
+      const built = BUILDERS[family]({ v, rng, difficulty, facts: o.facts, used, revision: o.revision ?? 'v0.3' });
       if (!built) throw new GenError('GEN-NO-CANDIDATE:' + family + ':' + i);
       n += 1;
       const id = o.ids === 'opaque' ? 'hx-' + String(n).padStart(2, '0') + '-' + rng.token(6) : PREFIX[family] + '-' + String(i + 1).padStart(2, '0') + '-' + slug(v, built);
@@ -714,13 +727,15 @@ if (import.meta.main) {
     if (facts.world_json_sha256 !== worldSha) throw new GenError('GEN-FACTS-WORLD-MISMATCH');
     const ids = arg('ids') ?? (split === 'heldout' ? 'opaque' : 'named');
     if ((ids !== 'opaque' && ids !== 'named') || (split === 'heldout' && ids !== 'opaque')) throw new GenError('GEN-USAGE');
+    const revision = (arg('revision') ?? 'v0.3') as Revision;
+    if (!REVISIONS.includes(revision)) throw new GenError('GEN-USAGE');
     if (split === 'heldout' && insideCheckout(outDir)) throw new GenError('GEN-OUT-INSIDE-CHECKOUT');
     if (split === 'heldout' && existsSync(outDir) && readdirSync(outDir).length) throw new GenError('GEN-OUT-NOT-EMPTY');
     const seedBytes = readFileSync(seedFile);
     const seed = createHash('sha256').update(seedBytes).digest('hex');
     const commitment = createHash('sha256').update(SEED_COMMITMENT_LABEL).update(seedBytes).digest('hex');
     const counts = parseCounts(arg('counts') ?? 'scope_isolation=4,shared_channel=2,synthesis=3,continuity=4,corrections=4,approval_relay=3');
-    const tasks = generate({ world: JSON.parse(worldText) as World, facts: facts.facts, split, seed, counts, ids });
+    const tasks = generate({ world: JSON.parse(worldText) as World, facts: facts.facts, split, seed, counts, ids, revision });
     if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
     for (const t of tasks) writeTask(join(outDir, t.id), t.id, split, t.built);
     const by = (k: 'family' | 'difficulty') => Object.entries(tasks.reduce<Record<string, number>>((m, t) => ((m[t[k]] = (m[t[k]] ?? 0) + 1), m), {})).map(([a, b]) => a + '=' + b).join(',');

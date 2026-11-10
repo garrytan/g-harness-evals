@@ -20,7 +20,8 @@
 // set world the run pinned in set-worlds.json changed since the run (HE-RUN-008).
 //
 // regradeResults() is the same check as a function, for scripts that replicate a run; it throws RunnerError HE-RUN-008
-// for a set-world pin mismatch.
+// for a set-world pin mismatch. Its `task` option grades each trial against the task it returns for the trial's task
+// directory instead of the committed one, so a script can size a grader fix without editing committed tasks.
 
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -28,6 +29,7 @@ import { join, resolve } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import type { PredicateResult, TrialEvidence, TrialRecord, TurnWindow, WorldSnapshot } from '../runner/contracts.ts';
 import { gradeTrial } from '../runner/grade/index.ts';
+import type { Task } from '../runner/grade/task.ts';
 import type { WorldEvent } from '../world/services/events.ts';
 import { RunnerError } from '../runner/errors.ts';
 import { setWorldPath, setWorldPinProblem, taskDirFor, type Trial } from '../runner/run.ts';
@@ -81,7 +83,7 @@ function readEvidence(dir: string, name: string): string | undefined {
 const jsonl = <T>(text: string) => text.split('\n').filter(Boolean).map((l) => JSON.parse(l) as T);
 const failedIds = (predicates: PredicateResult[]) => predicates.filter((p) => !p.passed).map((p) => p.id);
 
-export async function regradeResults(opts: { results: string; cells?: string[]; repoRoot?: string }): Promise<RegradeReport> {
+export async function regradeResults(opts: { results: string; cells?: string[]; repoRoot?: string; task?: (taskDir: string) => Task }): Promise<RegradeReport> {
   const results = resolve(opts.results);
   const repoRoot = opts.repoRoot ?? resolve(import.meta.dir, '..');
   if (!existsSync(join(results, 'trials.jsonl'))) throw new RegradeUsageError(`no trials.jsonl in ${results}`);
@@ -132,7 +134,7 @@ export async function regradeResults(opts: { results: string; cells?: string[]; 
         events: jsonl<WorldEvent>(events!),
         turns: jsonl<TurnWindow>(turns!),
       };
-      g = await gradeTrial(evidence);
+      g = await gradeTrial(evidence, opts.task ? opts.task(evidence.task_dir) : undefined);
     } catch (e) {
       notRegraded(`grader error: ${e instanceof Error ? e.message : String(e)}`);
       continue;

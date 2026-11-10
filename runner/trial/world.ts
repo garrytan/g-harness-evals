@@ -143,8 +143,9 @@ export class TrialWorld {
   /** After the drain, before the snapshot: no ingest event lands after the record is written. */
   closeGbrainIngest(): void { this.server.gbrainIngest()?.stop(); }
 
-  async setGbrainRequester(member: string | null): Promise<void> {
-    const res = await this.admin('/admin/gbrain/requester', { method: 'POST', body: JSON.stringify({ member }) });
+  /** internal-task: channel is the turn's channel id, so a remember made in a shared channel can reach the channel's source. */
+  async setGbrainRequester(member: string | null, channel: string | null = null): Promise<void> {
+    const res = await this.admin('/admin/gbrain/requester', { method: 'POST', body: JSON.stringify({ member, ...(channel ? { channel } : {}) }) });
     const body = await res.json() as { ok: boolean; error?: string };
     if (!body.ok) throw new RunnerError('HE-WORLD-001', `the world refused gbrain requester ${member}: ${body.error}`);
   }

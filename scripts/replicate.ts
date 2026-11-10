@@ -34,7 +34,7 @@ import { canonicalLookup } from '../runner/pricing/model-pricing.ts';
 import { ledgerStatus } from '../runner/ledger/budget-ledger.ts';
 import { isCapRefusal, trialSlug } from '../runner/trial/proxy.ts';
 import type { UsageLine } from '../runner/proxy/metering-proxy.ts';
-import { DEFAULT_PREAMBLE_PATH } from '../runner/trial/task.ts';
+import { defaultPreambleFor } from '../runner/trial/task.ts';
 import { registeredHeldout } from '../runner/heldout/openings.ts';
 import { seededRandom } from '../runner/stats/paired.ts';
 import { EXCLUDED_TERMINATIONS, bandCoverage, cellCounts, pairedDifference, passRate, replicationBand, type TaskCount } from '../runner/replicate/band.ts';
@@ -258,7 +258,7 @@ const rerunCommitOf = (b: Loaded) => b.finding.rerunCommit ?? b.manifest.rerun_c
 
 // ---------- the cell, its estimate ----------
 
-interface CellDef { id: string; harness: string; model: string; split?: string; preamble?: string; gbrain?: unknown; harness_mode?: string; repetitions?: number }
+interface CellDef { id: string; harness: string; model: string; split?: string; preamble?: string; task_set?: string; gbrain?: unknown; harness_mode?: string; repetitions?: number }
 interface Rec { trial_id: string; cell: string; task: string; grade: string; termination?: string; cap_stop?: boolean; wall_ms?: number; usage?: { usd: number; refused: number } | null }
 
 function cellOf(b: Loaded, id: string): CellDef {
@@ -341,8 +341,8 @@ export async function equivalence(b: Loaded, cell: CellDef): Promise<Equivalence
     };
     const tasks = changed(taskDirs);
     if (tasks.length) problems.push(`task files changed since the run commit ${runCommit.slice(0, 12)}: ${tasks.slice(0, 5).join(', ')}${tasks.length > 5 ? ` and ${tasks.length - 5} more` : ''}`);
-    const preamble = changed([cell.preamble ?? DEFAULT_PREAMBLE_PATH]);
-    if (preamble.length) problems.push(`the preamble ${cell.preamble ?? DEFAULT_PREAMBLE_PATH} changed since the run commit`);
+    const preamble = changed([cell.preamble ?? defaultPreambleFor(cell.task_set)]);
+    if (preamble.length) problems.push(`the preamble ${cell.preamble ?? defaultPreambleFor(cell.task_set)} changed since the run commit`);
     const world = changed(['world/seed']);
     if (world.length) problems.push(`the seed world changed since the run commit: ${world.slice(0, 5).join(', ')}`);
     const show = (p: string, c: string) => { const r = git(['show', `${c}:${p}`]); return r.status === 0 ? r.stdout : null; };

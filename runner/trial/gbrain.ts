@@ -69,6 +69,9 @@ export interface GbrainSidecarOptions {
   ingest?: 'off' | 'live';
   /** "rules" serves the access-ruled member brain (member brain, member scope only); default none. */
   access?: 'none' | 'rules';
+  /** internal-task: "conversation" (member brain only) makes the entrypoint copy ingest-tokens.json out even without live ingestion,
+   *  for the tap to send a shared-channel remember under the channel source's token; default member. */
+  channelRemember?: 'member' | 'conversation';
   /** The surface (default starter) and the embedding model (default off); an embedded brain needs openaiBaseUrl, the
    *  metering proxy's slot URL as the container reaches it (a route, never a key), and proxyToken, the random per-trial token
    *  the proxy requires on that slot (2026-10-28; the entrypoint hands it to gbrain as its OpenAI credential, which the proxy
@@ -106,6 +109,9 @@ export interface GbrainSidecar {
   /** Under live ingestion, the member brain's per-source ingest tokens and the manifest's channel-to-source map, for the
    *  world's ingestion module. The tokens file stays under outDir. */
   ingest: { tokens: IngestTokens; map: BrainIngest } | null;
+  /** internal-task: under channel_remember "conversation", the same ingest tokens and channel map for the tap alone; they start no
+   *  ingestion. */
+  channelRemember: { tokens: IngestTokens; map: BrainIngest } | null;
   /** Milliseconds from docker run to a healthy /health and a token on disk. */
   ready_ms: number;
   /** SIGTERM, wait, collect docker logs into outDir, remove the container and its network. Idempotent. */
@@ -269,6 +275,7 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
     '-e', `HE_GBRAIN_BRAIN=${brain}`, '-e', `HE_GBRAIN_SCOPE=${scope}`, '-e', `HE_GBRAIN_INGEST=${ingest}`, ...(access === 'rules' ? ['-e', 'HE_GBRAIN_ACCESS=rules'] : []),
     '-e', `HE_GBRAIN_SURFACE=${surface}`, '-e', `HE_GBRAIN_EMBEDDINGS=${embeddings}`,
     ...(embeddings !== 'off' ? ['-e', `OPENAI_BASE_URL=${o.openaiBaseUrl}`, '-e', `HE_GBRAIN_PROXY_TOKEN=${o.proxyToken}`] : []),
+    ...(o.channelRemember === 'conversation' ? ['-e', 'HE_GBRAIN_CHANNEL_REMEMBER=conversation'] : []),
     image]);
   const image_id = (await sh(['docker', 'image', 'inspect', '-f', '{{.Id}}', image])).stdout.trim();
   if (run.status !== 0) {
@@ -316,7 +323,7 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
     let tokens: CompanyTokens | null = null;
     let grants: GbrainSidecar['grants'] = null;
     let ingestTokens: GbrainSidecar['ingest'] = null;
-    if (ingest === 'live') {
+    if (ingest === 'live' || o.channelRemember === 'conversation') {
       const ingestPath = join(out, 'ingest-tokens.json');
       while (!existsSync(ingestPath) || !readFileSync(ingestPath, 'utf8').trim()) {
         if (Date.now() > deadline) throw new Error(`no ingest-tokens.json at ${ingestPath} after ${Math.round(timeout / 1000)} s`);
@@ -345,7 +352,7 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
     }
     const ready_ms = Date.now() - started;
     log(`gbrain sidecar ${name} (${o.split}, ${image}, brain ${brain}, scope ${scope}, access ${access}, ingest ${ingest}, surface ${surface}, embeddings ${embeddings}) healthy at ${url} after ${ready_ms} ms; token in ${tokenPath}${tokens ? `, ${Object.keys(tokens.members ?? {}).length} member tokens in ${tokensPath}` : ''}${ingestTokens ? `, ${Object.keys(ingestTokens.tokens.sources).length} ingest tokens` : ''}`);
-    return { url, token, tokenPath, image, image_id, brain, scope, access, surface, embeddings, tokens, grants, ingest: ingestTokens, ready_ms, stop };
+    return { url, token, tokenPath, image, image_id, brain, scope, access, surface, embeddings, tokens, grants, ingest: ingest === 'live' ? ingestTokens : null, channelRemember: o.channelRemember === 'conversation' ? ingestTokens : null, ready_ms, stop };
   } catch (e) {
     await stop(5_000);
     const tail = existsSync(join(out, 'docker.log')) ? readFileSync(join(out, 'docker.log'), 'utf8').trim().split('\n').slice(-3).join(' | ') : '';

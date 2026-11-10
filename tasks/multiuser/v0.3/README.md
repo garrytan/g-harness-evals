@@ -1,5 +1,7 @@
 # tasks/multiuser/v0.3
 
+**Use [v0.3.1](../v0.3.1/README.md) for new runs.** v0.3's excuse checks (`not_retracted`, `not_distractor`) fail some correct replies that tell a correction over two sentences, or say a value is "out of date". v0.3.1 has the same dev tasks and ids with fixed checks. v0.3 stays as it is, because counted runs and a frozen corpus read it.
+
 Task set v0.3 (internal-task-a): the set the owed confirmations C1 to C4 (internal-task-b's plan, decision 5) run on at its first sealed opening. It has six families and two parts:
 
 - `dev/`: 20 public tasks for adapter work and the dev pilot, written by `scripts/v03/gen-tasks.ts` from the published seed in `dev.seed` against the public world's dev records (`world/seed/world.json`) and the facts indexed in `dev-facts.json` (from the hand-written `dev-facts.source.json` by `scripts/v03/index-facts.ts`). `tests/v03-generators.test.ts` regenerates the tree and fails if it differs by a byte.
@@ -49,6 +51,10 @@ Each family template writes `task.toml` with predicates from the library in `run
 | `sy-03-marrow-fieldworks-ticket-numbers` | `synthesis` | hard | Priyanka "Pree" Sundaram asks for every ticket number on Marrow Fieldworks |
 
 ## Changelog
+
+### 2026-11-09: pointer to v0.3.1 (internal-task)
+
+A note at the top sends new runs to v0.3.1, which has the same dev tasks with fixed excuse checks. No task here changes.
 
 ### 2026-11-06: a second dev draw (internal-task)
 

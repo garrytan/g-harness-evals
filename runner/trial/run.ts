@@ -20,7 +20,7 @@ import { RunnerError } from '../errors.ts';
 import { SET_WORLDS_FILE, cellModels, gbrainSetWorld, isSealedCell, setWorldPath, setWorldPinProblem, setWorldPins, type Cell, type Manifest, type Trial } from '../run.ts';
 import { type InternalNetwork, ensureInternalNetwork, internalNetworkName, removeInternalNetwork } from './docker.ts';
 import { RunProxy, reconcile, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
-import { DEFAULT_PREAMBLE_PATH, loadPreamble } from './task.ts';
+import { defaultPreambleFor, loadPreamble } from './task.ts';
 import { type CaptureConfig, captureDnsGapLine, captureLine, captureSummary } from './capture.ts';
 import { type GradeFn, appendRecord, loadGrader, runTrial, trialTermination } from './trial.ts';
 import { writeAtomic } from './harness.ts';
@@ -115,7 +115,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
   const needsGrader = pending.some((t) => !isSingleShot(cells.get(t.cell)!));
   const preambles = new Map<string, string>();
   const preambleFor = (cell: Cell): string => {
-    const path = cell.preamble ?? opts.preamblePath ?? DEFAULT_PREAMBLE_PATH;
+    const path = cell.preamble ?? opts.preamblePath ?? defaultPreambleFor(cell.task_set);
     if (!preambles.has(path)) preambles.set(path, loadPreamble(path));
     return preambles.get(path)!;
   };

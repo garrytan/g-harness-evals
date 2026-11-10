@@ -210,6 +210,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   // A process-mode harness runs as the runner's user beside the trial directory, so it could read the per-source ingest
   // tokens and write every member's private source directly, past the tap; the member brain's tokens stay docker-only.
   if (cell.gbrain?.ingest === 'live' && mode === 'process') throw new RunnerError('HE-GBRAIN-001', `cell ${cell.id} carries gbrain.ingest "live" but runs in process mode; the ingest tokens under the trial directory would be readable by the harness process. fix: run the cell in docker mode`);
+  if (cell.gbrain?.channel_remember === 'conversation' && mode === 'process') throw new RunnerError('HE-GBRAIN-001', `cell ${cell.id} carries gbrain.channel_remember "conversation" but runs in process mode; the ingest tokens under the trial directory would be readable by the harness process. fix: run the cell in docker mode`);
   // An internal cell's world, sidecar and harness container use the run's internal network and its gateway.
   if (cell.network === 'internal' && (!docker || !opts.network)) throw new RunnerError('HE-NET-001', `cell ${cell.id} has network "internal" but the trial ${docker ? 'was given no internal network' : `runs in ${mode} mode`}; fix: run it through executeRun in docker mode`);
   const network = cell.network === 'internal' ? opts.network : undefined;
@@ -231,14 +232,15 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       if (gbrain.embeddings !== 'off' && !proxy) throw new RunnerError('HE-GBRAIN-005', `cell ${cell.id} has embeddings ${gbrain.embeddings} but the trial runs without a metering proxy; the sidecar's embedding calls must be metered`);
       // The sidecar slot exists only while an embedded brain needs it; a keyword brain makes no provider call and gets no slot.
       if (gbrain.embeddings !== 'off') await proxy!.bind(gbrainSlot, key, gbrainToken, [gbrain.embeddings]);
-      sidecar = await startGbrainSidecar({ trialId: trial.id, trialSlug: slot, split: cell.split, outDir: join(dirs.root, 'gbrain'), image: opts.gbrainImage, brain: gbrain.brain, scope: gbrain.scope, ingest: gbrain.ingest, ...(gbrain.access ? { access: gbrain.access } : {}),
+      sidecar = await startGbrainSidecar({ trialId: trial.id, trialSlug: slot, split: cell.split, outDir: join(dirs.root, 'gbrain'), image: opts.gbrainImage, brain: gbrain.brain, scope: gbrain.scope, ingest: gbrain.ingest, ...(gbrain.access ? { access: gbrain.access } : {}), ...(gbrain.channel_remember ? { channelRemember: gbrain.channel_remember } : {}),
         surface: gbrain.surface, embeddings: gbrain.embeddings, ...(gbrain.embeddings !== 'off' ? { openaiBaseUrl: proxy!.baseUrlFor(gbrainSlot, 'openai', true), proxyToken: gbrainToken } : {}), ...(network ? { network } : {}), log });
       // Under member scope the tap needs a granted token for every member who will take a turn (HE-GBRAIN-004).
       if (sidecar.scope === 'member' || sidecar.scope === 'member-sources') checkCompanyTokens(sidecar.tokens, cell.split, task.actors, join(dirs.root, 'gbrain', 'tokens.json'));
       // gbrain#7481: under scope "sources" the tap needs a source grant for every member who will take a turn (HE-GBRAIN-004).
       if (sidecar.scope === 'sources' || sidecar.scope === 'member-sources') checkCompanyGrants(JSON.parse(readFileSync(join(dirs.root, 'gbrain', 'manifest.json'), 'utf8')), cell.split, task.actors, join(dirs.root, 'gbrain', 'manifest.json'));
       // Under live ingestion every actor's DM source and every channel source needs an ingest token (HE-GBRAIN-004).
-      if (sidecar.ingest) checkIngestTokens(sidecar.ingest.tokens, JSON.parse(readFileSync(join(dirs.root, 'gbrain', 'manifest.json'), 'utf8')), cell.split, task.actors, join(dirs.root, 'gbrain', 'ingest-tokens.json'));
+      const ingestTokens = sidecar.ingest ?? sidecar.channelRemember;
+      if (ingestTokens) checkIngestTokens(ingestTokens.tokens, JSON.parse(readFileSync(join(dirs.root, 'gbrain', 'manifest.json'), 'utf8')), cell.split, task.actors, join(dirs.root, 'gbrain', 'ingest-tokens.json'));
       if (gbrain.install !== 'mcp') {
         const viewDir = installViewDir(ctx.runDir, cell.harness, cell.split, gbrain.install);
         installView = existsSync(join(viewDir, 'manifest.json'))
@@ -430,8 +432,9 @@ export const GBRAIN_SEARCH_TOOLS: ReadonlySet<string> = new Set(['gbrain.search'
  *  fact, a failure any outcome other than ok, and the rest are committed facts. The three counts partition the events. */
 /** The world's gbrain upstream for the trial's sidecar. internal-task: with QM's memory provider wired, its provider block too
  *  (read by the OAuth issuer and the tap's caller split once #159 and #152 are on main; ignored by a tap without them). */
-export function gbrainUpstream(sidecar: Pick<GbrainSidecar, 'url' | 'token' | 'tokens' | 'grants' | 'ingest'>, provider?: QmProviderBlock): GbrainUpstream {
-  const upstream: GbrainUpstream = { url: sidecar.url, token: sidecar.token, ...(sidecar.tokens ? { tokens: { members: sidecar.tokens.members, public_only: sidecar.tokens.public_only } } : {}), ...(sidecar.grants ? { grants: sidecar.grants } : {}), ...(sidecar.ingest ? { ingest: { tokens: sidecar.ingest.tokens.sources, channels: sidecar.ingest.map.channels, dm_source_prefix: sidecar.ingest.map.dm_source_prefix } } : {}) };
+export function gbrainUpstream(sidecar: Pick<GbrainSidecar, 'url' | 'token' | 'tokens' | 'grants' | 'ingest'> & Partial<Pick<GbrainSidecar, 'channelRemember'>>, provider?: QmProviderBlock): GbrainUpstream {
+  const remember = sidecar.channelRemember;
+  const upstream: GbrainUpstream = { url: sidecar.url, token: sidecar.token, ...(sidecar.tokens ? { tokens: { members: sidecar.tokens.members, public_only: sidecar.tokens.public_only } } : {}), ...(sidecar.grants ? { grants: sidecar.grants } : {}), ...(sidecar.ingest ? { ingest: { tokens: sidecar.ingest.tokens.sources, channels: sidecar.ingest.map.channels, dm_source_prefix: sidecar.ingest.map.dm_source_prefix } } : {}), ...(remember ? { channel_remember: { tokens: remember.tokens.sources, channels: remember.map.channels } } : {}) };
   return provider ? Object.assign(upstream, { provider }) : upstream;
 }
 
@@ -474,6 +477,7 @@ export function gbrainSummary(config: ResolvedGbrain | GbrainCellSurface, sideca
     ...(resolved.access ? { access: resolved.access } : {}),
     install: resolved.install, embeddings: resolved.embeddings,
     ...(resolved.ingest !== 'off' ? { ingest: resolved.ingest, ingested: ingestedCounts(ingests) } : {}),
+    ...(resolved.channel_remember ? { channel_remember: resolved.channel_remember } : {}),
     events: { ...count(mine.filter((e) => e.caller !== 'provider')), ...(provider.length ? { provider: count(provider) } : {}) },
   };
 }

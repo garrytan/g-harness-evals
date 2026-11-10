@@ -90,6 +90,9 @@
 // line and the parser's error class, never the parser's message (which quotes the line). With --against both manifests are
 // read before any trial row: a sealed run against an unsealed one, either way round, is HE-SEALED-001, and two sealed runs
 // of different openings are HE-SEALED-003, so a sealed --against never reaches the public task lookup.
+// Before anything is compared, scripts/validate-records.ts checks each run's trials.jsonl against its own manifest.json
+// (methodology item 12): a malformed record, a trial id recorded twice, a trial the manifest does not plan or one in another
+// cell or task than planned exits 2 naming the trial ids, and nothing is written.
 
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -102,6 +105,7 @@ import { pairEndpoints, readUsageLines, repricing } from './baseline-endpoints.t
 import { sealedGuard } from '../runner/heldout/guard.ts';
 import { openingDiff, readJsonFile, readJsonLines, type OpeningReceipt } from '../runner/heldout/sealed.ts';
 import { RunnerError } from '../runner/errors.ts';
+import { describeProblems, validateRecords, type PlannedTrials } from './validate-records.ts';
 import { taskFamily } from '../runner/grade/task.ts';
 import { trialGbrainExposure } from '../runner/grade/index.ts';
 import type { TrialEvidence, TurnWindow, WorldSnapshot } from '../runner/contracts.ts';
@@ -134,7 +138,7 @@ if (baselines && !baselines.length) { console.error('--baseline needs one or mor
 if (baselines && (against || pairMode)) { console.error('--baseline pairs cells within one run; drop --against and --pair'); process.exit(2); }
 const parsed = <T>(read: () => T): T => { try { return read(); } catch (e) { if (!(e instanceof RunnerError)) throw e; console.error(e.message); process.exit(2); } };
 const readRows = (dir: string) => parsed(() => readJsonLines<TrialRecord>(join(dir, 'trials.jsonl')));
-type RunManifest = { run_id?: string; cells: Array<{ id: string; harness: string; model: string; config?: string; split: 'dev' | 'heldout'; task_set?: string; gbrain?: GbrainCellConfig; preamble?: string }>; sealed?: { set: string; receipt: OpeningReceipt } };
+type RunManifest = PlannedTrials & { run_id?: string; cells: Array<{ id: string; harness: string; model: string; config?: string; split: 'dev' | 'heldout'; task_set?: string; gbrain?: GbrainCellConfig; preamble?: string }>; sealed?: { set: string; receipt: OpeningReceipt } };
 const manifest = parsed(() => readJsonFile<RunManifest>(join(results, 'manifest.json')));
 if (against && !existsSync(join(against, 'manifest.json'))) { console.error(`--against ${against} has no manifest.json; compare-run reads both runs' manifests to check how each was planned`); process.exit(2); }
 const againstManifest = against ? parsed(() => readJsonFile<RunManifest>(join(against, 'manifest.json'))) : undefined;
@@ -148,12 +152,17 @@ for (const [dir, m] of [[results, manifest], ...(against ? [[against, againstMan
   const pinProblem = setWorldPinProblem(dir, m.cells, repoRoot);
   if (pinProblem) { console.error(`HE-RUN-008 ${pinProblem}`); process.exit(2); }
 }
-const rows = [...readRows(results), ...(against ? readRows(against) : [])];
+const resultRows = readRows(results), againstRows = against ? readRows(against) : [];
+const rows = [...resultRows, ...againstRows];
 const sealedRoot = arg('sealed-root');
 if (manifest.sealed && !sealedRoot) { console.error(`HE-SEALED-001 ${results} was planned with a sealed root (set ${manifest.sealed.set}); compare it inside custody with --sealed-root <the opened root> (docs/sealed-custody.md)`); process.exit(2); }
 if (manifest.sealed && sealedRoot) {
   const g = sealedGuard({ root: sealedRoot, set: manifest.sealed.set, repoRoot: process.cwd(), preregJson: (manifest.sealed as { receipt?: { prereg_json?: string } }).receipt?.prereg_json, logFile: join(results, 'compare-run.sealed.log'), allow: [], label: 'scripts/compare-run.ts' });
   g.say(`compare-run: sealed run (set ${manifest.sealed.set}); the comparisons file is written beside trials.jsonl and the console tables go to ${g.logFile} (custody only)`);
+}
+for (const [dir, m, own] of [[results, manifest, resultRows], ...(against ? [[against, againstManifest!, againstRows] as const] : [])] as const) {
+  const problems = validateRecords(own, m);
+  if (problems.length) { console.error(`compare-run: refused: ${join(dir, 'trials.jsonl')} failed the record check, so nothing was compared: ${describeProblems(problems)}`); process.exit(2); }
 }
 // Sealed custody: a sealed opening's noninferiority claims enter its Holm family with a one-sided p against their margin.
 // --margin <cell a>,<cell b>,<margin>,<higher|lower>[,<endpoint>] (repeatable; the margin a fraction, 0.05 is five points)

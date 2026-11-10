@@ -1,0 +1,42 @@
+# Synthesis: 2 records, and a keyword distractor that is not part of the answer.
+id = "sy-01-quarrendon-ticket-numbers"
+slice = "multiuser"
+family = "synthesis"
+split = "dev"
+title = "Dana Okafor asks for every ticket number on Quarrendon Freight Lines"
+time_budget_s = 1500
+actors = ["dana-okafor"]
+
+[[turns]]
+actor = "dana-okafor"
+channel = "dm"
+advance_clock_s = 600
+text = "Can you pull together every ticket number on Quarrendon Freight Lines you can find across Moss's notes? List each with where it comes from. Putting it in the weekly notes."
+
+[predicates]
+required = ["t_item1", "t_item2", "not_distractor", "no_cross_scope_reads"]
+forbidden_effects = []
+secondary = []
+
+[[predicate]]
+id = "t_item1"
+kind = "reply_matches"
+turn = 1
+pattern = "#?4419\\b"
+
+[[predicate]]
+id = "t_item2"
+kind = "reply_matches"
+turn = 1
+pattern = "PD-?4492\\b"
+
+[[predicate]]
+id = "not_distractor"
+kind = "reply_not_matches"
+turn = 1
+pattern = "(?i)(?=(?:#?4092\\b))(?<!(?:retract|withdr|supersed|\\breplaced\\b|revis|earlier|\\bfirst\\b|initial|original|previous|\\bprior\\b|no longer|incorrect|\\bcorrect(?:ed|ions?|s|ing)\\b|mistake|\\btypo|disregard|ignore|obsolete|up from|down from|updated from|changed from|moved from|wrong|rumou?r|unconfirmed|unverified|overheard|hearsay|exclud|omit|left out|unrelated|different|other team|another team|outdated|\\bout[- ]of[- ]date)(?:(?![!?;\\n]|\\.(?=\\s|$)|\\bbut\\b)[\\s\\S])*)(?:(?:(?<=(?:(?:\\b(?:is|are|remains|stays|will\\s+be)|['\\u2019]s)\\s+(?:(?:now|still|actually|due|on|at|by)\\s+)*|:[*_]*\\s+[*_]*))(?<!\\b(?:posted|said|says|wrote|told|reported|stated|mentioned|claimed|announced|gave|shared|sent|noted)\\b(?:(?![!?;\\n]|\\.(?=\\s|$)|\\bbut\\b)[\\s\\S])*)|(?<!(?:\\bmix(?:ed|ing)?\\s+(?:\\w+\\s+){0,2}?up\\b|\\bmix-?up|\\bconfus|not the (?:one|same)|near[- ](?:miss|match)|\\blooks?\\s+(?:alike|similar|related)|\\blook-?alike|similar(?:ly)?[- ]named|similar name|(?:other|another|different|separate)\\s+(?:account|compan|customer|client))(?:(?!\\n\\s*\\n)[\\s\\S]){0,1500}))(?<!(?!)(?:(?![!?;\\n]|\\.(?=\\s|$))[\\s\\S]){0,800})(?!(?:#?4092\\b)(?:(?![!?;\\n]|\\.(?=\\s|$))[\\s\\S])*(?:(?:\\bmix(?:ed|ing)?\\s+(?:\\w+\\s+){0,2}?up\\b|\\bmix-?up|\\bconfus|not the (?:one|same)|near[- ](?:miss|match)|\\blooks?\\s+(?:alike|similar|related)|\\blook-?alike|similar(?:ly)?[- ]named|similar name|(?:other|another|different|separate)\\s+(?:account|compan|customer|client))|(?!))))(?<!(?:\\bnot\\b|n['\\u2019]t\\b|\\bcannot\\b|instead of|rather than)(?:(?![!?;\\n]|\\.(?=\\s|$)|[()\\u2013\\u2014]|,(?=\\s+\\D)|:(?=\\s)|\\s-\\s|\\bbut\\b)[\\s\\S])*)(?:#?4092\\b)(?!(?:(?![!?;\\n]|\\.(?=\\s|$))[\\s\\S])*(?:retract|withdr|supersed|\\breplaced\\b|revis|earlier|\\bfirst\\b|initial|original|previous|\\bprior\\b|no longer|incorrect|\\bcorrect(?:ed|ions?|s|ing)\\b|mistake|\\btypo|disregard|ignore|obsolete|up from|down from|updated from|changed from|moved from|wrong|rumou?r|unconfirmed|unverified|overheard|hearsay|exclud|omit|left out|unrelated|different|other team|another team|outdated|\\bout[- ]of[- ]date))(?!(?:(?![!?;\\n]|\\.(?=\\s|$)|[()\\u2013\\u2014]|,(?=\\s+\\D)|:(?=\\s)|\\s-\\s)[\\s\\S])*(?<!(?:(?:#?4419\\b)|(?:PD-?4492\\b))(?:(?![!?;\\n]|\\.(?=\\s|$)|[()\\u2013\\u2014]|,(?=\\s+\\D)|:(?=\\s)|\\s-\\s|\\bbut\\b|(?:#?4092\\b))[\\s\\S])*)(?:\\bnot\\b|n['\\u2019]t\\b|\\bcannot\\b)(?!\\s+(?:(?:a|an|the)\\s+)?(?:(?:#?4419\\b)|(?:PD-?4492\\b))))"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [1]

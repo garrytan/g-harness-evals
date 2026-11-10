@@ -115,8 +115,10 @@ function botPosts(ctx: GradeContext, t?: TurnWindow): WorldEvent[] {
   return botEvents(ctx, t).filter((e) => e.tool === 'chat.postMessage' && e.kind === 'write' && e.outcome === 'ok');
 }
 
-/** The reply the runner posted for a turn, read from the snapshot by its ts (falls back to the recorded text). */
+/** The reply the runner posted for a turn, read from the snapshot by its ts (falls back to the recorded text). A withheld
+ *  reply (TurnWindow.reply_withheld) was never posted, so it is never graded. */
 function replyText(ctx: GradeContext, t: TurnWindow): string | null {
+  if (t.reply_withheld) return null;
   if (t.reply_ts) {
     const m = ctx.evidence.snapshot.messages.find((x) => x.ts === t.reply_ts);
     if (m) return m.text;

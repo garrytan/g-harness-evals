@@ -109,7 +109,7 @@ function fakeResults(dir: string, runId: string, preregSha: string, receipt: Rec
   }
   mkdirSync(dir, { recursive: true });
   const cells = CELLS.map((id) => ({ id, harness: 'laneb', model: modelOf(id), slice: 'repo', split: 'heldout', task_set: RSET, repetitions: 2 }));
-  writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ schema_version: 1, run_id: runId, prereg_sha256: preregSha, created_at: '', cells, trials: trials.map((t) => ({ trial_id: t.trial_id, cell: t.cell, task: t.task })), cost_ceiling_usd: 1, per_cell_ceiling_usd: {}, spend_cap_usd: 1, trial_hours_at_cap: 0, sealed: { set: RSET, receipt_sha256: sha256(JSON.stringify(receipt)), receipt } }, null, 1));
+  writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ schema_version: 1, run_id: runId, prereg_sha256: preregSha, created_at: '', cells, trials: trials.map((t) => ({ id: t.trial_id, cell: t.cell, task: t.task })), cost_ceiling_usd: 1, per_cell_ceiling_usd: {}, spend_cap_usd: 1, trial_hours_at_cap: 0, sealed: { set: RSET, receipt_sha256: sha256(JSON.stringify(receipt)), receipt } }, null, 1));
   // trials out of manifest order: compare-run pairs cells in the manifest's order, never the order trials were recorded
   writeFileSync(join(dir, 'trials.jsonl'), [...trials].reverse().map((t) => JSON.stringify(t)).join('\n') + '\n');
   writeFileSync(join(dir, 'gates.json'), JSON.stringify({ haiku: { body_load_rate: 0.95, pass: true }, opus: { body_load_rate: 0.2, pass: false } }));

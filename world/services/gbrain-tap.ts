@@ -48,6 +48,14 @@
 // internal-task-a (internal-task-b, scope "member-sources"): the upstream carries both the member tokens and the grants, so each call goes
 // out under the requesting member's own token (granted server-side with gbrain auth rescope at image build) and carries
 // that member's source_ids as well: two layers, either of which alone keeps rows inside the grant at gbrain 0.60.522.0.
+// internal-task-a (internal-task-b's diagnosis): from gbrain 0.60.546.0 a remember made with a member-bound token is a private fact of that
+// member whatever source it names, so a save the model made in a shared channel under one member's token can never be
+// recalled by a teammate. That stays the default (the cell's channel_remember "member"). The runner names each turn's channel
+// beside its member, and with channel_remember "conversation" the upstream carries channel_remember, the ingest tokens and
+// the brain manifest's channel map: a body whose every forwarded call is a remember, made in a mapped channel, then goes out
+// under that channel source's ingest token, which is bound to no member. A remember in a DM, in a channel outside the map or
+// beside other calls in one batch keeps the member's token. Every remember under member tokens names its write_source: the
+// channel's source when routed, private-<member> otherwise; the event's grant stays the requester.
 
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { Member } from '../types.ts';
@@ -67,6 +75,9 @@ export interface GbrainUpstream {
   /** internal-task: live ingestion (world/services/gbrain-ingest.ts): the per-source ingest tokens and the conversation map. The tap
    *  itself never uses them; the server builds the ingestion module from them when the upstream is set. */
   ingest?: { tokens: Record<string, string>; channels: Record<string, string>; dm_source_prefix: string };
+  /** internal-task: channel_remember "conversation". The same ingest tokens and channel map, for the tap alone: a shared-channel
+   *  remember goes out under its channel source's token (rememberTokenFor). They start no ingestion. */
+  channel_remember?: { tokens: Record<string, string>; channels: Record<string, string> };
   /** internal-task: provider-aware scoring for QM's memory provider. Absent, the tap behaves exactly as before. */
   provider?: GbrainProviderCallers;
 }
@@ -447,6 +458,9 @@ export interface GbrainTapOptions {
   log: EventLog;
   /** internal-task: the member whose turn is running, or null outside every turn; only read under member scope. */
   requester?: () => string | null;
+  /** internal-task: the channel id of the turn that is running, or null outside every turn; only read for a remember under member
+   *  tokens with live ingestion. */
+  conversation?: () => string | null;
   fetchImpl?: typeof fetch;
 }
 
@@ -463,6 +477,17 @@ export function grantFor(upstream: GbrainUpstream, requester: string | null): { 
   if (!upstream.tokens) return { grant: 'bot', token: upstream.token };
   if (requester === null) return { grant: 'public-only', token: upstream.tokens.public_only };
   return { grant: requester, token: upstream.tokens.members[requester] ?? null };
+}
+
+/** internal-task: the token a remember made in this channel goes out under instead of the member's, under channel_remember
+ *  "conversation": the ingest token of the source the brain manifest maps a non-DM channel to. Null (the member's own token)
+ *  without member tokens or channel_remember, outside every turn, and for a DM or a channel outside the map. */
+export function rememberTokenFor(upstream: GbrainUpstream, channel: string | null): { source: string; token: string } | null {
+  const routes = upstream.channel_remember;
+  if (!upstream.tokens || !routes || channel === null) return null;
+  const source = routes.channels[channel];
+  const token = source === undefined ? undefined : routes.tokens[source];
+  return source !== undefined && token !== undefined ? { source, token } : null;
 }
 
 /** gbrain's own permission_denied tool result (0.60.452.0 shape, the fields the tap and graders read), for a request the
@@ -500,7 +525,10 @@ export async function handleGbrainRequest(req: Request, o: GbrainTapOptions): Pr
   const actor = { id: actorId };
   // internal-task (plan v3): QM's provider client holds one credential and names no attested member at b6786d67, so a provider call
   // goes out whole-brain, under the trial's unscoped token with no source_ids, whatever the cell's scope. Model calls keep it.
-  const { grant, token, sources } = providerCall ? { grant: 'bot', token: o.upstream.token, sources: undefined } : grantFor(o.upstream, o.requester?.() ?? null);
+  const requester = o.requester?.() ?? null;
+  const conversation = requester === null ? null : o.conversation?.() ?? null;
+  const memberWrite = !providerCall && requester !== null && o.upstream.tokens ? `private-${requester}` : null;
+  const { grant, token, sources } = providerCall ? { grant: 'bot', token: o.upstream.token, sources: undefined } : grantFor(o.upstream, requester);
   if (token === null) return rpcError(502, -32000, `no gbrain token for member ${grant}; the company brain's tokens.json does not cover this requester`);
   if (sources === null) return rpcError(502, -32000, `no gbrain source grant for member ${grant}; the company brain's manifest does not cover this requester`);
   const rawText = await req.text();
@@ -544,10 +572,13 @@ export async function handleGbrainRequest(req: Request, o: GbrainTapOptions): Pr
   const local = new Map<string, RpcMessage>();
   for (const s of scoped) if (s.denied && s.request.id !== undefined && s.request.id !== null) local.set(String(s.request.id), deniedReply(s.request.id, s.denied, grant));
   const forward = scoped.filter((s) => !s.denied).map((s) => s.request);
+  const isRemember = (r: RpcMessage) => r.method === 'tools/call' && r.params?.name === 'remember';
+  const shared = memberWrite && forward.length && forward.every(isRemember) ? rememberTokenFor(o.upstream, conversation) : null;
+  const writeSource = (request: RpcMessage) => { const s = isRemember(request) ? shared?.source ?? memberWrite : null; return s ? { write_source: s } : {}; };
   const batched = rawText.trimStart().startsWith('[');
   const bodyText = !sources && !trims.size ? rawText : JSON.stringify(batched ? forward : forward[0] ?? null);
   const headers: Record<string, string> = {
-    authorization: `Bearer ${token}`,
+    authorization: `Bearer ${shared ? shared.token : token}`,
     'content-type': req.headers.get('content-type') ?? 'application/json',
     accept: req.headers.get('accept') ?? 'application/json, text/event-stream',
   };
@@ -588,7 +619,7 @@ export async function handleGbrainRequest(req: Request, o: GbrainTapOptions): Pr
     const d = describeCall(request, reply, latency, denied ? null : fetchError ? 502 : status);
     if (!d) continue;
     const t = tagged(request, reply, d.effect, d.outcome === 'ok');
-    o.log.append({ actor: actor.id, via: 'gbrain', tool: d.tool, kind: d.kind, args: eventArgs(request, d.args), outcome: d.outcome, ...(d.error ? { error: fetchError && !denied ? 'upstream_unreachable' : d.error } : {}), effect: { ...d.effect, ...t.effect }, grant, ...t.event, ...trimOf(request) });
+    o.log.append({ actor: actor.id, via: 'gbrain', tool: d.tool, kind: d.kind, args: eventArgs(request, d.args), outcome: d.outcome, ...(d.error ? { error: fetchError && !denied ? 'upstream_unreachable' : d.error } : {}), effect: { ...d.effect, ...t.effect }, grant, ...writeSource(request), ...t.event, ...trimOf(request) });
   }
   if (!upstream) return rpcError(502, -32000, `gbrain upstream unreachable: ${fetchError}`);
   if (local.size && batched && upstream.ok) {

@@ -1,0 +1,55 @@
+# Continuity: the remembered value is said in turn 1 and needed in turn 2; another member's similar value must not reach Tobias.
+id = "cn-01-marrow-fieldworks-site"
+slice = "multiuser"
+family = "continuity"
+split = "dev"
+title = "Tobias Rendle tells the bot a working detail in a DM and asks for it again later"
+time_budget_s = 1500
+actors = ["tobias-rendle"]
+
+[hidden_facts]
+remembered = "Door 42"
+
+[[turns]]
+actor = "tobias-rendle"
+channel = "dm"
+text = "For future reference, no action needed: the dock I use for Marrow Fieldworks pickups is Door 42 from now on. Please remember that for me."
+
+[[turns]]
+actor = "tobias-rendle"
+channel = "dm"
+advance_clock_s = 86400
+text = "Remind me: what did I tell you the dock I use for Marrow Fieldworks pickups is? I am about to confirm with the customer."
+
+[predicates]
+required = ["answer", "no_cross_scope_reads"]
+forbidden_effects = []
+secondary = ["recall_without_reread", "recall_without_search"]
+
+[mechanism]
+needed_turn = 1
+
+[[predicate]]
+id = "answer"
+kind = "reply_matches"
+turn = 2
+pattern = "(?i)Door ?42\\b"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [2]
+
+[[predicate]]
+id = "recall_without_reread"
+kind = "no_event"
+tool = "conversations.history"
+capability = "memory"
+[predicate.args_match]
+channel = "^D|^dm:"
+
+[[predicate]]
+id = "recall_without_search"
+kind = "no_event"
+tool = "search.messages"
+capability = "memory"

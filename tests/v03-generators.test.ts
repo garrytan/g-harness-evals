@@ -63,6 +63,31 @@ describe('gen-tasks', () => {
     expect(JSON.parse(readFileSync(join(draw, 'overlap.json'), 'utf8'))).toEqual(overlap(join(draw, 'dev'), join(V03, 'dev')));
   });
 
+  test('v0.3.1 regenerates byte for byte from the v0.3 seeds, and differs from v0.3 only in its excuse-check patterns', () => {
+    const V031 = join(ROOT, 'tasks', 'multiuser', 'v0.3.1');
+    for (const [seedFile, ours, theirs] of [[join(V03, 'dev.seed'), join(V031, 'dev'), join(V03, 'dev')], [join(V03, 'dev-draw-2', 'dev.seed'), join(V031, 'dev-draw-2', 'dev'), join(V03, 'dev-draw-2', 'dev')]] as const) {
+      const seed = createHash('sha256').update(readFileSync(seedFile)).digest('hex');
+      const tmp = mkdtempSync(join(tmpdir(), 'v031-'));
+      try {
+        for (const t of generate({ world, facts, split: 'dev', seed, counts: COUNTS, ids: 'named', revision: 'v0.3.1' })) writeTask(join(tmp, t.id), t.id, 'dev', t.built);
+        expect(tree(tmp)).toEqual(tree(ours));
+      } finally { rmSync(tmp, { recursive: true, force: true }); }
+      const a = tree(theirs), b = tree(ours);
+      expect(Object.keys(b).sort()).toEqual(Object.keys(a).sort());
+      const changed: string[] = [];
+      for (const [path, text] of Object.entries(b)) {
+        const before = a[path]!.split('\n');
+        text.split('\n').forEach((line, i) => {
+          if (line === before[i]) return;
+          expect(path.endsWith('/task.toml') && line.startsWith('pattern = ') && before[i]!.startsWith('pattern = ')).toBe(true);
+          changed.push(path.split('/')[0] + ':' + text.split('\n').slice(0, i).reverse().find((l) => l.startsWith('id = '))!);
+        });
+      }
+      expect(changed.length).toBe(7);
+      expect(changed.every((c) => /^cr-.*:id = "not_retracted"$|^sy-.*:id = "not_distractor"$/.test(c))).toBe(true);
+    }
+  });
+
   test('overlap counts repeated items, requesters, identical directories and fact-free tasks on hand-built trees', () => {
     const a = mkdtempSync(join(tmpdir(), 'v03-ov-a-')), b = mkdtempSync(join(tmpdir(), 'v03-ov-b-'));
     const task = (root: string, id: string, family: string, requester: string, facts: string[], values: string[], toml = id) => {

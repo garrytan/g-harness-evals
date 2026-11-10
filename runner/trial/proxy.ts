@@ -244,6 +244,7 @@ export function summarizeUsage(key: string, meter: Meter, lines: UsageLine[]): {
     cached_tokens: forwarded.reduce((a, l) => a + (l.cached_tokens ?? 0), 0),
     ...(forwarded.some((l) => l.cache_write_tokens !== undefined) ? { cache_write_tokens: forwarded.reduce((a, l) => a + (l.cache_write_tokens ?? 0), 0) } : {}),
     unpriced: meter.unpriced,
+    usd_reserved: lines.filter((l) => l.charged_reservation).reduce((a, l) => a + (l.actual_usd ?? 0), 0),
     by_model: meter.byModel,
     upstream: meter.upstream ?? null,
   };

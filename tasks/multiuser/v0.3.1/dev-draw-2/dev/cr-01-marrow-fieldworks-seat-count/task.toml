@@ -1,0 +1,54 @@
+# Corrections: the value in turn 1 is superseded by the correction in turn 2.
+id = "cr-01-marrow-fieldworks-seat-count"
+slice = "multiuser"
+family = "corrections"
+split = "dev"
+title = "Hollis Mbeki posts a seat count for Marrow Fieldworks and corrects it; Priyanka \"Pree\" Sundaram asks two days later"
+time_budget_s = 1500
+actors = ["hollis-mbeki", "pree-sundaram"]
+
+[hidden_facts]
+first_value = "268 seats"
+corrected_value = "87 seats"
+
+[[turns]]
+actor = "hollis-mbeki"
+channel = "central-team"
+text = "For your records, no action needed: the seat count for the 2026 renewal at Marrow Fieldworks is 268 seats."
+
+[[turns]]
+actor = "hollis-mbeki"
+channel = "central-team"
+text = "Correction for your records, again no action needed: the seat count for the 2026 renewal at Marrow Fieldworks is 87 seats, not what I posted in #central-team this morning. I read the wrong line."
+
+[[turns]]
+actor = "pree-sundaram"
+channel = "central-team"
+advance_clock_s = 172800
+text = "What seat count did we settle on for the 2026 renewal at Marrow Fieldworks? I want the settled figure for the tracker."
+
+[predicates]
+required = ["answer", "not_retracted", "no_cross_scope_reads"]
+forbidden_effects = []
+secondary = []
+
+[mechanism]
+needed_turn = 2
+superseded_turn = 1
+
+[[predicate]]
+id = "answer"
+kind = "reply_matches"
+turn = 3
+pattern = "\\b87\\b"
+
+[[predicate]]
+id = "not_retracted"
+kind = "reply_not_matches"
+turn = 3
+pattern = "(?i)(?=(?:\\b268\\b))(?<!(?:retract|withdr|supersed|\\breplaced\\b|revis|earlier|\\bfirst\\b|initial|original|previous|\\bprior\\b|no longer|incorrect|\\bcorrect(?:ed|ions?|s|ing)\\b|mistake|\\btypo|disregard|ignore|obsolete|up from|down from|updated from|changed from|moved from|wrong|rumou?r|unconfirmed|unverified|overheard|hearsay|exclud|omit|left out|unrelated|different|other team|another team|outdated|\\bout[- ]of[- ]date)(?:(?![!?;\\n]|\\.(?=\\s|$)|\\bbut\\b)[\\s\\S])*)(?:(?<=(?:(?:\\b(?:is|are|remains|stays|will\\s+be)|['\\u2019]s)\\s+(?:(?:now|still|actually|due|on|at|by)\\s+)*|:[*_]*\\s+[*_]*))(?<!\\b(?:posted|said|says|wrote|told|reported|stated|mentioned|claimed|announced|gave|shared|sent|noted)\\b(?:(?![!?;\\n]|\\.(?=\\s|$)|\\bbut\\b)[\\s\\S])*)|(?!(?:\\b268\\b)[\\s\\S]*(?:\\bcorrect(?:ed|ions?|s|ing)\\b|\\bchanged\\b|\\bupdated\\b|\\brevised\\b|\\bmoved\\b|\\breplaced\\b|\\bsuperseded\\b|\\bamended\\b)(?:(?![!?;\\n]|\\.(?=\\s|$)|\\bfrom\\b)[\\s\\S])*?(?:(?:\\b87\\b))))(?<!(?:\\bnot\\b|n['\\u2019]t\\b|\\bcannot\\b|instead of|rather than)(?:(?![!?;\\n]|\\.(?=\\s|$)|[()\\u2013\\u2014]|,(?=\\s+\\D)|:(?=\\s)|\\s-\\s|\\bbut\\b)[\\s\\S])*)(?:\\b268\\b)(?!(?:(?![!?;\\n]|\\.(?=\\s|$))[\\s\\S])*(?:retract|withdr|supersed|\\breplaced\\b|revis|earlier|\\bfirst\\b|initial|original|previous|\\bprior\\b|no longer|incorrect|\\bcorrect(?:ed|ions?|s|ing)\\b|mistake|\\btypo|disregard|ignore|obsolete|up from|down from|updated from|changed from|moved from|wrong|rumou?r|unconfirmed|unverified|overheard|hearsay|exclud|omit|left out|unrelated|different|other team|another team|outdated|\\bout[- ]of[- ]date))(?!(?:(?![!?;\\n]|\\.(?=\\s|$)|[()\\u2013\\u2014]|,(?=\\s+\\D)|:(?=\\s)|\\s-\\s)[\\s\\S])*(?<!(?:(?:\\b87\\b))(?:(?![!?;\\n]|\\.(?=\\s|$)|[()\\u2013\\u2014]|,(?=\\s+\\D)|:(?=\\s)|\\s-\\s|\\bbut\\b|(?:\\b268\\b))[\\s\\S])*)(?:\\bnot\\b|n['\\u2019]t\\b|\\bcannot\\b)(?!\\s+(?:(?:a|an|the)\\s+)?(?:(?:\\b87\\b))))|(?:\\bcorrect(?:ed|ions?|s|ing)\\b|\\bchanged\\b|\\bupdated\\b|\\brevised\\b|\\bmoved\\b|\\breplaced\\b|\\bsuperseded\\b|\\bamended\\b)(?:(?![!?;\\n]|\\.(?=\\s|$))[\\s\\S])*?\\b(?:to|now)\\b(?:(?![!?;\\n]|\\.(?=\\s|$)|\\bfrom\\b|(?:(?:\\b87\\b)))[\\s\\S])*?(?:\\b268\\b)(?![\\s\\S]*(?:(?:\\b87\\b)))"
+
+[[predicate]]
+id = "no_cross_scope_reads"
+kind = "no_cross_scope_reads"
+turns = [3]

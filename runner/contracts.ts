@@ -32,7 +32,8 @@ export interface TurnRequest {
 
 /** The adapter's answer. exit follows docs/adapters.md: 0 completed, 2 harness error, 3 model error,
  *  124 wall clock. reply_text is the harness's final answer for this turn; the runner posts it to the
- *  world as the bot, in the request's channel and thread, so the grader reads it from world state. */
+ *  world as the bot, in the request's channel and thread, so the grader reads it from world state, unless the bot already
+ *  posted in that channel during the turn (TurnWindow.reply_withheld). */
 export interface TurnResponse {
   turn: number;
   exit: 0 | 2 | 3 | 124;
@@ -63,9 +64,13 @@ export interface TurnWindow {
   /** seq of the last world event when the response was read. */
   ended_seq: number;
   exit: 0 | 2 | 3 | 124;
-  /** Slack ts of the bot reply the runner posted, null when the turn produced none. */
+  /** Slack ts of the bot reply the runner posted, null when the turn produced none or the reply was withheld. */
   reply_ts: string | null;
   reply_text: string | null;
+  /** internal-task addition (2026-11-09): 'bot_posted' when the runner did not post reply_text because the bot had already posted
+   *  in the turn's channel (any thread) during the turn window; reply_ts is then null and reply_text is kept for audit, never
+   *  graded. Absent on turns.jsonl files written before it, which the grader reads as before. */
+  reply_withheld?: 'bot_posted';
   /** internal-task (H10) addition: the Slack thread ts the turn was posted in, null for a top-level message. Optional until the
    *  runner writes it (H10 PR 5), so turns.jsonl files written before it still parse. */
   thread_ts?: string | null;
@@ -299,6 +304,11 @@ export interface TrialUsage {
    *  Present only when a usage line carried the field; OpenAI reports cache reads only. */
   cache_write_tokens?: number;
   unpriced: number;
+  /** The part of usd the proxy charged at a request's full reservation because the request carried no usage (an error
+   *  event inside a 200 stream, a stream cut short, a failed upstream): the sum of actual_usd over the trial key's usage
+   *  lines with charged_reservation. The ledger keeps the charge; the scorers leave it out of cost per solve and per pass
+   *  and report it beside them. Absent on records written before 2026-11-09, which the scorers read as before. */
+  usd_reserved?: number;
   by_model: Record<string, { usd: number; requests: number }>;
   upstream: { statuses: Record<string, number>; failed: number; unparseable: number } | null;
 }
@@ -345,6 +355,13 @@ export interface GbrainCellConfig {
    *  rules are the only read gate (docs/gbrain-arm.md, "Access-ruled member brain"). Needs brain "member" and scope "member", and
    *  no live ingestion; preflight checks the bindings, the rules and a tap probe per member before any trial (HE-GBRAIN-002). */
   access?: 'rules';
+  /** internal-task addition: where a remember the model makes in a shared (non-DM) channel lands. "member" (the default) keeps
+   *  gbrain's documented shape: the call carries the requesting member's token, so the fact is that member's private fact
+   *  (from gbrain 0.60.546.0, whatever source it names) and no teammate can recall it. "conversation" sends it under the
+   *  ingest token of the channel's source (the brain manifest's channel map), so the channel's members can recall it; a DM
+   *  remember keeps the member's token. Needs brain "member" and scope "member" or "member-sources", runs in docker mode
+   *  only and not with access "rules"; with ingest "off" the sidecar still copies the ingest tokens out, for the tap alone. */
+  channel_remember?: 'member' | 'conversation';
 }
 
 /** The install bundle view a gbrain-docs or gbrain-installer trial mounted into the harness, as the runner verified it
@@ -438,6 +455,8 @@ export interface TrialGbrain {
    *  (a committed fact), skipped (a conversation the brain has no source or token for; not a fault) and failed. */
   ingest?: 'off' | 'live';
   ingested?: { ok: number; skipped: number; failed: number };
+  /** internal-task: present only when the cell set channel_remember "conversation". */
+  channel_remember?: 'conversation';
   image_id?: string;
   /** Milliseconds from docker run to a healthy sidecar with a token on disk. */
   sidecar_ready_ms: number;

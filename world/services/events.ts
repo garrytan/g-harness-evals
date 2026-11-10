@@ -25,6 +25,9 @@ export interface WorldEvent {
   /** internal-task (company brain) addition, gbrain events only: whose gbrain token the tap presented upstream: "bot" (the
    *  trial's unscoped token), a member id (that member's granted token) or "public-only" (member scope before the first turn). */
   grant?: string;
+  /** internal-task addition, gbrain remember events only: the source whose ingest token the tap presented instead of the
+   *  requester's, for a remember made in a shared channel under member tokens with live ingestion (gbrain-tap.ts). */
+  write_source?: string;
   /** internal-task addition, gbrain events only and only when the upstream carries provider (gbrain-tap.ts): "provider" for QM
    *  core's memory-provider client, told by its bearer token, "model" for every other call. */
   caller?: 'provider' | 'model';

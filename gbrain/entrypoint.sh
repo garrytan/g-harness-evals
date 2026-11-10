@@ -8,6 +8,9 @@
 #   HE_GBRAIN_INGEST  off (default) | live: with live (member brain only) the brain's ingest-tokens.json (one bearer token per
 #                     source, each writing to that source) is copied to $HE_GBRAIN_OUT/ingest-tokens.json for the world's
 #                     ingestion module, which writes each message of the scenario into the source of its conversation
+#   HE_GBRAIN_CHANNEL_REMEMBER  member (default) | conversation: with conversation (internal-task; member brain only) ingest-tokens.json
+#                     is copied out the same way whether or not ingestion is live, for the world's tap alone, which sends a
+#                     remember made in a shared channel under that channel source's token
 #   HE_GBRAIN_SCOPE   none (default) | member | sources | member-sources: with member, the company brain's tokens.json (one bearer token per member,
 #                     each granted the sources that member may read, plus public-only) is copied to $HE_GBRAIN_OUT/tokens.json;
 #                     with sources (internal-task, gbrain#7481), the company brain's manifest.json (its grants map members to source
@@ -51,12 +54,15 @@ set -euo pipefail
 : "${HE_GBRAIN_EMBEDDINGS:=off}"
 : "${HE_GBRAIN_INGEST:=off}"
 : "${HE_GBRAIN_ACCESS:=none}"
+: "${HE_GBRAIN_CHANNEL_REMEMBER:=member}"
 refuse() { echo "$1" >&2; exit 2; }
 pin=/opt/sidecar/gbrain/pin.json
 case "$HE_GBRAIN_SPLIT" in dev|heldout) ;; *) refuse "HE_GBRAIN_SPLIT must be dev or heldout (got $HE_GBRAIN_SPLIT)" ;; esac
 case "$HE_GBRAIN_BRAIN" in bot-visible|company|member) ;; *) refuse "HE_GBRAIN_BRAIN must be bot-visible, company or member (got $HE_GBRAIN_BRAIN); fix: set gbrain.brain on the cell to one of them" ;; esac
 case "$HE_GBRAIN_INGEST" in off|live) ;; *) refuse "HE_GBRAIN_INGEST must be off or live (got $HE_GBRAIN_INGEST); fix: set gbrain.ingest on the cell to one of them" ;; esac
 [ "$HE_GBRAIN_INGEST" = off ] || [ "$HE_GBRAIN_BRAIN" = member ] || refuse "HE_GBRAIN_INGEST=live needs HE_GBRAIN_BRAIN=member (got $HE_GBRAIN_BRAIN); only the member brain carries ingest tokens; fix: set gbrain: {surface: starter, brain: member, scope: member, ingest: live}"
+case "$HE_GBRAIN_CHANNEL_REMEMBER" in member|conversation) ;; *) refuse "HE_GBRAIN_CHANNEL_REMEMBER must be member or conversation (got $HE_GBRAIN_CHANNEL_REMEMBER); fix: set gbrain.channel_remember on the cell to one of them" ;; esac
+[ "$HE_GBRAIN_CHANNEL_REMEMBER" = member ] || [ "$HE_GBRAIN_BRAIN" = member ] || refuse "HE_GBRAIN_CHANNEL_REMEMBER=conversation needs HE_GBRAIN_BRAIN=member (got $HE_GBRAIN_BRAIN); only the member brain carries ingest tokens"
 case "$HE_GBRAIN_SCOPE" in none|member|sources|member-sources) ;; *) refuse "HE_GBRAIN_SCOPE must be none, member, sources or member-sources (got $HE_GBRAIN_SCOPE); fix: set gbrain.scope on the cell to one of them" ;; esac
 [ "$HE_GBRAIN_SCOPE" = none ] || [ "$HE_GBRAIN_BRAIN" = company ] || [ "$HE_GBRAIN_BRAIN" = member ] || refuse "HE_GBRAIN_SCOPE=$HE_GBRAIN_SCOPE needs HE_GBRAIN_BRAIN=company or member (got $HE_GBRAIN_BRAIN); only those brains carry member tokens and source grants; fix: set gbrain: {surface: starter, brain: company, scope: $HE_GBRAIN_SCOPE}"
 case "$HE_GBRAIN_ACCESS" in none|rules) ;; *) refuse "HE_GBRAIN_ACCESS must be none or rules (got $HE_GBRAIN_ACCESS); fix: set gbrain.access on the cell to rules or leave it out" ;; esac
@@ -81,7 +87,8 @@ fi
 case "$HE_GBRAIN_SCOPE" in member|member-sources) want_tokens=1 ;; *) want_tokens=0 ;; esac
 case "$HE_GBRAIN_SCOPE" in sources|member-sources) want_grants=1 ;; *) want_grants=0 ;; esac
 [ "$want_tokens" = 0 ] || [ -s "$src/tokens.json" ] || refuse "no tokens.json in $src; the $HE_GBRAIN_BRAIN brain was built without member tokens; rebuild the image (gbrain/README.md)"
-[ "$HE_GBRAIN_INGEST" != live ] || [ -s "$src/ingest-tokens.json" ] || refuse "no ingest-tokens.json in $src; the member brain was built without ingest tokens; rebuild the image (gbrain/README.md)"
+case "$HE_GBRAIN_INGEST/$HE_GBRAIN_CHANNEL_REMEMBER" in live/*|*/conversation) want_ingest_tokens=1 ;; *) want_ingest_tokens=0 ;; esac
+[ "$want_ingest_tokens" = 0 ] || [ -s "$src/ingest-tokens.json" ] || refuse "no ingest-tokens.json in $src; the member brain was built without ingest tokens; rebuild the image (gbrain/README.md)"
 [ "$want_grants" = 0 ] || [ "$(jq -r '.grants | length' "$src/manifest.json" 2>/dev/null || echo 0)" -gt 0 ] || refuse "no grants in $src/manifest.json; the company brain was built without source grants; rebuild the image (gbrain/README.md)"
 
 for k in ANTHROPIC_API_KEY OPENAI_API_KEY OPENROUTER_API_KEY GEMINI_API_KEY VOYAGE_API_KEY; do
@@ -139,12 +146,13 @@ if [ "$want_tokens" = 1 ]; then
   mv "$HE_GBRAIN_OUT/tokens.json.tmp" "$HE_GBRAIN_OUT/tokens.json"
   log "member tokens copied ($(jq -r '.members | length' "$HE_GBRAIN_OUT/tokens.json") members and public-only) into $HE_GBRAIN_OUT/tokens.json"
 fi
-if [ "$HE_GBRAIN_INGEST" = live ]; then
-  # internal-task: the per-source ingest tokens (minted at image build) for the world's live ingestion; mode 0600, never logged.
+if [ "$want_ingest_tokens" = 1 ]; then
+  # internal-task: the per-source ingest tokens (minted at image build) for the world's live ingestion and, under
+  # HE_GBRAIN_CHANNEL_REMEMBER=conversation (internal-task), the tap's shared-channel remembers; mode 0600, never logged.
   cp "$src/ingest-tokens.json" "$HE_GBRAIN_OUT/ingest-tokens.json.tmp"
   cp "$src/manifest.json" "$HE_GBRAIN_OUT/manifest.json"
   mv "$HE_GBRAIN_OUT/ingest-tokens.json.tmp" "$HE_GBRAIN_OUT/ingest-tokens.json"
-  log "ingest tokens copied ($(jq -r '.sources | length' "$HE_GBRAIN_OUT/ingest-tokens.json") sources) into $HE_GBRAIN_OUT/ingest-tokens.json; the world ingests each message into its conversation's source"
+  log "ingest tokens copied ($(jq -r '.sources | length' "$HE_GBRAIN_OUT/ingest-tokens.json") sources) into $HE_GBRAIN_OUT/ingest-tokens.json (ingest $HE_GBRAIN_INGEST, channel remember $HE_GBRAIN_CHANNEL_REMEMBER)"
 fi
 if [ "$want_grants" = 1 ]; then
   # internal-task (gbrain#7481): the grants (member -> source ids) for the tap's per-request source_ids; the manifest holds no token.

@@ -99,6 +99,7 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
 
   let gbrain: GbrainUpstream | null = null;
   let gbrainRequester: string | null = null;
+  let gbrainConversation: string | null = null;
   let ingest: GbrainIngest | null = null;
   // internal-task: with ingest tokens on the upstream, every message posted from now on is written into the brain (gbrain-ingest.ts).
   const setGbrain = (u: GbrainUpstream | null) => {
@@ -158,7 +159,7 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
 
       if (path === '/mcp') return handleMcpRequest(req, service, resolveActor);
 
-      if (path === '/gbrain' && gbrain) return handleGbrainRequest(req, { upstream: gbrain, resolveActor, log, requester: () => gbrainRequester });
+      if (path === '/gbrain' && gbrain) return handleGbrainRequest(req, { upstream: gbrain, resolveActor, log, requester: () => gbrainRequester, conversation: () => gbrainConversation });
 
       // internal-task: the issuer exists only under the issuer's shape (provider.clients); the tap then accepts the tokens it issued.
       if (OAUTH_PATHS.has(path) && gbrain?.provider?.clients) return handleOAuthRequest(req, gbrain.provider as ProviderOAuth, log);
@@ -201,13 +202,16 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
       }
       if (path === '/admin/socket') return Response.json({ connections: socket.connections, unacked: socket.unacked.size });
       if (path === '/admin/gbrain/requester' && req.method === 'POST') {
-        // internal-task: the runner names the requesting member at each turn's start and clears it when the turns are over.
-        const body = (await req.json().catch(() => ({}))) as { member?: unknown };
+        // internal-task-a: the runner names the requesting member at each turn's start and clears it when the turns are over. internal-task-b: it
+        // also names the turn's channel, so the tap can send a remember made in a shared channel under that channel's ingest token.
+        const body = (await req.json().catch(() => ({}))) as { member?: unknown; channel?: unknown };
         if (body.member !== null && typeof body.member !== 'string') return Response.json({ ok: false, error: 'member must be a member id or null' }, { status: 400 });
         if (typeof body.member === 'string' && !world.members.some((m) => m.id === body.member && (m.split === 'both' || m.split === opts.split))) return Response.json({ ok: false, error: `unknown member ${body.member}` }, { status: 400 });
+        if (body.channel !== undefined && body.channel !== null && (typeof body.channel !== 'string' || !body.channel || body.member === null)) return Response.json({ ok: false, error: 'channel must be a channel id beside a member, or null' }, { status: 400 });
         gbrainRequester = body.member as string | null;
-        log.append({ actor: null, via: 'runner', tool: 'gbrain.requester', kind: 'admin', args: { member: gbrainRequester }, outcome: 'ok' });
-        return Response.json({ ok: true, member: gbrainRequester });
+        gbrainConversation = typeof body.channel === 'string' ? body.channel : null;
+        log.append({ actor: null, via: 'runner', tool: 'gbrain.requester', kind: 'admin', args: { member: gbrainRequester, ...(gbrainConversation ? { channel: gbrainConversation } : {}) }, outcome: 'ok' });
+        return Response.json({ ok: true, member: gbrainRequester, ...(gbrainConversation ? { channel: gbrainConversation } : {}) });
       }
       if (path === '/admin/gbrain/flush' && req.method === 'POST') {
         // internal-task: waits until every posted message is in the brain. For tests and tools: the runner's own trial world calls

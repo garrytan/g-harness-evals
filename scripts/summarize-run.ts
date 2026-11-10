@@ -12,6 +12,9 @@
 // readable task.toml is family "unknown", with one WARN line and the same families_unresolved list.
 // trials.jsonl and manifest.json are read before the sealed guard is up, so a line that is not JSON is HE-RUN-007 naming
 // the file, the line and the parser's error class, never the parser's message (which quotes the line).
+// Before anything is scored, scripts/validate-records.ts checks trials.jsonl (methodology item 12): a malformed record, a
+// trial id recorded twice, or (with manifest.json) a trial the manifest does not plan or one in another cell or task than
+// planned exits 2 naming the trial ids, and nothing is written.
 //
 // Per cell: n, passes, pass rate with a task-clustered bootstrap 95% interval (tasks resampled with
 // replacement, 10,000 draws, seeded), consent violations, approval stops and how many were valid, terminations,
@@ -82,6 +85,7 @@ import { isSealedCell, setWorldPath, setWorldPinProblem } from '../runner/run.ts
 import { sealedGuard } from '../runner/heldout/guard.ts';
 import { readJsonFile, readJsonLines, sealedPaths } from '../runner/heldout/sealed.ts';
 import { RunnerError } from '../runner/errors.ts';
+import { describeProblems, validateRecords, type PlannedTrials } from './validate-records.ts';
 
 function arg(name: string, fallback?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -100,7 +104,7 @@ const EXCLUDED = new Set(['model_error', 'infra_error', 'exam_fault']);
 const rows = allRows.filter((t) => !EXCLUDED.has(t.termination));
 const excludedRows = allRows.filter((t) => EXCLUDED.has(t.termination));
 const manifestPath = join(results, 'manifest.json');
-const runManifest = existsSync(manifestPath) ? parsed(() => readJsonFile<{ cells: Array<{ id: string; split: 'dev' | 'heldout'; task_set?: string }>; sealed?: { set: string } }>(manifestPath)) : null;
+const runManifest = existsSync(manifestPath) ? parsed(() => readJsonFile<{ cells: Array<{ id: string; split: 'dev' | 'heldout'; task_set?: string }>; sealed?: { set: string } } & PlannedTrials>(manifestPath)) : null;
 const manifestCells = runManifest?.cells ?? [];
 const repoRoot = join(import.meta.dir, '..');
 const pinProblem = setWorldPinProblem(results, manifestCells, repoRoot);
@@ -114,6 +118,11 @@ if (sealedSet && !sealedRoot) { console.error(`HE-SEALED-001 ${results} was plan
 if (sealedSet && sealedRoot) {
   const g = sealedGuard({ root: sealedRoot, set: sealedSet, repoRoot: process.cwd(), preregJson: (runManifest as { sealed?: { receipt?: { prereg_json?: string } } }).sealed?.receipt?.prereg_json, logFile: join(results, 'summarize-run.sealed.log'), allow: [], label: 'scripts/summarize-run.ts' });
   g.say(`summarize-run: sealed run (set ${sealedSet}); summary.json is written beside trials.jsonl and the console tables go to ${g.logFile} (custody only)`);
+}
+const recordProblems = validateRecords(allRows, runManifest);
+if (recordProblems.length) {
+  console.error(`summarize-run: refused: ${join(results, 'trials.jsonl')} failed the record check, so nothing was scored: ${describeProblems(recordProblems)}`);
+  process.exit(2);
 }
 // A repo set has no world: its root holds no world/world.json, and the public world serves the gbrain slug tables.
 const worldPath = sealedSet && sealedRoot && sealedPaths(sealedRoot, sealedSet).kind === 'multiuser' ? join(sealedRoot, 'world', 'world.json') : DEFAULT_WORLD_PATH;

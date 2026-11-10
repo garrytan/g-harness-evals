@@ -34,7 +34,8 @@ Each harness was compared only with its model's home harness: Claude Code on Opu
 
 - These are dev results on public tasks at the pinned versions, not held-out confirmation. The cost differences are descriptive, with no test.
 - Claude Code and Codex are each model's own harness. They can't run the same model, so they are never compared with each other.
-- Every cell is a plain harness: no gstack, no gbrain.
+- Every cell is a plain harness: no gstack, no gbrain. Settings: effort high for every harness, through each harness's own setting.
+- **Corrected 2026-11-09:** cost per solved task now leaves out reservation charges for streams that never finished. On Sol: Codex $0.31 [$0.23, $0.40], Hermes Agent $0.38 [$0.29, $0.51], OpenClaw $0.50 [$0.37, $0.68], Pi unchanged. Every Sol row still shares rank 1, and Hermes Agent's range now overlaps Pi's. Opus is unchanged ([correction](docs/corrections/2026-11-09/README.md)).
 - OpenClaw on Opus's behind call depends on two choices: with every provider refusal removed, or under amendment 4's outage classification alone, it is inconclusive.
 - Under amendment 4's outage classification alone, 3 of 6 calls change: OpenClaw on Opus becomes inconclusive, OpenClaw on Sol becomes behind, and Pi on Sol becomes inconclusive.
 - A GitHub outage hit 353 runs at grade time (kept sample included). 351 were rerun and replaced; the lease stopped the other 2 reruns, so those 2 trials are excluded, though both runs' spend stays in cost. Cost per solved task leaves out the replaced runs' spend, and their passes aren't counted either.
@@ -74,6 +75,9 @@ Pass rates couldn't be told apart in any tested pair on these 20 public multi-us
 - On Sol, OpenClaw's headline cost is $0.22. Its interval uses each trial record's own cost, which leaves out one timed-out charge logged after its trial closed.
 - QM ran on the default Docker bridge, so its network was not held fixed and its comparisons are untested. QM uses Haiku for housekeeping (its shipped default, metered in its cost).
 - Both OpenClaw cells are incomplete: the last task's reps ended in a cap stop (two reps on Opus, all four on Sol). On Sol that task drops from its comparisons.
+- **Settings differ by harness, as each ships:** Claude Code and OpenClaw on Opus use adaptive thinking at effort medium, QM adaptive at effort low, Hermes Agent no thinking. Every Sol cell uses reasoning effort medium. So these rows mix harness design with effort level.
+- **Corrected 2026-11-09:** our runner posted each harness's closing text into the channel and graded it, and the v0.3 excuse checks failed some correct replies. Corrected Opus passes: QM 60/80 (75.0%), Claude Code 64/80 (80.0%), Hermes Agent 66/80 (82.5%), OpenClaw 67/78 (86.3%, the task-mean rate; the raw share is 85.9%). Cost per solved task: $0.18, $0.21, $0.23 and $0.40. OpenClaw on Sol without reservation charges is $0.17 [$0.12, $0.26] ($0.171, against Codex's $0.165, so Codex keeps the lowest point estimate on Sol by under a cent). No call or rank changes ([correction](docs/corrections/2026-11-09/README.md)).
+- **Time per trial includes our rig** starting and stopping each harness. In-turn medians: QM 24.0 s, Claude Code 39.0 s, Hermes Agent 63.4 s, OpenClaw 91.5 s on Opus; Codex 28.9 s and OpenClaw 75.7 s on Sol.
 - Full tables and receipts: [scoreboard](docs/scoreboard.md) and [matrix report](docs/benchmarks/2026-11-04-matrix-mu/report.md).
 
 ## Claude Code (Opus 5.5)
@@ -108,7 +112,7 @@ Pass rates couldn't be told apart in any tested pair on these 20 public multi-us
 
 ## QM (Pi loop, Opus 5.5)
 
-- **Lowest point estimate for cost per solved task on Opus, sharing rank 1.** $0.19 [$0.13, $0.28], tied fastest at 40.1 s ([finding](findings/harness-cost/README.md)).
+- **Lowest point estimate for cost per solved task on Opus, sharing rank 1.** $0.19 [$0.13, $0.28], tied fastest at 40.1 s, of which 16.1 s is our rig starting its stack; 24.0 s in turns ([finding](findings/harness-cost/README.md)).
 - **Cheaper per trial than Claude Code.** Claude Code cost $0.041 more per trial [+$0.020, +$0.061] ([finding](findings/harness-cost/README.md)).
 - **Caveat:** QM ran on the default Docker bridge, not the internal network. Its matrix comparisons are untested, and its cost-run contrast with Claude Code did not hold the network fixed ([finding](findings/harness-cost/README.md)).
 

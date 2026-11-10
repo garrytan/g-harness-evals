@@ -11,12 +11,17 @@
 // Scoring. A trial passes when grade is pass with no consent violation (scripts/matrix-analysis.ts trialValue):
 // harness_error is a fail; model_error, infra_error and exam_fault are excluded and counted per cell. A trial named in
 // --lookup-fails (a JSON list of trial ids, or { "trial_ids": [...] }: the trials a blind reader confirmed received the
-// answer key, from scripts/frontier-harbor/audit.ts) is a fail whatever its grade.
+// answer key, from scripts/frontier-harbor/audit.ts) is a fail whatever its grade. trials.jsonl is checked first by
+// scripts/validate-records.ts (schema and uniqueness, and membership when manifest.json is present), and refused on a problem.
 //
 // Per cell: the pass rate is the task mean (each task's mean over its scored attempts, then the mean over tasks) with a
 // task-clustered percentile bootstrap interval; rerun flip 2k(n-k)/(n(n-1)) per task with two or more scored attempts,
 // averaged over tasks; pass^k and pass@k with k the cell's planned attempts, over tasks with k scored attempts; cost per
-// solve, the cell's recorded USD (excluded trials included, and the first run of a rerun its lease stopped, merge-stages.ts frontier.first_run_usd; with --cost-with-replaced, also each run a rerun replaced) over its scored passes, with a task bootstrap interval; and
+// solve, the cell's recorded USD (excluded trials included, and the first run of a rerun its lease stopped, merge-stages.ts frontier.first_run_usd; with --cost-with-replaced, also each run a rerun replaced) over its scored passes, with a task bootstrap interval. When the
+// records carry usage.usd_reserved (records converted from 2026-11-09), that USD is metered only: the dollars the proxy
+// charged at a full reservation because a request carried no usage (a provider error inside a 200 stream) stay in the
+// ledger but leave usd_total, cost per solve, its interval and the cost-per-solve ratio, and each cell reports them as
+// cost.usd_reserved; a record without the field is counted as it always was; and
 // the median wall time of scored trials, labelled contended because trials of a shard may overlap.
 //
 // Pairs. Every cell of a model is paired with the model's home cell (third-party minus home). A pair keeps, per task, the
@@ -53,9 +58,10 @@ import { RunnerError } from '../../runner/errors.ts';
 import { readJsonFile, readJsonLines } from '../../runner/heldout/sealed.ts';
 import { clusteredPairedDelta, holmAdjusted, nonInferiorityP, powerNote, type PairedDelta } from '../../runner/stats/paired.ts';
 import { bootstrapLowerBound, costPerSolve, harnessFlip, pairedCostRatio, passAtK, passHatK, rerunFlip, taskBootstrapMean, type MeanInterval } from '../../runner/stats/frontier.ts';
-import { checkRecords, TERMINATIONS, trialValue, type MatrixManifest } from '../matrix-analysis.ts';
+import { TERMINATIONS, trialValue, type MatrixManifest } from '../matrix-analysis.ts';
 import { NO_ROOM, noRoomReason, pairHeadroom, runCanTellApart } from '../../runner/stats/headroom.ts';
 import { headroomGated } from '../headroom.ts';
+import { validateRecords } from '../validate-records.ts';
 
 export interface FrontierCell { id: string; model: string; harness: string; label?: string; attempts: number; descriptive?: boolean }
 export interface FrontierModel { id: string; label?: string; home: string }
@@ -167,9 +173,14 @@ interface CellData {
   rows: TrialRecord[];
   /** task -> attempt number -> 1 pass, 0 fail, null excluded */
   attempts: Map<string, Map<number, 0 | 1 | null>>;
+  /** Metered USD per task: what the trials' usage lines priced, without the dollars charged at a full reservation. */
   usdByTask: Map<string, number>;
+  /** The dollars charged at a full reservation (usage.usd_reserved, and the same for a first or replaced run). */
+  reservedUsd: number;
   unstarted: string[];
 }
+
+interface FrontierUsd { first_run_usd?: number; first_run_usd_reserved?: number; replaced_usd?: number; replaced_usd_reserved?: number }
 
 const scoredOf = (m: Map<number, 0 | 1 | null> | undefined) => [...(m?.values() ?? [])].filter((v): v is 0 | 1 => v !== null);
 
@@ -197,13 +208,8 @@ function keepPairwise(a: CellData, b: CellData): Kept {
 export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
   const problems = checkSpec(spec, input.manifest);
   if (problems.length) throw new SpecError(problems.join('; '));
-  if (input.manifest) {
-    const recordProblems = checkRecords(input.records, input.manifest);
-    if (recordProblems.length) throw new SpecError(`trials.jsonl disagrees with the manifest: ${recordProblems.slice(0, 10).join('; ')}${recordProblems.length > 10 ? '; ...' : ''}`);
-  } else {
-    const ids = new Set<string>();
-    for (const t of input.records) { if (ids.has(t.trial_id)) throw new SpecError(`trial ${t.trial_id} is recorded twice`); ids.add(t.trial_id); }
-  }
+  const recordProblems = validateRecords(input.records, input.manifest);
+  if (recordProblems.length) throw new SpecError(`trials.jsonl ${input.manifest ? 'disagrees with the manifest' : 'is not valid'}: ${recordProblems.slice(0, 10).join('; ')}${recordProblems.length > 10 ? '; ...' : ''}`);
   const seed = spec.seed ?? 7, draws = spec.draws ?? 10_000, alpha = spec.alpha ?? 0.05;
   const saturatedAt = spec.saturated_at ?? 0.95, minPaired = spec.min_paired_tasks ?? 10;
   const gated = headroomGated(spec);
@@ -221,6 +227,7 @@ export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
   if (unknownLookups.length) throw new SpecError(`--lookup-fails names ${unknownLookups.length} trial(s) with no record: ${unknownLookups.slice(0, 5).join(', ')}`);
   const value = (t: TrialRecord): 0 | 1 | null => { const v = trialValue(t); return v === 1 && lookups.has(t.trial_id) ? 0 : v; };
   const recorded = new Set(input.records.map((t) => t.trial_id));
+  const split = input.records.some((t) => t.usage?.usd_reserved !== undefined);
 
   const data = new Map<string, CellData>();
   for (const c of spec.cells) {
@@ -228,14 +235,19 @@ export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
     const numbers = attemptNumbers(rows);
     const attempts = new Map<string, Map<number, 0 | 1 | null>>();
     const usdByTask = new Map<string, number>();
+    let reservedUsd = 0;
     for (const t of rows) {
       const m = attempts.get(t.task) ?? new Map<number, 0 | 1 | null>();
       m.set(numbers.get(t)!, value(t));
       attempts.set(t.task, m);
-      usdByTask.set(t.task, (usdByTask.get(t.task) ?? 0) + (t.usage?.usd ?? 0) + ((t as { frontier?: { first_run_usd?: number } }).frontier?.first_run_usd ?? 0) + (input.cost_with_replaced ? (t as { frontier?: { replaced_usd?: number } }).frontier?.replaced_usd ?? 0 : 0));
+      const f = (t as { frontier?: FrontierUsd }).frontier;
+      const reserved = (t.usage?.usd_reserved ?? 0) + (f?.first_run_usd_reserved ?? 0) + (input.cost_with_replaced ? f?.replaced_usd_reserved ?? 0 : 0);
+      const charged = (t.usage?.usd ?? 0) + (f?.first_run_usd ?? 0) + (input.cost_with_replaced ? f?.replaced_usd ?? 0 : 0);
+      usdByTask.set(t.task, (usdByTask.get(t.task) ?? 0) + (reserved ? Math.max(charged - reserved, 0) : charged));
+      reservedUsd += reserved;
     }
     const unstarted = input.manifest ? input.manifest.trials.filter((t) => t.cell === c.id && !recorded.has(t.id)).map((t) => t.id) : [];
-    data.set(c.id, { spec: c, rows, attempts, usdByTask, unstarted });
+    data.set(c.id, { spec: c, rows, attempts, usdByTask, reservedUsd, unstarted });
   }
   const mainCells = [...data.values()].filter((d) => !d.spec.descriptive);
   const taskIds = [...new Set(mainCells.flatMap((d) => [...d.attempts.keys()]))].sort(byKey);
@@ -266,7 +278,7 @@ export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
       pass_rate: rate ? { estimate: round(rate.estimate)!, ci95: roundCi(rate.ci95), tasks: rate.n, scored_trials: scoredTrials.length, passes } : null,
       reliability: { k: c.attempts, pass_hat_k: roundMean(taskBootstrapMean(hat, opts)), pass_at_k: roundMean(taskBootstrapMean(at, opts)), tasks_with_fewer_than_k: tasks.length - hat.length },
       rerun_flip: roundMean(taskBootstrapMean(flips, opts)),
-      cost: { usd_total: round(cost.usd)!, solves: cost.solves, usd_per_solve: round(cost.usd_per_solve), ci95: roundCi(cost.ci95), note: cost.note },
+      cost: { usd_total: round(cost.usd)!, ...(split ? { usd_reserved: round(d.reservedUsd)! } : {}), solves: cost.solves, usd_per_solve: round(cost.usd_per_solve), ci95: roundCi(cost.ci95), note: cost.note },
       wall_s_median_contended: (() => { const m = median(scoredTrials.map((t) => t.wall_ms)); return m === null ? null : round(m / 1000, 1); })(),
     };
   };
@@ -365,7 +377,7 @@ export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
       estimator: "task mean (each task's mean pass over its scored attempts, then the mean over tasks); task-clustered percentile bootstrap intervals; pairs from runner/stats/paired.ts clusteredPairedDelta over per-task means of the attempts scored in both cells, Holm within model across primary pairs for the two-sided sign-flip p and for the one-sided non-inferiority p",
       seed, draws, alpha, ni_margin: NI_MARGIN, saturated_at: saturatedAt, min_paired_tasks: minPaired, drift_threshold: spec.drift_threshold ?? null,
       wall_time: 'median over scored trials, contended (trials of a shard may overlap)',
-      cost: input.cost_with_replaced ? 'recorded USD of every trial of the cell (excluded ones included) plus each run a rerun replaced (frontier.replaced_usd, --cost-with-replaced), over scored passes' : 'recorded USD of every trial record of the cell (excluded ones included; a run a rerun replaced is not a record) over scored passes',
+      cost: `${input.cost_with_replaced ? 'recorded USD of every trial of the cell (excluded ones included) plus each run a rerun replaced (frontier.replaced_usd, --cost-with-replaced), over scored passes' : 'recorded USD of every trial record of the cell (excluded ones included; a run a rerun replaced is not a record) over scored passes'}${split ? '; metered dollars only: the dollars the proxy charged at a full reservation because a request carried no usage (usage.usd_reserved) are left out of usd_total, cost per solve and its interval, and reported as usd_reserved' : ''}`,
     },
     verdict_rules: Object.fromEntries((gated ? GATED_VERDICTS : VERDICTS).map((v) => [v, VERDICT_RULES[v]])) as Partial<Record<Verdict, string>>,
     trials_planned: planned, trials_recorded: input.records.length - outside, trials_outside_spec: outside, trials_unstarted: unstarted,
@@ -401,7 +413,7 @@ export function renderMarkdown(a: FrontierAnalysis): string {
     const row = a.models.map((m) => {
       const c = a.cells.find((x) => x.harness === h && x.model === m.id);
       if (!c) return 'not run';
-      return [`${c.pass_rate ? `${pct(c.pass_rate.estimate)} ${ciPct(c.pass_rate.ci95)}` : 'no scored trial'}`, `${c.cost.usd_per_solve === null ? 'no solve' : `${usd(c.cost.usd_per_solve)} per solve ${ciUsd(c.cost.ci95)}`}`,
+      return [`${c.pass_rate ? `${pct(c.pass_rate.estimate)} ${ciPct(c.pass_rate.ci95)}` : 'no scored trial'}`, `${c.cost.usd_per_solve === null ? 'no solve' : `${usd(c.cost.usd_per_solve)} per solve ${ciUsd(c.cost.ci95)}`}${c.cost.usd_reserved === undefined ? '' : ` (metered; ${usd(c.cost.usd_reserved)} charged at reservation left out)`}`,
         `${c.wall_s_median_contended === null ? 'n/a' : `${c.wall_s_median_contended.toFixed(1)} s`} median (contended)`, `**${c.verdict}**`].join('<br>');
     });
     out.push(`| ${h} | ${row.join(' | ')} |`);
@@ -432,7 +444,7 @@ export function renderMarkdown(a: FrontierAnalysis): string {
   out.push('', '## Reliability and exclusions per cell', '', '| Cell | k | pass^k [95% CI] | pass@k [95% CI] | Rerun flip [95% CI] | Tasks / scored trials | Excluded (model / infra / exam) | Harness errors as fails | Lookups as fails | Cap stops | Unstarted | USD total |', '|---|---|---|---|---|---|---|---|---|---|---|---|');
   for (const c of a.cells) {
     const r = c.reliability;
-    out.push(`| ${c.label} | ${r.k} | ${r.pass_hat_k ? `${pct(r.pass_hat_k.estimate)} ${ciPct(r.pass_hat_k.ci95)}` : 'n/a'} | ${r.pass_at_k ? `${pct(r.pass_at_k.estimate)} ${ciPct(r.pass_at_k.ci95)}` : 'n/a'} | ${c.rerun_flip ? `${pct(c.rerun_flip.estimate)} ${ciPct(c.rerun_flip.ci95)}` : 'n/a'} | ${c.pass_rate?.tasks ?? 0} / ${c.trials.scored} | ${c.trials.excluded.model_error} / ${c.trials.excluded.infra_error} / ${c.trials.excluded.exam_fault} | ${c.trials.harness_error_as_fail} | ${c.trials.lookup_fails} | ${c.trials.cap_stop} | ${c.trials.unstarted.length} | ${usd(c.cost.usd_total)} |`);
+    out.push(`| ${c.label} | ${r.k} | ${r.pass_hat_k ? `${pct(r.pass_hat_k.estimate)} ${ciPct(r.pass_hat_k.ci95)}` : 'n/a'} | ${r.pass_at_k ? `${pct(r.pass_at_k.estimate)} ${ciPct(r.pass_at_k.ci95)}` : 'n/a'} | ${c.rerun_flip ? `${pct(c.rerun_flip.estimate)} ${ciPct(c.rerun_flip.ci95)}` : 'n/a'} | ${c.pass_rate?.tasks ?? 0} / ${c.trials.scored} | ${c.trials.excluded.model_error} / ${c.trials.excluded.infra_error} / ${c.trials.excluded.exam_fault} | ${c.trials.harness_error_as_fail} | ${c.trials.lookup_fails} | ${c.trials.cap_stop} | ${c.trials.unstarted.length} | ${usd(c.cost.usd_total)}${c.cost.usd_reserved === undefined ? '' : ` metered + ${usd(c.cost.usd_reserved)} reserved`} |`);
   }
   const dropped = a.pairs.filter((p) => p.dropped.length);
   if (dropped.length) {

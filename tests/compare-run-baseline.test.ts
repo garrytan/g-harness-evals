@@ -84,7 +84,7 @@ describe('compare-run --baseline', () => {
     writeFileSync(join(dir, 'trials.jsonl'), [...lines, lines[0]].join('\n') + '\n');
     const r = run(['--results', dir, '--baseline', 'zf-a,zf-sol', '--draws', '100']);
     expect(r.status).toBe(2);
-    expect(r.stderr).toContain('has two trials for');
+    expect(r.stderr).toContain('is recorded twice');
   });
 
   test('without --baseline the comparisons file keeps its old keys', () => {

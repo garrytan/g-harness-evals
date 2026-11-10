@@ -39,7 +39,11 @@
 // (manifest trials with no record: an incomplete run is reported from what exists and never errors for it), pass rate
 // with interval, floor and ceiling task counts, USD over every recorded trial (excluded ones too, plus charged rows of
 // earlier, interrupted attempts of a trial, of planned trials with no record, and rows logged after a trial's meter
-// closed) and per pass, USD by
+// closed) and per pass (when the records carry usage.usd_reserved, records written from 2026-11-09, per pass leaves out
+// the dollars the proxy charged at a full reservation because a request carried no usage, in the records and, with usage
+// logs, in rows of earlier attempts or logged after a trial's meter closed, reported as cost.usd_reserved; each trial counts
+// once, at the larger of its record's usd_reserved and its logged reservation rows,
+// while USD total keeps them; a record without the field counts as it always did), USD by
 // model (utility-model housekeeping shows here), tokens (with usage logs, tokens come from each trial's current attempt's
 // forwarded harness rows and USD by model from every charged row, on the same attempt boundary as USD; a trial whose record
 // shows spend but whose current attempt has no charged row falls back to its trials.jsonl usage), the cache-write share of spend (scripts/anatomy/cost-split.ts
@@ -49,7 +53,7 @@
 // with at least one call, over the trials whose event log was read (the denominator is printed).
 //
 // A spec that names a cell the manifest lacks, a primary family of the wrong size, a duplicate id, a dangling reference
-// or a run_id other than the manifest's is refused (exit 2), and so is a trials.jsonl with a duplicate trial id, a trial
+// or a run_id other than the manifest's is refused (exit 2), and so is a trials.jsonl that scripts/validate-records.ts refuses: a malformed record, a duplicate trial id, a trial
 // the manifest does not plan, or a cell or task that differs from the plan. A results directory with no manifest.json is
 // refused (the sealed check and the unstarted list both read it), and so is a merged results directory whose shards.json
 // names a shard with spend and no <shard>.proxy-usage.ndjson beside it (a usage log that did not come back from its VM; a shard
@@ -75,6 +79,7 @@ import { RunnerError } from '../runner/errors.ts';
 import { trialDirFor } from '../runner/trial/run.ts';
 import { NO_ROOM, noRoomReason, pairHeadroom, runCanTellApart } from '../runner/stats/headroom.ts';
 import { headroomGated } from './headroom.ts';
+import { TERMINATIONS, validateRecords } from './validate-records.ts';
 
 export interface SpecComparison { id: string; a: string; b: string }
 export interface SpecDrop { id: string; frontier: string; cheap: string }
@@ -108,27 +113,11 @@ export interface MatrixInput {
   truncated?: { usage_logs: number; event_logs: number };
 }
 
-export const TERMINATIONS: readonly Termination[] = ['completed', 'timeout', 'approval_stop', 'harness_error', 'model_error', 'infra_error', 'exam_fault'];
+export { TERMINATIONS };
 export const EXCLUDED: ReadonlySet<Termination> = new Set<Termination>(['model_error', 'infra_error', 'exam_fault']);
 export const METHOD = "task-mean estimator (each task's mean pass over its scored repetitions, then the mean over tasks); task-clustered percentile bootstrap intervals (tasks resampled with replacement); paired differences and differences of differences from runner/stats/paired.ts clusteredPairedDelta with one item per task, p from its task-level sign-flip test; Holm across the primary family only";
 
 export class SpecError extends Error {}
-
-/** Records that disagree with the manifest: a duplicate trial id, a record the manifest does not plan, or a cell or task
- *  that differs from the planned trial's. Methodology item 12: uniqueness and membership are checked before scoring. */
-export function checkRecords(records: TrialRecord[], manifest: MatrixManifest): string[] {
-  const planned = new Map(manifest.trials.map((t) => [t.id, t]));
-  const seen = new Set<string>();
-  const problems: string[] = [];
-  for (const t of records) {
-    if (seen.has(t.trial_id)) problems.push(`trial ${t.trial_id} is recorded twice`);
-    seen.add(t.trial_id);
-    const p = planned.get(t.trial_id);
-    if (!p) problems.push(`trial ${t.trial_id} is not in the manifest`);
-    else if (p.cell !== t.cell || (p.task !== undefined && p.task !== t.task)) problems.push(`trial ${t.trial_id} is recorded as cell ${t.cell}, task ${t.task}; the manifest plans cell ${p.cell}, task ${p.task}`);
-  }
-  return problems;
-}
 
 /** The minimum paired task clusters for an inferential comparison (methodology item 10). */
 export const MIN_TESTED_TASKS = 10;
@@ -230,13 +219,14 @@ export function holmFamily(pValues: number[], alpha: number): Array<{ holm_p: nu
 export function analyzeMatrix(input: MatrixInput, spec: MatrixSpec) {
   const problems = checkSpec(spec, input.manifest);
   if (problems.length) throw new SpecError(problems.join('; '));
-  const recordProblems = checkRecords(input.records, input.manifest);
+  const recordProblems = validateRecords(input.records, input.manifest);
   if (recordProblems.length) throw new SpecError(`trials.jsonl disagrees with the manifest: ${recordProblems.slice(0, 10).join('; ')}${recordProblems.length > 10 ? '; ...' : ''}`);
   const seed = spec.seed ?? 7, draws = spec.draws ?? 10_000, alpha = spec.alpha ?? 0.05, minInformative = spec.h3_min_informative_tasks ?? 8;
   const specCells = new Set(spec.cells.map((c) => c.id));
   const recordsOf = new Map<string, TrialRecord[]>();
   for (const t of input.records) if (specCells.has(t.cell)) recordsOf.set(t.cell, [...(recordsOf.get(t.cell) ?? []), t]);
   const recorded = new Set(input.records.map((t) => t.trial_id));
+  const reservedSplit = input.records.some((t) => t.usage?.usd_reserved !== undefined);
   const plannedOf = (cell: string) => input.manifest.trials.filter((t) => t.cell === cell);
   const means = new Map(spec.cells.map((c) => [c.id, taskMeans(recordsOf.get(c.id) ?? [])]));
   const taskUniverse = (cell: string) => new Set([...plannedOf(cell).map((t) => t.task ?? t.id.split('/')[2] ?? ''), ...(recordsOf.get(cell) ?? []).map((t) => t.task)].filter(Boolean));
@@ -259,9 +249,11 @@ export function analyzeMatrix(input: MatrixInput, spec: MatrixSpec) {
   const currentRows = new Map<string, UsageRow[]>();
   const chargedNow = new Set<string>();
   const rowUsdByModel = new Map<string, Record<string, number>>();
+  const loggedReserve = new Map<string, { cell: string; usd: number }>();
   for (const r of input.usageRows ?? []) {
     const o = owner.get(r.key);
     if (!o) continue;
+    if (r.charged_reservation === true) loggedReserve.set(o.trial, { cell: o.cell, usd: (loggedReserve.get(o.trial)?.usd ?? 0) + (r.actual_usd ?? 0) });
     const current = o.start === null || Date.parse(r.at) >= o.start;
     if (current && (r.actual_usd ?? 0) > 0) chargedNow.add(o.trial);
     if ((r.actual_usd ?? 0) > 0) {
@@ -301,6 +293,9 @@ export function analyzeMatrix(input: MatrixInput, spec: MatrixSpec) {
     const usdEarlier = earlier ? earlier.by_cell[c.id]?.usd ?? 0 : null;
     const usdBeyond = beyond ? beyond[c.id] ?? 0 : null;
     const usdTotal = usdRecorded + (usdEarlier ?? 0) + (usdBeyond ?? 0);
+    const recordReserve = new Map(rows.map((t) => [t.trial_id, t.usage?.usd_reserved ?? 0]));
+    const reserveTrials = new Set([...recordReserve.keys(), ...[...loggedReserve].filter(([, v]) => v.cell === c.id).map(([trial]) => trial)]);
+    const usdReserved = sum([...reserveTrials].map((trial) => Math.max(recordReserve.get(trial) ?? 0, loggedReserve.get(trial)?.usd ?? 0)));
     const modelUsd: Record<string, number> = { ...rowUsdByModel.get(c.id) };
     for (const t of rows.filter(fromRecord)) for (const [model, v] of Object.entries(t.usage?.by_model ?? {})) modelUsd[model] = (modelUsd[model] ?? 0) + v.usd;
     const byModel = Object.fromEntries(Object.entries(modelUsd).map(([model, usd]) => [model, round(usd)!]));
@@ -333,7 +328,8 @@ export function analyzeMatrix(input: MatrixInput, spec: MatrixSpec) {
       floor_tasks: [...m.values()].filter((x) => x.mean === 0).length,
       ceiling_tasks: [...m.values()].filter((x) => x.mean === 1).length,
       cost: { usd_total: round(usdTotal), usd_recorded_trials: round(usdRecorded), usd_earlier_attempts: usdEarlier === null ? null : round(usdEarlier), usd_rows_beyond_records: usdBeyond === null ? null : round(usdBeyond),
-        usd_per_recorded_trial: rows.length ? round(usdRecorded / rows.length) : null, passes, usd_per_pass: passes ? round(usdTotal / passes) : null, usd_by_model: byModel },
+        usd_per_recorded_trial: rows.length ? round(usdRecorded / rows.length) : null, passes, usd_per_pass: passes ? round((reservedSplit ? Math.max(usdTotal - usdReserved, 0) : usdTotal) / passes) : null,
+        ...(reservedSplit ? { usd_reserved: round(usdReserved) } : {}), usd_by_model: byModel },
       tokens: { input: tokens('input_tokens'), output: tokens('output_tokens'), cache_read: tokens('cached_tokens'),
         per_recorded_trial: rows.length ? { input: Math.round(tokens('input_tokens') / rows.length), output: Math.round(tokens('output_tokens') / rows.length), cache_read: Math.round(tokens('cached_tokens') / rows.length) } : null },
       cache_write_share: sc && splitTotal > 0 ? round(sc.cache_write_usd / splitTotal, 4) : null,
@@ -441,9 +437,9 @@ export function renderMarkdown(a: MatrixAnalysis): string {
   for (const c of a.cells) {
     const t = c.tokens.per_recorded_trial;
     const reps = c.reps_per_task ? (c.reps_per_task.min === c.reps_per_task.max ? `${c.reps_per_task.min}` : `${c.reps_per_task.min} to ${c.reps_per_task.max}`) : 'n/a';
-    out.push(`| ${c.label} | ${c.pass_rate ? `${pct(c.pass_rate.estimate)} ${ciPct(c.pass_rate.ci95)}` : 'n/a'} | ${c.pass_rate?.tasks ?? 0} / ${c.trials.scored} | ${reps} | ${c.floor_tasks} / ${c.ceiling_tasks} | ${c.trials.excluded.model_error} / ${c.trials.excluded.infra_error} / ${c.trials.excluded.exam_fault} | ${c.trials.harness_error_as_fail} | ${c.trials.unstarted.length} | ${usd(c.cost.usd_total)}${c.cost.usd_earlier_attempts ? ` (incl. ${usd(c.cost.usd_earlier_attempts)} from interrupted attempts and unrecorded trials)` : ''}${c.cost.usd_rows_beyond_records ? ` (incl. ${usd(c.cost.usd_rows_beyond_records)} logged after a trial's meter closed)` : ''} | ${c.cost.usd_per_pass === null ? 'no passes' : usd(c.cost.usd_per_pass)} | ${t ? `${t.input} / ${t.output} / ${t.cache_read}` : 'n/a'} | ${pct(c.cache_write_share)} | ${c.wall_ms.median === null ? 'n/a' : (c.wall_ms.median / 1000).toFixed(1)} | ${c.world_mcp.calls_per_trial ?? 'n/a'} (${c.world_mcp.trials_with_event_log} logs) | ${c.world_mcp.trials_with_call} of ${c.world_mcp.trials_with_event_log} (${pct(c.world_mcp.share_with_call)}) |`);
+    out.push(`| ${c.label} | ${c.pass_rate ? `${pct(c.pass_rate.estimate)} ${ciPct(c.pass_rate.ci95)}` : 'n/a'} | ${c.pass_rate?.tasks ?? 0} / ${c.trials.scored} | ${reps} | ${c.floor_tasks} / ${c.ceiling_tasks} | ${c.trials.excluded.model_error} / ${c.trials.excluded.infra_error} / ${c.trials.excluded.exam_fault} | ${c.trials.harness_error_as_fail} | ${c.trials.unstarted.length} | ${usd(c.cost.usd_total)}${c.cost.usd_earlier_attempts ? ` (incl. ${usd(c.cost.usd_earlier_attempts)} from interrupted attempts and unrecorded trials)` : ''}${c.cost.usd_rows_beyond_records ? ` (incl. ${usd(c.cost.usd_rows_beyond_records)} logged after a trial's meter closed)` : ''}${c.cost.usd_reserved === undefined ? '' : ` (incl. ${usd(c.cost.usd_reserved)} charged at reservation)`} | ${c.cost.usd_per_pass === null ? 'no passes' : usd(c.cost.usd_per_pass)} | ${t ? `${t.input} / ${t.output} / ${t.cache_read}` : 'n/a'} | ${pct(c.cache_write_share)} | ${c.wall_ms.median === null ? 'n/a' : (c.wall_ms.median / 1000).toFixed(1)} | ${c.world_mcp.calls_per_trial ?? 'n/a'} (${c.world_mcp.trials_with_event_log} logs) | ${c.world_mcp.trials_with_call} of ${c.world_mcp.trials_with_event_log} (${pct(c.world_mcp.share_with_call)}) |`);
   }
-  out.push('', `Cache-write share: from scripts/anatomy/cost-split.ts over the run's proxy usage logs (split ${a.cost_split.status}${a.cost_split.note ? `: ${a.cost_split.note}` : ''}). USD total counts every recorded trial, excluded ones included, ${a.cost_split.earlier_attempts ? 'plus charged rows from earlier, interrupted attempts of a trial, from planned trials with no record, and logged after a trial\'s meter closed' : 'but not earlier, interrupted attempts, because the results directory has no proxy usage log'}; USD per pass divides it by scored passes.`);
+  out.push('', `Cache-write share: from scripts/anatomy/cost-split.ts over the run's proxy usage logs (split ${a.cost_split.status}${a.cost_split.note ? `: ${a.cost_split.note}` : ''}). USD total counts every recorded trial, excluded ones included, ${a.cost_split.earlier_attempts ? 'plus charged rows from earlier, interrupted attempts of a trial, from planned trials with no record, and logged after a trial\'s meter closed' : 'but not earlier, interrupted attempts, because the results directory has no proxy usage log'}; USD per pass divides it by scored passes${a.cells.some((c) => c.cost.usd_reserved !== undefined) ? ', after taking out the dollars the proxy charged at a full reservation because a request carried no usage (usage.usd_reserved), which stay in USD total' : ''}.`);
   for (const c of a.cells.filter((x) => x.cache_write_share_note)) out.push(`- ${c.label}: cache-write share not published: ${c.cache_write_share_note}.`);
   if (a.truncated_log_lines.usage_logs || a.truncated_log_lines.event_logs) out.push('', `Cut-off log lines skipped: ${a.truncated_log_lines.usage_logs} in usage logs, ${a.truncated_log_lines.event_logs} in event logs.${a.truncated_log_lines.usage_logs ? ' A cut-off usage line may have held a charged row, so earlier-attempt USD is a lower bound.' : ''}`);
   out.push('', `## Primary comparisons (Holm across ${a.primary.holm_family_size})`, '', '| Comparison | A | B | A / B task mean | B minus A [95% CI] | Tasks paired | Tasks dropped | p (sign-flip) | Holm step | Holm p | Verdict |', '|---|---|---|---|---|---|---|---|---|---|---|');

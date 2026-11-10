@@ -252,6 +252,16 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         expect(c.repetitions).toBe(c.model === 'anthropic:claude-opus-5-5' ? 5 : 3); expect(['anthropic:claude-opus-5-5', 'openai:gpt-6.1-sol']).toContain(c.model);
         expect(p.cells).toHaveLength(10); expect(buildManifest(p, sha256, '2026-10-31T00:00:00Z').trials).toHaveLength(880);
       }
+      else if (p.run_id === 'harness-zero-h2h-recall-rerun-2026-11') {
+        // The cross-member recall rerun (dev check, not counted): h2h's cr-01 to cr-04 at three repetitions on Opus, the gbrain trio with channel_remember
+        // "conversation" on the member brain under member-sources with the memory preamble, and the lean and Claude Code baselines with no brain.
+        expect(c.task_set).toBe('v0.3/dev-draw-2'); expect(c.split).toBe('dev'); expect(c.network).toBe('internal'); expect(c.ceiling).toEqual({ input_tokens: 80000, output_tokens: 6000 });
+        expect(c.model).toBe('anthropic:claude-opus-5-5'); expect(c.repetitions).toBe(3); expect(['harness-zero', 'claude-code']).toContain(c.harness);
+        expect(c.tasks).toEqual(['cr-01-marrow-fieldworks-seat-count', 'cr-02-tansley-parcel-deadline-retraction', 'cr-03-thornbury-deadline-retraction', 'cr-04-tamsin-cold-chain-deadline']);
+        expect(p.cells).toHaveLength(5); expect(buildManifest(p, sha256, '2026-11-09T00:00:00Z').trials).toHaveLength(60); expect(p.spend_cap_usd).toBe(60);
+        if (!c.gbrain) { expect(c.preamble).toBeUndefined(); continue; }
+        expect(c.gbrain).toEqual({ surface: 'starter', brain: 'member', scope: 'member-sources', channel_remember: 'conversation' }); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-memory.md');
+      }
       else if (p.run_id.startsWith('harness-zero-h2h-')) {
         // internal-task Phase D: Harness Zero's frozen candidates against the field on the second v0.3 dev draw, Opus 5.5 and GPT-6.1 Sol, no gstack; the gbrain trio
         // (lean with mcp-instructions on and off, Claude Code) on Opus is told on the member brain under member-sources with the memory preamble, three repetitions.
