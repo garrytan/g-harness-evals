@@ -118,10 +118,10 @@ What the plan still asks for on top of this (TODOS): egress enforcement and per-
 
 ## Price table
 
-Chat list prices live in one dated file, `runner/pricing/prices-2026-11-07.json` (earlier tables stay beside it, unchanged). `model-pricing.ts` reads it at import and refuses a malformed one (`parsePriceTable`, HE-PIN-004). The metering ledger prices a model from its own `CHAT_PRICE_OVERRIDES` or `HARNESS_CHAT_PRICES` row when it has one and falls back to this table, so for those models the ledger's row, not this file, is what a run was metered at.
+Chat list prices live in one dated file, `runner/pricing/prices-2026-11-09.json` (earlier tables stay beside it, unchanged). `model-pricing.ts` reads it at import and refuses a malformed one (`parsePriceTable`, HE-PIN-004). The metering ledger prices a model from its own `CHAT_PRICE_OVERRIDES` or `HARNESS_CHAT_PRICES` row when it has one and falls back to this table, so for those models the ledger's row, not this file, is what a run was metered at.
 
 - **One row per `provider:model` id.** Input, output, cache write (5-minute), cache read, and a long-prompt tier where the provider bills one, all in US dollars per million tokens. A `null` cache rate means none is modelled, so consumers charge the input rate.
-- **Long prompts.** A row's `long_prompt` applies to the whole request once its prompt (input plus cache reads and writes) is over `threshold_tokens`. In this table only `claude-haiku-5-5` has one.
+- **Long prompts.** A row's `long_prompt` applies to the whole request once its prompt (input plus cache reads and writes) is over `threshold_tokens`. In this table only `claude-haiku-5-5` and `gpt-6-astra` have one.
 - **Every row names its source.** `source_url` and `source_date`, with `source_basis` saying where they came from: `row` (the comment the row carried in `model-pricing.ts`), `ledger` (the input and output price and its check date in `runner/ledger/budget-ledger.ts`; cache rates the ledger row adds are not copied), `file-header` (the old file header's 2026-07-26 check) or `supplied` (the code named none, so the provider's pricing page and the table date).
 - **A price change is a new file.** Add `prices-<date>.json`, point `PRICE_TABLE_FILE` at it, and change the identity test's fixture on purpose in the same reviewed change. Never edit a dated file in place.
 - **Record which table priced a run.** `priceTableIdentity()` returns the file's path and sha256. It names the list prices only: a model the ledger overrides was metered at the ledger's row, so record the ledger's commit beside it.
@@ -139,6 +139,10 @@ The scripts that turn `results/<run>/trials.jsonl` into report tables, all keyle
 **Spend reconciliation.** `bun scripts/reconcile-provider.ts --results <dir> [--results <dir> ...] [--write] [--api-key-id <apikey_...>]` sums a run's priced proxy lines per UTC day and model, cross-checks them against `trials.jsonl` and the lease ledger (a difference over a cent is reported and exits 1), prints the per-day sheet in the console's shape, and, with `ANTHROPIC_ADMIN_KEY` in the environment, fetches the Admin API's usage report (by model and api key) and cost report for the span and compares them with the proxy totals pooled per day across every run given, because runs that share a day and a key are one bucket to the provider; the verdict is a relative residual per day and model against the 1% bar with a status (`performed`, `performed_mismatch`, `performed_unattributed` without `--api-key-id`, `performed_no_data`, `not_performed`), a day that ended less than 24 hours before the fetch left out. `--write` saves `results/spend-reconciliation.json` (the sheet, the cross-check, the provider rows for the chosen key only, and the labelled `provider_reconciliation` line); `--provider-fixture` replays a recorded response for tests and refuses `--write`. Every byte out passes a tripwire against the key value and a redaction of key-shaped strings. HE-RECONCILE-001 to 004 in docs/errors.md.
 
 ## Changelog
+
+### 2026-11-09: the price table section names prices-2026-11-09.json (internal-task)
+
+The "Price table" section now names `runner/pricing/prices-2026-11-09.json`, the 2026-11-07 table plus `claude-fable-5-2`, and says that `gpt-6-astra` has a long-prompt tier as well as `claude-haiku-5-5`. Why: this branch points `PRICE_TABLE_FILE` at the new table for fable-5-2-coding-2026-11, and the section still named the 2026-11-07 file and had not listed the `gpt-6-astra` tier that the 2026-11-07 table added. No price changed.
 
 ### 2026-11-06: the program ledger's recorded cap re-recorded for R71 (internal-task)
 

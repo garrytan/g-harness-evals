@@ -106,7 +106,7 @@ export const ANTHROPIC_CACHE_WRITE_5M_MULT = 1.25;
 export const ANTHROPIC_CACHE_WRITE_1H_MULT = 2;
 
 /** The dated price table this module reads, in runner/pricing/. */
-export const PRICE_TABLE_FILE = 'prices-2026-11-07.json';
+export const PRICE_TABLE_FILE = 'prices-2026-11-09.json';
 const PRICE_TABLE_BYTES = readFileSync(new URL(`./${PRICE_TABLE_FILE}`, import.meta.url));
 
 /** The price table's repository path and the sha256 of its bytes, for a run or bundle to record. */

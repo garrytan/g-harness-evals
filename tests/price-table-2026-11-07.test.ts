@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CANONICAL_PRICING, PRICE_TABLE_FILE, canonicalLookup } from '../runner/pricing/model-pricing.ts';
+import { CANONICAL_PRICING, canonicalLookup } from '../runner/pricing/model-pricing.ts';
 import { CHAT_PRICE_OVERRIDES, chatPrice, priceRequest } from '../runner/ledger/budget-ledger.ts';
 import { buildManifest, loadPrereg, type Prereg } from '../runner/run.ts';
 
@@ -15,8 +15,8 @@ const tmp = mkdtempSync(join(tmpdir(), 'prices-2026-11-07-'));
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
 
 describe('prices-2026-11-07', () => {
-  test('is the table model-pricing.ts reads, and holds every 2026-11-04 row unchanged plus gpt-6-astra', () => {
-    expect(PRICE_TABLE_FILE).toBe('prices-2026-11-07.json');
+  test('holds every 2026-11-04 row unchanged plus gpt-6-astra', () => {
+    // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-07.json this file checks the 2026-11-07 table itself, which prices-2026-11-09.json now replaces as the default
     const before = read('prices-2026-11-04.json'), now = read('prices-2026-11-07.json'); // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-04.json the new table is checked against the table it replaces
     expect(now.date).toBe('2026-11-07');
     const added = now.rows.filter(r => !before.rows.some(b => b.provider === r.provider && b.model === r.model));
