@@ -667,6 +667,30 @@
       ],
       "pattern": "sk_l(?:)ive_4Hc9Tq2wXr8Lm1Vb6Np0Zs3Ke7f(?![A-Za-z0-9_])",
       "reason": "community-claims P5/P7 fixture, exact value: malformed sk_live_ literal"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "harnesses/pi/pin.json"
+      ],
+      "pattern": "(?:x-api-key|Authorization): (?:Bearer )?HE_MODEL_API_KEY\",?$",
+      "reason": "Pi pin.json describes which header carries the proxy bearer; the line names the HE_MODEL_API_KEY environment variable, not a value"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tests/fixtures/qm-openai/golden/stack-environments.json"
+      ],
+      "pattern": "golden-connector\",?$",
+      "reason": "fixed stand-in connector secret that make-golden.ts feeds QM's stack when it writes the golden, not a credential"
+    },
+    {
+      "finding": "db.url_with_password",
+      "paths": [
+        "tests/fixtures/qm-openai/golden/stack-environments.json"
+      ],
+      "pattern": "post(?:)gres://postgres:qm-trial@127\\.0\\.0\\.1:55432/qm(?![A-Za-z0-9_])",
+      "reason": "QM's loopback Postgres URL with the compose default password from harnesses/qm/compose.yaml, in a test golden"
     }
   ]
 }
