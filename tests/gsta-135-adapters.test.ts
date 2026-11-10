@@ -421,7 +421,7 @@ describe('hermes chat-mode adapter', () => {
     expect(r.out).toContain('alive=yes');
   }, 30000);
   test('a transcript that flips after /exit is not credited: the forced termination clears the verdict', () => {
-    const r = watch(['complete', 'complete', 'complete', 'pending']);
+    const r = watch(['complete', 'pending'], { HE_GSTACK_CHAT_GRACE_S: '0' });
     expect(r.typed).toBe('/exit\r');
     expect(r.out).toContain('LOG watcher: hermes did not leave after /exit (1s) and the transcript is pending again; terminating the session');
     expect(r.out).toContain('verdict= forced=1');
