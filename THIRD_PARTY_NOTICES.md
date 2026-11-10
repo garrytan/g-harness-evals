@@ -69,6 +69,7 @@ SOFTWARE.
 - **Copyright:** Copyright (c) 2025 Nous Research
 - **Paths that carry its text:**
   - `**/SOUL.md` under `docs/benchmarks/2026-10-25-gbrain-installer/`, `docs/benchmarks/2026-10-25-gbrain-installer-hook/` and `docs/benchmarks/2026-10-29-v03-installer-dev/` (trial state: Hermes's SOUL.md, some with gbrain's block appended)
+  - `gbrain/hermes/SOUL.md` (Hermes's SOUL.md at the pinned commit, vendored for the gbrain image build)
   - `docs/harness-anatomy/receipts/anatomy-capture-hermes-*`
   - `tests/fixtures/anatomy/hermes-chat-probe.ndjson.gz`, `tests/fixtures/anatomy/hermes-oneshot-probe.ndjson.gz`
   - `tests/fixtures/gsta-135/gsta135-hermes-*`

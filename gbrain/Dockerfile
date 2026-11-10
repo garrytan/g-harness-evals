@@ -196,8 +196,9 @@ RUN if env -i PATH="$PATH" HOME=/tmp bun /opt/gbrain/src/cli.ts access --help 2>
 # internal-task-a: the install bundle, built from the gbrain checkout and the two bot-visible brains, keyless. internal-task-b: the installer
 # section runs gbrain setup <harness> --instructions-only; for Hermes the build HERMES_HOME is seeded first with Hermes's own
 # SOUL.md at the pinned Hermes commit (harnesses/hermes/pin.json soul_md: what Hermes's first run writes into HERMES_HOME, which
-# gbrain never creates), fetched here and checked against the pinned sha256. For Claude Code and Codex (gbrain#7989) setup runs
-# with HOME=/harness-state, the adapters' state dir, so the turn hook's command, gbrain's ledger and Codex's trust key name the
+# gbrain never creates), vendored byte for byte at gbrain/hermes/SOUL.md and checked against the pinned sha256. It is copied, not
+# fetched: GitHub's raw host answers unauthenticated build fetches with HTTP 429 under load, which failed the keyless check.
+# For Claude Code and Codex (gbrain#7989) setup runs with HOME=/harness-state, the adapters' state dir, so the turn hook's command, gbrain's ledger and Codex's trust key name the
 # trial's own paths; the hook runs gbrain, so the checkout is compiled here with its own `bun run build` (one file, no bun needed
 # in the harness image) and copied into each view at /harness-state/.local/bin/gbrain; Claude Code's settings.json is seeded with
 # the adapter's harnesses/claude-code/config/settings.json, which setup merges its hook into.
@@ -207,8 +208,8 @@ ARG HERMES_COMMIT=f97608f178d1ffeca59860195ab7da295f7c8e5f
 ARG HERMES_SOUL_SHA256=36c1f5a2e92cd1d018311eaf4c8f1e8886672eae78212e033c681d0e3d5d506f
 COPY --from=brain-dev /brain /brains/dev
 COPY --from=brain-heldout /brain /brains/heldout
-RUN mkdir -p /opt/sidecar/hermes && curl -fsSL "https://raw.githubusercontent.com/NousResearch/hermes-agent/$HERMES_COMMIT/SOUL.md" -o /opt/sidecar/hermes/SOUL.md \
-    && echo "$HERMES_SOUL_SHA256  /opt/sidecar/hermes/SOUL.md" | sha256sum -c --quiet
+COPY gbrain/hermes/SOUL.md /opt/sidecar/hermes/SOUL.md
+RUN echo "$HERMES_SOUL_SHA256  /opt/sidecar/hermes/SOUL.md" | sha256sum -c --quiet
 COPY harnesses/claude-code/config/settings.json /opt/sidecar/claude-code/settings.json
 RUN cd /opt/gbrain && env -i PATH="$PATH" HOME=/tmp bun run build >/dev/null && test -x /opt/gbrain/bin/gbrain
 RUN mkdir -m 0777 /brain && env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-install.ts --out /install \

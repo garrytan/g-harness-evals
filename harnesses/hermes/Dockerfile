@@ -47,7 +47,7 @@ RUN case "${TARGETARCH:-amd64}" in \
       arm64) target=aarch64-unknown-linux-gnu sum="${TIRITH_SHA256_ARM64}" ;; \
       *) echo "no pinned tirith build for ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
-    && curl -fsSL -o /tmp/tirith.tar.gz "https://github.com/sheeki03/tirith/releases/download/v${TIRITH_VERSION}/tirith-${target}.tar.gz" \
+    && curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 --connect-timeout 20 --max-time 120 -o /tmp/tirith.tar.gz "https://github.com/sheeki03/tirith/releases/download/v${TIRITH_VERSION}/tirith-${target}.tar.gz" \
     && echo "${sum}  /tmp/tirith.tar.gz" | sha256sum -c - \
     && mkdir -p /opt/tirith/bin && tar -xzf /tmp/tirith.tar.gz -C /opt/tirith/bin tirith && rm /tmp/tirith.tar.gz \
     && test "$(HOME=/tmp TIRITH_OFFLINE=1 /opt/tirith/bin/tirith --version)" = "tirith ${TIRITH_VERSION}" \
