@@ -11,7 +11,8 @@
  *   - any access-log.jsonl (the custody access log);
  *   - raw sealed receipts: a results/manifest.json planned with a sealed root while its set is still in sealed custody,
  *     any file under docs/benchmarks/<run>/results/ when the run's prereg.json opens a set still in sealed custody
- *     (a prereg.json or results/manifest.json the check cannot read counts as one that names a set in sealed custody, fail closed)
+ *     (a prereg.json or results/manifest.json the check cannot read, or a prereg.json that does not parse to an object,
+ *     counts as one that names a set in sealed custody, fail closed)
  *     (either one also while a live sealed set shares the set's digests, as below), and anything in a sealed-results/ directory beyond the three public export files (export.json,
  *     opening-receipt.json, README.md);
  *   - a set's released files (tasks/multiuser/<set>/sealed-world/, task directories beside MANIFEST.json; v0.1's are
@@ -26,8 +27,9 @@
  *     or a live sealed set shares its digests, as above.
  *     Sets of both kinds count as sealed for the receipt rules above. And anything under a top-level jobs/ (Harbor's job
  *     directory, which holds task bodies, transcripts and logs), whatever the set.
- * A git command it runs that is killed or cannot start, or a git grep that fails, stops the check (exit 2): a scan that did
- * not finish never passes, and a manifest that was never read is not reported as one that does not parse.
+ * A git command it runs that is killed or cannot start, a git grep that fails, or a work-tree read that fails for any reason
+ * but a missing file, stops the check (exit 2): a scan that did not finish never passes, and a manifest that was never read
+ * is not reported as one that does not parse.
  * tests/sealed-publication.test.ts runs it on the repository, so CI on every pull request to main enforces it; gstack-pregate
  * sealed (.gstack/pregate.json, visibility forced to public) refuses the same paths and identities before a push.
  */
@@ -51,7 +53,13 @@ export function publicationFindings(repo: string, ref?: string): Finding[] {
   if (ls.status !== 0) throw new Error(`git could not list ${ref ?? 'the work tree'} in ${repo}`);
   const files = ls.stdout.split('\0').filter(Boolean);
   const read = (p: string): string | null => {
-    if (!ref) { try { return readFileSync(join(repo, p), 'utf8'); } catch { return null; } }
+    if (!ref) {
+      try { return readFileSync(join(repo, p), 'utf8'); } catch (e) {
+        const code = (e as NodeJS.ErrnoException).code;
+        if (code === 'ENOENT') return null;
+        throw new Error(`could not read ${p} (${code ?? 'error'})`);
+      }
+    }
     const r = g(['cat-file', 'blob', `${ref}:${p}`]);
     return r.status === 0 ? r.stdout : null;
   };
@@ -76,14 +84,19 @@ export function publicationFindings(repo: string, ref?: string): Finding[] {
   };
   const protectedKind = (set: string) => (custodyNote(set) ? `released content of set ${set}, ${custodyNote(set)}` : undefined);
   // A run whose preregistration opens a set still in sealed custody, or one a live sealed set shares, or whose
-  // preregistration cannot be read (fail closed), publishes only its sealed-results/ export until release.
+  // preregistration cannot be read or does not parse to an object (fail closed), publishes only its sealed-results/
+  // export until release.
   const sealedRuns = new Map<string, string>();
   for (const f of files) {
     const m = /^docs\/benchmarks\/([^/]+)\/prereg\.json$/.exec(f);
     if (!m) continue;
     const text = read(f);
     if (text === null) { sealedRuns.set(m[1]!, 'whose prereg.json could not be read, so it counts as opening a set in sealed custody'); continue; }
-    try { const set = (JSON.parse(text) as { heldout?: { set?: string } }).heldout?.set; if (set && custodyNote(set)) sealedRuns.set(m[1]!, `on set ${set}, ${custodyNote(set)}`); } catch { /* prereg.ts reports a malformed preregistration */ }
+    let prereg: unknown;
+    try { prereg = JSON.parse(text); } catch { prereg = undefined; }
+    if (prereg === null || typeof prereg !== 'object' || Array.isArray(prereg)) { sealedRuns.set(m[1]!, 'whose prereg.json does not parse to an object, so it counts as opening a set in sealed custody'); continue; }
+    const set = (prereg as { heldout?: { set?: string } }).heldout?.set;
+    if (set && custodyNote(set)) sealedRuns.set(m[1]!, `on set ${set}, ${custodyNote(set)}`);
   }
   for (const f of files) {
     const base = f.split('/').pop()!;

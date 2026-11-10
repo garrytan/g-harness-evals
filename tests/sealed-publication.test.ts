@@ -8,7 +8,7 @@
 // (.gstack/pregate.json "sealed" refuses the same paths and identities before a push, visibility forced to public).
 import { afterAll, expect, test } from 'bun:test';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { generateX25519Identity } from 'age-encryption';
@@ -81,6 +81,47 @@ test('a preregistration or run manifest the check cannot read keeps the results 
     expect(r.stderr).toContain('HE-SEALED-011 docs/benchmarks/run8/results/manifest.json: a run manifest that could not be read, so it counts as raw sealed receipts of a set in sealed custody');
     expect(r.stderr).not.toContain('docs/benchmarks/run8/results/trials.jsonl');
   }
+});
+
+// Value: protects=a preregistration that reads but does not parse to an object counts as one that opens a set in sealed
+// custody, so its run's raw results stay refused in both modes, and a work-tree read that fails for any reason but a
+// missing file stops the check (exit 2) instead of reporting a finding; fails_when=malformed JSON, a literal null, an array
+// or a committed symlink's target text passes the run, or an unreadable work-tree file reads as an empty one; why_new=the
+// reviews on #389 found both; seam=the CLI on throwaway repositories, one with malformed preregistrations and one with a
+// prereg.json committed as a symlink to its own directory; no_claim=what prereg.ts says about a malformed preregistration.
+test('a preregistration that does not parse to an object keeps the results of its run refused, and a failed work-tree read stops the check', () => {
+  const mk = (name: string, files: Record<string, string>, links: Record<string, string> = {}) => {
+    const repo = join(tmp, name);
+    for (const [p, s] of Object.entries(files)) { mkdirSync(dirname(join(repo, p)), { recursive: true }); writeFileSync(join(repo, p), s); }
+    for (const [p, target] of Object.entries(links)) { mkdirSync(dirname(join(repo, p)), { recursive: true }); symlinkSync(target, join(repo, p)); }
+    execFileSync('git', ['init', '-q', repo]);
+    execFileSync('git', ['add', '-A'], { cwd: repo });
+    execFileSync('git', ['-c', 'user.email=publication-test@example.invalid', '-c', 'user.name=publication test', 'commit', '-qm', 'planted'], { cwd: repo });
+    return repo;
+  };
+  const check = (repo: string, ref?: string) => spawnSync('bun', [join(ROOT, 'scripts', 'check-sealed-publication.ts'), '--repo', repo, ...(ref ? ['--ref', ref] : [])], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: tmp } });
+  const kind = 'a raw receipt of a run whose prereg.json does not parse to an object, so it counts as opening a set in sealed custody';
+  const malformed = mk('malformed-prereg', {
+    'docs/benchmarks/run4/prereg.json': JSON.stringify({ run_id: 'run4' }), 'docs/benchmarks/run4/results/trials.jsonl': '{}',
+    'docs/benchmarks/run5/prereg.json': '{"run_id": "run5", "heldout": {"set": ', 'docs/benchmarks/run5/results/trials.jsonl': '{}',
+    'docs/benchmarks/run6/prereg.json': 'null', 'docs/benchmarks/run6/results/trials.jsonl': '{}',
+    'docs/benchmarks/run7/prereg.json': '[]', 'docs/benchmarks/run7/results/trials.jsonl': '{}',
+  });
+  for (const ref of [undefined, 'HEAD']) {
+    const r = check(malformed, ref);
+    expect({ ref, status: r.status }).toEqual({ ref, status: 1 });
+    expect(r.stderr).toContain(`HE-SEALED-011 docs/benchmarks/run5/results/trials.jsonl: ${kind}`);
+    expect(r.stderr).toContain(`HE-SEALED-011 docs/benchmarks/run6/results/trials.jsonl: ${kind}`);
+    expect(r.stderr).toContain(`HE-SEALED-011 docs/benchmarks/run7/results/trials.jsonl: ${kind}`);
+    expect(r.stderr).not.toContain('docs/benchmarks/run4/');
+  }
+  const linked = mk('linked-prereg', { 'docs/benchmarks/run3/results/trials.jsonl': '{}' }, { 'docs/benchmarks/run3/prereg.json': '.' });
+  const tree = check(linked);
+  expect(tree.status).toBe(2);
+  expect(tree.stderr).toContain('HE-SEALED-011 check-sealed-publication could not run: could not read docs/benchmarks/run3/prereg.json (EISDIR)');
+  const commit = check(linked, 'HEAD');
+  expect(commit.status).toBe(1);
+  expect(commit.stderr).toContain(`HE-SEALED-011 docs/benchmarks/run3/results/trials.jsonl: ${kind}`);
 });
 
 test('released content and raw receipts of a set stay refused while a live sealed set shares its world slice or corpus', () => {
