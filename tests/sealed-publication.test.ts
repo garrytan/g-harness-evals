@@ -57,6 +57,32 @@ test('a git command killed partway stops the check instead of passing it or misr
   }
 });
 
+// Value: protects=a preregistration or run manifest the check cannot read counts as one that opens a set in sealed custody,
+// so the run's raw results stay refused (fail closed, like an unreadable MANIFEST.json); fails_when=an unreadable
+// prereg.json or results/manifest.json is read as an empty one and the tree passes; why_new=the reviews on #382 found both
+// reads fell back to '{}'; seam=the CLI on a throwaway repository, with the files missing from the work tree and, in
+// commit mode, listed by the tree as entries git cat-file cannot read as blobs; no_claim=why a file is unreadable.
+test('a preregistration or run manifest the check cannot read keeps the results of its run refused', () => {
+  const repo = join(tmp, 'unreadable');
+  const w = (p: string, s: string) => { mkdirSync(dirname(join(repo, p)), { recursive: true }); writeFileSync(join(repo, p), s); };
+  const git = (...args: string[]) => execFileSync('git', ['-c', 'user.email=publication-test@example.invalid', '-c', 'user.name=publication test', ...args], { cwd: repo, encoding: 'utf8' });
+  execFileSync('git', ['init', '-q', repo]);
+  w('docs/benchmarks/run7/results/trials.jsonl', '{}');
+  w('docs/benchmarks/run8/results/trials.jsonl', '{}');
+  git('add', '-A');
+  const gitlink = git('commit-tree', git('write-tree').trim(), '-m', 'stand-in').trim();
+  for (const p of ['docs/benchmarks/run7/prereg.json', 'docs/benchmarks/run8/results/manifest.json']) git('update-index', '--add', '--cacheinfo', `160000,${gitlink},${p}`);
+  git('commit', '-qm', 'planted');
+  const check = (ref?: string) => spawnSync('bun', [join(ROOT, 'scripts', 'check-sealed-publication.ts'), '--repo', repo, ...(ref ? ['--ref', ref] : [])], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: tmp } });
+  for (const ref of [undefined, 'HEAD']) {
+    const r = check(ref);
+    expect({ ref, status: r.status }).toEqual({ ref, status: 1 });
+    expect(r.stderr).toContain('HE-SEALED-011 docs/benchmarks/run7/results/trials.jsonl: a raw receipt of a run whose prereg.json could not be read, so it counts as opening a set in sealed custody');
+    expect(r.stderr).toContain('HE-SEALED-011 docs/benchmarks/run8/results/manifest.json: a run manifest that could not be read, so it counts as raw sealed receipts of a set in sealed custody');
+    expect(r.stderr).not.toContain('docs/benchmarks/run8/results/trials.jsonl');
+  }
+});
+
 test('released content and raw receipts of a set stay refused while a live sealed set shares its world slice or corpus', () => {
   const repo = join(tmp, 'shared');
   const w = (p: string, s: string) => { mkdirSync(dirname(join(repo, p)), { recursive: true }); writeFileSync(join(repo, p), s); };

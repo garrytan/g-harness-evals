@@ -11,6 +11,7 @@
  *   - any access-log.jsonl (the custody access log);
  *   - raw sealed receipts: a results/manifest.json planned with a sealed root while its set is still in sealed custody,
  *     any file under docs/benchmarks/<run>/results/ when the run's prereg.json opens a set still in sealed custody
+ *     (a prereg.json or results/manifest.json the check cannot read counts as one that names a set in sealed custody, fail closed)
  *     (either one also while a live sealed set shares the set's digests, as below), and anything in a sealed-results/ directory beyond the three public export files (export.json,
  *     opening-receipt.json, README.md);
  *   - a set's released files (tasks/multiuser/<set>/sealed-world/, task directories beside MANIFEST.json; v0.1's are
@@ -74,14 +75,15 @@ export function publicationFindings(repo: string, ref?: string): Finding[] {
     return m?.custody === 'sealed' ? 'which is still in sealed custody' : sharedWith(set) ? `whose world slice or corpus set ${sharedWith(set)} shares while still in sealed custody` : undefined;
   };
   const protectedKind = (set: string) => (custodyNote(set) ? `released content of set ${set}, ${custodyNote(set)}` : undefined);
-  // A run whose preregistration opens a set still in sealed custody, or one a live sealed set shares, publishes only its
-  // sealed-results/ export until release.
+  // A run whose preregistration opens a set still in sealed custody, or one a live sealed set shares, or whose
+  // preregistration cannot be read (fail closed), publishes only its sealed-results/ export until release.
   const sealedRuns = new Map<string, string>();
   for (const f of files) {
     const m = /^docs\/benchmarks\/([^/]+)\/prereg\.json$/.exec(f);
     if (!m) continue;
     const text = read(f);
-    try { const set = (JSON.parse(text ?? '{}') as { heldout?: { set?: string } }).heldout?.set; if (set && custodyNote(set)) sealedRuns.set(m[1]!, set); } catch { /* prereg.ts reports a malformed preregistration */ }
+    if (text === null) { sealedRuns.set(m[1]!, 'whose prereg.json could not be read, so it counts as opening a set in sealed custody'); continue; }
+    try { const set = (JSON.parse(text) as { heldout?: { set?: string } }).heldout?.set; if (set && custodyNote(set)) sealedRuns.set(m[1]!, `on set ${set}, ${custodyNote(set)}`); } catch { /* prereg.ts reports a malformed preregistration */ }
   }
   for (const f of files) {
     const base = f.split('/').pop()!;
@@ -91,13 +93,14 @@ export function publicationFindings(repo: string, ref?: string): Finding[] {
     if (sr && !EXPORT_FILES.includes(sr[2]!)) out.push({ path: f, kind: 'a raw sealed receipt (a sealed-results/ directory holds export.json, opening-receipt.json and README.md only)' });
     if (/(^|\/)results\/manifest\.json$/.test(f)) {
       const text = read(f);
-      try {
-        const set = (JSON.parse(text ?? '{}') as { sealed?: { set?: string } }).sealed?.set;
+      if (text === null) out.push({ path: f, kind: 'a run manifest that could not be read, so it counts as raw sealed receipts of a set in sealed custody' });
+      else try {
+        const set = (JSON.parse(text) as { sealed?: { set?: string } }).sealed?.set;
         if (set && custodyNote(set)) out.push({ path: f, kind: `raw sealed receipts of set ${set}, ${custodyNote(set)}` });
       } catch { /* not JSON: not a run manifest */ }
     }
     const run = /^docs\/benchmarks\/([^/]+)\/results\//.exec(f);
-    if (run && sealedRuns.has(run[1]!)) out.push({ path: f, kind: `a raw receipt of a run on set ${sealedRuns.get(run[1]!)}, ${custodyNote(sealedRuns.get(run[1]!)!)} (only sealed-results/ is published until release)` });
+    if (run && sealedRuns.has(run[1]!)) out.push({ path: f, kind: `a raw receipt of a run ${sealedRuns.get(run[1]!)} (only sealed-results/ is published until release)` });
     const t = /^tasks\/multiuser\/([^/]+)\/(heldout|sealed-world)\/(.+)$/.exec(f);
     if (t && protectedKind(t[1]!) && !(t[2] === 'heldout' && t[3] === 'MANIFEST.json')) out.push({ path: f, kind: protectedKind(t[1]!)! });
     const d = /^tasks\/multiuser\/heldout\/(.+)$/.exec(f);
