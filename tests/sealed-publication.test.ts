@@ -20,7 +20,42 @@ afterAll(() => rmSync(tmp, { recursive: true, force: true }));
 
 test('this checkout holds no custody material', () => {
   expect(publicationFindings(ROOT)).toEqual([]);
-}, 60_000);
+}, 180_000);
+
+// Value: protects=a git command the check runs that is killed or cannot start stops the check (exit 2) instead of passing
+// a tree whose identity scan never finished or reporting a manifest it never read as one that does not parse;
+// fails_when=publicationFindings reads a killed git grep as "no identity" or a killed read as an unreadable manifest;
+// why_new=bun test kills every child process of a test that ran past its timeout, and CI's whole-checkout case then
+// reported 258 v0.1 task files as released content of a set whose MANIFEST.json "could not be read"; seam=the CLI with
+// a git on PATH that kills itself when its arguments name one subcommand or file; no_claim=how long the whole-checkout scan takes.
+test('a git command killed partway stops the check instead of passing it or misreading a manifest', async () => {
+  const repo = join(tmp, 'killed');
+  const w = (p: string, s: string) => { mkdirSync(dirname(join(repo, p)), { recursive: true }); writeFileSync(join(repo, p), s); };
+  execFileSync('git', ['init', '-q', repo]);
+  w('tasks/multiuser/heldout/MANIFEST.json', JSON.stringify({ schema_version: 1, status: 'retired', released: { world_slice_sha256: 'c'.repeat(64) } }));
+  w('tasks/multiuser/heldout/t1/task.toml', 'id = "t1"');
+  w('notes/key.txt', `${await generateX25519Identity()}\n`);
+  w('tasks/multiuser/v9/heldout/MANIFEST.json', JSON.stringify({ schema_version: 1, custody: 'sealed', sealed: { world_slice_sha256: 'd'.repeat(64), heldout_corpus_sha256: 'd'.repeat(64) }, status: 'open' }));
+  w('docs/benchmarks/run9/prereg.json', JSON.stringify({ run_id: 'run9', heldout: { set: 'v9' } }));
+  w('docs/benchmarks/run9/results/trials.jsonl', '{}');
+  execFileSync('git', ['add', '-A'], { cwd: repo });
+  execFileSync('git', ['-c', 'user.email=publication-test@example.invalid', '-c', 'user.name=publication test', 'commit', '-qm', 'planted'], { cwd: repo });
+  const bin = join(tmp, 'killing-git');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'git'), `#!/bin/sh\ncase "$*" in *"$KILL_GIT"*) kill -KILL $$;; esac\nPATH="\${PATH#*:}" exec '${Bun.which('git')}' "$@"\n`, { mode: 0o755 });
+  const check = (kill: string, ref?: string) => spawnSync('bun', [join(ROOT, 'scripts', 'check-sealed-publication.ts'), '--repo', repo, ...(ref ? ['--ref', ref] : [])], {
+    encoding: 'utf8', env: { PATH: `${bin}:${process.env.PATH}`, HOME: tmp, KILL_GIT: kill },
+  });
+  const intact = check('none');
+  expect(intact.status).toBe(1);
+  expect(intact.stderr).toContain('HE-SEALED-011 notes/key.txt: an age identity');
+  expect(intact.stderr).toContain('HE-SEALED-011 docs/benchmarks/run9/results/trials.jsonl: a raw receipt of a run on set v9');
+  for (const [kill, ref, cmd] of [['grep', undefined, 'grep'], ['grep', 'HEAD', 'grep'], ['cat-file', 'HEAD', 'cat-file'], ['prereg.json', 'HEAD', 'cat-file']] as const) {
+    const r = check(kill, ref);
+    expect({ kill, ref, status: r.status }).toEqual({ kill, ref, status: 2 });
+    expect(r.stderr).toContain(`HE-SEALED-011 check-sealed-publication could not run: git ${cmd} was killed by SIGKILL`);
+  }
+});
 
 test('released content and raw receipts of a set stay refused while a live sealed set shares its world slice or corpus', () => {
   const repo = join(tmp, 'shared');

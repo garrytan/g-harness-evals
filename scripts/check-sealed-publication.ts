@@ -25,10 +25,13 @@
  *     or a live sealed set shares its digests, as above.
  *     Sets of both kinds count as sealed for the receipt rules above. And anything under a top-level jobs/ (Harbor's job
  *     directory, which holds task bodies, transcripts and logs), whatever the set.
+ * A git command it runs that is killed or cannot start, or a git grep that fails, stops the check (exit 2): a scan that did
+ * not finish never passes, and a manifest that was never read is not reported as one that does not parse.
  * tests/sealed-publication.test.ts runs it on the repository, so CI on every pull request to main enforces it; gstack-pregate
  * sealed (.gstack/pregate.json, visibility forced to public) refuses the same paths and identities before a push.
  */
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { DEFAULT_SET, isUnreadable, liveSharersAmong, manifestSetName, parseManifest, type ManifestEntry } from './seal-heldout.ts';
 import { IDENTITY_MARKER } from './sealed/custody.ts';
@@ -37,17 +40,24 @@ export interface Finding { path: string; kind: string }
 export const EXPORT_FILES = ['export.json', 'opening-receipt.json', 'README.md'];
 
 export function publicationFindings(repo: string, ref?: string): Finding[] {
-  const g = (args: string[]) => spawnSync('git', args, { cwd: repo, encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 });
+  const g = (args: string[]) => {
+    const r = spawnSync('git', args, { cwd: repo, encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 });
+    if (r.error) throw new Error(`git ${args[0]} could not run: ${r.error.message}`);
+    if (r.signal) throw new Error(`git ${args[0]} was killed by ${r.signal}`);
+    return r;
+  };
   const ls = ref ? g(['ls-tree', '-r', '--name-only', '-z', ref]) : g(['ls-files', '-z']);
   if (ls.status !== 0) throw new Error(`git could not list ${ref ?? 'the work tree'} in ${repo}`);
   const files = ls.stdout.split('\0').filter(Boolean);
   const read = (p: string): string | null => {
-    const r = ref ? g(['cat-file', 'blob', `${ref}:${p}`]) : spawnSync('cat', ['--', join(repo, p)], { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 });
+    if (!ref) { try { return readFileSync(join(repo, p), 'utf8'); } catch { return null; } }
+    const r = g(['cat-file', 'blob', `${ref}:${p}`]);
     return r.status === 0 ? r.stdout : null;
   };
   const out: Finding[] = [];
   const marker = IDENTITY_MARKER.source;
   const grep = g(['grep', '-l', '-z', '-a', '-E', marker, ...(ref ? [ref] : []), '--']);
+  if (grep.status !== 0 && grep.status !== 1) throw new Error(`git grep could not search ${ref ?? 'the work tree'} in ${repo} (exit ${grep.status})`);
   for (const hit of grep.stdout.split('\0').filter(Boolean)) out.push({ path: ref ? hit.slice(ref.length + 1) : hit, kind: 'an age identity' });
   // A manifest that does not parse or validate counts as sealed, and as a live sharer of every other set (fail closed).
   const manifests = new Map<string, ManifestEntry>();
@@ -70,7 +80,8 @@ export function publicationFindings(repo: string, ref?: string): Finding[] {
   for (const f of files) {
     const m = /^docs\/benchmarks\/([^/]+)\/prereg\.json$/.exec(f);
     if (!m) continue;
-    try { const set = (JSON.parse(read(f) ?? '{}') as { heldout?: { set?: string } }).heldout?.set; if (set && custodyNote(set)) sealedRuns.set(m[1]!, set); } catch { /* prereg.ts reports a malformed preregistration */ }
+    const text = read(f);
+    try { const set = (JSON.parse(text ?? '{}') as { heldout?: { set?: string } }).heldout?.set; if (set && custodyNote(set)) sealedRuns.set(m[1]!, set); } catch { /* prereg.ts reports a malformed preregistration */ }
   }
   for (const f of files) {
     const base = f.split('/').pop()!;
@@ -79,8 +90,9 @@ export function publicationFindings(repo: string, ref?: string): Finding[] {
     const sr = /(^|\/)sealed-results\/(.+)$/.exec(f);
     if (sr && !EXPORT_FILES.includes(sr[2]!)) out.push({ path: f, kind: 'a raw sealed receipt (a sealed-results/ directory holds export.json, opening-receipt.json and README.md only)' });
     if (/(^|\/)results\/manifest\.json$/.test(f)) {
+      const text = read(f);
       try {
-        const set = (JSON.parse(read(f) ?? '{}') as { sealed?: { set?: string } }).sealed?.set;
+        const set = (JSON.parse(text ?? '{}') as { sealed?: { set?: string } }).sealed?.set;
         if (set && custodyNote(set)) out.push({ path: f, kind: `raw sealed receipts of set ${set}, ${custodyNote(set)}` });
       } catch { /* not JSON: not a run manifest */ }
     }

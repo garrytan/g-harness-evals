@@ -6,7 +6,9 @@
 # installer-cc-codex, internal-network-harnesses, gbrain-check, gbrain-runner, internal-network) would pass or skip by
 # worker timing. Phase 2 runs every other file with --parallel. Phase 3 runs SERIAL one file at a time, alone:
 # gsta-135-adapters checks that chat_complete leaves no entry in /tmp by counting /tmp, which any other test running at
-# the same time changes.
+# the same time changes. tests/sealed-publication.test.ts reads every tracked file (about 257,000 files, 2.4 GB) for an
+# age identity. That read is disk-bound: about 2 s on a warm Capy machine, 43 s alone in CI's serial phase, and past
+# 60 s beside CI's loaded parallel phase.
 # tests/.timings.json (per-file milliseconds) makes each parallel phase start its slowest files first; a file missing
 # from it still runs. Workers default to the core count (HE_TEST_PARALLEL overrides). Every phase runs; the exit status
 # is the last failing phase's.
@@ -20,6 +22,7 @@ BUILDERS=(
 )
 SERIAL=(
   tests/gsta-135-adapters.test.ts
+  tests/sealed-publication.test.ts
 )
 junit_dir=""
 while [ $# -gt 0 ]; do
