@@ -30,18 +30,19 @@ Each harness was compared only with its model's home harness: Claude Code on Opu
 | 1* | Hermes Agent | 85.6% [76.9%, 93.3%] | $0.43 [$0.31, $0.60] | 438.5 s |
 | 1* | OpenClaw | 76.0% [64.4%, 86.5%] | $0.61 [$0.40, $0.95] | 325.6 s |
 
-*Hermes Agent's and OpenClaw's cost ranges clear Pi's (Hermes's starts just above Pi's top; both round to $0.31), but they overlap Codex's, so they share Codex's rank.
+*OpenClaw's cost range clears Pi's. Hermes Agent's starts just above Pi's top as published ($0.3114 against $0.3068). It starts below Pi's top under the 2026-11-09 correction ($0.29, or $0.2813 with both corrections) and at the 15 s cut's upper bound ($0.3052), but not at that cut's lower bound alone ($0.3108), so whether Hermes's and Pi's ranges overlap depends on the correction. Hermes's and OpenClaw's ranges overlap Codex's either way, so all four rows share rank 1.
 
 - These are dev results on public tasks at the pinned versions, not held-out confirmation. The cost differences are descriptive, with no test.
 - Claude Code and Codex are each model's own harness. They can't run the same model, so they are never compared with each other.
 - Every cell is a plain harness: no gstack, no gbrain. Settings: effort high for every harness, through each harness's own setting.
 - **Corrected 2026-11-09:** cost per solved task now leaves out reservation charges for streams that never finished. On Sol: Codex $0.31 [$0.23, $0.40], Hermes Agent $0.38 [$0.29, $0.51], OpenClaw $0.50 [$0.37, $0.68], Pi unchanged. Every Sol row still shares rank 1, and Hermes Agent's range now overlaps Pi's. Opus is unchanged ([correction](docs/corrections/2026-11-09/README.md)).
+- **Corrected 2026-11-10:** our egress sidecar cut Hermes Agent's slow, non-streamed calls on Sol at 15 s, and the run still paid for them. Without those charges its cost per solved task is $0.4247 [$0.3052, $0.5854], or $0.3741 [$0.2813, $0.4964] with the 2026-11-09 correction too. Only 7 of the 39 cut requests were resent and 32 were not, so these figures are the upper bound: the true effect lies between removing $0.10 and removing $0.68 of charges. No other cell was cut, and no call or rank changes either way ([correction](docs/corrections/2026-11-10/README.md)).
 - OpenClaw on Opus's behind call depends on two choices: with every provider refusal removed, or under amendment 4's outage classification alone, it is inconclusive.
 - Under amendment 4's outage classification alone, 3 of 6 calls change: OpenClaw on Opus becomes inconclusive, OpenClaw on Sol becomes behind, and Pi on Sol becomes inconclusive.
 - A GitHub outage hit 353 runs at grade time (kept sample included). 351 were rerun and replaced; the lease stopped the other 2 reruns, so those 2 trials are excluded, though both runs' spend stays in cost. Cost per solved task leaves out the replaced runs' spend, and their passes aren't counted either.
 - Claude Code on Opus is near the ceiling, so there is little room above it.
 - 4 Hermes trials (2 in these cells) are scored as fails because Hermes's web tools reached the answer key.
-- Pi's pairs have 51 tasks: one task crashes Pi's adapter.
+- Pi's pairs have 51 tasks: on pytorch-model-recovery Pi exited before sending any request, so the preregistered rules leave that task out of its pairs. Scored as Pi fails instead, Pi passes 79.8% [69.2%, 89.4%] on Opus and 78.8% [68.3%, 88.5%] on Sol, and both stay within 15 points of the home harness, on Opus only just (Holm-adjusted p 0.043) ([correction](docs/corrections/2026-11-10/README.md)).
 - Trials ran 4 at a time per VM, so time per trial is contended.
 - A planned matrix that adds particle-1 next to these frontier models will extend these rankings.
 - Full tables and receipts: [scoreboard](docs/scoreboard.md) and [frontier report](docs/benchmarks/2026-11-07-frontier-harness/report.md).
