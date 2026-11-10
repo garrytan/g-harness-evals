@@ -13,6 +13,7 @@ Each file follows the shared finding template used across our eval repositories:
 - [With the model fixed, harnesses differ on cost more than on pass rate](harness-cost/README.md): from the harness matrix and the cost breakdown runs.
 - [A shared brain needs per-person access rules](shared-brain-access/README.md): from the installer runs on Claude Code and Codex, with and without gbrain's access rules.
 - [Test prompt cuts on tasks the agent can fail](prompt-cuts/README.md): from the prompt archaeology run and its follow-up on harder tasks.
+- [Agents fail most by answering from the wrong conversation, and an unscoped brain returns records the asker may not read](where-agents-fail/README.md): from the failure-mining run over 1,998 failed frontier trials we already had.
 
 ## Claim files
 
@@ -31,6 +32,10 @@ Each file follows the shared finding template used across our eval repositories:
 - **Coming next:** nothing for the Opus gstack steps finding until a gate that also covers Bash-mediated writes is tested. The Lane B Terminal-Bench 2 replication gets no finding file: it is a Haiku 5.5 comparability rerun, and its report, in open pull request #181, carries that label.
 
 ## Changelog
+
+### 2026-11-09: where agents fail
+
+Added a topic page from the failure-mining run (failure-mining-2026-11) and its line in the topic list. Why: the run's results land in this pull request, and its two lessons need a page for outside readers.
 
 ### 2026-11-09: state-machine prompt pilot (guest finding)
 
