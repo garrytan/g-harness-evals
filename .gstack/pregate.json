@@ -1,6 +1,6 @@
 {
   "$schema": "https://github.com/garrytan/gstack/docs/pregate.md#pregate-v1",
-  "runner": "bun test {files}",
+  "runner": "bash -c 'k=();s=0;for a;do a=${a#./};case $a in tasks/community-claims/*)((s++));;/*)k+=(\"$a\");;*)k+=(\"./$a\");;esac;done;((${#k[@]}))||{ ((s))||exit 2;echo \"PREGATE_SKIP_RECORD: {\\\"ran\\\":0,\\\"skipped\\\":$s,\\\"reason\\\":\\\"community-claims fixtures\\\"}\";exit;};((s))&&echo \"skipped $s fixtures\">&2;o=$(mktemp)||exit 2;bun test \"${k[@]}\" 2>&1|tee $o;r=${PIPESTATUS[0]};n=$(grep -aoE \"^Ran [0-9]+ tests? \" $o|tail -1|tr -dc 0-9);rm $o;((r))&&exit $r;((n))||{ echo \"bun reported no test count\">&2;exit 1;}' _ {files}",
   "timeout_s": 2400,
   "run_profiles": {
     "ci/checks": {
@@ -262,6 +262,9 @@
     ],
     "tests/__snapshots__/waterfall-chart.test.ts.snap": [
       "tests/waterfall-chart.test.ts"
+    ],
+    "tests/community-claims/rig-harn50-render.ts": [
+      "tests/community-claims/rig.test.ts"
     ]
   },
   "sealed": {
