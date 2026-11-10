@@ -35,6 +35,11 @@
 // minus attempt 1 over tasks with both scored (clusteredPairedDelta), flagged when its size passes drift_threshold.
 //
 // The verdict tag of each cell follows VERDICT_RULES below, first match wins. The markdown repeats the rules at the top.
+// Headroom (runner/stats/headroom.ts, docs/methods.md): a pair that would be within-15 is no-room ("can't tell: no room to
+// improve") when fewer than min_paired_tasks of its tasks are ones the run can tell apart (not passed on every scored
+// attempt by every main cell that scored it, and not failed on every one, as in matrix-analysis), or when on those tasks the
+// home cell leaves less than 15 points to fall. Each pair carries its headroom record. A spec listed in scripts/headroom.ts (published before the
+// gate) keeps the tags and output it was published with.
 //
 // Spec: { "run_id": "...", "seed": 7, "draws": 10000, "alpha": 0.05, "saturated_at": 0.95, "min_paired_tasks": 10,
 //         "primary_pairs": { "<model id>": 3 }, "drift_threshold": 0.1,
@@ -49,6 +54,8 @@ import { readJsonFile, readJsonLines } from '../../runner/heldout/sealed.ts';
 import { clusteredPairedDelta, holmAdjusted, nonInferiorityP, powerNote, type PairedDelta } from '../../runner/stats/paired.ts';
 import { bootstrapLowerBound, costPerSolve, harnessFlip, pairedCostRatio, passAtK, passHatK, rerunFlip, taskBootstrapMean, type MeanInterval } from '../../runner/stats/frontier.ts';
 import { checkRecords, TERMINATIONS, trialValue, type MatrixManifest } from '../matrix-analysis.ts';
+import { NO_ROOM, noRoomReason, pairHeadroom, runCanTellApart } from '../../runner/stats/headroom.ts';
+import { headroomGated } from '../headroom.ts';
 
 export interface FrontierCell { id: string; model: string; harness: string; label?: string; attempts: number; descriptive?: boolean }
 export interface FrontierModel { id: string; label?: string; home: string }
@@ -73,12 +80,15 @@ export class SpecError extends Error {}
 /** The non-inferiority margin, in pass-rate units: 15 percentage points. */
 export const NI_MARGIN = 0.15;
 export const VERDICTS = ['home', 'incomplete', 'descriptive', 'behind', 'within-15', 'saturated', 'inconclusive'] as const;
-export type Verdict = (typeof VERDICTS)[number];
+/** The tags of a run the headroom gate covers (scripts/headroom.ts): no-room comes before within-15. */
+export const GATED_VERDICTS = ['home', 'incomplete', 'descriptive', 'behind', 'no-room', 'within-15', 'saturated', 'inconclusive'] as const;
+export type Verdict = (typeof GATED_VERDICTS)[number];
 export const VERDICT_RULES: Record<Verdict, string> = {
   home: "the model's home harness; every other cell of the model is compared with it",
   incomplete: 'the cell or its home cell has a planned trial with no record, or the pair has fewer than min_paired_tasks (10 by default) tasks with an attempt scored in both cells: reported from what exists, no claim',
   descriptive: 'an extension cell (descriptive in the spec, for example one attempt per task): estimate and intervals only, no test and no non-inferiority claim',
   behind: "a primary pair whose two-sided task-level sign-flip p, Holm-adjusted across the model's primary pairs, is at or below alpha with the cell below its home",
+  'no-room': `${NO_ROOM}: a primary pair that is not behind and would be within-15, but fewer than min_paired_tasks of its paired tasks are ones the run can tell apart (a task every main cell passed on every attempt, or every main cell failed on every attempt, can't), or on those tasks the home cell's passes leave the cell less than 15 points to fall`,
   'within-15': "a primary pair that is not behind and whose one-sided non-inferiority p at a 15-point margin (the share of task-bootstrap draws of cell minus home at or below -15 points), Holm-adjusted across the model's primary pairs, is at or below alpha",
   saturated: 'a primary pair that is neither behind nor within-15 and whose home cell averages at least saturated_at (95% by default) on the paired tasks, or where no paired task differs: a ceiling, not a tie',
   inconclusive: 'every other primary pair: the data show neither that the cell is within 15 points of its home nor that it is behind',
@@ -196,6 +206,14 @@ export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
   }
   const seed = spec.seed ?? 7, draws = spec.draws ?? 10_000, alpha = spec.alpha ?? 0.05;
   const saturatedAt = spec.saturated_at ?? 0.95, minPaired = spec.min_paired_tasks ?? 10;
+  const gated = headroomGated(spec);
+  const headroomOf = (items: Array<{ task: string; a: number; b: number }>) => {
+    const h = pairHeadroom(items.map((i) => ({ cluster: i.task, a: i.a, b: i.b })), runSet);
+    return {
+      headroom: h && { ...h, room_above_a: round(h.room_above_a)!, room_below_a: round(h.room_below_a)!, room_above_b: round(h.room_above_b)! },
+      no_room_reason: h ? noRoomReason(h, { room: h.room_below_a, smallest_difference: NI_MARGIN, min_tasks: minPaired }) : null,
+    };
+  };
   const opts = { seed, draws };
   const lookups = new Set(input.lookup_fails ?? []);
   const recordIds = new Set(input.records.map((t) => t.trial_id));
@@ -223,6 +241,7 @@ export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
   const taskIds = [...new Set(mainCells.flatMap((d) => [...d.attempts.keys()]))].sort(byKey);
   const inEveryCell = (want: 0 | 1) => taskIds.filter((task) => mainCells.every((d) => { const s = scoredOf(d.attempts.get(task)); return s.length > 0 && s.every((v) => v === want); }));
   const taskLists = { total: taskIds.length, passed_every_attempt_in_every_cell: inEveryCell(1), never_passed_in_any_cell: inEveryCell(0) };
+  const runSet = runCanTellApart(mainCells.map((d) => new Map(taskIds.flatMap((task): Array<[string, number]> => { const s = scoredOf(d.attempts.get(task)); return s.length ? [[task, s.reduce<number>((x, y) => x + y, 0) / s.length]] : []; }))));
 
   const cellStats = (d: CellData) => {
     const c = d.spec;
@@ -281,6 +300,7 @@ export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
         harness_flip: roundMean(flip),
         cost_per_solve_ratio: { tasks: cost.tasks, ratio: round(cost.ratio, 4), ci95: roundCi(cost.ci95, 4), undefined_draws: cost.undefined_draws, note: cost.note },
         home_saturated: stats ? stats.mean_a >= saturatedAt - 1e-12 || stats.bootstrap.length === 0 : false,
+        ...(gated ? headroomOf(kept.items) : {}),
         holm_p: null as number | null, holm_p_noninferiority: null as number | null,
       };
     });
@@ -302,6 +322,7 @@ export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
     if (!p.tested) return { verdict: 'incomplete', reason: `${p.tasks_paired} paired task(s), fewer than ${minPaired}` };
     if (p.family === 'extension') return { verdict: 'descriptive', reason: 'extension cell: estimate and interval only' };
     if (p.holm_p! <= alpha && p.delta! < 0) return { verdict: 'behind', reason: `Holm p ${p.holm_p} <= ${alpha}, delta ${p.delta}` };
+    if (p.holm_p_noninferiority! <= alpha && p.no_room_reason) return { verdict: 'no-room', reason: p.no_room_reason };
     if (p.holm_p_noninferiority! <= alpha) return { verdict: 'within-15', reason: `Holm non-inferiority p ${p.holm_p_noninferiority} <= ${alpha}` };
     if (p.home_saturated) return { verdict: 'saturated', reason: `home cell averages ${p.mean_home} on the paired tasks (threshold ${saturatedAt}) or no paired task differs` };
     return { verdict: 'inconclusive', reason: `Holm p ${p.holm_p}, Holm non-inferiority p ${p.holm_p_noninferiority ?? 'n/a'}` };
@@ -346,7 +367,7 @@ export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
       wall_time: 'median over scored trials, contended (trials of a shard may overlap)',
       cost: input.cost_with_replaced ? 'recorded USD of every trial of the cell (excluded ones included) plus each run a rerun replaced (frontier.replaced_usd, --cost-with-replaced), over scored passes' : 'recorded USD of every trial record of the cell (excluded ones included; a run a rerun replaced is not a record) over scored passes',
     },
-    verdict_rules: VERDICT_RULES,
+    verdict_rules: Object.fromEntries((gated ? GATED_VERDICTS : VERDICTS).map((v) => [v, VERDICT_RULES[v]])) as Partial<Record<Verdict, string>>,
     trials_planned: planned, trials_recorded: input.records.length - outside, trials_outside_spec: outside, trials_unstarted: unstarted,
     complete: planned === null ? null : unstarted === 0,
     lookup_fails: lookups.size,
@@ -372,7 +393,7 @@ export function renderMarkdown(a: FrontierAnalysis): string {
   if (a.complete === false) out.push(`**Incomplete run.** ${a.trials_recorded} of ${a.trials_planned} planned trials recorded; ${a.trials_unstarted} never started. Reported from what exists; nothing was backfilled.`, '');
   out.push(`Method: ${a.method.estimator}. Seed ${a.method.seed}, ${a.method.draws} draws, alpha ${a.method.alpha}, non-inferiority margin ${(100 * a.method.ni_margin).toFixed(0)} points. harness_error counts as a fail; model_error, infra_error and exam_fault are excluded, counted per cell and dropped pairwise. ${a.lookup_fails} trial(s) confirmed as answer-key lookups count as fails. No ranks: rows and columns follow the spec.`, '');
   out.push('## Verdict tags', '', 'Each cell gets the first tag whose rule holds, in this order:', '');
-  for (const v of VERDICTS) out.push(`- **${v}**: ${a.verdict_rules[v]}.`);
+  for (const [v, rule] of Object.entries(a.verdict_rules)) out.push(`- **${v}**: ${rule}.`);
   const harnesses = [...new Set(a.cells.map((c) => c.harness))];
   out.push('', '## Harness x model', '', 'Each cell: pass rate [95% CI]; cost per solve [95% CI]; median wall time (contended); verdict.', '');
   out.push(`| Harness | ${a.models.map((m) => m.label).join(' | ')} |`, `|---|${a.models.map(() => '---|').join('')}`);

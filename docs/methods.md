@@ -58,7 +58,20 @@ Paid work needs `ANTHROPIC_API_KEY` in the proxy's environment only and a ledger
 - `bun scripts/prereg-ledger.ts` writes the ledger from a full clone of the private main, once every scrub is committed, just before the export. It refuses if any experiment's preregistration merged after the cutover, so no private experiment is left out.
 - **The ledger is written once.** If more than one commit in the history changed it, `--public` fails every experiment, so a later edit can't move the cutover or add an entry. The export drops earlier versions of the file from the rebuilt history and adds the final one in a single commit.
 
+## Headroom: which tasks can tell arms apart
+
+- **What it is.** A task every arm of a run passed on every try, or every arm failed on every try, can't show a difference between arms. The rest are the tasks that can tell arms apart. `summarize-run.ts` ends with a Headroom section that counts them and gives the per-task, per-arm pass table; `bun scripts/headroom.ts --results <dir>` prints the same section for any results folder. Every results PR includes it.
+- **The gate.** `scripts/matrix-analysis.ts` (its "higher" calls) and `scripts/frontier-harbor/analyze.ts` (its within-15 calls) refuse a call when fewer than 10 of the two arms' paired tasks can tell the run's arms apart (`min_paired_tasks` in a frontier spec), or when on those tasks the reference arm leaves less room than the smallest difference the preregistration named. The call then reads "can't tell: no room to improve" with the counts. Room for a "no worse than" call is the reference arm's passed share on those tasks; for a "better than" call it is the losing arm's failed share. Both are over all paired tasks, so they compare directly with the margin.
+- **Why the run's set and not the pair's.** Counting per pair would treat two arms that agree on a task as a task with no room, so a harness that matches its home harness would be refused for agreeing. A task some third arm fails shows the task can separate arms.
+- **What it does not change.** The gate runs after Holm, so the preregistered family, its p-values and every other call stay as they are. A matrix spec names its smallest difference in `smallest_difference`; without it only the count is checked, and the output says so. The spec files of runs published before the gate (listed with their sha256 in `scripts/headroom.ts`) keep the output they were published with; an edited copy gets the gate.
+- **Other headroom rules in the repo.** matrix-analysis's drop-difference rule (H3) keeps its own 8-task minimum over tasks informative in both drops, a different question already published. `instruction-followed-h10.ts` calls a family with no headroom when its control follows the instruction more than 25% of the time, which is a rate rule for one experiment. Neither is changed.
+- **What comes next.** This gate fires after a run has spent. The bigger saving is a headroom check before a run spends (the control arm between about 20% and 80% on a pilot, at least 10 tasks that can tell arms apart) and a two-stage design; neither is built yet.
+
 ## Changelog
+
+### 2026-11-09: Headroom section added
+
+Adds what the headroom report counts, the gate's rule, and what it leaves unchanged. Why: most published comparisons rest on a minority of tasks (6 of 20 in the multi-user run behind the README), and nothing counted them.
 
 ### 2026-11-06: spend line no longer names a program cap (internal-task)
 

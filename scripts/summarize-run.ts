@@ -62,12 +62,17 @@
 // `gbrain.ingest` events' `effect.latency_ms` (median, p90 by nearest rank, max; a skipped message made no write and is left out),
 // facts returned per `search`, `query` or `recall` call (`effect.facts` length: median, max, and the share of calls returning at
 // least one), and the queries those calls sent (distinct `args.query` strings with counts, the top ten per cell).
+// Headroom (runner/stats/headroom.ts, scripts/headroom.ts): last, a plain-English section with the per-task, per-cell pass
+// table, each task tagged as passed in every cell on every try, failed in every cell on every try, or able to tell cells
+// apart, and how many are left that can. Probe cells are left out. summary.json gains a `headroom` key (only its counts
+// for a sealed run, whose task ids stay in custody).
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { installerNotApplied, type TrialRecord } from '../runner/contracts.ts';
 import type { WorldEvent } from '../world/services/events.ts';
 import { seededRandom } from '../runner/stats/paired.ts';
+import { renderHeadroom, runHeadroom } from '../runner/stats/headroom.ts';
 import { gbrainUsage } from './gbrain-usage.ts';
 import { taskFamily } from '../runner/grade/task.ts';
 import { taskDirFor } from '../runner/run.ts';
@@ -382,5 +387,8 @@ for (const cell of cells) {
 }
 if (excludedRows.length) out.push(`Excluded from scoring (methodology item 9): ${excludedRows.length} trial(s): ${[...new Map(excludedRows.map((t) => [t.termination, excludedRows.filter((x) => x.termination === t.termination).length])).entries()].map(([k, v]) => `${k} ${v}`).join(', ')}; their spend is in the USD columns.`);
 if (missingTasks.size) summary.families_unresolved = [...missingTasks].sort();
+const headroom = runHeadroom(rows.filter((t) => !isProbeCell(t.cell)).map((t) => ({ arm: t.cell, task: t.task, pass: passed(t) ? 1 : 0 })));
+summary.headroom = sealedSet ? { counts: headroom.counts } : headroom;
+out.push('', renderHeadroom(headroom));
 writeFileSync(join(results, useRegraded ? 'summary.regraded.json' : 'summary.json'), JSON.stringify(summary, null, 1) + '\n');
 console.log(out.join('\n'));

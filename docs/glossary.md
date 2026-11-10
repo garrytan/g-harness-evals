@@ -19,6 +19,7 @@ A Sonnet-, Haiku- or luna-only result carries no verdict (R54).
 | Word | Plain meaning |
 |---|---|
 | **Can't tell apart** | The preregistered test found no difference after adjusting for the number of comparisons. It does not mean equal: the run had less than an 80% chance to detect a gap smaller than its MDD. |
+| **Can't tell: no room to improve** | The analysis refused a "better than" call from a harness matrix analysis (ahead or behind) or a within-N-points call from a frontier analysis because the tasks left could not show it: fewer than 10 of the two arms' tasks are ones the run can tell apart, or on those tasks the pass rate could not move by the smallest difference the preregistration named. It is not a tie. The run's Headroom section gives the counts. |
 | **Behind** / **ahead** | The preregistered test found a difference, in that direction, after the adjustment. |
 | **Within N points** / **at most N points ahead** | The preregistered non-inferiority test showed, after the adjustment, that a harness is no more than N points below the one it is compared with, N being the margin the preregistration set. Read from the other side, that one is at most N points ahead. It does not mean equal or better. |
 | **Cheaper per trial** / **costs more per trial** | A preregistered cost contrast whose 95% range is wholly below or wholly above zero. |
@@ -53,6 +54,7 @@ A Sonnet-, Haiku- or luna-only result carries no verdict (R54).
 | **Told** / **live** / **scoped** | Names of gbrain setups. Each report defines them in its What ran section, and the meaning has changed between runs, so read that run's definition. Scoped always means the brain returns only what the asker may see. |
 | **Rung** | One step of an install or setup ladder, each adding one thing. |
 | **Ceiling** / **floor** | Tasks every cell passes, or no cell passes. They can't show a difference. |
+| **Tasks that can tell arms apart** | Every task except the ceiling and floor ones: not every arm of the run passed it on every try, and not every arm failed it on every try. A run's Headroom section counts them, and a call needs at least 10 of them among its two arms' tasks ([methods](methods.md#headroom-which-tasks-can-tell-arms-apart)). |
 | **Why null?** | The section a null or negative result must carry: exposure, fit, power and saturation, model, then one verdict. |
 
 ## Other verdict words in older reports

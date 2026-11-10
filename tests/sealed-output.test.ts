@@ -106,6 +106,7 @@ esac
   expect(sh('run.ts preflight', ['bun', 'runner/run.ts', 'preflight', '--manifest', join(results, 'manifest.json'), ...sealed]).status).toBe(0);
   expect(sh('run.ts run', ['bun', 'runner/run.ts', 'run', '--manifest', join(results, 'manifest.json'), '--harness-mode', 'scripted', ...sealed]).status).toBe(0);
   expect(sh('summarize-run.ts', ['bun', 'scripts/summarize-run.ts', '--results', results, '--sealed-root', root]).status).toBe(0);
+  expect(Object.keys(JSON.parse(readFileSync(join(results, 'summary.json'), 'utf8')).headroom)).toEqual(['counts']);
   expect(sh('compare-run.ts', ['bun', 'scripts/compare-run.ts', '--results', results, '--sealed-root', root]).status).toBe(0);
   expect(sh('export.ts', ['bun', 'scripts/sealed/export.ts', '--results', results, ...sealed, '--custody', f.custody]).status).toBe(0);
   // canaries: a parser's message quotes the bad token, so a malformed file holding sealed text must not reach the terminal

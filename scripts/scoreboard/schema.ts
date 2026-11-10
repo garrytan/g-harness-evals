@@ -8,7 +8,7 @@ export const CELL_FIELDS = ['passes', 'scored', 'pass_rate', 'pass_ci95', 'usd_p
 export type CellField = (typeof CELL_FIELDS)[number];
 export type OptionalCellField = 'usd_per_solved_interval_basis';
 
-export const CALL_WORD = /^(can't tell apart|behind|ahead|within \d+ points)$/;
+export const CALL_WORD = /^(can't tell apart|can't tell: no room to improve|behind|ahead|within \d+ points)$/;
 
 export interface EntryCell {
   id: string;

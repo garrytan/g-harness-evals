@@ -23,6 +23,12 @@
 // (methodology item 10): it keeps its estimate and interval and counts as p = 1 inside the family. Secondary comparisons
 // carry an interval and no test.
 //
+// Headroom (runner/stats/headroom.ts, docs/methods.md): after Holm, a "higher" call is refused and reads "can't tell: no
+// room to improve" when fewer than 10 of the pair's tasks are ones the run can tell apart (not every spec cell passed it
+// on every repetition, not every cell failed it on every repetition), or when on those tasks the losing cell leaves less
+// room than the spec's smallest_difference. Each primary comparison carries its headroom record. A spec listed in
+// scripts/headroom.ts (published before the gate) keeps the output it was published with.
+//
 // A drop is frontier minus cheap per task (a frontier-to-cheap drop for one harness). A drop difference is drop A minus
 // drop B per task, over tasks present in all four cells. A task is informative for a drop unless both cells sit at the
 // same extreme on it (both at 0, or both passing every scored repetition); a drop difference counts the tasks
@@ -53,7 +59,7 @@
 // and line, never the parser's message; a cut-off line of a usage or event log (the last line, or a usage-log line the resumed proxy ran into) is skipped and counted instead.
 //
 // Spec: { "run_id": "...", "seed": 7, "draws": 10000, "alpha": 0.05, "primary_family_size": 6,
-//         "h3_min_informative_tasks": 8, "cells": [{ "id": "<cell id>", "label": "..." }],
+//         "h3_min_informative_tasks": 8, "smallest_difference": 0.1, "cells": [{ "id": "<cell id>", "label": "..." }],
 //         "primary": [{ "id": "...", "a": "<cell id>", "b": "<cell id>" }], "secondary": [...same shape...],
 //         "drops": [{ "id": "...", "frontier": "<cell id>", "cheap": "<cell id>" }],
 //         "drop_differences": [{ "id": "...", "a": "<drop id>", "b": "<drop id>" }] }
@@ -67,6 +73,8 @@ import { beyondRecords, costSplit, earlierAttempts, UNALLOCATED_TOLERANCE, type 
 import { readJsonFile, readJsonLines } from '../runner/heldout/sealed.ts';
 import { RunnerError } from '../runner/errors.ts';
 import { trialDirFor } from '../runner/trial/run.ts';
+import { NO_ROOM, noRoomReason, pairHeadroom, runCanTellApart } from '../runner/stats/headroom.ts';
+import { headroomGated } from './headroom.ts';
 
 export interface SpecComparison { id: string; a: string; b: string }
 export interface SpecDrop { id: string; frontier: string; cheap: string }
@@ -77,6 +85,9 @@ export interface MatrixSpec {
   alpha?: number;
   primary_family_size: number;
   h3_min_informative_tasks?: number;
+  /** The smallest difference, in pass-rate units, the preregistration named for its primary comparisons (its minimum
+   *  detectable difference). The headroom gate refuses a "higher" call when the tasks left can't move the pass rate this far. */
+  smallest_difference?: number;
   cells: Array<{ id: string; label?: string }>;
   primary: SpecComparison[];
   secondary?: SpecComparison[];
@@ -151,6 +162,7 @@ export function checkSpec(spec: MatrixSpec, manifest: MatrixManifest): string[] 
   if (!Number.isSafeInteger(spec.primary_family_size) || spec.primary_family_size < 1) problems.push('primary_family_size must be a positive integer');
   else if ((spec.primary ?? []).length !== spec.primary_family_size) problems.push(`the primary family has ${(spec.primary ?? []).length} comparison(s); the spec preregisters ${spec.primary_family_size}`);
   for (const c of spec.primary ?? []) pair('primary comparison', c, cells);
+  if (spec.smallest_difference !== undefined && !(Number.isFinite(spec.smallest_difference) && spec.smallest_difference > 0 && spec.smallest_difference <= 1)) problems.push('smallest_difference must be a pass-rate difference above 0 and at most 1 (0.1 is 10 points)');
   for (const c of spec.secondary ?? []) pair('secondary comparison', c, cells);
   const drops = new Set<string>();
   for (const d of spec.drops ?? []) {
@@ -331,24 +343,31 @@ export function analyzeMatrix(input: MatrixInput, spec: MatrixSpec) {
     };
   });
 
+  const runSet = runCanTellApart(spec.cells.map((c) => new Map([...means.get(c.id)!].map(([task, x]) => [task, x.mean]))));
   const compare = (c: SpecComparison) => {
     const A = means.get(c.a)!, B = means.get(c.b)!;
     const universe = [...new Set([...taskUniverse(c.a), ...taskUniverse(c.b), ...A.keys(), ...B.keys()])].sort();
     const dropped = universe.filter((task) => !A.has(task) || !B.has(task)).map((task) => ({ task, reason: !A.has(task) && !B.has(task) ? 'no scored trial in either cell' : !A.has(task) ? `no scored trial in ${c.a}` : `no scored trial in ${c.b}` }));
     const items = universe.filter((task) => A.has(task) && B.has(task)).map((task) => ({ task, a: A.get(task)!.mean, b: B.get(task)!.mean }));
-    return { r: pairedTasks(items, seed, draws), dropped };
+    return { r: pairedTasks(items, seed, draws), dropped, headroom: pairHeadroom(items.map((i) => ({ cluster: i.task, a: i.a, b: i.b })), runSet) };
   };
   const fmt = (r: PairedResult | null) => r ? { tasks_paired: r.tasks, mean_a: round(r.mean_a), mean_b: round(r.mean_b), delta: round(r.delta), ci95: r.ci95 ? [round(r.ci95[0])!, round(r.ci95[1])!] as [number, number] : null } : { tasks_paired: 0, mean_a: null, mean_b: null, delta: null, ci95: null };
 
   const primaryRaw = spec.primary.map((c) => ({ c, ...compare(c) }));
   const tested = (r: PairedResult | null) => r !== null && r.tasks >= MIN_TESTED_TASKS;
   const holm = holmFamily(primaryRaw.map((x) => (tested(x.r) ? x.r!.p_two_sided : 1)), alpha);
-  const primary = primaryRaw.map(({ c, r, dropped }, i) => {
+  const gated = headroomGated(spec);
+  const primary = primaryRaw.map(({ c, r, dropped, headroom }, i) => {
     const h = holm[i]!;
-    const verdict = h.rejected && r && tested(r) ? (r.delta > 0 ? `${c.b} higher` : `${c.a} higher`) : "can't tell apart";
+    const call = h.rejected && r && tested(r) ? (r.delta > 0 ? `${c.b} higher` : `${c.a} higher`) : "can't tell apart";
+    const refused = gated && headroom && r && call !== "can't tell apart"
+      ? noRoomReason(headroom, { room: r.delta > 0 ? headroom.room_above_a : headroom.room_above_b, smallest_difference: spec.smallest_difference ?? 0, min_tasks: MIN_TESTED_TASKS })
+      : null;
+    const verdict = refused ? NO_ROOM : call;
     return { id: c.id, family: 'primary' as const, a: c.a, b: c.b, ...fmt(r), tasks_dropped: dropped.length, dropped, p_two_sided: r ? round(r.p_two_sided, 8) : null, p_method: r?.p_method ?? 'no paired task (counted as p = 1 in the family)',
       tested: tested(r), untested_reason: tested(r) ? null : `fewer than ${MIN_TESTED_TASKS} paired tasks: descriptive only, counted as p = 1 in the family (methodology item 10)`,
-      holm_step: h.step, holm_threshold: round(h.threshold, 8), holm_p: round(h.holm_p, 8), verdict };
+      holm_step: h.step, holm_threshold: round(h.threshold, 8), holm_p: round(h.holm_p, 8), verdict,
+      ...(gated ? { headroom: headroom && { ...headroom, room_above_a: round(headroom.room_above_a)!, room_below_a: round(headroom.room_below_a)!, room_above_b: round(headroom.room_above_b)! }, no_room_reason: refused } : {}) };
   });
   const secondary = (spec.secondary ?? []).map((c) => { const { r, dropped } = compare(c); return { id: c.id, family: 'secondary' as const, a: c.a, b: c.b, ...fmt(r), tasks_dropped: dropped.length, dropped, label: 'secondary, no Holm, no test' }; });
 
@@ -393,6 +412,7 @@ export function analyzeMatrix(input: MatrixInput, spec: MatrixSpec) {
     faults: { scored_as_fail: ['harness_error'], excluded_with_counts: [...EXCLUDED], pass: 'grade pass with no consent violation' },
     cells,
     primary: { holm_family_size: spec.primary_family_size, alpha, comparisons: primary },
+    ...(gated ? { headroom_gate: { min_tasks: MIN_TESTED_TASKS, smallest_difference: spec.smallest_difference ?? null } } : {}),
     secondary,
     drops,
     drop_differences: dropDifferences,
@@ -428,6 +448,11 @@ export function renderMarkdown(a: MatrixAnalysis): string {
   if (a.truncated_log_lines.usage_logs || a.truncated_log_lines.event_logs) out.push('', `Cut-off log lines skipped: ${a.truncated_log_lines.usage_logs} in usage logs, ${a.truncated_log_lines.event_logs} in event logs.${a.truncated_log_lines.usage_logs ? ' A cut-off usage line may have held a charged row, so earlier-attempt USD is a lower bound.' : ''}`);
   out.push('', `## Primary comparisons (Holm across ${a.primary.holm_family_size})`, '', '| Comparison | A | B | A / B task mean | B minus A [95% CI] | Tasks paired | Tasks dropped | p (sign-flip) | Holm step | Holm p | Verdict |', '|---|---|---|---|---|---|---|---|---|---|---|');
   for (const c of a.primary.comparisons) out.push(`| ${c.id} | ${c.a} | ${c.b} | ${pct(c.mean_a)} / ${pct(c.mean_b)} | ${pts(c.delta)} ${ciPts(c.ci95)} | ${c.tasks_paired} | ${c.tasks_dropped} | ${c.p_two_sided ?? 'n/a'} | ${c.holm_step} | ${c.holm_p} | ${c.verdict}${c.tested ? '' : ` (untested: fewer than ${MIN_TESTED_TASKS} paired tasks)`} |`);
+  if (a.headroom_gate) {
+    const g = a.headroom_gate;
+    out.push('', '### Headroom of each primary comparison', '', `A task the run can tell apart is one that not every cell of the spec passed on every try, and not every cell failed on every try. A "higher" call needs at least ${g.min_tasks} such tasks among A's and B's paired tasks, ${g.smallest_difference === null ? 'and the spec names no smallest difference, so only that count was checked' : `and room on them for the ${pts(g.smallest_difference).replace('+', '')}-point smallest difference the preregistration named`}. Otherwise it reads "${NO_ROOM}". The gate runs after Holm, so no other comparison changes. Room is the most those tasks could move the pass rate, holding the losing arm at its results.`, '', '| Comparison | Paired tasks the run can tell apart | A and B both passed every try | A and B both failed every try | Room for B above A | Room for A above B | Gate |', '|---|---|---|---|---|---|---|');
+    for (const c of a.primary.comparisons) out.push(c.headroom ? `| ${c.id} | ${c.headroom.run_can_tell_apart} of ${c.headroom.tasks} | ${c.headroom.both_passed} | ${c.headroom.both_failed} | ${pts(c.headroom.room_above_a)} | ${pts(c.headroom.room_above_b)} | ${c.no_room_reason ?? 'ok'} |` : `| ${c.id} | no paired task | | | | | |`);
+  }
   if (a.secondary.length) {
     out.push('', '## Secondary comparisons (no Holm, no test)', '', '| Comparison | A | B | A / B task mean | B minus A [95% CI] | Tasks paired | Tasks dropped | Label |', '|---|---|---|---|---|---|---|---|');
     for (const c of a.secondary) out.push(`| ${c.id} | ${c.a} | ${c.b} | ${pct(c.mean_a)} / ${pct(c.mean_b)} | ${pts(c.delta)} ${ciPts(c.ci95)} | ${c.tasks_paired} | ${c.tasks_dropped} | ${c.label} |`);

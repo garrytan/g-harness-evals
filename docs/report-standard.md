@@ -38,6 +38,7 @@ Every report opens with takeaways, then a TL;DR block, before any other heading.
 - **Cost is list price through our metering proxy.** Say what is in and out: excluded trials, timed-out charges, housekeeping calls, smokes, VMs.
 - **Cost stays internal unless it is the lesson.** Cost per solved task between setups belongs in the body when it is part of what we learned. Run spend (what the run cost us: paid trials, VMs, our own model use) never goes in report.md, because preregistered reports are hash-pinned and the public export can't drop a section from them. It goes in its own file beside the report, `docs/benchmarks/<run>/spend-internal.md`, outside results/ and outside the preregistration's globs; the public export leaves that path out.
 - **Intervals are explained once in plain words** and named exactly (task-clustered bootstrap, Wilson, Newcombe). Name the Holm family and its size.
+- **Headroom comes with every result.** Include the Headroom section `summarize-run.ts` prints (or `bun scripts/headroom.ts --results <dir>`): how many tasks can tell the arms apart, and the per-task table. A call the analysis refused reads "can't tell: no room to improve", with its counts.
 - **Calls come from the preregistered family only.** Rows are never ranked by point estimate when their ranges overlap.
 - **Define every term the glossary doesn't cover** on first use.
 - **Docs style:** lead with the answer, short sentences, bullets over paragraphs, no paragraph over three lines, no em dashes, no marketing words.
@@ -48,7 +49,7 @@ A report whose run compares harnesses on one task set adds an entry under docs/s
 
 - per cell: passes, scored trials, the task-mean pass rate and its 95% range, cost per solved task and its 95% range, cost per trial, median wall time;
 - per comparison: the two cells, delta, 95% range, Holm-adjusted p, tested, and a verdict field using the glossary's call words;
-- per run: the task count, the ceiling and floor task lists, and the MDD per comparison.
+- per run: the task count, the ceiling and floor task lists, how many tasks can tell the arms apart, and the MDD per comparison.
 
 A run on a task set that already has a main entry adds a `"role": "other"` entry instead. It shows under that table as "Same tasks, other runs", and the README leaves it out.
 

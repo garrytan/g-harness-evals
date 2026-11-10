@@ -66,6 +66,7 @@ const verdictOf = (c: Comparison) => (c.tested === false ? 'not tested' : c.verd
 
 export function callPhrase(verdict: string, side: 'a' | 'b'): string {
   if (verdict === "can't tell apart") return "can't tell apart from";
+  if (verdict === "can't tell: no room to improve") return "can't tell (no room to improve) against";
   if (verdict === 'behind') return side === 'a' ? 'behind' : 'ahead of';
   if (verdict === 'ahead') return side === 'a' ? 'ahead of' : 'behind';
   const within = /^within (\d+) points$/.exec(verdict);

@@ -21,6 +21,8 @@
 
 ## Results
 
+<!-- Include the Headroom section from summarize-run.ts: "k of n tasks can tell the arms apart" and the per-task table. -->
+
 ## Why null?
 
 ## Deviations
