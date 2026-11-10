@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-07-plain-opus-k6",
+  "task_id": "rev-07",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 6,
+  "status": "ok",
+  "reply_text": "I reviewed `http-retries` against `main`. It's one commit, \"Retry 429 and 5xx responses with backoff\", and I changed nothing. The tests pass, but **I wouldn't merge it yet.** It has one definite regression and some retry risks.\n\n**Blocker: it breaks the nightly export**\n- In `src/http.js`, the new `resolveOptions` sets `timeoutMs: opts.timeoutMs || DEFAULT_TIMEOUT_MS`. On `main` this used `??`.\n- With `||`, `timeoutMs: 0` turns into 10000. So the 4.0.1 feature \"0 disables the timeout\" is silently gone.\n- `src/export.js` passes `timeoutMs: 0` because a full export can take ten minutes. On this branch it would be cut off after 10 seconds.\n- Fix: change it back to `??`. A test for `timeoutMs: 0` would have caught this; there isn't one.\n\n**Should fix before merge**\n1. **It retries every request, including POST, PATCH and other non-repeatable ones.** Every worker shares this client, so a write that hit a 502 or 503 after the server already acted could run 3 times. I'd only retry by default for GET, HEAD, PUT, DELETE and OPTIONS, and let callers opt in for the rest.\n2. **It ignores `Retry-After` on 429 and 503 responses.** The worst-case total wait is about 0.25s + 0.5s, so 2 quick retries against a rate limit mostly add load. It should wait as long as `Retry-After` says, up to some cap.\n3. **Failed responses are thrown away without closing them.** When it retries, the earlier response bodies are never read or cancelled, which can hold connections open under load. Calling `res.body?.cancel()` before sleeping would fix it.\n4. **Under the timeout bug, the export could fail repeatedly.** Each try gets its own timeout, so a 5xx on the export now repeats a ten-minute download up to 3 times. That's probably acceptable once the timeout bug is fixed, but worth deciding on purpose.\n\n**Smaller points**\n- Network errors and timeouts throw instead of retrying. That's a reasonable choice, but neither the README nor the CHANGELOG says so.\n- `retries: 2` is a new default for every caller. That's a behaviour change in a minor release (4.1.0), so the existing callers should be checked.\n- The tests only cover \"503 then success\" and \"501 is not retried\". Missing cases:\n  - `timeoutMs: 0`\n  - running out of retries and getting the last 5xx back\n  - `retries: 0`\n  - 429 handling\n- Minor: `baseDelayMs` uses a hard-coded 250 instead of a named constant, and `resolveOptions` is exported even though nothing else uses it.\n\n**What's fine:** the 501 exclusion, the full-jitter backoff capped at 8 seconds, the README and CHANGELOG notes, and the version bump.\n\nIf you can only fix one thing, change `||` back to `??` and add a test for `timeoutMs: 0`. The POST retries are the next biggest risk.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-07-plain-opus-k6",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.073573,
+    "input_tokens": 54567,
+    "output_tokens": 1760,
+    "cached_tokens": 50542,
+    "cache_write_tokens": 3554,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000052600000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.07352040000000001,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 20.323,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-07-plain-opus-k6",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T15:09:23.618Z",
+    "images": {
+      "core": "sha256:d3c15a4ff59b46b682cc0b498a5b96d657f86e2d1ac9a8b947b4fb5d8b1c3302",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-8a638002971d",
+        "id": "sha256:de8f372133eadef12cc1ca79989c36577960d40b447ecf81ee9dc003a08e04ec",
+        "tree_sha256": "b8945d3ad7f19c62dccf490b61260b4bcea0b1391062820ab876fa3dbd3cabe5"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-e92eb9fb-c9d1-4ff9-ae26-15b5c0f5-2c4eb7"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T15:10:06.925Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 5,
+          "command": "cd /root/workspace/repo && git branch -a && git log --oneline main..http-retries && git diff main...http-retries --stat && git diff main...http-retries",
+          "code": 0,
+          "output": "* http-retries\n  main\nb04b610 Retry 429 and 5xx responses with backoff\n CHANGELOG.md        |  4 ++++\n README.md           |  2 ++\n package.json        |  2 +-\n src/backoff.js      |  7 +++++++\n src/http.js         | 31 +++++++++++++++++++++++++++----\n src/retry-policy.js |  5 +++++\n test/retry.test"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-07-plain-opus-k6",
+      "meter": {
+        "requests": 5,
+        "usd": 0.073573,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.073573,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000052600000000000005
+    }
+  }
+}

@@ -1,0 +1,159 @@
+{
+  "trial_id": "rev-11-edition-opus-k2",
+  "task_id": "rev-11",
+  "family": "review",
+  "arm": "edition",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 2,
+  "status": "ok",
+  "reply_text": "I reviewed `search-filters` against `main` (3 commits) and didn't change anything. The tests pass, but there's one problem that should block the merge.\n\n**Blocker: SQL injection in the free-text search** (`src/query.js`)\n```js\nclauses.push(\"name ILIKE '%\" + term + \"%'\");\n```\nThe search term from the request is pasted straight into the SQL. Your README says never to do that. A term like `x' OR 1=1 --` would change what the query does. It should be a placeholder plus a param, the same way category works:\n```js\nparams.push('%' + term + '%');\nclauses.push(`name ILIKE $${params.length}`);\n```\nTwo smaller points on the same lines:\n- You may want to escape `%`, `_` and `\\` in the term so users can't send wildcards. Use `ESCAPE '\\'` if you do.\n- An empty term (only spaces) still adds `ILIKE '%%'`. Skip the clause when the term is empty after trimming.\n\n**Should fix**\n- **The tests don't catch the injection.** They only check that the SQL contains \"name ILIKE\". Add a test that checks the exact output, e.g. `{ where: 'WHERE name ILIKE $1', params: ['%red%'] }`, and one with a term containing a quote.\n- **The in-stock test was deleted, not renamed.** Add it back using `buildWhere`.\n- **`buildFilters` was renamed to `buildWhere`, which breaks anything still calling the old name.** Nothing in this repo calls it. But if other code uses it, this rename is a breaking change, and the changelog doesn't mention it.\n- **The \"relevance\" sort will probably fail.** It's the default and sorts by `rank DESC`, but nothing on this branch creates a `rank` column. Unless your table already has one, every default search will error. Either compute `rank` or default to `newest`.\n\n**Nits**\n- In `paginate.js`, `MAX_PAGE` is really the maximum page size, so `MAX_PAGE_SIZE` would be clearer.\n- Page numbers have no upper limit, so a request for page 10^9 makes a huge offset. Consider capping it.\n- The `price_asc` sort has no tiebreaker, so products with the same price can come back in a different order between pages. Add `, id` to make the order stable.\n- The changelog mentions sort orders but not pagination.\n\nOnce the injection is fixed and has a test, this looks fine to merge.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-11-edition-opus-k2",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.061648800000000004,
+    "input_tokens": 54312,
+    "output_tokens": 1342,
+    "cached_tokens": 50752,
+    "cache_write_tokens": 3096,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000050400000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0615984,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 16.814,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-11-edition-opus-k2",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T12:59:37.366Z",
+    "images": {
+      "core": "sha256:d3c15a4ff59b46b682cc0b498a5b96d657f86e2d1ac9a8b947b4fb5d8b1c3302",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-a37a4db49ad7",
+        "id": "sha256:6c659f1b0432cea1eb0db9b19f43ea8bfa0f2f02c7a83d5ad91b5d10171f8a8e",
+        "tree_sha256": "593d02dc02e96eab384f83c52971c5fda6586bcbeb5e6f14ef27e349edfe0b1b"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-4a6813cd-8da0-40af-a598-cbd7e0b3-dc4322"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:00:18.027Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline -5; git diff main...search-filters",
+          "code": 0,
+          "output": "  main\n* search-filters\n54f7b81 Paginate search results\n306a556 Add free-text search over the name\ne8e0f84 Product search by exact filters\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex d29661f..a673868 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.6.0\n+\n+- Free-t"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-11-edition-opus-k2",
+      "meter": {
+        "requests": 5,
+        "usd": 0.061648800000000004,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.061648800000000004,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000050400000000000005
+    }
+  }
+}

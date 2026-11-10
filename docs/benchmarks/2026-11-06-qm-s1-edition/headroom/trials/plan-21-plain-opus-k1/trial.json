@@ -1,0 +1,150 @@
+{
+  "trial_id": "plan-21-plain-opus-k1",
+  "task_id": "plan-21",
+  "family": "plan",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I went through the storefinder-api repo and have a plan. I haven't changed anything. It's a small codebase: one data file with 4 stores, a routes map with two endpoints, and helpers for distance, pagination and the open-store filter. The new endpoint can be built almost entirely from those existing pieces.\n\n**Proposed endpoint**\n`GET /stores/nearby?lat=…&lng=…&radius_km=…&limit=…&offset=…`\n- Returns stores within `radius_km`, nearest first, each with a `distance_km` field.\n- Uses the same response shape as `GET /stores`: `{ items, total, limit, offset }`.\n- In `routes.js`, it must be registered before any `/stores/:id` routes so \"nearby\" isn't read as a store ID.\n\n**Three past problems it has to avoid**\n1. **Coordinate order (BUG-301).** Coordinates in this codebase are always `[lng, lat]` (`docs/coordinates.md`). Swapping them once put the Lisbon store in the Indian Ocean. The endpoint should take `lat`/`lng` as separate named query parameters and convert them with `toLngLat()` straight away, then use `haversineKm()` from `geo.js`.\n2. **Only public stores.** The endpoint should start from `publicStores()`, not the raw data file. Soft-launch stores are staff-only until marketing announces them, and closed stores are gone for good. An existing test enforces this for public endpoints.\n3. **Result cap (INC-77).** An unlimited store list took the API down during the app launch. Results should go through `paginate()`, which caps them at 100. The radius should have its own upper limit too. I'd suggest 50 km, but that's your call.\n\n**Input checks**\n- Return a 400 error when `lat`/`lng` are missing, not numbers, or out of range (lat ±90, lng ±180), or when the radius is zero, negative or above the limit.\n- Add a default radius (5 km?) or make the radius required.\n- The existing `/stores/:id/distance` route has no input checks and crashes on an unknown store ID. It's worth fixing separately, but it shouldn't be copied.\n\n**Tests**\n- With the current data, a search from Lisbon with a 10 km radius returns `lis-1` only. `lis-2` is about 2 km away but soft-launch, so it must not appear.\n- A search from Lisbon with a 300 km radius returns `lis-1` then `por-1`, nearest first.\n- A test that would fail if lat and lng were swapped.\n- Bad input returns 400, and `limit` above 100 gets capped.\n\n**Things to confirm with mobile**\n- Default and maximum radius.\n- Whether they need opening hours or photos in each result. Helpers exist for both, but the `openNow()` hours helper ignores time zones (it treats 8:00–20:00 UTC as open for every store), so I'd leave it out for now.\n- Caching: `cache.js` defines a 5-minute cache lifetime that nothing uses yet. Results depend on the user's exact position, so caching only makes sense if we round coordinates.\n- Cross-site access settings only allow the website's address. Native apps don't need that, but a mobile web view would.\n\n**Scaling:** with 4 stores, checking the distance to every store is fine. If the list grows into the thousands, we can add a quick bounding-box filter first or a spatial index. The endpoint itself wouldn't need to change.\n\nThe work is roughly one route, a small input-check helper and about 5 tests. Once the radius limits are agreed, I can write it.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-21-plain-opus-k1",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0753966,
+    "input_tokens": 64713,
+    "output_tokens": 1876,
+    "cached_tokens": 60987,
+    "cache_write_tokens": 3232,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.0000552,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0753414,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 24.755,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-21-plain-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:26:13.348Z",
+    "images": {
+      "core": "sha256:276503dbf085b3b0855b3ecb1bcc7e1a4baa8571aea7cba84ecb4236755d85c7",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-3a3400f10bfd",
+        "id": "sha256:34dc8aa4461c3be68f4512878e61ea34b5083a28c7e5f7577d3be6e346bce590",
+        "tree_sha256": "b6247ad88d073ebd85b13264308483ff6640bb140d30ba92a11646e902f2aa13"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-1f4e4287-7a86-4b09-83a6-acfb5c61-cccc97"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:27:01.673Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd ~/workspace/repo; git log --oneline|head -5; find . -path ./.git -prune -o -type f -print | head -100; cat README* package.json pyproject.toml 2>/dev/null | head -80",
+          "code": 0,
+          "output": "8394d14 Opening hours, photos, caching, CORS and metrics\ne0fa30f Cap list endpoints at 100 items\n95c5a5e Fix swapped coordinates in the distance route\n90c31bc Stores API\n./package.json\n./README.md\n./Dockerfile\n./config/cors.json\n./src/routes.js\n./src/cache.js\n./src/photos.js\n./src/metrics.js\n./src/h"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-21-plain-opus-k1",
+      "meter": {
+        "requests": 6,
+        "usd": 0.0753966,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.0753966,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.0000552
+    }
+  }
+}

@@ -8,18 +8,18 @@
 // notifications, ping or other methods), recorded after the upstream reply so outcome and latency are
 // known. effect.pages carries the gbrain page slugs the call returned or targeted.
 //
-// HARN-2 (company brain): under member scope the upstream also carries the company brain's per-member tokens, and
+// internal-task (company brain): under member scope the upstream also carries the company brain's per-member tokens, and
 // the tap presents the token of the member whose turn is running (the requester the runner sets through
 // POST /admin/gbrain/requester), or the public-only token before the first turn. The requester is read once, before
 // the first await, so a turn change while a request is in flight cannot swap its token. Every gbrain event names the
 // token it went out under in grant, and a tool result gbrain refused is classified by gbrain's own error code
 // (permission_denied, page_not_found) instead of the generic tool_error.
 //
-// HARN-5 (the install ladder): recall joins search and query in the row-count branch (its results carry slug, so
+// internal-task (the install ladder): recall joins search and query in the row-count branch (its results carry slug, so
 // cross-scope reads on the verbs surface are measurable), and effect.degraded carries gbrain's own stamp when a reply
 // fell back to keyword search (recall's search_degraded or facts_degraded.reason), which the runner's semantic check reads.
 //
-// HARN-5 (gbrain#7481, scope "sources"): the upstream may carry the company brain's member-to-sources grants instead of
+// internal-task (gbrain#7481, scope "sources"): the upstream may carry the company brain's member-to-sources grants instead of
 // member tokens. Every search and query (and, from gbrain#8074, recall and list_pages; SOURCE_SCOPED_TOOLS) then goes out
 // under the trial's one unscoped token with source_ids set to the
 // requesting member's granted sources (the public source before the first turn), intersected with any source_ids the
@@ -28,7 +28,7 @@
 // under source_ids_requested when they differed), effect.sources the distinct source_id of the rows that came back, so a
 // keyless check can prove no row's source lay outside the grant. The harness prompt does not change.
 //
-// HARN-15 (QM M1, provider-aware scoring; off unless the upstream carries provider): QM at b6786d67 can call gbrain itself on
+// internal-task (QM M1, provider-aware scoring; off unless the upstream carries provider): QM at b6786d67 can call gbrain itself on
 // every turn as a memory provider (MEMORY_PROVIDER_CONFIG), and those calls reach the tap beside the model's own gbrain
 // tool calls. QM's provider client authenticates with its own client-credentials access token, and its MCP connector with
 // the bearer token the adapter registers, so the bearer is a signal the model cannot forge: it never sees either credential.
@@ -45,7 +45,7 @@
 // which of effect.facts reached QM's turn after its handling of the result (qmDelivery), and a model tools/call carries
 // effect.returned_by_gbrain, the facts gbrain returned (an upper bound on what the model saw). Without
 // upstream.provider nothing here runs and every event is byte-identical to the tap before this change.
-// HARN-12 (GBRA-108, scope "member-sources"): the upstream carries both the member tokens and the grants, so each call goes
+// internal-task-a (internal-task-b, scope "member-sources"): the upstream carries both the member tokens and the grants, so each call goes
 // out under the requesting member's own token (granted server-side with gbrain auth rescope at image build) and carries
 // that member's source_ids as well: two layers, either of which alone keeps rows inside the grant at gbrain 0.60.522.0.
 
@@ -58,25 +58,25 @@ export interface GbrainUpstream {
   url: string;
   /** The trial's unscoped token, minted by the sidecar; the only token without member scope. */
   token: string;
-  /** HARN-2: member scope. The company brain's tokens.json: one granted token per member and the public-only token. */
+  /** internal-task: member scope. The company brain's tokens.json: one granted token per member and the public-only token. */
   tokens?: { members: Record<string, string>; public_only: string };
-  /** HARN-5 (gbrain#7481): scope "sources". The company brain's grants: each member's readable source ids, and the sources
+  /** internal-task (gbrain#7481): scope "sources". The company brain's grants: each member's readable source ids, and the sources
    *  every member may read (the public source), presented before the first turn. Every call keeps the unscoped token, unless
-   *  tokens is set too (HARN-12, scope "member-sources"), when it carries the member's token. */
+   *  tokens is set too (internal-task, scope "member-sources"), when it carries the member's token. */
   grants?: { members: Record<string, string[]>; public: string[] };
-  /** HARN-8: live ingestion (world/services/gbrain-ingest.ts): the per-source ingest tokens and the conversation map. The tap
+  /** internal-task: live ingestion (world/services/gbrain-ingest.ts): the per-source ingest tokens and the conversation map. The tap
    *  itself never uses them; the server builds the ingestion module from them when the upstream is set. */
   ingest?: { tokens: Record<string, string>; channels: Record<string, string>; dm_source_prefix: string };
-  /** HARN-15: provider-aware scoring for QM's memory provider. Absent, the tap behaves exactly as before. */
+  /** internal-task: provider-aware scoring for QM's memory provider. Absent, the tap behaves exactly as before. */
   provider?: GbrainProviderCallers;
 }
 
-/** HARN-15: how the tap tells QM's memory-provider recalls from the model's own gbrain calls. */
+/** internal-task: how the tap tells QM's memory-provider recalls from the model's own gbrain calls. */
 export interface GbrainProviderCallers {
   /** Bearer values only QM core's memory-provider client presents. Either a fixed list, or, with clients set, the world OAuth
    *  issuer's map of each access token it issued to the member its client acts as (oauth-issuer.ts), empty until core asks. */
   tokens: string[] | Record<string, string>;
-  /** HARN-15 (#159): the OAuth client-credentials clients the world's issuer accepts, client id to its secret and the member
+  /** internal-task (#159): the OAuth client-credentials clients the world's issuer accepts, client id to its secret and the member
    *  it acts as. Set, the world serves the issuer and tokens is its issued map. */
   clients?: Record<string, { secret: string; member: string }>;
   /** The event actor for a provider call under a fixed token list: the world member the provider client stands for (the bot,
@@ -140,7 +140,7 @@ export function trimProviderQuestion(request: RpcMessage, maxCharsArg: string | 
   };
 }
 
-/** HARN-15: which saved facts of one provider read reached QM's turn. facts lines up with effect.facts. */
+/** internal-task: which saved facts of one provider read reached QM's turn. facts lines up with effect.facts. */
 export interface GbrainDelivery {
   /** Characters of the text QM takes from the result, before any cap. */
   text_chars: number;
@@ -167,7 +167,7 @@ export interface GbrainDelivery {
   returned: boolean[];
 }
 
-/** HARN-15: the most matching work qmDelivery does for one call, in characters scanned plus pattern characters over every
+/** internal-task: the most matching work qmDelivery does for one call, in characters scanned plus pattern characters over every
  *  fact form. Above it the match is not run and the delivery is unknown (every fact not delivered), never a stall: a 6,000
  *  character recall with 100 forms is about 0.6 million, and a pathological search (one 200,000 character line, 64
  *  overlapping 1 KB facts) about 13 million. */
@@ -194,7 +194,7 @@ function occurrences(text: string, s: string, end: number, hit: (i: number) => b
   return false;
 }
 
-/** HARN-15: what QM at b6786d67 hands on from a gbrain tool result to a provider read, and which facts survive in it. The
+/** internal-task: what QM at b6786d67 hands on from a gbrain tool result to a provider read, and which facts survive in it. The
  *  text is the result's text parts joined by newlines and trimmed (src/mcp/mcp-client.ts mcpResultText), or structuredContent
  *  as JSON when there is none; _meta never reaches QM. A recall keeps the first cap characters and trims again
  *  (src/memory/mcp-memory-provider.ts); a memory search keeps the first lines non-empty lines (the provider's query) and is
@@ -286,7 +286,7 @@ export function parseRpcBody(text: string, contentType: string | null): RpcMessa
 }
 
 /** Every string value under a key named slug, in order, deduplicated. */
-/** HARN-8: a query fact row's slug (facts/<id>) names a fact, not a page. */
+/** internal-task: a query fact row's slug (facts/<id>) names a fact, not a page. */
 export const FACT_ROW_SLUG = /^facts\/\d+$/;
 
 export function collectSlugs(value: unknown, into: string[] = [], seen = new Set<string>()): string[] {
@@ -302,7 +302,7 @@ export function collectSlugs(value: unknown, into: string[] = [], seen = new Set
 
 /** The JSON a gbrain tool result carries: each content[].text that parses, plus structuredContent. _meta
  *  (notices, hot memory) is left out so a notice's suggested call never counts as a page the call touched. Saved facts
- *  are not here either: search answers them in a prose block and in _meta.retrieval.saved_facts, never as rows (GBRA-190),
+ *  are not here either: search answers them in a prose block and in _meta.retrieval.saved_facts, never as rows (internal-task),
  *  so savedFactsOf reads them on their own. */
 function resultPayloads(result: Record<string, unknown>): unknown[] {
   const out: unknown[] = [];
@@ -323,7 +323,7 @@ export interface GbrainFact { fact: string; id?: number | string; entity_slug?: 
 
 const SAVED_FACTS_BLOCK = /^Saved facts \(remember\):/;
 
-/** HARN-8: query's facts arm (on by default at the pin) returns matched facts as result rows, result_type "fact" with fact_id
+/** internal-task: query's facts arm (on by default at the pin) returns matched facts as result rows, result_type "fact" with fact_id
  *  and the fact text at the end of chunk_text ("Saved fact (<kind>; valid from ...; provenance: <source>): <fact>"); search
  *  then leaves those facts out of saved_facts. They are facts, so they are read here and never as pages (collectSlugs drops
  *  the row's facts/<id> slug when a full-shape row carries it). */
@@ -339,8 +339,8 @@ function factRowOf(r: unknown): GbrainFact | null {
   return { fact, ...(id !== undefined ? { id } : {}), ...(typeof o.source_id === 'string' ? { source_id: o.source_id } : {}) };
 }
 
-/** HARN-2 correction (GBRA-190): the saved facts a search, query or recall reply carries, read from _meta.retrieval.saved_facts
- *  when present, from recall's own facts array, from query's fact rows (HARN-8), and otherwise from the prose
+/** internal-task-a correction (internal-task-b): the saved facts a search, query or recall reply carries, read from _meta.retrieval.saved_facts
+ *  when present, from recall's own facts array, from query's fact rows (internal-task), and otherwise from the prose
  *  "Saved facts (remember): ..." block whose lines begin "- ". The tap used to read only the JSON blocks and so never saw a
  *  remembered fact (the remember-then-search check always read "not found"); facts are recorded as their own kind, never as
  *  pages. */
@@ -376,15 +376,15 @@ export function savedFactsOf(result: Record<string, unknown>, payloads: unknown[
 
 export interface GbrainEffect {
   pages: string[]; count: number; latency_ms: number;
-  /** HARN-5 (gbrain#7481): the distinct source_id values of the rows a search, query or recall returned, in order of first appearance. */
+  /** internal-task (gbrain#7481): the distinct source_id values of the rows a search, query or recall returned, in order of first appearance. */
   sources?: string[];
-  /** HARN-5: gbrain's degraded stamp on a search, query or recall reply, when present. */
+  /** internal-task: gbrain's degraded stamp on a search, query or recall reply, when present. */
   degraded?: string;
-  /** HARN-2 correction (GBRA-190): the saved facts the reply carried beside its rows, when any; never counted in pages or count. */
+  /** internal-task-a correction (internal-task-b): the saved facts the reply carried beside its rows, when any; never counted in pages or count. */
   facts?: GbrainFact[];
 }
 
-/** HARN-5: recall's search_degraded or facts_degraded.reason from a result payload; null when the reply carries neither. */
+/** internal-task: recall's search_degraded or facts_degraded.reason from a result payload; null when the reply carries neither. */
 export function degradedStampOf(payloads: unknown[]): string | null {
   for (const p of payloads) {
     if (!p || typeof p !== 'object' || Array.isArray(p)) continue;
@@ -423,7 +423,7 @@ export function describeCall(request: RpcMessage, reply: RpcMessage | undefined,
     const seen = new Set(requested);
     effect.pages = [...requested];
     for (const p of payloads) collectSlugs(p, effect.pages, seen);
-    // search and query answer an array of rows; recall answers an object whose results are the rows (HARN-5).
+    // search and query answer an array of rows; recall answers an object whose results are the rows (internal-task).
     const rows = (payloads.find((p) => Array.isArray(p)) as unknown[] | undefined)
       ?? (name === 'recall' ? (payloads.find((p) => p && typeof p === 'object' && Array.isArray((p as { results?: unknown }).results)) as { results: unknown[] } | undefined)?.results : undefined);
     // A query's fact rows are facts, not pages, so the count stays the page rows (effect.facts carries the facts).
@@ -445,17 +445,17 @@ export interface GbrainTapOptions {
   upstream: GbrainUpstream;
   resolveActor: (req: Request) => Member | null;
   log: EventLog;
-  /** HARN-2: the member whose turn is running, or null outside every turn; only read under member scope. */
+  /** internal-task: the member whose turn is running, or null outside every turn; only read under member scope. */
   requester?: () => string | null;
   fetchImpl?: typeof fetch;
 }
 
-/** HARN-2: which token the tap presents for this request, named as the event's grant. HARN-5: under scope "sources" the
+/** internal-task-a: which token the tap presents for this request, named as the event's grant. internal-task-b: under scope "sources" the
  *  token is always the unscoped one and sources lists the requester's granted source ids (the public sources outside turns);
  *  null sources for a member the grants do not cover. */
 export function grantFor(upstream: GbrainUpstream, requester: string | null): { grant: string; token: string | null; sources?: string[] | null } {
   if (upstream.grants) {
-    // HARN-12 (scope "member-sources"): with member tokens beside the grants, the call carries the member's own token as well.
+    // internal-task (scope "member-sources"): with member tokens beside the grants, the call carries the member's own token as well.
     const t = upstream.tokens;
     if (requester === null) return { grant: 'public-only', token: t ? t.public_only : upstream.token, sources: upstream.grants.public };
     return { grant: requester, token: t ? t.members[requester] ?? null : upstream.token, sources: upstream.grants.members[requester] ?? null };
@@ -472,7 +472,7 @@ function deniedReply(id: RpcMessage['id'], requested: string[], grant: string): 
   return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(body) }], isError: true } };
 }
 
-/** HARN-5 (gbrain#7481): the request as the tap forwards it under scope "sources": every SOURCE_SCOPED_TOOLS call gains source_ids set to the
+/** internal-task (gbrain#7481): the request as the tap forwards it under scope "sources": every SOURCE_SCOPED_TOOLS call gains source_ids set to the
  *  grant, intersected with the harness's own source_ids when it sent any. denied is set when that intersection is empty. */
 export function scopeRequest(request: RpcMessage, sources: string[]): { request: RpcMessage; requested?: string[]; denied?: string[] } {
   if (request.method !== 'tools/call' || !SOURCE_SCOPED_TOOLS.has(String(request.params?.name ?? ''))) return { request };
@@ -488,7 +488,7 @@ export async function handleGbrainRequest(req: Request, o: GbrainTapOptions): Pr
     // gbrain's own HTTP transport answers GET /mcp with 405 (it opens no server-initiated stream); the tap says the same.
     return rpcError(405, -32000, 'Method not allowed; the gbrain tap is stateless and only serves POST', { allow: 'POST' });
   }
-  // HARN-15: under upstream.provider, the provider client's bearer authenticates it on its own; the model never holds it.
+  // internal-task: under upstream.provider, the provider client's bearer authenticates it on its own; the model never holds it.
   const provider = o.upstream.provider;
   const bearer = provider ? (/^bearer\s+(.+)$/i.exec(req.headers.get('authorization') ?? '')?.[1]?.trim() ?? null) : null;
   const digest = (s: string) => createHash('sha256').update(s).digest();
@@ -498,7 +498,7 @@ export async function handleGbrainRequest(req: Request, o: GbrainTapOptions): Pr
   const actorId = providerCall ? (issued ? issued[providerToken] : provider!.actor) : o.resolveActor(req)?.id;
   if (!actorId) return rpcError(401, -32001, 'unknown or missing bearer token', { 'www-authenticate': 'Bearer realm="world-gbrain"' });
   const actor = { id: actorId };
-  // HARN-15 (plan v3): QM's provider client holds one credential and names no attested member at b6786d67, so a provider call
+  // internal-task (plan v3): QM's provider client holds one credential and names no attested member at b6786d67, so a provider call
   // goes out whole-brain, under the trial's unscoped token with no source_ids, whatever the cell's scope. Model calls keep it.
   const { grant, token, sources } = providerCall ? { grant: 'bot', token: o.upstream.token, sources: undefined } : grantFor(o.upstream, o.requester?.() ?? null);
   if (token === null) return rpcError(502, -32000, `no gbrain token for member ${grant}; the company brain's tokens.json does not cover this requester`);
@@ -518,7 +518,7 @@ export async function handleGbrainRequest(req: Request, o: GbrainTapOptions): Pr
     const own = requestedById.get(String(request.id));
     return own && args && typeof args === 'object' ? { ...(args as Record<string, unknown>), source_ids_requested: own } : args;
   };
-  // HARN-15: the caller fields, effect.delivery on provider reads and effect.returned_by_gbrain on model calls, empty without
+  // internal-task: the caller fields, effect.delivery on provider reads and effect.returned_by_gbrain on model calls, empty without
   // upstream.provider so every event stays as it was.
   // A provider call is the per-turn recall when it carries max_chars_arg and the model's memory search when it does not; QM
   // drops an isError result or any failed call (its MCP client throws) and a reply slower than the provider's timeout.

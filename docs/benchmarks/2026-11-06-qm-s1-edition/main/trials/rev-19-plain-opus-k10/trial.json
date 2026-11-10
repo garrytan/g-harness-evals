@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-19-plain-opus-k10",
+  "task_id": "rev-19",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 10,
+  "status": "ok",
+  "reply_text": "**Don't merge this yet. There's one blocking bug: sessions would time out after 30 milliseconds, not 30 minutes.**\n\n**The bug (`src/idle.js`)**\n```js\nconst IDLE_TIMEOUT = 30;\nreturn session.lastSeen + IDLE_TIMEOUT < now;\n```\n`lastSeen` comes from `Date.now()`, so it's in milliseconds. The README also says every duration in the package is in milliseconds. That makes `30` mean 30 ms. Any session that hasn't been touched in the last 30 ms counts as idle. `sweep` would then drop almost every session each time it runs, which in practice logs everyone out.\n\nThe fix is `30 * 60 * 1000`, or a `MINUTE` constant like the `SECOND` one in `backoff.js`.\n\n**Why the tests didn't catch it:** they only check the two extremes. One session was idle for 1 hour, which is idle under either value. The other was touched at `now`, which is active under either value. Neither test is anywhere near the cutoff. I'd add tests at the boundary:\n- `now - 29 min` → still active (this would fail today)\n- `now - 30 min` → idle\n\n**Minor: the exact cutoff**\nThe README says a session is idle \"once\" it has been idle for 30 minutes, which means at exactly 30 minutes. The code uses `<`, so a session at exactly 30 minutes still counts as active. If you want it to match the README, use `<=`. A boundary test would pin down whichever behavior you choose.\n\n**Looks fine**\n- `backoff.js`: 1s, 2s, 4s… capped at 30s, which matches the README. Nothing stops `attempt` from being negative, but that's harmless.\n- `sweep.js`: it returns a new object and doesn't modify the store you pass in. That's clean.\n- The changelog entry and the version bump to 1.1.0 are consistent.\n\nAs you asked, I didn't edit anything. I also didn't run the test suite. I read the diff, and the existing tests would pass with the bug in place anyway.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-19-plain-opus-k10",
+    "requests": 4,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.045724299999999996,
+    "input_tokens": 38402,
+    "output_tokens": 1074,
+    "cached_tokens": 35777,
+    "cache_write_tokens": 2163,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000052900000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0456714,
+        "requests": 3
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 4
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 13.24,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-19-plain-opus-k10",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:36:46.108Z",
+    "images": {
+      "core": "sha256:e48c8f94d6b77801b71348a2f487e3d9f61914e9a616d4a9ec352a157470f137",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-866435aaa7c4",
+        "id": "sha256:c2956f00f380a6183d790a610d8477f9f49be480fe95af1350346678884a373f",
+        "tree_sha256": "976e7f453705633343847be00fd0cb97514b749e6cec4f692ef40f15f2fb9b22"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-c6ecb8ea-9e4c-418b-80f9-f8a5dae7-2f7ee8"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:37:23.276Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..idle-timeout; git diff main...idle-timeout",
+          "code": 0,
+          "output": "* idle-timeout\n  main\nda785f6 Sweep idle sessions from the store\nad83f9a Expire idle sessions\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 161cbe8..275e5be 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.1.0\n+\n+- Idle session expiry and reconnect backoff.\n+\n ## 1."
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-19-plain-opus-k10",
+      "meter": {
+        "requests": 4,
+        "usd": 0.045724299999999996,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 4,
+        "usd": 0.045724299999999996,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000052900000000000005
+    }
+  }
+}

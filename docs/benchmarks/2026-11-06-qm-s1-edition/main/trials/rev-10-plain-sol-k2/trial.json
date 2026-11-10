@@ -1,0 +1,161 @@
+{
+  "trial_id": "rev-10-plain-sol-k2",
+  "task_id": "rev-10",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 2,
+  "status": "ok",
+  "reply_text": "*One merge-blocking finding* in `leaderboard-sort` (`17941bc`) vs `main` (`93d02a4`):\n\n*High — score precision loss produces incorrect rankings* — `src/rank.js:3`\nThe comparator `b.score - a.score` implicitly converts decimal strings to JavaScript Numbers, breaking the existing arbitrary-precision score contract.\n\nReproduced with these entries, in order:\n- `lower`: `\"9007199254740992\"`\n- `higher`: `\"9007199254740993\"`\n\n`rankings()` incorrectly puts `lower` first, and `topN(entries, 1)` returns the wrong winner. Both scores round to the same Number.\n\n*Recommendation:* use the existing `compareScore(b.score, a.score)` comparator and add a regression test covering these scores through both ranking and top-N.\n\nAll 3 existing tests pass, but the ranking test only uses small scores and misses this case. No other confirmed issues found. Code unchanged.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-10-plain-sol-k2",
+    "requests": 9,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0471234,
+    "input_tokens": 72807,
+    "output_tokens": 1059,
+    "cached_tokens": 60309,
+    "cache_write_tokens": 12187,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.000067,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0470564,
+        "requests": 8
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 9
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 20.978,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-10-plain-sol-k2",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:21:06.079Z",
+    "images": {
+      "core": "sha256:70e9dbc58d38502117dc97d1c5973af7606fa9e34dfd9ef1126cfa852865f97b",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-5907e9ffa04e",
+        "id": "sha256:f97b883a8a8a49256ba0550740c3ef210fe51eb7c8f1d02584452aaa82ee469f",
+        "tree_sha256": "d95f6cf68fe3d394346f77c887d24762ad1ef408da8da1bd0269ca991d4706b2"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-19343ee7-de1e-4e67-88e5-27ea6f7d-df7e94"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:21:50.743Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/c35a72f0eef86d3bb5553493/71d9df29e212427d/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/c35a72f0eef86d3bb5553493/71d9df29e212427d/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 10,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -5 --oneline && git diff --stat main...leaderboard-sort; git config --show-origin --get-regexp '(credential|http\\..*extraheader|core.sshCommand|remote\\..*proxy)' || true; find /root/workspace/repo -maxdepth ",
+          "code": 0,
+          "output": "* leaderboard-sort 17941bc Add a stable display name\n  main             93d02a4 Store scores as decimal strings\n17941bc Add a stable display name\n04db347 Rank and paginate the leaderboard\n93d02a4 Store scores as decimal strings\n CHANGELOG.md         | 4 ++++\n README.md            | 8 ++++++++\n packa"
+        },
+        {
+          "seq": 12,
+          "command": "cd /root/workspace/repo && git diff main...leaderboard-sort && printf '\\n--- all files ---\\n' && for f in package.json README.md CHANGELOG.md src/*.js test/*.js; do echo \"--- $f\"; nl -ba \"$f\"; done && printf '\\n--- main ---\\n' && git show main:src/score.js && git show main:README.md && npm test",
+          "code": 0,
+          "output": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex bb35a10..68b8f68 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.1.0\n+\n+- Leaderboard ranking and top-N.\n+\n ## 1.0.0\n \n - Scores stored and returned as decimal strings.\ndiff --git a/README.md b/README.md\nindex 4796c99.."
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-10-plain-sol-k2",
+      "meter": {
+        "requests": 9,
+        "usd": 0.0471234,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 9,
+        "usd": 0.0471234,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.000067
+    }
+  }
+}

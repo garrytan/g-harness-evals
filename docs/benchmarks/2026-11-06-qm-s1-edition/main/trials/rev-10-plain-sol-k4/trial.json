@@ -1,0 +1,155 @@
+{
+  "trial_id": "rev-10-plain-sol-k4",
+  "task_id": "rev-10",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 4,
+  "status": "ok",
+  "reply_text": "*Found one merge blocker* in `leaderboard-sort` (`17941bc`) vs `main`.\n\n*High priority — `src/rank.js:3` silently misorders large scores.*\n`b.score - a.score` converts the decimal strings to JavaScript Numbers, violating the existing arbitrary-precision score contract.\n\nReproduced with these entries, in order:\n- `lower`: `\"9007199254740992\"`\n- `higher`: `\"9007199254740993\"`\n\n`rankings()` incorrectly puts `lower` first, and `topN(entries, 1)` consequently returns the wrong winner. Both scores round to the same Number.\n\n*Recommended fix:* use the existing comparator: `.sort((a, b) => compareScore(b.score, a.score))`. Add regression tests for large-score ranking and top-N selection; the existing comparator test doesn’t exercise either path.\n\nAll 3 existing tests pass, but they miss this regression. I’d hold the merge until it’s fixed. No code changed.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-10-plain-sol-k4",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0393203,
+    "input_tokens": 52310,
+    "output_tokens": 786,
+    "cached_tokens": 41073,
+    "cache_write_tokens": 10932,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.000067,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0392533,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 16.814,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-10-plain-sol-k4",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:56:04.177Z",
+    "images": {
+      "core": "sha256:70e9dbc58d38502117dc97d1c5973af7606fa9e34dfd9ef1126cfa852865f97b",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-5907e9ffa04e",
+        "id": "sha256:f97b883a8a8a49256ba0550740c3ef210fe51eb7c8f1d02584452aaa82ee469f",
+        "tree_sha256": "d95f6cf68fe3d394346f77c887d24762ad1ef408da8da1bd0269ca991d4706b2"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-0be3d972-9078-43d2-b54f-b4753b1e-9870f7"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:56:44.720Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/1a082dc6217aa5e1322ec6ce/ced12dd980a4d200/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/1a082dc6217aa5e1322ec6ce/ced12dd980a4d200/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log --oneline -6 && git diff --stat main...leaderboard-sort && git diff main...leaderboard-sort; find . -maxdepth 3 -type f -not -path './.git/*' | sort",
+          "code": 0,
+          "output": "* leaderboard-sort 17941bc Add a stable display name\n  main             93d02a4 Store scores as decimal strings\n17941bc Add a stable display name\n04db347 Rank and paginate the leaderboard\n93d02a4 Store scores as decimal strings\n CHANGELOG.md         | 4 ++++\n README.md            | 8 ++++++++\n packa"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-10-plain-sol-k4",
+      "meter": {
+        "requests": 7,
+        "usd": 0.0393203,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.0393203,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.000067
+    }
+  }
+}

@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-19-plain-opus-k17",
+  "task_id": "rev-19",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 17,
+  "status": "ok",
+  "reply_text": "I reviewed `idle-timeout` against `main` and didn't edit anything. **Don't merge yet: there's a blocking bug that would log everyone out about 30 milliseconds after their last activity.** The tests pass, but they don't catch it.\n\n**Blocker: the timeout is 30 ms, not 30 minutes**\n`src/idle.js` sets `const IDLE_TIMEOUT = 30;`. The README says all durations are in milliseconds and `lastSeen` comes from `Date.now()`, so this means 30 ms. I checked it directly: a session last seen 1 second ago already counts as idle. `sweep` uses `isIdle`, so in practice it would remove nearly every session each time it runs.\n- **Fix:** `const IDLE_TIMEOUT = 30 * 60 * 1000;`. You could use a `MINUTE` constant, like `SECOND` in `backoff.js`.\n- **Why the tests miss it:** they only check sessions that are 0 ms idle or 1–2 hours idle, and a 30 ms timeout gets both of those right. Add cases near the limit, like 29 minutes (should stay active) and 31 minutes (should be idle). Those would have caught this.\n\n**Minor: what happens at exactly 30 minutes**\nThe code uses `lastSeen + IDLE_TIMEOUT < now`, so a session idle for exactly 30 minutes still counts as active. The README says a session is idle \"once\" it hits 30 minutes, which means `<=`. It only matters at that exact millisecond, but you should pick one, make the code and README agree, and test that case.\n\n**Looks fine**\n- **Reconnect backoff (`backoff.js`):** the wait doubles each attempt (1s, 2s, 4s…) and stops at 30 seconds, which matches the README. A test for it would be nice; there isn't one now.\n- **`sweep.js`:** the logic is correct and it returns a new set of sessions rather than changing the existing one.\n- **Version bump to 1.1.0 and the changelog/README updates:** these are consistent.\n\nWith the timeout fixed and the near-30-minute tests added, this should be good to merge.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-19-plain-opus-k17",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0561693,
+    "input_tokens": 52872,
+    "output_tokens": 1255,
+    "cached_tokens": 49742,
+    "cache_write_tokens": 2666,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000052900000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.056116400000000004,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 17.122,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-19-plain-opus-k17",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:31:15.204Z",
+    "images": {
+      "core": "sha256:e48c8f94d6b77801b71348a2f487e3d9f61914e9a616d4a9ec352a157470f137",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-866435aaa7c4",
+        "id": "sha256:c2956f00f380a6183d790a610d8477f9f49be480fe95af1350346678884a373f",
+        "tree_sha256": "976e7f453705633343847be00fd0cb97514b749e6cec4f692ef40f15f2fb9b22"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-d26ac34c-67d5-4326-8cb3-cd8d600e-9739fb"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:31:55.964Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline -5 main; git diff main...idle-timeout --stat; git diff main...idle-timeout",
+          "code": 0,
+          "output": "* idle-timeout\n  main\n91438e5 Track session activity\n CHANGELOG.md       |  4 ++++\n README.md          |  8 ++++++++\n package.json       |  2 +-\n src/backoff.js     |  7 +++++++\n src/idle.js        |  7 +++++++\n src/sweep.js       | 11 +++++++++++\n test/idle.test.js  | 13 +++++++++++++\n test/sweep.t"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-19-plain-opus-k17",
+      "meter": {
+        "requests": 5,
+        "usd": 0.0561693,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.0561693,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000052900000000000005
+    }
+  }
+}

@@ -1,5 +1,5 @@
 // From gbrain-evals v0.10.128 (6999ebc9), eval/runner/stats/. MIT License, Copyright (c) 2026 Garry Tan.
-// Kit v2 (internal-task) takes these changes back from gstack-evals (#private-link-removed) at 81daa79abcf86ddbd15409da0b78cd4d98e835b4, src/runner/stats/paired.ts.
+// Kit v2 (internal-task) takes these changes back from gstack-evals (https://github.com/garrytan/gstack-evals) at 81daa79abcf86ddbd15409da0b78cd4d98e835b4, src/runner/stats/paired.ts.
 // gstack-evals changes (U2), each marked "gstack-evals:": when every paired difference is zero the bootstrap is empty,
 // so nonInferiorityP and superiorityP return null instead of p = 0 (plan v3.2 cited paired.ts:159 and :306), and
 // nonInferiorityP no longer short-cuts a one-draw bootstrap to 0 or 1. superiorityP returns the clustered sign-flip p

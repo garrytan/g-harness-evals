@@ -1,0 +1,167 @@
+{
+  "trial_id": "rev-07-plain-sol-k2",
+  "task_id": "rev-07",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 2,
+  "status": "ok",
+  "reply_text": "*I’d hold the merge.* Reviewed `http-retries` (`b04b610`) against `main` (`5f9be03`). Four findings:\n\n1. *High — `timeoutMs: 0` no longer disables timeouts* — `src/http.js:11`  \n   Changing `??` to `||` replaces an explicit zero with the 10-second default. The existing nightly-export caller (`src/export.js:4`) explicitly disables timeouts; it will now abort if response headers take longer than 10 seconds. Confirmed: `main` schedules no timer for zero; this branch schedules 10,000 ms. Restore nullish defaulting and add a zero-timeout regression test.\n\n2. *High — automatic retries can duplicate non-idempotent writes* — `src/http.js:30–33`  \n   Retries are enabled by default for every method, including POST, with no idempotency check or opt-in. A server can commit a write and then return 503; the client silently submits it again. A simulated committed-write/503 response produced two side effects from one `request()` call. Default retries should be limited to safe/idempotent operations; other writes need explicit opt-in with suitable deduplication.\n\n3. *Medium — discarded responses aren’t consumed or cancelled* — `src/http.js:31–33`  \n   Before retrying, the client abandons the previous response body. With real fetch responses, large or streaming error bodies can retain connections and exhaust the connection pool under load. Confirmed that a retry response’s `body.cancel()` is never called. Release intermediate responses before retrying, without touching the final response returned to the caller.\n\n4. *Medium — retries ignore `Retry-After`* — `src/http.js:33`  \n   A 429 or 503 asking the client to wait is retried using only local jitter—by default, at most 250 ms before the first retry. A response with `Retry-After: 60` was retried almost immediately in the reproduction. Across all workers, this can amplify throttling and exhaust retries before recovery. Honor valid delay-seconds and HTTP-date values, with a defined policy for excessive waits.\n\n*Validation:* all three existing tests pass, but they don’t cover these cases. I ran additional in-memory reproductions; no files were modified. Caller-specific impact beyond the included nightly export remains unverified because no other worker callers are present in this checkout.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-07-plain-sol-k2",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0521885,
+    "input_tokens": 55814,
+    "output_tokens": 1658,
+    "cached_tokens": 42831,
+    "cache_write_tokens": 12668,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0001194,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0520691,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 29.155,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-07-plain-sol-k2",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T12:50:10.601Z",
+    "images": {
+      "core": "sha256:70e9dbc58d38502117dc97d1c5973af7606fa9e34dfd9ef1126cfa852865f97b",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-8a638002971d",
+        "id": "sha256:93f1dd7acbb7e84f32da9ea3bb121defdab62ccfbbcbca81b8fd3fe3513b729d",
+        "tree_sha256": "b8945d3ad7f19c62dccf490b61260b4bcea0b1391062820ab876fa3dbd3cabe5"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-cd2686a3-458d-48f6-802f-2f07fb97-0de2ac"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T12:51:03.380Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/17aff86e293ed27d18662ae8/3d4ecc8a2bc2ff84/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/17aff86e293ed27d18662ae8/3d4ecc8a2bc2ff84/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd /root/workspace/repo && pwd && git status --short && git remote -v && git branch -av && ls -la && git log --oneline -5 && git diff --stat main...http-retries",
+          "code": 0,
+          "output": "/root/workspace/repo\n* http-retries b04b610 Retry 429 and 5xx responses with backoff\n  main         5f9be03 HTTP client with timeouts\ntotal 32\ndrwxr-xr-x 5 root root 4096 Nov  8 12:50 .\ndrwxr-xr-x 4 root root 4096 Nov  8 12:50 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 12:50 .git\n-rw-r--r-- 1 root root  "
+        },
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git diff main...http-retries && printf '\\nALL FILES\\n' && find src test -type f -maxdepth 3 -print && cat README.md package.json && for f in src/* test/*; do echo ==== $f; nl -ba \"$f\"; done && git show main:src/http.js && node --version",
+          "code": 0,
+          "output": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex bb83104..ab561d9 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 4.1.0\n+\n+- Retries for 429 and 5xx responses, with full-jitter backoff.\n+\n ## 4.0.1\n \n - Timeouts can be disabled with timeoutMs: 0.\ndiff --git a/README.md "
+        },
+        {
+          "seq": 11,
+          "command": "cd /root/workspace/repo && npm test && node <<'NODE'\nconst assert = require('node:assert/strict');\nconst { execFileSync } = require('node:child_process');\nconst { request } = require('./src/http');\nconst original = {exports:{}};\nnew Function('module', 'exports', execFileSync('git', ['show', 'main:sr",
+          "code": 0,
+          "output": "\n> workerkit@4.1.0 test\n> node --test\n\n✔ a slow request is aborted after timeoutMs (21.832959ms)\n✔ a 503 is retried until it succeeds (3.014165ms)\n✔ 501 is not retried (0.29257ms)\nℹ tests 3\nℹ suites 0\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 97.294296\nmain timeoutMs:0 sched"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-07-plain-sol-k2",
+      "meter": {
+        "requests": 7,
+        "usd": 0.0521885,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.0521885,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0001194
+    }
+  }
+}

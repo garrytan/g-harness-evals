@@ -1,0 +1,156 @@
+{
+  "trial_id": "rev-22-plain-opus-k10",
+  "task_id": "rev-22",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 10,
+  "status": "ok",
+  "reply_text": "I don't think this should merge yet. On `coupon-checkout`, any order with a coupon gets charged too much tax. The 4 tests pass, but none of them uses a coupon.\n\n**Must fix**\n\n1. **Tax is charged on the full subtotal, not the discounted one** (`src/total.js`). The code computes `tax(subtotal, taxPercent)`. The README says tax applies to the subtotal after the coupon, so the customer is never taxed on money they didn't pay.\n   - Example: $100.00, 20% coupon, 10% tax. The code returns **$90.00**. The right total is $80.00 + $8.00 = **$88.00**.\n   - Fix: compute tax on `subtotal - discount`.\n\n2. **The coupon cap isn't used, so totals can go negative.** `src/coupon.js` adds `couponValue()`, which limits the coupon to 0–100%. But `computeTotal` calls `pct()` directly, so nothing calls `couponValue()`.\n   - Example: a 150% coupon on $100.00 at 10% tax returns **−$40.00**. A negative coupon would raise the price.\n   - Fix: use `couponValue` in `computeTotal`.\n\n3. **No test covers a nonzero coupon.** Both total tests use no coupon or a 0% coupon, which is why bug 1 got through. I'd add:\n   - 20% coupon + 10% tax → 8800\n   - a coupon over 100% → total doesn't go below shipping\n   - a negative coupon → no discount\n   - a rounding case, e.g. subtotal 999, coupon 15%, tax 7%\n\n**Worth checking**\n\n4. **Free shipping isn't connected to the total.** `computeTotal` takes `shipping` as a plain input, so whoever calls it has to pass `shippingFor(subtotal)` using the subtotal *before* the coupon, as the README says. That's easy to get wrong: passing the discounted amount would make orders just over $75 lose free shipping once a coupon is applied. Either calculate shipping inside `computeTotal` or document clearly what callers must pass, and add a test for a $75+ order with a coupon.\n\n**Minor**\n\n5. The changelog for 1.4.0 lists only \"Coupons at checkout\" and leaves out the free-shipping threshold.\n6. `FREE_OVER = 7500` means free shipping at exactly $75.00 too (\"at or above\", which matches the README and test). \"Over\" in the name suggests strictly above, so a clearer name might help.\n\nThe rest looks fine: amounts stay in whole cents, shipping is added after tax and isn't taxed, and the version bump is right. I haven't changed anything.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-22-plain-opus-k10",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0886852,
+    "input_tokens": 72820,
+    "output_tokens": 1666,
+    "cached_tokens": 67075,
+    "cache_write_tokens": 5271,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.0000542,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.088631,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 19.376,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-22-plain-opus-k10",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:22:04.222Z",
+    "images": {
+      "core": "sha256:e48c8f94d6b77801b71348a2f487e3d9f61914e9a616d4a9ec352a157470f137",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-808f1519d24a",
+        "id": "sha256:69e8dc91f4f297df1a91abe414371da5ed02bfa309f98ec1b45ae849af4c1aaf",
+        "tree_sha256": "4b08892c391c0a2a74732d9e93532fae131ccaac0d120f4af10749880f849213"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-b81a19c7-73f3-48aa-8ebc-e4e2b8b2-61e74a"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:22:46.916Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /tmp/pi-cwd/repo; git branch -a; git log --oneline main..coupon-checkout; git diff main...coupon-checkout",
+          "code": 129,
+          "output": "[stderr]\nsh: 1: cd: can't cd to /tmp/pi-cwd/repo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_A"
+        },
+        {
+          "seq": 6,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..coupon-checkout; git diff main...coupon-checkout",
+          "code": 0,
+          "output": "* coupon-checkout\n  main\na68c0e7 Free shipping over a threshold\naba236a Apply coupons at checkout\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 38c8cb7..009d9c7 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.4.0\n+\n+- Coupons at checkout.\n+\n ## 1.3.0\n \n - Subtotal "
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-22-plain-opus-k10",
+      "meter": {
+        "requests": 6,
+        "usd": 0.0886852,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.0886852,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.0000542
+    }
+  }
+}

@@ -1,0 +1,161 @@
+{
+  "trial_id": "rev-15-plain-sol-k1",
+  "task_id": "rev-15",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "*I’d hold the merge for one authorization bug.*\n\n*P1 — Config-loaded admins are denied access* — `access/gate.py:4`\n`return role is 'admin'` compares object identity, not string value. An admin role produced by the new config loader equals `'admin'` but is a different object, so the gate rejects it.\n\nReproduced:\n```python\nhas_access({'role': role_from_config('ADMIN')}, 'admin-tools')\n# False — should be True\n```\n\nUse `==` rather than `is`, and add a regression test using a config-loaded role. The existing test uses a literal, which masks the defect through string interning. This is a false denial, not an observed privilege-escalation bypass.\n\n*Validation:* All 5 existing tests pass; the additional config-admin assertion fails. Reviewed `access-roles` at `d6780ec` against `main` at `acb1bcd`.\n\nNo files changed.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-15-plain-sol-k1",
+    "requests": 8,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0432799,
+    "input_tokens": 63898,
+    "output_tokens": 829,
+    "cached_tokens": 51666,
+    "cache_write_tokens": 11921,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.00006879999999999999,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.043211099999999995,
+        "requests": 7
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 8
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 17.217,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-15-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:08:55.336Z",
+    "images": {
+      "core": "sha256:217d5f3a14919e23171c0717454f5004d418ea2efb0cefab7b4d405627cbdca8",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-c10476e763a0",
+        "id": "sha256:f62a2ae59c4da205fe006abf57b24eb1422e28b7de951fdc3566f36299ff925f",
+        "tree_sha256": "37149244569be983279a5bfacd6ca03e56ebc12dd0dac0f999b4fd52db4cfc44"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-f6474785-9949-4c54-8bba-52e91c85-a02ad8"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:09:36.295Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/02997a80b3a3bc4ae905a458/bc41b0b93aceebe4/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/02997a80b3a3bc4ae905a458/bc41b0b93aceebe4/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log --oneline -6 && git diff --stat main...access-roles && ls -la && git config --show-origin --get-regexp '(remote\\..*\\.url|credential\\..*|core.sshCommand|http\\..*)' || true",
+          "code": 0,
+          "output": "* access-roles d6780ec Load roles for a whole team\n  main         acb1bcd Users and roles\nd6780ec Load roles for a whole team\n120cdb0 Gate the admin tools\nacb1bcd Users and roles\n CHANGES.md         |  4 ++++\n README.md          |  4 ++++\n access/__init__.py |  2 +-\n access/config.py   |  2 ++\n acce"
+        },
+        {
+          "seq": 10,
+          "command": "cd /root/workspace/repo && git diff main...access-roles && find access tests docs -type f -maxdepth 3 -print && for f in README.md CHANGES.md access/*.py tests/*.py docs/*; do echo \"--- $f\"; nl -ba \"$f\"; done",
+          "code": 0,
+          "output": "diff --git a/CHANGES.md b/CHANGES.md\nindex 45bf359..7149d39 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.3.0\n+\n+- Admin tool gating, roles from config.\n+\n ## 0.2.0\n \n - Users and roles.\ndiff --git a/README.md b/README.md\nindex a0c18cd..acb9a21 100644\n--- a/README.md\n++"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-15-plain-sol-k1",
+      "meter": {
+        "requests": 8,
+        "usd": 0.0432799,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 8,
+        "usd": 0.0432799,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.00006879999999999999
+    }
+  }
+}

@@ -1,0 +1,373 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 05:01 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "f8ea8b4b-dcfe-46b2-9a74-12a197b93051"
+    },
+    "text": "Hey could you review the excerpt-helper branch against main before I merge it? It builds the preview text under each card. Review only, I'll handle edits.",
+    "runId": "f2ceb3c0-9c57-4dbf-9316-1b3e469f7240"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "a995ef01-8844-47c7-8bcd-ed31118aceac",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "textSignature": "{\"v\":1,\"id\":\"msg_0e73df17a053802a016af0729f068887d2be7037eee59bf5dd\",\"phase\":\"commentary\"}",
+    "text": "I’ll compare `excerpt-helper` against `main`, trace how the card previews use it, and report any issues without changing files.\n",
+    "runId": "f2ceb3c0-9c57-4dbf-9316-1b3e469f7240",
+    "step": {
+     "id": "a995ef01-8844-47c7-8bcd-ed31118aceac",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "name": "github-gitlab",
+    "wire": {
+     "message": {
+      "id": "a995ef01-8844-47c7-8bcd-ed31118aceac",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"read\",\"name\":\"github-gitlab\"}"
+    },
+    "action": "read",
+    "runId": "f2ceb3c0-9c57-4dbf-9316-1b3e469f7240",
+    "callId": "call_CeHJDlTANDExdV5Hgq4LzG3I|fc_0e73df17a053802a016af0729f75f887d2bca7486fea0be756",
+    "tool": "skills",
+    "step": {
+     "id": "a995ef01-8844-47c7-8bcd-ed31118aceac",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "dir": "/root/workspace/.agent-skills/d84f1cb90fbff4ff6083b77b/1c0580262838add6/github-gitlab",
+    "name": "github-gitlab",
+    "bytes": 6025,
+    "found": true,
+    "action": "read",
+    "sourceScopeId": "org:harness-eval",
+    "result": "[skill files synced to /root/workspace/.agent-skills/d84f1cb90fbff4ff6083b77b/1c0580262838add6/github-gitlab/]\n\n# GitHub / GitLab\n\nUse this skill when the user asks to inspect repos, issues, pull requests, merge\nrequests, code history, branches, or to make a small code change in a hosted repo.\n\n## Choose the account deliberately\n\nUse the current credential manifest to choose an account authorized for this conversation\nthat fits the user's intent. Run commands with `execute` and an explicit `sandbox_id`;\nkeep that ID throughout checkout, edits, checks, and push. Personal and shared accounts are both valid choices; neither\nis an automatic fallback when the other fails. If the intended account is unclear before\na write, ask. Do not infer permission from a login merely being present on the computer.\n\n- **Personal login:** use the authorized `gh`, `glab`, or Git login. Check the active\n  provider account (for example, `gh api user --jq .login`) and the Git transport's auth\n  configuration; a CLI API identity alone does not prove which account Git will use.\n- **Shared org credential:** if listed in the prompt, select its slug and use the\n  core-hosted smart HTTP remote in the `use-shared-credential` skill. This uses\n  the configured shared account, even when a personal OAuth connector is live.\n  Its name is an admin label, not a verified upstream username.\n- **Connected app:** use only advertised capabilities. API access does not by itself\n  establish native Git transport access or configure the CLI's active login.\n\nFor an existing checkout, inspect the remote and applicable credential-helper, SSH,\nproxy, and HTTP-header configuration. A reused checkout\nmay still select a previous account. Commit author metadata is separate from transport\nidentity. Resolve an unknown identity before a write; do not probe access by pushing.\n\n## Logging in\n\nUse the native login only after an explicit authentication rejection. A TLS timeout,\nconnection reset, rate limit, or GitHub server error is not evidence of logout or\npermission expiry. Do not consume another credential grant to repair transport.\n\nFor a confirmed missing or expired GitHub or GitLab login, follow the\n`interactive-login` skill: it runs `gh auth login` / `glab auth login` in a temporary\nhome as a background job, relays the code and URL, and saves the login to the keychain\nso later commands use it through `execute.credentials`.\n\n## Read-only work\n\nCheck auth and inspect repo state:\n\n```bash\ngh auth status\ngh repo view OWNER/REPO --json name,description,url,defaultBranchRef\ngh issue list --repo OWNER/REPO --state open --limit 20\ngh pr list --repo OWNER/REPO --state open --limit 20\n```\n\nFor GitLab:\n\n```bash\nglab auth status\nglab repo view GROUP/PROJECT\nglab issue list --repo GROUP/PROJECT\nglab mr list --repo GROUP/PROJECT\n```\n\nUse `git log`, `git show`, and `git diff` for codebase-change summaries. Cite commit\nhashes, PR/MR numbers, and links.\n\n## Checkout and edits\n\nClone or fetch only the repo the user asked for:\n\n```bash\ngh repo clone OWNER/REPO repo\ncd repo\ngit checkout -b codex/small-change\n```\n\nKeep changes scoped. Run the repo's tests. If a push or PR/MR creation is requested,\nprepare the branch and summary first.\n\n## Writes require approval\n\nPushing branches, creating PRs/MRs, merging, closing issues, editing labels, changing\nrepo settings, releases, or workflows are writes. Ask for approval before running the\nwrite command.\n\nAfter approval:\n\n```bash\ngit push -u origin codex/small-change\ngh pr create --repo OWNER/REPO --title \"...\" --body-file pr.md\n```\n\nFor GitLab:\n\n```bash\ngit push -u origin codex/small-change\nglab mr create --repo GROUP/PROJECT --title \"...\" --description-file mr.md\n```\n\nReport the final URL and leave enough context for review.\n\n## Wait for GitHub CI\n\nUse the bundled helper instead of a bare `gh pr checks --watch` or a handwritten\nshell loop. Use the absolute directory reported by the skill read in place of\n`<skill dir>`. It is one blocking watcher process, not repeated agent turns:\n\n```bash\nnode \"<skill dir>/scripts/watch-ci.mjs\" --repo OWNER/REPO --pr NUMBER --head REVIEWED_HEAD_SHA\n```\n\nCapture the full head SHA from `gh pr view NUMBER --repo OWNER/REPO --json headRefOid`\nbefore review. Use that same SHA for the watcher and the final merge gate. Start the\nwatcher with `execute` using the selected `sandbox_id` and `background:true`, then\nsubscribe with `background` action `watch` and its returned `process_id`. Keep one\nwatcher per PR. Set the process lifetime longer than the helper's 30-minute deadline;\nuse `--timeout-ms` for a different bounded deadline. Use only credentials authorized\nfor that background process; a live foreground grant does not authorize background work.\n\nThe helper polls GitHub internally and emits JSON status records. It retries only\nrecognized transient transport/server errors with bounded backoff. Pending checks\nremain pending. Real CI failures, authentication/authorization failures, changed heads,\nunknown errors, exhausted retries, and deadline expiry all stop with nonzero status.\nExplicit API rate limits stop as `rate_limited`, not authentication errors.\nEmpty check sets, skipped checks, and cancelled checks are not successful evidence.\nDo not interpret an exit code alone as \"checks concluded\": read the status record.\nDo not suppress a nonzero exit or print a success marker after it. Keep `set -e`.\n\nSuccess means the checks observed for the expected head passed, not permission to\nmerge. Re-read checks and review threads immediately before merging. Wait for async\nreviewers on that exact head; resolve findings and complete any review the repo\nrequires. After any push or head change, discard old success/review evidence and repeat.\nOnly merge when all gates pass, with GitHub's atomic head guard:\n\n```bash\ngh pr merge NUMBER --repo OWNER/REPO --squash --match-head-commit REVIEWED_HEAD_SHA\n```\n\nOn a branch that requires a merge queue, this queues the PR; it is merged only once\nGitHub shows it as merged. Never use auto-merge or bypass repository gates. This\nhelper does not retry GitLab commands or change their authentication behavior.\n",
+    "runId": "f2ceb3c0-9c57-4dbf-9316-1b3e469f7240",
+    "callId": "call_CeHJDlTANDExdV5Hgq4LzG3I|fc_0e73df17a053802a016af0729f75f887d2bca7486fea0be756",
+    "tool": "skills",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "74afd241-8e43-4867-b353-0c4459c4eaf3",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null | head -30\",\"purpose\":\"Locating review checkout\"}"
+    },
+    "scope": "scoped",
+    "command": "pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null | head -30",
+    "purpose": "Locating review checkout",
+    "runId": "f2ceb3c0-9c57-4dbf-9316-1b3e469f7240",
+    "callId": "call_4nJQzLGVVmE1qcmd4Wx5CwGJ|fc_0e73df17a053802a016af072a12c5887d2a64f96f52b686163",
+    "tool": "execute",
+    "step": {
+     "id": "74afd241-8e43-4867-b353-0c4459c4eaf3",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\ntotal 16\ndrwxr-xr-x 4 root root 4096 Nov  8 13:01 .\ndrwx------ 6 root root 4096 Nov  8 13:01 ..\ndrwxr-xr-x 3 root root 4096 Nov  8 13:01 .agent-skills\ndrwxr-xr-x 5 root root 4096 Nov  8 13:01 repo\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "f2ceb3c0-9c57-4dbf-9316-1b3e469f7240",
+    "callId": "call_4nJQzLGVVmE1qcmd4Wx5CwGJ|fc_0e73df17a053802a016af072a12c5887d2a64f96f52b686163",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "ac7690da-5779-4d17-9289-749193ae7803",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git config --get-regexp 'credential|core.sshCommand|http\\\\..*extraheader|url\\\\..*insteadOf' || true; ls -la /root/workspace/repo;\",\"purpose\":\"Inspecting repository state\",\"sandbox_id\":\"local\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git config --get-regexp 'credential|core.sshCommand|http\\..*extraheader|url\\..*insteadOf' || true; ls -la /root/workspace/repo;",
+    "purpose": "Inspecting repository state",
+    "sandbox_id": "local",
+    "runId": "f2ceb3c0-9c57-4dbf-9316-1b3e469f7240",
+    "callId": "call_IKcDUYy8Q394QzauRffHJCgK|fc_0e73df17a053802a016af072a2f72087d2b67368ee34c33e1a",
+    "tool": "execute",
+    "step": {
+     "id": "ac7690da-5779-4d17-9289-749193ae7803",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "wire": {
+     "content": [
+      {
+       "text": "sandbox not found: local",
+       "type": "text"
+      }
+     ]
+    },
+    "scope": "scoped",
+    "result": "Command execution failed: sandbox not found: local",
+    "runId": "f2ceb3c0-9c57-4dbf-9316-1b3e469f7240",
+    "callId": "call_IKcDUYy8Q394QzauRffHJCgK|fc_0e73df17a053802a016af072a2f72087d2b67368ee34c33e1a",
+    "tool": "execute",
+    "isError": true
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "5b6ffd40-fe01-4ef1-90aa-c8f9af6c5ac2",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "action": "list",
+    "purpose": "Identifying checkout sandbox",
+    "runId": "f2ceb3c0-9c57-4dbf-9316-1b3e469f7240",
+    "callId": "call_kE3qg7Z17TM43XX71PpUlxRs|fc_0e73df17a053802a016af072a523c887d2bbd10bfd08607d17",
+    "tool": "sandbox",
+    "step": {
+     "id": "5b6ffd40-fe01-4ef1-90aa-c8f9af6c5ac2",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "action": "list",
+    "result": "{\"sandboxes\":[{\"id\":\"77bd41a9-1861-4b63-8f58-8a6d03b55f5a\",\"name\":\"s1e-probe\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"]},\"state\":\"ready\",\"legacy\":false,\"backend\":\"local\",\"holders\":[\"f2ceb3c0-9c57-4dbf-9316-1b3e469f7240\"],\"createdAt\":\"2026-11-08T13:01:16.224Z\",\"createdBy\":\"harness-admin\",\"machineId\":\"qm-sbx-sandbox-77bd41a9-1861-4b63-8f58-8a6d03b5-394110\",\"ownerScopeId\":\"personal:U1\",\"backingScopeId\":\"sandbox-77bd41a9-1861-4b63-8f58-8a6d03b55f5a\"}],\"defaultSandboxId\":\"77bd41a9-1861-4b63-8f58-8a6d03b55f5a\",\"defaultMode\":\"selected\",\"providers\":[{\"name\":\"local\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\"},\"egressEnforcement\":\"none\",\"sizesMemory\":true,\"actions\":[\"create\",\"retire\"]}]}",
+    "runId": "f2ceb3c0-9c57-4dbf-9316-1b3e469f7240",
+    "callId": "call_kE3qg7Z17TM43XX71PpUlxRs|fc_0e73df17a053802a016af072a523c887d2bbd10bfd08607d17",
+    "tool": "sandbox",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "e4c698bc-2dd8-48b5-b0fc-0eddb04b631a",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && (git config --get-regexp 'credential|core.sshCommand|http\\\\..*extraheader|url\\\\..*insteadOf' || true) && ls -la && git diff main...excerpt-helper --stat && git diff main...excerpt-helper\",\"purpose\":\"Reading branch changes\",\"sandbox_id\":\"77bd41a9-1861-4b63-8f58-8a6d03b55f5a\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && (git config --get-regexp 'credential|core.sshCommand|http\\..*extraheader|url\\..*insteadOf' || true) && ls -la && git diff main...excerpt-helper --stat && git diff main...excerpt-helper",
+    "purpose": "Reading branch changes",
+    "sandbox_id": "77bd41a9-1861-4b63-8f58-8a6d03b55f5a",
+    "runId": "f2ceb3c0-9c57-4dbf-9316-1b3e469f7240",
+    "callId": "call_CrZA1nTCu7bhvIfRjgIxDcyb|fc_0e73df17a053802a016af072a6b3c087d2a7f80c68ad6a0de1",
+    "tool": "execute",
+    "step": {
+     "id": "e4c698bc-2dd8-48b5-b0fc-0eddb04b631a",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* excerpt-helper 59856d7 Strip markdown before excerpting\n  main           fb7eac6 Render cards from entries\ntotal 32\ndrwxr-xr-x 5 root root 4096 Nov  8 13:01 .\ndrwxr-xr-x 4 root root 4096 Nov  8 13:01 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 13:01 .git\n-rw-r--r-- 1 root root   89 Nov  8 12:35 CHANGELOG.md\n-rw-r--r-- 1 root root  500 Nov  8 12:35 README.md\n-rw-r--r-- 1 root root  114 Nov  8 12:35 package.json\ndrwxr-xr-x 2 root root 4096 Nov  8 13:01 src\ndrwxr-xr-x 2 root root 4096 Nov  8 13:01 test\n CHANGELOG.md         |  6 +++++-\n README.md            |  6 +++++-\n package.json         |  2 +-\n src/excerpt.js       | 11 +++++++++++\n src/plain.js         |  9 +++++++++\n src/words.js         |  7 +++++++\n test/excerpt.test.js |  7 +++++++\n test/plain.test.js   |  7 +++++++\n test/words.test.js   |  8 ++++++++\n 9 files changed, 60 insertions(+), 3 deletions(-)\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 1e089ca..da546b7 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.5.0\n+\n+- Card body excerpts.\n+\n ## 1.4.0\n \n-- Cards render a title and a body.\n+- Cards render a title and body.\ndiff --git a/README.md b/README.md\nindex 7fb0bd4..4a4a620 100644\n--- a/README.md\n+++ b/README.md\n@@ -2,4 +2,8 @@\n \n Card previews for snippetbox.\n \n-Cards render a title and a body. The body preview is added on the excerpt branch.\n+excerpt(text, limit) returns a short preview. If the text is at most limit characters it is returned unchanged. If it is longer, it is cut at a word boundary at or before the limit and a single-character ellipsis is appended. The ellipsis appears only when text was actually removed.\n+\n+## Markdown\n+\n+toPlain(markdown) flattens a markdown body to plain text before it is excerpted: markers removed, links reduced to their text, runs of whitespace collapsed.\ndiff --git a/package.json b/package.json\nindex 9655831..8b7c6fc 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"snippetbox\",\n-  \"version\": \"1.4.0\",\n+  \"version\": \"1.5.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/excerpt.js b/src/excerpt.js\nnew file mode 100644\nindex 0000000..bf52a46\n--- /dev/null\n+++ b/src/excerpt.js\n@@ -0,0 +1,11 @@\n+const { lastSpaceBefore } = require('./words');\n+\n+const ELLIPSIS = '\\u2026';\n+\n+function excerpt(text, limit) {\n+  const trimmed = text.trim();\n+  const cut = lastSpaceBefore(trimmed, limit);\n+  return trimmed.slice(0, cut).trimEnd() + ELLIPSIS;\n+}\n+\n+module.exports = { excerpt, ELLIPSIS };\ndiff --git a/src/plain.js b/src/plain.js\nnew file mode 100644\nindex 0000000..431f482\n--- /dev/null\n+++ b/src/plain.js\n@@ -0,0 +1,9 @@\n+function toPlain(markdown) {\n+  return markdown\n+    .replace(/[*_~`]/g, '')\n+    .replace(/\\[([^\\]]*)\\]\\([^)]*\\)/g, '$1')\n+    .replace(/\\s+/g, ' ')\n+    .trim();\n+}\n+\n+module.exports = { toPlain };\ndiff --git a/src/words.js b/src/words.js\nnew file mode 100644\nindex 0000000..118f9c9\n--- /dev/null\n+++ b/src/words.js\n@@ -0,0 +1,7 @@\n+function lastSpaceBefore(text, limit) {\n+  const slice = text.slice(0, limit);\n+  const i = slice.lastIndexOf(' ');\n+  return i === -1 ? limit : i;\n+}\n+\n+module.exports = { lastSpaceBefore };\ndiff --git a/test/excerpt.test.js b/test/excerpt.test.js\nnew file mode 100644\nindex 0000000..47bde46\n--- /dev/null\n+++ b/test/excerpt.test.js\n@@ -0,0 +1,7 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { excerpt, ELLIPSIS } = require('../src/excerpt');\n+\n+test('a long text is cut at a word with an ellipsis', () => {\n+  assert.strictEqual(excerpt('the quick brown fox jumps', 15), 'the quick' + ELLIPSIS);\n+});\ndiff --git a/test/plain.test.js b/test/plain.test.js\nnew file mode 100644\nindex 0000000..ccb2705\n--- /dev/null\n+++ b/test/plain.test.js\n@@ -0,0 +1,7 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { toPlain } = require('../src/plain');\n+\n+test('markdown markers and links are flattened', () => {\n+  assert.strictEqual(toPlain('A **bold** [link](http://x) and   spaces'), 'A bold link and spaces');\n+});\ndiff --git a/test/words.test.js b/test/words.test.js\nnew file mode 100644\nindex 0000000..ec9e489\n--- /dev/null\n+++ b/test/words.test.js\n@@ -0,0 +1,8 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { lastSpaceBefore } = require('../src/words');\n+\n+test('finds the last space at or before the limit', () => {\n+  assert.strictEqual(lastSpaceBefore('one two three', 7), 3);\n+  assert.strictEqual(lastSpaceBefore('onetwothree', 7), 7);\n+});\n\n[exit 0]",
+    "runId": "f2ceb3c0-9c57-4dbf-9316-1b3e469f7240",
+    "callId": "call_CrZA1nTCu7bhvIfRjgIxDcyb|fc_0e73df17a053802a016af072a6b3c087d2a7f80c68ad6a0de1",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "a1318f13-734a-431f-96cc-9768726bcaf7",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && find src test -type f -maxdepth 3 -print -exec nl -ba {} \\\\; && cat README.md && git log --oneline --all && npm test && node <<'NODE'\\nconst {excerpt}=require('./src/excerpt');\\nconst {toPlain}=require('./src/plain');\\nfor (const [s,n] of [['hello',10],['hello world',11],['  hello  ',20],['one two three',7],['one two three',8],['one\\\\ttwo\\\\tthree',7]]) console.log(JSON.stringify({text:s,limit:n,actual:excerpt(s,n)}));\\nfor (const s of ['# Heading\\\\n\\\\n- item','snake_case and https://a_b.test','![alt](image.png)','[some_text](https://x.test/a_(b))']) console.log(JSON.stringify({markdown:s,actual:toPlain(s)}));\\nNODE\",\"purpose\":\"Testing preview behavior\",\"sandbox_id\":\"77bd41a9-1861-4b63-8f58-8a6d03b55f5a\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && find src test -type f -maxdepth 3 -print -exec nl -ba {} \\; && cat README.md && git log --oneline --all && npm test && node <<'NODE'\nconst {excerpt}=require('./src/excerpt');\nconst {toPlain}=require('./src/plain');\nfor (const [s,n] of [['hello',10],['hello world',11],['  hello  ',20],['one two three',7],['one two three',8],['one\\ttwo\\tthree',7]]) console.log(JSON.stringify({text:s,limit:n,actual:excerpt(s,n)}));\nfor (const s of ['# Heading\\n\\n- item','snake_case and https://a_b.test','![alt](image.png)','[some_text](https://x.test/a_(b))']) console.log(JSON.stringify({markdown:s,actual:toPlain(s)}));\nNODE",
+    "purpose": "Testing preview behavior",
+    "sandbox_id": "77bd41a9-1861-4b63-8f58-8a6d03b55f5a",
+    "runId": "f2ceb3c0-9c57-4dbf-9316-1b3e469f7240",
+    "callId": "call_9u4B7d2e55D0ostgI0dcRNcj|fc_0e73df17a053802a016af072a8ff6887d28071ef802794aad8",
+    "tool": "execute",
+    "step": {
+     "id": "a1318f13-734a-431f-96cc-9768726bcaf7",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "src/plain.js\n     1\tfunction toPlain(markdown) {\n     2\t  return markdown\n     3\t    .replace(/[*_~`]/g, '')\n     4\t    .replace(/\\[([^\\]]*)\\]\\([^)]*\\)/g, '$1')\n     5\t    .replace(/\\s+/g, ' ')\n     6\t    .trim();\n     7\t}\n     8\t\n     9\tmodule.exports = { toPlain };\nsrc/words.js\n     1\tfunction lastSpaceBefore(text, limit) {\n     2\t  const slice = text.slice(0, limit);\n     3\t  const i = slice.lastIndexOf(' ');\n     4\t  return i === -1 ? limit : i;\n     5\t}\n     6\t\n     7\tmodule.exports = { lastSpaceBefore };\nsrc/card.js\n     1\tfunction card(entry) {\n     2\t  return { title: entry.title.trim(), body: entry.body.trim() };\n     3\t}\n     4\t\n     5\tmodule.exports = { card };\nsrc/excerpt.js\n     1\tconst { lastSpaceBefore } = require('./words');\n     2\t\n     3\tconst ELLIPSIS = '\\u2026';\n     4\t\n     5\tfunction excerpt(text, limit) {\n     6\t  const trimmed = text.trim();\n     7\t  const cut = lastSpaceBefore(trimmed, limit);\n     8\t  return trimmed.slice(0, cut).trimEnd() + ELLIPSIS;\n     9\t}\n    10\t\n    11\tmodule.exports = { excerpt, ELLIPSIS };\ntest/words.test.js\n     1\tconst test = require('node:test');\n     2\tconst assert = require('node:assert');\n     3\tconst { lastSpaceBefore } = require('../src/words');\n     4\t\n     5\ttest('finds the last space at or before the limit', () => {\n     6\t  assert.strictEqual(lastSpaceBefore('one two three', 7), 3);\n     7\t  assert.strictEqual(lastSpaceBefore('onetwothree', 7), 7);\n     8\t});\ntest/excerpt.test.js\n     1\tconst test = require('node:test');\n     2\tconst assert = require('node:assert');\n     3\tconst { excerpt, ELLIPSIS } = require('../src/excerpt');\n     4\t\n     5\ttest('a long text is cut at a word with an ellipsis', () => {\n     6\t  assert.strictEqual(excerpt('the quick brown fox jumps', 15), 'the quick' + ELLIPSIS);\n     7\t});\ntest/card.test.js\n     1\tconst test = require('node:test');\n     2\tconst assert = require('node:assert');\n     3\tconst { card } = require('../src/card');\n     4\t\n     5\ttest('a card trims its fields', () => {\n     6\t  assert.deepStrictEqual(card({ title: ' Hi ', body: ' there ' }), { title: 'Hi', body: 'there' });\n     7\t});\ntest/plain.test.js\n     1\tconst test = require('node:test');\n     2\tconst assert = require('node:assert');\n     3\tconst { toPlain } = require('../src/plain');\n     4\t\n     5\ttest('markdown markers and links are flattened', () => {\n     6\t  assert.strictEqual(toPlain('A **bold** [link](http://x) and   spaces'), 'A bold link and spaces');\n     7\t});\n# snippetbox\n\nCard previews for snippetbox.\n\nexcerpt(text, limit) returns a short preview. If the text is at most limit characters it is returned unchanged. If it is longer, it is cut at a word boundary at or before the limit and a single-character ellipsis is appended. The ellipsis appears only when text was actually removed.\n\n## Markdown\n\ntoPlain(markdown) flattens a markdown body to plain text before it is excerpted: markers removed, links reduced to their text, runs of whitespace collapsed.\n59856d7 Strip markdown before excerpting\n8e279a3 Add the excerpt helper\nfb7eac6 Render cards from entries\n\n> snippetbox@1.5.0 test\n> node --test\n\n✔ a card trims its fields (0.960963ms)\n✔ a long text is cut at a word with an ellipsis (0.593177ms)\n✔ markdown markers and links are flattened (0.619646ms)\n✔ finds the last space at or before the limit (0.540237ms)\nℹ tests 4\nℹ suites 0\nℹ pass 4\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 90.560918\n{\"text\":\"hello\",\"limit\":10,\"actual\":\"hello…\"}\n{\"text\":\"hello world\",\"limit\":11,\"actual\":\"hello…\"}\n{\"text\":\"  hello  \",\"limit\":20,\"actual\":\"hello…\"}\n{\"text\":\"one two three\",\"limit\":7,\"actual\":\"one…\"}\n{\"text\":\"one two three\",\"limit\":8,\"actual\":\"one two…\"}\n{\"text\":\"one\\ttwo\\tthree\",\"limit\":7,\"actual\":\"one\\ttwo…\"}\n{\"markdown\":\"# Heading\\n\\n- item\",\"actual\":\"# Heading - item\"}\n{\"markdown\":\"snake_case and https://a_b.test\",\"actual\":\"snakecase and https://ab.test\"}\n{\"markdown\":\"![alt](image.png)\",\"actual\":\"!alt\"}\n{\"markdown\":\"[some_text](https://x.test/a_(b))\",\"actual\":\"sometext)\"}\n\n[stderr]\nnpm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\n\n[exit 0]",
+    "runId": "f2ceb3c0-9c57-4dbf-9316-1b3e469f7240",
+    "callId": "call_9u4B7d2e55D0ostgI0dcRNcj|fc_0e73df17a053802a016af072a8ff6887d28071ef802794aad8",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 14,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "282b5b2a-37c7-47a0-a56c-c61925ab594f",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "{\"id\":\"rs_0e73df17a053802a016af072ad945887d29d46fd67c59a5fb6\",\"type\":\"reasoning\",\"content\":[],\"encrypted_content\":\"gAAAAABq8HKzRHT7SZWUDUumXHP5pTbUQALo0XhUZeFYtDTYP4SxHkBYUOcwZflJhZY4nBZZ2M6zY6LQ4O6YcOUvAO0vEUFJ9BysueBrs2ClsWaRqiQvcWxxibJ4sNsChWntX6K8yZDLarMxf_NnIKD6sOb8KoLEZtbqyzA5DJSrYn4zl0ghMTj5DJLKiJmGkrlfQjXWS8Po0llvZY0OFL-X7_MHyehLGwqBV1Gd8bx5zZdY9jdbgTPqUSejvm6hQ9GiDEwryhBocqY_OytMgQVF2Am5FU4V-NqC_MOLUV18eH4MMcVTCOhCmssdEi2GBEHh57fRVZK2ZZGNdV_pHrJ4WNpatFE8AccuB1nQPOxUG9Z9M1OtjBaijEzpxChPOtnWOD9-bIRgN1yuU4GhtI9Rmpd_qLZxkeCdddUEsF5xKVn7z_VFu24_F5m3iyZs6WZAC_8fOMSFBxGiq6jENFi9OxirCQJIY5925jcAsN3np9kH3ojtwP75d_cMwoN-u7ssZApdy1pOv98UWaX7zlmEq8utPmpc_7OrQP6iyzRWZVUQrxHZIouAdtDWbg6xvnzOp3grR_-i7wdgEetU8E5wkdjhfuwDKMpNItenCqfA1b_eJk_G9e7dXAY5jCln9Thsft04xw-8qH6xorsy7nzWrnn9aU1dJi1YsF71skk7wm2UTJY6G8CqR_mY4lHRhhHHHhUtv-uxNH8rEvFEbgQk6zxOFyj7zi749zcOcm8PVWgSjm1UtXDmTJ1U1fAKd-AAIS3Q0VYqAu-jc7Nv15EzmgKyRPVMj3PRTzS1-lBV4HkVXOkLHzAlLA5A5xpU37tiMdtjCi0ksgLN4pfxJNsxS4gqfmxh_KNc64ZHTfB1Gy4pDNuohhk-nUNUWJvTx6CcHrbHv8mGzMBu7cYYHAUzGSz60WRsQ8JCPuwrPTVlkVs2krIts_iFVcGmWOVbDjat-9v_SexeczlYFrkTlEPAAu-YaKc0TpXZ13Bm5MPznqFemUOMJ4bTqtMa6n2HETyjWt95Ap8Yo_R6cevxfJ5vWR2A2JuDl_-aHHvzdKG-nAr5iktKjfFDd_leSb1AoxOuYyDN0e02E8qjeVSV-xTwGS2KIaYYijCuXY16CHq1Cd_GwPnMu84WMeELrnC4kBbZujPMPkrHQpU36LIzBEChVPCnpHVHOHgHUXWgJgBnGIPvKwXgf1s-cbybaycq7CmU4XMGoIR_yLjla_fbCrz02uhsGLlBW1swZKu2zKU-y6W96w-EiHwIZycWV6SIkrKabuMpmbCxsY-8TiFc5KSTWNzyjlnB0y8N_721aoIExpHvhk4Z68GuWb38iGt6-FXmppr9A_J6rJrB5HUmgSkrv_ck9Rh1w1syIQKvYvwy9WaO_YnS3YD1nv7XKij2lK7HjRNEWZsaVm0IwKHbGHXTmX-HwiDx8aFht2bGu0NMJVOSLHaN2rtpzOoIeT1SnvMBNuQyevuYoqWlF_c9JBudyyuo68orxB1BDAbweaZLLzMUl3Kgauz-QtpkqqwluP3fsnA26MhvjvAE_-n3_3_TPeEEoauvBCoqzCLCr3wOwbnujR9KZmoDMWsw6Ra_NqzBOtpoaDa60avRTM_bshFMSJlSWj4bBXM_ZdnhCKtVO8Yy0IeqtUq3vsBxFxX2nbYxtgz_y807VKJUk8N2Nzz4oK1RKXmKHFUyfeI6cQc7Jqc72NZXrjb4gnzj9yrNySdP6n4vHk-BgzXntsxikyUQJke1pr6ink_nIxSOtd_hE85xIboIDk6JwCtYgRwQ0ZtAWrgSr9MMZXWQqEvY4OUPVMR3nP3uLI5ARjYd-XTrWfVdf3zFJ1WCTOj6_1at5snWJvpBxDhKMx_-U2RUm8xAIM0A_PDmxT54yXvGlYTCUljnBIqrUtlGnXbSVmZq9qCS7KEXUyC2fVMqVS-S5yI27rA3kQ64uedRxB3j89oA0sdTYmnUT8EKZopYAEgd9t_G_icY-uTwut5HfICTHfdhf_M9CCYehiugTKPxgtRz1TEXhkvgXOYH6ByqRT01NB4JbS1UNvOfmC786iumobZkvQpMScFpcJClp32v55Ss4lgzl4aL3Eto05APpFol5w_yBYO1f6Izp3J2oI9TYgFFmqIrCUCegeGP9aaHPoC2mbFOzPbcoJ8I948vv2vZJHgY0AewFu8IzJTFwxrycYv2WiYXHW4i5PGQEJLDTbRl_YBKx-Wcm5I_GHWYLrofIbEQ8PdXiH44qRkgtp9kSp9cNoh-YYMWwP6pw4UMtbXB3Vu8akopZErWcxJ_hIsKpanFJ2iAAmMEBuXN0llaDihqnosr9x0R4ZQnKhmyjIapMDOu_lRcKAl8wC-Su7f8xUW_3_0sizmJvfJ3sQImQtBDlXYT-YSHT8z6y7uV9K9u9eK8t_zss0DHoSgtZa0aqqy1ipMIQyiforvjHPoHPqS5PvPDu5D57-V6IwMe9rcJd-QGwozfXZOSVo_EABsGV-vuEAjKI0RwSHpfLUVs2CztP-VDa9GJhL5JrIUJHAabwudIuS22s4VWvDbMdGJ7T6j9kjvd6cs2rV_NULMY2qFxaM9oc6MT815I1XxkgtItsXCHUXJlm6J-2uSNT4Dc1lzisvD7VyyQnVxma88tomGwE5QRaqtqQsiHti1DewHhDFXknERFz2zD8B9Pedk6oRzrKr3l6_U3e2g1mEaAX6pNkzmMelRPgrM97QADpQbmgoLrWHm5HFRe43017rmoqNPBPy2XV6ZgtHOw5gUVp1av6C75Su1xkEACJi9ZAqxINURCpEyhTKMM9xfInXdOiyZVVHzId1OeixeZn-xsN77kxOwN2SzFiP-aGKQYoiZ7T812dLUsZ55FAB7TG58Z4qJ75o6fefSqFrQcJvlJUAQCZmUbT--oaAVuK7dxYQ-bovEnPaJI8aXsjU01E0XNEg9CrmhCOx0An720oUZJ-U-4JoIRfDh04mGmb-997muIEis-0j4Bkod65bSNF4Ne8jTLwPm-kdVyGVk9BPMh6Z_yOX9zia4C-SQwiDHaBvgIKeItgljeh3HD-12Wq9lfqfv0haL5bKAsueteJa9zsJ7BmrkC2uqLrK3fRIIBnNtU5ghGdluWHU8uDbnlB1WupU99rtawlQreXADcvpFc3BqYMuDK0IRy_o8HA9V7eqrECFEHGwttQs9xQMVwSefM_ZS5-Vj4OAmzftjiagZi5Fil718WUfUIWPN_jW0JVlIgU7ule0S90o0ZtCbIT9CEDCvfZ1hrGZvrPSLN2XAwtigIrczEkWNVdPC8RbbMKuJe_IkhpJPo6x5IHvS3fNvofrxmQp-9Jo3B05vwxz1U1or0oBpg6MXo6FuZsQqTl0QOUa_W3T232dlfD782OwW0qFyJjAF2JkcSNthdmzGjLzzMtDDgdkSRjewnjhGbNqxFh2IX_FC1UXcLdNeTfebAlpyeFGe9_RBzvz5fL8k-XcqYQdTGPT6kwJejd0hpF8mEh15HryzKBs2DNkIKJRdl6rjrBXv6So8fZ2YZLt6UJg_oltMjd661QLJmISB1ODq5bMW9PfbbkazS398qrmqacpzsred3Lx3mvutba1fYp7nzfImoDwdUqxRwG02kqlILg8RZibCtf-aUbgHxR0lYTrM5WLXrwQ8RaUrCylVwOsMDQXW2KhphWvEIDVbck4QZtMMRIZA-d8AyqHzFv-UqMVGDf_dUgQov2JzNCJ3Yeh5gf3ATZkW1eqUrrcdUXGL_cc_N9edPeVUvEZ5L9umwk9CyRql333SX\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"**Reviewing integration issues**\\n\\nI need a concise review, prioritizing four integration issues first. The user mentions problems with wiring and building previews, so I should include around four or five findings in markdown, aiming to address corruption and incompleteness without overdoing it. I want to ensure I acknowledge wrong behaviors in boundary tests and cite the relevant code lines. It seems I could combine findings, keeping whitespace and structure unchanged. Ultimately, I want to keep it around 500 words.\"}]}",
+    "thinking": "**Reviewing integration issues**\n\nI need a concise review, prioritizing four integration issues first. The user mentions problems with wiring and building previews, so I should include around four or five findings in markdown, aiming to address corruption and incompleteness without overdoing it. I want to ensure I acknowledge wrong behaviors in boundary tests and cite the relevant code lines. It seems I could combine findings, keeping whitespace and structure unchanged. Ultimately, I want to keep it around 500 words.",
+    "runId": "f2ceb3c0-9c57-4dbf-9316-1b3e469f7240",
+    "step": {
+     "id": "282b5b2a-37c7-47a0-a56c-c61925ab594f",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 15,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "282b5b2a-37c7-47a0-a56c-c61925ab594f",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "textBlock": {
+     "textSignature": "{\"v\":1,\"id\":\"msg_0e73df17a053802a016af072b302b487d2b1e9a3d9139d7a5d\",\"phase\":\"final_answer\"}"
+    },
+    "workStartedAt": 1794142877628,
+    "workFinishedAt": 1794142903239,
+    "text": "I’d fix these before merging. Reviewed `excerpt-helper` (`59856d7`) against `main`; no files changed.\n\n1. **The helpers aren’t connected to cards.**  \n   `src/card.js:1–2` still returns `entry.body.trim()`. Neither new helper is called anywhere, so cards continue showing full Markdown bodies rather than plain-text excerpts. The preview path needs to use both helpers.\n\n2. **Short and exact-limit text is incorrectly truncated.**  \n   `src/excerpt.js:6–8` always searches for a cut point and appends an ellipsis, even when nothing needs removing:\n   - `excerpt('hello', 10)` → `'hello…'`\n   - `excerpt('hello world', 11)` → `'hello…'`\n\n   This contradicts the README’s unchanged-text contract. Check whether the text fits before cutting or trimming it.\n\n3. **A word ending exactly at the limit gets dropped.**  \n   `src/words.js:2–4` searches only the characters *before* `limit`, excluding a space at that position. `excerpt('one two three', 7)` returns `'one…'`, although `'one two…'` fits the documented boundary rule. The current helper test actually locks in this off-by-one behavior.\n\n4. **Markdown conversion deletes literal content.**  \n   `src/plain.js:3` removes every underscore, asterisk, tilde, and backtick without checking whether it is markup. For example, `toPlain('snake_case and https://a_b.test')` becomes `'snakecase and https://ab.test'`. Plain text and code content should retain literal characters.\n\n5. **Common Markdown syntax leaks into the preview.**  \n   `src/plain.js:3–4` doesn’t fully flatten Markdown: `'# Heading\\n\\n- item'` becomes `'# Heading - item'`, and `'![alt](image.png)'` becomes `'!alt'`. Valid links with parentheses in their destination also leave trailing punctuation. A Markdown-aware conversion would avoid these parsing gaps.\n\n**Validation:** all four existing tests pass, but they don’t cover the integration, short/exact-limit inputs, or the Markdown cases above.",
+    "runId": "f2ceb3c0-9c57-4dbf-9316-1b3e469f7240",
+    "step": {
+     "id": "282b5b2a-37c7-47a0-a56c-c61925ab594f",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

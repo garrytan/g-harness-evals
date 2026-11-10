@@ -1,0 +1,155 @@
+{
+  "trial_id": "rev-15-plain-sol-k18",
+  "task_id": "rev-15",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 18,
+  "status": "ok",
+  "reply_text": "*One merge-blocking finding* in `access-roles` (`d6780ec`), reviewed against `main`:\n\n*High — legitimate admins loaded from config are denied access* — `access/gate.py:4`\n`return role is 'admin'` compares object identity rather than string value. Runtime-created roles can equal `'admin'` without being the same object.\n\nConfirmed:\n```python\nrole = role_from_config('ADMIN')\nrole == 'admin'                              # True\nhas_access({'role': role}, 'admin-tools')    # False\n```\n\nRecommend using `role == 'admin'` and adding a regression test using a config-loaded role. The current literal-only admin test passes because of string interning, masking the bug.\n\nAll 5 existing tests pass; Python also warns about the identity comparison. This is an incorrect denial, not a demonstrated privilege-escalation bypass. No other findings in the branch diff.\n\nNo files changed.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-15-plain-sol-k18",
+    "requests": 9,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0445966,
+    "input_tokens": 71900,
+    "output_tokens": 912,
+    "cached_tokens": 59798,
+    "cache_write_tokens": 11788,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.00006879999999999999,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0445278,
+        "requests": 8
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 9
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 19.81,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-15-plain-sol-k18",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:56:03.444Z",
+    "images": {
+      "core": "sha256:217d5f3a14919e23171c0717454f5004d418ea2efb0cefab7b4d405627cbdca8",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-c10476e763a0",
+        "id": "sha256:f62a2ae59c4da205fe006abf57b24eb1422e28b7de951fdc3566f36299ff925f",
+        "tree_sha256": "37149244569be983279a5bfacd6ca03e56ebc12dd0dac0f999b4fd52db4cfc44"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-a6dea9af-6dc4-4025-a8db-74e4ebaa-ba36a2"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:56:46.822Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/0b13244081bf7b0df617a680/98ed9de19ce16818/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/0b13244081bf7b0df617a680/98ed9de19ce16818/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 12,
+          "command": "cd /root/workspace/repo && git diff main...access-roles && printf '\\n--- files ---\\n' && find access tests docs -type f -maxdepth 3 -print && cat README.md CHANGES.md && for f in access/* tests/* docs/*; do echo \"--- $f\"; nl -ba \"$f\"; done",
+          "code": 0,
+          "output": "diff --git a/CHANGES.md b/CHANGES.md\nindex 45bf359..7149d39 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.3.0\n+\n+- Admin tool gating, roles from config.\n+\n ## 0.2.0\n \n - Users and roles.\ndiff --git a/README.md b/README.md\nindex a0c18cd..acb9a21 100644\n--- a/README.md\n++"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-15-plain-sol-k18",
+      "meter": {
+        "requests": 9,
+        "usd": 0.0445966,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 9,
+        "usd": 0.0445966,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.00006879999999999999
+    }
+  }
+}

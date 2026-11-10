@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-10-plain-opus-k9",
+  "task_id": "rev-10",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 9,
+  "status": "ok",
+  "reply_text": "I reviewed `leaderboard-sort` against main (2 commits, +50/−1) and didn't change any code. **I'd hold the merge until one bug is fixed.**\n\n**Blocker: ranking turns scores into Numbers and gets the order wrong**\n`src/rank.js` sorts with `b.score - a.score`. That converts the score strings to JavaScript Numbers, which the README specifically says never to do: scores can go above 2^53, and above that a Number rounds them. I ran it to check:\n\n```\nrankings([{player:'low', score:'9007199254740992'}, {player:'high', score:'9007199254740993'}])\n→ rank 1: low, rank 2: high   // wrong\n```\n\nOnce rounded, the two scores look equal, so the higher one doesn't come first. The fix is one line, using the existing `compareScore` helper in `src/score.js` (it compares exact values):\n```js\n.sort((a, b) => compareScore(b.score, a.score))\n```\nThis bug also affects `topN`, which is built on `rankings`. The new test only uses small scores, so it can't catch this. It's worth adding a test with two scores above 2^53 that differ by 1.\n\n**Smaller things (not blocking)**\n- **Tied scores:** players with the same score get different ranks (1, 2) based on input order. If ties should share a rank, that needs handling. Either way, the README should say which.\n- **`displayName` crashes on a missing name:** if `name` is `null` or missing, it throws a TypeError. If the API ever sends players without a name, using `(player.name ?? '').trim()` would avoid that.\n- **`topN` with a bad `n`:** a negative `n` makes `slice` cut entries off the end instead of returning the first few, and a missing `n` returns everything. That's fine if callers always check `n` first.\n- **Changelog:** the 1.1.0 entry doesn't mention display names. The README and version bump otherwise look fine.\n\nEverything else looks good: the code is small and clear, and `rankings` copies the list before sorting, so the caller's list isn't changed.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-10-plain-opus-k9",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0711077,
+    "input_tokens": 67879,
+    "output_tokens": 1651,
+    "cached_tokens": 64230,
+    "cache_write_tokens": 3185,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000053700000000000004,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.07105399999999999,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 21.703,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-10-plain-opus-k9",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:45:01.621Z",
+    "images": {
+      "core": "sha256:d3c15a4ff59b46b682cc0b498a5b96d657f86e2d1ac9a8b947b4fb5d8b1c3302",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-5907e9ffa04e",
+        "id": "sha256:013f536ba5be26a2f064fe719807382b546aadbdca1275dcfae94db87a88610d",
+        "tree_sha256": "d95f6cf68fe3d394346f77c887d24762ad1ef408da8da1bd0269ca991d4706b2"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-f104191f-6c01-45c5-aa3c-d2211a39-10b3e2"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:45:47.185Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git log --oneline main..leaderboard-sort; git diff main...leaderboard-sort --stat; git diff main...leaderboard-sort",
+          "code": 0,
+          "output": "17941bc Add a stable display name\n04db347 Rank and paginate the leaderboard\n CHANGELOG.md         | 4 ++++\n README.md            | 8 ++++++++\n package.json         | 2 +-\n src/display.js       | 6 ++++++\n src/rank.js          | 7 +++++++\n src/top.js           | 7 +++++++\n test/display.test.js | 8 ++"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-10-plain-opus-k9",
+      "meter": {
+        "requests": 6,
+        "usd": 0.0711077,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.0711077,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000053700000000000004
+    }
+  }
+}

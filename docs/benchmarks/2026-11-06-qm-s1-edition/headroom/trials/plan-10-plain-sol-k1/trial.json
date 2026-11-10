@@ -1,0 +1,161 @@
+{
+  "trial_id": "plan-10-plain-sol-k1",
+  "task_id": "plan-10",
+  "family": "plan",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I reviewed the queue, schema, docs, tests, and Git history. **I’d add bounded priorities with aging—not a strict “urgent first” flag.** No code changed; both existing tests pass.\n\n### What the repo tells us\n\nThree constraints should drive the design:\n\n- **Starvation has happened before.** Commit `0cc863a` removed an urgent flag after urgent work left emails waiting six hours (INC-88). Its message explicitly requires aging if priorities return.\n- **Claim performance is a hard requirement.** Commit `1530fcf` records an outage from a full scan at 2M rows (INC-61). `tests/test_query_plan.py` requires indexed selection without a temporary sort.\n- **Billing ordering must survive.** `docs/queue.md` promises enqueue order within each `ordering_key`. Priorities must never let a newer invoice overtake an older one.\n\n### Proposed scheduling rules\n\n**1. Three priority levels, defaulting to normal.**  \nAdd an optional, validated `priority` argument to `enqueue`, using `low`, `normal`, and `high`. Existing callers remain normal; password-reset producers explicitly choose high. Priority affects the next claim, not jobs already running, and never bypasses `run_at`.\n\n**2. Give priority a bounded head start.**  \nRank eligible jobs by:\n\n`run_at − priority_level × aging_window`, then `id` to break ties.\n\nFor example, with levels 0–2 and an illustrative five-minute window, high priority gets a ten-minute advantage over low. Once a low-priority job has waited ten minutes, newly arriving high-priority jobs cannot keep overtaking it.\n\nThis avoids a continuously recalculated aging score and makes indexed selection practical. The window should be configurable and chosen from queue-latency requirements—not hard-coded from this example. It prevents indefinite overtaking by new arrivals, but does not promise bounded latency under overload.\n\n**3. Preserve ordering keys above priority.**  \nOnly the earliest unfinished job for a key may compete, even if a later job has higher priority. A delayed or retrying predecessor still blocks later jobs for that key; unrelated keys remain eligible.\n\n### Implementation plan\n\n**Schema and migration — `jobq/schema.sql`, `jobq/db.py`**\n- Add a non-null priority field with a normal default and constrained values.\n- Introduce a versioned migration for existing databases. Currently `connect()` executes unconditional `CREATE TABLE` statements, so it is not an upgrade mechanism.\n- Add indexes for ready-job selection by priority and due time, plus predecessor checks by ordering key.\n\n**Claim selection — `jobq/queue.py`**\n- Fetch the best *eligible* candidate from each priority level using an index, then compare those three candidates by the aging rank.\n- Apply ordering-key eligibility **before** limiting candidates. The current `LIMIT 50` followed by Python filtering can return no work when the first 50 jobs are blocked, despite runnable work farther back.\n- Make selection and the transition to `running` atomic, for example with a short SQLite `BEGIN IMMEDIATE` transaction. Today separate connections can select the same job before either updates it.\n- Preserve current behavior for all-normal workloads, adding deterministic `id` tie-breaking.\n\n**Retries and terminal states**\n- Retain priority across retries and respect backoff. I recommend restarting aging from each retry’s next `run_at`, so a repeatedly failing job does not accumulate permanent precedence.\n- Define which terminal states release an ordering key.\n- Keep this scoped: the checkout contains backoff and dead-letter helper functions, but no actual retry/dead-letter transition path or dead-letter table, despite the docs describing them.\n\n### Tests and rollout\n\nBefore enabling priorities, add coverage for:\n- High-priority overtaking, future jobs remaining unavailable, and deterministic ties.\n- Low-priority progress under a sustained stream of high-priority arrivals.\n- Same-key ordering across priorities, delays, and retries.\n- More than 50 blocked jobs ahead of runnable work.\n- Concurrent claims from separate database connections.\n- Migration of existing data and unchanged default-priority behavior.\n- Query plans and representative **2M-row benchmarks**, including many blocked keys. Preserve the no-full-scan/no-large-sort requirement rather than simply relaxing the existing test.\n\nRoll out in stages: migrate first with everything normal, deploy the new scheduler to all workers, then enable high priority only for password resets. Watch oldest-ready age and enqueue-to-start latency by priority, claim latency, and SQLite lock contention. Mixed old/new workers should not be treated as providing reliable priority behavior.\n\n**The main policy decision is the maximum priority head start.** I’d settle that latency target first; the rest of the design can preserve the repo’s ordering and performance guarantees around it.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-10-plain-sol-k1",
+    "requests": 9,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.054261000000000004,
+    "input_tokens": 72084,
+    "output_tokens": 1798,
+    "cached_tokens": 59643,
+    "cache_write_tokens": 12115,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.00007120000000000001,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.054189799999999996,
+        "requests": 8
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 9
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 35.904,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-10-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:21:39.633Z",
+    "images": {
+      "core": "sha256:a1cb5179980824f355a04eff570548a298c6240d694122ab035f33b6fe0d67c3",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-dd63528774c8",
+        "id": "sha256:5eb77b1e7cba4839444808e97c6f4caf3a6181a9d30f618eee8aaf01cc7e98cd",
+        "tree_sha256": "9406d46886aea1b2a50de9833e8cb5cea816973bd9f52df9dee7507b4fd42962"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-7fdffcff-9918-401f-99cd-c7b8e3cf-4358e5"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:22:39.360Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/40d69e1fdfc77fd98844cadc/444fc1afd29a9cfa/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/40d69e1fdfc77fd98844cadc/444fc1afd29a9cfa/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 12,
+          "command": "cd /root/workspace/repo && for f in README.md pyproject.toml config/queue.ini docs/queue.md jobq/*.py jobq/schema.sql tests/*.py; do echo \"\\n--- $f\"; nl -ba \"$f\"; done; git log -5 --oneline; git config --local --list",
+          "code": 0,
+          "output": "\n--- README.md\n     1\t# taskmill\n     2\t\n     3\tA small job queue on SQLite, used by billing, email and imports.\n     4\t\n     5\tRun the tests with python3 -m unittest discover -s tests -t .\n\n--- pyproject.toml\n     1\t[project]\n     2\tname = \"taskmill\"\n     3\tversion = \"2.3.0\"\n     4\trequires-python "
+        },
+        {
+          "seq": 14,
+          "command": "cd /root/workspace/repo && git log --oneline --all && git show bc7dd8b && git show 0cc863a && git show 1530fcf && python3 -m unittest discover -s tests -t . && git status --short",
+          "code": 0,
+          "output": "bcd9112 Retries, dead letters, metrics and a CLI\n1530fcf Pin the claim query plan\n0cc863a Remove the urgent flag\nbc7dd8b Add an urgent flag for jobs that must run first\n59638fa Document ordering keys\n0c9a177 SQLite-backed job queue\ncommit bc7dd8b9164bbff6abd40c051e2fa8b25a1a88c0\nAuthor: Rui Tanaka <"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-10-plain-sol-k1",
+      "meter": {
+        "requests": 9,
+        "usd": 0.054261000000000004,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 9,
+        "usd": 0.054261000000000004,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.00007120000000000001
+    }
+  }
+}

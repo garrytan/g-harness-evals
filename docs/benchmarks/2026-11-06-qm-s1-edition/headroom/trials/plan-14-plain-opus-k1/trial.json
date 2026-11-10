@@ -1,0 +1,150 @@
+{
+  "trial_id": "plan-14-plain-opus-k1",
+  "task_id": "plan-14",
+  "family": "plan",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I read all of rolodex-crm: the code, the data-model doc, the config and the tests. It's a small Python backend, and the pieces an import needs already exist. Nothing is written yet. Here's the plan.\n\n## Plan: CSV contact import\n\n**1. New module `crm/importer.py` with one function: `import_contacts(fileobj, *, source, column_map=None, dry_run=False)`**\n- **Reading the file:** run it through the existing `uploads.iter_lines` (which reads uploads in a stream rather than all at once) and pass the result to Python's `csv.DictReader`. Big exports won't be loaded into memory, and `DictReader` handles quoted fields with line breaks inside them.\n- **Column names:** match headers to fields while ignoring case and spaces (`Email`, `E-mail Address` → `email`; also `name`, `company`, `phone`, `tags`). An optional `column_map` lets Sales override the matching for odd exports.\n- **Excel files:** remove the hidden marker (byte-order mark) Excel puts at the start of files. If we don't, the first header reads as `\\ufeffEmail` and the email column isn't found.\n\n**2. Each row goes through the existing write path, never straight into `CONTACTS`**\n- `docs/data-model.md` says every write must go through `upsert_contact()`. Duplicates cost money because the CRM sync bills per contact, and the person also gets every email twice.\n- `upsert_contact` already normalises the email (lowercase, trims spaces, converts international domain names), so `Ana@X.com` and ` ana@x.com ` merge. This covers repeats inside one file as well as matches with existing contacts.\n- On a merge it only fills empty fields and never overwrites existing data. I think that's the right default for an import; please confirm Sales agrees.\n\n**3. Marketing consent: an import must not opt anyone in**\n- New contacts start with `marketing_opt_in=False`. The import should never call `record_consent` just because a CSV has an \"opted in\" column.\n- If Sales has real proof of consent for a list, that should be an explicit option with a named `source` (e.g. `\"tradeshow-2026-10 signup sheet\"`). That keeps `emailable()` meaningful.\n- **This is a policy decision for you or legal, not an engineering one.**\n\n**4. Other fields, using existing helpers**\n- **Phones:** `normalize_phone`. Caveat: it just keeps the digits and adds `+`, so a US number like `(415) 555-0100` becomes `+4155550100`, which is wrong. Either require the international format in the CSV or add a default-country option. Worth fixing before import, because bad numbers would then arrive in bulk.\n- **Tags:** split the tags cell on `;` or `,` and pass each one to `add_tag`, which already lowercases it. Optionally, add a tag for the whole batch (e.g. `import:2026-11-07`) so a bad import can be found and cleaned up.\n\n**5. Webhooks**\n- Send `contact_created` only when `upsert_contact` reports that a contact was actually created, not on merges.\n- For large files, consider sending these in batches or with a limit, so a 10k-row upload doesn't flood subscribers.\n\n**6. Errors and reporting**\n- A bad row is skipped and recorded with its line number and reason. The main cases are a bad email (`normalize_email` raises `ValueError`) and a missing email column. One bad row doesn't stop the import.\n- The import returns a summary: created / merged / skipped, plus a list of errors.\n- `dry_run=True` produces the same summary without writing anything, so Sales can preview before committing. I'd make preview-then-confirm the default way Sales uses it.\n\n**7. Storing the raw file (optional)**\n- `config/storage.ini` points uploads at `crm-uploads-prod` in eu-west-1. Raw contact files are personal data, so decide whether we keep them at all, and for how long, before writing them there.\n\n**8. Tests (new `tests/test_importer.py`)**\n- Duplicates: a repeated email within one file and a match with an existing contact, checking that only one contact exists.\n- Consent: imported contacts are not `emailable`.\n- File formats: an Excel file with the start-of-file marker, a quoted field with a line break, and different header spellings.\n- Errors: a bad email on line N is reported and the other rows still import.\n- Webhooks: a merged row sends no `contact_created`.\n- Dry run: nothing is written.\n\n**Open questions**\n1. Should the import ever set consent, and what proof is needed?\n2. When an imported row conflicts with an existing contact, should we keep the existing value (current behaviour) or let the import overwrite it?\n3. Phones: require international format, or add a default country?\n4. Will Sales use this through a UI or API endpoint? This repo has no web layer, so we'd need to know where the upload comes in.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-14-plain-opus-k1",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0844468,
+    "input_tokens": 64136,
+    "output_tokens": 2593,
+    "cached_tokens": 61070,
+    "cache_write_tokens": 2581,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000056800000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.08438999999999999,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 29.947,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-14-plain-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:22:08.757Z",
+    "images": {
+      "core": "sha256:0905bc9012fb1b772f1c7833737af2644de88955edaba008682c36a74db6d24c",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-7dacdaa8e834",
+        "id": "sha256:32865800e23a3cb720c0e6c5b34150d048091d0f2a61b38f466c94cce3dc50fb",
+        "tree_sha256": "c6ed4b3360a19a5a89abab1876eb5ba4c3b15b77998c53a32200a53cec8ff7a2"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-5d2bdcf6-296a-4653-9b6b-40e10690-5020d5"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:23:03.136Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd ~/workspace/repo; git log --oneline | head -5; find . -type f -not -path \"./.git/*\" | head -100; cat README* package.json 2>/dev/null | head -80",
+          "code": 0,
+          "output": "56e6787 Phones, segments, tags, webhooks and storage\n037fb62 Stream uploads instead of reading them whole\n48970b9 Attachment uploads\n2f1a7f8 Consent records\n2114698 Contacts\n./README.md\n./tests/test_contacts.py\n./tests/__init__.py\n./tests/test_consent.py\n./tests/test_uploads.py\n./config/storage.ini\n"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-14-plain-opus-k1",
+      "meter": {
+        "requests": 6,
+        "usd": 0.0844468,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.0844468,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000056800000000000005
+    }
+  }
+}

@@ -1,0 +1,409 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 05:05 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "55efa603-40df-46b3-aeae-ae952f079799"
+    },
+    "text": "Can you review the multi-dataset-ingest branch against main for me? It's going in tomorrow. Don't change anything, just tell me what you'd want fixed.",
+    "runId": "718aaacf-6598-4bf3-b8c9-395a205b8b1f"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "b094062f-c961-4390-8c74-a1687abc57a2",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "textSignature": "{\"v\":1,\"id\":\"msg_01c493492f624a0c016af0739c72e887d2b9e61adb31881c70\",\"phase\":\"commentary\"}",
+    "text": "I’ll compare `multi-dataset-ingest` against `main`, trace the changed ingest paths, and report what I’d want fixed before merge—without modifying anything.\n",
+    "runId": "718aaacf-6598-4bf3-b8c9-395a205b8b1f",
+    "step": {
+     "id": "b094062f-c961-4390-8c74-a1687abc57a2",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "name": "github-gitlab",
+    "wire": {
+     "message": {
+      "id": "b094062f-c961-4390-8c74-a1687abc57a2",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"read\",\"name\":\"github-gitlab\"}"
+    },
+    "action": "read",
+    "runId": "718aaacf-6598-4bf3-b8c9-395a205b8b1f",
+    "callId": "call_fP8s2EP8p0rnvY7m6ouDFFNb|fc_01c493492f624a0c016af0739d23ac87d29878d17c2e8558f2",
+    "tool": "skills",
+    "step": {
+     "id": "b094062f-c961-4390-8c74-a1687abc57a2",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "dir": "/root/workspace/.agent-skills/3bc3b7b056483b667adaddb2/8b42bf06547b1955/github-gitlab",
+    "name": "github-gitlab",
+    "bytes": 6025,
+    "found": true,
+    "action": "read",
+    "sourceScopeId": "org:harness-eval",
+    "result": "[skill files synced to /root/workspace/.agent-skills/3bc3b7b056483b667adaddb2/8b42bf06547b1955/github-gitlab/]\n\n# GitHub / GitLab\n\nUse this skill when the user asks to inspect repos, issues, pull requests, merge\nrequests, code history, branches, or to make a small code change in a hosted repo.\n\n## Choose the account deliberately\n\nUse the current credential manifest to choose an account authorized for this conversation\nthat fits the user's intent. Run commands with `execute` and an explicit `sandbox_id`;\nkeep that ID throughout checkout, edits, checks, and push. Personal and shared accounts are both valid choices; neither\nis an automatic fallback when the other fails. If the intended account is unclear before\na write, ask. Do not infer permission from a login merely being present on the computer.\n\n- **Personal login:** use the authorized `gh`, `glab`, or Git login. Check the active\n  provider account (for example, `gh api user --jq .login`) and the Git transport's auth\n  configuration; a CLI API identity alone does not prove which account Git will use.\n- **Shared org credential:** if listed in the prompt, select its slug and use the\n  core-hosted smart HTTP remote in the `use-shared-credential` skill. This uses\n  the configured shared account, even when a personal OAuth connector is live.\n  Its name is an admin label, not a verified upstream username.\n- **Connected app:** use only advertised capabilities. API access does not by itself\n  establish native Git transport access or configure the CLI's active login.\n\nFor an existing checkout, inspect the remote and applicable credential-helper, SSH,\nproxy, and HTTP-header configuration. A reused checkout\nmay still select a previous account. Commit author metadata is separate from transport\nidentity. Resolve an unknown identity before a write; do not probe access by pushing.\n\n## Logging in\n\nUse the native login only after an explicit authentication rejection. A TLS timeout,\nconnection reset, rate limit, or GitHub server error is not evidence of logout or\npermission expiry. Do not consume another credential grant to repair transport.\n\nFor a confirmed missing or expired GitHub or GitLab login, follow the\n`interactive-login` skill: it runs `gh auth login` / `glab auth login` in a temporary\nhome as a background job, relays the code and URL, and saves the login to the keychain\nso later commands use it through `execute.credentials`.\n\n## Read-only work\n\nCheck auth and inspect repo state:\n\n```bash\ngh auth status\ngh repo view OWNER/REPO --json name,description,url,defaultBranchRef\ngh issue list --repo OWNER/REPO --state open --limit 20\ngh pr list --repo OWNER/REPO --state open --limit 20\n```\n\nFor GitLab:\n\n```bash\nglab auth status\nglab repo view GROUP/PROJECT\nglab issue list --repo GROUP/PROJECT\nglab mr list --repo GROUP/PROJECT\n```\n\nUse `git log`, `git show`, and `git diff` for codebase-change summaries. Cite commit\nhashes, PR/MR numbers, and links.\n\n## Checkout and edits\n\nClone or fetch only the repo the user asked for:\n\n```bash\ngh repo clone OWNER/REPO repo\ncd repo\ngit checkout -b codex/small-change\n```\n\nKeep changes scoped. Run the repo's tests. If a push or PR/MR creation is requested,\nprepare the branch and summary first.\n\n## Writes require approval\n\nPushing branches, creating PRs/MRs, merging, closing issues, editing labels, changing\nrepo settings, releases, or workflows are writes. Ask for approval before running the\nwrite command.\n\nAfter approval:\n\n```bash\ngit push -u origin codex/small-change\ngh pr create --repo OWNER/REPO --title \"...\" --body-file pr.md\n```\n\nFor GitLab:\n\n```bash\ngit push -u origin codex/small-change\nglab mr create --repo GROUP/PROJECT --title \"...\" --description-file mr.md\n```\n\nReport the final URL and leave enough context for review.\n\n## Wait for GitHub CI\n\nUse the bundled helper instead of a bare `gh pr checks --watch` or a handwritten\nshell loop. Use the absolute directory reported by the skill read in place of\n`<skill dir>`. It is one blocking watcher process, not repeated agent turns:\n\n```bash\nnode \"<skill dir>/scripts/watch-ci.mjs\" --repo OWNER/REPO --pr NUMBER --head REVIEWED_HEAD_SHA\n```\n\nCapture the full head SHA from `gh pr view NUMBER --repo OWNER/REPO --json headRefOid`\nbefore review. Use that same SHA for the watcher and the final merge gate. Start the\nwatcher with `execute` using the selected `sandbox_id` and `background:true`, then\nsubscribe with `background` action `watch` and its returned `process_id`. Keep one\nwatcher per PR. Set the process lifetime longer than the helper's 30-minute deadline;\nuse `--timeout-ms` for a different bounded deadline. Use only credentials authorized\nfor that background process; a live foreground grant does not authorize background work.\n\nThe helper polls GitHub internally and emits JSON status records. It retries only\nrecognized transient transport/server errors with bounded backoff. Pending checks\nremain pending. Real CI failures, authentication/authorization failures, changed heads,\nunknown errors, exhausted retries, and deadline expiry all stop with nonzero status.\nExplicit API rate limits stop as `rate_limited`, not authentication errors.\nEmpty check sets, skipped checks, and cancelled checks are not successful evidence.\nDo not interpret an exit code alone as \"checks concluded\": read the status record.\nDo not suppress a nonzero exit or print a success marker after it. Keep `set -e`.\n\nSuccess means the checks observed for the expected head passed, not permission to\nmerge. Re-read checks and review threads immediately before merging. Wait for async\nreviewers on that exact head; resolve findings and complete any review the repo\nrequires. After any push or head change, discard old success/review evidence and repeat.\nOnly merge when all gates pass, with GitHub's atomic head guard:\n\n```bash\ngh pr merge NUMBER --repo OWNER/REPO --squash --match-head-commit REVIEWED_HEAD_SHA\n```\n\nOn a branch that requires a merge queue, this queues the PR; it is merged only once\nGitHub shows it as merged. Never use auto-merge or bypass repository gates. This\nhelper does not retry GitLab commands or change their authentication behavior.\n",
+    "runId": "718aaacf-6598-4bf3-b8c9-395a205b8b1f",
+    "callId": "call_fP8s2EP8p0rnvY7m6ouDFFNb|fc_01c493492f624a0c016af0739d23ac87d29878d17c2e8558f2",
+    "tool": "skills",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "2c84937d-1ef9-4164-b68d-d6264366036f",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null | head -30",
+      "purpose": "Locating repository"
+     }
+    },
+    "scope": "scoped",
+    "command": "pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null | head -30",
+    "purpose": "Locating repository",
+    "retrySafe": true,
+    "runId": "718aaacf-6598-4bf3-b8c9-395a205b8b1f",
+    "callId": "call_lt1Q7XKeqWrd5OZOd7nMhXeV|fc_01c493492f624a0c016af0739f394487d2aa35424d9447f4bb",
+    "tool": "execute",
+    "step": {
+     "id": "2c84937d-1ef9-4164-b68d-d6264366036f",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\ntotal 16\ndrwxr-xr-x 4 root root 4096 Nov  8 13:05 .\ndrwx------ 6 root root 4096 Nov  8 13:05 ..\ndrwxr-xr-x 3 root root 4096 Nov  8 13:05 .agent-skills\ndrwxr-xr-x 6 root root 4096 Nov  8 13:05 repo\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "718aaacf-6598-4bf3-b8c9-395a205b8b1f",
+    "callId": "call_lt1Q7XKeqWrd5OZOd7nMhXeV|fc_01c493492f624a0c016af0739f394487d2aa35424d9447f4bb",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "69194ec9-71bf-47e3-808e-5fadccface19",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "sandbox",
+     "input": {
+      "action": "list",
+      "purpose": "Identifying review sandbox"
+     }
+    },
+    "action": "list",
+    "purpose": "Identifying review sandbox",
+    "retrySafe": true,
+    "runId": "718aaacf-6598-4bf3-b8c9-395a205b8b1f",
+    "callId": "call_ViS24D7ykM3vZmYPyRB2jj3t|fc_01c493492f624a0c016af073a0e89487d292b3391f77f70243",
+    "tool": "sandbox",
+    "step": {
+     "id": "69194ec9-71bf-47e3-808e-5fadccface19",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "action": "list",
+    "result": "{\"sandboxes\":[{\"id\":\"a0af445a-a0c0-4447-85d9-4e9ce3edc582\",\"name\":\"s1e-probe\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"]},\"state\":\"ready\",\"legacy\":false,\"backend\":\"local\",\"holders\":[\"718aaacf-6598-4bf3-b8c9-395a205b8b1f\"],\"createdAt\":\"2026-11-08T13:05:29.576Z\",\"createdBy\":\"harness-admin\",\"machineId\":\"qm-sbx-sandbox-a0af445a-a0c0-4447-85d9-4e9ce3ed-32efd3\",\"ownerScopeId\":\"personal:U1\",\"backingScopeId\":\"sandbox-a0af445a-a0c0-4447-85d9-4e9ce3edc582\"}],\"defaultSandboxId\":\"a0af445a-a0c0-4447-85d9-4e9ce3edc582\",\"defaultMode\":\"selected\",\"providers\":[{\"name\":\"local\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\"},\"egressEnforcement\":\"none\",\"sizesMemory\":true,\"actions\":[\"create\",\"retire\"]}]}",
+    "runId": "718aaacf-6598-4bf3-b8c9-395a205b8b1f",
+    "callId": "call_ViS24D7ykM3vZmYPyRB2jj3t|fc_01c493492f624a0c016af073a0e89487d292b3391f77f70243",
+    "tool": "sandbox",
+    "isError": false
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "786f5869-e2bb-4976-8d84-d7587d2fa373",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd repo && git status --short && git remote -v && git branch -av && git log -5 --oneline && git diff --stat main...multi-dataset-ingest && find . -maxdepth 2 -type f | sort\",\"purpose\":\"Inspecting branch changes\",\"sandbox_id\":\"a0af445a-a0c0-4447-85d9-4e9ce3edc582\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd repo && git status --short && git remote -v && git branch -av && git log -5 --oneline && git diff --stat main...multi-dataset-ingest && find . -maxdepth 2 -type f | sort",
+      "purpose": "Inspecting branch changes",
+      "sandbox_id": "a0af445a-a0c0-4447-85d9-4e9ce3edc582"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd repo && git status --short && git remote -v && git branch -av && git log -5 --oneline && git diff --stat main...multi-dataset-ingest && find . -maxdepth 2 -type f | sort",
+    "purpose": "Inspecting branch changes",
+    "retrySafe": true,
+    "sandbox_id": "a0af445a-a0c0-4447-85d9-4e9ce3edc582",
+    "runId": "718aaacf-6598-4bf3-b8c9-395a205b8b1f",
+    "callId": "call_ZDaGvv49khN8xmeCyhAjszYH|fc_01c493492f624a0c016af073a2749487d29f2a760f47c734c6",
+    "tool": "execute",
+    "step": {
+     "id": "786f5869-e2bb-4976-8d84-d7587d2fa373",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "  main                 f44c88c Load the nightly CSV export\n* multi-dataset-ingest 27d16b8 Round amounts to the cent and read spreadsheet exports\n27d16b8 Round amounts to the cent and read spreadsheet exports\ndbd0b82 Load every CSV in drop/ into its own dataset\nf44c88c Load the nightly CSV export\n CHANGES.md            |  5 +++++\n README.md             |  2 ++\n docs/finance-rules.md |  5 +++++\n ingest/__init__.py    |  2 +-\n ingest/jobs.py        |  6 ++++++\n ingest/loader.py      |  2 +-\n ingest/money.py       |  4 +++-\n ingest/run.py         | 16 ++++++++++++++++\n tests/test_money.py   |  4 ++++\n tests/test_run.py     | 23 +++++++++++++++++++++++\n 10 files changed, 66 insertions(+), 3 deletions(-)\n./.git/HEAD\n./.git/ORIG_HEAD\n./.git/config\n./.git/index\n./CHANGES.md\n./README.md\n./docs/finance-rules.md\n./ingest/__init__.py\n./ingest/jobs.py\n./ingest/loader.py\n./ingest/money.py\n./ingest/run.py\n./tests/__init__.py\n./tests/test_money.py\n./tests/test_run.py\n\n[exit 0]",
+    "runId": "718aaacf-6598-4bf3-b8c9-395a205b8b1f",
+    "callId": "call_ZDaGvv49khN8xmeCyhAjszYH|fc_01c493492f624a0c016af073a2749487d29f2a760f47c734c6",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "0e26a3d2-2331-49f5-b747-c7af5e862b06",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd repo && git diff main...multi-dataset-ingest && printf '\\\\n--- ALL FILES ---\\\\n' && for f in README.md CHANGES.md docs/* ingest/*.py tests/*.py; do echo \\\"--- $f\\\"; nl -ba \\\"$f\\\"; done && printf '\\\\n--- MAIN ---\\\\n' && git ls-tree -r --name-only main && git log --format=fuller -3\",\"purpose\":\"Reading ingest implementation\",\"sandbox_id\":\"a0af445a-a0c0-4447-85d9-4e9ce3edc582\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd repo && git diff main...multi-dataset-ingest && printf '\\n--- ALL FILES ---\\n' && for f in README.md CHANGES.md docs/* ingest/*.py tests/*.py; do echo \"--- $f\"; nl -ba \"$f\"; done && printf '\\n--- MAIN ---\\n' && git ls-tree -r --name-only main && git log --format=fuller -3",
+      "purpose": "Reading ingest implementation",
+      "sandbox_id": "a0af445a-a0c0-4447-85d9-4e9ce3edc582"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd repo && git diff main...multi-dataset-ingest && printf '\\n--- ALL FILES ---\\n' && for f in README.md CHANGES.md docs/* ingest/*.py tests/*.py; do echo \"--- $f\"; nl -ba \"$f\"; done && printf '\\n--- MAIN ---\\n' && git ls-tree -r --name-only main && git log --format=fuller -3",
+    "purpose": "Reading ingest implementation",
+    "retrySafe": true,
+    "sandbox_id": "a0af445a-a0c0-4447-85d9-4e9ce3edc582",
+    "runId": "718aaacf-6598-4bf3-b8c9-395a205b8b1f",
+    "callId": "call_TJZTBSsZ9fI7DVhf6uUrBPPX|fc_01c493492f624a0c016af073a493a887d29da688573b0c69e0",
+    "tool": "execute",
+    "step": {
+     "id": "0e26a3d2-2331-49f5-b747-c7af5e862b06",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "diff --git a/CHANGES.md b/CHANGES.md\nindex 07ed414..65f8de1 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,10 @@\n # Changes\n \n+## 0.5.0\n+\n+- Every CSV in drop/ loads into its own dataset.\n+- Amounts are rounded to the cent.\n+\n ## 0.4.0\n \n - Read the export with csv.DictReader.\ndiff --git a/README.md b/README.md\nindex b3fb212..072fa70 100644\n--- a/README.md\n+++ b/README.md\n@@ -4,4 +4,6 @@ Nightly CSV ingest for ledger-loader. Each CSV in drop/ is one dataset, named af\n \n Datasets: events, sessions, invoices, refunds.\n \n+load_drop(directory, store) loads every CSV in the directory, in name order, and appends its rows to the dataset's list in store.\n+\n Run the tests with python3 -B -m unittest.\ndiff --git a/docs/finance-rules.md b/docs/finance-rules.md\nnew file mode 100644\nindex 0000000..f986eaa\n--- /dev/null\n+++ b/docs/finance-rules.md\n@@ -0,0 +1,5 @@\n+# Finance rules for ingest\n+\n+- Amounts are kept as Decimal, never float.\n+- Amounts are rounded to the cent half to even (banker's rounding): 2.345 becomes 2.34 and 2.355 becomes 2.36. This is the finance team's rule for every ledger total.\n+- The exports come from the finance spreadsheet tool, which writes UTF-8 with a byte order mark and may put line breaks inside quoted cells.\ndiff --git a/ingest/__init__.py b/ingest/__init__.py\nindex 9fc7763..02e596c 100644\n--- a/ingest/__init__.py\n+++ b/ingest/__init__.py\n@@ -1,2 +1,2 @@\n \"\"\"Nightly CSV ingest.\"\"\"\n-__version__ = \"0.4.0\"\n+__version__ = \"0.5.0\"\ndiff --git a/ingest/jobs.py b/ingest/jobs.py\nnew file mode 100644\nindex 0000000..b03a704\n--- /dev/null\n+++ b/ingest/jobs.py\n@@ -0,0 +1,6 @@\n+import os\n+\n+\n+def dataset_for(path):\n+    name = os.path.basename(path)\n+    return name.rstrip('.csv')\ndiff --git a/ingest/loader.py b/ingest/loader.py\nindex d30ac4f..fbe5f57 100644\n--- a/ingest/loader.py\n+++ b/ingest/loader.py\n@@ -2,5 +2,5 @@ import csv\n \n \n def read_rows(path):\n-    with open(path, encoding='utf-8') as f:\n+    with open(path, newline='', encoding='utf-8-sig') as f:\n         return list(csv.DictReader(f))\ndiff --git a/ingest/money.py b/ingest/money.py\nindex af3ce5b..e01b722 100644\n--- a/ingest/money.py\n+++ b/ingest/money.py\n@@ -1,5 +1,7 @@\n from decimal import Decimal\n \n+CENT = Decimal('0.01')\n+\n \n def parse_amount(raw):\n-    return Decimal(raw.strip())\n+    return Decimal(raw.strip()).quantize(CENT)\ndiff --git a/ingest/run.py b/ingest/run.py\nnew file mode 100644\nindex 0000000..41ac88a\n--- /dev/null\n+++ b/ingest/run.py\n@@ -0,0 +1,16 @@\n+import glob\n+import os\n+\n+from .jobs import dataset_for\n+from .loader import read_rows\n+from .money import parse_amount\n+\n+\n+def load_drop(directory, store):\n+    for path in sorted(glob.glob(os.path.join(directory, '*.csv'))):\n+        rows = read_rows(path)\n+        for row in rows:\n+            if 'amount' in row:\n+                row['amount'] = parse_amount(row['amount'])\n+        store.setdefault(dataset_for(path), []).extend(rows)\n+    return store\ndiff --git a/tests/test_money.py b/tests/test_money.py\nindex 74ca3b9..3ddbe88 100644\n--- a/tests/test_money.py\n+++ b/tests/test_money.py\n@@ -8,6 +8,10 @@ class ParseAmountTest(unittest.TestCase):\n     def test_strips_spaces(self):\n         self.assertEqual(parse_amount(' 12.50 '), Decimal('12.50'))\n \n+    def test_rounds_to_the_cent_half_to_even(self):\n+        self.assertEqual(parse_amount('2.345'), Decimal('2.34'))\n+        self.assertEqual(parse_amount('2.355'), Decimal('2.36'))\n+\n \n if __name__ == '__main__':\n     unittest.main()\ndiff --git a/tests/test_run.py b/tests/test_run.py\nnew file mode 100644\nindex 0000000..68850c1\n--- /dev/null\n+++ b/tests/test_run.py\n@@ -0,0 +1,23 @@\n+import os\n+import tempfile\n+import unittest\n+from decimal import Decimal\n+\n+from ingest.jobs import dataset_for\n+from ingest.run import load_drop\n+\n+\n+class LoadDropTest(unittest.TestCase):\n+    def test_dataset_is_named_after_the_file(self):\n+        self.assertEqual(dataset_for('drop/payouts_2026.csv'), 'payouts_2026')\n+\n+    def test_loads_rows_and_amounts(self):\n+        with tempfile.TemporaryDirectory() as d:\n+            with open(os.path.join(d, 'ledger_q3.csv'), 'w', encoding='utf-8') as f:\n+                f.write('id,amount\\r\\n1,2.50\\r\\n')\n+            store = load_drop(d, {})\n+        self.assertEqual(store, {'ledger_q3': [{'id': '1', 'amount': Decimal('2.50')}]})\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\n\n--- ALL FILES ---\n--- README.md\n     1\t# ledger-loader\n     2\t\n     3\tNightly CSV ingest for ledger-loader. Each CSV in drop/ is one dataset, named after the file: events.csv loads into the events dataset.\n     4\t\n     5\tDatasets: events, sessions, invoices, refunds.\n     6\t\n     7\tload_drop(directory, store) loads every CSV in the directory, in name order, and appends its rows to the dataset's list in store.\n     8\t\n     9\tRun the tests with python3 -B -m unittest.\n--- CHANGES.md\n     1\t# Changes\n     2\t\n     3\t## 0.5.0\n     4\t\n     5\t- Every CSV in drop/ loads into its own dataset.\n     6\t- Amounts are rounded to the cent.\n     7\t\n     8\t## 0.4.0\n     9\t\n    10\t- Read the export with csv.DictReader.\n--- docs/finance-rules.md\n     1\t# Finance rules for ingest\n     2\t\n     3\t- Amounts are kept as Decimal, never float.\n     4\t- Amounts are rounded to the cent half to even (banker's rounding): 2.345 becomes 2.34 and 2.355 becomes 2.36. This is the finance team's rule for every ledger total.\n     5\t- The exports come from the finance spreadsheet tool, which writes UTF-8 with a byte order mark and may put line breaks inside quoted cells.\n--- ingest/__init__.py\n     1\t\"\"\"Nightly CSV ingest.\"\"\"\n     2\t__version__ = \"0.5.0\"\n--- ingest/jobs.py\n     1\timport os\n     2\t\n     3\t\n     4\tdef dataset_for(path):\n     5\t    name = os.path.basename(path)\n     6\t    return name.rstrip('.csv')\n--- ingest/loader.py\n     1\timport csv\n     2\t\n     3\t\n     4\tdef read_rows(path):\n     5\t    with open(path, newline='', encoding='utf-8-sig') as f:\n     6\t        return list(csv.DictReader(f))\n--- ingest/money.py\n     1\tfrom decimal import Decimal\n     2\t\n     3\tCENT = Decimal('0.01')\n     4\t\n     5\t\n     6\tdef parse_amount(raw):\n     7\t    return Decimal(raw.strip()).quantize(CENT)\n--- ingest/run.py\n     1\timport glob\n     2\timport os\n     3\t\n     4\tfrom .jobs import dataset_for\n     5\tfrom .loader import read_rows\n     6\tfrom .money import parse_amount\n     7\t\n     8\t\n     9\tdef load_drop(directory, store):\n    10\t    for path in sorted(glob.glob(os.path.join(directory, '*.csv'))):\n    11\t        rows = read_rows(path)\n    12\t        for row in rows:\n    13\t            if 'amount' in row:\n    14\t                row['amount'] = parse_amount(row['amount'])\n    15\t        store.setdefault(dataset_for(path), []).extend(rows)\n    16\t    return store\n--- tests/__init__.py\n     1\t\"\"\"Tests.\"\"\"\n--- tests/test_money.py\n     1\timport unittest\n     2\tfrom decimal import Decimal\n     3\t\n     4\tfrom ingest.money import parse_amount\n     5\t\n     6\t\n     7\tclass ParseAmountTest(unittest.TestCase):\n     8\t    def test_strips_spaces(self):\n     9\t        self.assertEqual(parse_amount(' 12.50 '), Decimal('12.50'))\n    10\t\n    11\t    def test_rounds_to_the_cent_half_to_even(self):\n    12\t        self.assertEqual(parse_amount('2.345'), Decimal('2.34'))\n    13\t        self.assertEqual(parse_amount('2.355'), Decimal('2.36'))\n    14\t\n    15\t\n    16\tif __name__ == '__main__':\n    17\t    unittest.main()\n--- tests/test_run.py\n     1\timport os\n     2\timport tempfile\n     3\timport unittest\n     4\tfrom decimal import Decimal\n     5\t\n     6\tfrom ingest.jobs import dataset_for\n     7\tfrom ingest.run import load_drop\n     8\t\n     9\t\n    10\tclass LoadDropTest(unittest.TestCase):\n    11\t    def test_dataset_is_named_after_the_file(self):\n    12\t        self.assertEqual(dataset_for('drop/payouts_2026.csv'), 'payouts_2026')\n    13\t\n    14\t    def test_loads_rows_and_amounts(self):\n    15\t        with tempfile.TemporaryDirectory() as d:\n    16\t            with open(os.path.join(d, 'ledger_q3.csv'), 'w', encoding='utf-8') as f:\n    17\t                f.write('id,amount\\r\\n1,2.50\\r\\n')\n    18\t            store = load_drop(d, {})\n    19\t        self.assertEqual(store, {'ledger_q3': [{'id': '1', 'amount': Decimal('2.50')}]})\n    20\t\n    21\t\n    22\tif __name__ == '__main__':\n    23\t    unittest.main()\n\n--- MAIN ---\nCHANGES.md\nREADME.md\ningest/__init__.py\ningest/loader.py\ningest/money.py\ntests/__init__.py\ntests/test_money.py\ncommit 27d16b867a21ed6ee82918d9b28caf57e79e7993\nAuthor:     Rui Tanaka <rui@example.test>\nAuthorDate: Thu Oct 22 01:00:00 2026 -0700\nCommit:     Rui Tanaka <rui@example.test>\nCommitDate: Thu Oct 22 01:00:00 2026 -0700\n\n    Round amounts to the cent and read spreadsheet exports\n\ncommit dbd0b82928bba53930bc9e5ee31b17d0dff215fa\nAuthor:     Rui Tanaka <rui@example.test>\nAuthorDate: Wed Oct 21 01:00:00 2026 -0700\nCommit:     Rui Tanaka <rui@example.test>\nCommitDate: Wed Oct 21 01:00:00 2026 -0700\n\n    Load every CSV in drop/ into its own dataset\n\ncommit f44c88c88a232e2e590bcbd32053f2cf316770ad\nAuthor:     Rui Tanaka <rui@example.test>\nAuthorDate: Tue Oct 20 01:00:00 2026 -0700\nCommit:     Rui Tanaka <rui@example.test>\nCommitDate: Tue Oct 20 01:00:00 2026 -0700\n\n    Load the nightly CSV export\n\n[exit 0]",
+    "runId": "718aaacf-6598-4bf3-b8c9-395a205b8b1f",
+    "callId": "call_TJZTBSsZ9fI7DVhf6uUrBPPX|fc_01c493492f624a0c016af073a493a887d29da688573b0c69e0",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "10853d04-d270-452e-bc12-70bc34e614ef",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "{\"id\":\"rs_01c493492f624a0c016af073a6b13087d2a21479e63544fd2f\",\"type\":\"reasoning\",\"content\":[],\"encrypted_content\":\"gAAAAABq8HOoOsm4cnZNQIlM0OJCrwRJsICMQpq0zjAScnXudOLB8w5UmIUOAcXy0GHn_O9T1l6v2GBjToQ2WUTI_FfYVrHJA7aAfP7RR4kPyCJ_IZihYITmODouNkkhkxbUYfpWOdSeeBNfVCpYZssxom8WPw7Ya3tb9mtVgDRPqj9ITnjKLzoIcIOOB2MoJ7kgh3CVHBsi2ENcU5XTVv_eBZqa7BHlxU3337w57y0piFeIBWoL4vAyOL9ZatZH5YutzaQWaOsS4EAKp1mhvy5affjm7udCdeZNjcI9YX7-2vm8vNMamvtW31AHgKTXobc2hkSxjAIsXl6gyIJOamE1soRssj5yfvSH1Zy49RKd3ILusBtlXlw9UUZdLKIweIyUShVrmQ19FguKUWBt90sS_jXQfllKGhytEqq2ba15sbAxws5X0bPKYUnnajcYG7zMeO0S01ZWgim63TYwUIYS07bNySZqFA8MsFQxgkLC56ofhxHU4Lrgg_My-iTQh1VTKl4dJFXG0I1nMhR7LCMWDNIFhmviyL0ph14CBJ4lKq-LZG61JXPEoicFyezT5PestfHzlnTu4BcWW_qDuugRwHrzyLdFixXYr-JoehIyjfQ9WHLxgwJU541XOWOdb_9NFao_FCCtJDUdCHdrKizim6Pm4DQN4UXt52brYT2Qtq7ZhQ7qS4NnIk3HL5QtdhbDztGxdEyeYR2kb7_t-5r9pzyrNYb96ujxMUjOnhMBre4ewml9XMGxfkA4ku744lqIo4A3Vy-Y5-17QEEhyaY2O_OP-R5k3CWrvDpal-nL7DF15bcqK0H-Na8EzRsCsBLzupLV8ZXSshcdgfPZdYI9_TCWQpBH3VehQSAvKjcLoGZ-vOAIqI77nv1MKTsRg8dCDybQnyk-Sk9eJ9mDx3J_nFbEanrplaiJC8KXZ0BNl00vc6HpaQX5bgDhzdXe_VKkochwdOZWPnxhB6wSsmOZR_lGNoEddlW7SxfMlvKxyZ16vTzzGbvnxwnKeA0MWz5ZbkuKRkxg9Dlzy6MGAz7OpnyCcedBSJejnwibDDB6idVIzRcLJUNheG6mBJHuk59fyo0V5YSEZhjyIQj3NruERYV2D6JU47YFIZhuPfUYXpv5EMdA17zXMHAJsJTxESVcvFnABZXpd2Qj0Xd5EYKiDCRsn9T_yIfPnu8iKccWJ_n7i4s1Mi0zUD_wDHwkErpKjmb2-bS283D3MCmS0PWrLuLRbip72AIoy18gVrMH6ST_U4-4fZQ3V6x2YXyr627Bs-cvh5aV3Ra3NncuAn9Vn5jZIVoLbJZCb-UgBBGgy5KArdGuvVqlF21U5jCk_TVeTPHvgKxtk13blLm000RJxr6ZCi5uym5Hf9MWY844NOYsJytysTUQ-_aM6ddXXwcE-J9Bj9UQjCKHngNAIYxYSYDdWsW5D1PdpCRgSpEe6ruxz6QoyG4T3-ldmh20SpC6EQ-c0UwuvNWRCaEjDfpqx_KrrSIC1qw2SewJFWknDsoWn4GWUmq6Le2JbY3gAAu4e2Ndgs4le9wPpQGoKcGQ_xJG1JF_DxxTkF6i-Oky0hBRdfQt1gX94ORKkfo9SJqxI_WYT65cpkwVyhqXMeyn7Wy2jAi8nXE9cpv5kUx7Oz9tVu2PTpwT52Qq9AtbGJ1_mMB1K2Wcyv9FsOGAYjvT3gAHoqPRCPejyIq0yamzCZ6wsGYGW15gLkbiaiqjkpoeoMrC_4emNUiT-uL2J1aopjfVaeRl5Ado7N7MmIgYTqsAk0E_U24RSTVuO1tUW1FnC1Szsc7JHUJHztH8HVO0wcCU8ozP9ITuWEHSy2Y-svPUQJgdgeQni8WN9-Wm-1KS9NP-FnQtiIF9Yvn3b5cr66LVLFfawL_ZbLs2TvERnwbegwFkNJhZA_z607OyrOvujzUYCrSMxsGfioRhViHl9A-RsAl2r0qKPkDHkamy1boJJ66mCMM=\",\"summary\":[]}",
+    "thinking": "",
+    "runId": "718aaacf-6598-4bf3-b8c9-395a205b8b1f",
+    "step": {
+     "id": "10853d04-d270-452e-bc12-70bc34e614ef",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "10853d04-d270-452e-bc12-70bc34e614ef",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd repo && python3 -B -m unittest -v && python3 -B - <<'PY'\\nimport os\\nimport tempfile\\nfrom decimal import localcontext, ROUND_HALF_UP\\nfrom ingest.jobs import dataset_for\\nfrom ingest.money import parse_amount\\nfrom ingest.run import load_drop\\n\\nprint('\\\\nDataset naming:')\\nfor name in ('events.csv', 'sessions.csv', 'invoices.csv', 'refunds.csv', 'foo.csv', 'foos.csv'):\\n    print(f'{name} -> {dataset_for(name)!r}')\\n\\nprint('\\\\nRounding with caller context ROUND_HALF_UP:')\\nwith localcontext() as ctx:\\n    ctx.rounding = ROUND_HALF_UP\\n    print(f\\\"2.345 -> {parse_amount('2.345')} (finance rule requires 2.34)\\\")\\n\\nprint('\\\\nEnd-to-end multiple datasets, BOM, quoted newline, append:')\\nwith tempfile.TemporaryDirectory() as d:\\n    for name in ('events', 'sessions', 'invoices', 'refunds'):\\n        with open(os.path.join(d, name + '.csv'), 'w', encoding='utf-8-sig', newline='') as f:\\n            f.write('id,amount,note\\\\r\\\\n1,2.345,\\\"first\\\\r\\\\nsecond\\\"\\\\r\\\\n')\\n    store = {'events': [{'id': 'existing'}]}\\n    print(repr(load_drop(d, store)))\\nPY\\n git status --short\",\"purpose\":\"Validating review findings\",\"sandbox_id\":\"a0af445a-a0c0-4447-85d9-4e9ce3edc582\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd repo && python3 -B -m unittest -v && python3 -B - <<'PY'\nimport os\nimport tempfile\nfrom decimal import localcontext, ROUND_HALF_UP\nfrom ingest.jobs import dataset_for\nfrom ingest.money import parse_amount\nfrom ingest.run import load_drop\n\nprint('\\nDataset naming:')\nfor name in ('events.csv', 'sessions.csv', 'invoices.csv', 'refunds.csv', 'foo.csv', 'foos.csv'):\n    print(f'{name} -> {dataset_for(name)!r}')\n\nprint('\\nRounding with caller context ROUND_HALF_UP:')\nwith localcontext() as ctx:\n    ctx.rounding = ROUND_HALF_UP\n    print(f\"2.345 -> {parse_amount('2.345')} (finance rule requires 2.34)\")\n\nprint('\\nEnd-to-end multiple datasets, BOM, quoted newline, append:')\nwith tempfile.TemporaryDirectory() as d:\n    for name in ('events', 'sessions', 'invoices', 'refunds'):\n        with open(os.path.join(d, name + '.csv'), 'w', encoding='utf-8-sig', newline='') as f:\n            f.write('id,amount,note\\r\\n1,2.345,\"first\\r\\nsecond\"\\r\\n')\n    store = {'events': [{'id': 'existing'}]}\n    print(repr(load_drop(d, store)))\nPY\n git status --short",
+      "purpose": "Validating review findings",
+      "sandbox_id": "a0af445a-a0c0-4447-85d9-4e9ce3edc582"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd repo && python3 -B -m unittest -v && python3 -B - <<'PY'\nimport os\nimport tempfile\nfrom decimal import localcontext, ROUND_HALF_UP\nfrom ingest.jobs import dataset_for\nfrom ingest.money import parse_amount\nfrom ingest.run import load_drop\n\nprint('\\nDataset naming:')\nfor name in ('events.csv', 'sessions.csv', 'invoices.csv', 'refunds.csv', 'foo.csv', 'foos.csv'):\n    print(f'{name} -> {dataset_for(name)!r}')\n\nprint('\\nRounding with caller context ROUND_HALF_UP:')\nwith localcontext() as ctx:\n    ctx.rounding = ROUND_HALF_UP\n    print(f\"2.345 -> {parse_amount('2.345')} (finance rule requires 2.34)\")\n\nprint('\\nEnd-to-end multiple datasets, BOM, quoted newline, append:')\nwith tempfile.TemporaryDirectory() as d:\n    for name in ('events', 'sessions', 'invoices', 'refunds'):\n        with open(os.path.join(d, name + '.csv'), 'w', encoding='utf-8-sig', newline='') as f:\n            f.write('id,amount,note\\r\\n1,2.345,\"first\\r\\nsecond\"\\r\\n')\n    store = {'events': [{'id': 'existing'}]}\n    print(repr(load_drop(d, store)))\nPY\n git status --short",
+    "purpose": "Validating review findings",
+    "retrySafe": true,
+    "sandbox_id": "a0af445a-a0c0-4447-85d9-4e9ce3edc582",
+    "runId": "718aaacf-6598-4bf3-b8c9-395a205b8b1f",
+    "callId": "call_w7Wymz52C0zSfwoCrG1ZidkV|fc_01c493492f624a0c016af073a89e8487d2bb861fc725a0b57a",
+    "tool": "execute",
+    "step": {
+     "id": "10853d04-d270-452e-bc12-70bc34e614ef",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 14,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "\nDataset naming:\nevents.csv -> 'event'\nsessions.csv -> 'session'\ninvoices.csv -> 'invoice'\nrefunds.csv -> 'refund'\nfoo.csv -> 'foo'\nfoos.csv -> 'foo'\n\nRounding with caller context ROUND_HALF_UP:\n2.345 -> 2.35 (finance rule requires 2.34)\n\nEnd-to-end multiple datasets, BOM, quoted newline, append:\n{'events': [{'id': 'existing'}], 'event': [{'id': '1', 'amount': Decimal('2.34'), 'note': 'first\\r\\nsecond'}], 'invoice': [{'id': '1', 'amount': Decimal('2.34'), 'note': 'first\\r\\nsecond'}], 'refund': [{'id': '1', 'amount': Decimal('2.34'), 'note': 'first\\r\\nsecond'}], 'session': [{'id': '1', 'amount': Decimal('2.34'), 'note': 'first\\r\\nsecond'}]}\n\n[stderr]\ntest_rounds_to_the_cent_half_to_even (tests.test_money.ParseAmountTest.test_rounds_to_the_cent_half_to_even) ... ok\ntest_strips_spaces (tests.test_money.ParseAmountTest.test_strips_spaces) ... ok\ntest_dataset_is_named_after_the_file (tests.test_run.LoadDropTest.test_dataset_is_named_after_the_file) ... ok\ntest_loads_rows_and_amounts (tests.test_run.LoadDropTest.test_loads_rows_and_amounts) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.001s\n\nOK\n\n[exit 0]",
+    "runId": "718aaacf-6598-4bf3-b8c9-395a205b8b1f",
+    "callId": "call_w7Wymz52C0zSfwoCrG1ZidkV|fc_01c493492f624a0c016af073a89e8487d2bb861fc725a0b57a",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 15,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "6c808ebc-f4d9-4f49-b2f9-0e7bef06e0fb",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "textBlock": {
+     "textSignature": "{\"v\":1,\"id\":\"msg_01c493492f624a0c016af073ab1ca887d28b433ffe822ba5bf\",\"phase\":\"final_answer\"}"
+    },
+    "workStartedAt": 1794143131009,
+    "workFinishedAt": 1794143151764,
+    "text": "I’d fix these two before merging:\n\n1. **High — Dataset names are silently truncated** — `ingest/jobs.py:6`\n   `rstrip('.csv')` removes any trailing characters in that set, not the literal suffix. All four documented datasets are affected: `events.csv` → `event`, `sessions.csv` → `session`, `invoices.csv` → `invoice`, `refunds.csv` → `refund`.\n\n   This writes rows under the wrong keys instead of appending to existing datasets. It can also combine unrelated files: `foo.csv` and `foos.csv` both become `foo`.\n   **Fix:** remove the exact extension with `removesuffix('.csv')` or `splitext`; add regression tests for the documented dataset names and a collision case.\n\n2. **Medium — Finance rounding depends on the caller’s Decimal context** — `ingest/money.py:7`\n   `quantize(CENT)` uses the active context’s rounding mode. The default passes the tests, but under `ROUND_HALF_UP`, `parse_amount('2.345')` returns `2.35`, violating the documented half-even rule.\n   **Fix:** explicitly pass `rounding=ROUND_HALF_EVEN`; add a test using a non-default context.\n\n**Validation:** All four existing tests pass. I reproduced both issues and checked that BOM-prefixed CSVs with quoted multiline cells load correctly.\n\nReviewed `multi-dataset-ingest` at `27d16b8` against local `main` at `f44c88c`. No files changed.",
+    "runId": "718aaacf-6598-4bf3-b8c9-395a205b8b1f",
+    "step": {
+     "id": "6c808ebc-f4d9-4f49-b2f9-0e7bef06e0fb",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  }
+ ]
+}

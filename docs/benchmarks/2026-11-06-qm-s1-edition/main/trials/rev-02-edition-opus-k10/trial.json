@@ -1,0 +1,165 @@
+{
+  "trial_id": "rev-02-edition-opus-k10",
+  "task_id": "rev-02",
+  "family": "review",
+  "arm": "edition",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 10,
+  "status": "ok",
+  "reply_text": "I'd hold off merging. There's one blocking bug, and I reproduced it. All 4 tests pass, but none of them cover a delivery that keeps failing, which is how the bug got through.\n\n**Blocking: `deliverAll` now rejects when a delivery runs out of retries** (`src/deliver.js`)\n\n```js\ntry {\n  return withRetries(...).then(() => ({ id: sub.id, ok: true }));\n} catch (err) { ... }\n```\n\nThe promise is returned without `await`. So when every retry fails, the error goes straight past the `catch`. That breaks the guarantee in your README that `deliverAll` \"never rejects\":\n- nothing gets written to the dead-letter log\n- the call fails with `HTTP 500` instead of returning `{ id, ok: false }`\n- the subscriptions after the broken one never get the event\n\nI checked this with one endpoint that always fails followed by a healthy one. `deliverAll` failed with `HTTP 500` and the healthy endpoint was never called.\n\nTo fix it, put the `await` back:\n```js\nawait withRetries(() => transport.post(sub.url, body, headers), retries, delayMs);\nreturn { id: sub.id, ok: true };\n```\nIt's also worth adding a test where a subscription always fails, followed by a healthy one. Check that the result is `[{ok:false},{ok:true}]` and that a dead letter was recorded.\n\n**Worth considering (not blocking):**\n1. **It retries every failure, including permanent ones.** A 400, 401 or 404 will still fail on retry, so those 3 retries are just extra requests to the customer's endpoint. You might retry only on network errors, 5xx and 429. Today the transport only throws `'HTTP ' + status`, so you'd need to attach the status code to the error.\n2. **One down endpoint slows down everyone after it.** Deliveries go one at a time, so each failing subscription adds about 1.4s of waiting (200 + 400 + 800 ms) before the next one is tried. A few dead endpoints would noticeably delay a whole batch. If that matters to you, consider sending in parallel or moving retries to a queue.\n3. **`webhook.post_ms` is recorded once per attempt, not once per delivery.** That's probably what you want, but a failing delivery records 4 timings, which can skew dashboards. Adding a note in the changelog or README might help. Also, `HttpTransport` now needs a `metrics` object. Anything that creates it without one will crash the first time it posts.\n\n**Looks good:**\n- The `withRetries` backoff matches the README: at most 4 attempts, waiting 200, 400 and 800 ms.\n- `options.retries ?? 3` correctly lets you pass `retries: 0`.\n- The timing uses `finally`, so failed requests get timed too.\n- The version bump and changelog match.\n\nI didn't change anything on the branch.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-02-edition-opus-k10",
+    "requests": 8,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.1003454,
+    "input_tokens": 98325,
+    "output_tokens": 2142,
+    "cached_tokens": 92957,
+    "cache_write_tokens": 4887,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000054,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.1002914,
+        "requests": 7
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 8
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 25.752,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-02-edition-opus-k10",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:43:13.791Z",
+    "images": {
+      "core": "sha256:b72940b562e6c53aae6afc83a7f0b64341c2e8cbe63023fe872152ab58a99891",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-3a26d194453c",
+        "id": "sha256:0268e269edf759dbe9c723ff717a005f1b59c473dd874dce55665f0c7d8a1437",
+        "tree_sha256": "c208ff327280307b6950c2f57457566eda2bb2818ae3d15f4d56c3022288fbfc"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-da8cb726-5b10-433a-b084-816078fe-343c77"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:44:03.384Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /tmp/pi-cwd/repo && git branch -a && git log --oneline main..feature/webhook-retries && git diff main...feature/webhook-retries",
+          "code": 2,
+          "output": "[stderr]\nsh: 1: cd: can't cd to /tmp/pi-cwd/repo\n\n[exit 2]"
+        },
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git branch -a && git log --oneline main..feature/webhook-retries && git diff --stat main...feature/webhook-retries && git diff main...feature/webhook-retries",
+          "code": 0,
+          "output": "* feature/webhook-retries\n  main\nf6889d5 Time each webhook request\n7f610e1 Retry failed deliveries with backoff\n CHANGELOG.md                |  5 +++++\n README.md                   |  4 ++++\n package.json                |  2 +-\n src/deliver.js              | 13 ++++++++-----\n src/http-transport.js  "
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-02-edition-opus-k10",
+      "meter": {
+        "requests": 8,
+        "usd": 0.1003454,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 8,
+        "usd": 0.1003454,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000054
+    }
+  }
+}

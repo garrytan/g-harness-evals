@@ -14,9 +14,9 @@
 
 import { afterAll, describe, expect, test } from 'bun:test';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 
 const ROOT = join(import.meta.dir, '..');
 const UBI = join(ROOT, 'scripts', 'ubicloud');
@@ -30,19 +30,24 @@ const env = (dir: string, runner: string) => ({ PATH: process.env.PATH ?? '/usr/
 
 type Shard = { name: string; cells: string; lease_usd: unknown; args?: string[] };
 // seedLeases writes <dest>/<shard>/leases.jsonl lines; dest reuses an earlier fan-out's dest; the fake run-shard.sh records
-// the UBI_LEASE_RESERVATION it was given.
-function fanout(o: { shards: Shard[]; cap?: unknown; workload?: string; options?: string[]; seed?: Record<string, object>; seedLeases?: Record<string, object[]>; dest?: string; extraEnv?: Record<string, string> }) {
+// the UBI_LEASE_RESERVATION it was given. The scratch preregistration carries run_id and caps_usd (caps, or the manifest's
+// cap as caps_usd.main), and a qm-driver fan-out gets --replicate-to (replica, or its own folder; null for none), where
+// the stage ledger lives.
+function fanout(o: { shards: Shard[]; cap?: unknown; workload?: string; options?: string[]; seed?: Record<string, object>; seedLeases?: Record<string, object[]>; dest?: string; extraEnv?: Record<string, string>; caps?: Record<string, number>; replica?: string | null }) {
   const dir = tmp('he-fanout-cap-');
   copyFileSync(join(UBI, 'fanout.sh'), join(dir, 'fanout.sh'));
   copyFileSync(join(UBI, 'prune-pending.sh'), join(dir, 'prune-pending.sh'));
+  copyFileSync(join(UBI, 'stage_ledger.py'), join(dir, 'stage_ledger.py'));
+  writeFileSync(join(dir, 'prereg.json'), JSON.stringify({ run_id: 'stage-test', caps_usd: o.caps ?? (typeof o.cap === 'number' ? { main: o.cap } : {}) }));
+  const replica = o.replica === undefined ? (o.workload === 'qm-driver' ? join(dir, 'replica') : null) : o.replica;
   script(join(dir, 'run-shard.sh'), 'echo "$* reservation=${UBI_LEASE_RESERVATION:-}" >> ' + JSON.stringify(join(dir, 'launched')) + '\nexit 0');
   script(join(dir, 'ubi-runner.sh'), 'echo "$*" >> ' + JSON.stringify(join(dir, 'calls')) + '\ncase $1 in usage) echo "total 0 0" ;; esac');
   const dest = o.dest ?? join(dir, 'dest');
   for (const [name, vm] of Object.entries(o.seed ?? {})) { mkdirSync(join(dest, name), { recursive: true }); writeFileSync(join(dest, name, 'shard-vm.json'), JSON.stringify(vm)); }
   for (const [name, rows] of Object.entries(o.seedLeases ?? {})) { mkdirSync(join(dest, name), { recursive: true }); writeFileSync(join(dest, name, 'leases.jsonl'), rows.map((x) => JSON.stringify(x) + '\n').join('')); }
-  writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ commit: 'a'.repeat(40), prereg: 'prereg.json', dest, options: o.options ?? [], ...(o.cap !== undefined ? { stage_cap_usd: o.cap } : {}), shards: o.shards }));
-  const r = spawnSync('bash', [join(dir, 'fanout.sh'), '--manifest', join(dir, 'manifest.json'), ...(o.workload ? ['--workload', o.workload] : [])], { encoding: 'utf8', timeout: 60_000, env: { ...env(dir, join(dir, 'ubi-runner.sh')), ...(o.extraEnv ?? {}) } });
-  return { code: r.status, err: r.stderr, dest, runner: join(dir, 'ubi-runner.sh'), calls: read(join(dir, 'calls')), launched: read(join(dir, 'launched')).split('\n').filter(Boolean) };
+  writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ commit: 'a'.repeat(40), prereg: join(dir, 'prereg.json'), dest, options: o.options ?? [], ...(o.cap !== undefined ? { stage_cap_usd: o.cap } : {}), shards: o.shards }));
+  const r = spawnSync('bash', [join(dir, 'fanout.sh'), '--manifest', join(dir, 'manifest.json'), ...(o.workload ? ['--workload', o.workload] : []), ...(replica ? ['--replicate-to', replica] : [])], { encoding: 'utf8', timeout: 60_000, env: { ...env(dir, join(dir, 'ubi-runner.sh')), ...(o.extraEnv ?? {}) } });
+  return { code: r.status, err: r.stderr, dest, replica, runner: join(dir, 'ubi-runner.sh'), calls: read(join(dir, 'calls')), launched: read(join(dir, 'launched')).split('\n').filter(Boolean) };
 }
 const qm = (name: string, lease: unknown): Shard => ({ name, cells: name, lease_usd: lease, args: ['--stage', 'main', '--shards', '8'] });
 
@@ -253,5 +258,165 @@ describe('(d, e) the live-VM refusal says --attach first, and its commands paste
     expect(commands).toContain('bash ' + r.runner + ' list');
     expect(commands).toContain('scripts/ubicloud/run-shard.sh --attach --dest ' + r.dest);
     for (const c of commands) expect(spawnSync('bash', ['-n', '-c', c], { encoding: 'utf8' }).status, c).toBe(0);
+  }, 60_000);
+});
+
+// A one-off qm-driver run-shard.sh launch from a throwaway repository holding the lane scripts (so --commit HEAD resolves),
+// with the scratch preregistration's run_id and caps_usd and --replicate-to replica; VM creation fails at once.
+// dest may be a function of the scratch directory, which is also the launch's working directory (for a relative dest).
+function qmShard(o: { replica: string | null; lease: number; name?: string; stage?: string; reservation?: string; caps?: Record<string, number>; dest?: string | ((dir: string) => string) }) {
+  const dir = tmp('he-ubi-stage-ledger-');
+  const runner = join(dir, 'ubi-runner.sh');
+  script(runner, 'echo "$*" >> ' + JSON.stringify(join(dir, 'calls')) + '\nexit 1');
+  const prereg = join(dir, 'prereg.json');
+  writeFileSync(prereg, JSON.stringify({ run_id: 'stage-test', caps_usd: o.caps ?? { main: 520 } }));
+  const repo = join(dir, 'repo');
+  mkdirSync(join(repo, 'scripts', 'ubicloud'), { recursive: true });
+  copyFileSync(join(ROOT, 'scripts', 'run-shard.sh'), join(repo, 'scripts', 'run-shard.sh'));
+  for (const f of ['run-shard.sh', 'bootstrap.sh', 'vm-shard.sh', 'smoke-lease.ts', 'prune-pending.sh', 'stage_ledger.py']) copyFileSync(join(UBI, f), join(repo, 'scripts', 'ubicloud', f));
+  const g = (...a: string[]) => execFileSync('git', a, { cwd: repo, stdio: 'pipe' });
+  g('init', '-q'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't'); g('add', '.'); g('commit', '-q', '-m', 'lane scripts');
+  const dest = typeof o.dest === 'function' ? o.dest(dir) : o.dest ?? join(dir, o.name ?? 'oneoff');
+  const r = spawnSync('bash', [join(repo, 'scripts', 'ubicloud', 'run-shard.sh'), '--commit', 'HEAD', '--prereg', prereg, '--name', o.name ?? 'oneoff', '--cells', 'opus.b1', '--lease-usd', String(o.lease), '--dest', dest,
+    '--workload', 'qm-driver', ...(o.replica ? ['--replicate-to', o.replica] : []), '--', '--stage', o.stage ?? 'main', '--shards', '8'],
+    { cwd: dir, encoding: 'utf8', timeout: 60_000, env: { ...env(dir, runner), ...(o.reservation ? { UBI_LEASE_RESERVATION: o.reservation } : {}) }, stdio: ['ignore', 'pipe', 'pipe'] });
+  return { code: r.status, err: r.stderr, dest, calls: read(join(dir, 'calls')).split('\n').filter(Boolean) };
+}
+const ledgerRows = (replica: string) => read(join(replica, 'stage-ledger.jsonl')).split('\n').filter(Boolean).map((l) => JSON.parse(l));
+
+describe('(g) the stage ledger holds a stage cap across dests and one-off run-shard.sh launches (2026-11-07)', () => {
+  test('a stage split across two dests is summed in the replica folder: the second half is refused past the cap', () => {
+    const replica = join(tmp('he-stage-replica-'), 'replica');
+    const canary = fanout({ workload: 'qm-driver', cap: 520, replica, shards: [qm('m0', 65)] });
+    expect(canary.code, canary.err).toBe(0);
+    const rest = fanout({ workload: 'qm-driver', cap: 520, replica, shards: Array.from({ length: 7 }, (_, i) => qm('m' + (i + 1), 66)) });
+    expect(rest.dest).not.toBe(canary.dest);
+    expect(rest.code).toBe(2);
+    expect(rest.err).toContain('fanout: refused before any VM call: the leases sum to $462 plus $65 launched earlier (' + join(canary.dest, 'm0') + ') for run stage-test stage main');
+    expect(rest.err).toContain('above the preregistered stage cap of $520 (caps_usd.main)');
+    expect(rest.calls).toBe('');
+    expect(rest.launched).toEqual([]);
+    const fits = fanout({ workload: 'qm-driver', cap: 520, replica, shards: Array.from({ length: 7 }, (_, i) => qm('m' + (i + 1), 65)) });
+    expect(fits.code, fits.err).toBe(0);
+    expect(fits.launched.length).toBe(7);
+    const rows = ledgerRows(replica);
+    expect(rows.length).toBe(8);
+    expect(rows.every((x) => x.run_id === 'stage-test' && x.stage === 'main' && x.by === 'fanout.sh')).toBe(true);
+    expect(rows.reduce((s, x) => s + x.lease_usd, 0)).toBe(520);
+  }, 60_000);
+
+  test('another stage of the same run, or another run, has its own sum', () => {
+    const replica = join(tmp('he-stage-replica-'), 'replica');
+    expect(fanout({ workload: 'qm-driver', cap: 45, caps: { main: 520, forced: 45 }, replica, shards: [{ ...qm('f0', 45), args: ['--stage', 'forced', '--shards', '1'] }] }).code).toBe(0);
+    const main = fanout({ workload: 'qm-driver', cap: 520, caps: { main: 520, forced: 45 }, replica, shards: [qm('m0', 520)] });
+    expect(main.code, main.err).toBe(0);
+  }, 60_000);
+
+  test('a one-off run-shard.sh launch into a new dest is refused before any VM call once the stage is spent', () => {
+    const replica = join(tmp('he-stage-replica-'), 'replica');
+    const stage = fanout({ workload: 'qm-driver', cap: 520, replica, shards: Array.from({ length: 8 }, (_, i) => qm('m' + i, 65)) });
+    expect(stage.code, stage.err).toBe(0);
+    const r = qmShard({ replica, lease: 1 });
+    expect(r.code).toBe(2);
+    expect(r.err).toContain('run-shard (ubicloud): refused before any VM call: the leases sum to $1 plus $520 launched earlier');
+    expect(r.calls).toEqual([]);
+  }, 60_000);
+
+  test('a one-off launch that fits reserves its lease in the stage ledger before the VM call, and the next one counts it', () => {
+    const replica = join(tmp('he-stage-replica-'), 'replica');
+    const first = qmShard({ replica, lease: 300, name: 'one' });
+    expect(first.err).not.toContain('refused');
+    expect(first.calls[0]?.split(' ')[0]).toBe('up');
+    const rows = ledgerRows(replica);
+    expect(rows.length).toBe(1);
+    expect(rows[0]).toMatchObject({ run_id: 'stage-test', stage: 'main', dest: first.dest, lease_usd: 300, by: 'run-shard.sh', resume: false });
+    expect(typeof rows[0].reservation).toBe('string');
+    const second = qmShard({ replica, lease: 221, name: 'two' });
+    expect(second.code).toBe(2);
+    expect(second.err).toContain('the leases sum to $221 plus $300 launched earlier (' + first.dest + ')');
+    expect(second.calls).toEqual([]);
+  }, 60_000);
+
+  test('a launch carrying its fan-out\'s reservation for its dest goes ahead, and the reservation counts once', () => {
+    const replica = join(tmp('he-stage-replica-'), 'replica');
+    const fan = fanout({ workload: 'qm-driver', cap: 520, replica, shards: [qm('m0', 520)] });
+    expect(fan.code, fan.err).toBe(0);
+    const rid = fan.launched[0]!.split('reservation=')[1]!;
+    const r = qmShard({ replica, lease: 520, dest: join(fan.dest, 'm0'), name: 'm0', reservation: rid });
+    expect(r.err).not.toContain('refused');
+    expect(r.calls[0]?.split(' ')[0]).toBe('up');
+    expect(ledgerRows(replica).length).toBe(1);
+    const elsewhere = qmShard({ replica, lease: 520, reservation: rid });
+    expect(elsewhere.code).toBe(2);
+    expect(elsewhere.err).toContain('UBI_LEASE_RESERVATION ' + rid + ' is not a reservation of $520 or more for ' + elsewhere.dest);
+  }, 60_000);
+
+  test('a relative or symlinked dest still finds its fan-out reservation, and the stage counts the lease once', () => {
+    const replica = join(tmp('he-stage-replica-'), 'replica');
+    const fan = fanout({ workload: 'qm-driver', cap: 520, replica, shards: [qm('m0', 520)] });
+    expect(fan.code, fan.err).toBe(0);
+    const rid = fan.launched[0]!.split('reservation=')[1]!;
+    const real = join(fan.dest, 'm0');
+    const viaRelative = qmShard({ replica, lease: 520, name: 'm0', reservation: rid, dest: (dir) => relative(dir, real) });
+    expect(viaRelative.err).not.toContain('refused');
+    expect(viaRelative.calls[0]?.split(' ')[0]).toBe('up');
+    const viaLink = qmShard({ replica, lease: 520, name: 'm0', reservation: rid, dest: (dir) => { symlinkSync(real, join(dir, 'link')); return join(dir, 'link'); } });
+    expect(viaLink.err).not.toContain('refused');
+    expect(viaLink.calls[0]?.split(' ')[0]).toBe('up');
+    expect(ledgerRows(replica).length).toBe(1);
+    const oneOff = qmShard({ replica, lease: 1, dest: (dir) => { symlinkSync(real, join(dir, 'again')); return 'again'; } });
+    expect(oneOff.code).toBe(2);
+    expect(oneOff.err).toContain('the leases sum to $1 plus $520 launched earlier (' + real + ')');
+  }, 60_000);
+
+  test('a launch naming a reservation the stage ledger lacks for its dest is refused, and qm-driver needs --replicate-to', () => {
+    const replica = join(tmp('he-stage-replica-'), 'replica');
+    const forged = qmShard({ replica, lease: 5, reservation: 'made-up' });
+    expect(forged.code).toBe(2);
+    expect(forged.err).toContain('UBI_LEASE_RESERVATION made-up is not a reservation of $5 or more for ' + forged.dest);
+    expect(forged.calls).toEqual([]);
+    const none = qmShard({ replica: null, lease: 5 });
+    expect(none.code).toBe(2);
+    expect(none.err).toContain('--workload qm-driver needs --replicate-to');
+    expect(none.calls).toEqual([]);
+    const fan = fanout({ workload: 'qm-driver', cap: 10, replica: null, shards: [qm('m0', 5)] });
+    expect(fan.code).toBe(2);
+    expect(fan.err).toContain('--workload qm-driver needs --replicate-to');
+    expect(fan.calls).toBe('');
+  }, 60_000);
+});
+
+describe('(h) a qm-driver stage cap is the preregistered cap of the one --stage its shards run (2026-11-07)', () => {
+  test('a stage_cap_usd other than caps_usd for the shards\' --stage is refused before any VM call', () => {
+    const r = fanout({ workload: 'qm-driver', cap: 500, caps: { main: 520 }, shards: [qm('m0', 65)] });
+    expect(r.code).toBe(2);
+    expect(r.err).toContain('fanout: stage_cap_usd $500 is not the preregistered cap of --stage main, caps_usd.main = $520');
+    expect(r.calls).toBe('');
+    expect(r.launched).toEqual([]);
+    const wrongStage = fanout({ workload: 'qm-driver', cap: 520, caps: { main: 520, forced: 45 }, shards: [{ ...qm('f0', 5), args: ['--stage', 'forced', '--shards', '1'] }] });
+    expect(wrongStage.code).toBe(2);
+    expect(wrongStage.err).toContain('stage_cap_usd $520 is not the preregistered cap of --stage forced, caps_usd.forced = $45');
+    expect(wrongStage.launched).toEqual([]);
+  }, 60_000);
+
+  test('shards that disagree on --stage, a shard without --stage and a stage the preregistration has no cap for are refused', () => {
+    const split = fanout({ workload: 'qm-driver', cap: 520, caps: { main: 520, forced: 45 }, shards: [qm('m0', 5), { ...qm('f0', 5), args: ['--stage', 'forced', '--shards', '1'] }] });
+    expect(split.code).toBe(2);
+    expect(split.err).toContain('the shards disagree on --stage (forced, main)');
+    const bare = fanout({ workload: 'qm-driver', cap: 520, shards: [qm('m0', 5), { ...qm('m1', 5), args: ['--shards', '8'] }] });
+    expect(bare.code).toBe(2);
+    expect(bare.err).toContain('every qm-driver shard needs --stage in its args');
+    const uncapped = fanout({ workload: 'qm-driver', cap: 10, caps: { main: 520 }, shards: [{ ...qm('p0', 5), args: ['--stage', 'pilot', '--shards', '1'] }] });
+    expect(uncapped.code).toBe(2);
+    expect(uncapped.err).toContain('has no caps_usd entry for --stage pilot');
+    for (const r of [split, bare, uncapped]) { expect(r.calls).toBe(''); expect(r.launched).toEqual([]); }
+  }, 60_000);
+
+  test('a one-off launch takes its cap from caps_usd for its --stage', () => {
+    const replica = join(tmp('he-stage-replica-'), 'replica');
+    const r = qmShard({ replica, lease: 46, stage: 'forced', caps: { main: 520, forced: 45 } });
+    expect(r.code).toBe(2);
+    expect(r.err).toContain('above the preregistered stage cap of $45 (caps_usd.forced)');
+    expect(r.calls).toEqual([]);
   }, 60_000);
 });

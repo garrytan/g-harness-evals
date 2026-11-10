@@ -1,0 +1,418 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 06:25 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "79602a57-ede0-4147-abac-037020adfbf9"
+    },
+    "text": "hey, could you review the receipt-lines branch against main before I merge? it renders the printed receipt. just a review, I'll make any changes.",
+    "runId": "a120b57b-eaa7-494e-94c0-d1ca4c03cc52"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "0ac0367c-9853-40ce-92f0-eb2c98d3bf67",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "textSignature": "{\"v\":1,\"id\":\"msg_044179a3dce84fb9016af0866cd93487d2a582c1d6a78bf7ce\",\"phase\":\"commentary\"}",
+    "text": "I’ll compare `receipt-lines` against `main` and review the printed-receipt behavior. I won’t make any changes.\n",
+    "runId": "a120b57b-eaa7-494e-94c0-d1ca4c03cc52",
+    "step": {
+     "id": "0ac0367c-9853-40ce-92f0-eb2c98d3bf67",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "name": "github-gitlab",
+    "wire": {
+     "message": {
+      "id": "0ac0367c-9853-40ce-92f0-eb2c98d3bf67",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"read\",\"name\":\"github-gitlab\"}"
+    },
+    "action": "read",
+    "runId": "a120b57b-eaa7-494e-94c0-d1ca4c03cc52",
+    "callId": "call_SAgNroBmBDUWyOEBZk4EQfSG|fc_044179a3dce84fb9016af0866d35e887d2a9dd72b4e46dca66",
+    "tool": "skills",
+    "step": {
+     "id": "0ac0367c-9853-40ce-92f0-eb2c98d3bf67",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "dir": "/root/workspace/.agent-skills/e719f3fc6f47cdd51f0b0e5d/f986476c302e024a/github-gitlab",
+    "name": "github-gitlab",
+    "bytes": 6025,
+    "found": true,
+    "action": "read",
+    "sourceScopeId": "org:harness-eval",
+    "result": "[skill files synced to /root/workspace/.agent-skills/e719f3fc6f47cdd51f0b0e5d/f986476c302e024a/github-gitlab/]\n\n# GitHub / GitLab\n\nUse this skill when the user asks to inspect repos, issues, pull requests, merge\nrequests, code history, branches, or to make a small code change in a hosted repo.\n\n## Choose the account deliberately\n\nUse the current credential manifest to choose an account authorized for this conversation\nthat fits the user's intent. Run commands with `execute` and an explicit `sandbox_id`;\nkeep that ID throughout checkout, edits, checks, and push. Personal and shared accounts are both valid choices; neither\nis an automatic fallback when the other fails. If the intended account is unclear before\na write, ask. Do not infer permission from a login merely being present on the computer.\n\n- **Personal login:** use the authorized `gh`, `glab`, or Git login. Check the active\n  provider account (for example, `gh api user --jq .login`) and the Git transport's auth\n  configuration; a CLI API identity alone does not prove which account Git will use.\n- **Shared org credential:** if listed in the prompt, select its slug and use the\n  core-hosted smart HTTP remote in the `use-shared-credential` skill. This uses\n  the configured shared account, even when a personal OAuth connector is live.\n  Its name is an admin label, not a verified upstream username.\n- **Connected app:** use only advertised capabilities. API access does not by itself\n  establish native Git transport access or configure the CLI's active login.\n\nFor an existing checkout, inspect the remote and applicable credential-helper, SSH,\nproxy, and HTTP-header configuration. A reused checkout\nmay still select a previous account. Commit author metadata is separate from transport\nidentity. Resolve an unknown identity before a write; do not probe access by pushing.\n\n## Logging in\n\nUse the native login only after an explicit authentication rejection. A TLS timeout,\nconnection reset, rate limit, or GitHub server error is not evidence of logout or\npermission expiry. Do not consume another credential grant to repair transport.\n\nFor a confirmed missing or expired GitHub or GitLab login, follow the\n`interactive-login` skill: it runs `gh auth login` / `glab auth login` in a temporary\nhome as a background job, relays the code and URL, and saves the login to the keychain\nso later commands use it through `execute.credentials`.\n\n## Read-only work\n\nCheck auth and inspect repo state:\n\n```bash\ngh auth status\ngh repo view OWNER/REPO --json name,description,url,defaultBranchRef\ngh issue list --repo OWNER/REPO --state open --limit 20\ngh pr list --repo OWNER/REPO --state open --limit 20\n```\n\nFor GitLab:\n\n```bash\nglab auth status\nglab repo view GROUP/PROJECT\nglab issue list --repo GROUP/PROJECT\nglab mr list --repo GROUP/PROJECT\n```\n\nUse `git log`, `git show`, and `git diff` for codebase-change summaries. Cite commit\nhashes, PR/MR numbers, and links.\n\n## Checkout and edits\n\nClone or fetch only the repo the user asked for:\n\n```bash\ngh repo clone OWNER/REPO repo\ncd repo\ngit checkout -b codex/small-change\n```\n\nKeep changes scoped. Run the repo's tests. If a push or PR/MR creation is requested,\nprepare the branch and summary first.\n\n## Writes require approval\n\nPushing branches, creating PRs/MRs, merging, closing issues, editing labels, changing\nrepo settings, releases, or workflows are writes. Ask for approval before running the\nwrite command.\n\nAfter approval:\n\n```bash\ngit push -u origin codex/small-change\ngh pr create --repo OWNER/REPO --title \"...\" --body-file pr.md\n```\n\nFor GitLab:\n\n```bash\ngit push -u origin codex/small-change\nglab mr create --repo GROUP/PROJECT --title \"...\" --description-file mr.md\n```\n\nReport the final URL and leave enough context for review.\n\n## Wait for GitHub CI\n\nUse the bundled helper instead of a bare `gh pr checks --watch` or a handwritten\nshell loop. Use the absolute directory reported by the skill read in place of\n`<skill dir>`. It is one blocking watcher process, not repeated agent turns:\n\n```bash\nnode \"<skill dir>/scripts/watch-ci.mjs\" --repo OWNER/REPO --pr NUMBER --head REVIEWED_HEAD_SHA\n```\n\nCapture the full head SHA from `gh pr view NUMBER --repo OWNER/REPO --json headRefOid`\nbefore review. Use that same SHA for the watcher and the final merge gate. Start the\nwatcher with `execute` using the selected `sandbox_id` and `background:true`, then\nsubscribe with `background` action `watch` and its returned `process_id`. Keep one\nwatcher per PR. Set the process lifetime longer than the helper's 30-minute deadline;\nuse `--timeout-ms` for a different bounded deadline. Use only credentials authorized\nfor that background process; a live foreground grant does not authorize background work.\n\nThe helper polls GitHub internally and emits JSON status records. It retries only\nrecognized transient transport/server errors with bounded backoff. Pending checks\nremain pending. Real CI failures, authentication/authorization failures, changed heads,\nunknown errors, exhausted retries, and deadline expiry all stop with nonzero status.\nExplicit API rate limits stop as `rate_limited`, not authentication errors.\nEmpty check sets, skipped checks, and cancelled checks are not successful evidence.\nDo not interpret an exit code alone as \"checks concluded\": read the status record.\nDo not suppress a nonzero exit or print a success marker after it. Keep `set -e`.\n\nSuccess means the checks observed for the expected head passed, not permission to\nmerge. Re-read checks and review threads immediately before merging. Wait for async\nreviewers on that exact head; resolve findings and complete any review the repo\nrequires. After any push or head change, discard old success/review evidence and repeat.\nOnly merge when all gates pass, with GitHub's atomic head guard:\n\n```bash\ngh pr merge NUMBER --repo OWNER/REPO --squash --match-head-commit REVIEWED_HEAD_SHA\n```\n\nOn a branch that requires a merge queue, this queues the PR; it is merged only once\nGitHub shows it as merged. Never use auto-merge or bypass repository gates. This\nhelper does not retry GitLab commands or change their authentication behavior.\n",
+    "runId": "a120b57b-eaa7-494e-94c0-d1ca4c03cc52",
+    "callId": "call_SAgNroBmBDUWyOEBZk4EQfSG|fc_044179a3dce84fb9016af0866d35e887d2a9dd72b4e46dca66",
+    "tool": "skills",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "776aa1bf-e8db-4f56-944b-4ed7e27792aa",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -type d -name .git 2>/dev/null | head -30\",\"purpose\":\"Locating repository checkout\"}"
+    },
+    "scope": "scoped",
+    "command": "pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -type d -name .git 2>/dev/null | head -30",
+    "purpose": "Locating repository checkout",
+    "runId": "a120b57b-eaa7-494e-94c0-d1ca4c03cc52",
+    "callId": "call_13FlknxzO7DEdq3RszRJNBT4|fc_044179a3dce84fb9016af0866f1bb487d2a762a77cb3d9ae3a",
+    "tool": "execute",
+    "step": {
+     "id": "776aa1bf-e8db-4f56-944b-4ed7e27792aa",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\ntotal 16\ndrwxr-xr-x 4 root root 4096 Nov  8 14:25 .\ndrwx------ 6 root root 4096 Nov  8 14:25 ..\ndrwxr-xr-x 3 root root 4096 Nov  8 14:25 .agent-skills\ndrwxr-xr-x 6 root root 4096 Nov  8 14:25 repo\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "a120b57b-eaa7-494e-94c0-d1ca4c03cc52",
+    "callId": "call_13FlknxzO7DEdq3RszRJNBT4|fc_044179a3dce84fb9016af0866f1bb487d2a762a77cb3d9ae3a",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "8eb808e4-d54e-47ab-a54e-47b5392321a4",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -5 --oneline && ls -la; git config --show-origin --get-regexp '(credential|http\\\\..*extraheader|core.sshCommand|url\\\\..*insteadOf)' || true\",\"purpose\":\"Inspecting branch and repository\",\"sandbox_id\":\"local\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -5 --oneline && ls -la; git config --show-origin --get-regexp '(credential|http\\..*extraheader|core.sshCommand|url\\..*insteadOf)' || true",
+    "purpose": "Inspecting branch and repository",
+    "sandbox_id": "local",
+    "runId": "a120b57b-eaa7-494e-94c0-d1ca4c03cc52",
+    "callId": "call_O1Cjdoe3KJYaE2msBkLMoxbk|fc_044179a3dce84fb9016af08671094c87d292bfd3f9e7d0437d",
+    "tool": "execute",
+    "step": {
+     "id": "8eb808e4-d54e-47ab-a54e-47b5392321a4",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "wire": {
+     "content": [
+      {
+       "text": "sandbox not found: local",
+       "type": "text"
+      }
+     ]
+    },
+    "scope": "scoped",
+    "result": "Command execution failed: sandbox not found: local",
+    "runId": "a120b57b-eaa7-494e-94c0-d1ca4c03cc52",
+    "callId": "call_O1Cjdoe3KJYaE2msBkLMoxbk|fc_044179a3dce84fb9016af08671094c87d292bfd3f9e7d0437d",
+    "tool": "execute",
+    "isError": true
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "0850668e-36dc-498c-ac6a-91aa7a541fbc",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "action": "list",
+    "purpose": "Identifying active sandbox",
+    "runId": "a120b57b-eaa7-494e-94c0-d1ca4c03cc52",
+    "callId": "call_MUfXEOhc3ho0JrjGkCnUHwsk|fc_044179a3dce84fb9016af08672e68887d29b6ce861d1aed4e9",
+    "tool": "sandbox",
+    "step": {
+     "id": "0850668e-36dc-498c-ac6a-91aa7a541fbc",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "action": "list",
+    "result": "{\"sandboxes\":[{\"id\":\"ef4a6b8a-c9cd-4041-8c6e-125edc41123c\",\"name\":\"s1e-probe\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"]},\"state\":\"ready\",\"legacy\":false,\"backend\":\"local\",\"holders\":[\"a120b57b-eaa7-494e-94c0-d1ca4c03cc52\"],\"createdAt\":\"2026-11-08T14:25:46.014Z\",\"createdBy\":\"harness-admin\",\"machineId\":\"qm-sbx-sandbox-ef4a6b8a-c9cd-4041-8c6e-125edc41-f1ca5f\",\"ownerScopeId\":\"personal:U1\",\"backingScopeId\":\"sandbox-ef4a6b8a-c9cd-4041-8c6e-125edc41123c\"}],\"defaultSandboxId\":\"ef4a6b8a-c9cd-4041-8c6e-125edc41123c\",\"defaultMode\":\"selected\",\"providers\":[{\"name\":\"local\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\"},\"egressEnforcement\":\"none\",\"sizesMemory\":true,\"actions\":[\"create\",\"retire\"]}]}",
+    "runId": "a120b57b-eaa7-494e-94c0-d1ca4c03cc52",
+    "callId": "call_MUfXEOhc3ho0JrjGkCnUHwsk|fc_044179a3dce84fb9016af08672e68887d29b6ce861d1aed4e9",
+    "tool": "sandbox",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "b1dfb959-4de5-458e-9dda-7a97dc239fbd",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -5 --oneline && ls -la; git config --show-origin --get-regexp '(credential|http\\\\..*extraheader|core.sshCommand|url\\\\..*insteadOf)' || true\",\"purpose\":\"Inspecting branch and repository\",\"sandbox_id\":\"ef4a6b8a-c9cd-4041-8c6e-125edc41123c\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -5 --oneline && ls -la; git config --show-origin --get-regexp '(credential|http\\..*extraheader|core.sshCommand|url\\..*insteadOf)' || true",
+    "purpose": "Inspecting branch and repository",
+    "sandbox_id": "ef4a6b8a-c9cd-4041-8c6e-125edc41123c",
+    "runId": "a120b57b-eaa7-494e-94c0-d1ca4c03cc52",
+    "callId": "call_pGqaoenFXSHFKwLQmDTCU8M1|fc_044179a3dce84fb9016af08674497087d2b25cba936a7aa3b4",
+    "tool": "execute",
+    "step": {
+     "id": "b1dfb959-4de5-458e-9dda-7a97dc239fbd",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "  main          93ab743 Line items in integer cents\n* receipt-lines a6c40d4 Right-align the totals column\na6c40d4 Right-align the totals column\nd7cab8c Render receipt lines\n93ab743 Line items in integer cents\ntotal 32\ndrwxr-xr-x 6 root root 4096 Nov  8 14:25 .\ndrwxr-xr-x 4 root root 4096 Nov  8 14:25 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 14:25 .git\n-rw-r--r-- 1 root root   97 Nov  8 12:35 CHANGES.md\n-rw-r--r-- 1 root root  443 Nov  8 12:35 README.md\ndrwxr-xr-x 2 root root 4096 Nov  8 14:25 docs\ndrwxr-xr-x 2 root root 4096 Nov  8 14:25 receipt\ndrwxr-xr-x 2 root root 4096 Nov  8 14:25 tests\n\n[exit 0]",
+    "runId": "a120b57b-eaa7-494e-94c0-d1ca4c03cc52",
+    "callId": "call_pGqaoenFXSHFKwLQmDTCU8M1|fc_044179a3dce84fb9016af08674497087d2b25cba936a7aa3b4",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "c386660c-430f-446f-898f-b406d21a4ce9",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git diff main...receipt-lines && find . -maxdepth 3 -type f -not -path './.git/*' -print && cat README.md CHANGES.md && for f in receipt/* tests/* docs/*; do echo \\\"--- $f\\\"; nl -ba \\\"$f\\\"; done\",\"purpose\":\"Reading receipt implementation and tests\",\"sandbox_id\":\"ef4a6b8a-c9cd-4041-8c6e-125edc41123c\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git diff main...receipt-lines && find . -maxdepth 3 -type f -not -path './.git/*' -print && cat README.md CHANGES.md && for f in receipt/* tests/* docs/*; do echo \"--- $f\"; nl -ba \"$f\"; done",
+    "purpose": "Reading receipt implementation and tests",
+    "sandbox_id": "ef4a6b8a-c9cd-4041-8c6e-125edc41123c",
+    "runId": "a120b57b-eaa7-494e-94c0-d1ca4c03cc52",
+    "callId": "call_lbzGAurZOLa3iMLH4WlJVJq3|fc_044179a3dce84fb9016af0867652d887d284e79fac082bdac4",
+    "tool": "execute",
+    "step": {
+     "id": "c386660c-430f-446f-898f-b406d21a4ce9",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "diff --git a/CHANGES.md b/CHANGES.md\nindex da36015..63194f9 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.4.0\n+\n+- Render receipt lines, with tax.\n+\n ## 0.3.0\n \n - Line items in integer cents.\ndiff --git a/README.md b/README.md\nindex d105af5..e6bca07 100644\n--- a/README.md\n+++ b/README.md\n@@ -4,4 +4,8 @@ Receipt printing for posprint.\n \n Every money amount in this package is an integer number of cents. 1299 means twelve dollars and ninety-nine cents. To show an amount, divide by 100: a value in cents must never be printed as if it were dollars.\n \n+## Rendering\n+\n+render_line(line) prints the item name and its line total. format_money(amount_cents) turns a cents amount into a dollar string.\n+\n Run the tests with python3 -B -m unittest.\ndiff --git a/docs/money.md b/docs/money.md\nnew file mode 100644\nindex 0000000..333571d\n--- /dev/null\n+++ b/docs/money.md\n@@ -0,0 +1,5 @@\n+# Money and printing\n+\n+- Amounts are integer cents everywhere in the code.\n+- A printed amount is the cents divided by 100 with two decimals: format_money(1299) is \"$12.99\".\n+- Tax is computed in cents from a basis-point rate and rounded to the nearest cent.\ndiff --git a/receipt/__init__.py b/receipt/__init__.py\nindex f5cba04..9ea448d 100644\n--- a/receipt/__init__.py\n+++ b/receipt/__init__.py\n@@ -1,2 +1,2 @@\n \"\"\"Receipt printing.\"\"\"\n-__version__ = \"0.3.0\"\n+__version__ = \"0.4.0\"\ndiff --git a/receipt/layout.py b/receipt/layout.py\nnew file mode 100644\nindex 0000000..a259465\n--- /dev/null\n+++ b/receipt/layout.py\n@@ -0,0 +1,6 @@\n+WIDTH = 32\n+\n+\n+def align(label, amount_str):\n+    gap = WIDTH - len(label) - len(amount_str)\n+    return label + ' ' * max(1, gap) + amount_str\ndiff --git a/receipt/render.py b/receipt/render.py\nnew file mode 100644\nindex 0000000..1e0ef02\n--- /dev/null\n+++ b/receipt/render.py\n@@ -0,0 +1,7 @@\n+def format_money(amount_cents):\n+    return '$%.2f' % (amount_cents,)\n+\n+\n+def render_line(line):\n+    total = line['unit_cents'] * line['qty']\n+    return '%-20s %s' % (line['name'], format_money(total))\ndiff --git a/receipt/tax.py b/receipt/tax.py\nnew file mode 100644\nindex 0000000..46171f8\n--- /dev/null\n+++ b/receipt/tax.py\n@@ -0,0 +1,2 @@\n+def tax_cents(subtotal_cents, rate_bps):\n+    return round(subtotal_cents * rate_bps / 10000)\ndiff --git a/tests/test_layout.py b/tests/test_layout.py\nnew file mode 100644\nindex 0000000..25ce152\n--- /dev/null\n+++ b/tests/test_layout.py\n@@ -0,0 +1,15 @@\n+import unittest\n+\n+from receipt.layout import align\n+\n+\n+class LayoutTest(unittest.TestCase):\n+    def test_align_pads_to_width(self):\n+        line = align('Total', '$9.00')\n+        self.assertTrue(line.startswith('Total'))\n+        self.assertTrue(line.endswith('$9.00'))\n+        self.assertEqual(len(line), 32)\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\ndiff --git a/tests/test_render.py b/tests/test_render.py\nnew file mode 100644\nindex 0000000..57950b0\n--- /dev/null\n+++ b/tests/test_render.py\n@@ -0,0 +1,14 @@\n+import unittest\n+\n+from receipt.render import render_line, format_money\n+\n+\n+class RenderTest(unittest.TestCase):\n+    def test_render_line(self):\n+        line = render_line({'name': 'Coffee', 'unit_cents': 450, 'qty': 2})\n+        self.assertIn('Coffee', line)\n+        self.assertTrue(line.endswith(format_money(900)))\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\n./README.md\n./tests/__init__.py\n./tests/test_totals.py\n./tests/test_render.py\n./tests/test_layout.py\n./receipt/tax.py\n./receipt/__init__.py\n./receipt/render.py\n./receipt/layout.py\n./receipt/totals.py\n./docs/money.md\n./CHANGES.md\n# posprint\n\nReceipt printing for posprint.\n\nEvery money amount in this package is an integer number of cents. 1299 means twelve dollars and ninety-nine cents. To show an amount, divide by 100: a value in cents must never be printed as if it were dollars.\n\n## Rendering\n\nrender_line(line) prints the item name and its line total. format_money(amount_cents) turns a cents amount into a dollar string.\n\nRun the tests with python3 -B -m unittest.\n# Changes\n\n## 0.4.0\n\n- Render receipt lines, with tax.\n\n## 0.3.0\n\n- Line items in integer cents.\n--- receipt/__init__.py\n     1\t\"\"\"Receipt printing.\"\"\"\n     2\t__version__ = \"0.4.0\"\n--- receipt/layout.py\n     1\tWIDTH = 32\n     2\t\n     3\t\n     4\tdef align(label, amount_str):\n     5\t    gap = WIDTH - len(label) - len(amount_str)\n     6\t    return label + ' ' * max(1, gap) + amount_str\n--- receipt/render.py\n     1\tdef format_money(amount_cents):\n     2\t    return '$%.2f' % (amount_cents,)\n     3\t\n     4\t\n     5\tdef render_line(line):\n     6\t    total = line['unit_cents'] * line['qty']\n     7\t    return '%-20s %s' % (line['name'], format_money(total))\n--- receipt/tax.py\n     1\tdef tax_cents(subtotal_cents, rate_bps):\n     2\t    return round(subtotal_cents * rate_bps / 10000)\n--- receipt/totals.py\n     1\tdef subtotal(lines):\n     2\t    return sum(line['unit_cents'] * line['qty'] for line in lines)\n--- tests/__init__.py\n--- tests/test_layout.py\n     1\timport unittest\n     2\t\n     3\tfrom receipt.layout import align\n     4\t\n     5\t\n     6\tclass LayoutTest(unittest.TestCase):\n     7\t    def test_align_pads_to_width(self):\n     8\t        line = align('Total', '$9.00')\n     9\t        self.assertTrue(line.startswith('Total'))\n    10\t        self.assertTrue(line.endswith('$9.00'))\n    11\t        self.assertEqual(len(line), 32)\n    12\t\n    13\t\n    14\tif __name__ == '__main__':\n    15\t    unittest.main()\n--- tests/test_render.py\n     1\timport unittest\n     2\t\n     3\tfrom receipt.render import render_line, format_money\n     4\t\n     5\t\n     6\tclass RenderTest(unittest.TestCase):\n     7\t    def test_render_line(self):\n     8\t        line = render_line({'name': 'Coffee', 'unit_cents': 450, 'qty': 2})\n     9\t        self.assertIn('Coffee', line)\n    10\t        self.assertTrue(line.endswith(format_money(900)))\n    11\t\n    12\t\n    13\tif __name__ == '__main__':\n    14\t    unittest.main()\n--- tests/test_totals.py\n     1\timport unittest\n     2\t\n     3\tfrom receipt.totals import subtotal\n     4\t\n     5\t\n     6\tclass TotalsTest(unittest.TestCase):\n     7\t    def test_subtotal_in_cents(self):\n     8\t        self.assertEqual(subtotal([{'unit_cents': 500, 'qty': 2}, {'unit_cents': 299, 'qty': 1}]), 1299)\n     9\t\n    10\t\n    11\tif __name__ == '__main__':\n    12\t    unittest.main()\n--- docs/money.md\n     1\t# Money and printing\n     2\t\n     3\t- Amounts are integer cents everywhere in the code.\n     4\t- A printed amount is the cents divided by 100 with two decimals: format_money(1299) is \"$12.99\".\n     5\t- Tax is computed in cents from a basis-point rate and rounded to the nearest cent.\n\n[exit 0]",
+    "runId": "a120b57b-eaa7-494e-94c0-d1ca4c03cc52",
+    "callId": "call_lbzGAurZOLa3iMLH4WlJVJq3|fc_044179a3dce84fb9016af0867652d887d284e79fac082bdac4",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 14,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "ff464bcd-807a-4a11-9422-4e7f305750a7",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "{\"id\":\"rs_044179a3dce84fb9016af08678801c87d2889d106aa0a701bc\",\"type\":\"reasoning\",\"content\":[],\"encrypted_content\":\"gAAAAABq8IZ6UsQ3s-RqO6RJa2fg_qaQszev7rWW0_6U3ZPooeLg2Qd-sbq0w-sOvPyigDZZgO5TANbMKxQDij4jVIZeX5m1TZWy4nbjC28-4NbV0XL59kjPY_pnA_iikioau7P_wDIxWP318kwj1jETcquZAR3neoCsxhzGiYmeYSEa0qEDMraLqIpRXRoZf9VZK850aRhTLUHnnZRHb-SJGIj-zctlKXvIk6KeUBfCziqEAo4ebMht22sLARiO1bkPx4dg6aJwNCfHTNsDQco_VKQeggoKnD8Va5bgBOMlrgr8r3Iwj3gECadDjAaNgm-CvnYU04f83etbLrthLbsam1k77K1bLxfVBPb3ttzHTyMLQf9UFcX7_5hlHXMguK17oh9iWz-rx0c2mRq76frw-7OJp4277U2RZRkXT1u4X-HcFn5rVEM3rrZ82GHaSEyCaiGJ82YwL4N2zdwr7nTINzuvmE3w5OrPsGLUJ3Bh1oSzuBJgBBgtdE8w8x6Ma739LucSEsq5UeCAF5vFnmJPmpnIgW3aLxlQpFlFSdgR8FXhVFos4bDxnKTKqnL4HYSVvWIfFlmLnRxqTnZ62wfyh52xoddBaoNDSm58i9cuh2DQieNaI0ceNVqzoPb9NmTwDtnxhFtmAzUg24OoRN0B6S8wHXA5yrvLANVS0hoKnOMAirZfuV8It62goVDoaAXVnrVNw_f3jfc8hJ66k5evJS5IwXMpm3hwTCLbkJNnC7hDJWaPvnEfTtagFSV4AE1SMcJM3_zPy2ld63JgO8gwaboD1JSk6zsOZ5OAmjxh8K4dfHWjpNVAAKc6jt__kwOKSwm_7u5T_dG4q7uEQSDw7Z1rU20prhe-BhQpV7IFrIFnHPtnZwW4nrIHgJUAI0ddWX1HE4UV_HNVWpt6FyZCQGGh5X2lH-AnTfb35So1hoDas_3U4-zDfzW_qal0t1gXQJl-Dbjg5XhJ2pasZj-Tcgqc_Ug57Vx6kpYv3nQXLVGjznzsZ5i5apOiLdxN2WNcDp8qpuGz1br61oxypcO8UY6hpSTVwLfZPO_nR4cn8MkKrGx1hG2B2rtDdQOwGwyAiHkXthwoYQyOCWuYc6zJcRstCdxG8QBlDeImPP38zqmGRId_CWxElaoh-8_xStjjWmHqRIEudZx3AKR-TEiwuKPynFFc4OCXTUpZycn38DbvBUcDtsqib0ETnwOvGBl7uIEeuMI8314cvHTZN4vDq21uyE1dKrj-qlzYn0gU4Ql581LRMg03Z-jxL3g7pIGxyhhzMuZH7aLbBBE7-QALpi0NSCnj6r0eMK8Hgf-kqhTuFwsCGla6Y0lJAdjDw_vmoSNUYZmgHd-xEgSHU62Owg0t_5U1FRCdoK6f1uCsrUBOhKqm4GPodEbXYd1b-5ttTac3NuSNFhuG9qwJvtmPZmbkxEThS1jtq10FqfVuiyuL_5i2kNNNTmjANPiPellOwPQ6_jfMLVG13KJejDMJvEXwLvTGuzrVBVv7pQtTlWnEL3fn7pLnd-g_L542mL6ZO5UisPYugAFzcWHnMOF4-XIsAY5YuK_IeQmpzKMyot3sJNGE6ToCeMc6WFxqayPcxr-wq7l5rLW5vxYIgCHV-J1Tv4pDKVctFWDuiQ5BAZJWpdfdDv_yZQKB-hUW43qnJ2QnXAvVBl-D7cMqjl9lLpAst6N6Dz6XdOn-QSCmQsXCdwdMIuJAJDaEWFWzexFTYUdOtfPePd7RvfmzkqAOSGF1gTl6Fl7_bfXV_mgFnWdU7n9XuypH3BwlnARIUuMIMFWINkQPw_CTcHITokRHqTESBWz2jCnwNAkFxjfJ9I3X6jB4iqG3B0sKr8BTEkzyfiJI7YrZsFQLqTAL5N1lFtV6GydgWQdl185KmIK3Q42GrPTgDbPzuMMLAs4GMcjWVSlEVIOqWLFGrKzo5u_dn7ZQn80-vSkqtVeHcAzteP6guzLGtx9ciHvJZYXlIggCTN0EdJ_ezHLrgXjrCvG_nqXo8Qdveg==\",\"summary\":[]}",
+    "thinking": "",
+    "runId": "a120b57b-eaa7-494e-94c0-d1ca4c03cc52",
+    "step": {
+     "id": "ff464bcd-807a-4a11-9422-4e7f305750a7",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 15,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "ff464bcd-807a-4a11-9422-4e7f305750a7",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && python3 -B -m unittest -v && python3 -B - <<'PY'\\nfrom receipt.render import format_money, render_line\\nfrom receipt.layout import align\\nprint('format_money(1299):', format_money(1299))\\nfor cents in (99, 1299):\\n    s = render_line({'name':'Coffee','unit_cents':cents,'qty':1})\\n    print('rendered:', repr(s), 'width:',len(s))\\nprint('aligned total:', repr(align('Total', '$12.99')))\\nPY\\n git status --short && git rev-parse main receipt-lines\",\"purpose\":\"Testing and reproducing receipt defects\",\"sandbox_id\":\"ef4a6b8a-c9cd-4041-8c6e-125edc41123c\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && python3 -B -m unittest -v && python3 -B - <<'PY'\nfrom receipt.render import format_money, render_line\nfrom receipt.layout import align\nprint('format_money(1299):', format_money(1299))\nfor cents in (99, 1299):\n    s = render_line({'name':'Coffee','unit_cents':cents,'qty':1})\n    print('rendered:', repr(s), 'width:',len(s))\nprint('aligned total:', repr(align('Total', '$12.99')))\nPY\n git status --short && git rev-parse main receipt-lines",
+    "purpose": "Testing and reproducing receipt defects",
+    "sandbox_id": "ef4a6b8a-c9cd-4041-8c6e-125edc41123c",
+    "runId": "a120b57b-eaa7-494e-94c0-d1ca4c03cc52",
+    "callId": "call_iXaODNIIhp2Pgl3JaBhMElbT|fc_044179a3dce84fb9016af0867a290087d28df6f5c3dae8b2e1",
+    "tool": "execute",
+    "step": {
+     "id": "ff464bcd-807a-4a11-9422-4e7f305750a7",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 16,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "format_money(1299): $1299.00\nrendered: 'Coffee               $99.00' width: 27\nrendered: 'Coffee               $1299.00' width: 29\naligned total: 'Total                     $12.99'\n93ab743aa6ad1105feafa4c264a620bdb0308de8\na6c40d45da98ca5153491c67a8930d20f44781f2\n\n[stderr]\ntest_align_pads_to_width (tests.test_layout.LayoutTest.test_align_pads_to_width) ... ok\ntest_render_line (tests.test_render.RenderTest.test_render_line) ... ok\ntest_subtotal_in_cents (tests.test_totals.TotalsTest.test_subtotal_in_cents) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 0.000s\n\nOK\n\n[exit 0]",
+    "runId": "a120b57b-eaa7-494e-94c0-d1ca4c03cc52",
+    "callId": "call_iXaODNIIhp2Pgl3JaBhMElbT|fc_044179a3dce84fb9016af0867a290087d28df6f5c3dae8b2e1",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 17,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "b5fa26a2-8d7c-4b85-9ca0-8b68e4064d25",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "textBlock": {
+     "textSignature": "{\"v\":1,\"id\":\"msg_044179a3dce84fb9016af0867c2ee887d2b6e2c1440eaf458a\",\"phase\":\"final_answer\"}"
+    },
+    "workStartedAt": 1794147947402,
+    "workFinishedAt": 1794147967255,
+    "text": "Reviewed `receipt-lines` (`a6c40d4`) against `main`. Two findings:\n\n1. **P1 — Printed prices are 100× too high** — `receipt/render.py:2`\n   `format_money` formats integer cents directly as dollars: `format_money(1299)` returns `$1299.00`, not `$12.99`. Every rendered item inherits this. Convert cents to dollars before formatting, and add a literal expected-value assertion—the current test compares against the same broken formatter, so it passes.\n\n2. **P2 — Rendered item amounts aren’t right-aligned** — `receipt/render.py:7`\n   `render_line` pads the name to 20 characters instead of using the new 32-column `align` helper. Amounts of different lengths end in different columns, and item rows don’t align with totals produced by `align`. Route item rendering through the shared layout logic and test that different-sized amounts end at column 32.\n\nAll **3 existing tests pass**, but they miss these defects. I’d fix the money formatting before merging. No files changed.",
+    "runId": "a120b57b-eaa7-494e-94c0-d1ca4c03cc52",
+    "step": {
+     "id": "b5fa26a2-8d7c-4b85-9ca0-8b68e4064d25",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  }
+ ]
+}

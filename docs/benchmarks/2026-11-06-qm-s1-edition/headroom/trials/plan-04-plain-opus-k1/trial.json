@@ -1,0 +1,150 @@
+{
+  "trial_id": "plan-04-plain-opus-k1",
+  "task_id": "plan-04",
+  "family": "plan",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I read the repo and haven't changed anything. One thing changes the plan: **someone already tried this.** Rui added `--json` on Oct 22 (`eddd879`) and reverted it the next day (`b908835`). The dashboard runs the command inside a terminal emulator (`script -q`). That makes the progress line think it's talking to a person, so it writes `checking 1/2` to stdout ahead of the JSON, and every parse failed. His revert note says progress has to go to stderr, or be switched off, before a machine-readable mode can land.\n\n## Plan\n\n**1. Fix progress first (separate commit)**\n- `pulse/progress.py`: `tick()` should write to **stderr**, not stdout.\n- `cmd_report`: don't call `tick` at all when `--json` is set. Moving it to stderr is still worth doing for the plain table.\n- This also stops the stray `\\r` from leaking into `ops/nightly.sh` when it runs in a terminal.\n\n**2. Add the flag**\n- `cli.py`: `rep.add_argument('--json', action='store_true')`.\n- `cmd_report`: use `getattr(args, 'json', False)`, because the golden test calls `cmd_report(None, ...)`.\n- Put the JSON in a new `render_json(rows)` function (or a `pulse/export_json.py` file, like `export_csv.py`), not inline.\n\n**3. Lock down the output format** (the reverted attempt got this wrong too)\n- It used `json.dumps(data, default=str)`. That dumped internal fields (`checks`, `failures`), returned bare `Decimal` reprs, and had no total.\n- `docs/output.md` says money and percentages are always `Decimal`, never floats, and are formatted with `fmt_decimal()`. So write them as **strings**, the same way the CSV export does:\n  ```json\n  {\"sites\": [{\"site\": \"shop.example.test\", \"uptime\": \"99.965\", \"p95_ms\": 412, \"cost\": \"12.40\"}, ...],\n   \"total_cost\": \"42.45\"}\n  ```\n- Use an object with a `total_cost` field, not a bare list, so dashboards don't have to add up the costs themselves and we can add fields later.\n- No colours or ANSI codes in this mode.\n\n**4. Leave the table exactly as it is**\n- `ops/nightly.sh` gets finance's monthly cost by grepping the `TOTAL` line out of the table. Any change to the table breaks that cron job.\n- The golden test (`tests/golden/report.txt`) must keep passing unchanged.\n\n**5. Tests** (`python3 -m unittest discover -s tests -t .`)\n- `--json` output parses with `json.loads`, and the values match the table (`\"42.45\"`, `\"99.965\"`).\n- The money and percentage values are strings, not floats.\n- **The regression test:** fake a terminal on stdout and check that stdout still holds only valid JSON and the progress text goes to stderr. This is the exact bug that caused the revert.\n- The golden test still passes.\n\n**6. Docs and release**\n- Document the format in `docs/output.md` and call it a stable contract for the dashboards team.\n- Bump the version to 1.9.0.\n- Ask the dashboards team to test it with their real `script -q` setup before we call it done.\n\n## Questions for you\n- **Format:** is the object shape with `total_cost` OK, or does the dashboards team need a bare list?\n- **Should `nightly.sh` switch to `--json`?** It would be sturdier than grepping, but it's finance's job, so I'd do it as a separate follow-up.\n- **The command name:** `pyproject.toml` doesn't define an `uptimer` command, so whatever runs it is set up somewhere outside this repo. Probably fine, but worth knowing.\n\nOnce you approve, I'd do it as two commits: the progress fix first, then `--json`.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-04-plain-opus-k1",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.08325640000000001,
+    "input_tokens": 65065,
+    "output_tokens": 2065,
+    "cached_tokens": 60827,
+    "cache_write_tokens": 3746,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000055,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.08320140000000001,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 24.88,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-04-plain-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T02:56:05.749Z",
+    "images": {
+      "core": "sha256:6609775f47dd9965cfc5b3f275aafc1983b815968cb2a9b2970009af3498ad91",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-e8bdcc9a6303",
+        "id": "sha256:d48e90ce031c7254aa0309007494793f645365395578dda951d6a60eec65d47e",
+        "tree_sha256": "a70260548f5236b76b6197a992d0f4922f6c6f8dff72919e7646306eada95865"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-b5dbbe71-0544-4ef1-9c94-850c965f-c38ebf"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T02:56:54.512Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd ~/workspace/repo; git log --oneline|head -5; find . -type f -not -path \"./.git/*\" | head -50; cat README* 2>/dev/null | head -60",
+          "code": 0,
+          "output": "c213239 export --csv\nd13706a Colours and a config file\nb908835 Revert \"report: add --json\"\neddd879 report: add --json\n0733ae1 Progress line while checks run\n./README.md\n./tests/test_cli_golden.py\n./tests/__init__.py\n./tests/golden/report.txt\n./.gitignore\n./pulse/cli.py\n./pulse/fmt.py\n./pulse/report."
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-04-plain-opus-k1",
+      "meter": {
+        "requests": 6,
+        "usd": 0.08325640000000001,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.08325640000000001,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000055
+    }
+  }
+}

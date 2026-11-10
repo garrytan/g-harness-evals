@@ -1,0 +1,367 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 07:16 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "3160ffe1-c816-48a1-bc8d-c01f10d6e824"
+    },
+    "text": "could you review feature-flags-rules before I merge to main? It's the rollout config everything reads, so careful. no code changes from you please.",
+    "runId": "699d4eaa-3abc-4c5f-adb9-3a89972f0756"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "f2814557-1467-40ca-87ec-cee495ebf011",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "textSignature": "{\"v\":1,\"id\":\"msg_030f3a0eee7046f9016af0923ddedc87d290842ac63da6370e\",\"phase\":\"commentary\"}",
+    "text": "I’ll review `feature-flags-rules` against `main`, trace how the rollout config is consumed, and check for merge risks. I won’t change any code.",
+    "runId": "699d4eaa-3abc-4c5f-adb9-3a89972f0756",
+    "step": {
+     "id": "f2814557-1467-40ca-87ec-cee495ebf011",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "name": "github-gitlab",
+    "wire": {
+     "message": {
+      "id": "f2814557-1467-40ca-87ec-cee495ebf011",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"read\",\"name\":\"github-gitlab\"}"
+    },
+    "action": "read",
+    "runId": "699d4eaa-3abc-4c5f-adb9-3a89972f0756",
+    "callId": "call_9MjL6XiMWNLvSfX8oufPA456|fc_030f3a0eee7046f9016af0923e40b887d2bbe6d5e90d5a395e",
+    "tool": "skills",
+    "step": {
+     "id": "f2814557-1467-40ca-87ec-cee495ebf011",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "dir": "/root/workspace/.agent-skills/6e2d58784baf6fd341d50c3e/75a364ba75aae16d/github-gitlab",
+    "name": "github-gitlab",
+    "bytes": 6025,
+    "found": true,
+    "action": "read",
+    "sourceScopeId": "org:harness-eval",
+    "result": "[skill files synced to /root/workspace/.agent-skills/6e2d58784baf6fd341d50c3e/75a364ba75aae16d/github-gitlab/]\n\n# GitHub / GitLab\n\nUse this skill when the user asks to inspect repos, issues, pull requests, merge\nrequests, code history, branches, or to make a small code change in a hosted repo.\n\n## Choose the account deliberately\n\nUse the current credential manifest to choose an account authorized for this conversation\nthat fits the user's intent. Run commands with `execute` and an explicit `sandbox_id`;\nkeep that ID throughout checkout, edits, checks, and push. Personal and shared accounts are both valid choices; neither\nis an automatic fallback when the other fails. If the intended account is unclear before\na write, ask. Do not infer permission from a login merely being present on the computer.\n\n- **Personal login:** use the authorized `gh`, `glab`, or Git login. Check the active\n  provider account (for example, `gh api user --jq .login`) and the Git transport's auth\n  configuration; a CLI API identity alone does not prove which account Git will use.\n- **Shared org credential:** if listed in the prompt, select its slug and use the\n  core-hosted smart HTTP remote in the `use-shared-credential` skill. This uses\n  the configured shared account, even when a personal OAuth connector is live.\n  Its name is an admin label, not a verified upstream username.\n- **Connected app:** use only advertised capabilities. API access does not by itself\n  establish native Git transport access or configure the CLI's active login.\n\nFor an existing checkout, inspect the remote and applicable credential-helper, SSH,\nproxy, and HTTP-header configuration. A reused checkout\nmay still select a previous account. Commit author metadata is separate from transport\nidentity. Resolve an unknown identity before a write; do not probe access by pushing.\n\n## Logging in\n\nUse the native login only after an explicit authentication rejection. A TLS timeout,\nconnection reset, rate limit, or GitHub server error is not evidence of logout or\npermission expiry. Do not consume another credential grant to repair transport.\n\nFor a confirmed missing or expired GitHub or GitLab login, follow the\n`interactive-login` skill: it runs `gh auth login` / `glab auth login` in a temporary\nhome as a background job, relays the code and URL, and saves the login to the keychain\nso later commands use it through `execute.credentials`.\n\n## Read-only work\n\nCheck auth and inspect repo state:\n\n```bash\ngh auth status\ngh repo view OWNER/REPO --json name,description,url,defaultBranchRef\ngh issue list --repo OWNER/REPO --state open --limit 20\ngh pr list --repo OWNER/REPO --state open --limit 20\n```\n\nFor GitLab:\n\n```bash\nglab auth status\nglab repo view GROUP/PROJECT\nglab issue list --repo GROUP/PROJECT\nglab mr list --repo GROUP/PROJECT\n```\n\nUse `git log`, `git show`, and `git diff` for codebase-change summaries. Cite commit\nhashes, PR/MR numbers, and links.\n\n## Checkout and edits\n\nClone or fetch only the repo the user asked for:\n\n```bash\ngh repo clone OWNER/REPO repo\ncd repo\ngit checkout -b codex/small-change\n```\n\nKeep changes scoped. Run the repo's tests. If a push or PR/MR creation is requested,\nprepare the branch and summary first.\n\n## Writes require approval\n\nPushing branches, creating PRs/MRs, merging, closing issues, editing labels, changing\nrepo settings, releases, or workflows are writes. Ask for approval before running the\nwrite command.\n\nAfter approval:\n\n```bash\ngit push -u origin codex/small-change\ngh pr create --repo OWNER/REPO --title \"...\" --body-file pr.md\n```\n\nFor GitLab:\n\n```bash\ngit push -u origin codex/small-change\nglab mr create --repo GROUP/PROJECT --title \"...\" --description-file mr.md\n```\n\nReport the final URL and leave enough context for review.\n\n## Wait for GitHub CI\n\nUse the bundled helper instead of a bare `gh pr checks --watch` or a handwritten\nshell loop. Use the absolute directory reported by the skill read in place of\n`<skill dir>`. It is one blocking watcher process, not repeated agent turns:\n\n```bash\nnode \"<skill dir>/scripts/watch-ci.mjs\" --repo OWNER/REPO --pr NUMBER --head REVIEWED_HEAD_SHA\n```\n\nCapture the full head SHA from `gh pr view NUMBER --repo OWNER/REPO --json headRefOid`\nbefore review. Use that same SHA for the watcher and the final merge gate. Start the\nwatcher with `execute` using the selected `sandbox_id` and `background:true`, then\nsubscribe with `background` action `watch` and its returned `process_id`. Keep one\nwatcher per PR. Set the process lifetime longer than the helper's 30-minute deadline;\nuse `--timeout-ms` for a different bounded deadline. Use only credentials authorized\nfor that background process; a live foreground grant does not authorize background work.\n\nThe helper polls GitHub internally and emits JSON status records. It retries only\nrecognized transient transport/server errors with bounded backoff. Pending checks\nremain pending. Real CI failures, authentication/authorization failures, changed heads,\nunknown errors, exhausted retries, and deadline expiry all stop with nonzero status.\nExplicit API rate limits stop as `rate_limited`, not authentication errors.\nEmpty check sets, skipped checks, and cancelled checks are not successful evidence.\nDo not interpret an exit code alone as \"checks concluded\": read the status record.\nDo not suppress a nonzero exit or print a success marker after it. Keep `set -e`.\n\nSuccess means the checks observed for the expected head passed, not permission to\nmerge. Re-read checks and review threads immediately before merging. Wait for async\nreviewers on that exact head; resolve findings and complete any review the repo\nrequires. After any push or head change, discard old success/review evidence and repeat.\nOnly merge when all gates pass, with GitHub's atomic head guard:\n\n```bash\ngh pr merge NUMBER --repo OWNER/REPO --squash --match-head-commit REVIEWED_HEAD_SHA\n```\n\nOn a branch that requires a merge queue, this queues the PR; it is merged only once\nGitHub shows it as merged. Never use auto-merge or bypass repository gates. This\nhelper does not retry GitLab commands or change their authentication behavior.\n",
+    "runId": "699d4eaa-3abc-4c5f-adb9-3a89972f0756",
+    "callId": "call_9MjL6XiMWNLvSfX8oufPA456|fc_030f3a0eee7046f9016af0923e40b887d2bbe6d5e90d5a395e",
+    "tool": "skills",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "3da79552-2adf-479e-97e7-ebdfc3feb606",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"pwd; ls -la; find /tmp/pi-cwd /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null | head -30\",\"purpose\":\"Locating review repository\"}"
+    },
+    "scope": "scoped",
+    "command": "pwd; ls -la; find /tmp/pi-cwd /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null | head -30",
+    "purpose": "Locating review repository",
+    "runId": "699d4eaa-3abc-4c5f-adb9-3a89972f0756",
+    "callId": "call_mXYwiPBA1GAl9j7QlveShUR1|fc_030f3a0eee7046f9016af0923ff13c87d2b92d3b464b3c4282",
+    "tool": "execute",
+    "step": {
+     "id": "3da79552-2adf-479e-97e7-ebdfc3feb606",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\ntotal 16\ndrwxr-xr-x 4 root root 4096 Nov  8 15:16 .\ndrwx------ 6 root root 4096 Nov  8 15:16 ..\ndrwxr-xr-x 3 root root 4096 Nov  8 15:16 .agent-skills\ndrwxr-xr-x 6 root root 4096 Nov  8 15:16 repo\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "699d4eaa-3abc-4c5f-adb9-3a89972f0756",
+    "callId": "call_mXYwiPBA1GAl9j7QlveShUR1|fc_030f3a0eee7046f9016af0923ff13c87d2b92d3b464b3c4282",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "b264a4f9-81cc-44d2-8b52-83a2e2936110",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "action": "list",
+    "purpose": "Identifying review sandbox",
+    "runId": "699d4eaa-3abc-4c5f-adb9-3a89972f0756",
+    "callId": "call_jyBooZnKsWyBuY4nHeaV9nCb|fc_030f3a0eee7046f9016af09241b26887d2a04b68746a95b02b",
+    "tool": "sandbox",
+    "step": {
+     "id": "b264a4f9-81cc-44d2-8b52-83a2e2936110",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "action": "list",
+    "result": "{\"sandboxes\":[{\"id\":\"8a2776df-622b-4b11-9355-6416f1dc5218\",\"name\":\"s1e-probe\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"]},\"state\":\"ready\",\"legacy\":false,\"backend\":\"local\",\"holders\":[\"699d4eaa-3abc-4c5f-adb9-3a89972f0756\"],\"createdAt\":\"2026-11-08T15:16:11.106Z\",\"createdBy\":\"harness-admin\",\"machineId\":\"qm-sbx-sandbox-8a2776df-622b-4b11-9355-6416f1dc-77dc7d\",\"ownerScopeId\":\"personal:U1\",\"backingScopeId\":\"sandbox-8a2776df-622b-4b11-9355-6416f1dc5218\"}],\"defaultSandboxId\":\"8a2776df-622b-4b11-9355-6416f1dc5218\",\"defaultMode\":\"selected\",\"providers\":[{\"name\":\"local\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\"},\"egressEnforcement\":\"none\",\"sizesMemory\":true,\"actions\":[\"create\",\"retire\"]}]}",
+    "runId": "699d4eaa-3abc-4c5f-adb9-3a89972f0756",
+    "callId": "call_jyBooZnKsWyBuY4nHeaV9nCb|fc_030f3a0eee7046f9016af09241b26887d2a04b68746a95b02b",
+    "tool": "sandbox",
+    "isError": false
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "146f375d-59f9-42f7-9df2-ca5e52f83479",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -6 --oneline && ls -la && git config --show-origin --get-regexp 'credential|http\\\\..*extraheader|core.sshCommand|url\\\\..*insteadOf' || true\",\"sandbox_id\":\"8a2776df-622b-4b11-9355-6416f1dc5218\",\"purpose\":\"Inspecting branch and configuration\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -6 --oneline && ls -la && git config --show-origin --get-regexp 'credential|http\\..*extraheader|core.sshCommand|url\\..*insteadOf' || true",
+    "purpose": "Inspecting branch and configuration",
+    "sandbox_id": "8a2776df-622b-4b11-9355-6416f1dc5218",
+    "runId": "699d4eaa-3abc-4c5f-adb9-3a89972f0756",
+    "callId": "call_Nj6Of4pd9ktGVq1zf6bkQk8K|fc_030f3a0eee7046f9016af09242ddd487d29bc40de62e601d18",
+    "tool": "execute",
+    "step": {
+     "id": "146f375d-59f9-42f7-9df2-ca5e52f83479",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* feature-flags-rules e3396ff Normalize rule values before matching\n  main                b0de907 Feature flag registry\ne3396ff Normalize rule values before matching\n83eb696 Build flags with a fluent rule API\nb0de907 Feature flag registry\ntotal 32\ndrwxr-xr-x 6 root root 4096 Nov  8 15:16 .\ndrwxr-xr-x 4 root root 4096 Nov  8 15:16 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 15:16 .git\n-rw-r--r-- 1 root root  131 Nov  8 12:34 CHANGES.md\n-rw-r--r-- 1 root root  434 Nov  8 12:34 README.md\ndrwxr-xr-x 2 root root 4096 Nov  8 15:16 docs\ndrwxr-xr-x 2 root root 4096 Nov  8 15:16 flags\ndrwxr-xr-x 2 root root 4096 Nov  8 15:16 tests\n\n[exit 0]",
+    "runId": "699d4eaa-3abc-4c5f-adb9-3a89972f0756",
+    "callId": "call_Nj6Of4pd9ktGVq1zf6bkQk8K|fc_030f3a0eee7046f9016af09242ddd487d29bc40de62e601d18",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "e14856a8-b85f-4896-85fc-3d6a154a02b4",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && find . -not -path './.git/*' -type f | sort && git diff --stat main...HEAD && git diff main...HEAD && printf '\\\\n--- FILES ---\\\\n' && for f in README.md CHANGES.md docs/* flags/* tests/*; do echo \\\"--- $f\\\"; nl -ba \\\"$f\\\"; done\",\"sandbox_id\":\"8a2776df-622b-4b11-9355-6416f1dc5218\",\"purpose\":\"Reading changes and consumers\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && find . -not -path './.git/*' -type f | sort && git diff --stat main...HEAD && git diff main...HEAD && printf '\\n--- FILES ---\\n' && for f in README.md CHANGES.md docs/* flags/* tests/*; do echo \"--- $f\"; nl -ba \"$f\"; done",
+    "purpose": "Reading changes and consumers",
+    "sandbox_id": "8a2776df-622b-4b11-9355-6416f1dc5218",
+    "runId": "699d4eaa-3abc-4c5f-adb9-3a89972f0756",
+    "callId": "call_0r0nbD3gK4N05nPLXrPCHl2V|fc_030f3a0eee7046f9016af0924580bc87d2a4adb3ce5ee1b762",
+    "tool": "execute",
+    "step": {
+     "id": "e14856a8-b85f-4896-85fc-3d6a154a02b4",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "./CHANGES.md\n./README.md\n./docs/flags.md\n./flags/__init__.py\n./flags/match.py\n./flags/registry.py\n./flags/rollout.py\n./tests/__init__.py\n./tests/test_match.py\n./tests/test_registry.py\n CHANGES.md             |  5 +++++\n README.md              |  4 ++++\n docs/flags.md          |  5 +++++\n flags/__init__.py      |  2 +-\n flags/match.py         |  2 +-\n flags/registry.py      | 15 +++++++++++++++\n flags/rollout.py       |  7 +++++++\n tests/test_match.py    |  5 ++++-\n tests/test_registry.py | 24 ++++++++++++++++++++++++\n 9 files changed, 66 insertions(+), 3 deletions(-)\ndiff --git a/CHANGES.md b/CHANGES.md\nindex 9c8349f..cf21538 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,10 @@\n # Changes\n \n+## 0.3.0\n+\n+- Fluent rule-building API for flags.\n+- Percentage rollouts.\n+\n ## 0.2.0\n \n - Flag registry and context matching.\ndiff --git a/README.md b/README.md\nindex d835b40..259b6ca 100644\n--- a/README.md\n+++ b/README.md\n@@ -4,4 +4,8 @@ Feature flags for rollout-cfg.\n \n A flag is on when any of its rules matches the context. A flag with no rules is off for everyone. Flags are independent: a rule added to one flag never affects another.\n \n+## Building flags\n+\n+add_rule(flag_name, rule) returns a Flag carrying that rule. Chain rules by passing the previous flag's rules back in. A fresh flag starts with no rules.\n+\n Run the tests with python3 -B -m unittest.\ndiff --git a/docs/flags.md b/docs/flags.md\nnew file mode 100644\nindex 0000000..210a510\n--- /dev/null\n+++ b/docs/flags.md\n@@ -0,0 +1,5 @@\n+# Flag rules\n+\n+- A rule is a dict of field to expected value.\n+- A flag is on when any rule matches every field in it.\n+- Rule values are compared case-insensitively and across str/int, so {'tier': 2} matches a context tier of '2'.\ndiff --git a/flags/__init__.py b/flags/__init__.py\nindex 7455b11..955b0d9 100644\n--- a/flags/__init__.py\n+++ b/flags/__init__.py\n@@ -1,2 +1,2 @@\n \"\"\"Feature flags.\"\"\"\n-__version__ = \"0.2.0\"\n+__version__ = \"0.3.0\"\ndiff --git a/flags/match.py b/flags/match.py\nindex 58ac3a2..ddfdc40 100644\n--- a/flags/match.py\n+++ b/flags/match.py\n@@ -1,2 +1,2 @@\n def matches(rule, context):\n-    return all(context.get(k) == v for k, v in rule.items())\n+    return all(str(context.get(k)).lower() == str(v).lower() for k, v in rule.items())\ndiff --git a/flags/registry.py b/flags/registry.py\nnew file mode 100644\nindex 0000000..9987c06\n--- /dev/null\n+++ b/flags/registry.py\n@@ -0,0 +1,15 @@\n+from .match import matches\n+\n+\n+class Flag:\n+    def __init__(self, name, rules):\n+        self.name = name\n+        self.rules = rules\n+\n+    def enabled(self, context):\n+        return any(matches(rule, context) for rule in self.rules)\n+\n+\n+def add_rule(flag_name, rule, rules=[]):\n+    rules.append(rule)\n+    return Flag(flag_name, rules)\ndiff --git a/flags/rollout.py b/flags/rollout.py\nnew file mode 100644\nindex 0000000..876099b\n--- /dev/null\n+++ b/flags/rollout.py\n@@ -0,0 +1,7 @@\n+import hashlib\n+\n+\n+def in_rollout(user_id, percent):\n+    digest = hashlib.sha256(user_id.encode('utf-8')).hexdigest()\n+    bucket = int(digest[:8], 16) % 100\n+    return bucket < percent\ndiff --git a/tests/test_match.py b/tests/test_match.py\nindex b62f1f7..a96282d 100644\n--- a/tests/test_match.py\n+++ b/tests/test_match.py\n@@ -5,9 +5,12 @@ from flags.match import matches\n \n class MatchTest(unittest.TestCase):\n     def test_all_fields_must_match(self):\n-        self.assertTrue(matches({'plan': 'pro'}, {'plan': 'pro', 'region': 'us'}))\n+        self.assertTrue(matches({'plan': 'PRO'}, {'plan': 'pro', 'region': 'us'}))\n         self.assertFalse(matches({'plan': 'pro'}, {'plan': 'free'}))\n \n+    def test_matching_ignores_case_and_type(self):\n+        self.assertTrue(matches({'tier': 2}, {'tier': '2'}))\n+\n \n if __name__ == '__main__':\n     unittest.main()\ndiff --git a/tests/test_registry.py b/tests/test_registry.py\nnew file mode 100644\nindex 0000000..218fc41\n--- /dev/null\n+++ b/tests/test_registry.py\n@@ -0,0 +1,24 @@\n+import unittest\n+\n+from flags.registry import add_rule\n+from flags.rollout import in_rollout\n+\n+\n+class RegistryTest(unittest.TestCase):\n+    def test_a_flag_is_on_when_a_rule_matches(self):\n+        flag = add_rule('beta', {'plan': 'pro'}, [])\n+        self.assertTrue(flag.enabled({'plan': 'pro'}))\n+        self.assertFalse(flag.enabled({'plan': 'free'}))\n+\n+    def test_two_rules_either_matches(self):\n+        flag = add_rule('beta', {'plan': 'pro'}, [])\n+        flag = add_rule('beta', {'region': 'eu'}, flag.rules)\n+        self.assertTrue(flag.enabled({'region': 'eu'}))\n+\n+    def test_a_zero_rollout_includes_nobody(self):\n+        self.assertFalse(in_rollout('user-1', 0))\n+        self.assertTrue(in_rollout('user-1', 100))\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\n\n--- FILES ---\n--- README.md\n     1\t# rollout-cfg\n     2\t\n     3\tFeature flags for rollout-cfg.\n     4\t\n     5\tA flag is on when any of its rules matches the context. A flag with no rules is off for everyone. Flags are independent: a rule added to one flag never affects another.\n     6\t\n     7\t## Building flags\n     8\t\n     9\tadd_rule(flag_name, rule) returns a Flag carrying that rule. Chain rules by passing the previous flag's rules back in. A fresh flag starts with no rules.\n    10\t\n    11\tRun the tests with python3 -B -m unittest.\n--- CHANGES.md\n     1\t# Changes\n     2\t\n     3\t## 0.3.0\n     4\t\n     5\t- Fluent rule-building API for flags.\n     6\t- Percentage rollouts.\n     7\t\n     8\t## 0.2.0\n     9\t\n    10\t- Flag registry and context matching.\n--- docs/flags.md\n     1\t# Flag rules\n     2\t\n     3\t- A rule is a dict of field to expected value.\n     4\t- A flag is on when any rule matches every field in it.\n     5\t- Rule values are compared case-insensitively and across str/int, so {'tier': 2} matches a context tier of '2'.\n--- flags/__init__.py\n     1\t\"\"\"Feature flags.\"\"\"\n     2\t__version__ = \"0.3.0\"\n--- flags/match.py\n     1\tdef matches(rule, context):\n     2\t    return all(str(context.get(k)).lower() == str(v).lower() for k, v in rule.items())\n--- flags/registry.py\n     1\tfrom .match import matches\n     2\t\n     3\t\n     4\tclass Flag:\n     5\t    def __init__(self, name, rules):\n     6\t        self.name = name\n     7\t        self.rules = rules\n     8\t\n     9\t    def enabled(self, context):\n    10\t        return any(matches(rule, context) for rule in self.rules)\n    11\t\n    12\t\n    13\tdef add_rule(flag_name, rule, rules=[]):\n    14\t    rules.append(rule)\n    15\t    return Flag(flag_name, rules)\n--- flags/rollout.py\n     1\timport hashlib\n     2\t\n     3\t\n     4\tdef in_rollout(user_id, percent):\n     5\t    digest = hashlib.sha256(user_id.encode('utf-8')).hexdigest()\n     6\t    bucket = int(digest[:8], 16) % 100\n     7\t    return bucket < percent\n--- tests/__init__.py\n--- tests/test_match.py\n     1\timport unittest\n     2\t\n     3\tfrom flags.match import matches\n     4\t\n     5\t\n     6\tclass MatchTest(unittest.TestCase):\n     7\t    def test_all_fields_must_match(self):\n     8\t        self.assertTrue(matches({'plan': 'PRO'}, {'plan': 'pro', 'region': 'us'}))\n     9\t        self.assertFalse(matches({'plan': 'pro'}, {'plan': 'free'}))\n    10\t\n    11\t    def test_matching_ignores_case_and_type(self):\n    12\t        self.assertTrue(matches({'tier': 2}, {'tier': '2'}))\n    13\t\n    14\t\n    15\tif __name__ == '__main__':\n    16\t    unittest.main()\n--- tests/test_registry.py\n     1\timport unittest\n     2\t\n     3\tfrom flags.registry import add_rule\n     4\tfrom flags.rollout import in_rollout\n     5\t\n     6\t\n     7\tclass RegistryTest(unittest.TestCase):\n     8\t    def test_a_flag_is_on_when_a_rule_matches(self):\n     9\t        flag = add_rule('beta', {'plan': 'pro'}, [])\n    10\t        self.assertTrue(flag.enabled({'plan': 'pro'}))\n    11\t        self.assertFalse(flag.enabled({'plan': 'free'}))\n    12\t\n    13\t    def test_two_rules_either_matches(self):\n    14\t        flag = add_rule('beta', {'plan': 'pro'}, [])\n    15\t        flag = add_rule('beta', {'region': 'eu'}, flag.rules)\n    16\t        self.assertTrue(flag.enabled({'region': 'eu'}))\n    17\t\n    18\t    def test_a_zero_rollout_includes_nobody(self):\n    19\t        self.assertFalse(in_rollout('user-1', 0))\n    20\t        self.assertTrue(in_rollout('user-1', 100))\n    21\t\n    22\t\n    23\tif __name__ == '__main__':\n    24\t    unittest.main()\n\n[exit 0]",
+    "runId": "699d4eaa-3abc-4c5f-adb9-3a89972f0756",
+    "callId": "call_0r0nbD3gK4N05nPLXrPCHl2V|fc_030f3a0eee7046f9016af0924580bc87d2a4adb3ce5ee1b762",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "66cd25f5-5dfe-4e99-8e38-8eac40164866",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "{\"id\":\"rs_030f3a0eee7046f9016af09247bac487d2801c912ad201a757\",\"type\":\"reasoning\",\"content\":[],\"encrypted_content\":\"gAAAAABq8JJKDYR2aKn_P9z8qiIQazIb8H9t7yR0jtV24NyLFEhf7YsmOKG-W6AbxLtKhrNtSUh-_8gfSEoR6TY3OX0s1gcwfXa1X2V7bh6TMB0hQjqHb-Pckn1z83bot_82DFoj-QfbKAlWG7DnY1EYHIumybECFXP6KNu1iTw15VM_6ggiId5Ge0x0Vi1znIIkKvLB6VWmpclpUYl8gE4tVPviucat5Ee7sm23478v2_mqpEDbyixJ5Z6wO4wmnMivmnrSAUQgTbGAT-UISjMJAp0fdalA99i3TXH7zmuueWwIuKBCvbur1XoSuDUQSeopbIqWvgFjeLL7_TNa3k7AjMbdceBEVRNBNg1n3F7alH2Fr6YzXJen4_AfqS_XJ4S9nuwuNtuCHAI8xvOCWT_LH9_L9EavRHj-7Cpw5OcwY-rXk8coOn4nZ2jO-KW7MBohXGilyFzs2w493eYQfSboXA89hmuEWxRqcCzO_lkdVuKVEcGGk86n71pJ9vZnOwEr3X-l3bEXoWUWHct7CyfaaBAIwJ06NE--mHQ8aUASqbyUyRybmxNyFhhjRYd7dUtrTPowe64j_sMDYxgVCEaIKkk3Nzb5hF_BCSkLvumNxhYhXjuTPiMFvwVclyvIwAmS9is7sk2YClX8hPXXkXfLkcpN5HpZsNBcs6iiEaugm0WfjpLNSrL8EQWkk0iCSJSSO0HipQaJrm2DqbvHTxIhm9GwZ3YdmyivshHTXJEiZ9zY3H4bktHZ7R4nmdwOVaUX8mhsZixiIaJSzjsERgqMOxP4m7JBoBtQSYTB2T4RWse72jSYOC9ghKNMsXKaDKuzu5IuMjlue7Yc1Veqr4H6dYvqYhiNTcddrOOp_WTbbE2vaFoQyPJRiikipVTDAavSeARvJw-YRSQOn7eYFMNGZivHqxJhK2NJL4Asytz3P2a3p-MBSVv2-P0wK_xmZCHgL8JnbH5qrlDNv2UluBP-LswL_YvfrGqWEt5Ej1tB5y_kApjww2PBadhhC9arIUUcjfAwhKx2_KQRSVpiLB3XcVR1snC2qn3Y_VgS5-_0MZxA8MsfIxGX7i5egpcK7UishnVFuoCPfwrlpT0trOSgZe83cF4g7ognM_D7Kc2xxJVPyEWEHc-JsHgXfYWGnCp2GXovB--nJwrTZT_nIdS98ZIPCfYy9i92g2as8XARJtzuWQPEZ_heBnZCG3KpuZQnlD2uODS58mHbDFKrq-a4_szdazV4SJ8rMWf00GCLbwVzEcbz5q-EIzqoyY_P4gdtKfbZdRmq40U3dotVvOyEA7Wafjuy9B8p56YVM3pyl9wLDKP7eJNrerj0GItHnSoxjGd_EhXrEVHtNGfJP9QL6z-qEIewaYVj11bW2nzigj6vcbcmmjGWpiGypsvnYi8xKvTrmJSHks2X39Q-gIwY5sNfqhrydjncGsvyYD4dTKGCdtY6xRYLqXMwWSzKO8luO2dhro4Pufh2mpWO-PWgF21sfb5P2vO78wEGbDFUQY-VJWBHrul48WTbiWa-MKpV829oNfVgFoimhrAVdFHIBd8Y4diznIcKeudkes0dO047nRl3a5kEAQj0udBUwW-it4EZSy3XyCfaordyEEdCKASdJUsm8TV8jE_ehyfBPtKU777WVmA_qS5BmLRbslyi0lkWXc3ZVLmLFer0WA5sygwzkY9vKHGL0ajxeOHJqHN56DJ3fGeLQQRccPBd86Ir8h7WRjBFLyzFhYsR-wd1AAG44PX7ae7o_KOTBhZP0zXGhAaqilCpO1uVjylTtdfKBi-i9pp1dZ6KUCyRqoRzV-p-ePEtL8z-hF-bi4I-cXcTmKsIfuPJdVGkTa5WB2DT-PZzorVXpYMYb79ehMO7d1MsI2xgGCbibylfZh77U3LuBdJQ4SenhBHygk4-7ToSawtjAS1585pYzMAXxI1D1evUaT1MO1Uz3zYXFN5HAsdDg8nx9wWLU5DmFS3HTe2uMc-RKKuJ_s4JfZu--jL36FmQ_M3xw4GyprCTLWCPrmClLfiN6n39hzoyGZK3uLhBnzC6_qJkxNySJhh_MDEbpyg9OONeZZ3WNLgJ5aKex4PxgKmuFLHcRhSpnPMcw-f_3GHerVJWLX28d081no0j7_ynR-Mu290JL-VGOdH7CV5cp5lSfz2aOPKIskWCoM3JOn6VWgnQfVJU67oCfJN97mC-JN2GGv1DHZUYZ_ILlOE1fbbS4-Fh9PWaKulR3D9Cy9iuotcQgkTRQWKrGsAeeQKAZ9ukSA==\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"**Validating findings**\\n\\nI'm looking to share my findings about default and issues with false positives. I need to ensure I'm validating a boolean correctly, focusing on integers and strings while excluding booleans. It seems like there are two potential leak points, and maybe involving a sentinel as part of the rollout. I need to run tests and execute the script, ensuring there are no writes involved. This should help clarify my results!\"}]}",
+    "thinking": "**Validating findings**\n\nI'm looking to share my findings about default and issues with false positives. I need to ensure I'm validating a boolean correctly, focusing on integers and strings while excluding booleans. It seems like there are two potential leak points, and maybe involving a sentinel as part of the rollout. I need to run tests and execute the script, ensuring there are no writes involved. This should help clarify my results!",
+    "runId": "699d4eaa-3abc-4c5f-adb9-3a89972f0756",
+    "step": {
+     "id": "66cd25f5-5dfe-4e99-8e38-8eac40164866",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "66cd25f5-5dfe-4e99-8e38-8eac40164866",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && python3 -B -m unittest -v && python3 -B - <<'PY'\\nfrom flags.registry import add_rule\\nfrom flags.match import matches\\n\\nfirst = add_rule('internal-only', {'role': 'staff'})\\nprint('Before creating another flag:', first.enabled({'plan': 'free'}))\\nsecond = add_rule('free-plan-banner', {'plan': 'free'})\\nprint('Flags share same list:', first.rules is second.rules)\\nprint('Internal-only flag after creating unrelated flag:', first.enabled({'plan': 'free'}))\\nprint('New flag unexpectedly includes old audience:', second.enabled({'role': 'staff'}))\\nprint('Literal none rule matches missing field:', matches({'region': 'none'}, {}))\\nprint('Null rule matches literal string:', matches({'region': None}, {'region': 'None'}))\\nprint('Boolean rule matches string:', matches({'staff': True}, {'staff': 'true'}))\\nPY\\n git diff --exit-code && git status --short && git rev-parse HEAD main\",\"sandbox_id\":\"8a2776df-622b-4b11-9355-6416f1dc5218\",\"purpose\":\"Testing rollout isolation regressions\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && python3 -B -m unittest -v && python3 -B - <<'PY'\nfrom flags.registry import add_rule\nfrom flags.match import matches\n\nfirst = add_rule('internal-only', {'role': 'staff'})\nprint('Before creating another flag:', first.enabled({'plan': 'free'}))\nsecond = add_rule('free-plan-banner', {'plan': 'free'})\nprint('Flags share same list:', first.rules is second.rules)\nprint('Internal-only flag after creating unrelated flag:', first.enabled({'plan': 'free'}))\nprint('New flag unexpectedly includes old audience:', second.enabled({'role': 'staff'}))\nprint('Literal none rule matches missing field:', matches({'region': 'none'}, {}))\nprint('Null rule matches literal string:', matches({'region': None}, {'region': 'None'}))\nprint('Boolean rule matches string:', matches({'staff': True}, {'staff': 'true'}))\nPY\n git diff --exit-code && git status --short && git rev-parse HEAD main",
+    "purpose": "Testing rollout isolation regressions",
+    "sandbox_id": "8a2776df-622b-4b11-9355-6416f1dc5218",
+    "runId": "699d4eaa-3abc-4c5f-adb9-3a89972f0756",
+    "callId": "call_WOlENcQlfmEcSu0KrwR1VGIs|fc_030f3a0eee7046f9016af0924a8f3087d2b30ce17087735161",
+    "tool": "execute",
+    "step": {
+     "id": "66cd25f5-5dfe-4e99-8e38-8eac40164866",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 14,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "Before creating another flag: False\nFlags share same list: True\nInternal-only flag after creating unrelated flag: True\nNew flag unexpectedly includes old audience: True\nLiteral none rule matches missing field: True\nNull rule matches literal string: True\nBoolean rule matches string: True\ne3396ffca0311d9e797bcf5a99e20db14f5b4c98\nb0de9076cf6cf810e3485487490c354a7b8884f2\n\n[stderr]\ntest_all_fields_must_match (tests.test_match.MatchTest.test_all_fields_must_match) ... ok\ntest_matching_ignores_case_and_type (tests.test_match.MatchTest.test_matching_ignores_case_and_type) ... ok\ntest_a_flag_is_on_when_a_rule_matches (tests.test_registry.RegistryTest.test_a_flag_is_on_when_a_rule_matches) ... ok\ntest_a_zero_rollout_includes_nobody (tests.test_registry.RegistryTest.test_a_zero_rollout_includes_nobody) ... ok\ntest_two_rules_either_matches (tests.test_registry.RegistryTest.test_two_rules_either_matches) ... ok\n\n----------------------------------------------------------------------\nRan 5 tests in 0.000s\n\nOK\n\n[exit 0]",
+    "runId": "699d4eaa-3abc-4c5f-adb9-3a89972f0756",
+    "callId": "call_WOlENcQlfmEcSu0KrwR1VGIs|fc_030f3a0eee7046f9016af0924a8f3087d2b30ce17087735161",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 15,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "bf7206d5-2491-4a86-ab78-cec4f7a42ca9",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "textBlock": {
+     "textSignature": "{\"v\":1,\"id\":\"msg_030f3a0eee7046f9016af0924d83d087d2b95b939964dcecd2\",\"phase\":\"final_answer\"}"
+    },
+    "workStartedAt": 1794150972281,
+    "workFinishedAt": 1794150994030,
+    "text": "*I’d hold the merge.* Reviewed `feature-flags-rules` at `e3396ff` against `main` (`b0de907`). Two findings:\n\n*1. High — unrelated flags share rules*\n`flags/registry.py:13–15`\nThe mutable default `rules=[]` is reused across every two-argument `add_rule` call. Creating a new flag both inherits previous flags’ rules and changes their audiences retroactively.\n\nReproduced:\n```python\ninternal = add_rule('internal', {'role': 'staff'})\nbanner = add_rule('banner', {'plan': 'free'})\ninternal.enabled({'plan': 'free'})  # True — should be False\nbanner.enabled({'role': 'staff'})  # True — should be False\n```\nThis directly violates the documented flag-independence guarantee. Each fresh flag needs its own rule list. Existing tests miss this because they explicitly supply `[]`.\n\n*2. Medium — normalization turns missing/null values into matching strings*\n`flags/match.py:2`\nUnconditional `str(...)` conversion conflates missing/null values with the literal string `\"None\"`:\n```python\nmatches({'region': 'none'}, {})                 # True\nmatches({'region': None}, {'region': 'None'})   # True\n```\nBoth were false on `main`. This can admit contexts that don’t satisfy the configured rule. Preserve missing/null distinctions when normalizing supported string/integer values, and add regression coverage.\n\n*Validation:* All 5 existing tests pass; both findings reproduced with read-only checks. No code or tracked files changed. This checkout has no remote or downstream consumers, so external integration and CI weren’t verified.",
+    "runId": "699d4eaa-3abc-4c5f-adb9-3a89972f0756",
+    "step": {
+     "id": "bf7206d5-2491-4a86-ab78-cec4f7a42ca9",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  }
+ ]
+}

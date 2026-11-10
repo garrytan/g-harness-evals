@@ -1,0 +1,159 @@
+{
+  "trial_id": "rev-21-edition-opus-k2",
+  "task_id": "rev-21",
+  "family": "review",
+  "arm": "edition",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 2,
+  "status": "ok",
+  "reply_text": "I reviewed the `config-merge` branch against `main`. Don't merge it yet: the main feature doesn't do what the README and docs say. I didn't change any code. The tests pass, but they never check nested values.\n\n**Blocking**\n\n1. **The merge isn't deep.** `merge_config` is just `{**base, **override}`, so a nested dict in the user config replaces the whole default dict instead of being merged into it. I ran the docs' own example and got the wrong answer:\n   - Defaults `{'db': {'host': 'h', 'port': 5432}}` plus user `{'db': {'port': 6000}}` gave `{'db': {'port': 6000}}`.\n   - The host default was lost.\n\n   Since this branch exists to layer defaults under the user config, that's the main bug. The README, `docs/config.md` and the 0.3.0 entry in `CHANGES.md` all promise a deep merge.\n2. **The \"neither input is modified\" promise isn't kept.** The result points to the same nested dicts as the inputs, so changing `result['db']['port']` also changes the defaults. A proper deep merge should copy the nested values.\n3. **The tests miss both problems.** They only cover top-level keys. Tests to add:\n   - The nested example from the docs.\n   - A check that the inputs are unchanged after merging, including their nested values.\n   - A three-layer stack in `apply_layers` that has nested keys.\n\n**Should fix**\n\n4. **`freeze` fails on some real configs.**\n   - **Mixed key types:** if a dict has both string and number keys, sorting crashes. I reproduced this.\n   - **Sets:** a set in the config gives a result that can't be hashed, which breaks the caching use the README describes.\n   - **Lists vs. tuples:** a list and a tuple with the same contents freeze to the same value, so they'd count as equal.\n\n   `freeze` is also new but not in the 0.3.0 changelog, and it has no tests.\n\n**Minor / design questions**\n\n5. Decide how a `None` value in a user layer should behave: should it delete the key or override it with `None`? Lists will be replaced, not combined. Both choices should be written down once deep merge exists.\n6. `apply_layers` is fine as written. It will be correct once `merge_config` is, but add a test with nested keys.\n\n**Bottom line:** make `merge_config` a real deep merge that copies nested values, and add tests for nested keys and unchanged inputs. Then this is close to ready.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-21-edition-opus-k2",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.06235690000000001,
+    "input_tokens": 53149,
+    "output_tokens": 1561,
+    "cached_tokens": 50030,
+    "cache_write_tokens": 2660,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000050900000000000004,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.062306,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 18.68,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-21-edition-opus-k2",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:21:21.535Z",
+    "images": {
+      "core": "sha256:e48c8f94d6b77801b71348a2f487e3d9f61914e9a616d4a9ec352a157470f137",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-4c7c36bc6936",
+        "id": "sha256:f3326e60c0db322034b185e4113c31091e7b8469683133ac491bc6ec551e93fb",
+        "tree_sha256": "d9e3a4b2ffbd4a94f4219657ce3513342c06ad2b17d16fc272f9c11c39ee6761"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-27d38d5c-8782-40e0-847f-b1fbde05-0d7d87"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:22:04.094Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git log --oneline main..config-merge; git diff main...config-merge",
+          "code": 0,
+          "output": "77d6a81 Apply a stack of layers\nfb8e4df Merge config layers\ndiff --git a/CHANGES.md b/CHANGES.md\nindex 0badbfc..b9fea17 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.3.0\n+\n+- Deep merge of config layers.\n+\n ## 0.2.0\n \n - Load config layers.\ndiff --git a/README.md b/READ"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-21-edition-opus-k2",
+      "meter": {
+        "requests": 5,
+        "usd": 0.06235690000000001,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.06235690000000001,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000050900000000000004
+    }
+  }
+}

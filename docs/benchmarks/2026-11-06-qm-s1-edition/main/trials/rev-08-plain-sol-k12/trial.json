@@ -1,0 +1,155 @@
+{
+  "trial_id": "rev-08-plain-sol-k12",
+  "task_id": "rev-08",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 12,
+  "status": "ok",
+  "reply_text": "*I’d block shipping on one high-priority bug.*\n\n*P1 — Renewal dates are clamped to the source month, not the target month*  \n`src/schedule.js:6–7`\n\n`daysInMonth(year, month)` checks the month of `from`, but the resulting day is used to construct a date in the following month. This breaks both short-month handling and anchor preservation:\n\n| From | Anchor | Expected renewal | Actual |\n|---|---:|---|---|\n| Jan 31, 2026 | 31 | Feb 28 | Mar 3 |\n| Jan 31, 2024 | 31 | Feb 29 | Mar 2 |\n| Feb 28, 2026 | 31 | Mar 31 | Mar 28 |\n| Apr 30, 2026 | 31 | May 31 | May 30 |\n\nWhen the target month is shorter, JavaScript rolls the invalid date into the following month, skipping the intended renewal month. When the source month is shorter, the renewal happens before the original anchor.\n\n*Recommended fix:* clamp the original `anchorDay` against the number of days in the *target* month. Add regression tests for January → February (including leap years), February → March, and 30-day → 31-day transitions.\n\n*Validation:* All 5 existing tests pass, but an independent sweep of all 31 anchors across every month in 2024–2027 found 54 incorrect results out of 1,488 cases. No additional correctness issues found in the proration logic against its documented calendar-month rule.\n\nReviewed `billing-anniversary` at `f73b00d` against `main` at `7f89e48`. No files changed.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-08-plain-sol-k12",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0462695,
+    "input_tokens": 53983,
+    "output_tokens": 1144,
+    "cached_tokens": 41207,
+    "cache_write_tokens": 12460,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0461367,
+        "requests": 6
+      },
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0001328,
+        "requests": 1
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 18.817,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-08-plain-sol-k12",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T12:41:09.390Z",
+    "images": {
+      "core": "sha256:70e9dbc58d38502117dc97d1c5973af7606fa9e34dfd9ef1126cfa852865f97b",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-21e081ac9005",
+        "id": "sha256:9d1901e9cbe9dd7c6cc1679f3f2f2315a8b8d4116f71cb9bb78474ec360b8ce5",
+        "tree_sha256": "68ef982cf81212089c0222639053e7a07970a508f7dd5990be1a7afc337a9f10"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-16cec15f-4544-4ccf-b094-85317225-784645"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T12:41:51.912Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/0fcf0b7793c556a10bbb9554/e095c468afd42e0b/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/0fcf0b7793c556a10bbb9554/e095c468afd42e0b/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd repo && git status --short && git branch -avv && git remote -v && git config --show-origin --get-regexp 'credential|http\\..*extraheader|core.sshcommand|url\\..*insteadof' || true; cd /root/workspace/repo && find . -maxdepth 3 -type f -not -path './.git/*' | sort && git diff main...billing-annivers",
+          "code": 0,
+          "output": "* billing-anniversary f73b00d Prorate the first partial period\n  main                7f89e48 Subscriptions with a billing anchor day\n./CHANGELOG.md\n./README.md\n./package.json\n./src/anchor.js\n./src/dates.js\n./src/prorate.js\n./src/schedule.js\n./test/anchor.test.js\n./test/prorate.test.js\n./test/schedul"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-08-plain-sol-k12",
+      "meter": {
+        "requests": 7,
+        "usd": 0.0462695,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.0462695,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0001328
+    }
+  }
+}

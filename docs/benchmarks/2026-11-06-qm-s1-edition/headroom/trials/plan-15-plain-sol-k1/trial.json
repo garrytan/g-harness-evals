@@ -1,0 +1,161 @@
+{
+  "trial_id": "plan-15-plain-sol-k1",
+  "task_id": "plan-15",
+  "family": "plan",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "## Backorder plan for crate-commerce\n\nI reviewed the full repo and recent history at commit `8c1a3c6`. **No code changes made.** The existing test passes, but it covers only the warehouse payload’s quantity format.\n\n**Recommendation:** introduce backorders as a separate fulfillment state, not by allowing inventory reservations to go negative. Launch for the web shop first, with per-SKU eligibility and a credible expected ship date.\n\n### What the current code means for this feature\n\n- **Inventory blocks backorders:** `src/inventory.js:6–13` defines availability as `onHand - reserved` and rejects insufficient stock.\n- **Order placement isn’t atomic:** `src/orders.js:5` reserves each line in sequence. I verified that a mixed cart can fail on an out-of-stock line while leaving an earlier line reserved. Fix this as part of the work.\n- **No ETA source or customer UI exists here:** the repo has neither inbound-stock data nor a storefront. We need a source for replenishment dates and an API contract that the storefront can display.\n- **Warehouse quantities must stay non-negative integers:** `docs/warehouse-api.md` says one invalid quantity rejects the entire batch. Simply removing the reservation guard would let `src/warehouse/sync.js` export negative stock.\n- **Marketplace is a separate constraint:** `docs/marketplace.md` requires shipment within two business days, with account suspension for violations. The current feed only checks `marketplace: true`; I verified that it includes an out-of-stock product.\n- **Tax must remain shipment-time:** commit `b6c7e40` explicitly preserves checkout estimates but computes invoice tax when shipping. Delayed fulfillment must not undo that behavior.\n\n### 1. Define eligibility and the ship-date promise\n\nAdd explicit per-SKU backorder settings and replenishment data:\n\n- Whether backorders are allowed.\n- A backorder quantity limit.\n- Expected replenishment date and quantity.\n- Warehouse handling time needed to turn replenishment into an expected ship date.\n\n**Recommended initial policy:** accept a backorder only when the requested quantity has a credible expected ship date; otherwise retain the current rejection. A single ETA per SKU is only sufficient if the incoming supply covers existing commitments plus the new order. Otherwise allocate against dated inbound batches.\n\nExpose an **expected ship date**, clearly distinguished from delivery date. Define timezone, business-day handling, and stale-data rules.\n\n### 2. Separate physical stock from future demand\n\nKeep `reserved` for stock actually on hand. Track backordered quantities separately, linked to order lines and their expected supply.\n\nAn order line should record:\n\n- Requested quantity.\n- Quantity reserved now versus awaiting replenishment.\n- Fulfillment status.\n- Expected ship date shown at checkout.\n\nStore the accepted estimate on the order rather than recomputing historical promises from mutable SKU data. Track later revisions separately.\n\nFor a line exceeding current availability, reserve the available portion and backorder the remainder, subject to eligibility and limits. Reject unknown SKUs and invalid quantities explicitly.\n\n### 3. Make checkout all-or-nothing\n\nReplace the sequential mutation in `src/orders.js` with:\n\n1. Validate the entire cart, combining duplicate-SKU demand.\n2. Calculate allocations and dates for every line.\n3. Reject without changing stock if any line is ineligible.\n4. Commit the order and allocations atomically.\n\nThe current in-memory `Map` is not durable across restarts or safe across multiple service instances. A production implementation needs durable order/allocation storage and concurrency control, plus idempotency for checkout retries.\n\nReturn availability, backordered quantity, and expected ship date for display before purchase and in the confirmation. Revalidate at submission because stock and inbound capacity can change.\n\n### 4. Complete the fulfillment lifecycle\n\nAdd receipt handling that allocates arriving stock to waiting orders in a defined order—FIFO is a sensible default—and moves those quantities into physical reservations.\n\nUpdate `src/shipments.js` so an order cannot ship while its required quantities remain unallocated. On shipment, consume stock and release reservations exactly once.\n\nAlso handle:\n\n- Cancellation releasing physical reservations and future-supply allocations.\n- Delayed replenishment updating estimates and triggering customer notifications.\n- Duplicate receipt/shipment events without double allocation or deduction.\n\n**Suggested first-release scope:** ship each order together, using the latest line-level date as its order-level expected ship date. Split shipments require additional decisions about shipping charges, discounts, invoicing, and tax allocation.\n\n### 5. Protect existing integrations\n\n**Warehouse:** export only physical sellable availability, never backorder demand. Preserve the non-negative-integer contract in `src/warehouse/sync.js`, with validation and alerts for broken inventory invariants.\n\n**Marketplace:** do not syndicate backorder-only availability. Update `src/marketplace/feed.js` to require stock and fulfillment eligibility for the two-business-day promise. Because no marketplace checkout adapter appears in this repo, feed filtering alone cannot guarantee enforcement; any marketplace order-ingestion path also needs the restriction.\n\n**Tax:** retain `tax_estimate` at checkout and calculate final tax at actual shipment using the destination then applicable. Do not freeze tax for a potentially long-delayed order.\n\nCoupons, loyalty, search, and recommendations need no direct changes for this scope.\n\n### Delivery and verification\n\nImplement in this order:\n\n1. Agree on ETA source, limits, and fulfillment policy.\n2. Add durable allocation data and atomic order placement.\n3. Add customer-facing availability/date fields and storefront integration.\n4. Add receipt, cancellation, delay, and shipment handling.\n5. Harden warehouse and marketplace boundaries.\n6. Roll out behind a web-shop backorder flag, initially for selected SKUs.\n\nTests should cover mixed carts without leaked reservations, partial availability, duplicate SKUs, concurrent/retried checkout, missing or exhausted inbound supply, date calculations, cancellations, receipt allocation, shipment blocking, delayed-shipment tax, non-negative warehouse payloads, and marketplace exclusion.\n\n**Decisions needed before implementation:** who owns replenishment dates, whether orders ship together or in parts, when customers are charged, and what happens when a promised date slips. There is no payment integration in this repo, so payment timing needs coordination outside this service.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-15-plain-sol-k1",
+    "requests": 8,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0549028,
+    "input_tokens": 63642,
+    "output_tokens": 2017,
+    "cached_tokens": 51494,
+    "cache_write_tokens": 11824,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0000714,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0548314,
+        "requests": 7
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 8
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 37.14,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-15-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:25:06.521Z",
+    "images": {
+      "core": "sha256:b7fcbeb9f313d1eb923a92e8b0649bdf9e0811fa876ee427c10f1f11f37d9285",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-f2335665f2f4",
+        "id": "sha256:e9db76eba6eb266af6d07bab147f70d1d4a7104e63438b2eb25c3094771b981b",
+        "tree_sha256": "0578853343172f1af534bcb5064e826284d1e3dfd69bed5a34f3c0de76f2c116"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-8561bee9-edf3-4518-9685-cb20d90d-d95c12"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:26:07.182Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/df0ef904cdbfaec07ffcf9c6/31deb61c902bfd96/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/df0ef904cdbfaec07ffcf9c6/31deb61c902bfd96/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git log -5 --oneline && ls -la && find . -maxdepth 3 -type f | sort | head -180",
+          "code": 0,
+          "output": "8c1a3c6 Loyalty points, coupons, recommendations and search\nb6c7e40 Calculate tax at shipment, not at order (TAX-12)\n14adf56 Marketplace feed\na9392eb Inventory, orders and the warehouse sync\ntotal 40\ndrwxr-xr-x 7 root root 4096 Nov  8 03:25 .\ndrwxr-xr-x 4 root root 4096 Nov  8 03:25 ..\ndrwxr-xr-x 5 "
+        },
+        {
+          "seq": 10,
+          "command": "cd /root/workspace/repo && for f in README.md package.json config/* docs/* src/*.js src/marketplace/* src/warehouse/* test/*; do printf '\\n--- %s ---\\n' \"$f\"; nl -ba \"$f\"; done; printf '\\n--- history ---\\n'; git log --all --stat; printf '\\n--- git config ---\\n'; cat .git/config",
+          "code": 0,
+          "output": "\n--- README.md ---\n     1\t# crate-commerce\n     2\t\n     3\tOrder and inventory service for the web shop.\n     4\t\n     5\tRun the tests with npm test.\n\n--- package.json ---\n     1\t{\n     2\t  \"name\": \"crate-commerce\",\n     3\t  \"version\": \"9.1.0\",\n     4\t  \"private\": true,\n     5\t  \"scripts\": {\n     6\t  "
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-15-plain-sol-k1",
+      "meter": {
+        "requests": 8,
+        "usd": 0.0549028,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 8,
+        "usd": 0.0549028,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0000714
+    }
+  }
+}

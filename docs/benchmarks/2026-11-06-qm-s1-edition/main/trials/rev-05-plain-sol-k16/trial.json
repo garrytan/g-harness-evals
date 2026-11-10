@@ -1,0 +1,155 @@
+{
+  "trial_id": "rev-05-plain-sol-k16",
+  "task_id": "rev-05",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 16,
+  "status": "ok",
+  "reply_text": "Found **one merge-blocking issue** in `share-editing`:\n\n**[P1] View-only shares can edit unlocked documents — `src/guard.js:12`**\n\n`share.mask & WRITE === WRITE` is parsed as `share.mask & (WRITE === WRITE)`. Since that comparison is always `true`, it effectively checks bit `1` (`READ`), not `WRITE`.\n\nConfirmed:\n- A viewer (`mask: READ`) gets `canEdit(...) === true`.\n- A write-only share (`mask: WRITE`) is incorrectly denied.\n\nUse `hasRight(share.mask, WRITE) && !share.locked`, consistent with `canComment`, or parenthesize the bitwise operation.\n\nAll six existing tests pass, but they miss this because the editor fixture has both READ and WRITE. Add regression coverage for an unlocked viewer being denied and WRITE-only access being allowed.\n\n**Recommendation:** fix this before merging. No files changed.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-05-plain-sol-k16",
+    "requests": 8,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.045732,
+    "input_tokens": 62885,
+    "output_tokens": 1131,
+    "cached_tokens": 50706,
+    "cache_write_tokens": 11862,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0456176,
+        "requests": 7
+      },
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0001144,
+        "requests": 1
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 8
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 20.733,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-05-plain-sol-k16",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T12:39:54.483Z",
+    "images": {
+      "core": "sha256:ec9867c674526aea911eb4b0f8375fd94b6177daff69d0cd5324a28fae888797",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-896e49561fcd",
+        "id": "sha256:4e0344d2ce83962d9c558e674a1314a313ff4f9db2ba03957a4d67825fb38d73",
+        "tree_sha256": "3745319e560b5b3779257b8b6020c6313b748cb359283f6ff59062054bfd97dd"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-ed954911-cf6a-4ff7-a02c-34c7419b-280593"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T12:40:38.776Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/6f95c88e96d380bb8d8b9eab/2b114f0837866dd5/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/6f95c88e96d380bb8d8b9eab/2b114f0837866dd5/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 10,
+          "command": "cd repo && cat README.md package.json CHANGELOG.md && git diff main...share-editing && find src test -type f",
+          "code": 0,
+          "output": "# notebin\n\nSharing permissions for notebin documents.\n\nEach share stores its rights as a bit mask (src/rights.js): READ 1, COMMENT 2, WRITE 4, ADMIN 8. A viewer link has READ only. An editor has READ, COMMENT and WRITE. The owner has all four.\n\nCheck a right with hasRight(mask, right).\n\n## Locking\n\n"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-05-plain-sol-k16",
+      "meter": {
+        "requests": 8,
+        "usd": 0.045732,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 8,
+        "usd": 0.045732,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0001144
+    }
+  }
+}

@@ -1,0 +1,150 @@
+{
+  "trial_id": "plan-08-plain-opus-k1",
+  "task_id": "plan-08",
+  "family": "plan",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I read the whole repo (it's small) and have a plan below. No code is written yet.\n\n**How the ledger works today**\n- **Capture** (`payments.py`) posts one entry with four lines. It debits customer funds and credits sales in the payment currency. It also posts the settled amount between `fx_clearing` and `bank` in the settlement currency, using an FX rate saved on the payment (`fx_rate_snapshot`).\n- **Chargeback** (`chargebacks.py`) is already a full or partial reversal. It mirrors the capture lines, converts at the rate saved at capture, and sets `reverses=<capture txn_id>`. That matches the rules in `docs/ledger.md`: the journal is append-only, corrections are new reversing entries, and amounts are whole cents.\n- **Webhooks** handle only `payment.captured`, and duplicate events are filtered by event id.\n\n**Plan**\n\n1. **A new `ledger/refunds.py` with `refund(journal, payment, amount_minor, txn_id)`.** It posts an entry of kind `'refund'` with `reverses=payment['txn_id']`, shaped like a chargeback. Full and partial refunds use the same function; a full refund is just `amount_minor == payment['amount_minor']`. I'd move the shared reversal code out of `chargeback` into one helper so the two can't drift apart.\n\n2. **Use the rate saved at capture, never today's rate.** This follows the chargeback approach and is covered by the existing test.\n\n3. **Prevent FX rounding drift across several partial refunds.** Converting each partial amount separately with `convert()` can add up to a cent more or less than the original settled amount. Example: three refunds of 33.33, 33.33 and 33.34 at 1.0850 may not total exactly 108.50. Fix: work out the settled amount for everything refunded so far, subtract what has already been reversed, and post the difference. The final refund then always brings `bank` and `fx_clearing` exactly to zero for that payment. Chargebacks have the same latent bug, so the shared helper fixes both.\n\n4. **Block refunds above the payment amount.** Today nothing stops this, and chargebacks have no check either. The rule should be that refunds plus chargebacks against a payment can never exceed the captured amount. Zero and negative amounts should also be rejected. This needs a way to look up past entries by original payment, such as `Journal.reversals_of(txn_id)`. It's read-only, so the append-only rule still holds.\n\n5. **Refund status is worked out, not stored.** A payment is fully refunded when the amount reversed equals the amount captured. Nothing is updated in place.\n\n6. **Webhooks.** Add a `refund.succeeded` handler (exact event name depends on the provider). It needs to find the original payment. Right now `capture` returns the payment dict but nothing keeps it, so we need either a payment store or the ability to rebuild the payment from its capture entry in the journal. The refund's `txn_id` should come from the provider's refund id, so a resent event can't post twice even if the in-memory dedupe set has been lost.\n\n7. **Reports.** `monthly_totals` adds up all entries, so refunds will lower `sales` automatically. If finance wants refunds shown separately, add a breakdown by entry kind.\n\n8. **Tests** in `tests/test_refunds.py`:\n   - full refund\n   - one partial refund\n   - several partial refunds that bring the settled side exactly to zero (the rounding case)\n   - refund above the remaining amount is refused, including when combined with a chargeback\n   - zero or negative amounts are refused\n   - refund uses the capture rate, not the current one\n   - duplicate webhook\n   - every entry balances\n\n**Questions for you**\n- **Tax:** `tax.py` calculates VAT, but capture never posts any tax lines, so there's nothing to reverse yet. Should a partial refund reverse VAT in proportion once tax is posted? If so, I'd use the same \"remaining amount\" approach, because `vat_minor` rounds down.\n- **Refund fees:** does the provider keep its fee on refunds? If so, we need a fee expense line.\n- **Settlement:** a refund reduces `bank` right away. Is that correct, or does money go out later through a pending or clearing account?\n\nOnce you've answered those, I can turn this into PRs: shared reversal helper and over-refund check first, then refunds, then webhooks.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-08-plain-opus-k1",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.07874239999999999,
+    "input_tokens": 64260,
+    "output_tokens": 2193,
+    "cached_tokens": 60918,
+    "cache_write_tokens": 2867,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000054800000000000004,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0786876,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 24.545,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-08-plain-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:22:10.198Z",
+    "images": {
+      "core": "sha256:2512b1320a1f200aa29d4feccd891da02c162353da5d6999fbf7e855ad83f870",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-c28199eb7594",
+        "id": "sha256:1accefcaf42ad11e5c6139751350a28274f3a98a1102065440672119633a3970",
+        "tree_sha256": "5ba481ef9e809bccf319018e2c7babba4e75e4d29fbca729073994f9ca295dea"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-53f106fe-c9a7-4203-9337-deb97583-f9359d"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:22:58.131Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd ~/workspace/repo && git log --oneline | head -5; find . -type f -not -path './.git/*' | head -50; cat README* 2>/dev/null | head -50",
+          "code": 0,
+          "output": "53db904 Tax lines, monthly report and money formatting\nb5ce733 Dedupe provider webhooks on the event id\nd765916 Chargebacks\n22c9f2c Ledger rules\nf386ad6 Double-entry journal and payment capture\n./README.md\n./tests/__init__.py\n./tests/test_journal.py\n./tests/test_chargebacks.py\n./Dockerfile\n./.gitign"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-08-plain-opus-k1",
+      "meter": {
+        "requests": 6,
+        "usd": 0.07874239999999999,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.07874239999999999,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000054800000000000004
+    }
+  }
+}

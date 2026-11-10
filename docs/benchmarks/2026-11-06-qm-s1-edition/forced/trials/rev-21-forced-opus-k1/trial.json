@@ -1,0 +1,165 @@
+{
+  "trial_id": "rev-21-forced-opus-k1",
+  "task_id": "rev-21",
+  "family": "review",
+  "arm": "forced",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "The branch's main feature doesn't work: `merge_config` only merges the top level, but the docs say it's a deep merge. The tests still pass because none of them use a nested dict. I didn't change any code.\n\n**CRITICAL**\n1. **`config/merge.py:2`: nested settings get wiped out instead of merged.** `{**base, **override}` replaces each top-level key as a whole. I ran the exact example from `docs/config.md`: defaults `{'db': {'host': 'h', 'port': 5432}}` with a user override of `{'db': {'port': 6000}}` returns `{'db': {'port': 6000}}`. The host is lost. Since you layer defaults under the user config, any user who sets one nested key loses every default next to it. This also breaks `apply_layers` in `config/stack.py`, and the README, `docs/config.md` and `CHANGES.md` all describe behaviour the code doesn't have.\n   - **Fix:** when a key holds a dict in both inputs, merge the two dicts recursively. Otherwise take the override's value. Build a new dict each time so neither input is modified, as the docs promise.\n\n**INFORMATIONAL**\n2. **`tests/test_merge.py` and `tests/test_stack.py`: no test uses nested data, which is why CI misses #1.**\n   - **Fix:** add the `db.host`/`db.port` example from the docs as a test, plus one checking that `base` and `override` are unchanged afterwards. Also add a nested case to `test_stack.py`.\n3. **`config/freeze.py:3–6`: `freeze` crashes on two kinds of input.**\n   - A config whose keys mix types, such as `{1: 'x', 'a': 'y'}`, raises `TypeError` because `sorted` can't compare an int with a string. YAML can produce int keys.\n   - A config containing a set is passed back unchanged, so hashing the result fails. I confirmed both.\n   - **Fix:** sort by `(type name, key)` or `repr(key)`, and turn sets into a `frozenset`, freezing each item first.\n\nThe existing test suite passes on this branch.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": true,
+    "first_step": true,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-21-forced-opus-k1",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.07329849999999999,
+    "input_tokens": 87193,
+    "output_tokens": 1559,
+    "cached_tokens": 83543,
+    "cache_write_tokens": 3189,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.00004990000000000001,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0732486,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 20.364,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-forced",
+    "trial_id": "rev-21-forced-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T16:13:37.173Z",
+    "images": {
+      "core": "sha256:d4a2299f4af050d3273f749a4ad36741e6bff486557610fd07e5574a421153c0",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-4c7c36bc6936",
+        "id": "sha256:25ad364a8bbbec8804c3fdd4f509ea3f42e04ab2e1e4c25cc60f6aa3572e05e3",
+        "tree_sha256": "d9e3a4b2ffbd4a94f4219657ce3513342c06ad2b17d16fc272f9c11c39ee6761"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 10973,
+      "sha256": "6f22a213090c75e7d37b9b679fa8d8017a4be7a9c0054237b5ffecb00ba76687"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-0c84d45b-cec3-4a97-ac83-544d37c2-1c9d11"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T16:14:20.860Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 22307,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": "soul",
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd repo; git branch -a; git checkout -q config-merge 2>&1; ls skills/gstack-review/scripts 2>/dev/null; sh skills/gstack-review/scripts/diff-base.sh main 2>&1 || { mb=$(git merge-base main HEAD); git log --oneline $mb..HEAD; git diff --stat $mb; }",
+          "code": 0,
+          "output": "* config-merge\n  main\nsh: 0: cannot open skills/gstack-review/scripts/diff-base.sh: No such file\n77d6a81 Apply a stack of layers\nfb8e4df Merge config layers\n CHANGES.md          |  4 ++++\n README.md           |  4 ++++\n config/__init__.py  |  2 +-\n config/freeze.py    |  6 ++++++\n config/merge.py   "
+        },
+        {
+          "seq": 6,
+          "command": "cd repo; git diff $(git merge-base main HEAD); git status --short; cat config/*.py",
+          "code": 0,
+          "output": "diff --git a/CHANGES.md b/CHANGES.md\nindex 0badbfc..b9fea17 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.3.0\n+\n+- Deep merge of config layers.\n+\n ## 0.2.0\n \n - Load config layers.\ndiff --git a/README.md b/README.md\nindex 8884f85..4eca239 100644\n--- a/README.md\n+++ b/RE"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-21-forced-opus-k1",
+      "meter": {
+        "requests": 6,
+        "usd": 0.07329849999999999,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.07329849999999999,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.00004990000000000001
+    }
+  }
+}

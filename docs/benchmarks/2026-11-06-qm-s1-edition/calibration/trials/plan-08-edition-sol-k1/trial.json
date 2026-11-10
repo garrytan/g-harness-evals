@@ -1,0 +1,176 @@
+{
+  "trial_id": "plan-08-edition-sol-k1",
+  "task_id": "plan-08",
+  "family": "plan",
+  "arm": "edition",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I read the whole repo and its history at `53db904`. Both existing tests pass. **No code changed.**\n\nMy recommendation is to implement refunds as **new, linked journal entries**, not edits to captures, with cumulative amount limits, retry protection, and FX rounding handled from the start.\n\n### What the repo already provides\n\n- `ledger/payments.py` posts a capture across four accounts and returns the captured FX-rate snapshot.\n- `ledger/chargebacks.py` shows the reversal signs and links back through `Entry.reverses`. Its history explicitly requires the **captured rate**, never the current rate.\n- `Journal.post()` enforces balance per currency, but **doesn’t enforce unique transaction IDs, valid reversal references, or reversal limits**.\n- `docs/ledger.md` requires append-only entries and integer minor units.\n- Tax calculation and reporting exist, but tax is not currently part of capture postings.\n\n### Proposed implementation\n\n**1. Define the refund contract.**  \nAdd `ledger/refunds.py` with one operation, following the existing capture/chargeback style. It accepts the original payment, a positive integer amount in its original currency, and a stable refund transaction ID.\n\nA full refund returns the entire captured amount; after partial refunds, returning the remainder completes the refund. Every refund gets `kind='refund'` and `reverses=<capture transaction ID>`.\n\nReject unknown/non-capture originals, inconsistent payment details, invalid amounts—including floats and booleans—and amounts above the refundable remainder. Failed operations must leave the journal unchanged.\n\n**2. Post compensating lines, preserving the capture.**\n\n```text\nOriginal payment → validate remaining amount → calculate settlement reversal\n                 → append balanced refund linked to the capture\n```\n\nThe refund reverses the capture’s account directions:\n\n| Account | Refund amount |\n|---|---:|\n| `sales:<original currency>` | positive |\n| `customer_funds:<original currency>` | negative |\n| `bank:<settlement currency>` | positive |\n| `fx_clearing:<settlement currency>` | negative |\n\nUse the posted capture as the accounting authority, rather than trusting a caller-supplied dictionary alone.\n\n**3. Handle partial-refund rounding cumulatively.**  \nSimply copying `chargeback()` would introduce penny drift: at rate `0.5`, a two-minor-unit capture settles to one unit, but two independently rounded one-unit refunds each settle to zero.\n\nCalculate each refund’s settlement amount as the difference between cumulative rounded reversal targets, using the captured rate. On completion, reverse exactly the original settlement amount remaining. This keeps split refunds equivalent to a full refund.\n\n**4. Make retries safe at the ledger boundary.**  \nA repeated refund ID with identical details should return the existing result without appending; conflicting reuse should fail. A different refund ID must still respect the cumulative limit.\n\nKeep the journal as the source of truth rather than introducing a separate mutable “remaining balance” store. The alternative—a new refund service with its own balance state—adds synchronization risk without benefit in this small, in-memory repo.\n\n### Tests that should gate the change\n\n- Full refund exactly offsets the capture; original entry remains unchanged.\n- Partial refund, successive partials, and final remainder.\n- Over-refund, invalid amounts, invalid original, and mismatched payment details.\n- Identical retry versus conflicting transaction-ID reuse.\n- Original FX snapshot used despite later rate changes.\n- Tiny amounts, half-even rounding, split refunds, and same-currency payments.\n- Per-currency balance, correct `reverses`, and report totals after refunds.\n\n### Scope and operational limits\n\nThe smallest ledger-only version is approximately **five changed/new files**: `ledger/entries.py`, `ledger/refunds.py`, their two test files, and `docs/ledger.md`. No new service, dependency, or deployment artifact.\n\nAn initial journal scan is reasonable for this in-memory implementation; volume is unknown, so I wouldn’t add speculative indexes or caches. Cross-process durability and atomic concurrent posting need a storage design, not an in-process dedupe set.\n\n**Two scope decisions before I finalize the detailed plan:**\n\n1. **Ledger API only, or refund webhooks too?** I recommend ledger-only first. If webhooks are included, their existing dedupe needs attention: `webhooks.py` marks events processed *before* posting succeeds, so a failed event cannot retry in that process.\n2. **Should chargebacks consume the same refundable balance?** I recommend yes, to prevent refunding money already reversed by a chargeback. That requires extending the existing chargeback path and tests, rather than leaving its current unchecked behavior untouched.\n\nProvider payout calls, fees, tax allocation, reporting redesign, and persistence would remain out of scope.",
+  "counts": {
+    "open_matched": true,
+    "open_any": true,
+    "complete_read": true,
+    "first_step": true,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-08-edition-sol-k1",
+    "requests": 8,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0631034,
+    "input_tokens": 75343,
+    "output_tokens": 1959,
+    "cached_tokens": 60027,
+    "cache_write_tokens": 14999,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.00007120000000000001,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0630322,
+        "requests": 7
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 8
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 38.915,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-calibration",
+    "trial_id": "plan-08-edition-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T06:47:59.220Z",
+    "images": {
+      "core": "sha256:3567e7c17a04b80e7a1454cea7d4e459f0fa39dd8671e6daed39af28a6584e2c",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-c28199eb7594",
+        "id": "sha256:2be757ae646e0af949a3c939b7afe63a92ae70ea27f59232070ea6fcd0bc777e",
+        "tree_sha256": "5ba481ef9e809bccf319018e2c7babba4e75e4d29fbca729073994f9ca295dea"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-62cdda82-0a5a-47e3-97bf-cb75e80a-99255a"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T06:49:01.640Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/fc26fcd0d90c67f48268c784/d18c57e7c57e039a/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/fc26fcd0d90c67f48268c784/d18c57e7c57e039a/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [
+        {
+          "seq": 2,
+          "skill": "gstack-plan",
+          "via": "skill"
+        }
+      ],
+      "complete_via": "inline",
+      "read_whole": true,
+      "first_step_runs": [
+        {
+          "seq": 10,
+          "command": "cd repo && git log --oneline -10 && ls -la && git remote -v && git status --short && find . -maxdepth 3 -type f -not -path './.git/*' | sort",
+          "code": 0,
+          "output": "53db904 Tax lines, monthly report and money formatting\nb5ce733 Dedupe provider webhooks on the event id\nd765916 Chargebacks\n22c9f2c Ledger rules\nf386ad6 Double-entry journal and payment capture\ntotal 40\ndrwxr-xr-x 6 root root 4096 Nov  8 06:48 .\ndrwxr-xr-x 4 root root 4096 Nov  8 06:48 ..\ndrwxr-xr-x"
+        },
+        {
+          "seq": 15,
+          "command": "cd repo && git log --format=fuller -5 && git show d765916 && git show b5ce733 && git show 53db904 && python3 -m unittest discover -s tests -t . && git status --short && python3 - <<'PY'\nfrom decimal import Decimal\nfrom ledger.fx import convert\nprint('Per-refund rounding:', [convert(1, Decimal('0.5')",
+          "code": 0,
+          "output": "commit 53db9041687f6196c99d3ff7075392ae9fb6ac81\nAuthor:     Rui Tanaka <rui@example.test>\nAuthorDate: Sat Oct 24 01:00:00 2026 -0700\nCommit:     Rui Tanaka <rui@example.test>\nCommitDate: Sat Oct 24 01:00:00 2026 -0700\n\n    Tax lines, monthly report and money formatting\n\ncommit b5ce733a5b1424dbde3e0f"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-08-edition-sol-k1",
+      "meter": {
+        "requests": 8,
+        "usd": 0.0631034,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 8,
+        "usd": 0.0631034,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.00007120000000000001
+    }
+  }
+}

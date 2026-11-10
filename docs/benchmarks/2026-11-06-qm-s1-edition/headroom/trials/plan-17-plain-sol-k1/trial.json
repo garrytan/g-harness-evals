@@ -1,0 +1,161 @@
+{
+  "trial_id": "plan-17-plain-sol-k1",
+  "task_id": "plan-17",
+  "family": "plan",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I read launchpad-web at `138d6dd`, including the checklist, tracking pipeline, registry, tests, and relevant history. **No code changed; the existing test passes.**\n\n### What’s there\n- Four checklist steps: `profile`, `invite_teammate`, `first_project`, `connect_calendar`.\n- `src/onboarding/checklist.js` updates `state.done` and deduplicates entries, but emits no events.\n- The checklist flag is enabled in `config/flags.json`; this checkout doesn’t show the UI or persistence path.\n- Analytics already has consent gating and an event registry.\n\n### Proposed tracking\n\n| Event | When to emit | Properties |\n|---|---|---|\n| `onboarding_checklist_viewed` | Once when the enabled checklist is actually displayed—not merely when its flag is enabled | `checklist_version` |\n| `onboarding_step_completed` | When a step first transitions from not-done to durably done | `step_id`, `checklist_version` |\n\nUse the four existing step IDs unchanged, and a stable version such as `v1`.\n\n**Completion must mean success, not a click.** Repeated calls to `complete()` must not emit duplicates. Prefer emitting after a successful save; the current helper is a pure state transformation, so I would keep tracking outside it and locate its caller/persistence boundary before implementation. Don’t emit completions while rehydrating existing state.\n\nA separate “checklist completed” event isn’t necessary initially: derive “all four finished” from distinct step completions.\n\n### Product reporting\nFor each checklist-exposure cohort:\n- Unique users completing each step, and completion percentage.\n- Percentage finishing all four.\n- Time from first checklist exposure to each completion.\n- A consistent observation window—recommend starting with seven days.\n\nTreat this as an **unordered checklist**, not a sequential funnel. Historical completions should be identified as baseline state, not presented as newly completed actions.\n\n### Repo-specific requirements and risks\n- **Use `step_id`, never `step`.** The collector silently drops `step`; commit `bb4333f` documents a previous month-long reporting failure from this exact issue.\n- Register both events and their properties in `events/registry.json`. The current test checks literal event names and naming format, **not property schemas or completion behavior**.\n- Use the existing `track()` consent gate. No names, email addresses, invitees, calendar details, or project content in payloads.\n- **Coordinate with data-eng before launch:** `docs/warehouse.md` says new events never reach the warehouse until corresponding dbt models exist in the analytics repo.\n- Confirm identity enrichment and delivery. This checkout queues only event name, properties, and timestamp; it doesn’t establish a stable reporting identity. `beacon.js` removes batches before sending, with no retry/acknowledgment shown. These are gaps to verify, not reasons to claim exactly-once delivery.\n- Neither 1% session replay nor experiment bucketing is needed for this question.\n\n### Validation before rollout\nTest first completion, repeat completion, invalid step, reload/rehydration, failed save, consent off, and checklist hidden by the flag. Then verify sample events **through the collector into the warehouse**, including `step_id` preservation and deduplicated user counts.\n\n**Decisions to settle before implementation:** whether completion belongs to a person or workspace, and what successful action qualifies each step as done—especially “invite teammate” (invite sent versus accepted). Those definitions determine whether the resulting chart answers Product’s actual question.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-17-plain-sol-k1",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0435601,
+    "input_tokens": 51791,
+    "output_tokens": 1254,
+    "cached_tokens": 40696,
+    "cache_write_tokens": 10777,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.000072,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0434881,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 24.962,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-17-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:28:24.457Z",
+    "images": {
+      "core": "sha256:b7fcbeb9f313d1eb923a92e8b0649bdf9e0811fa876ee427c10f1f11f37d9285",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-bd1233fa47cb",
+        "id": "sha256:6ee1a2cca6ee4372a06bdd613464bf8f682136e46f6bec76d044b5fc131df704",
+        "tree_sha256": "0ff9a2223a7ab6e2d6291054d2ce9fb99d281bde27a0ed8bd6e108358eec1553"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-8d902f98-5fa6-468a-93b4-8d0a5a29-fe7cbc"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:29:12.803Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/bc885625d1068c076311c634/bd85d738d13cab38/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/bc885625d1068c076311c634/bd85d738d13cab38/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && find . -not -path './.git/*' -type f -maxdepth 6 -print && printf '\\n--- repository contents ---\\n' && for f in README.md package.json config/* docs/* events/* src/* src/*/* test/*; do if [ -f \"$f\" ]; then printf '\\n--- %s ---\\n' \"$f\"; cat \"$f\"; fi; done; printf '\\n--- rev",
+          "code": 1,
+          "output": "./package.json\n./README.md\n./Dockerfile\n./config/flags.json\n./src/track.js\n./src/onboarding/checklist.js\n./src/reserved.js\n./src/beacon.js\n./src/consent.js\n./src/tour.js\n./src/experiments.js\n./src/replay.js\n./test/registry.test.js\n./docs/warehouse.md\n./docs/tracking-plan.md\n./events/registry.json\n\n-"
+        },
+        {
+          "seq": 11,
+          "command": "cd /root/workspace/repo && printf '\\n--- full history ---\\n' && git log --oneline --all && printf '\\n--- checklist addition ---\\n' && git show 0e39f45 && printf '\\n--- existing naming decision ---\\n' && git show bb4333f && printf '\\n--- tests ---\\n' && npm test && printf '\\n--- unchanged checkout --",
+          "code": 0,
+          "output": "\n--- full history ---\n138d6dd Experiments, session replay and beacon flushing\n0e39f45 Onboarding checklist behind a flag\nbb4333f Rename the tour event's step property to step_id\n4aaa9d4 Warehouse loading\n66410e0 Event tracking\n\n--- checklist addition ---\ncommit 0e39f450de24448fc2dddf03b1991da4b33f6d"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-17-plain-sol-k1",
+      "meter": {
+        "requests": 7,
+        "usd": 0.0435601,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.0435601,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.000072
+    }
+  }
+}

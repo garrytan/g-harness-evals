@@ -1,0 +1,317 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-07 19:23 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "ff8ee7c9-5ef4-4e40-a1d3-c0ae32a36c20"
+    },
+    "text": "Teams keep forking sheetsmith just to add their own export formats. I'd like a plugin hook so they can register custom exporters instead. Can you look through the code and draft a plan? Please don't write code yet.",
+    "runId": "8da0d54c-72a2-4ca7-8560-1f29f024181e"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "29611628-5f7f-48b4-919f-2343ca25e0ff",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "I need to find the sheetsmith code first. Let me check what's available.",
+    "runId": "8da0d54c-72a2-4ca7-8560-1f29f024181e",
+    "step": {
+     "id": "29611628-5f7f-48b4-919f-2343ca25e0ff",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "29611628-5f7f-48b4-919f-2343ca25e0ff",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"ls ~ /tmp/pi-cwd 2>/dev/null; find / -maxdepth 4 -iname \\\"*sheetsmith*\\\" -not -path \\\"/proc/*\\\" 2>/dev/null | head\",\"purpose\":\"Locating sheetsmith code\"}"
+    },
+    "scope": "scoped",
+    "command": "ls ~ /tmp/pi-cwd 2>/dev/null; find / -maxdepth 4 -iname \"*sheetsmith*\" -not -path \"/proc/*\" 2>/dev/null | head",
+    "purpose": "Locating sheetsmith code",
+    "runId": "8da0d54c-72a2-4ca7-8560-1f29f024181e",
+    "callId": "toolu_01VRUpYbjcynEZEAKPdwW3ij",
+    "tool": "execute",
+    "step": {
+     "id": "29611628-5f7f-48b4-919f-2343ca25e0ff",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "29611628-5f7f-48b4-919f-2343ca25e0ff",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"search\",\"query\":\"sheetsmith\"}"
+    },
+    "query": "sheetsmith",
+    "action": "search",
+    "runId": "8da0d54c-72a2-4ca7-8560-1f29f024181e",
+    "callId": "toolu_01GqWuwTPpvrN7weWCCUd3ck",
+    "tool": "memory",
+    "step": {
+     "id": "29611628-5f7f-48b4-919f-2343ca25e0ff",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 2
+    }
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_result",
+   "payload": {
+    "count": 0,
+    "query": "sheetsmith",
+    "action": "search",
+    "result": "[no remembered facts match \"sheetsmith\"]",
+    "runId": "8da0d54c-72a2-4ca7-8560-1f29f024181e",
+    "callId": "toolu_01GqWuwTPpvrN7weWCCUd3ck",
+    "tool": "memory",
+    "isError": false
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root:\nworkspace\n\n[exit 0]",
+    "runId": "8da0d54c-72a2-4ca7-8560-1f29f024181e",
+    "callId": "toolu_01VRUpYbjcynEZEAKPdwW3ij",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "ca087f94-9e9c-42f7-b267-4bbcd1c8ec2e",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"ls -la ~/workspace; which gh && gh auth status 2>&1 | head -3\",\"purpose\":\"Checking workspace and git access\"}"
+    },
+    "scope": "scoped",
+    "command": "ls -la ~/workspace; which gh && gh auth status 2>&1 | head -3",
+    "purpose": "Checking workspace and git access",
+    "runId": "8da0d54c-72a2-4ca7-8560-1f29f024181e",
+    "callId": "toolu_01QtjHYk1tyPbZvAQoh4pmTb",
+    "tool": "execute",
+    "step": {
+     "id": "ca087f94-9e9c-42f7-b267-4bbcd1c8ec2e",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "total 12\ndrwxr-xr-x 3 root root 4096 Nov  8 03:23 .\ndrwx------ 6 root root 4096 Nov  8 03:23 ..\ndrwxr-xr-x 7 root root 4096 Nov  8 03:23 repo\n/usr/local/bin/gh\nYou are not logged into any GitHub hosts. To log in, run: gh auth login\n\n[exit 0]",
+    "runId": "8da0d54c-72a2-4ca7-8560-1f29f024181e",
+    "callId": "toolu_01QtjHYk1tyPbZvAQoh4pmTb",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "420f9db5-d6ee-4569-afac-4f88c7dd9cbb",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd ~/workspace/repo; git log --oneline | head -5; find . -path ./.git -prune -o -type f -print | head -100; cat README* 2>/dev/null | head -60\",\"purpose\":\"Exploring repo structure\"}"
+    },
+    "scope": "scoped",
+    "command": "cd ~/workspace/repo; git log --oneline | head -5; find . -path ./.git -prune -o -type f -print | head -100; cat README* 2>/dev/null | head -60",
+    "purpose": "Exploring repo structure",
+    "runId": "8da0d54c-72a2-4ca7-8560-1f29f024181e",
+    "callId": "toolu_01RzqjCK4ErLaWptHVkQdPrL",
+    "tool": "execute",
+    "step": {
+     "id": "420f9db5-d6ee-4569-afac-4f88c7dd9cbb",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "2c939ac Progress, colours and dev tooling\n6bc4c14 Runtime code loading policy (SEC-31)\na384c42 Exporters must not close the handle they are given\nb0d19e0 tabkit with csv and json exporters\n./tox.ini\n./README.md\n./tests/__init__.py\n./tests/test_cli.py\n./tests/test_import_time.py\n./config/plugins.ini\n./.gitignore\n./pyproject.toml\n./docs/security.md\n./docs/conf.py\n./tabkit/cli.py\n./tabkit/__init__.py\n./tabkit/progress.py\n./tabkit/exporters/__init__.py\n./tabkit/exporters/json_exporter.py\n./tabkit/exporters/csv_exporter.py\n./tabkit/table.py\n./tabkit/colors.py\n./mypy.ini\n# sheetsmith\n\ntabkit: tables on the command line. The package is imported as tabkit.\n\nRun the tests with python3 -m unittest discover -s tests -t .\n\n[exit 0]",
+    "runId": "8da0d54c-72a2-4ca7-8560-1f29f024181e",
+    "callId": "toolu_01RzqjCK4ErLaWptHVkQdPrL",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "f4e257f5-17ae-4868-8f6b-21c99edebdd6",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd ~/workspace/repo; for f in docs/security.md config/plugins.ini pyproject.toml tabkit/exporters/*.py tabkit/cli.py tabkit/__init__.py tabkit/table.py tests/*.py; do echo \\\"=== $f\\\"; cat $f; done; git show a384c42 --stat; git show 6bc4c14 --stat\",\"purpose\":\"Reading exporter and policy code\"}"
+    },
+    "scope": "scoped",
+    "command": "cd ~/workspace/repo; for f in docs/security.md config/plugins.ini pyproject.toml tabkit/exporters/*.py tabkit/cli.py tabkit/__init__.py tabkit/table.py tests/*.py; do echo \"=== $f\"; cat $f; done; git show a384c42 --stat; git show 6bc4c14 --stat",
+    "purpose": "Reading exporter and policy code",
+    "runId": "8da0d54c-72a2-4ca7-8560-1f29f024181e",
+    "callId": "toolu_01NRh6BM7swKLRhnRCtRKjfD",
+    "tool": "execute",
+    "step": {
+     "id": "f4e257f5-17ae-4868-8f6b-21c99edebdd6",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "=== docs/security.md\n# Security\n\nCode that tabkit loads at runtime comes only from modules named in config/plugins.ini under [allowed].\nNo setuptools entry points, no module paths from the command line or environment. After SEC-31 every\nmodule on that list is reviewed before it is added.\n=== config/plugins.ini\n[allowed]\n# module = reviewed-by\n=== pyproject.toml\n[project]\nname = \"sheetsmith\"\nversion = \"4.0.0\"\nrequires-python = \">=3.10\"\n=== tabkit/exporters/__init__.py\n=== tabkit/exporters/csv_exporter.py\nimport csv\n\n\ndef export(rows, fh, dialect='excel'):\n    if not rows:\n        return\n    w = csv.DictWriter(fh, fieldnames=list(rows[0]), dialect=dialect)\n    w.writeheader()\n    w.writerows(rows)\n=== tabkit/exporters/json_exporter.py\nimport json\n\n\ndef export(rows, fh):\n    json.dump(rows, fh, indent=2)\n    fh.write('\\n')\n=== tabkit/cli.py\nimport importlib\nimport sys\n\nEXPORTERS = {\n    'csv': 'tabkit.exporters.csv_exporter',\n    'json': 'tabkit.exporters.json_exporter',\n}\n\n\ndef get_exporter(name):\n    return importlib.import_module(EXPORTERS[name])\n\n\ndef main(argv=None, rows=None, out=None):\n    argv = sys.argv[1:] if argv is None else argv\n    out = out or sys.stdout\n    rows = rows or []\n    get_exporter(argv[0] if argv else 'csv').export(rows, out)\n    out.write('# %d rows\\n' % len(rows))\n    return 0\n=== tabkit/__init__.py\nfrom tabkit.table import Table\n\n__all__ = ['Table']\n=== tabkit/table.py\nclass Table:\n    def __init__(self, rows):\n        self.rows = list(rows)\n\n    def columns(self):\n        return list(self.rows[0]) if self.rows else []\n=== tests/__init__.py\n=== tests/test_cli.py\nimport io\nimport unittest\n\nfrom tabkit.cli import main\n\n\nclass CliTest(unittest.TestCase):\n    def test_summary_follows_every_exporter(self):\n        for fmt in ('csv', 'json'):\n            out = io.StringIO()\n            main([fmt], rows=[{'a': 1}, {'a': 2}], out=out)\n            self.assertTrue(out.getvalue().endswith('# 2 rows\\n'), fmt)\n=== tests/test_import_time.py\n# Shell completion imports tabkit on every keypress, so importing it must stay cheap: no exporter is\n# imported until someone asks for it.\nimport subprocess\nimport sys\nimport unittest\n\n\nclass ImportTimeTest(unittest.TestCase):\n    def test_import_loads_no_exporter(self):\n        code = 'import sys, tabkit, tabkit.cli; print(sorted(m for m in sys.modules if m.startswith(\"tabkit.exporters.\")))'\n        out = subprocess.run([sys.executable, '-B', '-c', code], capture_output=True, text=True, check=True).stdout\n        self.assertEqual(out.strip(), '[]')\ncommit a384c427c9c199fb2f0c6d669afc7d5c0a6f9d8c\nAuthor: Rui Tanaka <rui@example.test>\nDate:   Wed Oct 21 01:00:00 2026 -0700\n\n    Exporters must not close the handle they are given\n    \n    The CLI passes sys.stdout, and the json exporter closed it, so the summary line crashed with\n    'ValueError: I/O operation on closed file' (BUG-52).\n\n tabkit/exporters/json_exporter.py |  1 -\n tests/test_cli.py                 | 12 ++++++++++++\n 2 files changed, 12 insertions(+), 1 deletion(-)\ncommit 6bc4c14cbebeca836fa405af851adbf900141c74\nAuthor: Rui Tanaka <rui@example.test>\nDate:   Thu Oct 22 01:00:00 2026 -0700\n\n    Runtime code loading policy (SEC-31)\n\n config/plugins.ini | 2 ++\n docs/security.md   | 5 +++++\n 2 files changed, 7 insertions(+)\n\n[exit 0]",
+    "runId": "8da0d54c-72a2-4ca7-8560-1f29f024181e",
+    "callId": "toolu_01NRh6BM7swKLRhnRCtRKjfD",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "9978334b-e457-4aec-a527-9b3b5f55fce5",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "CAQSwwYKEAgTGAI4AUIIdGhpbmtpbmcSDOGihCK+21BbO3SWoBoMzQdaU+G0wKStxE4RIjDxjRIv0P4Uj+dP1xJ9eanJsxCOAJyD1S17tysTneTdjr0ygITO876KLJRXGTOCbYUq4AUbJmFkP96JMhVxZmi1T/PjgSQ9sfdhGLjTJHcpB3Rje7pHMfetURNUREjsbTaeAcM50DNAeIvw3ufI0H+bCpBtavL/YlVBj8cRkgjMXptRBXr5fpRTDS4DTmly4/Cc3IgGYzm9rL04iKz3aLYfrfPLdReEC4zWacroLGsOjoAv/JWuLs+dbT2wziSR5AEMIwcP1UqPE1mhiZaf732Dil36ni/W3b9l2AOMnVZnyeAxGTZI/VtAtQALphU5rdh0XKgBsuyqnvq/3dme2AQ/CI9DCyC6to1tBzrKKJtRkb5JUuo3rKrXe/n18/Lcdlty8W/T/5YtRPISsGIozz5C9Jhrzuvn+SwigxjEsT0A/dlHpjr6oUIACCIhRrmZ7z5LnzwvaBVuDU/CjQyWsP5hSVTbURcf1WLj6HLR3ZNGUlid1L20yR7EX/AOvo6h9wxPhKLPKEMm7S9TQNikZkjM46YugM0ajP2BpWf4nJxqlSYMOwUH/z7gDaHgjdrXSeQOR+xsVI9o4dVn8LyQznkgtHS7PSRefk87wQl6Z9sWv4VT3x9wVSwQHFuOdBnUnHMqnQ9vBxklyqZLupiHb5bfbU/gnQgjh1NAhHTgUZ8sZEhDdtvnugJV4rm3PW6P5ddxF+gzZj8LUsNUhKwqbpb6gQF5O1a3OAIDTGsggr8Q/vifLAhN1g9+i3FYomnqY/rkqrbiTGYr3R6G7Q5I2yOLe1aAE5D68MYCAe6A/cW9uozjrM2amImdSNQf1cy2mA3lR2wJFTcl0AKFHmXPno4cPuAS3un1dAWKNTqDsWTiyHtgFcEZlTtKat4cfCYdE8LxAEw8VtzRL1IXRRDs0BBQdBssx5qJN6GWj1aam/BOxR9lAihq5ftjeRWdXA1QoZ2p87J9QLQzshwSX70kqKwMHDtjBASDbUKMz9KEBZmazW/vs8wmnLEZF94nE18Vq+tAkOu089FzBsNv8aIGM6dc7SfGGAE=",
+    "thinking": "I'm holding a few constraints in mind: only the SEC-31 allowlist, no entry points, a lazy import, and the handle must stay open. I'll skip checking progress and colors since they don't look relevant, and draft the plan.\n\n",
+    "runId": "8da0d54c-72a2-4ca7-8560-1f29f024181e",
+    "step": {
+     "id": "9978334b-e457-4aec-a527-9b3b5f55fce5",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "9978334b-e457-4aec-a527-9b3b5f55fce5",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794108235976,
+    "workFinishedAt": 1794108266969,
+    "text": "I read through the repo (`tabkit`, published as `sheetsmith` 4.0.0) and wrote up a plan below. No code changes yet.\n\n## Where things stand\n- Exporters live in a fixed dictionary in `tabkit/cli.py` that maps a format name to a module path. `get_exporter()` only imports the matching module when someone asks for that format.\n- An exporter is just a module with an `export(rows, fh, **opts)` function. There's no base class or registry.\n- That fixed dictionary is why teams fork: the only way to add a format is to edit `cli.py`.\n\n## Rules already in the repo that the design has to follow\n1. **The security policy (SEC-31, `docs/security.md`).** Runtime code can only load from modules listed under `[allowed]` in `config/plugins.ini`, and each one is reviewed before it's added. It explicitly bans setuptools entry points and module paths from the command line or environment variables. So the usual \"discover plugins via entry points\" approach is out, and so is a `--exporter-module` flag.\n2. **Fast imports (`tests/test_import_time.py`).** Shell completion imports tabkit on every keypress, so importing `tabkit` or `tabkit.cli` can't import any exporter. Plugins have to be registered by name and only imported when someone uses that format.\n3. **Exporters must not close the file they're given (BUG-52).** The CLI writes a summary line after exporting, so a plugin that closes stdout would crash it. Plugins will be written by people outside the core team, so the CLI should enforce this instead of trusting them.\n\n## Proposed design\n**1. A formal exporter contract** (new `tabkit/exporters/base.py`, documented)\n- Required: `export(rows, fh, **options)`. It writes to `fh`, never closes it, and returns nothing.\n- Optional metadata: `FORMAT_NAME`, `DESCRIPTION`, `FILE_EXTENSION`.\n- Keep this as a plain-module contract (a duck-typed `Protocol` for mypy). Existing exporters fit it unchanged.\n\n**2. A registry that stays lazy** (new `tabkit/exporters/registry.py`)\n- It holds format names and module paths, never imported modules. It starts with the built-in `csv` and `json`.\n- `get_exporter(name)` imports on first use, checks that the module has a callable `export`, and caches it.\n- If a plugin uses a built-in name, the built-in wins and you get an error rather than a silent override. Open question below.\n\n**3. Plugins declared through the existing allowlist**\n- Extend `config/plugins.ini` with an `[exporters]` section, e.g. `parquet = acme_tabkit.parquet`.\n- When loading, every module in `[exporters]` must also appear in `[allowed]`, or it's refused with a clear error naming the SEC-31 policy. That keeps the reviewed allowlist as the single gate.\n- Read the config lazily on the first exporter lookup, not at import time, so completion stays fast. If the ini parse proves slow, cache it.\n- Nothing comes from entry points, command-line flags or environment variables.\n\n**4. A Python API for teams that embed tabkit**\n- `tabkit.exporters.register(name, module_path)` takes a module path string, not a module object, so laziness is preserved.\n- **Open question:** should this API also be checked against `[allowed]`? I'd say yes, so the policy can't be bypassed. That needs confirmation from whoever owns SEC-31 (Rui Tanaka wrote that commit).\n\n**5. Hardening the CLI against misbehaving plugins**\n- Pass exporters a wrapper around `out` whose `close()` does nothing, or check `out.closed` afterwards and raise an error that names the plugin. Either way the BUG-52 crash can't come back through a third-party exporter.\n- Give unknown format names a helpful error listing the available formats, instead of the current bare `KeyError`.\n\n**6. Small extras**\n- A `--list-formats` option that reads names and descriptions from the registry and config without importing plugins.\n- Mention the hook in the README and add a \"writing an exporter\" page under `docs/`.\n\n## Tests to add\n- Importing `tabkit` still loads no exporter, even with `[exporters]` filled in. This is the existing test plus a configured variant.\n- A plugin listed in `[exporters]` but missing from `[allowed]` is rejected.\n- No entry-point or environment-variable route exists (a regression guard for SEC-31).\n- A fake plugin that calls `fh.close()` produces a clear error or is neutralised, and the summary line still prints.\n- Name collisions with built-ins, unknown formats and a module with no `export` function are all handled.\n- The existing summary-line test runs across built-ins and a fixture plugin.\n\n## Rollout\n1. Add the contract and registry, and move the built-ins onto them with no behaviour change.\n2. Add the `[exporters]` config section and the allowlist check, plus a security doc update for SEC-31 sign-off.\n3. Add the CLI hardening and `--list-formats`.\n4. Write the docs and tell the teams who forked. Their exporters should port with only a config line, as long as they don't close the handle.\n\n## Decisions I need from you\n- Can plugins override `csv`/`json`, or are built-in names reserved?\n- Should `register()` from Python be subject to the allowlist? I recommend yes.\n- Should `config/plugins.ini` stay the only config location, or do teams need a per-user or per-project file? An extra file would need security review, because SEC-31 implies a single reviewed list.\n\nOnce you've answered those, I can turn this into issues or start on step 1.",
+    "runId": "8da0d54c-72a2-4ca7-8560-1f29f024181e",
+    "step": {
+     "id": "9978334b-e457-4aec-a527-9b3b5f55fce5",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-22-plain-opus-k11",
+  "task_id": "rev-22",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 11,
+  "status": "ok",
+  "reply_text": "I'd hold off on merging. The coupon math in `src/total.js` charges tax on the full subtotal, before the coupon comes off. The README says the coupon comes off first and tax is charged on what's left, so this overcharges any order that uses a coupon. All the current tests pass, but only because none of them uses a coupon.\n\n**Must fix**\n\n1. **Tax is charged on money the customer didn't pay.** Line 6 is `tax(subtotal, taxPercent)` and should be `tax(subtotal - discount, taxPercent)`. I ran a $100 order with a 20% coupon and 10% tax: it comes to **$90.00**, and the right total is **$88.00** ($80 + $8 tax).\n\n2. **Coupons over 100% aren't capped.** `total.js` uses `pct` and ignores `couponValue` in the new `src/coupon.js`, which does cap the percent between 0 and 100. A 150% coupon on $100 gives a total of **–$50.00**. Using `couponValue(subtotal, couponPercent)` would fix this and also means `coupon.js` actually gets used, since right now nothing calls it.\n\n3. **No test uses a coupon.** Both tests in `test/total.test.js` have the coupon at zero, which is how bug 1 got through. I'd add:\n   - 20% coupon, 10% tax on $100 → expect 8800 (in cents, $88.00)\n   - coupon over 100% → total is never below tax plus shipping\n   - a rounding case with an odd subtotal, e.g. 999 cents at 15% off\n\n**Worth a look**\n\n4. **Free shipping isn't connected to checkout.** `computeTotal` takes `shipping` as a number, and nothing in this branch calls `shippingFor`. Whatever code does call it has to pass the subtotal *before* the coupon, as the README says. Otherwise a $80 order with 10% off would lose free shipping. A short comment or a test there would stop this from drifting.\n5. **The CHANGELOG is missing free shipping.** The 1.4.0 entry only lists coupons, but the second commit adds free shipping too.\n\n`shipping.js` and its threshold test are fine (exactly $75.00 ships free, $74.99 doesn't). I haven't changed anything in the repo.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-22-plain-opus-k11",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.056298,
+    "input_tokens": 52694,
+    "output_tokens": 1281,
+    "cached_tokens": 49599,
+    "cache_write_tokens": 2623,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.0000542,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.056243800000000004,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 16.954,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-22-plain-opus-k11",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:48:13.204Z",
+    "images": {
+      "core": "sha256:e48c8f94d6b77801b71348a2f487e3d9f61914e9a616d4a9ec352a157470f137",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-808f1519d24a",
+        "id": "sha256:69e8dc91f4f297df1a91abe414371da5ed02bfa309f98ec1b45ae849af4c1aaf",
+        "tree_sha256": "4b08892c391c0a2a74732d9e93532fae131ccaac0d120f4af10749880f849213"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-2d699431-9c3a-496f-b17f-c14aa010-230c56"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:48:53.442Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..coupon-checkout; git diff main...coupon-checkout",
+          "code": 0,
+          "output": "* coupon-checkout\n  main\na68c0e7 Free shipping over a threshold\naba236a Apply coupons at checkout\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 38c8cb7..009d9c7 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.4.0\n+\n+- Coupons at checkout.\n+\n ## 1.3.0\n \n - Subtotal "
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-22-plain-opus-k11",
+      "meter": {
+        "requests": 5,
+        "usd": 0.056298,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.056298,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.0000542
+    }
+  }
+}

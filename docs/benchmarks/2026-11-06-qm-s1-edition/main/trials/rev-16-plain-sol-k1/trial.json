@@ -1,0 +1,155 @@
+{
+  "trial_id": "rev-16-plain-sol-k1",
+  "task_id": "rev-16",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I’d fix these before merging. Reviewed `excerpt-helper` (`59856d7`) against `main`; no files changed.\n\n1. **[P1] The helpers aren’t connected to card rendering.**  \n   `src/card.js:1–2` still returns `entry.body.trim()`. Nothing calls `toPlain` or `excerpt`, so cards continue showing the full Markdown body. The branch adds helpers but doesn’t deliver the card-preview behavior.\n\n2. **[P1] Short text gets truncated, and every result gets an ellipsis.**  \n   `src/excerpt.js:6–8` always searches for a space and appends `…`, even when the input fits:\n   - `excerpt('hello world', 20)` → `'hello…'`\n   - `excerpt('', 20)` → `'…'`\n\n   This contradicts the documented unchanged-input behavior. Check whether truncation is needed before finding a cut point.\n\n3. **[P2] A word ending exactly at the limit is unnecessarily dropped.**  \n   `src/words.js:2–3` excludes the character at index `limit` when searching for a space. For `excerpt('one two three', 7)`, the space immediately after `two` is a valid boundary, but the result is `'one…'` rather than `'one two…'`. The existing words test actually enshrines this off-by-one behavior.\n\n4. **[P2] Markdown flattening deletes literal content and leaves markup behind.**  \n   `src/plain.js:3–4` removes marker characters without considering their context:\n   - `'snake_case'` → `'snakecase'`, despite the underscore being literal.\n   - `'# Hello'` remains `'# Hello'`.\n   - `'![photo](https://x)'` → `'!photo'`.\n   - `'[link](https://example.com/a(b))'` → `'link)'`.\n\n   A Markdown-aware conversion would avoid altering literal text and handle these valid constructs.\n\n**Validation:** all four existing tests pass, but the edge-case checks above reproduce these problems. Coverage should include short/empty inputs, exact-limit boundaries, literal Markdown characters, and a card-level test exercising the full conversion path.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-16-plain-sol-k1",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0447776,
+    "input_tokens": 53399,
+    "output_tokens": 1126,
+    "cached_tokens": 41339,
+    "cache_write_tokens": 11751,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0000702,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.044707399999999994,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 22.971,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-16-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T12:51:17.903Z",
+    "images": {
+      "core": "sha256:217d5f3a14919e23171c0717454f5004d418ea2efb0cefab7b4d405627cbdca8",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-390fc44053b9",
+        "id": "sha256:baecafbc69149f2513818447bd1cada0fd5df21af8eceacb34d63cec48cad43b",
+        "tree_sha256": "bd9012866b0fbf456fcbf2fcb6e8b6cf4c5710236994765c2f5965835746e504"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-3f172d9c-cac7-4f83-b3e1-8fa83d38-6f807b"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T12:52:04.492Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/c6777dd16e39a9628919c997/07168d22a4a5dc82/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/c6777dd16e39a9628919c997/07168d22a4a5dc82/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git config --show-origin --get-regexp 'credential|core.sshCommand|http\\..*extraheader|url\\..*insteadOf' || true; cd /root/workspace/repo && ls -la && git diff main...excerpt-helper --stat && git diff main...excerpt-",
+          "code": 0,
+          "output": "* excerpt-helper 59856d7 Strip markdown before excerpting\n  main           fb7eac6 Render cards from entries\ntotal 32\ndrwxr-xr-x 5 root root 4096 Nov  8 12:51 .\ndrwxr-xr-x 4 root root 4096 Nov  8 12:51 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 12:51 .git\n-rw-r--r-- 1 root root   89 Nov  8 12:35 CHANGELO"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-16-plain-sol-k1",
+      "meter": {
+        "requests": 7,
+        "usd": 0.0447776,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.0447776,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0000702
+    }
+  }
+}

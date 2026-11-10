@@ -1,0 +1,156 @@
+{
+  "trial_id": "rev-11-plain-opus-k13",
+  "task_id": "rev-11",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 13,
+  "status": "ok",
+  "reply_text": "I'd hold off merging this. The free-text search puts the user's text straight into the SQL, which is a SQL injection hole. The rest is small stuff. Tests pass, and I didn't change anything.\n\n**Must fix before merge**\n\n- **SQL injection in `src/query.js`.** `\"name ILIKE '%\" + term + \"%'\"` pastes the user's search text into the SQL. A search for `x' OR '1'='1` changes what the query does. The README says request values must never go into the SQL string. The fix is to add a placeholder and push the value to params, like category does:\n  ```js\n  params.push('%' + term + '%');\n  clauses.push('name ILIKE $' + params.length);\n  ```\n  You may also want to escape `%`, `_` and `\\` in the term so users can't send their own wildcards.\n- **The tests don't catch it.** The new tests only check that the WHERE text contains `/name ILIKE/`. Better to check the exact output, e.g. `{ where: 'WHERE name ILIKE $1', params: ['%red%'] }`, plus a test with a quote in the term.\n\n**Should fix**\n\n- **A test was deleted.** The old `in-stock is a literal condition` test is gone. It wasn't replaced, only partly covered by the combined test. Worth keeping.\n- **Renaming `buildFilters` to `buildWhere` breaks anything that imports it.** Nothing in this repo uses the old name, but other code that does will break. Either keep `buildFilters` as an alias for now or add it to the CHANGELOG as a breaking change.\n- **Empty search text adds a filter anyway.** A term like `\"   \"` still adds `name ILIKE '%%'`, which matches everything. Check that the term is non-empty *after* trimming.\n\n**Nits**\n\n- **The default sort may fail.** `relevance` sorts by `rank DESC`, which needs a `rank` column, and it's the default even when there's no search text. Check that the column exists, or default to `newest` when there's no term.\n- **`src/sort.js` has no tests.** A quick one for the default when the sort is unknown would help.\n- **Misleading name in `paginate.js`.** `MAX_PAGE` is really the maximum page *size*, so `MAX_PAGE_SIZE` is clearer. The paging logic itself looks right.\n- **The CHANGELOG doesn't mention pagination.** It's missing from the 0.6.0 entry.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-11-plain-opus-k13",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0907582,
+    "input_tokens": 73705,
+    "output_tokens": 1533,
+    "cached_tokens": 67399,
+    "cache_write_tokens": 5840,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000050400000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.09070779999999999,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 19.455,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-11-plain-opus-k13",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:07:41.061Z",
+    "images": {
+      "core": "sha256:d3c15a4ff59b46b682cc0b498a5b96d657f86e2d1ac9a8b947b4fb5d8b1c3302",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-a37a4db49ad7",
+        "id": "sha256:6c659f1b0432cea1eb0db9b19f43ea8bfa0f2f02c7a83d5ad91b5d10171f8a8e",
+        "tree_sha256": "593d02dc02e96eab384f83c52971c5fda6586bcbeb5e6f14ef27e349edfe0b1b"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-a01840ca-e6ab-41ea-ae17-064d6a4c-b54ac4"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:08:23.863Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /tmp/pi-cwd/repo; git branch -a; git log --oneline main..search-filters; git diff main...search-filters",
+          "code": 129,
+          "output": "[stderr]\nsh: 1: cd: can't cd to /tmp/pi-cwd/repo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_A"
+        },
+        {
+          "seq": 6,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..search-filters; git diff main...search-filters",
+          "code": 0,
+          "output": "  main\n* search-filters\n54f7b81 Paginate search results\n306a556 Add free-text search over the name\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex d29661f..a673868 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.6.0\n+\n+- Free-text product search and sort orders.\n+\n #"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-11-plain-opus-k13",
+      "meter": {
+        "requests": 6,
+        "usd": 0.0907582,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.0907582,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000050400000000000005
+    }
+  }
+}

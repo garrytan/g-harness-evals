@@ -1,0 +1,150 @@
+{
+  "trial_id": "plan-24-plain-opus-k1",
+  "task_id": "plan-24",
+  "family": "plan",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I've read through the whole repo and put together a plan below. I haven't changed any code.\n\n**One thing to know first:** there's no command-line front end or task model in the repo yet. There's no `add`, `done` or `list`, and no `[project.scripts]` entry in `pyproject.toml`. Most modules (`sync.py`, `notify.py`, `completion.py`) are one-line stubs. What exists is storage with migrations (`store.py`, `migrations.py`, currently at version 3), plain-date due dates (`dates.py`) and tags. So the plan has to say where recurrence hooks into the commands, and those commands don't exist yet. Do you have them on another branch, or should building them be part of this work?\n\n## Plan: recurring tasks\n\n**1. How a repeat is stored (in a new `todo/recurrence.py`)**\nSave the rule as structured data rather than the text the user typed:\n```json\n\"repeat\": {\"freq\": \"weekly\", \"interval\": 1, \"weekdays\": [\"mon\"]}\n\"repeat\": {\"freq\": \"monthly\", \"interval\": 1, \"monthday\": 1}\n```\n- Allowed values: `freq` is daily, weekly, monthly or yearly. `interval` is ≥1. Weekly rules take `weekdays`; monthly rules take `monthday` (1–31, or -1 for the last day).\n- This is a deliberately small subset of the calendar standard's repeat rules (RRULE), with no new dependency. It can be stored as an RRULE string later if we need to export to calendars.\n\n**2. Reading what the user types**\nAdd `parse_repeat(text)` next to `parse_due`, covering a fixed set of phrases: \"daily\", \"every day\", \"every Monday\", \"every Mon and Thu\", \"every 2 weeks\", \"weekly\", \"monthly\", \"the 1st of each month\", \"every month on the 15th\", \"last day of the month\" and \"yearly\". Anything it doesn't recognise gets a clear error message instead of a guess.\n\n**3. Working out the next date**\n`next_occurrence(rule, after: date) -> date`, built only on `datetime.date`:\n- **Count from the scheduled due date, not the day it was completed.** Otherwise the date drifts: a Monday task finished on Wednesday would move to Wednesdays.\n- **If the user is behind**, the next date is the first one after today, so finishing it once doesn't leave a pile of overdue copies.\n- **Short months:** a rule for the 31st falls on the last day of shorter months, and Feb 29 falls on Feb 28 in non-leap years. The rule keeps the original day so it goes back to the 31st in long months.\n- No times or time zones, which matches the commit that made due dates plain dates.\n\n**4. What happens when a recurring task is marked done**\nThe finished task stays done as history, and a new copy is created with the next due date and the same title, tags and repeat rule. Every copy shares a `series_id`, so they can be listed or stopped together. Commands:\n- `add --repeat \"every monday\"`, with the first due date defaulting to the next matching day.\n- `done <id>` creates the next copy.\n- `repeat <id> --stop` turns off repeating.\n- `skip <id>` moves to the next date without completing this one.\n\n**5. Storage change: version 3 → 4**\nFollowing `docs/storage.md`, set `SCHEMA_VERSION = 4` and add a `_3_to_4` step that gives existing tasks `repeat: null` and `series_id: null`. Older files then upgrade when they load. Older copies of the app opening a version-4 file is a separate question: I'd make `upgrade()` refuse files newer than it understands, so they aren't silently mishandled.\n\n**6. Other parts of the app**\n- **Sync:** if two devices both complete the same occurrence, the next task could be created twice. To prevent that, check for an existing task with the same `series_id` and due date before creating one.\n- **Reminders (`notify.py`):** no logic change. The message could say \"(repeats weekly)\".\n- **List and colours:** show a ↻ marker. Overdue is still based on the current copy only.\n- **Shell completion:** add `--repeat` and offer the common phrases.\n\n**7. Tests (unittest, like the existing ones)**\n- Parsing each supported phrase, and rejecting bad input.\n- `next_occurrence` cases: across a year boundary, 31st → Feb 28/29, \"last day of the month\", every 2 weeks, and catching up when behind.\n- The version 3→4 upgrade, plus a check that a version-4 file round-trips through `atomic_write`.\n- Completing a task creates exactly one next copy, including when the same completion arrives twice through sync.\n\n**Suggested order:** steps 1 to 3 plus their tests first (self-contained, no command line needed), then the storage change in step 5, then the commands in step 4 once the command-line front end exists, then step 6.\n\n**Questions for you:**\n- Should the next copy be created when the task is completed (my suggestion), or should every upcoming one show in advance?\n- Do you need repeats counted from the completion date, like \"3 days after I last did it\"? That's easy to add as an option later.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-24-plain-opus-k1",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0911865,
+    "input_tokens": 78486,
+    "output_tokens": 2532,
+    "cached_tokens": 74773,
+    "cache_write_tokens": 3230,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000055900000000000004,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0911306,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 29.691,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-24-plain-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:23:44.366Z",
+    "images": {
+      "core": "sha256:276503dbf085b3b0855b3ecb1bcc7e1a4baa8571aea7cba84ecb4236755d85c7",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-377b05c19a0c",
+        "id": "sha256:cc60a600c694a25abfac80e11d514980687f4209a0d4e090aedf33a7992047af",
+        "tree_sha256": "4312fa1bc4c58a171f954eba1b92789847687c657a019bb970d29bd45bfd50f3"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-3a14a670-b94b-46e5-8223-66e57cc8-9cfe29"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:24:37.887Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd ~/workspace/repo; git log --oneline|head -5; find . -type f -not -path './.git/*' | head -50; cat README* 2>/dev/null | head -60",
+          "code": 0,
+          "output": "99af59f Colours, tags, sync, reminders and shell completion\n4387810 Store due dates as plain dates, not datetimes\n827c74e Write the task file atomically\n2f70f54 Command-line to-do list with a JSON file\n./README.md\n./tests/test_dates.py\n./tests/__init__.py\n./tests/test_store.py\n./tests/test_migration"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-24-plain-opus-k1",
+      "meter": {
+        "requests": 7,
+        "usd": 0.0911865,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.0911865,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000055900000000000004
+    }
+  }
+}

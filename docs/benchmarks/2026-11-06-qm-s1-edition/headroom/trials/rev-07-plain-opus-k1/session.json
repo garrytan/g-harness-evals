@@ -1,0 +1,389 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-07 19:27 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "3218a1b8-0acb-4137-8991-f35c7db59c36"
+    },
+    "text": "quick one: can you review http-retries vs main? It touches the client every worker uses so I want a careful look before it merges. Don't modify anything, just report back.",
+    "runId": "f3138b03-3794-4139-8f92-fa4955a02394"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "7ffd6e21-b413-4e95-a051-0a606e932c6d",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "I need to find the repo first.",
+    "runId": "f3138b03-3794-4139-8f92-fa4955a02394",
+    "step": {
+     "id": "7ffd6e21-b413-4e95-a051-0a606e932c6d",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "7ffd6e21-b413-4e95-a051-0a606e932c6d",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /tmp/pi-cwd 2>/dev/null; ls; git -C . branch -a 2>&1 | head; ls ~ /workspace 2>/dev/null | head -30\",\"purpose\":\"Locating the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /tmp/pi-cwd 2>/dev/null; ls; git -C . branch -a 2>&1 | head; ls ~ /workspace 2>/dev/null | head -30",
+    "purpose": "Locating the repository",
+    "runId": "f3138b03-3794-4139-8f92-fa4955a02394",
+    "callId": "toolu_01BnF9iiU8ThhQS9ea21WHof",
+    "tool": "execute",
+    "step": {
+     "id": "7ffd6e21-b413-4e95-a051-0a606e932c6d",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "repo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n/root:\nworkspace\n\n[exit 0]",
+    "runId": "f3138b03-3794-4139-8f92-fa4955a02394",
+    "callId": "toolu_01BnF9iiU8ThhQS9ea21WHof",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "93657c6b-9b6e-490b-8f59-e80215e8d1d3",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /tmp/pi-cwd/repo; git branch -a; git log --oneline main..http-retries; git diff main...http-retries --stat; git diff main...http-retries\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /tmp/pi-cwd/repo; git branch -a; git log --oneline main..http-retries; git diff main...http-retries --stat; git diff main...http-retries",
+    "purpose": "Reading the branch diff",
+    "runId": "f3138b03-3794-4139-8f92-fa4955a02394",
+    "callId": "toolu_01NFXm2PF1P7KvEMh7eapCfU",
+    "tool": "execute",
+    "step": {
+     "id": "93657c6b-9b6e-490b-8f59-e80215e8d1d3",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 129,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "[stderr]\nsh: 1: cd: can't cd to /tmp/pi-cwd/repo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nwarning: Not a git repository. Use --no-index to compare two paths outside a working tree\nusage: git diff --no-index [<options>] <path> <path>\n\nDiff output format options\n    -p, --patch           generate patch\n    -s, --no-patch        suppress diff output\n    -u                    generate patch\n    -U, --unified[=<n>]   generate diffs with <n> lines context\n    -W, --function-context\n                          generate diffs with <n> lines context\n    --raw                 generate the diff in raw format\n    --patch-with-raw      synonym for '-p --raw'\n    --patch-with-stat     synonym for '-p --stat'\n    --numstat             machine friendly --stat\n    --shortstat           output only the last line of --stat\n    -X, --dirstat[=<param1,param2>...]\n                          output the distribution of relative amount of changes for each sub-directory\n    --cumulative          synonym for --dirstat=cumulative\n    --dirstat-by-file[=<param1,param2>...]\n                          synonym for --dirstat=files,param1,param2...\n    --check               warn if changes introduce conflict markers or whitespace errors\n    --summary             condensed summary such as creations, renames and mode changes\n    --name-only           show only names of changed files\n    --name-status         show only names and status of changed files\n    --stat[=<width>[,<name-width>[,<count>]]]\n                          generate diffstat\n    --stat-width <width>  generate diffstat with a given width\n    --stat-name-width <width>\n                          generate diffstat with a given name width\n    --stat-graph-width <width>\n                          generate diffstat with a given graph width\n    --stat-count <count>  generate diffstat with limited lines\n    --compact-summary     generate compact summary in diffstat\n    --binary              output a binary diff that can be applied\n    --full-index          show full pre- and post-image object names on the \"index\" lines\n    --color[=<when>]      show colored diff\n    --ws-error-highlight <kind>\n                          highlight whitespace errors in the 'context', 'old' or 'new' lines in the diff\n    -z                    do not munge pathnames and use NULs as output field terminators in --raw or --numstat\n    --abbrev[=<n>]        use <n> digits to display object names\n    --src-prefix <prefix>\n                          show the given source prefix instead of \"a/\"\n    --dst-prefix <prefix>\n                          show the given destination prefix instead of \"b/\"\n    --line-prefix <prefix>\n                          prepend an additional prefix to every line of output\n    --no-prefix           do not show any source or destination prefix\n    --inter-hunk-context <n>\n                          show context between diff hunks up to the specified number of lines\n    --output-indicator-new <char>\n                          specify the character to indicate a new line instead of '+'\n    --output-indicator-old <char>\n                          specify the character to indicate an old line instead of '-'\n    --output-indicator-context <char>\n                          specify the character to indicate a context instead of ' '\n\nDiff rename options\n    -B, --break-rewrites[=<n>[/<m>]]\n                          break complete rewrite changes into pairs of delete and create\n    -M, --find-renames[=<n>]\n                          detect renames\n    -D, --irreversible-delete\n                          omit the preimage for deletes\n    -C, --find-copies[=<n>]\n                          detect copies\n    --find-copies-harder  use unmodified files as source to find copies\n    --no-renames          disable rename detection\n    --rename-empty        use empty blobs as rename source\n    --follow              continue listing the history of a file beyond renames\n    -l <n>                prevent rename/copy detection if the number of rename/copy targets exceeds given limit\n\nDiff algorithm options\n    --minimal             produce the smallest possible diff\n    -w, --ignore-all-space\n                          ignore whitespace when comparing lines\n    -b, --ignore-space-change\n                          ignore changes in amount of whitespace\n    --ignore-space-at-eol\n                          ignore changes in whitespace at EOL\n    --ignore-cr-at-eol    ignore carrier-return at the end of line\n    --ignore-blank-lines  ignore changes whose lines are all blank\n    -I, --ignore-matching-lines <regex>\n                          ignore changes whose all lines match <regex>\n    --indent-heuristic    heuristic to shift diff hunk boundaries for easy reading\n    --patience            generate diff using the \"patience diff\" algorithm\n    --histogram           generate diff using the \"histogram diff\" algorithm\n    --diff-algorithm <algorithm>\n                          choose a diff algorithm\n    --anchored <text>     generate diff using the \"anchored diff\" algorithm\n    --word-diff[=<mode>]  show word diff, using <mode> to delimit changed words\n    --word-diff-regex <regex>\n                          use <regex> to decide what a word is\n    --color-words[=<regex>]\n                          equivalent to --word-diff=color --word-diff-regex=<regex>\n    --color-moved[=<mode>]\n                          moved lines of code are colored differently\n    --color-moved-ws <mode>\n                          how white spaces are ignored in --color-moved\n\nOther diff options\n    --relative[=<prefix>]\n                          when run from subdir, exclude changes outside and show relative paths\n    -a, --text            treat all files as text\n    -R                    swap two inputs, reverse the diff\n    --exit-code           exit with 1 if there were differences, 0 otherwise\n    --quiet               disable all output of the program\n    --ext-diff            allow an external diff helper to be executed\n    --textconv            run external text conversion filters when comparing binary files\n    --ignore-submodules[=<when>]\n                          ignore changes to submodules in the diff generation\n    --submodule[=<format>]\n                          specify how differences in submodules are shown\n    --ita-invisible-in-index\n                          hide 'git add -N' entries from the index\n    --ita-visible-in-index\n                          treat 'git add -N' entries as real in the index\n    -S <string>           look for differences that change the number of occurrences of the specified string\n    -G <regex>            look for differences that change the number of occurrences of the specified regex\n    --pickaxe-all         show all changes in the changeset with -S or -G\n    --pickaxe-regex       treat <string> in -S as extended POSIX regular expression\n    -O <file>             control the order in which files appear in the output\n    --rotate-to <path>    show the change in the specified path first\n    --skip-to <path>      skip the output to the specified path\n    --find-object <object-id>\n                          look for differences that change the number of occurrences of the specified object\n    --diff-filter [(A|C|D|M|R|T|U|X|B)...[*]]\n                          select files by diff type\n    --output <file>       output to a specific file\n\nwarning: Not a git repository. Use --no-index to compare two paths outside a working tree\nusage: git diff --no-index [<options>] <path> <path>\n\nDiff output format options\n    -p, --patch           generate patch\n    -s, --no-patch        suppress diff output\n    -u                    generate patch\n    -U, --unified[=<n>]   generate diffs with <n> lines context\n    -W, --function-context\n                          generate diffs with <n> lines context\n    --raw                 generate the diff in raw format\n    --patch-with-raw      synonym for '-p --raw'\n    --patch-with-stat     synonym for '-p --stat'\n    --numstat             machine friendly --stat\n    --shortstat           output only the last line of --stat\n    -X, --dirstat[=<param1,param2>...]\n                          output the distribution of relative amount of changes for each sub-directory\n    --cumulative          synonym for --dirstat=cumulative\n    --dirstat-by-file[=<param1,param2>...]\n                          synonym for --dirstat=files,param1,param2...\n    --check               warn if changes introduce conflict markers or whitespace errors\n    --summary             condensed summary such as creations, renames and mode changes\n    --name-only           show only names of changed files\n    --name-status         show only names and status of changed files\n    --stat[=<width>[,<name-width>[,<count>]]]\n                          generate diffstat\n    --stat-width <width>  generate diffstat with a given width\n    --stat-name-width <width>\n                          generate diffstat with a given name width\n    --stat-graph-width <width>\n                          generate diffstat with a given graph width\n    --stat-count <count>  generate diffstat with limited lines\n    --compact-summary     generate compact summary in diffstat\n    --binary              output a binary diff that can be applied\n    --full-index          show full pre- and post-image object names on the \"index\" lines\n    --color[=<when>]      show colored diff\n    --ws-error-highlight <kind>\n                          highlight whitespace errors in the 'context', 'old' or 'new' lines in the diff\n    -z                    do not munge pathnames and use NULs as output field terminators in --raw or --numstat\n    --abbrev[=<n>]        use <n> digits to display object names\n    --src-prefix <prefix>\n                          show the given source prefix instead of \"a/\"\n    --dst-prefix <prefix>\n                          show the given destination prefix instead of \"b/\"\n    --line-prefix <prefix>\n                          prepend an additional prefix to every line of output\n    --no-prefix           do not show any source or destination prefix\n    --inter-hunk-context <n>\n                          show context between diff hunks up to the specified number of lines\n    --output-indicator-new <char>\n                          specify the character to indicate a new line instead of '+'\n    --output-indicator-old <char>\n                          specify the character to indicate an old line instead of '-'\n    --output-indicator-context <char>\n                          specify the character to indicate a context instead of ' '\n\nDiff rename options\n    -B, --break-rewrites[=<n>[/<m>]]\n                          break complete rewrite changes into pairs of delete and create\n    -M, --find-renames[=<n>]\n                          detect renames\n    -D, --irreversible-delete\n                          omit the preimage for deletes\n    -C, --find-copies[=<n>]\n                          detect copies\n    --find-copies-harder  use unmodified files as source to find copies\n    --no-renames          disable rename detection\n    --rename-empty        use empty blobs as rename source\n    --follow              continue listing the history of a file beyond renames\n    -l <n>                prevent rename/copy detection if the number of rename/copy targets exceeds given limit\n\nDiff algorithm options\n    --minimal             produce the smallest possible diff\n    -w, --ignore-all-space\n                          ignore whitespace when comparing lines\n    -b, --ignore-space-change\n                          ignore changes in amount of whitespace\n    --ignore-space-at-eol\n                          ignore changes in whitespace at EOL\n    --ignore-cr-at-eol    ignore carrier-return at the end of line\n    --ignore-blank-lines  ignore changes whose lines are all blank\n    -I, --ignore-matching-lines <regex>\n                          ignore changes whose all lines match <regex>\n    --indent-heuristic    heuristic to shift diff hunk boundaries for easy reading\n    --patience            generate diff using the \"patience diff\" algorithm\n    --histogram           generate diff using the \"histogram diff\" algorithm\n    --diff-algorithm <algorithm>\n                          choose a diff algorithm\n    --anchored <text>     generate diff using the \"anchored diff\" algorithm\n    --word-diff[=<mode>]  show word diff, using <mode> to delimit changed words\n    --word-diff-regex <regex>\n                          use <regex> to decide what a word is\n    --color-words[=<regex>]\n                          equivalent to --word-diff=color --word-diff-regex=<regex>\n    --color-moved[=<mode>]\n                          moved lines of code are colored differently\n    --color-moved-ws <mode>\n                          how white spaces are ignored in --color-moved\n\nOther diff options\n    --relative[=<prefix>]\n                          when run from subdir, exclude changes outside and show relative paths\n    -a, --text            treat all files as text\n    -R                    swap two inputs, reverse the diff\n    --exit-code           exit with 1 if there were differences, 0 otherwise\n    --quiet               disable all output of the program\n    --ext-diff            allow an external diff helper to be executed\n    --textconv            run external text conversion filters when comparing binary files\n    --ignore-submodules[=<when>]\n                          ignore changes to submodules in the diff generation\n    --submodule[=<format>]\n                          specify how differences in submodules are shown\n    --ita-invisible-in-index\n                          hide 'git add -N' entries from the index\n    --ita-visible-in-index\n                          treat 'git add -N' entries as real in the index\n    -S <string>           look for differences that change the number of occurrences of the specified string\n    -G <regex>            look for differences that change the number of occurrences of the specified regex\n    --pickaxe-all         show all changes in the changeset with -S or -G\n    --pickaxe-regex       treat <string> in -S as extended POSIX regular expression\n    -O <file>             control the order in which files appear in the output\n    --rotate-to <path>    show the change in the specified path first\n    --skip-to <path>      skip the output to the specified path\n    --find-object <object-id>\n                          look for differences that change the number of occurrences of the specified object\n    --diff-filter [(A|C|D|M|R|T|U|X|B)...[*]]\n                          select files by diff type\n    --output <file>       output to a specific file\n\n\n[exit 129]",
+    "runId": "f3138b03-3794-4139-8f92-fa4955a02394",
+    "callId": "toolu_01NFXm2PF1P7KvEMh7eapCfU",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "dc8dfefb-50bc-4aec-a1ff-960302dd61d5",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"pwd; ls -la /tmp/pi-cwd /root/workspace; find / -name .git -maxdepth 5 -type d 2>/dev/null | grep -v proc | head\",\"purpose\":\"Finding the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "pwd; ls -la /tmp/pi-cwd /root/workspace; find / -name .git -maxdepth 5 -type d 2>/dev/null | grep -v proc | head",
+    "purpose": "Finding the repository",
+    "runId": "f3138b03-3794-4139-8f92-fa4955a02394",
+    "callId": "toolu_01NAtPu1hnFWRvmYtzBTrd4A",
+    "tool": "execute",
+    "step": {
+     "id": "dc8dfefb-50bc-4aec-a1ff-960302dd61d5",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\n/root/workspace:\ntotal 12\ndrwxr-xr-x 3 root root 4096 Nov  8 03:27 .\ndrwx------ 6 root root 4096 Nov  8 03:27 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 03:27 repo\n/root/workspace/repo/.git\n\n[stderr]\nls: cannot access '/tmp/pi-cwd': No such file or directory\n\n[exit 0]",
+    "runId": "f3138b03-3794-4139-8f92-fa4955a02394",
+    "callId": "toolu_01NAtPu1hnFWRvmYtzBTrd4A",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "2a2f6f2d-5cf2-44bc-80ca-fe718ab6a3d0",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; git branch -a; git log --oneline main..http-retries; git diff main...http-retries --stat; git diff main...http-retries\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..http-retries; git diff main...http-retries --stat; git diff main...http-retries",
+    "purpose": "Reading the branch diff",
+    "runId": "f3138b03-3794-4139-8f92-fa4955a02394",
+    "callId": "toolu_01Q1ynbeoHg2PszpUN1zjL9y",
+    "tool": "execute",
+    "step": {
+     "id": "2a2f6f2d-5cf2-44bc-80ca-fe718ab6a3d0",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* http-retries\n  main\nb04b610 Retry 429 and 5xx responses with backoff\n CHANGELOG.md        |  4 ++++\n README.md           |  2 ++\n package.json        |  2 +-\n src/backoff.js      |  7 +++++++\n src/http.js         | 31 +++++++++++++++++++++++++++----\n src/retry-policy.js |  5 +++++\n test/retry.test.js  | 22 ++++++++++++++++++++++\n 7 files changed, 68 insertions(+), 5 deletions(-)\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex bb83104..ab561d9 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 4.1.0\n+\n+- Retries for 429 and 5xx responses, with full-jitter backoff.\n+\n ## 4.0.1\n \n - Timeouts can be disabled with timeoutMs: 0.\ndiff --git a/README.md b/README.md\nindex c64cca2..f1a1078 100644\n--- a/README.md\n+++ b/README.md\n@@ -5,6 +5,8 @@ Small HTTP client used by the workerkit workers.\n request(fetch, url, options):\n \n - timeoutMs: abort the request after this many milliseconds. Default 10000. 0 disables the timeout.\n+- retries: how many times to retry a 429 or 5xx response. Default 2. 501 Not Implemented is never retried, because it will not change on a retry.\n+- baseDelayMs: base of the backoff between retries. Default 250. Each wait uses full jitter: a random time between 0 and baseDelayMs * 2^attempt, capped at 8 seconds.\n - init: passed to fetch as is.\n \n The nightly export (src/export.js) sets timeoutMs: 0, because a full export can take ten minutes.\ndiff --git a/package.json b/package.json\nindex baf80bb..eccad0d 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"workerkit\",\n-  \"version\": \"4.0.1\",\n+  \"version\": \"4.1.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/backoff.js b/src/backoff.js\nnew file mode 100644\nindex 0000000..04ea3b9\n--- /dev/null\n+++ b/src/backoff.js\n@@ -0,0 +1,7 @@\n+const MAX_DELAY_MS = 8000;\n+\n+function backoff(attempt, baseDelayMs) {\n+  return Math.random() * Math.min(MAX_DELAY_MS, baseDelayMs * 2 ** attempt);\n+}\n+\n+module.exports = { backoff, MAX_DELAY_MS };\ndiff --git a/src/http.js b/src/http.js\nindex 282999c..0de2a8a 100644\n--- a/src/http.js\n+++ b/src/http.js\n@@ -1,14 +1,37 @@\n+const { shouldRetry } = require('./retry-policy');\n+const { backoff } = require('./backoff');\n+\n const DEFAULT_TIMEOUT_MS = 10000;\n+const DEFAULT_RETRIES = 2;\n+\n+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));\n+\n+function resolveOptions(opts = {}) {\n+  return {\n+    timeoutMs: opts.timeoutMs || DEFAULT_TIMEOUT_MS,\n+    retries: opts.retries ?? DEFAULT_RETRIES,\n+    baseDelayMs: opts.baseDelayMs ?? 250,\n+    init: opts.init ?? {},\n+  };\n+}\n \n-async function request(fetchImpl, url, opts = {}) {\n-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;\n+async function once(fetchImpl, url, init, timeoutMs) {\n   const controller = new AbortController();\n   const timer = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;\n   try {\n-    return await fetchImpl(url, { ...opts.init, signal: controller.signal });\n+    return await fetchImpl(url, { ...init, signal: controller.signal });\n   } finally {\n     if (timer) clearTimeout(timer);\n   }\n }\n \n-module.exports = { request, DEFAULT_TIMEOUT_MS };\n+async function request(fetchImpl, url, opts) {\n+  const o = resolveOptions(opts);\n+  for (let attempt = 0; ; attempt++) {\n+    const res = await once(fetchImpl, url, o.init, o.timeoutMs);\n+    if (!shouldRetry(res) || attempt >= o.retries) return res;\n+    await sleep(backoff(attempt, o.baseDelayMs));\n+  }\n+}\n+\n+module.exports = { request, resolveOptions, DEFAULT_TIMEOUT_MS };\ndiff --git a/src/retry-policy.js b/src/retry-policy.js\nnew file mode 100644\nindex 0000000..09fc7bc\n--- /dev/null\n+++ b/src/retry-policy.js\n@@ -0,0 +1,5 @@\n+function shouldRetry(res) {\n+  return res.status === 429 || (res.status >= 500 && res.status !== 501);\n+}\n+\n+module.exports = { shouldRetry };\ndiff --git a/test/retry.test.js b/test/retry.test.js\nnew file mode 100644\nindex 0000000..1ae861e\n--- /dev/null\n+++ b/test/retry.test.js\n@@ -0,0 +1,22 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { request } = require('../src/http');\n+\n+function replies(...statuses) {\n+  const calls = [];\n+  const fetchImpl = async (url) => { calls.push(url); return { status: statuses[calls.length - 1], ok: statuses[calls.length - 1] < 400 }; };\n+  return { fetchImpl, calls };\n+}\n+\n+test('a 503 is retried until it succeeds', async () => {\n+  const { fetchImpl, calls } = replies(503, 503, 200);\n+  const res = await request(fetchImpl, 'https://x.test/', { baseDelayMs: 0 });\n+  assert.strictEqual(res.status, 200);\n+  assert.strictEqual(calls.length, 3);\n+});\n+\n+test('501 is not retried', async () => {\n+  const { fetchImpl, calls } = replies(501, 200);\n+  assert.strictEqual((await request(fetchImpl, 'https://x.test/', { baseDelayMs: 0 })).status, 501);\n+  assert.strictEqual(calls.length, 1);\n+});\n\n[exit 0]",
+    "runId": "f3138b03-3794-4139-8f92-fa4955a02394",
+    "callId": "toolu_01Q1ynbeoHg2PszpUN1zjL9y",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "3e1bb6b1-8c30-40a9-81b4-88ea167c862b",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQS3QcKEAgTGAI4AUIIdGhpbmtpbmcSDC1x96QDYe/0GXd8tBoMDhuCKWRk0xY17yVoIjAERLjjJ2uz5txkVGzqHaYRQDymkAoE3zD7x1k5aYtAI7+5hvmjInldLZyjT/4sLjwq+gYjwnMaJLdsS3B8dco7qG0QOuvIlVGzP/iMHSb1qhT5Yyc7W2F3fKDVPj+S+2tg+CfWIvuGflq3f3XAxa2gyHKHUHTPXGMfoxWdLgBaKQIl+gKPUfe0A89AS6rHzEmVjw1uV4MzCHNnik956y+c5h4c4tCfN2c6oU6Tstb4lkkdhvv75/gOGdWuLR0FlI3ZofHgt8t0eqD1LlJqu4wUeot8wIhk182yIGmBG1aDnYIEOq5pt36cFV+NTf+HCtpbNHfVYQVKTiXfOpOvyBRU4yHcpxq3go3gpDsU0IPo53Oa60RccfOFl8jyXIT/R94vOe9Y8TVZ47fFKAzi6Iw5TP7iwVErUdd0fmxclvSI7GvJA+RsC46r0R3pgieLQ5W9Wud3L5FeFmrEMvzMnpfhqnWRVl/iglBqve1WIbH95aqpDOT5JOnUcOIPI+qA9a7NAjexHfZjmq3PqbXDJitWyQzyHjOkdb2sAbSXSRDHPMZcx+becso9eZY20iPDcOzXwjN1QTjMPbfHPZcMqD/3Jpkdl9zHmWQS9Xi9LRQGvBxb5apR7ZNuEU+YUdLOLf2OFHxgHIhixJz6O7nMzorvmA8/g/UFgcBpGrBUyqmrkr6KccCJ4ZFVWWCo3opYIYA3PmeI0qFdtwlBO6I0wSf+RR7PzfKsNP8h2iBzQhFzh7fDKSRghQXIXA1Ul/0SDzlD48bJ2w6iTni8OgzIhJ6aL2mCUsgR4FztVwK/gyAHOP/H4gT2SeZUJBlJkkGbgTOkP1sZpXktyGcpZgA4ZQqqKFer3627ElZShSvcOS2mvVa1rCYi3AJbOLrTNCNg38hHM5ydlxQvFzFM74gHFMQRexS8yj7RFJt8QEoxu6IRKJxpTVydkf3otYbQxDlBQxHFol3DtJ/+DtLJmD2zGVaX+LeaubAQhKJRWnaPi3Ha0qYk/0ps/W7WnPlJUohSsIoF/4dhWRcyEfwcjcs7lmcTb3wmSr5fvxjqrG6ADfb4mMOCo189R2i1d7Uz2KMXIOF05WpiM41tQ4+u3ByjpBO6PHq5qJhVQmcvJEKqNJU0wSupYTzg7Tbv+1/WUZLcEPayIb5LaFsQgw7tFKRFSpjvAKuJceKwub+skVwavJsAJWFS6Tn0wo5ezpXcx1lGOxTMaSKoNZ6DWSWDPh3IFsbenyRpt0abqn+eskB3PhgB",
+    "thinking": "The `timeoutMs || DEFAULT` expression turns a zero timeout into 10000, which breaks the nightly export again, the same regression as in 4.0.1. The retry logic also hits non-idempotent POSTs, doesn't consume or cancel response bodies, and ignores Retry-After. Thrown network and timeout errors aren't retried, which is fine but worth noting. I should run the tests and check the existing tests and callers.\n\n",
+    "runId": "f3138b03-3794-4139-8f92-fa4955a02394",
+    "step": {
+     "id": "3e1bb6b1-8c30-40a9-81b4-88ea167c862b",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "3e1bb6b1-8c30-40a9-81b4-88ea167c862b",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; ls test src; cat src/export.js; grep -rn \\\"request(\\\" src | grep -v \\\"^src/http.js\\\"; npm test 2>&1 | tail -15\",\"purpose\":\"Checking callers and tests\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; ls test src; cat src/export.js; grep -rn \"request(\" src | grep -v \"^src/http.js\"; npm test 2>&1 | tail -15",
+    "purpose": "Checking callers and tests",
+    "runId": "f3138b03-3794-4139-8f92-fa4955a02394",
+    "callId": "toolu_01JdKDTTCjDbYbRcfWt4cRz6",
+    "tool": "execute",
+    "step": {
+     "id": "3e1bb6b1-8c30-40a9-81b4-88ea167c862b",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 12,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "src:\nbackoff.js\nexport.js\nhttp.js\nretry-policy.js\n\ntest:\nhttp.test.js\nretry.test.js\nconst { request } = require('./http');\n\nasync function downloadExport(fetchImpl, baseUrl, day) {\n  const res = await request(fetchImpl, baseUrl + '/exports/' + day + '.ndjson', { timeoutMs: 0 });\n  if (!res.ok) throw new Error('export failed: HTTP ' + res.status);\n  return res.text();\n}\n\nmodule.exports = { downloadExport };\nsrc/export.js:4:  const res = await request(fetchImpl, baseUrl + '/exports/' + day + '.ndjson', { timeoutMs: 0 });\n✔ a 503 is retried until it succeeds (5.871173ms)\n✔ 501 is not retried (0.306213ms)\nℹ tests 3\nℹ suites 0\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 112.421556\nnpm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\n\n[exit 0]",
+    "runId": "f3138b03-3794-4139-8f92-fa4955a02394",
+    "callId": "toolu_01JdKDTTCjDbYbRcfWt4cRz6",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 13,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "a6dd9bea-372a-4158-a778-72d6e12527c7",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; cat test/http.test.js; git status --short\",\"purpose\":\"Checking existing timeout test\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; cat test/http.test.js; git status --short",
+    "purpose": "Checking existing timeout test",
+    "runId": "f3138b03-3794-4139-8f92-fa4955a02394",
+    "callId": "toolu_01Eyse1bVoRDPZSPVBQkRUao",
+    "tool": "execute",
+    "step": {
+     "id": "a6dd9bea-372a-4158-a778-72d6e12527c7",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 14,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { request } = require('../src/http');\n\nconst hang = (url, init) => new Promise((resolve, reject) => {\n  init.signal.addEventListener('abort', () => reject(new Error('aborted')));\n});\n\ntest('a slow request is aborted after timeoutMs', async () => {\n  await assert.rejects(request(hang, 'https://x.test/', { timeoutMs: 20 }), /aborted/);\n});\n\n[exit 0]",
+    "runId": "f3138b03-3794-4139-8f92-fa4955a02394",
+    "callId": "toolu_01Eyse1bVoRDPZSPVBQkRUao",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 15,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "4171daed-5f55-4e03-a00d-a823b0c6b292",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "CAQSmQYKEAgTGAI4AUIIdGhpbmtpbmcSDEPoQp4PdTDpkGMQBhoMS2weebfMgWaar59gIjA1D2Y19w/iQmruBHfUDefrR+oeD1Fb/Gfseu8qD026JnpSnirURSojVLNBKU9uLLsqtgWniZNM9k8HYsb2gTD0CiQeei9MCZC3ldUMRK4TqLzUSFAsjH9v5BpSAPniCqVn3AEaJ0evZN0/DyiPzIiiNw7ZoXpLogK1Il9G76xR0BqqeOlyb5wz1J+6UMM3+OzyKhFwIEYghASRFp57v7U9Ta9hCSh6lVLbvR2LjL9nnuUptvTLVANrXzuUGM8a5Pofb8nLk/Zkc2ZENw0yVu1htNuvYLvMgdY9E/q5t021HX3CJQPgiuB3WAXvEGDXG+sFKCj+Ciyvpb7vw9v6DyywqiId0exLA3laE9umtAkLSt4XXX6eUKkTZKZB7KG4gNtWc5zT2y9wJGtaem0Tvw+vSQSYd1kj8KiOdWWMbkPBBFhdL8hgwTltV7ltvIU3iUGKNiTthEE5Qdw1gaFrGEGNVyixoR3a5x0CbfQkzd8YJ/2m8LK1XHKR1izGI1J+U7Hb3kxGWUjawxBqBLPLyTea9vW5yTfmSWjXQmMYwOq3XlMCdOHo53p26BI0xfceAQeYQ9nTAj4RB3UGK+jW9lF3UMp/N4xtaw26q7g5w7KDHrZiNfTKHf6206kwk5zHkDlGG1vGkPgWi9KPcBBM2KfBtvpPhJTAogVDzS/nCzMTUo8MY4VZV/XhCYcylXyHabS8SFmFH5Os7twVgatZ1gjgWgeKo0/3wL9Xb/7HEt9vo4KrCvqEXZBvGBKQ1uoq0MZgih0uUNc0gc6ESOqG5A/n/p+1SiKsM9sPdbPYLNiB66rlcjFTdG6BZ1amBFEgKJmU3Gmjx2uyR+Kh1qTRkXMb6O2nH7VZnJAYmfG7HuaHzVPT3SDIxer6+TuzTya75QgQYwuQZxbX7QN87zJ6AM4MWCJiTi4pKdUlK4PzkQPf7C2awEDbga2axcKk9gXYnfdikmVEz8emnkYsYWG8Go8FpWiDL5u6+bn7GAE=",
+    "thinking": "The repo is untouched, so I'm confirming that and I'll report back on it.\n\n",
+    "runId": "f3138b03-3794-4139-8f92-fa4955a02394",
+    "step": {
+     "id": "4171daed-5f55-4e03-a00d-a823b0c6b292",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 16,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "4171daed-5f55-4e03-a00d-a823b0c6b292",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794108420896,
+    "workFinishedAt": 1794108446773,
+    "text": "I'd hold off merging. There's one blocking bug, and it breaks the nightly export.\n\nThe branch is one commit (`b04b610`, \"Retry 429 and 5xx responses with backoff\"). It adds retry logic to `request()` in `src/http.js`, plus two small helper files, tests, the README and CHANGELOG, and a version bump to 4.1.0. All 3 tests pass, but none of them catch the problem below. I didn't change anything in the repo.\n\n**Blocker: `timeoutMs: 0` no longer turns off the timeout**\nIn the new `resolveOptions`:\n```js\ntimeoutMs: opts.timeoutMs || DEFAULT_TIMEOUT_MS,\n```\nMain used `??`. With `||`, a value of `0` gets replaced by the 10000 ms default. The only caller that passes 0 is `src/export.js`, which sets `{ timeoutMs: 0 }` because a full export can take ten minutes. After this merge, every nightly export would be cut off at 10 seconds and fail. This undoes the 4.0.1 fix. The fix is to change `||` to `??`, and add a test that `timeoutMs: 0` doesn't abort.\n\n**Should fix before merge**\n1. **POSTs and other non-idempotent requests get retried.** Retries apply to every method by default (`retries: 2`). A POST that hits a 502/503/504 may already have been handled on the server, so a retry can make it happen twice. Every worker gets this behavior automatically. I'd limit default retries to GET/HEAD/PUT/DELETE/OPTIONS, or make callers opt in for other methods.\n2. **Failed responses are discarded without being read or cancelled.** When a 5xx is retried, its body is never read or cancelled. With real `fetch` (undici), that can tie up connections until garbage collection runs. Call `await res.body?.cancel()` before sleeping.\n3. **The `Retry-After` header is ignored on 429s.** Rate-limited services usually say how long to wait. Retrying sooner, with up to 2 extra requests per call from every worker, makes the overload worse. Use the header when it's present, capped at a sensible maximum.\n\n**Smaller points**\n- Each retry gets its own full timeout, plus up to 8 s of backoff between attempts. With the defaults, one call can now take about 30 s or more instead of about 10 s. That's worth stating in the README and checking against any worker deadlines.\n- Network errors and timeouts still fail straight away without a retry. That's reasonable, but the README should say so.\n- `init` is reused on every attempt, so a one-time-use body (a stream) would fail on the retry. Strings and buffers are fine. This only matters if POSTs end up being retried.\n- Tests to add: `timeoutMs: 0` (the blocker), a 429 being retried, retries running out and returning the last 5xx, `retries: 0`, and the backoff stopping at its 8 s maximum.\n- Minor: the new `resolveOptions` export is only there for tests, the default base delay (250 ms) is a bare number rather than a named constant, and `once()` is a vague name.\n\nThe backoff calculation itself is correct, and so is the retry-count logic (`retries: 2` means 3 attempts in total).\n\nMy recommendation: fix the `??` with a test and limit retries to idempotent methods. With those two changes I'd be fine merging, and the rest can follow.",
+    "runId": "f3138b03-3794-4139-8f92-fa4955a02394",
+    "step": {
+     "id": "4171daed-5f55-4e03-a00d-a823b0c6b292",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

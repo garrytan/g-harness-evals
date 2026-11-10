@@ -1,0 +1,161 @@
+{
+  "trial_id": "rev-22-plain-sol-k18",
+  "task_id": "rev-22",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 18,
+  "status": "ok",
+  "reply_text": "*I’d hold the merge.* Found two issues in `coupon-checkout` (`a68c0e7`) against `main` (`09a6e72`):\n\n1. *High — Tax is charged on the original subtotal* — `src/total.js:6`  \n   The README requires applying the coupon before calculating tax, but this calls `tax(subtotal, taxPercent)`.\n   - Repro: subtotal `10000`, coupon `20%`, tax `10%`, shipping `500`.\n   - Expected: `9300` ($93). Actual: `9500` ($95).\n   - With a 100% coupon, customers still pay tax on the full original subtotal. Calculate tax on the subtotal after the rounded discount.\n\n2. *Medium — Checkout bypasses the coupon bounds* — `src/total.js:5`  \n   `couponValue()` clamps percentages to 0–100, but checkout uses the uncapped `pct()` helper instead.\n   - A `150%` coupon on `10000` cents produces a *negative total of `-5000`*.\n   - A `-10%` coupon increases that subtotal to `11000`.\n   - Use the bounded coupon calculation in checkout.\n\n*Verification:* All four existing tests pass, but both checkout tests use zero/no coupon, so neither catches these issues. I reproduced both with direct calls. Add regression coverage for coupon-plus-tax, a 100% coupon, out-of-range percentages, and cent rounding.\n\nNo files changed.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-22-plain-sol-k18",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.044325,
+    "input_tokens": 53656,
+    "output_tokens": 1089,
+    "cached_tokens": 41640,
+    "cache_write_tokens": 11702,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.00007,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.044255,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 20.35,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-22-plain-sol-k18",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:10:31.879Z",
+    "images": {
+      "core": "sha256:3910594b6055b8b889d444e7b76a92af38d79a0b5bb0951c442dff7124c7be49",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-808f1519d24a",
+        "id": "sha256:1ce88b9e57a5750c02a909b7f4bf321403eed22daedb297a63c620b60c060911",
+        "tree_sha256": "4b08892c391c0a2a74732d9e93532fae131ccaac0d120f4af10749880f849213"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-7f56bf1c-9b56-4935-8173-2bc4c139-9a9552"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:11:15.725Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/78afc7f86c53559fd36061a4/4a99f21ce7331aaf/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/78afc7f86c53559fd36061a4/4a99f21ce7331aaf/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git config --show-origin --get-regexp 'credential|core.sshCommand|http.*extraheader|url.*insteadof' || true; cd /root/workspace/repo && git branch -avv && git diff --stat main...coupon-checkout && ls -la; ",
+          "code": 0,
+          "output": "* coupon-checkout a68c0e7 Free shipping over a threshold\n  main            09a6e72 Order subtotal and tax in cents\n CHANGELOG.md          |  4 ++++\n README.md             |  8 ++++++++\n package.json          |  2 +-\n src/coupon.js         |  6 ++++++\n src/shipping.js       |  8 ++++++++\n src/total.j"
+        },
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git diff main...coupon-checkout && printf '\\n--- ALL FILES ---\\n' && find src test -type f -print -exec cat {} \\; && cat README.md CHANGELOG.md package.json && git log --oneline --decorate --all && printf '\\n--- BASE ---\\n' && git ls-tree -r --name-only main && git show ma",
+          "code": 128,
+          "output": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 38c8cb7..009d9c7 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.4.0\n+\n+- Coupons at checkout.\n+\n ## 1.3.0\n \n - Subtotal and tax.\ndiff --git a/README.md b/README.md\nindex 45a9c82..984fb0e 100644\n--- a/README.md\n+++ b/RE"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-22-plain-sol-k18",
+      "meter": {
+        "requests": 7,
+        "usd": 0.044325,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.044325,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.00007
+    }
+  }
+}

@@ -1,0 +1,150 @@
+{
+  "trial_id": "plan-23-plain-opus-k1",
+  "task_id": "plan-23",
+  "family": "plan",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "Here's the plan. I haven't written any code.\n\n**How it works today**\n- `src/scores.js` keeps every run in an in-memory array. Each run gets an anticheat flag when it's submitted, and `verifiedScores()` drops the flagged ones.\n- `src/leaderboard.js` has a single function, `allTime(runs)`. It sorts by score from highest to lowest, and a tie goes to whoever submitted first (Rui's fix, forum thread #412).\n- `docs/seasons.md` says weeks start **Monday 00:00 UTC, the same moment in every region**, because tournaments are global. Nothing in the code works out weeks yet. `quests.js` only handles days, using the UTC date.\n- `config/redis.json` points at a Redis server, but nothing uses it.\n\n**Plan**\n1. **Week helper.** Add `weekStart(date)` to a small shared module such as `src/periods.js`. It returns the Monday 00:00 UTC on or before the given date. It must use UTC methods only, never local time, so the week flips at the same moment for everyone. `questDay` could move into the same file so all the period rules live in one place.\n2. **Weekly leaderboard.** Add `weekly(runs, weekOf = new Date())` to `leaderboard.js`. It keeps runs where `weekStart ≤ submittedAt < weekStart + 7 days`, then sorts them exactly like `allTime`. Pull that sort into one shared comparator so the tie rule can't drift between the two boards.\n3. **Anticheat stays upstream.** The weekly board gets its input from `verifiedScores()` just like the all-time board, so flagged runs never show up. The test comment says this explicitly.\n4. **Tests:**\n   - A run at Sunday 23:59:59 UTC counts for the old week, and one at Monday 00:00:00 UTC counts for the new week.\n   - A run that's Monday in Tokyo but still Sunday in UTC goes in the previous week.\n   - A tie inside a week goes to the earlier submission.\n   - A flagged run is left out of the weekly board.\n   - Asking for a past week gives that week's board.\n   - A week with no runs gives an empty list.\n\n**Questions for you before building**\n- **One row per player, or one per run?** Right now `allTime` ranks runs, so one player can take several spots. Weekly boards usually show each player's best run that week. Should weekly do that, and should all-time be changed to match?\n- **Where does it get served?** The repo has no API layer, so I'd add only the function unless the routes live somewhere else.\n- **Storage.** Everything is in memory now, so every board is lost on restart. That's a bigger problem for weekly boards. If you want them stored, the natural fit is a Redis sorted set per week, using that unused config, with keys like `lb:weekly:2026-11-02`. The score would need the time built in so ties still go to the earlier submission. Old weeks could expire after a few weeks. That would be its own piece of work after this one.\n- **Past weeks.** Should players be able to see last week's final board? The plan above supports it.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-23-plain-opus-k1",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.07248489999999999,
+    "input_tokens": 78174,
+    "output_tokens": 1836,
+    "cached_tokens": 75059,
+    "cache_write_tokens": 2630,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.0000571,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0724278,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 22.381,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-23-plain-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:24:38.019Z",
+    "images": {
+      "core": "sha256:276503dbf085b3b0855b3ecb1bcc7e1a4baa8571aea7cba84ecb4236755d85c7",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-ccb92a808c04",
+        "id": "sha256:50816e76949539c8263185d35e8018af294da466288c97f9921a5c59184c3d40",
+        "tree_sha256": "e2bf1e56cb466b64130d0897f328c1a62425040bef70c6e74e74a76daab395c4"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-8c6ef261-904a-4d30-b17b-9eea46d2-93bb27"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:25:23.958Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 7,
+          "command": "cd ~/workspace/repo; git log --oneline | head -5; find . -path ./.git -prune -o -type f -print | head -100; cat README* 2>/dev/null | head -50",
+          "code": 0,
+          "output": "3eee9e4 Matchmaking, friends, push and the shop\na64fe5b Break ties by earliest submission, not player id\n5ad6673 Seasons and daily quests\n49bdf85 Scores and the all-time leaderboard\n./package.json\n./README.md\n./Dockerfile\n./config/redis.json\n./src/shop.js\n./src/friends.js\n./src/scores.js\n./src/antic"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-23-plain-opus-k1",
+      "meter": {
+        "requests": 7,
+        "usd": 0.07248489999999999,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.07248489999999999,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.0000571
+    }
+  }
+}

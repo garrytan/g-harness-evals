@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-12-plain-opus-k14",
+  "task_id": "rev-12",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 14,
+  "status": "ok",
+  "reply_text": "I reviewed the split-bill branch against main (2 commits) and didn't change anything. The tests pass, but your cents worry is justified: one function loses money and another rounds in a way you probably didn't intend.\n\n**1. `split_bill` drops the leftover cents (blocker).**\n`share = total_cents // n; return [share] * n` never hands out the remainder. I ran `split_bill(1000, 3)` and got `[333, 333, 333]`, which adds up to 999, so a cent goes missing. The README and `docs/money.md` both say the leftover goes one cent each onto the first shares. That's exactly what `weighted_split` already does, and the same few lines would fix this. Both split tests only use amounts that divide evenly, so neither catches it. A test like `split_bill(1000, 3) == [334, 333, 333]` would.\n\n**2. `with_tip` rounds half-cents unpredictably.**\nPython's `round()` sends exact halves to the nearest even number: `with_tip(250, 1)` gives a 2¢ tip, while `with_tip(350, 1)` gives 4¢. There's also float math in the middle (`* tip_percent / 100`), so some values that should land exactly on .5 can come out slightly off. If you want halves to always round up, stay in integers: `(total_cents * tip_percent + 50) // 100` works when `tip_percent` is a whole number. There are no tests for `with_tip` at all.\n\n**3. `weighted_split` keeps the total correct, but spare cents can go to the wrong people.**\n- Spare cents go to the first shares no matter what the weights are. `weighted_split(5, [0, 0, 1])` is fine, but `weighted_split(1003, [1, 1, 1, 1000])` gives `[1, 1, 1, 1000]`. Since the extras are capped at fewer than one cent per person, someone with weight 0 can still be charged 1¢ whenever they're near the front. A more standard approach is to give the extras to the shares that lost the most in the rounding down (largest remainders), or at least skip people with weight 0. Whichever you choose, it should match what `docs/money.md` says (\"same rule by weight\").\n- If all weights are 0 or the list is empty, it fails with a bare `ZeroDivisionError`. Negative weights get no check, so it can produce negative shares or a `range()` that quietly skips the spare cents. Adding a `ValueError` check here, like the one in `split_bill`, would fix it.\n\n**4. Smaller points:**\n- There's no check on negative `total_cents` (refunds), and floor division rounds negatives down, toward the more negative number. Decide whether negatives are allowed and test that case either way.\n- `CHANGES.md` only mentions the split with a tip; weighted splitting isn't listed.\n- A good test to add for all three functions: shares always sum to the total, and no two shares differ by more than one cent (by weight, for `weighted_split`).\n\nFix #1 before merging. #2 and the zero-weight behaviour in #3 are decisions for you to make, but whatever you pick should be written down and tested.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-12-plain-opus-k14",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.067079,
+    "input_tokens": 52815,
+    "output_tokens": 1797,
+    "cached_tokens": 49669,
+    "cache_write_tokens": 2674,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000053200000000000006,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0670258,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 20.154,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-12-plain-opus-k14",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:36:50.155Z",
+    "images": {
+      "core": "sha256:d3c15a4ff59b46b682cc0b498a5b96d657f86e2d1ac9a8b947b4fb5d8b1c3302",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-3ebb1f12241a",
+        "id": "sha256:91dc59e94e42a00bd5882beb1ace1b38109eb459f931eb9003f3019249e101fb",
+        "tree_sha256": "0ff9c772bc1379d77f354c6dff7853a4e5a7ff08ad0416b551b8f27f0f9b8262"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-90398962-19df-4bff-acaa-079f1ea4-ab8ad5"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:37:33.875Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..split-bill; git diff main...split-bill",
+          "code": 0,
+          "output": "  main\n* split-bill\n10932d0 Itemised shares by weight\nfe83782 Split a bill between people\ndiff --git a/CHANGES.md b/CHANGES.md\nindex d7f4be6..fedb9bf 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.4.0\n+\n+- Split a bill between people, with a tip.\n+\n ## 0.3.0\n \n - Bill to"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-12-plain-opus-k14",
+      "meter": {
+        "requests": 5,
+        "usd": 0.067079,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.067079,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000053200000000000006
+    }
+  }
+}

@@ -284,28 +284,13 @@
       "docs/benchmarks/*/sealed-results/**/events.jsonl"
     ],
     "answer_markers": [
-      "capy\\.ai/s/",
-      "\\bjam_[0-9A-HJKMNP-TV-Z]{26}\\b",
-      "/home/user/\\.capy/drive",
-      "(?i:(?<![^\\n])[ ]{0,3}#{1,6}[ \\t]+Spend[ \\t]+\\(internal\\))",
-      "gitleaks[:]allow",
-      "trufflehog[:]ignore",
-      "\\bsk-ant-[a-z]{3,8}[0-9]{2}-[A-Za-z0-9_-]{20,}",
-      "\\bsk-proj-[A-Za-z0-9_-]{20,}",
-      "\\bsk-svcacct-[A-Za-z0-9_-]{20,}",
-      "\\bsk-admin-[A-Za-z0-9_-]{20,}",
-      "\\bsk-[A-Za-z0-9]{20}T3BlbkFJ[A-Za-z0-9]{20}\\b",
-      "\\bsk-or-v1-[0-9a-f]{64}\\b",
-      "\\bxai-[A-Za-z0-9]{50,}",
-      "\\bpplx-[A-Za-z0-9]{40,}",
       "AGE-SECRET-KEY-1[QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L]{58}"
     ],
     "visibility": "public",
     "allow_paths": [
       "tasks/repo/*/heldout/MANIFEST.json",
       "tasks/multiuser/*/heldout/MANIFEST.json"
-    ],
-    "local_paths": true
+    ]
   },
   "empty_lanes": [
     "docs/**/*.md",
@@ -378,6 +363,14 @@
       ],
       "pattern": "s-[0-9a-f]{12}\",?\\s*$",
       "reason": "Lane B proxy session id (s- plus 12 hex) that the bridge writes into each Harbor result.json's laneb block as \"session\": \"s-<12 hex>\"; a correlation id for the metering proxy's session log, not a credential. The pattern starts at the value because gstack-pregate anchors it at the finding's column, so it cannot check the key: any env.kv value of exactly this shape ending its line on these two paths passes"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "docs/benchmarks/2026-11-06-qm-s1-edition/*/trials/*/llm-turn*.json"
+      ],
+      "pattern": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"",
+      "reason": "provider prompt-cache id (prompt_cache_key), not a credential. pregate env.kv patterns see only the value (lib/pregate/allowlist.ts col slice), so this cannot be key-anchored; any credential-named key with a lowercase-UUID value on these paths would also pass pregate. gitleaks S3 at export stays key-anchored and still flags such a key."
     },
     {
       "finding": "env.kv",

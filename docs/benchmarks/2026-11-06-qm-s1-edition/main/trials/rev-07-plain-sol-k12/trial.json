@@ -1,0 +1,167 @@
+{
+  "trial_id": "rev-07-plain-sol-k12",
+  "task_id": "rev-07",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 12,
+  "status": "ok",
+  "reply_text": "*I’d hold the merge.* Reviewed `http-retries` (`b04b610`) against `main` (`5f9be03`). Found four issues:\n\n1. *High — `timeoutMs: 0` no longer disables timeouts* — `src/http.js:11`  \n   Switching from `??` to `||` converts zero to the 10-second default. This directly breaks the nightly export’s explicit timeout exemption (`src/export.js:4`), potentially aborting exports that take minutes. Preserve zero with nullish defaulting.\n\n2. *High — retries can duplicate non-idempotent operations* — `src/http.js:30–33`  \n   Every request is retried by default, including POSTs. A server can perform a write and then return 503; replaying it can create duplicate jobs or other side effects. An in-memory probe confirmed a POST executes twice after one 503. Restrict automatic retries to safe/idempotent operations, with explicit opt-in or idempotency guarantees for writes.\n\n3. *Medium — streamed request bodies cannot be replayed* — `src/http.js:31`  \n   Each attempt reuses the same `init.body`. With a real Node `fetch` and a streamed PUT body, the first request returned 503, then the retry threw `TypeError: Response body object should not be disturbed or locked` before reaching the server. Require a fresh-body factory or avoid retrying non-replayable bodies.\n\n4. *Medium — discarded response bodies aren’t released* — `src/http.js:32–33`  \n   Retryable responses are abandoned without consuming or cancelling their bodies. That can retain connections/resources and exhaust connection pools under sustained failures, especially with large or streaming error responses. A probe confirmed the discarded body’s cancellation hook never runs. Release intermediate bodies before retrying.\n\n*Validation:* All three existing tests pass, but none covers these cases. Ran additional in-memory probes and a local HTTP-server reproduction. No files changed.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-07-plain-sol-k12",
+    "requests": 8,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.053036700000000006,
+    "input_tokens": 67867,
+    "output_tokens": 1605,
+    "cached_tokens": 54837,
+    "cache_write_tokens": 12712,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-6.1-sol": {
+        "usd": 0.052925700000000006,
+        "requests": 7
+      },
+      "openai:gpt-5.6-luna": {
+        "usd": 0.000111,
+        "requests": 1
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 8
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 29.553,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-07-plain-sol-k12",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:29:21.003Z",
+    "images": {
+      "core": "sha256:70e9dbc58d38502117dc97d1c5973af7606fa9e34dfd9ef1126cfa852865f97b",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-8a638002971d",
+        "id": "sha256:93f1dd7acbb7e84f32da9ea3bb121defdab62ccfbbcbca81b8fd3fe3513b729d",
+        "tree_sha256": "b8945d3ad7f19c62dccf490b61260b4bcea0b1391062820ab876fa3dbd3cabe5"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-4af191f8-f740-4ff8-8747-6e2d4601-e102de"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:30:13.918Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/c9106ef04f71c1b77fc8706f/50e4879dc1fc1c61/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/c9106ef04f71c1b77fc8706f/50e4879dc1fc1c61/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd /root/workspace/repo && pwd && git status --short && git remote -v && git branch -a && git log --oneline -5 && git diff --stat main...http-retries && find . -maxdepth 2 -type f | sort",
+          "code": 0,
+          "output": "/root/workspace/repo\n* http-retries\n  main\nb04b610 Retry 429 and 5xx responses with backoff\n5f9be03 HTTP client with timeouts\n CHANGELOG.md        |  4 ++++\n README.md           |  2 ++\n package.json        |  2 +-\n src/backoff.js      |  7 +++++++\n src/http.js         | 31 +++++++++++++++++++++++++"
+        },
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git diff main...http-retries && printf '\\n--- all source and tests ---\\n' && for f in package.json README.md src/*.js test/*.js; do echo \"--- $f\"; nl -ba \"$f\"; done && printf '\\n--- main ---\\n' && git show main:src/http.js && git status --porcelain=v1 && node --version",
+          "code": 0,
+          "output": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex bb83104..ab561d9 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 4.1.0\n+\n+- Retries for 429 and 5xx responses, with full-jitter backoff.\n+\n ## 4.0.1\n \n - Timeouts can be disabled with timeoutMs: 0.\ndiff --git a/README.md "
+        },
+        {
+          "seq": 14,
+          "command": "cd /root/workspace/repo && node <<'NODE'\nconst http = require('node:http');\nconst { request } = require('./src/http');\n(async () => {\n  let calls = 0;\n  const server = http.createServer(async (req, res) => {\n    for await (const chunk of req) {}\n    calls++;\n    res.writeHead(calls === 1 ? 503 : 200",
+          "code": 0,
+          "output": "stream retry failed: TypeError Response body object should not be disturbed or locked ; server requests: 1\n5f9be038827f9280a3126b396ad300228dbb89ec\nb04b6104e24306a747e40c490f7899db4883aa9b\n\n[exit 0]"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-07-plain-sol-k12",
+      "meter": {
+        "requests": 8,
+        "usd": 0.053036700000000006,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 8,
+        "usd": 0.053036700000000006,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.000111
+    }
+  }
+}

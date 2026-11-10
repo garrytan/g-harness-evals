@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-19-plain-opus-k18",
+  "task_id": "rev-19",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 18,
+  "status": "ok",
+  "reply_text": "I don't think this should merge yet. There's a serious bug: as written, the branch logs people out after about 30 milliseconds of inactivity, not 30 minutes. I didn't change any code.\n\n**Blocker: the timeout unit is wrong (`src/idle.js`)**\n```js\nconst IDLE_TIMEOUT = 30;\nreturn session.lastSeen + IDLE_TIMEOUT < now;\n```\n`lastSeen` is a `Date.now()` timestamp in milliseconds, and the README says all durations in the package are milliseconds. So `30` here means 30 ms. I checked it directly: a session last seen just 1 second ago already counts as idle. In production, `sweep` would remove nearly every session on each pass, so users would be logged out constantly.\n\nFix: `const IDLE_TIMEOUT = 30 * 60 * 1000;` (or `30 * MINUTE`, matching the `SECOND` constant in `backoff.js`).\n\n**Why the tests didn't catch it**\nThe test suite passes. But the tests only use gaps of 0, 1 hour and 2 hours, which come out the same whether the timeout is 30 ms or 30 minutes. Worth adding:\n- A session idle for about 29 minutes should be active.\n- A session idle for exactly 30 minutes should be idle.\n- A session idle for about 31 minutes should be idle.\n\n**Minor: what happens at exactly 30 minutes**\nThe README says a session is idle \"once\" it hits 30 minutes, which suggests `>=`. The code uses `<`, so a session at exactly 30 minutes still counts as active. It's a 1 ms difference, but either change the check to `now - session.lastSeen >= IDLE_TIMEOUT` or reword the README.\n\n**Looks fine**\n- **`backoff.js`:** the reconnect delay doubles from 1s and is correctly capped at 30s. A very large `attempt` value gives `Infinity` before the cap kicks in, and `Math.min` still returns 30s, so it's safe. There's no jitter and no tests for it, though, so a test or two would help.\n- **`sweep.js`:** it builds a new store rather than changing the existing one, which is clean.\n- **Changelog and version bump** to 1.1.0 are consistent.\n\nOnce the timeout is fixed and the boundary tests are added, I'd be happy for this to merge.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-19-plain-opus-k18",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0572483,
+    "input_tokens": 52735,
+    "output_tokens": 1354,
+    "cached_tokens": 49717,
+    "cache_write_tokens": 2554,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000052900000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.05719540000000001,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 16.034,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-19-plain-opus-k18",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T15:03:55.235Z",
+    "images": {
+      "core": "sha256:e48c8f94d6b77801b71348a2f487e3d9f61914e9a616d4a9ec352a157470f137",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-866435aaa7c4",
+        "id": "sha256:c2956f00f380a6183d790a610d8477f9f49be480fe95af1350346678884a373f",
+        "tree_sha256": "976e7f453705633343847be00fd0cb97514b749e6cec4f692ef40f15f2fb9b22"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-10783533-349a-457f-a33d-7dd2ce9a-2adb21"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T15:04:34.746Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..idle-timeout; git diff main...idle-timeout",
+          "code": 0,
+          "output": "* idle-timeout\n  main\nda785f6 Sweep idle sessions from the store\nad83f9a Expire idle sessions\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 161cbe8..275e5be 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.1.0\n+\n+- Idle session expiry and reconnect backoff.\n+\n ## 1."
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-19-plain-opus-k18",
+      "meter": {
+        "requests": 5,
+        "usd": 0.0572483,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.0572483,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000052900000000000005
+    }
+  }
+}

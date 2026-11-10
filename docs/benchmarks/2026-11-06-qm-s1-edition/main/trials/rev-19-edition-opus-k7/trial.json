@@ -1,0 +1,159 @@
+{
+  "trial_id": "rev-19-edition-opus-k7",
+  "task_id": "rev-19",
+  "family": "review",
+  "arm": "edition",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 7,
+  "status": "ok",
+  "reply_text": "**Don't merge this yet.** There's a bug that would sign people out almost as soon as they stop moving. I only reviewed the code and didn't change anything.\n\n**The blocker: the timeout is 30 milliseconds, not 30 minutes**\n\nIn `src/idle.js`, the timeout is set as `const IDLE_TIMEOUT = 30;`. But `lastSeen` comes from `Date.now()`, which counts in milliseconds, and the README says every duration in the package is in milliseconds. So a session counts as idle 30 ms after the last activity. I checked this directly: a session last seen at time 0 is already idle at 31 ms. Since `sweep` deletes idle sessions, every user would effectively be logged out right away.\n\n- **Fix:** `const IDLE_TIMEOUT = 30 * 60 * 1000;`. You could also add a `MINUTE` constant, like `backoff.js` does with `SECOND`.\n\n**Why the tests didn't catch it**\n\nThe test sessions are either brand new (0 ms) or idle for an hour or two. Both answers come out the same whether the timeout is 30 ms or 30 minutes. Tests that would have caught it:\n- A session idle for 29 minutes should still be active.\n- A session idle for 31 minutes should be idle.\n- The same two cases for `sweep`.\n\n**Smaller things**\n- **Off by one at the cutoff:** the check is `lastSeen + IDLE_TIMEOUT < now`, so a session idle for exactly 30 minutes still counts as active. The README says idle \"once\" it reaches 30 minutes, which means it should use `<=`. It only matters at that exact moment, but the code and docs should agree.\n- **No tests for `reconnectDelay`:** the logic looks right (1s, 2s, 4s and so on, capped at 30s). A test for the cap would still be worth adding.\n\n**Looks fine:** `sweep` returns a new object and leaves the original store alone, and the version bump, CHANGELOG and README updates are consistent.\n\nOnce the timeout constant is fixed and the 29- and 31-minute tests are in, this is good to merge.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-19-edition-opus-k7",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0576179,
+    "input_tokens": 53053,
+    "output_tokens": 1381,
+    "cached_tokens": 50065,
+    "cache_write_tokens": 2524,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000052900000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.057565,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 16.893,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-19-edition-opus-k7",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T12:56:28.863Z",
+    "images": {
+      "core": "sha256:e48c8f94d6b77801b71348a2f487e3d9f61914e9a616d4a9ec352a157470f137",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-866435aaa7c4",
+        "id": "sha256:c2956f00f380a6183d790a610d8477f9f49be480fe95af1350346678884a373f",
+        "tree_sha256": "976e7f453705633343847be00fd0cb97514b749e6cec4f692ef40f15f2fb9b22"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-c2487cad-8d6d-4301-bff5-ff1d56fe-e78be9"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T12:57:09.666Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 5,
+          "command": "cd /root/workspace/repo; git log --oneline main..idle-timeout; git diff main...idle-timeout",
+          "code": 0,
+          "output": "da785f6 Sweep idle sessions from the store\nad83f9a Expire idle sessions\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 161cbe8..275e5be 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.1.0\n+\n+- Idle session expiry and reconnect backoff.\n+\n ## 1.0.0\n \n - Session activ"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-19-edition-opus-k7",
+      "meter": {
+        "requests": 5,
+        "usd": 0.0576179,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.0576179,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000052900000000000005
+    }
+  }
+}

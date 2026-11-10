@@ -30,7 +30,11 @@
 # program cap when missing, then the driver with --ledger, --lease-usd <the shard's lease>, --out ~/shard/results,
 # --work ~/shard/work and every argument after -- passed through as given (--stage, --shards, --tasks, --seed, --models,
 # --only and so on; the driver enforces the stage caps). Records are turns.jsonl lines. Sealed flags and --embedded are
-# refused. --resume uploads <dest>/results (with its ledger and turns.jsonl) and needs <dest>/results/run.json.
+# refused. --resume uploads <dest>/results (with its ledger and turns.jsonl) and needs <dest>/results/run.json. It needs
+# --replicate-to: before any VM call a launch is checked against the stage ledger <replicate-to>/stage-ledger.jsonl
+# (stage_ledger.py). A fan-out's reservation (UBI_LEASE_RESERVATION) must be there for this dest; a launch without one
+# reserves its own only when every lease of the run id and --stage, from any dest, plus this one fits the
+# preregistration's caps_usd entry for that stage. A --resume continues its lease and adds none.
 #
 # Any launch but --attach (a fresh one or a --resume) into a --dest whose cleanup-pending still lists a VM (kept after a
 # failed final pull, so it may hold results <dest> lacks) is refused with exit 2, naming the VM and the recovery:
@@ -288,8 +292,9 @@ pull_results() {
   done < <(cd "$dest/.pull/results" && find . -name '*.sqlite')
   mkdir -p "$dest/results" && cp -a "$dest/.pull/results/." "$dest/results/" && rm -rf "$dest/.pull"
 }
-# mirror: <dest> to <replicate-to>/<shard> (without per-trial state/ and workspace/), staged locally and scanned for
-# key-shaped text first, then swapped in whole; a failure or a hit keeps the previous mirror and is logged. A
+# mirror: <dest> to <replicate-to>/<shard> (without per-trial state/ and workspace/, and without the qm-driver smoke's gstack
+# checkout smoke/work/gstack-edition, whose own tests hold key-shaped text), staged locally and scanned for key-shaped text
+# first, then swapped in whole; a failure or a hit keeps the previous mirror and is logged. A
 # frontier-harbor shard's mirror also leaves out every proxy-capture/ directory and results/run/ (Harbor's job tree, the
 # only mid-run copy of the trial results, which vm-run.sh writes as records at finish()): a full run's request bodies do
 # not fit a 2 GB Capy drive (internal-task stage 0). The pull
@@ -300,7 +305,7 @@ mirror() {
   local stage=$dest/.mirror to=$replicate_to/${name:-attach} hits skip=()
   [ "$workload" != frontier-harbor ] || skip=(--exclude=proxy-capture --exclude=./results/run)
   rm -rf "$stage" && mkdir -p "$stage" &&
-    tar -C "$dest" -cf - --exclude=./.pull --exclude=./.mirror --exclude='./results/trials/*/*/*/state' --exclude='./results/trials/*/*/*/workspace' ${skip[@]+"${skip[@]}"} . | tar -C "$stage" -xf - ||
+    tar -C "$dest" -cf - --exclude=./.pull --exclude=./.mirror --exclude=./smoke/work/gstack-edition --exclude='./results/trials/*/*/*/state' --exclude='./results/trials/*/*/*/workspace' ${skip[@]+"${skip[@]}"} . | tar -C "$stage" -xf - ||
     { log "WARNING: replicate: staging $dest for $to failed; the previous mirror stays"; rm -rf "$stage"; return 1; }
   hits=$(grep -rIlE "$key_shapes" "$stage" 2>/dev/null | sed "s#^$stage/##" | head -3 | paste -sd' ' -)
   if [ -n "$hits" ]; then log "WARNING: replicate: key-shaped text in $hits; $to keeps the previous mirror"; rm -rf "$stage"; return 1; fi
@@ -485,6 +490,12 @@ else
       exit 2
     fi
   fi
+  # A qm-driver launch counts against its stage's preregistered cap in <replicate-to>/stage-ledger.jsonl, whatever its dest
+  # (stage_ledger.py): a fan-out's reservation must be there for this dest, and a launch without one reserves its own.
+  if [ "$workload" = qm-driver ]; then
+    [ -n "$replicate_to" ] || { echo "run-shard (ubicloud): --workload qm-driver needs --replicate-to (or UBI_REPLICATE_TO): the stage ledger, which counts every launch of a stage whatever its dest, lives there" >&2; exit 2; }
+    UBI_LEASE_RESERVATION=$(python3 "$here/stage_ledger.py" launch "$root" "$commit" "$prereg" "$replicate_to" "$dest" "$lease" "$resume" "${UBI_LEASE_RESERVATION:-}" ${extra[@]+"${extra[@]}"}) || exit 2
+  fi
   log "shard $name: commit $commit, run $run_id, cells $cells, lease \$$lease, ${scratch_prereg:+scratch }preregistration $prereg, $size${location:+ in $location}, dest $dest"
 
   # 2. a clean detached checkout to sync
@@ -590,6 +601,8 @@ else
   jset "launched_at=\"$launched_at\""
   # The lease history fanout.sh sums against a stage cap: one line per launch, never rewritten (jset keeps only the latest).
   python3 -c 'import json, sys; p, lease, at, vm, res, rid = sys.argv[1:]; e = {"lease_usd": float(lease), "launched_at": at, "vm": vm, "resume": res == "1"}; e.update({"reservation": rid} if rid else {}); open(p, "a").write(json.dumps(e) + "\n")' "$dest/leases.jsonl" "$lease" "$launched_at" "$vm" "$resume" "${UBI_LEASE_RESERVATION:-}"
+  [ "$workload" != qm-driver ] || python3 "$here/stage_ledger.py" record "$root" "$commit" "$prereg" "$replicate_to" "$dest" "$lease" "$resume" "${UBI_LEASE_RESERVATION:-}" "$launched_at" "$vm" ${extra[@]+"${extra[@]}"} ||
+    log "WARNING: could not append this launch to $replicate_to/stage-ledger.jsonl; its reservation there still counts it"
   log "vm-shard.sh running detached on $vm; tail -f $dest/run-shard.log (and run.stdout.log, run.log, vm-shard.out)"
 fi
 

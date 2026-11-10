@@ -1,0 +1,165 @@
+{
+  "trial_id": "rev-21-edition-opus-k11",
+  "task_id": "rev-21",
+  "family": "review",
+  "arm": "edition",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 11,
+  "status": "ok",
+  "reply_text": "I reviewed config-merge against main (2 commits) and didn't change any code. The tests pass, but I can't approve it as is. **The merge isn't deep, even though the README, docs and changelog all say it is.**\n\n**Blocker**\n\n1. **`merge_config` only merges the top level** (`config/merge.py`). It returns `{**base, **override}`, so a nested dict in the override replaces the base's whole sub-dict. I ran the example from `docs/config.md`: `{'db': {'host': 'h', 'port': 5432}}` merged with `{'db': {'port': 6000}}` gives `{'db': {'port': 6000}}`. The host is lost. For a feature that puts defaults under user config, any user who sets one nested key loses all the other defaults in that section. The fix is to recurse when both values are dicts.\n\n2. **The result shares objects with the input**, even though the docs say \"neither input is mutated; the result is a fresh structure.\" Nested dicts aren't copied. I changed `merge_config(base, {})['db']['port']` and that changed `base` too. That means changing a merged config could quietly corrupt the shared defaults. A deep merge should copy sub-dicts, or at least deep-copy the values it takes from base.\n\n3. **The tests miss both problems.** `test_merge.py` only covers flat keys. It needs:\n   - a nested-merge case (the docs example is a good one)\n   - a check that the inputs aren't mutated\n   - a case where an override replaces a dict with a scalar, and one where it replaces a scalar with a dict\n\n**Issues in `freeze.py`**\n\n4. **Mixed-type keys crash it.** `sorted` fails on keys like `{1: 'x', 'a': 'y'}` with a TypeError. Sorting by `repr(k)` or similar would fix that.\n5. **Different configs can freeze to the same value.** A list and a dict can produce the same output: `{'a': [1]}` and `{'a': (1,)}` freeze to the same thing, and so do `[['a', 1]]` and `{'a': 1}`. That's risky when freeze is used \"for equality and caching.\" Tagging the type (e.g. `('dict', …)` / `('list', …)`) would fix it.\n6. **Sets aren't handled.** They pass through unchanged, so the result can't be hashed. They could become a `frozenset`.\n7. There are no tests for `freeze`.\n\n**Minor**\n\n- `apply_layers` looks fine and will handle nested layers correctly once `merge_config` is fixed, but its test only covers flat keys too.\n- Declaring 0.3.0 with the changelog line \"Deep merge of config layers\" should wait until #1 is fixed.\n\nOverall: the structure, version bump and docs are fine. Before merging, `merge_config` needs a real deep merge that doesn't share objects with its inputs, plus tests that show it.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-21-edition-opus-k11",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.09212490000000001,
+    "input_tokens": 73263,
+    "output_tokens": 1837,
+    "cached_tokens": 67550,
+    "cache_write_tokens": 5252,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000050900000000000004,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.09207399999999999,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 21.239,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-21-edition-opus-k11",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:39:21.036Z",
+    "images": {
+      "core": "sha256:e48c8f94d6b77801b71348a2f487e3d9f61914e9a616d4a9ec352a157470f137",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-4c7c36bc6936",
+        "id": "sha256:f3326e60c0db322034b185e4113c31091e7b8469683133ac491bc6ec551e93fb",
+        "tree_sha256": "d9e3a4b2ffbd4a94f4219657ce3513342c06ad2b17d16fc272f9c11c39ee6761"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-a4b612d8-c4d5-4789-bce3-0a47b9ef-dc3eb2"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:40:06.311Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /tmp/pi-cwd/repo; git branch -a; git log --oneline main..config-merge; git diff main...config-merge",
+          "code": 129,
+          "output": "[stderr]\nsh: 1: cd: can't cd to /tmp/pi-cwd/repo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_A"
+        },
+        {
+          "seq": 6,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..config-merge; git diff main...config-merge",
+          "code": 0,
+          "output": "* config-merge\n  main\n77d6a81 Apply a stack of layers\nfb8e4df Merge config layers\ndiff --git a/CHANGES.md b/CHANGES.md\nindex 0badbfc..b9fea17 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.3.0\n+\n+- Deep merge of config layers.\n+\n ## 0.2.0\n \n - Load config layers.\ndiff --"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-21-edition-opus-k11",
+      "meter": {
+        "requests": 6,
+        "usd": 0.09212490000000001,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.09212490000000001,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000050900000000000004
+    }
+  }
+}

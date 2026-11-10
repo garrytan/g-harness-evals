@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-18-plain-opus-k13",
+  "task_id": "rev-18",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 13,
+  "status": "ok",
+  "reply_text": "Reviewed `receipt-lines` against `main` (2 commits). The tests pass (3 OK), but there's one bug that blocks the merge, and the tests miss it.\n\n**Blocker: prices print 100× too large**\n`format_money` in `receipt/render.py` never divides by 100. `format_money(1299)` returns `\"$1299.00\"`, but `docs/money.md` says it should be `\"$12.99\"`. The README calls out exactly this (\"a value in cents must never be printed as if it were dollars\"). Every printed line is affected. The fix is `'$%.2f' % (amount_cents / 100,)`. Integer math like `divmod(amount_cents, 100)` would be cleaner still.\n\n**Why the tests didn't catch it**\n`test_render_line` checks the output against `format_money(900)`, so it compares the function to itself and passes even when it's wrong. Add a check against a fixed value, e.g. `format_money(1299) == \"$12.99\"`, and have the render test expect `\"$9.00\"` as literal text.\n\n**Worth fixing**\n- **`align` isn't used.** The commit \"Right-align the totals column\" adds `layout.align`, but `render_line` still uses `'%-20s %s'`. So the totals aren't right-aligned: they start after a 20-character name column and land at different positions as the amount's width changes. `render_line` should probably call `align(name, format_money(total))`.\n- **Tax rounds half-cents to the nearest even cent.** Python's `round()` does this, so `tax_cents(125, 1000)` gives 12, not 13. If the docs' \"nearest cent\" means rounding halves up (the usual rule for receipts), use integer math: `(subtotal_cents * rate_bps + 5000) // 10000`. Either way, add a test for the half-cent case.\n\n**Minor**\n- `align` uses `max(1, gap)`, so long names push the line past 32 characters without truncating it. That might be fine, but it isn't tested.\n- `tax.py` has no tests.\n- The version bump to 0.4.0 matches the CHANGES entry, and the docs are fine.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-18-plain-opus-k13",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0561494,
+    "input_tokens": 52537,
+    "output_tokens": 1334,
+    "cached_tokens": 49604,
+    "cache_write_tokens": 2467,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000052600000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0560968,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 15.86,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-18-plain-opus-k13",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:57:11.606Z",
+    "images": {
+      "core": "sha256:a9ad79c9a5b8831fdc21d559e082c8ec10e726ba26b883975150369b49c28109",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-8239b2919041",
+        "id": "sha256:1cf91aa30a687d3074e723aa9230b4aa9958f5ef2574b0fa9d8654fcfe4c0cff",
+        "tree_sha256": "fdd4bee743835e23fd46d7d3e49b57b17a4ee2a125c53675b5caa853854acf38"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-f40aa45d-f596-4999-a70b-d8011c79-965ad4"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:57:50.796Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..receipt-lines; git diff main...receipt-lines",
+          "code": 0,
+          "output": "  main\n* receipt-lines\na6c40d4 Right-align the totals column\nd7cab8c Render receipt lines\ndiff --git a/CHANGES.md b/CHANGES.md\nindex da36015..63194f9 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.4.0\n+\n+- Render receipt lines, with tax.\n+\n ## 0.3.0\n \n - Line items in in"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-18-plain-opus-k13",
+      "meter": {
+        "requests": 5,
+        "usd": 0.0561494,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.0561494,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000052600000000000005
+    }
+  }
+}

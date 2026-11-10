@@ -425,6 +425,8 @@ describe('vm-shard.sh --workload qm-driver', () => {
     expect(r.exit).toBe('0');
     expect(r.bun).toContain('unset harnesses/qm/gstack/s1e-probe.ts --dry-run --work ' + h + '/shard/smoke/work --out ' + h + '/shard/smoke/results');
     expect(r.bun).toContain('set runner/ledger/budget-ledger.ts init --budget-ledger ' + h + '/shard/results/ledger.sqlite --program-cap-usd 3 --reason qm-driver shard s1');
+    expect(r.bun.join('\n')).toContain('set -e \n');
+    expect(r.bun.join('\n')).toContain(' ' + h + '/shard/results/ledger.sqlite 3\n');
     expect(r.bun).toContain('set harnesses/qm/gstack/s1e-probe.ts --ledger ' + h + '/shard/results/ledger.sqlite --lease-usd 3 --out ' + h + '/shard/results --work ' + h + '/shard/work --skip-build --stage main --shards 8');
   }, 60_000);
 

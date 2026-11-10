@@ -1,0 +1,156 @@
+{
+  "trial_id": "rev-17-plain-opus-k3",
+  "task_id": "rev-17",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 3,
+  "status": "ok",
+  "reply_text": "I wouldn't ship this yet. The parser accepts the exact inputs the README says it must reject, and the new 99-per-line cap is never checked when items are added. I didn't change any code. I ran the tests and fed a few inputs straight into the parser.\n\n**Blocking**\n\n1. **`parseQuantity` turns bad input into numbers instead of rejecting it** (`src/quantity.js`). It uses `parseInt`, which reads digits from the start and ignores whatever follows. The README says \"2kg\", \"3.5\" and \"1e3\" must be rejected, but here's what the parser returned:\n   - `\"2kg\"` → 2\n   - `\"3.5\"` → 3\n   - `\"1e3\"` → 1 (the shopper meant 1000)\n   - `\"5abc\"` → 5\n   - `\" 4\"` → 4\n\n   Fix: accept the string only if the whole thing is digits, e.g. `if (!/^\\d+$/.test(raw)) return null;` and then do the number check (≥ 1).\n\n2. **The 99 cap is never applied.** `withinLimit` exists in `src/limits.js`, but `addToCart` never calls it, so a quantity of 5000 goes straight into the cart. The README says \"the caller rejects anything above it\", and `addToCart` is that caller. It needs something like `if (!withinLimit(qty)) throw …`.\n\n**Tests**\n- The tests only cover `\"3\"`, `\"0\"`, `\"-2\"` and `\"\"`, which is why bug 1 got through. Add cases for `\"2kg\"`, `\"3.5\"`, `\"1e3\"` and `\" 4\"`, since the README names most of them.\n- Nothing tests `addToCart` at all. It needs one test for an invalid quantity, one for a quantity over the cap, and one that checks exactly 99 goes in.\n\n**Minor**\n- The error message puts the raw form input straight into the text (`'invalid quantity: ' + rawQty`). That's fine as long as it never gets shown back to the shopper as HTML.\n- The CHANGELOG says \"Validate the quantity field\" but doesn't mention the 99 cap.\n\nThe version bump, README and file layout look fine. Once 1 and 2 are fixed and the tests are added, it should be good to go.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-17-plain-opus-k3",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0804068,
+    "input_tokens": 72389,
+    "output_tokens": 1366,
+    "cached_tokens": 66921,
+    "cache_write_tokens": 4990,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.0000546,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.08035219999999998,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 16.888,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-17-plain-opus-k3",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:15:55.148Z",
+    "images": {
+      "core": "sha256:a9ad79c9a5b8831fdc21d559e082c8ec10e726ba26b883975150369b49c28109",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-c5578e4088df",
+        "id": "sha256:3b8557ea6ec2ab5dbb90c7fd2b2c40421ec26f7e409c39385ea6a2a01a87bb51",
+        "tree_sha256": "9b249b7efa1e53e99bd35c49f74472ad408e348cc6d4ca6a9ca5b15f2ed4e37f"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-80c75a9b-6a3c-4dde-a032-ff9a9b94-6216fa"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:16:35.551Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /tmp/pi-cwd/repo; git branch -a; git log --oneline main..quantity-parsing; git diff main...quantity-parsing",
+          "code": 129,
+          "output": "[stderr]\nsh: 1: cd: can't cd to /tmp/pi-cwd/repo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_A"
+        },
+        {
+          "seq": 6,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..quantity-parsing; git diff main...quantity-parsing",
+          "code": 0,
+          "output": "  main\n* quantity-parsing\n66ff697 Cap the quantity per line\n8efa52a Parse the quantity field\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex e1e5944..70e975e 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.8.0\n+\n+- Validate the quantity field.\n+\n ## 0.7.0\n \n - Cart l"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-17-plain-opus-k3",
+      "meter": {
+        "requests": 6,
+        "usd": 0.0804068,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.0804068,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.0000546
+    }
+  }
+}

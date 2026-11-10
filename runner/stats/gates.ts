@@ -1,5 +1,5 @@
 // From gbrain-evals v0.10.128 (6999ebc9), eval/runner/stats/. MIT License, Copyright (c) 2026 Garry Tan.
-// Kit v2 (internal-task) takes these changes back from gstack-evals (#private-link-removed) at 81daa79abcf86ddbd15409da0b78cd4d98e835b4, src/runner/stats/gates.ts.
+// Kit v2 (internal-task) takes these changes back from gstack-evals (https://github.com/garrytan/gstack-evals) at 81daa79abcf86ddbd15409da0b78cd4d98e835b4, src/runner/stats/gates.ts.
 // gstack-evals changes (U2), each marked "gstack-evals:": an inconclusive comparison with no p-value says why
 // (NO_VARIATION); an exploratory comparison that cannot pair is blocked alone instead of blocking the family; and the
 // cluster minimum is checked before an interval can fail a comparison, so too few clusters is always inconclusive;

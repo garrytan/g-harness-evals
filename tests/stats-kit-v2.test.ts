@@ -1,4 +1,4 @@
-// Ported from gstack-evals (#private-link-removed) tests/stats/fixes.test.ts at 81daa79abcf86ddbd15409da0b78cd4d98e835b4.
+// Ported from gstack-evals (https://github.com/garrytan/gstack-evals) tests/stats/fixes.test.ts at 81daa79abcf86ddbd15409da0b78cd4d98e835b4.
 import { describe, expect, test } from 'bun:test';
 import { evaluateFamily, validateFamily, type ComparisonFamily } from '../runner/stats/gates.ts';
 import { clusteredPairedDelta, nonInferiorityP, superiorityP, type PairedDelta, type PairedItem } from '../runner/stats/paired.ts';

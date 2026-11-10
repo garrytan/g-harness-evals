@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-09-plain-opus-k4",
+  "task_id": "rev-09",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 4,
+  "status": "ok",
+  "reply_text": "**I wouldn't merge this yet.** There's one bug that will turn flags on for the wrong users, and one matching change that's riskier than it looks. All 5 tests pass, but none of them cover either problem. I didn't change anything in the repo.\n\n**1. Blocker: rules leak from one flag to another (`flags/registry.py`)**\n`add_rule` has `rules=[]` as a default argument in its definition. Python creates that list once and reuses it on every call, so any call that doesn't pass `rules` adds its rule to the same list. I checked it: `add_rule('a', {'plan':'pro'})` followed by `add_rule('b', {'region':'eu'})` turns flag **b** on for `{'plan':'pro'}`. Both flags end up with the same list. This breaks the README's promise that \"a rule added to one flag never affects another.\" The new README text, \"a fresh flag starts with no rules\", is also false. The tests miss it because they always pass `[]` explicitly. To fix it, default to `None` and create a new list inside the function. It should also copy the list it's given (`list(rules or []) + [rule]`) so chaining doesn't change the earlier flag. Add a test that builds two flags without passing `rules`.\n\n**2. High risk: the new matching treats different values as equal (`flags/match.py`)**\nEverything is now compared as `str(x).lower()`. This is deliberate (`{'tier': 2}` matches `'2'`), but it has side effects I confirmed:\n- A context that's missing a field becomes the string `\"None\"`. So a rule `{'x': 'none'}` matches users who don't have `x` at all.\n- `True` matches `'true'`/`'TRUE'`, and `None` matches the string `\"None\"`.\n- Case-insensitive matching applies to every field, including IDs and other values where case matters.\n\nBecause every flag reads this, it changes behavior for all existing rules, not just new ones. At the least, a missing key should never match. I'd also limit the loosening to int↔str rather than using `str()` on everything. Then it needs a note in CHANGES as a behavior change, not just a feature.\n\n**3. Minor**\n- `rollout.py` looks right: the hash is stable and bucketing is 0–99. But it's not salted with the flag name, so a given user lands in the same bucket for every flag. For example, the same first 10% of users get every 10% rollout. Usually you'd hash `f\"{flag}:{user_id}\"`. It also doesn't check the percent range, and it isn't connected to `Flag` yet, even though CHANGES says \"Percentage rollouts\".\n- The version bump to 0.3.0 doesn't signal that matching semantics changed (see #2).\n\nIf you fix #1 and either revert or tighten #2, I'm happy to take another look.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-09-plain-opus-k4",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.07621510000000001,
+    "input_tokens": 66863,
+    "output_tokens": 1805,
+    "cached_tokens": 62931,
+    "cache_write_tokens": 3466,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000052900000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.07616220000000001,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 20.96,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-09-plain-opus-k4",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:04:17.362Z",
+    "images": {
+      "core": "sha256:d3c15a4ff59b46b682cc0b498a5b96d657f86e2d1ac9a8b947b4fb5d8b1c3302",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-7d535e391789",
+        "id": "sha256:9a46d7b3b12749eb2846695afd0446915d0366f5fc840b1115edee51307aba91",
+        "tree_sha256": "b37c012cbbf7b97c335f2356bb8335bddb5c215e50ffde5b8af0e315a87e0e5a"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-30652135-7cc5-4b14-ac3a-66083f57-1043dd"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:05:01.622Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd ~/workspace/repo; git log --oneline -8 --all --graph; git status -s; git diff main...feature-flags-rules --stat; git diff main...feature-flags-rules",
+          "code": 0,
+          "output": "* e3396ff Normalize rule values before matching\n* 83eb696 Build flags with a fluent rule API\n* b0de907 Feature flag registry\n CHANGES.md             |  5 +++++\n README.md              |  4 ++++\n docs/flags.md          |  5 +++++\n flags/__init__.py      |  2 +-\n flags/match.py         |  2 +-\n flags/"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-09-plain-opus-k4",
+      "meter": {
+        "requests": 6,
+        "usd": 0.07621510000000001,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.07621510000000001,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000052900000000000005
+    }
+  }
+}

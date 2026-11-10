@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-11-plain-opus-k11",
+  "task_id": "rev-11",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 11,
+  "status": "ok",
+  "reply_text": "I reviewed `search-filters` against main (2 commits: free-text search and pagination). The tests pass, but I'd hold the merge: the new search term opens a SQL injection hole.\n\n**Blocker: SQL injection in `src/query.js`**\n```js\nclauses.push(\"name ILIKE '%\" + term + \"%'\");\n```\nThe search term the user types is pasted straight into the SQL. That breaks the rule in the README (\"Never interpolate request values into the SQL string\"). A term like `x' OR '1'='1` would get through. Fix it the same way the category filter works:\n```js\nparams.push('%' + term + '%');\nclauses.push('name ILIKE $' + params.length);\n```\nYou may also want to escape `%`, `_` and `\\` inside the term so users can't sneak in wildcards. The tests didn't catch this because they only check that the clause matches `/name ILIKE/`. A test that expects `name ILIKE $2` and checks `params` would have.\n\n**Should fix**\n- **`buildFilters` is now `buildWhere`.** Renaming an export breaks every caller outside this repo. Nothing inside the repo still uses the old name, but if other code imports it, keep an alias or note the break in the CHANGELOG.\n- **A test was dropped.** The `inStock` literal-condition test was removed rather than renamed. It's still worth keeping.\n- **`relevance` sorts by `rank DESC`**, which is also the default. Nothing in the branch computes a `rank` column, so unless the base query provides one, every default search will error. Please confirm.\n- **Blank terms:** a term that is only spaces trims to `''` and matches everything. Check the trimmed value, not the raw one.\n\n**Nits**\n- `MAX_PAGE` actually holds the maximum page size, so `MAX_PAGE_SIZE` would be clearer.\n- `page | 0` quietly wraps very large numbers to negative (they then clamp to page 1). That's fine, but the offset has no upper limit, so very deep pages could be slow.\n- The CHANGELOG mentions sort orders but not pagination. `orderBy` and the term-handling edge cases have no tests.\n\n`sort.js` itself looks good: only sort values on the allowed list ever reach the SQL.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-11-plain-opus-k11",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0590282,
+    "input_tokens": 53468,
+    "output_tokens": 1251,
+    "cached_tokens": 49989,
+    "cache_write_tokens": 3015,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000050400000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0589778,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 15.747,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-11-plain-opus-k11",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:27:10.154Z",
+    "images": {
+      "core": "sha256:d3c15a4ff59b46b682cc0b498a5b96d657f86e2d1ac9a8b947b4fb5d8b1c3302",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-a37a4db49ad7",
+        "id": "sha256:6c659f1b0432cea1eb0db9b19f43ea8bfa0f2f02c7a83d5ad91b5d10171f8a8e",
+        "tree_sha256": "593d02dc02e96eab384f83c52971c5fda6586bcbeb5e6f14ef27e349edfe0b1b"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-115bc8fd-76d9-4173-9b9f-c76969e6-f33dd4"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:27:48.983Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git log --oneline main..search-filters; git diff main...search-filters",
+          "code": 0,
+          "output": "54f7b81 Paginate search results\n306a556 Add free-text search over the name\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex d29661f..a673868 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.6.0\n+\n+- Free-text product search and sort orders.\n+\n ## 0.5.0\n \n - Search by c"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-11-plain-opus-k11",
+      "meter": {
+        "requests": 5,
+        "usd": 0.0590282,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.0590282,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000050400000000000005
+    }
+  }
+}

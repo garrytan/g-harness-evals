@@ -1,0 +1,257 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 06:21 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "d9e9f2df-1393-4f8e-8e1f-c395e278a8f1"
+    },
+    "text": "Hey, can you review the billing-anniversary branch against main before it ships? It schedules renewals so I want to be sure it's right. Review only please, I'll do any edits.",
+    "runId": "0559b64e-13c8-4f8a-831a-ebc9c1b224ec"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "764897b4-1473-4278-b7ef-887ef00e49e7",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "I'll take a look. First I need to find the repo.",
+    "runId": "0559b64e-13c8-4f8a-831a-ebc9c1b224ec",
+    "step": {
+     "id": "764897b4-1473-4278-b7ef-887ef00e49e7",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "764897b4-1473-4278-b7ef-887ef00e49e7",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd ~ 2>/dev/null; for d in /tmp/pi-cwd ~ /workspace; do find $d -maxdepth 3 -name .git -type d 2>/dev/null; done | head\",\"purpose\":\"Locating the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd ~ 2>/dev/null; for d in /tmp/pi-cwd ~ /workspace; do find $d -maxdepth 3 -name .git -type d 2>/dev/null; done | head",
+    "purpose": "Locating the repository",
+    "runId": "0559b64e-13c8-4f8a-831a-ebc9c1b224ec",
+    "callId": "toolu_01UmwLxzFLPxSQcUpUCx1QJm",
+    "tool": "execute",
+    "step": {
+     "id": "764897b4-1473-4278-b7ef-887ef00e49e7",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "0559b64e-13c8-4f8a-831a-ebc9c1b224ec",
+    "callId": "toolu_01UmwLxzFLPxSQcUpUCx1QJm",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "ed79a2e3-482c-4a18-a26b-a29fe12bd627",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git branch -a && git log --oneline main..billing-anniversary && git diff main...billing-anniversary\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git branch -a && git log --oneline main..billing-anniversary && git diff main...billing-anniversary",
+    "purpose": "Reading the branch diff",
+    "runId": "0559b64e-13c8-4f8a-831a-ebc9c1b224ec",
+    "callId": "toolu_01RzrkjWtwRea1jP2AtxJRHG",
+    "tool": "execute",
+    "step": {
+     "id": "ed79a2e3-482c-4a18-a26b-a29fe12bd627",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* billing-anniversary\n  main\nf73b00d Prorate the first partial period\n27a0295 Compute the next billing date from the anchor\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 0d77c0e..6b56b0d 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 2.1.0\n+\n+- Next-billing-date computation from the anchor day.\n+\n ## 2.0.0\n \n - Monthly subscriptions with an anchor day.\ndiff --git a/README.md b/README.md\nindex 4326fa9..1cd9ab3 100644\n--- a/README.md\n+++ b/README.md\n@@ -3,3 +3,11 @@\n Subscription renewals for subkit.\n \n A subscription has an anchor day (1 to 31). It renews on that day each month. If a month is shorter than the anchor day, it renews on the last day of that month: a Jan 31 anchor renews Feb 28 (or 29), then Mar 31. The anchor never drifts.\n+\n+## Next date\n+\n+nextBillingDate(from, anchorDay) returns the next renewal strictly after the month of from, on the anchor day or the last day of the target month if it is shorter.\n+\n+## Proration\n+\n+The first period is prorated by the days left in the start month, counting the start day. A start on the 1st pays the full amount; a start on the 16th of a 30-day month pays half.\ndiff --git a/package.json b/package.json\nindex 2f6c0ab..12b85e3 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"subkit\",\n-  \"version\": \"2.0.0\",\n+  \"version\": \"2.1.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/dates.js b/src/dates.js\nindex 2e47502..f5c5faf 100644\n--- a/src/dates.js\n+++ b/src/dates.js\n@@ -2,4 +2,8 @@ function startOfDay(d) {\n   return new Date(d.getFullYear(), d.getMonth(), d.getDate());\n }\n \n-module.exports = { startOfDay };\n+function daysInMonth(year, month) {\n+  return new Date(year, month + 1, 0).getDate();\n+}\n+\n+module.exports = { startOfDay, daysInMonth };\ndiff --git a/src/prorate.js b/src/prorate.js\nnew file mode 100644\nindex 0000000..8d33058\n--- /dev/null\n+++ b/src/prorate.js\n@@ -0,0 +1,11 @@\n+const { daysInMonth } = require('./dates');\n+\n+function prorate(amountCents, startDate, anchorDay) {\n+  const year = startDate.getFullYear();\n+  const month = startDate.getMonth();\n+  const inMonth = daysInMonth(year, month);\n+  const remaining = inMonth - startDate.getDate() + 1;\n+  return Math.round((amountCents * remaining) / inMonth);\n+}\n+\n+module.exports = { prorate };\ndiff --git a/src/schedule.js b/src/schedule.js\nnew file mode 100644\nindex 0000000..25c2c7e\n--- /dev/null\n+++ b/src/schedule.js\n@@ -0,0 +1,10 @@\n+const { daysInMonth } = require('./dates');\n+\n+function nextBillingDate(from, anchorDay) {\n+  const year = from.getFullYear();\n+  const month = from.getMonth();\n+  const day = Math.min(anchorDay, daysInMonth(year, month));\n+  return new Date(year, month + 1, day);\n+}\n+\n+module.exports = { nextBillingDate };\ndiff --git a/test/prorate.test.js b/test/prorate.test.js\nnew file mode 100644\nindex 0000000..41a482f\n--- /dev/null\n+++ b/test/prorate.test.js\n@@ -0,0 +1,11 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { prorate } = require('../src/prorate');\n+\n+test('a full month is the full price', () => {\n+  assert.strictEqual(prorate(3000, new Date(2026, 3, 1), 1), 3000);\n+});\n+\n+test('starting mid-month charges the remaining days', () => {\n+  assert.strictEqual(prorate(3000, new Date(2026, 3, 16), 16), 1500);\n+});\ndiff --git a/test/schedule.test.js b/test/schedule.test.js\nnew file mode 100644\nindex 0000000..3549389\n--- /dev/null\n+++ b/test/schedule.test.js\n@@ -0,0 +1,15 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { nextBillingDate } = require('../src/schedule');\n+\n+function ymd(d) {\n+  return [d.getFullYear(), d.getMonth() + 1, d.getDate()];\n+}\n+\n+test('a mid-month anchor renews the same day next month', () => {\n+  assert.deepStrictEqual(ymd(nextBillingDate(new Date(2026, 2, 15), 15)), [2026, 4, 15]);\n+});\n+\n+test('a December 31st anchor renews on January 31st', () => {\n+  assert.deepStrictEqual(ymd(nextBillingDate(new Date(2026, 11, 31), 31)), [2027, 1, 31]);\n+});\n\n[exit 0]",
+    "runId": "0559b64e-13c8-4f8a-831a-ebc9c1b224ec",
+    "callId": "toolu_01RzrkjWtwRea1jP2AtxJRHG",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "67020106-1755-4f21-ad50-01022d593e55",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQSgQkKEAgTGAI4AUIIdGhpbmtpbmcSDG15LnIOEquNTprXvRoMvbhWzhMbiQkWPk6CIjBGZxpvjR7Wz8Ge/WspEXDgJvrdtXCMTCf95ZEpgAFyD0JXQzirt7F+HIOmiA2TD3Mqnghd8/NmETPm4VnD5hp8Gmhyz4qrhP+Qm+v+Z0L7yRY5RWGNhs2afjQG3GP/yf5IuDe+wh6x5IE7E5zWNceRiHNxC21aeCODrOS7hyVWa/KgAtM+giDG/iNolHUK6Acpbm4/8TzDjccN0iLCFjchCzalbWwcXt9Ep4jWO2oVZHvEk+l+pt3aHyNfBQ9nXsSM/6yTRL+8VUhW4F7LAaiYMVn0mE4XHHAQLIVdX4bIRrF1iB71PCQMkqQv0uk4N18XEUm4ILrMBSPlGSk34S+L6G40Q0Q5Ad9j0CPIib2RkGfkBtyw32dUfMGAxpL86+lHEjN3x6lJEfavlS/Kk5Y1Ht0vw66Yy7T90SPUJ9sXpkCXqpMMjYcZpWtAQIcqbFZSOaopvRxzHpLmR70UHKGhCXRZ2DNj5IP4ycCxpHlAKig595ZV47hoyHu1Nh5iN62hmd2QwngzeoSNtWY5Novf1cP8FJvaiw9i0lxvfPJ8JSqcp1irbTm4AeGnTR8MUrAyDNXOT88DqXw1EfARqwSJvmY9MRFev4QAMs2vG7VUVvYDGHBNXGdcdGnXuYDEzS/52n+NHywDpGZxameSWSdPH5Jm1Jnc114O0aEt8pv+jSfqVLxQHDg5TsJs9Mki83527P80M46IbI76v+jgytGvgVo2ZvYQOB+CIYXqQyQxT0eF8gL7Bppb9fBSMFZcoW/8RfPokAIM2mmb9L/7uAsA2TpjGSpFJmFq7+4znjfJqVN99El7ze/dbexrn8XAFZOtLyWqGbGkXV9Byz4zr4k+gz0Cbdif9jt6KhJwQ1Yh/VUdJWoNxTlMXHYqXK4uT+c0gMPPzichP9bktfJRj5uINE2sxek4YUExkZdHDRRs/yyK+9rmni4qVd2b+FG4chY0v2TeX17GxAHavkUyyniqnqsGMDTJQHq/6t9kCdWkvLYCx8EDVm2EwLIW4TrrH7wasUjkt627ZiyKTG6ycS3sFoWCUHXQ4+81D08r0vIaGMQeZ0hlbKxIJxHd8n15xmoz2ZgHLQmNgo6j9yCgSxlBiQ4O2NbxEWm73S4ti/RUgF8YjWSmrrvaaMOOcoeaxXbSfLuZWjQmNOzr0TbvktJ2VVgUT8iXBLQNaYsGKwzOD6Ax6AGOZvMvJsdQVkmJaa6P1n8NsjBnQBrkPgqzYDdeO/vX3ACNFpAosE2i6XXDtzv0uyEK4bfTEEiX7MF6zyGDjcnlvoywtpnQUIc8feclBmqg0Y5P1C98DGQAdt9XiCKkhe47sFcp+J5UjItQ5GahXtNsYG1zIwEwL1u7RuKbH7UIYWzZFAdAPKjBsY+wciciiY1pBZQOfUqPuHjOsV14+ZMA+Tq57i5WvlSFPvCi5Ju+zsdQRvJRH26buyym0+WVMXFuB6mS2pphT8yEQBH0GAE=",
+    "thinking": "I've found the bug: the clamp uses the current month's day count instead of the target month's, so a Jan 31 anchor rolls over into March. I also need to check the proration, since the first period seems to run from the start date to the anchor rather than to month end. My concern is that a start on the 16th with a 16th anchor gives a half charge, yet the period runs a full month, and the test expects 1500.\n\nI'm reconsidering the test expectation: a subscription that starts on its anchor day arguably deserves a full period, so the 1500 figure may be the thing that's wrong. Next I'll run the test suite and do a quick check on the date math.\n\n",
+    "runId": "0559b64e-13c8-4f8a-831a-ebc9c1b224ec",
+    "step": {
+     "id": "67020106-1755-4f21-ad50-01022d593e55",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "67020106-1755-4f21-ad50-01022d593e55",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && npm test 2>&1 | tail -5; node -e \\\"\\nconst {nextBillingDate:n}=require('./src/schedule');const f=d=>d.toDateString();\\nconsole.log(f(n(new Date(2026,0,31),31)),'|',f(n(new Date(2026,1,28),31)),'|',f(n(new Date(2026,2,31),31)),'|',f(n(new Date(2026,0,15),31)));\\\"\",\"purpose\":\"Running tests and edge cases\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && npm test 2>&1 | tail -5; node -e \"\nconst {nextBillingDate:n}=require('./src/schedule');const f=d=>d.toDateString();\nconsole.log(f(n(new Date(2026,0,31),31)),'|',f(n(new Date(2026,1,28),31)),'|',f(n(new Date(2026,2,31),31)),'|',f(n(new Date(2026,0,15),31)));\"",
+    "purpose": "Running tests and edge cases",
+    "runId": "0559b64e-13c8-4f8a-831a-ebc9c1b224ec",
+    "callId": "toolu_01Rwr7rtEDWXZMR7G9xMguCM",
+    "tool": "execute",
+    "step": {
+     "id": "67020106-1755-4f21-ad50-01022d593e55",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "ℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 92.593709\nTue Mar 03 2026 | Sat Mar 28 2026 | Fri May 01 2026 | Tue Mar 03 2026\n\n[exit 0]",
+    "runId": "0559b64e-13c8-4f8a-831a-ebc9c1b224ec",
+    "callId": "toolu_01Rwr7rtEDWXZMR7G9xMguCM",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 9,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "c2e91ba1-a32e-475f-aa46-afdf3aeb7830",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "CAQSnAYKEAgTGAI4AUIIdGhpbmtpbmcSDDS8g+ahSH158DSdRhoM3qRKttzmARVMAlVAIjCl9zzz0Ha3yoBnMmyECuB6NwyrI0YjqRxI1awYcCHJExt0+2R39E+pihXhCPCPPWYquQVd+ZQ29dSnpchtcKg6jBYmF2lWRBmfx7/6ztlXykagRCVvvdRiP2Y8ZUh6YrAPlOFO+u4LYLWJy167cQHSBWBWSQ9yLSiqCl4+wj1kb6ZfMMeEQdOMKwZQuG46khgKw/lmL4pSZmlPvEDxtrRxwYS7YKXu7iwSWRwbKaD6c+EjzApeMk/QNS7N5LOpvke8WzmRU+II6Vx60y9ttBW05u4OHwZfDeXWUg+WuGBnlXNFUNs3OWO9JeXbDgFKsv9rv0KFms7vEFJGKHUEhO/4aTQtnBRTxoNyuxPg7mZNWxezM667fFGPvdvqwYjmCwHo2gIJYa3nvLmeZNAzMV8lNh3LpnsauZVg76k9ygbbFNZvRTkGXkDeV5THsWbb6bZneFWyZuXmzvWMjTGOAgPd3bMW5A6FC2JAHdsz6MG8lQ6wuo/F/eCkN0wsrA9R/LtpUKLmpyl6NFXeGJaiM9WIlmCktXIDikbl1mRz4SVnhk8rj5hC2RaonGgBopp8GWvozky0pHAvsvjfH12dGN9ItM1DgwrEmrnOpmrK4/wL5R9H2jURr4E35yXyQ27TOCNaBp82l4EQ3UpBrdy8UGIqbEOSVubomRco5IytSaVHCGJ69Y2WHCLydl8lr9HQPV1+GiyUFWuXU2i6W0GceFzFOHoeBVxL/alK9Zd4c4u8YfXPSQzlmBrvzswV5pB8HHMxhAIUyKOyiySh9FQ9Gp2CFV2Ztm3BUlbXzrYInOyN6cwgiC8LZLMcHIi3rkkQ0SlWU4bZ0yAzMCPLi6YIG4o6Aqr6OigfZgki81q5ILZ59AhAbldD1MlqIvlfKl4ZlsXAF7+bn08wW2NdpENu1oyP7s7fF33m9ZuhP4/gCfQM55epiUtvmR0DK+01mFI/OMHRcCW/S4WgXIby8/+88ZM/o4EaI3O7h7VzwQCpGAE=",
+    "thinking": "Anchoring on the 31st, February 28 lands on March 28, so that one drifts. January 15 with the same anchor comes out to March 3, and that's the end of it.\n\n",
+    "runId": "0559b64e-13c8-4f8a-831a-ebc9c1b224ec",
+    "step": {
+     "id": "c2e91ba1-a32e-475f-aa46-afdf3aeb7830",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 10,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "c2e91ba1-a32e-475f-aa46-afdf3aeb7830",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794147698788,
+    "workFinishedAt": 1794147717238,
+    "text": "I reviewed the branch and didn't change anything. **It isn't ready to ship.** The tests pass, but `nextBillingDate` gets renewal dates wrong at month ends, and those are exactly the cases the README promises to handle.\n\n**1. Wrong renewal dates for anchors on the 29th, 30th or 31st (blocker)** — `src/schedule.js`\nThe code shortens the anchor day using the length of the *current* month instead of the month it's renewing into. When a month has fewer days than the anchor, JavaScript rolls the date over into the following month. I ran these against the branch:\n- Jan 31, anchor 31 → **Mar 3** (should be Feb 28)\n- Jan 15, anchor 31 → **Mar 3** (should be Feb 28)\n- Mar 31, anchor 31 → **May 1** (should be Apr 30)\n- Feb 28, anchor 31 → **Mar 28** (should be Mar 31). The README says the anchor never drifts, but here it does.\n\nSo customers on these anchors would skip a month or get billed on the wrong day. The fix is to use the target month's length: `daysInMonth(year, month + 1)`. `daysInMonth` already handles month 12 rolling into the next year.\n\n**2. Missing tests**\nThe only tests are a mid-month anchor and Dec 31 → Jan 31, and both target months have 31 days. They'd pass with or without the fix. Worth adding:\n- Jan 31 → Feb 28, and Feb 29 in a leap year such as 2028\n- Mar 31 → Apr 30\n- Feb 28 (anchor 31) → Mar 31, to catch drift\n- An anchor on the 30th going into February\n\n**3. Proration ignores the anchor day (please check what you intended)** — `src/prorate.js`\n`anchorDay` is passed in but never used. The charge is based on the days left in the calendar month. But the first period actually runs from the start date to the next anchor date. For example, the second test starts on Apr 16 with anchor 16. That's a full month, yet it charges 1500, which is half. A start on Apr 5 with anchor 20 would also charge the wrong amount. If the first period is meant to end at the first renewal, base the charge on the days between the start date and that date. If the calendar-month rule is what you want, take out the unused parameter and say so in the README so it's clear.\n\n**4. Small things**\n- The CHANGELOG entry for 2.1.0 doesn't mention proration.\n- The README describes the result as \"strictly after the month of from\", which is hard to follow. Something like \"the anchor day in the month after `from`\" would be clearer.",
+    "runId": "0559b64e-13c8-4f8a-831a-ebc9c1b224ec",
+    "step": {
+     "id": "c2e91ba1-a32e-475f-aa46-afdf3aeb7830",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

@@ -18,7 +18,11 @@
 # lease_usd values, plus every lease the shards of the same dest ever started (each <dest>/<shard>/leases.jsonl, append-only;
 # a shard named here and relaunched with --resume counts once), must sum to at most the cap, or the fan-out exits 2 before
 # any VM call, the quota read included. So a canary and the rest of a stage go to the same dest. Before the first launch it
-# checks again under a lock on <dest>/.stage-cap.lock and reserves each shard's lease (stage_cap below).
+# checks again under a lock on <dest>/.stage-cap.lock and reserves each shard's lease (stage_cap below). For --workload
+# qm-driver, stage_cap_usd must equal the preregistration's caps_usd entry for the --stage that every shard's args name (a
+# shard without --stage, or shards that disagree, exit 2), --replicate-to is required, and the same leases must also fit
+# under the stage ledger <replicate-to>/stage-ledger.jsonl (stage_ledger.py), which counts every lease launched for the
+# preregistration's run_id and that stage from any dest, by fanout.sh or a one-off run-shard.sh.
 # A sealed run (docs/sealed-custody.md) adds "sealed_root": "<custodian's sealed root>" and "opening_receipt":
 # "<its opening-receipt.json>", both or neither (one alone is exit 2); every run-shard.sh then gets --sealed-root and
 # --opening-receipt with the paths expanded, and each shard uploads, uses and deletes its own copy on its VM. fanout.sh
@@ -111,9 +115,9 @@ log() { printf '%(%Y-%m-%dT%H:%M:%SZ)T fanout: %s\n' -1 "$*" >&2; }
 # UBI_STAGE_LOCK_SECONDS, default 300), checks again and appends one reservation per shard it launches fresh, printing
 # "<shard><TAB><reservation>" lines, so two fan-outs on one dest cannot spend the same budget.
 stage_cap() {
-  python3 - "$manifest" "$workload" "$1" <<'PY'
+  python3 - "$manifest" "$workload" "$1" "$rep_to" "$here" <<'PY'
 import fcntl, json, os, sys, time
-m = json.load(open(sys.argv[1])); workload, mode = sys.argv[2], sys.argv[3]
+m = json.load(open(sys.argv[1])); workload, mode, rep_to, here = sys.argv[2:6]
 num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
 cap = m.get('stage_cap_usd')
 if workload == 'qm-driver' and cap is None:
@@ -172,6 +176,27 @@ spent = sum(earlier.values())
 if total + spent > cap + 1e-9:
     prior = ' plus $%g launched earlier from %s (%s)' % (spent, dest, ', '.join(earlier)) if earlier else ''
     sys.exit('fanout: refused %s: the shard leases sum to $%g%s, above the stage cap of $%g (stage_cap_usd); lower lease_usd' % (when, total, prior, cap))
+# qm-driver: stage_cap_usd must be the preregistration's caps_usd entry for the one --stage every shard runs, and the
+# stage ledger in the replica folder (stage_ledger.py) sums every lease of that run id and stage, whatever its dest.
+if workload == 'qm-driver':
+    sys.path.insert(0, here); sys.dont_write_bytecode = True
+    import stage_ledger as sl
+    if not rep_to: sys.exit('fanout: --workload qm-driver needs --replicate-to (or UBI_REPLICATE_TO): the stage ledger, which counts every launch of a stage whatever its dest, lives there')
+    rep = os.path.abspath(rep_to)
+    design = sl.prereg(os.path.dirname(os.path.dirname(here)), m['commit'], m['prereg'], 'fanout')
+    stages = {sl.stage_of(s.get('args') or []) for s in shards}
+    if None in stages: sys.exit('fanout: every qm-driver shard needs --stage in its args, so the stage cap can be checked')
+    if len(stages) > 1: sys.exit('fanout: the shards disagree on --stage (%s); one fan-out runs one stage' % ', '.join(sorted(stages)))
+    stage = stages.pop()
+    pre = sl.stage_cap(design, stage, m['prereg'], 'fanout')
+    if abs(cap - pre) > 1e-9: sys.exit('fanout: stage_cap_usd $%g is not the preregistered cap of --stage %s, caps_usd.%s = $%g in %s' % (cap, stage, stage, pre, m['prereg']))
+    if mode == 'reserve': held = sl.lock(rep, 'fanout', when)
+    u = sl.units(rep, design['run_id'], stage, 'fanout', when)
+    if resume:
+        for n in names:
+            d = u.get(os.path.realpath(os.path.join(dest, n)), {})
+            if d: d.pop(list(d)[-1])
+    sl.over('fanout', when, design['run_id'], stage, rep, total, u, cap)
 if mode == 'reserve' and not resume:
     stamp = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     for s in shards:
@@ -179,6 +204,8 @@ if mode == 'reserve' and not resume:
         os.makedirs(os.path.join(dest, s['name']), exist_ok=True)
         with open(os.path.join(dest, s['name'], 'leases.jsonl'), 'a') as f:
             f.write(json.dumps({'reservation': rid, 'lease_usd': s['lease_usd'], 'reserved_at': stamp, 'by': 'fanout.sh', 'resume': False}) + '\n')
+        if workload == 'qm-driver':
+            sl.append(rep, {'run_id': design['run_id'], 'stage': stage, 'dest': os.path.realpath(os.path.join(dest, s['name'])), 'lease_usd': s['lease_usd'], 'resume': False, 'reservation': rid, 'reserved_at': stamp, 'by': 'fanout.sh'})
         print(s['name'] + '\t' + rid)
 PY
 }

@@ -1,0 +1,159 @@
+{
+  "trial_id": "rev-07-edition-opus-k14",
+  "task_id": "rev-07",
+  "family": "review",
+  "arm": "edition",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 14,
+  "status": "ok",
+  "reply_text": "I reviewed http-retries (one commit, \"Retry 429 and 5xx responses with backoff\") against main. **Don't merge it yet: it brings back a bug in the nightly export.** I didn't change anything. The 3 existing tests pass, but none of them catch the problems below.\n\n**Blocker**\n1. **`timeoutMs: 0` stops disabling the timeout.** The new code in `src/http.js` sets the timeout with `opts.timeoutMs || DEFAULT_TIMEOUT_MS`. Main used `??`. With `||`, a 0 gets replaced by the 10s default. `src/export.js` passes `timeoutMs: 0` because a full export can take ten minutes, so after this merge the nightly export would be cut off at 10s. Retries make it worse: it would make 3 attempts of about 10s each, all aborted. This also undoes the 4.0.1 changelog entry and contradicts the README. The fix is to switch back to `??` and add a test that a 0 timeout never aborts.\n\n**Should fix before merge**\n2. **Every request method gets retried, including POST.** Nothing checks the method, so a POST that returns 503 or 429 is sent again. That can mean double writes or double-processed jobs in any worker that posts. Retries should be limited to GET, HEAD, PUT, DELETE and OPTIONS, or be something a caller turns on per request.\n3. **It's on by default for every worker.** Retries default to 2, so every caller gets them without choosing to. Combined with #2, that's a big change in behaviour for a minor version bump (4.1.0).\n4. **Request bodies that are streams can't be resent.** The same `init` is reused on each attempt, so a streamed body will fail or send nothing the second time.\n\n**Worth considering**\n5. **The `Retry-After` header is ignored on 429 and 503.** The client waits a random backoff that could be far shorter than the server asked for.\n6. **Failed responses aren't read or discarded before retrying.** With some fetch implementations, that can keep connections or sockets open longer than needed.\n7. **Network errors and timeouts aren't retried, only HTTP status codes.** That may be what you want, but the README should say so.\n8. **Test gaps:** nothing covers giving up after the retry limit runs out, 429, POST behaviour, or the 0-timeout case.\n\n**Fine as is:** the full-jitter backoff with its 8s cap, never retrying 501, and the way the code splits the policy, backoff and single-attempt logic into separate pieces.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-07-edition-opus-k14",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0827159,
+    "input_tokens": 86213,
+    "output_tokens": 1741,
+    "cached_tokens": 81784,
+    "cache_write_tokens": 3954,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.0000511,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0826648,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 22.447,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-07-edition-opus-k14",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:29:31.972Z",
+    "images": {
+      "core": "sha256:d3c15a4ff59b46b682cc0b498a5b96d657f86e2d1ac9a8b947b4fb5d8b1c3302",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-8a638002971d",
+        "id": "sha256:de8f372133eadef12cc1ca79989c36577960d40b447ecf81ee9dc003a08e04ec",
+        "tree_sha256": "b8945d3ad7f19c62dccf490b61260b4bcea0b1391062820ab876fa3dbd3cabe5"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-28d01211-57a8-47c7-b7c0-138c52a8-fc6f56"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:30:18.100Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 5,
+          "command": "cd /root/workspace/repo; git log --oneline main..http-retries; git diff --stat main...http-retries; git diff main...http-retries",
+          "code": 0,
+          "output": "b04b610 Retry 429 and 5xx responses with backoff\n CHANGELOG.md        |  4 ++++\n README.md           |  2 ++\n package.json        |  2 +-\n src/backoff.js      |  7 +++++++\n src/http.js         | 31 +++++++++++++++++++++++++++----\n src/retry-policy.js |  5 +++++\n test/retry.test.js  | 22 ++++++++++++"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-07-edition-opus-k14",
+      "meter": {
+        "requests": 7,
+        "usd": 0.0827159,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.0827159,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.0000511
+    }
+  }
+}

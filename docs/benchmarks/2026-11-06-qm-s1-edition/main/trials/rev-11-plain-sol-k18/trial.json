@@ -1,0 +1,155 @@
+{
+  "trial_id": "rev-11-plain-sol-k18",
+  "task_id": "rev-11",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 18,
+  "status": "ok",
+  "reply_text": "I’d fix the SQL injection before merging. Reviewed `search-filters` at `54f7b81` against `main`; no files changed.\n\n*Findings*\n\n1. *[P1] Search terms are interpolated directly into SQL* — `src/query.js:11–13`  \n   A term of `' OR TRUE -- ` produces:\n   ```sql\n   WHERE category = $1 AND name ILIKE '%' OR TRUE --%'\n   ```\n   This bypasses the category and stock predicates. Ordinary apostrophes, such as in `kid's`, also break the query. Put the `%term%` value in `params` and use the next numbered placeholder. Add tests asserting both the exact SQL and params, including a term containing an apostrophe and a combined category/term query.\n\n2. *[P2] The sort whitelist accepts inherited properties* — `src/sort.js:8`  \n   `orderBy('toString')` returns `ORDER BY function toString() { [native code] }`; `constructor` and `__proto__` also produce invalid SQL rather than using the fallback. Check for an own property with `Object.hasOwn(SORTS, sort)`, or use a `Map`.\n\n3. *[P2] Pagination wraps large inputs instead of clamping them* — `src/paginate.js:4–5`  \n   Bitwise `| 0` converts values to signed 32-bit integers before clamping. For example, `limitOffset(2, 2147483648)` returns `{ limit: 1, offset: 1 }`, despite the documented page-size cap of 100. A page of `2147483648` silently becomes page 1. Validate finite numbers and truncate/clamp without bitwise conversion.\n\n*Compatibility check:* the exported `buildFilters` was renamed to `buildWhere` without an alias. Existing callers will break unless migrated; there are no application callers in this checkout to verify.\n\nAll 5 existing tests pass, but they don’t cover the failures above.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-11-plain-sol-k18",
+    "requests": 8,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0447309,
+    "input_tokens": 61323,
+    "output_tokens": 1142,
+    "cached_tokens": 49554,
+    "cache_write_tokens": 11457,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.000111,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0446199,
+        "requests": 7
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 8
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 24.055,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-11-plain-sol-k18",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:00:11.610Z",
+    "images": {
+      "core": "sha256:70e9dbc58d38502117dc97d1c5973af7606fa9e34dfd9ef1126cfa852865f97b",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-a37a4db49ad7",
+        "id": "sha256:fbd86f893d9b3b46724644174acec5ba0a984f93fe4a7341eb3838bb57a5047e",
+        "tree_sha256": "593d02dc02e96eab384f83c52971c5fda6586bcbeb5e6f14ef27e349edfe0b1b"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-a1b06627-c767-4e17-ace9-135452d3-6d68f7"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:00:59.229Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/c7a1062445661642584ef354/ed95bee6ccffe0b4/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/c7a1062445661642584ef354/ed95bee6ccffe0b4/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 10,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git diff --stat main...search-filters && git diff main...search-filters",
+          "code": 0,
+          "output": "  main           e8e0f84 Product search by exact filters\n* search-filters 54f7b81 Paginate search results\n CHANGELOG.md          |  4 ++++\n README.md             |  8 ++++++++\n package.json          |  2 +-\n src/paginate.js       |  9 +++++++++\n src/query.js          |  8 ++++++--\n src/sort.js      "
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-11-plain-sol-k18",
+      "meter": {
+        "requests": 8,
+        "usd": 0.0447309,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 8,
+        "usd": 0.0447309,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.000111
+    }
+  }
+}

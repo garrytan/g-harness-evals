@@ -1,0 +1,170 @@
+{
+  "trial_id": "plan-01-edition-sol-k1",
+  "task_id": "plan-01",
+  "family": "plan",
+  "arm": "edition",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "*Recommendation:* add invoice CSV as another queued export, reusing the existing CSV writer and invoice redaction rules. No new dependencies or export framework.\n\nI reviewed the repo at `551f9c8`. All four existing tests pass, and I haven’t changed any code.\n\n### Scope and existing behavior\n\nThree existing pieces already cover most of the feature:\n\n- `src/server.js:9` queues the JSON invoice export and returns `202` with a job ID.\n- `src/exports/redact.js` removes `tax_id` for everyone except admins.\n- `src/exports/csv.js` handles quoting, a UTF-8 BOM, and CRLF line endings. Commit `3adebb0` explicitly requires Finance’s CSVs to use `writeCsv()` because of a previous Excel encoding failure.\n\nThe minimum change is one invoice CSV formatter, one route, tests, and documentation—*six files, no new classes or services*.\n\n### 1. Architecture\n\n*Proposed flow:*\n\n```text\nPOST /exports/invoices.csv\n  → enqueue(\"invoices-csv\", { role })\n  → listInvoices()\n  → redactFor(role, invoice)\n  → select ordered columns → writeCsv()\n  → existing job result / polling flow\n```\n\nRecommended CSV contract:\n\n- One row per invoice.\n- Stable columns: `id, customer, total_cents, currency, issued_at`.\n- Admin exports additionally include `tax_id` after `customer`; non-admin exports omit both that header and its values.\n- Keep amounts as integer cents and dates as currently represented; no locale-dependent formatting.\n\n*Two designs considered:*\n1. A dedicated `invoices-csv.js`, alongside `json.js` and `customers-csv.js`.\n2. A format-neutral invoice-export module owning data selection/redaction, with JSON and CSV adapters.\n\nChoose *1*. Existing helpers already hide CSV encoding and access policy behind small interfaces. The second design would require migrating working JSON behavior without enough benefit for this addition.\n\nBoundary review: keep column order in one list and derive headers and values from it; reuse `redactFor()` rather than copying its rules. No staged public helpers, pass-through wrappers, duplicate state, or new internal imports are needed.\n\n*High—security:* CSV must apply redaction before serialization. Do not merely hide the header while retaining sensitive values.\n\n*Existing limitation:* the job lookup route has no visible ownership check. CSV should preserve existing behavior, not silently introduce a separate authorization model. Broader job-access hardening needs its own scope.\n\n### 2. Code quality and failure handling\n\nUse `writeCsv()` directly—do not implement another quoting or newline convention. Explicit column selection prevents accidental exports of future invoice fields.\n\nKeep JSON, customer CSV, PDF flags, cleanup, and metrics unchanged. The cleanup and metrics modules exist but are not wired into the current export path; they are not requirements for this feature.\n\n*Existing failure risk:* `queue.js:10` executes the job without catching exceptions. A formatter failure can escape rather than produce a failed-job status. Queue error handling is a shared deficiency, not something to patch only for CSV.\n\n*Medium—spreadsheet safety:* quoting does not neutralize Excel formulas in text beginning with characters such as `=`. There is no existing sanitization policy. Before implementation, decide whether invoice text must be preserved exactly or made spreadsheet-safe; don’t silently change values or the shared writer’s behavior.\n\n### 3. Tests\n\nAdd coverage for the actual regressions this feature could introduce:\n\n- *Invoice output:* exact headers, ordering, row count, cents, currency, and dates.\n- *Redaction:* viewer and missing/unknown roles expose neither the `tax_id` header nor tax-ID values; admins retain them. Keep the JSON checks.\n- *CSV writer contract:* BOM, CRLF record separators, trailing CRLF, Unicode, commas, embedded quotes, embedded newlines, null/undefined cells, and empty input producing a header-only file. This protects customer exports too.\n- *Route integration:* `202` with a job ID; initially queued, then completed with CSV output; role reaches the formatter; CSV generation does not happen inline.\n- *Compatibility:* existing JSON and customer export behavior remains unchanged.\n\nUse Node’s existing test runner; no testing dependency is necessary. Route tests should exercise the exported route handlers—the repository does not contain a listening HTTP-server implementation.\n\n### 4. Performance and delivery\n\n`docs/exports.md` mentions customers with *200,000+ invoices* and requires queued exports. Preserve that boundary; never generate CSV inside the request.\n\nHowever, the current queue still runs synchronous work on the same event loop, and both `listInvoices()` and `writeCsv()` materialize data in memory. A queued export avoids inline request generation but does *not* provide worker isolation or bounded memory. Dataset sizes in bytes and measured runtime are unknown.\n\nThere are no database queries here, so no new N+1 or indexing issue. Don’t add caching. Record large-export benchmarking and streaming/worker execution as follow-up work rather than claiming this implementation solves scale.\n\nNo new distributable artifact is needed: this follows the existing application/Docker deployment. No CI configuration is present.\n\n### Implementation order\n\n1. Add `src/exports/invoices-csv.js`.\n2. Register the queued route in `src/server.js`.\n3. Add `test/invoices-csv.test.js` for formatting and route integration.\n4. Extend `test/export-redaction.test.js` to cover CSV.\n5. Add `test/csv.test.js` for the shared writer’s contract.\n6. Update `docs/exports.md` with the endpoint, schema, role behavior, and polling usage.\n\n*Not in scope:* JSON refactoring, database changes, a new download endpoint, worker/queue redesign, cleanup or metrics wiring, PDF work, or deployment changes.",
+  "counts": {
+    "open_matched": true,
+    "open_any": true,
+    "complete_read": true,
+    "first_step": true,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-01-edition-sol-k1",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0586343,
+    "input_tokens": 63739,
+    "output_tokens": 1826,
+    "cached_tokens": 49231,
+    "cache_write_tokens": 14180,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0000752,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0585591,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 37.563,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-pilot",
+    "trial_id": "plan-01-edition-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T04:35:29.421Z",
+    "images": {
+      "core": "sha256:b07606830ac2ac4f3c37e3541cca92736092719db56085e443726bf25d497e83",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-9f6f2a039a0c",
+        "id": "sha256:9932c962debc8538b6498292f52bc3123f194caf710f066711a647b8ada8a283",
+        "tree_sha256": "bed4d99501234d175c0d1e3efdd60ca6bcd88517045bee96f2b414b3b79eecea"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-dc1d7737-f033-48ae-a5c0-740cf8e9-0697ad"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T04:36:31.622Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/c45f80a8f586f0b853ffd5f4/ce49c8f28eb6c8a1/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/c45f80a8f586f0b853ffd5f4/ce49c8f28eb6c8a1/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [
+        {
+          "seq": 2,
+          "skill": "gstack-plan",
+          "via": "skill"
+        }
+      ],
+      "complete_via": "inline",
+      "read_whole": true,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git log --oneline -10 && ls -la && git remote -v && git status --short && find . -name AGENTS.md -o -name package.json -o -name pyproject.toml -o -name go.mod",
+          "code": 0,
+          "output": "551f9c8 Export job metrics\nf6333bc PDF invoices v2 behind a flag\n05a8fcb Delete finished export files after 7 days\n3adebb0 Write a UTF-8 BOM and CRLF line endings in CSV exports\nefa6882 Customer CSV export\n9912f85 Invoices API with JSON export\ntotal 44\ndrwxr-xr-x 7 root root 4096 Nov  8 04:35 .\ndrwx"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-01-edition-sol-k1",
+      "meter": {
+        "requests": 7,
+        "usd": 0.0586343,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.0586343,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0000752
+    }
+  }
+}

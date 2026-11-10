@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-03-plain-opus-k12",
+  "task_id": "rev-03",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 12,
+  "status": "ok",
+  "reply_text": "I wouldn't merge this yet. The branch has one real bug, and it breaks all three examples in the new README section. I didn't change any code.\n\n**The bug:** in `src/normalize.js`, `raw.trim().replace(' ', '')` only removes the **first** space, because a string pattern in `replace` matches once. Any number with two or more spaces still has spaces in it and fails the E.164 check. I ran the README examples through it:\n\n| Input | Result | Passes? |\n|---|---|---|\n| `+44 20 7946 0958` | `+4420 7946 0958` | ❌ |\n| `0044 20 7946 0958` | `+4420 7946 0958` | ❌ |\n| `+1 (415) 555-0100` | `+1415 5550100` | ❌ |\n| `+1.415.555.0100` | `+14155550100` | ✅ |\n\nThe test suite still passes because its only spaced example, `'+1 (415)555-0100'`, has exactly one space.\n\n**Suggested fix:** remove all whitespace first, then convert `00` to `+`:\n```js\nconst compact = raw.replace(/[\\s().-]/g, '');\nreturn toInternational(compact);\n```\nStripping punctuation first also handles a number typed like `(0044) …`, which the current order misses. Then add tests that use the README examples word for word, so the docs and the code can't drift apart.\n\n**Smaller notes:**\n- The stricter E.164 check (`^\\+[1-9]\\d{1,14}$`) looks right. But it's a behaviour change: numbers like `+0…` or over 15 digits that used to be accepted will now be rejected. If any numbers like that are already stored or sent by callers, they'll start failing. It's probably worth a line in the CHANGELOG.\n- Putting the raw input in the error message (`bad number: ' + rawTo`) is good for debugging. Just make sure you're comfortable with phone numbers showing up in logs.\n- `dialing.js` is a whole module for one line. That's fine, just a style choice.\n- The version bump to 0.9.0 and the CHANGELOG entry look good.\n\nOnce the whitespace fix and the new tests are in, it looks good to merge.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-03-plain-opus-k12",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.06068899999999999,
+    "input_tokens": 53121,
+    "output_tokens": 1395,
+    "cached_tokens": 49784,
+    "cache_write_tokens": 2880,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.0000522,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.060636800000000005,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 17.78,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-03-plain-opus-k12",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:00:09.444Z",
+    "images": {
+      "core": "sha256:b72940b562e6c53aae6afc83a7f0b64341c2e8cbe63023fe872152ab58a99891",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-60b74aee38e7",
+        "id": "sha256:90f05dbd851ea456d4c743f188da2f464a123a97e22ad749c88365383e98b059",
+        "tree_sha256": "2203cf0cd835700f9f15d4dd838fbcf6c48e0f9c988c060d2fb614fa1d648e6f"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-8efb7438-0210-476a-ac4e-90380a26-674987"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:00:50.796Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..phone-normalize; git diff main...phone-normalize",
+          "code": 0,
+          "output": "  main\n* phone-normalize\n173e408 Tighten the E.164 check\n970312d Accept phone numbers as people type them\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 5581f29..51b5f1b 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.9.0\n+\n+- Phone numbers are normalized to E.164 b"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-03-plain-opus-k12",
+      "meter": {
+        "requests": 5,
+        "usd": 0.06068899999999999,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.06068899999999999,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.0000522
+    }
+  }
+}

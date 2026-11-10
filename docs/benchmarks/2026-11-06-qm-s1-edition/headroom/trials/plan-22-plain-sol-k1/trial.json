@@ -1,0 +1,161 @@
+{
+  "trial_id": "plan-22-plain-sol-k1",
+  "task_id": "plan-22",
+  "family": "plan",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "Yes—I'd add a **CSV batch-job API that scores in bounded chunks**, rather than lifting `/predict`’s limit.\n\nI reviewed the repo at `3e94b78` and its relevant history. All four existing tests pass; no code was changed.\n\n### What the repo tells us\n\n- **`/predict` already accepts multiple records**, but caps requests at 32 (`serve/app.py`, `config/serving.ini`).\n- **That cap is a safety constraint.** Commit `7a2b30c` documents a 500-record request OOM-killing three models sharing a 2 GB container (INC-201).\n- **Preprocessing must stay identical.** Feature order and scaling in `serve/preprocess.py` are tied to the trained model; `artifacts/README.md` says changing either requires retraining.\n- **Inputs are sensitive.** Commit `173b936` requires logging only input hashes and scores—not salary, age, or raw records.\n- The repo contains handler functions, but **no HTTP routing, upload handling, job queue, or durable storage**. Registry, shadow-scoring, metrics, and gRPC files are currently unwired scaffolding.\n\n### Proposed API\n\nFor whole files of potentially unknown size, use asynchronous jobs:\n\n| Endpoint | Behavior |\n|---|---|\n| `POST /predict/batch` | Accept one CSV upload; return `202` with a job ID and status URL once durably accepted. |\n| `GET /predict/batch/{job_id}` | Return queued/running/completed/failed status, row counts, and a result URL when ready. |\n| `GET /predict/batch/{job_id}/result` | Download the scored CSV, restricted to the submitting user/team. |\n\nKeep existing `/predict` behavior and its 32-record limit unchanged.\n\n### CSV and result contract\n\n- Require the five existing feature columns: `tenure_months`, `monthly_spend`, `support_tickets`, `salary`, `age`. Header order may vary; model feature order must not.\n- Allow an optional customer identifier for matching results; never treat it as a model feature.\n- Reject duplicate/missing headers, malformed CSV, and unsupported columns with clear errors.\n- Validate each feature as a finite numeric value; no silent defaults, imputation, or scaler changes.\n- Preserve input order. Return a row number, optional identifier, score, and error code. **For a structurally valid file, continue past invalid rows** and report success/error counts; never silently drop rows.\n- Do not echo feature values into errors or results by default.\n\n### Processing and safety\n\n- Stream uploads to restricted temporary storage; don’t load the complete CSV or results into memory.\n- Process **at most 32 rows at a time**, initially with one batch worker and bounded concurrency. Reuse the existing preprocessing, scoring, rounding, and hash-only logging behavior.\n- Fix the logging sink before enabling large files: `serve/log.py` currently accumulates every prediction in an unbounded in-memory `LINES` list, which would undermine chunking.\n- Enforce upload-byte, row, field-size, queue-depth, and runtime limits. Set their values through load tests—not by assuming chunking alone makes arbitrarily large jobs safe.\n- Record the model version for each job and hold it constant throughout execution. Don’t expand this work into registry/shadow/gRPC integration.\n- Apply explicit access controls, expiry, and cleanup to source files and results; exclude payloads from application and infrastructure logs.\n\n### Implementation and acceptance plan\n\n1. Define the CSV contract, job lifecycle, storage/worker integration, and limits.\n2. Add parsing/validation and bounded scoring around existing model functions.\n3. Add HTTP routes, durable job state, protected result downloads, and cleanup.\n4. Test score parity with `/predict`, files larger than 32 rows, row ordering, malformed/non-finite inputs, mixed valid/invalid rows, retries, access isolation, cleanup, and absence of raw inputs in logs.\n5. Load-test peak memory and concurrent `/predict` latency before rollout.\n\n**The main sizing question:** how large are typical and maximum analyst CSVs, and is “submit, then download when ready” acceptable? That determines the limits and whether a smaller synchronous design would suffice.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-22-plain-sol-k1",
+    "requests": 8,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0510255,
+    "input_tokens": 63976,
+    "output_tokens": 1531,
+    "cached_tokens": 51424,
+    "cache_write_tokens": 12223,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0000736,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.050951899999999994,
+        "requests": 7
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 8
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 30.214,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-22-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:28:35.719Z",
+    "images": {
+      "core": "sha256:729c3ae2a84236c658f78a718f20798fa978ae7d70283b4749a8c714791f3335",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-2fee627a0eeb",
+        "id": "sha256:0d7e5022393e531ab9cae996d44d850877544ea9f8196f4a38d0fb684c462b9d",
+        "tree_sha256": "feed0b139ac96b8665c084c2d8757606ddf517a867becd6f39f5b6585fe513b6"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-e28e3c1c-73ae-4f67-84ef-6cff831e-d90da8"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:29:29.632Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/702179740ae23a8d9f67acb1/ba9f823df998fc35/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/702179740ae23a8d9f67acb1/ba9f823df998fc35/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git log -4 --oneline && ls -la && find . -maxdepth 3 -type f | sort",
+          "code": 0,
+          "output": "3e94b78 Model registry, shadow scoring, gRPC sketch and metrics\n173b936 Log a hash of the inputs, never the inputs\n7a2b30c Cap requests at 32 records\nfaecfc1 Churn model serving\ntotal 48\ndrwxr-xr-x 8 root root 4096 Nov  8 03:28 .\ndrwxr-xr-x 4 root root 4096 Nov  8 03:28 ..\ndrwxr-xr-x 5 root root 409"
+        },
+        {
+          "seq": 10,
+          "command": "cd /root/workspace/repo && for f in README.md pyproject.toml Dockerfile config/serving.ini proto/predict.proto artifacts/README.md serve/*.py tests/*.py; do echo \"\\n--- $f\"; nl -ba \"$f\"; done; git log --all --oneline; git status --porcelain",
+          "code": 0,
+          "output": "\n--- README.md\n     1\t# churnscope\n     2\t\n     3\tServes the churn model behind /predict.\n     4\t\n     5\tRun the tests with python3 -m unittest discover -s tests -t .\n\n--- pyproject.toml\n     1\t[project]\n     2\tname = \"churnscope\"\n     3\tversion = \"0.7.0\"\n     4\trequires-python = \">=3.11\"\n\n--- Docke"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-22-plain-sol-k1",
+      "meter": {
+        "requests": 8,
+        "usd": 0.0510255,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 8,
+        "usd": 0.0510255,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0000736
+    }
+  }
+}

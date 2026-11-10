@@ -1,0 +1,161 @@
+{
+  "trial_id": "rev-22-plain-sol-k14",
+  "task_id": "rev-22",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 14,
+  "status": "ok",
+  "reply_text": "*I’d fix these two issues before merging.*\n\n1. *[P1] Tax is calculated before the coupon discount* — `src/total.js:6`\n   `tax(subtotal, taxPercent)` taxes the original subtotal, contrary to the README’s discounted-subtotal rule.\n   - Repro: subtotal `10000`, coupon `20%`, tax `10%`, shipping `500`.\n   - Actual: `9500` cents. Expected: `9300` cents.\n   - A 100% coupon still leaves tax due.\n   - Calculate tax on the subtotal after subtracting the rounded discount.\n\n2. *[P2] Checkout bypasses the coupon’s 0–100% cap* — `src/total.js:5`\n   The new `couponValue()` helper clamps the percentage, but checkout uses the uncapped `pct()` instead.\n   - Subtotal `10000`, coupon `150%`, no tax/shipping → total `-5000` cents.\n   - Coupon `-10%` → total `11000` cents, effectively a surcharge.\n   - Use the capped coupon calculation in checkout.\n\n*Verification:* All four existing tests pass, but neither checkout test uses a nonzero coupon. I reproduced both issues with direct calls. Add regression tests for discounted tax, 100% coupons, out-of-range percentages, and fractional-cent rounding.\n\nReviewed `coupon-checkout` at `a68c0e7` against `main` at `09a6e72`. No files changed.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-22-plain-sol-k14",
+    "requests": 8,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0462362,
+    "input_tokens": 63739,
+    "output_tokens": 1082,
+    "cached_tokens": 51317,
+    "cache_write_tokens": 12105,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.00007,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0461662,
+        "requests": 7
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 8
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 20.025,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-22-plain-sol-k14",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T12:52:02.906Z",
+    "images": {
+      "core": "sha256:3910594b6055b8b889d444e7b76a92af38d79a0b5bb0951c442dff7124c7be49",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-808f1519d24a",
+        "id": "sha256:1ce88b9e57a5750c02a909b7f4bf321403eed22daedb297a63c620b60c060911",
+        "tree_sha256": "4b08892c391c0a2a74732d9e93532fae131ccaac0d120f4af10749880f849213"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-3393842b-27cb-4be9-aeeb-486e7075-4311fa"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T12:52:46.664Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/e270ca85081572d7695aeb3c/5c4200e5dad97aa2/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/e270ca85081572d7695aeb3c/5c4200e5dad97aa2/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log --oneline --all -8 && git diff --stat main...coupon-checkout && find . -maxdepth 3 -type f -not -path './.git/*' | sort",
+          "code": 0,
+          "output": "* coupon-checkout a68c0e7 Free shipping over a threshold\n  main            09a6e72 Order subtotal and tax in cents\na68c0e7 Free shipping over a threshold\naba236a Apply coupons at checkout\n09a6e72 Order subtotal and tax in cents\n CHANGELOG.md          |  4 ++++\n README.md             |  8 ++++++++\n p"
+        },
+        {
+          "seq": 10,
+          "command": "cd /root/workspace/repo && git diff main...coupon-checkout && for f in src/* test/* package.json README.md CHANGELOG.md; do echo \"--- $f\"; nl -ba \"$f\"; done",
+          "code": 0,
+          "output": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 38c8cb7..009d9c7 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.4.0\n+\n+- Coupons at checkout.\n+\n ## 1.3.0\n \n - Subtotal and tax.\ndiff --git a/README.md b/README.md\nindex 45a9c82..984fb0e 100644\n--- a/README.md\n+++ b/RE"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-22-plain-sol-k14",
+      "meter": {
+        "requests": 8,
+        "usd": 0.0462362,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 8,
+        "usd": 0.0462362,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.00007
+    }
+  }
+}

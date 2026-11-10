@@ -1,0 +1,418 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 07:01 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "edf8db48-93f5-4e54-a6a7-a7e674f2be68"
+    },
+    "text": "Could you review the idle-timeout branch vs main before I merge? It logs people out when they go idle. Review only, no code edits please.",
+    "runId": "b3dc7f7e-7388-43aa-8bef-2bbb7476b199"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "c09439c3-e2ee-445f-86af-abc895a035d5",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "textSignature": "{\"v\":1,\"id\":\"msg_00c2a274a284a935016af08ebd065087d2bb6519512dc23b3f\",\"phase\":\"commentary\"}",
+    "text": "I’ll compare `idle-timeout` with `main`, trace the logout behavior, and check for regressions—review only, with no code edits.",
+    "runId": "b3dc7f7e-7388-43aa-8bef-2bbb7476b199",
+    "step": {
+     "id": "c09439c3-e2ee-445f-86af-abc895a035d5",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "name": "github-gitlab",
+    "wire": {
+     "message": {
+      "id": "c09439c3-e2ee-445f-86af-abc895a035d5",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"read\",\"name\":\"github-gitlab\"}"
+    },
+    "action": "read",
+    "runId": "b3dc7f7e-7388-43aa-8bef-2bbb7476b199",
+    "callId": "call_YwOkrZcmLOGP3rZghSxhP1Ig|fc_00c2a274a284a935016af08ebd91c887d2ac3981db1e1b79db",
+    "tool": "skills",
+    "step": {
+     "id": "c09439c3-e2ee-445f-86af-abc895a035d5",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "dir": "/root/workspace/.agent-skills/4fd3fbe449b69a5d607d77cc/84db1ecd7c2d500e/github-gitlab",
+    "name": "github-gitlab",
+    "bytes": 6025,
+    "found": true,
+    "action": "read",
+    "sourceScopeId": "org:harness-eval",
+    "result": "[skill files synced to /root/workspace/.agent-skills/4fd3fbe449b69a5d607d77cc/84db1ecd7c2d500e/github-gitlab/]\n\n# GitHub / GitLab\n\nUse this skill when the user asks to inspect repos, issues, pull requests, merge\nrequests, code history, branches, or to make a small code change in a hosted repo.\n\n## Choose the account deliberately\n\nUse the current credential manifest to choose an account authorized for this conversation\nthat fits the user's intent. Run commands with `execute` and an explicit `sandbox_id`;\nkeep that ID throughout checkout, edits, checks, and push. Personal and shared accounts are both valid choices; neither\nis an automatic fallback when the other fails. If the intended account is unclear before\na write, ask. Do not infer permission from a login merely being present on the computer.\n\n- **Personal login:** use the authorized `gh`, `glab`, or Git login. Check the active\n  provider account (for example, `gh api user --jq .login`) and the Git transport's auth\n  configuration; a CLI API identity alone does not prove which account Git will use.\n- **Shared org credential:** if listed in the prompt, select its slug and use the\n  core-hosted smart HTTP remote in the `use-shared-credential` skill. This uses\n  the configured shared account, even when a personal OAuth connector is live.\n  Its name is an admin label, not a verified upstream username.\n- **Connected app:** use only advertised capabilities. API access does not by itself\n  establish native Git transport access or configure the CLI's active login.\n\nFor an existing checkout, inspect the remote and applicable credential-helper, SSH,\nproxy, and HTTP-header configuration. A reused checkout\nmay still select a previous account. Commit author metadata is separate from transport\nidentity. Resolve an unknown identity before a write; do not probe access by pushing.\n\n## Logging in\n\nUse the native login only after an explicit authentication rejection. A TLS timeout,\nconnection reset, rate limit, or GitHub server error is not evidence of logout or\npermission expiry. Do not consume another credential grant to repair transport.\n\nFor a confirmed missing or expired GitHub or GitLab login, follow the\n`interactive-login` skill: it runs `gh auth login` / `glab auth login` in a temporary\nhome as a background job, relays the code and URL, and saves the login to the keychain\nso later commands use it through `execute.credentials`.\n\n## Read-only work\n\nCheck auth and inspect repo state:\n\n```bash\ngh auth status\ngh repo view OWNER/REPO --json name,description,url,defaultBranchRef\ngh issue list --repo OWNER/REPO --state open --limit 20\ngh pr list --repo OWNER/REPO --state open --limit 20\n```\n\nFor GitLab:\n\n```bash\nglab auth status\nglab repo view GROUP/PROJECT\nglab issue list --repo GROUP/PROJECT\nglab mr list --repo GROUP/PROJECT\n```\n\nUse `git log`, `git show`, and `git diff` for codebase-change summaries. Cite commit\nhashes, PR/MR numbers, and links.\n\n## Checkout and edits\n\nClone or fetch only the repo the user asked for:\n\n```bash\ngh repo clone OWNER/REPO repo\ncd repo\ngit checkout -b codex/small-change\n```\n\nKeep changes scoped. Run the repo's tests. If a push or PR/MR creation is requested,\nprepare the branch and summary first.\n\n## Writes require approval\n\nPushing branches, creating PRs/MRs, merging, closing issues, editing labels, changing\nrepo settings, releases, or workflows are writes. Ask for approval before running the\nwrite command.\n\nAfter approval:\n\n```bash\ngit push -u origin codex/small-change\ngh pr create --repo OWNER/REPO --title \"...\" --body-file pr.md\n```\n\nFor GitLab:\n\n```bash\ngit push -u origin codex/small-change\nglab mr create --repo GROUP/PROJECT --title \"...\" --description-file mr.md\n```\n\nReport the final URL and leave enough context for review.\n\n## Wait for GitHub CI\n\nUse the bundled helper instead of a bare `gh pr checks --watch` or a handwritten\nshell loop. Use the absolute directory reported by the skill read in place of\n`<skill dir>`. It is one blocking watcher process, not repeated agent turns:\n\n```bash\nnode \"<skill dir>/scripts/watch-ci.mjs\" --repo OWNER/REPO --pr NUMBER --head REVIEWED_HEAD_SHA\n```\n\nCapture the full head SHA from `gh pr view NUMBER --repo OWNER/REPO --json headRefOid`\nbefore review. Use that same SHA for the watcher and the final merge gate. Start the\nwatcher with `execute` using the selected `sandbox_id` and `background:true`, then\nsubscribe with `background` action `watch` and its returned `process_id`. Keep one\nwatcher per PR. Set the process lifetime longer than the helper's 30-minute deadline;\nuse `--timeout-ms` for a different bounded deadline. Use only credentials authorized\nfor that background process; a live foreground grant does not authorize background work.\n\nThe helper polls GitHub internally and emits JSON status records. It retries only\nrecognized transient transport/server errors with bounded backoff. Pending checks\nremain pending. Real CI failures, authentication/authorization failures, changed heads,\nunknown errors, exhausted retries, and deadline expiry all stop with nonzero status.\nExplicit API rate limits stop as `rate_limited`, not authentication errors.\nEmpty check sets, skipped checks, and cancelled checks are not successful evidence.\nDo not interpret an exit code alone as \"checks concluded\": read the status record.\nDo not suppress a nonzero exit or print a success marker after it. Keep `set -e`.\n\nSuccess means the checks observed for the expected head passed, not permission to\nmerge. Re-read checks and review threads immediately before merging. Wait for async\nreviewers on that exact head; resolve findings and complete any review the repo\nrequires. After any push or head change, discard old success/review evidence and repeat.\nOnly merge when all gates pass, with GitHub's atomic head guard:\n\n```bash\ngh pr merge NUMBER --repo OWNER/REPO --squash --match-head-commit REVIEWED_HEAD_SHA\n```\n\nOn a branch that requires a merge queue, this queues the PR; it is merged only once\nGitHub shows it as merged. Never use auto-merge or bypass repository gates. This\nhelper does not retry GitLab commands or change their authentication behavior.\n",
+    "runId": "b3dc7f7e-7388-43aa-8bef-2bbb7476b199",
+    "callId": "call_YwOkrZcmLOGP3rZghSxhP1Ig|fc_00c2a274a284a935016af08ebd91c887d2ac3981db1e1b79db",
+    "tool": "skills",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "4d0eb4f2-e5f9-4057-91a2-eda4726a9e74",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"pwd; ls -la; find /tmp/pi-cwd /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null\",\"purpose\":\"Locating review checkout\"}"
+    },
+    "scope": "scoped",
+    "command": "pwd; ls -la; find /tmp/pi-cwd /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null",
+    "purpose": "Locating review checkout",
+    "runId": "b3dc7f7e-7388-43aa-8bef-2bbb7476b199",
+    "callId": "call_fNtHrDn7LPPxBEvmZTEH7eZU|fc_00c2a274a284a935016af08ebf2f1c87d29d9c5007c914a4b8",
+    "tool": "execute",
+    "step": {
+     "id": "4d0eb4f2-e5f9-4057-91a2-eda4726a9e74",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 1,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\ntotal 16\ndrwxr-xr-x 4 root root 4096 Nov  8 15:01 .\ndrwx------ 6 root root 4096 Nov  8 15:01 ..\ndrwxr-xr-x 3 root root 4096 Nov  8 15:01 .agent-skills\ndrwxr-xr-x 5 root root 4096 Nov  8 15:01 repo\n/root/workspace/repo/.git\n\n[exit 1]",
+    "runId": "b3dc7f7e-7388-43aa-8bef-2bbb7476b199",
+    "callId": "call_fNtHrDn7LPPxBEvmZTEH7eZU|fc_00c2a274a284a935016af08ebf2f1c87d29d9c5007c914a4b8",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "f45b2f11-c4f1-4dc0-bcee-cb6bd5d5e7b9",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -av && git log --oneline -6 && git diff --stat main...idle-timeout && ls -la; git config --show-origin --get-regexp 'credential|http\\\\..*extraheader|core.sshCommand' || true\",\"purpose\":\"Inspecting branch and repository\",\"sandbox_id\":\"local\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -av && git log --oneline -6 && git diff --stat main...idle-timeout && ls -la; git config --show-origin --get-regexp 'credential|http\\..*extraheader|core.sshCommand' || true",
+    "purpose": "Inspecting branch and repository",
+    "sandbox_id": "local",
+    "runId": "b3dc7f7e-7388-43aa-8bef-2bbb7476b199",
+    "callId": "call_wV9Mcj0oyTJLOhK56UoogjYm|fc_00c2a274a284a935016af08ec1020087d28aa44af05e4de81e",
+    "tool": "execute",
+    "step": {
+     "id": "f45b2f11-c4f1-4dc0-bcee-cb6bd5d5e7b9",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "wire": {
+     "content": [
+      {
+       "text": "sandbox not found: local",
+       "type": "text"
+      }
+     ]
+    },
+    "scope": "scoped",
+    "result": "Command execution failed: sandbox not found: local",
+    "runId": "b3dc7f7e-7388-43aa-8bef-2bbb7476b199",
+    "callId": "call_wV9Mcj0oyTJLOhK56UoogjYm|fc_00c2a274a284a935016af08ec1020087d28aa44af05e4de81e",
+    "tool": "execute",
+    "isError": true
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "32005ba3-0398-4989-babc-ec779dd5665c",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "action": "list",
+    "purpose": "Finding checkout computer",
+    "runId": "b3dc7f7e-7388-43aa-8bef-2bbb7476b199",
+    "callId": "call_WCZLLigD8V1oMCHHCktP6cjp|fc_00c2a274a284a935016af08ec3a06487d29de582293043b89e",
+    "tool": "sandbox",
+    "step": {
+     "id": "32005ba3-0398-4989-babc-ec779dd5665c",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "action": "list",
+    "result": "{\"sandboxes\":[{\"id\":\"cedc2819-243d-490c-8549-8da149d47394\",\"name\":\"s1e-probe\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"]},\"state\":\"ready\",\"legacy\":false,\"backend\":\"local\",\"holders\":[\"b3dc7f7e-7388-43aa-8bef-2bbb7476b199\"],\"createdAt\":\"2026-11-08T15:01:13.906Z\",\"createdBy\":\"harness-admin\",\"machineId\":\"qm-sbx-sandbox-cedc2819-243d-490c-8549-8da149d4-084ea9\",\"ownerScopeId\":\"personal:U1\",\"backingScopeId\":\"sandbox-cedc2819-243d-490c-8549-8da149d47394\"}],\"defaultSandboxId\":\"cedc2819-243d-490c-8549-8da149d47394\",\"defaultMode\":\"selected\",\"providers\":[{\"name\":\"local\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\"},\"egressEnforcement\":\"none\",\"sizesMemory\":true,\"actions\":[\"create\",\"retire\"]}]}",
+    "runId": "b3dc7f7e-7388-43aa-8bef-2bbb7476b199",
+    "callId": "call_WCZLLigD8V1oMCHHCktP6cjp|fc_00c2a274a284a935016af08ec3a06487d29de582293043b89e",
+    "tool": "sandbox",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "0d35170c-a2f0-422d-8773-1f62e1346d49",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -av && git log --oneline -6 && git diff --stat main...idle-timeout && ls -la; git config --show-origin --get-regexp 'credential|http\\\\..*extraheader|core.sshCommand' || true\",\"purpose\":\"Inspecting branch and repository\",\"sandbox_id\":\"cedc2819-243d-490c-8549-8da149d47394\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -av && git log --oneline -6 && git diff --stat main...idle-timeout && ls -la; git config --show-origin --get-regexp 'credential|http\\..*extraheader|core.sshCommand' || true",
+    "purpose": "Inspecting branch and repository",
+    "sandbox_id": "cedc2819-243d-490c-8549-8da149d47394",
+    "runId": "b3dc7f7e-7388-43aa-8bef-2bbb7476b199",
+    "callId": "call_XfInez89QXBrLN8rOdxROnjb|fc_00c2a274a284a935016af08ec528bc87d2bf6f792506c539d8",
+    "tool": "execute",
+    "step": {
+     "id": "0d35170c-a2f0-422d-8773-1f62e1346d49",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* idle-timeout da785f6 Sweep idle sessions from the store\n  main         91438e5 Track session activity\nda785f6 Sweep idle sessions from the store\nad83f9a Expire idle sessions\n91438e5 Track session activity\n CHANGELOG.md       |  4 ++++\n README.md          |  8 ++++++++\n package.json       |  2 +-\n src/backoff.js     |  7 +++++++\n src/idle.js        |  7 +++++++\n src/sweep.js       | 11 +++++++++++\n test/idle.test.js  | 13 +++++++++++++\n test/sweep.test.js |  9 +++++++++\n 8 files changed, 60 insertions(+), 1 deletion(-)\ntotal 32\ndrwxr-xr-x 5 root root 4096 Nov  8 15:01 .\ndrwxr-xr-x 4 root root 4096 Nov  8 15:01 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 15:01 .git\n-rw-r--r-- 1 root root  108 Nov  8 12:34 CHANGELOG.md\n-rw-r--r-- 1 root root  449 Nov  8 12:34 README.md\n-rw-r--r-- 1 root root  114 Nov  8 12:34 package.json\ndrwxr-xr-x 2 root root 4096 Nov  8 15:01 src\ndrwxr-xr-x 2 root root 4096 Nov  8 15:01 test\n\n[exit 0]",
+    "runId": "b3dc7f7e-7388-43aa-8bef-2bbb7476b199",
+    "callId": "call_XfInez89QXBrLN8rOdxROnjb|fc_00c2a274a284a935016af08ec528bc87d2bf6f792506c539d8",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "76592152-cfb4-4449-af2f-3a9a202b8e1f",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git diff main...idle-timeout && for f in src/* test/* package.json README.md CHANGELOG.md; do echo \\\"===== $f\\\"; nl -ba \\\"$f\\\"; done && git ls-tree -r --name-only main\",\"purpose\":\"Reading implementation and tests\",\"sandbox_id\":\"cedc2819-243d-490c-8549-8da149d47394\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git diff main...idle-timeout && for f in src/* test/* package.json README.md CHANGELOG.md; do echo \"===== $f\"; nl -ba \"$f\"; done && git ls-tree -r --name-only main",
+    "purpose": "Reading implementation and tests",
+    "sandbox_id": "cedc2819-243d-490c-8549-8da149d47394",
+    "runId": "b3dc7f7e-7388-43aa-8bef-2bbb7476b199",
+    "callId": "call_1006a439bc3746bda9d56faa6e12336d|fc_00c2a274a284a935016af08ec71e1c87d29fef86e3195ebdb2",
+    "tool": "execute",
+    "step": {
+     "id": "76592152-cfb4-4449-af2f-3a9a202b8e1f",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 161cbe8..275e5be 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.1.0\n+\n+- Idle session expiry and reconnect backoff.\n+\n ## 1.0.0\n \n - Session activity tracking.\ndiff --git a/README.md b/README.md\nindex 9610e49..ab0c338 100644\n--- a/README.md\n+++ b/README.md\n@@ -3,3 +3,11 @@\n Session tracking for idle-guard.\n \n A session records lastSeen, a timestamp in milliseconds (Date.now()). A session goes idle 30 minutes after lastSeen. All durations in this package are milliseconds.\n+\n+## Idle\n+\n+isIdle(session, now) is true once the session has been idle for the 30-minute timeout. reconnectDelay backs off a reconnect, capped at 30 seconds.\n+\n+## Sweep\n+\n+sweep(store, now) returns the store with the idle sessions removed.\ndiff --git a/package.json b/package.json\nindex 5e4bad1..614418c 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"idle-guard\",\n-  \"version\": \"1.0.0\",\n+  \"version\": \"1.1.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/backoff.js b/src/backoff.js\nnew file mode 100644\nindex 0000000..3fb031e\n--- /dev/null\n+++ b/src/backoff.js\n@@ -0,0 +1,7 @@\n+const SECOND = 1000;\n+\n+function reconnectDelay(attempt) {\n+  return Math.min(30 * SECOND, SECOND * 2 ** attempt);\n+}\n+\n+module.exports = { reconnectDelay };\ndiff --git a/src/idle.js b/src/idle.js\nnew file mode 100644\nindex 0000000..050e932\n--- /dev/null\n+++ b/src/idle.js\n@@ -0,0 +1,7 @@\n+const IDLE_TIMEOUT = 30;\n+\n+function isIdle(session, now) {\n+  return session.lastSeen + IDLE_TIMEOUT < now;\n+}\n+\n+module.exports = { isIdle, IDLE_TIMEOUT };\ndiff --git a/src/sweep.js b/src/sweep.js\nnew file mode 100644\nindex 0000000..7c5355c\n--- /dev/null\n+++ b/src/sweep.js\n@@ -0,0 +1,11 @@\n+const { isIdle } = require('./idle');\n+\n+function sweep(store, now) {\n+  const kept = {};\n+  for (const [id, session] of Object.entries(store)) {\n+    if (!isIdle(session, now)) kept[id] = session;\n+  }\n+  return kept;\n+}\n+\n+module.exports = { sweep };\ndiff --git a/test/idle.test.js b/test/idle.test.js\nnew file mode 100644\nindex 0000000..0177eff\n--- /dev/null\n+++ b/test/idle.test.js\n@@ -0,0 +1,13 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { isIdle } = require('../src/idle');\n+\n+test('a long-idle session is idle', () => {\n+  const now = 1_000_000_000;\n+  assert.strictEqual(isIdle({ lastSeen: now - 60 * 60 * 1000 }, now), true);\n+});\n+\n+test('a just-touched session is active', () => {\n+  const now = 1_000_000_000;\n+  assert.strictEqual(isIdle({ lastSeen: now }, now), false);\n+});\ndiff --git a/test/sweep.test.js b/test/sweep.test.js\nnew file mode 100644\nindex 0000000..1314236\n--- /dev/null\n+++ b/test/sweep.test.js\n@@ -0,0 +1,9 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { sweep } = require('../src/sweep');\n+\n+test('sweep drops long-idle sessions', () => {\n+  const now = 1_000_000_000;\n+  const store = { a: { lastSeen: now }, b: { lastSeen: now - 2 * 60 * 60 * 1000 } };\n+  assert.deepStrictEqual(Object.keys(sweep(store, now)), ['a']);\n+});\n===== src/backoff.js\n     1\tconst SECOND = 1000;\n     2\t\n     3\tfunction reconnectDelay(attempt) {\n     4\t  return Math.min(30 * SECOND, SECOND * 2 ** attempt);\n     5\t}\n     6\t\n     7\tmodule.exports = { reconnectDelay };\n===== src/idle.js\n     1\tconst IDLE_TIMEOUT = 30;\n     2\t\n     3\tfunction isIdle(session, now) {\n     4\t  return session.lastSeen + IDLE_TIMEOUT < now;\n     5\t}\n     6\t\n     7\tmodule.exports = { isIdle, IDLE_TIMEOUT };\n===== src/session.js\n     1\tfunction touch(session, now) {\n     2\t  session.lastSeen = now;\n     3\t  return session;\n     4\t}\n     5\t\n     6\tmodule.exports = { touch };\n===== src/sweep.js\n     1\tconst { isIdle } = require('./idle');\n     2\t\n     3\tfunction sweep(store, now) {\n     4\t  const kept = {};\n     5\t  for (const [id, session] of Object.entries(store)) {\n     6\t    if (!isIdle(session, now)) kept[id] = session;\n     7\t  }\n     8\t  return kept;\n     9\t}\n    10\t\n    11\tmodule.exports = { sweep };\n===== test/idle.test.js\n     1\tconst test = require('node:test');\n     2\tconst assert = require('node:assert');\n     3\tconst { isIdle } = require('../src/idle');\n     4\t\n     5\ttest('a long-idle session is idle', () => {\n     6\t  const now = 1_000_000_000;\n     7\t  assert.strictEqual(isIdle({ lastSeen: now - 60 * 60 * 1000 }, now), true);\n     8\t});\n     9\t\n    10\ttest('a just-touched session is active', () => {\n    11\t  const now = 1_000_000_000;\n    12\t  assert.strictEqual(isIdle({ lastSeen: now }, now), false);\n    13\t});\n===== test/session.test.js\n     1\tconst test = require('node:test');\n     2\tconst assert = require('node:assert');\n     3\tconst { touch } = require('../src/session');\n     4\t\n     5\ttest('touch updates lastSeen', () => {\n     6\t  const s = touch({ lastSeen: 0 }, 1000);\n     7\t  assert.strictEqual(s.lastSeen, 1000);\n     8\t});\n===== test/sweep.test.js\n     1\tconst test = require('node:test');\n     2\tconst assert = require('node:assert');\n     3\tconst { sweep } = require('../src/sweep');\n     4\t\n     5\ttest('sweep drops long-idle sessions', () => {\n     6\t  const now = 1_000_000_000;\n     7\t  const store = { a: { lastSeen: now }, b: { lastSeen: now - 2 * 60 * 60 * 1000 } };\n     8\t  assert.deepStrictEqual(Object.keys(sweep(store, now)), ['a']);\n     9\t});\n===== package.json\n     1\t{\n     2\t  \"name\": \"idle-guard\",\n     3\t  \"version\": \"1.1.0\",\n     4\t  \"private\": true,\n     5\t  \"scripts\": {\n     6\t    \"test\": \"node --test\"\n     7\t  }\n     8\t}\n===== README.md\n     1\t# idle-guard\n     2\t\n     3\tSession tracking for idle-guard.\n     4\t\n     5\tA session records lastSeen, a timestamp in milliseconds (Date.now()). A session goes idle 30 minutes after lastSeen. All durations in this package are milliseconds.\n     6\t\n     7\t## Idle\n     8\t\n     9\tisIdle(session, now) is true once the session has been idle for the 30-minute timeout. reconnectDelay backs off a reconnect, capped at 30 seconds.\n    10\t\n    11\t## Sweep\n    12\t\n    13\tsweep(store, now) returns the store with the idle sessions removed.\n===== CHANGELOG.md\n     1\t# Changelog\n     2\t\n     3\t## 1.1.0\n     4\t\n     5\t- Idle session expiry and reconnect backoff.\n     6\t\n     7\t## 1.0.0\n     8\t\n     9\t- Session activity tracking.\nCHANGELOG.md\nREADME.md\npackage.json\nsrc/session.js\ntest/session.test.js\n\n[exit 0]",
+    "runId": "b3dc7f7e-7388-43aa-8bef-2bbb7476b199",
+    "callId": "call_1006a439bc3746bda9d56faa6e12336d|fc_00c2a274a284a935016af08ec71e1c87d29fef86e3195ebdb2",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 14,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "3285e2f2-291b-4b86-8af6-9d6e2532aa2d",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "{\"id\":\"rs_00c2a274a284a935016af08ec911ac87d2aeebacb4d93a73be\",\"type\":\"reasoning\",\"content\":[],\"encrypted_content\":\"gAAAAABq8I7M_wh-gTGG6zbhN3cN6yVThptyA0qaltXrDNt3ogKO-C4F0fyhU1gx5hWgGts234hdvNC3d4_V8XSl6N28qfiljZGb3rAWbSplIXHm0D8N8t5Wgsc3RVbmEHImFGmy6h91PUH5iY1X2z6Y5ood1pR8TgNIa-b-y2WHTSLFIFZXuZePqQdp75t5gF4efjwjShzRkaFUZnzESPA_uJItHHLw0UMoq3C-6wpTrCBvzrsOHYd86g-SLi4sxNAdjH0BIjahNSksfRtOFDVm77rYiDoDH9BWLVEw9yXMeTGdH2ikscsMRyl60-tPNwpJxHTD5NFGsdkXCm4_DQdU-tdG5I2n0R80ZhDtVwWISZ5ebtg6GFQ98bkvReaZ2pSrllBpuo1dwDdVXpJ0afWdzfJdCL-f00tgYvD8qXYX_iyqMxGWHotXmoFJWqkLIbRhUWs1rkS3sefmj1Dl9I9xIzEFGjMz1dRCN2A3eUyFoWkQdy-3xTOdnFmCdqc9F4kCuS0MP4aeXt0bpePe9kqdtV4N81F5H7s0UOdZam60TcvJoDFSOie1MSOEvH0hZYleTw0xrdyC-KqHGCOa-Ed1G2tItAQuk2LCy0DyhXjtqvxHnApj6d1M52ggm1az_HsGjIYwF11Y3UTUKb2RaME1YPlkc8lClN4jHefgJnFwnzj4Q5FXONTzrhKPFfP9eQaMoA0_sXbF8cmPhV59sV0NamiWV6xbtes2HboLb8VW3KghtVBRMW3paLa9Lu9aZmyIquv8ZlQcnWex5pjX4UufXtb2RDJgLSXi8QlBmo_eVl9ss8QkJJMeJps1rLZwTs07_VBOcW2SGiAklAwfdLVrspgnKn0tPHDkC42U9tNd8lztQrBvNGQ_Zi9-Nd9i9JaGLCyUAhsddqnoA6G1dc8wsc5MUh1_CcU27UFn08MK539JF1K8vWrS5rsCERkb-Ow1TwEJ8fSTEEBUwgJzcBIlcps8DGPPoZRtCpo3mIhmOWb9HLXJFusJE9mnpU5hVIweMeaN5YVASBRFxM8YSfxIQBDL_hrv3VDjNYKi6XvW_79LS7ylx-xOXE8IVNufoh1HGP-1hikVuil8WKA86hkapD7rVR85SUB-AHQAUPlpskkYD0jN5mOR73h0Zo0yEsmYXfAKO00VMSqfA4RU2SYu7s9-1IMRx0ITOdz4olNOpEegDsIaadFX5XiXSSConxjaIS_2m8VsnmtS01fzrnvw6LnXw8s7pPVgMPcmNOokwMXoF16dfPLG7kxMOVPpjAOWorFOFzLpm6xlKB3AX3ifv3lbMNl4vAx4Cne-i3sWfQ7NKuP7M7MQtqYb--S0AxLazp-9pph6cYwu0e0Qi-k-3phFzexzMRU0qMXXu1nPrBH_MHWDuFVqHZ4vk5KXOI6I2-iG9uxnm473MHCFTt6OHsv4eItpg3ovQHhkmnU0GWAzXBXpdA5kdcFE7e7EOweCmbc0C8d3MGRp2fvZXkbK81J6xpYR5j2VwXcvzGuhT38uc7EK0016BieboOPQ6Zsv-zyjJL6CnBVEa6UlVk8lmUo9RQKini-__NCQw1vNh1gZJZSEwUzHhoUDeFs-bF9yXcwzbc_n1NewLmU6akPtRP9lYTZdtF0o_VBjz9puGLDd-l-jdC8Vwb6KfziwKUhE3XLNyxg3mH4EAfeOD1kB8B0fIIkLtJkHNm7woc9PdXt1hW7wV6IU0kThigQncwuhjUopXgBzPmVNcAOW0NIPBH5OFFIVXpOhWyJDhwnG0CAEvJqk4GGfPFIlAK33e9OXEb5QUN8JDHp8WEd_7wqMqU5YyXnwb52nWUegm6f2LBs33bGqI3X4wpTARHWajtohy3Ml1tDBysEecrb1t6UwyGAXfrqMEeINNzfG7_wSapmqBEKdpkoAEGWBvTtJcLmrNPT3dIIIz-hB1xz6Y2LHEJcpFuYDv_PpYzChTjStMlQEx1OQQ2CNMHePsakvoAaOZE6SPJ8UbR6dqOYZrpqgG_hZQPPYz2XldJ61K_iY3Vqn3_bGE-ct61jAwtpVa8dTQshsOwDCWAmwBHSa3R4CusZfzxCOaiGq-K6oHLN1SUjhboeHHqQ9E1dmP96OOdK5DXxqDtFj9SE6zXiWv4cVSgJld7T4r6-uofliyRRnYWIJohZN6e_IkeRz1CXxd0mtye-Gm-awvaDVwRBf4HVZLzRDC6nmwWAJNID9_Pwo3j0AI_0bpJp_K1oV8odIxoK2rSkArCPADXAoa1TrA2Gwaq3bax_0JhlMWj45vo6zhKW5Fc4QiT9WqsXE91CXomgp0HaOvOO9gdkNLfb0E3u-oUHGjuxU3eHd5xw4hXxwQJSBmkKbkvK5O3V2nQCEN8Ryo_ZMsNzXJuEr8yDbGbp9VEKQYfuo_XSQCiFX7ux9DnIHIhymVEJYB72i9orack-lxkMbMWyGMblG2sqpoIUcPzLBkGEgoLxD0XZjdVOq1UQ8rmE9dndc0MRrh0_bKoL19ceQHmtMkOzeQ-9ymo99GxWj_xl7ukY-l8u7M_dYooklMqdJmhpHim6gGW840ZYXRoJFIGc3GIsdg0dJKWe2nZX_nWUVi4WIsh5N2eo4pLLWovIjibzTzOG2W4-NwCn9qfrogeQi\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"**Clarifying test parameters**\\n\\nI need to run targeted tests without any edits and ensure they assert expected failure while being summarized. Should I separate boundary testing after fixing the unit? Perhaps I should include findings to avoid duplicating issues. I really want to focus on one critical unit for boundaries while mentioning the secondary concerns. Okay, I'll define boundary P2 as independent, but trivial issues like an off-by-1ms seem not useful. There’s definitely one finding along with missing boundary tests to run.\"}]}",
+    "thinking": "**Clarifying test parameters**\n\nI need to run targeted tests without any edits and ensure they assert expected failure while being summarized. Should I separate boundary testing after fixing the unit? Perhaps I should include findings to avoid duplicating issues. I really want to focus on one critical unit for boundaries while mentioning the secondary concerns. Okay, I'll define boundary P2 as independent, but trivial issues like an off-by-1ms seem not useful. There’s definitely one finding along with missing boundary tests to run.",
+    "runId": "b3dc7f7e-7388-43aa-8bef-2bbb7476b199",
+    "step": {
+     "id": "3285e2f2-291b-4b86-8af6-9d6e2532aa2d",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 15,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "3285e2f2-291b-4b86-8af6-9d6e2532aa2d",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && npm test && node <<'NODE'\\nconst { isIdle } = require('./src/idle');\\nconst { sweep } = require('./src/sweep');\\nconst { reconnectDelay } = require('./src/backoff');\\nconst now = 1_000_000_000;\\nfor (const age of [0, 30, 31, 1000, 60_000, 1_799_999, 1_800_000, 1_800_001]) {\\n  const session = { lastSeen: now - age };\\n  console.log(JSON.stringify({ageMs:age, expectedIdle:age >= 1_800_000, actualIdle:isIdle(session, now), keptBySweep:Object.hasOwn(sweep({a:session},now),'a')}));\\n}\\nconsole.log('Reconnect delays:', [0,1,2,3,4,5,10,100].map(n=>[n,reconnectDelay(n)]));\\nNODE\\n git status --short; git rev-parse main idle-timeout\",\"purpose\":\"Verifying timeout behavior read-only\",\"sandbox_id\":\"cedc2819-243d-490c-8549-8da149d47394\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && npm test && node <<'NODE'\nconst { isIdle } = require('./src/idle');\nconst { sweep } = require('./src/sweep');\nconst { reconnectDelay } = require('./src/backoff');\nconst now = 1_000_000_000;\nfor (const age of [0, 30, 31, 1000, 60_000, 1_799_999, 1_800_000, 1_800_001]) {\n  const session = { lastSeen: now - age };\n  console.log(JSON.stringify({ageMs:age, expectedIdle:age >= 1_800_000, actualIdle:isIdle(session, now), keptBySweep:Object.hasOwn(sweep({a:session},now),'a')}));\n}\nconsole.log('Reconnect delays:', [0,1,2,3,4,5,10,100].map(n=>[n,reconnectDelay(n)]));\nNODE\n git status --short; git rev-parse main idle-timeout",
+    "purpose": "Verifying timeout behavior read-only",
+    "sandbox_id": "cedc2819-243d-490c-8549-8da149d47394",
+    "runId": "b3dc7f7e-7388-43aa-8bef-2bbb7476b199",
+    "callId": "call_47cdc1hrbV56Ixm5qhfH0NFK|fc_00c2a274a284a935016af08ecccf8c87d2ac1057256c0479d1",
+    "tool": "execute",
+    "step": {
+     "id": "3285e2f2-291b-4b86-8af6-9d6e2532aa2d",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 16,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "\n> idle-guard@1.1.0 test\n> node --test\n\n✔ a long-idle session is idle (0.831618ms)\n✔ a just-touched session is active (0.19156ms)\n✔ touch updates lastSeen (0.784238ms)\n✔ sweep drops long-idle sessions (1.019137ms)\nℹ tests 4\nℹ suites 0\nℹ pass 4\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 102.084735\n{\"ageMs\":0,\"expectedIdle\":false,\"actualIdle\":false,\"keptBySweep\":true}\n{\"ageMs\":30,\"expectedIdle\":false,\"actualIdle\":false,\"keptBySweep\":true}\n{\"ageMs\":31,\"expectedIdle\":false,\"actualIdle\":true,\"keptBySweep\":false}\n{\"ageMs\":1000,\"expectedIdle\":false,\"actualIdle\":true,\"keptBySweep\":false}\n{\"ageMs\":60000,\"expectedIdle\":false,\"actualIdle\":true,\"keptBySweep\":false}\n{\"ageMs\":1799999,\"expectedIdle\":false,\"actualIdle\":true,\"keptBySweep\":false}\n{\"ageMs\":1800000,\"expectedIdle\":true,\"actualIdle\":true,\"keptBySweep\":false}\n{\"ageMs\":1800001,\"expectedIdle\":true,\"actualIdle\":true,\"keptBySweep\":false}\nReconnect delays: [\n  [ 0, 1000 ],\n  [ 1, 2000 ],\n  [ 2, 4000 ],\n  [ 3, 8000 ],\n  [ 4, 16000 ],\n  [ 5, 30000 ],\n  [ 10, 30000 ],\n  [ 100, 30000 ]\n]\n91438e5be053c9306fda5777bef3db45f2f9fc5b\nda785f66a48c1922a7713256bf2330d7c00fa14c\n\n[stderr]\nnpm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\n\n[exit 0]",
+    "runId": "b3dc7f7e-7388-43aa-8bef-2bbb7476b199",
+    "callId": "call_47cdc1hrbV56Ixm5qhfH0NFK|fc_00c2a274a284a935016af08ecccf8c87d2ac1057256c0479d1",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 17,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "93cc50c4-4041-46c9-bd66-7c32bbf7dd26",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "textBlock": {
+     "textSignature": "{\"v\":1,\"id\":\"msg_00c2a274a284a935016af08ecfaf7487d2adaa2b8f858fdfb4\",\"phase\":\"final_answer\"}"
+    },
+    "workStartedAt": 1794150075326,
+    "workFinishedAt": 1794150099209,
+    "text": "*I’d hold off merging: one high-priority bug.*\n\n*P1 — Sessions expire after 30 milliseconds, not 30 minutes*  \n`src/idle.js:1–4` defines `IDLE_TIMEOUT = 30` and adds it directly to `lastSeen`, which is a millisecond timestamp. Consequently, `sweep()` removes sessions just 31 ms after their last activity, potentially logging out active users on the next sweep.\n\nI reproduced this: a session last touched *1 second ago* is classified as idle and removed; it should remain active for 30 minutes.\n\n*Recommended fix:* express the timeout as `30 * 60 * 1000`. Use an inclusive comparison so expiration starts exactly at the documented timeout. Add tests just before, exactly at, and just after 30 minutes, plus a sweep test retaining a recently active session.\n\nAll 4 existing tests pass, but they only check freshly touched or long-idle sessions, so they miss this bug.\n\nReviewed local `idle-timeout` (`da785f6`) against `main` (`91438e5`). No code edits; working tree remains clean.",
+    "runId": "b3dc7f7e-7388-43aa-8bef-2bbb7476b199",
+    "step": {
+     "id": "93cc50c4-4041-46c9-bd66-7c32bbf7dd26",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  }
+ ]
+}

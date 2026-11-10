@@ -1,0 +1,156 @@
+{
+  "trial_id": "rev-16-plain-opus-k7",
+  "task_id": "rev-16",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 7,
+  "status": "ok",
+  "reply_text": "I don't think this is ready to merge yet. All 4 tests pass, but `excerpt` gets wrong results on simple inputs and the tests don't catch it. I only reviewed and didn't change anything.\n\n**Must fix**\n1. **Every preview gets an ellipsis, even when nothing was cut.** `excerpt` never checks whether the text already fits. So `excerpt('short', 50)` returns `\"short…\"` and `excerpt('', 5)` returns `\"…\"`. The README says text at or under the limit comes back unchanged and the ellipsis only appears when something was removed. The fix is to return `trimmed` early when `trimmed.length <= limit`.\n2. **Off by one at the word boundary.** `lastSpaceBefore` only looks at `text.slice(0, limit)`, so it misses a space sitting exactly at index `limit`. That space means the whole last word fits. For example, `excerpt('the quick brown fox', 15)` returns `\"the quick…\"`, but `\"the quick brown\"` is exactly 15 characters and should have been kept. Slicing to `limit + 1` would fix it. The existing test only passes because its input ends at the same spot.\n3. **None of this reaches the cards yet.** `card.js` doesn't call `excerpt` or `toPlain`, so no card shows a preview. Is that a planned follow-up? If so, the 1.5.0 changelog entry (\"Card body excerpts\") and the version bump are early.\n\n**Worth fixing**\n4. **`toPlain` removes every `_ * ~ \\``, not just formatting marks.** Words like `snake_case` become `snakecase`, and `2*3` becomes `23`. Image syntax `![alt](src)` also comes out as `!alt`.\n5. **Words longer than the limit get chopped mid-word.** If there's no space before the limit, the word is cut wherever the limit falls. That might be fine, but the README doesn't mention it.\n6. **Tests are thin.** Each file tests one ordinary case. It's worth adding: short text, empty text, text exactly at the limit, a space exactly at the limit, and the two `toPlain` cases from point 4.\n\n**Small thing:** the CHANGELOG diff also rewrites the 1.4.0 entry (\"a title and a body\" → \"a title and body\"). It's harmless, but it edits history that has nothing to do with this branch.\n\nFixing 1 and 2 and adding the tests from 6 should be quick.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-16-plain-opus-k7",
+    "requests": 8,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.109849,
+    "input_tokens": 108731,
+    "output_tokens": 2033,
+    "cached_tokens": 102143,
+    "cache_write_tokens": 6113,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000052400000000000007,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.1097966,
+        "requests": 7
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 8
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 29.636,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-16-plain-opus-k7",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:00:03.400Z",
+    "images": {
+      "core": "sha256:a9ad79c9a5b8831fdc21d559e082c8ec10e726ba26b883975150369b49c28109",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-390fc44053b9",
+        "id": "sha256:952f9973890f8c702ffa06c1c853e1b1402f99ef8c541b0c91179582d004fe38",
+        "tree_sha256": "bd9012866b0fbf456fcbf2fcb6e8b6cf4c5710236994765c2f5965835746e504"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-363eadc0-f752-4d19-92b9-337e0ebd-3a8e12"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:00:56.529Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /tmp/pi-cwd/repo; git branch -a; git log --oneline main..excerpt-helper; git diff main...excerpt-helper",
+          "code": 129,
+          "output": "[stderr]\nsh: 1: cd: can't cd to /tmp/pi-cwd/repo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_A"
+        },
+        {
+          "seq": 6,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..excerpt-helper; git diff main...excerpt-helper",
+          "code": 0,
+          "output": "* excerpt-helper\n  main\n59856d7 Strip markdown before excerpting\n8e279a3 Add the excerpt helper\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 1e089ca..da546b7 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.5.0\n+\n+- Card body excerpts.\n+\n ## 1.4.0\n \n-- Cards render"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-16-plain-opus-k7",
+      "meter": {
+        "requests": 8,
+        "usd": 0.109849,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 8,
+        "usd": 0.109849,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000052400000000000007
+    }
+  }
+}

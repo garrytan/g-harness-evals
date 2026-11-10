@@ -1,0 +1,170 @@
+{
+  "trial_id": "plan-09-edition-sol-k1",
+  "task_id": "plan-09",
+  "family": "plan",
+  "arm": "edition",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "## Recommendation\n\nAdd a **dependency-free RSS 2.0 feed at `/rss.xml`**, generated alongside the sitemap. Reuse the existing publication rules and URLs, and fix the dev server so it serves XML without injecting live-reload JavaScript.\n\nI inspected the repo at `83040cf`; all **3 existing tests pass**. No code changes made.\n\n### What the repo already provides\n\n- `src/build.js` returns an output-path → content map, so RSS can fit the existing build model.\n- `isPublished()` in `src/posts.js` already excludes drafts, future posts, and invalid publication dates.\n- `permalink()` and `absoluteUrl()` preserve established URLs and deployment subpaths such as `/blog`. Existing tests explicitly protect those contracts.\n- `docs/CONTRIBUTING.md` requires **Node built-ins only**; adding a feed package would violate the project’s distribution model.\n\nOne confirmed blocker: `src/devserver.js` currently appends a `<script>` to **every response**, including XML, and sets no content type. A generated feed would therefore be corrupted during local preview.\n\n## 1. Architecture\n\n**Recommended shape:** a focused `src/rss.js` module exposing `rss(site, posts, now)`, mirroring the sitemap interface. It owns RSS formatting, ordering, XML safety, and feed-specific metadata.\n\n**Alternative:** generate RSS inline in `build()`, passing it an already-filtered post list. That avoids a module but mixes feed protocol details into build orchestration and makes independent testing harder. Prefer the focused module.\n\n```text\nsite configuration + loaded posts + fixed build time\n                         |\n                       build()\n                         |\n              rss(site, posts, now)\n              ├─ isPublished()\n              ├─ permalink() / absoluteUrl()\n              └─ safe XML serialization\n                         |\n                output[\"/rss.xml\"]\n```\n\n**Feed contract**\n- Channel: site title, absolute site URL, and description. Use optional `site.description`, falling back to the title, so existing configurations still work.\n- Items: title, absolute link, permalink-based GUID, UTC `pubDate`, and the existing post body in `<description>`.\n- Use the current body representation; do **not** introduce Markdown rendering in this feature.\n- Include only published posts, newest first. Break equal-date ties deterministically using the permalink; do not mutate the caller’s array.\n- Keep GUIDs identical to existing absolute post URLs. Never change permalink generation.\n- Produce a valid empty channel when no posts are published.\n- Avoid build-time timestamps that make unchanged feeds differ on every build.\n- Do not put `site.author` directly into RSS `<author>`: RSS expects an email address, whereas the current setting is a display name.\n\n**High severity — publication leakage:** reuse `isPublished()` and pass the same `now` from `build()`; do not invent a second draft/scheduling policy. Alternative rejected: separately filtering RSS posts.\n\n**Ownership review:** keep wire-format decisions inside RSS, URL decisions in the existing permalink helpers, and publication decisions in `posts.js`. No registry, plugin system, pass-through service, or duplicated feed state is needed.\n\n## 2. Code quality and failure handling\n\n**High severity — broken XML in preview:** update `devserver.js` to inject reload code only into HTML. Serve RSS as `application/rss+xml; charset=utf-8` and sitemap XML as `application/xml; charset=utf-8`. Alternative: document production-only feed support; not recommended.\n\n**High severity — malformed XML from content:** reuse `escapeHtml()` for XML text escaping, with feed-local handling for characters XML 1.0 prohibits. Escape titles, descriptions, and URLs—including ampersands in URLs. Avoid CDATA, which introduces another delimiter edge case.\n\n**Medium severity — unclear configuration failures:** give a clear error for a missing/invalid absolute HTTP(S) `baseUrl` or missing channel title rather than emitting an unusable feed. Keep validation local; a project-wide configuration overhaul is unnecessary.\n\nLeave the existing HTML minifier untouched: it is not currently wired into `build()`, and feed XML should not be routed through it.\n\n## 3. Tests that prove the feature\n\n| Test area | Regressions to catch |\n|---|---|\n| RSS metadata and empty feed | Missing required channel fields; invalid empty output; description fallback |\n| Publication boundaries | Drafts or scheduled posts leaking; invalid dates included; posts published exactly at `now` excluded |\n| Ordering and stability | Wrong chronological order; unstable ties; mutated input; changing output for identical inputs |\n| URLs and identity | Lost `/blog` prefix; trailing-slash errors; GUID/link disagreement; changed permalink behavior |\n| XML and dates | Unescaped special characters; invalid XML controls; damaged Unicode; non-UTC publication dates |\n| Configuration errors | Missing title or invalid base URL silently producing a broken feed |\n| Build integration | Missing `/rss.xml`; feed and pages disagreeing about publication; changed existing outputs |\n| HTTP integration | Reload script appended to RSS/sitemap; wrong MIME types; HTML reload or 404 behavior regressing |\n\nUse `node:test` and built-ins only. With no XML parser dependency available, combine exact small-output fixtures and targeted assertions; validate a representative generated feed with an external RSS validator before release.\n\n## 4. Performance and distribution\n\nRSS adds one filtering pass and an **O(n log n)** sort over published posts, plus memory proportional to the serialized feed. The build already holds posts and output strings in memory; no database, network requests, or cache is needed.\n\nStart with all published posts rather than adding pagination or a configurable limit. Feed size is an acknowledged growth risk; the repo provides no scale measurements to justify extra machinery now.\n\nThis is vendored source, not a published package. Sites adopt it by copying the updated files and deploying the new output entry through their existing writer. **There is no disk-writing CLI or deployment workflow in this checkout**, despite the README’s build-command wording; the plan should not imply otherwise.\n\n## Implementation order and file scope\n\nEstimated **7 files**, one new module, no new dependencies or services:\n\n1. `src/rss.js` — serializer and feed policy.\n2. `test/rss.test.js` — feed contract and edge cases.\n3. `src/build.js` — add `/rss.xml`, forwarding `now`.\n4. `test/build.test.js` — output integration and existing-output preservation.\n5. `src/devserver.js` — XML content types and HTML-only reload injection.\n6. `test/devserver.test.js` — actual HTTP response coverage.\n7. `README.md` — feed URL, optional description, content behavior, and deployment expectations.\n\n**Not in scope:** Atom/JSON Feed, tag feeds, Markdown rendering, permalink changes, a new build CLI, deployment automation, or HTML autodiscovery/theme redesign. The current builder emits HTML fragments rather than a document `<head>`; readers can subscribe via the documented feed URL initially.",
+  "counts": {
+    "open_matched": true,
+    "open_any": true,
+    "complete_read": true,
+    "first_step": true,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-09-edition-sol-k1",
+    "requests": 10,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0688305,
+    "input_tokens": 93449,
+    "output_tokens": 2546,
+    "cached_tokens": 78928,
+    "cache_write_tokens": 14191,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.00007620000000000001,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0687543,
+        "requests": 9
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 10
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 50.734,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-calibration",
+    "trial_id": "plan-09-edition-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T06:35:59.507Z",
+    "images": {
+      "core": "sha256:3567e7c17a04b80e7a1454cea7d4e459f0fa39dd8671e6daed39af28a6584e2c",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-ff46ec72edab",
+        "id": "sha256:34916489a7653f978e7c0377f7f905685cc1fe6bc4af03beffc5efc144a66be0",
+        "tree_sha256": "f09f5bdae9011d2b11704b012f6e0ee4ae613bf6202ab0441d689a3aa6f6a273"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-ebb9c6d4-52d8-400f-840a-82112ca5-1183c7"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T06:37:14.211Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/72318cfee5188607882f5d6e/93027d7b333512ab/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/72318cfee5188607882f5d6e/93027d7b333512ab/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [
+        {
+          "seq": 4,
+          "skill": "gstack-plan",
+          "via": "skill"
+        }
+      ],
+      "complete_via": "inline",
+      "read_whole": true,
+      "first_step_runs": [
+        {
+          "seq": 12,
+          "command": "cd repo && git log --oneline -10 && ls -la && git remote -v && git status --short && find . -maxdepth 3 -type f | sort",
+          "code": 0,
+          "output": "83040cf Dev server with live reload, and HTML minification\n91ce99b Sitemap lists only published posts\n4e12c8f Syntax highlighting and the default theme\n1f8cfca Static blog generator\ntotal 44\ndrwxr-xr-x 8 root root 4096 Nov  8 06:36 .\ndrwxr-xr-x 4 root root 4096 Nov  8 06:36 ..\ndrwxr-xr-x 5 root root"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-09-edition-sol-k1",
+      "meter": {
+        "requests": 10,
+        "usd": 0.0688305,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 10,
+        "usd": 0.0688305,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.00007620000000000001
+    }
+  }
+}

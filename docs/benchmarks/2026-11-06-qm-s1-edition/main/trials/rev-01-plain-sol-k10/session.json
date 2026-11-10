@@ -1,0 +1,409 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 04:59 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "07cf96ca-d5fc-4324-85a7-096182b873c1"
+    },
+    "text": "Hey, feature/quota-enforcement is ready to go into main. Can you review it before I merge? Just tell me what you'd block on, please don't change any code.",
+    "runId": "6d3a8c29-d169-448b-9203-62ba1df10dbd"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "15591f9e-91c2-40ce-8b61-7c2034587bb5",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "textSignature": "{\"v\":1,\"id\":\"msg_02b1a07d207b9db5016af07237e3e887d28135562d597a5c67\",\"phase\":\"commentary\"}",
+    "text": "I’ll review the diff against main and check the relevant tests, without changing any code. I’ll report only merge blockers.\n",
+    "runId": "6d3a8c29-d169-448b-9203-62ba1df10dbd",
+    "step": {
+     "id": "15591f9e-91c2-40ce-8b61-7c2034587bb5",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "name": "github-gitlab",
+    "wire": {
+     "message": {
+      "id": "15591f9e-91c2-40ce-8b61-7c2034587bb5",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"read\",\"name\":\"github-gitlab\"}"
+    },
+    "action": "read",
+    "runId": "6d3a8c29-d169-448b-9203-62ba1df10dbd",
+    "callId": "call_3zOq6W4GTxuYRrBOrJwUWQA0|fc_02b1a07d207b9db5016af0723862dc87d2aecd4b7a11c81042",
+    "tool": "skills",
+    "step": {
+     "id": "15591f9e-91c2-40ce-8b61-7c2034587bb5",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "dir": "/root/workspace/.agent-skills/d34538001767c876c814e904/b687ba3d030357db/github-gitlab",
+    "name": "github-gitlab",
+    "bytes": 6025,
+    "found": true,
+    "action": "read",
+    "sourceScopeId": "org:harness-eval",
+    "result": "[skill files synced to /root/workspace/.agent-skills/d34538001767c876c814e904/b687ba3d030357db/github-gitlab/]\n\n# GitHub / GitLab\n\nUse this skill when the user asks to inspect repos, issues, pull requests, merge\nrequests, code history, branches, or to make a small code change in a hosted repo.\n\n## Choose the account deliberately\n\nUse the current credential manifest to choose an account authorized for this conversation\nthat fits the user's intent. Run commands with `execute` and an explicit `sandbox_id`;\nkeep that ID throughout checkout, edits, checks, and push. Personal and shared accounts are both valid choices; neither\nis an automatic fallback when the other fails. If the intended account is unclear before\na write, ask. Do not infer permission from a login merely being present on the computer.\n\n- **Personal login:** use the authorized `gh`, `glab`, or Git login. Check the active\n  provider account (for example, `gh api user --jq .login`) and the Git transport's auth\n  configuration; a CLI API identity alone does not prove which account Git will use.\n- **Shared org credential:** if listed in the prompt, select its slug and use the\n  core-hosted smart HTTP remote in the `use-shared-credential` skill. This uses\n  the configured shared account, even when a personal OAuth connector is live.\n  Its name is an admin label, not a verified upstream username.\n- **Connected app:** use only advertised capabilities. API access does not by itself\n  establish native Git transport access or configure the CLI's active login.\n\nFor an existing checkout, inspect the remote and applicable credential-helper, SSH,\nproxy, and HTTP-header configuration. A reused checkout\nmay still select a previous account. Commit author metadata is separate from transport\nidentity. Resolve an unknown identity before a write; do not probe access by pushing.\n\n## Logging in\n\nUse the native login only after an explicit authentication rejection. A TLS timeout,\nconnection reset, rate limit, or GitHub server error is not evidence of logout or\npermission expiry. Do not consume another credential grant to repair transport.\n\nFor a confirmed missing or expired GitHub or GitLab login, follow the\n`interactive-login` skill: it runs `gh auth login` / `glab auth login` in a temporary\nhome as a background job, relays the code and URL, and saves the login to the keychain\nso later commands use it through `execute.credentials`.\n\n## Read-only work\n\nCheck auth and inspect repo state:\n\n```bash\ngh auth status\ngh repo view OWNER/REPO --json name,description,url,defaultBranchRef\ngh issue list --repo OWNER/REPO --state open --limit 20\ngh pr list --repo OWNER/REPO --state open --limit 20\n```\n\nFor GitLab:\n\n```bash\nglab auth status\nglab repo view GROUP/PROJECT\nglab issue list --repo GROUP/PROJECT\nglab mr list --repo GROUP/PROJECT\n```\n\nUse `git log`, `git show`, and `git diff` for codebase-change summaries. Cite commit\nhashes, PR/MR numbers, and links.\n\n## Checkout and edits\n\nClone or fetch only the repo the user asked for:\n\n```bash\ngh repo clone OWNER/REPO repo\ncd repo\ngit checkout -b codex/small-change\n```\n\nKeep changes scoped. Run the repo's tests. If a push or PR/MR creation is requested,\nprepare the branch and summary first.\n\n## Writes require approval\n\nPushing branches, creating PRs/MRs, merging, closing issues, editing labels, changing\nrepo settings, releases, or workflows are writes. Ask for approval before running the\nwrite command.\n\nAfter approval:\n\n```bash\ngit push -u origin codex/small-change\ngh pr create --repo OWNER/REPO --title \"...\" --body-file pr.md\n```\n\nFor GitLab:\n\n```bash\ngit push -u origin codex/small-change\nglab mr create --repo GROUP/PROJECT --title \"...\" --description-file mr.md\n```\n\nReport the final URL and leave enough context for review.\n\n## Wait for GitHub CI\n\nUse the bundled helper instead of a bare `gh pr checks --watch` or a handwritten\nshell loop. Use the absolute directory reported by the skill read in place of\n`<skill dir>`. It is one blocking watcher process, not repeated agent turns:\n\n```bash\nnode \"<skill dir>/scripts/watch-ci.mjs\" --repo OWNER/REPO --pr NUMBER --head REVIEWED_HEAD_SHA\n```\n\nCapture the full head SHA from `gh pr view NUMBER --repo OWNER/REPO --json headRefOid`\nbefore review. Use that same SHA for the watcher and the final merge gate. Start the\nwatcher with `execute` using the selected `sandbox_id` and `background:true`, then\nsubscribe with `background` action `watch` and its returned `process_id`. Keep one\nwatcher per PR. Set the process lifetime longer than the helper's 30-minute deadline;\nuse `--timeout-ms` for a different bounded deadline. Use only credentials authorized\nfor that background process; a live foreground grant does not authorize background work.\n\nThe helper polls GitHub internally and emits JSON status records. It retries only\nrecognized transient transport/server errors with bounded backoff. Pending checks\nremain pending. Real CI failures, authentication/authorization failures, changed heads,\nunknown errors, exhausted retries, and deadline expiry all stop with nonzero status.\nExplicit API rate limits stop as `rate_limited`, not authentication errors.\nEmpty check sets, skipped checks, and cancelled checks are not successful evidence.\nDo not interpret an exit code alone as \"checks concluded\": read the status record.\nDo not suppress a nonzero exit or print a success marker after it. Keep `set -e`.\n\nSuccess means the checks observed for the expected head passed, not permission to\nmerge. Re-read checks and review threads immediately before merging. Wait for async\nreviewers on that exact head; resolve findings and complete any review the repo\nrequires. After any push or head change, discard old success/review evidence and repeat.\nOnly merge when all gates pass, with GitHub's atomic head guard:\n\n```bash\ngh pr merge NUMBER --repo OWNER/REPO --squash --match-head-commit REVIEWED_HEAD_SHA\n```\n\nOn a branch that requires a merge queue, this queues the PR; it is merged only once\nGitHub shows it as merged. Never use auto-merge or bypass repository gates. This\nhelper does not retry GitLab commands or change their authentication behavior.\n",
+    "runId": "6d3a8c29-d169-448b-9203-62ba1df10dbd",
+    "callId": "call_3zOq6W4GTxuYRrBOrJwUWQA0|fc_02b1a07d207b9db5016af0723862dc87d2aecd4b7a11c81042",
+    "tool": "skills",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "c8cd115d-e697-4fc1-b5ff-3b3001de3593",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null | head -30",
+      "purpose": "Locating repository"
+     }
+    },
+    "scope": "scoped",
+    "command": "pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null | head -30",
+    "purpose": "Locating repository",
+    "retrySafe": true,
+    "runId": "6d3a8c29-d169-448b-9203-62ba1df10dbd",
+    "callId": "call_JkINBGuO2Ait9G0wifesxdal|fc_02b1a07d207b9db5016af0723a046487d29e8b8efbe8e4126d",
+    "tool": "execute",
+    "step": {
+     "id": "c8cd115d-e697-4fc1-b5ff-3b3001de3593",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\ntotal 16\ndrwxr-xr-x 4 root root 4096 Nov  8 12:59 .\ndrwx------ 6 root root 4096 Nov  8 12:59 ..\ndrwxr-xr-x 3 root root 4096 Nov  8 12:59 .agent-skills\ndrwxr-xr-x 5 root root 4096 Nov  8 12:59 repo\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "6d3a8c29-d169-448b-9203-62ba1df10dbd",
+    "callId": "call_JkINBGuO2Ait9G0wifesxdal|fc_02b1a07d207b9db5016af0723a046487d29e8b8efbe8e4126d",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "f32173cf-dd75-40ef-98e5-89b31235c2b8",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "sandbox",
+     "input": {
+      "action": "list",
+      "purpose": "Identifying review sandbox"
+     }
+    },
+    "action": "list",
+    "purpose": "Identifying review sandbox",
+    "retrySafe": true,
+    "runId": "6d3a8c29-d169-448b-9203-62ba1df10dbd",
+    "callId": "call_I5Fe8ojjiD1BA9WwgNNzQlfY|fc_02b1a07d207b9db5016af0723bcbc887d2a6444aff83156422",
+    "tool": "sandbox",
+    "step": {
+     "id": "f32173cf-dd75-40ef-98e5-89b31235c2b8",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "action": "list",
+    "result": "{\"sandboxes\":[{\"id\":\"f1c99998-b591-40fb-b186-7e26fb87a759\",\"name\":\"s1e-probe\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"]},\"state\":\"ready\",\"legacy\":false,\"backend\":\"local\",\"holders\":[\"6d3a8c29-d169-448b-9203-62ba1df10dbd\"],\"createdAt\":\"2026-11-08T12:59:32.701Z\",\"createdBy\":\"harness-admin\",\"machineId\":\"qm-sbx-sandbox-f1c99998-b591-40fb-b186-7e26fb87-865ce3\",\"ownerScopeId\":\"personal:U1\",\"backingScopeId\":\"sandbox-f1c99998-b591-40fb-b186-7e26fb87a759\"}],\"defaultSandboxId\":\"f1c99998-b591-40fb-b186-7e26fb87a759\",\"defaultMode\":\"selected\",\"providers\":[{\"name\":\"local\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\"},\"egressEnforcement\":\"none\",\"sizesMemory\":true,\"actions\":[\"create\",\"retire\"]}]}",
+    "runId": "6d3a8c29-d169-448b-9203-62ba1df10dbd",
+    "callId": "call_I5Fe8ojjiD1BA9WwgNNzQlfY|fc_02b1a07d207b9db5016af0723bcbc887d2a6444aff83156422",
+    "tool": "sandbox",
+    "isError": false
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "8def50d1-bacc-439a-b590-85162633d591",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git config --show-origin --get-regexp '(credential|core.sshCommand|http\\\\..*extraheader|http.proxy)' || true; cd /root/workspace/repo && git branch -avv && git diff --stat main...feature/quota-enforcement && ls -la && find . -maxdepth 3 -type f -not -path './.git/*' | sort\",\"purpose\":\"Inspecting branch and files\",\"sandbox_id\":\"f1c99998-b591-40fb-b186-7e26fb87a759\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo && git status --short && git remote -v && git config --show-origin --get-regexp '(credential|core.sshCommand|http\\..*extraheader|http.proxy)' || true; cd /root/workspace/repo && git branch -avv && git diff --stat main...feature/quota-enforcement && ls -la && find . -maxdepth 3 -type f -not -path './.git/*' | sort",
+      "purpose": "Inspecting branch and files",
+      "sandbox_id": "f1c99998-b591-40fb-b186-7e26fb87a759"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git config --show-origin --get-regexp '(credential|core.sshCommand|http\\..*extraheader|http.proxy)' || true; cd /root/workspace/repo && git branch -avv && git diff --stat main...feature/quota-enforcement && ls -la && find . -maxdepth 3 -type f -not -path './.git/*' | sort",
+    "purpose": "Inspecting branch and files",
+    "retrySafe": true,
+    "sandbox_id": "f1c99998-b591-40fb-b186-7e26fb87a759",
+    "runId": "6d3a8c29-d169-448b-9203-62ba1df10dbd",
+    "callId": "call_03aMf7AF4OagLLYyidE9Ahtt|fc_02b1a07d207b9db5016af0723d5a1c87d28b105f4f33b55530",
+    "tool": "execute",
+    "step": {
+     "id": "8def50d1-bacc-439a-b590-85162633d591",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* feature/quota-enforcement 3ebff74 Count usage in allocation blocks\n  main                      97f2976 Track storage usage per account\n CHANGELOG.md       |  4 ++++\n README.md          |  6 ++++++\n package.json       |  2 +-\n src/plans.js       |  8 +++++++-\n src/upload.js      |  5 +++++\n src/usage.js       |  6 ++++--\n test/quota.test.js | 19 +++++++++++++++++++\n test/usage.test.js |  4 ++--\n 8 files changed, 48 insertions(+), 6 deletions(-)\ntotal 32\ndrwxr-xr-x 5 root root 4096 Nov  8 12:59 .\ndrwxr-xr-x 4 root root 4096 Nov  8 12:59 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 12:59 .git\n-rw-r--r-- 1 root root  113 Nov  8 12:34 CHANGELOG.md\n-rw-r--r-- 1 root root  537 Nov  8 12:34 README.md\n-rw-r--r-- 1 root root  117 Nov  8 12:34 package.json\ndrwxr-xr-x 2 root root 4096 Nov  8 12:59 src\ndrwxr-xr-x 2 root root 4096 Nov  8 12:59 test\n./CHANGELOG.md\n./README.md\n./package.json\n./src/plans.js\n./src/shard.js\n./src/upload.js\n./src/usage.js\n./test/quota.test.js\n./test/usage.test.js\n\n[exit 0]",
+    "runId": "6d3a8c29-d169-448b-9203-62ba1df10dbd",
+    "callId": "call_03aMf7AF4OagLLYyidE9Ahtt|fc_02b1a07d207b9db5016af0723d5a1c87d28b105f4f33b55530",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "5c1bfd37-a543-4991-8167-a5be4414ecd1",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git diff main...feature/quota-enforcement && for f in src/* test/* package.json README.md CHANGELOG.md; do echo \\\"=== $f\\\"; nl -ba \\\"$f\\\"; done; git log --oneline --all -8; npm test\",\"purpose\":\"Reviewing quota implementation\",\"sandbox_id\":\"f1c99998-b591-40fb-b186-7e26fb87a759\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo && git diff main...feature/quota-enforcement && for f in src/* test/* package.json README.md CHANGELOG.md; do echo \"=== $f\"; nl -ba \"$f\"; done; git log --oneline --all -8; npm test",
+      "purpose": "Reviewing quota implementation",
+      "sandbox_id": "f1c99998-b591-40fb-b186-7e26fb87a759"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git diff main...feature/quota-enforcement && for f in src/* test/* package.json README.md CHANGELOG.md; do echo \"=== $f\"; nl -ba \"$f\"; done; git log --oneline --all -8; npm test",
+    "purpose": "Reviewing quota implementation",
+    "retrySafe": true,
+    "sandbox_id": "f1c99998-b591-40fb-b186-7e26fb87a759",
+    "runId": "6d3a8c29-d169-448b-9203-62ba1df10dbd",
+    "callId": "call_6PbuL9TQ44BwSJNQBvtClpVq|fc_02b1a07d207b9db5016af0723ff23487d2ab84faf751bb21ae",
+    "tool": "execute",
+    "step": {
+     "id": "5c1bfd37-a543-4991-8167-a5be4414ecd1",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 890fbd5..3c1a31b 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.7.0\n+\n+- Uploads past the plan quota are refused.\n+\n ## 1.6.0\n \n - Usage totals and shard placement.\ndiff --git a/README.md b/README.md\nindex 716e8a2..02cc665 100644\n--- a/README.md\n+++ b/README.md\n@@ -12,6 +12,12 @@ Storage accounting for drift-storage: how much each account uses and which shard\n \n Quotas are kept in KiB in src/plans.js.\n \n+## Quotas\n+\n+An upload is refused when it would take the account past its plan's quota. An upload that brings usage exactly to the quota is accepted.\n+\n+Usage counts whole 4 KiB blocks, because that is what the storage backend allocates: a 1-byte file uses 4 KiB.\n+\n ## Tests\n \n     npm test\ndiff --git a/package.json b/package.json\nindex 2dab184..dbe9595 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"drift-storage\",\n-  \"version\": \"1.6.0\",\n+  \"version\": \"1.7.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/plans.js b/src/plans.js\nindex 8015b97..b4398c3 100644\n--- a/src/plans.js\n+++ b/src/plans.js\n@@ -5,4 +5,10 @@ const PLANS = {\n   archive: { quotaKiB: 2147483648 },\n };\n \n-module.exports = { PLANS };\n+function quotaBytes(plan) {\n+  const entry = PLANS[plan];\n+  if (!entry) throw new Error('unknown plan: ' + plan);\n+  return entry.quotaKiB << 10;\n+}\n+\n+module.exports = { PLANS, quotaBytes };\ndiff --git a/src/upload.js b/src/upload.js\nindex 9d9c0be..d26f876 100644\n--- a/src/upload.js\n+++ b/src/upload.js\n@@ -1,7 +1,12 @@\n const { usedBytes } = require('./usage');\n const { shardFor } = require('./shard');\n+const { quotaBytes } = require('./plans');\n \n function acceptUpload(account, file) {\n+  const after = usedBytes(account.files) + file.size;\n+  if (after > quotaBytes(account.plan)) {\n+    return { ok: false, reason: 'over quota' };\n+  }\n   account.files.push(file);\n   return { ok: true, shard: shardFor(file.name) };\n }\ndiff --git a/src/usage.js b/src/usage.js\nindex 9b6b0e2..f5b851e 100644\n--- a/src/usage.js\n+++ b/src/usage.js\n@@ -1,5 +1,7 @@\n+const BLOCK = 4096;\n+\n function usedBytes(files) {\n-  return files.reduce((n, f) => n + f.size, 0);\n+  return files.reduce((n, f) => n + Math.ceil(f.size / BLOCK) * BLOCK, 0);\n }\n \n-module.exports = { usedBytes };\n+module.exports = { usedBytes, BLOCK };\ndiff --git a/test/quota.test.js b/test/quota.test.js\nnew file mode 100644\nindex 0000000..17eed57\n--- /dev/null\n+++ b/test/quota.test.js\n@@ -0,0 +1,19 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { quotaBytes } = require('../src/plans');\n+const { acceptUpload } = require('../src/upload');\n+\n+test('free plan quota is 512 MiB', () => {\n+  assert.strictEqual(quotaBytes('free'), 512 * 1024 * 1024);\n+});\n+\n+test('an upload past the quota is refused', () => {\n+  const account = { plan: 'free', files: [{ name: 'a.bin', size: 512 * 1024 * 1024 }] };\n+  assert.deepStrictEqual(acceptUpload(account, { name: 'b.txt', size: 1 }), { ok: false, reason: 'over quota' });\n+});\n+\n+test('an upload within the quota is stored', () => {\n+  const account = { plan: 'free', files: [] };\n+  assert.strictEqual(acceptUpload(account, { name: 'c.txt', size: 100 }).ok, true);\n+  assert.strictEqual(account.files.length, 1);\n+});\ndiff --git a/test/usage.test.js b/test/usage.test.js\nindex e14564f..457aeb1 100644\n--- a/test/usage.test.js\n+++ b/test/usage.test.js\n@@ -2,6 +2,6 @@ const test = require('node:test');\n const assert = require('node:assert');\n const { usedBytes } = require('../src/usage');\n \n-test('usage adds file sizes', () => {\n-  assert.strictEqual(usedBytes([{ size: 10 }, { size: 20 }]), 30);\n+test('usage counts whole 4 KiB blocks', () => {\n+  assert.strictEqual(usedBytes([{ size: 10 }, { size: 4097 }]), 3 * 4096);\n });\n=== src/plans.js\n     1\t// Quotas in KiB.\n     2\tconst PLANS = {\n     3\t  free: { quotaKiB: 524288 },\n     4\t  team: { quotaKiB: 209715200 },\n     5\t  archive: { quotaKiB: 2147483648 },\n     6\t};\n     7\t\n     8\tfunction quotaBytes(plan) {\n     9\t  const entry = PLANS[plan];\n    10\t  if (!entry) throw new Error('unknown plan: ' + plan);\n    11\t  return entry.quotaKiB << 10;\n    12\t}\n    13\t\n    14\tmodule.exports = { PLANS, quotaBytes };\n=== src/shard.js\n     1\tconst SHARDS = 16;\n     2\t\n     3\tfunction shardFor(name) {\n     4\t  let h = 0;\n     5\t  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % SHARDS;\n     6\t  return h;\n     7\t}\n     8\t\n     9\tmodule.exports = { shardFor, SHARDS };\n=== src/upload.js\n     1\tconst { usedBytes } = require('./usage');\n     2\tconst { shardFor } = require('./shard');\n     3\tconst { quotaBytes } = require('./plans');\n     4\t\n     5\tfunction acceptUpload(account, file) {\n     6\t  const after = usedBytes(account.files) + file.size;\n     7\t  if (after > quotaBytes(account.plan)) {\n     8\t    return { ok: false, reason: 'over quota' };\n     9\t  }\n    10\t  account.files.push(file);\n    11\t  return { ok: true, shard: shardFor(file.name) };\n    12\t}\n    13\t\n    14\tmodule.exports = { acceptUpload };\n=== src/usage.js\n     1\tconst BLOCK = 4096;\n     2\t\n     3\tfunction usedBytes(files) {\n     4\t  return files.reduce((n, f) => n + Math.ceil(f.size / BLOCK) * BLOCK, 0);\n     5\t}\n     6\t\n     7\tmodule.exports = { usedBytes, BLOCK };\n=== test/quota.test.js\n     1\tconst test = require('node:test');\n     2\tconst assert = require('node:assert');\n     3\tconst { quotaBytes } = require('../src/plans');\n     4\tconst { acceptUpload } = require('../src/upload');\n     5\t\n     6\ttest('free plan quota is 512 MiB', () => {\n     7\t  assert.strictEqual(quotaBytes('free'), 512 * 1024 * 1024);\n     8\t});\n     9\t\n    10\ttest('an upload past the quota is refused', () => {\n    11\t  const account = { plan: 'free', files: [{ name: 'a.bin', size: 512 * 1024 * 1024 }] };\n    12\t  assert.deepStrictEqual(acceptUpload(account, { name: 'b.txt', size: 1 }), { ok: false, reason: 'over quota' });\n    13\t});\n    14\t\n    15\ttest('an upload within the quota is stored', () => {\n    16\t  const account = { plan: 'free', files: [] };\n    17\t  assert.strictEqual(acceptUpload(account, { name: 'c.txt', size: 100 }).ok, true);\n    18\t  assert.strictEqual(account.files.length, 1);\n    19\t});\n=== test/usage.test.js\n     1\tconst test = require('node:test');\n     2\tconst assert = require('node:assert');\n     3\tconst { usedBytes } = require('../src/usage');\n     4\t\n     5\ttest('usage counts whole 4 KiB blocks', () => {\n     6\t  assert.strictEqual(usedBytes([{ size: 10 }, { size: 4097 }]), 3 * 4096);\n     7\t});\n=== package.json\n     1\t{\n     2\t  \"name\": \"drift-storage\",\n     3\t  \"version\": \"1.7.0\",\n     4\t  \"private\": true,\n     5\t  \"scripts\": {\n     6\t    \"test\": \"node --test\"\n     7\t  }\n     8\t}\n=== README.md\n     1\t# drift-storage\n     2\t\n     3\tStorage accounting for drift-storage: how much each account uses and which shard a file lives on.\n     4\t\n     5\t## Plans\n     6\t\n     7\t| Plan | Quota |\n     8\t|---|---|\n     9\t| free | 512 MiB |\n    10\t| team | 200 GiB |\n    11\t| archive | 2 TiB |\n    12\t\n    13\tQuotas are kept in KiB in src/plans.js.\n    14\t\n    15\t## Quotas\n    16\t\n    17\tAn upload is refused when it would take the account past its plan's quota. An upload that brings usage exactly to the quota is accepted.\n    18\t\n    19\tUsage counts whole 4 KiB blocks, because that is what the storage backend allocates: a 1-byte file uses 4 KiB.\n    20\t\n    21\t## Tests\n    22\t\n    23\t    npm test\n=== CHANGELOG.md\n     1\t# Changelog\n     2\t\n     3\t## 1.7.0\n     4\t\n     5\t- Uploads past the plan quota are refused.\n     6\t\n     7\t## 1.6.0\n     8\t\n     9\t- Usage totals and shard placement.\n3ebff74 Count usage in allocation blocks\n16fbb39 Enforce plan quotas on upload\n97f2976 Track storage usage per account\n\n> drift-storage@1.7.0 test\n> node --test\n\n✔ free plan quota is 512 MiB (0.630937ms)\n✔ an upload past the quota is refused (0.5999ms)\n✔ an upload within the quota is stored (0.150626ms)\n✔ usage counts whole 4 KiB blocks (0.562254ms)\nℹ tests 4\nℹ suites 0\nℹ pass 4\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 92.206148\n\n[stderr]\nnpm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\n\n[exit 0]",
+    "runId": "6d3a8c29-d169-448b-9203-62ba1df10dbd",
+    "callId": "call_6PbuL9TQ44BwSJNQBvtClpVq|fc_02b1a07d207b9db5016af0723ff23487d2ab84faf751bb21ae",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "32ef1fdf-3da5-488d-9dda-7677369c95a2",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "{\"id\":\"rs_02b1a07d207b9db5016af07242573487d2886d2d1fd882b745\",\"type\":\"reasoning\",\"content\":[],\"encrypted_content\":\"gAAAAABq8HJFZ9OGmQyl8ZBFBOnZObzAnJAO7RQE0m3xraYqJiladXd4CNBVUpnC543gTTeLI_9EPIX2yIdnXSh6zHcKB_CXgcSID2NfPs9diX5a2hkry_umCV1gpJuvm7GOG4zt-9j1ETCKKCy8GgGKTsAvCPf_7F9jKh8l2SUg2P-0ZM54cq6x1WtfJWUQJPfwc_nJc9p0MDDZ9IM8R-2f8u-1ObBOmE52_ee0O0rlhyfVioEjcQGtr2QJVM2DcaXTyGEkH7-0c8ZLMF7Y-MWPpuresJvzkmDL0JHjUodKfdxeB40rFqNshnGEKfIGj6v4vcVynRBQ2RMJZtbANvx3rm3hMuWvvq3rgjniTOg08vA7i48H7HgvG9PwHX76CWPb1Hd8LLkqvhjT3HKxd0rYY4pJgzWw0ddf5PjAg3G7L_54I2m1-XVVP9W2iLhwPnO5_8coE6uaXE1FYv6_Iv6MHepxxXejV5VlO2k5eakWvKJ4yz2qZQgqwqOLZnxfZY37rJpTow1muagOtUUuG4WPq9TjYGG3obgxG4FD9T0cOVMr0YpDKhrklEJKEDNjstPwk4VkbSXFo7gwanWyyh280w4NEHLFXEZgUZVvZ5ZwaLcfJ1zhc68-AgZ4Np1E9-1a7BDLJ4YxP0zbV3_LDrxn6aN3m512m8_R6cubj-Z1IDd_qKdm0i_iP5epaR-ij47Dkt8-w7IgSOv96yoM6rMlhp4gC9WkJluVc5rV12IODZcevaMbkAqvVV63rQ_x6YZaInQTq9EC7xOt4qSfVN3l1iVp1PMWTionlAhcKaQMi_VsXI-QVWMncZ0FBg7TFhYOzdN2dteIrA3x980BVGREoVrqYvobS4MRUnNGMv6-bNxaHNqbgE4epDjgSUmFjVqHbipOvtgVc3ItEQUh7E2aHJ2DOrZu7XYTwr2YFVzAiHHfUpoiFhJqmKIo8wF-JZVoJlqCLPgDfh1D6VcF_ILIpJivWd7Dh1gdOUOZd6fR9ot7aeFo8Jc16FbMieAQCpkAIyg8gX2zNo_GF5_V04UtmokTFxouamARgYiEJOU8qPPcAolqI5Z2SRH_Zq5SrhXg2XVRoUIrxW0Ufv8YSmMUYsL7jqlgf6Y2AQT8Ztbpa406EvI5ArGQeja00YiGK74cdiLnr3tI61bUXxc7Wb7GaVRqPdcjhP6XtkWloaA2Q1OmgdsscGinI-XxbF3knWA9XAzfdAQWbQ7qH1lLIz3A5iVVHjuA_mcTyb_S7ysUQ6AuxLCzTgz7rsr1_YE_ZVB0uWOqY7gyHH7O8mFtbqkhsRr2j4uHVLotL8yByTKZUNzgX4KHVc-gV2OqmS0WYhFI1XXs3k1UmYAEiUS-RQNuFgj2sybaM7iJgPJzAubkyExbQDkl2CYKGqqNo9ghcFYlsilYXNBHm1QjmtbiKmph8NgmoVPgWtNNG_2ZZnxNYRTmU3xMHImVWeIT5Jrdr_WuvIrDrbpyhgV2YFmcGG7P1anzh8YQgotJbOSheL1_2vhrqF9qzgoYMwLkU1jRPEUdVYXnEnXrfehE0J2Bh_wjVdlDI88QWDs6GGVvcZD26b6nC-X8SbqWENLuXG7bI2ke6tX3Ce_fwyD3DoRq0lCsPLZhaOPEu-eT4ij7aRFnzmglbAbxYU3Gz5n05XDdfIVfh5zyaNNBY5fC5_gfPSqLnaaMLq__LzxyJocqbx6QCdcwFX8IGtaFoHZwggXyUBMj5go2rM7fO4n4W0UTTFVhGfRZEtdf1zU5Nh_E8pMC1niPqn34alxIyZxm1zKa7OFY-Ka5wAJF5mDeI-L2RKMX6Tpk5tAFPbD34MCZ6-F-Iyr_2MuKj_VN83vaBf2YTbEzHkLQZUBSylf7ag_X-cl5Pow6nime8JuzlsLUmAiCu7pD096QkMsCJn8sDPx3_8V1hGzmlZpiz3WGX8oH8bceV7i9dqqE6nQUVGc2QK5VSepFI1uxY4w1FJ0vdursGaCm3AwYqLkHfBZ3GuCJ7o_NFzKnhuS0-VV7QHJLGia8GJmd6w0cp1e87RepLtSdp-KVHGyBC321DwUwaC5XGpGa55VpflQFIdSeatt8rLg0cTomV5hKKDjfhuc_4k3KkEneEVWxSt3V-EXWYYrHgIYRUCjKK04_7xB6oIA5Mt2kqh2BRfhoXyUgsoj0irtEGhajTgzQlI9XZtWQ3X0ReZHJrxb_qIO3DA7zFA09G6NDl349rV1-ew7eDG03pK5GmojPhHiDSRe04AAQQSM00iYY99DGzX8qVt0nq8Ku0wdog5SZVYhbCrck_sbwirll_X3bNujjPYBWNVs2cfOCdNkPlAOMzfrQ85v3adXqztF8ZTN-YnZaSKqbfclMaJ8wOR4d6MbTc2g6\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"**Investigating block alignment**\\n\\nI need to look into this second bug related to block alignment and how quotas are divisible by blocks. It's all about comparing raw versus rounded equivalents! When using block multiples for the quota, the condition file.size <= remaining only holds if the ceiling of size divided by the block size is less than or equal to remaining. So, maybe this isn't really a second bug — just a need to handle overflow. I should verify snippets in the team archive.\"}]}",
+    "thinking": "**Investigating block alignment**\n\nI need to look into this second bug related to block alignment and how quotas are divisible by blocks. It's all about comparing raw versus rounded equivalents! When using block multiples for the quota, the condition file.size <= remaining only holds if the ceiling of size divided by the block size is less than or equal to remaining. So, maybe this isn't really a second bug — just a need to handle overflow. I should verify snippets in the team archive.",
+    "runId": "6d3a8c29-d169-448b-9203-62ba1df10dbd",
+    "step": {
+     "id": "32ef1fdf-3da5-488d-9dda-7677369c95a2",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "32ef1fdf-3da5-488d-9dda-7677369c95a2",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && node <<'NODE'\\nconst { PLANS, quotaBytes } = require('./src/plans');\\nconst { acceptUpload } = require('./src/upload');\\nfor (const [plan, {quotaKiB}] of Object.entries(PLANS)) {\\n  const account = { plan, files: [] };\\n  console.log(JSON.stringify({plan, expectedBytes: quotaKiB * 1024, actualBytes: quotaBytes(plan), oneByteUpload: acceptUpload(account, {name:'probe', size:1})}));\\n}\\nNODE\\n git status --short; git rev-parse HEAD\",\"purpose\":\"Reproducing paid-plan rejection\",\"sandbox_id\":\"f1c99998-b591-40fb-b186-7e26fb87a759\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo && node <<'NODE'\nconst { PLANS, quotaBytes } = require('./src/plans');\nconst { acceptUpload } = require('./src/upload');\nfor (const [plan, {quotaKiB}] of Object.entries(PLANS)) {\n  const account = { plan, files: [] };\n  console.log(JSON.stringify({plan, expectedBytes: quotaKiB * 1024, actualBytes: quotaBytes(plan), oneByteUpload: acceptUpload(account, {name:'probe', size:1})}));\n}\nNODE\n git status --short; git rev-parse HEAD",
+      "purpose": "Reproducing paid-plan rejection",
+      "sandbox_id": "f1c99998-b591-40fb-b186-7e26fb87a759"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && node <<'NODE'\nconst { PLANS, quotaBytes } = require('./src/plans');\nconst { acceptUpload } = require('./src/upload');\nfor (const [plan, {quotaKiB}] of Object.entries(PLANS)) {\n  const account = { plan, files: [] };\n  console.log(JSON.stringify({plan, expectedBytes: quotaKiB * 1024, actualBytes: quotaBytes(plan), oneByteUpload: acceptUpload(account, {name:'probe', size:1})}));\n}\nNODE\n git status --short; git rev-parse HEAD",
+    "purpose": "Reproducing paid-plan rejection",
+    "retrySafe": true,
+    "sandbox_id": "f1c99998-b591-40fb-b186-7e26fb87a759",
+    "runId": "6d3a8c29-d169-448b-9203-62ba1df10dbd",
+    "callId": "call_VSxe2n00ECVh7LtDxrrFrZAH|fc_02b1a07d207b9db5016af072459a2887d289e386b03a076427",
+    "tool": "execute",
+    "step": {
+     "id": "32ef1fdf-3da5-488d-9dda-7677369c95a2",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 14,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "{\"plan\":\"free\",\"expectedBytes\":536870912,\"actualBytes\":536870912,\"oneByteUpload\":{\"ok\":true,\"shard\":0}}\n{\"plan\":\"team\",\"expectedBytes\":214748364800,\"actualBytes\":0,\"oneByteUpload\":{\"ok\":false,\"reason\":\"over quota\"}}\n{\"plan\":\"archive\",\"expectedBytes\":2199023255552,\"actualBytes\":0,\"oneByteUpload\":{\"ok\":false,\"reason\":\"over quota\"}}\n3ebff74a81d96811b1d3a365ed886cc0cf28683a\n\n[exit 0]",
+    "runId": "6d3a8c29-d169-448b-9203-62ba1df10dbd",
+    "callId": "call_VSxe2n00ECVh7LtDxrrFrZAH|fc_02b1a07d207b9db5016af072459a2887d289e386b03a076427",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 15,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "8a119957-1a21-4df9-a14e-1f59d11cfdc6",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "textBlock": {
+     "textSignature": "{\"v\":1,\"id\":\"msg_02b1a07d207b9db5016af07247ab3087d29ebe6a1ef79e52ac\",\"phase\":\"final_answer\"}"
+    },
+    "workStartedAt": 1794142774227,
+    "workFinishedAt": 1794142793389,
+    "text": "I’d block on **`src/plans.js:11`: quota conversion makes both paid-plan quotas zero.**\n\n`entry.quotaKiB << 10` uses JavaScript’s 32-bit bitwise arithmetic. Both `team` (200 GiB) and `archive` (2 TiB) become **0 bytes**, so even a 1-byte upload to an empty account is rejected. I reproduced this for both plans.\n\nUse multiplication by `1024` instead, and add quota/upload tests for both paid plans before merging.\n\nAll 4 existing tests pass, but they miss this. No code changed.",
+    "runId": "6d3a8c29-d169-448b-9203-62ba1df10dbd",
+    "step": {
+     "id": "8a119957-1a21-4df9-a14e-1f59d11cfdc6",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  }
+ ]
+}

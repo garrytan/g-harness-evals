@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-05-plain-opus-k11",
+  "task_id": "rev-05",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 11,
+  "status": "ok",
+  "reply_text": "**Don't merge yet. `canEdit` lets view-only users edit.** All tests pass, so they don't catch it. I didn't change any code.\n\n**1. Blocker: `canEdit` checks the wrong right** (`src/guard.js`)\n```js\nreturn share.mask & WRITE === WRITE && !share.locked;\n```\nJavaScript evaluates `===` before `&`, so this runs as `mask & (WRITE === WRITE)`, which is `mask & true`, which is `mask & 1`. That's the READ bit, so the function really checks \"can read\", not \"can write\". I ran it to confirm:\n- A viewer (READ only) on an unlocked document gets `canEdit = true`.\n- A share with only WRITE gets `canEdit = 0` (falsy).\n\nFix: use `hasRight(share.mask, WRITE) && !share.locked`, the same way `canComment` does. The editor test misses this because the editor share also has READ. Add tests that check a viewer **can't** edit and a WRITE-only share **can**.\n\n**2. Ownership transfer doesn't check who's handing over** (`src/ownership.js`)\n`transferOwnership(doc, fromUser, toUser)` never compares `fromUser` with `doc.owner`. Pass the wrong user and the real owner keeps ADMIN while someone else loses it, so the document ends up with two admins. Either use `doc.owner` as the \"from\" user or reject a mismatch. Also:\n- If `fromUser` has no share, `undefined &= ~ADMIN` quietly turns into `0`. Probably harmless, but it happens by accident.\n- If `fromUser === toUser`, the user loses ADMIN and then gets it straight back, which is fine but worth a test.\n\n**3. Smaller points**\n- **`toggleRight`:** using `^` matches what the README says. Make sure the dialog can't toggle ADMIN off the owner, and that switching READ off while WRITE is on doesn't leave a share that can't be viewed. Nothing currently prevents either.\n- **Test gaps:** there's no test for switching a right off, and none for the previous owner keeping their other rights after a transfer.\n- **CHANGELOG:** the 3.2.0 entry only covers comment/edit. The share-dialog switches and ownership transfer are missing.\n\n**Before merging:** fix #1, and I'd fix #2 as well.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-05-plain-opus-k11",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.07345190000000001,
+    "input_tokens": 55035,
+    "output_tokens": 1681,
+    "cached_tokens": 50838,
+    "cache_write_tokens": 3729,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000052300000000000004,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.07339960000000001,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 19.339,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-05-plain-opus-k11",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:21:34.053Z",
+    "images": {
+      "core": "sha256:b72940b562e6c53aae6afc83a7f0b64341c2e8cbe63023fe872152ab58a99891",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-896e49561fcd",
+        "id": "sha256:2c573a8a565e03cd61423b47d45a8b78ea6cc12e3c6d84a116a99eda1cf15c92",
+        "tree_sha256": "3745319e560b5b3779257b8b6020c6313b748cb359283f6ff59062054bfd97dd"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-4287d1c4-529e-4152-b5a8-828ed882-0e4399"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:22:16.888Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 7,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline -8; git status --short; B=$(git merge-base main share-editing 2>/dev/null); echo base=$B; git diff --stat $B share-editing; git diff $B share-editing | head -400",
+          "code": 0,
+          "output": "  main\n* share-editing\n1dc003f Share dialog switches and ownership transfer\n09f5972 Let editors comment and edit unlocked documents\n28095cc Share documents with view rights\nbase=28095cc4b9f52cdfab84fe080c2d24a63081be4b\n CHANGELOG.md        |  4 ++++\n README.md           | 12 ++++++++++++\n package.js"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-05-plain-opus-k11",
+      "meter": {
+        "requests": 5,
+        "usd": 0.07345190000000001,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.07345190000000001,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000052300000000000004
+    }
+  }
+}

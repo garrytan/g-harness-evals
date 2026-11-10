@@ -1,0 +1,394 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 05:27 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "0213b80e-22e6-4cda-bd73-bf0af707ddef"
+    },
+    "text": "quick one: can you review http-retries vs main? It touches the client every worker uses so I want a careful look before it merges. Don't modify anything, just report back.",
+    "runId": "a71c612e-bc57-4fde-b556-50608f2ab533"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "654e04b7-8b70-4df8-a2e7-5818cc960ed1",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "textSignature": "{\"v\":1,\"id\":\"msg_0e10f2b9b71cf733016af078dd1ec087d2b148a6a5cd1507a6\",\"phase\":\"commentary\"}",
+    "text": "I’ll review `http-retries` against `main`, focusing on retry safety and effects on workers. I won’t modify anything.\n",
+    "runId": "a71c612e-bc57-4fde-b556-50608f2ab533",
+    "step": {
+     "id": "654e04b7-8b70-4df8-a2e7-5818cc960ed1",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "name": "github-gitlab",
+    "wire": {
+     "message": {
+      "id": "654e04b7-8b70-4df8-a2e7-5818cc960ed1",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"read\",\"name\":\"github-gitlab\"}"
+    },
+    "action": "read",
+    "runId": "a71c612e-bc57-4fde-b556-50608f2ab533",
+    "callId": "call_yLjMrTc1aY7pEcVYHMaj1b4R|fc_0e10f2b9b71cf733016af078dd6dfc87d2b574ce63aeef57ec",
+    "tool": "skills",
+    "step": {
+     "id": "654e04b7-8b70-4df8-a2e7-5818cc960ed1",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "dir": "/root/workspace/.agent-skills/2fccc8b6eca252928c3656bb/45c43cc0e3e1994a/github-gitlab",
+    "name": "github-gitlab",
+    "bytes": 6025,
+    "found": true,
+    "action": "read",
+    "sourceScopeId": "org:harness-eval",
+    "result": "[skill files synced to /root/workspace/.agent-skills/2fccc8b6eca252928c3656bb/45c43cc0e3e1994a/github-gitlab/]\n\n# GitHub / GitLab\n\nUse this skill when the user asks to inspect repos, issues, pull requests, merge\nrequests, code history, branches, or to make a small code change in a hosted repo.\n\n## Choose the account deliberately\n\nUse the current credential manifest to choose an account authorized for this conversation\nthat fits the user's intent. Run commands with `execute` and an explicit `sandbox_id`;\nkeep that ID throughout checkout, edits, checks, and push. Personal and shared accounts are both valid choices; neither\nis an automatic fallback when the other fails. If the intended account is unclear before\na write, ask. Do not infer permission from a login merely being present on the computer.\n\n- **Personal login:** use the authorized `gh`, `glab`, or Git login. Check the active\n  provider account (for example, `gh api user --jq .login`) and the Git transport's auth\n  configuration; a CLI API identity alone does not prove which account Git will use.\n- **Shared org credential:** if listed in the prompt, select its slug and use the\n  core-hosted smart HTTP remote in the `use-shared-credential` skill. This uses\n  the configured shared account, even when a personal OAuth connector is live.\n  Its name is an admin label, not a verified upstream username.\n- **Connected app:** use only advertised capabilities. API access does not by itself\n  establish native Git transport access or configure the CLI's active login.\n\nFor an existing checkout, inspect the remote and applicable credential-helper, SSH,\nproxy, and HTTP-header configuration. A reused checkout\nmay still select a previous account. Commit author metadata is separate from transport\nidentity. Resolve an unknown identity before a write; do not probe access by pushing.\n\n## Logging in\n\nUse the native login only after an explicit authentication rejection. A TLS timeout,\nconnection reset, rate limit, or GitHub server error is not evidence of logout or\npermission expiry. Do not consume another credential grant to repair transport.\n\nFor a confirmed missing or expired GitHub or GitLab login, follow the\n`interactive-login` skill: it runs `gh auth login` / `glab auth login` in a temporary\nhome as a background job, relays the code and URL, and saves the login to the keychain\nso later commands use it through `execute.credentials`.\n\n## Read-only work\n\nCheck auth and inspect repo state:\n\n```bash\ngh auth status\ngh repo view OWNER/REPO --json name,description,url,defaultBranchRef\ngh issue list --repo OWNER/REPO --state open --limit 20\ngh pr list --repo OWNER/REPO --state open --limit 20\n```\n\nFor GitLab:\n\n```bash\nglab auth status\nglab repo view GROUP/PROJECT\nglab issue list --repo GROUP/PROJECT\nglab mr list --repo GROUP/PROJECT\n```\n\nUse `git log`, `git show`, and `git diff` for codebase-change summaries. Cite commit\nhashes, PR/MR numbers, and links.\n\n## Checkout and edits\n\nClone or fetch only the repo the user asked for:\n\n```bash\ngh repo clone OWNER/REPO repo\ncd repo\ngit checkout -b codex/small-change\n```\n\nKeep changes scoped. Run the repo's tests. If a push or PR/MR creation is requested,\nprepare the branch and summary first.\n\n## Writes require approval\n\nPushing branches, creating PRs/MRs, merging, closing issues, editing labels, changing\nrepo settings, releases, or workflows are writes. Ask for approval before running the\nwrite command.\n\nAfter approval:\n\n```bash\ngit push -u origin codex/small-change\ngh pr create --repo OWNER/REPO --title \"...\" --body-file pr.md\n```\n\nFor GitLab:\n\n```bash\ngit push -u origin codex/small-change\nglab mr create --repo GROUP/PROJECT --title \"...\" --description-file mr.md\n```\n\nReport the final URL and leave enough context for review.\n\n## Wait for GitHub CI\n\nUse the bundled helper instead of a bare `gh pr checks --watch` or a handwritten\nshell loop. Use the absolute directory reported by the skill read in place of\n`<skill dir>`. It is one blocking watcher process, not repeated agent turns:\n\n```bash\nnode \"<skill dir>/scripts/watch-ci.mjs\" --repo OWNER/REPO --pr NUMBER --head REVIEWED_HEAD_SHA\n```\n\nCapture the full head SHA from `gh pr view NUMBER --repo OWNER/REPO --json headRefOid`\nbefore review. Use that same SHA for the watcher and the final merge gate. Start the\nwatcher with `execute` using the selected `sandbox_id` and `background:true`, then\nsubscribe with `background` action `watch` and its returned `process_id`. Keep one\nwatcher per PR. Set the process lifetime longer than the helper's 30-minute deadline;\nuse `--timeout-ms` for a different bounded deadline. Use only credentials authorized\nfor that background process; a live foreground grant does not authorize background work.\n\nThe helper polls GitHub internally and emits JSON status records. It retries only\nrecognized transient transport/server errors with bounded backoff. Pending checks\nremain pending. Real CI failures, authentication/authorization failures, changed heads,\nunknown errors, exhausted retries, and deadline expiry all stop with nonzero status.\nExplicit API rate limits stop as `rate_limited`, not authentication errors.\nEmpty check sets, skipped checks, and cancelled checks are not successful evidence.\nDo not interpret an exit code alone as \"checks concluded\": read the status record.\nDo not suppress a nonzero exit or print a success marker after it. Keep `set -e`.\n\nSuccess means the checks observed for the expected head passed, not permission to\nmerge. Re-read checks and review threads immediately before merging. Wait for async\nreviewers on that exact head; resolve findings and complete any review the repo\nrequires. After any push or head change, discard old success/review evidence and repeat.\nOnly merge when all gates pass, with GitHub's atomic head guard:\n\n```bash\ngh pr merge NUMBER --repo OWNER/REPO --squash --match-head-commit REVIEWED_HEAD_SHA\n```\n\nOn a branch that requires a merge queue, this queues the PR; it is merged only once\nGitHub shows it as merged. Never use auto-merge or bypass repository gates. This\nhelper does not retry GitLab commands or change their authentication behavior.\n",
+    "runId": "a71c612e-bc57-4fde-b556-50608f2ab533",
+    "callId": "call_yLjMrTc1aY7pEcVYHMaj1b4R|fc_0e10f2b9b71cf733016af078dd6dfc87d2b574ce63aeef57ec",
+    "tool": "skills",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "3768f04a-fa0e-4313-b557-4dcb11a5d699",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null | head -30\",\"purpose\":\"Locating repository checkout\"}"
+    },
+    "scope": "scoped",
+    "command": "pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null | head -30",
+    "purpose": "Locating repository checkout",
+    "runId": "a71c612e-bc57-4fde-b556-50608f2ab533",
+    "callId": "call_l5pxgh2xh6Inohz3weSF8G2B|fc_0e10f2b9b71cf733016af078df166c87d29c43ba8831853503",
+    "tool": "execute",
+    "step": {
+     "id": "3768f04a-fa0e-4313-b557-4dcb11a5d699",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\ntotal 16\ndrwxr-xr-x 4 root root 4096 Nov  8 13:27 .\ndrwx------ 6 root root 4096 Nov  8 13:27 ..\ndrwxr-xr-x 3 root root 4096 Nov  8 13:27 .agent-skills\ndrwxr-xr-x 5 root root 4096 Nov  8 13:27 repo\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "a71c612e-bc57-4fde-b556-50608f2ab533",
+    "callId": "call_l5pxgh2xh6Inohz3weSF8G2B|fc_0e10f2b9b71cf733016af078df166c87d29c43ba8831853503",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "d80e1081-8327-4995-a92c-b46a8f1792e2",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "action": "list",
+    "purpose": "Identifying review sandbox",
+    "runId": "a71c612e-bc57-4fde-b556-50608f2ab533",
+    "callId": "call_ghOtWeSDZgPx4hfio6wJ44QZ|fc_0e10f2b9b71cf733016af078e1104887d2b1ac99232b02715a",
+    "tool": "sandbox",
+    "step": {
+     "id": "d80e1081-8327-4995-a92c-b46a8f1792e2",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "action": "list",
+    "result": "{\"sandboxes\":[{\"id\":\"22e67540-8838-41e2-a01b-60a258971b9f\",\"name\":\"s1e-probe\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"]},\"state\":\"ready\",\"legacy\":false,\"backend\":\"local\",\"holders\":[\"a71c612e-bc57-4fde-b556-50608f2ab533\"],\"createdAt\":\"2026-11-08T13:27:54.552Z\",\"createdBy\":\"harness-admin\",\"machineId\":\"qm-sbx-sandbox-22e67540-8838-41e2-a01b-60a25897-ba78bf\",\"ownerScopeId\":\"personal:U1\",\"backingScopeId\":\"sandbox-22e67540-8838-41e2-a01b-60a258971b9f\"}],\"defaultSandboxId\":\"22e67540-8838-41e2-a01b-60a258971b9f\",\"defaultMode\":\"selected\",\"providers\":[{\"name\":\"local\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\"},\"egressEnforcement\":\"none\",\"sizesMemory\":true,\"actions\":[\"create\",\"retire\"]}]}",
+    "runId": "a71c612e-bc57-4fde-b556-50608f2ab533",
+    "callId": "call_ghOtWeSDZgPx4hfio6wJ44QZ|fc_0e10f2b9b71cf733016af078e1104887d2b1ac99232b02715a",
+    "tool": "sandbox",
+    "isError": false
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "969e25e9-e6b8-4b25-806b-6da66bb80943",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git config --get-regexp 'credential|http\\\\..*extraheader|core.sshCommand|url\\\\..*instead' || true; cd /root/workspace/repo && ls -la && git diff --stat main...http-retries && git log --oneline main..http-retries\",\"sandbox_id\":\"22e67540-8838-41e2-a01b-60a258971b9f\",\"purpose\":\"Inspecting branch and changes\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git config --get-regexp 'credential|http\\..*extraheader|core.sshCommand|url\\..*instead' || true; cd /root/workspace/repo && ls -la && git diff --stat main...http-retries && git log --oneline main..http-retries",
+    "purpose": "Inspecting branch and changes",
+    "sandbox_id": "22e67540-8838-41e2-a01b-60a258971b9f",
+    "runId": "a71c612e-bc57-4fde-b556-50608f2ab533",
+    "callId": "call_E7BTHLqZ9swCj7BwNlACs2wb|fc_0e10f2b9b71cf733016af078e24b5087d2807e9456072e0ffa",
+    "tool": "execute",
+    "step": {
+     "id": "969e25e9-e6b8-4b25-806b-6da66bb80943",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* http-retries b04b610 Retry 429 and 5xx responses with backoff\n  main         5f9be03 HTTP client with timeouts\ntotal 32\ndrwxr-xr-x 5 root root 4096 Nov  8 13:27 .\ndrwxr-xr-x 4 root root 4096 Nov  8 13:27 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 13:28 .git\n-rw-r--r-- 1 root root  143 Nov  8 12:34 CHANGELOG.md\n-rw-r--r-- 1 root root  637 Nov  8 12:34 README.md\n-rw-r--r-- 1 root root  113 Nov  8 12:34 package.json\ndrwxr-xr-x 2 root root 4096 Nov  8 13:27 src\ndrwxr-xr-x 2 root root 4096 Nov  8 13:27 test\n CHANGELOG.md        |  4 ++++\n README.md           |  2 ++\n package.json        |  2 +-\n src/backoff.js      |  7 +++++++\n src/http.js         | 31 +++++++++++++++++++++++++++----\n src/retry-policy.js |  5 +++++\n test/retry.test.js  | 22 ++++++++++++++++++++++\n 7 files changed, 68 insertions(+), 5 deletions(-)\nb04b610 Retry 429 and 5xx responses with backoff\n\n[exit 0]",
+    "runId": "a71c612e-bc57-4fde-b556-50608f2ab533",
+    "callId": "call_E7BTHLqZ9swCj7BwNlACs2wb|fc_0e10f2b9b71cf733016af078e24b5087d2807e9456072e0ffa",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "76664a1a-9e87-4d91-a726-e721f287d068",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git diff main...http-retries && printf '\\\\n--- FILES ---\\\\n' && find src test -type f -maxdepth 3 -print -exec cat {} \\\\; && cat package.json README.md CHANGELOG.md && git show main:src/http.js\",\"sandbox_id\":\"22e67540-8838-41e2-a01b-60a258971b9f\",\"purpose\":\"Reading retry implementation\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git diff main...http-retries && printf '\\n--- FILES ---\\n' && find src test -type f -maxdepth 3 -print -exec cat {} \\; && cat package.json README.md CHANGELOG.md && git show main:src/http.js",
+    "purpose": "Reading retry implementation",
+    "sandbox_id": "22e67540-8838-41e2-a01b-60a258971b9f",
+    "runId": "a71c612e-bc57-4fde-b556-50608f2ab533",
+    "callId": "call_LrDKsJBTOabDkxQjk47sPHXO|fc_0e10f2b9b71cf733016af078e4e63887d2ba58034bd81a4054",
+    "tool": "execute",
+    "step": {
+     "id": "76664a1a-9e87-4d91-a726-e721f287d068",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex bb83104..ab561d9 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 4.1.0\n+\n+- Retries for 429 and 5xx responses, with full-jitter backoff.\n+\n ## 4.0.1\n \n - Timeouts can be disabled with timeoutMs: 0.\ndiff --git a/README.md b/README.md\nindex c64cca2..f1a1078 100644\n--- a/README.md\n+++ b/README.md\n@@ -5,6 +5,8 @@ Small HTTP client used by the workerkit workers.\n request(fetch, url, options):\n \n - timeoutMs: abort the request after this many milliseconds. Default 10000. 0 disables the timeout.\n+- retries: how many times to retry a 429 or 5xx response. Default 2. 501 Not Implemented is never retried, because it will not change on a retry.\n+- baseDelayMs: base of the backoff between retries. Default 250. Each wait uses full jitter: a random time between 0 and baseDelayMs * 2^attempt, capped at 8 seconds.\n - init: passed to fetch as is.\n \n The nightly export (src/export.js) sets timeoutMs: 0, because a full export can take ten minutes.\ndiff --git a/package.json b/package.json\nindex baf80bb..eccad0d 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"workerkit\",\n-  \"version\": \"4.0.1\",\n+  \"version\": \"4.1.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/backoff.js b/src/backoff.js\nnew file mode 100644\nindex 0000000..04ea3b9\n--- /dev/null\n+++ b/src/backoff.js\n@@ -0,0 +1,7 @@\n+const MAX_DELAY_MS = 8000;\n+\n+function backoff(attempt, baseDelayMs) {\n+  return Math.random() * Math.min(MAX_DELAY_MS, baseDelayMs * 2 ** attempt);\n+}\n+\n+module.exports = { backoff, MAX_DELAY_MS };\ndiff --git a/src/http.js b/src/http.js\nindex 282999c..0de2a8a 100644\n--- a/src/http.js\n+++ b/src/http.js\n@@ -1,14 +1,37 @@\n+const { shouldRetry } = require('./retry-policy');\n+const { backoff } = require('./backoff');\n+\n const DEFAULT_TIMEOUT_MS = 10000;\n+const DEFAULT_RETRIES = 2;\n+\n+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));\n+\n+function resolveOptions(opts = {}) {\n+  return {\n+    timeoutMs: opts.timeoutMs || DEFAULT_TIMEOUT_MS,\n+    retries: opts.retries ?? DEFAULT_RETRIES,\n+    baseDelayMs: opts.baseDelayMs ?? 250,\n+    init: opts.init ?? {},\n+  };\n+}\n \n-async function request(fetchImpl, url, opts = {}) {\n-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;\n+async function once(fetchImpl, url, init, timeoutMs) {\n   const controller = new AbortController();\n   const timer = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;\n   try {\n-    return await fetchImpl(url, { ...opts.init, signal: controller.signal });\n+    return await fetchImpl(url, { ...init, signal: controller.signal });\n   } finally {\n     if (timer) clearTimeout(timer);\n   }\n }\n \n-module.exports = { request, DEFAULT_TIMEOUT_MS };\n+async function request(fetchImpl, url, opts) {\n+  const o = resolveOptions(opts);\n+  for (let attempt = 0; ; attempt++) {\n+    const res = await once(fetchImpl, url, o.init, o.timeoutMs);\n+    if (!shouldRetry(res) || attempt >= o.retries) return res;\n+    await sleep(backoff(attempt, o.baseDelayMs));\n+  }\n+}\n+\n+module.exports = { request, resolveOptions, DEFAULT_TIMEOUT_MS };\ndiff --git a/src/retry-policy.js b/src/retry-policy.js\nnew file mode 100644\nindex 0000000..09fc7bc\n--- /dev/null\n+++ b/src/retry-policy.js\n@@ -0,0 +1,5 @@\n+function shouldRetry(res) {\n+  return res.status === 429 || (res.status >= 500 && res.status !== 501);\n+}\n+\n+module.exports = { shouldRetry };\ndiff --git a/test/retry.test.js b/test/retry.test.js\nnew file mode 100644\nindex 0000000..1ae861e\n--- /dev/null\n+++ b/test/retry.test.js\n@@ -0,0 +1,22 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { request } = require('../src/http');\n+\n+function replies(...statuses) {\n+  const calls = [];\n+  const fetchImpl = async (url) => { calls.push(url); return { status: statuses[calls.length - 1], ok: statuses[calls.length - 1] < 400 }; };\n+  return { fetchImpl, calls };\n+}\n+\n+test('a 503 is retried until it succeeds', async () => {\n+  const { fetchImpl, calls } = replies(503, 503, 200);\n+  const res = await request(fetchImpl, 'https://x.test/', { baseDelayMs: 0 });\n+  assert.strictEqual(res.status, 200);\n+  assert.strictEqual(calls.length, 3);\n+});\n+\n+test('501 is not retried', async () => {\n+  const { fetchImpl, calls } = replies(501, 200);\n+  assert.strictEqual((await request(fetchImpl, 'https://x.test/', { baseDelayMs: 0 })).status, 501);\n+  assert.strictEqual(calls.length, 1);\n+});\n\n--- FILES ---\nsrc/retry-policy.js\nfunction shouldRetry(res) {\n  return res.status === 429 || (res.status >= 500 && res.status !== 501);\n}\n\nmodule.exports = { shouldRetry };\nsrc/export.js\nconst { request } = require('./http');\n\nasync function downloadExport(fetchImpl, baseUrl, day) {\n  const res = await request(fetchImpl, baseUrl + '/exports/' + day + '.ndjson', { timeoutMs: 0 });\n  if (!res.ok) throw new Error('export failed: HTTP ' + res.status);\n  return res.text();\n}\n\nmodule.exports = { downloadExport };\nsrc/http.js\nconst { shouldRetry } = require('./retry-policy');\nconst { backoff } = require('./backoff');\n\nconst DEFAULT_TIMEOUT_MS = 10000;\nconst DEFAULT_RETRIES = 2;\n\nconst sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));\n\nfunction resolveOptions(opts = {}) {\n  return {\n    timeoutMs: opts.timeoutMs || DEFAULT_TIMEOUT_MS,\n    retries: opts.retries ?? DEFAULT_RETRIES,\n    baseDelayMs: opts.baseDelayMs ?? 250,\n    init: opts.init ?? {},\n  };\n}\n\nasync function once(fetchImpl, url, init, timeoutMs) {\n  const controller = new AbortController();\n  const timer = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;\n  try {\n    return await fetchImpl(url, { ...init, signal: controller.signal });\n  } finally {\n    if (timer) clearTimeout(timer);\n  }\n}\n\nasync function request(fetchImpl, url, opts) {\n  const o = resolveOptions(opts);\n  for (let attempt = 0; ; attempt++) {\n    const res = await once(fetchImpl, url, o.init, o.timeoutMs);\n    if (!shouldRetry(res) || attempt >= o.retries) return res;\n    await sleep(backoff(attempt, o.baseDelayMs));\n  }\n}\n\nmodule.exports = { request, resolveOptions, DEFAULT_TIMEOUT_MS };\nsrc/backoff.js\nconst MAX_DELAY_MS = 8000;\n\nfunction backoff(attempt, baseDelayMs) {\n  return Math.random() * Math.min(MAX_DELAY_MS, baseDelayMs * 2 ** attempt);\n}\n\nmodule.exports = { backoff, MAX_DELAY_MS };\ntest/http.test.js\nconst test = require('node:test');\nconst assert = require('node:assert');\nconst { request } = require('../src/http');\n\nconst hang = (url, init) => new Promise((resolve, reject) => {\n  init.signal.addEventListener('abort', () => reject(new Error('aborted')));\n});\n\ntest('a slow request is aborted after timeoutMs', async () => {\n  await assert.rejects(request(hang, 'https://x.test/', { timeoutMs: 20 }), /aborted/);\n});\ntest/retry.test.js\nconst test = require('node:test');\nconst assert = require('node:assert');\nconst { request } = require('../src/http');\n\nfunction replies(...statuses) {\n  const calls = [];\n  const fetchImpl = async (url) => { calls.push(url); return { status: statuses[calls.length - 1], ok: statuses[calls.length - 1] < 400 }; };\n  return { fetchImpl, calls };\n}\n\ntest('a 503 is retried until it succeeds', async () => {\n  const { fetchImpl, calls } = replies(503, 503, 200);\n  const res = await request(fetchImpl, 'https://x.test/', { baseDelayMs: 0 });\n  assert.strictEqual(res.status, 200);\n  assert.strictEqual(calls.length, 3);\n});\n\ntest('501 is not retried', async () => {\n  const { fetchImpl, calls } = replies(501, 200);\n  assert.strictEqual((await request(fetchImpl, 'https://x.test/', { baseDelayMs: 0 })).status, 501);\n  assert.strictEqual(calls.length, 1);\n});\n{\n  \"name\": \"workerkit\",\n  \"version\": \"4.1.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n# workerkit\n\nSmall HTTP client used by the workerkit workers.\n\nrequest(fetch, url, options):\n\n- timeoutMs: abort the request after this many milliseconds. Default 10000. 0 disables the timeout.\n- retries: how many times to retry a 429 or 5xx response. Default 2. 501 Not Implemented is never retried, because it will not change on a retry.\n- baseDelayMs: base of the backoff between retries. Default 250. Each wait uses full jitter: a random time between 0 and baseDelayMs * 2^attempt, capped at 8 seconds.\n- init: passed to fetch as is.\n\nThe nightly export (src/export.js) sets timeoutMs: 0, because a full export can take ten minutes.\n# Changelog\n\n## 4.1.0\n\n- Retries for 429 and 5xx responses, with full-jitter backoff.\n\n## 4.0.1\n\n- Timeouts can be disabled with timeoutMs: 0.\nconst DEFAULT_TIMEOUT_MS = 10000;\n\nasync function request(fetchImpl, url, opts = {}) {\n  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;\n  const controller = new AbortController();\n  const timer = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;\n  try {\n    return await fetchImpl(url, { ...opts.init, signal: controller.signal });\n  } finally {\n    if (timer) clearTimeout(timer);\n  }\n}\n\nmodule.exports = { request, DEFAULT_TIMEOUT_MS };\n\n[exit 0]",
+    "runId": "a71c612e-bc57-4fde-b556-50608f2ab533",
+    "callId": "call_LrDKsJBTOabDkxQjk47sPHXO|fc_0e10f2b9b71cf733016af078e4e63887d2ba58034bd81a4054",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "17270cc9-5005-4d4e-b259-b3b90b46b70d",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "{\"id\":\"rs_0e10f2b9b71cf733016af078e6ec6487d2b20546b2e738862c\",\"type\":\"reasoning\",\"content\":[],\"encrypted_content\":\"gAAAAABq8HjozBI6j2B0Dk3xmCh4zWqbYSoIMoYWiu9P4v5tYZ2l2sP6kGC1cbI-HP5vQQoRKsc01wSQA6UC_ekloHOvasnpA0J5pqdaaOy2V7M8pvFdtnN3Uagv7Ay8njGsleWhhVSwy9WTFs4tP0F6bwDZ2akK3Y2QKNh89F_Qy4x1V_TVgtBT6l2JvEQhHmPy8Ic0p259o5VvoiM-SQjOt2idvFJRI4GaSN6uqIXVZwxQQki3taWEFkS3E_Da6Eu9QHPQKI8uYBwhD3mvrpvg0GECG2FWUb1WWjNLyqHpuZ5nBEuZExCMMSO8Plu19W-lzpl_9Kd57pvu8wAeqKwh_UfC3rkpquBK7TkoXS_Y2_XelAJ3Ao1heXpHcKVjJmHGyaD0Y9uxlEourI4n_gF4AHCQoMS2RyW22IvB9-0Bjyc1pwbOroawaxhkLQAX1U01QTtDP9w93uNtVhx_G7BpWXQDu1Ac6r65RHwnJGYy3kBz0YiHIRqbJ-lgTXqHQp7WLNQ5GmBd3Kl5qAJ5IMy1cdhdxiPVwgI-rxKEMjini7D-SXYqciLoNQpTxeAQrtuyvuOzGC-1E9FAplpvcKL9x4xK7AqP2pSPTj-hC13yju3IEp1BRu4NZPKx_Pzll1VPlyuXTjZeoFyE9oF2PwNlpeZ56TRexhEv3fvG-M-uqGlc_Ovs3qMN3XOpJ-zWKn0oKKlMDB9qv9YgUAm6_ChnfW5tPxD3UZVcRGrQAetx58YTbD2OU-dYULTPNNnc4hGEqpDl6Fr6Y0Bf6sbsjnT5LYDatH757oope7yadUE6CBcOKRvdfcixCl6d3DqHvKQ_588-I0jyF_mlnuayYNoslJ_cDhffo4D0Jrz_bKJ6Rl90fbhrzKFsg-Evu40qtR1ZmAhMJMmQvjeiC74MoA2rxROqB5e4iTo9ffRWyL_c_t0HTXHs_n_Jzg3S7jm3aFNZjScNp9U98qNNsBhQRwCXE5x-0cBIeXzHJXVq3q7-47pu79fUXKYQYWFb-4k0xVBbbAOGW7ICll1KntEkslMAnlTJqUDdPsNhwdalHeIAfy83oHJVzTMg5SlQQ4cfuTXRyO5g-QxYq-Iso_PNtsRqVP5VuipeQyMfi9S0OZ0Yblo5lDrg9hhzat_CmBUdBfyZp40766oPG1LlukO6gdmiVlIZmVfVOF40K7kSZk1fBzSbwbGaXusATERNGMxcouNsth7LYU3Zoi6zWiFAJSiMlaRFfE2rgUHBmMCTs67N__rZB_c0LP0RRV13DE1FylOutF5-3KjUJoJvU8Pbr1SqAAIzY2esplJRR6GPhTRMHfgL_GiJt5JL2bSbcj3JnWI1ITpGpYqe_ocF3y1Zc4-0hz6mBDSRQE4NqQEFMnb_wWZwT8H31Y1NZrDPNb0e5nMqpY_vvSyPe_M9c336y_vG4_WUwD6mWoUXTzrsT09SmEFOJdCuG-4cj8Iw7NC_RrrVXSODmLs89cmm67vkQO9x1Igq8yQ1-GPp2fcOGn9XSGJkBKUW25K5KivLWNQwqYDTQGt8fNXVXcD9EtOHXiV8wftWN6LXsvWgOmJBHv2nLvv1qmwuhqk_Z_qH6L7fobUsidlZeK-QL84uESRwfGCzhRzn-cSzzjsrD-MTTvkm6797QijIQ89MjqOMb0W74plZzcC8szJ7EAucTdTD_Kw4yOR3XoCbbvGj-9JhYE6BTYtVPKfIhTqsp06AyqKn0nNwiDOmlFwBAmP-Ua-LLpwEESkY8OCZi1sfxTA95cIUqXLRcxAq4VA0GpEpUw4DW4feqJFWVM_KZWyCsZ-5i-f7afQcq9Sn2niH9vwYH0EAdYGNPoIllpSYCTV9f73lULvEJxM1a-g-2HfE2t6wO6nvX2id2USZz5wvyUnylYqKEmgUVbn0y31JPLRgffpfTbPovqxCGuWxA_F1Y7d1-70urP61iwCU5wEAeG9hR3hlwWJyR76yG0PnfHV2MVhEB9vGwJTnABlYkxp8CJGQHwg3Pt5YuOg22-Eaw83PNFJhqTtvcWTXHfYcPkCiUl-r0N401IDW1NgucZLl6_KwauyAK07jHKAGTINkSJzRHA_r-QBx4oHVh9l3ivkAWSamR61spvLmx1CmGUouRiEikltE40UlcK0L8axAU8dGFdna9QlwhrNRCGKvIzjfskEz7_jzECyL2AMXzzAa-8jFlP4LUOZrj4ZBgNexBLEr5RzE6OR2hi1o-UbmhvavRpQDMFvEwWao1Yeudox-14vyNH2PuCDEQa0jxHEz79dCzzrlQatXuwmgYuM7kQ4GxDLmNhlqK3RSwzcUGYiJIBpJBHoaAm1asvfeyRGPSRAfOrjE3MC-0hIh7EkGftuQGC6XG2kr8rske8fyMxR6IrRvKk522R80Zj_k7ao1EyasdDvXaZoamopYps5nolXJ5KtxBXDBvlVYw8QhYaAbqt3PN7M1Xu73u_IVK8B6dPGyyOYcGUhHgd1bYdUewByo7MPNKvV7v7wGYR9XvkpX6zErQ8E8FvRJjVUsJJo-3xgSw7LRqPyNO_kMKjUyw_lJoOhV0J1HwXNHRSg0VzQlUM9Ine7ITtwnsKHpdU6LOlhV7lWuLeCoiX-19Kh1Uwd_wKyDL7LCsMWj5CAz3dEsQvMnBxGia9akKxvFjyqx71z4r5zHn10h4w41Ybj3rvdEHNPsnPRYqokJjgE-Y6ibconWDiczLTDJF7LZb3zwyZRETJs9woLoT2PRpOtcxaPgjBm-dbn3bvG5h3lvai9nZTA286ImXHGLEzYJxwmYEY8JnGQidX2Ltup26pF9aeR2wxj4cOm3WivXGlhi5-OT6erWE_4TKnwgz0zXJg==\",\"summary\":[]}",
+    "thinking": "",
+    "runId": "a71c612e-bc57-4fde-b556-50608f2ab533",
+    "step": {
+     "id": "17270cc9-5005-4d4e-b259-b3b90b46b70d",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "17270cc9-5005-4d4e-b259-b3b90b46b70d",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && npm test && node <<'NODE'\\nconst assert = require('node:assert/strict');\\nconst { request, resolveOptions } = require('./src/http');\\nconst { downloadExport } = require('./src/export');\\n(async () => {\\n  console.log('timeoutMs:0 resolves to', resolveOptions({timeoutMs:0}).timeoutMs);\\n  const originalSetTimeout = global.setTimeout;\\n  const delays = [];\\n  global.setTimeout = (fn, ms, ...args) => { delays.push(ms); return originalSetTimeout(fn, ms, ...args); };\\n  await downloadExport(async () => ({ok:true, status:200, text:async ()=>'ok'}), 'https://x.test', '2026-11-08');\\n  global.setTimeout = originalSetTimeout;\\n  console.log('nightly export schedules timers (ms):', delays);\\n\\n  let posts = 0, cancelled = 0;\\n  const res = await request(async (url, init) => {\\n    assert.equal(init.method, 'POST');\\n    posts++;\\n    return { status:posts===1?503:200, body:{cancel:async()=>{cancelled++}}, headers:new Headers({'Retry-After':'60'}) };\\n  }, 'https://x.test/charge', {init:{method:'POST',body:'charge=1'}, baseDelayMs:0});\\n  console.log('non-idempotent POST calls:', posts, '; final status:',res.status,'; discarded body cancellations:',cancelled);\\n\\n  const http = require('node:http');\\n  let calls = 0;\\n  const times = [];\\n  const server = http.createServer((req,res) => {calls++; times.push(Date.now()); req.resume(); req.on('end',()=>{res.writeHead(calls===1?429:200, {'Retry-After':'60'});res.end('ok');});});\\n  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));\\n  const url = `http://127.0.0.1:${server.address().port}/`;\\n  try {\\n    await (await request(fetch,url,{baseDelayMs:0})).text();\\n    console.log('real HTTP 429 Retry-After:60 retry gap (ms):',times[1]-times[0]);\\n    calls = 0;\\n    const {Readable} = require('node:stream');\\n    try {\\n      await request(fetch,url,{baseDelayMs:0,init:{method:'POST',body:Readable.from(['payload']),duplex:'half'}});\\n    } catch(e) { console.log('streaming POST retry failure:',e.name+': '+e.message,'; server calls:',calls); }\\n  } finally {server.closeAllConnections(); await new Promise(resolve=>server.close(resolve));}\\n})().catch(e=>{console.error(e);process.exitCode=1});\\nNODE\\nprintf '\\\\n--- LINE REFERENCES ---\\\\n'; nl -ba src/http.js; nl -ba src/retry-policy.js; nl -ba src/export.js; git status --short; git rev-parse main http-retries\",\"sandbox_id\":\"22e67540-8838-41e2-a01b-60a258971b9f\",\"purpose\":\"Testing retry edge cases\",\"timeout_seconds\":60}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && npm test && node <<'NODE'\nconst assert = require('node:assert/strict');\nconst { request, resolveOptions } = require('./src/http');\nconst { downloadExport } = require('./src/export');\n(async () => {\n  console.log('timeoutMs:0 resolves to', resolveOptions({timeoutMs:0}).timeoutMs);\n  const originalSetTimeout = global.setTimeout;\n  const delays = [];\n  global.setTimeout = (fn, ms, ...args) => { delays.push(ms); return originalSetTimeout(fn, ms, ...args); };\n  await downloadExport(async () => ({ok:true, status:200, text:async ()=>'ok'}), 'https://x.test', '2026-11-08');\n  global.setTimeout = originalSetTimeout;\n  console.log('nightly export schedules timers (ms):', delays);\n\n  let posts = 0, cancelled = 0;\n  const res = await request(async (url, init) => {\n    assert.equal(init.method, 'POST');\n    posts++;\n    return { status:posts===1?503:200, body:{cancel:async()=>{cancelled++}}, headers:new Headers({'Retry-After':'60'}) };\n  }, 'https://x.test/charge', {init:{method:'POST',body:'charge=1'}, baseDelayMs:0});\n  console.log('non-idempotent POST calls:', posts, '; final status:',res.status,'; discarded body cancellations:',cancelled);\n\n  const http = require('node:http');\n  let calls = 0;\n  const times = [];\n  const server = http.createServer((req,res) => {calls++; times.push(Date.now()); req.resume(); req.on('end',()=>{res.writeHead(calls===1?429:200, {'Retry-After':'60'});res.end('ok');});});\n  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));\n  const url = `http://127.0.0.1:${server.address().port}/`;\n  try {\n    await (await request(fetch,url,{baseDelayMs:0})).text();\n    console.log('real HTTP 429 Retry-After:60 retry gap (ms):',times[1]-times[0]);\n    calls = 0;\n    const {Readable} = require('node:stream');\n    try {\n      await request(fetch,url,{baseDelayMs:0,init:{method:'POST',body:Readable.from(['payload']),duplex:'half'}});\n    } catch(e) { console.log('streaming POST retry failure:',e.name+': '+e.message,'; server calls:',calls); }\n  } finally {server.closeAllConnections(); await new Promise(resolve=>server.close(resolve));}\n})().catch(e=>{console.error(e);process.exitCode=1});\nNODE\nprintf '\\n--- LINE REFERENCES ---\\n'; nl -ba src/http.js; nl -ba src/retry-policy.js; nl -ba src/export.js; git status --short; git rev-parse main http-retries",
+    "purpose": "Testing retry edge cases",
+    "sandbox_id": "22e67540-8838-41e2-a01b-60a258971b9f",
+    "runId": "a71c612e-bc57-4fde-b556-50608f2ab533",
+    "callId": "call_dXlAt21f7efFiLqOPpwoTW9O|fc_0e10f2b9b71cf733016af078e8ad3c87d2bd03ec3f1d8a6dd1",
+    "tool": "execute",
+    "step": {
+     "id": "17270cc9-5005-4d4e-b259-b3b90b46b70d",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 14,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "\n> workerkit@4.1.0 test\n> node --test\n\n✔ a slow request is aborted after timeoutMs (21.642475ms)\n✔ a 503 is retried until it succeeds (3.042114ms)\n✔ 501 is not retried (0.31866ms)\nℹ tests 3\nℹ suites 0\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 105.726266\ntimeoutMs:0 resolves to 10000\nnightly export schedules timers (ms): [ 10000 ]\nnon-idempotent POST calls: 2 ; final status: 200 ; discarded body cancellations: 0\nreal HTTP 429 Retry-After:60 retry gap (ms): 6\nstreaming POST retry failure: TypeError: Response body object should not be disturbed or locked ; server calls: 1\n\n--- LINE REFERENCES ---\n     1\tconst { shouldRetry } = require('./retry-policy');\n     2\tconst { backoff } = require('./backoff');\n     3\t\n     4\tconst DEFAULT_TIMEOUT_MS = 10000;\n     5\tconst DEFAULT_RETRIES = 2;\n     6\t\n     7\tconst sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));\n     8\t\n     9\tfunction resolveOptions(opts = {}) {\n    10\t  return {\n    11\t    timeoutMs: opts.timeoutMs || DEFAULT_TIMEOUT_MS,\n    12\t    retries: opts.retries ?? DEFAULT_RETRIES,\n    13\t    baseDelayMs: opts.baseDelayMs ?? 250,\n    14\t    init: opts.init ?? {},\n    15\t  };\n    16\t}\n    17\t\n    18\tasync function once(fetchImpl, url, init, timeoutMs) {\n    19\t  const controller = new AbortController();\n    20\t  const timer = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;\n    21\t  try {\n    22\t    return await fetchImpl(url, { ...init, signal: controller.signal });\n    23\t  } finally {\n    24\t    if (timer) clearTimeout(timer);\n    25\t  }\n    26\t}\n    27\t\n    28\tasync function request(fetchImpl, url, opts) {\n    29\t  const o = resolveOptions(opts);\n    30\t  for (let attempt = 0; ; attempt++) {\n    31\t    const res = await once(fetchImpl, url, o.init, o.timeoutMs);\n    32\t    if (!shouldRetry(res) || attempt >= o.retries) return res;\n    33\t    await sleep(backoff(attempt, o.baseDelayMs));\n    34\t  }\n    35\t}\n    36\t\n    37\tmodule.exports = { request, resolveOptions, DEFAULT_TIMEOUT_MS };\n     1\tfunction shouldRetry(res) {\n     2\t  return res.status === 429 || (res.status >= 500 && res.status !== 501);\n     3\t}\n     4\t\n     5\tmodule.exports = { shouldRetry };\n     1\tconst { request } = require('./http');\n     2\t\n     3\tasync function downloadExport(fetchImpl, baseUrl, day) {\n     4\t  const res = await request(fetchImpl, baseUrl + '/exports/' + day + '.ndjson', { timeoutMs: 0 });\n     5\t  if (!res.ok) throw new Error('export failed: HTTP ' + res.status);\n     6\t  return res.text();\n     7\t}\n     8\t\n     9\tmodule.exports = { downloadExport };\n5f9be038827f9280a3126b396ad300228dbb89ec\nb04b6104e24306a747e40c490f7899db4883aa9b\n\n[stderr]\nnpm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\n\n[exit 0]",
+    "runId": "a71c612e-bc57-4fde-b556-50608f2ab533",
+    "callId": "call_dXlAt21f7efFiLqOPpwoTW9O|fc_0e10f2b9b71cf733016af078e8ad3c87d2bd03ec3f1d8a6dd1",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 15,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "753f8029-370e-4070-acb4-9066c991f617",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "{\"id\":\"rs_0e10f2b9b71cf733016af078efba2087d2b99c2fb522c922d4\",\"type\":\"reasoning\",\"content\":[],\"encrypted_content\":\"gAAAAABq8Hjyh5b7UAKBofiv7qwxSWoZhMiOYqMdi35p28cqLXnhKgoR0Hy8kqUP6MlnKL0Li98wKFFnrPomtC3XJxjchWJj4YxOA9tQN_MWKXcH-Q6RkJLhTP4EUb-sLd3UHXPpdiha89s3o5oi-SRQ6Gwo7j7ZU1xuv_o2giug7VeFc-4l4tYZ8BZ4FqLif7yq8vS0vRGQWHZIvkfKLd5OY5aS6dttAF-D0C6Nqj5r2wfxBgQHA8hKRRdICJtsyI51HIG4v7kP2p9MzpmdMe91MI7_4dwFArSL7HgSxAFSAi7IbrZlJfuj0Qef-rNd3_oqK1EgYH66MqvRBjED1BR0Pa3qxepojwvuQbCIrX-QDjxay-TGeV9jerkmpQyvEq7thf0UF2fR_D4j4HHWaFJthr9wpEJhIlAHySwVKIsZ3eSIXOjMVvrXdiyk8hv7MQV2vKhbntva5jLnCNgVgXMBpgJfrczXYCUwdaH1PgM10S1QvuyoEz73ZOoqaJhj6b1DsqPDzrxP_tO9Iu6saEbduH7UHwNCnQUdSikKKtwujVhazwhy72-nA1pux303GThkoKRbeWAzVYKU8CoIIwR57oQBOKlelacnBWhFE8mMn6ADYtSyJzsmA_UKSWXgj289JWfY4RTQv-B7ggxkJYxTOmpAJ2tVt3LweIYYZjUFMgjx9GxKi1ZddfB6z-Y0W5WT5jWkhG48OgH_miRJ3x_MNTbW3uwOGHXwYz2BpSvit9Kq5cDxlU8DbpyypxPKsQEYolzEEv7TRpp6L6LhyB_qIgfEGWYltHnAiQJRpB4SEZSdi8dKXVHFNFOatTvNKT0TK7UTgpQdgiMlVaAXTBod6kCparfSkE90GU1xMy3-l8_oBTYU1LSHTjKDH0QsZZssAYHCMmzr8xCmv0_q_qLVXQeLG36lM8rp2NyqDc9m9qCd9or13-8JgFWc8oQ5am73vB2OzENl7_lKxuR7mgXM56iznolXix858KcBowBwS0vOnKP7QrhPsV2YcJytCOVszq6y_8vH2sX10xHhV79KpZhTZ8XB1Zo0BbgeL3l9sNegskM1MKNPvUdYgb4BMInSM5ELexzAQ0GypcQ4QKGyZlYRdF99rBA3J4Oa-OTTfkjMFJMxlGphMEokBD7WQjAVYjeZMwY11-xPPnwcR3qSYeC5JfGXwuHXg-d96Q0lsSon8bzBlWB_-a_li-RIJvHfo2VPC1tPoqPO1o8Xy6ShRYMNV5Ukc0ULYlO_q2PeOdzs4DZYzovUvMLaXHMuCjrbspv-vC_sDL_822tHtyeQcAk-qbeWy8OSaen5sx0IgbL_3mz69tvE9s8ogvkH-sh2Hiro1uQXv0hMFyH_GXor7uwSvi_luPmNmXcWwLZvI67uR50D53PQDzYX0kH64dw3lseY2GXT1BUc2FcOT5_XXC_-cqlRLVZqXszYrlnqwfyfE8aGYiAC4W3zNC9mnDoqMk3JoOXw8oMhEbQ2Q4uAFxRaN_fWhFdojBsPLM0fxlP98Z4JzXuFQhQvTSeZ_UXij1BDnlsDsywHLqmp7ojvnb_L_BuDqkZNcS94jF0cKhZQ6HYdsQ8tlbE4rixkNveapEnEBJ77mVeuEeBtYTz1Y3Eyqir1WpLtGbATdva9eA_4xscnEW-k1mFsukATNMvYzToQVnCs2Sefy-YqxaFnd4sGYY7l2wryYTsK793QmTL8H2vttkT5OUckItViix0GjsShj5Uv1bhg093dx9LId4xMR3xF14-nQJpbexvggfxUvkHFQrMvEcDpD94vphHiDENmm4eN0mTzorzGYPwpdX51mDra3jN5sSO0_IPyF7BIzT6auoMKnVvNZ3uEDgVbz893knUTqbK7RLjBCmfnfmjN5O-Yfby0Uf0GrAeDf1Ttb520DumZ8UsFBEx2ssOgZFaO5JGFssb2P61IpVNoo0yCH0J79MU6vObqb9zX2wCvXn8R7LMatuCw_UJpmEPbt27IUonMSwGblEnbbGz9C6i_hGveFbYGCjCwBFqEMvE9UauE9XGup9QRn9yMDz7MBkA08S6tEPp6DBVKNgAOxPNiW8Ni5Q0-E-9iQeAJlspRri4jU92Nc97wkTJUlfb-r8nvpRg6aBIICjgEwdV1ZydVZ0hcOt8GW1-6Tqj8lnfeVvkgJ3sZFb9LLWT7yXsayvdEzppqYtIN3xsFj0xZdbpg21fLajWswmgGeTGIlSz05c9yefybRNXJ_24QKmQbOkGI7LOEWPHbyp3-7bd3LxChp8Q9LN8sE_r_1HLKZojDM6XfWL2KSTJ_2weDKIvx3IXINkUx0iJwJGHfjIH27kRSQPtrk7xRXC993bskQrr-uRgocIssRer3lExWFZyqLY4B02zeMxm7i5UqcZBNyfkyQM-O3iH8efBbgQiFg1_sIxTTtF5elS15buN6OqevEdAjyhQde-SPs8JP087KFEhHjmKUq0gfy4NbzyqnS7G5C1b__VldIvEuljV9c9xK79tEYw8bzGaSk_tV-I-e30B30OMPFQsDHIl2do6WnE-xotllihoDfeOZbiHfJtcty0CnbRbc2mKq48vfGf_lc7wGm_TPUM3l6vSdG6cX6t19z6ocas6Q9ypii255Dk_V8xS3W2WS6DzM_P_tixvIq_HQyLxBiZ9UyddlOuvoFM6HuvcM3EypmbFkhuiGUjGjqkeNaOlhIIYT6bm4BDWOxifhUezXkZ9S3dBx4D-kZ-ZFFi638H6Qd4aKFNHoi-0qZ9A62b3IMHdV_TDNLc14MqY2TUIElIfDEDuHng0khWP-RuNsDa6myy4v9C7iziwUwq_R4m3pXZF44mXahhcvJNO5h2xTkz411cAE2i36MkGFtN8l4VEmWrQ_KXY2l80OwEvjJZYXToSSZWtCG6bSfFclKctZFCNZ8yL3jA4jAs0zDAUICB0rFHV0J8J9W43_nvJmoFnbOsWgzax9DgIAmq5_NU_byok3wE9YxDqSGKOLv6MIEsE=\",\"summary\":[]}",
+    "thinking": "",
+    "runId": "a71c612e-bc57-4fde-b556-50608f2ab533",
+    "step": {
+     "id": "753f8029-370e-4070-acb4-9066c991f617",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 16,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "753f8029-370e-4070-acb4-9066c991f617",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "textBlock": {
+     "textSignature": "{\"v\":1,\"id\":\"msg_0e10f2b9b71cf733016af078f21b7c87d28f929972b96593ad\",\"phase\":\"final_answer\"}"
+    },
+    "workStartedAt": 1794144475662,
+    "workFinishedAt": 1794144505182,
+    "text": "*I’d hold the merge.* Reviewed `http-retries` (`b04b610`) against `main` (`5f9be03`). Found five issues:\n\n1. *High — `timeoutMs: 0` no longer disables timeouts* — `src/http.js:11`\n   Changing `??` to `||` converts an explicit zero to 10,000 ms. The nightly export explicitly uses zero because it can take ten minutes. Confirmed that `downloadExport()` now schedules a 10-second abort timer. Restore nullish defaulting and add a zero-timeout regression test.\n\n2. *High — retries can duplicate non-idempotent operations* — `src/http.js:30–33`\n   The default retry policy applies to every method, including POST, without an idempotency check or explicit opt-in. A server can commit a write and still return 503; this client then repeats it. Confirmed that a POST receiving 503 followed by 200 is sent twice. Default retries should be restricted to safe/idempotent operations, with explicit opt-in or an idempotency guarantee for others.\n\n3. *Medium — streaming request bodies cannot be replayed* — `src/http.js:31`\n   Each attempt reuses the same `init.body`. With real Node `fetch` and a streamed POST body, the first 429 consumes the stream; the retry throws `TypeError: Response body object should not be disturbed or locked` before reaching the server. Require a replayable body/body factory, or disable retries for one-shot bodies.\n\n4. *Medium — discarded responses aren’t drained or cancelled* — `src/http.js:32–33`\n   Retried responses are abandoned without consuming or cancelling their bodies. With real fetch implementations, large or unfinished error responses can retain connections/resources and exhaust the connection pool under worker load. Release each discarded response body before retrying; leave the final response available to the caller.\n\n5. *Medium — `Retry-After` is ignored* — `src/http.js:33`\n   A 429 requesting a 60-second delay is retried using only the local jitter. Confirmed against a local HTTP server: with `baseDelayMs: 0`, the retry arrived about 6 ms later despite `Retry-After: 60`. Honor valid delay-seconds and HTTP-date values so workers don’t compound throttling.\n\n*Validation:* All three existing tests pass, but they don’t cover these cases. I ran additional in-memory checks and local HTTP reproductions. No repository files were modified; the working tree remains clean.",
+    "runId": "a71c612e-bc57-4fde-b556-50608f2ab533",
+    "step": {
+     "id": "753f8029-370e-4070-acb4-9066c991f617",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

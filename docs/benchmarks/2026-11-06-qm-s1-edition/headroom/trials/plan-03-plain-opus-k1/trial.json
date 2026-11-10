@@ -1,0 +1,150 @@
+{
+  "trial_id": "plan-03-plain-opus-k1",
+  "task_id": "plan-03",
+  "family": "plan",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I read through the shelfware search code, API contract, docs and tests. I haven't changed anything. Three things in the repo affect how we can do this:\n\n1. **The score can't go into `/v1/search`.** `docs/api.md` says a published version never changes shape, and any new field goes into the next version. `openapi/search.v1.json` doesn't allow extra fields, and a contract test enforces that. A comment in that test says the iOS app (4.x) rejects the whole response if it sees a field it doesn't know. Adding `score` to v1 would break search on iOS. **So the score and \"did you mean\" go in a new `GET /v2/search`.**\n2. **Only the postings backend gets the new feature.** `docs/DEPRECATIONS.md` says not to add features to `scan.js`, which is removed in 3.0. The on-prem build still uses scan, so on-prem won't get fuzzy matching. That seems acceptable, but someone should confirm.\n3. **An exact SKU match must still come first.** Store staff search by SKU, and `test/search.test.js` pins this. Fuzzy results can't push an exact SKU match down.\n\n## The plan\n\n**1. Fuzzy matching in `src/search/postings.js`**\n- Keep exact token lookup as it is, then add a fallback for query words that don't match any indexed word. The fallback compares the word against the vocabulary using Damerau-Levenshtein distance, which also counts swapped letters (\"kettel\" → \"kettle\") as one edit.\n- Allowed edits depend on word length: none for 1–3 characters, 1 edit for 4–7, 2 edits for 8 or more. This keeps short queries from matching noise.\n- The vocabulary is small enough to compare against everything. If the catalog gets big, switch to a BK-tree or trigram index without changing the interface.\n- Also do prefix matching (\"grind\" → \"grinder\"), because people type partial words.\n\n**2. Scoring**\n- Each result gets a score from 0 to 1, averaged over the query words. An exact word match scores 1.0, a prefix match about 0.9, and a fuzzy match `1 − edits/length`, with a small extra penalty.\n- An exact SKU match always scores 1.0 and goes first. Ties are broken by catalog order, so results are deterministic.\n- A new `searchScored(q)` returns `[{product, score, matchedTerms}]`. The existing `search(q)` becomes a thin wrapper that returns plain products, so v1 callers don't change.\n\n**3. \"Did you mean\"**\n- If any query word only matched by fuzzy match, build a corrected query from the best replacement for each word. For example, \"stel kettel\" → \"steel kettle\".\n- Return it as `suggestion` at the top level of the v2 response, or `null` when every word matched exactly. That way the app doesn't have to work it out from scores. The app can also use per-result scores for its own cut-off.\n\n**4. API**\n- New `openapi/search.v2.json`. Each result has `id`, `name`, `price_cents` and `score`, plus a top-level `suggestion`. Like v1, it doesn't allow extra fields.\n- Add the `GET /v2/search` route in `src/server.js`. v1 stays the same.\n- Open question: should v1 *also* return fuzzy matches, with no score? It wouldn't change the response shape, so iOS 4.x users would get typo-tolerant results now. The downside is that v1's results change without notice, which some clients may not expect. I'd lean towards yes, but it's your call.\n\n**5. Tests**\n- The existing SKU-first and v1 contract tests stay as they are.\n- New tests: typos (\"kettel\", \"toastr\", \"grnder\"), a transposition, short words staying exact, an exact match outscoring a fuzzy one, an exact SKU still first when fuzzy matches are present, the suggestion on a typo and `null` on a clean query, and a v2 contract test.\n\n**6. Other things to keep in mind**\n- `src/analytics.js` records the result count. It's worth also recording whether a suggestion was shown, so you can measure the impact.\n- `src/cache.js` (the response cache) isn't connected to search yet. If it gets connected later, cache keys need to include the API version.\n- The search config (`config/search.json`) could have a `fuzzy: true/false` setting, so you can turn fuzzy matching off without a deploy.\n\n**Decisions I need from you:**\n- Add fuzzy matches to v1 results too, or only to v2?\n- Is it OK that on-prem doesn't get fuzzy matching?\n\nI can turn this into a doc or start building whenever you're ready.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-03-plain-opus-k1",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0819378,
+    "input_tokens": 64835,
+    "output_tokens": 2168,
+    "cached_tokens": 61009,
+    "cache_write_tokens": 3314,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000056,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0818818,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 27.803,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-03-plain-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T02:54:39.572Z",
+    "images": {
+      "core": "sha256:6609775f47dd9965cfc5b3f275aafc1983b815968cb2a9b2970009af3498ad91",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-592b235c118e",
+        "id": "sha256:b95d9d3238d9e6e969e0cc039030619bea3d3436aa23d2c5aa2c872c85719c29",
+        "tree_sha256": "65acce4b83b9b7b39cf89b9535a4b8b36ed2e2e044157d155f874f7315bae8a3"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-ece3bf92-137c-478d-b569-6e0b8832-6567fe"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T02:55:30.791Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd ~/workspace/repo; cat README.md package.json; find src test config docs openapi -type f | head -50; git log --oneline | head -5",
+          "code": 0,
+          "output": "# shelfware\n\nCatalog and search API behind the shop apps.\n\nRun the tests with npm test.\n{\n  \"name\": \"shelfware\",\n  \"version\": \"2.6.1\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\nsrc/cache.js\nsrc/recs.js\nsrc/server.js\nsrc/analytics.js\nsrc/catalog.js\nsrc/search/index.js\nsrc/sear"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-03-plain-opus-k1",
+      "meter": {
+        "requests": 6,
+        "usd": 0.0819378,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.0819378,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000056
+    }
+  }
+}

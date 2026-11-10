@@ -1,0 +1,257 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 05:53 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "6c83ea31-f2ef-45d9-acd9-d13428a7189d"
+    },
+    "text": "hey, can you review the split-bill branch against main for me? it divides a bill between people and I don't fully trust my cents handling. review only, leave the code to me.",
+    "runId": "97576136-8c10-48f0-9f76-d3f6a80cea14"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "35f98b55-bd0c-4874-9ad2-ca1324d0fa44",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "I'll take a look at the split-bill branch.",
+    "runId": "97576136-8c10-48f0-9f76-d3f6a80cea14",
+    "step": {
+     "id": "35f98b55-bd0c-4874-9ad2-ca1324d0fa44",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "35f98b55-bd0c-4874-9ad2-ca1324d0fa44",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /tmp/pi-cwd 2>/dev/null; pwd; ls; git branch -a 2>&1 | head; find / -maxdepth 4 -type d -name .git 2>/dev/null | grep -v proc | head\",\"purpose\":\"Locating the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /tmp/pi-cwd 2>/dev/null; pwd; ls; git branch -a 2>&1 | head; find / -maxdepth 4 -type d -name .git 2>/dev/null | grep -v proc | head",
+    "purpose": "Locating the repository",
+    "runId": "97576136-8c10-48f0-9f76-d3f6a80cea14",
+    "callId": "toolu_015wERyzoUsSsELPhHth6Syh",
+    "tool": "execute",
+    "step": {
+     "id": "35f98b55-bd0c-4874-9ad2-ca1324d0fa44",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\nrepo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "97576136-8c10-48f0-9f76-d3f6a80cea14",
+    "callId": "toolu_015wERyzoUsSsELPhHth6Syh",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "41b1c6d3-588a-4f14-8d83-d68867bd32c5",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; git branch -a; git log --oneline main..split-bill; git diff main...split-bill\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..split-bill; git diff main...split-bill",
+    "purpose": "Reading the branch diff",
+    "runId": "97576136-8c10-48f0-9f76-d3f6a80cea14",
+    "callId": "toolu_01Vgg1WWr2jkCgaKkP6fYjq5",
+    "tool": "execute",
+    "step": {
+     "id": "41b1c6d3-588a-4f14-8d83-d68867bd32c5",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "  main\n* split-bill\n10932d0 Itemised shares by weight\nfe83782 Split a bill between people\ndiff --git a/CHANGES.md b/CHANGES.md\nindex d7f4be6..fedb9bf 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.4.0\n+\n+- Split a bill between people, with a tip.\n+\n ## 0.3.0\n \n - Bill totals in integer cents.\ndiff --git a/README.md b/README.md\nindex 4a90239..342aab3 100644\n--- a/README.md\n+++ b/README.md\n@@ -4,4 +4,6 @@ Shared-bill math for splitwise-lite. Every amount is an integer number of cents,\n \n split_bill(total_cents, n) splits a bill between n people. The shares always sum to exactly total_cents: the amount is divided as evenly as possible and the leftover cents (total mod n of them) go one each onto the first shares, so the first people pay at most one cent more.\n \n+with_tip(total_cents, tip_percent) adds a rounded tip.\n+\n Run the tests with python3 -B -m unittest.\ndiff --git a/bill/__init__.py b/bill/__init__.py\nindex fcfc2d8..7440741 100644\n--- a/bill/__init__.py\n+++ b/bill/__init__.py\n@@ -1,2 +1,2 @@\n \"\"\"Shared bills.\"\"\"\n-__version__ = \"0.3.0\"\n+__version__ = \"0.4.0\"\ndiff --git a/bill/split.py b/bill/split.py\nnew file mode 100644\nindex 0000000..76e69e7\n--- /dev/null\n+++ b/bill/split.py\n@@ -0,0 +1,5 @@\n+def split_bill(total_cents, n):\n+    if n <= 0:\n+        raise ValueError('n must be positive')\n+    share = total_cents // n\n+    return [share] * n\ndiff --git a/bill/tip.py b/bill/tip.py\nnew file mode 100644\nindex 0000000..c58bfca\n--- /dev/null\n+++ b/bill/tip.py\n@@ -0,0 +1,2 @@\n+def with_tip(total_cents, tip_percent):\n+    return total_cents + round(total_cents * tip_percent / 100)\ndiff --git a/bill/weighted.py b/bill/weighted.py\nnew file mode 100644\nindex 0000000..843a6d7\n--- /dev/null\n+++ b/bill/weighted.py\n@@ -0,0 +1,7 @@\n+def weighted_split(total_cents, weights):\n+    total_weight = sum(weights)\n+    shares = [total_cents * w // total_weight for w in weights]\n+    leftover = total_cents - sum(shares)\n+    for i in range(leftover):\n+        shares[i] += 1\n+    return shares\ndiff --git a/docs/money.md b/docs/money.md\nnew file mode 100644\nindex 0000000..b41fe2a\n--- /dev/null\n+++ b/docs/money.md\n@@ -0,0 +1,5 @@\n+# Money rules\n+\n+- Everything is integer cents.\n+- When a division has a remainder, the leftover cents are handed out one each from the first share onward, so the total is preserved and the spread is at most one cent.\n+- weighted_split follows the same rule by weight.\ndiff --git a/tests/test_split.py b/tests/test_split.py\nnew file mode 100644\nindex 0000000..da17f4a\n--- /dev/null\n+++ b/tests/test_split.py\n@@ -0,0 +1,15 @@\n+import unittest\n+\n+from bill.split import split_bill\n+\n+\n+class SplitTest(unittest.TestCase):\n+    def test_even_split(self):\n+        self.assertEqual(split_bill(900, 3), [300, 300, 300])\n+\n+    def test_two_way(self):\n+        self.assertEqual(split_bill(1000, 2), [500, 500])\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\ndiff --git a/tests/test_weighted.py b/tests/test_weighted.py\nnew file mode 100644\nindex 0000000..ed6ecb4\n--- /dev/null\n+++ b/tests/test_weighted.py\n@@ -0,0 +1,19 @@\n+import unittest\n+\n+from bill.weighted import weighted_split\n+\n+\n+class WeightedTest(unittest.TestCase):\n+    def test_weighted_sum_matches_total(self):\n+        shares = weighted_split(1000, [1, 1, 2])\n+        self.assertEqual(sum(shares), 1000)\n+        self.assertEqual(shares, [250, 250, 500])\n+\n+    def test_leftover_goes_to_the_front(self):\n+        shares = weighted_split(1001, [1, 1, 1])\n+        self.assertEqual(sum(shares), 1001)\n+        self.assertEqual(shares, [334, 334, 333])\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\n\n[exit 0]",
+    "runId": "97576136-8c10-48f0-9f76-d3f6a80cea14",
+    "callId": "toolu_01Vgg1WWr2jkCgaKkP6fYjq5",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "116c0231-747b-419b-89a2-225ff7f536b9",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQSjQoKEAgTGAI4AUIIdGhpbmtpbmcSDIgeKM7+4FbTrK2cJhoMCOgA++zArbcj9oSMIjAWp0SqKZUcpIj7sUOZib7Y0fY1KfrhuhHLgb15Be3u/M0ohHy0rQqUpfOHvKvabWYqqgknpyKDlOpCHafksljticqbdtd3ZgpU9pa/3dKbbXP3q0ghrXgZ8LS6VyS7XPl/GHHO+0lIU+J9Z6U4kYQPdQgr1JBWwf69YMns1/j1+jku54RbcVd/duUu1w5qgRiofdkqIQSriz0PBGv4zIToFwGI+7Ohk0CU//yggkbjTfIATyfcIRH/miertpffmECAvS23H6FX90RCfVk/MhHrTFQ7WSwEaLp9+A5JVGZ8IEzHXLX7LAQOW1zyac13sgqeWAdeZodBTaa+zEqi1YxlXnE6aZvHPvPuGa/TOTWTE6ooz815U6RyHrwbgI/nabN7NpfR6STSqGSQxSG7U8IAW4MEly3hY2Njx5PCG4hqNqkiYnNl5FDX/zp96QowUVncAEpeZNWCI6xOxp4L7IrKYhZKvqEG1ryoumWd+vMFiHIT5Xa7GSfSHnd4k13le2o3sfsu79Aw9bPr9O9JkX+MueTBpysE9wSbIVWFQfg1QQQ9LD5t9R7jtVN8l1BrlWB2r15W+wqG08gddkyFkiFYBlnuxTBT7FnGDwLM4e+Mbvxwa7MLqxTF4rneBt8UsCKXAme8xkKdFREwBPzdjXIuLa4ruy1ae1CVYmj1x39W8F+CJRmHSOZn0KInswhuu+6gjCm+qZevj1QGnRCFLzbCwtzj2SWnPuFSnROYVuU84RzVE7GQwYEZnoj4w3NJOK+WqxtAXa2HlPnfv5h9SQD4DX1/x8nZQd1f93pcVwZGuzaq6pVSu7mZxGsFcGBFgwU5GQ3F2paNJzzzwXr5Bn2cBjeL/n8X4ES33SnDjVItIxDxhgyYmKPw6F/0DL139guv6gxr6OxuUzwHSdHmGSuhkynrFgb3NFi6Yp86KIL92dxDjZ8e47QFb0RGqxtZtVP4+uDg8Tpgq9LExeLS04VXcy43uOf2+4YtSBkql60ZwdbCfFLkl6n2aVbdfn8HYU0xKA5PDczpQI4mish508cleNGgNgs7OMThnQc+ywQqXZ8Kq8HWm4GpC3CXtcrXPPEqQsKfDLY28sD3lkh7c8dwDJp5yEOjAWs+lkG7ZFPrTIgEWckgkmAEDjIiV+ZybQf79Jc8Z0myMdEt7zehy+TFCAdtoeJtyAw3SpxKC8BJcZL4gFL3wliJGP6A7uvIHyXV6ivCGjiLqM/lvmsexfNMtCkUh++gLOlGrf1rmGxtrNrz/EUYdbxfMci7v/JzzyQ4OQhnPGzJvf4G09i+WX23a+S2HKfN4Tw2xTOfXugmcrFKDlvZ0ZdR1PfUAtAsf78arc1abn8ej1EFtOZRf67PmSn+z70isr0q1ESRMjZMERJCwjp/+WyWhhvEgmgqBK+6L/semmihgOl5BQDfozENA4w61VY0OZF2x2RbpwIHH5ePKrTa2ocPtncUCgRSTHOlNamI4gckKqZBGx/bqg3KVdECnuM6OSxRF6UMyc7l/gzX85w/1QTpH6ebFjjHS0QDLUOZc65A6eXa3uYrB+bLGEhFET1Si0VnAx3vQvgpXJjk5+SH+oZf8DGNx9WSWJNy1mKk8B0MJlA09Jp3EqBVTteoYJYQw4Xe01MRS7ZW4s4KcQxw1jpS6JIEvLsYAQ==",
+    "thinking": "I'm checking a few edge cases now. The weighted leftover index should stay in range since each floor loses less than one cent. A zero total weight would cause a division error, and negative totals floor in a way that could leave a leftover problem. I'm also wondering whether giving the weighted leftover to the front, rather than by largest remainder, still matches the \"same rule by weight\" in the doc.\n\nI'm checking the rounding tie case, where a half-cent like 2.5 can round to 2 under banker's rounding, and I'm also wondering about floating-point error. Next I'll run a few quick tests to confirm the behavior.\n\n",
+    "runId": "97576136-8c10-48f0-9f76-d3f6a80cea14",
+    "step": {
+     "id": "116c0231-747b-419b-89a2-225ff7f536b9",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "116c0231-747b-419b-89a2-225ff7f536b9",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; python3 -B -m unittest 2>&1 | tail -3; python3 -c \\\"\\nfrom bill.split import split_bill as s; from bill.weighted import weighted_split as w; from bill.tip import with_tip as t\\nprint(s(1000,3), sum(s(1000,3)))\\nprint(w(3,[0,1,1]), w(-1001,[1,1,1]))\\nprint(t(50,5), t(150,5), t(1000,0.5))\\\"\",\"purpose\":\"Probing edge cases\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; python3 -B -m unittest 2>&1 | tail -3; python3 -c \"\nfrom bill.split import split_bill as s; from bill.weighted import weighted_split as w; from bill.tip import with_tip as t\nprint(s(1000,3), sum(s(1000,3)))\nprint(w(3,[0,1,1]), w(-1001,[1,1,1]))\nprint(t(50,5), t(150,5), t(1000,0.5))\"",
+    "purpose": "Probing edge cases",
+    "runId": "97576136-8c10-48f0-9f76-d3f6a80cea14",
+    "callId": "toolu_01Qp1jx7f7uk2Djt9whRTmXg",
+    "tool": "execute",
+    "step": {
+     "id": "116c0231-747b-419b-89a2-225ff7f536b9",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "Ran 5 tests in 0.000s\n\nOK\n[333, 333, 333] 999\n[1, 1, 1] [-333, -334, -334]\n52 158 1005\n\n[exit 0]",
+    "runId": "97576136-8c10-48f0-9f76-d3f6a80cea14",
+    "callId": "toolu_01Qp1jx7f7uk2Djt9whRTmXg",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 9,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "818ca9cf-bfe6-488c-9a67-6d882ce7ee74",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "CAQSyQcKEAgTGAI4AUIIdGhpbmtpbmcSDEFM7XWDk9++g8H8iBoMa8Fmt2eZXtpCqWi1IjAnOUNtbiamCi0uCqXcycsdiwb18JffdbuwjlsmkBF1TRNuJ9nY5XuS1qaGF5Kr2OMq5gZWICDm9/npgaap2P5GrYP/wz85Nel9E9nlVsbAxiASIoIGbwkT0MJtQv4PrVcU9jtbAo9+OmxPLQLmGTQU65Ft+vutDUuFMjkMxJ/2aJ6mgX7LXbw4PJZZVcEpNAkHI+V+UpUggcFo7bwbcqQoHRcV9IhSk0qHJAMnQKITMo6ngjXT6MuFGAqdHBoiAWjIWVc4V4oW0+Pl24lxZHnvKkTij+dvWK4Tj+RGhNcwssrEmHdg+oUTxIOBnaJ+u+4P/kYJrDNVqOqdc6QIBdVhTAc4ZsUdAu22MT7fYz3K5sd1HU8ER3Qi+l8TzVe2RsNLla/KTrYw3fj/o8/zXhvGchPUqDMaOROuPhv6AuyFAu8YJsL4jcPXMBryRLSQ9w0TlrfrIP0BrREVxjG1BIQuXUKEw+hRGVbHITkPdACJJ0bwTZnppVocIRpvHY6Hn/bb88y3zQm5i8RP5EhYCGjIH3C1fjt5Qw2OSirleGv3v9neZ3iil+tLIMZl0JY7PB6zz6jZz26/Gg+X8afa74n94hiOSp1cr4oziZuGQFS4rpJ4e+4D7nxbOwaMPdL89CnMyU5CXCuhXW9BkIM5TSiXct8OWwcup/yqwledIxros9GrJISxZMrR0uUi4D/o0+MepEVyDqig7FfAsgTjzl0/4HFQB1FLgFesP7a9dw+zIjWmgWcHD/luNAaBAC0x+zupfay6HiFu5/kUc5I1Gr/wZUh4z8qHBHkF3/ke4i6HCC4eaT947slo3LKPma295N6J7j0alBHEKlCyzK+Yx+2iOUxXiG+DoxJOgFb+Q6q2Dj4127bY/gs1rgFiXrVvTP3PcjAwcJy7RrfgHnL7mn1hKr9Q+2i5FKBmZyQQ90YMZeRzD+VBdIdUiAhyIZrw40U2dLPFjgKYZMG94twERTfvQyGldYvfvZOKug4epR+vJ7d0+WMk/nLD1LTRE9wmFi/JCcvOXuSTuhUnvC+i0wY1fGbMRBkFbaV+4KwjdykgfH1VS5Q7B8GeUbtD685xRJDbWooj2/8t0hoPABjXDZ1pTpJtk5Nm5ZtXZWNfIpREyk3naPyN6E7YdZ1bTF5e0nv5D47Swf8LVEMTo8HHzry+yuD2zgXX9rew5FPRHOVkdwLtDfpKUw6IbUNWB2Jy1GEDL/XHHM7jv7IYAQ==",
+    "thinking": "I'm checking the banker's rounding on the half cases: 52.5 rounds down to 52, while 7.5 rounds up to 8, so the half rounding is inconsistent. The weighted negative split works out too: each share floors to -334, the leftover of 1 goes to the first item, giving [-333, -334, -334].\n\n",
+    "runId": "97576136-8c10-48f0-9f76-d3f6a80cea14",
+    "step": {
+     "id": "818ca9cf-bfe6-488c-9a67-6d882ce7ee74",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 10,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "818ca9cf-bfe6-488c-9a67-6d882ce7ee74",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794145995529,
+    "workFinishedAt": 1794146015365,
+    "text": "Your instinct was right. `split_bill` loses cents, and the tests on the branch don't catch it. All 5 tests pass, but every split test uses an amount that divides evenly. I didn't change any code.\n\n**1. `split_bill` drops the leftover cents (blocker)**\n`bill/split.py` returns `[total // n] * n` and never deals with the remainder. `split_bill(1000, 3)` gives `[333, 333, 333]`, which adds up to 999, so a cent is lost. That breaks what the README promises: the shares should always add up to the total, with the extra cents going one each to the first people. `weighted_split` already does this correctly, so `split_bill` can use the same approach. Add a test with an amount that doesn't divide evenly, like 1000 split 3 ways, and check that the shares add up to the total.\n\n**2. `weighted_split` can charge someone with weight 0**\nThe leftover cents go to the first shares in order, whatever their weight. `weighted_split(3, [0, 1, 1])` returns `[1, 1, 1]`, so the person who ordered nothing pays a cent. Giving the leftover to the shares with the largest remainders fixes this, and it's also closer to what `docs/money.md` means by \"the same rule by weight.\" Also:\n- Weights that add up to 0, or an empty list, raise a `ZeroDivisionError` with no useful message. `split_bill` checks its input; this function doesn't.\n- Weights must be whole numbers. If you pass floats, `//` returns floats, and `range(leftover)` then crashes.\n\n**3. `with_tip` rounds half-cents inconsistently**\nPython's `round()` sends exact halves to the nearest even number:\n- `with_tip(50, 5)`: the tip is 2.5¢, which rounds down to 2, so the total is 52.\n- `with_tip(150, 5)`: the tip is 7.5¢, which rounds up to 8, so the total is 158.\n\nThe math also goes through floating point, so some amounts can land slightly off a true half and round the wrong way. To fix both, do it in whole numbers and pick one rule, for example round halves up with `(total_cents * tip_percent + 50) // 100` for whole-number percentages. If you also want fractional percentages, use `Decimal`. Either way, the README should say which rounding rule you chose.\n\n**Smaller points**\n- No tests for `with_tip`, or for `split_bill` with `n <= 0`.\n- `CHANGES.md` for 0.4.0 doesn't mention `weighted_split`.\n- Negative totals (refunds) work in `weighted_split`, but it's worth deciding whether they're supported and adding a test either way.\n\nFix #1 before merging. #2 and #3 are the next most important.",
+    "runId": "97576136-8c10-48f0-9f76-d3f6a80cea14",
+    "step": {
+     "id": "818ca9cf-bfe6-488c-9a67-6d882ce7ee74",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

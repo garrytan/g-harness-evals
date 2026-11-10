@@ -1,0 +1,174 @@
+{
+  "trial_id": "rev-11-edition-sol-k16",
+  "task_id": "rev-11",
+  "family": "review",
+  "arm": "edition",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 16,
+  "status": "ok",
+  "reply_text": "Two findings against `main`—I’d block the merge on #1.\n\n1. **CRITICAL — SQL injection** — `src/query.js:12–13`\n   `term` is interpolated directly into SQL. `O'Reilly` breaks the query; `' OR TRUE --` produces `… AND name ILIKE '%' OR TRUE --%'`, bypassing category and stock filters.\n   **Fix:** Push `'%' + term + '%'` into `params` and use the next `$n` placeholder. Add regression tests for apostrophes and injection payloads, including alongside category.\n\n2. **INFORMATIONAL — Sort whitelist accepts inherited properties** — `src/sort.js:8`\n   `SORTS[sort]` also resolves prototype properties: `__proto__` produces `ORDER BY [object Object]`, and `constructor` produces function text, causing invalid SQL instead of the fallback.\n   **Fix:** Require an own-property match (`Object.hasOwn`) or use a `Map`. Test these keys alongside ordinary unknown sorts.\n\nAll 5 existing tests pass; I reproduced both issues through the query builders. No files changed.",
+  "counts": {
+    "open_matched": true,
+    "open_any": true,
+    "complete_read": true,
+    "first_step": true,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-11-edition-sol-k16",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0459462,
+    "input_tokens": 60693,
+    "output_tokens": 808,
+    "cached_tokens": 47125,
+    "cache_write_tokens": 13259,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0000702,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.045876,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 17.142,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-11-edition-sol-k16",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:15:41.706Z",
+    "images": {
+      "core": "sha256:70e9dbc58d38502117dc97d1c5973af7606fa9e34dfd9ef1126cfa852865f97b",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-a37a4db49ad7",
+        "id": "sha256:fbd86f893d9b3b46724644174acec5ba0a984f93fe4a7341eb3838bb57a5047e",
+        "tree_sha256": "593d02dc02e96eab384f83c52971c5fda6586bcbeb5e6f14ef27e349edfe0b1b"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-9189ef00-8dea-4b0e-ab3f-68272813-7530c6"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:16:22.733Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/b30c55bcb72766877f8d8baf/b5df04ba5fdd8547/gstack-review/SKILL.md",
+        "/root/workspace/.agent-skills/b30c55bcb72766877f8d8baf/b5df04ba5fdd8547/gstack-review/scripts/diff-base.sh"
+      ],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [
+        {
+          "seq": 2,
+          "skill": "gstack-review",
+          "via": "skill"
+        }
+      ],
+      "complete_via": "inline",
+      "read_whole": true,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd /root/workspace/repo && git status --short --branch && sh /root/workspace/.agent-skills/b30c55bcb72766877f8d8baf/b5df04ba5fdd8547/gstack-review/scripts/diff-base.sh main",
+          "code": 0,
+          "output": "## search-filters\nBRANCH: search-filters\nBASE: main\nMERGE_BASE: e8e0f843df95a7268aa775f3888868b9ae57fff2\n== commits since base\n54f7b81 Paginate search results\n306a556 Add free-text search over the name\n== diff stat (working tree against merge base)\n CHANGELOG.md          |  4 ++++\n README.md        "
+        },
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git diff e8e0f843df95a7268aa775f3888868b9ae57fff2 && printf '\\n== files\\n' && find . -maxdepth 3 -type f -not -path './.git/*' | sort && printf '\\n== sources and tests\\n' && for f in src/* test/* package.json README.md; do echo \"=== $f\"; nl -ba \"$f\"; done",
+          "code": 0,
+          "output": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex d29661f..a673868 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.6.0\n+\n+- Free-text product search and sort orders.\n+\n ## 0.5.0\n \n - Search by category and in-stock filters.\ndiff --git a/README.md b/README.md\nindex fdb1"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": "/root/workspace/.agent-skills/b30c55bcb72766877f8d8baf/b5df04ba5fdd8547/gstack-review",
+        "rewritten": true
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-11-edition-sol-k16",
+      "meter": {
+        "requests": 7,
+        "usd": 0.0459462,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.0459462,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0000702
+    }
+  }
+}

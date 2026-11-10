@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-05-plain-opus-k12",
+  "task_id": "rev-05",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 12,
+  "status": "ok",
+  "reply_text": "There's one real bug, and it blocks the merge: **anyone with view-only access can edit unlocked documents.** All 6 tests pass, but none of them catches it. I didn't change any code.\n\n**Blocker: `canEdit` checks the wrong right** (`src/guard.js`)\n```js\nreturn share.mask & WRITE === WRITE && !share.locked;\n```\nIn JavaScript, `===` runs before `&`. So this line actually works out to `mask & 1`, which checks READ, not WRITE. I ran it to confirm:\n- A view-only link (READ only) on an unlocked doc gets `canEdit` = **true**.\n- A share with WRITE but no READ gets `0` (a number, not `false`).\n\nThe tests miss it because the only case where editing should be allowed uses an editor, who has READ as well. The fix is `hasRight(share.mask, WRITE) && !share.locked`, which matches `canComment`. I'd also add a test that a viewer can't edit an unlocked doc.\n\n**Worth a look, not blocking:**\n- **`transferOwnership` doesn't check who's calling.** It never confirms that `fromUser` is the current owner (`doc.owner`), so any caller can hand ownership to anyone. That's fine if a layer above already enforces it. If not, it's a way to take over a document.\n- **Transferring to a user with no share** works. But if `fromUser` has no share, `undefined &= ~ADMIN` quietly gives them a share with mask `0`. That's harmless but untidy.\n- **`toggleRight` can produce odd combinations**, like WRITE without READ, or turning off READ while COMMENT and WRITE stay on. That matches what the README promises, but you may want the dialog to keep the rights consistent.\n- **Missing tests:** turning a right *off* with `toggleRight`, a viewer on an unlocked doc, and transferring ownership to yourself.\n\nThe changelog, version bump and README are all consistent with the code, apart from the `canEdit` bug.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-05-plain-opus-k12",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0849373,
+    "input_tokens": 86169,
+    "output_tokens": 1825,
+    "cached_tokens": 81670,
+    "cache_write_tokens": 4027,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.00005130000000000001,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.08488599999999999,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 23.138,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-05-plain-opus-k12",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:41:40.519Z",
+    "images": {
+      "core": "sha256:b72940b562e6c53aae6afc83a7f0b64341c2e8cbe63023fe872152ab58a99891",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-896e49561fcd",
+        "id": "sha256:2c573a8a565e03cd61423b47d45a8b78ea6cc12e3c6d84a116a99eda1cf15c92",
+        "tree_sha256": "3745319e560b5b3779257b8b6020c6313b748cb359283f6ff59062054bfd97dd"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-decedb37-ebf1-41cd-9649-d199340a-ac6c98"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:42:26.742Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 7,
+          "command": "cd /root/workspace/repo && git log --oneline main..share-editing && git diff main...share-editing --stat && git diff main...share-editing",
+          "code": 0,
+          "output": "1dc003f Share dialog switches and ownership transfer\n09f5972 Let editors comment and edit unlocked documents\n CHANGELOG.md        |  4 ++++\n README.md           | 12 ++++++++++++\n package.json        |  2 +-\n src/guard.js        | 12 ++++++++++--\n src/ownership.js    | 11 +++++++++++\n src/rights.js "
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-05-plain-opus-k12",
+      "meter": {
+        "requests": 7,
+        "usd": 0.0849373,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.0849373,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.00005130000000000001
+    }
+  }
+}

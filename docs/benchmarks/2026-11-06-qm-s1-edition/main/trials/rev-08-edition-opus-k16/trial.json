@@ -1,0 +1,159 @@
+{
+  "trial_id": "rev-08-edition-opus-k16",
+  "task_id": "rev-08",
+  "family": "review",
+  "arm": "edition",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 16,
+  "status": "ok",
+  "reply_text": "I reviewed `billing-anniversary` against `main` and didn't change anything. **Don't ship it yet:** `nextBillingDate` schedules wrong renewal dates for anchor days 29–31, and the anchor drifts. The two existing tests miss this.\n\n**1. Blocker: the date clamp uses the wrong month** (`src/schedule.js`)\n```js\nconst day = Math.min(anchorDay, daysInMonth(year, month));   // current month\nreturn new Date(year, month + 1, day);                       // target month\n```\nIt caps the day using the length of the month you're starting from, not the month you're renewing into. When the target month is shorter, JavaScript's `Date` rolls the extra days into the following month. I ran it on these cases:\n\n| From | Anchor | Expected | Got |\n|---|---|---|---|\n| Jan 31 2026 | 31 | Feb 28 | **Mar 3** |\n| Jan 30 2027 | 30 | Feb 28 | **Mar 2** |\n| Mar 31 2026 | 31 | Apr 30 | **May 1** |\n| Feb 28 2026 | 31 | Mar 31 | **Mar 28** |\n\nThe last row means the anchor drifts after a short month, which the README says must never happen. One renewal is skipped entirely and the others land on the wrong day. The fix is to measure the target month, e.g. `Math.min(anchorDay, daysInMonth(year, month + 1))`. That works across the December→January rollover, since `new Date(y, 13, 0)` handles it.\n\n**Missing tests:** the two tests that exist (mid-month, and Dec 31 → Jan 31) both happen to work under the bug. Worth adding Jan 31 → Feb 28, leap-year Jan 31 → Feb 29, Mar 31 → Apr 30, and a chained Jan 31 → Feb 28 → Mar 31 to catch the drift.\n\n**2. Question: proration ignores `anchorDay`** (`src/prorate.js`)\n`anchorDay` is passed in but never used. The charge is always \"days left in the start month,\" which matches the README. But the first renewal is on the anchor day of next month, so the charge doesn't cover the actual first period. For example, starting Apr 16 with anchor 16 charges half (1500), then the next charge is Apr 16 → May 16, a full month. That's a full month of service for half price. Is that intended, or should the first period run from the start date to the first renewal? Either way, the unused argument should go or be used.\n\n**3. Smaller points**\n- The CHANGELOG entry for 2.1.0 mentions next-date computation but not proration.\n- The README line \"strictly after the month of from\" is a bit unclear. Saying \"on the anchor day of the following month (clamped)\" would be plainer.\n\nI'd treat #1 as must-fix before shipping and #2 as a product decision to confirm.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-08-edition-opus-k16",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0714986,
+    "input_tokens": 53809,
+    "output_tokens": 1878,
+    "cached_tokens": 50327,
+    "cache_write_tokens": 3005,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000053200000000000006,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.07144539999999999,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 20.598,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-08-edition-opus-k16",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:00:18.162Z",
+    "images": {
+      "core": "sha256:d3c15a4ff59b46b682cc0b498a5b96d657f86e2d1ac9a8b947b4fb5d8b1c3302",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-21e081ac9005",
+        "id": "sha256:428b7fd2dde7737bef1596261eb4a03e9a9966eb1c49b0fbcd8ad1c3d28069e8",
+        "tree_sha256": "68ef982cf81212089c0222639053e7a07970a508f7dd5990be1a7afc337a9f10"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-6e7205f4-829c-499f-8d40-8e3ee095-d3c72a"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:01:02.805Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 5,
+          "command": "cd ~/workspace/repo; git branch -a; git log --oneline main..billing-anniversary; git diff main...billing-anniversary",
+          "code": 0,
+          "output": "* billing-anniversary\n  main\nf73b00d Prorate the first partial period\n27a0295 Compute the next billing date from the anchor\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 0d77c0e..6b56b0d 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 2.1.0\n+\n+- Next-billing-date com"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-08-edition-opus-k16",
+      "meter": {
+        "requests": 5,
+        "usd": 0.0714986,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.0714986,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000053200000000000006
+    }
+  }
+}

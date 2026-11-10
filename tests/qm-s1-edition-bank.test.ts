@@ -50,4 +50,13 @@ describe('qm-s1-edition published task bank', () => {
     const reviewOnly = write({ ...bank, templates: bank.templates.filter((t: { family: string }) => t.family === 'review') });
     expect(createHash('sha256').update(reviewOnly).digest('hex')).toBe(pins.reduced_bank_sha256.review_only_24);
   });
+
+  test('amendment 3 part 3: the committed review-only bank is the fallback bank, byte for byte', () => {
+    const pins = design.pilot_amendment;
+    const bank = JSON.parse(readFileSync(join(DIR, 'bank', 'bank.json'), 'utf8'));
+    const reviewOnly = JSON.stringify({ ...bank, templates: bank.templates.filter((t: { family: string }) => t.family === 'review') }, null, 2) + '\n';
+    expect(readFileSync(join(DIR, 'bank', 'bank-review.json'), 'utf8')).toBe(reviewOnly);
+    expect(sha(join(DIR, 'bank', 'bank-review.json'))).toBe(pins.reduced_bank_sha256.review_only_24);
+    expect(design.main_amendment.part3.bank).toBe('docs/benchmarks/2026-11-06-qm-s1-edition/bank/bank-review.json');
+  });
 });

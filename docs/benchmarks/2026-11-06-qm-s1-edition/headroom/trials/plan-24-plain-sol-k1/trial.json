@@ -1,0 +1,155 @@
+{
+  "trial_id": "plan-24-plain-sol-k1",
+  "task_id": "plan-24",
+  "family": "plan",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I reviewed the checkout at `99af59f`. **Recurring tasks fit the current storage model, but there’s no CLI command implementation in this checkout**, so command wiring needs to be located or added as part of the work. No code changed; all four existing tests pass.\n\n### What the code establishes\n- Tasks live in `~/.todo.json`, with versioned migrations in `todo/migrations.py`.\n- Due dates are deliberately **date-only** (`todo/dates.py` and the schema-3 migration). Recurrence should preserve that—no timestamps or timezone machinery.\n- Saves already use atomic replacement (`todo/store.py`). Completing an occurrence and scheduling its successor should happen in one save.\n- Reminders, sync, and shell completion are currently small helpers/constants, not complete integrations.\n\n### Recommended v1 behavior\nSupport a narrow, explicit grammar:\n- `every Monday` — weekly on a specified weekday.\n- `the 1st of each month` — monthly on a specified day.\n- Store a normalized rule, not the original phrase; display a readable version.\n\nI recommend **one outstanding occurrence per recurring task**:\n- Completing it records completion and creates the next occurrence.\n- The next date follows the calendar rule, not “seven days after completion.”\n- Late completion skips missed dates rather than generating a backlog. Completing an overdue Monday task on Tuesday schedules the following Monday.\n- An untouched overdue task stays overdue; merely listing or loading tasks must not advance it.\n\nFor monthly days that don’t exist, I recommend **skipping that month**, preserving the requested day rather than silently turning “the 31st” into “the last day.”\n\n### Implementation plan\n1. **Recurrence engine — new `todo/recurrence.py`**\n   - Parse the supported phrases into weekly/monthly rules.\n   - Calculate the first occurrence on or after a supplied date, and subsequent occurrences strictly after a supplied date.\n   - Keep calculations pure, with an explicit reference date so tests never depend on the clock.\n\n2. **Schema 4 — `todo/migrations.py`**\n   - Add an optional `recurrence` field; migrate existing tasks to `null`.\n   - Weekly rules hold a weekday; monthly rules hold a day of month.\n   - Keep `due` as the current occurrence’s ISO date.\n   - Define task identity/completion-history fields alongside the completion workflow: the checkout currently has no established ID or completion model to extend.\n\n3. **Task lifecycle and CLI**\n   - Proposed syntax: `dodo add \"Weekly review\" --repeat \"every Monday\"`.\n   - Without `--due`, choose the next matching date, including today.\n   - With `--due`, require it to match the rule and use it as the first occurrence.\n   - Completion preserves the completed occurrence and creates its successor, carrying title, tags, and recurrence forward.\n   - Provide an explicit way to stop repetition without deleting history.\n   - Persist both completion and successor in a single atomic save.\n\n4. **Tests and documentation**\n   - Week/year boundaries, leap years, short months, and same-day scheduling.\n   - Early and late completion, skipped dates, and repeated completion attempts.\n   - Migration from schemas 1–3; ordinary tasks remain unchanged.\n   - Save failure leaves neither a lost occurrence nor a half-created successor.\n   - Document grammar, overdue behavior, and stopping repetition in the README and storage docs.\n\n**The main product choice to settle before implementation is missed occurrences:** I recommend skipping missed dates on completion, rather than creating a backlog. The rest can stay small and dependency-free.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-24-plain-sol-k1",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.042299199999999995,
+    "input_tokens": 51830,
+    "output_tokens": 1152,
+    "cached_tokens": 40837,
+    "cache_write_tokens": 10675,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.000072,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.042227200000000006,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 23.121,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-24-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:23:55.402Z",
+    "images": {
+      "core": "sha256:729c3ae2a84236c658f78a718f20798fa978ae7d70283b4749a8c714791f3335",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-377b05c19a0c",
+        "id": "sha256:098bed2a2663af8b1d07e60c6e120a78c97257dc0f729981e876250eab9059c2",
+        "tree_sha256": "4312fa1bc4c58a171f954eba1b92789847687c657a019bb970d29bd45bfd50f3"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-ccad7d0d-5f36-4832-861f-6335b159-db3a96"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:24:41.788Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/212eb5dc3c1de92d81f29adc/594fa99812724a37/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/212eb5dc3c1de92d81f29adc/594fa99812724a37/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && cat README.md pyproject.toml docs/storage.md && for f in todo/*.py; do echo \"\\n--- $f\"; cat \"$f\"; done; for f in tests/*.py; do echo \"\\n--- $f\"; cat \"$f\"; done; git log -5 --oneline",
+          "code": 0,
+          "output": "# dodo-cli\n\nA to-do list for the terminal. Tasks live in ~/.todo.json. Install with pipx.\n\nRun the tests with python3 -m unittest discover -s tests -t .\n[project]\nname = \"dodo-cli\"\nversion = \"1.4.0\"\nrequires-python = \">=3.10\"\n# Storage\n\nTasks live in one JSON file (~/.todo.json) with a schema_versio"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-24-plain-sol-k1",
+      "meter": {
+        "requests": 7,
+        "usd": 0.042299199999999995,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.042299199999999995,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.000072
+    }
+  }
+}

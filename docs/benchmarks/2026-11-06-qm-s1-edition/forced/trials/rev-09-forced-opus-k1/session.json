@@ -1,0 +1,301 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 07:55 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "1c5f08aa-a85e-4907-aa86-96934672bc28"
+    },
+    "text": "could you review feature-flags-rules before I merge to main? It's the rollout config everything reads, so careful. no code changes from you please.",
+    "runId": "ca21be76-f5ad-4c62-8c8d-c8f63b9e27b3"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "f5dfb2d9-22a7-4f71-a361-06078076767c",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "On it — reviewing feature-flags-rules against main, read-only.",
+    "runId": "ca21be76-f5ad-4c62-8c8d-c8f63b9e27b3",
+    "step": {
+     "id": "f5dfb2d9-22a7-4f71-a361-06078076767c",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "f5dfb2d9-22a7-4f71-a361-06078076767c",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /tmp/pi-cwd; ls; find / -maxdepth 4 -type d -name \\\"feature-flags-rules*\\\" 2>/dev/null | head\",\"purpose\":\"Locating the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /tmp/pi-cwd; ls; find / -maxdepth 4 -type d -name \"feature-flags-rules*\" 2>/dev/null | head",
+    "purpose": "Locating the repository",
+    "runId": "ca21be76-f5ad-4c62-8c8d-c8f63b9e27b3",
+    "callId": "toolu_013CPVtCYTHBLN6dt3jiVt1W",
+    "tool": "execute",
+    "step": {
+     "id": "f5dfb2d9-22a7-4f71-a361-06078076767c",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "repo\n\n[stderr]\nsh: 1: cd: can't cd to /tmp/pi-cwd\n\n[exit 0]",
+    "runId": "ca21be76-f5ad-4c62-8c8d-c8f63b9e27b3",
+    "callId": "toolu_013CPVtCYTHBLN6dt3jiVt1W",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "54729cbe-0b30-457b-9e95-a1173dc57546",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd repo; git branch -a; git status --short | head; ls skills/gstack-review/scripts 2>/dev/null; sh skills/gstack-review/scripts/diff-base.sh main 2>&1 | tail -30\",\"purpose\":\"Inspecting branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd repo; git branch -a; git status --short | head; ls skills/gstack-review/scripts 2>/dev/null; sh skills/gstack-review/scripts/diff-base.sh main 2>&1 | tail -30",
+    "purpose": "Inspecting branch diff",
+    "runId": "ca21be76-f5ad-4c62-8c8d-c8f63b9e27b3",
+    "callId": "toolu_01THMYRL4PMppvSpBGzDPbJU",
+    "tool": "execute",
+    "step": {
+     "id": "54729cbe-0b30-457b-9e95-a1173dc57546",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* feature-flags-rules\n  main\nsh: 0: cannot open skills/gstack-review/scripts/diff-base.sh: No such file\n\n[exit 0]",
+    "runId": "ca21be76-f5ad-4c62-8c8d-c8f63b9e27b3",
+    "callId": "toolu_01THMYRL4PMppvSpBGzDPbJU",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "2d6c2c77-66fd-4f6e-8fd2-173a3f60810a",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd repo; mb=$(git merge-base main HEAD); git log --oneline $mb..HEAD; git diff --stat $mb; git diff $mb; git status --short\",\"purpose\":\"Reading the full diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd repo; mb=$(git merge-base main HEAD); git log --oneline $mb..HEAD; git diff --stat $mb; git diff $mb; git status --short",
+    "purpose": "Reading the full diff",
+    "runId": "ca21be76-f5ad-4c62-8c8d-c8f63b9e27b3",
+    "callId": "toolu_01PjkRHj3vrBvVXYmshyGZKa",
+    "tool": "execute",
+    "step": {
+     "id": "2d6c2c77-66fd-4f6e-8fd2-173a3f60810a",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "e3396ff Normalize rule values before matching\n83eb696 Build flags with a fluent rule API\n CHANGES.md             |  5 +++++\n README.md              |  4 ++++\n docs/flags.md          |  5 +++++\n flags/__init__.py      |  2 +-\n flags/match.py         |  2 +-\n flags/registry.py      | 15 +++++++++++++++\n flags/rollout.py       |  7 +++++++\n tests/test_match.py    |  5 ++++-\n tests/test_registry.py | 24 ++++++++++++++++++++++++\n 9 files changed, 66 insertions(+), 3 deletions(-)\ndiff --git a/CHANGES.md b/CHANGES.md\nindex 9c8349f..cf21538 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,10 @@\n # Changes\n \n+## 0.3.0\n+\n+- Fluent rule-building API for flags.\n+- Percentage rollouts.\n+\n ## 0.2.0\n \n - Flag registry and context matching.\ndiff --git a/README.md b/README.md\nindex d835b40..259b6ca 100644\n--- a/README.md\n+++ b/README.md\n@@ -4,4 +4,8 @@ Feature flags for rollout-cfg.\n \n A flag is on when any of its rules matches the context. A flag with no rules is off for everyone. Flags are independent: a rule added to one flag never affects another.\n \n+## Building flags\n+\n+add_rule(flag_name, rule) returns a Flag carrying that rule. Chain rules by passing the previous flag's rules back in. A fresh flag starts with no rules.\n+\n Run the tests with python3 -B -m unittest.\ndiff --git a/docs/flags.md b/docs/flags.md\nnew file mode 100644\nindex 0000000..210a510\n--- /dev/null\n+++ b/docs/flags.md\n@@ -0,0 +1,5 @@\n+# Flag rules\n+\n+- A rule is a dict of field to expected value.\n+- A flag is on when any rule matches every field in it.\n+- Rule values are compared case-insensitively and across str/int, so {'tier': 2} matches a context tier of '2'.\ndiff --git a/flags/__init__.py b/flags/__init__.py\nindex 7455b11..955b0d9 100644\n--- a/flags/__init__.py\n+++ b/flags/__init__.py\n@@ -1,2 +1,2 @@\n \"\"\"Feature flags.\"\"\"\n-__version__ = \"0.2.0\"\n+__version__ = \"0.3.0\"\ndiff --git a/flags/match.py b/flags/match.py\nindex 58ac3a2..ddfdc40 100644\n--- a/flags/match.py\n+++ b/flags/match.py\n@@ -1,2 +1,2 @@\n def matches(rule, context):\n-    return all(context.get(k) == v for k, v in rule.items())\n+    return all(str(context.get(k)).lower() == str(v).lower() for k, v in rule.items())\ndiff --git a/flags/registry.py b/flags/registry.py\nnew file mode 100644\nindex 0000000..9987c06\n--- /dev/null\n+++ b/flags/registry.py\n@@ -0,0 +1,15 @@\n+from .match import matches\n+\n+\n+class Flag:\n+    def __init__(self, name, rules):\n+        self.name = name\n+        self.rules = rules\n+\n+    def enabled(self, context):\n+        return any(matches(rule, context) for rule in self.rules)\n+\n+\n+def add_rule(flag_name, rule, rules=[]):\n+    rules.append(rule)\n+    return Flag(flag_name, rules)\ndiff --git a/flags/rollout.py b/flags/rollout.py\nnew file mode 100644\nindex 0000000..876099b\n--- /dev/null\n+++ b/flags/rollout.py\n@@ -0,0 +1,7 @@\n+import hashlib\n+\n+\n+def in_rollout(user_id, percent):\n+    digest = hashlib.sha256(user_id.encode('utf-8')).hexdigest()\n+    bucket = int(digest[:8], 16) % 100\n+    return bucket < percent\ndiff --git a/tests/test_match.py b/tests/test_match.py\nindex b62f1f7..a96282d 100644\n--- a/tests/test_match.py\n+++ b/tests/test_match.py\n@@ -5,9 +5,12 @@ from flags.match import matches\n \n class MatchTest(unittest.TestCase):\n     def test_all_fields_must_match(self):\n-        self.assertTrue(matches({'plan': 'pro'}, {'plan': 'pro', 'region': 'us'}))\n+        self.assertTrue(matches({'plan': 'PRO'}, {'plan': 'pro', 'region': 'us'}))\n         self.assertFalse(matches({'plan': 'pro'}, {'plan': 'free'}))\n \n+    def test_matching_ignores_case_and_type(self):\n+        self.assertTrue(matches({'tier': 2}, {'tier': '2'}))\n+\n \n if __name__ == '__main__':\n     unittest.main()\ndiff --git a/tests/test_registry.py b/tests/test_registry.py\nnew file mode 100644\nindex 0000000..218fc41\n--- /dev/null\n+++ b/tests/test_registry.py\n@@ -0,0 +1,24 @@\n+import unittest\n+\n+from flags.registry import add_rule\n+from flags.rollout import in_rollout\n+\n+\n+class RegistryTest(unittest.TestCase):\n+    def test_a_flag_is_on_when_a_rule_matches(self):\n+        flag = add_rule('beta', {'plan': 'pro'}, [])\n+        self.assertTrue(flag.enabled({'plan': 'pro'}))\n+        self.assertFalse(flag.enabled({'plan': 'free'}))\n+\n+    def test_two_rules_either_matches(self):\n+        flag = add_rule('beta', {'plan': 'pro'}, [])\n+        flag = add_rule('beta', {'region': 'eu'}, flag.rules)\n+        self.assertTrue(flag.enabled({'region': 'eu'}))\n+\n+    def test_a_zero_rollout_includes_nobody(self):\n+        self.assertFalse(in_rollout('user-1', 0))\n+        self.assertTrue(in_rollout('user-1', 100))\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\n\n[exit 0]",
+    "runId": "ca21be76-f5ad-4c62-8c8d-c8f63b9e27b3",
+    "callId": "toolu_01PjkRHj3vrBvVXYmshyGZKa",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 8,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "4f5298f2-d076-44e0-8704-2810c6470e16",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQSyAYKEAgTGAI4AUIIdGhpbmtpbmcSDJgXh9cdumKdpyxWmRoM/JBwgK+mCEHg5FXOIjBkMlB9vkgg4Va7K9t/Hv/8ULgVezPLjpE9ZAcm7bVB1/eyO3+emcq0HOr0lJ6zppsq5QWrniPp8GwcTL63ymyQ71IXz8Gck7+pLYZ6h/pp3uBwnXUhzHltK92mHkUPddC1MILUgK78OFdSaoaxuvT27js0PMjgMmfaqv9axYfdaWAJsErc+iewuXbj/DrbcEiOanf4Pzhp/eir9zVnPKoq2wMhNS70LVHo+IcgVXPCFtmUHDujIAWDRxwUkdPMqgeaRt9zNxtD2PTCBeP/zzY5XMMtM9ryNFJZ4UenNvjpjLl/yEg1OQbPEAnbZuVsSDJRT+jT3b4wyNv5gbaIijPNmkoaV5mr0mI3yC/UaaX60Ugq8zY+zYKRJgZV/dhQ2uvdKz8bEsSBZaFiBRC3OfHm8EJi//lgjSoxTDBMu2AA6NhkZ/8BQzfX/1eg2blmOc/k5nsJMrbL7TF1nJwT2I32ipffqwup2nOEMhVbd7wbFAhu+wGiXcqySpRbDsDx7vM40teAlRf/Iul6gz9QG6M5iesUPX9XK52g4RhJecKg1AULfa9U7tk+VRu0DZ1yUHhGPqIcKY7mOHv8woLM67pDY/i5QXJvu1+nKDwxiWMpIzfZV5gsPqybAlsc63bxP7bYza5X18R8k4x6HSa2TANSi/DqNin0HZ0nZCr8q9gbFipxge6RJg1GFd/AfMigB3Wq0TGPRjIs2vloyt/EZwFD7lXpQcdJWp3qA4by0n2nDBkhT8rRgLKxb4beXWF+0gm2X3n6jWVchmVS9UlJj3VrluF80cRgAhwqd8UfQ8NwmcdhSMR975yURPptq4nr1Pv6R1r162yg2XYzrAHZYV/OfH0n0nSPiEqo5fHzeiIoG0vRLRdFlGBm4HN3kQSObKpqsiwZdOkNM+IhIJq7XXxK/A+jj5/VkcSMQZE+a/y3Tq0LaqZQybEhnKFVHJcBsw1hjPTGAM4LYABloSwg7eVM/d5R2UMnCIlK23L02Mx0AOmsqH+XlnSto19UdBYe+u7fC8z4AFn0tSDyqnpfqi8PThJmOh/kiKEYAQ==",
+    "thinking": "I'm checking the suspected bugs with a quick demo: the mutable default argument, the `str(None) == \"none\"` match that lets a missing key equal a rule value of \"None\", and whether `add_rule` mutates the list it's passed, which would be shared between flags.\n\n",
+    "runId": "ca21be76-f5ad-4c62-8c8d-c8f63b9e27b3",
+    "step": {
+     "id": "4f5298f2-d076-44e0-8704-2810c6470e16",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "4f5298f2-d076-44e0-8704-2810c6470e16",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd repo; python3 -B -m unittest 2>&1 | tail -2; python3 -B -c \\\"\\nfrom flags.registry import add_rule\\nfrom flags.match import matches\\na=add_rule('a',{'plan':'pro'}); b=add_rule('b',{'region':'eu'})\\nprint('a on for eu:',a.enabled({'region':'eu'}), a.rules is b.rules)\\nbase=add_rule('x',{'plan':'pro'},[]); y=add_rule('y',{'r':1},base.rules); print('x mutated:',len(base.rules))\\nprint('missing vs \\\\\\\"none\\\\\\\":',matches({'plan':'none'},{}))\\nprint('True vs \\\\\\\"true\\\\\\\":',matches({'beta':True},{'beta':'TRUE'}))\\n\\\"\",\"purpose\":\"Verifying suspected bugs\"}"
+    },
+    "scope": "scoped",
+    "command": "cd repo; python3 -B -m unittest 2>&1 | tail -2; python3 -B -c \"\nfrom flags.registry import add_rule\nfrom flags.match import matches\na=add_rule('a',{'plan':'pro'}); b=add_rule('b',{'region':'eu'})\nprint('a on for eu:',a.enabled({'region':'eu'}), a.rules is b.rules)\nbase=add_rule('x',{'plan':'pro'},[]); y=add_rule('y',{'r':1},base.rules); print('x mutated:',len(base.rules))\nprint('missing vs \\\"none\\\":',matches({'plan':'none'},{}))\nprint('True vs \\\"true\\\":',matches({'beta':True},{'beta':'TRUE'}))\n\"",
+    "purpose": "Verifying suspected bugs",
+    "runId": "ca21be76-f5ad-4c62-8c8d-c8f63b9e27b3",
+    "callId": "toolu_01Kykp35fBS17r7BKMvWXEHt",
+    "tool": "execute",
+    "step": {
+     "id": "4f5298f2-d076-44e0-8704-2810c6470e16",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "\nOK\na on for eu: True True\nx mutated: 2\nmissing vs \"none\": True\nTrue vs \"true\": True\n\n[exit 0]",
+    "runId": "ca21be76-f5ad-4c62-8c8d-c8f63b9e27b3",
+    "callId": "toolu_01Kykp35fBS17r7BKMvWXEHt",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 11,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "ebb51098-35d6-4f28-8369-119d58ff18d0",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "CAQSuwYKEAgTGAI4AUIIdGhpbmtpbmcSDCHhObHI16jkLt/FBBoM1K/GLuEeuroQfcRsIjAGPVwKmlnCoI7J/MAlcN+TlXLyXhgRvZdok+l5uJF72PtuqN9mZRKaeLlIakbBDfsq2AUFgzdhb4h2BAh4quGsk8Ysr/507Ak1oxDMQg2tJyYb3taZzM1XMPLbbr4imTyg6YiOGaatSpNMWLZlkDKNJPuj1kqDKLT9ZK0ybIwf+gXjIniqmxjMzzKa19Iqzxku8O3nDathQ4CpVDuSXuQA0dD9XJ5kM/a+8XStAJ0XPzIIz7JYYum3z4Iz86zY8ilTcw87PWpAIAtp0U5jevNzp2Wmi4vm1IYDoE8bmX8OWi2AcnOT7GihtkZTgZ6CLwtmvaUvaspr/7NSSXhjRHDEVefanGOArfMc7QKbl0X3D01vRou5ljlSZyL611FkeYEdHzk4yspzb6/VLCLe36ily8aDvua5nzdevqs8vu2nDuHEcMhipqPMJLIAjMS58i/8K0CtEejM1wtrvIPJJATF+VzfQknDBNlb7cvDXMXLKk+jPCizafldVtpLrcPkeI+LHV6HLWEQ1lt6vTcqNOSpkie4qJcIU0E0mlNEgvJgNCs6MIiXzo3ZTBYCu6+3xqDW54Q1Qg855yj9F84gBEWYbFMCVwcFdxXj5OgsT+LadCaqcB6nOIZgZcudPJBW+9KR9HLHGvkQguPjjIemIIi1tsbufRdfWmBXEa/YnJmd69ZGEaNktm+8ri0SHtiB1Ig+fthI2INqrzUgFRWnzbLSCVFIHg3lzz3paqBQyTi7+4a1iuy5n/20xH7Gbi1YEr2daX7UwRDTb0x7Umso/nw+NMrmP/tgI2WUqIqAWFUJAjtFBdbmo9S8Mg6G3NKmeLvIdJLvBwSFirTc4EKPYJKpONJSKT89hDM+EpaS/LwSThjpFyAWpUfMT1oqNnNvR/EjbweNTHeBo8x/3qC9DVXOB3OZ+zm8hsCHFQzGwFqnzfxlom0xuy5Ckevj6g/Q5YV0f52BYt7Gu21ocvu22rzMM9LYfg/fI2oPAemvR+Tm/TM/ggrXrRETHhvhnT78iHU7qRO69JljHyhb2hgB",
+    "thinking": "Looking at the rollout logic, a percent above 100 still works without error. A non-string user_id would crash it, and the modulo bias is negligible. The tests pass, so this part is fine.\n\n",
+    "runId": "ca21be76-f5ad-4c62-8c8d-c8f63b9e27b3",
+    "step": {
+     "id": "ebb51098-35d6-4f28-8369-119d58ff18d0",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 12,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "ebb51098-35d6-4f28-8369-119d58ff18d0",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794153340216,
+    "workFinishedAt": 1794153363400,
+    "text": "I wouldn't merge this yet. Two bugs break the README's promise that \"flags are independent\", and I reproduced both. I made no code changes. The tests pass, but they don't cover either bug.\n\n**CRITICAL**\n\n1. `flags/registry.py:13`: `add_rule(flag_name, rule, rules=[])` uses one default list for every call. Any flag built without an explicit `rules` argument shares the same list with all the others. I checked it: `add_rule('a', {'plan':'pro'})`, then `add_rule('b', {'region':'eu'})`, and flag `a` is now on for `{'region':'eu'}`. A rule added to one flag turns on every flag built the same way, process-wide.\n   Fix: `rules=None`, then build a new list: `rules = list(rules or []) + [rule]`.\n\n2. `flags/registry.py:14`: even when you pass `rules`, the function appends to the caller's list. The README's chaining pattern (`add_rule(..., prev.rules)`) quietly changes the previous flag too. I checked this as well: the earlier flag went from 1 rule to 2.\n   Fix: the same copy-on-add as #1, so the passed list is never changed.\n\n3. `flags/match.py:2`: matching now runs everything through `str(...).lower()`, which makes some unrelated values equal:\n   - A missing field becomes `\"none\"`, so `{'plan': 'none'}` (or a `None` rule value) matches a context that has no `plan` at all. Confirmed.\n   - `True` matches `\"TRUE\"` and `\"true\"`, and `1` matches `\"1\"`. That's wider than the \"str/int\" that `docs/flags.md` describes.\n\n   For the config everything reads, this means flags can turn on for contexts that are missing a field.\n   Fix: treat a missing key as no match (`k in context and …`). Then only normalise str and int (for example, strip and lowercase strings, and turn ints into strings), and don't touch other types.\n\n**INFORMATIONAL**\n\n4. `tests/test_registry.py`: every test passes an explicit `[]`, which is exactly why #1 and #2 slip through.\n   Fix: add tests that build two flags without `rules`, and that check chaining leaves the earlier flag unchanged. Also add a test for a field that's missing from the context.\n\n5. `flags/rollout.py:4`: `in_rollout` crashes with an `AttributeError` if `user_id` is a number rather than a string. That's likely if IDs come from the database.\n   Fix: hash `str(user_id)`.\n\nYour call on #3, since it changes matching behaviour: should matching be loose like the docs say, or only cover str and int? Once you decide, the fixes for #1 and #2 are a couple of lines.",
+    "runId": "ca21be76-f5ad-4c62-8c8d-c8f63b9e27b3",
+    "step": {
+     "id": "ebb51098-35d6-4f28-8369-119d58ff18d0",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

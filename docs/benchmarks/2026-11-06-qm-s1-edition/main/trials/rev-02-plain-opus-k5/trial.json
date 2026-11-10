@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-02-plain-opus-k5",
+  "task_id": "rev-02",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 5,
+  "status": "ok",
+  "reply_text": "I reviewed both commits on feature/webhook-retries against main. One bug should be fixed before you merge. The rest are smaller points. The test suite passes, but no test covers the bug below. I didn't change anything in the repo.\n\n**Must fix: a failed delivery now makes `deliverAll` reject**\nIn `src/deliver.js`, `deliverOnce` returns the retry promise without awaiting it:\n```js\ntry {\n  return withRetries(...).then(() => ({ id: sub.id, ok: true }));\n} catch (err) { ... }\n```\nThe promise is returned unsettled, so when it rejects, the `try/catch` never sees it. I ran it with an endpoint that always fails, and `deliverAll` rejected with `HTTP 500` instead of returning `{ id, ok: false }`. That has three effects:\n- It breaks what the README promises: `deliverAll` \"never rejects\".\n- Nothing gets written to the dead-letter log.\n- Any subscriptions after the broken one never get the event, which is exactly the case the README says can't happen.\n\nThe fix is `return await withRetries(...)` (or await it and then return the result). It's worth adding a `deliverAll` test where one endpoint always fails and checking that the others still get the event and that a dead letter is recorded.\n\n**Worth considering**\n- **Every error gets retried.** That includes 4xx responses like 400, 401, 404 and 410, which won't succeed on a retry. You may want to retry only network errors, 5xx and 429.\n- **Delivery can be slow.** Deliveries run one after another, and with the defaults each failing endpoint adds about 1.4 s of waiting plus up to 4 request timeouts. A few dead endpoints will hold up delivery to every subscription after them. This is fine if you expect it, but maybe say so in the README.\n- **The timing metric counts each attempt separately.** It sits in `HttpTransport.post`, so it records one timing per attempt, not per delivery. That's probably what you want, but the dashboards should know.\n- **The metric depends on `metrics` being passed in.** `HttpTransport` now calls `this.metrics.timing` every time. Anyone who creates a transport without `metrics` will get a TypeError on every post, and that will then be retried. A no-op default (`metrics = { timing() {} }`) would avoid that.\n- **Backoff delays have no jitter.** Many subscribers failing at the same moment will all retry in sync. This is minor.\n\n**Looks good**\n- `withRetries` is correct: it tries once plus `retries` more times, and the waits are 200, 400 and 800 ms, matching the README.\n- `options.retries ?? 3` correctly allows `retries: 0`.\n- The `try/finally` timing records failures too.\n- The changelog, the version bump to 2.4.0 and the README all match the change.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-02-plain-opus-k5",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.06901399999999999,
+    "input_tokens": 54179,
+    "output_tokens": 1612,
+    "cached_tokens": 50340,
+    "cache_write_tokens": 3364,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000054,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.06896,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 19.396,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-02-plain-opus-k5",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:17:53.031Z",
+    "images": {
+      "core": "sha256:b72940b562e6c53aae6afc83a7f0b64341c2e8cbe63023fe872152ab58a99891",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-3a26d194453c",
+        "id": "sha256:0268e269edf759dbe9c723ff717a005f1b59c473dd874dce55665f0c7d8a1437",
+        "tree_sha256": "c208ff327280307b6950c2f57457566eda2bb2818ae3d15f4d56c3022288fbfc"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-c63254c7-531a-4c37-bb8c-dc6e7ef4-028516"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:18:35.667Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git log --oneline main..HEAD; git status -s; git diff main...HEAD",
+          "code": 0,
+          "output": "f6889d5 Time each webhook request\n7f610e1 Retry failed deliveries with backoff\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex aa436e0..0e448f9 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,10 @@\n # Changelog\n \n+## 2.4.0\n+\n+- Failed deliveries are retried with backoff.\n+- Request timing met"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-02-plain-opus-k5",
+      "meter": {
+        "requests": 5,
+        "usd": 0.06901399999999999,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.06901399999999999,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000054
+    }
+  }
+}

@@ -1,4 +1,4 @@
-// Vendored from gstack-evals (#private-link-removed) at 81daa79abcf86ddbd15409da0b78cd4d98e835b4, src/runner/stats/sizing.ts. MIT License, Copyright (c) 2026 Garry Tan.
+// Vendored from gstack-evals (https://github.com/garrytan/gstack-evals) at 81daa79abcf86ddbd15409da0b78cd4d98e835b4, src/runner/stats/sizing.ts. MIT License, Copyright (c) 2026 Garry Tan.
 // gstack-evals (U2): how many tasks a paired, task-clustered test needs, and the parity sizing tables of plan v3.2
 // (decision 9 and "Statistics, power and the main loop") and Amendment A2 (the release split).
 //

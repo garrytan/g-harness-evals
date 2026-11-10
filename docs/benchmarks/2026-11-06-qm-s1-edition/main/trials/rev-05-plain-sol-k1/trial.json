@@ -1,0 +1,155 @@
+{
+  "trial_id": "rev-05-plain-sol-k1",
+  "task_id": "rev-05",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "Found one merge-blocking issue:\n\n**[P1] View-only shares can edit unlocked documents — `src/guard.js:12`**\n`share.mask & WRITE === WRITE` parses as `share.mask & (WRITE === WRITE)`, which effectively checks the **READ** bit instead of WRITE.\n\nConfirmed:\n- `{ mask: READ, locked: false }` → `canEdit()` returns **true**, granting viewers edit access.\n- `{ mask: WRITE, locked: false }` → returns **0**, denying a share with WRITE permission.\n\nUse `hasRight(share.mask, WRITE)` or parenthesize `(share.mask & WRITE) === WRITE`. Add tests for an unlocked viewer being denied and a WRITE-only share being allowed—the current editor test has both bits, so it misses this.\n\nAll 6 existing tests pass. No other concrete issues found in the diff against `main`. No files changed.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-05-plain-sol-k1",
+    "requests": 9,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0459208,
+    "input_tokens": 71704,
+    "output_tokens": 1040,
+    "cached_tokens": 59390,
+    "cache_write_tokens": 11994,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-6.1-sol": {
+        "usd": 0.045792,
+        "requests": 8
+      },
+      "openai:gpt-5.6-luna": {
+        "usd": 0.00012880000000000001,
+        "requests": 1
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 9
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 20.013,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-05-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:00:52.046Z",
+    "images": {
+      "core": "sha256:ec9867c674526aea911eb4b0f8375fd94b6177daff69d0cd5324a28fae888797",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-896e49561fcd",
+        "id": "sha256:4e0344d2ce83962d9c558e674a1314a313ff4f9db2ba03957a4d67825fb38d73",
+        "tree_sha256": "3745319e560b5b3779257b8b6020c6313b748cb359283f6ff59062054bfd97dd"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-a38a6c3f-34f0-4a94-9298-f31dd159-47c2b9"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:01:35.906Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/e72b1252d05972b63bf59fe9/36ae894965469bb3/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/e72b1252d05972b63bf59fe9/36ae894965469bb3/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 12,
+          "command": "cd /root/workspace/repo && git diff --stat main...share-editing && git diff main...share-editing && cat README.md package.json && find src test -type f",
+          "code": 0,
+          "output": " CHANGELOG.md        |  4 ++++\n README.md           | 12 ++++++++++++\n package.json        |  2 +-\n src/guard.js        | 12 ++++++++++--\n src/ownership.js    | 11 +++++++++++\n src/rights.js       |  6 +++++-\n test/guard.test.js  | 16 ++++++++++++++--\n test/rights.test.js | 16 ++++++++++++++++\n 8 fi"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-05-plain-sol-k1",
+      "meter": {
+        "requests": 9,
+        "usd": 0.0459208,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 9,
+        "usd": 0.0459208,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.00012880000000000001
+    }
+  }
+}

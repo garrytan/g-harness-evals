@@ -1,4 +1,4 @@
-// Ported from gstack-evals (#private-link-removed) tests/stats/sizing.test.ts at 81daa79abcf86ddbd15409da0b78cd4d98e835b4.
+// Ported from gstack-evals (https://github.com/garrytan/gstack-evals) tests/stats/sizing.test.ts at 81daa79abcf86ddbd15409da0b78cd4d98e835b4.
 import { describe, expect, test } from 'bun:test';
 import {
   coveredSd, DECISION_9_DESIGNS, type Decision9Design, decision9Table, exactTasks, minimumDetectable, PARITY_EFFECT, parityDesign, RELEASE_OPTIONS,

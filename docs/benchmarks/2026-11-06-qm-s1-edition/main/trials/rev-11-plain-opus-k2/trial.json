@@ -1,0 +1,156 @@
+{
+  "trial_id": "rev-11-plain-opus-k2",
+  "task_id": "rev-11",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 2,
+  "status": "ok",
+  "reply_text": "**Hold the merge: there's a SQL injection in the free-text search.** Tests pass (5 of 5). Nothing else is blocking, but I found a few smaller issues. I didn't change anything.\n\n**Must fix**\n\n1. **SQL injection in `src/query.js`.** The search term is pasted straight into the SQL:\n   ```js\n   clauses.push(\"name ILIKE '%\" + term + \"%'\");\n   ```\n   A term like `x' OR '1'='1` changes the query. The README says request values must never be put into the SQL string. To fix it, push the value into the params list and use a placeholder like the category filter does:\n   ```js\n   params.push('%' + term + '%');\n   clauses.push('name ILIKE $' + params.length);\n   ```\n   You may also want to escape `%`, `_` and `\\` inside the term so users can't send their own wildcards. Also skip the term if it's empty after trimming. Right now `\"   \"` becomes `ILIKE '%%'`, which matches every product.\n\n**Should fix**\n\n2. **Bad sort values in `src/sort.js`.** `SORTS[sort] || …` also finds built-in object properties. So `sort=constructor` or `sort=toString` returns a function, and that function's source code ends up in the `ORDER BY`. Check the key with `Object.hasOwn(SORTS, sort)`, or build the map with `Object.create(null)`.\n3. **The `relevance` sort may not work.** It's the default and sorts by `rank`, but nothing on this branch creates a `rank` column. ILIKE doesn't produce one. Unless the base query already has it, every default search will fail.\n4. **Renaming `buildFilters` to `buildWhere` breaks existing callers.** Nothing in this repo uses it anymore, but any code outside the repo that calls `buildFilters` will break, and the version only goes up to 0.6.0. Either keep `buildFilters` as an alias or note the rename in the changelog.\n5. **Weaker tests.** The `inStock` test was removed rather than renamed. The new term tests only check that `name ILIKE` appears in the output, so they would pass with or without the injection bug. Add tests that check the term goes into `params` and that a term with a `'` in it can't change the SQL.\n\n**Minor**\n\n6. **Pagination edge cases in `src/paginate.js`:**\n   - `| 0` changes a non-number page size (like `\"abc\"`) to 0, which then becomes a page size of 1, not the default 20.\n   - Very large page numbers can turn negative, which then becomes page 1.\n   - Pages have no upper limit, so `page=1e6` produces a very large offset.\n   - `MAX_PAGE` is actually the maximum page *size*, so the name is misleading.\n7. **Changelog** mentions sort orders but not pagination or the rename.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-11-plain-opus-k2",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.09760200000000001,
+    "input_tokens": 73995,
+    "output_tokens": 1751,
+    "cached_tokens": 67378,
+    "cache_write_tokens": 6151,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000050400000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0975516,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 21.137,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-11-plain-opus-k2",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T15:06:25.394Z",
+    "images": {
+      "core": "sha256:d3c15a4ff59b46b682cc0b498a5b96d657f86e2d1ac9a8b947b4fb5d8b1c3302",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-a37a4db49ad7",
+        "id": "sha256:6c659f1b0432cea1eb0db9b19f43ea8bfa0f2f02c7a83d5ad91b5d10171f8a8e",
+        "tree_sha256": "593d02dc02e96eab384f83c52971c5fda6586bcbeb5e6f14ef27e349edfe0b1b"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-b12d248e-9fad-48ad-a077-cf705d2d-04aec9"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T15:07:10.078Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /tmp/pi-cwd/repo; git branch -a; git log --oneline main..search-filters; git diff main...search-filters",
+          "code": 129,
+          "output": "[stderr]\nsh: 1: cd: can't cd to /tmp/pi-cwd/repo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_A"
+        },
+        {
+          "seq": 6,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..search-filters; git diff main...search-filters",
+          "code": 0,
+          "output": "  main\n* search-filters\n54f7b81 Paginate search results\n306a556 Add free-text search over the name\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex d29661f..a673868 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.6.0\n+\n+- Free-text product search and sort orders.\n+\n #"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-11-plain-opus-k2",
+      "meter": {
+        "requests": 6,
+        "usd": 0.09760200000000001,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.09760200000000001,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000050400000000000005
+    }
+  }
+}

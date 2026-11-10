@@ -1,0 +1,301 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 05:14 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "ebf1e057-cfa3-4ec6-8049-b26cbc2f99f7"
+    },
+    "text": "Could you review my retries branch (feature/webhook-retries) against main? I'd like a second pair of eyes before merging. Review only, I'll make any changes myself.",
+    "runId": "7207a49a-5cec-4745-a4ee-e101dd39165a"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "5bb34544-8aac-4013-81ed-33f439a7b375",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "I'll take a look at the branch now.",
+    "runId": "7207a49a-5cec-4745-a4ee-e101dd39165a",
+    "step": {
+     "id": "5bb34544-8aac-4013-81ed-33f439a7b375",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "5bb34544-8aac-4013-81ed-33f439a7b375",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /tmp/pi-cwd 2>/dev/null; ls; git -C . rev-parse --show-toplevel 2>&1; ls ~ ; find / -maxdepth 4 -name .git -type d 2>/dev/null | head\",\"purpose\":\"Locating the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /tmp/pi-cwd 2>/dev/null; ls; git -C . rev-parse --show-toplevel 2>&1; ls ~ ; find / -maxdepth 4 -name .git -type d 2>/dev/null | head",
+    "purpose": "Locating the repository",
+    "runId": "7207a49a-5cec-4745-a4ee-e101dd39165a",
+    "callId": "toolu_01KAuJixbnVxwxPQZJd5PbxP",
+    "tool": "execute",
+    "step": {
+     "id": "5bb34544-8aac-4013-81ed-33f439a7b375",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "repo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nworkspace\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "7207a49a-5cec-4745-a4ee-e101dd39165a",
+    "callId": "toolu_01KAuJixbnVxwxPQZJd5PbxP",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "b17dd4c4-4075-4b28-b33b-e8ca0346aaac",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; git branch -a; git log --oneline main..feature/webhook-retries; git diff main...feature/webhook-retries\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..feature/webhook-retries; git diff main...feature/webhook-retries",
+    "purpose": "Reading the branch diff",
+    "runId": "7207a49a-5cec-4745-a4ee-e101dd39165a",
+    "callId": "toolu_01A6ygJqAMc55kVqN6twzpPS",
+    "tool": "execute",
+    "step": {
+     "id": "b17dd4c4-4075-4b28-b33b-e8ca0346aaac",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* feature/webhook-retries\n  main\nf6889d5 Time each webhook request\n7f610e1 Retry failed deliveries with backoff\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex aa436e0..0e448f9 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,10 @@\n # Changelog\n \n+## 2.4.0\n+\n+- Failed deliveries are retried with backoff.\n+- Request timing metric webhook.post_ms.\n+\n ## 2.3.0\n \n - Signed webhook delivery.\ndiff --git a/README.md b/README.md\nindex d46b220..783052d 100644\n--- a/README.md\n+++ b/README.md\n@@ -7,3 +7,7 @@ Outbound webhooks for hookline.\n deliverAll(transport, subscriptions, event) posts the event to every subscription, one after another, and resolves to one result per subscription: { id, ok }.\n \n It never rejects. A delivery that fails is written to the dead-letter log (src/dead-letters.js) and reported as { id, ok: false }, so one broken endpoint never stops the others.\n+\n+## Retries\n+\n+Each delivery is tried once and then retried up to options.retries times (default 3), so an endpoint sees at most 4 requests per event. Retries wait 200 ms, 400 ms, then 800 ms.\ndiff --git a/package.json b/package.json\nindex 7e89c7e..5727026 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"hookline\",\n-  \"version\": \"2.3.0\",\n+  \"version\": \"2.4.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/deliver.js b/src/deliver.js\nindex 9eaa956..8f19dc1 100644\n--- a/src/deliver.js\n+++ b/src/deliver.js\n@@ -1,21 +1,24 @@\n const { sign } = require('./sign');\n const deadLetters = require('./dead-letters');\n+const { withRetries } = require('./retry');\n \n-async function deliverOnce(transport, sub, body) {\n+const DEFAULT_RETRIES = 3;\n+\n+async function deliverOnce(transport, sub, body, retries, delayMs) {\n   const headers = { 'content-type': 'application/json', 'x-signature': sign(sub.secret, body) };\n   try {\n-    await transport.post(sub.url, body, headers);\n-    return { id: sub.id, ok: true };\n+    return withRetries(() => transport.post(sub.url, body, headers), retries, delayMs).then(() => ({ id: sub.id, ok: true }));\n   } catch (err) {\n     deadLetters.record(sub.id, err.message);\n     return { id: sub.id, ok: false };\n   }\n }\n \n-async function deliverAll(transport, subs, event) {\n+async function deliverAll(transport, subs, event, options = {}) {\n   const body = JSON.stringify(event);\n+  const retries = options.retries ?? DEFAULT_RETRIES;\n   const results = [];\n-  for (const sub of subs) results.push(await deliverOnce(transport, sub, body));\n+  for (const sub of subs) results.push(await deliverOnce(transport, sub, body, retries, options.delayMs));\n   return results;\n }\n \ndiff --git a/src/http-transport.js b/src/http-transport.js\nindex 94490b3..1df9690 100644\n--- a/src/http-transport.js\n+++ b/src/http-transport.js\n@@ -5,6 +5,15 @@ class HttpTransport {\n   }\n \n   async post(url, body, headers) {\n+    const started = Date.now();\n+    try {\n+      return await this.send(url, body, headers);\n+    } finally {\n+      this.metrics.timing('webhook.post_ms', Date.now() - started);\n+    }\n+  }\n+\n+  async send(url, body, headers) {\n     const res = await this.fetch(url, { method: 'POST', body, headers });\n     if (!res.ok) throw new Error('HTTP ' + res.status);\n     return res;\ndiff --git a/src/retry.js b/src/retry.js\nnew file mode 100644\nindex 0000000..dda9ff7\n--- /dev/null\n+++ b/src/retry.js\n@@ -0,0 +1,16 @@\n+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));\n+\n+async function withRetries(fn, retries, delayMs = 200) {\n+  let lastError;\n+  for (let attempt = 0; attempt <= retries; attempt++) {\n+    if (attempt > 0) await sleep(delayMs * 2 ** (attempt - 1));\n+    try {\n+      return await fn();\n+    } catch (err) {\n+      lastError = err;\n+    }\n+  }\n+  throw lastError;\n+}\n+\n+module.exports = { withRetries };\ndiff --git a/test/http-transport.test.js b/test/http-transport.test.js\nnew file mode 100644\nindex 0000000..d5088de\n--- /dev/null\n+++ b/test/http-transport.test.js\n@@ -0,0 +1,10 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { HttpTransport } = require('../src/http-transport');\n+\n+test('records a timing for each post', async () => {\n+  const timings = [];\n+  const t = new HttpTransport(async () => ({ ok: true, status: 200 }), { timing: (name, ms) => timings.push(name) });\n+  await t.post('https://a.test/hook', '{}', {});\n+  assert.deepStrictEqual(timings, ['webhook.post_ms']);\n+});\ndiff --git a/test/retry.test.js b/test/retry.test.js\nnew file mode 100644\nindex 0000000..51dcfe9\n--- /dev/null\n+++ b/test/retry.test.js\n@@ -0,0 +1,16 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { withRetries } = require('../src/retry');\n+\n+test('a flaky call succeeds on a retry', async () => {\n+  let calls = 0;\n+  const result = await withRetries(async () => { calls++; if (calls < 3) throw new Error('flaky'); return 'done'; }, 3, 0);\n+  assert.strictEqual(result, 'done');\n+  assert.strictEqual(calls, 3);\n+});\n+\n+test('gives up after the first try plus the retries', async () => {\n+  let calls = 0;\n+  await assert.rejects(withRetries(async () => { calls++; throw new Error('down'); }, 2, 0), /down/);\n+  assert.strictEqual(calls, 3);\n+});\n\n[exit 0]",
+    "runId": "7207a49a-5cec-4745-a4ee-e101dd39165a",
+    "callId": "toolu_01A6ygJqAMc55kVqN6twzpPS",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "873a66c8-68e3-4488-95be-7d0c08c0e4d2",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQSrgcKEAgTGAI4AUIIdGhpbmtpbmcSDL87uWkU+NKZF/O43BoMG+Iob2Tb+UYUHUy0IjCC5vDurTHO9seyPjxdAOyzFphYbTWokg9uFDPyfnsSBQCwQzdqK1BGluYkkWOXDVEqywYSqyuHAr5xrp0t2rj1CZlBKIKlo7ugW/2NZ91wEUzg3RtS2XAkbzxei7AkteDf4Z339Au93nJ2I/gMkZyc27NB8zPjWDV7ITtBBx0uUNw8gYwhgZtrTa/96feBeCy0t1YVbcb7XQjgXUvunNOG2GstLR5upL82erJZMtj15Kw1+mdR4ouhzABs3/tct/7Wt5YY4To0PVA/5qhI1EjWKBNANSHN7ISWe40qBV6tGm2+3hDdBR9QaI5l4ulYf8rK6AofBDupGrhq55N/O0O/RU/gtmbduQmqajupFVayLhh0gf2MtUW3YV2D9O6T+AmAbu+eOCtfd4O7mpvjJv/Q/TPgMBLIG7tyRze7YOnIwMk04gPuisVujukq8J0q5fVDLqXopDwMzLrvspyEpThb33mHoe8UKGhI0lHGhXj5INwYAWa2xqZQQiMlRHIsyVi4kGpoT+w4SX8N6Gs/nrtyQHeLRfQPKCVCGsNX8QMWcPymE8EGWHp2Qa4dch5MvawwgOpJbhFYAMOy03ihjW+M/AHYr/nyx/z6GKUMieasJ2VTnxVzNculI67UGi+GtYje5dcms+MFZeljx5Y0vlrAwiDiVxmKJ5E67zBlvC7xBiJKRKSHlT3ybg/7dRGnF0kvyJr0RvASWKnI1CY6AyV0bvo/d+SqsRRDEe6V95HffM/OcJlE7+eFLDAXySNCLrbm/CPMN2zHkY7s3hjo/AUqjvGcbhwx2LnKaRuDzR5rVYqq4+7NE9gcJsdJE9WyvoGb5GGo/j2YffqayXQjJDtOXIkpR36HZzP0VIMEOISjW57IPDTl/LAUg5bkxXVKD9pmjMOqZHHpo/uDbhnXyabY5eJDuo759Zc+N4TEtkdL5tiK3Y/cCsG4N0ioWB0AvhIutshmV3uuQe6PP5EVLSXWLELxVYAY45k6A/adthhoTlW4vtz8RLystE9ZfZsGncOPUzhE1Vwqr89uSq3LuQIUoIAvXT63PTSKUrC6ANQEzJ+r1iWN2jlk1VvU5kJJ+wfRCjLF7+1tQ7FyD2u0yODb68S7d/0WrbALzz3vLWQG+yfGLUS7fTHHH4IpwjuEPhssbQrrZapnWTX3mKx+eUrtxKfsHBKbQ0Hw2McCwpAYAQ==",
+    "thinking": "I've spotted the main bug: the `withRetries(...).then(...)` call is returned inside the try without an await, so a rejection skips the catch and `deliverAll` rejects instead of writing a dead letter. That breaks the \"never rejects\" requirement. I'll confirm it with a quick test and repro, then check the deliver tests on main and the http-transport constructor's metrics field.\n\n",
+    "runId": "7207a49a-5cec-4745-a4ee-e101dd39165a",
+    "step": {
+     "id": "873a66c8-68e3-4488-95be-7d0c08c0e4d2",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "873a66c8-68e3-4488-95be-7d0c08c0e4d2",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; cat src/http-transport.js; ls test; npm test 2>&1 | tail -8; cat > /tmp/r.js <<'E'\\nconst {deliverAll}=require('/root/workspace/repo/src/deliver');\\ndeliverAll({post:async()=>{throw new Error('down')}},[{id:'a',url:'u',secret:'s'},{id:'b',url:'u',secret:'s'}],{x:1},{retries:1,delayMs:0}).then(r=>console.log('resolved',r),e=>console.log('REJECTED',e.message));\\nE\\nnode /tmp/r.js\",\"purpose\":\"Running tests and reproducing\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; cat src/http-transport.js; ls test; npm test 2>&1 | tail -8; cat > /tmp/r.js <<'E'\nconst {deliverAll}=require('/root/workspace/repo/src/deliver');\ndeliverAll({post:async()=>{throw new Error('down')}},[{id:'a',url:'u',secret:'s'},{id:'b',url:'u',secret:'s'}],{x:1},{retries:1,delayMs:0}).then(r=>console.log('resolved',r),e=>console.log('REJECTED',e.message));\nE\nnode /tmp/r.js",
+    "purpose": "Running tests and reproducing",
+    "runId": "7207a49a-5cec-4745-a4ee-e101dd39165a",
+    "callId": "toolu_01Si1JdMmAKfqYAxg28anFu5",
+    "tool": "execute",
+    "step": {
+     "id": "873a66c8-68e3-4488-95be-7d0c08c0e4d2",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "class HttpTransport {\n  constructor(fetchImpl, metrics) {\n    this.fetch = fetchImpl;\n    this.metrics = metrics;\n  }\n\n  async post(url, body, headers) {\n    const started = Date.now();\n    try {\n      return await this.send(url, body, headers);\n    } finally {\n      this.metrics.timing('webhook.post_ms', Date.now() - started);\n    }\n  }\n\n  async send(url, body, headers) {\n    const res = await this.fetch(url, { method: 'POST', body, headers });\n    if (!res.ok) throw new Error('HTTP ' + res.status);\n    return res;\n  }\n}\n\nmodule.exports = { HttpTransport };\ndeliver.test.js\nhttp-transport.test.js\nretry.test.js\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 93.806667\nnpm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\nREJECTED down\n\n[exit 0]",
+    "runId": "7207a49a-5cec-4745-a4ee-e101dd39165a",
+    "callId": "toolu_01Si1JdMmAKfqYAxg28anFu5",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "5c94b401-a56a-4bcc-aa86-dcb2c4a1e3ac",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; npm test 2>&1 | grep -E \\\"^ℹ (tests|pass|fail)\\\"; cat test/deliver.test.js; git show main:src/http-transport.js | head -5\",\"purpose\":\"Checking test coverage\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; npm test 2>&1 | grep -E \"^ℹ (tests|pass|fail)\"; cat test/deliver.test.js; git show main:src/http-transport.js | head -5",
+    "purpose": "Checking test coverage",
+    "runId": "7207a49a-5cec-4745-a4ee-e101dd39165a",
+    "callId": "toolu_011FBDUd4VzG81dYvgB7SeXz",
+    "tool": "execute",
+    "step": {
+     "id": "5c94b401-a56a-4bcc-aa86-dcb2c4a1e3ac",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "ℹ tests 4\nℹ pass 4\nℹ fail 0\nconst test = require('node:test');\nconst assert = require('node:assert');\nconst { deliverAll } = require('../src/deliver');\n\ntest('every subscription gets the event', async () => {\n  const seen = [];\n  const transport = { post: async (url) => { seen.push(url); } };\n  const subs = [{ id: 'a', url: 'https://a.test/hook', secret: 's' }, { id: 'b', url: 'https://b.test/hook', secret: 's' }];\n  assert.deepStrictEqual(await deliverAll(transport, subs, { type: 'ping' }), [{ id: 'a', ok: true }, { id: 'b', ok: true }]);\n  assert.deepStrictEqual(seen, ['https://a.test/hook', 'https://b.test/hook']);\n});\nclass HttpTransport {\n  constructor(fetchImpl, metrics) {\n    this.fetch = fetchImpl;\n    this.metrics = metrics;\n  }\n\n[exit 0]",
+    "runId": "7207a49a-5cec-4745-a4ee-e101dd39165a",
+    "callId": "toolu_011FBDUd4VzG81dYvgB7SeXz",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 11,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "19d8afb9-c6ab-4d9a-9022-5131220bcc75",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "CAQSiQgKEAgTGAI4AUIIdGhpbmtpbmcSDMD8+P3DXHnCeBJE7hoMRypcpDAsjbymPAXsIjCdlovxCoyvAoHBBVwMZg39tdVBLiiqk1KYWKaDzGu3WOGSuLZ/lI5D7Xp4XbAfLVAqpgeNU1zs8So+maP2qGHZmPXqpcZCeeUNlicaZZpC0MPpj7YUG/DBbhLpTU2HYGgl9Z70VgQptT3TH+mVtdeiE3DBOz5t5h30PlyZxspOhIlkShqEZNvYNJfXobvZhk8gLQ/qxCjYr3puab+Xe0ZsaEeCsmkh4iMndVbRNU7OuKPyl0RzhfnMXQn5QX2Aiba8oH5SuVUO2ogn+NEBVuZSWedh19SBVRzlldA7rqUgaC4U1myL7dOyQRIf33sDnXhLeDevyoYnF46vR0vQo203Gk5ibcy/LdYautN94ZU5HKOTi35s+2mwVpAdvpJkQxoJt6CKlTCJalLj2RdLS/iPejuhAUxcTlxerez7R45MDZCm+BHzG8c6ZoOyue0GQxtutndzsve3FCJVUAXcRkPGQvvx55Zg4UOvQHED5r2OkjCJ+ScqUhLhIMbXuphP7nZRvzI9i+MWWZ2PiDgpxNHSOmNx7oizheZoCWPg01safe5QNPx9lerTNnWzkGf0iNHiqha4v8PeRE/Q/8G4Vp2vQVoo6DTfl/vr1nS39gouO/6fsHbnhINsPW5rPkSolAeX3G+Kw2HH05nYyIkypINjdxy6QwfR1opr0Y82fimxsat/lQeBJUPnPPzSjoyHENMz4dB/lldRQ68gw7fmzkglkOEp6Fja/9wIqGyGjJ1Wu45jJRRR06xP9ik3PDJ5tglrhpXHCjLGUAeEmLXjhsiMWf0qXZp2GVmXi40fy3+XDObtZUmY9VUch6ZHVPOvT0F3QIcTEAeKSsWlOfxQIyYNBhj+WslTYpOsP/jGgxjNw52wBXUK4g+t4lim73PPcOQnCBpjGFqjllDwW8IqaB/JEgeXQecfGbD4mAD0zn4Zp+TamMfyqIXCvRLDskCDC3mGcKkHbcphJLSd/FVn5fWY301nUhkGD2iakXeiN+eKNZq8AIDbK8to8o1Ceh1k8uTO91orljo+TH4jeMi8VStJpVkzybutT/z2zLOf/XskGoJUx1JI/UtCEpjnh8barTxk3QcElPncFuSiJuW7FrCHwC19UjVdaEFWaZW6oMzELxlxslOeEdw+9h2hzhWfTP2ipImJjwYYvITiQsi9xLam60VT84jSdrXwMgt+COnXKUZzGWgT3W0SnuPvh3RSE2uPjbUWSYyGW7H5SRKCd8olCn0lHnJbP+dkSzeIbvxTrVcLo/Vwf4Y1rguLckUgiEOzWzK7DX90plff+lNfJu0ZhNKm5xN576yLGAE=",
+    "thinking": "I'm checking the per-attempt metrics timing, which looks fine, and the constructor already takes metrics on main, so an undefined value isn't a concern. The smaller issues I'm noting are a possible masked error from the timing call in the finally block, retries on 4xx responses, and the sequential delivery where one broken endpoint can hold up the others for up to 1.4 seconds.\n\n",
+    "runId": "7207a49a-5cec-4745-a4ee-e101dd39165a",
+    "step": {
+     "id": "19d8afb9-c6ab-4d9a-9022-5131220bcc75",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 12,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "19d8afb9-c6ab-4d9a-9022-5131220bcc75",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794143654646,
+    "workFinishedAt": 1794143675845,
+    "text": "I reviewed the branch: two commits, the retry helper and the request timing. All 4 tests pass, but there's one bug I'd fix before merging.\n\n**🔴 Blocker: a delivery that fails every retry now makes `deliverAll` reject**\n\nIn `src/deliver.js`, `deliverOnce` returns the retry promise without awaiting it:\n\n```js\ntry {\n  return withRetries(...).then(() => ({ id: sub.id, ok: true }));\n} catch (err) { ... }\n```\n\nBecause nothing is awaited inside the `try`, the `catch` never sees the error. When an endpoint fails every attempt:\n- `deliverAll` rejects. The README says it never does.\n- Nothing is written to the dead-letter log.\n- The subscriptions after the failing one never get the event, which is the \"one broken endpoint stops the others\" problem the README rules out.\n\nI ran a quick test against your branch with two always-failing subscriptions. `deliverAll` rejected with `down` instead of returning `[{id:'a',ok:false},{id:'b',ok:false}]`.\n\n**Fix:** `return await withRetries(...)`, or await it and then return `{ id: sub.id, ok: true }`.\n\n**🟡 Missing test:** this got through because `deliver.test.js` only covers the case where everything succeeds. A test where the transport always fails would have caught it: check for `ok: false` results, a dead-letter entry, and that later subscriptions still get the event. Passing `delayMs: 0` keeps it fast.\n\n**Smaller points (your call):**\n- **Slow broken endpoints hold up the rest.** Delivery is still one subscription at a time, so each dead endpoint adds about 1.4 s of waiting (200 + 400 + 800 ms) before the next subscription is tried. With several dead endpoints that adds up. You could mention it in the README or think about delivering in parallel later.\n- **Every error is retried, including 4xx.** A 400, 401 or 410 won't succeed on a retry, so it's 3 extra requests for nothing. You might retry only network errors, 5xx and 429.\n- **Timing is recorded per request, not per delivery.** A delivery that's retried shows up as up to 4 timings. That's fine if intended, but the CHANGELOG line could say so.\n- **A metrics error could hide the real error.** If `metrics.timing` throws inside the `finally`, its error replaces the real request error. That's only a problem if your metrics client can throw.\n\nThe rest looks good: the backoff matches the README, the default of 3 retries is wired through correctly, and the version and CHANGELOG are bumped. Once the missing `await` is fixed and covered by a test, I'd be happy with it. I didn't change anything on the branch.",
+    "runId": "7207a49a-5cec-4745-a4ee-e101dd39165a",
+    "step": {
+     "id": "19d8afb9-c6ab-4d9a-9022-5131220bcc75",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

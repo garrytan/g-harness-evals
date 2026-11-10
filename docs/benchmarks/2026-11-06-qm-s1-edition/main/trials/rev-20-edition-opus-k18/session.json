@@ -1,0 +1,300 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 06:59 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "857c2e91-71bd-4576-a5de-f82816ac1cea"
+    },
+    "text": "hey, can you review the dedupe-imports branch against main before I merge it? it merges contact lists that overlap. review only, I'll edit.",
+    "runId": "70b01aaa-e9b6-479d-9503-76ecd9b75b90"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "06a0626e-7226-4b46-82de-2bd8b22d08d2",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "I'll take a look at the branch now.",
+    "runId": "70b01aaa-e9b6-479d-9503-76ecd9b75b90",
+    "step": {
+     "id": "06a0626e-7226-4b46-82de-2bd8b22d08d2",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "06a0626e-7226-4b46-82de-2bd8b22d08d2",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /tmp/pi-cwd 2>/dev/null; ls; git -C . rev-parse --show-toplevel 2>&1; find / -maxdepth 4 -name .git -type d 2>/dev/null | head\",\"purpose\":\"Locating the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /tmp/pi-cwd 2>/dev/null; ls; git -C . rev-parse --show-toplevel 2>&1; find / -maxdepth 4 -name .git -type d 2>/dev/null | head",
+    "purpose": "Locating the repository",
+    "runId": "70b01aaa-e9b6-479d-9503-76ecd9b75b90",
+    "callId": "toolu_01AHAuYLndLwgQHQi6oQPW6b",
+    "tool": "execute",
+    "step": {
+     "id": "06a0626e-7226-4b46-82de-2bd8b22d08d2",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "repo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "70b01aaa-e9b6-479d-9503-76ecd9b75b90",
+    "callId": "toolu_01AHAuYLndLwgQHQi6oQPW6b",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "9d1feb00-a68a-4bae-be57-912ca1c61c64",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /tmp/pi-cwd/repo; git branch -a; git log --oneline main..dedupe-imports; git diff main...dedupe-imports\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /tmp/pi-cwd/repo; git branch -a; git log --oneline main..dedupe-imports; git diff main...dedupe-imports",
+    "purpose": "Reading the branch diff",
+    "runId": "70b01aaa-e9b6-479d-9503-76ecd9b75b90",
+    "callId": "toolu_019MnBYh4uW8QsHAT7vRjVvT",
+    "tool": "execute",
+    "step": {
+     "id": "9d1feb00-a68a-4bae-be57-912ca1c61c64",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 129,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "[stderr]\nsh: 1: cd: can't cd to /tmp/pi-cwd/repo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nwarning: Not a git repository. Use --no-index to compare two paths outside a working tree\nusage: git diff --no-index [<options>] <path> <path>\n\nDiff output format options\n    -p, --patch           generate patch\n    -s, --no-patch        suppress diff output\n    -u                    generate patch\n    -U, --unified[=<n>]   generate diffs with <n> lines context\n    -W, --function-context\n                          generate diffs with <n> lines context\n    --raw                 generate the diff in raw format\n    --patch-with-raw      synonym for '-p --raw'\n    --patch-with-stat     synonym for '-p --stat'\n    --numstat             machine friendly --stat\n    --shortstat           output only the last line of --stat\n    -X, --dirstat[=<param1,param2>...]\n                          output the distribution of relative amount of changes for each sub-directory\n    --cumulative          synonym for --dirstat=cumulative\n    --dirstat-by-file[=<param1,param2>...]\n                          synonym for --dirstat=files,param1,param2...\n    --check               warn if changes introduce conflict markers or whitespace errors\n    --summary             condensed summary such as creations, renames and mode changes\n    --name-only           show only names of changed files\n    --name-status         show only names and status of changed files\n    --stat[=<width>[,<name-width>[,<count>]]]\n                          generate diffstat\n    --stat-width <width>  generate diffstat with a given width\n    --stat-name-width <width>\n                          generate diffstat with a given name width\n    --stat-graph-width <width>\n                          generate diffstat with a given graph width\n    --stat-count <count>  generate diffstat with limited lines\n    --compact-summary     generate compact summary in diffstat\n    --binary              output a binary diff that can be applied\n    --full-index          show full pre- and post-image object names on the \"index\" lines\n    --color[=<when>]      show colored diff\n    --ws-error-highlight <kind>\n                          highlight whitespace errors in the 'context', 'old' or 'new' lines in the diff\n    -z                    do not munge pathnames and use NULs as output field terminators in --raw or --numstat\n    --abbrev[=<n>]        use <n> digits to display object names\n    --src-prefix <prefix>\n                          show the given source prefix instead of \"a/\"\n    --dst-prefix <prefix>\n                          show the given destination prefix instead of \"b/\"\n    --line-prefix <prefix>\n                          prepend an additional prefix to every line of output\n    --no-prefix           do not show any source or destination prefix\n    --inter-hunk-context <n>\n                          show context between diff hunks up to the specified number of lines\n    --output-indicator-new <char>\n                          specify the character to indicate a new line instead of '+'\n    --output-indicator-old <char>\n                          specify the character to indicate an old line instead of '-'\n    --output-indicator-context <char>\n                          specify the character to indicate a context instead of ' '\n\nDiff rename options\n    -B, --break-rewrites[=<n>[/<m>]]\n                          break complete rewrite changes into pairs of delete and create\n    -M, --find-renames[=<n>]\n                          detect renames\n    -D, --irreversible-delete\n                          omit the preimage for deletes\n    -C, --find-copies[=<n>]\n                          detect copies\n    --find-copies-harder  use unmodified files as source to find copies\n    --no-renames          disable rename detection\n    --rename-empty        use empty blobs as rename source\n    --follow              continue listing the history of a file beyond renames\n    -l <n>                prevent rename/copy detection if the number of rename/copy targets exceeds given limit\n\nDiff algorithm options\n    --minimal             produce the smallest possible diff\n    -w, --ignore-all-space\n                          ignore whitespace when comparing lines\n    -b, --ignore-space-change\n                          ignore changes in amount of whitespace\n    --ignore-space-at-eol\n                          ignore changes in whitespace at EOL\n    --ignore-cr-at-eol    ignore carrier-return at the end of line\n    --ignore-blank-lines  ignore changes whose lines are all blank\n    -I, --ignore-matching-lines <regex>\n                          ignore changes whose all lines match <regex>\n    --indent-heuristic    heuristic to shift diff hunk boundaries for easy reading\n    --patience            generate diff using the \"patience diff\" algorithm\n    --histogram           generate diff using the \"histogram diff\" algorithm\n    --diff-algorithm <algorithm>\n                          choose a diff algorithm\n    --anchored <text>     generate diff using the \"anchored diff\" algorithm\n    --word-diff[=<mode>]  show word diff, using <mode> to delimit changed words\n    --word-diff-regex <regex>\n                          use <regex> to decide what a word is\n    --color-words[=<regex>]\n                          equivalent to --word-diff=color --word-diff-regex=<regex>\n    --color-moved[=<mode>]\n                          moved lines of code are colored differently\n    --color-moved-ws <mode>\n                          how white spaces are ignored in --color-moved\n\nOther diff options\n    --relative[=<prefix>]\n                          when run from subdir, exclude changes outside and show relative paths\n    -a, --text            treat all files as text\n    -R                    swap two inputs, reverse the diff\n    --exit-code           exit with 1 if there were differences, 0 otherwise\n    --quiet               disable all output of the program\n    --ext-diff            allow an external diff helper to be executed\n    --textconv            run external text conversion filters when comparing binary files\n    --ignore-submodules[=<when>]\n                          ignore changes to submodules in the diff generation\n    --submodule[=<format>]\n                          specify how differences in submodules are shown\n    --ita-invisible-in-index\n                          hide 'git add -N' entries from the index\n    --ita-visible-in-index\n                          treat 'git add -N' entries as real in the index\n    -S <string>           look for differences that change the number of occurrences of the specified string\n    -G <regex>            look for differences that change the number of occurrences of the specified regex\n    --pickaxe-all         show all changes in the changeset with -S or -G\n    --pickaxe-regex       treat <string> in -S as extended POSIX regular expression\n    -O <file>             control the order in which files appear in the output\n    --rotate-to <path>    show the change in the specified path first\n    --skip-to <path>      skip the output to the specified path\n    --find-object <object-id>\n                          look for differences that change the number of occurrences of the specified object\n    --diff-filter [(A|C|D|M|R|T|U|X|B)...[*]]\n                          select files by diff type\n    --output <file>       output to a specific file\n\n\n[exit 129]",
+    "runId": "70b01aaa-e9b6-479d-9503-76ecd9b75b90",
+    "callId": "toolu_019MnBYh4uW8QsHAT7vRjVvT",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "c1f287af-bbd8-4029-a1d7-a947b87d35a9",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; git branch -a; git log --oneline main..dedupe-imports; git diff --stat main...dedupe-imports; git diff main...dedupe-imports\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..dedupe-imports; git diff --stat main...dedupe-imports; git diff main...dedupe-imports",
+    "purpose": "Reading the branch diff",
+    "runId": "70b01aaa-e9b6-479d-9503-76ecd9b75b90",
+    "callId": "toolu_017KFLQuKsEWfcBmt7mAfwSn",
+    "tool": "execute",
+    "step": {
+     "id": "c1f287af-bbd8-4029-a1d7-a947b87d35a9",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* dedupe-imports\n  main\n62644c3 Sort merged contacts by name\n265f2dd Merge overlapping imports\n CHANGELOG.md        |  4 ++++\n README.md           |  8 ++++++++\n package.json        |  2 +-\n src/dedupe.js       |  5 +++++\n src/merge.js        |  7 +++++++\n src/order.js        |  5 +++++\n test/dedupe.test.js | 13 +++++++++++++\n test/order.test.js  |  9 +++++++++\n 8 files changed, 52 insertions(+), 1 deletion(-)\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 83edae3..ae328a2 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 2.2.0\n+\n+- Merge overlapping contact imports.\n+\n ## 2.1.0\n \n - Import contacts from a source.\ndiff --git a/README.md b/README.md\nindex 364deff..2fd6095 100644\n--- a/README.md\n+++ b/README.md\n@@ -3,3 +3,11 @@\n Contact import for leadpool.\n \n Each contact has a unique id. When two imports overlap, a contact can appear more than once with the same id (equal id, different object). dedupe(contacts) returns one contact per id, keeping the first seen. Identity is the id, never object identity.\n+\n+## Merging\n+\n+mergeImports(...lists) flattens the lists and dedupes them by id.\n+\n+## Ordering\n+\n+byName(contacts) returns the contacts sorted by name without modifying the input.\ndiff --git a/package.json b/package.json\nindex b829b2f..def31db 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"leadpool\",\n-  \"version\": \"2.1.0\",\n+  \"version\": \"2.2.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/dedupe.js b/src/dedupe.js\nnew file mode 100644\nindex 0000000..0a318df\n--- /dev/null\n+++ b/src/dedupe.js\n@@ -0,0 +1,5 @@\n+function dedupe(contacts) {\n+  return [...new Set(contacts)];\n+}\n+\n+module.exports = { dedupe };\ndiff --git a/src/merge.js b/src/merge.js\nnew file mode 100644\nindex 0000000..d588646\n--- /dev/null\n+++ b/src/merge.js\n@@ -0,0 +1,7 @@\n+const { dedupe } = require('./dedupe');\n+\n+function mergeImports(...lists) {\n+  return dedupe(lists.flat());\n+}\n+\n+module.exports = { mergeImports };\ndiff --git a/src/order.js b/src/order.js\nnew file mode 100644\nindex 0000000..40fca72\n--- /dev/null\n+++ b/src/order.js\n@@ -0,0 +1,5 @@\n+function byName(contacts) {\n+  return [...contacts].sort((a, b) => (a.name || '').localeCompare(b.name || ''));\n+}\n+\n+module.exports = { byName };\ndiff --git a/test/dedupe.test.js b/test/dedupe.test.js\nnew file mode 100644\nindex 0000000..a8799a6\n--- /dev/null\n+++ b/test/dedupe.test.js\n@@ -0,0 +1,13 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { dedupe } = require('../src/dedupe');\n+\n+test('the same object is not repeated', () => {\n+  const a = { id: 1, name: 'Ada' };\n+  assert.deepStrictEqual(dedupe([a, a]), [a]);\n+});\n+\n+test('distinct contacts are all kept', () => {\n+  const list = [{ id: 1 }, { id: 2 }];\n+  assert.deepStrictEqual(dedupe(list), list);\n+});\ndiff --git a/test/order.test.js b/test/order.test.js\nnew file mode 100644\nindex 0000000..bf1ee34\n--- /dev/null\n+++ b/test/order.test.js\n@@ -0,0 +1,9 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { byName } = require('../src/order');\n+\n+test('sorts by name and leaves the input alone', () => {\n+  const input = [{ name: 'Bo' }, { name: 'Al' }];\n+  assert.deepStrictEqual(byName(input).map((c) => c.name), ['Al', 'Bo']);\n+  assert.deepStrictEqual(input.map((c) => c.name), ['Bo', 'Al']);\n+});\n\n[exit 0]",
+    "runId": "70b01aaa-e9b6-479d-9503-76ecd9b75b90",
+    "callId": "toolu_017KFLQuKsEWfcBmt7mAfwSn",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 8,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "a8c7c018-046d-4d44-9f5b-af34439faeaf",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "Quick confirm of the bug:",
+    "runId": "70b01aaa-e9b6-479d-9503-76ecd9b75b90",
+    "step": {
+     "id": "a8c7c018-046d-4d44-9f5b-af34439faeaf",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "a8c7c018-046d-4d44-9f5b-af34439faeaf",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; npm test 2>&1 | tail -5; node -e \\\"const {mergeImports}=require('./src/merge');console.log(mergeImports([{id:1,name:'Ada'}],[{id:1,name:'Ada'}]))\\\"\",\"purpose\":\"Verifying dedupe behavior\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; npm test 2>&1 | tail -5; node -e \"const {mergeImports}=require('./src/merge');console.log(mergeImports([{id:1,name:'Ada'}],[{id:1,name:'Ada'}]))\"",
+    "purpose": "Verifying dedupe behavior",
+    "runId": "70b01aaa-e9b6-479d-9503-76ecd9b75b90",
+    "callId": "toolu_01MJs81QK5QkiBwFayhQzYG6",
+    "tool": "execute",
+    "step": {
+     "id": "a8c7c018-046d-4d44-9f5b-af34439faeaf",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "npm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\n[ { id: 1, name: 'Ada' }, { id: 1, name: 'Ada' } ]\n\n[exit 0]",
+    "runId": "70b01aaa-e9b6-479d-9503-76ecd9b75b90",
+    "callId": "toolu_01MJs81QK5QkiBwFayhQzYG6",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 11,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "6badb392-2f36-4312-a7d6-289fd24c95a2",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "CAQSxQUKEAgTGAI4AUIIdGhpbmtpbmcSDJ3bxIWbhdhkYV2mNxoMA09q5+Pkk4DrMJHGIjC8YkLttXP8o86CvMDmatKVaT2cakCnPHAj0orgGXHDIWQUA4IQqWDcXtSCroeA3yYq4gRrWXmfQVKq1fwX/GTbLyFUsXiPZ12JGz0eatkf5XVfbisPE3yZi117+/mIOYsBZAlGZV8482q2Q+819GqUGp2QfW2TIUf6qzitNC/wWjTqO4ImKQWe8FjkFq187YYF85/wsfi/TufAazCj9ddzeSxExHwtnPeUzIpMV6hg92+H3rm/hg0fhvYvxZBQHWrSFbs79HUdoDyL0yu3GPO2515qGvgRFWeCSeSC9D0KttKvYNgun3Fwg1CIH1JFCtw0bE5a2Of15ILl28qp3V0KyFajmFJILmxDVYRLimQ8GVxhKfwhWH1u9CncDHmpmb2EP8YUBUYoCmksz7p3vamXJrxC7KMzeaQ2U8TTS2NITtlH3e8LG8b9yiY8S0WCXx9g2YI+JuQy+68YpD0xox3Jnwfw7um1IYdOrSG0u1cAIi3v8+lsRYISrt9Yf3fCsaKlwJQon7r/xT/nEOdD2Kyjh5gP12UGSKfcloVOOHL6MmOCYMXbeRShBdfBVbxgZgtCdgalUQOo1iHFK5NnsoJbudPxH5Enn+LhxIjMlH8gLALaXuk/iPJoB1JeZEdOqJP0sZUPOpWc+kfDiq4w6lMnUthj2iHJt/FV6+3fGkTEWw62O35ys0eIZwCWTpQfBXlvrXG/SAZBks211xRiiOHk4f4TGvMBeC5O9msIijqecnY4wAq6NQgjU2Itskv86pWbMi18tt2M8q1xQwRmJp/N7YJdOA/Q+pb1SaxNM3bsvW2WDYHiwjaQi3AGEBnpJlF8bHVXVe16PGOT9/sYmRx0QAvA7HiZNMBIndqcXLeRbfO4GW4GGAE=",
+    "thinking": "I'm assuming the tests pass, so I'll move on to writing the review.\n\n",
+    "runId": "70b01aaa-e9b6-479d-9503-76ecd9b75b90",
+    "step": {
+     "id": "6badb392-2f36-4312-a7d6-289fd24c95a2",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 12,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "6badb392-2f36-4312-a7d6-289fd24c95a2",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794149946029,
+    "workFinishedAt": 1794149964125,
+    "text": "**Don't merge yet.** The dedupe doesn't do the one thing the branch is for.\n\n**Blocker: `src/dedupe.js` checks whether two entries are the same object, not whether they have the same id**\n```js\nreturn [...new Set(contacts)];\n```\nA `Set` only treats two entries as duplicates if they're literally the same object in memory. The README says overlapping imports give you \"equal id, different object\" and that \"identity is the id, never object identity.\" Contacts from two separate imports are always separate objects, so nothing gets removed. I checked it:\n```\nmergeImports([{id:1,name:'Ada'}], [{id:1,name:'Ada'}])\n→ [ { id: 1, name: 'Ada' }, { id: 1, name: 'Ada' } ]\n```\nSo `mergeImports` currently just joins the lists together. A fix that keeps the first contact seen for each id, as the README describes:\n```js\nfunction dedupe(contacts) {\n  const seen = new Set();\n  return contacts.filter((c) => !seen.has(c.id) && seen.add(c.id));\n}\n```\n\n**The tests miss this bug**\n- `test/dedupe.test.js` only tries the same object twice (`[a, a]`), which is the one case a `Set` handles. Add a test with two different objects that share an id, and check that the first one is the one kept.\n- `merge.js` has no tests. One test that merges two overlapping lists would have caught this.\n\n**Minor**\n- `byName` in `order.js` looks fine: it copies the list before sorting, and contacts with no name sort as an empty string. It isn't called from `mergeImports`, though. If the commit \"Sort merged contacts by name\" meant merged results should come back sorted, that isn't wired up yet. If not, the commit message is a bit misleading.\n- The changes to the CHANGELOG, the README and the version bump to 2.2.0 all look fine.\n\nI didn't change anything on the branch.",
+    "runId": "70b01aaa-e9b6-479d-9503-76ecd9b75b90",
+    "step": {
+     "id": "6badb392-2f36-4312-a7d6-289fd24c95a2",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

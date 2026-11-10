@@ -55,13 +55,42 @@
       0.15,
       0.75
     ],
-    "cap_usd": 45
+    "cap_usd": 45,
+    "amendment_2": {
+      "date": "2026-11-07",
+      "decided_by": "internal-task, option A1, 2026-11-07",
+      "band_at_check": "per model, on the 24 review tasks, graded by edition-grade.ts with no judge (grader run on review trials only); Wilson 95 percent interval reported, band on the point estimate",
+      "plan_replies": "stored ungraded in the stage results; graded by the judge the main amendment pins, metered as amendment 1 requires",
+      "plan_band_and_replacements": "applied per model on the 24 plan tasks once judge grades exist, before the main stage starts",
+      "alias_judge_grades_plan_for_decisions": false,
+      "unchanged": "caps, leases, trial count, arms, grader rules, endpoints, the KEEP rule, sharding",
+      "addendum": {
+        "date": "2026-11-07",
+        "note": "run details the preregistration left open, chosen before any data; no cap, count, arm, grader rule, endpoint or rule changes",
+        "trial_order_seed": 1514,
+        "blocks": "block b (1-4) holds rev and plan tasks numbered 6b-5 to 6b",
+        "shards": ["opus-b1", "opus-b2", "opus-b3", "opus-b4", "sol-b1", "sol-b2", "sol-b3", "sol-b4"],
+        "shard_args": "--arms plain --models <opus|sol> --reps 1 --stage headroom --shards 8 --seed 1514 --run-id qm-s1-edition-2026-11-headroom --only <the block's 12 trial ids>",
+        "tasks_on_vm": "scripts/ubicloud/vm-shard.sh generates them from bank/bank-review-plan.json and bank/seed.txt (its exact bytes) with edition-fixture.ts, keyless, checks them against fixtures.json and records tasks-gen.json; a failure stops the shard before any paid call"
+      }
+    }
   },
   "exposure_pilot": {
     "arm": "edition",
     "tasks": 2,
     "trials": 4,
-    "cap_usd": 10
+    "cap_usd": 10,
+    "addendum": {
+      "date": "2026-11-07",
+      "note": "details the preregistration left open, chosen before any pilot data; no cap, count, arm, grader rule, endpoint or rule changes",
+      "tasks": ["rev-01", "plan-01"],
+      "task_rule": "the lowest-numbered task of each family",
+      "shard_args": "--arms edition --models opus,sol --reps 1 --stage pilot --shards 1 --seed 1514 --run-id qm-s1-edition-2026-11-pilot --only rev-01-edition-opus-k1,rev-01-edition-sol-k1,plan-01-edition-opus-k1,plan-01-edition-sol-k1",
+      "lease_usd": 10,
+      "pass_rule": "every trial passes the edition clean-arm check (not contaminated) and at least one trial opens its matched skill and reads it whole",
+      "cost_multiplier": "pilot mean metered cost per trial / headroom mean plain cost per trial on the same 4 (task, model) pairs",
+      "replies": "stored ungraded for judge calibration; the alias key grades nothing"
+    }
   },
   "primary_endpoint": "task success per trial (0 or 1), graded on substance by harnesses/qm/gstack/edition-grade.ts",
   "rule": {
@@ -199,5 +228,336 @@
     "stage_caps_usd": { "headroom": 45, "pilot": 10, "main": 520, "forced": 45 },
     "plan_judge_metering": "required in the main amendment: judge calls go through the metering proxy under the main stage's per-shard leases",
     "secondary_per_family": "review and plan each reported apart, labelled secondary (24 x 9 each, MDD 9.9, 13.0 with interaction); neither carries a verdict alone"
+  },
+  "main_amendment": {
+    "part": 1,
+    "date": "2026-11-07",
+    "decided_by": "internal-task (judges, calibration balance), the Captain (calibration budget line), 2026-11-07",
+    "note": "decisions fixed before any plan grade, label, calibration trial or main-stage trial; part 2 pins the judge code and prompt by sha256, part 3 records calibration and the plan band, and the main stage launches only from part 3",
+    "judges": {
+      "primary": {
+        "model": "anthropic:claude-opus-5-5",
+        "temperature": 0,
+        "thinking": "off",
+        "output": "one forced tool call",
+        "max_tokens": 2000,
+        "decides_verdict": true
+      },
+      "secondary": {
+        "model": "openai:gpt-6.1-sol",
+        "route": "/v1/responses, explicit cache mode with prompt_cache_key",
+        "rubric": "same as primary",
+        "decides_verdict": false,
+        "counts_only_if_calibrated": true,
+        "report": "edition minus plain within each model beside the primary; a sign disagreement for either model goes in the TL;DR"
+      },
+      "alias_judge_grades_plan": false
+    },
+    "calibration": {
+      "development_set": "bank authors plan replies (48) and the 6 paraphrased good probes; at most 3 rubric revisions; never used for a gate",
+      "tasks": [
+        "plan-01",
+        "plan-02",
+        "plan-03",
+        "plan-04",
+        "plan-05",
+        "plan-06",
+        "plan-07",
+        "plan-08",
+        "plan-09",
+        "plan-10"
+      ],
+      "task_rule": "the ten lowest-numbered plan tasks, the same for both models",
+      "real_replies": {
+        "plain": "headroom replies on the ten tasks, 10 per model",
+        "edition": "pilot plan-01 reply per model plus 18 calibration trials (plan-02 to plan-10, edition, both models, 1 repetition)"
+      },
+      "labels": "per constraint and item count, by a GPT-6.1 Sol reader that wrote neither the keys nor any reply, blind to arm, model and grades",
+      "gates_each_judge": {
+        "real_replies_40": 36,
+        "blind_set_A_72": 65,
+        "blind_set_C_96": 87,
+        "name_but_break_4": "all fail",
+        "red_team_all_items_24": "all fail"
+      },
+      "primary_fails": "review-only fallback before the main stage; nothing retuned",
+      "secondary_fails": "run goes on; the report says the family-bias check is not available"
+    },
+    "calibration_trials": {
+      "counted": false,
+      "trials": 18,
+      "shard_args": "--arms edition --models opus,sol --reps 1 --stage main --shards 1 --seed 1514 --run-id qm-s1-edition-2026-11-calibration --only <plan-02..plan-10 edition opus and sol k1>",
+      "lease_usd": 5,
+      "kept_apart": "own driver run id and ledger lease, own dest, replica subfolder and results folder (calibration/); the main merge refuses any turn whose run id is not qm-s1-edition-2026-11-main"
+    },
+    "judge_routing": "both judges grade each main and forced shard on its VM after the driver exits, reopening the driver lease on ~/shard/results/ledger.sqlite (harnesses/qm/gstack/judge-shard.ts, part 2); no FROZEN_PATHS file changes",
+    "plan_band": "primary judge on the 48 stored headroom plan replies under the 8 open headroom leases; 15 to 75 percent per model; outside it the eval stops and goes back to internal-task and the Captain",
+    "repetitions": 9,
+    "repetitions_fallback_by_cost_rule": "dropped under the 2026-11-07 spend rule; the $520 main cap stays",
+    "projection_usd": {
+      "trials": 120.42,
+      "primary_judge_estimate": 11.23,
+      "with_factor_1_25": 165,
+      "basis": "plain $0.0625 per trial (96 headroom trials), edition multiplier 1.23 (pilot, 4 pairs, one trial each), judge $0.013 per grade estimated until calibration"
+    },
+    "exposure_rate": {
+      "definition": "per model, share of counted edition trials with open_matched, complete_read and first_step all true",
+      "interval": "95 percent task-clustered bootstrap over 48 tasks, 10000 draws, seed 7",
+      "near_zero": "interval upper bound below 10 percent",
+      "why_null_line": true,
+      "changes_verdict": false
+    },
+    "main_stage_reserves_usd": {
+      "judge_calibration": 25,
+      "calibration_trials": 5,
+      "main_shards": {
+        "count": 8,
+        "lease_usd": 61.25
+      },
+      "total": 520
+    },
+    "forced_stage_leases_usd": {
+      "count": 8,
+      "lease_usd": 5.62,
+      "total": 44.96
+    },
+    "replicate_to": "<private drive>/replicas/qm-main-2026-11",
+    "part2": {
+      "date": "2026-11-07",
+      "note": "Amendment 3 part 2: judge code pinned, two blind labellers plus a third Opus pass, and the primary settings correction. Committed before any judge or labeller call.",
+      "pins": {
+        "harnesses/qm/gstack/plan-judge-rubric.md": "5318f8d42e4429be794a33b7ee0b0caeb50885f4ecdc3b5773a4df64de6f48fb",
+        "harnesses/qm/gstack/plan-judge.ts": "a05fbfa3a252bd91a8c38ef1bbfcc62951fdb435fb7bd5c41c3c1829928f892e",
+        "harnesses/qm/gstack/plan-judge-opus.ts": "91daa6ec2ce184117f75e163af68a7f398f5be889998b2cc97e546fa006c6983",
+        "harnesses/qm/gstack/plan-judge-sol.ts": "657137a24e1025a107c94e59126cfa7579bf8fc0253f51bbfbdc61bf6620b543",
+        "harnesses/qm/gstack/judge-shard.ts": "ddd4bbff620365c6a66ff1acd5f1ea1b7385dd64dd448ba7b6588adf8e02d262"
+      },
+      "rubric_revision": 1,
+      "judges": {
+        "primary": {
+          "model": "anthropic:claude-opus-5-5",
+          "effort": "low",
+          "temperature": "omitted (Opus 5.5 rejects it)",
+          "thinking": "adaptive, always on (Opus 5.5 rejects disabled and manual budgets)",
+          "tool_choice": "auto (Opus 5.5 rejects a forced tool); one strict record_grade tool and a closing line asking for one call; a reply without the call is a failed call",
+          "max_tokens": 8000,
+          "module": "harnesses/qm/gstack/plan-judge-opus.ts"
+        },
+        "secondary": {
+          "model": "openai:gpt-6.1-sol",
+          "effort": "low",
+          "tool_choice": "forced record_grade",
+          "cache": "prompt_cache_options.mode explicit, breakpoint on the rubric developer block, prompt_cache_key",
+          "max_output_tokens": 8000,
+          "module": "harnesses/qm/gstack/plan-judge-sol.ts"
+        },
+        "retries": 3,
+        "cap_refusal_retried": false
+      },
+      "labels": {
+        "replaces": "part 1's single GPT-6.1 Sol reader (internal-task, 2026-11-07)",
+        "labellers": {
+          "opus": {
+            "model": "anthropic:claude-opus-5-5",
+            "effort": "high"
+          },
+          "sol": {
+            "model": "openai:gpt-6.1-sol",
+            "effort": "high"
+          }
+        },
+        "input": "request, extracted plan text, constraint ids and descriptions; never arm, model or grade",
+        "rubric": "the final rubric, after the last revision",
+        "reference": "the outcome both labellers agree on (full rule on each labeller's labels)",
+        "disagreements": "a third blind Opus 5.5 pass at effort high that sees neither earlier label; the report counts them",
+        "table_adds": "each judge against the other family's labeller alone",
+        "metered": "through the metering proxy under the judge-calibration lease (the $25 reserve)"
+      },
+      "calibration_script": "harnesses/qm/gstack/judge-calibration.ts",
+      "calibration_lease": {
+        "run_id": "qm-s1-edition-2026-11-judge-calibration",
+        "usd": 25,
+        "max_output_tokens": 128000
+      },
+      "cost_check": "after the development set on both judges, project the remaining calls from the measured cost per grade; stop and report before any gate set if the projection passes $25",
+      "main_merge": {
+        "script": "harnesses/qm/gstack/edition-merge.ts",
+        "run_id": "qm-s1-edition-2026-11-main",
+        "refuses": "a shard or trial whose run id is not the main run id, a turn with no trial.json that is not infra_error, a trial id twice"
+      },
+      "exposure_rate_script": "harnesses/qm/gstack/exposure-rate.ts",
+      "private_folder": "<private drive>/qm-s1-edition-calibration"
+    },
+    "part3": {
+      "date": "2026-11-08",
+      "note": "Amendment 3 part 3: calibration and the plan band recorded, Amendment 1's review-only fallback applied after a plan-band failure, and the main and forced manifests. Committed before any main-stage or forced trial; the main stage launches only from this commit.",
+      "decided_by": "internal-task chose Amendment 1's review-only fallback (option A); the Captain applied it to the band failure, 2026-11-08",
+      "calibration": {
+        "rubric_revision": 1,
+        "rubric_sha256": "5318f8d42e4429be794a33b7ee0b0caeb50885f4ecdc3b5773a4df64de6f48fb",
+        "rubric_revision_0_sha256_prefix": "e7a3b4e05d8e",
+        "receipt": "calibration/judge/agreement.json",
+        "primary_passes_every_gate": true,
+        "secondary_passes_every_gate": true,
+        "gates": {
+          "real_replies_40_need_36": {
+            "primary": 37,
+            "secondary": 37
+          },
+          "blind_A_72_need_65": {
+            "primary": 72,
+            "secondary": 72
+          },
+          "blind_C_96_need_87": {
+            "primary": 96,
+            "secondary": 96
+          },
+          "name_but_break_4_all_fail": {
+            "primary": 4,
+            "secondary": 4
+          },
+          "red_team_24_all_fail": {
+            "primary": 24,
+            "secondary": 24
+          }
+        },
+        "reported": {
+          "vs_other_family_labeller_40": {
+            "primary": 38,
+            "secondary": 36
+          },
+          "test_retest_40": {
+            "primary": 38,
+            "secondary": 39
+          },
+          "development_set_54_revision_1": {
+            "primary": 54,
+            "secondary": 52
+          },
+          "development_set_54_revision_0": {
+            "primary": 53,
+            "secondary": 34
+          },
+          "labellers_agree_40": 38,
+          "third_pass": 2,
+          "reference_pass_40": 2
+        },
+        "usd_per_grade_real_replies": {
+          "primary": 0.0201,
+          "secondary": 0.0112
+        }
+      },
+      "plan_band": {
+        "receipt": "calibration/judge/plan-band.json",
+        "band": [
+          0.15,
+          0.75
+        ],
+        "opus": {
+          "success": 2,
+          "n": 24,
+          "rate": 0.083,
+          "wilson95": [
+            0.023,
+            0.258
+          ]
+        },
+        "sol": {
+          "success": 0,
+          "n": 24,
+          "rate": 0.0,
+          "wilson95": [
+            0.0,
+            0.138
+          ]
+        },
+        "in_band": false,
+        "usd": 1.01
+      },
+      "trigger": "a plan-band failure with both judges calibrated; Amendment 1's preregistered triggers were (a) a calibration failure on blind set A or C and (b) gstack-plan leaving the edition, and neither happened. The fallback is applied because both failures mean the plan family cannot measure edition against plain. Decided before any main-stage trial.",
+      "gstack_plan_verdict_line": "gstack-plan: FIX-METHOD: plain frontier plans sit at the floor of this rubric, so the plan family needs a new bank or rubric before any claim about gstack-plan.",
+      "fallback": "review_only_fallback",
+      "bank": "docs/benchmarks/2026-11-06-qm-s1-edition/bank/bank-review.json",
+      "bank_sha256": "d8ce0440032a32430a39eab9bf1cc30cd64f813d4c8dec8cc502c1790acdbde0",
+      "tasks": 24,
+      "repetitions": 18,
+      "arms": [
+        "plain",
+        "edition"
+      ],
+      "models": [
+        "opus",
+        "sol"
+      ],
+      "counted_trials": 1728,
+      "repetitions_note": "18 stands whatever the projection; Amendment 1's drop to 12 is a cost-rule fallback, dropped under the 2026-11-07 spend rule as part 1 dropped the 6-repetition one",
+      "rule_clusters": 24,
+      "mdd_points": {
+        "pooled_no_interaction": 7.7,
+        "full_rule_interaction_sd_0_4": 11.7
+      },
+      "analysis": "bun harnesses/qm/gstack/edition-analysis.ts --turns <merged turns.jsonl> --grades <merged grades.jsonl> --tasks 24 --reps 18 --out <dir>",
+      "judge_calls": "none: review trials are graded by edition-grade.ts's deterministic review grader; vm-shard.sh still runs judge-shard.ts for the main and forced run ids and it makes 0 model calls on review turns (tests/qm-s1-edition-judges.test.ts)",
+      "not_applicable_under_the_fallback": [
+        "secondary judge (GPT-6.1 Sol) and its family-bias check",
+        "plan-family outcomes: per-family plan results, plan exposure, plan judge grades"
+      ],
+      "projection_usd": {
+        "basis": "headroom review trials (24 per model, plain): Opus $0.07649, Sol $0.04552 per trial; edition multiplier 1.232 (pilot)",
+        "per_shard": {
+          "opus": 18.44,
+          "sol": 10.97
+        },
+        "trials": 117.65,
+        "with_factor_1_25": 147.06,
+        "judge": 0
+      },
+      "main_shards": {
+        "cells": "model x block; block b holds rev tasks 6b-5 to 6b; each shard runs its block's 216 trials (6 tasks x 2 arms x 18 repetitions); no cell is split",
+        "names": [
+          "opus-b1",
+          "opus-b2",
+          "opus-b3",
+          "opus-b4",
+          "sol-b1",
+          "sol-b2",
+          "sol-b3",
+          "sol-b4"
+        ],
+        "canary": "opus-b1",
+        "canary_rule": "the other seven launch once opus-b1 has 12 counted turns replicated with status ok, none contaminated, and a mean metered cost per trial under $0.20",
+        "lease_usd": 61.25,
+        "stage_cap_usd": 520,
+        "timeout_hours": 10,
+        "ubi_ttl_hours": 11,
+        "expected_wall_hours": 3.5,
+        "run_id": "qm-s1-edition-2026-11-main",
+        "args": "--stage main --shards 8 --arms plain,edition --models <opus|sol> --reps 18 --seed 1514 --run-id qm-s1-edition-2026-11-main --tasks-bank docs/benchmarks/2026-11-06-qm-s1-edition/bank/bank-review.json --tasks-seed docs/benchmarks/2026-11-06-qm-s1-edition/bank/seed.txt --only <the block's 216 trial ids>",
+        "manifests": [
+          "main/fanout-main-canary.json",
+          "main/fanout-main-rest.json"
+        ]
+      },
+      "forced_shards": {
+        "trials": 48,
+        "cells": "the same 8 cells; each shard runs its block's 6 forced trials (k1)",
+        "lease_usd": 5.62,
+        "stage_cap_usd": 45,
+        "timeout_hours": 2,
+        "ubi_ttl_hours": 3,
+        "run_id": "qm-s1-edition-2026-11-forced",
+        "when": "after all eight main shards have finished",
+        "args": "--stage forced --shards 8 --arms forced --models <opus|sol> --reps 1 --seed 1514 --run-id qm-s1-edition-2026-11-forced --tasks-bank docs/benchmarks/2026-11-06-qm-s1-edition/bank/bank-review.json --tasks-seed docs/benchmarks/2026-11-06-qm-s1-edition/bank/seed.txt --only <the block's 6 forced trial ids>",
+        "manifests": [
+          "main/fanout-forced.json"
+        ]
+      },
+      "exposure_rate": {
+        "edition_trials_per_model": 432,
+        "interval": "95 percent task-clustered bootstrap over 24 tasks, 10000 draws, seed 7"
+      },
+      "main_merge": "bun harnesses/qm/gstack/edition-merge.ts --run-id qm-s1-edition-2026-11-main (refuses any other run id); forced merged apart with --run-id qm-s1-edition-2026-11-forced",
+      "replicate_to": "<private drive>/replicas/qm-main-2026-11"
+    }
   }
 }

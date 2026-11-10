@@ -1,0 +1,327 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 04:28 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "72ece098-7fd8-454a-b7d9-13a05178782f"
+    },
+    "text": "I refactored our pagination into a shared pager on pager-refactor. Can you review it against main before I merge? Only review, no edits please.",
+    "runId": "fb8603a8-dc63-4b1a-8a20-646fa8e633be"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "1f9c2e10-5520-4cd1-ba2d-44a53097beee",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "I'll take a look at the pager-refactor branch against main.",
+    "runId": "fb8603a8-dc63-4b1a-8a20-646fa8e633be",
+    "step": {
+     "id": "1f9c2e10-5520-4cd1-ba2d-44a53097beee",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "1f9c2e10-5520-4cd1-ba2d-44a53097beee",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /tmp/pi-cwd 2>/dev/null; git rev-parse --show-toplevel 2>&1; ls; ls ~ | head\",\"purpose\":\"Locating the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /tmp/pi-cwd 2>/dev/null; git rev-parse --show-toplevel 2>&1; ls; ls ~ | head",
+    "purpose": "Locating the repository",
+    "runId": "fb8603a8-dc63-4b1a-8a20-646fa8e633be",
+    "callId": "toolu_01JXyM1X1dcjKP1MXx9fdSwQ",
+    "tool": "execute",
+    "step": {
+     "id": "1f9c2e10-5520-4cd1-ba2d-44a53097beee",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "fatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nrepo\nworkspace\n\n[exit 0]",
+    "runId": "fb8603a8-dc63-4b1a-8a20-646fa8e633be",
+    "callId": "toolu_01JXyM1X1dcjKP1MXx9fdSwQ",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "e6e6fac8-1ed6-4e88-9ac8-3ddb4931f3d1",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /tmp/pi-cwd/repo; git branch -a; git log --oneline -3 pager-refactor; git diff --stat main...pager-refactor; git diff main...pager-refactor\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /tmp/pi-cwd/repo; git branch -a; git log --oneline -3 pager-refactor; git diff --stat main...pager-refactor; git diff main...pager-refactor",
+    "purpose": "Reading the branch diff",
+    "runId": "fb8603a8-dc63-4b1a-8a20-646fa8e633be",
+    "callId": "toolu_01XtzFoTpNcBMx4THNbbjcTW",
+    "tool": "execute",
+    "step": {
+     "id": "e6e6fac8-1ed6-4e88-9ac8-3ddb4931f3d1",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 129,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "[stderr]\nsh: 1: cd: can't cd to /tmp/pi-cwd/repo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nwarning: Not a git repository. Use --no-index to compare two paths outside a working tree\nusage: git diff --no-index [<options>] <path> <path>\n\nDiff output format options\n    -p, --patch           generate patch\n    -s, --no-patch        suppress diff output\n    -u                    generate patch\n    -U, --unified[=<n>]   generate diffs with <n> lines context\n    -W, --function-context\n                          generate diffs with <n> lines context\n    --raw                 generate the diff in raw format\n    --patch-with-raw      synonym for '-p --raw'\n    --patch-with-stat     synonym for '-p --stat'\n    --numstat             machine friendly --stat\n    --shortstat           output only the last line of --stat\n    -X, --dirstat[=<param1,param2>...]\n                          output the distribution of relative amount of changes for each sub-directory\n    --cumulative          synonym for --dirstat=cumulative\n    --dirstat-by-file[=<param1,param2>...]\n                          synonym for --dirstat=files,param1,param2...\n    --check               warn if changes introduce conflict markers or whitespace errors\n    --summary             condensed summary such as creations, renames and mode changes\n    --name-only           show only names of changed files\n    --name-status         show only names and status of changed files\n    --stat[=<width>[,<name-width>[,<count>]]]\n                          generate diffstat\n    --stat-width <width>  generate diffstat with a given width\n    --stat-name-width <width>\n                          generate diffstat with a given name width\n    --stat-graph-width <width>\n                          generate diffstat with a given graph width\n    --stat-count <count>  generate diffstat with limited lines\n    --compact-summary     generate compact summary in diffstat\n    --binary              output a binary diff that can be applied\n    --full-index          show full pre- and post-image object names on the \"index\" lines\n    --color[=<when>]      show colored diff\n    --ws-error-highlight <kind>\n                          highlight whitespace errors in the 'context', 'old' or 'new' lines in the diff\n    -z                    do not munge pathnames and use NULs as output field terminators in --raw or --numstat\n    --abbrev[=<n>]        use <n> digits to display object names\n    --src-prefix <prefix>\n                          show the given source prefix instead of \"a/\"\n    --dst-prefix <prefix>\n                          show the given destination prefix instead of \"b/\"\n    --line-prefix <prefix>\n                          prepend an additional prefix to every line of output\n    --no-prefix           do not show any source or destination prefix\n    --inter-hunk-context <n>\n                          show context between diff hunks up to the specified number of lines\n    --output-indicator-new <char>\n                          specify the character to indicate a new line instead of '+'\n    --output-indicator-old <char>\n                          specify the character to indicate an old line instead of '-'\n    --output-indicator-context <char>\n                          specify the character to indicate a context instead of ' '\n\nDiff rename options\n    -B, --break-rewrites[=<n>[/<m>]]\n                          break complete rewrite changes into pairs of delete and create\n    -M, --find-renames[=<n>]\n                          detect renames\n    -D, --irreversible-delete\n                          omit the preimage for deletes\n    -C, --find-copies[=<n>]\n                          detect copies\n    --find-copies-harder  use unmodified files as source to find copies\n    --no-renames          disable rename detection\n    --rename-empty        use empty blobs as rename source\n    --follow              continue listing the history of a file beyond renames\n    -l <n>                prevent rename/copy detection if the number of rename/copy targets exceeds given limit\n\nDiff algorithm options\n    --minimal             produce the smallest possible diff\n    -w, --ignore-all-space\n                          ignore whitespace when comparing lines\n    -b, --ignore-space-change\n                          ignore changes in amount of whitespace\n    --ignore-space-at-eol\n                          ignore changes in whitespace at EOL\n    --ignore-cr-at-eol    ignore carrier-return at the end of line\n    --ignore-blank-lines  ignore changes whose lines are all blank\n    -I, --ignore-matching-lines <regex>\n                          ignore changes whose all lines match <regex>\n    --indent-heuristic    heuristic to shift diff hunk boundaries for easy reading\n    --patience            generate diff using the \"patience diff\" algorithm\n    --histogram           generate diff using the \"histogram diff\" algorithm\n    --diff-algorithm <algorithm>\n                          choose a diff algorithm\n    --anchored <text>     generate diff using the \"anchored diff\" algorithm\n    --word-diff[=<mode>]  show word diff, using <mode> to delimit changed words\n    --word-diff-regex <regex>\n                          use <regex> to decide what a word is\n    --color-words[=<regex>]\n                          equivalent to --word-diff=color --word-diff-regex=<regex>\n    --color-moved[=<mode>]\n                          moved lines of code are colored differently\n    --color-moved-ws <mode>\n                          how white spaces are ignored in --color-moved\n\nOther diff options\n    --relative[=<prefix>]\n                          when run from subdir, exclude changes outside and show relative paths\n    -a, --text            treat all files as text\n    -R                    swap two inputs, reverse the diff\n    --exit-code           exit with 1 if there were differences, 0 otherwise\n    --quiet               disable all output of the program\n    --ext-diff            allow an external diff helper to be executed\n    --textconv            run external text conversion filters when comparing binary files\n    --ignore-submodules[=<when>]\n                          ignore changes to submodules in the diff generation\n    --submodule[=<format>]\n                          specify how differences in submodules are shown\n    --ita-invisible-in-index\n                          hide 'git add -N' entries from the index\n    --ita-visible-in-index\n                          treat 'git add -N' entries as real in the index\n    -S <string>           look for differences that change the number of occurrences of the specified string\n    -G <regex>            look for differences that change the number of occurrences of the specified regex\n    --pickaxe-all         show all changes in the changeset with -S or -G\n    --pickaxe-regex       treat <string> in -S as extended POSIX regular expression\n    -O <file>             control the order in which files appear in the output\n    --rotate-to <path>    show the change in the specified path first\n    --skip-to <path>      skip the output to the specified path\n    --find-object <object-id>\n                          look for differences that change the number of occurrences of the specified object\n    --diff-filter [(A|C|D|M|R|T|U|X|B)...[*]]\n                          select files by diff type\n    --output <file>       output to a specific file\n\nwarning: Not a git repository. Use --no-index to compare two paths outside a working tree\nusage: git diff --no-index [<options>] <path> <path>\n\nDiff output format options\n    -p, --patch           generate patch\n    -s, --no-patch        suppress diff output\n    -u                    generate patch\n    -U, --unified[=<n>]   generate diffs with <n> lines context\n    -W, --function-context\n                          generate diffs with <n> lines context\n    --raw                 generate the diff in raw format\n    --patch-with-raw      synonym for '-p --raw'\n    --patch-with-stat     synonym for '-p --stat'\n    --numstat             machine friendly --stat\n    --shortstat           output only the last line of --stat\n    -X, --dirstat[=<param1,param2>...]\n                          output the distribution of relative amount of changes for each sub-directory\n    --cumulative          synonym for --dirstat=cumulative\n    --dirstat-by-file[=<param1,param2>...]\n                          synonym for --dirstat=files,param1,param2...\n    --check               warn if changes introduce conflict markers or whitespace errors\n    --summary             condensed summary such as creations, renames and mode changes\n    --name-only           show only names of changed files\n    --name-status         show only names and status of changed files\n    --stat[=<width>[,<name-width>[,<count>]]]\n                          generate diffstat\n    --stat-width <width>  generate diffstat with a given width\n    --stat-name-width <width>\n                          generate diffstat with a given name width\n    --stat-graph-width <width>\n                          generate diffstat with a given graph width\n    --stat-count <count>  generate diffstat with limited lines\n    --compact-summary     generate compact summary in diffstat\n    --binary              output a binary diff that can be applied\n    --full-index          show full pre- and post-image object names on the \"index\" lines\n    --color[=<when>]      show colored diff\n    --ws-error-highlight <kind>\n                          highlight whitespace errors in the 'context', 'old' or 'new' lines in the diff\n    -z                    do not munge pathnames and use NULs as output field terminators in --raw or --numstat\n    --abbrev[=<n>]        use <n> digits to display object names\n    --src-prefix <prefix>\n                          show the given source prefix instead of \"a/\"\n    --dst-prefix <prefix>\n                          show the given destination prefix instead of \"b/\"\n    --line-prefix <prefix>\n                          prepend an additional prefix to every line of output\n    --no-prefix           do not show any source or destination prefix\n    --inter-hunk-context <n>\n                          show context between diff hunks up to the specified number of lines\n    --output-indicator-new <char>\n                          specify the character to indicate a new line instead of '+'\n    --output-indicator-old <char>\n                          specify the character to indicate an old line instead of '-'\n    --output-indicator-context <char>\n                          specify the character to indicate a context instead of ' '\n\nDiff rename options\n    -B, --break-rewrites[=<n>[/<m>]]\n                          break complete rewrite changes into pairs of delete and create\n    -M, --find-renames[=<n>]\n                          detect renames\n    -D, --irreversible-delete\n                          omit the preimage for deletes\n    -C, --find-copies[=<n>]\n                          detect copies\n    --find-copies-harder  use unmodified files as source to find copies\n    --no-renames          disable rename detection\n    --rename-empty        use empty blobs as rename source\n    --follow              continue listing the history of a file beyond renames\n    -l <n>                prevent rename/copy detection if the number of rename/copy targets exceeds given limit\n\nDiff algorithm options\n    --minimal             produce the smallest possible diff\n    -w, --ignore-all-space\n                          ignore whitespace when comparing lines\n    -b, --ignore-space-change\n                          ignore changes in amount of whitespace\n    --ignore-space-at-eol\n                          ignore changes in whitespace at EOL\n    --ignore-cr-at-eol    ignore carrier-return at the end of line\n    --ignore-blank-lines  ignore changes whose lines are all blank\n    -I, --ignore-matching-lines <regex>\n                          ignore changes whose all lines match <regex>\n    --indent-heuristic    heuristic to shift diff hunk boundaries for easy reading\n    --patience            generate diff using the \"patience diff\" algorithm\n    --histogram           generate diff using the \"histogram diff\" algorithm\n    --diff-algorithm <algorithm>\n                          choose a diff algorithm\n    --anchored <text>     generate diff using the \"anchored diff\" algorithm\n    --word-diff[=<mode>]  show word diff, using <mode> to delimit changed words\n    --word-diff-regex <regex>\n                          use <regex> to decide what a word is\n    --color-words[=<regex>]\n                          equivalent to --word-diff=color --word-diff-regex=<regex>\n    --color-moved[=<mode>]\n                          moved lines of code are colored differently\n    --color-moved-ws <mode>\n                          how white spaces are ignored in --color-moved\n\nOther diff options\n    --relative[=<prefix>]\n                          when run from subdir, exclude changes outside and show relative paths\n    -a, --text            treat all files as text\n    -R                    swap two inputs, reverse the diff\n    --exit-code           exit with 1 if there were differences, 0 otherwise\n    --quiet               disable all output of the program\n    --ext-diff            allow an external diff helper to be executed\n    --textconv            run external text conversion filters when comparing binary files\n    --ignore-submodules[=<when>]\n                          ignore changes to submodules in the diff generation\n    --submodule[=<format>]\n                          specify how differences in submodules are shown\n    --ita-invisible-in-index\n                          hide 'git add -N' entries from the index\n    --ita-visible-in-index\n                          treat 'git add -N' entries as real in the index\n    -S <string>           look for differences that change the number of occurrences of the specified string\n    -G <regex>            look for differences that change the number of occurrences of the specified regex\n    --pickaxe-all         show all changes in the changeset with -S or -G\n    --pickaxe-regex       treat <string> in -S as extended POSIX regular expression\n    -O <file>             control the order in which files appear in the output\n    --rotate-to <path>    show the change in the specified path first\n    --skip-to <path>      skip the output to the specified path\n    --find-object <object-id>\n                          look for differences that change the number of occurrences of the specified object\n    --diff-filter [(A|C|D|M|R|T|U|X|B)...[*]]\n                          select files by diff type\n    --output <file>       output to a specific file\n\n\n[exit 129]",
+    "runId": "fb8603a8-dc63-4b1a-8a20-646fa8e633be",
+    "callId": "toolu_01XtzFoTpNcBMx4THNbbjcTW",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "78bce3ce-7f9b-4a07-91a4-d2cabb367691",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "The ls was of home apparently.",
+    "runId": "fb8603a8-dc63-4b1a-8a20-646fa8e633be",
+    "step": {
+     "id": "78bce3ce-7f9b-4a07-91a4-d2cabb367691",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "78bce3ce-7f9b-4a07-91a4-d2cabb367691",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd ~/repo 2>/dev/null || cd ~/workspace/repo; pwd; git branch -a; git diff --stat main...pager-refactor; git diff main...pager-refactor\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd ~/repo 2>/dev/null || cd ~/workspace/repo; pwd; git branch -a; git diff --stat main...pager-refactor; git diff main...pager-refactor",
+    "purpose": "Reading the branch diff",
+    "runId": "fb8603a8-dc63-4b1a-8a20-646fa8e633be",
+    "callId": "toolu_01Am7k1aUC3KrbZcgzcs2xbM",
+    "tool": "execute",
+    "step": {
+     "id": "78bce3ce-7f9b-4a07-91a4-d2cabb367691",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace/repo\n  main\n* pager-refactor\n CHANGELOG.md        |  6 ++++++\n README.md           |  4 ++++\n package.json        |  2 +-\n src/comments.js     |  9 +++++----\n src/cursor.js       |  9 ++++-----\n src/feed.js         | 14 ++++++--------\n src/limits.js       |  9 +++++++++\n src/pager.js        | 21 +++++++++++++++++++++\n test/limits.test.js | 14 ++++++++++++++\n test/pager.test.js  | 22 ++++++++++++++++++++++\n 10 files changed, 92 insertions(+), 18 deletions(-)\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 4542bef..93bee87 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,11 @@\n # Changelog\n \n+## 1.3.0\n+\n+- Feed and comments share one keyset pager.\n+- Feed cursors are base64url tokens.\n+- The feed limit is clamped to 1 to 100.\n+\n ## 1.2.0\n \n - Cursor pagination for the feed and for comments.\ndiff --git a/README.md b/README.md\nindex 923a797..51537c8 100644\n--- a/README.md\n+++ b/README.md\n@@ -3,3 +3,7 @@\n Activity feed API for timeline-svc.\n \n GET /feed returns events newest first, a page at a time. Pass the next cursor from one page to get the following page. Cursors are opaque.\n+\n+## Page size\n+\n+limit is clamped to 1 to 100. A missing, zero or non-numeric limit means the default page of 20.\ndiff --git a/package.json b/package.json\nindex 5aaa473..3e0c666 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"timeline-svc\",\n-  \"version\": \"1.2.0\",\n+  \"version\": \"1.3.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/comments.js b/src/comments.js\nindex 2acc7f7..bc73d7a 100644\n--- a/src/comments.js\n+++ b/src/comments.js\n@@ -1,9 +1,10 @@\n+const { keysetPage } = require('./pager');\n+\n function commentsPage(comments, { after, limit = 50 } = {}) {\n   const sorted = [...comments].sort((a, b) => b.postedAt - a.postedAt || (a.id < b.id ? 1 : -1));\n-  const rest = after ? sorted.filter((c) => c.postedAt < after.postedAt || (c.postedAt === after.postedAt && c.id < after.id)) : sorted;\n-  const items = rest.slice(0, limit);\n-  const last = items[items.length - 1];\n-  return { items, next: rest.length > limit ? { postedAt: last.postedAt, id: last.id } : null };\n+  const page = keysetPage(sorted, after ? [after.postedAt, after.id] : null, limit, (c) => [c.postedAt, c.id]);\n+  const last = page.items[page.items.length - 1];\n+  return { items: page.items, next: page.more ? { postedAt: last.postedAt, id: last.id } : null };\n }\n \n module.exports = { commentsPage };\ndiff --git a/src/cursor.js b/src/cursor.js\nindex dad58c2..28987cd 100644\n--- a/src/cursor.js\n+++ b/src/cursor.js\n@@ -1,10 +1,9 @@\n-function encodeCursor(e) {\n-  return e.createdAt + ':' + e.id;\n+function encodeCursor(key) {\n+  return Buffer.from(JSON.stringify(key)).toString('base64url');\n }\n \n-function decodeCursor(s) {\n-  const i = s.indexOf(':');\n-  return { createdAt: Number(s.slice(0, i)), id: s.slice(i + 1) };\n+function decodeCursor(token) {\n+  return JSON.parse(Buffer.from(token, 'base64url').toString('utf8'));\n }\n \n module.exports = { encodeCursor, decodeCursor };\ndiff --git a/src/feed.js b/src/feed.js\nindex f6f9976..e3cf08c 100644\n--- a/src/feed.js\n+++ b/src/feed.js\n@@ -1,18 +1,16 @@\n+const { keysetPage } = require('./pager');\n const { encodeCursor, decodeCursor } = require('./cursor');\n+const { clampLimit } = require('./limits');\n \n function newestFirst(a, b) {\n   return b.createdAt - a.createdAt || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);\n }\n \n-function olderThan(e, c) {\n-  return e.createdAt < c.createdAt || (e.createdAt === c.createdAt && e.id < c.id);\n-}\n-\n-function feedPage(events, { after, limit = 20 } = {}) {\n+function feedPage(events, { after, limit } = {}) {\n   const sorted = [...events].sort(newestFirst);\n-  const rest = after ? sorted.filter((e) => olderThan(e, decodeCursor(after))) : sorted;\n-  const items = rest.slice(0, limit);\n-  return { items, next: rest.length > limit ? encodeCursor(items[items.length - 1]) : null };\n+  const page = keysetPage(sorted, after ? decodeCursor(after) : null, clampLimit(limit), (e) => e.createdAt);\n+  const last = page.items[page.items.length - 1];\n+  return { items: page.items, next: page.more ? encodeCursor(last.createdAt) : null };\n }\n \n module.exports = { feedPage };\ndiff --git a/src/limits.js b/src/limits.js\nnew file mode 100644\nindex 0000000..7c22749\n--- /dev/null\n+++ b/src/limits.js\n@@ -0,0 +1,9 @@\n+const DEFAULT_LIMIT = 20;\n+const MAX_LIMIT = 100;\n+\n+function clampLimit(raw) {\n+  const n = Math.trunc(Number(raw));\n+  return Math.min(Math.max(n || DEFAULT_LIMIT, 1), MAX_LIMIT);\n+}\n+\n+module.exports = { clampLimit, DEFAULT_LIMIT, MAX_LIMIT };\ndiff --git a/src/pager.js b/src/pager.js\nnew file mode 100644\nindex 0000000..56ec0c5\n--- /dev/null\n+++ b/src/pager.js\n@@ -0,0 +1,21 @@\n+// Keyset pagination over rows sorted newest first by key(row). A key is a number or an array of\n+// numbers and strings, compared left to right.\n+function compareKeys(a, b) {\n+  const x = [].concat(a);\n+  const y = [].concat(b);\n+  for (let i = 0; i < x.length; i++) {\n+    if (x[i] < y[i]) return -1;\n+    if (x[i] > y[i]) return 1;\n+  }\n+  return 0;\n+}\n+\n+function keysetPage(rows, afterKey, limit, key) {\n+  const rest = afterKey === null || afterKey === undefined ? rows : rows.filter((r) => compareKeys(key(r), afterKey) < 0);\n+  const items = rest.slice(0, limit + 1);\n+  const more = items.length > limit;\n+  if (more) items.pop();\n+  return { items, more };\n+}\n+\n+module.exports = { keysetPage, compareKeys };\ndiff --git a/test/limits.test.js b/test/limits.test.js\nnew file mode 100644\nindex 0000000..fecb2b0\n--- /dev/null\n+++ b/test/limits.test.js\n@@ -0,0 +1,14 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { clampLimit } = require('../src/limits');\n+\n+test('missing, zero and junk limits mean 20', () => {\n+  assert.strictEqual(clampLimit(undefined), 20);\n+  assert.strictEqual(clampLimit('0'), 20);\n+  assert.strictEqual(clampLimit('ten'), 20);\n+});\n+\n+test('limits are clamped to 1..100', () => {\n+  assert.strictEqual(clampLimit('500'), 100);\n+  assert.strictEqual(clampLimit('-3'), 1);\n+});\ndiff --git a/test/pager.test.js b/test/pager.test.js\nnew file mode 100644\nindex 0000000..2b6ba2a\n--- /dev/null\n+++ b/test/pager.test.js\n@@ -0,0 +1,22 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { keysetPage, compareKeys } = require('../src/pager');\n+const { commentsPage } = require('../src/comments');\n+\n+test('keys compare left to right', () => {\n+  assert.strictEqual(compareKeys([2, 'a'], [2, 'b']), -1);\n+  assert.strictEqual(compareKeys(3, 2), 1);\n+});\n+\n+test('a page knows whether more rows follow', () => {\n+  const rows = [5, 4, 3].map((n) => ({ n }));\n+  assert.deepStrictEqual(keysetPage(rows, null, 2, (r) => r.n), { items: [{ n: 5 }, { n: 4 }], more: true });\n+  assert.deepStrictEqual(keysetPage(rows, 4, 2, (r) => r.n), { items: [{ n: 3 }], more: false });\n+});\n+\n+test('comments that share a timestamp are all paged', () => {\n+  const comments = ['a', 'b', 'c'].map((id) => ({ id, postedAt: 7 }));\n+  const first = commentsPage(comments, { limit: 2 });\n+  const second = commentsPage(comments, { after: first.next, limit: 2 });\n+  assert.deepStrictEqual([...first.items, ...second.items].map((c) => c.id), ['c', 'b', 'a']);\n+});\n\n[exit 0]",
+    "runId": "fb8603a8-dc63-4b1a-8a20-646fa8e633be",
+    "callId": "toolu_01Am7k1aUC3KrbZcgzcs2xbM",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 9,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "48a47073-a957-4935-b7f8-622684575d7f",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQSzgcKEAgTGAI4AUIIdGhpbmtpbmcSDAhxc33qh5dk6tcgKBoMwKHQgNiQZXM0uODtIjDOncPBUtTglZoZr/HjkUXjqsHisPaRzO5WCk1zb9qcHn0+BmOyS/5RikDw69ejw8wq6wYPMPYPdI4KvU6wKwRHDWS+52R19LimSL4WzHIK/UagoGcqMcqeoqI6DNQVmmlc9Zyvm1K7Y5ArwlrAQtJLtiR+VbqNK4bfSkdYvEoz5WJZhuPHCgToefO+oo4L1nkcSxj2thPdmJVgOXzI10m6rXPERwa/9xre9UWr4CxUEWOgrjlca5RyWkvylMtg9V1QFBzuHDBpOyy+v6yjNaUYRQ6GqemUdTibAMfb0+1llx50cHfcVQ9LR1rO5gEjy/osfQFtuh65Vrvrmb8ezSfkhdYjCYZm/NGDfJJAN0WdbSHneVzRqdW2v37dFw6SR6XItnY/X6lDzTu87h6gUtWf8Maq68QaYwnzTiayEWMRXu1b2bn8+bzC91jFo6r5DJBHUDuiUsQdAqGrQJ34yJfkecXtuAw2PXV2kXvzg3AkZ79v2Cjsr7ZHaEHWHo+WssY+SYsyMEXoeoRntC2szW1NRQceRDWW4Yafr0qCUJCaL4FQMuH9zDlYBlCJCWmJKZKzjkVOe/ikaOq4EVGgeLRlqATUmfK1eZB06SeuGt7d8Xi7gQG/bQp6nQmszSjxL+aRInbvcbs9XIBKfYZd9gDKXJaSMnPwhb7SWcd5/iuQMoRIxsIDXAGWyeEPSyQPtvRfNV+x2c2Ij1FNXeEI6PYqid/bF19QW+QRzqoEF6hqCC2pHI/8VZ+JZMcoiTXKTpUnRAQ5Nn+7ciQ3I0gPnuwvxMAjZO0QK/3XaheAzHLUq3qhe6+UasEyxncAgvXUZdB0wUtsG2S3tlVjUeaig+hTqDe2H+Mj9PDeQ8UE3rIwQh028C2JKjhZ/vKreTLspfZB5XO9WFuK4KtuZNLE65ZEED/7MTch8+pZLnqLyHVwlQtppFtuDK/mx8yHcx32HQkmE7oheEQPI1+wpfNbKEcYPRogEh5OW6BUCa/XB8+pGlJDQBkuciDoP6FbofjirvyLhBOTZ3DAieTTVCN45iRlmK9+5uZxcG3q2eB5KX2cqG+vUfNNhvXuIZAtYHVmcET8OIei7C9DSjZcXdcdAdUEL7ARW8/c1/7b67izaw/7gd2umfCfU1SvA/u5UB8VjDlTNBO1kOdjaxfa4Cjj4Fv1C4vc/xtIaS6cQkqwOys7Ly7NvGuGdCuvd+ejdYn2+hmdj1OYIdsLfxrAYUZYHRgB",
+    "thinking": "The feed is keyed on createdAt alone, so events that share a timestamp get skipped, since the id tiebreaker is dropped. Old createdAt:id cursors will also throw in decodeCursor on deploy, returning 500s to clients mid-pagination, and malformed cursors throw too. I want to confirm all of this by running the tests and a repro.\n\n",
+    "runId": "fb8603a8-dc63-4b1a-8a20-646fa8e633be",
+    "step": {
+     "id": "48a47073-a957-4935-b7f8-622684575d7f",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "48a47073-a957-4935-b7f8-622684575d7f",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd ~/workspace/repo; npm test 2>&1 | tail -8; node -e \\\"\\nconst {feedPage}=require('./src/feed');\\nconst ev=['a','b','c'].map(id=>({id,createdAt:7}));\\nconst p1=feedPage(ev,{limit:2});const p2=feedPage(ev,{after:p1.next,limit:2});\\nconsole.log([...p1.items,...p2.items].map(e=>e.id));\\ntry{feedPage(ev,{after:'7:a'})}catch(e){console.log('old cursor:',e.message)}\\\"; ls test\",\"purpose\":\"Testing suspected bugs\"}"
+    },
+    "scope": "scoped",
+    "command": "cd ~/workspace/repo; npm test 2>&1 | tail -8; node -e \"\nconst {feedPage}=require('./src/feed');\nconst ev=['a','b','c'].map(id=>({id,createdAt:7}));\nconst p1=feedPage(ev,{limit:2});const p2=feedPage(ev,{after:p1.next,limit:2});\nconsole.log([...p1.items,...p2.items].map(e=>e.id));\ntry{feedPage(ev,{after:'7:a'})}catch(e){console.log('old cursor:',e.message)}\"; ls test",
+    "purpose": "Testing suspected bugs",
+    "runId": "fb8603a8-dc63-4b1a-8a20-646fa8e633be",
+    "callId": "toolu_01BNU7s9ci5DQ91q4SYvwSgw",
+    "tool": "execute",
+    "step": {
+     "id": "48a47073-a957-4935-b7f8-622684575d7f",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "ℹ skipped 0\nℹ todo 0\nℹ duration_ms 90.283704\nnpm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\n[ 'c', 'b' ]\nold cursor: Unexpected token '�', \"�\" is not valid JSON\nfeed.test.js\nlimits.test.js\npager.test.js\n\n[exit 0]",
+    "runId": "fb8603a8-dc63-4b1a-8a20-646fa8e633be",
+    "callId": "toolu_01BNU7s9ci5DQ91q4SYvwSgw",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "a93a3f30-62a9-4b0b-8832-f1771fa2d2e2",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "CAQSswYKEAgTGAI4AUIIdGhpbmtpbmcSDH9n2b2G1RJ5GppBxxoMnrfNsjVdKZiGdtRFIjCCcoRQhsNOxwahmlGdmofF/MIEHO/5UpGFz+d4LQ+kpmK4iaufNYYsM2M+nLuapx8q0AVKHG5xCBAS2XfxD5CCWSK69Z1xXnyt4bqFkbNSJU6L4b7O9o4VL0ozdmw+ZDrRQjYjCAfd1s5Y9A49yWZr48mcrqxLo3dkNhS6jH6SN43GrrqsSs+431+0gF0TCKNDNGdhiqWbhO09tUtKLXNRwpwfiMGZoi2/FKeula2FH0+c8clgdjUftzLT7MGNJ4xpIgK3BBW/LSiqZyaWHA9vDc5x58p5OQQRQgxEvgCV2cA5ttyxqaED3KK0Waq19NGCBXxJzBGf15bVzRaoieGPMzLE3IOLSTpVAmjRrWlj8YaUPA/QJS08L5R6DrCT6BhGXT2wrkGjFLKIhH47ZDbRx6qkYIP1/lZJtoxZsYpMPTEg/6fsMl4S3u70rZUUCfoX09QSgzaI3JLmaAh48mxZMj9eOBQv0WjREcKJJOPVq74ikbPnInNhzcFTbxVmKawWCQs48+GgqCUOsuD6UiBfKItTSPw0fXUnBPr3nA6vh4aLugvMnQSKyVLWg4J5BvCmdmYGuuBGKirtX7Skq6TYOFix0MQ9gOm4sCuvxTODlro5Z4iyA3uoECVtRMpplB4PoPL1Fs/qgG9tj6Q9ui/PBankVQ8YT95jyXtGIele7aCUUhABEmu2PKl4zGRtgs3jtRc+6akHwhV/884GGWZzIR9mlc98c7TuX+daJlEKLl03inx9Hybw1UAhByo7RrMrAD0qBBygi1nXtksJC+oKFY2CH7sImxJZWHAsXWY+dViVJJ9f7s1mSSNbmBP/m0kklgNKsG0v1GxD6ZCB0Qn4qpkOGS1RvcsvGfp4nstpaWA+1zcnfTSCSK1/M03E0JlZOnlDlHEVpzOh7xn0exGXBKMxAJXuN1GEwc5GbKgumcEjVIOoQSoEr7IOngPgWUYzxt4fwPQFQXeYM9FjQUfeHSwZolIi7YtIH3eI25SVA346w0cVVry7w6W8nK5XPtmeMtgYAQ==",
+    "thinking": "The tests pass, so the work is finished. I also want to confirm that the comments comparing ids with `<` behave the same as before, which they do.\n\n",
+    "runId": "fb8603a8-dc63-4b1a-8a20-646fa8e633be",
+    "step": {
+     "id": "a93a3f30-62a9-4b0b-8832-f1771fa2d2e2",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "a93a3f30-62a9-4b0b-8832-f1771fa2d2e2",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794140895166,
+    "workFinishedAt": 1794140917753,
+    "text": "I wouldn't merge this yet. The shared pager is a good idea and the tests pass, but the feed has a bug that loses data, and the release breaks feed cursors clients already hold. I only read and ran things; I didn't edit anything.\n\n**Blocking**\n\n1. **The feed skips events that share a timestamp** (`src/feed.js`). The feed now pages on `createdAt` alone, so the `id` tie-breaker is gone. That tie-breaker was in the old `olderThan`, and comments still have it. Paging continues from \"strictly older than the last timestamp\", so any events left on the next page with that same timestamp are dropped. I reproduced it: three events at `createdAt: 7` with `limit: 2` give `['c', 'b']`, and `a` never comes back. To fix it, use `(e) => [e.createdAt, e.id]` as the key and `encodeCursor([last.createdAt, last.id])` for the cursor. Comments already do it this way.\n\n2. **Feed cursors issued before the release will fail.** Old cursors look like `\"7:a\"`. The new `decodeCursor` does a base64url decode and then `JSON.parse`, which throws on them (`Unexpected token…`). So anyone in the middle of paging when you deploy gets an error, probably a 500. Any badly formed or tampered cursor fails the same way. Decoding should fall back to the old `createdAt:id` format, or at least turn a bad cursor into a 400 instead of an unhandled exception.\n\n**Worth fixing**\n\n3. **No test covers the feed with a tied timestamp.** The test for tied timestamps only runs through `commentsPage`, which is why bug 1 got past CI. A feed copy of that test would have caught it. A test that an old-format cursor still decodes would cover bug 2.\n4. **`compareKeys` only looks at as many parts as the first key has.** If the row key and the cursor key have different shapes, for example an old one-part feed cursor against a new two-part key, the comparison quietly uses only part of the key. It should check that the lengths match or compare over the longer one.\n5. **The feed's default page size moved.** It's now set in `clampLimit`, which is fine and matches the README. But comments still default to 50 with no limit at all, so the changelog line \"one shared pager\" is only partly true. Decide whether comments should be clamped too.\n\n**Looks good**\n\n- `keysetPage` fetches one extra row (`limit + 1`) to tell whether there's another page. That's correct, and comments behave exactly as they did before.\n- `clampLimit` handles a missing, zero, junk, negative or too-large limit correctly, with tests for each.\n- The version bump, changelog and README all match.\n\nOnce bugs 1 and 2 are fixed and there's a feed test with tied timestamps, I'm happy for this to merge.",
+    "runId": "fb8603a8-dc63-4b1a-8a20-646fa8e633be",
+    "step": {
+     "id": "a93a3f30-62a9-4b0b-8832-f1771fa2d2e2",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,156 @@
+{
+  "trial_id": "rev-05-plain-opus-k2",
+  "task_id": "rev-05",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 2,
+  "status": "ok",
+  "reply_text": "Please don't merge yet. There's one real permissions bug in `src/guard.js`. Everything else looks fine. I didn't change anything; I only read the branch, ran the tests and ran a quick check of my own.\n\n**The bug: `canEdit` checks the wrong right**\n```js\nreturn share.mask & WRITE === WRITE && !share.locked;\n```\nJavaScript evaluates `===` before `&`. So this line actually runs as `share.mask & (WRITE === WRITE)`, which is `share.mask & 1`, and that tests **READ** instead of WRITE. I ran it to confirm:\n- A view-only share (`mask: READ`, not locked) gets `canEdit` → **true**. Anyone with a viewer link could edit.\n- A share with COMMENT and WRITE but no READ gets `canEdit` → **0** (falsy), so it's wrongly blocked.\n\nThe fix is to match `canComment`: `hasRight(share.mask, WRITE) && !share.locked`. The test suite passes anyway, because its only editor test uses `READ | COMMENT | WRITE`, which includes READ. It would help to add tests that a viewer **can't** edit and that each check ignores the other bits.\n\n**Smaller notes (none of these block the merge):**\n- **`toggleRight` / share dialog:** this does what the README says. Nothing stops someone from switching off READ while WRITE stays on, though. With the fix above, that share could edit but not view. You may want rights to depend on each other (WRITE needs READ, and so on). It's also worth deciding whether anyone can toggle ADMIN, since that could create a second admin or leave a document with none.\n- **`transferOwnership`:**\n  - It doesn't check that `fromUser` is the current owner (`doc.owner`).\n  - It doesn't validate `toUser`.\n  - If `fromUser` has no share entry, `undefined & ~ADMIN` sets their share to `0`. That's harmless but probably not intended.\n  - Tests are missing for \"the previous owner keeps their other rights\" and for transferring to yourself.\n- **Tests:** there's no test that a switch turns a right *off*.\n- **Changelog:** the 3.2.0 entry covers editing and locking but leaves out the share-dialog switches and ownership transfer.\n\nThe version bump and the README additions match what the code does.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-05-plain-opus-k2",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0798537,
+    "input_tokens": 80385,
+    "output_tokens": 1592,
+    "cached_tokens": 75792,
+    "cache_write_tokens": 4121,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.00005130000000000001,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0798024,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 21.462,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-05-plain-opus-k2",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:08:15.557Z",
+    "images": {
+      "core": "sha256:b72940b562e6c53aae6afc83a7f0b64341c2e8cbe63023fe872152ab58a99891",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-896e49561fcd",
+        "id": "sha256:2c573a8a565e03cd61423b47d45a8b78ea6cc12e3c6d84a116a99eda1cf15c92",
+        "tree_sha256": "3745319e560b5b3779257b8b6020c6313b748cb359283f6ff59062054bfd97dd"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-4a992ddc-7c5e-4de0-9fd2-fa9c769c-653d57"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:09:00.102Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline -5 --all; git diff --stat main...share-editing",
+          "code": 0,
+          "output": "  main\n* share-editing\n1dc003f Share dialog switches and ownership transfer\n09f5972 Let editors comment and edit unlocked documents\n28095cc Share documents with view rights\n CHANGELOG.md        |  4 ++++\n README.md           | 12 ++++++++++++\n package.json        |  2 +-\n src/guard.js        | 12 ++"
+        },
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo; git diff main...share-editing; echo ====; cat src/*.js; cat package.json",
+          "code": 0,
+          "output": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 00a7c60..908a687 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 3.2.0\n+\n+- Editors can comment and edit; locked documents are read-only.\n+\n ## 3.1.0\n \n - View-only shares.\ndiff --git a/README.md b/README.md\nindex 11d4d2a"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-05-plain-opus-k2",
+      "meter": {
+        "requests": 7,
+        "usd": 0.0798537,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.0798537,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.00005130000000000001
+    }
+  }
+}

@@ -25,7 +25,7 @@ RUN apk add --no-cache git \
 FROM ${NODE_IMAGE} AS connector-sdk-build
 WORKDIR /app
 COPY --from=src /src/deploy/connector-sdk ./deploy/connector-sdk
-RUN npm ci --prefix deploy/connector-sdk --ignore-scripts --no-audit --no-fund \
+RUN npm ci --prefix deploy/connector-sdk --ignore-scripts --no-audit --no-fund --fetch-retries=6 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000 \
     && node deploy/connector-sdk/build.mjs
 
 FROM ${NODE_IMAGE} AS web-ui-build
@@ -34,7 +34,7 @@ ARG WEB_UI_BASE=/
 ENV WEB_UI_BASE=$WEB_UI_BASE
 ENV NODE_OPTIONS=--max-old-space-size=4096
 COPY --from=src /src/plugins/web-ui/package.json /src/plugins/web-ui/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN npm ci --no-audit --no-fund --fetch-retries=6 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 COPY --from=src /src/plugins/web-ui/index.html /src/plugins/web-ui/shared.html /src/plugins/web-ui/vite.config.ts /src/plugins/web-ui/tsconfig.json ./
 COPY --from=src /src/plugins/web-ui/public ./public
 COPY --from=src /src/plugins/web-ui/src ./src
@@ -54,7 +54,7 @@ LABEL org.opencontainers.image.title="harness-eval QM harness (core + adapter)" 
 RUN apk add --no-cache ca-certificates curl git git-daemon docker-cli bash util-linux
 WORKDIR /app
 COPY --from=src /src/package.json /src/package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund && rm -rf /root/.npm /tmp/node-compile-cache
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund --fetch-retries=6 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000 && rm -rf /root/.npm /tmp/node-compile-cache
 COPY --from=connector-sdk-build /app/.generated/connector-sdk ./.generated/connector-sdk
 COPY --from=src /src/src ./src
 COPY --from=src /src/cli/src/canonical-json.ts /src/cli/src/credential-paths.ts /src/cli/src/render-job-command.ts /src/cli/src/render-source.ts /src/cli/src/scope-storage-key.ts /src/cli/src/tool-descriptor.ts /src/cli/src/web-release.ts ./cli/src/

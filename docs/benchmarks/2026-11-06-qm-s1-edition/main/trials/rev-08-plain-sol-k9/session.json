@@ -1,0 +1,401 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 04:39 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "aa3d28cf-5bdf-4d97-bcb6-075d74d9cd14"
+    },
+    "text": "Hey, can you review the billing-anniversary branch against main before it ships? It schedules renewals so I want to be sure it's right. Review only please, I'll do any edits.",
+    "runId": "873df4f0-2448-4eed-9c2e-7aa4154124e3"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "6828c8b5-6b39-44df-8129-b3a00602aa6a",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "textSignature": "{\"v\":1,\"id\":\"msg_0f7746404df70d8c016af06d981ca487d29754dea7241b7d97\",\"phase\":\"commentary\"}",
+    "text": "I’ll compare `billing-anniversary` with `main`, trace the renewal-date logic, and check the edge cases without changing any files.",
+    "runId": "873df4f0-2448-4eed-9c2e-7aa4154124e3",
+    "step": {
+     "id": "6828c8b5-6b39-44df-8129-b3a00602aa6a",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "name": "github-gitlab",
+    "wire": {
+     "message": {
+      "id": "6828c8b5-6b39-44df-8129-b3a00602aa6a",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"read\",\"name\":\"github-gitlab\"}"
+    },
+    "action": "read",
+    "runId": "873df4f0-2448-4eed-9c2e-7aa4154124e3",
+    "callId": "call_avYvD7YR06iRhZtE0RnMGQXu|fc_0f7746404df70d8c016af06d987b8487d29249d9ada0adde18",
+    "tool": "skills",
+    "step": {
+     "id": "6828c8b5-6b39-44df-8129-b3a00602aa6a",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "dir": "/root/workspace/.agent-skills/3237205679372626427566a1/b3a5d377fd762eee/github-gitlab",
+    "name": "github-gitlab",
+    "bytes": 6025,
+    "found": true,
+    "action": "read",
+    "sourceScopeId": "org:harness-eval",
+    "result": "[skill files synced to /root/workspace/.agent-skills/3237205679372626427566a1/b3a5d377fd762eee/github-gitlab/]\n\n# GitHub / GitLab\n\nUse this skill when the user asks to inspect repos, issues, pull requests, merge\nrequests, code history, branches, or to make a small code change in a hosted repo.\n\n## Choose the account deliberately\n\nUse the current credential manifest to choose an account authorized for this conversation\nthat fits the user's intent. Run commands with `execute` and an explicit `sandbox_id`;\nkeep that ID throughout checkout, edits, checks, and push. Personal and shared accounts are both valid choices; neither\nis an automatic fallback when the other fails. If the intended account is unclear before\na write, ask. Do not infer permission from a login merely being present on the computer.\n\n- **Personal login:** use the authorized `gh`, `glab`, or Git login. Check the active\n  provider account (for example, `gh api user --jq .login`) and the Git transport's auth\n  configuration; a CLI API identity alone does not prove which account Git will use.\n- **Shared org credential:** if listed in the prompt, select its slug and use the\n  core-hosted smart HTTP remote in the `use-shared-credential` skill. This uses\n  the configured shared account, even when a personal OAuth connector is live.\n  Its name is an admin label, not a verified upstream username.\n- **Connected app:** use only advertised capabilities. API access does not by itself\n  establish native Git transport access or configure the CLI's active login.\n\nFor an existing checkout, inspect the remote and applicable credential-helper, SSH,\nproxy, and HTTP-header configuration. A reused checkout\nmay still select a previous account. Commit author metadata is separate from transport\nidentity. Resolve an unknown identity before a write; do not probe access by pushing.\n\n## Logging in\n\nUse the native login only after an explicit authentication rejection. A TLS timeout,\nconnection reset, rate limit, or GitHub server error is not evidence of logout or\npermission expiry. Do not consume another credential grant to repair transport.\n\nFor a confirmed missing or expired GitHub or GitLab login, follow the\n`interactive-login` skill: it runs `gh auth login` / `glab auth login` in a temporary\nhome as a background job, relays the code and URL, and saves the login to the keychain\nso later commands use it through `execute.credentials`.\n\n## Read-only work\n\nCheck auth and inspect repo state:\n\n```bash\ngh auth status\ngh repo view OWNER/REPO --json name,description,url,defaultBranchRef\ngh issue list --repo OWNER/REPO --state open --limit 20\ngh pr list --repo OWNER/REPO --state open --limit 20\n```\n\nFor GitLab:\n\n```bash\nglab auth status\nglab repo view GROUP/PROJECT\nglab issue list --repo GROUP/PROJECT\nglab mr list --repo GROUP/PROJECT\n```\n\nUse `git log`, `git show`, and `git diff` for codebase-change summaries. Cite commit\nhashes, PR/MR numbers, and links.\n\n## Checkout and edits\n\nClone or fetch only the repo the user asked for:\n\n```bash\ngh repo clone OWNER/REPO repo\ncd repo\ngit checkout -b codex/small-change\n```\n\nKeep changes scoped. Run the repo's tests. If a push or PR/MR creation is requested,\nprepare the branch and summary first.\n\n## Writes require approval\n\nPushing branches, creating PRs/MRs, merging, closing issues, editing labels, changing\nrepo settings, releases, or workflows are writes. Ask for approval before running the\nwrite command.\n\nAfter approval:\n\n```bash\ngit push -u origin codex/small-change\ngh pr create --repo OWNER/REPO --title \"...\" --body-file pr.md\n```\n\nFor GitLab:\n\n```bash\ngit push -u origin codex/small-change\nglab mr create --repo GROUP/PROJECT --title \"...\" --description-file mr.md\n```\n\nReport the final URL and leave enough context for review.\n\n## Wait for GitHub CI\n\nUse the bundled helper instead of a bare `gh pr checks --watch` or a handwritten\nshell loop. Use the absolute directory reported by the skill read in place of\n`<skill dir>`. It is one blocking watcher process, not repeated agent turns:\n\n```bash\nnode \"<skill dir>/scripts/watch-ci.mjs\" --repo OWNER/REPO --pr NUMBER --head REVIEWED_HEAD_SHA\n```\n\nCapture the full head SHA from `gh pr view NUMBER --repo OWNER/REPO --json headRefOid`\nbefore review. Use that same SHA for the watcher and the final merge gate. Start the\nwatcher with `execute` using the selected `sandbox_id` and `background:true`, then\nsubscribe with `background` action `watch` and its returned `process_id`. Keep one\nwatcher per PR. Set the process lifetime longer than the helper's 30-minute deadline;\nuse `--timeout-ms` for a different bounded deadline. Use only credentials authorized\nfor that background process; a live foreground grant does not authorize background work.\n\nThe helper polls GitHub internally and emits JSON status records. It retries only\nrecognized transient transport/server errors with bounded backoff. Pending checks\nremain pending. Real CI failures, authentication/authorization failures, changed heads,\nunknown errors, exhausted retries, and deadline expiry all stop with nonzero status.\nExplicit API rate limits stop as `rate_limited`, not authentication errors.\nEmpty check sets, skipped checks, and cancelled checks are not successful evidence.\nDo not interpret an exit code alone as \"checks concluded\": read the status record.\nDo not suppress a nonzero exit or print a success marker after it. Keep `set -e`.\n\nSuccess means the checks observed for the expected head passed, not permission to\nmerge. Re-read checks and review threads immediately before merging. Wait for async\nreviewers on that exact head; resolve findings and complete any review the repo\nrequires. After any push or head change, discard old success/review evidence and repeat.\nOnly merge when all gates pass, with GitHub's atomic head guard:\n\n```bash\ngh pr merge NUMBER --repo OWNER/REPO --squash --match-head-commit REVIEWED_HEAD_SHA\n```\n\nOn a branch that requires a merge queue, this queues the PR; it is merged only once\nGitHub shows it as merged. Never use auto-merge or bypass repository gates. This\nhelper does not retry GitLab commands or change their authentication behavior.\n",
+    "runId": "873df4f0-2448-4eed-9c2e-7aa4154124e3",
+    "callId": "call_avYvD7YR06iRhZtE0RnMGQXu|fc_0f7746404df70d8c016af06d987b8487d29249d9ada0adde18",
+    "tool": "skills",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "1bffc2e2-ca9e-4a34-a784-c85a27c8cc78",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "pwd; ls -la; find /tmp/pi-cwd /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null",
+      "purpose": "Locating repository"
+     }
+    },
+    "scope": "scoped",
+    "command": "pwd; ls -la; find /tmp/pi-cwd /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null",
+    "purpose": "Locating repository",
+    "retrySafe": true,
+    "runId": "873df4f0-2448-4eed-9c2e-7aa4154124e3",
+    "callId": "call_HN6STEZDhTcZkdWpXOcnjjpy|fc_0f7746404df70d8c016af06d9a25ec87d2a32b53059869238f",
+    "tool": "execute",
+    "step": {
+     "id": "1bffc2e2-ca9e-4a34-a784-c85a27c8cc78",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 1,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\ntotal 16\ndrwxr-xr-x 4 root root 4096 Nov  8 12:39 .\ndrwx------ 6 root root 4096 Nov  8 12:39 ..\ndrwxr-xr-x 3 root root 4096 Nov  8 12:39 .agent-skills\ndrwxr-xr-x 5 root root 4096 Nov  8 12:39 repo\n/root/workspace/repo/.git\n\n[exit 1]",
+    "runId": "873df4f0-2448-4eed-9c2e-7aa4154124e3",
+    "callId": "call_HN6STEZDhTcZkdWpXOcnjjpy|fc_0f7746404df70d8c016af06d9a25ec87d2a32b53059869238f",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "34a396fa-b77c-4d8e-b155-76d81cc74c45",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "action": "list",
+    "purpose": "Identifying review sandbox",
+    "runId": "873df4f0-2448-4eed-9c2e-7aa4154124e3",
+    "callId": "call_JZtoEvjBQcdZYmZWouVs1c8A|fc_0f7746404df70d8c016af06d9be2d487d299c94e5ec4885b1a",
+    "tool": "sandbox",
+    "step": {
+     "id": "34a396fa-b77c-4d8e-b155-76d81cc74c45",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "action": "list",
+    "result": "{\"sandboxes\":[{\"id\":\"a6f6f0bc-cf79-4298-9b13-0c38c6d9c604\",\"name\":\"s1e-probe\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"]},\"state\":\"ready\",\"legacy\":false,\"backend\":\"local\",\"holders\":[\"873df4f0-2448-4eed-9c2e-7aa4154124e3\"],\"createdAt\":\"2026-11-08T12:39:49.199Z\",\"createdBy\":\"harness-admin\",\"machineId\":\"qm-sbx-sandbox-a6f6f0bc-cf79-4298-9b13-0c38c6d9-79d0e0\",\"ownerScopeId\":\"personal:U1\",\"backingScopeId\":\"sandbox-a6f6f0bc-cf79-4298-9b13-0c38c6d9c604\"}],\"defaultSandboxId\":\"a6f6f0bc-cf79-4298-9b13-0c38c6d9c604\",\"defaultMode\":\"selected\",\"providers\":[{\"name\":\"local\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\"},\"egressEnforcement\":\"none\",\"sizesMemory\":true,\"actions\":[\"create\",\"retire\"]}]}",
+    "runId": "873df4f0-2448-4eed-9c2e-7aa4154124e3",
+    "callId": "call_JZtoEvjBQcdZYmZWouVs1c8A|fc_0f7746404df70d8c016af06d9be2d487d299c94e5ec4885b1a",
+    "tool": "sandbox",
+    "isError": false
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "a1e08e61-8d74-4947-a06d-0baf7bde89f6",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -5 --oneline && git diff --stat main...billing-anniversary && ls -la && find . -maxdepth 3 -type f -not -path './.git/*'\",\"purpose\":\"Inspecting branch diff\",\"sandbox_id\":\"a6f6f0bc-cf79-4298-9b13-0c38c6d9c604\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -5 --oneline && git diff --stat main...billing-anniversary && ls -la && find . -maxdepth 3 -type f -not -path './.git/*'",
+      "purpose": "Inspecting branch diff",
+      "sandbox_id": "a6f6f0bc-cf79-4298-9b13-0c38c6d9c604"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -5 --oneline && git diff --stat main...billing-anniversary && ls -la && find . -maxdepth 3 -type f -not -path './.git/*'",
+    "purpose": "Inspecting branch diff",
+    "retrySafe": true,
+    "sandbox_id": "a6f6f0bc-cf79-4298-9b13-0c38c6d9c604",
+    "runId": "873df4f0-2448-4eed-9c2e-7aa4154124e3",
+    "callId": "call_9mW0bHLiLKkUbPIQQIgLCqoq|fc_0f7746404df70d8c016af06d9d4fb087d283280ab741d317c8",
+    "tool": "execute",
+    "step": {
+     "id": "a1e08e61-8d74-4947-a06d-0baf7bde89f6",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* billing-anniversary f73b00d Prorate the first partial period\n  main                7f89e48 Subscriptions with a billing anchor day\nf73b00d Prorate the first partial period\n27a0295 Compute the next billing date from the anchor\n7f89e48 Subscriptions with a billing anchor day\n CHANGELOG.md          |  4 ++++\n README.md             |  8 ++++++++\n package.json          |  2 +-\n src/dates.js          |  6 +++++-\n src/prorate.js        | 11 +++++++++++\n src/schedule.js       | 10 ++++++++++\n test/prorate.test.js  | 11 +++++++++++\n test/schedule.test.js | 15 +++++++++++++++\n 8 files changed, 65 insertions(+), 2 deletions(-)\ntotal 32\ndrwxr-xr-x 5 root root 4096 Nov  8 12:39 .\ndrwxr-xr-x 4 root root 4096 Nov  8 12:39 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 12:39 .git\n-rw-r--r-- 1 root root  131 Nov  8 12:34 CHANGELOG.md\n-rw-r--r-- 1 root root  658 Nov  8 12:34 README.md\n-rw-r--r-- 1 root root  110 Nov  8 12:34 package.json\ndrwxr-xr-x 2 root root 4096 Nov  8 12:39 src\ndrwxr-xr-x 2 root root 4096 Nov  8 12:39 test\n./package.json\n./README.md\n./src/prorate.js\n./src/dates.js\n./src/anchor.js\n./src/schedule.js\n./test/prorate.test.js\n./test/schedule.test.js\n./test/anchor.test.js\n./CHANGELOG.md\n\n[exit 0]",
+    "runId": "873df4f0-2448-4eed-9c2e-7aa4154124e3",
+    "callId": "call_9mW0bHLiLKkUbPIQQIgLCqoq|fc_0f7746404df70d8c016af06d9d4fb087d283280ab741d317c8",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "c63c7974-2f77-445b-897d-b5a5d9fea860",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git diff main...billing-anniversary && for f in README.md package.json src/* test/*; do echo \\\"--- $f\\\"; nl -ba \\\"$f\\\"; done && git show main:src/dates.js && git show main:src/anchor.js && npm test\",\"purpose\":\"Reading renewal implementation\",\"sandbox_id\":\"a6f6f0bc-cf79-4298-9b13-0c38c6d9c604\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo && git diff main...billing-anniversary && for f in README.md package.json src/* test/*; do echo \"--- $f\"; nl -ba \"$f\"; done && git show main:src/dates.js && git show main:src/anchor.js && npm test",
+      "purpose": "Reading renewal implementation",
+      "sandbox_id": "a6f6f0bc-cf79-4298-9b13-0c38c6d9c604"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git diff main...billing-anniversary && for f in README.md package.json src/* test/*; do echo \"--- $f\"; nl -ba \"$f\"; done && git show main:src/dates.js && git show main:src/anchor.js && npm test",
+    "purpose": "Reading renewal implementation",
+    "retrySafe": true,
+    "sandbox_id": "a6f6f0bc-cf79-4298-9b13-0c38c6d9c604",
+    "runId": "873df4f0-2448-4eed-9c2e-7aa4154124e3",
+    "callId": "call_y7hshttpJc6HhwbdLEz2Kk8v|fc_0f7746404df70d8c016af06d9f6f4c87d2b53c2fd605de12a6",
+    "tool": "execute",
+    "step": {
+     "id": "c63c7974-2f77-445b-897d-b5a5d9fea860",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 0d77c0e..6b56b0d 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 2.1.0\n+\n+- Next-billing-date computation from the anchor day.\n+\n ## 2.0.0\n \n - Monthly subscriptions with an anchor day.\ndiff --git a/README.md b/README.md\nindex 4326fa9..1cd9ab3 100644\n--- a/README.md\n+++ b/README.md\n@@ -3,3 +3,11 @@\n Subscription renewals for subkit.\n \n A subscription has an anchor day (1 to 31). It renews on that day each month. If a month is shorter than the anchor day, it renews on the last day of that month: a Jan 31 anchor renews Feb 28 (or 29), then Mar 31. The anchor never drifts.\n+\n+## Next date\n+\n+nextBillingDate(from, anchorDay) returns the next renewal strictly after the month of from, on the anchor day or the last day of the target month if it is shorter.\n+\n+## Proration\n+\n+The first period is prorated by the days left in the start month, counting the start day. A start on the 1st pays the full amount; a start on the 16th of a 30-day month pays half.\ndiff --git a/package.json b/package.json\nindex 2f6c0ab..12b85e3 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"subkit\",\n-  \"version\": \"2.0.0\",\n+  \"version\": \"2.1.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/dates.js b/src/dates.js\nindex 2e47502..f5c5faf 100644\n--- a/src/dates.js\n+++ b/src/dates.js\n@@ -2,4 +2,8 @@ function startOfDay(d) {\n   return new Date(d.getFullYear(), d.getMonth(), d.getDate());\n }\n \n-module.exports = { startOfDay };\n+function daysInMonth(year, month) {\n+  return new Date(year, month + 1, 0).getDate();\n+}\n+\n+module.exports = { startOfDay, daysInMonth };\ndiff --git a/src/prorate.js b/src/prorate.js\nnew file mode 100644\nindex 0000000..8d33058\n--- /dev/null\n+++ b/src/prorate.js\n@@ -0,0 +1,11 @@\n+const { daysInMonth } = require('./dates');\n+\n+function prorate(amountCents, startDate, anchorDay) {\n+  const year = startDate.getFullYear();\n+  const month = startDate.getMonth();\n+  const inMonth = daysInMonth(year, month);\n+  const remaining = inMonth - startDate.getDate() + 1;\n+  return Math.round((amountCents * remaining) / inMonth);\n+}\n+\n+module.exports = { prorate };\ndiff --git a/src/schedule.js b/src/schedule.js\nnew file mode 100644\nindex 0000000..25c2c7e\n--- /dev/null\n+++ b/src/schedule.js\n@@ -0,0 +1,10 @@\n+const { daysInMonth } = require('./dates');\n+\n+function nextBillingDate(from, anchorDay) {\n+  const year = from.getFullYear();\n+  const month = from.getMonth();\n+  const day = Math.min(anchorDay, daysInMonth(year, month));\n+  return new Date(year, month + 1, day);\n+}\n+\n+module.exports = { nextBillingDate };\ndiff --git a/test/prorate.test.js b/test/prorate.test.js\nnew file mode 100644\nindex 0000000..41a482f\n--- /dev/null\n+++ b/test/prorate.test.js\n@@ -0,0 +1,11 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { prorate } = require('../src/prorate');\n+\n+test('a full month is the full price', () => {\n+  assert.strictEqual(prorate(3000, new Date(2026, 3, 1), 1), 3000);\n+});\n+\n+test('starting mid-month charges the remaining days', () => {\n+  assert.strictEqual(prorate(3000, new Date(2026, 3, 16), 16), 1500);\n+});\ndiff --git a/test/schedule.test.js b/test/schedule.test.js\nnew file mode 100644\nindex 0000000..3549389\n--- /dev/null\n+++ b/test/schedule.test.js\n@@ -0,0 +1,15 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { nextBillingDate } = require('../src/schedule');\n+\n+function ymd(d) {\n+  return [d.getFullYear(), d.getMonth() + 1, d.getDate()];\n+}\n+\n+test('a mid-month anchor renews the same day next month', () => {\n+  assert.deepStrictEqual(ymd(nextBillingDate(new Date(2026, 2, 15), 15)), [2026, 4, 15]);\n+});\n+\n+test('a December 31st anchor renews on January 31st', () => {\n+  assert.deepStrictEqual(ymd(nextBillingDate(new Date(2026, 11, 31), 31)), [2027, 1, 31]);\n+});\n--- README.md\n     1\t# subkit\n     2\t\n     3\tSubscription renewals for subkit.\n     4\t\n     5\tA subscription has an anchor day (1 to 31). It renews on that day each month. If a month is shorter than the anchor day, it renews on the last day of that month: a Jan 31 anchor renews Feb 28 (or 29), then Mar 31. The anchor never drifts.\n     6\t\n     7\t## Next date\n     8\t\n     9\tnextBillingDate(from, anchorDay) returns the next renewal strictly after the month of from, on the anchor day or the last day of the target month if it is shorter.\n    10\t\n    11\t## Proration\n    12\t\n    13\tThe first period is prorated by the days left in the start month, counting the start day. A start on the 1st pays the full amount; a start on the 16th of a 30-day month pays half.\n--- package.json\n     1\t{\n     2\t  \"name\": \"subkit\",\n     3\t  \"version\": \"2.1.0\",\n     4\t  \"private\": true,\n     5\t  \"scripts\": {\n     6\t    \"test\": \"node --test\"\n     7\t  }\n     8\t}\n--- src/anchor.js\n     1\tfunction anchorFor(startDate) {\n     2\t  return startDate.getDate();\n     3\t}\n     4\t\n     5\tmodule.exports = { anchorFor };\n--- src/dates.js\n     1\tfunction startOfDay(d) {\n     2\t  return new Date(d.getFullYear(), d.getMonth(), d.getDate());\n     3\t}\n     4\t\n     5\tfunction daysInMonth(year, month) {\n     6\t  return new Date(year, month + 1, 0).getDate();\n     7\t}\n     8\t\n     9\tmodule.exports = { startOfDay, daysInMonth };\n--- src/prorate.js\n     1\tconst { daysInMonth } = require('./dates');\n     2\t\n     3\tfunction prorate(amountCents, startDate, anchorDay) {\n     4\t  const year = startDate.getFullYear();\n     5\t  const month = startDate.getMonth();\n     6\t  const inMonth = daysInMonth(year, month);\n     7\t  const remaining = inMonth - startDate.getDate() + 1;\n     8\t  return Math.round((amountCents * remaining) / inMonth);\n     9\t}\n    10\t\n    11\tmodule.exports = { prorate };\n--- src/schedule.js\n     1\tconst { daysInMonth } = require('./dates');\n     2\t\n     3\tfunction nextBillingDate(from, anchorDay) {\n     4\t  const year = from.getFullYear();\n     5\t  const month = from.getMonth();\n     6\t  const day = Math.min(anchorDay, daysInMonth(year, month));\n     7\t  return new Date(year, month + 1, day);\n     8\t}\n     9\t\n    10\tmodule.exports = { nextBillingDate };\n--- test/anchor.test.js\n     1\tconst test = require('node:test');\n     2\tconst assert = require('node:assert');\n     3\tconst { anchorFor } = require('../src/anchor');\n     4\t\n     5\ttest('the anchor is the start day of month', () => {\n     6\t  assert.strictEqual(anchorFor(new Date(2026, 0, 31)), 31);\n     7\t});\n--- test/prorate.test.js\n     1\tconst test = require('node:test');\n     2\tconst assert = require('node:assert');\n     3\tconst { prorate } = require('../src/prorate');\n     4\t\n     5\ttest('a full month is the full price', () => {\n     6\t  assert.strictEqual(prorate(3000, new Date(2026, 3, 1), 1), 3000);\n     7\t});\n     8\t\n     9\ttest('starting mid-month charges the remaining days', () => {\n    10\t  assert.strictEqual(prorate(3000, new Date(2026, 3, 16), 16), 1500);\n    11\t});\n--- test/schedule.test.js\n     1\tconst test = require('node:test');\n     2\tconst assert = require('node:assert');\n     3\tconst { nextBillingDate } = require('../src/schedule');\n     4\t\n     5\tfunction ymd(d) {\n     6\t  return [d.getFullYear(), d.getMonth() + 1, d.getDate()];\n     7\t}\n     8\t\n     9\ttest('a mid-month anchor renews the same day next month', () => {\n    10\t  assert.deepStrictEqual(ymd(nextBillingDate(new Date(2026, 2, 15), 15)), [2026, 4, 15]);\n    11\t});\n    12\t\n    13\ttest('a December 31st anchor renews on January 31st', () => {\n    14\t  assert.deepStrictEqual(ymd(nextBillingDate(new Date(2026, 11, 31), 31)), [2027, 1, 31]);\n    15\t});\nfunction startOfDay(d) {\n  return new Date(d.getFullYear(), d.getMonth(), d.getDate());\n}\n\nmodule.exports = { startOfDay };\nfunction anchorFor(startDate) {\n  return startDate.getDate();\n}\n\nmodule.exports = { anchorFor };\n\n> subkit@2.1.0 test\n> node --test\n\n✔ the anchor is the start day of month (0.659779ms)\n✔ a full month is the full price (0.697049ms)\n✔ starting mid-month charges the remaining days (0.12ms)\n✔ a mid-month anchor renews the same day next month (1.138398ms)\n✔ a December 31st anchor renews on January 31st (0.13866ms)\nℹ tests 5\nℹ suites 0\nℹ pass 5\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 88.575315\n\n[stderr]\nnpm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\n\n[exit 0]",
+    "runId": "873df4f0-2448-4eed-9c2e-7aa4154124e3",
+    "callId": "call_y7hshttpJc6HhwbdLEz2Kk8v|fc_0f7746404df70d8c016af06d9f6f4c87d2b53c2fd605de12a6",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "e9ebf4b7-92c1-4218-b00f-2186b344a58e",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "{\"id\":\"rs_0f7746404df70d8c016af06da1edf887d2a05e2f1854e79746\",\"type\":\"reasoning\",\"content\":[],\"encrypted_content\":\"gAAAAABq8G2jkcy8-glKtsQ5EvSISk2iT_KGzdvBJZf5zlDN2shDFS-yybWED0xTBeU_MCj13mJttd0Em0oxgEGuP5yDepb9EkdpLm1dyowpdTpgp4rMrc2Z7Qp6dsZPtYGgFKHRJ71MyprhxdFWZn1M0FK2oksnBbLGyZUgDpO1Tx3zL9GcHanPMfno-M6aoBvXl08XU8tJxscAwaJvM_LVBEf9EAIbU4gr_CDchYZJbGGLUmGauULmMm4TMyjswRskYtvv-6YbPAPLQYEWCH7bLhJ95Q5i9kOUiOmgUXA-UfktETcijlyXhjOmnmTLYViv1DYvlUQz9PGYA26g3z6SsPuZPnPX07xCnf8vZVKqZM3bzmXWnKXUJNpSKnG0Rwyti2V9_1SOs_R6v-ilUbdlxEv2Xgj-u_JWeuiYA_LPDbv5O590iOVhEoUl93X72HNxUximqUNxE2cyjWwdbWbEtEPWVLih88AJc0QVe2LYVC_dSbl1GFG3AwFpKCZg8ZyXi-F-zdr5aMzGkdr4Nr8jM3LSJBBlrH4YvVM_PbR2T9Opn-SWbDIQacX_paJqhDN88_UJeX7d4r8LOK9Sx7P0ONbUT1KrGtJLRKETcAnW4NHZY6kH7Lk4nd_FZNxKeNbpkpxDT6tYaV9aYOWpNP01Vc4Aq4Gz3FqSKR6SYjYiqMuy6B0tgqypI3kQ8GgLYEZJnkH7Fey1SdNhB7sbmkV0kAGakv8ybQVQeyDS_au41RD5mjUeGJP_XIsz0wlnbeJAmj513U_mRZ2VEG8uHAvOH4rQU4yGRQedkZHJ6KG8056GfeEpeKLQQxfGjnFFvy2J9Qov-uqS5sC8F39Rmrwu-DW5V53v1SFIYqtiZWtsQPMl5kmmJKLw01_9CV3Ox29ue0b3VntaI-_NuDmHNzcOaoxqcI4b8qVn4HMvijx8QgB2Fy4KrszQwLO-mhsGu6ueZjLcvD7FPOVAb6Mb3IWtWxbpXOFWos5Zm7wHB4tuICHF5esZI4nYtOtRKZKLoVFxfldSzKY-tz_5FRtTmD8OJeWfo1-kADHBEYirSQ9aUwKbVBJOEMJF5ekcXeKIyBm4CQNeN1vBwUHo0nO33AkQAOr3oxutVUEx82yXcgN425WTor11AUNpZ3JhsvtzUG2orBbqYyyeBP0Rfci2MpvaR_mP-svAOnPrGN9agBGObYplHbRghjBzT4bO3k2rlbR_T7QkElMxrVoq-aRPJjHggJY3Crj4WPtkAIdz8FyyiSzglydOPoK0RlKrHJVkkVYOzKT2sOWHYYGwP_mx8sksSGxfOVMuJ43G3zEqq93FY1iW4JuoPABYXFLVtl6apCCMLx_SGd97ow3Ls-PodXA0fa1UT7c_OXDUo03LEJ1QlBke-3CuyVxcCHMs-zqS0P7NE_lqKHCjXSmeCcNqEiXaLaHv3xCtb6PzdNd6-9k-5g2BM_dk8FV4bOp2qLU1MIg_LBq6dJYRCDN0l8yw9ZOtv6cGJ4wPBKhUkEFROuBb7a2u5cqaw-E5VsOU0eIDie3Yagj-nyIkePRv_wVOMoSHB9w_R602jjk7wlVgcKAOgGDvsZg8hAInGIudnccdb9JDLciRi9Uz6meyoh8bXiR2T1xxGR9CkcYQs_44diC4ZrqnKbDKbLCA4Do4zfepDf4aYsKee74sCLo4f7_UUFt3HloN82ffKemyWRP1sUTik2szxa6rRRaKulDjPISix5ZFq9NgRbEusSv7i5B9uYtRpp-ztjGk9qnqy2CsomQTMFM_-DF94Lj3tytg4uaE8yIW1sO1JeL4ecZ4ZJhuihamPuaWiNkc0VcWx0CJ8X9KcgrO3EI0uBsrr4wsI_Gr7Y9Vklf6HshIeAmHgh2GhnolYaTBHqUZjFhbWWJJFhgoBri18TcDzZWjYKfZp4-vWLcdnMkuRzZYGSSAUG2JsQtNT9ewBgdzjg==\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"**Setting clear targets**\\n\\nI need to establish a solid bug schedule for a specific month. The focus should be on ensuring there are no bugs, so I’ll need to be very explicit in my specifications. I plan to run a matrix that demonstrates our progress and status without making edits. This way, I can keep things clear and on track! Getting this right is crucial for smooth execution.\"}]}",
+    "thinking": "**Setting clear targets**\n\nI need to establish a solid bug schedule for a specific month. The focus should be on ensuring there are no bugs, so I’ll need to be very explicit in my specifications. I plan to run a matrix that demonstrates our progress and status without making edits. This way, I can keep things clear and on track! Getting this right is crucial for smooth execution.",
+    "runId": "873df4f0-2448-4eed-9c2e-7aa4154124e3",
+    "step": {
+     "id": "e9ebf4b7-92c1-4218-b00f-2186b344a58e",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "e9ebf4b7-92c1-4218-b00f-2186b344a58e",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && node <<'NODE'\\nconst {nextBillingDate} = require('./src/schedule');\\nconst fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;\\nfor (const [y,m,d,a] of [[2026,1,31,31],[2028,1,31,31],[2026,2,28,31],[2026,4,30,31]]) {\\n const from = new Date(y,m-1,d);\\n const expected = new Date(y,m,Math.min(a,new Date(y,m+1,0).getDate()));\\n console.log(`${fmt(from)}, anchor ${a}: actual ${fmt(nextBillingDate(from,a))}, expected ${fmt(expected)}`);\\n}\\nlet failures=0,total=0;\\nfor(let y=2024;y<=2028;y++) for(let m=0;m<12;m++) for(let a=1;a<=31;a++) {\\n const from=new Date(y,m,Math.min(a,new Date(y,m+1,0).getDate()));\\n const expected=new Date(y,m+1,Math.min(a,new Date(y,m+2,0).getDate()));\\n total++;\\n if (+nextBillingDate(from,a)!==+expected) failures++;\\n}\\nconsole.log(`Calendar matrix: ${failures}/${total} mismatches`);\\nNODE\\n git status --short && git rev-parse main billing-anniversary\",\"purpose\":\"Verifying month-end failures\",\"sandbox_id\":\"a6f6f0bc-cf79-4298-9b13-0c38c6d9c604\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo && node <<'NODE'\nconst {nextBillingDate} = require('./src/schedule');\nconst fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;\nfor (const [y,m,d,a] of [[2026,1,31,31],[2028,1,31,31],[2026,2,28,31],[2026,4,30,31]]) {\n const from = new Date(y,m-1,d);\n const expected = new Date(y,m,Math.min(a,new Date(y,m+1,0).getDate()));\n console.log(`${fmt(from)}, anchor ${a}: actual ${fmt(nextBillingDate(from,a))}, expected ${fmt(expected)}`);\n}\nlet failures=0,total=0;\nfor(let y=2024;y<=2028;y++) for(let m=0;m<12;m++) for(let a=1;a<=31;a++) {\n const from=new Date(y,m,Math.min(a,new Date(y,m+1,0).getDate()));\n const expected=new Date(y,m+1,Math.min(a,new Date(y,m+2,0).getDate()));\n total++;\n if (+nextBillingDate(from,a)!==+expected) failures++;\n}\nconsole.log(`Calendar matrix: ${failures}/${total} mismatches`);\nNODE\n git status --short && git rev-parse main billing-anniversary",
+      "purpose": "Verifying month-end failures",
+      "sandbox_id": "a6f6f0bc-cf79-4298-9b13-0c38c6d9c604"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && node <<'NODE'\nconst {nextBillingDate} = require('./src/schedule');\nconst fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;\nfor (const [y,m,d,a] of [[2026,1,31,31],[2028,1,31,31],[2026,2,28,31],[2026,4,30,31]]) {\n const from = new Date(y,m-1,d);\n const expected = new Date(y,m,Math.min(a,new Date(y,m+1,0).getDate()));\n console.log(`${fmt(from)}, anchor ${a}: actual ${fmt(nextBillingDate(from,a))}, expected ${fmt(expected)}`);\n}\nlet failures=0,total=0;\nfor(let y=2024;y<=2028;y++) for(let m=0;m<12;m++) for(let a=1;a<=31;a++) {\n const from=new Date(y,m,Math.min(a,new Date(y,m+1,0).getDate()));\n const expected=new Date(y,m+1,Math.min(a,new Date(y,m+2,0).getDate()));\n total++;\n if (+nextBillingDate(from,a)!==+expected) failures++;\n}\nconsole.log(`Calendar matrix: ${failures}/${total} mismatches`);\nNODE\n git status --short && git rev-parse main billing-anniversary",
+    "purpose": "Verifying month-end failures",
+    "retrySafe": true,
+    "sandbox_id": "a6f6f0bc-cf79-4298-9b13-0c38c6d9c604",
+    "runId": "873df4f0-2448-4eed-9c2e-7aa4154124e3",
+    "callId": "call_qs61oVrebK8frSX6Xa5xUrkx|fc_0f7746404df70d8c016af06da3f4e487d2b148363588e993c1",
+    "tool": "execute",
+    "step": {
+     "id": "e9ebf4b7-92c1-4218-b00f-2186b344a58e",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 14,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "2026-01-31, anchor 31: actual 2026-03-03, expected 2026-02-28\n2028-01-31, anchor 31: actual 2028-03-02, expected 2028-02-29\n2026-02-28, anchor 31: actual 2026-03-28, expected 2026-03-31\n2026-04-30, anchor 31: actual 2026-05-30, expected 2026-05-31\nCalendar matrix: 66/1860 mismatches\n7f89e4830c70d5d71331d3ad81b1f232a70af2d9\nf73b00db19412a6aea01a2ff5e5528ceca84d957\n\n[exit 0]",
+    "runId": "873df4f0-2448-4eed-9c2e-7aa4154124e3",
+    "callId": "call_qs61oVrebK8frSX6Xa5xUrkx|fc_0f7746404df70d8c016af06da3f4e487d2b148363588e993c1",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 15,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "4d7abada-30fd-4250-b630-f71127b65103",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "textBlock": {
+     "textSignature": "{\"v\":1,\"id\":\"msg_0f7746404df70d8c016af06da671ac87d2bb311e65f6ca1d85\",\"phase\":\"final_answer\"}"
+    },
+    "workStartedAt": 1794141590573,
+    "workFinishedAt": 1794141609546,
+    "text": "*I’d block shipment on one renewal-scheduling bug.*\n\n*P1 — Clamp to the target month, not the source month* — `src/schedule.js:6–7`\n\n`daysInMonth(year, month)` uses the month of `from`, but the result is constructed in `month + 1`. This both skips February renewals through JavaScript date overflow and renews too early after short months:\n\n| From / anchor | Actual renewal | Expected |\n|---|---|---|\n| Jan 31, 2026 / 31 | Mar 3 | Feb 28 |\n| Jan 31, 2028 / 31 | Mar 2 | Feb 29 |\n| Feb 28, 2026 / 31 | Mar 28 | Mar 31 |\n| Apr 30, 2026 / 31 | May 30 | May 31 |\n\nClamp the original anchor against the number of days in the *destination* month. Add regression coverage for January → February → March in ordinary and leap years, plus a 30-day → 31-day transition.\n\n*Validation:* All 5 existing tests pass, but a calendar sweep across 2024–2028 found 66 incorrect results out of 1,860 cases. The existing scheduling tests miss month-length transitions.\n\nReviewed `billing-anniversary` at `f73b00d` against `main` at `7f89e48`. No files changed.",
+    "runId": "873df4f0-2448-4eed-9c2e-7aa4154124e3",
+    "step": {
+     "id": "4d7abada-30fd-4250-b630-f71127b65103",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  }
+ ]
+}

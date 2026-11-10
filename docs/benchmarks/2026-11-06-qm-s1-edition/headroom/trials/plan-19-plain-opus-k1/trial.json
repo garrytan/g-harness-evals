@@ -1,0 +1,150 @@
+{
+  "trial_id": "plan-19-plain-opus-k1",
+  "task_id": "plan-19",
+  "family": "plan",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I read the whole repo; it's small (about 10 modules plus 2 tests). Adding the annual plans themselves is easy. The real work is revenue recognition and plan changes. Here's the plan:\n\n**1. Add the plans (small)**\n- Add `starter_annual`, `team_annual` and `business_annual` to `config/plans.json` with `interval: \"year\"`. Then run `node scripts/sync-plans.js` to create the prices with the payment provider. `docs/billing.md` says prices must only be created this way, never in code or by hand in the provider's dashboard.\n- **Decision for you:** the annual prices. For example, 10× the monthly price (\"2 months free\") would be $120, $490 and $1,990.\n- `sync-plans` only creates prices it can't find by ID. It never updates the amount of an existing price, so pick new price IDs and don't reuse old ones.\n\n**2. Revenue recognition (the biggest risk)**\n- `src/revrec.js` books an invoice's full amount in the month the period starts. A comment in the tests says finance's month-end close reads these schedules. So a $490 annual invoice would show up as $490 of revenue in one month.\n- Fix: spread annual invoices evenly over 12 months, putting rounding leftovers in the last month so the total matches exactly. Add tests for that.\n- **Check with finance** before shipping.\n\n**3. Plan changes (needs a product decision)**\n- `src/changes.js` waits until the end of the current billing period to apply any change. That's fine for monthly plans, but on an annual plan it means:\n  - **Monthly to annual:** the switch happens at the next renewal, up to a month away. That's probably fine.\n  - **Annual to monthly, or annual downgrades:** the customer waits up to a year. That's probably intended, but confirm it.\n  - **Annual upgrades:** waiting up to a year to pay more is likely not what you want. Upgrades would need to happen right away with a prorated charge. The repo has no proration logic yet, so that's new work.\n- Extend `test/changes.test.js` to cover each of these cases.\n\n**4. Other modules to check**\n- **Seats (`seats.js`):** this multiplies price by seat count. You need a rule for seats added partway through an annual term: prorated charge now, or charged at renewal.\n- **Coupons (`coupons.js`):** a percentage discount on an annual invoice gives away 12× as much. Decide whether coupons apply to annual plans and whether they apply once or every renewal.\n- **Trial (`trial.js`):** 14 days. That's probably fine as is; just confirm the first annual charge comes after the trial.\n- **Dunning (`dunning.js`):** retries at 1, 3 and 7 days. That's fine, but a failed $1,990 payment may be worth a longer schedule or a heads-up to the customer.\n- **Tax (`tax.js`):** no change needed; it's a percentage.\n- **Invoice PDF (`invoice-pdf.js`):** this only prints the invoice number. Add the service period, e.g. \"Nov 2026 – Oct 2027\", because annual customers and their accountants will ask for it.\n- **Renewal reminders:** many places legally require advance notice before an annual renewal. Nothing in the repo handles this.\n\n**5. Open question**\nNothing in this repo works out the billing period (`period_end`) or creates the invoices. That probably happens with the payment provider or in another service. Someone needs to confirm it handles a `year` interval correctly, including subscriptions that start on Feb 29.\n\n**Suggested order:**\n1. Revenue recognition change and tests\n2. Plan-change rules and proration\n3. Coupon, seat and invoice changes\n4. Add the plans to the config and run the sync\n5. Turn on in the UI or checkout\n\nRoughly 3–5 days of engineering once the decisions are made. The rules for coupons and plan changes could take longer to agree on than to build.\n\nBefore any code, I need answers on:\n1. The annual prices.\n2. Whether upgrades on an annual plan happen right away with proration.\n3. The coupon rules for annual plans.\n4. Sign-off from finance on spreading revenue over 12 months.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-19-plain-opus-k1",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.08011370000000001,
+    "input_tokens": 64266,
+    "output_tokens": 2235,
+    "cached_tokens": 60858,
+    "cache_write_tokens": 2930,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.0000541,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.08005960000000001,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 25.056,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-19-plain-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:25:24.094Z",
+    "images": {
+      "core": "sha256:276503dbf085b3b0855b3ecb1bcc7e1a4baa8571aea7cba84ecb4236755d85c7",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-7916f30b004d",
+        "id": "sha256:3b9249e86497c04e0f07778798f04060d0469df90d06e1caf547330cf6319c4e",
+        "tree_sha256": "93f69af873f15095f73f68360ee9745f865f7f4077f1c3a63a8258864c3b196e"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-aa45f1e2-c435-47d0-8a35-cb8a7cd4-068a36"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:26:13.204Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd ~/workspace/repo; git remote -v; git log --oneline | head -5; find . -path ./.git -prune -o -type f -print | head -100; cat README* 2>/dev/null | head -50",
+          "code": 0,
+          "output": "fd6d380 Coupons, trials, seats, tax, dunning and PDF invoices\nd676301 Plan changes take effect at the end of the billing period\n413e2e4 Revenue schedules for finance\n0607fe2 Monthly subscriptions\n./package.json\n./README.md\n./Dockerfile\n./config/plans.json\n./src/tax.js\n./src/invoice-pdf.js\n./src/coup"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-19-plain-opus-k1",
+      "meter": {
+        "requests": 6,
+        "usd": 0.08011370000000001,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.08011370000000001,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.0000541
+    }
+  }
+}

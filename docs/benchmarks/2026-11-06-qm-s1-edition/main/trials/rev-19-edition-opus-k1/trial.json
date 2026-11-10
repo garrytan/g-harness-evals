@@ -1,0 +1,159 @@
+{
+  "trial_id": "rev-19-edition-opus-k1",
+  "task_id": "rev-19",
+  "family": "review",
+  "arm": "edition",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "**Don't merge yet. There's one blocking bug:** sessions would expire after 30 *milliseconds*, not 30 minutes. In practice, nearly everyone gets logged out on their next request.\n\n**Blocking: wrong unit in `src/idle.js`**\n```js\nconst IDLE_TIMEOUT = 30;\nreturn session.lastSeen + IDLE_TIMEOUT < now;\n```\n`lastSeen` is in milliseconds (the README says so), so `30` means 30 ms. Because `sweep()` uses `isIdle`, it would also delete almost every session in the store each time it runs. It should be `30 * 60 * 1000`, or a `MINUTE` constant like the one `backoff.js` uses with `SECOND`.\n\n**Why the tests pass anyway:** both tests only check extreme cases: a session that's 0 ms old and ones that are 1–2 hours old. Any timeout between 1 ms and 1 hour passes them. Add boundary tests, for example 29 minutes old → still active and 31 minutes old → idle. That would have caught this.\n\n**Minor:**\n- **Exact 30-minute mark:** the check uses `<`, so a session isn't idle at exactly 30:00, only after it. The README says it's idle \"once\" it reaches 30 minutes, which suggests it should be. Either change it to `<=` or reword the docs.\n- **`IDLE_TIMEOUT` is exported:** other code that imports it will get 30 and could repeat the same mistake. Fixing the constant fixes this too.\n\n**Looks fine:**\n- `reconnectDelay` returns 1s, 2s, 4s and so on up to a 30s cap, and the units are correct.\n- `sweep` returns a new object rather than changing the original store, which is good.\n- The version bump to 1.1.0 and the changelog entry are consistent with each other.\n\nI only reviewed the code and didn't change anything. Once the timeout constant is fixed and boundary tests are added, I'd be happy for it to merge.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-19-edition-opus-k1",
+    "requests": 4,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.047327100000000004,
+    "input_tokens": 38861,
+    "output_tokens": 1093,
+    "cached_tokens": 36091,
+    "cache_write_tokens": 2308,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000052900000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0472742,
+        "requests": 3
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 4
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 13.409,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-19-edition-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:50:36.823Z",
+    "images": {
+      "core": "sha256:e48c8f94d6b77801b71348a2f487e3d9f61914e9a616d4a9ec352a157470f137",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-866435aaa7c4",
+        "id": "sha256:c2956f00f380a6183d790a610d8477f9f49be480fe95af1350346678884a373f",
+        "tree_sha256": "976e7f453705633343847be00fd0cb97514b749e6cec4f692ef40f15f2fb9b22"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-30505d5e-b17f-4b68-8460-64fe5897-bd3edf"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:51:14.006Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 5,
+          "command": "cd /root/workspace/repo; git log --oneline main..idle-timeout; git diff main...idle-timeout --stat; git diff main...idle-timeout",
+          "code": 0,
+          "output": "da785f6 Sweep idle sessions from the store\nad83f9a Expire idle sessions\n CHANGELOG.md       |  4 ++++\n README.md          |  8 ++++++++\n package.json       |  2 +-\n src/backoff.js     |  7 +++++++\n src/idle.js        |  7 +++++++\n src/sweep.js       | 11 +++++++++++\n test/idle.test.js  | 13 ++++++++"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-19-edition-opus-k1",
+      "meter": {
+        "requests": 4,
+        "usd": 0.047327100000000004,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 4,
+        "usd": 0.047327100000000004,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000052900000000000005
+    }
+  }
+}

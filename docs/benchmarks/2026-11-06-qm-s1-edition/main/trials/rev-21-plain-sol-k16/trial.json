@@ -1,0 +1,155 @@
+{
+  "trial_id": "rev-21-plain-sol-k16",
+  "task_id": "rev-21",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 16,
+  "status": "ok",
+  "reply_text": "Reviewed `config-merge` against `main` (`49f8cc2..77d6a81`). **Three issues found:**\n\n1. **High — Nested defaults are discarded** — `config/merge.py:2`  \n   `{**base, **override}` performs a shallow merge, not the documented deep merge. For example:\n   ```python\n   base = {'db': {'host': 'h', 'port': 5432}}\n   override = {'db': {'port': 6000}}\n   ```\n   The result is `{'db': {'port': 6000}}`: the default `host` is lost. This also affects `apply_layers`, so partial user overrides can remove required defaults. Recursively merge values when both are dictionaries.\n\n2. **Medium — Nested results still reference the inputs** — `config/merge.py:2`  \n   Only the outer dictionary is copied, contrary to the documented “fresh structure” guarantee. Reproduced:\n   ```python\n   result = merge_config(base, {})\n   result['db']['port'] = 1  # also changes base['db']['port']\n   ```\n   Editing a resolved configuration can therefore modify shared defaults or user configuration. Copy nested mutable values, including those present in only one layer.\n\n3. **Medium — `freeze` conflates distinct configurations** — `config/freeze.py:2–5`  \n   Dictionaries and lists both become untagged tuples:\n   ```python\n   freeze({'x': []}) == freeze({'x': {}})  # True\n   ```\n   These configurations are not equal, but produce identical cache keys. That can return a cached result for a different configuration. Preserve container types in the frozen representation, for example with type tags.\n\n**Validation:** All four existing tests pass, but they cover only flat merge behavior and do not catch these cases. I reproduced each issue with read-only checks. No code was changed.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-21-plain-sol-k16",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.042372400000000005,
+    "input_tokens": 52631,
+    "output_tokens": 1055,
+    "cached_tokens": 41249,
+    "cache_write_tokens": 11073,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.000069,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.042303400000000005,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 17.943,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-21-plain-sol-k16",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:07:18.604Z",
+    "images": {
+      "core": "sha256:3910594b6055b8b889d444e7b76a92af38d79a0b5bb0951c442dff7124c7be49",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-4c7c36bc6936",
+        "id": "sha256:f78d22b33b8c0d9c2dcac5766bf96e865ff2ec7ca8571eee238d2c75bb6cc4e7",
+        "tree_sha256": "d9e3a4b2ffbd4a94f4219657ce3513342c06ad2b17d16fc272f9c11c39ee6761"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-bb431b70-d0c2-4524-8be2-b533e671-a55331"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:08:00.255Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/691c116aa5e093344e9f5dcc/cd10efdc204622ba/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/691c116aa5e093344e9f5dcc/cd10efdc204622ba/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -5 --oneline && git diff main...config-merge --stat && git diff main...config-merge && ls -la",
+          "code": 0,
+          "output": "* config-merge 77d6a81 Apply a stack of layers\n  main         49f8cc2 Load config layers\n77d6a81 Apply a stack of layers\nfb8e4df Merge config layers\n49f8cc2 Load config layers\n CHANGES.md          |  4 ++++\n README.md           |  4 ++++\n config/__init__.py  |  2 +-\n config/freeze.py    |  6 ++++++\n"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-21-plain-sol-k16",
+      "meter": {
+        "requests": 7,
+        "usd": 0.042372400000000005,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.042372400000000005,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.000069
+    }
+  }
+}

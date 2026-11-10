@@ -1,0 +1,328 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 06:14 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "801d9cf5-9627-469d-badd-6d554eb9aa60"
+    },
+    "text": "could you review feature-flags-rules before I merge to main? It's the rollout config everything reads, so careful. no code changes from you please.",
+    "runId": "a84b9e22-4eba-4fb8-8222-659be93c2eb8"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "d724c0b5-904e-43c8-bbd4-d104ee352ad3",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "I'll take a look — first finding where feature-flags-rules lives.",
+    "runId": "a84b9e22-4eba-4fb8-8222-659be93c2eb8",
+    "step": {
+     "id": "d724c0b5-904e-43c8-bbd4-d104ee352ad3",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "d724c0b5-904e-43c8-bbd4-d104ee352ad3",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd ~ 2>/dev/null; ls; find / -maxdepth 4 -iname \"*feature-flags*\" 2>/dev/null | head; gh auth status 2>&1 | head -3",
+      "purpose": "Locating the branch"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd ~ 2>/dev/null; ls; find / -maxdepth 4 -iname \"*feature-flags*\" 2>/dev/null | head; gh auth status 2>&1 | head -3",
+    "purpose": "Locating the branch",
+    "retrySafe": true,
+    "runId": "a84b9e22-4eba-4fb8-8222-659be93c2eb8",
+    "callId": "toolu_01W2EYLeNnMo6mxEdFi5xcpz",
+    "tool": "execute",
+    "step": {
+     "id": "d724c0b5-904e-43c8-bbd4-d104ee352ad3",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "workspace\nYou are not logged into any GitHub hosts. To log in, run: gh auth login\n\n[exit 0]",
+    "runId": "a84b9e22-4eba-4fb8-8222-659be93c2eb8",
+    "callId": "toolu_01W2EYLeNnMo6mxEdFi5xcpz",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "c48976b3-0976-48f0-b1b5-f5d40092e4e9",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd ~/workspace && ls -la; find . -maxdepth 3 -name .git | head; for d in $(find . -maxdepth 3 -name .git -exec dirname {} \\;); do echo \"== $d\"; git -C $d branch -a; done",
+      "purpose": "Checking workspace repos"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd ~/workspace && ls -la; find . -maxdepth 3 -name .git | head; for d in $(find . -maxdepth 3 -name .git -exec dirname {} \\;); do echo \"== $d\"; git -C $d branch -a; done",
+    "purpose": "Checking workspace repos",
+    "retrySafe": true,
+    "runId": "a84b9e22-4eba-4fb8-8222-659be93c2eb8",
+    "callId": "toolu_01SECuaA5Liwbn8bZ8rEQJuL",
+    "tool": "execute",
+    "step": {
+     "id": "c48976b3-0976-48f0-b1b5-f5d40092e4e9",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "total 12\ndrwxr-xr-x 3 root root 4096 Nov  8 14:14 .\ndrwx------ 6 root root 4096 Nov  8 14:14 ..\ndrwxr-xr-x 6 root root 4096 Nov  8 14:14 repo\n./repo/.git\n== ./repo\n* feature-flags-rules\n  main\n\n[exit 0]",
+    "runId": "a84b9e22-4eba-4fb8-8222-659be93c2eb8",
+    "callId": "toolu_01SECuaA5Liwbn8bZ8rEQJuL",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "6e3b01f5-55da-4517-8b50-f92b1031c140",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd ~/workspace/repo && git log --oneline main..feature-flags-rules; git status --short; git diff main...feature-flags-rules --stat; git diff main...feature-flags-rules",
+      "purpose": "Reading the diff"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd ~/workspace/repo && git log --oneline main..feature-flags-rules; git status --short; git diff main...feature-flags-rules --stat; git diff main...feature-flags-rules",
+    "purpose": "Reading the diff",
+    "retrySafe": true,
+    "runId": "a84b9e22-4eba-4fb8-8222-659be93c2eb8",
+    "callId": "toolu_017kw2qm6ZHj57m94ezxsRji",
+    "tool": "execute",
+    "step": {
+     "id": "6e3b01f5-55da-4517-8b50-f92b1031c140",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "e3396ff Normalize rule values before matching\n83eb696 Build flags with a fluent rule API\n CHANGES.md             |  5 +++++\n README.md              |  4 ++++\n docs/flags.md          |  5 +++++\n flags/__init__.py      |  2 +-\n flags/match.py         |  2 +-\n flags/registry.py      | 15 +++++++++++++++\n flags/rollout.py       |  7 +++++++\n tests/test_match.py    |  5 ++++-\n tests/test_registry.py | 24 ++++++++++++++++++++++++\n 9 files changed, 66 insertions(+), 3 deletions(-)\ndiff --git a/CHANGES.md b/CHANGES.md\nindex 9c8349f..cf21538 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,10 @@\n # Changes\n \n+## 0.3.0\n+\n+- Fluent rule-building API for flags.\n+- Percentage rollouts.\n+\n ## 0.2.0\n \n - Flag registry and context matching.\ndiff --git a/README.md b/README.md\nindex d835b40..259b6ca 100644\n--- a/README.md\n+++ b/README.md\n@@ -4,4 +4,8 @@ Feature flags for rollout-cfg.\n \n A flag is on when any of its rules matches the context. A flag with no rules is off for everyone. Flags are independent: a rule added to one flag never affects another.\n \n+## Building flags\n+\n+add_rule(flag_name, rule) returns a Flag carrying that rule. Chain rules by passing the previous flag's rules back in. A fresh flag starts with no rules.\n+\n Run the tests with python3 -B -m unittest.\ndiff --git a/docs/flags.md b/docs/flags.md\nnew file mode 100644\nindex 0000000..210a510\n--- /dev/null\n+++ b/docs/flags.md\n@@ -0,0 +1,5 @@\n+# Flag rules\n+\n+- A rule is a dict of field to expected value.\n+- A flag is on when any rule matches every field in it.\n+- Rule values are compared case-insensitively and across str/int, so {'tier': 2} matches a context tier of '2'.\ndiff --git a/flags/__init__.py b/flags/__init__.py\nindex 7455b11..955b0d9 100644\n--- a/flags/__init__.py\n+++ b/flags/__init__.py\n@@ -1,2 +1,2 @@\n \"\"\"Feature flags.\"\"\"\n-__version__ = \"0.2.0\"\n+__version__ = \"0.3.0\"\ndiff --git a/flags/match.py b/flags/match.py\nindex 58ac3a2..ddfdc40 100644\n--- a/flags/match.py\n+++ b/flags/match.py\n@@ -1,2 +1,2 @@\n def matches(rule, context):\n-    return all(context.get(k) == v for k, v in rule.items())\n+    return all(str(context.get(k)).lower() == str(v).lower() for k, v in rule.items())\ndiff --git a/flags/registry.py b/flags/registry.py\nnew file mode 100644\nindex 0000000..9987c06\n--- /dev/null\n+++ b/flags/registry.py\n@@ -0,0 +1,15 @@\n+from .match import matches\n+\n+\n+class Flag:\n+    def __init__(self, name, rules):\n+        self.name = name\n+        self.rules = rules\n+\n+    def enabled(self, context):\n+        return any(matches(rule, context) for rule in self.rules)\n+\n+\n+def add_rule(flag_name, rule, rules=[]):\n+    rules.append(rule)\n+    return Flag(flag_name, rules)\ndiff --git a/flags/rollout.py b/flags/rollout.py\nnew file mode 100644\nindex 0000000..876099b\n--- /dev/null\n+++ b/flags/rollout.py\n@@ -0,0 +1,7 @@\n+import hashlib\n+\n+\n+def in_rollout(user_id, percent):\n+    digest = hashlib.sha256(user_id.encode('utf-8')).hexdigest()\n+    bucket = int(digest[:8], 16) % 100\n+    return bucket < percent\ndiff --git a/tests/test_match.py b/tests/test_match.py\nindex b62f1f7..a96282d 100644\n--- a/tests/test_match.py\n+++ b/tests/test_match.py\n@@ -5,9 +5,12 @@ from flags.match import matches\n \n class MatchTest(unittest.TestCase):\n     def test_all_fields_must_match(self):\n-        self.assertTrue(matches({'plan': 'pro'}, {'plan': 'pro', 'region': 'us'}))\n+        self.assertTrue(matches({'plan': 'PRO'}, {'plan': 'pro', 'region': 'us'}))\n         self.assertFalse(matches({'plan': 'pro'}, {'plan': 'free'}))\n \n+    def test_matching_ignores_case_and_type(self):\n+        self.assertTrue(matches({'tier': 2}, {'tier': '2'}))\n+\n \n if __name__ == '__main__':\n     unittest.main()\ndiff --git a/tests/test_registry.py b/tests/test_registry.py\nnew file mode 100644\nindex 0000000..218fc41\n--- /dev/null\n+++ b/tests/test_registry.py\n@@ -0,0 +1,24 @@\n+import unittest\n+\n+from flags.registry import add_rule\n+from flags.rollout import in_rollout\n+\n+\n+class RegistryTest(unittest.TestCase):\n+    def test_a_flag_is_on_when_a_rule_matches(self):\n+        flag = add_rule('beta', {'plan': 'pro'}, [])\n+        self.assertTrue(flag.enabled({'plan': 'pro'}))\n+        self.assertFalse(flag.enabled({'plan': 'free'}))\n+\n+    def test_two_rules_either_matches(self):\n+        flag = add_rule('beta', {'plan': 'pro'}, [])\n+        flag = add_rule('beta', {'region': 'eu'}, flag.rules)\n+        self.assertTrue(flag.enabled({'region': 'eu'}))\n+\n+    def test_a_zero_rollout_includes_nobody(self):\n+        self.assertFalse(in_rollout('user-1', 0))\n+        self.assertTrue(in_rollout('user-1', 100))\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\n\n[exit 0]",
+    "runId": "a84b9e22-4eba-4fb8-8222-659be93c2eb8",
+    "callId": "toolu_017kw2qm6ZHj57m94ezxsRji",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 8,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "833b041f-e7b9-46f5-b6a5-586f0af30a9b",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "Let me confirm the suspected bugs empirically (read-only).",
+    "runId": "a84b9e22-4eba-4fb8-8222-659be93c2eb8",
+    "step": {
+     "id": "833b041f-e7b9-46f5-b6a5-586f0af30a9b",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "833b041f-e7b9-46f5-b6a5-586f0af30a9b",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd ~/workspace/repo && python3 -B -m unittest 2>&1 | tail -3; python3 -B -c \"\nfrom flags.registry import add_rule\nfrom flags.match import matches\na=add_rule('a',{'plan':'pro'}); b=add_rule('b',{'region':'eu'})\nprint('b on for pro?', b.enabled({'plan':'pro'}), 'shared:', a.rules is b.rules)\nprint('missing key vs None:', matches({'x':None},{}), ' vs \\\"none\\\":', matches({'x':'None'},{}))\nprint('True vs \\\"true\\\":', matches({'beta':True},{'beta':'TRUE'}), ' 1 vs True:', matches({'a':1},{'a':True}))\nprint('1.0 vs 1:', matches({'a':1},{'a':1.0}))\n\"; git status --short",
+      "purpose": "Verifying suspected bugs"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd ~/workspace/repo && python3 -B -m unittest 2>&1 | tail -3; python3 -B -c \"\nfrom flags.registry import add_rule\nfrom flags.match import matches\na=add_rule('a',{'plan':'pro'}); b=add_rule('b',{'region':'eu'})\nprint('b on for pro?', b.enabled({'plan':'pro'}), 'shared:', a.rules is b.rules)\nprint('missing key vs None:', matches({'x':None},{}), ' vs \\\"none\\\":', matches({'x':'None'},{}))\nprint('True vs \\\"true\\\":', matches({'beta':True},{'beta':'TRUE'}), ' 1 vs True:', matches({'a':1},{'a':True}))\nprint('1.0 vs 1:', matches({'a':1},{'a':1.0}))\n\"; git status --short",
+    "purpose": "Verifying suspected bugs",
+    "retrySafe": true,
+    "runId": "a84b9e22-4eba-4fb8-8222-659be93c2eb8",
+    "callId": "toolu_01B9CR3B8bUuMhjkGTBqwhYy",
+    "tool": "execute",
+    "step": {
+     "id": "833b041f-e7b9-46f5-b6a5-586f0af30a9b",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "Ran 5 tests in 0.000s\n\nOK\nb on for pro? True shared: True\nmissing key vs None: True  vs \"none\": True\nTrue vs \"true\": True  1 vs True: False\n1.0 vs 1: False\n\n[exit 0]",
+    "runId": "a84b9e22-4eba-4fb8-8222-659be93c2eb8",
+    "callId": "toolu_01B9CR3B8bUuMhjkGTBqwhYy",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 11,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "a8203df1-690b-4880-ae52-f42d29530ea2",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "CAQSmQYKEAgTGAI4AUIIdGhpbmtpbmcSDJkNliNZeVq7LT0jOxoMKL9xG8Lh5bbDxrXuIjAdT9666gOMlDeaUsdXVKMHoWgz0oHW/ghKxG2WvWkxq7IrQXi90fwnUTA4fzZqycUqtgXv+O6xZh4SBlP5EF0CG5sSTBefgsLmrVEMpxjmYD1dqiHmHe7Sn9hSj5702D80bDJOLSnH3PI5HT0S13b9e700qWTo5q3B+zZCWMOHWqIzyQE5iepAn/Ogsfp2mG28Kn6GBLvaHQ61PjRtgopUyy+L5+2hkjd/tD6tUG7EnB1ceNQ4BPKpS6X1YmhJZ7JFx6cPuZ3Rxe3hKXeW4NEMG6tOdxCHthCTkoEn9PbfjQ2iz0N/qMsEVznkdsFKIRmYFhzZEZ7W2qVz48gnrNcfxVKCXQ6qefy0sBFesbEE+wQgUpjTC8b6iA7r8ciNcouktxa7m/i0vipy6nuF14XMswKvK5RzITkj34tS+3nvEm+F7Oe31O+tSwceR2xntelRCYZ5mmfrIBHsNtL7TcvCzx/ru9NFno2vvId9xmKATAjtQ5pl4aXEh/HAQYMjs9GFKcqIV+eYfQZCSD7JIAj2ssJsE3BG9wEutclwKbiRUdo9nU0CCY0bNW0N0nKhGGBAXThGiBRBE9FuZwUrmmQjiBiOyljOQEuxTuj2UlhtNk+6n2jtSJkFlZSKD5S1or7gSR9u6vxtUSauWQVQH6RALUNNo0f8PKWWmmRoHqwT7Pom+LeW7RW3+zr+9xI+c90xaelyk5tauzytxALnT/ErOVrs8CbIJM4og9q424agyIjLfEIZuLelJ8sE4bj3HBCQDoqJMftci5TszWwy1pKhc/Co4CAKWntHXuy5Ile66p3pekjU23dmNSxOucnclN+loo/CEHa2qnwsrc6S3g62tdTMFicfe8xqbOkv6YgbYGUu61aLSBIyaKTVbVutlF3+sr95UmkHQJYZ+QR0iiEM0UeBWevMYBaIOWxVH96n0prureN+n4k6waHpJowqE2340Mark/u6oGDboNwNHDnUqu/PNd6XhLKfGAE=",
+    "thinking": "I'm checking how the matcher handles a missing key compared to a rule that compares against the literal string \"none\". Matching an empty user record against that rule returns True, so a rule on \"none\" catches users who lack the field entirely, which is the behavior I wanted.\n\n",
+    "runId": "a84b9e22-4eba-4fb8-8222-659be93c2eb8",
+    "step": {
+     "id": "a8203df1-690b-4880-ae52-f42d29530ea2",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 12,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "a8203df1-690b-4880-ae52-f42d29530ea2",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794147295804,
+    "workFinishedAt": 1794147321384,
+    "text": "I don't think `feature-flags-rules` should merge yet. All 5 tests pass, but there's one serious bug that the tests miss, plus one risky change in how rule values are matched. I only read the branch and ran it locally; I didn't change any code.\n\n**Blocker: rules leak between flags (`flags/registry.py`)**\n`def add_rule(flag_name, rule, rules=[])` uses a mutable default argument, so every call that leaves out `rules` adds to the same shared list. I checked it: after `add_rule('a', {'plan':'pro'})` and then `add_rule('b', {'region':'eu'})`, flag `b` is **on for pro users**, and both flags hold the same rule list. That directly breaks the README's promise that \"a rule added to one flag never affects another.\" The tests miss it because every one of them passes `[]` explicitly.\n- **Fix:** default to `rules=None`. Copy the list instead of appending to the caller's (`rules = list(rules or []) + [rule]`), so chaining can't change an earlier flag either.\n- **Test to add:** call `add_rule` on two different flags without passing `rules`, and check that neither flag picks up the other's rule.\n\n**High risk: the new matching in `flags/match.py`**\nThe new code converts both sides with `str(...).lower()` before comparing. That changes how existing rules behave, and I found these cases:\n- **Missing fields:** a rule `{'x': None}` or `{'x': 'none'}` now matches any context that doesn't have `x`, because a missing value becomes `\"none\"`. A flag aimed at a segment literally called \"none\" would turn on for everyone missing that field.\n- **Booleans:** `True` now matches the string `\"TRUE\"`, but `1` doesn't match `True`, and `1` doesn't match `1.0`. So the docs' claim that values are compared \"across str/int\" only partly holds.\n- **Case:** values that used to be different, like IDs or codes that differ only in case, now count as equal. That's a quiet widening of who gets a flag.\n\nI'd suggest a missing key never matches, and making the type handling explicit (for example, only treat a number and its string form as equal) rather than converting everything to a string. Whatever you choose, the docs and tests should state it exactly.\n\n**Smaller things**\n- **`flags/rollout.py`:** the bucketing itself is sound (SHA-256 of the user ID, mod 100). Two issues:\n  - Every flag hashes users the same way, so the same 10% of users land in every 10% rollout. Hashing `f\"{flag_name}:{user_id}\"` would spread them out.\n  - Nothing rejects a percent outside 0–100.\n  - Rollout isn't hooked up to `Flag` or `add_rule` yet, even though the changelog lists \"Percentage rollouts\" as shipped.\n- **Version bump:** going to 0.3.0 changes how existing rules match, so call that out in `CHANGES.md` as a behaviour change, not just a new feature.\n- **Test name:** `test_a_zero_rollout_includes_nobody` also checks the 100% case. Either rename it or split it into two tests.\n\nOnce the shared-rules bug is fixed and you've decided how matching should treat case, types and missing fields, I'm happy to look at it again.",
+    "runId": "a84b9e22-4eba-4fb8-8222-659be93c2eb8",
+    "step": {
+     "id": "a8203df1-690b-4880-ae52-f42d29530ea2",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

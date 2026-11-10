@@ -1,0 +1,186 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 06:27 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "5e0e8c92-2e90-4504-b01a-4d9861f0abbf"
+    },
+    "text": "Could you review the idle-timeout branch vs main before I merge? It logs people out when they go idle. Review only, no code edits please.",
+    "runId": "e02010ca-f8e8-48d3-b165-b647547d3536"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "d9501ba0-4e59-4c77-af05-f299f3c7660a",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "I'll take a look at the idle-timeout branch now.",
+    "runId": "e02010ca-f8e8-48d3-b165-b647547d3536",
+    "step": {
+     "id": "d9501ba0-4e59-4c77-af05-f299f3c7660a",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "d9501ba0-4e59-4c77-af05-f299f3c7660a",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /tmp/pi-cwd 2>/dev/null; git rev-parse --show-toplevel 2>&1; ls; find ~ /workspace -maxdepth 3 -name .git -type d 2>/dev/null | head\",\"purpose\":\"Locating the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /tmp/pi-cwd 2>/dev/null; git rev-parse --show-toplevel 2>&1; ls; find ~ /workspace -maxdepth 3 -name .git -type d 2>/dev/null | head",
+    "purpose": "Locating the repository",
+    "runId": "e02010ca-f8e8-48d3-b165-b647547d3536",
+    "callId": "toolu_01AAGGLRRREaY81RndrcqHht",
+    "tool": "execute",
+    "step": {
+     "id": "d9501ba0-4e59-4c77-af05-f299f3c7660a",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "fatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nrepo\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "e02010ca-f8e8-48d3-b165-b647547d3536",
+    "callId": "toolu_01AAGGLRRREaY81RndrcqHht",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "ad340c67-f5c7-4ed9-bf8d-44ab4bb4d491",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; git branch -a; git log --oneline main..idle-timeout; git diff main...idle-timeout\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..idle-timeout; git diff main...idle-timeout",
+    "purpose": "Reading the branch diff",
+    "runId": "e02010ca-f8e8-48d3-b165-b647547d3536",
+    "callId": "toolu_01AGWfd9HkPtnB4GxVvNE1Gj",
+    "tool": "execute",
+    "step": {
+     "id": "ad340c67-f5c7-4ed9-bf8d-44ab4bb4d491",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* idle-timeout\n  main\nda785f6 Sweep idle sessions from the store\nad83f9a Expire idle sessions\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 161cbe8..275e5be 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.1.0\n+\n+- Idle session expiry and reconnect backoff.\n+\n ## 1.0.0\n \n - Session activity tracking.\ndiff --git a/README.md b/README.md\nindex 9610e49..ab0c338 100644\n--- a/README.md\n+++ b/README.md\n@@ -3,3 +3,11 @@\n Session tracking for idle-guard.\n \n A session records lastSeen, a timestamp in milliseconds (Date.now()). A session goes idle 30 minutes after lastSeen. All durations in this package are milliseconds.\n+\n+## Idle\n+\n+isIdle(session, now) is true once the session has been idle for the 30-minute timeout. reconnectDelay backs off a reconnect, capped at 30 seconds.\n+\n+## Sweep\n+\n+sweep(store, now) returns the store with the idle sessions removed.\ndiff --git a/package.json b/package.json\nindex 5e4bad1..614418c 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"idle-guard\",\n-  \"version\": \"1.0.0\",\n+  \"version\": \"1.1.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/backoff.js b/src/backoff.js\nnew file mode 100644\nindex 0000000..3fb031e\n--- /dev/null\n+++ b/src/backoff.js\n@@ -0,0 +1,7 @@\n+const SECOND = 1000;\n+\n+function reconnectDelay(attempt) {\n+  return Math.min(30 * SECOND, SECOND * 2 ** attempt);\n+}\n+\n+module.exports = { reconnectDelay };\ndiff --git a/src/idle.js b/src/idle.js\nnew file mode 100644\nindex 0000000..050e932\n--- /dev/null\n+++ b/src/idle.js\n@@ -0,0 +1,7 @@\n+const IDLE_TIMEOUT = 30;\n+\n+function isIdle(session, now) {\n+  return session.lastSeen + IDLE_TIMEOUT < now;\n+}\n+\n+module.exports = { isIdle, IDLE_TIMEOUT };\ndiff --git a/src/sweep.js b/src/sweep.js\nnew file mode 100644\nindex 0000000..7c5355c\n--- /dev/null\n+++ b/src/sweep.js\n@@ -0,0 +1,11 @@\n+const { isIdle } = require('./idle');\n+\n+function sweep(store, now) {\n+  const kept = {};\n+  for (const [id, session] of Object.entries(store)) {\n+    if (!isIdle(session, now)) kept[id] = session;\n+  }\n+  return kept;\n+}\n+\n+module.exports = { sweep };\ndiff --git a/test/idle.test.js b/test/idle.test.js\nnew file mode 100644\nindex 0000000..0177eff\n--- /dev/null\n+++ b/test/idle.test.js\n@@ -0,0 +1,13 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { isIdle } = require('../src/idle');\n+\n+test('a long-idle session is idle', () => {\n+  const now = 1_000_000_000;\n+  assert.strictEqual(isIdle({ lastSeen: now - 60 * 60 * 1000 }, now), true);\n+});\n+\n+test('a just-touched session is active', () => {\n+  const now = 1_000_000_000;\n+  assert.strictEqual(isIdle({ lastSeen: now }, now), false);\n+});\ndiff --git a/test/sweep.test.js b/test/sweep.test.js\nnew file mode 100644\nindex 0000000..1314236\n--- /dev/null\n+++ b/test/sweep.test.js\n@@ -0,0 +1,9 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { sweep } = require('../src/sweep');\n+\n+test('sweep drops long-idle sessions', () => {\n+  const now = 1_000_000_000;\n+  const store = { a: { lastSeen: now }, b: { lastSeen: now - 2 * 60 * 60 * 1000 } };\n+  assert.deepStrictEqual(Object.keys(sweep(store, now)), ['a']);\n+});\n\n[exit 0]",
+    "runId": "e02010ca-f8e8-48d3-b165-b647547d3536",
+    "callId": "toolu_01AGWfd9HkPtnB4GxVvNE1Gj",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "3bb10c45-4fb7-4df8-a2d6-44eb7a147750",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "CAQSiwcKEAgTGAI4AUIIdGhpbmtpbmcSDJdtolIqlnmjkzkRfRoMGupGXLj69kt+ydmfIjDHDYL8+1bdIpShdPFBiWALRZn0dDcd7fTdAJuU70KiBYZd1QToW/ii4IdQ1Y9jIjsqqAaPwtjUrcat+SWADql58/GI4qvNG0jH3AsM3TiFqsSgkveoobPiqCh0v8CL8SYFATOzS2fiTfWQ93G+tmHIxExJoLMqBbbgXzml4r4jxT0DkvLdXJ7oecqhHHRsKpdrLsePyfyUTbm/c/GqgPcwke4Usl9aVEhR6DlqSL97oQdNBWD5JpF5fxatt8oguxCxCPtqBfKZqnQmGCGMNIdxoC1YAOUOKNtEvzGH8UcoJeW1egDkg8sOrQC2GH/izVR32ZPNhgDmMgUl6A9bOxLA0Y4G/pYFz2Uhyr2Vh2vCrl7RAcTYwYD6BM1FBz9CInBJwNalFO7ucZKyrtELmyHh9zA+UR8ZTdYIA/8KY8kVl+nMyvSJkb2NESfdyhwj3reGxm1qH3z3cxUtsSw80YPtapG4qZcInavOYIibRGFyWGcFj7YPHFHEIpLVg9NjbOwXjYbT6LqgMLOuVkOHFdc+SVqbjXseVFAO2sIphUbapMq47AA1si5CKDIr/4k27mmfzdR8pPe2sMipwk2x2Sk9Ux4YJ42Z/7A6/BiP/z3ulcCl/x6qCIh+8U16/DymlYvmiecrQix3Ruf9q8J44VPObpiWL4gsX6dmhch7FcoI/OMS3XteoYt/AIh64ZHU8+6dlisH2bT+m1VrVVw5vyQG+kc7jWtaImP8uc21YLRwpkLIPXdZfLuQ8okjuoTPPookLVEoliofeYBuDRsB/rdRqe3GFhKjRulA/HHXU4V5lyh3XIqQtstioRdn4e19TDfxR0dZZB0mDOuoaxsv1PICcveRScJq4HpNtlqon8nDQ4axJ9sV47McuF0KKP5VavRagTg0P9yTfezN+Wiq3nommctQZarRMw8X3EVPzpoQ3GO0Sj5JQDyaQnUiBnyubaZFaNn347xRC4eSQIHjQTU9vvpwFzBbOaa7VHYTR8dgB1HzJd8WhHdbeNIawteXKZjdCaIcWaoSpnN7i38O/SapBlwzj7mhEqFkc0E97wAN28whJ0N79lJCtLGLB2U5cwZK5LBlpfXhdfa35r/xD2thnbfArMnKDVdpDXIk/FjGhJua8jI9KVUfGvfeGAE=",
+    "thinking": "I've found that IDLE_TIMEOUT is set to 30 milliseconds rather than 30 minutes, which would explain why users are getting logged out almost immediately. The tests pass only because they use extreme values that never hit this. There's also a minor boundary question, since the README says \"idle for 30 min\" and the comparison may be using > where it should be >=. I'm skipping a test run since I'm already confident in this diagnosis.\n\n",
+    "runId": "e02010ca-f8e8-48d3-b165-b647547d3536",
+    "step": {
+     "id": "3bb10c45-4fb7-4df8-a2d6-44eb7a147750",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "3bb10c45-4fb7-4df8-a2d6-44eb7a147750",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794148076850,
+    "workFinishedAt": 1794148089332,
+    "text": "I don't think this is ready to merge. There's one blocking bug, and it would log almost everyone out right away.\n\n**Blocking: the timeout is 30 milliseconds, not 30 minutes**\nIn `src/idle.js`, the timeout is set to `30`. The package's README says every duration here is in milliseconds, and `lastSeen` comes from `Date.now()`. So `isIdle` treats a session as idle 30ms after its last activity. Then `sweep` removes every session that hasn't been touched in the last 30ms, which means nearly every user gets logged out on every sweep.\nFix: `const IDLE_TIMEOUT = 30 * 60 * 1000;`. You could also add a `MINUTE` constant, like `backoff.js` does with `SECOND`.\n\n**Why the tests didn't catch it**\nThe tests only check the extremes: a session idle for 1–2 hours, and one touched at exactly `now`. Both pass whether the timeout is 30ms or 30 minutes. Please add tests near the limit:\n- a session last seen 29 minutes ago should still be active (this test fails on the current code)\n- a session last seen just past 30 minutes ago should be idle\n- one case at exactly 30 minutes\n\n**Minor: what happens at exactly 30 minutes**\nThe README says a session is idle \"once\" it has been idle for 30 minutes, which means at 30 minutes or later. The code uses a strict `<`, so a session at exactly 30 minutes still counts as active. Use `<=`, or change the README wording, so the two agree.\n\n**Looks fine**\n- `reconnectDelay` matches the README: it doubles from 1 second and is capped at 30 seconds. It has no tests, though, and a negative or non-integer `attempt` isn't guarded against. That's low risk.\n- `sweep` returns a new object and doesn't change the store passed in, which is good.\n- The version bump to 1.1.0 and the CHANGELOG entry are consistent.\n\nI only read the code and didn't change anything. I also didn't run the test suite, but the two existing tests would pass even with the bug.",
+    "runId": "e02010ca-f8e8-48d3-b165-b647547d3536",
+    "step": {
+     "id": "3bb10c45-4fb7-4df8-a2d6-44eb7a147750",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

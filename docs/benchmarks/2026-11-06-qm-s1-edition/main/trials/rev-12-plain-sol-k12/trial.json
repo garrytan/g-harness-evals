@@ -1,0 +1,161 @@
+{
+  "trial_id": "rev-12-plain-sol-k12",
+  "task_id": "rev-12",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 12,
+  "status": "ok",
+  "reply_text": "Found two cents-handling bugs in `split-bill` (`10932d0`) against `main`:\n\n1. **High — Uneven splits lose money** — `bill/split.py:4–5`\n   Every person gets the floor-divided share; the remainder is discarded.\n   - `split_bill(1000, 3)` returns `[333, 333, 333]`: **999 cents**, not 1000.\n   - `split_bill(2, 3)` returns `[0, 0, 0]`.\n   \n   Distribute the remainder across the first shares, as the README specifies. Add tests for uneven totals and totals smaller than the number of people.\n\n2. **Medium — Floating-point tip calculation can round a cent incorrectly** — `bill/tip.py:2`\n   `with_tip(1500, 18.9)` returns **1783**, rather than **1784**. The exact tip is 283.5 cents, but floating-point arithmetic produces `283.49999999999994`. This is wrong even under Python’s existing ties-to-even rounding policy.\n   \n   Calculate the tip using exact decimal/rational arithmetic and explicitly choose the half-cent rounding policy. Add fractional-percentage and half-cent tests.\n\n**Also worth defining:** `weighted_split` has no validation for empty or all-zero weights (currently `IndexError` / `ZeroDivisionError`). With `[0, 1, 1]`, a one-cent bill charges the zero-weight person because leftovers go to the front. That follows the documented ordering, but deserves an explicit decision/test.\n\nAll **5 existing tests pass**; they miss these cases. No code changed.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-12-plain-sol-k12",
+    "requests": 9,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.05463180000000001,
+    "input_tokens": 77179,
+    "output_tokens": 1606,
+    "cached_tokens": 63995,
+    "cache_write_tokens": 12861,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.00007180000000000001,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.054560000000000004,
+        "requests": 8
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 9
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 30.408,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-12-plain-sol-k12",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T12:38:44.314Z",
+    "images": {
+      "core": "sha256:70e9dbc58d38502117dc97d1c5973af7606fa9e34dfd9ef1126cfa852865f97b",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-3ebb1f12241a",
+        "id": "sha256:958971f8ae27f7ca240319e61a21fbb0732ff72617eaf9b2aed07d26a303043e",
+        "tree_sha256": "0ff9c772bc1379d77f354c6dff7853a4e5a7ff08ad0416b551b8f27f0f9b8262"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-9c989b56-8509-4e84-bf2a-273ac04c-c7a969"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T12:39:38.685Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/09cbf1b53bf7748fae19ddc7/c4e101469130b997/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/09cbf1b53bf7748fae19ddc7/c4e101469130b997/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git config --show-origin --get-regexp 'credential|core.sshCommand|http.*extraheader|url.*insteadof' || true; cd /root/workspace/repo && ls -la && git diff --stat main...split-bill && git log --oneline main..split-bi",
+          "code": 0,
+          "output": "  main       f2440cf Bill totals in integer cents\n* split-bill 10932d0 Itemised shares by weight\ntotal 32\ndrwxr-xr-x 6 root root 4096 Nov  8 12:38 .\ndrwxr-xr-x 4 root root 4096 Nov  8 12:38 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 12:39 .git\n-rw-r--r-- 1 root root  107 Nov  8 12:34 CHANGES.md\n-rw-r--r-"
+        },
+        {
+          "seq": 10,
+          "command": "cd /root/workspace/repo && git diff main...split-bill && find bill tests docs -type f -maxdepth 3 -print && cat README.md CHANGES.md && for f in bill/*.py tests/*.py docs/*; do echo \"--- $f\"; nl -ba \"$f\"; done",
+          "code": 0,
+          "output": "diff --git a/CHANGES.md b/CHANGES.md\nindex d7f4be6..fedb9bf 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.4.0\n+\n+- Split a bill between people, with a tip.\n+\n ## 0.3.0\n \n - Bill totals in integer cents.\ndiff --git a/README.md b/README.md\nindex 4a90239..342aab3 100644\n--"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-12-plain-sol-k12",
+      "meter": {
+        "requests": 9,
+        "usd": 0.05463180000000001,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 9,
+        "usd": 0.05463180000000001,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.00007180000000000001
+    }
+  }
+}

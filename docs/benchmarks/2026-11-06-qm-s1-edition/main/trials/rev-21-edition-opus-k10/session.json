@@ -1,0 +1,230 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 06:29 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "b752e526-621e-4957-8fa4-8145ce8e893f"
+    },
+    "text": "could you review the config-merge branch against main for me? it layers defaults under the user config. just a review, don't change the code please.",
+    "runId": "a1e3c133-ac65-4920-a7b7-c577137a4c01"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "7acff468-08b4-4e80-b303-7fd1593ea2aa",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "I'll take a look at the config-merge branch.",
+    "runId": "a1e3c133-ac65-4920-a7b7-c577137a4c01",
+    "step": {
+     "id": "7acff468-08b4-4e80-b303-7fd1593ea2aa",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "7acff468-08b4-4e80-b303-7fd1593ea2aa",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /tmp/pi-cwd 2>/dev/null; pwd; ls; git -C . branch -a 2>&1 | head; find / -maxdepth 3 -name .git -type d 2>/dev/null | head\",\"purpose\":\"Locating the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /tmp/pi-cwd 2>/dev/null; pwd; ls; git -C . branch -a 2>&1 | head; find / -maxdepth 3 -name .git -type d 2>/dev/null | head",
+    "purpose": "Locating the repository",
+    "runId": "a1e3c133-ac65-4920-a7b7-c577137a4c01",
+    "callId": "toolu_01GPWhroB2pcX3Cky8o47yvh",
+    "tool": "execute",
+    "step": {
+     "id": "7acff468-08b4-4e80-b303-7fd1593ea2aa",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\nrepo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n\n[exit 0]",
+    "runId": "a1e3c133-ac65-4920-a7b7-c577137a4c01",
+    "callId": "toolu_01GPWhroB2pcX3Cky8o47yvh",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "75a47e7f-cebf-49f4-8bb7-fe1e9e96843d",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd ~/workspace/repo; git branch -a; git log --oneline main..config-merge; git diff main...config-merge\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd ~/workspace/repo; git branch -a; git log --oneline main..config-merge; git diff main...config-merge",
+    "purpose": "Reading the branch diff",
+    "runId": "a1e3c133-ac65-4920-a7b7-c577137a4c01",
+    "callId": "toolu_01DtZAweTLZneRwjG3HUuUaQ",
+    "tool": "execute",
+    "step": {
+     "id": "75a47e7f-cebf-49f4-8bb7-fe1e9e96843d",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* config-merge\n  main\n77d6a81 Apply a stack of layers\nfb8e4df Merge config layers\ndiff --git a/CHANGES.md b/CHANGES.md\nindex 0badbfc..b9fea17 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.3.0\n+\n+- Deep merge of config layers.\n+\n ## 0.2.0\n \n - Load config layers.\ndiff --git a/README.md b/README.md\nindex 8884f85..4eca239 100644\n--- a/README.md\n+++ b/README.md\n@@ -4,4 +4,8 @@ Layered config for conflayer.\n \n merge_config(base, override) returns base with override applied on top. The merge is deep: for a key whose value is a dict in both, the sub-dicts are merged the same way, so an override that sets one nested key keeps the base's other nested keys. Neither input is modified.\n \n+## Comparing\n+\n+freeze(data) turns a config into a hashable value for equality and caching.\n+\n Run the tests with python3 -B -m unittest.\ndiff --git a/config/__init__.py b/config/__init__.py\nindex 88d6a24..e07b0f7 100644\n--- a/config/__init__.py\n+++ b/config/__init__.py\n@@ -1,2 +1,2 @@\n \"\"\"Layered config.\"\"\"\n-__version__ = \"0.2.0\"\n+__version__ = \"0.3.0\"\ndiff --git a/config/freeze.py b/config/freeze.py\nnew file mode 100644\nindex 0000000..ca16c11\n--- /dev/null\n+++ b/config/freeze.py\n@@ -0,0 +1,6 @@\n+def freeze(data):\n+    if isinstance(data, dict):\n+        return tuple(sorted((k, freeze(v)) for k, v in data.items()))\n+    if isinstance(data, list):\n+        return tuple(freeze(v) for v in data)\n+    return data\ndiff --git a/config/merge.py b/config/merge.py\nnew file mode 100644\nindex 0000000..5d72dbe\n--- /dev/null\n+++ b/config/merge.py\n@@ -0,0 +1,2 @@\n+def merge_config(base, override):\n+    return {**base, **override}\ndiff --git a/config/stack.py b/config/stack.py\nnew file mode 100644\nindex 0000000..7032a17\n--- /dev/null\n+++ b/config/stack.py\n@@ -0,0 +1,8 @@\n+from .merge import merge_config\n+\n+\n+def apply_layers(layers):\n+    result = {}\n+    for layer in layers:\n+        result = merge_config(result, layer)\n+    return result\ndiff --git a/docs/config.md b/docs/config.md\nnew file mode 100644\nindex 0000000..407a294\n--- /dev/null\n+++ b/docs/config.md\n@@ -0,0 +1,5 @@\n+# Config merge\n+\n+- merge_config is a deep merge. A nested dict present in both base and override is merged key by key, not replaced.\n+- Example: base {'db': {'host': 'h', 'port': 5432}} with override {'db': {'port': 6000}} gives {'db': {'host': 'h', 'port': 6000}}; the host survives.\n+- Neither input dict is mutated; the result is a fresh structure.\ndiff --git a/tests/test_merge.py b/tests/test_merge.py\nnew file mode 100644\nindex 0000000..4d03847\n--- /dev/null\n+++ b/tests/test_merge.py\n@@ -0,0 +1,15 @@\n+import unittest\n+\n+from config.merge import merge_config\n+\n+\n+class MergeTest(unittest.TestCase):\n+    def test_top_level_override(self):\n+        self.assertEqual(merge_config({'a': 1, 'b': 2}, {'b': 3}), {'a': 1, 'b': 3})\n+\n+    def test_new_key_is_added(self):\n+        self.assertEqual(merge_config({'a': 1}, {'c': 9}), {'a': 1, 'c': 9})\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\ndiff --git a/tests/test_stack.py b/tests/test_stack.py\nnew file mode 100644\nindex 0000000..d6f7879\n--- /dev/null\n+++ b/tests/test_stack.py\n@@ -0,0 +1,12 @@\n+import unittest\n+\n+from config.stack import apply_layers\n+\n+\n+class StackTest(unittest.TestCase):\n+    def test_later_layers_win(self):\n+        self.assertEqual(apply_layers([{'a': 1}, {'a': 2}, {'b': 3}]), {'a': 2, 'b': 3})\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\n\n[exit 0]",
+    "runId": "a1e3c133-ac65-4920-a7b7-c577137a4c01",
+    "callId": "toolu_01DtZAweTLZneRwjG3HUuUaQ",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "93e0a35e-ff77-4d45-99d1-4ce42fd193b7",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQS4wYKEAgTGAI4AUIIdGhpbmtpbmcSDMIruhdlhfWvjFS34BoMAFm/eZDy6weQnwU1IjDyzU4LPXGRBLqtFs+93o6Vqwpkrb/ZRxrOBpSpyu+w+X6DrMA22WvSdDCqB3T6RsQqgAYCPtLSEvv4EevNHNewF6TYO9iPajgPIn9xaPbc9UrZGi4SCxYtc0yzq2TTEZ28euKnuKy6OwOarooIva6LB4u+lQb75WqhKcI0dPeNc+p0HCk2+G+lZfcQs48jl++vlmzRzIz+ugMAtnVuB5gwou7n2vl4QMhnBDPB07l9tWT4xJpNtaIDbKMnMLqrCz/TigjLhFUkRpM9DU47SOwCLhHX3L/hwN8hZVYCZaydCzJa8tQBeFBkQOotAXsbkFKkl/W9tafCa/93SdjJiGhXSi6fYLnf0/m88078cF/eTqw6wSf41zJv3T2/IDtGVgZvdUkVQjO4EdOH3f8zSKruCXF6M/SCSOo09Cjig22iYdwwyhmvk90D8ZHYaqB9nwOWNZAkBdtL7tcHti5r4EZEjHPyjehbzYFZYVnhj7Y4fjRN26CnflkNb2ybox68H+Qhkt2f7I0NypLa0q1vJ9Qz0XIC9LlAMhYzqtwnHaYWLYHoiTIPnJ1/Zn0Rquln4GzamU5rth0ZbKSpJ40hht0e+JBcO6q4ucit47mD3BfDZqoh58gsJarS32+NyvgmSrYk7a1k4nOuQQWsCnEqal/7nlm1wbi0BDMxmvG1UTOTxtn+rmKtVmN6z2mfdRjKMov/ULOIhy8e4ix3bA1CRO+A7w0LBZGKYgfduik0qonbDVRhSEt4vwxefzowTBmCIbVRb6dHEN4BWc9JSwLhcIUW2EaaoN8SXOnIBEYG57nNXJuCaz/Iz7nBflwKNoCdl4dhQXhpjxRbCyqgXr+yw2ptJEVFab5Mt1lWTXhZkVnXHgIbJCT6MoMPmM9nRndjmQZW5MSZnlXoH0GUaRbuOKCeU3uZzs70xJOzOKpMjCyiNxOIJtcGKOn4PgL9nDGcj7YMotI2oY2E4ue2LDb2g9478uGuSWj9xZhkM7aTEMENSD+ANQSvLNyIVHAJIekIWhm9ahjoPRZh9sELYnb3bUlPbEfZb1/1Mm646z9aW4f7dkD50xZ/rbJYXxSiAEnlI//EuCUYAQ==",
+    "thinking": "I've spotted the key bug: the merge is shallow even though the docs say it's deep. I'll check that quickly, and I'm also noting several freeze problems: sorting fails with mixed key types, sets aren't handled, and lists collide with tuples and dicts with lists of pairs. Then I'll run the tests.\n\n",
+    "runId": "a1e3c133-ac65-4920-a7b7-c577137a4c01",
+    "step": {
+     "id": "93e0a35e-ff77-4d45-99d1-4ce42fd193b7",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "93e0a35e-ff77-4d45-99d1-4ce42fd193b7",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd ~/workspace/repo; python3 -B -m unittest 2>&1 | tail -3; python3 -B -c \\\"\\nfrom config.merge import merge_config as m\\nfrom config.freeze import freeze as f\\nb={'db':{'host':'h','port':5432}}; r=m(b,{'db':{'port':6000}}); print(r)\\nprint(f({'a':1})==f([('a',1)]))\\ntry: f({1:1,'a':2})\\nexcept Exception as e: print(repr(e))\\ntry: hash(f({'s':{1,2}})); print('set ok')\\nexcept Exception as e: print(repr(e))\\\"\",\"purpose\":\"Verifying merge behavior\"}"
+    },
+    "scope": "scoped",
+    "command": "cd ~/workspace/repo; python3 -B -m unittest 2>&1 | tail -3; python3 -B -c \"\nfrom config.merge import merge_config as m\nfrom config.freeze import freeze as f\nb={'db':{'host':'h','port':5432}}; r=m(b,{'db':{'port':6000}}); print(r)\nprint(f({'a':1})==f([('a',1)]))\ntry: f({1:1,'a':2})\nexcept Exception as e: print(repr(e))\ntry: hash(f({'s':{1,2}})); print('set ok')\nexcept Exception as e: print(repr(e))\"",
+    "purpose": "Verifying merge behavior",
+    "runId": "a1e3c133-ac65-4920-a7b7-c577137a4c01",
+    "callId": "toolu_015GbcfgsLMGZz1U4nzrVwLg",
+    "tool": "execute",
+    "step": {
+     "id": "93e0a35e-ff77-4d45-99d1-4ce42fd193b7",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "Ran 4 tests in 0.000s\n\nOK\n{'db': {'port': 6000}}\nTrue\nTypeError(\"'<' not supported between instances of 'str' and 'int'\")\nTypeError(\"unhashable type: 'set'\")\n\n[exit 0]",
+    "runId": "a1e3c133-ac65-4920-a7b7-c577137a4c01",
+    "callId": "toolu_015GbcfgsLMGZz1U4nzrVwLg",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 9,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "3ee5d456-7ddb-44d0-a872-acd2a17f1c9a",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794148151226,
+    "workFinishedAt": 1794148170433,
+    "text": "I reviewed `config-merge` against `main` and didn't change any code. The tests pass, but the main feature doesn't do what the branch says it does, so I'd hold off merging.\n\n**Blocker: the merge isn't deep**\n`config/merge.py` is `return {**base, **override}`, which only merges the top level. The README, `docs/config.md` and CHANGES all describe a deep merge, and the docs give their own example. I ran that example:\n\n- base `{'db': {'host': 'h', 'port': 5432}}` with override `{'db': {'port': 6000}}` gives `{'db': {'port': 6000}}`. The `host` key is dropped.\n\nThat's the exact case for layering defaults under user config. A user who sets one nested key wipes out every other default in that section. `apply_layers` uses `merge_config`, so it has the same problem.\n\nTwo follow-ups for whoever fixes it:\n- **Copying:** at the top level, neither input is modified. But nested dicts in the result are the same objects as in the inputs, not copies. A deep merge should build new nested dicts so that changing the result can't change the defaults. The docs promise \"a fresh structure\".\n- **Tests:** none of the 4 tests use nested dicts, which is why this passed. Add the docs example as a test, plus:\n  - a check that neither input is modified\n  - a case where a dict is replaced by a non-dict, and the reverse\n  - a multi-layer nested case for `apply_layers`\n\n**Problems in `freeze`**\n1. **Crashes on mixed key types:** a dict with both int and str keys raises `TypeError` during sorting. Example: `{1: 1, 'a': 2}`.\n2. **Different configs can freeze to the same value:** `freeze({'a': 1}) == freeze([('a', 1)])` is `True`, and a list and a tuple with the same items also come out equal. Since the README says `freeze` is for equality and caching, two different configs could be treated as the same cached entry. Tagging each value with its type, or using `frozenset` for dicts, would fix this.\n3. **Not always hashable:** sets, and any other values that can't be hashed, pass through unchanged. Hashing then fails, e.g. `{'s': {1, 2}}` raises `unhashable type: 'set'`. Either convert them or reject them clearly.\n4. **No tests:** `freeze` has no tests at all.\n\n**Minor**\n- `docs/config.md` and the README's `freeze` section were added before the behaviour they describe actually works. They should land in the same change as the fix.\n- The version bump to 0.3.0 and the CHANGES entry are fine once deep merge really works.",
+    "runId": "a1e3c133-ac65-4920-a7b7-c577137a4c01",
+    "step": {
+     "id": "3ee5d456-7ddb-44d0-a872-acd2a17f1c9a",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  }
+ ]
+}

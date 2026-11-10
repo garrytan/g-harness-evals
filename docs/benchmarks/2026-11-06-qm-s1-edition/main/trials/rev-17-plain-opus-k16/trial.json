@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-17-plain-opus-k16",
+  "task_id": "rev-17",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 16,
+  "status": "ok",
+  "reply_text": "I wouldn't ship this yet. There are two bugs, and both let bad quantities into the cart. I only read and ran the code; I didn't change anything.\n\n**1. Malformed input gets turned into a number instead of rejected (blocker).**\n`parseQuantity` uses `parseInt`, which reads digits from the start of the string and ignores whatever follows. The README says these inputs must be rejected, not coerced, but here's what I got when I ran them through it on the branch:\n- `\"2kg\"` → 2\n- `\"3.5\"` → 3\n- `\"1e3\"` → 1 (the user probably meant 1000, and it becomes 1)\n- `\" 4\"` → 4\n\nA strict check fixes it, for example:\n```js\nif (!/^[0-9]+$/.test(raw)) return null;\nconst n = Number(raw);\nreturn n >= 1 ? n : null;\n```\n`Number.isSafeInteger` would also guard against huge digit strings.\n\n**2. The 99-unit cap is never applied (blocker).**\n`withinLimit` exists and has its own test, but `addToCart` never calls it, so `\"99999\"` goes straight into the cart. The README says the caller rejects anything over the cap, and `addToCart` is that caller. It needs something like `if (!withinLimit(qty)) throw …` after parsing.\n\n**3. The tests miss both problems.**\n`quantity.test.js` only checks `\"3\"`, `\"0\"`, `\"-2\"` and `\"\"`. It should add `\"2kg\"`, `\"3.5\"`, `\"-1\"` and `\"1e3\"`, since the README names them. There are no tests for `addToCart` at all; it needs at least one for the cap and one for an invalid quantity.\n\n**Smaller points:**\n- Once the parser is strict, `withinLimit` will only ever get positive integers, so it's fine as it is.\n- The error message includes the raw user input (`'invalid quantity: ' + rawQty`). That's fine as long as it's never shown to users without escaping.\n- The 0.8.0 version bump and changelog entry look right. The changelog could also mention the per-line cap.\n\nIf you fix 1 and 2 and add the tests, I'm happy to look at it again.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-17-plain-opus-k16",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0548139,
+    "input_tokens": 52527,
+    "output_tokens": 1282,
+    "cached_tokens": 49624,
+    "cache_write_tokens": 2427,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.0000531,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0547608,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 16.456,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-17-plain-opus-k16",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:22:58.548Z",
+    "images": {
+      "core": "sha256:a9ad79c9a5b8831fdc21d559e082c8ec10e726ba26b883975150369b49c28109",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-c5578e4088df",
+        "id": "sha256:3b8557ea6ec2ab5dbb90c7fd2b2c40421ec26f7e409c39385ea6a2a01a87bb51",
+        "tree_sha256": "9b249b7efa1e53e99bd35c49f74472ad408e348cc6d4ca6a9ca5b15f2ed4e37f"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-1cca2cd9-cde0-42c8-ae4e-031c39a8-3ce22e"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:23:38.960Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline -5 --all; git diff main...quantity-parsing",
+          "code": 0,
+          "output": "  main\n* quantity-parsing\n66ff697 Cap the quantity per line\n8efa52a Parse the quantity field\nf628c38 Cart line items\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex e1e5944..70e975e 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.8.0\n+\n+- Validate the quantity field."
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-17-plain-opus-k16",
+      "meter": {
+        "requests": 5,
+        "usd": 0.0548139,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.0548139,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.0000531
+    }
+  }
+}

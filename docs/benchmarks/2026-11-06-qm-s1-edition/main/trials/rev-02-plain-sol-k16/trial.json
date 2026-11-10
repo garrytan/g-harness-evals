@@ -1,0 +1,161 @@
+{
+  "trial_id": "rev-02-plain-sol-k16",
+  "task_id": "rev-02",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 16,
+  "status": "ok",
+  "reply_text": "I found **two issues I’d fix before merging** in `feature/webhook-retries` (`f6889d5`) against `main` (`ed4de62`).\n\n1. **High — Exhausted retries abort delivery to remaining subscribers.**  \n   `src/deliver.js:10` returns the retry promise without awaiting it inside the `try`, so its rejection bypasses the `catch`. Once an endpoint exhausts its retries, `deliverAll` rejects, no dead-letter is recorded, and later subscribers never receive the event—breaking the documented failure-isolation behavior.  \n   **Reproduced:** subscriber A failed all three attempts; subscriber B was never called; the dead-letter log stayed empty. Await the retry operation inside the `try` before returning success.\n\n2. **High — Metrics failures trigger duplicate webhook deliveries.**  \n   `src/http-transport.js:11–12` lets an exception from `metrics.timing()` override a successful HTTP result. The retry wrapper then resends an event that was already delivered. Omitting `metrics`, which worked on `main`, now also causes successful requests to reject.  \n   **Reproduced:** a throwing timing reporter caused four successful HTTP requests to the same endpoint, followed by a reported failure. Make timing best-effort so missing or failing instrumentation cannot change the delivery outcome.\n\n**Validation:** all 4 existing tests pass; neither regression is covered. Add tests for exhausted retries continuing to the next subscriber and for missing/throwing metrics not causing retries.\n\nNo files changed.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-02-plain-sol-k16",
+    "requests": 8,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0520245,
+    "input_tokens": 66159,
+    "output_tokens": 1292,
+    "cached_tokens": 52291,
+    "cache_write_tokens": 13552,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.00007340000000000001,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0519511,
+        "requests": 7
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 8
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 23.246,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-02-plain-sol-k16",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:26:36.239Z",
+    "images": {
+      "core": "sha256:ec9867c674526aea911eb4b0f8375fd94b6177daff69d0cd5324a28fae888797",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-3a26d194453c",
+        "id": "sha256:6d9dbfadc8e129f87cee6d9dade36217e5af7b18da7d425b66c5f50a8a321f96",
+        "tree_sha256": "c208ff327280307b6950c2f57457566eda2bb2818ae3d15f4d56c3022288fbfc"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-d316680c-974a-4fa6-be3f-62526ee9-8819be"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:27:23.268Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/805d0b5524b3cd2a87d6a2ac/0867b3f43a5c155d/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/805d0b5524b3cd2a87d6a2ac/0867b3f43a5c155d/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd repo && git status --short && git remote -v && git branch -avv && git config --show-origin --get-regexp 'credential|core.sshCommand|http\\..*extraheader|url\\..*insteadof' || true; cd /root/workspace/repo && ls -la && git diff --stat main...feature/webhook-retries && git log --oneline main..feature",
+          "code": 0,
+          "output": "* feature/webhook-retries f6889d5 Time each webhook request\n  main                    ed4de62 Deliver webhooks to subscribers\ntotal 32\ndrwxr-xr-x 5 root root 4096 Nov  8 13:26 .\ndrwxr-xr-x 4 root root 4096 Nov  8 13:26 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 13:26 .git\n-rw-r--r-- 1 root root  148 Nov "
+        },
+        {
+          "seq": 10,
+          "command": "cd /root/workspace/repo && git diff main...feature/webhook-retries && printf '\\n--- ALL FILES ---\\n' && find src test -type f -print -exec cat {} \\; && cat package.json README.md CHANGELOG.md",
+          "code": 0,
+          "output": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex aa436e0..0e448f9 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,10 @@\n # Changelog\n \n+## 2.4.0\n+\n+- Failed deliveries are retried with backoff.\n+- Request timing metric webhook.post_ms.\n+\n ## 2.3.0\n \n - Signed webhook delivery.\ndiff --git a/REA"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-02-plain-sol-k16",
+      "meter": {
+        "requests": 8,
+        "usd": 0.0520245,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 8,
+        "usd": 0.0520245,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.00007340000000000001
+    }
+  }
+}

@@ -1,0 +1,155 @@
+{
+  "trial_id": "plan-16-plain-sol-k1",
+  "task_id": "plan-16",
+  "family": "plan",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "Yes—this can be a small registry extension rather than a rewrite. **I recommend lazy, allowlisted exporter registration**, keeping the existing CSV/JSON behavior intact.\n\nI reviewed the checkout at `2c939ac` and its relevant history. Both existing tests pass; no code was changed.\n\n### What the code already establishes\n\n- **One dispatch point:** `tabkit/cli.py:4–18` maps format names to modules, imports the selected module, and calls `export(rows, out)`.\n- **Lazy imports matter:** `tests/test_import_time.py` explicitly forbids loading exporters when importing `tabkit` or `tabkit.cli`, because shell completion imports them frequently.\n- **The caller owns the output stream:** commit `a384c42` fixed an exporter closing stdout. The CLI must still be able to append its `# N rows` summary.\n- **Plugin loading has a security boundary:** `docs/security.md` requires reviewed modules listed in `config/plugins.ini` under `[allowed]`. It explicitly rules out setuptools entry points and module paths supplied through CLI arguments or environment variables. The current CLI does not yet consult that configuration.\n\n### Proposed design\n\n**1. Introduce a small exporter registry**\n\nMove format resolution out of the CLI into a dedicated registry module. Keep CSV and JSON registered by default.\n\nOffer a public hook along the lines of `register_exporter(name, module_name)`, with registrations storing module names—not importing modules or accepting arbitrary callable objects.\n\nRegistration should:\n- Require an approved module in `[allowed]`.\n- Reject duplicate names, including attempts to replace built-ins.\n- Validate names and module references without executing plugin code.\n\n**2. Support declarative registration for CLI users**\n\nAdd an `[exporters]` section to the existing trusted configuration, mapping a format name to an approved module. Teams could install their exporter package and register it there without modifying sheetsmith’s Python sources.\n\nBoth configuration registration and the public hook should use the same validation path. The CLI argument remains a **format name**, never an import path.\n\nMake the configuration location deterministic and deployment-controlled—not dependent on the current directory or an environment override. Also explicitly include built-in modules in `[allowed]`, resolving the mismatch between today’s loader and the documented policy.\n\n**3. Import only the selected exporter**\n\nLoad registration metadata on first use; import the selected module only when an export is requested. Do not import every plugin to discover its name or capabilities.\n\nAfter import, verify that it exposes a callable `export`. Give distinct, actionable errors for:\n- Unknown format.\n- Unapproved module or invalid registration.\n- Plugin import failure.\n- Missing or invalid export function.\n\nAn allowlist authorizes trusted Python code; it is not a sandbox.\n\n**4. Preserve the existing exporter contract**\n\nFor the first version, keep the contract deliberately narrow:\n\n- `export(rows, fh)` receives the existing row collection and a writable text stream.\n- The exporter writes its format and leaves the stream open.\n- The CLI retains responsibility for the row summary.\n- CSV’s optional `dialect` argument remains compatible.\n\nBinary output, plugin-specific CLI options, and changing the summary behavior should be separate work. In particular, the current summary means the overall CLI output is not necessarily a standalone valid document for every format.\n\n### Implementation sequence\n\n1. Extract registry/resolution logic and route the CLI through it, preserving built-in behavior.\n2. Add trusted configuration loading, allowlist enforcement, and the registration hook.\n3. Add tests for custom registration, duplicate rejection, denied modules **not being imported**, lazy imports, malformed plugins, and error reporting.\n4. Extend the stream-ownership regression test to a custom exporter and verify the summary still follows it.\n5. Document the plugin contract, installation/configuration steps, and review requirement; validate on the configured Python 3.10/3.12 matrix.\n\n**Acceptance criterion:** a team can add a reviewed, installed text exporter through configuration or the registration hook, invoke it by format name, and leave sheetsmith’s source untouched—without weakening import laziness or the security policy.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-16-plain-sol-k1",
+    "requests": 9,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0520146,
+    "input_tokens": 71746,
+    "output_tokens": 1654,
+    "cached_tokens": 59625,
+    "cache_write_tokens": 11793,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0000716,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.051942999999999996,
+        "requests": 8
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 9
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 33.606,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-16-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:23:20.006Z",
+    "images": {
+      "core": "sha256:b7fcbeb9f313d1eb923a92e8b0649bdf9e0811fa876ee427c10f1f11f37d9285",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-a5a038b439e3",
+        "id": "sha256:f8bc6207ddaf61f023e5d8fb18cad068d72e80d673ed61da56e2b2ba5960c7bb",
+        "tree_sha256": "cb6e661705e034c07e690ab5984e3142aaa52822b4acdedd6c3dd2a5751daa9c"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-3ae0c25d-ff50-4f96-afe6-8cd1c735-801c01"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:24:17.241Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/29cfcd41877d4f25bc06bb0f/323bacf3f3aaf4e7/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/29cfcd41877d4f25bc06bb0f/323bacf3f3aaf4e7/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 12,
+          "command": "cd /root/workspace/repo && for f in README.md pyproject.toml tox.ini mypy.ini config/plugins.ini docs/security.md docs/conf.py tabkit/*.py tabkit/exporters/*.py tests/*.py; do echo \"--- $f\"; nl -ba \"$f\"; done; git log -5 --oneline; git ls-files",
+          "code": 0,
+          "output": "--- README.md\n     1\t# sheetsmith\n     2\t\n     3\ttabkit: tables on the command line. The package is imported as tabkit.\n     4\t\n     5\tRun the tests with python3 -m unittest discover -s tests -t .\n--- pyproject.toml\n     1\t[project]\n     2\tname = \"sheetsmith\"\n     3\tversion = \"4.0.0\"\n     4\trequires"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-16-plain-sol-k1",
+      "meter": {
+        "requests": 9,
+        "usd": 0.0520146,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 9,
+        "usd": 0.0520146,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0000716
+    }
+  }
+}

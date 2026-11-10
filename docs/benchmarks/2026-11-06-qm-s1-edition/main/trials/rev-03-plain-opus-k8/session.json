@@ -1,0 +1,345 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 05:30 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "f759600a-80b4-40e1-8a39-2a62a7ed8b43"
+    },
+    "text": "hi! can you look over the phone-normalize branch before I merge it into main? Just a review please, no code changes.",
+    "runId": "4208a3ff-a42d-476a-99c3-757047d7c7fc"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "dbcb6ee5-bc23-4144-8697-d4ad500bb95f",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "I'll take a look at the phone-normalize branch.",
+    "runId": "4208a3ff-a42d-476a-99c3-757047d7c7fc",
+    "step": {
+     "id": "dbcb6ee5-bc23-4144-8697-d4ad500bb95f",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "dbcb6ee5-bc23-4144-8697-d4ad500bb95f",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /tmp/pi-cwd 2>/dev/null; ls; git -C . rev-parse --show-toplevel 2>&1; ls ~ ; find / -maxdepth 4 -name .git -type d 2>/dev/null | head\",\"purpose\":\"Locating the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /tmp/pi-cwd 2>/dev/null; ls; git -C . rev-parse --show-toplevel 2>&1; ls ~ ; find / -maxdepth 4 -name .git -type d 2>/dev/null | head",
+    "purpose": "Locating the repository",
+    "runId": "4208a3ff-a42d-476a-99c3-757047d7c7fc",
+    "callId": "toolu_01GJAZRjbNmEhr4AuPJbWR2j",
+    "tool": "execute",
+    "step": {
+     "id": "dbcb6ee5-bc23-4144-8697-d4ad500bb95f",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "repo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nworkspace\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "4208a3ff-a42d-476a-99c3-757047d7c7fc",
+    "callId": "toolu_01GJAZRjbNmEhr4AuPJbWR2j",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "22acd566-6e9d-46b4-889f-f81adb332f75",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; git branch -a; git log --oneline main..phone-normalize; git diff main...phone-normalize\",\"purpose\":\"Reading branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..phone-normalize; git diff main...phone-normalize",
+    "purpose": "Reading branch diff",
+    "runId": "4208a3ff-a42d-476a-99c3-757047d7c7fc",
+    "callId": "toolu_01MhkrD9ULvXHXUjmU1EsVZ6",
+    "tool": "execute",
+    "step": {
+     "id": "22acd566-6e9d-46b4-889f-f81adb332f75",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "  main\n* phone-normalize\n173e408 Tighten the E.164 check\n970312d Accept phone numbers as people type them\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 5581f29..51b5f1b 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.9.0\n+\n+- Phone numbers are normalized to E.164 before queueing.\n+\n ## 0.8.0\n \n - Outbox for text messages.\ndiff --git a/README.md b/README.md\nindex 7862285..db58b7a 100644\n--- a/README.md\n+++ b/README.md\n@@ -3,3 +3,7 @@\n Text-message notifications for textbell.\n \n Phone numbers are stored in E.164 form: a +, the country code and the subscriber number, digits only, at most 15 digits.\n+\n+## Entering numbers\n+\n+queueText accepts numbers the way people type them: with spaces, brackets, dots or dashes, and with the 00 international prefix instead of +. For example +44 20 7946 0958, 0044 20 7946 0958 and +1 (415) 555-0100 all work. National numbers without a country code are refused.\ndiff --git a/package.json b/package.json\nindex 3b46e4e..f1b29f3 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"textbell\",\n-  \"version\": \"0.8.0\",\n+  \"version\": \"0.9.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/dialing.js b/src/dialing.js\nnew file mode 100644\nindex 0000000..3aa4198\n--- /dev/null\n+++ b/src/dialing.js\n@@ -0,0 +1,5 @@\n+function toInternational(number) {\n+  return number.startsWith('00') ? '+' + number.slice(2) : number;\n+}\n+\n+module.exports = { toInternational };\ndiff --git a/src/normalize.js b/src/normalize.js\nnew file mode 100644\nindex 0000000..83bf7d8\n--- /dev/null\n+++ b/src/normalize.js\n@@ -0,0 +1,9 @@\n+const { toInternational } = require('./dialing');\n+\n+function normalize(raw) {\n+  const compact = raw.trim().replace(' ', '');\n+  const international = toInternational(compact);\n+  return international.replace(/[().-]/g, '');\n+}\n+\n+module.exports = { normalize };\ndiff --git a/src/sms.js b/src/sms.js\nindex 381b7eb..564a9e5 100644\n--- a/src/sms.js\n+++ b/src/sms.js\n@@ -1,7 +1,9 @@\n const { isE164 } = require('./validate');\n+const { normalize } = require('./normalize');\n \n-function queueText(outbox, to, text) {\n-  if (!isE164(to)) throw new Error('bad number: ' + to);\n+function queueText(outbox, rawTo, text) {\n+  const to = normalize(rawTo);\n+  if (!isE164(to)) throw new Error('bad number: ' + rawTo);\n   outbox.push({ to, text: text.slice(0, 160) });\n }\n \ndiff --git a/src/validate.js b/src/validate.js\nindex d75dfdd..7c3b478 100644\n--- a/src/validate.js\n+++ b/src/validate.js\n@@ -1,4 +1,4 @@\n-const E164 = /^\\+\\d+$/;\n+const E164 = /^\\+[1-9]\\d{1,14}$/;\n \n function isE164(s) {\n   return E164.test(s);\ndiff --git a/test/normalize.test.js b/test/normalize.test.js\nnew file mode 100644\nindex 0000000..f4d6b05\n--- /dev/null\n+++ b/test/normalize.test.js\n@@ -0,0 +1,11 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { normalize } = require('../src/normalize');\n+\n+test('a space, brackets and a dash go', () => {\n+  assert.strictEqual(normalize('+1 (415)555-0100'), '+14155550100');\n+});\n+\n+test('a 00 prefix becomes +', () => {\n+  assert.strictEqual(normalize('0033612345678'), '+33612345678');\n+});\ndiff --git a/test/validate.test.js b/test/validate.test.js\nnew file mode 100644\nindex 0000000..241c57f\n--- /dev/null\n+++ b/test/validate.test.js\n@@ -0,0 +1,11 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { isE164 } = require('../src/validate');\n+\n+test('E.164 numbers pass', () => {\n+  assert.strictEqual(isE164('+442079460958'), true);\n+});\n+\n+test('a leading zero country code fails', () => {\n+  assert.strictEqual(isE164('+0123'), false);\n+});\n\n[exit 0]",
+    "runId": "4208a3ff-a42d-476a-99c3-757047d7c7fc",
+    "callId": "toolu_01MhkrD9ULvXHXUjmU1EsVZ6",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "6ec4a04a-a246-4867-a260-4d99c8eed3ed",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQSgAcKEAgTGAI4AUIIdGhpbmtpbmcSDFLW42/KAdb1ZM2cwBoM3PT6pbRlwCg0I9qvIjA3++L1tKRhcoWPFczT6gG1b9rwj9vznDVbXt8okK69O2rVuoVhFelNhdR9yG4Xx+QqnQYuPdSTxly/zV8nqPX/qG/YNgH4T2I/n1gHC9MZGsUtUY2UyQaDIowQdL0pWCfWBLc9n1wr5go6UJA6GwAxyTDOCftfTGJU0+t0dHY2L81DaJ99uBHd1i6paIjQIAA/kBTCDYIL7BxzuuT4n3/nND+mc4xOPiF9g3UdPtZ971gijeAZepPWhbcibjKSiP0C2hJLej36/7rBIWl63q+f5Hw5xA4h1bTyLLXhC5kXQ6jlcd+8HXX6eFWlnzPVctN+/UqHLzMK/OeFndhPHjLOcfPZE06gNA54S1HkyJSmg0yDL/J3iy2XZ3BzhYus3mcYX7Q9RquCqberxsREuDlmouOaiu2hmalzdF6q+lHOGhhtj12lqlJz1sAJr/1WxRi6rckrI/TKy0bWO0rmihE+lv1LXzQwFtPPRR5xLbuJBUsww6LFOukEWpxEb2Se6kiYO5nCo/EO19M+IcQcipK9dfcaXGkVkYn0u8+Y2fvO8wZc67L69+t2BYiNVB8Z02HhnnIq/lbdRhxYS1QYnQvOmf5A039x5aouOHNDWnNXPzbM7p/LLfbH9vgqxZRx301OmPD3RGMZQw4yWRaP9jPIIT2c6eFj8cs3GLWjdIgRFI9mMWPGp+gSV/D+HALdASYYCma1kokhUdHyE0B+V8IT7As8iRSuM6N+uIujXN0jVHbBib8agi508aTx1xckm6AhbG/x8GOgof6H9LzZIWTWhUnWr1it8cqioYaKhbNKUTZUoP01g6L+nfmp9SoJcelWKyfvdSHQAKyk7OPDeBy1Cph8jWounhstHwcmuso/XBeCvsxKEa4izKycs+cNoujjpFLY7+itr66sKbWpokFEJEyHq33wPFS1/JmLU3lRtKp7i3HOTmODlL8HSVXZrbohbsyxwCQWnShoIr0WQZel8mD11kFaJqYXvoQtkRNb694ZYWHtGDY6JEzRDqW8El+ohZ8GSgPO037nucki5BhPwZgx+wchX9/h1OFvLzxC5b10MCGq9fxCjxU+u2/TxLi5JlyulNEzUsOCslfpPqg955MhUDg4q2JGOHqOip3SSRgB",
+    "thinking": "The main issue is that replace(' ', '') only strips the first space, so the README examples with multiple spaces still fail. I'll check the \"0044 20...\" case, where a space survives the trim, and then run the tests to confirm.\n\n",
+    "runId": "4208a3ff-a42d-476a-99c3-757047d7c7fc",
+    "step": {
+     "id": "6ec4a04a-a246-4867-a260-4d99c8eed3ed",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "6ec4a04a-a246-4867-a260-4d99c8eed3ed",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; npm test 2>&1 | tail -5; node -e \\\"const{normalize}=require('./src/normalize');const{isE164}=require('./src/validate');for(const n of ['+44 20 7946 0958','0044 20 7946 0958','+1 (415) 555-0100',' 00 44 20','+1\\\\t415'])console.log(JSON.stringify(n),JSON.stringify(normalize(n)),isE164(normalize(n)))\\\"; grep -rn \\\"queueText\\\\|isE164\\\" --include=*.js . | grep -v node_modules\",\"purpose\":\"Running tests and README examples\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; npm test 2>&1 | tail -5; node -e \"const{normalize}=require('./src/normalize');const{isE164}=require('./src/validate');for(const n of ['+44 20 7946 0958','0044 20 7946 0958','+1 (415) 555-0100',' 00 44 20','+1\\t415'])console.log(JSON.stringify(n),JSON.stringify(normalize(n)),isE164(normalize(n)))\"; grep -rn \"queueText\\|isE164\" --include=*.js . | grep -v node_modules",
+    "purpose": "Running tests and README examples",
+    "runId": "4208a3ff-a42d-476a-99c3-757047d7c7fc",
+    "callId": "toolu_014Gn6YN6SbDJQEed3cfSMJu",
+    "tool": "execute",
+    "step": {
+     "id": "6ec4a04a-a246-4867-a260-4d99c8eed3ed",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "npm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\n\"+44 20 7946 0958\" \"+4420 7946 0958\" false\n\"0044 20 7946 0958\" \"+4420 7946 0958\" false\n\"+1 (415) 555-0100\" \"+1415 5550100\" false\n\" 00 44 20\" \"+44 20\" false\n\"+1\\t415\" \"+1\\t415\" false\n./src/sms.js:1:const { isE164 } = require('./validate');\n./src/sms.js:4:function queueText(outbox, rawTo, text) {\n./src/sms.js:6:  if (!isE164(to)) throw new Error('bad number: ' + rawTo);\n./src/sms.js:10:module.exports = { queueText };\n./src/validate.js:3:function isE164(s) {\n./src/validate.js:7:module.exports = { isE164 };\n./test/validate.test.js:3:const { isE164 } = require('../src/validate');\n./test/validate.test.js:6:  assert.strictEqual(isE164('+442079460958'), true);\n./test/validate.test.js:10:  assert.strictEqual(isE164('+0123'), false);\n./test/sms.test.js:3:const { queueText } = require('../src/sms');\n./test/sms.test.js:7:  queueText(outbox, '+14155550100', 'hello');\n\n[exit 0]",
+    "runId": "4208a3ff-a42d-476a-99c3-757047d7c7fc",
+    "callId": "toolu_014Gn6YN6SbDJQEed3cfSMJu",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "220bdd77-ee80-41dd-ba81-e9cbba3b3e9d",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; node --test 2>&1 | grep -E \\\"^# (pass|fail)\\\"\",\"purpose\":\"Getting test summary\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; node --test 2>&1 | grep -E \"^# (pass|fail)\"",
+    "purpose": "Getting test summary",
+    "runId": "4208a3ff-a42d-476a-99c3-757047d7c7fc",
+    "callId": "toolu_01RuByR7nGkNS3PSCHCxZ5Sx",
+    "tool": "execute",
+    "step": {
+     "id": "220bdd77-ee80-41dd-ba81-e9cbba3b3e9d",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_result",
+   "payload": {
+    "code": 1,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "\n[exit 1]",
+    "runId": "4208a3ff-a42d-476a-99c3-757047d7c7fc",
+    "callId": "toolu_01RuByR7nGkNS3PSCHCxZ5Sx",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "530bd5ec-5c9a-4293-96c4-6fe687cd1d83",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; node --test 2>&1 | tail -15\",\"purpose\":\"Getting test summary\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; node --test 2>&1 | tail -15",
+    "purpose": "Getting test summary",
+    "runId": "4208a3ff-a42d-476a-99c3-757047d7c7fc",
+    "callId": "toolu_01UxVG1uUJsdpyGPHB32GG9S",
+    "tool": "execute",
+    "step": {
+     "id": "530bd5ec-5c9a-4293-96c4-6fe687cd1d83",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 12,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "✔ a space, brackets and a dash go (0.646187ms)\n✔ a 00 prefix becomes + (0.118659ms)\n✔ queues a text for an E.164 number (1.091666ms)\n✔ E.164 numbers pass (0.732277ms)\n✔ a leading zero country code fails (0.147719ms)\nℹ tests 5\nℹ suites 0\nℹ pass 5\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 92.658324\n\n[exit 0]",
+    "runId": "4208a3ff-a42d-476a-99c3-757047d7c7fc",
+    "callId": "toolu_01UxVG1uUJsdpyGPHB32GG9S",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 13,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "f99160cb-5290-4f6e-90fa-373fcf95d1ab",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "CAQSjQYKEAgTGAI4AUIIdGhpbmtpbmcSDOl/DZS9r2joFmj3ahoMfpefiEbg6emaeuu4IjB4fDFw8NaNfdjkmkRng+uqN6YO7c6RfvERzcIAWbdbKax3vKg+RHozckwfxS4ekaAqqgWElNAqMnvMZVeP+VaNb9JKsL3GSN2hXui4vouWokxQ1BxCfnf7p7patxgPjtyZG2MDg0oHd3sSut/QVASJmFz3ypg1ngV1oSfCqgY5E3t0Z6VibEMcxPU6RyIa1AsrEaG19+0XBnEEAcKEXmAgoFjgDbp4wM6jdBxHPI8t6/6zWybs5HzMnrrOotuiGeDx+oBZiBvrSN4+VxVO3LhDykV9kopdB4WECA6YMGM9YHsscTXfs/p/yrUM4vtYrhKXTqgJxfqXWY9Kz/8VmvPYxWGtr/1SbSN3GoKEo3SzQCW0G9M4Zu6x1igKhTLeJ5Jm/AAQt9u+XaktBrOpbUL7txhitXtRCbtG7i1D93+/+1EbQkgDXFqJ11wYrzxLSGl1bW5qC3VxXI/V2wmBYg3GNheNkVP/X6BM31LJRRe+OnaxfoX34fJyX7lBtDQbxQpIxGse1H2JT69pucGGWpy9FfJnNJEZYzBakN9v5LwCF5hApCzBLvV0iv9diE0VkQM5cXijQ8+NPGBmaULo8oqRgQ0Y4sKTTB14O7YDQ2z2igIDgdZkYX3HI9Vh7fzuMkHx9V1qJdeyPlOL8FikmkTstRrjdOaVJxGAIxEJc9n0r4AG3T9OI8AIsoatdB+/4E2Ng2LIAiMPujvSXPpaUgfNpNDcIOMY6EBFEgntF068IK5vMPsPZj7GYR+R6mr9Z1DZnW0gY6Jfngu7BqhGbyw8Cstio5+xoT0gyfyO+Q8DtJaE7HcXknpvXAt50yFF7C0J7uMb7uJ4RueczeV2cTD8jr3w70o/yfcgw2s05VszqSpLT6g/4AofTuHgJBZIpLLCZ9v96bkIZf14oXQtuRzVwW/BaYuEv7yiDn/zpMj2LUEKT/Z10hYRdMIy4/eCqDkxUkpJwiBtlvWHF1qIGAE=",
+    "thinking": "The grep exit code of 1 from before turned out to just mean no matches, so that wasn't a real failure. Nothing else is left to check, so this is done.\n\n",
+    "runId": "4208a3ff-a42d-476a-99c3-757047d7c7fc",
+    "step": {
+     "id": "f99160cb-5290-4f6e-90fa-373fcf95d1ab",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 14,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "f99160cb-5290-4f6e-90fa-373fcf95d1ab",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794144620406,
+    "workFinishedAt": 1794144641873,
+    "text": "I'd hold off on merging. All 5 tests pass, but the main feature doesn't work for real input. I didn't change any code.\n\n**Blocker: only the first space gets removed**\nIn `src/normalize.js`, `raw.trim().replace(' ', '')` uses a plain string, so it removes just one space. None of the three examples in the README get through:\n\n| Input | After normalizing | Valid? |\n|---|---|---|\n| `+44 20 7946 0958` | `+4420 7946 0958` | ❌ |\n| `0044 20 7946 0958` | `+4420 7946 0958` | ❌ |\n| `+1 (415) 555-0100` | `+1415 5550100` | ❌ |\n\nThe tests miss this because the only test with spaces, `'+1 (415)555-0100'`, has exactly one. The fix is to remove all whitespace, e.g. `.replace(/\\s+/g, '')`. Tabs and non-breaking spaces from pasted numbers would then be handled too. It's also worth adding the README examples as tests so the docs and the code can't drift apart again.\n\n**Smaller points**\n- **Order of steps:** the `00` → `+` swap runs before brackets, dots and dashes are removed. So something like `(00) 44…` won't convert. This is an edge case, but it's simpler to strip all formatting first and then handle the prefix.\n- **Error message:** `sms.js` throws `bad number: <rawTo>`, which echoes the user's raw input into errors and logs. That's probably fine, just make sure it's intended.\n- **Stricter check is a behaviour change:** the tighter E.164 check (`^\\+[1-9]\\d{1,14}$`) is correct. But numbers that passed before, like ones over 15 digits or with a leading 0 country code, will now be rejected. If any stored or queued numbers are like that, it's worth a line in the CHANGELOG.\n- **Missing test:** there's no test for a national number with no country code being refused, though the README promises it.\n\n**What looks good:** the version bump to 0.9.0, the CHANGELOG entry, splitting the code into its own `dialing` and `normalize` modules, and the stricter check itself.\n\nOnce spaces are fully removed and the README examples are tested, this should be good to merge.",
+    "runId": "4208a3ff-a42d-476a-99c3-757047d7c7fc",
+    "step": {
+     "id": "f99160cb-5290-4f6e-90fa-373fcf95d1ab",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-13-plain-opus-k15",
+  "task_id": "rev-13",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 15,
+  "status": "ok",
+  "reply_text": "Please don't merge yet. There's one real bug: `topTags` changes the order of the caller's tag list, which breaks the \"recent\" strip. All 4 tests pass, but none of them checks for this. I didn't edit anything.\n\n**The bug: `topTags` sorts the list in place** (`src/tags.js`)\n```js\nreturn tags.sort((a, b) => b.count - a.count).slice(0, n);\n```\n`Array.prototype.sort` reorders the original array instead of making a copy. That breaks the README's own rule that helpers never modify their arguments. The README also says the sidebar depends on it: `topTags must not reorder that array in place`.\n\nHere's what happens in practice. `sidebar()` builds the cloud first, then takes `recent` from the same array, which has now been re-sorted by count. I ran it with tags `[new(1), big(9), mid(4)]`:\n```\ncloud:  ['big', 'mid']\nrecent: ['big', 'mid', 'new']   ← should be ['new', 'big', 'mid']\n```\nThe caller's array also stays re-sorted afterwards, so anything else that uses the same list later gets the wrong order too.\n\n**Fix:** copy before sorting, the same way `alphabetical` already does:\n```js\nreturn [...tags].sort((a, b) => b.count - a.count).slice(0, n);\n```\nPlease add two tests along with it:\n- `topTags` leaves its input array in the original order.\n- `sidebar().recent` keeps the order the tags were given in.\n\n**Smaller notes (not blocking)**\n- **`fontSize` buckets:** the top bucket covers 80–100% of the max, and `count === max` only lands in `xl` because of the `Math.min` cap. That's fine, but the test only checks the two ends. A middle case like `fontSize(5, 10) → 'md'` would lock in the bucketing.\n- **CHANGELOG:** 1.2.0 says \"Tag cloud and alphabetical index\". `alphabetical()` is added, but nothing in `render.js` uses it yet. Either wire it up or reword the entry.\n- **Everything else is fine:** the version bump, `order.js` and the scale constants all look good.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-13-plain-opus-k15",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0764747,
+    "input_tokens": 84116,
+    "output_tokens": 1602,
+    "cached_tokens": 80069,
+    "cache_write_tokens": 3574,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000052900000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.07642180000000001,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 26.506,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-13-plain-opus-k15",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:42:39.896Z",
+    "images": {
+      "core": "sha256:a9ad79c9a5b8831fdc21d559e082c8ec10e726ba26b883975150369b49c28109",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-8515d07d06c7",
+        "id": "sha256:9a0e233473b37cf1497853f2c7adb133be6391d0e01eb1eebaf8b5774f19ff78",
+        "tree_sha256": "6b79b9a0c321d7097af431ff486420d4278f03cd9e12500c61cf776902a92931"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-14da6e8c-ac27-4020-9830-f86c0fe1-dc0abb"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:43:29.909Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..tag-cloud; git diff main...tag-cloud",
+          "code": 0,
+          "output": "  main\n* tag-cloud\n89f074f Scale tag font sizes into buckets\n7ca7ae2 Pick the top tags for the cloud\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 05e97a2..7aee8ee 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.2.0\n+\n+- Tag cloud and alphabetical index in the side"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-13-plain-opus-k15",
+      "meter": {
+        "requests": 7,
+        "usd": 0.0764747,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.0764747,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000052900000000000005
+    }
+  }
+}

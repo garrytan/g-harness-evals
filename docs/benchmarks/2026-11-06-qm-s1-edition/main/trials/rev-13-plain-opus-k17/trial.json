@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-13-plain-opus-k17",
+  "task_id": "rev-13",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 17,
+  "status": "ok",
+  "reply_text": "Don't merge this yet. `topTags` changes the caller's array, and that breaks the sidebar's \"recent\" strip. I didn't edit anything.\n\n**Blocker: `topTags` reorders the array it's given** (`src/tags.js`)\n```js\nreturn tags.sort((a, b) => b.count - a.count).slice(0, n);\n```\n`Array.prototype.sort` sorts the original array rather than a copy. That breaks two promises:\n- The README says helpers in `src/tags.js` never modify their arguments, because the render pipeline reuses the same list for the cloud and the alphabetical index.\n- `sidebar()` in `src/render.js` builds the cloud first and then takes `recent` from the same array. By then the array has already been re-sorted by count.\n\nI ran it to confirm. With tags given as `new, b, c` (counts 1, 9, 4):\n```\ncloud:  ['b', 'c']\nrecent: ['b', 'c', 'new']   ← should be ['new', 'b', 'c']\ncaller's array is now: b, c, new\n```\nSo \"recent\" just shows the most popular tags, and anything else reading that array afterwards gets it in the wrong order. The fix is one line, the same pattern `order.js` already uses: `[...tags].sort(...)`. The new test doesn't catch this because it only checks what `topTags` returns. I'd add a test that the input array is unchanged and that `sidebar()` returns `recent` in the original order.\n\n**Minor**\n- **Font buckets lean large:** with a max count of 10, counts 1–10 come out as `xs sm sm md md lg lg xl xl xl`. Anything at 80% or more of the top tag gets `xl`, and only the zero-count case reaches `xs` in practice. That might be what you want, but if `xl` should go to the top tag alone, use `Math.round(ratio * 4)` or check `count === max`. The README wording (\"the top tag is xl\") is true but doesn't mention that others get `xl` too.\n- **`fontSize` doesn't guard its input:** it doesn't clamp `count > max` (this ends up as `xl`, which is fine) or negative counts (this gives a negative index, so `undefined`). Probably can't happen with real data, but it's cheap to guard.\n- **Changelog vs. diff:** the changelog says the alphabetical index is in the sidebar, but `sidebar()` only returns `cloud` and `recent`. `alphabetical` exists but nothing calls it yet, so either wire it in or reword the entry.\n\n**Fine as is:** `order.js` copies before sorting, the version bump matches the changelog, and the tests are tidy.\n\nOnce `topTags` stops reordering its input and has a test for that, this looks good to merge.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-13-plain-opus-k17",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0697731,
+    "input_tokens": 53907,
+    "output_tokens": 1709,
+    "cached_tokens": 50221,
+    "cache_write_tokens": 3217,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000052900000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.06972020000000001,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 21.001,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-13-plain-opus-k17",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:27:08.485Z",
+    "images": {
+      "core": "sha256:a9ad79c9a5b8831fdc21d559e082c8ec10e726ba26b883975150369b49c28109",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-8515d07d06c7",
+        "id": "sha256:9a0e233473b37cf1497853f2c7adb133be6391d0e01eb1eebaf8b5774f19ff78",
+        "tree_sha256": "6b79b9a0c321d7097af431ff486420d4278f03cd9e12500c61cf776902a92931"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-9c89b578-8eca-4a52-97c6-0c74feb1-3a9f01"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:27:53.153Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..tag-cloud; git diff main...tag-cloud",
+          "code": 0,
+          "output": "  main\n* tag-cloud\n89f074f Scale tag font sizes into buckets\n7ca7ae2 Pick the top tags for the cloud\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 05e97a2..7aee8ee 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.2.0\n+\n+- Tag cloud and alphabetical index in the side"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-13-plain-opus-k17",
+      "meter": {
+        "requests": 5,
+        "usd": 0.0697731,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.0697731,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000052900000000000005
+    }
+  }
+}

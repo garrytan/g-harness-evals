@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-22-plain-opus-k1",
+  "task_id": "rev-22",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I wouldn't merge this yet. The tax math in `computeTotal` (src/total.js) contradicts the order of operations in your README, and the tests don't catch it. The tests all pass, and I didn't change anything.\n\n**Blocking: tax is charged on the subtotal before the coupon**\n```js\nconst discount = pct(subtotal, couponPercent);\nconst taxed = tax(subtotal, taxPercent);   // should be tax(subtotal - discount, …)\n```\nThe README says the coupon comes off first, and tax is charged only on the discounted amount. With a $100 subtotal, a 20% coupon and 10% tax, the branch returns **$90.00**. The right total is **$88.00**: $80 after the coupon, plus $8 tax. So every order with a coupon overcharges tax.\n\n**Blocking: coupon percentages aren't limited to 0–100**\n`computeTotal` uses the plain percentage helper `pct` instead of the new `couponValue`, which caps the percentage at 0–100. A 150% coupon on $100 gives a total of **−$50.00**, and a negative percentage would add to the price. `couponValue` already does this correctly, but nothing calls it. Using it in `computeTotal` fixes this.\n\n**Tests don't catch either problem**\nBoth tests in test/total.test.js use a zero coupon, so neither bug shows up. Worth adding:\n- the 20% / 10% case above, expecting 8800\n- a coupon over 100% and a negative coupon\n- a rounding edge, such as an odd number of cents with a percentage that doesn't divide evenly\n\n**Smaller points**\n- **Shipping isn't connected:** `computeTotal` takes `shipping` as an input, and nothing in the branch calls `shippingFor`. That's fine if checkout passes it in, but whoever calls it needs to use the pre-coupon subtotal, as the README says. Is that the rule you want? Otherwise a coupon can never push an order under the free-shipping threshold.\n- **Shipping test:** the test covers the threshold edges well, but nothing tests a subtotal of 0 or a negative one.\n- **CHANGELOG:** the 1.4.0 entry lists coupons but not free shipping.\n\nThe version bump and README changes look fine otherwise.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-22-plain-opus-k1",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0587,
+    "input_tokens": 52930,
+    "output_tokens": 1373,
+    "cached_tokens": 49769,
+    "cache_write_tokens": 2689,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.0000542,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.058645800000000005,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 16.545,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "rev-22-plain-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:27:01.800Z",
+    "images": {
+      "core": "sha256:276503dbf085b3b0855b3ecb1bcc7e1a4baa8571aea7cba84ecb4236755d85c7",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-808f1519d24a",
+        "id": "sha256:d326c4554c728a7edd8ad39d08a96091970b04ea5579ef74ce7c4a9fe3720d49",
+        "tree_sha256": "4b08892c391c0a2a74732d9e93532fae131ccaac0d120f4af10749880f849213"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-531c7719-7f97-4f09-a79d-dc9d04c6-e85cdb"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:27:42.235Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..coupon-checkout; git diff main...coupon-checkout",
+          "code": 0,
+          "output": "* coupon-checkout\n  main\na68c0e7 Free shipping over a threshold\naba236a Apply coupons at checkout\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 38c8cb7..009d9c7 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.4.0\n+\n+- Coupons at checkout.\n+\n ## 1.3.0\n \n - Subtotal "
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-22-plain-opus-k1",
+      "meter": {
+        "requests": 5,
+        "usd": 0.0587,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.0587,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.0000542
+    }
+  }
+}

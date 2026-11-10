@@ -1,0 +1,161 @@
+{
+  "trial_id": "plan-11-plain-sol-k1",
+  "task_id": "plan-11",
+  "family": "plan",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I reviewed the full repo and recent history. **Editing is feasible, but it needs more than a text update:** legal-hold history, search-index updates, and compatibility with older Android clients are the main constraints.\n\nNo code changed. Both existing tests pass.\n\n### What matters in this repo\n\n- **This is server-only.** `src/messages.js` exposes `send` and `remove`; there are no HTTP handlers or client UIs here. Edit controls will need companion work in web, iOS, and Android.\n- **Legal hold requires every version.** Commit `ae66c76` (LEGAL-31) explicitly says compliance must be able to produce every version of every message in a held channel. Overwriting text alone would violate that requirement.\n- **Older Android clients cannot accept extra message fields.** `docs/protocol.md:12–13` says Android <5.2—about 30% of installs—crashes on unknown fields, but safely ignores unknown event types.\n- **Search depends on the outbox.** Every message write must add an outbox row in the same transaction (`test/outbox.test.js`).\n\n### Proposed implementation plan\n\n**1. Define the edit operation and permissions**\n\nAdd an edit operation in `src/messages.js`, taking a channel, message ID, authenticated actor, replacement text, and expected revision.\n\nIt should:\n- Require the message to exist **in the specified channel** and belong to the actor.\n- Validate text against the same rules as sending; those rules currently aren’t centralized.\n- Preserve message ID, author, channel, and original `sentAt`.\n- Treat identical text as a no-op.\n- Reject stale revisions so edits from two devices cannot silently overwrite each other.\n- Apply an explicit edit rate limit. `src/ratelimit.js` currently only provides a send limiter, and it isn’t wired into `send`.\n\nThe actor must come from trusted authentication, not a client-supplied author field. That integration layer isn’t present here.\n\n**2. Store current content and retained versions atomically**\n\nExtend storage with revision metadata and an immutable message-version collection. Keep current text on the message for normal reads, and retain the original plus subsequent versions for held messages, including editor and timestamp.\n\nUpdate current content, version history, and the outbox **in one transaction**. Also address `src/db.js`’s shallow-copy transaction behavior: mutating an existing message object in place can leak changes even if the transaction throws. Use replacement objects and stage the history collection too.\n\nRecommendation: support editing held messages only once version retention is implemented; otherwise explicitly refuse those edits. Keep the existing prohibition on deleting held messages.\n\n**3. Add an edit-specific protocol event**\n\nLeave the existing `message` payload unchanged. Introduce a new event, such as:\n\n`message.edited`: message ID, replacement text, revision, edit timestamp.\n\nEmit it only after a successful commit. Updated clients replace text in place and show an “edited” indicator; old clients ignore the event rather than crash.\n\nThis means old clients may keep displaying the original text until refreshed. We should explicitly accept that temporary limitation or gate editing until the client rollout is sufficient. Any future history/sync response also needs a compatibility-safe way to expose revision metadata.\n\n**4. Update downstream behavior without creating a new message**\n\n- Append a `message.edited` outbox event atomically, and update the search consumer to replace indexed content. The consumer isn’t in this repo.\n- Use revisions to prevent duplicate or out-of-order updates from restoring stale text.\n- Preserve reactions: they already attach to message IDs.\n- Don’t route edits through `send` or generate another “New message” push. Already-delivered notification text cannot reliably be retracted.\n\n**5. Add tests before rollout**\n\nCover:\n- Successful edits, unchanged identity/order, and no-op edits.\n- Wrong author, wrong channel, missing/deleted message, invalid text, rate limiting, and revision conflicts.\n- Original and successive versions retained under legal hold.\n- Atomic rollback of content, history, and outbox; no socket event on failure.\n- Exactly one outbox event per successful edit.\n- Unchanged legacy `message` payload and the new edit event.\n- Reactions preserved and no new-message push.\n\n### Decisions to settle before coding\n\nMy suggested defaults are **author-only edits, no edit-time limit, an “edited” indicator, and retained history for held channels**. The remaining product/compliance choices are history retention outside held channels and whether the temporary stale view on older clients is acceptable.\n\nI’d sequence this as **storage/service/tests → protocol and search-consumer support → client UX → gated rollout**.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-11-plain-sol-k1",
+    "requests": 9,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0516457,
+    "input_tokens": 71807,
+    "output_tokens": 1587,
+    "cached_tokens": 59569,
+    "cache_write_tokens": 11920,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.00007080000000000001,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0515749,
+        "requests": 8
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 9
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 31.873,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-11-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:29:23.206Z",
+    "images": {
+      "core": "sha256:a1cb5179980824f355a04eff570548a298c6240d694122ab035f33b6fe0d67c3",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-c3fe58ce8353",
+        "id": "sha256:ef5d87203c738b20b70e9708920babf0604baba1762600dba017424e04430bc7",
+        "tree_sha256": "9ad8c2345f0e0d36ce599fea54c5d8497f8e940be0ac241bb5b52ff8b1c34e57"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-f667228c-6146-4ca5-81d7-c453c4ce-828358"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:30:18.992Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/9cfe8ae19700bf55dcc0ed44/200ea49587da006e/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/9cfe8ae19700bf55dcc0ed44/200ea49587da006e/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 12,
+          "command": "cd /root/workspace/repo && for f in README.md package.json docs/protocol.md src/*.js test/*.js; do echo \"\\n--- $f\"; nl -ba \"$f\"; done; git log -5 --oneline; cat .git/config",
+          "code": 0,
+          "output": "\n--- README.md\n     1\t# parlor-chat\n     2\t\n     3\tChat server for the web, iOS and Android apps.\n     4\t\n     5\tRun the tests with npm test.\n\n--- package.json\n     1\t{\n     2\t  \"name\": \"parlor-chat\",\n     3\t  \"version\": \"7.4.0\",\n     4\t  \"private\": true,\n     5\t  \"scripts\": {\n     6\t    \"test\": \"no"
+        },
+        {
+          "seq": 15,
+          "command": "cd /root/workspace/repo && git ls-files && git log --format=fuller --stat -4 && npm test && git status --short",
+          "code": 0,
+          "output": "Dockerfile\nREADME.md\ndocs/protocol.md\npackage.json\nsrc/channels.js\nsrc/db.js\nsrc/events.js\nsrc/messages.js\nsrc/outbox.js\nsrc/presence.js\nsrc/push.js\nsrc/ratelimit.js\nsrc/reactions.js\nsrc/typing.js\ntest/legal-hold.test.js\ntest/outbox.test.js\ncommit dc29521e55a744259eb9e6ee9fb662455f1b3609\nAuthor:    "
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-11-plain-sol-k1",
+      "meter": {
+        "requests": 9,
+        "usd": 0.0516457,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 9,
+        "usd": 0.0516457,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.00007080000000000001
+    }
+  }
+}

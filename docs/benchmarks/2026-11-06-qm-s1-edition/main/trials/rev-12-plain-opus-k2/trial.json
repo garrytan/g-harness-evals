@@ -1,0 +1,156 @@
+{
+  "trial_id": "rev-12-plain-opus-k2",
+  "task_id": "rev-12",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 2,
+  "status": "ok",
+  "reply_text": "I reviewed the split-bill branch against main (2 commits). The tests pass, but they don't cover the case that matters most: **the even split loses cents.** I didn't touch the code.\n\n**Blocking**\n\n1. **`split_bill` drops the leftover cents** (`bill/split.py`). It returns `[total // n] * n` and never adds the remainder back. `split_bill(1000, 3)` gives `[333, 333, 333]`, which adds up to 999, so a cent goes missing. This also breaks what the README and `docs/money.md` promise: the shares should always add up to the total, with the extra cents going one each to the first people. The tests only use amounts that divide evenly (900/3 and 1000/2), so they never catch it. A test like `split_bill(1000, 3) == [334, 333, 333]` would fail right now.\n\n**Should fix**\n\n2. **Tip rounding** (`bill/tip.py`). `round()` uses float maths and Python's \"round half to even\" rule, so half-cent tips round inconsistently: `with_tip(25, 10)` gives 27 (2.5 rounds down), but `with_tip(35, 10)` gives 39 (3.5 rounds up). If you want half-cents to always round up, use integer maths, e.g. `(total_cents * tip_percent + 50) // 100` when `tip_percent` is a whole number. There are also no tests for the tip yet.\n3. **`weighted_split` crashes when every weight is 0** (or there are no weights) with a `ZeroDivisionError`. It also accepts negative weights without complaint. It should raise a clear `ValueError`, the way `split_bill` already does when `n <= 0`.\n\n**`weighted_split` looks right otherwise.** Rounding down and then handing out the leftover always reaches the total exactly, because the leftover is always smaller than the number of people. It also stays correct for negative totals: -1001 split three ways gives `[-333, -334, -334]`. One thing to know: `docs/money.md` says the shares differ by at most one cent, but with weights that's only true relative to each person's exact weighted share, not between people. If you meant \"within one cent of their fair share\", it's worth rewording.\n\n**Minor**\n- The README only covers `split_bill` and `with_tip`. `weighted_split` isn't mentioned.\n- The changelog entry for 0.4.0 doesn't mention weighted splits.\n- `split_bill` and `weighted_split` share the same leftover logic. If `split_bill` called `weighted_split(total, [1]*n)`, the bug in item 1 couldn't happen.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-12-plain-opus-k2",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.10136479999999999,
+    "input_tokens": 73259,
+    "output_tokens": 2147,
+    "cached_tokens": 67138,
+    "cache_write_tokens": 5647,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000053200000000000006,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.1013116,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 23.635,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-12-plain-opus-k2",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:30:44.393Z",
+    "images": {
+      "core": "sha256:d3c15a4ff59b46b682cc0b498a5b96d657f86e2d1ac9a8b947b4fb5d8b1c3302",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-3ebb1f12241a",
+        "id": "sha256:91dc59e94e42a00bd5882beb1ace1b38109eb459f931eb9003f3019249e101fb",
+        "tree_sha256": "0ff9c772bc1379d77f354c6dff7853a4e5a7ff08ad0416b551b8f27f0f9b8262"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-b67ce6cc-3c81-4c91-a713-a528a2b4-a0f6c7"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:31:31.266Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /tmp/pi-cwd/repo; git branch -a; git log --oneline main..split-bill; git diff main...split-bill",
+          "code": 129,
+          "output": "[stderr]\nsh: 1: cd: can't cd to /tmp/pi-cwd/repo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_A"
+        },
+        {
+          "seq": 6,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..split-bill; git diff main...split-bill",
+          "code": 0,
+          "output": "  main\n* split-bill\n10932d0 Itemised shares by weight\nfe83782 Split a bill between people\ndiff --git a/CHANGES.md b/CHANGES.md\nindex d7f4be6..fedb9bf 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.4.0\n+\n+- Split a bill between people, with a tip.\n+\n ## 0.3.0\n \n - Bill to"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-12-plain-opus-k2",
+      "meter": {
+        "requests": 6,
+        "usd": 0.10136479999999999,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.10136479999999999,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000053200000000000006
+    }
+  }
+}

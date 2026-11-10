@@ -1,5 +1,5 @@
 // From gbrain-evals v0.10.128 (6999ebc9), eval/runner/stats/. MIT License, Copyright (c) 2026 Garry Tan.
-// Kit v2 (internal-task) takes these changes back from gstack-evals (#private-link-removed) at 81daa79abcf86ddbd15409da0b78cd4d98e835b4, src/runner/stats/rows.ts.
+// Kit v2 (internal-task) takes these changes back from gstack-evals (https://github.com/garrytan/gstack-evals) at 81daa79abcf86ddbd15409da0b78cd4d98e835b4, src/runner/stats/rows.ts.
 // gstack-evals changes (U2), marked "gstack-evals:": a system failure with no metric value scores 0 only on a
 // higher-is-better metric, where 0 is a miss; elsewhere it takes the preregistered failure value or blocks pairing.
 /**

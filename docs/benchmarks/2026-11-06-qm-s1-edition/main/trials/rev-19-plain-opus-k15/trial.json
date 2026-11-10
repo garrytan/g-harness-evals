@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-19-plain-opus-k15",
+  "task_id": "rev-19",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 15,
+  "status": "ok",
+  "reply_text": "I'd hold the merge. There's one blocking bug.\n\n**Blocker: the timeout is 30 milliseconds, not 30 minutes**\nIn `src/idle.js`, `IDLE_TIMEOUT = 30` is compared directly against `lastSeen`, which is in `Date.now()` milliseconds. The README says all durations are in milliseconds, so a session counts as idle 30ms after its last activity. Once `sweep` runs, it would log out nearly everyone almost right away.\nFix: `const IDLE_TIMEOUT = 30 * 60 * 1000;`. You could also add a `MINUTE` constant to match the `SECOND` in `backoff.js`.\n\n**Why the tests don't catch it**\nThe tests only check the extremes: a session idle for 1–2 hours, and one touched at exactly `now`. Both pass whether the timeout is 30ms or 30 minutes. Before merging, add tests near the boundary:\n- `lastSeen: now - 29 * 60 * 1000` should **not** be idle (this fails on the current code)\n- `lastSeen: now - 31 * 60 * 1000` should be idle\n- A sweep test that keeps a session last seen a few minutes ago\n\n**Minor**\n- **Off by one at the boundary:** the README says idle \"once the session has been idle for the 30-minute timeout\", which means at ≥ 30 minutes. The code uses a strict `<`, so a session only goes idle after 30 minutes. Pick one, make the code and README match, and test the exact boundary.\n- **`reconnectDelay`:** the 30-second cap is correct. It assumes `attempt` starts at 0. A negative value gives a delay under 1 second, and a non-number gives `NaN`. Either is fine if callers are trusted.\n- **Unrelated work in this PR:** the backoff code has nothing to do with idle expiry. It's fine to ship them together, but the 1.1.0 changelog entry already lists both, so make sure that's what you intend.\n\nThe rest looks fine: `sweep` returns a new object without changing the store, and the version bump and changelog are in order. I only read the diff and didn't change any code.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-19-plain-opus-k15",
+    "requests": 4,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.047845700000000005,
+    "input_tokens": 38441,
+    "output_tokens": 1136,
+    "cached_tokens": 35704,
+    "cache_write_tokens": 2275,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000052900000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0477928,
+        "requests": 3
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 4
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 14.062,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-19-plain-opus-k15",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:24:21.161Z",
+    "images": {
+      "core": "sha256:e48c8f94d6b77801b71348a2f487e3d9f61914e9a616d4a9ec352a157470f137",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-866435aaa7c4",
+        "id": "sha256:c2956f00f380a6183d790a610d8477f9f49be480fe95af1350346678884a373f",
+        "tree_sha256": "976e7f453705633343847be00fd0cb97514b749e6cec4f692ef40f15f2fb9b22"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-bf9af86d-abe2-40b2-a572-90fd7137-7edeee"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:24:58.646Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..idle-timeout; git diff main...idle-timeout --stat; git diff main...idle-timeout",
+          "code": 0,
+          "output": "* idle-timeout\n  main\nda785f6 Sweep idle sessions from the store\nad83f9a Expire idle sessions\n CHANGELOG.md       |  4 ++++\n README.md          |  8 ++++++++\n package.json       |  2 +-\n src/backoff.js     |  7 +++++++\n src/idle.js        |  7 +++++++\n src/sweep.js       | 11 +++++++++++\n test/idle."
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-19-plain-opus-k15",
+      "meter": {
+        "requests": 4,
+        "usd": 0.047845700000000005,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 4,
+        "usd": 0.047845700000000005,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000052900000000000005
+    }
+  }
+}

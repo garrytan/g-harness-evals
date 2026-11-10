@@ -1,0 +1,155 @@
+{
+  "trial_id": "rev-20-plain-sol-k8",
+  "task_id": "rev-20",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 8,
+  "status": "ok",
+  "reply_text": "Found **one merge-blocking issue** in `main...dedupe-imports` (`62644c3`):\n\n**[P1] Dedupe uses object identity instead of contact ID — `src/dedupe.js:2`**\n`new Set(contacts)` only removes repeated references to the same object. Separate imports produce different objects with equal IDs, so `mergeImports` retains duplicates—the main case this branch is meant to handle.\n\nReproduced with:\n```js\nmergeImports(\n  [{ id: 1, name: 'Ada' }],\n  [{ id: 1, name: 'Ada updated' }]\n)\n```\nBoth contacts are returned. Per the README, only the first should remain.\n\n**Suggested fix:** Track seen IDs and retain the first contact for each. Add regression tests for equal IDs on different objects, both directly in `dedupe` and across lists in `mergeImports`.\n\nAll 4 existing tests pass, but they miss that case. No other findings; no files changed.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-20-plain-sol-k8",
+    "requests": 8,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0412748,
+    "input_tokens": 60838,
+    "output_tokens": 827,
+    "cached_tokens": 49301,
+    "cache_write_tokens": 11225,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0000702,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0412046,
+        "requests": 7
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 8
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 17.788,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-20-plain-sol-k8",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T12:50:00.653Z",
+    "images": {
+      "core": "sha256:3910594b6055b8b889d444e7b76a92af38d79a0b5bb0951c442dff7124c7be49",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-ced31ab31809",
+        "id": "sha256:fecfbf3f1c3e034c757c0b0d0cb012462cab792ad0957803c16b7a27d97d072a",
+        "tree_sha256": "8f4fd404e79755e3fe0ce1d467c61a408f455ba09cb157102e5b3d74a8119347"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-ebe2efa2-0162-4b4b-8034-ad2b074a-ac27bd"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T12:50:42.332Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/cbde0dcf836ba636f4a084a0/4b2b356e774afde2/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/cbde0dcf836ba636f4a084a0/4b2b356e774afde2/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 10,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log --oneline -6 && git diff main...dedupe-imports --stat && git diff main...dedupe-imports",
+          "code": 0,
+          "output": "* dedupe-imports 62644c3 Sort merged contacts by name\n  main           6ca20cb Import contacts from a source\n62644c3 Sort merged contacts by name\n265f2dd Merge overlapping imports\n6ca20cb Import contacts from a source\n CHANGELOG.md        |  4 ++++\n README.md           |  8 ++++++++\n package.json   "
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-20-plain-sol-k8",
+      "meter": {
+        "requests": 8,
+        "usd": 0.0412748,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 8,
+        "usd": 0.0412748,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0000702
+    }
+  }
+}

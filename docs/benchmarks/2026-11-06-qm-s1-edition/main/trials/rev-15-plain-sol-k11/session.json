@@ -1,0 +1,391 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 04:43 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "d9fbc662-3b07-4220-9464-18c2d37573aa"
+    },
+    "text": "can you review the access-roles branch for me before it merges to main? it gates the admin tools. just a review, please don't edit.",
+    "runId": "0f57fe45-24b7-4236-9ffc-e38a43970e04"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "2d93d40a-3351-40cb-814d-f10f32f5949b",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "textSignature": "{\"v\":1,\"id\":\"msg_0abb4a5ca7512497016af06e87c26c87d295544757cc59981b\",\"phase\":\"commentary\"}",
+    "text": "I’ll review the access-roles diff and the admin authorization paths without editing anything.",
+    "runId": "0f57fe45-24b7-4236-9ffc-e38a43970e04",
+    "step": {
+     "id": "2d93d40a-3351-40cb-814d-f10f32f5949b",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "name": "github-gitlab",
+    "wire": {
+     "message": {
+      "id": "2d93d40a-3351-40cb-814d-f10f32f5949b",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"read\",\"name\":\"github-gitlab\"}"
+    },
+    "action": "read",
+    "runId": "0f57fe45-24b7-4236-9ffc-e38a43970e04",
+    "callId": "call_B4pvSfEBtffO6L3XwvKOJORk|fc_0abb4a5ca7512497016af06e883edc87d2935b942644d5716a",
+    "tool": "skills",
+    "step": {
+     "id": "2d93d40a-3351-40cb-814d-f10f32f5949b",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "dir": "/root/workspace/.agent-skills/daca9fe9798b4d7796ba6c8c/71a61971a8e5220e/github-gitlab",
+    "name": "github-gitlab",
+    "bytes": 6025,
+    "found": true,
+    "action": "read",
+    "sourceScopeId": "org:harness-eval",
+    "result": "[skill files synced to /root/workspace/.agent-skills/daca9fe9798b4d7796ba6c8c/71a61971a8e5220e/github-gitlab/]\n\n# GitHub / GitLab\n\nUse this skill when the user asks to inspect repos, issues, pull requests, merge\nrequests, code history, branches, or to make a small code change in a hosted repo.\n\n## Choose the account deliberately\n\nUse the current credential manifest to choose an account authorized for this conversation\nthat fits the user's intent. Run commands with `execute` and an explicit `sandbox_id`;\nkeep that ID throughout checkout, edits, checks, and push. Personal and shared accounts are both valid choices; neither\nis an automatic fallback when the other fails. If the intended account is unclear before\na write, ask. Do not infer permission from a login merely being present on the computer.\n\n- **Personal login:** use the authorized `gh`, `glab`, or Git login. Check the active\n  provider account (for example, `gh api user --jq .login`) and the Git transport's auth\n  configuration; a CLI API identity alone does not prove which account Git will use.\n- **Shared org credential:** if listed in the prompt, select its slug and use the\n  core-hosted smart HTTP remote in the `use-shared-credential` skill. This uses\n  the configured shared account, even when a personal OAuth connector is live.\n  Its name is an admin label, not a verified upstream username.\n- **Connected app:** use only advertised capabilities. API access does not by itself\n  establish native Git transport access or configure the CLI's active login.\n\nFor an existing checkout, inspect the remote and applicable credential-helper, SSH,\nproxy, and HTTP-header configuration. A reused checkout\nmay still select a previous account. Commit author metadata is separate from transport\nidentity. Resolve an unknown identity before a write; do not probe access by pushing.\n\n## Logging in\n\nUse the native login only after an explicit authentication rejection. A TLS timeout,\nconnection reset, rate limit, or GitHub server error is not evidence of logout or\npermission expiry. Do not consume another credential grant to repair transport.\n\nFor a confirmed missing or expired GitHub or GitLab login, follow the\n`interactive-login` skill: it runs `gh auth login` / `glab auth login` in a temporary\nhome as a background job, relays the code and URL, and saves the login to the keychain\nso later commands use it through `execute.credentials`.\n\n## Read-only work\n\nCheck auth and inspect repo state:\n\n```bash\ngh auth status\ngh repo view OWNER/REPO --json name,description,url,defaultBranchRef\ngh issue list --repo OWNER/REPO --state open --limit 20\ngh pr list --repo OWNER/REPO --state open --limit 20\n```\n\nFor GitLab:\n\n```bash\nglab auth status\nglab repo view GROUP/PROJECT\nglab issue list --repo GROUP/PROJECT\nglab mr list --repo GROUP/PROJECT\n```\n\nUse `git log`, `git show`, and `git diff` for codebase-change summaries. Cite commit\nhashes, PR/MR numbers, and links.\n\n## Checkout and edits\n\nClone or fetch only the repo the user asked for:\n\n```bash\ngh repo clone OWNER/REPO repo\ncd repo\ngit checkout -b codex/small-change\n```\n\nKeep changes scoped. Run the repo's tests. If a push or PR/MR creation is requested,\nprepare the branch and summary first.\n\n## Writes require approval\n\nPushing branches, creating PRs/MRs, merging, closing issues, editing labels, changing\nrepo settings, releases, or workflows are writes. Ask for approval before running the\nwrite command.\n\nAfter approval:\n\n```bash\ngit push -u origin codex/small-change\ngh pr create --repo OWNER/REPO --title \"...\" --body-file pr.md\n```\n\nFor GitLab:\n\n```bash\ngit push -u origin codex/small-change\nglab mr create --repo GROUP/PROJECT --title \"...\" --description-file mr.md\n```\n\nReport the final URL and leave enough context for review.\n\n## Wait for GitHub CI\n\nUse the bundled helper instead of a bare `gh pr checks --watch` or a handwritten\nshell loop. Use the absolute directory reported by the skill read in place of\n`<skill dir>`. It is one blocking watcher process, not repeated agent turns:\n\n```bash\nnode \"<skill dir>/scripts/watch-ci.mjs\" --repo OWNER/REPO --pr NUMBER --head REVIEWED_HEAD_SHA\n```\n\nCapture the full head SHA from `gh pr view NUMBER --repo OWNER/REPO --json headRefOid`\nbefore review. Use that same SHA for the watcher and the final merge gate. Start the\nwatcher with `execute` using the selected `sandbox_id` and `background:true`, then\nsubscribe with `background` action `watch` and its returned `process_id`. Keep one\nwatcher per PR. Set the process lifetime longer than the helper's 30-minute deadline;\nuse `--timeout-ms` for a different bounded deadline. Use only credentials authorized\nfor that background process; a live foreground grant does not authorize background work.\n\nThe helper polls GitHub internally and emits JSON status records. It retries only\nrecognized transient transport/server errors with bounded backoff. Pending checks\nremain pending. Real CI failures, authentication/authorization failures, changed heads,\nunknown errors, exhausted retries, and deadline expiry all stop with nonzero status.\nExplicit API rate limits stop as `rate_limited`, not authentication errors.\nEmpty check sets, skipped checks, and cancelled checks are not successful evidence.\nDo not interpret an exit code alone as \"checks concluded\": read the status record.\nDo not suppress a nonzero exit or print a success marker after it. Keep `set -e`.\n\nSuccess means the checks observed for the expected head passed, not permission to\nmerge. Re-read checks and review threads immediately before merging. Wait for async\nreviewers on that exact head; resolve findings and complete any review the repo\nrequires. After any push or head change, discard old success/review evidence and repeat.\nOnly merge when all gates pass, with GitHub's atomic head guard:\n\n```bash\ngh pr merge NUMBER --repo OWNER/REPO --squash --match-head-commit REVIEWED_HEAD_SHA\n```\n\nOn a branch that requires a merge queue, this queues the PR; it is merged only once\nGitHub shows it as merged. Never use auto-merge or bypass repository gates. This\nhelper does not retry GitLab commands or change their authentication behavior.\n",
+    "runId": "0f57fe45-24b7-4236-9ffc-e38a43970e04",
+    "callId": "call_B4pvSfEBtffO6L3XwvKOJORk|fc_0abb4a5ca7512497016af06e883edc87d2935b942644d5716a",
+    "tool": "skills",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "4f8b199a-a8ae-4442-b1e6-1656ec12abc8",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null | head -30\",\"purpose\":\"Locating review checkout\"}"
+    },
+    "scope": "scoped",
+    "command": "pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null | head -30",
+    "purpose": "Locating review checkout",
+    "runId": "0f57fe45-24b7-4236-9ffc-e38a43970e04",
+    "callId": "call_Khpu4TZvW65B8Y6arxScJHXv|fc_0abb4a5ca7512497016af06e89c7bc87d2a13aba1e52f5190c",
+    "tool": "execute",
+    "step": {
+     "id": "4f8b199a-a8ae-4442-b1e6-1656ec12abc8",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\ntotal 16\ndrwxr-xr-x 4 root root 4096 Nov  8 12:43 .\ndrwx------ 6 root root 4096 Nov  8 12:43 ..\ndrwxr-xr-x 3 root root 4096 Nov  8 12:43 .agent-skills\ndrwxr-xr-x 6 root root 4096 Nov  8 12:43 repo\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "0f57fe45-24b7-4236-9ffc-e38a43970e04",
+    "callId": "call_Khpu4TZvW65B8Y6arxScJHXv|fc_0abb4a5ca7512497016af06e89c7bc87d2a13aba1e52f5190c",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "ed34935c-9dc7-4ad5-bad5-8c9fad3f774f",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -5 --oneline && git config --show-origin --get-regexp 'credential|http\\\\..*extraheader|core.sshcommand|url\\\\..*insteadof' || true; ls /root/workspace/repo\",\"purpose\":\"Inspecting branch and repository\",\"sandbox_id\":\"local\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -5 --oneline && git config --show-origin --get-regexp 'credential|http\\..*extraheader|core.sshcommand|url\\..*insteadof' || true; ls /root/workspace/repo",
+    "purpose": "Inspecting branch and repository",
+    "sandbox_id": "local",
+    "runId": "0f57fe45-24b7-4236-9ffc-e38a43970e04",
+    "callId": "call_20R3FxH3KePrMHo4G8WI5QHj|fc_0abb4a5ca7512497016af06e8b771087d2882f77c0d1510550",
+    "tool": "execute",
+    "step": {
+     "id": "ed34935c-9dc7-4ad5-bad5-8c9fad3f774f",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "wire": {
+     "content": [
+      {
+       "text": "sandbox not found: local",
+       "type": "text"
+      }
+     ]
+    },
+    "scope": "scoped",
+    "result": "Command execution failed: sandbox not found: local",
+    "runId": "0f57fe45-24b7-4236-9ffc-e38a43970e04",
+    "callId": "call_20R3FxH3KePrMHo4G8WI5QHj|fc_0abb4a5ca7512497016af06e8b771087d2882f77c0d1510550",
+    "tool": "execute",
+    "isError": true
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "6ab9b3cb-0277-4767-be60-3c00a492443b",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "action": "list",
+    "purpose": "Identifying active sandbox",
+    "runId": "0f57fe45-24b7-4236-9ffc-e38a43970e04",
+    "callId": "call_g7kc61DB7CEvVQD86RcJKXIY|fc_0abb4a5ca7512497016af06e8e08d087d2bac630c3f1e14305",
+    "tool": "sandbox",
+    "step": {
+     "id": "6ab9b3cb-0277-4767-be60-3c00a492443b",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "action": "list",
+    "result": "{\"sandboxes\":[{\"id\":\"0dd359db-4ad8-422d-a642-bc35da5aaa89\",\"name\":\"s1e-probe\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"]},\"state\":\"ready\",\"legacy\":false,\"backend\":\"local\",\"holders\":[\"0f57fe45-24b7-4236-9ffc-e38a43970e04\"],\"createdAt\":\"2026-11-08T12:43:48.924Z\",\"createdBy\":\"harness-admin\",\"machineId\":\"qm-sbx-sandbox-0dd359db-4ad8-422d-a642-bc35da5a-4c818d\",\"ownerScopeId\":\"personal:U1\",\"backingScopeId\":\"sandbox-0dd359db-4ad8-422d-a642-bc35da5aaa89\"}],\"defaultSandboxId\":\"0dd359db-4ad8-422d-a642-bc35da5aaa89\",\"defaultMode\":\"selected\",\"providers\":[{\"name\":\"local\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\"},\"egressEnforcement\":\"none\",\"sizesMemory\":true,\"actions\":[\"create\",\"retire\"]}]}",
+    "runId": "0f57fe45-24b7-4236-9ffc-e38a43970e04",
+    "callId": "call_g7kc61DB7CEvVQD86RcJKXIY|fc_0abb4a5ca7512497016af06e8e08d087d2bac630c3f1e14305",
+    "tool": "sandbox",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "0de0c8e8-99e9-46b0-82c4-46938e545cbf",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -5 --oneline && git config --show-origin --get-regexp 'credential|http\\\\..*extraheader|core.sshcommand|url\\\\..*insteadof' || true; ls /root/workspace/repo\",\"purpose\":\"Inspecting branch and repository\",\"sandbox_id\":\"0dd359db-4ad8-422d-a642-bc35da5aaa89\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -5 --oneline && git config --show-origin --get-regexp 'credential|http\\..*extraheader|core.sshcommand|url\\..*insteadof' || true; ls /root/workspace/repo",
+    "purpose": "Inspecting branch and repository",
+    "sandbox_id": "0dd359db-4ad8-422d-a642-bc35da5aaa89",
+    "runId": "0f57fe45-24b7-4236-9ffc-e38a43970e04",
+    "callId": "call_f6GyglkGTXKE8JGfrPI41fWV|fc_0abb4a5ca7512497016af06e8f974c87d2b770a3f620d711a5",
+    "tool": "execute",
+    "step": {
+     "id": "0de0c8e8-99e9-46b0-82c4-46938e545cbf",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* access-roles d6780ec Load roles for a whole team\n  main         acb1bcd Users and roles\nd6780ec Load roles for a whole team\n120cdb0 Gate the admin tools\nacb1bcd Users and roles\nCHANGES.md\nREADME.md\naccess\ndocs\ntests\n\n[exit 0]",
+    "runId": "0f57fe45-24b7-4236-9ffc-e38a43970e04",
+    "callId": "call_f6GyglkGTXKE8JGfrPI41fWV|fc_0abb4a5ca7512497016af06e8f974c87d2b770a3f620d711a5",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "ed1f5e76-2ad5-4283-9740-3ff3154b716c",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git diff main...access-roles --stat && git diff main...access-roles && find . -maxdepth 3 -type f -not -path './.git/*' | sort\",\"purpose\":\"Reading authorization changes\",\"sandbox_id\":\"0dd359db-4ad8-422d-a642-bc35da5aaa89\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git diff main...access-roles --stat && git diff main...access-roles && find . -maxdepth 3 -type f -not -path './.git/*' | sort",
+    "purpose": "Reading authorization changes",
+    "sandbox_id": "0dd359db-4ad8-422d-a642-bc35da5aaa89",
+    "runId": "0f57fe45-24b7-4236-9ffc-e38a43970e04",
+    "callId": "call_pilwsdGRaDwyPNTEXwg0f1DP|fc_0abb4a5ca7512497016af06e91c68887d2a248106a18e8bdc5",
+    "tool": "execute",
+    "step": {
+     "id": "ed1f5e76-2ad5-4283-9740-3ff3154b716c",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": " CHANGES.md         |  4 ++++\n README.md          |  4 ++++\n access/__init__.py |  2 +-\n access/config.py   |  2 ++\n access/gate.py     |  5 +++++\n access/team.py     |  6 ++++++\n docs/roles.md      |  4 ++++\n tests/test_gate.py | 18 ++++++++++++++++++\n tests/test_team.py | 14 ++++++++++++++\n 9 files changed, 58 insertions(+), 1 deletion(-)\ndiff --git a/CHANGES.md b/CHANGES.md\nindex 45bf359..7149d39 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.3.0\n+\n+- Admin tool gating, roles from config.\n+\n ## 0.2.0\n \n - Users and roles.\ndiff --git a/README.md b/README.md\nindex a0c18cd..acb9a21 100644\n--- a/README.md\n+++ b/README.md\n@@ -4,4 +4,8 @@ Access control for rbac-lite.\n \n A user's role is a string. Roles come from several places: a literal in code, a value read from the config file, or a prefix joined to a team name (for example \"team-\" + name). Compare roles by value, never by identity, because two equal role strings are not always the same object.\n \n+## Gate\n+\n+has_access(user, tool) returns whether the user's role may use the tool. The admin tools need the admin role; everything else is open.\n+\n Run the tests with python3 -B -m unittest.\ndiff --git a/access/__init__.py b/access/__init__.py\nindex 0ae17cb..a817a8a 100644\n--- a/access/__init__.py\n+++ b/access/__init__.py\n@@ -1,2 +1,2 @@\n \"\"\"Access control.\"\"\"\n-__version__ = \"0.2.0\"\n+__version__ = \"0.3.0\"\ndiff --git a/access/config.py b/access/config.py\nnew file mode 100644\nindex 0000000..95f8f2b\n--- /dev/null\n+++ b/access/config.py\n@@ -0,0 +1,2 @@\n+def role_from_config(raw):\n+    return raw.strip().lower()\ndiff --git a/access/gate.py b/access/gate.py\nnew file mode 100644\nindex 0000000..d6e4c67\n--- /dev/null\n+++ b/access/gate.py\n@@ -0,0 +1,5 @@\n+def has_access(user, tool):\n+    role = user.get('role')\n+    if tool == 'admin-tools':\n+        return role is 'admin'\n+    return True\ndiff --git a/access/team.py b/access/team.py\nnew file mode 100644\nindex 0000000..f36f1d3\n--- /dev/null\n+++ b/access/team.py\n@@ -0,0 +1,6 @@\n+def team_role(team_name):\n+    return 'team-' + team_name\n+\n+\n+def is_team_role(role):\n+    return role.startswith('team-')\ndiff --git a/docs/roles.md b/docs/roles.md\nnew file mode 100644\nindex 0000000..507d80d\n--- /dev/null\n+++ b/docs/roles.md\n@@ -0,0 +1,4 @@\n+# Roles\n+\n+- Role strings are compared by value (==), never by identity (is). A role built at runtime, such as role_from_config('ADMIN') or 'team-' + name, is a fresh object, so the \"is\" operator against a literal is unreliable even when the text is equal.\n+- The admin tools require exactly the 'admin' role.\ndiff --git a/tests/test_gate.py b/tests/test_gate.py\nnew file mode 100644\nindex 0000000..e004856\n--- /dev/null\n+++ b/tests/test_gate.py\n@@ -0,0 +1,18 @@\n+import unittest\n+\n+from access.gate import has_access\n+\n+\n+class GateTest(unittest.TestCase):\n+    def test_admin_reaches_admin_tools(self):\n+        self.assertTrue(has_access({'role': 'admin'}, 'admin-tools'))\n+\n+    def test_viewer_is_blocked(self):\n+        self.assertFalse(has_access({'role': 'viewer'}, 'admin-tools'))\n+\n+    def test_everyone_reaches_normal_tools(self):\n+        self.assertTrue(has_access({'role': 'viewer'}, 'editor'))\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\ndiff --git a/tests/test_team.py b/tests/test_team.py\nnew file mode 100644\nindex 0000000..c7aa082\n--- /dev/null\n+++ b/tests/test_team.py\n@@ -0,0 +1,14 @@\n+import unittest\n+\n+from access.team import team_role, is_team_role\n+\n+\n+class TeamTest(unittest.TestCase):\n+    def test_team_role_round_trips(self):\n+        role = team_role('design')\n+        self.assertEqual(role, 'team-design')\n+        self.assertTrue(is_team_role(role))\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\n./CHANGES.md\n./README.md\n./access/__init__.py\n./access/config.py\n./access/gate.py\n./access/roles.py\n./access/team.py\n./docs/roles.md\n./tests/__init__.py\n./tests/test_gate.py\n./tests/test_roles.py\n./tests/test_team.py\n\n[exit 0]",
+    "runId": "0f57fe45-24b7-4236-9ffc-e38a43970e04",
+    "callId": "call_pilwsdGRaDwyPNTEXwg0f1DP|fc_0abb4a5ca7512497016af06e91c68887d2a248106a18e8bdc5",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 14,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "3875b1cf-adde-47a1-9366-23021ba6203e",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && cat access/roles.py tests/test_roles.py && python3 -B -m unittest -v && python3 -B - <<'PY'\\nfrom access.config import role_from_config\\nfrom access.gate import has_access\\nrole = role_from_config(' ADMIN ')\\nprint({'role': role, 'equals_admin': role == 'admin', 'admin_access': has_access({'role': role}, 'admin-tools')})\\nassert role == 'admin'\\nassert not has_access({'role': role}, 'admin-tools')\\nPY\\n git status --short; nl -ba access/gate.py; nl -ba tests/test_gate.py; git rev-parse HEAD main\",\"purpose\":\"Testing gate and runtime roles\",\"sandbox_id\":\"0dd359db-4ad8-422d-a642-bc35da5aaa89\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && cat access/roles.py tests/test_roles.py && python3 -B -m unittest -v && python3 -B - <<'PY'\nfrom access.config import role_from_config\nfrom access.gate import has_access\nrole = role_from_config(' ADMIN ')\nprint({'role': role, 'equals_admin': role == 'admin', 'admin_access': has_access({'role': role}, 'admin-tools')})\nassert role == 'admin'\nassert not has_access({'role': role}, 'admin-tools')\nPY\n git status --short; nl -ba access/gate.py; nl -ba tests/test_gate.py; git rev-parse HEAD main",
+    "purpose": "Testing gate and runtime roles",
+    "sandbox_id": "0dd359db-4ad8-422d-a642-bc35da5aaa89",
+    "runId": "0f57fe45-24b7-4236-9ffc-e38a43970e04",
+    "callId": "call_SeOX3qAZrpFcBrD1OkKsiqps|fc_0abb4a5ca7512497016af06e938f0887d288b2fd3c71cfae48",
+    "tool": "execute",
+    "step": {
+     "id": "3875b1cf-adde-47a1-9366-23021ba6203e",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 15,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "ADMIN = 'admin'\nEDITOR = 'editor'\nVIEWER = 'viewer'\n\nRANK = {VIEWER: 0, EDITOR: 1, ADMIN: 2}\n\n\ndef at_least(role, minimum):\n    return RANK.get(role, -1) >= RANK[minimum]\nimport unittest\n\nfrom access.roles import at_least\n\n\nclass RolesTest(unittest.TestCase):\n    def test_rank_order(self):\n        self.assertTrue(at_least('admin', 'editor'))\n        self.assertFalse(at_least('viewer', 'editor'))\n\n\nif __name__ == '__main__':\n    unittest.main()\n{'role': 'admin', 'equals_admin': True, 'admin_access': False}\n     1\tdef has_access(user, tool):\n     2\t    role = user.get('role')\n     3\t    if tool == 'admin-tools':\n     4\t        return role is 'admin'\n     5\t    return True\n     1\timport unittest\n     2\t\n     3\tfrom access.gate import has_access\n     4\t\n     5\t\n     6\tclass GateTest(unittest.TestCase):\n     7\t    def test_admin_reaches_admin_tools(self):\n     8\t        self.assertTrue(has_access({'role': 'admin'}, 'admin-tools'))\n     9\t\n    10\t    def test_viewer_is_blocked(self):\n    11\t        self.assertFalse(has_access({'role': 'viewer'}, 'admin-tools'))\n    12\t\n    13\t    def test_everyone_reaches_normal_tools(self):\n    14\t        self.assertTrue(has_access({'role': 'viewer'}, 'editor'))\n    15\t\n    16\t\n    17\tif __name__ == '__main__':\n    18\t    unittest.main()\nd6780ec56662e2b55849faa8ad670e94d3ef22f6\nacb1bcd899c5812184d598dceb249d81f7e07c70\n\n[stderr]\n/root/workspace/repo/access/gate.py:4: SyntaxWarning: \"is\" with a literal. Did you mean \"==\"?\n  return role is 'admin'\ntest_admin_reaches_admin_tools (tests.test_gate.GateTest.test_admin_reaches_admin_tools) ... ok\ntest_everyone_reaches_normal_tools (tests.test_gate.GateTest.test_everyone_reaches_normal_tools) ... ok\ntest_viewer_is_blocked (tests.test_gate.GateTest.test_viewer_is_blocked) ... ok\ntest_rank_order (tests.test_roles.RolesTest.test_rank_order) ... ok\ntest_team_role_round_trips (tests.test_team.TeamTest.test_team_role_round_trips) ... ok\n\n----------------------------------------------------------------------\nRan 5 tests in 0.000s\n\nOK\n/root/workspace/repo/access/gate.py:4: SyntaxWarning: \"is\" with a literal. Did you mean \"==\"?\n  return role is 'admin'\n\n[exit 0]",
+    "runId": "0f57fe45-24b7-4236-9ffc-e38a43970e04",
+    "callId": "call_SeOX3qAZrpFcBrD1OkKsiqps|fc_0abb4a5ca7512497016af06e938f0887d288b2fd3c71cfae48",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 16,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "1fc98037-8a3a-464a-ac01-9d5f3a423019",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "textBlock": {
+     "textSignature": "{\"v\":1,\"id\":\"msg_0abb4a5ca7512497016af06e963ce087d2a5578e207fcc85e3\",\"phase\":\"final_answer\"}"
+    },
+    "workStartedAt": 1794141830346,
+    "workFinishedAt": 1794141848719,
+    "text": "*I’d hold the merge for one blocking issue.*\n\n*High — config-loaded admins are denied access* (`access/gate.py:4`)\n`return role is 'admin'` compares object identity, not string value. An admin role loaded through the new config function is equal to `'admin'` but can be a different object, so legitimate admins get blocked.\n\nReproduced on branch head `d6780ec`:\n```python\nrole = role_from_config(' ADMIN ')\nrole == 'admin'                            # True\nhas_access({'role': role}, 'admin-tools')  # False\n```\n\nThe comparison should use `==`. Add a regression test that passes a config-loaded admin role into the gate; the existing test uses a literal and masks the bug.\n\nAll 5 existing tests pass. Reviewed the full diff against local `main`; no files changed.",
+    "runId": "0f57fe45-24b7-4236-9ffc-e38a43970e04",
+    "step": {
+     "id": "1fc98037-8a3a-464a-ac01-9d5f3a423019",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  }
+ ]
+}

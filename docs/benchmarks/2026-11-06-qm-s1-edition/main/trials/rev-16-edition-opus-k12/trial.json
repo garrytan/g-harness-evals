@@ -1,0 +1,159 @@
+{
+  "trial_id": "rev-16-edition-opus-k12",
+  "task_id": "rev-16",
+  "family": "review",
+  "arm": "edition",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 12,
+  "status": "ok",
+  "reply_text": "I wouldn't merge this yet. The tests pass, but `excerpt` doesn't do what the README says in two ways, and the only test is written around one of those bugs. I didn't change anything.\n\n**Must fix**\n1. **Short text always gets an ellipsis.** `excerpt` never checks whether the text already fits, so `excerpt('short', 50)` returns `\"short…\"` and `excerpt('', 10)` returns `\"…\"`. The README says text at or under the limit comes back unchanged, and that the ellipsis only appears when something was cut. The fix is to return `trimmed` early when `trimmed.length <= limit`.\n2. **It cuts one word too early when a word ends exactly at the limit.** `lastSpaceBefore` looks at `text.slice(0, limit)`, which leaves out the character at position `limit`. If that character is a space, the full word fits but gets dropped anyway. For example, `excerpt('the quick brown fox', 15)` returns `\"the quick…\"` when it should be `\"the quick brown…\"`. The test in `excerpt.test.js` expects `'the quick'` for limit 15, so it locks in this bug and will need updating along with the fix (slice to `limit + 1`).\n\n**Worth a look**\n3. **Nothing calls the new helpers yet.** No code in `src/` uses `excerpt` or `toPlain`, so cards won't actually show previews after this merges. Maybe that's planned for a follow-up PR, but the changelog says 1.5.0 ships \"Card body excerpts.\"\n4. **`toPlain` deletes too much in some places and too little in others:**\n   - It removes every `*`, `_`, `~` and backtick, including ones inside words: `my_var` becomes `myvar` and `2*3` becomes `23`.\n   - Images become `!img` because the `!` is left behind.\n   - Heading markers (`#`) and list markers (`-`, `1.`) aren't removed, so `# Title` stays as is.\n   - Links whose URL contains a `)` won't flatten cleanly.\n5. **Thin tests.** There's one case per function. Useful ones to add: text under the limit, text exactly at the limit, a word ending right at the limit, empty or whitespace-only text, and a first word longer than the limit (that case currently gets a hard cut mid-word, which is reasonable, but nothing tests it).\n6. **Small things:**\n   - The output can be `limit + 1` characters long because of the ellipsis. Decide whether the limit includes it.\n   - The 1.4.0 changelog entry was reworded (\"a title and a body\" → \"a title and body\"), which looks like an accidental edit to an old release.\n\nFixes 1 and 2 are each about one line, plus the test change.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-16-edition-opus-k12",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.07350899999999999,
+    "input_tokens": 53902,
+    "output_tokens": 1921,
+    "cached_tokens": 50278,
+    "cache_write_tokens": 3155,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000053400000000000004,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0734556,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 22.209,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-16-edition-opus-k12",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:16:36.208Z",
+    "images": {
+      "core": "sha256:a9ad79c9a5b8831fdc21d559e082c8ec10e726ba26b883975150369b49c28109",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-390fc44053b9",
+        "id": "sha256:952f9973890f8c702ffa06c1c853e1b1402f99ef8c541b0c91179582d004fe38",
+        "tree_sha256": "bd9012866b0fbf456fcbf2fcb6e8b6cf4c5710236994765c2f5965835746e504"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-c9a11e3d-b647-4f2d-8e2e-331755c6-8d45e2"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:17:22.022Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 5,
+          "command": "cd /root/workspace/repo && git log --oneline main..excerpt-helper && git diff main...excerpt-helper",
+          "code": 0,
+          "output": "59856d7 Strip markdown before excerpting\n8e279a3 Add the excerpt helper\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 1e089ca..da546b7 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.5.0\n+\n+- Card body excerpts.\n+\n ## 1.4.0\n \n-- Cards render a title and a body.\n+- "
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-16-edition-opus-k12",
+      "meter": {
+        "requests": 5,
+        "usd": 0.07350899999999999,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.07350899999999999,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000053400000000000004
+    }
+  }
+}

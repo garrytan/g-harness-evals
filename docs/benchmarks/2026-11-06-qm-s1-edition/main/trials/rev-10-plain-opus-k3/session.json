@@ -1,0 +1,328 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 07:02 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "35ee703b-b899-4e08-bc1c-4c7ac0306d53"
+    },
+    "text": "can you take a look at the leaderboard-sort branch vs main? Merging this afternoon. just a review, don't change the code.",
+    "runId": "6050eff6-b23f-4f4e-8a8d-d6d5f4ea66f7"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "29da849a-14eb-4c4f-bf88-8c9f8c26f727",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "I'll take a look at the branch now.",
+    "runId": "6050eff6-b23f-4f4e-8a8d-d6d5f4ea66f7",
+    "step": {
+     "id": "29da849a-14eb-4c4f-bf88-8c9f8c26f727",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "29da849a-14eb-4c4f-bf88-8c9f8c26f727",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd ~ 2>/dev/null; ls; for d in $(find / -maxdepth 4 -name .git -type d 2>/dev/null | head); do echo $d; git -C $d/.. branch -a 2>/dev/null | head; done\",\"purpose\":\"Locating the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd ~ 2>/dev/null; ls; for d in $(find / -maxdepth 4 -name .git -type d 2>/dev/null | head); do echo $d; git -C $d/.. branch -a 2>/dev/null | head; done",
+    "purpose": "Locating the repository",
+    "runId": "6050eff6-b23f-4f4e-8a8d-d6d5f4ea66f7",
+    "callId": "toolu_01YNkanZtjxWU9uFyHB8yFAc",
+    "tool": "execute",
+    "step": {
+     "id": "29da849a-14eb-4c4f-bf88-8c9f8c26f727",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "workspace\n/root/workspace/repo/.git\n* leaderboard-sort\n  main\n\n[exit 0]",
+    "runId": "6050eff6-b23f-4f4e-8a8d-d6d5f4ea66f7",
+    "callId": "toolu_01YNkanZtjxWU9uFyHB8yFAc",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "5c18a3bc-4fb5-4bc0-9ad2-b647265836b7",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; git log --oneline main..leaderboard-sort; git diff main...leaderboard-sort\",\"purpose\":\"Reading the diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; git log --oneline main..leaderboard-sort; git diff main...leaderboard-sort",
+    "purpose": "Reading the diff",
+    "runId": "6050eff6-b23f-4f4e-8a8d-d6d5f4ea66f7",
+    "callId": "toolu_0129MmXQ5LLVoQqAvt1JsufF",
+    "tool": "execute",
+    "step": {
+     "id": "5c18a3bc-4fb5-4bc0-9ad2-b647265836b7",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "17941bc Add a stable display name\n04db347 Rank and paginate the leaderboard\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex bb35a10..68b8f68 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.1.0\n+\n+- Leaderboard ranking and top-N.\n+\n ## 1.0.0\n \n - Scores stored and returned as decimal strings.\ndiff --git a/README.md b/README.md\nindex 4796c99..9e495a0 100644\n--- a/README.md\n+++ b/README.md\n@@ -3,3 +3,11 @@\n Leaderboards for highscore-api.\n \n Scores can exceed 2^53, so the API returns each score as a decimal string (field \"score\"), never a JSON number: a Number would silently round it. Compare two scores with compareScore(a, b) in src/score.js, which handles arbitrary length. Never turn a score into a Number.\n+\n+## Ranking\n+\n+rankings(entries) returns the entries highest score first, each with a 1-based rank. topN(entries, n) returns the first n.\n+\n+## Display names\n+\n+displayName(player) trims the name and falls back to \"Player <id>\" when it is blank.\ndiff --git a/package.json b/package.json\nindex a20cf34..5144cf7 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"highscore-api\",\n-  \"version\": \"1.0.0\",\n+  \"version\": \"1.1.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/display.js b/src/display.js\nnew file mode 100644\nindex 0000000..d8bcb4d\n--- /dev/null\n+++ b/src/display.js\n@@ -0,0 +1,6 @@\n+function displayName(player) {\n+  const trimmed = player.name.trim();\n+  return trimmed.length ? trimmed : 'Player ' + player.id;\n+}\n+\n+module.exports = { displayName };\ndiff --git a/src/rank.js b/src/rank.js\nnew file mode 100644\nindex 0000000..712e0ab\n--- /dev/null\n+++ b/src/rank.js\n@@ -0,0 +1,7 @@\n+function rankings(entries) {\n+  return [...entries]\n+    .sort((a, b) => b.score - a.score)\n+    .map((e, i) => ({ rank: i + 1, player: e.player, score: e.score }));\n+}\n+\n+module.exports = { rankings };\ndiff --git a/src/top.js b/src/top.js\nnew file mode 100644\nindex 0000000..747ad0f\n--- /dev/null\n+++ b/src/top.js\n@@ -0,0 +1,7 @@\n+const { rankings } = require('./rank');\n+\n+function topN(entries, n) {\n+  return rankings(entries).slice(0, n);\n+}\n+\n+module.exports = { topN };\ndiff --git a/test/display.test.js b/test/display.test.js\nnew file mode 100644\nindex 0000000..f897c4f\n--- /dev/null\n+++ b/test/display.test.js\n@@ -0,0 +1,8 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { displayName } = require('../src/display');\n+\n+test('falls back to the id when the name is blank', () => {\n+  assert.strictEqual(displayName({ id: 7, name: '  ' }), 'Player 7');\n+  assert.strictEqual(displayName({ id: 7, name: 'Ada' }), 'Ada');\n+});\ndiff --git a/test/rank.test.js b/test/rank.test.js\nnew file mode 100644\nindex 0000000..90d0f0f\n--- /dev/null\n+++ b/test/rank.test.js\n@@ -0,0 +1,9 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { rankings } = require('../src/rank');\n+\n+test('ranks highest score first', () => {\n+  const r = rankings([{ player: 'a', score: '5' }, { player: 'b', score: '12' }, { player: 'c', score: '9' }]);\n+  assert.deepStrictEqual(r.map((x) => x.player), ['b', 'c', 'a']);\n+  assert.deepStrictEqual(r.map((x) => x.rank), [1, 2, 3]);\n+});\n\n[exit 0]",
+    "runId": "6050eff6-b23f-4f4e-8a8d-d6d5f4ea66f7",
+    "callId": "toolu_0129MmXQ5LLVoQqAvt1JsufF",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "3a21e1f4-fb8b-4099-8d2e-8c543dc63234",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQSrAYKEAgTGAI4AUIIdGhpbmtpbmcSDJxRgl9HcZmlXLS6KRoMxAOveZ++bDxSW10sIjCC9iRiSBAjcs/2muzz8P6JxPGlv/V3ckPOS8QF/Qm5uGA0s3Eo27zdWUx0SUYw+KcqyQXk6GFfYPkQnPhlvry/sIJwRt8mii/l49ID1BFBJYG0Fq6LNF7mSM0Ix58k1BvWPVWBiyeUDmllzdg7sSkdyTdoAiwmmXAz2z6g0XaFTZssw+fu2zFFl7Bno/vaa9HRqzsi2i40jtD2ySitatezob+E3Ut1kg1w09lPF8h8bbkUrFwuKoD9FaZvAjRSXTLph5JV8whGCEHxTszvF0vJqvNV0n86MykYQQ0cr0r0fudKh+aqLJPy2caubxlEeoFOXaLZJPFfLR9a2noJdZ9oa1VOxpkvZ9MG3RQVJhgms512ljjq0cxgMNdVm+pQmIRE/41SDhEyxXixxZ3vqeUreAVVD/e/u/ZSK8vk0ERDCnXJyMeTMyP9vBT85HHnIM6gm+qPbEcvqP0gBQO6YXuNpkeoQSOBpxuxPUYKp5bmF4m678DGKzEXXfkZ1qs9QHLlBJEzuItIs8weWXcc0lbdauSFNxXgx4tNwt6zBUV1JNgEg/raDl6LXTKeACLedktdw0gTucw/Of1V7ShncFo+tbCkcvgH/2pyMaL059qe/YPN8JYqZjTGTll8GDgBeRr4XgCS7ewx7LvoBg7vIQJF1VxHeT83j2G4uACS8uhEksQIh9bYGMnm0Bmc8zh41Rw8HFAFcf6SUoG/cK7l5TbX8t+eYjQIaUFeF6X2uG23oCg/B+AIUeac9RVA26zr5adXk15f1ncurMW9IPQs/jqFkZKimHEPcjsR8jzRIzpQl1GA4IZ8qq4ROfXrTNGrSIlHyvTmJWgLoc8YAn9xSz6pahbHiy97YAh6JsKMx0N+P9XI5tprGHmz+eOdc3t2N1xWrU+lhM6CurEfnt5FgIa8Wh8Q7SMsyfpt7/L8fi0kC8pN3sIxfmtkljgB4iS14RNPzjuDtViw9bb4RqNyKL6qlS9pDbM9j4xLkXVIpHiIgBd5lscD5KtIsGLrQhgB",
+    "thinking": "I've spotted a likely bug: subtracting the scores with b.score - a.score coerces strings to numbers and can lose precision above 2^53. I need to confirm that compareScore exists, and also check the topN docs against n and the null-name crash in the display code.\n\n",
+    "runId": "6050eff6-b23f-4f4e-8a8d-d6d5f4ea66f7",
+    "step": {
+     "id": "3a21e1f4-fb8b-4099-8d2e-8c543dc63234",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "3a21e1f4-fb8b-4099-8d2e-8c543dc63234",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; cat src/score.js; npm test 2>&1 | tail -5; node -e \\\"const {rankings}=require('./src/rank');console.log(rankings([{player:'a',score:'9007199254740993'},{player:'b',score:'9007199254740992'}]))\\\"\",\"purpose\":\"Verifying the precision issue\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; cat src/score.js; npm test 2>&1 | tail -5; node -e \"const {rankings}=require('./src/rank');console.log(rankings([{player:'a',score:'9007199254740993'},{player:'b',score:'9007199254740992'}]))\"",
+    "purpose": "Verifying the precision issue",
+    "runId": "6050eff6-b23f-4f4e-8a8d-d6d5f4ea66f7",
+    "callId": "toolu_01SezVCfWe5BEAXB9N1tWLDr",
+    "tool": "execute",
+    "step": {
+     "id": "3a21e1f4-fb8b-4099-8d2e-8c543dc63234",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "function compareScore(a, b) {\n  const x = BigInt(a);\n  const y = BigInt(b);\n  return x < y ? -1 : x > y ? 1 : 0;\n}\n\nmodule.exports = { compareScore };\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 91.999985\n[\n  { rank: 1, player: 'a', score: '9007199254740993' },\n  { rank: 2, player: 'b', score: '9007199254740992' }\n]\n\n[exit 0]",
+    "runId": "6050eff6-b23f-4f4e-8a8d-d6d5f4ea66f7",
+    "callId": "toolu_01SezVCfWe5BEAXB9N1tWLDr",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 9,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "7a8213a2-baaa-4c38-8ebd-d0a444695dea",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQSmwYKEAgTGAI4AUIIdGhpbmtpbmcSDE6Hq/HutSJPjOMVshoMstSxyYKC23otwSLMIjCzL42804nOvpkMsLEF+eCCF2QnbIUHFHg5DtjRV4GwtirLzjzq+Pq04hIgMlY6NnoquAXtDEMgNixw2nAiWqclGxHV4xwR7rtOhedVFBMf8m2GQuOkbPvBaYc+6AD+I7eWXgqX9e3cUzQidbbdnXnOmCd4p+Oey6L1o9Sm6e0h/IeDmJLKWki0Iid7dz/gKspg3AOxlHCbnmn3OdD5w9WrUDPseqYrvXWtuXsal9f85svpExDu8TwFGliNkEikGlvtE2YQ5PIn56pZbh4NOTJNuoNh8xazTQlih4iWrFiQmi6M1OtMKug+a9hYiTP9pCU0aEjx/nGMZDjxXaDR+DCO8XPiB+IMY6aOBDv4CnHHFv/iWBUEBKGy3nd9H2Zi3LpcAUXQNFmt06ehMFfYg+9dAjz2Su0mcaHy1E2OqeZa/dyv4vQtdqySplwQLajFR7wjVYglXpOgNNFAVXJ9ziprtXmkZ1/TX0BqRBGMOhPR9SbxGtlaRWo1izk8zUvvzVQ6u90R+44Np7Toed6pEHGIk2fN7ncKyuJbSNYxlhlfEf7xEQBDpGAG/0r6NqfaYd0Cq04e34Sp4GuvPUR9WcLSSzYKtVpIYtC8F20ezLzrEzk4zqc03yRUHQED95yx4NDq2zHqWJWisXaYJXFVJF7Vj/QaUKm9idvnH2gv1jKh7qFuQkcNL7gvVN/xMd0bsGJDspyNx/OsPHiBZUhNTN+V6NN9ddG6q0wA9E8NqgrV5vSAiLhAppxRZ8qCmJp0aEcfg45SKyLQSbr7bn3Uy3Nvhhc7XDjEW3D/DFyfov/YrQGBakt24TicXfGPwNeJwRZdZsVwCJFRxGs3gQ//pjCj8QKwJVJYGVq7e6jV5sLZ7nE9PhR97ayh/qhOcoSgKAtK1mTLck5oqLXA8focBaB1tF2sUc32EirJlOxVqNrFdcXQMVCTTsR7EOZ+TzoJQPevpl3wZCmpnvqqGzTauI0W2mB+lGn8DufG4sYYAQ==",
+    "thinking": "The stable sort keeps equal-diff items in their original order, so I'll try the reversed input to see if that changes anything.\n\n",
+    "runId": "6050eff6-b23f-4f4e-8a8d-d6d5f4ea66f7",
+    "step": {
+     "id": "7a8213a2-baaa-4c38-8ebd-d0a444695dea",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "7a8213a2-baaa-4c38-8ebd-d0a444695dea",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; node -e \\\"const {rankings}=require('./src/rank');console.log(rankings([{player:'b',score:'9007199254740992'},{player:'a',score:'9007199254740993'}]))\\\"\",\"purpose\":\"Confirming misordering\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; node -e \"const {rankings}=require('./src/rank');console.log(rankings([{player:'b',score:'9007199254740992'},{player:'a',score:'9007199254740993'}]))\"",
+    "purpose": "Confirming misordering",
+    "runId": "6050eff6-b23f-4f4e-8a8d-d6d5f4ea66f7",
+    "callId": "toolu_01LJGAsrY4MEd4GMr7ogM3oA",
+    "tool": "execute",
+    "step": {
+     "id": "7a8213a2-baaa-4c38-8ebd-d0a444695dea",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "[\n  { rank: 1, player: 'b', score: '9007199254740992' },\n  { rank: 2, player: 'a', score: '9007199254740993' }\n]\n\n[exit 0]",
+    "runId": "6050eff6-b23f-4f4e-8a8d-d6d5f4ea66f7",
+    "callId": "toolu_01LJGAsrY4MEd4GMr7ogM3oA",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "d6be82f0-d9cc-4c2d-a4ee-049ed8e21c41",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "CAQStgYKEAgTGAI4AUIIdGhpbmtpbmcSDO6ktuRn1ckruciNfRoMIiBYIC6Qj5UFN5wyIjAZR5PkmzqdBGG3O/E0Z/GiergIG0X3BmlHUPW2DHP/OX7dlD7vYjtliTHO2D4Aef4q0wVof4FHX3NyGZTrICv1kDtrInv2UPa271bSyylcKLR1vzFSvAnzv/Qzhi/mp57MJ9mJSjLXMPzqi59FIZn9OxzfZzCKGLsbzNChoZnMLCe89bXk959Tvq5eMPuYZLAB0DpDYScCF1GtGb0rUkH0/FWeBSAb6Rc75BtOtj0lan2h1JA05zdmUU8juFozuqgruu3T9wior/htN1l4uQnTrLJ7m1uACZrr5tsM7arGWLRSs5dtbLcd3GsPW0fmOz21LBkihZL31UQ+PZicMBixb0U18eCSNdLUSxsW7KcBDUghlNF+5KqhsYYEi+HxMsrhallKDI9hIWITkDGuya5xTd2xR1Y790Bt4hA+wXJsBdXLoXkDtn95ipDW4xYZcf4mx3TBKO0fjIeXI22/a350wzQ7deksnV+4joRoYlN8Bpw+atiX45k3TI4yHeY5QQjha7cibtlN2gc+DVnwTFMG2Q1Tlm8fi/OZPgA7ZTs+XSmdAIhIJ7ELA2aJ4XmKBMoVpILa8A8/oJbCUVkbtrDnVmkO9JCJ1RWqYOVrZLZc7Bk7H/JbUkbzOKU7aknuLW9i5g8biANWhZtXUwDBUZ9zGw5YxZfpTh4AMLNwMz1mrYV0zWyRxft3krsdecjoTImBDycpxUyt2BPPFeEjAzyXaafhohP2JaZgCCRzWuuLqbIUD0JlHmPKXCaRXFO5EG0FBok8VLEJs3fXerIgNoSnCUEJdLeIbuLd6+NapV9t79+3llPbi7o/6JTmt2KcEyLAqKWNzwglijt3Mhv02GGknI/i+xNobOL8lmfOeqIlIKWWRujln/k5G71n+dYr3Kb4iN/bH6u5fFJpJAk82UTxt01PWK8yX5KwRgxoMFEVuGtGk6F1Ady3Tk05T3gPieWWeJWsgy5D3USYYoCvhAlaCqJKcPZ2ea7SyqT9Zu90X8K512jqujGrAUSPcrqYcL9H/zBCBVAYAQ==",
+    "thinking": "I've confirmed the bug. There's also a separate crash when the display name is null, and I need to decide whether tied scores should get distinct ranks, which is a design question.\n\n",
+    "runId": "6050eff6-b23f-4f4e-8a8d-d6d5f4ea66f7",
+    "step": {
+     "id": "d6be82f0-d9cc-4c2d-a4ee-049ed8e21c41",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "d6be82f0-d9cc-4c2d-a4ee-049ed8e21c41",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794150177733,
+    "workFinishedAt": 1794150194579,
+    "text": "I'd hold the merge until one thing is fixed: the leaderboard puts big scores in the wrong order. Tests pass, but they don't catch it. I didn't change any code.\n\n**Must fix: `src/rank.js` sorts with `b.score - a.score`**\n- Scores are stored as decimal strings so they can go past 2^53. Subtracting them turns them into ordinary JavaScript numbers, which rounds large values. The README says never to do this.\n- I reproduced it on the branch: with `9007199254740992` listed before `9007199254740993`, `rankings` ranks the smaller score #1.\n- `topN` uses `rankings`, so the top-N list has the same problem.\n- Fix: use the existing helper instead, `.sort((a, b) => compareScore(b.score, a.score))`, with `compareScore` from `./score`.\n- Add a test with two scores above 2^53 that differ only in the last digit, listed smallest first. The current test only uses small numbers, so it can't catch this.\n\n**Smaller points (not blocking)**\n- **Ties:** players with equal scores get different ranks (1, 2) in whatever order they came in. If tied players should share a rank (1, 1, 3), that needs deciding now, because the README just says \"1-based rank\".\n- **`displayName`:** it throws if `name` is `null` or missing. Writing `(player.name ?? '').trim()` would fall back to \"Player <id>\" instead.\n- **`topN`:** it has no test, and `n` isn't checked, so a negative `n` quietly drops entries from the end of the list.\n\nEverything else looks fine: the changelog, the README, the version bump to 1.1.0 and the display-name logic.",
+    "runId": "6050eff6-b23f-4f4e-8a8d-d6d5f4ea66f7",
+    "step": {
+     "id": "d6be82f0-d9cc-4c2d-a4ee-049ed8e21c41",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

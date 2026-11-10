@@ -1,0 +1,2579 @@
+{
+  "schema": "qm-s1-edition-bank/1",
+  "bank_id": "qm-s1-edition-2026-11-v1",
+  "test_only": false,
+  "templates": [
+    {
+      "id": "rev-01",
+      "family": "review",
+      "request": "Hey, feature/quota-enforcement is ready to go into main. Can you review it before I merge? Just tell me what you'd block on, please don't change any code.",
+      "vars": {
+        "project": [
+          "vault-meter",
+          "drift-storage",
+          "locker-accounting"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Track storage usage per account",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"1.6.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nStorage accounting for {{project}}: how much each account uses and which shard a file lives on.\n\n## Plans\n\n| Plan | Quota |\n|---|---|\n| free | 512 MiB |\n| team | 200 GiB |\n| archive | 2 TiB |\n\nQuotas are kept in KiB in src/plans.js.\n\n## Tests\n\n    npm test\n",
+            "CHANGELOG.md": "# Changelog\n\n## 1.6.0\n\n- Usage totals and shard placement.\n",
+            "src/plans.js": "// Quotas in KiB.\nconst PLANS = {\n  free: { quotaKiB: 524288 },\n  team: { quotaKiB: 209715200 },\n  archive: { quotaKiB: 2147483648 },\n};\n\nmodule.exports = { PLANS };\n",
+            "src/usage.js": "function usedBytes(files) {\n  return files.reduce((n, f) => n + f.size, 0);\n}\n\nmodule.exports = { usedBytes };\n",
+            "src/shard.js": "const SHARDS = 16;\n\nfunction shardFor(name) {\n  let h = 0;\n  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % SHARDS;\n  return h;\n}\n\nmodule.exports = { shardFor, SHARDS };\n",
+            "src/upload.js": "const { usedBytes } = require('./usage');\nconst { shardFor } = require('./shard');\n\nfunction acceptUpload(account, file) {\n  account.files.push(file);\n  return { ok: true, shard: shardFor(file.name) };\n}\n\nmodule.exports = { acceptUpload };\n",
+            "test/usage.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { usedBytes } = require('../src/usage');\n\ntest('usage adds file sizes', () => {\n  assert.strictEqual(usedBytes([{ size: 10 }, { size: 20 }]), 30);\n});\n"
+          }
+        },
+        {
+          "branch": "feature/quota-enforcement",
+          "from": "main",
+          "message": "Enforce plan quotas on upload",
+          "files": {
+            "src/plans.js": "// Quotas in KiB.\nconst PLANS = {\n  free: { quotaKiB: 524288 },\n  team: { quotaKiB: 209715200 },\n  archive: { quotaKiB: 2147483648 },\n};\n\nfunction quotaBytes(plan) {\n  const entry = PLANS[plan];\n  if (!entry) throw new Error('unknown plan: ' + plan);\n  return entry.quotaKiB << 10;\n}\n\nmodule.exports = { PLANS, quotaBytes };\n",
+            "src/upload.js": "const { usedBytes } = require('./usage');\nconst { shardFor } = require('./shard');\nconst { quotaBytes } = require('./plans');\n\nfunction acceptUpload(account, file) {\n  const after = usedBytes(account.files) + file.size;\n  if (after > quotaBytes(account.plan)) {\n    return { ok: false, reason: 'over quota' };\n  }\n  account.files.push(file);\n  return { ok: true, shard: shardFor(file.name) };\n}\n\nmodule.exports = { acceptUpload };\n",
+            "test/quota.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { quotaBytes } = require('../src/plans');\nconst { acceptUpload } = require('../src/upload');\n\ntest('free plan quota is 512 MiB', () => {\n  assert.strictEqual(quotaBytes('free'), 512 * 1024 * 1024);\n});\n\ntest('an upload past the quota is refused', () => {\n  const account = { plan: 'free', files: [{ name: 'a.bin', size: 512 * 1024 * 1024 }] };\n  assert.deepStrictEqual(acceptUpload(account, { name: 'b.txt', size: 1 }), { ok: false, reason: 'over quota' });\n});\n\ntest('an upload within the quota is stored', () => {\n  const account = { plan: 'free', files: [] };\n  assert.strictEqual(acceptUpload(account, { name: 'c.txt', size: 100 }).ok, true);\n  assert.strictEqual(account.files.length, 1);\n});\n",
+            "README.md": "# {{project}}\n\nStorage accounting for {{project}}: how much each account uses and which shard a file lives on.\n\n## Plans\n\n| Plan | Quota |\n|---|---|\n| free | 512 MiB |\n| team | 200 GiB |\n| archive | 2 TiB |\n\nQuotas are kept in KiB in src/plans.js.\n\n## Quotas\n\nAn upload is refused when it would take the account past its plan's quota. An upload that brings usage exactly to the quota is accepted.\n\n## Tests\n\n    npm test\n",
+            "CHANGELOG.md": "# Changelog\n\n## 1.7.0\n\n- Uploads past the plan quota are refused.\n\n## 1.6.0\n\n- Usage totals and shard placement.\n",
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"1.7.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+          }
+        },
+        {
+          "branch": "feature/quota-enforcement",
+          "message": "Count usage in allocation blocks",
+          "files": {
+            "src/usage.js": "const BLOCK = 4096;\n\nfunction usedBytes(files) {\n  return files.reduce((n, f) => n + Math.ceil(f.size / BLOCK) * BLOCK, 0);\n}\n\nmodule.exports = { usedBytes, BLOCK };\n",
+            "test/usage.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { usedBytes } = require('../src/usage');\n\ntest('usage counts whole 4 KiB blocks', () => {\n  assert.strictEqual(usedBytes([{ size: 10 }, { size: 4097 }]), 3 * 4096);\n});\n",
+            "README.md": "# {{project}}\n\nStorage accounting for {{project}}: how much each account uses and which shard a file lives on.\n\n## Plans\n\n| Plan | Quota |\n|---|---|\n| free | 512 MiB |\n| team | 200 GiB |\n| archive | 2 TiB |\n\nQuotas are kept in KiB in src/plans.js.\n\n## Quotas\n\nAn upload is refused when it would take the account past its plan's quota. An upload that brings usage exactly to the quota is accepted.\n\nUsage counts whole 4 KiB blocks, because that is what the storage backend allocates: a 1-byte file uses 4 KiB.\n\n## Tests\n\n    npm test\n"
+          }
+        }
+      ],
+      "checkout": "feature/quota-enforcement",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "src/plans.js",
+          "lines": [
+            11,
+            11
+          ],
+          "symbols": [
+            "quotaBytes",
+            "<< 10"
+          ],
+          "mechanism": [
+            "32-bit",
+            "32 bit",
+            "int32",
+            "overflow*",
+            "wrap*",
+            "bit shift*",
+            "left shift",
+            "bitwise",
+            "2 GiB",
+            "2GiB",
+            "2^31",
+            "2**31",
+            "signed integer",
+            "becomes 0",
+            "returns 0",
+            "zero bytes",
+            "negative"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/upload.js",
+            "lines": [
+              7,
+              7
+            ],
+            "symbols": [
+              "after >"
+            ]
+          },
+          {
+            "file": "src/usage.js",
+            "lines": [
+              4,
+              4
+            ],
+            "symbols": [
+              "Math.ceil"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-02",
+      "family": "review",
+      "request": "Could you review my retries branch (feature/webhook-retries) against main? I'd like a second pair of eyes before merging. Review only, I'll make any changes myself.",
+      "vars": {
+        "project": [
+          "hookline",
+          "relay-out",
+          "pingback"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Deliver webhooks to subscribers",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"2.3.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nOutbound webhooks for {{project}}.\n\n## Delivery\n\ndeliverAll(transport, subscriptions, event) posts the event to every subscription, one after another, and resolves to one result per subscription: { id, ok }.\n\nIt never rejects. A delivery that fails is written to the dead-letter log (src/dead-letters.js) and reported as { id, ok: false }, so one broken endpoint never stops the others.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 2.3.0\n\n- Signed webhook delivery.\n",
+            "src/sign.js": "const crypto = require('node:crypto');\n\nfunction sign(secret, body) {\n  return crypto.createHmac('sha256', secret).update(body).digest('hex');\n}\n\nmodule.exports = { sign };\n",
+            "src/dead-letters.js": "const entries = [];\n\nfunction record(id, reason) {\n  entries.push({ id, reason, at: new Date().toISOString() });\n}\n\nfunction list() {\n  return entries.slice();\n}\n\nmodule.exports = { record, list };\n",
+            "src/http-transport.js": "class HttpTransport {\n  constructor(fetchImpl, metrics) {\n    this.fetch = fetchImpl;\n    this.metrics = metrics;\n  }\n\n  async post(url, body, headers) {\n    const res = await this.fetch(url, { method: 'POST', body, headers });\n    if (!res.ok) throw new Error('HTTP ' + res.status);\n    return res;\n  }\n}\n\nmodule.exports = { HttpTransport };\n",
+            "src/deliver.js": "const { sign } = require('./sign');\nconst deadLetters = require('./dead-letters');\n\nasync function deliverOnce(transport, sub, body) {\n  const headers = { 'content-type': 'application/json', 'x-signature': sign(sub.secret, body) };\n  try {\n    await transport.post(sub.url, body, headers);\n    return { id: sub.id, ok: true };\n  } catch (err) {\n    deadLetters.record(sub.id, err.message);\n    return { id: sub.id, ok: false };\n  }\n}\n\nasync function deliverAll(transport, subs, event) {\n  const body = JSON.stringify(event);\n  const results = [];\n  for (const sub of subs) results.push(await deliverOnce(transport, sub, body));\n  return results;\n}\n\nmodule.exports = { deliverAll };\n",
+            "test/deliver.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { deliverAll } = require('../src/deliver');\n\ntest('every subscription gets the event', async () => {\n  const seen = [];\n  const transport = { post: async (url) => { seen.push(url); } };\n  const subs = [{ id: 'a', url: 'https://a.test/hook', secret: 's' }, { id: 'b', url: 'https://b.test/hook', secret: 's' }];\n  assert.deepStrictEqual(await deliverAll(transport, subs, { type: 'ping' }), [{ id: 'a', ok: true }, { id: 'b', ok: true }]);\n  assert.deepStrictEqual(seen, ['https://a.test/hook', 'https://b.test/hook']);\n});\n"
+          }
+        },
+        {
+          "branch": "feature/webhook-retries",
+          "from": "main",
+          "message": "Retry failed deliveries with backoff",
+          "files": {
+            "src/retry.js": "const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));\n\nasync function withRetries(fn, retries, delayMs = 200) {\n  let lastError;\n  for (let attempt = 0; attempt <= retries; attempt++) {\n    if (attempt > 0) await sleep(delayMs * 2 ** (attempt - 1));\n    try {\n      return await fn();\n    } catch (err) {\n      lastError = err;\n    }\n  }\n  throw lastError;\n}\n\nmodule.exports = { withRetries };\n",
+            "src/deliver.js": "const { sign } = require('./sign');\nconst deadLetters = require('./dead-letters');\nconst { withRetries } = require('./retry');\n\nconst DEFAULT_RETRIES = 3;\n\nasync function deliverOnce(transport, sub, body, retries, delayMs) {\n  const headers = { 'content-type': 'application/json', 'x-signature': sign(sub.secret, body) };\n  try {\n    return withRetries(() => transport.post(sub.url, body, headers), retries, delayMs).then(() => ({ id: sub.id, ok: true }));\n  } catch (err) {\n    deadLetters.record(sub.id, err.message);\n    return { id: sub.id, ok: false };\n  }\n}\n\nasync function deliverAll(transport, subs, event, options = {}) {\n  const body = JSON.stringify(event);\n  const retries = options.retries ?? DEFAULT_RETRIES;\n  const results = [];\n  for (const sub of subs) results.push(await deliverOnce(transport, sub, body, retries, options.delayMs));\n  return results;\n}\n\nmodule.exports = { deliverAll };\n",
+            "test/retry.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { withRetries } = require('../src/retry');\n\ntest('a flaky call succeeds on a retry', async () => {\n  let calls = 0;\n  const result = await withRetries(async () => { calls++; if (calls < 3) throw new Error('flaky'); return 'done'; }, 3, 0);\n  assert.strictEqual(result, 'done');\n  assert.strictEqual(calls, 3);\n});\n\ntest('gives up after the first try plus the retries', async () => {\n  let calls = 0;\n  await assert.rejects(withRetries(async () => { calls++; throw new Error('down'); }, 2, 0), /down/);\n  assert.strictEqual(calls, 3);\n});\n",
+            "README.md": "# {{project}}\n\nOutbound webhooks for {{project}}.\n\n## Delivery\n\ndeliverAll(transport, subscriptions, event) posts the event to every subscription, one after another, and resolves to one result per subscription: { id, ok }.\n\nIt never rejects. A delivery that fails is written to the dead-letter log (src/dead-letters.js) and reported as { id, ok: false }, so one broken endpoint never stops the others.\n\n## Retries\n\nEach delivery is tried once and then retried up to options.retries times (default 3), so an endpoint sees at most 4 requests per event. Retries wait 200 ms, 400 ms, then 800 ms.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 2.4.0\n\n- Failed deliveries are retried with backoff.\n- Request timing metric webhook.post_ms.\n\n## 2.3.0\n\n- Signed webhook delivery.\n",
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"2.4.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+          }
+        },
+        {
+          "branch": "feature/webhook-retries",
+          "message": "Time each webhook request",
+          "files": {
+            "src/http-transport.js": "class HttpTransport {\n  constructor(fetchImpl, metrics) {\n    this.fetch = fetchImpl;\n    this.metrics = metrics;\n  }\n\n  async post(url, body, headers) {\n    const started = Date.now();\n    try {\n      return await this.send(url, body, headers);\n    } finally {\n      this.metrics.timing('webhook.post_ms', Date.now() - started);\n    }\n  }\n\n  async send(url, body, headers) {\n    const res = await this.fetch(url, { method: 'POST', body, headers });\n    if (!res.ok) throw new Error('HTTP ' + res.status);\n    return res;\n  }\n}\n\nmodule.exports = { HttpTransport };\n",
+            "test/http-transport.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { HttpTransport } = require('../src/http-transport');\n\ntest('records a timing for each post', async () => {\n  const timings = [];\n  const t = new HttpTransport(async () => ({ ok: true, status: 200 }), { timing: (name, ms) => timings.push(name) });\n  await t.post('https://a.test/hook', '{}', {});\n  assert.deepStrictEqual(timings, ['webhook.post_ms']);\n});\n"
+          }
+        }
+      ],
+      "checkout": "feature/webhook-retries",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "src/deliver.js",
+          "lines": [
+            10,
+            10
+          ],
+          "symbols": [
+            "deliverOnce",
+            ".then("
+          ],
+          "mechanism": [
+            "await",
+            "awaited",
+            "unawaited",
+            "reject*",
+            "never runs",
+            "never reached",
+            "catch never",
+            "catch block",
+            "dead-letter*",
+            "dead letter*",
+            "unhandled",
+            "escapes"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/http-transport.js",
+            "lines": [
+              10,
+              10
+            ],
+            "symbols": [
+              "return await"
+            ]
+          },
+          {
+            "file": "src/retry.js",
+            "lines": [
+              5,
+              5
+            ],
+            "symbols": [
+              "<= retries"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-03",
+      "family": "review",
+      "request": "hi! can you look over the phone-normalize branch before I merge it into main? Just a review please, no code changes.",
+      "vars": {
+        "project": [
+          "textbell",
+          "nudge-sms",
+          "smsgate"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Queue text messages",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"0.8.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nText-message notifications for {{project}}.\n\nPhone numbers are stored in E.164 form: a +, the country code and the subscriber number, digits only, at most 15 digits.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 0.8.0\n\n- Outbox for text messages.\n",
+            "src/validate.js": "const E164 = /^\\+\\d+$/;\n\nfunction isE164(s) {\n  return E164.test(s);\n}\n\nmodule.exports = { isE164 };\n",
+            "src/sms.js": "const { isE164 } = require('./validate');\n\nfunction queueText(outbox, to, text) {\n  if (!isE164(to)) throw new Error('bad number: ' + to);\n  outbox.push({ to, text: text.slice(0, 160) });\n}\n\nmodule.exports = { queueText };\n",
+            "test/sms.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { queueText } = require('../src/sms');\n\ntest('queues a text for an E.164 number', () => {\n  const outbox = [];\n  queueText(outbox, '+14155550100', 'hello');\n  assert.deepStrictEqual(outbox, [{ to: '+14155550100', text: 'hello' }]);\n});\n"
+          }
+        },
+        {
+          "branch": "phone-normalize",
+          "from": "main",
+          "message": "Accept phone numbers as people type them",
+          "files": {
+            "src/normalize.js": "const { toInternational } = require('./dialing');\n\nfunction normalize(raw) {\n  const compact = raw.trim().replace(' ', '');\n  const international = toInternational(compact);\n  return international.replace(/[().-]/g, '');\n}\n\nmodule.exports = { normalize };\n",
+            "src/dialing.js": "function toInternational(number) {\n  return number.startsWith('00') ? '+' + number.slice(2) : number;\n}\n\nmodule.exports = { toInternational };\n",
+            "src/sms.js": "const { isE164 } = require('./validate');\nconst { normalize } = require('./normalize');\n\nfunction queueText(outbox, rawTo, text) {\n  const to = normalize(rawTo);\n  if (!isE164(to)) throw new Error('bad number: ' + rawTo);\n  outbox.push({ to, text: text.slice(0, 160) });\n}\n\nmodule.exports = { queueText };\n",
+            "test/normalize.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { normalize } = require('../src/normalize');\n\ntest('a space, brackets and a dash go', () => {\n  assert.strictEqual(normalize('+1 (415)555-0100'), '+14155550100');\n});\n\ntest('a 00 prefix becomes +', () => {\n  assert.strictEqual(normalize('0033612345678'), '+33612345678');\n});\n",
+            "README.md": "# {{project}}\n\nText-message notifications for {{project}}.\n\nPhone numbers are stored in E.164 form: a +, the country code and the subscriber number, digits only, at most 15 digits.\n\n## Entering numbers\n\nqueueText accepts numbers the way people type them: with spaces, brackets, dots or dashes, and with the 00 international prefix instead of +. For example +44 20 7946 0958, 0044 20 7946 0958 and +1 (415) 555-0100 all work. National numbers without a country code are refused.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 0.9.0\n\n- Phone numbers are normalized to E.164 before queueing.\n\n## 0.8.0\n\n- Outbox for text messages.\n",
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"0.9.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+          }
+        },
+        {
+          "branch": "phone-normalize",
+          "message": "Tighten the E.164 check",
+          "files": {
+            "src/validate.js": "const E164 = /^\\+[1-9]\\d{1,14}$/;\n\nfunction isE164(s) {\n  return E164.test(s);\n}\n\nmodule.exports = { isE164 };\n",
+            "test/validate.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { isE164 } = require('../src/validate');\n\ntest('E.164 numbers pass', () => {\n  assert.strictEqual(isE164('+442079460958'), true);\n});\n\ntest('a leading zero country code fails', () => {\n  assert.strictEqual(isE164('+0123'), false);\n});\n"
+          }
+        }
+      ],
+      "checkout": "phone-normalize",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "src/normalize.js",
+          "lines": [
+            4,
+            4
+          ],
+          "symbols": [
+            "replace(' ', '')",
+            "normalize"
+          ],
+          "mechanism": [
+            "first space",
+            "first occurrence",
+            "only the first",
+            "only one space",
+            "one space",
+            "replaceAll",
+            "global",
+            "/g",
+            "\\s",
+            "remaining spaces",
+            "other spaces",
+            "more than one space",
+            "several spaces",
+            "multiple spaces",
+            "7946"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/validate.js",
+            "lines": [
+              1,
+              1
+            ],
+            "symbols": [
+              "[1-9]",
+              "{1,14}"
+            ]
+          },
+          {
+            "file": "src/dialing.js",
+            "lines": [
+              2,
+              2
+            ],
+            "symbols": [
+              "toInternational",
+              "startsWith('00')"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-04",
+      "family": "review",
+      "request": "Can you review the multi-dataset-ingest branch against main for me? It's going in tomorrow. Don't change anything, just tell me what you'd want fixed.",
+      "vars": {
+        "project": [
+          "nightly-ingest",
+          "ledger-loader",
+          "dropbox-etl"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Load the nightly CSV export",
+          "files": {
+            "README.md": "# {{project}}\n\nNightly CSV ingest for {{project}}. Each CSV in drop/ is one dataset, named after the file: events.csv loads into the events dataset.\n\nDatasets: events, sessions, invoices, refunds.\n\nRun the tests with python3 -B -m unittest.\n",
+            "CHANGES.md": "# Changes\n\n## 0.4.0\n\n- Read the export with csv.DictReader.\n",
+            "ingest/__init__.py": "\"\"\"Nightly CSV ingest.\"\"\"\n__version__ = \"0.4.0\"\n",
+            "ingest/loader.py": "import csv\n\n\ndef read_rows(path):\n    with open(path, encoding='utf-8') as f:\n        return list(csv.DictReader(f))\n",
+            "ingest/money.py": "from decimal import Decimal\n\n\ndef parse_amount(raw):\n    return Decimal(raw.strip())\n",
+            "tests/__init__.py": "\"\"\"Tests.\"\"\"\n",
+            "tests/test_money.py": "import unittest\nfrom decimal import Decimal\n\nfrom ingest.money import parse_amount\n\n\nclass ParseAmountTest(unittest.TestCase):\n    def test_strips_spaces(self):\n        self.assertEqual(parse_amount(' 12.50 '), Decimal('12.50'))\n\n\nif __name__ == '__main__':\n    unittest.main()\n"
+          }
+        },
+        {
+          "branch": "multi-dataset-ingest",
+          "from": "main",
+          "message": "Load every CSV in drop/ into its own dataset",
+          "files": {
+            "ingest/jobs.py": "import os\n\n\ndef dataset_for(path):\n    name = os.path.basename(path)\n    return name.rstrip('.csv')\n",
+            "ingest/run.py": "import glob\nimport os\n\nfrom .jobs import dataset_for\nfrom .loader import read_rows\nfrom .money import parse_amount\n\n\ndef load_drop(directory, store):\n    for path in sorted(glob.glob(os.path.join(directory, '*.csv'))):\n        rows = read_rows(path)\n        for row in rows:\n            if 'amount' in row:\n                row['amount'] = parse_amount(row['amount'])\n        store.setdefault(dataset_for(path), []).extend(rows)\n    return store\n",
+            "tests/test_run.py": "import os\nimport tempfile\nimport unittest\nfrom decimal import Decimal\n\nfrom ingest.jobs import dataset_for\nfrom ingest.run import load_drop\n\n\nclass LoadDropTest(unittest.TestCase):\n    def test_dataset_is_named_after_the_file(self):\n        self.assertEqual(dataset_for('drop/payouts_2026.csv'), 'payouts_2026')\n\n    def test_loads_rows_and_amounts(self):\n        with tempfile.TemporaryDirectory() as d:\n            with open(os.path.join(d, 'ledger_q3.csv'), 'w', encoding='utf-8') as f:\n                f.write('id,amount\\r\\n1,2.50\\r\\n')\n            store = load_drop(d, {})\n        self.assertEqual(store, {'ledger_q3': [{'id': '1', 'amount': Decimal('2.50')}]})\n\n\nif __name__ == '__main__':\n    unittest.main()\n",
+            "README.md": "# {{project}}\n\nNightly CSV ingest for {{project}}. Each CSV in drop/ is one dataset, named after the file: events.csv loads into the events dataset.\n\nDatasets: events, sessions, invoices, refunds.\n\nload_drop(directory, store) loads every CSV in the directory, in name order, and appends its rows to the dataset's list in store.\n\nRun the tests with python3 -B -m unittest.\n",
+            "CHANGES.md": "# Changes\n\n## 0.5.0\n\n- Every CSV in drop/ loads into its own dataset.\n- Amounts are rounded to the cent.\n\n## 0.4.0\n\n- Read the export with csv.DictReader.\n",
+            "ingest/__init__.py": "\"\"\"Nightly CSV ingest.\"\"\"\n__version__ = \"0.5.0\"\n"
+          }
+        },
+        {
+          "branch": "multi-dataset-ingest",
+          "message": "Round amounts to the cent and read spreadsheet exports",
+          "files": {
+            "ingest/money.py": "from decimal import Decimal\n\nCENT = Decimal('0.01')\n\n\ndef parse_amount(raw):\n    return Decimal(raw.strip()).quantize(CENT)\n",
+            "ingest/loader.py": "import csv\n\n\ndef read_rows(path):\n    with open(path, newline='', encoding='utf-8-sig') as f:\n        return list(csv.DictReader(f))\n",
+            "tests/test_money.py": "import unittest\nfrom decimal import Decimal\n\nfrom ingest.money import parse_amount\n\n\nclass ParseAmountTest(unittest.TestCase):\n    def test_strips_spaces(self):\n        self.assertEqual(parse_amount(' 12.50 '), Decimal('12.50'))\n\n    def test_rounds_to_the_cent_half_to_even(self):\n        self.assertEqual(parse_amount('2.345'), Decimal('2.34'))\n        self.assertEqual(parse_amount('2.355'), Decimal('2.36'))\n\n\nif __name__ == '__main__':\n    unittest.main()\n",
+            "docs/finance-rules.md": "# Finance rules for ingest\n\n- Amounts are kept as Decimal, never float.\n- Amounts are rounded to the cent half to even (banker's rounding): 2.345 becomes 2.34 and 2.355 becomes 2.36. This is the finance team's rule for every ledger total.\n- The exports come from the finance spreadsheet tool, which writes UTF-8 with a byte order mark and may put line breaks inside quoted cells.\n"
+          }
+        }
+      ],
+      "checkout": "multi-dataset-ingest",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "ingest/jobs.py",
+          "lines": [
+            6,
+            6
+          ],
+          "symbols": [
+            "dataset_for",
+            "rstrip('.csv')"
+          ],
+          "mechanism": [
+            "set of characters",
+            "character set",
+            "characters",
+            "any of",
+            "removesuffix",
+            "splitext",
+            "trailing s",
+            "event",
+            "session",
+            "invoice",
+            "refund",
+            "not a suffix",
+            "strips the s"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "ingest/money.py",
+            "lines": [
+              7,
+              7
+            ],
+            "symbols": [
+              "quantize"
+            ]
+          },
+          {
+            "file": "ingest/loader.py",
+            "lines": [
+              5,
+              5
+            ],
+            "symbols": [
+              "utf-8-sig",
+              "newline=''"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-05",
+      "family": "review",
+      "request": "Before I merge share-editing into main, could you give it a review? I want to know if anything's wrong with it. Please don't touch the code, comments only.",
+      "vars": {
+        "project": [
+          "paperclip-docs",
+          "quill-share",
+          "notebin"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Share documents with view rights",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"3.1.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nSharing permissions for {{project}} documents.\n\nEach share stores its rights as a bit mask (src/rights.js): READ 1, COMMENT 2, WRITE 4, ADMIN 8. A viewer link has READ only. An editor has READ, COMMENT and WRITE. The owner has all four.\n\nCheck a right with hasRight(mask, right).\n",
+            "CHANGELOG.md": "# Changelog\n\n## 3.1.0\n\n- View-only shares.\n",
+            "src/rights.js": "const READ = 1;\nconst COMMENT = 2;\nconst WRITE = 4;\nconst ADMIN = 8;\n\nfunction hasRight(mask, right) {\n  return (mask & right) === right;\n}\n\nmodule.exports = { READ, COMMENT, WRITE, ADMIN, hasRight };\n",
+            "src/guard.js": "const { READ, hasRight } = require('./rights');\n\nfunction canView(share) {\n  return hasRight(share.mask, READ);\n}\n\nmodule.exports = { canView };\n",
+            "test/guard.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { READ } = require('../src/rights');\nconst { canView } = require('../src/guard');\n\ntest('a viewer can view', () => {\n  assert.ok(canView({ mask: READ }));\n});\n\ntest('no rights, no view', () => {\n  assert.ok(!canView({ mask: 0 }));\n});\n"
+          }
+        },
+        {
+          "branch": "share-editing",
+          "from": "main",
+          "message": "Let editors comment and edit unlocked documents",
+          "files": {
+            "src/guard.js": "const { READ, COMMENT, WRITE, hasRight } = require('./rights');\n\nfunction canView(share) {\n  return hasRight(share.mask, READ);\n}\n\nfunction canComment(share) {\n  return hasRight(share.mask, COMMENT) && !share.locked;\n}\n\nfunction canEdit(share) {\n  return share.mask & WRITE === WRITE && !share.locked;\n}\n\nmodule.exports = { canView, canComment, canEdit };\n",
+            "test/guard.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { READ, COMMENT, WRITE } = require('../src/rights');\nconst { canView, canComment, canEdit } = require('../src/guard');\n\ntest('a viewer can view', () => {\n  assert.ok(canView({ mask: READ }));\n});\n\ntest('no rights, no view', () => {\n  assert.ok(!canView({ mask: 0 }));\n});\n\ntest('an editor can comment and edit an unlocked document', () => {\n  const share = { mask: READ | COMMENT | WRITE, locked: false };\n  assert.ok(canComment(share));\n  assert.ok(canEdit(share));\n});\n\ntest('nobody comments on or edits a locked document', () => {\n  const share = { mask: READ | COMMENT | WRITE, locked: true };\n  assert.ok(!canComment(share));\n  assert.ok(!canEdit(share));\n});\n",
+            "README.md": "# {{project}}\n\nSharing permissions for {{project}} documents.\n\nEach share stores its rights as a bit mask (src/rights.js): READ 1, COMMENT 2, WRITE 4, ADMIN 8. A viewer link has READ only. An editor has READ, COMMENT and WRITE. The owner has all four.\n\nCheck a right with hasRight(mask, right).\n\n## Locking\n\nA locked document can be viewed but not commented on or edited, whatever the share's rights.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 3.2.0\n\n- Editors can comment and edit; locked documents are read-only.\n\n## 3.1.0\n\n- View-only shares.\n",
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"3.2.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+          }
+        },
+        {
+          "branch": "share-editing",
+          "message": "Share dialog switches and ownership transfer",
+          "files": {
+            "src/rights.js": "const READ = 1;\nconst COMMENT = 2;\nconst WRITE = 4;\nconst ADMIN = 8;\n\nfunction hasRight(mask, right) {\n  return (mask & right) === right;\n}\n\nfunction toggleRight(mask, right) {\n  return mask ^ right;\n}\n\nmodule.exports = { READ, COMMENT, WRITE, ADMIN, hasRight, toggleRight };\n",
+            "src/ownership.js": "const { READ, COMMENT, WRITE, ADMIN } = require('./rights');\n\nconst OWNER = READ | COMMENT | WRITE | ADMIN;\n\nfunction transferOwnership(doc, fromUser, toUser) {\n  doc.shares[fromUser] &= ~ADMIN;\n  doc.shares[toUser] = OWNER;\n  doc.owner = toUser;\n}\n\nmodule.exports = { transferOwnership, OWNER };\n",
+            "test/rights.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { READ, WRITE, ADMIN, toggleRight } = require('../src/rights');\nconst { transferOwnership, OWNER } = require('../src/ownership');\n\ntest('a switch turns a right on', () => {\n  assert.strictEqual(toggleRight(READ, WRITE), READ | WRITE);\n});\n\ntest('the new owner gets every right', () => {\n  const doc = { owner: 'ana', shares: { ana: OWNER, ben: READ } };\n  transferOwnership(doc, 'ana', 'ben');\n  assert.strictEqual(doc.owner, 'ben');\n  assert.strictEqual(doc.shares.ben, OWNER);\n  assert.strictEqual(doc.shares.ana & ADMIN, 0);\n});\n",
+            "README.md": "# {{project}}\n\nSharing permissions for {{project}} documents.\n\nEach share stores its rights as a bit mask (src/rights.js): READ 1, COMMENT 2, WRITE 4, ADMIN 8. A viewer link has READ only. An editor has READ, COMMENT and WRITE. The owner has all four.\n\nCheck a right with hasRight(mask, right).\n\n## Locking\n\nA locked document can be viewed but not commented on or edited, whatever the share's rights.\n\n## Share dialog\n\nThe dialog has one switch per right. Flipping a switch calls toggleRight(mask, right): the right is turned on if it was off and off if it was on.\n\n## Transferring ownership\n\nThe new owner gets all four rights. The previous owner loses ADMIN and keeps the rights they had.\n"
+          }
+        }
+      ],
+      "checkout": "share-editing",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "src/guard.js",
+          "lines": [
+            12,
+            12
+          ],
+          "symbols": [
+            "canEdit"
+          ],
+          "mechanism": [
+            "precedence",
+            "parenthes*",
+            "binds tighter",
+            "binds more tightly",
+            "higher precedence",
+            "evaluated first",
+            "evaluates first",
+            "& true",
+            "& 1",
+            "WRITE === WRITE",
+            "READ bit",
+            "read bit",
+            "read-only",
+            "viewer*",
+            "any share with READ",
+            "hasRight"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/rights.js",
+            "lines": [
+              11,
+              11
+            ],
+            "symbols": [
+              "toggleRight",
+              "XOR",
+              "^ right"
+            ]
+          },
+          {
+            "file": "src/ownership.js",
+            "lines": [
+              6,
+              6
+            ],
+            "symbols": [
+              "~ADMIN"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-06",
+      "family": "review",
+      "request": "I refactored our pagination into a shared pager on pager-refactor. Can you review it against main before I merge? Only review, no edits please.",
+      "vars": {
+        "project": [
+          "streamline-feed",
+          "pulse-api",
+          "timeline-svc"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Activity feed with cursor pagination",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"1.2.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nActivity feed API for {{project}}.\n\nGET /feed returns events newest first, a page at a time. Pass the next cursor from one page to get the following page. Cursors are opaque.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 1.2.0\n\n- Cursor pagination for the feed and for comments.\n",
+            "src/cursor.js": "function encodeCursor(e) {\n  return String(e.createdAt);\n}\n\nfunction decodeCursor(s) {\n  return { createdAt: Number(s) };\n}\n\nmodule.exports = { encodeCursor, decodeCursor };\n",
+            "src/feed.js": "const { encodeCursor, decodeCursor } = require('./cursor');\n\nfunction newestFirst(a, b) {\n  return b.createdAt - a.createdAt;\n}\n\nfunction olderThan(e, c) {\n  return e.createdAt < c.createdAt;\n}\n\nfunction feedPage(events, { after, limit = 20 } = {}) {\n  const sorted = [...events].sort(newestFirst);\n  const rest = after ? sorted.filter((e) => olderThan(e, decodeCursor(after))) : sorted;\n  const items = rest.slice(0, limit);\n  return { items, next: rest.length > limit ? encodeCursor(items[items.length - 1]) : null };\n}\n\nmodule.exports = { feedPage };\n",
+            "src/comments.js": "function commentsPage(comments, { after, limit = 50 } = {}) {\n  const sorted = [...comments].sort((a, b) => b.postedAt - a.postedAt || (a.id < b.id ? 1 : -1));\n  const rest = after ? sorted.filter((c) => c.postedAt < after.postedAt || (c.postedAt === after.postedAt && c.id < after.id)) : sorted;\n  const items = rest.slice(0, limit);\n  const last = items[items.length - 1];\n  return { items, next: rest.length > limit ? { postedAt: last.postedAt, id: last.id } : null };\n}\n\nmodule.exports = { commentsPage };\n",
+            "test/feed.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { feedPage } = require('../src/feed');\n\nconst events = [{ id: 'a', createdAt: 1 }, { id: 'b', createdAt: 3 }, { id: 'c', createdAt: 2 }];\n\ntest('pages newest first', () => {\n  const first = feedPage(events, { limit: 2 });\n  assert.deepStrictEqual(first.items.map((e) => e.id), ['b', 'c']);\n  const second = feedPage(events, { after: first.next, limit: 2 });\n  assert.deepStrictEqual(second.items.map((e) => e.id), ['a']);\n  assert.strictEqual(second.next, null);\n});\n"
+          }
+        },
+        {
+          "branch": "main",
+          "message": "Break createdAt ties by id in feed order and cursors\n\nBulk imports write many events with the same createdAt. With a cursor on\ncreatedAt alone, events sharing the last timestamp of a page were skipped.\nOrder ties by id and carry the id in the cursor.",
+          "files": {
+            "src/cursor.js": "function encodeCursor(e) {\n  return e.createdAt + ':' + e.id;\n}\n\nfunction decodeCursor(s) {\n  const i = s.indexOf(':');\n  return { createdAt: Number(s.slice(0, i)), id: s.slice(i + 1) };\n}\n\nmodule.exports = { encodeCursor, decodeCursor };\n",
+            "src/feed.js": "const { encodeCursor, decodeCursor } = require('./cursor');\n\nfunction newestFirst(a, b) {\n  return b.createdAt - a.createdAt || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);\n}\n\nfunction olderThan(e, c) {\n  return e.createdAt < c.createdAt || (e.createdAt === c.createdAt && e.id < c.id);\n}\n\nfunction feedPage(events, { after, limit = 20 } = {}) {\n  const sorted = [...events].sort(newestFirst);\n  const rest = after ? sorted.filter((e) => olderThan(e, decodeCursor(after))) : sorted;\n  const items = rest.slice(0, limit);\n  return { items, next: rest.length > limit ? encodeCursor(items[items.length - 1]) : null };\n}\n\nmodule.exports = { feedPage };\n"
+          }
+        },
+        {
+          "branch": "pager-refactor",
+          "from": "main",
+          "message": "Extract a shared keyset pager",
+          "files": {
+            "src/pager.js": "// Keyset pagination over rows sorted newest first by key(row). A key is a number or an array of\n// numbers and strings, compared left to right.\nfunction compareKeys(a, b) {\n  const x = [].concat(a);\n  const y = [].concat(b);\n  for (let i = 0; i < x.length; i++) {\n    if (x[i] < y[i]) return -1;\n    if (x[i] > y[i]) return 1;\n  }\n  return 0;\n}\n\nfunction keysetPage(rows, afterKey, limit, key) {\n  const rest = afterKey === null || afterKey === undefined ? rows : rows.filter((r) => compareKeys(key(r), afterKey) < 0);\n  const items = rest.slice(0, limit + 1);\n  const more = items.length > limit;\n  if (more) items.pop();\n  return { items, more };\n}\n\nmodule.exports = { keysetPage, compareKeys };\n",
+            "src/feed.js": "const { keysetPage } = require('./pager');\nconst { encodeCursor, decodeCursor } = require('./cursor');\nconst { clampLimit } = require('./limits');\n\nfunction newestFirst(a, b) {\n  return b.createdAt - a.createdAt || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);\n}\n\nfunction feedPage(events, { after, limit } = {}) {\n  const sorted = [...events].sort(newestFirst);\n  const page = keysetPage(sorted, after ? decodeCursor(after) : null, clampLimit(limit), (e) => e.createdAt);\n  const last = page.items[page.items.length - 1];\n  return { items: page.items, next: page.more ? encodeCursor(last.createdAt) : null };\n}\n\nmodule.exports = { feedPage };\n",
+            "src/cursor.js": "function encodeCursor(key) {\n  return Buffer.from(JSON.stringify(key)).toString('base64url');\n}\n\nfunction decodeCursor(token) {\n  return JSON.parse(Buffer.from(token, 'base64url').toString('utf8'));\n}\n\nmodule.exports = { encodeCursor, decodeCursor };\n",
+            "src/comments.js": "const { keysetPage } = require('./pager');\n\nfunction commentsPage(comments, { after, limit = 50 } = {}) {\n  const sorted = [...comments].sort((a, b) => b.postedAt - a.postedAt || (a.id < b.id ? 1 : -1));\n  const page = keysetPage(sorted, after ? [after.postedAt, after.id] : null, limit, (c) => [c.postedAt, c.id]);\n  const last = page.items[page.items.length - 1];\n  return { items: page.items, next: page.more ? { postedAt: last.postedAt, id: last.id } : null };\n}\n\nmodule.exports = { commentsPage };\n",
+            "test/pager.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { keysetPage, compareKeys } = require('../src/pager');\nconst { commentsPage } = require('../src/comments');\n\ntest('keys compare left to right', () => {\n  assert.strictEqual(compareKeys([2, 'a'], [2, 'b']), -1);\n  assert.strictEqual(compareKeys(3, 2), 1);\n});\n\ntest('a page knows whether more rows follow', () => {\n  const rows = [5, 4, 3].map((n) => ({ n }));\n  assert.deepStrictEqual(keysetPage(rows, null, 2, (r) => r.n), { items: [{ n: 5 }, { n: 4 }], more: true });\n  assert.deepStrictEqual(keysetPage(rows, 4, 2, (r) => r.n), { items: [{ n: 3 }], more: false });\n});\n\ntest('comments that share a timestamp are all paged', () => {\n  const comments = ['a', 'b', 'c'].map((id) => ({ id, postedAt: 7 }));\n  const first = commentsPage(comments, { limit: 2 });\n  const second = commentsPage(comments, { after: first.next, limit: 2 });\n  assert.deepStrictEqual([...first.items, ...second.items].map((c) => c.id), ['c', 'b', 'a']);\n});\n",
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"1.3.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "CHANGELOG.md": "# Changelog\n\n## 1.3.0\n\n- Feed and comments share one keyset pager.\n- Feed cursors are base64url tokens.\n- The feed limit is clamped to 1 to 100.\n\n## 1.2.0\n\n- Cursor pagination for the feed and for comments.\n"
+          }
+        },
+        {
+          "branch": "pager-refactor",
+          "message": "Clamp the feed page size",
+          "files": {
+            "src/limits.js": "const DEFAULT_LIMIT = 20;\nconst MAX_LIMIT = 100;\n\nfunction clampLimit(raw) {\n  const n = Math.trunc(Number(raw));\n  return Math.min(Math.max(n || DEFAULT_LIMIT, 1), MAX_LIMIT);\n}\n\nmodule.exports = { clampLimit, DEFAULT_LIMIT, MAX_LIMIT };\n",
+            "test/limits.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { clampLimit } = require('../src/limits');\n\ntest('missing, zero and junk limits mean 20', () => {\n  assert.strictEqual(clampLimit(undefined), 20);\n  assert.strictEqual(clampLimit('0'), 20);\n  assert.strictEqual(clampLimit('ten'), 20);\n});\n\ntest('limits are clamped to 1..100', () => {\n  assert.strictEqual(clampLimit('500'), 100);\n  assert.strictEqual(clampLimit('-3'), 1);\n});\n",
+            "README.md": "# {{project}}\n\nActivity feed API for {{project}}.\n\nGET /feed returns events newest first, a page at a time. Pass the next cursor from one page to get the following page. Cursors are opaque.\n\n## Page size\n\nlimit is clamped to 1 to 100. A missing, zero or non-numeric limit means the default page of 20.\n"
+          }
+        }
+      ],
+      "checkout": "pager-refactor",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "src/feed.js",
+          "lines": [
+            11,
+            13
+          ],
+          "symbols": [
+            "feedPage",
+            "(e) => e.createdAt",
+            "last.createdAt"
+          ],
+          "mechanism": [
+            "tie*",
+            "same createdAt",
+            "same timestamp",
+            "identical timestamp",
+            "duplicate timestamp",
+            "share a createdAt",
+            "share a timestamp",
+            "sharing a timestamp",
+            "skip*",
+            "dropped",
+            "missing events",
+            "lost",
+            "e.id",
+            "non-unique",
+            "not unique",
+            "bulk import*",
+            "[e.createdAt, e.id]"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/pager.js",
+            "lines": [
+              15,
+              15
+            ],
+            "symbols": [
+              "limit + 1",
+              "items.pop"
+            ]
+          },
+          {
+            "file": "src/limits.js",
+            "lines": [
+              6,
+              6
+            ],
+            "symbols": [
+              "|| DEFAULT_LIMIT"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-07",
+      "family": "review",
+      "request": "quick one: can you review http-retries vs main? It touches the client every worker uses so I want a careful look before it merges. Don't modify anything, just report back.",
+      "vars": {
+        "project": [
+          "workerkit",
+          "fetchy",
+          "ops-client"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "HTTP client with timeouts",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"4.0.1\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nSmall HTTP client used by the {{project}} workers.\n\nrequest(fetch, url, options):\n\n- timeoutMs: abort the request after this many milliseconds. Default 10000. 0 disables the timeout.\n- init: passed to fetch as is.\n\nThe nightly export (src/export.js) sets timeoutMs: 0, because a full export can take ten minutes.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 4.0.1\n\n- Timeouts can be disabled with timeoutMs: 0.\n",
+            "src/http.js": "const DEFAULT_TIMEOUT_MS = 10000;\n\nasync function request(fetchImpl, url, opts = {}) {\n  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;\n  const controller = new AbortController();\n  const timer = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;\n  try {\n    return await fetchImpl(url, { ...opts.init, signal: controller.signal });\n  } finally {\n    if (timer) clearTimeout(timer);\n  }\n}\n\nmodule.exports = { request, DEFAULT_TIMEOUT_MS };\n",
+            "src/export.js": "const { request } = require('./http');\n\nasync function downloadExport(fetchImpl, baseUrl, day) {\n  const res = await request(fetchImpl, baseUrl + '/exports/' + day + '.ndjson', { timeoutMs: 0 });\n  if (!res.ok) throw new Error('export failed: HTTP ' + res.status);\n  return res.text();\n}\n\nmodule.exports = { downloadExport };\n",
+            "test/http.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { request } = require('../src/http');\n\nconst hang = (url, init) => new Promise((resolve, reject) => {\n  init.signal.addEventListener('abort', () => reject(new Error('aborted')));\n});\n\ntest('a slow request is aborted after timeoutMs', async () => {\n  await assert.rejects(request(hang, 'https://x.test/', { timeoutMs: 20 }), /aborted/);\n});\n"
+          }
+        },
+        {
+          "branch": "http-retries",
+          "from": "main",
+          "message": "Retry 429 and 5xx responses with backoff",
+          "files": {
+            "src/http.js": "const { shouldRetry } = require('./retry-policy');\nconst { backoff } = require('./backoff');\n\nconst DEFAULT_TIMEOUT_MS = 10000;\nconst DEFAULT_RETRIES = 2;\n\nconst sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));\n\nfunction resolveOptions(opts = {}) {\n  return {\n    timeoutMs: opts.timeoutMs || DEFAULT_TIMEOUT_MS,\n    retries: opts.retries ?? DEFAULT_RETRIES,\n    baseDelayMs: opts.baseDelayMs ?? 250,\n    init: opts.init ?? {},\n  };\n}\n\nasync function once(fetchImpl, url, init, timeoutMs) {\n  const controller = new AbortController();\n  const timer = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;\n  try {\n    return await fetchImpl(url, { ...init, signal: controller.signal });\n  } finally {\n    if (timer) clearTimeout(timer);\n  }\n}\n\nasync function request(fetchImpl, url, opts) {\n  const o = resolveOptions(opts);\n  for (let attempt = 0; ; attempt++) {\n    const res = await once(fetchImpl, url, o.init, o.timeoutMs);\n    if (!shouldRetry(res) || attempt >= o.retries) return res;\n    await sleep(backoff(attempt, o.baseDelayMs));\n  }\n}\n\nmodule.exports = { request, resolveOptions, DEFAULT_TIMEOUT_MS };\n",
+            "src/retry-policy.js": "function shouldRetry(res) {\n  return res.status === 429 || (res.status >= 500 && res.status !== 501);\n}\n\nmodule.exports = { shouldRetry };\n",
+            "src/backoff.js": "const MAX_DELAY_MS = 8000;\n\nfunction backoff(attempt, baseDelayMs) {\n  return Math.random() * Math.min(MAX_DELAY_MS, baseDelayMs * 2 ** attempt);\n}\n\nmodule.exports = { backoff, MAX_DELAY_MS };\n",
+            "test/retry.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { request } = require('../src/http');\n\nfunction replies(...statuses) {\n  const calls = [];\n  const fetchImpl = async (url) => { calls.push(url); return { status: statuses[calls.length - 1], ok: statuses[calls.length - 1] < 400 }; };\n  return { fetchImpl, calls };\n}\n\ntest('a 503 is retried until it succeeds', async () => {\n  const { fetchImpl, calls } = replies(503, 503, 200);\n  const res = await request(fetchImpl, 'https://x.test/', { baseDelayMs: 0 });\n  assert.strictEqual(res.status, 200);\n  assert.strictEqual(calls.length, 3);\n});\n\ntest('501 is not retried', async () => {\n  const { fetchImpl, calls } = replies(501, 200);\n  assert.strictEqual((await request(fetchImpl, 'https://x.test/', { baseDelayMs: 0 })).status, 501);\n  assert.strictEqual(calls.length, 1);\n});\n",
+            "README.md": "# {{project}}\n\nSmall HTTP client used by the {{project}} workers.\n\nrequest(fetch, url, options):\n\n- timeoutMs: abort the request after this many milliseconds. Default 10000. 0 disables the timeout.\n- retries: how many times to retry a 429 or 5xx response. Default 2. 501 Not Implemented is never retried, because it will not change on a retry.\n- baseDelayMs: base of the backoff between retries. Default 250. Each wait uses full jitter: a random time between 0 and baseDelayMs * 2^attempt, capped at 8 seconds.\n- init: passed to fetch as is.\n\nThe nightly export (src/export.js) sets timeoutMs: 0, because a full export can take ten minutes.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 4.1.0\n\n- Retries for 429 and 5xx responses, with full-jitter backoff.\n\n## 4.0.1\n\n- Timeouts can be disabled with timeoutMs: 0.\n",
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"4.1.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+          }
+        }
+      ],
+      "checkout": "http-retries",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "src/http.js",
+          "lines": [
+            11,
+            11
+          ],
+          "symbols": [
+            "resolveOptions",
+            "opts.timeoutMs ||"
+          ],
+          "mechanism": [
+            "??",
+            "nullish",
+            "falsy",
+            "0 disables",
+            "zero disables",
+            "timeoutMs: 0",
+            "timeout of 0",
+            "timeoutMs of 0",
+            "zero timeout",
+            "disable the timeout",
+            "disables the timeout",
+            "disabling the timeout",
+            "downloadExport",
+            "export.js",
+            "nightly export",
+            "ten minutes",
+            "10 seconds",
+            "10000",
+            "10 s"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/backoff.js",
+            "lines": [
+              4,
+              4
+            ],
+            "symbols": [
+              "Math.random",
+              "full jitter"
+            ]
+          },
+          {
+            "file": "src/retry-policy.js",
+            "lines": [
+              2,
+              2
+            ],
+            "symbols": [
+              "501",
+              "shouldRetry"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-08",
+      "family": "review",
+      "request": "Hey, can you review the billing-anniversary branch against main before it ships? It schedules renewals so I want to be sure it's right. Review only please, I'll do any edits.",
+      "vars": {
+        "project": [
+          "subkit",
+          "renew-svc",
+          "billing-core"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Subscriptions with a billing anchor day",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"2.0.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nSubscription renewals for {{project}}.\n\nA subscription has an anchor day (1 to 31). It renews on that day each month. If a month is shorter than the anchor day, it renews on the last day of that month: a Jan 31 anchor renews Feb 28 (or 29), then Mar 31. The anchor never drifts.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 2.0.0\n\n- Monthly subscriptions with an anchor day.\n",
+            "src/dates.js": "function startOfDay(d) {\n  return new Date(d.getFullYear(), d.getMonth(), d.getDate());\n}\n\nmodule.exports = { startOfDay };\n",
+            "src/anchor.js": "function anchorFor(startDate) {\n  return startDate.getDate();\n}\n\nmodule.exports = { anchorFor };\n",
+            "test/anchor.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { anchorFor } = require('../src/anchor');\n\ntest('the anchor is the start day of month', () => {\n  assert.strictEqual(anchorFor(new Date(2026, 0, 31)), 31);\n});\n"
+          }
+        },
+        {
+          "branch": "billing-anniversary",
+          "from": "main",
+          "message": "Compute the next billing date from the anchor",
+          "files": {
+            "src/dates.js": "function startOfDay(d) {\n  return new Date(d.getFullYear(), d.getMonth(), d.getDate());\n}\n\nfunction daysInMonth(year, month) {\n  return new Date(year, month + 1, 0).getDate();\n}\n\nmodule.exports = { startOfDay, daysInMonth };\n",
+            "src/schedule.js": "const { daysInMonth } = require('./dates');\n\nfunction nextBillingDate(from, anchorDay) {\n  const year = from.getFullYear();\n  const month = from.getMonth();\n  const day = Math.min(anchorDay, daysInMonth(year, month));\n  return new Date(year, month + 1, day);\n}\n\nmodule.exports = { nextBillingDate };\n",
+            "test/schedule.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { nextBillingDate } = require('../src/schedule');\n\nfunction ymd(d) {\n  return [d.getFullYear(), d.getMonth() + 1, d.getDate()];\n}\n\ntest('a mid-month anchor renews the same day next month', () => {\n  assert.deepStrictEqual(ymd(nextBillingDate(new Date(2026, 2, 15), 15)), [2026, 4, 15]);\n});\n\ntest('a December 31st anchor renews on January 31st', () => {\n  assert.deepStrictEqual(ymd(nextBillingDate(new Date(2026, 11, 31), 31)), [2027, 1, 31]);\n});\n",
+            "README.md": "# {{project}}\n\nSubscription renewals for {{project}}.\n\nA subscription has an anchor day (1 to 31). It renews on that day each month. If a month is shorter than the anchor day, it renews on the last day of that month: a Jan 31 anchor renews Feb 28 (or 29), then Mar 31. The anchor never drifts.\n\n## Next date\n\nnextBillingDate(from, anchorDay) returns the next renewal strictly after the month of from, on the anchor day or the last day of the target month if it is shorter.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 2.1.0\n\n- Next-billing-date computation from the anchor day.\n\n## 2.0.0\n\n- Monthly subscriptions with an anchor day.\n",
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"2.1.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+          }
+        },
+        {
+          "branch": "billing-anniversary",
+          "message": "Prorate the first partial period",
+          "files": {
+            "src/prorate.js": "const { daysInMonth } = require('./dates');\n\nfunction prorate(amountCents, startDate, anchorDay) {\n  const year = startDate.getFullYear();\n  const month = startDate.getMonth();\n  const inMonth = daysInMonth(year, month);\n  const remaining = inMonth - startDate.getDate() + 1;\n  return Math.round((amountCents * remaining) / inMonth);\n}\n\nmodule.exports = { prorate };\n",
+            "test/prorate.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { prorate } = require('../src/prorate');\n\ntest('a full month is the full price', () => {\n  assert.strictEqual(prorate(3000, new Date(2026, 3, 1), 1), 3000);\n});\n\ntest('starting mid-month charges the remaining days', () => {\n  assert.strictEqual(prorate(3000, new Date(2026, 3, 16), 16), 1500);\n});\n",
+            "README.md": "# {{project}}\n\nSubscription renewals for {{project}}.\n\nA subscription has an anchor day (1 to 31). It renews on that day each month. If a month is shorter than the anchor day, it renews on the last day of that month: a Jan 31 anchor renews Feb 28 (or 29), then Mar 31. The anchor never drifts.\n\n## Next date\n\nnextBillingDate(from, anchorDay) returns the next renewal strictly after the month of from, on the anchor day or the last day of the target month if it is shorter.\n\n## Proration\n\nThe first period is prorated by the days left in the start month, counting the start day. A start on the 1st pays the full amount; a start on the 16th of a 30-day month pays half.\n"
+          }
+        }
+      ],
+      "checkout": "billing-anniversary",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "src/schedule.js",
+          "lines": [
+            6,
+            6
+          ],
+          "symbols": [
+            "nextBillingDate",
+            "daysInMonth(year, month)"
+          ],
+          "mechanism": [
+            "last day",
+            "overflow*",
+            "rolls over",
+            "rolls into",
+            "spills",
+            "next month",
+            "March",
+            "Mar 2",
+            "Mar 3",
+            "skips February",
+            "skip February",
+            "skips a month",
+            "February",
+            "Feb 28",
+            "Feb 31",
+            "31st",
+            "clamp*",
+            "setDate",
+            "day 0",
+            "no 31st",
+            "shorter month"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/prorate.js",
+            "lines": [
+              7,
+              7
+            ],
+            "symbols": [
+              "+ 1",
+              "remaining"
+            ]
+          },
+          {
+            "file": "src/dates.js",
+            "lines": [
+              6,
+              6
+            ],
+            "symbols": [
+              "daysInMonth",
+              "month + 1, 0"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-09",
+      "family": "review",
+      "request": "could you review feature-flags-rules before I merge to main? It's the rollout config everything reads, so careful. no code changes from you please.",
+      "vars": {
+        "project": [
+          "flagpole",
+          "rollout-cfg",
+          "switchboard"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Feature flag registry",
+          "files": {
+            "README.md": "# {{project}}\n\nFeature flags for {{project}}.\n\nA flag is on when any of its rules matches the context. A flag with no rules is off for everyone. Flags are independent: a rule added to one flag never affects another.\n\nRun the tests with python3 -B -m unittest.\n",
+            "CHANGES.md": "# Changes\n\n## 0.2.0\n\n- Flag registry and context matching.\n",
+            "flags/__init__.py": "\"\"\"Feature flags.\"\"\"\n__version__ = \"0.2.0\"\n",
+            "flags/match.py": "def matches(rule, context):\n    return all(context.get(k) == v for k, v in rule.items())\n",
+            "tests/__init__.py": "",
+            "tests/test_match.py": "import unittest\n\nfrom flags.match import matches\n\n\nclass MatchTest(unittest.TestCase):\n    def test_all_fields_must_match(self):\n        self.assertTrue(matches({'plan': 'pro'}, {'plan': 'pro', 'region': 'us'}))\n        self.assertFalse(matches({'plan': 'pro'}, {'plan': 'free'}))\n\n\nif __name__ == '__main__':\n    unittest.main()\n"
+          }
+        },
+        {
+          "branch": "feature-flags-rules",
+          "from": "main",
+          "message": "Build flags with a fluent rule API",
+          "files": {
+            "flags/registry.py": "from .match import matches\n\n\nclass Flag:\n    def __init__(self, name, rules):\n        self.name = name\n        self.rules = rules\n\n    def enabled(self, context):\n        return any(matches(rule, context) for rule in self.rules)\n\n\ndef add_rule(flag_name, rule, rules=[]):\n    rules.append(rule)\n    return Flag(flag_name, rules)\n",
+            "flags/rollout.py": "import hashlib\n\n\ndef in_rollout(user_id, percent):\n    digest = hashlib.sha256(user_id.encode('utf-8')).hexdigest()\n    bucket = int(digest[:8], 16) % 100\n    return bucket < percent\n",
+            "tests/test_registry.py": "import unittest\n\nfrom flags.registry import add_rule\nfrom flags.rollout import in_rollout\n\n\nclass RegistryTest(unittest.TestCase):\n    def test_a_flag_is_on_when_a_rule_matches(self):\n        flag = add_rule('beta', {'plan': 'pro'}, [])\n        self.assertTrue(flag.enabled({'plan': 'pro'}))\n        self.assertFalse(flag.enabled({'plan': 'free'}))\n\n    def test_two_rules_either_matches(self):\n        flag = add_rule('beta', {'plan': 'pro'}, [])\n        flag = add_rule('beta', {'region': 'eu'}, flag.rules)\n        self.assertTrue(flag.enabled({'region': 'eu'}))\n\n    def test_a_zero_rollout_includes_nobody(self):\n        self.assertFalse(in_rollout('user-1', 0))\n        self.assertTrue(in_rollout('user-1', 100))\n\n\nif __name__ == '__main__':\n    unittest.main()\n",
+            "README.md": "# {{project}}\n\nFeature flags for {{project}}.\n\nA flag is on when any of its rules matches the context. A flag with no rules is off for everyone. Flags are independent: a rule added to one flag never affects another.\n\n## Building flags\n\nadd_rule(flag_name, rule) returns a Flag carrying that rule. Chain rules by passing the previous flag's rules back in. A fresh flag starts with no rules.\n\nRun the tests with python3 -B -m unittest.\n",
+            "CHANGES.md": "# Changes\n\n## 0.3.0\n\n- Fluent rule-building API for flags.\n- Percentage rollouts.\n\n## 0.2.0\n\n- Flag registry and context matching.\n",
+            "flags/__init__.py": "\"\"\"Feature flags.\"\"\"\n__version__ = \"0.3.0\"\n"
+          }
+        },
+        {
+          "branch": "feature-flags-rules",
+          "message": "Normalize rule values before matching",
+          "files": {
+            "flags/match.py": "def matches(rule, context):\n    return all(str(context.get(k)).lower() == str(v).lower() for k, v in rule.items())\n",
+            "tests/test_match.py": "import unittest\n\nfrom flags.match import matches\n\n\nclass MatchTest(unittest.TestCase):\n    def test_all_fields_must_match(self):\n        self.assertTrue(matches({'plan': 'PRO'}, {'plan': 'pro', 'region': 'us'}))\n        self.assertFalse(matches({'plan': 'pro'}, {'plan': 'free'}))\n\n    def test_matching_ignores_case_and_type(self):\n        self.assertTrue(matches({'tier': 2}, {'tier': '2'}))\n\n\nif __name__ == '__main__':\n    unittest.main()\n",
+            "docs/flags.md": "# Flag rules\n\n- A rule is a dict of field to expected value.\n- A flag is on when any rule matches every field in it.\n- Rule values are compared case-insensitively and across str/int, so {'tier': 2} matches a context tier of '2'.\n"
+          }
+        }
+      ],
+      "checkout": "feature-flags-rules",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "flags/registry.py",
+          "lines": [
+            13,
+            13
+          ],
+          "symbols": [
+            "add_rule",
+            "rules=[]"
+          ],
+          "mechanism": [
+            "mutable default",
+            "default argument",
+            "default list",
+            "shared list",
+            "shared between calls",
+            "same list",
+            "accumulat*",
+            "leak*",
+            "persists",
+            "bleed*",
+            "carried over",
+            "rules=None",
+            "across calls",
+            "between calls",
+            "every flag",
+            "other flags",
+            "inherit*"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "flags/match.py",
+            "lines": [
+              2,
+              2
+            ],
+            "symbols": [
+              "str(",
+              "lower()"
+            ]
+          },
+          {
+            "file": "flags/rollout.py",
+            "lines": [
+              7,
+              7
+            ],
+            "symbols": [
+              "in_rollout",
+              "bucket < percent"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-10",
+      "family": "review",
+      "request": "can you take a look at the leaderboard-sort branch vs main? Merging this afternoon. just a review, don't change the code.",
+      "vars": {
+        "project": [
+          "arcade-scores",
+          "ladderboard",
+          "highscore-api"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Store scores as decimal strings",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"1.0.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nLeaderboards for {{project}}.\n\nScores can exceed 2^53, so the API returns each score as a decimal string (field \"score\"), never a JSON number: a Number would silently round it. Compare two scores with compareScore(a, b) in src/score.js, which handles arbitrary length. Never turn a score into a Number.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 1.0.0\n\n- Scores stored and returned as decimal strings.\n",
+            "src/score.js": "function compareScore(a, b) {\n  const x = BigInt(a);\n  const y = BigInt(b);\n  return x < y ? -1 : x > y ? 1 : 0;\n}\n\nmodule.exports = { compareScore };\n",
+            "test/score.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { compareScore } = require('../src/score');\n\ntest('compares beyond 2^53', () => {\n  assert.strictEqual(compareScore('9007199254740993', '9007199254740992'), 1);\n  assert.strictEqual(compareScore('10', '9'), 1);\n});\n"
+          }
+        },
+        {
+          "branch": "leaderboard-sort",
+          "from": "main",
+          "message": "Rank and paginate the leaderboard",
+          "files": {
+            "src/rank.js": "function rankings(entries) {\n  return [...entries]\n    .sort((a, b) => b.score - a.score)\n    .map((e, i) => ({ rank: i + 1, player: e.player, score: e.score }));\n}\n\nmodule.exports = { rankings };\n",
+            "src/top.js": "const { rankings } = require('./rank');\n\nfunction topN(entries, n) {\n  return rankings(entries).slice(0, n);\n}\n\nmodule.exports = { topN };\n",
+            "test/rank.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { rankings } = require('../src/rank');\n\ntest('ranks highest score first', () => {\n  const r = rankings([{ player: 'a', score: '5' }, { player: 'b', score: '12' }, { player: 'c', score: '9' }]);\n  assert.deepStrictEqual(r.map((x) => x.player), ['b', 'c', 'a']);\n  assert.deepStrictEqual(r.map((x) => x.rank), [1, 2, 3]);\n});\n",
+            "README.md": "# {{project}}\n\nLeaderboards for {{project}}.\n\nScores can exceed 2^53, so the API returns each score as a decimal string (field \"score\"), never a JSON number: a Number would silently round it. Compare two scores with compareScore(a, b) in src/score.js, which handles arbitrary length. Never turn a score into a Number.\n\n## Ranking\n\nrankings(entries) returns the entries highest score first, each with a 1-based rank. topN(entries, n) returns the first n.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 1.1.0\n\n- Leaderboard ranking and top-N.\n\n## 1.0.0\n\n- Scores stored and returned as decimal strings.\n",
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"1.1.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+          }
+        },
+        {
+          "branch": "leaderboard-sort",
+          "message": "Add a stable display name",
+          "files": {
+            "src/display.js": "function displayName(player) {\n  const trimmed = player.name.trim();\n  return trimmed.length ? trimmed : 'Player ' + player.id;\n}\n\nmodule.exports = { displayName };\n",
+            "test/display.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { displayName } = require('../src/display');\n\ntest('falls back to the id when the name is blank', () => {\n  assert.strictEqual(displayName({ id: 7, name: '  ' }), 'Player 7');\n  assert.strictEqual(displayName({ id: 7, name: 'Ada' }), 'Ada');\n});\n",
+            "README.md": "# {{project}}\n\nLeaderboards for {{project}}.\n\nScores can exceed 2^53, so the API returns each score as a decimal string (field \"score\"), never a JSON number: a Number would silently round it. Compare two scores with compareScore(a, b) in src/score.js, which handles arbitrary length. Never turn a score into a Number.\n\n## Ranking\n\nrankings(entries) returns the entries highest score first, each with a 1-based rank. topN(entries, n) returns the first n.\n\n## Display names\n\ndisplayName(player) trims the name and falls back to \"Player <id>\" when it is blank.\n"
+          }
+        }
+      ],
+      "checkout": "leaderboard-sort",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "src/rank.js",
+          "lines": [
+            3,
+            3
+          ],
+          "symbols": [
+            "rankings",
+            "b.score - a.score"
+          ],
+          "mechanism": [
+            "precision",
+            "lose precision",
+            "loses precision",
+            "rounded",
+            "rounding",
+            "coerc*",
+            "Number",
+            "number coercion",
+            "compareScore",
+            "BigInt",
+            "2^53",
+            "2**53",
+            "beyond 2^53",
+            "above 2^53",
+            "past 2^53",
+            "arbitrary length",
+            "string",
+            "decimal string",
+            "big scores",
+            "large scores",
+            "silently",
+            "wrong order",
+            "wrong rank",
+            "subtract*"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/display.js",
+            "lines": [
+              3,
+              3
+            ],
+            "symbols": [
+              "displayName",
+              "trimmed.length"
+            ]
+          },
+          {
+            "file": "src/top.js",
+            "lines": [
+              4,
+              4
+            ],
+            "symbols": [
+              "topN",
+              "slice(0, n)"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-11",
+      "family": "review",
+      "request": "Morning! Could you review search-filters against main before I merge? It builds the product search query. Please just review, I'll make the edits myself.",
+      "vars": {
+        "project": [
+          "shopdex",
+          "catalog-search",
+          "finder-svc"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Product search by exact filters",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"0.5.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nProduct search for {{project}}.\n\nQueries are built for a parameterized driver: every value from the request goes in the params array and the SQL carries only $1, $2 placeholders. Never interpolate request values into the SQL string. See src/query.js.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 0.5.0\n\n- Search by category and in-stock filters.\n",
+            "src/query.js": "function buildFilters(filters) {\n  const clauses = [];\n  const params = [];\n  if (filters.category) {\n    params.push(filters.category);\n    clauses.push('category = $' + params.length);\n  }\n  if (filters.inStock) {\n    clauses.push('stock > 0');\n  }\n  return { where: clauses.length ? 'WHERE ' + clauses.join(' AND ') : '', params };\n}\n\nmodule.exports = { buildFilters };\n",
+            "test/query.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { buildFilters } = require('../src/query');\n\ntest('category becomes a placeholder and a param', () => {\n  assert.deepStrictEqual(buildFilters({ category: 'books' }), { where: 'WHERE category = $1', params: ['books'] });\n});\n\ntest('in-stock is a literal condition', () => {\n  assert.deepStrictEqual(buildFilters({ inStock: true }), { where: 'WHERE stock > 0', params: [] });\n});\n"
+          }
+        },
+        {
+          "branch": "search-filters",
+          "from": "main",
+          "message": "Add free-text search over the name",
+          "files": {
+            "src/query.js": "function buildWhere(filters) {\n  const clauses = [];\n  const params = [];\n  if (filters.category) {\n    params.push(filters.category);\n    clauses.push('category = $' + params.length);\n  }\n  if (filters.inStock) {\n    clauses.push('stock > 0');\n  }\n  if (filters.term) {\n    const term = filters.term.trim();\n    clauses.push(\"name ILIKE '%\" + term + \"%'\");\n  }\n  return { where: clauses.length ? 'WHERE ' + clauses.join(' AND ') : '', params };\n}\n\nmodule.exports = { buildWhere };\n",
+            "src/sort.js": "const SORTS = {\n  relevance: 'rank DESC',\n  newest: 'created_at DESC',\n  price_asc: 'price ASC',\n};\n\nfunction orderBy(sort) {\n  return 'ORDER BY ' + (SORTS[sort] || SORTS.relevance);\n}\n\nmodule.exports = { orderBy, SORTS };\n",
+            "test/query.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { buildWhere } = require('../src/query');\n\ntest('category becomes a placeholder and a param', () => {\n  assert.deepStrictEqual(buildWhere({ category: 'books' }), { where: 'WHERE category = $1', params: ['books'] });\n});\n\ntest('a term adds a name search', () => {\n  const q = buildWhere({ term: 'red' });\n  assert.match(q.where, /name ILIKE/);\n});\n\ntest('filters combine with AND', () => {\n  const q = buildWhere({ category: 'books', inStock: true, term: 'atlas' });\n  assert.match(q.where, /category = \\$1 AND stock > 0 AND name ILIKE/);\n});\n",
+            "README.md": "# {{project}}\n\nProduct search for {{project}}.\n\nQueries are built for a parameterized driver: every value from the request goes in the params array and the SQL carries only $1, $2 placeholders. Never interpolate request values into the SQL string. See src/query.js.\n\n## Free-text search\n\nA term searches the product name with ILIKE. The whitelist of sort orders lives in src/sort.js.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 0.6.0\n\n- Free-text product search and sort orders.\n\n## 0.5.0\n\n- Search by category and in-stock filters.\n",
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"0.6.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+          }
+        },
+        {
+          "branch": "search-filters",
+          "message": "Paginate search results",
+          "files": {
+            "src/paginate.js": "const MAX_PAGE = 100;\n\nfunction limitOffset(page = 1, pageSize = 20) {\n  const size = Math.min(Math.max(1, pageSize | 0), MAX_PAGE);\n  const p = Math.max(1, page | 0);\n  return { limit: size, offset: (p - 1) * size };\n}\n\nmodule.exports = { limitOffset, MAX_PAGE };\n",
+            "test/paginate.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { limitOffset } = require('../src/paginate');\n\ntest('page 1 starts at 0', () => {\n  assert.deepStrictEqual(limitOffset(1, 20), { limit: 20, offset: 0 });\n});\n\ntest('page size is capped at 100', () => {\n  assert.deepStrictEqual(limitOffset(2, 500), { limit: 100, offset: 100 });\n});\n",
+            "README.md": "# {{project}}\n\nProduct search for {{project}}.\n\nQueries are built for a parameterized driver: every value from the request goes in the params array and the SQL carries only $1, $2 placeholders. Never interpolate request values into the SQL string. See src/query.js.\n\n## Free-text search\n\nA term searches the product name with ILIKE. The whitelist of sort orders lives in src/sort.js.\n\n## Paging\n\nlimitOffset(page, pageSize) clamps the page size to 1 to 100 and returns a limit and offset. Page numbers are 1-based.\n"
+          }
+        }
+      ],
+      "checkout": "search-filters",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "src/query.js",
+          "lines": [
+            13,
+            13
+          ],
+          "symbols": [
+            "buildWhere",
+            "ILIKE",
+            "term"
+          ],
+          "mechanism": [
+            "inject*",
+            "SQL injection",
+            "interpolat*",
+            "placeholder",
+            "parameter*",
+            "params",
+            "concatenat*",
+            "into the SQL",
+            "into the string",
+            "string concatenation",
+            "escap*",
+            "unsanitized",
+            "untrusted",
+            "request value",
+            "user input",
+            "not parameterized",
+            "LIKE",
+            "ILIKE"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/sort.js",
+            "lines": [
+              8,
+              8
+            ],
+            "symbols": [
+              "orderBy",
+              "SORTS[sort]"
+            ]
+          },
+          {
+            "file": "src/paginate.js",
+            "lines": [
+              4,
+              4
+            ],
+            "symbols": [
+              "limitOffset",
+              "| 0"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-12",
+      "family": "review",
+      "request": "hey, can you review the split-bill branch against main for me? it divides a bill between people and I don't fully trust my cents handling. review only, leave the code to me.",
+      "vars": {
+        "project": [
+          "tabby",
+          "splitwise-lite",
+          "dinnerdiv"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Bill totals in integer cents",
+          "files": {
+            "README.md": "# {{project}}\n\nShared-bill math for {{project}}. Every amount is an integer number of cents, never a float.\n\nsplit_bill(total_cents, n) splits a bill between n people. The shares always sum to exactly total_cents: the amount is divided as evenly as possible and the leftover cents (total mod n of them) go one each onto the first shares, so the first people pay at most one cent more.\n\nRun the tests with python3 -B -m unittest.\n",
+            "CHANGES.md": "# Changes\n\n## 0.3.0\n\n- Bill totals in integer cents.\n",
+            "bill/__init__.py": "\"\"\"Shared bills.\"\"\"\n__version__ = \"0.3.0\"\n",
+            "bill/money.py": "def cents(dollars):\n    return round(dollars * 100)\n\n\ndef format_cents(amount):\n    return '$%d.%02d' % (amount // 100, amount % 100)\n",
+            "tests/__init__.py": "",
+            "tests/test_money.py": "import unittest\n\nfrom bill.money import cents, format_cents\n\n\nclass MoneyTest(unittest.TestCase):\n    def test_cents_and_format(self):\n        self.assertEqual(cents(5), 500)\n        self.assertEqual(format_cents(1299), '$12.99')\n\n\nif __name__ == '__main__':\n    unittest.main()\n"
+          }
+        },
+        {
+          "branch": "split-bill",
+          "from": "main",
+          "message": "Split a bill between people",
+          "files": {
+            "bill/split.py": "def split_bill(total_cents, n):\n    if n <= 0:\n        raise ValueError('n must be positive')\n    share = total_cents // n\n    return [share] * n\n",
+            "bill/tip.py": "def with_tip(total_cents, tip_percent):\n    return total_cents + round(total_cents * tip_percent / 100)\n",
+            "tests/test_split.py": "import unittest\n\nfrom bill.split import split_bill\n\n\nclass SplitTest(unittest.TestCase):\n    def test_even_split(self):\n        self.assertEqual(split_bill(900, 3), [300, 300, 300])\n\n    def test_two_way(self):\n        self.assertEqual(split_bill(1000, 2), [500, 500])\n\n\nif __name__ == '__main__':\n    unittest.main()\n",
+            "README.md": "# {{project}}\n\nShared-bill math for {{project}}. Every amount is an integer number of cents, never a float.\n\nsplit_bill(total_cents, n) splits a bill between n people. The shares always sum to exactly total_cents: the amount is divided as evenly as possible and the leftover cents (total mod n of them) go one each onto the first shares, so the first people pay at most one cent more.\n\nwith_tip(total_cents, tip_percent) adds a rounded tip.\n\nRun the tests with python3 -B -m unittest.\n",
+            "CHANGES.md": "# Changes\n\n## 0.4.0\n\n- Split a bill between people, with a tip.\n\n## 0.3.0\n\n- Bill totals in integer cents.\n",
+            "bill/__init__.py": "\"\"\"Shared bills.\"\"\"\n__version__ = \"0.4.0\"\n"
+          }
+        },
+        {
+          "branch": "split-bill",
+          "message": "Itemised shares by weight",
+          "files": {
+            "bill/weighted.py": "def weighted_split(total_cents, weights):\n    total_weight = sum(weights)\n    shares = [total_cents * w // total_weight for w in weights]\n    leftover = total_cents - sum(shares)\n    for i in range(leftover):\n        shares[i] += 1\n    return shares\n",
+            "tests/test_weighted.py": "import unittest\n\nfrom bill.weighted import weighted_split\n\n\nclass WeightedTest(unittest.TestCase):\n    def test_weighted_sum_matches_total(self):\n        shares = weighted_split(1000, [1, 1, 2])\n        self.assertEqual(sum(shares), 1000)\n        self.assertEqual(shares, [250, 250, 500])\n\n    def test_leftover_goes_to_the_front(self):\n        shares = weighted_split(1001, [1, 1, 1])\n        self.assertEqual(sum(shares), 1001)\n        self.assertEqual(shares, [334, 334, 333])\n\n\nif __name__ == '__main__':\n    unittest.main()\n",
+            "docs/money.md": "# Money rules\n\n- Everything is integer cents.\n- When a division has a remainder, the leftover cents are handed out one each from the first share onward, so the total is preserved and the spread is at most one cent.\n- weighted_split follows the same rule by weight.\n"
+          }
+        }
+      ],
+      "checkout": "split-bill",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "bill/split.py",
+          "lines": [
+            5,
+            5
+          ],
+          "symbols": [
+            "split_bill",
+            "[share] * n"
+          ],
+          "mechanism": [
+            "remainder",
+            "leftover",
+            "left over",
+            "modulo",
+            "mod n",
+            "total % n",
+            "drops",
+            "dropped",
+            "lost",
+            "loses",
+            "sum",
+            "does not sum",
+            "doesn't sum",
+            "less than the total",
+            "under the total",
+            "floor",
+            "// n",
+            "integer division",
+            "missing cents",
+            "short"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "bill/tip.py",
+            "lines": [
+              2,
+              2
+            ],
+            "symbols": [
+              "with_tip",
+              "round("
+            ]
+          },
+          {
+            "file": "bill/weighted.py",
+            "lines": [
+              3,
+              3
+            ],
+            "symbols": [
+              "weighted_split",
+              "// total_weight"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-13",
+      "family": "review",
+      "request": "Could you review the tag-cloud branch against main before I merge? It renders the sidebar tag cloud. Just a review, please don't edit anything.",
+      "vars": {
+        "project": [
+          "bloghub",
+          "notes-wiki",
+          "linkpile"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Collect tags from posts",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"1.1.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nTag handling for {{project}}.\n\nHelpers in src/tags.js never modify their arguments: the caller's arrays are left exactly as passed. The render pipeline relies on this because it reuses the same tag list for the cloud and for the alphabetical index.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 1.1.0\n\n- Collect and count tags.\n",
+            "src/tags.js": "function countTags(posts) {\n  const counts = new Map();\n  for (const post of posts) {\n    for (const tag of post.tags) counts.set(tag, (counts.get(tag) || 0) + 1);\n  }\n  return [...counts].map(([tag, count]) => ({ tag, count }));\n}\n\nmodule.exports = { countTags };\n",
+            "test/tags.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { countTags } = require('../src/tags');\n\ntest('counts tags across posts', () => {\n  const counts = countTags([{ tags: ['a', 'b'] }, { tags: ['a'] }]);\n  assert.deepStrictEqual(counts, [{ tag: 'a', count: 2 }, { tag: 'b', count: 1 }]);\n});\n"
+          }
+        },
+        {
+          "branch": "tag-cloud",
+          "from": "main",
+          "message": "Pick the top tags for the cloud",
+          "files": {
+            "src/tags.js": "function countTags(posts) {\n  const counts = new Map();\n  for (const post of posts) {\n    for (const tag of post.tags) counts.set(tag, (counts.get(tag) || 0) + 1);\n  }\n  return [...counts].map(([tag, count]) => ({ tag, count }));\n}\n\nfunction topTags(tags, n) {\n  return tags.sort((a, b) => b.count - a.count).slice(0, n);\n}\n\nmodule.exports = { countTags, topTags };\n",
+            "src/order.js": "function alphabetical(tags) {\n  return [...tags].sort((a, b) => a.tag.localeCompare(b.tag));\n}\n\nmodule.exports = { alphabetical };\n",
+            "src/render.js": "const { topTags } = require('./tags');\n\nfunction sidebar(tags, topN = 8) {\n  const cloud = topTags(tags, topN).map((t) => t.tag);\n  const recent = tags.slice(0, 5).map((t) => t.tag);\n  return { cloud, recent };\n}\n\nmodule.exports = { sidebar };\n",
+            "test/tags.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { countTags, topTags } = require('../src/tags');\nconst { alphabetical } = require('../src/order');\n\ntest('counts tags across posts', () => {\n  const counts = countTags([{ tags: ['a', 'b'] }, { tags: ['a'] }]);\n  assert.deepStrictEqual(counts, [{ tag: 'a', count: 2 }, { tag: 'b', count: 1 }]);\n});\n\ntest('top tags are the most used', () => {\n  const tags = [{ tag: 'a', count: 1 }, { tag: 'b', count: 9 }, { tag: 'c', count: 4 }];\n  assert.deepStrictEqual(topTags(tags, 2).map((t) => t.tag), ['b', 'c']);\n});\n\ntest('alphabetical sorts by tag', () => {\n  const tags = [{ tag: 'c', count: 1 }, { tag: 'a', count: 1 }];\n  assert.deepStrictEqual(alphabetical(tags).map((t) => t.tag), ['a', 'c']);\n});\n",
+            "README.md": "# {{project}}\n\nTag handling for {{project}}.\n\nHelpers in src/tags.js never modify their arguments: the caller's arrays are left exactly as passed. The render pipeline relies on this because it reuses the same tag list for the cloud and for the alphabetical index.\n\n## Sidebar\n\nsidebar(tags) returns the tag cloud (top tags by count) and the \"recent\" strip, which is the first few tags in the order they were given. It takes the cloud first, then the recent strip from the same array, so topTags must not reorder that array in place.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 1.2.0\n\n- Tag cloud and alphabetical index in the sidebar.\n\n## 1.1.0\n\n- Collect and count tags.\n",
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"1.2.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+          }
+        },
+        {
+          "branch": "tag-cloud",
+          "message": "Scale tag font sizes into buckets",
+          "files": {
+            "src/scale.js": "const SIZES = ['xs', 'sm', 'md', 'lg', 'xl'];\n\nfunction fontSize(count, max) {\n  if (max <= 0) return SIZES[0];\n  const idx = Math.min(SIZES.length - 1, Math.floor((count / max) * SIZES.length));\n  return SIZES[idx];\n}\n\nmodule.exports = { fontSize, SIZES };\n",
+            "test/scale.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { fontSize } = require('../src/scale');\n\ntest('the most used tag gets the largest size', () => {\n  assert.strictEqual(fontSize(10, 10), 'xl');\n  assert.strictEqual(fontSize(0, 10), 'xs');\n});\n",
+            "README.md": "# {{project}}\n\nTag handling for {{project}}.\n\nHelpers in src/tags.js never modify their arguments: the caller's arrays are left exactly as passed. The render pipeline relies on this because it reuses the same tag list for the cloud and for the alphabetical index.\n\n## Sidebar\n\nsidebar(tags) returns the tag cloud (top tags by count) and the \"recent\" strip, which is the first few tags in the order they were given. It takes the cloud first, then the recent strip from the same array, so topTags must not reorder that array in place.\n\n## Font sizes\n\nfontSize(count, max) buckets a tag into one of five sizes by its share of the maximum count. The top tag is xl, a zero count is xs.\n"
+          }
+        }
+      ],
+      "checkout": "tag-cloud",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "src/tags.js",
+          "lines": [
+            10,
+            10
+          ],
+          "symbols": [
+            "topTags",
+            "tags.sort"
+          ],
+          "mechanism": [
+            "mutat*",
+            "in place",
+            "in-place",
+            "modifies",
+            "modify",
+            "reorder*",
+            "sorts the caller",
+            "sorts the input",
+            "sorts the argument",
+            "side effect",
+            "side-effect",
+            "copy",
+            "spread",
+            "[...tags]",
+            "slice()",
+            "shared array",
+            "same array",
+            "alphabetical"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/scale.js",
+            "lines": [
+              5,
+              5
+            ],
+            "symbols": [
+              "fontSize",
+              "Math.floor"
+            ]
+          },
+          {
+            "file": "src/order.js",
+            "lines": [
+              2,
+              2
+            ],
+            "symbols": [
+              "alphabetical",
+              "localeCompare"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-14",
+      "family": "review",
+      "request": "hi, can you review slug-validation vs main before I merge? It guards the public URL for a page so I want it tight. review only, don't change the code.",
+      "vars": {
+        "project": [
+          "pagewright",
+          "linkforge",
+          "permalink-svc"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Pages addressed by slug",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"0.9.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nPages for {{project}} are addressed by a slug in the URL: /p/<slug>.\n\nA slug is one or more characters, each a lowercase letter a-z, a digit 0-9, or a hyphen. Nothing else: no spaces, uppercase, slashes, dots or punctuation. The slug is the whole string, not a part of it.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 0.9.0\n\n- Pages addressed by slug.\n",
+            "src/slugify.js": "function slugify(title) {\n  return title\n    .toLowerCase()\n    .replace(/[^a-z0-9]+/g, '-')\n    .replace(/^-+|-+$/g, '');\n}\n\nmodule.exports = { slugify };\n",
+            "test/slugify.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { slugify } = require('../src/slugify');\n\ntest('turns a title into a slug', () => {\n  assert.strictEqual(slugify('Hello, World!'), 'hello-world');\n});\n"
+          }
+        },
+        {
+          "branch": "slug-validation",
+          "from": "main",
+          "message": "Validate slugs on the page route",
+          "files": {
+            "src/validate.js": "const SLUG = /[a-z0-9-]+/;\n\nfunction isValidSlug(slug) {\n  return typeof slug === 'string' && SLUG.test(slug);\n}\n\nmodule.exports = { isValidSlug };\n",
+            "src/route.js": "const { isValidSlug } = require('./validate');\n\nfunction pagePath(slug) {\n  if (!isValidSlug(slug)) throw new Error('bad slug: ' + slug);\n  return '/p/' + encodeURIComponent(slug);\n}\n\nmodule.exports = { pagePath };\n",
+            "test/validate.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { isValidSlug } = require('../src/validate');\n\ntest('a plain slug is valid', () => {\n  assert.strictEqual(isValidSlug('hello-world'), true);\n  assert.strictEqual(isValidSlug('post-123'), true);\n});\n\ntest('a non-string is invalid', () => {\n  assert.strictEqual(isValidSlug(42), false);\n  assert.strictEqual(isValidSlug(''), false);\n});\n",
+            "README.md": "# {{project}}\n\nPages for {{project}} are addressed by a slug in the URL: /p/<slug>.\n\nA slug is one or more characters, each a lowercase letter a-z, a digit 0-9, or a hyphen. Nothing else: no spaces, uppercase, slashes, dots or punctuation. The slug is the whole string, not a part of it.\n\n## Validation\n\nisValidSlug(slug) returns true only when the whole string is a valid slug. pagePath rejects anything else.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 0.10.0\n\n- Slug validation on the page route.\n\n## 0.9.0\n\n- Pages addressed by slug.\n",
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"0.10.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+          }
+        },
+        {
+          "branch": "slug-validation",
+          "message": "Reserve a few slugs",
+          "files": {
+            "src/reserved.js": "const RESERVED = new Set(['new', 'edit', 'admin', 'api']);\n\nfunction isReserved(slug) {\n  return RESERVED.has(slug);\n}\n\nmodule.exports = { isReserved, RESERVED };\n",
+            "test/reserved.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { isReserved } = require('../src/reserved');\n\ntest('reserved words are reserved', () => {\n  assert.strictEqual(isReserved('admin'), true);\n  assert.strictEqual(isReserved('hello'), false);\n});\n",
+            "README.md": "# {{project}}\n\nPages for {{project}} are addressed by a slug in the URL: /p/<slug>.\n\nA slug is one or more characters, each a lowercase letter a-z, a digit 0-9, or a hyphen. Nothing else: no spaces, uppercase, slashes, dots or punctuation. The slug is the whole string, not a part of it.\n\n## Validation\n\nisValidSlug(slug) returns true only when the whole string is a valid slug. pagePath rejects anything else.\n\n## Reserved slugs\n\nA few slugs (new, edit, admin, api) are reserved for the app's own routes and cannot be used for a page.\n"
+          }
+        }
+      ],
+      "checkout": "slug-validation",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "src/validate.js",
+          "lines": [
+            1,
+            1
+          ],
+          "symbols": [
+            "isValidSlug",
+            "SLUG"
+          ],
+          "mechanism": [
+            "anchor*",
+            "start and end",
+            "whole string",
+            "entire string",
+            "partial",
+            "substring",
+            "contains",
+            "matches part",
+            "not anchored",
+            "unanchored",
+            "missing anchor",
+            "test matches anywhere",
+            "anywhere",
+            "fullmatch",
+            "any string with",
+            "uppercase",
+            "slash",
+            "My Post"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/route.js",
+            "lines": [
+              5,
+              5
+            ],
+            "symbols": [
+              "pagePath",
+              "encodeURIComponent"
+            ]
+          },
+          {
+            "file": "src/reserved.js",
+            "lines": [
+              1,
+              1
+            ],
+            "symbols": [
+              "isReserved",
+              "RESERVED"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-15",
+      "family": "review",
+      "request": "can you review the access-roles branch for me before it merges to main? it gates the admin tools. just a review, please don't edit.",
+      "vars": {
+        "project": [
+          "admingate",
+          "rbac-lite",
+          "console-auth"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Users and roles",
+          "files": {
+            "README.md": "# {{project}}\n\nAccess control for {{project}}.\n\nA user's role is a string. Roles come from several places: a literal in code, a value read from the config file, or a prefix joined to a team name (for example \"team-\" + name). Compare roles by value, never by identity, because two equal role strings are not always the same object.\n\nRun the tests with python3 -B -m unittest.\n",
+            "CHANGES.md": "# Changes\n\n## 0.2.0\n\n- Users and roles.\n",
+            "access/__init__.py": "\"\"\"Access control.\"\"\"\n__version__ = \"0.2.0\"\n",
+            "access/roles.py": "ADMIN = 'admin'\nEDITOR = 'editor'\nVIEWER = 'viewer'\n\nRANK = {VIEWER: 0, EDITOR: 1, ADMIN: 2}\n\n\ndef at_least(role, minimum):\n    return RANK.get(role, -1) >= RANK[minimum]\n",
+            "tests/__init__.py": "",
+            "tests/test_roles.py": "import unittest\n\nfrom access.roles import at_least\n\n\nclass RolesTest(unittest.TestCase):\n    def test_rank_order(self):\n        self.assertTrue(at_least('admin', 'editor'))\n        self.assertFalse(at_least('viewer', 'editor'))\n\n\nif __name__ == '__main__':\n    unittest.main()\n"
+          }
+        },
+        {
+          "branch": "access-roles",
+          "from": "main",
+          "message": "Gate the admin tools",
+          "files": {
+            "access/gate.py": "def has_access(user, tool):\n    role = user.get('role')\n    if tool == 'admin-tools':\n        return role is 'admin'\n    return True\n",
+            "access/config.py": "def role_from_config(raw):\n    return raw.strip().lower()\n",
+            "tests/test_gate.py": "import unittest\n\nfrom access.gate import has_access\n\n\nclass GateTest(unittest.TestCase):\n    def test_admin_reaches_admin_tools(self):\n        self.assertTrue(has_access({'role': 'admin'}, 'admin-tools'))\n\n    def test_viewer_is_blocked(self):\n        self.assertFalse(has_access({'role': 'viewer'}, 'admin-tools'))\n\n    def test_everyone_reaches_normal_tools(self):\n        self.assertTrue(has_access({'role': 'viewer'}, 'editor'))\n\n\nif __name__ == '__main__':\n    unittest.main()\n",
+            "README.md": "# {{project}}\n\nAccess control for {{project}}.\n\nA user's role is a string. Roles come from several places: a literal in code, a value read from the config file, or a prefix joined to a team name (for example \"team-\" + name). Compare roles by value, never by identity, because two equal role strings are not always the same object.\n\n## Gate\n\nhas_access(user, tool) returns whether the user's role may use the tool. The admin tools need the admin role; everything else is open.\n\nRun the tests with python3 -B -m unittest.\n",
+            "CHANGES.md": "# Changes\n\n## 0.3.0\n\n- Admin tool gating, roles from config.\n\n## 0.2.0\n\n- Users and roles.\n",
+            "access/__init__.py": "\"\"\"Access control.\"\"\"\n__version__ = \"0.3.0\"\n"
+          }
+        },
+        {
+          "branch": "access-roles",
+          "message": "Load roles for a whole team",
+          "files": {
+            "access/team.py": "def team_role(team_name):\n    return 'team-' + team_name\n\n\ndef is_team_role(role):\n    return role.startswith('team-')\n",
+            "tests/test_team.py": "import unittest\n\nfrom access.team import team_role, is_team_role\n\n\nclass TeamTest(unittest.TestCase):\n    def test_team_role_round_trips(self):\n        role = team_role('design')\n        self.assertEqual(role, 'team-design')\n        self.assertTrue(is_team_role(role))\n\n\nif __name__ == '__main__':\n    unittest.main()\n",
+            "docs/roles.md": "# Roles\n\n- Role strings are compared by value (==), never by identity (is). A role built at runtime, such as role_from_config('ADMIN') or 'team-' + name, is a fresh object, so the \"is\" operator against a literal is unreliable even when the text is equal.\n- The admin tools require exactly the 'admin' role.\n"
+          }
+        }
+      ],
+      "checkout": "access-roles",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "access/gate.py",
+          "lines": [
+            4,
+            4
+          ],
+          "symbols": [
+            "has_access",
+            "is 'admin'"
+          ],
+          "mechanism": [
+            "identity",
+            "is operator",
+            "by identity",
+            "not equality",
+            "should be ==",
+            "use ==",
+            "interned",
+            "intern*",
+            "same object",
+            "different object",
+            "not the same object",
+            "by value",
+            "config",
+            "concatenat*",
+            "built at runtime",
+            "fresh object",
+            "role_from_config",
+            "team-"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "access/config.py",
+            "lines": [
+              2,
+              2
+            ],
+            "symbols": [
+              "role_from_config",
+              "strip().lower()"
+            ]
+          },
+          {
+            "file": "access/team.py",
+            "lines": [
+              6,
+              6
+            ],
+            "symbols": [
+              "is_team_role",
+              "startswith"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-16",
+      "family": "review",
+      "request": "Hey could you review the excerpt-helper branch against main before I merge it? It builds the preview text under each card. Review only, I'll handle edits.",
+      "vars": {
+        "project": [
+          "cardfeed",
+          "digestly",
+          "snippetbox"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Render cards from entries",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"1.4.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nCard previews for {{project}}.\n\nCards render a title and a body. The body preview is added on the excerpt branch.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 1.4.0\n\n- Cards render a title and a body.\n",
+            "src/card.js": "function card(entry) {\n  return { title: entry.title.trim(), body: entry.body.trim() };\n}\n\nmodule.exports = { card };\n",
+            "test/card.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { card } = require('../src/card');\n\ntest('a card trims its fields', () => {\n  assert.deepStrictEqual(card({ title: ' Hi ', body: ' there ' }), { title: 'Hi', body: 'there' });\n});\n"
+          }
+        },
+        {
+          "branch": "excerpt-helper",
+          "from": "main",
+          "message": "Add the excerpt helper",
+          "files": {
+            "src/words.js": "function lastSpaceBefore(text, limit) {\n  const slice = text.slice(0, limit);\n  const i = slice.lastIndexOf(' ');\n  return i === -1 ? limit : i;\n}\n\nmodule.exports = { lastSpaceBefore };\n",
+            "test/words.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { lastSpaceBefore } = require('../src/words');\n\ntest('finds the last space at or before the limit', () => {\n  assert.strictEqual(lastSpaceBefore('one two three', 7), 3);\n  assert.strictEqual(lastSpaceBefore('onetwothree', 7), 7);\n});\n",
+            "src/excerpt.js": "const { lastSpaceBefore } = require('./words');\n\nconst ELLIPSIS = '\\u2026';\n\nfunction excerpt(text, limit) {\n  const trimmed = text.trim();\n  const cut = lastSpaceBefore(trimmed, limit);\n  return trimmed.slice(0, cut).trimEnd() + ELLIPSIS;\n}\n\nmodule.exports = { excerpt, ELLIPSIS };\n",
+            "test/excerpt.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { excerpt, ELLIPSIS } = require('../src/excerpt');\n\ntest('a long text is cut at a word with an ellipsis', () => {\n  assert.strictEqual(excerpt('the quick brown fox jumps', 15), 'the quick' + ELLIPSIS);\n});\n",
+            "README.md": "# {{project}}\n\nCard previews for {{project}}.\n\nexcerpt(text, limit) returns a short preview. If the text is at most limit characters it is returned unchanged. If it is longer, it is cut at a word boundary at or before the limit and a single-character ellipsis is appended. The ellipsis appears only when text was actually removed.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 1.5.0\n\n- Card body excerpts.\n\n## 1.4.0\n\n- Cards render a title and body.\n",
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"1.5.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+          }
+        },
+        {
+          "branch": "excerpt-helper",
+          "message": "Strip markdown before excerpting",
+          "files": {
+            "src/plain.js": "function toPlain(markdown) {\n  return markdown\n    .replace(/[*_~`]/g, '')\n    .replace(/\\[([^\\]]*)\\]\\([^)]*\\)/g, '$1')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nmodule.exports = { toPlain };\n",
+            "test/plain.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { toPlain } = require('../src/plain');\n\ntest('markdown markers and links are flattened', () => {\n  assert.strictEqual(toPlain('A **bold** [link](http://x) and   spaces'), 'A bold link and spaces');\n});\n",
+            "README.md": "# {{project}}\n\nCard previews for {{project}}.\n\nexcerpt(text, limit) returns a short preview. If the text is at most limit characters it is returned unchanged. If it is longer, it is cut at a word boundary at or before the limit and a single-character ellipsis is appended. The ellipsis appears only when text was actually removed.\n\n## Markdown\n\ntoPlain(markdown) flattens a markdown body to plain text before it is excerpted: markers removed, links reduced to their text, runs of whitespace collapsed.\n"
+          }
+        }
+      ],
+      "checkout": "excerpt-helper",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "src/excerpt.js",
+          "lines": [
+            8,
+            8
+          ],
+          "symbols": [
+            "excerpt",
+            "ELLIPSIS"
+          ],
+          "mechanism": [
+            "always",
+            "unconditional*",
+            "even when",
+            "shorter than",
+            "short text",
+            "not cut",
+            "not truncated",
+            "nothing removed",
+            "nothing was removed",
+            "no truncation",
+            "spurious",
+            "trailing ellipsis",
+            "added anyway",
+            "length <= limit",
+            "at most limit",
+            "returned unchanged",
+            "guard",
+            "only when",
+            "check the length",
+            "when it is longer"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/words.js",
+            "lines": [
+              4,
+              4
+            ],
+            "symbols": [
+              "lastSpaceBefore",
+              "i === -1"
+            ]
+          },
+          {
+            "file": "src/plain.js",
+            "lines": [
+              5,
+              5
+            ],
+            "symbols": [
+              "toPlain",
+              "\\s+"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-17",
+      "family": "review",
+      "request": "morning, can you review the quantity-parsing branch vs main before I ship it? it reads the quantity field on the add-to-cart form. please review only, don't touch the code.",
+      "vars": {
+        "project": [
+          "cartworks",
+          "checkout-api",
+          "basketeer"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Cart line items",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"0.7.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nCart for {{project}}.\n\nA quantity from the form is a string. It is valid only when the whole string is a base-10 whole number of 1 or more: \"3\" is valid, but \"2kg\", \"3.5\", \"-1\", \"1e3\" and \"\" are not and must be rejected, not coerced. parseQuantity returns the number or null.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 0.7.0\n\n- Cart line items.\n",
+            "src/price.js": "function lineTotal(unitCents, qty) {\n  return unitCents * qty;\n}\n\nmodule.exports = { lineTotal };\n",
+            "test/price.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { lineTotal } = require('../src/price');\n\ntest('line total multiplies', () => {\n  assert.strictEqual(lineTotal(250, 3), 750);\n});\n"
+          }
+        },
+        {
+          "branch": "quantity-parsing",
+          "from": "main",
+          "message": "Parse the quantity field",
+          "files": {
+            "src/quantity.js": "function parseQuantity(raw) {\n  const n = parseInt(raw, 10);\n  if (Number.isNaN(n) || n < 1) return null;\n  return n;\n}\n\nmodule.exports = { parseQuantity };\n",
+            "src/add.js": "const { parseQuantity } = require('./quantity');\n\nfunction addToCart(cart, sku, rawQty) {\n  const qty = parseQuantity(rawQty);\n  if (qty === null) throw new Error('invalid quantity: ' + rawQty);\n  cart.push({ sku, qty });\n  return cart;\n}\n\nmodule.exports = { addToCart };\n",
+            "test/quantity.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { parseQuantity } = require('../src/quantity');\n\ntest('a whole number parses', () => {\n  assert.strictEqual(parseQuantity('3'), 3);\n});\n\ntest('zero, negatives and blanks are rejected', () => {\n  assert.strictEqual(parseQuantity('0'), null);\n  assert.strictEqual(parseQuantity('-2'), null);\n  assert.strictEqual(parseQuantity(''), null);\n});\n",
+            "README.md": "# {{project}}\n\nCart for {{project}}.\n\nA quantity from the form is a string. It is valid only when the whole string is a base-10 whole number of 1 or more: \"3\" is valid, but \"2kg\", \"3.5\", \"-1\", \"1e3\" and \"\" are not and must be rejected, not coerced. parseQuantity returns the number or null.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 0.8.0\n\n- Validate the quantity field.\n\n## 0.7.0\n\n- Cart line items.\n",
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"0.8.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+          }
+        },
+        {
+          "branch": "quantity-parsing",
+          "message": "Cap the quantity per line",
+          "files": {
+            "src/limits.js": "const MAX_QTY = 99;\n\nfunction withinLimit(qty) {\n  return qty <= MAX_QTY;\n}\n\nmodule.exports = { withinLimit, MAX_QTY };\n",
+            "test/limits.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { withinLimit } = require('../src/limits');\n\ntest('the cap is 99', () => {\n  assert.strictEqual(withinLimit(99), true);\n  assert.strictEqual(withinLimit(100), false);\n});\n",
+            "README.md": "# {{project}}\n\nCart for {{project}}.\n\nA quantity from the form is a string. It is valid only when the whole string is a base-10 whole number of 1 or more: \"3\" is valid, but \"2kg\", \"3.5\", \"-1\", \"1e3\" and \"\" are not and must be rejected, not coerced. parseQuantity returns the number or null.\n\n## Per-line cap\n\nA single cart line holds at most 99 units. withinLimit(qty) checks the cap; the caller rejects anything above it.\n"
+          }
+        }
+      ],
+      "checkout": "quantity-parsing",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "src/quantity.js",
+          "lines": [
+            2,
+            2
+          ],
+          "symbols": [
+            "parseQuantity",
+            "parseInt"
+          ],
+          "mechanism": [
+            "parseInt",
+            "leading",
+            "ignores the rest",
+            "trailing",
+            "stops at",
+            "partial",
+            "coerc*",
+            "2kg",
+            "3 free",
+            "non-numeric",
+            "not the whole string",
+            "whole string",
+            "entire string",
+            "Number(",
+            "regex",
+            "anchor*",
+            "test",
+            "/^\\d+$/",
+            "rejected",
+            "accepts",
+            "junk",
+            "suffix"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/limits.js",
+            "lines": [
+              4,
+              4
+            ],
+            "symbols": [
+              "withinLimit",
+              "qty <= MAX_QTY"
+            ]
+          },
+          {
+            "file": "src/add.js",
+            "lines": [
+              5,
+              5
+            ],
+            "symbols": [
+              "addToCart",
+              "qty === null"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-18",
+      "family": "review",
+      "request": "hey, could you review the receipt-lines branch against main before I merge? it renders the printed receipt. just a review, I'll make any changes.",
+      "vars": {
+        "project": [
+          "tilltape",
+          "receiptly",
+          "posprint"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Line items in integer cents",
+          "files": {
+            "README.md": "# {{project}}\n\nReceipt printing for {{project}}.\n\nEvery money amount in this package is an integer number of cents. 1299 means twelve dollars and ninety-nine cents. To show an amount, divide by 100: a value in cents must never be printed as if it were dollars.\n\nRun the tests with python3 -B -m unittest.\n",
+            "CHANGES.md": "# Changes\n\n## 0.3.0\n\n- Line items in integer cents.\n",
+            "receipt/__init__.py": "\"\"\"Receipt printing.\"\"\"\n__version__ = \"0.3.0\"\n",
+            "receipt/totals.py": "def subtotal(lines):\n    return sum(line['unit_cents'] * line['qty'] for line in lines)\n",
+            "tests/__init__.py": "",
+            "tests/test_totals.py": "import unittest\n\nfrom receipt.totals import subtotal\n\n\nclass TotalsTest(unittest.TestCase):\n    def test_subtotal_in_cents(self):\n        self.assertEqual(subtotal([{'unit_cents': 500, 'qty': 2}, {'unit_cents': 299, 'qty': 1}]), 1299)\n\n\nif __name__ == '__main__':\n    unittest.main()\n"
+          }
+        },
+        {
+          "branch": "receipt-lines",
+          "from": "main",
+          "message": "Render receipt lines",
+          "files": {
+            "receipt/render.py": "def format_money(amount_cents):\n    return '$%.2f' % (amount_cents,)\n\n\ndef render_line(line):\n    total = line['unit_cents'] * line['qty']\n    return '%-20s %s' % (line['name'], format_money(total))\n",
+            "receipt/tax.py": "def tax_cents(subtotal_cents, rate_bps):\n    return round(subtotal_cents * rate_bps / 10000)\n",
+            "tests/test_render.py": "import unittest\n\nfrom receipt.render import render_line, format_money\n\n\nclass RenderTest(unittest.TestCase):\n    def test_render_line(self):\n        line = render_line({'name': 'Coffee', 'unit_cents': 450, 'qty': 2})\n        self.assertIn('Coffee', line)\n        self.assertTrue(line.endswith(format_money(900)))\n\n\nif __name__ == '__main__':\n    unittest.main()\n",
+            "README.md": "# {{project}}\n\nReceipt printing for {{project}}.\n\nEvery money amount in this package is an integer number of cents. 1299 means twelve dollars and ninety-nine cents. To show an amount, divide by 100: a value in cents must never be printed as if it were dollars.\n\n## Rendering\n\nrender_line(line) prints the item name and its line total. format_money(amount_cents) turns a cents amount into a dollar string.\n\nRun the tests with python3 -B -m unittest.\n",
+            "CHANGES.md": "# Changes\n\n## 0.4.0\n\n- Render receipt lines, with tax.\n\n## 0.3.0\n\n- Line items in integer cents.\n",
+            "receipt/__init__.py": "\"\"\"Receipt printing.\"\"\"\n__version__ = \"0.4.0\"\n"
+          }
+        },
+        {
+          "branch": "receipt-lines",
+          "message": "Right-align the totals column",
+          "files": {
+            "receipt/layout.py": "WIDTH = 32\n\n\ndef align(label, amount_str):\n    gap = WIDTH - len(label) - len(amount_str)\n    return label + ' ' * max(1, gap) + amount_str\n",
+            "tests/test_layout.py": "import unittest\n\nfrom receipt.layout import align\n\n\nclass LayoutTest(unittest.TestCase):\n    def test_align_pads_to_width(self):\n        line = align('Total', '$9.00')\n        self.assertTrue(line.startswith('Total'))\n        self.assertTrue(line.endswith('$9.00'))\n        self.assertEqual(len(line), 32)\n\n\nif __name__ == '__main__':\n    unittest.main()\n",
+            "docs/money.md": "# Money and printing\n\n- Amounts are integer cents everywhere in the code.\n- A printed amount is the cents divided by 100 with two decimals: format_money(1299) is \"$12.99\".\n- Tax is computed in cents from a basis-point rate and rounded to the nearest cent.\n"
+          }
+        }
+      ],
+      "checkout": "receipt-lines",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "receipt/render.py",
+          "lines": [
+            2,
+            2
+          ],
+          "symbols": [
+            "format_money",
+            "%.2f"
+          ],
+          "mechanism": [
+            "cents",
+            "divide by 100",
+            "divided by 100",
+            "/ 100",
+            "without dividing",
+            "as dollars",
+            "as if dollars",
+            "as if it were dollars",
+            "unit",
+            "off by 100",
+            "hundred times",
+            "100x",
+            "100 times",
+            "twelve",
+            "$12.99",
+            "$1299",
+            "integer cents",
+            "treats cents as dollars"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "receipt/tax.py",
+            "lines": [
+              2,
+              2
+            ],
+            "symbols": [
+              "tax_cents",
+              "rate_bps",
+              "/ 10000"
+            ]
+          },
+          {
+            "file": "receipt/layout.py",
+            "lines": [
+              6,
+              6
+            ],
+            "symbols": [
+              "align",
+              "max(1, gap)"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-19",
+      "family": "review",
+      "request": "Could you review the idle-timeout branch vs main before I merge? It logs people out when they go idle. Review only, no code edits please.",
+      "vars": {
+        "project": [
+          "deskwatch",
+          "sessionkeeper",
+          "idle-guard"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Track session activity",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"1.0.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nSession tracking for {{project}}.\n\nA session records lastSeen, a timestamp in milliseconds (Date.now()). A session goes idle 30 minutes after lastSeen. All durations in this package are milliseconds.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 1.0.0\n\n- Session activity tracking.\n",
+            "src/session.js": "function touch(session, now) {\n  session.lastSeen = now;\n  return session;\n}\n\nmodule.exports = { touch };\n",
+            "test/session.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { touch } = require('../src/session');\n\ntest('touch updates lastSeen', () => {\n  const s = touch({ lastSeen: 0 }, 1000);\n  assert.strictEqual(s.lastSeen, 1000);\n});\n"
+          }
+        },
+        {
+          "branch": "idle-timeout",
+          "from": "main",
+          "message": "Expire idle sessions",
+          "files": {
+            "src/idle.js": "const IDLE_TIMEOUT = 30;\n\nfunction isIdle(session, now) {\n  return session.lastSeen + IDLE_TIMEOUT < now;\n}\n\nmodule.exports = { isIdle, IDLE_TIMEOUT };\n",
+            "src/backoff.js": "const SECOND = 1000;\n\nfunction reconnectDelay(attempt) {\n  return Math.min(30 * SECOND, SECOND * 2 ** attempt);\n}\n\nmodule.exports = { reconnectDelay };\n",
+            "test/idle.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { isIdle } = require('../src/idle');\n\ntest('a long-idle session is idle', () => {\n  const now = 1_000_000_000;\n  assert.strictEqual(isIdle({ lastSeen: now - 60 * 60 * 1000 }, now), true);\n});\n\ntest('a just-touched session is active', () => {\n  const now = 1_000_000_000;\n  assert.strictEqual(isIdle({ lastSeen: now }, now), false);\n});\n",
+            "README.md": "# {{project}}\n\nSession tracking for {{project}}.\n\nA session records lastSeen, a timestamp in milliseconds (Date.now()). A session goes idle 30 minutes after lastSeen. All durations in this package are milliseconds.\n\n## Idle\n\nisIdle(session, now) is true once the session has been idle for the 30-minute timeout. reconnectDelay backs off a reconnect, capped at 30 seconds.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 1.1.0\n\n- Idle session expiry and reconnect backoff.\n\n## 1.0.0\n\n- Session activity tracking.\n",
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"1.1.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+          }
+        },
+        {
+          "branch": "idle-timeout",
+          "message": "Sweep idle sessions from the store",
+          "files": {
+            "src/sweep.js": "const { isIdle } = require('./idle');\n\nfunction sweep(store, now) {\n  const kept = {};\n  for (const [id, session] of Object.entries(store)) {\n    if (!isIdle(session, now)) kept[id] = session;\n  }\n  return kept;\n}\n\nmodule.exports = { sweep };\n",
+            "test/sweep.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { sweep } = require('../src/sweep');\n\ntest('sweep drops long-idle sessions', () => {\n  const now = 1_000_000_000;\n  const store = { a: { lastSeen: now }, b: { lastSeen: now - 2 * 60 * 60 * 1000 } };\n  assert.deepStrictEqual(Object.keys(sweep(store, now)), ['a']);\n});\n",
+            "README.md": "# {{project}}\n\nSession tracking for {{project}}.\n\nA session records lastSeen, a timestamp in milliseconds (Date.now()). A session goes idle 30 minutes after lastSeen. All durations in this package are milliseconds.\n\n## Idle\n\nisIdle(session, now) is true once the session has been idle for the 30-minute timeout. reconnectDelay backs off a reconnect, capped at 30 seconds.\n\n## Sweep\n\nsweep(store, now) returns the store with the idle sessions removed.\n"
+          }
+        }
+      ],
+      "checkout": "idle-timeout",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "src/idle.js",
+          "lines": [
+            1,
+            1
+          ],
+          "symbols": [
+            "IDLE_TIMEOUT",
+            "isIdle"
+          ],
+          "mechanism": [
+            "millisecond*",
+            "minute*",
+            "unit",
+            "30 minutes",
+            "30 ms",
+            "30 milliseconds",
+            "1800000",
+            "30 * 60 * 1000",
+            "60 * 1000",
+            "times 60",
+            "times 1000",
+            "seconds",
+            "too small",
+            "almost immediately",
+            "instantly",
+            "way too short",
+            "not 30 minutes",
+            "wrong unit",
+            "thirty minutes"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/backoff.js",
+            "lines": [
+              4,
+              4
+            ],
+            "symbols": [
+              "reconnectDelay",
+              "30 * SECOND"
+            ]
+          },
+          {
+            "file": "src/sweep.js",
+            "lines": [
+              6,
+              6
+            ],
+            "symbols": [
+              "sweep",
+              "!isIdle"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-20",
+      "family": "review",
+      "request": "hey, can you review the dedupe-imports branch against main before I merge it? it merges contact lists that overlap. review only, I'll edit.",
+      "vars": {
+        "project": [
+          "contactsync",
+          "rolodex-merge",
+          "leadpool"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Import contacts from a source",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"2.1.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nContact import for {{project}}.\n\nEach contact has a unique id. When two imports overlap, a contact can appear more than once with the same id (equal id, different object). dedupe(contacts) returns one contact per id, keeping the first seen. Identity is the id, never object identity.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 2.1.0\n\n- Import contacts from a source.\n",
+            "src/normalize.js": "function normalizeEmail(email) {\n  return email.trim().toLowerCase();\n}\n\nmodule.exports = { normalizeEmail };\n",
+            "test/normalize.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { normalizeEmail } = require('../src/normalize');\n\ntest('email is trimmed and lowercased', () => {\n  assert.strictEqual(normalizeEmail('  Ada@Example.COM '), 'ada@example.com');\n});\n"
+          }
+        },
+        {
+          "branch": "dedupe-imports",
+          "from": "main",
+          "message": "Merge overlapping imports",
+          "files": {
+            "src/dedupe.js": "function dedupe(contacts) {\n  return [...new Set(contacts)];\n}\n\nmodule.exports = { dedupe };\n",
+            "src/merge.js": "const { dedupe } = require('./dedupe');\n\nfunction mergeImports(...lists) {\n  return dedupe(lists.flat());\n}\n\nmodule.exports = { mergeImports };\n",
+            "test/dedupe.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { dedupe } = require('../src/dedupe');\n\ntest('the same object is not repeated', () => {\n  const a = { id: 1, name: 'Ada' };\n  assert.deepStrictEqual(dedupe([a, a]), [a]);\n});\n\ntest('distinct contacts are all kept', () => {\n  const list = [{ id: 1 }, { id: 2 }];\n  assert.deepStrictEqual(dedupe(list), list);\n});\n",
+            "README.md": "# {{project}}\n\nContact import for {{project}}.\n\nEach contact has a unique id. When two imports overlap, a contact can appear more than once with the same id (equal id, different object). dedupe(contacts) returns one contact per id, keeping the first seen. Identity is the id, never object identity.\n\n## Merging\n\nmergeImports(...lists) flattens the lists and dedupes them by id.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 2.2.0\n\n- Merge overlapping contact imports.\n\n## 2.1.0\n\n- Import contacts from a source.\n",
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"2.2.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+          }
+        },
+        {
+          "branch": "dedupe-imports",
+          "message": "Sort merged contacts by name",
+          "files": {
+            "src/order.js": "function byName(contacts) {\n  return [...contacts].sort((a, b) => (a.name || '').localeCompare(b.name || ''));\n}\n\nmodule.exports = { byName };\n",
+            "test/order.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { byName } = require('../src/order');\n\ntest('sorts by name and leaves the input alone', () => {\n  const input = [{ name: 'Bo' }, { name: 'Al' }];\n  assert.deepStrictEqual(byName(input).map((c) => c.name), ['Al', 'Bo']);\n  assert.deepStrictEqual(input.map((c) => c.name), ['Bo', 'Al']);\n});\n",
+            "README.md": "# {{project}}\n\nContact import for {{project}}.\n\nEach contact has a unique id. When two imports overlap, a contact can appear more than once with the same id (equal id, different object). dedupe(contacts) returns one contact per id, keeping the first seen. Identity is the id, never object identity.\n\n## Merging\n\nmergeImports(...lists) flattens the lists and dedupes them by id.\n\n## Ordering\n\nbyName(contacts) returns the contacts sorted by name without modifying the input.\n"
+          }
+        }
+      ],
+      "checkout": "dedupe-imports",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "src/dedupe.js",
+          "lines": [
+            2,
+            2
+          ],
+          "symbols": [
+            "dedupe",
+            "new Set"
+          ],
+          "mechanism": [
+            "object identity",
+            "reference",
+            "by reference",
+            "same object",
+            "different object",
+            "by id",
+            "not by id",
+            "id",
+            "equal id",
+            "Set of objects",
+            "Map",
+            "seen set",
+            "keeps duplicates",
+            "does not dedupe",
+            "both survive",
+            "two entries",
+            "reference equality",
+            "structural",
+            "key by id"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/merge.js",
+            "lines": [
+              4,
+              4
+            ],
+            "symbols": [
+              "mergeImports",
+              "lists.flat"
+            ]
+          },
+          {
+            "file": "src/order.js",
+            "lines": [
+              2,
+              2
+            ],
+            "symbols": [
+              "byName",
+              "localeCompare"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-21",
+      "family": "review",
+      "request": "could you review the config-merge branch against main for me? it layers defaults under the user config. just a review, don't change the code please.",
+      "vars": {
+        "project": [
+          "conflayer",
+          "settings-stack",
+          "cfgkit"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Load config layers",
+          "files": {
+            "README.md": "# {{project}}\n\nLayered config for {{project}}.\n\nmerge_config(base, override) returns base with override applied on top. The merge is deep: for a key whose value is a dict in both, the sub-dicts are merged the same way, so an override that sets one nested key keeps the base's other nested keys. Neither input is modified.\n\nRun the tests with python3 -B -m unittest.\n",
+            "CHANGES.md": "# Changes\n\n## 0.2.0\n\n- Load config layers.\n",
+            "config/__init__.py": "\"\"\"Layered config.\"\"\"\n__version__ = \"0.2.0\"\n",
+            "config/paths.py": "def deep_get(data, dotted):\n    node = data\n    for part in dotted.split('.'):\n        if not isinstance(node, dict) or part not in node:\n            return None\n        node = node[part]\n    return node\n",
+            "tests/__init__.py": "",
+            "tests/test_paths.py": "import unittest\n\nfrom config.paths import deep_get\n\n\nclass PathsTest(unittest.TestCase):\n    def test_reads_a_nested_key(self):\n        self.assertEqual(deep_get({'a': {'b': 1}}, 'a.b'), 1)\n        self.assertIsNone(deep_get({'a': {}}, 'a.b'))\n\n\nif __name__ == '__main__':\n    unittest.main()\n"
+          }
+        },
+        {
+          "branch": "config-merge",
+          "from": "main",
+          "message": "Merge config layers",
+          "files": {
+            "config/merge.py": "def merge_config(base, override):\n    return {**base, **override}\n",
+            "config/freeze.py": "def freeze(data):\n    if isinstance(data, dict):\n        return tuple(sorted((k, freeze(v)) for k, v in data.items()))\n    if isinstance(data, list):\n        return tuple(freeze(v) for v in data)\n    return data\n",
+            "tests/test_merge.py": "import unittest\n\nfrom config.merge import merge_config\n\n\nclass MergeTest(unittest.TestCase):\n    def test_top_level_override(self):\n        self.assertEqual(merge_config({'a': 1, 'b': 2}, {'b': 3}), {'a': 1, 'b': 3})\n\n    def test_new_key_is_added(self):\n        self.assertEqual(merge_config({'a': 1}, {'c': 9}), {'a': 1, 'c': 9})\n\n\nif __name__ == '__main__':\n    unittest.main()\n",
+            "README.md": "# {{project}}\n\nLayered config for {{project}}.\n\nmerge_config(base, override) returns base with override applied on top. The merge is deep: for a key whose value is a dict in both, the sub-dicts are merged the same way, so an override that sets one nested key keeps the base's other nested keys. Neither input is modified.\n\n## Comparing\n\nfreeze(data) turns a config into a hashable value for equality and caching.\n\nRun the tests with python3 -B -m unittest.\n",
+            "CHANGES.md": "# Changes\n\n## 0.3.0\n\n- Deep merge of config layers.\n\n## 0.2.0\n\n- Load config layers.\n",
+            "config/__init__.py": "\"\"\"Layered config.\"\"\"\n__version__ = \"0.3.0\"\n"
+          }
+        },
+        {
+          "branch": "config-merge",
+          "message": "Apply a stack of layers",
+          "files": {
+            "config/stack.py": "from .merge import merge_config\n\n\ndef apply_layers(layers):\n    result = {}\n    for layer in layers:\n        result = merge_config(result, layer)\n    return result\n",
+            "tests/test_stack.py": "import unittest\n\nfrom config.stack import apply_layers\n\n\nclass StackTest(unittest.TestCase):\n    def test_later_layers_win(self):\n        self.assertEqual(apply_layers([{'a': 1}, {'a': 2}, {'b': 3}]), {'a': 2, 'b': 3})\n\n\nif __name__ == '__main__':\n    unittest.main()\n",
+            "docs/config.md": "# Config merge\n\n- merge_config is a deep merge. A nested dict present in both base and override is merged key by key, not replaced.\n- Example: base {'db': {'host': 'h', 'port': 5432}} with override {'db': {'port': 6000}} gives {'db': {'host': 'h', 'port': 6000}}; the host survives.\n- Neither input dict is mutated; the result is a fresh structure.\n"
+          }
+        }
+      ],
+      "checkout": "config-merge",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "config/merge.py",
+          "lines": [
+            2,
+            2
+          ],
+          "symbols": [
+            "merge_config",
+            "{**base, **override}"
+          ],
+          "mechanism": [
+            "shallow",
+            "not deep",
+            "deep merge",
+            "nested",
+            "sub-dict",
+            "subdict",
+            "replaced",
+            "replaces",
+            "wholesale",
+            "overwrites",
+            "clobbers",
+            "drops",
+            "loses",
+            "recursive",
+            "recurse",
+            "host",
+            "port",
+            "key by key",
+            "whole section",
+            "entire dict"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "config/freeze.py",
+            "lines": [
+              3,
+              3
+            ],
+            "symbols": [
+              "freeze",
+              "sorted"
+            ]
+          },
+          {
+            "file": "config/stack.py",
+            "lines": [
+              7,
+              7
+            ],
+            "symbols": [
+              "apply_layers",
+              "merge_config(result, layer)"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-22",
+      "family": "review",
+      "request": "Hi, can you review the coupon-checkout branch against main before I merge? It's the order total math, so I want it right. Review only, I'll make the fixes.",
+      "vars": {
+        "project": [
+          "checkoutly",
+          "ordersum",
+          "tilltotal"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Order subtotal and tax in cents",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"1.3.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nOrder totals for {{project}}, all in integer cents.\n\nOrder of operations: a percentage coupon is taken off the subtotal first, then tax is charged on the discounted subtotal. Tax is never charged on money the customer did not pay. Shipping is added last, after tax, and is never taxed.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 1.3.0\n\n- Subtotal and tax.\n",
+            "src/money.js": "function pct(amountCents, percent) {\n  return Math.round(amountCents * percent / 100);\n}\n\nmodule.exports = { pct };\n",
+            "src/tax.js": "const { pct } = require('./money');\n\nfunction tax(amountCents, taxPercent) {\n  return pct(amountCents, taxPercent);\n}\n\nmodule.exports = { tax };\n",
+            "test/tax.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { tax } = require('../src/tax');\n\ntest('tax is a percentage of the amount', () => {\n  assert.strictEqual(tax(10000, 8), 800);\n});\n"
+          }
+        },
+        {
+          "branch": "coupon-checkout",
+          "from": "main",
+          "message": "Apply coupons at checkout",
+          "files": {
+            "src/total.js": "const { pct } = require('./money');\nconst { tax } = require('./tax');\n\nfunction computeTotal({ subtotal, couponPercent = 0, taxPercent = 0, shipping = 0 }) {\n  const discount = pct(subtotal, couponPercent);\n  const taxed = tax(subtotal, taxPercent);\n  return subtotal - discount + taxed + shipping;\n}\n\nmodule.exports = { computeTotal };\n",
+            "src/coupon.js": "function couponValue(subtotal, couponPercent) {\n  const capped = Math.max(0, Math.min(100, couponPercent));\n  return Math.round(subtotal * capped / 100);\n}\n\nmodule.exports = { couponValue };\n",
+            "test/total.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { computeTotal } = require('../src/total');\n\ntest('no coupon: subtotal plus tax plus shipping', () => {\n  assert.strictEqual(computeTotal({ subtotal: 10000, taxPercent: 10, shipping: 500 }), 11500);\n});\n\ntest('tax and shipping with zero coupon', () => {\n  assert.strictEqual(computeTotal({ subtotal: 5000, couponPercent: 0, taxPercent: 8, shipping: 0 }), 5400);\n});\n",
+            "README.md": "# {{project}}\n\nOrder totals for {{project}}, all in integer cents.\n\nOrder of operations: a percentage coupon is taken off the subtotal first, then tax is charged on the discounted subtotal. Tax is never charged on money the customer did not pay. Shipping is added last, after tax, and is never taxed.\n\n## Checkout\n\ncomputeTotal({ subtotal, couponPercent, taxPercent, shipping }) returns the order total in cents.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 1.4.0\n\n- Coupons at checkout.\n\n## 1.3.0\n\n- Subtotal and tax.\n",
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"1.4.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+          }
+        },
+        {
+          "branch": "coupon-checkout",
+          "message": "Free shipping over a threshold",
+          "files": {
+            "src/shipping.js": "const FREE_OVER = 7500;\nconst FLAT = 500;\n\nfunction shippingFor(subtotal) {\n  return subtotal >= FREE_OVER ? 0 : FLAT;\n}\n\nmodule.exports = { shippingFor, FREE_OVER, FLAT };\n",
+            "test/shipping.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { shippingFor } = require('../src/shipping');\n\ntest('free shipping at or over the threshold', () => {\n  assert.strictEqual(shippingFor(7500), 0);\n  assert.strictEqual(shippingFor(7499), 500);\n});\n",
+            "README.md": "# {{project}}\n\nOrder totals for {{project}}, all in integer cents.\n\nOrder of operations: a percentage coupon is taken off the subtotal first, then tax is charged on the discounted subtotal. Tax is never charged on money the customer did not pay. Shipping is added last, after tax, and is never taxed.\n\n## Checkout\n\ncomputeTotal({ subtotal, couponPercent, taxPercent, shipping }) returns the order total in cents.\n\n## Shipping\n\nshippingFor(subtotal) is free at or above the threshold, a flat fee below it. Free shipping is decided on the pre-coupon subtotal.\n"
+          }
+        }
+      ],
+      "checkout": "coupon-checkout",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "src/total.js",
+          "lines": [
+            6,
+            6
+          ],
+          "symbols": [
+            "computeTotal",
+            "tax(subtotal"
+          ],
+          "mechanism": [
+            "after tax",
+            "before tax",
+            "order of operations",
+            "order",
+            "discounted subtotal",
+            "taxed before",
+            "tax on the full",
+            "tax on the discounted",
+            "subtotal - discount",
+            "discount first",
+            "coupon first",
+            "on money",
+            "did not pay",
+            "overcharg*",
+            "taxes the discount",
+            "taxed on the full subtotal",
+            "pre-discount",
+            "post-discount"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/coupon.js",
+            "lines": [
+              2,
+              2
+            ],
+            "symbols": [
+              "couponValue",
+              "Math.min(100"
+            ]
+          },
+          {
+            "file": "src/shipping.js",
+            "lines": [
+              5,
+              5
+            ],
+            "symbols": [
+              "shippingFor",
+              "FREE_OVER"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-23",
+      "family": "review",
+      "request": "hey, can you review the upload-extensions branch against main before merge? it decides the content type from the filename. just review, no edits from you.",
+      "vars": {
+        "project": [
+          "dropspot",
+          "filevault",
+          "uploadr"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Accept uploads",
+          "files": {
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"0.4.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+            "README.md": "# {{project}}\n\nUploads for {{project}}.\n\nThe extension of a filename is the text after the LAST dot, lowercased: 'Archive.TAR.GZ' has extension 'gz', 'photo.JPG' has 'jpg'. A name with no dot, or a trailing dot, has no extension (empty string). The content type is looked up from the extension.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 0.4.0\n\n- Accept uploads.\n",
+            "src/size.js": "function isWithinLimit(bytes, maxMb) {\n  return bytes <= maxMb * 1024 * 1024;\n}\n\nmodule.exports = { isWithinLimit };\n",
+            "test/size.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { isWithinLimit } = require('../src/size');\n\ntest('size limit in MiB', () => {\n  assert.strictEqual(isWithinLimit(1024 * 1024, 1), true);\n  assert.strictEqual(isWithinLimit(1024 * 1024 + 1, 1), false);\n});\n"
+          }
+        },
+        {
+          "branch": "upload-extensions",
+          "from": "main",
+          "message": "Pick the content type from the extension",
+          "files": {
+            "src/extension.js": "function extensionOf(name) {\n  return name.split('.')[1];\n}\n\nmodule.exports = { extensionOf };\n",
+            "src/content-type.js": "const { extensionOf } = require('./extension');\n\nconst TYPES = {\n  gz: 'application/gzip',\n  jpg: 'image/jpeg',\n  png: 'image/png',\n  pdf: 'application/pdf',\n};\n\nfunction contentType(name) {\n  return TYPES[extensionOf(name)] || 'application/octet-stream';\n}\n\nmodule.exports = { contentType, TYPES };\n",
+            "test/extension.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { extensionOf } = require('../src/extension');\n\ntest('reads a simple extension', () => {\n  assert.strictEqual(extensionOf('photo.jpg'), 'jpg');\n});\n",
+            "README.md": "# {{project}}\n\nUploads for {{project}}.\n\nThe extension of a filename is the text after the LAST dot, lowercased: 'Archive.TAR.GZ' has extension 'gz', 'photo.JPG' has 'jpg'. A name with no dot, or a trailing dot, has no extension (empty string). The content type is looked up from the extension.\n\n## Content type\n\ncontentType(name) maps the extension to a MIME type, defaulting to application/octet-stream.\n",
+            "CHANGELOG.md": "# Changelog\n\n## 0.5.0\n\n- Content type from the file extension.\n\n## 0.4.0\n\n- Accept uploads.\n",
+            "package.json": "{\n  \"name\": \"{{project}}\",\n  \"version\": \"0.5.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+          }
+        },
+        {
+          "branch": "upload-extensions",
+          "message": "Sanitize the stored filename",
+          "files": {
+            "src/safe-name.js": "function safeName(name) {\n  return name.replace(/^[./\\\\]+/, '').replace(/[^A-Za-z0-9._-]+/g, '_');\n}\n\nmodule.exports = { safeName };\n",
+            "test/safe-name.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { safeName } = require('../src/safe-name');\n\ntest('replaces unsafe characters and leading dots', () => {\n  assert.strictEqual(safeName('../my file.png'), 'my_file.png');\n});\n",
+            "README.md": "# {{project}}\n\nUploads for {{project}}.\n\nThe extension of a filename is the text after the LAST dot, lowercased: 'Archive.TAR.GZ' has extension 'gz', 'photo.JPG' has 'jpg'. A name with no dot, or a trailing dot, has no extension (empty string). The content type is looked up from the extension.\n\n## Content type\n\ncontentType(name) maps the extension to a MIME type, defaulting to application/octet-stream.\n\n## Safe names\n\nsafeName(name) strips any leading dots and slashes, then replaces characters outside [A-Za-z0-9._-] with an underscore, so a stored name can never climb a directory.\n"
+          }
+        }
+      ],
+      "checkout": "upload-extensions",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "src/extension.js",
+          "lines": [
+            2,
+            2
+          ],
+          "symbols": [
+            "extensionOf",
+            "split('.')[1]"
+          ],
+          "mechanism": [
+            "last dot",
+            "first dot",
+            "after the last",
+            "second element",
+            "index 1",
+            "[1]",
+            "tar.gz",
+            "archive.tar",
+            "multiple dots",
+            "two dots",
+            "more than one dot",
+            "no dot",
+            "undefined",
+            "lowercase",
+            "lowercased",
+            "case",
+            "JPG",
+            "pop()",
+            "lastIndexOf",
+            "wrong part",
+            "returns tar"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "src/content-type.js",
+            "lines": [
+              11,
+              11
+            ],
+            "symbols": [
+              "contentType",
+              "octet-stream"
+            ]
+          },
+          {
+            "file": "src/safe-name.js",
+            "lines": [
+              2,
+              2
+            ],
+            "symbols": [
+              "safeName",
+              "[^A-Za-z0-9._-]"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rev-24",
+      "family": "review",
+      "request": "hey can you review the sms-segments branch against main before I merge? it decides whether a message is one text or several. review only please, I'll handle the edits.",
+      "vars": {
+        "project": [
+          "textcount",
+          "sms-budget",
+          "segmentor"
+        ]
+      },
+      "commits": [
+        {
+          "branch": "main",
+          "message": "Send text messages",
+          "files": {
+            "README.md": "# {{project}}\n\nSMS sending for {{project}}.\n\nA single SMS segment holds 160 bytes of UTF-8. A message that encodes to at most 160 bytes is one segment; longer messages are split and billed per segment. The limit is bytes, not characters: an emoji or an accented letter is several bytes, so a 160-character message can still need two segments.\n\nRun the tests with python3 -B -m unittest.\n",
+            "CHANGES.md": "# Changes\n\n## 0.2.0\n\n- Send text messages.\n",
+            "sms/__init__.py": "\"\"\"SMS sending.\"\"\"\n__version__ = \"0.2.0\"\n",
+            "sms/encode.py": "def utf8_len(text):\n    return len(text.encode('utf-8'))\n",
+            "tests/__init__.py": "",
+            "tests/test_encode.py": "import unittest\n\nfrom sms.encode import utf8_len\n\n\nclass EncodeTest(unittest.TestCase):\n    def test_counts_bytes(self):\n        self.assertEqual(utf8_len('abc'), 3)\n        self.assertEqual(utf8_len('café'), 5)\n\n\nif __name__ == '__main__':\n    unittest.main()\n"
+          }
+        },
+        {
+          "branch": "sms-segments",
+          "from": "main",
+          "message": "Count SMS segments",
+          "files": {
+            "sms/segment.py": "SEGMENT_BYTES = 160\n\n\ndef fits_one_segment(text):\n    return len(text) <= SEGMENT_BYTES\n",
+            "sms/split.py": "from .encode import utf8_len\n\nSEGMENT_BYTES = 160\n\n\ndef segment_count(text):\n    total = utf8_len(text)\n    if total == 0:\n        return 0\n    return -(-total // SEGMENT_BYTES)\n",
+            "tests/test_segment.py": "import unittest\n\nfrom sms.segment import fits_one_segment\n\n\nclass SegmentTest(unittest.TestCase):\n    def test_short_ascii_fits(self):\n        self.assertTrue(fits_one_segment('hello'))\n\n    def test_long_ascii_does_not_fit(self):\n        self.assertFalse(fits_one_segment('a' * 161))\n\n\nif __name__ == '__main__':\n    unittest.main()\n",
+            "README.md": "# {{project}}\n\nSMS sending for {{project}}.\n\nA single SMS segment holds 160 bytes of UTF-8. A message that encodes to at most 160 bytes is one segment; longer messages are split and billed per segment. The limit is bytes, not characters: an emoji or an accented letter is several bytes, so a 160-character message can still need two segments.\n\n## Segmenting\n\nfits_one_segment(text) reports whether the message is a single segment. segment_count(text) returns how many segments it needs.\n\nRun the tests with python3 -B -m unittest.\n",
+            "CHANGES.md": "# Changes\n\n## 0.3.0\n\n- Count SMS segments.\n\n## 0.2.0\n\n- Send text messages.\n",
+            "sms/__init__.py": "\"\"\"SMS sending.\"\"\"\n__version__ = \"0.3.0\"\n"
+          }
+        },
+        {
+          "branch": "sms-segments",
+          "message": "Estimate the cost of a message",
+          "files": {
+            "sms/cost.py": "from .split import segment_count\n\nPER_SEGMENT_CENTS = 2\n\n\ndef cost_cents(text):\n    return segment_count(text) * PER_SEGMENT_CENTS\n",
+            "tests/test_cost.py": "import unittest\n\nfrom sms.cost import cost_cents\n\n\nclass CostTest(unittest.TestCase):\n    def test_cost_is_per_segment(self):\n        self.assertEqual(cost_cents('a' * 320), 4)\n        self.assertEqual(cost_cents(''), 0)\n\n\nif __name__ == '__main__':\n    unittest.main()\n",
+            "docs/sms.md": "# SMS segments\n\n- A segment is 160 bytes of UTF-8.\n- The segment count is ceil(utf8_bytes / 160); an empty message is zero segments.\n- Byte length, not character length: 'cafe' with an accented e is 5 bytes, and an emoji is 4 bytes, so counting characters undercounts and can bill a 2-segment message as one.\n"
+          }
+        }
+      ],
+      "checkout": "sms-segments",
+      "key": {
+        "base": "main",
+        "defect": {
+          "file": "sms/segment.py",
+          "lines": [
+            5,
+            5
+          ],
+          "symbols": [
+            "fits_one_segment",
+            "len(text)"
+          ],
+          "mechanism": [
+            "byte",
+            "bytes",
+            "character",
+            "characters",
+            "not characters",
+            "code point",
+            "codepoint",
+            "encode",
+            "utf-8",
+            "utf8",
+            "utf8_len",
+            "multibyte",
+            "multi-byte",
+            "emoji",
+            "accent*",
+            "undercount*",
+            "len(text)",
+            "encode(",
+            "character length",
+            "byte length"
+          ]
+        },
+        "decoys": [
+          {
+            "file": "sms/split.py",
+            "lines": [
+              10,
+              10
+            ],
+            "symbols": [
+              "segment_count",
+              "-(-total"
+            ]
+          },
+          {
+            "file": "sms/cost.py",
+            "lines": [
+              7,
+              7
+            ],
+            "symbols": [
+              "cost_cents",
+              "PER_SEGMENT_CENTS"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

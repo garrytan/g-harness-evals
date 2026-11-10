@@ -1,0 +1,155 @@
+{
+  "trial_id": "rev-17-plain-sol-k17",
+  "task_id": "rev-17",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 17,
+  "status": "ok",
+  "reply_text": "I’d hold shipping: two high-priority issues in `quantity-parsing` (`66ff697`) vs `main` (`f628c38`).\n\n1. **Invalid quantities are silently accepted** — `src/quantity.js:2–4`  \n   `parseInt` parses a prefix rather than validating the whole string. Confirmed `\"2kg\"` → `2`, `\"3.5\"` → `3`, and `\"1e3\"` → `1`; all three also succeed through `addToCart`. This violates the README’s explicit rejection rules. Validate the entire string before converting, and add regression tests for these inputs.\n\n2. **The 99-unit cap isn’t enforced when adding to cart** — `src/add.js:4–6`  \n   `addToCart` checks only for `null` and never calls `withinLimit`. Confirmed `\"100\"` adds a line with quantity `100`, despite the documented maximum of 99. Check the cap before mutating the cart; test that 99 succeeds and 100 throws without changing the cart.\n\nAll four existing tests pass, but they miss these cases. No files changed.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-17-plain-sol-k17",
+    "requests": 9,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.04465659999999999,
+    "input_tokens": 71611,
+    "output_tokens": 952,
+    "cached_tokens": 59630,
+    "cache_write_tokens": 11658,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.00007060000000000001,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.044586,
+        "requests": 8
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 9
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 18.44,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-17-plain-sol-k17",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:13:09.758Z",
+    "images": {
+      "core": "sha256:217d5f3a14919e23171c0717454f5004d418ea2efb0cefab7b4d405627cbdca8",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-c5578e4088df",
+        "id": "sha256:f5d3398fef6ddd925e409f6319d1fd4046d577fe5f4b6f63a7b563251ed6288a",
+        "tree_sha256": "9b249b7efa1e53e99bd35c49f74472ad408e348cc6d4ca6a9ca5b15f2ed4e37f"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-85b04277-4831-4472-8753-90a29ab1-b94505"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:13:51.798Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/a8e976dfbaf33c40b51c7152/0b15eb3f2fb76fef/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/a8e976dfbaf33c40b51c7152/0b15eb3f2fb76fef/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 12,
+          "command": "cd /root/workspace/repo && git diff main...quantity-parsing && printf '\\n--- files ---\\n' && find src test -type f -print && cat README.md CHANGELOG.md package.json && for f in src/* test/*; do echo \"--- $f\"; nl -ba \"$f\"; done",
+          "code": 0,
+          "output": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex e1e5944..70e975e 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.8.0\n+\n+- Validate the quantity field.\n+\n ## 0.7.0\n \n - Cart line items.\ndiff --git a/README.md b/README.md\nindex 8d349c3..b221f62 100644\n--- a/README.md\n+"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-17-plain-sol-k17",
+      "meter": {
+        "requests": 9,
+        "usd": 0.04465659999999999,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 9,
+        "usd": 0.04465659999999999,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.00007060000000000001
+    }
+  }
+}

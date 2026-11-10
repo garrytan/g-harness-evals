@@ -1,0 +1,155 @@
+{
+  "trial_id": "rev-11-plain-sol-k1",
+  "task_id": "rev-11",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I’d **hold the merge** for the SQL injection issue. Reviewed `search-filters` at `54f7b81` against `main` (`e8e0f84`); no files changed.\n\n### Findings\n\n1. **[P1] Search terms are interpolated directly into SQL** — `src/query.js:11–13`  \n   A term of `' OR TRUE -- ` produces:\n   ```sql\n   WHERE category = $1 AND stock > 0 AND name ILIKE '%' OR TRUE --%'\n   ```\n   That bypasses the category and stock filters. Ordinary terms containing apostrophes, such as `O'Reilly`, also produce invalid SQL. Push the `%…%` search pattern into `params` and reference its numbered placeholder, just as the category filter does.\n\n2. **[P2] The sort whitelist accepts inherited object properties** — `src/sort.js:8`  \n   `orderBy('constructor')` returns:\n   ```sql\n   ORDER BY function Object() { [native code] }\n   ```\n   `toString` and `__proto__` similarly generate invalid SQL instead of falling back to relevance. Check for an own property, or use a `Map`/null-prototype object.\n\n3. **[P2] Bitwise coercion breaks the documented page-size clamp** — `src/paginate.js:4–5`  \n   `limitOffset(2, 2147483648)` returns `{ limit: 1, offset: 1 }`, although a size above 100 should clamp to 100. `| 0` wraps values to signed 32-bit integers before clamping; sufficiently large page numbers also silently reset to page 1. Use numeric validation and truncation without bitwise conversion.\n\n**Validation:** All five existing tests pass; direct edge-case checks reproduce the findings above. The term tests only check that `ILIKE` appears, so they don’t catch the parameterization regression. Add assertions for the exact SQL and params, including apostrophes, injection-shaped terms, and combined filters.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-11-plain-sol-k1",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0449122,
+    "input_tokens": 53837,
+    "output_tokens": 1065,
+    "cached_tokens": 41485,
+    "cache_write_tokens": 12043,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0000702,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.04484200000000001,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 18.489,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "rev-11-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:25:56.304Z",
+    "images": {
+      "core": "sha256:a1cb5179980824f355a04eff570548a298c6240d694122ab035f33b6fe0d67c3",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-a37a4db49ad7",
+        "id": "sha256:2540cd1fe4d4cd2bfafc00ad9e890e566afeeb7233a70c9700d14004807280a3",
+        "tree_sha256": "593d02dc02e96eab384f83c52971c5fda6586bcbeb5e6f14ef27e349edfe0b1b"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-cffc2e5f-e57c-49e0-9fe7-dc448032-7433c4"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:26:38.485Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/ca593763d517351c7d90721a/e7c2358e6b2228a4/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/ca593763d517351c7d90721a/e7c2358e6b2228a4/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git config --show-origin --get-regexp 'credential|core.sshCommand|http\\..*extraheader|url\\..*insteadof' || true; cd /root/workspace/repo && ls -la && git diff --stat main...search-filters && git diff main...search-f",
+          "code": 0,
+          "output": "  main           e8e0f84 Product search by exact filters\n* search-filters 54f7b81 Paginate search results\ntotal 32\ndrwxr-xr-x 5 root root 4096 Nov  8 03:26 .\ndrwxr-xr-x 4 root root 4096 Nov  8 03:26 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 03:26 .git\n-rw-r--r-- 1 root root  121 Nov  8 03:18 CHANGELOG.m"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-11-plain-sol-k1",
+      "meter": {
+        "requests": 7,
+        "usd": 0.0449122,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.0449122,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0000702
+    }
+  }
+}

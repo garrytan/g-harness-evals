@@ -1,0 +1,159 @@
+{
+  "trial_id": "rev-21-edition-opus-k13",
+  "task_id": "rev-21",
+  "family": "review",
+  "arm": "edition",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 13,
+  "status": "ok",
+  "reply_text": "I reviewed config-merge against main and didn't change any code. The main problem: **the merge isn't deep, even though the README, docs and CHANGES all say it is.** The 4 tests pass, but none of them check nested values.\n\n**Blocking**\n\n1. **`merge_config` replaces nested dicts instead of merging them.** `config/merge.py` is just `{**base, **override}`, so only the top-level keys get merged. I ran the example from `docs/config.md`:\n   - base `{'db': {'host': 'h', 'port': 5432}}` with override `{'db': {'port': 6000}}`\n   - gives `{'db': {'port': 6000}}`, so **the host is lost**. The docs say the result should be `{'db': {'host': 'h', 'port': 6000}}`.\n   \n   For a branch that puts defaults under user config, this is the important case. If a user sets one nested key, every other default in that section disappears. The fix is to recurse when both sides are dicts and copy as you go so the result shares nothing with the inputs. Right now nested values are passed through by reference. That doesn't change the inputs today, but a deep version written carelessly could.\n\n2. **The tests miss this.** `test_merge.py` only covers top-level keys. It needs tests for:\n   - the nested `db` example from the docs\n   - several levels of nesting\n   - a dict in one input and a plain value in the other, in both directions\n   - checking that neither input is modified, including after you change the result\n   \n   `test_stack.py` should also have a layered nested case, like defaults → user → environment.\n\n**Should fix: `freeze` (new, not mentioned in CHANGES)**\n\n3. **It crashes on mixed key types.** It sorts the items, so `freeze({1: 'x', 'a': 'y'})` raises a `TypeError`. YAML or JSON with integer keys could hit this.\n4. **It doesn't always return something hashable,** even though the README says it does. Sets and other values it doesn't handle are passed through unchanged, so `hash(freeze({'s': {1}}))` fails.\n5. **Different configs can come out equal.** A list and a dict both become tuples, so `{'a': [('x', 1)]}` and `{'a': {'x': 1}}` freeze to the same value. That's a risk if this is used for caching. Tagging the type, for example `('dict', ...)` and `('list', ...)`, would prevent it. There are no tests for `freeze` either.\n\n**Minor**\n\n6. `apply_layers` is fine once `merge_config` is fixed. It would be worth a docstring saying later layers win.\n7. The version bump to 0.3.0 and the CHANGES entry are fine, but CHANGES should also list `freeze` and `apply_layers`.\n\n**Verdict:** I'd request changes. Item 1 means the feature doesn't do what it claims. Items 3–5 are worth fixing before anything relies on `freeze` for caching.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-21-edition-opus-k13",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.061510499999999996,
+    "input_tokens": 53178,
+    "output_tokens": 1557,
+    "cached_tokens": 50158,
+    "cache_write_tokens": 2561,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000050900000000000004,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0614596,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 20.118,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-21-edition-opus-k13",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:00:03.117Z",
+    "images": {
+      "core": "sha256:e48c8f94d6b77801b71348a2f487e3d9f61914e9a616d4a9ec352a157470f137",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-4c7c36bc6936",
+        "id": "sha256:f3326e60c0db322034b185e4113c31091e7b8469683133ac491bc6ec551e93fb",
+        "tree_sha256": "d9e3a4b2ffbd4a94f4219657ce3513342c06ad2b17d16fc272f9c11c39ee6761"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-70a4aad2-7229-49f2-8206-3d797194-9a20ce"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:00:46.517Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..config-merge; git diff main...config-merge",
+          "code": 0,
+          "output": "* config-merge\n  main\n77d6a81 Apply a stack of layers\nfb8e4df Merge config layers\ndiff --git a/CHANGES.md b/CHANGES.md\nindex 0badbfc..b9fea17 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.3.0\n+\n+- Deep merge of config layers.\n+\n ## 0.2.0\n \n - Load config layers.\ndiff --"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-21-edition-opus-k13",
+      "meter": {
+        "requests": 5,
+        "usd": 0.061510499999999996,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.061510499999999996,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000050900000000000004
+    }
+  }
+}

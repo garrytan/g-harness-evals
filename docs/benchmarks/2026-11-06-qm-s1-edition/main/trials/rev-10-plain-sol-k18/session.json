@@ -1,0 +1,463 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 05:12 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "844a233c-349b-42e0-8fc0-f3da59ca1b18"
+    },
+    "text": "can you take a look at the leaderboard-sort branch vs main? Merging this afternoon. just a review, don't change the code.",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "eb699b05-a2a6-4051-8642-19f915426843",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "textSignature": "{\"v\":1,\"id\":\"msg_0b35d41c43731ec8016af07546acec87d28a8f755a0a40c046\",\"phase\":\"commentary\"}",
+    "text": "I’ll review `leaderboard-sort` against `main` for correctness and merge risks, without changing any code.\n",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764",
+    "step": {
+     "id": "eb699b05-a2a6-4051-8642-19f915426843",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "name": "github-gitlab",
+    "wire": {
+     "message": {
+      "id": "eb699b05-a2a6-4051-8642-19f915426843",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"read\",\"name\":\"github-gitlab\"}"
+    },
+    "action": "read",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764",
+    "callId": "call_SIvdEnf9x0tagfGPIh7ZH5NM|fc_0b35d41c43731ec8016af07546d42887d285317790a0d0be76",
+    "tool": "skills",
+    "step": {
+     "id": "eb699b05-a2a6-4051-8642-19f915426843",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "dir": "/root/workspace/.agent-skills/7cc46032af97513764b3682d/fc037f4a7a492eca/github-gitlab",
+    "name": "github-gitlab",
+    "bytes": 6025,
+    "found": true,
+    "action": "read",
+    "sourceScopeId": "org:harness-eval",
+    "result": "[skill files synced to /root/workspace/.agent-skills/7cc46032af97513764b3682d/fc037f4a7a492eca/github-gitlab/]\n\n# GitHub / GitLab\n\nUse this skill when the user asks to inspect repos, issues, pull requests, merge\nrequests, code history, branches, or to make a small code change in a hosted repo.\n\n## Choose the account deliberately\n\nUse the current credential manifest to choose an account authorized for this conversation\nthat fits the user's intent. Run commands with `execute` and an explicit `sandbox_id`;\nkeep that ID throughout checkout, edits, checks, and push. Personal and shared accounts are both valid choices; neither\nis an automatic fallback when the other fails. If the intended account is unclear before\na write, ask. Do not infer permission from a login merely being present on the computer.\n\n- **Personal login:** use the authorized `gh`, `glab`, or Git login. Check the active\n  provider account (for example, `gh api user --jq .login`) and the Git transport's auth\n  configuration; a CLI API identity alone does not prove which account Git will use.\n- **Shared org credential:** if listed in the prompt, select its slug and use the\n  core-hosted smart HTTP remote in the `use-shared-credential` skill. This uses\n  the configured shared account, even when a personal OAuth connector is live.\n  Its name is an admin label, not a verified upstream username.\n- **Connected app:** use only advertised capabilities. API access does not by itself\n  establish native Git transport access or configure the CLI's active login.\n\nFor an existing checkout, inspect the remote and applicable credential-helper, SSH,\nproxy, and HTTP-header configuration. A reused checkout\nmay still select a previous account. Commit author metadata is separate from transport\nidentity. Resolve an unknown identity before a write; do not probe access by pushing.\n\n## Logging in\n\nUse the native login only after an explicit authentication rejection. A TLS timeout,\nconnection reset, rate limit, or GitHub server error is not evidence of logout or\npermission expiry. Do not consume another credential grant to repair transport.\n\nFor a confirmed missing or expired GitHub or GitLab login, follow the\n`interactive-login` skill: it runs `gh auth login` / `glab auth login` in a temporary\nhome as a background job, relays the code and URL, and saves the login to the keychain\nso later commands use it through `execute.credentials`.\n\n## Read-only work\n\nCheck auth and inspect repo state:\n\n```bash\ngh auth status\ngh repo view OWNER/REPO --json name,description,url,defaultBranchRef\ngh issue list --repo OWNER/REPO --state open --limit 20\ngh pr list --repo OWNER/REPO --state open --limit 20\n```\n\nFor GitLab:\n\n```bash\nglab auth status\nglab repo view GROUP/PROJECT\nglab issue list --repo GROUP/PROJECT\nglab mr list --repo GROUP/PROJECT\n```\n\nUse `git log`, `git show`, and `git diff` for codebase-change summaries. Cite commit\nhashes, PR/MR numbers, and links.\n\n## Checkout and edits\n\nClone or fetch only the repo the user asked for:\n\n```bash\ngh repo clone OWNER/REPO repo\ncd repo\ngit checkout -b codex/small-change\n```\n\nKeep changes scoped. Run the repo's tests. If a push or PR/MR creation is requested,\nprepare the branch and summary first.\n\n## Writes require approval\n\nPushing branches, creating PRs/MRs, merging, closing issues, editing labels, changing\nrepo settings, releases, or workflows are writes. Ask for approval before running the\nwrite command.\n\nAfter approval:\n\n```bash\ngit push -u origin codex/small-change\ngh pr create --repo OWNER/REPO --title \"...\" --body-file pr.md\n```\n\nFor GitLab:\n\n```bash\ngit push -u origin codex/small-change\nglab mr create --repo GROUP/PROJECT --title \"...\" --description-file mr.md\n```\n\nReport the final URL and leave enough context for review.\n\n## Wait for GitHub CI\n\nUse the bundled helper instead of a bare `gh pr checks --watch` or a handwritten\nshell loop. Use the absolute directory reported by the skill read in place of\n`<skill dir>`. It is one blocking watcher process, not repeated agent turns:\n\n```bash\nnode \"<skill dir>/scripts/watch-ci.mjs\" --repo OWNER/REPO --pr NUMBER --head REVIEWED_HEAD_SHA\n```\n\nCapture the full head SHA from `gh pr view NUMBER --repo OWNER/REPO --json headRefOid`\nbefore review. Use that same SHA for the watcher and the final merge gate. Start the\nwatcher with `execute` using the selected `sandbox_id` and `background:true`, then\nsubscribe with `background` action `watch` and its returned `process_id`. Keep one\nwatcher per PR. Set the process lifetime longer than the helper's 30-minute deadline;\nuse `--timeout-ms` for a different bounded deadline. Use only credentials authorized\nfor that background process; a live foreground grant does not authorize background work.\n\nThe helper polls GitHub internally and emits JSON status records. It retries only\nrecognized transient transport/server errors with bounded backoff. Pending checks\nremain pending. Real CI failures, authentication/authorization failures, changed heads,\nunknown errors, exhausted retries, and deadline expiry all stop with nonzero status.\nExplicit API rate limits stop as `rate_limited`, not authentication errors.\nEmpty check sets, skipped checks, and cancelled checks are not successful evidence.\nDo not interpret an exit code alone as \"checks concluded\": read the status record.\nDo not suppress a nonzero exit or print a success marker after it. Keep `set -e`.\n\nSuccess means the checks observed for the expected head passed, not permission to\nmerge. Re-read checks and review threads immediately before merging. Wait for async\nreviewers on that exact head; resolve findings and complete any review the repo\nrequires. After any push or head change, discard old success/review evidence and repeat.\nOnly merge when all gates pass, with GitHub's atomic head guard:\n\n```bash\ngh pr merge NUMBER --repo OWNER/REPO --squash --match-head-commit REVIEWED_HEAD_SHA\n```\n\nOn a branch that requires a merge queue, this queues the PR; it is merged only once\nGitHub shows it as merged. Never use auto-merge or bypass repository gates. This\nhelper does not retry GitLab commands or change their authentication behavior.\n",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764",
+    "callId": "call_SIvdEnf9x0tagfGPIh7ZH5NM|fc_0b35d41c43731ec8016af07546d42887d285317790a0d0be76",
+    "tool": "skills",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "d43b4187-f006-420b-b319-f5b0473e5072",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null | head -30\",\"purpose\":\"Locating repository checkout\"}"
+    },
+    "scope": "scoped",
+    "command": "pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null | head -30",
+    "purpose": "Locating repository checkout",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764",
+    "callId": "call_wU9ue8SuI6Q9LRQFdpbwaiJI|fc_0b35d41c43731ec8016af0754876bc87d286a549ac8c59268b",
+    "tool": "execute",
+    "step": {
+     "id": "d43b4187-f006-420b-b319-f5b0473e5072",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\ntotal 16\ndrwxr-xr-x 4 root root 4096 Nov  8 13:12 .\ndrwx------ 6 root root 4096 Nov  8 13:12 ..\ndrwxr-xr-x 3 root root 4096 Nov  8 13:12 .agent-skills\ndrwxr-xr-x 5 root root 4096 Nov  8 13:12 repo\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764",
+    "callId": "call_wU9ue8SuI6Q9LRQFdpbwaiJI|fc_0b35d41c43731ec8016af0754876bc87d286a549ac8c59268b",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "532bef9e-8a83-4374-8bf8-cc4669a0a25e",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && ls -la && git log --oneline -8; git config --show-origin --get-regexp 'credential|http\\\\..*extraheader|core.sshCommand|url\\\\..*insteadOf' || true\",\"purpose\":\"Inspecting branches and configuration\",\"sandbox_id\":\"local\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && ls -la && git log --oneline -8; git config --show-origin --get-regexp 'credential|http\\..*extraheader|core.sshCommand|url\\..*insteadOf' || true",
+    "purpose": "Inspecting branches and configuration",
+    "sandbox_id": "local",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764",
+    "callId": "call_DWZjPV71wY05z2gKp5VCMGHO|fc_0b35d41c43731ec8016af0754a59a087d2819d05b7e435f49e",
+    "tool": "execute",
+    "step": {
+     "id": "532bef9e-8a83-4374-8bf8-cc4669a0a25e",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "wire": {
+     "content": [
+      {
+       "text": "sandbox not found: local",
+       "type": "text"
+      }
+     ]
+    },
+    "scope": "scoped",
+    "result": "Command execution failed: sandbox not found: local",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764",
+    "callId": "call_DWZjPV71wY05z2gKp5VCMGHO|fc_0b35d41c43731ec8016af0754a59a087d2819d05b7e435f49e",
+    "tool": "execute",
+    "isError": true
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "c4a5530c-742e-4481-ab54-d23783c082c4",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "action": "list",
+    "purpose": "Identifying review sandbox",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764",
+    "callId": "call_nqhlATpkOcw6bf1X33wFswUd|fc_0b35d41c43731ec8016af0754c690c87d2b6536f90cd84f802",
+    "tool": "sandbox",
+    "step": {
+     "id": "c4a5530c-742e-4481-ab54-d23783c082c4",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "action": "list",
+    "result": "{\"sandboxes\":[{\"id\":\"22eb36c5-20a3-4a8b-84f6-abd9be16f08c\",\"name\":\"s1e-probe\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"]},\"state\":\"ready\",\"legacy\":false,\"backend\":\"local\",\"holders\":[\"f8418a3b-0f7b-42fd-b2a2-ba9b51828764\"],\"createdAt\":\"2026-11-08T13:12:35.870Z\",\"createdBy\":\"harness-admin\",\"machineId\":\"qm-sbx-sandbox-22eb36c5-20a3-4a8b-84f6-abd9be16-ff0f24\",\"ownerScopeId\":\"personal:U1\",\"backingScopeId\":\"sandbox-22eb36c5-20a3-4a8b-84f6-abd9be16f08c\"}],\"defaultSandboxId\":\"22eb36c5-20a3-4a8b-84f6-abd9be16f08c\",\"defaultMode\":\"selected\",\"providers\":[{\"name\":\"local\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\"},\"egressEnforcement\":\"none\",\"sizesMemory\":true,\"actions\":[\"create\",\"retire\"]}]}",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764",
+    "callId": "call_nqhlATpkOcw6bf1X33wFswUd|fc_0b35d41c43731ec8016af0754c690c87d2b6536f90cd84f802",
+    "tool": "sandbox",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "8a02e49e-c364-48f2-85cd-85caba9258d6",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && ls -la && git log --oneline -8; git config --show-origin --get-regexp 'credential|http\\\\..*extraheader|core.sshCommand|url\\\\..*insteadOf' || true\",\"purpose\":\"Inspecting branches and configuration\",\"sandbox_id\":\"22eb36c5-20a3-4a8b-84f6-abd9be16f08c\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && ls -la && git log --oneline -8; git config --show-origin --get-regexp 'credential|http\\..*extraheader|core.sshCommand|url\\..*insteadOf' || true",
+    "purpose": "Inspecting branches and configuration",
+    "sandbox_id": "22eb36c5-20a3-4a8b-84f6-abd9be16f08c",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764",
+    "callId": "call_4b3L63v6DlUQzyKmbpNrjYD8|fc_0b35d41c43731ec8016af0754db8b887d287b32d6ee1989c66",
+    "tool": "execute",
+    "step": {
+     "id": "8a02e49e-c364-48f2-85cd-85caba9258d6",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* leaderboard-sort 17941bc Add a stable display name\n  main             93d02a4 Store scores as decimal strings\ntotal 32\ndrwxr-xr-x 5 root root 4096 Nov  8 13:12 .\ndrwxr-xr-x 4 root root 4096 Nov  8 13:12 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 13:12 .git\n-rw-r--r-- 1 root root  116 Nov  8 12:34 CHANGELOG.md\n-rw-r--r-- 1 root root  562 Nov  8 12:34 README.md\n-rw-r--r-- 1 root root  117 Nov  8 12:34 package.json\ndrwxr-xr-x 2 root root 4096 Nov  8 13:12 src\ndrwxr-xr-x 2 root root 4096 Nov  8 13:12 test\n17941bc Add a stable display name\n04db347 Rank and paginate the leaderboard\n93d02a4 Store scores as decimal strings\n\n[exit 0]",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764",
+    "callId": "call_4b3L63v6DlUQzyKmbpNrjYD8|fc_0b35d41c43731ec8016af0754db8b887d287b32d6ee1989c66",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "9a2b56f4-4592-4763-940b-666a62843685",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git diff main...leaderboard-sort && printf '\\\\n---FILES---\\\\n' && find src test -type f -print -exec cat {} \\\\; && cat README.md CHANGELOG.md package.json && printf '\\\\n---MAIN---\\\\n' && git show main:src/leaderboard.js\",\"purpose\":\"Reading leaderboard changes\",\"sandbox_id\":\"22eb36c5-20a3-4a8b-84f6-abd9be16f08c\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git diff main...leaderboard-sort && printf '\\n---FILES---\\n' && find src test -type f -print -exec cat {} \\; && cat README.md CHANGELOG.md package.json && printf '\\n---MAIN---\\n' && git show main:src/leaderboard.js",
+    "purpose": "Reading leaderboard changes",
+    "sandbox_id": "22eb36c5-20a3-4a8b-84f6-abd9be16f08c",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764",
+    "callId": "call_bizXdVAOV7JKArCK58mIppw2|fc_0b35d41c43731ec8016af07550326c87d288bac9192dfc35f8",
+    "tool": "execute",
+    "step": {
+     "id": "9a2b56f4-4592-4763-940b-666a62843685",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "tool_result",
+   "payload": {
+    "code": 128,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex bb35a10..68b8f68 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.1.0\n+\n+- Leaderboard ranking and top-N.\n+\n ## 1.0.0\n \n - Scores stored and returned as decimal strings.\ndiff --git a/README.md b/README.md\nindex 4796c99..9e495a0 100644\n--- a/README.md\n+++ b/README.md\n@@ -3,3 +3,11 @@\n Leaderboards for highscore-api.\n \n Scores can exceed 2^53, so the API returns each score as a decimal string (field \"score\"), never a JSON number: a Number would silently round it. Compare two scores with compareScore(a, b) in src/score.js, which handles arbitrary length. Never turn a score into a Number.\n+\n+## Ranking\n+\n+rankings(entries) returns the entries highest score first, each with a 1-based rank. topN(entries, n) returns the first n.\n+\n+## Display names\n+\n+displayName(player) trims the name and falls back to \"Player <id>\" when it is blank.\ndiff --git a/package.json b/package.json\nindex a20cf34..5144cf7 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"highscore-api\",\n-  \"version\": \"1.0.0\",\n+  \"version\": \"1.1.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/display.js b/src/display.js\nnew file mode 100644\nindex 0000000..d8bcb4d\n--- /dev/null\n+++ b/src/display.js\n@@ -0,0 +1,6 @@\n+function displayName(player) {\n+  const trimmed = player.name.trim();\n+  return trimmed.length ? trimmed : 'Player ' + player.id;\n+}\n+\n+module.exports = { displayName };\ndiff --git a/src/rank.js b/src/rank.js\nnew file mode 100644\nindex 0000000..712e0ab\n--- /dev/null\n+++ b/src/rank.js\n@@ -0,0 +1,7 @@\n+function rankings(entries) {\n+  return [...entries]\n+    .sort((a, b) => b.score - a.score)\n+    .map((e, i) => ({ rank: i + 1, player: e.player, score: e.score }));\n+}\n+\n+module.exports = { rankings };\ndiff --git a/src/top.js b/src/top.js\nnew file mode 100644\nindex 0000000..747ad0f\n--- /dev/null\n+++ b/src/top.js\n@@ -0,0 +1,7 @@\n+const { rankings } = require('./rank');\n+\n+function topN(entries, n) {\n+  return rankings(entries).slice(0, n);\n+}\n+\n+module.exports = { topN };\ndiff --git a/test/display.test.js b/test/display.test.js\nnew file mode 100644\nindex 0000000..f897c4f\n--- /dev/null\n+++ b/test/display.test.js\n@@ -0,0 +1,8 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { displayName } = require('../src/display');\n+\n+test('falls back to the id when the name is blank', () => {\n+  assert.strictEqual(displayName({ id: 7, name: '  ' }), 'Player 7');\n+  assert.strictEqual(displayName({ id: 7, name: 'Ada' }), 'Ada');\n+});\ndiff --git a/test/rank.test.js b/test/rank.test.js\nnew file mode 100644\nindex 0000000..90d0f0f\n--- /dev/null\n+++ b/test/rank.test.js\n@@ -0,0 +1,9 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { rankings } = require('../src/rank');\n+\n+test('ranks highest score first', () => {\n+  const r = rankings([{ player: 'a', score: '5' }, { player: 'b', score: '12' }, { player: 'c', score: '9' }]);\n+  assert.deepStrictEqual(r.map((x) => x.player), ['b', 'c', 'a']);\n+  assert.deepStrictEqual(r.map((x) => x.rank), [1, 2, 3]);\n+});\n\n---FILES---\nsrc/top.js\nconst { rankings } = require('./rank');\n\nfunction topN(entries, n) {\n  return rankings(entries).slice(0, n);\n}\n\nmodule.exports = { topN };\nsrc/rank.js\nfunction rankings(entries) {\n  return [...entries]\n    .sort((a, b) => b.score - a.score)\n    .map((e, i) => ({ rank: i + 1, player: e.player, score: e.score }));\n}\n\nmodule.exports = { rankings };\nsrc/score.js\nfunction compareScore(a, b) {\n  const x = BigInt(a);\n  const y = BigInt(b);\n  return x < y ? -1 : x > y ? 1 : 0;\n}\n\nmodule.exports = { compareScore };\nsrc/display.js\nfunction displayName(player) {\n  const trimmed = player.name.trim();\n  return trimmed.length ? trimmed : 'Player ' + player.id;\n}\n\nmodule.exports = { displayName };\ntest/score.test.js\nconst test = require('node:test');\nconst assert = require('node:assert');\nconst { compareScore } = require('../src/score');\n\ntest('compares beyond 2^53', () => {\n  assert.strictEqual(compareScore('9007199254740993', '9007199254740992'), 1);\n  assert.strictEqual(compareScore('10', '9'), 1);\n});\ntest/display.test.js\nconst test = require('node:test');\nconst assert = require('node:assert');\nconst { displayName } = require('../src/display');\n\ntest('falls back to the id when the name is blank', () => {\n  assert.strictEqual(displayName({ id: 7, name: '  ' }), 'Player 7');\n  assert.strictEqual(displayName({ id: 7, name: 'Ada' }), 'Ada');\n});\ntest/rank.test.js\nconst test = require('node:test');\nconst assert = require('node:assert');\nconst { rankings } = require('../src/rank');\n\ntest('ranks highest score first', () => {\n  const r = rankings([{ player: 'a', score: '5' }, { player: 'b', score: '12' }, { player: 'c', score: '9' }]);\n  assert.deepStrictEqual(r.map((x) => x.player), ['b', 'c', 'a']);\n  assert.deepStrictEqual(r.map((x) => x.rank), [1, 2, 3]);\n});\n# highscore-api\n\nLeaderboards for highscore-api.\n\nScores can exceed 2^53, so the API returns each score as a decimal string (field \"score\"), never a JSON number: a Number would silently round it. Compare two scores with compareScore(a, b) in src/score.js, which handles arbitrary length. Never turn a score into a Number.\n\n## Ranking\n\nrankings(entries) returns the entries highest score first, each with a 1-based rank. topN(entries, n) returns the first n.\n\n## Display names\n\ndisplayName(player) trims the name and falls back to \"Player <id>\" when it is blank.\n# Changelog\n\n## 1.1.0\n\n- Leaderboard ranking and top-N.\n\n## 1.0.0\n\n- Scores stored and returned as decimal strings.\n{\n  \"name\": \"highscore-api\",\n  \"version\": \"1.1.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n\n---MAIN---\n\n[stderr]\nfatal: path 'src/leaderboard.js' does not exist in 'main'\n\n[exit 128]",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764",
+    "callId": "call_bizXdVAOV7JKArCK58mIppw2|fc_0b35d41c43731ec8016af07550326c87d288bac9192dfc35f8",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 14,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "2b8e0bd5-8c51-40ba-b267-bc9d2af494aa",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && npm test && node <<'NODE'\\nconst assert = require('node:assert/strict');\\nconst {rankings} = require('./src/rank');\\nconst {topN} = require('./src/top');\\nconst {compareScore} = require('./src/score');\\nconst entries = [\\n {player:'lower', score:'9007199254740992'},\\n {player:'higher', score:'9007199254740993'}\\n];\\nconsole.log('Exact comparison (higher vs lower):',compareScore(entries[1].score,entries[0].score));\\nconsole.log('Actual ranking:',JSON.stringify(rankings(entries)));\\nconsole.log('Actual top 1:',JSON.stringify(topN(entries,1)));\\nassert.deepEqual(rankings(entries).map(x=>x.player),['higher','lower']);\\nNODE\",\"purpose\":\"Testing ranking precision\",\"sandbox_id\":\"22eb36c5-20a3-4a8b-84f6-abd9be16f08c\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && npm test && node <<'NODE'\nconst assert = require('node:assert/strict');\nconst {rankings} = require('./src/rank');\nconst {topN} = require('./src/top');\nconst {compareScore} = require('./src/score');\nconst entries = [\n {player:'lower', score:'9007199254740992'},\n {player:'higher', score:'9007199254740993'}\n];\nconsole.log('Exact comparison (higher vs lower):',compareScore(entries[1].score,entries[0].score));\nconsole.log('Actual ranking:',JSON.stringify(rankings(entries)));\nconsole.log('Actual top 1:',JSON.stringify(topN(entries,1)));\nassert.deepEqual(rankings(entries).map(x=>x.player),['higher','lower']);\nNODE",
+    "purpose": "Testing ranking precision",
+    "sandbox_id": "22eb36c5-20a3-4a8b-84f6-abd9be16f08c",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764",
+    "callId": "call_V0gUhxacJUswJVaoClJnmKRO|fc_0b35d41c43731ec8016af07552837c87d2a309cff5c66ea417",
+    "tool": "execute",
+    "step": {
+     "id": "2b8e0bd5-8c51-40ba-b267-bc9d2af494aa",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 15,
+   "type": "tool_result",
+   "payload": {
+    "code": 1,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "\n> highscore-api@1.1.0 test\n> node --test\n\n✔ falls back to the id when the name is blank (0.75442ms)\n✔ ranks highest score first (1.016131ms)\n✔ compares beyond 2^53 (0.58571ms)\nℹ tests 3\nℹ suites 0\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 94.900545\nExact comparison (higher vs lower): 1\nActual ranking: [{\"rank\":1,\"player\":\"lower\",\"score\":\"9007199254740992\"},{\"rank\":2,\"player\":\"higher\",\"score\":\"9007199254740993\"}]\nActual top 1: [{\"rank\":1,\"player\":\"lower\",\"score\":\"9007199254740992\"}]\n\n[stderr]\nnpm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\nnode:assert:152\n  throw new AssertionError(obj);\n  ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n+ actual - expected\n\n  [\n+   'lower',\n    'higher',\n-   'lower'\n  ]\n\n    at [stdin]:12:8\n    at runScriptInThisContext (node:internal/vm:219:10)\n    at node:internal/process/execution:451:12\n    at [stdin]-wrapper:6:24\n    at runScriptInContext (node:internal/process/execution:449:60)\n    at evalFunction (node:internal/process/execution:283:30)\n    at evalTypeScript (node:internal/process/execution:295:3)\n    at node:internal/main/eval_stdin:51:5\n    at Socket.<anonymous> (node:internal/process/execution:205:5)\n    at Socket.emit (node:events:526:24) {\n  generatedMessage: true,\n  code: 'ERR_ASSERTION',\n  actual: [ 'lower', 'higher' ],\n  expected: [ 'higher', 'lower' ],\n  operator: 'deepStrictEqual',\n  diff: 'simple'\n}\n\nNode.js v24.22.1\n\n[exit 1]",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764",
+    "callId": "call_V0gUhxacJUswJVaoClJnmKRO|fc_0b35d41c43731ec8016af07552837c87d2a309cff5c66ea417",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 16,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "94dc4446-9ab6-442a-9570-db3b62ee5af5",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "{\"id\":\"rs_0b35d41c43731ec8016af07555ee3c87d2bc5dba815dfdcded\",\"type\":\"reasoning\",\"content\":[],\"encrypted_content\":\"gAAAAABq8HVWKCodOlxLlAJx3hxkAiG9tvzrvCobvxjMBSA_Zn1Gx390ip-ao9L76DAX-15Ba0Ye1Qz7q4BxdGZSWX1kdo2EyT105_KCStCgcE5CPILYoQAvh0vayL8UauyB9q4XRYueNZpldN8ITqn0_mIE9RQG6VgGZ7_36ar0Km3MlTUnB5U9-7A__AoDX0rEIPiMPmnyREH4Y1dT2uFK62KvfdNBFEpKlzzIgT2prebEAo1dSEzzUmfUDA0YmVQHSblV7q1l5XGR85ft2DNPXsafAR1foagKMwx4_k4rjc7VxmuB2o08jg7MOVzRHgkr1DX1z7PW0XxTPq2qPxfwHusekhmOmnEvRkWSvv999CN8nL8D1vXYsrfNqbuoZMQVpBUJS6gcFlplr03bWKag-HA5C7PeQhM8mPH4DsDjtB6r1fb5Zwfl-ek8HjOnM4k-QWZSk0FIegDHGWo6xMy3fLx8xeA_tOdKnQcvD5cY9SjJtMnGsYDlfnuuR4Gw8WIyT8v0vrpryW2aeiiqRq500HKw_bT-jvgknFTIL9DtnsJw9mSCOnkWXL63y3Mno3YJtfwsgg1ZraQ4cz9iVvIYDs7I_yR2kg3MfG6UiaQSgdAHJ7TUVaibvUBI_GDBBeryRTOlmJnkm1M4PwEO0mYlPc6Ex5UfeOs7dsfIYSVcUr3F--IWXvdzuHF3Ly4dhjiJkMXlfccgm6QVx_2asTEGJz3UQwxsfjRVF9-vYmbNY38sNkartt6De4t2Fz0rjyMlOiM6tSZXJwa2jWk_imFKhPJQcBWli4_vUNV7fLsPnoqSMcZXjWYzvBV0UQt0sIV96EEbwDAXJO_pUycTfRPOY0jt2a25spdkxX5n6oEUCkVSj0iYrBDhUoFwowTTXVxlFZXxsS93ii2hf3bL54JASlwH5ecumJDaGAUjJeR20KkggkRFFpkkXe_KTOjMtL2UkmzSFvsT1Gicc0Znao9dQwLSs7tA599DEu7z2-tgJNl2NbTdc_K9hKms0WoRCY-HDbvULxbv2cJzvHeY2-SeOiI-y5k7GwTQfh0IIShrwhgYGD5lYc_e5ot29GVHhLt4BSWLu4Sa6V9qY4g3tZZvJ2vRflnkWUOjpJERaWfWC09-D_OnkarTdK3JF7jMjh3tTRufrS-2A1r3LDi0eQ5XQd3vfwySIjt8-wGqtDFwMFYwxRxLRFJIKcrijqN6tk5BT2PKqzjQyYb8zbP3CmNZs2nvKTjSObQBot-yvmTTrt-p_YLOuViFBfC3cprtYZsBQ1jSAbIwCC7BDa4pH6jz3nXb59EoaeiaUZy7dBkztjbJ4qkt0oUOv0Ne9RJvHLb-5ymHlkmJNJRTjwSR3rLDQKuHDhd2j-Fjmw9gW-OnWW-obAofC6nFi1PXfWBF8eQWmb5vrPNTjzjVEwg5m8Au8BzfYKJoAtY0l2GagWHSyJ33V7EYQwxOgBi-zyLuxUiJNBWiDXnTolbdChAqAslVx5ilHiq6yMJ_Md7REfXfjKDD7eCOA7pNSKaxXIj4Mq-_ib-4eE4m52fgZbN-FqQKE8brnlW4On0QYJwr8wGMzAEmnLLXMwIBuxPnHqoUKiRfMG146YA9os3lhYDiKKpA__-2zVnDzMUSKIzmYtYXUcOsf-JzlIZzEo2bHDobGzKGt9-C-ATSp8SIYRqfL76u6ONPV4dY_XfkaR4w5WaM9fRtiS_nyGWm-vfhn2vjNAraJtMsVtUA_NLeP8ot6WfHvcbZQUS7Ig==\",\"summary\":[]}",
+    "thinking": "",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764",
+    "step": {
+     "id": "94dc4446-9ab6-442a-9570-db3b62ee5af5",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 17,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "94dc4446-9ab6-442a-9570-db3b62ee5af5",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --porcelain && git diff --check main...leaderboard-sort && git rev-parse --short main && git rev-parse --short leaderboard-sort && nl -ba src/rank.js && nl -ba src/top.js\",\"purpose\":\"Verifying review scope unchanged\",\"sandbox_id\":\"22eb36c5-20a3-4a8b-84f6-abd9be16f08c\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --porcelain && git diff --check main...leaderboard-sort && git rev-parse --short main && git rev-parse --short leaderboard-sort && nl -ba src/rank.js && nl -ba src/top.js",
+    "purpose": "Verifying review scope unchanged",
+    "sandbox_id": "22eb36c5-20a3-4a8b-84f6-abd9be16f08c",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764",
+    "callId": "call_p1rH5L5NuhMGL9chRRQsdFoJ|fc_0b35d41c43731ec8016af07556819887d2bf517fec46741556",
+    "tool": "execute",
+    "step": {
+     "id": "94dc4446-9ab6-442a-9570-db3b62ee5af5",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 18,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "93d02a4\n17941bc\n     1\tfunction rankings(entries) {\n     2\t  return [...entries]\n     3\t    .sort((a, b) => b.score - a.score)\n     4\t    .map((e, i) => ({ rank: i + 1, player: e.player, score: e.score }));\n     5\t}\n     6\t\n     7\tmodule.exports = { rankings };\n     1\tconst { rankings } = require('./rank');\n     2\t\n     3\tfunction topN(entries, n) {\n     4\t  return rankings(entries).slice(0, n);\n     5\t}\n     6\t\n     7\tmodule.exports = { topN };\n\n[exit 0]",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764",
+    "callId": "call_p1rH5L5NuhMGL9chRRQsdFoJ|fc_0b35d41c43731ec8016af07556819887d2bf517fec46741556",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 19,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "2e2e2b82-2140-4cc2-bc0c-8bfb47db8eb2",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "textBlock": {
+     "textSignature": "{\"v\":1,\"id\":\"msg_0b35d41c43731ec8016af075584a5087d29fd385048cba9dc9\",\"phase\":\"final_answer\"}"
+    },
+    "workStartedAt": 1794143557245,
+    "workFinishedAt": 1794143579219,
+    "text": "*One merge-blocking finding* in `leaderboard-sort` (`17941bc`) vs `main` (`93d02a4`):\n\n*P1 — Score sorting loses precision* — `src/rank.js:3`\n`b.score - a.score` coerces decimal strings to JavaScript Numbers, violating the existing arbitrary-length score contract. Distinct scores above 2^53 can compare as equal, leaving the lower score ranked first and causing `topN` to select the wrong winner.\n\nConfirmed with input ordered as:\n- `lower`: `\"9007199254740992\"`\n- `higher`: `\"9007199254740993\"`\n\nActual ranking: `lower, higher`; `topN(entries, 1)` also returns `lower`.\n\n*Recommendation:* use the existing exact comparator: `.sort((a, b) => compareScore(b.score, a.score))`, and add regression coverage for both ranking and top-N with these scores.\n\nAll 3 existing tests pass; the precision repro fails. No other blocking findings. No code changed; working tree is clean. I’d hold the merge for this fix.",
+    "runId": "f8418a3b-0f7b-42fd-b2a2-ba9b51828764",
+    "step": {
+     "id": "2e2e2b82-2140-4cc2-bc0c-8bfb47db8eb2",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  }
+ ]
+}

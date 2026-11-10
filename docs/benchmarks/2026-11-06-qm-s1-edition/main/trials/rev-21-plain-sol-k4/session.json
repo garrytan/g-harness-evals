@@ -1,0 +1,418 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 06:39 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "59724c29-6249-4853-8b47-00d964b3705b"
+    },
+    "text": "could you review the config-merge branch against main for me? it layers defaults under the user config. just a review, don't change the code please.",
+    "runId": "5f6fec87-0bd9-4c11-93db-f7944ef7bb3f"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "198a5603-0e67-4819-a496-85fc6f09d26f",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "textSignature": "{\"v\":1,\"id\":\"msg_056b145b6d175685016af089aaa09487d2af4dd34ea6d75971\",\"phase\":\"commentary\"}",
+    "text": "I’ll compare `config-merge` against `main`, check the merge behavior and tests, and leave the code untouched.\n",
+    "runId": "5f6fec87-0bd9-4c11-93db-f7944ef7bb3f",
+    "step": {
+     "id": "198a5603-0e67-4819-a496-85fc6f09d26f",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "name": "github-gitlab",
+    "wire": {
+     "message": {
+      "id": "198a5603-0e67-4819-a496-85fc6f09d26f",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"read\",\"name\":\"github-gitlab\"}"
+    },
+    "action": "read",
+    "runId": "5f6fec87-0bd9-4c11-93db-f7944ef7bb3f",
+    "callId": "call_cosuEibL6HB4CuY9OFNIIuvo|fc_056b145b6d175685016af089ab139487d2b854f28208bf98cc",
+    "tool": "skills",
+    "step": {
+     "id": "198a5603-0e67-4819-a496-85fc6f09d26f",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "dir": "/root/workspace/.agent-skills/0be01555ceefa61d2625cbc3/4259a1402cbd2a6b/github-gitlab",
+    "name": "github-gitlab",
+    "bytes": 6025,
+    "found": true,
+    "action": "read",
+    "sourceScopeId": "org:harness-eval",
+    "result": "[skill files synced to /root/workspace/.agent-skills/0be01555ceefa61d2625cbc3/4259a1402cbd2a6b/github-gitlab/]\n\n# GitHub / GitLab\n\nUse this skill when the user asks to inspect repos, issues, pull requests, merge\nrequests, code history, branches, or to make a small code change in a hosted repo.\n\n## Choose the account deliberately\n\nUse the current credential manifest to choose an account authorized for this conversation\nthat fits the user's intent. Run commands with `execute` and an explicit `sandbox_id`;\nkeep that ID throughout checkout, edits, checks, and push. Personal and shared accounts are both valid choices; neither\nis an automatic fallback when the other fails. If the intended account is unclear before\na write, ask. Do not infer permission from a login merely being present on the computer.\n\n- **Personal login:** use the authorized `gh`, `glab`, or Git login. Check the active\n  provider account (for example, `gh api user --jq .login`) and the Git transport's auth\n  configuration; a CLI API identity alone does not prove which account Git will use.\n- **Shared org credential:** if listed in the prompt, select its slug and use the\n  core-hosted smart HTTP remote in the `use-shared-credential` skill. This uses\n  the configured shared account, even when a personal OAuth connector is live.\n  Its name is an admin label, not a verified upstream username.\n- **Connected app:** use only advertised capabilities. API access does not by itself\n  establish native Git transport access or configure the CLI's active login.\n\nFor an existing checkout, inspect the remote and applicable credential-helper, SSH,\nproxy, and HTTP-header configuration. A reused checkout\nmay still select a previous account. Commit author metadata is separate from transport\nidentity. Resolve an unknown identity before a write; do not probe access by pushing.\n\n## Logging in\n\nUse the native login only after an explicit authentication rejection. A TLS timeout,\nconnection reset, rate limit, or GitHub server error is not evidence of logout or\npermission expiry. Do not consume another credential grant to repair transport.\n\nFor a confirmed missing or expired GitHub or GitLab login, follow the\n`interactive-login` skill: it runs `gh auth login` / `glab auth login` in a temporary\nhome as a background job, relays the code and URL, and saves the login to the keychain\nso later commands use it through `execute.credentials`.\n\n## Read-only work\n\nCheck auth and inspect repo state:\n\n```bash\ngh auth status\ngh repo view OWNER/REPO --json name,description,url,defaultBranchRef\ngh issue list --repo OWNER/REPO --state open --limit 20\ngh pr list --repo OWNER/REPO --state open --limit 20\n```\n\nFor GitLab:\n\n```bash\nglab auth status\nglab repo view GROUP/PROJECT\nglab issue list --repo GROUP/PROJECT\nglab mr list --repo GROUP/PROJECT\n```\n\nUse `git log`, `git show`, and `git diff` for codebase-change summaries. Cite commit\nhashes, PR/MR numbers, and links.\n\n## Checkout and edits\n\nClone or fetch only the repo the user asked for:\n\n```bash\ngh repo clone OWNER/REPO repo\ncd repo\ngit checkout -b codex/small-change\n```\n\nKeep changes scoped. Run the repo's tests. If a push or PR/MR creation is requested,\nprepare the branch and summary first.\n\n## Writes require approval\n\nPushing branches, creating PRs/MRs, merging, closing issues, editing labels, changing\nrepo settings, releases, or workflows are writes. Ask for approval before running the\nwrite command.\n\nAfter approval:\n\n```bash\ngit push -u origin codex/small-change\ngh pr create --repo OWNER/REPO --title \"...\" --body-file pr.md\n```\n\nFor GitLab:\n\n```bash\ngit push -u origin codex/small-change\nglab mr create --repo GROUP/PROJECT --title \"...\" --description-file mr.md\n```\n\nReport the final URL and leave enough context for review.\n\n## Wait for GitHub CI\n\nUse the bundled helper instead of a bare `gh pr checks --watch` or a handwritten\nshell loop. Use the absolute directory reported by the skill read in place of\n`<skill dir>`. It is one blocking watcher process, not repeated agent turns:\n\n```bash\nnode \"<skill dir>/scripts/watch-ci.mjs\" --repo OWNER/REPO --pr NUMBER --head REVIEWED_HEAD_SHA\n```\n\nCapture the full head SHA from `gh pr view NUMBER --repo OWNER/REPO --json headRefOid`\nbefore review. Use that same SHA for the watcher and the final merge gate. Start the\nwatcher with `execute` using the selected `sandbox_id` and `background:true`, then\nsubscribe with `background` action `watch` and its returned `process_id`. Keep one\nwatcher per PR. Set the process lifetime longer than the helper's 30-minute deadline;\nuse `--timeout-ms` for a different bounded deadline. Use only credentials authorized\nfor that background process; a live foreground grant does not authorize background work.\n\nThe helper polls GitHub internally and emits JSON status records. It retries only\nrecognized transient transport/server errors with bounded backoff. Pending checks\nremain pending. Real CI failures, authentication/authorization failures, changed heads,\nunknown errors, exhausted retries, and deadline expiry all stop with nonzero status.\nExplicit API rate limits stop as `rate_limited`, not authentication errors.\nEmpty check sets, skipped checks, and cancelled checks are not successful evidence.\nDo not interpret an exit code alone as \"checks concluded\": read the status record.\nDo not suppress a nonzero exit or print a success marker after it. Keep `set -e`.\n\nSuccess means the checks observed for the expected head passed, not permission to\nmerge. Re-read checks and review threads immediately before merging. Wait for async\nreviewers on that exact head; resolve findings and complete any review the repo\nrequires. After any push or head change, discard old success/review evidence and repeat.\nOnly merge when all gates pass, with GitHub's atomic head guard:\n\n```bash\ngh pr merge NUMBER --repo OWNER/REPO --squash --match-head-commit REVIEWED_HEAD_SHA\n```\n\nOn a branch that requires a merge queue, this queues the PR; it is merged only once\nGitHub shows it as merged. Never use auto-merge or bypass repository gates. This\nhelper does not retry GitLab commands or change their authentication behavior.\n",
+    "runId": "5f6fec87-0bd9-4c11-93db-f7944ef7bb3f",
+    "callId": "call_cosuEibL6HB4CuY9OFNIIuvo|fc_056b145b6d175685016af089ab139487d2b854f28208bf98cc",
+    "tool": "skills",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "6aa70880-4350-4fb1-9a32-57b55aff3e79",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -type d -name .git 2>/dev/null | head -30\",\"purpose\":\"Locating repository checkout\"}"
+    },
+    "scope": "scoped",
+    "command": "pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -type d -name .git 2>/dev/null | head -30",
+    "purpose": "Locating repository checkout",
+    "runId": "5f6fec87-0bd9-4c11-93db-f7944ef7bb3f",
+    "callId": "call_K0w4Bblq5UukAcnFpQcwKYw1|fc_056b145b6d175685016af089acdaf887d289505dcf073026ee",
+    "tool": "execute",
+    "step": {
+     "id": "6aa70880-4350-4fb1-9a32-57b55aff3e79",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\ntotal 16\ndrwxr-xr-x 4 root root 4096 Nov  8 14:39 .\ndrwx------ 6 root root 4096 Nov  8 14:39 ..\ndrwxr-xr-x 3 root root 4096 Nov  8 14:39 .agent-skills\ndrwxr-xr-x 6 root root 4096 Nov  8 14:39 repo\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "5f6fec87-0bd9-4c11-93db-f7944ef7bb3f",
+    "callId": "call_K0w4Bblq5UukAcnFpQcwKYw1|fc_056b145b6d175685016af089acdaf887d289505dcf073026ee",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "2b60ef2b-d123-4c0b-9a99-98abf20ad2e5",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log --oneline -6 && git diff main...config-merge --stat; git config --show-origin --get-regexp '(credential|http\\\\..*extraheader|core.sshCommand|url\\\\..*instead)' || true\",\"purpose\":\"Inspecting branch and changes\",\"sandbox_id\":\"local\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log --oneline -6 && git diff main...config-merge --stat; git config --show-origin --get-regexp '(credential|http\\..*extraheader|core.sshCommand|url\\..*instead)' || true",
+    "purpose": "Inspecting branch and changes",
+    "sandbox_id": "local",
+    "runId": "5f6fec87-0bd9-4c11-93db-f7944ef7bb3f",
+    "callId": "call_3RE2IB0oKcZ4gw4txC37cF1S|fc_056b145b6d175685016af089af30fc87d2a55b0cffdc31fb64",
+    "tool": "execute",
+    "step": {
+     "id": "2b60ef2b-d123-4c0b-9a99-98abf20ad2e5",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "wire": {
+     "content": [
+      {
+       "text": "sandbox not found: local",
+       "type": "text"
+      }
+     ]
+    },
+    "scope": "scoped",
+    "result": "Command execution failed: sandbox not found: local",
+    "runId": "5f6fec87-0bd9-4c11-93db-f7944ef7bb3f",
+    "callId": "call_3RE2IB0oKcZ4gw4txC37cF1S|fc_056b145b6d175685016af089af30fc87d2a55b0cffdc31fb64",
+    "tool": "execute",
+    "isError": true
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "966d73c0-8e9b-4145-be05-c3d8b6abe3ad",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "action": "list",
+    "purpose": "Identifying active sandbox",
+    "runId": "5f6fec87-0bd9-4c11-93db-f7944ef7bb3f",
+    "callId": "call_esX7nqJSnTQdhKcxBsSUa7iu|fc_056b145b6d175685016af089b19d4887d2b0cb4b377307a148",
+    "tool": "sandbox",
+    "step": {
+     "id": "966d73c0-8e9b-4145-be05-c3d8b6abe3ad",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "action": "list",
+    "result": "{\"sandboxes\":[{\"id\":\"2f72ab92-93f0-47b2-a679-585bc09f90ee\",\"name\":\"s1e-probe\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"]},\"state\":\"ready\",\"legacy\":false,\"backend\":\"local\",\"holders\":[\"5f6fec87-0bd9-4c11-93db-f7944ef7bb3f\"],\"createdAt\":\"2026-11-08T14:39:35.999Z\",\"createdBy\":\"harness-admin\",\"machineId\":\"qm-sbx-sandbox-2f72ab92-93f0-47b2-a679-585bc09f-b205f1\",\"ownerScopeId\":\"personal:U1\",\"backingScopeId\":\"sandbox-2f72ab92-93f0-47b2-a679-585bc09f90ee\"}],\"defaultSandboxId\":\"2f72ab92-93f0-47b2-a679-585bc09f90ee\",\"defaultMode\":\"selected\",\"providers\":[{\"name\":\"local\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\"},\"egressEnforcement\":\"none\",\"sizesMemory\":true,\"actions\":[\"create\",\"retire\"]}]}",
+    "runId": "5f6fec87-0bd9-4c11-93db-f7944ef7bb3f",
+    "callId": "call_esX7nqJSnTQdhKcxBsSUa7iu|fc_056b145b6d175685016af089b19d4887d2b0cb4b377307a148",
+    "tool": "sandbox",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "c8485fdf-0594-4395-803f-f5d80a680673",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log --oneline -6 && git diff main...config-merge --stat; git config --show-origin --get-regexp '(credential|http\\\\..*extraheader|core.sshCommand|url\\\\..*instead)' || true\",\"purpose\":\"Inspecting branch and changes\",\"sandbox_id\":\"2f72ab92-93f0-47b2-a679-585bc09f90ee\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log --oneline -6 && git diff main...config-merge --stat; git config --show-origin --get-regexp '(credential|http\\..*extraheader|core.sshCommand|url\\..*instead)' || true",
+    "purpose": "Inspecting branch and changes",
+    "sandbox_id": "2f72ab92-93f0-47b2-a679-585bc09f90ee",
+    "runId": "5f6fec87-0bd9-4c11-93db-f7944ef7bb3f",
+    "callId": "call_xNmUl4YGUTvFdd8NjRJ7A2Gr|fc_056b145b6d175685016af089b34af087d299d67f4f64c47990",
+    "tool": "execute",
+    "step": {
+     "id": "c8485fdf-0594-4395-803f-f5d80a680673",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* config-merge 77d6a81 Apply a stack of layers\n  main         49f8cc2 Load config layers\n77d6a81 Apply a stack of layers\nfb8e4df Merge config layers\n49f8cc2 Load config layers\n CHANGES.md          |  4 ++++\n README.md           |  4 ++++\n config/__init__.py  |  2 +-\n config/freeze.py    |  6 ++++++\n config/merge.py     |  2 ++\n config/stack.py     |  8 ++++++++\n docs/config.md      |  5 +++++\n tests/test_merge.py | 15 +++++++++++++++\n tests/test_stack.py | 12 ++++++++++++\n 9 files changed, 57 insertions(+), 1 deletion(-)\n\n[exit 0]",
+    "runId": "5f6fec87-0bd9-4c11-93db-f7944ef7bb3f",
+    "callId": "call_xNmUl4YGUTvFdd8NjRJ7A2Gr|fc_056b145b6d175685016af089b34af087d299d67f4f64c47990",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "861f6724-d9f7-4680-9b98-158077343e72",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git diff main...config-merge && find . -maxdepth 3 -type f -not -path './.git/*' -print && cat pyproject.toml 2>/dev/null; for f in config/*.py tests/*.py README.md docs/config.md; do echo ==== $f; nl -ba \\\"$f\\\"; done\",\"purpose\":\"Reading merge implementation and tests\",\"sandbox_id\":\"2f72ab92-93f0-47b2-a679-585bc09f90ee\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git diff main...config-merge && find . -maxdepth 3 -type f -not -path './.git/*' -print && cat pyproject.toml 2>/dev/null; for f in config/*.py tests/*.py README.md docs/config.md; do echo ==== $f; nl -ba \"$f\"; done",
+    "purpose": "Reading merge implementation and tests",
+    "sandbox_id": "2f72ab92-93f0-47b2-a679-585bc09f90ee",
+    "runId": "5f6fec87-0bd9-4c11-93db-f7944ef7bb3f",
+    "callId": "call_GYIGdt10UbtvbzxUarM0FG1f|fc_056b145b6d175685016af089b6093c87d29870491b216748d8",
+    "tool": "execute",
+    "step": {
+     "id": "861f6724-d9f7-4680-9b98-158077343e72",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "diff --git a/CHANGES.md b/CHANGES.md\nindex 0badbfc..b9fea17 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.3.0\n+\n+- Deep merge of config layers.\n+\n ## 0.2.0\n \n - Load config layers.\ndiff --git a/README.md b/README.md\nindex 8884f85..4eca239 100644\n--- a/README.md\n+++ b/README.md\n@@ -4,4 +4,8 @@ Layered config for conflayer.\n \n merge_config(base, override) returns base with override applied on top. The merge is deep: for a key whose value is a dict in both, the sub-dicts are merged the same way, so an override that sets one nested key keeps the base's other nested keys. Neither input is modified.\n \n+## Comparing\n+\n+freeze(data) turns a config into a hashable value for equality and caching.\n+\n Run the tests with python3 -B -m unittest.\ndiff --git a/config/__init__.py b/config/__init__.py\nindex 88d6a24..e07b0f7 100644\n--- a/config/__init__.py\n+++ b/config/__init__.py\n@@ -1,2 +1,2 @@\n \"\"\"Layered config.\"\"\"\n-__version__ = \"0.2.0\"\n+__version__ = \"0.3.0\"\ndiff --git a/config/freeze.py b/config/freeze.py\nnew file mode 100644\nindex 0000000..ca16c11\n--- /dev/null\n+++ b/config/freeze.py\n@@ -0,0 +1,6 @@\n+def freeze(data):\n+    if isinstance(data, dict):\n+        return tuple(sorted((k, freeze(v)) for k, v in data.items()))\n+    if isinstance(data, list):\n+        return tuple(freeze(v) for v in data)\n+    return data\ndiff --git a/config/merge.py b/config/merge.py\nnew file mode 100644\nindex 0000000..5d72dbe\n--- /dev/null\n+++ b/config/merge.py\n@@ -0,0 +1,2 @@\n+def merge_config(base, override):\n+    return {**base, **override}\ndiff --git a/config/stack.py b/config/stack.py\nnew file mode 100644\nindex 0000000..7032a17\n--- /dev/null\n+++ b/config/stack.py\n@@ -0,0 +1,8 @@\n+from .merge import merge_config\n+\n+\n+def apply_layers(layers):\n+    result = {}\n+    for layer in layers:\n+        result = merge_config(result, layer)\n+    return result\ndiff --git a/docs/config.md b/docs/config.md\nnew file mode 100644\nindex 0000000..407a294\n--- /dev/null\n+++ b/docs/config.md\n@@ -0,0 +1,5 @@\n+# Config merge\n+\n+- merge_config is a deep merge. A nested dict present in both base and override is merged key by key, not replaced.\n+- Example: base {'db': {'host': 'h', 'port': 5432}} with override {'db': {'port': 6000}} gives {'db': {'host': 'h', 'port': 6000}}; the host survives.\n+- Neither input dict is mutated; the result is a fresh structure.\ndiff --git a/tests/test_merge.py b/tests/test_merge.py\nnew file mode 100644\nindex 0000000..4d03847\n--- /dev/null\n+++ b/tests/test_merge.py\n@@ -0,0 +1,15 @@\n+import unittest\n+\n+from config.merge import merge_config\n+\n+\n+class MergeTest(unittest.TestCase):\n+    def test_top_level_override(self):\n+        self.assertEqual(merge_config({'a': 1, 'b': 2}, {'b': 3}), {'a': 1, 'b': 3})\n+\n+    def test_new_key_is_added(self):\n+        self.assertEqual(merge_config({'a': 1}, {'c': 9}), {'a': 1, 'c': 9})\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\ndiff --git a/tests/test_stack.py b/tests/test_stack.py\nnew file mode 100644\nindex 0000000..d6f7879\n--- /dev/null\n+++ b/tests/test_stack.py\n@@ -0,0 +1,12 @@\n+import unittest\n+\n+from config.stack import apply_layers\n+\n+\n+class StackTest(unittest.TestCase):\n+    def test_later_layers_win(self):\n+        self.assertEqual(apply_layers([{'a': 1}, {'a': 2}, {'b': 3}]), {'a': 2, 'b': 3})\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\n./README.md\n./tests/test_paths.py\n./tests/test_stack.py\n./tests/__init__.py\n./tests/test_merge.py\n./config/paths.py\n./config/freeze.py\n./config/__init__.py\n./config/merge.py\n./config/stack.py\n./docs/config.md\n./CHANGES.md\n==== config/__init__.py\n     1\t\"\"\"Layered config.\"\"\"\n     2\t__version__ = \"0.3.0\"\n==== config/freeze.py\n     1\tdef freeze(data):\n     2\t    if isinstance(data, dict):\n     3\t        return tuple(sorted((k, freeze(v)) for k, v in data.items()))\n     4\t    if isinstance(data, list):\n     5\t        return tuple(freeze(v) for v in data)\n     6\t    return data\n==== config/merge.py\n     1\tdef merge_config(base, override):\n     2\t    return {**base, **override}\n==== config/paths.py\n     1\tdef deep_get(data, dotted):\n     2\t    node = data\n     3\t    for part in dotted.split('.'):\n     4\t        if not isinstance(node, dict) or part not in node:\n     5\t            return None\n     6\t        node = node[part]\n     7\t    return node\n==== config/stack.py\n     1\tfrom .merge import merge_config\n     2\t\n     3\t\n     4\tdef apply_layers(layers):\n     5\t    result = {}\n     6\t    for layer in layers:\n     7\t        result = merge_config(result, layer)\n     8\t    return result\n==== tests/__init__.py\n==== tests/test_merge.py\n     1\timport unittest\n     2\t\n     3\tfrom config.merge import merge_config\n     4\t\n     5\t\n     6\tclass MergeTest(unittest.TestCase):\n     7\t    def test_top_level_override(self):\n     8\t        self.assertEqual(merge_config({'a': 1, 'b': 2}, {'b': 3}), {'a': 1, 'b': 3})\n     9\t\n    10\t    def test_new_key_is_added(self):\n    11\t        self.assertEqual(merge_config({'a': 1}, {'c': 9}), {'a': 1, 'c': 9})\n    12\t\n    13\t\n    14\tif __name__ == '__main__':\n    15\t    unittest.main()\n==== tests/test_paths.py\n     1\timport unittest\n     2\t\n     3\tfrom config.paths import deep_get\n     4\t\n     5\t\n     6\tclass PathsTest(unittest.TestCase):\n     7\t    def test_reads_a_nested_key(self):\n     8\t        self.assertEqual(deep_get({'a': {'b': 1}}, 'a.b'), 1)\n     9\t        self.assertIsNone(deep_get({'a': {}}, 'a.b'))\n    10\t\n    11\t\n    12\tif __name__ == '__main__':\n    13\t    unittest.main()\n==== tests/test_stack.py\n     1\timport unittest\n     2\t\n     3\tfrom config.stack import apply_layers\n     4\t\n     5\t\n     6\tclass StackTest(unittest.TestCase):\n     7\t    def test_later_layers_win(self):\n     8\t        self.assertEqual(apply_layers([{'a': 1}, {'a': 2}, {'b': 3}]), {'a': 2, 'b': 3})\n     9\t\n    10\t\n    11\tif __name__ == '__main__':\n    12\t    unittest.main()\n==== README.md\n     1\t# conflayer\n     2\t\n     3\tLayered config for conflayer.\n     4\t\n     5\tmerge_config(base, override) returns base with override applied on top. The merge is deep: for a key whose value is a dict in both, the sub-dicts are merged the same way, so an override that sets one nested key keeps the base's other nested keys. Neither input is modified.\n     6\t\n     7\t## Comparing\n     8\t\n     9\tfreeze(data) turns a config into a hashable value for equality and caching.\n    10\t\n    11\tRun the tests with python3 -B -m unittest.\n==== docs/config.md\n     1\t# Config merge\n     2\t\n     3\t- merge_config is a deep merge. A nested dict present in both base and override is merged key by key, not replaced.\n     4\t- Example: base {'db': {'host': 'h', 'port': 5432}} with override {'db': {'port': 6000}} gives {'db': {'host': 'h', 'port': 6000}}; the host survives.\n     5\t- Neither input dict is mutated; the result is a fresh structure.\n\n[exit 0]",
+    "runId": "5f6fec87-0bd9-4c11-93db-f7944ef7bb3f",
+    "callId": "call_GYIGdt10UbtvbzxUarM0FG1f|fc_056b145b6d175685016af089b6093c87d29870491b216748d8",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 14,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "46f9958b-0111-4a58-9cb5-1c7b2834194e",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "{\"id\":\"rs_056b145b6d175685016af089b829b487d29a1a77575f95cbd3\",\"type\":\"reasoning\",\"content\":[],\"encrypted_content\":\"gAAAAABq8Im6w0HVXofoaTtI30bfLzUZ0UawMrc1O0pxeUPm-7YwEQHEtg9Mqrs9etPubxyPW_poEoy51DTZo4lghcTnAe2dPEL7FLWVNnvkvJ2r-Z0XaxGQVtxeqtYh_fPW9SZ0ZNfVEyJSTENrn7S-bauyuBcI_62o4fk9AIWkd7LALYX6DQNG3yjqwttSWw8qeXHSIZr-5nx-CPc3PQIkP23bsHnkdc-7DIFxyrW0gkWmCYYzmsbfAqMLaYHK0FDYnfyYfvv16DGYISvt1M_YQ_AzZZuFOsST39rRasnEPHJUsLyiWI1jzTtUZoUh-bvLz8ClDDBZmgTpD5l_NNmPRmTlfaHS178bAzRAZtkuoW5W9O3GE3U5e9Auc2BHtiDz4eoSmq9ig6RVcgJNC1StDFO3kySX2YcBP9eLg39nrUsbi1bp3ngfyYfvgQFIFnnXl36M6_v4_vDPnmcLRF2DZRW1RHjvuMKShU7iWYNdAeWLOYUSBM6Vdl8_7VVNlVD9ijlCgD3BIwXez7f5PVlmm4QqHBnl9kqZ-Zchxu86qbCDc9r3db6hIKYcCMADuBAAuqeh3GBjofKfMqmbcnrvGi2h8ibSylblJOVe9CHu3FA5Cfb2DSHQVNvmGHUKPX48NaL-xB8rk0Xj66G81EdsaHf2PbqUoieki4uyn4SU1ZxB-66Hdvk9bXjrmNiCzgmscoadWxoW6dZ6k6aOUWXOWoEl40ObXxLr4Jj2FrQk_SgzMJrIBB4MH44zP24lyQQK6jz3w1bSSieLNHZ_hQhmtGgt_jDYRq1Aoxu7ThQYWzZnRvZV0eGiL_-qHn0o-wbos1igBvQxFONzSzHDan48k5pToMXxAdJstOcX_EQUAJVvCyZ7WjWEIBt-1cLGcg2Md797JIZU6J_YmjiyiPb6LLN5l_HKxrlLDegSmngdwMIYSbJhm7t8iUbCjmymua5NE97t2YQ0tKIVirqcP8Oi5V6YHU70p87QZzQ6pdPoyQdq7ZxtOz1ZqWctI9YLu6hsDY4vO9fVPUDKmo5_YFizJcq_1YGlFW2Gy3Mb-RKDZGd-wC8HzKszoO1V3P6SigHAd7hyuNJGWH0-TquhaTqULkl7REW1_VcoCSK6cNM0ndN9F-gcmP4TuuhKgU6-BzuoPMCIXYr0ZlIHOADCqMCScV8wUn8xxbt5va-IXfARrYnXa6KhtCOgfOs9Yz5ZkRj6zIVffLwk7YfXzn1OH23s49bZLJrQgUXtjscypZCO4W-3abBsX-rQAkz6evEWcnGd_iBBMtEl60ecTIMmqiHfsX0Jbl2I45BBlILxh8CXsn8iDcKoM48kJw3P5m_Vmd0lmgx4zkURewFZexkcR8ekH0MBSENHQHB8DWEUMA3dofG7Vr-VBcF33jHF4vU5mcUi1G5CieHUDt3zzAHI8kD4Id9zNalgZQTnbV8iqkZA-b5U_xFA3GNpiK2CPOMmzild57BHVc6CvvO15TE2UrAI2IOARF9yQbpChqJjsE35WDbq573CnitY5Vx56mSsdqccoI6hy1sPH0bg9yrBEwZ4hOd-uAL2v8IAKWykKxKZcoVjLOFREktU3sOJki5pUXr4YEFU0RUqzcsv_i_03fpS-BM8UmLzWl0hg9hVXyco62RRhQysnuudeLc70yWzFUxmWXpoo7HFYfsf7Dlv02kl9MQCiFv5IVdz4NyT0-hjks0t2gTFeGT1Ms5DFvNn0pljLDUcJi0sP4xOMgZ4xnY6EjPwy2sx--Verd4i9cFXRB03RIxP03wV_rGCp2-BYXbAqIp_OKVkPU_PPZrdlrn4jJEkXgd-Fk_gkP9c6LFxgHI2lZ8bN0JlTl8jy2xnqEftZ9uxpfX8jSAzVZFhIuYBPY7l0zbnKiW3rH9wiB8Q8FY5fEG4yxUhMiuZ76HDikG8OO1ByhhSBd_PRK1hxmxvchU_Jo-hFzBV0Zwf80CIL6x5YvK9OWj5OZNFXCyNPAQhZe3FLAGWdh9xYeSg91ApRWaHWSRPY3bm41eXgK9wVMeyFRSCqHgMMlDPq59RZSZfBzrCVFvXKfyzaXDvEEZAhCbMvedWW7-k0QsnterpoLZPeBkMdvc=\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"**Testing findings for collisions**\\n\\nI need to conduct tests to reproduce those three findings regarding freeze collisions. It seems like there could be a legitimate P2 clear dictionary or list collision happening. I'm thinking that I should create a fresh structure that separates out P2 because it might be the strongest case. I want to make sure all three findings are included in a concise way. Let's run those tests!\"}]}",
+    "thinking": "**Testing findings for collisions**\n\nI need to conduct tests to reproduce those three findings regarding freeze collisions. It seems like there could be a legitimate P2 clear dictionary or list collision happening. I'm thinking that I should create a fresh structure that separates out P2 because it might be the strongest case. I want to make sure all three findings are included in a concise way. Let's run those tests!",
+    "runId": "5f6fec87-0bd9-4c11-93db-f7944ef7bb3f",
+    "step": {
+     "id": "46f9958b-0111-4a58-9cb5-1c7b2834194e",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 15,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "46f9958b-0111-4a58-9cb5-1c7b2834194e",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && python3 -B -m unittest -v && python3 -B - <<'PY'\\nfrom config.merge import merge_config\\nfrom config.stack import apply_layers\\nfrom config.freeze import freeze\\nbase = {'db': {'host': 'h', 'port': 5432}}\\noverride = {'db': {'port': 6000}}\\nprint('nested merge:', merge_config(base, override))\\nprint('layered merge:', apply_layers([base, override]))\\nbase = {'db': {'host': 'h'}, 'plugins': ['core']}\\nresult = merge_config(base, {})\\nresult['db']['host'] = 'changed'\\nresult['plugins'].append('extra')\\nprint('base after result edits:', base)\\na, b = {'setting': {}}, {'setting': []}\\nprint('distinct configs:', a != b, 'equal frozen keys:', freeze(a) == freeze(b))\\nprint('dict/list collision:', freeze({'a': 1}) == freeze([['a', 1]]))\\nPY\\n git status --short\",\"purpose\":\"Testing behavior and reproducing bugs\",\"sandbox_id\":\"2f72ab92-93f0-47b2-a679-585bc09f90ee\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && python3 -B -m unittest -v && python3 -B - <<'PY'\nfrom config.merge import merge_config\nfrom config.stack import apply_layers\nfrom config.freeze import freeze\nbase = {'db': {'host': 'h', 'port': 5432}}\noverride = {'db': {'port': 6000}}\nprint('nested merge:', merge_config(base, override))\nprint('layered merge:', apply_layers([base, override]))\nbase = {'db': {'host': 'h'}, 'plugins': ['core']}\nresult = merge_config(base, {})\nresult['db']['host'] = 'changed'\nresult['plugins'].append('extra')\nprint('base after result edits:', base)\na, b = {'setting': {}}, {'setting': []}\nprint('distinct configs:', a != b, 'equal frozen keys:', freeze(a) == freeze(b))\nprint('dict/list collision:', freeze({'a': 1}) == freeze([['a', 1]]))\nPY\n git status --short",
+    "purpose": "Testing behavior and reproducing bugs",
+    "sandbox_id": "2f72ab92-93f0-47b2-a679-585bc09f90ee",
+    "runId": "5f6fec87-0bd9-4c11-93db-f7944ef7bb3f",
+    "callId": "call_dsnAtpYR2MM3JRQIAgXf3cGL|fc_056b145b6d175685016af089ba037487d2bda8fabcbd6ecc74",
+    "tool": "execute",
+    "step": {
+     "id": "46f9958b-0111-4a58-9cb5-1c7b2834194e",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 16,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "nested merge: {'db': {'port': 6000}}\nlayered merge: {'db': {'port': 6000}}\nbase after result edits: {'db': {'host': 'changed'}, 'plugins': ['core', 'extra']}\ndistinct configs: True equal frozen keys: True\ndict/list collision: True\n\n[stderr]\ntest_new_key_is_added (tests.test_merge.MergeTest.test_new_key_is_added) ... ok\ntest_top_level_override (tests.test_merge.MergeTest.test_top_level_override) ... ok\ntest_reads_a_nested_key (tests.test_paths.PathsTest.test_reads_a_nested_key) ... ok\ntest_later_layers_win (tests.test_stack.StackTest.test_later_layers_win) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n\n[exit 0]",
+    "runId": "5f6fec87-0bd9-4c11-93db-f7944ef7bb3f",
+    "callId": "call_dsnAtpYR2MM3JRQIAgXf3cGL|fc_056b145b6d175685016af089ba037487d2bda8fabcbd6ecc74",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 17,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "533c5b4d-c923-4146-b9b1-ddbf171531e8",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "textBlock": {
+     "textSignature": "{\"v\":1,\"id\":\"msg_056b145b6d175685016af089bc0c3c87d2b4043a6de55060f5\",\"phase\":\"final_answer\"}"
+    },
+    "workStartedAt": 1794148777044,
+    "workFinishedAt": 1794148800578,
+    "text": "Reviewed `config-merge` against `main`. **I’d fix these before merging:**\n\n1. **[P1] Nested user settings erase sibling defaults** — `config/merge.py:2`  \n   `{**base, **override}` is shallow, contrary to the documented deep-merge behavior. For example:\n   ```\n   defaults: {'db': {'host': 'h', 'port': 5432}}\n   user:     {'db': {'port': 6000}}\n   actual:   {'db': {'port': 6000}}\n   ```\n   The default `host` disappears. This also affects `apply_layers`. Recursively merge values when both are dictionaries, and test nested overrides.\n\n2. **[P2] The result shares mutable values with its inputs** — `config/merge.py:2`  \n   Only the outer dictionary is new. After `result = merge_config(base, {})`, editing a nested dictionary or appending to a list in `result` also changes `base`. This violates the documented “fresh structure” guarantee and can contaminate defaults reused across configurations. Copy retained mutable values and add isolation tests for both inputs.\n\n3. **[P2] `freeze` produces identical cache keys for distinct configurations** — `config/freeze.py:2–5`  \n   Both dictionaries and lists become untagged tuples. For example, `freeze({'setting': {}}) == freeze({'setting': []})` is `True`, although the configurations differ. This makes the advertised equality/caching use unsafe. Preserve container type in the frozen representation and test these collisions.\n\n**Validation:** All four existing tests pass; separate read-only checks reproduced all three issues. No code or files changed.",
+    "runId": "5f6fec87-0bd9-4c11-93db-f7944ef7bb3f",
+    "step": {
+     "id": "533c5b4d-c923-4146-b9b1-ddbf171531e8",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,301 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 06:49 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "64513514-76fe-4f02-86c3-5eb8ece9ab8f"
+    },
+    "text": "could you review the config-merge branch against main for me? it layers defaults under the user config. just a review, don't change the code please.",
+    "runId": "3f12f554-6cc7-4745-8d9b-5a77517b0f2d"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "27a1926b-aebb-4ada-b028-ea67084265c8",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "I'll take a look at the config-merge branch now.",
+    "runId": "3f12f554-6cc7-4745-8d9b-5a77517b0f2d",
+    "step": {
+     "id": "27a1926b-aebb-4ada-b028-ea67084265c8",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "27a1926b-aebb-4ada-b028-ea67084265c8",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /tmp/pi-cwd 2>/dev/null; ls; git rev-parse --show-toplevel 2>&1; find / -maxdepth 4 -name .git -type d 2>/dev/null | head\",\"purpose\":\"Locating the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /tmp/pi-cwd 2>/dev/null; ls; git rev-parse --show-toplevel 2>&1; find / -maxdepth 4 -name .git -type d 2>/dev/null | head",
+    "purpose": "Locating the repository",
+    "runId": "3f12f554-6cc7-4745-8d9b-5a77517b0f2d",
+    "callId": "toolu_01K3U8ByLNbebpCrYECF6cF6",
+    "tool": "execute",
+    "step": {
+     "id": "27a1926b-aebb-4ada-b028-ea67084265c8",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "repo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "3f12f554-6cc7-4745-8d9b-5a77517b0f2d",
+    "callId": "toolu_01K3U8ByLNbebpCrYECF6cF6",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "2dda12c0-df1d-436d-b7ee-96ace930c090",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /tmp/pi-cwd/repo; git branch -a; git log --oneline main..config-merge; git diff main...config-merge\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /tmp/pi-cwd/repo; git branch -a; git log --oneline main..config-merge; git diff main...config-merge",
+    "purpose": "Reading the branch diff",
+    "runId": "3f12f554-6cc7-4745-8d9b-5a77517b0f2d",
+    "callId": "toolu_016y4yCZZnPwu9kwyjsn8zdv",
+    "tool": "execute",
+    "step": {
+     "id": "2dda12c0-df1d-436d-b7ee-96ace930c090",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 129,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "[stderr]\nsh: 1: cd: can't cd to /tmp/pi-cwd/repo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nwarning: Not a git repository. Use --no-index to compare two paths outside a working tree\nusage: git diff --no-index [<options>] <path> <path>\n\nDiff output format options\n    -p, --patch           generate patch\n    -s, --no-patch        suppress diff output\n    -u                    generate patch\n    -U, --unified[=<n>]   generate diffs with <n> lines context\n    -W, --function-context\n                          generate diffs with <n> lines context\n    --raw                 generate the diff in raw format\n    --patch-with-raw      synonym for '-p --raw'\n    --patch-with-stat     synonym for '-p --stat'\n    --numstat             machine friendly --stat\n    --shortstat           output only the last line of --stat\n    -X, --dirstat[=<param1,param2>...]\n                          output the distribution of relative amount of changes for each sub-directory\n    --cumulative          synonym for --dirstat=cumulative\n    --dirstat-by-file[=<param1,param2>...]\n                          synonym for --dirstat=files,param1,param2...\n    --check               warn if changes introduce conflict markers or whitespace errors\n    --summary             condensed summary such as creations, renames and mode changes\n    --name-only           show only names of changed files\n    --name-status         show only names and status of changed files\n    --stat[=<width>[,<name-width>[,<count>]]]\n                          generate diffstat\n    --stat-width <width>  generate diffstat with a given width\n    --stat-name-width <width>\n                          generate diffstat with a given name width\n    --stat-graph-width <width>\n                          generate diffstat with a given graph width\n    --stat-count <count>  generate diffstat with limited lines\n    --compact-summary     generate compact summary in diffstat\n    --binary              output a binary diff that can be applied\n    --full-index          show full pre- and post-image object names on the \"index\" lines\n    --color[=<when>]      show colored diff\n    --ws-error-highlight <kind>\n                          highlight whitespace errors in the 'context', 'old' or 'new' lines in the diff\n    -z                    do not munge pathnames and use NULs as output field terminators in --raw or --numstat\n    --abbrev[=<n>]        use <n> digits to display object names\n    --src-prefix <prefix>\n                          show the given source prefix instead of \"a/\"\n    --dst-prefix <prefix>\n                          show the given destination prefix instead of \"b/\"\n    --line-prefix <prefix>\n                          prepend an additional prefix to every line of output\n    --no-prefix           do not show any source or destination prefix\n    --inter-hunk-context <n>\n                          show context between diff hunks up to the specified number of lines\n    --output-indicator-new <char>\n                          specify the character to indicate a new line instead of '+'\n    --output-indicator-old <char>\n                          specify the character to indicate an old line instead of '-'\n    --output-indicator-context <char>\n                          specify the character to indicate a context instead of ' '\n\nDiff rename options\n    -B, --break-rewrites[=<n>[/<m>]]\n                          break complete rewrite changes into pairs of delete and create\n    -M, --find-renames[=<n>]\n                          detect renames\n    -D, --irreversible-delete\n                          omit the preimage for deletes\n    -C, --find-copies[=<n>]\n                          detect copies\n    --find-copies-harder  use unmodified files as source to find copies\n    --no-renames          disable rename detection\n    --rename-empty        use empty blobs as rename source\n    --follow              continue listing the history of a file beyond renames\n    -l <n>                prevent rename/copy detection if the number of rename/copy targets exceeds given limit\n\nDiff algorithm options\n    --minimal             produce the smallest possible diff\n    -w, --ignore-all-space\n                          ignore whitespace when comparing lines\n    -b, --ignore-space-change\n                          ignore changes in amount of whitespace\n    --ignore-space-at-eol\n                          ignore changes in whitespace at EOL\n    --ignore-cr-at-eol    ignore carrier-return at the end of line\n    --ignore-blank-lines  ignore changes whose lines are all blank\n    -I, --ignore-matching-lines <regex>\n                          ignore changes whose all lines match <regex>\n    --indent-heuristic    heuristic to shift diff hunk boundaries for easy reading\n    --patience            generate diff using the \"patience diff\" algorithm\n    --histogram           generate diff using the \"histogram diff\" algorithm\n    --diff-algorithm <algorithm>\n                          choose a diff algorithm\n    --anchored <text>     generate diff using the \"anchored diff\" algorithm\n    --word-diff[=<mode>]  show word diff, using <mode> to delimit changed words\n    --word-diff-regex <regex>\n                          use <regex> to decide what a word is\n    --color-words[=<regex>]\n                          equivalent to --word-diff=color --word-diff-regex=<regex>\n    --color-moved[=<mode>]\n                          moved lines of code are colored differently\n    --color-moved-ws <mode>\n                          how white spaces are ignored in --color-moved\n\nOther diff options\n    --relative[=<prefix>]\n                          when run from subdir, exclude changes outside and show relative paths\n    -a, --text            treat all files as text\n    -R                    swap two inputs, reverse the diff\n    --exit-code           exit with 1 if there were differences, 0 otherwise\n    --quiet               disable all output of the program\n    --ext-diff            allow an external diff helper to be executed\n    --textconv            run external text conversion filters when comparing binary files\n    --ignore-submodules[=<when>]\n                          ignore changes to submodules in the diff generation\n    --submodule[=<format>]\n                          specify how differences in submodules are shown\n    --ita-invisible-in-index\n                          hide 'git add -N' entries from the index\n    --ita-visible-in-index\n                          treat 'git add -N' entries as real in the index\n    -S <string>           look for differences that change the number of occurrences of the specified string\n    -G <regex>            look for differences that change the number of occurrences of the specified regex\n    --pickaxe-all         show all changes in the changeset with -S or -G\n    --pickaxe-regex       treat <string> in -S as extended POSIX regular expression\n    -O <file>             control the order in which files appear in the output\n    --rotate-to <path>    show the change in the specified path first\n    --skip-to <path>      skip the output to the specified path\n    --find-object <object-id>\n                          look for differences that change the number of occurrences of the specified object\n    --diff-filter [(A|C|D|M|R|T|U|X|B)...[*]]\n                          select files by diff type\n    --output <file>       output to a specific file\n\n\n[exit 129]",
+    "runId": "3f12f554-6cc7-4745-8d9b-5a77517b0f2d",
+    "callId": "toolu_016y4yCZZnPwu9kwyjsn8zdv",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "0a90033f-2d45-4609-9777-3b3d24fbef36",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; git branch -a; git log --oneline main..config-merge; git diff main...config-merge\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..config-merge; git diff main...config-merge",
+    "purpose": "Reading the branch diff",
+    "runId": "3f12f554-6cc7-4745-8d9b-5a77517b0f2d",
+    "callId": "toolu_01GPALXvKJem5rSJy2ekHF7d",
+    "tool": "execute",
+    "step": {
+     "id": "0a90033f-2d45-4609-9777-3b3d24fbef36",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* config-merge\n  main\n77d6a81 Apply a stack of layers\nfb8e4df Merge config layers\ndiff --git a/CHANGES.md b/CHANGES.md\nindex 0badbfc..b9fea17 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.3.0\n+\n+- Deep merge of config layers.\n+\n ## 0.2.0\n \n - Load config layers.\ndiff --git a/README.md b/README.md\nindex 8884f85..4eca239 100644\n--- a/README.md\n+++ b/README.md\n@@ -4,4 +4,8 @@ Layered config for conflayer.\n \n merge_config(base, override) returns base with override applied on top. The merge is deep: for a key whose value is a dict in both, the sub-dicts are merged the same way, so an override that sets one nested key keeps the base's other nested keys. Neither input is modified.\n \n+## Comparing\n+\n+freeze(data) turns a config into a hashable value for equality and caching.\n+\n Run the tests with python3 -B -m unittest.\ndiff --git a/config/__init__.py b/config/__init__.py\nindex 88d6a24..e07b0f7 100644\n--- a/config/__init__.py\n+++ b/config/__init__.py\n@@ -1,2 +1,2 @@\n \"\"\"Layered config.\"\"\"\n-__version__ = \"0.2.0\"\n+__version__ = \"0.3.0\"\ndiff --git a/config/freeze.py b/config/freeze.py\nnew file mode 100644\nindex 0000000..ca16c11\n--- /dev/null\n+++ b/config/freeze.py\n@@ -0,0 +1,6 @@\n+def freeze(data):\n+    if isinstance(data, dict):\n+        return tuple(sorted((k, freeze(v)) for k, v in data.items()))\n+    if isinstance(data, list):\n+        return tuple(freeze(v) for v in data)\n+    return data\ndiff --git a/config/merge.py b/config/merge.py\nnew file mode 100644\nindex 0000000..5d72dbe\n--- /dev/null\n+++ b/config/merge.py\n@@ -0,0 +1,2 @@\n+def merge_config(base, override):\n+    return {**base, **override}\ndiff --git a/config/stack.py b/config/stack.py\nnew file mode 100644\nindex 0000000..7032a17\n--- /dev/null\n+++ b/config/stack.py\n@@ -0,0 +1,8 @@\n+from .merge import merge_config\n+\n+\n+def apply_layers(layers):\n+    result = {}\n+    for layer in layers:\n+        result = merge_config(result, layer)\n+    return result\ndiff --git a/docs/config.md b/docs/config.md\nnew file mode 100644\nindex 0000000..407a294\n--- /dev/null\n+++ b/docs/config.md\n@@ -0,0 +1,5 @@\n+# Config merge\n+\n+- merge_config is a deep merge. A nested dict present in both base and override is merged key by key, not replaced.\n+- Example: base {'db': {'host': 'h', 'port': 5432}} with override {'db': {'port': 6000}} gives {'db': {'host': 'h', 'port': 6000}}; the host survives.\n+- Neither input dict is mutated; the result is a fresh structure.\ndiff --git a/tests/test_merge.py b/tests/test_merge.py\nnew file mode 100644\nindex 0000000..4d03847\n--- /dev/null\n+++ b/tests/test_merge.py\n@@ -0,0 +1,15 @@\n+import unittest\n+\n+from config.merge import merge_config\n+\n+\n+class MergeTest(unittest.TestCase):\n+    def test_top_level_override(self):\n+        self.assertEqual(merge_config({'a': 1, 'b': 2}, {'b': 3}), {'a': 1, 'b': 3})\n+\n+    def test_new_key_is_added(self):\n+        self.assertEqual(merge_config({'a': 1}, {'c': 9}), {'a': 1, 'c': 9})\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\ndiff --git a/tests/test_stack.py b/tests/test_stack.py\nnew file mode 100644\nindex 0000000..d6f7879\n--- /dev/null\n+++ b/tests/test_stack.py\n@@ -0,0 +1,12 @@\n+import unittest\n+\n+from config.stack import apply_layers\n+\n+\n+class StackTest(unittest.TestCase):\n+    def test_later_layers_win(self):\n+        self.assertEqual(apply_layers([{'a': 1}, {'a': 2}, {'b': 3}]), {'a': 2, 'b': 3})\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\n\n[exit 0]",
+    "runId": "3f12f554-6cc7-4745-8d9b-5a77517b0f2d",
+    "callId": "toolu_01GPALXvKJem5rSJy2ekHF7d",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 8,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "a8149ee8-a2cf-4b4e-b148-9404fa282c24",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQS2wUKEAgTGAI4AUIIdGhpbmtpbmcSDK4MbmUe+L1TkvUDSRoMAWIOmM8hXH3zbQdqIjB2KQ/jyVlgVBUWwNMtxKVmLVZEgzivsGqkmbS4QwpPTPlEYHgZ7L97np+tWnvfNikq+ASI5MGvHwqRl6/SyCbO5fed41cE5HTw0aohxqxCHtbT4ioFhQmGI3hqiHsMAc4q4Se7qjLy0qLGvRXUH5sHLacgiTi+zlSTDHQfy7DPbQXZPy8byOaOCWmdSpfov4sP2MybSm3jC5POgF5qShTQRkt3Woz4B6+Du1whm/foweuZXZn4Ht+fgU56mN7tVX+LflfZNA3OxWBbtiDLL6gPK8NiQX3gaovYrfcVNObPdFfKjwCZGweHR47yYkbGry4gQ8iOnN2hVEIQH6WNtrzysuzngo5Sfrmd+7GdQoH3rh/myn6ca5ijxJ19+IZVUzRgpagrLh+6D52JKsoA1jx5Hok8yZYjtZuaKgBPiLIjjqCc2JdAqkaZKwW5Toe4UOUeWqxbuCPuK/OvNRR9QYt/QbCh5Xu6Z1FJbKPSpVjN+dXLi9XjtnTDwxrAFcD2qcAHn+Dc1wAtly/Mp+VjUDc7OVDn/tXLwR1V+pS0utdYwXkrPCiybovqFD6QXDADc00iB9GciyozYR1y5MbGJXyZ9ZvqBXH8AbfMQ/DCBVWVQGhjYwzNxdYohbSuLxzu2G20strmoCcD/cGnY6wwLuz7EFdeK8i5qe1RpR/L4wmhtmLbzIJfyvd+xD0qQvItf/eEb/fCfEIcOzZIpEyXJx/r7vOT2ojmrzCiG8Sez0XDcqC3zV2B+tb8gJ6qZHIRVV6ngrK2+Sq8iGqvnnJuo7r4Qgk2kmldPY1efMfva2enbUQ5K1Ilnn+PaOcI34ne+RqzbxhyxMv21XpBs7MnrbfTbWR+amtW2Qo/Bawj1gS/NFqtW7M6eqcnqn9mWiAL9CnXi43vNznjbOZohRgB",
+    "thinking": "I've spotted the main problem: the shallow merge goes against what the docs promise. I'll quickly check that and run the tests.\n\n",
+    "runId": "3f12f554-6cc7-4745-8d9b-5a77517b0f2d",
+    "step": {
+     "id": "a8149ee8-a2cf-4b4e-b148-9404fa282c24",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "a8149ee8-a2cf-4b4e-b148-9404fa282c24",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; python3 -B -m unittest 2>&1|tail -3; python3 -B -c \\\"\\nfrom config.merge import merge_config as m\\nb={'db':{'host':'h','port':5432}};print(m(b,{'db':{'port':6000}}))\\nfrom config.freeze import freeze\\ntry: print(hash(freeze({'a':{1,2}})))\\nexcept Exception as e: print(repr(e))\\nprint(freeze({'a':[1]})==freeze({'a':(1,)}))\\ntry: freeze({1:1,'a':2})\\nexcept Exception as e: print(repr(e))\\\"; git status --short\",\"purpose\":\"Checking merge behavior\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; python3 -B -m unittest 2>&1|tail -3; python3 -B -c \"\nfrom config.merge import merge_config as m\nb={'db':{'host':'h','port':5432}};print(m(b,{'db':{'port':6000}}))\nfrom config.freeze import freeze\ntry: print(hash(freeze({'a':{1,2}})))\nexcept Exception as e: print(repr(e))\nprint(freeze({'a':[1]})==freeze({'a':(1,)}))\ntry: freeze({1:1,'a':2})\nexcept Exception as e: print(repr(e))\"; git status --short",
+    "purpose": "Checking merge behavior",
+    "runId": "3f12f554-6cc7-4745-8d9b-5a77517b0f2d",
+    "callId": "toolu_01QzM5hFrGzTQTAz5vfspWMh",
+    "tool": "execute",
+    "step": {
+     "id": "a8149ee8-a2cf-4b4e-b148-9404fa282c24",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "Ran 4 tests in 0.000s\n\nOK\n{'db': {'port': 6000}}\nTypeError(\"unhashable type: 'set'\")\nTrue\nTypeError(\"'<' not supported between instances of 'str' and 'int'\")\n\n[exit 0]",
+    "runId": "3f12f554-6cc7-4745-8d9b-5a77517b0f2d",
+    "callId": "toolu_01QzM5hFrGzTQTAz5vfspWMh",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 11,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "15136124-7de9-4a7d-acb6-02845d717975",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "CAQSwAYKEAgTGAI4AUIIdGhpbmtpbmcSDFLg9knXynY+8BjlsBoMpk7RV1pS7CKeYKOZIjA9ZRuV3BFKCSK8BYJ2yZpaQ0a0+eJjJSZ3qqtiXL4H5uS+MPA2N9VVqL/riaYVDVwq3QVs9+OYkVIpVEaxM5BM34LqUkrFTEK+Q0zcEtESLE0bISL6RW89eG5dNbc2498kmiPvYcPFkdTWDNon90HJquJgwVQla5TVuuxz1lZq6r5Nt1d7dEKLGyR1YDqqs+l3/s4FIxoJOWZSjbd77Uh6z859ZuU2EDRM1ugu4S8zUBpwjUqwPU6AqTNOE+qjcGxGA783SmlP6ON5xeE9kRU0vBCD31m2u00cAY5RBunrkBOMVr3n87YCZt7mUcYb8WOkSnqc2cZ+juV30bMFVlKFbw+IyWn2DBfjRoVGHf67BYB7QZRkMXVAitdhijfLj+qQ/47tf/mgCIpZ1DHzLWjCnzr+aOp5JCO+jxdW2ew5EQjU95le0h/l+a0U2M4ZRPtn4HNK8+QKUxrGsFKgZKTyH2XfT6KHtzDPZSNp87uxeUkt1PFIB6dMugKm4vIV2EeMzLy3RG9TdCpbBVw6vYXZieDbt+5kWNRtSUzzy56pIagk000w+2qSi+ZfSE360MBmj8O/8HAsUiZg+4RqhwVf9QmH09PgwOYZkjBxx9v/2GO6Lqg7NbJRpNmL/7ZKJKfDrSVRmmS/NYjc5TQeoxwllNATIbRXESCeTM9IqkK+ZoR51DBVsl9MdvXv4WymZlU00Q0WJwBI7f47qHiLBL7yWGD0xekJ2TQS2obdrthjqcITfJrs+PgABu9SJ61amoqZpy+Ygp4x0ku7tSfevRGuxHgJKkgBCP4xR8HiuqEW03r6cPffu6fmHjOmiQt5LwifYRZvgIXOkJyliIaMo44Qb5I0Q6492BIONheYst7rLtDqNbNNAZFeUFkccaDWGBD6jQMh8SgyLHLfUFtLjleDUaAHB5sCbBG80T3foXYsEJcx4o/fHI1lm5dmKQnLMgswwx59DCelymLoIugU88FDp0fFsfcfaD72A6SOC3LF9LGOcuO8bgg1I2SLIgrBVR+0HnZRraaBzmVPWCrahs8UGAE=",
+    "thinking": "The shallow copy from the spread operator means nested dicts are still shared with the base, which will matter once the deep merge is fixed. That's fine for now.\n\n",
+    "runId": "3f12f554-6cc7-4745-8d9b-5a77517b0f2d",
+    "step": {
+     "id": "15136124-7de9-4a7d-acb6-02845d717975",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 12,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "15136124-7de9-4a7d-acb6-02845d717975",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794149363084,
+    "workFinishedAt": 1794149383244,
+    "text": "The branch isn't ready to merge. `merge_config` does a shallow merge, but the README, `docs/config.md` and the 0.3.0 changelog all say it's a deep merge. All 4 tests pass, but none of them check nested dicts, so the tests don't catch it. I didn't change any code.\n\n**Blocking**\n\n1. **`config/merge.py` replaces nested dicts instead of merging them.** `{**base, **override}` only merges the top level. I ran the example from `docs/config.md`:\n   - Input: `{'db': {'host': 'h', 'port': 5432}}` with override `{'db': {'port': 6000}}`\n   - Docs promise: `{'db': {'host': 'h', 'port': 6000}}`\n   - Actual result: `{'db': {'port': 6000}}`, so `host` is lost.\n\n   For this branch, that means a user config that sets one nested key wipes out every default under it. `apply_layers` uses `merge_config`, so it has the same problem.\n\n2. **Inputs aren't safe from changes after the merge.** The result shares nested dicts with `base` and `override`. Changing the result later can change the defaults, and the docs say neither input is modified. A deep merge should copy as it goes rather than reuse the input sub-dicts.\n\n3. **The tests miss both problems.** Please add tests for:\n   - a nested key being merged rather than replaced (the docs example works well)\n   - neither input changing after a merge, including when you edit the result\n   - a nested case through `apply_layers`\n   - what happens when a key is a dict on one side and not the other (probably the override replaces it, but it should be decided and documented)\n\n**Non-blocking (`config/freeze.py`)**\n\n4. **Mixed-type keys crash.** Sorting fails when a dict has both `int` and `str` keys: `freeze({1: 1, 'a': 2})` raises `TypeError`. Sorting by `repr(k)`, or another stable key, would avoid that.\n5. **Lists and tuples freeze to the same value.** `freeze({'a': [1]}) == freeze({'a': (1,)})` is `True`. That may be fine, but it's worth knowing.\n6. **Sets aren't handled.** `freeze` returns a set unchanged, so hashing the result fails. Converting sets to `frozenset` would fix it.\n7. **`freeze` has no tests,** and it isn't mentioned in the changelog even though the README now documents it.\n\n**Minor**\n- The version bump to 0.3.0 matches the changelog entry, which is good. The entry just shouldn't say \"deep merge\" until #1 is fixed.\n\nIf the plan is to ship this as a shallow merge for now, the other way out is to change the README and docs to say so. But a shallow merge defeats the point of putting defaults under the user config, so I'd fix the code.",
+    "runId": "3f12f554-6cc7-4745-8d9b-5a77517b0f2d",
+    "step": {
+     "id": "15136124-7de9-4a7d-acb6-02845d717975",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

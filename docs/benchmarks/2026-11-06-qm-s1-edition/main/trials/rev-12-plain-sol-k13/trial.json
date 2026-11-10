@@ -1,0 +1,155 @@
+{
+  "trial_id": "rev-12-plain-sol-k13",
+  "task_id": "rev-12",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 13,
+  "status": "ok",
+  "reply_text": "Reviewed `split-bill` (`10932d0`) against `main`. **One definite blocker:**\n\n**[P1] Uneven splits lose cents — `bill/split.py:4–5`**\nThe division rounds down, but the remainder is never distributed.\n- `split_bill(1000, 3)` returns `[333, 333, 333]`: **999 cents**, not 1000.\n- `split_bill(1, 3)` returns `[0, 0, 0]`: the entire bill disappears.\n\nThis violates the README’s explicit guarantee. Distribute the remainder one cent at a time to the first shares; add tests for both examples. Existing split tests only cover exact division.\n\n**Two edge-case decisions worth settling:**\n- **Zero weights — `bill/weighted.py:3–6`:** `weighted_split(1, [0, 1, 1])` returns `[1, 0, 0]`, charging the zero-weight person. If zero means “doesn’t participate,” skip those entries when distributing leftovers, or explicitly reject zero weights. All-zero weights currently raise `ZeroDivisionError`.\n- **Half-cent tips — `bill/tip.py:2`:** Python’s `round` uses ties-to-even: `with_tip(5, 10)` returns `5`, rounding a half-cent tip down. That isn’t necessarily wrong, but the intended rounding policy needs a test. `/ 100` also introduces floating-point arithmetic despite the integer-money convention; exact arithmetic would avoid that.\n\nAll **5 existing tests pass**, but none cover uneven equal splits or tips. The weighted implementation follows the documented front-first remainder policy for positive integer weights.\n\nNo code changed.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-12-plain-sol-k13",
+    "requests": 8,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0475915,
+    "input_tokens": 64933,
+    "output_tokens": 1259,
+    "cached_tokens": 52727,
+    "cache_write_tokens": 11886,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.00007180000000000001,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.047519700000000005,
+        "requests": 7
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 8
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 26.622,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-12-plain-sol-k13",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:35:51.126Z",
+    "images": {
+      "core": "sha256:70e9dbc58d38502117dc97d1c5973af7606fa9e34dfd9ef1126cfa852865f97b",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-3ebb1f12241a",
+        "id": "sha256:958971f8ae27f7ca240319e61a21fbb0732ff72617eaf9b2aed07d26a303043e",
+        "tree_sha256": "0ff9c772bc1379d77f354c6dff7853a4e5a7ff08ad0416b551b8f27f0f9b8262"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-5c179de2-cfe3-4165-8c67-fb02cfeb-2bd342"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:36:41.515Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/0ae0e70be44f80989fb0b02f/03d9e80076069e1b/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/0ae0e70be44f80989fb0b02f/03d9e80076069e1b/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git config --get-regexp 'credential|http\\..*extraheader|core.sshCommand' || true; cd /root/workspace/repo && ls -la && git diff --stat main...split-bill && git diff main...split-bill",
+          "code": 0,
+          "output": "  main       f2440cf Bill totals in integer cents\n* split-bill 10932d0 Itemised shares by weight\ntotal 32\ndrwxr-xr-x 6 root root 4096 Nov  8 13:36 .\ndrwxr-xr-x 4 root root 4096 Nov  8 13:36 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 13:36 .git\n-rw-r--r-- 1 root root  107 Nov  8 12:34 CHANGES.md\n-rw-r--r-"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-12-plain-sol-k13",
+      "meter": {
+        "requests": 8,
+        "usd": 0.0475915,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 8,
+        "usd": 0.0475915,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.00007180000000000001
+    }
+  }
+}

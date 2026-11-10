@@ -1,0 +1,356 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 07:01 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "364ebd2a-f022-4076-a5fc-5bd56dbe5260"
+    },
+    "text": "quick one: can you review http-retries vs main? It touches the client every worker uses so I want a careful look before it merges. Don't modify anything, just report back.",
+    "runId": "d044ed4a-4832-445f-8f0e-e14533db86cc"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "65bea467-089f-4939-a623-f8f45a8e61cd",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQSogUKEAgTGAI4AUIIdGhpbmtpbmcSDMKE7lF1f5Dt1QMDixoM9aVYVfDT08Juiq+ZIjCL+zqoI8E08TPDJqbrdmCQBK01sz72X6J4qU+wEICrLa1IQQSobnX0QGQTpTm2T4YqvwSa7TxqlNOBvChNFu+z6qtnq8zLjWAeOeExzBf+YhVi6OGA013dD8Ko6cNgI44R0HH/nt0jmyxVcEykNYK4Vbm7Mb3W+7vQYIvqLBqYwNswZWeZ+vA+WLyrMTVizDic0tiUULFRl/6xLH1CA1OdZAkg5MjLCwJYJzgPLTVAzimqUWC18+XceeD6luGWkVW6JqUAxQUjF79g+OgROeaqQCMyEI+Zg3zhQvEV5HwAyczBhnmVz/ZJu/QwqI+UYVijmn7ZJirQorNWUm2x6L4UiKKi356akhEx92N9qxny06uHOffFcFIIab49ZsJUhZ7p3sjYcQOGKpO387u1Y+z+072kObgKlxsCELEb1McwFUrGsYPeaJoUbzuGYB5UhJ/6AquR3fxQTx76VF+IY/SXlIYZeXQovbAtmn1AdAwFfKz9Cihu4YkRKu7u4dSA7HAEStTubdPsb4uuLujo0+VANe4bEG7g/ZY4ub0Pbt7JTWD5uNzHT6pzW2Dm25ckQVvXq1zTbjzXvKoLmZR1bQ5Bp8CXyhv5UsLKte5PdBOfzJpL19IxzVjlaNTpPCI/xLl3mJwBwsB8NJTN92WxlQCzkwHNP/B24F8NH8XlqPkcLMl/nButSQ2e1HydvnPGG6+BurydJyKvtU07LcRVKzSzRFr8sYGp5t84ShQIDaEWLoydekBFM05E/O0poEyvX4taS233R4dXL6zikjF//3Wnkl/ZEqH0D0uvL6CbkVlBFu4T8p41z6aawXOQmL8pwa/AmxgB",
+    "thinking": "I need to locate the repository, so I'll check the sandbox for available repos.\n\n",
+    "runId": "d044ed4a-4832-445f-8f0e-e14533db86cc",
+    "step": {
+     "id": "65bea467-089f-4939-a623-f8f45a8e61cd",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "65bea467-089f-4939-a623-f8f45a8e61cd",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "On it, finding the repo now.",
+    "runId": "d044ed4a-4832-445f-8f0e-e14533db86cc",
+    "step": {
+     "id": "65bea467-089f-4939-a623-f8f45a8e61cd",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "65bea467-089f-4939-a623-f8f45a8e61cd",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd ~ 2>/dev/null; for d in $(find / -name .git -maxdepth 5 -type d 2>/dev/null | head -20); do r=$(dirname $d); echo \"$r: $(git -C $r branch -a 2>/dev/null | grep -c http-retries)\"; done",
+      "purpose": "Locating the repository"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd ~ 2>/dev/null; for d in $(find / -name .git -maxdepth 5 -type d 2>/dev/null | head -20); do r=$(dirname $d); echo \"$r: $(git -C $r branch -a 2>/dev/null | grep -c http-retries)\"; done",
+    "purpose": "Locating the repository",
+    "retrySafe": true,
+    "runId": "d044ed4a-4832-445f-8f0e-e14533db86cc",
+    "callId": "toolu_01NCCdLusASXSHQu1TZRmigv",
+    "tool": "execute",
+    "step": {
+     "id": "65bea467-089f-4939-a623-f8f45a8e61cd",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 2
+    }
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace/repo: 1\n\n[exit 0]",
+    "runId": "d044ed4a-4832-445f-8f0e-e14533db86cc",
+    "callId": "toolu_01NCCdLusASXSHQu1TZRmigv",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "c2baf7bd-633f-41a3-8960-6e9066de06f9",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo; git log --oneline main..http-retries; git diff main...http-retries --stat; git diff main...http-retries",
+      "purpose": "Reading the branch diff"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; git log --oneline main..http-retries; git diff main...http-retries --stat; git diff main...http-retries",
+    "purpose": "Reading the branch diff",
+    "retrySafe": true,
+    "runId": "d044ed4a-4832-445f-8f0e-e14533db86cc",
+    "callId": "toolu_014J84Yd2hSp6QnYDoiU7b2E",
+    "tool": "execute",
+    "step": {
+     "id": "c2baf7bd-633f-41a3-8960-6e9066de06f9",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "b04b610 Retry 429 and 5xx responses with backoff\n CHANGELOG.md        |  4 ++++\n README.md           |  2 ++\n package.json        |  2 +-\n src/backoff.js      |  7 +++++++\n src/http.js         | 31 +++++++++++++++++++++++++++----\n src/retry-policy.js |  5 +++++\n test/retry.test.js  | 22 ++++++++++++++++++++++\n 7 files changed, 68 insertions(+), 5 deletions(-)\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex bb83104..ab561d9 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 4.1.0\n+\n+- Retries for 429 and 5xx responses, with full-jitter backoff.\n+\n ## 4.0.1\n \n - Timeouts can be disabled with timeoutMs: 0.\ndiff --git a/README.md b/README.md\nindex c64cca2..f1a1078 100644\n--- a/README.md\n+++ b/README.md\n@@ -5,6 +5,8 @@ Small HTTP client used by the workerkit workers.\n request(fetch, url, options):\n \n - timeoutMs: abort the request after this many milliseconds. Default 10000. 0 disables the timeout.\n+- retries: how many times to retry a 429 or 5xx response. Default 2. 501 Not Implemented is never retried, because it will not change on a retry.\n+- baseDelayMs: base of the backoff between retries. Default 250. Each wait uses full jitter: a random time between 0 and baseDelayMs * 2^attempt, capped at 8 seconds.\n - init: passed to fetch as is.\n \n The nightly export (src/export.js) sets timeoutMs: 0, because a full export can take ten minutes.\ndiff --git a/package.json b/package.json\nindex baf80bb..eccad0d 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"workerkit\",\n-  \"version\": \"4.0.1\",\n+  \"version\": \"4.1.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/backoff.js b/src/backoff.js\nnew file mode 100644\nindex 0000000..04ea3b9\n--- /dev/null\n+++ b/src/backoff.js\n@@ -0,0 +1,7 @@\n+const MAX_DELAY_MS = 8000;\n+\n+function backoff(attempt, baseDelayMs) {\n+  return Math.random() * Math.min(MAX_DELAY_MS, baseDelayMs * 2 ** attempt);\n+}\n+\n+module.exports = { backoff, MAX_DELAY_MS };\ndiff --git a/src/http.js b/src/http.js\nindex 282999c..0de2a8a 100644\n--- a/src/http.js\n+++ b/src/http.js\n@@ -1,14 +1,37 @@\n+const { shouldRetry } = require('./retry-policy');\n+const { backoff } = require('./backoff');\n+\n const DEFAULT_TIMEOUT_MS = 10000;\n+const DEFAULT_RETRIES = 2;\n+\n+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));\n+\n+function resolveOptions(opts = {}) {\n+  return {\n+    timeoutMs: opts.timeoutMs || DEFAULT_TIMEOUT_MS,\n+    retries: opts.retries ?? DEFAULT_RETRIES,\n+    baseDelayMs: opts.baseDelayMs ?? 250,\n+    init: opts.init ?? {},\n+  };\n+}\n \n-async function request(fetchImpl, url, opts = {}) {\n-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;\n+async function once(fetchImpl, url, init, timeoutMs) {\n   const controller = new AbortController();\n   const timer = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;\n   try {\n-    return await fetchImpl(url, { ...opts.init, signal: controller.signal });\n+    return await fetchImpl(url, { ...init, signal: controller.signal });\n   } finally {\n     if (timer) clearTimeout(timer);\n   }\n }\n \n-module.exports = { request, DEFAULT_TIMEOUT_MS };\n+async function request(fetchImpl, url, opts) {\n+  const o = resolveOptions(opts);\n+  for (let attempt = 0; ; attempt++) {\n+    const res = await once(fetchImpl, url, o.init, o.timeoutMs);\n+    if (!shouldRetry(res) || attempt >= o.retries) return res;\n+    await sleep(backoff(attempt, o.baseDelayMs));\n+  }\n+}\n+\n+module.exports = { request, resolveOptions, DEFAULT_TIMEOUT_MS };\ndiff --git a/src/retry-policy.js b/src/retry-policy.js\nnew file mode 100644\nindex 0000000..09fc7bc\n--- /dev/null\n+++ b/src/retry-policy.js\n@@ -0,0 +1,5 @@\n+function shouldRetry(res) {\n+  return res.status === 429 || (res.status >= 500 && res.status !== 501);\n+}\n+\n+module.exports = { shouldRetry };\ndiff --git a/test/retry.test.js b/test/retry.test.js\nnew file mode 100644\nindex 0000000..1ae861e\n--- /dev/null\n+++ b/test/retry.test.js\n@@ -0,0 +1,22 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { request } = require('../src/http');\n+\n+function replies(...statuses) {\n+  const calls = [];\n+  const fetchImpl = async (url) => { calls.push(url); return { status: statuses[calls.length - 1], ok: statuses[calls.length - 1] < 400 }; };\n+  return { fetchImpl, calls };\n+}\n+\n+test('a 503 is retried until it succeeds', async () => {\n+  const { fetchImpl, calls } = replies(503, 503, 200);\n+  const res = await request(fetchImpl, 'https://x.test/', { baseDelayMs: 0 });\n+  assert.strictEqual(res.status, 200);\n+  assert.strictEqual(calls.length, 3);\n+});\n+\n+test('501 is not retried', async () => {\n+  const { fetchImpl, calls } = replies(501, 200);\n+  assert.strictEqual((await request(fetchImpl, 'https://x.test/', { baseDelayMs: 0 })).status, 501);\n+  assert.strictEqual(calls.length, 1);\n+});\n\n[exit 0]",
+    "runId": "d044ed4a-4832-445f-8f0e-e14533db86cc",
+    "callId": "toolu_014J84Yd2hSp6QnYDoiU7b2E",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 7,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "91821948-127f-4612-92a9-4a61d94f3735",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQS8gYKEAgTGAI4AUIIdGhpbmtpbmcSDMPKHmgEou30HQfh8RoMlMvB8vBEcs9lRawOIjAyhX/9t9KB3+P8MPSNEiMTE0CdJXNFFNoWJgIFun6QYOBvTFGnGW12Z0UR9SvsgWQqjwaaHajaeVVIu5NNRSYLbVk707mwjTyV1EZOxnKhAMibmEcHvdg4UgwvtOJEv/SUDPtLF6tgq2ggUwMjj7LCN8x3U2l9c8sRwpjToiQneo/3omFccgmCP0qHLqlL610Wvz8C9PhuolFXlc01qboHlIpu4kDwdKQAmxzWpScNa0TNu51+ULUSXm3f7a3lb03OH5OdOaoPCHDMC4NjcpNhy+nvPToK3uSq945O+A/xQj9yoZlWuiRuzKthh4DCFwOPiGFCmu10QvnV1h7ETVW134ujQmok9EOiPQDQnTlMVCOFdwhGhNqcJn4hijaoRhJ9TT0YwNa4/2rc8ZR7ErHX8eyhFbYtUQiQjdX81AUJRjn10QRw0i5cOGHxajkHxMhLvdxX5ZCdxC8f8RTSzEjcHC1fmLcWqC69DQIoSK2XrtuCxVXb8apLd/u1dC/LDQROtBcurPE2efe/bjErSxdbhzxr6awlTrgpL3dFGzpnmYundiKMXUQ4h4ez03IbbWXmZ72aRXOwIKasIhXOyD8DhyXLXZ7PjZBL9ZVb1Mjk/Ovc3PC4h3Bdh5MzzOtp0TtE69obLPMF6uqF3yBU/HEScg4/3HNwUr8nXoPg+jdFDkG+MoUo9tWNge10Bmw1iRKe5lRWNqBdh/eCbhjQO6qagRBPL/7oaS5qEFC4ZJST1T/1kjlL9vPuJ53PExK0l/MsY3ls7i8FbpelXsGhwRHg5a6ok1nlzE9TF6Y1Uv212iMdoxIk0kjUY1TNPfGTM5f7ezrV4jnQjDhBUGI6U0f3SMRDFbfWH5xo3BGq7HlG69uGecyM3fSCi6TsBXRpmkPbaDVQzN9/UsotrQSBe0tlV6lOjjCh3njin5H8Hvf9DcARsb7mdhp3uf5j6K9O2oTzx02lpJTCZVZ+TbLYF6pxvsvIx9pL+JG4tpVgQqD3HIcXHwTQQASTCc7oArS/0PiJLa2s/GpSy6xOIKoEmviqioEju4Z5vuxhSzP6zmg1oBH4sADichCeMj20Owxmkjzp3DJGqduLnjJsUdG6jpeMfs8YAQ==",
+    "thinking": "I've spotted the key bug: `timeoutMs: 0 || DEFAULT` turns a zero timeout into 10000, which breaks the nightly export and repeats the 4.0.1 regression. I'll check export.js and its callers to see whether the request method is non-idempotent POST, since that would make retries unsafe.\n\n",
+    "runId": "d044ed4a-4832-445f-8f0e-e14533db86cc",
+    "step": {
+     "id": "91821948-127f-4612-92a9-4a61d94f3735",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "91821948-127f-4612-92a9-4a61d94f3735",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo; git show http-retries:src/export.js; git grep -n \"request(\\|method\" http-retries -- src | grep -v \"src/http.js\"; git stash list >/dev/null; git worktree add -q /tmp/hr http-retries 2>&1 && cd /tmp/hr && node --test 2>&1 | tail -5; cd /root/workspace/repo && git worktree remove /tmp/hr",
+      "purpose": "Checking callers and tests"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; git show http-retries:src/export.js; git grep -n \"request(\\|method\" http-retries -- src | grep -v \"src/http.js\"; git stash list >/dev/null; git worktree add -q /tmp/hr http-retries 2>&1 && cd /tmp/hr && node --test 2>&1 | tail -5; cd /root/workspace/repo && git worktree remove /tmp/hr",
+    "purpose": "Checking callers and tests",
+    "retrySafe": true,
+    "runId": "d044ed4a-4832-445f-8f0e-e14533db86cc",
+    "callId": "toolu_0175aMHKCwFfY38CUiQZe2BE",
+    "tool": "execute",
+    "step": {
+     "id": "91821948-127f-4612-92a9-4a61d94f3735",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "code": 128,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "const { request } = require('./http');\n\nasync function downloadExport(fetchImpl, baseUrl, day) {\n  const res = await request(fetchImpl, baseUrl + '/exports/' + day + '.ndjson', { timeoutMs: 0 });\n  if (!res.ok) throw new Error('export failed: HTTP ' + res.status);\n  return res.text();\n}\n\nmodule.exports = { downloadExport };\nhttp-retries:src/export.js:4:  const res = await request(fetchImpl, baseUrl + '/exports/' + day + '.ndjson', { timeoutMs: 0 });\nfatal: 'http-retries' is already checked out at '/root/workspace/repo'\n\n[stderr]\nfatal: '/tmp/hr' is not a working tree\n\n[exit 128]",
+    "runId": "d044ed4a-4832-445f-8f0e-e14533db86cc",
+    "callId": "toolu_0175aMHKCwFfY38CUiQZe2BE",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "7cb4850c-65a4-47c1-b73c-25e5a7d9f4b6",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo; git status --short; node --test 2>&1 | tail -8",
+      "purpose": "Running the test suite"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; git status --short; node --test 2>&1 | tail -8",
+    "purpose": "Running the test suite",
+    "retrySafe": true,
+    "runId": "d044ed4a-4832-445f-8f0e-e14533db86cc",
+    "callId": "toolu_01RRJNV2aPjzhJBMnU3J8AWy",
+    "tool": "execute",
+    "step": {
+     "id": "7cb4850c-65a4-47c1-b73c-25e5a7d9f4b6",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "ℹ tests 3\nℹ suites 0\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 92.313624\n\n[exit 0]",
+    "runId": "d044ed4a-4832-445f-8f0e-e14533db86cc",
+    "callId": "toolu_01RRJNV2aPjzhJBMnU3J8AWy",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "2bc304b4-e5de-484c-8fcf-c9ffc6c3a22c",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "CAQStAYKEAgTGAI4AUIIdGhpbmtpbmcSDDjySIRgVsS3QuWOhhoMAA3U3yz1mwJQZpL9IjCDJ8EX58Vmi3fSRN5SicytMGszXQ1B3xptETmYStOCb6ZjdaB2GEOIwSypfkwfZRkq0QXk8r5Tir3qRf9oWOOaszPp5g+qtWrK3dJm8IwDyAWDtOpCdIhG3WM7r7am3TfYxhYZoUvcBso1gW3ATFl2aR0yNpRWa+/FjE6XAeklhk6YetZTTfYpRM/2Ycfscjao4a9lFyj8HlFMgcx1CcfCJOqz+XYjPeYlHz4NOD0PSfgUR2/C4i/ZCvGfX7X7LDXmnoZESnu6FCxw9fjjoxJejn5K64HfEelM+KnxxfSnr+gxJn35gHZ8TxUemdl3ZEYTBANKCZa6iOv6ouY+l3FYcM2A4Nvjb5+wpDlY1bAUMVpSldWtiIE5iKne5v1CE1HEdQjA2Ddo7Bbkvz1WX99S6TEREtGK7QA7NyekJPGCOCCBWtxmv32b6pxT++q3lS05ji4ePTECTKoNcsYE/W89px42yw+xsRo8iHQT246XMTItw+8B0c3cnAuZwfKG1oF6XEwiRi+Hyl9X7B8BYGfrCafelckQAF4gcJKd7DYoq0hmesrGL7KFIP407aUA17N3vlb2Ad/6YkqW31XcNCc6dePOjcYvNIg8cdAVaum4KHa4FZ39i5CV6uMa60igBgv4r6A0lVnrZACzjvfFw6fXDKsUQ2qchn/JO0noLbwumxEVlSg0aZppIdnLACCrd6thF9oiFdL1SkVAoNoaFaibW1T8X49z1iifsLaH/kDkFKxSDLXEPslFo9ZRcLLWjH9b/z24jd+R1Z5PAoPlcSfOMChmKY9AG3wltfWKvdeAChAVNMLjH1FvJJKPMgmCIoa/FFctP3aYVZydXGLTKALhh1QnsShvtumd5+Kiqb9LqE5WFshortpDJBHDA/MidDcMbkEm2+Z6Mrp/NzLL/ZWHFsZqlxl+SAf3URZlbQ2VPhRXqLUJSyjbGnXXKQzd0EVKu3XuX1yuCSvUWCS37XHOHbT5szyA0+42Tc81j6+z64lSKm2bKNiR5YbU6BowVnG7jcY4GAE=",
+    "thinking": "Probably the third test is the existing timeout test. It passes even though there's a regression, so I'll just note it and move on to the report.\n\n",
+    "runId": "d044ed4a-4832-445f-8f0e-e14533db86cc",
+    "step": {
+     "id": "2bc304b4-e5de-484c-8fcf-c9ffc6c3a22c",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "2bc304b4-e5de-484c-8fcf-c9ffc6c3a22c",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794150082900,
+    "workFinishedAt": 1794150104628,
+    "text": "I'd hold off merging http-retries. It's one commit, \"Retry 429 and 5xx responses with backoff\". Tests pass (3/3), but it breaks something that already works and the tests don't catch it. I didn't change anything; I only read the code and ran the tests on the checked-out branch.\n\n**Blocker: the nightly export will start timing out after 10 seconds**\n- In `src/http.js`, the new `resolveOptions` sets `timeoutMs: opts.timeoutMs || DEFAULT_TIMEOUT_MS`. Because it uses `||`, a value of `0` gets replaced by the 10000ms default.\n- That undoes the 4.0.1 change that let callers pass `timeoutMs: 0` to turn the timeout off. The README still says 0 turns it off.\n- `src/export.js` passes `timeoutMs: 0` because a full export can take ten minutes. After this merge it would be cut off at 10s, and with retries it would fail up to 3 times instead of once.\n- Fix: change it to `opts.timeoutMs ?? DEFAULT_TIMEOUT_MS`, the same `??` the other options already use. Then add a test that `timeoutMs: 0` doesn't time out.\n\n**Should fix before merging**\n1. **Requests get retried no matter what type they are.** Any 429 or 5xx is retried twice by default, including POSTs and other requests that aren't safe to repeat. Since every worker uses this client, a 502 or 504 after the server already did the work could lead to duplicate writes. I'd retry only GET, HEAD, PUT and DELETE by default, or make retries opt-in per request.\n2. **Retry-After is ignored.** On a 429, servers often say how long to wait, but this uses its own random delay, which can be close to 0ms. That tends to hit a rate-limited service again right away.\n3. **Retried responses are never closed.** When a 5xx is retried, its body is just dropped. With real `fetch` that can keep connections tied up until garbage collection. Calling `res.body?.cancel()` before sleeping would fix it.\n\n**Minor**\n- Only 501 is excluded. 505 (HTTP Version Not Supported) is also permanent, and you may not want to retry other 5xx codes either.\n- Network errors and timeouts aren't retried, only HTTP status codes. That might be on purpose, but the changelog and README don't say so.\n- The tests only check 503→200 and 501. Nothing covers running out of retries, 429, `retries: 0`, or the timeout settings, which is how the blocker got through.\n- Small inconsistency: 250 is written inline in the code rather than as a named default like the others.\n\nThe version bump to 4.1.0, the changelog and the README updates all look fine. With the `??` fix and a decision on which request types get retried, this should be fine to merge.",
+    "runId": "d044ed4a-4832-445f-8f0e-e14533db86cc",
+    "step": {
+     "id": "2bc304b4-e5de-484c-8fcf-c9ffc6c3a22c",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

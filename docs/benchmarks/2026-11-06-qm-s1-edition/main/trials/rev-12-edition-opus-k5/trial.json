@@ -1,0 +1,159 @@
+{
+  "trial_id": "rev-12-edition-opus-k5",
+  "task_id": "rev-12",
+  "family": "review",
+  "arm": "edition",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 5,
+  "status": "ok",
+  "reply_text": "The cents handling has a real bug. `split_bill` drops the remainder, and the tests pass only because every test amount divides evenly. I didn't change any code. These are the cases I tried, run against the branch:\n\n**Blocking**\n1. **`split_bill` loses cents.** `split_bill(1000, 3)` returns `[333, 333, 333]`, which adds up to 999, so a cent goes missing. The README and `docs/money.md` both say the leftover cents go one each onto the first shares, but the code never does that: it only computes `total // n`. Both tests (`900/3` and `1000/2`) divide evenly, so they can't catch this. Add a test with a remainder, like 1000/3 → `[334, 333, 333]`.\n\n2. **`weighted_split` can charge someone with weight 0.** `weighted_split(1001, [0, 1, 1])` returns `[1, 500, 500]`: a person who owes nothing gets the leftover cent, because leftovers go by position rather than by weight. Skip zero weights, or better, give the leftover to the shares with the largest dropped fractions. That second option is the standard fair approach (largest remainder).\n\n**Should fix**\n3. **The tip rounding is inconsistent.** Python's `round` sends exact halves to the nearest even number, and the input goes through float maths. So a 15% tip on 50¢ (7.5) rounds up to 8, but on 150¢ (22.5) it rounds down to 22. Likewise `with_tip(1005, 10)` gives 1105, not 1106. Use integer maths for half-up rounding: `(total_cents * tip_percent + 50) // 100`. That works if `tip_percent` is a whole number; if you want fractional percents, use `Decimal`.\n\n4. **There's no input validation in `weighted_split`.** Empty or all-zero weights crash with `ZeroDivisionError`, and negative weights produce nonsense. Raise a `ValueError` the way `split_bill` does for `n <= 0`.\n\n5. **The docs promise more than the code delivers.** `docs/money.md` says `weighted_split` follows the same rule and keeps the spread to at most one cent. That can't hold for weighted shares, since they're meant to differ, so reword it to say the total is preserved and leftover cents are given out fairly. The README and CHANGES also say nothing about `weighted_split`.\n\n**Minor**\n- A negative total (a refund) gives `split_bill(-1000, 3)` → `[-334, -334, -334]`, which adds up to -1002. Either reject negative amounts or say how they're handled.\n- `with_tip` and `weighted_split` have no tests. Worth adding a property-style check that `sum(shares) == total` across a range of random totals and weights. That would have caught items 1 and 2.\n\nFixing item 1 is a few lines: do `q, r = divmod(total_cents, n)` and return `[q + 1] * r + [q] * (n - r)`.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-12-edition-opus-k5",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0677286,
+    "input_tokens": 53308,
+    "output_tokens": 1807,
+    "cached_tokens": 50117,
+    "cache_write_tokens": 2719,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000053200000000000006,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.06767540000000001,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 20.036,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-12-edition-opus-k5",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:51:36.446Z",
+    "images": {
+      "core": "sha256:d3c15a4ff59b46b682cc0b498a5b96d657f86e2d1ac9a8b947b4fb5d8b1c3302",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-3ebb1f12241a",
+        "id": "sha256:91dc59e94e42a00bd5882beb1ace1b38109eb459f931eb9003f3019249e101fb",
+        "tree_sha256": "0ff9c772bc1379d77f354c6dff7853a4e5a7ff08ad0416b551b8f27f0f9b8262"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-8862c3f1-5f44-43ae-95dc-463350cf-682949"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:52:20.212Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..split-bill; git diff main...split-bill",
+          "code": 0,
+          "output": "  main\n* split-bill\n10932d0 Itemised shares by weight\nfe83782 Split a bill between people\ndiff --git a/CHANGES.md b/CHANGES.md\nindex d7f4be6..fedb9bf 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.4.0\n+\n+- Split a bill between people, with a tip.\n+\n ## 0.3.0\n \n - Bill to"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-12-edition-opus-k5",
+      "meter": {
+        "requests": 5,
+        "usd": 0.0677286,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.0677286,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000053200000000000006
+    }
+  }
+}

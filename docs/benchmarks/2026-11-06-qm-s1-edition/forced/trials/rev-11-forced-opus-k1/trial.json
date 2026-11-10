@@ -1,0 +1,159 @@
+{
+  "trial_id": "rev-11-forced-opus-k1",
+  "task_id": "rev-11",
+  "family": "review",
+  "arm": "forced",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I reviewed `search-filters` against `main` and left the code alone, as you asked. There's one problem that should block the merge. The tests pass now, but only because they don't check that the search term goes into `params`.\n\n**CRITICAL**\n1. **SQL injection in free-text search** at `src/query.js:11–13`. The search term is pasted straight into the SQL as `\"name ILIKE '%\" + term + \"%'\"`. A term like `x%' OR 1=1 --` would rewrite the query. It also breaks the rule in your README that request values never go into the SQL string.\n   Fix: `params.push('%' + term + '%'); clauses.push('name ILIKE $' + params.length);`. If `%` and `_` in user input should match literally, escape them and add `ESCAPE '\\'`. Skip the clause when the trimmed term is empty, because right now `\"  \"` becomes `ILIKE '%%'`, which matches everything.\n\n**INFORMATIONAL**\n2. **The term tests don't check the parameter** at `test/query.test.js:9–17`. They only match `/name ILIKE/`, so the injection above passes.\n   Fix: assert the exact `{ where: 'WHERE name ILIKE $1', params: ['%red%'] }`, plus the combined case (`$2`, `['books', '%atlas%']`). Also add a test that a term containing `'` ends up only in `params`.\n3. **The in-stock test was deleted** in `test/query.test.js`. `stock > 0` no longer has a test of its own.\n   Fix: put back the `buildWhere({ inStock: true })` test.\n4. **The exported function was renamed** from `buildFilters` to `buildWhere` in `src/query.js:1,18`. Nothing in this repo calls the old name. Any outside code that imports `buildFilters` will break, though, and the CHANGELOG doesn't mention it.\n   Fix: also export `buildFilters` as an alias, or note the rename in the 0.6.0 entry.\n5. **The `relevance` sort uses a column I couldn't find** at `src/sort.js:2`. It's the default sort and orders by `rank DESC`, but nothing in the repo shows a `rank` column. If the table doesn't have one, every default search will error.\n   Fix: check the schema, or build `rank` from the search term with `ts_rank` or similar.\n\n`src/sort.js` only lets known sort names through (anything else falls back to the default), so it can't be injected. `src/paginate.js` handles bad page sizes and page numbers correctly.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": true,
+    "first_step": true,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-11-forced-opus-k1",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0708952,
+    "input_tokens": 70745,
+    "output_tokens": 1468,
+    "cached_tokens": 66744,
+    "cache_write_tokens": 3537,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000050400000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0708448,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 18.763,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-forced",
+    "trial_id": "rev-11-forced-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T15:56:59.186Z",
+    "images": {
+      "core": "sha256:2e05d38aa8a723fc1dc4db5a03cc9fa6005d056511b1f4447e2d4da73f065711",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-a37a4db49ad7",
+        "id": "sha256:7d769c95c796c963924759925a98a8067fe2c0eb613330da49ff7c499f5a85e2",
+        "tree_sha256": "593d02dc02e96eab384f83c52971c5fda6586bcbeb5e6f14ef27e349edfe0b1b"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 10973,
+      "sha256": "6f22a213090c75e7d37b9b679fa8d8017a4be7a9c0054237b5ffecb00ba76687"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-833e4462-c4e9-40c2-80bd-0dddd115-c96a17"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T15:57:41.666Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 22307,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": "soul",
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd repo; git checkout -q search-filters 2>&1; S=$(find / -path '*gstack-review/scripts/diff-base.sh' 2>/dev/null | head -1); sh $S main; git diff $(git merge-base main HEAD)",
+          "code": 0,
+          "output": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex d29661f..a673868 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.6.0\n+\n+- Free-text product search and sort orders.\n+\n ## 0.5.0\n \n - Search by category and in-stock filters.\ndiff --git a/README.md b/README.md\nindex fdb1"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-11-forced-opus-k1",
+      "meter": {
+        "requests": 5,
+        "usd": 0.0708952,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.0708952,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000050400000000000005
+    }
+  }
+}

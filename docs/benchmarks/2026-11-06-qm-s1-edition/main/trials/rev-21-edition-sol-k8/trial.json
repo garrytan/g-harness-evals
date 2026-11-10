@@ -1,0 +1,178 @@
+{
+  "trial_id": "rev-21-edition-sol-k8",
+  "task_id": "rev-21",
+  "family": "review",
+  "arm": "edition",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 8,
+  "status": "ok",
+  "reply_text": "Found three issues in `config-merge` against `main`:\n\n1. **High — Nested user config erases defaults** — `config/merge.py:2`  \n   The merge is shallow, contrary to the documented deep-merge behavior. Layering `{'db': {'port': 6000}}` over `{'db': {'host': 'h', 'port': 5432}}` drops `host`. This also affects `apply_layers`.  \n   **Recommended fix:** Recursively merge values when both are dicts; add the documented nested example as a regression test.\n\n2. **Medium — Results share mutable objects with inputs** — `config/merge.py:2`  \n   Only the outer dict is fresh. Mutating a nested dict or list in the result also mutates the original defaults or user config, violating the “fresh structure” contract in `docs/config.md:5`.  \n   **Recommended fix:** Copy mutable values, including values retained from only one input; test that result mutations leave both inputs unchanged.\n\n3. **Medium — `freeze` conflates distinct configurations** — `config/freeze.py:2–5`  \n   Dicts and lists both become untagged tuples: `freeze({'a': 1}) == freeze([['a', 1]])`. Equality checks and caches can therefore treat different configs as identical.  \n   **Recommended fix:** Preserve container types with distinct tags in the frozen representation; add a collision regression test.\n\nAll four existing tests pass, but they don’t cover these cases. I reproduced all three issues without changing any files.",
+  "counts": {
+    "open_matched": true,
+    "open_any": true,
+    "complete_read": true,
+    "first_step": true,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-21-edition-sol-k8",
+    "requests": 8,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.050320100000000006,
+    "input_tokens": 75647,
+    "output_tokens": 966,
+    "cached_tokens": 61541,
+    "cache_write_tokens": 13794,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.000069,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.05025110000000001,
+        "requests": 7
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 8
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 17.717,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-21-edition-sol-k8",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:13:54.273Z",
+    "images": {
+      "core": "sha256:3910594b6055b8b889d444e7b76a92af38d79a0b5bb0951c442dff7124c7be49",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-4c7c36bc6936",
+        "id": "sha256:f78d22b33b8c0d9c2dcac5766bf96e865ff2ec7ca8571eee238d2c75bb6cc4e7",
+        "tree_sha256": "d9e3a4b2ffbd4a94f4219657ce3513342c06ad2b17d16fc272f9c11c39ee6761"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-d0cbee11-d970-435f-a217-82c4eee7-348e8e"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:14:35.769Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/fc55800cb1c2d41897780c47/29e7baa7138b7dc6/gstack-review/SKILL.md",
+        "/root/workspace/.agent-skills/fc55800cb1c2d41897780c47/29e7baa7138b7dc6/gstack-review/scripts/diff-base.sh",
+        "/root/workspace/.agent-skills/fc55800cb1c2d41897780c47/7f46dd2eb555ba15/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/fc55800cb1c2d41897780c47/7f46dd2eb555ba15/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [
+        {
+          "seq": 2,
+          "skill": "gstack-review",
+          "via": "skill"
+        }
+      ],
+      "complete_via": "inline",
+      "read_whole": true,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git status --short && git branch -av && git remote -v && sh /root/workspace/.agent-skills/fc55800cb1c2d41897780c47/29e7baa7138b7dc6/gstack-review/scripts/diff-base.sh main",
+          "code": 0,
+          "output": "* config-merge 77d6a81 Apply a stack of layers\n  main         49f8cc2 Load config layers\nBRANCH: config-merge\nBASE: main\nMERGE_BASE: 49f8cc22a71bf8c4b14546addf0be1e0a8a73db5\n== commits since base\n77d6a81 Apply a stack of layers\nfb8e4df Merge config layers\n== diff stat (working tree against merge bas"
+        },
+        {
+          "seq": 10,
+          "command": "cd /root/workspace/repo && git diff 49f8cc22a71bf8c4b14546addf0be1e0a8a73db5 && find . -maxdepth 3 -type f -not -path './.git/*' -print && cat config/*.py tests/*.py README.md docs/config.md pyproject.toml 2>/dev/null",
+          "code": 1,
+          "output": "diff --git a/CHANGES.md b/CHANGES.md\nindex 0badbfc..b9fea17 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.3.0\n+\n+- Deep merge of config layers.\n+\n ## 0.2.0\n \n - Load config layers.\ndiff --git a/README.md b/README.md\nindex 8884f85..4eca239 100644\n--- a/README.md\n+++ b/RE"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": "/root/workspace/.agent-skills/fc55800cb1c2d41897780c47/29e7baa7138b7dc6/gstack-review",
+        "rewritten": true
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-21-edition-sol-k8",
+      "meter": {
+        "requests": 8,
+        "usd": 0.050320100000000006,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 8,
+        "usd": 0.050320100000000006,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.000069
+    }
+  }
+}

@@ -1,0 +1,531 @@
+{
+ "run_id": "frontier-harness-2026-11",
+ "method": {
+  "estimator": "task mean (each task's mean pass over its scored attempts, then the mean over tasks); task-clustered percentile bootstrap intervals; pairs from runner/stats/paired.ts clusteredPairedDelta over per-task means of the attempts scored in both cells, Holm within model across primary pairs for the two-sided sign-flip p and for the one-sided non-inferiority p",
+  "seed": 7,
+  "draws": 10000,
+  "alpha": 0.05,
+  "ni_margin": 0.15,
+  "saturated_at": 0.95,
+  "min_paired_tasks": 10,
+  "drift_threshold": null,
+  "wall_time": "median over scored trials, contended (trials of a shard may overlap)",
+  "cost": "recorded USD of every trial record of the cell (excluded ones included; a run a rerun replaced is not a record) over scored passes"
+ },
+ "verdict_rules": {
+  "home": "the model's home harness; every other cell of the model is compared with it",
+  "incomplete": "the cell or its home cell has a planned trial with no record, or the pair has fewer than min_paired_tasks (10 by default) tasks with an attempt scored in both cells: reported from what exists, no claim",
+  "descriptive": "an extension cell (descriptive in the spec, for example one attempt per task): estimate and intervals only, no test and no non-inferiority claim",
+  "behind": "a primary pair whose two-sided task-level sign-flip p, Holm-adjusted across the model's primary pairs, is at or below alpha with the cell below its home",
+  "within-15": "a primary pair that is not behind and whose one-sided non-inferiority p at a 15-point margin (the share of task-bootstrap draws of cell minus home at or below -15 points), Holm-adjusted across the model's primary pairs, is at or below alpha",
+  "saturated": "a primary pair that is neither behind nor within-15 and whose home cell averages at least saturated_at (95% by default) on the paired tasks, or where no paired task differs: a ceiling, not a tie",
+  "inconclusive": "every other primary pair: the data show neither that the cell is within 15 points of its home nor that it is behind"
+ },
+ "trials_planned": 208,
+ "trials_recorded": 208,
+ "trials_outside_spec": 0,
+ "trials_unstarted": 0,
+ "complete": true,
+ "lookup_fails": 0,
+ "tasks": {
+  "total": 52,
+  "passed_every_attempt_in_every_cell": [
+   "adaptive-rejection-sampler",
+   "bn-fit-modify",
+   "build-cython-ext",
+   "caffe-cifar-10",
+   "cancel-async-tasks",
+   "chess-best-move",
+   "cobol-modernization",
+   "code-from-image",
+   "dna-insert",
+   "feal-differential-cryptanalysis",
+   "feal-linear-cryptanalysis",
+   "financial-document-processor",
+   "gpt2-codegolf",
+   "headless-terminal",
+   "install-windows-3.11",
+   "large-scale-text-editing",
+   "largest-eigenval",
+   "mailman",
+   "make-mips-interpreter",
+   "mcmc-sampling-stan",
+   "modernize-scientific-stack",
+   "nginx-request-logging",
+   "overfull-hbox",
+   "path-tracing",
+   "path-tracing-reverse",
+   "pytorch-model-recovery",
+   "query-optimize",
+   "regex-chess",
+   "sam-cell-seg",
+   "schemelike-metacircular-eval",
+   "sqlite-db-truncate",
+   "torch-pipeline-parallelism",
+   "torch-tensor-parallelism",
+   "tune-mjcf"
+  ],
+  "never_passed_in_any_cell": [
+   "dna-assembly",
+   "filter-js-from-html",
+   "make-doom-for-mips",
+   "video-processing"
+  ]
+ },
+ "models": [
+  {
+   "id": "astra",
+   "label": "GPT-6 Astra",
+   "home": "astra-codex",
+   "primary_cells": [
+    "astra-codex"
+   ],
+   "noise": {
+    "rerun_flip": null,
+    "harness_flip": null,
+    "harness_minus_rerun": null
+   },
+   "drift": {
+    "cell": "astra-codex",
+    "tasks": 0,
+    "attempt_1": null,
+    "attempt_2": null,
+    "delta": null,
+    "ci95": null,
+    "threshold": null,
+    "exceeds": null
+   }
+  },
+  {
+   "id": "fable",
+   "label": "Claude Fable 5.1",
+   "home": "fable-cc",
+   "primary_cells": [
+    "fable-cc"
+   ],
+   "noise": {
+    "rerun_flip": null,
+    "harness_flip": null,
+    "harness_minus_rerun": null
+   },
+   "drift": {
+    "cell": "fable-cc",
+    "tasks": 0,
+    "attempt_1": null,
+    "attempt_2": null,
+    "delta": null,
+    "ci95": null,
+    "threshold": null,
+    "exceeds": null
+   }
+  }
+ ],
+ "cells": [
+  {
+   "id": "astra-codex",
+   "label": "Codex",
+   "model": "astra",
+   "harness": "codex",
+   "attempts": 1,
+   "descriptive": false,
+   "trials": {
+    "planned": 52,
+    "recorded": 52,
+    "scored": 52,
+    "excluded": {
+     "model_error": 0,
+     "infra_error": 0,
+     "exam_fault": 0
+    },
+    "harness_error_as_fail": 1,
+    "lookup_fails": 0,
+    "cap_stop": 0,
+    "unstarted": []
+   },
+   "terminations": {
+    "completed": 51,
+    "timeout": 0,
+    "approval_stop": 0,
+    "harness_error": 1,
+    "model_error": 0,
+    "infra_error": 0,
+    "exam_fault": 0
+   },
+   "pass_rate": {
+    "estimate": 0.865385,
+    "ci95": [
+     0.769231,
+     0.942308
+    ],
+    "tasks": 52,
+    "scored_trials": 52,
+    "passes": 45
+   },
+   "reliability": {
+    "k": 1,
+    "pass_hat_k": {
+     "estimate": 0.865385,
+     "ci95": [
+      0.769231,
+      0.942308
+     ],
+     "tasks": 52
+    },
+    "pass_at_k": {
+     "estimate": 0.865385,
+     "ci95": [
+      0.769231,
+      0.942308
+     ],
+     "tasks": 52
+    },
+    "tasks_with_fewer_than_k": 0
+   },
+   "rerun_flip": null,
+   "cost": {
+    "usd_total": 80.028486,
+    "solves": 45,
+    "usd_per_solve": 1.778411,
+    "ci95": [
+     1.228726,
+     2.546942
+    ],
+    "note": null
+   },
+   "wall_s_median_contended": 304.1,
+   "verdict": "home",
+   "reason": "home harness of GPT-6 Astra"
+  },
+  {
+   "id": "astra-openclaw",
+   "label": "OpenClaw",
+   "model": "astra",
+   "harness": "openclaw",
+   "attempts": 1,
+   "descriptive": true,
+   "trials": {
+    "planned": 52,
+    "recorded": 52,
+    "scored": 52,
+    "excluded": {
+     "model_error": 0,
+     "infra_error": 0,
+     "exam_fault": 0
+    },
+    "harness_error_as_fail": 1,
+    "lookup_fails": 0,
+    "cap_stop": 0,
+    "unstarted": []
+   },
+   "terminations": {
+    "completed": 50,
+    "timeout": 1,
+    "approval_stop": 0,
+    "harness_error": 1,
+    "model_error": 0,
+    "infra_error": 0,
+    "exam_fault": 0
+   },
+   "pass_rate": {
+    "estimate": 0.75,
+    "ci95": [
+     0.634615,
+     0.865385
+    ],
+    "tasks": 52,
+    "scored_trials": 52,
+    "passes": 39
+   },
+   "reliability": {
+    "k": 1,
+    "pass_hat_k": {
+     "estimate": 0.75,
+     "ci95": [
+      0.634615,
+      0.865385
+     ],
+     "tasks": 52
+    },
+    "pass_at_k": {
+     "estimate": 0.75,
+     "ci95": [
+      0.634615,
+      0.865385
+     ],
+     "tasks": 52
+    },
+    "tasks_with_fewer_than_k": 0
+   },
+   "rerun_flip": null,
+   "cost": {
+    "usd_total": 149.183029,
+    "solves": 39,
+    "usd_per_solve": 3.825206,
+    "ci95": [
+     2.400643,
+     6.112258
+    ],
+    "note": null
+   },
+   "wall_s_median_contended": 402.3,
+   "verdict": "descriptive",
+   "reason": "extension cell: estimate and interval only"
+  },
+  {
+   "id": "fable-cc",
+   "label": "Claude Code",
+   "model": "fable",
+   "harness": "claude-code",
+   "attempts": 1,
+   "descriptive": false,
+   "trials": {
+    "planned": 52,
+    "recorded": 52,
+    "scored": 52,
+    "excluded": {
+     "model_error": 0,
+     "infra_error": 0,
+     "exam_fault": 0
+    },
+    "harness_error_as_fail": 3,
+    "lookup_fails": 0,
+    "cap_stop": 0,
+    "unstarted": []
+   },
+   "terminations": {
+    "completed": 44,
+    "timeout": 5,
+    "approval_stop": 0,
+    "harness_error": 3,
+    "model_error": 0,
+    "infra_error": 0,
+    "exam_fault": 0
+   },
+   "pass_rate": {
+    "estimate": 0.711538,
+    "ci95": [
+     0.576923,
+     0.826923
+    ],
+    "tasks": 52,
+    "scored_trials": 52,
+    "passes": 37
+   },
+   "reliability": {
+    "k": 1,
+    "pass_hat_k": {
+     "estimate": 0.711538,
+     "ci95": [
+      0.576923,
+      0.826923
+     ],
+     "tasks": 52
+    },
+    "pass_at_k": {
+     "estimate": 0.711538,
+     "ci95": [
+      0.576923,
+      0.826923
+     ],
+     "tasks": 52
+    },
+    "tasks_with_fewer_than_k": 0
+   },
+   "rerun_flip": null,
+   "cost": {
+    "usd_total": 105.737145,
+    "solves": 37,
+    "usd_per_solve": 2.857761,
+    "ci95": [
+     1.613488,
+     4.829295
+    ],
+    "note": null
+   },
+   "wall_s_median_contended": 416.2,
+   "verdict": "home",
+   "reason": "home harness of Claude Fable 5.1"
+  },
+  {
+   "id": "fable-openclaw",
+   "label": "OpenClaw",
+   "model": "fable",
+   "harness": "openclaw",
+   "attempts": 1,
+   "descriptive": true,
+   "trials": {
+    "planned": 52,
+    "recorded": 52,
+    "scored": 52,
+    "excluded": {
+     "model_error": 0,
+     "infra_error": 0,
+     "exam_fault": 0
+    },
+    "harness_error_as_fail": 5,
+    "lookup_fails": 0,
+    "cap_stop": 0,
+    "unstarted": []
+   },
+   "terminations": {
+    "completed": 44,
+    "timeout": 3,
+    "approval_stop": 0,
+    "harness_error": 5,
+    "model_error": 0,
+    "infra_error": 0,
+    "exam_fault": 0
+   },
+   "pass_rate": {
+    "estimate": 0.653846,
+    "ci95": [
+     0.519231,
+     0.788462
+    ],
+    "tasks": 52,
+    "scored_trials": 52,
+    "passes": 34
+   },
+   "reliability": {
+    "k": 1,
+    "pass_hat_k": {
+     "estimate": 0.653846,
+     "ci95": [
+      0.519231,
+      0.788462
+     ],
+     "tasks": 52
+    },
+    "pass_at_k": {
+     "estimate": 0.653846,
+     "ci95": [
+      0.519231,
+      0.788462
+     ],
+     "tasks": 52
+    },
+    "tasks_with_fewer_than_k": 0
+   },
+   "rerun_flip": null,
+   "cost": {
+    "usd_total": 78.742771,
+    "solves": 34,
+    "usd_per_solve": 2.315964,
+    "ci95": [
+     1.558273,
+     3.385127
+    ],
+    "note": null
+   },
+   "wall_s_median_contended": 389.3,
+   "verdict": "descriptive",
+   "reason": "extension cell: estimate and interval only"
+  }
+ ],
+ "pairs": [
+  {
+   "id": "astra-openclaw vs astra-codex",
+   "model": "astra",
+   "cell": "astra-openclaw",
+   "home": "astra-codex",
+   "family": "extension",
+   "tasks_paired": 52,
+   "tasks_dropped": 0,
+   "dropped": [],
+   "attempts_dropped_pairwise": 0,
+   "mean_home": 0.865385,
+   "mean_cell": 0.75,
+   "delta": -0.115385,
+   "ci95": [
+    -0.230769,
+    0
+   ],
+   "lower_bound_90": -0.211538,
+   "p_two_sided": 0.10768923,
+   "p_method": "monte-carlo-sign-flip",
+   "ni_margin": 0.15,
+   "p_noninferiority": 0.31086891,
+   "tested": true,
+   "untested_reason": null,
+   "power": {
+    "alpha": 0.05,
+    "mde": 0.165973,
+    "note": "with 52 pairs in 52 clusters, a two-sided 0.05 test has 80% power for an absolute change of about 0.1660; the observed delta is below that size, so a null result here is not evidence of no effect"
+   },
+   "power_first_holm_step": null,
+   "harness_flip": {
+    "estimate": 0.192308,
+    "ci95": [
+     0.096154,
+     0.307692
+    ],
+    "tasks": 52
+   },
+   "cost_per_solve_ratio": {
+    "tasks": 52,
+    "ratio": 2.1509,
+    "ci95": [
+     1.6365,
+     2.8309
+    ],
+    "undefined_draws": 0,
+    "note": null
+   },
+   "home_saturated": false,
+   "holm_p": null,
+   "holm_p_noninferiority": null
+  },
+  {
+   "id": "fable-openclaw vs fable-cc",
+   "model": "fable",
+   "cell": "fable-openclaw",
+   "home": "fable-cc",
+   "family": "extension",
+   "tasks_paired": 52,
+   "tasks_dropped": 0,
+   "dropped": [],
+   "attempts_dropped_pairwise": 0,
+   "mean_home": 0.711538,
+   "mean_cell": 0.653846,
+   "delta": -0.057692,
+   "ci95": [
+    -0.173077,
+    0.057692
+   ],
+   "lower_bound_90": -0.153846,
+   "p_two_sided": 0.54934507,
+   "p_method": "monte-carlo-sign-flip",
+   "ni_margin": 0.15,
+   "p_noninferiority": 0.08589141,
+   "tested": true,
+   "untested_reason": null,
+   "power": {
+    "alpha": 0.05,
+    "mde": 0.179007,
+    "note": "with 52 pairs in 52 clusters, a two-sided 0.05 test has 80% power for an absolute change of about 0.1790; the observed delta is below that size, so a null result here is not evidence of no effect"
+   },
+   "power_first_holm_step": null,
+   "harness_flip": {
+    "estimate": 0.211538,
+    "ci95": [
+     0.115385,
+     0.326923
+    ],
+    "tasks": 52
+   },
+   "cost_per_solve_ratio": {
+    "tasks": 52,
+    "ratio": 0.8104,
+    "ci95": [
+     0.5253,
+     1.2331
+    ],
+    "undefined_draws": 0,
+    "note": null
+   },
+   "home_saturated": false,
+   "holm_p": null,
+   "holm_p_noninferiority": null
+  }
+ ]
+}

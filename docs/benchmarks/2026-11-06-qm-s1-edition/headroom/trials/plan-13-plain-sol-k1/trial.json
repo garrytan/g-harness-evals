@@ -1,0 +1,161 @@
+{
+  "trial_id": "plan-13-plain-sol-k1",
+  "task_id": "plan-13",
+  "family": "plan",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I reviewed all tracked files and the five-commit history at `275512d`. Both existing tests pass. **No code changed.**\n\n## Key findings\n\nThis needs more than a checkbox and a longer-lived cookie:\n\n- **Server sessions expire after two idle hours** (`src/session.js`). A 30-day cookie alone would still leave returning users logged out.\n- **Admins must sign in again within 12 hours**, regardless of their choice—an audited requirement in `docs/compliance/controls.md`.\n- **Enforced SSO organizations cannot get 30-day sessions.** `docs/sso.md` says sessions end when the IdP assertion expires, at most eight hours. The configuration exists, but assertion-expiry enforcement is absent from the supplied session code.\n- **Keep cookies server-set.** Commit `6d99e9a` removed the legacy `document.cookie` approach after Safari users were logged out after seven days (SUP-221). The existing cookie helper already supports `Max-Age`.\n- **Sessions currently live in an in-memory `Map`.** They disappear on restart and are not shared between instances, so this cannot reliably deliver 30-day sign-in.\n- There is **no login UI or SSO callback in this checkout**; even `src/server.js`, referenced by Docker, is absent. Those integration points need locating before implementation.\n\n## Proposed behavior\n\nUse an **unchecked-by-default** checkbox labeled “Remember me for 30 days,” with a note to use it only on a private device.\n\n| Login type | Proposed behavior |\n|---|---|\n| Regular member, unchecked | Preserve the current browser-session cookie and two-hour idle timeout |\n| Regular member, checked | Persist sign-in for **30 days from authentication**, including inactivity and browser restarts |\n| Admin | Exclude from the extension; preserve the two-hour idle timeout and mandatory 12-hour absolute limit |\n| Enforced SSO organization | Exclude from the extension; never exceed the IdP assertion expiry or eight-hour maximum |\n\nFor accounts subject to multiple restrictions, the earliest expiry wins. The 30-day deadline should be **fixed, not renewed on every request**. This is an explicit change to the two-hour idle policy for eligible, opted-in members only.\n\n## Implementation plan\n\n1. **Centralize session-policy decisions — `src/session.js`.**  \n   Accept the remember preference alongside trusted authentication context. Determine eligibility server-side using the user’s role, organization and, for SSO, verified assertion expiry. Store the effective policy and absolute expiry. Missing SSO expiry must not fall back to a 30-day session.\n\n   Check expiry before updating activity, reject at the deadline, and delete expired records. Treat existing sessions without the new metadata as ordinary sessions—not remembered ones.\n\n2. **Connect login to that policy — `src/routes/login.js`.**  \n   Parse the checkbox explicitly; absent or invalid values mean false. Create the session only after required authentication, including MFA, completes. Issue a fresh session ID. Do not let submitted role, organization or lifetime values control eligibility.\n\n3. **Align browser and server expiry — `src/cookies.js`.**  \n   For eligible remembered sessions, send `Max-Age=2592000` through the existing **server `Set-Cookie` header**. Keep `HttpOnly`, `Secure`, `SameSite=Lax` and `Path=/`. Unchecked logins retain a nonpersistent cookie. No client-written authentication cookies or local-storage tokens.\n\n4. **Make persistence and revocation real — `src/session-store.js`.**  \n   Replace the process-local map with a durable, shared store with expiry cleanup before promising restart-safe 30-day sign-in. Locate or add the logout and password-reset revocation integration so remembered sessions remain revocable. Password-reset link expiry stays at 30 minutes; remember-me must not alter it.\n\n5. **Add the UI in its actual owning application.**  \n   Add an accessible, keyboard-operable checkbox and localized strings in `locales/en.json`. Explain policy exceptions where known, while enforcing them on the server regardless. Prefer a native form control; no CSP relaxation is needed. Keep CAPTCHA, MFA and rate-limit behavior unchanged.\n\n## Verification before release\n\nAdd tests covering:\n\n- Unchecked sessions still expire after two idle hours.\n- Remembered members survive more than two hours of inactivity, but expire exactly at 30 days—even with continuous activity.\n- Admins cannot bypass their existing limits with a forged checkbox value.\n- SSO sessions never outlive assertion expiry or eight hours, including remembered/admin combinations.\n- Correct cookie lifetime and security flags; no `Max-Age` for ordinary sessions.\n- Logout/reset revocation, expired-record cleanup, restart and multi-instance persistence.\n- Accessible checkbox behavior and browser-restart checks in Safari, Firefox and Chrome.\n\n**Recommended sequence:** confirm the fixed 30-day policy and exceptions → locate the missing UI/auth integration points and choose the durable store → implement session policy and tests → wire the cookie and checkbox → browser QA and rollout.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-13-plain-sol-k1",
+    "requests": 9,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.05896789999999999,
+    "input_tokens": 77777,
+    "output_tokens": 1827,
+    "cached_tokens": 63718,
+    "cache_write_tokens": 13729,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0000756,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.058892299999999995,
+        "requests": 8
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 9
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 34.583,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-13-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:27:26.173Z",
+    "images": {
+      "core": "sha256:b7fcbeb9f313d1eb923a92e8b0649bdf9e0811fa876ee427c10f1f11f37d9285",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-3accdbaf9008",
+        "id": "sha256:3812fe910bf42e34ba06673860c4102744d28c0ee47e047dcf6cb7ea92a7c4ff",
+        "tree_sha256": "86dfda5b03307f00d5094f70269efa0d541e7ca563991f34c10175fcf0b66d3c"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-f9bb3023-7920-4f72-a339-1b3fa8e0-987bb5"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:28:24.328Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/0788fffb268d7745a6ca8b18/fd246265677faa93/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/0788fffb268d7745a6ca8b18/fd246265677faa93/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git log -5 --oneline && find . -maxdepth 3 -type f -not -path './.git/*' | sort",
+          "code": 0,
+          "output": "275512d Captcha, MFA, password reset and rate limits\n6d99e9a Set auth cookies from the server only\nc845909 SSO for enterprise orgs\n54e33a1 Stay signed in on the legacy pages\n90a37d9 Sessions and login\n./Dockerfile\n./README.md\n./config/csp.json\n./config/sso.json\n./docs/compliance/controls.md\n./docs/s"
+        },
+        {
+          "seq": 12,
+          "command": "cd /root/workspace/repo && for f in config/* docs/compliance/* docs/sso.md locales/* test/*; do echo \"--- $f\"; nl -ba \"$f\"; done; printf '\\n--- HISTORY ---\\n'; git log --all --stat; printf '\\n--- COMMITS ---\\n'; git show 54e33a1; git show c845909; git show 6d99e9a; git show 275512d; printf '\\n--- TR",
+          "code": 0,
+          "output": "--- config/csp.json\n     1\t{\n     2\t  \"default-src\": [\"'self'\"],\n     3\t  \"script-src\": [\"'self'\"]\n     4\t}\n--- config/sso.json\n     1\t{\n     2\t  \"enforced_orgs\": [\"org_acme\", \"org_globex\"]\n     3\t}\n--- docs/compliance/controls.md\n     1\t# Security controls we are audited on\n     2\t\n     3\t- AC-1: e"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-13-plain-sol-k1",
+      "meter": {
+        "requests": 9,
+        "usd": 0.05896789999999999,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 9,
+        "usd": 0.05896789999999999,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0000756
+    }
+  }
+}

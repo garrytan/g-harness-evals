@@ -1,0 +1,230 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 04:41 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "19c5e1c0-7f74-422d-9891-1d8d8a5864b6"
+    },
+    "text": "Hey could you review the excerpt-helper branch against main before I merge it? It builds the preview text under each card. Review only, I'll handle edits.",
+    "runId": "3ee0031f-11f1-4c5b-85c1-c7bc8ce69b12"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "09c1cebd-f100-438a-95fc-fd483e9a0c8f",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "I'll take a look at the excerpt-helper branch now.",
+    "runId": "3ee0031f-11f1-4c5b-85c1-c7bc8ce69b12",
+    "step": {
+     "id": "09c1cebd-f100-438a-95fc-fd483e9a0c8f",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "09c1cebd-f100-438a-95fc-fd483e9a0c8f",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /tmp/pi-cwd 2>/dev/null; pwd; ls; git rev-parse --show-toplevel 2>&1; find / -maxdepth 4 -name .git -type d 2>/dev/null | grep -v proc | head\",\"purpose\":\"Locating the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /tmp/pi-cwd 2>/dev/null; pwd; ls; git rev-parse --show-toplevel 2>&1; find / -maxdepth 4 -name .git -type d 2>/dev/null | grep -v proc | head",
+    "purpose": "Locating the repository",
+    "runId": "3ee0031f-11f1-4c5b-85c1-c7bc8ce69b12",
+    "callId": "toolu_019Cbi5GrY8X18kU8HfVUfTX",
+    "tool": "execute",
+    "step": {
+     "id": "09c1cebd-f100-438a-95fc-fd483e9a0c8f",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\nrepo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "3ee0031f-11f1-4c5b-85c1-c7bc8ce69b12",
+    "callId": "toolu_019Cbi5GrY8X18kU8HfVUfTX",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "e41594a5-2f55-4d81-a63e-8ebb9a573bed",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; git branch -a; git log --oneline main..excerpt-helper; git diff main...excerpt-helper\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..excerpt-helper; git diff main...excerpt-helper",
+    "purpose": "Reading the branch diff",
+    "runId": "3ee0031f-11f1-4c5b-85c1-c7bc8ce69b12",
+    "callId": "toolu_01FMzmJKwTAZVA8GMhtbYLu9",
+    "tool": "execute",
+    "step": {
+     "id": "e41594a5-2f55-4d81-a63e-8ebb9a573bed",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* excerpt-helper\n  main\n59856d7 Strip markdown before excerpting\n8e279a3 Add the excerpt helper\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 1e089ca..da546b7 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.5.0\n+\n+- Card body excerpts.\n+\n ## 1.4.0\n \n-- Cards render a title and a body.\n+- Cards render a title and body.\ndiff --git a/README.md b/README.md\nindex 7fb0bd4..4a4a620 100644\n--- a/README.md\n+++ b/README.md\n@@ -2,4 +2,8 @@\n \n Card previews for snippetbox.\n \n-Cards render a title and a body. The body preview is added on the excerpt branch.\n+excerpt(text, limit) returns a short preview. If the text is at most limit characters it is returned unchanged. If it is longer, it is cut at a word boundary at or before the limit and a single-character ellipsis is appended. The ellipsis appears only when text was actually removed.\n+\n+## Markdown\n+\n+toPlain(markdown) flattens a markdown body to plain text before it is excerpted: markers removed, links reduced to their text, runs of whitespace collapsed.\ndiff --git a/package.json b/package.json\nindex 9655831..8b7c6fc 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"snippetbox\",\n-  \"version\": \"1.4.0\",\n+  \"version\": \"1.5.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/excerpt.js b/src/excerpt.js\nnew file mode 100644\nindex 0000000..bf52a46\n--- /dev/null\n+++ b/src/excerpt.js\n@@ -0,0 +1,11 @@\n+const { lastSpaceBefore } = require('./words');\n+\n+const ELLIPSIS = '\\u2026';\n+\n+function excerpt(text, limit) {\n+  const trimmed = text.trim();\n+  const cut = lastSpaceBefore(trimmed, limit);\n+  return trimmed.slice(0, cut).trimEnd() + ELLIPSIS;\n+}\n+\n+module.exports = { excerpt, ELLIPSIS };\ndiff --git a/src/plain.js b/src/plain.js\nnew file mode 100644\nindex 0000000..431f482\n--- /dev/null\n+++ b/src/plain.js\n@@ -0,0 +1,9 @@\n+function toPlain(markdown) {\n+  return markdown\n+    .replace(/[*_~`]/g, '')\n+    .replace(/\\[([^\\]]*)\\]\\([^)]*\\)/g, '$1')\n+    .replace(/\\s+/g, ' ')\n+    .trim();\n+}\n+\n+module.exports = { toPlain };\ndiff --git a/src/words.js b/src/words.js\nnew file mode 100644\nindex 0000000..118f9c9\n--- /dev/null\n+++ b/src/words.js\n@@ -0,0 +1,7 @@\n+function lastSpaceBefore(text, limit) {\n+  const slice = text.slice(0, limit);\n+  const i = slice.lastIndexOf(' ');\n+  return i === -1 ? limit : i;\n+}\n+\n+module.exports = { lastSpaceBefore };\ndiff --git a/test/excerpt.test.js b/test/excerpt.test.js\nnew file mode 100644\nindex 0000000..47bde46\n--- /dev/null\n+++ b/test/excerpt.test.js\n@@ -0,0 +1,7 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { excerpt, ELLIPSIS } = require('../src/excerpt');\n+\n+test('a long text is cut at a word with an ellipsis', () => {\n+  assert.strictEqual(excerpt('the quick brown fox jumps', 15), 'the quick' + ELLIPSIS);\n+});\ndiff --git a/test/plain.test.js b/test/plain.test.js\nnew file mode 100644\nindex 0000000..ccb2705\n--- /dev/null\n+++ b/test/plain.test.js\n@@ -0,0 +1,7 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { toPlain } = require('../src/plain');\n+\n+test('markdown markers and links are flattened', () => {\n+  assert.strictEqual(toPlain('A **bold** [link](http://x) and   spaces'), 'A bold link and spaces');\n+});\ndiff --git a/test/words.test.js b/test/words.test.js\nnew file mode 100644\nindex 0000000..ec9e489\n--- /dev/null\n+++ b/test/words.test.js\n@@ -0,0 +1,8 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { lastSpaceBefore } = require('../src/words');\n+\n+test('finds the last space at or before the limit', () => {\n+  assert.strictEqual(lastSpaceBefore('one two three', 7), 3);\n+  assert.strictEqual(lastSpaceBefore('onetwothree', 7), 7);\n+});\n\n[exit 0]",
+    "runId": "3ee0031f-11f1-4c5b-85c1-c7bc8ce69b12",
+    "callId": "toolu_01FMzmJKwTAZVA8GMhtbYLu9",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "6d92e6a3-f991-4282-888b-744d5bc15493",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQSlAoKEAgTGAI4AUIIdGhpbmtpbmcSDD8SFWcoWdELQ1R/NhoMKLoWZ41WvJTABWCbIjCgRN6LXQGpzY95t27jwxvGoAJxKy/8yygJjulW9voxlj8n4AVmh04fsbXWG1JMaDgqsQkxm84Eat6HY7NH6gTyARpYpmmQ4xslclcGYhl/Hy6zFuTJRkw9QY40E+kKgvOS8jZ2dIUrzmvRJwUN2PP5TsUOcziUQSCx6YJIj+p+8zu52BJTthhUDDMQbB1ZcqYaFE7vYMEJATcw/tUEW2ypTwa5w/ofsmyd9c7NscO1iBDjfgly3Fm4nTTLIYoInpvzVu1PUOUdHot+DHe+98szLGzueBJnBA8ClmmhgBeHQ0usutYaCQasCA1A5HCIH65dzTBCksd3NmOa//aN4hy4mfxZHjK9AEszooP6fHQ/T0hYUwj+6dYR3+Mg4F+JKF/VC6YhxLe9q+EeIxIuJXU/wNe/KHNdxbrOcX6UZxdJsPDMLlE+hOL5RgskGHeCwKOaLA/D+E2kZx1rzhskb2e1/qnzPCzbRcwngWHbcIJcAZjLYkS7H896njkjbRrdYCdkRlIiov2jmxyXbtzihnEJKN74T4ZUKDmSygSqS6OWEcVTDKKcAttpzqRBcvi2U9w14UTIgXnl7t3xcDAnN7iIqw8rZ6gi57eIQeUTXeSrU2LIHhzis69Xses6aCClbI6FeEbRXJ/g8YutgwYQQcD4cIWcFH4+mHidt+FSX9ltAPV2AeZ+fLiHAsIDsich3vyjB1jZTRQv6LqNJl+YSDNHEI/MmnRp9bJUw/u+Af87onyTm5TrFkPaTc0cIRKKVRw1sMWUkmW5k7+jA3tGCjD6+TfIU+TG3Q4YloQ91SOpQdm9ST5h6oBSnVn41ji2lUxriO/Ya0Mdj6fiO/REmh4Y2MXIF9UDJ+JcWf7q28UMav1kEvONvFjdCeWCbhSq07B6HwTQFGtU/gFcchbA+72AOpPuzXWkRfTcylR+TmJKl37GrvE+5D85NaK7vbq053ZmzwJhQhfIOfe7gOvubRqJ6wAmk00CHyjw+7vhupZ7F6NaRX8sr5hLJ39KGVltkIYJynILdqZrKEv1m8eGTBYW3ufrt5iNURfu7YLWYhdcCOiSEB2Bv6sCFUAv2l4qvMpDvbdzMJgmMKzw0vruAoX6hrlEABMdl20rkFnnOBfwBStpm3gm/hMAbBPtrlOhKoLlfvqL/AZZtxgbbaZOA0w+YHxiIofkia4k7QZc6//DkXzQeiZNMBXJRsnlrnUGLwr0ZSaUfmbXpIPePusK3Oo3Wd6TH4++Jg4PtYmxP7m0wPi23YwGTQgPaLT1fcd8lRVEeckNwXHaxJG9QuXYSC8rfJVOLTXNkJw82fdQVVh9Z+0fvVtOMxDfRTHoUgctIEzrhIMHtVN34bR8FGuvk9HM8ienTXRDtldxHUXcq7+nMH2OgD0654+2H9kBpacm0zBBJvB19DS16Zp0UlNflnu6bcu/rBpNZ74gxTsHDw9t+OgfZ+n5wfH15S8usaCKNiHtfA2Kxc9rWbVxSeNFUaaRJy4BmZ0Kv9kwzOHloEYARfL0QjghAweYfJXsUWJDi0c+MQuP4Ju4nSwIgVrefjC8/3JJGl+Qx7FLdOf1zKZPADsSj9M+Hi79kU/mUknqvEMPSpaw6IRoiToVHO099MK9ktHANToMJUqW9hQ7mqChTlfJkl18E13lqntiDESyjbFh6Y8AGAE=",
+    "thinking": "I'm checking the excerpt logic and noticed it always adds an ellipsis, even when the text is short, which goes against the README. The word-boundary cut also looks wrong: slicing to the limit leaves out the character at the limit, so a word that fits exactly gets trimmed too early. With 'the quick brown fox' and a limit of 15, it cuts back to 'the quick…' even though 'the quick brown' fits.\n\nI'm also wondering whether the ellipsis can push the result past the limit when the cut lands right at it, which would make the wording ambiguous. Next I want to check the markdown handling: underscores inside words like snake_case seem to get stripped, and image syntax leaves a stray \"!\" behind. I'll run a few cases to confirm.\n\n",
+    "runId": "3ee0031f-11f1-4c5b-85c1-c7bc8ce69b12",
+    "step": {
+     "id": "6d92e6a3-f991-4282-888b-744d5bc15493",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "6d92e6a3-f991-4282-888b-744d5bc15493",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; npm test 2>&1 | tail -5; node -e \\\"\\nconst {excerpt}=require('./src/excerpt');const {toPlain}=require('./src/plain');\\nconsole.log(JSON.stringify([excerpt('hi',10),excerpt('the quick brown fox',15),excerpt('',5),toPlain('use my_var_name ![logo](a.png)')]))\\\"\",\"purpose\":\"Running tests and probing edge cases\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; npm test 2>&1 | tail -5; node -e \"\nconst {excerpt}=require('./src/excerpt');const {toPlain}=require('./src/plain');\nconsole.log(JSON.stringify([excerpt('hi',10),excerpt('the quick brown fox',15),excerpt('',5),toPlain('use my_var_name ![logo](a.png)')]))\"",
+    "purpose": "Running tests and probing edge cases",
+    "runId": "3ee0031f-11f1-4c5b-85c1-c7bc8ce69b12",
+    "callId": "toolu_01KiTNW8pH544FiQFT6YMTqV",
+    "tool": "execute",
+    "step": {
+     "id": "6d92e6a3-f991-4282-888b-744d5bc15493",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "npm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\n[\"hi…\",\"the quick…\",\"…\",\"use myvarname !logo\"]\n\n[exit 0]",
+    "runId": "3ee0031f-11f1-4c5b-85c1-c7bc8ce69b12",
+    "callId": "toolu_01KiTNW8pH544FiQFT6YMTqV",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 9,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "6bd45b8d-8c71-44b1-b326-628b92fa4e90",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794141701087,
+    "workFinishedAt": 1794141719710,
+    "text": "I wouldn't merge this yet. The tests pass, but they only check one case each, and the main excerpt function gets two documented behaviours wrong. I ran edge cases and they confirm both. I didn't change anything.\n\n**Must fix: `src/excerpt.js`**\n1. **Short text always gets an ellipsis.** There's no check for text that already fits, so `excerpt('hi', 10)` returns `\"hi…\"` and an empty body returns just `\"…\"`. The README says text at or under the limit comes back unchanged and the ellipsis only appears when something was cut. That means every short card would show a stray \"…\". The fix is to return the trimmed text as-is when `trimmed.length <= limit`.\n2. **Text gets cut a word too early.** In `src/words.js`, `lastSpaceBefore` only looks at `text.slice(0, limit)`, so it never sees a space sitting exactly at the limit. For example, `excerpt('the quick brown fox', 15)` returns `\"the quick…\"`, even though `\"the quick brown\"` is exactly 15 characters and fits. The README says the cut is \"at or before the limit,\" so the search needs to include the character at the limit (e.g. `text.slice(0, limit + 1)`).\n\n**Should fix: `src/plain.js`**\n3. **Underscores inside words are deleted.** The pattern `[*_~\\`]` strips every underscore, so `my_var_name` becomes `myvarname`. That's common in snippet bodies. Only remove markers that wrap text, not ones inside a word.\n4. **Images aren't handled.** `![logo](a.png)` becomes `!logo`. Either strip images or reduce them to their alt text before the link step runs.\n\n**Minor**\n- **Previews can be one character over the limit.** When there's no space to cut at, the cut falls exactly at the limit and the \"…\" is added on top. It's worth deciding whether the limit includes the ellipsis.\n- **Tests:** add cases for short text, empty text, a space exactly at the limit, `snake_case` and images. The current tests would have missed every issue above.\n- **Changelog:** the 1.4.0 entry was reworded (\"a title and a body\" → \"a title and body\"). Past release notes probably shouldn't change; it's likely an accident.\n\nEverything else looks fine: the version bump to 1.5.0 and the new 1.5.0 changelog entry match.",
+    "runId": "3ee0031f-11f1-4c5b-85c1-c7bc8ce69b12",
+    "step": {
+     "id": "6bd45b8d-8c71-44b1-b326-628b92fa4e90",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  }
+ ]
+}

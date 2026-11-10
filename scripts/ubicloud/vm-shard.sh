@@ -24,7 +24,9 @@
 # under ~/shard/smoke/results. The counted run creates ~/shard/results/ledger.sqlite with the shard's lease as its program
 # cap when it is missing (a --resume brings the earlier one back), then runs s1e-probe.ts with --ledger, --lease-usd, --out
 # ~/shard/results, --work ~/shard/work and the arguments after -- as given; its output goes to ~/shard/results/run.stdout.log.
-# The driver enforces the stage caps (--stage, --shards). Sealed flags are refused.
+# The driver enforces the stage caps (--stage, --shards). Sealed flags are refused. A main shard (--stage main --run-id
+# qm-s1-edition-2026-11-main) or forced shard (--stage forced --run-id qm-s1-edition-2026-11-forced) is then graded by
+# harnesses/qm/gstack/judge-shard.ts on the same lease (internal-task Amendment 3), output in ~/shard/results/judge.stdout.log.
 #
 # --workload gstack-laneb (docs/gstack-laneb.md): the smoke is the bridge's keyless smoke
 # (scripts/gstack-laneb/smoke.sh against the pinned fake upstream, no spend; it installs Harbor at its pin) and the shard
@@ -183,13 +185,69 @@ fi
 if [ "$workload" = qm-driver ]; then
   [ ${#sealed[@]} -eq 0 ] || { log "qm-driver takes no sealed flags"; finish 2; }
   mkdir -p "$shard/results"
+  # Tasks on the VM: --tasks-bank <bank json> --tasks-seed <seed file> (paths in the checkout) among the shard's arguments
+  # generate the task repositories here with edition-fixture.ts, keyless (env -i, no login shell), into ~/shard/tasks. The
+  # seed is the seed file's exact bytes. fixtures.json must name the bank's and the seed file's sha256 and every task, and
+  # each repository must sit at its recorded head with a clean tree. ~/shard/results/tasks-gen.json records the digests, the
+  # pair becomes --tasks ~/shard/tasks/tasks.json, and any failure ends the shard before the smoke and any paid call (exit 4).
+  tasks_bank="" tasks_seed="" pass=()
+  for ((i = 0; i < ${#extra[@]}; i++)); do
+    case ${extra[$i]} in
+      --tasks-bank) tasks_bank=${extra[$((i + 1))]:-}; i=$((i + 1)) ;;
+      --tasks-seed) tasks_seed=${extra[$((i + 1))]:-}; i=$((i + 1)) ;;
+      *) pass+=("${extra[$i]}") ;;
+    esac
+  done
+  if [ -n "$tasks_bank$tasks_seed" ]; then
+    [ -f "$tasks_bank" ] && [ -f "$tasks_seed" ] || { log "tasks: --tasks-bank and --tasks-seed must both name files in the checkout"; finish 4; }
+    phase tasks_start
+    rm -rf "$shard/tasks"
+    seed=$(cat "$tasks_seed"; printf x); seed=${seed%x}
+    log "tasks: bun harnesses/qm/gstack/edition-fixture.ts --bank $tasks_bank --seed <the bytes of $tasks_seed> --out $shard/tasks (keyless)"
+    env -i PATH="$PATH" HOME="$HOME" bun harnesses/qm/gstack/edition-fixture.ts --bank "$tasks_bank" --seed "$seed" --out "$shard/tasks" > "$shard/results/tasks-gen.log" 2>&1 \
+      || { tail -5 "$shard/results/tasks-gen.log"; log "tasks: generation failed; no smoke and no counted call"; finish 4; }
+    env -i PATH="$PATH" HOME="$HOME" python3 - "$shard/tasks" "$tasks_bank" "$tasks_seed" "$shard/results/tasks-gen.json" <<'PY' \
+      || { log "tasks: the check against fixtures.json failed; no smoke and no counted call"; finish 4; }
+import hashlib, json, os, subprocess, sys
+out, bank, seed, record = sys.argv[1:5]
+sha = lambda p: hashlib.sha256(open(p, 'rb').read()).hexdigest()
+tasks_file, fixtures_file = os.path.join(out, 'tasks.json'), os.path.join(out, 'fixtures.json')
+fx, tasks = json.load(open(fixtures_file)), json.load(open(tasks_file))
+bad = []
+if fx.get('bank_sha256') != sha(bank): bad.append('fixtures.json bank_sha256 is not the sha256 of ' + bank)
+if fx.get('seed_sha256') != sha(seed): bad.append('fixtures.json seed_sha256 is not the sha256 of ' + seed)
+if not tasks or sorted(t['id'] for t in tasks) != sorted(fx.get('tasks', {})): bad.append('tasks.json and fixtures.json name different tasks')
+git = lambda d, *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True)
+for t in tasks:
+    d, ident = t['repo_dir'], fx.get('tasks', {}).get(t['id'], {})
+    if not d.startswith(os.path.join(out, 'repos') + os.sep): bad.append(t['id'] + ': repo_dir outside ' + out); continue
+    if git(d, 'rev-parse', 'HEAD').stdout.strip() != ident.get('head') or git(d, 'status', '--porcelain').stdout: bad.append(t['id'] + ': repository is not at its recorded head with a clean tree')
+if bad:
+    print('tasks: ' + '; '.join(bad)); sys.exit(1)
+rec = {'tasks': len(tasks), 'tasks_json_sha256': sha(tasks_file), 'fixtures_json_sha256': sha(fixtures_file), 'bank': bank, 'bank_sha256': fx['bank_sha256'], 'seed': seed, 'seed_sha256': fx['seed_sha256']}
+json.dump(rec, open(record, 'w'), indent=2); open(record, 'a').write('\n')
+print('tasks: %d tasks, tasks.json sha256 %s, fixtures.json sha256 %s' % (len(tasks), rec['tasks_json_sha256'], rec['fixtures_json_sha256']))
+PY
+    phase tasks_end
+    extra=(${pass[@]+"${pass[@]}"} --tasks "$shard/tasks/tasks.json")
+  fi
   build_flag=()
   if [ "$smoke" -eq 1 ]; then
     mkdir -p "$shard/smoke/results"
     phase smoke_start
     log "smoke: bun harnesses/qm/gstack/s1e-probe.ts --dry-run (keyless, fake upstream)"
-    env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u PARTICLE_API_KEY bun harnesses/qm/gstack/s1e-probe.ts --dry-run --work "$shard/smoke/work" --out "$shard/smoke/results" > "$shard/smoke/results/run.stdout.log" 2>&1
-    rc=$?
+    # The smoke builds the images, whose npm ci fetches from GitHub. Only a failed image build is retried, with backoff
+    # (HE_SMOKE_TRIES tries, waits doubling from HE_RETRY_BASE_S up to 120 s; internal-task, 2026-11-08 GitHub 504s), and each
+    # try keeps its log; any other smoke failure ends the shard at once.
+    smoke_tries=${HE_SMOKE_TRIES:-4} wait_s=${HE_RETRY_BASE_S:-30}
+    for ((try = 1; ; try++)); do
+      env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u PARTICLE_API_KEY bun harnesses/qm/gstack/s1e-probe.ts --dry-run --work "$shard/smoke/work" --out "$shard/smoke/results" > "$shard/smoke/results/run.stdout.log" 2>&1
+      rc=$?
+      [ "$rc" -ne 0 ] && [ "$try" -lt "$smoke_tries" ] && grep -q 's1e: image build .* failed' "$shard/smoke/results/run.stdout.log" || break
+      cp "$shard/smoke/results/run.stdout.log" "$shard/smoke/results/run.stdout.try$try.log"
+      log "smoke try $try of $smoke_tries: an image build failed; next try in ${wait_s}s"
+      sleep "$wait_s"; wait_s=$(( wait_s * 2 > 120 ? 120 : wait_s * 2 ))
+    done
     phase smoke_end
     [ "$rc" -eq 0 ] || { tail -5 "$shard/smoke/results/run.stdout.log"; log "smoke failed (exit $rc); the counted run does not start"; finish 4; }
     build_flag=(--skip-build)
@@ -198,6 +256,23 @@ if [ "$workload" = qm-driver ]; then
   if [ ! -f "$ledger" ]; then
     bun runner/ledger/budget-ledger.ts init --budget-ledger "$ledger" --program-cap-usd "$lease" --reason "qm-driver shard $name" || { log "ledger init failed"; finish 2; }
   fi
+  # The metering proxy opens its lease only on a lease ledger (BudgetRun.openLease), and the driver needs the file to exist.
+  # A ledger with no runs whose program cap is the lease gets the lease_ledger marker, as openLease sets on a fresh file; one
+  # already marked (a --resume) is kept; any other ledger that holds runs, or a cap that is not the lease, stops the shard.
+  bun -e '
+    const { Database } = require("bun:sqlite");
+    const [path, lease] = [process.argv[1], Number(process.argv[2])];
+    const db = new Database(path);
+    const one = (sql, ...a) => db.query(sql).get(...a);
+    const marked = one("SELECT value FROM ledger_meta WHERE key = ?", "lease_ledger")?.value === "1";
+    const runs = db.query("SELECT run_id, runner FROM runs").all();
+    const cap = one("SELECT program_cap_usd FROM caps ORDER BY seq DESC LIMIT 1")?.program_cap_usd;
+    if (runs.length && marked) { console.log("ledger: lease ledger with " + runs.length + " run(s); the proxy continues its lease"); process.exit(0); }
+    if (runs.length) { console.error("ledger: " + path + " holds " + runs.length + " run(s) (" + runs.map((r) => r.run_id + " by " + r.runner).join(", ") + ") and is not a lease ledger"); process.exit(1); }
+    if (!(Math.abs(cap - lease) <= 1e-9)) { console.error("ledger: " + path + " has a program cap of $" + cap + ", not the lease $" + lease); process.exit(1); }
+    db.query("INSERT OR REPLACE INTO ledger_meta (key, value) VALUES (?, ?)").run("lease_ledger", "1");
+    console.log("ledger: lease ledger at $" + lease + ", no runs yet");
+  ' "$ledger" "$lease" || { log "ledger: $ledger is not usable as this shard's lease ledger; no counted call"; finish 2; }
   args=(--ledger "$ledger" --lease-usd "$lease" --out "$shard/results" --work "$shard/work" ${build_flag[@]+"${build_flag[@]}"} ${extra[@]+"${extra[@]}"})
   phase run_start
   log "run: bun harnesses/qm/gstack/s1e-probe.ts ${args[*]}"
@@ -205,6 +280,33 @@ if [ "$workload" = qm-driver ]; then
   rc=$?
   phase run_end
   log "s1e-probe.ts exited $rc"
+  # internal-task Amendment 3: a main or forced shard of the QM edition eval is graded here, after the driver exits, by both plan
+  # judges through the shard's own lease (harnesses/qm/gstack/judge-shard.ts reopens it). Only the main run id with
+  # --stage main and the forced run id with --stage forced; the calibration, headroom and pilot runs are never graded here.
+  # A judge failure is the shard's exit code when the driver exited 0 (5: the primary, 6: only the secondary).
+  judge_run="" judge_stage=""
+  for ((i = 0; i < ${#extra[@]}; i++)); do
+    case ${extra[$i]} in
+      --run-id) judge_run=${extra[$((i + 1))]:-} ;;
+      --stage) judge_stage=${extra[$((i + 1))]:-} ;;
+    esac
+  done
+  case "$judge_stage:$judge_run" in
+    main:qm-s1-edition-2026-11-main|forced:qm-s1-edition-2026-11-forced)
+      phase judge_start
+      if [ -f "$shard/tasks/keys.json" ] && [ -f "$shard/tasks/tasks.json" ]; then
+        log "judge: bun harnesses/qm/gstack/judge-shard.ts --results $shard/results --run-id $judge_run --lease-usd $lease (both judges, the shard's lease)"
+        bun harnesses/qm/gstack/judge-shard.ts --results "$shard/results" --run-id "$judge_run" --lease-usd "$lease" --keys "$shard/tasks/keys.json" --tasks "$shard/tasks/tasks.json" >> "$shard/results/judge.stdout.log" 2>&1
+        jrc=$?
+        log "judge-shard.ts exited $jrc"
+      else
+        log "judge: no $shard/tasks/keys.json and tasks.json (the shard needs --tasks-bank and --tasks-seed); the plan trials are ungraded"
+        jrc=5
+      fi
+      phase judge_end
+      [ "$rc" -ne 0 ] || rc=$jrc
+      ;;
+  esac
   finish "$rc"
 fi
 

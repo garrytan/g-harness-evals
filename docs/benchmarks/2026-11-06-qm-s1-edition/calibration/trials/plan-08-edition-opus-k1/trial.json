@@ -1,0 +1,159 @@
+{
+  "trial_id": "plan-08-edition-opus-k1",
+  "task_id": "plan-08",
+  "family": "plan",
+  "arm": "edition",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I've read the whole repo and have a plan below. I haven't written any code.\n\n## Plan: full and partial refunds in tillroll-ledger\n\n### What's there today\n- **The journal** (`entries.py`) only checks that each entry balances per currency. It can't look up an entry by `txn_id`, and it doesn't reject a `txn_id` it has already seen. `docs/ledger.md` says corrections must be new entries with `reverses` set to the original `txn_id`.\n- **A capture** posts four lines: `customer_funds` / `sales` in the charge currency and `fx_clearing` / `bank` in the settlement currency. It returns a payment dict that includes `fx_rate_snapshot`.\n- **A chargeback** is the closest thing to a refund. It reverses the capture at the captured rate and sets `reverses=payment.txn_id`. Nothing stops a chargeback for more than the payment, or several chargebacks against one payment.\n- **Webhooks** only handle `payment.captured`. Duplicate events are filtered by a `PROCESSED` set that only lives in memory.\n\n### Design\n1. **New `ledger/refunds.py`:** `refund(journal, payment, amount_minor, txn_id)`. A full refund is just a partial refund for the remaining amount, so one code path covers both. A `refund_full(journal, payment, txn_id)` helper can work out the remainder. The kind is `'refund'`, with `reverses=payment['txn_id']`, and the lines are a mirror image of the capture's lines.\n2. **Use the captured rate, not today's rate.** Same as chargebacks, it uses `fx_rate_snapshot`.\n3. **Rounding across partial refunds (the main trap).** If each partial refund is converted on its own, the settlement amounts can add up to a few cents more or less than the original capture. Example: three refunds of 3333/3333/3334 at 1.0850 don't come back to exactly 10850. Instead, convert the running total:\n   `settled_i = convert(refunded_after) − convert(refunded_before)`.\n   A full refund then always clears `bank` and `fx_clearing` exactly.\n4. **Stop over-refunding.** Work out how much is still refundable from the journal itself: the capture amount minus every refund and chargeback whose `reverses` points at that payment. Reject:\n   - amounts of zero or less\n   - amounts above what's left\n   - a refund against a payment that doesn't exist\n   \n   The journal is append-only, so it stays the source of truth and the payment dict doesn't need to track state. Chargebacks should share this check, and that fixes the same hole there. This needs a small `Journal.entries_reversing(txn_id)` / `find(txn_id)` helper, and probably a check that rejects a duplicate `txn_id` too.\n5. **Chargebacks should use the same running-total rounding**, so a partial refund followed by a chargeback still adds up to the original.\n6. **Webhooks:** add a `payment.refunded` (or `refund.succeeded`) event that looks up the payment and calls `refund`. Rejecting duplicate `txn_id`s in the journal also protects against replayed events, since `PROCESSED` is lost on restart.\n\n### Tests\n- A full refund brings `customer_funds`, `sales`, `bank` and `fx_clearing` back to zero for that payment, using the captured rate.\n- Several partial refunds that add up to the full amount leave exactly zero in settlement currency. This is the rounding test above.\n- Over-refunding is rejected, including refund plus chargeback going over the original. Zero and negative amounts are rejected. Nothing gets posted on any rejection.\n- `reverses` is set, and the same `txn_id` can't be posted twice.\n- A replayed refund webhook does nothing.\n- `monthly_totals` comes out right after a mix of captures, refunds and chargebacks.\n\n### Questions for you\n- **Tax:** the last commit message says \"Tax lines\", but capture doesn't post any VAT lines, and `vat_minor` isn't called anywhere. If VAT is supposed to be on captures, refunds need to reverse it in proportion, with the same running-total rounding. Also, `vat_minor` always rounds down. Should captures post tax first, or is that a separate piece of work?\n- **Refund fees:** should a refund reverse any processor fee? There are no fee accounts today, so I'd leave fees out.\n- **Where refunds come from:** only webhooks, or also an internal API? This decides whether `refund()` or the webhook handler is responsible for idempotency.\n\nOnce you've answered those, I'd build it in this order: journal lookup and duplicate-`txn_id` check, then the running-total rounding, then `refunds.py` with tests, then reworking chargebacks onto the same pieces, then the webhook.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-08-edition-opus-k1",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.07852699999999999,
+    "input_tokens": 52070,
+    "output_tokens": 2262,
+    "cached_tokens": 48621,
+    "cache_write_tokens": 2976,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000054800000000000004,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.07847219999999999,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 25.249,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-calibration",
+    "trial_id": "plan-08-edition-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T06:47:10.071Z",
+    "images": {
+      "core": "sha256:3567e7c17a04b80e7a1454cea7d4e459f0fa39dd8671e6daed39af28a6584e2c",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-c28199eb7594",
+        "id": "sha256:2be757ae646e0af949a3c939b7afe63a92ae70ea27f59232070ea6fcd0bc777e",
+        "tree_sha256": "5ba481ef9e809bccf319018e2c7babba4e75e4d29fbca729073994f9ca295dea"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-10abafc0-6689-467e-a1da-a8ae6c2c-09f1ae"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T06:47:59.097Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd ~/workspace/repo; git log --oneline|head; for f in README.md docs/ledger.md pyproject.toml ledger/*.py tests/*.py; do echo \"=== $f\"; cat $f; done",
+          "code": 0,
+          "output": "53db904 Tax lines, monthly report and money formatting\nb5ce733 Dedupe provider webhooks on the event id\nd765916 Chargebacks\n22c9f2c Ledger rules\nf386ad6 Double-entry journal and payment capture\n=== README.md\n# tillroll-ledger\n\nThe double-entry ledger behind our payments.\n\nRun the tests with python3 "
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-08-edition-opus-k1",
+      "meter": {
+        "requests": 5,
+        "usd": 0.07852699999999999,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.07852699999999999,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000054800000000000004
+    }
+  }
+}

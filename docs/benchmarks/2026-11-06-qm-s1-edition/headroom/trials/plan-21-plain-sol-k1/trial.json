@@ -1,0 +1,155 @@
+{
+  "trial_id": "plan-21-plain-sol-k1",
+  "task_id": "plan-21",
+  "family": "plan",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "Reviewed storefinder-api at `8394d14`. **No code changed; both existing tests pass.**\n\n### Proposed endpoint\n\n`GET /stores/nearby?lat=38.7107&lng=-9.1393&radiusKm=10&limit=20&offset=0`\n\nReturn the existing paginated shape—`{ items, total, limit, offset }`—with each store carrying a numeric `distanceKm`. Results should be nearest-first, with store ID breaking distance ties. `total` should count all matching stores before pagination; no matches returns `200` with an empty page.\n\n### Repo constraints to preserve\n\n- **Public stores only:** Start with `publicStores()` in `src/stores.js`, not the raw JSON. `soft_launch` stores are staff-only; closed stores must also stay excluded.\n- **Coordinate order:** Internally everything is `[longitude, latitude]` (`docs/coordinates.md`). Convert query parameters once using `toLngLat(lat, lng)`, then reuse `haversineKm()` from `src/geo.js`. History includes a specific fix for swapped coordinates (`95c5a5e`).\n- **Bounded responses:** Pass results through `paginate()` in `src/paginate.js`: default 20, maximum 100. That cap was introduced after an unbounded-list outage (`e0fa30f`).\n\n### Implementation plan\n\n1. **Validate input at the route boundary.**\n   Require finite numeric `lat`, `lng`, and `radiusKm`; latitude within −90…90, longitude within −180…180, and radius greater than zero. Reject missing, blank, malformed, or repeated values with `400`. Validate supplied pagination values as integers—positive limit, nonnegative offset—because the existing helper does not enforce that itself. Keep the 100-item cap.\n\n2. **Add a small, testable nearby-search helper.**\n   Take eligible stores, the converted origin, and radius. Compute each distance once, retain stores where `distanceKm <= radiusKm`, and sort before pagination. Use full precision for filtering and ordering; don’t mutate the shared store objects. An in-memory scan fits the current JSON-backed dataset; no database, spatial index, or dependency is needed.\n\n3. **Wire it into `src/routes.js`.**\n   Follow the existing `{ status, body }` handler convention. Keep the current list and distance endpoints unchanged. Leave hours, photos, caching, CORS, and metrics outside this feature: those modules/config exist but aren’t wired into the current routes. “Public/open status” should not silently become “open right now.”\n\n4. **Document the contract.**\n   Add request/response examples, units, validation rules, inclusive radius boundary, sorting, and pagination semantics to the README.\n\n### Tests to add\n\n- Lisbon origin returns the expected public store and distance; Porto falls outside a small radius.\n- Nearby soft-launch and closed stores remain excluded.\n- Zero-distance, exact-radius boundary, and no-match cases.\n- Nearest-first ordering and deterministic ties.\n- Pagination happens **after** filtering/sorting; totals are correct; responses never exceed 100 items.\n- Invalid coordinates, radius, and pagination return `400`.\n- Coordinate-order regression, plus antimeridian/polar distance cases.\n\n### One integration gap\n\n`Dockerfile` starts `src/server.js`, but that file is absent from this checkout. Handler-level work is straightforward, but HTTP routing and end-to-end verification require locating the actual server adapter or confirming the checkout is incomplete.\n\nBefore implementation, I’d confirm the proposed `radiusKm`/`distanceKm` names and whether mobile needs a maximum search radius.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-21-plain-sol-k1",
+    "requests": 8,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0488975,
+    "input_tokens": 64851,
+    "output_tokens": 1296,
+    "cached_tokens": 52242,
+    "cache_write_tokens": 12279,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0000738,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.048823700000000005,
+        "requests": 7
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 8
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 26.149,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-21-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:26:24.720Z",
+    "images": {
+      "core": "sha256:729c3ae2a84236c658f78a718f20798fa978ae7d70283b4749a8c714791f3335",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-3a3400f10bfd",
+        "id": "sha256:30b9298ccab19873ce1edfac60b36c460fa5d27276cc2a2a9ae1f33536a2d438",
+        "tree_sha256": "b6247ad88d073ebd85b13264308483ff6640bb140d30ba92a11646e902f2aa13"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-6084b736-f305-42e1-b2b8-a523b1c1-866234"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:27:14.505Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/5990589a5fa910931682fdb8/ab334ddd1b95f92f/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/5990589a5fa910931682fdb8/ab334ddd1b95f92f/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git log -5 --oneline && ls -la && find . -maxdepth 3 -type f -not -path './.git/*' | sort",
+          "code": 0,
+          "output": "8394d14 Opening hours, photos, caching, CORS and metrics\ne0fa30f Cap list endpoints at 100 items\n95c5a5e Fix swapped coordinates in the distance route\n90c31bc Stores API\ntotal 44\ndrwxr-xr-x 8 root root 4096 Nov  8 03:26 .\ndrwxr-xr-x 4 root root 4096 Nov  8 03:26 ..\ndrwxr-xr-x 5 root root 4096 Nov  8"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-21-plain-sol-k1",
+      "meter": {
+        "requests": 8,
+        "usd": 0.0488975,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 8,
+        "usd": 0.0488975,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0000738
+    }
+  }
+}

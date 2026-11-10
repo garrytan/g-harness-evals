@@ -1,4 +1,4 @@
-// Ported from gstack-evals (#private-link-removed) tests/stats/sign-flip.test.ts at 81daa79abcf86ddbd15409da0b78cd4d98e835b4.
+// Ported from gstack-evals (https://github.com/garrytan/gstack-evals) tests/stats/sign-flip.test.ts at 81daa79abcf86ddbd15409da0b78cd4d98e835b4.
 import { describe, expect, test } from 'bun:test';
 import { clusteredPairedDelta, nonInferiorityP, seededRandom, type PairedItem } from '../runner/stats/paired.ts';
 import { marginShiftedSignFlipP } from '../runner/stats/sign-flip.ts';

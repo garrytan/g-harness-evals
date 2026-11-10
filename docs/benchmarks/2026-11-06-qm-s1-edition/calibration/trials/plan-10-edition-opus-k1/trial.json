@@ -1,0 +1,159 @@
+{
+  "trial_id": "plan-10-edition-opus-k1",
+  "task_id": "plan-10",
+  "family": "plan",
+  "arm": "edition",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I've read the repo and its history, and I haven't written any code. The plan below comes out of two things the history already tells us.\n\n## What the repo already tells us\n\n1. **We've tried this before and backed it out.** Rui added an `urgent` flag (commit `bc7dd8b`) and removed it the next day (`0cc863a`). Urgent jobs starved everything else: during the March import, email sat for six hours behind them (INC-88). His note on the removal says that if priorities come back, they need aging so low-priority jobs still run.\n2. **The claim query has to stay on the index with no sort.** A full scan at 2M rows took the queue down (INC-61). `tests/test_query_plan.py` now fails if the claim query stops using `idx_jobs_ready` or needs a temporary sort. Any formula like `ORDER BY priority DESC, run_at` or \"priority minus age\" would break that test.\n3. **Jobs with the same ordering key must stay in order.** Billing uses the customer id as its key so invoice numbers come out in sequence. If a priority lets a later job in a key overtake an earlier one, invoices get misnumbered.\n\n## Proposed design: a precomputed \"sort time\" with a capped head start\n\nAdd a column `sort_at = run_at − head_start(priority)` and claim jobs by `sort_at` instead of `run_at`.\n\n- **Priority levels:** keep it to a few, set by job kind. For example, `high` gets a 30-minute head start (password resets, login codes), `normal` gets 0, and `low` gets −30 minutes (bulk imports). Only the enqueue code assigns these, so callers can't pick arbitrary numbers.\n- **Aging comes free.** A password reset jumps ahead of anything enqueued in the last 30 minutes, but a normal job that has waited longer than 30 minutes still beats any newly enqueued high-priority job. The worst-case wait is bounded by the cap, which is the fix INC-88 asked for. There's no background job re-scoring rows.\n- **It stays fast.** The order is a plain column, so the claim becomes `WHERE status='ready' AND sort_at <= :now + max_head_start AND run_at <= :now ORDER BY sort_at LIMIT 50`, backed by a new index on `(status, sort_at)`. The query-plan test keeps passing as it is, pointed at the new index.\n- **Ordering keys stay in sequence.** When a job with a key is enqueued, its `sort_at` is set to at least the largest `sort_at` of that key's unfinished jobs. Within a key, order never changes. A high-priority billing job can only get ahead of other customers' work, never its own customer's earlier invoices.\n- **Retries:** whenever a job is rescheduled, recompute `sort_at` from the new `run_at`. Today `retry.py` isn't actually connected to `claim()`, so this needs doing when that gets hooked up.\n\n## Steps\n\n1. **Schema migration:** add `priority` (default normal) and `sort_at` columns, backfill `sort_at = run_at`, create `idx_jobs_ready_sort (status, sort_at)`, and drop `idx_jobs_ready` once nothing uses it. There's currently no migration mechanism (`db.py` just runs `schema.sql`), so we need a small one or a one-off script for the live databases.\n2. **Enqueue:** add a `priority=` argument and a kind → priority map in `config/queue.ini` (e.g. `password_reset = high`). Compute `sort_at`, including the keep-in-order rule above.\n3. **Claim:** switch to the new query. The busy-key check stays as it is.\n4. **Metrics/CLI:** count claims and wait time per priority level, and add a per-priority breakdown to `jobq stats`, so we'll see starvation before users do.\n5. **Docs:** update `docs/queue.md`. \"Claimed oldest first\" becomes \"claimed by sort time; priority gives at most an N-minute head start\", plus the ordering-key guarantee.\n\n## Tests to add first\n\n- A high-priority job beats a normal job enqueued earlier, as long as it's within the head start.\n- A normal job that has waited longer than the head start beats a new high-priority job (the INC-88 case).\n- A later high-priority job in the same key doesn't run before an earlier normal one (the invoice-order case).\n- The query-plan test, updated for the new index, still shows no temporary sort.\n- The existing `test_ordering` passes unchanged.\n\n## Decisions for you\n\n- **How big the head start is.** 30 minutes is my guess. It should be the longest delay we'd accept for normal jobs under a flood of urgent ones.\n- **Two or three levels:** whether we need `low` at all, or just `high` and `normal`.\n- **Running other people's code first:** it would be worth showing this to Rui, since he wrote both incident fixes this has to respect.\n\nOnce you've settled those, I can turn this into a PR, starting with the tests.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-10-edition-opus-k1",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.1106168,
+    "input_tokens": 68661,
+    "output_tokens": 2977,
+    "cached_tokens": 63352,
+    "cache_write_tokens": 4823,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.00005440000000000001,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.1105624,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 35.868,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-calibration",
+    "trial_id": "plan-10-edition-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T06:49:01.765Z",
+    "images": {
+      "core": "sha256:3567e7c17a04b80e7a1454cea7d4e459f0fa39dd8671e6daed39af28a6584e2c",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-dd63528774c8",
+        "id": "sha256:87516b4b1eba9215ef4229b390b5bbad9a942eb29499fa2970117e97d78a356b",
+        "tree_sha256": "9406d46886aea1b2a50de9833e8cb5cea816973bd9f52df9dee7507b4fd42962"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-3efea7d7-1ce7-4fce-b711-f2e18256-37ded3"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T06:50:01.759Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd ~/workspace/repo; for f in README.md config/queue.ini docs/queue.md pyproject.toml jobq/*.py jobq/schema.sql tests/*.py; do echo \"=== $f\"; cat $f; done; git log --oneline | head",
+          "code": 0,
+          "output": "=== README.md\n# taskmill\n\nA small job queue on SQLite, used by billing, email and imports.\n\nRun the tests with python3 -m unittest discover -s tests -t .\n=== config/queue.ini\n[worker]\nconcurrency = 4\npoll_seconds = 1\n=== docs/queue.md\n# Queue semantics\n\n- Jobs become ready at run_at and are claimed "
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-10-edition-opus-k1",
+      "meter": {
+        "requests": 6,
+        "usd": 0.1106168,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.1106168,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.00005440000000000001
+    }
+  }
+}

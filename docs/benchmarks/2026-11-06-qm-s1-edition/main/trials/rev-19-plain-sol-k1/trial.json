@@ -1,0 +1,161 @@
+{
+  "trial_id": "rev-19-plain-sol-k1",
+  "task_id": "rev-19",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "*I’d hold off merging: one high-priority bug.*\n\n*P1 — Sessions expire after 30 milliseconds, not 30 minutes*  \n`src/idle.js:1–4` defines `IDLE_TIMEOUT = 30` and adds it directly to `lastSeen`, which is a millisecond timestamp. Consequently, `sweep()` removes sessions just 31 ms after their last activity, potentially logging out active users on the next sweep.\n\nI reproduced this: a session last touched *1 second ago* is classified as idle and removed; it should remain active for 30 minutes.\n\n*Recommended fix:* express the timeout as `30 * 60 * 1000`. Use an inclusive comparison so expiration starts exactly at the documented timeout. Add tests just before, exactly at, and just after 30 minutes, plus a sweep test retaining a recently active session.\n\nAll 4 existing tests pass, but they only check freshly touched or long-idle sessions, so they miss this bug.\n\nReviewed local `idle-timeout` (`da785f6`) against `main` (`91438e5`). No code edits; working tree remains clean.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-19-plain-sol-k1",
+    "requests": 9,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0474522,
+    "input_tokens": 72583,
+    "output_tokens": 1074,
+    "cached_tokens": 59990,
+    "cache_write_tokens": 12278,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0000702,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.047381999999999994,
+        "requests": 8
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 9
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 23.946,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-19-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T15:01:03.555Z",
+    "images": {
+      "core": "sha256:3910594b6055b8b889d444e7b76a92af38d79a0b5bb0951c442dff7124c7be49",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-866435aaa7c4",
+        "id": "sha256:6a80d1a08bddf0cc93ca34e8e4cb94ba10a8b00001925568217210eb33a95194",
+        "tree_sha256": "976e7f453705633343847be00fd0cb97514b749e6cec4f692ef40f15f2fb9b22"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-cedc2819-243d-490c-8549-8da149d4-084ea9"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T15:01:51.157Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/4fd3fbe449b69a5d607d77cc/84db1ecd7c2d500e/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/4fd3fbe449b69a5d607d77cc/84db1ecd7c2d500e/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 10,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -av && git log --oneline -6 && git diff --stat main...idle-timeout && ls -la; git config --show-origin --get-regexp 'credential|http\\..*extraheader|core.sshCommand' || true",
+          "code": 0,
+          "output": "* idle-timeout da785f6 Sweep idle sessions from the store\n  main         91438e5 Track session activity\nda785f6 Sweep idle sessions from the store\nad83f9a Expire idle sessions\n91438e5 Track session activity\n CHANGELOG.md       |  4 ++++\n README.md          |  8 ++++++++\n package.json       |  2 +-\n "
+        },
+        {
+          "seq": 12,
+          "command": "cd /root/workspace/repo && git diff main...idle-timeout && for f in src/* test/* package.json README.md CHANGELOG.md; do echo \"===== $f\"; nl -ba \"$f\"; done && git ls-tree -r --name-only main",
+          "code": 0,
+          "output": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 161cbe8..275e5be 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.1.0\n+\n+- Idle session expiry and reconnect backoff.\n+\n ## 1.0.0\n \n - Session activity tracking.\ndiff --git a/README.md b/README.md\nindex 9610e49..ab0c338 "
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-19-plain-sol-k1",
+      "meter": {
+        "requests": 9,
+        "usd": 0.0474522,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 9,
+        "usd": 0.0474522,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0000702
+    }
+  }
+}

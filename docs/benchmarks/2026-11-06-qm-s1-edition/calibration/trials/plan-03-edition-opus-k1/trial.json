@@ -1,0 +1,159 @@
+{
+  "trial_id": "plan-03-edition-opus-k1",
+  "task_id": "plan-03",
+  "family": "plan",
+  "arm": "edition",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I've read through the repo and have a plan. I haven't changed anything. Two rules in the repo decide most of the design.\n\n**What decides the design**\n1. **The score can't go into the current search response.** The iOS 4.x app rejects the whole response if it sees a field it doesn't know, and a contract test enforces this (`test/contract.test.js`). `docs/api.md` also says a published API version never changes shape. So `relevance` and the \"did you mean\" text have to go in a new **`GET /v2/search`**, and `/v1` stays exactly as it is.\n2. **Fuzzy matching belongs only in the postings search code** (`src/search/postings.js`). `DEPRECATIONS.md` says the older scan code gets no new features. The on-prem build still uses scan, so on-prem won't get typo tolerance. That's intended, but worth saying out loud.\n\nA third rule holds either way: store staff search by SKU, and an exact SKU match must always rank first (`test/search.test.js`).\n\n**Plan**\n1. **Fuzzy matching in `postings.js`**\n   - Keep the current exact word lookup. If a query word finds nothing, compare it against the words in the product names using edit distance (Damerau–Levenshtein, so swapped letters count as one typo).\n   - Allowed typos scale with word length: none up to 3 letters, 1 for 4–7, 2 for 8 or more. That stops short words like \"mk\" from matching everything.\n   - The catalog has 5 products, so checking every name word is fine for now. If it grows a lot, add a trigram index. That's a later step.\n2. **Relevance score**\n   - Each result gets a score from 0 to 1: exact SKU = 1.0, exact name word = 0.9, fuzzy match = 0.9 × (1 − typos ÷ word length), averaged over the query words.\n   - Results are sorted by score, and exact SKU matches are always pinned to the top whatever the scores say.\n   - `search()` returns `{product, score, matchedTerms}` internally. `/v1` drops everything except the current fields, so its output is byte-for-byte unchanged.\n3. **\"Did you mean\"**\n   - If the query has no exact match but fuzzy matching corrected it, return `suggestion: \"kettle\"` (the corrected query) along with the results.\n   - The app shows the line when `suggestion` is present, or when the top score is below a threshold. I'd start that threshold at 0.75 and put it in `config/search.json`.\n4. **`/v2/search`**\n   - Add the route in `server.js` returning `{ results: [{id, name, price_cents, relevance}], suggestion? }`.\n   - Add `openapi/search.v2.json` (strict) and a v2 contract test. Note it in `docs/api.md`.\n5. **Tests**\n   - \"ketle\", \"kettel\" and \"toastr\" each find the right product.\n   - \"KT-1000\" still comes back first.\n   - A 3-letter word gets no fuzzy matches.\n   - Scores go down as typos go up.\n   - `/v1` output is unchanged, both the existing contract test and a snapshot.\n6. **Measuring it (optional)**\n   - `analytics.searchPerformed` is defined but never called. Hooking it up would record zero-result queries before and after the change, so we can see whether fuzzy matching helped.\n\n**Questions for you**\n- **New version:** OK to ship this as `/v2/search`? The app team would need to move to v2 to get the \"did you mean\" line.\n- **SKUs:** should typos in SKUs be fuzzy-matched too? My default is no, since staff expect exact SKU results.\n- **On-prem:** is it fine that on-prem gets no fuzzy matching?",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-03-edition-opus-k1",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0767262,
+    "input_tokens": 65407,
+    "output_tokens": 1890,
+    "cached_tokens": 61551,
+    "cache_write_tokens": 3344,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000056,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0766702,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 22.994,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-calibration",
+    "trial_id": "plan-03-edition-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T06:43:20.954Z",
+    "images": {
+      "core": "sha256:3567e7c17a04b80e7a1454cea7d4e459f0fa39dd8671e6daed39af28a6584e2c",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-592b235c118e",
+        "id": "sha256:c8a4b362498ef5139ca50c9da0de171bb4e8a39ed0543877509a0d5c166f6695",
+        "tree_sha256": "65acce4b83b9b7b39cf89b9535a4b8b36ed2e2e044157d155f874f7315bae8a3"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-dac22fdf-f040-48ff-bb3d-a4627803-9a9962"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T06:44:07.496Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd ~/workspace/repo; git log --oneline|head -5; git remote -v; find . -path ./.git -prune -o -type f -print | head -80; cat README* 2>/dev/null | head -40",
+          "code": 0,
+          "output": "e08e1bd Recommendations, response cache and search analytics\n1613cd3 Contract test for /v1/search\n1c2850b Exact SKU hits first\nfcfdeab Switch to the postings backend and deprecate scan\nf3709d3 Postings search backend\n./package.json\n./README.md\n./Dockerfile\n./.eslintrc.json\n./config/search.json\n./src"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-03-edition-opus-k1",
+      "meter": {
+        "requests": 6,
+        "usd": 0.0767262,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.0767262,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000056
+    }
+  }
+}

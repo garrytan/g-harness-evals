@@ -1,0 +1,156 @@
+{
+  "trial_id": "plan-13-plain-opus-k1",
+  "task_id": "plan-13",
+  "family": "plan",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I've drafted the plan below. I read every file and the full commit history, and changed nothing. Four things in the repo shape how this has to work.\n\n**What the repo already decides**\n1. **The cookie has to be set by the server.** We already shipped a 30-day \"stay signed in\" in `public/legacy-remember.js`, which set the cookie from the browser. Commit 6d99e9a removed it because Safari limits cookies set that way to 7 days, so Safari users got logged out after a week (ticket SUP-221). The fix is already there: `sessionCookie(sid, { maxAgeSeconds })` in `src/cookies.js`. Nothing passes it a lifetime yet.\n2. **Admins can't get 30 days.** Control AC-7 in `docs/compliance/controls.md` says admin sessions end 12 hours after sign-in, \"whatever the user chose\", and auditors test this every year. `ADMIN_MAX_MS` and a test already enforce it.\n3. **SSO orgs can't get 30 days either.** For the orgs in `config/sso.json` (`org_acme`, `org_globex`), `docs/sso.md` says their identity provider controls session length, 8 hours at most.\n4. **The server side isn't ready.** `session.js` ends a session after 2 hours idle, so a 30-day cookie would just point at a dead session. And `session-store.js` keeps sessions in memory, so every deploy or restart signs everyone out.\n\n**Plan**\n1. **Login route** (`src/routes/login.js`): read a `remember` flag from the form and pass it to `session.create(user, { remember })`. When the session is allowed to last 30 days, call `sessionCookie(sid, { maxAgeSeconds: 2592000 })`. Otherwise keep today's cookie, which ends when the browser closes.\n2. **Session rules** (`src/session.js`):\n   - Add `REMEMBER_MS = 30 days` and store `remember` and `expiresAt` on the session.\n   - Remembered sessions skip the 2-hour idle check but stop hard at `createdAt + 30d`.\n   - Admins always keep the 12-hour cap. I'd ignore `remember` for them completely, both the cookie and the session.\n   - SSO-enforced orgs ignore `remember` too, and the IdP's expiry still applies.\n   - Put this in one function, something like `effectiveLifetime(user, remember)`, so the cookie and the server-side check can't disagree.\n3. **Persistent session store**: move `session-store.js` to Redis or the database, with a TTL that matches `expiresAt`. Without this, 30 days won't actually hold. It probably needs its own PR first.\n4. **Security basics for long sessions**:\n   - Issue a new session ID at login.\n   - Clear remembered sessions when someone resets their password or changes MFA settings.\n   - Add a \"sign out everywhere\" option, which means keeping a list of each user's sessions.\n   - Logout deletes the session on the server and clears the cookie.\n5. **UI and copy**:\n   - Add a `login.remember` string (\"Keep me signed in for 30 days\") to `locales/en.json`.\n   - The login form itself isn't in this repo (there's no `server.js` or page markup either), so the checkbox goes in whichever app renders the form.\n   - Hide or disable the box for SSO orgs and explain why. Admins still see it but only get 12 hours.\n6. **Tests** (`test/session.test.js`). All of these must pass:\n   - A remembered member stays signed in after 2+ hours idle and is signed out just after 30 days.\n   - The cookie gets `Max-Age=2592000` only when the session really is allowed 30 days.\n   - **An admin who ticks \"remember\" is still cut off at 12 hours, including the cookie.** This covers AC-7.\n   - A user in an SSO-enforced org gets no long cookie.\n   - The existing tests keep passing.\n\n**Questions for you**\n- Should the 30 days be fixed from sign-in (my default) or reset whenever the person is active?\n- Do you want MFA again on the next sign-in after a remembered session ends? Or should a trusted device skip MFA? I'd keep that separate.\n- Is someone available to do the session-store migration, or should that go into this work?",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-13-plain-opus-k1",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0989951,
+    "input_tokens": 81285,
+    "output_tokens": 2336,
+    "cached_tokens": 76137,
+    "cache_write_tokens": 4657,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000055700000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.09893940000000001,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 27.323,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-13-plain-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:27:47.760Z",
+    "images": {
+      "core": "sha256:0905bc9012fb1b772f1c7833737af2644de88955edaba008682c36a74db6d24c",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-3accdbaf9008",
+        "id": "sha256:16f203314f32feac8c31576a026ee3d02f26601c67bc2e4e81715a230a0d6120",
+        "tree_sha256": "86dfda5b03307f00d5094f70269efa0d541e7ca563991f34c10175fcf0b66d3c"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-4743baad-eb63-4c2c-a15d-ea12a9c7-6d226d"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:28:39.385Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd ~/workspace/repo; git log --oneline | head -5; git remote -v; find . -path ./.git -prune -o -type f -print | grep -v node_modules | head -100; cat README* package.json 2>/dev/null | head -80",
+          "code": 0,
+          "output": "275512d Captcha, MFA, password reset and rate limits\n6d99e9a Set auth cookies from the server only\nc845909 SSO for enterprise orgs\n54e33a1 Stay signed in on the legacy pages\n90a37d9 Sessions and login\n./locales/en.json\n./package.json\n./README.md\n./Dockerfile\n./config/csp.json\n./config/sso.json\n./src"
+        },
+        {
+          "seq": 8,
+          "command": "cd ~/workspace/repo; for f in src/*.js src/routes/*.js test/* config/* docs/*.md docs/compliance/* locales/* Dockerfile; do echo \"=== $f\"; cat $f; done; git log -p --stat 54e33a1 -1 | head -80",
+          "code": 0,
+          "output": "=== src/captcha.js\nfunction needsCaptcha(failures) {\n  return failures >= 3;\n}\n\nmodule.exports = { needsCaptcha };\n=== src/cookies.js\nfunction sessionCookie(sid, { maxAgeSeconds } = {}) {\n  const parts = ['sid=' + sid, 'Path=/', 'HttpOnly', 'Secure', 'SameSite=Lax'];\n  if (maxAgeSeconds) parts.push("
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-13-plain-opus-k1",
+      "meter": {
+        "requests": 7,
+        "usd": 0.0989951,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.0989951,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000055700000000000005
+    }
+  }
+}

@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-21-plain-opus-k1",
+  "task_id": "rev-21",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I reviewed `config-merge` against `main` (2 commits). I didn't change anything in the repo. All 4 tests pass, but the main feature doesn't do what the docs say.\n\n**Blocking**\n\n1. **`merge_config` isn't a deep merge.** It's just `{**base, **override}`. The README, `docs/config.md` and the 0.3.0 changelog all say nested dicts are merged key by key. I ran the docs' own example: base `{'db': {'host': 'h', 'port': 5432}}` with override `{'db': {'port': 6000}}` gives `{'db': {'port': 6000}}`, so the host is lost. For layering defaults under user config, this means one nested key set by the user wipes out every default in that section. A fix would recurse when both values are dicts and copy nested values so the result doesn't share structure with the inputs.\n2. **The \"neither input is mutated\" promise is only partly true.** The top-level dict is new, but nested dicts and lists are shared with the inputs. Changing the result later will also change the defaults. A proper deep merge fixes this too.\n3. **The tests don't cover the main feature.** They only check top-level keys, which is why they pass. Worth adding:\n   - the nested `db` example from the docs\n   - a test that the inputs aren't mutated\n   - a stacked-layers test with nested keys\n\n**Non-blocking**\n\n4. **`freeze` breaks on some inputs.**\n   - It sorts keys, so a dict with mixed key types (like `{1: 'a', 'x': 'b'}`) raises a `TypeError`.\n   - Sets and other unhashable values pass through unchanged, so `hash()` on the result fails.\n   - A dict and a list of pairs can freeze to the same value, so they'd count as equal.\n   \n   If it's only meant for string-keyed JSON-style config, saying so in the docs is enough.\n5. **`freeze` is out of scope for this branch.** It isn't mentioned in the changelog and has no tests.\n6. **Minor:**\n   - `apply_layers([])` returns `{}`, which is fine.\n   - There's no `None` or type checking on layers. A `None` layer raises an unclear `TypeError`.\n\n**Verdict:** request changes. Item 1 is the real problem: the code doesn't do what the branch is for.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-21-plain-opus-k1",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0597939,
+    "input_tokens": 52858,
+    "output_tokens": 1442,
+    "cached_tokens": 49755,
+    "cache_write_tokens": 2644,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000050900000000000004,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.059743000000000004,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 18.536,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "rev-21-plain-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:21:02.806Z",
+    "images": {
+      "core": "sha256:276503dbf085b3b0855b3ecb1bcc7e1a4baa8571aea7cba84ecb4236755d85c7",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-4c7c36bc6936",
+        "id": "sha256:a2c39d1391a8ab80a3a9376143242fd4f2c1d4b1e36352d057bb33c914286ca1",
+        "tree_sha256": "d9e3a4b2ffbd4a94f4219657ce3513342c06ad2b17d16fc272f9c11c39ee6761"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-67ac86d3-c34b-4c8a-a27f-03c2327d-fe5b10"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:21:45.234Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..config-merge; git diff main...config-merge",
+          "code": 0,
+          "output": "* config-merge\n  main\n77d6a81 Apply a stack of layers\nfb8e4df Merge config layers\ndiff --git a/CHANGES.md b/CHANGES.md\nindex 0badbfc..b9fea17 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.3.0\n+\n+- Deep merge of config layers.\n+\n ## 0.2.0\n \n - Load config layers.\ndiff --"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-21-plain-opus-k1",
+      "meter": {
+        "requests": 5,
+        "usd": 0.0597939,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.0597939,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000050900000000000004
+    }
+  }
+}

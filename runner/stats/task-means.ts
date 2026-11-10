@@ -1,4 +1,4 @@
-// Vendored from gstack-evals (#private-link-removed) at 81daa79abcf86ddbd15409da0b78cd4d98e835b4, src/runner/stats/task-means.ts. MIT License, Copyright (c) 2026 Garry Tan.
+// Vendored from gstack-evals (https://github.com/garrytan/gstack-evals) at 81daa79abcf86ddbd15409da0b78cd4d98e835b4, src/runner/stats/task-means.ts. MIT License, Copyright (c) 2026 Garry Tan.
 // gstack-evals (U2), plan v3.2 fix 2: paired comparisons on per-task means, item = cluster = task.
 //
 // A comparison averages each arm's valid trials within a task and pairs the two arms by task. The arms may run

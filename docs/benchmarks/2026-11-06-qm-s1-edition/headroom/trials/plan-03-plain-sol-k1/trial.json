@@ -1,0 +1,161 @@
+{
+  "trial_id": "plan-03-plain-sol-k1",
+  "task_id": "plan-03",
+  "family": "plan",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I reviewed Shelfware at `e08e1bd`. **No code changed**, and all three existing tests pass.\n\n### What’s there today\n- The active backend is `src/search/postings.js`. It matches exact name tokens, so `ketle` and `kettel` return nothing.\n- Multiword searches match **any** token, with results otherwise in catalog order—not relevance order.\n- Exact SKU matches must stay first; staff depend on that, and there’s an explicit test.\n- **Scores need a new API version.** `/v1/search` has a frozen response shape, and the contract test notes that iOS rejects unknown fields. Adding `score` to v1 would break clients.\n- `scan.js` is deprecated; the deprecation guide explicitly says new search behavior belongs in `postings.js`.\n\n### Proposed plan\n\n**1. Add bounded typo matching to the postings backend**\n- Keep exact SKU lookup and exact token lookup as the fast paths.\n- For unmatched name tokens, find nearby terms in the indexed vocabulary using bounded Damerau–Levenshtein distance. This handles missing/extra letters and adjacent swaps such as `kettel`.\n- Start conservatively: no fuzzy matching for very short or numeric tokens, one edit for ordinary words, and consider two edits only for longer words after testing.\n- Expand only unmatched tokens, even when another token already matches. Otherwise `coffee grnder` finds a product but never recognizes the typo.\n- Keep SKU matching exact; don’t silently “correct” product identifiers.\n\n**2. Rank results and expose a defined score**\n- Preserve exact SKU matches as the highest-priority tier.\n- Rank name matches using query-token coverage, exact versus fuzzy matches, and edit distance. Complete exact matches should beat partial or typo-dependent matches.\n- Return a normalized `score` from `0` to `1`, with deterministic tie-breaking. Document it as a relevance measure, **not a probability**.\n- Return scored copies/wrappers rather than attaching fields to shared catalog objects; recommendations use those objects too.\n\n**3. Introduce `/v2/search` for the app**\n- Add `openapi/search.v2.json` and a v2 route returning the existing product fields plus `score`.\n- Also include optional correction metadata—such as `suggested_query`—when there’s a strong, unambiguous correction. **A score alone doesn’t tell the app what text to put after “Did you mean”.**\n- Leave the v1 schema and serializer unchanged. The shared backend can improve matching while v1 continues returning only its existing fields.\n- Suppress suggestions for exact queries, weak matches, and ambiguous corrections.\n\n**4. Add tests before rollout**\n- Typos: missing, extra, substituted, and transposed letters; mixed exact/typo queries.\n- Ranking: exact SKU first, exact names ahead of fuzzy matches, stronger token coverage ahead of partial matches, stable ties, no duplicates.\n- Guardrails: short words, numeric fragments, blank queries, unrelated text, casing and whitespace.\n- Contracts: v1 remains exactly unchanged; v2 includes valid bounded scores and well-defined suggestion metadata.\n- Performance: benchmark against a representative catalog. The checked-in catalog has only five products, so it can’t establish production latency.\n\n**5. Roll out conservatively**\nStart with strict edit limits and a switch to disable fuzzy expansion. Measure zero-result rate, correction acceptance, irrelevant-result reports, and latency before widening thresholds. The repo has cache and analytics helpers, but neither is wired into search; I’d keep integrating those out of the initial change unless needed for rollout measurement.\n\n**Recommended scope:** postings-backend matching/ranking, a versioned v2 response, tests, and API documentation. Leave the deprecated scan backend, recommendations, and unrelated infrastructure untouched.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-03-plain-sol-k1",
+    "requests": 9,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.05161740000000001,
+    "input_tokens": 73306,
+    "output_tokens": 1483,
+    "cached_tokens": 60684,
+    "cache_write_tokens": 12278,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.000076,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0515414,
+        "requests": 8
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 9
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 31.38,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-03-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:23:11.956Z",
+    "images": {
+      "core": "sha256:306efa6bb3ff48f390ed9434c63be3183fe7d3fdecb1a2ca2939e076998b7771",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-592b235c118e",
+        "id": "sha256:d4e3d81ea06e3eed330117195ea26735f061ef933bb49871f3a5b8273d30634f",
+        "tree_sha256": "65acce4b83b9b7b39cf89b9535a4b8b36ed2e2e044157d155f874f7315bae8a3"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-025b2546-2838-4b20-9631-a4521f00-df7e03"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:24:07.180Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/b273ac62b0a14dfb7f8ed3af/d6be0776942b0f73/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/b273ac62b0a14dfb7f8ed3af/d6be0776942b0f73/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 10,
+          "command": "cd /root/workspace/repo && git remote -v; git status --short; git log -4 --oneline; ls -la; find . -maxdepth 2 -type f | head -70; git config --show-origin --get-regexp 'credential|http\\..*extraheader|url\\..*insteadof|core.sshcommand' || true",
+          "code": 0,
+          "output": "e08e1bd Recommendations, response cache and search analytics\n1613cd3 Contract test for /v1/search\n1c2850b Exact SKU hits first\nfcfdeab Switch to the postings backend and deprecate scan\ntotal 48\ndrwxr-xr-x 8 root root 4096 Nov  8 03:23 .\ndrwxr-xr-x 4 root root 4096 Nov  8 03:23 ..\n-rw-r--r-- 1 root r"
+        },
+        {
+          "seq": 12,
+          "command": "cd /root/workspace/repo && find src -type f; for f in README.md package.json config/search.json src/*.js src/search/*.js test/*.js docs/* openapi/*; do echo \"\\n--- $f\"; nl -ba \"$f\"; done; git log --all --oneline --decorate -20",
+          "code": 0,
+          "output": "src/cache.js\nsrc/recs.js\nsrc/server.js\nsrc/analytics.js\nsrc/catalog.js\nsrc/search/index.js\nsrc/search/scan.js\nsrc/search/postings.js\n\n--- README.md\n     1\t# shelfware\n     2\t\n     3\tCatalog and search API behind the shop apps.\n     4\t\n     5\tRun the tests with npm test.\n\n--- package.json\n     1\t{\n  "
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-03-plain-sol-k1",
+      "meter": {
+        "requests": 9,
+        "usd": 0.05161740000000001,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 9,
+        "usd": 0.05161740000000001,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.000076
+    }
+  }
+}

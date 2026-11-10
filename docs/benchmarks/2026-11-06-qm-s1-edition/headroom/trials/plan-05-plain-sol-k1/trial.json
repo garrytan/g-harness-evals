@@ -1,0 +1,161 @@
+{
+  "trial_id": "plan-05-plain-sol-k1",
+  "task_id": "plan-05",
+  "family": "plan",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "Yes. I’d make deletion a reversible project state, preserve its tasks for 30 days, and permanently purge it afterward. The main risks here are tenant isolation, slug reuse, and rolling deployments—not just adding a timestamp.\n\nI reviewed the checkout at `7795f19`. No code changed; all three existing tests pass.\n\n## What the repo does today\n\n- **Deletion is destructive:** `src/projects.js:15–17` deletes tasks first, then the project, with no transaction.\n- **Reads have no deleted-state filter:** `projects.list()` uses `scoped(tenantId).select('projects')`.\n- **Tenant scoping is mandatory:** all SQL belongs under `src/db` and must go through the tenant-scoped layer. Git history ties this rule to a previous cross-tenant data leak.\n- **Slugs are unique per tenant:** `migrations/0005_projects_slug_unique.sql`. History records that duplicate slugs previously routed people to the wrong board.\n- **Deployments overlap:** `docs/migrations.md` requires old and new releases to work against the same schema during rolling restarts.\n- **Infrastructure is minimal:** the DB pool only logs SQL and returns empty arrays. Search, audit, and webhooks are standalone in-memory helpers, not wired into project routes. There’s no purge scheduler or authorization policy shown.\n\n## Recommended plan\n\n### 1. Model the retention window explicitly\n\nAdd a nullable `deleted_at TIMESTAMPTZ` to projects.\n\n- Active: `deleted_at IS NULL`.\n- Restorable: deleted, and database time is **before** `deleted_at + 30 days`.\n- Expired: at or beyond that deadline, even if the purge job hasn’t run yet.\n\nUse database time consistently. Repeating DELETE must not reset the timestamp and extend retention.\n\n**Keep the tasks intact.** A soft delete should hide the project and its tasks, not remove them. Restoring the project then restores the whole board without reconstructing data.\n\n### 2. Extend the scoped DB layer, not bypass it\n\nIn `src/db/scoped.js` or a project-specific module beneath `src/db`, add the operations needed for conditional updates, transactions, and deleted-state queries.\n\n- Normal project reads exclude deleted rows by default.\n- Trash and restore use explicit tenant-scoped operations.\n- Task reads and writes must also check that the parent project is active; retaining task rows must not leave them accessible through another path.\n- Delete, restore, and purge should use conditional updates/row locks so concurrent requests cannot race.\n\nKeep the existing “no raw queries outside `src/db`” guard. Don’t add a general unscoped escape hatch for the purge worker.\n\n### 3. Define the API contract\n\n| Operation | Proposed behavior |\n|---|---|\n| `DELETE /projects/:id` | Mark an active project deleted; return `204`. Repeated calls are harmless and preserve the original deadline. |\n| `GET /projects/deleted` | List the caller’s restorable projects, including deletion and expiry timestamps. |\n| `POST /projects/:id/restore` | Restore before expiry and return the restored project. Repeating it for an already-active project succeeds harmlessly. |\n| Ordinary project/task access | Treat a deleted project as unavailable. |\n\nReuse the existing authorization policy if it lives elsewhere; this checkout doesn’t show one. Trash and restore need explicit permission checks, not just a tenant ID.\n\nFor unknown or other-tenant IDs, use the same not-found behavior so the API doesn’t disclose another tenant’s projects. A known, same-tenant expired project can return a distinct “restore window expired” error.\n\n### 4. Keep slugs reserved\n\n**Leave the existing `(tenant_id, slug)` unique index unchanged.** A deleted project continues reserving its slug until permanent purge.\n\nThat guarantees conflict-free restoration and prevents a deleted project’s URL from pointing to a different board during its restore window. An active-only unique index would reintroduce the ambiguity behind the earlier incident.\n\n### 5. Add a safe permanent-purge job\n\nRun a scheduled worker in bounded batches:\n\n- Find expired projects through a tenant-scoped DB path.\n- Lock and recheck each project’s expiry.\n- Delete its tasks, then the project, in one transaction.\n- Retry failures safely without leaving partially deleted boards.\n\nUse the same locking discipline for restore so restore and purge cannot both succeed. Add an index supporting expiry scans, plus monitoring for purge failures and the age of the oldest expired row.\n\nThe repo has no scheduler today, so choosing how this worker runs is part of implementation—not an existing capability to assume.\n\n### 6. Handle search and lifecycle events deliberately\n\n`src/search-index.js` currently stores project IDs without tenant information. It isn’t connected to the routes, but it must not become a backdoor to deleted or cross-tenant data.\n\nIf used, remove deleted projects from search, reindex on restore, and verify search results against tenant-scoped active records.\n\nRecord distinct soft-delete, restore, and permanent-purge audit events. If webhook delivery is added, publish only after a successful commit, with retries/idempotency. Don’t treat the current in-memory helpers as durable delivery infrastructure. Seat billing appears unrelated and needs no change.\n\n## Rollout\n\n1. **Expand schema:** add the nullable timestamp and supporting index. Existing rows remain active; no backfill is needed.\n2. **Deploy compatible application support with the feature disabled:** filtering, restore/trash operations, and a dedicated soft-delete flag—not `new_dashboard`.\n3. **Wait until every old instance is gone, then enable soft deletion.** Otherwise an old instance could still permanently delete projects or list deleted rows.\n4. **Enable the purge worker after validation.** Keep it separately switchable.\n\nOnce soft-deleted rows exist, rollback must stay on a soft-delete-aware release. Rolling back to today’s code would expose deleted rows and restore hard-delete behavior.\n\n## Tests required before shipping\n\nBeyond the current SQL-shape tests, add real PostgreSQL integration coverage for:\n\n- Task preservation and full restoration.\n- Hidden projects/tasks across normal access paths.\n- Tenant and permission boundaries for trash, restore, and purge.\n- Repeated DELETE without extending retention.\n- Just before, exactly at, and after the 30-day deadline.\n- Slug reservation and eventual release after purge.\n- Concurrent restore/delete/purge, transaction rollback, and worker retries.\n- Mixed-version deployment and feature-flag behavior.\n\n**One product choice to confirm:** I recommend reserving slugs throughout the 30-day window. That’s the safest fit for this repo’s URL guarantees; allowing immediate slug reuse would require a separate restore-conflict policy.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-05-plain-sol-k1",
+    "requests": 8,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0530076,
+    "input_tokens": 63315,
+    "output_tokens": 1861,
+    "cached_tokens": 51279,
+    "cache_write_tokens": 11705,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0000752,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0529324,
+        "requests": 7
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 8
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 36.786,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-05-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:26:28.467Z",
+    "images": {
+      "core": "sha256:306efa6bb3ff48f390ed9434c63be3183fe7d3fdecb1a2ca2939e076998b7771",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-2e208cf069c3",
+        "id": "sha256:ae78a32483eb6f2cb8ae1f8400a7bf6c34ab8170b2db9118ba95c2c0156b77f9",
+        "tree_sha256": "de388269730bf7abb3e473866534e0e7e664ed2bea6fd2acd34f86cce9efa47c"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-9b9ccd4e-d299-4873-8ea5-9f5fd789-df93d2"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:27:28.985Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/7a338639acaab9b3c0e297a9/f355e56c1cd13232/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/7a338639acaab9b3c0e297a9/f355e56c1cd13232/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd repo && git status --short && git remote -v && git log -4 --oneline && find . -maxdepth 3 -type f | sort",
+          "code": 0,
+          "output": "7795f19 Search index and the new dashboard flag\n3bcfad7 Seat billing, audit log and webhooks\nd1308c7 Unique project slugs per tenant\ndd3eb48 Ban raw queries outside src/db\n./.git/HEAD\n./.git/ORIG_HEAD\n./.git/config\n./.git/index\n./.git/logs/HEAD\n./Dockerfile\n./README.md\n./config/flags.json\n./docs/mig"
+        },
+        {
+          "seq": 13,
+          "command": "cd repo && git log --format='%h %s%n%b' --all && git ls-files && npm test && git status --short",
+          "code": 0,
+          "output": "7795f19 Search index and the new dashboard flag\n\n3bcfad7 Seat billing, audit log and webhooks\n\nd1308c7 Unique project slugs per tenant\nSlugs are in every project URL. Two projects with the same slug sent people to the wrong board\n(INC-301).\n\ndd3eb48 Ban raw queries outside src/db\nA report query with"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-05-plain-sol-k1",
+      "meter": {
+        "requests": 8,
+        "usd": 0.0530076,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 8,
+        "usd": 0.0530076,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0000752
+    }
+  }
+}

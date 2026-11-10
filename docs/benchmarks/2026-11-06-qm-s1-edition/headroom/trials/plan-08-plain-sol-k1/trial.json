@@ -1,0 +1,155 @@
+{
+  "trial_id": "plan-08-plain-sol-k1",
+  "task_id": "plan-08",
+  "family": "plan",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I read the full repo and its commit history at `53db904`. **Refunds should be new, append-only reversal entries linked to the original capture—not edits to the payment.** No code changes made; both existing tests pass.\n\n## What’s already there\n\n- `ledger/payments.py:5–14` posts a four-line capture and returns the original amount, currencies, and FX-rate snapshot.\n- `ledger/chargebacks.py:7–15` shows the reversal pattern: opposite account movements, with `reverses` pointing to the capture.\n- `docs/ledger.md` requires per-currency balance, append-only entries, and integer minor units.\n- History explicitly says reversals must use the captured FX rate, never today’s rate (`d765916`, FIN-19).\n- Webhook deduplication was added after duplicate payments (`b5ce733`, INC-122), so retry safety is an existing requirement.\n\nThe chargeback implementation is a useful starting point, but copying it would leave refund limits, duplicate protection, and partial-refund rounding unresolved.\n\n## Proposed implementation plan\n\n### 1. Define the refund contract\n\nAdd `ledger/refunds.py` with an operation along the lines of:\n\n`refund(journal, payment, amount_minor, txn_id)`\n\n- Amount is a positive integer in the **original payment currency**.\n- A full refund reverses the entire captured amount when nothing has been refunded.\n- Partial refunds can repeat until the captured amount is exhausted.\n- After an earlier partial refund, “refund remaining” means the outstanding balance—not another refund of the original amount.\n- Resolve and validate the original capture from the journal; don’t trust a caller-supplied payment dictionary as authoritative.\n- Reject missing/non-capture targets, invalid amounts, and refunds exceeding the remaining refundable amount.\n\nDerive refunded totals from posted entries linked to the capture. Don’t mutate the capture or maintain a second, potentially inconsistent balance.\n\n### 2. Post the correct reversing entry\n\nFor a refund amount `R` and settlement amount `S`, mirror the existing capture:\n\n| Account | Signed amount |\n|---|---:|\n| `sales:<payment currency>` | `+R` |\n| `customer_funds:<payment currency>` | `−R` |\n| `bank:<settlement currency>` | `+S` |\n| `fx_clearing:<settlement currency>` | `−S` |\n\nUse `kind='refund'`, a distinct refund transaction ID, and `reverses=<capture txn_id>`. Keep the original entry untouched.\n\n### 3. Handle partial-refund FX rounding explicitly\n\n**Don’t independently convert every partial refund.** That can leave residuals even when the payment is fully refunded.\n\nAllocate settlement amounts cumulatively using the captured rate:\n\n> settlement for this refund = settlement reversal due for the new cumulative total − settlement already reversed\n\nEnsure the final refund consumes exactly the original capture’s remaining settlement amount.\n\nFor example, capturing 3 minor units at rate `1.5` records 4 settlement units under the existing half-even rounding. Three separately converted 1-unit refunds would incorrectly reverse 6; cumulative allocation gives **2, 1, 1**, totaling 4.\n\n### 4. Make posting and webhook retries safe\n\n- Add transaction-ID uniqueness at the journal boundary. An identical retry should not append again; reuse with different content should fail.\n- Validate the refundable balance and append the entry as one operation, so competing refunds cannot both consume the same remaining balance.\n- Extend `ledger/webhooks.py` for the provider’s refund event once its actual payload is confirmed.\n- Fix the current ordering: it marks an event processed **before** posting succeeds, which can permanently swallow a failed attempt.\n- Deduplicate on both provider event identity and refund transaction identity.\n\nThe repo currently has only an in-memory journal and global dedupe set. Durable, multi-worker guarantees would need transactional persistence; I would keep that boundary explicit rather than imply these structures provide it.\n\n### 5. Tests and documentation\n\nAdd coverage for:\n\n- Full, single partial, repeated partial, and final-remainder refunds.\n- Same-currency and cross-currency payments.\n- Captured-rate use and rounding-sensitive refund sequences.\n- Per-currency balance and exact cancellation after a full refund.\n- Invalid amounts, over-refunds, and invalid capture references.\n- Duplicate transactions, conflicting retries, and webhook failure/retry.\n- Refund/chargeback interaction.\n- `monthly_totals()` reflecting refunds naturally through their signed lines.\n\nUpdate `docs/ledger.md` with refund limits, rounding rules, and retry semantics. No money-formatting changes appear necessary. Tax is currently only a standalone calculator, not part of capture postings, so there are no captured tax lines to reverse today.\n\n## Decisions to confirm\n\n1. **Chargebacks:** I recommend refunds and chargebacks consume the same reversible balance, preventing double reversal. That requires tightening the existing chargeback path too.\n2. **Tax:** Is this limited to the ledger’s current capture model, or must it also introduce tax-aware captures and refunds?\n3. **Provider behavior:** Which refund event represents a completed refund, and are fees or actual settlement differences in scope? My proposed baseline excludes fees and uses the original FX snapshot.\n\n**Suggested order:** agree those rules → journal safeguards → refund posting and rounding → webhook integration → regression tests and ledger documentation.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-08-plain-sol-k1",
+    "requests": 8,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.053056,
+    "input_tokens": 62889,
+    "output_tokens": 1848,
+    "cached_tokens": 50778,
+    "cache_write_tokens": 11794,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.00007120000000000001,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0529848,
+        "requests": 7
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 8
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 34.583,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-08-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:22:39.483Z",
+    "images": {
+      "core": "sha256:a1cb5179980824f355a04eff570548a298c6240d694122ab035f33b6fe0d67c3",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-c28199eb7594",
+        "id": "sha256:08388b871c83195bb4d39814aacebf0e1f7aa70201447e1f18658706eacd32e5",
+        "tree_sha256": "5ba481ef9e809bccf319018e2c7babba4e75e4d29fbca729073994f9ca295dea"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-d28c93c8-8a64-4c06-ac54-adf565ce-8e7503"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:23:38.055Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/2d544c8221e9bf48a07a3e6b/0abf6237f31ad6f0/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/2d544c8221e9bf48a07a3e6b/0abf6237f31ad6f0/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 13,
+          "command": "cd repo && git log --all --oneline --decorate && git log --all --format=fuller -- docs/ledger.md ledger/chargebacks.py ledger/payments.py ledger/webhooks.py && git show 53db904 --stat && git show 22c9f2c && cat Dockerfile .gitignore && python3 -m unittest discover -s tests -t . -v && git status --sh",
+          "code": 0,
+          "output": "53db904 (HEAD -> main) Tax lines, monthly report and money formatting\nb5ce733 Dedupe provider webhooks on the event id\nd765916 Chargebacks\n22c9f2c Ledger rules\nf386ad6 Double-entry journal and payment capture\ncommit b5ce733a5b1424dbde3e0f5b264a9e7aba058958\nAuthor:     Rui Tanaka <rui@example.test>\nA"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-08-plain-sol-k1",
+      "meter": {
+        "requests": 8,
+        "usd": 0.053056,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 8,
+        "usd": 0.053056,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.00007120000000000001
+    }
+  }
+}

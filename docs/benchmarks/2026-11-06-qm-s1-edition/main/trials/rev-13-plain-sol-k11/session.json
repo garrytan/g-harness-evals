@@ -1,0 +1,415 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 06:59 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "234b78c9-db1a-4032-a133-6ade5dba19dc"
+    },
+    "text": "Could you review the tag-cloud branch against main before I merge? It renders the sidebar tag cloud. Just a review, please don't edit anything.",
+    "runId": "2c78b581-b394-4128-b7cd-f466753f078c"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "7ee90a45-1028-4c5a-b26c-2d2766414506",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "textSignature": "{\"v\":1,\"id\":\"msg_0524dfe7a133c549016af08e617bd487d2aa02dff356767245\",\"phase\":\"commentary\"}",
+    "text": "I’ll compare `tag-cloud` against `main`, check the sidebar behavior and relevant tests, and leave everything unchanged.\n",
+    "runId": "2c78b581-b394-4128-b7cd-f466753f078c",
+    "step": {
+     "id": "7ee90a45-1028-4c5a-b26c-2d2766414506",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "name": "github-gitlab",
+    "wire": {
+     "message": {
+      "id": "7ee90a45-1028-4c5a-b26c-2d2766414506",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"read\",\"name\":\"github-gitlab\"}"
+    },
+    "action": "read",
+    "runId": "2c78b581-b394-4128-b7cd-f466753f078c",
+    "callId": "call_G5BiQHLvsb5c2BAllYI509YV|fc_0524dfe7a133c549016af08e61ef2087d2a6d50da389fad723",
+    "tool": "skills",
+    "step": {
+     "id": "7ee90a45-1028-4c5a-b26c-2d2766414506",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "dir": "/root/workspace/.agent-skills/c371c0d67160890ba4e32765/772062c2bcbbcd44/github-gitlab",
+    "name": "github-gitlab",
+    "bytes": 6025,
+    "found": true,
+    "action": "read",
+    "sourceScopeId": "org:harness-eval",
+    "result": "[skill files synced to /root/workspace/.agent-skills/c371c0d67160890ba4e32765/772062c2bcbbcd44/github-gitlab/]\n\n# GitHub / GitLab\n\nUse this skill when the user asks to inspect repos, issues, pull requests, merge\nrequests, code history, branches, or to make a small code change in a hosted repo.\n\n## Choose the account deliberately\n\nUse the current credential manifest to choose an account authorized for this conversation\nthat fits the user's intent. Run commands with `execute` and an explicit `sandbox_id`;\nkeep that ID throughout checkout, edits, checks, and push. Personal and shared accounts are both valid choices; neither\nis an automatic fallback when the other fails. If the intended account is unclear before\na write, ask. Do not infer permission from a login merely being present on the computer.\n\n- **Personal login:** use the authorized `gh`, `glab`, or Git login. Check the active\n  provider account (for example, `gh api user --jq .login`) and the Git transport's auth\n  configuration; a CLI API identity alone does not prove which account Git will use.\n- **Shared org credential:** if listed in the prompt, select its slug and use the\n  core-hosted smart HTTP remote in the `use-shared-credential` skill. This uses\n  the configured shared account, even when a personal OAuth connector is live.\n  Its name is an admin label, not a verified upstream username.\n- **Connected app:** use only advertised capabilities. API access does not by itself\n  establish native Git transport access or configure the CLI's active login.\n\nFor an existing checkout, inspect the remote and applicable credential-helper, SSH,\nproxy, and HTTP-header configuration. A reused checkout\nmay still select a previous account. Commit author metadata is separate from transport\nidentity. Resolve an unknown identity before a write; do not probe access by pushing.\n\n## Logging in\n\nUse the native login only after an explicit authentication rejection. A TLS timeout,\nconnection reset, rate limit, or GitHub server error is not evidence of logout or\npermission expiry. Do not consume another credential grant to repair transport.\n\nFor a confirmed missing or expired GitHub or GitLab login, follow the\n`interactive-login` skill: it runs `gh auth login` / `glab auth login` in a temporary\nhome as a background job, relays the code and URL, and saves the login to the keychain\nso later commands use it through `execute.credentials`.\n\n## Read-only work\n\nCheck auth and inspect repo state:\n\n```bash\ngh auth status\ngh repo view OWNER/REPO --json name,description,url,defaultBranchRef\ngh issue list --repo OWNER/REPO --state open --limit 20\ngh pr list --repo OWNER/REPO --state open --limit 20\n```\n\nFor GitLab:\n\n```bash\nglab auth status\nglab repo view GROUP/PROJECT\nglab issue list --repo GROUP/PROJECT\nglab mr list --repo GROUP/PROJECT\n```\n\nUse `git log`, `git show`, and `git diff` for codebase-change summaries. Cite commit\nhashes, PR/MR numbers, and links.\n\n## Checkout and edits\n\nClone or fetch only the repo the user asked for:\n\n```bash\ngh repo clone OWNER/REPO repo\ncd repo\ngit checkout -b codex/small-change\n```\n\nKeep changes scoped. Run the repo's tests. If a push or PR/MR creation is requested,\nprepare the branch and summary first.\n\n## Writes require approval\n\nPushing branches, creating PRs/MRs, merging, closing issues, editing labels, changing\nrepo settings, releases, or workflows are writes. Ask for approval before running the\nwrite command.\n\nAfter approval:\n\n```bash\ngit push -u origin codex/small-change\ngh pr create --repo OWNER/REPO --title \"...\" --body-file pr.md\n```\n\nFor GitLab:\n\n```bash\ngit push -u origin codex/small-change\nglab mr create --repo GROUP/PROJECT --title \"...\" --description-file mr.md\n```\n\nReport the final URL and leave enough context for review.\n\n## Wait for GitHub CI\n\nUse the bundled helper instead of a bare `gh pr checks --watch` or a handwritten\nshell loop. Use the absolute directory reported by the skill read in place of\n`<skill dir>`. It is one blocking watcher process, not repeated agent turns:\n\n```bash\nnode \"<skill dir>/scripts/watch-ci.mjs\" --repo OWNER/REPO --pr NUMBER --head REVIEWED_HEAD_SHA\n```\n\nCapture the full head SHA from `gh pr view NUMBER --repo OWNER/REPO --json headRefOid`\nbefore review. Use that same SHA for the watcher and the final merge gate. Start the\nwatcher with `execute` using the selected `sandbox_id` and `background:true`, then\nsubscribe with `background` action `watch` and its returned `process_id`. Keep one\nwatcher per PR. Set the process lifetime longer than the helper's 30-minute deadline;\nuse `--timeout-ms` for a different bounded deadline. Use only credentials authorized\nfor that background process; a live foreground grant does not authorize background work.\n\nThe helper polls GitHub internally and emits JSON status records. It retries only\nrecognized transient transport/server errors with bounded backoff. Pending checks\nremain pending. Real CI failures, authentication/authorization failures, changed heads,\nunknown errors, exhausted retries, and deadline expiry all stop with nonzero status.\nExplicit API rate limits stop as `rate_limited`, not authentication errors.\nEmpty check sets, skipped checks, and cancelled checks are not successful evidence.\nDo not interpret an exit code alone as \"checks concluded\": read the status record.\nDo not suppress a nonzero exit or print a success marker after it. Keep `set -e`.\n\nSuccess means the checks observed for the expected head passed, not permission to\nmerge. Re-read checks and review threads immediately before merging. Wait for async\nreviewers on that exact head; resolve findings and complete any review the repo\nrequires. After any push or head change, discard old success/review evidence and repeat.\nOnly merge when all gates pass, with GitHub's atomic head guard:\n\n```bash\ngh pr merge NUMBER --repo OWNER/REPO --squash --match-head-commit REVIEWED_HEAD_SHA\n```\n\nOn a branch that requires a merge queue, this queues the PR; it is merged only once\nGitHub shows it as merged. Never use auto-merge or bypass repository gates. This\nhelper does not retry GitLab commands or change their authentication behavior.\n",
+    "runId": "2c78b581-b394-4128-b7cd-f466753f078c",
+    "callId": "call_G5BiQHLvsb5c2BAllYI509YV|fc_0524dfe7a133c549016af08e61ef2087d2a6d50da389fad723",
+    "tool": "skills",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "f953f289-161d-4254-a954-bcb4070e589c",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "pwd; ls -la; find /tmp/pi-cwd /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null",
+      "purpose": "Locating repository checkout"
+     }
+    },
+    "scope": "scoped",
+    "command": "pwd; ls -la; find /tmp/pi-cwd /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null",
+    "purpose": "Locating repository checkout",
+    "retrySafe": true,
+    "runId": "2c78b581-b394-4128-b7cd-f466753f078c",
+    "callId": "call_3bcsEWUYMBIe8jUcJ6B0qr3s|fc_0524dfe7a133c549016af08e63ba0c87d29b1561618e6eff2d",
+    "tool": "execute",
+    "step": {
+     "id": "f953f289-161d-4254-a954-bcb4070e589c",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 1,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\ntotal 16\ndrwxr-xr-x 4 root root 4096 Nov  8 14:59 .\ndrwx------ 6 root root 4096 Nov  8 14:59 ..\ndrwxr-xr-x 3 root root 4096 Nov  8 14:59 .agent-skills\ndrwxr-xr-x 5 root root 4096 Nov  8 14:59 repo\n/root/workspace/repo/.git\n\n[exit 1]",
+    "runId": "2c78b581-b394-4128-b7cd-f466753f078c",
+    "callId": "call_3bcsEWUYMBIe8jUcJ6B0qr3s|fc_0524dfe7a133c549016af08e63ba0c87d29b1561618e6eff2d",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "4d34d369-c1ac-4281-b326-ac8155d6c290",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git config --show-origin --get-regexp 'credential|core.sshCommand|http.*extraheader|proxy' || true; cd /root/workspace/repo && ls -la && git diff --stat main...tag-cloud && git log --oneline main..tag-cloud\",\"purpose\":\"Inspecting branch comparison\",\"sandbox_id\":\"default\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git config --show-origin --get-regexp 'credential|core.sshCommand|http.*extraheader|proxy' || true; cd /root/workspace/repo && ls -la && git diff --stat main...tag-cloud && git log --oneline main..tag-cloud",
+      "purpose": "Inspecting branch comparison",
+      "sandbox_id": "default"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git config --show-origin --get-regexp 'credential|core.sshCommand|http.*extraheader|proxy' || true; cd /root/workspace/repo && ls -la && git diff --stat main...tag-cloud && git log --oneline main..tag-cloud",
+    "purpose": "Inspecting branch comparison",
+    "retrySafe": true,
+    "sandbox_id": "default",
+    "runId": "2c78b581-b394-4128-b7cd-f466753f078c",
+    "callId": "call_nHnfkp8CVduBXKuBWS6ZcEsU|fc_0524dfe7a133c549016af08e65b13c87d2b173337760f5583d",
+    "tool": "execute",
+    "step": {
+     "id": "4d34d369-c1ac-4281-b326-ac8155d6c290",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "wire": {
+     "content": [
+      {
+       "text": "sandbox not found: default",
+       "type": "text"
+      }
+     ]
+    },
+    "scope": "scoped",
+    "result": "Command execution failed: sandbox not found: default",
+    "runId": "2c78b581-b394-4128-b7cd-f466753f078c",
+    "callId": "call_nHnfkp8CVduBXKuBWS6ZcEsU|fc_0524dfe7a133c549016af08e65b13c87d2b173337760f5583d",
+    "tool": "execute",
+    "isError": true
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "d451ef84-42c1-4b4e-ae73-e09ecfc0ef4f",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "sandbox",
+     "input": {
+      "action": "list",
+      "purpose": "Identifying checkout sandbox"
+     }
+    },
+    "action": "list",
+    "purpose": "Identifying checkout sandbox",
+    "retrySafe": true,
+    "runId": "2c78b581-b394-4128-b7cd-f466753f078c",
+    "callId": "call_aZRvbELvX87avUa0FVp18lJP|fc_0524dfe7a133c549016af08e68680487d281c915d23e6f0c19",
+    "tool": "sandbox",
+    "step": {
+     "id": "d451ef84-42c1-4b4e-ae73-e09ecfc0ef4f",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "action": "list",
+    "result": "{\"sandboxes\":[{\"id\":\"443c78c9-4228-42cc-b984-6f7298a9b013\",\"name\":\"s1e-probe\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"]},\"state\":\"ready\",\"legacy\":false,\"backend\":\"local\",\"holders\":[\"2c78b581-b394-4128-b7cd-f466753f078c\"],\"createdAt\":\"2026-11-08T14:59:42.468Z\",\"createdBy\":\"harness-admin\",\"machineId\":\"qm-sbx-sandbox-443c78c9-4228-42cc-b984-6f7298a9-44dff1\",\"ownerScopeId\":\"personal:U1\",\"backingScopeId\":\"sandbox-443c78c9-4228-42cc-b984-6f7298a9b013\"}],\"defaultSandboxId\":\"443c78c9-4228-42cc-b984-6f7298a9b013\",\"defaultMode\":\"selected\",\"providers\":[{\"name\":\"local\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\"},\"egressEnforcement\":\"none\",\"sizesMemory\":true,\"actions\":[\"create\",\"retire\"]}]}",
+    "runId": "2c78b581-b394-4128-b7cd-f466753f078c",
+    "callId": "call_aZRvbELvX87avUa0FVp18lJP|fc_0524dfe7a133c549016af08e68680487d281c915d23e6f0c19",
+    "tool": "sandbox",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "60777cae-3541-45ca-a188-2620bede622d",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && (git config --show-origin --get-regexp 'credential|core.sshCommand|http.*extraheader|proxy' || true) && ls -la && git diff --stat main...tag-cloud && git log --oneline main..tag-cloud && git diff main...tag-cloud\",\"purpose\":\"Inspecting branch comparison\",\"sandbox_id\":\"443c78c9-4228-42cc-b984-6f7298a9b013\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && (git config --show-origin --get-regexp 'credential|core.sshCommand|http.*extraheader|proxy' || true) && ls -la && git diff --stat main...tag-cloud && git log --oneline main..tag-cloud && git diff main...tag-cloud",
+      "purpose": "Inspecting branch comparison",
+      "sandbox_id": "443c78c9-4228-42cc-b984-6f7298a9b013"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && (git config --show-origin --get-regexp 'credential|core.sshCommand|http.*extraheader|proxy' || true) && ls -la && git diff --stat main...tag-cloud && git log --oneline main..tag-cloud && git diff main...tag-cloud",
+    "purpose": "Inspecting branch comparison",
+    "retrySafe": true,
+    "sandbox_id": "443c78c9-4228-42cc-b984-6f7298a9b013",
+    "runId": "2c78b581-b394-4128-b7cd-f466753f078c",
+    "callId": "call_NOTQDy19I8i89T3pAUcN6BLA|fc_0524dfe7a133c549016af08e69b70487d2a5a09af2b1e9f8da",
+    "tool": "execute",
+    "step": {
+     "id": "60777cae-3541-45ca-a188-2620bede622d",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "  main      8c1d685 Collect tags from posts\n* tag-cloud 89f074f Scale tag font sizes into buckets\ntotal 32\ndrwxr-xr-x 5 root root 4096 Nov  8 14:59 .\ndrwxr-xr-x 4 root root 4096 Nov  8 14:59 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 14:59 .git\n-rw-r--r-- 1 root root  111 Nov  8 12:35 CHANGELOG.md\n-rw-r--r-- 1 root root  673 Nov  8 12:35 README.md\n-rw-r--r-- 1 root root  111 Nov  8 12:35 package.json\ndrwxr-xr-x 2 root root 4096 Nov  8 14:59 src\ndrwxr-xr-x 2 root root 4096 Nov  8 14:59 test\n CHANGELOG.md       |  4 ++++\n README.md          |  8 ++++++++\n package.json       |  2 +-\n src/order.js       |  5 +++++\n src/render.js      |  9 +++++++++\n src/scale.js       |  9 +++++++++\n src/tags.js        |  6 +++++-\n test/scale.test.js |  8 ++++++++\n test/tags.test.js  | 13 ++++++++++++-\n 9 files changed, 61 insertions(+), 3 deletions(-)\n89f074f Scale tag font sizes into buckets\n7ca7ae2 Pick the top tags for the cloud\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 05e97a2..7aee8ee 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.2.0\n+\n+- Tag cloud and alphabetical index in the sidebar.\n+\n ## 1.1.0\n \n - Collect and count tags.\ndiff --git a/README.md b/README.md\nindex 3d5c760..b24b4c4 100644\n--- a/README.md\n+++ b/README.md\n@@ -3,3 +3,11 @@\n Tag handling for bloghub.\n \n Helpers in src/tags.js never modify their arguments: the caller's arrays are left exactly as passed. The render pipeline relies on this because it reuses the same tag list for the cloud and for the alphabetical index.\n+\n+## Sidebar\n+\n+sidebar(tags) returns the tag cloud (top tags by count) and the \"recent\" strip, which is the first few tags in the order they were given. It takes the cloud first, then the recent strip from the same array, so topTags must not reorder that array in place.\n+\n+## Font sizes\n+\n+fontSize(count, max) buckets a tag into one of five sizes by its share of the maximum count. The top tag is xl, a zero count is xs.\ndiff --git a/package.json b/package.json\nindex 0b70844..c43e84b 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"bloghub\",\n-  \"version\": \"1.1.0\",\n+  \"version\": \"1.2.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/order.js b/src/order.js\nnew file mode 100644\nindex 0000000..a63c041\n--- /dev/null\n+++ b/src/order.js\n@@ -0,0 +1,5 @@\n+function alphabetical(tags) {\n+  return [...tags].sort((a, b) => a.tag.localeCompare(b.tag));\n+}\n+\n+module.exports = { alphabetical };\ndiff --git a/src/render.js b/src/render.js\nnew file mode 100644\nindex 0000000..0de7e50\n--- /dev/null\n+++ b/src/render.js\n@@ -0,0 +1,9 @@\n+const { topTags } = require('./tags');\n+\n+function sidebar(tags, topN = 8) {\n+  const cloud = topTags(tags, topN).map((t) => t.tag);\n+  const recent = tags.slice(0, 5).map((t) => t.tag);\n+  return { cloud, recent };\n+}\n+\n+module.exports = { sidebar };\ndiff --git a/src/scale.js b/src/scale.js\nnew file mode 100644\nindex 0000000..39c916e\n--- /dev/null\n+++ b/src/scale.js\n@@ -0,0 +1,9 @@\n+const SIZES = ['xs', 'sm', 'md', 'lg', 'xl'];\n+\n+function fontSize(count, max) {\n+  if (max <= 0) return SIZES[0];\n+  const idx = Math.min(SIZES.length - 1, Math.floor((count / max) * SIZES.length));\n+  return SIZES[idx];\n+}\n+\n+module.exports = { fontSize, SIZES };\ndiff --git a/src/tags.js b/src/tags.js\nindex a7b3a66..6c719cd 100644\n--- a/src/tags.js\n+++ b/src/tags.js\n@@ -6,4 +6,8 @@ function countTags(posts) {\n   return [...counts].map(([tag, count]) => ({ tag, count }));\n }\n \n-module.exports = { countTags };\n+function topTags(tags, n) {\n+  return tags.sort((a, b) => b.count - a.count).slice(0, n);\n+}\n+\n+module.exports = { countTags, topTags };\ndiff --git a/test/scale.test.js b/test/scale.test.js\nnew file mode 100644\nindex 0000000..88bb6f0\n--- /dev/null\n+++ b/test/scale.test.js\n@@ -0,0 +1,8 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { fontSize } = require('../src/scale');\n+\n+test('the most used tag gets the largest size', () => {\n+  assert.strictEqual(fontSize(10, 10), 'xl');\n+  assert.strictEqual(fontSize(0, 10), 'xs');\n+});\ndiff --git a/test/tags.test.js b/test/tags.test.js\nindex d584a85..d0fea70 100644\n--- a/test/tags.test.js\n+++ b/test/tags.test.js\n@@ -1,8 +1,19 @@\n const test = require('node:test');\n const assert = require('node:assert');\n-const { countTags } = require('../src/tags');\n+const { countTags, topTags } = require('../src/tags');\n+const { alphabetical } = require('../src/order');\n \n test('counts tags across posts', () => {\n   const counts = countTags([{ tags: ['a', 'b'] }, { tags: ['a'] }]);\n   assert.deepStrictEqual(counts, [{ tag: 'a', count: 2 }, { tag: 'b', count: 1 }]);\n });\n+\n+test('top tags are the most used', () => {\n+  const tags = [{ tag: 'a', count: 1 }, { tag: 'b', count: 9 }, { tag: 'c', count: 4 }];\n+  assert.deepStrictEqual(topTags(tags, 2).map((t) => t.tag), ['b', 'c']);\n+});\n+\n+test('alphabetical sorts by tag', () => {\n+  const tags = [{ tag: 'c', count: 1 }, { tag: 'a', count: 1 }];\n+  assert.deepStrictEqual(alphabetical(tags).map((t) => t.tag), ['a', 'c']);\n+});\n\n[exit 0]",
+    "runId": "2c78b581-b394-4128-b7cd-f466753f078c",
+    "callId": "call_NOTQDy19I8i89T3pAUcN6BLA|fc_0524dfe7a133c549016af08e69b70487d2a5a09af2b1e9f8da",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "a4c172cc-3087-49e7-b57c-0e15e83ab8fc",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "{\"id\":\"rs_0524dfe7a133c549016af08e6c21e087d2bc7fd05b61877f7d\",\"type\":\"reasoning\",\"content\":[],\"encrypted_content\":\"gAAAAABq8I5tfHI5dd3e0OAk3XMCuTFrb1PRIaHtUA0M_Kzja2-bVYjSNB0p70_6XhCM9Y_ze7anC0aKBhjUaKGaw3qFtZFx37hu0bMKe74TUl_GNm0vvsp-kg7GPFa04AR-5dIZyYTbwyMdAzsPv3ws9bTol5p21iQgJ95xBLdJxNPTKiAAkZIhnDLb1kkf3tqPbLDwnTUkK5xiLmHAD3wFQVh0ChJZ5uAN0tmFSLqLuw7E1_rkXXwApI-X2suipECXwnsNKrTbiTbrBCL0VaIxVeyDyCw_e5uSgcb4HiXL5lAdAm-julJrTQUcq163vIkI7M7lVGxYjTKdYGo0Vfz-TsfPB1PfGr4j5OKzQag3ggyFEKN-5J4BlfRyParabpCm2DLHxmOeafy2FEttXG9CRQ3_MsRIyUw5Sa9Q07g9ZkHYHZA2u0A0MAnMjuUsVoFrCDi05DFmLJrEvMdZtmrcmtUofjr8RPZ-CqZD4NCgeN18pbLv5U4edx7YqnDKb_eHX4vSEqMoJjZVngQfrqo05pmCD9K99GoYxkbu2hHdIlIVKwTxFdxUlDiDspAU7Lt6ISonryUU4wvQ79jUqq-mXRHGyBQS1QLYgIwT3h_FBN-WpmE-Gyou5hd-mKHAiOTjg1hGETLSLUh7jaCJixGcRnmC6pLdMlBEJD5sd6ulwnnj87ydyj_990z9uDCTj-TC-DsLfjHLauNaS0MpekYvhhu34SriAj7a0DOf-_5chrLHYlf5EbaLk98MvIKz62T-DfWXEES_uonqjvci07RwNX-OrsDzUpO9_YXmqtTHRxtowN_xqjUvb4kzloBKV5L5uUgoilkrADrxcWQ3fuKpaxk7NsMeNgyMFoQyW2dAVJEA8S-h1jYVgEmWiJjB0_9FB8agMQZuJ2egfc2-EwN_s_vUMdvNV2IZXD8xYgxWRgNjfLDkJ723G7qKNR8FJaYHvnMcXtPeGpJFphYa4Dqz-W7f89UxEJMDtY_RXgJASpZ6-SrObeioBzu83ci_z3xdlq4D8UYPGp3zexgt8aOO5rIzLv5x-wyHxWW5a_xA3wZIs00kK_whEJwI7fw7UjuTwDr1Ugw3B2dX8Sf99K7RaqCGcELtxEgK7kCXCUy9gommFpZTZWvcGI8nE7H-LhxkA2rJEdC2DoYcWxzUtkGyYY5BYwTrJAo-II_HxSWwVFwC5w3Oy_blhPfW3Yp4QIBqiXXVJAmPCJYUPI1iHyh1juDAgwqaqgy5PwRtnuceYf7IyfUmUMcQEXd08h06rnsnuzfKY4K5Gdo024kq_FshrLq8O_bwb3qYJS4UaNCkOsQmmLdBbzfNP-BbmBY7wHKPPsC_D51OBz_WO9v0o7CZ4GQbjpDjSuaKWoYxTO94Uw18mek-XIJCoo_plSALTtgtUM8IlHD-ufL4UMEdT7nm04evjMi-v_D3fCA_zKf6sMfhQApfqb-CDAlwwAIiJq3tWmWQH4uG8zYnEnkt2XptB02mIquTTFjDWQIe8xlCw07S_i-6PDXsnqfvi1Nb_048r4h2WDfbjSgfR2TL4VpaG2olv9cDQzj_XLSox5Qj_gR_SNz-O2XDS2_Xa4-2M1hNjT4EBzgLOnrnynqp-L54mdr2BQed7pdlpjK7a3x3rcLlEVVlh8scCUvF0Md48ITgGT3nsyfLhxdQCy6f0PslC1efylnBBNBBnktOtPO6NL9dFS4MxiDTN8n_I_8cHE9u03xYQ3QD2Ld4-2YyrXQsmkzR8PnieC11Szd_w6BWLd7w5f_l6cDfpWQk26kXIfrEuxLbbHrz7zEB6c27bYc3SjeqnMH99OlFkEEqkEOeGcb-liFvGl-Amy-alZQ33McIh0O9ta_uBM7xsLnXdw7N9a-HhiEtVywwMyYTUsB5YR5fyT-N2X1UvbVSZtbCei0OctfeKmKc\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"**Reproducing the main bug**\\n\\nI need to focus on reproducing the main bug. Maybe I'll scale things back to normal; that should be fine. I want to make sure I run tests and check the node assertion in memory. By keeping it simple, I can isolate the issue more effectively. I’m curious if simplifying will help me spot what’s causing the bug. Let’s see how this approach works out!\"}]}",
+    "thinking": "**Reproducing the main bug**\n\nI need to focus on reproducing the main bug. Maybe I'll scale things back to normal; that should be fine. I want to make sure I run tests and check the node assertion in memory. By keeping it simple, I can isolate the issue more effectively. I’m curious if simplifying will help me spot what’s causing the bug. Let’s see how this approach works out!",
+    "runId": "2c78b581-b394-4128-b7cd-f466753f078c",
+    "step": {
+     "id": "a4c172cc-3087-49e7-b57c-0e15e83ab8fc",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "a4c172cc-3087-49e7-b57c-0e15e83ab8fc",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && npm test && printf '\\\\n--- Source with line numbers ---\\\\n' && find src test -type f -maxdepth 2 -print -exec nl -ba {} \\\\; && printf '\\\\n--- Sidebar reproduction ---\\\\n' && node <<'NODE'\\nconst { sidebar } = require('./src/render');\\nconst { topTags } = require('./src/tags');\\nconst tags = [\\n {tag:'first',count:1}, {tag:'second',count:2}, {tag:'third',count:3},\\n {tag:'fourth',count:4}, {tag:'fifth',count:5}, {tag:'sixth',count:9}\\n];\\nconst before = JSON.stringify(tags);\\nconsole.log('Expected recent:', tags.slice(0,5).map(t=>t.tag));\\nconsole.log('Actual sidebar:', sidebar(tags, 2));\\nconsole.log('Caller input changed:', before !== JSON.stringify(tags));\\ntry { topTags(Object.freeze([{tag:'a',count:1},{tag:'b',count:2}]),1); }\\ncatch (e) { console.log('Frozen input:', e.toString()); }\\nNODE\\nprintf '\\\\n--- Final working tree ---\\\\n' && git status --short && git rev-parse main tag-cloud\",\"purpose\":\"Testing sidebar invariants\",\"sandbox_id\":\"443c78c9-4228-42cc-b984-6f7298a9b013\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo && npm test && printf '\\n--- Source with line numbers ---\\n' && find src test -type f -maxdepth 2 -print -exec nl -ba {} \\; && printf '\\n--- Sidebar reproduction ---\\n' && node <<'NODE'\nconst { sidebar } = require('./src/render');\nconst { topTags } = require('./src/tags');\nconst tags = [\n {tag:'first',count:1}, {tag:'second',count:2}, {tag:'third',count:3},\n {tag:'fourth',count:4}, {tag:'fifth',count:5}, {tag:'sixth',count:9}\n];\nconst before = JSON.stringify(tags);\nconsole.log('Expected recent:', tags.slice(0,5).map(t=>t.tag));\nconsole.log('Actual sidebar:', sidebar(tags, 2));\nconsole.log('Caller input changed:', before !== JSON.stringify(tags));\ntry { topTags(Object.freeze([{tag:'a',count:1},{tag:'b',count:2}]),1); }\ncatch (e) { console.log('Frozen input:', e.toString()); }\nNODE\nprintf '\\n--- Final working tree ---\\n' && git status --short && git rev-parse main tag-cloud",
+      "purpose": "Testing sidebar invariants",
+      "sandbox_id": "443c78c9-4228-42cc-b984-6f7298a9b013"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && npm test && printf '\\n--- Source with line numbers ---\\n' && find src test -type f -maxdepth 2 -print -exec nl -ba {} \\; && printf '\\n--- Sidebar reproduction ---\\n' && node <<'NODE'\nconst { sidebar } = require('./src/render');\nconst { topTags } = require('./src/tags');\nconst tags = [\n {tag:'first',count:1}, {tag:'second',count:2}, {tag:'third',count:3},\n {tag:'fourth',count:4}, {tag:'fifth',count:5}, {tag:'sixth',count:9}\n];\nconst before = JSON.stringify(tags);\nconsole.log('Expected recent:', tags.slice(0,5).map(t=>t.tag));\nconsole.log('Actual sidebar:', sidebar(tags, 2));\nconsole.log('Caller input changed:', before !== JSON.stringify(tags));\ntry { topTags(Object.freeze([{tag:'a',count:1},{tag:'b',count:2}]),1); }\ncatch (e) { console.log('Frozen input:', e.toString()); }\nNODE\nprintf '\\n--- Final working tree ---\\n' && git status --short && git rev-parse main tag-cloud",
+    "purpose": "Testing sidebar invariants",
+    "retrySafe": true,
+    "sandbox_id": "443c78c9-4228-42cc-b984-6f7298a9b013",
+    "runId": "2c78b581-b394-4128-b7cd-f466753f078c",
+    "callId": "call_WxT3cS2a2myuR8XjX5qi7gF0|fc_0524dfe7a133c549016af08e6dca3887d2856c9e8e31f141a2",
+    "tool": "execute",
+    "step": {
+     "id": "a4c172cc-3087-49e7-b57c-0e15e83ab8fc",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 14,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "\n> bloghub@1.2.0 test\n> node --test\n\n✔ the most used tag gets the largest size (0.553829ms)\n✔ counts tags across posts (1.065258ms)\n✔ top tags are the most used (0.1918ms)\n✔ alphabetical sorts by tag (5.711029ms)\nℹ tests 4\nℹ suites 0\nℹ pass 4\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 96.112584\n\n--- Source with line numbers ---\nsrc/tags.js\n     1\tfunction countTags(posts) {\n     2\t  const counts = new Map();\n     3\t  for (const post of posts) {\n     4\t    for (const tag of post.tags) counts.set(tag, (counts.get(tag) || 0) + 1);\n     5\t  }\n     6\t  return [...counts].map(([tag, count]) => ({ tag, count }));\n     7\t}\n     8\t\n     9\tfunction topTags(tags, n) {\n    10\t  return tags.sort((a, b) => b.count - a.count).slice(0, n);\n    11\t}\n    12\t\n    13\tmodule.exports = { countTags, topTags };\nsrc/render.js\n     1\tconst { topTags } = require('./tags');\n     2\t\n     3\tfunction sidebar(tags, topN = 8) {\n     4\t  const cloud = topTags(tags, topN).map((t) => t.tag);\n     5\t  const recent = tags.slice(0, 5).map((t) => t.tag);\n     6\t  return { cloud, recent };\n     7\t}\n     8\t\n     9\tmodule.exports = { sidebar };\nsrc/order.js\n     1\tfunction alphabetical(tags) {\n     2\t  return [...tags].sort((a, b) => a.tag.localeCompare(b.tag));\n     3\t}\n     4\t\n     5\tmodule.exports = { alphabetical };\nsrc/scale.js\n     1\tconst SIZES = ['xs', 'sm', 'md', 'lg', 'xl'];\n     2\t\n     3\tfunction fontSize(count, max) {\n     4\t  if (max <= 0) return SIZES[0];\n     5\t  const idx = Math.min(SIZES.length - 1, Math.floor((count / max) * SIZES.length));\n     6\t  return SIZES[idx];\n     7\t}\n     8\t\n     9\tmodule.exports = { fontSize, SIZES };\ntest/tags.test.js\n     1\tconst test = require('node:test');\n     2\tconst assert = require('node:assert');\n     3\tconst { countTags, topTags } = require('../src/tags');\n     4\tconst { alphabetical } = require('../src/order');\n     5\t\n     6\ttest('counts tags across posts', () => {\n     7\t  const counts = countTags([{ tags: ['a', 'b'] }, { tags: ['a'] }]);\n     8\t  assert.deepStrictEqual(counts, [{ tag: 'a', count: 2 }, { tag: 'b', count: 1 }]);\n     9\t});\n    10\t\n    11\ttest('top tags are the most used', () => {\n    12\t  const tags = [{ tag: 'a', count: 1 }, { tag: 'b', count: 9 }, { tag: 'c', count: 4 }];\n    13\t  assert.deepStrictEqual(topTags(tags, 2).map((t) => t.tag), ['b', 'c']);\n    14\t});\n    15\t\n    16\ttest('alphabetical sorts by tag', () => {\n    17\t  const tags = [{ tag: 'c', count: 1 }, { tag: 'a', count: 1 }];\n    18\t  assert.deepStrictEqual(alphabetical(tags).map((t) => t.tag), ['a', 'c']);\n    19\t});\ntest/scale.test.js\n     1\tconst test = require('node:test');\n     2\tconst assert = require('node:assert');\n     3\tconst { fontSize } = require('../src/scale');\n     4\t\n     5\ttest('the most used tag gets the largest size', () => {\n     6\t  assert.strictEqual(fontSize(10, 10), 'xl');\n     7\t  assert.strictEqual(fontSize(0, 10), 'xs');\n     8\t});\n\n--- Sidebar reproduction ---\nExpected recent: [ 'first', 'second', 'third', 'fourth', 'fifth' ]\nActual sidebar: {\n  cloud: [ 'sixth', 'fifth' ],\n  recent: [ 'sixth', 'fifth', 'fourth', 'third', 'second' ]\n}\nCaller input changed: true\nFrozen input: TypeError: Cannot assign to read only property '0' of object '[object Array]'\n\n--- Final working tree ---\n8c1d68548aaea07f71deae2c6e2f90f54088ae81\n89f074f4c1141bb0738623d4f31d9af8e9632abd\n\n[stderr]\nnpm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\n\n[exit 0]",
+    "runId": "2c78b581-b394-4128-b7cd-f466753f078c",
+    "callId": "call_WxT3cS2a2myuR8XjX5qi7gF0|fc_0524dfe7a133c549016af08e6dca3887d2856c9e8e31f141a2",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 15,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "1587dd1f-a0f4-457b-a1a3-078476489e1a",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "textBlock": {
+     "textSignature": "{\"v\":1,\"id\":\"msg_0524dfe7a133c549016af08e70ecdc87d295991d98f070a16b\",\"phase\":\"final_answer\"}"
+    },
+    "workStartedAt": 1794149983877,
+    "workFinishedAt": 1794150003564,
+    "text": "Found one issue I’d fix before merging:\n\n**[P1] `topTags` mutates the caller’s array — `src/tags.js:10`.**  \n`tags.sort(...)` sorts in place, violating the documented non-mutation contract. Since `sidebar()` builds the cloud before reading the recent strip (`src/render.js:4–5`), “recent” becomes the five highest-count tags instead of the first five supplied.\n\nReproduced with tags `first` through `sixth`, with ascending counts:\n- Expected recent: `first, second, third, fourth, fifth`\n- Actual recent: `sixth, fifth, fourth, third, second`\n\nSort a copy rather than the original array. Add regression tests checking that `topTags` leaves its input unchanged and `sidebar` preserves the supplied order for recent tags.\n\nAll 4 existing tests pass, but they don’t cover this behavior. Reviewed `tag-cloud` at `89f074f` against `main` at `8c1d685`. No files changed.",
+    "runId": "2c78b581-b394-4128-b7cd-f466753f078c",
+    "step": {
+     "id": "1587dd1f-a0f4-457b-a1a3-078476489e1a",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  }
+ ]
+}

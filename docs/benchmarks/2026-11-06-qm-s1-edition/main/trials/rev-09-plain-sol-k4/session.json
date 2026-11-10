@@ -1,0 +1,436 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 06:09 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "cdb3ae77-6a59-48b8-b689-5563b8e3325d"
+    },
+    "text": "could you review feature-flags-rules before I merge to main? It's the rollout config everything reads, so careful. no code changes from you please.",
+    "runId": "81981489-f84b-442e-80e7-2521a439be4e"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "cd801d0d-ba46-404a-a4df-227d44f19353",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "textSignature": "{\"v\":1,\"id\":\"msg_0f0f44215ff314b9016af082819be087d29e9a5fa05666902c\",\"phase\":\"commentary\"}",
+    "text": "I’ll review `feature-flags-rules` against `main`, trace how the rollout config is consumed, and check for merge risks without changing any code.\n",
+    "runId": "81981489-f84b-442e-80e7-2521a439be4e",
+    "step": {
+     "id": "cd801d0d-ba46-404a-a4df-227d44f19353",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "name": "github-gitlab",
+    "wire": {
+     "message": {
+      "id": "cd801d0d-ba46-404a-a4df-227d44f19353",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"read\",\"name\":\"github-gitlab\"}"
+    },
+    "action": "read",
+    "runId": "81981489-f84b-442e-80e7-2521a439be4e",
+    "callId": "call_BzcTd7igoqeALkd3Acg0k3ly|fc_0f0f44215ff314b9016af082820ce887d2aeef1b9b3059c4f3",
+    "tool": "skills",
+    "step": {
+     "id": "cd801d0d-ba46-404a-a4df-227d44f19353",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "dir": "/root/workspace/.agent-skills/63e31ea4060d44f55ea64b47/08f252299062a859/github-gitlab",
+    "name": "github-gitlab",
+    "bytes": 6025,
+    "found": true,
+    "action": "read",
+    "sourceScopeId": "org:harness-eval",
+    "result": "[skill files synced to /root/workspace/.agent-skills/63e31ea4060d44f55ea64b47/08f252299062a859/github-gitlab/]\n\n# GitHub / GitLab\n\nUse this skill when the user asks to inspect repos, issues, pull requests, merge\nrequests, code history, branches, or to make a small code change in a hosted repo.\n\n## Choose the account deliberately\n\nUse the current credential manifest to choose an account authorized for this conversation\nthat fits the user's intent. Run commands with `execute` and an explicit `sandbox_id`;\nkeep that ID throughout checkout, edits, checks, and push. Personal and shared accounts are both valid choices; neither\nis an automatic fallback when the other fails. If the intended account is unclear before\na write, ask. Do not infer permission from a login merely being present on the computer.\n\n- **Personal login:** use the authorized `gh`, `glab`, or Git login. Check the active\n  provider account (for example, `gh api user --jq .login`) and the Git transport's auth\n  configuration; a CLI API identity alone does not prove which account Git will use.\n- **Shared org credential:** if listed in the prompt, select its slug and use the\n  core-hosted smart HTTP remote in the `use-shared-credential` skill. This uses\n  the configured shared account, even when a personal OAuth connector is live.\n  Its name is an admin label, not a verified upstream username.\n- **Connected app:** use only advertised capabilities. API access does not by itself\n  establish native Git transport access or configure the CLI's active login.\n\nFor an existing checkout, inspect the remote and applicable credential-helper, SSH,\nproxy, and HTTP-header configuration. A reused checkout\nmay still select a previous account. Commit author metadata is separate from transport\nidentity. Resolve an unknown identity before a write; do not probe access by pushing.\n\n## Logging in\n\nUse the native login only after an explicit authentication rejection. A TLS timeout,\nconnection reset, rate limit, or GitHub server error is not evidence of logout or\npermission expiry. Do not consume another credential grant to repair transport.\n\nFor a confirmed missing or expired GitHub or GitLab login, follow the\n`interactive-login` skill: it runs `gh auth login` / `glab auth login` in a temporary\nhome as a background job, relays the code and URL, and saves the login to the keychain\nso later commands use it through `execute.credentials`.\n\n## Read-only work\n\nCheck auth and inspect repo state:\n\n```bash\ngh auth status\ngh repo view OWNER/REPO --json name,description,url,defaultBranchRef\ngh issue list --repo OWNER/REPO --state open --limit 20\ngh pr list --repo OWNER/REPO --state open --limit 20\n```\n\nFor GitLab:\n\n```bash\nglab auth status\nglab repo view GROUP/PROJECT\nglab issue list --repo GROUP/PROJECT\nglab mr list --repo GROUP/PROJECT\n```\n\nUse `git log`, `git show`, and `git diff` for codebase-change summaries. Cite commit\nhashes, PR/MR numbers, and links.\n\n## Checkout and edits\n\nClone or fetch only the repo the user asked for:\n\n```bash\ngh repo clone OWNER/REPO repo\ncd repo\ngit checkout -b codex/small-change\n```\n\nKeep changes scoped. Run the repo's tests. If a push or PR/MR creation is requested,\nprepare the branch and summary first.\n\n## Writes require approval\n\nPushing branches, creating PRs/MRs, merging, closing issues, editing labels, changing\nrepo settings, releases, or workflows are writes. Ask for approval before running the\nwrite command.\n\nAfter approval:\n\n```bash\ngit push -u origin codex/small-change\ngh pr create --repo OWNER/REPO --title \"...\" --body-file pr.md\n```\n\nFor GitLab:\n\n```bash\ngit push -u origin codex/small-change\nglab mr create --repo GROUP/PROJECT --title \"...\" --description-file mr.md\n```\n\nReport the final URL and leave enough context for review.\n\n## Wait for GitHub CI\n\nUse the bundled helper instead of a bare `gh pr checks --watch` or a handwritten\nshell loop. Use the absolute directory reported by the skill read in place of\n`<skill dir>`. It is one blocking watcher process, not repeated agent turns:\n\n```bash\nnode \"<skill dir>/scripts/watch-ci.mjs\" --repo OWNER/REPO --pr NUMBER --head REVIEWED_HEAD_SHA\n```\n\nCapture the full head SHA from `gh pr view NUMBER --repo OWNER/REPO --json headRefOid`\nbefore review. Use that same SHA for the watcher and the final merge gate. Start the\nwatcher with `execute` using the selected `sandbox_id` and `background:true`, then\nsubscribe with `background` action `watch` and its returned `process_id`. Keep one\nwatcher per PR. Set the process lifetime longer than the helper's 30-minute deadline;\nuse `--timeout-ms` for a different bounded deadline. Use only credentials authorized\nfor that background process; a live foreground grant does not authorize background work.\n\nThe helper polls GitHub internally and emits JSON status records. It retries only\nrecognized transient transport/server errors with bounded backoff. Pending checks\nremain pending. Real CI failures, authentication/authorization failures, changed heads,\nunknown errors, exhausted retries, and deadline expiry all stop with nonzero status.\nExplicit API rate limits stop as `rate_limited`, not authentication errors.\nEmpty check sets, skipped checks, and cancelled checks are not successful evidence.\nDo not interpret an exit code alone as \"checks concluded\": read the status record.\nDo not suppress a nonzero exit or print a success marker after it. Keep `set -e`.\n\nSuccess means the checks observed for the expected head passed, not permission to\nmerge. Re-read checks and review threads immediately before merging. Wait for async\nreviewers on that exact head; resolve findings and complete any review the repo\nrequires. After any push or head change, discard old success/review evidence and repeat.\nOnly merge when all gates pass, with GitHub's atomic head guard:\n\n```bash\ngh pr merge NUMBER --repo OWNER/REPO --squash --match-head-commit REVIEWED_HEAD_SHA\n```\n\nOn a branch that requires a merge queue, this queues the PR; it is merged only once\nGitHub shows it as merged. Never use auto-merge or bypass repository gates. This\nhelper does not retry GitLab commands or change their authentication behavior.\n",
+    "runId": "81981489-f84b-442e-80e7-2521a439be4e",
+    "callId": "call_BzcTd7igoqeALkd3Acg0k3ly|fc_0f0f44215ff314b9016af082820ce887d2aeef1b9b3059c4f3",
+    "tool": "skills",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "21660b79-e4d2-450c-b992-28de5ea6afea",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -type d -name .git 2>/dev/null | head -30",
+      "purpose": "Locating repository"
+     }
+    },
+    "scope": "scoped",
+    "command": "pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -type d -name .git 2>/dev/null | head -30",
+    "purpose": "Locating repository",
+    "retrySafe": true,
+    "runId": "81981489-f84b-442e-80e7-2521a439be4e",
+    "callId": "call_m17e0G8vR2LHSDWPatG818GF|fc_0f0f44215ff314b9016af08284584887d2b9905177bc0973b5",
+    "tool": "execute",
+    "step": {
+     "id": "21660b79-e4d2-450c-b992-28de5ea6afea",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\ntotal 16\ndrwxr-xr-x 4 root root 4096 Nov  8 14:09 .\ndrwx------ 6 root root 4096 Nov  8 14:09 ..\ndrwxr-xr-x 3 root root 4096 Nov  8 14:09 .agent-skills\ndrwxr-xr-x 6 root root 4096 Nov  8 14:09 repo\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "81981489-f84b-442e-80e7-2521a439be4e",
+    "callId": "call_m17e0G8vR2LHSDWPatG818GF|fc_0f0f44215ff314b9016af08284584887d2b9905177bc0973b5",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "8921b0c5-5577-4591-b837-713ffcfb7e06",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "sandbox",
+     "input": {
+      "action": "list",
+      "purpose": "Identifying review sandbox"
+     }
+    },
+    "action": "list",
+    "purpose": "Identifying review sandbox",
+    "retrySafe": true,
+    "runId": "81981489-f84b-442e-80e7-2521a439be4e",
+    "callId": "call_FWmVyLCOo3EUva2vqo8hMCnC|fc_0f0f44215ff314b9016af08286402487d2b7610a0e68dc233c",
+    "tool": "sandbox",
+    "step": {
+     "id": "8921b0c5-5577-4591-b837-713ffcfb7e06",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "action": "list",
+    "result": "{\"sandboxes\":[{\"id\":\"6fde24d0-79b9-4161-8250-f9b63f27780e\",\"name\":\"s1e-probe\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"]},\"state\":\"ready\",\"legacy\":false,\"backend\":\"local\",\"holders\":[\"81981489-f84b-442e-80e7-2521a439be4e\"],\"createdAt\":\"2026-11-08T14:09:02.904Z\",\"createdBy\":\"harness-admin\",\"machineId\":\"qm-sbx-sandbox-6fde24d0-79b9-4161-8250-f9b63f27-12150a\",\"ownerScopeId\":\"personal:U1\",\"backingScopeId\":\"sandbox-6fde24d0-79b9-4161-8250-f9b63f27780e\"}],\"defaultSandboxId\":\"6fde24d0-79b9-4161-8250-f9b63f27780e\",\"defaultMode\":\"selected\",\"providers\":[{\"name\":\"local\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\"},\"egressEnforcement\":\"none\",\"sizesMemory\":true,\"actions\":[\"create\",\"retire\"]}]}",
+    "runId": "81981489-f84b-442e-80e7-2521a439be4e",
+    "callId": "call_FWmVyLCOo3EUva2vqo8hMCnC|fc_0f0f44215ff314b9016af08286402487d2b7610a0e68dc233c",
+    "tool": "sandbox",
+    "isError": false
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "9291659c-d994-4073-a469-3d65bf734aab",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -5 --oneline && ls -la && git config --show-origin --get-regexp 'credential|core.sshCommand|http\\\\..*extraheader|http.proxy' || true\",\"sandbox_id\":\"6fde24d0-79b9-4161-8250-f9b63f27780e\",\"purpose\":\"Inspecting branch and repository\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -5 --oneline && ls -la && git config --show-origin --get-regexp 'credential|core.sshCommand|http\\..*extraheader|http.proxy' || true",
+      "purpose": "Inspecting branch and repository",
+      "sandbox_id": "6fde24d0-79b9-4161-8250-f9b63f27780e"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -5 --oneline && ls -la && git config --show-origin --get-regexp 'credential|core.sshCommand|http\\..*extraheader|http.proxy' || true",
+    "purpose": "Inspecting branch and repository",
+    "retrySafe": true,
+    "sandbox_id": "6fde24d0-79b9-4161-8250-f9b63f27780e",
+    "runId": "81981489-f84b-442e-80e7-2521a439be4e",
+    "callId": "call_65fad11a19404d149aea1c4ebc27b779|fc_0f0f44215ff314b9016af08287b76887d28c2586e3bd148613",
+    "tool": "execute",
+    "step": {
+     "id": "9291659c-d994-4073-a469-3d65bf734aab",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* feature-flags-rules e3396ff Normalize rule values before matching\n  main                b0de907 Feature flag registry\ne3396ff Normalize rule values before matching\n83eb696 Build flags with a fluent rule API\nb0de907 Feature flag registry\ntotal 32\ndrwxr-xr-x 6 root root 4096 Nov  8 14:09 .\ndrwxr-xr-x 4 root root 4096 Nov  8 14:09 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 14:09 .git\n-rw-r--r-- 1 root root  131 Nov  8 12:34 CHANGES.md\n-rw-r--r-- 1 root root  434 Nov  8 12:34 README.md\ndrwxr-xr-x 2 root root 4096 Nov  8 14:09 docs\ndrwxr-xr-x 2 root root 4096 Nov  8 14:09 flags\ndrwxr-xr-x 2 root root 4096 Nov  8 14:09 tests\n\n[exit 0]",
+    "runId": "81981489-f84b-442e-80e7-2521a439be4e",
+    "callId": "call_65fad11a19404d149aea1c4ebc27b779|fc_0f0f44215ff314b9016af08287b76887d28c2586e3bd148613",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "8d404f31-ec7f-4537-8611-823d607fe60f",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git diff main...HEAD && printf '\\\\n--- FILES ---\\\\n' && find . -not -path './.git/*' -type f -maxdepth 3 -print && printf '\\\\n--- DOCS/TESTS ---\\\\n' && cat README.md CHANGES.md docs/* tests/*\",\"sandbox_id\":\"6fde24d0-79b9-4161-8250-f9b63f27780e\",\"purpose\":\"Reading rollout implementation and tests\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo && git diff main...HEAD && printf '\\n--- FILES ---\\n' && find . -not -path './.git/*' -type f -maxdepth 3 -print && printf '\\n--- DOCS/TESTS ---\\n' && cat README.md CHANGES.md docs/* tests/*",
+      "purpose": "Reading rollout implementation and tests",
+      "sandbox_id": "6fde24d0-79b9-4161-8250-f9b63f27780e"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git diff main...HEAD && printf '\\n--- FILES ---\\n' && find . -not -path './.git/*' -type f -maxdepth 3 -print && printf '\\n--- DOCS/TESTS ---\\n' && cat README.md CHANGES.md docs/* tests/*",
+    "purpose": "Reading rollout implementation and tests",
+    "retrySafe": true,
+    "sandbox_id": "6fde24d0-79b9-4161-8250-f9b63f27780e",
+    "runId": "81981489-f84b-442e-80e7-2521a439be4e",
+    "callId": "call_Hl8Z5cuaSLo1VoiHaW8Nhkvt|fc_0f0f44215ff314b9016af0828a49e087d2b296d3597ea1a9c4",
+    "tool": "execute",
+    "step": {
+     "id": "8d404f31-ec7f-4537-8611-823d607fe60f",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "diff --git a/CHANGES.md b/CHANGES.md\nindex 9c8349f..cf21538 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,10 @@\n # Changes\n \n+## 0.3.0\n+\n+- Fluent rule-building API for flags.\n+- Percentage rollouts.\n+\n ## 0.2.0\n \n - Flag registry and context matching.\ndiff --git a/README.md b/README.md\nindex d835b40..259b6ca 100644\n--- a/README.md\n+++ b/README.md\n@@ -4,4 +4,8 @@ Feature flags for rollout-cfg.\n \n A flag is on when any of its rules matches the context. A flag with no rules is off for everyone. Flags are independent: a rule added to one flag never affects another.\n \n+## Building flags\n+\n+add_rule(flag_name, rule) returns a Flag carrying that rule. Chain rules by passing the previous flag's rules back in. A fresh flag starts with no rules.\n+\n Run the tests with python3 -B -m unittest.\ndiff --git a/docs/flags.md b/docs/flags.md\nnew file mode 100644\nindex 0000000..210a510\n--- /dev/null\n+++ b/docs/flags.md\n@@ -0,0 +1,5 @@\n+# Flag rules\n+\n+- A rule is a dict of field to expected value.\n+- A flag is on when any rule matches every field in it.\n+- Rule values are compared case-insensitively and across str/int, so {'tier': 2} matches a context tier of '2'.\ndiff --git a/flags/__init__.py b/flags/__init__.py\nindex 7455b11..955b0d9 100644\n--- a/flags/__init__.py\n+++ b/flags/__init__.py\n@@ -1,2 +1,2 @@\n \"\"\"Feature flags.\"\"\"\n-__version__ = \"0.2.0\"\n+__version__ = \"0.3.0\"\ndiff --git a/flags/match.py b/flags/match.py\nindex 58ac3a2..ddfdc40 100644\n--- a/flags/match.py\n+++ b/flags/match.py\n@@ -1,2 +1,2 @@\n def matches(rule, context):\n-    return all(context.get(k) == v for k, v in rule.items())\n+    return all(str(context.get(k)).lower() == str(v).lower() for k, v in rule.items())\ndiff --git a/flags/registry.py b/flags/registry.py\nnew file mode 100644\nindex 0000000..9987c06\n--- /dev/null\n+++ b/flags/registry.py\n@@ -0,0 +1,15 @@\n+from .match import matches\n+\n+\n+class Flag:\n+    def __init__(self, name, rules):\n+        self.name = name\n+        self.rules = rules\n+\n+    def enabled(self, context):\n+        return any(matches(rule, context) for rule in self.rules)\n+\n+\n+def add_rule(flag_name, rule, rules=[]):\n+    rules.append(rule)\n+    return Flag(flag_name, rules)\ndiff --git a/flags/rollout.py b/flags/rollout.py\nnew file mode 100644\nindex 0000000..876099b\n--- /dev/null\n+++ b/flags/rollout.py\n@@ -0,0 +1,7 @@\n+import hashlib\n+\n+\n+def in_rollout(user_id, percent):\n+    digest = hashlib.sha256(user_id.encode('utf-8')).hexdigest()\n+    bucket = int(digest[:8], 16) % 100\n+    return bucket < percent\ndiff --git a/tests/test_match.py b/tests/test_match.py\nindex b62f1f7..a96282d 100644\n--- a/tests/test_match.py\n+++ b/tests/test_match.py\n@@ -5,9 +5,12 @@ from flags.match import matches\n \n class MatchTest(unittest.TestCase):\n     def test_all_fields_must_match(self):\n-        self.assertTrue(matches({'plan': 'pro'}, {'plan': 'pro', 'region': 'us'}))\n+        self.assertTrue(matches({'plan': 'PRO'}, {'plan': 'pro', 'region': 'us'}))\n         self.assertFalse(matches({'plan': 'pro'}, {'plan': 'free'}))\n \n+    def test_matching_ignores_case_and_type(self):\n+        self.assertTrue(matches({'tier': 2}, {'tier': '2'}))\n+\n \n if __name__ == '__main__':\n     unittest.main()\ndiff --git a/tests/test_registry.py b/tests/test_registry.py\nnew file mode 100644\nindex 0000000..218fc41\n--- /dev/null\n+++ b/tests/test_registry.py\n@@ -0,0 +1,24 @@\n+import unittest\n+\n+from flags.registry import add_rule\n+from flags.rollout import in_rollout\n+\n+\n+class RegistryTest(unittest.TestCase):\n+    def test_a_flag_is_on_when_a_rule_matches(self):\n+        flag = add_rule('beta', {'plan': 'pro'}, [])\n+        self.assertTrue(flag.enabled({'plan': 'pro'}))\n+        self.assertFalse(flag.enabled({'plan': 'free'}))\n+\n+    def test_two_rules_either_matches(self):\n+        flag = add_rule('beta', {'plan': 'pro'}, [])\n+        flag = add_rule('beta', {'region': 'eu'}, flag.rules)\n+        self.assertTrue(flag.enabled({'region': 'eu'}))\n+\n+    def test_a_zero_rollout_includes_nobody(self):\n+        self.assertFalse(in_rollout('user-1', 0))\n+        self.assertTrue(in_rollout('user-1', 100))\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\n\n--- FILES ---\n./flags/rollout.py\n./flags/registry.py\n./flags/__init__.py\n./flags/match.py\n./README.md\n./tests/__init__.py\n./tests/test_registry.py\n./tests/test_match.py\n./docs/flags.md\n./CHANGES.md\n\n--- DOCS/TESTS ---\n# rollout-cfg\n\nFeature flags for rollout-cfg.\n\nA flag is on when any of its rules matches the context. A flag with no rules is off for everyone. Flags are independent: a rule added to one flag never affects another.\n\n## Building flags\n\nadd_rule(flag_name, rule) returns a Flag carrying that rule. Chain rules by passing the previous flag's rules back in. A fresh flag starts with no rules.\n\nRun the tests with python3 -B -m unittest.\n# Changes\n\n## 0.3.0\n\n- Fluent rule-building API for flags.\n- Percentage rollouts.\n\n## 0.2.0\n\n- Flag registry and context matching.\n# Flag rules\n\n- A rule is a dict of field to expected value.\n- A flag is on when any rule matches every field in it.\n- Rule values are compared case-insensitively and across str/int, so {'tier': 2} matches a context tier of '2'.\nimport unittest\n\nfrom flags.match import matches\n\n\nclass MatchTest(unittest.TestCase):\n    def test_all_fields_must_match(self):\n        self.assertTrue(matches({'plan': 'PRO'}, {'plan': 'pro', 'region': 'us'}))\n        self.assertFalse(matches({'plan': 'pro'}, {'plan': 'free'}))\n\n    def test_matching_ignores_case_and_type(self):\n        self.assertTrue(matches({'tier': 2}, {'tier': '2'}))\n\n\nif __name__ == '__main__':\n    unittest.main()\nimport unittest\n\nfrom flags.registry import add_rule\nfrom flags.rollout import in_rollout\n\n\nclass RegistryTest(unittest.TestCase):\n    def test_a_flag_is_on_when_a_rule_matches(self):\n        flag = add_rule('beta', {'plan': 'pro'}, [])\n        self.assertTrue(flag.enabled({'plan': 'pro'}))\n        self.assertFalse(flag.enabled({'plan': 'free'}))\n\n    def test_two_rules_either_matches(self):\n        flag = add_rule('beta', {'plan': 'pro'}, [])\n        flag = add_rule('beta', {'region': 'eu'}, flag.rules)\n        self.assertTrue(flag.enabled({'region': 'eu'}))\n\n    def test_a_zero_rollout_includes_nobody(self):\n        self.assertFalse(in_rollout('user-1', 0))\n        self.assertTrue(in_rollout('user-1', 100))\n\n\nif __name__ == '__main__':\n    unittest.main()\n\n[exit 0]",
+    "runId": "81981489-f84b-442e-80e7-2521a439be4e",
+    "callId": "call_Hl8Z5cuaSLo1VoiHaW8Nhkvt|fc_0f0f44215ff314b9016af0828a49e087d2b296d3597ea1a9c4",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "708161f5-69ec-4557-9043-630353d8ae24",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "{\"id\":\"rs_0f0f44215ff314b9016af0828cf67c87d282366d5ebe3b9aa3\",\"type\":\"reasoning\",\"content\":[],\"encrypted_content\":\"gAAAAABq8IKQvZsKjrOaPCQnnb2Yj0V28NSflMynvkJH9Xt4wJurvyiLLuF9IOxhiQgMiSg6ONOJodSMMYGPHZ6QckQvBFA8SRKh9G4tojZJe6hR-ika7phSZiZcGDEfFT5X2I4_OPs7Rgnm9mNBFjM-jk5bPY2ngBrcfO8v5KxILQSA9hfX3XgvA0C_wQEBgnGyKBaEkYDa7DagQi1uG5bBfxyMB_6yPIISrn4jbCO0G_-szB2v9AKqZt_ncxIEzM7iftiSSoihdvuRvruazzmICeJOkvU2oTZ1miP3iMXL1cc6eqmSciLAIV1r9XO8mouHrHaapuoe-2RcNXHJioi3FOCcf5m9PKpcavyt0SEKcXB36cxvxMG16lE7Zq9issjvJIv19ngWYoXyLmDI35Ye7xqo7yw9DJ3m1NPxpKbsuy_e6Qzm6BUI5tBMwI7ryD1iE6U3SDAvP6ebf8p8KXFE9j2wDnpwaUKJGYudtE5-SorWVymRL4ApgRB9QkipXDk69Dl4Slf1Pi_Z-61Na2_CjK9UF79SL03lw8Nw3so4wrLZHe_oZGjSLt8xZ68UqaR88gTiHDBEFXM8EWY27ufuUjwf3RXtR9d2K24e_xD1EuTG7K4FHXeJaGvK-aCK5YulqqX4LgFcKiipoDSsz0G6GmEfQ705E0J5R64lgOLQ_7OdM56FgFEgMednbJSfrHcV37xX8Vu6TqQ2GkKBkKEiqY65w-ocZALbkSrh3e24uWQZsYBduLi88Fgz2mHdQItpswf04rljZTi2hvXtQiLY8iu0saz3Rerk5TZBHbsw5JV04WtvtwTJZJqmBkgKoX8iXSmA9I0GN14_cfbj-dJc5dIU9VB9sqXeG6NjEwcoAQ3YbQFlQmV1Gr4LaLQtJAqa-zJzpbp0zMAP02wIW7bCQJVUi5KX7TZ_xxiF0LU6lEkDGCf93pM45f94zqGwYhgLYjsPZZdHne2L-DGmmGckSf1_TupepNHbgM2O8JoM29EXzEopC6wBupZUda_w0VlmXBpMhPt_LNOoV9j66GgI6DzhNksrXODRyTPywrd-VwPrJaGLddFjq10Hebpfa5tziEovgtcMACUkPBEcZapiJSQELbwi_uJKJwyqLA0JLISZ_47b5W8hmy6rYTpfvHADqcWq_COwY8E0SZq0-Tq7VfgiBOfcNFE1wytAOJH7CwWzmuXvc8i2uTxF7NZqF9BpC5-1qsoYxPtoneDv4nb-FtXRvGxaRWa_6IoPR9ydpVggWGgz3ItG_Qb5b4dNPStywRyn3cNGrICY_ohimv2kGVZep6d2MraJU4IFf1m5apn2nVigzXzX8aK8z80N1B2dCPPBQmyyOUiv4hIgVshHxs-G85aBFmBCMUJljdkC5oPY5ZJ44XOXV26R5F_Nl6e3BjNcN9IOgXYIrlWKW2kMW2Vo3YiZsItAGxZMC_679fqCOjypE7SNbFur_QrYwwzkNHeJPUTE3Bet1snARQ3jXrMQn2txOcMrozZLr4MPq4oQ3qGQiOmGruLhrOIyy1r_6sGlQC0pkUArJ73FI6Yqxy3LJTLrM8jdpVTxhjMC2ZCk5tioVy9hq98Wc5765Cmv_4wWs91ISiHmf14xaEejG5hfIKd2OIH1KhftMUbdEXrkhj3pbZxQBLd8_l13bTYjxmDWgyf5H-oQOVpgjb2PR5IUSq9iCHz412hmvqohiP8V1WR8uqtlfRoxrcx8DCmZ_X5Yd08MTavUE6JGsF-Fve_aa8MtVepA4NFsaj0LLKBmhS1tDQ85WIx5b2mEsFi46nr8vA1Tk_DBdTN621gOeXal5ebkbS0T-D0klBhzGMOsWhp7Q2HaJVXy3DG4pafhmKAL0zBIPyrBrVW0veBRxP0tkTFdBpn6_wn-ZhDxwUULoqQIXY93ZLpCcgiiWAtJ5_0PJptKIOoPs9cDURzTFbkF3ZnmvmkTeWrUXYjKDFwKSWIFijz6OO8wREgbFiqW8U3B1eCaie3aRhTUqqUVR8anJPMRQDhx3-wWIg8NAKWh0fEbgb6u3fh_3NQFiBr3NYGVrBs_BTuawuDbhCXpEZIT9Xyk7RLr75w_-bpKRf_qFpv9MPgptuPwP4feezzqjGa3VCAe7iiHmq_V7u1rEzt17daif5IJrrZymB5NO0KuchgksLxbTdgYs3tFPJpebCRPvLLFUepOgfl5W20UUbu2Q9pw4J_Dqm3QxyZwWQ0ON59Cgi-O_qsiNz0K_Wlh8ZhuhkpYWDqr7nkn5buqgKPDtCjMtX70ZJiUnmN9Tws79GXZhSGi3V9pk0Lo7iNq0n5KLRtaJuBNo5uh1afQBTJDjf7RnPx2lZx618FxCt_-Vp-DgOgK4Z-27pRW74fGHD70NECURE1Jp_4xcEDliRw_g14KuyVNBakGP_rixyPxfeKajj_vgSEQOFpmwbmYJsqRAb0GmR81EIojoDOZnmez1qObQpqzbqB-VWTc2c8dLr4nFlWKFHZoXegczQdIXHd6TB-lTM1xCkjF0-5WfIJyP-mWZiSp4atvIKhdXdY_7NqmM8QUaGURU1LVvoMtZLGJb8r3N9KZizUqgVKVkhPkcN9HjYboPOAj5rv4zt7OTUWwEqd0Rg4B6NnYfqwofOWRgpqLWDuTUvVYwuffmY-ZObfMz5S8LlgevsdFvwhHf180ykANdWLY_kzL5sEztC33w45StW8K-EM1Rp_HBB053JKuIEdOtugPPLRBHOGA_nO5_nP6pRocQAVP4BY-0_a56rBvzh4t32uu4Vro_vBIKAT1G3TN5dGYx7_OE1SrgXKUPMyUDWCmGxI4TfjU1XS7mY_xtv7G_OZSH6ZDyBbduUQR4zVuX3NOU6reud-Jsbz-Fts=\",\"summary\":[]}",
+    "thinking": "",
+    "runId": "81981489-f84b-442e-80e7-2521a439be4e",
+    "step": {
+     "id": "708161f5-69ec-4557-9043-630353d8ae24",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "708161f5-69ec-4557-9043-630353d8ae24",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && python3 -B -m unittest -v && python3 -B - <<'PY'\\nfrom flags.registry import add_rule, Flag\\nfrom flags.match import matches\\n\\nalpha = add_rule('alpha', {'plan': 'pro'})\\nbeta = add_rule('beta', {'region': 'eu'})\\nprint('Independent flags share storage:', alpha.rules is beta.rules)\\nprint('beta enabled for pro/us (expected False):', beta.enabled({'plan': 'pro', 'region': 'us'}))\\nprint('alpha enabled for free/eu (expected False):', alpha.enabled({'plan': 'free', 'region': 'eu'}))\\n\\nfor rule, context in [({'tier':'none'}, {}), ({'tier':'none'}, {'tier':None}), ({'tier':None}, {'tier':'none'})]:\\n    old = all(context.get(k) == v for k, v in rule.items())\\n    print(f'matches({rule!r}, {context!r}): main={old}, branch={matches(rule, context)}')\\nprint('Flag with no rules:', Flag('empty', []).enabled({}))\\nPY\\nprintf '\\\\n--- NUMBERED SOURCE ---\\\\n' && nl -ba flags/registry.py && nl -ba flags/match.py && nl -ba flags/rollout.py && printf '\\\\n--- BASE TREE ---\\\\n' && git ls-tree -r --name-only main && printf '\\\\n--- WORKTREE ---\\\\n' && git status --short && git rev-parse HEAD main\",\"sandbox_id\":\"6fde24d0-79b9-4161-8250-f9b63f27780e\",\"purpose\":\"Testing isolation and matching regressions\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo && python3 -B -m unittest -v && python3 -B - <<'PY'\nfrom flags.registry import add_rule, Flag\nfrom flags.match import matches\n\nalpha = add_rule('alpha', {'plan': 'pro'})\nbeta = add_rule('beta', {'region': 'eu'})\nprint('Independent flags share storage:', alpha.rules is beta.rules)\nprint('beta enabled for pro/us (expected False):', beta.enabled({'plan': 'pro', 'region': 'us'}))\nprint('alpha enabled for free/eu (expected False):', alpha.enabled({'plan': 'free', 'region': 'eu'}))\n\nfor rule, context in [({'tier':'none'}, {}), ({'tier':'none'}, {'tier':None}), ({'tier':None}, {'tier':'none'})]:\n    old = all(context.get(k) == v for k, v in rule.items())\n    print(f'matches({rule!r}, {context!r}): main={old}, branch={matches(rule, context)}')\nprint('Flag with no rules:', Flag('empty', []).enabled({}))\nPY\nprintf '\\n--- NUMBERED SOURCE ---\\n' && nl -ba flags/registry.py && nl -ba flags/match.py && nl -ba flags/rollout.py && printf '\\n--- BASE TREE ---\\n' && git ls-tree -r --name-only main && printf '\\n--- WORKTREE ---\\n' && git status --short && git rev-parse HEAD main",
+      "purpose": "Testing isolation and matching regressions",
+      "sandbox_id": "6fde24d0-79b9-4161-8250-f9b63f27780e"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && python3 -B -m unittest -v && python3 -B - <<'PY'\nfrom flags.registry import add_rule, Flag\nfrom flags.match import matches\n\nalpha = add_rule('alpha', {'plan': 'pro'})\nbeta = add_rule('beta', {'region': 'eu'})\nprint('Independent flags share storage:', alpha.rules is beta.rules)\nprint('beta enabled for pro/us (expected False):', beta.enabled({'plan': 'pro', 'region': 'us'}))\nprint('alpha enabled for free/eu (expected False):', alpha.enabled({'plan': 'free', 'region': 'eu'}))\n\nfor rule, context in [({'tier':'none'}, {}), ({'tier':'none'}, {'tier':None}), ({'tier':None}, {'tier':'none'})]:\n    old = all(context.get(k) == v for k, v in rule.items())\n    print(f'matches({rule!r}, {context!r}): main={old}, branch={matches(rule, context)}')\nprint('Flag with no rules:', Flag('empty', []).enabled({}))\nPY\nprintf '\\n--- NUMBERED SOURCE ---\\n' && nl -ba flags/registry.py && nl -ba flags/match.py && nl -ba flags/rollout.py && printf '\\n--- BASE TREE ---\\n' && git ls-tree -r --name-only main && printf '\\n--- WORKTREE ---\\n' && git status --short && git rev-parse HEAD main",
+    "purpose": "Testing isolation and matching regressions",
+    "retrySafe": true,
+    "sandbox_id": "6fde24d0-79b9-4161-8250-f9b63f27780e",
+    "runId": "81981489-f84b-442e-80e7-2521a439be4e",
+    "callId": "call_cAyPwJSUB8T1AWqJ0yuUMSYO|fc_0f0f44215ff314b9016af08290a07887d2a7fcfa2ca8826f3d",
+    "tool": "execute",
+    "step": {
+     "id": "708161f5-69ec-4557-9043-630353d8ae24",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 14,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "Independent flags share storage: True\nbeta enabled for pro/us (expected False): True\nalpha enabled for free/eu (expected False): True\nmatches({'tier': 'none'}, {}): main=False, branch=True\nmatches({'tier': 'none'}, {'tier': None}): main=False, branch=True\nmatches({'tier': None}, {'tier': 'none'}): main=False, branch=True\nFlag with no rules: False\n\n--- NUMBERED SOURCE ---\n     1\tfrom .match import matches\n     2\t\n     3\t\n     4\tclass Flag:\n     5\t    def __init__(self, name, rules):\n     6\t        self.name = name\n     7\t        self.rules = rules\n     8\t\n     9\t    def enabled(self, context):\n    10\t        return any(matches(rule, context) for rule in self.rules)\n    11\t\n    12\t\n    13\tdef add_rule(flag_name, rule, rules=[]):\n    14\t    rules.append(rule)\n    15\t    return Flag(flag_name, rules)\n     1\tdef matches(rule, context):\n     2\t    return all(str(context.get(k)).lower() == str(v).lower() for k, v in rule.items())\n     1\timport hashlib\n     2\t\n     3\t\n     4\tdef in_rollout(user_id, percent):\n     5\t    digest = hashlib.sha256(user_id.encode('utf-8')).hexdigest()\n     6\t    bucket = int(digest[:8], 16) % 100\n     7\t    return bucket < percent\n\n--- BASE TREE ---\nCHANGES.md\nREADME.md\nflags/__init__.py\nflags/match.py\ntests/__init__.py\ntests/test_match.py\n\n--- WORKTREE ---\ne3396ffca0311d9e797bcf5a99e20db14f5b4c98\nb0de9076cf6cf810e3485487490c354a7b8884f2\n\n[stderr]\ntest_all_fields_must_match (tests.test_match.MatchTest.test_all_fields_must_match) ... ok\ntest_matching_ignores_case_and_type (tests.test_match.MatchTest.test_matching_ignores_case_and_type) ... ok\ntest_a_flag_is_on_when_a_rule_matches (tests.test_registry.RegistryTest.test_a_flag_is_on_when_a_rule_matches) ... ok\ntest_a_zero_rollout_includes_nobody (tests.test_registry.RegistryTest.test_a_zero_rollout_includes_nobody) ... ok\ntest_two_rules_either_matches (tests.test_registry.RegistryTest.test_two_rules_either_matches) ... ok\n\n----------------------------------------------------------------------\nRan 5 tests in 0.000s\n\nOK\n\n[exit 0]",
+    "runId": "81981489-f84b-442e-80e7-2521a439be4e",
+    "callId": "call_cAyPwJSUB8T1AWqJ0yuUMSYO|fc_0f0f44215ff314b9016af08290a07887d2a7fcfa2ca8826f3d",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 15,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "58121539-2213-46cb-8ac5-ad2933839e7a",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "{\"id\":\"rs_0f0f44215ff314b9016af08293e37487d289f8c505e4549870\",\"type\":\"reasoning\",\"content\":[],\"encrypted_content\":\"gAAAAABq8IKVmKODyeQvaPzWgxq52lSAtwENyfzih2Gz9Gnulg_A6v2ggzKhqKFzHsQtWGdXT_3_HDIWHdzmhnTlhL7372ahVS-N36RZVi8nJrCqkcysC6ayoHl_jtKiH_GqwwrRyMMSE0a3p2_nQOxSyPbeO_hxDr-IQIU1qj3UABWhABeUZhIRWiP2Zld4eZ2Z64RgBwFh58q81Gl8BSID8ii4jxMsEZSphCTzjUyNjViqRxWLc73vNyOuPG2hSAJfPTq4N3zUpHyWyTccuY3Vfg8EDbliblVE6cmmh_N9E5sHIp4QCY8lQ-9Fk7H_i6HgA3e8WGEtavBedIw-ld8H-UYZwtynFDSbGiXJabFrAk0sw-EZrqqg4T-BISxp0MqopoFeH6_7VhfcEyoA6bHNbRlW_Ei4bObvQaMuZNXX2ip-HV40kPkrG1BT3hyPvG6XujGUW_sqVbG8smpddse7MZUfIhFahq47QPlWKEWaF1wK8LggKsUkbXgOmwKkvKF73V95lB2YixNjFNQ7ecpPcu_mffvNt2cQf1L9GymE5FUxYQ8Y_WIQjmI4bQL7kgqwdf5ne_iOTAeZGfdRoN8BVayabQyRWe4BtzW7DFIyQjRanHwmbRTiO6YSJjvLKWVf60ew11AB83LUMm9VB2aMoEwopF9RHfmM70d3MDJXXYO4nlYXKZ8XfYraikfMTuoNeg8XP6ikdGTBKPK2eojqY_oAacE21W0z29JbmVVNq9grGmnbS-A1HNdxHPny0xeTVtc1yi6-HaocK7NKEWlGccQDroMfWQRVIJn5eYkqdiXjROVU-WZLSUYfYvJtQh3AmwYupK7rInBzfrs9AFvMlp6UZpCvrk57IQmq4pE27gm3-cCoSCm1EBmWxhZJXCUfn9xGftacZznmQgcx3J3FFUTNkUv-mvAHaz-PYlPmR9oH9IXHN9WMJLrZtW_EKGAE0MMn9zvZuGXSjaluoD_hEBldSlGzczWoidUo5fteWJx9a6yvRPi1eB33rvfWp0rCB_G25gJJASMnExT1_5F7oQAEPljIqy8gsY9ROwSc9QMKUuRvcOEaPhBfZBWHRxwvrkAcz4u8NAo7RiKuTT3GW4Rj49wEDZYRAwCuiYl79aZBKWOKGeI1tRF4ARcY6J71D2TsuQaVt5QAcx4XjPunLQvznFgmwRwGgMLHe5q4K4a95X1t0PHIzy2c-slkvszqbBqB6MX4nhp7DYNbVElXmxSjUmiDoAIfR16ZuSwkD12JgOchuFxoSrnry-sNG0ENwieWlrKNrUDwA93U4cmbtkFS5_KFYf4F22J7PLpFz-qi1CQKBE34-OAAoJM7OMOAHtISnVo-1mSxjjhNYJxMwR-MtBDG0aSzidFBmlPmYjCQYX5CVcAjPGn9xzSHyEGvaLoteGzvAr-gMjdkQT7qOSjB2QbcbbkRd4l2vntV-9c6JhmeyfXrBPq9xciUoGFhKrM0FNKb74j5lQ-1GU3mrUJV21HpUD18bd_uuaMNeCja_aT8gLCf93UyiRkrAatLDVw9ojKsDhIw1L3-Mi19IuW0EkSDdqAZe-J8EzbLyVtbWXayNqfZp3b2HEYcjsveuIOmDKQBlyJM46nFoLcb6Bl45YQip0DTgG0lUAfL37QMZ9g2RZEdT3Y_fDj4uQFAzkvOZDiuLCeJ9GTb-zGgml0mfq9qjTFy-o3aovLh0i-7-iIxuZAfLG1QpgIjVnfsMRT9J3qq2cJPNSwqUQiQMq7Kru2z9OHjhZQq5xN4uyvWh4AADG3hUUvz9tq8CRS8TzKv9ydbAcWf-lvclvT_yofg_lqsgosZrhMRukaZtCXaZD_EF8-7LSoMSVaabqh1gc37Yvm6YwDUherr_95vnI_5f8D6OBdbWD0PVA4q-al399o3f5D0qWiUqxBIH4QQSEVQCI7MfqxeprxxEkv-Vap-Dw0SgsTUtQoGh0AsWUqkMvP2rzscXXHvoy5oM8yJu22JMjao8a0HdbX7qq8I-oq9VHeCphxtKuZjZHqQXc4v423AizO9nsABQ-icdzAIslIARTeVr43nuUvVO-l6420ekr0V_owOzfNKjyRtR47n15FJ8QKQbhswU-XDhAW10kgXW0dKZEriPFlGHJJPplkO5JU0TbHe_-cgdC0c82FWOB3uMS3S_2faNZxx8KEs6PSJzQPBbDNfV3iDkKfVWF1fUtbREYeb_Ov1UXOHW2Aoo3Xg41gp0nFpgbX6OpjqZGku46KH8SrE1JNgnZ6ZECcUn0taYW7cCf4xY2SzlrMznWnzfnoA-fwrM4DkiXyMNfUgkIS3SxH5H8yhCjmEfqOwk5INm_w1Et5bp5dati9hdLry8QqNYkk-IEt8Hs5arTV_6kIY\",\"summary\":[]}",
+    "thinking": "",
+    "runId": "81981489-f84b-442e-80e7-2521a439be4e",
+    "step": {
+     "id": "58121539-2213-46cb-8ac5-ad2933839e7a",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 16,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "58121539-2213-46cb-8ac5-ad2933839e7a",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "textBlock": {
+     "textSignature": "{\"v\":1,\"id\":\"msg_0f0f44215ff314b9016af082952ea487d2bed1c34308d3cee9\",\"phase\":\"final_answer\"}"
+    },
+    "workStartedAt": 1794146944074,
+    "workFinishedAt": 1794146970194,
+    "text": "*I’d hold the merge.* Reviewed `feature-flags-rules` at `e3396ff` against `main` (`b0de907`). Two findings:\n\n*1. [P1] Rules leak between independent flags* — `flags/registry.py:13–15`\nThe default `rules=[]` is shared across every call that omits the third argument. Each new rule changes all previously returned flags using that list.\n\nReproduced:\n```python\nalpha = add_rule('alpha', {'plan': 'pro'})\nbeta = add_rule('beta', {'region': 'eu'})\n\nbeta.enabled({'plan': 'pro', 'region': 'us'})   # True\nalpha.enabled({'plan': 'free', 'region': 'eu'}) # True\n```\nBoth should be false. This violates the documented independence guarantee and can enable unrelated features for unintended audiences. Allocate a fresh list when no rules are supplied, and add a regression test using the default API. Current tests always pass an explicit list, masking this.\n\n*2. [P2] Normalization makes missing/null fields match the string `\"none\"`* — `flags/match.py:2`\n`context.get(k)` returns `None` for absent fields; stringifying and lowercasing turns that into `\"none\"`.\n\nReproduced:\n```python\nmatches({'tier': 'none'}, {})              # True; False on main\nmatches({'tier': 'none'}, {'tier': None})  # True; False on main\nmatches({'tier': None}, {'tier': 'none'})  # True; False on main\n```\nThis broadens eligibility when an attribute is missing or null, beyond the documented case-insensitive/string–integer matching. Preserve missing/null semantics separately from value normalization and test those boundaries.\n\n*Validation:* All 5 existing tests pass; the probes above reproduce both issues. No files changed. This checkout has no remote or downstream consumers, so I could not verify deployed rule values or integration behavior.",
+    "runId": "81981489-f84b-442e-80e7-2521a439be4e",
+    "step": {
+     "id": "58121539-2213-46cb-8ac5-ad2933839e7a",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

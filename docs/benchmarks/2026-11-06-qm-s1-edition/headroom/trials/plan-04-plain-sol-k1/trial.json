@@ -1,0 +1,161 @@
+{
+  "trial_id": "plan-04-plain-sol-k1",
+  "task_id": "plan-04",
+  "family": "plan",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I read the code, docs, tests, and Git history. **No code changed; the existing test passes.**\n\n### Key finding\nThis was attempted before: `eddd879` added `--json`, then `b908835` reverted it because the dashboard runs under a PTY (`script -q`). `progress.tick()` writes to stdout when it detects a terminal, so progress text appeared ahead of the JSON and broke parsing.\n\n### Proposed plan\n\n1. **Add an opt-in flag in `pulse/cli.py`.**\n   - Support `uptimer report --json`.\n   - Preserve the default table output byte-for-byte, including `TOTAL`. `ops/nightly.sh` currently scrapes that line.\n   - Preserve `cmd_report(None, out=...)`, which the existing golden test uses.\n\n2. **Make JSON mode quiet—even under a PTY.**\n   - Select the JSON path **before** the progress loop and skip progress entirely in that mode.\n   - Don’t merely move progress to stderr: PTY wrappers can merge both streams.\n   - Write exactly one JSON document followed by a newline, with no table, progress, or ANSI decoration.\n\n3. **Define an explicit serialization contract.**\n   I recommend a top-level array of report rows, matching the previous attempt, with these fields:\n   ```json\n   [\n     {\n       \"site\": \"shop.example.test\",\n       \"checks\": 8640,\n       \"failures\": 3,\n       \"p95_ms\": 412,\n       \"uptime\": \"99.965\",\n       \"cost\": \"12.40\"\n     }\n   ]\n   ```\n   - Keep counts and milliseconds as integers.\n   - Serialize uptime and cost as decimal **strings**, using `fmt_decimal()` with 3 and 2 places respectively. `docs/output.md` explicitly prohibits float output.\n   - Use explicit field mapping rather than the previous `default=str`, so unsupported types don’t get silently converted and future internal fields don’t accidentally become API.\n   - No synthetic `TOTAL` row; consumers can sum costs using decimal arithmetic.\n\n4. **Add regression coverage.**\n   - Keep the existing table golden test unchanged.\n   - Test CLI flag parsing and parse the *entire* JSON output.\n   - Assert field types, decimal precision/trailing zeros, row order, and empty-report output (`[]`).\n   - Assert progress is never called in JSON mode.\n   - Add a real PTY subprocess test to reproduce the reverted implementation’s failure and verify there’s no progress or ANSI output.\n   - Verify `export --csv` remains unchanged.\n\n5. **Document the public format in `docs/output.md`.**\n   Include the command, schema, units, decimal-string rationale, and clean-output guarantee.\n\n**One contract decision before implementation:** whether dashboards need a top-level total. My default would be the row array above; if they need a total, choose an envelope such as `{\"rows\": [...], \"total_cost\": \"42.45\"}` before shipping, rather than changing the root shape later.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-04-plain-sol-k1",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0427403,
+    "input_tokens": 53075,
+    "output_tokens": 1018,
+    "cached_tokens": 41386,
+    "cache_write_tokens": 11365,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0000732,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0426671,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 19.174,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-04-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:24:56.467Z",
+    "images": {
+      "core": "sha256:306efa6bb3ff48f390ed9434c63be3183fe7d3fdecb1a2ca2939e076998b7771",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-e8bdcc9a6303",
+        "id": "sha256:a1a1cecec8ed8f6d5ee108b4800c2be77dcdae5aea030a5fb0990f9025889f89",
+        "tree_sha256": "a70260548f5236b76b6197a992d0f4922f6c6f8dff72919e7646306eada95865"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-bb5efd72-4a37-4dce-9ea5-32a335aa-1e7618"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:25:39.408Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/61284cbf70def9f07226834b/67cae39fe553abc8/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/61284cbf70def9f07226834b/67cae39fe553abc8/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && for f in README.md pyproject.toml docs/output.md ops/nightly.sh pulse/*.py tests/test_cli_golden.py tests/golden/report.txt; do printf '\\n--- %s ---\\n' \"$f\"; nl -ba \"$f\"; done; git log -5 --oneline",
+          "code": 0,
+          "output": "\n--- README.md ---\n     1\t# uptimer\n     2\t\n     3\tUptime and cost reports for our sites.\n     4\t\n     5\tRun the tests with python3 -m unittest discover -s tests -t .\n\n--- pyproject.toml ---\n     1\t[project]\n     2\tname = \"uptimer\"\n     3\tversion = \"1.8.0\"\n     4\trequires-python = \">=3.10\"\n\n--- docs"
+        },
+        {
+          "seq": 10,
+          "command": "cd /root/workspace/repo && git log --oneline --all && git show --format=fuller b908835 && git show --format=fuller eddd879 && git show --stat c213239 && python3 -m unittest discover -s tests -t . && git status --short",
+          "code": 0,
+          "output": "c213239 export --csv\nd13706a Colours and a config file\nb908835 Revert \"report: add --json\"\neddd879 report: add --json\n0733ae1 Progress line while checks run\nf363629 Report command\ncommit b908835b93737bc7c6b3c1d7779fa14a14390b88\nAuthor:     Rui Tanaka <rui@example.test>\nAuthorDate: Fri Oct 23 01:00:0"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-04-plain-sol-k1",
+      "meter": {
+        "requests": 7,
+        "usd": 0.0427403,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.0427403,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0000732
+    }
+  }
+}

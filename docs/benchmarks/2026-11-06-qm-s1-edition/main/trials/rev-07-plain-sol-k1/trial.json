@@ -1,0 +1,155 @@
+{
+  "trial_id": "rev-07-plain-sol-k1",
+  "task_id": "rev-07",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "*I’d hold the merge.* Reviewed `http-retries` (`b04b610`) against `main` (`5f9be03`). Found four issues:\n\n1. *High — `timeoutMs: 0` no longer disables timeouts* — `src/http.js:11`  \n   `opts.timeoutMs || DEFAULT_TIMEOUT_MS` replaces zero with 10,000. This breaks the documented behavior and the existing nightly-export caller. Exports taking more than 10 seconds to return response headers will now abort. Confirmed that `downloadExport()` arms a 10,000ms timer. Preserve zero with `??`, as on `main`.\n\n2. *High — automatic retries can duplicate writes* — `src/http.js:30–33`  \n   Retries apply to every HTTP method, including POST, without opt-in or an idempotency guarantee. A server can commit a write and still return 503; retrying then repeats the operation. In a local-server reproduction, one `request()` call produced *two server-side writes* before returning 200. Restrict default retries to safe operations; require explicit authorization/idempotency for writes.\n\n3. *Medium — streamed request bodies cannot be replayed* — `src/http.js:31`  \n   Each attempt reuses the same `init.body`. With a real streamed POST returning 503, the second attempt threw `TypeError: Response body object should not be disturbed or locked`. Either exclude non-replayable bodies from retries or accept a fresh-body factory.\n\n4. *Medium — discarded responses aren’t drained or cancelled* — `src/http.js:32–33`  \n   Retried responses are abandoned without consuming or cancelling their bodies. With real Fetch responses, this can retain connections/resources and exhaust a bounded connection pool during an outage—the exact time retries become frequent. Release each discarded response before retrying, leaving the final response untouched.\n\n*Validation:* All three existing tests pass, but none covers these cases. I also ran read-only, in-memory reproductions with real Fetch/local HTTP for the duplicate-write and streamed-body failures. No files were changed; the working tree remains clean.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-07-plain-sol-k1",
+    "requests": 9,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.057228999999999995,
+    "input_tokens": 75409,
+    "output_tokens": 1786,
+    "cached_tokens": 61821,
+    "cache_write_tokens": 13267,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0000714,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.057157599999999996,
+        "requests": 8
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 9
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 31.565,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-07-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T15:08:05.843Z",
+    "images": {
+      "core": "sha256:70e9dbc58d38502117dc97d1c5973af7606fa9e34dfd9ef1126cfa852865f97b",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-8a638002971d",
+        "id": "sha256:93f1dd7acbb7e84f32da9ea3bb121defdab62ccfbbcbca81b8fd3fe3513b729d",
+        "tree_sha256": "b8945d3ad7f19c62dccf490b61260b4bcea0b1391062820ab876fa3dbd3cabe5"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-dd8b720c-fce6-4bca-938c-4b63673e-d6ecd4"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T15:09:00.658Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/ba7bb9100449de76a3fcde0a/bbb723122709289a/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/ba7bb9100449de76a3fcde0a/bbb723122709289a/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 10,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -5 --oneline && ls -la && git diff --stat main...http-retries && git diff main...http-retries",
+          "code": 0,
+          "output": "* http-retries b04b610 Retry 429 and 5xx responses with backoff\n  main         5f9be03 HTTP client with timeouts\nb04b610 Retry 429 and 5xx responses with backoff\n5f9be03 HTTP client with timeouts\ntotal 32\ndrwxr-xr-x 5 root root 4096 Nov  8 15:08 .\ndrwxr-xr-x 4 root root 4096 Nov  8 15:08 ..\ndrwxr-xr"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-07-plain-sol-k1",
+      "meter": {
+        "requests": 9,
+        "usd": 0.057228999999999995,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 9,
+        "usd": 0.057228999999999995,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0000714
+    }
+  }
+}

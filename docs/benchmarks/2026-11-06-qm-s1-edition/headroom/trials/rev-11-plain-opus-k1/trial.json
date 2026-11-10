@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-11-plain-opus-k1",
+  "task_id": "rev-11",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "Don't merge this yet. The new free-text search puts the user's search term straight into the SQL text, which is a SQL injection hole. All 4 tests pass, but none of them catch it. I haven't changed anything on the branch.\n\n**Must fix**\n1. **SQL injection in `src/query.js`:**\n   ```js\n   clauses.push(\"name ILIKE '%\" + term + \"%'\");\n   ```\n   A term like `x' OR 1=1 --` rewrites the query. This also breaks the rule in your README that request values never go into the SQL string. Pass the term as a parameter like `category` does:\n   ```js\n   params.push('%' + term + '%');\n   clauses.push(`name ILIKE $${params.length}`);\n   ```\n   Also escape `%`, `_` and `\\` in the term. Otherwise searching for `100%` or `_` acts as a wildcard.\n\n**Should fix**\n2. **Possible missing `rank` column:** `relevance: 'rank DESC'` in `src/sort.js` is also the default sort. Nothing in the branch defines a `rank` column. If the products table doesn't have one, every search without a `sort` will fail. Can you confirm it exists?\n3. **Whitespace-only search terms:** a term like `\"   \"` passes the `if (filters.term)` check, trims to an empty string and becomes `ILIKE '%%'`. That matches everything. Check the term again after trimming.\n4. **Tests:**\n   - The term test only checks that the SQL contains `name ILIKE`, so it passes with the injection in place. Assert the full `{ where, params }` output, e.g. `{ where: 'WHERE name ILIKE $1', params: ['%red%'] }`.\n   - The in-stock test was deleted rather than renamed. Restore it.\n   - `orderBy` has no tests. Add one for an unknown sort value falling back to relevance.\n\n**Minor**\n5. **Breaking rename:** `buildFilters` is now `buildWhere`. Nothing in this repo still calls the old name, but anything outside it that does will break. Note it in the CHANGELOG, or keep `buildFilters` as an alias for a release.\n6. **CHANGELOG gaps:** it mentions sort orders but not pagination.\n7. **Misleading name:** `MAX_PAGE` in `paginate.js` is really the maximum page size. `MAX_PAGE_SIZE` would be clearer, especially since it's exported.\n\nThe rest looks good. The sort whitelist correctly falls back on unknown values, and `limitOffset` handles junk input safely (`NaN` and negative values become 1).",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-11-plain-opus-k1",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0705432,
+    "input_tokens": 53997,
+    "output_tokens": 1660,
+    "cached_tokens": 50104,
+    "cache_write_tokens": 3429,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000050400000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0704928,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 18.247,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "rev-11-plain-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:25:23.970Z",
+    "images": {
+      "core": "sha256:2512b1320a1f200aa29d4feccd891da02c162353da5d6999fbf7e855ad83f870",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-a37a4db49ad7",
+        "id": "sha256:b380982a13ec20114b4c35923da3a1c36b3646771355719185676b4d4322e115",
+        "tree_sha256": "593d02dc02e96eab384f83c52971c5fda6586bcbeb5e6f14ef27e349edfe0b1b"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-5845a838-5d34-4dcd-8e65-4100303b-f21a10"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:26:06.174Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..search-filters; git diff main...search-filters",
+          "code": 0,
+          "output": "  main\n* search-filters\n54f7b81 Paginate search results\n306a556 Add free-text search over the name\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex d29661f..a673868 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.6.0\n+\n+- Free-text product search and sort orders.\n+\n #"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-11-plain-opus-k1",
+      "meter": {
+        "requests": 5,
+        "usd": 0.0705432,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.0705432,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000050400000000000005
+    }
+  }
+}

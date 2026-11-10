@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-17-plain-opus-k6",
+  "task_id": "rev-17",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 6,
+  "status": "ok",
+  "reply_text": "I don't think this should ship yet. I reviewed `quantity-parsing` against `main` (2 commits) and didn't change any code.\n\n**Blocking issues**\n\n1. **`parseQuantity` turns bad input into numbers instead of rejecting it.** It uses `parseInt`, which reads the leading digits and ignores the rest of the string. The README says these inputs must be rejected, not coerced. When I ran it on the branch:\n   - `\"2kg\"` gives `2`\n   - `\"3.5\"` gives `3`\n   - `\"1e3\"` gives `1` (so someone typing 1000 gets 1)\n   - `\" 4\"` gives `4`\n\n   Fix: check the whole string before parsing, e.g. `if (!/^[0-9]+$/.test(raw)) return null;` and then `Number(raw)`. Also guard against non-string input.\n\n2. **The 99-unit cap is never applied.** `withinLimit` and `MAX_QTY` are added but nothing calls them. `addToCart` only calls `parseQuantity`, so a quantity of `500` goes into the cart. The README says the caller rejects anything above the cap, but `addToCart` is the caller and doesn't. The CHANGELOG also overstates what this release does.\n\n**Test gaps**\n- No tests for the rejected cases the README lists (`\"2kg\"`, `\"3.5\"`, `\"1e3\"`). Tests for those would have caught issue 1.\n- No tests for `addToCart` at all, including the over-cap case that would have caught issue 2.\n\n**Minor**\n- `withinLimit` doesn't check the lower bound or that the value is a whole number. That's fine if it only ever gets the output of `parseQuantity`, but it's worth a comment saying so.\n- The error message puts the raw user input in `invalid quantity: …`. That's fine for a thrown error, but don't show it back to users without escaping it.\n\nThe version bump to 0.8.0 and the docs look fine. Once the two blocking issues are fixed and tested, it should be good to go.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-17-plain-opus-k6",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.055360599999999996,
+    "input_tokens": 52492,
+    "output_tokens": 1313,
+    "cached_tokens": 49590,
+    "cache_write_tokens": 2426,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.0000546,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.05530600000000001,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 15.771,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-17-plain-opus-k6",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T12:59:08.409Z",
+    "images": {
+      "core": "sha256:a9ad79c9a5b8831fdc21d559e082c8ec10e726ba26b883975150369b49c28109",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-c5578e4088df",
+        "id": "sha256:3b8557ea6ec2ab5dbb90c7fd2b2c40421ec26f7e409c39385ea6a2a01a87bb51",
+        "tree_sha256": "9b249b7efa1e53e99bd35c49f74472ad408e348cc6d4ca6a9ca5b15f2ed4e37f"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-2b75892b-ff02-43f8-80bb-a18a2420-b477a9"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T12:59:47.759Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..quantity-parsing; git diff main...quantity-parsing",
+          "code": 0,
+          "output": "  main\n* quantity-parsing\n66ff697 Cap the quantity per line\n8efa52a Parse the quantity field\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex e1e5944..70e975e 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.8.0\n+\n+- Validate the quantity field.\n+\n ## 0.7.0\n \n - Cart l"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-17-plain-opus-k6",
+      "meter": {
+        "requests": 5,
+        "usd": 0.055360599999999996,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.055360599999999996,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.0000546
+    }
+  }
+}

@@ -1,0 +1,161 @@
+{
+  "trial_id": "rev-08-plain-sol-k17",
+  "task_id": "rev-08",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 17,
+  "status": "ok",
+  "reply_text": "*I’d hold shipping for one high-priority bug.*\n\n*P1 — Renewal dates are clamped against the wrong month* — `src/schedule.js:6–7`\nThe code uses the number of days in the *source* month, then constructs a date in the *following* month. This both skips renewal months and fails to restore the original anchor after a short month:\n\n• Jan 31, 2026, anchor 31 → *Mar 3*, expected *Feb 28*.\n• Jan 31, 2028, anchor 31 → *Mar 2*, expected *Feb 29*.\n• Feb 28, 2026, anchor 31 → *Mar 28*, expected *Mar 31*.\n• Apr 30, 2026, anchor 31 → *May 30*, expected *May 31*.\n\nClamp against the *target month’s* length, while retaining the supplied anchor. Add regression tests for short-month transitions, leap February, and returning to the original anchor afterward.\n\n*Validation:* All 5 existing tests pass, but an independent 2024–2028 month/anchor sweep found 66 incorrect results across 1,860 cases. Proration matches the documented calendar-month policy; I found no additional blockers.\n\nReviewed `f73b00d` against `main` at `7f89e48`. No files changed.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-08-plain-sol-k17",
+    "requests": 9,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0498665,
+    "input_tokens": 73207,
+    "output_tokens": 1212,
+    "cached_tokens": 60041,
+    "cache_write_tokens": 12844,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-6.1-sol": {
+        "usd": 0.049742100000000004,
+        "requests": 8
+      },
+      "openai:gpt-5.6-luna": {
+        "usd": 0.00012440000000000002,
+        "requests": 1
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 9
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 23.587,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-08-plain-sol-k17",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:08:30.948Z",
+    "images": {
+      "core": "sha256:70e9dbc58d38502117dc97d1c5973af7606fa9e34dfd9ef1126cfa852865f97b",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-21e081ac9005",
+        "id": "sha256:9d1901e9cbe9dd7c6cc1679f3f2f2315a8b8d4116f71cb9bb78474ec360b8ce5",
+        "tree_sha256": "68ef982cf81212089c0222639053e7a07970a508f7dd5990be1a7afc337a9f10"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-d9d660d6-b241-4a48-9bfe-7c8ca3e3-20ae2d"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:09:18.366Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/7bed6733ffd553602c5ded70/e34de0c68ce35418/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/7bed6733ffd553602c5ded70/e34de0c68ce35418/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 10,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log -5 --oneline && ls -la && git diff main...billing-anniversary --stat",
+          "code": 0,
+          "output": "* billing-anniversary f73b00d Prorate the first partial period\n  main                7f89e48 Subscriptions with a billing anchor day\nf73b00d Prorate the first partial period\n27a0295 Compute the next billing date from the anchor\n7f89e48 Subscriptions with a billing anchor day\ntotal 32\ndrwxr-xr-x 5 ro"
+        },
+        {
+          "seq": 12,
+          "command": "cd /root/workspace/repo && git diff main...billing-anniversary && find src test -type f -print -exec cat {} \\; && cat README.md package.json CHANGELOG.md",
+          "code": 0,
+          "output": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 0d77c0e..6b56b0d 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 2.1.0\n+\n+- Next-billing-date computation from the anchor day.\n+\n ## 2.0.0\n \n - Monthly subscriptions with an anchor day.\ndiff --git a/README.md b/README.md\n"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-08-plain-sol-k17",
+      "meter": {
+        "requests": 9,
+        "usd": 0.0498665,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 9,
+        "usd": 0.0498665,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.00012440000000000002
+    }
+  }
+}

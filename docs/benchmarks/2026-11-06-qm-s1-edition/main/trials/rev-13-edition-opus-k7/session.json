@@ -1,0 +1,230 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 05:29 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "19a356ef-4c88-4532-b6d7-803615d9cc83"
+    },
+    "text": "Could you review the tag-cloud branch against main before I merge? It renders the sidebar tag cloud. Just a review, please don't edit anything.",
+    "runId": "ac669e1c-c6ac-420d-98ab-3440f69395e0"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "cc9dbb5c-b17b-43e3-8757-ce74c884f26b",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "I'll take a look at the tag-cloud branch now.",
+    "runId": "ac669e1c-c6ac-420d-98ab-3440f69395e0",
+    "step": {
+     "id": "cc9dbb5c-b17b-43e3-8757-ce74c884f26b",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "cc9dbb5c-b17b-43e3-8757-ce74c884f26b",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /tmp/pi-cwd 2>/dev/null; pwd; ls; git rev-parse --show-toplevel 2>&1; git branch -a 2>&1 | head; ls ~ \",\"purpose\":\"Locating the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /tmp/pi-cwd 2>/dev/null; pwd; ls; git rev-parse --show-toplevel 2>&1; git branch -a 2>&1 | head; ls ~ ",
+    "purpose": "Locating the repository",
+    "runId": "ac669e1c-c6ac-420d-98ab-3440f69395e0",
+    "callId": "toolu_01A419WkdxpZ4qkA5wherGij",
+    "tool": "execute",
+    "step": {
+     "id": "cc9dbb5c-b17b-43e3-8757-ce74c884f26b",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\nrepo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nworkspace\n\n[exit 0]",
+    "runId": "ac669e1c-c6ac-420d-98ab-3440f69395e0",
+    "callId": "toolu_01A419WkdxpZ4qkA5wherGij",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "79f05df8-911d-48e6-84b5-a7c8888b408b",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd ~/workspace/repo; git branch -a; git log --oneline main..tag-cloud; git diff main...tag-cloud\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd ~/workspace/repo; git branch -a; git log --oneline main..tag-cloud; git diff main...tag-cloud",
+    "purpose": "Reading the branch diff",
+    "runId": "ac669e1c-c6ac-420d-98ab-3440f69395e0",
+    "callId": "toolu_01VYSk4a6ebo2A9LYhz7dGg6",
+    "tool": "execute",
+    "step": {
+     "id": "79f05df8-911d-48e6-84b5-a7c8888b408b",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "  main\n* tag-cloud\n89f074f Scale tag font sizes into buckets\n7ca7ae2 Pick the top tags for the cloud\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 05e97a2..7aee8ee 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.2.0\n+\n+- Tag cloud and alphabetical index in the sidebar.\n+\n ## 1.1.0\n \n - Collect and count tags.\ndiff --git a/README.md b/README.md\nindex 3d5c760..b24b4c4 100644\n--- a/README.md\n+++ b/README.md\n@@ -3,3 +3,11 @@\n Tag handling for bloghub.\n \n Helpers in src/tags.js never modify their arguments: the caller's arrays are left exactly as passed. The render pipeline relies on this because it reuses the same tag list for the cloud and for the alphabetical index.\n+\n+## Sidebar\n+\n+sidebar(tags) returns the tag cloud (top tags by count) and the \"recent\" strip, which is the first few tags in the order they were given. It takes the cloud first, then the recent strip from the same array, so topTags must not reorder that array in place.\n+\n+## Font sizes\n+\n+fontSize(count, max) buckets a tag into one of five sizes by its share of the maximum count. The top tag is xl, a zero count is xs.\ndiff --git a/package.json b/package.json\nindex 0b70844..c43e84b 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"bloghub\",\n-  \"version\": \"1.1.0\",\n+  \"version\": \"1.2.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/order.js b/src/order.js\nnew file mode 100644\nindex 0000000..a63c041\n--- /dev/null\n+++ b/src/order.js\n@@ -0,0 +1,5 @@\n+function alphabetical(tags) {\n+  return [...tags].sort((a, b) => a.tag.localeCompare(b.tag));\n+}\n+\n+module.exports = { alphabetical };\ndiff --git a/src/render.js b/src/render.js\nnew file mode 100644\nindex 0000000..0de7e50\n--- /dev/null\n+++ b/src/render.js\n@@ -0,0 +1,9 @@\n+const { topTags } = require('./tags');\n+\n+function sidebar(tags, topN = 8) {\n+  const cloud = topTags(tags, topN).map((t) => t.tag);\n+  const recent = tags.slice(0, 5).map((t) => t.tag);\n+  return { cloud, recent };\n+}\n+\n+module.exports = { sidebar };\ndiff --git a/src/scale.js b/src/scale.js\nnew file mode 100644\nindex 0000000..39c916e\n--- /dev/null\n+++ b/src/scale.js\n@@ -0,0 +1,9 @@\n+const SIZES = ['xs', 'sm', 'md', 'lg', 'xl'];\n+\n+function fontSize(count, max) {\n+  if (max <= 0) return SIZES[0];\n+  const idx = Math.min(SIZES.length - 1, Math.floor((count / max) * SIZES.length));\n+  return SIZES[idx];\n+}\n+\n+module.exports = { fontSize, SIZES };\ndiff --git a/src/tags.js b/src/tags.js\nindex a7b3a66..6c719cd 100644\n--- a/src/tags.js\n+++ b/src/tags.js\n@@ -6,4 +6,8 @@ function countTags(posts) {\n   return [...counts].map(([tag, count]) => ({ tag, count }));\n }\n \n-module.exports = { countTags };\n+function topTags(tags, n) {\n+  return tags.sort((a, b) => b.count - a.count).slice(0, n);\n+}\n+\n+module.exports = { countTags, topTags };\ndiff --git a/test/scale.test.js b/test/scale.test.js\nnew file mode 100644\nindex 0000000..88bb6f0\n--- /dev/null\n+++ b/test/scale.test.js\n@@ -0,0 +1,8 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { fontSize } = require('../src/scale');\n+\n+test('the most used tag gets the largest size', () => {\n+  assert.strictEqual(fontSize(10, 10), 'xl');\n+  assert.strictEqual(fontSize(0, 10), 'xs');\n+});\ndiff --git a/test/tags.test.js b/test/tags.test.js\nindex d584a85..d0fea70 100644\n--- a/test/tags.test.js\n+++ b/test/tags.test.js\n@@ -1,8 +1,19 @@\n const test = require('node:test');\n const assert = require('node:assert');\n-const { countTags } = require('../src/tags');\n+const { countTags, topTags } = require('../src/tags');\n+const { alphabetical } = require('../src/order');\n \n test('counts tags across posts', () => {\n   const counts = countTags([{ tags: ['a', 'b'] }, { tags: ['a'] }]);\n   assert.deepStrictEqual(counts, [{ tag: 'a', count: 2 }, { tag: 'b', count: 1 }]);\n });\n+\n+test('top tags are the most used', () => {\n+  const tags = [{ tag: 'a', count: 1 }, { tag: 'b', count: 9 }, { tag: 'c', count: 4 }];\n+  assert.deepStrictEqual(topTags(tags, 2).map((t) => t.tag), ['b', 'c']);\n+});\n+\n+test('alphabetical sorts by tag', () => {\n+  const tags = [{ tag: 'c', count: 1 }, { tag: 'a', count: 1 }];\n+  assert.deepStrictEqual(alphabetical(tags).map((t) => t.tag), ['a', 'c']);\n+});\n\n[exit 0]",
+    "runId": "ac669e1c-c6ac-420d-98ab-3440f69395e0",
+    "callId": "toolu_01VYSk4a6ebo2A9LYhz7dGg6",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "e7120e2b-d280-4aa6-997a-6133ef410bdb",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQSkgYKEAgTGAI4AUIIdGhpbmtpbmcSDDiS+nYJQfiGPYmK5RoM/BxLVe3y+7QWH9PYIjCfuAU4kgOYvGDGncCe48FSYdVu6N7aBxc51uIefLVsiR2cWyOACj2IXtKtsY5OKAAqrwVnnqZuBp+s9zW11yPdTR55fVWMWbsaYpxY0esTPryfDz0lY9aNXjt4t9xsa+Wsfcxpo0Q4aKg4Avjq0ncoEu7ulj6Abix7aLCEl2GKV4czxiy8dY/eLAq3c1ONWAPLYC+mI2zHwYKUJ9ZNuVHhPHbZv+pA35WmFVPtJnFVFPJEjgObs1ewf8wm3ntVJx/vv0X7VfiWo7h5LGtRSYlrZovoyL5M5/z4qdja276Kb3WtMJQUd8cVpM+0C3OEW48aTIq1vt8D1nCD8OaKO8mCKvpyDR9GE3MnZG7P6rq933A7LRiKmoU/nwr7U9wwO8JsCHgwPl/LycjG3UxI486li+afv8rSsShni6ii3k+RlgqNxu1mUsnfdPfUkjsJyPybju5v+ghUXfHIlFpM2zEwn6ycpJHqwHSHw5TQP1DQke9Pn/is58/m4n8UEoaEz1BtWa+pE2b62RtJXgxuOgGHz4vBOLU2Uma8qiykhmXtLUPdQHVpJFtmlyocNtZx3SE2m1eQiYuCf6PiAeIvUx7TIL/YEeYr38eiToGD6uVLGL+d9KEArCMSILv0zRkkWwWeWaVXyNV5P7uIJoVqh6kFW1y94688fv1s5uCCtpMukyWYkbanLWzA6k6OTmt1k6NXl0nd+g4/9hOXPqfzV7LsP4fa/4mryYpTPLpO56dclnYG0Uj6ZYp1B7fwsa6gbQZUIpgNW5DaJtDZBMhPL7ZTHqWb9eDlVayU4JCXm643ielBbmJBqHEzGOAjAmr8uqE5dsP1jcmtevu9NnvUyCBKyxwp68azU+NsKQljKQsZH6mQ2ZuScZei8yNMaD6HHH7IwIQcI23BA4xyrl73dr3uK8g31O+A4SWn1EOAZ6+NSbQ7NXsWBj+PI3THsNXUDcl2A+Jl+Mv2yQGQjgAAxourUwcYAQ==",
+    "thinking": "I've spotted a bug: topTags is changing the original array in place. I also checked the font-size bucketing, where a ratio of 0.99 maps to the fourth size, which is fine, and I'm considering whether negative counts could be a problem, though they look safe. Next I'll run the tests.\n\n",
+    "runId": "ac669e1c-c6ac-420d-98ab-3440f69395e0",
+    "step": {
+     "id": "e7120e2b-d280-4aa6-997a-6133ef410bdb",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "e7120e2b-d280-4aa6-997a-6133ef410bdb",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd ~/workspace/repo; npm test 2>&1 | tail -8; node -e \\\"const {sidebar}=require('./src/render');console.log(sidebar([{tag:'a',count:1},{tag:'b',count:9},{tag:'c',count:4}]))\\\"\",\"purpose\":\"Running tests and checking behavior\"}"
+    },
+    "scope": "scoped",
+    "command": "cd ~/workspace/repo; npm test 2>&1 | tail -8; node -e \"const {sidebar}=require('./src/render');console.log(sidebar([{tag:'a',count:1},{tag:'b',count:9},{tag:'c',count:4}]))\"",
+    "purpose": "Running tests and checking behavior",
+    "runId": "ac669e1c-c6ac-420d-98ab-3440f69395e0",
+    "callId": "toolu_017oTqMJTWeTtrQyj6dND2an",
+    "tool": "execute",
+    "step": {
+     "id": "e7120e2b-d280-4aa6-997a-6133ef410bdb",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "ℹ skipped 0\nℹ todo 0\nℹ duration_ms 88.691761\nnpm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\n{ cloud: [ 'b', 'c', 'a' ], recent: [ 'b', 'c', 'a' ] }\n\n[exit 0]",
+    "runId": "ac669e1c-c6ac-420d-98ab-3440f69395e0",
+    "callId": "toolu_017oTqMJTWeTtrQyj6dND2an",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 9,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "5f2b3b53-fd46-4a5a-817b-724eebf77fe2",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794144554942,
+    "workFinishedAt": 1794144572947,
+    "text": "I don't think this is ready to merge yet. There's one real bug, and the tests don't catch it. I only read and ran the code; nothing was edited.\n\n**Blocker: `topTags` reorders the caller's array** (`src/tags.js`)\n```js\nreturn tags.sort((a, b) => b.count - a.count).slice(0, n);\n```\n`Array.prototype.sort` sorts the array in place. The README says the helpers in `tags.js` never change their arguments, and `sidebar()` depends on that: it builds the cloud first, then takes the \"recent\" strip from the same array. I ran it on `[a:1, b:9, c:4]` and got:\n```\n{ cloud: ['b','c','a'], recent: ['b','c','a'] }\n```\n`recent` should be `['a','b','c']`. Instead it's in count order, so the \"recent\" strip quietly turns into a second copy of the cloud. Anything else that reuses the tag list afterwards, like the alphabetical index, gets the reordered array too.\n\n**Fix:** copy before sorting, the same way `order.js` already does:\n```js\nreturn [...tags].sort((a, b) => b.count - a.count).slice(0, n);\n```\n\n**Missing tests:** all tests pass on the branch, but none of them checks that the input array is left alone. Two tests would catch this:\n- `topTags` leaves its input in the original order\n- `sidebar(tags).recent` matches the original order\n\n**Minor, not blocking:**\n- `fontSize` assumes `count ≤ max`. Bigger counts are capped at `xl`, but a negative count would give `undefined`. That's probably fine with real data.\n- `fontSize` is only tested at the two ends (`xl` and `xs`). One mid-range check, e.g. `fontSize(5, 10) === 'md'`, would cover the middle sizes.\n- The version bump to 1.2.0, the changelog and the README updates all look good.\n\nOnce the copy-before-sort fix and a test for it are in, it looks good to merge.",
+    "runId": "ac669e1c-c6ac-420d-98ab-3440f69395e0",
+    "step": {
+     "id": "5f2b3b53-fd46-4a5a-817b-724eebf77fe2",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  }
+ ]
+}

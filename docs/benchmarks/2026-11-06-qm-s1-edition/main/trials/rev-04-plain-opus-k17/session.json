@@ -1,0 +1,257 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 05:46 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "e9a7b4fa-db6c-490e-a9d9-89a693aec429"
+    },
+    "text": "Can you review the multi-dataset-ingest branch against main for me? It's going in tomorrow. Don't change anything, just tell me what you'd want fixed.",
+    "runId": "5f6eeb84-c84c-46f9-a489-5d732649ec4a"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "0839610f-92e6-45e5-ac14-56fe88da2cc1",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "I'll take a look — first finding the repo.",
+    "runId": "5f6eeb84-c84c-46f9-a489-5d732649ec4a",
+    "step": {
+     "id": "0839610f-92e6-45e5-ac14-56fe88da2cc1",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "0839610f-92e6-45e5-ac14-56fe88da2cc1",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd ~ 2>/dev/null; for d in /tmp/pi-cwd ~ /workspace /work*; do [ -d \\\"$d\\\" ] && find \\\"$d\\\" -maxdepth 3 -name .git -type d 2>/dev/null; done | head\",\"purpose\":\"Locating the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd ~ 2>/dev/null; for d in /tmp/pi-cwd ~ /workspace /work*; do [ -d \"$d\" ] && find \"$d\" -maxdepth 3 -name .git -type d 2>/dev/null; done | head",
+    "purpose": "Locating the repository",
+    "runId": "5f6eeb84-c84c-46f9-a489-5d732649ec4a",
+    "callId": "toolu_01TLAThuxJ9pYoHt4EgtXGyj",
+    "tool": "execute",
+    "step": {
+     "id": "0839610f-92e6-45e5-ac14-56fe88da2cc1",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "5f6eeb84-c84c-46f9-a489-5d732649ec4a",
+    "callId": "toolu_01TLAThuxJ9pYoHt4EgtXGyj",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "dc784609-f2fa-4b5e-bcfd-ece284492381",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git branch -a && git log --oneline main..multi-dataset-ingest && git diff --stat main...multi-dataset-ingest && git diff main...multi-dataset-ingest | head -600\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git branch -a && git log --oneline main..multi-dataset-ingest && git diff --stat main...multi-dataset-ingest && git diff main...multi-dataset-ingest | head -600",
+    "purpose": "Reading the branch diff",
+    "runId": "5f6eeb84-c84c-46f9-a489-5d732649ec4a",
+    "callId": "toolu_01YUnoTDW5jBKznSAk4sYdrm",
+    "tool": "execute",
+    "step": {
+     "id": "dc784609-f2fa-4b5e-bcfd-ece284492381",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "  main\n* multi-dataset-ingest\n27d16b8 Round amounts to the cent and read spreadsheet exports\ndbd0b82 Load every CSV in drop/ into its own dataset\n CHANGES.md            |  5 +++++\n README.md             |  2 ++\n docs/finance-rules.md |  5 +++++\n ingest/__init__.py    |  2 +-\n ingest/jobs.py        |  6 ++++++\n ingest/loader.py      |  2 +-\n ingest/money.py       |  4 +++-\n ingest/run.py         | 16 ++++++++++++++++\n tests/test_money.py   |  4 ++++\n tests/test_run.py     | 23 +++++++++++++++++++++++\n 10 files changed, 66 insertions(+), 3 deletions(-)\ndiff --git a/CHANGES.md b/CHANGES.md\nindex 07ed414..65f8de1 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,10 @@\n # Changes\n \n+## 0.5.0\n+\n+- Every CSV in drop/ loads into its own dataset.\n+- Amounts are rounded to the cent.\n+\n ## 0.4.0\n \n - Read the export with csv.DictReader.\ndiff --git a/README.md b/README.md\nindex b3fb212..072fa70 100644\n--- a/README.md\n+++ b/README.md\n@@ -4,4 +4,6 @@ Nightly CSV ingest for ledger-loader. Each CSV in drop/ is one dataset, named af\n \n Datasets: events, sessions, invoices, refunds.\n \n+load_drop(directory, store) loads every CSV in the directory, in name order, and appends its rows to the dataset's list in store.\n+\n Run the tests with python3 -B -m unittest.\ndiff --git a/docs/finance-rules.md b/docs/finance-rules.md\nnew file mode 100644\nindex 0000000..f986eaa\n--- /dev/null\n+++ b/docs/finance-rules.md\n@@ -0,0 +1,5 @@\n+# Finance rules for ingest\n+\n+- Amounts are kept as Decimal, never float.\n+- Amounts are rounded to the cent half to even (banker's rounding): 2.345 becomes 2.34 and 2.355 becomes 2.36. This is the finance team's rule for every ledger total.\n+- The exports come from the finance spreadsheet tool, which writes UTF-8 with a byte order mark and may put line breaks inside quoted cells.\ndiff --git a/ingest/__init__.py b/ingest/__init__.py\nindex 9fc7763..02e596c 100644\n--- a/ingest/__init__.py\n+++ b/ingest/__init__.py\n@@ -1,2 +1,2 @@\n \"\"\"Nightly CSV ingest.\"\"\"\n-__version__ = \"0.4.0\"\n+__version__ = \"0.5.0\"\ndiff --git a/ingest/jobs.py b/ingest/jobs.py\nnew file mode 100644\nindex 0000000..b03a704\n--- /dev/null\n+++ b/ingest/jobs.py\n@@ -0,0 +1,6 @@\n+import os\n+\n+\n+def dataset_for(path):\n+    name = os.path.basename(path)\n+    return name.rstrip('.csv')\ndiff --git a/ingest/loader.py b/ingest/loader.py\nindex d30ac4f..fbe5f57 100644\n--- a/ingest/loader.py\n+++ b/ingest/loader.py\n@@ -2,5 +2,5 @@ import csv\n \n \n def read_rows(path):\n-    with open(path, encoding='utf-8') as f:\n+    with open(path, newline='', encoding='utf-8-sig') as f:\n         return list(csv.DictReader(f))\ndiff --git a/ingest/money.py b/ingest/money.py\nindex af3ce5b..e01b722 100644\n--- a/ingest/money.py\n+++ b/ingest/money.py\n@@ -1,5 +1,7 @@\n from decimal import Decimal\n \n+CENT = Decimal('0.01')\n+\n \n def parse_amount(raw):\n-    return Decimal(raw.strip())\n+    return Decimal(raw.strip()).quantize(CENT)\ndiff --git a/ingest/run.py b/ingest/run.py\nnew file mode 100644\nindex 0000000..41ac88a\n--- /dev/null\n+++ b/ingest/run.py\n@@ -0,0 +1,16 @@\n+import glob\n+import os\n+\n+from .jobs import dataset_for\n+from .loader import read_rows\n+from .money import parse_amount\n+\n+\n+def load_drop(directory, store):\n+    for path in sorted(glob.glob(os.path.join(directory, '*.csv'))):\n+        rows = read_rows(path)\n+        for row in rows:\n+            if 'amount' in row:\n+                row['amount'] = parse_amount(row['amount'])\n+        store.setdefault(dataset_for(path), []).extend(rows)\n+    return store\ndiff --git a/tests/test_money.py b/tests/test_money.py\nindex 74ca3b9..3ddbe88 100644\n--- a/tests/test_money.py\n+++ b/tests/test_money.py\n@@ -8,6 +8,10 @@ class ParseAmountTest(unittest.TestCase):\n     def test_strips_spaces(self):\n         self.assertEqual(parse_amount(' 12.50 '), Decimal('12.50'))\n \n+    def test_rounds_to_the_cent_half_to_even(self):\n+        self.assertEqual(parse_amount('2.345'), Decimal('2.34'))\n+        self.assertEqual(parse_amount('2.355'), Decimal('2.36'))\n+\n \n if __name__ == '__main__':\n     unittest.main()\ndiff --git a/tests/test_run.py b/tests/test_run.py\nnew file mode 100644\nindex 0000000..68850c1\n--- /dev/null\n+++ b/tests/test_run.py\n@@ -0,0 +1,23 @@\n+import os\n+import tempfile\n+import unittest\n+from decimal import Decimal\n+\n+from ingest.jobs import dataset_for\n+from ingest.run import load_drop\n+\n+\n+class LoadDropTest(unittest.TestCase):\n+    def test_dataset_is_named_after_the_file(self):\n+        self.assertEqual(dataset_for('drop/payouts_2026.csv'), 'payouts_2026')\n+\n+    def test_loads_rows_and_amounts(self):\n+        with tempfile.TemporaryDirectory() as d:\n+            with open(os.path.join(d, 'ledger_q3.csv'), 'w', encoding='utf-8') as f:\n+                f.write('id,amount\\r\\n1,2.50\\r\\n')\n+            store = load_drop(d, {})\n+        self.assertEqual(store, {'ledger_q3': [{'id': '1', 'amount': Decimal('2.50')}]})\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\n\n[exit 0]",
+    "runId": "5f6eeb84-c84c-46f9-a489-5d732649ec4a",
+    "callId": "toolu_01YUnoTDW5jBKznSAk4sYdrm",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "68baa198-dc8d-43d7-813f-cc56956d940b",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQStggKEAgTGAI4AUIIdGhpbmtpbmcSDIqP/s7vBWecotfzAhoMz+lFMbF5C2CizQFGIjDTYItzdaR04cfrALIwLw5/yl60//XFfT16y8xIncnpJwQhfbcHnwU7dBDcWNwvdA4q0wfPKKRLSjt/dO/oJm1Bd7FNh705DUouTo375Q9d+F8olTTkZJ8SSnfawnvljxFvlGq5evvAXxS8/2lOhc7//Vsmj+Y5cw2QfPAA4ajF5FiFX3GlyuJ4fHnTMjeIiUmWeY/1XcWeufrJTNdWCKiIjzqhxm41TXUODci1J6QUFZ6s1xHlfkk09k6wtraqNOu1yaiD22qoT522AqfTQdFX0P+T/w7yEaMJmolaUqLxhfstGMTQk4HEI9rsM0oZXy72z7PaaIyMuK9e4hlFIkQGBCzyCSNlepYCxtVUzifyywUM4DK27RzoByhYM4gSLU5uTjywHp5WQsQz976fG2tFrzvBmlTJN1GpLgQUgr7gmD5glX44zkFAmjlYW2G5bfRNSh9YKS6cogMSUtm15OiHH1P9DcsbWswmwK36rouWAEEz7xX2oCMYum5qjZ0FvjSUZKT9Vy5Z+0m+XAamLVK58vE1V0xtFJZptFBY8QeH7jzULF0Az6Kmcer/gjUL5eizmbBVyC/nTOnh2u4T+I3mwnmHYTdshjHFsgYorf6JEPxCoFT6ATVjpBtnmKjLWpco5beQJ9+awyqSOdxpfi1uSzpKZy/V5PNcGk330ZsB91q528dYR7qN1Q6SOoUh2SHSyWlfB2dsarFHZTvW1sjsgZ7YYYQ9S8UMmhETItCny19sJ8GJF1u/kH8yXwgG694ebKJkNsGUOlvF8eBF8wyioJ4J91ZW8vL8u+aHb30Esx3gbl/FIiinEHuQeZYkzermtiGBuBMZlMq5dLZ7XgplA6tx9/f+FytYod55S1Fp0mzUFqGvogd0E9fhBE61q6KzHt+oUf/q0j/tTOhcAqBYAUFAbWde4oIJkNvmv8FXeTA+OuWfwHDfg3bifu2ZJOIZ6fgzVryszxrqVPsFF/Fmofr8MVjcyWsEsmgH4AlPm8N0JKKqmlhhHQNHIVP5hpIRgwiAAFNbeIbWvZYL2sBbTzmbiyObZl3eOUiAvuCD7O8khmGmN7yZoKuLByajiDH/aYBNa1fSwXnH/M1XzI5Y8KF8ihhDAQ8J7G3tYQ+bgOamziH7FnHHpBgKGAIlWPj+3bIXSNxXTh++eIAED+DcZiqdlpVremtNA2QZlGlFGxpNfAR11DP9pH8psMZ3W1iaAJNUcjr262xErvLgeaWdFStW0nHMyqb7qHrtlNduZFCCRHpg+/9yjZzzPNPoT3zgPw6z/4Po7R1ZvDqf+LzCU+KqZWq4tYK0An11PyNR2i+B77zXYn81em1kRou/ITeWFZTXXp9RzTCe/pHOSRxkBzI9R6g8GAE=",
+    "thinking": "I'm checking the rstrip('.csv') call, which strips any trailing characters from that set rather than the suffix. That means \"sessions\" loses its s and then the n stops it, and \"invoices\" and \"refunds\" get mangled too. All four real datasets are affected, and the tests pass only because their names avoid those characters.\n\nI'm also confirming that the default quantize rounding is ROUND_HALF_EVEN from the context, which is fine as is. Next I'll run the test suite quickly.\n\n",
+    "runId": "5f6eeb84-c84c-46f9-a489-5d732649ec4a",
+    "step": {
+     "id": "68baa198-dc8d-43d7-813f-cc56956d940b",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "68baa198-dc8d-43d7-813f-cc56956d940b",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && python3 -B -m unittest 2>&1 | tail -3; python3 -c \\\"\\nfrom ingest.jobs import dataset_for as d\\nfor n in ['events','sessions','invoices','refunds']: print(n, d(f'drop/{n}.csv'))\\\"\",\"purpose\":\"Running tests and checking names\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && python3 -B -m unittest 2>&1 | tail -3; python3 -c \"\nfrom ingest.jobs import dataset_for as d\nfor n in ['events','sessions','invoices','refunds']: print(n, d(f'drop/{n}.csv'))\"",
+    "purpose": "Running tests and checking names",
+    "runId": "5f6eeb84-c84c-46f9-a489-5d732649ec4a",
+    "callId": "toolu_01NsXedgvwy63BbkFn1FUeP6",
+    "tool": "execute",
+    "step": {
+     "id": "68baa198-dc8d-43d7-813f-cc56956d940b",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "Ran 4 tests in 0.001s\n\nOK\nevents event\nsessions session\ninvoices invoice\nrefunds refund\n\n[exit 0]",
+    "runId": "5f6eeb84-c84c-46f9-a489-5d732649ec4a",
+    "callId": "toolu_01NsXedgvwy63BbkFn1FUeP6",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 9,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "07050665-e4cc-4f6d-a801-d5ff9bfffb99",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "CAQSlwcKEAgTGAI4AUIIdGhpbmtpbmcSDNM8S6BX0RDgpWadgRoMf96b5AQ+6/qpQpY2IjC6B5kXTbzn4ZTkGtgW42sQBB/SKTRApfwDeps3/ObSD10AwNBCh5+aVRNAXLImQOMqtAbLWDUn/V8gct0g7/XAVA+QfxeZaK3EvxxnObNEP55kr1mVDxSM8QYyRTlayWAIIwvHGkkL3fj+FNe5lEi20awUBGJVwaQQdo5wdWSvc+kBdcEzk0qOEhFut/bUe59qKhGqQZUoJSvUNa9bq0+hqJPG9WvaYwScYs+MEl8UHzaXUR2qpiSXUQy/ZCZ3DkESdblR9fhlCt+HeCBdtCL0nppAWzoIRoV4sM+plFdOYItf5PDoK5xnLWO8sMSkzSgHFgp5cq1u+xecTub9caw+z5q/2N9DE4y07rAGki4kUR9ON1mLDKClQX+8wOaeL7LdEnnY9jRQa5TD3W7nyrq5wllpMb7gYLK7RXQEIKPzSFbKDjSxpQiEcyWHpTcTDdmE5oSZBx/W2RPClOmdnWvO5/0cai+tUYBlLeuFlyLtG8QssLqgZWpaJARbnxmUgV2zy0fnwul3ydqghJMAfgsq3Gau7xkwuqmzOeHMQjnOUf82phpqGF675ujaIWVRPyb7Zs45ZGLZwy1DESgNTdel3CJ+pmAKkMSr+5ADeTFJBV820OaAJaIsbjdHHRG9Tpcl6NI2VVyT/RbbkrxV1LjdkpyT9Yb8/9KN1On07U6chmq5TKXLWRjbL0yCy6m+1r6Zqx2cid2BnFEMqaKJX5xI/gNlEds4ZjJz3dyboyX0D8d2jymQ4Mue+H5OPw6sVvpJUB1c/PLn4joHkwymsmQPcMhuh9HIq5X12TFJUSVdPeqLVgjCigFVW+AA5F0vS/Vl/BLMJS5jBDVGUEFh9K52hoHAa/8W8JzrGaYxN/p6Fv0XcdWe3EM4ZU+UkKgkEC+goUoPM9DKNQLXEmcfgsYG9isNly6pX0j2WV4l6/CcNBG4P556Hgx7TmiPk2plhpMtV03aW/AlPvV0VHV92Jj1tOgwQo7arpx1CPsmc6JtJxQ6mN1xjraItv27gnC5UsNbNXrnwt2ItNQZ3uzFDGT5Tk7sypXXYnXn3DM8bolG9uHZ2PwDO+b8fCohhOBcZpFdGqAZ91Khkb/Ya22iE0qer6wQpwDN+98RqV/4E1nswT6p0QR39zvC2C55jcRqy/oSosl+MDD3GAE=",
+    "thinking": "I'm also noting that the quantize call relies on the context's default rounding mode, ROUND_HALF_EVEN, which works but could change if the context is altered, so it's worth a brief mention. The newline='' and utf-8-sig handling for multiline input and BOMs looks right, though I haven't tested it yet.\n\n",
+    "runId": "5f6eeb84-c84c-46f9-a489-5d732649ec4a",
+    "step": {
+     "id": "07050665-e4cc-4f6d-a801-d5ff9bfffb99",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 10,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "07050665-e4cc-4f6d-a801-d5ff9bfffb99",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794145595172,
+    "workFinishedAt": 1794145615782,
+    "text": "I wouldn't merge this tomorrow without one fix. All 4 tests pass, but the main bug isn't covered by any of them. I didn't change anything.\n\n**Must fix: every real dataset gets the wrong name.**\nIn `ingest/jobs.py`, `dataset_for` uses `name.rstrip('.csv')`. That doesn't remove the `.csv` ending as a unit. It strips any of the characters `.`, `c`, `s` and `v` from the end of the name, one by one. I ran it on the four datasets listed in the README:\n\n| File | Name it produces |\n|---|---|\n| events.csv | `event` |\n| sessions.csv | `session` |\n| invoices.csv | `invoice` |\n| refunds.csv | `refund` |\n\nSo all four production datasets would load under the wrong keys. The tests miss it because they use `payouts_2026` and `ledger_q3`, which end in a digit, so nothing extra gets stripped.\n- **Fix:** use `os.path.splitext(name)[0]`, or `name.removesuffix('.csv')` on Python 3.9+.\n- **Add tests** with real names like `events.csv` and `sessions.csv`, plus a name that ends in `c`, `s` or `v`.\n\n**Should fix:**\n1. **The rounding rule depends on a default.** `quantize(CENT)` doesn't name a rounding mode, so it uses Python's current default, which happens to be half-to-even. The new test passes, but if anything in the process changes that default, the finance rule silently breaks. Pass `rounding=ROUND_HALF_EVEN` explicitly.\n2. **The spreadsheet-export handling has no tests.** Opening files with `encoding='utf-8-sig'` and `newline=''` is the right change for the byte order mark and line breaks inside quoted cells described in `docs/finance-rules.md`. But the test writes plain UTF-8 with no byte order mark. I'd add a test file that has a byte order mark and a quoted cell with a line break inside it. Without the byte-order-mark handling, the first column would come through as `\\ufeffid` instead of `id`.\n\n**Worth a quick decision:**\n- **Rounding before storing loses the original values.** `parse_amount` now rounds every amount as it's read in, so 2.345 is stored as 2.34 and the original is gone. If the finance rule is meant for ledger totals, rounding each line before adding them up can give a different total than rounding the sum. Check with finance which one they mean.\n- **Loading can partly finish.** `load_drop` adds rows to `store` one file at a time. If one CSV fails to parse or has a bad amount, the earlier files are already loaded and the later ones aren't, so a rerun would load those earlier rows twice.\n- **Blank amounts will crash the run.** An empty `amount` cell raises an error and stops the whole load. That's fine if that's what you want, but nothing is in place to handle it.\n\nThe README update, the CHANGES entry and the version bump all look fine.",
+    "runId": "5f6eeb84-c84c-46f9-a489-5d732649ec4a",
+    "step": {
+     "id": "07050665-e4cc-4f6d-a801-d5ff9bfffb99",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

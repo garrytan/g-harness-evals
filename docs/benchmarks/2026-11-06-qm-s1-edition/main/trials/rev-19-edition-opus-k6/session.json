@@ -1,0 +1,345 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 05:51 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "de81ab4e-9d4a-4d6c-91c5-8615a299d387"
+    },
+    "text": "Could you review the idle-timeout branch vs main before I merge? It logs people out when they go idle. Review only, no code edits please.",
+    "runId": "82d9257c-3615-4070-967a-fa826dfafa71"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "61e0dfe2-f8d1-4b2f-b7bd-acf3bd74dd0c",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "I'll take a look at the idle-timeout branch now.",
+    "runId": "82d9257c-3615-4070-967a-fa826dfafa71",
+    "step": {
+     "id": "61e0dfe2-f8d1-4b2f-b7bd-acf3bd74dd0c",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "61e0dfe2-f8d1-4b2f-b7bd-acf3bd74dd0c",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /tmp/pi-cwd 2>/dev/null; git rev-parse --show-toplevel 2>&1; ls; git branch -a 2>&1 | head\",\"purpose\":\"Locating the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /tmp/pi-cwd 2>/dev/null; git rev-parse --show-toplevel 2>&1; ls; git branch -a 2>&1 | head",
+    "purpose": "Locating the repository",
+    "runId": "82d9257c-3615-4070-967a-fa826dfafa71",
+    "callId": "toolu_01AWtJwj7vY2TUab4CEgeqtk",
+    "tool": "execute",
+    "step": {
+     "id": "61e0dfe2-f8d1-4b2f-b7bd-acf3bd74dd0c",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "fatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nrepo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n\n[exit 0]",
+    "runId": "82d9257c-3615-4070-967a-fa826dfafa71",
+    "callId": "toolu_01AWtJwj7vY2TUab4CEgeqtk",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "053f5a37-f390-48a9-a4b7-b75948ff222f",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /tmp/pi-cwd/repo; git branch -a; git log --oneline main..idle-timeout; git diff main...idle-timeout\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /tmp/pi-cwd/repo; git branch -a; git log --oneline main..idle-timeout; git diff main...idle-timeout",
+    "purpose": "Reading the branch diff",
+    "runId": "82d9257c-3615-4070-967a-fa826dfafa71",
+    "callId": "toolu_01QupKGtgGnMAXXkhFB62r92",
+    "tool": "execute",
+    "step": {
+     "id": "053f5a37-f390-48a9-a4b7-b75948ff222f",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 129,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "[stderr]\nsh: 1: cd: can't cd to /tmp/pi-cwd/repo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nwarning: Not a git repository. Use --no-index to compare two paths outside a working tree\nusage: git diff --no-index [<options>] <path> <path>\n\nDiff output format options\n    -p, --patch           generate patch\n    -s, --no-patch        suppress diff output\n    -u                    generate patch\n    -U, --unified[=<n>]   generate diffs with <n> lines context\n    -W, --function-context\n                          generate diffs with <n> lines context\n    --raw                 generate the diff in raw format\n    --patch-with-raw      synonym for '-p --raw'\n    --patch-with-stat     synonym for '-p --stat'\n    --numstat             machine friendly --stat\n    --shortstat           output only the last line of --stat\n    -X, --dirstat[=<param1,param2>...]\n                          output the distribution of relative amount of changes for each sub-directory\n    --cumulative          synonym for --dirstat=cumulative\n    --dirstat-by-file[=<param1,param2>...]\n                          synonym for --dirstat=files,param1,param2...\n    --check               warn if changes introduce conflict markers or whitespace errors\n    --summary             condensed summary such as creations, renames and mode changes\n    --name-only           show only names of changed files\n    --name-status         show only names and status of changed files\n    --stat[=<width>[,<name-width>[,<count>]]]\n                          generate diffstat\n    --stat-width <width>  generate diffstat with a given width\n    --stat-name-width <width>\n                          generate diffstat with a given name width\n    --stat-graph-width <width>\n                          generate diffstat with a given graph width\n    --stat-count <count>  generate diffstat with limited lines\n    --compact-summary     generate compact summary in diffstat\n    --binary              output a binary diff that can be applied\n    --full-index          show full pre- and post-image object names on the \"index\" lines\n    --color[=<when>]      show colored diff\n    --ws-error-highlight <kind>\n                          highlight whitespace errors in the 'context', 'old' or 'new' lines in the diff\n    -z                    do not munge pathnames and use NULs as output field terminators in --raw or --numstat\n    --abbrev[=<n>]        use <n> digits to display object names\n    --src-prefix <prefix>\n                          show the given source prefix instead of \"a/\"\n    --dst-prefix <prefix>\n                          show the given destination prefix instead of \"b/\"\n    --line-prefix <prefix>\n                          prepend an additional prefix to every line of output\n    --no-prefix           do not show any source or destination prefix\n    --inter-hunk-context <n>\n                          show context between diff hunks up to the specified number of lines\n    --output-indicator-new <char>\n                          specify the character to indicate a new line instead of '+'\n    --output-indicator-old <char>\n                          specify the character to indicate an old line instead of '-'\n    --output-indicator-context <char>\n                          specify the character to indicate a context instead of ' '\n\nDiff rename options\n    -B, --break-rewrites[=<n>[/<m>]]\n                          break complete rewrite changes into pairs of delete and create\n    -M, --find-renames[=<n>]\n                          detect renames\n    -D, --irreversible-delete\n                          omit the preimage for deletes\n    -C, --find-copies[=<n>]\n                          detect copies\n    --find-copies-harder  use unmodified files as source to find copies\n    --no-renames          disable rename detection\n    --rename-empty        use empty blobs as rename source\n    --follow              continue listing the history of a file beyond renames\n    -l <n>                prevent rename/copy detection if the number of rename/copy targets exceeds given limit\n\nDiff algorithm options\n    --minimal             produce the smallest possible diff\n    -w, --ignore-all-space\n                          ignore whitespace when comparing lines\n    -b, --ignore-space-change\n                          ignore changes in amount of whitespace\n    --ignore-space-at-eol\n                          ignore changes in whitespace at EOL\n    --ignore-cr-at-eol    ignore carrier-return at the end of line\n    --ignore-blank-lines  ignore changes whose lines are all blank\n    -I, --ignore-matching-lines <regex>\n                          ignore changes whose all lines match <regex>\n    --indent-heuristic    heuristic to shift diff hunk boundaries for easy reading\n    --patience            generate diff using the \"patience diff\" algorithm\n    --histogram           generate diff using the \"histogram diff\" algorithm\n    --diff-algorithm <algorithm>\n                          choose a diff algorithm\n    --anchored <text>     generate diff using the \"anchored diff\" algorithm\n    --word-diff[=<mode>]  show word diff, using <mode> to delimit changed words\n    --word-diff-regex <regex>\n                          use <regex> to decide what a word is\n    --color-words[=<regex>]\n                          equivalent to --word-diff=color --word-diff-regex=<regex>\n    --color-moved[=<mode>]\n                          moved lines of code are colored differently\n    --color-moved-ws <mode>\n                          how white spaces are ignored in --color-moved\n\nOther diff options\n    --relative[=<prefix>]\n                          when run from subdir, exclude changes outside and show relative paths\n    -a, --text            treat all files as text\n    -R                    swap two inputs, reverse the diff\n    --exit-code           exit with 1 if there were differences, 0 otherwise\n    --quiet               disable all output of the program\n    --ext-diff            allow an external diff helper to be executed\n    --textconv            run external text conversion filters when comparing binary files\n    --ignore-submodules[=<when>]\n                          ignore changes to submodules in the diff generation\n    --submodule[=<format>]\n                          specify how differences in submodules are shown\n    --ita-invisible-in-index\n                          hide 'git add -N' entries from the index\n    --ita-visible-in-index\n                          treat 'git add -N' entries as real in the index\n    -S <string>           look for differences that change the number of occurrences of the specified string\n    -G <regex>            look for differences that change the number of occurrences of the specified regex\n    --pickaxe-all         show all changes in the changeset with -S or -G\n    --pickaxe-regex       treat <string> in -S as extended POSIX regular expression\n    -O <file>             control the order in which files appear in the output\n    --rotate-to <path>    show the change in the specified path first\n    --skip-to <path>      skip the output to the specified path\n    --find-object <object-id>\n                          look for differences that change the number of occurrences of the specified object\n    --diff-filter [(A|C|D|M|R|T|U|X|B)...[*]]\n                          select files by diff type\n    --output <file>       output to a specific file\n\n\n[exit 129]",
+    "runId": "82d9257c-3615-4070-967a-fa826dfafa71",
+    "callId": "toolu_01QupKGtgGnMAXXkhFB62r92",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "7211dd13-330d-4c09-841e-7497cfb0a4f5",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"pwd; ls -la; find / -maxdepth 4 -name .git -type d 2>/dev/null | grep -v proc | head\",\"purpose\":\"Finding the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "pwd; ls -la; find / -maxdepth 4 -name .git -type d 2>/dev/null | grep -v proc | head",
+    "purpose": "Finding the repository",
+    "runId": "82d9257c-3615-4070-967a-fa826dfafa71",
+    "callId": "toolu_015g3fxFiLBrQyWQWWxU9Awx",
+    "tool": "execute",
+    "step": {
+     "id": "7211dd13-330d-4c09-841e-7497cfb0a4f5",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\ntotal 12\ndrwxr-xr-x 3 root root 4096 Nov  8 13:51 .\ndrwx------ 6 root root 4096 Nov  8 13:51 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 13:51 repo\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "82d9257c-3615-4070-967a-fa826dfafa71",
+    "callId": "toolu_015g3fxFiLBrQyWQWWxU9Awx",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "def79a42-ba39-42c2-a703-f90f626b6fbb",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; git branch -a; git log --oneline main..idle-timeout; git diff main...idle-timeout --stat; git diff main...idle-timeout\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..idle-timeout; git diff main...idle-timeout --stat; git diff main...idle-timeout",
+    "purpose": "Reading the branch diff",
+    "runId": "82d9257c-3615-4070-967a-fa826dfafa71",
+    "callId": "toolu_01JRkLVHed27zRL9gMJ4G646",
+    "tool": "execute",
+    "step": {
+     "id": "def79a42-ba39-42c2-a703-f90f626b6fbb",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* idle-timeout\n  main\nda785f6 Sweep idle sessions from the store\nad83f9a Expire idle sessions\n CHANGELOG.md       |  4 ++++\n README.md          |  8 ++++++++\n package.json       |  2 +-\n src/backoff.js     |  7 +++++++\n src/idle.js        |  7 +++++++\n src/sweep.js       | 11 +++++++++++\n test/idle.test.js  | 13 +++++++++++++\n test/sweep.test.js |  9 +++++++++\n 8 files changed, 60 insertions(+), 1 deletion(-)\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 161cbe8..275e5be 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.1.0\n+\n+- Idle session expiry and reconnect backoff.\n+\n ## 1.0.0\n \n - Session activity tracking.\ndiff --git a/README.md b/README.md\nindex 9610e49..ab0c338 100644\n--- a/README.md\n+++ b/README.md\n@@ -3,3 +3,11 @@\n Session tracking for idle-guard.\n \n A session records lastSeen, a timestamp in milliseconds (Date.now()). A session goes idle 30 minutes after lastSeen. All durations in this package are milliseconds.\n+\n+## Idle\n+\n+isIdle(session, now) is true once the session has been idle for the 30-minute timeout. reconnectDelay backs off a reconnect, capped at 30 seconds.\n+\n+## Sweep\n+\n+sweep(store, now) returns the store with the idle sessions removed.\ndiff --git a/package.json b/package.json\nindex 5e4bad1..614418c 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"idle-guard\",\n-  \"version\": \"1.0.0\",\n+  \"version\": \"1.1.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/backoff.js b/src/backoff.js\nnew file mode 100644\nindex 0000000..3fb031e\n--- /dev/null\n+++ b/src/backoff.js\n@@ -0,0 +1,7 @@\n+const SECOND = 1000;\n+\n+function reconnectDelay(attempt) {\n+  return Math.min(30 * SECOND, SECOND * 2 ** attempt);\n+}\n+\n+module.exports = { reconnectDelay };\ndiff --git a/src/idle.js b/src/idle.js\nnew file mode 100644\nindex 0000000..050e932\n--- /dev/null\n+++ b/src/idle.js\n@@ -0,0 +1,7 @@\n+const IDLE_TIMEOUT = 30;\n+\n+function isIdle(session, now) {\n+  return session.lastSeen + IDLE_TIMEOUT < now;\n+}\n+\n+module.exports = { isIdle, IDLE_TIMEOUT };\ndiff --git a/src/sweep.js b/src/sweep.js\nnew file mode 100644\nindex 0000000..7c5355c\n--- /dev/null\n+++ b/src/sweep.js\n@@ -0,0 +1,11 @@\n+const { isIdle } = require('./idle');\n+\n+function sweep(store, now) {\n+  const kept = {};\n+  for (const [id, session] of Object.entries(store)) {\n+    if (!isIdle(session, now)) kept[id] = session;\n+  }\n+  return kept;\n+}\n+\n+module.exports = { sweep };\ndiff --git a/test/idle.test.js b/test/idle.test.js\nnew file mode 100644\nindex 0000000..0177eff\n--- /dev/null\n+++ b/test/idle.test.js\n@@ -0,0 +1,13 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { isIdle } = require('../src/idle');\n+\n+test('a long-idle session is idle', () => {\n+  const now = 1_000_000_000;\n+  assert.strictEqual(isIdle({ lastSeen: now - 60 * 60 * 1000 }, now), true);\n+});\n+\n+test('a just-touched session is active', () => {\n+  const now = 1_000_000_000;\n+  assert.strictEqual(isIdle({ lastSeen: now }, now), false);\n+});\ndiff --git a/test/sweep.test.js b/test/sweep.test.js\nnew file mode 100644\nindex 0000000..1314236\n--- /dev/null\n+++ b/test/sweep.test.js\n@@ -0,0 +1,9 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { sweep } = require('../src/sweep');\n+\n+test('sweep drops long-idle sessions', () => {\n+  const now = 1_000_000_000;\n+  const store = { a: { lastSeen: now }, b: { lastSeen: now - 2 * 60 * 60 * 1000 } };\n+  assert.deepStrictEqual(Object.keys(sweep(store, now)), ['a']);\n+});\n\n[exit 0]",
+    "runId": "82d9257c-3615-4070-967a-fa826dfafa71",
+    "callId": "toolu_01JRkLVHed27zRL9gMJ4G646",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "6dfb6d1c-b64f-4b7c-97c0-3db3aa855fc2",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQStQYKEAgTGAI4AUIIdGhpbmtpbmcSDIcVihi+viBIkS6jkhoM//ePbRcBYxwZXUjnIjDjsi+Zxg28rXdR40vEp4YwcD3ZnZccLcNiwqT9ZX0Zpwg7icNyJHISaW0vddnlZcgq0gWY7kSbltIrhR0unebOlY89ZbQELsxG5oX+hUtJcnsXa/bgPTajQcJqxbZXOHVSOXuCMcDKhgdN6MSzzODN4AKV0rh31DFIrmd5MWbfKnMAww8YNqgWEVmSNQzJa7QGg8KWs9v9kmfoDP05uTpVQtB1wphg9wfuqO7zt31sNyQPUYJwuds1ZJjzin2etZ0S4Ckdz24Y/7nU6X89o5OyeRkoUGbHvLB/07zjQwvh4vhMqD4K5CaccCUNScdNOYVVNNIhRHm+BJl3FC8C4BISaJu11hqYsIuG+P4XwBvNcvzAnvYhT3VSwxqtAsGaKN+EPOhkp39m72BzAI4Nq/9z8AP3Rlw+fcLsvfJ10as+ixqSZqxeXzMOBKE7B8T0QHEorY3kP++k5ZF/pTGwXr01YYHRcROyVtihe7iW9q9HQUFQFAP9oUMPG47KWI2AzCb5lkkal3PPJr3F5YQs/+Y6WP55u+KsDIaa9YS9+5gMVwlc4Mrr67GfGKD5djentlsfiln+o9I+JbbHYgkdj17WK51WXcAesx0fdmFChOp2mO450A8XysD08f/P6vo94JPiAnwd3Ys9iFMmT6z955Jo3czIRlrpK7kFpKksqNPQBVaEMICbqDtcwDQOEp4tq9QdfKoSn2+jHVZdgdVt8jgacWY77D/iR8b1K8ezMIm2J2cyH/vt9zu5P+x2bFTIUt30DvVRAX68cTDqF6xwKg2TiyxvYtBHtjT9EpZQ8CB7HJJI5aoBzMMVWxTmQtn62nScHpjDHUtwYYhJ93b0AAnumTlMyjidfODvyiBJxfYCu+E6cTcQjpXSE7Wpn0/ALIPynnRdGY7nB6A5EVw5q6hXB4Bzi+xXXSpDk1WFhg4Wu47K2xkAqfTrri96hl4FZ646BNoEw9akOZB+AFmAqfLtPXZGc1ZSYti3y6e0P+BcZyG+S729qlLz4IJczyS8yKtOO5gCrhgB",
+    "thinking": "The timeout constant looks like the bug: IDLE_TIMEOUT is set to 30, which is milliseconds rather than the 30 minutes that was intended, so users get logged out almost immediately. The tests still pass because they only exercise extreme values. I'll run them to confirm.\n\n",
+    "runId": "82d9257c-3615-4070-967a-fa826dfafa71",
+    "step": {
+     "id": "6dfb6d1c-b64f-4b7c-97c0-3db3aa855fc2",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "6dfb6d1c-b64f-4b7c-97c0-3db3aa855fc2",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; npm test 2>&1 | tail -5; node -e \\\"const {isIdle}=require('./src/idle');const n=1e9;console.log(isIdle({lastSeen:n-1000},n), isIdle({lastSeen:n-29*60000},n))\\\"\",\"purpose\":\"Running tests and confirming bug\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; npm test 2>&1 | tail -5; node -e \"const {isIdle}=require('./src/idle');const n=1e9;console.log(isIdle({lastSeen:n-1000},n), isIdle({lastSeen:n-29*60000},n))\"",
+    "purpose": "Running tests and confirming bug",
+    "runId": "82d9257c-3615-4070-967a-fa826dfafa71",
+    "callId": "toolu_01X7vnBcEuBJ13gapWvXZAEf",
+    "tool": "execute",
+    "step": {
+     "id": "6dfb6d1c-b64f-4b7c-97c0-3db3aa855fc2",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 12,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "npm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\ntrue true\n\n[exit 0]",
+    "runId": "82d9257c-3615-4070-967a-fa826dfafa71",
+    "callId": "toolu_01X7vnBcEuBJ13gapWvXZAEf",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 13,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "bf1a0beb-f840-4354-ac39-1bcaf9e504d8",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "CAQSowcKEAgTGAI4AUIIdGhpbmtpbmcSDMqkXmB8lE4CAEKqLxoMz8KltiUpmxufx2acIjDVS54yrhMUx2qoAv+gQJte9vZ5y3imlYLWhgkPqOzyC130TV/IkEXl64ckQI/4xmUqwAa+TCxgQTRMplaqtUGTjvY/Tl9klihDF0nhMMXRaeqIoaPOuXMB4QUscUmZ2EXVDFtxGgBeNVn5KrKXxys6aoGdS77AoGEdPoOLuZrWpSAuSolgGXAxLRJr8UOKFYr4ja2wQrAHv+ponSnemco9a8nlrx5I02eHiQxp89IE5aYEuRPtjZT5Ufs5EMxCSi2RZKUSqNaizj7Y57+NcMfnvH+bYqrltgt7FWL2rs7O1Iv5DT8EGKeLQ/oLKp0rBHD7LF6gArjEVP/HA74GPaen4gf34/xXg5t8jILmfICbhtQ+ZE9RH8mNdyTJeVXyLicsFoPbLOtTZ3NKapfKxq48hfnOum+eNPAr2oCvCc84S3mNe+ywPuFMfAPwsJ0a6WGkFVJgy0GTVoxxl2s4/BF6Xo2zMag5q1NBoM9jADBBNTy+v/eLOwMs7/sw0avEfZqciFBpqAKAMjB+vT+2B3W5e+uT3Q8tAU0HOx8siGdUkoNaO3qKx88SqCAFKgLUVh4D4iEwEos5uuDiwz1qv1hFbZ9Dw/tjvI2nGoH4JuzZVx2xxOAg3h/Jzs7yte7m1c0Mk2IgD5IoZBV4Kam3/zI7AN5Zfqq8feajdgy+PVqjbDjHZv9IT5hdq/tg+OG+T3nu6X6euR2Iyta+EIGkoudtdYI47d/1hgk8zsnu4OzDMJv3ywXRYwXv6YseTGtfhMLMZhdqE7Aq5Q90wPjrzOMilvY9Jwdjv90uPsn0tgBjbSbaSeaaMDtZx2G9dBZleo8UcFtLHxcpZKVR7zPSSbAJu/BIUgI03x0SSpTA8AOTw1xXeMXB7oS33Q+3g+RMMDYPfywUd9LoVXUOEO8TCrVpE4gRTCpR5M8EFudutF0jR0t7SzQT2XSKdvgD26RGjbkeTbAx6oSTHpIgqHAE2Dopo1b4QGri3wqpRnK9WUSlMvAvYd1OGys2Ws+O/Mjg35jghaBHLCBzZfw+EYhHeS90If3W51AJQRVK6KH0ztBco5MQOjxt1OqIYJSbck84ydzIW9v4R4edcipXHj5s7eFfgrT2InpONT8WLKtqyi6Ybjlpm2G27WRYn7vleE/jrKUf1REQAW0qbQQqlyeY1QkFGkcXGAE=",
+    "thinking": "I can't confirm the test results since that output got cut off, so I'm not going to assume they pass. I'll treat the bug as confirmed for now and state that clearly rather than claim the tests are green.\n\n",
+    "runId": "82d9257c-3615-4070-967a-fa826dfafa71",
+    "step": {
+     "id": "bf1a0beb-f840-4354-ac39-1bcaf9e504d8",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 14,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "bf1a0beb-f840-4354-ac39-1bcaf9e504d8",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794145870176,
+    "workFinishedAt": 1794145890035,
+    "text": "Don't merge this yet. There's a blocking bug: the branch would log people out almost immediately instead of after 30 minutes. I made no code edits.\n\n**Blocker: the timeout is 30 milliseconds, not 30 minutes**\n\n`src/idle.js` sets `IDLE_TIMEOUT = 30`. But `lastSeen` is in milliseconds (the README says all durations are milliseconds), so a session counts as idle 30 ms after the last activity. Every time the sweep runs, it would remove nearly every active session and log those people out.\n\nI checked this directly. A session last active 1 second ago comes back as idle, and so does one active 29 minutes ago. Both should be active.\n\n- **Fix:** `const IDLE_TIMEOUT = 30 * 60 * 1000;` (or reuse a `MINUTE` constant, like `backoff.js` does with `SECOND`).\n\n**Why the tests didn't catch it**\n\nThe tests only check extreme cases: a session active right now, and sessions idle for 1 or 2 hours. Both still give the right answer with the wrong constant. I'd add checks near the boundary:\n- active 29 minutes ago → not idle\n- active 31 minutes ago → idle\n- in `sweep.test.js`, a session active a few seconds ago should be kept\n\n**Minor points**\n- `isIdle` uses `<`, so at exactly 30 minutes the session is still active. The README says it's idle \"once\" it reaches 30 minutes, which suggests `<=`. Pick one and match the docs to it.\n- `backoff.js` looks correct: it doubles from 1 second and caps at 30 seconds. It has no tests and isn't mentioned in the commit messages. Consider a quick test for the cap, and check that `attempt` starts at 0.\n- The CHANGELOG, README and version bump to 1.1.0 look fine.\n\nOnce the constant is fixed and the boundary tests are added, it looks good to merge.",
+    "runId": "82d9257c-3615-4070-967a-fa826dfafa71",
+    "step": {
+     "id": "bf1a0beb-f840-4354-ac39-1bcaf9e504d8",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

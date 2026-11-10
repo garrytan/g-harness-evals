@@ -1,0 +1,167 @@
+{
+  "trial_id": "plan-19-plain-sol-k1",
+  "task_id": "plan-19",
+  "family": "plan",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I reviewed the full checkout and commit history at `fd6d380`. **Annual plans fit the current catalog structure, but this needs more than three new prices:** revenue recognition must change, and billing-period switching needs explicit coverage. No code changed; both existing tests pass.\n\n## What needs to change\n\n### 1. Add annual prices alongside monthly prices\n**Files:** `config/plans.json`, `src/plans.js`\n\n- Add `starter_annual`, `team_annual`, and `business_annual`, with `interval: \"year\"`, full-year amounts in cents, and distinct provider-price IDs.\n- Keep existing monthly IDs and prices unchanged so current subscriptions are unaffected.\n- The existing lookup already supports additional IDs; it doesn’t need redesign.\n- Add catalog checks for unique IDs/provider IDs, valid intervals, and positive integer amounts.\n\n**Decision needed:** annual prices/discounts. Don’t assume “two months free” or another discount.\n\n### 2. Use—and verify—the existing price-provisioning workflow\n**Files:** `docs/billing.md:3–4`, `scripts/sync-plans.js:4–9`\n\nThe documented workflow is to edit the catalog and run the sync script—not create prices manually in the provider dashboard.\n\n**Important gap:** the checked-in script only computes missing-price operations and prints them against an empty remote list. It does not actually contact the provider, update prices, or persist returned IDs, despite the documentation’s description.\n\nBefore launch:\n- Identify whether a real provisioning integration exists outside this checkout; otherwise complete that workflow.\n- Verify annual interval and full-year amount reach the provider correctly.\n- Test idempotency and mismatched existing prices, not just missing IDs.\n- Provision and verify annual prices in a test environment before production.\n\n### 3. Preserve end-of-period plan changes\n**File:** `src/changes.js:1–2`\n\nThe existing function schedules changes at `sub.period_end`, which can work for either interval.\n\nCrucially, commit `d676301` records an intentional policy: **upgrades and downgrades both wait until period end, with no prorated refunds or credits**, agreed with legal under `LEGAL-14`.\n\nI would preserve that policy for annual plans:\n- Monthly → annual starts at the current monthly period’s end.\n- Annual → monthly, or annual → another tier, starts at the annual period’s end.\n- Don’t introduce immediate switches or proration as part of this feature.\n\nAdd tests for those transitions and confirm the downstream renewal process applies the pending price correctly. That process isn’t present here.\n\n### 4. Fix revenue recognition before accepting annual invoices\n**File:** `src/revrec.js:1–2`\n\nToday, **the entire invoice amount is recognized in its starting month**. That would incorrectly recognize a year’s revenue immediately. The test explicitly says Finance’s month-end close consumes these schedules.\n\nPlan:\n- Supply enough invoice information to identify the service term; currently the test supplies only a start date and amount.\n- Generate a monthly recognition schedule for annual service.\n- Allocate integer cents deterministically so the schedule sums exactly to the invoice amount.\n- Preserve current monthly behavior.\n\n**Finance decisions:** equal monthly allocation versus day-weighted allocation, treatment of partial months, and the amount to recognize after discounts and excluding tax. Test year crossings, leap years, mid-month starts, and rounding.\n\n### 5. Validate adjacent billing behavior—not automatically rewrite it\n| Area | Current behavior | Annual-plan work |\n|---|---|---|\n| Seats | Multiplies plan amount by seat count | Verify it uses the full annual per-seat price; agree on treatment of mid-term seat changes. |\n| Coupons | Applies a percentage to an amount | Verify application to annual invoices and decide eligibility/duration. |\n| Tax | Calculates VAT on the supplied amount | Verify annual taxable totals and discount/tax ordering. |\n| Trials | Fixed 14 days | Keep unless product policy changes; verify the first annual charge follows the trial. |\n| Dunning | Retries at days 1, 3, 7 | No interval-specific change apparent; test failed annual renewals. |\n| Invoice PDF | Only generates an invoice title | Actual line-item rendering isn’t here; ensure customer-facing invoices show annual term and total wherever implemented. |\n\n## Scope missing from this checkout\n\nThere is no checkout UI, subscription-creation flow, webhook handler, persistence layer, or renewal worker in the tracked files. The Dockerfile also references an absent `src/server.js`.\n\nThose integrations need locating before calling this launch-ready. In particular, verify:\n- Customers can select monthly versus annual, with the **full annual charge** clearly shown.\n- Subscription creation uses the selected provider price.\n- Provider-supplied period boundaries are stored and used—rather than adding a fixed 365 days.\n- Renewals, pending plan changes, and invoice events are processed reliably.\n\n## Suggested implementation sequence\n\n1. **Agree on annual pricing and Finance’s recognition rules**, retaining the existing no-proration policy.\n2. **Add catalog entries and verify provisioning**, without altering monthly prices.\n3. **Implement annual revenue schedules and transition tests.**\n4. **Wire up the external checkout/renewal integrations** and test the adjacent billing features.\n5. **Run an end-to-end test-mode purchase, renewal, and interval switch**, then release annual selection. Existing subscribers remain monthly unless they explicitly switch.\n\nThe main launch blockers are **the incomplete provider-sync implementation, annual revenue recognition, and locating the missing subscription lifecycle integrations**—not the catalog change itself.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-19-plain-sol-k1",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.050704,
+    "input_tokens": 53412,
+    "output_tokens": 1635,
+    "cached_tokens": 40990,
+    "cache_write_tokens": 12106,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.000074,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.05063,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 31.229,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-19-plain-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:25:29.998Z",
+    "images": {
+      "core": "sha256:729c3ae2a84236c658f78a718f20798fa978ae7d70283b4749a8c714791f3335",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-7916f30b004d",
+        "id": "sha256:5ffa9bee9969886e79f04c0bae08c0be8916be4a5e621e2d407170f27a7d3986",
+        "tree_sha256": "93f69af873f15095f73f68360ee9745f865f7f4077f1c3a63a8258864c3b196e"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-21d0e523-adaf-4070-82e8-25a48291-66724f"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:26:24.598Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/50a5e056a7999ceedecdcbf8/745220883af0e912/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/50a5e056a7999ceedecdcbf8/745220883af0e912/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "ls -la /root/workspace/repo; cd /root/workspace/repo && git remote -v && git status --short && git log -5 --oneline; printenv | cut -d= -f1 | sort",
+          "code": 0,
+          "output": "total 44\ndrwxr-xr-x 8 root root 4096 Nov  8 03:25 .\ndrwxr-xr-x 4 root root 4096 Nov  8 03:25 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 03:25 .git\n-rw-r--r-- 1 root root   70 Nov  8 03:19 Dockerfile\n-rw-r--r-- 1 root root   76 Nov  8 03:19 README.md\ndrwxr-xr-x 2 root root 4096 Nov  8 03:25 config\ndrwxr-x"
+        },
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && find . -not -path './.git/*' -type f | sort; cat README.md package.json; git log --format='%h %s' --all; for f in src/* config/* docs/* scripts/* test/*; do echo \"\\n--- $f\"; cat \"$f\"; done",
+          "code": 0,
+          "output": "./Dockerfile\n./README.md\n./config/plans.json\n./docs/billing.md\n./package.json\n./scripts/sync-plans.js\n./src/changes.js\n./src/coupons.js\n./src/dunning.js\n./src/invoice-pdf.js\n./src/plans.js\n./src/revrec.js\n./src/seats.js\n./src/tax.js\n./src/trial.js\n./test/changes.test.js\n./test/revrec.test.js\n# subsc"
+        },
+        {
+          "seq": 11,
+          "command": "cd /root/workspace/repo && npm test && printf '\\n--- tracked files ---\\n' && git ls-files && printf '\\n--- history ---\\n' && git log --stat && printf '\\n--- numbered source ---\\n' && for f in config/plans.json docs/billing.md scripts/sync-plans.js src/*.js test/*.js Dockerfile; do echo \"--- $f\"; nl ",
+          "code": 0,
+          "output": "\n> subscript-io@6.0.3 test\n> node --test\n\n✔ a plan change waits for the end of the period (0.535392ms)\n✔ a monthly invoice is recognised in its month (0.986022ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 97.448722\n\n--- tracked files ---\nDockerfile\nREADM"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-19-plain-sol-k1",
+      "meter": {
+        "requests": 7,
+        "usd": 0.050704,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.050704,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.000074
+    }
+  }
+}

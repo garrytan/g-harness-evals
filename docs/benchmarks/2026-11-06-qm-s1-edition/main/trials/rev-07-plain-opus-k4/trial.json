@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-07-plain-opus-k4",
+  "task_id": "rev-07",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 4,
+  "status": "ok",
+  "reply_text": "I reviewed `http-retries` against `main`. It's one commit, \"Retry 429 and 5xx responses with backoff\". **It shouldn't merge yet: it brings back a bug that will break the nightly export.** All 3 tests pass, but none of them would catch it. I didn't change anything.\n\n**Blocker: `timeoutMs: 0` no longer turns the timeout off**\nIn `src/http.js`, `resolveOptions` sets the timeout with `opts.timeoutMs || DEFAULT_TIMEOUT_MS`. On `main` it was `opts.timeoutMs ?? DEFAULT_TIMEOUT_MS`. With `||`, a 0 gets swapped for the 10s default. `src/export.js` passes `{ timeoutMs: 0 }` because a full export takes about ten minutes, so the nightly export would now abort after 10 seconds. That undoes the 4.0.1 fix, and the README in this same branch still says 0 disables the timeout. The fix is to go back to `??` and add a test for `timeoutMs: 0`. Right now nothing tests it.\n\n**Should fix before merge**\n1. **It retries every request method, including POST and PATCH.** Any worker that POSTs could send the same write twice when it gets a 5xx or 429. I'd only retry GET, HEAD, PUT, DELETE and OPTIONS by default, or only requests the caller marks as safe to repeat.\n2. **Request bodies may not survive a retry.** The same `init` is sent again on each attempt. If the body is a stream, the first attempt uses it up, so the retry fails or sends an empty body.\n3. **Failed responses aren't drained before the retry.** The body of a 503 or 429 is never read or cancelled, so with Node's fetch the connection can stay tied up until garbage collection. Under load that can exhaust the connection pool.\n4. **`Retry-After` is ignored.** On a 429 the server says how long to wait, and the client waits 0–250ms instead, which can make throttling worse.\n\n**Worth knowing**\n- **This turns retries on for every worker.** The default is 2 retries and nobody opts in. Combined with point 1, that's a big behaviour change for something shipped as a minor version (4.1.0).\n- **Network errors and timeouts aren't retried.** They throw, so only HTTP status codes trigger a retry. That might be what you want, but neither the README nor the changelog says so.\n- **Worst-case run time grows.** A request can now take up to 3× the timeout plus the backoff waits, and callers that expect 10s at most should know.\n- **Smaller test gaps:** no tests for 429, for running out of retries (that the last 5xx comes back), for `retries: 0`, or for timeouts during retries.\n\n**What's fine:** splitting the code into `retry-policy.js` and `backoff.js` is clean. The jitter maths matches the README (random between 0 and base × 2^attempt, capped at 8s), and skipping 501 is sensible. The README, changelog and version bump are all consistent with each other.\n\nThe minimum to unblock it is the `??` fix plus a `timeoutMs: 0` test. I'd also strongly suggest fixing point 1 before this ships to every worker.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-07-plain-opus-k4",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0757642,
+    "input_tokens": 54910,
+    "output_tokens": 1762,
+    "cached_tokens": 50618,
+    "cache_write_tokens": 3821,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000052600000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0757116,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 20.124,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-07-plain-opus-k4",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:40:20.543Z",
+    "images": {
+      "core": "sha256:d3c15a4ff59b46b682cc0b498a5b96d657f86e2d1ac9a8b947b4fb5d8b1c3302",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-8a638002971d",
+        "id": "sha256:de8f372133eadef12cc1ca79989c36577960d40b447ecf81ee9dc003a08e04ec",
+        "tree_sha256": "b8945d3ad7f19c62dccf490b61260b4bcea0b1391062820ab876fa3dbd3cabe5"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-fef88ce0-67f1-49f3-a452-f42ebf63-4b67f3"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:41:04.296Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..http-retries; git diff main...http-retries --stat; git diff main...http-retries",
+          "code": 0,
+          "output": "* http-retries\n  main\nb04b610 Retry 429 and 5xx responses with backoff\n CHANGELOG.md        |  4 ++++\n README.md           |  2 ++\n package.json        |  2 +-\n src/backoff.js      |  7 +++++++\n src/http.js         | 31 +++++++++++++++++++++++++++----\n src/retry-policy.js |  5 +++++\n test/retry.test"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-07-plain-opus-k4",
+      "meter": {
+        "requests": 5,
+        "usd": 0.0757642,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.0757642,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000052600000000000005
+    }
+  }
+}

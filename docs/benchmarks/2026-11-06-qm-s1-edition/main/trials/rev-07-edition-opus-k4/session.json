@@ -1,0 +1,372 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 06:08 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "db0a4397-26ec-4fbb-acd2-efd9c267b77e"
+    },
+    "text": "quick one: can you review http-retries vs main? It touches the client every worker uses so I want a careful look before it merges. Don't modify anything, just report back.",
+    "runId": "918e69c4-a833-435f-91a6-0b6aa7044744"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "c1a2bede-3827-4c33-a528-5ed893121b70",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQSnwUKEAgTGAI4AUIIdGhpbmtpbmcSDOawgFJYTYAAfKlTIhoMMaADoJGqO/QKt7ZWIjBXzRJClXIfiZaSRo1DsLD1Pta8VaJKLlBQFVU0e0rBf7BqeeNiwgQ9XpLGm04qqMgqvATQve3Rqu7mSs7VkHfPtmv48uBuScUrZxtDSQGsWDLN/JA1v/imvJ3rzEt/nUmX3Y95N2YDeIsTijdBWOz7MOBASnl2XvhAqcc5tMxsTGWCgyZkE5sCw8MtMbBFp3qBQ28u+luJvM3Vqy31f5o6XRTOwNB2PZSAOIkX1UnbYcG/tTIw4Twwpsz41pDwROB4xr8D3s2Qr86tNHkm3mLNOEhREAgomh5ZZec1V/K7BJCwi3RNrqymnHV5bi9PhGPEC+OwyKeYcDAeB8apaLmgtZdbSjbD9Fn7NpX7L8G/vxVUH4Tv6YQHAumdnQKXCV9aQfbuDaEXexQtiZ7uS40S6PLPmB5Ch0KMKS3gP/3zcxtFSURki8Z89ID5C2dnLdloJ6GQ2afv4PrETsa09x/7FLIh7gbYNOH0MhFXtf+X6LKWTDzfDNluExFEy6oYV+Xum+fR0bahdTSAApOC4uZtkRmcpAezqk1+uQpQoYb0DhdIBsYbxfZqi08FlaCMbRGVR/VLEpfI5r1XPOd2+zN/G1s3k+BSDyCQoFhOHjnPQHkK7lIscb1pwoSBLDZA3s4hDBJ+MkCTFkR0fAxJ7u7W3pGBDiG1qd85I6K0VqeZY2mzeDX7Alvcst1wV7n1L5VBmMM0K68JNAlRdo8TrKFsi4x9mPS3HH1T2o/N1NnWJINB5BR4KFFhuP/GYSwyerNxzNShLGu0Pf++MiFOOj9tLpjixy151nUzmY0q0tPwyY9dMEKJmEShZfNfwq/7PhgB",
+    "thinking": "I need to locate the repository, so I'll check the memory and sandbox first.\n\n",
+    "runId": "918e69c4-a833-435f-91a6-0b6aa7044744",
+    "step": {
+     "id": "c1a2bede-3827-4c33-a528-5ed893121b70",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "c1a2bede-3827-4c33-a528-5ed893121b70",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "On it. Finding the repo and diffing the branch now.",
+    "runId": "918e69c4-a833-435f-91a6-0b6aa7044744",
+    "step": {
+     "id": "c1a2bede-3827-4c33-a528-5ed893121b70",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "c1a2bede-3827-4c33-a528-5ed893121b70",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd ~ 2>/dev/null; for d in $(find / -maxdepth 4 -name .git -type d 2>/dev/null | head -20); do r=$(dirname $d); git -C $r branch -a 2>/dev/null | grep -q http-retries && echo $r; done\",\"purpose\":\"Locating the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd ~ 2>/dev/null; for d in $(find / -maxdepth 4 -name .git -type d 2>/dev/null | head -20); do r=$(dirname $d); git -C $r branch -a 2>/dev/null | grep -q http-retries && echo $r; done",
+    "purpose": "Locating the repository",
+    "runId": "918e69c4-a833-435f-91a6-0b6aa7044744",
+    "callId": "toolu_01PqMuJc8MooxNevViw5i4gg",
+    "tool": "execute",
+    "step": {
+     "id": "c1a2bede-3827-4c33-a528-5ed893121b70",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 2
+    }
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace/repo\n\n[exit 0]",
+    "runId": "918e69c4-a833-435f-91a6-0b6aa7044744",
+    "callId": "toolu_01PqMuJc8MooxNevViw5i4gg",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "3feaec79-72f3-4dad-aae2-64203c26e791",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; git log --oneline main..http-retries; git diff main...http-retries --stat; git diff main...http-retries\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; git log --oneline main..http-retries; git diff main...http-retries --stat; git diff main...http-retries",
+    "purpose": "Reading the branch diff",
+    "runId": "918e69c4-a833-435f-91a6-0b6aa7044744",
+    "callId": "toolu_01XuEk2zV45LSKfgYBiXietW",
+    "tool": "execute",
+    "step": {
+     "id": "3feaec79-72f3-4dad-aae2-64203c26e791",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "b04b610 Retry 429 and 5xx responses with backoff\n CHANGELOG.md        |  4 ++++\n README.md           |  2 ++\n package.json        |  2 +-\n src/backoff.js      |  7 +++++++\n src/http.js         | 31 +++++++++++++++++++++++++++----\n src/retry-policy.js |  5 +++++\n test/retry.test.js  | 22 ++++++++++++++++++++++\n 7 files changed, 68 insertions(+), 5 deletions(-)\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex bb83104..ab561d9 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 4.1.0\n+\n+- Retries for 429 and 5xx responses, with full-jitter backoff.\n+\n ## 4.0.1\n \n - Timeouts can be disabled with timeoutMs: 0.\ndiff --git a/README.md b/README.md\nindex c64cca2..f1a1078 100644\n--- a/README.md\n+++ b/README.md\n@@ -5,6 +5,8 @@ Small HTTP client used by the workerkit workers.\n request(fetch, url, options):\n \n - timeoutMs: abort the request after this many milliseconds. Default 10000. 0 disables the timeout.\n+- retries: how many times to retry a 429 or 5xx response. Default 2. 501 Not Implemented is never retried, because it will not change on a retry.\n+- baseDelayMs: base of the backoff between retries. Default 250. Each wait uses full jitter: a random time between 0 and baseDelayMs * 2^attempt, capped at 8 seconds.\n - init: passed to fetch as is.\n \n The nightly export (src/export.js) sets timeoutMs: 0, because a full export can take ten minutes.\ndiff --git a/package.json b/package.json\nindex baf80bb..eccad0d 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"workerkit\",\n-  \"version\": \"4.0.1\",\n+  \"version\": \"4.1.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/backoff.js b/src/backoff.js\nnew file mode 100644\nindex 0000000..04ea3b9\n--- /dev/null\n+++ b/src/backoff.js\n@@ -0,0 +1,7 @@\n+const MAX_DELAY_MS = 8000;\n+\n+function backoff(attempt, baseDelayMs) {\n+  return Math.random() * Math.min(MAX_DELAY_MS, baseDelayMs * 2 ** attempt);\n+}\n+\n+module.exports = { backoff, MAX_DELAY_MS };\ndiff --git a/src/http.js b/src/http.js\nindex 282999c..0de2a8a 100644\n--- a/src/http.js\n+++ b/src/http.js\n@@ -1,14 +1,37 @@\n+const { shouldRetry } = require('./retry-policy');\n+const { backoff } = require('./backoff');\n+\n const DEFAULT_TIMEOUT_MS = 10000;\n+const DEFAULT_RETRIES = 2;\n+\n+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));\n+\n+function resolveOptions(opts = {}) {\n+  return {\n+    timeoutMs: opts.timeoutMs || DEFAULT_TIMEOUT_MS,\n+    retries: opts.retries ?? DEFAULT_RETRIES,\n+    baseDelayMs: opts.baseDelayMs ?? 250,\n+    init: opts.init ?? {},\n+  };\n+}\n \n-async function request(fetchImpl, url, opts = {}) {\n-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;\n+async function once(fetchImpl, url, init, timeoutMs) {\n   const controller = new AbortController();\n   const timer = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;\n   try {\n-    return await fetchImpl(url, { ...opts.init, signal: controller.signal });\n+    return await fetchImpl(url, { ...init, signal: controller.signal });\n   } finally {\n     if (timer) clearTimeout(timer);\n   }\n }\n \n-module.exports = { request, DEFAULT_TIMEOUT_MS };\n+async function request(fetchImpl, url, opts) {\n+  const o = resolveOptions(opts);\n+  for (let attempt = 0; ; attempt++) {\n+    const res = await once(fetchImpl, url, o.init, o.timeoutMs);\n+    if (!shouldRetry(res) || attempt >= o.retries) return res;\n+    await sleep(backoff(attempt, o.baseDelayMs));\n+  }\n+}\n+\n+module.exports = { request, resolveOptions, DEFAULT_TIMEOUT_MS };\ndiff --git a/src/retry-policy.js b/src/retry-policy.js\nnew file mode 100644\nindex 0000000..09fc7bc\n--- /dev/null\n+++ b/src/retry-policy.js\n@@ -0,0 +1,5 @@\n+function shouldRetry(res) {\n+  return res.status === 429 || (res.status >= 500 && res.status !== 501);\n+}\n+\n+module.exports = { shouldRetry };\ndiff --git a/test/retry.test.js b/test/retry.test.js\nnew file mode 100644\nindex 0000000..1ae861e\n--- /dev/null\n+++ b/test/retry.test.js\n@@ -0,0 +1,22 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { request } = require('../src/http');\n+\n+function replies(...statuses) {\n+  const calls = [];\n+  const fetchImpl = async (url) => { calls.push(url); return { status: statuses[calls.length - 1], ok: statuses[calls.length - 1] < 400 }; };\n+  return { fetchImpl, calls };\n+}\n+\n+test('a 503 is retried until it succeeds', async () => {\n+  const { fetchImpl, calls } = replies(503, 503, 200);\n+  const res = await request(fetchImpl, 'https://x.test/', { baseDelayMs: 0 });\n+  assert.strictEqual(res.status, 200);\n+  assert.strictEqual(calls.length, 3);\n+});\n+\n+test('501 is not retried', async () => {\n+  const { fetchImpl, calls } = replies(501, 200);\n+  assert.strictEqual((await request(fetchImpl, 'https://x.test/', { baseDelayMs: 0 })).status, 501);\n+  assert.strictEqual(calls.length, 1);\n+});\n\n[exit 0]",
+    "runId": "918e69c4-a833-435f-91a6-0b6aa7044744",
+    "callId": "toolu_01XuEk2zV45LSKfgYBiXietW",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 7,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "bf9c6468-079b-4898-80a8-5a00ae1e61ca",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQSxggKEAgTGAI4AUIIdGhpbmtpbmcSDE0SN2BBAeIqCxIOihoMcn7WlOIENFjcpRkNIjD63YzA00rYP/mWce/UuNlSvNP2Q8Ddn8wjKM0QzslX/exjNAMvizIwdBA7w+Up4oQq4wd2eKbRR8ukghUQBoGvyr9cFaSM3yED3vEoAp+haSfOgAwX1Uf7w7yZmb/UeyNbpl9wn1m+jcSUpYjqB2hX1LhDzZL6Qj7udDAszOBe7GJE6poS2zicxKpD579JMOVQqnelKglDdMW5Y0P+swm76+UI5c2rnSEPZj1SG3hcj7EK4zULon1XSm1OPNn5PhS+wQJXgxBLVfNXxLZSpxIZqL5Ul1ebN4xR0o+jX4gBD3dxhFyQQQHNoczfyN22GYq1MB256LJvSLnYIvLYUa1WthIG/pv6SRJ6LB11ErM1ZDIKIaOgte7CBVeSxmTLUFBe30Wze9CYjTAmuTwFWC6XNoEgbHKCcCkhVNGEHRM2WFcjn4DyDoQolQGW6d+lsacDb5ZjtyFTgHRFdJg31suTeSymn7s2M1+7RSx1jI2V7PSLvq0zIqa8/eGnxvd87XYG79uDd0pIF1UgMw4VcgubsTe52JB8rE6CFl6FQrOsLo2CwtknpOBG6nIhMVULVUDLFsOdSoVBHbAyB79JSjxeB40VtIWcLcpZ/HRa/ySsN1MTb9Ya3gCdzbRkSa9S7GXdPR9KsBLQyrdltHPvkkqEMfnx94L80KimNyjBwUrDYTs8hqNgjA6wdYztSSoae6OJrAMZLAhRumkCJIcu2bQA7l+wjnSjoy78bil2SMDo7fv6tyr4aWhYhgaCqa0AP0gFW4rAbq/N9urUtPnn7DLSqTTEa/gyfhj4aWwRAu5ESz2HW6vxQGK7OyXHdh/1x52cv86AR9yOuNznyKHvrLHNHLs/AMZ708CzAwoVA/kVG0QZpWE8IDhJzsHlB+Gk1aOk+AtZELF70JklPHGm1KG3Jta4Hih2dBo7GpMSOJCg3Yt+uA1pVznUZRJzzsNk49wbmD5YzFe0/kTx8UNMydI711S3Hlvp8F6NErt0zBu8//24WUkI7hka4JwS4UVt/qifFHbXd24w3hFa4PjypNpfuy4teYTF5ev4E6V7Ot4ygF0wNtnVx4OH4U8Sj9DeB6/NZLcPkbeMf+80A5n4C9Q6vXCaRq+MvzQnYwKT3pdp2Eel8TFouhi23UuTOMgd51NclP5FBYa+78jLCmQwKBf5YJmw07viQUS6OGerMqGl9yCwyWyPc1g6+zes0VlIpv4cNxXOwed3F5dF2TKqBTz7lmVlJgpuj5K8UrwNmVJ3okoUJqNfIZXR6rUWBgmjm5SW5tViihizpeSPuxFj6tIXE6gqbsvM6WpicHKGJpHeZoyg1SOIz6pE+JzVWYq+7Is7Rllxwcx46UAB8CjjB5arX3Rnf4AhM9JvylH+jnxobKSX5zTVaBgB",
+    "thinking": "I've found the key bug: the `opts.timeoutMs || DEFAULT` expression turns an explicit 0 into 10000, which breaks the nightly export and is a regression from 4.0.1. There are also problems with retrying POST requests, which can duplicate work, and with response bodies not being consumed before a retry. Retry-After is ignored, and the per-attempt timeout means the total time could reach three times what's expected.\n\nI'm going to run the quick test suite to check these changes.\n\n",
+    "runId": "918e69c4-a833-435f-91a6-0b6aa7044744",
+    "step": {
+     "id": "bf9c6468-079b-4898-80a8-5a00ae1e61ca",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "bf9c6468-079b-4898-80a8-5a00ae1e61ca",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; git stash list >/dev/null; git worktree add -q /tmp/rv http-retries 2>&1; cd /tmp/rv && npm test 2>&1 | tail -8; grep -rn \\\"timeoutMs\\\\|request(\\\" src | grep -v \\\"^src/http.js\\\"; cd /root/workspace/repo && git worktree remove --force /tmp/rv\",\"purpose\":\"Running tests and checking callers\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; git stash list >/dev/null; git worktree add -q /tmp/rv http-retries 2>&1; cd /tmp/rv && npm test 2>&1 | tail -8; grep -rn \"timeoutMs\\|request(\" src | grep -v \"^src/http.js\"; cd /root/workspace/repo && git worktree remove --force /tmp/rv",
+    "purpose": "Running tests and checking callers",
+    "runId": "918e69c4-a833-435f-91a6-0b6aa7044744",
+    "callId": "toolu_014fiSCKRMU7kwpLUZ9cQcU3",
+    "tool": "execute",
+    "step": {
+     "id": "bf9c6468-079b-4898-80a8-5a00ae1e61ca",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "code": 128,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "fatal: 'http-retries' is already checked out at '/root/workspace/repo'\nsrc/export.js:4:  const res = await request(fetchImpl, baseUrl + '/exports/' + day + '.ndjson', { timeoutMs: 0 });\n\n[stderr]\nsh: 1: cd: can't cd to /tmp/rv\nfatal: '/tmp/rv' is not a working tree\n\n[exit 128]",
+    "runId": "918e69c4-a833-435f-91a6-0b6aa7044744",
+    "callId": "toolu_014fiSCKRMU7kwpLUZ9cQcU3",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "028c676f-1334-4424-8e01-16d1c686f2c7",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; git status --short; npm test 2>&1 | tail -6; ls test\",\"purpose\":\"Running the test suite\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; git status --short; npm test 2>&1 | tail -6; ls test",
+    "purpose": "Running the test suite",
+    "runId": "918e69c4-a833-435f-91a6-0b6aa7044744",
+    "callId": "toolu_017LgSKGdHebsPciGhLHqeq8",
+    "tool": "execute",
+    "step": {
+     "id": "028c676f-1334-4424-8e01-16d1c686f2c7",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "ℹ duration_ms 115.067447\nnpm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\nhttp.test.js\nretry.test.js\n\n[exit 0]",
+    "runId": "918e69c4-a833-435f-91a6-0b6aa7044744",
+    "callId": "toolu_017LgSKGdHebsPciGhLHqeq8",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "fcb7717a-c1a5-4ce5-910f-d31260de4f43",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; npm test 2>&1 | grep -E \\\"^(ok|not ok|ℹ (pass|fail))|#\\\"; cat test/http.test.js | head -30\",\"purpose\":\"Checking test results\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; npm test 2>&1 | grep -E \"^(ok|not ok|ℹ (pass|fail))|#\"; cat test/http.test.js | head -30",
+    "purpose": "Checking test results",
+    "runId": "918e69c4-a833-435f-91a6-0b6aa7044744",
+    "callId": "toolu_01EGq8cAKgzaAjQe2bqsJmwX",
+    "tool": "execute",
+    "step": {
+     "id": "fcb7717a-c1a5-4ce5-910f-d31260de4f43",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "ℹ pass 3\nℹ fail 0\nconst test = require('node:test');\nconst assert = require('node:assert');\nconst { request } = require('../src/http');\n\nconst hang = (url, init) => new Promise((resolve, reject) => {\n  init.signal.addEventListener('abort', () => reject(new Error('aborted')));\n});\n\ntest('a slow request is aborted after timeoutMs', async () => {\n  await assert.rejects(request(hang, 'https://x.test/', { timeoutMs: 20 }), /aborted/);\n});\n\n[exit 0]",
+    "runId": "918e69c4-a833-435f-91a6-0b6aa7044744",
+    "callId": "toolu_01EGq8cAKgzaAjQe2bqsJmwX",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 14,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "9e386ab0-2de5-4676-a240-e93404dce78d",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "CAQSqQYKEAgTGAI4AUIIdGhpbmtpbmcSDFfEuXMw5E26s6g46RoMNt8Q4X92s/UJ6HaGIjBj1EZ99peJEKw3tw4gNyR/Gq5RQSnTTGc0BghCopU1ojEnDd2TNKrskhBUZF0rUqcqxgWjOiOpOHxorhBNWJZeQrJoQrPz+ni32zOCL5yd6az19sduMvyHPEkjPRtBYTOIDT78wJ8ym6zrUaRTAQwKxzQ5LDc0KlDgKewwFWBtwISGXgpQb7H0fpDAgR17o8JwcyR5XtAm82yCFdVNyuRIT+f/ODGTw1MkaAStIG77c7XuhvmeBcirHfHdA19RfTVholLo34a0rensrH75teEtIO1eg1ApdtvY4/PKnj75UMyH9zF1gH00VK+uIhpCBYB6VFuDntqkgkxjRN5fNoJCdCqFiyTIcXav1py3cpmVBDidiBIpFiTXrEqCE0+jnmw4Br6oxl7yKJQ0SIE1K1KvfGyHi+cczHvLuSi53UJFEeNZqdJJxKZKvV4DW1vSh43up9bKBhxEsuxKTdL1Y1sQecuLgsba6kOjz8NeJuNMrjwTKplRtXZ4dTc3gtIIvQQ/sj5MVgYur6Xy302B7ABEKQCXSIg+QD9L7+e7W1X99oivzNHQQ7+OP+mLtsclFP+zZC9C26J4VTjKvJ2ulMh9II551BaDik3LPyiKtQyJ8mnSduUFptmLpeKD0SOxE4kWKQxzAcIilceh4JHAPBFFUlkHP/DYn0OXUgx61V3BGVD/tAFvQcfcnKJrNI+/DVsl/8slCv3fsGmdnSZj8ddaDkeANsXcRTvjGFO7FJlKfKohLOxLWWphboD/OmphX9BhsImx64/240g4qfWe6a9oQ9M7IMMmWNvgMXlhwkjswY3iMRLk0Ec/xlbaXB3dG+gO9gCJo4pMAD76PznVcB31CzuvGBthfD8LY/Y2PbK7fy1BGQfaVouOD4VsIZQz3QQ2vd8kMvUka6RWoxgRGX5CKlkENUuTRs2mIx+kdmR5wfdJ8ux7tLgZgiPngjyUb4jKq+Zoy+6K0m/Qju+PnpCyP86XMarWC5OJXenQatJ/Jz+ruW5UDUnf8BgB",
+    "thinking": "There's no test covering timeoutMs set to 0, which is why the suite still passes. Next I'll write up the report.\n\n",
+    "runId": "918e69c4-a833-435f-91a6-0b6aa7044744",
+    "step": {
+     "id": "9e386ab0-2de5-4676-a240-e93404dce78d",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 15,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "9e386ab0-2de5-4676-a240-e93404dce78d",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794146930635,
+    "workFinishedAt": 1794146953474,
+    "text": "I reviewed `http-retries` against `main`. It's one commit that adds retries on 429 and 5xx with jittered backoff, plus a version bump to 4.1.0. The tests pass (3 of 3), but there's a regression they don't cover, so **I wouldn't merge it as is.** I didn't change anything.\n\n**Blocker**\n1. **The nightly export will start timing out after 10 seconds.** In `src/http.js`, `resolveOptions` now sets the timeout with `opts.timeoutMs || DEFAULT_TIMEOUT_MS`. On `main` it was `??`. With `||`, a timeout of 0 counts as \"not set\" and becomes 10000. That breaks the \"0 disables the timeout\" behaviour added in 4.0.1, which the README still promises. `src/export.js` passes `{ timeoutMs: 0 }` for exports that take about ten minutes, so it would abort every night. With retries on, it would also re-fetch the whole export before failing.\n   - **Fix:** change it to `??`, and add a test that `timeoutMs: 0` doesn't abort. No test checks this today, which is why the suite still passes.\n\n**Should fix before merge**\n2. **Requests that aren't safe to repeat get retried.** Every method is retried, including POST and PATCH, and it's on by default (2 retries) for every worker. A 502 or 504 often means the server did process the request, so this can create duplicate writes. I'd retry only GET, HEAD, PUT, DELETE and OPTIONS unless a caller opts in, or make retries off by default.\n3. **`Retry-After` is ignored on 429 and 503.** That header tells the client how long the server wants it to wait. Ignoring it can make rate limiting worse when many workers retry at once.\n4. **Response bodies aren't released before retrying.** The failed response is dropped without reading or cancelling its body. In Node's fetch that can hold connections open until garbage collection, which matters under load. Calling `await res.body?.cancel()` before the sleep would fix it.\n\n**Minor**\n5. Network errors and timeouts throw straight out, so they aren't retried. That's probably fine, but the README and CHANGELOG should say so.\n6. The timeout applies to each attempt separately, so the worst case is now about 3× the timeout plus backoff. Callers with tight time limits should know that.\n7. The tests only cover \"a 503 eventually succeeds\" and \"a 501 is never retried\". There's nothing for running out of retries, `retries: 0`, 429, or the backoff limits.\n8. `resolveOptions` is newly exported but only used internally.\n\nFixing #1 is enough to make it safe to merge, but I'd want #2 handled too since this client is shared by every worker.",
+    "runId": "918e69c4-a833-435f-91a6-0b6aa7044744",
+    "step": {
+     "id": "9e386ab0-2de5-4676-a240-e93404dce78d",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-03-plain-opus-k4",
+  "task_id": "rev-03",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 4,
+  "status": "ok",
+  "reply_text": "I don't think this is ready to merge yet. There's one real bug: most numbers typed with spaces still get rejected, including every example in the README. All 5 tests pass, but none of them covers a number with more than one space. I didn't change any code.\n\n**The blocking bug: `src/normalize.js`**\n```js\nconst compact = raw.trim().replace(' ', '');\n```\nWhen `.replace` is given a plain string, it only replaces the first match, so only the first space is removed. I ran the README examples through the branch:\n\n| Input | After normalize | Accepted? |\n|---|---|---|\n| `+44 20 7946 0958` | `+4420 7946 0958` | ❌ |\n| `0044 20 7946 0958` | `+4420 7946 0958` | ❌ |\n| `+1 (415) 555-0100` | `+1415 5550100` | ❌ |\n| `+1.415.555.0100` | `+14155550100` | ✅ |\n\nThe fix is `.replace(/\\s/g, '')`. You could also strip spaces in the same regex that already removes `().-`, as long as that happens before the `00` check.\n\n**Tests**\n- Both normalize tests use input with at most one space, which is why they miss the bug. Adding the three README examples as test cases would catch it.\n- There's no test that a national number like `020 7946 0958` is refused, even though the README promises that. It does get refused now, but only because it doesn't start with `+`.\n\n**Smaller things (not blocking)**\n- **Short numbers pass:** the stricter check in `validate.js` (`^\\+[1-9]\\d{1,14}$`) looks right. But it allows numbers as short as 2 digits, so a fragment like `+4420` is accepted and queued. You might want a minimum of around 7–8 digits.\n- **Non-text input:** if `rawTo` is `null`, a number value or anything else that isn't text, `normalize` now crashes with a generic error. Before this branch it failed with the clearer \"bad number\" message. A quick type check at the top would bring that back.\n- **Error message:** it now shows `rawTo` rather than the cleaned-up number. That's probably better for debugging, so this is just a heads-up.\n- **Small file:** `dialing.js` holds a single one-line function. That's fine, though it could just live inside `normalize.js`.\n\nThe CHANGELOG entry, the README section and the version bump to 0.9.0 all match the change. Once the space handling is fixed and tested, it looks good to merge.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-03-plain-opus-k4",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0799584,
+    "input_tokens": 83702,
+    "output_tokens": 1775,
+    "cached_tokens": 79651,
+    "cache_write_tokens": 3590,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.0000522,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0799062,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 21.984,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-03-plain-opus-k4",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:15:40.171Z",
+    "images": {
+      "core": "sha256:b72940b562e6c53aae6afc83a7f0b64341c2e8cbe63023fe872152ab58a99891",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-60b74aee38e7",
+        "id": "sha256:90f05dbd851ea456d4c743f188da2f464a123a97e22ad749c88365383e98b059",
+        "tree_sha256": "2203cf0cd835700f9f15d4dd838fbcf6c48e0f9c988c060d2fb614fa1d648e6f"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-85c1c579-cf98-4cb2-853d-e66d0f1c-f2f7e2"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:16:25.703Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd ~/workspace/repo 2>/dev/null || cd /workspace/repo; pwd; git branch -a; git log --oneline main..phone-normalize; git diff main...phone-normalize",
+          "code": 0,
+          "output": "/root/workspace/repo\n  main\n* phone-normalize\n173e408 Tighten the E.164 check\n970312d Accept phone numbers as people type them\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 5581f29..51b5f1b 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.9.0\n+\n+- Phone numbers are "
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-03-plain-opus-k4",
+      "meter": {
+        "requests": 7,
+        "usd": 0.0799584,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.0799584,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.0000522
+    }
+  }
+}

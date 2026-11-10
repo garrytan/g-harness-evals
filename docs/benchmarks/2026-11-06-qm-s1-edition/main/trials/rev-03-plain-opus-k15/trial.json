@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-03-plain-opus-k15",
+  "task_id": "rev-03",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 15,
+  "status": "ok",
+  "reply_text": "I don't think phone-normalize is ready to merge. The tests pass (5 of 5), but the main feature doesn't work: none of the three example numbers in the new README entry gets through.\n\n**Blocker: only the first space is removed.** In `src/normalize.js`, `raw.trim().replace(' ', '')` uses a plain string, so it replaces just the first space. When I ran the README's own examples through it:\n- `+44 20 7946 0958` → `+4420 7946 0958` → rejected\n- `0044 20 7946 0958` → `+4420 7946 0958` → rejected\n- `+1 (415) 555-0100` → `+1415 5550100` → rejected\n\nThe tests didn't catch this because each test input has only one space (`'+1 (415)555-0100'`) or none.\n\n**Fix:** change it to `.replace(/\\s/g, '')`. That also handles tabs and non-breaking spaces from pasted numbers. Better still, strip spaces and punctuation in one pass, then turn `00` into `+`: `raw.replace(/[\\s().-]/g, '')`, then `toInternational`. That way input like `(0044) …` works too.\n\n**Smaller points:**\n1. **Missing tests:** add the three README examples as test cases, plus a number with several spaces and a national number like `020 7946 0958`, which should be refused.\n2. **Breaking change:** the stricter check in `validate.js` (`/^\\+[1-9]\\d{1,14}$/`) is right, but it now rejects numbers the old check accepted, like `+0…` or more than 15 digits. If any already-saved numbers look like that, texts to them will start failing. It's worth a CHANGELOG line.\n3. **Optional:** the error message now shows the raw input (`'bad number: ' + rawTo`). That's easier to debug, but if these errors get logged, it's a phone number in your logs.\n\nEverything else looks fine: the version bump to 0.9.0, the CHANGELOG entry, `queueText` normalizing before it validates, and the `00` → `+` handling. As you asked, I didn't change any code.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-03-plain-opus-k15",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.07157820000000001,
+    "input_tokens": 82650,
+    "output_tokens": 1519,
+    "cached_tokens": 78990,
+    "cache_write_tokens": 3199,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.0000522,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.071526,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 19.813,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-03-plain-opus-k15",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:17:09.351Z",
+    "images": {
+      "core": "sha256:b72940b562e6c53aae6afc83a7f0b64341c2e8cbe63023fe872152ab58a99891",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-60b74aee38e7",
+        "id": "sha256:90f05dbd851ea456d4c743f188da2f464a123a97e22ad749c88365383e98b059",
+        "tree_sha256": "2203cf0cd835700f9f15d4dd838fbcf6c48e0f9c988c060d2fb614fa1d648e6f"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-ee1238d2-7d20-41b3-891c-37bf57cc-ee65e9"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:17:52.912Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..phone-normalize; git diff main...phone-normalize",
+          "code": 0,
+          "output": "  main\n* phone-normalize\n173e408 Tighten the E.164 check\n970312d Accept phone numbers as people type them\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 5581f29..51b5f1b 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.9.0\n+\n+- Phone numbers are normalized to E.164 b"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-03-plain-opus-k15",
+      "meter": {
+        "requests": 7,
+        "usd": 0.07157820000000001,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.07157820000000001,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.0000522
+    }
+  }
+}

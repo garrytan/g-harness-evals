@@ -1,4 +1,4 @@
-// Vendored from gstack-evals (#private-link-removed) at 81daa79abcf86ddbd15409da0b78cd4d98e835b4, src/runner/stats/sign-flip.ts. MIT License, Copyright (c) 2026 Garry Tan.
+// Vendored from gstack-evals (https://github.com/garrytan/gstack-evals) at 81daa79abcf86ddbd15409da0b78cd4d98e835b4, src/runner/stats/sign-flip.ts. MIT License, Copyright (c) 2026 Garry Tan.
 // gstack-evals (U2): the margin-shifted exact sign-flip test for non-inferiority over task clusters.
 //
 // The Captain's decision (internal-task, 2026-10-28): Lane A's --margin uses this test, because on few tasks the bootstrap

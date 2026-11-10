@@ -1,0 +1,407 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-07 19:21 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "4978079b-aa7d-4e6a-b2fe-d87cf4b0e35c"
+    },
+    "text": "hi! can you look over the phone-normalize branch before I merge it into main? Just a review please, no code changes.",
+    "runId": "472bebbc-c1fd-45e9-83e3-1e8cd6e1eb91"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "b6ffbc33-f16c-487d-a7e8-9e8086e0c8d3",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "textSignature": "{\"v\":1,\"id\":\"msg_0d4e4c2df62c346a016aefeacfa68087d2bc34d5919f75d32e\",\"phase\":\"commentary\"}",
+    "text": "I’ll find the branch, review its diff against main, and check for bugs or missing tests—no code changes.\n",
+    "runId": "472bebbc-c1fd-45e9-83e3-1e8cd6e1eb91",
+    "step": {
+     "id": "b6ffbc33-f16c-487d-a7e8-9e8086e0c8d3",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "name": "github-gitlab",
+    "wire": {
+     "message": {
+      "id": "b6ffbc33-f16c-487d-a7e8-9e8086e0c8d3",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"read\",\"name\":\"github-gitlab\"}"
+    },
+    "action": "read",
+    "runId": "472bebbc-c1fd-45e9-83e3-1e8cd6e1eb91",
+    "callId": "call_i4awZpqfxYXhnfnse1LkvAEv|fc_0d4e4c2df62c346a016aefead0208c87d2a7affe1dd7b79320",
+    "tool": "skills",
+    "step": {
+     "id": "b6ffbc33-f16c-487d-a7e8-9e8086e0c8d3",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "dir": "/root/workspace/.agent-skills/9e283f0671243b757d2fc53c/0c778962596da8cc/github-gitlab",
+    "name": "github-gitlab",
+    "bytes": 6025,
+    "found": true,
+    "action": "read",
+    "sourceScopeId": "org:harness-eval",
+    "result": "[skill files synced to /root/workspace/.agent-skills/9e283f0671243b757d2fc53c/0c778962596da8cc/github-gitlab/]\n\n# GitHub / GitLab\n\nUse this skill when the user asks to inspect repos, issues, pull requests, merge\nrequests, code history, branches, or to make a small code change in a hosted repo.\n\n## Choose the account deliberately\n\nUse the current credential manifest to choose an account authorized for this conversation\nthat fits the user's intent. Run commands with `execute` and an explicit `sandbox_id`;\nkeep that ID throughout checkout, edits, checks, and push. Personal and shared accounts are both valid choices; neither\nis an automatic fallback when the other fails. If the intended account is unclear before\na write, ask. Do not infer permission from a login merely being present on the computer.\n\n- **Personal login:** use the authorized `gh`, `glab`, or Git login. Check the active\n  provider account (for example, `gh api user --jq .login`) and the Git transport's auth\n  configuration; a CLI API identity alone does not prove which account Git will use.\n- **Shared org credential:** if listed in the prompt, select its slug and use the\n  core-hosted smart HTTP remote in the `use-shared-credential` skill. This uses\n  the configured shared account, even when a personal OAuth connector is live.\n  Its name is an admin label, not a verified upstream username.\n- **Connected app:** use only advertised capabilities. API access does not by itself\n  establish native Git transport access or configure the CLI's active login.\n\nFor an existing checkout, inspect the remote and applicable credential-helper, SSH,\nproxy, and HTTP-header configuration. A reused checkout\nmay still select a previous account. Commit author metadata is separate from transport\nidentity. Resolve an unknown identity before a write; do not probe access by pushing.\n\n## Logging in\n\nUse the native login only after an explicit authentication rejection. A TLS timeout,\nconnection reset, rate limit, or GitHub server error is not evidence of logout or\npermission expiry. Do not consume another credential grant to repair transport.\n\nFor a confirmed missing or expired GitHub or GitLab login, follow the\n`interactive-login` skill: it runs `gh auth login` / `glab auth login` in a temporary\nhome as a background job, relays the code and URL, and saves the login to the keychain\nso later commands use it through `execute.credentials`.\n\n## Read-only work\n\nCheck auth and inspect repo state:\n\n```bash\ngh auth status\ngh repo view OWNER/REPO --json name,description,url,defaultBranchRef\ngh issue list --repo OWNER/REPO --state open --limit 20\ngh pr list --repo OWNER/REPO --state open --limit 20\n```\n\nFor GitLab:\n\n```bash\nglab auth status\nglab repo view GROUP/PROJECT\nglab issue list --repo GROUP/PROJECT\nglab mr list --repo GROUP/PROJECT\n```\n\nUse `git log`, `git show`, and `git diff` for codebase-change summaries. Cite commit\nhashes, PR/MR numbers, and links.\n\n## Checkout and edits\n\nClone or fetch only the repo the user asked for:\n\n```bash\ngh repo clone OWNER/REPO repo\ncd repo\ngit checkout -b codex/small-change\n```\n\nKeep changes scoped. Run the repo's tests. If a push or PR/MR creation is requested,\nprepare the branch and summary first.\n\n## Writes require approval\n\nPushing branches, creating PRs/MRs, merging, closing issues, editing labels, changing\nrepo settings, releases, or workflows are writes. Ask for approval before running the\nwrite command.\n\nAfter approval:\n\n```bash\ngit push -u origin codex/small-change\ngh pr create --repo OWNER/REPO --title \"...\" --body-file pr.md\n```\n\nFor GitLab:\n\n```bash\ngit push -u origin codex/small-change\nglab mr create --repo GROUP/PROJECT --title \"...\" --description-file mr.md\n```\n\nReport the final URL and leave enough context for review.\n\n## Wait for GitHub CI\n\nUse the bundled helper instead of a bare `gh pr checks --watch` or a handwritten\nshell loop. Use the absolute directory reported by the skill read in place of\n`<skill dir>`. It is one blocking watcher process, not repeated agent turns:\n\n```bash\nnode \"<skill dir>/scripts/watch-ci.mjs\" --repo OWNER/REPO --pr NUMBER --head REVIEWED_HEAD_SHA\n```\n\nCapture the full head SHA from `gh pr view NUMBER --repo OWNER/REPO --json headRefOid`\nbefore review. Use that same SHA for the watcher and the final merge gate. Start the\nwatcher with `execute` using the selected `sandbox_id` and `background:true`, then\nsubscribe with `background` action `watch` and its returned `process_id`. Keep one\nwatcher per PR. Set the process lifetime longer than the helper's 30-minute deadline;\nuse `--timeout-ms` for a different bounded deadline. Use only credentials authorized\nfor that background process; a live foreground grant does not authorize background work.\n\nThe helper polls GitHub internally and emits JSON status records. It retries only\nrecognized transient transport/server errors with bounded backoff. Pending checks\nremain pending. Real CI failures, authentication/authorization failures, changed heads,\nunknown errors, exhausted retries, and deadline expiry all stop with nonzero status.\nExplicit API rate limits stop as `rate_limited`, not authentication errors.\nEmpty check sets, skipped checks, and cancelled checks are not successful evidence.\nDo not interpret an exit code alone as \"checks concluded\": read the status record.\nDo not suppress a nonzero exit or print a success marker after it. Keep `set -e`.\n\nSuccess means the checks observed for the expected head passed, not permission to\nmerge. Re-read checks and review threads immediately before merging. Wait for async\nreviewers on that exact head; resolve findings and complete any review the repo\nrequires. After any push or head change, discard old success/review evidence and repeat.\nOnly merge when all gates pass, with GitHub's atomic head guard:\n\n```bash\ngh pr merge NUMBER --repo OWNER/REPO --squash --match-head-commit REVIEWED_HEAD_SHA\n```\n\nOn a branch that requires a merge queue, this queues the PR; it is merged only once\nGitHub shows it as merged. Never use auto-merge or bypass repository gates. This\nhelper does not retry GitLab commands or change their authentication behavior.\n",
+    "runId": "472bebbc-c1fd-45e9-83e3-1e8cd6e1eb91",
+    "callId": "call_i4awZpqfxYXhnfnse1LkvAEv|fc_0d4e4c2df62c346a016aefead0208c87d2a7affe1dd7b79320",
+    "tool": "skills",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "b8469184-f7f3-4561-8a18-8510e178a893",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "pwd; ls -la; find /tmp/pi-cwd /root/workspace -maxdepth 3 -type d -name .git 2>/dev/null",
+      "purpose": "Locating repository"
+     }
+    },
+    "scope": "scoped",
+    "command": "pwd; ls -la; find /tmp/pi-cwd /root/workspace -maxdepth 3 -type d -name .git 2>/dev/null",
+    "purpose": "Locating repository",
+    "retrySafe": true,
+    "runId": "472bebbc-c1fd-45e9-83e3-1e8cd6e1eb91",
+    "callId": "call_96bW2eC0tWHp5EGFCPuemRW6|fc_0d4e4c2df62c346a016aefead1ab1c87d2b13ef769ebaf1638",
+    "tool": "execute",
+    "step": {
+     "id": "b8469184-f7f3-4561-8a18-8510e178a893",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 1,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\ntotal 16\ndrwxr-xr-x 4 root root 4096 Nov  8 03:21 .\ndrwx------ 6 root root 4096 Nov  8 03:21 ..\ndrwxr-xr-x 3 root root 4096 Nov  8 03:21 .agent-skills\ndrwxr-xr-x 5 root root 4096 Nov  8 03:21 repo\n/root/workspace/repo/.git\n\n[exit 1]",
+    "runId": "472bebbc-c1fd-45e9-83e3-1e8cd6e1eb91",
+    "callId": "call_96bW2eC0tWHp5EGFCPuemRW6|fc_0d4e4c2df62c346a016aefead1ab1c87d2b13ef769ebaf1638",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "3259e179-02f1-40fc-b4c6-4cbc1c1f4df1",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git branch -avv && git remote -v && ls -la && git diff --stat main...phone-normalize && git log --oneline main..phone-normalize\",\"purpose\":\"Inspecting branch diff\",\"sandbox_id\":\"default\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo && git status --short && git branch -avv && git remote -v && ls -la && git diff --stat main...phone-normalize && git log --oneline main..phone-normalize",
+      "purpose": "Inspecting branch diff",
+      "sandbox_id": "default"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git branch -avv && git remote -v && ls -la && git diff --stat main...phone-normalize && git log --oneline main..phone-normalize",
+    "purpose": "Inspecting branch diff",
+    "retrySafe": true,
+    "sandbox_id": "default",
+    "runId": "472bebbc-c1fd-45e9-83e3-1e8cd6e1eb91",
+    "callId": "call_U3CVcxI1xiCYvarn81NXEYYT|fc_0d4e4c2df62c346a016aefead3578087d283451c23ddcd5eb1",
+    "tool": "execute",
+    "step": {
+     "id": "3259e179-02f1-40fc-b4c6-4cbc1c1f4df1",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "wire": {
+     "content": [
+      {
+       "text": "sandbox not found: default",
+       "type": "text"
+      }
+     ]
+    },
+    "scope": "scoped",
+    "result": "Command execution failed: sandbox not found: default",
+    "runId": "472bebbc-c1fd-45e9-83e3-1e8cd6e1eb91",
+    "callId": "call_U3CVcxI1xiCYvarn81NXEYYT|fc_0d4e4c2df62c346a016aefead3578087d283451c23ddcd5eb1",
+    "tool": "execute",
+    "isError": true
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "a1114e11-567a-4297-a34f-d8d76939c061",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "action": "list",
+    "purpose": "Identifying active sandbox",
+    "runId": "472bebbc-c1fd-45e9-83e3-1e8cd6e1eb91",
+    "callId": "call_flEhij5364AoQWZu2OxHicV4|fc_0d4e4c2df62c346a016aefead5258487d2bbc58bbdc1d52521",
+    "tool": "sandbox",
+    "step": {
+     "id": "a1114e11-567a-4297-a34f-d8d76939c061",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "action": "list",
+    "result": "{\"sandboxes\":[{\"id\":\"b8603b5b-d0a8-4719-b6d0-514b01ecac86\",\"name\":\"s1e-probe\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"]},\"state\":\"ready\",\"legacy\":false,\"backend\":\"local\",\"holders\":[\"472bebbc-c1fd-45e9-83e3-1e8cd6e1eb91\"],\"createdAt\":\"2026-11-08T03:21:48.765Z\",\"createdBy\":\"harness-admin\",\"machineId\":\"qm-sbx-sandbox-b8603b5b-d0a8-4719-b6d0-514b01ec-284160\",\"ownerScopeId\":\"personal:U1\",\"backingScopeId\":\"sandbox-b8603b5b-d0a8-4719-b6d0-514b01ecac86\"}],\"defaultSandboxId\":\"b8603b5b-d0a8-4719-b6d0-514b01ecac86\",\"defaultMode\":\"selected\",\"providers\":[{\"name\":\"local\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\"},\"egressEnforcement\":\"none\",\"sizesMemory\":true,\"actions\":[\"create\",\"retire\"]}]}",
+    "runId": "472bebbc-c1fd-45e9-83e3-1e8cd6e1eb91",
+    "callId": "call_flEhij5364AoQWZu2OxHicV4|fc_0d4e4c2df62c346a016aefead5258487d2bbc58bbdc1d52521",
+    "tool": "sandbox",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "7346b9dd-afea-46ac-bd6e-a915589babbc",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git branch -avv && git remote -v && ls -la && git diff --stat main...phone-normalize && git log --oneline main..phone-normalize && git diff main...phone-normalize\",\"purpose\":\"Inspecting branch diff\",\"sandbox_id\":\"b8603b5b-d0a8-4719-b6d0-514b01ecac86\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo && git status --short && git branch -avv && git remote -v && ls -la && git diff --stat main...phone-normalize && git log --oneline main..phone-normalize && git diff main...phone-normalize",
+      "purpose": "Inspecting branch diff",
+      "sandbox_id": "b8603b5b-d0a8-4719-b6d0-514b01ecac86"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git branch -avv && git remote -v && ls -la && git diff --stat main...phone-normalize && git log --oneline main..phone-normalize && git diff main...phone-normalize",
+    "purpose": "Inspecting branch diff",
+    "retrySafe": true,
+    "sandbox_id": "b8603b5b-d0a8-4719-b6d0-514b01ecac86",
+    "runId": "472bebbc-c1fd-45e9-83e3-1e8cd6e1eb91",
+    "callId": "call_FVoMvcZAwE98Icw7GhBjX90L|fc_0d4e4c2df62c346a016aefead66b7487d282b51c796310db78",
+    "tool": "execute",
+    "step": {
+     "id": "7346b9dd-afea-46ac-bd6e-a915589babbc",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "  main            55b6c3b Queue text messages\n* phone-normalize 173e408 Tighten the E.164 check\ntotal 32\ndrwxr-xr-x 5 root root 4096 Nov  8 03:21 .\ndrwxr-xr-x 4 root root 4096 Nov  8 03:21 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 03:21 .git\n-rw-r--r-- 1 root root  119 Nov  8 03:18 CHANGELOG.md\n-rw-r--r-- 1 root root  472 Nov  8 03:18 README.md\n-rw-r--r-- 1 root root  112 Nov  8 03:18 package.json\ndrwxr-xr-x 2 root root 4096 Nov  8 03:21 src\ndrwxr-xr-x 2 root root 4096 Nov  8 03:21 test\n CHANGELOG.md           |  4 ++++\n README.md              |  4 ++++\n package.json           |  2 +-\n src/dialing.js         |  5 +++++\n src/normalize.js       |  9 +++++++++\n src/sms.js             |  6 ++++--\n src/validate.js        |  2 +-\n test/normalize.test.js | 11 +++++++++++\n test/validate.test.js  | 11 +++++++++++\n 9 files changed, 50 insertions(+), 4 deletions(-)\n173e408 Tighten the E.164 check\n970312d Accept phone numbers as people type them\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 5581f29..51b5f1b 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.9.0\n+\n+- Phone numbers are normalized to E.164 before queueing.\n+\n ## 0.8.0\n \n - Outbox for text messages.\ndiff --git a/README.md b/README.md\nindex 7862285..db58b7a 100644\n--- a/README.md\n+++ b/README.md\n@@ -3,3 +3,7 @@\n Text-message notifications for textbell.\n \n Phone numbers are stored in E.164 form: a +, the country code and the subscriber number, digits only, at most 15 digits.\n+\n+## Entering numbers\n+\n+queueText accepts numbers the way people type them: with spaces, brackets, dots or dashes, and with the 00 international prefix instead of +. For example +44 20 7946 0958, 0044 20 7946 0958 and +1 (415) 555-0100 all work. National numbers without a country code are refused.\ndiff --git a/package.json b/package.json\nindex 3b46e4e..f1b29f3 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"textbell\",\n-  \"version\": \"0.8.0\",\n+  \"version\": \"0.9.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/dialing.js b/src/dialing.js\nnew file mode 100644\nindex 0000000..3aa4198\n--- /dev/null\n+++ b/src/dialing.js\n@@ -0,0 +1,5 @@\n+function toInternational(number) {\n+  return number.startsWith('00') ? '+' + number.slice(2) : number;\n+}\n+\n+module.exports = { toInternational };\ndiff --git a/src/normalize.js b/src/normalize.js\nnew file mode 100644\nindex 0000000..83bf7d8\n--- /dev/null\n+++ b/src/normalize.js\n@@ -0,0 +1,9 @@\n+const { toInternational } = require('./dialing');\n+\n+function normalize(raw) {\n+  const compact = raw.trim().replace(' ', '');\n+  const international = toInternational(compact);\n+  return international.replace(/[().-]/g, '');\n+}\n+\n+module.exports = { normalize };\ndiff --git a/src/sms.js b/src/sms.js\nindex 381b7eb..564a9e5 100644\n--- a/src/sms.js\n+++ b/src/sms.js\n@@ -1,7 +1,9 @@\n const { isE164 } = require('./validate');\n+const { normalize } = require('./normalize');\n \n-function queueText(outbox, to, text) {\n-  if (!isE164(to)) throw new Error('bad number: ' + to);\n+function queueText(outbox, rawTo, text) {\n+  const to = normalize(rawTo);\n+  if (!isE164(to)) throw new Error('bad number: ' + rawTo);\n   outbox.push({ to, text: text.slice(0, 160) });\n }\n \ndiff --git a/src/validate.js b/src/validate.js\nindex d75dfdd..7c3b478 100644\n--- a/src/validate.js\n+++ b/src/validate.js\n@@ -1,4 +1,4 @@\n-const E164 = /^\\+\\d+$/;\n+const E164 = /^\\+[1-9]\\d{1,14}$/;\n \n function isE164(s) {\n   return E164.test(s);\ndiff --git a/test/normalize.test.js b/test/normalize.test.js\nnew file mode 100644\nindex 0000000..f4d6b05\n--- /dev/null\n+++ b/test/normalize.test.js\n@@ -0,0 +1,11 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { normalize } = require('../src/normalize');\n+\n+test('a space, brackets and a dash go', () => {\n+  assert.strictEqual(normalize('+1 (415)555-0100'), '+14155550100');\n+});\n+\n+test('a 00 prefix becomes +', () => {\n+  assert.strictEqual(normalize('0033612345678'), '+33612345678');\n+});\ndiff --git a/test/validate.test.js b/test/validate.test.js\nnew file mode 100644\nindex 0000000..241c57f\n--- /dev/null\n+++ b/test/validate.test.js\n@@ -0,0 +1,11 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { isE164 } = require('../src/validate');\n+\n+test('E.164 numbers pass', () => {\n+  assert.strictEqual(isE164('+442079460958'), true);\n+});\n+\n+test('a leading zero country code fails', () => {\n+  assert.strictEqual(isE164('+0123'), false);\n+});\n\n[exit 0]",
+    "runId": "472bebbc-c1fd-45e9-83e3-1e8cd6e1eb91",
+    "callId": "call_FVoMvcZAwE98Icw7GhBjX90L|fc_0d4e4c2df62c346a016aefead66b7487d282b51c796310db78",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "bb098d24-9dbf-4e20-baeb-a5ddd9915e6b",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && find src test -type f -maxdepth 2 -print -exec cat {} \\\\; && cat README.md package.json && npm test && node <<'JS'\\nconst {queueText} = require('./src/sms');\\nfor (const raw of ['+44 20 7946 0958','0044 20 7946 0958','+1 (415) 555-0100','+14155550100\\\\n','+14155550100', null, 14155550100]) {\\n const outbox=[];\\n try {queueText(outbox,raw,'test'); console.log(JSON.stringify(raw), '=>', JSON.stringify(outbox));}\\n catch (e) {console.log(JSON.stringify(raw),'=>',e.toString());}\\n}\\nJS\\n git status --short && nl -ba src/normalize.js && nl -ba src/sms.js && nl -ba src/validate.js\",\"purpose\":\"Testing documented number formats\",\"sandbox_id\":\"b8603b5b-d0a8-4719-b6d0-514b01ecac86\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo && find src test -type f -maxdepth 2 -print -exec cat {} \\; && cat README.md package.json && npm test && node <<'JS'\nconst {queueText} = require('./src/sms');\nfor (const raw of ['+44 20 7946 0958','0044 20 7946 0958','+1 (415) 555-0100','+14155550100\\n','+14155550100', null, 14155550100]) {\n const outbox=[];\n try {queueText(outbox,raw,'test'); console.log(JSON.stringify(raw), '=>', JSON.stringify(outbox));}\n catch (e) {console.log(JSON.stringify(raw),'=>',e.toString());}\n}\nJS\n git status --short && nl -ba src/normalize.js && nl -ba src/sms.js && nl -ba src/validate.js",
+      "purpose": "Testing documented number formats",
+      "sandbox_id": "b8603b5b-d0a8-4719-b6d0-514b01ecac86"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && find src test -type f -maxdepth 2 -print -exec cat {} \\; && cat README.md package.json && npm test && node <<'JS'\nconst {queueText} = require('./src/sms');\nfor (const raw of ['+44 20 7946 0958','0044 20 7946 0958','+1 (415) 555-0100','+14155550100\\n','+14155550100', null, 14155550100]) {\n const outbox=[];\n try {queueText(outbox,raw,'test'); console.log(JSON.stringify(raw), '=>', JSON.stringify(outbox));}\n catch (e) {console.log(JSON.stringify(raw),'=>',e.toString());}\n}\nJS\n git status --short && nl -ba src/normalize.js && nl -ba src/sms.js && nl -ba src/validate.js",
+    "purpose": "Testing documented number formats",
+    "retrySafe": true,
+    "sandbox_id": "b8603b5b-d0a8-4719-b6d0-514b01ecac86",
+    "runId": "472bebbc-c1fd-45e9-83e3-1e8cd6e1eb91",
+    "callId": "call_pDNiXXHRUwqt8eFn7nHh37DQ|fc_0d4e4c2df62c346a016aefead887a087d2b67f6a1e539a916f",
+    "tool": "execute",
+    "step": {
+     "id": "bb098d24-9dbf-4e20-baeb-a5ddd9915e6b",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "src/sms.js\nconst { isE164 } = require('./validate');\nconst { normalize } = require('./normalize');\n\nfunction queueText(outbox, rawTo, text) {\n  const to = normalize(rawTo);\n  if (!isE164(to)) throw new Error('bad number: ' + rawTo);\n  outbox.push({ to, text: text.slice(0, 160) });\n}\n\nmodule.exports = { queueText };\nsrc/validate.js\nconst E164 = /^\\+[1-9]\\d{1,14}$/;\n\nfunction isE164(s) {\n  return E164.test(s);\n}\n\nmodule.exports = { isE164 };\nsrc/dialing.js\nfunction toInternational(number) {\n  return number.startsWith('00') ? '+' + number.slice(2) : number;\n}\n\nmodule.exports = { toInternational };\nsrc/normalize.js\nconst { toInternational } = require('./dialing');\n\nfunction normalize(raw) {\n  const compact = raw.trim().replace(' ', '');\n  const international = toInternational(compact);\n  return international.replace(/[().-]/g, '');\n}\n\nmodule.exports = { normalize };\ntest/validate.test.js\nconst test = require('node:test');\nconst assert = require('node:assert');\nconst { isE164 } = require('../src/validate');\n\ntest('E.164 numbers pass', () => {\n  assert.strictEqual(isE164('+442079460958'), true);\n});\n\ntest('a leading zero country code fails', () => {\n  assert.strictEqual(isE164('+0123'), false);\n});\ntest/normalize.test.js\nconst test = require('node:test');\nconst assert = require('node:assert');\nconst { normalize } = require('../src/normalize');\n\ntest('a space, brackets and a dash go', () => {\n  assert.strictEqual(normalize('+1 (415)555-0100'), '+14155550100');\n});\n\ntest('a 00 prefix becomes +', () => {\n  assert.strictEqual(normalize('0033612345678'), '+33612345678');\n});\ntest/sms.test.js\nconst test = require('node:test');\nconst assert = require('node:assert');\nconst { queueText } = require('../src/sms');\n\ntest('queues a text for an E.164 number', () => {\n  const outbox = [];\n  queueText(outbox, '+14155550100', 'hello');\n  assert.deepStrictEqual(outbox, [{ to: '+14155550100', text: 'hello' }]);\n});\n# textbell\n\nText-message notifications for textbell.\n\nPhone numbers are stored in E.164 form: a +, the country code and the subscriber number, digits only, at most 15 digits.\n\n## Entering numbers\n\nqueueText accepts numbers the way people type them: with spaces, brackets, dots or dashes, and with the 00 international prefix instead of +. For example +44 20 7946 0958, 0044 20 7946 0958 and +1 (415) 555-0100 all work. National numbers without a country code are refused.\n{\n  \"name\": \"textbell\",\n  \"version\": \"0.9.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n\n> textbell@0.9.0 test\n> node --test\n\n✔ a space, brackets and a dash go (0.640587ms)\n✔ a 00 prefix becomes + (0.134626ms)\n✔ queues a text for an E.164 number (1.323863ms)\n✔ E.164 numbers pass (0.578359ms)\n✔ a leading zero country code fails (0.150035ms)\nℹ tests 5\nℹ suites 0\nℹ pass 5\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 86.458918\n\"+44 20 7946 0958\" => Error: bad number: +44 20 7946 0958\n\"0044 20 7946 0958\" => Error: bad number: 0044 20 7946 0958\n\"+1 (415) 555-0100\" => Error: bad number: +1 (415) 555-0100\n\"+14155550100\\n\" => [{\"to\":\"+14155550100\",\"text\":\"test\"}]\n\"+14155550100\" => [{\"to\":\"+14155550100\",\"text\":\"test\"}]\nnull => TypeError: Cannot read properties of null (reading 'trim')\n14155550100 => TypeError: raw.trim is not a function\n     1\tconst { toInternational } = require('./dialing');\n     2\t\n     3\tfunction normalize(raw) {\n     4\t  const compact = raw.trim().replace(' ', '');\n     5\t  const international = toInternational(compact);\n     6\t  return international.replace(/[().-]/g, '');\n     7\t}\n     8\t\n     9\tmodule.exports = { normalize };\n     1\tconst { isE164 } = require('./validate');\n     2\tconst { normalize } = require('./normalize');\n     3\t\n     4\tfunction queueText(outbox, rawTo, text) {\n     5\t  const to = normalize(rawTo);\n     6\t  if (!isE164(to)) throw new Error('bad number: ' + rawTo);\n     7\t  outbox.push({ to, text: text.slice(0, 160) });\n     8\t}\n     9\t\n    10\tmodule.exports = { queueText };\n     1\tconst E164 = /^\\+[1-9]\\d{1,14}$/;\n     2\t\n     3\tfunction isE164(s) {\n     4\t  return E164.test(s);\n     5\t}\n     6\t\n     7\tmodule.exports = { isE164 };\n\n[stderr]\nnpm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\n\n[exit 0]",
+    "runId": "472bebbc-c1fd-45e9-83e3-1e8cd6e1eb91",
+    "callId": "call_pDNiXXHRUwqt8eFn7nHh37DQ|fc_0d4e4c2df62c346a016aefead887a087d2b67f6a1e539a916f",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 14,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "15ca07c1-0690-4709-932b-f76b71d14e62",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "{\"id\":\"rs_0d4e4c2df62c346a016aefeadbed0887d2a06bdf5534fac030\",\"type\":\"reasoning\",\"content\":[],\"encrypted_content\":\"gAAAAABq7-re70dtY9fCik6GrLvW4f99-e5fy8ht0cqjbBt2lZc0-BfqKxgQJ6fdGiHNZsE5L53J_xT0dmhmoPEtIoovmCE2AYU9JULRLQuDEt3IRGZTf9MBcPbx4yQ_4HWCnEq3lRoZM-iBDtn8Ojv3H2imEndx4wKns7VNQEMDK4tu8VZcVSAw6vODXEE7wnb5lY7kwSSN0gXMqf5GJddaYgmxyKq9hpgFja_0P59yN0ZEu9VPkOdRkAz0aTVtbnUrNGsQZIznjF0ndR6Mz-mkm9NVdkgsKGcpz0mLnrAiFAm89Abh-9xpgIlA74RQLcDiSRfwMTzFTWRjzvls_vSi5lT1d9u0r_5tOB12vubaFyCYvH6AD6jHDUoUanQ0nj9Z4AuGF29mLcdHx5tMjT137OYdakDuh5KyW6JuAerciVBCsWBTNzFPORsrEkZQ7lkgEQOcmTYSQYSnn_1uoQt_4wOjxx-9vtYgOZjy43IkEln-PfFld9Rl-6CwytU9hs-mQNVyg8Yyr3NfFpzTAH6xSZVL4dCBeSQOg4GjyPbBUQ0kF6fwgkvuyv1XYe9xqKyd_HrKgQ-fcJz_BJbSBseq4nHOpmC7oEIas9PbP45qMSnBb_B1xRK_ZnTCxYCTrJibMUics29S-pTzDkyHo7Uy8UffpANePBxRMLZDDxLpGUkHJPQCvJnUfFlfH15XvDayDOCrTVbIJeHEc6B4phG3aG4yo80-Wa1F3cJE2vk1jMhM0gPtcUd26uWybT5xob7Z7X5f6gjGePIBfy9rs_u1Oc2IUEEHUFh6kc9eRTxOjKfUMSs05VN_SX7rdV--ISgzD9HD_HGJEtQcrurEAJDjfX8F3998Fr2mMdo57oV8TjMKldV6Y_hiNCDLuZI-owoatNSJW_yza26tg7FuLZr8ptD3bWg7kKRG7sGfY2FMZ6xsPQvkrd7fb3IvPnhCtdUCcNveyycGj_duwfFXKXIyQxaKGQMlcx7CpDuOy5SkeAKy33yayiOtxGYwolk5MDibBThUBuVkuY21oJky4gk4Lp8A5Q_VypgNeZG7-22_IZczOCVW9DI6JTgx3DNvKALvnL7GY5fL0xo2XnQj5POx_LF_O1hZAH8Qcx7qGf7HYEyfgFIn95ZgH7sXqflrBTP--BqVLR6VCwafg9Jopn1gUpNo7lWR4-2VdJk-7dsa5_DQDmWrOGocNd5HVJK31mYEKmjqZD6on_6W-3x7lFeWzL7Y0eGHd4IQg8zQ48bxE4sCuLjxtIWmgsyOUGJg0xQ8JmmaYENa-GpT0R6rAmqZ_K9IFyfK2NEH7OH1ref-3IFC_eUUONz7W3BOVYEhVjTcsR87qLDxWGnJNM_U7aV5kksRgPImKJ1ELVeGyIzFEiJLVcec-kK_wsGg9xM6mcuAjzqqk4kDYgZLl0cCzyiwZTHgcyfvvfUsNHIlsTbnBZNyYeHdUXmDfU2bFYthttW3QKxGk3xqIG5Loau4AH8CbZV5pbCh5mgJWOqlyiju188KJLO4N939yAOFjzOPmo1rCpaZR7tTKrigaTmKDz0xBdqfV5_CFFm4sDfYlRuQIpyJp9sr24vP-O7sgGRRXdG6sYRg--6KCDjX7Pn1nSE1QaLgVreIVjZoAHi4JPg4QoCa2X4jgQgMZg8BtLGV7ajYnTgBht9O8eKKp-5gUTuRlGOBRpK7XPKZbFOI7jjs3katL7U1XxW1b9bI_BycxRv2D3Qxvdd4PG18NFnmQSQHQP-7nSPcsMb9X8_zxahYA6eg7VAcGu2AvJw_ODyuaSbamNXxPNg3XZpfffzMFT825kbEEbQUknV8A7O8nkt4E6_m5lNTu-GOzEY1kpcfwC6Zkj-T8Qv8Fhk1aC2ZRn9zoS0mqlTKFoNj-eyHikcfnMgC78qQXDgs4wwyFWiR239RMS6a-q2k5o9vveWxl-bq3ctr0bhgLnE4gPQPgSroDbGSSKilcPvYYbnH4c-xYZfLK8MVuaeu\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"**Focusing on main bugs**\\n\\nI need to keep my attention on the main bug and avoid unnecessary noise. Should I focus on P1 or P2? P1 usually has more intense issues while P2 is more typical and moderate. I think it might be worth mentioning one actionable example for clarity. Meanwhile, I want to keep my response concise to make it easier to understand. So, I’ll make sure to highlight the essential points without overloading with details.\"}]}",
+    "thinking": "**Focusing on main bugs**\n\nI need to keep my attention on the main bug and avoid unnecessary noise. Should I focus on P1 or P2? P1 usually has more intense issues while P2 is more typical and moderate. I think it might be worth mentioning one actionable example for clarity. Meanwhile, I want to keep my response concise to make it easier to understand. So, I’ll make sure to highlight the essential points without overloading with details.",
+    "runId": "472bebbc-c1fd-45e9-83e3-1e8cd6e1eb91",
+    "step": {
+     "id": "15ca07c1-0690-4709-932b-f76b71d14e62",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 15,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "15ca07c1-0690-4709-932b-f76b71d14e62",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "textBlock": {
+     "textSignature": "{\"v\":1,\"id\":\"msg_0d4e4c2df62c346a016aefeade014c87d2ae6888bf66f91cde\",\"phase\":\"final_answer\"}"
+    },
+    "workStartedAt": 1794108110069,
+    "workFinishedAt": 1794108126691,
+    "text": "I’d fix one issue before merging.\n\n**[P2] Only the first space is removed — `src/normalize.js:4`**\n`replace(' ', '')` removes just one space, so numbers with multiple spaces remain invalid. All three examples newly documented in the README throw `bad number` when passed to `queueText`:\n- `+44 20 7946 0958`\n- `0044 20 7946 0958`\n- `+1 (415) 555-0100`\n\nRemove all spaces during normalization and add end-to-end `queueText` tests for these examples. The current normalization test contains only one space, so it misses the bug.\n\n**Checks:** All 5 existing tests pass; I reproduced the failures above separately. Reviewed `main...phone-normalize` at `173e408`. No files changed.",
+    "runId": "472bebbc-c1fd-45e9-83e3-1e8cd6e1eb91",
+    "step": {
+     "id": "15ca07c1-0690-4709-932b-f76b71d14e62",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

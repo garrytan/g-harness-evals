@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-07-plain-opus-k10",
+  "task_id": "rev-07",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 10,
+  "status": "ok",
+  "reply_text": "I reviewed http-retries against main (one commit, b04b610). I didn't change anything. **Don't merge yet: there's one blocking bug.** All 3 tests pass, but none of them covers the bug.\n\n**Blocking: `timeoutMs: 0` no longer turns off the timeout**\nIn `src/http.js`, the new `resolveOptions` sets the timeout with `opts.timeoutMs || DEFAULT_TIMEOUT_MS`. Main used `??`. Because `||` treats 0 as \"not set\", `0` now becomes 10000. The nightly export (`src/export.js`) passes `timeoutMs: 0` because a full export can take ten minutes. After this merge it would be cut off at 10 seconds and fail every night. This also undoes the 4.0.1 fix. The fix is one character: change `||` to `??`. It needs a test too: call with `timeoutMs: 0` and check that no abort timer is set.\n\n**Should fix before merge**\n- **Requests that change data get retried.** Every method is retried, including POST. If a POST reaches the server and then gets a 502 or 504 back, it can be applied twice. Every worker uses this client, so I'd retry only GET, HEAD, PUT and DELETE by default, or make it opt-in for POST.\n- **The nightly export would get retried too.** Retries are on by default (2), so a failed ten-minute export with no timeout could run up to three times in a row. You may want that, but someone should decide it on purpose.\n- **Retry responses are never closed.** When a 5xx is retried, its body is thrown away without being read or cancelled. With Node's fetch that can hold connections open. Calling `await res.body?.cancel()` before the sleep fixes it.\n\n**Worth considering**\n- `Retry-After` on 429s is ignored. The code uses its own jittered wait, which can be shorter than the server asked for.\n- Network errors and timeouts (thrown errors) aren't retried, only bad status codes. That's fine if intended, but the README could say so.\n- `request()` no longer accepts `opts.init` as `null`, though that case is unlikely in practice.\n- Small cleanup: `baseDelayMs` uses a hardcoded `250` instead of a named constant like the others.\n\n**What's fine:** the backoff math (random wait, capped at 8 seconds), skipping 501, the CHANGELOG and README updates, and the minor version bump to 4.1.0.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-07-plain-opus-k10",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.06504879999999999,
+    "input_tokens": 54542,
+    "output_tokens": 1320,
+    "cached_tokens": 50481,
+    "cache_write_tokens": 3590,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000052600000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.06499619999999999,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 16.642,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-07-plain-opus-k10",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:25:04.801Z",
+    "images": {
+      "core": "sha256:d3c15a4ff59b46b682cc0b498a5b96d657f86e2d1ac9a8b947b4fb5d8b1c3302",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-8a638002971d",
+        "id": "sha256:de8f372133eadef12cc1ca79989c36577960d40b447ecf81ee9dc003a08e04ec",
+        "tree_sha256": "b8945d3ad7f19c62dccf490b61260b4bcea0b1391062820ab876fa3dbd3cabe5"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-7435a4bd-c090-4813-9c88-8e304b15-e4780c"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:25:44.896Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo && git branch -a && git log --oneline main..http-retries && git diff main...http-retries --stat && git diff main...http-retries",
+          "code": 0,
+          "output": "* http-retries\n  main\nb04b610 Retry 429 and 5xx responses with backoff\n CHANGELOG.md        |  4 ++++\n README.md           |  2 ++\n package.json        |  2 +-\n src/backoff.js      |  7 +++++++\n src/http.js         | 31 +++++++++++++++++++++++++++----\n src/retry-policy.js |  5 +++++\n test/retry.test"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-07-plain-opus-k10",
+      "meter": {
+        "requests": 5,
+        "usd": 0.06504879999999999,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.06504879999999999,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000052600000000000005
+    }
+  }
+}

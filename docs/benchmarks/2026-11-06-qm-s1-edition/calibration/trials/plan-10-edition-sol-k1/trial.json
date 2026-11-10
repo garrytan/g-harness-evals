@@ -1,0 +1,170 @@
+{
+  "trial_id": "plan-10-edition-sol-k1",
+  "task_id": "plan-10",
+  "family": "plan",
+  "arm": "edition",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I reviewed the repo and history. **Priorities should be added to the existing SQLite queue, with aging and strict ordering-key protection—not by restoring the old urgent flag.** No code changed; the two existing tests pass.\n\n## What the repo tells us\n\nThree constraints shape the design:\n\n- **Starvation already caused an incident.** Commit `0cc863a` removed an urgent flag after normal emails waited six hours behind urgent work (INC-88). Its explicit requirement: priorities must include aging.\n- **Claim performance is production-critical.** Commit `1530fcf` records an outage from scanning 2M rows (INC-61). `tests/test_query_plan.py` requires an indexed claim without a temporary sort.\n- **Billing requires strict per-key enqueue order.** `docs/queue.md:4–5` guarantees this. Priority must never let a later invoice overtake an earlier invoice for the same customer.\n\nI also reproduced two existing claim defects in memory:\n- A later job can pass an earlier, delayed job with the same ordering key.\n- Fifty blocked jobs can hide runnable work because `claim()` filters busy keys *after* its `LIMIT 50`.\n\nBoth matter directly to safely introducing priority.\n\n## 1. Architecture\n\n### Recommended semantics\n\nAdd an optional `priority` to `enqueue()`, defaulting to normal and preserving existing positional arguments:\n\n| Priority | Intended use |\n|---|---|\n| Normal | Existing callers, bulk work |\n| High | Time-sensitive work |\n| Urgent | Password-reset emails |\n\nPriority affects **which eligible job starts next**. It does not preempt running jobs, bypass `run_at`, or override ordering keys.\n\nFor aging, compare eligible candidates using:\n\n**dispatch score = `run_at − priority × aging_interval`**\n\nLower scores run first; ties use job ID. This gives urgent jobs a finite head start rather than permanent precedence. Older normal work eventually beats newly arriving urgent work.\n\nThe aging interval is a product choice to confirm before implementation. This policy prevents indefinite overtaking by newer urgent jobs; it does **not** promise a maximum wait when arrivals exceed worker capacity.\n\n### Two possible designs\n\n**A. Recommended: bounded priority bands in the existing queue.**  \nRead the oldest eligible job from each band using indexed queries, then compare at most three candidates in Python. One queue owns scheduling policy; no extra service or worker pool.\n\n**B. Alternative: separate urgent and normal queues with weighted worker polling.**  \nThis offers capacity isolation, but spreads fairness and ordering across queues and worker configuration. It is a larger change and makes global ordering-key guarantees harder.\n\nChoose A: it hides scheduling behind the existing `enqueue()` / `claim()` interface with fewer moving parts.\n\n### Claim flow\n\n```text\nBegin atomic claim transaction\n    ↓\nFind oldest eligible job in each priority band\n  • due now\n  • no earlier unfinished job with the same ordering key\n    ↓\nCompare aging scores; break ties by ID\n    ↓\nMark winner running; increment attempts; commit\n```\n\n**High-severity correctness changes:**\n- Filter blocked ordering keys **before** selecting each band’s candidate; remove the fixed 50-candidate blind spot.\n- Make selection and update atomic across connections, using SQLite’s write-transaction semantics. Otherwise two workers can select the same job.\n- Treat an earlier delayed or retry-waiting job as blocking later jobs with that key.\n\nAlternative: add priority to the current query alone. I would reject that: it retains the existing ordering and concurrency risks.\n\n**Design guardrails:** Keep aging policy in `queue.py`, persisted fields and indexes in the schema, and migration ownership in `db.py`. Do not duplicate priority rules by job kind or add a scheduler service. Callers choose priority; password-reset payloads require no new inspection or logging.\n\n## 2. Code quality and compatibility\n\nUse an explicit, constrained integer column—not payload JSON—because priority participates in scheduling and indexing.\n\n- Validate supported priority values at enqueue and enforce them in SQLite.\n- Preserve existing callers and the current claimed-job return shape.\n- Existing jobs migrate to normal priority.\n- Failed jobs retain priority; backoff still controls their next eligible time.\n- Document deterministic tie-breaking and the fact that ordering-key safety takes precedence over urgency.\n\n**High-severity migration gap:** `db.connect()` currently executes unconditional `CREATE TABLE` statements; it cannot reopen an initialized database. Adding a column only to `schema.sql` would not upgrade existing installations.\n\nRecommendation: add a small versioned migration path within `db.py`, covering fresh databases, existing databases, repeated opens, and rollback on failure. Alternative: require manual database replacement; unsuitable for queued production work.\n\nAlso, the documented retry/dead-letter flow is not actually wired into this checkout: those modules contain helpers only. Preserve their intended semantics, but **do not expand this feature into building the missing worker/retry system**.\n\n## 3. Tests that prove it\n\nAdd coverage for:\n\n| Test | Regression caught |\n|---|---|\n| Urgent beats newer/older normal work within its head start | Priority has no effect |\n| Old normal work beats newly arriving urgent work | INC-88 starvation returns |\n| Future urgent jobs remain unclaimable | Priority bypasses scheduling |\n| Equal scores resolve deterministically | Unstable ordering |\n| Later urgent job cannot pass an earlier same-key job | Billing sequence breaks |\n| Delayed/retrying key head blocks its successors | Retry causes reordering |\n| More than 50 blocked jobs do not hide eligible work | False empty-queue result |\n| Two connections claim concurrently | Duplicate claims or same-key overlap |\n| Invalid priorities are rejected; omitted priority stays normal | API/data compatibility breaks |\n| Existing database upgrades and reopens without data loss | Deployment loses queued jobs |\n| Failed migration leaves a usable original database | Partial upgrade corrupts startup |\n\nConcurrency and migration tests should use file-backed databases, not independent in-memory connections.\n\n## 4. Performance\n\nDo **not** sort the whole ready backlog by a computed aging expression.\n\nProposed indexes:\n- `(status, priority, run_at, id)` for each band’s due-job lookup.\n- An index supporting the “earlier unfinished job for this ordering key” check, ideally limited to active jobs.\n\nExtend query-plan tests to cover both lookups and retain the no-temporary-sort requirement. Requiring index use alone is insufficient: a heavily blocked band can still examine many candidates.\n\nBefore rollout, measure claim latency with:\n- A 2M-row database, matching the historical incident’s scale.\n- Mostly completed jobs.\n- Large future-scheduled backlogs.\n- Many jobs blocked behind a few ordering keys.\n- Sustained urgent arrivals alongside old normal work.\n\nActual throughput and latency limits are unknown; I would measure them rather than invent targets.\n\n## Build and rollout order\n\nEstimated scope: **seven files, no new service or class**:\n\n1. `docs/queue.md` — define priority, aging, eligibility, retry and ordering semantics.\n2. `jobq/schema.sql`, `jobq/db.py` — column, indexes, safe migration/reopen support.\n3. `jobq/queue.py` — validated enqueue option and atomic, eligible-first claiming.\n4. `tests/test_ordering.py` — strengthen ordering regressions.\n5. `tests/test_priorities.py` — priority, aging, concurrency and migration coverage.\n6. `tests/test_query_plan.py` — protect the revised indexed access paths.\n\nDeploy with workers paused, back up and migrate the database, then restart all workers on the new version. Avoid mixed old/new claimers: old workers would ignore priority. Start by assigning urgent priority only to password-reset emails.\n\n**Not in scope:** preemption, arbitrary priority levels, live reprioritization, separate worker pools, tenant fairness, a dashboard, or implementing the missing retry/dead-letter worker flow.",
+  "counts": {
+    "open_matched": true,
+    "open_any": true,
+    "complete_read": true,
+    "first_step": true,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-10-edition-sol-k1",
+    "requests": 8,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0728549,
+    "input_tokens": 71088,
+    "output_tokens": 3282,
+    "cached_tokens": 56910,
+    "cache_write_tokens": 13855,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0727405,
+        "requests": 7
+      },
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0001144,
+        "requests": 1
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 8
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 65.535,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-calibration",
+    "trial_id": "plan-10-edition-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T06:40:50.585Z",
+    "images": {
+      "core": "sha256:3567e7c17a04b80e7a1454cea7d4e459f0fa39dd8671e6daed39af28a6584e2c",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-dd63528774c8",
+        "id": "sha256:87516b4b1eba9215ef4229b390b5bbad9a942eb29499fa2970117e97d78a356b",
+        "tree_sha256": "9406d46886aea1b2a50de9833e8cb5cea816973bd9f52df9dee7507b4fd42962"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-4bd2edab-af58-40ed-af86-397f3241-564036"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T06:42:20.057Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/29cadc71dbf3db15b1d4fcde/75c8a71c22a1ba19/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/29cadc71dbf3db15b1d4fcde/75c8a71c22a1ba19/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [
+        {
+          "seq": 2,
+          "skill": "gstack-plan",
+          "via": "skill"
+        }
+      ],
+      "complete_via": "inline",
+      "read_whole": true,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git log --oneline -10 && ls && git status --short && git remote -v && find . -maxdepth 3 -type f | sort",
+          "code": 0,
+          "output": "bcd9112 Retries, dead letters, metrics and a CLI\n1530fcf Pin the claim query plan\n0cc863a Remove the urgent flag\nbc7dd8b Add an urgent flag for jobs that must run first\n59638fa Document ordering keys\n0c9a177 SQLite-backed job queue\nREADME.md\nconfig\ndocs\njobq\npyproject.toml\ntests\n./.git/HEAD\n./.git/O"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-10-edition-sol-k1",
+      "meter": {
+        "requests": 8,
+        "usd": 0.0728549,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 8,
+        "usd": 0.0728549,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0001144
+    }
+  }
+}

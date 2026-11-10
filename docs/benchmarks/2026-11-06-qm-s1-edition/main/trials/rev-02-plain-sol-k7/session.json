@@ -1,0 +1,367 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 06:33 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "935fc86b-e20b-4555-a805-f982a0670c09"
+    },
+    "text": "Could you review my retries branch (feature/webhook-retries) against main? I'd like a second pair of eyes before merging. Review only, I'll make any changes myself.",
+    "runId": "c7a48fad-50e6-4acb-986f-fe4e0ace8d32"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "eccc6ce5-2cd5-44a1-bd88-53e87e7966e3",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "textSignature": "{\"v\":1,\"id\":\"msg_02b5ae68302cce12016af0883c43f487d288878d95e505e105\",\"phase\":\"commentary\"}",
+    "text": "I’ll compare `feature/webhook-retries` against `main` and review for correctness, regressions, and test gaps. I won’t change any code.",
+    "runId": "c7a48fad-50e6-4acb-986f-fe4e0ace8d32",
+    "step": {
+     "id": "eccc6ce5-2cd5-44a1-bd88-53e87e7966e3",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "name": "github-gitlab",
+    "wire": {
+     "message": {
+      "id": "eccc6ce5-2cd5-44a1-bd88-53e87e7966e3",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"read\",\"name\":\"github-gitlab\"}"
+    },
+    "action": "read",
+    "runId": "c7a48fad-50e6-4acb-986f-fe4e0ace8d32",
+    "callId": "call_R2H14FyMeMfhfbo5LLUrs6LQ|fc_02b5ae68302cce12016af0883cae0c87d295e1e4fd4f342f99",
+    "tool": "skills",
+    "step": {
+     "id": "eccc6ce5-2cd5-44a1-bd88-53e87e7966e3",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "dir": "/root/workspace/.agent-skills/4ad56c0ad08a3413b1d4219f/83d5cf75f24884d3/github-gitlab",
+    "name": "github-gitlab",
+    "bytes": 6025,
+    "found": true,
+    "action": "read",
+    "sourceScopeId": "org:harness-eval",
+    "result": "[skill files synced to /root/workspace/.agent-skills/4ad56c0ad08a3413b1d4219f/83d5cf75f24884d3/github-gitlab/]\n\n# GitHub / GitLab\n\nUse this skill when the user asks to inspect repos, issues, pull requests, merge\nrequests, code history, branches, or to make a small code change in a hosted repo.\n\n## Choose the account deliberately\n\nUse the current credential manifest to choose an account authorized for this conversation\nthat fits the user's intent. Run commands with `execute` and an explicit `sandbox_id`;\nkeep that ID throughout checkout, edits, checks, and push. Personal and shared accounts are both valid choices; neither\nis an automatic fallback when the other fails. If the intended account is unclear before\na write, ask. Do not infer permission from a login merely being present on the computer.\n\n- **Personal login:** use the authorized `gh`, `glab`, or Git login. Check the active\n  provider account (for example, `gh api user --jq .login`) and the Git transport's auth\n  configuration; a CLI API identity alone does not prove which account Git will use.\n- **Shared org credential:** if listed in the prompt, select its slug and use the\n  core-hosted smart HTTP remote in the `use-shared-credential` skill. This uses\n  the configured shared account, even when a personal OAuth connector is live.\n  Its name is an admin label, not a verified upstream username.\n- **Connected app:** use only advertised capabilities. API access does not by itself\n  establish native Git transport access or configure the CLI's active login.\n\nFor an existing checkout, inspect the remote and applicable credential-helper, SSH,\nproxy, and HTTP-header configuration. A reused checkout\nmay still select a previous account. Commit author metadata is separate from transport\nidentity. Resolve an unknown identity before a write; do not probe access by pushing.\n\n## Logging in\n\nUse the native login only after an explicit authentication rejection. A TLS timeout,\nconnection reset, rate limit, or GitHub server error is not evidence of logout or\npermission expiry. Do not consume another credential grant to repair transport.\n\nFor a confirmed missing or expired GitHub or GitLab login, follow the\n`interactive-login` skill: it runs `gh auth login` / `glab auth login` in a temporary\nhome as a background job, relays the code and URL, and saves the login to the keychain\nso later commands use it through `execute.credentials`.\n\n## Read-only work\n\nCheck auth and inspect repo state:\n\n```bash\ngh auth status\ngh repo view OWNER/REPO --json name,description,url,defaultBranchRef\ngh issue list --repo OWNER/REPO --state open --limit 20\ngh pr list --repo OWNER/REPO --state open --limit 20\n```\n\nFor GitLab:\n\n```bash\nglab auth status\nglab repo view GROUP/PROJECT\nglab issue list --repo GROUP/PROJECT\nglab mr list --repo GROUP/PROJECT\n```\n\nUse `git log`, `git show`, and `git diff` for codebase-change summaries. Cite commit\nhashes, PR/MR numbers, and links.\n\n## Checkout and edits\n\nClone or fetch only the repo the user asked for:\n\n```bash\ngh repo clone OWNER/REPO repo\ncd repo\ngit checkout -b codex/small-change\n```\n\nKeep changes scoped. Run the repo's tests. If a push or PR/MR creation is requested,\nprepare the branch and summary first.\n\n## Writes require approval\n\nPushing branches, creating PRs/MRs, merging, closing issues, editing labels, changing\nrepo settings, releases, or workflows are writes. Ask for approval before running the\nwrite command.\n\nAfter approval:\n\n```bash\ngit push -u origin codex/small-change\ngh pr create --repo OWNER/REPO --title \"...\" --body-file pr.md\n```\n\nFor GitLab:\n\n```bash\ngit push -u origin codex/small-change\nglab mr create --repo GROUP/PROJECT --title \"...\" --description-file mr.md\n```\n\nReport the final URL and leave enough context for review.\n\n## Wait for GitHub CI\n\nUse the bundled helper instead of a bare `gh pr checks --watch` or a handwritten\nshell loop. Use the absolute directory reported by the skill read in place of\n`<skill dir>`. It is one blocking watcher process, not repeated agent turns:\n\n```bash\nnode \"<skill dir>/scripts/watch-ci.mjs\" --repo OWNER/REPO --pr NUMBER --head REVIEWED_HEAD_SHA\n```\n\nCapture the full head SHA from `gh pr view NUMBER --repo OWNER/REPO --json headRefOid`\nbefore review. Use that same SHA for the watcher and the final merge gate. Start the\nwatcher with `execute` using the selected `sandbox_id` and `background:true`, then\nsubscribe with `background` action `watch` and its returned `process_id`. Keep one\nwatcher per PR. Set the process lifetime longer than the helper's 30-minute deadline;\nuse `--timeout-ms` for a different bounded deadline. Use only credentials authorized\nfor that background process; a live foreground grant does not authorize background work.\n\nThe helper polls GitHub internally and emits JSON status records. It retries only\nrecognized transient transport/server errors with bounded backoff. Pending checks\nremain pending. Real CI failures, authentication/authorization failures, changed heads,\nunknown errors, exhausted retries, and deadline expiry all stop with nonzero status.\nExplicit API rate limits stop as `rate_limited`, not authentication errors.\nEmpty check sets, skipped checks, and cancelled checks are not successful evidence.\nDo not interpret an exit code alone as \"checks concluded\": read the status record.\nDo not suppress a nonzero exit or print a success marker after it. Keep `set -e`.\n\nSuccess means the checks observed for the expected head passed, not permission to\nmerge. Re-read checks and review threads immediately before merging. Wait for async\nreviewers on that exact head; resolve findings and complete any review the repo\nrequires. After any push or head change, discard old success/review evidence and repeat.\nOnly merge when all gates pass, with GitHub's atomic head guard:\n\n```bash\ngh pr merge NUMBER --repo OWNER/REPO --squash --match-head-commit REVIEWED_HEAD_SHA\n```\n\nOn a branch that requires a merge queue, this queues the PR; it is merged only once\nGitHub shows it as merged. Never use auto-merge or bypass repository gates. This\nhelper does not retry GitLab commands or change their authentication behavior.\n",
+    "runId": "c7a48fad-50e6-4acb-986f-fe4e0ace8d32",
+    "callId": "call_R2H14FyMeMfhfbo5LLUrs6LQ|fc_02b5ae68302cce12016af0883cae0c87d295e1e4fd4f342f99",
+    "tool": "skills",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "75284248-fc06-4815-ac31-3f54cc540882",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null | head -30\",\"purpose\":\"Locating review checkout\"}"
+    },
+    "scope": "scoped",
+    "command": "pwd; ls -la; find /tmp /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null | head -30",
+    "purpose": "Locating review checkout",
+    "runId": "c7a48fad-50e6-4acb-986f-fe4e0ace8d32",
+    "callId": "call_Lp8fxcLFt7WrNqGlvwXvpm7t|fc_02b5ae68302cce12016af0883e39a087d29e1de4ad55feb847",
+    "tool": "execute",
+    "step": {
+     "id": "75284248-fc06-4815-ac31-3f54cc540882",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\ntotal 16\ndrwxr-xr-x 4 root root 4096 Nov  8 14:33 .\ndrwx------ 6 root root 4096 Nov  8 14:33 ..\ndrwxr-xr-x 3 root root 4096 Nov  8 14:33 .agent-skills\ndrwxr-xr-x 5 root root 4096 Nov  8 14:33 repo\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "c7a48fad-50e6-4acb-986f-fe4e0ace8d32",
+    "callId": "call_Lp8fxcLFt7WrNqGlvwXvpm7t|fc_02b5ae68302cce12016af0883e39a087d29e1de4ad55feb847",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "92a3003d-9cfc-4419-a014-da7af31265e4",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "action": "list",
+    "purpose": "Identifying review sandbox",
+    "runId": "c7a48fad-50e6-4acb-986f-fe4e0ace8d32",
+    "callId": "call_rBcTWRZwpw8CzD1ZLRTIT0pX|fc_02b5ae68302cce12016af088400fe887d29d84636c7f6df3ed",
+    "tool": "sandbox",
+    "step": {
+     "id": "92a3003d-9cfc-4419-a014-da7af31265e4",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "action": "list",
+    "result": "{\"sandboxes\":[{\"id\":\"b49cc76f-2f91-48ca-8577-fbeb493bce5e\",\"name\":\"s1e-probe\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"]},\"state\":\"ready\",\"legacy\":false,\"backend\":\"local\",\"holders\":[\"c7a48fad-50e6-4acb-986f-fe4e0ace8d32\"],\"createdAt\":\"2026-11-08T14:33:29.582Z\",\"createdBy\":\"harness-admin\",\"machineId\":\"qm-sbx-sandbox-b49cc76f-2f91-48ca-8577-fbeb493b-16a294\",\"ownerScopeId\":\"personal:U1\",\"backingScopeId\":\"sandbox-b49cc76f-2f91-48ca-8577-fbeb493bce5e\"}],\"defaultSandboxId\":\"b49cc76f-2f91-48ca-8577-fbeb493bce5e\",\"defaultMode\":\"selected\",\"providers\":[{\"name\":\"local\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\"},\"egressEnforcement\":\"none\",\"sizesMemory\":true,\"actions\":[\"create\",\"retire\"]}]}",
+    "runId": "c7a48fad-50e6-4acb-986f-fe4e0ace8d32",
+    "callId": "call_rBcTWRZwpw8CzD1ZLRTIT0pX|fc_02b5ae68302cce12016af088400fe887d29d84636c7f6df3ed",
+    "tool": "sandbox",
+    "isError": false
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "e3fbc9d4-3315-46bd-b6bd-baa7bcfa5f3c",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log --oneline -6 && git diff --stat main...feature/webhook-retries && ls -la && git config --show-origin --get-regexp 'credential|http\\\\..*extraheader|core.sshCommand|remote\\\\..*proxy' || true\",\"sandbox_id\":\"b49cc76f-2f91-48ca-8577-fbeb493bce5e\",\"purpose\":\"Inspecting branch and repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log --oneline -6 && git diff --stat main...feature/webhook-retries && ls -la && git config --show-origin --get-regexp 'credential|http\\..*extraheader|core.sshCommand|remote\\..*proxy' || true",
+    "purpose": "Inspecting branch and repository",
+    "sandbox_id": "b49cc76f-2f91-48ca-8577-fbeb493bce5e",
+    "runId": "c7a48fad-50e6-4acb-986f-fe4e0ace8d32",
+    "callId": "call_kKQAKfMwWWcAPrurOjzU8Y2D|fc_02b5ae68302cce12016af08841952087d2a57f98034da9d2f0",
+    "tool": "execute",
+    "step": {
+     "id": "e3fbc9d4-3315-46bd-b6bd-baa7bcfa5f3c",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* feature/webhook-retries f6889d5 Time each webhook request\n  main                    ed4de62 Deliver webhooks to subscribers\nf6889d5 Time each webhook request\n7f610e1 Retry failed deliveries with backoff\ned4de62 Deliver webhooks to subscribers\n CHANGELOG.md                |  5 +++++\n README.md                   |  4 ++++\n package.json                |  2 +-\n src/deliver.js              | 13 ++++++++-----\n src/http-transport.js       |  9 +++++++++\n src/retry.js                | 16 ++++++++++++++++\n test/http-transport.test.js | 10 ++++++++++\n test/retry.test.js          | 16 ++++++++++++++++\n 8 files changed, 69 insertions(+), 6 deletions(-)\ntotal 32\ndrwxr-xr-x 5 root root 4096 Nov  8 14:33 .\ndrwxr-xr-x 4 root root 4096 Nov  8 14:33 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 14:33 .git\n-rw-r--r-- 1 root root  148 Nov  8 12:34 CHANGELOG.md\n-rw-r--r-- 1 root root  587 Nov  8 12:34 README.md\n-rw-r--r-- 1 root root  112 Nov  8 12:34 package.json\ndrwxr-xr-x 2 root root 4096 Nov  8 14:33 src\ndrwxr-xr-x 2 root root 4096 Nov  8 14:33 test\n\n[exit 0]",
+    "runId": "c7a48fad-50e6-4acb-986f-fe4e0ace8d32",
+    "callId": "call_kKQAKfMwWWcAPrurOjzU8Y2D|fc_02b5ae68302cce12016af08841952087d2a57f98034da9d2f0",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "bb58ecd7-3e17-4f72-8cfe-dc6809e0c3bd",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git diff main...feature/webhook-retries && for f in src/* test/* package.json README.md CHANGELOG.md; do echo \\\"=== $f\\\"; nl -ba \\\"$f\\\"; done\",\"sandbox_id\":\"b49cc76f-2f91-48ca-8577-fbeb493bce5e\",\"purpose\":\"Reading changes and tests\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git diff main...feature/webhook-retries && for f in src/* test/* package.json README.md CHANGELOG.md; do echo \"=== $f\"; nl -ba \"$f\"; done",
+    "purpose": "Reading changes and tests",
+    "sandbox_id": "b49cc76f-2f91-48ca-8577-fbeb493bce5e",
+    "runId": "c7a48fad-50e6-4acb-986f-fe4e0ace8d32",
+    "callId": "call_Aw34XOviACzEDCqBcFScbfvk|fc_02b5ae68302cce12016af08843ff3087d28075a872df47312d",
+    "tool": "execute",
+    "step": {
+     "id": "bb58ecd7-3e17-4f72-8cfe-dc6809e0c3bd",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex aa436e0..0e448f9 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,10 @@\n # Changelog\n \n+## 2.4.0\n+\n+- Failed deliveries are retried with backoff.\n+- Request timing metric webhook.post_ms.\n+\n ## 2.3.0\n \n - Signed webhook delivery.\ndiff --git a/README.md b/README.md\nindex d46b220..783052d 100644\n--- a/README.md\n+++ b/README.md\n@@ -7,3 +7,7 @@ Outbound webhooks for hookline.\n deliverAll(transport, subscriptions, event) posts the event to every subscription, one after another, and resolves to one result per subscription: { id, ok }.\n \n It never rejects. A delivery that fails is written to the dead-letter log (src/dead-letters.js) and reported as { id, ok: false }, so one broken endpoint never stops the others.\n+\n+## Retries\n+\n+Each delivery is tried once and then retried up to options.retries times (default 3), so an endpoint sees at most 4 requests per event. Retries wait 200 ms, 400 ms, then 800 ms.\ndiff --git a/package.json b/package.json\nindex 7e89c7e..5727026 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"hookline\",\n-  \"version\": \"2.3.0\",\n+  \"version\": \"2.4.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/deliver.js b/src/deliver.js\nindex 9eaa956..8f19dc1 100644\n--- a/src/deliver.js\n+++ b/src/deliver.js\n@@ -1,21 +1,24 @@\n const { sign } = require('./sign');\n const deadLetters = require('./dead-letters');\n+const { withRetries } = require('./retry');\n \n-async function deliverOnce(transport, sub, body) {\n+const DEFAULT_RETRIES = 3;\n+\n+async function deliverOnce(transport, sub, body, retries, delayMs) {\n   const headers = { 'content-type': 'application/json', 'x-signature': sign(sub.secret, body) };\n   try {\n-    await transport.post(sub.url, body, headers);\n-    return { id: sub.id, ok: true };\n+    return withRetries(() => transport.post(sub.url, body, headers), retries, delayMs).then(() => ({ id: sub.id, ok: true }));\n   } catch (err) {\n     deadLetters.record(sub.id, err.message);\n     return { id: sub.id, ok: false };\n   }\n }\n \n-async function deliverAll(transport, subs, event) {\n+async function deliverAll(transport, subs, event, options = {}) {\n   const body = JSON.stringify(event);\n+  const retries = options.retries ?? DEFAULT_RETRIES;\n   const results = [];\n-  for (const sub of subs) results.push(await deliverOnce(transport, sub, body));\n+  for (const sub of subs) results.push(await deliverOnce(transport, sub, body, retries, options.delayMs));\n   return results;\n }\n \ndiff --git a/src/http-transport.js b/src/http-transport.js\nindex 94490b3..1df9690 100644\n--- a/src/http-transport.js\n+++ b/src/http-transport.js\n@@ -5,6 +5,15 @@ class HttpTransport {\n   }\n \n   async post(url, body, headers) {\n+    const started = Date.now();\n+    try {\n+      return await this.send(url, body, headers);\n+    } finally {\n+      this.metrics.timing('webhook.post_ms', Date.now() - started);\n+    }\n+  }\n+\n+  async send(url, body, headers) {\n     const res = await this.fetch(url, { method: 'POST', body, headers });\n     if (!res.ok) throw new Error('HTTP ' + res.status);\n     return res;\ndiff --git a/src/retry.js b/src/retry.js\nnew file mode 100644\nindex 0000000..dda9ff7\n--- /dev/null\n+++ b/src/retry.js\n@@ -0,0 +1,16 @@\n+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));\n+\n+async function withRetries(fn, retries, delayMs = 200) {\n+  let lastError;\n+  for (let attempt = 0; attempt <= retries; attempt++) {\n+    if (attempt > 0) await sleep(delayMs * 2 ** (attempt - 1));\n+    try {\n+      return await fn();\n+    } catch (err) {\n+      lastError = err;\n+    }\n+  }\n+  throw lastError;\n+}\n+\n+module.exports = { withRetries };\ndiff --git a/test/http-transport.test.js b/test/http-transport.test.js\nnew file mode 100644\nindex 0000000..d5088de\n--- /dev/null\n+++ b/test/http-transport.test.js\n@@ -0,0 +1,10 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { HttpTransport } = require('../src/http-transport');\n+\n+test('records a timing for each post', async () => {\n+  const timings = [];\n+  const t = new HttpTransport(async () => ({ ok: true, status: 200 }), { timing: (name, ms) => timings.push(name) });\n+  await t.post('https://a.test/hook', '{}', {});\n+  assert.deepStrictEqual(timings, ['webhook.post_ms']);\n+});\ndiff --git a/test/retry.test.js b/test/retry.test.js\nnew file mode 100644\nindex 0000000..51dcfe9\n--- /dev/null\n+++ b/test/retry.test.js\n@@ -0,0 +1,16 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { withRetries } = require('../src/retry');\n+\n+test('a flaky call succeeds on a retry', async () => {\n+  let calls = 0;\n+  const result = await withRetries(async () => { calls++; if (calls < 3) throw new Error('flaky'); return 'done'; }, 3, 0);\n+  assert.strictEqual(result, 'done');\n+  assert.strictEqual(calls, 3);\n+});\n+\n+test('gives up after the first try plus the retries', async () => {\n+  let calls = 0;\n+  await assert.rejects(withRetries(async () => { calls++; throw new Error('down'); }, 2, 0), /down/);\n+  assert.strictEqual(calls, 3);\n+});\n=== src/dead-letters.js\n     1\tconst entries = [];\n     2\t\n     3\tfunction record(id, reason) {\n     4\t  entries.push({ id, reason, at: new Date().toISOString() });\n     5\t}\n     6\t\n     7\tfunction list() {\n     8\t  return entries.slice();\n     9\t}\n    10\t\n    11\tmodule.exports = { record, list };\n=== src/deliver.js\n     1\tconst { sign } = require('./sign');\n     2\tconst deadLetters = require('./dead-letters');\n     3\tconst { withRetries } = require('./retry');\n     4\t\n     5\tconst DEFAULT_RETRIES = 3;\n     6\t\n     7\tasync function deliverOnce(transport, sub, body, retries, delayMs) {\n     8\t  const headers = { 'content-type': 'application/json', 'x-signature': sign(sub.secret, body) };\n     9\t  try {\n    10\t    return withRetries(() => transport.post(sub.url, body, headers), retries, delayMs).then(() => ({ id: sub.id, ok: true }));\n    11\t  } catch (err) {\n    12\t    deadLetters.record(sub.id, err.message);\n    13\t    return { id: sub.id, ok: false };\n    14\t  }\n    15\t}\n    16\t\n    17\tasync function deliverAll(transport, subs, event, options = {}) {\n    18\t  const body = JSON.stringify(event);\n    19\t  const retries = options.retries ?? DEFAULT_RETRIES;\n    20\t  const results = [];\n    21\t  for (const sub of subs) results.push(await deliverOnce(transport, sub, body, retries, options.delayMs));\n    22\t  return results;\n    23\t}\n    24\t\n    25\tmodule.exports = { deliverAll };\n=== src/http-transport.js\n     1\tclass HttpTransport {\n     2\t  constructor(fetchImpl, metrics) {\n     3\t    this.fetch = fetchImpl;\n     4\t    this.metrics = metrics;\n     5\t  }\n     6\t\n     7\t  async post(url, body, headers) {\n     8\t    const started = Date.now();\n     9\t    try {\n    10\t      return await this.send(url, body, headers);\n    11\t    } finally {\n    12\t      this.metrics.timing('webhook.post_ms', Date.now() - started);\n    13\t    }\n    14\t  }\n    15\t\n    16\t  async send(url, body, headers) {\n    17\t    const res = await this.fetch(url, { method: 'POST', body, headers });\n    18\t    if (!res.ok) throw new Error('HTTP ' + res.status);\n    19\t    return res;\n    20\t  }\n    21\t}\n    22\t\n    23\tmodule.exports = { HttpTransport };\n=== src/retry.js\n     1\tconst sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));\n     2\t\n     3\tasync function withRetries(fn, retries, delayMs = 200) {\n     4\t  let lastError;\n     5\t  for (let attempt = 0; attempt <= retries; attempt++) {\n     6\t    if (attempt > 0) await sleep(delayMs * 2 ** (attempt - 1));\n     7\t    try {\n     8\t      return await fn();\n     9\t    } catch (err) {\n    10\t      lastError = err;\n    11\t    }\n    12\t  }\n    13\t  throw lastError;\n    14\t}\n    15\t\n    16\tmodule.exports = { withRetries };\n=== src/sign.js\n     1\tconst crypto = require('node:crypto');\n     2\t\n     3\tfunction sign(secret, body) {\n     4\t  return crypto.createHmac('sha256', secret).update(body).digest('hex');\n     5\t}\n     6\t\n     7\tmodule.exports = { sign };\n=== test/deliver.test.js\n     1\tconst test = require('node:test');\n     2\tconst assert = require('node:assert');\n     3\tconst { deliverAll } = require('../src/deliver');\n     4\t\n     5\ttest('every subscription gets the event', async () => {\n     6\t  const seen = [];\n     7\t  const transport = { post: async (url) => { seen.push(url); } };\n     8\t  const subs = [{ id: 'a', url: 'https://a.test/hook', secret: 's' }, { id: 'b', url: 'https://b.test/hook', secret: 's' }];\n     9\t  assert.deepStrictEqual(await deliverAll(transport, subs, { type: 'ping' }), [{ id: 'a', ok: true }, { id: 'b', ok: true }]);\n    10\t  assert.deepStrictEqual(seen, ['https://a.test/hook', 'https://b.test/hook']);\n    11\t});\n=== test/http-transport.test.js\n     1\tconst test = require('node:test');\n     2\tconst assert = require('node:assert');\n     3\tconst { HttpTransport } = require('../src/http-transport');\n     4\t\n     5\ttest('records a timing for each post', async () => {\n     6\t  const timings = [];\n     7\t  const t = new HttpTransport(async () => ({ ok: true, status: 200 }), { timing: (name, ms) => timings.push(name) });\n     8\t  await t.post('https://a.test/hook', '{}', {});\n     9\t  assert.deepStrictEqual(timings, ['webhook.post_ms']);\n    10\t});\n=== test/retry.test.js\n     1\tconst test = require('node:test');\n     2\tconst assert = require('node:assert');\n     3\tconst { withRetries } = require('../src/retry');\n     4\t\n     5\ttest('a flaky call succeeds on a retry', async () => {\n     6\t  let calls = 0;\n     7\t  const result = await withRetries(async () => { calls++; if (calls < 3) throw new Error('flaky'); return 'done'; }, 3, 0);\n     8\t  assert.strictEqual(result, 'done');\n     9\t  assert.strictEqual(calls, 3);\n    10\t});\n    11\t\n    12\ttest('gives up after the first try plus the retries', async () => {\n    13\t  let calls = 0;\n    14\t  await assert.rejects(withRetries(async () => { calls++; throw new Error('down'); }, 2, 0), /down/);\n    15\t  assert.strictEqual(calls, 3);\n    16\t});\n=== package.json\n     1\t{\n     2\t  \"name\": \"hookline\",\n     3\t  \"version\": \"2.4.0\",\n     4\t  \"private\": true,\n     5\t  \"scripts\": {\n     6\t    \"test\": \"node --test\"\n     7\t  }\n     8\t}\n=== README.md\n     1\t# hookline\n     2\t\n     3\tOutbound webhooks for hookline.\n     4\t\n     5\t## Delivery\n     6\t\n     7\tdeliverAll(transport, subscriptions, event) posts the event to every subscription, one after another, and resolves to one result per subscription: { id, ok }.\n     8\t\n     9\tIt never rejects. A delivery that fails is written to the dead-letter log (src/dead-letters.js) and reported as { id, ok: false }, so one broken endpoint never stops the others.\n    10\t\n    11\t## Retries\n    12\t\n    13\tEach delivery is tried once and then retried up to options.retries times (default 3), so an endpoint sees at most 4 requests per event. Retries wait 200 ms, 400 ms, then 800 ms.\n=== CHANGELOG.md\n     1\t# Changelog\n     2\t\n     3\t## 2.4.0\n     4\t\n     5\t- Failed deliveries are retried with backoff.\n     6\t- Request timing metric webhook.post_ms.\n     7\t\n     8\t## 2.3.0\n     9\t\n    10\t- Signed webhook delivery.\n\n[exit 0]",
+    "runId": "c7a48fad-50e6-4acb-986f-fe4e0ace8d32",
+    "callId": "call_Aw34XOviACzEDCqBcFScbfvk|fc_02b5ae68302cce12016af08843ff3087d28075a872df47312d",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "96684055-7faf-481c-9770-e6ffc2a6494e",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "{\"id\":\"rs_02b5ae68302cce12016af08845bcc087d290ddfbe70f6f454b\",\"type\":\"reasoning\",\"content\":[],\"encrypted_content\":\"gAAAAABq8IhIb99Gbn_AeYaJzWu2g3K29FE1V-MfHVUOnVyhL_epSRUbZUkvyucbAQHOfol5MIn--_YF3hMniN1iWLyL1pyUCoCxnlRBDP5DK508j_0bf3siaJsKCiH6o7ofgVbhU_y8WP8WIZ1ZlKjXAPVhe34s6GINzSbHKOeHK3F6rgszsBPJSm9HBd30RHbIubpNIVHm4bClQlWt79Wfet8WOYOKlfIsZt2kWceKned1FaET0W39tENlPJwXImbM9pbJIV2nXHbhamCVwc1JnnElZ3qKOHT9Rz3qVj7yrBz3WcGDuRPIpwazGmp5B7LUnYVcUYMCfq39GEOkZNvyhFc6q7erECnpqmm_JqxviHqmLWtnt497cMBgJM2fTOJ-ZPm1PlN77dWYjeHBvHk9wKWaxtzfS_rZbr-5Rbkn1Tm0Q76jKz5-pYT2FnI6ezeGTLn5GraFN2UQ79_NtlcQ9ZNfMOkAfm9vfowhBApsz-MON27rMn71cLiQ_r3H-snaBte91jJHI4MyfdI-VWf7tghRUwmJ_DCZFgVg6Moze2xnBaCRtcydiRVCDi2EHInCOmF0ZBjZ5BcBnBDc-QXnTe4ztx_R8XaQjDN_063ae5gPgvOivFfglsfBta35dSDIfWiDZVgUZ2DBB-GowVdTfYtvnf-JOkf-f7K1_S0i23Fjog3Oc9mHgUVElXyMOabHDB-Me2JHEpTle4O8p8QDrO09W9vkfG7rxB-r3cKCMHRhyzpGs9jgptEv4mfWX2lzLx9qslOYTyczLFvWvbdla-5qq3JMc3eiLSvKVuoySSDj9VO9kfpSouOyYoeuaPA1wnFmwMvipdlyoQ415BDA1S6SPwDqZps-oXx5M28ooTZ6r3zgghQWEPzvxwxts6ec0Zm8UN2V-B9mKV4grbnUBHc0N-KvO5YqCRhUcg48eGVkiE9nVPRelBUjmAcdAtmuK08n1Iu29qXJR11FqmGxuZUf8q4c9ybvxA7L1ZMXR6XsrR1gGZK-t_AGwCJjZlB2Q-0TuERK4sXVvs67H8dIrjfsenHTVIWAo1D5Dg2LRvwMZmg6hTA_olJn7Y4uenq1dWpzGEsU6vWNRLRF7ugkRNLDY0OG-DNzmyH4XKAmLQTgzlK79qiJnPkm3OKiHc61RbatMfnGaonQEdARBFh2Gc1Qvo_XQS70IIApZQGDArizX2QRiYRFi_4X_K-_5gjuDmS2IClXTxHOF-_2dw4PbkeDp66p9mizMGWtzYRVbebCTaiJ3rfNFSRywPutx9xwElBOyFMzrAWcu_vWnwH3e6ZejH4ABHZkFzkyZeQZZ5IP7tLEoG-HtHYdAxHVLWHG_t83iJRbFkvy0pjJ5noD6yqtvV8GtcCIFHdT0OYOFOfE8geqyeFacInxSnml4bEla1RYNiwOII9TUAy5D7rUn6OoMxPYL1KO481mSvXl7Y3l5-ajHf5rp3B00_TCswKOmE15TJ3voIz9aVNPR2_GnkJNvhVWm75tfC_YlIEPq5XpdjdSK4o7mLhVATpglG8rpj00Mxd8qmFrT6R69BIOOT1oqXiLyvVYaNHW5cF_bQhBr_GzbXENF5IMYgsHomDZxvsKEiOBCa58JGn2hUme9RkgABqvl4LAbAbJv4i_5f18vcN5bb6jXox0PRfPe-A8b3qmpRIK--KHndfBs-tTyEEj7RAkcCMNn96wb9to4NIZQ0WldmBfL9pBMtGPMwyYcTWq5pqVSe3Rt_ck4kMc2HcLphiUyXTwe_L9GFGLax0EiJXmiyZ0AO1PBlqHipFECjvJSNubo-N8oWSg2euLWeP4tIMzDb0lN6FgVm8YFiuL4Vd589nBD0bwHJsgrGIFW63PnOW0RmGBo2QjToD5OO4b0U-8rdrtpCPoGXDqYGGwkdzgbmjoEqUEU-M8lp0Ae_ekVTNvu1ryQQO2eiXKp8fODpUYT96dwIf4tXTgl70Mg2amLA1WFQOqgrrfgmpNvCG9yZ5pvjewiit4BUbLOYxbeytPM8oZt0ov1Pw8XxFpLo4zVWbwlRKixwQEJWCt95hjv4ymkCirIUqNNKbPiMB2E3hQv0A1UXah6P02xbAhvNjChxb4j1ujVA3rMR5xoqQXieUmFSxc3ie9eV0IpdOPXWzYZQ9FTpCm4oZRY5sQrst0pBiPwqGWaNlN-zLts18JsRcvgMlAmWO1KQD4SsF7ePZM9NzvNlot7Uu75_vdEy8SNCFwRlSjtaHpHTZdLwBV3bp3p7xeRCe_Bmd32BZoI3enbYA4nebf_zZvoN1v6EUGMiE7-SXOAlYqtqGGOfcjVZFU_Pv-SNFdkvT-lv3RmssE7jIFdXwz7kUmiT0PIiOUofFz5tgqeq77zu_0Ispg1-ygijP1J3JMmwqEs6GWRufINY5CzRaLwFxj8y_Dcw0xId-ye7QP3rOKQAOQVICHsYMJ\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"**Testing for bugs**\\n\\nI need to reproduce two primary bugs. The existing constructor had unused metrics, so omitting them seems valid. I should mention that the primary regression is throwing instead of being optional. I'll run inline node assert tests without modifying any files. I could use a temporary branch to demonstrate the failures. My goal is to use inline assertions to catch the exit output effectively. This should clarify where things are going wrong.\"}]}",
+    "thinking": "**Testing for bugs**\n\nI need to reproduce two primary bugs. The existing constructor had unused metrics, so omitting them seems valid. I should mention that the primary regression is throwing instead of being optional. I'll run inline node assert tests without modifying any files. I could use a temporary branch to demonstrate the failures. My goal is to use inline assertions to catch the exit output effectively. This should clarify where things are going wrong.",
+    "runId": "c7a48fad-50e6-4acb-986f-fe4e0ace8d32",
+    "step": {
+     "id": "96684055-7faf-481c-9770-e6ffc2a6494e",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "96684055-7faf-481c-9770-e6ffc2a6494e",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && npm test; node <<'NODE'\\nconst assert = require('node:assert/strict');\\nconst { deliverAll } = require('./src/deliver');\\nconst deadLetters = require('./src/dead-letters');\\nconst { HttpTransport } = require('./src/http-transport');\\n(async () => {\\n  const seen = [];\\n  try {\\n    const result = await deliverAll({ post: async (url) => { seen.push(url); if (url === 'a') throw new Error('down'); } }, [{ id: 'a', url: 'a', secret: 's' }, { id: 'b', url: 'b', secret: 's' }], {}, { retries: 1, delayMs: 0 });\\n    console.log('delivery result:', result);\\n  } catch (err) { console.log('delivery rejected:', err.message); }\\n  console.log('attempted endpoints:', seen, 'dead letters:', deadLetters.list());\\n  let requests = 0;\\n  const t = new HttpTransport(async () => { requests++; return { ok: true, status: 200 }; }, { timing() { throw new Error('metrics unavailable'); } });\\n  try {\\n    await deliverAll(t, [{ id: 'a', url: 'a', secret: 's' }], {}, { retries: 3, delayMs: 0 });\\n  } catch (err) { console.log('successful HTTP delivery rejected:', err.message); }\\n  console.log('successful HTTP requests with failing metrics:', requests);\\n  try { await new HttpTransport(async () => ({ ok: true, status: 200 })).post('a', '{}', {}); }\\n  catch (err) { console.log('without metrics:', err.message); }\\n})();\\nNODE\\n git status --short && git rev-parse main HEAD\",\"sandbox_id\":\"b49cc76f-2f91-48ca-8577-fbeb493bce5e\",\"purpose\":\"Testing failure and telemetry paths\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && npm test; node <<'NODE'\nconst assert = require('node:assert/strict');\nconst { deliverAll } = require('./src/deliver');\nconst deadLetters = require('./src/dead-letters');\nconst { HttpTransport } = require('./src/http-transport');\n(async () => {\n  const seen = [];\n  try {\n    const result = await deliverAll({ post: async (url) => { seen.push(url); if (url === 'a') throw new Error('down'); } }, [{ id: 'a', url: 'a', secret: 's' }, { id: 'b', url: 'b', secret: 's' }], {}, { retries: 1, delayMs: 0 });\n    console.log('delivery result:', result);\n  } catch (err) { console.log('delivery rejected:', err.message); }\n  console.log('attempted endpoints:', seen, 'dead letters:', deadLetters.list());\n  let requests = 0;\n  const t = new HttpTransport(async () => { requests++; return { ok: true, status: 200 }; }, { timing() { throw new Error('metrics unavailable'); } });\n  try {\n    await deliverAll(t, [{ id: 'a', url: 'a', secret: 's' }], {}, { retries: 3, delayMs: 0 });\n  } catch (err) { console.log('successful HTTP delivery rejected:', err.message); }\n  console.log('successful HTTP requests with failing metrics:', requests);\n  try { await new HttpTransport(async () => ({ ok: true, status: 200 })).post('a', '{}', {}); }\n  catch (err) { console.log('without metrics:', err.message); }\n})();\nNODE\n git status --short && git rev-parse main HEAD",
+    "purpose": "Testing failure and telemetry paths",
+    "sandbox_id": "b49cc76f-2f91-48ca-8577-fbeb493bce5e",
+    "runId": "c7a48fad-50e6-4acb-986f-fe4e0ace8d32",
+    "callId": "call_VUs9Z0Iy0hosC4FbS9rmz2XN|fc_02b5ae68302cce12016af08848389c87d2a171432c6ca4f771",
+    "tool": "execute",
+    "step": {
+     "id": "96684055-7faf-481c-9770-e6ffc2a6494e",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 14,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "\n> hookline@2.4.0 test\n> node --test\n\n✔ every subscription gets the event (2.19284ms)\n✔ records a timing for each post (1.084151ms)\n✔ a flaky call succeeds on a retry (3.821256ms)\n✔ gives up after the first try plus the retries (2.131378ms)\nℹ tests 4\nℹ suites 0\nℹ pass 4\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 101.813463\ndelivery rejected: down\nattempted endpoints: [ 'a', 'a' ] dead letters: []\nsuccessful HTTP delivery rejected: metrics unavailable\nsuccessful HTTP requests with failing metrics: 4\nwithout metrics: Cannot read properties of undefined (reading 'timing')\ned4de6285e5ae66d30715a483a3c64efc28e2bde\nf6889d59284de60c554721ce2974e0056c345179\n\n[stderr]\nnpm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\n\n[exit 0]",
+    "runId": "c7a48fad-50e6-4acb-986f-fe4e0ace8d32",
+    "callId": "call_VUs9Z0Iy0hosC4FbS9rmz2XN|fc_02b5ae68302cce12016af08848389c87d2a171432c6ca4f771",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 15,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "fb84700b-c761-4480-ab14-e1e806f4a450",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "textBlock": {
+     "textSignature": "{\"v\":1,\"id\":\"msg_02b5ae68302cce12016af0884bac1087d2a466ed4754cbe060\",\"phase\":\"final_answer\"}"
+    },
+    "workStartedAt": 1794148410763,
+    "workFinishedAt": 1794148433330,
+    "text": "I found **two issues I’d fix before merging** in `feature/webhook-retries` (`f6889d5`) against `main` (`ed4de62`).\n\n**1. High — Exhausted retries bypass the error handler**\n`src/deliver.js:10`\n\nReturning `withRetries(...).then(...)` without awaiting it means its rejection escapes the surrounding `try/catch`. When an endpoint exhausts its retries, `deliverAll` rejects, no dead-letter entry is recorded, and later subscriptions never receive the event—breaking the documented delivery contract.\n\nReproduced with two subscriptions: the first failed twice, the second was never attempted, and the dead-letter log stayed empty.\n\n**Suggested fix:** await `withRetries` inside the `try`, then return the success result. Add a regression test asserting that exhausted retries produce `{ id, ok: false }`, record a dead letter, and still deliver to the next subscription.\n\n**2. High — Metrics failures trigger duplicate webhook deliveries**\n`src/http-transport.js:11–12`\n\nIf `metrics.timing()` throws in `finally`, it turns a successful HTTP request into a failed attempt. The retry wrapper then sends the webhook again. It can also mask the original HTTP error. An omitted metrics object now causes the same problem.\n\nReproduced with successful HTTP responses and a throwing metrics sink: **four successful POSTs**, followed by a rejected delivery.\n\n**Suggested fix:** isolate telemetry errors so they cannot change the request’s outcome. Test a throwing metrics sink on both successful and failed requests, plus omitted metrics if that remains supported.\n\n**Validation:** All four existing tests pass; neither failure path is covered. I reproduced both with inline checks and left the working tree unchanged.",
+    "runId": "c7a48fad-50e6-4acb-986f-fe4e0ace8d32",
+    "step": {
+     "id": "fb84700b-c761-4480-ab14-e1e806f4a450",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  }
+ ]
+}

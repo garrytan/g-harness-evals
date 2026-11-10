@@ -1,0 +1,318 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 06:00 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "1c0f66ae-ca56-43b4-bebe-c3adb91df1bc"
+    },
+    "text": "Morning! Could you review search-filters against main before I merge? It builds the product search query. Please just review, I'll make the edits myself.",
+    "runId": "66fe8d80-23b2-4e71-84dd-fdd3c88549c9"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "53843a81-ae16-4889-abb9-208438d9663b",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "I need to find the repo. Let me look.",
+    "runId": "66fe8d80-23b2-4e71-84dd-fdd3c88549c9",
+    "step": {
+     "id": "53843a81-ae16-4889-abb9-208438d9663b",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "53843a81-ae16-4889-abb9-208438d9663b",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd ~ 2>/dev/null; ls; find / -maxdepth 4 -name .git -type d 2>/dev/null | grep -v proc | head\",\"purpose\":\"Locating the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd ~ 2>/dev/null; ls; find / -maxdepth 4 -name .git -type d 2>/dev/null | grep -v proc | head",
+    "purpose": "Locating the repository",
+    "runId": "66fe8d80-23b2-4e71-84dd-fdd3c88549c9",
+    "callId": "toolu_01K8ohtT1ScX8wGBxAPozFBt",
+    "tool": "execute",
+    "step": {
+     "id": "53843a81-ae16-4889-abb9-208438d9663b",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "workspace\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "66fe8d80-23b2-4e71-84dd-fdd3c88549c9",
+    "callId": "toolu_01K8ohtT1ScX8wGBxAPozFBt",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "ebbe034d-417a-430f-b124-221249ad0e99",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; git branch -a; git log --oneline main..search-filters; git diff main...search-filters\",\"purpose\":\"Viewing branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..search-filters; git diff main...search-filters",
+    "purpose": "Viewing branch diff",
+    "runId": "66fe8d80-23b2-4e71-84dd-fdd3c88549c9",
+    "callId": "toolu_01BpuUC4kDkt4zHgVfGDbCuH",
+    "tool": "execute",
+    "step": {
+     "id": "ebbe034d-417a-430f-b124-221249ad0e99",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "  main\n* search-filters\n54f7b81 Paginate search results\n306a556 Add free-text search over the name\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex d29661f..a673868 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.6.0\n+\n+- Free-text product search and sort orders.\n+\n ## 0.5.0\n \n - Search by category and in-stock filters.\ndiff --git a/README.md b/README.md\nindex fdb10f6..17c96ad 100644\n--- a/README.md\n+++ b/README.md\n@@ -3,3 +3,11 @@\n Product search for catalog-search.\n \n Queries are built for a parameterized driver: every value from the request goes in the params array and the SQL carries only $1, $2 placeholders. Never interpolate request values into the SQL string. See src/query.js.\n+\n+## Free-text search\n+\n+A term searches the product name with ILIKE. The whitelist of sort orders lives in src/sort.js.\n+\n+## Paging\n+\n+limitOffset(page, pageSize) clamps the page size to 1 to 100 and returns a limit and offset. Page numbers are 1-based.\ndiff --git a/package.json b/package.json\nindex a0c5642..17d246f 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"catalog-search\",\n-  \"version\": \"0.5.0\",\n+  \"version\": \"0.6.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/paginate.js b/src/paginate.js\nnew file mode 100644\nindex 0000000..51a4acd\n--- /dev/null\n+++ b/src/paginate.js\n@@ -0,0 +1,9 @@\n+const MAX_PAGE = 100;\n+\n+function limitOffset(page = 1, pageSize = 20) {\n+  const size = Math.min(Math.max(1, pageSize | 0), MAX_PAGE);\n+  const p = Math.max(1, page | 0);\n+  return { limit: size, offset: (p - 1) * size };\n+}\n+\n+module.exports = { limitOffset, MAX_PAGE };\ndiff --git a/src/query.js b/src/query.js\nindex d65dc5e..ab55daa 100644\n--- a/src/query.js\n+++ b/src/query.js\n@@ -1,4 +1,4 @@\n-function buildFilters(filters) {\n+function buildWhere(filters) {\n   const clauses = [];\n   const params = [];\n   if (filters.category) {\n@@ -8,7 +8,11 @@ function buildFilters(filters) {\n   if (filters.inStock) {\n     clauses.push('stock > 0');\n   }\n+  if (filters.term) {\n+    const term = filters.term.trim();\n+    clauses.push(\"name ILIKE '%\" + term + \"%'\");\n+  }\n   return { where: clauses.length ? 'WHERE ' + clauses.join(' AND ') : '', params };\n }\n \n-module.exports = { buildFilters };\n+module.exports = { buildWhere };\ndiff --git a/src/sort.js b/src/sort.js\nnew file mode 100644\nindex 0000000..756c8c0\n--- /dev/null\n+++ b/src/sort.js\n@@ -0,0 +1,11 @@\n+const SORTS = {\n+  relevance: 'rank DESC',\n+  newest: 'created_at DESC',\n+  price_asc: 'price ASC',\n+};\n+\n+function orderBy(sort) {\n+  return 'ORDER BY ' + (SORTS[sort] || SORTS.relevance);\n+}\n+\n+module.exports = { orderBy, SORTS };\ndiff --git a/test/paginate.test.js b/test/paginate.test.js\nnew file mode 100644\nindex 0000000..0dfec8e\n--- /dev/null\n+++ b/test/paginate.test.js\n@@ -0,0 +1,11 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { limitOffset } = require('../src/paginate');\n+\n+test('page 1 starts at 0', () => {\n+  assert.deepStrictEqual(limitOffset(1, 20), { limit: 20, offset: 0 });\n+});\n+\n+test('page size is capped at 100', () => {\n+  assert.deepStrictEqual(limitOffset(2, 500), { limit: 100, offset: 100 });\n+});\ndiff --git a/test/query.test.js b/test/query.test.js\nindex 363923b..92c7b11 100644\n--- a/test/query.test.js\n+++ b/test/query.test.js\n@@ -1,11 +1,17 @@\n const test = require('node:test');\n const assert = require('node:assert');\n-const { buildFilters } = require('../src/query');\n+const { buildWhere } = require('../src/query');\n \n test('category becomes a placeholder and a param', () => {\n-  assert.deepStrictEqual(buildFilters({ category: 'books' }), { where: 'WHERE category = $1', params: ['books'] });\n+  assert.deepStrictEqual(buildWhere({ category: 'books' }), { where: 'WHERE category = $1', params: ['books'] });\n });\n \n-test('in-stock is a literal condition', () => {\n-  assert.deepStrictEqual(buildFilters({ inStock: true }), { where: 'WHERE stock > 0', params: [] });\n+test('a term adds a name search', () => {\n+  const q = buildWhere({ term: 'red' });\n+  assert.match(q.where, /name ILIKE/);\n+});\n+\n+test('filters combine with AND', () => {\n+  const q = buildWhere({ category: 'books', inStock: true, term: 'atlas' });\n+  assert.match(q.where, /category = \\$1 AND stock > 0 AND name ILIKE/);\n });\n\n[exit 0]",
+    "runId": "66fe8d80-23b2-4e71-84dd-fdd3c88549c9",
+    "callId": "toolu_01BpuUC4kDkt4zHgVfGDbCuH",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "73b10c47-458e-42bc-b1be-718fe2faaa59",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQSrgUKEAgTGAI4AUIIdGhpbmtpbmcSDBjDHvtmW+vdiWVauBoMyVkoQwMLdbaEQKIBIjDrW+ulu06dwmpnia9JUFHAa6kJaUSutMjne9eG3l5rWi5bz3TlL9mC5Fj9lsusfoUqywQBGt+lX2SMwb4CSXvn1fJ6XE5niOsncSSVF65V4vTWDawoT6uWRcA9nf7GxgatCtq7p4GfhxOEfNLZSQCA6OenFmiZ4gTxjmdaxhN9WTM1Y74xKX4FGuwh9jR4VDgqSouP6cwwLTZcq2MqCCkcLxMandzYyYdODlUNVZAtTwU987L1GnEUUXGortLhimyNRgwjBkFogdZzUE+jl6UjuzD6EoUXId8F3/iRMb7tnsm2OKAx26Yhc3N0crzZq9iw+viwDIS5cTKXckCgp1Lj3leJEl/jU4XqtoucjPtR3WHjeynBy+QcLpgbmfvi0aVVV7BYkRuclRP+eMz5f02c5qgE+KonenegQ2PYdADX+cSw0qn3adV0k39NG8RHZnO5Wgf1q9BQWkhOaXKwpJMXasAr2OXbsKp40/MpZQwKhTgmtrOV5MY16VWWNgzBLqaXVFFotZiMQq57INU0Casoq39oc/0D5wJoKLXr3q9I5BcT5s+a/erLizKzbTWHg9dad+InUSypXDaKrRvcgfno5+wbl0Dus+GHypmWbKHwybjhO96jWCUJ1qDvCAx+FEGr9L5s5bqMXfy9t9z9W8F24BKoRdei4CdrCwuO4AwCHtOLEPVLsLi/SJKni2r27N1QUw/wAFnMG+mxNXedDUKHLIXQRDunqeU6+ZrSnKJgBEe+hs2RXZ0DIKLCLX8+Z9myYWl+rPsKViwsMjHmcrFQfdhlAVCSOghoM4LuZbpx0BkpbvbiQpuHPyp60vqUB8SOrrGc5RPyD2hQeRZZtBgB",
+    "thinking": "I need to see where `buildFilters` is called from outside its own file, so I'll check the other call sites.\n\n",
+    "runId": "66fe8d80-23b2-4e71-84dd-fdd3c88549c9",
+    "step": {
+     "id": "73b10c47-458e-42bc-b1be-718fe2faaa59",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "73b10c47-458e-42bc-b1be-718fe2faaa59",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; git ls-files; grep -rn \\\"buildFilters\\\\|buildWhere\\\\|orderBy\\\\|limitOffset\\\" --exclude-dir=.git .; npm test 2>&1 | tail -5\",\"purpose\":\"Checking callers and tests\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; git ls-files; grep -rn \"buildFilters\\|buildWhere\\|orderBy\\|limitOffset\" --exclude-dir=.git .; npm test 2>&1 | tail -5",
+    "purpose": "Checking callers and tests",
+    "runId": "66fe8d80-23b2-4e71-84dd-fdd3c88549c9",
+    "callId": "toolu_01UdW1GdjAYaDaDgFb4bdTzw",
+    "tool": "execute",
+    "step": {
+     "id": "73b10c47-458e-42bc-b1be-718fe2faaa59",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "CHANGELOG.md\nREADME.md\npackage.json\nsrc/paginate.js\nsrc/query.js\nsrc/sort.js\ntest/paginate.test.js\ntest/query.test.js\n./README.md:13:limitOffset(page, pageSize) clamps the page size to 1 to 100 and returns a limit and offset. Page numbers are 1-based.\n./src/sort.js:7:function orderBy(sort) {\n./src/sort.js:11:module.exports = { orderBy, SORTS };\n./src/query.js:1:function buildWhere(filters) {\n./src/query.js:18:module.exports = { buildWhere };\n./src/paginate.js:3:function limitOffset(page = 1, pageSize = 20) {\n./src/paginate.js:9:module.exports = { limitOffset, MAX_PAGE };\n./test/query.test.js:3:const { buildWhere } = require('../src/query');\n./test/query.test.js:6:  assert.deepStrictEqual(buildWhere({ category: 'books' }), { where: 'WHERE category = $1', params: ['books'] });\n./test/query.test.js:10:  const q = buildWhere({ term: 'red' });\n./test/query.test.js:15:  const q = buildWhere({ category: 'books', inStock: true, term: 'atlas' });\n./test/paginate.test.js:3:const { limitOffset } = require('../src/paginate');\n./test/paginate.test.js:6:  assert.deepStrictEqual(limitOffset(1, 20), { limit: 20, offset: 0 });\n./test/paginate.test.js:10:  assert.deepStrictEqual(limitOffset(2, 500), { limit: 100, offset: 100 });\nnpm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\n\n[exit 0]",
+    "runId": "66fe8d80-23b2-4e71-84dd-fdd3c88549c9",
+    "callId": "toolu_01UdW1GdjAYaDaDgFb4bdTzw",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "e2b3b9c3-14a5-4e2a-b451-c5543f9194c1",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; npm test 2>&1 | grep -E \\\"^# (pass|fail)\\\"\",\"purpose\":\"Getting test results\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; npm test 2>&1 | grep -E \"^# (pass|fail)\"",
+    "purpose": "Getting test results",
+    "runId": "66fe8d80-23b2-4e71-84dd-fdd3c88549c9",
+    "callId": "toolu_01Rih2cfaJaddxtwRjaZGemL",
+    "tool": "execute",
+    "step": {
+     "id": "e2b3b9c3-14a5-4e2a-b451-c5543f9194c1",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_result",
+   "payload": {
+    "code": 1,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "\n[exit 1]",
+    "runId": "66fe8d80-23b2-4e71-84dd-fdd3c88549c9",
+    "callId": "toolu_01Rih2cfaJaddxtwRjaZGemL",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "ab47f211-a756-405a-94b9-7337ffcfb336",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; node --test 2>&1 | tail -15\",\"purpose\":\"Getting test results\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; node --test 2>&1 | tail -15",
+    "purpose": "Getting test results",
+    "runId": "66fe8d80-23b2-4e71-84dd-fdd3c88549c9",
+    "callId": "toolu_01JVHw7ssN7YLhiGnuS86D5J",
+    "tool": "execute",
+    "step": {
+     "id": "ab47f211-a756-405a-94b9-7337ffcfb336",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 12,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "✔ page 1 starts at 0 (1.000245ms)\n✔ page size is capped at 100 (0.144191ms)\n✔ category becomes a placeholder and a param (1.040215ms)\n✔ a term adds a name search (0.184451ms)\n✔ filters combine with AND (0.121501ms)\nℹ tests 5\nℹ suites 0\nℹ pass 5\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 76.367123\n\n[exit 0]",
+    "runId": "66fe8d80-23b2-4e71-84dd-fdd3c88549c9",
+    "callId": "toolu_01JVHw7ssN7YLhiGnuS86D5J",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 13,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "0f0afc3b-c1a3-496d-baae-13f39613f85e",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794146400385,
+    "workFinishedAt": 1794146431600,
+    "text": "I reviewed `search-filters` against `main` (2 commits) and didn't change anything. All 5 tests pass, but one problem should block the merge.\n\n**Blocker: SQL injection in the free-text search** (`src/query.js`)\n```js\nclauses.push(\"name ILIKE '%\" + term + \"%'\");\n```\nThe search term from the request is pasted straight into the SQL. The README says never to do this. Someone could send a term like `x' OR '1'='1` or `'; DROP TABLE products; --`. The fix is to use a placeholder like the category filter does:\n```js\nparams.push('%' + term + '%');\nclauses.push('name ILIKE $' + params.length);\n```\nYou may also want to escape `%`, `_` and `\\` in the term so users can't send wildcards. Otherwise a term like `%` matches every product.\n\n**Should fix**\n- **The tests didn't catch it.** They only check that the text `name ILIKE` appears. A better test would assert exact output, e.g. `{ where: 'WHERE name ILIKE $1', params: ['%red%'] }`, plus a test that a term containing a `'` ends up in `params`, not in the SQL.\n- **A useful test was deleted.** `in-stock is a literal condition` was removed. The combined test covers it somewhat, but it was worth keeping.\n- **Blank search terms.** `\"   \"` trims to an empty string and still adds a clause that matches every product. Skip the clause when the trimmed term is empty. Also, a term that isn't a string (say a number or an array from the query string) will crash on `.trim()`.\n- **`buildFilters` was renamed to `buildWhere`.** Nothing in this repo still calls the old name, but anything outside it that imports `buildFilters` will break. Bumping to 0.6.0 is fine since the version is below 1.0, but mention the rename in the CHANGELOG.\n\n**Minor**\n- **Sorting** (`src/sort.js`): unknown sort values fall back to the whitelist, which is good. But the default, `relevance`, sorts by `rank DESC`, and this branch never creates a `rank` column. The query will fail unless the caller supplies one. Either add a ranking or default to `newest`/`name`. Sorting also has no tests.\n- **`MAX_PAGE` is misnamed.** It's the maximum page *size*, so `MAX_PAGE_SIZE` would be clearer.\n- **Very large page numbers.** `page | 0` wraps around above about 2.1 billion and quietly becomes page 1. That's harmless, but `Math.trunc` plus a sensible upper limit would be cleaner.\n- **The CHANGELOG** says \"sort orders\" but leaves out pagination.\n\nPagination itself looks correct. It's 1-based, the page size is clamped to 1–100, and the defaults are sensible.",
+    "runId": "66fe8d80-23b2-4e71-84dd-fdd3c88549c9",
+    "step": {
+     "id": "0f0afc3b-c1a3-496d-baae-13f39613f85e",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  }
+ ]
+}

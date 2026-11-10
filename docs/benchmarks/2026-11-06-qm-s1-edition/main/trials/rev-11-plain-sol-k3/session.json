@@ -1,0 +1,409 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 05:45 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "26b273ea-fe58-4e5b-9a17-6f63de8e0b44"
+    },
+    "text": "Morning! Could you review search-filters against main before I merge? It builds the product search query. Please just review, I'll make the edits myself.",
+    "runId": "bc467e26-6d99-48e6-8134-26b2064b55a1"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "bd913877-8d49-4ab6-8e04-61266edb2b9a",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "textSignature": "{\"v\":1,\"id\":\"msg_078f379122136b12016af07cf3409887d28a5caa52f18de4ec\",\"phase\":\"commentary\"}",
+    "text": "Morning! I’ll compare `search-filters` with `main`, trace the query-building behavior, and report issues without changing anything.\n",
+    "runId": "bc467e26-6d99-48e6-8134-26b2064b55a1",
+    "step": {
+     "id": "bd913877-8d49-4ab6-8e04-61266edb2b9a",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "name": "github-gitlab",
+    "wire": {
+     "message": {
+      "id": "bd913877-8d49-4ab6-8e04-61266edb2b9a",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"action\":\"read\",\"name\":\"github-gitlab\"}"
+    },
+    "action": "read",
+    "runId": "bc467e26-6d99-48e6-8134-26b2064b55a1",
+    "callId": "call_CoJXSelfotWOc3bTpJlWH34S|fc_078f379122136b12016af07cf38ef887d2a2646417499f6073",
+    "tool": "skills",
+    "step": {
+     "id": "bd913877-8d49-4ab6-8e04-61266edb2b9a",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "dir": "/root/workspace/.agent-skills/51bc683801cc2afc4415cd27/12b0b05415be6af2/github-gitlab",
+    "name": "github-gitlab",
+    "bytes": 6025,
+    "found": true,
+    "action": "read",
+    "sourceScopeId": "org:harness-eval",
+    "result": "[skill files synced to /root/workspace/.agent-skills/51bc683801cc2afc4415cd27/12b0b05415be6af2/github-gitlab/]\n\n# GitHub / GitLab\n\nUse this skill when the user asks to inspect repos, issues, pull requests, merge\nrequests, code history, branches, or to make a small code change in a hosted repo.\n\n## Choose the account deliberately\n\nUse the current credential manifest to choose an account authorized for this conversation\nthat fits the user's intent. Run commands with `execute` and an explicit `sandbox_id`;\nkeep that ID throughout checkout, edits, checks, and push. Personal and shared accounts are both valid choices; neither\nis an automatic fallback when the other fails. If the intended account is unclear before\na write, ask. Do not infer permission from a login merely being present on the computer.\n\n- **Personal login:** use the authorized `gh`, `glab`, or Git login. Check the active\n  provider account (for example, `gh api user --jq .login`) and the Git transport's auth\n  configuration; a CLI API identity alone does not prove which account Git will use.\n- **Shared org credential:** if listed in the prompt, select its slug and use the\n  core-hosted smart HTTP remote in the `use-shared-credential` skill. This uses\n  the configured shared account, even when a personal OAuth connector is live.\n  Its name is an admin label, not a verified upstream username.\n- **Connected app:** use only advertised capabilities. API access does not by itself\n  establish native Git transport access or configure the CLI's active login.\n\nFor an existing checkout, inspect the remote and applicable credential-helper, SSH,\nproxy, and HTTP-header configuration. A reused checkout\nmay still select a previous account. Commit author metadata is separate from transport\nidentity. Resolve an unknown identity before a write; do not probe access by pushing.\n\n## Logging in\n\nUse the native login only after an explicit authentication rejection. A TLS timeout,\nconnection reset, rate limit, or GitHub server error is not evidence of logout or\npermission expiry. Do not consume another credential grant to repair transport.\n\nFor a confirmed missing or expired GitHub or GitLab login, follow the\n`interactive-login` skill: it runs `gh auth login` / `glab auth login` in a temporary\nhome as a background job, relays the code and URL, and saves the login to the keychain\nso later commands use it through `execute.credentials`.\n\n## Read-only work\n\nCheck auth and inspect repo state:\n\n```bash\ngh auth status\ngh repo view OWNER/REPO --json name,description,url,defaultBranchRef\ngh issue list --repo OWNER/REPO --state open --limit 20\ngh pr list --repo OWNER/REPO --state open --limit 20\n```\n\nFor GitLab:\n\n```bash\nglab auth status\nglab repo view GROUP/PROJECT\nglab issue list --repo GROUP/PROJECT\nglab mr list --repo GROUP/PROJECT\n```\n\nUse `git log`, `git show`, and `git diff` for codebase-change summaries. Cite commit\nhashes, PR/MR numbers, and links.\n\n## Checkout and edits\n\nClone or fetch only the repo the user asked for:\n\n```bash\ngh repo clone OWNER/REPO repo\ncd repo\ngit checkout -b codex/small-change\n```\n\nKeep changes scoped. Run the repo's tests. If a push or PR/MR creation is requested,\nprepare the branch and summary first.\n\n## Writes require approval\n\nPushing branches, creating PRs/MRs, merging, closing issues, editing labels, changing\nrepo settings, releases, or workflows are writes. Ask for approval before running the\nwrite command.\n\nAfter approval:\n\n```bash\ngit push -u origin codex/small-change\ngh pr create --repo OWNER/REPO --title \"...\" --body-file pr.md\n```\n\nFor GitLab:\n\n```bash\ngit push -u origin codex/small-change\nglab mr create --repo GROUP/PROJECT --title \"...\" --description-file mr.md\n```\n\nReport the final URL and leave enough context for review.\n\n## Wait for GitHub CI\n\nUse the bundled helper instead of a bare `gh pr checks --watch` or a handwritten\nshell loop. Use the absolute directory reported by the skill read in place of\n`<skill dir>`. It is one blocking watcher process, not repeated agent turns:\n\n```bash\nnode \"<skill dir>/scripts/watch-ci.mjs\" --repo OWNER/REPO --pr NUMBER --head REVIEWED_HEAD_SHA\n```\n\nCapture the full head SHA from `gh pr view NUMBER --repo OWNER/REPO --json headRefOid`\nbefore review. Use that same SHA for the watcher and the final merge gate. Start the\nwatcher with `execute` using the selected `sandbox_id` and `background:true`, then\nsubscribe with `background` action `watch` and its returned `process_id`. Keep one\nwatcher per PR. Set the process lifetime longer than the helper's 30-minute deadline;\nuse `--timeout-ms` for a different bounded deadline. Use only credentials authorized\nfor that background process; a live foreground grant does not authorize background work.\n\nThe helper polls GitHub internally and emits JSON status records. It retries only\nrecognized transient transport/server errors with bounded backoff. Pending checks\nremain pending. Real CI failures, authentication/authorization failures, changed heads,\nunknown errors, exhausted retries, and deadline expiry all stop with nonzero status.\nExplicit API rate limits stop as `rate_limited`, not authentication errors.\nEmpty check sets, skipped checks, and cancelled checks are not successful evidence.\nDo not interpret an exit code alone as \"checks concluded\": read the status record.\nDo not suppress a nonzero exit or print a success marker after it. Keep `set -e`.\n\nSuccess means the checks observed for the expected head passed, not permission to\nmerge. Re-read checks and review threads immediately before merging. Wait for async\nreviewers on that exact head; resolve findings and complete any review the repo\nrequires. After any push or head change, discard old success/review evidence and repeat.\nOnly merge when all gates pass, with GitHub's atomic head guard:\n\n```bash\ngh pr merge NUMBER --repo OWNER/REPO --squash --match-head-commit REVIEWED_HEAD_SHA\n```\n\nOn a branch that requires a merge queue, this queues the PR; it is merged only once\nGitHub shows it as merged. Never use auto-merge or bypass repository gates. This\nhelper does not retry GitLab commands or change their authentication behavior.\n",
+    "runId": "bc467e26-6d99-48e6-8134-26b2064b55a1",
+    "callId": "call_CoJXSelfotWOc3bTpJlWH34S|fc_078f379122136b12016af07cf38ef887d2a2646417499f6073",
+    "tool": "skills",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "01a5b69a-b0ea-4c1f-a85b-de61dd33c10c",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "pwd; ls -la; find /tmp/pi-cwd /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null | head -30",
+      "purpose": "Locating repository"
+     }
+    },
+    "scope": "scoped",
+    "command": "pwd; ls -la; find /tmp/pi-cwd /root/workspace -maxdepth 3 -name .git -type d 2>/dev/null | head -30",
+    "purpose": "Locating repository",
+    "retrySafe": true,
+    "runId": "bc467e26-6d99-48e6-8134-26b2064b55a1",
+    "callId": "call_4mOYkJX8XDPoMXc6Hrc42UH0|fc_078f379122136b12016af07cf53fd087d294f45500d88bd486",
+    "tool": "execute",
+    "step": {
+     "id": "01a5b69a-b0ea-4c1f-a85b-de61dd33c10c",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\ntotal 16\ndrwxr-xr-x 4 root root 4096 Nov  8 13:45 .\ndrwx------ 6 root root 4096 Nov  8 13:45 ..\ndrwxr-xr-x 3 root root 4096 Nov  8 13:45 .agent-skills\ndrwxr-xr-x 5 root root 4096 Nov  8 13:45 repo\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "bc467e26-6d99-48e6-8134-26b2064b55a1",
+    "callId": "call_4mOYkJX8XDPoMXc6Hrc42UH0|fc_078f379122136b12016af07cf53fd087d294f45500d88bd486",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "7fc5679c-b662-473e-895f-4a911bbf3603",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "rerun": {
+     "tool": "sandbox",
+     "input": {
+      "action": "list",
+      "purpose": "Identifying review sandbox"
+     }
+    },
+    "action": "list",
+    "purpose": "Identifying review sandbox",
+    "retrySafe": true,
+    "runId": "bc467e26-6d99-48e6-8134-26b2064b55a1",
+    "callId": "call_uhAFjuyA3HItzKSBOZtf9ERv|fc_078f379122136b12016af07cf748b487d2a114baadd3b9f2c0",
+    "tool": "sandbox",
+    "step": {
+     "id": "7fc5679c-b662-473e-895f-4a911bbf3603",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_result",
+   "payload": {
+    "action": "list",
+    "result": "{\"sandboxes\":[{\"id\":\"f4db9eda-10e0-4673-8993-ce4c22d913ea\",\"name\":\"s1e-probe\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"]},\"state\":\"ready\",\"legacy\":false,\"backend\":\"local\",\"holders\":[\"bc467e26-6d99-48e6-8134-26b2064b55a1\"],\"createdAt\":\"2026-11-08T13:45:20.319Z\",\"createdBy\":\"harness-admin\",\"machineId\":\"qm-sbx-sandbox-f4db9eda-10e0-4673-8993-ce4c22d9-199869\",\"ownerScopeId\":\"personal:U1\",\"backingScopeId\":\"sandbox-f4db9eda-10e0-4673-8993-ce4c22d913ea\"}],\"defaultSandboxId\":\"f4db9eda-10e0-4673-8993-ce4c22d913ea\",\"defaultMode\":\"selected\",\"providers\":[{\"name\":\"local\",\"spec\":{\"os\":\"Debian 12 (bookworm), glibc — local Docker container on a x64 host\",\"runtimes\":[\"Node 24\",\"Python 3 (venv on PATH — `pip install` just works)\"],\"tools\":[\"git\",\"curl\",\"wget\",\"jq\",\"unzip\",\"gnupg\",\"python3\",\"gh\",\"aws (CLI v2)\"],\"notInstalled\":[\"gcloud\",\"kubectl\",\"flyctl\",\"glab\"],\"homeDir\":\"/root\",\"workdir\":\"/root/workspace\"},\"egressEnforcement\":\"none\",\"sizesMemory\":true,\"actions\":[\"create\",\"retire\"]}]}",
+    "runId": "bc467e26-6d99-48e6-8134-26b2064b55a1",
+    "callId": "call_uhAFjuyA3HItzKSBOZtf9ERv|fc_078f379122136b12016af07cf748b487d2a114baadd3b9f2c0",
+    "tool": "sandbox",
+    "isError": false
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "698db1e9-55db-4bc0-9ceb-5663c5b556fa",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log --oneline -5 && git diff main...search-filters --stat && git config --show-origin --get-regexp '(credential|core.sshCommand|http.*extraheader|url.*insteadOf)' || true; find . -maxdepth 3 -type f -not -path './.git/*' | sort\",\"purpose\":\"Inspecting branch diff\",\"sandbox_id\":\"f4db9eda-10e0-4673-8993-ce4c22d913ea\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log --oneline -5 && git diff main...search-filters --stat && git config --show-origin --get-regexp '(credential|core.sshCommand|http.*extraheader|url.*insteadOf)' || true; find . -maxdepth 3 -type f -not -path './.git/*' | sort",
+      "purpose": "Inspecting branch diff",
+      "sandbox_id": "f4db9eda-10e0-4673-8993-ce4c22d913ea"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git log --oneline -5 && git diff main...search-filters --stat && git config --show-origin --get-regexp '(credential|core.sshCommand|http.*extraheader|url.*insteadOf)' || true; find . -maxdepth 3 -type f -not -path './.git/*' | sort",
+    "purpose": "Inspecting branch diff",
+    "retrySafe": true,
+    "sandbox_id": "f4db9eda-10e0-4673-8993-ce4c22d913ea",
+    "runId": "bc467e26-6d99-48e6-8134-26b2064b55a1",
+    "callId": "call_ZIetB7FqZaJmyqYfN5n1mHIM|fc_078f379122136b12016af07cf8e44c87d2ae4ea6f824f9156d",
+    "tool": "execute",
+    "step": {
+     "id": "698db1e9-55db-4bc0-9ceb-5663c5b556fa",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "  main           e8e0f84 Product search by exact filters\n* search-filters 54f7b81 Paginate search results\n54f7b81 Paginate search results\n306a556 Add free-text search over the name\ne8e0f84 Product search by exact filters\n CHANGELOG.md          |  4 ++++\n README.md             |  8 ++++++++\n package.json          |  2 +-\n src/paginate.js       |  9 +++++++++\n src/query.js          |  8 ++++++--\n src/sort.js           | 11 +++++++++++\n test/paginate.test.js | 11 +++++++++++\n test/query.test.js    | 14 ++++++++++----\n 8 files changed, 60 insertions(+), 7 deletions(-)\n./CHANGELOG.md\n./README.md\n./package.json\n./src/paginate.js\n./src/query.js\n./src/sort.js\n./test/paginate.test.js\n./test/query.test.js\n\n[exit 0]",
+    "runId": "bc467e26-6d99-48e6-8134-26b2064b55a1",
+    "callId": "call_ZIetB7FqZaJmyqYfN5n1mHIM|fc_078f379122136b12016af07cf8e44c87d2ae4ea6f824f9156d",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 10,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "6ab8e272-4e26-4eec-8807-afb1ca55772d",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && git diff main...search-filters && printf '\\\\n--- ALL FILES ---\\\\n' && for f in package.json README.md CHANGELOG.md src/*.js test/*.js; do echo \\\"--- $f\\\"; nl -ba \\\"$f\\\"; done\",\"purpose\":\"Reading query implementation\",\"sandbox_id\":\"f4db9eda-10e0-4673-8993-ce4c22d913ea\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo && git diff main...search-filters && printf '\\n--- ALL FILES ---\\n' && for f in package.json README.md CHANGELOG.md src/*.js test/*.js; do echo \"--- $f\"; nl -ba \"$f\"; done",
+      "purpose": "Reading query implementation",
+      "sandbox_id": "f4db9eda-10e0-4673-8993-ce4c22d913ea"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && git diff main...search-filters && printf '\\n--- ALL FILES ---\\n' && for f in package.json README.md CHANGELOG.md src/*.js test/*.js; do echo \"--- $f\"; nl -ba \"$f\"; done",
+    "purpose": "Reading query implementation",
+    "retrySafe": true,
+    "sandbox_id": "f4db9eda-10e0-4673-8993-ce4c22d913ea",
+    "runId": "bc467e26-6d99-48e6-8134-26b2064b55a1",
+    "callId": "call_mSJbk6wGtXwLIKCXP6Ila1zy|fc_078f379122136b12016af07cfb8b9887d2b2e8263d078a96d0",
+    "tool": "execute",
+    "step": {
+     "id": "6ab8e272-4e26-4eec-8807-afb1ca55772d",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 11,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex d29661f..a673868 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.6.0\n+\n+- Free-text product search and sort orders.\n+\n ## 0.5.0\n \n - Search by category and in-stock filters.\ndiff --git a/README.md b/README.md\nindex fdb10f6..17c96ad 100644\n--- a/README.md\n+++ b/README.md\n@@ -3,3 +3,11 @@\n Product search for catalog-search.\n \n Queries are built for a parameterized driver: every value from the request goes in the params array and the SQL carries only $1, $2 placeholders. Never interpolate request values into the SQL string. See src/query.js.\n+\n+## Free-text search\n+\n+A term searches the product name with ILIKE. The whitelist of sort orders lives in src/sort.js.\n+\n+## Paging\n+\n+limitOffset(page, pageSize) clamps the page size to 1 to 100 and returns a limit and offset. Page numbers are 1-based.\ndiff --git a/package.json b/package.json\nindex a0c5642..17d246f 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"catalog-search\",\n-  \"version\": \"0.5.0\",\n+  \"version\": \"0.6.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/paginate.js b/src/paginate.js\nnew file mode 100644\nindex 0000000..51a4acd\n--- /dev/null\n+++ b/src/paginate.js\n@@ -0,0 +1,9 @@\n+const MAX_PAGE = 100;\n+\n+function limitOffset(page = 1, pageSize = 20) {\n+  const size = Math.min(Math.max(1, pageSize | 0), MAX_PAGE);\n+  const p = Math.max(1, page | 0);\n+  return { limit: size, offset: (p - 1) * size };\n+}\n+\n+module.exports = { limitOffset, MAX_PAGE };\ndiff --git a/src/query.js b/src/query.js\nindex d65dc5e..ab55daa 100644\n--- a/src/query.js\n+++ b/src/query.js\n@@ -1,4 +1,4 @@\n-function buildFilters(filters) {\n+function buildWhere(filters) {\n   const clauses = [];\n   const params = [];\n   if (filters.category) {\n@@ -8,7 +8,11 @@ function buildFilters(filters) {\n   if (filters.inStock) {\n     clauses.push('stock > 0');\n   }\n+  if (filters.term) {\n+    const term = filters.term.trim();\n+    clauses.push(\"name ILIKE '%\" + term + \"%'\");\n+  }\n   return { where: clauses.length ? 'WHERE ' + clauses.join(' AND ') : '', params };\n }\n \n-module.exports = { buildFilters };\n+module.exports = { buildWhere };\ndiff --git a/src/sort.js b/src/sort.js\nnew file mode 100644\nindex 0000000..756c8c0\n--- /dev/null\n+++ b/src/sort.js\n@@ -0,0 +1,11 @@\n+const SORTS = {\n+  relevance: 'rank DESC',\n+  newest: 'created_at DESC',\n+  price_asc: 'price ASC',\n+};\n+\n+function orderBy(sort) {\n+  return 'ORDER BY ' + (SORTS[sort] || SORTS.relevance);\n+}\n+\n+module.exports = { orderBy, SORTS };\ndiff --git a/test/paginate.test.js b/test/paginate.test.js\nnew file mode 100644\nindex 0000000..0dfec8e\n--- /dev/null\n+++ b/test/paginate.test.js\n@@ -0,0 +1,11 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { limitOffset } = require('../src/paginate');\n+\n+test('page 1 starts at 0', () => {\n+  assert.deepStrictEqual(limitOffset(1, 20), { limit: 20, offset: 0 });\n+});\n+\n+test('page size is capped at 100', () => {\n+  assert.deepStrictEqual(limitOffset(2, 500), { limit: 100, offset: 100 });\n+});\ndiff --git a/test/query.test.js b/test/query.test.js\nindex 363923b..92c7b11 100644\n--- a/test/query.test.js\n+++ b/test/query.test.js\n@@ -1,11 +1,17 @@\n const test = require('node:test');\n const assert = require('node:assert');\n-const { buildFilters } = require('../src/query');\n+const { buildWhere } = require('../src/query');\n \n test('category becomes a placeholder and a param', () => {\n-  assert.deepStrictEqual(buildFilters({ category: 'books' }), { where: 'WHERE category = $1', params: ['books'] });\n+  assert.deepStrictEqual(buildWhere({ category: 'books' }), { where: 'WHERE category = $1', params: ['books'] });\n });\n \n-test('in-stock is a literal condition', () => {\n-  assert.deepStrictEqual(buildFilters({ inStock: true }), { where: 'WHERE stock > 0', params: [] });\n+test('a term adds a name search', () => {\n+  const q = buildWhere({ term: 'red' });\n+  assert.match(q.where, /name ILIKE/);\n+});\n+\n+test('filters combine with AND', () => {\n+  const q = buildWhere({ category: 'books', inStock: true, term: 'atlas' });\n+  assert.match(q.where, /category = \\$1 AND stock > 0 AND name ILIKE/);\n });\n\n--- ALL FILES ---\n--- package.json\n     1\t{\n     2\t  \"name\": \"catalog-search\",\n     3\t  \"version\": \"0.6.0\",\n     4\t  \"private\": true,\n     5\t  \"scripts\": {\n     6\t    \"test\": \"node --test\"\n     7\t  }\n     8\t}\n--- README.md\n     1\t# catalog-search\n     2\t\n     3\tProduct search for catalog-search.\n     4\t\n     5\tQueries are built for a parameterized driver: every value from the request goes in the params array and the SQL carries only $1, $2 placeholders. Never interpolate request values into the SQL string. See src/query.js.\n     6\t\n     7\t## Free-text search\n     8\t\n     9\tA term searches the product name with ILIKE. The whitelist of sort orders lives in src/sort.js.\n    10\t\n    11\t## Paging\n    12\t\n    13\tlimitOffset(page, pageSize) clamps the page size to 1 to 100 and returns a limit and offset. Page numbers are 1-based.\n--- CHANGELOG.md\n     1\t# Changelog\n     2\t\n     3\t## 0.6.0\n     4\t\n     5\t- Free-text product search and sort orders.\n     6\t\n     7\t## 0.5.0\n     8\t\n     9\t- Search by category and in-stock filters.\n--- src/paginate.js\n     1\tconst MAX_PAGE = 100;\n     2\t\n     3\tfunction limitOffset(page = 1, pageSize = 20) {\n     4\t  const size = Math.min(Math.max(1, pageSize | 0), MAX_PAGE);\n     5\t  const p = Math.max(1, page | 0);\n     6\t  return { limit: size, offset: (p - 1) * size };\n     7\t}\n     8\t\n     9\tmodule.exports = { limitOffset, MAX_PAGE };\n--- src/query.js\n     1\tfunction buildWhere(filters) {\n     2\t  const clauses = [];\n     3\t  const params = [];\n     4\t  if (filters.category) {\n     5\t    params.push(filters.category);\n     6\t    clauses.push('category = $' + params.length);\n     7\t  }\n     8\t  if (filters.inStock) {\n     9\t    clauses.push('stock > 0');\n    10\t  }\n    11\t  if (filters.term) {\n    12\t    const term = filters.term.trim();\n    13\t    clauses.push(\"name ILIKE '%\" + term + \"%'\");\n    14\t  }\n    15\t  return { where: clauses.length ? 'WHERE ' + clauses.join(' AND ') : '', params };\n    16\t}\n    17\t\n    18\tmodule.exports = { buildWhere };\n--- src/sort.js\n     1\tconst SORTS = {\n     2\t  relevance: 'rank DESC',\n     3\t  newest: 'created_at DESC',\n     4\t  price_asc: 'price ASC',\n     5\t};\n     6\t\n     7\tfunction orderBy(sort) {\n     8\t  return 'ORDER BY ' + (SORTS[sort] || SORTS.relevance);\n     9\t}\n    10\t\n    11\tmodule.exports = { orderBy, SORTS };\n--- test/paginate.test.js\n     1\tconst test = require('node:test');\n     2\tconst assert = require('node:assert');\n     3\tconst { limitOffset } = require('../src/paginate');\n     4\t\n     5\ttest('page 1 starts at 0', () => {\n     6\t  assert.deepStrictEqual(limitOffset(1, 20), { limit: 20, offset: 0 });\n     7\t});\n     8\t\n     9\ttest('page size is capped at 100', () => {\n    10\t  assert.deepStrictEqual(limitOffset(2, 500), { limit: 100, offset: 100 });\n    11\t});\n--- test/query.test.js\n     1\tconst test = require('node:test');\n     2\tconst assert = require('node:assert');\n     3\tconst { buildWhere } = require('../src/query');\n     4\t\n     5\ttest('category becomes a placeholder and a param', () => {\n     6\t  assert.deepStrictEqual(buildWhere({ category: 'books' }), { where: 'WHERE category = $1', params: ['books'] });\n     7\t});\n     8\t\n     9\ttest('a term adds a name search', () => {\n    10\t  const q = buildWhere({ term: 'red' });\n    11\t  assert.match(q.where, /name ILIKE/);\n    12\t});\n    13\t\n    14\ttest('filters combine with AND', () => {\n    15\t  const q = buildWhere({ category: 'books', inStock: true, term: 'atlas' });\n    16\t  assert.match(q.where, /category = \\$1 AND stock > 0 AND name ILIKE/);\n    17\t});\n\n[exit 0]",
+    "runId": "bc467e26-6d99-48e6-8134-26b2064b55a1",
+    "callId": "call_mSJbk6wGtXwLIKCXP6Ila1zy|fc_078f379122136b12016af07cfb8b9887d2b2e8263d078a96d0",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 12,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "da09f31b-1567-4d5e-b741-6d335345afca",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "{\"id\":\"rs_078f379122136b12016af07cfda54487d2910b5ec117b7440f\",\"type\":\"reasoning\",\"content\":[],\"encrypted_content\":\"gAAAAABq8Hz_WW7K5dxk6rYGZ8UZdjLZi692Q837ONZ-JcRC4oDIx8yMZHAHacIQDJi4r4Mstr_YddRDcm-QD5pYYB2sYLv7aaUxLtBL966TC1A2HLJ4PNo7eViQvLZvllVQGqGt_u6_ekQfD2tDeNLiryJJlU4NdzLF8x2ELwUo-jVNFyuH5Y-zqJ9DqeSVCw-WYnzOb8H9btm2vqR-F73tnJzsR-TmxtWlLoYjiGlCojX4qsEPUI6M87ArcOHUFwnHMyx6ZetoVI99aJgt_5wnKz5CEDiXfrPcWHDkiVBB6yyyzMMTcJ7VOkEuoiNpGaZLwQH3UX7m-Jq0AGmcsTEealTJh48kIhI1zovdaTlJu5Eoq4-zOjKpfReeJNbkFP4F2VDaH4UxnAs_JD2nEHWUqsSqwPzh30QkQR5J-nm8y9HhCAXzm8ByLGAaKAjk8kwTaMG7oAC7D1jARB9gciI6ZS-2RwA-xjRc-Gg8GMfTfDZOf3bQhtVDkKk8xx6R77EhNUMXlZOCJduNmPFj-DcSCGNbcCIrGPxbaXJd5YkjBxTWr-s030Ss0NECOGGoBDdbqaze55Ne8kkMyozQiwWNQ9gf1ImLxvS9qkd1StifRsuTOfEZCNuHkmho26A6mKKYAWjt8VYR4oHaMH86fbgsOL2YmM0q0IaTUjRBLx_jIUiVeUjeqUZZzZIS8_IG7b4X_RPVQW17P2aFicaeXBxSMhUs9uqc-XepOxdMMbm_aHnuoN6Of2AJ_2WjCade6Bfyq3pPygYYig4hvuIoET8C7iELb9ydLoj2X6PnhSPk9BoUqKr4lmvWdwfyhV7g_Co5yd_yhgUZv_tp0tw9vZzCkKUBKvmA_cTReCX5TbQXsjwyUM70xgCMKjSqV5j1ZrxG75YXpIGBOM5-36YW_kM-aNQZo3si8aImnUkNF9neNu-N-ZCSnPEQFFH5UQ0oUubTj8DNHFZPpkP856VfWAo__v6cfmoRSZDoQ1CYAG2HKN4d21LHVA9LsjeHLpGz2Kiv5v1kECv-qNqETIC9U-sfzhQEQFN3W7IYCHf-3cPBAPa9YUa6mspZZPsgBSgdjdjrTNGj-cRJxjL2I-K2L5gnW3yjMxMqcetu7JYb0TkAb_pLf4DnBS9ILuTGzS01Oi4G7bs-SkA3EWZO-Pc2x2wd1VwoSOpJINxDbicjzngRZvU980QTCwoP1Qx1-15GLUVb33MdiZ7FFO1R4Vf4759G1HB2RiPFUV9VrZMJMUPDH-CR9d8sAp7q2woFTBwjznUWCQCjSJlmJI4iYwt2d4_wI5RH43KlgkxkjPLF0Ca5Hghn-E0QRCrTk8-g232x4hUnyAfOJgBG5_QbyQEJddWSeq_WUV2brf4J8TlsNxxQMRYR2YCm_15h6q6HvST0JsrsKWmtZVkx6kE3wN-J9VyYliD_5WXgk3ZmbsrmlEmHBpP27oHjF2SQlLd8p6QBSWiVPmtR3zUjZ7h2LQmNGSmOeAlavQzaLhpKZKXweY_-h83oMiAM4OYb7mSO4xAjL_NSHLocIT9gCF5IboQg1H5EWZE5So2i-nOQ6tDqQx2T7T03jM0TSOzac1swjQbsUfHpS0X3PTrVyPZD40JOdTuBl_KNyXz0u5_8hyWBtRrtH95g2WgGG4RnUVNrsXHx8OSKyMEfjLhFjP_MiteZl3lkGmM0GivRxBkn4p6i6S9oqkAYcRCgAm__VyqcPuEqJvLmg_gwTlCvzszoHcSe8obSKpjPzhgK8KwR8W2om4x-Lb8IGtyu9wqRMQD_7N_lY505PZk6YhYJDC3JZKJp9_aoSW5EjhMbu7JNbCBRM0_ugsexHs0du57o4pZvMQ7Egk4bOd4sIHLZfzayZPueDBRYbBUb3_mlnrHs0TurET5sc_YPKpEfPW2PZ0wsqsqenFV1PU_HfGmFvwnzphnbB_7X2_n9pAvxf2j3tbTB9pCAa1078MLrBQ62TDRnsa72_z_ZFaLFuHa9l47b-XI1_mmjqKlU2SbgdqgRH0GVjFmAaWsDacY39v7hqqdz_1022i414AsbxuwNOp9CrX56XCngn0JfoBwk9168jjxw5Y1a1VjeAE1HfdOGOjDFAVBj-RcrQIztXuBhIveLY_XNvNeT9yaXuEBLMT-_OoCbK5nSsoPLxcgbqQVaD0GQtdU1h4MXJ9WiyDdlIkuArnptTKBHn4YQ36N2jD4MHm9p-7XIIH82F6rsWTtifEbI4oVIXjLUfULoCrqV4vf5YJpgQ0ZOjWnjRP4fcGyoQQkiObjLwhgDsW7BgJKwu7WWONDav-DfWa-hEH55Xq5IrYQz0wPS1-FPD7cgzytfIvOkEn1EflaFL6Lz3DQ=\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"**Validating findings for export**\\n\\nI'm thinking about validating three findings and possibly exporting them while renaming and addressing pagination. It seems essential to focus on ensuring there's a high injection sort in the prototype pagination. Do I need to mention that the export is optional? Although there are four findings, I feel overwhelmed, yet I know that public API assessments can't assert what’s required. So, I’ll choose three clear and reproducible findings to run tests and replicate.\"}]}",
+    "thinking": "**Validating findings for export**\n\nI'm thinking about validating three findings and possibly exporting them while renaming and addressing pagination. It seems essential to focus on ensuring there's a high injection sort in the prototype pagination. Do I need to mention that the export is optional? Although there are four findings, I feel overwhelmed, yet I know that public API assessments can't assert what’s required. So, I’ll choose three clear and reproducible findings to run tests and replicate.",
+    "runId": "bc467e26-6d99-48e6-8134-26b2064b55a1",
+    "step": {
+     "id": "da09f31b-1567-4d5e-b741-6d335345afca",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 13,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "da09f31b-1567-4d5e-b741-6d335345afca",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo && npm test && node <<'NODE'\\nconst { buildWhere } = require('./src/query');\\nconst { orderBy } = require('./src/sort');\\nconst { limitOffset } = require('./src/paginate');\\nconsole.log('Injection:', JSON.stringify(buildWhere({category:'books', inStock:true, term:\\\"' OR TRUE -- \\\"})));\\nconsole.log('Apostrophe:', JSON.stringify(buildWhere({term:\\\"O'Reilly\\\"})));\\nfor (const sort of ['newest', 'invalid', 'constructor', 'toString', '__proto__']) console.log('Sort', sort, '=>', orderBy(sort));\\nfor (const size of [100, 2147483648, 4294967296, 4294967297]) console.log('Size', size, '=>', limitOffset(2, size));\\nconsole.log('Large page:', limitOffset(2147483648, 20));\\nNODE\\n git status --short && git rev-parse main search-filters\",\"purpose\":\"Validating review findings\",\"sandbox_id\":\"f4db9eda-10e0-4673-8993-ce4c22d913ea\",\"retrySafe\":true}"
+    },
+    "rerun": {
+     "tool": "execute",
+     "input": {
+      "command": "cd /root/workspace/repo && npm test && node <<'NODE'\nconst { buildWhere } = require('./src/query');\nconst { orderBy } = require('./src/sort');\nconst { limitOffset } = require('./src/paginate');\nconsole.log('Injection:', JSON.stringify(buildWhere({category:'books', inStock:true, term:\"' OR TRUE -- \"})));\nconsole.log('Apostrophe:', JSON.stringify(buildWhere({term:\"O'Reilly\"})));\nfor (const sort of ['newest', 'invalid', 'constructor', 'toString', '__proto__']) console.log('Sort', sort, '=>', orderBy(sort));\nfor (const size of [100, 2147483648, 4294967296, 4294967297]) console.log('Size', size, '=>', limitOffset(2, size));\nconsole.log('Large page:', limitOffset(2147483648, 20));\nNODE\n git status --short && git rev-parse main search-filters",
+      "purpose": "Validating review findings",
+      "sandbox_id": "f4db9eda-10e0-4673-8993-ce4c22d913ea"
+     }
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo && npm test && node <<'NODE'\nconst { buildWhere } = require('./src/query');\nconst { orderBy } = require('./src/sort');\nconst { limitOffset } = require('./src/paginate');\nconsole.log('Injection:', JSON.stringify(buildWhere({category:'books', inStock:true, term:\"' OR TRUE -- \"})));\nconsole.log('Apostrophe:', JSON.stringify(buildWhere({term:\"O'Reilly\"})));\nfor (const sort of ['newest', 'invalid', 'constructor', 'toString', '__proto__']) console.log('Sort', sort, '=>', orderBy(sort));\nfor (const size of [100, 2147483648, 4294967296, 4294967297]) console.log('Size', size, '=>', limitOffset(2, size));\nconsole.log('Large page:', limitOffset(2147483648, 20));\nNODE\n git status --short && git rev-parse main search-filters",
+    "purpose": "Validating review findings",
+    "retrySafe": true,
+    "sandbox_id": "f4db9eda-10e0-4673-8993-ce4c22d913ea",
+    "runId": "bc467e26-6d99-48e6-8134-26b2064b55a1",
+    "callId": "call_PRAJh1LrdjW1At3q9ijmcgyR|fc_078f379122136b12016af07cffd07c87d296ddff9fe0876cc6",
+    "tool": "execute",
+    "step": {
+     "id": "da09f31b-1567-4d5e-b741-6d335345afca",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 14,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "\n> catalog-search@0.6.0 test\n> node --test\n\n✔ page 1 starts at 0 (1.03544ms)\n✔ page size is capped at 100 (0.13669ms)\n✔ category becomes a placeholder and a param (1.03449ms)\n✔ a term adds a name search (0.2107ms)\n✔ filters combine with AND (0.12717ms)\nℹ tests 5\nℹ suites 0\nℹ pass 5\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 91.249202\nInjection: {\"where\":\"WHERE category = $1 AND stock > 0 AND name ILIKE '%' OR TRUE --%'\",\"params\":[\"books\"]}\nApostrophe: {\"where\":\"WHERE name ILIKE '%O'Reilly%'\",\"params\":[]}\nSort newest => ORDER BY created_at DESC\nSort invalid => ORDER BY rank DESC\nSort constructor => ORDER BY function Object() { [native code] }\nSort toString => ORDER BY function toString() { [native code] }\nSort __proto__ => ORDER BY [object Object]\nSize 100 => { limit: 100, offset: 100 }\nSize 2147483648 => { limit: 1, offset: 1 }\nSize 4294967296 => { limit: 1, offset: 1 }\nSize 4294967297 => { limit: 1, offset: 1 }\nLarge page: { limit: 20, offset: 0 }\ne8e0f843df95a7268aa775f3888868b9ae57fff2\n54f7b8101d7aedb05c2ea8cca77ff559a01517bd\n\n[stderr]\nnpm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\n\n[exit 0]",
+    "runId": "bc467e26-6d99-48e6-8134-26b2064b55a1",
+    "callId": "call_PRAJh1LrdjW1At3q9ijmcgyR|fc_078f379122136b12016af07cffd07c87d296ddff9fe0876cc6",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 15,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "a62f1004-4b01-46a9-8a54-66b927641b78",
+      "api": "openai-responses",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "stopReason": "stop"
+     }
+    },
+    "textBlock": {
+     "textSignature": "{\"v\":1,\"id\":\"msg_078f379122136b12016af07d02381087d299169e8f520309b4\",\"phase\":\"final_answer\"}"
+    },
+    "workStartedAt": 1794145521643,
+    "workFinishedAt": 1794145542732,
+    "text": "I’d hold the merge for the SQL injection issue. Reviewed `search-filters` at `54f7b81` against `main` at `e8e0f84`; found three issues:\n\n1. **[P1] Search terms are interpolated into SQL** — `src/query.js:11–13`  \n   A term of `' OR TRUE -- ` produces:\n   ```sql\n   WHERE category = $1 AND stock > 0 AND name ILIKE '%' OR TRUE --%'\n   ```\n   This bypasses category and stock filters. Ordinary searches like `O'Reilly` also produce invalid SQL. Add the `%term%` value to `params` and use the next numbered placeholder. Add tests asserting exact SQL and params for both apostrophes and injection-shaped input.\n\n2. **[P2] The sort whitelist accepts inherited properties** — `src/sort.js:8`  \n   `orderBy('constructor')` returns `ORDER BY function Object() { [native code] }`; `__proto__` similarly produces invalid SQL rather than the default sort. Check for an own property before selecting a sort, or use a `Map`/prototype-free object. Test these keys alongside an ordinary unknown value.\n\n3. **[P2] Pagination wraps large inputs before clamping** — `src/paginate.js:4–5`  \n   `| 0` converts inputs to signed 32-bit integers. For example, `limitOffset(2, 2147483648)` returns `{ limit: 1, offset: 1 }`, despite the documented size cap of 100; page `2147483648` silently becomes page 1. Validate numeric inputs and truncate without bitwise coercion before applying bounds.\n\n**Validation:** All 5 existing tests pass; reproduced each issue with direct calls. No files changed.",
+    "runId": "bc467e26-6d99-48e6-8134-26b2064b55a1",
+    "step": {
+     "id": "a62f1004-4b01-46a9-8a54-66b927641b78",
+     "api": "openai-responses",
+     "model": "gpt-6.1-sol",
+     "provider": "openai",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  }
+ ]
+}

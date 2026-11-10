@@ -1,0 +1,159 @@
+{
+  "trial_id": "plan-04-edition-opus-k1",
+  "task_id": "plan-04",
+  "family": "plan",
+  "arm": "edition",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I've read the repo. No code has changed. One thing matters most: **`--json` was added once before and reverted** (commits eddd879 and b908835, Rui Tanaka, Oct 22–23). The dashboard runs the command in a terminal emulator (`script -q`), so the progress line went to stdout just before the JSON and every parse failed. Rui's revert note says progress has to move to stderr, or turn off, before a machine-readable mode can go in. This plan does that first.\n\n## Rules the change has to follow\n- **The text table can't change.** `tests/golden/report.txt` checks it byte for byte, and `ops/nightly.sh` gets the finance cost by grepping `^TOTAL` from `uptimer report`.\n- **Money and percentages are never floats** (`docs/output.md`). They go through `fmt_decimal()`. The old attempt used `json.dumps(..., default=str)`. That sent out the raw internal fields (`checks`, `failures`) and decimals at whatever precision they happened to have.\n\n## Plan\n**1. Fix progress output (separate commit, ships first)**\n- In `pulse/progress.py`, write `tick()` to `sys.stderr` by default, and only when stderr is a terminal.\n- In `cmd_report`, skip the progress ticks entirely when `--json` is set. Then the output stays clean even if someone merges stderr into stdout (`2>&1`) under a terminal emulator.\n- This doesn't change the golden test, because the test's StringIO output isn't a terminal and gets no progress either way.\n\n**2. Add the `--json` flag**\n- `pulse/cli.py`: `rep.add_argument('--json', action='store_true')`.\n- Add a `render_json(rows)` function next to `render_table`, or in a new `pulse/export_json.py` to match `export_csv.py`.\n- `cmd_report` picks the renderer. It should use `getattr(args, 'json', False)`, because the test calls it with `args=None`.\n\n**3. A fixed, documented JSON format**\n```json\n{\n  \"sites\": [\n    {\"site\": \"shop.example.test\", \"uptime\": \"99.965\", \"p95_ms\": 412, \"cost\": \"12.40\"},\n    {\"site\": \"api.example.test\",  \"uptime\": \"100.000\", \"p95_ms\": 88, \"cost\": \"30.05\"}\n  ],\n  \"total_cost\": \"42.45\"\n}\n```\n- Uptime and cost are **strings** produced by `fmt_decimal` (3 and 2 decimal places, same as the CSV export). That keeps them exact and follows the no-floats rule. `p95_ms` stays an integer.\n- I'm proposing a top-level object rather than a bare list. Fields can be added later (for example `generated_at` or `schema_version`) without breaking the dashboards. **The dashboards team should confirm the shape and the string decimals.**\n- No colour codes. (`report` doesn't use `colors.py` today anyway, but the JSON path should never call it.)\n- Output is one JSON document followed by a newline, with `sort_keys` so the field order is stable.\n\n**4. Tests**\n- Keep the existing golden test as it is.\n- Add `tests/golden/report.json` and a golden test for it.\n- Run `json.loads` on the output and check that uptime and cost are strings with the right number of decimal places and that `total_cost` equals the sum.\n- Regression test for the old bug: point stdout and stderr at fake terminal streams, run `main(['report', '--json'])`, and check that stdout parses as JSON with nothing before it.\n- Test that without `--json`, progress goes to stderr and not stdout.\n\n**5. Docs and version**\n- Add the JSON format to `docs/output.md` and a usage line to the README.\n- Bump `pyproject.toml` from 1.8.0 to 1.9.0.\n\n**6. Follow-up (optional)**\n- `ops/nightly.sh` could switch to `uptimer report --json | jq -r .total_cost` instead of grepping the table. It isn't needed for this change, so I'd leave it out to avoid touching the finance cron.\n\n## Questions for you\n1. Should I check the JSON shape and the string decimals with the dashboards team before building?\n2. Should step 1 (progress to stderr) be its own PR, so it's live and tested under their terminal setup before `--json` goes in?",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-04-edition-opus-k1",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0841932,
+    "input_tokens": 67472,
+    "output_tokens": 2110,
+    "cached_tokens": 63291,
+    "cache_write_tokens": 3689,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000055,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0841382,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 24.639,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-calibration",
+    "trial_id": "plan-04-edition-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T06:46:21.462Z",
+    "images": {
+      "core": "sha256:3567e7c17a04b80e7a1454cea7d4e459f0fa39dd8671e6daed39af28a6584e2c",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-e8bdcc9a6303",
+        "id": "sha256:e2814362fc4749eaaabbd3dae989cdcff5c29a93e714a0de79f5ec879740826f",
+        "tree_sha256": "a70260548f5236b76b6197a992d0f4922f6c6f8dff72919e7646306eada95865"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-0e36fc26-58a7-4afb-8513-40cd708a-e5a5e1"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T06:47:09.946Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd ~/workspace/repo; for f in README.md docs/output.md ops/nightly.sh pyproject.toml pulse/*.py tests/*.py tests/golden/report.txt; do echo \"=== $f\"; cat $f; done; git log --oneline | head",
+          "code": 0,
+          "output": "=== README.md\n# uptimer\n\nUptime and cost reports for our sites.\n\nRun the tests with python3 -m unittest discover -s tests -t .\n=== docs/output.md\n# Output\n\nMoney and percentages are decimal.Decimal from end to end. They are never floats in any output;\nformat them with fmt_decimal() in pulse/fmt.py.\n"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-04-edition-opus-k1",
+      "meter": {
+        "requests": 6,
+        "usd": 0.0841932,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.0841932,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000055
+    }
+  }
+}

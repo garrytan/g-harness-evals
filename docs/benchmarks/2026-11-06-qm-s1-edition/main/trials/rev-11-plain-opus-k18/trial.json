@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-11-plain-opus-k18",
+  "task_id": "rev-11",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 18,
+  "status": "ok",
+  "reply_text": "I reviewed search-filters against main (2 commits: free-text search and pagination). The tests pass, but please don't merge yet. There's one blocker.\n\n**Blocker: SQL injection in `src/query.js`**\n```js\nclauses.push(\"name ILIKE '%\" + term + \"%'\");\n```\nThe search term from the request is pasted straight into the SQL. A term like `x' OR '1'='1` gets past the filter, and worse ones are possible. This also breaks the rule in your README: request values go in `params`, and the SQL holds only `$n` placeholders. Fix:\n```js\nparams.push('%' + term + '%');\nclauses.push(`name ILIKE $${params.length}`);\n```\nYou might also escape `%`, `_` and `\\` in the term so users can't send wildcards (add `ESCAPE '\\'` if you do). Also, a term that's only spaces trims down to `''` and matches every product. Probably skip the clause when the trimmed term is empty.\n\n**Should fix**\n- **Tests:** The new tests only check the `WHERE` text with a regex, so they pass even with the injection. Assert the exact output, e.g. `{ where: 'WHERE name ILIKE $1', params: ['%red%'] }`, and add a test with a quote in the term. The old `in-stock is a literal condition` test was deleted rather than renamed, so put it back.\n- **Renamed export:** `buildFilters` → `buildWhere` breaks anything that imports the old name. Nothing in this repo uses it, but if other code does, keep an alias or bump the version as a breaking change.\n- **Default sort:** `relevance: 'rank DESC'` is the fallback for every request, but nothing in this branch creates a `rank` column. If the query doesn't select or compute `rank`, every default search will error. Worth checking.\n\n**Nits**\n- The CHANGELOG mentions sort orders but not pagination. It doesn't mention the rename either.\n- In `paginate.js`, `MAX_PAGE` is really the maximum page size. `MAX_PAGE_SIZE` would be clearer. `| 0` also quietly truncates odd input (`\"abc\"` → page 1), which is fine if that's what you want.\n- `sort.js` and `paginate.js` look good. The sort whitelist keeps user input out of `ORDER BY`.\n\nI haven't changed anything in the repo.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-11-plain-opus-k18",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0585228,
+    "input_tokens": 53380,
+    "output_tokens": 1305,
+    "cached_tokens": 50102,
+    "cache_write_tokens": 2814,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000050400000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.058472399999999994,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 21.751,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-11-plain-opus-k18",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T12:58:51.841Z",
+    "images": {
+      "core": "sha256:d3c15a4ff59b46b682cc0b498a5b96d657f86e2d1ac9a8b947b4fb5d8b1c3302",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-a37a4db49ad7",
+        "id": "sha256:6c659f1b0432cea1eb0db9b19f43ea8bfa0f2f02c7a83d5ad91b5d10171f8a8e",
+        "tree_sha256": "593d02dc02e96eab384f83c52971c5fda6586bcbeb5e6f14ef27e349edfe0b1b"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-d360dbe0-045c-482b-b097-9348b7cd-53879e"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T12:59:37.247Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..search-filters; git diff main...search-filters",
+          "code": 0,
+          "output": "  main\n* search-filters\n54f7b81 Paginate search results\n306a556 Add free-text search over the name\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex d29661f..a673868 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.6.0\n+\n+- Free-text product search and sort orders.\n+\n #"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-11-plain-opus-k18",
+      "meter": {
+        "requests": 5,
+        "usd": 0.0585228,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.0585228,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000050400000000000005
+    }
+  }
+}

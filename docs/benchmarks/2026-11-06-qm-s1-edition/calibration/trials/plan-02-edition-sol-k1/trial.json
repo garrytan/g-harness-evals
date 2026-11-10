@@ -1,0 +1,176 @@
+{
+  "trial_id": "plan-02-edition-sol-k1",
+  "task_id": "plan-02",
+  "family": "plan",
+  "arm": "edition",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I reviewed the full checkout at `29ef302`. **No code changes made; all 3 existing tests pass.**\n\nMy recommendation is a small reminder runner that reuses the existing notification system—not a separate SMS integration. There are a couple of deployment gaps to resolve before it can reliably run unattended.\n\n### What the code already gives us\n\n- **SMS and auditing:** `clinic/notify.py` dispatches through registered providers and records successful sends. Commit `3ed3c27` explicitly requires every outbound message to use this path. `docs/integrations.md` is stale: it points to a deleted Twilio client.\n- **Contact restrictions:** `clinic/confirmations.py:may_contact()` checks the patient’s preference. Only `sms` patients may receive texts; `none` is a legal/safeguarding hold, not permission to fall back to another channel.\n- **Clinic-local time:** `clinic/tz.py:local_time()` already supports the three clinics and daylight saving.\n- **Missing operational pieces:** there’s no appointment repository, scheduler, durable reminder history, or provider setup in this checkout. The Dockerfile also names an `app` module that isn’t present.\n\n## Proposed plan\n\n### 1. Architecture: a scheduled runner, using current appointment data\n\nI recommend interpreting “the day before” as **the previous calendar day in the appointment’s clinic timezone**, rather than exactly 24 hours before. Send at a clinic-local daytime hour, to be agreed.\n\n```text\nScheduled run\n  → load current appointments and patients\n  → select tomorrow’s appointments in each clinic’s local time\n  → check current SMS preference, phone, and prior reminder state\n  → notify.send(..., reason=\"appointment_reminder\")\n  → record outcome\n```\n\nTwo possible designs:\n\n- **Recommended: periodic sweep of current appointments.** Cancellation, rescheduling, and changed contact preferences are naturally rechecked.\n- **Alternative: enqueue a delayed job when an appointment is booked.** This avoids repeated selection but requires every cancellation/reschedule to update queued work, plus the same checks at delivery.\n\nKeep the reminder policy behind one runner function in a new `clinic/reminders.py`; don’t introduce a new service or queue for this alone.\n\n**High-priority reliability requirement:** use durable, concurrency-safe reminder state, keyed by appointment and scheduled occurrence. An in-memory set would lose history on restart. A provider timeout can mean “accepted, but response lost,” so do not promise exactly-once delivery or blindly retry uncertain sends; define reconciliation against the actual provider’s capabilities.\n\nThe appointment source must also identify cancellations. `Appointment` currently has no status field, so either the upstream source supplies only active appointments or that model needs extending.\n\n### 2. Code quality and safety\n\n- Move the existing contact-permission helper to a shared notification location and reuse it from confirmations and reminders. Don’t duplicate the rule or make reminders depend on confirmation-specific code.\n- Check preferences immediately before sending; skip missing/blank phone numbers and **never fall back to email or phone**.\n- Reuse `local_time()` for both eligibility and message formatting. Don’t introduce Python’s standard-library `zoneinfo` unconditionally: CI explicitly supports Python 3.8 on clinic servers.\n- Keep message content minimal—appointment date/time, without medical details.\n- Isolate per-patient failures so one bad record doesn’t stop the batch. Keep message bodies and phone numbers out of operational error logs.\n- Preserve the audited send path. `audit.LOG` is currently memory-only, so durable audit retention needs confirmation before production use.\n\n### 3. Tests that should prove it\n\nAdd reminder tests covering:\n\n- Tomorrow versus today/day-after-tomorrow, including UTC/local-date differences.\n- Spring-forward, fall-back, midnight, and year boundaries.\n- Every contact preference, especially `none`; missing phone; preference changed before dispatch.\n- Cancelled/rescheduled appointments and repeated or concurrent runs.\n- Provider failure, ambiguous timeout, restart recovery, and continuation after one failure.\n- Correct local-time message and `appointment_reminder` audit reason; no successful-send audit when the provider raises.\n\nExtend the shared permission tests and run everything on **both Python 3.8 and 3.12**.\n\n### 4. Performance and rollout\n\nVolume is unknown. Prefer bounded batches and bulk patient loading, not one lookup per appointment. Once the storage source is known, select candidates using indexed appointment-time ranges and indexed reminder keys.\n\nRoll out with a no-send preview, then one clinic, monitoring eligible/skipped/sent/failed counts. Document the scheduler, provider registration, retries, and recovery procedure.\n\n### Scope and build order\n\n1. Agree timing and locate the live appointment/storage integration.\n2. Implement and test the reminder policy plus shared contact check.\n3. Wire durable reminder state and the scheduled invocation.\n4. Preview, validate, then enable delivery.\n\nCore changes would be concentrated in reminders, notification permissions, confirmations, tests, and integration documentation. Storage/deployment files depend on the missing integration—not a reason to invent a parallel system.\n\n**Not in scope:** email fallback, patient replies, multiple reminder cadences, waitlist changes, billing changes, or a general timezone rewrite.\n\n**Two decisions before implementation:** Is “the previous clinic-local calendar day” right, and what send hour should we use? Also, where do production appointments, job scheduling, and durable storage live—the parts outside this checkout?",
+  "counts": {
+    "open_matched": true,
+    "open_any": true,
+    "complete_read": true,
+    "first_step": true,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-02-edition-sol-k1",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0581382,
+    "input_tokens": 63131,
+    "output_tokens": 1845,
+    "cached_tokens": 48892,
+    "cache_write_tokens": 13916,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.000073,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0580652,
+        "requests": 6
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 37.233,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-calibration",
+    "trial_id": "plan-02-edition-sol-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T06:42:20.190Z",
+    "images": {
+      "core": "sha256:3567e7c17a04b80e7a1454cea7d4e459f0fa39dd8671e6daed39af28a6584e2c",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-47535c19c325",
+        "id": "sha256:b66f128ded6475450961233bf8a7bb98fbd68bfdbb847b310fa759abb4979fa1",
+        "tree_sha256": "0db8ad1fb7114a05814b045352731cb1229823d3bc3d3656a81f4761b09b18f7"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-e28bd4c8-8f96-4265-92f5-aad424bd-42fd17"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T06:43:20.825Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/c75042521e37b11fda53914e/a87610647ea5f78e/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/c75042521e37b11fda53914e/a87610647ea5f78e/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [
+        {
+          "seq": 4,
+          "skill": "gstack-plan",
+          "via": "skill"
+        }
+      ],
+      "complete_via": "inline",
+      "read_whole": true,
+      "first_step_runs": [
+        {
+          "seq": 10,
+          "command": "cd repo && git log --oneline -10 && ls -la && git remote -v && find . -maxdepth 3 -type f -not -path './.git/*' | sort",
+          "code": 0,
+          "output": "29ef302 Waitlist for cancelled slots\nb4bd558 Contact preferences\n3ed3c27 Route all outbound messages through clinic.notify\n8201660 Text patients a booking confirmation\n5185e08 Clinic scheduling core\ntotal 44\ndrwxr-xr-x 7 root root 4096 Nov  8 06:42 .\ndrwxr-xr-x 4 root root 4096 Nov  8 06:42 ..\ndrwxr"
+        },
+        {
+          "seq": 15,
+          "command": "cd repo && git log --format=fuller -5 && git ls-files && python3 -m unittest discover -s tests -t . && git status --porcelain",
+          "code": 0,
+          "output": "commit 29ef3027d1a43015cba9824bd9e285a9d864415b\nAuthor:     Rui Tanaka <rui@example.test>\nAuthorDate: Sat Oct 24 01:00:00 2026 -0700\nCommit:     Rui Tanaka <rui@example.test>\nCommitDate: Sat Oct 24 01:00:00 2026 -0700\n\n    Waitlist for cancelled slots\n\ncommit b4bd5580da96dd00951e905139faea0f0ae7eeb9"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-02-edition-sol-k1",
+      "meter": {
+        "requests": 7,
+        "usd": 0.0581382,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.0581382,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.000073
+    }
+  }
+}

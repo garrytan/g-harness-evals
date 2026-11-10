@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-08-plain-opus-k13",
+  "task_id": "rev-08",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 13,
+  "status": "ok",
+  "reply_text": "**Don't ship this yet.** `nextBillingDate` gets month-end anchors wrong. Both tests on the branch pass, but neither one covers the case that breaks. I didn't change anything.\n\n**The bug (`src/schedule.js`):** the code caps the anchor day at the length of the *current* month (the month of `from`). It should cap it at the length of the *target* month. Then `new Date(year, month + 1, day)` rolls any extra days over into the month after. I ran these cases:\n\n| Input | Anchor | Expected | Actual |\n|---|---|---|---|\n| Jan 31, 2026 | 31 | Feb 28 | **Mar 3** (skips February) |\n| Jan 30, 2028 (leap year) | 30 | Feb 29 | **Mar 1** |\n| Feb 28, 2026 | 31 | Mar 31 | **Mar 28** (the anchor drifts) |\n\nThis breaks the README promise that \"the anchor never drifts.\" In the first two rows, customers skip a February renewal. In the third, every renewal after a short month moves earlier for good. The fix is to compute `daysInMonth(year, month + 1)` and cap the anchor at that. `Date` handles the December→January rollover correctly. The Dec 31 test passes only because December and January both have 31 days.\n\n**Tests to add:** Jan 31→Feb 28, a leap-year Feb 29, and Feb 28 (anchor 31)→Mar 31. That last one is the drift check.\n\n**Smaller points:**\n- **`prorate.js`:** the `anchorDay` parameter is never used. Proration counts days to the end of the calendar month, not to the first renewal. If someone starts on Jan 20 with a 20th anchor, their first renewal is Feb 20, but the code charges for Jan 20–31 only (about 39%). Check whether the first period is meant to end at month-end or at the anchor. Right now the code and README say month-end, and the anchor is passed in for nothing.\n- **Minor:** `Math.round` on cents is fine. The two proration tests only use a 30-day month, so a 31-day month and February would be worth testing.\n- **CHANGELOG:** the 2.1.0 entry mentions next-billing-date but leaves out proration.\n\n**What looks fine:** `daysInMonth` is correct, including leap years. The version bump and the README wording are consistent with each other.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-08-plain-opus-k13",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.061314,
+    "input_tokens": 53322,
+    "output_tokens": 1422,
+    "cached_tokens": 49964,
+    "cache_write_tokens": 2881,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000053200000000000006,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.061260800000000004,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 16.953,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-08-plain-opus-k13",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:23:37.754Z",
+    "images": {
+      "core": "sha256:d3c15a4ff59b46b682cc0b498a5b96d657f86e2d1ac9a8b947b4fb5d8b1c3302",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-21e081ac9005",
+        "id": "sha256:428b7fd2dde7737bef1596261eb4a03e9a9966eb1c49b0fbcd8ad1c3d28069e8",
+        "tree_sha256": "68ef982cf81212089c0222639053e7a07970a508f7dd5990be1a7afc337a9f10"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-89cab83b-c7da-4856-aec8-27b5e133-15295a"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:24:18.585Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd repo; git branch -a; git log --oneline main..billing-anniversary; git diff main...billing-anniversary",
+          "code": 0,
+          "output": "* billing-anniversary\n  main\nf73b00d Prorate the first partial period\n27a0295 Compute the next billing date from the anchor\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 0d77c0e..6b56b0d 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 2.1.0\n+\n+- Next-billing-date com"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-08-plain-opus-k13",
+      "meter": {
+        "requests": 5,
+        "usd": 0.061314,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.061314,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000053200000000000006
+    }
+  }
+}

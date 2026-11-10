@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-03-plain-opus-k1",
+  "task_id": "rev-03",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I reviewed phone-normalize against main without changing anything. **I wouldn't merge it yet.** There's one real bug, and it breaks every example in the new README section. The tests pass, but only because no test uses more than one space.\n\n**Blocking bug: only the first space gets removed**\n\n`src/normalize.js` uses `raw.trim().replace(' ', '')`. In JavaScript, replacing with a plain string only replaces the first match. Here's what I got when I ran the README examples through `queueText`'s path:\n\n| Input | Normalized | Accepted? |\n|---|---|---|\n| `+44 20 7946 0958` | `+4420 7946 0958` | ❌ |\n| `0044 20 7946 0958` | `+4420 7946 0958` | ❌ |\n| `+1 (415) 555-0100` | `+1415 5550100` | ❌ |\n| `+1.415.555.0100` | `+14155550100` | ✅ |\n| `4155550100` (no country code) | refused | ✅ as intended |\n\nNormal typed numbers with spaces get rejected as \"bad number\", which is the main thing this branch is meant to fix.\n\nSuggested fix: remove all whitespace in one step, before the `00` check, e.g. `raw.replace(/[\\s().-]/g, '')`, then `toInternational`. That also handles tabs and non-breaking spaces, which often come in from copy-paste.\n\n**Tests**\n- Add the three README examples as test cases. They would have caught this bug.\n- Add a test for a national number (`4155550100`) being refused through `queueText`.\n- Nothing tests `queueText` end to end yet, including that it stores the normalized number.\n\n**Minor, not blocking**\n- The tighter E.164 check (`^\\+[1-9]\\d{1,14}$`) is correct and matches the README's \"at most 15 digits\". But it rejects some numbers main used to accept, like `+0…` or anything over 15 digits. If any stored numbers came in under the old check, they'll now fail. It's worth a line in the CHANGELOG.\n- Putting `toInternational` in its own `dialing.js` file is fine, but it's a lot for a one-liner. That's a matter of taste.\n- The error message now shows the raw input (`bad number: ' + rawTo`), which is better for users.\n- The version bump to 0.9.0 and the CHANGELOG entry look right.\n\nOnce whitespace is handled properly and the README examples are in the tests, it looks good to merge.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-03-plain-opus-k1",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0648194,
+    "input_tokens": 53251,
+    "output_tokens": 1562,
+    "cached_tokens": 49816,
+    "cache_write_tokens": 2978,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.0000522,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0647672,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 19.413,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "rev-03-plain-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T02:53:04.621Z",
+    "images": {
+      "core": "sha256:6609775f47dd9965cfc5b3f275aafc1983b815968cb2a9b2970009af3498ad91",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-60b74aee38e7",
+        "id": "sha256:c4a92d6611d7400e2c586061f06ac0f59748852d9ac2f7c89b2a0b938dfa36c6",
+        "tree_sha256": "2203cf0cd835700f9f15d4dd838fbcf6c48e0f9c988c060d2fb614fa1d648e6f"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-a5944650-1f79-4466-b98f-65f33a32-757f34"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T02:53:48.100Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..phone-normalize; git diff main...phone-normalize",
+          "code": 0,
+          "output": "  main\n* phone-normalize\n173e408 Tighten the E.164 check\n970312d Accept phone numbers as people type them\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 5581f29..51b5f1b 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 0.9.0\n+\n+- Phone numbers are normalized to E.164 b"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-03-plain-opus-k1",
+      "meter": {
+        "requests": 5,
+        "usd": 0.0648194,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.0648194,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.0000522
+    }
+  }
+}

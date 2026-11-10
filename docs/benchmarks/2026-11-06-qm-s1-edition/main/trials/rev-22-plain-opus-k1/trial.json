@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-22-plain-opus-k1",
+  "task_id": "rev-22",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I wouldn't merge this yet. The coupon math is wrong in the main total function, and the tests don't catch it. All tests pass, but no test actually applies a coupon. I didn't change anything.\n\n**Blocking**\n\n1. **Tax is charged on the full subtotal, not the discounted one** (`src/total.js`). The code does `tax(subtotal, taxPercent)`, but the README says tax is charged after the coupon comes off (\"Tax is never charged on money the customer did not pay\"). I ran it with a $100.00 subtotal, a 20% coupon and 10% tax: it returns **9000** (overcharging the customer by $2.00); the right answer is **8800** (8000 + 800). The fix is to tax `subtotal - discount`.\n\n2. **Coupons over 100% or below 0% aren't stopped.** `computeTotal` uses `pct()` directly and skips `couponValue()` in `src/coupon.js`, which already limits the percentage to 0–100. So `couponValue` is never used, and a 150% coupon on $100 with no tax returns **−5000**, a negative order total. The fix is to use `couponValue` in `computeTotal`.\n\n3. **No test applies a coupon.** Both tests in `total.test.js` use a 0% coupon, which is why bug #1 got through. Tests worth adding:\n   - 20% coupon with tax → 8800 (the case above)\n   - a coupon over 100% is limited to 100% and never goes negative\n   - a rounding case, e.g. an odd subtotal with 15% off and 8.25% tax, so you lock in where rounding happens\n\n**Worth a look**\n\n4. **Shipping isn't connected to the total.** `computeTotal` takes `shipping` as an input and doesn't call `shippingFor`, so every caller has to remember to pass `shippingFor(subtotal)` with the subtotal *before* the coupon, as the README says. That's fine if you meant it, but it's easy to get wrong. Also, is \"free shipping is decided before the coupon\" really the rule you want? With it, a $80 order with 50% off still ships free.\n5. **The changelog is missing free shipping.** The 1.4.0 entry only lists coupons, but the branch also adds free shipping over $75.\n6. **The shipping test** covers $75.00 and $74.99 well. You might add a 0 subtotal for completeness.\n\nThe rest looks fine: shipping is added after tax and isn't taxed, everything stays in whole cents, and the version bump matches.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-22-plain-opus-k1",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0619859,
+    "input_tokens": 53084,
+    "output_tokens": 1495,
+    "cached_tokens": 49821,
+    "cache_write_tokens": 2791,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000053700000000000004,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0619322,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 21.221,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-22-plain-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T12:57:54.819Z",
+    "images": {
+      "core": "sha256:e48c8f94d6b77801b71348a2f487e3d9f61914e9a616d4a9ec352a157470f137",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-808f1519d24a",
+        "id": "sha256:69e8dc91f4f297df1a91abe414371da5ed02bfa309f98ec1b45ae849af4c1aaf",
+        "tree_sha256": "4b08892c391c0a2a74732d9e93532fae131ccaac0d120f4af10749880f849213"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-8dfdecf6-cb4c-42f3-9c27-51066e6b-615d39"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T12:58:39.488Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline -5 coupon-checkout; git diff main...coupon-checkout",
+          "code": 0,
+          "output": "* coupon-checkout\n  main\na68c0e7 Free shipping over a threshold\naba236a Apply coupons at checkout\n09a6e72 Order subtotal and tax in cents\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 38c8cb7..009d9c7 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.4.0\n+\n+- Coupons"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-22-plain-opus-k1",
+      "meter": {
+        "requests": 5,
+        "usd": 0.0619859,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.0619859,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000053700000000000004
+    }
+  }
+}

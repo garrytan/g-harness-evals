@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-19-plain-opus-k1",
+  "task_id": "rev-19",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I don't think this should be merged yet. One bug would log users out almost immediately. I read the diff and didn't change anything.\n\n**Blocker: the timeout is 30 milliseconds, not 30 minutes**\n\nIn `src/idle.js`:\n```js\nconst IDLE_TIMEOUT = 30;\nreturn session.lastSeen + IDLE_TIMEOUT < now;\n```\n`lastSeen` comes from `Date.now()`, which is in milliseconds, and the README says every duration in the package is in milliseconds. So a session counts as idle 30ms after its last activity. `sweep` would then delete nearly every session, so users would be logged out right after each request. The fix is `const IDLE_TIMEOUT = 30 * 60 * 1000;`. `backoff.js` already uses a `SECOND` constant this way, so the same pattern fits here.\n\n**Why the tests didn't catch it**\n\nThe tests only check extreme cases: 0ms idle, and 1–2 hours idle. Both give the expected result whether the timeout is 30ms or 30 minutes. Please add tests near the cutoff:\n- 29 minutes idle → not idle (this would have caught the bug)\n- exactly 30 minutes → whichever result you intend (see below)\n- 31 minutes → idle\n\n**Minor issues**\n- **What happens at exactly 30 minutes:** the README says a session is idle \"once\" it hits 30 minutes, which means `>=`. The code uses `<`, so at exactly 30 minutes it still counts as active. It's a one-millisecond difference, but the code and docs should match.\n- **`reconnectDelay`:** the logic and the 30s cap look right. It has no tests. A negative or non-integer `attempt` would give odd values, so it may be worth limiting the input range.\n- **CHANGELOG and version:** the 1.1.0 bump and changelog entry look fine.\n\nOnce the timeout constant and the cutoff tests are in, I'm happy for this to merge.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-19-plain-opus-k1",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0505255,
+    "input_tokens": 50672,
+    "output_tokens": 1159,
+    "cached_tokens": 47963,
+    "cache_write_tokens": 2245,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000052900000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.050472600000000006,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 13.804,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "rev-19-plain-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:23:06.802Z",
+    "images": {
+      "core": "sha256:276503dbf085b3b0855b3ecb1bcc7e1a4baa8571aea7cba84ecb4236755d85c7",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-866435aaa7c4",
+        "id": "sha256:4a705bd43329fd3731bc7a611d6d68a301f7d1d6d8a2f55e5fc3769d5543909d",
+        "tree_sha256": "976e7f453705633343847be00fd0cb97514b749e6cec4f692ef40f15f2fb9b22"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-377d2d77-49b7-48fd-bafb-dfbfa083-8ad4e3"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:23:44.235Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..idle-timeout; git diff main...idle-timeout",
+          "code": 0,
+          "output": "* idle-timeout\n  main\nda785f6 Sweep idle sessions from the store\nad83f9a Expire idle sessions\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 161cbe8..275e5be 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.1.0\n+\n+- Idle session expiry and reconnect backoff.\n+\n ## 1."
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-19-plain-opus-k1",
+      "meter": {
+        "requests": 5,
+        "usd": 0.0505255,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.0505255,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000052900000000000005
+    }
+  }
+}

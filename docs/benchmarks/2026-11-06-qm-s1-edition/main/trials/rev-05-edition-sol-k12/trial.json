@@ -1,0 +1,174 @@
+{
+  "trial_id": "rev-05-edition-sol-k12",
+  "task_id": "rev-05",
+  "family": "review",
+  "arm": "edition",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 12,
+  "status": "ok",
+  "reply_text": "*One merge-blocking finding.*\n\n*CRITICAL — `src/guard.js:12`: `canEdit` checks READ instead of WRITE.*\nJavaScript evaluates `===` before `&`, so `share.mask & WRITE === WRITE` becomes `share.mask & true`—effectively checking bit 1 (READ). On unlocked documents, viewers can edit, while a WRITE-only share cannot.\n\n*Recommended fix:* use `hasRight(share.mask, WRITE) && !share.locked`. Add regression tests for unlocked READ-only and WRITE-only shares; the current editor test has both bits set and misses this.\n\nAll 6 existing tests pass; I separately reproduced both incorrect permission results. No other findings, and no files changed.",
+  "counts": {
+    "open_matched": true,
+    "open_any": true,
+    "complete_read": true,
+    "first_step": true,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-05-edition-sol-k12",
+    "requests": 7,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0442737,
+    "input_tokens": 59451,
+    "output_tokens": 724,
+    "cached_tokens": 46045,
+    "cache_write_tokens": 13092,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0441605,
+        "requests": 6
+      },
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0001132,
+        "requests": 1
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 7
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 16.601,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-05-edition-sol-k12",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:23:41.980Z",
+    "images": {
+      "core": "sha256:ec9867c674526aea911eb4b0f8375fd94b6177daff69d0cd5324a28fae888797",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-896e49561fcd",
+        "id": "sha256:4e0344d2ce83962d9c558e674a1314a313ff4f9db2ba03957a4d67825fb38d73",
+        "tree_sha256": "3745319e560b5b3779257b8b6020c6313b748cb359283f6ff59062054bfd97dd"
+      }
+    },
+    "layer_put": {
+      "http": 200,
+      "version": 1,
+      "contentHash": "78040d9f3371ec043d1f6ac008403ba439c81897dcf488f08c7741c479ffef96"
+    },
+    "layer": {
+      "http": 200,
+      "status": "applied",
+      "skill_files": 3
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-7c0bdccf-005f-41e5-8837-0398e02e-930fbd"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:24:22.597Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/16989bf52c7135d4e77498a1/e7da84deecff7b48/gstack-review/SKILL.md",
+        "/root/workspace/.agent-skills/16989bf52c7135d4e77498a1/e7da84deecff7b48/gstack-review/scripts/diff-base.sh"
+      ],
+      "first_system_chars": 11526,
+      "index_lines": {
+        "gstack-review": {
+          "listed": true,
+          "description_intact": true
+        },
+        "gstack-plan": {
+          "listed": true,
+          "description_intact": true
+        }
+      },
+      "layer_paths": [
+        "skills/gstack-plan/SKILL.md",
+        "skills/gstack-review/SKILL.md",
+        "skills/gstack-review/scripts/diff-base.sh"
+      ]
+    },
+    "count_detail": {
+      "opens": [
+        {
+          "seq": 2,
+          "skill": "gstack-review",
+          "via": "skill"
+        }
+      ],
+      "complete_via": "inline",
+      "read_whole": true,
+      "first_step_runs": [
+        {
+          "seq": 6,
+          "command": "cd /root/workspace/repo && sh /root/workspace/.agent-skills/16989bf52c7135d4e77498a1/e7da84deecff7b48/gstack-review/scripts/diff-base.sh main",
+          "code": 0,
+          "output": "BRANCH: share-editing\nBASE: main\nMERGE_BASE: 28095cc4b9f52cdfab84fe080c2d24a63081be4b\n== commits since base\n1dc003f Share dialog switches and ownership transfer\n09f5972 Let editors comment and edit unlocked documents\n== diff stat (working tree against merge base)\n CHANGELOG.md        |  4 ++++\n READ"
+        },
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git diff 28095cc4b9f52cdfab84fe080c2d24a63081be4b && find . -maxdepth 3 -type f -not -path './.git/*' | sort",
+          "code": 0,
+          "output": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 00a7c60..908a687 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 3.2.0\n+\n+- Editors can comment and edit; locked documents are read-only.\n+\n ## 3.1.0\n \n - View-only shares.\ndiff --git a/README.md b/README.md\nindex 11d4d2a"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": "/root/workspace/.agent-skills/16989bf52c7135d4e77498a1/e7da84deecff7b48/gstack-review",
+        "rewritten": true
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-05-edition-sol-k12",
+      "meter": {
+        "requests": 7,
+        "usd": 0.0442737,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 7,
+        "usd": 0.0442737,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0001132
+    }
+  }
+}

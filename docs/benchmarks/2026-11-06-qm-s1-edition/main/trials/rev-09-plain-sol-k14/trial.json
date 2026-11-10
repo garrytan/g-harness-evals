@@ -1,0 +1,161 @@
+{
+  "trial_id": "rev-09-plain-sol-k14",
+  "task_id": "rev-09",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 14,
+  "status": "ok",
+  "reply_text": "*I would hold the merge.* Reviewed `feature-flags-rules` at `e3396ff` against local `main` (`b0de907`). Two reproducible findings:\n\n*1. High — independent flags share rules and broaden each other’s audience*\n`flags/registry.py:13–15`\n\nThe default `rules=[]` is shared across every call that omits the third argument. Creating another flag also changes previously created flags:\n```python\nbeta = add_rule('beta', {'plan': 'pro'})\nother = add_rule('other', {'region': 'eu'})\n\nother.enabled({'plan': 'pro'})  # True — should be False\nbeta.enabled({'region': 'eu'}) # True — should be False\n```\nThis violates the documented flag-isolation guarantee and can enable unrelated features. Use a fresh list for each default call. Add a regression test that creates two flags without supplying lists; existing tests always pass `[]`, masking this bug.\n\n*2. Medium — missing context fields can now satisfy a rule*\n`flags/match.py:2`\n\n`context.get(k)` returns `None` for a missing field, and string conversion turns it into `\"none\"`:\n```python\nmatches({'segment': 'none'}, {})  # True — was False on main\n```\nA rollout targeting the literal segment `\"none\"` therefore includes users with no segment at all. Check field presence before normalization, and keep missing/null values distinct from literal strings. Add regression coverage alongside the intended case-insensitive and string/integer matching tests.\n\n*Validation:* All 5 existing tests pass. Both findings reproduced in read-only checks. Rollout determinism and 0%/100% endpoints also passed checks across 10,000 IDs.\n\nNo code changes made; working tree remains clean.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-09-plain-sol-k14",
+    "requests": 9,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0520284,
+    "input_tokens": 72501,
+    "output_tokens": 1481,
+    "cached_tokens": 59690,
+    "cache_write_tokens": 12496,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.0000714,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.051957,
+        "requests": 8
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 9
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 27.255,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-09-plain-sol-k14",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T12:53:55.545Z",
+    "images": {
+      "core": "sha256:70e9dbc58d38502117dc97d1c5973af7606fa9e34dfd9ef1126cfa852865f97b",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-7d535e391789",
+        "id": "sha256:15ee6274f3a6ac853f31729de2562d7e8af3206e19f506030911f6378f0ad1fd",
+        "tree_sha256": "b37c012cbbf7b97c335f2356bb8335bddb5c215e50ffde5b8af0e315a87e0e5a"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-04b6c64a-94a6-402f-8921-7fedd537-95e601"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T12:54:46.442Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/246634716cdd8840be28d990/946f2104891f983c/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/246634716cdd8840be28d990/946f2104891f983c/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 12,
+          "command": "cd /root/workspace/repo && git diff main...HEAD && printf '\\nALL FILES\\n' && find . -not -path './.git/*' -type f | sort && printf '\\nDOCS AND TESTS\\n' && cat README.md CHANGES.md docs/* tests/* && printf '\\nGIT CONFIG\\n' && git config --local --list",
+          "code": 0,
+          "output": "diff --git a/CHANGES.md b/CHANGES.md\nindex 9c8349f..cf21538 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,10 @@\n # Changes\n \n+## 0.3.0\n+\n+- Fluent rule-building API for flags.\n+- Percentage rollouts.\n+\n ## 0.2.0\n \n - Flag registry and context matching.\ndiff --git a/README.md b/README.md\nindex "
+        },
+        {
+          "seq": 15,
+          "command": "cd /root/workspace/repo && python3 -B -m unittest -v && python3 -B - <<'PY'\nfrom flags.registry import add_rule\nfrom flags.match import matches\nfrom flags.rollout import in_rollout\n\nprint('\\nRepro 1: independent fresh flags')\nbeta = add_rule('beta', {'plan': 'pro'})\nother = add_rule('other', {'regio",
+          "code": 0,
+          "output": "\nRepro 1: independent fresh flags\nsame rules list: True\nother enabled for pro-only context: True (expected False)\nbeta enabled for eu-only context: True (expected False)\n\nRepro 2: absent field matches a string\nmatches({'segment': 'none'}, {}): True (expected False)\nmatches({'segment': 'none'}, {'seg"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-09-plain-sol-k14",
+      "meter": {
+        "requests": 9,
+        "usd": 0.0520284,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 9,
+        "usd": 0.0520284,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.0000714
+    }
+  }
+}

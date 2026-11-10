@@ -1,0 +1,257 @@
+{
+ "entries": [
+  {
+   "seq": 0,
+   "type": "user",
+   "payload": {
+    "name": "Dana Okafor",
+    "environment": "<environment>\nLocal time: 2026-11-08 04:58 PST (America/Los_Angeles)\n</environment>",
+    "guidanceSnapshot": {
+     "version": 0,
+     "sessionId": "4c7e92f3-2bda-4a6a-8164-0cddcb0bd8a4"
+    },
+    "text": "Hey, feature/quota-enforcement is ready to go into main. Can you review it before I merge? Just tell me what you'd block on, please don't change any code.",
+    "runId": "2ff76c42-e7d7-49b6-9936-7ffdf8cd1165"
+   }
+  },
+  {
+   "seq": 1,
+   "type": "text",
+   "payload": {
+    "type": "text",
+    "wire": {
+     "message": {
+      "id": "51f8ef94-d59b-49e1-b858-bbf276a78830",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "text": "I'll take a look at the branch.",
+    "runId": "2ff76c42-e7d7-49b6-9936-7ffdf8cd1165",
+    "step": {
+     "id": "51f8ef94-d59b-49e1-b858-bbf276a78830",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 2,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "51f8ef94-d59b-49e1-b858-bbf276a78830",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /tmp/pi-cwd 2>/dev/null; pwd; ls; git rev-parse --show-toplevel 2>&1; ls ~ ; find / -maxdepth 4 -name .git -type d 2>/dev/null | head\",\"purpose\":\"Locating the repository\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /tmp/pi-cwd 2>/dev/null; pwd; ls; git rev-parse --show-toplevel 2>&1; ls ~ ; find / -maxdepth 4 -name .git -type d 2>/dev/null | head",
+    "purpose": "Locating the repository",
+    "runId": "2ff76c42-e7d7-49b6-9936-7ffdf8cd1165",
+    "callId": "toolu_01RQ671oM4aimG5d5bvYWvpM",
+    "tool": "execute",
+    "step": {
+     "id": "51f8ef94-d59b-49e1-b858-bbf276a78830",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "/root/workspace\nrepo\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nworkspace\n/root/workspace/repo/.git\n\n[exit 0]",
+    "runId": "2ff76c42-e7d7-49b6-9936-7ffdf8cd1165",
+    "callId": "toolu_01RQ671oM4aimG5d5bvYWvpM",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 4,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "6d0f0669-ff17-43ab-87ca-151f35cfa1f7",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; git branch -a; git log --oneline main..feature/quota-enforcement; git diff --stat main...feature/quota-enforcement; git diff main...feature/quota-enforcement | head -600\",\"purpose\":\"Reading the branch diff\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..feature/quota-enforcement; git diff --stat main...feature/quota-enforcement; git diff main...feature/quota-enforcement | head -600",
+    "purpose": "Reading the branch diff",
+    "runId": "2ff76c42-e7d7-49b6-9936-7ffdf8cd1165",
+    "callId": "toolu_01Pk6nkjkke9pP8AnFwUuwu4",
+    "tool": "execute",
+    "step": {
+     "id": "6d0f0669-ff17-43ab-87ca-151f35cfa1f7",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "* feature/quota-enforcement\n  main\n3ebff74 Count usage in allocation blocks\n16fbb39 Enforce plan quotas on upload\n CHANGELOG.md       |  4 ++++\n README.md          |  6 ++++++\n package.json       |  2 +-\n src/plans.js       |  8 +++++++-\n src/upload.js      |  5 +++++\n src/usage.js       |  6 ++++--\n test/quota.test.js | 19 +++++++++++++++++++\n test/usage.test.js |  4 ++--\n 8 files changed, 48 insertions(+), 6 deletions(-)\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 890fbd5..3c1a31b 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.7.0\n+\n+- Uploads past the plan quota are refused.\n+\n ## 1.6.0\n \n - Usage totals and shard placement.\ndiff --git a/README.md b/README.md\nindex 716e8a2..02cc665 100644\n--- a/README.md\n+++ b/README.md\n@@ -12,6 +12,12 @@ Storage accounting for drift-storage: how much each account uses and which shard\n \n Quotas are kept in KiB in src/plans.js.\n \n+## Quotas\n+\n+An upload is refused when it would take the account past its plan's quota. An upload that brings usage exactly to the quota is accepted.\n+\n+Usage counts whole 4 KiB blocks, because that is what the storage backend allocates: a 1-byte file uses 4 KiB.\n+\n ## Tests\n \n     npm test\ndiff --git a/package.json b/package.json\nindex 2dab184..dbe9595 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"drift-storage\",\n-  \"version\": \"1.6.0\",\n+  \"version\": \"1.7.0\",\n   \"private\": true,\n   \"scripts\": {\n     \"test\": \"node --test\"\ndiff --git a/src/plans.js b/src/plans.js\nindex 8015b97..b4398c3 100644\n--- a/src/plans.js\n+++ b/src/plans.js\n@@ -5,4 +5,10 @@ const PLANS = {\n   archive: { quotaKiB: 2147483648 },\n };\n \n-module.exports = { PLANS };\n+function quotaBytes(plan) {\n+  const entry = PLANS[plan];\n+  if (!entry) throw new Error('unknown plan: ' + plan);\n+  return entry.quotaKiB << 10;\n+}\n+\n+module.exports = { PLANS, quotaBytes };\ndiff --git a/src/upload.js b/src/upload.js\nindex 9d9c0be..d26f876 100644\n--- a/src/upload.js\n+++ b/src/upload.js\n@@ -1,7 +1,12 @@\n const { usedBytes } = require('./usage');\n const { shardFor } = require('./shard');\n+const { quotaBytes } = require('./plans');\n \n function acceptUpload(account, file) {\n+  const after = usedBytes(account.files) + file.size;\n+  if (after > quotaBytes(account.plan)) {\n+    return { ok: false, reason: 'over quota' };\n+  }\n   account.files.push(file);\n   return { ok: true, shard: shardFor(file.name) };\n }\ndiff --git a/src/usage.js b/src/usage.js\nindex 9b6b0e2..f5b851e 100644\n--- a/src/usage.js\n+++ b/src/usage.js\n@@ -1,5 +1,7 @@\n+const BLOCK = 4096;\n+\n function usedBytes(files) {\n-  return files.reduce((n, f) => n + f.size, 0);\n+  return files.reduce((n, f) => n + Math.ceil(f.size / BLOCK) * BLOCK, 0);\n }\n \n-module.exports = { usedBytes };\n+module.exports = { usedBytes, BLOCK };\ndiff --git a/test/quota.test.js b/test/quota.test.js\nnew file mode 100644\nindex 0000000..17eed57\n--- /dev/null\n+++ b/test/quota.test.js\n@@ -0,0 +1,19 @@\n+const test = require('node:test');\n+const assert = require('node:assert');\n+const { quotaBytes } = require('../src/plans');\n+const { acceptUpload } = require('../src/upload');\n+\n+test('free plan quota is 512 MiB', () => {\n+  assert.strictEqual(quotaBytes('free'), 512 * 1024 * 1024);\n+});\n+\n+test('an upload past the quota is refused', () => {\n+  const account = { plan: 'free', files: [{ name: 'a.bin', size: 512 * 1024 * 1024 }] };\n+  assert.deepStrictEqual(acceptUpload(account, { name: 'b.txt', size: 1 }), { ok: false, reason: 'over quota' });\n+});\n+\n+test('an upload within the quota is stored', () => {\n+  const account = { plan: 'free', files: [] };\n+  assert.strictEqual(acceptUpload(account, { name: 'c.txt', size: 100 }).ok, true);\n+  assert.strictEqual(account.files.length, 1);\n+});\ndiff --git a/test/usage.test.js b/test/usage.test.js\nindex e14564f..457aeb1 100644\n--- a/test/usage.test.js\n+++ b/test/usage.test.js\n@@ -2,6 +2,6 @@ const test = require('node:test');\n const assert = require('node:assert');\n const { usedBytes } = require('../src/usage');\n \n-test('usage adds file sizes', () => {\n-  assert.strictEqual(usedBytes([{ size: 10 }, { size: 20 }]), 30);\n+test('usage counts whole 4 KiB blocks', () => {\n+  assert.strictEqual(usedBytes([{ size: 10 }, { size: 4097 }]), 3 * 4096);\n });\n\n[exit 0]",
+    "runId": "2ff76c42-e7d7-49b6-9936-7ffdf8cd1165",
+    "callId": "toolu_01Pk6nkjkke9pP8AnFwUuwu4",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 6,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "68c9c927-6575-4646-afcc-bca1558d2f25",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     }
+    },
+    "thinkingSignature": "CAQS4QcKEAgTGAI4AUIIdGhpbmtpbmcSDBzxZXOqMEvjX6bCIhoMc8hbIX83MnVRoNGoIjAGrMCAnF/ewXQnQaHFGQB+A8LzXv4gHzbpFZTyAzv7bQavP2kGpY5PCJO6Ybkjx0kq/gaFmUrW3HAfNUBfYip8yZpKE8vWwEdLzsRF9W/8BdMq21KZW7mBe0LItumTAVVuQrylEHRsakKFmWv1Av5hCpvjy0TLZfK6KAhwGADhs2OU3xFbXa12zGV5d72ApBXI9bm6tVmcBAbv439KywCe7cPmZw52GY7rASk/7X+czI2rWFcJcNukP6YRNsYnwBlhG6W2BVAdZiFvaZQ73XxtKYdWka90rWfvdpLxq8Y5MDMKmH2wBoIGa7kH7gLoPD92ocDqxBYYve7YheA56fu38iamYQdvfw6vF0ywcLZUbrS3hVQsmY/+seQH+uLJdYSzcnVlpg1be3rsBpo6qOrWXKETSG6FEhW8tSupiCa0P54tWHM959lUVDnW6iXPWSugFmxuPQuDVPcet6lZFw+BneOUzztXrPauYXqcbZiQmb6CNPvoiExii1k4XV9jYD9A6IXDvSQ0ahOv4RLvYisN87mCmf+oc+FKlg+jRtF7gsQO2pJxp00WVxLNUA5CxeoWRkujZ1XkzoJ30XT7FZYJYavNY7VZ5RAEjNaCyKg//nDk4TwQWnzj+csSneYmwbJIdcbi0O6NgMZcycJipxZyewrD8SYtZ4m6SLqUBRu3DKclpRHRXGNm6BVOMyCWT6HrMjL6q9imYrfy7zYD0g9spE4z20tJvtLvsF3WY4YibOhM8IIfBdvnllqgWoNQ4Za6erIOs2N2xXE0Y75groVIlh6MBkcjSCtRr6omMMaRaFVNrsj5ZNmDKX6YFuFju2okN2vVni0JO/xljw0rV8PS9nO43ZkZANCPDICfglRBs/6FpOPGcYPRYAxNMSJg8G1DGg7G3iE9YQMhdemjsmZvDBElnllDvxQJ+jIBr1ZvVcukpm1H1MapnFopIRjmeEUHHpTDBSNLJhSw+BANR+NJ/zB1wEr2cbhKV/Ui6qYlEtF0vMhEW53oPNCKbOn35GfvZgXkCrEmbSD6ifwfuCs5eY8iyg2xj5y4EQp93xq/5KoPJJX/XwZ69AONpU+smSNVQ7g4ACkCDUjSbGnMpx2Q/bEVzGZG239EXzgneHvixwmQW0MOD104WQm1wnvVfVSpx1BcrR0Rk2xOaR0pNrn8C65gDXxYIu82nQ/ebrrvjr9OrRohVaIWMwjKbBmZ1VPOQEgGwvcnOuNptkWu1d0hFQ0qu6H2CbP55f0fPiRyTmoYAQ==",
+    "thinking": "I'm noticing the archive quota shifted by `<< 10` into KiB overflows 32 bits and comes out as zero, so I want to check the plan limits. The new file's size is being counted raw rather than rounded to blocks, which doesn't match the README's rule for accepting writes up to the quota, so I'll run the tests to confirm.\n\n",
+    "runId": "2ff76c42-e7d7-49b6-9936-7ffdf8cd1165",
+    "step": {
+     "id": "68c9c927-6575-4646-afcc-bca1558d2f25",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "type": "tool_call",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "68c9c927-6575-4646-afcc-bca1558d2f25",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "toolUse"
+     },
+     "argumentsJson": "{\"command\":\"cd /root/workspace/repo; cat src/plans.js; grep -rn \\\"usedBytes\\\\|quotaKiB\\\" src | grep -v \\\"^src/usage.js\\\\|^src/plans.js\\\"; npm test 2>&1 | tail -8; node -e \\\"\\nconst {PLANS,quotaBytes}=require('./src/plans');for(const p in PLANS)console.log(p,PLANS[p].quotaKiB*1024,quotaBytes(p));\\nconst {acceptUpload}=require('./src/upload');const {usedBytes}=require('./src/usage');\\nconst a={plan:'free',files:[{name:'x',size:512*1024*1024-4096}]};console.log(acceptUpload(a,{name:'y',size:4095}),acceptUpload(a,{name:'z',size:1}),usedBytes(a.files)-quotaBytes('free'));\\nconsole.log(acceptUpload({plan:'archive',files:[]},{name:'q',size:1}))\\\"\",\"purpose\":\"Running tests and probing edges\"}"
+    },
+    "scope": "scoped",
+    "command": "cd /root/workspace/repo; cat src/plans.js; grep -rn \"usedBytes\\|quotaKiB\" src | grep -v \"^src/usage.js\\|^src/plans.js\"; npm test 2>&1 | tail -8; node -e \"\nconst {PLANS,quotaBytes}=require('./src/plans');for(const p in PLANS)console.log(p,PLANS[p].quotaKiB*1024,quotaBytes(p));\nconst {acceptUpload}=require('./src/upload');const {usedBytes}=require('./src/usage');\nconst a={plan:'free',files:[{name:'x',size:512*1024*1024-4096}]};console.log(acceptUpload(a,{name:'y',size:4095}),acceptUpload(a,{name:'z',size:1}),usedBytes(a.files)-quotaBytes('free'));\nconsole.log(acceptUpload({plan:'archive',files:[]},{name:'q',size:1}))\"",
+    "purpose": "Running tests and probing edges",
+    "runId": "2ff76c42-e7d7-49b6-9936-7ffdf8cd1165",
+    "callId": "toolu_01Ljf7s7mWuSLYD4YJRtq8Dv",
+    "tool": "execute",
+    "step": {
+     "id": "68c9c927-6575-4646-afcc-bca1558d2f25",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "toolUse",
+     "index": 1
+    }
+   }
+  },
+  {
+   "seq": 8,
+   "type": "tool_result",
+   "payload": {
+    "code": 0,
+    "scope": "scoped",
+    "timedOut": false,
+    "result": "// Quotas in KiB.\nconst PLANS = {\n  free: { quotaKiB: 524288 },\n  team: { quotaKiB: 209715200 },\n  archive: { quotaKiB: 2147483648 },\n};\n\nfunction quotaBytes(plan) {\n  const entry = PLANS[plan];\n  if (!entry) throw new Error('unknown plan: ' + plan);\n  return entry.quotaKiB << 10;\n}\n\nmodule.exports = { PLANS, quotaBytes };\nsrc/upload.js:1:const { usedBytes } = require('./usage');\nsrc/upload.js:6:  const after = usedBytes(account.files) + file.size;\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 88.309202\nnpm notice\nnpm notice New major version of npm available! 11.19.1 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\nfree 536870912 536870912\nteam 214748364800 0\narchive 2199023255552 0\n{ ok: true, shard: 9 } { ok: false, reason: 'over quota' } 0\n{ ok: false, reason: 'over quota' }\n\n[exit 0]",
+    "runId": "2ff76c42-e7d7-49b6-9936-7ffdf8cd1165",
+    "callId": "toolu_01Ljf7s7mWuSLYD4YJRtq8Dv",
+    "tool": "execute",
+    "isError": false
+   }
+  },
+  {
+   "seq": 9,
+   "type": "thinking",
+   "payload": {
+    "type": "thinking",
+    "wire": {
+     "message": {
+      "id": "6bd4761a-b486-4666-a9a9-13661c84ab69",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "thinkingSignature": "CAQSgAkKEAgTGAI4AUIIdGhpbmtpbmcSDOH/tg2bDPJquf3ZLxoMoRjFswoyjDN99jo1IjAJK/kbPlbwc7TVzjxjWEfTDEJwHXgO3wKD8yMgVKi4xXkXMjOM635JoURgmDLXPwsqnQixbFobOC88k8KZx14WLKrmkqpN/VjhXn2Klb1FvrYSZDevaDeyldgm9oa05tcii1kvrjz9M1D9duedndYytktwyZDmD5/tV5dwr5pzFsUyTeyDN5tb0rFOV0qXHZ6ErQM6GyISKBlGSCXBZVSdJbolypYKaHFxW+PC3/NIelAYGoUOql0CJrnOd+7dgZczkXS8xEqFmnMFRi3Qu06da7swC5cdoOMu33l/811a7kIaOtIdpT83DISsMTGWMbxw6ZJLAGbuZyK/Pj+21AOI2AbDbC0fKaGik+3F96L25w9Qkj32Z+eE9rdrb55EdShvvhh1IkSHyJj3Jm2t4VScr+hr8XjFlE1hRm1Fca4TqdIznFjYioBrUiiUWsBR7I5e0ipRjZaVnjhOj1wqc9GB0eb3TkD+UVALz70LT8EwGjnr4dbln9y543QxWSqzzCpkteBvdUgrAWfNj4fzUjikri9PNmYP5ty+PcgzHPy78ynrkOHW7OE1S8RO0BZ7jx+RfTtl2JEa5F8SZf2nrK3l7cJtuVNVstiQ8hAaYYYiyeF4ZHNRSleZ7qlIvsK96H/tfJgfhm+FnfygfOtIYvPVmZbKQ6slZaKIVe0utT7aB2RTWp8ZHyY+nJCUziO2UDNP+/knCKGepHX990KFm1Qgovqqn+TbtJ3cK+xJvAAPOpOJcgVfyWKTicFdipaBek45EznVL7og5BBUpSBI3AxMCFwEYedLZe9TedC4txY0Lf4tV/lbOmRMaAgK7HL0CEjRCM3uriwSiV8NqKw6YAmoczSlJiDiRTuf4/N2Nn3P9VLNnvuvud9L4L6+gTveXqBjmYDBa4yjJtK9BTDK0hY+MSAPYNSOSCpnJpI0fO8PZU8reSZ/PY5t0isoURopSg5/DXfWF5h7LTiqrN4hlatEhigmXl/IvP9rMpD1TtlpyJi0zNhLW8KeXEjR8bgPInqBP4p6YhZgkcOPAfEiS+kQUxcyOBMs/FWFYHDFu/VrpyiWQtftx8Wwt3A0ij8Crq46HoWLpcfWrO/oX7/0RzGJ/PUZH2r9/UK7VQZPwYGQf4o15vavdgmGFACPxXnnOERfeFid4CS0+Gk2cOp2xPOLmKsj757lWnm6l/Qddmdx62AaIZziMtSN4BGv8q03WOa/o0dV9h1axL6rRWpCjX44UOh/ARdZfcTqdKkcnQs+ZE6PvR2Viu7fbJU+EIFAncnlUGI40G/xxY8WHefNbUHSUTjFghRq3Z7qJhNrX8uSd4uxBIsRJcZ75PTXMizR9HaJtDdR1k29Z9TSEb/rfECH4K0JvaVBO2ppgdVGEc2nNSFgiVUP1S0ohzO7HmRCbBIBL4nGVxOXSMl5nTblazn4lP4/bDIV4ucnKIohhbUEOJ2A8bnZlKgqjcUZr3kN5FEYAQ==",
+    "thinking": "I'm checking the second concern: whether comparing the raw file size against the remaining quota gives the right result once block rounding is involved. Since usage and quota are both whole blocks, the remaining space is always a multiple of the block size, so a raw size that fits within it should still round up to fit.\n\nRemaining space is a multiple of the block size, so a raw size that fits still rounds to fit. The rounding concern doesn't produce a bug, just a minor point worth noting.\n\n",
+    "runId": "2ff76c42-e7d7-49b6-9936-7ffdf8cd1165",
+    "step": {
+     "id": "6bd4761a-b486-4666-a9a9-13661c84ab69",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 0
+    }
+   }
+  },
+  {
+   "seq": 10,
+   "type": "assistant",
+   "payload": {
+    "wire": {
+     "message": {
+      "id": "6bd4761a-b486-4666-a9a9-13661c84ab69",
+      "api": "anthropic-messages",
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "stopReason": "stop"
+     }
+    },
+    "workStartedAt": 1794142721691,
+    "workFinishedAt": 1794142743201,
+    "text": "I'd block this merge on one bug. Everything else is minor. I didn't change any code. I ran the tests (they pass) and tried a few edge cases by hand.\n\n**Blocker: Team and Archive accounts can't upload anything.**\nIn `src/plans.js`, `quotaBytes` converts KiB to bytes with `entry.quotaKiB << 10`. In JavaScript, `<<` cuts numbers down to 32 bits, which breaks any quota above 2 GiB:\n- free: 536,870,912 bytes ✅ (correct)\n- team: should be 214,748,364,800 → comes out as **0**\n- archive: should be 2,199,023,255,552 → comes out as **0**\n\nWhen I checked it, a 1-byte upload on an Archive account was refused with \"over quota\". Every paying customer would be blocked from uploading. The fix is to use `entry.quotaKiB * 1024` instead. The tests didn't catch this because they only cover the free plan. I'd add a quota test for team and archive so it can't come back.\n\n**Non-blocking:**\n- **Usage now counts in blocks.** Usage is now counted in whole 4 KiB blocks, so the total shown for every existing account will go up. That's a change customers can see, beyond the new quota check. It's worth a line in the CHANGELOG, and checking whether anything else shows or bills on this number.\n- **The new file is checked at its raw size, not its block-rounded size.** In practice it gives the right answer, because usage and quotas are both whole blocks, and I confirmed that \"exactly at quota\" is accepted as the README says. Still, rounding the new file the same way would make the intent clearer.\n- **Unknown plans crash the upload.** If an account has a plan name that isn't in the list, the upload throws an error instead of returning a clean refusal. That's fine if plan names are always checked earlier; otherwise it's worth handling.\n- **Two uploads at once can both get through.** There's a check-then-add race: if the code ever runs concurrently, two uploads could each pass the check and push the account over quota together. That's probably out of scope here.\n\nOnce the `<< 10` line is fixed and team and archive have a test, I'd approve it.",
+    "runId": "2ff76c42-e7d7-49b6-9936-7ffdf8cd1165",
+    "step": {
+     "id": "6bd4761a-b486-4666-a9a9-13661c84ab69",
+     "api": "anthropic-messages",
+     "model": "claude-opus-5-5",
+     "provider": "anthropic",
+     "stopReason": "stop",
+     "index": 1
+    }
+   }
+  }
+ ]
+}

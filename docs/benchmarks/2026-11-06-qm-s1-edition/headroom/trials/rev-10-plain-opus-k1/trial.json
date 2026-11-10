@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-10-plain-opus-k1",
+  "task_id": "rev-10",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I'd hold the merge. There's one real bug in the ranking, plus a few smaller things. I didn't change any code.\n\n**Blocker: ranking turns scores into regular numbers and gets the order wrong for big scores**\n`src/rank.js` sorts with `b.score - a.score`. Scores are stored as decimal strings, so the subtraction converts them to JavaScript numbers. Above 2^53 those numbers lose precision. The README says scores can get that big and should never be converted for this reason.\n\nI ran it with `9007199254740993` and `9007199254740992`. They became the same number, so the higher score came out ranked **#2** behind the lower one. Large scores that are close together can be ranked wrong without any error.\n\nThe fix is to use the comparison function the repo already has:\n```js\nconst { compareScore } = require('./score');\n.sort((a, b) => compareScore(b.score, a.score))\n```\nThe test passes today only because its scores ('5', '12', '9') are small. Add a case above 2^53 so this gets caught next time.\n\n**Smaller things**\n- **Tied scores:** tied players get different ranks (1, 2) depending on input order. If ties should share a rank, that has to be decided before merging.\n- **Missing names:** `displayName` throws a TypeError if a player has no `name` field. I confirmed this. If a blank-name fallback is wanted, a missing name probably should get it too, e.g. `(player.name ?? '').trim()`.\n- **`topN` has no tests,** and nothing checks `n` (0, negative or bigger than the list).\n- **Notes:** the CHANGELOG entry doesn't mention display names, which this branch also adds. The 1.1.0 version bump is fine.\n\nThe branch is otherwise small and clean. With the sort fixed and a big-score test added, it's fine to merge.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-10-plain-opus-k1",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0713219,
+    "input_tokens": 67996,
+    "output_tokens": 1627,
+    "cached_tokens": 64261,
+    "cache_write_tokens": 3271,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000053700000000000004,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0712682,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 20.553,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "rev-10-plain-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:20:51.927Z",
+    "images": {
+      "core": "sha256:2512b1320a1f200aa29d4feccd891da02c162353da5d6999fbf7e855ad83f870",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-5907e9ffa04e",
+        "id": "sha256:330570ddf465dc7fc10c90b383b5c3b4a78cd4290428d55dde998c2f7e0f64e2",
+        "tree_sha256": "d95f6cf68fe3d394346f77c887d24762ad1ef408da8da1bd0269ca991d4706b2"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-e833cfd0-b3be-4afc-9839-281a4054-a562d4"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:21:36.250Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git log --oneline main..leaderboard-sort; git diff main...leaderboard-sort --stat; git diff main...leaderboard-sort",
+          "code": 0,
+          "output": "17941bc Add a stable display name\n04db347 Rank and paginate the leaderboard\n CHANGELOG.md         | 4 ++++\n README.md            | 8 ++++++++\n package.json         | 2 +-\n src/display.js       | 6 ++++++\n src/rank.js          | 7 +++++++\n src/top.js           | 7 +++++++\n test/display.test.js | 8 ++"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-10-plain-opus-k1",
+      "meter": {
+        "requests": 6,
+        "usd": 0.0713219,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.0713219,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000053700000000000004
+    }
+  }
+}

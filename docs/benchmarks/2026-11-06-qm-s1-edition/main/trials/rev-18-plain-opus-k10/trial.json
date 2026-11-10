@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-18-plain-opus-k10",
+  "task_id": "rev-18",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 10,
+  "status": "ok",
+  "reply_text": "I'd hold off merging. The branch prints money amounts 100× too big, and the tests don't catch it. All 3 tests pass anyway.\n\n**Blocking**\n- **`format_money` doesn't divide by 100** (`receipt/render.py`). It's `'$%.2f' % (amount_cents,)`, so `format_money(1299)` returns `\"$1299.00\"`, not `\"$12.99\"`. The README and the new `docs/money.md` both say this must never happen. A 2 × $4.50 coffee line prints as `$900.00`. The fix is `amount_cents / 100`, or better, `divmod` on the integer so you stay out of floats.\n- **The render test can't fail.** `test_render_line` checks the line against `format_money(900)`, so it agrees with whatever `format_money` does. Comparing to a literal like `\"$9.00\"`, plus a direct `format_money(1299) == \"$12.99\"` test, would have caught the bug above.\n\n**Should fix**\n- **Right-align commit doesn't reach the receipt.** \"Right-align the totals column\" adds `layout.align`, but `render_line` still uses `'%-20s %s'`. So totals aren't right-aligned on the printed receipt, and long names push the price out: `'A very long item name here $900.00'`. You probably want `render_line` to call `align(name, format_money(total))`.\n- **`align` overflows on long text.** When label + amount is longer than 32 characters, `max(1, gap)` makes the line go past `WIDTH`. You should decide whether to cut the name short or wrap it, and test that case.\n- **Tax rounding on exact half cents.** `round()` in Python rounds a half to the nearest even number, so `tax_cents(1005, 5000)` gives 502 where you might expect 503. It also does float division first. If \"nearest cent\" in the docs means half-up, an integer version would be `(subtotal_cents * rate_bps + 5000) // 10000`. `tax.py` also has no tests.\n\n**Minor**\n- The changelog says \"Render receipt lines, with tax\", but nothing calls `tax_cents` yet.\n- The version bump to 0.4.0 and the docs look fine once the code matches them.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-18-plain-opus-k10",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0587134,
+    "input_tokens": 52819,
+    "output_tokens": 1404,
+    "cached_tokens": 49744,
+    "cache_write_tokens": 2609,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000052600000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0586608,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 18.125,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-18-plain-opus-k10",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:19:33.606Z",
+    "images": {
+      "core": "sha256:a9ad79c9a5b8831fdc21d559e082c8ec10e726ba26b883975150369b49c28109",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-8239b2919041",
+        "id": "sha256:1cf91aa30a687d3074e723aa9230b4aa9958f5ef2574b0fa9d8654fcfe4c0cff",
+        "tree_sha256": "fdd4bee743835e23fd46d7d3e49b57b17a4ee2a125c53675b5caa853854acf38"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-e30b2827-91fc-460e-9fce-5397c5a5-4f3ad9"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:20:15.494Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..receipt-lines; git diff main...receipt-lines",
+          "code": 0,
+          "output": "  main\n* receipt-lines\na6c40d4 Right-align the totals column\nd7cab8c Render receipt lines\ndiff --git a/CHANGES.md b/CHANGES.md\nindex da36015..63194f9 100644\n--- a/CHANGES.md\n+++ b/CHANGES.md\n@@ -1,5 +1,9 @@\n # Changes\n \n+## 0.4.0\n+\n+- Render receipt lines, with tax.\n+\n ## 0.3.0\n \n - Line items in in"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-18-plain-opus-k10",
+      "meter": {
+        "requests": 5,
+        "usd": 0.0587134,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.0587134,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000052600000000000005
+    }
+  }
+}

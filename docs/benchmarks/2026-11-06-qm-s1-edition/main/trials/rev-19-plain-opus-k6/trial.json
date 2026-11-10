@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-19-plain-opus-k6",
+  "task_id": "rev-19",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 6,
+  "status": "ok",
+  "reply_text": "I don't think this is ready to merge. There's one blocking bug, and it would log almost everyone out right away.\n\n**Blocking: the timeout is 30 milliseconds, not 30 minutes**\nIn `src/idle.js`, the timeout is set to `30`. The package's README says every duration here is in milliseconds, and `lastSeen` comes from `Date.now()`. So `isIdle` treats a session as idle 30ms after its last activity. Then `sweep` removes every session that hasn't been touched in the last 30ms, which means nearly every user gets logged out on every sweep.\nFix: `const IDLE_TIMEOUT = 30 * 60 * 1000;`. You could also add a `MINUTE` constant, like `backoff.js` does with `SECOND`.\n\n**Why the tests didn't catch it**\nThe tests only check the extremes: a session idle for 1–2 hours, and one touched at exactly `now`. Both pass whether the timeout is 30ms or 30 minutes. Please add tests near the limit:\n- a session last seen 29 minutes ago should still be active (this test fails on the current code)\n- a session last seen just past 30 minutes ago should be idle\n- one case at exactly 30 minutes\n\n**Minor: what happens at exactly 30 minutes**\nThe README says a session is idle \"once\" it has been idle for 30 minutes, which means at 30 minutes or later. The code uses a strict `<`, so a session at exactly 30 minutes still counts as active. Use `<=`, or change the README wording, so the two agree.\n\n**Looks fine**\n- `reconnectDelay` matches the README: it doubles from 1 second and is capped at 30 seconds. It has no tests, though, and a negative or non-integer `attempt` isn't guarded against. That's low risk.\n- `sweep` returns a new object and doesn't change the store passed in, which is good.\n- The version bump to 1.1.0 and the CHANGELOG entry are consistent.\n\nI only read the code and didn't change anything. I also didn't run the test suite, but the two existing tests would pass even with the bug.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-19-plain-opus-k6",
+    "requests": 4,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0465389,
+    "input_tokens": 38429,
+    "output_tokens": 1109,
+    "cached_tokens": 35790,
+    "cache_write_tokens": 2177,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000052900000000000005,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.046486,
+        "requests": 3
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 4
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 12.537,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-19-plain-opus-k6",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:27:45.287Z",
+    "images": {
+      "core": "sha256:e48c8f94d6b77801b71348a2f487e3d9f61914e9a616d4a9ec352a157470f137",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-866435aaa7c4",
+        "id": "sha256:c2956f00f380a6183d790a610d8477f9f49be480fe95af1350346678884a373f",
+        "tree_sha256": "976e7f453705633343847be00fd0cb97514b749e6cec4f692ef40f15f2fb9b22"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-caafec82-e84e-4f94-ae51-803f0751-f3dd71"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:28:21.340Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git branch -a; git log --oneline main..idle-timeout; git diff main...idle-timeout",
+          "code": 0,
+          "output": "* idle-timeout\n  main\nda785f6 Sweep idle sessions from the store\nad83f9a Expire idle sessions\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 161cbe8..275e5be 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 1.1.0\n+\n+- Idle session expiry and reconnect backoff.\n+\n ## 1."
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-19-plain-opus-k6",
+      "meter": {
+        "requests": 4,
+        "usd": 0.0465389,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 4,
+        "usd": 0.0465389,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000052900000000000005
+    }
+  }
+}

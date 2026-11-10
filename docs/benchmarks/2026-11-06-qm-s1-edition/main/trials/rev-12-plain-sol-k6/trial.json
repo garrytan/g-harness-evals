@@ -1,0 +1,155 @@
+{
+  "trial_id": "rev-12-plain-sol-k6",
+  "task_id": "rev-12",
+  "family": "review",
+  "arm": "plain",
+  "model": "openai:gpt-6.1-sol",
+  "rep": 6,
+  "status": "ok",
+  "reply_text": "Found **two cents-handling bugs** in `split-bill` against `main`:\n\n1. **[P1] Equal splits drop the remainder** — `bill/split.py:4–5`  \n   `split_bill(1000, 3)` returns `[333, 333, 333]`, totaling **999¢**, not 1000¢. `split_bill(2, 3)` loses the entire bill. This violates the README’s explicit guarantee.  \n   **Suggested fix:** use quotient/remainder division, then add one cent to each of the first remainder shares. Add tests for uneven totals and totals smaller than the number of people.\n\n2. **[P2] Tip calculation introduces floating-point rounding errors** — `bill/tip.py:2`  \n   `with_tip(750, 8.2)` calculates a tip of `61.49999999999999¢` and returns **811¢**. The exact tip is **61.5¢**, which rounds to 62¢ under both half-even and half-up rounding, giving **812¢**.  \n   **Suggested fix:** calculate with an exact decimal or rational representation and explicitly choose the rounding policy. There are currently no tip tests.\n\n**One weighted-split contract to clarify:** `bill/weighted.py:3–6` gives leftover cents to the first entries regardless of weight. Consequently, `weighted_split(1, [0, 1, 1])` returns `[1, 0, 0]`: the zero-weight person pays everything. If zero weights are supported, exclude them from remainder allocation; otherwise, validate and document strictly positive weights. For positive weights, the front-first allocation matches the documented rule.\n\nAll **5 existing tests pass**, but they miss these cases. Reviewed through commit `10932d0`; **no files changed**.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-12-plain-sol-k6",
+    "requests": 8,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0493116,
+    "input_tokens": 64622,
+    "output_tokens": 1431,
+    "cached_tokens": 52403,
+    "cache_write_tokens": 11899,
+    "unpriced": 0,
+    "by_model": {
+      "openai:gpt-5.6-luna": {
+        "usd": 0.00007180000000000001,
+        "requests": 1
+      },
+      "openai:gpt-6.1-sol": {
+        "usd": 0.0492398,
+        "requests": 7
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 8
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 27.633,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-12-plain-sol-k6",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T13:38:55.205Z",
+    "images": {
+      "core": "sha256:70e9dbc58d38502117dc97d1c5973af7606fa9e34dfd9ef1126cfa852865f97b",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-3ebb1f12241a",
+        "id": "sha256:958971f8ae27f7ca240319e61a21fbb0732ff72617eaf9b2aed07d26a303043e",
+        "tree_sha256": "0ff9c772bc1379d77f354c6dff7853a4e5a7ff08ad0416b551b8f27f0f9b8262"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-fe04118b-efcd-4719-9d32-f70f6264-651943"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T13:39:46.235Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [
+        "/root/workspace/.agent-skills/ea08511c1175fc3958098fe6/f2b10ee0f87464ec/github-gitlab/SKILL.md",
+        "/root/workspace/.agent-skills/ea08511c1175fc3958098fe6/f2b10ee0f87464ec/github-gitlab/scripts/watch-ci.mjs"
+      ],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd /root/workspace/repo && git status --short && git remote -v && git branch -avv && git config --show-origin --get-regexp '(credential|core.sshCommand|http\\..*(extraheader|proxy))' || true; cd /root/workspace/repo && ls -la && git diff main...split-bill --stat && git diff main...split-bill",
+          "code": 0,
+          "output": "  main       f2440cf Bill totals in integer cents\n* split-bill 10932d0 Itemised shares by weight\ntotal 32\ndrwxr-xr-x 6 root root 4096 Nov  8 13:39 .\ndrwxr-xr-x 4 root root 4096 Nov  8 13:39 ..\ndrwxr-xr-x 5 root root 4096 Nov  8 13:39 .git\n-rw-r--r-- 1 root root  107 Nov  8 12:34 CHANGES.md\n-rw-r--r-"
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [
+        "github-gitlab"
+      ],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-12-plain-sol-k6",
+      "meter": {
+        "requests": 8,
+        "usd": 0.0493116,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 8,
+        "usd": 0.0493116,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "openai:gpt-5.6-luna",
+      "requests": 1,
+      "usd": 0.00007180000000000001
+    }
+  }
+}

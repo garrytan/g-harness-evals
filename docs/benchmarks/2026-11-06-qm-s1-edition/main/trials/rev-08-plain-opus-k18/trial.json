@@ -1,0 +1,150 @@
+{
+  "trial_id": "rev-08-plain-opus-k18",
+  "task_id": "rev-08",
+  "family": "review",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 18,
+  "status": "ok",
+  "reply_text": "I reviewed `billing-anniversary` against `main` (2 commits) and ran some edge cases against it. I didn't change anything. **I wouldn't ship it yet: there's a real bug in how it schedules renewals.**\n\n**Blocker: `nextBillingDate` caps the anchor day at the wrong month's length** (`src/schedule.js`)\n```js\nconst day = Math.min(anchorDay, daysInMonth(year, month));   // uses the *current* month\nreturn new Date(year, month + 1, day);                        // but builds the *next* month\n```\nIt caps the anchor day using the length of the month you're in, then builds a date in the next month. When the next month is shorter, JavaScript rolls the extra days into the month after. Results I got:\n- Jan 31, anchor 31 → **Mar 3** (should be Feb 28). The customer skips February and the date is now wrong from then on.\n- Mar 31, anchor 31 → **May 1** (should be Apr 30).\n- Feb 28, anchor 30 → **Mar 28** (should be Mar 30). The anchor slips earlier, which the README says must never happen.\n\nThe fix is to cap using the length of the target month: `daysInMonth(year, month + 1)`. That function handles month 12 fine because `new Date(y, 13, 0)` rolls over to the next year.\n\nThe existing tests pass only because both cases go into a month at least as long as the anchor (Mar 15 → Apr 15, Dec 31 → Jan 31). Tests worth adding: Jan 31 → Feb 28, Jan 31 in a leap year (2028) → Feb 29, Mar 31 → Apr 30, and Feb 28 with anchor 30 → Mar 30. A test that steps through 12 months in a row would also catch the date drifting.\n\n**Should fix: proration ignores `anchorDay`** (`src/prorate.js`)\nIt always charges from the start date to the end of the month, and the `anchorDay` argument is never used. If the first renewal falls on the anchor day, the first period really runs from the start date to the next anchor date. For example, starting Apr 10 with anchor 20 charged 2100 (21 days), but the next bill comes Apr 20 or May 20, depending on your rules. The README matches the current code, so this may be on purpose. If so, drop the unused parameter. If not, it's undercharging or overcharging. The mid-month test passes only because its anchor equals the start day.\n\n**Minor**\n- README: \"strictly after the month of `from`\" is vague. Worth saying exactly what you get when `from` is already on the anchor day, or earlier in the month than it.\n- The CHANGELOG for 2.1.0 doesn't mention proration.\n- The dates are built in local time, so results depend on the server's time zone. That's fine if that's how the rest of subkit works.\n\nThe `daysInMonth` helper itself is correct.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:rev-08-plain-opus-k18",
+    "requests": 5,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.069922,
+    "input_tokens": 53468,
+    "output_tokens": 1794,
+    "cached_tokens": 49964,
+    "cache_write_tokens": 3027,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000053200000000000006,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.06986880000000001,
+        "requests": 4
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 5
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 20.72,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-main",
+    "trial_id": "rev-08-plain-opus-k18",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T14:12:23.721Z",
+    "images": {
+      "core": "sha256:d3c15a4ff59b46b682cc0b498a5b96d657f86e2d1ac9a8b947b4fb5d8b1c3302",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-21e081ac9005",
+        "id": "sha256:428b7fd2dde7737bef1596261eb4a03e9a9966eb1c49b0fbcd8ad1c3d28069e8",
+        "tree_sha256": "68ef982cf81212089c0222639053e7a07970a508f7dd5990be1a7afc337a9f10"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-3e9a1c6f-3de9-4def-872d-c0683e89-d7a776"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T14:13:07.794Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 4,
+          "command": "cd /root/workspace/repo; git log --oneline main..billing-anniversary; git diff main...billing-anniversary",
+          "code": 0,
+          "output": "f73b00d Prorate the first partial period\n27a0295 Compute the next billing date from the anchor\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\nindex 0d77c0e..6b56b0d 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,5 +1,9 @@\n # Changelog\n \n+## 2.1.0\n+\n+- Next-billing-date computation from the anchor day."
+        }
+      ],
+      "path_rewrite": {
+        "expected": true,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:rev-08-plain-opus-k18",
+      "meter": {
+        "requests": 5,
+        "usd": 0.069922,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 5,
+        "usd": 0.069922,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000053200000000000006
+    }
+  }
+}

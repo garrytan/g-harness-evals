@@ -1,0 +1,150 @@
+{
+  "trial_id": "plan-16-plain-opus-k1",
+  "task_id": "plan-16",
+  "family": "plan",
+  "arm": "plain",
+  "model": "anthropic:claude-opus-5-5",
+  "rep": 1,
+  "status": "ok",
+  "reply_text": "I read through the repo (`tabkit`, published as `sheetsmith` 4.0.0) and wrote up a plan below. No code changes yet.\n\n## Where things stand\n- Exporters live in a fixed dictionary in `tabkit/cli.py` that maps a format name to a module path. `get_exporter()` only imports the matching module when someone asks for that format.\n- An exporter is just a module with an `export(rows, fh, **opts)` function. There's no base class or registry.\n- That fixed dictionary is why teams fork: the only way to add a format is to edit `cli.py`.\n\n## Rules already in the repo that the design has to follow\n1. **The security policy (SEC-31, `docs/security.md`).** Runtime code can only load from modules listed under `[allowed]` in `config/plugins.ini`, and each one is reviewed before it's added. It explicitly bans setuptools entry points and module paths from the command line or environment variables. So the usual \"discover plugins via entry points\" approach is out, and so is a `--exporter-module` flag.\n2. **Fast imports (`tests/test_import_time.py`).** Shell completion imports tabkit on every keypress, so importing `tabkit` or `tabkit.cli` can't import any exporter. Plugins have to be registered by name and only imported when someone uses that format.\n3. **Exporters must not close the file they're given (BUG-52).** The CLI writes a summary line after exporting, so a plugin that closes stdout would crash it. Plugins will be written by people outside the core team, so the CLI should enforce this instead of trusting them.\n\n## Proposed design\n**1. A formal exporter contract** (new `tabkit/exporters/base.py`, documented)\n- Required: `export(rows, fh, **options)`. It writes to `fh`, never closes it, and returns nothing.\n- Optional metadata: `FORMAT_NAME`, `DESCRIPTION`, `FILE_EXTENSION`.\n- Keep this as a plain-module contract (a duck-typed `Protocol` for mypy). Existing exporters fit it unchanged.\n\n**2. A registry that stays lazy** (new `tabkit/exporters/registry.py`)\n- It holds format names and module paths, never imported modules. It starts with the built-in `csv` and `json`.\n- `get_exporter(name)` imports on first use, checks that the module has a callable `export`, and caches it.\n- If a plugin uses a built-in name, the built-in wins and you get an error rather than a silent override. Open question below.\n\n**3. Plugins declared through the existing allowlist**\n- Extend `config/plugins.ini` with an `[exporters]` section, e.g. `parquet = acme_tabkit.parquet`.\n- When loading, every module in `[exporters]` must also appear in `[allowed]`, or it's refused with a clear error naming the SEC-31 policy. That keeps the reviewed allowlist as the single gate.\n- Read the config lazily on the first exporter lookup, not at import time, so completion stays fast. If the ini parse proves slow, cache it.\n- Nothing comes from entry points, command-line flags or environment variables.\n\n**4. A Python API for teams that embed tabkit**\n- `tabkit.exporters.register(name, module_path)` takes a module path string, not a module object, so laziness is preserved.\n- **Open question:** should this API also be checked against `[allowed]`? I'd say yes, so the policy can't be bypassed. That needs confirmation from whoever owns SEC-31 (Rui Tanaka wrote that commit).\n\n**5. Hardening the CLI against misbehaving plugins**\n- Pass exporters a wrapper around `out` whose `close()` does nothing, or check `out.closed` afterwards and raise an error that names the plugin. Either way the BUG-52 crash can't come back through a third-party exporter.\n- Give unknown format names a helpful error listing the available formats, instead of the current bare `KeyError`.\n\n**6. Small extras**\n- A `--list-formats` option that reads names and descriptions from the registry and config without importing plugins.\n- Mention the hook in the README and add a \"writing an exporter\" page under `docs/`.\n\n## Tests to add\n- Importing `tabkit` still loads no exporter, even with `[exporters]` filled in. This is the existing test plus a configured variant.\n- A plugin listed in `[exporters]` but missing from `[allowed]` is rejected.\n- No entry-point or environment-variable route exists (a regression guard for SEC-31).\n- A fake plugin that calls `fh.close()` produces a clear error or is neutralised, and the summary line still prints.\n- Name collisions with built-ins, unknown formats and a module with no `export` function are all handled.\n- The existing summary-line test runs across built-ins and a fixture plugin.\n\n## Rollout\n1. Add the contract and registry, and move the built-ins onto them with no behaviour change.\n2. Add the `[exporters]` config section and the allowlist check, plus a security doc update for SEC-31 sign-off.\n3. Add the CLI hardening and `--list-formats`.\n4. Write the docs and tell the teams who forked. Their exporters should port with only a config line, as long as they don't close the handle.\n\n## Decisions I need from you\n- Can plugins override `csv`/`json`, or are built-in names reserved?\n- Should `register()` from Python be subject to the allowlist? I recommend yes.\n- Should `config/plugins.ini` stay the only config location, or do teams need a per-user or per-project file? An extra file would need security review, because SEC-31 implies a single reviewed list.\n\nOnce you've answered those, I can turn this into issues or start on step 1.",
+  "counts": {
+    "open_matched": false,
+    "open_any": false,
+    "complete_read": false,
+    "first_step": false,
+    "approvals_answered": 0,
+    "contaminated": false
+  },
+  "usage": {
+    "meter_id": "trial-token:plan-16-plain-opus-k1",
+    "requests": 6,
+    "refused": 0,
+    "failed": 0,
+    "usd": 0.0885483,
+    "input_tokens": 64809,
+    "output_tokens": 2650,
+    "cached_tokens": 61387,
+    "cache_write_tokens": 2931,
+    "unpriced": 0,
+    "by_model": {
+      "anthropic:claude-haiku-5-5": {
+        "usd": 0.000054900000000000006,
+        "requests": 1
+      },
+      "anthropic:claude-opus-5-5": {
+        "usd": 0.0884934,
+        "requests": 5
+      }
+    },
+    "upstream": {
+      "statuses": {
+        "200": 6
+      },
+      "failed": 0,
+      "unparseable": 0
+    }
+  },
+  "wall_s": 31.047,
+  "detail": {
+    "run_id": "qm-s1-edition-2026-11-headroom",
+    "trial_id": "plan-16-plain-opus-k1",
+    "attempt": 1,
+    "dry_run": false,
+    "started_at": "2026-11-08T03:23:43.785Z",
+    "images": {
+      "core": "sha256:0905bc9012fb1b772f1c7833737af2644de88955edaba008682c36a74db6d24c",
+      "sandbox": {
+        "image": "harness-eval/qm-sandbox:s1e-a5a038b439e3",
+        "id": "sha256:1750cd2abe257ccde478c38347d5e46a4250550a052048e019d5b33cae3c62f7",
+        "tree_sha256": "cb6e661705e034c07e690ab5984e3142aaa52822b4acdedd6c3dd2a5751daa9c"
+      }
+    },
+    "layer": {
+      "http": 200,
+      "status": null,
+      "skill_files": 0
+    },
+    "soul": {
+      "chars": 192,
+      "sha256": "77d51a6a9101b02a8875fa226b63613f76ce0d22bbea1cc50165faf74c20a96b"
+    },
+    "sandbox": {
+      "create_http": 201,
+      "default_http": 200,
+      "machine_id": "qm-sbx-sandbox-a0ac3558-0906-40a8-98fb-1e7ca970-d83418"
+    },
+    "leftover": {
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    "ended_at": "2026-11-08T03:24:38.958Z",
+    "status_reason": null,
+    "cap_stop": false,
+    "approvals": [],
+    "final_turn": {
+      "http": 200,
+      "status": "ok"
+    },
+    "evidence": {
+      "agent_skills": [],
+      "first_system_chars": 11189,
+      "index_lines": {
+        "gstack-review": {
+          "listed": false,
+          "description_intact": false
+        },
+        "gstack-plan": {
+          "listed": false,
+          "description_intact": false
+        }
+      },
+      "layer_paths": []
+    },
+    "count_detail": {
+      "opens": [],
+      "complete_via": null,
+      "read_whole": false,
+      "first_step_runs": [
+        {
+          "seq": 8,
+          "command": "cd ~/workspace/repo; git log --oneline | head -5; find . -path ./.git -prune -o -type f -print | head -100; cat README* 2>/dev/null | head -60",
+          "code": 0,
+          "output": "2c939ac Progress, colours and dev tooling\n6bc4c14 Runtime code loading policy (SEC-31)\na384c42 Exporters must not close the handle they are given\nb0d19e0 tabkit with csv and json exporters\n./tox.ini\n./README.md\n./tests/__init__.py\n./tests/test_cli.py\n./tests/test_import_time.py\n./config/plugins.ini\n"
+        }
+      ],
+      "path_rewrite": {
+        "expected": false,
+        "dir": null,
+        "rewritten": null
+      },
+      "first_step_anywhere": true,
+      "other_skill_reads": [],
+      "clean": {
+        "contaminated": false,
+        "problems": []
+      }
+    },
+    "reconcile": {
+      "meter_id": "trial-token:plan-16-plain-opus-k1",
+      "meter": {
+        "requests": 6,
+        "usd": 0.0885483,
+        "unpriced": 0,
+        "undrained": 0
+      },
+      "usage_lines": {
+        "requests": 6,
+        "usd": 0.0885483,
+        "refused": 0
+      },
+      "proxy_consistent": true,
+      "provider_reconciliation": "not performed: per-trial reconciliation against provider usage is the HE-PROXY-002 TODO (TODOS.md); until it lands this file only proves the proxy agrees with its own usage log"
+    },
+    "housekeeping": {
+      "model": "anthropic:claude-haiku-5-5",
+      "requests": 1,
+      "usd": 0.000054900000000000006
+    }
+  }
+}
