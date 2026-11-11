@@ -39,8 +39,10 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import type { TrialRecord } from '../runner/contracts.ts';
+import { canReadFile } from '../runner/grade/predicates.ts';
 import { loadTask } from '../runner/grade/task.ts';
 import { setWorldPath, taskSetDir } from '../runner/run.ts';
+import type { World } from '../world/types.ts';
 import { taxonomyForRun } from './taxonomy.ts';
 import { buildPacket, capPacket, DEFAULT_CAP_TOKENS, findTaskDir, hashPacket, PACKET_VERSION, type HashedPacket, type Packet } from './failure-mining/packet.ts';
 import { createLlm, LlmError, type Llm, type ModelId, type Transport } from './failure-mining/llm.ts';
@@ -118,8 +120,31 @@ export const PREFIX = [
   '',
   "If at least one failed check catches a real mistake by the bot, answer real_failure. Judge from the packet only, and lean neither way: if the bot's behaviour is defensible under a reasonable reading of its rules and a check fails it anyway, that is not a real failure.",
   '',
+  "The workspace section after these instructions lists every member, every channel with its members, and every file with who can read it. It is the same for every trial in the run. Before you say that someone could not see something, or that the setup lacks a source, check it there: a channel the asker belongs to, or a file the asker or the bot can read, existed even if the bot never opened it.",
+  '',
   'Return one record: trial_id (copied from the packet), verdict, failed_check (the id of the failed check your verdict is mainly about), reason (one or two plain sentences that a developer who has never seen this repository can follow, at most 400 characters), and quote (a short exact quote from the packet, at most 300 characters, that shows the point).',
 ].join('\n');
+
+/** The run's workspace as the reader sees it: who belongs to which channel and who can read which file. Only dev and shared records, the part of the world the audited (dev) trials ran on. */
+export function workspaceText(worldPath: string): string {
+  const raw = JSON.parse(readFileSync(worldPath, 'utf8')) as World;
+  const dev = <T extends { split: string }>(xs: T[]) => xs.filter((x) => x.split !== 'heldout');
+  const w = { members: dev(raw.members), channels: dev(raw.channels), files: dev(raw.files) };
+  const readers = (f: World['files'][number]) => w.members.filter((m) => canReadFile(m, f)).map((m) => m.id);
+  const all = w.members.length;
+  return [
+    'Workspace',
+    '',
+    'Members (id | name | team | sees every team file):',
+    ...w.members.map((m) => `${m.id} | ${m.name} | ${m.team ?? '-'} | ${m.org_wide ? 'yes' : 'no'}`),
+    '',
+    'Channels (name: members):',
+    ...w.channels.map((c) => `#${c.name}: ${c.members.join(', ')}`),
+    '',
+    "Files (path | title | who can read it). A file's owner can always read it; private files only their owner; public files everyone; team files the team and members who see every team file.",
+    ...w.files.map((f) => { const r = readers(f); return `${f.path} | ${f.title ?? ''} | ${r.length === all ? 'everyone' : r.join(', ')}`; }),
+  ].join('\n');
+}
 
 export const TOOL = { name: 'record_verdict', description: 'Record the verdict for this failed trial.' };
 
@@ -342,7 +367,7 @@ export interface AuditOptions {
   cacheDir?: string; transport?: Transport; leaseUsd?: number; proxyDir?: string; sleep?: (ms: number) => Promise<void>;
 }
 
-const promptSha = () => sha256(JSON.stringify([PREFIX, SCHEMA, TOOL]));
+const promptSha = (workspace: string) => sha256(JSON.stringify([PREFIX, workspace, SCHEMA, TOOL]));
 
 /** Draw, read, tally and render. Writes nothing; the caller writes the two files. */
 export async function runAudit(o: AuditOptions): Promise<{ audit: Audit; markdown: string; stats: ReturnType<Llm['stats']> }> {
@@ -359,22 +384,22 @@ export async function runAudit(o: AuditOptions): Promise<{ audit: Audit; markdow
   const stray = overrides.filter((x) => !sampledIds.includes(x.trial_id));
   if (stray.length) throw new AuditError(`${run.overridesPath} names trials that are not in the sample: ${stray.map((x) => x.trial_id).join(', ')}`);
 
+  const inputs = sampledIds.length ? taskInputs(run.runDir, run.rows, o.tasks, o.world) : null;
+  if (inputs) assertPublic([join(run.results, 'trials.jsonl'), inputs.world, ...sampledIds.map((id) => join(findTaskDir(inputs.tasksRoot, byId.get(id)!.task), 'task.toml'))], o.repoRoot);
+  const workspace = inputs ? workspaceText(inputs.world) : '';
+  const prefix = workspace ? `${PREFIX}\n\n${workspace}` : PREFIX;
+
   const previous = new Map<string, AuditTrial>();
   const prevPath = auditPaths(run.runDir).json;
   if (existsSync(prevPath)) {
     const prev = JSON.parse(readFileSync(prevPath, 'utf8')) as Audit;
-    if (prev.trials_sha256 === run.trialsSha && prev.regraded_sha256 === run.regradedSha && prev.prompt_sha256 === promptSha() && prev.packet_version === PACKET_VERSION) for (const t of prev.trials) if (t.answer) previous.set(t.trial_id, t);
+    if (prev.trials_sha256 === run.trialsSha && prev.regraded_sha256 === run.regradedSha && prev.prompt_sha256 === promptSha(workspace) && prev.packet_version === PACKET_VERSION) for (const t of prev.trials) if (t.answer) previous.set(t.trial_id, t);
   }
 
   let entries = new Map<string, ReturnType<typeof taxonomyForRun>['trials'][number]>();
-  let tasksRoot = '';
+  const tasksRoot = inputs?.tasksRoot ?? '';
   const toRead = sampledIds.filter((id) => !previous.has(id));
-  if (sampledIds.length) {
-    const t = taskInputs(run.runDir, run.rows, o.tasks, o.world);
-    tasksRoot = t.tasksRoot;
-    assertPublic([join(run.results, 'trials.jsonl'), ...sampledIds.map((id) => join(findTaskDir(tasksRoot, byId.get(id)!.task), 'task.toml'))], o.repoRoot);
-    if (toRead.length) entries = new Map(taxonomyForRun(run.results, { tasksRoot, worldPath: t.world, regraded: !!o.regraded }).trials.map((e) => [e.trial_id, e]));
-  }
+  if (inputs && toRead.length) entries = new Map(taxonomyForRun(run.results, { tasksRoot, worldPath: inputs.world, regraded: !!o.regraded }).trials.map((e) => [e.trial_id, e]));
 
   const cacheRoot = join(homedir(), '.cache', 'harness-evals', 'grader-audit', run.run);
   const llm = await createLlm({
@@ -416,7 +441,7 @@ export async function runAudit(o: AuditOptions): Promise<{ audit: Audit; markdow
     let feedback: string | undefined;
     let problems: string[] = [];
     for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
-      const res = await ask({ model: base.reader, prefix: PREFIX, packet: text, schema: SCHEMA, tool: TOOL, feedback });
+      const res = await ask({ model: base.reader, prefix, packet: text, schema: SCHEMA, tool: TOOL, feedback });
       if (res.value === null) { problems = ['the reader returned no record']; feedback = 'Your previous reply carried no record. Return exactly one.'; continue; }
       const v = validateAnswer(res.value, id, packet, base.failed_checks);
       if (v.answer) return { ...base, packet_sha256, answer: v.answer, problems: [] };
@@ -439,7 +464,7 @@ export async function runAudit(o: AuditOptions): Promise<{ audit: Audit; markdow
     schema: AUDIT_SCHEMA, run: run.run, results: relative(run.runDir, join(run.results, 'trials.jsonl')), trials_sha256: run.trialsSha,
     grading: o.regraded ? 'regraded' : 'as recorded', regraded_sha256: run.regradedSha,
     overrides_sha256: existsSync(run.overridesPath) ? sha256(readFileSync(run.overridesPath)) : null,
-    seed: run.run, per_arm: perArm, max_share: maxShare, min_flagged: MIN_FLAGGED, packet_version: PACKET_VERSION, prompt_sha256: promptSha(),
+    seed: run.run, per_arm: perArm, max_share: maxShare, min_flagged: MIN_FLAGGED, packet_version: PACKET_VERSION, prompt_sha256: promptSha(workspace),
     ...tally(run.rows, sample, trials, maxShare), unreadable: [...sample.values()].flatMap((s) => s.unreadable).sort(), trials,
   };
   return { audit, markdown: renderMarkdown(audit), stats: llm.stats() };

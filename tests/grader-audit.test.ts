@@ -6,7 +6,7 @@ import type { TrialRecord } from '../runner/contracts.ts';
 import type { Transport, WireRequest } from '../scripts/failure-mining/llm.ts';
 import {
   assertPublic, auditPaths, AuditError, checkAudit, drawSample, LeaseSpent, readerFor, ReaderFailed, renderMarkdown, requiredAuditProblems,
-  runAudit, tally, type Audit, type AuditTrial,
+  runAudit, tally, workspaceText, type Audit, type AuditTrial,
 } from '../scripts/grader-audit.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
@@ -90,6 +90,19 @@ describe('readers', () => {
   });
   test('a trial with no model is refused', () => {
     expect(() => readerFor(null)).toThrow(AuditError);
+  });
+  test('the reader gets the workspace: channel members and who can read each file', async () => {
+    const text = workspaceText(join(ROOT, 'world/seed/world.json'));
+    expect(text).toContain('#central-random: hollis-mbeki, pree-sundaram, tobias-rendle');
+    expect(text).toContain('teams/team-central/digests/central-cheatsheet.md | Moss: Central cheat sheet | everyone');
+    expect(text).toMatch(/2026-01-30-ilse-private-dana-leave\.md \| [^|\n]* \| ilse-varga$/m);
+    expect(text).not.toContain('#coastal-random');
+    expect(text).not.toContain('2026-04-24-bettina-private-sofia-leave.md');
+    expect(text).not.toContain('2025-12-08-bettina-pellucid-cutover-recap.md');
+    const tr = fake((p) => record(p));
+    await runAudit({ repoRoot: tmp, runDir: fixtureRun(), transport: tr, cacheDir: join(tmp, 'ws-cache') });
+    expect(tr.seen.length).toBeGreaterThan(0);
+    expect(tr.seen.every((w) => JSON.stringify(w).includes('#central-random: hollis-mbeki'))).toBe(true);
   });
 });
 
