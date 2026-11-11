@@ -61,7 +61,7 @@ The first launch lost 5 of its 12 shards to a cloud capacity shortage, and a tim
 | Headline (preregistered) | -10.6 [-18.3, -3.8] | 3.34x [2.63x, 4.22x] | +4.9 [-6.9, +16.7] | 0.81x [0.64x, 1.02x] |
 | As the analysis script scored it (includes the 2 stopped attempts) | -10.6 [-18.3, -3.8] | 3.34x [2.63x, 4.22x] | +7.7 [-3.8, +19.2] | 0.89x [0.67x, 1.19x] |
 | Only tasks where every model has both attempts scored, as the script scored them (49 tasks) | -11.2 [-19.4, -4.1] | 3.26x [2.60x, 4.12x] | +4.1 [-7.1, +15.3] | 0.83x [0.65x, 1.04x] |
-| Attempts the refusal counter marks removed (the bio filter; the 3 Fable 5.2 cyber-filter stops on FEAL stay in, see the no-FEAL line) | -11.2 [-19.4, -4.1] | 3.35x [2.64x, 4.21x] | +9.2 [-3.1, +21.4] | 0.89x [0.66x, 1.18x] |
+| Attempts the refusal counter marks removed (the bio filter; the 3 Fable 5.2 cyber-filter stops on FEAL stay in because the counter misses them ([transcripts](results/safeguard-stops/README.md)), see the no-FEAL line) | -11.2 [-19.4, -4.1] | 3.35x [2.64x, 4.21x] | +9.2 [-3.1, +21.4] | 0.89x [0.66x, 1.18x] |
 | Without the two FEAL cryptanalysis tasks (50 tasks) | -8.0 [-15.0, -2.0] | 3.26x [2.55x, 4.10x] | +11.0 [+0.0, +22.0] | 0.86x [0.65x, 1.14x] |
 | API calls cut by the egress proxy at 15 seconds and resent, removed from cost | -10.6 [-18.3, -3.8] | 3.29x [2.59x, 4.14x] | +7.7 [-3.8, +19.2] | 0.88x [0.66x, 1.16x] |
 | Also removing the full-reservation charges on 3 streams that stalled for 900 seconds | -10.6 [-18.3, -3.8] | 3.06x [2.49x, 3.80x] | +7.7 [-3.8, +19.2] | 0.86x [0.69x, 1.05x] |
@@ -78,7 +78,7 @@ The 14 tasks that GPT-6.1 Sol and GPT-6 Astra found hardest: Fable 5.2 57.1%, Fa
 ## Four things in Claude Code and the test setup that affected Fable 5.2
 
 1. **Provider safety filters stopped some attempts.**
-   - Fable 5.2's cyber filter stopped both feal-differential-cryptanalysis attempts. It also stopped one feal-linear-cryptanalysis attempt; that attempt then ended without an answer and scored a fail. Opus solved both tasks on both attempts.
+   - Fable 5.2's cyber filter stopped both feal-differential-cryptanalysis attempts. It also stopped one feal-linear-cryptanalysis attempt; that attempt then ended without an answer and scored a fail. Opus solved both tasks on both attempts. The Claude Code transcripts that show all three stops, and why the refusal counter does not list them, are in [results/safeguard-stops/](results/safeguard-stops/README.md).
    - The bio filter stopped the DNA and protein tasks in every attempt, except one Fable 5.1 dna-insert attempt, which ran and passed.
    - The refusal counter (scripts/frontier-harbor/refusals.ts) lists 6 Fable 5.2, 5 Fable 5.1 and 6 Opus attempts; refusals count as fails, as preregistered.
    - The filters explain 2 of the 8 tasks Fable 5.2 lost to Opus. The other 6 are ordinary fails and timeouts.
