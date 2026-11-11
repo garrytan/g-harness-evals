@@ -43,7 +43,7 @@ mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
 log() { printf '%s codex[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" | tee -a "$HE_LOG_DIR/adapter.log" >&2; }
 now() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
-# HARN-5: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
+# internal-task: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
 # preflight compares the same hash in the image with the checkout, HE-ADAPTER-005).
 adapter_sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)
 harness_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -73,9 +73,9 @@ if [ -n "${HE_GBRAIN_INSTALL:-}" ] && [ "$HE_GBRAIN_INSTALL" != gbrain-installer
   exit 2
 fi
 
-# H10 (HARN-18): HE_HARNESS_CONFIG names the instruction route, [<driver>+]<route>[@<slot_id>] (docs/adapters.md, "Route config",
+# H10 (internal-task): HE_HARNESS_CONFIG names the instruction route, [<driver>+]<route>[@<slot_id>] (docs/adapters.md, "Route config",
 # the grammar parseRouteConfig in runner/contracts.ts reads), applied below once config.toml is written. Unset, empty or default
-# changes nothing; official-minimal (HARN-20, below) is no route.
+# changes nothing; official-minimal (internal-task, below) is no route.
 # A driver prefix is claude-code's alone, and the slot routes run on Claude Code only in H10 (Codex takes a slot
 # bundle in a later run), so both stop here. A route beside HE_GBRAIN_INSTALL is refused too: the installer writes gbrain's own rule
 # into AGENTS.md and its own UserPromptSubmit hook, so the cell would carry two carriers. Every refusal is HE-ADAPTER-007, exit 2,
@@ -104,7 +104,7 @@ version=$(cli_version)
 log "codex-cli ${version:-unknown} (pin.json $pin_version) model=he-proxy/$HE_MODEL_NAME budget=${HE_TIME_BUDGET_S}s entry=$entry"
 [ "$version" = "$pin_version" ] || { log "codex-cli ${version:-unknown} is not the pinned $pin_version"; exit 2; }
 
-# HARN-20: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Codex's own base instructions with one fixed text,
+# internal-task: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Codex's own base instructions with one fixed text,
 # ablation/official-minimal.txt beside this file (/opt/harness/ablation in the image; a byte copy of
 # harnesses/ablation/official-minimal.txt, checked against pin.json official_minimal.sha256), named by model_instructions_file at
 # the top of config.toml. Unset, empty or default adds nothing, so config.toml is byte-identical to before; any other value is a
@@ -174,7 +174,7 @@ fi
 mv "$CODEX_HOME/config.toml.tmp" "$CODEX_HOME/config.toml"
 log "config written to $CODEX_HOME/config.toml (mcp_servers $mcp_servers)"
 
-# HARN-13, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
+# internal-task, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
 # the exported view of what `gbrain setup codex --instructions-only` wrote at gbrain image build (gbrain#7989) read-only at
 # HE_GBRAIN_INSTALL_DIR. Setup ran there with HOME=/harness-state and CODEX_HOME=/harness-state/codex, so every path in it is this
 # container's: home/codex/AGENTS.md (the brain-first block, Codex's global instructions), home/codex/hooks.json (the
@@ -296,7 +296,7 @@ fi
 # The number of times gbrain's turn hook has run in this state dir: one heartbeat line per UserPromptSubmit.
 hook_runs() { cat "$hook_heartbeat" 2>/dev/null | grep -c '"event":"user-prompt"' || true; }
 
-# H10 (HARN-18), the instruction routes (harnesses/routes/README.md, "Routes on four harnesses"). One instruction, routes/instruction.md
+# H10 (internal-task), the instruction routes (harnesses/routes/README.md, "Routes on four harnesses"). One instruction, routes/instruction.md
 # beside this file (/opt/harness/routes in the image, a byte copy of harnesses/routes/instruction.md checked against the sha256 the
 # preregistration cites; routes/placebo.md likewise), reaches Codex through the route the config names:
 #   route-tool                  nothing written: the gbrain MCP tool descriptions stay the only carrier

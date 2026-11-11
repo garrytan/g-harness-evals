@@ -21,6 +21,8 @@
 #   5. QM: whether QM's Pi loop can run inside a task container (yes or no, with the reason).
 #   6. gstack: gstack-check.sh (the gstack arms of Claude Code, Codex and Hermes, gstack-skill-start's network, and with
 #      --baselines all the install facts of every pinned task image), its gstack-check.json under "gstack".
+# The agents check needs vm-run.sh to exit 0 and the gstack check needs gstack-check.sh to exit 0, whatever the reports
+# say; install-check.json lists every failed check under "reasons".
 # Exit 0 when every check passed, 1 when one failed, 2 or 3 for a usage or setup failure.
 set -euo pipefail
 umask 077
@@ -34,6 +36,7 @@ if [ $# -gt 1 ]; then
 fi
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
+rm -f "$out/install-check.json"
 export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PATH"
 unset ANTHROPIC_API_KEY OPENAI_API_KEY UBICLOUD_API_KEY VOYAGE_API_KEY PARTICLE_API_KEY OPENROUTER_API_KEY GEMINI_API_KEY GOOGLE_API_KEY
 venv=${FRONTIER_HARBOR_VENV:-$HOME/.frontier-harbor/venv}
@@ -98,14 +101,16 @@ kill "$status_pid" 2>/dev/null || true
 # 6. the gstack arms (internal-task): gstack-check.sh, with the image probe when every pinned task's baseline ran
 set +e
 bash "$here/gstack-check.sh" "$out/gstack" --tb21 "$tb21" --images "$([ "$baselines" = all ] && echo all || echo none)" >> "$out/install-check.log" 2>&1
-say "gstack: gstack-check.sh exited $?"
+gstack_rc=$?
+say "gstack: gstack-check.sh exited $gstack_rc"
 set -e
 
 # 4 and 5. the canary scan, then install-check.json
 canary_files=$( [ -s "$out/agents/canary.txt" ] && grep -rlF -f "$out/agents/canary.txt" "$out/agents" --exclude=canary.txt 2>/dev/null | sed "s#^$out/##" || true)
-python3 - "$out" "$here/pin.json" "$repo" "$agents_rc" "$canary_files" "$ids" <<'PY'
+python3 - "$out" "$here/pin.json" "$repo" "$agents_rc" "$canary_files" "$ids" "$gstack_rc" <<'PY'
 import glob, json, os, subprocess, sys
 out, pin_path, repo, agents_rc, canary_files = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), [f for f in sys.argv[5].splitlines() if f]
+gstack_rc = int(sys.argv[7])
 baseline_ids = [t for t in sys.argv[6].split(",") if t]
 pin = json.load(open(pin_path))
 def jl(p):
@@ -156,7 +161,7 @@ report = {
                "dependencies": pin["harbor"]["dependencies"]["file"], "dependencies_sha256": pin["harbor"]["dependencies"]["sha256"], "installed_from_hashed_lock": marker(".lock-sha256") == pin["harbor"]["dependencies"]["sha256"],
                "python": subprocess.run([os.path.expanduser("~/.frontier-harbor/venv/bin/python"), "--version"], capture_output=True, text=True).stdout.strip() or None},
     "terminal_bench_2_1": pin["terminal_bench"]["commit"],
-    "agents": {"vm_run_exit": agents_rc, "cells": agents, "pass": all(a.get("ran") and a.get("effort_flag") is None for a in agents.values())},
+    "agents": {"vm_run_exit": agents_rc, "cells": agents, "pass": agents_rc == 0 and all(a.get("ran") and a.get("effort_flag") is None for a in agents.values())},
     "oracle": {"tasks": oracle, "planned": len(baseline_ids), "pass": sorted(oracle) == sorted(baseline_ids) and all(v["reward"] == 1 for v in oracle.values())},
     "nop": {"tasks": nop, "planned": len(baseline_ids), "pass": sorted(nop) == sorted(baseline_ids) and all(v["reward"] == 0 for v in nop.values())},
     "egress": {"probe": probe, "pass": bool(probe and probe.get("pass"))},
@@ -168,7 +173,21 @@ report = {
 }
 gstack_path = f"{out}/gstack/gstack-check.json"
 report["gstack"] = json.load(open(gstack_path)) if os.path.exists(gstack_path) else {"pass": False, "note": "gstack-check.sh wrote no gstack-check.json"}
-report["pass"] = all(report[k]["pass"] for k in ("agents", "oracle", "nop", "egress", "canary", "gstack"))
+report["gstack"]["gstack_check_exit"] = gstack_rc
+if gstack_rc != 0:
+    report["gstack"]["pass"] = False
+reasons = []
+if agents_rc != 0:
+    reasons.append(f"agents: vm-run.sh exited {agents_rc}")
+reasons += [f"agents: cell {c} did not run" for c, a in agents.items() if not a.get("ran")]
+reasons += [f"agents: cell {c} has effort flag {a['effort_flag']}" for c, a in agents.items() if a.get("ran") and a.get("effort_flag") is not None]
+reasons += [f"{k}: failed" for k in ("oracle", "nop", "egress", "canary") if not report[k]["pass"]]
+if gstack_rc != 0:
+    reasons.append(f"gstack: gstack-check.sh exited {gstack_rc}")
+if not report["gstack"]["pass"]:
+    reasons += ["gstack: " + r for r in report["gstack"].get("reasons") or ([] if gstack_rc != 0 else [report["gstack"].get("note") or "failed"])]
+report["reasons"] = reasons
+report["pass"] = not reasons and all(report[k]["pass"] for k in ("agents", "oracle", "nop", "egress", "canary", "gstack"))
 json.dump(report, open(f"{out}/install-check.json", "w"), indent=2)
 print(json.dumps({k: report[k]["pass"] for k in ("agents", "oracle", "nop", "egress", "canary", "gstack")} | {"pass": report["pass"]}))
 sys.exit(0 if report["pass"] else 1)

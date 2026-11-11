@@ -9,7 +9,7 @@
 #   1. agents: vm-run.sh on install-check-gstack-prereg.json, one task each, uncounted: Claude Code, Codex and Hermes, each
 #      with the none, full and minus-retro arms. Per gstack cell the first model request lists exactly the lock's
 #      skills, Harbor's skill copy left every listed SKILL.md in place, and the none arm's container had no gstack.
-#      vm-run.sh exited 0 or 1 with a trial record per cell and complete accounting, and its fake-key canary is in no file.
+#      vm-run.sh exited 0 with a trial record per cell and complete accounting, and its fake-key canary is in no file.
 #   2. skill start: per host, the full arm's runtime and tree copied into the pinned task image of the agent check, and
 #      the preamble command of the rendered review skill run as the skill tells the agent to (eval markers set), twice,
 #      with every packet of the container's network namespace captured by tcpdump in a sidecar that owns it. Any packet
@@ -17,13 +17,34 @@
 #   3. images: on every pinned task image (the 52; --images none skips it), the facts the install needs: HOME, the
 #      default user, bash, sha256sum, git, the distribution and libc, and the built Bun running there; and the bun and
 #      node the image already ships, if any (recorded, not refused: the gstack arms link their Bun at /usr/local/bin/bun).
-# Exit 0 when every check passed, 1 when one failed, 2 or 3 for a usage or setup failure.
+# Exit 0 when every check passed, 1 when one failed, 2 or 3 for a usage or setup failure. It fails closed: a stale
+# gstack-check.json is removed first, and if the script stops before gstack-check.ts writes the report, or gstack-check.ts
+# itself fails to write it, the exit trap writes one with "pass": false and the step it stopped in under "reasons".
 set -euo pipefail
 umask 077
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 out=${1:?usage: gstack-check.sh <out dir> [--tb21 <dir>] [--images all|none]}
 shift
+mkdir -p "$out"
+out=$(cd "$out" && pwd)
+step=setup
+fail_reason=""
+agents_rc=""
+rm -f "$out/gstack-check.json"
+rm -rf "$out/agents" "$out/skill-start" "$out/images" "$out/first-requests"
+write_failure() {
+  local rc=$?
+  [ "$rc" -ne 0 ] && [ ! -f "$out/gstack-check.json" ] || return 0
+  python3 - "$out/gstack-check.json" "${fail_reason:-gstack-check.sh stopped during step $step with exit $rc}" "$rc" "$agents_rc" <<'PY' || true
+import json, sys
+path, reason, rc, agents_rc = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+json.dump({"schema": "frontier-harbor-gstack-check/1", "exit": rc, "agents": {"vm_run_exit": int(agents_rc) if agents_rc else None},
+           "reasons": [reason], "pass": False}, open(path, "w"), indent=2)
+open(path, "a").write("\n")
+PY
+}
+trap write_failure EXIT
 tb21=$HOME/terminal-bench-2-1
 images=all
 while [ $# -gt 0 ]; do
@@ -33,8 +54,7 @@ while [ $# -gt 0 ]; do
     *) echo "usage: gstack-check.sh <out dir> [--tb21 <dir>] [--images all|none]" >&2; exit 2 ;;
   esac
 done
-mkdir -p "$out"
-out=$(cd "$out" && pwd)
+case "$images" in all|none) ;; *) echo "usage: gstack-check.sh <out dir> [--tb21 <dir>] [--images all|none]" >&2; exit 2 ;; esac
 export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PATH"
 unset ANTHROPIC_API_KEY OPENAI_API_KEY UBICLOUD_API_KEY VOYAGE_API_KEY PARTICLE_API_KEY OPENROUTER_API_KEY GEMINI_API_KEY GOOGLE_API_KEY
 say() { printf '%s gstack-check: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$out/gstack-check.log"; }
@@ -48,6 +68,7 @@ if [ "$(git -C "$tb21" rev-parse HEAD 2>/dev/null)" != "$tb_commit" ]; then
 fi
 
 # 1. the gstack cells against the fake upstream
+step=agents
 set +e
 "${safe_env[@]}" bash "$here/vm-run.sh" --prereg "$prereg" --name gstack-install-check --lease-usd 200 --out "$out/agents" \
   --tb21 "$tb21" --fake-upstream --uncounted "gstack install check (keyless, fake upstream)"
@@ -55,9 +76,10 @@ agents_rc=$?
 set -e
 say "agents: vm-run.sh exited $agents_rc"
 cells=$out/agents/run/gstack/cells
-[ -d "$cells" ] || { say "no built gstack arms under $cells (vm-run.sh failed before step 1b)"; exit 3; }
+[ -d "$cells" ] || { fail_reason="agents: vm-run.sh exited $agents_rc before building the gstack arms (no $cells)"; say "no built gstack arms under $cells (vm-run.sh failed before step 1b)"; exit 3; }
 
 # 2. gstack-skill-start in the task image, every packet of its network namespace captured
+step=skill-start
 task=$(cd "$repo" && bun -e 'import {loadPlan} from "./scripts/frontier-harbor/plan.ts"; const p = loadPlan(process.argv[1]); console.log(p.cells[0].task_ids[0])' "$prereg")
 img=$(python3 -c 'import json,sys; t=json.load(open(sys.argv[1]))["task_selection"]["tasks"][sys.argv[2]]; print(t["image"] + "@" + t["image_digest"])' "$here/pin.json" "$task")
 base=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["builder_base"])' "$here/gstack-runtime.json")
@@ -94,6 +116,7 @@ for cell in cc-opus-full codex-sol-full hermes-opus-full; do
 done
 
 # 3. the pinned task images
+step=images
 if [ "$images" = all ]; then
   bunbin=$(jq -r '.uploads[0].src' "$cells/cc-opus-full.json")/root/.bun/bin
   mkdir -p "$out/images"
@@ -110,4 +133,5 @@ if [ "$images" = all ]; then
   say "images: probed $(find "$out/images" -name '*.txt' ! -name list.txt | wc -l) image(s)"
 fi
 
-cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/gstack-check.ts --out "$out" --agents-rc "$agents_rc"
+step=report
+cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/gstack-check.ts --out "$out" --agents-rc "$agents_rc" --images "$images"

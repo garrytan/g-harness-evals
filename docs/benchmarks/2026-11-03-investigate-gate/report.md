@@ -23,7 +23,7 @@
 Sources for the numbers below:
 
 - every count, rate and interval: a file under [results/](results/);
-- spend: internal-task's spend ledger, summarised in results/spend.json;
+- spend: internal-task's spend ledger, summarised in [results/spend.json](results/spend.json);
 - internal-task comment ids: [results/amendments.json](results/amendments.json).
 
 ## 1. Verdict under the prereg's decision rule
@@ -192,7 +192,7 @@ internal-task-a comment ids are given in brackets. The plan file is pilot-plan.m
 
 ## 8. Spend
 
-spend.json, from internal-task's spend ledger.
+[spend.json](results/spend.json), from internal-task's spend ledger.
 
 - **Total:** $254.31 of $300. That is $204.60 model (booked) and $49.71 Ubicloud.
 - **Phases 0 to 2:** $74.83 model, $23.39 Ubicloud.
@@ -222,7 +222,7 @@ spend.json, from internal-task's spend ledger.
   - links to the audit, the reconciliation and the analysis scripts, kept on `harn14/gates-938` at `07312a7ed`.
 - **If the scratch branch goes away:** the linked files are kept in the Captain drive at handoffs/internal-task/gates-938/evidence/phase3/, with the sha256s listed in the results README, and can be republished on request.
 - [results/phases-0-2.json](results/phases-0-2.json): Phase 0 smoke, Gate P counts for screen 1, screen 2 and pooled, and the Phase 2 prices.
-- results/spend.json, [results/pins.json](results/pins.json) and [results/amendments.json](results/amendments.json).
+- [results/spend.json](results/spend.json), [results/pins.json](results/pins.json) and [results/amendments.json](results/amendments.json).
 - **Not committed:** transcripts, recorder and gate-state files, ledgers, proxy logs and task content. They are in the Captain drive at handoffs/internal-task/gates-938/evidence/.
 
 ## Disclosures

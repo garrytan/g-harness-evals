@@ -50,7 +50,7 @@ mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
 log() { printf '%s claude-code[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" | tee -a "$HE_LOG_DIR/adapter.log" >&2; }
 now() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
-# HARN-5: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
+# internal-task: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
 # preflight compares the same hash in the image with the checkout, HE-ADAPTER-005).
 adapter_sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)
 harness_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -84,9 +84,9 @@ if [ -n "${HE_GBRAIN_INSTALL:-}" ] && [ "$HE_GBRAIN_INSTALL" != gbrain-installer
   exit 2
 fi
 
-# H10 (HARN-18): HE_HARNESS_CONFIG names the instruction route, [<driver>+]<route>[@<slot_id>] (docs/adapters.md, "Route config",
+# H10 (internal-task): HE_HARNESS_CONFIG names the instruction route, [<driver>+]<route>[@<slot_id>] (docs/adapters.md, "Route config",
 # the grammar parseRouteConfig in runner/contracts.ts reads), applied below once CLAUDE_CONFIG_DIR exists. Unset, empty or default
-# changes nothing; official-minimal (HARN-20, below) is no route.
+# changes nothing; official-minimal (internal-task, below) is no route.
 # The driver prefix picks what runs each turn: cli (the default) is `claude -p`; sdk-preset and sdk-default run the
 # same CLI through the Agent SDK (sdk-driver.ts, H10 PR 4) with the claude_code system prompt preset or with no system prompt set.
 # route-system is refused on the SDK drivers: H10 runs no SDK system cell, and the SDK can append to the preset only. A route beside
@@ -113,7 +113,7 @@ esac
 if [ "$route_driver" != cli ] && [ "$route" = route-system ]; then refuse_route "is route-system on the $route_driver driver; H10 runs route-system on the cli driver only (--append-system-prompt)"; fi
 if [ "$route" != default ] && [ -n "${HE_GBRAIN_INSTALL:-}" ]; then refuse_route "is a route and HE_GBRAIN_INSTALL=$HE_GBRAIN_INSTALL writes gbrain's own rule into CLAUDE.md and settings.json; a route cell runs without gbrain.install"; fi
 
-# HARN-20: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Claude Code's own system prompt with one fixed text,
+# internal-task: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Claude Code's own system prompt with one fixed text,
 # ablation/official-minimal.txt beside this file (/opt/harness/ablation in the image; a byte copy of
 # harnesses/ablation/official-minimal.txt, checked against pin.json official_minimal.sha256), passed as --system-prompt on every
 # turn. Unset, empty or default adds nothing, so the adapter's files and command lines are as before; any other value is a route (parsed
@@ -144,7 +144,7 @@ export TMPDIR="$HE_SESSION_STATE_DIR/tmp" CLAUDE_TMPDIR="$HE_SESSION_STATE_DIR/t
 mkdir -p "$CLAUDE_CONFIG_DIR" "$TMPDIR"
 [ -e "$CLAUDE_CONFIG_DIR/settings.json" ] || cp "$harness_dir/config/settings.json" "$CLAUDE_CONFIG_DIR/settings.json"
 
-# HARN-13, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
+# internal-task, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
 # the exported view of what `gbrain setup claude-code --instructions-only` wrote at gbrain image build (gbrain#7989) read-only at
 # HE_GBRAIN_INSTALL_DIR. Setup ran there with HOME=/harness-state and CLAUDE_CONFIG_DIR=/harness-state/claude, so every path in it is
 # this container's: home/claude/CLAUDE.md (the brain-first block, Claude Code's user memory), home/claude/settings.json (this
@@ -264,7 +264,7 @@ fi
 # The number of times gbrain's turn hook has run in this state dir: one heartbeat line per UserPromptSubmit.
 hook_runs() { cat "$hook_heartbeat" 2>/dev/null | grep -c '"event":"user-prompt"' || true; }
 
-# H10 (HARN-18), the instruction routes on the cli driver (harnesses/routes/README.md, "Routes on four harnesses"). One instruction,
+# H10 (internal-task), the instruction routes on the cli driver (harnesses/routes/README.md, "Routes on four harnesses"). One instruction,
 # routes/instruction.md beside this file (/opt/harness/routes in the image, a byte copy of harnesses/routes/instruction.md checked
 # against the sha256 the preregistration cites; routes/placebo.md likewise), reaches Claude Code through the route the config names:
 #   route-tool                  nothing written: the gbrain MCP tool descriptions stay the only carrier
