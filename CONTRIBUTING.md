@@ -86,7 +86,7 @@ bun scripts/gbrain-check.ts --gbrain <ref>
 - **To add a harness,** implement the adapter contract in [docs/adapters.md](docs/adapters.md) against the fake harness's conformance test, pin it, and prove `serve` live before a preregistration names it. **To add a task,** follow [docs/tasks.md](docs/tasks.md); a held-out task is sealed before any counted run spends it.
 - The trial contract every runner, adapter and grader implements is [docs/methodology.md](docs/methodology.md). How a run is compared with another, and which commands made each table: [docs/comparing-runs.md](docs/comparing-runs.md). What was decided, and when: [docs/decisions.md](docs/decisions.md).
 - How the world and tasks work in full, and how every harness runs: [docs/methods.md](docs/methods.md). Every page under docs/, one line each: [docs/README.md](docs/README.md).
-- The plan this repository executes and its review record are in [docs/plans/2026-10-21-harness-eval-v0/](docs/plans/2026-10-21-harness-eval-v0/); open tasks are in [TODOS.md](TODOS.md); the survey of earlier harness comparisons is [compendium.md](compendium.md); error codes are in [docs/errors.md](docs/errors.md); [CHANGELOG.md](CHANGELOG.md) records each release.
+- The plan this repository executes and its review record are in docs/plans/2026-10-21-harness-eval-v0/; open tasks are in TODOS.md; the survey of earlier harness comparisons is [compendium.md](compendium.md); error codes are in [docs/errors.md](docs/errors.md); [CHANGELOG.md](CHANGELOG.md) records each release.
 - The statistics kit, proxy and ledger are vendored from gbrain-evals and gbrain under MIT with their notices ([runner/stats/README.md](runner/stats/README.md)), and the world is built from gbrain-evals' `messy-company-v1` dataset.
 
 ## Licences
