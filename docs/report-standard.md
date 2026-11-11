@@ -55,7 +55,9 @@ A run on a task set that already has a main entry adds a `"role": "other"` entry
 
 Every new run folder also gets a row in docs/scoreboard/reports.json. Until it has one, the [reports index](reports-index.md) lists it as not yet indexed.
 
-Run `bun scripts/scoreboard/build.ts` and commit the regenerated pages, and the README block if the README has scoreboard markers, in the same PR.
+A main entry also needs `paired_cost`: the run's trial records file and the analysis file's seed and draw count. The README's rank and "Cost vs the cheapest" column come from it. After adding or changing an entry, run `bun scripts/scoreboard/paired-cost.ts` before `build.ts`: it turns the trial records into a per-task cost table under `docs/scoreboard/paired-cost/`, and `build.ts` reads that table. When a published correction changes a run's grades or costs, name it in `paired_cost.correction`, and the table is built from the corrected records. The public copy leaves some runs' trial records out, and the table lets it build the same ranks without them.
+
+Run `bun scripts/scoreboard/build.ts` and commit the regenerated pages and README ranking tables in the same PR. Each main entry gets one README table per model, between `<!-- ranking:... -->` markers, and `--check` fails if one is missing or edited by hand.
 
 Every reported run also gets a rebuild recipe, scripts/verify/runs/<folder>.json, in the same PR ([verify.md](verify.md#recipes)). A test fails without one, and `bun run verify --run <folder>` must print MATCH or KNOWN.
 

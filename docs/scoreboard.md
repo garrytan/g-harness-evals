@@ -34,7 +34,7 @@ One section per task set. **Never compare numbers across task sets:** different 
 - Every cell is a plain harness: no gstack, no gbrain.
 - Cost per solved task is the cell's recorded spend at list price through our metering proxy (excluded trials included) divided by its scored passes, leaving out the 351 outage runs a rerun replaced, whose passes are not counted either; the outage hit every cell but Codex. The report also gives the figure with all spend. Cost per trial divides the same spend by the cell's recorded trials.
 - Calls come only from the run's preregistered comparisons; rows are in the run's own order, which is not a ranking.
-- Corrected 2026-11-09 (docs/corrections/2026-11-09/README.md): without reservation charges for streams that never finished, cost per solved task on Sol is Codex $0.31 [$0.23, $0.40], Hermes Agent $0.38 [$0.29, $0.51] and OpenClaw $0.50 [$0.37, $0.68]. No call or rank changes.
+- Corrected 2026-11-09 (docs/corrections/2026-11-09/README.md): without reservation charges for streams that never finished, cost per solved task on Sol is Codex $0.31 [$0.23, $0.40], Hermes Agent $0.38 [$0.29, $0.51] and OpenClaw $0.50 [$0.37, $0.68]. No call changes. The README's ranks are computed from the costs after this correction and the 2026-11-10 one, and on Sol they stay Pi 1, Codex 2, Hermes Agent 3 and OpenClaw 4.
 - Corrected 2026-11-10 (docs/corrections/2026-11-10/README.md): our egress sidecar cut Hermes Agent's slow, non-streamed calls on Sol at 15 s, and the run still paid for them. With all 39 cut charges removed (the upper bound; only 7 were resent), Hermes Agent's cost per solved task on Sol is $0.4247 [$0.3052, $0.5854], or $0.3741 [$0.2813, $0.4964] with the 2026-11-09 correction too; with only the 7 resent charges removed (the lower bound) it is $0.4313 [$0.3108, $0.5940]. No other cell was cut, and no call or rank changes.
 - Why null? verdict: **CUT-CANDIDATE**. See [the glossary below](#how-to-read-this) and the report.
 
@@ -54,7 +54,7 @@ One section per task set. **Never compare numbers across task sets:** different 
 | Hermes Agent | v2026.9.24 | Opus 5.5 | 78.8% [60.0%, 95.0%] | 63 / 80 | $0.24 [$0.18, $0.36] | $0.192 | 64.6 s | can't tell apart from Claude Code, OpenClaw |
 | QM (Pi loop) | main@b6786d67 | Opus 5.5 | 72.5% [53.8%, 88.8%] | 58 / 80 | $0.19 [$0.13, $0.28] | $0.134 | 40.1 s | interval only, not tested (vs Claude Code, OpenClaw, Hermes Agent) |
 | Codex | 0.165.0 | GPT-6.1 Sol | 71.3% [51.2%, 90.0%] | 57 / 80 | $0.17 [$0.12, $0.26] | $0.118 | 30.1 s | can't tell apart from OpenClaw, Hermes Agent |
-| OpenClaw | 2026.10.6 | GPT-6.1 Sol | 73.7% [53.9%, 90.8%] | 56 / 76 | $0.22 (interval basis $0.20 [$0.13, $0.30]) | $0.156 | 83.6 s | can't tell apart from Codex, Hermes Agent |
+| OpenClaw | 2026.10.6 | GPT-6.1 Sol | 73.7% [53.9%, 90.8%] | 56 / 76 | $0.22 (range from trial records: $0.20 [$0.13, $0.30]) | $0.156 | 83.6 s | can't tell apart from Codex, Hermes Agent |
 | Hermes Agent | v2026.9.24 | GPT-6.1 Sol | 75.0% [56.3%, 91.3%] | 60 / 80 | $0.19 [$0.14, $0.28] | $0.140 | 81.5 s | can't tell apart from Codex, OpenClaw |
 
 **Caveats:**
@@ -66,7 +66,7 @@ One section per task set. **Never compare numbers across task sets:** different 
 - Time is the median wall-clock time per trial, one trial at a time on one VM per cell.
 - Calls come only from the run's preregistered comparisons; rows are in the run's own order, which is not a ranking.
 - Settings as each harness ships: Claude Code and OpenClaw on Opus use adaptive thinking at effort medium, QM adaptive at effort low, Hermes Agent no thinking; every Sol cell uses reasoning effort medium.
-- Corrected 2026-11-09 (docs/corrections/2026-11-09/README.md): with the runner's own posted text withheld from grading and the v0.3.1 excuse checks, Opus pass counts become Claude Code 64/80, OpenClaw 67/78, Hermes Agent 66/80 and QM 60/80, and cost per solved task $0.21, $0.40, $0.23 and $0.18; OpenClaw on Sol without reservation charges is $0.17. No call or rank changes.
+- Corrected 2026-11-09 (docs/corrections/2026-11-09/README.md): with the runner's own posted text withheld from grading and the v0.3.1 excuse checks, Opus pass counts become Claude Code 64/80, OpenClaw 67/78, Hermes Agent 66/80 and QM 60/80, and cost per solved task $0.21, $0.40, $0.23 and $0.18; OpenClaw on Sol without reservation charges is $0.17. No call changes. The README's ranks are computed from these corrected costs, which move Hermes Agent on Sol from rank 2 on the uncorrected costs to rank 3 (its ratio over OpenClaw goes from 1.00x [0.75x, 1.26x] to 1.16x [1.01x, 1.30x]).
 - Median time includes our rig starting and stopping each harness; in-turn medians are in the 2026-11-09 correction (QM 24.0 s, Claude Code 39.0 s).
 - OpenClaw, Opus 5.5: Incomplete cell: the last task's final reps ended in a cap stop, so scored trials are fewer than planned.
 - OpenClaw, Opus 5.5: Lists Haiku as its housekeeping model (shipped default); it made no housekeeping calls.
@@ -121,6 +121,8 @@ Each of these runs used the same task set on its own dates, repetitions and mach
 - **Interval only, not tested:** the run reports a range for this pair but its preregistration made no test of it.
 - **Cheaper per trial / costs more per trial:** the run's preregistered cost contrast has a 95% range wholly below or wholly above zero. **Cost per trial: can't tell apart:** that range includes zero.
 - **Cost per solved task:** what the cell spent at list price, metered by our proxy, divided by its passes. **Cost per trial** is the same spend divided by the trials recorded.
+- **Rank (README only):** a harness's rank is 1 plus the number of harnesses on the same model and task set that cost clearly less per solved task: on the tasks both scored, the 95% range of their paired cost ratio (tasks resampled with replacement) sits wholly below 1. Harnesses can share a rank, and ranks can skip (1, 1, 3). The costs are each trial record's own, after any correction the run has had (the 2026-11-09 correction today, and for frontier-harness-2026-11 also the 2026-11-10 correction), so a ‡ marks a row where that differs from the cost per solved task shown. These ranges are descriptive, not a preregistered test.
+- **Cost vs the cheapest (README only):** a harness's cost per solved task divided by that of the cheapest harness on the same model, over the tasks both scored, with the same paired 95% range. The cheapest is the harness no other undercuts on the tasks both scored.
 - **Median time per trial:** wall-clock time from start to finish of one trial.
 - **Saturated task set:** half or more of the tasks scored the same in every cell, so the tasks, not the harness, decide most of the score.
 - **KEEP:** tested on frontier models and it helps, or it is needed; keep it on. **FIX-METHOD:** the test could not tell, for a named reason; fix the test before deciding. **CUT-CANDIDATE:** tested fairly and it did not help; a candidate to switch off.

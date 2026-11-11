@@ -19,6 +19,17 @@ export interface EntryCell {
   overrides?: Partial<Record<CellField | OptionalCellField, Source>>;
 }
 
+// Where a main entry's paired cost ratios come from: the run's committed trial records (one JSON object per line), the
+// optional list of trial ids scored as fails whatever their grade, extra spend fields added to each record's usage.usd,
+// and the bootstrap seed and draw count, read from the run's own analysis file so the entry holds no numbers.
+// scripts/scoreboard/paired-cost.ts reads the trial records into docs/scoreboard/paired-cost/<run id>.json; build.ts reads that.
+// correction names a published correction the costs are taken after: regrade reruns scripts/corrections/regrade-sensitivity.ts
+// with that rule, and reservations reruns scripts/corrections/reservation-cost.ts in that layout so each record's
+// usage.usd_reserved is left out. cut names a later correction that reruns scripts/corrections/harbor-cut.ts on the run, so
+// the charges of requests the egress sidecar cut at 15 s come off each record's spend.
+export interface PairedCostCorrection { label: string; link: string; regrade?: 'withhold' | 'v031' | 'both'; reservations?: 'harbor' | 'matrix'; cut?: { label: string; link: string } }
+export interface PairedCostSource { trials: string; lookup_fails?: string; extra_usd?: string[]; correction?: PairedCostCorrection; seed: Source; draws: Source }
+
 export interface Entry {
   schema: 'harness-evals/scoreboard-entry@1';
   run_id: string;
@@ -33,6 +44,7 @@ export interface Entry {
   mdd_holm?: Source;
   family: Source & { label: string; kind?: 'verdict' | 'cost_per_trial'; interval?: string; a?: string; b?: string; verdict?: Source; words?: Record<string, string> };
   secondary?: Source;
+  paired_cost?: PairedCostSource;
   lead_note: string;
   verdict?: { word: 'KEEP' | 'FIX-METHOD' | 'CUT-CANDIDATE'; quote: string };
   fields: Record<CellField, Source>;
@@ -54,7 +66,20 @@ export function validateEntry(e: unknown, where: string): Entry {
   if (x?.schema !== 'harness-evals/scoreboard-entry@1') errors.push(`${where}: schema must be harness-evals/scoreboard-entry@1`);
   for (const k of ['run_id', 'report', 'results_pr', 'lead_note'] as const) if (typeof x?.[k] !== 'string' || !x[k]) errors.push(`${where}: ${k} is required`);
   if (x?.role !== 'main' && x?.role !== 'other') errors.push(`${where}: role must be main or other`);
-  if (x?.role === 'main') for (const k of ['tasks', 'same_everywhere', 'mdd'] as const) if (!x[k]) errors.push(`${where}: a main entry needs ${k}`);
+  if (x?.role === 'main') for (const k of ['tasks', 'same_everywhere', 'mdd', 'paired_cost'] as const) if (!x[k]) errors.push(`${where}: a main entry needs ${k}`);
+  const pc = x?.paired_cost;
+  if (pc) {
+    const inRun = (f: unknown) => typeof f === 'string' && f !== '' && !f.startsWith('/') && !f.split('/').includes('..');
+    if (!inRun(pc.trials)) errors.push(`${where}: paired_cost.trials must name the run's trial records file, inside the run folder`);
+    if (pc.lookup_fails !== undefined && !inRun(pc.lookup_fails)) errors.push(`${where}: paired_cost.lookup_fails must name a file inside the run folder`);
+    if (pc.extra_usd !== undefined && (!Array.isArray(pc.extra_usd) || !pc.extra_usd.every((f) => typeof f === 'string' && /^[a-z_]+(\.[a-z_]+)*$/.test(f)))) errors.push(`${where}: paired_cost.extra_usd must be a list of dotted field names`);
+    for (const k of ['seed', 'draws'] as const) if (!pc[k]?.file || !pc[k]?.path) errors.push(`${where}: paired_cost.${k} needs file and path`);
+    const c = pc.correction;
+    if (c !== undefined && (typeof c?.label !== 'string' || !c.label || typeof c.link !== 'string' || !c.link.startsWith('docs/corrections/') || c.link.split('/').includes('..')
+      || (c.regrade !== undefined && !['withhold', 'v031', 'both'].includes(c.regrade)) || (c.reservations !== undefined && !['harbor', 'matrix'].includes(c.reservations))
+      || (c.regrade === undefined && c.reservations === undefined)
+      || (c.cut !== undefined && (typeof c.cut?.label !== 'string' || !c.cut.label || typeof c.cut.link !== 'string' || !c.cut.link.startsWith('docs/corrections/') || c.cut.link.split('/').includes('..'))))) errors.push(`${where}: paired_cost.correction needs a label, a link under docs/corrections/, and a regrade rule (withhold, v031 or both) or a reservations layout (harbor or matrix)`);
+  }
   if (x?.role === 'other' && x.verdict) errors.push(`${where}: only a main entry carries a verdict`);
   if (x?.family?.kind !== undefined && x.family.kind !== 'verdict' && x.family.kind !== 'cost_per_trial') errors.push(`${where}: family.kind must be verdict or cost_per_trial`);
   if (x?.family?.kind === 'cost_per_trial' && !x.family.interval) errors.push(`${where}: a cost_per_trial family needs interval, the path to each contrast's 95% range`);

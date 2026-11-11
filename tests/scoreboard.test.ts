@@ -2,12 +2,14 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
-  benchmarkFolders, buildAll, buildTable, callFor, callPhrase, costCallFor, getPath, loadEntries, modelLines, renderPage, renderReadmeBlock, renderReportsIndex, usd, withoutUnindexed, type Comparison,
+  benchmarkFolders, buildAll, buildTable, callFor, callPhrase, costCallFor, getPath, loadEntries, modelLines, perTaskCosts, rankingStart, rankRows, ratioOf, readResults, renderPage, renderRankingBlock, renderReadme, renderReportsIndex, usd, withoutUnindexed,
+  RANKING_END, type Comparison, type PairRatio, type Row,
 } from '../scripts/scoreboard/build.ts';
 import { validateEntry, validateReports, type ReportRow } from '../scripts/scoreboard/schema.ts';
+import type { TrialRecord } from '../runner/contracts.ts';
 
 const root = join(import.meta.dir, '..');
-const readJson = (p: string) => JSON.parse(readFileSync(join(root, p), 'utf8'));
+const readJson = readResults(root) as (p: string) => any;
 
 describe('scoreboard', () => {
   const { page, readme, reportsIndex, tables } = buildAll(root);
@@ -18,36 +20,100 @@ describe('scoreboard', () => {
     expect(withoutUnindexed(readFileSync(join(root, 'docs/reports-index.md'), 'utf8'))).toBe(withoutUnindexed(reportsIndex));
   });
 
-  test("each row of the README's hand-written harness rankings matches its harness and model on the generated scoreboard page", () => {
-    const text = readFileSync(join(root, 'README.md'), 'utf8');
-    const start = text.indexOf('\n## Harness rankings\n');
-    expect(start).toBeGreaterThan(-1);
-    const section = text.slice(start, text.indexOf('\n## ', start + 1));
-    const pageRowsFor = (runId: string) => {
+  const readmeText = readFileSync(join(root, 'README.md'), 'utf8');
+  const blocks = () => [...readmeText.matchAll(/<!-- ranking:([a-z0-9-]+):([^():]+?) \(generated[^\n]*-->\n([\s\S]*?)<!-- ranking:end -->/g)];
+
+  test("each README ranking row's pass, cost and time cells match its harness and model on the generated scoreboard page", () => {
+    const rows: Record<string, number> = {};
+    for (const [, runId, model, body] of blocks()) {
       const tableStart = page.indexOf('| Harness | Version | Model | Pass rate', page.indexOf(`(${runId}, `));
       expect(tableStart).toBeGreaterThan(-1);
-      return new Map(page.slice(tableStart, page.indexOf('\n\n', tableStart)).split('\n').map((l) => l.split('|').map((c) => c.trim())).map((c) => [`${c[1]} / ${c[3]}`, c]));
-    };
-    let pageRows: Map<string, string[]> | undefined;
-    let model = '';
-    const rows: Record<string, number> = {};
-    let runId = '';
-    for (const line of section.split('\n')) {
-      const heading = /^### .*\(([a-z0-9-]+)\)$/.exec(line);
-      if (heading) {
-        runId = heading[1]!;
-        pageRows = pageRowsFor(runId);
-        model = '';
+      const pageRows = new Map(page.slice(tableStart, page.indexOf('\n\n', tableStart)).split('\n').map((l) => l.split('|').map((c) => c.trim())).map((c) => [`${c[1]} / ${c[3]}`, c]));
+      expect(body!.startsWith(`**${model}**\n`)).toBe(true);
+      for (const line of body!.split('\n').filter((l) => /^\| \d/.test(l))) {
+        const [, , harness, , cost, pass, time] = line.split('|').map((c) => c.trim());
+        const row = pageRows.get(`${harness} / ${model}`);
+        expect(row).toBeDefined();
+        expect([pass, cost, time]).toEqual([row![4], row![6], row![8]]);
+        rows[runId!] = (rows[runId!] ?? 0) + 1;
       }
-      model = /^\*\*(.+)\*\*$/.exec(line)?.[1] ?? model;
-      if (!/^\| \d/.test(line)) continue;
-      const [, , harness, pass, cost, time] = line.split('|').map((c) => c.trim());
-      const row = pageRows?.get(`${harness} / ${model}`);
-      expect(row).toBeDefined();
-      expect([pass, cost, time]).toEqual([row![4], row![6], row![8]]);
-      rows[runId] = (rows[runId] ?? 0) + 1;
     }
     expect(rows).toEqual({ 'frontier-harness-2026-11': 8, 'matrix-mu-2026-11': 7 });
+  });
+
+  test('the README has exactly one generated ranking table per main entry and model', () => {
+    expect(blocks().map(([, r, m]) => `${r}:${m}`).sort()).toEqual(['frontier-harness-2026-11:GPT-6.1 Sol', 'frontier-harness-2026-11:Opus 5.5', 'matrix-mu-2026-11:GPT-6.1 Sol', 'matrix-mu-2026-11:Opus 5.5']);
+  });
+
+  test('a hand-edited rank is rewritten, and a Rank table outside the markers, a missing, repeated or unclosed table, or a run with no main entry is refused', () => {
+    const edited = readmeText.replace('| 4 | OpenClaw |', '| 1 | OpenClaw |');
+    expect(edited).not.toBe(readmeText);
+    expect(renderReadme(edited, tables)).toBe(readmeText);
+    expect(() => renderReadme(`${readmeText}\n| Rank | Harness |\n|---|---|\n| 1 | Pi |\n`, tables)).toThrow(/a Rank table outside the generated ranking markers/);
+    const [, runId, model] = blocks()[0]!;
+    const first = readmeText.indexOf(rankingStart(runId!, model!));
+    const end = readmeText.indexOf(RANKING_END, first) + RANKING_END.length;
+    expect(() => renderReadme(readmeText.slice(0, first) + readmeText.slice(end), tables)).toThrow(new RegExp(`no ranking table for ${runId}:${model}`));
+    expect(() => renderReadme(`${readmeText}\n${readmeText.slice(first, end)}\n`, tables)).toThrow(/a second ranking table/);
+    expect(() => renderReadme(readmeText.replace(RANKING_END, '<!-- ranking:stop -->'), tables)).toThrow(/has no <!-- ranking:end --> before the next marker/);
+    expect(() => renderReadme(`${readmeText}\n${rankingStart('waterfall-frontier-2026-11', 'Opus 5.5')}\n${RANKING_END}\n`, tables)).toThrow(/not a main scoreboard entry/);
+  });
+
+  test('rank counts only the rows clearly cheaper than this one, so ties are not transitive and ranks can skip', () => {
+    const row = (id: string, usd: number | null) => ({ id, harness: id, model: 'm', usd_per_solved: usd }) as unknown as Row;
+    const pair = (a: string, b: string, lo: number, hi: number): PairRatio => ({ a, b, tasks: 20, ratio: (lo + hi) / 2, ci95: [lo, hi], note: null });
+    const pairs = [pair('A', 'B', 0.9, 1.3), pair('B', 'C', 0.95, 1.4), pair('A', 'C', 1.1, 1.6)];
+    const ranked = rankRows([row('C', 0.3), row('A', 0.2), row('B', 0.22)], pairs);
+    expect(ranked.map((r) => [r.row.id, r.rank, r.cheapest])).toEqual([['A', 1, true], ['B', 1, false], ['C', 2, false]]);
+    expect(ranked[2]!.vs_cheapest!.ci95).toEqual([1.1, 1.6]);
+    expect(ratioOf(pairs, 'A', 'C')!.ci95).toEqual([1 / 1.6, 1 / 1.1]);
+    expect(rankRows([row('A', 0.2), row('B', 0.21), row('C', 0.5)], [pair('A', 'B', 0.9, 1.1), pair('A', 'C', 2, 3), pair('B', 'C', 2, 3)]).map((r) => r.rank)).toEqual([1, 1, 3]);
+    expect(rankRows([row('A', 0.2), row('B', null)], [{ a: 'A', b: 'B', tasks: 20, ratio: null, ci95: null, note: 'a side has no solve or no spend on the paired tasks' }]).map((r) => r.rank)).toEqual([1, null]);
+  });
+
+  test('a reversed ratio whose range reaches zero spend has no ratio instead of Infinity, and a cell with no trial records is refused', () => {
+    expect(ratioOf([{ a: 'A', b: 'B', tasks: 5, ratio: 0, ci95: [0, 0.5], note: null }], 'A', 'B')).toEqual({ a: 'B', b: 'A', tasks: 5, ratio: null, ci95: null, note: 'one side spent nothing on some paired tasks, so the reversed ratio is undefined' });
+    expect(ratioOf([{ a: 'A', b: 'B', tasks: 5, ratio: 0.4, ci95: [0, 0.9], note: null }], 'A', 'B')!.ratio).toBeNull();
+    const rec = (cell: string) => ({ trial_id: `${cell}/t/a1`, cell, task: 't', grade: 'pass', usage: { usd: 1 } }) as unknown as TrialRecord;
+    expect(() => perTaskCosts([{ id: 'X' }, { id: 'Y' }], [rec('X')], new Set(), [])).toThrow(/no trial record for Y/);
+  });
+
+  test('the four README rank sets are the ones the computed rule gives', () => {
+    const ranks = Object.fromEntries(blocks().map(([, r, m, body]) => [`${r}:${m}`, body!.split('\n').filter((l) => /^\| \d/.test(l)).map((l) => l.split('|').map((c) => c.trim())).map((c) => `${c[2]} ${c[1]}`)]));
+    expect(ranks).toEqual({
+      'frontier-harness-2026-11:Opus 5.5': ['Pi 1', 'Claude Code 1', 'OpenClaw 3†', 'Hermes Agent 3'],
+      'frontier-harness-2026-11:GPT-6.1 Sol': ['Pi 1', 'Codex 2', 'Hermes Agent 3', 'OpenClaw 4'],
+      'matrix-mu-2026-11:Opus 5.5': ['QM (Pi loop) 1', 'Claude Code 1', 'Hermes Agent 2', 'OpenClaw 4'],
+      'matrix-mu-2026-11:GPT-6.1 Sol': ['Codex 1', 'OpenClaw 1', 'Hermes Agent 3'],
+    });
+  });
+
+  test('a ratio with no range prints its reason and never makes a row clearly cheaper', () => {
+    const t = structuredClone(tables.find((x) => x.entry.run_id === 'frontier-harness-2026-11')!);
+    const p = t.pairs.find((q) => [q.a, q.b].sort().join() === ['sol-codex', 'sol-pi'].join())!;
+    p.ci95 = null;
+    p.note = 'one paired task: no interval';
+    const block = renderRankingBlock(t, 'GPT-6.1 Sol');
+    expect(block).toContain('| 1 | Codex | 1.35x (no range: one paired task: no interval)‡ |');
+  });
+
+  test('paired_cost files must stay inside the run folder', () => {
+    for (const trials of ['/etc/passwd', '../other/trials.jsonl', '']) {
+      const bad = structuredClone(matrixMu());
+      bad.paired_cost!.trials = trials;
+      expect(() => validateEntry(bad, 'fixture')).toThrow(/paired_cost.trials must name the run's trial records file, inside the run folder/);
+    }
+  });
+
+  test("on Opus, where the 2026-11-09 correction found no reservation charge, the paired cost ratios reproduce the frontier run's three published home-pair ratios exactly", () => {
+    const t = tables.find((x) => x.entry.run_id === 'frontier-harness-2026-11')!;
+    const published = (readJson('docs/benchmarks/2026-11-07-frontier-harness/results/analysis/analysis.json').pairs as { cell: string; home: string; cost_per_solve_ratio: { tasks: number; ratio: number; ci95: [number, number] } }[]).filter((p) => p.cell.startsWith('opus-'));
+    expect(published.length).toBe(3);
+    const r4 = (x: number) => Number(x.toFixed(4));
+    for (const p of published) {
+      const mine = ratioOf(t.pairs, p.cell, p.home)!;
+      expect([mine.tasks, r4(mine.ratio!), mine.ci95!.map(r4)]).toEqual([p.cost_per_solve_ratio.tasks, p.cost_per_solve_ratio.ratio, p.cost_per_solve_ratio.ci95]);
+    }
   });
 
   test('the matrix-mu entry renders, with each disclosure line it names copied onto the page', () => {
@@ -119,6 +185,7 @@ describe('scoreboard', () => {
   });
 
   const costEdit = (passes: number | null, cost: 'keep' | 'null', interval: 'keep' | 'null') => editedJson((p, doc) => {
+    if (p.startsWith('docs/scoreboard/paired-cost/')) return;
     const cell = doc.cells.find((c: { id: string }) => c.id === 'codex-sol-none-mu-v03-dev');
     if (p.endsWith('matrix-analysis.json')) {
       if (passes !== null) cell.pass_rate.passes = passes;
@@ -243,7 +310,8 @@ const waterfall = () => tables.find((x) => x.entry.run_id === 'waterfall-frontie
     expect(t.entry.role).toBe('other');
     expect(page.indexOf('### Same tasks, other runs')).toBeGreaterThan(page.indexOf('## 20 public v0.3 multi-user dev tasks'));
     expect(page).toContain(`**Receipts, ${t.entry.run_id}:**`);
-    expect(renderReadmeBlock(tables)).not.toContain(t.entry.run_id);
+    expect(readme).not.toContain(t.entry.run_id);
+    expect(() => renderReadme(`${readme}\n${rankingStart(t.entry.run_id, 'Opus 5.5')}\n${RANKING_END}\n`, tables)).toThrow(/not a main scoreboard entry/);
   });
 
   test('an other entry with no main entry on its task set is refused', () => {
@@ -256,6 +324,9 @@ const waterfall = () => tables.find((x) => x.entry.run_id === 'waterfall-frontie
     const bad = structuredClone(matrixMu()) as unknown as Record<string, unknown>;
     delete bad.mdd;
     expect(() => validateEntry(bad, 'fixture')).toThrow(/a main entry needs mdd/);
+    const noPaired = structuredClone(matrixMu()) as unknown as Record<string, unknown>;
+    delete noPaired.paired_cost;
+    expect(() => validateEntry(noPaired, 'fixture')).toThrow(/a main entry needs paired_cost/);
     const other = readJson('docs/scoreboard/entries/waterfall-frontier-2026-11.json');
     expect(other.tasks).toBeUndefined();
     expect(() => validateEntry(other, 'fixture')).not.toThrow();
