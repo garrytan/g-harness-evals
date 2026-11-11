@@ -12,6 +12,7 @@ Every report rests on these rules. They moved here from the README on 2026-11-08
 - **A no-gstack arm in every head-to-head.** Any test of gstack runs the same model, harness and tasks with gstack not installed, and an audit checks that this arm never read a gstack file. gbrain tests keep a no-brain arm the same way.
 - **Graded on what happened.** Tasks run inside a simulated company with channels, files and mail. The grader reads the world's state and event log afterwards, never the agent's account of what it did.
 - **A claim check before results publish.** A reviewer traces every number and takeaway in a report to its receipt before the report merges. The [reports index](reports-index.md) shows which reports have one.
+- **A grader check before results publish.** A model from another family reads up to 10 failed trials per arm and says whether each failure is real, a grader mistake or a broken task. Too many of the last two in one arm and the results don't publish until a person has reread them ([grader-audit.md](grader-audit.md)). This applies to runs dated from November 12, 2026.
 - **A cross-family judge.** Where a run scores answers with a model, the judge comes from a different model family than the model under test, and it must agree with labelled examples before its scores count. This applies to runs preregistered from November 8, 2026.
 - **Recheckable without a key.** `bun run verify` rebuilds every published run's analysis files from the receipts in the repository and fails if any value differs; CI runs it on every pull request ([verify.md](verify.md)). Each recent report also ends with a "Reproduce and inspect" section with the commands for that run ([CONTRIBUTING.md](../CONTRIBUTING.md#re-read-a-runs-receipts)). A tool for rerunning one cell with your own key is described in [replicate.md](replicate.md), but no published result ships the trial bundle it needs yet.
 - Known limits and the statistics: [methods.md](methods.md#known-limits-in-full).
@@ -29,7 +30,7 @@ Every report opens with takeaways, then a TL;DR block, before any other heading.
 4. **The numbers, one bullet each, with ranges.** Pass rate [95% range] per cell, cost per solved task [95% range], median time per trial.
 5. **The call or verdict.** A call from the [glossary](glossary.md) for each preregistered comparison, and for a part under test one verdict word (KEEP, FIX-METHOD or CUT-CANDIDATE) with its plain meaning.
 6. **Caveats, one line each.** Incomplete cells, dev not held-out, saturation, pins, deviations. Never buried below the fold.
-7. **Status line.** Merged or draft, the results PR, and whether a claim-check reader ran and on which PR.
+7. **Status line.** Merged or draft, the results PR, whether a claim-check reader ran and on which PR, and the grader audit's result (passed, or not applicable and why).
 
 ## Words and numbers
 
@@ -67,3 +68,12 @@ Every reported run also gets a rebuild recipe, scripts/verify/runs/<folder>.json
 - **Deviations** and **Corrections**, dated.
 - **Internal mechanics at the end:** issue codes, lanes, ledgers, gates and leases go in a closing section of the report (an Agent notes section), not in the takeaways or results. Run spend goes in spend-internal.md (see Words and numbers).
 - **Disclosures last**, word for word from the disclosures list, for every subject the report tests, compares or features (R55).
+
+## Before the results PR is ready
+
+Tick each of these in the PR body. A results PR with an unticked line isn't ready.
+
+- [ ] **Grader audit passed.** `bun scripts/grader-audit.ts --run docs/benchmarks/<run> --lease-usd <cap>` wrote `grader-audit.md` and `grader-audit.json` beside the report, and `--check` passes. If it failed, every flagged trial was reread: the check or task was fixed and the run regraded, or a person recorded their own verdict in `grader-audit-overrides.jsonl`. A run the audit can't read (held-out or private tasks, no per-trial event logs) has `grader-audit.na.json` with the reason. See [grader-audit.md](grader-audit.md).
+- [ ] **Claim check.** A reviewer traced every number and takeaway to its receipt.
+- [ ] **Scoreboard and index.** The scoreboard entry and the docs/scoreboard/reports.json row are in, and `bun scripts/scoreboard/build.ts` ran.
+- [ ] **Spend kept out of report.md.** Run spend is in `spend-internal.md`.

@@ -15,7 +15,7 @@
 - **Calls:** <pair>: <can't tell apart | behind | ahead> (Holm family of <k>). MDD <a> to <b> points.
 - **Verdict:** <KEEP | FIX-METHOD | CUT-CANDIDATE>: <plain meaning, and the named fix for FIX-METHOD>.
 - **Caveats:** <one line each: dev or held-out, incomplete cells, saturation, pins, deviations>
-- **Status:** <merged | draft>, results PR <#n>, claim check <reader and PR | none on record>. Words: [glossary](../../glossary.md).
+- **Status:** <merged | draft>, results PR <#n>, claim check <reader and PR | none on record>, grader audit <passed, k of n sampled failures flagged ([grader-audit.md](../../grader-audit.md)) | not applicable: reason>. Words: [glossary](../../glossary.md).
 
 ## What ran
 
