@@ -1,0 +1,249 @@
+{
+ "_shape": "Hermes Agent v2026.9.24 on claude-opus-5-5 over Anthropic Messages, built from tests/fixtures/proxy-requests/hermes-opus.json with a synthetic skills index in the format agent/prompt_builder.py _render_skills_index writes into the system prompt: '## Skills', <available_skills> with '  <category>:' and '    - <name>: <description>' lines, and '  <category> [names only]: a, b' for a demoted category. gstack's hermes render puts each skill in its own folder (.hermes/skills/gstack-<skill>), so each is its own category. Later requests open review with skill_view, read its section with skill_view file_path, read qa's SKILL.md with read_file and ship's with terminal cat. Not a byte capture.",
+ "cell_model": "anthropic:claude-opus-5-5",
+ "requests": [
+  {
+   "route": "/v1/messages",
+   "body": {
+    "model": "claude-opus-5-5",
+    "max_tokens": 32000,
+    "stream": true,
+    "system": "(system prompt omitted)\n\n## Skills\nBefore replying, scan the skills below. If a skill matches or is even partially relevant to your task, you MUST load it with skill_view(name) and follow its instructions.\n\n<available_skills>\n  gstack-autoplan:\n    - gstack-autoplan: Use for: run all reviews, automatic review pipeline.\n  gstack-land-and-deploy:\n    - gstack-land-and-deploy: Use for: land and deploy.\n  gstack-qa:\n    - gstack-qa: Use for: QA a web app.\n  gstack-review:\n    - gstack-review: Use for: review this PR's diff.\n  gstack-ship:\n    - gstack-ship: Use for: ship a PR.\n  gstack-verify [names only]: gstack-verify\n  software-development: Coding workflows.\n    - systematic-debugging: Use when a bug resists a first fix.\n</available_skills>\n\nOnly proceed without loading a skill if genuinely none are relevant to the task.",
+    "tools": [
+     {
+      "name": "terminal",
+      "description": "terminal",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      }
+     },
+     {
+      "name": "read_file",
+      "description": "read_file",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      }
+     },
+     {
+      "name": "skill_view",
+      "description": "skill_view",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      }
+     },
+     {
+      "name": "skills_list",
+      "description": "skills_list",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      }
+     }
+    ],
+    "messages": [
+     {
+      "role": "user",
+      "content": "Fix the failing test in /app. Review the spec and verify the health check."
+     }
+    ]
+   }
+  },
+  {
+   "route": "/v1/messages",
+   "body": {
+    "model": "claude-opus-5-5",
+    "max_tokens": 32000,
+    "stream": true,
+    "system": "(system prompt omitted)\n\n## Skills\nBefore replying, scan the skills below. If a skill matches or is even partially relevant to your task, you MUST load it with skill_view(name) and follow its instructions.\n\n<available_skills>\n  gstack-autoplan:\n    - gstack-autoplan: Use for: run all reviews, automatic review pipeline.\n  gstack-land-and-deploy:\n    - gstack-land-and-deploy: Use for: land and deploy.\n  gstack-qa:\n    - gstack-qa: Use for: QA a web app.\n  gstack-review:\n    - gstack-review: Use for: review this PR's diff.\n  gstack-ship:\n    - gstack-ship: Use for: ship a PR.\n  gstack-verify [names only]: gstack-verify\n  software-development: Coding workflows.\n    - systematic-debugging: Use when a bug resists a first fix.\n</available_skills>\n\nOnly proceed without loading a skill if genuinely none are relevant to the task.",
+    "tools": [
+     {
+      "name": "terminal",
+      "description": "terminal",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      }
+     },
+     {
+      "name": "read_file",
+      "description": "read_file",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      }
+     },
+     {
+      "name": "skill_view",
+      "description": "skill_view",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      }
+     },
+     {
+      "name": "skills_list",
+      "description": "skills_list",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      }
+     }
+    ],
+    "messages": [
+     {
+      "role": "user",
+      "content": "Fix the failing test in /app. Review the spec and verify the health check."
+     },
+     {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "tool_use",
+        "id": "t1",
+        "name": "skill_view",
+        "input": {
+         "name": "gstack-review"
+        }
+       }
+      ]
+     },
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "tool_result",
+        "tool_use_id": "t1",
+        "content": "{\"success\":true,\"name\":\"gstack-review\",\"content\":\"---\\nname: gstack-review\\n---\\n# Review\\n\",\"linked_files\":{\"sections\":[\"sections/army.md\"]}}"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "route": "/v1/messages",
+   "body": {
+    "model": "claude-opus-5-5",
+    "max_tokens": 32000,
+    "stream": true,
+    "system": "(system prompt omitted)\n\n## Skills\nBefore replying, scan the skills below. If a skill matches or is even partially relevant to your task, you MUST load it with skill_view(name) and follow its instructions.\n\n<available_skills>\n  gstack-autoplan:\n    - gstack-autoplan: Use for: run all reviews, automatic review pipeline.\n  gstack-land-and-deploy:\n    - gstack-land-and-deploy: Use for: land and deploy.\n  gstack-qa:\n    - gstack-qa: Use for: QA a web app.\n  gstack-review:\n    - gstack-review: Use for: review this PR's diff.\n  gstack-ship:\n    - gstack-ship: Use for: ship a PR.\n  gstack-verify [names only]: gstack-verify\n  software-development: Coding workflows.\n    - systematic-debugging: Use when a bug resists a first fix.\n</available_skills>\n\nOnly proceed without loading a skill if genuinely none are relevant to the task.",
+    "tools": [
+     {
+      "name": "terminal",
+      "description": "terminal",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      }
+     },
+     {
+      "name": "read_file",
+      "description": "read_file",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      }
+     },
+     {
+      "name": "skill_view",
+      "description": "skill_view",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      }
+     },
+     {
+      "name": "skills_list",
+      "description": "skills_list",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      }
+     }
+    ],
+    "messages": [
+     {
+      "role": "user",
+      "content": "Fix the failing test in /app. Review the spec and verify the health check."
+     },
+     {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "tool_use",
+        "id": "t1",
+        "name": "skill_view",
+        "input": {
+         "name": "gstack-review"
+        }
+       }
+      ]
+     },
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "tool_result",
+        "tool_use_id": "t1",
+        "content": "{\"success\":true,\"name\":\"gstack-review\",\"content\":\"---\\nname: gstack-review\\n---\\n# Review\\n\",\"linked_files\":{\"sections\":[\"sections/army.md\"]}}"
+       }
+      ]
+     },
+     {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "tool_use",
+        "id": "t2",
+        "name": "skill_view",
+        "input": {
+         "name": "gstack-review",
+         "file_path": "sections/army.md"
+        }
+       },
+       {
+        "type": "tool_use",
+        "id": "t3",
+        "name": "read_file",
+        "input": {
+         "path": "/tmp/hermes/skills/gstack-qa/SKILL.md"
+        }
+       },
+       {
+        "type": "tool_use",
+        "id": "t4",
+        "name": "terminal",
+        "input": {
+         "command": "cat /tmp/hermes/skills/gstack-ship/SKILL.md && grep -rn review /app"
+        }
+       }
+      ]
+     },
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "tool_result",
+        "tool_use_id": "t2",
+        "content": "{\"success\":true,\"content\":\"# Review army\\n\"}"
+       },
+       {
+        "type": "tool_result",
+        "tool_use_id": "t3",
+        "content": "1|---\n2|name: gstack-qa\n3|---\n"
+       },
+       {
+        "type": "tool_result",
+        "tool_use_id": "t4",
+        "content": "---\nname: gstack-ship\n---\n# Ship\napp/review.py:3: def review():\n"
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

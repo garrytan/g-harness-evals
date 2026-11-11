@@ -41,13 +41,16 @@ const GLOB_OUTSIDE_SUITE: Record<string, string> = {
   'scripts/publish-audit.ts': 'run by scripts/bundle.ts and scripts/replicate.ts at publish time, never by the suite on this tree',
   'tests/sealed-custody.test.ts': 'the glob is a fake gbrain import counting pages in its own scratch directory',
 };
+// Captured harness request JSON under tests/fixtures/ (tests/fixtures/**/*-request.json): byte copies of a harness's own
+// tool descriptions, whose '*.md' globs name files inside the trial, not pages of this repository. Other fixtures keep the rule.
+const CAPTURED_REQUEST = /^tests\/fixtures\/.+-request\.json$/;
 
 // The ways a test or script names a page it reads: a nested page by its path, its quoted basename or "/<basename>"
 // (join(DIR, 'x.md') was the read the first classifier missed); the top-level README by a join of the repository root with
 // 'README.md' or a read of 'README.md' from the root (other directories have README.md files of their own); and every
 // Markdown page by a quoted '*.md' glob.
 function readsOf(path: string, text: string, f = ''): boolean {
-  if (!(f in GLOB_OUTSIDE_SUITE) && /['"\x60][^'"\x60\s]*\*\.md['"\x60]/.test(text)) return true;
+  if (!(f in GLOB_OUTSIDE_SUITE) && !CAPTURED_REQUEST.test(f) && /['"\x60][^'"\x60\s]*\*\.md['"\x60]/.test(text)) return true;
   if (path.includes('/')) {
     const b = posix.basename(path);
     return [path, "'" + b + "'", '"' + b + '"', '\x60' + b + '\x60', '/' + b].some((n) => text.includes(n));
@@ -86,6 +89,9 @@ describe('the docs-only list', () => {
     expect(readsOf('README.md', inside)).toBe(true);
     expect(readsOf('README.md', "readFileSync(join(ROUTES, 'README.md'))")).toBe(false);
     for (const g of Object.keys(GLOB_OUTSIDE_SUITE)) expect([g, readsOf('docs/comparing-runs.md', readFileSync(join(ROOT, g), 'latin1'))]).toEqual([g, true]);
+    expect(readsOf('docs/comparing-runs.md', "const pages = glob('docs/**/*.md');", 'scripts/frontier-harbor/x.ts')).toBe(true);
+    expect(readsOf('docs/comparing-runs.md', '"path": "`.claude/agents/*.md`"', 'tests/fixtures/frontier-harbor-gstack/claude-full-first-request.json')).toBe(false);
+    expect(readsOf('docs/comparing-runs.md', '"path": "`.claude/agents/*.md`"', 'tests/fixtures/frontier-harbor-gstack/subsets.json')).toBe(true);
     expect(readsOf('docs/harness-anatomy/qm.md', "readFileSync(join(ANATOMY, 'qm.md'))")).toBe(true);
     expect(readsOf('docs/harness-anatomy/qm.md', "spawnSync('git', ['ls-files', '*.md'])")).toBe(true);
   }, 60_000);

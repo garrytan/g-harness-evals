@@ -19,6 +19,8 @@
 #   4. canary: the fake provider key the proxy held appears in no file of the agent run (Harbor jobs, agent logs,
 #      captured request bodies), the fake upstream saw it on every forwarded request, and no per-trial token reached it.
 #   5. QM: whether QM's Pi loop can run inside a task container (yes or no, with the reason).
+#   6. gstack: gstack-check.sh (the gstack arms of Claude Code, Codex and Hermes, gstack-skill-start's network, and with
+#      --baselines all the install facts of every pinned task image), its gstack-check.json under "gstack".
 # Exit 0 when every check passed, 1 when one failed, 2 or 3 for a usage or setup failure.
 set -euo pipefail
 umask 077
@@ -93,6 +95,12 @@ job "$out/probe/probe.json" egress-probe "$out/probe/jobs" nop 1 "$out/probe/tas
 (cd "$out/probe" && "${harbor_env[@]}" "$venv/bin/harbor" run -y -c "$out/probe/probe.json") >> "$out/probe/harbor.log" 2>&1 || say "harbor egress-probe exited non-zero (see probe/harbor.log)"
 kill "$status_pid" 2>/dev/null || true
 
+# 6. the gstack arms (internal-task): gstack-check.sh, with the image probe when every pinned task's baseline ran
+set +e
+bash "$here/gstack-check.sh" "$out/gstack" --tb21 "$tb21" --images "$([ "$baselines" = all ] && echo all || echo none)" >> "$out/install-check.log" 2>&1
+say "gstack: gstack-check.sh exited $?"
+set -e
+
 # 4 and 5. the canary scan, then install-check.json
 canary_files=$( [ -s "$out/agents/canary.txt" ] && grep -rlF -f "$out/agents/canary.txt" "$out/agents" --exclude=canary.txt 2>/dev/null | sed "s#^$out/##" || true)
 python3 - "$out" "$here/pin.json" "$repo" "$agents_rc" "$canary_files" "$ids" <<'PY'
@@ -158,8 +166,10 @@ report = {
            "docker_socket_in_task_container": qm_socket},
     "licences": pin["licences"],
 }
-report["pass"] = all(report[k]["pass"] for k in ("agents", "oracle", "nop", "egress", "canary"))
+gstack_path = f"{out}/gstack/gstack-check.json"
+report["gstack"] = json.load(open(gstack_path)) if os.path.exists(gstack_path) else {"pass": False, "note": "gstack-check.sh wrote no gstack-check.json"}
+report["pass"] = all(report[k]["pass"] for k in ("agents", "oracle", "nop", "egress", "canary", "gstack"))
 json.dump(report, open(f"{out}/install-check.json", "w"), indent=2)
-print(json.dumps({k: report[k]["pass"] for k in ("agents", "oracle", "nop", "egress", "canary")} | {"pass": report["pass"]}))
+print(json.dumps({k: report[k]["pass"] for k in ("agents", "oracle", "nop", "egress", "canary", "gstack")} | {"pass": report["pass"]}))
 sys.exit(0 if report["pass"] else 1)
 PY

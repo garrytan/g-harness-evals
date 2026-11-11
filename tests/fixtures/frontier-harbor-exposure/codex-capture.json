@@ -1,0 +1,230 @@
+{
+ "_shape": "Codex 0.165.0 on gpt-6.1-sol over OpenAI Responses, built from tests/fixtures/proxy-requests/codex-sol.json with a synthetic skills catalog in the format codex-rs/ext/skills (rust-v0.165.0) renders: a developer message <skills_instructions> with '## Skills', the '### Skill roots' alias table, '### Available skills' lines '- <name>: <description> (file: <locator>)' and '### How to use skills'. Names are frontmatter names (review), paths are the gstack-<skill> folders under $HOME/.agents/skills, one entry uses an absolute path, one a multi-line description, and Codex's own system skill is listed beside them. Later requests read review's SKILL.md and a section through the exec tool's shell, and grep for verify as a bare word. Not a byte capture.",
+ "cell_model": "openai:gpt-6.1-sol",
+ "requests": [
+  {
+   "route": "/v1/responses",
+   "body": {
+    "model": "gpt-6.1-sol",
+    "stream": true,
+    "store": false,
+    "instructions": "(instructions omitted)",
+    "include": [
+     "reasoning.encrypted_content"
+    ],
+    "parallel_tool_calls": false,
+    "reasoning": {
+     "effort": "high",
+     "context": "all_turns"
+    },
+    "text": {
+     "verbosity": "low"
+    },
+    "tools": [
+     {
+      "type": "function",
+      "name": "exec",
+      "description": "Run JavaScript.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "code": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "code"
+       ]
+      }
+     }
+    ],
+    "input": [
+     {
+      "type": "message",
+      "role": "developer",
+      "content": [
+       {
+        "type": "input_text",
+        "text": "<skills_instructions>\n## Skills\nA skill is a set of local instructions to follow that is stored in a `SKILL.md` file. Below is the list of skills that can be used. Each entry includes a name, description, and a short path that can be expanded into an absolute path using the skill roots table.\n### Skill roots\n- `r0` = `/root/.agents/skills`\n- `r1` = `/tmp/codex-home/skills/.system`\n### Available skills\n- autoplan: Auto-review pipeline: runs the CEO, design, eng (architecture, edge cases, failure\nmodes, tests) and DX reviews over a plan. (file: r0/gstack-autoplan/SKILL.md)\n- land-and-deploy: Use when you land a PR and deploy it. (gstack) (file: r0/gstack-land-and-deploy/SKILL.md)\n- qa: Use when you QA a web app and fix what you find. (gstack) (file: /root/.agents/skills/gstack-qa/SKILL.md)\n- review: Use when you review this PR's diff. (gstack) (file: r0/gstack-review/SKILL.md)\n- ship: Use when you ship: tests, review, version, PR. (gstack) (file: r0/gstack-ship/SKILL.md)\n- verify: (file: r0/gstack-verify/SKILL.md)\n- skill-creator: Guide for creating effective skills. (file: r1/skill-creator/SKILL.md)\n### How to use skills\n- Discovery: The list above is the skills available in this session (name + description + short path).\n</skills_instructions>"
+       }
+      ]
+     },
+     {
+      "type": "message",
+      "role": "user",
+      "content": [
+       {
+        "type": "input_text",
+        "text": "Fix the failing test in /app. Review the spec and verify the health check."
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "route": "/v1/responses",
+   "body": {
+    "model": "gpt-6.1-sol",
+    "stream": true,
+    "store": false,
+    "instructions": "(instructions omitted)",
+    "include": [
+     "reasoning.encrypted_content"
+    ],
+    "parallel_tool_calls": false,
+    "reasoning": {
+     "effort": "high",
+     "context": "all_turns"
+    },
+    "text": {
+     "verbosity": "low"
+    },
+    "tools": [
+     {
+      "type": "function",
+      "name": "exec",
+      "description": "Run JavaScript.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "code": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "code"
+       ]
+      }
+     }
+    ],
+    "input": [
+     {
+      "type": "message",
+      "role": "developer",
+      "content": [
+       {
+        "type": "input_text",
+        "text": "<skills_instructions>\n## Skills\nA skill is a set of local instructions to follow that is stored in a `SKILL.md` file. Below is the list of skills that can be used. Each entry includes a name, description, and a short path that can be expanded into an absolute path using the skill roots table.\n### Skill roots\n- `r0` = `/root/.agents/skills`\n- `r1` = `/tmp/codex-home/skills/.system`\n### Available skills\n- autoplan: Auto-review pipeline: runs the CEO, design, eng (architecture, edge cases, failure\nmodes, tests) and DX reviews over a plan. (file: r0/gstack-autoplan/SKILL.md)\n- land-and-deploy: Use when you land a PR and deploy it. (gstack) (file: r0/gstack-land-and-deploy/SKILL.md)\n- qa: Use when you QA a web app and fix what you find. (gstack) (file: /root/.agents/skills/gstack-qa/SKILL.md)\n- review: Use when you review this PR's diff. (gstack) (file: r0/gstack-review/SKILL.md)\n- ship: Use when you ship: tests, review, version, PR. (gstack) (file: r0/gstack-ship/SKILL.md)\n- verify: (file: r0/gstack-verify/SKILL.md)\n- skill-creator: Guide for creating effective skills. (file: r1/skill-creator/SKILL.md)\n### How to use skills\n- Discovery: The list above is the skills available in this session (name + description + short path).\n</skills_instructions>"
+       }
+      ]
+     },
+     {
+      "type": "message",
+      "role": "user",
+      "content": [
+       {
+        "type": "input_text",
+        "text": "Fix the failing test in /app. Review the spec and verify the health check."
+       }
+      ]
+     },
+     {
+      "type": "function_call",
+      "call_id": "call_1",
+      "name": "exec",
+      "arguments": "{\"code\":\"const r = await tools.exec_command({ cmd: 'sed -n 1,400p /root/.agents/skills/gstack-review/SKILL.md' }); text(r.output);\"}"
+     },
+     {
+      "type": "function_call_output",
+      "call_id": "call_1",
+      "output": "---\nname: review\ndescription: Use when you review this PR's diff. (gstack)\n---\n# Review\nRead sections/army.md.\n"
+     }
+    ]
+   }
+  },
+  {
+   "route": "/v1/responses",
+   "body": {
+    "model": "gpt-6.1-sol",
+    "stream": true,
+    "store": false,
+    "instructions": "(instructions omitted)",
+    "include": [
+     "reasoning.encrypted_content"
+    ],
+    "parallel_tool_calls": false,
+    "reasoning": {
+     "effort": "high",
+     "context": "all_turns"
+    },
+    "text": {
+     "verbosity": "low"
+    },
+    "tools": [
+     {
+      "type": "function",
+      "name": "exec",
+      "description": "Run JavaScript.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "code": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "code"
+       ]
+      }
+     }
+    ],
+    "input": [
+     {
+      "type": "message",
+      "role": "developer",
+      "content": [
+       {
+        "type": "input_text",
+        "text": "<skills_instructions>\n## Skills\nA skill is a set of local instructions to follow that is stored in a `SKILL.md` file. Below is the list of skills that can be used. Each entry includes a name, description, and a short path that can be expanded into an absolute path using the skill roots table.\n### Skill roots\n- `r0` = `/root/.agents/skills`\n- `r1` = `/tmp/codex-home/skills/.system`\n### Available skills\n- autoplan: Auto-review pipeline: runs the CEO, design, eng (architecture, edge cases, failure\nmodes, tests) and DX reviews over a plan. (file: r0/gstack-autoplan/SKILL.md)\n- land-and-deploy: Use when you land a PR and deploy it. (gstack) (file: r0/gstack-land-and-deploy/SKILL.md)\n- qa: Use when you QA a web app and fix what you find. (gstack) (file: /root/.agents/skills/gstack-qa/SKILL.md)\n- review: Use when you review this PR's diff. (gstack) (file: r0/gstack-review/SKILL.md)\n- ship: Use when you ship: tests, review, version, PR. (gstack) (file: r0/gstack-ship/SKILL.md)\n- verify: (file: r0/gstack-verify/SKILL.md)\n- skill-creator: Guide for creating effective skills. (file: r1/skill-creator/SKILL.md)\n### How to use skills\n- Discovery: The list above is the skills available in this session (name + description + short path).\n</skills_instructions>"
+       }
+      ]
+     },
+     {
+      "type": "message",
+      "role": "user",
+      "content": [
+       {
+        "type": "input_text",
+        "text": "Fix the failing test in /app. Review the spec and verify the health check."
+       }
+      ]
+     },
+     {
+      "type": "function_call",
+      "call_id": "call_1",
+      "name": "exec",
+      "arguments": "{\"code\":\"const r = await tools.exec_command({ cmd: 'sed -n 1,400p /root/.agents/skills/gstack-review/SKILL.md' }); text(r.output);\"}"
+     },
+     {
+      "type": "function_call_output",
+      "call_id": "call_1",
+      "output": "---\nname: review\ndescription: Use when you review this PR's diff. (gstack)\n---\n# Review\nRead sections/army.md.\n"
+     },
+     {
+      "type": "function_call",
+      "call_id": "call_2",
+      "name": "exec",
+      "arguments": "{\"code\":\"text((await tools.exec_command({ cmd: 'cat /root/.agents/skills/gstack-review/sections/army.md' })).output);\"}"
+     },
+     {
+      "type": "function_call_output",
+      "call_id": "call_2",
+      "output": "# Review army\nSpawn one reviewer per specialist.\n"
+     },
+     {
+      "type": "function_call",
+      "call_id": "call_3",
+      "name": "exec",
+      "arguments": "{\"code\":\"text((await tools.exec_command({ cmd: 'grep -rn verify /app' })).output);\"}"
+     },
+     {
+      "type": "function_call_output",
+      "call_id": "call_3",
+      "output": "app/test_app.py:9: def verify():\n"
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -1,0 +1,251 @@
+{
+  "schema": "frontier-harbor/1",
+  "run_id": "gstack-skill-ablation-2026-11",
+  "task_list": {
+    "file": "scripts/frontier-harbor/pin.json"
+  },
+  "shared_order_seed": "harn50-frontier-2026-11-07",
+  "cap_usd": 1600,
+  "reserve_usd": 180,
+  "concurrency": 4,
+  "gstack_pin": {
+    "repo": "garrytan/gstack",
+    "commit": "68b1d056a4fcf300ca2b61a1406940c5dd336916"
+  },
+  "cells": [
+    {
+      "id": "opus-none",
+      "model": "anthropic:claude-opus-5-5",
+      "harness": "claude-code",
+      "attempts": 10,
+      "tasks": {
+        "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+        "key": "opus",
+        "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+      },
+      "stage": "core",
+      "priority": 1,
+      "split": "dev",
+      "gstack": {
+        "arm": "none",
+        "spec": "none",
+        "lock": "docs/benchmarks/2026-11-10-gstack-skill-ablation/locks/claude/none.lock.json",
+        "spec_sha256": "140bedbf9c3f6d56a9846d2ba7088798683f4da0c248231336e6a05679e4fdfe"
+      }
+    },
+    {
+      "id": "opus-full",
+      "model": "anthropic:claude-opus-5-5",
+      "harness": "claude-code",
+      "attempts": 10,
+      "tasks": {
+        "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+        "key": "opus",
+        "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+      },
+      "stage": "core",
+      "priority": 2,
+      "split": "dev",
+      "gstack": {
+        "arm": "full",
+        "spec": "full",
+        "lock": "docs/benchmarks/2026-11-10-gstack-skill-ablation/locks/claude/full.lock.json",
+        "spec_sha256": "a18b869b2e81c0c529552a3c4fa5c92ed08b98a4e146aed778d71d27517f83ac"
+      }
+    },
+    {
+      "id": "sol-none",
+      "model": "openai:gpt-6.1-sol",
+      "harness": "codex",
+      "attempts": 10,
+      "tasks": {
+        "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+        "key": "sol",
+        "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+      },
+      "stage": "core",
+      "priority": 3,
+      "split": "dev",
+      "gstack": {
+        "arm": "none",
+        "spec": "none",
+        "lock": "docs/benchmarks/2026-11-10-gstack-skill-ablation/locks/codex/none.lock.json",
+        "spec_sha256": "140bedbf9c3f6d56a9846d2ba7088798683f4da0c248231336e6a05679e4fdfe"
+      }
+    },
+    {
+      "id": "sol-full",
+      "model": "openai:gpt-6.1-sol",
+      "harness": "codex",
+      "attempts": 10,
+      "tasks": {
+        "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+        "key": "sol",
+        "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+      },
+      "stage": "core",
+      "priority": 4,
+      "split": "dev",
+      "gstack": {
+        "arm": "full",
+        "spec": "full",
+        "lock": "docs/benchmarks/2026-11-10-gstack-skill-ablation/locks/codex/full.lock.json",
+        "spec_sha256": "a18b869b2e81c0c529552a3c4fa5c92ed08b98a4e146aed778d71d27517f83ac"
+      }
+    }
+  ],
+  "stages": [
+    {
+      "name": "stage0",
+      "trials": {
+        "opus-none": {
+          "attempts": [
+            1,
+            2
+          ],
+          "tasks": {
+            "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+            "key": "opus",
+            "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+          }
+        },
+        "opus-full": {
+          "attempts": [
+            1,
+            2
+          ],
+          "tasks": {
+            "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+            "key": "opus",
+            "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+          }
+        },
+        "sol-none": {
+          "attempts": [
+            1,
+            2
+          ],
+          "tasks": {
+            "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+            "key": "sol",
+            "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+          }
+        },
+        "sol-full": {
+          "attempts": [
+            1,
+            2
+          ],
+          "tasks": {
+            "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+            "key": "sol",
+            "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+          }
+        }
+      }
+    },
+    {
+      "name": "main",
+      "trials": {
+        "opus-none": {
+          "attempts": [
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ],
+          "tasks": {
+            "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+            "key": "opus",
+            "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+          }
+        },
+        "opus-full": {
+          "attempts": [
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ],
+          "tasks": {
+            "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+            "key": "opus",
+            "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+          }
+        },
+        "sol-none": {
+          "attempts": [
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ],
+          "tasks": {
+            "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+            "key": "sol",
+            "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+          }
+        },
+        "sol-full": {
+          "attempts": [
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ],
+          "tasks": {
+            "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+            "key": "sol",
+            "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+          }
+        }
+      }
+    }
+  ],
+  "shards": [
+    {
+      "name": "opus-none",
+      "cells": [
+        "opus-none"
+      ],
+      "lease_usd": 170
+    },
+    {
+      "name": "opus-full",
+      "cells": [
+        "opus-full"
+      ],
+      "lease_usd": 196
+    },
+    {
+      "name": "sol-none",
+      "cells": [
+        "sol-none"
+      ],
+      "lease_usd": 72
+    },
+    {
+      "name": "sol-full",
+      "cells": [
+        "sol-full"
+      ],
+      "lease_usd": 83
+    }
+  ]
+}

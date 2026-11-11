@@ -158,8 +158,17 @@ if [ "$fake" -eq 0 ]; then
   done
 fi
 # the clean-arm preflight (CREW.md "Clean no-gstack and no-brain arms"): the machine must hold no Capy drive and no gstack
-# install; harnesses, and a cell's gstack arm when it has one, install into the task container at run time
+# install; harnesses install into the task container at run time, a skill ablation gstack arm is built in a docker builder
+# (step 1b) and uploaded into its own trials' containers only, and a release gstack arm installs from its tar into the task
+# container at run time
 (cd "$repo" && "${safe_env[@]}" bun scripts/v04/clean-arm-audit.ts preflight --out "$out/preflight-clean-arm.json" --host-only 2>>"$out/run.log") | tee -a "$out/run-shard.log" || { say "clean-arm preflight: a Capy drive or a gstack install is reachable on this machine ($out/preflight-clean-arm.json); nothing ran"; exit 2; }
+# 1b. the gstack arms of the shard (internal-task), before any lease: built in the docker builder at the preregistration's
+# gstack_pin, each lock checked against the preregistered one (HE-FRONTIER-009) and every gstack refusal passed through
+# with its arm (HE-FRONTIER-008); agents.py installs each cell from <run>/gstack/cells/<cell>.json. A shard with no gstack
+# cell builds nothing.
+gstack_env=("${safe_env[@]}")
+[ -z "${DOCKER_HOST:-}" ] || gstack_env+=("DOCKER_HOST=$DOCKER_HOST")
+(cd "$repo" && "${gstack_env[@]}" bun scripts/frontier-harbor/gstack-build.ts --prereg "$prereg" --name "$name" --run "$run" 2>"$out/gstack-build.err") | tee -a "$out/run-shard.log" || { say "gstack arms refused: $(tail -n 1 "$out/gstack-build.err")"; exit 2; }
 say "shard $name: run $run_id, $(printf '%s' "$ids" | tr ',' '\n' | grep -c .) task(s), providers $providers, lease \$$lease$([ "$fake" -eq 1 ] && echo ', fake upstream (keyless)')$([ -n "$uncounted" ] && echo ", uncounted")"
 
 # 2. Harbor and every package around it from the hashed lock file (harbor-requirements.txt: --require-hashes, wheels only,

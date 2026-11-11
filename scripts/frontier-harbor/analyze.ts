@@ -46,6 +46,12 @@
 // home cell leaves less than 15 points to fall. Each pair carries its headroom record. A spec listed in scripts/headroom.ts (published before the
 // gate) keeps the tags and output it was published with.
 //
+// gstack arms (internal-task). Records with a "gstack" field (to-trials.ts) are grouped by arm and spec model, in spec order. Per
+// group: exposure counts over every record (a mismatch is an infra_error, so it is never scored), the trials that saw a
+// skill outside the arm's lock, and over scored trials the open rate of each skill (trials with at least one open over
+// scored trials), the section-read rate, the mean listing_bytes and opened_body_tokens, and the mean input, output and
+// total tokens per trial from the proxy's usage. None of it changes the pass rates, pairs or cost per solve above.
+//
 // Spec: { "run_id": "...", "seed": 7, "draws": 10000, "alpha": 0.05, "saturated_at": 0.95, "min_paired_tasks": 10,
 //         "primary_pairs": { "<model id>": 3 }, "drift_threshold": 0.1,
 //         "models": [{ "id": "opus", "label": "Opus 5.5", "home": "<cell id>" }],
@@ -62,6 +68,7 @@ import { TERMINATIONS, trialValue, type MatrixManifest } from '../matrix-analysi
 import { NO_ROOM, noRoomReason, pairHeadroom, runCanTellApart } from '../../runner/stats/headroom.ts';
 import { headroomGated } from '../headroom.ts';
 import { validateRecords } from '../validate-records.ts';
+import type { GstackTrial } from './gstack-exposure.ts';
 
 export interface FrontierCell { id: string; model: string; harness: string; label?: string; attempts: number; descriptive?: boolean }
 export interface FrontierModel { id: string; label?: string; home: string }
@@ -368,6 +375,37 @@ export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
     };
   });
 
+  const gstackOf = (t: TrialRecord) => (t as TrialRecord & { gstack?: GstackTrial }).gstack ?? null;
+  const armGroups = new Map<string, { arm: string; model: string; cells: string[]; rows: TrialRecord[] }>();
+  for (const c of spec.cells) for (const t of data.get(c.id)!.rows) {
+    const g = gstackOf(t);
+    if (!g) continue;
+    const group = armGroups.get(g.arm + '\0' + c.model) ?? { arm: g.arm, model: c.model, cells: [], rows: [] };
+    if (!group.cells.includes(c.id)) group.cells.push(c.id);
+    group.rows.push(t);
+    armGroups.set(g.arm + '\0' + c.model, group);
+  }
+  const gstack = [...armGroups.values()].map(({ arm, model, cells: armCells, rows }) => {
+    const all = rows.map((t) => gstackOf(t)!);
+    const scored = rows.filter((t) => value(t) !== null);
+    const gs = scored.map((t) => gstackOf(t)!);
+    const skills = [...new Set(all.flatMap((g) => [...g.expected, ...Object.keys(g.opens), ...Object.keys(g.section_reads)]))].sort(byKey);
+    const rates = (key: 'opens' | 'section_reads') => skills.map((skill) => {
+      const n = gs.filter((g) => (g[key][skill] ?? 0) > 0).length;
+      return { skill, trials: n, rate: gs.length ? round(n / gs.length) : null };
+    });
+    const meanOf = (xs: number[]) => (xs.length ? round(mean(xs), 1) : null);
+    const inputs = scored.map((t) => t.usage?.input_tokens ?? 0), outputs = scored.map((t) => t.usage?.output_tokens ?? 0);
+    return {
+      arm, model, cells: armCells, trials: rows.length, scored_trials: gs.length,
+      exposure: { ok: all.filter((g) => g.exposure === 'ok').length, mismatch: all.filter((g) => g.exposure === 'mismatch').length, not_applicable: all.filter((g) => g.exposure === 'not-applicable').length },
+      removed_seen_trials: all.filter((g) => g.removed_seen.length).length,
+      listing_bytes_mean: meanOf(gs.map((g) => g.listing_bytes)), opened_body_tokens_mean: meanOf(gs.map((g) => g.opened_body_tokens)),
+      tokens_per_trial_mean: { input: meanOf(inputs), output: meanOf(outputs), total: meanOf(inputs.map((x, i) => x + outputs[i]!)) },
+      open_rate: rates('opens'), section_read_rate: rates('section_reads').filter((r) => r.trials > 0),
+    };
+  });
+
   const outside = input.records.filter((t) => !cellById.has(t.cell)).length;
   const planned = input.manifest ? input.manifest.trials.filter((t) => cellById.has(t.cell)).length : null;
   const unstarted = withVerdicts.reduce((s, c) => s + c.trials.unstarted.length, 0);
@@ -384,7 +422,7 @@ export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
     complete: planned === null ? null : unstarted === 0,
     lookup_fails: lookups.size,
     tasks: taskLists,
-    models, cells: withVerdicts, pairs,
+    models, cells: withVerdicts, pairs, ...(gstack.length ? { gstack } : {}),
   };
 }
 
@@ -445,6 +483,16 @@ export function renderMarkdown(a: FrontierAnalysis): string {
   for (const c of a.cells) {
     const r = c.reliability;
     out.push(`| ${c.label} | ${r.k} | ${r.pass_hat_k ? `${pct(r.pass_hat_k.estimate)} ${ciPct(r.pass_hat_k.ci95)}` : 'n/a'} | ${r.pass_at_k ? `${pct(r.pass_at_k.estimate)} ${ciPct(r.pass_at_k.ci95)}` : 'n/a'} | ${c.rerun_flip ? `${pct(c.rerun_flip.estimate)} ${ciPct(c.rerun_flip.ci95)}` : 'n/a'} | ${c.pass_rate?.tasks ?? 0} / ${c.trials.scored} | ${c.trials.excluded.model_error} / ${c.trials.excluded.infra_error} / ${c.trials.excluded.exam_fault} | ${c.trials.harness_error_as_fail} | ${c.trials.lookup_fails} | ${c.trials.cap_stop} | ${c.trials.unstarted.length} | ${usd(c.cost.usd_total)}${c.cost.usd_reserved === undefined ? '' : ` metered + ${usd(c.cost.usd_reserved)} reserved`} |`);
+  }
+  if (a.gstack?.length) {
+    out.push('', '## gstack arms: exposure, opens and tokens', '', 'Per arm and model. Exposure counts every record; a mismatch (the first agent-loop request did not list exactly the lock\'s skills) is an infra_error and is excluded. Means and open rates are over scored trials. Listing bytes are the gstack entries of the first agent-loop request; opened-body tokens are the tool results that returned a SKILL.md or section file, each once.', '');
+    out.push('| Arm | Model | Cells | Scored / recorded | Exposure ok / mismatch / n.a. | Saw a removed skill | Listing bytes (mean) | Opened-body tokens (mean) | Tokens per trial in / out (mean) | Skills opened (open rate) |', '|---|---|---|---|---|---|---|---|---|---|');
+    for (const g of a.gstack) {
+      const label = a.models.find((m) => m.id === g.model)?.label ?? g.model;
+      const opened = g.open_rate.filter((r) => r.trials > 0).sort((x, y) => (y.rate ?? 0) - (x.rate ?? 0) || byKey(x.skill, y.skill));
+      const never = g.open_rate.length - opened.length;
+      out.push(`| ${g.arm} | ${label} | ${g.cells.join(', ')} | ${g.scored_trials} / ${g.trials} | ${g.exposure.ok} / ${g.exposure.mismatch} / ${g.exposure.not_applicable} | ${g.removed_seen_trials} | ${g.listing_bytes_mean ?? 'n/a'} | ${g.opened_body_tokens_mean ?? 'n/a'} | ${g.tokens_per_trial_mean.input ?? 'n/a'} / ${g.tokens_per_trial_mean.output ?? 'n/a'} | ${opened.length ? opened.map((r) => `${r.skill} ${pct(r.rate)} (${r.trials})`).join(', ') : 'none'}${never ? `; ${never} never opened` : ''} |`);
+    }
   }
   const dropped = a.pairs.filter((p) => p.dropped.length);
   if (dropped.length) {

@@ -69,9 +69,13 @@ class _Frontier:
     def __init__(self, *args: Any, broker_url: str | None = None, cell: str | None = None, attempt: int | None = None, gstack: dict[str, Any] | None = None, **kwargs: Any) -> None:
         model = cell_model(kwargs.get("model_name"))
         kwargs.update(fs.harbor_kwargs(self.HARNESS, model))
-        if gstack is not None:
+        release = gstack is not None and fs.is_gstack_release(gstack)
+        if release:
             fs.gstack_arm(self.HARNESS, gstack)
-        self._frontier_gstack = gstack
+        self._frontier_gstack_release = gstack if release else None
+        self._frontier_gstack = None if release else fs.gstack_manifest(gstack, self.HARNESS)
+        if self._frontier_gstack and self._frontier_gstack["layout"]:
+            kwargs["skills_dir"] = self._frontier_gstack["layout"]["skills_dir"]
         self._frontier_model = model
         self._frontier_cell = cell
         self._frontier_attempt = attempt
@@ -93,14 +97,16 @@ class _Frontier:
         job = Path(self.logs_dir).parent.parent.name
         slot = await asyncio.to_thread(bind_slot, self._frontier_broker, self.frontier_trial, self.HARNESS, self._frontier_model, self._frontier_cell, self._frontier_attempt, job)
         self._frontier_url = slot["base_url"]
-        self._extra_env.update(fs.container_env(self.HARNESS, self._frontier_model, slot["base_url"], slot["token"]))
+        self._extra_env.update(fs.container_env(self.HARNESS, self._frontier_model, slot["base_url"], slot["token"], self._frontier_gstack))
 
     def _write_settings(self) -> None:
-        settings = fs.harness_settings(self.HARNESS, self._frontier_model) if self._frontier_gstack is None else fs.harness_settings(self.HARNESS, self._frontier_model, self._frontier_gstack)
+        settings = fs.harness_settings(self.HARNESS, self._frontier_model, self._frontier_gstack_release)
         settings["trial"] = self.frontier_trial
         settings["cell"] = self._frontier_cell
         settings["attempt"] = self._frontier_attempt
         settings["install_checks"] = self._frontier_checks
+        if self._frontier_gstack_release is None:
+            settings["gstack"] = fs.gstack_settings(self._frontier_gstack)
         Path(self.logs_dir).mkdir(parents=True, exist_ok=True)
         (Path(self.logs_dir) / "harness_settings.json").write_text(json.dumps(settings, indent=2) + "\n")
 
@@ -113,7 +119,8 @@ class _Frontier:
             if "proxy-capture" in self._frontier_checks["container_logs_entries"]:
                 raise RuntimeError("HE-FRONTIER-003 the trial's proxy-capture directory is visible inside the task container")
             await self._frontier_after_install(environment)
-            if self._frontier_gstack is not None:
+            await self._frontier_gstack_install(environment)
+            if self._frontier_gstack_release is not None:
                 await self._frontier_install_gstack(environment)
         finally:
             self._write_settings()
@@ -121,12 +128,51 @@ class _Frontier:
     async def _frontier_after_install(self, environment: BaseEnvironment) -> None:
         return None
 
+    async def _frontier_gstack_install(self, environment: BaseEnvironment) -> None:
+        """A gstack cell's arm (internal-task): the none arm is checked clean; any other arm gets the built runtime and tree
+        uploaded, handed to the agent user, and every file checked against the lock. A failure fails the trial at agent
+        setup, so it is recorded as an infra_error (to-trials.ts infra class gstack_contaminated when the none arm's
+        container held gstack, else gstack_install_failed), never scored."""
+        m = self._frontier_gstack
+        if m is None:
+            return
+        g = self._frontier_checks.setdefault("gstack", {"arm": m["arm"], "spec_sha256": m["spec_sha256"]})
+        if m["spec"] == "none":
+            res = await environment.exec(command=fs.gstack_absent_script(m))
+            g["absent_checked"] = m["absent"]
+            found = fs.gstack_absent_found(m, res.return_code, res.stdout)
+            g["found"] = found
+            if found:
+                raise RuntimeError(f"HE-FRONTIER-009 gstack arm none: the no-gstack container has gstack ({found[0]})")
+            return
+        res = await environment.exec(command='printf %s "$HOME"')
+        home = (res.stdout or "").strip()
+        g["home"] = home
+        if home != m["home"]:
+            raise RuntimeError(f"HE-FRONTIER-009 gstack arm {m['arm']}: the agent's HOME is {home or '(empty)'}, the arm was built for {m['home']}")
+        for up in m["uploads"]:
+            await environment.upload_dir(up["src"], up["dst"])
+        await environment.exec(command=fs.gstack_root_script(m, environment.default_user), user="root")
+        res = await environment.exec(command=fs.gstack_verify_script(m))
+        out = (res.stdout or "").strip()
+        g["verify"] = out
+        if res.return_code != 0 or not out.startswith("ok "):
+            raise RuntimeError(f"HE-FRONTIER-009 gstack arm {m['arm']} (spec {m['spec']}): the container's tree does not match the lock {m['lock']}: {out or res.stderr}")
+        g["files_checked"] = len(m["files"])
+
+    def _build_register_skills_command(self) -> str | None:
+        cmd = super()._build_register_skills_command()
+        m = self._frontier_gstack
+        if cmd and m and m["layout"]:
+            cmd += " && " + fs.gstack_copy_check(m)
+        return cmd
+
     async def _frontier_install_gstack(self, environment: BaseEnvironment) -> None:
         """The cell's gstack arm: its release tar uploaded, checked and extracted into the agent's home after the harness
         and our settings are in place (scripts/canary/gstack/arm.json says where each host reads it)."""
-        arm = fs.gstack_arm(self.HARNESS, self._frontier_gstack)
+        arm = fs.gstack_arm(self.HARNESS, self._frontier_gstack_release)
         await environment.upload_file(arm["tar"], self.GSTACK_REMOTE_TAR)
-        res = await environment.exec(command=fs.gstack_install_command(self._frontier_gstack, self.GSTACK_REMOTE_TAR), user=environment.default_user, timeout_sec=600)
+        res = await environment.exec(command=fs.gstack_install_command(self._frontier_gstack_release, self.GSTACK_REMOTE_TAR), user=environment.default_user, timeout_sec=600)
         facts = fs.gstack_install_facts(res.stdout or "")
         want = {"status": "ok", "router": "yes", "skills": len(arm["sidecar"]["skills"]), "version": arm["version"], "head": arm["sha"]}
         self._frontier_checks["gstack"] = {**facts, "expected": want, "matches": all(facts.get(k) == v for k, v in want.items())}
@@ -138,7 +184,8 @@ class FrontierClaudeCode(_Frontier, ClaudeCode):
     HARNESS = "claude-code"
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        kwargs["config"] = fs.claude_settings_merge(kwargs.get("gstack"))["settings"]
+        gstack = kwargs.get("gstack")
+        kwargs["config"] = fs.claude_settings_merge(gstack if gstack is not None and fs.is_gstack_release(gstack) else None)["settings"]
         super().__init__(*args, **kwargs)
 
     async def _frontier_after_install(self, environment: BaseEnvironment) -> None:
@@ -154,7 +201,7 @@ class FrontierClaudeCode(_Frontier, ClaudeCode):
         try:
             await super().run(instruction, environment, context)
         finally:
-            if self._frontier_gstack is not None:
+            if self._frontier_gstack_release is not None:
                 try:
                     res = await environment.exec(command=fs.drop_skill_links_command(), timeout_sec=60)
                     words = (res.stdout or "").split()
@@ -211,6 +258,9 @@ class FrontierHermes(_Frontier, Hermes):
         env = {"HERMES_HOME": "/tmp/hermes", "TERMINAL_ENV": "local", "HARBOR_INSTRUCTION": instruction}
         config_yaml = yaml.safe_dump(fs.hermes_config(self._frontier_model), sort_keys=False)
         await self.exec_as_agent(environment, command=f"mkdir -p /tmp/hermes && cat > /tmp/hermes/config.yaml << 'EOF'\n{config_yaml}EOF", env=env, timeout_sec=10)
+        skills_command = self._build_register_skills_command()
+        if skills_command:
+            await self.exec_as_agent(environment, command=skills_command, env=env, timeout_sec=60)
         try:
             await self.exec_as_agent(environment, env=env, command=(
                 'export PATH="$HOME/.local/bin:$PATH" && '

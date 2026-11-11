@@ -163,9 +163,10 @@ def harbor_kwargs(harness: str, model: str) -> dict[str, Any]:
     raise ValueError(f"unknown harness {harness}")
 
 
-def container_env(harness: str, model: str, url: str, token: str) -> dict[str, str]:
+def container_env(harness: str, model: str, url: str, token: str, gstack: dict[str, Any] | None = None) -> dict[str, str]:
     """Everything the task container's agent process gets in its environment for the model: the proxy route and the
-    per-trial token under the names the harness reads, and the harness's own switches. No other credential."""
+    per-trial token under the names the harness reads, and the harness's own switches. No other credential. A gstack
+    arm (its manifest, gstack_manifest()) adds gstack's eval markers (GSTACK_EVAL_DIR, EVALS_RUN_ID)."""
     spec = model_spec(model)
     anthropic = spec["provider"] == "anthropic"
     env: dict[str, str] = (
@@ -183,6 +184,8 @@ def container_env(harness: str, model: str, url: str, token: str) -> dict[str, s
             "CLAUDE_CODE_AUTO_COMPACT_WINDOW": str(spec["context_window"]),
             "CLAUDE_CODE_EFFORT_LEVEL": EFFORT,
         })
+    if gstack:
+        env.update(gstack.get("eval_env") or {})
     if harness == "mini-swe-agent":
         env["MSWEA_API_KEY"] = token
         if anthropic:
@@ -237,6 +240,13 @@ def harness_settings(harness: str, model: str, gstack: dict[str, Any] | None = N
 
 GSTACK_HOSTS = {"claude-code": "claude", "codex": "codex"}
 GSTACK_KEYS = ("sha", "version", "host", "tar", "tar_sha256")
+
+
+def is_gstack_release(gstack: dict[str, Any]) -> bool:
+    """Whether a cell's gstack option is a release arm ({sha, version, host, tar, tar_sha256}, checked by gstack_arm) and
+    not a skill ablation arm ({arm, spec, lock, spec_sha256, manifest}, checked by gstack_manifest): an ablation arm
+    names its arm."""
+    return "arm" not in gstack
 
 
 def arm_layout() -> dict[str, Any]:
@@ -484,6 +494,96 @@ def render(harness: str, model: str, url: str, token: str, gstack: dict[str, Any
     if harness == "pi":
         out["config"] = pi_models_entry(model)
     return out
+
+
+GSTACK_HARNESSES = {"claude-code": "claude", "codex": "codex", "hermes": "hermes"}
+
+
+def gstack_manifest(gstack: dict[str, Any] | None, harness: str) -> dict[str, Any] | None:
+    """The built arm of a gstack cell (gstack-build.ts writes <run>/gstack/cells/<cell>.json before any lease), checked
+    against the cell's preregistered gstack block, or None for a plain cell."""
+    if not gstack:
+        return None
+    arm = gstack.get("arm")
+    if harness not in GSTACK_HARNESSES:
+        raise ValueError(f"HE-FRONTIER-005 gstack arm {arm}: gstack arms run on claude-code, codex or hermes, not {harness}")
+    path = gstack.get("manifest")
+    if not path or not Path(path).is_file():
+        raise RuntimeError(f"HE-FRONTIER-008 gstack arm {arm} (spec {gstack.get('spec')}): no built arm at {path}; vm-run.sh builds it with gstack-build.ts before any lease")
+    m = json.loads(Path(path).read_text())
+    for k in ("arm", "spec", "spec_sha256", "lock"):
+        if m.get(k) != gstack.get(k):
+            raise RuntimeError(f"HE-FRONTIER-009 gstack arm {arm} (spec {gstack.get('spec')}): the built arm's {k} is {m.get(k)!r}, the cell's is {gstack.get(k)!r}")
+    if m.get("host") != GSTACK_HARNESSES[harness]:
+        raise RuntimeError(f"HE-FRONTIER-009 gstack arm {arm}: the built arm is for host {m.get('host')}, the cell's harness is {harness}")
+    return m
+
+
+def gstack_verify_script(m: dict[str, Any]) -> str:
+    """Bash, run as the agent user after the upload: every file of the arm is in place with its lock sha256, Bun runs and
+    the checkout is at the pin. Prints 'ok <n>' or the first problem, and exits non-zero on a problem."""
+    lines = "".join(f"{f['sha256']}  {f['path']}\n" for f in m["files"])
+    lay = m["layout"]
+    return (
+        "set -u; command -v sha256sum >/dev/null || { echo 'no sha256sum in the task container'; exit 3; }\n"
+        f"[ \"$HOME\" = {shlex.quote(m['home'])} ] || {{ echo \"HOME is $HOME, not {m['home']}\"; exit 4; }}\n"
+        f"bad=$(sha256sum -c --quiet --strict 2>&1 <<'GSTACK_LOCK_EOF'\n{lines}GSTACK_LOCK_EOF\n) || {{ printf 'lock: %s\\n' \"$bad\" | head -n 3; exit 5; }}\n"
+        f"v=$({shlex.quote(lay['bun'])} --version 2>&1) && [ \"$v\" = {shlex.quote(str(m['bun_version']))} ] || {{ echo \"bun: $v, not {m['bun_version']}\"; exit 6; }}\n"
+        f"[ \"$(command -v bun)\" ] || {{ echo 'bun is not on PATH'; exit 6; }}\n"
+        f"h=$(cat {shlex.quote(lay['checkout'] + '/.git/HEAD')} 2>&1) && [ \"$h\" = {shlex.quote(m['gstack_commit'])} ] || {{ echo \"checkout HEAD $h, not {m['gstack_commit']}\"; exit 7; }}\n"
+        f"[ -x {shlex.quote(lay['checkout'] + '/bin/gstack-skill-start')} ] || {{ echo 'no gstack-skill-start'; exit 7; }}\n"
+        f"echo ok {len(m['files'])}\n"
+    )
+
+
+def gstack_root_script(m: dict[str, Any], user: str | int | None) -> str:
+    """Bash, run as root after the upload: the uploaded tree to the agent user, and Bun on every shell's PATH as a user's
+    install leaves it (the internal-task overlay's /etc/profile.d line, here a /usr/local/bin link that login shells keep)."""
+    lay = m["layout"]
+    owned = [lay["checkout"], lay["home"] + "/.bun", lay["state"], lay["tree"], lay["skills_dir"]]
+    chown = f"chown -R {shlex.quote(str(user))} " + " ".join(shlex.quote(p) for p in sorted(set(owned))) + " && " if user not in (None, "root", 0, "0") else ""
+    return f"set -e; {chown}mkdir -p /usr/local/bin && ln -sf {shlex.quote(lay['bun'])} /usr/local/bin/bun"
+
+
+def gstack_absent_script(m: dict[str, Any]) -> str:
+    """Bash for the no-gstack arm: prints every gstack path the container has (none expected), then "checked <n>". An
+    absent path ending in * matches every name with that prefix."""
+    paths = " ".join(shlex.quote(p[:-1]) + "*" if p.endswith("*") else shlex.quote(p) for p in m["absent"])
+    return (f"for p in {paths}; do [ -e \"$p\" ] && echo \"found $p\"; done; "
+            "[ -d \"$HOME/.claude/skills\" ] && find \"$HOME/.claude/skills\" -mindepth 2 -maxdepth 2 -name SKILL.md | sed 's/^/found /'; "
+            "command -v gstack-skill-start >/dev/null && echo 'found gstack-skill-start on PATH'; "
+            f"echo 'checked {len(m['absent'])}'")
+
+
+def gstack_absent_found(m: dict[str, Any], return_code: int | None, stdout: str | None) -> list[str]:
+    """The gstack paths gstack_absent_script printed. Raises HE-FRONTIER-009 when the check did not run to its end (a
+    non-zero exit or no "checked <n>" line), so a failed exec never reads as a clean container."""
+    lines = (stdout or "").splitlines()
+    if return_code != 0 or f"checked {len(m['absent'])}" not in lines:
+        raise RuntimeError(f"HE-FRONTIER-009 gstack arm none: the no-gstack check did not finish (exit {return_code}), so the container is not shown clean")
+    return [line[6:] for line in lines if line.startswith("found ")]
+
+
+def gstack_copy_check(m: dict[str, Any]) -> str:
+    """Bash appended to Harbor's skill copy (which ends in || true): records in /logs/agent/gstack-skills-copy.txt
+    whether every SKILL.md the lock lists landed in the host's skills folder. Never fails the command."""
+    target = m["layout"]["harbor_target"]
+    files = " ".join(shlex.quote(f) for f in m["harbor_skill_files"])
+    return (f"{{ miss=0; for f in {files}; do [ -f \"{target}/$f\" ] || {{ echo \"missing $f\"; miss=$((miss+1)); }}; done; "
+            f"echo \"checked {len(m['harbor_skill_files'])} missing $miss\"; }} > /logs/agent/gstack-skills-copy.txt 2>&1; true")
+
+
+def gstack_settings(m: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The harness_settings.json gstack record of a gstack cell."""
+    if m is None:
+        return None
+    return {
+        "arm": m["arm"], "spec": m["spec"], "spec_sha256": m["spec_sha256"], "lock": m["lock"], "host": m["host"],
+        "gstack_commit": m["gstack_commit"], "gstack_version": m["gstack_version"], "bun_version": m["bun_version"],
+        "home": m["home"], "layout": m["layout"], "expected_skills": m["expected_skills"], "eval_env": m["eval_env"],
+        "install": "none: no gstack in the container, checked absent" if m["spec"] == "none" else
+                   "the pinned checkout after ./setup --host %s --no-browser, Bun %s, telemetry off, update_check false, artifacts_sync_mode off, and the arm's gstack-modules render, built once per shard by gstack-arm.ts and uploaded; every file checked against the lock" % (m["host"], m["bun_version"]),
+    }
 
 
 def leaked(blob: str, canaries: list[str]) -> list[str]:

@@ -1,0 +1,62 @@
+{
+ "schema": "gstack-skill-ablation-analysis/1",
+ "run_id": "gstack-skill-ablation-2026-11",
+ "seed": 7,
+ "draws": 10000,
+ "alpha": 0.05,
+ "band": 0.75,
+ "informative_floor": 8,
+ "open_threshold": 0.4,
+ "max_single_arms": 3,
+ "ni_margin": 0.1,
+ "files": {
+  "skills": "docs/benchmarks/2026-11-10-gstack-skill-ablation/skills.json",
+  "fit": "docs/benchmarks/2026-11-10-gstack-skill-ablation/fit.json",
+  "subsets": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json"
+ },
+ "models": [
+  {
+   "id": "opus",
+   "label": "Opus 5.5 (Claude Code)",
+   "harness": "claude-code",
+   "host": "claude",
+   "role": "frontier",
+   "subset": "opus",
+   "cells": {
+    "none": "opus-none",
+    "full": "opus-full",
+    "diet": "opus-diet",
+    "minus": "opus-minus-<skill>"
+   }
+  },
+  {
+   "id": "sol",
+   "label": "GPT-6.1 Sol (Codex)",
+   "harness": "codex",
+   "host": "codex",
+   "role": "frontier",
+   "subset": "sol",
+   "cells": {
+    "none": "sol-none",
+    "full": "sol-full",
+    "diet": "sol-diet",
+    "minus": "sol-minus-<skill>"
+   }
+  },
+  {
+   "id": "particle",
+   "label": "Particle-1 (Hermes), low-cost",
+   "harness": "hermes",
+   "host": "hermes",
+   "role": "low-cost",
+   "optional": true,
+   "subset": "opus",
+   "cells": {
+    "none": "particle-none",
+    "full": "particle-full",
+    "diet": "particle-diet",
+    "minus": "particle-minus-<skill>"
+   }
+  }
+ ]
+}

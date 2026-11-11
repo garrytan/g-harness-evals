@@ -1,0 +1,33 @@
+{
+  "schema": "frontier-harbor-gstack-runtime/1",
+  "note": "What the gstack arms of the Harbor path install in the task container besides the arm's skill tree (internal-task). The gstack commit itself comes from each preregistration's gstack_pin. Kept out of pin.json so the task pin and every preregistration that hashes it stay unchanged.",
+  "repo_url": "https://github.com/garrytan/gstack",
+  "bun": {
+    "version": "1.4.2",
+    "asset": "bun-linux-x64.zip",
+    "sha256": "36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913",
+    "source": "https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/SHASUMS256.txt; 1.4.2 is GSTACK_BUN_TESTED in gstack's bin/gstack-bun-version.sh at the pin (engines.bun >=1.4.2), the version gstack's CI tests"
+  },
+  "builder_base": "debian@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc",
+  "builder_base_tag": "debian:bookworm-slim",
+  "home": "/root",
+  "render": {
+    "plan_mode": "on",
+    "models": {
+      "claude": "claude",
+      "codex": "gpt-6.1-sol",
+      "hermes": "claude"
+    },
+    "models_note": "each host renders with the overlay its cell model selects, as a user's config would: Claude claude-opus-5-5 resolves to gstack's generic claude overlay, Codex gpt-6.1-sol to its gpt overlay (the astra overlay applies only to gpt-6-astra, gstack scripts/models.ts resolveModel at the pin); Hermes keeps the generic claude overlay it rendered with before (particle-1 matches no gstack model family); the same for every arm"
+  },
+  "eval_env": {
+    "GSTACK_EVAL_DIR": "/tmp/gstack-eval",
+    "EVALS_RUN_ID": "<run_id>"
+  },
+  "config": {
+    "telemetry": "off",
+    "update_check": "false",
+    "artifacts_sync_mode": "off",
+    "telemetry_prompted": true
+  }
+}

@@ -30,7 +30,13 @@
 | [egress-probe/](egress-probe/) | a do-nothing task whose verifier checks the blocklist from inside a task container (install check step 3) |
 | [audit.ts](audit.ts), [answer-keys/](answer-keys/) | the contamination audit over captured requests: the benchmark canary, Harness Leaderboard answer-key fingerprints (Apache-2.0, see its NOTICE.md), benchmark-fetch requests and gstack file reads |
 | [../canary/gstack/](../canary/gstack/README.md) | the gstack regression canary rig: release arm builder, tier spec, exposure, install check and tier runner |
-| [analyze.ts](analyze.ts) | the harness x model analysis: pass rates with intervals, the noise view, paired comparisons and cost per solve (uses `runner/stats/frontier.ts`) |
+| [analyze.ts](analyze.ts) | the harness x model analysis: pass rates with intervals, the noise view, paired comparisons and cost per solve (uses `runner/stats/frontier.ts`), and per gstack arm the exposure counts, open rate per skill and token means |
+| [gstack-arm.ts](gstack-arm.ts), [gstack-build.ts](gstack-build.ts), [gstack-builder/](gstack-builder/), [gstack-runtime.json](gstack-runtime.json) | the gstack arms (internal-task): spec parsing, the docker builder that installs pinned gstack the way a user does, the lock check, and each cell's install manifest |
+| [gstack-names.ts](gstack-names.ts) | which skills a gstack lock holds and the name each host lists them under |
+| [gstack-singles.ts](gstack-singles.ts), [gstack-catalog.json](gstack-catalog.json) | every single-skill removal per host at the pin, written to the run folder's `skills.json` |
+| [gstack-check.sh](gstack-check.sh), [gstack-check.ts](gstack-check.ts), [install-check-gstack-prereg.json](install-check-gstack-prereg.json) | the keyless gstack install check (install-check.sh step 6) and its preregistration |
+| [gstack-exposure.ts](gstack-exposure.ts) | gstack arms (internal-task): the skills each host listed in the first agent-loop request against the arm's lock, removed skills seen, skill opens and section reads, listing bytes and opened-body tokens, per trial |
+| [ablation.ts](ablation.ts) | the frozen analysis of the gstack skill ablation (internal-task), read from [ablation-spec.json](../../docs/benchmarks/2026-11-10-gstack-skill-ablation/ablation-spec.json): `headroom` (stage 0, the none arm on each model's subset), `select` (stage 0, the minus arms and the diet from full-arm open rates) and `analyze` (main stage: per-arm rates, tokens and cost per solve, task-level pairs with Holm, pooled readings and the per-skill verdicts) |
 
 ## The preregistration (`frontier-harbor/1`)
 
@@ -76,6 +82,32 @@
 - **Rule:** TB2.1 tasks at or above 0.95 on the same board data as the 52, sorted by sha256 of `"<seed>\0<id>"` (seed `harn50-frontier-2026-11-07`), first 8.
 - **Cells:** a cell with `"stage": "kept"` draws its task range from the kept order, and needs `"kept_task_list": { "file": "scripts/frontier-harbor/pin.json" }` in the preregistration. A model and harness may have one core cell and one kept cell (for example `opus-cc` and `opus-cc-kept`); any other repeat is refused.
 
+### Task subsets
+
+```json
+"tasks": { "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json", "key": "opus", "sha256": "<optional>" }
+```
+
+- **What:** a cell's `tasks` (or a stage selection's) may name a subset file instead of a range. The file is `{ "subsets": { "<key>": { "tasks": [ids] } } }`.
+- **Order:** the listed ids run in the shared order, the same rule as a range.
+- **Refused (HE-FRONTIER-005):** a missing file or key, a sha256 that does not match, or an id that is not a pinned task.
+- **Stages:** a stage may select a subset (it must sit inside the cell's tasks) or positions `[from, to)` of the cell's own list. Trial ids, jobs, check-shard and never-twice work as for a range.
+
+### gstack arms (internal-task)
+
+```json
+"gstack_pin": { "repo": "garrytan/gstack", "commit": "<40 hex>" },
+"cells": [{ "id": "opus-cc-full", ..., "gstack": { "arm": "full", "spec": "full",
+  "lock": "docs/benchmarks/<run>/locks/claude/full.lock.json", "spec_sha256": "<sha256 of the spec>" } }]
+```
+
+- **Arms:** `none` (nothing installed, checked absent), `full`, `minus-<skill>` (`full,-skill:<skill>`) and `diet` (several removals). Claude Code, Codex and Hermes only. One cell per model, harness and arm.
+- **Install:** vm-run.sh step 1b builds each arm before any lease, in a docker builder at `gstack_pin`: the pinned checkout, `bun install --frozen-lockfile`, `./setup --host <h> --no-browser`, telemetry and update checks off, then gstack's own render of the spec. agents.py uploads the runtime and tree and checks every file against the lock.
+- **Where:** Claude in `~/.claude/skills` (router at `gstack/SKILL.md`), Codex in `~/.gstack/arms/codex/.agents/skills`, Hermes in one `gstack` category. Harbor copies each to the folder the harness reads.
+- **Refused:** HE-FRONTIER-009 when the render, the checkout or the container does not match the preregistered lock; HE-FRONTIER-008 when gstack refuses the render, the builder fails, a path the tree names would be missing, or the skills folder holds a SKILL.md the lock does not list.
+- **Listing:** Claude Code does not list a skill whose frontmatter sets `disable-model-invocation: true` (land-and-deploy and modernize at 1.98.0.0). `skills.json` names them per host (`unlisted`), and each cell manifest carries `expected_listed`.
+- **Check:** `gstack-check.sh` runs every host's none, full and minus-retro arms against the fake upstream and compares the first request's skill listing with the lock. It also runs gstack-skill-start in the task image with every packet captured, and probes the 52 pinned task images.
+
 `bun scripts/frontier-harbor/plan.ts show --prereg <file>` prints the cells, the trial count and each shard's lease.
 
 ## gstack arms (the regression canary)
@@ -103,6 +135,15 @@
 - **Local-server probes:** at start Hermes probes the base URL for LM Studio, Ollama, llama.cpp and vLLM (`agent/model_metadata.py`, `detect_local_server_type`: GET `/api/v1/models`, `/api/tags`, `/v1/props`, `/props`, `/version`, plus POST `/api/show`). The proxy refuses them (403, not allowlisted). Hermes reads any non-200 as "not a local server", the same verdict it reaches on api.openai.com and api.anthropic.com, where it skips the probes. So refusing them changes nothing, and they stay refused.
 - **Seen in the install check:** hermes-opus had 9 refused requests and hermes-sol 7, all of these probes and model-list GETs, and both went on to their agent loop (install-check.json, `requests_refused`).
 - **Anthropic SDK:** Hermes imports the `anthropic` package lazily, and its install.sh does not install the extra. agents.py runs `uv sync --locked --extra all --extra anthropic` in Hermes's source tree and checks `anthropic` is pin.json's 0.87.0.
+
+## gstack arms: what reached the model
+
+- **Cell block:** a cell may carry `"gstack": { "arm", "spec", "lock", "spec_sha256" }`; `lock` is the repository path of the arm's gstack lock file. A cell without it is a plain cell.
+- **Exposure check, per trial:** to-trials.ts parses the first agent-loop request (the effort check's definition) for the host's skills listing: Claude Code's skill_listing system-reminder, Codex's `<skills_instructions>` catalog, Hermes's `<available_skills>` index. The listed gstack skills must equal the lock's skills, less the ones the host never lists (Claude Code drops skills with `disable-model-invocation`: land-and-deploy and modernize). A miss is an `infra_error`, infra class `gstack_exposure_mismatch` (HE-FRONTIER-010), excluded pairwise and counted. Harbor's own skills copy ends in `|| true`, so this check is the only guard.
+- **Removed skills:** listing entries and `skills/<dir>/...` paths of a gstack skill outside the lock, in any request, go into `removed_seen`. Bare words such as review or verify never count.
+- **Opens:** Claude Code Skill calls, Hermes skill_view, and any tool call naming a skill's SKILL.md (Read, Bash, Codex exec, Hermes read_file or terminal). Reads of the files in a skill's `sections/` folder count apart, as `section_reads`.
+- **Tokens:** `listing_bytes` is the gstack entries of the first agent-loop request. `opened_body_tokens` is the bytes of the tool results that returned a SKILL.md or section, each once, over the trial's bytes per token (captured bytes over the proxy's input tokens).
+- **Audit:** the clean-arm check (`gstack_reads`) runs on plain cells and the `none` arm only. gstack arms show their exposure, removed skills and opens instead.
 
 ## Egress
 
