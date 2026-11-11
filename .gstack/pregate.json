@@ -305,7 +305,8 @@
   "strays": {
     "allow": [
       ".gstack",
-      "docs/loops/TEMPLATE.md"
+      "docs/loops/TEMPLATE.md",
+      "tasks/skill-resolver/T/tasks/t34-billing-refactor-pause/start/SCRATCH.md"
     ]
   },
   "allowlist": [
@@ -699,6 +700,30 @@
       ],
       "pattern": "post(?:)gres://postgres:qm-trial@127\\.0\\.0\\.1:55432/qm(?![A-Za-z0-9_])",
       "reason": "QM's loopback Postgres URL with the compose default password from harnesses/qm/compose.yaml, in a test golden"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "scripts/skill-resolver/step0/claude-codex/names-only.py"
+      ],
+      "pattern": "re\\.compile\\(r'\\^\\(\\[A-Za-z_\\]\\[A-Za-z0-9_-\\]\\*\\):'\\)$",
+      "reason": "a regular expression that matches YAML front-matter keys; the line holds no value"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/skill-resolver/T/tasks/t40-release-runbook-to-agent/task.json"
+      ],
+      "pattern": "(?:description|disable-model-invocation)\",?$",
+      "reason": "set T task t40 checks which SKILL.md front-matter keys the agent writes; the line names a front-matter key, not a value"
+    },
+    {
+      "finding": "db.url_with_password",
+      "paths": [
+        "tasks/skill-resolver/T/tasks/t43-goroutine-leak-outside-review/start/.env"
+      ],
+      "pattern": "am(?:)qp://relay:[^@ ]+@localhost:5672/$",
+      "reason": "made-up localhost queue URL in set T task t43's starting repository; no real host or credential"
     }
   ]
 }
