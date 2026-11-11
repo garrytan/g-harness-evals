@@ -72,3 +72,70 @@ describe('fanout.sh repeated interrupts', () => {
     }
   }, 30_000);
 });
+
+describe('fanout.sh capacity requeue', () => {
+  // Value: protects=a shard that exits 3 with "did not reach running in ... waiting for capacity" in its lane log is launched
+  // again, like a quota refusal; fails_when=the requeue grep drops the capacity pattern and the shard is reported failed after
+  // one try; why_new=no test ran the requeue branch; seam=UBI_RUNNER (existing) and a fake run-shard.sh beside a copy of the
+  // script; no_claim=real Ubicloud capacity states or ubi-runner.sh's exact message (fake shard writes the line)
+  test('a capacity timeout is queued again and the second try runs', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-fanout-'));
+    try {
+      copyFileSync(FANOUT, join(dir, 'fanout.sh'));
+      const lane = join(dir, 'dest', 'cap', 'lane.log');
+      const tries = join(dir, 'cap-tries');
+      script(dir, 'run-shard.sh', [
+        'case " $* " in *cap*) ;; *) sleep 6; exit 0 ;; esac',
+        'echo x >> "' + tries + '"',
+        'if [ "$(wc -l < "' + tries + '")" -eq 1 ]; then echo "ubi-runner: VM did not reach running in 10 minutes (last state: waiting for capacity)" >> "' + lane + '"; exit 3; fi',
+        'exit 0',
+      ].join('\n'));
+      script(dir, 'ubi-runner.sh', 'echo "total 0 0"');
+      writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ commit: 'a'.repeat(40), prereg: 'prereg.json', dest: join(dir, 'dest'), shards: [{ name: 'cap', cells: 'c1', lease_usd: 1 }, { name: 'other', cells: 'c2', lease_usd: 1 }] }));
+      const r = spawnSync('bash', [join(dir, 'fanout.sh'), '--manifest', join(dir, 'manifest.json')], {
+        encoding: 'utf8',
+        timeout: 60_000,
+        env: { PATH: process.env.PATH, HOME: dir, UBI_OWNER: 'test-owner', UBI_RUNNER: join(dir, 'ubi-runner.sh') },
+      });
+      expect(r.stderr).toContain('shard cap was refused for vCPU quota or found no VM capacity; queued again');
+      expect(r.stderr).toContain('launching shard cap (cells c1, lease $1, try 2)');
+      expect(readFileSync(tries, 'utf8')).toBe('x\nx\n');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 45_000);
+
+  // Value: protects=a capacity timeout whose VM the runner failed to destroy is not launched again, so the fan-out keeps the
+  // shard's failing exit instead of reporting success while that VM may still bill; fails_when=the requeue ignores
+  // "failed to destroy" in the try's lane log; why_new=the capacity requeue added a path that retried after a failed
+  // destroy; seam=UBI_RUNNER (existing) and a fake run-shard.sh beside a copy of the script; no_claim=real Ubicloud
+  // destroy failures or ubi-runner.sh's exact warning (fake shard writes the lines)
+  test('a capacity timeout with a failed destroy is not queued again', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-fanout-'));
+    try {
+      copyFileSync(FANOUT, join(dir, 'fanout.sh'));
+      const lane = join(dir, 'dest', 'cap', 'lane.log');
+      const tries = join(dir, 'cap-tries');
+      script(dir, 'run-shard.sh', [
+        'case " $* " in *cap*) ;; *) exit 0 ;; esac',
+        'echo x >> "' + tries + '"',
+        'if [ "$(wc -l < "' + tries + '")" -eq 1 ]; then echo "ubi-runner: VM did not reach running in 10 minutes (last state: waiting for capacity)" >> "' + lane + '"; echo "ubi-runner: WARNING: failed to destroy he-cap; run: ubi-runner.sh down he-cap" >> "' + lane + '"; exit 3; fi',
+        'exit 0',
+      ].join('\n'));
+      script(dir, 'ubi-runner.sh', 'echo "total 0 0"');
+      writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ commit: 'a'.repeat(40), prereg: 'prereg.json', dest: join(dir, 'dest'), shards: [{ name: 'cap', cells: 'c1', lease_usd: 1 }] }));
+      const r = spawnSync('bash', [join(dir, 'fanout.sh'), '--manifest', join(dir, 'manifest.json')], {
+        encoding: 'utf8',
+        timeout: 60_000,
+        env: { PATH: process.env.PATH, HOME: dir, UBI_OWNER: 'test-owner', UBI_RUNNER: join(dir, 'ubi-runner.sh') },
+      });
+      expect(r.stderr).not.toContain('found no VM capacity; queued again');
+      expect(r.stderr).toContain('shard cap exited 3');
+      expect(r.status).not.toBe(0);
+      expect(readFileSync(tries, 'utf8')).toBe('x\n');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 45_000);
+});
+

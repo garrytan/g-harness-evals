@@ -60,7 +60,9 @@
 # the fan-out is refused when not one VM fits and batched to as many VMs as fit otherwise, printing the needed, used and
 # maximum vCPUs. Without it the maximum is unknown (the project token cannot read it; only a refused create reports it), so
 # every shard is launched (or --parallel of them at a time) and a shard refused for quota ("quota refused" in its lane
-# log) is queued again after the next shard finishes, up to three times.
+# log) or whose VM never left "waiting for capacity" ("did not reach running" in its lane
+# log) is queued again after the next shard finishes, up to three times. A shard whose lane log for that try also says
+# "failed to destroy" is not queued again: its VM may still be running, so it keeps its failing exit.
 #
 # On exit it prints one row per shard (shard, cells, exit, trials, wall time of the run and of the VM, VM list price), one
 # "kept:" line per shard whose VM was left running (run-shard.sh kept it after a failed final pull, or its down failed:
@@ -361,8 +363,9 @@ while [ ${#queue[@]} -gt 0 ] || [ "$running" -gt 0 ]; do
   [ -n "${done_pid:-}" ] || continue
   line=${pid_of[$done_pid]}; unset 'pid_of[$done_pid]'; running=$(( running - 1 ))
   IFS=$'\t' read -r name cells lease _ <<<"$line"
-  if [ "$rc" -eq 3 ] && [ "$stopping" -eq 0 ] && tail -c +$(( ${log_start[$name]:-0} + 1 )) "$dest/$name/lane.log" 2>/dev/null | grep -q 'quota refused' && [ "${tries_of[$name]}" -lt 3 ]; then
-    log "shard $name was refused for vCPU quota; queued again (after the next shard finishes)"
+  try_log=$(tail -c +$(( ${log_start[$name]:-0} + 1 )) "$dest/$name/lane.log" 2>/dev/null || true)
+  if [ "$rc" -eq 3 ] && [ "$stopping" -eq 0 ] && grep -qE 'quota refused|did not reach running in .*waiting for capacity' <<<"$try_log" && ! grep -q 'failed to destroy' <<<"$try_log" && [ "${tries_of[$name]}" -lt 3 ]; then
+    log "shard $name was refused for vCPU quota or found no VM capacity; queued again (after the next shard finishes)"
     queue+=("$line"); [ "$running" -gt 0 ] || sleep 60
     continue
   fi

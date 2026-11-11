@@ -23,3 +23,12 @@ Written after a one-round plan review, while the canary shard fable52-r1h1 was b
 - **Later start than planned.** The other 11 shards launched at about 21:08 UTC, about 37 minutes after the canary's first trial started, not 15 to 20 minutes. So the canary (Fable 5.2, attempt 1, first half) is further ahead than planned. The 22:45 UTC time stop is unchanged. A large share of trials will be unfinished at the stop, and each arm's unfinished count is reported.
 - **Mid-run pulls.** Claude Code's session folders inside each trial are not readable by the pull's user, so the mid-run pull to the controller fails. A loop on the controller makes the job folders readable on each VM (chmod a+rX) every few minutes so results leave the VMs during the run. Nothing on a VM that a trial reads is changed.
 
+
+## Amendment 3 (2026-11-09, about 23:00 UTC, before any trial of the shards it names)
+
+- **Five shards complete the preregistered design.** opus55-r1h1, opus55-r1h2, opus55-r2h1, fable52-r2h1 and fable51-r1h2 never ran: their VMs waited 10 minutes for capacity in Ubicloud eu-central-h1 and were destroyed at 21:19 UTC (see report.md, Deviations). They run now, at the Captain's instruction, with the same cells, tasks, settings and leases as preregistered, from this commit. Only documents and the fan-out's retry rule differ from amendment 1's commit; nothing a VM runs changed.
+- **Not chosen after seeing results.** These are exactly the shards that failed to start, all of them, and no others. No completed shard is rerun, and no cell, task, attempt or analysis rule changes.
+- **Reporting.** The report gives the results as first written (24 Opus tasks, 1 attempt, with the 22:45 UTC time stop) side by side with the full design once these shards finish. The full design is the preregistered one, so it becomes the headline if it completes. The 22:45 time stop applied to the first launch. These shards carry no time stop; their leases are the runaway guard.
+- **Retry rule.** `scripts/ubicloud/fanout.sh` now re-queues a shard whose VM never reached running while waiting for capacity, the same way it already re-queues a quota refusal, up to three tries.
+- **No per-VM smoke**, as in amendment 2. Same region (eu-central-h1), same VM size.
+
