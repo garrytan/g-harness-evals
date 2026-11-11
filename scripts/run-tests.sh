@@ -12,6 +12,8 @@
 # tests/.timings.json (per-file milliseconds) makes each parallel phase start its slowest files first; a file missing
 # from it still runs. Workers default to the core count (HE_TEST_PARALLEL overrides). Every phase runs; the exit status
 # is the last failing phase's.
+# bunfig.toml's preload (tests/setup/default-timeout.ts) gives every file a 30 s default under --parallel, but a serial run
+# keeps it for the first file only, so phase 3 also passes --timeout=30000.
 # Usage: bash scripts/run-tests.sh [--junit-dir DIR]   (writes bun's JUnit reports DIR/builders.xml, main.xml, serial.xml)
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -49,5 +51,5 @@ report main
 bun test tests/ "${ignore[@]}" "${parallel[@]}" "${reporter[@]}" || rc=$?
 echo "run-tests: phase 3 (serial): ${SERIAL[*]}"
 report serial
-bun test "${SERIAL[@]/#/./}" "${reporter[@]}" || rc=$?
+bun test "${SERIAL[@]/#/./}" --timeout=30000 "${reporter[@]}" || rc=$?
 exit "$rc"

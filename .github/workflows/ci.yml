@@ -82,7 +82,7 @@ jobs:
           path: ${{ runner.temp }}/checks-tree/tree.json
           if-no-files-found: error
       - name: Private spend tests (program spend renderer; the public copy has no private/)
-        run: if [ -d private/spend ]; then bun test private/spend/; fi
+        run: if [ -d private/spend ]; then bun test private/spend/ --timeout=30000; fi
       - name: Documentation links
         run: python3 scripts/check-links.py
       - name: Hub fragments (TODOS.md matches todos.d/, or its fold is still pending at land)
@@ -190,7 +190,7 @@ jobs:
           git update-ref -d refs/remotes/origin/main
       - name: Keyless install, typecheck, links and tests on the export tree
         working-directory: ${{ runner.temp }}/public
-        run: env -i HOME="$HOME" PATH="$PATH" LANG=C.UTF-8 bash -c 'bun install --frozen-lockfile && bunx tsc --noEmit && python3 scripts/check-links.py && bun test tests/'
+        run: env -i HOME="$HOME" PATH="$PATH" LANG=C.UTF-8 bash -c 'bun install --frozen-lockfile && bunx tsc --noEmit && python3 scripts/check-links.py && bun test tests/ --timeout=30000'
 
   # Which paths changed, so the docker job runs only when the sidecar image, its build, the fake harness it drives or the
   # image tests could have changed: a pull request is compared with its base, a push to main with the commit before it.

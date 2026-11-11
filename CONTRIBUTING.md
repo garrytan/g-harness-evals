@@ -50,13 +50,13 @@ Such an author may have **at most 3 open pull requests**. We close the rest with
 git clone https://github.com/garrytan/g-harness-evals.git
 cd g-harness-evals
 bun install --frozen-lockfile
-bun test tests/
+bun test tests/ --timeout=30000
 bunx tsc --noEmit
 python3 scripts/check-links.py
 bun scripts/seal-heldout.ts --check
 ```
 
-- `bun test tests/` takes about 25 minutes on a 4 vCPU machine.
+- `bun test tests/` takes about 25 minutes on a 4 vCPU machine. `--timeout=30000` gives each test 30 seconds, as CI does: a serial run keeps the 30 second default from `bunfig.toml`'s preload for its first file only.
 - `bash scripts/run-tests.sh` runs the same files in parallel phases, as CI does, in about 9 minutes on a 4 vCPU machine.
 - **The preregistration order check isn't in this list.** `bun runner/prereg/prereg.ts` checks each receipt's attestation against commits this public copy never holds, so it fails here and the public CI doesn't run it. The private repository runs it on every pull request, and the export's preregistration check verifies the order, with the private history, before every push to this repository.
 - **CI is the reference.** If your local result differs from the GitHub Actions run on the same commit, trust CI and say so in your report.
