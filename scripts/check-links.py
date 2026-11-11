@@ -17,7 +17,7 @@ if os.path.exists(ALLOW_FILE):
             ALLOW.add((source, target))
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 # results/ is gitignored scratch (runs, exported install bundle views with their own placeholder links); never checked.
-SKIP_DIRS = {".git", "node_modules", "results"}
+SKIP_DIRS = {".git", "node_modules", "results", ".verify-scratch"}
 # Fragment files render into a generated file elsewhere (scripts/fold-hub-fragments.ts), so their links resolve from there.
 RENDERED_FROM = {os.path.join(ROOT, "todos.d"): ROOT}
 # The report template is copied to docs/benchmarks/<run>/report.md before use, so its links resolve from a run folder.

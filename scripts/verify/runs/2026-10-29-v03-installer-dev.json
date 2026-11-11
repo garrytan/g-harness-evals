@@ -1,0 +1,84 @@
+{
+  "run": "2026-10-29-v03-installer-dev",
+  "about": "v03-installer-dev-2026-10: four Haiku cells on the 20 v0.3 dev tasks (gbrain told against gbrain's own installer, OpenClaw and Hermes), the opening-1 gate tables and the install-ladder comparison.",
+  "requires": [
+    "tasks/multiuser/v0.3/dev"
+  ],
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ],
+      "stdout": {
+        "file": "results/summary.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/compare-run.ts",
+        "--results",
+        "{run}/results",
+        "--pair",
+        "gbrain",
+        "--design",
+        "ladder"
+      ],
+      "outputs": [
+        "results/comparisons.gbrain.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/v03/pilot-tables.ts",
+        "--results",
+        "{run}/results",
+        "--tasks",
+        "tasks/multiuser/v0.3/dev",
+        "--out",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/pilot-tables.json",
+        "results/pilot-tables.md"
+      ]
+    }
+  ],
+  "known": [
+    {
+      "file": "results/summary.md",
+      "line": 12,
+      "committed": "| hermes-haiku-gbrain-told-mu-v03-dev | 86 | 100 | 1 / 145 | search 137, remember 4, query 2, get_page 2 | 3 | 333 | 3 | 4 | 95 / 4 | 100 of 100 |",
+      "rebuilt": "| hermes-haiku-gbrain-told-mu-v03-dev | 86 | 100 | 1 / 145 | search 137, remember 4, query 2, get_page 2 | 3 | 333 | 3 | 4 (failed: scope_denied 3) | 95 / 4 | 100 of 100 |",
+      "reason": "summarize-run.ts began printing failed gbrain writes by error type in #176 (8ecc586471, 2026-11-03), after this table was committed, so the gbrain writes cell gains a '(failed: ...)' note; the write count itself is unchanged."
+    },
+    {
+      "file": "results/summary.md",
+      "line": 13,
+      "committed": "| hermes-haiku-gbrain-installer-mu-v03-dev | 100 | 100 | 3 / 292 | search 263, query 17, remember 9, get_page 2, recall 1 | 5 | 210 | 3 | 9 | 118 / 2 | 100 of 100 |",
+      "rebuilt": "| hermes-haiku-gbrain-installer-mu-v03-dev | 100 | 100 | 3 / 292 | search 263, query 17, remember 9, get_page 2, recall 1 | 5 | 210 | 3 | 9 (failed: invalid_params 3) | 118 / 2 | 100 of 100 |",
+      "reason": "summarize-run.ts began printing failed gbrain writes by error type in #176 (8ecc586471, 2026-11-03), after this table was committed, so the gbrain writes cell gains a '(failed: ...)' note; the write count itself is unchanged."
+    }
+  ],
+  "volatile": [
+    {
+      "path": "exposure",
+      "reason": "The commit id and dirty flag of the checkout the rebuild runs in, with the shard commits beside them; compare-run.ts added this block in #213 (ba4945bca2, 2026-11-01), after this file was committed, and it holds no result.",
+      "file": "results/comparisons.gbrain.json"
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The task defect readings in results/defects.json",
+      "file": "results/defects.json",
+      "reason": "Two readers, the run's author and a second model (openai/gpt-6.1-sol), read each zero-pass trial by hand against the defect rule; their readings are judgment calls, not something a script computes from the receipts."
+    }
+  ]
+}

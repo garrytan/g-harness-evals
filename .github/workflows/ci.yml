@@ -90,6 +90,25 @@ jobs:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: bun scripts/fold-hub-fragments.ts --check --base "$BASE"
 
+  # bun run verify (docs/verify.md): rebuild every published run's analysis files from its committed receipts and fail on
+  # any value that differs, then rebuild the README rankings and scoreboard page from them and check the receipts'
+  # hashes. Keyless: every rebuild step runs with an empty environment. It needs full git history: the analysis scripts
+  # look up the commit that added each run's preregistration and refuse to run in a shallow clone.
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.3
+      - name: Install (frozen lockfile)
+        run: bun install --frozen-lockfile
+      - name: Rebuild every published analysis from its receipts
+        run: bun run verify
+
   # Every experiment in docs/benchmarks/preregistrations.json (and preregistrations.d/)
   # must have its preregistration committed before any of its result files. It reads git
   # history, so it needs the full clone.

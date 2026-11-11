@@ -1,0 +1,62 @@
+{
+  "run": "2026-10-30-host-harness-pilot",
+  "about": "Host-harness dev pilot: Claude Code, Codex, OpenClaw and Hermes on Haiku and GPT-6 Luna over the v0.3 dev tasks, with and without gbrain: per-cell tables, all-pairs comparisons and the six preregistered comparisons with cost, tokens and wall time.",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ],
+      "stdout": {
+        "file": "results/summary.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/compare-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/comparisons.json"
+      ],
+      "stdout": {
+        "file": "results/comparisons.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/host-pilot-tables.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/host-pilot-tables.json",
+        "results/host-pilot-tables.md"
+      ]
+    }
+  ],
+  "known": [
+    {
+      "file": "results/summary.md",
+      "line": 18,
+      "committed": "| claude-code-haiku-gbrain-told-mu-v03-dev | 94 | 100 | 2 / 201 | search 165, remember 18, recall 17, query 1 | 3 | 220 | 1 | 18 | 149 / 5 | 100 of 100 |",
+      "rebuilt": "| claude-code-haiku-gbrain-told-mu-v03-dev | 94 | 100 | 2 / 201 | search 165, remember 18, recall 17, query 1 | 3 | 220 | 1 | 18 (failed: invalid_params 1) | 149 / 5 | 100 of 100 |",
+      "reason": "summarize-run.ts started breaking failed gbrain writes down by error (write_errors, shown as '(failed: invalid_params 1)' after the Writes count) in commit 8ecc586471 (#176, 2026-11-03), after this file was committed; one write in this cell failed with invalid_params, the published Writes and Errors counts are unchanged, and only the breakdown is new."
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The per-shard and per-smoke spend sheets",
+      "file": "results/<shard>.spend-reconciliation.md",
+      "reason": "Each shard's spend sheet came from scripts/reconcile-provider.ts run on that shard's own results folder before the shards were merged. That script only reads files named exactly trials.jsonl, proxy-usage.ndjson and ledger.sqlite in one folder, and the committed copies are the merged trials.jsonl plus the shard's files under a prefix (for example cc-none.ledger.sqlite), so the shard's own inputs aren't laid out the way the script needs."
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "run": "2026-11-02-v04-transfer",
+  "about": "v04-transfer-2026-11: the v0.4 transfer check on the rehearsal world (one task per family, Opus 5.5 on OpenClaw and Hermes), its summaries as recorded and regraded. Its tables in the calibration report are rebuilt by 2026-11-02-v04-cal-r1's recipe.",
+  "requires": [
+    "tasks/multiuser/v0.4"
+  ],
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results",
+        "--seed",
+        "7"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results",
+        "--seed",
+        "7",
+        "--regraded"
+      ],
+      "outputs": [
+        "results/summary.regraded.json"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The regraded trial records",
+      "file": "results/trials.regraded.jsonl",
+      "reason": "Rebuilt by hand with scripts/regrade.ts, they match line for line apart from two fields, but every line records the grader's commit id and the absolute folder the evidence was read from, and verify compares .jsonl files as plain text with no way to set those two fields aside; regrade.ts also exits 1 whenever a grade moved, which verify reads as a failed step. The regraded summary and round files below are rebuilt from the committed copy."
+    },
+    {
+      "what": "The clean-arm audits",
+      "file": "results/clean-arm-audit.9bd9467f.json, results/clean-arm-audit.2aabafbf.json",
+      "reason": "scripts/v04/clean-arm-audit.ts audit needs each trial's own harness trace under logs/turns/, and only logs/adapter.log of each trial's harness logs was committed, so a rebuild would report every scored trial as unaudited."
+    }
+  ]
+}

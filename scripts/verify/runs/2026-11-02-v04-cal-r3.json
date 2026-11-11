@@ -1,0 +1,106 @@
+{
+  "run": "2026-11-02-v04-cal-r3",
+  "about": "v04-cal-r3-2026-11: round 3 of the v0.4 task calibration on Opus 5.5, its summaries as recorded and regraded, its round files and the decision that picked it.",
+  "requires": [
+    "tasks/multiuser/v0.4",
+    "docs/benchmarks/2026-11-02-v04-cal-r1/round",
+    "docs/benchmarks/2026-11-02-v04-cal-r2/round",
+    "docs/benchmarks/2026-11-02-v04-cal-r1/cell-costs.json"
+  ],
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results",
+        "--seed",
+        "7"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results",
+        "--seed",
+        "7",
+        "--regraded"
+      ],
+      "outputs": [
+        "results/summary.regraded.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/v04/next-round.ts",
+        "--round",
+        "docs/benchmarks/2026-11-02-v04-cal-r1/round/round-1.json",
+        "--round",
+        "docs/benchmarks/2026-11-02-v04-cal-r2/round/round-2.json",
+        "--cap-remaining",
+        "191.32",
+        "--costs",
+        "docs/benchmarks/2026-11-02-v04-cal-r1/cell-costs.json",
+        "--out",
+        "{run}/round/decision.json"
+      ],
+      "outputs": [
+        "round/decision.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/v04/round-results.ts",
+        "--results",
+        "{run}/results",
+        "--decision",
+        "{run}/round/decision.json",
+        "--out",
+        "{run}/round/round-3.json"
+      ],
+      "outputs": [
+        "round/round-3.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/v04/round-results.ts",
+        "--results",
+        "{run}/results",
+        "--decision",
+        "{run}/round/decision.json",
+        "--out",
+        "{run}/round/round-3.regraded.json",
+        "--regraded"
+      ],
+      "outputs": [
+        "round/round-3.regraded.json"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The regraded trial records",
+      "file": "results/trials.regraded.jsonl",
+      "reason": "Rebuilt by hand with scripts/regrade.ts, they match line for line apart from two fields, but every line records the grader's commit id and the absolute folder the evidence was read from, and verify compares .jsonl files as plain text with no way to set those two fields aside; regrade.ts also exits 1 whenever a grade moved, which verify reads as a failed step. The regraded summary and round files below are rebuilt from the committed copy."
+    },
+    {
+      "what": "The clean-arm audits",
+      "file": "results/clean-arm-audit.9bd9467f.json",
+      "reason": "scripts/v04/clean-arm-audit.ts audit needs each trial's own harness trace under logs/turns/, and only logs/adapter.log of each trial's harness logs was committed, so a rebuild would report every scored trial as unaudited."
+    },
+    {
+      "what": "The trial count check",
+      "file": "round/trial-count-check-r3.txt",
+      "reason": "A shell check, not a script in the repository, that counted planned trials, trial records and trial folders per cell on the run machine before the results were committed; its header names that machine's working folder."
+    }
+  ]
+}

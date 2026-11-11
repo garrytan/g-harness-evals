@@ -1,0 +1,61 @@
+{
+  "run": "2026-10-25-v02-pilot",
+  "about": "v0.2 dev pilot: OpenClaw (one session per conversation and one per turn), Hermes and QM on Haiku over the 15 v0.2 dev tasks: per-cell and per-task tables, harness-against-harness comparisons and the minimum detectable difference.",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ],
+      "stdout": {
+        "file": "results/summary.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/compare-run.ts",
+        "--results",
+        "{run}/results",
+        "--families",
+        "continuity,synthesis,corrections,approval_relay"
+      ],
+      "outputs": [
+        "results/comparisons.continuity-synthesis-corrections-approval_relay.json"
+      ],
+      "stdout": {
+        "file": "results/comparisons.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/paired-mdd.ts",
+        "--results",
+        "{run}/results",
+        "--families",
+        "continuity,synthesis,corrections,approval_relay"
+      ],
+      "stdout": {
+        "file": "results/paired-mdd.md"
+      }
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The per-shard spend sheets",
+      "file": "results/oc.spend-reconciliation.md, he, qm and oc-turn",
+      "reason": "Each shard's spend sheet came from scripts/reconcile-provider.ts run on that shard's own results folder before the shards were merged. That script only reads files named exactly trials.jsonl, proxy-usage.ndjson and ledger.sqlite in one folder, and the committed copies are the merged trials.jsonl plus the shard's files under a prefix (for example oc.ledger.sqlite), so the shard's own inputs aren't laid out the way the script needs."
+    },
+    {
+      "what": "The amended regrade",
+      "file": "results/regrade-amendment-2026-10-25.jsonl",
+      "reason": "scripts/regrade.ts exits with code 1 whenever a grade changes (13 do here), which verify treats as a failed step, and every line it writes carries the grader's commit id and the scratch folder's path, which verify can't skip in a JSON Lines file. A regrade by hand on 2026-11-09 gave the same grade, consent and approval result for all 180 trials; the lines differ only in the commit id, the evidence path and a 'moved' field the script added later."
+    }
+  ]
+}

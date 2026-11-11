@@ -1,0 +1,112 @@
+{
+  "run": "2026-11-03-qm-c4-told-live",
+  "about": "qm-c4-told-live-2026-11 (QM M1): gbrain as QM's memory on the C4 told-live tasks, Opus 5.5 and GPT-6.1 Sol (per-cell tables, the paired gbrain comparison, the provider-aware mechanism counts, the preregistered C4 analysis, the notebook exposure count and the commit-binding check).",
+  "requires": [
+    "tasks/multiuser/v0.3/dev",
+    "scripts/v03/mechanism.ts",
+    "scripts/recall-audit.ts",
+    "world/seed/world.json"
+  ],
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ],
+      "stdout": {
+        "file": "results/summary.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/compare-run.ts",
+        "--results",
+        "{run}/results",
+        "--pair",
+        "gbrain",
+        "--families",
+        "continuity,corrections"
+      ],
+      "outputs": [
+        "results/comparisons.gbrain.continuity-corrections.json"
+      ],
+      "stdout": {
+        "file": "results/compare-run.gbrain.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/v03/mechanism.ts",
+        "--results",
+        "{run}/results",
+        "--tasks",
+        "tasks/multiuser/v0.3/dev",
+        "--provider-aware",
+        "--out",
+        "{run}/results/mechanism"
+      ],
+      "outputs": [
+        "results/mechanism/mechanism.json",
+        "results/mechanism/mechanism.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "{run}/results/analysis/c4-analysis.ts",
+        "--results",
+        "{run}/results",
+        "--tasks",
+        "tasks/multiuser/v0.3/dev"
+      ],
+      "outputs": [
+        "results/analysis/c4-analysis.json",
+        "results/analysis/c4-analysis.md"
+      ],
+      "note": "The run's own analysis script, run from the scratch copy because it writes its output beside itself; the scratch copy sits at the same folder depth as the committed one, so its relative imports resolve to the same repository files."
+    },
+    {
+      "cmd": [
+        "python3",
+        "{run}/results/analysis/notebook-exposure.py",
+        "{run}/results",
+        "tasks/multiuser/v0.3/dev"
+      ],
+      "outputs": [
+        "results/analysis/notebook-exposure.json"
+      ]
+    },
+    {
+      "cmd": [
+        "python3",
+        "{run}/results/analysis/binding-check.py",
+        "{run}/results",
+        "{run}/prereg.json"
+      ],
+      "outputs": [
+        "results/analysis/binding-check.json"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "results/miscount-check/ (check.txt, summarize.out and mechanism.out, the keyless miscount gate)",
+      "reason": "It is a bash script (verify runs only bun and python3 steps) that writes into the committed results folder by a fixed path and stamps the checkout's commit id into check.txt; its numbers are summarize-run and mechanism.ts run over one memory-provider trial, the same scripts this recipe checks over every trial."
+    },
+    {
+      "what": "results/smoke-checks.json (the smoke conditions the report quotes in section 7)",
+      "reason": "It was read from each shard's smoke results folder on the controller machine, and those smoke trial folders were never committed (only their trials.jsonl and usage lines were)."
+    },
+    {
+      "what": "results/qm-opus.ledger-summary.txt, qm-sol.ledger-summary.txt and the two smoke ledger summaries (the spend table in section 13)",
+      "reason": "No script in the repository writes this format; each is a one-off query of a shard's ledger.sqlite, so there is no command to rebuild it with."
+    }
+  ]
+}

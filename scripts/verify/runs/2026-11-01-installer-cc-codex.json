@@ -1,0 +1,153 @@
+{
+  "run": "2026-11-01-installer-cc-codex",
+  "about": "installer-cc-codex-2026-11 and its access-rules rerun: whether gbrain's installer, compared with telling the harness about gbrain, changes cross-scope exposure on Claude Code and Codex (report.md and report-acl.md).",
+  "requires": [
+    "tasks/multiuser/v0.3/dev",
+    "world"
+  ],
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ],
+      "stdout": {
+        "file": "results/summary.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/compare-run.ts",
+        "--results",
+        "{run}/results",
+        "--pair",
+        "gbrain",
+        "--design",
+        "ladder"
+      ],
+      "outputs": [
+        "results/comparisons.gbrain.json"
+      ]
+    },
+    {
+      "cmd": [
+        "python3",
+        "{run}/results/exposure-mdd.py",
+        "{run}/results"
+      ],
+      "stdout": {
+        "file": "results/exposure-mdd.json"
+      }
+    },
+    {
+      "cmd": [
+        "python3",
+        "{run}/results/cost-intervals.py",
+        "{run}/results"
+      ],
+      "stdout": {
+        "file": "results/cost-intervals.json"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results-acl"
+      ],
+      "outputs": [
+        "results-acl/summary.json"
+      ],
+      "stdout": {
+        "file": "results-acl/summary.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/compare-run.ts",
+        "--results",
+        "{run}/results-acl",
+        "--pair",
+        "gbrain",
+        "--design",
+        "ladder"
+      ],
+      "outputs": [
+        "results-acl/comparisons.gbrain.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "{run}/results-acl/unmapped-audit.ts",
+        "--repo",
+        "{repo}",
+        "--results",
+        "{run}/results-acl"
+      ],
+      "stdout": {
+        "file": "results-acl/unmapped-audit.md"
+      }
+    }
+  ],
+  "volatile": [
+    {
+      "file": "results/comparisons.gbrain.json",
+      "path": "exposure.grader_commit",
+      "reason": "The commit id of the checkout that regraded exposure, different on every commit."
+    },
+    {
+      "file": "results-acl/comparisons.gbrain.json",
+      "path": "exposure.grader_commit",
+      "reason": "The commit id of the checkout that regraded exposure, different on every commit."
+    }
+  ],
+  "known": [
+    {
+      "file": "results/comparisons.gbrain.json",
+      "path": "exposure.ready",
+      "committed": true,
+      "rebuilt": false,
+      "reason": "compare-run.ts marks exposure not ready when the checkout grading it is not the commit the run executed at (9a2ac40b391d), and a rebuild always runs on a later commit; the exposure counts themselves match."
+    },
+    {
+      "file": "results-acl/summary.md",
+      "line": 12,
+      "committed": "| claude-code-opus-gbrain-installer-acl-mu-v03-dev | 51 | 51 | 3 / 189 | search 136, recall 26, remember 22, list_pages 3, whoami 1, forget 1 | 2 | 217 | 5 | 23 | 0 / 1 | 51 of 51 |",
+      "rebuilt": "| claude-code-opus-gbrain-installer-acl-mu-v03-dev | 51 | 51 | 3 / 189 | search 136, recall 26, remember 22, list_pages 3, whoami 1, forget 1 | 2 | 217 | 5 | 23 (failed: scope_denied 4, invalid_params 1) | 0 / 1 | 51 of 51 |",
+      "reason": "summarize-run.ts started listing why gbrain writes failed (the \"(failed: ...)\" note) in commit 8ecc586471 (#176, 2026-11-03), after the pinned commit 289aa043666f this file was made at; the counts are unchanged."
+    },
+    {
+      "file": "results-acl/summary.md",
+      "line": 13,
+      "committed": "| claude-code-opus-gbrain-told-acl-mu-v03-dev | 43 | 51 | 2 / 77 | search 55, recall 10, remember 10, list_pages 1, forget 1 | 1 | 381 | 1 | 11 | 0 / 1 | 51 of 51 |",
+      "rebuilt": "| claude-code-opus-gbrain-told-acl-mu-v03-dev | 43 | 51 | 2 / 77 | search 55, recall 10, remember 10, list_pages 1, forget 1 | 1 | 381 | 1 | 11 (failed: invalid_params 1) | 0 / 1 | 51 of 51 |",
+      "reason": "summarize-run.ts started listing why gbrain writes failed (the \"(failed: ...)\" note) in commit 8ecc586471 (#176, 2026-11-03), after the pinned commit 289aa043666f this file was made at; the counts are unchanged."
+    },
+    {
+      "file": "results-acl/summary.md",
+      "line": 15,
+      "committed": "| codex-sol-gbrain-installer-acl-mu-v03-dev | 51 | 51 | 8 / 394 | search 228, get_page 118, remember 21, whoami 12, recall 8, context_pack 7 | 1 | 81.5 | 70 | 21 | 0 / 0 | 51 of 51 |",
+      "rebuilt": "| codex-sol-gbrain-installer-acl-mu-v03-dev | 51 | 51 | 8 / 394 | search 228, get_page 118, remember 21, whoami 12, recall 8, context_pack 7 | 1 | 81.5 | 70 | 21 (failed: scope_denied 14) | 0 / 0 | 51 of 51 |",
+      "reason": "summarize-run.ts started listing why gbrain writes failed (the \"(failed: ...)\" note) in commit 8ecc586471 (#176, 2026-11-03), after the pinned commit 289aa043666f this file was made at; the counts are unchanged."
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The printed comparison tables (results/comparisons.gbrain.md and results-acl/comparisons.gbrain.md)",
+      "reason": "compare-run.ts prints the checkout's commit id inside one sentence of this file (line 88), so the text changes on every commit and verify can't compare it; rebuilt by hand on 2026-11-09, every other line matched, and the same numbers are in comparisons.gbrain.json, which verify does compare."
+    },
+    {
+      "what": "The transcript and stored-file audit (results/transcript-audit.md)",
+      "reason": "It was a search of the harness transcripts and harness state, which were left out of the commit (results/.gitignore), so nothing committed can redo it."
+    }
+  ]
+}

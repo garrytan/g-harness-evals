@@ -1,0 +1,95 @@
+{
+  "run": "2026-11-06-qm-s1-edition",
+  "about": "QM with the gstack edition against plain QM on review tasks, on Opus 5.5 and GPT-6.1 Sol: the frozen analysis (success difference, interval and verdict), the forced-exposure arm, the exposure rate and the report-only counts.",
+  "requires": [
+    "harnesses/qm/gstack/edition-analysis.ts"
+  ],
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "harnesses/qm/gstack/edition-analysis.ts",
+        "--turns",
+        "{run}/main/turns.jsonl",
+        "--grades",
+        "{run}/main/grades.jsonl",
+        "--tasks",
+        "24",
+        "--reps",
+        "18",
+        "--out",
+        "{run}/analysis/main-only"
+      ],
+      "outputs": [
+        "analysis/main-only/edition-analysis.json",
+        "analysis/main-only/edition-analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "python3",
+        "-c",
+        "import os, sys\nrun = sys.argv[1]\nfor name in ('turns', 'grades'):\n    with open(run + '/verify-main-plus-forced-' + name + '.jsonl', 'w') as out:\n        for part in ('main', 'forced'):\n            out.write(open(run + '/' + part + '/' + name + '.jsonl').read())\nos.execvp('bun', ['bun', '--no-env-file', 'harnesses/qm/gstack/edition-analysis.ts', '--turns', run + '/verify-main-plus-forced-turns.jsonl', '--grades', run + '/verify-main-plus-forced-grades.jsonl', '--tasks', '24', '--reps', '18', '--out', run + '/analysis/main-plus-forced'])\n",
+        "{run}"
+      ],
+      "outputs": [
+        "analysis/main-plus-forced/edition-analysis.json",
+        "analysis/main-plus-forced/edition-analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "harnesses/qm/gstack/exposure-rate.ts",
+        "--turns",
+        "{run}/main/turns.jsonl",
+        "--out",
+        "{run}/analysis/exposure-rate.json"
+      ],
+      "outputs": [
+        "analysis/exposure-rate.json"
+      ]
+    },
+    {
+      "cmd": [
+        "python3",
+        "{run}/analysis/report-extras.py"
+      ],
+      "outputs": [
+        "analysis/report-extras.json"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The merged main and forced trial files (main/turns.jsonl, main/grades.jsonl and the same under forced/)",
+      "reason": "They were merged from each machine's results with harnesses/qm/gstack/edition-merge.ts and graded with model judges; verify uses them as the run's receipts."
+    },
+    {
+      "what": "The headroom stage summary (headroom/headroom-summary.json)",
+      "reason": "headroom-analysis.py regrades with task keys from a private working folder that was never committed, so it can't run from this repository."
+    },
+    {
+      "what": "The power simulations (power/power_rule.json and power/power_amendment.json)",
+      "reason": "They are planning simulations made before the run, not results computed from its receipts."
+    },
+    {
+      "what": "The calibration and judge agreement files (calibration/summary.json, calibration/judge/agreement.json and plan-band.json)",
+      "reason": "They come from a calibration stage whose judge readings were made with paid model calls; no keyless script rebuilds them from committed files."
+    },
+    {
+      "what": "The pilot counts (pilot/)",
+      "reason": "pilot-analysis.py reads the pilot's trial folders, which were not committed."
+    }
+  ],
+  "public_copy_omits": [
+    {
+      "file": "analysis/main-only/edition-analysis.json",
+      "reason": "it holds each cell's dollar totals, which the public copy does not publish; edition-analysis.md beside it, with cost per task and per success, is compared"
+    },
+    {
+      "file": "analysis/main-plus-forced/edition-analysis.json",
+      "reason": "it holds each cell's dollar totals, which the public copy does not publish; edition-analysis.md beside it, with cost per task and per success, is compared"
+    }
+  ]
+}

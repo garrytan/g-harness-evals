@@ -1,0 +1,128 @@
+{
+  "run": "2026-10-28-gbrain-memory-fix-b",
+  "about": "gbrain-memory-fix-2026-10b: the memory run's continuity and corrections tasks again at gbrain's saved-facts fix (per-cell tables, the paired gbrain comparison, secondary endpoints, minimum detectable differences, the between-run table and the saved-facts mechanism counts).",
+  "requires": [
+    "docs/benchmarks/2026-10-26-gbrain-memory/results"
+  ],
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ],
+      "stdout": {
+        "file": "results/summary.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/compare-run.ts",
+        "--results",
+        "{run}/results",
+        "--pair",
+        "gbrain",
+        "--families",
+        "continuity,corrections",
+        "--seed",
+        "7",
+        "--draws",
+        "10000"
+      ],
+      "outputs": [
+        "results/comparisons.gbrain.continuity-corrections.json"
+      ],
+      "stdout": {
+        "file": "results/comparisons.gbrain.continuity-corrections.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/secondary-endpoints.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/secondary-endpoints.json"
+      ],
+      "stdout": {
+        "file": "results/secondary-endpoints.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/paired-mdd.ts",
+        "--results",
+        "docs/benchmarks/2026-10-28-gbrain-memory-fix-b/results",
+        "--families",
+        "continuity,corrections"
+      ],
+      "stdout": {
+        "file": "results/paired-mdd.md"
+      },
+      "note": "paired-mdd.ts only reads the folder, so it reads the committed one by its repository path."
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/between-run.ts",
+        "--results",
+        "{run}/results",
+        "--against",
+        "docs/benchmarks/2026-10-26-gbrain-memory/results",
+        "--cell-suffix",
+        "-mu-memory-fix=-mu-memory",
+        "--out",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/between-run.json",
+        "results/between-run.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/memory-fix-mechanism.ts",
+        "--results",
+        "{run}/results",
+        "--out",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/mechanism.json",
+        "results/mechanism.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/memory-fix-per-trial.ts",
+        "--results",
+        "{run}/results",
+        "--out",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/mechanism-trials.json",
+        "results/mechanism-trials.md"
+      ]
+    }
+  ],
+  "known": [
+    {
+      "file": "results/summary.md",
+      "line": 19,
+      "committed": "| openclaw-sonnet-gbrain-told-live-mu-memory-fix | 39 | 40 | 1 / 81 | search 76, remember 5 | 4 | 219 | 3 | 5 | 0 / 0 | 40 of 40 |",
+      "rebuilt": "| openclaw-sonnet-gbrain-told-live-mu-memory-fix | 39 | 40 | 1 / 81 | search 76, remember 5 | 4 | 219 | 3 | 5 (failed: invalid_params 3) | 0 / 0 | 40 of 40 |",
+      "reason": "summarize-run.ts started showing why brain writes failed, in the writes column, in commit 8ecc586471 (#176, 2026-11-03), after this table was published; the published write count is unchanged and only the note in brackets is new."
+    }
+  ]
+}

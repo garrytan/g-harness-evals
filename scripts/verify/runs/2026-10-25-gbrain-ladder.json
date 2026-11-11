@@ -1,0 +1,149 @@
+{
+  "run": "2026-10-25-gbrain-ladder",
+  "about": "gbrain-ladder-2026-10: the gbrain install ladder (none, mcp, told, docs, verbs, semantic rungs), OpenClaw and Hermes on Haiku (per-cell tables, the paired ladder comparisons and the minimum detectable differences).",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ],
+      "stdout": {
+        "file": "results/summary.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/compare-run.ts",
+        "--results",
+        "{run}/results",
+        "--pair",
+        "gbrain"
+      ],
+      "outputs": [
+        "results/comparisons.gbrain.json"
+      ],
+      "stdout": {
+        "file": "results/comparisons.gbrain.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/paired-mdd.ts",
+        "--ladder",
+        "--results",
+        "docs/benchmarks/2026-10-25-gbrain-ladder/results"
+      ],
+      "stdout": {
+        "file": "results/mdd.md"
+      },
+      "note": "paired-mdd.ts only reads the folder, and prints the path it was given in its table, so it reads the committed folder by its repository path, as the published table shows."
+    }
+  ],
+  "known": [
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 145,
+      "committed": "| Harness | Model | Rung | Cell | none cell | Pass | gbrain use | Cross-scope via gbrain |",
+      "rebuilt": "| Harness | Model | Rung | Cell | none cell | Pass | gbrain use | Cross-scope via gbrain | Exposure via gbrain |",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    },
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 146,
+      "committed": "|---|---|---|---|---|---|---|---|",
+      "rebuilt": "|---|---|---|---|---|---|---|---|---|",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    },
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 147,
+      "committed": "| openclaw | anthropic:claude-haiku-5-5 | mcp | `openclaw-haiku-gbrain-mcp-mu-heldout` | `openclaw-haiku-none-mu-heldout` | 62 / 99, 60 / 99; -3 [-13, +5] | 0 / 99, 2 / 99; +2 [+0, +6] | 0 / 99, 0 / 99; +0 [+0, +0] |",
+      "rebuilt": "| openclaw | anthropic:claude-haiku-5-5 | mcp | `openclaw-haiku-gbrain-mcp-mu-heldout` | `openclaw-haiku-none-mu-heldout` | 62 / 99, 60 / 99; -3 [-13, +5] | 0 / 99, 2 / 99; +2 [+0, +6] | 0 / 99, 0 / 99; +0 [+0, +0] | 0 / 99, 0 / 99; +0 [+0, +0] |",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    },
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 148,
+      "committed": "| openclaw | anthropic:claude-haiku-5-5 | told | `openclaw-haiku-gbrain-told-mu-heldout` | `openclaw-haiku-none-mu-heldout` | 62 / 99, 58 / 99; -4 [-20, +13] | 0 / 99, 89 / 99; +91 [+80, +100] | 0 / 99, 13 / 99; +13 [+3, +26] |",
+      "rebuilt": "| openclaw | anthropic:claude-haiku-5-5 | told | `openclaw-haiku-gbrain-told-mu-heldout` | `openclaw-haiku-none-mu-heldout` | 62 / 99, 58 / 99; -4 [-20, +13] | 0 / 99, 89 / 99; +91 [+80, +100] | 0 / 99, 13 / 99; +13 [+3, +26] | 0 / 99, 13 / 99; +13 [+3, +26] |",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    },
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 149,
+      "committed": "| openclaw | anthropic:claude-haiku-5-5 | docs | `openclaw-haiku-gbrain-docs-mu-heldout` | `openclaw-haiku-none-mu-heldout` | 62 / 99, 54 / 100; -8 [-16, -1] | 0 / 99, 0 / 100; +0 [+0, +0] | 0 / 99, 0 / 100; +0 [+0, +0] |",
+      "rebuilt": "| openclaw | anthropic:claude-haiku-5-5 | docs | `openclaw-haiku-gbrain-docs-mu-heldout` | `openclaw-haiku-none-mu-heldout` | 62 / 99, 54 / 100; -8 [-16, -1] | 0 / 99, 0 / 100; +0 [+0, +0] | 0 / 99, 0 / 100; +0 [+0, +0] | 0 / 99, 0 / 100; +0 [+0, +0] |",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    },
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 150,
+      "committed": "| openclaw | anthropic:claude-haiku-5-5 | verbs-told | `openclaw-haiku-gbrain-verbs-told-mu-heldout` | `openclaw-haiku-none-mu-heldout` | 62 / 99, 67 / 99; +5 [-8, +20] | 0 / 99, 91 / 99; +92 [+82, +100] | 0 / 99, 0 / 99; +0 [+0, +0] |",
+      "rebuilt": "| openclaw | anthropic:claude-haiku-5-5 | verbs-told | `openclaw-haiku-gbrain-verbs-told-mu-heldout` | `openclaw-haiku-none-mu-heldout` | 62 / 99, 67 / 99; +5 [-8, +20] | 0 / 99, 91 / 99; +92 [+82, +100] | 0 / 99, 0 / 99; +0 [+0, +0] | 0 / 99, 0 / 99; +0 [+0, +0] |",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    },
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 151,
+      "committed": "| openclaw | anthropic:claude-haiku-5-5 | semantic-told | `openclaw-haiku-gbrain-semantic-told-mu-heldout` | `openclaw-haiku-none-mu-heldout` | 62 / 99, 18 / 96; -45 [-64, -26] | 0 / 99, 88 / 96; +92 [+78, +100] | 0 / 99, 62 / 96; +64 [+45, +83] |",
+      "rebuilt": "| openclaw | anthropic:claude-haiku-5-5 | semantic-told | `openclaw-haiku-gbrain-semantic-told-mu-heldout` | `openclaw-haiku-none-mu-heldout` | 62 / 99, 18 / 96; -45 [-64, -26] | 0 / 99, 88 / 96; +92 [+78, +100] | 0 / 99, 62 / 96; +64 [+45, +83] | 0 / 99, 62 / 96; +64 [+45, +83] |",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    },
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 152,
+      "committed": "| openclaw | anthropic:claude-haiku-5-5 | docs-semantic | `openclaw-haiku-gbrain-docs-semantic-mu-heldout` | `openclaw-haiku-none-mu-heldout` | 62 / 99, 63 / 100; +0 [-6, +6] | 0 / 99, 0 / 100; +0 [+0, +0] | 0 / 99, 0 / 100; +0 [+0, +0] |",
+      "rebuilt": "| openclaw | anthropic:claude-haiku-5-5 | docs-semantic | `openclaw-haiku-gbrain-docs-semantic-mu-heldout` | `openclaw-haiku-none-mu-heldout` | 62 / 99, 63 / 100; +0 [-6, +6] | 0 / 99, 0 / 100; +0 [+0, +0] | 0 / 99, 0 / 100; +0 [+0, +0] | 0 / 99, 0 / 100; +0 [+0, +0] |",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    },
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 153,
+      "committed": "| hermes | anthropic:claude-haiku-5-5 | mcp | `hermes-haiku-gbrain-mcp-mu-heldout` | `hermes-haiku-none-mu-heldout` | 65 / 100, 65 / 100; +0 [-8, +8] | 0 / 100, 0 / 100; +0 [+0, +0] | 0 / 100, 0 / 100; +0 [+0, +0] |",
+      "rebuilt": "| hermes | anthropic:claude-haiku-5-5 | mcp | `hermes-haiku-gbrain-mcp-mu-heldout` | `hermes-haiku-none-mu-heldout` | 65 / 100, 65 / 100; +0 [-8, +8] | 0 / 100, 0 / 100; +0 [+0, +0] | 0 / 100, 0 / 100; +0 [+0, +0] | 0 / 100, 0 / 100; +0 [+0, +0] |",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    },
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 154,
+      "committed": "| hermes | anthropic:claude-haiku-5-5 | told | `hermes-haiku-gbrain-told-mu-heldout` | `hermes-haiku-none-mu-heldout` | 65 / 100, 66 / 100; +1 [-15, +17] | 0 / 100, 94 / 100; +94 [+83, +100] | 0 / 100, 8 / 100; +8 [+0, +20] |",
+      "rebuilt": "| hermes | anthropic:claude-haiku-5-5 | told | `hermes-haiku-gbrain-told-mu-heldout` | `hermes-haiku-none-mu-heldout` | 65 / 100, 66 / 100; +1 [-15, +17] | 0 / 100, 94 / 100; +94 [+83, +100] | 0 / 100, 8 / 100; +8 [+0, +20] | 0 / 100, 8 / 100; +8 [+0, +20] |",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    },
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 155,
+      "committed": "| hermes | anthropic:claude-haiku-5-5 | docs | `hermes-haiku-gbrain-docs-mu-heldout` | `hermes-haiku-none-mu-heldout` | 65 / 100, 67 / 100; +2 [-5, +9] | 0 / 100, 1 / 100; +1 [+0, +3] | 0 / 100, 0 / 100; +0 [+0, +0] |",
+      "rebuilt": "| hermes | anthropic:claude-haiku-5-5 | docs | `hermes-haiku-gbrain-docs-mu-heldout` | `hermes-haiku-none-mu-heldout` | 65 / 100, 67 / 100; +2 [-5, +9] | 0 / 100, 1 / 100; +1 [+0, +3] | 0 / 100, 0 / 100; +0 [+0, +0] | 0 / 100, 0 / 100; +0 [+0, +0] |",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    },
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 156,
+      "committed": "| hermes | anthropic:claude-haiku-5-5 | verbs-told | `hermes-haiku-gbrain-verbs-told-mu-heldout` | `hermes-haiku-none-mu-heldout` | 65 / 100, 74 / 100; +9 [+0, +21] | 0 / 100, 95 / 100; +95 [+85, +100] | 0 / 100, 0 / 100; +0 [+0, +0] |",
+      "rebuilt": "| hermes | anthropic:claude-haiku-5-5 | verbs-told | `hermes-haiku-gbrain-verbs-told-mu-heldout` | `hermes-haiku-none-mu-heldout` | 65 / 100, 74 / 100; +9 [+0, +21] | 0 / 100, 95 / 100; +95 [+85, +100] | 0 / 100, 0 / 100; +0 [+0, +0] | 0 / 100, 0 / 100; +0 [+0, +0] |",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    },
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 157,
+      "committed": "| hermes | anthropic:claude-haiku-5-5 | semantic-told | `hermes-haiku-gbrain-semantic-told-mu-heldout` | `hermes-haiku-none-mu-heldout` | 65 / 100, 28 / 99; -37 [-58, -18] | 0 / 100, 94 / 99; +95 [+86, +100] | 0 / 100, 61 / 99; +62 [+43, +79] |",
+      "rebuilt": "| hermes | anthropic:claude-haiku-5-5 | semantic-told | `hermes-haiku-gbrain-semantic-told-mu-heldout` | `hermes-haiku-none-mu-heldout` | 65 / 100, 28 / 99; -37 [-58, -18] | 0 / 100, 94 / 99; +95 [+86, +100] | 0 / 100, 61 / 99; +62 [+43, +79] | 0 / 100, 61 / 99; +62 [+43, +79] |",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    },
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 158,
+      "committed": "| hermes | anthropic:claude-haiku-5-5 | docs-semantic | `hermes-haiku-gbrain-docs-semantic-mu-heldout` | `hermes-haiku-none-mu-heldout` | 65 / 100, 61 / 100; -4 [-13, +5] | 0 / 100, 1 / 100; +1 [+0, +3] | 0 / 100, 1 / 100; +1 [+0, +3] |",
+      "rebuilt": "| hermes | anthropic:claude-haiku-5-5 | docs-semantic | `hermes-haiku-gbrain-docs-semantic-mu-heldout` | `hermes-haiku-none-mu-heldout` | 65 / 100, 61 / 100; -4 [-13, +5] | 0 / 100, 1 / 100; +1 [+0, +3] | 0 / 100, 1 / 100; +1 [+0, +3] | 0 / 100, 1 / 100; +1 [+0, +3] |",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "run": "2026-10-25-qm-inner-harness",
+  "about": "QM inner harness: QM with its Pi engine against QM with the Claude Agent SDK, both on Haiku, over the 20 held-out multi-user tasks, with paired comparisons.",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/compare-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/comparisons.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/compare-run.ts",
+        "--results",
+        "{run}/results",
+        "--families",
+        "scope_isolation,shared_channel,org_security,handoff"
+      ],
+      "outputs": [
+        "results/comparisons.scope_isolation-shared_channel-org_security-handoff.json"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The failure taxonomy (failure labels per failed check)",
+      "file": "results/taxonomy.json and results/taxonomy.md",
+      "reason": "Not compared yet. taxonomy.ts writes taxonomy.json and taxonomy.md together, and the Markdown file carries the checkout's commit id in its Provenance line, which changes on every commit, and this recipe does not yet list that line as volatile the way the company-brain recipe does. A rebuild by hand on 2026-11-09 gave the same failure counts in both files; the only differences were the classifier version (1.0.0 to 1.1.0, commit 9c82948625 added a forbidden_event label that no failure here gets), that label's legend line, the commit id and the time written."
+    }
+  ]
+}

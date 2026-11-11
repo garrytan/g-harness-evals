@@ -1,0 +1,28 @@
+{
+  "run": "2026-11-10-harness-zero-h2h-recall-rerun",
+  "about": "The gbrain recall rerun: four review tasks rerun after the recall fix, with exposure counts, the three gbrain readings on the rerun alone and spliced into the published head-to-head, and the keep-or-fix verdict.",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/corrections/recall-rerun-analysis.ts",
+        "--rerun",
+        "{run}/results",
+        "--published",
+        "docs/benchmarks/2026-11-06-harness-zero-h2h/results",
+        "--out",
+        "{run}/analysis"
+      ],
+      "outputs": [
+        "analysis/analysis.json",
+        "analysis/analysis.md"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The merged trial list and per-shard summaries (results/trials.jsonl, manifest.json and each shard's run-summary.json and manifest.json)",
+      "reason": "They were written by the run itself and merged from each machine's results; verify uses them as the run's receipts."
+    }
+  ]
+}

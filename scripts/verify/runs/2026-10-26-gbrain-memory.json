@@ -1,0 +1,123 @@
+{
+  "run": "2026-10-26-gbrain-memory",
+  "about": "gbrain-memory-2026-10: a member brain that fills during the scenario, three harnesses on Haiku and Sonnet (per-cell tables, the paired gbrain comparisons over the primary and secondary task families, the secondary endpoints, the minimum detectable differences, and the later recall re-reading).",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ],
+      "stdout": {
+        "file": "results/summary.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/compare-run.ts",
+        "--results",
+        "{run}/results",
+        "--pair",
+        "gbrain",
+        "--families",
+        "continuity,corrections",
+        "--seed",
+        "7",
+        "--draws",
+        "10000"
+      ],
+      "outputs": [
+        "results/comparisons.gbrain.continuity-corrections.json"
+      ],
+      "stdout": {
+        "file": "results/comparisons.gbrain.continuity-corrections.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/compare-run.ts",
+        "--results",
+        "{run}/results",
+        "--pair",
+        "gbrain",
+        "--families",
+        "continuity,synthesis,corrections,approval_relay",
+        "--seed",
+        "7",
+        "--draws",
+        "10000"
+      ],
+      "outputs": [
+        "results/comparisons.gbrain.continuity-synthesis-corrections-approval_relay.json"
+      ],
+      "stdout": {
+        "file": "results/comparisons.gbrain.continuity-synthesis-corrections-approval_relay.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/secondary-endpoints.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/secondary-endpoints.json"
+      ],
+      "stdout": {
+        "file": "results/secondary-endpoints.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/paired-mdd.ts",
+        "--results",
+        "docs/benchmarks/2026-10-26-gbrain-memory/results",
+        "--families",
+        "continuity,corrections"
+      ],
+      "stdout": {
+        "file": "results/paired-mdd.md"
+      },
+      "note": "paired-mdd.ts only reads the folder, so it reads the committed one by its repository path."
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/recall-audit.ts",
+        "--results",
+        "{run}/results",
+        "--out",
+        "{run}/recall-rereading"
+      ],
+      "outputs": [
+        "recall-rereading/calls.jsonl",
+        "recall-rereading/turns.jsonl",
+        "recall-rereading/summary.json",
+        "recall-rereading/summary.md"
+      ]
+    }
+  ],
+  "known": [
+    {
+      "file": "results/summary.md",
+      "line": 29,
+      "committed": "| qm-pi-haiku-gbrain-told-live-mu-memory | 73 | 74 | 1 / 124 | search 120, remember 2, recall 1, get_page 1 | 4 | 267 | 1 | 2 | 0 / 0 | 75 of 75 |",
+      "rebuilt": "| qm-pi-haiku-gbrain-told-live-mu-memory | 73 | 74 | 1 / 124 | search 120, remember 2, recall 1, get_page 1 | 4 | 267 | 1 | 2 (failed: scope_denied 1) | 0 / 0 | 75 of 75 |",
+      "reason": "summarize-run.ts started showing why brain writes failed, in the writes column, in commit 8ecc586471 (#176, 2026-11-03), after this table was published; the published write count is unchanged and only the note in brackets is new."
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "results/hot-memory-blocks.json and results/hot-memory-excerpt.json",
+      "reason": "Both were copied out of Hermes Agent's own session store (state/hermes/state.db) in each trial, and that store was never committed (the results .gitignore keeps harness state out), so there is nothing to rebuild them from."
+    }
+  ]
+}

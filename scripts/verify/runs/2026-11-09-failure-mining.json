@@ -1,0 +1,47 @@
+{
+  "run": "2026-11-09-failure-mining",
+  "about": "Failure mining: one root cause per failed multi-user trial from a frozen codebook, the labeller's agreement checks against two gold label sets, the ranked failure classes, and the paired gbrain and no-brain comparison.",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/failure-mining/analyze.ts",
+        "--codebook",
+        "{run}/codebook.json",
+        "--labels",
+        "{run}/results/labels/particle.jsonl",
+        "--out",
+        "{run}/results",
+        "--corpus",
+        "{run}/corpus",
+        "--sdk-labels",
+        "{run}/results/labels/particle-sdk.jsonl",
+        "--gold-a",
+        "{run}/results/labels/gold-opus.jsonl",
+        "--gold-b",
+        "{run}/results/labels/gold-astra.jsonl",
+        "--retest-a",
+        "{run}/results/labels/particle.jsonl",
+        "--retest-b",
+        "{run}/results/labels/retest-particle.jsonl",
+        "--retest-opus-a",
+        "{run}/results/labels/gold-opus.jsonl",
+        "--retest-opus-b",
+        "{run}/results/labels/retest-opus.jsonl"
+      ],
+      "outputs": [
+        "results/analysis.md"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The labels (results/labels/*.jsonl) and the corpus they label (corpus/)",
+      "reason": "The labels came from paid model calls and the corpus was built from earlier runs' receipts; verify uses them as this run's receipts."
+    },
+    {
+      "what": "The exploratory numbers in report.md (exploratory.py)",
+      "reason": "They are marked as not preregistered, and the script reads a corpus manifest and labels given on its command line and prints its tables instead of writing a published file."
+    }
+  ]
+}

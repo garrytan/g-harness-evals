@@ -1,0 +1,97 @@
+{
+  "run": "2026-10-31-anatomy-instruction-route",
+  "about": "anatomy-instruction-route-2026-11: where gbrain's brain-first rule is placed (tool description, startup file, hook, system prompt) on OpenClaw and Hermes with Haiku; the instruction-followed endpoint, the route secondary endpoints, the per-cell summary and the list of cross-scope failures.",
+  "requires": [
+    "tasks/multiuser/v0.3/dev"
+  ],
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/instruction-followed.ts",
+        "--results",
+        "{run}/results",
+        "--prereg",
+        "{run}/prereg.json",
+        "--out",
+        "{run}/results/instruction-followed"
+      ],
+      "outputs": [
+        "results/instruction-followed/instruction-followed.json",
+        "results/instruction-followed/instruction-followed.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/instruction-route-secondary.ts",
+        "--results",
+        "{run}/results",
+        "--prereg",
+        "{run}/prereg.json",
+        "--out",
+        "{run}/results/route-secondary"
+      ],
+      "outputs": [
+        "results/route-secondary/route-secondary.json",
+        "results/route-secondary/route-secondary.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ],
+      "stdout": {
+        "file": "results/summary.md"
+      }
+    },
+    {
+      "cmd": [
+        "python3",
+        "-c",
+        "import json, sys\nids = []\nfor line in open(sys.argv[1] + '/results/trials.jsonl'):\n    if line.strip():\n        t = json.loads(line)\n        if any(p['id'] == 'no_cross_scope_reads' and not p['passed'] for p in t.get('predicates', [])):\n            ids.append(t['trial_id'].split('/', 1)[1])\nprint('\\n'.join(sorted(ids)))\n",
+        "{run}"
+      ],
+      "stdout": {
+        "file": "results/cross-scope-failures.txt"
+      },
+      "note": "No script in the repository writes this list. It is every trial whose no_cross_scope_reads check failed, by trial id without the run prefix, sorted; this one-line filter over trials.jsonl reproduces it."
+    }
+  ],
+  "known": [
+    {
+      "file": "results/summary.md",
+      "line": 20,
+      "committed": "| hermes-haiku-gbrain-route-system-mu-v03-dev | 65 | 65 | 3 / 175 | search 158, remember 10, recall 2, whoami 2, get_page 2, query 1 | 4 | 163 | 5 | 10 | 24 / 0 | 65 of 65 |",
+      "rebuilt": "| hermes-haiku-gbrain-route-system-mu-v03-dev | 65 | 65 | 3 / 175 | search 158, remember 10, recall 2, whoami 2, get_page 2, query 1 | 4 | 163 | 5 | 10 (failed: invalid_params 4, scope_denied 1) | 24 / 0 | 65 of 65 |",
+      "reason": "summarize-run.ts began printing failed gbrain writes by error type in #176 (8ecc586471, 2026-11-03), after this table was committed, so the gbrain writes cell gains a '(failed: ...)' note; the write count itself is unchanged."
+    },
+    {
+      "file": "results/summary.md",
+      "line": 21,
+      "committed": "| hermes-haiku-gbrain-route-startup-mu-v03-dev | 65 | 65 | 3 / 166 | search 149, remember 14, query 2, recall 1 | 3 | 176.5 | 3 | 14 | 17 / 0 | 65 of 65 |",
+      "rebuilt": "| hermes-haiku-gbrain-route-startup-mu-v03-dev | 65 | 65 | 3 / 166 | search 149, remember 14, query 2, recall 1 | 3 | 176.5 | 3 | 14 (failed: invalid_params 3) | 17 / 0 | 65 of 65 |",
+      "reason": "summarize-run.ts began printing failed gbrain writes by error type in #176 (8ecc586471, 2026-11-03), after this table was committed, so the gbrain writes cell gains a '(failed: ...)' note; the write count itself is unchanged."
+    },
+    {
+      "file": "results/summary.md",
+      "line": 22,
+      "committed": "| hermes-haiku-gbrain-route-hook-mu-v03-dev | 65 | 65 | 3 / 194 | search 169, remember 15, query 4, whoami 3, recall 2, get_page 1 | 4 | 168.5 | 2 | 15 | 24 / 1 | 65 of 65 |",
+      "rebuilt": "| hermes-haiku-gbrain-route-hook-mu-v03-dev | 65 | 65 | 3 / 194 | search 169, remember 15, query 4, whoami 3, recall 2, get_page 1 | 4 | 168.5 | 2 | 15 (failed: invalid_params 2) | 24 / 1 | 65 of 65 |",
+      "reason": "summarize-run.ts began printing failed gbrain writes by error type in #176 (8ecc586471, 2026-11-03), after this table was committed, so the gbrain writes cell gains a '(failed: ...)' note; the write count itself is unchanged."
+    },
+    {
+      "file": "results/summary.md",
+      "line": 23,
+      "committed": "| hermes-haiku-gbrain-route-skill-mu-v03-dev | 4 | 65 | 0 / 5 | remember 3, recall 1, search 1 | 0 | 234 | 1 | 3 | 0 / 0 | 65 of 65 |",
+      "rebuilt": "| hermes-haiku-gbrain-route-skill-mu-v03-dev | 4 | 65 | 0 / 5 | remember 3, recall 1, search 1 | 0 | 234 | 1 | 3 (failed: scope_denied 1) | 0 / 0 | 65 of 65 |",
+      "reason": "summarize-run.ts began printing failed gbrain writes by error type in #176 (8ecc586471, 2026-11-03), after this table was committed, so the gbrain writes cell gains a '(failed: ...)' note; the write count itself is unchanged."
+    }
+  ]
+}

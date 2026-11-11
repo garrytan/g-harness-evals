@@ -1,0 +1,78 @@
+{
+  "run": "2026-11-01-tool-discipline-start",
+  "about": "tool-discipline-start-2026-11 and its Hermes rerun: whether gstack's start hook gets OpenClaw and Hermes on Opus 5.5 to actually start the matching gstack skill (the preregistered verdicts in report.md and report-hermes-r2.md).",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/tool-discipline/panel-score.ts",
+        "{run}/results/cells.jsonl",
+        "--manifest",
+        "{run}/results/manifest.json"
+      ],
+      "stdout": {
+        "file": "results/verdict.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/tool-discipline/panel-score.ts",
+        "{run}/results/cells.jsonl",
+        "--manifest",
+        "{run}/results/manifest.json",
+        "--json"
+      ],
+      "stdout": {
+        "file": "results/verdict.json"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/tool-discipline/panel-score-r2.ts",
+        "{run}/results-hermes-r2/cells.jsonl",
+        "--manifest",
+        "{run}/results-hermes-r2/manifest.json"
+      ],
+      "stdout": {
+        "file": "results-hermes-r2/verdict.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/tool-discipline/panel-score-r2.ts",
+        "{run}/results-hermes-r2/cells.jsonl",
+        "--manifest",
+        "{run}/results-hermes-r2/manifest.json",
+        "--json"
+      ],
+      "stdout": {
+        "file": "results-hermes-r2/verdict.json"
+      }
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The per-trial run reports (results/report.md and results-hermes-r2/report.md)",
+      "reason": "scripts/gsta-135/report.ts needs the --summary file that discovery.sh wrote from the shard's ledger at the end of the run, and that file was never committed (only its text inside report.md)."
+    },
+    {
+      "what": "The per-trial evidence and cells (results*/cells.jsonl, evidence/ and register-checks.jsonl)",
+      "reason": "scripts/gsta-135/evidence.ts builds them from the harness transcripts and Hermes state.db files, which were not committed; cells.jsonl is the input the verdicts above are rebuilt from."
+    },
+    {
+      "what": "The clean-arm audit (results-hermes-r2/clean-arm-audit.json and clean-arm-audit.md)",
+      "reason": "scripts/tool-discipline/clean-arm-audit.ts reads each trial's Hermes state.db and agent.log, which were not committed."
+    },
+    {
+      "what": "The Hermes approval finding (results/hermes-approval/blocks.jsonl, detector.json and tirith-download.json)",
+      "reason": "They were counted from each trial's Hermes agent.log, which was not committed, and no script in this repository writes them."
+    },
+    {
+      "what": "The runtime gates (runtime-preflight.json, results-hermes-r2/clean-arms.jsonl and tirith-fence.jsonl)",
+      "reason": "They come from preflight and fence checks that start the harness containers (Docker), not from committed files."
+    }
+  ]
+}

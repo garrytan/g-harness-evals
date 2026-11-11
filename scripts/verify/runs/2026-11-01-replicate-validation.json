@@ -1,0 +1,15 @@
+{
+  "run": "2026-11-01-replicate-validation",
+  "about": "replicate-validation-2026-11: a tooling check of scripts/replicate.ts, which reran one Sonnet 5.5 cell of an earlier finding under a hard spending cap and gave WITHIN BAND (15 of 20).",
+  "steps": [],
+  "not_rebuilt": [
+    {
+      "what": "The rerun reports (results/step2/replicate-report.json and results/step3/replicate-report.json) and the step outputs (step2.out, step2b.out, step3.out)",
+      "reason": "scripts/replicate.ts writes them only while it reruns the cell, which calls the model under a paid lease and needs Docker; it has no keyless mode that rebuilds a report from a finished run's trials.jsonl."
+    },
+    {
+      "what": "The free reanalysis and estimate (results/step1/step1-reanalyze.out and step1-estimate.out)",
+      "reason": "replicate.ts --reanalyze and --estimate-only read the finding's trial bundle (h1.bundle.tar.gz), which sat in the validator's work folder and was never committed, and the reanalysis also has to run at the bundle's commit."
+    }
+  ]
+}

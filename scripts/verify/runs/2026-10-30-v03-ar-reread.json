@@ -1,0 +1,59 @@
+{
+  "run": "2026-10-30-v03-ar-reread",
+  "about": "v03-ar-reread-2026-10: the approval relay re-read on Haiku after the template fix, its per-cell summary and the deciding and descriptive go-rule tables.",
+  "requires": [
+    "tasks/multiuser/v0.3/dev"
+  ],
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ],
+      "stdout": {
+        "file": "results/summary.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/v03/pilot-tables.ts",
+        "--results",
+        "{run}/results",
+        "--tasks",
+        "tasks/multiuser/v0.3/dev",
+        "--out",
+        "{run}/results/pilot-tables-deciding",
+        "--told",
+        "openclaw-haiku-gbrain-told-scoped-mu-v03-ar,hermes-haiku-gbrain-told-scoped-mu-v03-ar"
+      ],
+      "outputs": [
+        "results/pilot-tables-deciding/pilot-tables.json",
+        "results/pilot-tables-deciding/pilot-tables.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/v03/pilot-tables.ts",
+        "--results",
+        "{run}/results",
+        "--tasks",
+        "tasks/multiuser/v0.3/dev",
+        "--out",
+        "{run}/results/pilot-tables-descriptive",
+        "--told",
+        "openclaw-haiku-gbrain-told-mu-v03-ar,hermes-haiku-gbrain-told-mu-v03-ar"
+      ],
+      "outputs": [
+        "results/pilot-tables-descriptive/pilot-tables.json",
+        "results/pilot-tables-descriptive/pilot-tables.md"
+      ]
+    }
+  ]
+}

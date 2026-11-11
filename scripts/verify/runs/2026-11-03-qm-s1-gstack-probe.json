@@ -1,0 +1,33 @@
+{
+  "run": "2026-11-03-qm-s1-gstack-probe",
+  "about": "qm-s1-gstack-probe-2026-11: whether installing gstack's router in QM changes what Opus 5.5 and GPT-6.1 Sol do on five invented requests (opens, starts, cost and prompt size in the report).",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "{run}/results/analysis/s1-analysis.ts"
+      ],
+      "outputs": [
+        "results/analysis/s1-analysis.json",
+        "results/analysis/s1-analysis.md"
+      ],
+      "note": "The script reads ../turns.jsonl beside itself and writes its two files beside itself, so it runs on the scratch copy."
+    },
+    {
+      "cmd": [
+        "python3",
+        "{run}/results/analysis/s1-spend.py",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/analysis/s1-spend.json"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The driver's run summary (results/summary.json)",
+      "reason": "The S1 driver (harnesses/qm/gstack/s1-probe.ts) writes it only at the end of a live run, which builds and starts QM in Docker and calls the models; it has no mode that rebuilds the summary from turns.jsonl afterwards."
+    }
+  ]
+}

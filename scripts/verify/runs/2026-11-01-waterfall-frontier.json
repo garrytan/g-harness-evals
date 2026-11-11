@@ -1,0 +1,135 @@
+{
+  "run": "2026-11-01-waterfall-frontier",
+  "about": "waterfall-frontier-2026-11: where each harness's dollars go, request by request, on Opus and Sol (cost contrasts, section breakdowns and charts in the report).",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ],
+      "stdout": {
+        "file": "results/summarize-run.out"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/waterfall/mine.ts",
+        "--manifest",
+        "{run}/results/waterfall-manifest.json",
+        "--out",
+        "{run}/results/waterfall.json",
+        "--sections"
+      ],
+      "outputs": [
+        "results/waterfall.json"
+      ],
+      "stdout": {
+        "file": "results/waterfall-mine.out"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/waterfall/contrasts.ts",
+        "--mined",
+        "{run}/results/waterfall.json",
+        "--schedule",
+        "{run}/results/manifest.json",
+        "--pair",
+        "openclaw-opus-none-mu-v03-dev,claude-code-opus-none-mu-v03-dev",
+        "--pair",
+        "hermes-opus-none-mu-v03-dev,claude-code-opus-none-mu-v03-dev",
+        "--pair",
+        "qm-pi-opus-none-mu-v03-dev,claude-code-opus-none-mu-v03-dev",
+        "--pair",
+        "openclaw-sol-none-mu-v03-dev,codex-sol-none-mu-v03-dev",
+        "--pair",
+        "hermes-sol-none-mu-v03-dev,codex-sol-none-mu-v03-dev",
+        "--seed",
+        "7",
+        "--draws",
+        "10000",
+        "--out",
+        "{run}/results/contrasts.json"
+      ],
+      "outputs": [
+        "results/contrasts.json"
+      ],
+      "stdout": {
+        "file": "results/contrasts.out"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/waterfall/chart.ts",
+        "--mined",
+        "{run}/results/waterfall.json",
+        "--out",
+        "{run}/results/charts"
+      ],
+      "outputs": [
+        "results/charts/claude-code-opus-none-mu-v03-dev.avoidable.svg",
+        "results/charts/claude-code-opus-none-mu-v03-dev.billing.svg",
+        "results/charts/claude-code-opus-none-mu-v03-dev.content.svg",
+        "results/charts/claude-code-opus-none-mu-v03-dev.growth.svg",
+        "results/charts/codex-sol-none-mu-v03-dev.avoidable.svg",
+        "results/charts/codex-sol-none-mu-v03-dev.billing.svg",
+        "results/charts/codex-sol-none-mu-v03-dev.content.svg",
+        "results/charts/codex-sol-none-mu-v03-dev.growth.svg",
+        "results/charts/hermes-opus-none-mu-v03-dev.avoidable.svg",
+        "results/charts/hermes-opus-none-mu-v03-dev.billing.svg",
+        "results/charts/hermes-opus-none-mu-v03-dev.content.svg",
+        "results/charts/hermes-opus-none-mu-v03-dev.growth.svg",
+        "results/charts/hermes-sol-none-mu-v03-dev.avoidable.svg",
+        "results/charts/hermes-sol-none-mu-v03-dev.billing.svg",
+        "results/charts/hermes-sol-none-mu-v03-dev.content.svg",
+        "results/charts/hermes-sol-none-mu-v03-dev.growth.svg",
+        "results/charts/openclaw-opus-none-mu-v03-dev.avoidable.svg",
+        "results/charts/openclaw-opus-none-mu-v03-dev.billing.svg",
+        "results/charts/openclaw-opus-none-mu-v03-dev.content.svg",
+        "results/charts/openclaw-opus-none-mu-v03-dev.growth.svg",
+        "results/charts/openclaw-sol-none-mu-v03-dev.avoidable.svg",
+        "results/charts/openclaw-sol-none-mu-v03-dev.billing.svg",
+        "results/charts/openclaw-sol-none-mu-v03-dev.content.svg",
+        "results/charts/openclaw-sol-none-mu-v03-dev.growth.svg",
+        "results/charts/qm-pi-opus-none-mu-v03-dev.avoidable.svg",
+        "results/charts/qm-pi-opus-none-mu-v03-dev.billing.svg",
+        "results/charts/qm-pi-opus-none-mu-v03-dev.content.svg",
+        "results/charts/qm-pi-opus-none-mu-v03-dev.growth.svg"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "docs/benchmarks/2026-11-01-waterfall-frontier/report-extras.ts",
+        "--check"
+      ],
+      "self_check": true,
+      "note": "This script reads and writes fixed paths inside the committed run folder, so it can not run on a scratch copy. Its own --check mode recomputes the files from the receipts and exits 1 if the committed copy differs; it writes nothing."
+    }
+  ],
+  "volatile": [
+    {
+      "file": "results/waterfall.json",
+      "path": "manifest",
+      "reason": "The path of the manifest the script was given, which is the scratch copy's absolute path during a rebuild."
+    },
+    {
+      "file": "results/contrasts.json",
+      "path": "mined",
+      "reason": "The path of the mined file the script was given, which is the scratch copy's absolute path during a rebuild."
+    },
+    {
+      "file": "results/contrasts.json",
+      "path": "schedules",
+      "reason": "The path of the schedule the script was given, which is the scratch copy's absolute path during a rebuild."
+    }
+  ]
+}

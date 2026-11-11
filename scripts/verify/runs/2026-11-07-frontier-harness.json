@@ -1,0 +1,440 @@
+{
+  "run": "2026-11-07-frontier-harness",
+  "about": "frontier-harness-2026-11: eight harness and model pairings on Terminal-Bench tasks with Claude Opus and GPT Sol, plus an Astra and Fable extension (report tables, sensitivity lines and the scoreboard entry).",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/analyze.ts",
+        "--results",
+        "{run}/results/merged",
+        "--spec",
+        "{run}/analysis-spec.json",
+        "--out",
+        "{run}/results/analysis",
+        "--lookup-fails",
+        "{run}/results/lookup-fails.json"
+      ],
+      "outputs": [
+        "results/analysis/analysis.json",
+        "results/analysis/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/analyze.ts",
+        "--results",
+        "{run}/results/merged",
+        "--spec",
+        "{run}/analysis-spec-kept.json",
+        "--out",
+        "{run}/results/analysis-kept",
+        "--lookup-fails",
+        "{run}/results/lookup-fails.json"
+      ],
+      "outputs": [
+        "results/analysis-kept/analysis.json",
+        "results/analysis-kept/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/analyze.ts",
+        "--results",
+        "{run}/results/merged",
+        "--spec",
+        "{run}/analysis-spec.json",
+        "--out",
+        "{run}/results/sensitivity-cost-with-replaced-runs",
+        "--lookup-fails",
+        "{run}/results/lookup-fails.json",
+        "--cost-with-replaced"
+      ],
+      "outputs": [
+        "results/sensitivity-cost-with-replaced-runs/analysis.json",
+        "results/sensitivity-cost-with-replaced-runs/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/analyze.ts",
+        "--results",
+        "{run}/results/merged",
+        "--spec",
+        "{run}/analysis-spec-kept.json",
+        "--out",
+        "{run}/results/sensitivity-cost-with-replaced-runs-kept",
+        "--lookup-fails",
+        "{run}/results/lookup-fails.json",
+        "--cost-with-replaced"
+      ],
+      "outputs": [
+        "results/sensitivity-cost-with-replaced-runs-kept/analysis.json",
+        "results/sensitivity-cost-with-replaced-runs-kept/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/subset.ts",
+        "--results",
+        "{run}/results/merged",
+        "--out",
+        "{run}/results/sensitivity-outside-outage-window",
+        "--drop-first-runs-ended",
+        "2026-11-08T08:45:00Z",
+        "2026-11-08T12:08:00Z"
+      ],
+      "outputs": [
+        "results/sensitivity-outside-outage-window/subset.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/analyze.ts",
+        "--results",
+        "{run}/results/sensitivity-outside-outage-window",
+        "--spec",
+        "{run}/analysis-spec.json",
+        "--out",
+        "{run}/results/sensitivity-outside-outage-window",
+        "--lookup-fails",
+        "{run}/results/sensitivity-outside-outage-window/lookup-fails.json"
+      ],
+      "outputs": [
+        "results/sensitivity-outside-outage-window/analysis.json",
+        "results/sensitivity-outside-outage-window/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/analyze.ts",
+        "--results",
+        "{run}/results/sensitivity-outside-outage-window",
+        "--spec",
+        "{run}/analysis-spec-kept.json",
+        "--out",
+        "{run}/results/sensitivity-outside-outage-window-kept",
+        "--lookup-fails",
+        "{run}/results/sensitivity-outside-outage-window/lookup-fails.json"
+      ],
+      "outputs": [
+        "results/sensitivity-outside-outage-window-kept/analysis.json",
+        "results/sensitivity-outside-outage-window-kept/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/subset.ts",
+        "--results",
+        "{run}/results/merged",
+        "--out",
+        "{run}/results/sensitivity-pi-instruction-bug-as-fail",
+        "--infra-as-fail",
+        "pi:pytorch-model-recovery"
+      ],
+      "outputs": [
+        "results/sensitivity-pi-instruction-bug-as-fail/subset.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/analyze.ts",
+        "--results",
+        "{run}/results/sensitivity-pi-instruction-bug-as-fail",
+        "--spec",
+        "{run}/analysis-spec.json",
+        "--out",
+        "{run}/results/sensitivity-pi-instruction-bug-as-fail",
+        "--lookup-fails",
+        "{run}/results/sensitivity-pi-instruction-bug-as-fail/lookup-fails.json"
+      ],
+      "outputs": [
+        "results/sensitivity-pi-instruction-bug-as-fail/analysis.json",
+        "results/sensitivity-pi-instruction-bug-as-fail/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/analyze.ts",
+        "--results",
+        "{run}/results/sensitivity-pi-instruction-bug-as-fail",
+        "--spec",
+        "{run}/analysis-spec-kept.json",
+        "--out",
+        "{run}/results/sensitivity-pi-instruction-bug-as-fail-kept",
+        "--lookup-fails",
+        "{run}/results/sensitivity-pi-instruction-bug-as-fail/lookup-fails.json"
+      ],
+      "outputs": [
+        "results/sensitivity-pi-instruction-bug-as-fail-kept/analysis.json",
+        "results/sensitivity-pi-instruction-bug-as-fail-kept/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/subset.ts",
+        "--results",
+        "{run}/results/merged",
+        "--out",
+        "{run}/results/sensitivity-without-any-refusal",
+        "--drop-trials",
+        "docs/benchmarks/2026-11-07-frontier-harness/results/refusals.json"
+      ],
+      "outputs": [
+        "results/sensitivity-without-any-refusal/subset.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/analyze.ts",
+        "--results",
+        "{run}/results/sensitivity-without-any-refusal",
+        "--spec",
+        "{run}/analysis-spec.json",
+        "--out",
+        "{run}/results/sensitivity-without-any-refusal",
+        "--lookup-fails",
+        "{run}/results/sensitivity-without-any-refusal/lookup-fails.json"
+      ],
+      "outputs": [
+        "results/sensitivity-without-any-refusal/analysis.json",
+        "results/sensitivity-without-any-refusal/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/analyze.ts",
+        "--results",
+        "{run}/results/sensitivity-without-any-refusal",
+        "--spec",
+        "{run}/analysis-spec-kept.json",
+        "--out",
+        "{run}/results/sensitivity-without-any-refusal-kept",
+        "--lookup-fails",
+        "{run}/results/sensitivity-without-any-refusal/lookup-fails.json"
+      ],
+      "outputs": [
+        "results/sensitivity-without-any-refusal-kept/analysis.json",
+        "results/sensitivity-without-any-refusal-kept/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/subset.ts",
+        "--results",
+        "{run}/results/merged",
+        "--out",
+        "{run}/results/sensitivity-without-drifted-tasks",
+        "--drop-tasks",
+        "mcmc-sampling-stan,build-cython-ext,protein-assembly"
+      ],
+      "outputs": [
+        "results/sensitivity-without-drifted-tasks/subset.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/analyze.ts",
+        "--results",
+        "{run}/results/sensitivity-without-drifted-tasks",
+        "--spec",
+        "{run}/analysis-spec.json",
+        "--out",
+        "{run}/results/sensitivity-without-drifted-tasks",
+        "--lookup-fails",
+        "{run}/results/sensitivity-without-drifted-tasks/lookup-fails.json"
+      ],
+      "outputs": [
+        "results/sensitivity-without-drifted-tasks/analysis.json",
+        "results/sensitivity-without-drifted-tasks/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/analyze.ts",
+        "--results",
+        "{run}/results/sensitivity-without-drifted-tasks",
+        "--spec",
+        "{run}/analysis-spec-kept.json",
+        "--out",
+        "{run}/results/sensitivity-without-drifted-tasks-kept",
+        "--lookup-fails",
+        "{run}/results/sensitivity-without-drifted-tasks/lookup-fails.json"
+      ],
+      "outputs": [
+        "results/sensitivity-without-drifted-tasks-kept/analysis.json",
+        "results/sensitivity-without-drifted-tasks-kept/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/subset.ts",
+        "--results",
+        "{run}/results/merged",
+        "--out",
+        "{run}/results/sensitivity-without-refusals",
+        "--drop-exception",
+        "AgentSafetyRefusalError"
+      ],
+      "outputs": [
+        "results/sensitivity-without-refusals/subset.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/analyze.ts",
+        "--results",
+        "{run}/results/sensitivity-without-refusals",
+        "--spec",
+        "{run}/analysis-spec.json",
+        "--out",
+        "{run}/results/sensitivity-without-refusals",
+        "--lookup-fails",
+        "{run}/results/sensitivity-without-refusals/lookup-fails.json"
+      ],
+      "outputs": [
+        "results/sensitivity-without-refusals/analysis.json",
+        "results/sensitivity-without-refusals/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/analyze.ts",
+        "--results",
+        "{run}/results/sensitivity-without-refusals",
+        "--spec",
+        "{run}/analysis-spec-kept.json",
+        "--out",
+        "{run}/results/sensitivity-without-refusals-kept",
+        "--lookup-fails",
+        "{run}/results/sensitivity-without-refusals/lookup-fails.json"
+      ],
+      "outputs": [
+        "results/sensitivity-without-refusals-kept/analysis.json",
+        "results/sensitivity-without-refusals-kept/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/analyze.ts",
+        "--results",
+        "{run}/results/extension/merged",
+        "--spec",
+        "{run}/analysis-spec-extension.json",
+        "--out",
+        "{run}/results/extension/analysis"
+      ],
+      "outputs": [
+        "results/extension/analysis/analysis.json",
+        "results/extension/analysis/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/subset.ts",
+        "--results",
+        "{run}/results/extension/merged",
+        "--out",
+        "{run}/results/extension/sensitivity-without-drifted-tasks",
+        "--drop-tasks",
+        "mcmc-sampling-stan,build-cython-ext,protein-assembly"
+      ],
+      "outputs": [
+        "results/extension/sensitivity-without-drifted-tasks/subset.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/analyze.ts",
+        "--results",
+        "{run}/results/extension/sensitivity-without-drifted-tasks",
+        "--spec",
+        "{run}/analysis-spec-extension.json",
+        "--out",
+        "{run}/results/extension/sensitivity-without-drifted-tasks"
+      ],
+      "outputs": [
+        "results/extension/sensitivity-without-drifted-tasks/analysis.json",
+        "results/extension/sensitivity-without-drifted-tasks/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/subset.ts",
+        "--results",
+        "{run}/results/extension/merged",
+        "--out",
+        "{run}/results/extension/sensitivity-without-refusals",
+        "--drop-exception",
+        "AgentSafetyRefusalError"
+      ],
+      "outputs": [
+        "results/extension/sensitivity-without-refusals/subset.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/analyze.ts",
+        "--results",
+        "{run}/results/extension/sensitivity-without-refusals",
+        "--spec",
+        "{run}/analysis-spec-extension.json",
+        "--out",
+        "{run}/results/extension/sensitivity-without-refusals"
+      ],
+      "outputs": [
+        "results/extension/sensitivity-without-refusals/analysis.json",
+        "results/extension/sensitivity-without-refusals/analysis.md"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The merged results (results/merged/trials.jsonl, manifest.json, merge.json, and the same three under results/extension/merged)",
+      "reason": "scripts/frontier-harbor/merge-stages.ts needs each stage folder's manifest.json and shard.json and each rerun's verifier output, and only the stage folders' trials.jsonl files were committed, so the merges are the run's receipts here and every analysis below is rebuilt from them."
+    },
+    {
+      "what": "The amendment 4 only line (results/sensitivity-amendment-4-only and its -kept twin)",
+      "reason": "It was analysed from a second merge that kept the 35 amendment 6 trials as their recorded fails; that merge was never committed, and it can't be redone for the reason above."
+    },
+    {
+      "what": "The outage lists (results/verifier-unavailable.json, verifier-unavailable-a6.json, verifier-unavailable-a6-rerun.json and results/extension/verifier-unavailable-a6.json)",
+      "reason": "scripts/frontier-harbor/to-trials.ts scan-verifier reads each trial's saved test output under trials/<cell>/<task>/a<n>/harbor/, and those trial folders were not committed."
+    },
+    {
+      "what": "The refusal lists (results/refusals.json and results/extension/refusals.json)",
+      "reason": "scripts/frontier-harbor/refusals.ts reads each trial's Harbor exception and agent logs, which were not committed."
+    },
+    {
+      "what": "The contamination audits (results/audit.json and results/extension/audit.json) and the answer-key list results/lookup-fails.json",
+      "reason": "scripts/frontier-harbor/audit.ts reads the model requests captured in each trial folder, which were not committed, and lookup-fails.json is a blind reader's confirmation of the audit's flags, made by a person rather than a script."
+    },
+    {
+      "what": "The outage-window and Hermes web-tool counts (results/outage-window.json and results/hermes-web-tools.json)",
+      "reason": "receipts.py needs --trials, the trial folders of every stage with their agent logs and Hermes sessions, which were not committed, and it writes nothing when they are missing."
+    }
+  ]
+}

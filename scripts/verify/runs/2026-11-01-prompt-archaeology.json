@@ -1,0 +1,186 @@
+{
+  "run": "2026-11-01-prompt-archaeology",
+  "about": "prompt-archaeology-2026-11: which layers of each harness's built-in prompt are worth their cost, found by removing them one at a time on Claude Code, OpenClaw, Hermes and Codex (report tables and the calibration that sized the run).",
+  "requires": [
+    "tasks/multiuser/v0.3/dev"
+  ],
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results",
+        "--seed",
+        "7"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ],
+      "stdout": {
+        "file": "results/summary.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/compare-run.ts",
+        "--results",
+        "{run}/results",
+        "--seed",
+        "7",
+        "--draws",
+        "10000"
+      ],
+      "outputs": [
+        "results/comparisons.json"
+      ],
+      "stdout": {
+        "file": "results/compare.md"
+      },
+      "timeout_s": 600,
+      "note": "About 90 seconds."
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/prompt-archaeology/tables.ts",
+        "--results",
+        "{run}/results",
+        "--calibration",
+        "{run}/calibration",
+        "--out",
+        "{run}/results/prompt-archaeology",
+        "--seed",
+        "7",
+        "--draws",
+        "10000"
+      ],
+      "outputs": [
+        "results/prompt-archaeology/prompt-archaeology-tables.json",
+        "results/prompt-archaeology/prompt-archaeology-tables.md"
+      ]
+    },
+    {
+      "cmd": [
+        "python3",
+        "docs/benchmarks/2026-11-01-prompt-archaeology/audits/approval-channel-rescore.py"
+      ],
+      "stdout": {
+        "file": "audits/approval-channel-rescore.txt"
+      },
+      "note": "The script reads the committed results folder by a fixed path and writes nothing."
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/calibration"
+      ],
+      "outputs": [
+        "calibration/summary.json"
+      ],
+      "stdout": {
+        "file": "calibration/summary.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/prompt-archaeology/tables.ts",
+        "--results",
+        "{run}/calibration",
+        "--out",
+        "{run}/calibration",
+        "--seed",
+        "7",
+        "--draws",
+        "10000"
+      ],
+      "outputs": [
+        "calibration/prompt-archaeology-tables.json",
+        "calibration/prompt-archaeology-tables.md"
+      ]
+    }
+  ],
+  "known": [
+    {
+      "file": "calibration/summary.json",
+      "path": "cells.claude-code-opus-full-mu-v03-dev.gbrain.events_read",
+      "committed": 20,
+      "rebuilt": 0,
+      "reason": "The calibration's per-trial event logs were not committed (calibration/ holds only trials.jsonl), so summarize-run finds none of the 20 per cell to read; this count says how many logs it read, and every result in the file matches."
+    },
+    {
+      "file": "calibration/summary.json",
+      "path": "cells.claude-code-opus-minimal-mu-v03-dev.gbrain.events_read",
+      "committed": 20,
+      "rebuilt": 0,
+      "reason": "The calibration's per-trial event logs were not committed (calibration/ holds only trials.jsonl), so summarize-run finds none of the 20 per cell to read; this count says how many logs it read, and every result in the file matches."
+    },
+    {
+      "file": "calibration/summary.json",
+      "path": "cells.openclaw-opus-full-mu-v03-dev.gbrain.events_read",
+      "committed": 20,
+      "rebuilt": 0,
+      "reason": "The calibration's per-trial event logs were not committed (calibration/ holds only trials.jsonl), so summarize-run finds none of the 20 per cell to read; this count says how many logs it read, and every result in the file matches."
+    },
+    {
+      "file": "calibration/summary.json",
+      "path": "cells.openclaw-opus-minimal-mu-v03-dev.gbrain.events_read",
+      "committed": 20,
+      "rebuilt": 0,
+      "reason": "The calibration's per-trial event logs were not committed (calibration/ holds only trials.jsonl), so summarize-run finds none of the 20 per cell to read; this count says how many logs it read, and every result in the file matches."
+    },
+    {
+      "file": "calibration/summary.json",
+      "path": "cells.hermes-opus-full-mu-v03-dev.gbrain.events_read",
+      "committed": 20,
+      "rebuilt": 0,
+      "reason": "The calibration's per-trial event logs were not committed (calibration/ holds only trials.jsonl), so summarize-run finds none of the 20 per cell to read; this count says how many logs it read, and every result in the file matches."
+    },
+    {
+      "file": "calibration/summary.json",
+      "path": "cells.hermes-opus-minimal-mu-v03-dev.gbrain.events_read",
+      "committed": 20,
+      "rebuilt": 0,
+      "reason": "The calibration's per-trial event logs were not committed (calibration/ holds only trials.jsonl), so summarize-run finds none of the 20 per cell to read; this count says how many logs it read, and every result in the file matches."
+    },
+    {
+      "file": "calibration/summary.json",
+      "path": "cells.codex-sol-full-mu-v03-dev.gbrain.events_read",
+      "committed": 20,
+      "rebuilt": 0,
+      "reason": "The calibration's per-trial event logs were not committed (calibration/ holds only trials.jsonl), so summarize-run finds none of the 20 per cell to read; this count says how many logs it read, and every result in the file matches."
+    },
+    {
+      "file": "calibration/summary.json",
+      "path": "cells.codex-sol-minimal-mu-v03-dev.gbrain.events_read",
+      "committed": 20,
+      "rebuilt": 0,
+      "reason": "The calibration's per-trial event logs were not committed (calibration/ holds only trials.jsonl), so summarize-run finds none of the 20 per cell to read; this count says how many logs it read, and every result in the file matches."
+    },
+    {
+      "file": "calibration/summary.md",
+      "line": 12,
+      "committed": "gbrain: no via gbrain event in any cell (160 of 160 event logs read).",
+      "rebuilt": "gbrain: no via gbrain event in any cell (0 of 160 event logs read).",
+      "reason": "The calibration's per-trial event logs were not committed (calibration/ holds only trials.jsonl), so summarize-run finds none of the 20 per cell to read; this count says how many logs it read, and every result in the file matches."
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The clean-arm audit (results/clean-arm-audit.json)",
+      "reason": "scripts/prompt-archaeology/clean-arm-audit.ts reads every file of every trial, and it ran over the full merged tree before harness state, workspaces and raw harness logs were left out of the commit; rerun on the committed files it still finds no hit, but it reads fewer files, so its file counts and skipped lists can't match."
+    },
+    {
+      "what": "The preregistration's computed files (prereg.json, lease-plan.json, budget.json, mdd.json, mdd.md and calibration/task-rule.json)",
+      "reason": "build-prereg.ts reads and writes fixed paths inside the committed run folder and has no flag to point it at a copy; its --check mode, run by hand, finds all six current, and only a pinned script hash in PREREGISTRATION.md out of date, because scripts/prompt-archaeology/tables.ts changed after the preregistration (commits e5eff763e7, #236, and 50b1463da2)."
+    },
+    {
+      "what": "The calibration analysis (calibration/calibration-analysis.json, design-options.json and projection.json, and the design tables in calibration.md)",
+      "reason": "calibration/inputs/analysis.ts and design-options.ts import the repository's scripts by paths that only work from the repository root, and projection.py and design-table.py read absolute paths in the author's work folder, so none of them runs on the committed copy."
+    }
+  ]
+}

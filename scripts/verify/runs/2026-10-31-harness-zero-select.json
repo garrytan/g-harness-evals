@@ -1,0 +1,64 @@
+{
+  "run": "2026-10-31-harness-zero-select",
+  "about": "Harness Zero switch selection: full and minimal Harness Zero and one-switch-off cells on Opus 5.5 and GPT-6.1 Sol over the v0.3 dev tasks, compared against each model's full baseline to decide which switches to keep.",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ],
+      "stdout": {
+        "file": "results/summarize-run.out"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/compare-run.ts",
+        "--results",
+        "{run}/results",
+        "--baseline",
+        "zero-full-a-opus-none-mu-v03-dev,zero-full-sol-none-mu-v03-dev"
+      ],
+      "outputs": [
+        "results/comparisons.json"
+      ],
+      "stdout": {
+        "file": "results/compare-run.out"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "docs/benchmarks/2026-10-31-harness-zero-select/report-extras.ts",
+        "--check"
+      ],
+      "self_check": true,
+      "note": "This script reads and writes fixed paths inside the committed run folder, so it can not run on a scratch copy. Its own --check mode recomputes the files from the receipts and exits 1 if the committed copy differs; it writes nothing."
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The raw clean-arm audit",
+      "file": "results/raw-audit.json",
+      "reason": "report-extras.ts --audit reads each shard's full trial tree as the fan-out copied it back, harness state and session files included, and those trees were never committed."
+    }
+  ],
+  "volatile": [
+    {
+      "file": "results/comparisons.json",
+      "path": "stats_kit.commit",
+      "reason": "The commit id of the statistics code. The public copy has its own commit ids, so this changes between copies; the statistics code itself is checked by the rebuilt numbers."
+    },
+    {
+      "file": "results/comparisons.json",
+      "path": "stats_kit.preregistration_commit",
+      "reason": "The commit id of the statistics code. The public copy has its own commit ids, so this changes between copies; the statistics code itself is checked by the rebuilt numbers."
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "run": "2026-11-04-matrix-mu",
+  "about": "The multi-user harness matrix on Opus 5.5 and GPT-6.1 Sol: the matrix-mu README rows and scoreboard entry.",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/matrix-analysis.ts",
+        "--results",
+        "{run}/results",
+        "--spec",
+        "{run}/matrix-spec.json",
+        "--out",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/matrix-analysis.json",
+        "results/matrix-analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "docs/benchmarks/2026-11-04-matrix-mu/report-extras.ts",
+        "--check"
+      ],
+      "self_check": true,
+      "note": "This script reads and writes fixed paths inside the committed run folder, so it can not run on a scratch copy. Its own --check mode recomputes results/report-extras.json from the receipts and exits 1 if the committed copy differs; it writes nothing."
+    }
+  ],
+  "known": [
+    {
+      "file": "results/matrix-analysis.json",
+      "path": "cost_split.unallocated_share.qm-pi-opus-none-mu-v03-dev",
+      "committed": 0.235865,
+      "rebuilt": 0.236,
+      "reason": "A later change to scripts/matrix-analysis.ts (commit f5fa45fca0, #293) started counting embedding spend in the cost split, which moves this one unpublished share. No README, scoreboard or report number uses it. The November 2026 audit of this repository found it first."
+    }
+  ]
+}

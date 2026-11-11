@@ -1,0 +1,205 @@
+{
+  "run": "2026-11-07-h10-instruction-placement",
+  "about": "h10-instruction-placement-2026-11: where gbrain's brain-first rule must live to be followed, on Claude Code (CLI and Agent SDK), Codex, Hermes and OpenClaw; the instruction-followed endpoints, the report's extra figures (spend, intervals, cost per turn), the lease arithmetic and the preregistered minimum detectable differences.",
+  "requires": [
+    "tasks/multiuser/v0.3/dev",
+    "docs/benchmarks/2026-11-04-matrix-mu/results",
+    "scripts/instruction-followed.ts",
+    "runner/stats/paired.ts"
+  ],
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/instruction-followed-h10.ts",
+        "--results",
+        "{run}/results",
+        "--prereg",
+        "{run}/prereg.json",
+        "--out",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/instruction-followed-h10.json",
+        "results/instruction-followed-h10.md"
+      ]
+    },
+    {
+      "cmd": [
+        "python3",
+        "-c",
+        "import os, subprocess, sys\nrun, src, where, *cmd = sys.argv[1:]\ntmp, name = os.path.split(run)\nmu = os.path.join(os.path.dirname(src), '2026-11-04-matrix-mu')\ndef link(target, path):\n    if not os.path.lexists(path):\n        os.symlink(target, path)\nlink(mu, os.path.join(tmp, '2026-11-04-matrix-mu'))\nfake = os.path.join(tmp, 'root', 'docs', 'benchmarks')\nos.makedirs(fake, exist_ok=True)\nlink(run, os.path.join(fake, name))\nlink(mu, os.path.join(fake, '2026-11-04-matrix-mu'))\nsys.exit(subprocess.call(cmd, cwd=os.path.join(tmp, 'root') if where == 'fake-root' else None))\n",
+        "{run}",
+        "{src}",
+        "fake-root",
+        "bun",
+        "--no-env-file",
+        "{run}/report-extras.ts"
+      ],
+      "outputs": [
+        "results/report-extras.json"
+      ],
+      "stdout": {
+        "file": "results/report-extras.out"
+      },
+      "note": "The script reads matrix-mu-2026-11's committed receipts by a fixed path, so this links that run's committed folder (read only) beside the scratch copy, and for report-extras.ts also builds a folder tree whose docs/benchmarks/ points at the scratch copy, then runs the script there."
+    },
+    {
+      "cmd": [
+        "python3",
+        "-c",
+        "import os, subprocess, sys\nrun, src, where, *cmd = sys.argv[1:]\ntmp, name = os.path.split(run)\nmu = os.path.join(os.path.dirname(src), '2026-11-04-matrix-mu')\ndef link(target, path):\n    if not os.path.lexists(path):\n        os.symlink(target, path)\nlink(mu, os.path.join(tmp, '2026-11-04-matrix-mu'))\nfake = os.path.join(tmp, 'root', 'docs', 'benchmarks')\nos.makedirs(fake, exist_ok=True)\nlink(run, os.path.join(fake, name))\nlink(mu, os.path.join(fake, '2026-11-04-matrix-mu'))\nsys.exit(subprocess.call(cmd, cwd=os.path.join(tmp, 'root') if where == 'fake-root' else None))\n",
+        "{run}",
+        "{src}",
+        "here",
+        "bun",
+        "--no-env-file",
+        "{run}/compute-leases.ts"
+      ],
+      "stdout": {
+        "file": "leases.txt"
+      },
+      "note": "The script reads matrix-mu-2026-11's committed receipts by a fixed path, so this links that run's committed folder (read only) beside the scratch copy, and for report-extras.ts also builds a folder tree whose docs/benchmarks/ points at the scratch copy, then runs the script there."
+    },
+    {
+      "cmd": [
+        "python3",
+        "-c",
+        "import os, subprocess, sys\nrun, src, where, *cmd = sys.argv[1:]\ntmp, name = os.path.split(run)\nmu = os.path.join(os.path.dirname(src), '2026-11-04-matrix-mu')\ndef link(target, path):\n    if not os.path.lexists(path):\n        os.symlink(target, path)\nlink(mu, os.path.join(tmp, '2026-11-04-matrix-mu'))\nfake = os.path.join(tmp, 'root', 'docs', 'benchmarks')\nos.makedirs(fake, exist_ok=True)\nlink(run, os.path.join(fake, name))\nlink(mu, os.path.join(fake, '2026-11-04-matrix-mu'))\nsys.exit(subprocess.call(cmd, cwd=os.path.join(tmp, 'root') if where == 'fake-root' else None))\n",
+        "{run}",
+        "{src}",
+        "here",
+        "bun",
+        "--no-env-file",
+        "{run}/compute-leases-amended.ts"
+      ],
+      "stdout": {
+        "file": "leases-amended.txt"
+      },
+      "note": "The script reads matrix-mu-2026-11's committed receipts by a fixed path, so this links that run's committed folder (read only) beside the scratch copy, and for report-extras.ts also builds a folder tree whose docs/benchmarks/ points at the scratch copy, then runs the script there."
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/paired-mdd.ts",
+        "--h10",
+        "--task-set",
+        "v0.3",
+        "--tasks",
+        "cn-01-tamsin-cold-chain-site,cn-02-tansleigh-packaging-deadline,cn-03-marrow-agrisupply-site,cn-04-quarrendon-site,sc-01-central-random-two-asks,sc-02-north-team-two-asks,cr-01-marrow-agrisupply-site-retraction,cr-02-quarrendon-seat-count-retraction,cr-03-brackenwater-renewal-date-retraction,cr-04-marrow-agrisupply-seat-count",
+        "--reps",
+        "1",
+        "--repetition-pairs",
+        "4",
+        "--placement-pairs",
+        "3",
+        "--family-b",
+        "0,0.00625",
+        "--family-b-alpha",
+        "0.0125"
+      ],
+      "stdout": {
+        "contained_in": "mdd.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/paired-mdd.ts",
+        "--h10",
+        "--task-set",
+        "v0.3",
+        "--tasks",
+        "cn-01-tamsin-cold-chain-site,cn-02-tansleigh-packaging-deadline,cn-03-marrow-agrisupply-site,cn-04-quarrendon-site,sc-01-central-random-two-asks,sc-02-north-team-two-asks,cr-01-marrow-agrisupply-site-retraction,cr-02-quarrendon-seat-count-retraction,cr-03-brackenwater-renewal-date-retraction,cr-04-marrow-agrisupply-seat-count",
+        "--reps",
+        "1",
+        "--repetition-pairs",
+        "4",
+        "--placement-pairs",
+        "3",
+        "--family-b",
+        "0,0.00625",
+        "--family-b-alpha",
+        "0.025"
+      ],
+      "stdout": {
+        "contained_in": "mdd.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/paired-mdd.ts",
+        "--h10",
+        "--task-set",
+        "v0.3",
+        "--tasks",
+        "cn-01-tamsin-cold-chain-site,cn-02-tansleigh-packaging-deadline,cn-03-marrow-agrisupply-site,cn-04-quarrendon-site,sc-01-central-random-two-asks,sc-02-north-team-two-asks,cr-01-marrow-agrisupply-site-retraction,cr-02-quarrendon-seat-count-retraction,cr-03-brackenwater-renewal-date-retraction,cr-04-marrow-agrisupply-seat-count",
+        "--reps",
+        "1",
+        "--repetition-pairs",
+        "4",
+        "--placement-pairs",
+        "3",
+        "--family-b",
+        "0,0.00625",
+        "--family-b-alpha",
+        "0.0071"
+      ],
+      "stdout": {
+        "contained_in": "mdd.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/paired-mdd.ts",
+        "--h10",
+        "--task-set",
+        "v0.3",
+        "--tasks",
+        "cn-01-tamsin-cold-chain-site,cn-02-tansleigh-packaging-deadline,cn-03-marrow-agrisupply-site,cn-04-quarrendon-site,sc-01-central-random-two-asks,sc-02-north-team-two-asks,cr-01-marrow-agrisupply-site-retraction,cr-02-quarrendon-seat-count-retraction,cr-03-brackenwater-renewal-date-retraction,cr-04-marrow-agrisupply-seat-count",
+        "--reps",
+        "1",
+        "--repetition-pairs",
+        "4",
+        "--placement-pairs",
+        "3",
+        "--family-b",
+        "0,0.00625",
+        "--family-b-alpha",
+        "0.0083"
+      ],
+      "stdout": {
+        "contained_in": "mdd.md"
+      }
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The clean-arm audit",
+      "file": "results/clean-arm-audit.json",
+      "reason": "It is a text search over each shard's full trial folders, including harness state, workspaces and raw harness logs; those files stayed off the repository (they hold per-trial gbrain tokens), so the search has nothing to run on."
+    },
+    {
+      "what": "The cap-stop filter's printed lines",
+      "file": "results/cap-stop-filter.out",
+      "reason": "A one-line filter in the preregistration printed them while reading each shard's own results folder before the merge; those per-shard folders are not committed, only the merged results/ is."
+    },
+    {
+      "what": "The scorer's printed line",
+      "file": "results/instruction-followed-h10.out",
+      "reason": "Its one line names the output folder's absolute path on the run machine, which no rebuild can reproduce; the counts it prints are in instruction-followed-h10.json, which is rebuilt."
+    },
+    {
+      "what": "The Docker goldens and the Agent SDK system-prompt capture",
+      "file": "goldens/",
+      "reason": "They are test logs from building the harness images and running them against a fake model endpoint in Docker; verify runs no Docker."
+    },
+    {
+      "what": "The smoke measurement table",
+      "file": "smoke-measurement/README.md",
+      "reason": "It was typed from the smoke ledgers and trial records with no script; its per-turn costs feed compute-leases-amended.ts, whose output leases-amended.txt is rebuilt."
+    }
+  ]
+}

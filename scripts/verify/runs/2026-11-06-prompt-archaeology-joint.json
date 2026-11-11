@@ -1,0 +1,62 @@
+{
+  "run": "2026-11-06-prompt-archaeology-joint",
+  "about": "prompt-archaeology-joint-2026-11: whether cutting several prompt layers at once (or the whole built-in prompt) changes pass rate or cost on Claude Code, OpenClaw and Codex, on v0.4 multi-user dev tasks (report tables).",
+  "requires": [
+    "tasks/multiuser/v0.4"
+  ],
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/prompt-archaeology/joint-tables.ts",
+        "--results",
+        "{run}/results",
+        "--decision",
+        "{run}/probe/decision.json",
+        "--audit",
+        "{run}/results/clean-arm-audit.json",
+        "--seed",
+        "7"
+      ],
+      "outputs": [
+        "results/joint-tables.json",
+        "results/joint-tables.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results",
+        "--seed",
+        "7"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The joint-cut gate's decision (probe/decision.json)",
+      "reason": "scripts/prompt-archaeology/joint-gate.ts needs the --dropped-tasks file it was given, which was never committed; given the two task names decision.json itself records, it rebuilds the file exactly (checked by hand), but a rebuild that reads its own output as input proves nothing, so the committed decision is used as an input instead."
+    },
+    {
+      "what": "The clean-arm audit (results/clean-arm-audit.json)",
+      "reason": "scripts/prompt-archaeology/clean-arm-audit.ts reads every file of every trial, and it ran over the full merged tree before harness state, workspaces and raw harness logs were left out of the commit, so its file counts can't match the committed copy."
+    },
+    {
+      "what": "Claude Code's memory files per trial (results/memory-files.json and probe/memory-files.json)",
+      "reason": "They list files under each trial's harness state, which was not committed, and they were written by hand during the run, with no script in this repository."
+    },
+    {
+      "what": "The main-run sizing (probe/main-sizing.json)",
+      "reason": "No script in this repository writes it; it was worked out by hand during the run from the probe's spend, before the main run."
+    },
+    {
+      "what": "The preregistration's computed files (prereg.json, prereg-probe.json, lease-plan.json, budget.json, mdd.json and mdd.md)",
+      "reason": "build-prereg.ts reads and writes fixed paths inside the committed run folder and has no flag to point it at a copy; its --check mode, run by hand, finds every one current."
+    }
+  ]
+}

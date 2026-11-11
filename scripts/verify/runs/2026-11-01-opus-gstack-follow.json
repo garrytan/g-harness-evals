@@ -1,0 +1,77 @@
+{
+  "run": "2026-11-01-opus-gstack-follow",
+  "about": "Opus 5.5 gstack follow-rate checks: how often Claude Opus actually ran gstack's skill steps when gstack was installed, over three small runs (the counts, intervals and costs on the report page).",
+  "steps": [
+    {
+      "cmd": [
+        "python3",
+        "{run}/results/recompute.py"
+      ],
+      "stdout": {
+        "file": "results/recompute.out"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/gstack-laneb/to-trials.ts",
+        "gates",
+        "--results",
+        "{run}/results/gn-follow-2026-11"
+      ],
+      "outputs": [
+        "results/gn-follow-2026-11/gates.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/gstack-laneb/to-trials.ts",
+        "gates",
+        "--results",
+        "{run}/results/gn-follow-preset-2026-11"
+      ],
+      "outputs": [
+        "results/gn-follow-preset-2026-11/gates.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/gstack-laneb/to-trials.ts",
+        "gates",
+        "--results",
+        "{run}/results/gn-hard-follow-2026-11/gstack"
+      ],
+      "outputs": [
+        "results/gn-hard-follow-2026-11/gstack/gates.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/gstack-laneb/to-trials.ts",
+        "gates",
+        "--results",
+        "{run}/results/gn-hard-follow-2026-11/none"
+      ],
+      "outputs": [
+        "results/gn-hard-follow-2026-11/none/gates.json"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The control-arm audits (control-audit.json and control-audit.md in each run folder)",
+      "reason": "audit.py reads each trial's Claude Code session log (agent/sdk-messages.jsonl), and the transcripts were not committed."
+    },
+    {
+      "what": "The hard run's re-probe and analysis (gn-hard-follow-2026-11/reprobed-trials.jsonl, extras.jsonl, analysis.out and gstack-calls.json)",
+      "reason": "gn-hard-follow-2026-11/analyze.ts imports its probe code by an absolute path from a working copy on another machine (scripts/gstack-laneb/skill-probe.ts at 409d6946, not in this repository) and reads the transcripts, which were not committed; recompute.py, which verify does run, takes these files as inputs."
+    },
+    {
+      "what": "The per-run counts and spend (run-summary.json, ledger-summary.json and skill-probe-summary.json in each run folder)",
+      "reason": "run-summary.json comes from scripts/gstack-laneb/to-trials.ts convert, which reads the Harbor job tree and session files that were not committed; ledger-summary.json is a query of each shard's ledger.sqlite, which was not committed; skill-probe-summary.json comes from skill-probe.ts, which exists only in a working copy on another machine and is not in this repository."
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "run": "2026-10-25-gbrain-scoped",
+  "about": "gbrain-scoped-2026-10: told-company against told-scoped (per-request scope in gbrain), OpenClaw and Hermes on Haiku (per-cell tables, the paired ladder comparison and the minimum detectable differences).",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ],
+      "stdout": {
+        "file": "results/summary.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/compare-run.ts",
+        "--results",
+        "{run}/results",
+        "--pair",
+        "gbrain",
+        "--design",
+        "ladder"
+      ],
+      "outputs": [
+        "results/comparisons.gbrain.json"
+      ],
+      "stdout": {
+        "file": "results/comparisons.gbrain.md"
+      },
+      "note": "This run has two gbrain rungs per harness and no cell without gbrain, so compare-run cannot guess the ladder design and is told it."
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/paired-mdd.ts",
+        "--ladder",
+        "--results",
+        "docs/benchmarks/2026-10-25-gbrain-scoped/results"
+      ],
+      "stdout": {
+        "file": "results/mdd.md"
+      },
+      "note": "paired-mdd.ts only reads the folder, and prints the path it was given in its table, so it reads the committed folder by its repository path, as the published table shows."
+    }
+  ],
+  "known": [
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 65,
+      "committed": "| Harness | Model | Rung | Cell | none cell | Pass | gbrain use | Cross-scope via gbrain |",
+      "rebuilt": "| Harness | Model | Rung | Cell | none cell | Pass | gbrain use | Cross-scope via gbrain | Exposure via gbrain |",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    },
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 66,
+      "committed": "|---|---|---|---|---|---|---|---|",
+      "rebuilt": "|---|---|---|---|---|---|---|---|---|",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    },
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 67,
+      "committed": "| openclaw | anthropic:claude-haiku-5-5 | told-company | `openclaw-haiku-gbrain-told-company-mu-heldout` | none | no none cell | no none cell | no none cell |",
+      "rebuilt": "| openclaw | anthropic:claude-haiku-5-5 | told-company | `openclaw-haiku-gbrain-told-company-mu-heldout` | none | no none cell | no none cell | no none cell | no none cell |",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    },
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 68,
+      "committed": "| openclaw | anthropic:claude-haiku-5-5 | told-scoped | `openclaw-haiku-gbrain-told-scoped-mu-heldout` | none | no none cell | no none cell | no none cell |",
+      "rebuilt": "| openclaw | anthropic:claude-haiku-5-5 | told-scoped | `openclaw-haiku-gbrain-told-scoped-mu-heldout` | none | no none cell | no none cell | no none cell | no none cell |",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    },
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 69,
+      "committed": "| hermes | anthropic:claude-haiku-5-5 | told-company | `hermes-haiku-gbrain-told-company-mu-heldout` | none | no none cell | no none cell | no none cell |",
+      "rebuilt": "| hermes | anthropic:claude-haiku-5-5 | told-company | `hermes-haiku-gbrain-told-company-mu-heldout` | none | no none cell | no none cell | no none cell | no none cell |",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    },
+    {
+      "file": "results/comparisons.gbrain.md",
+      "line": 70,
+      "committed": "| hermes | anthropic:claude-haiku-5-5 | told-scoped | `hermes-haiku-gbrain-told-scoped-mu-heldout` | none | no none cell | no none cell | no none cell |",
+      "rebuilt": "| hermes | anthropic:claude-haiku-5-5 | told-scoped | `hermes-haiku-gbrain-told-scoped-mu-heldout` | none | no none cell | no none cell | no none cell | no none cell |",
+      "reason": "compare-run.ts gained an exposure column in this table after the file was published (commit ba4945bca2, #213). The published columns and their numbers are unchanged; the rebuilt line only adds the new column at the end."
+    }
+  ]
+}

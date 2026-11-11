@@ -13,7 +13,7 @@ Every report rests on these rules. They moved here from the README on 2026-11-08
 - **Graded on what happened.** Tasks run inside a simulated company with channels, files and mail. The grader reads the world's state and event log afterwards, never the agent's account of what it did.
 - **A claim check before results publish.** A reviewer traces every number and takeaway in a report to its receipt before the report merges. The [reports index](reports-index.md) shows which reports have one.
 - **A cross-family judge.** Where a run scores answers with a model, the judge comes from a different model family than the model under test, and it must agree with labelled examples before its scores count. This applies to runs preregistered from November 8, 2026.
-- **Recheckable without a key.** Each recent report ends with a "Reproduce and inspect" section that rebuilds its tables from the receipts in the repository ([CONTRIBUTING.md](../CONTRIBUTING.md#re-read-a-runs-receipts)). A tool for rerunning one cell with your own key is described in [replicate.md](replicate.md), but no published result ships the trial bundle it needs yet.
+- **Recheckable without a key.** `bun run verify` rebuilds every published run's analysis files from the receipts in the repository and fails if any value differs; CI runs it on every pull request ([verify.md](verify.md)). Each recent report also ends with a "Reproduce and inspect" section with the commands for that run ([CONTRIBUTING.md](../CONTRIBUTING.md#re-read-a-runs-receipts)). A tool for rerunning one cell with your own key is described in [replicate.md](replicate.md), but no published result ships the trial bundle it needs yet.
 - Known limits and the statistics: [methods.md](methods.md#known-limits-in-full).
 
 ## The top of the report
@@ -56,6 +56,8 @@ A run on a task set that already has a main entry adds a `"role": "other"` entry
 Every new run folder also gets a row in docs/scoreboard/reports.json. Until it has one, the [reports index](reports-index.md) lists it as not yet indexed.
 
 Run `bun scripts/scoreboard/build.ts` and commit the regenerated pages, and the README block if the README has scoreboard markers, in the same PR.
+
+Every reported run also gets a rebuild recipe, scripts/verify/runs/<folder>.json, in the same PR ([verify.md](verify.md#recipes)). A test fails without one, and `bun run verify --run <folder>` must print MATCH or KNOWN.
 
 ## The end of the report
 

@@ -1,0 +1,92 @@
+{
+  "run": "2026-10-25-v02-heldout",
+  "about": "v0.2 held-out run: OpenClaw, Hermes and QM on Sonnet and Haiku over 15 unseen v0.2 tasks, each with no gbrain and with gbrain plus an instruction to use it: per-cell tables, the gbrain-told against none comparisons, secondary endpoints, harness-against-harness comparisons and the minimum detectable difference.",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ],
+      "stdout": {
+        "file": "results/summary.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/compare-run.ts",
+        "--results",
+        "{run}/results",
+        "--pair",
+        "gbrain",
+        "--families",
+        "continuity,synthesis,corrections,approval_relay"
+      ],
+      "outputs": [
+        "results/comparisons.gbrain.continuity-synthesis-corrections-approval_relay.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/compare-run.ts",
+        "--results",
+        "{run}/results",
+        "--families",
+        "continuity,synthesis,corrections,approval_relay"
+      ],
+      "outputs": [
+        "results/comparisons.continuity-synthesis-corrections-approval_relay.json"
+      ],
+      "stdout": {
+        "file": "results/comparisons.families.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/paired-mdd.ts",
+        "--results",
+        "{run}/results",
+        "--families",
+        "continuity,synthesis,corrections,approval_relay",
+        "--reps",
+        "5"
+      ],
+      "stdout": {
+        "file": "results/paired-mdd.md"
+      }
+    }
+  ],
+  "known": [
+    {
+      "file": "results/summary.md",
+      "line": 29,
+      "committed": "| qm-pi-haiku-gbrain-told-mu-v02-heldout | 75 | 75 | 1 / 116 | search 114, remember 1, get_page 1 | 4.5 | 277 | 1 | 1 | 21 / 0 | 75 of 75 |",
+      "rebuilt": "| qm-pi-haiku-gbrain-told-mu-v02-heldout | 75 | 75 | 1 / 116 | search 114, remember 1, get_page 1 | 4.5 | 277 | 1 | 1 (failed: invalid_params 1) | 21 / 0 | 75 of 75 |",
+      "reason": "summarize-run.ts started breaking failed gbrain writes down by error (write_errors, shown as '(failed: invalid_params 1)' after the Writes count) in commit 8ecc586471 (#176, 2026-11-03), after this file was committed; one write in this cell failed with invalid_params, the published Writes and Errors counts are unchanged, and only the breakdown is new."
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The gbrain-told against none tables as Markdown",
+      "file": "results/comparisons.md",
+      "reason": "Not compared yet, because verify compares Markdown line by line by position. Today's compare-run.ts (commit ad71156b88, #92, 2026-10-26) inserts one sensitivity row under each of the six comparisons and an 'Excluded pairs: none.' line under each per-task table, which pushes every later line down. A rebuild by hand on 2026-11-09 gave every published line unchanged, in the same order, with only those 10 lines added; the same numbers are compared in comparisons.gbrain.continuity-synthesis-corrections-approval_relay.json."
+    },
+    {
+      "what": "The secondary endpoints",
+      "file": "results/secondary-endpoints.json and results/secondary-endpoints.md",
+      "reason": "Not compared yet, because verify compares JSON lists and Markdown lines by position. Today's secondary-endpoints.ts (commit ad71156b88, #92, 2026-10-26) adds a sixth endpoint, cross_scope_fact (all zeros here, since this run ingested no facts), third in the list, so the five published endpoints each move down one place and show as about 130 differences. A rebuild by hand on 2026-11-09 gave all five published endpoints identical when matched by name, and the Markdown unchanged apart from the 11 lines of the new table."
+    },
+    {
+      "what": "The per-shard spend sheets",
+      "file": "results/<shard>.spend-reconciliation.md for all nine shards",
+      "reason": "Each shard's spend sheet came from scripts/reconcile-provider.ts run on that shard's own results folder before the shards were merged. That script only reads files named exactly trials.jsonl, proxy-usage.ndjson and ledger.sqlite in one folder, and the committed copies are the merged trials.jsonl plus the shard's files under a prefix (for example oc-s-none.ledger.sqlite), so the shard's own inputs aren't laid out the way the script needs."
+    }
+  ]
+}

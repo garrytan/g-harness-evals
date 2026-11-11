@@ -1,0 +1,291 @@
+{
+  "run": "2026-10-31-v03-opus-dev",
+  "about": "v03-opus-dev-2026-10: six Opus 5.5 cells on the v0.3 dev tasks (gbrain scoped, gbrain company-wide and no gbrain, on OpenClaw and Hermes), the go-rule tables, endpoints 3 to 5 and the Why null? figures.",
+  "requires": [
+    "tasks/multiuser/v0.3/dev",
+    "scripts/summarize-run.ts",
+    "scripts/gbrain-usage.ts",
+    "runner/stats/paired.ts"
+  ],
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ],
+      "stdout": {
+        "file": "results/summary.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/v03/pilot-tables.ts",
+        "--results",
+        "{run}/results",
+        "--tasks",
+        "tasks/multiuser/v0.3/dev",
+        "--out",
+        "{run}/results/pilot-tables-deciding",
+        "--told",
+        "openclaw-opus-gbrain-told-scoped-mu-v03-dev,hermes-opus-gbrain-told-scoped-mu-v03-dev"
+      ],
+      "outputs": [
+        "results/pilot-tables-deciding/pilot-tables.json",
+        "results/pilot-tables-deciding/pilot-tables.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/v03/pilot-tables.ts",
+        "--results",
+        "{run}/results",
+        "--tasks",
+        "tasks/multiuser/v0.3/dev",
+        "--out",
+        "{run}/results/pilot-tables-company",
+        "--told",
+        "openclaw-opus-gbrain-told-company-mu-v03-dev,hermes-opus-gbrain-told-company-mu-v03-dev"
+      ],
+      "outputs": [
+        "results/pilot-tables-company/pilot-tables.json",
+        "results/pilot-tables-company/pilot-tables.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/v03/pilot-tables.ts",
+        "--results",
+        "{run}/results",
+        "--tasks",
+        "tasks/multiuser/v0.3/dev",
+        "--out",
+        "{run}/results/pilot-tables-none",
+        "--told",
+        "openclaw-opus-none-mu-v03-dev,hermes-opus-none-mu-v03-dev"
+      ],
+      "outputs": [
+        "results/pilot-tables-none/pilot-tables.json",
+        "results/pilot-tables-none/pilot-tables.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/v03/pilot-tables.ts",
+        "--results",
+        "{run}/results",
+        "--tasks",
+        "tasks/multiuser/v0.3/dev",
+        "--out",
+        "{run}/results/pilot-tables-per-cell/he-company",
+        "--told",
+        "hermes-opus-gbrain-told-company-mu-v03-dev"
+      ],
+      "outputs": [
+        "results/pilot-tables-per-cell/he-company/pilot-tables.json",
+        "results/pilot-tables-per-cell/he-company/pilot-tables.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/v03/pilot-tables.ts",
+        "--results",
+        "{run}/results",
+        "--tasks",
+        "tasks/multiuser/v0.3/dev",
+        "--out",
+        "{run}/results/pilot-tables-per-cell/he-none",
+        "--told",
+        "hermes-opus-none-mu-v03-dev"
+      ],
+      "outputs": [
+        "results/pilot-tables-per-cell/he-none/pilot-tables.json",
+        "results/pilot-tables-per-cell/he-none/pilot-tables.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/v03/pilot-tables.ts",
+        "--results",
+        "{run}/results",
+        "--tasks",
+        "tasks/multiuser/v0.3/dev",
+        "--out",
+        "{run}/results/pilot-tables-per-cell/he-told",
+        "--told",
+        "hermes-opus-gbrain-told-scoped-mu-v03-dev"
+      ],
+      "outputs": [
+        "results/pilot-tables-per-cell/he-told/pilot-tables.json",
+        "results/pilot-tables-per-cell/he-told/pilot-tables.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/v03/pilot-tables.ts",
+        "--results",
+        "{run}/results",
+        "--tasks",
+        "tasks/multiuser/v0.3/dev",
+        "--out",
+        "{run}/results/pilot-tables-per-cell/oc-company",
+        "--told",
+        "openclaw-opus-gbrain-told-company-mu-v03-dev"
+      ],
+      "outputs": [
+        "results/pilot-tables-per-cell/oc-company/pilot-tables.json",
+        "results/pilot-tables-per-cell/oc-company/pilot-tables.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/v03/pilot-tables.ts",
+        "--results",
+        "{run}/results",
+        "--tasks",
+        "tasks/multiuser/v0.3/dev",
+        "--out",
+        "{run}/results/pilot-tables-per-cell/oc-none",
+        "--told",
+        "openclaw-opus-none-mu-v03-dev"
+      ],
+      "outputs": [
+        "results/pilot-tables-per-cell/oc-none/pilot-tables.json",
+        "results/pilot-tables-per-cell/oc-none/pilot-tables.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/v03/pilot-tables.ts",
+        "--results",
+        "{run}/results",
+        "--tasks",
+        "tasks/multiuser/v0.3/dev",
+        "--out",
+        "{run}/results/pilot-tables-per-cell/oc-told",
+        "--told",
+        "openclaw-opus-gbrain-told-scoped-mu-v03-dev"
+      ],
+      "outputs": [
+        "results/pilot-tables-per-cell/oc-told/pilot-tables.json",
+        "results/pilot-tables-per-cell/oc-told/pilot-tables.md"
+      ]
+    },
+    {
+      "cmd": [
+        "python3",
+        "-c",
+        "import os, subprocess, sys\nrun, h = sys.argv[1], sys.argv[2]\nd = run + '/results/endpoint3/' + h + '-covered'\nos.makedirs(d)\nfor name, target in [('trials.jsonl', '../' + h + '.covered.trials.jsonl'), ('manifest.json', '../../manifest.json'), ('trials', '../../trials'), ('summary.json', '../' + h + '.covered.summary.json')]:\n    os.symlink(target, os.path.join(d, name))\nsys.exit(subprocess.call(['bun', '--no-env-file', 'scripts/summarize-run.ts', '--results', d]))\n",
+        "{run}",
+        "hermes"
+      ],
+      "outputs": [
+        "results/endpoint3/hermes.covered.summary.json"
+      ],
+      "stdout": {
+        "file": "results/endpoint3/hermes.covered.summary.md"
+      },
+      "note": "summarize-run.ts reads trials.jsonl from the folder it is given, so this links the committed covered-task subset (hermes.covered.trials.jsonl) into a folder of its own, beside the run's manifest and trial receipts, and points that folder's summary.json at the published file name."
+    },
+    {
+      "cmd": [
+        "python3",
+        "-c",
+        "import os, subprocess, sys\nrun, h = sys.argv[1], sys.argv[2]\nd = run + '/results/endpoint3/' + h + '-covered'\nos.makedirs(d)\nfor name, target in [('trials.jsonl', '../' + h + '.covered.trials.jsonl'), ('manifest.json', '../../manifest.json'), ('trials', '../../trials'), ('summary.json', '../' + h + '.covered.summary.json')]:\n    os.symlink(target, os.path.join(d, name))\nsys.exit(subprocess.call(['bun', '--no-env-file', 'scripts/summarize-run.ts', '--results', d]))\n",
+        "{run}",
+        "openclaw"
+      ],
+      "outputs": [
+        "results/endpoint3/openclaw.covered.summary.json"
+      ],
+      "stdout": {
+        "file": "results/endpoint3/openclaw.covered.summary.md"
+      },
+      "note": "summarize-run.ts reads trials.jsonl from the folder it is given, so this links the committed covered-task subset (openclaw.covered.trials.jsonl) into a folder of its own, beside the run's manifest and trial receipts, and points that folder's summary.json at the published file name."
+    },
+    {
+      "cmd": [
+        "bun",
+        "{run}/results/analysis/endpoints.ts"
+      ],
+      "outputs": [
+        "results/analysis/endpoints.json",
+        "results/analysis/endpoints.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "{run}/results/analysis/why-null.ts"
+      ],
+      "outputs": [
+        "results/analysis/why-null.json",
+        "results/analysis/why-null.md"
+      ]
+    }
+  ],
+  "known": [
+    {
+      "file": "results/summary.md",
+      "line": 12,
+      "committed": "| openclaw-opus-gbrain-told-scoped-mu-v03-dev | 86 | 100 | 1 / 140 | search 99, remember 21, recall 12, get_page 6, forget 2 | 7 | 221 | 2 | 23 | 1 / 0 | 100 of 100 |",
+      "rebuilt": "| openclaw-opus-gbrain-told-scoped-mu-v03-dev | 86 | 100 | 1 / 140 | search 99, remember 21, recall 12, get_page 6, forget 2 | 7 | 221 | 2 | 23 (failed: invalid_params 1) | 1 / 0 | 100 of 100 |",
+      "reason": "summarize-run.ts began printing failed gbrain writes by error type in #176 (8ecc586471, 2026-11-03), after this table was committed, so the gbrain writes cell gains a '(failed: ...)' note; the write count itself is unchanged."
+    },
+    {
+      "file": "results/summary.md",
+      "line": 14,
+      "committed": "| openclaw-opus-gbrain-told-company-mu-v03-dev | 51 | 60 | 1 / 85 | search 58, remember 14, recall 8, get_page 3, forget 2 | 8 | 211 | 1 | 16 | 123 / 1 | 60 of 60 |",
+      "rebuilt": "| openclaw-opus-gbrain-told-company-mu-v03-dev | 51 | 60 | 1 / 85 | search 58, remember 14, recall 8, get_page 3, forget 2 | 8 | 211 | 1 | 16 (failed: invalid_params 1) | 123 / 1 | 60 of 60 |",
+      "reason": "summarize-run.ts began printing failed gbrain writes by error type in #176 (8ecc586471, 2026-11-03), after this table was committed, so the gbrain writes cell gains a '(failed: ...)' note; the write count itself is unchanged."
+    },
+    {
+      "file": "results/summary.md",
+      "line": 15,
+      "committed": "| hermes-opus-gbrain-told-company-mu-v03-dev | 50 | 60 | 1 / 88 | search 70, remember 11, recall 5, get_page 2 | 8 | 198 | 1 | 11 | 121 / 1 | 60 of 60 |",
+      "rebuilt": "| hermes-opus-gbrain-told-company-mu-v03-dev | 50 | 60 | 1 / 88 | search 70, remember 11, recall 5, get_page 2 | 8 | 198 | 1 | 11 (failed: invalid_params 1) | 121 / 1 | 60 of 60 |",
+      "reason": "summarize-run.ts began printing failed gbrain writes by error type in #176 (8ecc586471, 2026-11-03), after this table was committed, so the gbrain writes cell gains a '(failed: ...)' note; the write count itself is unchanged."
+    },
+    {
+      "file": "results/endpoint3/hermes.covered.summary.md",
+      "line": 10,
+      "committed": "| hermes-opus-gbrain-told-company-mu-v03-dev | 50 | 60 | 1 / 88 | search 70, remember 11, recall 5, get_page 2 | 8 | 198 | 1 | 11 | 121 / 1 | 60 of 60 |",
+      "rebuilt": "| hermes-opus-gbrain-told-company-mu-v03-dev | 50 | 60 | 1 / 88 | search 70, remember 11, recall 5, get_page 2 | 8 | 198 | 1 | 11 (failed: invalid_params 1) | 121 / 1 | 60 of 60 |",
+      "reason": "summarize-run.ts began printing failed gbrain writes by error type in #176 (8ecc586471, 2026-11-03), after this table was committed, so the gbrain writes cell gains a '(failed: ...)' note; the write count itself is unchanged."
+    },
+    {
+      "file": "results/endpoint3/openclaw.covered.summary.md",
+      "line": 9,
+      "committed": "| openclaw-opus-gbrain-told-scoped-mu-v03-dev | 66 | 80 | 1 / 115 | search 74, remember 21, recall 12, get_page 6, forget 2 | 6 | 212 | 2 | 23 | 1 / 0 | 80 of 80 |",
+      "rebuilt": "| openclaw-opus-gbrain-told-scoped-mu-v03-dev | 66 | 80 | 1 / 115 | search 74, remember 21, recall 12, get_page 6, forget 2 | 6 | 212 | 2 | 23 (failed: invalid_params 1) | 1 / 0 | 80 of 80 |",
+      "reason": "summarize-run.ts began printing failed gbrain writes by error type in #176 (8ecc586471, 2026-11-03), after this table was committed, so the gbrain writes cell gains a '(failed: ...)' note; the write count itself is unchanged."
+    },
+    {
+      "file": "results/endpoint3/openclaw.covered.summary.md",
+      "line": 10,
+      "committed": "| openclaw-opus-gbrain-told-company-mu-v03-dev | 41 | 48 | 1 / 73 | search 46, remember 14, recall 8, get_page 3, forget 2 | 7 | 204 | 1 | 16 | 111 / 1 | 48 of 48 |",
+      "rebuilt": "| openclaw-opus-gbrain-told-company-mu-v03-dev | 41 | 48 | 1 / 73 | search 46, remember 14, recall 8, get_page 3, forget 2 | 7 | 204 | 1 | 16 (failed: invalid_params 1) | 111 / 1 | 48 of 48 |",
+      "reason": "summarize-run.ts began printing failed gbrain writes by error type in #176 (8ecc586471, 2026-11-03), after this table was committed, so the gbrain writes cell gains a '(failed: ...)' note; the write count itself is unchanged."
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The task defect readings in results/defects.json",
+      "file": "results/defects.json",
+      "reason": "Two readers, the run's author and a second model (openai/gpt-6.1-sol), read each zero-pass trial by hand against the defect rule; their readings are judgment calls, not something a script computes from the receipts."
+    }
+  ]
+}

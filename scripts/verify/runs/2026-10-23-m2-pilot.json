@@ -1,0 +1,70 @@
+{
+  "run": "2026-10-23-m2-pilot",
+  "about": "M2 pilot: OpenClaw, Hermes and QM on Sonnet over the 10 public multi-user dev tasks, as graded and as regraded, with failure labels and the spend check.",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results",
+        "--regraded"
+      ],
+      "outputs": [
+        "results/summary.regraded.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/reconcile-provider.ts",
+        "--results",
+        "{run}/results",
+        "--write"
+      ],
+      "outputs": [
+        "results/spend-reconciliation.json"
+      ]
+    }
+  ],
+  "volatile": [
+    {
+      "file": "results/spend-reconciliation.json",
+      "path": "results",
+      "reason": "The results folder path as typed on the command line; verify passes the absolute path of its scratch copy, which differs on every rebuild."
+    },
+    {
+      "file": "results/spend-reconciliation.json",
+      "path": "generated_at",
+      "reason": "The time the file was written, different on every rebuild."
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The regraded trial file",
+      "file": "results/trials.regraded.jsonl",
+      "reason": "It is a second grading of the trials with the grader as it was at commit 0a16b23 (the 0.0.4 grader the report names). scripts/regrade.ts always grades with today's grader, which now changes 18 trials instead of the 6 the report lists, and it exits with code 1 whenever any grade changes, which verify treats as a failed step. summary.regraded.json and taxonomy.regraded.json are rebuilt from the committed copy."
+    },
+    {
+      "what": "The failure taxonomy (failure labels per failed check)",
+      "file": "results/taxonomy.json and results/taxonomy.md",
+      "reason": "Not compared yet. taxonomy.ts writes taxonomy.json and taxonomy.md together, and the Markdown file carries the checkout's commit id in its Provenance line, which changes on every commit, and this recipe does not yet list that line as volatile the way the company-brain recipe does. A rebuild by hand on 2026-11-09 gave the same failure counts in both files; the only differences were the classifier version (1.0.0 to 1.1.0, commit 9c82948625 added a forbidden_event label that no failure here gets), that label's legend line, the commit id and the time written."
+    },
+    {
+      "what": "The failure taxonomy of the regraded trials",
+      "file": "results/taxonomy.regraded.json and results/taxonomy.regraded.md",
+      "reason": "Not compared yet. taxonomy.ts writes taxonomy.json and taxonomy.md together, and the Markdown file carries the checkout's commit id in its Provenance line, which changes on every commit, and this recipe does not yet list that line as volatile the way the company-brain recipe does. A rebuild by hand on 2026-11-09 gave the same failure counts in both files; the only differences were the classifier version (1.0.0 to 1.1.0, commit 9c82948625 added a forbidden_event label that no failure here gets), that label's legend line, the commit id and the time written."
+    }
+  ]
+}

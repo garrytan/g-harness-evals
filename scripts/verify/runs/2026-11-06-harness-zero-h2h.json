@@ -1,0 +1,70 @@
+{
+  "run": "2026-11-06-harness-zero-h2h",
+  "about": "Harness Zero against the field: the lean Harness Zero candidate against Claude Code, Codex, OpenClaw, Hermes and QM on Opus 5.5 and GPT-6.1 Sol over the second v0.3 dev draw, plus gbrain and MCP-instruction cells: per-cell tables, comparisons against each model's lean baseline, and the preregistered verdicts.",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ],
+      "stdout": {
+        "file": "results/summarize-run.out"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/compare-run.ts",
+        "--results",
+        "{run}/results",
+        "--baseline",
+        "zero-lean-opus-none-mu-v03-dev2,zero-lean-sol-sol-none-mu-v03-dev2"
+      ],
+      "outputs": [
+        "results/comparisons.json"
+      ],
+      "stdout": {
+        "file": "results/compare-run.out"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "{run}/report-extras.ts"
+      ],
+      "outputs": [
+        "results/report-extras.json",
+        "results/verdicts.md"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The clean-arm audit",
+      "file": "results/clean-arm-audit.json",
+      "reason": "It is a grep for gstack and Capy paths over each shard's full trial tree as copied back from its VM, harness state and workspaces included, plus a search of two container images; those trees and images were never committed."
+    },
+    {
+      "what": "The MCP-instructions exposure capture",
+      "file": "results/mcp-instructions-exposure.json",
+      "reason": "It was built from each trial's Harness Zero session files (state/zero/sessions/*.json), which stay out of the repository with the rest of harness state, and no script in the repository writes it."
+    }
+  ],
+  "volatile": [
+    {
+      "file": "results/comparisons.json",
+      "path": "stats_kit.commit",
+      "reason": "The commit id of the statistics code. The public copy has its own commit ids, so this changes between copies; the statistics code itself is checked by the rebuilt numbers."
+    },
+    {
+      "file": "results/comparisons.json",
+      "path": "stats_kit.preregistration_commit",
+      "reason": "The commit id of the statistics code. The public copy has its own commit ids, so this changes between copies; the statistics code itself is checked by the rebuilt numbers."
+    }
+  ]
+}
