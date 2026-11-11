@@ -59,15 +59,19 @@ class _Frontier:
     """Mixin: per-trial slot from the broker, the rendered environment, harness_settings.json, no host environment."""
 
     HARNESS = ""
-    KWARGS = ("broker_url", "cell", "attempt")
+    KWARGS = ("broker_url", "cell", "attempt", "gstack")
+    GSTACK_REMOTE_TAR = "/tmp/gstack-arm.tar.gz"
 
     @classmethod
     def parse_options(cls, kwargs: Mapping[str, Any] | None = None, env: Mapping[str, str] | None = None) -> Any:
         return super().parse_options({k: v for k, v in (kwargs or {}).items() if k not in cls.KWARGS}, env)
 
-    def __init__(self, *args: Any, broker_url: str | None = None, cell: str | None = None, attempt: int | None = None, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, broker_url: str | None = None, cell: str | None = None, attempt: int | None = None, gstack: dict[str, Any] | None = None, **kwargs: Any) -> None:
         model = cell_model(kwargs.get("model_name"))
         kwargs.update(fs.harbor_kwargs(self.HARNESS, model))
+        if gstack is not None:
+            fs.gstack_arm(self.HARNESS, gstack)
+        self._frontier_gstack = gstack
         self._frontier_model = model
         self._frontier_cell = cell
         self._frontier_attempt = attempt
@@ -92,7 +96,7 @@ class _Frontier:
         self._extra_env.update(fs.container_env(self.HARNESS, self._frontier_model, slot["base_url"], slot["token"]))
 
     def _write_settings(self) -> None:
-        settings = fs.harness_settings(self.HARNESS, self._frontier_model)
+        settings = fs.harness_settings(self.HARNESS, self._frontier_model) if self._frontier_gstack is None else fs.harness_settings(self.HARNESS, self._frontier_model, self._frontier_gstack)
         settings["trial"] = self.frontier_trial
         settings["cell"] = self._frontier_cell
         settings["attempt"] = self._frontier_attempt
@@ -109,18 +113,32 @@ class _Frontier:
             if "proxy-capture" in self._frontier_checks["container_logs_entries"]:
                 raise RuntimeError("HE-FRONTIER-003 the trial's proxy-capture directory is visible inside the task container")
             await self._frontier_after_install(environment)
+            if self._frontier_gstack is not None:
+                await self._frontier_install_gstack(environment)
         finally:
             self._write_settings()
 
     async def _frontier_after_install(self, environment: BaseEnvironment) -> None:
         return None
 
+    async def _frontier_install_gstack(self, environment: BaseEnvironment) -> None:
+        """The cell's gstack arm: its release tar uploaded, checked and extracted into the agent's home after the harness
+        and our settings are in place (scripts/canary/gstack/arm.json says where each host reads it)."""
+        arm = fs.gstack_arm(self.HARNESS, self._frontier_gstack)
+        await environment.upload_file(arm["tar"], self.GSTACK_REMOTE_TAR)
+        res = await environment.exec(command=fs.gstack_install_command(self._frontier_gstack, self.GSTACK_REMOTE_TAR), user=environment.default_user, timeout_sec=600)
+        facts = fs.gstack_install_facts(res.stdout or "")
+        want = {"status": "ok", "router": "yes", "skills": len(arm["sidecar"]["skills"]), "version": arm["version"], "head": arm["sha"]}
+        self._frontier_checks["gstack"] = {**facts, "expected": want, "matches": all(facts.get(k) == v for k, v in want.items())}
+        if not self._frontier_checks["gstack"]["matches"]:
+            raise RuntimeError(f"HE-FRONTIER-002 the gstack arm did not install as built: {facts} (expected {want})")
+
 
 class FrontierClaudeCode(_Frontier, ClaudeCode):
     HARNESS = "claude-code"
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        kwargs["config"] = json.loads((fs.REPO / "harnesses/claude-code/config/settings.json").read_text())
+        kwargs["config"] = fs.claude_settings_merge(kwargs.get("gstack"))["settings"]
         super().__init__(*args, **kwargs)
 
     async def _frontier_after_install(self, environment: BaseEnvironment) -> None:
@@ -131,6 +149,18 @@ class FrontierClaudeCode(_Frontier, ClaudeCode):
         self._frontier_checks.update({"claude_binary_sha256": got, "claude_binary_matches_pin": got == want, "claude_version": " ".join(words[1:3]) or None})
         if got != want:
             raise RuntimeError(f"HE-FRONTIER-002 the installed claude binary is {got}, not the pinned {want}")
+
+    async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
+        try:
+            await super().run(instruction, environment, context)
+        finally:
+            if self._frontier_gstack is not None:
+                try:
+                    res = await environment.exec(command=fs.drop_skill_links_command(), timeout_sec=60)
+                    words = (res.stdout or "").split()
+                    self._frontier_checks["skill_links_dropped"] = int(words[-1]) if words[-2:-1] == ["SKILL_LINKS_DROPPED"] and words[-1].isdigit() else None
+                finally:
+                    self._write_settings()
 
 
 class FrontierCodex(_Frontier, Codex):

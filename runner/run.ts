@@ -309,6 +309,10 @@ export interface Prereg {
    *  run's). scripts/run-shard.sh builds the image at it, and preflight and run refuse an image that records another (HE-GBRAIN-016).
    *  Absent: the pin, as before. */
   gbrain_commit?: string;
+  /** The tools/list count per surface that gbrain_commit serves, when it differs from gbrain/pin.json's surfaces.<s>.tools (the
+   *  regression canary runs each stable release at its own commit, scripts/canary/gbrain/). Needs gbrain_commit; preflight compares
+   *  the image with it in place of the pin's count. Absent: the pin's count, as before. */
+  gbrain_surface_tools?: Partial<Record<'starter' | 'verbs', number>>;
 }
 
 /** internal-task (H10): `interleave-task` runs, repetition by repetition, the tasks in a seeded order and within each task its cells
@@ -345,6 +349,8 @@ export interface Manifest {
   order?: RunOrder;
   /** internal-task: the preregistration's gbrain_commit, copied at plan; present only when the preregistration names one. */
   gbrain_commit?: string;
+  /** The preregistration's gbrain_surface_tools, copied at plan; present only when it names them. */
+  gbrain_surface_tools?: Partial<Record<'starter' | 'verbs', number>>;
   /** internal-task: a replication of a past held-out run (runner/heldout/replication.ts), planned from its registered prereg.json. */
   replication_of?: ReplicationOf;
 }
@@ -364,6 +370,11 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
   if (!prereg.cells?.length) throw new RunnerError('HE-PREREG-003', 'no cells; fix: add at least one cell to the preregistration');
   prereg.tasks ??= {};
   if (prereg.gbrain_commit !== undefined && (typeof prereg.gbrain_commit !== 'string' || !/^[0-9a-f]{40}$/.test(prereg.gbrain_commit))) throw new RunnerError('HE-GBRAIN-016', `gbrain_commit must be a full 40-character gbrain sha (got ${JSON.stringify(prereg.gbrain_commit)}); fix: name the commit the run's gbrain image is built at, or drop the field to run gbrain/pin.json's`);
+  if (prereg.gbrain_surface_tools !== undefined) {
+    const t = prereg.gbrain_surface_tools as Record<string, unknown> | null;
+    if (!prereg.gbrain_commit) throw new RunnerError('HE-GBRAIN-016', 'gbrain_surface_tools needs gbrain_commit: it states the tool counts of that commit, and a run of the pin uses gbrain/pin.json\'s');
+    if (!t || typeof t !== 'object' || Array.isArray(t) || !Object.keys(t).length || Object.entries(t).some(([k, v]) => !(GBRAIN_SURFACES as readonly string[]).includes(k) || !Number.isSafeInteger(v) || (v as number) < 1)) throw new RunnerError('HE-GBRAIN-016', `gbrain_surface_tools must map surfaces (${GBRAIN_SURFACES.join(', ')}) to positive tool counts (got ${JSON.stringify(t)})`);
+  }
   for (const c of prereg.cells) {
     const unknown = Object.keys(c).filter((k) => !CELL_KEYS.has(k));
     if (unknown.length) throw new RunnerError('HE-PREREG-007', `cell ${String(c.id)}: unknown key(s) ${unknown.join(', ')}; allowed: ${[...CELL_KEYS].join(', ')}`);
@@ -573,7 +584,7 @@ export function buildManifest(prereg: Prereg, sha256: string, now = new Date().t
   }
   const ceiling = +Object.values(perCell).reduce((a, b) => a + b, 0).toFixed(2);
   const ordered = prereg.order ? interleaveTrials(trials, prereg.cells.map((c) => c.id), prereg.order.seed) : trials;
-  return { schema_version: 1, run_id: prereg.run_id, prereg_sha256: sha256, created_at: now, cells: prereg.cells, trials: ordered, cost_ceiling_usd: ceiling, per_cell_ceiling_usd: perCell, spend_cap_usd: prereg.spend_cap_usd, trial_hours_at_cap: +hours.toFixed(1), ...(prereg.order ? { order: prereg.order } : {}), ...(prereg.gbrain_commit ? { gbrain_commit: prereg.gbrain_commit } : {}) };
+  return { schema_version: 1, run_id: prereg.run_id, prereg_sha256: sha256, created_at: now, cells: prereg.cells, trials: ordered, cost_ceiling_usd: ceiling, per_cell_ceiling_usd: perCell, spend_cap_usd: prereg.spend_cap_usd, trial_hours_at_cap: +hours.toFixed(1), ...(prereg.order ? { order: prereg.order } : {}), ...(prereg.gbrain_commit ? { gbrain_commit: prereg.gbrain_commit } : {}), ...(prereg.gbrain_surface_tools ? { gbrain_surface_tools: prereg.gbrain_surface_tools } : {}) };
 }
 
 /** internal-task (H10): the interleave-task order. For each repetition in ascending order, the tasks (sorted, then shuffled) and within
@@ -811,9 +822,11 @@ async function main(argv: string[]): Promise<number> {
       for (const [label, cs] of keywordConfigs) {
         const g = resolveGbrain(cs[0]!.gbrain!);
         const probe = await probeGbrainImage(image, join(runDir, `preflight-gbrain-${g.surface}`), { surface: g.surface });
-        const pinned = pin.surfaces[g.surface]?.tools;
-        if (probe.tools.length !== pinned) throw new RunnerError('HE-GBRAIN-002', `image ${image} lists ${probe.tools.length} tools on the ${g.surface} surface, gbrain/pin.json pins ${pinned}; fix: rebuild the image at the pinned commit, or re-pin after a deliberate gbrain change`);
-        console.log(`GBRAIN: image ${image} id=${probe.image_id} serves /health (gbrain ${probe.version ?? 'unknown'}, ready in ${probe.ready_ms} ms), ${probe.tools.length} tools on ${g.surface} (pin ${pinned}) for cells ${cs.map((c) => c.id).join(', ')} (${label})`);
+        const stated = loaded.gbrain_surface_tools?.[g.surface];
+        const pinned = stated ?? pin.surfaces[g.surface]?.tools;
+        const source = stated ? "the preregistration's gbrain_surface_tools states" : 'gbrain/pin.json pins';
+        if (probe.tools.length !== pinned) throw new RunnerError('HE-GBRAIN-002', `image ${image} lists ${probe.tools.length} tools on the ${g.surface} surface, ${source} ${pinned}; fix: rebuild the image at the pinned commit, or re-pin after a deliberate gbrain change`);
+        console.log(`GBRAIN: image ${image} id=${probe.image_id} serves /health (gbrain ${probe.version ?? 'unknown'}, ready in ${probe.ready_ms} ms), ${probe.tools.length} tools on ${g.surface} (${stated ? 'stated' : 'pin'} ${pinned}) for cells ${cs.map((c) => c.id).join(', ')} (${label})`);
       }
       // Each distinct embedded configuration is probed through the metering proxy under a small lease of its own:
       // one search must produce a forwarded /v1/embeddings line and no degraded stamp, else the semantic cells cannot run.
@@ -833,8 +846,8 @@ async function main(argv: string[]): Promise<number> {
             await proxy.unbind('preflight');
             const lines = proxy.usageLines(key).filter(isEmbeddingLine);
             const forwarded = lines.filter((l) => l.outcome === 'forwarded');
-            const pinned = pin.surfaces[surface]?.tools;
-            if (probe.tools.length !== pinned) throw new RunnerError('HE-GBRAIN-002', `image ${image} lists ${probe.tools.length} tools on the ${surface} surface (embedded brain), gbrain/pin.json pins ${pinned}`);
+            const pinned = loaded.gbrain_surface_tools?.[surface] ?? pin.surfaces[surface]?.tools;
+            if (probe.tools.length !== pinned) throw new RunnerError('HE-GBRAIN-002', `image ${image} lists ${probe.tools.length} tools on the ${surface} surface (embedded brain), ${loaded.gbrain_surface_tools?.[surface] ? "the preregistration's gbrain_surface_tools states" : 'gbrain/pin.json pins'} ${pinned}`);
             if (!forwarded.length || probe.search_degraded) throw new RunnerError('HE-GBRAIN-005', `the embedded ${surface} configuration (${model}) did not embed its probe query through the proxy: ${forwarded.length} forwarded /v1/embeddings line(s), ${lines.length - forwarded.length} refused or failed, degraded stamp ${probe.search_degraded ?? 'none'}; the semantic cells ${embeddedCells.map((c) => c.id).join(', ')} cannot run; fix: read ${join(runDir, 'preflight-proxy', 'proxy.log')} and the sidecar's serve.log under ${join(runDir, `preflight-gbrain-embedded-${surface}`)}`);
             console.log(`GBRAIN: embedded ${surface} (${model}) probe through the proxy: ${forwarded.length} /v1/embeddings line(s) forwarded (${forwarded.reduce((a, l) => a + (l.input_tokens ?? 0), 0)} tokens, ${forwarded.reduce((a, l) => a + (l.actual_usd ?? 0), 0).toFixed(6)}), search returned ${probe.search_slugs?.length ?? 0} page(s), no degraded stamp; lease ${m.run_id}-preflight`);
           }

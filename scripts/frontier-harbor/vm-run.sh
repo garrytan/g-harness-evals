@@ -7,6 +7,8 @@
 #   scripts/frontier-harbor/vm-run.sh --prereg <prereg.json> --name <shard> --lease-usd <n> --out <results dir>
 #       --tb21 <terminal-bench-2-1 checkout at the pinned commit> [--stage <name> | --rerun <list.json> [--rerun-stage <name>] [--no-earlier-rerun]]
 #       [--done <trials.jsonl> ...] [--fake-upstream] [--uncounted <reason>]
+#   scripts/frontier-harbor/vm-run.sh --canary-spec <spec.json> --name <shard> --lease-usd <n> --out <results dir> --tb21 <dir>
+#       [--fake-upstream]
 #
 # --rerun (amendment 4 of frontier-harness-2026-11) runs the listed trials of the shard once more under their own ids,
 # in a fresh results directory, as the stage rerun1 (jobs <cell>__a<n>__rerun1, lease <run_id>:<shard>:rerun1): plan.ts
@@ -16,6 +18,12 @@
 # --rerun-stage rerun1-a<m> (amendment 6) names the stage of a later list's first rerun, so its lease is its own. check-shard
 # refuses it unless --done or --own holds a record of the shard from an earlier rerun stage, or --no-earlier-rerun says
 # that stage ran none of the shard's trials.
+#
+# --canary-spec runs a regression canary spec in place of a preregistration: a frontier-harbor/1 file that
+# scripts/canary/gstack/run-tier.sh rendered (scripts/canary/gstack/spec.ts). It is never a counted run. Before anything
+# else spec.ts check renders the spec again from the inputs it records and refuses it unless every byte matches, so
+# only a spec the canary renderer wrote runs this way; the attestation then records the spec's sha256 and its inputs'
+# sha256 in place of a preregistration commit. Every other gate (check-shard, leases, floors) is the same.
 #
 # --stage runs only that preregistered stage's trials of the shard (plan.ts stages). Without it the shard's every trial
 # runs. Either way a trial already recorded in <out>/trials.jsonl, or in a --done file (an earlier stage's results from
@@ -51,7 +59,7 @@ set -euo pipefail
 umask 077
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
-prereg="" name="" lease="" out="" tb21="" fake=0 uncounted="" stage="" rerun="" rerun_stage="" no_earlier_rerun=0
+prereg="" name="" lease="" out="" tb21="" fake=0 uncounted="" stage="" rerun="" rerun_stage="" no_earlier_rerun=0 canary=0
 done_files=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -60,7 +68,8 @@ while [ $# -gt 0 ]; do
     --rerun-stage) rerun_stage="$2"; shift 2 ;;
     --no-earlier-rerun) no_earlier_rerun=1; shift ;;
     --done) done_files+=("$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"); shift 2 ;;
-    --prereg) prereg=$2; shift 2 ;;
+    --prereg) [ "$canary" -eq 0 ] && [ -z "$prereg" ] || { echo "vm-run (frontier): give one of --prereg and --canary-spec" >&2; exit 2; }; prereg=$2; shift 2 ;;
+    --canary-spec) [ -z "$prereg" ] || { echo "vm-run (frontier): give one of --prereg and --canary-spec" >&2; exit 2; }; prereg=$2; canary=1; shift 2 ;;
     --name) name=$2; shift 2 ;;
     --lease-usd) lease=$2; shift 2 ;;
     --out) out=$2; shift 2 ;;
@@ -71,7 +80,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$prereg" ] && [ -n "$name" ] && [ -n "$lease" ] && [ -n "$out" ] && [ -n "$tb21" ] || { echo "vm-run (frontier): --prereg, --name, --lease-usd, --out and --tb21 are required" >&2; exit 2; }
-[ "$fake" -eq 0 ] || [ -n "$uncounted" ] || { echo "vm-run (frontier): --fake-upstream is for an --uncounted check only" >&2; exit 2; }
+[ "$fake" -eq 0 ] || [ -n "$uncounted" ] || [ "$canary" -eq 1 ] || { echo "vm-run (frontier): --fake-upstream is for an --uncounted check or a --canary-spec only" >&2; exit 2; }
+[ "$canary" -eq 0 ] || [ -z "$uncounted" ] || { echo "vm-run (frontier): a --canary-spec run is uncounted already; --uncounted does not apply" >&2; exit 2; }
 # Only the metering proxy holds provider keys: they stay shell variables (not exported) and are exported again inside
 # the proxy's subshell alone.
 export -n ANTHROPIC_API_KEY OPENAI_API_KEY 2>/dev/null || true
@@ -124,12 +134,16 @@ plan_arg=()
 done_args=()
 [ ! -f "$out/trials.jsonl" ] || done_args+=(--own "$out/trials.jsonl")
 for f in ${done_files[@]+"${done_files[@]}"}; do done_args+=(--done "$f"); done
+if [ "$canary" -eq 1 ]; then
+  (cd "$repo" && "${safe_env[@]}" bun scripts/canary/gstack/spec.ts check --spec "$prereg" 2>>"$out/run.log") | tee -a "$out/run-shard.log" || { say "the canary spec is not one scripts/canary/gstack/spec.ts renders from its own inputs (run.log); nothing ran"; exit 2; }
+fi
 (cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/plan.ts check-shard --prereg "$prereg" --name "$name" --lease-usd "$lease" ${plan_arg[@]+"${plan_arg[@]}"} ${done_args[@]+"${done_args[@]}"} 2>>"$out/run.log") | tee -a "$out/run-shard.log" || { say "the shard, its stage or its lease does not match the preregistration (run.log); nothing ran"; exit 2; }
 read -r run_id ids models <<< "$(cd "$repo" && "${safe_env[@]}" bun -e '
 const { loadPlan } = await import("./scripts/frontier-harbor/plan.ts");
 const p = loadPlan(process.argv[1]); const s = p.shards.find((x) => x.name === process.argv[2]);
 const cells = p.cells.filter((c) => s.cells.includes(c.id));
-const ids = [...p.order, ...p.kept_order].filter((t) => cells.some((c) => c.task_ids.includes(t)));
+const shared = [...p.order, ...p.kept_order].filter((t) => cells.some((c) => c.task_ids.includes(t)));
+const ids = [...shared, ...new Set(cells.flatMap((c) => c.task_ids).filter((t) => !shared.includes(t)))];
 const r = Bun.spawnSync(["python3", "-c", "import sys,json; sys.path.insert(0, sys.argv[1]); import frontier_settings as f; print(\",\".join(sorted({m for a in json.loads(sys.argv[2]) for m in f.slot_models(*a)})))", process.argv[3], JSON.stringify(cells.map((c) => [c.harness, c.model]))]);
 if (r.exitCode !== 0) { console.error(r.stderr.toString()); process.exit(2); }
 console.log(p.prereg.run_id, ids.join(","), r.stdout.toString().trim());' "$prereg" "$name" "$here" 2>>"$out/run.log")"
@@ -143,8 +157,8 @@ if [ "$fake" -eq 0 ]; then
     esac
   done
 fi
-# the clean-arm preflight (CREW.md "Clean no-gstack and no-brain arms"): every cell of this path is a no-gstack cell, so the
-# machine must hold no Capy drive and no gstack install; harnesses install into the task container at run time
+# the clean-arm preflight (CREW.md "Clean no-gstack and no-brain arms"): the machine must hold no Capy drive and no gstack
+# install; harnesses, and a cell's gstack arm when it has one, install into the task container at run time
 (cd "$repo" && "${safe_env[@]}" bun scripts/v04/clean-arm-audit.ts preflight --out "$out/preflight-clean-arm.json" --host-only 2>>"$out/run.log") | tee -a "$out/run-shard.log" || { say "clean-arm preflight: a Capy drive or a gstack install is reachable on this machine ($out/preflight-clean-arm.json); nothing ran"; exit 2; }
 say "shard $name: run $run_id, $(printf '%s' "$ids" | tr ',' '\n' | grep -c .) task(s), providers $providers, lease \$$lease$([ "$fake" -eq 1 ] && echo ', fake upstream (keyless)')$([ -n "$uncounted" ] && echo ", uncounted")"
 
@@ -172,6 +186,7 @@ if sudo -n nft add table inet frontier_probe 2>/dev/null; then sudo -n nft delet
 
 # 3. the preregistration attestation, before any trial
 attest=(--prereg "$prereg" --out "$out")
+[ "$canary" -eq 0 ] || attest=(--canary-spec "$prereg" --out "$out")
 [ -z "$uncounted" ] || attest+=(--uncounted "$uncounted")
 (cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/to-trials.ts attest "${attest[@]}" 2>>"$out/run.log") | tee -a "$out/run-shard.log" || { say "attestation refused (run.log); nothing ran"; exit 3; }
 

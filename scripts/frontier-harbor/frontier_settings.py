@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -212,8 +213,154 @@ def _record(harness: str, model: str, **fields: Any) -> dict[str, Any]:
     }
 
 
-def harness_settings(harness: str, model: str) -> dict[str, Any]:
-    """The harness_settings.json record for one harness and cell model."""
+def harness_settings(harness: str, model: str, gstack: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The harness_settings.json record for one harness and cell model; with a gstack arm, plus what the arm installs."""
+    record = _harness_settings(harness, model)
+    if gstack is None:
+        return record
+    arm = gstack_arm(harness, gstack)
+    host = arm["layout"]
+    merged = claude_settings_merge(gstack) if harness == "claude-code" else None
+    record["gstack"] = {
+        "sha": arm["sha"], "version": arm["version"], "host": arm["host"], "tar_sha256": arm["tar_sha256"],
+        "tar_roots": host["tar_roots"], "skills_dir": host["skills_dir"], "router": host["router"],
+        "skills": len(arm["sidecar"]["skills"]), "setup": arm["sidecar"]["setup"],
+        "read_by_harness": host["read_by_harness"],
+        "settings_added": merged["added"] if merged else [], "settings_kept_ours": merged["kept_ours"] if merged else [],
+        "bin_helpers_in_agent_image": arm["sidecar"]["bin_helpers"].get("in_agent_image"),
+    }
+    record["differences_from_pin"] = [*record["differences_from_pin"],
+        "gstack %s (%s) installed from its release tar into the task container after our settings%s" % (
+            arm["version"], arm["sha"][:12], "; its Claude settings merged into ours, ours kept on any conflict" if merged else "")]
+    return record
+
+
+GSTACK_HOSTS = {"claude-code": "claude", "codex": "codex"}
+GSTACK_KEYS = ("sha", "version", "host", "tar", "tar_sha256")
+
+
+def arm_layout() -> dict[str, Any]:
+    """scripts/canary/gstack/arm.json: the home layout a gstack arm is built for and installed into."""
+    return json.loads((REPO / "scripts/canary/gstack/arm.json").read_text())
+
+
+def gstack_arm(harness: str, gstack: dict[str, Any]) -> dict[str, Any]:
+    """A cell's gstack option checked against its harness and the build sidecar beside its tar (<tar>.json), with the
+    sidecar and the host's layout attached. A ValueError names what does not match."""
+    if not isinstance(gstack, dict) or sorted(gstack) != sorted(GSTACK_KEYS):
+        raise ValueError(f"gstack must be {{{', '.join(GSTACK_KEYS)}}}")
+    host = GSTACK_HOSTS.get(harness)
+    if host is None:
+        raise ValueError(f"a gstack arm runs only on {', '.join(GSTACK_HOSTS)}, not {harness}")
+    if gstack["host"] != host:
+        raise ValueError(f"gstack.host is {gstack['host']!r}; {harness} reads the {host!r} install")
+    if not re.fullmatch(r"[0-9a-f]{40}", str(gstack["sha"])) or not re.fullmatch(r"[0-9a-f]{64}", str(gstack["tar_sha256"])):
+        raise ValueError("gstack.sha must be a 40-hex commit and gstack.tar_sha256 a 64-hex sha256")
+    tar = Path(gstack["tar"])
+    side_path = Path(str(tar) + ".json")
+    if not tar.is_absolute() or not tar.is_file() or not side_path.is_file():
+        raise ValueError(f"gstack.tar {tar} must be an absolute path to a built arm with its sidecar {side_path.name}")
+    side = json.loads(side_path.read_text())
+    for k in ("sha", "version", "host", "tar_sha256"):
+        if side.get(k) != gstack[k]:
+            raise ValueError(f"gstack.{k} is {gstack[k]!r}, but the arm's sidecar records {side.get(k)!r}")
+    return {**gstack, "sidecar": side, "layout": arm_layout()["hosts"][host]}
+
+
+def merge_settings(ours: Any, theirs: Any, path: str = "") -> tuple[Any, list[str], list[str]]:
+    """theirs merged into ours: keys ours lacks are added, lists get the entries ours lacks appended, and on any other
+    clash ours is kept. Returns the merged value, the paths added and the paths where ours was kept over theirs."""
+    if isinstance(ours, dict) and isinstance(theirs, dict):
+        out, added, kept = dict(ours), [], []
+        for k, v in theirs.items():
+            p = f"{path}.{k}" if path else k
+            if k not in ours:
+                out[k] = v
+                added.append(p)
+                continue
+            out[k], a, c = merge_settings(ours[k], v, p)
+            added += a
+            kept += c
+        return out, added, kept
+    if isinstance(ours, list) and isinstance(theirs, list):
+        extra = [x for x in theirs if x not in ours]
+        return [*ours, *extra], [f"{path}[+{len(extra)}]"] if extra else [], []
+    return ours, [], [] if ours == theirs else [path]
+
+
+def keeps(ours: Any, merged: Any) -> bool:
+    """Whether merged still holds every setting of ours unchanged (keys, list entries in order, values)."""
+    if isinstance(ours, dict):
+        return isinstance(merged, dict) and all(k in merged and keeps(v, merged[k]) for k, v in ours.items())
+    if isinstance(ours, list):
+        return isinstance(merged, list) and merged[: len(ours)] == ours
+    return ours == merged
+
+
+def claude_settings_merge(gstack: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Our harnesses/claude-code/config/settings.json, with a gstack arm's Claude settings (its hooks) merged in."""
+    ours = json.loads(_pin_text("harnesses/claude-code/config/settings.json"))
+    if gstack is None:
+        return {"settings": ours, "added": [], "kept_ours": []}
+    theirs = gstack_arm("claude-code", gstack)["sidecar"].get("claude_settings") or {}
+    merged, added, kept = merge_settings(ours, theirs)
+    return {"settings": merged, "added": added, "kept_ours": kept}
+
+
+def gstack_install_command(gstack: dict[str, Any], remote_tar: str, root: str = "/") -> str:
+    """The shell the task container runs to install an uploaded arm tar: the tar's sha256 checked, the agent's HOME the
+    arm's, nothing of gstack there before, the tar extracted under root, then one GSTACK_INSTALL line of facts (router
+    present, skills under the host's skills dir, VERSION, the checkout's HEAD). Exit 41-43 for a refused install."""
+    arm = gstack_arm(next(h for h, v in GSTACK_HOSTS.items() if v == gstack["host"]), gstack)
+    host, home = arm["layout"], arm_layout()["home"]
+    r = root.rstrip("/")
+    q = shlex.quote
+    skills = q(r + host["skills_dir"])
+    return " ".join([
+        f"want={q(arm['tar_sha256'])}; got=$(sha256sum {q(remote_tar)} | cut -d' ' -f1);",
+        '[ "$got" = "$want" ] || { echo "GSTACK_INSTALL refused tar_sha256 $got"; exit 41; };',
+        f'[ "$HOME" = {q(home)} ] || {{ echo "GSTACK_INSTALL refused home $HOME"; exit 42; }};',
+        *[f'[ ! -e {q(r + "/" + t)} ] || {{ echo "GSTACK_INSTALL refused present /{t}"; exit 43; }};' for t in host["tar_roots"] if t != "root/.claude"],
+        f'[ ! -e {q(r + host["router"])} ] || {{ echo "GSTACK_INSTALL refused present {host["router"]}"; exit 43; }};',
+        f"tar -xzf {q(remote_tar)} -C {q(root)} && {{ rm -f {q(remote_tar)} 2>/dev/null || true; }} &&",
+        f"n=$(ls -d {skills}/*/SKILL.md 2>/dev/null | wc -l);",
+        f"router=$([ -f {q(r + host['router'])} ] && echo yes || echo no);",
+        f"version=$(cat {q(r + arm_layout()['source_dir'] + '/VERSION')} 2>/dev/null);",
+        f"head=$(cat {q(r + arm_layout()['source_dir'] + '/.git/HEAD')} 2>/dev/null);",
+        'echo "GSTACK_INSTALL ok router=$router skills=$n version=$version head=$head"',
+    ])
+
+
+def gstack_install_facts(stdout: str) -> dict[str, Any]:
+    """The GSTACK_INSTALL line of gstack_install_command's output as data."""
+    line = next((l for l in (stdout or "").splitlines() if l.startswith("GSTACK_INSTALL ")), "")
+    words = line.split()
+    facts: dict[str, Any] = {"status": words[1] if len(words) > 1 else None}
+    if facts["status"] == "refused":
+        facts["reason"] = " ".join(words[2:])
+        return facts
+    for w in words[2:]:
+        k, _, v = w.partition("=")
+        facts[k] = int(v) if k == "skills" and v.isdigit() else v
+    return facts
+
+
+SKILL_LINKS_DIR = "/logs/agent/sessions/skills"
+
+
+def drop_skill_links_command(skills_dir: str = SKILL_LINKS_DIR) -> str:
+    """The shell the task container runs when a Claude Code run with a gstack arm ends: every symbolic link under
+    skills_dir (the trial's CLAUDE_CONFIG_DIR/skills, which Harbor's ClaudeCode fills with cp -r from ~/.claude/skills)
+    deleted, and one SKILL_LINKS_DROPPED <n> line. gstack's setup links each skill to the checkout by absolute path
+    (/root/gstack/...); the directory is bind-mounted, so on the VM host those links point into the host's own /root,
+    and Harbor's end-of-trial scrub of the jobs directory stats them, gets EACCES and fails the job. It runs in the
+    container because the files there are still the container user's until Harbor chowns the logs after the run."""
+    d = shlex.quote(skills_dir)
+    return f'n=$(find {d} -type l 2>/dev/null | wc -l); find {d} -type l -delete 2>/dev/null; echo "SKILL_LINKS_DROPPED $n"'
+
+
+def _harness_settings(harness: str, model: str) -> dict[str, Any]:
+    """The harness_settings.json record for one harness and cell model, without a gstack arm."""
     spec = model_spec(model)
     cw, mo = spec["context_window"], spec["max_output_tokens"]
     anthropic = spec["provider"] == "anthropic"
@@ -315,17 +462,19 @@ def harness_settings(harness: str, model: str) -> dict[str, Any]:
     raise ValueError(f"unknown harness {harness}")
 
 
-def render(harness: str, model: str, url: str, token: str) -> dict[str, Any]:
-    """Everything one trial of a cell needs: container env, Harbor options, config overlays and the settings record."""
+def render(harness: str, model: str, url: str, token: str, gstack: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Everything one trial of a cell needs: container env, Harbor options, config overlays and the settings record.
+    With a gstack arm the Claude Code settings carry gstack's merged in and the record says what the arm installs; the
+    environment and Harbor options are the plain cell's."""
     spec = check_cell(harness, model)
     out: dict[str, Any] = {
         "model_name": f"{spec['provider']}/{spec['name']}",
         "env": container_env(harness, model, url, token),
         "harbor_kwargs": harbor_kwargs(harness, model),
-        "settings": harness_settings(harness, model),
+        "settings": harness_settings(harness, model, gstack),
     }
     if harness == "claude-code":
-        out["config"] = json.loads(_pin_text("harnesses/claude-code/config/settings.json"))
+        out["config"] = claude_settings_merge(gstack)["settings"]
     if harness == "codex":
         out["config"] = codex_config(model, url)
     if harness == "hermes":
@@ -345,6 +494,6 @@ def leaked(blob: str, canaries: list[str]) -> list[str]:
 if __name__ == "__main__":
     import sys
 
-    if len(sys.argv) != 5:
-        sys.exit("usage: frontier_settings.py <harness> <provider:model> <base url> <token>  (prints render() as JSON)")
-    print(json.dumps(render(*sys.argv[1:5]), indent=2))
+    if len(sys.argv) not in (5, 6):
+        sys.exit("usage: frontier_settings.py <harness> <provider:model> <base url> <token> [<gstack option JSON>]  (prints render() as JSON)")
+    print(json.dumps(render(*sys.argv[1:5], json.loads(sys.argv[5]) if len(sys.argv) == 6 else None), indent=2))

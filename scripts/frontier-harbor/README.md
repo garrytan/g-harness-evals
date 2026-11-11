@@ -29,6 +29,7 @@
 | [install-check-prereg.json](install-check-prereg.json) | the install check's own preregistration (one cell per agent class and model) |
 | [egress-probe/](egress-probe/) | a do-nothing task whose verifier checks the blocklist from inside a task container (install check step 3) |
 | [audit.ts](audit.ts), [answer-keys/](answer-keys/) | the contamination audit over captured requests: the benchmark canary, Harness Leaderboard answer-key fingerprints (Apache-2.0, see its NOTICE.md), benchmark-fetch requests and gstack file reads |
+| [../canary/gstack/](../canary/gstack/README.md) | the gstack regression canary rig: release arm builder, tier spec, exposure, install check and tier runner |
 | [analyze.ts](analyze.ts) | the harness x model analysis: pass rates with intervals, the noise view, paired comparisons and cost per solve (uses `runner/stats/frontier.ts`) |
 
 ## The preregistration (`frontier-harbor/1`)
@@ -76,6 +77,16 @@
 - **Cells:** a cell with `"stage": "kept"` draws its task range from the kept order, and needs `"kept_task_list": { "file": "scripts/frontier-harbor/pin.json" }` in the preregistration. A model and harness may have one core cell and one kept cell (for example `opus-cc` and `opus-cc-kept`); any other repeat is refused.
 
 `bun scripts/frontier-harbor/plan.ts show --prereg <file>` prints the cells, the trial count and each shard's lease.
+
+## gstack arms (the regression canary)
+
+- **What:** a Claude Code or Codex cell may carry `"gstack": { "sha", "version", "host", "tar", "tar_sha256" }`. Its agent class installs that gstack release into the task container after the harness and our settings are in place. A cell without it renders byte for byte what it did before (`tests/canary-gstack.test.ts` checks this against recorded goldens).
+- **The tar:** [../canary/gstack/build-arm.sh](../canary/gstack/build-arm.sh) runs gstack's own `./setup --host claude` or `--host codex` with the browser off, in a keyless container, for the home layout in [../canary/gstack/arm.json](../canary/gstack/arm.json). Its sidecar `<tar>.json` records the commit, VERSION, skills, gstack's Claude settings and whether gstack's bin helpers run in the task image.
+- **Where each host reads it:** Harbor's Claude Code class runs with `CLAUDE_CONFIG_DIR=/logs/agent/sessions` and copies `~/.claude/skills` there, so the skills go to `~/.claude/skills`. Claude Code does not read `~/.claude/settings.json` under that config dir, so gstack's hooks are merged into the `--settings` file Harbor passes: keys we lack are added, list entries appended, and ours kept on any clash. Harbor's Codex class runs with `CODEX_HOME=/tmp/codex-home` and only adds files there, so gstack's setup runs with that `CODEX_HOME` and its skills go to `/tmp/codex-home/skills`.
+- **Checked at install:** the tar's sha256, the agent's HOME, no gstack there before, then the router, the skill count, VERSION and the checkout's commit against the sidecar (`install_checks.gstack` in `harness_settings.json`). A mismatch fails agent setup.
+- **After a Claude Code run:** gstack's setup links each skill to the checkout by absolute path (`/root/gstack/...`), and Harbor's copy keeps those links in the trial's session dir on the host. Harbor's end-of-trial scrub stats them, gets a permission error on the host's `/root` and fails the job. So when the run ends, the agent class deletes every link under `/logs/agent/sessions/skills` from inside the container (the files are still the container user's until Harbor chowns the logs) and records the count as `install_checks.skill_links_dropped`.
+- **Plan rules:** two cells may share a model and harness when their gstack arms differ. A cell may carry its own `task_list`. vm-run.sh `--canary-spec` runs a spec only after `scripts/canary/gstack/spec.ts check` renders it again from its recorded inputs byte for byte; it is never counted, and the attestation records the spec's sha256.
+- **Exposure:** [../canary/gstack/exposure.ts](../canary/gstack/exposure.ts) adds each trial's `first_request_has_product` and `product_calls`, read from the captured bodies. audit.ts's `GSTACK_FILE` also matches prefixed gstack skill folders (`skills/gstack-review/`), the Codex layout.
 
 ## Effort
 

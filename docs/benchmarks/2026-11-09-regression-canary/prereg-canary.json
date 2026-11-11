@@ -1,0 +1,198 @@
+{
+  "schema": "canary/1",
+  "run_id": "regression-canary-2026-11",
+  "status": "preregistered: frozen by the pull request that adds PREREGISTRATION.md; canary_rig is set by the dated amendment described there",
+  "canary_rig": "PLACEHOLDER",
+  "canary_rig_rule": "scripts/canary/run.sh refuses unless HEAD is this commit. A rig change is a dated amendment that sets a new commit and resets the previous-screened baseline; the release under test is the only thing that moves.",
+  "products": {
+    "gstack": {
+      "repo": "garrytan/gstack",
+      "release": "head of the stable branch, version from the VERSION file at that commit",
+      "moves": "v* tags in previous..new along stable"
+    },
+    "gbrain": {
+      "repo": "garrytan/gbrain",
+      "release": "peeled commit of the stable tag, version from the stable-v* tag on that commit or the VERSION file",
+      "moves": "stable-v* tags in previous..new"
+    }
+  },
+  "suites": {
+    "gstack": {
+      "tasks": {
+        "path": "docs/benchmarks/2026-11-09-regression-canary/tasks-gstack.json",
+        "sha256": "9471760e36551c1b31a0a21f4a7486520b048cc1e5c43ecb65536c4d7b497339"
+      },
+      "install_route": {
+        "claude-code": "./setup --host claude",
+        "codex": "./setup --host codex"
+      },
+      "models": {
+        "T1": [
+          "opus",
+          "sol"
+        ],
+        "T2": [
+          "opus",
+          "sol"
+        ],
+        "T3": "flagged frontier models"
+      },
+      "owner": "internal-task"
+    },
+    "gbrain": {
+      "tasks": {
+        "path": "docs/benchmarks/2026-11-09-regression-canary/tasks-gbrain.json",
+        "sha256": "cb932c618cd18092b56bdb3d43e1711dc33ea85c47ea3caf791d1034b653cc92"
+      },
+      "install_route": {
+        "claude-code": "gbrain installer, told-scoped, for Claude Code",
+        "codex": "gbrain installer, told-scoped, for Codex",
+        "hermes": "gbrain installer, told-scoped, for Hermes"
+      },
+      "models": {
+        "T1": [
+          "opus",
+          "sol"
+        ],
+        "T2": [
+          "opus",
+          "sol",
+          "particle"
+        ],
+        "T3": "flagged frontier models"
+      },
+      "owner": "internal-task"
+    }
+  },
+  "tiers": {
+    "T0": {
+      "when": "every stable move",
+      "model_calls": false,
+      "arms": [
+        "plain",
+        "prev",
+        "new"
+      ]
+    },
+    "T1": {
+      "when": "every stable move",
+      "tasks": "t1",
+      "attempts": 1,
+      "arms": [
+        "prev",
+        "new"
+      ]
+    },
+    "T2": {
+      "when": "every 30 days per product, and at once after a T1 or safety flag",
+      "every_days": 30,
+      "tasks": "tasks plus digest",
+      "attempts": 1,
+      "arms": [
+        "plain",
+        "prev",
+        "new"
+      ]
+    },
+    "T3": {
+      "when": "after a T2 pass-rate, cost or safety flag",
+      "tasks": "tasks",
+      "attempts": 2,
+      "arms": [
+        "prev",
+        "new"
+      ],
+      "bisect": "when more than one stable move lies in range, T3-size comparisons on the flagged model, first bad release by binary search"
+    },
+    "baseline": {
+      "tiers": [
+        "T0",
+        "T2"
+      ],
+      "attempts": 3,
+      "arms": [
+        "plain",
+        "prev",
+        "new"
+      ]
+    }
+  },
+  "thresholds": {
+    "screen_alpha": 0.10,
+    "exposure_alpha": 0.05,
+    "confirm_alpha": 0.05,
+    "confirm_min_drop_points": 10,
+    "cost_ratio": 1.25,
+    "cost_lower_bound": 1.10,
+    "cost_screen_level": 0.90,
+    "cost_confirm_level": 0.95,
+    "infra_max_share": 0.20,
+    "bootstrap_draws": 10000,
+    "seed": 65,
+    "gbrain_leak_free_from": "0.60.621.0"
+  },
+  "leases": {
+    "note": "re-priced 2026-11-09: the mean home-cell cost per task from the task lists' source receipts, particle-1 at half of Sol's (gbrain T1 smoke), times 1.6 for every arm (the largest product-to-plain cost ratio in the two T1 smokes was 1.57), plus room for one worst-case call reservation (the metering proxy refuses a call whose worst case, $7.89 for Opus 5.5 in Claude Code, does not fit the lease), rounded up to the next $5; every tier reserves its estimate and settles to the metered spend",
+    "monthly": {
+      "name": "canary-YYYY-MM",
+      "cap_usd": 1000,
+      "t1_reserve_usd": 200
+    },
+    "per_run_usd": {
+      "T1": {
+        "gstack": 10,
+        "gbrain": 15
+      },
+      "T2": {
+        "gstack": 105,
+        "gbrain": 40
+      },
+      "T3_per_model": {
+        "gstack": 70,
+        "gbrain": 25
+      }
+    },
+    "baseline_usd": {
+      "gstack": 300,
+      "gbrain": 100
+    }
+  },
+  "schedule": {
+    "automation": "nightly 01:30 America/Los_Angeles, at most one run a day; created disabled, enabled after its first manual run passes (internal-task, 2026-11-09)",
+    "dead_man_hours": 48,
+    "lock_fresh_hours": 12
+  },
+  "alerts": {
+    "to": "internal-task, word for word, by the nightly automation",
+    "relay": {
+      "gstack": "internal-task",
+      "gbrain": "internal-task"
+    },
+    "statuses": [
+      "BROKEN",
+      "REGRESSION",
+      "WATCH",
+      "INCOMPLETE"
+    ],
+    "silent": [
+      "OK",
+      "WATCH cleared"
+    ],
+    "digest": "improvements on the digest tasks go into a weekly digest line, never an alert",
+    "format": "docs/canary.md, section The alert; printed by scripts/canary/run.sh between CANARY_ALERT_BEGIN and CANARY_ALERT_END",
+    "dead_man_hours": 48
+  },
+  "receipts": {
+    "branch": "canary-receipts (orphan, never merged, exported or opened as a pull request)",
+    "history": "canary-receipts:history.jsonl, one line per run",
+    "drive": "the coordinating agent's drive, canary/runs/<run id>/ (verdict.json, alert.md, summary.md)",
+    "public": "only this preregistration and the baseline results go through pull requests"
+  },
+  "disclosures": [
+    "gstack",
+    "gbrain",
+    "OpenAI",
+    "Hermes",
+    "Particle"
+  ]
+}

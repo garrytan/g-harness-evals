@@ -1,0 +1,223 @@
+{
+  "claude-code|anthropic:claude-opus-5-5": {
+    "config": {
+      "permissions": {
+        "deny": [
+          "WebSearch",
+          "WebFetch"
+        ]
+      }
+    },
+    "env": {
+      "ANTHROPIC_API_KEY": "trial-token:golden.00000000000000000000000000000000",
+      "ANTHROPIC_BASE_URL": "http://172.17.0.1:8790/golden-slot/anthropic",
+      "ANTHROPIC_DEFAULT_FABLE_MODEL": "claude-opus-5-5",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-opus-5-5",
+      "ANTHROPIC_DEFAULT_MODEL": "claude-opus-5-5",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-5-5",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-opus-5-5",
+      "ANTHROPIC_MODEL": "claude-opus-5-5",
+      "ANTHROPIC_SMALL_FAST_MODEL": "claude-opus-5-5",
+      "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "1000000",
+      "CLAUDE_CODE_AUTO_MODE_MODEL": "claude-opus-5-5",
+      "CLAUDE_CODE_BG_CLASSIFIER_MODEL": "claude-opus-5-5",
+      "CLAUDE_CODE_DISABLE_MODEL_ACCESS_FALLBACK": "1",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK": "1",
+      "CLAUDE_CODE_EFFORT_LEVEL": "high",
+      "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000",
+      "CLAUDE_CODE_MAX_RETRIES": "2",
+      "CLAUDE_CODE_NO_MODEL_FALLBACK": "1",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "claude-opus-5-5",
+      "CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1",
+      "CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL": "claude-opus-5-5",
+      "DISABLE_AUTOUPDATER": "1",
+      "DISABLE_ERROR_REPORTING": "1",
+      "DISABLE_TELEMETRY": "1"
+    },
+    "harbor_kwargs": {
+      "disallowed_tools": "WebSearch,WebFetch",
+      "permission_mode": "bypassPermissions",
+      "reasoning_effort": "high"
+    },
+    "model_name": "anthropic/claude-opus-5-5",
+    "settings": {
+      "compaction": {
+        "set_by": "shipped default",
+        "threshold": "Claude Code 2.1.312 default auto-compact point of the window (CLAUDE_AUTOCOMPACT_PCT_OVERRIDE unset)"
+      },
+      "context_window": {
+        "set_by": "the CLI's own model table for the cell model; CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000 also set (a name present in the 2.1.312 binary)",
+        "value": 1000000
+      },
+      "differences_from_pin": [
+        "runs through Harbor's ClaudeCode class (claude --verbose --output-format=stream-json --print, Harbor's settings file and session dir), not adapter.sh",
+        "installed with Harbor's bootstrap.sh route (native binary) instead of npm in our image; the binary's sha256 is checked against the pinned 4f4178ce...",
+        "--effort high added (our pin runs the CLI's default effort)",
+        "CLAUDE_CODE_MAX_OUTPUT_TOKENS and CLAUDE_CODE_AUTO_COMPACT_WINDOW set to the model's limits (our pin leaves CLI defaults)",
+        "no world-MCP server, --mcp-config or --strict-mcp-config: TB2.1 tasks have no MCP server",
+        "working directory is the task's, not /workspace"
+      ],
+      "effort": {
+        "requested": "high",
+        "setting": "--effort high (CLAUDE_CODE_EFFORT_LEVEL=high); on Opus 5.5 and Fable 5.1 thinking is adaptive and always on, so the canonical request is thinking adaptive plus output_config.effort high, checked on captured requests"
+      },
+      "endpoint": {
+        "credential": "per-trial dummy token trial-token:<trial>.<32 hex>, bound by broker.ts; no provider key in the container",
+        "route": "<metering proxy>/<trial slot>/anthropic",
+        "slot_models": [
+          "anthropic:claude-opus-5-5"
+        ]
+      },
+      "harbor_class": "harbor.agents.installed.claude_code:ClaudeCode",
+      "harbor_version": "0.24.0",
+      "harness": "claude-code",
+      "harness_kind": "wrapped",
+      "harness_version": "2.1.312",
+      "housekeeping_model": {
+        "model": "anthropic:claude-opus-5-5",
+        "note": "every model variable the CLI reads (ANTHROPIC_SMALL_FAST_MODEL included) names the cell model, as our adapter.sh pins it; a declared deviation from the shipped housekeeping default (internal-task exception, 2026-11-01). On Fable cells the housekeeping calls go to Fable."
+      },
+      "max_output_tokens": {
+        "set_by": "CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000",
+        "value": 128000
+      },
+      "model": "anthropic:claude-opus-5-5",
+      "model_limits": {
+        "context_window": 1000000,
+        "max_output_tokens": 128000,
+        "source": "platform.claude.com/docs/en/about-claude/models/overview, read 2026-11-07 (Context window 1M tokens, Max output 128K tokens, adaptive thinking always on)"
+      },
+      "schema": "frontier-harbor-harness-settings/1",
+      "tools": {
+        "disabled": [
+          "WebSearch",
+          "WebFetch"
+        ],
+        "enabled": "every other built-in Claude Code tool; no MCP server",
+        "hosted_web_search": "off: --disallowedTools WebSearch,WebFetch and settings permissions.deny [WebSearch, WebFetch], as our pin"
+      }
+    }
+  },
+  "codex|openai:gpt-6.1-sol": {
+    "config": {
+      "agents": {
+        "default_subagent_model": "gpt-6.1-sol",
+        "default_subagent_reasoning_effort": "high"
+      },
+      "analytics": {
+        "enabled": false
+      },
+      "approval_policy": "never",
+      "check_for_update_on_startup": false,
+      "experimental_realtime_ws_model": "gpt-6.1-sol",
+      "features": {
+        "plugins": false,
+        "unbounded_connection_retries": false
+      },
+      "feedback": {
+        "enabled": false
+      },
+      "memories": {
+        "consolidation_model": "gpt-6.1-sol",
+        "extract_model": "gpt-6.1-sol"
+      },
+      "model": "gpt-6.1-sol",
+      "model_context_window": 872000,
+      "model_provider": "he-proxy",
+      "model_providers": {
+        "he-proxy": {
+          "base_url": "http://172.17.0.1:8790/golden-slot/openai/v1",
+          "capabilities": {
+            "external_web_access": false,
+            "remote_compaction": "unsupported"
+          },
+          "env_key": "OPENAI_API_KEY",
+          "name": "harness-evals metering proxy",
+          "request_max_retries": 1,
+          "stream_max_retries": 1,
+          "supports_websockets": false,
+          "wire_api": "responses"
+        }
+      },
+      "model_reasoning_effort": "high",
+      "otel": {
+        "exporter": "none",
+        "log_user_prompt": false,
+        "metrics_exporter": "none",
+        "trace_exporter": "none"
+      },
+      "plan_mode_reasoning_effort": "high",
+      "review_model": "gpt-6.1-sol",
+      "sandbox_mode": "danger-full-access",
+      "tools": {
+        "web_search": false
+      },
+      "web_search": "disabled"
+    },
+    "env": {
+      "OPENAI_API_KEY": "trial-token:golden.00000000000000000000000000000000",
+      "OPENAI_BASE_URL": "http://172.17.0.1:8790/golden-slot/openai/v1"
+    },
+    "harbor_kwargs": {
+      "reasoning_effort": "high",
+      "web_search": "disabled"
+    },
+    "model_name": "openai/gpt-6.1-sol",
+    "settings": {
+      "compaction": {
+        "set_by": "shipped default",
+        "threshold": "Codex default (auto_compact_token_limit unset; remote compaction off)"
+      },
+      "context_window": {
+        "set_by": "config.toml model_context_window=872000, the model's 1050000 capped by Codex 0.165.0's built-in max_context_window (codex-rs/models-manager/models.json, 872,000 for GPT-6.1 Sol and GPT-6 Astra; models-manager/src/model_info.rs with_config_overrides takes the smaller). Declared harness behaviour: only model_catalog_json lifts the cap, and a custom catalog also changes Codex's prompt (update_plan instructions, multi-agent and collaboration-mode hints)",
+        "value": 872000
+      },
+      "differences_from_pin": [
+        "runs through Harbor's Codex class (codex exec --json with Harbor's flags and an auth.json holding the per-trial token), not adapter.sh; no --strict-config",
+        "reasoning effort high (our pin: medium)",
+        "model_context_window set to the window Codex allows for the model, 872,000 (our pin: Codex default 272,000)",
+        "provider env_key OPENAI_API_KEY (our pin: HE_MODEL_API_KEY); the value is the per-trial token in both",
+        "no world-MCP server; working directory is the task's"
+      ],
+      "effort": {
+        "requested": "high",
+        "setting": "model_reasoning_effort, plan_mode_reasoning_effort and agents.default_subagent_reasoning_effort = high (and -c model_reasoning_effort=high); sent as reasoning.effort"
+      },
+      "endpoint": {
+        "credential": "per-trial dummy token trial-token:<trial>.<32 hex>, bound by broker.ts; no provider key in the container",
+        "route": "<metering proxy>/<trial slot>/openai/v1",
+        "slot_models": [
+          "openai:gpt-6.1-sol"
+        ]
+      },
+      "harbor_class": "harbor.agents.installed.codex:Codex",
+      "harbor_version": "0.24.0",
+      "harness": "codex",
+      "harness_kind": "wrapped",
+      "harness_version": "0.165.0",
+      "housekeeping_model": {
+        "model": "openai:gpt-6.1-sol",
+        "note": "every model-valued config key (review, realtime, subagent, memories) is the cell model, as our pin"
+      },
+      "max_output_tokens": {
+        "set_by": "the metering proxy writes max_output_tokens 128000 into every /v1/responses request (Codex 0.165.0 sends none), as our pin's deviation says",
+        "value": 128000
+      },
+      "model": "openai:gpt-6.1-sol",
+      "model_limits": {
+        "context_window": 1050000,
+        "max_output_tokens": 128000,
+        "source": "developers.openai.com/api/docs/models/gpt-6.1-sol, read 2026-11-07 (1,050,000 context window, 128,000 max output tokens)"
+      },
+      "schema": "frontier-harbor-harness-settings/1",
+      "tools": {
+        "disabled": [
+          "web_search"
+        ],
+        "enabled": "Codex built-in tools; plugins off",
+        "hosted_web_search": "off: web_search = disabled, tools.web_search = false, capabilities.external_web_access = false, as our pin"
+      }
+    }
+  }
+}
