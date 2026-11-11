@@ -14,7 +14,8 @@ import { PsError, runSync } from './proc.ts';
 import { readLock, readyTool } from './tools.ts';
 
 const GATE = join(import.meta.dir, '..');
-const IDENTITY = (JSON.parse(readFileSync(join(GATE, 'rules.json'), 'utf8')) as { identity: { allowed: string[] } }).identity.allowed.map((p) => new RegExp(p, 'i'));
+const RULES_IDENTITY = (JSON.parse(readFileSync(join(GATE, 'rules.json'), 'utf8')) as { identity: { allowed: string[]; owner_accepted: string[] } }).identity;
+const IDENTITY = RULES_IDENTITY.allowed.map((p) => new RegExp(p, 'i'));
 
 export interface DoctorOptions { pack: string; pin: string; env: Record<string, string>; cacheRoot: string; cwd: string }
 
@@ -91,7 +92,7 @@ function identityProbe(o: DoctorOptions, git: Git, lp: LoadedPack, dir: string):
   const env = { ...o.env, GIT_AUTHOR_NAME: a.name, GIT_AUTHOR_EMAIL: a.email, GIT_COMMITTER_NAME: c.name, GIT_COMMITTER_EMAIL: c.email };
   if (git(['init', '-q'], 'git init', { cwd: dir, env }).status !== 0 || git(['commit', '-q', '--allow-empty', '-m', 'public-safety identity probe'], 'git commit', { cwd: dir, env }).status !== 0) throw new PsError('PS-ID-CONFIG', 'the probe commit failed');
   const raw = git(['cat-file', 'commit', 'HEAD'], 'git cat-file', { cwd: dir, env });
-  if (identityProblems(parseCommit(raw.stdout), IDENTITY, lp).length) throw new PsError('PS-ID-CONFIG', 'the checkout identity is not a GitHub noreply address');
+  if (identityProblems(parseCommit(raw.stdout), IDENTITY, RULES_IDENTITY.owner_accepted, lp).length) throw new PsError('PS-ID-CONFIG', 'the checkout identity is neither a GitHub noreply address nor an owner-accepted address');
 }
 
 // Push a commit holding a synthetic key-shaped canary through copies of the installed hooks; it must be refused.

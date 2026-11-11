@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { basename, join, relative, resolve } from 'node:path';
 import { doctor } from './lib/doctor.ts';
-import { blobId, identityProblems, parseCommit, treeIdOfDir } from './lib/git.ts';
+import { blobId, identityProblems, maskAcceptedIdentity, parseCommit, treeIdOfDir } from './lib/git.ts';
 import { isPublicRemote } from './lib/hook.ts';
 import { Boundary, escapeControls } from './lib/output.ts';
 import { exactHit, loadPack, packHits, type LoadedPack } from './lib/pack.ts';
@@ -21,7 +21,7 @@ const ZERO = /^0{40}$|^0{64}$/;
 
 export interface GateRule extends MarkerRule { code: string; agent_notes_exempt?: boolean }
 export interface CodeInfo { class: 'marker' | 'key' | 'private' | 'structural' | 'infra' | 'usage' | 'doctor'; allow: boolean; fix: string }
-export interface RulesFile { rules: GateRule[]; spend_paths: string[]; identity: { allowed: string[] }; codes: Record<string, CodeInfo> }
+export interface RulesFile { rules: GateRule[]; spend_paths: string[]; identity: { allowed: string[]; owner_accepted: string[] }; codes: Record<string, CodeInfo> }
 export interface ClassesFile {
   content_classes: Record<string, { formats: string[]; max_bytes: number; description: string }>;
   deny: { globs: string[]; except?: string[]; reason: string }[];
@@ -42,6 +42,7 @@ const CLASSES = JSON.parse(readFileSync(join(DIR, 'classes.json'), 'utf8')) as C
 const COMPILED: CompiledRule[] = compileRules(RULES.rules, { ownerEmails: [], custodyPatterns: [] });
 const CODE_OF = new Map(RULES.rules.map((r) => [r.id, r.code]));
 const IDENTITY = RULES.identity.allowed.map((p) => new RegExp(p, 'i'));
+const ACCEPTED = RULES.identity.owner_accepted;
 const SPEND = RULES.spend_paths.map((g) => new Bun.Glob(g));
 const glob = (gs: string[]) => gs.map((g) => new Bun.Glob(g));
 const DENY = CLASSES.deny.map((d) => ({ globs: glob(d.globs), except: glob(d.except ?? []) }));
@@ -186,10 +187,11 @@ export async function scanRange(ctx: Ctx, base: string, head: string): Promise<{
   enter('commits');
   for await (const o of catObjects(ctx.gitDir, commits, ctx.env)) {
     const c = parseCommit(o.data);
-    for (const p of identityProblems(c, IDENTITY, ctx.pack)) hits.push({ code: p.code, where: { kind: 'commit', commit: o.oid, field: p.field } });
+    for (const p of identityProblems(c, IDENTITY, ACCEPTED, ctx.pack)) hits.push({ code: p.code, where: { kind: 'commit', commit: o.oid, field: p.field } });
+    const header = maskAcceptedIdentity(c.header, ACCEPTED);
     scanText(ctx, c.message, 'commit-message', { kind: 'commit', commit: o.oid, field: 'message' }, hits);
-    scanText(ctx, c.header, 'commit-message', { kind: 'commit', commit: o.oid, field: 'header' }, hits);
-    meta.push({ text: c.header + '\n' + c.message, where: { kind: 'commit', commit: o.oid, field: 'message' } });
+    scanText(ctx, header, 'commit-message', { kind: 'commit', commit: o.oid, field: 'header' }, hits);
+    meta.push({ text: header + '\n' + c.message, where: { kind: 'commit', commit: o.oid, field: 'message' } });
   }
   enter('paths');
   let n = 0;

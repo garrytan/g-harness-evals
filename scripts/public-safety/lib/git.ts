@@ -47,13 +47,26 @@ export function parseCommit(raw: Buffer): Commit {
 }
 
 // Which identity fields of a commit fail: an address outside the allowed forms is PS-IDENTITY, one the private pack
-// lists is PS-PRIVATE-IDENTITY. Never returns the address itself.
-export function identityProblems(c: Commit, allowed: RegExp[], lp: LoadedPack | null): { code: string; field: string }[] {
+// lists is PS-PRIVATE-IDENTITY. An owner-accepted address (exact, any case) passes both, as author or committer only;
+// in a trailer it is checked like any other address. Never returns the address itself.
+export function identityProblems(c: Commit, allowed: RegExp[], accepted: string[], lp: LoadedPack | null): { code: string; field: string }[] {
   const out: { code: string; field: string }[] = [];
+  const isAccepted = (email: string | undefined) => email !== undefined && accepted.some((a) => a.toLowerCase() === email.toLowerCase());
   const fields: [string, string | undefined][] = [['author', c.author?.email], ['committer', c.committer?.email], ...c.trailers.map((t, i): [string, string] => [t.key + '#' + (i + 1), t.email])];
   for (const [field, email] of fields) {
+    if ((field === 'author' || field === 'committer') && isAccepted(email)) continue;
     if (email === undefined || !allowed.some((re) => re.test(email))) out.push({ code: 'PS-IDENTITY', field });
     if (email !== undefined && lp && lp.identities.has(identityDigest(lp.salt, email))) out.push({ code: 'PS-PRIVATE-IDENTITY', field });
   }
+  return out;
+}
+
+// The commit header with an owner-accepted address on the author and committer lines (the first of each, the ones
+// parseCommit reads) replaced by a noreply address, so the text scans do not flag the identity identityProblems accepted.
+// The same address anywhere else stays in place.
+export function maskAcceptedIdentity(header: string, accepted: string[]): string {
+  const lower = accepted.map((a) => a.toLowerCase());
+  let out = header;
+  for (const k of ['author', 'committer']) out = out.replace(new RegExp('^(' + k + ' [^<\\n]*<)([^>\\n]*)>', 'm'), (m, open: string, email: string) => (lower.includes(email.toLowerCase()) ? open + 'noreply@github.com>' : m));
   return out;
 }

@@ -16,14 +16,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { classify, loadAllow, refProblem, type GateRule, type RulesFile } from '../scripts/public-safety/check.ts';
-import { identityProblems, parseCommit } from '../scripts/public-safety/lib/git.ts';
+import { identityProblems, maskAcceptedIdentity, parseCommit } from '../scripts/public-safety/lib/git.ts';
 import { isPublicRemote } from '../scripts/public-safety/lib/hook.ts';
 import { Boundary, escapeControls, WITHHELD } from '../scripts/public-safety/lib/output.ts';
 import { exactHit, parsePack, prefilter16, prefilterCandidates, prefilterKey, shingleHit } from '../scripts/public-safety/lib/pack.ts';
 import { PsError, runSync } from '../scripts/public-safety/lib/proc.ts';
 import { compileRules, expand, leafHits, nameKind, ruleApplies } from '../scripts/public-safety/lib/scan.ts';
 import { tarOf } from '../scripts/public-safety/lib/tools.ts';
-import { buildPack, GATE, keyCanary, NOREPLY, ROOT, scrubbedEnv } from './public-safety-fixture.ts';
+import { buildPack, GATE, keyCanary, NOREPLY, OWNER_ACCEPTED, ROOT, scrubbedEnv } from './public-safety-fixture.ts';
 
 const tmp = mkdtempSync(join(tmpdir(), 'he-public-safety-core-'));
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
@@ -164,17 +164,44 @@ test('shingles block at 20 or more shared 8-word shingles in one text, and not a
 test('the identity gate allows GitHub noreply forms only, in author, committer and every trailer, and the pack blocks listed ones', () => {
   const mk = (author: string, committer: string, trailers: string[] = []) => parseCommit(Buffer.from('tree ' + 'a'.repeat(40) + '\nauthor A <' + author + '> 1 +0000\ncommitter C <' + committer + '> 1 +0000\n\nmsg\n\n' + trailers.join('\n') + '\n'));
   const allowed = RULES.identity.allowed.map((r) => new RegExp(r, 'i'));
-  for (const ok of [NOREPLY, 'noreply@github.com', '12345+capy-ai[bot]@users.noreply.github.com', '9+A-b@USERS.NOREPLY.GITHUB.COM']) expect(identityProblems(mk(ok, ok), allowed, null)).toEqual([]);
+  for (const ok of [NOREPLY, 'noreply@github.com', '12345+capy-ai[bot]@users.noreply.github.com', '9+A-b@USERS.NOREPLY.GITHUB.COM']) expect(identityProblems(mk(ok, ok), allowed, [], null)).toEqual([]);
   for (const bad of ['dev@example.com', 'x+tester@users.noreply.github.com', '1+tester@users.noreply.github.com.example.com', 'tester@users.noreply.github.com', '']) {
-    expect(identityProblems(mk(bad, NOREPLY), allowed, null)).toEqual([{ code: 'PS-IDENTITY', field: 'author' }]);
-    expect(identityProblems(mk(NOREPLY, bad), allowed, null)).toEqual([{ code: 'PS-IDENTITY', field: 'committer' }]);
+    expect(identityProblems(mk(bad, NOREPLY), allowed, [], null)).toEqual([{ code: 'PS-IDENTITY', field: 'author' }]);
+    expect(identityProblems(mk(NOREPLY, bad), allowed, [], null)).toEqual([{ code: 'PS-IDENTITY', field: 'committer' }]);
   }
-  expect(identityProblems(mk(NOREPLY, NOREPLY, ['Co-authored-by: X <dev@example.com>', 'Signed-off-by: Y <' + NOREPLY + '>', 'signed-off-by: Z']), allowed, null)).toEqual([{ code: 'PS-IDENTITY', field: 'co-authored-by#1' }, { code: 'PS-IDENTITY', field: 'signed-off-by#3' }]);
+  expect(identityProblems(mk(NOREPLY, NOREPLY, ['Co-authored-by: X <dev@example.com>', 'Signed-off-by: Y <' + NOREPLY + '>', 'signed-off-by: Z']), allowed, [], null)).toEqual([{ code: 'PS-IDENTITY', field: 'co-authored-by#1' }, { code: 'PS-IDENTITY', field: 'signed-off-by#3' }]);
   const others = ['Reported-by: R <dev@example.com>', 'Reviewed-by: V <' + NOREPLY + '>', 'Helped-by: h dev2@example.com, ' + NOREPLY, 'Link: https://example.com/@someone', 'Cc: <x@example.com> <' + NOREPLY + '>'];
-  expect(identityProblems(mk(NOREPLY, NOREPLY, others), allowed, null)).toEqual([{ code: 'PS-IDENTITY', field: 'reported-by#1' }, { code: 'PS-IDENTITY', field: 'helped-by#3' }, { code: 'PS-IDENTITY', field: 'cc#5' }]);
+  expect(identityProblems(mk(NOREPLY, NOREPLY, others), allowed, [], null)).toEqual([{ code: 'PS-IDENTITY', field: 'reported-by#1' }, { code: 'PS-IDENTITY', field: 'helped-by#3' }, { code: 'PS-IDENTITY', field: 'cc#5' }]);
   const listed = '7+listed@users.noreply.github.com';
   const p = buildPack({ gateTree: GATE_TREE, identities: [listed] });
-  expect(identityProblems(mk(listed, NOREPLY), allowed, parsePack(Buffer.from(p.json), p.sha))).toEqual([{ code: 'PS-PRIVATE-IDENTITY', field: 'author' }]);
+  expect(identityProblems(mk(listed, NOREPLY), allowed, [], parsePack(Buffer.from(p.json), p.sha))).toEqual([{ code: 'PS-PRIVATE-IDENTITY', field: 'author' }]);
+});
+
+test('the owner-accepted address passes as author and committer, even when the pack lists it, and is refused in a trailer and outside those two header lines', () => {
+  const mk = (author: string, committer: string, trailers: string[] = []) => parseCommit(Buffer.from('tree ' + 'a'.repeat(40) + '\nauthor A <' + author + '> 1 +0000\ncommitter C <' + committer + '> 1 +0000\n\nmsg\n\n' + trailers.join('\n') + '\n'));
+  const allowed = RULES.identity.allowed.map((r) => new RegExp(r, 'i'));
+  const accepted = RULES.identity.owner_accepted;
+  expect(accepted).toEqual([OWNER_ACCEPTED]);
+  expect(OWNER_ACCEPTED).toBe(OWNER_ACCEPTED.toLowerCase());
+  const third = 'someone@example.com';
+  const p = buildPack({ gateTree: GATE_TREE, values: [OWNER_ACCEPTED], identities: [OWNER_ACCEPTED] });
+  const lp = parsePack(Buffer.from(p.json), p.sha);
+  for (const pack of [null, lp]) {
+    for (const [a, c] of [[NOREPLY, NOREPLY], [OWNER_ACCEPTED, OWNER_ACCEPTED], [OWNER_ACCEPTED, NOREPLY], [NOREPLY, OWNER_ACCEPTED], [OWNER_ACCEPTED.toUpperCase(), OWNER_ACCEPTED]] as const) expect(identityProblems(mk(a, c), allowed, accepted, pack)).toEqual([]);
+    expect(identityProblems(mk(third, OWNER_ACCEPTED), allowed, accepted, pack)).toEqual([{ code: 'PS-IDENTITY', field: 'author' }]);
+    expect(identityProblems(mk(OWNER_ACCEPTED, third), allowed, accepted, pack)).toEqual([{ code: 'PS-IDENTITY', field: 'committer' }]);
+  }
+  const coauthor = mk(OWNER_ACCEPTED, OWNER_ACCEPTED, ['Co-authored-by: G <' + OWNER_ACCEPTED + '>', 'Signed-off-by: G <' + OWNER_ACCEPTED + '>']);
+  expect(identityProblems(coauthor, allowed, accepted, null)).toEqual([{ code: 'PS-IDENTITY', field: 'co-authored-by#1' }, { code: 'PS-IDENTITY', field: 'signed-off-by#2' }]);
+  expect(identityProblems(coauthor, allowed, accepted, lp)).toEqual([{ code: 'PS-IDENTITY', field: 'co-authored-by#1' }, { code: 'PS-PRIVATE-IDENTITY', field: 'co-authored-by#1' }, { code: 'PS-IDENTITY', field: 'signed-off-by#2' }, { code: 'PS-PRIVATE-IDENTITY', field: 'signed-off-by#2' }]);
+  expect(identityProblems(mk(OWNER_ACCEPTED, NOREPLY), allowed, [], lp)).toEqual([{ code: 'PS-IDENTITY', field: 'author' }, { code: 'PS-PRIVATE-IDENTITY', field: 'author' }]);
+  const header = 'tree ' + 'a'.repeat(40) + '\nauthor A <' + OWNER_ACCEPTED + '> 1 +0000\ncommitter C <' + OWNER_ACCEPTED.toUpperCase() + '> 1 +0000';
+  const masked = maskAcceptedIdentity(header, accepted);
+  expect(exactHit(lp, Buffer.from(masked))).toBe(-1);
+  expect(masked).toBe('tree ' + 'a'.repeat(40) + '\nauthor A <noreply@github.com> 1 +0000\ncommitter C <noreply@github.com> 1 +0000');
+  for (const extra of ['\nmergetag object x\n tagger T <' + OWNER_ACCEPTED + '> 1 +0000', '\nencoding ' + OWNER_ACCEPTED, '\nauthor B <' + OWNER_ACCEPTED + '> 2 +0000']) expect(exactHit(lp, Buffer.from(maskAcceptedIdentity(header + extra, accepted)))).toBeGreaterThan(0);
+  expect(exactHit(lp, Buffer.from(maskAcceptedIdentity('author A <' + third + '> x ' + OWNER_ACCEPTED + ' 1 +0000', accepted)))).toBeGreaterThan(0);
+  expect(maskAcceptedIdentity(header, [])).toBe(header);
 });
 
 test('the output boundary escapes control and bidirectional characters, withholds matching lines and swaps matching names', () => {

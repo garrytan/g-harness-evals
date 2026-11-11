@@ -192,7 +192,9 @@ Allowlistable with a blob-bound `allow.json` entry.
 
 A commit's author or committer address, or an address in any message line of the form `Key: value` (Co-authored-by, Signed-off-by, Reported-by, Cc and every other trailer), is not `noreply@github.com` or `<digits>+<login>@users.noreply.github.com`. A Co-authored-by or Signed-off-by line with no address fails too. The gate never prints the address.
 
-**Fix:** Commit with a GitHub noreply address (<id>+<login>@users.noreply.github.com) as author and committer, and use one in every message line of the form Key: value that carries an address (Co-authored-by, Signed-off-by and any other trailer), then rewrite the branch.
+One exception covers the author and committer only. `identity.owner_accepted` in `rules.json` lists the Capy account address, the address commits made on Capy machines carry. As author or committer it raises neither PS-IDENTITY nor PS-PRIVATE-IDENTITY, in any letter case, even though the private pack lists it. Everywhere else it is still refused: in a trailer such as Co-authored-by or Signed-off-by (PS-IDENTITY and PS-PRIVATE-IDENTITY), and in file contents, path names, ref names and the rest of the commit message and header (PS-PRIVATE-VALUE). Before the header goes through the text scans, the gate swaps that address for a noreply address on the author and committer lines only. `rules.json` writes the address with a `\u0040` escape so the file never holds it as plain text, and no other address is accepted this way.
+
+**Fix:** Commit with a GitHub noreply address (<id>+<login>@users.noreply.github.com) or an identity.owner_accepted address as author and committer, and use a noreply address in every message line of the form Key: value that carries an address (Co-authored-by, Signed-off-by and any other trailer), then rewrite the branch.
 
 Not allowlistable.
 
@@ -370,9 +372,9 @@ Not allowlistable.
 <a id="ps-id-config"></a>
 ### PS-ID-CONFIG
 
-The doctor's identity probe made a throwaway commit with this checkout's identity and the identity gate refused it. The address is never printed.
+The doctor's identity probe made a throwaway commit with this checkout's identity and the identity gate refused it. A GitHub noreply address or the `identity.owner_accepted` address passes. The address is never printed.
 
-**Fix:** Set this checkout's user.email to your GitHub noreply address, then run check.ts --doctor again.
+**Fix:** Set this checkout's user.email to your GitHub noreply address or an identity.owner_accepted address, then run check.ts --doctor again.
 
 Not allowlistable.
 
@@ -432,5 +434,6 @@ Not allowlistable.
 
 ## Changelog
 
+- 2026-11-09: the identity gate accepts the Capy account address (`identity.owner_accepted` in `rules.json`) as author and committer, and the header scans no longer flag it on those two lines. It stays refused in trailers, file contents, path names, ref names and anywhere else in a commit. The doctor's identity probe accepts it too. Pushes use this only after the private pack pins the new gate tree.
 - 2026-11-08: follow-up to the first version. Archive member names gitleaks flags are withheld everywhere; gzip header fields, every tar header field, pax and GNU records and bytes after the end are scanned; an allowlist entry binds to its lines; a base blob at a new path gets that path's rules; ref names go through gitleaks; the identity gate reads every trailer with an address; a push runs main's gate as `public-safety-push`; new sections on CI and the private lane (with PS-PRIV-UNAVAILABLE) and on the docs-only allowlist.
 - 2026-11-08: first version: the admission gate, its rules, classes, private pack reader, hook and doctor, replacing the weekly export's checks in front of every public push.

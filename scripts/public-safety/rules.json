@@ -1,6 +1,6 @@
 {
   "schema": "harness-evals-public-safety-rules/1",
-  "note": "Value-free admission rules for the public repository. Patterns are JavaScript regular expressions; canaries use \\u escapes so this file never matches its own rules. scope all: every file, path name, commit message and PR text; prose: .md, .txt and .rst files, commit messages and PR text; prose-and-code: those plus source files. allow_classes names content classes (classes.json) a rule skips, allow_paths names paths it skips. agent_notes_exempt: the rule skips a collapsed Agent notes section in commit messages and PR text. Rules whose pattern would itself name a private thing live in the private pack, never here. codes holds the fix text of every code check.ts can print; docs/public-safety.md has one section per code.",
+  "note": "Value-free admission rules for the public repository. Patterns are JavaScript regular expressions; canaries use \\u escapes so this file never matches its own rules. scope all: every file, path name, commit message and PR text; prose: .md, .txt and .rst files, commit messages and PR text; prose-and-code: those plus source files. allow_classes names content classes (classes.json) a rule skips, allow_paths names paths it skips. agent_notes_exempt: the rule skips a collapsed Agent notes section in commit messages and PR text. Rules whose pattern would itself name a private thing live in the private pack, never here. identity.allowed holds the address forms every identity field may use; identity.owner_accepted holds exact addresses (any case) also accepted as author and committer, never in a trailer, written with a \\u escape so the address never appears in this file as plain text. codes holds the fix text of every code check.ts can print; docs/public-safety.md has one section per code.",
   "rules": [
     {"id":"capy-log-link","code":"PS-CAPY-LINK","description":"Capy session log links","blocking":true,"scope":"all","patterns":["capy\\.ai/s/"],"canary":"log at https://capy\u002eai/s/abc123"},
     {"id":"jam-id","code":"PS-JAM-ID","description":"Capy thread ids","blocking":true,"scope":"all","patterns":["\\bjam_[0-9A-HJKMNP-TV-Z]{26}\\b"],"canary":"thread jam\u005f00000000000000000000000000 said"},
@@ -16,7 +16,7 @@
     {"id":"captain-mention","code":"PS-CAPTAIN-MENTION","description":"The crew lead named by title in prose: allowed as the name of a decider in run documents, decisions and the changelog","blocking":true,"scope":"prose","patterns":["\\bCaptain\\b"],"allow_classes":["receipts"],"allow_paths":["docs/benchmarks/**/*.md","docs/decisions.md","CHANGELOG.md","changelog.d/**"],"agent_notes_exempt":true,"canary":"the Capt\u0061in asked for this"}
   ],
   "spend_paths": ["**/ledger.sqlite","ledger.sqlite","**/*.ledger.sqlite","*.ledger.sqlite","**/proxy-usage*.ndjson","proxy-usage*.ndjson","**/spend-reconciliation*.json","spend-reconciliation*.json"],
-  "identity": {"allowed":["^noreply@github\\.com$","^[0-9]+\\+[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})(?:\\[bot\\])?@users\\.noreply\\.github\\.com$"]},
+  "identity": {"owner_accepted":["garrytan\u0040gmail.com"],"allowed":["^noreply@github\\.com$","^[0-9]+\\+[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})(?:\\[bot\\])?@users\\.noreply\\.github\\.com$"]},
   "codes": {
     "PS-CAPY-LINK": {"class":"marker","allow":true,"fix":"Remove the session log link; cite the commit, file or receipt it pointed at instead."},
     "PS-JAM-ID": {"class":"marker","allow":true,"fix":"Remove the thread id; name the issue code or the commit instead."},
@@ -30,7 +30,7 @@
     "PS-CAPTAIN-MENTION": {"class":"marker","allow":true,"fix":"Name the decision or the role in plain words; the crew lead's title is allowed only in run documents, decisions and the changelog."},
     "PS-KEY-SHAPE": {"class":"key","allow":true,"fix":"Remove the key-shaped string. A test builds its canary at run time from parts; a real key is reported, not rotated by an agent."},
     "PS-GITLEAKS": {"class":"key","allow":true,"fix":"Remove the credential-shaped string gitleaks found; for a proven false positive, add a blob-bound allow.json entry with --allow."},
-    "PS-IDENTITY": {"class":"structural","allow":false,"fix":"Commit with a GitHub noreply address (<id>+<login>@users.noreply.github.com) as author and committer, and use one in every message line of the form Key: value that carries an address (Co-authored-by, Signed-off-by and any other trailer), then rewrite the branch."},
+    "PS-IDENTITY": {"class":"structural","allow":false,"fix":"Commit with a GitHub noreply address (<id>+<login>@users.noreply.github.com) or an identity.owner_accepted address as author and committer, and use a noreply address in every message line of the form Key: value that carries an address (Co-authored-by, Signed-off-by and any other trailer), then rewrite the branch."},
     "PS-SPEND-PATH": {"class":"structural","allow":false,"fix":"Remove the spend ledger, proxy usage log or spend reconciliation file from every commit of the branch; it stays private."},
     "PS-REF": {"class":"structural","allow":false,"fix":"Push only branches under refs/heads/; tags and other namespaces are not accepted on the public repository."},
     "PS-CLASS": {"class":"structural","allow":false,"fix":"The path matches no class in scripts/public-safety/classes.json, or a deny rule there; move the file or add a class in a reviewed change."},
@@ -50,7 +50,7 @@
     "PS-PACK-INVALID": {"class":"infra","allow":false,"fix":"The private pack does not follow schema harness-evals-admission-pack/1; rebuild it with the pack builder."},
     "PS-GATE-TREE": {"class":"infra","allow":false,"fix":"The gate tree the pack pins is missing or does not hash to its id; fetch the public main and run check.ts --doctor again."},
     "PS-INTERNAL": {"class":"infra","allow":false,"fix":"The gate failed inside; keep the trace file it names and report it."},
-    "PS-ID-CONFIG": {"class":"doctor","allow":false,"fix":"Set this checkout's user.email to your GitHub noreply address, then run check.ts --doctor again."},
+    "PS-ID-CONFIG": {"class":"doctor","allow":false,"fix":"Set this checkout's user.email to your GitHub noreply address or an identity.owner_accepted address, then run check.ts --doctor again."},
     "PS-HOOK-PATH": {"class":"doctor","allow":false,"fix":"core.hooksPath is set, so .git/hooks never runs; unset it, then run check.ts --doctor again."},
     "PS-HOOK-CHAIN": {"class":"doctor","allow":false,"fix":"An existing pre-push hook does not run pre-push.local; make it run pre-push.local with the same arguments and stdin, then run check.ts --doctor again."},
     "PS-CANARY": {"class":"doctor","allow":false,"fix":"The installed hook let a canary push through; run check.ts --doctor again and report it if it repeats."},

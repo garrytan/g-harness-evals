@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { blobId, treeIdOfDir } from '../scripts/public-safety/lib/git.ts';
 import { tarOf } from '../scripts/public-safety/lib/tools.ts';
-import { buildPack, check, GATE, gitleaksReady, keyCanary, rand, repo, ROOT, tokenCanary, writePack } from './public-safety-fixture.ts';
+import { buildPack, check, GATE, gitleaksReady, keyCanary, OWNER_ACCEPTED, rand, repo, ROOT, tokenCanary, writePack } from './public-safety-fixture.ts';
 
 const tmp = mkdtempSync(join(tmpdir(), 'he-public-safety-cli-'));
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
@@ -216,6 +216,33 @@ test.skipIf(!READY)('the identity gate refuses a non-noreply author, committer o
   const good = fresh();
   good.commit({ 'docs/a.md': 'a\n' }, 'one\n\nCo-authored-by: Bot <49699333+dependabot[bot]@users.noreply.github.com>\nSigned-off-by: T <noreply@github.com>');
   expect(range(good).status).toBe(0);
+}, 120_000);
+
+test.skipIf(!READY)('with a pack that lists the owner-accepted address as an identity and an exact value, it passes as author and committer and is still refused in a file and in a trailer', () => {
+  const p = buildPack({ gateTree: treeIdOfDir(GATE), values: [OWNER_ACCEPTED], identities: [OWNER_ACCEPTED] });
+  const files = writePack(join(tmp, 'pack-owner-accepted'), p);
+  const args = ['--private-pack', files.pack, '--pin', files.pin];
+  const ok = fresh(OWNER_ACCEPTED);
+  const head = ok.commit({ 'docs/a.md': 'a\n' }, 'plain change');
+  expect(ok.g('log', '-1', '--format=%ae %ce', head)).toBe(OWNER_ACCEPTED + ' ' + OWNER_ACCEPTED);
+  const pass = range(ok, args);
+  expect(pass.stdout).toMatch(/^PUBLIC_SAFETY: ok ref=\S+ head=[0-9a-f]{40} gate=[0-9a-f]{12} pack=[0-9a-f]{12} objects=[0-9]+$/m);
+  expect(pass.status).toBe(0);
+  const content = fresh(OWNER_ACCEPTED);
+  content.commit({ 'docs/a.md': 'intro\nwrite to ' + OWNER_ACCEPTED + '\n' }, 'add a contact line');
+  const inFile = range(content, args);
+  expect(inFile.status).toBe(1);
+  expect(inFile.stdout).toMatch(/^PS-PRIVATE-VALUE docs\/a\.md:2 /m);
+  expect(inFile.stdout).not.toMatch(/IDENTITY|:header:/);
+  const trailer = fresh(OWNER_ACCEPTED);
+  trailer.commit({ 'docs/a.md': 'a\n' }, 'one\n\nCo-authored-by: G <' + OWNER_ACCEPTED + '>');
+  const inTrailer = range(trailer, args);
+  expect(inTrailer.status).toBe(1);
+  expect(inTrailer.stdout).toMatch(/^PS-IDENTITY commit:[0-9a-f]{12}:co-authored-by#1:0 /m);
+  expect(inTrailer.stdout).toMatch(/^PS-PRIVATE-IDENTITY commit:[0-9a-f]{12}:co-authored-by#1:0 /m);
+  expect(inTrailer.stdout).toMatch(/^PS-PRIVATE-VALUE commit:[0-9a-f]{12}:message:3 /m);
+  expect(inTrailer.stdout).not.toMatch(/:(author|committer|header):/);
+  for (const out of [pass, inFile, inTrailer]) expect(out.all).not.toContain(OWNER_ACCEPTED);
 }, 120_000);
 
 test.skipIf(!READY)('the private pack: missing or mismatched exits 3, and a pack value in a blob is refused as not allowlistable', () => {

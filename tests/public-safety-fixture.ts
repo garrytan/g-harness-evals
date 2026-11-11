@@ -3,7 +3,7 @@
 // at run time so this file never matches the rules it tests.
 import { spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { identityDigest, prefilter16, prefilterKey, shingleDigest } from '../scripts/public-safety/lib/pack.ts';
@@ -14,6 +14,8 @@ export const GATE = join(ROOT, 'scripts', 'public-safety');
 export const CHECK = join(GATE, 'check.ts');
 export const CACHE = join(tmpdir(), 'he-public-safety-cache');
 export const NOREPLY = '1+tester@users.noreply.github.com';
+// The owner-accepted commit address, read from rules.json so no test file holds it as plain text.
+export const OWNER_ACCEPTED = (JSON.parse(readFileSync(join(GATE, 'rules.json'), 'utf8')) as { identity: { owner_accepted: string[] } }).identity.owner_accepted[0]!;
 export const HOME = mkdtempSync(join(tmpdir(), 'he-public-safety-home-'));
 
 export function scrubbedEnv(home: string, extra: Record<string, string> = {}): Record<string, string> {
