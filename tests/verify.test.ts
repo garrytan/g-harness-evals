@@ -88,9 +88,11 @@ describe('compare', () => {
   });
 
   test('text compares line by line, lining up inserted lines', () => {
-    expect(compareText('a\nb\nc\n', 'a\nB\nc\n')).toEqual({ differences: [{ line: 2, committed: 'b', rebuilt: 'B' }], added: 0 });
-    expect(compareText('a\nb\nc\n', 'a\nnew row\nb\nc\n')).toEqual({ differences: [], added: 1 });
-    expect(compareText('a\nb\nc\n', 'a\nc\n')).toEqual({ differences: [{ line: 2, committed: 'b', rebuilt: null }], added: 0 });
+    expect(compareText('a\nb\nc\n', 'a\nB\nc\n')).toEqual({ differences: [{ line: 2, committed: 'b', rebuilt: 'B' }], added: [] });
+    expect(compareText('a\nb\nc\n', 'a\nnew row\nb\nc\n')).toEqual({ differences: [], added: [{ before: 2, lines: ['new row'] }] });
+    expect(compareText('a\nb\nc\n', 'a\nc\n')).toEqual({ differences: [{ line: 2, committed: 'b', rebuilt: null }], added: [] });
+    expect(compareText('a\n', 'a\nb\nc\n')).toEqual({ differences: [], added: [{ before: 2, lines: ['b', 'c'] }] });
+    expect(compareText('a\nb\nc\n', 'a\nB\nnew\nc\n')).toEqual({ differences: [{ line: 2, committed: 'b', rebuilt: 'B' }], added: [{ before: 3, lines: ['new'] }] });
   });
 });
 
@@ -226,6 +228,56 @@ describe('verify on a fixture run', () => {
       expect(r.files).toBe(1);
       expect(r.gaps.join('\n')).toContain('results/summary.md: this copy of the repository leaves it out (it carries a cost total)');
       expect(validateRecipe(f.root, { ...f.recipe, public_copy_omits: [{ file: 'results/other.json', reason: 'x' }] }).join('\n')).toContain('public_copy_omits');
+    } finally { f.cleanup(); }
+  });
+
+  test('in the full repository a file listed under public_copy_omits must still be published', async () => {
+    const f = fixture({ passes: 3, scored: 4 }, { public_copy_omits: [{ file: 'results/summary.md', reason: 'it carries a cost total' }] });
+    try {
+      mkdirSync(join(f.root, 'publication'), { recursive: true });
+      writeFileSync(join(f.root, 'publication/manifest.json'), '{}\n');
+      rmSync(join(f.root, 'docs/benchmarks', RUN, 'results/summary.md'));
+      const r = await verifyRun(f.root, f.recipe);
+      expect(r.status).toBe('differs');
+      expect(r.failures.join('\n')).toContain('results/summary.md: the published file is missing. It is listed under public_copy_omits, but only the public copy may leave it out');
+    } finally { f.cleanup(); }
+  });
+
+  test('a published file that lost values or lines fails: emptied JSON, cut-off rows', async () => {
+    const f = fixture({ passes: 3, scored: 4 });
+    try {
+      const results = join(f.root, 'docs/benchmarks', RUN, 'results');
+      writeFileSync(join(results, 'summary.json'), JSON.stringify({ commit: 'c1' }) + '\n');
+      writeFileSync(join(results, 'summary.md'), '| cell | passes |\n');
+      const { code, text } = await runMain(f.root, ['--run', RUN]);
+      expect(code).toBe(1);
+      expect(text).toContain('results/summary.json: cells is not in the published file, but rebuilding from the receipts gives');
+      expect(text).toContain('otherwise the published file has lost it.');
+      expect(text).toContain('results/summary.md: rebuilding from the receipts adds 1 line before published line 2 that the published file does not have, starting "| a | 3 / 4 |".');
+      writeFileSync(join(results, 'summary.json'), JSON.stringify({ cells: [], commit: 'c1' }) + '\n');
+      expect((await verifyRun(f.root, f.recipe)).failures.join('\n')).toContain('cells[0] is not in the published file');
+    } finally { f.cleanup(); }
+  });
+
+  test('values and lines a script gained later pass when listed under rebuild_only; a stale entry fails', async () => {
+    const rebuildOnly = { rebuild_only: [{ file: 'results/summary.json', paths: ['cells'], reason: 'a fixture' }, { file: 'results/summary.md', starts: '| a | 3 / 4 |', lines: 1, reason: 'a fixture' }] };
+    const f = fixture({ passes: 3, scored: 4 }, rebuildOnly);
+    try {
+      const results = join(f.root, 'docs/benchmarks', RUN, 'results');
+      const r0 = await verifyRun(f.root, f.recipe);
+      expect(r0.status).toBe('differs');
+      expect(r0.failures.join('\n')).toContain('results/summary.json cells: listed under rebuild_only, but the rebuild no longer adds it');
+      expect(r0.failures.join('\n')).toContain('results/summary.md: the 1 lines starting "| a | 3 / 4 |" are listed under rebuild_only, but the rebuild no longer adds them');
+      writeFileSync(join(results, 'summary.json'), JSON.stringify({ commit: 'c1' }) + '\n');
+      writeFileSync(join(results, 'summary.md'), '| cell | passes |\n');
+      const r = await verifyRun(f.root, f.recipe);
+      expect(r.failures).toEqual([]);
+      expect(r.status).toBe('match');
+      expect(r.added).toBe(2);
+      writeFileSync(join(results, 'summary.md'), '');
+      expect((await verifyRun(f.root, f.recipe)).failures.join('\n')).toContain('adds 2 lines before published line 1');
+      expect(validateRecipe(f.root, { ...f.recipe, rebuild_only: [{ file: 'results/summary.json', starts: 'x', lines: 1, reason: 'x' }] }).join('\n')).toContain('a rebuild_only entry for a JSON file needs "paths"');
+      expect(validateRecipe(f.root, { ...f.recipe, rebuild_only: [{ file: 'results/other.md', starts: 'x', lines: 1, reason: 'x' }] }).join('\n')).toContain('which no step rebuilds');
     } finally { f.cleanup(); }
   });
 

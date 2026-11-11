@@ -115,20 +115,23 @@ function editScript(a: string[], b: string[]): ('=' | '-' | '+')[] {
 }
 
 // Lines of the published file that the rebuild does not reproduce, each paired with the rebuilt line that took its
-// place when there is one, plus the number of lines only the rebuild has (new rows or notes a script gained later,
-// which are not published). Line numbers are the published file's.
-export function compareText(committed: string, rebuilt: string): { differences: LineDifference[]; added: number } {
+// place when there is one, plus the blocks of lines only the rebuild has, each with the published line it comes
+// before. Line numbers are the published file's.
+export interface AddedBlock { before: number; lines: string[] }
+
+export function compareText(committed: string, rebuilt: string): { differences: LineDifference[]; added: AddedBlock[] } {
   const a = committed.split('\n');
   const b = rebuilt.split('\n');
   const ops = editScript(a, b);
   const differences: LineDifference[] = [];
-  let added = 0, i = 0, j = 0;
+  const added: AddedBlock[] = [];
+  let i = 0, j = 0;
   for (let p = 0; p < ops.length;) {
     if (ops[p] === '=') { i++; j++; p++; continue; }
     const gone: number[] = [], came: number[] = [];
     while (p < ops.length && ops[p] !== '=') { if (ops[p] === '-') gone.push(i++); else came.push(j++); p++; }
     gone.forEach((at, n) => differences.push({ line: at + 1, committed: a[at]!, rebuilt: n < came.length ? b[came[n]!]! : null }));
-    added += Math.max(0, came.length - gone.length);
+    if (came.length > gone.length) added.push({ before: i + 1, lines: came.slice(gone.length).map((at) => b[at]!) });
   }
   return { differences, added };
 }

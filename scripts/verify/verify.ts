@@ -99,6 +99,9 @@ export async function verifyRun(root: string, recipe: Recipe, keep = false): Pro
   const shadow = join(tmp, recipe.run);
   const outputs = [...new Set(steps.flatMap((s: Step) => [...(s.outputs ?? []), ...(s.stdout && 'file' in s.stdout ? [s.stdout.file] : [])]))];
   const usedKnown = new Set<Known>();
+  const rebuildOnly = (recipe.rebuild_only ?? []).map((entry) => ({ entry, paths: new Set(entry.paths ?? []), block: entry.paths === undefined }));
+  const compared = new Set<string>();
+  const fix = RECIPES_DIR + '/' + recipe.run + '.json';
   const isKnownJson = (file: string, d: Difference) => {
     const k = (recipe.known ?? []).find((x) => x.file === file && x.path === d.path && sameValue(sideOf(x, 'committed'), d.committed) && sameValue(sideOf(x, 'rebuilt'), d.rebuilt));
     if (k) usedKnown.add(k);
@@ -146,10 +149,15 @@ export async function verifyRun(root: string, recipe: Recipe, keep = false): Pro
     if (!result.failures.length) {
       for (const f of outputs) {
         const omitted = (recipe.public_copy_omits ?? []).find((o) => o.file === f);
-        if (omitted && !existsSync(join(src, f))) { result.gaps.push(f + ': this copy of the repository leaves it out (' + omitted.reason + '), so it was rebuilt but not compared'); continue; }
+        if (omitted && !existsSync(join(src, f))) {
+          if (isPublicCopy(root)) result.gaps.push(f + ': this copy of the repository leaves it out (' + omitted.reason + '), so it was rebuilt but not compared');
+          else result.failures.push(f + ': the published file is missing. It is listed under public_copy_omits, but only the public copy may leave it out; the full repository must keep it.');
+          continue;
+        }
         const rebuiltPath = join(shadow, f);
         if (!existsSync(rebuiltPath)) { result.failures.push(f + ': the recipe says a step writes this file, but no step wrote it.'); continue; }
         result.files++;
+        compared.add(f);
         const committedText = readFileSync(join(src, f), 'utf8');
         const rebuiltText = readFileSync(rebuiltPath, 'utf8');
         if (f.endsWith('.json')) {
@@ -162,9 +170,13 @@ export async function verifyRun(root: string, recipe: Recipe, keep = false): Pro
           }
           const diffs = compareJson(committed, rebuilt).filter((d) => !volatile.some((v) => d.path === v.path || d.path.startsWith(v.path + '.') || d.path.startsWith(v.path + '[')));
           result.numbers += countNumbers(committed);
-          const added = diffs.filter((d) => d.committed === MISSING);
-          result.added += added.length;
-          report(diffs.filter((d) => d.committed !== MISSING && !isKnownJson(f, d)).map((d) => describe(f, d)), result.failures);
+          const lost: string[] = [];
+          for (const d of diffs.filter((x) => x.committed === MISSING)) {
+            const listed = rebuildOnly.find((a) => a.entry.file === f && a.paths.delete(d.path));
+            if (listed) result.added++;
+            else lost.push(describe(f, d) + ' If a script gained this value after the file was published, list the path under rebuild_only in ' + fix + '; otherwise the published file has lost it.');
+          }
+          report([...diffs.filter((d) => d.committed !== MISSING && !isKnownJson(f, d)).map((d) => describe(f, d)), ...lost], result.failures);
         } else {
           let published = asPublished(committedText), rebuilt = asPublished(rebuiltText);
           for (const v of (recipe.volatile ?? []).filter((x) => x.file === f && x.pattern)) {
@@ -174,9 +186,21 @@ export async function verifyRun(root: string, recipe: Recipe, keep = false): Pro
             rebuilt = rebuilt.replace(re, '<not compared>');
           }
           const { differences, added } = compareText(published, rebuilt);
-          result.added += added;
-          report(differences.filter((d) => !isKnownLine(f, d, false)).map((d) => describeLine(f, d)), result.failures);
+          const lost: string[] = [];
+          for (const b of added) {
+            const text = b.lines.filter((l) => l.trim());
+            if (!text.length) continue;
+            const listed = rebuildOnly.find((a) => a.block && a.entry.file === f && text[0]!.startsWith(a.entry.starts!) && a.entry.lines === text.length);
+            if (listed) { listed.block = false; result.added += text.length; continue; }
+            lost.push(f + ': rebuilding from the receipts adds ' + text.length + ' line' + (text.length === 1 ? '' : 's') + ' before published line ' + b.before + ' that the published file does not have, starting ' + JSON.stringify(text[0]!.length > 160 ? text[0]!.slice(0, 157) + '...' : text[0]) + '. If a script gained them after the file was published, list them under rebuild_only (starts and lines) in ' + fix + '; otherwise the published file has lost them.');
+          }
+          report([...differences.filter((d) => !isKnownLine(f, d, false)).map((d) => describeLine(f, d)), ...lost], result.failures);
         }
+      }
+      for (const a of rebuildOnly) {
+        if (!compared.has(a.entry.file)) continue;
+        for (const p of a.paths) result.failures.push(a.entry.file + ' ' + p + ': listed under rebuild_only, but the rebuild no longer adds it (the published file has it now, or the script dropped it). Remove it from ' + fix + '.');
+        if (a.block) result.failures.push(a.entry.file + ': the ' + a.entry.lines + ' lines starting ' + JSON.stringify(a.entry.starts) + ' are listed under rebuild_only, but the rebuild no longer adds them. Remove the entry from ' + fix + '.');
       }
       for (const k of recipe.known ?? []) {
         const where = k.file + (k.path ? ' ' + k.path : k.line ? ' line ' + k.line : '');
@@ -274,7 +298,7 @@ export function printRun(r: RunResult, log: (s: string) => void): void {
   const head = r.status === 'not-rebuilt' || r.status === 'unavailable'
     ? LABEL[r.status] + ' ' + r.run
     : LABEL[r.status] + ' ' + r.run + ': ' + r.files + ' published file' + (r.files === 1 ? '' : 's') + ' rebuilt, ' + r.numbers.toLocaleString('en-US') + ' numbers compared, ' + r.seconds.toFixed(0) + ' s';
-  log(head + (r.added ? '; the rebuild also adds ' + r.added + ' value' + (r.added === 1 ? '' : 's') + ' the published files don\'t have (fields the scripts gained later), which are not published and not compared' : ''));
+  log(head + (r.added ? '; the rebuild also adds ' + r.added + (r.added === 1 ? ' value or line' : ' values or lines') + ' the published files don\'t have; each is listed under rebuild_only with its reason' : ''));
   for (const f of r.failures) log('    MISMATCH ' + f);
   for (const k of r.known) log('    known: ' + k);
   for (const g of r.gaps) log('    can\'t rebuild: ' + g);
@@ -295,7 +319,8 @@ export async function checkScoreboard(root: string, log: (s: string) => void, st
   for (const [file, want] of [['README.md', built.readme], ['docs/scoreboard.md', built.page]] as const) {
     const published = readFileSync(join(root, file), 'utf8');
     if (published === want) continue;
-    const { differences, added } = compareText(published, want);
+    const { differences, added: blocks } = compareText(published, want);
+    const added = blocks.reduce((n, b) => n + b.lines.length, 0);
     for (const d of differences.slice(0, MAX_LINES)) failures.push(describeLine(file, d).replaceAll('rebuilding from the receipts', 'building it from the analysis files'));
     if (!differences.length) failures.push(file + ': building it from the analysis files adds ' + added + ' line' + (added === 1 ? '' : 's') + ' the published file does not have; run bun scripts/scoreboard/build.ts.');
   }

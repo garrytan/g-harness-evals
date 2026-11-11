@@ -58,5 +58,34 @@
       "file": "results/<shard>.spend-reconciliation.md",
       "reason": "Each shard's spend sheet came from scripts/reconcile-provider.ts run on that shard's own results folder before the shards were merged. That script only reads files named exactly trials.jsonl, proxy-usage.ndjson and ledger.sqlite in one folder, and the committed copies are the merged trials.jsonl plus the shard's files under a prefix (for example cc-none.ledger.sqlite), so the shard's own inputs aren't laid out the way the script needs."
     }
+  ],
+  "rebuild_only": [
+    {
+      "file": "results/comparisons.json",
+      "paths": [
+        "stats_kit"
+      ],
+      "reason": "compare-run.ts gained the stats_kit field (which stats kit computed the comparison) in commit 26db539998 (2026-11-05); the published file was written by an earlier version of the script."
+    },
+    {
+      "file": "results/summary.json",
+      "paths": [
+        "cells.claude-code-haiku-gbrain-told-mu-v03-dev.gbrain.write_errors"
+      ],
+      "reason": "summarize-run.ts gained the gbrain write error count in commit 8ecc586471 (2026-11-04); the published file was written by an earlier version of the script."
+    },
+    {
+      "file": "results/summary.json",
+      "paths": [
+        "headroom"
+      ],
+      "reason": "summarize-run.ts gained the headroom section (how many tasks can tell the arms apart) in commit 5ddc1a40b2 (2026-11-09); the published file was written by an earlier version of the script."
+    },
+    {
+      "file": "results/summary.md",
+      "starts": "## Headroom: which tasks can tell the arms apart",
+      "lines": 26,
+      "reason": "summarize-run.ts gained the headroom section (how many tasks can tell the arms apart) in commit 5ddc1a40b2 (2026-11-09); the published file was written by an earlier version of the script."
+    }
   ]
 }

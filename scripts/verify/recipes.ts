@@ -28,6 +28,8 @@ export interface Volatile { file: string; path?: string; pattern?: string; reaso
 
 export interface Gap { what: string; file?: string; reason: string }
 
+export interface RebuildOnly { file: string; paths?: string[]; starts?: string; lines?: number; reason: string }
+
 export interface Recipe {
   run: string;
   about?: string;
@@ -37,6 +39,7 @@ export interface Recipe {
   volatile?: Volatile[];
   not_rebuilt?: Gap[];
   public_copy_omits?: Array<{ file: string; reason: string }>;
+  rebuild_only?: RebuildOnly[];
 }
 
 export const RECIPES_DIR = 'scripts/verify/runs';
@@ -96,6 +99,13 @@ export function validateRecipe(root: string, r: Recipe): string[] {
     else if (v.pattern !== undefined) { try { new RegExp(v.pattern); } catch { errs.push(where + ': volatile pattern ' + JSON.stringify(v.pattern) + ' is not a valid regular expression'); } }
   }
   for (const g of r.not_rebuilt ?? []) if (!str(g.what) || !str(g.reason)) errs.push(where + ': every not_rebuilt entry needs "what" and "reason"');
+  for (const a of r.rebuild_only ?? []) {
+    if (!str(a.file) || !str(a.reason)) { errs.push(where + ': every rebuild_only entry needs "file" and "reason"'); continue; }
+    if (!produced.has(a.file)) errs.push(where + ': rebuild_only entry for ' + a.file + ', which no step rebuilds');
+    const isPaths = Array.isArray(a.paths) && a.paths.length > 0 && a.paths.every(str) && a.starts === undefined && a.lines === undefined;
+    const isBlock = a.paths === undefined && str(a.starts) && Number.isInteger(a.lines) && a.lines! > 0;
+    if (a.file.endsWith('.json') ? !isPaths : !isBlock) errs.push(where + ': a rebuild_only entry for a JSON file needs "paths" (the exact paths only the rebuild has), and one for a text file needs "starts" (the start of the first line of the added block) and "lines" (its number of non-blank lines)');
+  }
   return errs;
 }
 

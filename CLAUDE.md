@@ -6,9 +6,9 @@ There is no home team. OpenClaw, Hermes Agent, QM, Claude Code and Codex get the
 
 ## Read first
 
-- docs/plans/2026-10-21-harness-eval-v0/plan.md: the approved plan, decisions D1 to D10, milestones M0 to M5.
+- [docs/plans/2026-10-21-harness-eval-v0/plan.md](docs/plans/2026-10-21-harness-eval-v0/plan.md): the approved plan, decisions D1 to D10, milestones M0 to M5.
 - [docs/methodology.md](docs/methodology.md): the trial contract every runner and grader implements.
-- TODOS.md: open work, generated from todos.d/, one file per item. Add or delete files in todos.d/ only and never edit TODOS.md; CI's `fold-hub-fragments.ts --check --base` lets the fold stay pending, and internal-task folds TODOS.md in its own housekeeping commits. gstack /ship's Step 14 still writes TODOS.md, so record its deferrals and completions as files in todos.d/ and leave TODOS.md as the base has it. The fold moves to gstack's land once gstack's tree receipt accepts a release_tool output.
+- [TODOS.md](TODOS.md): open work, generated from [todos.d/](todos.d/README.md), one file per item. Add or delete files in todos.d/ only and never edit TODOS.md; CI's `fold-hub-fragments.ts --check --base` lets the fold stay pending, and internal-task folds TODOS.md in its own housekeeping commits. gstack /ship's Step 14 still writes TODOS.md, so record its deferrals and completions as files in todos.d/ and leave TODOS.md as the base has it. The fold moves to gstack's land once gstack's tree receipt accepts a release_tool output.
 - [compendium.md](compendium.md): what has been published before, and what to reuse.
 - [docs/gbrain-evals-conventions.md](docs/gbrain-evals-conventions.md): where our conventions come from.
 
@@ -63,6 +63,6 @@ The controlled arm runs one fixed model for every harness (plan D1). The sensiti
 
 ## Running and publishing work
 
-Start with the keyless checks (`bun test tests/`, `bunx tsc --noEmit`, `python3 scripts/check-links.py`, `bun runner/prereg/prereg.ts`). Before a paid run: write the preregistration, initialise the ledger with the authorised cap, run the dry-run matrix, and only then dispatch. Save raw output, resolved settings and code identities with the run. Write the report from the results, including the cells that failed.
+Start with the keyless checks (`bun test tests/`, `bunx tsc --noEmit`, `python3 scripts/check-links.py`, `bun runner/prereg/prereg.ts`, `bun run verify`). Before a paid run: write the preregistration, initialise the ledger with the authorised cap, run the dry-run matrix, and only then dispatch. Save raw output, resolved settings and code identities with the run. Write the report from the results, including the cells that failed.
 
 This guide does not authorise pushing, merging, spending or publishing; follow the current task's instructions for those.
