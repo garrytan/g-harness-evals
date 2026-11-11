@@ -19,13 +19,18 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { RunnerError } from '../../runner/errors.ts';
-import type { FrontierTrialRecord } from './to-trials.ts';
+import type { PredicateResult, Termination } from '../../runner/contracts.ts';
+
+export interface SubsetRecord {
+  trial_id: string; task: string; harness: string; cell: string; termination: Termination; ended_at: string;
+  grade: 'pass' | 'fail' | 'n/a'; predicates: PredicateResult[]; frontier: { exception: string | null; rerun: number | null };
+}
 
 const fail = (m: string): never => { throw new RunnerError('HE-FRONTIER-007', 'subset: ' + m); };
 
 export type SubsetRule = { trial_ids: string[] } | { tasks: string[] } | { exception: string } | { from: string; to: string } | { infra_as_fail: { harness: string; task: string } };
 
-export function dropped(r: FrontierTrialRecord, rule: SubsetRule): boolean {
+export function dropped(r: SubsetRecord, rule: SubsetRule): boolean {
   if ('infra_as_fail' in rule) return false;
   if ('trial_ids' in rule) return rule.trial_ids.includes(r.trial_id);
   if ('tasks' in rule) return rule.tasks.includes(r.task);
@@ -34,14 +39,14 @@ export function dropped(r: FrontierTrialRecord, rule: SubsetRule): boolean {
   return !r.frontier.rerun && t >= Date.parse(rule.from) && t < Date.parse(rule.to);
 }
 
-export function subset(records: FrontierTrialRecord[], manifest: { trials: Array<{ id: string; cell: string }> }, rule: SubsetRule) {
+export function subset<R extends SubsetRecord>(records: R[], manifest: { trials: Array<{ id: string; cell: string }> }, rule: SubsetRule) {
   if ('infra_as_fail' in rule) {
     const { harness, task } = rule.infra_as_fail;
     const byCell: Record<string, number> = {};
     const out = records.map((r) => {
       if (r.harness !== harness || r.task !== task || r.termination !== 'infra_error') return r;
       byCell[r.cell] = (byCell[r.cell] ?? 0) + 1;
-      return { ...r, termination: 'harness_error', grade: 'fail', predicates: [{ id: 'verifier_reward', kind: 'required', passed: false, evidence: 'scored as a fail by subset.ts --infra-as-fail' }] } as FrontierTrialRecord;
+      return { ...r, termination: 'harness_error', grade: 'fail', predicates: [{ id: 'verifier_reward', kind: 'required', passed: false, evidence: 'scored as a fail by subset.ts --infra-as-fail' }] } as R;
     });
     return { records: out, manifest, dropped: 0, by_cell: byCell };
   }
@@ -63,7 +68,7 @@ if (import.meta.main) {
     if (rules.length !== 1) fail('give exactly one rule: --drop-tasks, --drop-exception, --drop-first-runs-ended, --drop-trials or --infra-as-fail');
     if ('from' in rules[0]! && (Number.isNaN(Date.parse(rules[0].from)) || Number.isNaN(Date.parse(rules[0].to)))) fail('--drop-first-runs-ended takes two ISO instants');
     if (existsSync(join(out, 'trials.jsonl'))) fail(out + ' already holds trials.jsonl');
-    const records = readFileSync(join(src, 'trials.jsonl'), 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l) as FrontierTrialRecord);
+    const records = readFileSync(join(src, 'trials.jsonl'), 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l) as SubsetRecord);
     const s = subset(records, JSON.parse(readFileSync(join(src, 'manifest.json'), 'utf8')), rules[0]!);
     mkdirSync(out, { recursive: true });
     writeFileSync(join(out, 'manifest.json'), JSON.stringify(s.manifest, null, 2) + '\n');

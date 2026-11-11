@@ -12,10 +12,9 @@ import { applyCuts, scan, type TrialRow } from '../scripts/corrections/harbor-cu
 const ROOT = join(import.meta.dir, '..');
 const CLEAN_ENV = { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: tmpdir() };
 const scratch = (name: string) => mkdtempSync(join(tmpdir(), `he-corrections-${name}-`));
-// The byte-for-byte rebuild needs the frontier-harness per-trial results and scripts/frontier-harbor/subset.ts. The public
-// copy keeps subset.ts private (publication/manifest.json: it imports to-trials.ts, which reaches the Lane B bridge), so
-// where either is absent the rebuild is skipped with a line naming what is missing.
-const HELD = ['docs/benchmarks/2026-11-07-frontier-harness/results/merged', 'docs/benchmarks/2026-11-07-frontier-harness/results/extension/merged', 'scripts/frontier-harbor/subset.ts'].filter((p) => !existsSync(join(ROOT, p)));
+// The byte-for-byte rebuild needs the frontier-harness per-trial results. Where they are absent the rebuild is skipped with
+// a line naming what is missing.
+const HELD = ['docs/benchmarks/2026-11-07-frontier-harness/results/merged', 'docs/benchmarks/2026-11-07-frontier-harness/results/extension/merged'].filter((p) => !existsSync(join(ROOT, p)));
 if (HELD.length) console.log(`SKIP reproduce-2026-11-10.sh --check: absent in this copy: ${HELD.join(', ')}`);
 
 describe('2026-11-10 corrections: every number rebuilds from committed receipts', () => {
