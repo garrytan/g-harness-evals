@@ -1,0 +1,70 @@
+# internal-task skill-resolver arm images for QM (harnesses/qm/prepare.sh configs pi-skills-*). Each is the counted core image
+# (or, for pull, the sandbox image) plus what one arm needs, labelled harness-eval.skill-arm so prepare.sh refuses a config
+# paired with the wrong image. Build context (qm-arms-check.ts stages it): skills/ (the catalog), tools/resolve-skills/
+# (scripts/skill-resolver/step0/qm/pull/tool), gbrain and gbrain-musl (the resolver for glibc (the Debian sandbox image) and
+# for musl (the Alpine core image): the pinned gbrain release with qm-arms-check.ts --gbrain and --gbrain-musl, otherwise
+# the stand-in scripts/skill-resolver/gbrain-stub.ts, each compiled with bun build --compile), result-fields.ts
+# (scripts/skill-resolver/result-fields.ts, at /scripts/skill-resolver/ so skill-resolver.mjs's relative import resolves as
+# in the repository) and harness/ (adapter.sh and skill-resolver.mjs from harnesses/qm, laid over /opt/harness so the image
+# runs this checkout's adapter).
+# The index: gbrain skills index build --catalog he-skills --dir /opt/catalog-layer/skills --harness qm, run inside the
+# image with the catalog where QM reads it, into GBRAIN_HOME=/opt/skill-resolver/gbrain-home (.gbrain/skill-index/he-skills/,
+# index.bin and its build receipt receipt.json, whose catalog_hash is the --expect-catalog value and whose index_hash and
+# gbrain_version every status line is checked against). The core and sandbox images build it from the same files at the
+# same path, so both carry the same index. The release checks freshness by stat (directory mtimes, SKILL.md sizes and
+# mtimes) and an exported image keeps whole-second mtimes only, so every catalog entry is first set to 2026-11-08 00:00 UTC
+# (build-kit.ts CATALOG_MTIME_S); without it every result in the image says index_stale.
+#   core-catalog  harness-eval/qm:harn52-arm-catalog        pi-skills-native and pi-skills-push: the catalog as
+#                 DEPLOYMENT_LAYER=/opt/catalog-layer (read at boot, src/config.ts:652, src/wiring.ts:648-683 at 90e4ced7),
+#                 gbrain on PATH in the task container, where adapter.sh calls it.
+#   core-pull     harness-eval/qm:harn52-arm-pull           pi-skills-pull: the catalog and the resolve-skills tool as the
+#                 layer (as scripts/skill-resolver/step0/qm/pull/Dockerfile.pull core), with the index's catalog pin.
+#   sandbox-pull  harness-eval/qm-sandbox:harn52-arm-pull   pi-skills-pull: the tool's files, gbrain, the catalog and the
+#                 index baked in (QM's local sandbox backend gets no layerToolFiles, src/wiring.ts:791-795).
+#   core-none     harness-eval/qm:harn52-arm-none           pi-skills-none: no layer, SKILLS_SEED_DIR a missing directory
+#                 (installSeedSkills installs nothing, src/config.ts:650) and PLUGIN_SKILLS_DIRS=false (src/config.ts:651).
+#                 Not SEED_SKILLS=false: it also turns off the layer install (src/wiring.ts:671, :2983).
+# Swapping in the real gbrain replaces /usr/local/bin/gbrain (the index is rebuilt by the same RUN) and nothing else.
+ARG CORE=harness-eval/qm:dev
+ARG SANDBOX=harness-eval/qm-sandbox:dev
+
+FROM ${CORE} AS core-base
+COPY --chmod=0555 harness/adapter.sh /opt/harness/adapter.sh
+COPY --chmod=0444 harness/skill-resolver.mjs /opt/harness/skill-resolver.mjs
+COPY result-fields.ts /scripts/skill-resolver/result-fields.ts
+
+FROM core-base AS core-indexed
+USER root
+COPY --chmod=0755 gbrain-musl /usr/local/bin/gbrain
+COPY --chown=node:node skills /opt/catalog-layer/skills
+RUN find /opt/catalog-layer/skills -exec touch -h -t 202611080000.00 {} + \
+ && mkdir -p /opt/skill-resolver && GBRAIN_HOME=/opt/skill-resolver/gbrain-home gbrain skills index build --catalog he-skills --dir /opt/catalog-layer/skills --harness qm --json > /opt/skill-resolver/index-build.json \
+ && chmod -R a+rX /opt/skill-resolver
+USER node
+
+FROM core-indexed AS core-catalog
+ENV DEPLOYMENT_LAYER=/opt/catalog-layer
+LABEL harness-eval.skill-arm="catalog"
+
+FROM core-indexed AS core-pull
+COPY --chown=node:node tools /opt/catalog-layer/tools
+USER root
+RUN grep -o '"catalog_hash": *"[0-9a-f]*"' /opt/skill-resolver/gbrain-home/.gbrain/skill-index/he-skills/receipt.json | grep -o '[0-9a-f]\{64\}' > /opt/catalog-layer/tools/resolve-skills/expect-catalog
+USER node
+ENV DEPLOYMENT_LAYER=/opt/catalog-layer
+LABEL harness-eval.skill-arm="catalog-pull"
+
+FROM core-base AS core-none
+ENV SKILLS_SEED_DIR=/opt/no-such-skills PLUGIN_SKILLS_DIRS=false
+LABEL harness-eval.skill-arm="no-catalog"
+
+FROM ${SANDBOX} AS sandbox-pull
+COPY --chmod=0755 gbrain /usr/local/bin/gbrain
+COPY skills /opt/catalog-layer/skills
+COPY --chmod=0755 tools/resolve-skills/resolve-skills /usr/local/bin/resolve-skills
+RUN find /opt/catalog-layer/skills -exec touch -h -t 202611080000.00 {} + \
+ && mkdir -p /opt/skill-resolver && GBRAIN_HOME=/opt/skill-resolver/gbrain-home gbrain skills index build --catalog he-skills --dir /opt/catalog-layer/skills --harness qm --json > /opt/skill-resolver/index-build.json \
+ && chmod -R a+rX /opt/skill-resolver \
+ && mkdir -p /usr/local/lib/resolve-skills \
+ && grep -o '"catalog_hash": *"[0-9a-f]*"' /opt/skill-resolver/gbrain-home/.gbrain/skill-index/he-skills/receipt.json | grep -o '[0-9a-f]\{64\}' > /usr/local/lib/resolve-skills/expect-catalog
+LABEL harness-eval.skill-arm="catalog-pull"

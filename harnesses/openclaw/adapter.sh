@@ -55,8 +55,14 @@ esac
 # (runner/contracts.ts parseRouteConfig); a driver prefix is Claude Code's only.
 instruction_route=${HE_HARNESS_CONFIG:-default}
 route_slot=''
+skill_arm='' skill_hook='' skill_arm_json=''
 case "$instruction_route" in
   default|route-tool|route-startup|route-hook|route-once|route-placebo|route-skill|route-told) ;;
+  skills-native|skills-resolver|skills-names-only|skills-no-catalog|skills-usage-ordered)
+    # internal-task: the skills arms (scripts/skill-resolver/ARMS.md) are applied below, after the routes; they are not a route, so the
+    # route blocks see default. Like the hook routes, they run on the serve entry only.
+    [ "$entry" = serve ] || { log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route is applied for the serve entry only; the run entry's state dir would not see the skill-resolver plugin"; exit 2; }
+    skill_arm=${instruction_route#skills-} instruction_route=default ;;
   route-slot-told@*|route-slot-skill@*)
     route_slot=${instruction_route#*@}
     [[ "$route_slot" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || { log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route needs @<slot_id> matching [a-z0-9][a-z0-9-]{0,62}"; exit 2; } ;;
@@ -426,6 +432,237 @@ PY
   route_json=$(printf ',"instruction_route":{"route":"%s","instruction_sha256":"%s","files":%s%s}' "$instruction_route" "$route_sha" "$route_files" "$route_hook_json")
 fi
 
+# internal-task, the skills arms (scripts/skill-resolver/ARMS.md), on HE_HARNESS_CONFIG skills-native, skills-resolver,
+# skills-names-only, skills-no-catalog or skills-usage-ordered. They read the kit at HE_SKILL_KIT_DIR (default /opt/skill-resolver,
+# mounted read-only), which must hold kit.json, bin/gbrain and bin/he-skill-hook, and install into /workspace/skills, which may
+# already hold the task's own skill directories (set T's t37 seeds skills/release-notes) but none named like a skill the arm
+# installs; those are refused, and the rest are kept as they are and listed in install.kept. native and resolver
+# install the catalog (catalog/skills), copy the kit's index/openclaw/gbrain-home to $HE_SESSION_STATE_DIR/he-skills/gbrain-home,
+# write the wrapper config he-skills/hook.json (mode shadow on native, push on resolver; expect_catalog is the receipt's
+# catalog_hash) and install the plugin template openclaw-plugin/ as $OPENCLAW_STATE_DIR/he-skill-resolver with the wrapper and
+# config paths filled in. The plugin is installed the way the route-hook plugin is (plugins install --link, enable,
+# allowConversationAccess); openclaw plugins inspect he-skill-resolver --runtime --json, kept as $HE_LOG_DIR/skill-arm.openclaw.json,
+# must report it loaded and enabled with before_prompt_build. The serve loop writes he-skills/turn.json before every member turn.
+# names-only installs names-only/skills and raises skills.limits (Step 0: maxCandidatesPerRoot, maxSkillsLoadedPerSource and
+# maxSkillsInPrompt 1000, maxSkillsPromptChars 1000000). no-catalog installs nothing and sets skills.allowBundled to one name no
+# skill has (an empty list counts as unset). usage-ordered installs the first HE_SKILL_USAGE_TOP_N (default 150) names of the kit's
+# usage-order.txt from catalog/skills and nothing else. Settings go in with openclaw config set, as the plugin's do. A full
+# install is checked against the tree digest kit.json records for its source. $HE_LOG_DIR/skill-arm.json records the arm, the
+# kit's hashes, the install, the settings, every file written with its sha256 and the hook check, and ready gains skill_arm. A
+# HE_GBRAIN_INSTALL beside it is allowed: its turn-rule plugin is a separate plugin id. Any failure is HE-ADAPTER-007 and exit 2
+# before ready. Any other config: nothing here runs and nothing is written.
+if [ -n "$skill_arm" ]; then
+  case "$skill_arm" in native|resolver) export GBRAIN_SKILLS_NO_AUTOREBUILD=1 ;; esac
+  skill_kit=${HE_SKILL_KIT_DIR:-/opt/skill-resolver}
+  set +e
+  skill_line=$(python3 - "$skill_arm" "$skill_kit" "$HE_WORKSPACE_DIR/skills" "$HE_SESSION_STATE_DIR/he-skills" "$HE_LOG_DIR" "${HE_SKILL_USAGE_TOP_N:-150}" <<'PY'
+import hashlib, json, os, shutil, subprocess, sys
+arm, kit, root, state, logs, top_n = sys.argv[1:7]
+out = os.path.join(logs, "skill-arm.json")
+plugin = os.path.join(os.environ["OPENCLAW_STATE_DIR"], "he-skill-resolver")
+config_path = os.environ["OPENCLAW_CONFIG_PATH"]
+sha = lambda data: hashlib.sha256(data).hexdigest()
+rec = {"status": "error", "code": "HE-ADAPTER-007", "harness": "openclaw", "config": "skills-" + arm, "arm": arm,
+       "kit": {"dir": kit, "catalog_hash": None, "gbrain_version": None, "kit_json_sha256": None},
+       "install": {"source": None, "dest": root, "skills": 0}, "settings": [], "files": [], "hook": None, "error": None}
+def write():
+    with open(out + ".tmp", "w") as f:
+        json.dump(rec, f)
+    os.replace(out + ".tmp", out)
+def refuse(msg):
+    rec["error"] = msg
+    write()
+    print("HE-ADAPTER-007 the skills arm could not be applied: %s" % msg)
+    sys.exit(1)
+def note(path):
+    data = open(path, "rb").read()
+    rec["files"].append({"path": path, "sha256": sha(data), "bytes": len(data)})
+def put(path, data):
+    if os.path.lexists(path):
+        refuse("the destination exists and the arm does not overwrite it: %s" % path)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(data)
+    note(path)
+def tree(d, top):
+    lines = []
+    def walk(rel):
+        for n in sorted(top) if not rel else sorted(os.listdir(os.path.join(d, rel))):
+            r = rel + "/" + n if rel else n
+            if os.path.isdir(os.path.join(d, r)):
+                walk(r)
+            else:
+                lines.append(sha(open(os.path.join(d, r), "rb").read()) + "  " + r)
+    walk("")
+    return sha(("\n".join(lines) + "\n").encode())
+def config_set(path, value):
+    cmd = ["openclaw", "config", "set", path, json.dumps(value), "--strict-json"]
+    rec["settings"].append(" ".join(cmd[:4]) + " '" + cmd[4] + "' --strict-json")
+    with open(os.path.join(logs, "skill-arm.openclaw.log"), "a") as log:
+        code = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT).returncode
+    if code != 0:
+        refuse("%s exited %d (skill-arm.openclaw.log)" % (" ".join(cmd[:4]), code))
+try:
+    kit_bytes = open(os.path.join(kit, "kit.json"), "rb").read()
+    meta = json.loads(kit_bytes)
+except (OSError, ValueError) as e:
+    refuse("no readable kit.json in %s (mount the kit read-only at /opt/skill-resolver or set HE_SKILL_KIT_DIR): %s" % (kit, e))
+rec["kit"].update(catalog_hash=meta.get("catalog_hash"), gbrain_version=meta.get("gbrain_version"), kit_json_sha256=sha(kit_bytes))
+for b in ("gbrain", "he-skill-hook"):
+    if not os.access(os.path.join(kit, "bin", b), os.X_OK):
+        refuse("the kit has no executable bin/%s" % b)
+kit_home = os.path.join(kit, "index", "openclaw", "gbrain-home")
+receipt_path = os.path.join(kit_home, ".gbrain", "skill-index", "he-skills", "receipt.json")
+receipt = {}
+if arm in ("native", "resolver"):
+    if not isinstance(meta.get("catalog_mtime_s"), int):
+        refuse("the kit's kit.json has no catalog_mtime_s")
+    try:
+        raw = json.load(open(receipt_path))
+        receipt = {"catalog_hash": (raw.get("catalog") or {}).get("catalog_hash"), "index_hash": (raw.get("index") or {}).get("index_hash")}
+    except (OSError, ValueError, AttributeError) as e:
+        refuse("no readable OpenClaw index receipt at %s; build the kit with its OpenClaw index (scripts/skill-resolver/build-kit.ts): %s" % (receipt_path, e))
+    if not receipt.get("catalog_hash") or receipt.get("index_hash") != (meta.get("index") or {}).get("openclaw", {}).get("index_hash"):
+        refuse("the OpenClaw index receipt has no catalog_hash or its index_hash %r is not the one kit.json records" % receipt.get("index_hash"))
+held = sorted(os.listdir(root)) if os.path.isdir(root) else []
+source, names, digest_key = None, [], None
+if arm in ("native", "resolver", "usage-ordered"):
+    source, digest_key = os.path.join(kit, "catalog", "skills"), "catalog/skills"
+elif arm == "names-only":
+    source, digest_key = os.path.join(kit, "names-only", "skills"), "names-only/skills"
+if source:
+    if not os.path.isdir(source):
+        refuse("the kit has no %s" % digest_key)
+    names = sorted(n for n in os.listdir(source) if os.path.isdir(os.path.join(source, n)))
+if arm == "usage-ordered":
+    order_path = os.path.join(kit, "usage-order.txt")
+    try:
+        order = open(order_path, "rb").read()
+    except OSError as e:
+        refuse("the kit has no usage-order.txt (build-kit.ts --usage-order): %s" % e)
+    if not top_n.isdigit() or int(top_n) < 1:
+        refuse("HE_SKILL_USAGE_TOP_N must be a positive integer (got %r)" % top_n)
+    if sha(order) != (meta.get("files") or {}).get("usage-order.txt"):
+        refuse("usage-order.txt's sha256 %s is not the one kit.json records" % sha(order))
+    listed = [l.strip() for l in order.decode("utf-8").split("\n") if l.strip()]
+    unknown = [n for n in listed if n not in names]
+    if unknown:
+        refuse("usage-order.txt names skills catalog/skills does not hold: %s" % ", ".join(unknown[:5]))
+    names, digest_key = listed[:int(top_n)], None
+    rec["usage_order"] = {"path": order_path, "sha256": sha(order), "listed": len(listed), "top_n": int(top_n), "installed": names}
+    rec["settings"].append("none: the first %d names of usage-order.txt installed from catalog/skills, nothing else" % len(names))
+clash = sorted(set(held) & set(names))
+if clash:
+    refuse("the skills root %s already holds %d entries named like skills the arm installs (%s)" % (root, len(clash), ", ".join(clash[:5])))
+rec["install"].update(source=source, skills=len(names), names=names, kept=held)
+if source:
+    os.makedirs(root, exist_ok=True)
+    for n in names:
+        shutil.copytree(os.path.join(source, n), os.path.join(root, n))
+    rec["install"]["tree_sha256"] = tree(root, names)
+    if digest_key and rec["install"]["tree_sha256"] != (meta.get("files") or {}).get(digest_key):
+        refuse("the installed tree's digest %s is not kit.json's %s digest" % (rec["install"]["tree_sha256"], digest_key))
+    if arm in ("native", "resolver"):
+        t = meta["catalog_mtime_s"]
+        for n in names:
+            for d, _, fs in os.walk(os.path.join(root, n)):
+                for f in fs:
+                    os.utime(os.path.join(d, f), (t, t))
+                os.utime(d, (t, t))
+        os.utime(root, (t, t))
+        rec["install"]["mtime_s"] = t
+if arm == "names-only":
+    config_set("skills.limits", {"maxCandidatesPerRoot": 1000, "maxSkillsLoadedPerSource": 1000, "maxSkillsInPrompt": 1000, "maxSkillsPromptChars": 1000000})
+    note(config_path)
+elif arm == "no-catalog":
+    rec["settings"].append("nothing installed in %s" % root)
+    config_set("skills.allowBundled", ["he-no-bundled-skill"])
+    note(config_path)
+if arm in ("native", "resolver"):
+    home = os.path.join(state, "gbrain-home")
+    if os.path.lexists(home):
+        refuse("the destination exists and the arm does not overwrite it: %s" % home)
+    shutil.copytree(kit_home, home)
+    for d, _, fs in sorted(os.walk(home)):
+        for f in sorted(fs):
+            note(os.path.join(d, f))
+    hook, hook_config = os.path.join(kit, "bin", "he-skill-hook"), os.path.join(state, "hook.json")
+    mode = "shadow" if arm == "native" else "push"
+    put(hook_config, json.dumps({"harness": "openclaw", "arm": arm, "mode": mode, "gbrain": os.path.join(kit, "bin", "gbrain"), "gbrain_home": home,
+        "catalog": "he-skills", "expect_catalog": receipt["catalog_hash"], "receipt": receipt_path, "status_dir": os.path.join(logs, "skill-resolver"),
+        "turn_file": os.path.join(state, "turn.json"), "top_k": 5, "timeout_ms": 10000}).encode())
+    for name in ("package.json", "openclaw.plugin.json", "index.js"):
+        try:
+            data = open(os.path.join(kit, "openclaw-plugin", name), "rb").read()
+        except OSError as e:
+            refuse("the kit's plugin template is incomplete: %s" % e)
+        if name == "index.js":
+            for marker, value in ((b'"__HE_SKILL_HOOK__"', hook), (b'"__HE_SKILL_CONFIG__"', hook_config)):
+                if data.count(marker) != 1:
+                    refuse("the plugin template's index.js does not carry the placeholder %s exactly once" % marker.decode())
+                data = data.replace(marker, json.dumps(value).encode())
+        put(os.path.join(plugin, name), data)
+    rec["settings"] += ["GBRAIN_SKILLS_NO_AUTOREBUILD=1 in the adapter's environment",
+        "the plugin he-skill-resolver: before_prompt_build runs %s %s (mode %s)%s" % (hook, hook_config, mode, ", and returns the block as appendContext" if mode == "push" else ", injecting nothing")]
+    rec["hook"] = {"plugin_dir": plugin, "status": "pending", "config": hook_config, "mode": mode, "commands": ["openclaw plugins install --link %s --force --accept-capabilities" % plugin,
+        "openclaw plugins enable he-skill-resolver", "openclaw config set plugins.entries.he-skill-resolver.hooks.allowConversationAccess true"]}
+rec.update(status="ok", code=None)
+write()
+print("ok %d %s %s %s" % (len(names), json.dumps(meta.get("catalog_hash")), json.dumps(receipt.get("catalog_hash")), json.dumps(receipt.get("index_hash"))))
+PY
+)
+  skill_code=$?
+  set -e
+  log "skills arm $skill_arm: ${skill_line:-HE-ADAPTER-007 the skills arm could not be applied: the arm step failed before it could report; see stderr.log}"
+  [ "$skill_code" -eq 0 ] || exit 2
+  read -r _ skill_count skill_catalog skill_gbrain_catalog skill_index <<< "$skill_line"
+  skill_hook=none
+  if [ "$skill_arm" = native ] || [ "$skill_arm" = resolver ]; then
+    set +e
+    skill_err="$HE_LOG_DIR/skill-arm.openclaw.log"
+    skill_plugin="$OPENCLAW_STATE_DIR/he-skill-resolver"
+    { openclaw plugins install --link "$skill_plugin" --force --accept-capabilities && openclaw plugins enable he-skill-resolver && openclaw config set plugins.entries.he-skill-resolver.hooks.allowConversationAccess true; } >> "$skill_err" 2>&1
+    skill_hook_code=$?
+    openclaw plugins inspect he-skill-resolver --runtime --json > "$HE_LOG_DIR/skill-arm.openclaw.json" 2>> "$skill_err"
+    skill_inspect_code=$?
+    skill_hook_line=$(python3 - "$HE_LOG_DIR/skill-arm.openclaw.json" "$HE_LOG_DIR/skill-arm.json" "$skill_hook_code" "$skill_inspect_code" "$OPENCLAW_CONFIG_PATH" <<'PY'
+import hashlib, json, os, sys
+inspect_path, rec_path, hook_code, inspect_code, config = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), sys.argv[5]
+rec = json.load(open(rec_path))
+def done(status, detail):
+    rec["hook"].update(status=status, detail=detail)
+    if os.path.isfile(config):
+        rec["hook"]["config_sha256_after"] = hashlib.sha256(open(config, "rb").read()).hexdigest()
+    if status != "loaded":
+        rec.update(status="error", code="HE-ADAPTER-007", error="the skill-resolver plugin is not loaded: " + detail)
+    json.dump(rec, open(rec_path + ".tmp", "w"))
+    os.replace(rec_path + ".tmp", rec_path)
+    print(("ok " if status == "loaded" else "HE-ADAPTER-007 the skill-resolver plugin is not loaded: ") + detail)
+    sys.exit(0 if status == "loaded" else 1)
+if hook_code != 0:
+    done("error", "an openclaw plugins/config command exited %d (skill-arm.openclaw.log)" % hook_code)
+if inspect_code != 0:
+    done("error", "openclaw plugins inspect he-skill-resolver --runtime exited %d" % inspect_code)
+try:
+    doc = json.load(open(inspect_path))
+except ValueError as e:
+    done("error", "plugins inspect printed no JSON: %s" % e)
+plugin = doc.get("plugin") or {}
+hooks = [h.get("name") for h in (doc.get("typedHooks") or [])]
+if plugin.get("status") != "loaded" or not plugin.get("enabled") or "before_prompt_build" not in hooks:
+    done("error", "status %r enabled %r typed hooks %r" % (plugin.get("status"), plugin.get("enabled"), hooks))
+done("loaded", "he-skill-resolver loaded (status %s, hooks %s, source %s)" % (plugin.get("status"), ",".join(hooks), plugin.get("source")))
+PY
+)
+    skill_hook_ok=$?
+    set -e
+    log "skills arm hook: $skill_hook_line"
+    [ "$skill_hook_ok" -eq 0 ] || exit 2
+    skill_hook=loaded
+  fi
+  skill_arm_json=$(printf ',"skill_arm":{"arm":"%s","catalog_hash":%s,"gbrain_catalog_hash":%s,"index_hash":%s,"skills_installed":%s,"hook":"%s"}' "$skill_arm" "$skill_catalog" "$skill_gbrain_catalog" "$skill_index" "$skill_count" "$skill_hook")
+fi
+
 # A model error is a provider status, a proxy refusal, a rate limit or an auth
 # failure in the envelope or on stderr; everything else that fails is OpenClaw's.
 model_error_pattern='"status":\s*(401|402|403|404|429|5[0-9]{2})|metering proxy|rate.?limit|overloaded|api error|authentication|invalid.*api.?key|HTTP (401|402|403|404|429|5[0-9]{2})'
@@ -567,10 +804,42 @@ put(out, json.dumps({"config": config, "driver": "cli", "route": route, "session
 PY
 }
 
+# internal-task, the skills arms native and resolver only: before each member turn, write the turn context the hook wrapper reads,
+# $HE_SESSION_STATE_DIR/he-skills/turn.json (temp file renamed into place): turn, name (the turn file's base name), session_key
+# (the adapter's session key), window_key (<channel id>, or <channel id>:<thread_ts> in a thread), session_turn (1 on a
+# session's first member turn), message (the member's own message, the request's text, not the full prompt the harness receives)
+# and previous_user_message (the session's previous member message, absent on its first turn). The counts and last messages are
+# kept in he-skills/sessions.json. Arguments: request path, adapter session key,
+# turn name. Other cells never call it.
+skill_turn() {
+  python3 - "$1" "$2" "$3" "$HE_SESSION_STATE_DIR/he-skills" <<'PY'
+import json, os, sys
+req, key, name, state = sys.argv[1:5]
+r = json.load(open(req))
+def put(path, text):
+    with open(path + ".tmp", "w") as f:
+        f.write(text)
+    os.replace(path + ".tmp", path)
+sessions_path = os.path.join(state, "sessions.json")
+try:
+    sessions = json.load(open(sessions_path))
+except (OSError, ValueError):
+    sessions = {}
+last = sessions.get(key) or {"turns": 0, "last_message": None}
+turn = {"turn": r["turn"], "name": name, "session_key": key, "window_key": r["channel"]["id"] + (":" + str(r["thread_ts"]) if r.get("thread_ts") else ""),
+        "session_turn": last["turns"] + 1, "message": r["text"]}
+if last["last_message"] is not None:
+    turn["previous_user_message"] = last["last_message"]
+sessions[key] = {"turns": last["turns"] + 1, "last_message": r["text"]}
+put(sessions_path, json.dumps(sessions, sort_keys=True))
+put(os.path.join(state, "turn.json"), json.dumps(turn))
+PY
+}
+
 stopping=0
 trap 'stopping=1' TERM INT
 if [ "$HE_SESSION_SCOPE" = turn ]; then session_keys='agent:main:turn:<NNNN>'; else session_keys='agent:main:dm:<member> | agent:main:channel:<id>'; fi
-printf '{"harness":"openclaw","version":"%s","trial":"%s","ready_at":"%s","session_scope":"%s","session_keys":"%s","adapter_sha256":"%s"%s}\n' "${OPENCLAW_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$HE_SESSION_SCOPE" "$session_keys" "$adapter_sha256" "$gbrain_install_json$route_json" > "$HE_LOG_DIR/ready.tmp"
+printf '{"harness":"openclaw","version":"%s","trial":"%s","ready_at":"%s","session_scope":"%s","session_keys":"%s","adapter_sha256":"%s"%s}\n' "${OPENCLAW_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$HE_SESSION_SCOPE" "$session_keys" "$adapter_sha256" "$gbrain_install_json$route_json$skill_arm_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do
@@ -587,6 +856,7 @@ while [ "$stopping" -eq 0 ]; do
     ' "$req")
     log "turn $turn: session $key, budget ${budget}s"
     [ "$instruction_route" = default ] || route_turn "$req" "$key" "$name"
+    [ "$skill_hook" != loaded ] || skill_turn "$req" "$key" "$name"
     started=$(now)
     set +e
     serve_turn "$req" "$key" "$name" "$budget" &

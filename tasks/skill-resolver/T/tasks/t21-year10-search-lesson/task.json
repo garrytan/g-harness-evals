@@ -1,0 +1,74 @@
+{
+ "id": "t21-year10-search-lesson",
+ "target": {
+  "name": "manim-video",
+  "pack": "hermes",
+  "skill_md_sha256": "467376469fc2043e2674a843509f8eea52660791e76fb2e142074ecd4abc7e69"
+ },
+ "request": "For Thursday's lesson I want a short animated explainer of binary search, built with Manim from the outline in notes/lesson.md. Write the code to explainer/script.py; I'll render it on my laptop.",
+ "skill_step": "The skill's code step puts subtitles on every animation (self.add_subcaption or subcaption= on self.play) and uses a monospace font constant for all Text because Pango kerning breaks proportional fonts.",
+ "used_it": [
+  "subtitles",
+  "mono-font"
+ ],
+ "checks": [
+  {
+   "id": "script",
+   "kind": "exists",
+   "path": "explainer/script.py",
+   "why": "the code is where the request asked for it"
+  },
+  {
+   "id": "manim",
+   "kind": "regex",
+   "path": "explainer/script.py",
+   "pattern": "from manim import",
+   "why": "it is a Manim script"
+  },
+  {
+   "id": "scene",
+   "kind": "regex",
+   "path": "explainer/script.py",
+   "pattern": "class \\w+\\((Moving)?Scene\\)",
+   "why": "it defines at least one scene"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "explainer/script.py",
+   "pattern": "63",
+   "why": "it animates the search for 63 from the outline"
+  },
+  {
+   "id": "subtitles",
+   "kind": "regex",
+   "path": "explainer/script.py",
+   "pattern": "add_subcaption\\(|subcaption\\s*=",
+   "min": 3,
+   "why": "subtitles on the animations, the skill's key pattern",
+   "markers": [
+    "subcaption",
+    "subtitles"
+   ]
+  },
+  {
+   "id": "mono-font",
+   "kind": "regex",
+   "path": "explainer/script.py",
+   "flags": "i",
+   "pattern": "font\\s*=\\s*(MONO\\b|[\"'][^\"']*(mono|menlo|courier)[^\"']*[\"'])",
+   "why": "text uses a monospace font, as the skill requires",
+   "markers": [
+    "monospace",
+    "Menlo",
+    "kerning"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0435,
+  "body_coverage": 0.4706,
+  "bin": "low"
+ }
+}

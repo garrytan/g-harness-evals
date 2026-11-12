@@ -1,0 +1,87 @@
+{
+ "id": "t48-sentry-weekday-autofix",
+ "target": {
+  "name": "define-loop",
+  "pack": "qm",
+  "skill_md_sha256": "82ec9028bdedab3969af50ccab9a529480c924ad328595ed7172f8003e4217e2"
+ },
+ "request": "Every weekday morning I want an agent to take new Sentry errors from our checkout-web project (sample in sentry-export.json, team notes in notes/team.md), try a fix, and leave PRs for me to look at. Before anything gets scheduled, write the setup down in sentry-autofix-plan.md.",
+ "skill_step": "The skill requires a shadow run (one real item worked end to end with the user watching) before arming, a success condition bounded by 'or park with a diagnosis after N turns', and every ship action such as open_pr starting at hold.",
+ "used_it": [
+  "shadow",
+  "hold",
+  "park"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "sentry-autofix-plan.md",
+   "why": "the plan is where the request asked for it"
+  },
+  {
+   "id": "project",
+   "kind": "regex",
+   "path": "sentry-autofix-plan.md",
+   "pattern": "checkout-web",
+   "why": "it is about the checkout-web project"
+  },
+  {
+   "id": "weekdays",
+   "kind": "regex",
+   "path": "sentry-autofix-plan.md",
+   "pattern": "weekday|mon(day)?\\s*-\\s*fri|\\b1-5\\b",
+   "flags": "i",
+   "why": "it runs on weekdays"
+  },
+  {
+   "id": "checks-named",
+   "kind": "regex",
+   "path": "sentry-autofix-plan.md",
+   "pattern": "pnpm (test|lint|typecheck)",
+   "why": "it uses the checks from the team notes"
+  },
+  {
+   "id": "shadow",
+   "kind": "regex",
+   "path": "sentry-autofix-plan.md",
+   "pattern": "\\bshadow run\\b",
+   "flags": "i",
+   "why": "the skill's shadow run on one real item before arming",
+   "markers": [
+    "shadow run",
+    "shadow"
+   ]
+  },
+  {
+   "id": "hold",
+   "kind": "regex",
+   "path": "sentry-autofix-plan.md",
+   "pattern": "open_pr\\W[^\\n]{0,60}\\bhold\\b",
+   "flags": "i",
+   "why": "the skill's ship action open_pr starting at hold",
+   "markers": [
+    "open_pr",
+    "hold"
+   ]
+  },
+  {
+   "id": "park",
+   "kind": "regex",
+   "path": "sentry-autofix-plan.md",
+   "pattern": "\\bpark\\b[^\\n]{0,80}\\b\\d+\\s+turns?\\b",
+   "flags": "i",
+   "why": "the skill's bound on the success condition: park with a diagnosis after N turns",
+   "markers": [
+    "park",
+    "turns"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0704,
+  "body_coverage": 0.2903,
+  "bin": "mid"
+ }
+}

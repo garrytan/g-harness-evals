@@ -100,10 +100,16 @@ case "$route_driver" in
   cli|sdk-preset|sdk-default) ;;
   *) refuse_route "names no known driver (cli, sdk-preset, sdk-default)" ;;
 esac
+skill_arm=''
 case "$route" in
   official-minimal)
     [ "$route_config" = official-minimal ] || refuse_route "is official-minimal with a driver prefix or a slot id; that config takes neither"
     route=default ;;
+  skills-native|skills-resolver|skills-names-only|skills-no-catalog)
+    [ "$route_config" = "$route" ] || refuse_route "is a skills arm with a driver prefix or a slot id; the skills arms take neither (scripts/skill-resolver/ARMS.md)"
+    [ "$entry" = serve ] || refuse_route "is applied for the serve entry only (scripts/skill-resolver/ARMS.md)"
+    skill_arm=${route#skills-} route=default ;;
+  skills-usage-ordered) refuse_route "is OpenClaw's usage-ordered arm; claude-code has no such arm (scripts/skill-resolver/ARMS.md)" ;;
   default|route-tool|route-hook|route-once|route-system|route-startup|route-skill|route-told|route-placebo)
     [ "$route_at" -eq 0 ] || refuse_route "gives a slot id, which only route-slot-told and route-slot-skill take" ;;
   route-slot-told|route-slot-skill)
@@ -363,6 +369,116 @@ JS
   route_json=$(printf ',"instruction_route":{"config":"%s","driver":"%s","route":"%s","bytes_sha256":"%s","files":%s,"hook":"%s"}' "$route_config" "$route_driver" "$route" "$route_sha" "$route_files" "$route_hook")
 fi
 
+# internal-task, the skill-resolver arms (scripts/skill-resolver/ARMS.md). HE_HARNESS_CONFIG skills-<arm> reads the kit at
+# ${HE_SKILL_KIT_DIR:-/opt/skill-resolver} (scripts/skill-resolver/build-kit.ts):
+#   skills-native      the catalog in $CLAUDE_CONFIG_DIR/skills; a UserPromptSubmit lane of its own runs the hook wrapper with
+#                      the resolver in shadow mode each turn (logged, nothing injected)
+#   skills-resolver    the same, the wrapper pushing the resolver's block as additionalContext
+#   skills-names-only  the names-only catalog copy; SLASH_COMMAND_TOOL_CHAR_BUDGET=100000
+#   skills-no-catalog  no catalog; CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1
+# The hook lane is one more settings.json UserPromptSubmit group whose entry carries _he "skill-resolver-v1"; gbrain's turn-rule
+# entry (_gbrain "turn-rule-v1", checked above when HE_GBRAIN_INSTALL=gbrain-installer) stays exactly as it was. The adapter writes
+# the wrapper's hook.json and, before each turn, its turn.json (skills_turn). $HE_LOG_DIR/skill-arm.json records the arm, the kit,
+# every file written and the settings; ready carries skill_arm. A missing kit file or a skills root that already holds skills is
+# HE-ADAPTER-007, exit 2 before ready. Any other config runs none of this.
+skill_arm_json='' skill_dir="$HE_SESSION_STATE_DIR/he-skills"
+if [ -n "$skill_arm" ]; then
+  set +e
+  skill_line=$(node - "$skill_arm" "${HE_SKILL_KIT_DIR:-/opt/skill-resolver}" "$CLAUDE_CONFIG_DIR" "$skill_dir" "$HE_LOG_DIR" "$route_config" <<'JS'
+const fs = require("fs"), path = require("path"), crypto = require("crypto");
+const [arm, kit, claude, dir, logs, config] = process.argv.slice(2);
+const sha = (b) => crypto.createHash("sha256").update(b).digest("hex");
+const out = path.join(logs, "skill-arm.json");
+const rec = { status: "error", code: "HE-ADAPTER-007", harness: "claude-code", config, arm, kit: { dir: kit, catalog_hash: null, gbrain_version: null, kit_json_sha256: null }, install: null, settings: [], files: [], hook: null, error: null };
+const write = () => { fs.writeFileSync(out + ".tmp", JSON.stringify(rec, null, 1) + "\n"); fs.renameSync(out + ".tmp", out); };
+const refuse = (msg) => { rec.error = msg; write(); console.log("HE-ADAPTER-007 the skills arm could not be applied: " + msg); process.exit(1); };
+const record = (p) => { const b = fs.readFileSync(p); rec.files.push({ path: p, sha256: sha(b), bytes: b.length }); };
+let k;
+try { const body = fs.readFileSync(path.join(kit, "kit.json")); k = JSON.parse(body); rec.kit.kit_json_sha256 = sha(body); } catch (e) { refuse("no readable kit.json under " + kit + ": " + e.message); }
+Object.assign(rec.kit, { catalog_hash: k.catalog_hash ?? null, gbrain_version: k.gbrain_version ?? null });
+for (const b of ["bin/gbrain", "bin/he-skill-hook"]) { try { fs.accessSync(path.join(kit, b), fs.constants.X_OK); } catch { refuse("the kit has no executable " + b); } }
+const skills = path.join(claude, "skills");
+if (fs.existsSync(skills) && fs.readdirSync(skills).length) refuse(skills + " already holds skills");
+const source = { native: "catalog", resolver: "catalog", "names-only": "names-only", "no-catalog": null }[arm];
+let installed = 0;
+if (source) {
+  const src = path.join(kit, source, "skills");
+  if (!fs.existsSync(src)) refuse("the kit has no " + source + "/skills");
+  fs.mkdirSync(skills, { recursive: true });
+  for (const name of fs.readdirSync(src).sort()) { fs.cpSync(path.join(src, name), path.join(skills, name), { recursive: true }); installed++; }
+  rec.install = { source: src, dest: skills, skills: installed };
+}
+if (arm === "names-only") rec.settings.push("SLASH_COMMAND_TOOL_CHAR_BUDGET=100000 (environment)");
+if (arm === "no-catalog") rec.settings.push("CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1 (environment)");
+let receipt = null, hook = "none";
+if (arm === "native" || arm === "resolver") {
+  const home = path.join(kit, "index", "claude-code", "gbrain-home");
+  const receiptPath = path.join(home, ".gbrain", "skill-index", "he-skills", "receipt.json");
+  try { const r = JSON.parse(fs.readFileSync(receiptPath, "utf8")); receipt = { catalog_hash: r.catalog?.catalog_hash ?? null, index_hash: r.index?.index_hash ?? null }; } catch (e) { refuse("no readable build receipt at " + receiptPath + ": " + e.message); }
+  if (typeof k.catalog_mtime_s !== "number") refuse("kit.json has no catalog_mtime_s");
+  const setTime = (p) => { if (fs.statSync(p).isDirectory()) for (const n of fs.readdirSync(p)) setTime(path.join(p, n)); fs.utimesSync(p, k.catalog_mtime_s, k.catalog_mtime_s); };
+  setTime(skills);
+  rec.install.mtime_s = k.catalog_mtime_s;
+  if (fs.existsSync(dir)) refuse("the destination exists and the arm does not overwrite it: " + dir);
+  fs.cpSync(home, path.join(dir, "gbrain-home"), { recursive: true });
+  const hookJson = path.join(dir, "hook.json");
+  fs.writeFileSync(hookJson, JSON.stringify({ harness: "claude-code", arm, mode: arm === "native" ? "shadow" : "push", gbrain: path.join(kit, "bin", "gbrain"), gbrain_home: path.join(dir, "gbrain-home"),
+    catalog: "he-skills", expect_catalog: receipt.catalog_hash, receipt: receiptPath, status_dir: path.join(logs, "skill-resolver"), turn_file: path.join(dir, "turn.json"), top_k: 5, timeout_ms: 10000 }, null, 1) + "\n");
+  record(hookJson);
+  const wrapper = path.join(kit, "bin", "he-skill-hook");
+  if (/\s/.test(wrapper + hookJson)) refuse("a hook path holds whitespace: " + wrapper + " " + hookJson);
+  const command = wrapper + " " + hookJson;
+  const settings = path.join(claude, "settings.json");
+  let s;
+  try { s = JSON.parse(fs.readFileSync(settings, "utf8")); } catch (e) { refuse("no readable " + settings + ": " + e.message); }
+  s.hooks = s.hooks ?? {};
+  s.hooks.UserPromptSubmit = [...(s.hooks.UserPromptSubmit ?? []), { hooks: [{ type: "command", command, timeout: 30, _he: "skill-resolver-v1" }] }];
+  fs.writeFileSync(settings, JSON.stringify(s, null, 2) + "\n");
+  record(settings);
+  rec.settings.push("GBRAIN_SKILLS_NO_AUTOREBUILD=1 (environment)");
+  rec.hook = { event: "UserPromptSubmit", command, mode: arm === "native" ? "shadow" : "push", marker: "_he skill-resolver-v1", gbrain_turn_rule_entries: s.hooks.UserPromptSubmit.flatMap((g) => g.hooks ?? []).filter((e) => e._gbrain === "turn-rule-v1").length };
+  hook = "checked";
+}
+rec.status = "ok"; rec.code = null;
+write();
+console.log(["ok", installed, rec.kit.catalog_hash, receipt?.catalog_hash ?? "null", receipt?.index_hash ?? "null", hook].join(" "));
+JS
+)
+  skill_code=$?
+  set -e
+  log "skills arm $route_config: ${skill_line:-HE-ADAPTER-007 the skills arm could not be applied: the step failed before it could report; see stderr.log}"
+  [ "$skill_code" -eq 0 ] || exit 2
+  read -r _ skill_n skill_catalog skill_gcatalog skill_index skill_hook <<< "$skill_line"
+  case "$skill_arm" in
+    names-only) export SLASH_COMMAND_TOOL_CHAR_BUDGET=100000 ;;
+    no-catalog) export CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1 ;;
+    native|resolver) export GBRAIN_SKILLS_NO_AUTOREBUILD=1 ;;
+  esac
+  skill_q() { if [ "$1" = null ]; then printf null; else printf '"%s"' "$1"; fi; }
+  skill_arm_json=$(printf ',"skill_arm":{"arm":"%s","catalog_hash":"%s","gbrain_catalog_hash":%s,"index_hash":%s,"skills_installed":%s,"hook":"%s"}' "$skill_arm" "$skill_catalog" "$(skill_q "$skill_gcatalog")" "$(skill_q "$skill_index")" "$skill_n" "$skill_hook")
+fi
+
+# Before each turn of the skills-native and skills-resolver arms: count the turn against its session and write the wrapper's turn
+# context (temp file, then rename): the turn, its file name, the session key, the session's turn count, the member's own message
+# (the request's text, not the full prompt the harness receives) and the previous member message of the same session.
+# Arguments: file prefix, turn request file, adapter key, window key.
+skills_turn() {
+  node - "$skill_dir/sessions.json" "$skill_dir/turn.json" "$1" "$2" "$3" "$4" <<'JS'
+const fs = require("fs"), path = require("path");
+const [sessions, out, prefix, requestFile, key, windowKey] = process.argv.slice(2);
+const atomic = (p, body) => { fs.writeFileSync(p + ".tmp", body); fs.renameSync(p + ".tmp", p); };
+const all = fs.existsSync(sessions) ? JSON.parse(fs.readFileSync(sessions, "utf8")) : {};
+const message = JSON.parse(fs.readFileSync(requestFile, "utf8")).text;
+const prev = all[key] ?? { n: 0, last: null };
+const name = path.basename(prefix);
+const turn = /^turn-\d+$/.test(name) ? Number(name.slice(5)) : name;
+atomic(out, JSON.stringify({ turn, name, session_key: key, window_key: windowKey, session_turn: prev.n + 1, message, ...(prev.last !== null ? { previous_user_message: prev.last } : {}) }));
+all[key] = { n: prev.n + 1, last: message };
+atomic(sessions, JSON.stringify(all));
+console.log("session_turn " + (prev.n + 1));
+JS
+}
+
 # Before each turn of a route cell: count the turn against its session (the adapter's key, so the count follows the session id
 # Claude Code resumes), write the emit flag for a hook route (temp file, then rename) and record the turn's RouteTurnStatus
 # (runner/contracts.ts) at <prefix>.route.json, with session_key in TurnWindow's form (<channel id>[:<thread_ts>]). Arguments:
@@ -502,6 +618,10 @@ process.stdout.write([x.slice(0, 8), x.slice(8, 12), x.slice(12, 16), x.slice(16
     if ! route_status=$(route_turn "$prefix" "$key" "$window_key"); then turn_code=2; turn_detail="the route status for this turn could not be written"; return 0; fi
     log "session $key: route $route $route_status"
   fi
+  if [ "$skill_arm" = native ] || [ "$skill_arm" = resolver ]; then
+    if ! skill_status=$(skills_turn "$prefix" "$HE_TURNS_DIR/${prefix##*/}.request.json" "$key" "$window_key"); then turn_code=2; turn_detail="the skills turn context for this turn could not be written"; return 0; fi
+    log "session $key: skills arm $skill_arm $skill_status"
+  fi
   [ "$route" != route-system ] || route_args=(--append-system-prompt "$route_system_text")
   if [ "$route_driver" = cli ]; then
     turn_cmd=(claude -p --output-format stream-json --verbose --model "$HE_MODEL_NAME" --permission-mode bypassPermissions \
@@ -611,7 +731,7 @@ fs.renameSync(resp + ".tmp", resp);' "$@"
 }
 
 printf '{"harness":"claude-code","version":"%s","trial":"%s","ready_at":"%s","session_keys":"claude -p --session-id|--resume UUIDv5(dm:<member> | channel:<id>)","mcp_servers":"%s","adapter_sha256":"%s"%s}\n' \
-  "$claude_version" "$HE_TRIAL_ID" "$(now)" "${mcp_servers[*]}" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json$sdk_json" > "$HE_LOG_DIR/ready.tmp"
+  "$claude_version" "$HE_TRIAL_ID" "$(now)" "${mcp_servers[*]}" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json$sdk_json$skill_arm_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do

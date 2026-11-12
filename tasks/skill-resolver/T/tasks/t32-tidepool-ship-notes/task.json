@@ -1,0 +1,105 @@
+{
+ "id": "t32-tidepool-ship-notes",
+ "target": {
+  "name": "setup-deploy",
+  "pack": "gstack",
+  "skill_md_sha256": "8ab0cbf6b8ad04d27cfe2759984145eabf2a7e86a98610145aa8a764ad12161e"
+ },
+ "request": "Starting next week other agents will be merging and shipping tidepool-api while I'm away. Record in CLAUDE.md what they need to know to get a merged change to production and confirm it's actually live; we squash-merge.",
+ "skill_step": "The skill persists a `## Deploy Configuration` section in CLAUDE.md with fixed fields (Platform, Production URL, Deploy workflow, Deploy status command, Merge method, Project type, Post-deploy health check) and a `### Custom deploy hooks` block that land-and-deploy reads later.",
+ "used_it": [
+  "section",
+  "status-command",
+  "post-check",
+  "hooks"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "CLAUDE.md",
+   "why": "the notes are in CLAUDE.md"
+  },
+  {
+   "id": "kept",
+   "kind": "regex",
+   "path": "CLAUDE.md",
+   "pattern": "^## Code style",
+   "flags": "m",
+   "why": "the existing CLAUDE.md content is kept"
+  },
+  {
+   "id": "fly",
+   "kind": "regex",
+   "path": "CLAUDE.md",
+   "pattern": "fly",
+   "flags": "i",
+   "why": "it names the platform the repo deploys to"
+  },
+  {
+   "id": "healthz",
+   "kind": "regex",
+   "path": "CLAUDE.md",
+   "pattern": "/healthz",
+   "why": "it names the endpoint that shows the app is up"
+  },
+  {
+   "id": "squash",
+   "kind": "regex",
+   "path": "CLAUDE.md",
+   "pattern": "squash",
+   "flags": "i",
+   "why": "it records the merge method the user gave"
+  },
+  {
+   "id": "section",
+   "kind": "regex",
+   "path": "CLAUDE.md",
+   "pattern": "^#{1,6}\\s*deploy configuration\\b",
+   "flags": "im",
+   "why": "the skill's section name, which land-and-deploy greps for",
+   "markers": [
+    "Deploy Configuration"
+   ]
+  },
+  {
+   "id": "status-command",
+   "kind": "regex",
+   "path": "CLAUDE.md",
+   "pattern": "^\\W*deploy status command\\b",
+   "flags": "im",
+   "why": "the skill's Deploy status command field",
+   "markers": [
+    "Deploy status command"
+   ]
+  },
+  {
+   "id": "post-check",
+   "kind": "regex",
+   "path": "CLAUDE.md",
+   "pattern": "^\\W*post-deploy health check\\b",
+   "flags": "im",
+   "why": "the skill's Post-deploy health check field",
+   "markers": [
+    "Post-deploy health check"
+   ]
+  },
+  {
+   "id": "hooks",
+   "kind": "regex",
+   "path": "CLAUDE.md",
+   "pattern": "^#{1,6}\\s*custom deploy hooks\\b",
+   "flags": "im",
+   "why": "the skill's Custom deploy hooks block",
+   "markers": [
+    "Custom deploy hooks"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0,
+  "body_coverage": 0.6,
+  "bin": "none"
+ }
+}

@@ -1,0 +1,110 @@
+{
+ "id": "t06-visa-applications-status-page",
+ "target": {
+  "name": "live-dashboard",
+  "pack": "hermes",
+  "skill_md_sha256": "8232300ca251f11b485cc30b0306a3e9af8f75553545b7683e3951f470b67ac7"
+ },
+ "request": "Make me a status page for the team's visa applications from data/applications.csv and the lawyer's emails in emails/. Put the page at status/visas/index.html and the data behind it in status/visas/state.json, since I want it rebuilt from those sources every morning.",
+ "skill_step": "The state file is the source of truth with a fixed contract: per-field value with its source and retrieval timestamp, a needs_attention list and an append-only change log; index.html is regenerated from it with a 'Needs attention' section above the entity table.",
+ "used_it": [
+  "needs-attention",
+  "change-log",
+  "field-provenance",
+  "attention-first"
+ ],
+ "checks": [
+  {
+   "id": "page",
+   "kind": "exists",
+   "path": "status/visas/index.html",
+   "why": "the page is where the request asked for it"
+  },
+  {
+   "id": "data",
+   "kind": "exists",
+   "path": "status/visas/state.json",
+   "why": "the data file is where the request asked for it"
+  },
+  {
+   "id": "page-rows",
+   "kind": "regex",
+   "path": "status/visas/index.html",
+   "pattern": "Kenji Watanabe",
+   "why": "the page shows the applications"
+  },
+  {
+   "id": "data-rows",
+   "kind": "regex",
+   "path": "status/visas/state.json",
+   "pattern": "Fatima Rahman",
+   "why": "the data file holds the applications"
+  },
+  {
+   "id": "email-update",
+   "kind": "regex",
+   "path": "status/visas/index.html",
+   "pattern": "passport scan",
+   "flags": "i",
+   "why": "the page reflects the lawyer's email, not just the CSV"
+  },
+  {
+   "id": "needs-attention",
+   "kind": "json",
+   "path": "status/visas/state.json",
+   "pointer": "/needs_attention",
+   "min_items": 1,
+   "why": "the state file carries the skill's needs_attention list",
+   "markers": [
+    "needs_attention",
+    "needs attention"
+   ]
+  },
+  {
+   "id": "change-log",
+   "kind": "regex",
+   "path": "status/visas/state.json",
+   "pattern": "\"change_?log\"\\s*:\\s*\\[",
+   "flags": "i",
+   "why": "the state file keeps an append-only change log",
+   "markers": [
+    "change log",
+    "change_log",
+    "changelog"
+   ]
+  },
+  {
+   "id": "field-provenance",
+   "kind": "regex",
+   "path": "status/visas/state.json",
+   "pattern": "\"(retrieved|retrieval)[a-z_]*\"\\s*:",
+   "flags": "i",
+   "min": 8,
+   "why": "every field value carries its retrieval timestamp",
+   "markers": [
+    "retrieval timestamp",
+    "retrieved"
+   ]
+  },
+  {
+   "id": "attention-first",
+   "kind": "order",
+   "path": "status/visas/index.html",
+   "flags": "i",
+   "patterns": [
+    "needs attention",
+    "<table"
+   ],
+   "why": "the page puts the Needs attention section above the table",
+   "markers": [
+    "needs attention"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0333,
+  "body_coverage": 0.5417,
+  "bin": "low"
+ }
+}

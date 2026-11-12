@@ -16,6 +16,13 @@
 #   pi-memory-provider  pi plus gbrain as QM's per-turn memory provider (internal-task, harnesses/qm/memory-provider.ts): the
 #                   runner hands core MEMORY_PROVIDER_CONFIG and the provider's client pair through the stack's environment
 #                   and registers no gbrain MCP server; refused here when any of the three is missing (presence only)
+#   pi-skills-native, pi-skills-push, pi-skills-pull, pi-skills-none
+#                   internal-task skill-resolver arms (docs/benchmarks/2026-11-08-skill-resolver/PREREGISTRATION.md), pi otherwise:
+#                   the catalog, the stand-in or pinned gbrain and its build receipt come from a skill-arm image
+#                   (scripts/skill-resolver/step0/qm/arms/Dockerfile.arms), whose harness-eval.skill-arm label must match
+#                   the config (catalog for native and push, catalog-pull for pull, no-catalog for none); adapter.sh runs
+#                   the per-turn part. pi-skills-pull also uses the arm's sandbox image (QM_SANDBOX_IMAGE, default
+#                   harness-eval/qm-sandbox:harn52-arm-pull). Other configs make no skill-arm check (their output is unchanged).
 set -euo pipefail
 out=$1
 mkdir -p "$out/state/qm"
@@ -29,18 +36,33 @@ case "$config" in
     for v in MEMORY_PROVIDER_CONFIG QM_GBRAIN_READ_CLIENT_ID QM_GBRAIN_READ_CLIENT_SECRET; do
       [ -n "${!v:-}" ] || { echo "qm prepare: HE_HARNESS_CONFIG=pi-memory-provider needs $v from the runner (runner/trial/trial.ts wires it per trial); it is not set" >&2; exit 2; }
     done ;;
-  *) echo "qm prepare: HE_HARNESS_CONFIG=$config is not a QM config (pi, pi-probe, pi-strict, pi-command-deny, pi-memory-provider)" >&2; exit 2 ;;
+  pi-skills-native|pi-skills-push|pi-skills-pull|pi-skills-none) harness=pi; quiet=180000; probe="" ;;
+  *) echo "qm prepare: HE_HARNESS_CONFIG=$config is not a QM config (pi, pi-probe, pi-strict, pi-command-deny, pi-memory-provider, pi-skills-native, pi-skills-push, pi-skills-pull, pi-skills-none)" >&2; exit 2 ;;
 esac
+case "$config" in
+  pi-skills-native|pi-skills-push) core_arm=catalog; sandbox_arm="" ;;
+  pi-skills-pull) core_arm=catalog-pull; sandbox_arm=catalog-pull ;;
+  pi-skills-none) core_arm=no-catalog; sandbox_arm="" ;;
+  *) core_arm=""; sandbox_arm="" ;;
+esac
+sandbox_image=${QM_SANDBOX_IMAGE:-harness-eval/qm-sandbox:dev}
+[ "$config" != pi-skills-pull ] || sandbox_image=${QM_SANDBOX_IMAGE:-harness-eval/qm-sandbox:harn52-arm-pull}
 # Both images must be builds of the pinned commit. The tags are reused across
 # pins, and a v0.1.15 core with HARNESS unset runs QM's mock harness (canned
 # replies, no model call), so a stale or missing image stops the trial here.
 pin=$(jq -r '.commit // empty' "$(dirname "$0")/pin.json")
 [[ "$pin" =~ ^[0-9a-f]{40}$ ]] || { echo "qm prepare: no commit in pin.json" >&2; exit 2; }
-for image in "${QM_IMAGE:-harness-eval/qm:dev}" "${QM_SANDBOX_IMAGE:-harness-eval/qm-sandbox:dev}"; do
+for image in "${QM_IMAGE:-harness-eval/qm:dev}" "$sandbox_image"; do
   label=$(docker image inspect --format '{{index .Config.Labels "harness-eval.commit"}}' "$image" 2>/dev/null) \
     || { echo "qm prepare: image $image is missing; build it (harnesses/qm/README.md, Images)" >&2; exit 2; }
   [ "$label" = "$pin" ] \
     || { echo "qm prepare: image $image is QM ${label:-<no harness-eval.commit label>}, not the pinned $pin; rebuild it (harnesses/qm/README.md, Images)" >&2; exit 2; }
+  [ -n "$core_arm" ] || continue
+  arm=$(docker image inspect --format '{{index .Config.Labels "harness-eval.skill-arm"}}' "$image" 2>/dev/null)
+  [ "$arm" != "<no value>" ] || arm=""
+  if [ "$image" = "$sandbox_image" ]; then want=$sandbox_arm; else want=$core_arm; fi
+  [ "$arm" = "$want" ] \
+    || { echo "qm prepare: image $image has harness-eval.skill-arm ${arm:-<none>}, but HE_HARNESS_CONFIG=$config needs ${want:-<none>} (scripts/skill-resolver/step0/qm/arms/Dockerfile.arms)" >&2; exit 2; }
 done
 printf 'QM_SIGNING_SECRET=%s\n' "${QM_SIGNING_SECRET:-$(rnd)}"
 printf 'QM_CONNECTOR_SECRET_KEY=%s\n' "${QM_CONNECTOR_SECRET_KEY:-$(rnd)}"
@@ -49,6 +71,7 @@ printf 'QM_HARNESS=%s\n' "$harness"
 printf 'QM_MEMORY_CAPTURE_QUIET_MS=%s\n' "$quiet"
 printf 'QM_PROBE_CONFIG=%s\n' "$probe"
 printf 'HE_HARNESS_CONFIG=%s\n' "$config"
+[ "$config" != pi-skills-pull ] || printf 'QM_SANDBOX_IMAGE=%s\n' "$sandbox_image"
 # internal-task: a Particle cell (HE_MODEL_BASE_URL ending in /particle, runner/trial/proxy.ts baseUrlFor) runs Pi on the custom
 # provider adapter.sh registers before the first turn (model custom/particle/<model>, protocol openai: Chat Completions at
 # <base>/v1), and core gets no model provider and no Anthropic credential (MODEL_PROVIDER=anthropic would make core refuse to

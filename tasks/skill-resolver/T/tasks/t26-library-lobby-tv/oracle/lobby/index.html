@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marlow Library lobby</title>
+  <script>p5.disableFriendlyErrors = true;</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.3/p5.min.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; overflow: hidden; background: #0b3b40; cursor: none; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<script>
+// === Configuration ===
+const CONFIG = {
+  seed: 1907,
+  count: 900,
+  noiseScale: 0.0016,
+  speed: 0.55,
+  trailAlpha: 6,
+  breathSeconds: 60,
+};
+
+// === Color Palette (HSB) ===
+const PALETTE = {
+  bg: [186, 72, 25],
+  amber: [38, 80, 96],
+  gold: [48, 40, 98],
+  coral: [8, 55, 95],
+};
+
+// === Global State ===
+let points = [];
+
+// === Setup ===
+function setup() {
+  pixelDensity(1);
+  createCanvas(1920, 1080);
+  randomSeed(CONFIG.seed);
+  noiseSeed(CONFIG.seed);
+  colorMode(HSB, 360, 100, 100, 100);
+  frameRate(30);
+  noStroke();
+  background(...PALETTE.bg);
+  for (let i = 0; i < CONFIG.count; i++) points.push(new Drifter());
+}
+
+// === Draw Loop ===
+function draw() {
+  fill(...PALETTE.bg, CONFIG.trailAlpha);
+  rect(0, 0, width, height);
+  const breath = 0.85 + 0.15 * Math.sin((millis() / 1000) * Math.PI * 2 / CONFIG.breathSeconds);
+  for (const p of points) {
+    p.update();
+    p.display(breath);
+  }
+}
+
+// === Classes ===
+class Drifter {
+  constructor() {
+    this.x = random(width);
+    this.y = random(height);
+    const r = random();
+    this.col = r < 0.02 ? PALETTE.coral : r < 0.6 ? PALETTE.amber : PALETTE.gold;
+    this.size = random(1.2, 2.8);
+  }
+  update() {
+    const a = noise(this.x * CONFIG.noiseScale, this.y * CONFIG.noiseScale, frameCount * 0.0008) * Math.PI * 4;
+    this.x += Math.cos(a) * CONFIG.speed;
+    this.y += Math.sin(a) * CONFIG.speed;
+    if (this.x < 0) this.x += width;
+    if (this.x > width) this.x -= width;
+    if (this.y < 0) this.y += height;
+    if (this.y > height) this.y -= height;
+  }
+  display(breath) {
+    fill(this.col[0], this.col[1], this.col[2] * breath, 70);
+    circle(this.x, this.y, this.size);
+  }
+}
+
+// === Event Handlers ===
+function windowResized() {
+  resizeCanvas(1920, 1080);
+}
+</script>
+</body>
+</html>

@@ -13,7 +13,9 @@
 // log_sections (HE-PROXY-005); run-summary.json records log_sections: true when it is on.
 
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import type { HarnessMode, Termination, TrialRecord } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
@@ -22,8 +24,12 @@ import { type InternalNetwork, ensureInternalNetwork, internalNetworkName, remov
 import { RunProxy, reconcile, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
 import { defaultPreambleFor, loadPreamble } from './task.ts';
 import { type CaptureConfig, captureDnsGapLine, captureLine, captureSummary } from './capture.ts';
-import { type GradeFn, appendRecord, loadGrader, runTrial, trialTermination } from './trial.ts';
+import { type GradeFn, type TrialContext, appendRecord, loadGrader, runTrial, trialTermination } from './trial.ts';
 import { writeAtomic } from './harness.ts';
+import { SET_T_SLICE, adapterWorkspaceEntries, gradeSetTWorkspace, qmSandboxImage, setTEnv, setTTaskDir, writeRunTrialTask, writeServeSetTTask } from './set-t.ts';
+import { SKILL_REQUESTS_SLICE, checkBlockDelivery, gotSkillRecord, gstackReads, insideDir, readRequestSet, redactRequest, scrubTrialDir, sha256, writeRequestTask, writeRunRequestTask } from './skill-requests.ts';
+import { readCatalogNames } from '../../scripts/skill-resolver/got-skill.ts';
+import { REQUEST_CAP, type SlotLimits } from '../proxy/metering-proxy.ts';
 import { checkoutProvenance } from './provenance.ts';
 import { routeTextsFor } from './routes.ts';
 
@@ -79,7 +85,9 @@ export function trialDirFor(runDir: string, trial: Trial): string {
   return join(runDir, 'trials', ...parts.slice(1).map((p) => p.replace(/[^A-Za-z0-9._-]+/g, '-')));
 }
 
-const isSingleShot = (cell: Cell) => cell.slice === 'hello' || cell.slice === 'smoke';
+const isSingleShot = (cell: Cell) => cell.slice === 'hello' || cell.slice === 'smoke' || cell.slice === SET_T_SLICE;
+/** hello and smoke run through harnesses/run-trial.sh on the default bridge only; set T cells may name the internal network. */
+const isBridgeOnly = (cell: Cell) => cell.slice === 'hello' || cell.slice === 'smoke';
 
 export async function executeRun(manifest: Manifest, manifestPath: string, opts: RunOptions): Promise<RunResult> {
   const runDir = dirname(resolve(manifestPath));
@@ -112,7 +120,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
     if (gap) log(gap);
   }
   const needsProxy = pending.some((t) => modeFor(cells.get(t.cell)!) !== 'scripted');
-  const needsGrader = pending.some((t) => !isSingleShot(cells.get(t.cell)!));
+  const needsGrader = pending.some((t) => !isSingleShot(cells.get(t.cell)!) && cells.get(t.cell)!.slice !== SKILL_REQUESTS_SLICE);
   const preambles = new Map<string, string>();
   const preambleFor = (cell: Cell): string => {
     const path = cell.preamble ?? opts.preamblePath ?? defaultPreambleFor(cell.task_set);
@@ -122,6 +130,13 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
   const grade = needsGrader ? (opts.grade ?? await loadGrader()) : (() => { throw new Error('no grader'); });
   const docker = opts.harnessMode === 'docker';
   const pendingCells = [...new Set(pending.map((t) => cells.get(t.cell)).filter((c): c is Cell => !!c))];
+  for (const c of pendingCells.filter((x) => x.slice === SKILL_REQUESTS_SLICE)) {
+    const planned = manifest.request_sets?.[c.id]?.sha256;
+    const now = existsSync(c.requests!) ? createHash('sha256').update(readFileSync(c.requests!)).digest('hex') : 'missing';
+    if (planned !== now) throw new RunnerError('HE-PREREG-004', `cell ${c.id}: its request set ${c.requests} is not the file the run was planned with (sha256 ${now === 'missing' ? 'missing' : now.slice(0, 12)}, manifest ${planned?.slice(0, 12) ?? 'none'}); fix: restore the planned file or plan a new run id`);
+  }
+  const privateCells = pendingCells.filter((c) => c.private === true);
+  if (privateCells.length && insideDir(runDir, resolve(import.meta.dir, '..', '..'))) throw new RunnerError('HE-RUN-002', `cells ${privateCells.map((c) => c.id).join(', ')} are private and the run directory ${runDir} is inside the repository; fix: plan the run with --out outside the repository`);
   const internal = pendingCells.filter((c) => c.network === 'internal');
   if (internal.length) {
     const ids = (list: Cell[]) => list.map((c) => c.id).join(', ');
@@ -130,7 +145,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
     if (!docker) throw new RunnerError('HE-NET-001', `cells ${ids(internal)} have network "internal", which only a harness container gets; this invocation runs in ${opts.harnessMode} mode. fix: run them with --harness-mode docker`);
     if (bridged.length) throw new RunnerError('HE-NET-001', `cells ${ids(internal)} have network "internal" and cells ${ids(bridged)} run on the default bridge; the run's one metering proxy listens on one network's gateway. fix: run each group in its own invocation with --cells`);
     if (compose.length) throw new RunnerError('HE-NET-001', `cells ${ids(compose)} have network "internal" but run a compose stack (harnesses/<name>/compose.yaml), which the runner does not move onto the internal network. fix: drop network from those cells`);
-    if (internal.some(isSingleShot)) throw new RunnerError('HE-NET-001', `cells ${ids(internal.filter(isSingleShot))} have network "internal" but run a single-shot slice through harnesses/run-trial.sh, which uses the default bridge. fix: drop network from those cells`);
+    if (internal.some(isBridgeOnly)) throw new RunnerError('HE-NET-001', `cells ${ids(internal.filter(isBridgeOnly))} have network "internal" but run a single-shot slice through harnesses/run-trial.sh, which uses the default bridge. fix: drop network from those cells`);
   }
   const proxied = pendingCells.filter((c) => modeFor(c) !== 'scripted');
   const sectioned = proxied.filter((c) => c.log_sections === true);
@@ -165,11 +180,16 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       const trial: Trial = opts.sealedRoot && isSealedCell(cell, opts.sealedSet) ? { ...planned, task_dir: sealedPath(cell, planned.task_dir), script: sealedPath(cell, planned.script) } : planned;
       const trialDir = trialDirFor(runDir, trial);
       log(`trial ${trial.id} starting (${cell.harness}, ${cell.model})`);
-      const record = isSingleShot(cell)
-        ? await runSingleShot({ cell, trial, trialDir, proxy, log, image: opts.image, repoRoot: opts.repoRoot })
-        : await runTrial({ cell, trial, runDir, trialDir, proxy, grade, log, opts: {
+      const serveOpts = (): TrialContext['opts'] => ({
           harnessMode: opts.harnessMode, adapter: opts.adapter, image: opts.image, gbrainImage: opts.gbrainImage ?? (cell.gbrain ? gbrainSetWorld([cell], join(opts.repoRoot ?? '.', 'tasks'))?.image : undefined), preamble: preambleFor(cell), worldPath: setWorldPath(cell, join(opts.repoRoot ?? '.', 'tasks')) ?? opts.worldPath, readyTimeoutS: opts.readyTimeoutS ?? 180,
-          turnGraceS: opts.turnGraceS ?? 60, stopGraceS: opts.stopGraceS ?? 60, harnessEnv: opts.harnessEnv, captureDns: opts.capture?.dns ?? undefined, repoRoot: opts.repoRoot, ...(network ? { network } : {}) } });
+          turnGraceS: opts.turnGraceS ?? 60, stopGraceS: opts.stopGraceS ?? 60, harnessEnv: opts.harnessEnv, captureDns: opts.capture?.dns ?? undefined, repoRoot: opts.repoRoot, ...(network ? { network } : {}) });
+      const record = cell.slice === SET_T_SLICE
+        ? await runSetTTrial({ cell, trial, runDir, trialDir, proxy, grade, log, opts: serveOpts() })
+        : cell.slice === SKILL_REQUESTS_SLICE
+        ? await runSkillRequestTrial({ cell, trial, runDir, trialDir, proxy, grade, log, opts: serveOpts() })
+        : isSingleShot(cell)
+        ? await runSingleShot({ cell, trial, trialDir, proxy, log, image: opts.image, repoRoot: opts.repoRoot })
+        : await runTrial({ cell, trial, runDir, trialDir, proxy, grade, log, opts: serveOpts() });
       // internal-task (H10): the harness's provenance-manifest digest (runner/trial/provenance.ts), on harnesses that have one.
       const provenance = checkoutProvenance(cell.harness, opts.repoRoot);
       if (provenance) record.provenance_sha256 = provenance.digest;
@@ -194,20 +214,27 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
 
 /** The M0 single-shot path: harnesses/run-trial.sh does the container and the workspace grader; the runner
  *  adds the proxy slot and the trials.jsonl line. */
-async function runSingleShot(o: { cell: Cell; trial: Trial; trialDir: string; proxy: RunProxy | null; log: (l: string) => void; image?: string; repoRoot?: string }): Promise<TrialRecord> {
+async function runSingleShot(o: { cell: Cell; trial: Trial; trialDir: string; proxy: RunProxy | null; log: (l: string) => void; image?: string; repoRoot?: string;
+  /** Set T: the task directory run-trial.sh reads instead of tasks/<task>, extra harness environment and the internal network. */
+  taskDir?: string; env?: Record<string, string>; network?: InternalNetwork | null;
+  /** Phase B on QM: the slot's request cap and request collection, and the filter the run-trial log and error pass through. */
+  bind?: SlotLimits; redact?: (s: string) => string }): Promise<TrialRecord> {
   const { cell, trial } = o;
   const started = Date.now();
   const key = trialKey(trial.id);
   const token = trialToken(trial.id);
   const slot = trialSlug(trial.id);
   const [provider, modelName] = [cell.model.slice(0, cell.model.indexOf(':')), cell.model.slice(cell.model.indexOf(':') + 1)];
-  if (o.proxy) await o.proxy.bind(slot, key, token, cellModels(cell));
-  const args = [join(o.repoRoot ?? '.', 'harnesses', 'run-trial.sh'), '--harness', cell.harness, '--task', join(o.repoRoot ?? '.', 'tasks', trial.task), '--trial-id', slot,
+  if (o.proxy) await o.proxy.bind(slot, key, token, cellModels(cell), undefined, false, o.bind);
+  const args = [join(o.repoRoot ?? '.', 'harnesses', 'run-trial.sh'), '--harness', cell.harness, '--task', o.taskDir ?? join(o.repoRoot ?? '.', 'tasks', trial.task), '--trial-id', slot,
     '--base-url', o.proxy ? o.proxy.baseUrlFor(slot, provider) : 'http://127.0.0.1:1/none', '--api-key', token, '--model', modelName, '--out', o.trialDir];
   if (o.image) args.push('--image', o.image);
+  for (const [k, v] of Object.entries(o.env ?? {})) args.push('--env', `${k}=${v}`);
+  if (o.network) args.push('--network', o.network.name, '--host-gateway', o.network.gateway);
   mkdirSync(dirname(o.trialDir), { recursive: true });
   const r = spawnSync('bash', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  appendFileSync(join(dirname(o.trialDir), `${slot}.run-trial.log`), `${r.stdout}\n${r.stderr}`);
+  const redact = o.redact ?? ((s: string) => s);
+  appendFileSync(join(dirname(o.trialDir), `${slot}.run-trial.log`), redact(`${r.stdout}\n${r.stderr}`));
   const resultPath = join(o.trialDir, 'result.json');
   const result = existsSync(resultPath) ? JSON.parse(readFileSync(resultPath, 'utf8')) as { termination: Termination; grade: 'pass' | 'fail'; wall_ms: number; exit_code: number } : null;
   let usage = null;
@@ -233,6 +260,102 @@ async function runSingleShot(o: { cell: Cell; trial: Trial; trialDir: string; pr
     termination: decided.termination, grade: result?.grade ?? 'n/a', consent_violation: false, approval_stop: false, effects: [], predicates: [],
     cap_stop: capStop, turns: { planned: 1, run: result ? 1 : 0, exits: result ? [result.exit_code] : [] }, usage, wall_ms: ended - started,
     started_at: new Date(started).toISOString(), ended_at: new Date(ended).toISOString(), paths,
-    ...(result ? (decided.note ? { error: decided.note } : {}) : { error: `HE-RUN-006 harnesses/run-trial.sh exited ${r.status} without result.json: ${(r.stderr || '').trim().slice(-300)}` }),
+    ...(result ? (decided.note ? { error: decided.note } : {}) : { error: redact(`HE-RUN-006 harnesses/run-trial.sh exited ${r.status} without result.json: ${(r.stderr || '').trim().slice(-300)}`) }),
   };
+}
+
+/** Set T (internal-task): OpenClaw, Claude Code, Codex and Hermes run the task on the serve entry, where their skill arms are wired
+ *  (scripts/skill-resolver/ARMS.md): start/ and instruction.md are copied into the trial's workspace (/workspace, the adapter's
+ *  working directory) before the harness starts, the request is one member DM, and that same workspace is graded. QM runs it on
+ *  its run entry (harnesses/run-trial.sh), where its skill arms are wired, with the seeded default sandbox; capture.sh copies the
+ *  sandbox workspace back. The checker grades the workspace (runner/trial/set-t.ts): grade is pass exactly when every check
+ *  passed; n/a when the run left no workspace to grade. */
+async function runSetTTrial(ctx: TrialContext): Promise<TrialRecord> {
+  const { cell, trial } = ctx;
+  const repoRoot = ctx.opts.repoRoot ?? '.';
+  const taskDir = setTTaskDir(join(repoRoot, 'tasks'), trial.task);
+  const runTask = mkdtempSync(join(tmpdir(), 'sett-task-'));
+  try {
+    let record: TrialRecord;
+    if (cell.harness === 'qm') {
+      writeRunTrialTask(taskDir, runTask);
+      const env = setTEnv(cell);
+      env.QM_SANDBOX_IMAGE = qmSandboxImage(runTask, repoRoot, process.env.QM_SANDBOX_IMAGE || undefined);
+      ctx.log(`trial ${trial.id}: set T QM sandbox image ${env.QM_SANDBOX_IMAGE} (start/ and instruction.md at /root/workspace)`);
+      record = await runSingleShot({ cell, trial, trialDir: ctx.trialDir, proxy: ctx.proxy, log: ctx.log, image: ctx.opts.image, repoRoot: ctx.opts.repoRoot, taskDir: runTask, env, network: ctx.opts.network ?? null });
+      record.harness_mode = 'docker';
+    } else {
+      writeServeSetTTask(taskDir, runTask);
+      // The grader's task schema has no set T task; the set T checker grades the workspace below.
+      const grade: GradeFn = () => ({ grade: 'n/a', predicates: [], consent_violation: false, approval_stop: false, effects: [] });
+      record = await runTrial({ ...ctx, grade, trial: { ...trial, task_dir: runTask }, opts: { ...ctx.opts,
+        harnessEnv: { ...ctx.opts.harnessEnv, ...(cell.skill_arm ? { HE_SKILL_ARM: cell.skill_arm } : {}) }, seedWorkspace: join(runTask, 'workspace') } });
+    }
+    const workspace = join(ctx.trialDir, 'workspace');
+    if (!existsSync(workspace)) return { ...record, grade: 'n/a', error: record.error ?? `HE-RUN-006 set T trial ${trial.id} left no workspace to grade` };
+    const setT = gradeSetTWorkspace(taskDir, workspace, cell.skill_arm ?? null, adapterWorkspaceEntries(cell.harness, taskDir));
+    if (cell.harness === 'qm') {
+      const file = join(ctx.trialDir, 'logs', 'qm-default-sandbox.json');
+      const made = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) as { set_default?: { http?: number; body?: { defaultSandboxId?: unknown } } } : null;
+      setT.qm_default_sandbox = !!made?.set_default && made.set_default.http! >= 200 && made.set_default.http! < 300 && typeof made.set_default.body?.defaultSandboxId === 'string';
+    }
+    ctx.log(`trial ${trial.id}: set T ${setT.task} success=${setT.success} used_it=${setT.used_it} instruction_md=${setT.instruction_md}${setT.qm_default_sandbox === undefined ? '' : ` qm_default_sandbox=${setT.qm_default_sandbox}`}`);
+    return { ...record, grade: setT.success ? 'pass' : 'fail', predicates: [], set_t: setT, paths: { ...record.paths, workspace } };
+  } finally { rmSync(runTask, { recursive: true, force: true }); }
+}
+
+/** Phase B (internal-task): one request row as a member's one DM turn to a freshly started harness, on the serve entry like every
+ *  multi-user trial (the skill arms run on that entry only, scripts/skill-resolver/ARMS.md); runner/trial/skill-requests.ts
+ *  writes the one-turn task. QM runs it on its run entry instead (harnesses/run-trial.sh, as set T does): QM's skill arms are
+ *  wired there only. The slot collects the forwarded request bodies for got-skill.json and, with the cell's request_cap,
+ *  refuses the next request for the cell's model once that many were sent: the trial is then request_cap. grade is n/a (Got the
+ *  skill is scored by analyze.ts from got-skill.json), and the trial directory is scrubbed of the request text. */
+async function runSkillRequestTrial(ctx: TrialContext): Promise<TrialRecord> {
+  const { cell, trial } = ctx;
+  const row = readRequestSet(cell.requests!).find((r) => r.id === trial.task);
+  if (!row) throw new RunnerError('HE-PREREG-004', `trial ${trial.id}: request ${trial.task} is not in the cell's request set ${cell.requests}; the set changed after planning. fix: plan a new run id`);
+  const catalog = readCatalogNames(cell.catalog!);
+  const texts = [row.sent, row.text, ...(row.prev_user_text ? [row.prev_user_text] : [])];
+  const redact = (s: string) => redactRequest(s, texts).body;
+  const taskDir = mkdtempSync(join(tmpdir(), 'skillreq-task-'));
+  try {
+    const slotLimits = { collect_requests: true, ...(cell.request_cap ? { max_requests: cell.request_cap } : {}) };
+    let record: TrialRecord;
+    if (cell.harness === 'qm') {
+      // QM wires its skill arms on the run entry only, and its serve entry cannot register the world at this pin (harnesses/qm/README.md).
+      writeRunRequestTask(row, taskDir);
+      record = await runSingleShot({ cell, trial, trialDir: ctx.trialDir, proxy: ctx.proxy, log: ctx.log, image: ctx.opts.image, repoRoot: ctx.opts.repoRoot, taskDir, env: setTEnv(cell), network: ctx.opts.network ?? null, bind: slotLimits, redact });
+      record.harness_mode = 'docker';
+    } else {
+      writeRequestTask(row, taskDir);
+      // The grader's task schema has no Phase B task and Phase B has no predicates: Got the skill is scored from got-skill.json.
+      const grade: GradeFn = () => ({ grade: 'n/a', predicates: [], consent_violation: false, approval_stop: false, effects: [] });
+      record = await runTrial({ ...ctx, grade, trial: { ...trial, task_dir: taskDir }, opts: { ...ctx.opts,
+        harnessEnv: { ...ctx.opts.harnessEnv, ...(cell.skill_arm ? { HE_SKILL_ARM: cell.skill_arm } : {}) }, slotLimits } });
+    }
+    const key = trialKey(trial.id);
+    // refused: the first body the request cap refused, which carries the last step's tool calls; read for Got the skill and the
+    // clean-arm count, never for block delivery (the model never saw it).
+    const { requests, refused } = ctx.proxy ? await ctx.proxy.requests(key) : { requests: [], refused: [] };
+    mkdirSync(ctx.trialDir, { recursive: true });
+    const got = gotSkillRecord(cell.harness, catalog, requests, ctx.trialDir, refused);
+    const delivery = cell.harness === 'qm' ? null : checkBlockDelivery(ctx.trialDir, requests);
+    const cleanArm = gstackReads(cell.harness, [...requests, ...refused], ctx.trialDir);
+    const gotPath = join(ctx.trialDir, 'got-skill.json');
+    writeAtomic(gotPath, JSON.stringify(got.file, null, 1) + '\n');
+    const lines = ctx.proxy ? ctx.proxy.usageLines(key) : [];
+    const capped = lines.some((l) => l.outcome === 'refused' && (l.reason ?? '').startsWith(REQUEST_CAP));
+    const modelRequests = lines.filter((l) => l.outcome !== 'refused' && `${l.provider}:${l.model}` === cell.model).length;
+    const termination: Termination = capped && !record.cap_stop && record.termination !== 'infra_error' ? 'request_cap' : record.termination;
+    const scrubbed = scrubTrialDir(ctx.trialDir, texts);
+    const paths = Object.fromEntries(Object.entries({ ...record.paths, got_skill: gotPath }).filter(([k, v]) => k === 'dir' || existsSync(v)));
+    ctx.log(`trial ${trial.id}: skill request ${cell.request_set}/${row.id} termination=${termination} model_requests=${modelRequests}${cell.request_cap ? '/' + cell.request_cap : ''} got_skill=${got.opened.join(',') || '-'}${delivery ? ` blocks pushed=${delivery.pushed} carried=${delivery.carried} shadow=${delivery.shadow} leaked=${delivery.leaked}` : ''} gstack_reads=${cleanArm.gstack_reads}${cleanArm.contaminated ? ' contaminated' : ''} kept=${scrubbed.kept.length} removed=${scrubbed.removed} redacted_lines=${scrubbed.redacted_lines}`);
+    return {
+      ...record, termination, grade: 'n/a', predicates: [], ...(record.error ? { error: redact(record.error) } : {}), paths,
+      skill_request: { set: cell.request_set!, request_id: row.id,
+        ...(cell.private ? {} : { request_sha256: sha256(row.sent), prev_user_sha256: row.prev_user_text === null ? null : sha256(row.prev_user_text) }),
+        arm: cell.skill_arm ?? null, model_requests: modelRequests, request_cap: cell.request_cap ?? null, got_skill: got.opened, ...(delivery ? { block_delivery: delivery } : {}),
+        clean_arm: { ...cleanArm, paths: cleanArm.paths.map(redact) }, scrubbed },
+    };
+  } finally { rmSync(taskDir, { recursive: true, force: true }); }
 }

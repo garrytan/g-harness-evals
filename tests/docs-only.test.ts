@@ -40,6 +40,7 @@ const GLOB_OUTSIDE_SUITE: Record<string, string> = {
   'scripts/public-safety/rules.json': 'rules for the same public-safety workflow',
   'scripts/publish-audit.ts': 'run by scripts/bundle.ts and scripts/replicate.ts at publish time, never by the suite on this tree',
   'tests/sealed-custody.test.ts': 'the glob is a fake gbrain import counting pages in its own scratch directory',
+  'tests/skill-resolver-set-t.test.ts': 'the glob is an exists check counting pages in its own scratch task directory',
 };
 // Captured harness request JSON under tests/fixtures/ (tests/fixtures/**/*-request.json): byte copies of a harness's own
 // tool descriptions, whose '*.md' globs name files inside the trial, not pages of this repository. Other fixtures keep the rule.

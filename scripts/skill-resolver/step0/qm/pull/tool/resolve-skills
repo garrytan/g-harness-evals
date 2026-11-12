@@ -1,0 +1,17 @@
+#!/bin/sh
+# internal-task QM pull arm: the eval-side shim behind the deployment-layer tool resolve-skills. It passes the input JSON on
+# stdin to gbrain with the eval's command line and the rebuild switch, and never fails the model's command: a nonzero
+# gbrain exit is written to stderr and the shim exits 0. GBRAIN_HOME is a copy of the image's index home
+# (/opt/skill-resolver/gbrain-home, built by scripts/skill-resolver/step0/qm/arms/Dockerfile.arms) under $HOME/.he-gbrain,
+# so the resolver keeps the session's state (the session is the input's session_id). Swapping the stand-in for the real
+# gbrain changes only /usr/local/bin/gbrain and that index; the catalog pin is the text file beside this tool's library
+# directory.
+home="${HOME:-/tmp}/.he-gbrain"
+[ -d "$home" ] || cp -R /opt/skill-resolver/gbrain-home "$home" 2>/dev/null || mkdir -p "$home"
+GBRAIN_HOME=$home
+GBRAIN_SKILLS_NO_AUTOREBUILD=1
+export GBRAIN_HOME GBRAIN_SKILLS_NO_AUTOREBUILD
+gbrain skills resolve --catalog he-skills --input-json - --json --harness qm --fail-open --expect-catalog "$(cat /usr/local/lib/resolve-skills/expect-catalog)"
+rc=$?
+[ "$rc" -eq 0 ] || echo "resolve-skills: gbrain exited $rc" >&2
+exit 0

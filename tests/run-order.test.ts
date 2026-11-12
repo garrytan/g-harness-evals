@@ -81,3 +81,34 @@ describe('interleave-task, run', () => {
     expect(readFileSync(join(dir, 'run.log'), 'utf8')).toContain('4 trials to run, 4 already recorded');
   }, 180_000);
 });
+
+describe('interleave-task with blocks (internal-task)', () => {
+  test('cells run block by block in the listed order, each block interleaved by task with the seed', () => {
+    const order = { kind: 'interleave-task' as const, seed: 11, blocks: [{ name: 'first', cells: ['c', 'a'] }, { name: 'second', cells: ['b'] }] };
+    const m = plan([cell('a'), cell('b'), cell('c')], order, ['fx-one', 'fx-two', 'fx-three']).manifest;
+    expect(m.order).toEqual(order);
+    expect(m.trials).toHaveLength(18);
+    expect(new Set(m.trials.slice(0, 12).map((t) => t.cell))).toEqual(new Set(['a', 'c']));
+    expect(m.trials.slice(12).every((t) => t.cell === 'b')).toBe(true);
+    const firstBlock = m.trials.slice(0, 12);
+    expect(firstBlock.map((t) => t.id)).toEqual(interleaveTrials(firstBlock, ['a', 'b', 'c'], 11).map((t) => t.id));
+    for (let i = 0; i < 12; i += 2) expect(new Set(firstBlock.slice(i, i + 2).map((t) => t.task)).size).toBe(1);
+    const plan2 = renderPlan(m);
+    expect(plan2).toContain('ORDER: interleave-task seed=11: trials run repetition by repetition, tasks in a seeded order and each task\'s cells in a seeded order, block by block');
+    expect(plan2).toContain('ORDER-BLOCK: 1 first trials=12 cells=c,a');
+    expect(plan2).toContain('ORDER-BLOCK: 2 second trials=6 cells=b');
+  });
+
+  test('a cell in no block, in two blocks, an unknown cell, an empty or duplicate block are refused', () => {
+    const cells = [cell('a'), cell('b')];
+    const tryOrder = (blocks: unknown) => { try { plan(cells, { kind: 'interleave-task', seed: 1, blocks }); return 'ok'; } catch (e) { return (e as Error).message; } };
+    expect(tryOrder([{ name: 'x', cells: ['a'] }])).toContain('every cell must be in one block; missing b');
+    expect(tryOrder([{ name: 'x', cells: ['a', 'b'] }, { name: 'y', cells: ['b'] }])).toContain('cell b is in blocks x and y');
+    expect(tryOrder([{ name: 'x', cells: ['a', 'b', 'z'] }])).toContain('names "z", which is not a cell');
+    expect(tryOrder([{ name: 'x', cells: [] }, { name: 'y', cells: ['a', 'b'] }])).toContain('block x lists no cells');
+    expect(tryOrder([{ name: 'x', cells: ['a'] }, { name: 'x', cells: ['b'] }])).toContain('must be a unique lowercase name');
+    expect(tryOrder([])).toContain('non-empty list');
+    expect(tryOrder([{ name: 'x', cells: ['a', 'b'] }])).toBe('ok');
+  });
+});
+

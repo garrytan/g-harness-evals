@@ -1,0 +1,75 @@
+{
+ "id": "t40-release-runbook-to-agent",
+ "target": {
+  "name": "skill-creator",
+  "pack": "openclaw",
+  "skill_md_sha256": "3b7b93823a496cedc957fc91bbc8f8be132f2edd095dcaa46cee5394c742f0e4"
+ },
+ "request": "Turn docs/release-runbook.md into an agent skill at skills/cut-release/SKILL.md. It must only run when one of us invokes it by name, never because the agent decided on its own that it was time to release.",
+ "skill_step": "The skill says every step of the procedure ends with a checkable completion criterion written as a bold 'Done when:' line, and that a manual-only skill sets disable-model-invocation: true in its frontmatter.",
+ "used_it": [
+  "done-when",
+  "manual-only"
+ ],
+ "checks": [
+  {
+   "id": "file",
+   "kind": "exists",
+   "path": "skills/cut-release/SKILL.md",
+   "why": "the skill file is where the request asked for it"
+  },
+  {
+   "id": "fm-name",
+   "kind": "frontmatter",
+   "path": "skills/cut-release/SKILL.md",
+   "key": "name",
+   "pattern": "^cut-release$",
+   "why": "frontmatter names the skill after its folder"
+  },
+  {
+   "id": "fm-description",
+   "kind": "frontmatter",
+   "path": "skills/cut-release/SKILL.md",
+   "key": "description",
+   "pattern": ".{20,}",
+   "why": "frontmatter carries a description"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "skills/cut-release/SKILL.md",
+   "pattern": "changelog",
+   "flags": "i",
+   "why": "the body carries the runbook, which updates the changelog"
+  },
+  {
+   "id": "done-when",
+   "kind": "regex",
+   "path": "skills/cut-release/SKILL.md",
+   "pattern": "\\bdone when\\b",
+   "flags": "i",
+   "min": 4,
+   "why": "the skill's per-step completion criterion, on at least four steps",
+   "markers": [
+    "done when"
+   ]
+  },
+  {
+   "id": "manual-only",
+   "kind": "frontmatter",
+   "path": "skills/cut-release/SKILL.md",
+   "key": "disable-model-invocation",
+   "pattern": "^true$",
+   "why": "the skill's frontmatter switch for a manual-only skill",
+   "markers": [
+    "disable-model-invocation"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0333,
+  "body_coverage": 0.2632,
+  "bin": "low"
+ }
+}

@@ -1,0 +1,78 @@
+{
+ "id": "t47-pomodoro-corner-timer",
+ "target": {
+  "name": "ui-canvas",
+  "pack": "qm",
+  "skill_md_sha256": "2b12498340ed1617479e6ac82455a11b8213eccfab870043925379086b574471"
+ },
+ "request": "I want a small pomodoro timer (25 minutes work, 5 break, start and reset buttons) in the bottom-left corner of my QM web UI, staying up in every conversation I open rather than just this one; notes/wishlist.md has the details. Write the request body you'd send for it to pomodoro-overlay.json.",
+ "skill_step": "The skill's canvas body has html, css and js fields, with all code in js run against canvas.root (inline scripts are blocked), pointer-events: auto on anything clickable because the layer ignores the mouse, and alwaysOn: true for something that should stay up across every session.",
+ "used_it": [
+  "root",
+  "clickable",
+  "everywhere"
+ ],
+ "checks": [
+  {
+   "id": "file",
+   "kind": "exists",
+   "path": "pomodoro-overlay.json",
+   "why": "the body is where the request asked for it"
+  },
+  {
+   "id": "work-length",
+   "kind": "regex",
+   "path": "pomodoro-overlay.json",
+   "pattern": "\\b25\\b",
+   "why": "it is the 25 minute timer"
+  },
+  {
+   "id": "reset",
+   "kind": "regex",
+   "path": "pomodoro-overlay.json",
+   "pattern": "[Rr]eset",
+   "why": "it has the reset button"
+  },
+  {
+   "id": "root",
+   "kind": "json",
+   "path": "pomodoro-overlay.json",
+   "pointer": "/js",
+   "pattern": "canvas\\.root",
+   "why": "the skill's script field, run against the canvas shadow root",
+   "markers": [
+    "canvas.root"
+   ]
+  },
+  {
+   "id": "clickable",
+   "kind": "json",
+   "path": "pomodoro-overlay.json",
+   "pointer": "/css",
+   "pattern": "pointer-events:\\s*auto",
+   "why": "the skill's rule that clickable elements opt in with pointer-events: auto",
+   "markers": [
+    "pointer-events"
+   ]
+  },
+  {
+   "id": "everywhere",
+   "kind": "json",
+   "path": "pomodoro-overlay.json",
+   "pointer": "/alwaysOn",
+   "equals": true,
+   "why": "the skill's always-on canvas for something that follows the person everywhere",
+   "markers": [
+    "alwaysOn",
+    "always-on",
+    "always on"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0526,
+  "body_coverage": 0.5625,
+  "bin": "mid"
+ }
+}

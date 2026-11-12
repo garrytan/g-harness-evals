@@ -1,0 +1,93 @@
+{
+ "id": "t12-home-battery-reading",
+ "target": {
+  "name": "llm-wiki",
+  "pack": "hermes",
+  "skill_md_sha256": "0229e37c1783fcac5b77cfb3242703666cf4aa472d2ae85b6bd5279756b515b6"
+ },
+ "request": "I keep losing track of what I've read about home battery storage. Set up a knowledge base in kb/ from the three articles in inbox/ that I can keep adding to over time, with the pages linked to each other.",
+ "skill_step": "A new wiki gets the three-layer layout: SCHEMA.md (conventions and tag taxonomy), index.md and an append-only log.md with '## [YYYY-MM-DD] action | subject' entries, immutable raw/ copies carrying ingested and sha256 frontmatter, and entity/concept pages with typed frontmatter (type: entity | concept | ...).",
+ "used_it": [
+  "schema",
+  "log-entries",
+  "raw-sha",
+  "page-type"
+ ],
+ "checks": [
+  {
+   "id": "pages",
+   "kind": "exists",
+   "glob": "kb/**/*.md",
+   "min": 4,
+   "why": "the knowledge base has several pages in kb/"
+  },
+  {
+   "id": "links",
+   "kind": "regex",
+   "glob": "kb/**/*.md",
+   "pattern": "\\[\\[[^\\]]+\\]\\]|\\]\\([^)]+\\.md\\)",
+   "min": 2,
+   "why": "pages link to each other"
+  },
+  {
+   "id": "content",
+   "kind": "regex",
+   "glob": "kb/**/*.md",
+   "pattern": "6,000",
+   "why": "the pages carry facts from the articles"
+  },
+  {
+   "id": "schema",
+   "kind": "exists",
+   "path": "kb/SCHEMA.md",
+   "why": "the wiki has the skill's SCHEMA.md layer",
+   "markers": [
+    "SCHEMA.md",
+    "schema"
+   ]
+  },
+  {
+   "id": "log-entries",
+   "kind": "regex",
+   "path": "kb/log.md",
+   "pattern": "^## \\[\\d{4}-\\d{2}-\\d{2}\\] (create|ingest|update) \\|",
+   "flags": "m",
+   "min": 2,
+   "why": "log.md has the skill's '## [date] action | subject' entries",
+   "markers": [
+    "log.md",
+    "append-only"
+   ]
+  },
+  {
+   "id": "raw-sha",
+   "kind": "regex",
+   "glob": "kb/raw/**/*.md",
+   "pattern": "^sha256:\\s*[0-9a-f]{64}\\s*$",
+   "flags": "m",
+   "why": "raw sources are kept under raw/ with sha256 frontmatter",
+   "markers": [
+    "sha256",
+    "raw/"
+   ]
+  },
+  {
+   "id": "page-type",
+   "kind": "regex",
+   "glob": "kb/**/*.md",
+   "pattern": "^type:\\s*(entity|concept|comparison|query|summary)\\s*$",
+   "flags": "m",
+   "why": "wiki pages carry the skill's typed frontmatter",
+   "markers": [
+    "type: entity",
+    "type:"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0,
+  "body_coverage": 0.6667,
+  "bin": "none"
+ }
+}

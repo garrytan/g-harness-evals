@@ -1,0 +1,14 @@
+# Set T (internal-task): the QM sandbox image with one task's starting workspace at
+# /root/workspace, the directory QM's agent works in. QM's agent runs its shell
+# and file tools in a per-scope sandbox container, not in the task container's
+# /workspace, so a set T trial on QM gets the task's files through the sandbox
+# image (compose.yaml's QM_SANDBOX_IMAGE). /root is the scope's home volume in
+# QM's local backend; Docker copies the image's /root into a new empty volume,
+# so the sandbox starts with the files. capture.sh copies /root/workspace back
+# into the trial workspace for grading. Built by runner/trial/set-t.ts
+# (qmSandboxImage) from a context holding start/ and instruction.md, the same
+# files run-trial.sh puts in every other harness's /workspace.
+ARG BASE=harness-eval/qm-sandbox:dev
+FROM ${BASE}
+RUN --mount=type=bind,source=.,target=/ctx \
+    mkdir -p /root/workspace && cp -a /ctx/. /root/workspace/ && chown -R root:root /root/workspace

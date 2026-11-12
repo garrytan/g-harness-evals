@@ -83,8 +83,13 @@ fi
 route_config=${HE_HARNESS_CONFIG:-} route=${HE_HARNESS_CONFIG:-default}
 refuse_route() { log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$route_config $1"; exit 2; }
 [[ $route != *+* ]] || refuse_route "carries a driver prefix, which only claude-code takes (harness codex)"
+skill_arm=''
 case "$route" in
   official-minimal) route=default ;;
+  skills-native|skills-resolver|skills-names-only|skills-no-catalog)
+    [ "$entry" = serve ] || refuse_route "is applied for the serve entry only (scripts/skill-resolver/ARMS.md)"
+    skill_arm=${route#skills-} route=default ;;
+  skills-usage-ordered) refuse_route "is OpenClaw's usage-ordered arm; codex has no such arm (scripts/skill-resolver/ARMS.md)" ;;
   default|route-tool|route-hook|route-once|route-system|route-startup|route-skill|route-told|route-placebo) ;;
   route-slot-told@*|route-slot-skill@*) refuse_route "is a slot route, which H10 runs on claude-code only; codex takes a slot bundle in a later run" ;;
   *) refuse_route "is not a codex config (default, official-minimal) and names no known codex route (route-tool, route-hook, route-once, route-system, route-startup, route-skill, route-told, route-placebo)" ;;
@@ -383,6 +388,119 @@ JS
   route_json=$(printf ',"instruction_route":{"config":"%s","driver":"cli","route":"%s","bytes_sha256":"%s","files":%s,"hook":"%s"}' "$route_config" "$route" "$route_sha" "$route_files" "$route_hook")
 fi
 
+# internal-task, the skill-resolver arms (scripts/skill-resolver/ARMS.md). HE_HARNESS_CONFIG skills-<arm> reads the kit at
+# ${HE_SKILL_KIT_DIR:-/opt/skill-resolver} (scripts/skill-resolver/build-kit.ts):
+#   skills-native      the catalog in $CODEX_HOME/skills; a UserPromptSubmit group of its own in hooks.json, trusted by its own
+#                      [hooks.state] table (trust-hash.cjs), runs the hook wrapper with the resolver in shadow mode each turn
+#   skills-resolver    the same, the wrapper pushing the resolver's block as additionalContext (a developer message)
+#   skills-names-only  the names-only catalog copy; [skills] max_context_tokens = 10000 (the cap) appended to config.toml
+#   skills-no-catalog  no catalog; [skills.bundled] enabled = false appended to config.toml
+# The resolver group's command does not carry GBRAIN_HOOK_LANE=turn-rule, so the installer check above still finds exactly one
+# gbrain turn-rule group and its trust table is untouched; the resolver group is appended after it. The adapter writes the
+# wrapper's hook.json and, before each turn, its turn.json (skills_turn). $HE_LOG_DIR/skill-arm.json records the arm, the kit, every
+# file written and the settings; ready carries skill_arm. A missing kit file, a skills root that already holds skills or a
+# config.toml that already has a [skills] table is HE-ADAPTER-007, exit 2 before ready. Any other config runs none of this.
+skill_arm_json='' skill_dir="$HE_SESSION_STATE_DIR/he-skills"
+if [ -n "$skill_arm" ]; then
+  set +e
+  skill_line=$(node - "$skill_arm" "${HE_SKILL_KIT_DIR:-/opt/skill-resolver}" "$CODEX_HOME" "$skill_dir" "$HE_LOG_DIR" "$route_config" "$harness_dir/trust-hash.cjs" <<'JS'
+const fs = require("fs"), path = require("path"), crypto = require("crypto");
+const [arm, kit, codexHome, dir, logs, config, trustJs] = process.argv.slice(2);
+const sha = (b) => crypto.createHash("sha256").update(b).digest("hex");
+const out = path.join(logs, "skill-arm.json");
+const rec = { status: "error", code: "HE-ADAPTER-007", harness: "codex", config, arm, kit: { dir: kit, catalog_hash: null, gbrain_version: null, kit_json_sha256: null }, install: null, settings: [], files: [], hook: null, error: null };
+const write = () => { fs.writeFileSync(out + ".tmp", JSON.stringify(rec, null, 1) + "\n"); fs.renameSync(out + ".tmp", out); };
+const refuse = (msg) => { rec.error = msg; write(); console.log("HE-ADAPTER-007 the skills arm could not be applied: " + msg); process.exit(1); };
+const record = (p) => { const b = fs.readFileSync(p); rec.files = rec.files.filter((f) => f.path !== p); rec.files.push({ path: p, sha256: sha(b), bytes: b.length }); };
+let k;
+try { const body = fs.readFileSync(path.join(kit, "kit.json")); k = JSON.parse(body); rec.kit.kit_json_sha256 = sha(body); } catch (e) { refuse("no readable kit.json under " + kit + ": " + e.message); }
+Object.assign(rec.kit, { catalog_hash: k.catalog_hash ?? null, gbrain_version: k.gbrain_version ?? null });
+for (const b of ["bin/gbrain", "bin/he-skill-hook"]) { try { fs.accessSync(path.join(kit, b), fs.constants.X_OK); } catch { refuse("the kit has no executable " + b); } }
+const skills = path.join(codexHome, "skills"), configToml = path.join(codexHome, "config.toml");
+if (fs.existsSync(skills) && fs.readdirSync(skills).length) refuse(skills + " already holds skills");
+const toml = fs.readFileSync(configToml, "utf8");
+if (/^\s*\[skills[.\]]/m.test(toml)) refuse(configToml + " already has a [skills] table");
+const source = { native: "catalog", resolver: "catalog", "names-only": "names-only", "no-catalog": null }[arm];
+let installed = 0;
+if (source) {
+  const src = path.join(kit, source, "skills");
+  if (!fs.existsSync(src)) refuse("the kit has no " + source + "/skills");
+  fs.mkdirSync(skills, { recursive: true });
+  for (const name of fs.readdirSync(src).sort()) { fs.cpSync(path.join(src, name), path.join(skills, name), { recursive: true }); installed++; }
+  rec.install = { source: src, dest: skills, skills: installed };
+}
+const table = { "names-only": "\n[skills]\nmax_context_tokens = 10000\n", "no-catalog": "\n[skills.bundled]\nenabled = false\n" }[arm];
+if (table) { fs.appendFileSync(configToml, table); record(configToml); rec.settings.push(table.trim().replace(/\n/g, " ") + " (config.toml)"); }
+let receipt = null, hook = "none";
+if (arm === "native" || arm === "resolver") {
+  const home = path.join(kit, "index", "codex", "gbrain-home");
+  const receiptPath = path.join(home, ".gbrain", "skill-index", "he-skills", "receipt.json");
+  try { const r = JSON.parse(fs.readFileSync(receiptPath, "utf8")); receipt = { catalog_hash: r.catalog?.catalog_hash ?? null, index_hash: r.index?.index_hash ?? null }; } catch (e) { refuse("no readable build receipt at " + receiptPath + ": " + e.message); }
+  if (typeof k.catalog_mtime_s !== "number") refuse("kit.json has no catalog_mtime_s");
+  const setTime = (p) => { if (fs.statSync(p).isDirectory()) for (const n of fs.readdirSync(p)) setTime(path.join(p, n)); fs.utimesSync(p, k.catalog_mtime_s, k.catalog_mtime_s); };
+  setTime(skills);
+  rec.install.mtime_s = k.catalog_mtime_s;
+  if (fs.existsSync(dir)) refuse("the destination exists and the arm does not overwrite it: " + dir);
+  fs.cpSync(home, path.join(dir, "gbrain-home"), { recursive: true });
+  const hookJson = path.join(dir, "hook.json");
+  fs.writeFileSync(hookJson, JSON.stringify({ harness: "codex", arm, mode: arm === "native" ? "shadow" : "push", gbrain: path.join(kit, "bin", "gbrain"), gbrain_home: path.join(dir, "gbrain-home"),
+    catalog: "he-skills", expect_catalog: receipt.catalog_hash, receipt: receiptPath, status_dir: path.join(logs, "skill-resolver"), turn_file: path.join(dir, "turn.json"), top_k: 5, timeout_ms: 10000 }, null, 1) + "\n");
+  record(hookJson);
+  const wrapper = path.join(kit, "bin", "he-skill-hook");
+  if (/\s/.test(wrapper + hookJson)) refuse("a hook path holds whitespace: " + wrapper + " " + hookJson);
+  const command = wrapper + " " + hookJson, timeout = 30, hooksJson = path.join(codexHome, "hooks.json");
+  let h = { hooks: {} };
+  if (fs.existsSync(hooksJson)) { try { h = JSON.parse(fs.readFileSync(hooksJson, "utf8")); } catch (e) { refuse(hooksJson + " is not JSON: " + e.message); } }
+  h.hooks = h.hooks ?? {};
+  const groups = h.hooks.UserPromptSubmit ?? [];
+  const index = groups.length;
+  h.hooks.UserPromptSubmit = [...groups, { hooks: [{ type: "command", command, timeout }] }];
+  fs.writeFileSync(hooksJson, JSON.stringify(h, null, 2) + "\n");
+  record(hooksJson);
+  const { trustTable } = require(trustJs);
+  fs.appendFileSync(configToml, "\n" + trustTable(hooksJson, index, command, timeout));
+  record(configToml);
+  rec.settings.push("GBRAIN_SKILLS_NO_AUTOREBUILD=1 (environment)");
+  rec.hook = { event: "UserPromptSubmit", group: index, command, timeout, mode: arm === "native" ? "shadow" : "push", trust: trustTable(hooksJson, index, command, timeout).trim(),
+    gbrain_turn_rule_groups: h.hooks.UserPromptSubmit.filter((g) => String((g.hooks ?? [])[0]?.command ?? "").includes("GBRAIN_HOOK_LANE=turn-rule")).length };
+  hook = "trusted";
+}
+rec.status = "ok"; rec.code = null;
+write();
+console.log(["ok", installed, rec.kit.catalog_hash, receipt?.catalog_hash ?? "null", receipt?.index_hash ?? "null", hook].join(" "));
+JS
+)
+  skill_code=$?
+  set -e
+  log "skills arm $route_config: ${skill_line:-HE-ADAPTER-007 the skills arm could not be applied: the step failed before it could report; see stderr.log}"
+  [ "$skill_code" -eq 0 ] || exit 2
+  read -r _ skill_n skill_catalog skill_gcatalog skill_index skill_hook <<< "$skill_line"
+  case "$skill_arm" in native|resolver) export GBRAIN_SKILLS_NO_AUTOREBUILD=1 ;; esac
+  skill_q() { if [ "$1" = null ]; then printf null; else printf '"%s"' "$1"; fi; }
+  skill_arm_json=$(printf ',"skill_arm":{"arm":"%s","catalog_hash":"%s","gbrain_catalog_hash":%s,"index_hash":%s,"skills_installed":%s,"hook":"%s"}' "$skill_arm" "$skill_catalog" "$(skill_q "$skill_gcatalog")" "$(skill_q "$skill_index")" "$skill_n" "$skill_hook")
+fi
+
+# Before each turn of the skills-native and skills-resolver arms: count the turn against its session and write the wrapper's turn
+# context (temp file, then rename): the turn, its file name, the session key, the session's turn count, the member's own message
+# (the request's text, not the full prompt the harness receives) and the previous member message of the same session.
+# Arguments: file stem, turn request file, adapter key, window key.
+skills_turn() {
+  node - "$skill_dir/sessions.json" "$skill_dir/turn.json" "$1" "$2" "$3" "$4" <<'JS'
+const fs = require("fs"), path = require("path");
+const [sessions, out, stem, requestFile, key, windowKey] = process.argv.slice(2);
+const atomic = (p, body) => { fs.writeFileSync(p + ".tmp", body); fs.renameSync(p + ".tmp", p); };
+const all = fs.existsSync(sessions) ? JSON.parse(fs.readFileSync(sessions, "utf8")) : {};
+const message = JSON.parse(fs.readFileSync(requestFile, "utf8")).text;
+const prev = all[key] ?? { n: 0, last: null };
+const name = path.basename(stem);
+const turn = /^turn-\d+$/.test(name) ? Number(name.slice(5)) : name;
+atomic(out, JSON.stringify({ turn, name, session_key: key, window_key: windowKey, session_turn: prev.n + 1, message, ...(prev.last !== null ? { previous_user_message: prev.last } : {}) }));
+all[key] = { n: prev.n + 1, last: message };
+atomic(sessions, JSON.stringify(all));
+console.log("session_turn " + (prev.n + 1));
+JS
+}
+
 # Before each turn of a route cell: count the turn against its session (the adapter's key, so the count follows the Codex thread
 # it resumes), write the emit flag for a hook route (temp file, then rename) and record the turn's RouteTurnStatus
 # (runner/contracts.ts) at <stem>.route.json, with session_key in TurnWindow's form (<channel id>[:<thread_ts>]). Arguments:
@@ -456,6 +574,10 @@ codex_turn() {
     if ! route_status=$(route_turn "$stem" "${key:-run:$HE_TRIAL_ID}" "$window_key"); then turn_code=2; turn_detail="the route status for this turn could not be written"; return; fi
     log "turn ${stem##*/}: route $route $route_status"
   fi
+  if [ "$skill_arm" = native ] || [ "$skill_arm" = resolver ]; then
+    if ! skill_status=$(skills_turn "$stem" "$HE_TURNS_DIR/${stem##*/}.request.json" "${key:-run:$HE_TRIAL_ID}" "$window_key"); then turn_code=2; turn_detail="the skills turn context for this turn could not be written"; return; fi
+    log "turn ${stem##*/}: skills arm $skill_arm $skill_status"
+  fi
   marker="$HE_TRIAL_ID.${stem##*/}.$$.$RANDOM"
   [ -z "$hook_heartbeat" ] || hook_before=$(hook_runs)
   HE_CODEX_TURN="$marker" setsid codex "${args[@]}" < "$prompt" > "$events" 2> "$err" &
@@ -523,7 +645,7 @@ fi
 : "${HE_TURNS_DIR:=/he-turns}"
 mkdir -p "$HE_TURNS_DIR" "$HE_LOG_DIR/turns"
 printf '{"harness":"codex","version":"%s","trial":"%s","ready_at":"%s","session_keys":"codex exec (first turn of a key) | codex exec resume <thread id>; dm:<member> | channel:<id>","mcp_servers":%s,"adapter_sha256":"%s"%s}\n' \
-  "$version" "$HE_TRIAL_ID" "$(now)" "$mcp_servers" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json" > "$HE_LOG_DIR/ready.tmp"
+  "$version" "$HE_TRIAL_ID" "$(now)" "$mcp_servers" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json$skill_arm_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do

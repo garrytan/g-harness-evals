@@ -1,0 +1,190 @@
+{
+ "schema_version": 1,
+ "run_id": "skill-resolver-pilot-2026-11",
+ "question": "UNCOUNTED PILOT for skill-resolver-2026-11 (PREREGISTRATION.md, PILOT items; plan Phase A step 2). Native vs resolver-on on OpenClaw 2026.10.6 with anthropic:claude-opus-5-5 and Hermes v2026.9.24 with openai:gpt-6.1-sol, 40 set P dev-half requests per cell, to measure base rates (Got the skill, discordance between arms, false suggestions on no_skill_needed rows, INFRA) and cost per trial for sizing n and leases. No trial here counts toward any endpoint of skill-resolver-2026-11; prereg.json and its cells are unchanged.",
+ "uncounted": true,
+ "pilot_of": "skill-resolver-2026-11",
+ "selection": {
+  "note": "40 set P dev rows, labelled (p-s-169 has no label and is left out), stratified like the dev half: 32 skill-needing (p-s) and 8 no_skill_needed (p-n). Within each group rows are ordered by sha256('20261108:' + id) and taken in that order, skipping a row whose request_duplicate_groups group already has a row taken. Dev rows only; the test half is never read.",
+  "seed": 20261108
+ },
+ "inputs": {
+  "note": "Staged outside git (.skill-resolver/ is ignored). setp-dev.jsonl is SETS.md's dev half (147 rows).",
+  ".skill-resolver/setp-dev.jsonl": {
+   "sha256": "9e77d6457bad88424ed7a790901e9371eec9055086b22341d6c528c855b0b5a8",
+   "rows": 147
+  },
+  ".skill-resolver/catalog/manifest.json": {
+   "catalog_hash": "b6d67f1f044fab694182a424719a40b13a6e63640d8e814c7fd7277d97123fb7"
+  }
+ },
+ "tasks": {
+  "skill-requests": [
+   "p-n-001",
+   "p-n-007",
+   "p-n-009",
+   "p-n-011",
+   "p-n-018",
+   "p-n-029",
+   "p-n-051",
+   "p-n-060",
+   "p-s-002",
+   "p-s-007",
+   "p-s-026",
+   "p-s-033",
+   "p-s-036",
+   "p-s-037",
+   "p-s-041",
+   "p-s-043",
+   "p-s-053",
+   "p-s-057",
+   "p-s-059",
+   "p-s-082",
+   "p-s-083",
+   "p-s-088",
+   "p-s-091",
+   "p-s-107",
+   "p-s-111",
+   "p-s-118",
+   "p-s-127",
+   "p-s-144",
+   "p-s-155",
+   "p-s-164",
+   "p-s-166",
+   "p-s-181",
+   "p-s-184",
+   "p-s-202",
+   "p-s-205",
+   "p-s-210",
+   "p-s-211",
+   "p-s-220",
+   "p-s-232",
+   "p-s-237"
+  ]
+ },
+ "wall_clock_s": {
+  "skill-requests": 900
+ },
+ "spend_cap_usd": 250,
+ "drop_order": [],
+ "order": {
+  "kind": "interleave-task",
+  "seed": 20261108
+ },
+ "cells": [
+  {
+   "id": "pb-oc-opus-native",
+   "harness": "openclaw",
+   "model": "anthropic:claude-opus-5-5",
+   "slice": "skill-requests",
+   "split": "dev",
+   "repetitions": 1,
+   "skill_arm": "native",
+   "config": "skills-native",
+   "requests": ".skill-resolver/setp-dev.jsonl",
+   "request_set": "P",
+   "half": "dev",
+   "catalog": ".skill-resolver/catalog/manifest.json",
+   "request_cap": 6,
+   "ceiling": {
+    "input_tokens": 300000,
+    "output_tokens": 6000
+   }
+  },
+  {
+   "id": "pb-oc-opus-resolver-on",
+   "harness": "openclaw",
+   "model": "anthropic:claude-opus-5-5",
+   "slice": "skill-requests",
+   "split": "dev",
+   "repetitions": 1,
+   "skill_arm": "resolver-on",
+   "config": "skills-resolver",
+   "requests": ".skill-resolver/setp-dev.jsonl",
+   "request_set": "P",
+   "half": "dev",
+   "catalog": ".skill-resolver/catalog/manifest.json",
+   "request_cap": 6,
+   "ceiling": {
+    "input_tokens": 300000,
+    "output_tokens": 6000
+   }
+  },
+  {
+   "id": "pb-he-sol-native",
+   "harness": "hermes",
+   "model": "openai:gpt-6.1-sol",
+   "slice": "skill-requests",
+   "split": "dev",
+   "repetitions": 1,
+   "skill_arm": "native",
+   "config": "skills-native",
+   "requests": ".skill-resolver/setp-dev.jsonl",
+   "request_set": "P",
+   "half": "dev",
+   "catalog": ".skill-resolver/catalog/manifest.json",
+   "request_cap": 6,
+   "ceiling": {
+    "input_tokens": 300000,
+    "output_tokens": 6000
+   }
+  },
+  {
+   "id": "pb-he-sol-resolver-on",
+   "harness": "hermes",
+   "model": "openai:gpt-6.1-sol",
+   "slice": "skill-requests",
+   "split": "dev",
+   "repetitions": 1,
+   "skill_arm": "resolver-on",
+   "config": "skills-resolver",
+   "requests": ".skill-resolver/setp-dev.jsonl",
+   "request_set": "P",
+   "half": "dev",
+   "catalog": ".skill-resolver/catalog/manifest.json",
+   "request_cap": 6,
+   "ceiling": {
+    "input_tokens": 300000,
+    "output_tokens": 6000
+   }
+  }
+ ],
+ "request_duplicate_groups": [
+  [
+   "p-n-001",
+   "p-n-002"
+  ],
+  [
+   "p-n-007",
+   "p-n-008"
+  ],
+  [
+   "p-n-015",
+   "p-n-016"
+  ],
+  [
+   "p-n-027",
+   "p-n-028"
+  ],
+  [
+   "p-n-047",
+   "p-n-048"
+  ],
+  [
+   "p-s-009",
+   "p-s-024",
+   "p-s-026",
+   "p-s-030",
+   "p-s-040"
+  ],
+  [
+   "p-s-012",
+   "p-s-019"
+  ],
+  [
+   "p-s-017",
+   "p-s-029",
+   "p-s-031"
+  ]
+ ]
+}

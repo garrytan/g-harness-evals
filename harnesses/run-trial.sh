@@ -22,10 +22,15 @@
 #   --time-budget S       HE_TIME_BUDGET_S (default: task.toml time_budget_s, else 300)
 #   --network MODE        docker network (default bridge, with host.docker.internal mapped)
 #   --out DIR             output root (default results/smoke/<trial-id>)
+#   --env NAME=VALUE      extra environment for the harness, repeatable (opt-in; set T trials pass HE_SKILL_ARM and
+#                         HE_HARNESS_CONFIG this way): -e on docker run, exported for a compose stack
+#   --host-gateway IP     map host.docker.internal to IP instead of host-gateway (opt-in; with --network naming the
+#                         run's internal network, IP is its gateway, as runner/trial/docker.ts maps it)
 # Writes <out>/workspace, <out>/state, <out>/logs and <out>/result.json.
 set -euo pipefail
 
 harness="" image="" task="" trial="" base_url="" api_key="" model="claude-sonnet-5-5" budget="" network="bridge" out=""
+extra_env=() host_gateway="host-gateway"
 while [ $# -gt 0 ]; do
   case "$1" in
     --harness) harness=$2; shift 2 ;;
@@ -38,6 +43,8 @@ while [ $# -gt 0 ]; do
     --time-budget) budget=$2; shift 2 ;;
     --network) network=$2; shift 2 ;;
     --out) out=$2; shift 2 ;;
+    --env) [[ $2 =~ ^[A-Z_][A-Z0-9_]*=.*$ ]] || { echo "--env needs NAME=VALUE" >&2; exit 64; }; extra_env+=("$2"); shift 2 ;;
+    --host-gateway) host_gateway=$2; shift 2 ;;
     *) echo "unknown option $1" >&2; exit 64 ;;
   esac
 done
@@ -68,6 +75,7 @@ if [ -f "harnesses/$harness/compose.yaml" ]; then
   export HE_WORKSPACE="$abs_out/workspace" HE_STATE="$abs_out/state" HE_LOGS="$abs_out/logs" HE_TURNS="$abs_out/turns"
   export HE_MODEL_BASE_URL="$base_url" HE_MODEL_API_KEY="$api_key" HE_MODEL_NAME="$model"
   export HE_TIME_BUDGET_S="$budget" HE_TASK_SLICE="$slice" HE_TRIAL_ID="$trial" QM_IMAGE="$image"
+  for kv in ${extra_env[@]+"${extra_env[@]}"}; do export "$kv"; done
   export HE_UID="$(id -u)" HE_GID="$(id -g)"
   # prepare.sh pre-creates bind-mount targets and prints per-trial secrets as
   # NAME=value lines; they stay in this process and the stack, never on disk.
@@ -91,15 +99,18 @@ if [ -f "harnesses/$harness/compose.yaml" ]; then
   if [ -x "harnesses/$harness/capture.sh" ]; then "harnesses/$harness/capture.sh" "$abs_out" 2>>"$abs_out/logs/adapter.log" || true; fi
   docker compose "${compose_files[@]}" -p "$project" down -v --remove-orphans >/dev/null 2>&1 || true
 else
+env_args=()
+for kv in ${extra_env[@]+"${extra_env[@]}"}; do env_args+=(-e "$kv"); done
 timeout -k 10 "$((budget + 60))" docker run -i --rm --name "he-$trial" \
   --user "$(id -u):$(id -g)" \
-  --network "$network" --add-host host.docker.internal:host-gateway \
+  --network "$network" --add-host "host.docker.internal:$host_gateway" \
   -v "$abs_out/workspace:/workspace" \
   -v "$abs_out/state:/harness-state" \
   -v "$abs_out/logs:/he-logs" \
   -e HE_MODEL_BASE_URL="$base_url" -e HE_MODEL_API_KEY="$api_key" -e HE_MODEL_NAME="$model" \
   -e HE_TIME_BUDGET_S="$budget" -e HE_LOG_DIR=/he-logs -e HE_SESSION_STATE_DIR=/harness-state \
   -e HE_TASK_SLICE="$slice" -e HE_TRIAL_ID="$trial" \
+  ${env_args[@]+"${env_args[@]}"} \
   "$image" run </dev/null
 code=$?
 fi

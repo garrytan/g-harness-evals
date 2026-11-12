@@ -1,0 +1,61 @@
+{
+ "id": "t20-coffee-checkout-directions",
+ "target": {
+  "name": "sketch",
+  "pack": "hermes",
+  "skill_md_sha256": "c9472691dbd91b31710d9ace3d05a81a5cedcf524a1707f8b3e410b27ed0a243"
+ },
+ "request": "I can't decide how the Bean Runner checkout screen should look; notes are in notes/checkout.md. Mock up a few different directions as plain HTML pages under design/checkout/ that I can open in a browser and compare.",
+ "skill_step": "The skill builds 2 to 3 variants, each in its own NNN-stance-name/ folder (sketches/ by default) holding index.html and a README.md with the sections Design stance, Key choices, Trade-offs and Best for.",
+ "used_it": [
+  "variant-folders",
+  "variant-readme"
+ ],
+ "checks": [
+  {
+   "id": "pages",
+   "kind": "exists",
+   "glob": "design/checkout/**/*.html",
+   "min": 2,
+   "why": "at least two HTML mockups under design/checkout/"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "glob": "design/checkout/**/*.html",
+   "pattern": "Bean Runner",
+   "why": "the mockups are of the Bean Runner checkout"
+  },
+  {
+   "id": "variant-folders",
+   "kind": "exists",
+   "glob": "design/checkout/**/[0-9][0-9][0-9]-*/index.html",
+   "min": 2,
+   "max": 4,
+   "why": "each variant is its own NNN-stance-name/index.html, the skill's layout",
+   "markers": [
+    "index.html",
+    "001-"
+   ]
+  },
+  {
+   "id": "variant-readme",
+   "kind": "regex",
+   "glob": "design/checkout/**/[0-9][0-9][0-9]-*/README.md",
+   "flags": "i",
+   "pattern": "design stance[\\s\\S]*key choices[\\s\\S]*trade-?offs[\\s\\S]*best for",
+   "why": "each variant README has the skill's four sections in order",
+   "markers": [
+    "design stance",
+    "best for",
+    "key choices"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.1304,
+  "body_coverage": 0.4737,
+  "bin": "high"
+ }
+}

@@ -1,0 +1,15 @@
+name: deploy
+on:
+  push:
+    branches: [main]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -r requirements.txt
+      - run: ./scripts/deploy.sh
+        env:
+          POSTMARK_SERVER_TOKEN: ${{ secrets.POSTMARK_SERVER_TOKEN }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          POSTMARK_FROM_EMAIL: updates@parcelpulse.io

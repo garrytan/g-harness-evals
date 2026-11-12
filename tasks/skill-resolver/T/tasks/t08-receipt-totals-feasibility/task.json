@@ -1,0 +1,91 @@
+{
+ "id": "t08-receipt-totals-feasibility",
+ "target": {
+  "name": "hermes-spike",
+  "pack": "hermes",
+  "skill_md_sha256": "73e0abffe2ab2951008674eb10d304a3445582fefa94574dffac9daa2cf88d88"
+ },
+ "request": "Before I commit to building the expense importer, I want a quick, disposable test of whether simple pattern matching can pull the totals out of the receipt dumps in samples/. Put whatever you write under trials/ and tell me in a README there whether it's worth pursuing.",
+ "skill_step": "Each experiment lives in its own numbered directory (NNN-descriptive-name/), states its question in Given/When/Then form, and its README closes with '## Verdict: VALIDATED | PARTIAL | INVALIDATED' followed by What worked, What didn't, Surprises and Recommendation for the real build.",
+ "used_it": [
+  "numbered-dir",
+  "verdict",
+  "surprises",
+  "given-when-then"
+ ],
+ "checks": [
+  {
+   "id": "readme",
+   "kind": "exists",
+   "glob": "trials/**/README.md",
+   "why": "there is a README under trials/ as asked"
+  },
+  {
+   "id": "code",
+   "kind": "exists",
+   "glob": "trials/**/*.py",
+   "why": "something was actually built and can be run"
+  },
+  {
+   "id": "readme-totals",
+   "kind": "regex",
+   "glob": "trials/**/README.md",
+   "pattern": "receipt-4",
+   "flags": "i",
+   "why": "the README reports results on the samples"
+  },
+  {
+   "id": "numbered-dir",
+   "kind": "exists",
+   "glob": "trials/[0-9][0-9][0-9]*-*/README.md",
+   "why": "the experiment sits in a numbered NNN-descriptive-name directory",
+   "markers": [
+    "001-",
+    "nnn-"
+   ]
+  },
+  {
+   "id": "verdict",
+   "kind": "regex",
+   "glob": "trials/**/README.md",
+   "pattern": "^#+\\s*verdict\\s*[:-]?\\s*\\**\\s*(validated|partial|invalidated)\\b",
+   "flags": "im",
+   "why": "the README closes with the skill's verdict heading and one of its three words",
+   "markers": [
+    "verdict",
+    "validated",
+    "invalidated",
+    "partial"
+   ]
+  },
+  {
+   "id": "surprises",
+   "kind": "regex",
+   "glob": "trials/**/README.md",
+   "pattern": "^#+\\s*surprises\\b",
+   "flags": "im",
+   "why": "the verdict carries the skill's Surprises section",
+   "markers": [
+    "surprises"
+   ]
+  },
+  {
+   "id": "given-when-then",
+   "kind": "regex",
+   "glob": "trials/**/README.md",
+   "pattern": "\\bgiven\\b[^\\n]*\\bwhen\\b[^\\n]*\\bthen\\b",
+   "flags": "i",
+   "why": "the question is framed as Given/When/Then",
+   "markers": [
+    "given/when/then",
+    "given "
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0294,
+  "body_coverage": 0.3929,
+  "bin": "low"
+ }
+}

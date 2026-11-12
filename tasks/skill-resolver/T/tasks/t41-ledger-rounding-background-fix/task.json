@@ -1,0 +1,82 @@
+{
+ "id": "t41-ledger-rounding-background-fix",
+ "target": {
+  "name": "coding-agent",
+  "pack": "openclaw",
+  "skill_md_sha256": "cabfef83abacbecaf73081677a9fb1c718770594dfd729aafae93581dae2b242"
+ },
+ "request": "While I'm out I want a background Claude Code worker to fix the rounding bug in notes/bug.md in our acme/ledger-api repo, and to tell me on Telegram (chat 48213377) when it's done. Write the prompt it gets to worker/prompt.md and the command that starts it to worker/launch.sh, but don't start anything.",
+ "skill_step": "The skill makes every worker prompt carry its mandatory Git preparation block (canonical remote, target base branch, fetched target base SHA, isolated worktree, working branch and so on) and a notification block that reports back with openclaw message send.",
+ "used_it": [
+  "git-prep",
+  "notify"
+ ],
+ "checks": [
+  {
+   "id": "prompt",
+   "kind": "exists",
+   "path": "worker/prompt.md",
+   "why": "the worker prompt is where the request asked for it"
+  },
+  {
+   "id": "launch",
+   "kind": "exists",
+   "path": "worker/launch.sh",
+   "why": "the launch command is where the request asked for it"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "worker/prompt.md",
+   "pattern": "round",
+   "flags": "i",
+   "why": "the prompt is about the rounding bug"
+  },
+  {
+   "id": "launch-claude",
+   "kind": "regex",
+   "path": "worker/launch.sh",
+   "pattern": "\\bclaude\\b",
+   "why": "the launcher starts Claude Code"
+  },
+  {
+   "id": "launch-prompt",
+   "kind": "regex",
+   "path": "worker/launch.sh",
+   "pattern": "prompt\\.md",
+   "why": "the launcher feeds it the written prompt"
+  },
+  {
+   "id": "git-prep",
+   "kind": "regex",
+   "path": "worker/prompt.md",
+   "flags": "im",
+   "min": 4,
+   "pattern": "^\\W*(canonical remote|canonical default branch|target base branch|fetched target base sha|isolated worktree|working branch|prepared start sha)\\s*:",
+   "why": "the skill's Git preparation block, at least four of its named fields",
+   "markers": [
+    "canonical remote",
+    "fetched target base sha",
+    "isolated worktree",
+    "prepared start sha"
+   ]
+  },
+  {
+   "id": "notify",
+   "kind": "regex",
+   "path": "worker/prompt.md",
+   "pattern": "openclaw message send",
+   "flags": "i",
+   "why": "the skill's notification block reports back with openclaw message send",
+   "markers": [
+    "openclaw message send"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0698,
+  "body_coverage": 0.4,
+  "bin": "mid"
+ }
+}

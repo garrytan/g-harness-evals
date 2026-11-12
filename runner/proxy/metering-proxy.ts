@@ -35,8 +35,8 @@
  * Attribution across processes (lease mode): the harness binds a slot (the
  * path segment a shim's base URL carries) to a key around each question or
  * namespace ingest and reads the key's meter afterwards, through
- * `POST /__proxy/bind {slot, key, token?, models?, ablation?}`, `POST /__proxy/unbind {slot}` and
- * `POST /__proxy/finalize {key}`. With `--control-token` (or
+ * `POST /__proxy/bind {slot, key, token?, models?, ablation?, max_requests?, collect_requests?}`, `POST /__proxy/unbind {slot}`,
+ * `POST /__proxy/finalize {key}` and `POST /__proxy/requests {key}` (internal-task Phase B, SlotLimits). With `--control-token` (or
  * SHOOTOUT_PROXY_CONTROL_TOKEN) these need the `x-proxy-control` header, so a
  * vendor container cannot move charges.
  *
@@ -205,6 +205,14 @@ export interface LeasePolicy {
 /** internal-task (H10): `copies` are the rule and placebo bytes (harnesses/routes/instruction.md, placebo.md); `listing` the skill
  *  descriptions a skill route lists (discovery). */
 export interface RouteTexts { copies: string[]; listing: string[] }
+
+/** internal-task Phase B, per bind: max_requests refuses the slot's request for its first model once that many were forwarded
+ *  (HTTP 400, error kind and usage-line reason prefix REQUEST_CAP); collect_requests keeps each forwarded body in memory for
+ *  POST /__proxy/requests {key}, and apart from them the first body the request cap refused: it carries the tool calls of the
+ *  agent's last step, which no forwarded body does. */
+export interface SlotLimits { max_requests?: number; collect_requests?: boolean }
+export const REQUEST_CAP = 'request_cap';
+type SlotBinding = { key: string; token: string | null; models: string[] | null; ablation: AblationBinding | null; routes?: boolean; maxRequests?: number; sent?: number; collect?: boolean; capture?: string };
 
 export interface UsageLine {
   at: string; key: string; provider: string; route: string; model: string | null;
@@ -393,7 +401,12 @@ export class MeteringProxy {
   /** Slots whose provider requests are charged to a ledger allowance (slot builds), not one ledger entry each. */
   readonly allowances = new Map<string, BudgetAllowance>();
   readonly counts = { forwarded: 0, refused: 0, failed: 0, tripwires: 0 };
-  private bindings = new Map<string, { key: string; token: string | null; models: string[] | null; ablation: AblationBinding | null; routes?: boolean; capture?: string }>();
+  private bindings = new Map<string, SlotBinding>();
+  /** internal-task Phase B: forwarded request bodies per key, for slots bound with collect_requests. Memory only, never logged;
+   *  `takeRequests` hands them to the runner once and drops them. */
+  private collected = new Map<string, unknown[]>();
+  /** internal-task Phase B: the first body the request cap refused per key, for the same slots; never forwarded or logged. */
+  private refusedBody = new Map<string, unknown>();
   private captures: BodyCapture | null = null;
   private inflight = new Map<string, number>();
   private waiters = new Map<string, Array<() => void>>();
@@ -403,7 +416,16 @@ export class MeteringProxy {
   /** Charge the slot's provider requests to `key` (a cell id) from now on; with `token`, only requests presenting it; with `models`, only requests for those provider:model ids;
    *  with `ablation` (lease mode), the bound layers are cut from every generation request (runner/proxy/ablate.ts); with
    *  `routes` (internal-task), count route copies on its usage lines when the proxy has route texts. */
-  bind(slot: string, key: string, token: string | null = null, models: string[] | null = null, ablation: AblationBinding | null = null, routes = false, capture: string | null = null) { this.bindings.set(slot, { key, token, models, ablation, ...(routes ? { routes } : {}), ...(capture ? { capture } : {}) }); }
+  bind(slot: string, key: string, token: string | null = null, models: string[] | null = null, ablation: AblationBinding | null = null, routes = false, limits: SlotLimits = {}, capture: string | null = null) {
+    this.bindings.set(slot, { key, token, models, ablation, ...(routes ? { routes } : {}), ...(limits.max_requests ? { maxRequests: limits.max_requests, sent: 0 } : {}), ...(limits.collect_requests ? { collect: true } : {}), ...(capture ? { capture } : {}) });
+  }
+  /** The request bodies collected for `key` since its slot was bound with collect_requests, in order, and the first body the
+   *  request cap refused (refused, empty when none was); drops them. */
+  takeRequests(key: string): { requests: unknown[]; refused: unknown[] } {
+    const requests = this.collected.get(key) ?? [], refused = this.refusedBody.has(key) ? [this.refusedBody.get(key)] : [];
+    this.collected.delete(key); this.refusedBody.delete(key);
+    return { requests, refused };
+  }
   /** With `key`, only drops the binding if it is still that key: a released slot may already be bound to the next cell. */
   unbind(slot: string, key?: string) { if (key === undefined || this.bindings.get(slot)?.key === key) this.bindings.delete(slot); }
   private meter(key: string): Meter { let m = this.meters.get(key); if (!m) this.meters.set(key, m = newMeter()); return m; }
@@ -456,7 +478,7 @@ export class MeteringProxy {
         let streaming = false;
         try {
           const r = this.options.policy
-            ? await this.forwardLeased(req, prov, rest, url.search, key, send, () => { streaming = true; return () => this.settled(key); }, slot, binding?.models ?? null, binding?.ablation ?? null, binding?.routes === true, binding?.capture ?? null)
+            ? await this.forwardLeased(req, prov, rest, url.search, key, send, () => { streaming = true; return () => this.settled(key); }, slot, binding?.models ?? null, binding?.ablation ?? null, binding?.routes === true, binding)
             : await this.forwardInProcess(req, slot, prov, rest, url.search, key, send);
           return r;
         } finally { if (!streaming) this.settled(key); }
@@ -474,7 +496,7 @@ export class MeteringProxy {
 
   private async control(path: string, req: Request): Promise<Response> {
     if (this.options.controlToken && req.headers.get('x-proxy-control') !== this.options.controlToken) return json(403, 'invalid_request', 'control endpoints need the x-proxy-control token');
-    let body: { slot?: string; key?: string; token?: string; models?: unknown; ablation?: unknown; routes?: unknown; capture?: unknown; timeout_ms?: number };
+    let body: { slot?: string; key?: string; token?: string; models?: unknown; ablation?: unknown; routes?: unknown; capture?: unknown; timeout_ms?: number; max_requests?: unknown; collect_requests?: unknown };
     try { body = await req.json() as typeof body; } catch { return json(400, 'invalid_request', 'control body is not JSON'); }
     if (path === '/__proxy/bind' && body.slot && body.key) {
       if (body.models !== undefined && (!Array.isArray(body.models) || body.models.some(m => typeof m !== 'string' || !/^[a-z]+:[A-Za-z0-9._-]+$/.test(m)))) return json(400, 'invalid_request', 'bind models must be a list of provider:model ids');
@@ -484,6 +506,8 @@ export class MeteringProxy {
         try { ablation = (await import('./ablate.ts')).loadBinding(body.ablation as AblationSpec); }
         catch (e) { return json(400, 'invalid_request', `bind ablation refused: ${(e as Error).message}`); }
       }
+      if (body.max_requests !== undefined && !(Number.isInteger(body.max_requests) && (body.max_requests as number) > 0)) return json(400, 'invalid_request', 'bind max_requests must be a positive whole number');
+      if (body.max_requests !== undefined && !(Array.isArray(body.models) && body.models.length)) return json(400, 'invalid_request', 'bind max_requests needs models: the cap counts requests for the first model');
       let capture: string | null = null;
       if (body.capture !== undefined) {
         const root = this.options.policy?.captureRoot;
@@ -494,9 +518,11 @@ export class MeteringProxy {
         try { mkdirSync(dir, { recursive: true }); } catch (e) { return json(400, 'invalid_request', `bind capture refused: ${(e as Error).message}`); }
         capture = join(dir, CAPTURE_FILE);
       }
-      this.bind(body.slot, body.key, typeof body.token === 'string' && body.token ? body.token : null, body.models === undefined ? null : body.models as string[], ablation, body.routes === true, capture);
+      this.bind(body.slot, body.key, typeof body.token === 'string' && body.token ? body.token : null, body.models === undefined ? null : body.models as string[], ablation, body.routes === true,
+        { ...(body.max_requests !== undefined ? { max_requests: body.max_requests as number } : {}), ...(body.collect_requests === true ? { collect_requests: true } : {}) }, capture);
       return Response.json({ ok: true });
     }
+    if (path === '/__proxy/requests' && body.key) return Response.json(this.takeRequests(body.key));
     if (path === '/__proxy/unbind' && body.slot) { this.unbind(body.slot); return Response.json({ ok: true }); }
     if (path === '/__proxy/finalize' && body.key) return Response.json(await this.finalize(body.key, Math.min(Number(body.timeout_ms ?? 30_000), 120_000)));
     return json(404, 'invalid_request', `no control route ${path}`);
@@ -579,7 +605,8 @@ export class MeteringProxy {
   }
 
   /** Lease mode: allowlist, tripwire, output cap, price, reserve, inject the key, forward, settle. Every refusal happens before forwarding. */
-  private async forwardLeased(req: Request, prov: ProviderName, route: string, search: string, key: string, send: Send, beginStream: () => () => void, slot: string, slotModels: string[] | null, ablation: AblationBinding | null = null, routes = false, capture: string | null = null): Promise<Response> {
+  private async forwardLeased(req: Request, prov: ProviderName, route: string, search: string, key: string, send: Send, beginStream: () => () => void, slot: string, slotModels: string[] | null, ablation: AblationBinding | null = null, routes = false, binding?: SlotBinding): Promise<Response> {
+    const capture = binding?.capture ?? null;
     const p = this.options.policy!;
     const at = new Date().toISOString();
     const refuse = (status: number, kind: string, reason: string, model: string | null = null) => {
@@ -644,6 +671,15 @@ export class MeteringProxy {
     catch (e) { return refuse(402, 'budget', `unpriced request refused: ${(e as Error).message}`, model); }
     if (price && p.allowModels && !p.allowModels.includes(`${prov}:${price.model}`)) return refuse(403, 'budget', `${prov}:${price.model} is not on this cell's model allowlist`, model);
     if (price && slotModels && !slotModels.includes(`${prov}:${price.model}`)) return refuse(403, 'budget', `${prov}:${price.model} is not on slot ${slot}'s model list (${slotModels.join(', ') || 'none'})`, model);
+    // internal-task Phase B: the opt-in request cap counts the slot's requests for its first model (the cell's), not its utility models.
+    if (price && binding?.maxRequests && `${prov}:${price.model}` === slotModels?.[0]) {
+      if (binding.sent! >= binding.maxRequests) {
+        if (binding.collect && body && !this.refusedBody.has(key)) this.refusedBody.set(key, structuredClone(body));
+        return refuse(400, REQUEST_CAP, `${REQUEST_CAP}: slot ${slot} already sent its ${binding.maxRequests} model requests`, model);
+      }
+      binding.sent!++;
+    }
+    if (binding?.collect && body) { const list = this.collected.get(key) ?? []; list.push(structuredClone(body)); this.collected.set(key, list); }
     const bounded = price ? { ...price, inputTokens: Math.max(price.inputTokens, Buffer.byteLength(outBody ?? '') + 64) } : null;
     const reserved = bounded ? reservationUsd(bounded) : 0;
     let entry: string | null = null;

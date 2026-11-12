@@ -1,0 +1,88 @@
+{
+ "id": "t05-salon-booking-demo-walkthrough",
+ "target": {
+  "name": "adversarial-ux-test",
+  "pack": "hermes",
+  "skill_md_sha256": "d687ee7727174fd58acbe638038b207f7fb86ea27603a34cb3b0f1b0889b0dd7"
+ },
+ "request": "Before Thursday's demo, go through the booking flow in docs/booking-flow.md as the least patient, least techy customer we could ever get, and write up what they'd run into and what we should actually fix in booking-review.md.",
+ "skill_step": "The in-character rant uses a fixed shape (THE GOOD, THE BAD, THE UGLY, specific complaints, VERDICT), then a mandatory pragmatism filter rates each complaint RED real UX bug, YELLOW low priority, WHITE persona noise or GREEN feature request, and tickets for RED and GREEN items carry the 'ux-review' label.",
+ "used_it": [
+  "rant-shape",
+  "noise-label",
+  "ticket-label"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "booking-review.md",
+   "why": "the write-up is where the request asked for it"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "booking-review.md",
+   "pattern": "error 402|deposit",
+   "flags": "i",
+   "why": "it is about the flow in docs/booking-flow.md"
+  },
+  {
+   "id": "fixes",
+   "kind": "regex",
+   "path": "booking-review.md",
+   "pattern": "fix",
+   "flags": "i",
+   "min": 3,
+   "why": "it says what to fix"
+  },
+  {
+   "id": "rant-shape",
+   "kind": "order",
+   "path": "booking-review.md",
+   "flags": "im",
+   "patterns": [
+    "^\\W*the good\\b",
+    "^\\W*the bad\\b",
+    "^\\W*the ugly\\b",
+    "^\\W*verdict\\b"
+   ],
+   "why": "the persona's review follows the skill's GOOD, BAD, UGLY, VERDICT shape",
+   "markers": [
+    "the good",
+    "the ugly",
+    "verdict"
+   ]
+  },
+  {
+   "id": "noise-label",
+   "kind": "regex",
+   "path": "booking-review.md",
+   "pattern": "persona noise",
+   "flags": "i",
+   "why": "the pragmatism filter uses the skill's ratings, including WHITE persona noise",
+   "markers": [
+    "persona noise",
+    "pragmatism"
+   ]
+  },
+  {
+   "id": "ticket-label",
+   "kind": "regex",
+   "path": "booking-review.md",
+   "pattern": "ux-review",
+   "flags": "i",
+   "min": 2,
+   "why": "tickets carry the skill's 'ux-review' label",
+   "markers": [
+    "ux-review"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0,
+  "body_coverage": 0.6316,
+  "bin": "none"
+ }
+}

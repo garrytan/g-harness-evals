@@ -72,6 +72,8 @@ import { sealedGuard } from './heldout/guard.ts';
 import { seededRandom } from './stats/paired.ts';
 import { GOLDEN_WIRES, type AblationSpec, loadBinding, wireOfModel } from './proxy/ablate.ts';
 import { setNames as zeroSetNames } from '../harnesses/harness-zero/zero.ts';
+import { SET_T_DIR, SET_T_SLICE, setTTaskIds } from './trial/set-t.ts';
+import { REQUEST_HALVES, SKILL_REQUESTS_SLICE, privateSetProblem, requestSetIds } from './trial/skill-requests.ts';
 
 export { RunnerError };
 
@@ -128,7 +130,9 @@ export interface Cell {
   harness: string;
   /** provider:model, priced through runner/pricing; "none" for a scripted cell. */
   model: string;
-  slice: 'multiuser' | 'work' | 'continuity' | 'coding-calibration' | 'hello' | 'smoke';
+  /** skill-tasks: set T of the skill-resolver eval (runner/trial/set-t.ts), single-shot like hello and smoke. skill-requests:
+   *  its Phase B, one request row per trial (runner/trial/skill-requests.ts), single-shot too. */
+  slice: 'multiuser' | 'work' | 'continuity' | 'coding-calibration' | 'hello' | 'smoke' | 'skill-tasks' | 'skill-requests';
   split: 'dev' | 'heldout';
   /** Harness-specific configuration name, handed to the adapter as HE_HARNESS_CONFIG. QM accepts pi (the
    *  default), pi-probe, pi-strict, pi-command-deny and pi-memory-provider (gbrain as QM's per-turn memory provider,
@@ -178,9 +182,24 @@ export interface Cell {
    *  and the tools the response called (runner/proxy/sections.ts). One proxy serves an invocation, so its cells must agree
    *  (HE-PROXY-005). Absent or false, the usage lines carry only the billing-class fields every line has. */
   log_sections?: boolean;
+  /** internal-task, skill-tasks cells only: the skill-loading arm's name (native, resolver-on, no-catalog, ...), defined by the arm
+   *  configs. The runner does not interpret it: it reaches the adapter as HE_SKILL_ARM and the trial record as set_t.arm. */
+  skill_arm?: string;
+  /** internal-task Phase B, skill-requests cells only. requests: the set file (JSON lines {id, request} or {id, text, prev_user_text},
+   *  each with an optional half); each row is a task named by its id. request_set: the set's name for the record (P, R).
+   *  half: dev, test or all (the default) rows. catalog: the catalog's manifest.json (or a names file) got-skill.json counts
+   *  opens against. private: the set must live outside the repository (HE-PREREG-007) and so must the run directory
+   *  (HE-RUN-002). request_cap: refuse the harness's next request for the cell's model once this many were sent and record
+   *  termination request_cap (opt-in; utility models do not count). */
+  requests?: string;
+  request_set?: string;
+  half?: 'dev' | 'test' | 'all';
+  catalog?: string;
+  private?: boolean;
+  request_cap?: number;
 }
 
-const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'config', 'repetitions', 'ceiling', 'tasks', 'harness_mode', 'script', 'adapter', 'gbrain', 'preamble', 'task_set', 'session_scope', 'utility_models', 'network', 'ablation', 'log_sections']);
+const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'config', 'repetitions', 'ceiling', 'tasks', 'harness_mode', 'script', 'adapter', 'gbrain', 'preamble', 'task_set', 'session_scope', 'utility_models', 'network', 'ablation', 'log_sections', 'skill_arm', 'requests', 'request_set', 'half', 'catalog', 'private', 'request_cap']);
 export const DEFAULT_TASK_SET = 'v0.1';
 
 /** The Particle cells whose harness pin has no model_particle entry, the declaration an adapter makes when it routes
@@ -206,6 +225,25 @@ function requireParticleCells(cells: Array<Pick<Cell, 'id' | 'harness' | 'model'
  *  trial's proxy slot to (POST /__proxy/bind models), so a request for another model on that slot is refused even when
  *  another cell of the run put it on the run-wide --allow-models. */
 export const cellModels = (cell: Pick<Cell, 'model' | 'utility_models'>): string[] => [cell.model, ...(cell.utility_models ?? [])].filter((m) => m !== 'none');
+
+/** internal-task Phase B: the skill-requests fields appear on skill-requests cells only, and such a cell names its set, the set's
+ *  name and the catalog. A private cell's set must resolve outside the repository. Files are read when the run is planned. */
+export function checkSkillRequestsCell(c: Cell, repoRoot = resolve(import.meta.dir, '..')): void {
+  const bad = (msg: string): never => { throw new RunnerError('HE-PREREG-007', `cell ${c.id}: ${msg}`); };
+  const fields = (['requests', 'request_set', 'half', 'catalog', 'private', 'request_cap'] as const).filter((k) => c[k] !== undefined);
+  if (c.slice !== SKILL_REQUESTS_SLICE) { if (fields.length) bad(`${fields.join(', ')} belong to ${SKILL_REQUESTS_SLICE} cells only (slice ${c.slice})`); return; }
+  if (typeof c.requests !== 'string' || !c.requests) bad('a skill-requests cell needs requests, the path of its request set (JSON lines)');
+  if (typeof c.request_set !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/.test(c.request_set)) bad(`request_set must name the set, such as "P" or "R" (got ${JSON.stringify(c.request_set)})`);
+  if (typeof c.catalog !== 'string' || !c.catalog) bad('a skill-requests cell needs catalog, the manifest.json (or names file) got-skill.json counts opens against');
+  if (c.half !== undefined && !(REQUEST_HALVES as readonly string[]).includes(c.half)) bad(`half must be one of ${REQUEST_HALVES.join(', ')} (got ${JSON.stringify(c.half)})`);
+  if (c.private !== undefined && typeof c.private !== 'boolean') bad(`private must be true, false or absent (got ${JSON.stringify(c.private)})`);
+  if (c.request_cap !== undefined && !(Number.isInteger(c.request_cap) && c.request_cap > 0 && c.request_cap <= 1000)) bad(`request_cap must be a whole number from 1 to 1000 (got ${JSON.stringify(c.request_cap)})`);
+  if (c.harness_mode === 'scripted') bad('a skill-requests cell calls a model; a scripted cell calls none');
+  if (c.gbrain !== undefined) bad('a skill-requests cell runs without gbrain (the Phase B arms are the skill arms)');
+  if (c.split !== 'dev') bad('a skill-requests cell runs in the dev world (split "dev"); the request set halves are chosen with half');
+  const problem = privateSetProblem(c, repoRoot);
+  if (problem) bad(problem.replace(`cell ${c.id} `, ''));
+}
 
 /** The name printed for a cell's task set. */
 export function taskSetName(cell: Pick<Cell, 'task_set'>): string {
@@ -316,8 +354,11 @@ export interface Prereg {
 }
 
 /** internal-task (H10): `interleave-task` runs, repetition by repetition, the tasks in a seeded order and within each task its cells
- *  in a seeded order, so a drift in the provider over a shard's hours falls on every cell alike. */
-export interface RunOrder { kind: 'interleave-task'; seed: number }
+ *  in a seeded order, so a drift in the provider over a shard's hours falls on every cell alike. internal-task: with blocks, the cells
+ *  run block by block in the listed order (every cell in exactly one block), and each block is interleaved by task on its own
+ *  with the same seed. */
+export interface RunOrder { kind: 'interleave-task'; seed: number; blocks?: RunOrderBlock[] }
+export interface RunOrderBlock { name: string; cells: string[] }
 
 export interface Trial {
   id: string;
@@ -353,6 +394,16 @@ export interface Manifest {
   gbrain_surface_tools?: Partial<Record<'starter' | 'verbs', number>>;
   /** internal-task: a replication of a past held-out run (runner/heldout/replication.ts), planned from its registered prereg.json. */
   replication_of?: ReplicationOf;
+  /** internal-task Phase B: per skill-requests cell, the sha256 of its request set file at plan time and the set's row count. A private
+   *  cell's trial records carry no per-row hash; this is the set's only fingerprint. run refuses a set that changed since plan. */
+  request_sets?: Record<string, { set: string; sha256: string; rows: number }>;
+}
+
+/** The manifest's request_sets field, or nothing when no cell is a skill-requests cell. */
+export function requestSetsOf(cells: Cell[]): { request_sets?: NonNullable<Manifest['request_sets']> } {
+  const out: NonNullable<Manifest['request_sets']> = {};
+  for (const c of cells) if (c.slice === SKILL_REQUESTS_SLICE && c.requests) out[c.id] = { set: c.request_set!, sha256: sha256Of(readFileSync(c.requests)), rows: requestSetIds(c.requests).length };
+  return Object.keys(out).length ? { request_sets: out } : {};
 }
 
 /** internal-task: a harness-zero cell's config must be a set zero.ts knows (setNames: features.json, the derived ablations and
@@ -382,6 +433,8 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
     if (c.session_scope !== undefined && !['conversation', 'turn'].includes(c.session_scope)) throw new RunnerError('HE-PREREG-007', `cell ${c.id}: session_scope must be "conversation" or "turn" (got ${JSON.stringify(c.session_scope)})`);
     if (c.utility_models !== undefined && (!Array.isArray(c.utility_models) || !c.utility_models.length || c.utility_models.some((m) => typeof m !== 'string' || !/^[a-z]+:[A-Za-z0-9._-]+$/.test(m)))) throw new RunnerError('HE-PREREG-007', `cell ${c.id}: utility_models must be a non-empty list of provider:model ids (got ${JSON.stringify(c.utility_models)})`);
     if (c.log_sections !== undefined && typeof c.log_sections !== 'boolean') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: log_sections must be true, false or absent (got ${JSON.stringify(c.log_sections)})`);
+    if (c.skill_arm !== undefined && ((c.slice !== SET_T_SLICE && c.slice !== SKILL_REQUESTS_SLICE) || typeof c.skill_arm !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(c.skill_arm))) throw new RunnerError('HE-PREREG-007', `cell ${c.id}: skill_arm is a lowercase name such as "native" on a ${SET_T_SLICE} or ${SKILL_REQUESTS_SLICE} cell only (got ${JSON.stringify(c.skill_arm)} on slice ${c.slice})`);
+    checkSkillRequestsCell(c);
     if (c.log_sections === true && c.split === 'heldout') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: log_sections cannot run on a held-out split; its unsalted digests would let a published usage log confirm held-out content. fix: drop log_sections from the cell`);
     if (c.log_sections === true && c.harness_mode === 'scripted') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: log_sections needs a cell that calls a model; a scripted cell calls none. fix: drop log_sections from the cell`);
     if (c.network !== undefined) {
@@ -399,7 +452,7 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
     // harnesses/harness-zero/config; an unknown set would exit 2 before ready in every trial.
     if (c.harness === 'harness-zero' && c.network !== 'internal') throw new RunnerError('HE-NET-001', `cell ${c.id}: harness harness-zero needs network "internal" (harnesses/harness-zero/pin.json). fix: add "network": "internal" to the cell`);
     checkZeroConfig(c);
-    if (!prereg.tasks[c.slice] && !c.tasks && c.slice !== 'multiuser') throw new RunnerError('HE-PREREG-004', `cell ${c.id} names slice ${c.slice} but tasks.${c.slice} is missing`);
+    if (!prereg.tasks[c.slice] && !c.tasks && c.slice !== 'multiuser' && c.slice !== SET_T_SLICE && c.slice !== SKILL_REQUESTS_SLICE) throw new RunnerError('HE-PREREG-004', `cell ${c.id} names slice ${c.slice} but tasks.${c.slice} is missing`);
     const scripted = c.harness_mode === 'scripted';
     if (scripted && (c.harness !== 'scripted' || !['oracle', 'mutations'].includes(c.script ?? '')))
       throw new RunnerError('HE-PREREG-006', `cell ${c.id}: a scripted cell needs harness "scripted" and script "oracle" or "mutations"`);
@@ -443,7 +496,7 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
     // QM harness in docker (the client secret stays in the compose stack) and a gbrain sidecar behind the tap, served over MCP.
     if (c.config === MEMORY_PROVIDER_CONFIG_NAME) {
       if (c.harness !== 'qm') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: config "${MEMORY_PROVIDER_CONFIG_NAME}" is QM's memory-provider route; harness ${c.harness} has none. fix: drop config or use harness qm`);
-      if (c.slice === 'hello' || c.slice === 'smoke') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: config "${MEMORY_PROVIDER_CONFIG_NAME}" is wired for multi-user trials only; slice ${c.slice} runs through harnesses/run-trial.sh, which passes neither the config nor the provider wiring, so QM would run as plain pi with no gbrain. fix: use slice multiuser`);
+      if (c.slice === 'hello' || c.slice === 'smoke' || c.slice === SET_T_SLICE || c.slice === SKILL_REQUESTS_SLICE) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: config "${MEMORY_PROVIDER_CONFIG_NAME}" is wired for multi-user trials only; slice ${c.slice} runs through harnesses/run-trial.sh, which passes neither the config nor the provider wiring, so QM would run as plain pi with no gbrain. fix: use slice multiuser`);
       if (c.harness_mode !== undefined && c.harness_mode !== 'docker') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: config "${MEMORY_PROVIDER_CONFIG_NAME}" runs in docker mode only; the provider's client secret goes to QM core's container and nowhere else. fix: drop harness_mode`);
       if (!c.gbrain) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: config "${MEMORY_PROVIDER_CONFIG_NAME}" recalls from the trial's gbrain sidecar; the cell carries no gbrain. fix: add gbrain, such as {"surface": "starter", "brain": "member", "scope": "member", "ingest": "live"}`);
       if (c.gbrain.install !== undefined && c.gbrain.install !== 'mcp') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: config "${MEMORY_PROVIDER_CONFIG_NAME}" reaches gbrain over MCP from QM core; gbrain.install "${c.gbrain.install}" installs into the harness. fix: drop gbrain.install`);
@@ -453,9 +506,31 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
   if (!(prereg.spend_cap_usd > 0)) throw new RunnerError('HE-BUDGET-002', 'spend_cap_usd must be > 0; the cap is written into the preregistration, never passed ad hoc');
   if (prereg.order !== undefined) {
     const o = prereg.order as Partial<RunOrder> | null;
-    if (!o || typeof o !== 'object' || o.kind !== 'interleave-task' || !Number.isSafeInteger(o.seed) || Object.keys(o).some((k) => k !== 'kind' && k !== 'seed')) throw new RunnerError('HE-PREREG-008', `order must be {"kind": "interleave-task", "seed": <integer>} or absent (got ${JSON.stringify(prereg.order)})`);
+    if (!o || typeof o !== 'object' || o.kind !== 'interleave-task' || !Number.isSafeInteger(o.seed) || Object.keys(o).some((k) => k !== 'kind' && k !== 'seed' && k !== 'blocks')) throw new RunnerError('HE-PREREG-008', `order must be {"kind": "interleave-task", "seed": <integer>[, "blocks": [{"name", "cells"}, ...]]} or absent (got ${JSON.stringify(prereg.order)})`);
+    if (o.blocks !== undefined) orderBlocksProblem(o.blocks, prereg.cells.map((c) => c.id));
   }
   return { prereg, sha256: createHash('sha256').update(raw).digest('hex') };
+}
+
+/** internal-task: an order's blocks name every cell exactly once, each block by a unique name and at least one cell. */
+function orderBlocksProblem(blocks: unknown, cellIds: string[]): void {
+  const bad = (why: string) => { throw new RunnerError('HE-PREREG-008', `order.blocks: ${why}`); };
+  if (!Array.isArray(blocks) || !blocks.length) bad('must be a non-empty list of {name, cells}');
+  const seen = new Map<string, string>();
+  const names = new Set<string>();
+  for (const b of blocks as Array<Partial<RunOrderBlock>>) {
+    if (!b || typeof b !== 'object' || Object.keys(b).some((k) => k !== 'name' && k !== 'cells')) bad(`each block is {name, cells} (got ${JSON.stringify(b)})`);
+    if (typeof b.name !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(b.name) || names.has(b.name)) bad(`block name ${JSON.stringify(b.name)} must be a unique lowercase name`);
+    names.add(b.name!);
+    if (!Array.isArray(b.cells) || !b.cells.length) bad(`block ${b.name} lists no cells`);
+    for (const id of b.cells!) {
+      if (!cellIds.includes(id)) bad(`block ${b.name} names ${JSON.stringify(id)}, which is not a cell`);
+      if (seen.has(id)) bad(`cell ${id} is in blocks ${seen.get(id)} and ${b.name}`);
+      seen.set(id, b.name!);
+    }
+  }
+  const missing = cellIds.filter((id) => !seen.has(id));
+  if (missing.length) bad(`every cell must be in one block; missing ${missing.join(', ')}`);
 }
 
 /** A cell's ablation at plan time: the shape, a multi-user harness cell, the map file present with the preregistered
@@ -532,6 +607,20 @@ export function openSealedContext(o: { sealedRoot?: string; receiptPath?: string
 
 export function cellTasks(prereg: Prereg, cell: Cell, tasksRoot = 'tasks'): string[] {
   const explicit = cell.tasks?.length ? { list: cell.tasks, from: 'cell.tasks' } : prereg.tasks[cell.slice]?.length ? { list: prereg.tasks[cell.slice]!, from: `prereg.tasks.${cell.slice}` } : null;
+  if (cell.slice === SKILL_REQUESTS_SLICE) {
+    const all = requestSetIds(cell.requests!, cell.half ?? 'all');
+    const missing = (explicit?.list ?? []).filter((t) => !all.includes(t));
+    if (missing.length) throw new RunnerError('HE-PREREG-004', `cell ${cell.id}: ${explicit!.from} names ${missing.join(', ')} but the cell's request set (half ${cell.half ?? 'all'}) has no such row`);
+    if (!all.length) throw new RunnerError('HE-PREREG-004', `cell ${cell.id}: request set ${cell.requests} has no rows in half ${cell.half ?? 'all'}`);
+    return explicit?.list ?? all;
+  }
+  if (cell.slice === SET_T_SLICE) {
+    const all = setTTaskIds(tasksRoot);
+    const missing = (explicit?.list ?? []).filter((t) => !all.includes(t));
+    if (missing.length) throw new RunnerError('HE-PREREG-004', `cell ${cell.id}: ${explicit!.from} names ${missing.join(', ')} but set T has no such task under ${join(tasksRoot, SET_T_DIR)}/; fix: list set T task ids (tasks/skill-resolver/T/README.md)`);
+    if (!explicit && !all.length) throw new RunnerError('HE-PREREG-004', `cell ${cell.id}: no set T tasks under ${join(tasksRoot, SET_T_DIR)}/`);
+    return explicit?.list ?? all;
+  }
   if (cell.slice !== 'multiuser') {
     if (explicit) return explicit.list;
     throw new RunnerError('HE-PREREG-004', `cell ${cell.id}: no tasks in tasks.${cell.slice} or cell.tasks; fix: add the task list`);
@@ -583,8 +672,11 @@ export function buildManifest(prereg: Prereg, sha256: string, now = new Date().t
     hours += (trials.filter((t) => t.cell === cell.id).length * (prereg.wall_clock_s[cell.slice] ?? 0)) / 3600;
   }
   const ceiling = +Object.values(perCell).reduce((a, b) => a + b, 0).toFixed(2);
-  const ordered = prereg.order ? interleaveTrials(trials, prereg.cells.map((c) => c.id), prereg.order.seed) : trials;
-  return { schema_version: 1, run_id: prereg.run_id, prereg_sha256: sha256, created_at: now, cells: prereg.cells, trials: ordered, cost_ceiling_usd: ceiling, per_cell_ceiling_usd: perCell, spend_cap_usd: prereg.spend_cap_usd, trial_hours_at_cap: +hours.toFixed(1), ...(prereg.order ? { order: prereg.order } : {}), ...(prereg.gbrain_commit ? { gbrain_commit: prereg.gbrain_commit } : {}), ...(prereg.gbrain_surface_tools ? { gbrain_surface_tools: prereg.gbrain_surface_tools } : {}) };
+  const cellOrder = prereg.cells.map((c) => c.id);
+  const ordered = !prereg.order ? trials
+    : prereg.order.blocks ? prereg.order.blocks.flatMap((b) => interleaveTrials(trials.filter((t) => b.cells.includes(t.cell)), cellOrder, prereg.order!.seed))
+    : interleaveTrials(trials, cellOrder, prereg.order.seed);
+  return { schema_version: 1, run_id: prereg.run_id, prereg_sha256: sha256, created_at: now, cells: prereg.cells, trials: ordered, cost_ceiling_usd: ceiling, per_cell_ceiling_usd: perCell, spend_cap_usd: prereg.spend_cap_usd, trial_hours_at_cap: +hours.toFixed(1), ...(prereg.order ? { order: prereg.order } : {}), ...(prereg.gbrain_commit ? { gbrain_commit: prereg.gbrain_commit } : {}), ...(prereg.gbrain_surface_tools ? { gbrain_surface_tools: prereg.gbrain_surface_tools } : {}), ...requestSetsOf(prereg.cells) };
 }
 
 /** internal-task (H10): the interleave-task order. For each repetition in ascending order, the tasks (sorted, then shuffled) and within
@@ -644,7 +736,8 @@ export function renderPlan(m: Manifest): string {
     ];
     lines.push(`GBRAIN: cells ${cs.map((c) => c.id).join(', ')} run with a gbrain sidecar per trial (image ${DEFAULT_GBRAIN_IMAGE} unless --gbrain-image; ${label}: ${words.join('; ')}; docs/gbrain-arm.md)`);
   }
-  if (m.order) lines.push(`ORDER: ${m.order.kind} seed=${m.order.seed}: trials run repetition by repetition, tasks in a seeded order and each task's cells in a seeded order; --resume and --cells keep it`);
+  if (m.order) lines.push(`ORDER: ${m.order.kind} seed=${m.order.seed}: trials run repetition by repetition, tasks in a seeded order and each task's cells in a seeded order${m.order.blocks ? ', block by block' : ''}; --resume and --cells keep it`);
+  for (const [i, b] of (m.order?.blocks ?? []).entries()) lines.push(`ORDER-BLOCK: ${i + 1} ${b.name} trials=${m.trials.filter((t) => b.cells.includes(t.cell)).length} cells=${b.cells.join(',')}`);
   for (const c of m.cells.filter(isQmMemoryProvider)) {
     const block = memoryProviderWiring({ mcpUrl: '<world /gbrain tap>', actor: '<the bot>', secret: '<per trial>' }).provider;
     const { clients, tokens, ...tap } = block;

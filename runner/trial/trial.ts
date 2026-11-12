@@ -19,7 +19,7 @@
 // and after the meter is read the trial's receipts are copied to <trial dir>/ablation.ndjson and summarized into the
 // record's ablation field. The filter's outcome never changes the termination: the primary analysis is intention to treat.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { GradeResult, HarnessMode, Termination, TrialAblation, TrialEvidence, TrialEmbeddingUsage, TrialGbrain, TrialGbrainEvents, TrialGbrainInstall, TrialRecord, TrialUsage, TurnWindow } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
@@ -33,6 +33,7 @@ import { GBRAIN_WRITE_TOOLS, type GbrainUpstream } from '../../world/services/gb
 import { isQmMemoryProvider, memoryProviderWiring, type QmProviderBlock, type QmProviderWiring } from '../../harnesses/qm/memory-provider.ts';
 import { canReadFile } from '../grade/predicates.ts';
 import { HarnessGone, type Harness, makeTrialDirs, startProcessHarness, writeAtomic } from './harness.ts';
+import type { SlotLimits } from '../proxy/metering-proxy.ts';
 import { RunProxy, embeddingUsage, reconcile, summarizeAblation, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
 import { wireOfModel } from '../proxy/ablate.ts';
 import { loadTask, type TaskSpec } from './task.ts';
@@ -106,6 +107,10 @@ export interface TrialOptions {
   /** Capture mode: the in-container harness's DNS server (docker run --dns); compose and process harnesses ignore it. */
   captureDns?: string;
   repoRoot?: string;
+  /** internal-task Phase B (runner/trial/skill-requests.ts): the trial slot's request cap and in-memory request collection. Absent, the bind is as before. */
+  slotLimits?: SlotLimits;
+  /** internal-task set T on the serve entry (runner/trial/set-t.ts): a directory copied into the trial's workspace before the harness starts. Absent, the workspace starts empty as before. */
+  seedWorkspace?: string;
   /** The run's internal network, which executeRun creates when a cell has network "internal". */
   network?: InternalNetwork;
 }
@@ -194,6 +199,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   // A rerun (--resume after an interruption) starts from an empty trial directory: events.jsonl, turns and logs are never appended to twice.
   if (existsSync(ctx.trialDir)) for (const e of readdirSync(ctx.trialDir)) rmSync(join(ctx.trialDir, e), { recursive: true, force: true });
   const dirs = makeTrialDirs(ctx.trialDir);
+  if (opts.seedWorkspace) cpSync(opts.seedWorkspace, dirs.workspace, { recursive: true });
   const task: TaskSpec = loadTask(trial.task_dir ?? taskDirFor(cell, trial.task));
   const mode: HarnessMode = cell.harness_mode === 'scripted' ? 'scripted' : opts.harnessMode;
   const docker = mode === 'docker';
@@ -306,7 +312,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
 
   try {
     // The harness slot is bound inside the cleanup try, so nothing thrown from here on can leave a live token behind.
-    if (proxy) await proxy.bind(slot, key, token, cellModels(cell), cell.ablation ? { ...cell.ablation, map: resolve(opts.repoRoot ?? '.', cell.ablation.map), ...(cell.utility_models ? { utility_models: cell.utility_models } : {}) } : undefined, cellRoute(cell) !== null);
+    if (proxy) await proxy.bind(slot, key, token, cellModels(cell), cell.ablation ? { ...cell.ablation, map: resolve(opts.repoRoot ?? '.', cell.ablation.map), ...(cell.utility_models ? { utility_models: cell.utility_models } : {}) } : undefined, cellRoute(cell) !== null, opts.slotLimits);
     writeFileSync(paths.turns!, '');
     try {
       if (infraError) throw new HarnessGone(null, infraError);

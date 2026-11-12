@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bean Runner checkout: one-tap sheet</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.5; }
+button { font: inherit; cursor: pointer; }
+body { background: #2b2420; color: #f7efe6; min-height: 100vh; display: flex; align-items: flex-end; justify-content: center; }
+.sheet { background: #f7efe6; color: #2b2420; width: 420px; border-radius: 20px 20px 0 0; padding: 28px; }
+.head { display: flex; justify-content: space-between; align-items: baseline; }
+.price { font-size: 26px; font-weight: 700; }
+details { margin: 16px 0; }
+summary { cursor: pointer; }
+.opts button { border: 0; background: #e8dccd; padding: 6px 12px; border-radius: 999px; margin: 8px 6px 0 0; }
+.opts button.on, .opts button:hover { background: #2b2420; color: #f7efe6; }
+#pay { width: 100%; padding: 16px; border: 0; border-radius: 999px; background: #c8553d; color: #fff; font-size: 17px; }
+#done { text-align: center; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="head"><strong>Ethiopia Guji, whole bean</strong><span class="price">EUR 14.50</span></div>
+  <p>Every <span id="freq">2 weeks</span>, free delivery, card ending 4242</p>
+  <details><summary>Change</summary><div class="opts"><button data-freq="2 weeks" class="on">2 weeks</button><button data-freq="4 weeks">4 weeks</button></div></details>
+  <button id="pay">Pay with card ending 4242</button>
+  <p id="done" hidden>Done. See you in two weeks.</p>
+</div>
+<script>
+document.querySelectorAll('[data-freq]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    document.querySelectorAll('[data-freq]').forEach(function (x) { x.classList.remove('on'); });
+    b.classList.add('on');
+    document.getElementById('freq').textContent = b.dataset.freq;
+  });
+});
+document.getElementById('pay').addEventListener('click', function () {
+  document.getElementById('done').hidden = false;
+});
+</script>
+</body>
+</html>

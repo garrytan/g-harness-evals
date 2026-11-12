@@ -1,0 +1,72 @@
+{
+ "id": "t15-invoice-export-decision",
+ "target": {
+  "name": "one-three-one-rule",
+  "pack": "hermes",
+  "skill_md_sha256": "31ae7d7c5fc127d7f49d3282c3f93e3e3c3afa295f9bbd6660cc88ca9248248b"
+ },
+ "request": "Our nightly invoice export (a cron job on one VM) silently failed twice this month; the details are in notes/incident.md. Priya and the ops folks have to agree on how we fix it. Write up the choice for them in decision.md so I can forward it as is.",
+ "skill_step": "The skill fixes the brief's shape: one Problem sentence, exactly three options labelled A, B and C with pros and cons, one Recommendation, then a Definition of Done and an Implementation Plan for the recommended option, in that order.",
+ "used_it": [
+  "order",
+  "three-options"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "decision.md",
+   "why": "the write-up is where the request asked for it"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "decision.md",
+   "pattern": "invoice",
+   "flags": "i",
+   "why": "the write-up is about the incident in notes/incident.md"
+  },
+  {
+   "id": "order",
+   "kind": "order",
+   "path": "decision.md",
+   "flags": "im",
+   "patterns": [
+    "^\\W*problem\\b",
+    "^\\W*option a\\b",
+    "^\\W*option b\\b",
+    "^\\W*option c\\b",
+    "^\\W*recommendation\\b",
+    "^\\W*definition of done\\b",
+    "^\\W*implementation plan\\b"
+   ],
+   "why": "the skill's section order: Problem, Options A to C, Recommendation, Definition of Done, Implementation Plan",
+   "markers": [
+    "definition of done",
+    "implementation plan",
+    "1-3-1",
+    "option a"
+   ]
+  },
+  {
+   "id": "three-options",
+   "kind": "regex",
+   "path": "decision.md",
+   "flags": "im",
+   "pattern": "^\\W*option [a-z]\\b",
+   "min": 3,
+   "max": 3,
+   "why": "exactly three options, each opening its own line",
+   "markers": [
+    "three options",
+    "3 options"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0714,
+  "body_coverage": 0.2273,
+  "bin": "mid"
+ }
+}

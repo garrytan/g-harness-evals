@@ -1,0 +1,75 @@
+{
+ "id": "t11-rival-pricing-brief",
+ "target": {
+  "name": "grounded-citations",
+  "pack": "hermes",
+  "skill_md_sha256": "19fba3a4ceedf768af6851e094b268a66b62af750d4d0689c5d62d5d50c032b6"
+ },
+ "request": "Sales needs a one-page brief on what Brightwell changed in their pricing this month, built from the articles saved in clippings/. Write it to brief.md; it gets forwarded to prospects, so every figure has to be traceable to where it came from.",
+ "skill_step": "Claims get inline numbered ids placed right after the sentence with no space ('...month.[1][2]'), ending in a Sources list, and a load-bearing claim with no source is kept but flagged with the literal marker '[unverified]' instead of a citation.",
+ "used_it": [
+  "inline-ids",
+  "unverified"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "brief.md",
+   "why": "the brief is where the request asked for it"
+  },
+  {
+   "id": "starter-price",
+   "kind": "regex",
+   "path": "brief.md",
+   "pattern": "\\$49",
+   "why": "it reports the new Starter price"
+  },
+  {
+   "id": "grandfathering",
+   "kind": "regex",
+   "path": "brief.md",
+   "pattern": "2027",
+   "why": "it reports when existing customers move"
+  },
+  {
+   "id": "sources-list",
+   "kind": "regex",
+   "path": "brief.md",
+   "pattern": "^#*\\s*sources\\b",
+   "flags": "im",
+   "why": "it lists where the figures came from"
+  },
+  {
+   "id": "inline-ids",
+   "kind": "regex",
+   "path": "brief.md",
+   "pattern": "[^\\s\\[\\]]\\[\\d{1,2}\\](?!\\()",
+   "min": 5,
+   "why": "sentences carry inline numbered citations right after the text, Perplexity-style",
+   "markers": [
+    "[1]",
+    "inline numbered",
+    "numbered citation"
+   ]
+  },
+  {
+   "id": "unverified",
+   "kind": "regex",
+   "path": "brief.md",
+   "pattern": "\\[unverified\\]",
+   "flags": "i",
+   "why": "the unsourced podcast figure is flagged with the skill's [unverified] marker",
+   "markers": [
+    "[unverified]",
+    "unverified"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0,
+  "body_coverage": 0.4545,
+  "bin": "none"
+ }
+}

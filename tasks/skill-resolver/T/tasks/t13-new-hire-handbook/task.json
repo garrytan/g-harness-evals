@@ -1,0 +1,96 @@
+{
+ "id": "t13-new-hire-handbook",
+ "target": {
+  "name": "code-wiki",
+  "pack": "hermes",
+  "skill_md_sha256": "5d3e5b93dfd188483f45e75f00a7d4f16d044681f41c36b785aae900c7397576"
+ },
+ "request": "Two new hires start on shipq on Monday. Write up reference material for the code into handbook/ (fine to commit it to the repo), with handbook/README.md as the front page.",
+ "skill_step": "The skill writes a fixed file set: README.md, architecture.md, getting-started.md, one page per module under modules/, diagrams/class-diagram.md (Mermaid classDiagram), diagrams/sequences.md (Mermaid sequenceDiagram, 2 to 4 workflows) and a .codewiki-state.json state file listing modules_documented.",
+ "used_it": [
+  "state-file",
+  "class-diagram",
+  "sequences",
+  "module-pages"
+ ],
+ "checks": [
+  {
+   "id": "front",
+   "kind": "exists",
+   "path": "handbook/README.md",
+   "why": "the front page is where the request asked for it"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "handbook/README.md",
+   "pattern": "shipq",
+   "flags": "i",
+   "why": "it documents shipq"
+  },
+  {
+   "id": "worker",
+   "kind": "regex",
+   "glob": "handbook/**/*.md",
+   "pattern": "Worker",
+   "why": "the docs cover the worker, a core component"
+  },
+  {
+   "id": "state-file",
+   "kind": "json",
+   "path": "handbook/.codewiki-state.json",
+   "pointer": "/modules_documented",
+   "min_items": 1,
+   "why": "the skill's state file records which modules were documented",
+   "markers": [
+    ".codewiki-state.json",
+    "codewiki",
+    "state file"
+   ]
+  },
+  {
+   "id": "class-diagram",
+   "kind": "regex",
+   "path": "handbook/diagrams/class-diagram.md",
+   "pattern": "^\\s*classDiagram",
+   "flags": "m",
+   "why": "diagrams/class-diagram.md holds a Mermaid class diagram",
+   "markers": [
+    "class-diagram",
+    "class diagram",
+    "classdiagram"
+   ]
+  },
+  {
+   "id": "sequences",
+   "kind": "regex",
+   "path": "handbook/diagrams/sequences.md",
+   "pattern": "^\\s*sequenceDiagram",
+   "flags": "m",
+   "min": 2,
+   "why": "diagrams/sequences.md holds Mermaid sequence diagrams for at least two workflows",
+   "markers": [
+    "sequences.md",
+    "sequence diagram",
+    "sequencediagram"
+   ]
+  },
+  {
+   "id": "module-pages",
+   "kind": "exists",
+   "glob": "handbook/modules/*.md",
+   "min": 3,
+   "why": "each module gets its own page under modules/",
+   "markers": [
+    "modules/",
+    "per-module"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0417,
+  "body_coverage": 0.3529,
+  "bin": "low"
+ }
+}

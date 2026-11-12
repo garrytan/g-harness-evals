@@ -1,0 +1,95 @@
+{
+ "id": "t44-tiler-bug-handoffs",
+ "target": {
+  "name": "gh-issues",
+  "pack": "openclaw",
+  "skill_md_sha256": "e7a64973e186211725e18a45d076803abc07915e348fd94691e7acaea367d54a"
+ },
+ "request": "issues.json and open-prs.json are exports from acme/tiler. For every bug in there that nobody has picked up and that has no PR yet, write instructions another agent can follow on its own to fix it and open the pull request, one file per issue at handoffs/<issue number>.md.",
+ "skill_step": "The skill's worker instructions put each fix on a branch named fix/issue-<n> and require a PR body with What Problem This Solves, Why This Change Was Made, User Impact, Evidence and a visible Fixes SOURCE_REPO#<n> line, in that order.",
+ "used_it": [
+  "branch",
+  "pr-body"
+ ],
+ "checks": [
+  {
+   "id": "h112",
+   "kind": "exists",
+   "path": "handoffs/112.md",
+   "why": "unassigned bug with no PR gets a hand-off"
+  },
+  {
+   "id": "h125",
+   "kind": "exists",
+   "path": "handoffs/125.md",
+   "why": "unassigned bug with no PR gets a hand-off"
+  },
+  {
+   "id": "skip118",
+   "kind": "exists",
+   "glob": "handoffs/118.md",
+   "min": 0,
+   "max": 0,
+   "why": "the bug with an open PR is skipped"
+  },
+  {
+   "id": "skip121",
+   "kind": "exists",
+   "glob": "handoffs/121.md",
+   "min": 0,
+   "max": 0,
+   "why": "the assigned bug is skipped"
+  },
+  {
+   "id": "skip115",
+   "kind": "exists",
+   "glob": "handoffs/115.md",
+   "min": 0,
+   "max": 0,
+   "why": "the enhancement is not a bug"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "handoffs/112.md",
+   "pattern": "seam",
+   "flags": "i",
+   "why": "the hand-off for 112 is about the seam bug"
+  },
+  {
+   "id": "branch",
+   "kind": "regex",
+   "path": "handoffs/112.md",
+   "pattern": "fix/issue-112\\b",
+   "why": "the skill's branch name pattern fix/issue-<n>",
+   "markers": [
+    "fix/issue-"
+   ]
+  },
+  {
+   "id": "pr-body",
+   "kind": "order",
+   "path": "handoffs/112.md",
+   "flags": "im",
+   "patterns": [
+    "^\\W*what problem this solves\\b",
+    "^\\W*why this change was made\\b",
+    "^\\W*user impact\\b",
+    "^\\W*evidence\\b",
+    "\\bfixes\\s+acme/tiler#112\\b"
+   ],
+   "why": "the skill's PR body sections in order, ending with the visible Fixes line",
+   "markers": [
+    "what problem this solves",
+    "why this change was made",
+    "user impact"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.1026,
+  "body_coverage": 0.4643,
+  "bin": "mid"
+ }
+}

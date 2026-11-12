@@ -1,0 +1,80 @@
+{
+ "id": "t33-orders-export-ticket",
+ "target": {
+  "name": "spec",
+  "pack": "gstack",
+  "skill_md_sha256": "00982f096f9050a5dfdacf9fee8dc300648966e9b0da8c3eed74c06be1ff9ea2"
+ },
+ "request": "Turn the CSV export timeouts from notes/slack-thread.md into a ticket another agent can pick up and finish without coming back with questions. Save it as tickets/orders-export-timeout.md; I'm offline today, so don't wait on me.",
+ "skill_step": "The skill's standard issue template includes a `## Rules for the implementing agent` section, acceptance criteria written as `protects / fails_when / no_claim` test cards, and a `## Files Reference` table.",
+ "used_it": [
+  "implementer-rules",
+  "test-cards",
+  "files-reference"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "tickets/orders-export-timeout.md",
+   "why": "the ticket is where the request asked for it"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "tickets/orders-export-timeout.md",
+   "pattern": "orders_csv|export_orders_csv",
+   "why": "it is about the export code from the thread"
+  },
+  {
+   "id": "criteria",
+   "kind": "regex",
+   "path": "tickets/orders-export-timeout.md",
+   "pattern": "acceptance criteria",
+   "flags": "i",
+   "why": "a pick-up-ready ticket says when it is done"
+  },
+  {
+   "id": "implementer-rules",
+   "kind": "regex",
+   "path": "tickets/orders-export-timeout.md",
+   "pattern": "^#{1,6}\\s*rules for the implementing agent\\b",
+   "flags": "im",
+   "why": "the skill's section of rules for the agent that implements the issue",
+   "markers": [
+    "Rules for the implementing agent",
+    "implementing agent"
+   ]
+  },
+  {
+   "id": "test-cards",
+   "kind": "regex",
+   "path": "tickets/orders-export-timeout.md",
+   "pattern": "protects\\s*=[^\\n]*fails_when\\s*=",
+   "flags": "i",
+   "why": "the skill's protects / fails_when / no_claim card on each acceptance criterion",
+   "markers": [
+    "protects=",
+    "fails_when",
+    "no_claim"
+   ]
+  },
+  {
+   "id": "files-reference",
+   "kind": "regex",
+   "path": "tickets/orders-export-timeout.md",
+   "pattern": "^#{1,6}\\s*files? reference\\b",
+   "flags": "im",
+   "why": "the skill's Files Reference table",
+   "markers": [
+    "Files Reference"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0313,
+  "body_coverage": 0.5417,
+  "bin": "low"
+ }
+}

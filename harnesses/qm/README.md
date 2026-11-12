@@ -105,6 +105,20 @@ Core runs with `NODE_ENV=development`.
 
 Not done: the `admin` and `web-ui` services, Slack, the egress proxy, and the model gateway (`MODEL_GATEWAY_URL` wants LiteLLM-style `/v1/models` and `/model_group/info` discovery, which the metering proxy does not serve; the direct `ANTHROPIC_BASE_URL` override works instead). QM's MCP connector registration is done in `serve` (above). The per-trial `CREATE DATABASE trial_x TEMPLATE qm_seed` reset from the plan is replaced by a fresh Postgres container per trial, which is slower (about 10 s to healthy plus migrations) but equivalent for isolation.
 
+## Skill-resolver arms (internal-task)
+
+**What they are:** four opt-in configs, `pi-skills-native`, `pi-skills-push` ("emulated hook"), `pi-skills-pull` ("pull via sandbox tool (QM refuses private-address MCP)") and `pi-skills-none`, on images built by `scripts/skill-resolver/step0/qm/arms/Dockerfile.arms` (`pin.json` `configs`; `prepare.sh` refuses a config on the wrong image). Every other config is unchanged.
+
+- **Run entry only.** `serve` cannot register the world MCP server at this pin (above), so `adapter.sh` refuses the skill configs there. On the run entry `instruction.md` is the member's own request, with no runner preamble, so it is what the resolver ranks; a run is one turn, so no `previous_user_message` goes along.
+- **One resolver for five harnesses.** The images carry the same resolver as the four push harnesses' kit (today the stand-in `scripts/skill-resolver/gbrain-stub.ts`, compiled for the Alpine core and the Debian sandbox) and an index built inside each image at `/opt/skill-resolver/gbrain-home`. `harnesses/qm/skill-resolver.mjs` calls it with the hook wrapper's command line and input, reads the result through `RESULT_FIELDS` (`scripts/skill-resolver/result-fields.ts`), and writes `$HE_LOG_DIR/skill-resolver/status.ndjson` with the hook wrapper's field names (`k`, `block_reason`, `budget_phase`, `budget_exhausted`, `no_skill_reason`, `session_block_tokens` and the rest; [ARMS.md](../../scripts/skill-resolver/ARMS.md), "Per-turn status"), `results.ndjson`, and `infra.json` when a turn is INFRA.
+- **Shadow replay:** `harnesses/qm/shadow-replay.sh [--until-exhausted]` runs the shared `scripts/skill-resolver/shadow-replay-check.ts` with `--gbrain` pointing at a wrapper that runs the arm image's own `gbrain` in one container with no network (`QM_IMAGE`, default `harness-eval/qm:harn52-arm-catalog`).
+- **Keyless check:** `env -i PATH=$PATH HOME=$HOME bun scripts/skill-resolver/step0/qm/arms/qm-arms-check.ts` builds the images and runs every arm against the fakes.
+
+**Graded workspaces: `.agent-skills/` is not task output.** When the model reads a skill with QM's `skills` tool, QM syncs the skill's files into the sandbox at `/root/workspace/.agent-skills/<session>/<hash>/<name>/` (`SKILLS_ROOT`, `src/core/orchestrator/sandboxes.ts:227-228`, `src/skills/materialize.ts` at `90e4ced7`). `capture.sh` copies all of `/root/workspace`, so on the native, emulated hook and pull arms the graded trial workspace holds these trees under `.agent-skills/` at its root.
+
+- **Excluded from set T grading:** every path under `.agent-skills/` at the workspace root. A skill tree there is QM's copy of a catalog skill, never something the agent wrote.
+- **No set T check can match it today:** every check names a path, or a glob under a task directory such as `kb/**/*.md`. But `scripts/skill-resolver/check-set-t.ts` scans globs with `dot: true`, so a root-level glob added later (`**/*.md`, `**/SKILL.md`) would count these files. Such a check has to exclude `.agent-skills/` first.
+
 ## Re-pin to main 90e4ced7 (2026-11-06, internal-task pilot amendment)
 
 **The S1 edition driver runs at `90e4ced7`; the adapter's `serve` entry does not.** The pilot amendment of [qm-s1-edition](../../docs/benchmarks/2026-11-06-qm-s1-edition/PREREGISTRATION.md#amendments) pins the newest QM main, 265 commits after `b6786d67`.

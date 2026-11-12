@@ -1,0 +1,69 @@
+{
+ "id": "t16-contractor-account-onboarding",
+ "target": {
+  "name": "setup-wizard-generator",
+  "pack": "hermes",
+  "skill_md_sha256": "987c638600e6ba05cd91a1c5bd8a771980f5e2a83844d7ea7329ad222717b5f5"
+ },
+ "request": "Every new contractor on parcel-pulse burns an hour getting the Postmark and Sentry values into their .env and into the repo's Actions secrets. Write scripts/onboard-accounts.sh, a script they run once that walks them through it screen by screen.",
+ "skill_step": "The skill says to copy its templates/template.sh library unchanged, author only below the STAGES marker with one stage per manual step, set TOTAL_STAGES, and use its helpers (ask_secret for secrets, write_env, set_secret only for CI-referenced secrets).",
+ "used_it": [
+  "template-library",
+  "stage-count"
+ ],
+ "checks": [
+  {
+   "id": "script",
+   "kind": "exists",
+   "path": "scripts/onboard-accounts.sh",
+   "why": "the script is where the request asked for it"
+  },
+  {
+   "id": "postmark",
+   "kind": "regex",
+   "path": "scripts/onboard-accounts.sh",
+   "pattern": "POSTMARK_SERVER_TOKEN",
+   "why": "it captures the Postmark token from .env.example"
+  },
+  {
+   "id": "sentry",
+   "kind": "regex",
+   "path": "scripts/onboard-accounts.sh",
+   "pattern": "SENTRY_DSN",
+   "why": "it captures the Sentry DSN"
+  },
+  {
+   "id": "template-library",
+   "kind": "regex",
+   "path": "scripts/onboard-accounts.sh",
+   "flags": "m",
+   "pattern": "^\\s*(ask_secret|write_env|set_secret)\\s+[A-Z_]+",
+   "min": 4,
+   "why": "the stages use the template library's helpers (ask_secret, write_env, set_secret)",
+   "markers": [
+    "ask_secret",
+    "write_env",
+    "set_secret",
+    "template.sh"
+   ]
+  },
+  {
+   "id": "stage-count",
+   "kind": "regex",
+   "path": "scripts/onboard-accounts.sh",
+   "flags": "m",
+   "pattern": "^\\s*TOTAL_STAGES=[1-9]",
+   "why": "the author sets TOTAL_STAGES below the template's STAGES marker",
+   "markers": [
+    "TOTAL_STAGES",
+    "STAGES marker"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0294,
+  "body_coverage": 0.5385,
+  "bin": "low"
+ }
+}

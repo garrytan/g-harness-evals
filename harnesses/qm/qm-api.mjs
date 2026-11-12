@@ -11,9 +11,12 @@
 //     prints {http, body} and exits 0 when core accepted and probed the server, 2 otherwise.
 //   node qm-api.mjs admin-put <core-url> <secret> <admin-actor> <path> <body.json>
 //   node qm-api.mjs admin-get <core-url> <secret> <admin-actor> <path-with-query>
+//   node qm-api.mjs admin-post <core-url> <secret> <admin-actor> <path> <body.json>
 //     Any other admin route as that principal (the probe configs set an org security posture or command policy
 //     through PUT /v1/admin/scopes/<scope>/<resource>; the notebook snapshots read GET /v1/admin/memory?scope=...).
 //     The signature covers the path with its query, as QM's canonicalPayload does. Prints {http, body}; exits 0 on 2xx.
+//     admin-post is for POST-only admin routes (set T's default sandbox: POST /v1/admin/sandboxes/<scope> with action
+//     create, then action default).
 //   node qm-api.mjs post <core-url> <secret> <path> <body.json>
 //     A source-authenticated POST with no admin actor (the directory push, POST /v1/directory). Prints {http, body};
 //     exits 0 on 2xx.
@@ -24,7 +27,7 @@ const [mode, coreUrl, secret, ...rest] = process.argv.slice(2);
 if (!mode || !coreUrl || !secret) usage();
 
 function usage() {
-  console.error('usage: qm-api.mjs turn <core-url> <secret> <job.json> [timeout-s] | mcp-register <core-url> <secret> <admin-actor> <id> <server.json> | admin-put <core-url> <secret> <admin-actor> <path> <body.json> | admin-get <core-url> <secret> <admin-actor> <path> | post <core-url> <secret> <path> <body.json>');
+  console.error('usage: qm-api.mjs turn <core-url> <secret> <job.json> [timeout-s] | mcp-register <core-url> <secret> <admin-actor> <id> <server.json> | admin-put <core-url> <secret> <admin-actor> <path> <body.json> | admin-get <core-url> <secret> <admin-actor> <path> | admin-post <core-url> <secret> <admin-actor> <path> <body.json> | post <core-url> <secret> <path> <body.json>');
   process.exit(64);
 }
 function safeJson(s) { try { return JSON.parse(s); } catch { return s; } }
@@ -70,12 +73,12 @@ if (mode === 'turn') {
   process.exit(2);
 }
 
-if (mode === 'admin-put' || mode === 'admin-get') {
+if (mode === 'admin-put' || mode === 'admin-post' || mode === 'admin-get') {
   const [adminActor, path, bodyPath] = rest;
-  if (!adminActor || !path || (mode === 'admin-put' && !bodyPath)) usage();
-  const out = mode === 'admin-put'
-    ? await signed('PUT', path, readFileSync(bodyPath, 'utf8'), { 'x-admin-actor': adminActor }, 60)
-    : await signed('GET', path, '', { 'x-admin-actor': adminActor }, 60);
+  if (!adminActor || !path || (mode !== 'admin-get' && !bodyPath)) usage();
+  const out = mode === 'admin-get'
+    ? await signed('GET', path, '', { 'x-admin-actor': adminActor }, 60)
+    : await signed(mode === 'admin-put' ? 'PUT' : 'POST', path, readFileSync(bodyPath, 'utf8'), { 'x-admin-actor': adminActor }, 120);
   console.log(JSON.stringify(out));
   process.exit(out.http >= 200 && out.http < 300 ? 0 : 2);
 }

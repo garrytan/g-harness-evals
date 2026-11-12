@@ -1,0 +1,57 @@
+{
+ "id": "t17-friday-week-reset",
+ "target": {
+  "name": "weekly-review-planning",
+  "pack": "hermes",
+  "skill_md_sha256": "a689257facb937cfca9bc5507dd9e729f287f0cd3f6abbf73448eb25f73fbaab"
+ },
+ "request": "It's Friday. Everything from this week is in notes/week-45.md: calendar, my task list, the inbox dump. Go through it and write review.md telling me what got done, what's slipping, and what I should actually commit to next week.",
+ "skill_step": "The skill's Output Shape fixes seven sections in order: wins and completed commitments, overdue or at risk, waiting/follow-ups, stalled or ambiguous projects, next week's outcomes and calendar constraints, proposed updates awaiting approval, and coverage gaps.",
+ "used_it": [
+  "output-shape"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "review.md",
+   "why": "the review is where the request asked for it"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "review.md",
+   "flags": "i",
+   "pattern": "halvorsen[\\s\\S]*fernhill|fernhill[\\s\\S]*halvorsen",
+   "why": "the review covers the week in notes/week-45.md"
+  },
+  {
+   "id": "output-shape",
+   "kind": "order",
+   "path": "review.md",
+   "flags": "im",
+   "patterns": [
+    "^[^a-z\\n]*wins\\b",
+    "^[^a-z\\n]*overdue\\b",
+    "^[^a-z\\n]*waiting\\b",
+    "^[^a-z\\n]*stalled\\b",
+    "^[^a-z\\n]*next week",
+    "^[^a-z\\n]*proposed updates\\b",
+    "^[^a-z\\n]*coverage gaps\\b"
+   ],
+   "why": "the skill's seven output sections, in its order",
+   "markers": [
+    "coverage gaps",
+    "proposed updates",
+    "wins and completed",
+    "stalled or ambiguous"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.1154,
+  "body_coverage": 0.5263,
+  "bin": "mid"
+ }
+}

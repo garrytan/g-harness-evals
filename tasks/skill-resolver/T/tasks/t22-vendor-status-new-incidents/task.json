@@ -1,0 +1,57 @@
+{
+ "id": "t22-vendor-status-new-incidents",
+ "target": {
+  "name": "watchers",
+  "pack": "hermes",
+  "skill_md_sha256": "29c01df1882d6e15c36a4c0af5a854a3c4fab5cf1c6657c02a0979315e8c606a"
+ },
+ "request": "Our vendor's status API (https://status.fernlane.io/api/v2/incidents.json, sample response in samples/incidents.json) lists every incident ever. I want a cron job that tells me only about incidents I haven't seen before; put the command it runs in ops/poll-fernlane.sh.",
+ "skill_step": "The skill says to use its ready-made watch_http_json.py (state in watcher-state/<name>.json, first run is a silent baseline) with --name, --url, --id-field and --items-path pointed at the JSON list, rather than hand-rolling a seen-ids file.",
+ "used_it": [
+  "shipped-watcher",
+  "item-mapping"
+ ],
+ "checks": [
+  {
+   "id": "script",
+   "kind": "exists",
+   "path": "ops/poll-fernlane.sh",
+   "why": "the command is where the request asked for it"
+  },
+  {
+   "id": "endpoint",
+   "kind": "regex",
+   "path": "ops/poll-fernlane.sh",
+   "pattern": "status\\.fernlane\\.io/api/v2/incidents\\.json",
+   "why": "it polls the vendor's endpoint"
+  },
+  {
+   "id": "shipped-watcher",
+   "kind": "regex",
+   "path": "ops/poll-fernlane.sh",
+   "pattern": "watch_http_json\\.py",
+   "why": "it runs the skill's ready-made JSON watcher",
+   "markers": [
+    "watch_http_json",
+    "watermark"
+   ]
+  },
+  {
+   "id": "item-mapping",
+   "kind": "regex",
+   "path": "ops/poll-fernlane.sh",
+   "pattern": "--items-path[= ]+[\"']?data\\.incidents[\\s\\S]*--id-field[= ]+[\"']?incident_id|--id-field[= ]+[\"']?incident_id[\\s\\S]*--items-path[= ]+[\"']?data\\.incidents",
+   "why": "the watcher is pointed at data.incidents keyed by incident_id",
+   "markers": [
+    "--items-path",
+    "--id-field"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0588,
+  "body_coverage": 0.3571,
+  "bin": "mid"
+ }
+}

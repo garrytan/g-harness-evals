@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bean Runner checkout, option B (wide form)</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.5; }
+button { font: inherit; cursor: pointer; }
+body { background: #f6f6f4; color: #1d1d1d; padding: 40px; }
+.card { max-width: 760px; margin: 0 auto; background: #fff; border: 1px solid #e3e3e0; border-radius: 10px; padding: 28px; }
+h1 { font-size: 20px; margin-bottom: 16px; }
+.line { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+.opts button { border: 1px solid #ccc; background: #fff; padding: 6px 12px; border-radius: 6px; margin-right: 6px; }
+.opts button.on { background: #1d1d1d; color: #fff; }
+#pay { margin-top: 20px; width: 100%; padding: 12px; border: 0; border-radius: 8px; background: #3b5bdb; color: #fff; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Bean Runner: confirm your order</h1>
+  <div class="line"><span>Ethiopia Guji, 250 g, whole bean</span><span>EUR 14.50</span></div>
+  <div class="line"><span>Delivery every <span id="freq">2 weeks</span></span><span>Free</span></div>
+  <div class="opts"><button data-freq="2 weeks" class="on">2 weeks</button><button data-freq="4 weeks">4 weeks</button></div>
+  <div class="line"><span>Card ending 4242</span><a href="#">Change</a></div>
+  <button id="pay">Confirm and pay</button>
+  <p id="done" hidden>Thanks, your order is confirmed.</p>
+</div>
+<script>
+document.querySelectorAll('[data-freq]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    document.querySelectorAll('[data-freq]').forEach(function (x) { x.classList.remove('on'); });
+    b.classList.add('on');
+    document.getElementById('freq').textContent = b.dataset.freq;
+  });
+});
+document.getElementById('pay').addEventListener('click', function () {
+  document.getElementById('done').hidden = false;
+});
+</script>
+</body>
+</html>

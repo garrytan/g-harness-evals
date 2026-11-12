@@ -1,0 +1,93 @@
+{
+ "id": "t43-goroutine-leak-outside-review",
+ "target": {
+  "name": "oracle",
+  "pack": "openclaw",
+  "skill_md_sha256": "b150b967b1326bec594bf24f8bddf10aeb78b49a64c91091dcdf5fdad35402c1"
+ },
+ "request": "Our relay service leaks goroutines and I'm out of ideas (notes/leak.md, code in internal/queue/). Get it ready for a stronger model that has never seen this repo: put the question in second-opinion/prompt.md and the command that sends it along with just the relevant code in second-opinion/ask.sh, and make sure I can see what would go out and roughly how big it is before anything is sent.",
+ "skill_step": "The skill bundles the prompt and a tight file set with the oracle CLI, previews it first with --dry-run summary --files-report, and writes the prompt from its template, which includes a 'Where things live' section next to the project briefing, question, constraints and desired output.",
+ "used_it": [
+  "cli",
+  "files-report",
+  "where"
+ ],
+ "checks": [
+  {
+   "id": "prompt",
+   "kind": "exists",
+   "path": "second-opinion/prompt.md",
+   "why": "the prompt is where the request asked for it"
+  },
+  {
+   "id": "ask",
+   "kind": "exists",
+   "path": "second-opinion/ask.sh",
+   "why": "the send command is where the request asked for it"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "second-opinion/prompt.md",
+   "pattern": "goroutine",
+   "flags": "i",
+   "why": "the prompt is about the goroutine leak"
+  },
+  {
+   "id": "scoped",
+   "kind": "regex",
+   "path": "second-opinion/ask.sh",
+   "pattern": "internal/queue",
+   "why": "the command sends the queue code"
+  },
+  {
+   "id": "no-env",
+   "kind": "regex",
+   "path": "second-opinion/ask.sh",
+   "pattern": "(^|[^!*/])\\.env\\b",
+   "min": 0,
+   "max": 0,
+   "why": "the command does not attach the .env file as an input"
+  },
+  {
+   "id": "cli",
+   "kind": "regex",
+   "path": "second-opinion/ask.sh",
+   "flags": "m",
+   "pattern": "^\\s*(npx -y @steipete/)?oracle\\b",
+   "why": "the skill's tool for a one-shot second-model pass",
+   "markers": [
+    "oracle"
+   ]
+  },
+  {
+   "id": "files-report",
+   "kind": "regex",
+   "path": "second-opinion/ask.sh",
+   "pattern": "--files-report",
+   "why": "the skill's preview of payload and token spend",
+   "markers": [
+    "--files-report",
+    "files-report",
+    "dry-run"
+   ]
+  },
+  {
+   "id": "where",
+   "kind": "regex",
+   "path": "second-opinion/prompt.md",
+   "flags": "im",
+   "pattern": "^\\W*where things live\\b",
+   "why": "the skill's prompt template section on where things live",
+   "markers": [
+    "where things live"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0377,
+  "body_coverage": 0.2105,
+  "bin": "low"
+ }
+}

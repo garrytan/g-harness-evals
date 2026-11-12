@@ -1,0 +1,67 @@
+{
+ "id": "t27-npm-release-not-ours",
+ "target": {
+  "name": "oss-forensics",
+  "pack": "hermes",
+  "skill_md_sha256": "be59e5d09ac5cef311c3c3f310381a2f96c636b8f4025890f28b15ffac6160c4"
+ },
+ "request": "We think quillcache 3.2.1 on npm wasn't published by us. Everything I pulled so far is in evidence/. Work out what happened and write it up in investigation.md for the security channel.",
+ "skill_step": "The skill requires every factual claim in the report to cite an evidence ID of the form EV-XXXX from an evidence registry, and lists indicators of compromise by the fixed type names COMMIT_SHA, FILE_PATH, DOMAIN, PACKAGE_NAME, ACTOR_USERNAME, MALICIOUS_URL and so on.",
+ "used_it": [
+  "evidence-ids",
+  "ioc-types"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "investigation.md",
+   "why": "the write-up is where the request asked for it"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "investigation.md",
+   "pattern": "3\\.2\\.1",
+   "why": "it is about the 3.2.1 release"
+  },
+  {
+   "id": "domain",
+   "kind": "regex",
+   "path": "investigation.md",
+   "pattern": "quill-telemetry\\.net",
+   "why": "it identifies where the postinstall sends data"
+  },
+  {
+   "id": "evidence-ids",
+   "kind": "regex",
+   "path": "investigation.md",
+   "pattern": "\\bEV-\\d{4}\\b",
+   "min": 4,
+   "why": "claims cite evidence IDs in the skill's EV-XXXX form",
+   "markers": [
+    "EV-",
+    "evidence ID"
+   ]
+  },
+  {
+   "id": "ioc-types",
+   "kind": "regex",
+   "path": "investigation.md",
+   "pattern": "\\b(COMMIT_SHA|FILE_PATH|API_KEY|IP_ADDRESS|DOMAIN|PACKAGE_NAME|ACTOR_USERNAME|MALICIOUS_URL)\\b",
+   "min": 3,
+   "why": "indicators are typed with the skill's IOC type names",
+   "markers": [
+    "IOC",
+    "PACKAGE_NAME",
+    "MALICIOUS_URL"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0,
+  "body_coverage": 0.3125,
+  "bin": "none"
+ }
+}

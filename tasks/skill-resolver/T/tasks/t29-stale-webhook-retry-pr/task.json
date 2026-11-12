@@ -1,0 +1,67 @@
+{
+ "id": "t29-stale-webhook-retry-pr",
+ "target": {
+  "name": "modernize",
+  "pack": "gstack",
+  "skill_md_sha256": "6f114900512be92b3aefd3f3a52c93a8be10d0cb5fe1420ee305429e2a249568"
+ },
+ "request": "Dana's webhook retry PR (#218) has been sitting since June and main has moved a lot. I pulled the PR and what changed on main into pr-218/. Is it still worth landing? Put your call and reasoning in pr-218/assessment.md and don't push anything.",
+ "skill_step": "The skill gives exactly one of three dispositions, MODERNIZE, REWORK or CLOSE, and first restates the PR as three sentences: the problem, the change, and what would have to be true of the codebase for that change to be right.",
+ "used_it": [
+  "verdict",
+  "claim-triple"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "pr-218/assessment.md",
+   "why": "the assessment is where the request asked for it"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "pr-218/assessment.md",
+   "pattern": "retr(y|ies)",
+   "flags": "i",
+   "why": "it is about the retry PR"
+  },
+  {
+   "id": "read-main",
+   "kind": "regex",
+   "path": "pr-218/assessment.md",
+   "pattern": "send_once",
+   "why": "it accounts for the rename on main listed in main-since.md"
+  },
+  {
+   "id": "verdict",
+   "kind": "regex",
+   "path": "pr-218/assessment.md",
+   "pattern": "\\b(MODERNIZE|REWORK|CLOSE)\\b",
+   "why": "the skill's fixed disposition vocabulary, in its own capitals",
+   "markers": [
+    "MODERNIZE",
+    "REWORK",
+    "disposition"
+   ]
+  },
+  {
+   "id": "claim-triple",
+   "kind": "regex",
+   "path": "pr-218/assessment.md",
+   "pattern": "(would|must|has to|have to|needs? to)\\s+(still\\s+)?(have to\\s+)?(be|hold)\\s+true",
+   "flags": "i",
+   "why": "the third of the skill's three claim sentences: what would have to be true of the codebase",
+   "markers": [
+    "would have to be true",
+    "three sentences"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0,
+  "body_coverage": 0.4167,
+  "bin": "none"
+ }
+}

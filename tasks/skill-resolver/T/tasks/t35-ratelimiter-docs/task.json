@@ -1,0 +1,84 @@
+{
+ "id": "t35-ratelimiter-docs",
+ "target": {
+  "name": "document-generate",
+  "pack": "gstack",
+  "skill_md_sha256": "5c549b6d216d58b9060b640b98888232904eae57956c335b3a0cdc257f2b9648"
+ },
+ "request": "The rate limiter in src/ratelimit/ has no docs at all and people keep misconfiguring it (see notes/support-tickets.md). Put proper docs for it under docs/ and link them from the README.",
+ "skill_step": "The skill partitions docs by Diataxis quadrant and writes each as its own file named by quadrant (docs/reference-<topic>.md, docs/explanation-<topic>.md, docs/howto-..., docs/tutorial-...); an internal module gets Reference and Explanation, and an explanation doc has The problem, The approach, Trade-offs and Alternatives considered.",
+ "used_it": [
+  "reference-file",
+  "explanation-file",
+  "explanation-sections"
+ ],
+ "checks": [
+  {
+   "id": "docs",
+   "kind": "exists",
+   "glob": "docs/**/*.md",
+   "min": 1,
+   "why": "docs exist under docs/"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "glob": "docs/**/*.md",
+   "pattern": "TokenBucket",
+   "why": "the docs are about the rate limiter"
+  },
+  {
+   "id": "burst",
+   "kind": "regex",
+   "glob": "docs/**/*.md",
+   "pattern": "burst",
+   "why": "the docs cover the option people misconfigure"
+  },
+  {
+   "id": "linked",
+   "kind": "regex",
+   "path": "README.md",
+   "pattern": "\\]\\(\\.?/?docs/",
+   "why": "the README links the docs"
+  },
+  {
+   "id": "reference-file",
+   "kind": "exists",
+   "glob": "docs/**/reference-*.md",
+   "min": 1,
+   "why": "the skill names a reference doc by its quadrant",
+   "markers": [
+    "reference-",
+    "Diataxis"
+   ]
+  },
+  {
+   "id": "explanation-file",
+   "kind": "exists",
+   "glob": "docs/**/explanation-*.md",
+   "min": 1,
+   "why": "the skill names an explanation doc by its quadrant",
+   "markers": [
+    "explanation-",
+    "quadrant"
+   ]
+  },
+  {
+   "id": "explanation-sections",
+   "kind": "regex",
+   "glob": "docs/**/explanation-*.md",
+   "pattern": "^#{1,6}\\s*alternatives considered\\b",
+   "flags": "im",
+   "why": "the skill's explanation template ends with Alternatives considered",
+   "markers": [
+    "Alternatives considered"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0,
+  "body_coverage": 0.3684,
+  "bin": "none"
+ }
+}

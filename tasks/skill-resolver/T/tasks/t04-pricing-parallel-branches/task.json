@@ -1,0 +1,84 @@
+{
+ "id": "t04-pricing-parallel-branches",
+ "target": {
+  "name": "agent-merge-conflict-arbiter",
+  "pack": "hermes",
+  "skill_md_sha256": "f8b1a0cf2392a1da0d3890e1ebc6429b1edb83a8f076e104b8f7c8cb7465d1be"
+ },
+ "request": "Two of our AI coders changed pricing at the same time and git stopped halfway, leaving both versions in src/pricing.py; what each one was going for is in notes/. Settle it in the file and write up what you kept and why in pricing-decisions.md.",
+ "skill_step": "Every conflicted hunk gets exactly one class from the skill's table (disjoint-intent, same-question-different-answer, superseded), and the hand-back lists each hunk as file:lines, class, side kept and rationale, naming the design question for every same-question-different-answer pick.",
+ "used_it": [
+  "design-class",
+  "disjoint-class"
+ ],
+ "checks": [
+  {
+   "id": "no-markers",
+   "kind": "regex",
+   "path": "src/pricing.py",
+   "pattern": "^(<{7}|={7}|>{7})",
+   "flags": "m",
+   "min": 0,
+   "max": 0,
+   "why": "the conflict is resolved and the file still exists"
+  },
+  {
+   "id": "coupon-kept",
+   "kind": "regex",
+   "path": "src/pricing.py",
+   "pattern": "def apply_coupon",
+   "why": "side A's coupon survives the merge"
+  },
+  {
+   "id": "vat-kept",
+   "kind": "regex",
+   "path": "src/pricing.py",
+   "pattern": "def add_vat",
+   "why": "side B's VAT survives the merge"
+  },
+  {
+   "id": "notes",
+   "kind": "exists",
+   "path": "pricing-decisions.md",
+   "why": "the write-up is where the request asked for it"
+  },
+  {
+   "id": "notes-rounding",
+   "kind": "regex",
+   "path": "pricing-decisions.md",
+   "pattern": "round",
+   "flags": "i",
+   "why": "the write-up covers the rounding clash"
+  },
+  {
+   "id": "design-class",
+   "kind": "regex",
+   "path": "pricing-decisions.md",
+   "pattern": "same[- ]question[- ]different[- ]answer",
+   "flags": "i",
+   "why": "the rounding hunk is classed as a design collision with the skill's label",
+   "markers": [
+    "same-question-different-answer",
+    "different answer"
+   ]
+  },
+  {
+   "id": "disjoint-class",
+   "kind": "regex",
+   "path": "pricing-decisions.md",
+   "pattern": "disjoint[- ]intent",
+   "flags": "i",
+   "why": "the coupon and VAT hunk is classed with the skill's label",
+   "markers": [
+    "disjoint-intent",
+    "disjoint"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0333,
+  "body_coverage": 0.4545,
+  "bin": "low"
+ }
+}

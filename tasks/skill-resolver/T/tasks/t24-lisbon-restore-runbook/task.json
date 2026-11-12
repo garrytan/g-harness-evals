@@ -1,0 +1,71 @@
+{
+ "id": "t24-lisbon-restore-runbook",
+ "target": {
+  "name": "simple-english",
+  "pack": "hermes",
+  "skill_md_sha256": "9d43d7ce95a09e9e65e04e9f99d46f223d3f0d4ec620f37fd8495536bca87a42"
+ },
+ "request": "Our support team in Lisbon reads English as a second language and keeps misreading docs/restore.md during incidents. Don't rewrite it yet: go through it and list every sentence that will trip them up, with a fixed version of each, in review.md.",
+ "skill_step": "In check mode the skill reports each violation as a rule number from its catalog plus the offending text and a compliant rewrite, citing only real rule numbers (for example Rule 5.1 for the 20-word procedural limit and Rule 5.4 for a condition after its command).",
+ "used_it": [
+  "rule-citations",
+  "condition-rule"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "review.md",
+   "why": "the review is where the request asked for it"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "review.md",
+   "pattern": "pgb restore|snapshot",
+   "why": "the review is about docs/restore.md"
+  },
+  {
+   "id": "items",
+   "kind": "regex",
+   "path": "review.md",
+   "flags": "im",
+   "pattern": "^\\s*(\\d+[.)]|[-*]|\\|\\s*\\d+\\s*\\|)",
+   "min": 5,
+   "why": "it lists several problems"
+  },
+  {
+   "id": "rule-citations",
+   "kind": "regex",
+   "path": "review.md",
+   "flags": "i",
+   "pattern": "\\brule\\s+[1-9]\\.\\d{1,2}\\b",
+   "min": 3,
+   "why": "each problem cites a numbered rule from the skill's catalog",
+   "markers": [
+    "rule 5.1",
+    "rule 4.2",
+    "ASD-STE100",
+    "Simplified Technical English"
+   ]
+  },
+  {
+   "id": "condition-rule",
+   "kind": "regex",
+   "path": "review.md",
+   "flags": "i",
+   "pattern": "\\brule\\s+5\\.4\\b",
+   "why": "the trailing conditions in steps 2 and 6 are cited as Rule 5.4, a number only the catalog gives",
+   "markers": [
+    "rule 5.4",
+    "condition before the command"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0645,
+  "body_coverage": 0.48,
+  "bin": "mid"
+ }
+}

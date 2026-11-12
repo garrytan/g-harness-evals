@@ -1,0 +1,92 @@
+{
+ "id": "t34-billing-refactor-pause",
+ "target": {
+  "name": "context-save",
+  "pack": "gstack",
+  "skill_md_sha256": "8c182dd16eb524d41d8ece5497bd261ebb0cd65ff0d5e97d9a9dc236cf7b0e77"
+ },
+ "request": "I have to drop this billing refactor for a few days. Leave a note in checkpoints/ capturing where things stand so I or another agent can pick it back up cold; my scratch notes are in SCRATCH.md and the git status output is in status.txt.",
+ "skill_step": "The skill writes the note as `<YYYYMMDD-HHMMSS>-<title-slug>.md` in a checkpoints directory, with frontmatter (status: in-progress, branch, timestamp, files_modified) and the sections Working on, Summary, Decisions Made, Remaining Work (each item starting `Open.`) and Notes.",
+ "used_it": [
+  "filename",
+  "status-frontmatter",
+  "sections",
+  "open-items"
+ ],
+ "checks": [
+  {
+   "id": "note",
+   "kind": "exists",
+   "glob": "checkpoints/*.md",
+   "min": 1,
+   "max": 1,
+   "why": "one note in checkpoints/, as the request asked"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "glob": "checkpoints/*.md",
+   "pattern": "compute_totals",
+   "why": "it is about the billing refactor in SCRATCH.md"
+  },
+  {
+   "id": "branch",
+   "kind": "regex",
+   "glob": "checkpoints/*.md",
+   "pattern": "refactor/invoice-totals",
+   "why": "it records the branch from status.txt"
+  },
+  {
+   "id": "filename",
+   "kind": "exists",
+   "glob": "checkpoints/20[0-9][0-9][01][0-9][0-3][0-9]-[0-2][0-9][0-5][0-9][0-5][0-9]-*.md",
+   "min": 1,
+   "why": "the skill's file name: a YYYYMMDD-HHMMSS timestamp, then the title slug",
+   "markers": [
+    "TIMESTAMP",
+    "TITLE_SLUG"
+   ]
+  },
+  {
+   "id": "status-frontmatter",
+   "kind": "regex",
+   "glob": "checkpoints/*.md",
+   "pattern": "^---\\r?\\n(?:[^\\n]*\\n)*?status:\\s*in-progress\\b",
+   "why": "the skill's frontmatter opens with status: in-progress",
+   "markers": [
+    "status: in-progress",
+    "frontmatter"
+   ]
+  },
+  {
+   "id": "sections",
+   "kind": "regex",
+   "glob": "checkpoints/*.md",
+   "pattern": "^#{1,6}\\s*working on:[\\s\\S]*^#{1,6}\\s*decisions made\\b[\\s\\S]*^#{1,6}\\s*remaining work\\b",
+   "flags": "im",
+   "why": "the skill's section names in order",
+   "markers": [
+    "Working on:",
+    "Decisions Made",
+    "Remaining Work"
+   ]
+  },
+  {
+   "id": "open-items",
+   "kind": "regex",
+   "glob": "checkpoints/*.md",
+   "pattern": "^\\s*\\d+\\.\\s+\\**Open\\.",
+   "flags": "m",
+   "why": "each remaining-work item starts with Open.",
+   "markers": [
+    "Open."
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0,
+  "body_coverage": 0.5455,
+  "bin": "none"
+ }
+}

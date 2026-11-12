@@ -1,0 +1,81 @@
+{
+ "id": "t01-log-vendor-renewal",
+ "target": {
+  "name": "decision-questionnaire",
+  "pack": "hermes",
+  "skill_md_sha256": "84a781708b86a797e41d4a0b9234d4da48f95d14fc9cee23a0eb2cf8574e8ca2"
+ },
+ "request": "I can't decide whether we renew the Tallyhouse log contract until Dana in security weighs in, and she's slammed this month. My notes are in notes/renewal.md. Write up what I need from her as questions-for-dana.md so she can work through it on her own time.",
+ "skill_step": "The questionnaire follows a fixed template: a Purpose line, a From / To / How your answers will be used line, Context and How to answer sections, one single-idea question per heading with an empty answer stub (a lone '>') under every question, a 'Why this matters' line only on questions that could be misread, and an 'Anything else?' catch-all.",
+ "used_it": [
+  "answer-stubs",
+  "how-used",
+  "why-matters"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "questions-for-dana.md",
+   "why": "the document is where the request asked for it"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "questions-for-dana.md",
+   "pattern": "tallyhouse",
+   "flags": "i",
+   "why": "it is about the log contract in notes/renewal.md"
+  },
+  {
+   "id": "questions",
+   "kind": "regex",
+   "path": "questions-for-dana.md",
+   "pattern": "\\?\\s*$",
+   "flags": "m",
+   "min": 4,
+   "why": "it actually asks Dana several questions"
+  },
+  {
+   "id": "answer-stubs",
+   "kind": "regex",
+   "path": "questions-for-dana.md",
+   "pattern": "^\\s*>\\s*$",
+   "flags": "m",
+   "min": 4,
+   "why": "every question gets an empty answer stub (a lone '>') beneath it",
+   "markers": [
+    "answer stub",
+    "stub"
+   ]
+  },
+  {
+   "id": "how-used",
+   "kind": "regex",
+   "path": "questions-for-dana.md",
+   "pattern": "how your answers will be used",
+   "flags": "i",
+   "why": "the header names how the recipient's answers will be used",
+   "markers": [
+    "how your answers will be used"
+   ]
+  },
+  {
+   "id": "why-matters",
+   "kind": "regex",
+   "path": "questions-for-dana.md",
+   "pattern": "why this matters",
+   "flags": "i",
+   "why": "questions that could be misread carry a 'Why this matters' line",
+   "markers": [
+    "why this matters"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0,
+  "body_coverage": 0.1739,
+  "bin": "none"
+ }
+}

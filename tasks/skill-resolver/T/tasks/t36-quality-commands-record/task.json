@@ -1,0 +1,92 @@
+{
+ "id": "t36-quality-commands-record",
+ "target": {
+  "name": "health",
+  "pack": "gstack",
+  "skill_md_sha256": "749c979bcb203893452337f996551f6349aa506579ad70846322903a77b5f098"
+ },
+ "request": "Agents keep guessing which checks this repo uses. Work out the right commands and record them in CLAUDE.md so they stop guessing, then give me a scored snapshot of where the code stands today in reports/code-quality.md (last night's CI output is in notes/last-ci-run.txt).",
+ "skill_step": "The skill persists the detected tools as a `## Health Stack` section in CLAUDE.md with fixed lowercase keys (typecheck, lint, test, deadcode, shell), and presents scores as a dashboard ending in a COMPOSITE SCORE line with a Coverage: N/M categories checked line.",
+ "used_it": [
+  "stack-section",
+  "deadcode-key",
+  "composite"
+ ],
+ "checks": [
+  {
+   "id": "claude",
+   "kind": "regex",
+   "path": "CLAUDE.md",
+   "pattern": "biome",
+   "why": "CLAUDE.md records the lint command"
+  },
+  {
+   "id": "kept",
+   "kind": "regex",
+   "path": "CLAUDE.md",
+   "pattern": "^## Conventions",
+   "flags": "m",
+   "why": "the existing CLAUDE.md content is kept"
+  },
+  {
+   "id": "knip",
+   "kind": "regex",
+   "path": "CLAUDE.md",
+   "pattern": "knip|npm run unused",
+   "why": "CLAUDE.md records the unused-code command"
+  },
+  {
+   "id": "report",
+   "kind": "exists",
+   "path": "reports/code-quality.md",
+   "why": "the snapshot is where the request asked for it"
+  },
+  {
+   "id": "score",
+   "kind": "regex",
+   "path": "reports/code-quality.md",
+   "pattern": "\\d+(\\.\\d)?\\s*/\\s*10",
+   "why": "the snapshot is scored"
+  },
+  {
+   "id": "stack-section",
+   "kind": "regex",
+   "path": "CLAUDE.md",
+   "pattern": "^#{1,6}\\s*health stack\\b",
+   "flags": "im",
+   "why": "the skill's CLAUDE.md section that later runs read back",
+   "markers": [
+    "Health Stack"
+   ]
+  },
+  {
+   "id": "deadcode-key",
+   "kind": "regex",
+   "path": "CLAUDE.md",
+   "pattern": "^\\s*[-*]\\s*`?deadcode`?\\s*:",
+   "flags": "im",
+   "why": "the skill's fixed category key for dead code",
+   "markers": [
+    "deadcode"
+   ]
+  },
+  {
+   "id": "composite",
+   "kind": "regex",
+   "path": "reports/code-quality.md",
+   "pattern": "composite score[\\s\\S]*coverage:\\s*\\d+\\s*/\\s*\\d+\\s*categories",
+   "flags": "i",
+   "why": "the skill's dashboard footer: COMPOSITE SCORE then Coverage: N/M categories checked",
+   "markers": [
+    "COMPOSITE SCORE",
+    "categories checked"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0645,
+  "body_coverage": 0.6429,
+  "bin": "mid"
+ }
+}

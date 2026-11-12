@@ -1,0 +1,64 @@
+{
+ "id": "t46-lunch-poll-restart-loss",
+ "target": {
+  "name": "publish",
+  "pack": "qm",
+  "skill_md_sha256": "8fbfcdcf6f97cce4b64fe48bf7606cfec2bfedeaf4e489eb6640033abf60f0a7"
+ },
+ "request": "Our lunch poll (server.js) keeps votes in votes.json next to the code, and every restart of the hosted copy on our internal app runtime wipes them. Change server.js so the votes survive restarts and redeploys there.",
+ "skill_step": "The skill says the runtime resets the app's disk on relaunch except under $DATA_DIR, that any app state must move there, and that a database must be SQLite at exactly $DATA_DIR/app.db (with a guard when DATA_DIR is unset); the app listens on PORT.",
+ "used_it": [
+  "data-dir",
+  "app-db"
+ ],
+ "checks": [
+  {
+   "id": "server",
+   "kind": "exists",
+   "path": "server.js",
+   "why": "the fix is in server.js as asked"
+  },
+  {
+   "id": "port",
+   "kind": "regex",
+   "path": "server.js",
+   "pattern": "process\\.env\\.PORT",
+   "why": "the app takes its port from the runtime"
+  },
+  {
+   "id": "votes",
+   "kind": "regex",
+   "path": "server.js",
+   "pattern": "vote",
+   "why": "it is still the lunch poll"
+  },
+  {
+   "id": "data-dir",
+   "kind": "regex",
+   "path": "server.js",
+   "pattern": "DATA_DIR",
+   "why": "the skill's one durable location for app state",
+   "markers": [
+    "DATA_DIR",
+    "data dir"
+   ]
+  },
+  {
+   "id": "app-db",
+   "kind": "regex",
+   "path": "server.js",
+   "pattern": "app\\.db",
+   "why": "the skill's exact SQLite path, $DATA_DIR/app.db",
+   "markers": [
+    "app.db",
+    "sqlite"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0455,
+  "body_coverage": 0.75,
+  "bin": "low"
+ }
+}

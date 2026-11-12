@@ -1,0 +1,96 @@
+{
+ "id": "t03-back-from-leave-inbox",
+ "target": {
+  "name": "email-inbox-triage",
+  "pack": "hermes",
+  "skill_md_sha256": "deeade1bb70f8835b2f3158980030b8aa41bb1ea6f798631451c89cfd632bcc8"
+ },
+ "request": "I'm back from a week off. Everything that came in is in mail/ and what I've sent recently is in sent/. Go through it and write me catch-up.md: what needs me, plus a draft for anything that's owed a reply.",
+ "skill_step": "The skill fixes the output shape (Needs attention now, Replies to approve, Actions without replies, Waiting on others, Reference/noise, Coverage and failures, in that order), gives each thread a disposition from a fixed set such as 'action without reply', and requires recorded voice calibration notes from the user's sent replies before drafting.",
+ "used_it": [
+  "output-shape",
+  "disposition",
+  "calibration"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "catch-up.md",
+   "why": "the write-up is where the request asked for it"
+  },
+  {
+   "id": "urgent-thread",
+   "kind": "regex",
+   "path": "catch-up.md",
+   "pattern": "priya",
+   "flags": "i",
+   "why": "it covers the customer's dashboard outage"
+  },
+  {
+   "id": "invoice",
+   "kind": "regex",
+   "path": "catch-up.md",
+   "pattern": "INV-20931",
+   "why": "it covers the declined invoice"
+  },
+  {
+   "id": "draft",
+   "kind": "regex",
+   "path": "catch-up.md",
+   "pattern": "^\\W*(Hi|Hello|Hey) [A-Z][a-z]+,",
+   "flags": "m",
+   "min": 2,
+   "why": "it contains drafted replies"
+  },
+  {
+   "id": "output-shape",
+   "kind": "order",
+   "path": "catch-up.md",
+   "flags": "im",
+   "patterns": [
+    "^\\W*(\\d+\\.\\s*)?needs attention now",
+    "^\\W*(\\d+\\.\\s*)?replies to approve",
+    "^\\W*(\\d+\\.\\s*)?actions? without repl",
+    "^\\W*(\\d+\\.\\s*)?waiting on others",
+    "^\\W*(\\d+\\.\\s*)?coverage"
+   ],
+   "why": "the skill's output shape, in order: Needs attention now, Replies to approve, Actions without replies, Waiting on others, ..., Coverage and failures",
+   "markers": [
+    "needs attention now",
+    "replies to approve",
+    "waiting on others",
+    "coverage and failures"
+   ]
+  },
+  {
+   "id": "disposition",
+   "kind": "regex",
+   "path": "catch-up.md",
+   "pattern": "action without reply",
+   "flags": "i",
+   "why": "threads carry the skill's disposition labels",
+   "markers": [
+    "action without reply",
+    "disposition"
+   ]
+  },
+  {
+   "id": "calibration",
+   "kind": "regex",
+   "path": "catch-up.md",
+   "pattern": "calibrat",
+   "flags": "i",
+   "why": "voice calibration notes from the sent replies are recorded before the drafts",
+   "markers": [
+    "calibrat"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0417,
+  "body_coverage": 0.4706,
+  "bin": "low"
+ }
+}

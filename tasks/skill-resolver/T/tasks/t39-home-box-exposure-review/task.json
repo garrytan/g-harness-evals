@@ -1,0 +1,84 @@
+{
+ "id": "t39-home-box-exposure-review",
+ "target": {
+  "name": "healthcheck",
+  "pack": "openclaw",
+  "skill_md_sha256": "b41044aeb25afe95daa5c8ef6f2d6b8d197f6a0b113b0888deaa4dd69e42b59b"
+ },
+ "request": "I dumped some read-only command output from our family assistant box (a mini PC on the home LAN, with SSH forwarded from the router) into host-info/. Tell me what is risky and what we should change, in order, in host-review.md; don't assume you can log in to it.",
+ "skill_step": "The skill fixes the report shape (Current posture paragraph, Findings, Recommended plan, Commands, Gaps, in that order) and has the user choose a risk profile from a numbered list of Convenience, Balanced and Strict.",
+ "used_it": [
+  "shape",
+  "profiles"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "host-review.md",
+   "why": "the review is where the request asked for it"
+  },
+  {
+   "id": "ssh-passwords",
+   "kind": "regex",
+   "path": "host-review.md",
+   "pattern": "passwordauthentication|password (login|auth)",
+   "flags": "i",
+   "why": "it catches the main finding in the capture, password SSH exposed through the router"
+  },
+  {
+   "id": "gateway",
+   "kind": "regex",
+   "path": "host-review.md",
+   "pattern": "18789",
+   "why": "it covers the gateway listening on all interfaces"
+  },
+  {
+   "id": "firewall",
+   "kind": "regex",
+   "path": "host-review.md",
+   "pattern": "ufw|firewall",
+   "flags": "i",
+   "why": "it covers the inactive firewall"
+  },
+  {
+   "id": "shape",
+   "kind": "order",
+   "path": "host-review.md",
+   "flags": "im",
+   "patterns": [
+    "^\\W*current posture\\b",
+    "^\\W*findings\\b",
+    "^\\W*recommended plan\\b",
+    "^\\W*commands\\b",
+    "^\\W*gaps\\b"
+   ],
+   "why": "the skill's report shape: Current posture, Findings, Recommended plan, Commands, Gaps, in that order",
+   "markers": [
+    "current posture",
+    "recommended plan",
+    "gaps"
+   ]
+  },
+  {
+   "id": "profiles",
+   "kind": "regex",
+   "path": "host-review.md",
+   "flags": "im",
+   "pattern": "^\\s*(?:[-*]|\\d+[.)])?\\s*\\**(convenience|balanced|strict)\\b",
+   "min": 3,
+   "why": "the skill's three risk profiles, each opening a list item",
+   "markers": [
+    "convenience",
+    "balanced",
+    "strict"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0263,
+  "body_coverage": 0.36,
+  "bin": "low"
+ }
+}

@@ -25,6 +25,15 @@
 #          of every scope that holds memory are read through the admin API and
 #          saved under $HE_LOG_DIR/turns, so a report can say what QM had
 #          stored when a turn began.
+#
+# internal-task skill-resolver arms (prepare.sh, pin.json configs pi-skills-*): run only (serve cannot register the
+# world MCP server at this pin, README.md), through harnesses/qm/skill-resolver.mjs. Before the turn every
+# arm records the org's installed skills (qm-skills-listed.json); pi-skills-native then calls the resolver
+# with --shadow on instruction.md, the member's own request (no runner preamble on the run entry), and
+# injects nothing, pi-skills-push ("emulated hook") prepends the resolver's block to the turn text, and
+# after the turn pi-skills-pull reads the model's resolve-skills calls from the stored session. Each call
+# leaves a status line in skill-resolver/status.ndjson and, when it is INFRA, the marker
+# skill-resolver/infra.json.
 set -euo pipefail
 
 : "${HE_WORKSPACE_DIR:=/workspace}"
@@ -43,6 +52,13 @@ if [ "${HE_SESSION_SCOPE:-conversation}" != conversation ]; then echo "qm adapte
 : "${QM_PROBE_CONFIG:=}"
 : "${HE_HARNESS_CONFIG:=pi}"
 : "${QM_ORG_SCOPE:=org:harness-eval}"
+skill_call=""
+case "$HE_HARNESS_CONFIG" in
+  pi-skills-native) skill_call=shadow ;;
+  pi-skills-push) skill_call=push ;;
+  pi-skills-pull) skill_call=pull ;;
+  pi-skills-none) skill_call=none ;;
+esac
 
 mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
@@ -55,6 +71,10 @@ case "$entry" in
   run|serve) ;;
   *) log "unknown entry point: $entry; 'run' and 'serve' are implemented"; exit 2 ;;
 esac
+if [ -n "$skill_call" ]; then
+  [ "$entry" = run ] || { log "config $HE_HARNESS_CONFIG runs on the run entry only (serve is not wired for the skill-resolver arms)"; exit 2; }
+  [ -r /opt/harness/skill-resolver.mjs ] || { log "config $HE_HARNESS_CONFIG needs /opt/harness/skill-resolver.mjs (a skill-arm image, scripts/skill-resolver/step0/qm/arms/Dockerfile.arms)"; exit 2; }
+fi
 
 export HOME="$HE_SESSION_STATE_DIR"
 log "qm ${QM_VERSION:-unknown} core=$QM_CORE_URL budget=${HE_TIME_BUDGET_S}s entry=$entry inner_harness=$QM_HARNESS config=$HE_HARNESS_CONFIG${QM_PROBE_CONFIG:+ probe=$QM_PROBE_CONFIG}"
@@ -91,12 +111,38 @@ esac
 
 if [ "$entry" = "run" ]; then
   [ -r "$HE_WORKSPACE_DIR/instruction.md" ] || { log "no readable $HE_WORKSPACE_DIR/instruction.md"; exit 2; }
+  text_file="$HE_WORKSPACE_DIR/instruction.md"
+  # Set T (internal-task): a skill-tasks trial starts in a seeded workdir on every harness. QM's agent works in its scope's
+  # default sandbox, and a DM scope has none until the agent creates one, so for this slice only the adapter creates the
+  # actor's sandbox (from LOCAL_SANDBOX_IMAGE, which the runner seeds with start/ and instruction.md at /root/workspace)
+  # and makes it the default before the turn, as the S1 fixture does (gstack/s1-stage.ts). Other QM cells are unchanged.
+  # The two responses go to qm-default-sandbox.json; a failure is a harness error before any model call.
+  if [ "${HE_TASK_SLICE:-}" = skill-tasks ]; then
+    sbx_scope="personal:$QM_ACTOR_ID"
+    printf '{"action":"create","backend":"local","name":"set-t"}' > "$HE_LOG_DIR/qm-sandbox-create.body.json"
+    create=$(node /opt/harness/qm-api.mjs admin-post "$QM_CORE_URL" "$QM_SIGNING_SECRET" "$QM_ADMIN_ACTOR" "/v1/admin/sandboxes/$sbx_scope" "$HE_LOG_DIR/qm-sandbox-create.body.json" 2>>"$HE_LOG_DIR/stderr.log") || { log "set T: default sandbox create failed: $(printf '%s' "$create" | head -c 400)"; exit 2; }
+    sbx_id=$(printf '%s' "$create" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const id=JSON.parse(s).body?.id;if(typeof id!=="string"||!id)process.exit(1);process.stdout.write(id)})') || { log "set T: sandbox create returned no id"; exit 2; }
+    node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({ action: "default", sandboxId: process.argv[2] }))' "$HE_LOG_DIR/qm-sandbox-default.body.json" "$sbx_id"
+    dflt=$(node /opt/harness/qm-api.mjs admin-post "$QM_CORE_URL" "$QM_SIGNING_SECRET" "$QM_ADMIN_ACTOR" "/v1/admin/sandboxes/$sbx_scope" "$HE_LOG_DIR/qm-sandbox-default.body.json" 2>>"$HE_LOG_DIR/stderr.log") || { log "set T: set_default failed: $(printf '%s' "$dflt" | head -c 400)"; exit 2; }
+    printf '{"scope":"%s","create":%s,"set_default":%s}\n' "$sbx_scope" "$create" "$dflt" > "$HE_LOG_DIR/qm-default-sandbox.json"
+    log "set T: default sandbox $sbx_id for $sbx_scope"
+  fi
+  if [ -n "$skill_call" ]; then
+    node /opt/harness/skill-resolver.mjs listing "$HE_LOG_DIR/qm-skills-listed.json" || true
+    case "$skill_call" in
+      shadow) node /opt/harness/skill-resolver.mjs turn shadow "$text_file" "$HE_LOG_DIR/skill-turn.md" "$HE_LOG_DIR" "$HE_TRIAL_ID" || true ;;
+      push)
+        node /opt/harness/skill-resolver.mjs turn push "$text_file" "$HE_LOG_DIR/skill-turn.md" "$HE_LOG_DIR" "$HE_TRIAL_ID" || true
+        if [ -e "$HE_LOG_DIR/skill-turn.md" ]; then text_file="$HE_LOG_DIR/skill-turn.md"; fi ;;
+    esac
+  fi
   node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({ actor: { externalId: process.argv[2] }, conversation: { kind: "dm", threadRef: process.argv[3] }, text_file: process.argv[4] }))' \
-    "$HE_LOG_DIR/qm-run-job.json" "$QM_ACTOR_ID" "$HE_TRIAL_ID" "$HE_WORKSPACE_DIR/instruction.md"
+    "$HE_LOG_DIR/qm-run-job.json" "$QM_ACTOR_ID" "$HE_TRIAL_ID" "$text_file"
   set +e
   timeout -k 60 "$HE_TIME_BUDGET_S" node /opt/harness/qm-api.mjs turn "$QM_CORE_URL" "$QM_SIGNING_SECRET" "$HE_LOG_DIR/qm-run-job.json" "$HE_TIME_BUDGET_S" > "$HE_LOG_DIR/qm-turn.json"
   code=$?
   set -e
+  if [ "$skill_call" = pull ]; then node /opt/harness/skill-resolver.mjs pull "$HE_LOG_DIR/qm-turn.json" "$HE_LOG_DIR" || true; fi
   cat "$HE_LOG_DIR/qm-turn.json"
   case "$code" in
     0) log "completed"; exit 0 ;;

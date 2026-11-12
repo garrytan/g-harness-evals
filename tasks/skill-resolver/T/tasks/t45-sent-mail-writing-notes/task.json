@@ -1,0 +1,76 @@
+{
+ "id": "t45-sent-mail-writing-notes",
+ "target": {
+  "name": "email-voice-profile",
+  "pack": "qm",
+  "skill_md_sha256": "9308248d424cb95474826c05b1aa83a753b35bef13313090284408c81d9e2ac6"
+ },
+ "request": "sent/ has a couple of months of email I've written. Write down how I actually write, specific enough that you could later draft replies that pass as mine, in notes/how-i-write.md.",
+ "skill_step": "The skill fixes the profile's sections, in order: Register map, Openers & sign-offs, Rhythm, Vocabulary & phrases, Punctuation & formatting quirks, Hard rules, Anti-patterns; after checking drafts against held-out threads it records 'validated: <date>' at the top.",
+ "used_it": [
+  "sections",
+  "validated"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "notes/how-i-write.md",
+   "why": "the write-up is where the request asked for it"
+  },
+  {
+   "id": "signoff",
+   "kind": "regex",
+   "path": "notes/how-i-write.md",
+   "pattern": "\\bbest\\b",
+   "flags": "i",
+   "why": "it records the observed external sign-off"
+  },
+  {
+   "id": "lowercase",
+   "kind": "regex",
+   "path": "notes/how-i-write.md",
+   "pattern": "lower ?-?case",
+   "flags": "i",
+   "why": "it records the lowercase internal style seen in the corpus"
+  },
+  {
+   "id": "sections",
+   "kind": "order",
+   "path": "notes/how-i-write.md",
+   "flags": "im",
+   "patterns": [
+    "^\\W*register map\\b",
+    "^\\W*openers\\b",
+    "^\\W*rhythm\\b",
+    "^\\W*vocabulary\\b",
+    "^\\W*punctuation\\b",
+    "^\\W*hard rules\\b",
+    "^\\W*anti-patterns\\b"
+   ],
+   "why": "the skill's exact profile sections in order",
+   "markers": [
+    "register map",
+    "hard rules",
+    "anti-patterns"
+   ]
+  },
+  {
+   "id": "validated",
+   "kind": "regex",
+   "path": "notes/how-i-write.md",
+   "flags": "im",
+   "pattern": "^\\W*validated:\\s*\\d{4}-\\d{2}-\\d{2}",
+   "why": "the skill's validated: <date> stamp after the held-out check",
+   "markers": [
+    "validated"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.1034,
+  "body_coverage": 0.4118,
+  "bin": "mid"
+ }
+}

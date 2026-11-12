@@ -1,0 +1,91 @@
+{
+ "id": "t30-router-prompt-comparison",
+ "target": {
+  "name": "eval-plan",
+  "pack": "gstack",
+  "skill_md_sha256": "9d49e9e92307ee32b7f702db606d772e90900c9b4db903f1c16efd4e12b39359"
+ },
+ "request": "Before we spend a cent comparing the two ticket-router prompts (Lena's notes are in notes/idea.md), write down exactly what we're committing to in docs/router-prompt-prereg.md so nobody moves the goalposts once results come in.",
+ "skill_step": "Step 1 requires a preregistration file with fixed sections: Bars, Arms, Comparison (a `stack: none` or `stack: loaded` line), Decoys, Stop rules and Held-out exposure; the gstack-eval-plan prereg check refuses it while any is missing.",
+ "used_it": [
+  "bars",
+  "decoys",
+  "held-out-exposure",
+  "stack-line"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "docs/router-prompt-prereg.md",
+   "why": "the document is where the request asked for it"
+  },
+  {
+   "id": "models",
+   "kind": "regex",
+   "path": "docs/router-prompt-prereg.md",
+   "pattern": "opus[\\s\\S]*sol|sol[\\s\\S]*opus",
+   "flags": "i",
+   "why": "it covers both models from the notes"
+  },
+  {
+   "id": "budget",
+   "kind": "regex",
+   "path": "docs/router-prompt-prereg.md",
+   "pattern": "\\$\\s?150",
+   "why": "it carries the budget from the notes"
+  },
+  {
+   "id": "bars",
+   "kind": "regex",
+   "path": "docs/router-prompt-prereg.md",
+   "pattern": "^#{1,6}\\s*bars\\b",
+   "flags": "im",
+   "why": "the skill's Bars section",
+   "markers": [
+    "Bars"
+   ]
+  },
+  {
+   "id": "decoys",
+   "kind": "regex",
+   "path": "docs/router-prompt-prereg.md",
+   "pattern": "^#{1,6}\\s*decoys\\b",
+   "flags": "im",
+   "why": "the skill's Decoys section",
+   "markers": [
+    "decoy"
+   ]
+  },
+  {
+   "id": "held-out-exposure",
+   "kind": "regex",
+   "path": "docs/router-prompt-prereg.md",
+   "pattern": "^#{1,6}\\s*held-?out exposure\\b",
+   "flags": "im",
+   "why": "the skill's Held-out exposure section",
+   "markers": [
+    "held-out exposure",
+    "exposure"
+   ]
+  },
+  {
+   "id": "stack-line",
+   "kind": "regex",
+   "path": "docs/router-prompt-prereg.md",
+   "pattern": "^\\W*stack\\W*:\\W*(none|loaded)\\b",
+   "flags": "im",
+   "why": "the skill's Comparison line declaring whether a skill stack is loaded",
+   "markers": [
+    "stack: none",
+    "stack: loaded"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0217,
+  "body_coverage": 0.5417,
+  "bin": "low"
+ }
+}

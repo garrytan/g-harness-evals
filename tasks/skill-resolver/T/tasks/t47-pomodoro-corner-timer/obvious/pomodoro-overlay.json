@@ -1,0 +1,7 @@
+{
+  "id": "pomodoro-timer",
+  "position": "bottom-left",
+  "persistent": true,
+  "scope": "global",
+  "html": "<div id=\"pomodoro-overlay\" style=\"position:fixed;left:16px;bottom:16px;z-index:2147483647;font:14px system-ui,sans-serif;background:#18181b;color:#fafafa;padding:10px 12px;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.3)\">\n  <div id=\"pomo-mode\" style=\"font-size:12px;opacity:.75\">Work</div>\n  <div id=\"pomo-time\" style=\"font-size:26px;font-variant-numeric:tabular-nums\">25:00</div>\n  <button id=\"pomo-start\" type=\"button\">Start</button>\n  <button id=\"pomo-reset\" type=\"button\">Reset</button>\n</div>\n<script>\n(function () {\n  const WORK = 25 * 60, BREAK = 5 * 60;\n  let mode = 'Work', left = WORK, timer = null;\n  const $ = (id) => document.getElementById(id);\n  function render() {\n    $('pomo-time').textContent = String(Math.floor(left / 60)).padStart(2, '0') + ':' + String(left % 60).padStart(2, '0');\n    $('pomo-mode').textContent = mode;\n    $('pomo-start').textContent = timer ? 'Pause' : 'Start';\n  }\n  function tick() {\n    if (--left <= 0) { mode = mode === 'Work' ? 'Break' : 'Work'; left = mode === 'Work' ? WORK : BREAK; }\n    render();\n  }\n  $('pomo-start').onclick = function () {\n    if (timer) { clearInterval(timer); timer = null; } else { timer = setInterval(tick, 1000); }\n    render();\n  };\n  $('pomo-reset').onclick = function () { clearInterval(timer); timer = null; mode = 'Work'; left = WORK; render(); };\n  render();\n})();\n</script>"
+}

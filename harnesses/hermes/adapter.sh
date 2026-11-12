@@ -48,12 +48,20 @@ esac
 # [<driver>+]<route>[@<slot_id>] (runner/contracts.ts parseRouteConfig); a driver prefix is Claude Code's only.
 instruction_route=${HE_HARNESS_CONFIG:-default}
 route_slot=''
+skill_config=''
 case "$instruction_route" in
   default|route-tool|route-system|route-startup|route-hook|route-once|route-placebo|route-skill|route-told) ;;
   *+*) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route names a driver; only claude-code takes a driver prefix (docs/adapters.md, \"Route config\")"; exit 2 ;;
   route-slot-told@*|route-slot-skill@*)
     route_slot=${instruction_route#*@}
     [[ "$route_slot" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || { log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route needs @<slot_id> matching [a-z0-9][a-z0-9-]{0,62}"; exit 2; } ;;
+  skills-native|skills-resolver|skills-names-only|skills-no-catalog)
+    # internal-task: a skills arm (scripts/skill-resolver/ARMS.md), applied below after the instruction routes. It is not a route, so
+    # the route code below sees default and writes nothing.
+    [ "$entry" = serve ] || { log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route is applied for the serve entry only (scripts/skill-resolver/ARMS.md)"; exit 2; }
+    skill_config=$instruction_route
+    instruction_route=default ;;
+  skills-usage-ordered) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=skills-usage-ordered is an OpenClaw arm; Hermes takes skills-native, skills-resolver, skills-names-only and skills-no-catalog (scripts/skill-resolver/ARMS.md)"; exit 2 ;;
   *) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route is not a Hermes config (default, route-tool, route-system, route-startup, route-hook, route-once, route-placebo, route-skill, route-told, route-slot-told@<id>, route-slot-skill@<id>)"; exit 2 ;;
 esac
 route_name=${instruction_route%@*}
@@ -521,6 +529,177 @@ PY
   route_json=$(printf ',"instruction_route":{"route":"%s","instruction_sha256":"%s","files":%s%s,"approvals":"%s","tirith":"%s"}' "$instruction_route" "$route_sha" "$route_files" "$route_hook_json" "$route_approvals" "$route_tirith")
 fi
 
+# internal-task, the skills arms (scripts/skill-resolver/ARMS.md). The kit is one read-only directory, /opt/skill-resolver
+# (HE_SKILL_KIT_DIR overrides it), built by scripts/skill-resolver/build-kit.ts. skills-native and skills-resolver copy the kit's
+# catalog/skills into $HERMES_HOME/skills, copy the kit's index/hermes/gbrain-home to $HE_SESSION_STATE_DIR/he-skills/gbrain-home,
+# write he-skills/hook.json for the hook wrapper (mode shadow on native, push on resolver), append a marked hooks.pre_llm_call
+# block whose command is <kit>/bin/he-skill-hook <hook.json> (timeout 15) to the config.yaml this adapter wrote and write
+# shell-hooks-allowlist.json approving exactly that command (refused when the config already has hooks:, as after the gbrain
+# installer's turn hook, or an allowlist exists; HERMES_ACCEPT_HOOKS stays unset). Then hermes hooks doctor, kept as
+# $HE_LOG_DIR/skill-arm.hermes.log, must report the hook healthy. Doctor exits 0 even when it lists issues, so health is: exit 0,
+# the command on a [pre_llm_call] line, "allowlisted", "ran clean with empty stdout" (the wrapper prints nothing without a turn
+# file, in both modes) and "All shell hooks look healthy.". Doctor's own call leaves a NO_TURN line, which is moved to
+# status.setup.ndjson so status.ndjson holds member turns only. skills-names-only copies the kit's names-only/skills (Hermes has
+# no listing limit key). skills-no-catalog installs nothing and writes Hermes's own bundled-skills opt-out, the marker file
+# $HERMES_HOME/.no-bundled-skills. Every arm refuses a skills root that already holds a skill. $HE_LOG_DIR/skill-arm.json records
+# the arm, the kit's hashes, the install, the settings, every file written with its sha256 and the hook check; any failure is
+# HE-ADAPTER-007 and exit 2 before ready. Any other config: nothing here runs and nothing is written.
+skill_arm_json=''
+skill_hook=0
+if [ -n "$skill_config" ]; then
+  skill_kit=${HE_SKILL_KIT_DIR:-/opt/skill-resolver}
+  case "$skill_config" in skills-native|skills-resolver) skill_hook=1; export GBRAIN_SKILLS_NO_AUTOREBUILD=1 ;; esac
+  set +e
+  skill_line=$(python3 - "$skill_config" "$skill_kit" "$HE_SESSION_STATE_DIR/he-skills" "$HE_LOG_DIR" <<'PY'
+import datetime, hashlib, json, os, shlex, shutil, sys
+config, kit, state, logs = sys.argv[1:5]
+home = os.environ["HERMES_HOME"]
+arm = config[len("skills-"):]
+root = os.path.join(home, "skills")
+out = os.path.join(logs, "skill-arm.json")
+BEGIN, END = "# he:skill-resolver:begin", "# he:skill-resolver:end"
+sha = lambda data: hashlib.sha256(data).hexdigest()
+rec = {"status": "error", "code": "HE-ADAPTER-007", "harness": "hermes", "config": config, "arm": arm,
+       "kit": {"dir": kit, "catalog_hash": None, "gbrain_version": None, "kit_json_sha256": None},
+       "install": {"source": None, "dest": root, "skills": 0}, "settings": [], "files": [], "hook": None, "error": None}
+def write():
+    with open(out + ".tmp", "w") as f:
+        json.dump(rec, f)
+    os.replace(out + ".tmp", out)
+def refuse(msg):
+    rec["error"] = msg
+    write()
+    print("HE-ADAPTER-007 the skills arm could not be applied: %s" % msg)
+    sys.exit(1)
+def record(path):
+    data = open(path, "rb").read()
+    rec["files"].append({"path": path, "sha256": sha(data), "bytes": len(data)})
+def put(path, data):
+    if os.path.lexists(path):
+        refuse("the destination exists and the skills arm does not overwrite it: %s" % path)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(data)
+    record(path)
+hooked = arm in ("native", "resolver")
+receipt_path = os.path.join(kit, "index", "hermes", "gbrain-home", ".gbrain", "skill-index", "he-skills", "receipt.json")
+for need in ["kit.json", "bin/gbrain", "bin/he-skill-hook"] + (["index/hermes/gbrain-home/.gbrain/skill-index/he-skills/receipt.json"] if hooked else []):
+    if not os.path.isfile(os.path.join(kit, need)):
+        refuse("the kit at %s has no %s; build it with scripts/skill-resolver/build-kit.ts and mount it read-only at /opt/skill-resolver" % (kit, need))
+kit_raw = open(os.path.join(kit, "kit.json"), "rb").read()
+try:
+    kit_json = json.loads(kit_raw)
+except ValueError as e:
+    refuse("the kit's kit.json is not JSON: %s" % e)
+rec["kit"].update(catalog_hash=kit_json.get("catalog_hash"), gbrain_version=kit_json.get("gbrain_version"), kit_json_sha256=sha(kit_raw))
+receipt = {}
+if hooked:
+    try:
+        raw = json.load(open(receipt_path))
+        receipt = {"catalog_hash": (raw.get("catalog") or {}).get("catalog_hash"), "index_hash": (raw.get("index") or {}).get("index_hash")}
+    except (OSError, ValueError, AttributeError) as e:
+        refuse("the kit's index receipt %s is not readable: %s" % (receipt_path, e))
+    if not isinstance(kit_json.get("catalog_mtime_s"), int):
+        refuse("the kit's kit.json has no catalog_mtime_s")
+    if not receipt.get("catalog_hash"):
+        refuse("the kit's index receipt %s has no catalog_hash" % receipt_path)
+if os.path.isdir(root):
+    for d, _, fs in os.walk(root):
+        if "SKILL.md" in fs:
+            refuse("the skills root %s already holds a skill (%s)" % (root, os.path.relpath(d, root)))
+source = {"native": "catalog/skills", "resolver": "catalog/skills", "names-only": "names-only/skills"}.get(arm)
+if source:
+    src = os.path.join(kit, source)
+    names = sorted(n for n in os.listdir(src) if os.path.isfile(os.path.join(src, n, "SKILL.md"))) if os.path.isdir(src) else []
+    if not names:
+        refuse("the kit's %s holds no skills" % source)
+    os.makedirs(root, exist_ok=True)
+    for n in names:
+        shutil.copytree(os.path.join(src, n), os.path.join(root, n), symlinks=False)
+    rec["install"].update(source=src, skills=len(names))
+    rec["settings"].append("the kit's %s (%d skills) copied to $HERMES_HOME/skills, one directory per skill" % (source, len(names)))
+    if hooked:
+        t = kit_json["catalog_mtime_s"]
+        for d, _, fs in os.walk(root):
+            for f in fs:
+                os.utime(os.path.join(d, f), (t, t))
+            os.utime(d, (t, t))
+        rec["install"]["mtime_s"] = t
+if arm == "names-only":
+    rec["settings"].append("no listing limit raised: Hermes has no config key for one (Step 0), so the names-only catalog is the only change")
+if arm == "no-catalog":
+    put(os.path.join(home, ".no-bundled-skills"), b"")
+    rec["settings"].append("no catalog; $HERMES_HOME/.no-bundled-skills, Hermes's own opt-out of bundled skill seeding (tools/skills_sync.py)")
+if hooked:
+    mode = "shadow" if arm == "native" else "push"
+    gbrain_home = os.path.join(state, "gbrain-home")
+    if os.path.lexists(gbrain_home):
+        refuse("the destination exists and the skills arm does not overwrite it: %s" % gbrain_home)
+    shutil.copytree(os.path.join(kit, "index", "hermes", "gbrain-home"), gbrain_home, symlinks=False)
+    for d, _, fs in sorted(os.walk(gbrain_home)):
+        for f in sorted(fs):
+            record(os.path.join(d, f))
+    hook_json = os.path.join(state, "hook.json")
+    put(hook_json, (json.dumps({"harness": "hermes", "arm": arm, "mode": mode, "gbrain": os.path.join(kit, "bin", "gbrain"), "gbrain_home": gbrain_home,
+        "catalog": "he-skills", "expect_catalog": receipt["catalog_hash"], "receipt": receipt_path, "status_dir": os.path.join(logs, "skill-resolver"),
+        "turn_file": os.path.join(state, "turn.json"), "top_k": 5, "timeout_ms": 10000}) + "\n").encode())
+    command = " ".join(shlex.quote(p) for p in (os.path.join(kit, "bin", "he-skill-hook"), hook_json))
+    config_path = os.path.join(home, "config.yaml")
+    current = open(config_path, "rb").read() if os.path.isfile(config_path) else b""
+    if "\nhooks:" in "\n" + current.decode("utf-8"):
+        refuse("%s already has a hooks: section (the gbrain installer's turn hook, for one); the skills hook would collide with it" % config_path)
+    allowlist = os.path.join(home, "shell-hooks-allowlist.json")
+    if os.path.lexists(allowlist):
+        refuse("the destination exists and the skills arm does not overwrite it: %s" % allowlist)
+    block = "%s\nhooks:\n  pre_llm_call:\n    - command: %s\n      timeout: 15\n%s\n" % (BEGIN, json.dumps(command), END)
+    with open(config_path, "ab") as f:
+        f.write((b"" if current.endswith(b"\n") or not current else b"\n") + b"\n" + block.encode())
+    record(config_path)
+    approved = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    put(allowlist, (json.dumps({"approvals": [{"event": "pre_llm_call", "command": command, "approved_at": approved, "script_mtime_at_approval": None}]}, indent=2) + "\n").encode())
+    rec["settings"].append("config.yaml hooks.pre_llm_call (marked he:skill-resolver, timeout 15): the hook wrapper in %s mode, approved in shell-hooks-allowlist.json" % mode)
+    rec["settings"].append("GBRAIN_SKILLS_NO_AUTOREBUILD=1 exported by the adapter")
+    rec["hook"] = {"event": "pre_llm_call", "command": command, "mode": mode, "status": "pending", "hook_json": hook_json}
+rec.update(status="ok", code=None)
+write()
+print("ok %s %s %s %d" % (rec["kit"]["catalog_hash"], receipt.get("catalog_hash") or "null", receipt.get("index_hash") or "null", rec["install"]["skills"]))
+PY
+)
+  skill_code=$?
+  set -e
+  log "skills arm $skill_config: ${skill_line:-HE-ADAPTER-007 the skills arm could not be applied: the skills step failed before it could report; see stderr.log}"
+  [ "$skill_code" -eq 0 ] || exit 2
+  read -r _ skill_catalog_hash skill_gbrain_hash skill_index_hash skill_count <<< "$skill_line"
+  skill_hook_state=none
+  if [ "$skill_hook" = 1 ]; then
+    set +e
+    hermes hooks doctor > "$HE_LOG_DIR/skill-arm.hermes.log" 2>&1
+    skill_doctor_code=$?
+    set -e
+    [ ! -e "$HE_LOG_DIR/skill-resolver/status.ndjson" ] || mv "$HE_LOG_DIR/skill-resolver/status.ndjson" "$HE_LOG_DIR/skill-resolver/status.setup.ndjson"
+    skill_doctor_line=$(python3 - "$HE_LOG_DIR/skill-arm.hermes.log" "$HE_LOG_DIR/skill-arm.json" "$skill_doctor_code" <<'PY'
+import json, os, sys
+log_path, rec_path, code = sys.argv[1], sys.argv[2], int(sys.argv[3])
+text = open(log_path).read()
+rec = json.load(open(rec_path))
+ok = code == 0 and ("[pre_llm_call] " + rec["hook"]["command"]) in text and "allowlisted" in text and "ran clean with empty stdout" in text and "All shell hooks look healthy." in text
+detail = "hermes hooks doctor: pre_llm_call hook healthy, empty stdout on its synthetic run" if ok else "hermes hooks doctor exit %d: %s" % (code, " | ".join(l.strip() for l in text.splitlines() if l.strip())[:400])
+rec["hook"].update(status="healthy" if ok else "error", doctor_exit=code, detail=detail)
+if not ok:
+    rec.update(status="error", code="HE-ADAPTER-007", error="the skills hook is not healthy: " + detail)
+json.dump(rec, open(rec_path + ".tmp", "w")); os.replace(rec_path + ".tmp", rec_path)
+print(("ok " if ok else "HE-ADAPTER-007 the skills hook is not healthy: ") + detail)
+sys.exit(0 if ok else 1)
+PY
+) || { log "skills arm hook: $skill_doctor_line"; exit 2; }
+    log "skills arm hook: $skill_doctor_line"
+    skill_hook_state=healthy
+  fi
+  [ "$skill_gbrain_hash" = null ] || skill_gbrain_hash="\"$skill_gbrain_hash\""
+  [ "$skill_index_hash" = null ] || skill_index_hash="\"$skill_index_hash\""
+  skill_arm_json=$(printf ',"skill_arm":{"arm":"%s","catalog_hash":"%s","gbrain_catalog_hash":%s,"index_hash":%s,"skills_installed":%s,"hook":"%s"}' "${skill_config#skills-}" "$skill_catalog_hash" "$skill_gbrain_hash" "$skill_index_hash" "$skill_count" "$skill_hook_state")
+fi
+
 if [ "$entry" = "run" ]; then
   [ -r "$HE_WORKSPACE_DIR/instruction.md" ] || { log "no readable $HE_WORKSPACE_DIR/instruction.md"; exit 2; }
   # The single-shot turn is its session's first and only turn, so every hook route (route-once included) emits on it; the
@@ -676,6 +855,37 @@ session_key = r["channel"]["id"] + (":" + str(r["thread_ts"]) if r.get("thread_t
 put(out, json.dumps({"config": config, "driver": "cli", "route": route, "session_key": session_key, "session_turn": sessions[key], "emitted": emitted}))
 PY
 }
+# internal-task, skills-native and skills-resolver only. skills_turn, before each member turn: count the turn in its session (the
+# adapter's session key) and keep that count and the session's last text in $HE_SESSION_STATE_DIR/he-skills/sessions.json, then
+# write the turn context the hook wrapper reads, $HE_SESSION_STATE_DIR/he-skills/turn.json (temp file renamed into place): turn,
+# name (the turn file's base name), session_key, window_key (<channel id>, or <channel id>:<thread_ts> in a thread),
+# session_turn, message (the member's own message, the request's text field, not the full prompt) and previous_user_message
+# (the same session's previous text, left out on its first turn). Arguments: request path, adapter session key, turn name.
+skills_turn() {
+  python3 - "$1" "$2" "$3" "$HE_SESSION_STATE_DIR/he-skills" <<'PY'
+import json, os, sys
+req, key, name, state = sys.argv[1:5]
+r = json.load(open(req))
+def put(path, text):
+    with open(path + ".tmp", "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(path + ".tmp", path)
+sessions_path = os.path.join(state, "sessions.json")
+try:
+    sessions = json.load(open(sessions_path, encoding="utf-8"))
+except (OSError, ValueError):
+    sessions = {}
+prior = sessions.get(key) or {}
+count = int(prior.get("turns", 0)) + 1
+ctx = {"turn": r["turn"], "name": name, "session_key": key, "window_key": r["channel"]["id"] + (":" + str(r["thread_ts"]) if r.get("thread_ts") else ""),
+       "session_turn": count, "message": r["text"]}
+if count > 1 and prior.get("last_message") is not None:
+    ctx["previous_user_message"] = prior["last_message"]
+sessions[key] = {"turns": count, "last_message": r["text"]}
+put(sessions_path, json.dumps(sessions, sort_keys=True))
+put(os.path.join(state, "turn.json"), json.dumps(ctx))
+PY
+}
 # turn_security, after each member turn and before its response: every approval card or blocked command the turn's stream-json
 # shows, from its tool results, to $HE_LOG_DIR/turns/<turn>.security.json. kind is tirith (a "Security scan" block), pattern (the
 # dangerous-command patterns), approval (a card asking for a person) or other; for Tirith the finding titles are kept, never the
@@ -713,7 +923,7 @@ PY
 
 stopping=0
 trap 'stopping=1' TERM INT
-printf '{"harness":"hermes","version":"%s","trial":"%s","ready_at":"%s","session_keys":"hermes chat -c dm:<member> | channel:<id>","adapter_sha256":"%s"%s}\n' "${HERMES_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$adapter_sha256" "$gbrain_install_json$route_json" > "$HE_LOG_DIR/ready.tmp"
+printf '{"harness":"hermes","version":"%s","trial":"%s","ready_at":"%s","session_keys":"hermes chat -c dm:<member> | channel:<id>","adapter_sha256":"%s"%s}\n' "${HERMES_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$adapter_sha256" "$gbrain_install_json$route_json$skill_arm_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do
@@ -731,6 +941,7 @@ print(r["turn"], r.get("time_budget_s") or os.environ["HE_TIME_BUDGET_S"], key)
 ' "$req")
     log "turn $turn: session $key, budget ${budget}s"
     [ "$instruction_route" = default ] || route_turn "$req" "$key" "$name"
+    [ "$skill_hook" = 0 ] || skills_turn "$req" "$key" "$name"
     started=$(now)
     set +e
     serve_turn "$req" "$key" "$name" "$budget" &

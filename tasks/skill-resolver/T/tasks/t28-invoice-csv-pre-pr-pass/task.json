@@ -1,0 +1,72 @@
+{
+ "id": "t28-invoice-csv-pre-pr-pass",
+ "target": {
+  "name": "simplify-code",
+  "pack": "hermes",
+  "skill_md_sha256": "9ee977c3362a1c07f2e327198e066ddb3c0ed67709706fc410165ee820b2ca01"
+ },
+ "request": "I just finished the invoice CSV export in src/report_export.py; it works and the tests pass. Before I open the PR, go over it for anything worth tidying and write your suggestions to tidy.md. Don't edit the code yet.",
+ "skill_step": "The skill reviews the change through four angles (reuse, quality, efficiency, altitude) and tags every finding SAFE, CAREFUL or RISKY, presenting the three risk tiers in that order on a dry run.",
+ "used_it": [
+  "risk-tiers",
+  "altitude-angle"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "tidy.md",
+   "why": "the suggestions are where the request asked for them"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "tidy.md",
+   "pattern": "format_money",
+   "why": "it spots the duplicated money formatting helper"
+  },
+  {
+   "id": "n-plus-one",
+   "kind": "regex",
+   "path": "tidy.md",
+   "flags": "i",
+   "pattern": "N\\+1|one query per|joinedload|selectinload",
+   "why": "it spots the per-invoice customer query"
+  },
+  {
+   "id": "risk-tiers",
+   "kind": "order",
+   "path": "tidy.md",
+   "flags": "im",
+   "patterns": [
+    "^[^a-z\\n]*safe\\b",
+    "^[^a-z\\n]*careful\\b",
+    "^[^a-z\\n]*risky\\b"
+   ],
+   "why": "findings are grouped in the skill's SAFE, CAREFUL, RISKY tiers, in that order",
+   "markers": [
+    "SAFE",
+    "CAREFUL",
+    "RISKY"
+   ]
+  },
+  {
+   "id": "altitude-angle",
+   "kind": "regex",
+   "path": "tidy.md",
+   "flags": "i",
+   "pattern": "\\baltitude\\b",
+   "why": "the review covers the skill's altitude angle (deepening band-aid fixes)",
+   "markers": [
+    "altitude",
+    "band-aid"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0345,
+  "body_coverage": 0.6522,
+  "bin": "low"
+ }
+}

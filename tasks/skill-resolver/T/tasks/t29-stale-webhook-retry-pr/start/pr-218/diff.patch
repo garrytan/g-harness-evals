@@ -1,0 +1,54 @@
+diff --git a/src/webhooks/sender.py b/src/webhooks/sender.py
+--- a/src/webhooks/sender.py
++++ b/src/webhooks/sender.py
+@@ -1,18 +1,31 @@
+ import logging
++import time
+ 
+ import httpx
+ 
+ log = logging.getLogger(__name__)
+ 
++RETRY_DELAYS = (1, 2, 4)
++
+ 
+ def deliver(endpoint, payload, secret):
+-    try:
+-        resp = httpx.post(endpoint.url, json=payload, headers=sign(payload, secret), timeout=10)
+-    except httpx.TransportError as exc:
+-        log.warning("webhook delivery failed: %s", exc)
+-        return False
+-    if resp.status_code >= 500:
+-        log.warning("webhook delivery got %s", resp.status_code)
+-        return False
+-    return resp.is_success
++    for attempt, delay in enumerate((0,) + RETRY_DELAYS):
++        if delay:
++            time.sleep(delay)
++        try:
++            resp = httpx.post(endpoint.url, json=payload, headers=sign(payload, secret), timeout=10)
++        except httpx.TransportError as exc:
++            log.warning("webhook delivery attempt %d failed: %s", attempt + 1, exc)
++            continue
++        if resp.status_code >= 500:
++            log.warning("webhook delivery attempt %d got %s", attempt + 1, resp.status_code)
++            continue
++        return resp.is_success
++    return False
+diff --git a/tests/test_sender.py b/tests/test_sender.py
+--- a/tests/test_sender.py
++++ b/tests/test_sender.py
+@@ -20,3 +20,21 @@ def test_deliver_success(httpx_mock):
+     assert deliver(ENDPOINT, PAYLOAD, "s3cret")
++
++
++def test_deliver_retries_503(httpx_mock, monkeypatch):
++    monkeypatch.setattr("time.sleep", lambda s: None)
++    httpx_mock.add_response(status_code=503)
++    httpx_mock.add_response(status_code=200)
++    assert deliver(ENDPOINT, PAYLOAD, "s3cret")
++
++
++def test_deliver_does_not_retry_400(httpx_mock):
++    httpx_mock.add_response(status_code=400)
++    assert not deliver(ENDPOINT, PAYLOAD, "s3cret")

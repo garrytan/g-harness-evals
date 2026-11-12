@@ -1,0 +1,91 @@
+{
+ "id": "t14-stripe-move-questions",
+ "target": {
+  "name": "grill-me",
+  "pack": "hermes",
+  "skill_md_sha256": "6e3b3b81c1ad3a0b3ba3d36ec725e376d225e7867bfbf23a5129cf245e94bb0c"
+ },
+ "request": "Here's my plan for moving our subscriptions onto Stripe Billing (plan.md; the current job is billing/charge_job.py). Before anyone writes code, poke holes in it: put the questions I need to answer into plan-questions.md.",
+ "skill_step": "The skill asks in frontier rounds: one numbered round holds only the questions whose prerequisites are settled, each carrying a recommended answer, and dependent questions are held back for a later round instead of being asked now.",
+ "used_it": [
+  "round-label",
+  "recommendations",
+  "deferred"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "plan-questions.md",
+   "why": "the questions are where the request asked for them"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "plan-questions.md",
+   "pattern": "stripe",
+   "flags": "i",
+   "why": "it is about the Stripe Billing plan"
+  },
+  {
+   "id": "questions",
+   "kind": "regex",
+   "path": "plan-questions.md",
+   "pattern": "\\?",
+   "min": 4,
+   "why": "it actually asks questions"
+  },
+  {
+   "id": "code-facts",
+   "kind": "regex",
+   "path": "plan-questions.md",
+   "pattern": "prorat",
+   "flags": "i",
+   "why": "it draws on facts in billing/charge_job.py, not only the plan"
+  },
+  {
+   "id": "round-label",
+   "kind": "regex",
+   "path": "plan-questions.md",
+   "pattern": "^\\W*round 1\\b",
+   "flags": "im",
+   "why": "questions are asked as a numbered frontier round",
+   "markers": [
+    "round 1",
+    "frontier"
+   ]
+  },
+  {
+   "id": "recommendations",
+   "kind": "regex",
+   "path": "plan-questions.md",
+   "pattern": "^\\W*recommendation\\s*:",
+   "flags": "im",
+   "min": 4,
+   "why": "each question in the round carries a recommended answer",
+   "markers": [
+    "recommendation",
+    "recommended answer"
+   ]
+  },
+  {
+   "id": "deferred",
+   "kind": "regex",
+   "path": "plan-questions.md",
+   "pattern": "round 2|later round|next round",
+   "flags": "i",
+   "why": "questions that depend on open answers are held for a later round",
+   "markers": [
+    "round 2",
+    "later round",
+    "next round"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0833,
+  "body_coverage": 0.35,
+  "bin": "mid"
+ }
+}

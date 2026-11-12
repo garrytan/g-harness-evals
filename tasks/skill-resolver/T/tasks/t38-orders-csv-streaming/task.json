@@ -1,0 +1,75 @@
+{
+ "id": "t38-orders-csv-streaming",
+ "target": {
+  "name": "openclaw-spike",
+  "pack": "openclaw",
+  "skill_md_sha256": "78db0dbc21afe6102d0ef11a3fa4c7ac413d7f3a5ce5f4aafeb33fc68b6a618f"
+ },
+ "request": "Our order importer reads the whole nightly export into memory (importer/current.js) and the real files are about 2 GB now. Before anyone rewrites it, find out whether Node's built-in readline can stream data/sample-orders.csv and total amount_cents per region while memory stays flat; build the smallest thing that answers that under prototypes/, with a README.md there on what you found.",
+ "skill_step": "The skill ends every spike with a fixed verdict block: a '## Verdict: VALIDATED | PARTIAL | INVALIDATED' heading followed by the fields Question, Evidence, What worked, What failed or surprised us, and Recommendation.",
+ "used_it": [
+  "verdict",
+  "surprised"
+ ],
+ "checks": [
+  {
+   "id": "readme",
+   "kind": "exists",
+   "glob": "prototypes/**/README.md",
+   "why": "the write-up is under prototypes/ as asked"
+  },
+  {
+   "id": "code",
+   "kind": "exists",
+   "glob": "prototypes/**/*.{js,mjs,cjs,ts}",
+   "why": "there is a runnable prototype under prototypes/"
+  },
+  {
+   "id": "code-readline",
+   "kind": "regex",
+   "glob": "prototypes/**/*.{js,mjs,cjs,ts}",
+   "pattern": "readline",
+   "why": "the prototype uses readline, the thing in question"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "glob": "prototypes/**/README.md",
+   "pattern": "readline",
+   "flags": "i",
+   "why": "the write-up is about the readline question"
+  },
+  {
+   "id": "verdict",
+   "kind": "regex",
+   "glob": "prototypes/**/README.md",
+   "pattern": "^\\W*verdict\\W+(validated|partial|invalidated)\\b",
+   "flags": "im",
+   "why": "the skill's verdict line with one of its three fixed words",
+   "markers": [
+    "verdict",
+    "validated",
+    "invalidated",
+    "partial"
+   ]
+  },
+  {
+   "id": "surprised",
+   "kind": "regex",
+   "glob": "prototypes/**/README.md",
+   "pattern": "^\\W*what failed or surprised us\\b",
+   "flags": "im",
+   "why": "the skill's verdict block field for what failed or surprised",
+   "markers": [
+    "what failed or surprised us",
+    "surprised us"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0196,
+  "body_coverage": 0.1905,
+  "bin": "low"
+ }
+}

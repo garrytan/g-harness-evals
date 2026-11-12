@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Marlow Library lobby</title>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.11.3/lib/p5.min.js"></script>
+  <style>
+    html, body { margin: 0; overflow: hidden; background: #0b3b40; cursor: none; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<script>
+const SEED = 1907;          // fixed seed so the piece looks the same every morning
+const COUNT = 900;
+const NOISE_SCALE = 0.0016;
+const SPEED = 0.55;
+const BREATH_SECONDS = 60;
+
+const BG = [11, 59, 64];
+const COLORS = [[244, 178, 62], [248, 228, 160], [242, 128, 110]];
+
+let particles = [];
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  randomSeed(SEED);
+  noiseSeed(SEED);
+  frameRate(30);
+  noStroke();
+  background(BG);
+  for (let i = 0; i < COUNT; i++) {
+    const r = random();
+    particles.push({
+      x: random(width),
+      y: random(height),
+      c: r < 0.02 ? COLORS[2] : r < 0.6 ? COLORS[0] : COLORS[1],
+      s: random(1.2, 2.8),
+    });
+  }
+}
+
+function draw() {
+  fill(BG[0], BG[1], BG[2], 16);
+  rect(0, 0, width, height);
+  const breath = 0.85 + 0.15 * sin(TWO_PI * (millis() / 1000) / BREATH_SECONDS);
+  for (const p of particles) {
+    const a = noise(p.x * NOISE_SCALE, p.y * NOISE_SCALE, frameCount * 0.0008) * TWO_PI * 2;
+    p.x = (p.x + cos(a) * SPEED + width) % width;
+    p.y = (p.y + sin(a) * SPEED + height) % height;
+    fill(p.c[0] * breath, p.c[1] * breath, p.c[2] * breath, 180);
+    circle(p.x, p.y, p.s);
+  }
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  background(BG);
+}
+</script>
+</body>
+</html>

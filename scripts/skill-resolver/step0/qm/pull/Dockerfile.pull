@@ -1,0 +1,45 @@
+# internal-task QM pull arm: "pull via sandbox tool (QM refuses private-address MCP)". Two images from one staged context
+# (qm-pull-check.ts writes it): skills/ (the catalog), tools/resolve-skills/ (tool.json, the resolve-skills shim, the
+# expect-catalog pin) and gbrain-stub.cjs (the stand-in for gbrain until internal-task's release is pinned).
+#   core:    the counted core image with the catalog and the tool as a filesystem deployment layer (DEPLOYMENT_LAYER, read
+#            at boot, src/config.ts:652 and src/wiring.ts:648-683 at 90e4ced7). The tool's hints reach the system prompt
+#            as "## Deployment tool hints" (src/core/orchestrator.ts:1232-1234).
+#   sandbox: the rig's sandbox image plus the tool's files at the paths tool.json installs them, and gbrain on PATH.
+#            QM's local sandbox backend gets no layerToolFiles (src/wiring.ts:791-795; the other backends pass
+#            `layerToolFiles: () => deploymentLayer.installFiles`), so the rig bakes the same files into the image. The
+#            layer delivers UTF-8 text only (src/deployment/load-layer.ts:210-219), so the real gbrain binary goes into
+#            the image on every backend; swapping it in replaces /usr/local/bin/gbrain and nothing else.
+#   docker build -f scripts/skill-resolver/step0/qm/pull/Dockerfile.pull --target core -t harness-eval/qm:harn52-pull <context>
+#   docker build -f scripts/skill-resolver/step0/qm/pull/Dockerfile.pull --target sandbox -t harness-eval/qm-sandbox:harn52-pull <context>
+ARG CORE=harness-eval/qm:dev
+ARG SANDBOX=harness-eval/qm-sandbox:dev
+
+FROM ${CORE} AS core
+COPY --chown=node:node skills /opt/catalog-layer/skills
+COPY --chown=node:node tools /opt/catalog-layer/tools
+ENV DEPLOYMENT_LAYER=/opt/catalog-layer
+
+FROM ${SANDBOX} AS sandbox
+COPY --chmod=0755 gbrain-stub.cjs /usr/local/bin/gbrain
+COPY --chmod=0755 tools/resolve-skills/resolve-skills /usr/local/bin/resolve-skills
+COPY --chmod=0644 tools/resolve-skills/expect-catalog /usr/local/lib/resolve-skills/expect-catalog
+
+# Release mode (qm-pull-check.ts --gbrain <binary>): the context also holds gbrain-release (the pinned gbrain binary) and
+# gbrain-record.cjs (a recorder that runs it and logs each call as the stand-in does). The index is built in the image by the
+# release with the catalog where the sandbox reads it, and the tool's catalog pin is the receipt's catalog_hash, as
+# Dockerfile.arms builds the counted sandbox-pull image. sandbox-release-missing drops index.bin (the receipt stays), so the
+# error cells' resolve fails open with skill_index_missing. Catalog mtimes are set to one whole second first, as in
+# Dockerfile.arms, so the index is not stale once the image is exported.
+FROM ${SANDBOX} AS sandbox-release
+COPY --chmod=0755 gbrain-release /usr/local/lib/gbrain/gbrain
+COPY --chmod=0755 gbrain-record.cjs /usr/local/bin/gbrain
+COPY --chmod=0755 tools/resolve-skills/resolve-skills /usr/local/bin/resolve-skills
+COPY skills /opt/catalog-layer/skills
+RUN find /opt/catalog-layer/skills -exec touch -h -t 202611080000.00 {} + \
+ && mkdir -p /opt/skill-resolver /usr/local/lib/resolve-skills \
+ && GBRAIN_HOME=/opt/skill-resolver/gbrain-home /usr/local/lib/gbrain/gbrain skills index build --catalog he-skills --dir /opt/catalog-layer/skills --harness qm --json > /opt/skill-resolver/index-build.json \
+ && chmod -R a+rX /opt/skill-resolver \
+ && grep -o '"catalog_hash": *"[0-9a-f]*"' /opt/skill-resolver/gbrain-home/.gbrain/skill-index/he-skills/receipt.json | grep -o '[0-9a-f]\{64\}' > /usr/local/lib/resolve-skills/expect-catalog
+
+FROM sandbox-release AS sandbox-release-missing
+RUN rm /opt/skill-resolver/gbrain-home/.gbrain/skill-index/he-skills/index.bin

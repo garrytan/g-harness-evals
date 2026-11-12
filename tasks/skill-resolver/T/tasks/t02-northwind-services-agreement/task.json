@@ -1,0 +1,75 @@
+{
+ "id": "t02-northwind-services-agreement",
+ "target": {
+  "name": "document-to-action-items",
+  "pack": "hermes",
+  "skill_md_sha256": "8a7556754aca2a7d04d38847131fb4db8d6705fa2106fcb154279e26117b41ee"
+ },
+ "request": "Legal just sent the signed Northwind services agreement (docs/msa-northwind.md). Pull out everything we at Larkspur are on the hook for and turn it into a task list in actions.md that the ops team can work from.",
+ "skill_step": "Step 5 turns each obligation into a fixed record: outcome, owner, due date, dependency, acceptance condition, risk and citation, and an owner or date the document does not state is written as 'unresolved', never invented or left as TBD.",
+ "used_it": [
+  "acceptance",
+  "unresolved"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "actions.md",
+   "why": "the task list is where the request asked for it"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "actions.md",
+   "pattern": "northwind",
+   "flags": "i",
+   "why": "it is about the Northwind agreement"
+  },
+  {
+   "id": "insurance-date",
+   "kind": "regex",
+   "path": "actions.md",
+   "pattern": "2026-12-01",
+   "why": "it carries the insurance certificate deadline from clause 3.1"
+  },
+  {
+   "id": "forecast",
+   "kind": "regex",
+   "path": "actions.md",
+   "pattern": "forecast",
+   "flags": "i",
+   "why": "it includes the volume forecast obligation from clause 2.1"
+  },
+  {
+   "id": "acceptance",
+   "kind": "regex",
+   "path": "actions.md",
+   "pattern": "acceptance condition",
+   "flags": "i",
+   "min": 3,
+   "why": "each proposed action carries an acceptance condition field",
+   "markers": [
+    "acceptance condition"
+   ]
+  },
+  {
+   "id": "unresolved",
+   "kind": "regex",
+   "path": "actions.md",
+   "pattern": "\\bunresolved\\b",
+   "flags": "i",
+   "min": 3,
+   "why": "owners and dates the document does not give are marked 'unresolved', not invented",
+   "markers": [
+    "unresolved"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0,
+  "body_coverage": 0.2381,
+  "bin": "none"
+ }
+}

@@ -1,0 +1,65 @@
+{
+ "id": "t25-billing-portal-test-writeup",
+ "target": {
+  "name": "web-pentest",
+  "pack": "hermes",
+  "skill_md_sha256": "0e2e199e97fe0145ea7d4ff70166755438c6491d9900793a13f1a64ff400a498"
+ },
+ "request": "We finished the authorized test of the Kestrel Billing staging portal last week; the scope, the client's sign-off and my raw notes are under engagement/ and notes/. Turn it into the client report at report.md.",
+ "skill_step": "The skill's reporting phase fixes the report's sections in order: executive summary, engagement scope, authorization, findings (verified exploitable only), not-exploited candidates (no CVSS), out-of-scope observations, methodology, and limitations / what was NOT tested.",
+ "used_it": [
+  "report-sections"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "report.md",
+   "why": "the report is where the request asked for it"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "report.md",
+   "flags": "i",
+   "pattern": "kestrel",
+   "why": "the report is about the Kestrel engagement"
+  },
+  {
+   "id": "idor",
+   "kind": "regex",
+   "path": "report.md",
+   "pattern": "/api/invoices",
+   "why": "it reports the confirmed invoice access issue"
+  },
+  {
+   "id": "report-sections",
+   "kind": "order",
+   "path": "report.md",
+   "flags": "im",
+   "patterns": [
+    "^[^a-z\\n]*executive summary",
+    "^[^a-z\\n]*(engagement )?scope\\b",
+    "^[^a-z\\n]*authori[sz]ation\\b",
+    "^[^a-z\\n]*findings\\b",
+    "^[^a-z\\n]*not[- ]exploited",
+    "^[^a-z\\n]*out[- ]of[- ]scope observations",
+    "^[^a-z\\n]*methodology",
+    "^[^a-z\\n]*limitations\\b"
+   ],
+   "why": "the skill's report sections in its order, with not-exploited candidates kept apart from findings",
+   "markers": [
+    "not-exploited",
+    "not exploited",
+    "out-of-scope observations",
+    "pending verification"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.08,
+  "body_coverage": 0.5789,
+  "bin": "mid"
+ }
+}

@@ -1,0 +1,76 @@
+{
+ "id": "t23-infra-offsite-song",
+ "target": {
+  "name": "songwriting-and-ai-music",
+  "pack": "hermes",
+  "skill_md_sha256": "5dbf92dc336e9b17be45c35c92a5bb307e4655e39a86617f07b7654678f92583"
+ },
+ "request": "For the infra team offsite I want to generate a song in Suno about our on-call life; facts and inside jokes are in notes/song-brief.md. Put the lyrics in song/lyrics.txt and the style prompt in song/style.txt.",
+ "skill_step": "The skill's phonetic tricks for AI singers say to spell out every number in the lyrics (\"24/7\" becomes \"twenty four seven\") and to space acronyms (\"AI\" becomes \"A I\" or \"A-I\") before generating, since pronunciation is baked in.",
+ "used_it": [
+  "numbers-spelled",
+  "acronyms-spaced"
+ ],
+ "checks": [
+  {
+   "id": "lyrics",
+   "kind": "exists",
+   "path": "song/lyrics.txt",
+   "why": "the lyrics are where the request asked for them"
+  },
+  {
+   "id": "style",
+   "kind": "exists",
+   "path": "song/style.txt",
+   "why": "the style prompt is where the request asked for it"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "song/lyrics.txt",
+   "flags": "i",
+   "pattern": "pager|on-?call",
+   "why": "the song is about on-call life"
+  },
+  {
+   "id": "sections",
+   "kind": "regex",
+   "path": "song/lyrics.txt",
+   "flags": "i",
+   "pattern": "\\[(verse|chorus)[^\\]]*\\]",
+   "min": 2,
+   "why": "the lyrics carry bracketed section tags for Suno"
+  },
+  {
+   "id": "numbers-spelled",
+   "kind": "regex",
+   "path": "song/lyrics.txt",
+   "pattern": "\\d(?![^\\[\\n]*\\])",
+   "min": 0,
+   "max": 0,
+   "why": "no digits in the sung lyrics (section tags like [Verse 1] aside): numbers are spelled out for the AI singer",
+   "markers": [
+    "spell out",
+    "twenty four seven",
+    "phonetic"
+   ]
+  },
+  {
+   "id": "acronyms-spaced",
+   "kind": "regex",
+   "path": "song/lyrics.txt",
+   "pattern": "\\b(S[ -]R[ -]E|D[ -]N[ -]S|A[ -]P[ -]I|S[ -]L[ -]A)\\b",
+   "why": "acronyms from the brief are spaced so the singer spells them",
+   "markers": [
+    "space acronyms",
+    "A-I"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0417,
+  "body_coverage": 0.6,
+  "bin": "low"
+ }
+}

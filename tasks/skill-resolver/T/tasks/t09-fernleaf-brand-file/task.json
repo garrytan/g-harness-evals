@@ -1,0 +1,103 @@
+{
+ "id": "t09-fernleaf-brand-file",
+ "target": {
+  "name": "design-md",
+  "pack": "hermes",
+  "skill_md_sha256": "7ed56bba40ffc9573fa51b33b2424f37fb5f774e9ecb7e76e737797afd0b62ae"
+ },
+ "request": "Our two coding agents keep inventing their own colours for the Fernleaf site. Turn brand/notes.md into a DESIGN.md at the project root that both of them can read.",
+ "skill_step": "DESIGN.md follows Google's spec: YAML front matter with version: alpha, name, colors, typography, rounded, spacing and components whose values use {colors.x} token references, then the body sections in the canonical order Overview, Colors, Typography, Layout, Elevation & Depth, Shapes, Components, Do's and Don'ts.",
+ "used_it": [
+  "fm-version",
+  "fm-colors",
+  "token-refs",
+  "section-order"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "DESIGN.md",
+   "why": "the file is where the request asked for it"
+  },
+  {
+   "id": "green",
+   "kind": "regex",
+   "path": "DESIGN.md",
+   "pattern": "#2F5D50",
+   "flags": "i",
+   "why": "it carries the brand's main green"
+  },
+  {
+   "id": "fonts",
+   "kind": "regex",
+   "path": "DESIGN.md",
+   "pattern": "Fraunces",
+   "why": "it carries the brand's heading font"
+  },
+  {
+   "id": "fm-version",
+   "kind": "frontmatter",
+   "path": "DESIGN.md",
+   "key": "version",
+   "pattern": "^alpha$",
+   "why": "the file opens with the spec's front matter, version: alpha",
+   "markers": [
+    "version: alpha",
+    "alpha"
+   ]
+  },
+  {
+   "id": "fm-colors",
+   "kind": "frontmatter",
+   "path": "DESIGN.md",
+   "key": "colors",
+   "pattern": "\"primary\"",
+   "why": "colours are machine-readable tokens in the front matter, with a primary token",
+   "markers": [
+    "front matter",
+    "frontmatter",
+    "design tokens"
+   ]
+  },
+  {
+   "id": "token-refs",
+   "kind": "regex",
+   "path": "DESIGN.md",
+   "pattern": "\\{colors\\.[a-z0-9-]+\\}",
+   "why": "components reference colour tokens instead of retyping hex values",
+   "markers": [
+    "{colors.",
+    "token reference"
+   ]
+  },
+  {
+   "id": "section-order",
+   "kind": "order",
+   "path": "DESIGN.md",
+   "flags": "im",
+   "patterns": [
+    "^#+\\s*(overview|brand & style)\\b",
+    "^#+\\s*colors\\b",
+    "^#+\\s*typography\\b",
+    "^#+\\s*layout\\b",
+    "^#+\\s*elevation\\b",
+    "^#+\\s*shapes\\b",
+    "^#+\\s*components\\b",
+    "^#+\\s*do'?s and don'?ts\\b"
+   ],
+   "why": "body sections follow the spec's canonical order",
+   "markers": [
+    "do's and don'ts",
+    "elevation & depth",
+    "canonical"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0417,
+  "body_coverage": 0.5882,
+  "bin": "low"
+ }
+}

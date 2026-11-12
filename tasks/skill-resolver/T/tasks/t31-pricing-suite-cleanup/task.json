@@ -1,0 +1,90 @@
+{
+ "id": "t31-pricing-suite-cleanup",
+ "target": {
+  "name": "test-audit",
+  "pack": "gstack",
+  "skill_md_sha256": "cb4ff35da3597515f67e2512e90357083599669017ea6cc2533964c390b930c2"
+ },
+ "request": "Some of the tests in this pricing package feel pointless and the suite keeps growing. Go through test/ and write up which ones we could drop or fold together, with your reasoning, in reports/test-cleanup.md. Don't delete anything yet.",
+ "skill_step": "Before any retirement, the skill fills a retirement card per candidate with the fields test, detects, non_test_callers, search_command, stronger_proof, history, unlocks and validation, and gives each a verdict from retire, rewrite, extend or retain.",
+ "used_it": [
+  "card-callers",
+  "card-proof",
+  "card-search",
+  "verdict-vocab"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "reports/test-cleanup.md",
+   "why": "the write-up is where the request asked for it"
+  },
+  {
+   "id": "dup",
+   "kind": "regex",
+   "path": "reports/test-cleanup.md",
+   "pattern": "pricing-copy",
+   "why": "it covers the duplicated test file"
+  },
+  {
+   "id": "smoke",
+   "kind": "regex",
+   "path": "reports/test-cleanup.md",
+   "pattern": "smoke\\.test",
+   "why": "it covers the assertion-free test"
+  },
+  {
+   "id": "card-callers",
+   "kind": "regex",
+   "path": "reports/test-cleanup.md",
+   "pattern": "non[\\s_-]?test[\\s_-]?callers",
+   "flags": "i",
+   "why": "the retirement card's non_test_callers field",
+   "markers": [
+    "non_test_callers",
+    "retirement card"
+   ]
+  },
+  {
+   "id": "card-proof",
+   "kind": "regex",
+   "path": "reports/test-cleanup.md",
+   "pattern": "stronger[\\s_-]?proof",
+   "flags": "i",
+   "why": "the retirement card's stronger_proof field",
+   "markers": [
+    "stronger_proof"
+   ]
+  },
+  {
+   "id": "card-search",
+   "kind": "regex",
+   "path": "reports/test-cleanup.md",
+   "pattern": "search[\\s_-]?command",
+   "flags": "i",
+   "why": "the retirement card's search_command field",
+   "markers": [
+    "search_command"
+   ]
+  },
+  {
+   "id": "verdict-vocab",
+   "kind": "regex",
+   "path": "reports/test-cleanup.md",
+   "pattern": "verdict\\W{0,4}\\s*(retire|rewrite|extend|retain)\\b",
+   "flags": "i",
+   "why": "the skill's verdict vocabulary",
+   "markers": [
+    "retire",
+    "retain"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0588,
+  "body_coverage": 0.4783,
+  "bin": "mid"
+ }
+}

@@ -1,0 +1,14 @@
+# internal-task Step 0 probe image for QM: the counted core image plus a skill catalog as a filesystem deployment layer.
+# Build context: a catalog directory holding skills/<name>/ (scripts/skill-resolver/build-catalog.ts output, or the
+# names-only copy from names-only.ts). QM reads DEPLOYMENT_LAYER at boot (src/config.ts:652, src/wiring.ts:648-683 at
+# 90e4ced7): with no durable layer in the database, the layer's skills/ are installed into the org scope by
+# installSeedSkills, createdBy system:deployment-layer. Core's command is unchanged.
+#   docker build -f scripts/skill-resolver/step0/qm/Dockerfile.qm-catalog --target native -t harness-eval/qm:harn52-native <catalog dir>
+#   --target no-bundled: the same, with QM's seed skills (SKILLS_SEED_DIR) and plugin skills (PLUGIN_SKILLS_DIRS) off.
+ARG BASE=harness-eval/qm:dev
+FROM ${BASE} AS native
+COPY --chown=node:node skills /opt/catalog-layer/skills
+ENV DEPLOYMENT_LAYER=/opt/catalog-layer
+
+FROM native AS no-bundled
+ENV SKILLS_SEED_DIR=/opt/no-bundled-skills PLUGIN_SKILLS_DIRS=false

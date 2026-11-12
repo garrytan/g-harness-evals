@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Lunch poll</title></head>
+<body>
+  <h1>Where are we eating Friday?</h1>
+  <form method="post" action="/vote">
+    <label><input type="radio" name="choice" value="tacos"> Tacos</label>
+    <label><input type="radio" name="choice" value="ramen"> Ramen</label>
+    <label><input type="radio" name="choice" value="salad bar"> Salad bar</label>
+    <button>Vote</button>
+  </form>
+  <pre id="results"></pre>
+  <script>
+    fetch('/results').then((r) => r.json()).then((v) => {
+      document.getElementById('results').textContent = JSON.stringify(v, null, 2);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,69 @@
+{
+ "id": "t19-sensor-app-relaunch-posts",
+ "target": {
+  "name": "social-media-content-calendar",
+  "pack": "hermes",
+  "skill_md_sha256": "f12b235ea3eedf611022c0a89a967f08a5dc25bbd1531572f1c37f7545177298"
+ },
+ "request": "We launch Tidepool 2.0 on March 3 and I need about two weeks of posts on LinkedIn, Instagram and X around it; everything we know is in brief/launch.md. Put the plan in calendar.md so Dana can make the assets from it.",
+ "skill_step": "The skill writes a brief per post with named fields (hook, core message, format, copy length, CTA, link, asset dimensions, accessibility text, tags, success metric) and gives every post a disposition of draft, needs review or approved, with connector-less platforms marked handed-off rather than published.",
+ "used_it": [
+  "success-metrics",
+  "review-state"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "calendar.md",
+   "why": "the plan is where the request asked for it"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "calendar.md",
+   "pattern": "Tidepool",
+   "why": "the plan is about the Tidepool launch"
+  },
+  {
+   "id": "platforms",
+   "kind": "regex",
+   "path": "calendar.md",
+   "flags": "i",
+   "pattern": "linkedin[\\s\\S]*instagram|instagram[\\s\\S]*linkedin",
+   "why": "it covers the platforms the request named"
+  },
+  {
+   "id": "success-metrics",
+   "kind": "regex",
+   "path": "calendar.md",
+   "flags": "i",
+   "pattern": "\\bsuccess metric\\b",
+   "min": 3,
+   "why": "each post brief names its success metric, one of the skill's brief fields",
+   "markers": [
+    "success metric",
+    "core message"
+   ]
+  },
+  {
+   "id": "review-state",
+   "kind": "regex",
+   "path": "calendar.md",
+   "flags": "i",
+   "pattern": "\\bneeds review\\b",
+   "why": "posts carry the skill's draft / needs review / approved disposition",
+   "markers": [
+    "needs review",
+    "handed-off",
+    "handed off"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0714,
+  "body_coverage": 0.35,
+  "bin": "mid"
+ }
+}

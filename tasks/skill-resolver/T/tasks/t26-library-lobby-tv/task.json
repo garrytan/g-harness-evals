@@ -1,0 +1,64 @@
+{
+ "id": "t26-library-lobby-tv",
+ "target": {
+  "name": "p5js",
+  "pack": "hermes",
+  "skill_md_sha256": "3b39b75303e082af69b3f4e2deab7a55b27d60293eff6a561fb627188194a33e"
+ },
+ "request": "The Marlow Library lobby TV needs a slow generative animation (brief in brief.md). Build it with p5.js as a single page at lobby/index.html.",
+ "skill_step": "The skill's critical implementation notes say to disable the Friendly Error System (p5.disableFriendlyErrors = true, before setup) in every production sketch because it adds up to 10x overhead, and to call pixelDensity(1) to avoid retina overdraw.",
+ "used_it": [
+  "fes-off",
+  "pixel-density"
+ ],
+ "checks": [
+  {
+   "id": "page",
+   "kind": "exists",
+   "path": "lobby/index.html",
+   "why": "the page is where the request asked for it"
+  },
+  {
+   "id": "p5",
+   "kind": "regex",
+   "path": "lobby/index.html",
+   "pattern": "p5(\\.min)?\\.js",
+   "why": "it loads p5.js"
+  },
+  {
+   "id": "canvas",
+   "kind": "regex",
+   "path": "lobby/index.html",
+   "pattern": "createCanvas\\(",
+   "why": "it draws on a p5 canvas"
+  },
+  {
+   "id": "fes-off",
+   "kind": "regex",
+   "path": "lobby/index.html",
+   "pattern": "p5\\.disableFriendlyErrors\\s*=\\s*true",
+   "why": "the Friendly Error System is switched off, as the skill requires for production sketches",
+   "markers": [
+    "disableFriendlyErrors",
+    "Friendly Error"
+   ]
+  },
+  {
+   "id": "pixel-density",
+   "kind": "regex",
+   "path": "lobby/index.html",
+   "pattern": "pixelDensity\\(\\s*1\\s*\\)",
+   "why": "pixel density pinned to 1, the skill's performance note",
+   "markers": [
+    "pixelDensity",
+    "retina"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0,
+  "body_coverage": 0.6154,
+  "bin": "none"
+ }
+}

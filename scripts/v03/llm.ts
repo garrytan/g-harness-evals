@@ -12,10 +12,12 @@ import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-export const ALLOWED_MODELS = ['openai:gpt-6.1-sol', 'anthropic:claude-opus-5-5'] as const;
+export const ALLOWED_MODELS = ['openai:gpt-6.1-sol', 'anthropic:claude-opus-5-5', 'openai:gpt-6-astra'] as const;
 export type ModelId = (typeof ALLOWED_MODELS)[number];
 
-export interface CompleteRequest { model: ModelId; system: string; prompt: string; maxTokens: number }
+/** cachePrefix, when set, must be the start of prompt: the transport marks it cacheable (Anthropic cache_control, an OpenAI
+ * prompt_cache_key over it). It is not part of the response cache key, so the same prompt hits responses cached without it. */
+export interface CompleteRequest { model: ModelId; system: string; prompt: string; maxTokens: number; cachePrefix?: string }
 export type Transport = (req: CompleteRequest) => Promise<string>;
 
 export interface LlmStats { calls: number; cache_hits: number; usd: number }
@@ -40,6 +42,10 @@ export interface ProxyOptions {
   dir: string;
   leaseUsd: number;
   runId: string;
+  /** Ledger file; defaults to <dir>/ledger.sqlite. Naming another run's ledger and its lease id joins that open lease. */
+  ledger?: string;
+  /** Output-token cap the lease was or is opened with (the proxy's --max-output-tokens); a lease is rejoined only with the same cap. */
+  maxOutputTokens?: number;
 }
 
 export interface LlmOptions {
@@ -58,8 +64,9 @@ async function startProxy(o: ProxyOptions): Promise<Proxy> {
   const token = randomBytes(24).toString('hex');
   const errFd = openSync(join(o.dir, 'proxy.stderr.log'), 'a');
   const child = spawn('bun', [join(REPO_ROOT, 'runner/proxy/metering-proxy.ts'),
-    '--listen', '127.0.0.1:0', '--budget-ledger', join(o.dir, 'ledger.sqlite'), '--lease-usd', String(o.leaseUsd), '--run-id', o.runId,
-    '--allow-models', ALLOWED_MODELS.join(','), '--control-token', token, '--usage-log', join(o.dir, 'usage.ndjson')],
+    '--listen', '127.0.0.1:0', '--budget-ledger', o.ledger ?? join(o.dir, 'ledger.sqlite'), '--lease-usd', String(o.leaseUsd), '--run-id', o.runId,
+    '--allow-models', ALLOWED_MODELS.join(','), '--control-token', token, '--usage-log', join(o.dir, 'usage.ndjson'),
+    ...(o.maxOutputTokens ? ['--max-output-tokens', String(o.maxOutputTokens)] : [])],
   { cwd: REPO_ROOT, env: process.env, stdio: ['ignore', 'ignore', 'pipe'] });
   const port = await new Promise<number>((resolve, reject) => {
     let buf = '';
@@ -83,15 +90,22 @@ async function startProxy(o: ProxyOptions): Promise<Proxy> {
 function proxyTransport(p: Proxy): Transport {
   return async (req) => {
     const [provider, model] = req.model.split(':') as ['openai' | 'anthropic', string];
+    const prefix = req.cachePrefix && req.prompt.startsWith(req.cachePrefix) ? req.cachePrefix : '';
+    const user = prefix
+      ? [{ type: 'text', text: prefix, cache_control: { type: 'ephemeral' } }, { type: 'text', text: req.prompt.slice(prefix.length) }]
+      : req.prompt;
     const res = provider === 'openai'
       ? await fetch(`${p.base}/${p.slot}/openai/v1/chat/completions`, {
         method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer unauthenticated' },
         body: JSON.stringify({ model, max_completion_tokens: req.maxTokens, reasoning_effort: 'low',
-          messages: [{ role: 'system', content: req.system }, { role: 'user', content: req.prompt }] }),
+          ...(prefix ? { prompt_cache_key: createHash('sha256').update(JSON.stringify([model, req.system, prefix])).digest('hex').slice(0, 32), prompt_cache_options: { mode: 'explicit' } } : {}),
+          messages: [{ role: 'system', content: req.system }, { role: 'user', content: prefix
+            ? [{ type: 'text', text: prefix, prompt_cache_breakpoint: { mode: 'explicit' } }, { type: 'text', text: req.prompt.slice(prefix.length) }]
+            : req.prompt }] }),
       })
       : await fetch(`${p.base}/${p.slot}/anthropic/v1/messages`, {
         method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'unauthenticated', 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model, max_tokens: req.maxTokens, system: req.system, messages: [{ role: 'user', content: req.prompt }] }),
+        body: JSON.stringify({ model, max_tokens: req.maxTokens, system: req.system, messages: [{ role: 'user', content: user }] }),
       });
     if (res.status === 402) throw new LlmError('E_BUDGET');
     if (!res.ok) throw new LlmError(`E_HTTP_${res.status}`);

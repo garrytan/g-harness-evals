@@ -1,0 +1,78 @@
+{
+ "id": "t42-alembic-pane-script",
+ "target": {
+  "name": "tmux",
+  "pack": "openclaw",
+  "skill_md_sha256": "8aeaa6f3dfe06d58e09721778b8c9e654bcbd47590f26f442c4dc87c9349c572"
+ },
+ "request": "Our migrations have to run in the first pane of the api session described in notes/dev-setup.md, because only that shell has the venv and the VPN variables. Write scripts/run-migrate.sh that types alembic upgrade head into that pane, returns only after the command has really finished, and then prints the last 30 lines of the pane.",
+ "skill_step": "The skill sends arbitrary text with send-keys -l -- and Enter as a separate key, and detects completion with a nonce marker printed in split pieces (printf '%s%s' 'PREFIX_' nonce) so the echoed command line never contains the whole marker.",
+ "used_it": [
+  "literal",
+  "split-marker"
+ ],
+ "checks": [
+  {
+   "id": "script",
+   "kind": "exists",
+   "path": "scripts/run-migrate.sh",
+   "why": "the script is where the request asked for it"
+  },
+  {
+   "id": "command",
+   "kind": "regex",
+   "path": "scripts/run-migrate.sh",
+   "pattern": "alembic upgrade head",
+   "why": "it runs the migration command"
+  },
+  {
+   "id": "target",
+   "kind": "regex",
+   "path": "scripts/run-migrate.sh",
+   "pattern": "api:0(\\.0)?\\b|-t\\s+['\"]?api\\b",
+   "why": "it targets the first pane of the api session"
+  },
+  {
+   "id": "capture",
+   "kind": "regex",
+   "path": "scripts/run-migrate.sh",
+   "pattern": "capture-pane",
+   "why": "it reads the pane output back"
+  },
+  {
+   "id": "last-30",
+   "kind": "regex",
+   "path": "scripts/run-migrate.sh",
+   "pattern": "\\b30\\b",
+   "why": "it prints the last 30 lines"
+  },
+  {
+   "id": "literal",
+   "kind": "regex",
+   "path": "scripts/run-migrate.sh",
+   "pattern": "send-keys\\b[^\\n]*\\s-l\\b",
+   "why": "the skill sends arbitrary text literally with send-keys -l, Enter separately",
+   "markers": [
+    "send-keys -l",
+    "-l --"
+   ]
+  },
+  {
+   "id": "split-marker",
+   "kind": "regex",
+   "path": "scripts/run-migrate.sh",
+   "pattern": "printf\\s+\\\\?['\"]%s%s",
+   "why": "the skill's completion marker printed in split pieces so the echoed command cannot match it",
+   "markers": [
+    "%s%s",
+    "nonce"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0,
+  "body_coverage": 0.2813,
+  "bin": "none"
+ }
+}

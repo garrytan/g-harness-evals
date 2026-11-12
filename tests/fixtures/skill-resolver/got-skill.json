@@ -1,0 +1,356 @@
+{
+ "catalog": [
+  "pdf",
+  "xlsx",
+  "git-workflow",
+  "dcf-model",
+  "3-statement-model",
+  "lbo-model",
+  "merger-model",
+  "arxiv"
+ ],
+ "openclaw": {
+  "requests": [
+   {
+    "model": "claude-opus-5-5",
+    "system": [
+     {
+      "type": "text",
+      "text": "skills listing"
+     }
+    ],
+    "messages": [
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "text",
+        "text": "Merge these two PDFs"
+       }
+      ]
+     },
+     {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "tool_use",
+        "id": "t1",
+        "name": "skills_read",
+        "input": {
+         "name": "xlsx"
+        }
+       }
+      ]
+     },
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "tool_result",
+        "tool_use_id": "t1",
+        "is_error": true,
+        "content": "Tool skills_read not found"
+       }
+      ]
+     },
+     {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "tool_use",
+        "id": "t2",
+        "name": "tool_call",
+        "input": {
+         "name": "skills_read",
+         "arguments": {
+          "name": "pdf"
+         }
+        }
+       }
+      ]
+     },
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "tool_result",
+        "tool_use_id": "t2",
+        "content": "---\nname: pdf\n---\nbody"
+       }
+      ]
+     },
+     {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "tool_use",
+        "id": "t3",
+        "name": "read",
+        "input": {
+         "path": "/workspace/skills/git-workflow/SKILL.md"
+        }
+       }
+      ]
+     },
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "tool_result",
+        "tool_use_id": "t3",
+        "content": "---\nname: git-workflow\n---"
+       }
+      ]
+     },
+     {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "tool_use",
+        "id": "t4",
+        "name": "exec",
+        "input": {
+         "command": "cat /opt/harness/lib/node_modules/openclaw/skills/notion/SKILL.md"
+        }
+       }
+      ]
+     },
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "tool_result",
+        "tool_use_id": "t4",
+        "content": "---\nname: notion\n---"
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "trace": [],
+  "expect": {
+   "catalog_opened": [
+    "git-workflow",
+    "pdf"
+   ],
+   "other_opened": [
+    "notion"
+   ],
+   "failed": [
+    "xlsx"
+   ]
+  }
+ },
+ "claude-code": {
+  "requests": [
+   {
+    "model": "claude-opus-5-5",
+    "messages": [
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "text",
+        "text": "Value this company"
+       }
+      ]
+     },
+     {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "tool_use",
+        "id": "c1",
+        "name": "Skill",
+        "input": {
+         "skill": "dcf-model"
+        }
+       }
+      ]
+     },
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "tool_result",
+        "tool_use_id": "c1",
+        "content": "Launching skill: dcf-model"
+       }
+      ]
+     },
+     {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "tool_use",
+        "id": "c2",
+        "name": "Bash",
+        "input": {
+         "command": "cat /harness-state/claude/skills/no-such-skill/SKILL.md"
+        }
+       }
+      ]
+     },
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "tool_result",
+        "tool_use_id": "c2",
+        "is_error": true,
+        "content": "cat: /harness-state/claude/skills/no-such-skill/SKILL.md: No such file or directory"
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "trace": [
+   "{\"type\":\"system\",\"subtype\":\"init\"}",
+   "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"c1\",\"name\":\"Skill\",\"input\":{\"skill\":\"dcf-model\"}}]}}",
+   "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"c3\",\"name\":\"Read\",\"input\":{\"file_path\":\"/harness-state/claude/skills/lbo-model/SKILL.md\"}}]}}",
+   "{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"c3\",\"content\":\"---\\nname: lbo-model\\n---\"}]}}"
+  ],
+  "expect": {
+   "catalog_opened": [
+    "dcf-model",
+    "lbo-model"
+   ],
+   "other_opened": [],
+   "failed": [
+    "no-such-skill"
+   ]
+  }
+ },
+ "codex": {
+  "requests": [
+   {
+    "model": "gpt-6.1-sol",
+    "input": [
+     {
+      "type": "message",
+      "role": "developer",
+      "content": [
+       {
+        "type": "input_text",
+        "text": "<skills_instructions>- merger-model: Build M&A (file: r0/merger-model/SKILL.md)</skills_instructions>"
+       }
+      ]
+     },
+     {
+      "type": "message",
+      "role": "user",
+      "content": [
+       {
+        "type": "input_text",
+        "text": "Use $lbo-model for this, it costs $5 not $pdfx"
+       }
+      ]
+     },
+     {
+      "type": "function_call",
+      "call_id": "x1",
+      "name": "exec_command",
+      "arguments": "{\"cmd\":\"sed -n 1,200p /harness-state/codex/skills/3-statement-model/SKILL.md\"}"
+     },
+     {
+      "type": "function_call_output",
+      "call_id": "x1",
+      "output": "---\nname: 3-statement-model\n---"
+     },
+     {
+      "type": "function_call",
+      "call_id": "x2",
+      "name": "shell",
+      "arguments": "{\"command\":[\"bash\",\"-lc\",\"cat /harness-state/codex/skills/.system/imagegen/SKILL.md\"]}"
+     },
+     {
+      "type": "function_call_output",
+      "call_id": "x2",
+      "output": "---\nname: imagegen\n---"
+     }
+    ]
+   }
+  ],
+  "trace": [
+   "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_3\",\"type\":\"command_execution\",\"command\":\"bash -lc 'cat /harness-state/codex/skills/merger-model/SKILL.md'\",\"exit_code\":0}}",
+   "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_4\",\"type\":\"agent_message\",\"text\":\"done\"}}"
+  ],
+  "expect": {
+   "catalog_opened": [
+    "3-statement-model",
+    "lbo-model",
+    "merger-model"
+   ],
+   "other_opened": [
+    "imagegen"
+   ],
+   "failed": []
+  }
+ },
+ "hermes": {
+  "requests": [
+   {
+    "model": "gpt-6.1-sol",
+    "instructions": "...",
+    "input": [
+     {
+      "type": "message",
+      "role": "user",
+      "content": [
+       {
+        "type": "input_text",
+        "text": "find papers on arxiv"
+       }
+      ]
+     },
+     {
+      "type": "function_call",
+      "call_id": "h1",
+      "name": "skill_view",
+      "arguments": "{\"name\":\"research/arxiv\"}"
+     },
+     {
+      "type": "function_call_output",
+      "call_id": "h1",
+      "output": "{\"success\":true,\"content\":\"---\\nname: arxiv\\n---\"}"
+     },
+     {
+      "type": "function_call",
+      "call_id": "h2",
+      "name": "tool_call",
+      "arguments": "{\"calls\":[{\"name\":\"skill_view\",\"arguments\":{\"name\":\"xlsx\"}}]}"
+     },
+     {
+      "type": "function_call_output",
+      "call_id": "h2",
+      "output": "ok"
+     },
+     {
+      "type": "function_call",
+      "call_id": "h3",
+      "name": "read_file",
+      "arguments": "{\"path\":\"/harness-state/hermes/skills/pdf/SKILL.md\"}"
+     },
+     {
+      "type": "function_call_output",
+      "call_id": "h3",
+      "output": "File not found"
+     }
+    ]
+   }
+  ],
+  "trace": [],
+  "expect": {
+   "catalog_opened": [
+    "arxiv",
+    "xlsx"
+   ],
+   "other_opened": [],
+   "failed": [
+    "pdf"
+   ]
+  }
+ }
+}

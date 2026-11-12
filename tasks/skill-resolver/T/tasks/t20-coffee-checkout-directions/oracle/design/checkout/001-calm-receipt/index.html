@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bean Runner checkout: calm receipt</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.5; }
+button { font: inherit; cursor: pointer; }
+body { background: #f4f1ea; color: #222; display: flex; justify-content: center; padding: 48px 16px; }
+.receipt { background: #fffdf8; width: 380px; padding: 32px; border: 1px solid #e4dfd3; font-family: ui-monospace, Menlo, monospace; }
+h1 { font-size: 15px; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 24px; }
+.row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed #ddd6c6; }
+.chips { display: flex; gap: 8px; margin: 16px 0; }
+.chips button { border: 1px solid #ccc3b0; background: none; padding: 4px 10px; }
+.chips button.on, .chips button:hover { background: #222; color: #fffdf8; }
+#pay { width: 100%; margin-top: 24px; padding: 12px; background: #222; color: #fffdf8; border: 0; }
+#pay:hover { background: #444; }
+#done { margin-top: 16px; font-size: 13px; }
+</style>
+</head>
+<body>
+<main class="receipt">
+  <h1>Bean Runner</h1>
+  <div class="row"><span>Ethiopia Guji, 250 g</span><span>EUR 14.50</span></div>
+  <div class="row"><span>Grind</span><span>Whole bean</span></div>
+  <div class="row"><span>Delivery</span><span>Free</span></div>
+  <div class="row"><span>Every</span><span id="freq">2 weeks</span></div>
+  <div class="chips"><button data-freq="2 weeks" class="on">2 weeks</button><button data-freq="4 weeks">4 weeks</button></div>
+  <div class="row"><span>Card</span><span>ending 4242</span></div>
+  <button id="pay">Confirm and pay EUR 14.50</button>
+  <p id="done" hidden>Thanks. Your first bag ships Monday.</p>
+</main>
+<script>
+document.querySelectorAll('[data-freq]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    document.querySelectorAll('[data-freq]').forEach(function (x) { x.classList.remove('on'); });
+    b.classList.add('on');
+    document.getElementById('freq').textContent = b.dataset.freq;
+  });
+});
+document.getElementById('pay').addEventListener('click', function () {
+  document.getElementById('done').hidden = false;
+});
+</script>
+</body>
+</html>

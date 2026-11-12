@@ -28,7 +28,7 @@
 import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
-import type { Meter, RouteTexts, UsageLine } from '../proxy/metering-proxy.ts';
+import type { Meter, RouteTexts, SlotLimits, UsageLine } from '../proxy/metering-proxy.ts';
 import { HOUSEKEEPING_FAMILY, type AblationReceipt, type AblationSpec, type Wire } from '../proxy/ablate.ts';
 import { sectionRoute } from '../proxy/sections.ts';
 import type { TrialAblation, TrialEmbeddingUsage, TrialUsage } from '../contracts.ts';
@@ -172,9 +172,15 @@ export class RunProxy {
    *  ids), only requests for those models, inside the run-wide --allow-models; with `ablation`, the proxy
    *  checks the map's sha256 (a mismatch fails the bind) and cuts the layers out of the slot's requests; with `routes`
    *  (internal-task), the slot's usage lines carry route copies when the proxy has route texts. */
-  bind(slot: string, key: string, token?: string, models?: string[], ablation?: AblationSpec, routes = false) {
+  bind(slot: string, key: string, token?: string, models?: string[], ablation?: AblationSpec, routes = false, limits: SlotLimits = {}) {
     if (ablation && this.ablationLog) this.ablationFrom.set(key, existsSync(this.ablationLog) ? statSync(this.ablationLog).size : 0);
-    return this.control('/__proxy/bind', { slot, key, ...(token ? { token } : {}), ...(models ? { models } : {}), ...(ablation ? { ablation } : {}), ...(routes ? { routes } : {}) });
+    return this.control('/__proxy/bind', { slot, key, ...(token ? { token } : {}), ...(models ? { models } : {}), ...(ablation ? { ablation } : {}), ...(routes ? { routes } : {}), ...limits });
+  }
+  /** internal-task Phase B: the request bodies the proxy collected for `key` (a slot bound with collect_requests), handed over once:
+   *  the forwarded ones, and the first one the request cap refused. */
+  async requests(key: string): Promise<{ requests: unknown[]; refused: unknown[] }> {
+    const r = await this.control('/__proxy/requests', { key }) as { requests: unknown[]; refused?: unknown[] };
+    return { requests: r.requests, refused: r.refused ?? [] };
   }
   unbind(slot: string) { return this.control('/__proxy/unbind', { slot }); }
   finalize(key: string, timeoutMs = 30_000): Promise<Meter> { return this.control('/__proxy/finalize', { key, timeout_ms: timeoutMs }) as Promise<Meter>; }

@@ -122,7 +122,9 @@ export interface PredicateResult {
   capability?: string;
 }
 
-export type Termination = 'completed' | 'timeout' | 'approval_stop' | 'harness_error' | 'model_error' | 'infra_error' | 'exam_fault';
+/** request_cap (internal-task Phase B, opt-in per cell): the harness asked for one more model request than the cell's request_cap
+ *  allows, after that many had been answered; the proxy refused it and the trial ended there. A scored outcome, not an error. */
+export type Termination = 'completed' | 'timeout' | 'approval_stop' | 'harness_error' | 'model_error' | 'infra_error' | 'exam_fault' | 'request_cap';
 
 export interface GradeResult {
   grade: 'pass' | 'fail' | 'n/a';
@@ -556,6 +558,57 @@ export interface TrialRecord {
   /** internal-task (H10) addition: the digest of the harness's provenance manifest (runner/trial/provenance.ts provenanceDigest) at
    *  the runner's checkout, on harnesses that have harnesses/<name>/provenance.json. preflight showed the image carries the same files. */
   provenance_sha256?: string;
+  /** internal-task addition: set on a trial of a skill-tasks cell (set T, runner/trial/set-t.ts). grade is pass exactly when
+   *  set_t.success is true. */
+  set_t?: TrialSetT;
+  /** internal-task addition: set on a trial of a skill-requests cell (Phase B, runner/trial/skill-requests.ts). */
+  skill_request?: TrialSkillRequest;
+}
+
+/** internal-task Phase B: one request row sent as the member's one turn in a fresh session. Ids and hashes only: the request text
+ *  is never written to the record, the trial directory or any log (runner/trial/skill-requests.ts scrubs the trial directory).
+ *  set: the cell's request_set. request_sha256: sha256 of the text sent (for a row with prev_user_text, the composite the judges
+ *  saw); prev_user_sha256: of the row's prev_user_text. Both are absent on a private cell, whose only fingerprint is the set
+ *  file's sha256 in the manifest (request_sets). model_requests: requests the proxy forwarded for the cell's model (utility models not counted);
+ *  request_cap: the cell's cap or null. got_skill: catalog skills the trial opened (got-skill.json), from the forwarded request
+ *  bodies the proxy held in memory and, on Claude Code and Codex, the harness's own trace. block_delivery (push harnesses): resolver
+ *  blocks pushed and found byte for byte in a captured request, and shadow blocks and how many reached one
+ *  (skill-requests.ts checkBlockDelivery; reasons name the INFRA marker it wrote). clean_arm: the trial's tool calls that named
+ *  a gstack path outside its own catalog copy, counted before the scrub (skill-requests.ts gstackReads), the paths (no other
+ *  text) and contaminated when the count is above zero (CREW.md, "Clean no-gstack and no-brain arms"). */
+export interface TrialSkillRequest {
+  set: string;
+  request_id: string;
+  request_sha256?: string;
+  prev_user_sha256?: string | null;
+  arm: string | null;
+  model_requests: number;
+  request_cap: number | null;
+  got_skill: string[];
+  block_delivery?: { pushed: number; carried: number; shadow: number; leaked: number; reasons: string[] };
+  clean_arm?: { gstack_reads: number; paths: string[]; contaminated: boolean };
+  scrubbed: { kept: string[]; removed: number; redacted_lines: number };
+}
+
+/** internal-task: the checker's verdict on one set T trial (scripts/skill-resolver/check-set-t.ts over the copied-out workspace).
+ *  success: every check passed. used_it: every check in the task's used_it passed. instruction_md: what the workspace's
+ *  instruction.md held after the run: the request byte for byte ("seeded", left out of grading), something else ("changed",
+ *  graded as the agent's output) or nothing ("absent"). arm: the cell's skill_arm, opaque to the runner. */
+export interface TrialSetT {
+  task: string;
+  target: string;
+  pack: string;
+  skill_md_sha256: string;
+  arm: string | null;
+  request_sha256: string;
+  success: boolean;
+  used_it: boolean;
+  instruction_md: 'seeded' | 'changed' | 'absent';
+  checks: Array<{ id: string; pass: boolean; used_it: boolean }>;
+  /** QM only: the adapter created the actor's default sandbox from the seeded sandbox image before the turn and QM accepted it
+   *  as the default (logs/qm-default-sandbox.json). Other QM cells leave the scope without one; a deviation the set T
+   *  preregistration lists. */
+  qm_default_sandbox?: boolean;
 }
 
 // ---- internal-task (H10) additions: instruction routes on four harnesses ---------------------------------------

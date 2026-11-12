@@ -1,0 +1,67 @@
+{
+ "id": "t18-pricing-sync-notes",
+ "target": {
+  "name": "meeting-action-items",
+  "pack": "hermes",
+  "skill_md_sha256": "1902f782551da96ee1f9b34d6f13af627f06150a498d874b0cc2a75d06d35aa8"
+ },
+ "request": "Here are my rough notes from Tuesday's pricing sync (notes/pricing-sync-2026-11-04.md). Write followup.md with what we decided and who's doing what, so I can paste it into Slack and the tracker.",
+ "skill_step": "The skill normalizes every commitment into outcome, owner, due date, dependency, acceptance and source fields, and writes the literal value unresolved for an owner or due date nobody stated instead of inventing or blanking one.",
+ "used_it": [
+  "action-fields",
+  "unresolved-values"
+ ],
+ "checks": [
+  {
+   "id": "doc",
+   "kind": "exists",
+   "path": "followup.md",
+   "why": "the follow-up is where the request asked for it"
+  },
+  {
+   "id": "topic",
+   "kind": "regex",
+   "path": "followup.md",
+   "pattern": "15\\s?%",
+   "why": "the follow-up states the 15% decision from the notes"
+  },
+  {
+   "id": "owners",
+   "kind": "regex",
+   "path": "followup.md",
+   "pattern": "Kenji[\\s\\S]*Rosa|Rosa[\\s\\S]*Kenji",
+   "why": "it names the people who took actions"
+  },
+  {
+   "id": "action-fields",
+   "kind": "regex",
+   "path": "followup.md",
+   "flags": "im",
+   "pattern": "\\bacceptance\\b[^\\n]*\\bsource\\b|^[^a-z\\n]*acceptance\\W*:",
+   "why": "each action carries the skill's acceptance and source fields",
+   "markers": [
+    "acceptance",
+    "dependency"
+   ]
+  },
+  {
+   "id": "unresolved-values",
+   "kind": "regex",
+   "path": "followup.md",
+   "flags": "i",
+   "pattern": "\\|\\s*\\**unresolved\\**\\s*\\||(owner|due( date)?)\\W*:\\W*unresolved",
+   "min": 2,
+   "why": "missing owners and due dates are written as unresolved, not TBD or invented",
+   "markers": [
+    "unresolved",
+    "never invent"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0455,
+  "body_coverage": 0.2857,
+  "bin": "low"
+ }
+}

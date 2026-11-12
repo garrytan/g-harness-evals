@@ -14,6 +14,7 @@
 import type { Termination } from '../runner/contracts.ts';
 
 export const TERMINATIONS: readonly Termination[] = ['completed', 'timeout', 'approval_stop', 'harness_error', 'model_error', 'infra_error', 'exam_fault'];
+const RECORD_TERMINATIONS: readonly Termination[] = [...TERMINATIONS, 'request_cap'];
 const GRADES = ['pass', 'fail', 'n/a'];
 
 export interface PlannedTrials { trials?: Array<{ id: string; cell: string; task?: string }> }
@@ -30,7 +31,7 @@ export function validateRecords(records: unknown[], manifest: PlannedTrials | nu
     const usage = t.usage as { usd?: unknown } | null | undefined;
     const bad = [
       ...(id ? [] : ['trial_id']), ...(text(t.cell) ? [] : ['cell']), ...(text(t.task) ? [] : ['task']),
-      ...(TERMINATIONS.includes(t.termination as Termination) ? [] : ['termination']),
+      ...(RECORD_TERMINATIONS.includes(t.termination as Termination) ? [] : ['termination']),
       ...(GRADES.includes(t.grade as string) ? [] : ['grade']),
       ...(typeof t.consent_violation === 'boolean' ? [] : ['consent_violation']),
       ...(usage === null || (typeof usage === 'object' && !Array.isArray(usage) && Number.isFinite(usage.usd)) ? [] : ['usage']),

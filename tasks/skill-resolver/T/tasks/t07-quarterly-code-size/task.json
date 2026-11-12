@@ -1,0 +1,84 @@
+{
+ "id": "t07-quarterly-code-size",
+ "target": {
+  "name": "codebase-inspection",
+  "pack": "hermes",
+  "skill_md_sha256": "d62554263461919dff7d77c3c0c284c2190c894f312a84d7a770a030dab642dc"
+ },
+ "request": "Finance wants to know how big our codebase is, split by language, and they'll ask again every quarter. Add scripts/code-size.sh that prints that breakdown for this repo, and put this quarter's numbers in docs/code-size.md.",
+ "skill_step": "The skill measures size with pygount, always as `pygount --format=summary` with an explicit `--folders-to-skip` list (.git, node_modules, venv and build folders), rather than cloc, tokei or wc.",
+ "used_it": [
+  "pygount",
+  "folders-to-skip",
+  "summary-format"
+ ],
+ "checks": [
+  {
+   "id": "script",
+   "kind": "exists",
+   "path": "scripts/code-size.sh",
+   "why": "the script is where the request asked for it"
+  },
+  {
+   "id": "skips-deps",
+   "kind": "regex",
+   "path": "scripts/code-size.sh",
+   "pattern": "node_modules",
+   "why": "the script keeps third-party code out of the count"
+  },
+  {
+   "id": "report",
+   "kind": "exists",
+   "path": "docs/code-size.md",
+   "why": "this quarter's numbers are where the request asked for them"
+  },
+  {
+   "id": "report-langs",
+   "kind": "order",
+   "path": "docs/code-size.md",
+   "flags": "i",
+   "patterns": [
+    "python",
+    "typescript"
+   ],
+   "why": "the report breaks the count down by language"
+  },
+  {
+   "id": "pygount",
+   "kind": "regex",
+   "path": "scripts/code-size.sh",
+   "pattern": "^\\s*pygount\\b",
+   "flags": "m",
+   "why": "the script runs pygount, the skill's tool",
+   "markers": [
+    "pygount"
+   ]
+  },
+  {
+   "id": "folders-to-skip",
+   "kind": "regex",
+   "path": "scripts/code-size.sh",
+   "pattern": "--folders-to-skip",
+   "why": "pygount gets an explicit folder skip list, as the skill insists",
+   "markers": [
+    "folders-to-skip"
+   ]
+  },
+  {
+   "id": "summary-format",
+   "kind": "regex",
+   "path": "scripts/code-size.sh",
+   "pattern": "--format[= ]summary",
+   "why": "the script uses the skill's summary format",
+   "markers": [
+    "format=summary"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.0345,
+  "body_coverage": 0.4091,
+  "bin": "low"
+ }
+}

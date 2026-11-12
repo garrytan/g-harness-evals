@@ -1,0 +1,74 @@
+{
+ "id": "t37-leaked-flag-release-notes",
+ "target": {
+  "name": "write-skill",
+  "pack": "gstack",
+  "skill_md_sha256": "7ec2e96715c5f3097014a777d93b68646f1775d52fabd8a78397e976bd1dfbc7"
+ },
+ "request": "Last week's release notes leaked an internal flag name (details in notes/incident-2026-10-30.md). Make sure our release-notes skill in skills/release-notes/ can't let that happen again, and leave the commit message you'd use in COMMIT_MSG.txt.",
+ "skill_step": "Section 4 records every skill edit in the commit message with a `Skill-Size: <before>→<after> bytes (<file>)` line from gstack-skill-bill and an `Evidence:` line (a run, a results file, a plan with a measure-by date, or `safety:`).",
+ "used_it": [
+  "skill-size",
+  "evidence"
+ ],
+ "checks": [
+  {
+   "id": "msg",
+   "kind": "exists",
+   "path": "COMMIT_MSG.txt",
+   "why": "the commit message is where the request asked for it"
+  },
+  {
+   "id": "msg-topic",
+   "kind": "regex",
+   "path": "COMMIT_MSG.txt",
+   "pattern": "exp_|flag",
+   "flags": "i",
+   "why": "the commit message is about the leaked flag"
+  },
+  {
+   "id": "guarded",
+   "kind": "regex",
+   "glob": "skills/release-notes/**/*",
+   "pattern": "exp_",
+   "why": "something in the release-notes folder now guards against exp_ flag names"
+  },
+  {
+   "id": "skill-kept",
+   "kind": "regex",
+   "path": "skills/release-notes/SKILL.md",
+   "pattern": "^name:\\s*release-notes",
+   "flags": "m",
+   "why": "the skill file is still there and intact"
+  },
+  {
+   "id": "skill-size",
+   "kind": "regex",
+   "path": "COMMIT_MSG.txt",
+   "pattern": "^\\W*skill-size:\\s*\\d+\\s*(→|->)\\s*\\d+\\s*bytes",
+   "flags": "im",
+   "why": "the skill's Skill-Size line in the commit message",
+   "markers": [
+    "Skill-Size",
+    "gstack-skill-bill"
+   ]
+  },
+  {
+   "id": "evidence",
+   "kind": "regex",
+   "path": "COMMIT_MSG.txt",
+   "pattern": "^\\W*evidence:\\s*\\S",
+   "flags": "im",
+   "why": "the skill's Evidence line in the commit message",
+   "markers": [
+    "Evidence:"
+   ]
+  }
+ ],
+ "overlap": {
+  "name_hit": false,
+  "nd_jaccard": 0.025,
+  "body_coverage": 0.5,
+  "bin": "low"
+ }
+}
