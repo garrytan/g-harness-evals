@@ -118,7 +118,7 @@ Allowlistable with a blob-bound `allow.json` entry.
 <a id="ps-drive-path"></a>
 ### PS-DRIVE-PATH
 
-The Capy drive mount path appears in a new object. It names a private file system.
+The Capy drive mount path appears in a new object. It names a private file system. One form is exempt: the bare mount root as a whole JSON string that ends its line (the root in double quotes, with an optional trailing comma and nothing else after it on the line), which is how a clean-arm preflight lists a directory it confirmed is absent. The root followed by anything else on the line is still flagged, so a path under it, a concatenation, adjacent literals and a one-line join all fail. A multi-line call whose first argument is the bare root on its own line is not caught.
 
 **Fix:** Replace the drive mount path with a repository path or a sha256 pin of the file.
 

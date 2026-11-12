@@ -265,3 +265,19 @@ test('a download that hangs past its deadline is retried once, then refused as P
   expect(run.stdout.trim()).toBe('PS-TOOL-TIMEOUT');
   expect(readdirSync(join(cache, 'tool-1.0.0'))).toEqual([]);
 });
+
+test('the drive-path rule flags every drive mount path except the bare root as a whole JSON string ending its line, as a clean-arm preflight lists it', () => {
+  const root = '/home/user/' + '.capy/drive';
+  const hits = (s: string) => leafHits(Buffer.from(s), [], COMPILED, () => true).some((h) => h.rule === 'drive-path');
+  const pretty = (eol: string) => '{' + eol + '  "checked": [' + eol + '    "/home/ubi/.capy/drive",' + eol + '    "' + root + '",' + eol + '    "/home/ubi/.local/share/gstack"' + eol + '  ]' + eol + '}' + eol;
+  expect(hits(pretty('\n'))).toBe(false);
+  expect(hits(pretty('\r\n'))).toBe(false);
+  expect(hits('[\n  "' + root + '"\n]\n')).toBe(false);
+  expect(hits('read ' + root + '/x/notes.md\n')).toBe(true);
+  expect(hits('cat "' + root + '"/x/notes.md\n')).toBe(true);
+  expect(hits('const p = "' + root + '" + "/x/notes.md";\n')).toBe(true);
+  expect(hits('p = "' + root + '" "/x/notes.md"\n')).toBe(true);
+  expect(hits('join("' + root + '", "x", "notes.md")\n')).toBe(true);
+  expect(hits('["' + root + '","/x"]\n')).toBe(true);
+  expect(hits('the mount ' + root + ' is absent\n')).toBe(true);
+});
