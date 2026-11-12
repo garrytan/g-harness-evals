@@ -100,7 +100,7 @@ class _Frontier:
         self._extra_env.update(fs.container_env(self.HARNESS, self._frontier_model, slot["base_url"], slot["token"], self._frontier_gstack))
 
     def _write_settings(self) -> None:
-        settings = fs.harness_settings(self.HARNESS, self._frontier_model, self._frontier_gstack_release)
+        settings = fs.harness_settings(self.HARNESS, self._frontier_model, self._frontier_gstack_release, getattr(self, "_frontier_version", None))
         settings["trial"] = self.frontier_trial
         settings["cell"] = self._frontier_cell
         settings["attempt"] = self._frontier_attempt
@@ -186,10 +186,12 @@ class FrontierClaudeCode(_Frontier, ClaudeCode):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         gstack = kwargs.get("gstack")
         kwargs["config"] = fs.claude_settings_merge(gstack if gstack is not None and fs.is_gstack_release(gstack) else None)["settings"]
+        self._frontier_version = kwargs.get("version")
+        fs.harness_pin(self.HARNESS, self._frontier_version)
         super().__init__(*args, **kwargs)
 
     async def _frontier_after_install(self, environment: BaseEnvironment) -> None:
-        want = fs.PIN["harnesses"]["claude-code"]["native_binary_sha256"]
+        want = fs.harness_pin(self.HARNESS, self._frontier_version)["native_binary_sha256"]
         res = await environment.exec(command='export PATH="$HOME/.local/bin:$PATH"; sha256sum "$(readlink -f "$(command -v claude)")" | cut -d" " -f1; claude --version')
         words = (res.stdout or "").split()
         got = words[0] if words else None

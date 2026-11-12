@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
 // The model comparison of fable-5-2-coding-2026-11: three models in Claude Code on the same tasks, paired by task.
 //
-//   bun scripts/frontier-harbor/compare-models.ts --trials <trials.jsonl> [--tasks <task ids, comma-separated>] --out <dir>
+//   bun scripts/frontier-harbor/compare-models.ts --trials <trials.jsonl> [--tasks <task ids, comma-separated>] [--run-id <id>] --out <dir>
+//
+// --run-id labels analysis.json (default fable-5-2-coding-2026-11; fable-5-2-coding-cc322-2026-11 passes its own).
 //
 // A trial's arm is its cell name before the first "-" (fable52, fable51, opus55) and its attempt is the r<n> in the cell
 // name (cells <arm>-r<n>h<m>, one cell per arm x attempt x task half). Scoring is scripts/matrix-analysis.ts trialValue:
@@ -34,8 +36,8 @@ const PAIRS: Array<{ b: string; a: string; primary: boolean }> = [
 const OPTS = { seed: 20261109, draws: 10000 };
 
 const arg = (name: string) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : undefined; };
-const trialsFile = arg('--trials'), out = arg('--out'), only = arg('--tasks')?.split(',').filter(Boolean);
-if (!trialsFile || !out) { console.error('usage: compare-models.ts --trials <trials.jsonl> [--tasks <ids>] --out <dir>'); process.exit(2); }
+const trialsFile = arg('--trials'), out = arg('--out'), only = arg('--tasks')?.split(',').filter(Boolean), runId = arg('--run-id') ?? 'fable-5-2-coding-2026-11';
+if (!trialsFile || !out) { console.error('usage: compare-models.ts --trials <trials.jsonl> [--tasks <ids>] [--run-id <id>] --out <dir>'); process.exit(2); }
 
 const records = readFileSync(trialsFile, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord);
 type Arm = { usd: Map<string, number>; scored: Map<string, number[]>; wall: number[]; byTermination: Record<string, number>; excluded: number; trials: number };
@@ -110,6 +112,6 @@ const md: string[] = [
   '', '- Terminations per arm: ' + perArm.map((r) => `${r.label} ${JSON.stringify(r.by_termination)}`).join('; '),
 ];
 mkdirSync(out, { recursive: true });
-writeFileSync(join(out, 'analysis.json'), JSON.stringify({ run_id: 'fable-5-2-coding-2026-11', subset: only ?? null, options: OPTS, arms: perArm, pairs }, null, 2) + '\n');
+writeFileSync(join(out, 'analysis.json'), JSON.stringify({ run_id: runId, subset: only ?? null, options: OPTS, arms: perArm, pairs }, null, 2) + '\n');
 writeFileSync(join(out, 'analysis.md'), md.join('\n') + '\n');
 console.log(md.join('\n'));

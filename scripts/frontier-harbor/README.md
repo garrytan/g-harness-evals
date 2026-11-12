@@ -24,6 +24,7 @@
 | [merge-stages.ts](merge-stages.ts) | merges a staged run's shard directories into one results directory, with the exclusion list and rerun records |
 | [subset.ts](subset.ts) | a copy of merged results without some trials (tasks, a Harbor exception, first runs in a time window, or a trial list), or with one harness's infra errors on one task scored as fails, for the sensitivity lines |
 | [refusals.ts](refusals.ts) | lists the trials with a provider safety refusal, read the same way in every harness from each harness's own refusal marker |
+| [recognition.ts](recognition.ts) | the recognition and compaction scan of `fable-5-2-coding-cc322-2026-11`: per trial, Claude Code `unrecognized_model` lines, compaction points and peak context, read from finished results or a running shard's raw Harbor trials (`--jobs`); exits 1 on an unrecognized model, a compaction below `--min-pre-tokens`, an unreadable compaction record or a trial with no agent log |
 | [fake-upstream.ts](fake-upstream.ts) | keyless model upstream for the install check |
 | [install-check.sh](install-check.sh), [install-check.json](install-check.json) | the one-VM install check and its receipt |
 | [install-check-prereg.json](install-check-prereg.json) | the install check's own preregistration (one cell per agent class and model) |
@@ -54,6 +55,7 @@
 - **Leases:** the shard leases plus the reserve must fit the cap. Each lease must be at least concurrency x the worst-case reservation of one call.
 - **Shards:** a cell runs on exactly one shard. vm-run.sh refuses a shard that is not in the preregistration, or a lease above the planned one.
 - **Trial ids:** `<run_id>/<cell>/<task>/a<attempt>`. A stage never changes them.
+- **Harness versions:** optional `"harness_versions": { "claude-code": "2.1.322" }` runs a harness at another release pin.json lists under `harnesses.<h>.releases`. Every job of that harness then names it, agents.py checks the installed binary against that release's sha256, and `plan.ts show` prints it. Without it, cells run pin.json's own version (2.1.312 for Claude Code). plan.ts refuses a version pin.json does not pin.
 
 ### Stages
 

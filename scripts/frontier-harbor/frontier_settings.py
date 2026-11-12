@@ -32,6 +32,18 @@ OPENCLAW_ANTHROPIC_HOUSEKEEPING = "claude-haiku-5-5"
 PROVIDERS = {"claude-code": ("anthropic",), "codex": ("openai",)}
 
 
+def harness_pin(harness: str, version: str | None = None) -> dict[str, Any]:
+    """pin.json's entry for a harness at the version a preregistration selects: the entry itself for its own version or
+    none, else the entry with that release's fields (Claude Code's releases); any other version is refused."""
+    pin = PIN["harnesses"][harness]
+    if version is None or version == pin["version"]:
+        return pin
+    release = pin.get("releases", {}).get(version)
+    if release is None:
+        raise ValueError(f"{harness} {version} is not pinned in scripts/frontier-harbor/pin.json (version {pin['version']}, releases {', '.join(pin.get('releases', {})) or 'none'})")
+    return {**pin, **release, "version": version}
+
+
 def model_spec(model: str) -> dict[str, Any]:
     """The pin.json row of a provider:model id, with its provider and bare name."""
     if model not in PIN["models"]:
@@ -195,9 +207,9 @@ def container_env(harness: str, model: str, url: str, token: str, gstack: dict[s
     return env
 
 
-def _record(harness: str, model: str, **fields: Any) -> dict[str, Any]:
+def _record(harness: str, model: str, version: str | None = None, **fields: Any) -> dict[str, Any]:
     spec = model_spec(model)
-    pin = PIN["harnesses"][harness]
+    pin = harness_pin(harness, version)
     return {
         "schema": "frontier-harbor-harness-settings/1",
         "harness": harness,
@@ -216,9 +228,10 @@ def _record(harness: str, model: str, **fields: Any) -> dict[str, Any]:
     }
 
 
-def harness_settings(harness: str, model: str, gstack: dict[str, Any] | None = None) -> dict[str, Any]:
-    """The harness_settings.json record for one harness and cell model; with a gstack arm, plus what the arm installs."""
-    record = _harness_settings(harness, model)
+def harness_settings(harness: str, model: str, gstack: dict[str, Any] | None = None, version: str | None = None) -> dict[str, Any]:
+    """The harness_settings.json record for one harness and cell model at the harness version the job names (pin.json's
+    when none); with a gstack arm, plus what the arm installs."""
+    record = _harness_settings(harness, model, version)
     if gstack is None:
         return record
     arm = gstack_arm(harness, gstack)
@@ -369,23 +382,24 @@ def drop_skill_links_command(skills_dir: str = SKILL_LINKS_DIR) -> str:
     return f'n=$(find {d} -type l 2>/dev/null | wc -l); find {d} -type l -delete 2>/dev/null; echo "SKILL_LINKS_DROPPED $n"'
 
 
-def _harness_settings(harness: str, model: str) -> dict[str, Any]:
+def _harness_settings(harness: str, model: str, version: str | None = None) -> dict[str, Any]:
     """The harness_settings.json record for one harness and cell model, without a gstack arm."""
     spec = model_spec(model)
+    hp = harness_pin(harness, version)
     cw, mo = spec["context_window"], spec["max_output_tokens"]
     anthropic = spec["provider"] == "anthropic"
     if harness == "claude-code":
-        return _record(harness, model,
-            context_window={"value": cw, "set_by": "the CLI's own model table for the cell model; CLAUDE_CODE_AUTO_COMPACT_WINDOW=%d also set (a name present in the 2.1.312 binary)" % cw},
+        return _record(harness, model, version,
+            context_window={"value": cw, "set_by": "the CLI's own model table for the cell model; CLAUDE_CODE_AUTO_COMPACT_WINDOW=%d also set (a name present in the %s binary)" % (cw, hp["version"])},
             max_output_tokens={"value": mo, "set_by": "CLAUDE_CODE_MAX_OUTPUT_TOKENS=%d" % mo},
-            compaction={"threshold": "Claude Code 2.1.312 default auto-compact point of the window (CLAUDE_AUTOCOMPACT_PCT_OVERRIDE unset)", "set_by": "shipped default"},
+            compaction={"threshold": "Claude Code %s default auto-compact point of the window (CLAUDE_AUTOCOMPACT_PCT_OVERRIDE unset)" % hp["version"], "set_by": "shipped default"},
             tools={"hosted_web_search": "off: --disallowedTools WebSearch,WebFetch and settings permissions.deny [WebSearch, WebFetch], as our pin",
                    "disabled": ["WebSearch", "WebFetch"], "enabled": "every other built-in Claude Code tool; no MCP server"},
             effort={"requested": EFFORT, "setting": "--effort high (CLAUDE_CODE_EFFORT_LEVEL=high); on Opus 5.5 and Fable 5.1 thinking is adaptive and always on, so the canonical request is thinking adaptive plus output_config.effort high, checked on captured requests"},
             housekeeping_model={"model": model, "note": "every model variable the CLI reads (ANTHROPIC_SMALL_FAST_MODEL included) names the cell model, as our adapter.sh pins it; a declared deviation from the shipped housekeeping default (internal-task exception, 2026-11-01). On Fable cells the housekeeping calls go to Fable."},
             differences_from_pin=[
                 "runs through Harbor's ClaudeCode class (claude --verbose --output-format=stream-json --print, Harbor's settings file and session dir), not adapter.sh",
-                "installed with Harbor's bootstrap.sh route (native binary) instead of npm in our image; the binary's sha256 is checked against the pinned 4f4178ce...",
+                "installed with Harbor's bootstrap.sh route (native binary) instead of npm in our image; the binary's sha256 is checked against the pinned %s..." % hp["native_binary_sha256"][:8],
                 "--effort high added (our pin runs the CLI's default effort)",
                 "CLAUDE_CODE_MAX_OUTPUT_TOKENS and CLAUDE_CODE_AUTO_COMPACT_WINDOW set to the model's limits (our pin leaves CLI defaults)",
                 "no world-MCP server, --mcp-config or --strict-mcp-config: TB2.1 tasks have no MCP server",
