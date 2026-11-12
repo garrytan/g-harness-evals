@@ -370,7 +370,7 @@ describe('keyless assertions', () => {
       `HE-GBRAIN-008 surface=verbs retrieval gbrain.recall effect.pages for "ticket 4092": expected contains ${KNOWN_PAGE.slug}, actual no pages (/scratch/verbs/events.jsonl)`,
     ]);
     // The catalog assertions still pass: the failure is the retrieval, not the tool list.
-    expect(v.passed).toContain('ok surface=starter 33 tools (pin 33)');
+    expect(v.passed).toContain('ok surface=starter 34 tools (pin 34)');
     expect(v.passed).toContain('ok surface=verbs tools/list through the tap counts 7');
     const wrongPage = healthyEvidence();
     wrongPage.surfaces[0]!.trial!.retrieval!.pages = ['dev/chats/other-page'];
@@ -389,12 +389,12 @@ describe('keyless assertions', () => {
     e.surfaces[0]!.trial!.list_count = 30;
     const lax = keylessAssertions(e);
     expect(lax.failures).toEqual([]);
-    expect(lax.pin_diffs).toEqual(['surface=starter tool count 30 differs from gbrain/pin.json 33']);
+    expect(lax.pin_diffs).toEqual(['surface=starter tool count 30 differs from gbrain/pin.json 34']);
     const strict = keylessAssertions(e, { strictPins: true });
-    expect(strict.failures).toEqual(['HE-GBRAIN-008 surface=starter tool count (--strict-pins): expected 33, actual 30 (gbrain/pin.json)']);
+    expect(strict.failures).toEqual(['HE-GBRAIN-008 surface=starter tool count (--strict-pins): expected 34, actual 30 (gbrain/pin.json)']);
     const noSearch = healthyEvidence();
     noSearch.surfaces[0]!.tools = noSearch.surfaces[0]!.tools.map((t) => (t === 'search' ? 'find' : t));
-    expect(keylessAssertions(noSearch).failures).toEqual(['HE-GBRAIN-008 surface=starter search tool search present: expected present, actual absent from 33 tools (gbrain/pin.json)']);
+    expect(keylessAssertions(noSearch).failures).toEqual(['HE-GBRAIN-008 surface=starter search tool search present: expected present, actual absent from 34 tools (gbrain/pin.json)']);
     const noRecall = healthyEvidence();
     noRecall.surfaces[1]!.tools = noRecall.surfaces[1]!.tools.filter((t) => t !== 'recall');
     noRecall.surfaces[1]!.trial!.list_count = 6;
@@ -553,7 +553,7 @@ describe('the command line', () => {
   // Each case spawns bun on the script one to four times (a cold start and the plan each time); the GitHub runner took
   // more than bun's default 5 s for these on 2026-10-25 (run 40171750104) while a faster machine takes about 2 s.
   const CLI_TIMEOUT_MS = 30_000;
-  const run = (args: string[], env: Record<string, string> = {}) => spawnSync('bun', [join(ROOT, 'scripts', 'gbrain-check.ts'), ...args], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, GBRAIN_CHECK_DIR: join(tmp, 'cli'), ...env } });
+  const run = (args: string[], env: Record<string, string> = {}) => spawnSync('bun', [join(ROOT, 'scripts', 'gbrain-check.ts'), ...args], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, FORCE_COLOR: '0', GBRAIN_CHECK_DIR: join(tmp, 'cli'), ...env } });
   const sha = 'a'.repeat(40);
 
   test('--dry-run in the paid mode prints the plan from the scratch preregistration and the prerequisites, keyless, with no key value', () => {

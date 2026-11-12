@@ -44,7 +44,7 @@
 # context dev-corpus=<set>/corpus, with WORLD_SHA256 and DEV_CORPUS_SHA256; the build checks both, copies the dev pages over
 # the public ones and records dev_corpus_sha256 in image.json. The heldout brains of such an image are built from the public
 # world, since a set's own world is dev only. A build with neither argument is unchanged.
-ARG GBRAIN_COMMIT=2c469d1bfc0e096646b2a2b1caba4fdea4592f00
+ARG GBRAIN_COMMIT=64de25c0574a825afaa2cd1ada05e95cb0a0f143
 ARG GBRAIN_VERSION=
 ARG CORPUS_COMMIT=6999ebc9da0ac784ac05995b586d22293544e924
 

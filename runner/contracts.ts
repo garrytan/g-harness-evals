@@ -322,7 +322,7 @@ export interface TrialUsage {
  *  cells ({surface: "starter"}) keep their meaning and a rung is a readable combination (docs/gbrain-arm.md, "The install
  *  ladder"). Defaults are resolved in the manifest and the trial record, never by mutating the cell. */
 export interface GbrainCellConfig {
-  /** "starter" (33 tools, the arm's surface) or "verbs" (gbrain's seven memory verbs; the page search is recall). */
+  /** "starter" (34 tools at the pin, the arm's surface) or "verbs" (gbrain's seven memory verbs; the page search is recall). */
   surface: 'starter' | 'verbs';
   /** Install ladder addition: "mcp" (default): the MCP registration only, as the arm does. "gbrain-docs": gbrain's own documented
    *  install for the harness at the pinned commit (the install bundle the image carries, gbrain/pin.json "install") is

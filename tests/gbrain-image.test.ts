@@ -161,10 +161,10 @@ test('installerHookProblem: with the pin expecting a hook, an installer view wit
   expect(installerHookProblem(blockOnly, {})).toBeNull();
   // A candidate named by --gbrain-commit (gbrain-check) is not held to the pin's expectation.
   expect(installerHookProblem(blockOnly, expecting, 'cd9da1ce170ecae739fa28855e9133b6c60b78c2')).toBeNull();
-  // internal-task-a: the committed pin is gbrain master at gbrain#8425's merge (2c469d1b, the internal-task-b hotfix, after gbrain#7489 and gbrain#7898), which carries the per-turn hook, so the
-  // pin expects one and preflight refuses a block-only installer view at this pin (HE-GBRAIN-006).
+  // The committed pin is gbrain's stable tag (64de25c0, 0.60.672.0, which contains 2c469d1b, the internal-task hotfix, after gbrain#7489 and gbrain#7898); it carries the
+  // per-turn hook, so the pin expects one and preflight refuses a block-only installer view at this pin (HE-GBRAIN-006).
   const pin = JSON.parse(readFileSync(join(ROOT, 'gbrain', 'pin.json'), 'utf8')) as { gbrain: { commit: string }; install: { installer: { turn_hook_expected: boolean } } };
-  expect(pin.gbrain.commit).toBe('2c469d1bfc0e096646b2a2b1caba4fdea4592f00');
+  expect(pin.gbrain.commit).toBe('64de25c0574a825afaa2cd1ada05e95cb0a0f143');
   expect(pin.install.installer.turn_hook_expected).toBe(true);
 });
 
@@ -207,7 +207,7 @@ test('the bundle digest is sha256 over "<path> <sha256>\\n" in byte order of pat
 });
 
 test('pin.json: the two surfaces with their tool counts, recall on both, the embedding model and its timeout, the install commands, the exclusions', () => {
-  expect(pin.surfaces.starter.tools).toBe(33);
+  expect(pin.surfaces.starter.tools).toBe(34);
   expect(pin.surfaces.verbs.tools).toBe(7);
   expect(pin.surfaces.verbs.names).toEqual(['remember', 'entity', 'synthesize', 'forget', 'recall', 'context_pack', 'delta']);
   expect(pin.surfaces.verbs.search_tool).toBe('recall');
@@ -343,7 +343,7 @@ describe.skipIf(!haveImage)(`the sidecar image ${IMAGE ?? '(HE_GBRAIN_IMAGE unse
     expect(bad.err).toContain('HE-GBRAIN-006');
   }, 120_000);
 
-  test('tools/list: the starter surface lists 33 tools with search and recall, the verbs surface the 7 pinned names', async () => {
+  test('tools/list: the starter surface lists 34 tools with search and recall, the verbs surface the 7 pinned names', async () => {
     for (const surface of ['starter', 'verbs'] as const) {
       const s = await startSidecar(`he-gbrain-image-${surface}`, { HE_GBRAIN_SPLIT: 'dev', HE_GBRAIN_SURFACE: surface });
       try {

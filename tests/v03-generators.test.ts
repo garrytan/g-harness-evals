@@ -171,7 +171,7 @@ describe('gen-tasks', () => {
   });
 
   const cli = (args: string[]) => {
-    const p = Bun.spawnSync(['bun', join(ROOT, 'scripts/v03/gen-tasks.ts'), '--world', join(ROOT, 'world/seed/world.json'), '--facts', join(V03, 'dev-facts.json'), '--seed-file', join(V03, 'dev.seed'), ...args], { cwd: ROOT, stdout: 'pipe', stderr: 'pipe' });
+    const p = Bun.spawnSync(['bun', join(ROOT, 'scripts/v03/gen-tasks.ts'), '--world', join(ROOT, 'world/seed/world.json'), '--facts', join(V03, 'dev-facts.json'), '--seed-file', join(V03, 'dev.seed'), ...args], { cwd: ROOT, env: { ...process.env, FORCE_COLOR: '0' }, stdout: 'pipe', stderr: 'pipe' });
     return { code: p.exitCode, out: p.stdout.toString() + p.stderr.toString() };
   };
   test('the CLI refuses named or misspelled ids on a held-out split, a held-out output in the checkout, and a non-empty held-out output', () => {

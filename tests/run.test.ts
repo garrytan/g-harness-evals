@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildManifest, loadPrereg, renderPlan, RunnerError, staleTaskSetWarnings, type Prereg } from '../runner/run.ts';
@@ -169,4 +169,25 @@ describe('multi-user cells', () => {
     expectCode({ ...mu, cells: [{ ...mu.cells[1]!, script: undefined }] }, 'HE-PREREG-006');
     expectCode({ ...mu, cells: [{ ...mu.cells[0]!, model: 'none' }] }, 'HE-PIN-002');
   });
+});
+
+test('the plan names the starter tool count the run will see: the preregistration\'s gbrain_surface_tools, else the pin\'s only for the pinned commit', () => {
+  const pin = JSON.parse(readFileSync(join(import.meta.dir, '..', 'gbrain', 'pin.json'), 'utf8')) as { gbrain: { commit: string }; surfaces: { starter: { tools: number } } };
+  const other = 'b'.repeat(40);
+  const g: Prereg = {
+    ...base,
+    tasks: {},
+    cells: [{ id: 'g', harness: 'openclaw', model: 'anthropic:claude-sonnet-5-5', slice: 'multiuser', split: 'dev', repetitions: 1, ceiling: { input_tokens: 100_000, output_tokens: 10_000 }, gbrain: { surface: 'starter' } }],
+    wall_clock_s: { multiuser: 1500 },
+    drop_order: ['g'],
+    minimum_v01: ['g'],
+  };
+  const plan = (p: Prereg) => { const { prereg, sha256 } = loadPrereg(write(p)); return renderPlan(buildManifest(prereg, sha256, '2026-11-12T00:00:00Z', { tasksRoot: join(import.meta.dir, 'fixtures', 'tasks') })); };
+  expect(other).not.toBe(pin.gbrain.commit);
+  expect(plan(g)).toContain(`the ${pin.surfaces.starter.tools}-tool starter surface`);
+  expect(plan({ ...g, gbrain_commit: pin.gbrain.commit })).toContain(`the ${pin.surfaces.starter.tools}-tool starter surface`);
+  const unstated = plan({ ...g, gbrain_commit: other });
+  expect(unstated).toContain('the starter surface of gbrain bbbbbbbb (no tool count');
+  expect(unstated).not.toContain('-tool starter surface');
+  expect(plan({ ...g, gbrain_commit: other, gbrain_surface_tools: { starter: 33 } })).toContain('the 33-tool starter surface');
 });

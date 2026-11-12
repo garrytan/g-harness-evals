@@ -53,7 +53,7 @@ const PLAN_AT_MAIN = [
   "RUN: qm-identity trials=80 cells=2 ceiling_usd=110 cap_usd=25 trial_hours_at_cap=33.3",
   "CELL: qm-pi-opus-none-mu-v03-dev harness=qm mode=docker model=anthropic:claude-opus-5-5 slice=multiuser split=dev task_set=v0.3 utility_models=anthropic:claude-haiku-5-5 config=pi reps=5 trials=40 turns=125 ceiling_usd=55",
   "CELL: qm-pi-opus-gbrain-route-tool-mu-v03-dev harness=qm mode=docker model=anthropic:claude-opus-5-5 slice=multiuser split=dev task_set=v0.3 utility_models=anthropic:claude-haiku-5-5 config=pi reps=5 trials=40 turns=125 ceiling_usd=55 gbrain=starter/mcp/off brain=member scope=member ingest=live preamble=tasks/multiuser/_shared/preamble.gbrain-memory.md",
-  "GBRAIN: cells qm-pi-opus-gbrain-route-tool-mu-v03-dev run with a gbrain sidecar per trial (image harness-eval/gbrain:dev unless --gbrain-image; starter/mcp/off: the 33-tool starter surface; MCP registration only; keyword-only, no model call; docs/gbrain-arm.md)",
+  "GBRAIN: cells qm-pi-opus-gbrain-route-tool-mu-v03-dev run with a gbrain sidecar per trial (image harness-eval/gbrain:dev unless --gbrain-image; starter/mcp/off: the 34-tool starter surface; MCP registration only; keyword-only, no model call; docs/gbrain-arm.md)",
   "WARN: HE-BUDGET-003 cost ceiling 110 exceeds the preregistered cap 25; cells past the cap stop incomplete in drop order",
 ].join('\n');
 

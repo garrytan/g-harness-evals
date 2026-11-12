@@ -729,8 +729,10 @@ export function renderPlan(m: Manifest): string {
   for (const cs of configs.values()) {
     const label = gbrainLabel(cs[0]!.gbrain!);
     const g = resolveGbrain(cs[0]!.gbrain!);
+    const pin = JSON.parse(readFileSync(join('gbrain', 'pin.json'), 'utf8')) as { gbrain: { commit: string }; surfaces: { starter: { tools: number } } };
+    const starterTools = m.gbrain_surface_tools?.starter ?? (!m.gbrain_commit || m.gbrain_commit === pin.gbrain.commit ? pin.surfaces.starter.tools : undefined);
     const words = [
-      g.surface === 'verbs' ? 'the 7 memory verbs (page search is recall)' : 'the 33-tool starter surface',
+      g.surface === 'verbs' ? 'the 7 memory verbs (page search is recall)' : starterTools === undefined ? `the starter surface of gbrain ${m.gbrain_commit!.slice(0, 8)} (no tool count: gbrain_surface_tools names none and gbrain/pin.json pins another commit)` : `the ${starterTools}-tool starter surface`,
       isQmMemoryProvider(cs[0]!) ? "QM's memory provider only (MEMORY_PROVIDER_CONFIG: the per-turn recall in personal scope and the model's searches through QM's memory tool, both whole-brain whatever the cell's scope), no gbrain MCP server registered" : g.install === 'gbrain-docs' ? "gbrain's documented install applied in the harness container from the image's bundle" : g.install === 'gbrain-installer' ? "gbrain's own installer (gbrain setup <harness> --instructions-only) applied in the harness container from the image's bundle" : 'MCP registration only',
       g.embeddings === 'off' ? 'keyword-only, no model call' : `query embeddings ${g.embeddings} through the metering proxy, metered per trial (allowance ${embeddingAllowanceUsd(cs[0]!.gbrain).toFixed(4)} per trial in the ceiling)`,
     ];
