@@ -15,7 +15,7 @@
 
 | Part | Tokens | What is in it |
 |---|---|---|
-| System prompt | 2,910 | Three blocks: a billing header line, "You are a Claude agent, built on Anthropic's Claude Agent SDK.", then the main prompt. Largest sections: "Context management" 961 tokens, "Harness" 717, "Memory" 673, "Environment" 256 |
+| System prompt | 2,910 | Three blocks: a billing header line, a one-line statement that the agent runs on the Claude Agent SDK, then the main prompt. Largest sections: "Context management" 961 tokens, "Harness" 717, "Memory" 673, "Environment" 256 |
 | Tool schemas | 10,780 | 11 tools with schemas plus a `DeferredToolPlaceholder`. Largest: `Workflow` 2,265, `ScheduleWakeup` 2,106, `Agent` 1,876, `Bash` 1,618, `ReportFindings` 1,107 |
 | Messages | 4,726 | A user message (a commit-attribution reminder, then the runner's turn prompt), then a system-role message of 9,410 characters: the "# Environment" block, a list of 13 bundled skills (such as dataviz, code-review, claude-api and security-review, 6,169 characters), the deferred tool names (718) and the available agent types (1,638) |
 
