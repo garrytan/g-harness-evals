@@ -82,3 +82,4 @@ Run folders with no row in docs/scoreboard/reports.json yet. A new folder lands 
 - [2026-11-09-fable-5-2-coding](benchmarks/2026-11-09-fable-5-2-coding/)
 - [2026-11-09-failure-mining](benchmarks/2026-11-09-failure-mining/)
 - [2026-11-10-harness-zero-h2h-recall-rerun](benchmarks/2026-11-10-harness-zero-h2h-recall-rerun/)
+- [2026-11-12-fable-5-2-coding-cc322](benchmarks/2026-11-12-fable-5-2-coding-cc322/)
