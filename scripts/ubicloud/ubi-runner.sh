@@ -407,12 +407,16 @@ cmd_sync() {
   log "synced $src -> $name:$dest"
 }
 
-# pull NAME REMOTE_GLOB LOCAL_DIR: copy matching remote entries into LOCAL_DIR.
-# Relative remote paths start at /home/ubi.
+# pull NAME REMOTE_GLOB LOCAL_DIR [--skip-unreadable]: copy matching remote entries into LOCAL_DIR.
+# Relative remote paths start at /home/ubi. With --skip-unreadable the remote tar runs with --ignore-failed-read: a file
+# or directory the VM user cannot read (a live Harbor trial's container-owned files) is left out with a
+# "tar: <path>: Warning: Cannot open: ..." line on stderr, instead of failing the whole pull with exit 2. run-shard.sh passes
+# it only on a frontier-harbor shard's mid-run pull; its teardown pull stays strict, so an unreadable file keeps the VM.
 cmd_pull() {
-  local name=$1 from=$2 to=$3
+  local name=$1 from=$2 to=$3 skip=""
+  [ "${4:-}" != --skip-unreadable ] || skip="--ignore-failed-read "
   mkdir -p "$to"
-  remote "$name" "cd $(printf %q "$(dirname "$from")") && tar -czf - $(basename "$from")" | tar -xzf - -C "$to"
+  remote "$name" "cd $(printf %q "$(dirname "$from")") && tar ${skip}-czf - $(basename "$from")" | tar -xzf - -C "$to"
 }
 
 # run_teardown RC: run's EXIT handler. Destroys RUN_VM, ignoring further
@@ -512,7 +516,7 @@ usage: ubi-runner.sh <command> [args]
   sync NAME [SRC] [DEST] stream a checkout (tracked + untracked-unignored + .git)
   pack [SRC]             write that checkout tarball to stdout
   unpack NAME DEST       extract a tarball from stdin into DEST on the VM
-  pull NAME REMOTE_GLOB LOCAL_DIR
+  pull NAME REMOTE_GLOB LOCAL_DIR [--skip-unreadable]
                          copy matching remote entries into LOCAL_DIR
   down NAME [-l LOC]     destroy the VM; returns once it is confirmed gone or never existed
   list [--mine]          list all VMs in the project, or only this owner's

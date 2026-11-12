@@ -16,7 +16,9 @@
 # Mid-run replication (CREW R16: no paid run may depend on one controller machine's local state). Every
 # --replicate-seconds (default 1200, or UBI_REPLICATE_SECONDS; 0 turns it off) while the shard runs, the VM's ~/shard/results
 # is pulled into a staging directory and merged over <dest>/results only when the pull brings back results/ and exits 0 or 1
-# (tar's exit 1 says a live log changed while it was read), so a failed or cut pull never touches the last good copy and the
+# (tar's exit 1 says a live log changed while it was read). On a frontier-harbor shard the mid-run pull skips what the VM user
+# cannot read (a running Harbor trial's container-owned files) and logs it instead of failing; the teardown pull and every
+# other workload's pull stay strict, so an unreadable file fails them. So a failed or cut pull never touches the last good copy and the
 # merge keeps what the VM lacks (a --resume upload leaves out state/ and workspace/); a failure is logged and retried at the next
 # interval, never fatal. The teardown pull goes through the same staging. With --replicate-to <dir> (or UBI_REPLICATE_TO;
 # meant for a Capy drive folder, which outlives this machine), <dest> is mirrored to <dir>/<shard> after each replication
@@ -277,8 +279,15 @@ remote_home=/home/ubi
 repo_dir=$remote_home/work/harness-evals
 now() { date +%s; }
 lines() { if [ -f "$1" ]; then wc -l < "$1"; else echo 0; fi; }
-# pull_results: ~/shard/results into <dest>/results through <dest>/.pull. It returns 1 when the pull exits above 1 or brings
-# back no results/; exit 1 is tar's "file changed as we read it" on a live log, after a complete extract. The staged copy is
+# pull_results [keep-staged] [--skip-unreadable]: ~/shard/results into <dest>/results through <dest>/.pull. It returns 1 when
+# the pull exits above 1 or brings back no results/; exit 1 is tar's "file changed as we read it" on a live log, after a
+# complete extract. With --skip-unreadable (only replicate passes it, only on a frontier-harbor shard) the pull skips what
+# the VM user cannot read (ubi-runner.sh pull --skip-unreadable): while a frontier-harbor trial runs, Harbor's trial
+# directory holds container-owned files until Harbor chowns them at the trial's end, and a plain tar exits 2 on them and
+# lost the whole pull (internal-task stage 0). Every skipped path is logged after a good merge: inside a trial directory with no
+# result.json it is a live trial, picked up by a later pull; anywhere else it is a WARNING naming the paths. Without it (the
+# teardown pull, and every other workload, sealed shards included) the pull is strict as before: an unreadable file fails
+# it, so teardown keeps the VM. The staged copy is
 # merged over <dest>/results, so a failed, cut or empty pull never removes what an earlier pull brought back, and files the
 # VM never had (a --resume upload leaves out each trial's state/ and workspace/) stay. An earlier pull leaves read-only
 # files (git objects in a trial's workspace are 0444) that cp cannot open for writing, so both trees are made writable
@@ -289,23 +298,33 @@ lines() { if [ -f "$1" ]; then wc -l < "$1"; else echo 0; fi; }
 # its -wal or -shm (teardown checkpoints and closes the ledger) drops the local one, which an earlier pull left and which
 # would replay old pages over the newer database.
 pull_results() {
-  local rc=0 db s errs=$dest/lane.log
+  local rc=0 db s p a keep=0 skip=() err=/dev/null live=() other=() errs=$dest/lane.log
+  for a in "$@"; do case $a in keep-staged) keep=1 ;; --skip-unreadable) skip=(--skip-unreadable) ;; esac; done
   [ "$sealed" -eq 0 ] || errs=$dest/sealed-upload.log
   chmod -R u+w "$dest/.pull" 2>/dev/null; rm -rf "$dest/.pull" 2>>"$errs"
-  bash "$runner" pull "$vm" shard/results "$dest/.pull" 2>/dev/null || rc=$?
+  [ ${#skip[@]} -eq 0 ] || { mkdir -p "$dest/.pull" && err=$dest/.pull/pull.err; }
+  bash "$runner" pull "$vm" shard/results "$dest/.pull" ${skip[@]+"${skip[@]}"} 2>"$err" || rc=$?
   if [ "$rc" -gt 1 ] || [ ! -d "$dest/.pull/results" ]; then chmod -R u+w "$dest/.pull" 2>/dev/null; rm -rf "$dest/.pull" 2>>"$errs"; return 1; fi
   while IFS= read -r db; do
     for s in -wal -shm; do [ -e "$dest/.pull/results/$db$s" ] || rm -f "$dest/results/$db$s"; done
   done < <(cd "$dest/.pull/results" && find . -name '*.sqlite')
   chmod -R u+w "$dest/results" 2>/dev/null
   if ! { mkdir -p "$dest/results" && cp -a "$dest/.pull/results/." "$dest/results/" 2>>"$errs"; }; then
-    [ "$sealed" -eq 1 ] || [ "${1:-}" != keep-staged ] || return 2
+    [ "$sealed" -eq 1 ] || [ "$keep" -eq 0 ] || return 2
     chmod -R u+w "$dest/.pull" 2>/dev/null; rm -rf "$dest/.pull" 2>>"$errs"
     if [ "$sealed" -eq 0 ]; then [ ! -e "$dest/.pull" ] || log "WARNING: the staged copy $dest/.pull could not be deleted (diagnostics in $errs)"
     elif [ -e "$dest/.pull" ]; then log "WARNING: the sealed pull from $vm could not be merged into $dest/results and its staged plaintext copy $dest/.pull could not be deleted; delete it by hand (diagnostics in $errs, custody only)"; else log "WARNING: the sealed pull from $vm could not be merged into $dest/results; its staged plaintext copy $dest/.pull is deleted and the results stay on $vm (diagnostics in $errs, custody only)"; fi
     return 2
   fi
+  if [ ${#skip[@]} -gt 0 ]; then
+    while IFS= read -r p; do
+      if [[ "$p" =~ ^results/(run/jobs/[^/]+/[^/]+)(/|$) ]] && [ ! -f "$dest/results/${BASH_REMATCH[1]}/result.json" ]; then live+=("${BASH_REMATCH[1]}"); else other+=("$p"); fi
+    done < <(sed -n 's/^tar: \(.*\): Warning: Cannot [a-z]*: .*/\1/p' "$err")
+  fi
   chmod -R u+w "$dest/.pull" 2>>"$errs"; rm -rf "$dest/.pull" 2>>"$errs"
+  [ ${#live[@]} -eq 0 ] || log "pull: skipped ${#live[@]} unreadable path(s) in $(printf '%s\n' "${live[@]}" | sort -u | wc -l) live trial(s); a later pull copies them once Harbor finishes the trial"
+  [ ${#other[@]} -eq 0 ] || log "WARNING: pull: ${#other[@]} path(s) on the VM could not be read and are not part of a live trial, so they are missing here: $(printf '%s ' "${other[@]:0:5}")"
+  return 0
 }
 # mirror: <dest> to <replicate-to>/<shard> (without per-trial state/ and workspace/, and without the qm-driver smoke's gstack
 # checkout smoke/work/gstack-edition, whose own tests hold key-shaped text), staged locally and scanned for key-shaped text
@@ -341,10 +360,11 @@ PY
   mkdir -p "$replicate_to/${name:-attach}" && cp "$dest/shard-vm.json" "$replicate_to/${name:-attach}/shard-vm.json" 2>/dev/null || true
 }
 replicate() {
-  local rc=0
-  pull_results || rc=$?
+  local rc=0 skip=()
+  [ "$workload" != frontier-harbor ] || skip=(--skip-unreadable)
+  pull_results ${skip[@]+"${skip[@]}"} || rc=$?
   case $rc in
-    0) log "replicate: $(lines "$dest/results/$records") records in $dest/results" ;;
+    0) log "replicate: $(lines "$dest/results/$records") records$([ ${#skip[@]} -eq 0 ] || printf ', %s finished trial(s)' "$(find "$dest/results/run/jobs" -mindepth 3 -maxdepth 3 -name result.json 2>/dev/null | wc -l)") in $dest/results" ;;
     2) log "WARNING: replicate: the pull from $vm came back but could not be merged into $dest/results, so the previous mirror stays and the staged copy is deleted; retried in ${rep_s}s"; return ;;
     *) log "WARNING: replicate: the pull from $vm failed or brought back no results/; $dest/results keeps the last good copy; retried in ${rep_s}s" ;;
   esac
