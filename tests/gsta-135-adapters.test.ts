@@ -396,7 +396,10 @@ describe('hermes chat-mode adapter', () => {
     return { out: r.stdout, typed, status: r.status, stderr: r.stderr };
   }
   test('the watcher types /exit only after grace consecutive completes, and a flip back to pending resets the grace', () => {
-    const r = watch(['complete', 'complete', 'pending', 'complete', 'complete', 'complete', 'complete']);
+    const clock = 'echo 10000 > "@DIR@/clock"\n'
+      + 'sleep() { local ms; ms=$(cat "@DIR@/clock"); awk -v t="$ms" -v s="$1" \'BEGIN { printf "%d\\n", t + s * 1000 }\' > "@DIR@/clock"; }\n'
+      + 'date() { local ms; ms=$(cat "@DIR@/clock"); case "$1" in +%s%3N) echo "$ms" ;; +%s) echo $((ms / 1000)) ;; *) command date "$@" ;; esac; }';
+    const r = watch(['complete', 'complete', 'pending', 'complete', 'complete', 'complete', 'complete'], {}, 'command sleep 1000 > /dev/null 2>&1 &', clock);
     expect(r.out).toContain('LOG watcher: transcript complete, grace 2s\nLOG watcher: transcript back to pending, grace reset\nLOG watcher: transcript complete, grace 2s\nLOG watcher: typing /exit\n');
     expect(r.typed).toBe('/exit\r');
     expect(r.out).toMatch(/polls=7 /);
