@@ -314,12 +314,21 @@ export function callOpens(c: Call, r: Resolver): Map<string, 'open' | 'section'>
 
 const BASE_DIRECTORY = 'Base directory for this skill: ';
 
-/** The text a tool result returns: a JSON result's content or output (Hermes), nothing for a failed one, else the result,
+/** Every string field named output at any depth of a parsed JSON value. */
+const outputsIn = (v: unknown): string[] =>
+  Array.isArray(v) ? v.flatMap(outputsIn)
+    : v && typeof v === 'object' ? Object.entries(v as Body).flatMap(([k, x]) => (k === 'output' && typeof x === 'string' ? [x] : outputsIn(x)))
+    : [];
+
+/** The text a tool result returns: a JSON result's content or output (Hermes), nothing for a failed one, else the result
+ *  followed by every output field inside its JSON lines (Codex's code-mode exec prints each exec_command result as a
+ *  JSON line the model shapes, such as {"i":0,"result":{"value":{"output":...}}}, so the body inside it is escaped),
  *  with read tools' line numbers ("     1\t", "1|") taken off. */
 function returnedText(result: string): string {
   const o = result.trimStart().startsWith('{') ? parsed(result) : null;
   const text = o && typeof o === 'object' ? (o.success === false ? '' : typeof o.content === 'string' ? o.content : typeof o.output === 'string' ? o.output : result) : result;
-  return text.replace(/^[ \t]*\d+(?:\t|→|\|)/gm, '');
+  const execOutputs = text.split('\n').flatMap((line: string) => (line.trimStart().startsWith('{') ? outputsIn(parsed(line)) : []));
+  return [text, ...execOutputs].join('\n').replace(/^[ \t]*\d+(?:\t|→|\|)/gm, '');
 }
 
 /** Whether a tool result returns a SKILL.md body (its frontmatter) or a section body (Markdown). */
