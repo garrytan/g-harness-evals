@@ -172,7 +172,7 @@ Run id `skill-resolver-pilot-2026-11`, config `pilot.json` (80fafe7b14). It cove
   | Opus | 0.784 | 100% | 20.3% |
   | Sol (sensitivity) | 0.799 | 90.2% | 10.2% |
   | Panel (sensitivity) | 0.855 | 100% | 13.6% |
-- **Clean arm:** the preflight found gstack in the images only inside the eval's own catalog copy (14 paths per image), and no Capy drive or gstack install in any trial mount. The pilot skipped the post-run audit, because the runner deletes the agent traces it reads. Counted trials record their own count of gstack reads outside the catalog before the traces go (e45a6c0896): `skill_request.clean_arm` carries gstack_reads, paths and contaminated, and any non-zero count marks the trial contaminated. **Limit:** on OpenClaw, Hermes and QM, the count misses a last tool call whose next request the 6-request cap refused. Refused requests aren't collected, and those harnesses' traces aren't parsed for tool calls.
+- **Clean arm:** the preflight found gstack in the images only inside the eval's own catalog copy (14 paths per image), and no Capy drive or gstack install in any trial mount. The pilot skipped the post-run audit, because the runner deletes the agent traces it reads. Counted trials record their own count of gstack reads outside the catalog before the traces go (e45a6c0896; what counts as a read is rule c of the 2026-11-11 amendment): `skill_request.clean_arm` carries gstack_reads, paths and contaminated, and any non-zero count marks the trial contaminated. The first request the 6-request cap refuses is kept too and read for Got the skill and for this count, so a skill opened or a gstack file read in the agent's last step is seen on every harness, OpenClaw, Hermes and QM included (f26e824021). It is never read for block delivery, because the model never saw it.
 
 ## Power
 
@@ -200,7 +200,7 @@ Filled in from the uncounted pilot (2026-11-10, see Pilot). The minimum detectab
 
 ## Run, sharding and order
 
-- **Where:** every public cell runs on Ubicloud through `scripts/ubicloud/fanout.sh`, one standard-16 VM per shard, from a worktree pinned at this file's merge commit. No cell is split across machines, and trials run one at a time within a shard. The three set R cells run on one private machine from the set R private preregistration, with a results root outside the repository, never through fan-out or merge-shards.
+- **Where:** every public cell runs on Ubicloud through `scripts/ubicloud/fanout.sh`, one standard-16 VM per shard, from a worktree pinned at the merge commit of the 2026-11-11 amendment's pull request (first written as this file's merge commit; see Amendments). No cell is split across machines, and trials run one at a time within a shard. The three set R cells run on one private machine from the set R private preregistration, with a results root outside the repository, never through fan-out or merge-shards.
 - **Shards (25 public):**
 
   | Shards | What each holds | Lease each |
@@ -279,4 +279,18 @@ A separate pull request after this one merges and the run ends (R77). The report
 
 ## Amendments
 
-None.
+### 2026-11-11, before any counted trial (internal-task)
+
+internal-task granted this follow-up on 2026-11-11, with one /ship pass and one fix round. It fixes the eight blocking findings of #387's /ship pass at 681f9438 and the set T grading of t40, and moves the run commit. Nothing below changes a cell, a lease, an endpoint or a bar, and no counted trial has run.
+
+- **Clean-arm rule c (cef919c940).** A trial is contaminated only when it reads a gstack `SKILL.md` or other gstack skill file from outside the eval's own catalog copy, wherever the arm installed that catalog (`/workspace/skills` on OpenClaw, `/harness-state/<harness>/skills` on Claude Code, Codex and Hermes, `.agent-skills/` and the arm images' `/opt/catalog-layer/skills` on QM, and the kit). A read is what `scripts/skill-resolver/got-skill.ts` counts as one: the harness's file-read tool, a reader program (cat, head, sed and the like) in its shell tool, a string in Codex code mode's exec JavaScript, or on QM a files read or a reader in execute. A read whose result says the file is missing doesn't count. Running or naming a path that a catalog skill's own text tells the agent to use, such as `~/.claude/skills/gstack/bin/...`, writing to a gstack path, and gstack's `.gstack/` state directory don't count either. **Why:** the rule as first built counted any tool call that named a gstack path outside the catalog copy. The catalog's own gstack skills tell the agent to run `~/.claude/skills/gstack/bin/...` (686 times across the catalog's `SKILL.md` files) and to write `.gstack/`, so a trial that opened a catalog gstack skill and followed it was marked contaminated and left out of every score. Resolver-on suggests those catalog skills, so the old rule would have dropped more resolver-on trials that got the skill and biased the primary comparison against resolver-on. `scripts/skill-resolver/ARMS.md` and analyze.ts's audit text say the same.
+- **The cap's refused request (Pilot, Clean arm).** That paragraph said refused requests aren't collected. Since f26e824021 the first request the cap refuses is read for Got the skill and the clean-arm count; the paragraph now says so.
+- **Run log redaction (6f60e6bd00).** A skill-request trial's run log lines pass through the request redaction, so an adapter's turn detail can't carry request text into `run.log`, which sits outside the scrubbed trial directory.
+- **Scrub on a throw (c7e53822db).** A skill-request trial that throws after the harness ran (for example on a truncated resolver status line) is still scrubbed of the request text.
+- **QM reads only (a9a4ce1e42).** QM's Got the skill counts an execute call only when it reads a `SKILL.md`: `cat > SKILL.md`, `sed -i` and a read whose answer says the file is missing (even inside a pipeline that exited 0) no longer count.
+- **QM pull receipts (71ec44ff47).** QM's pull arm writes a status line for a `resolve-skills` call made by its installed path (`/usr/local/bin/resolve-skills`), not only by its bare name, so those calls keep their suggestions, budget and INFRA checks.
+- **Claim gate (baa00c10ba).** analyze.ts meets the primary claim only when every primary trial is scored with the other family's labels (Astra for Claude cells, Opus for GPT cells; R78), as Judge above says. Panel labels and a panel-only judge check can't stand in.
+- **Resumed trials (6d1fb72c61).** A resumed skill-request trial counts only its own attempt's usage lines, so an interrupted attempt that hit the cap can't make the rerun `request_cap`.
+- **Set T with no workspace (1b1fd1b889).** A set T trial that left no workspace stays in the intention-to-treat set T comparison, scored as a failure on success and used_it, and is counted in the INFRA table. It was counted as a Phase B trial.
+- **Set T grading of t40 (e4f4dcde26).** Set T grading on OpenClaw leaves out only the catalog skills the arm installed, so a skill the task seeded or the agent wrote (t40's `skills/cut-release`) is graded.
+- **Run commit.** The counted run executes from this follow-up's merge commit, not #387's (this file's), because the shard tooling a VM needs lands here (6036c2a9fc): `scripts/skill-resolver/shard-kit.ts`, `run-shard.sh --skill-root`, the per-cell arm images, and the smoke's choice of a skill cell's own first task. Run, sharding and order says so.

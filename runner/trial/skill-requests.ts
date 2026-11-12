@@ -31,7 +31,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync,
 import { createHash } from 'node:crypto';
 import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 import { RunnerError } from '../errors.ts';
-import { gotSkill, strings, toolCalls, type Harness } from '../../scripts/skill-resolver/got-skill.ts';
+import { gotSkill, readArgs, shellReadArgs, strings, toolCalls, type Harness, type ToolCall } from '../../scripts/skill-resolver/got-skill.ts';
 import { normalizeResult } from '../../scripts/skill-resolver/result-fields.ts';
 import { skillOpens } from '../../harnesses/qm/skill-opens.ts';
 
@@ -142,37 +142,61 @@ export function gotSkillRecord(harness: string, catalog: string[], requests: unk
   return { file: { schema: 'he-got-skill/1', source, requests: requests.length, ...g }, opened: g.catalog_opened };
 }
 
-/** gstack at the start of a word (gstack, gstack-ship, .gstack, open-gstack-browser), never inside one (sigstack), as
- *  scripts/v04/clean-arm-audit.ts matches it. */
+/** gstack at the start of a word (gstack, gstack-ship, open-gstack-browser), never inside one (sigstack), as
+ *  scripts/v04/clean-arm-audit.ts matches it. A gstack file is a path with such a segment; a .gstack segment is gstack's state
+ *  directory (~/.gstack, a workspace's .gstack/tmp), which the catalog's own gstack skills write, not a skill file. */
 const GSTACK = /(?<![a-z])gstack/i;
+const gstackFile = (t: string) => t.includes('/') && t.split('/').some((seg) => GSTACK.test(seg) && !seg.startsWith('.'));
 /** The trial's own catalog copy, as a path the agent names inside the container: the skill kit, OpenClaw's /workspace/skills,
- *  the Claude Code, Codex and Hermes skills roots under /harness-state/<harness>/skills (also written through their variables),
- *  and the skill trees QM syncs into its sandbox under .agent-skills/. */
-const CATALOG_COPY = [/^\/opt\/skill-resolver\//, /^\$\{?HE_SKILL_KIT_DIR\}?\//, /^\/workspace\/skills\//, /^\/(?:root\/)?workspace\/\.agent-skills\//,
-  /^(?:\/harness-state|\$\{?HE_SESSION_STATE_DIR\}?)\/[^/]+\/skills\//, /^\$\{?(?:CODEX_HOME|HERMES_HOME|CLAUDE_CONFIG_DIR)\}?\/skills\//];
+ *  the Claude Code, Codex and Hermes skills roots under /harness-state/<harness>/skills (also written through their variables,
+ *  or through ~ and $HOME, which the adapters set to /harness-state), the skill trees QM syncs into its sandbox under
+ *  .agent-skills/, and the catalog QM's arm images keep under /opt/catalog-layer/skills/ (scripts/skill-resolver/step0/qm/arms). */
+const CATALOG_COPY = [/^\/opt\/skill-resolver\//, /^\/opt\/catalog-layer\/skills\//, /^\$\{?HE_SKILL_KIT_DIR\}?\//, /^\/workspace\/skills\//, /^\/(?:root\/)?workspace\/\.agent-skills\//,
+  /^(?:\/harness-state|~|\$\{?(?:HE_SESSION_STATE_DIR|HOME)\}?)\/(?:claude|codex|hermes)\/skills\//, /^\$\{?(?:CODEX_HOME|HERMES_HOME|CLAUDE_CONFIG_DIR)\}?\/skills\//];
+/** What a QM tool call reads as files: a files read's path, or the reader arguments of an execute command. */
+const qmReadArgs = (c: { name: string; input: unknown }): string[] => {
+  const i = (c.input ?? {}) as Record<string, unknown>;
+  if (c.name === 'files' && i.action === 'read' && typeof i.path === 'string') return [i.path];
+  return c.name === 'execute' && typeof i.command === 'string' ? shellReadArgs(i.command) : [];
+};
+const READ_HARNESSES = ['openclaw', 'claude-code', 'codex', 'hermes'];
+/** A result line saying a file is missing (cat, the harnesses' file-read tools, Node's ENOENT). */
+const MISSING = /no such file|ENOENT|does not exist|file not found/i;
 
-/** The clean-arm count (CREW.md, "Clean no-gstack and no-brain arms"), taken before the scrub removes the traces: the trial's
- *  tool calls (from the request bodies the proxy held and, on Claude Code and Codex, the harness's own trace) that name a path
- *  with a gstack segment outside the trial's own catalog copy, such as the Capy drive's gstack skill, ~/.local/share/gstack or a
- *  gstack checkout. A call counts once however many such paths it names, and whether or not the read succeeded: the attempt is
- *  what shows the agent could see gstack. A relative path is taken from /workspace, the harnesses' working directory, and a
+/** The clean-arm count (PREREGISTRATION.md, amendment of 2026-11-11, rule c), taken before the scrub removes the traces: the
+ *  trial's reads of a gstack SKILL.md or other gstack skill file outside the trial's own catalog copy, such as the Capy drive's
+ *  gstack skill, ~/.local/share/gstack or a gstack checkout. A read is what scripts/skill-resolver/got-skill.ts counts as one
+ *  (the harness's file-read tool, a reader program in its shell tool, in Codex code mode a string of exec's JavaScript; on QM a
+ *  files read or a reader in execute), and a path the call's result says was not found does not count: a missing-file line that
+ *  names a read path rules out that path on any call (a pipeline can exit 0 after a failed cat), and a failed call with no result
+ *  text, or whose missing-file lines name no path, rules out its reads; a pathless line in a call that did not fail is the file's
+ *  own text and rules out nothing. Running a program
+ *  under a gstack path, writing to one, or naming one in any other way is not a read: the catalog's own gstack skills tell the
+ *  agent to run ~/.claude/skills/gstack/bin/... and to write .gstack/, and those calls are the skill being followed. The tool
+ *  calls come from the request bodies the proxy held and, on Claude Code and Codex, the harness's own trace. A call counts once
+ *  however many such paths it reads. A relative path is taken from /workspace, the harnesses' working directory, and a
  *  process-mode path under the trial directory as the container path it stands for (workspace/ as /workspace, state/ as
  *  /harness-state). requests includes the body the request cap refused, so a final tool call is seen on every harness. */
 export function gstackReads(harness: string, requests: unknown[], trialDir: string): { gstack_reads: number; paths: string[]; contaminated: boolean } {
   const traces = readTraces(harness, trialDir);
   const root = resolve(trialDir) + '/';
   const inContainer = (p: string) => !p.startsWith(root) ? p : p.slice(root.length).replace(/^workspace\//, '/workspace/').replace(/^state\//, '/harness-state/');
+  const reads = (c: ToolCall) => harness === 'qm' ? qmReadArgs(c) : READ_HARNESSES.includes(harness) ? readArgs(harness as Harness, c) : [];
   const paths = new Set<string>();
-  let reads = 0;
+  let n = 0;
   for (const c of toolCalls(requests, traces)) {
-    const hits = strings(c.input).flatMap((s) => s.split(/[\s"'`<>()|;&,=]+/)).map((t) => t.replace(/[.,:;]+$/, ''))
-      .filter((t) => t.includes('/') && GSTACK.test(t))
-      .filter((t) => { const p = inContainer(t); const abs = /^[/~$]|^[a-z]+:\/\//i.test(p) ? p : posix.resolve('/workspace', p); return !CATALOG_COPY.some((re) => re.test(abs)); });
+    const missing = (c.result ?? '').split('\n').filter((l) => MISSING.test(l));
+    const pathless = missing.length > 0 && !missing.some((l) => l.includes('/'));
+    const notFound = (t: string) => missing.some((l) => l.includes(t.replace(/^(?:~|\$\{?\w+\}?)(?=\/)/, ''))) || (c.ok === false && (!c.result?.trim() || pathless));
+    const hits = reads(c).flatMap((s) => s.split(/[\s"'`<>()|;&,=]+/)).map((t) => t.replace(/[.,:;]+$/, ''))
+      .filter(gstackFile)
+      .filter((t) => { const p = inContainer(t); const abs = /^[/~$]|^[a-z]+:\/\//i.test(p) ? p : posix.resolve('/workspace', p); return !CATALOG_COPY.some((re) => re.test(abs)); })
+      .filter((t) => !notFound(t));
     if (!hits.length) continue;
-    reads++;
+    n++;
     hits.forEach((h) => paths.add(h));
   }
-  return { gstack_reads: reads, paths: [...paths].sort(), contaminated: reads > 0 };
+  return { gstack_reads: n, paths: [...paths].sort(), contaminated: n > 0 };
 }
 
 /** The preregistration's delivery rule (PREREGISTRATION.md, Resolver contract, INFRA): a pushed block must be byte for byte in a

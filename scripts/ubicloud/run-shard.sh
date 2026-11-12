@@ -10,7 +10,7 @@
 #       [--amendment <sha>]
 #       [--resume] [--attach] [--poll-seconds 30] [--timeout-hours 12] [--sealed-root <local dir> --opening-receipt <local file>]
 #       [--workload harness|gstack-laneb|qm-driver|frontier-harbor] [--install-check] [--laneb-root <dir from scripts/gstack-laneb/fetch.ts>]
-#       [--replicate-seconds 1200] [--replicate-to <dir>]
+#       [--replicate-seconds 1200] [--replicate-to <dir>] [--skill-root <local dir>]
 #       [--pre-smoke <script in the repository, e.g. scripts/ablation-golden.sh>] [-- <extra arguments for scripts/run-shard.sh>]
 #
 # Mid-run replication (CREW R16: no paid run may depend on one controller machine's local state). Every
@@ -64,6 +64,10 @@
 # here and none goes to the VM; its results (install-check.json, agents/, baselines/, probe/) come back to <dest>/results.
 # --embedded and the sealed flags are refused. A --resume uploads <dest>/results, and vm-run.sh skips every trial already
 # in its trials.jsonl. Stopping the shard waits up to 240 s for vm-run.sh to drain its meter and write its records.
+#
+# --skill-root (internal-task, skill-resolver cells): a local directory holding kit/, gbrain-linux-x64-musl and inputs/ (scripts/run-shard.sh,
+# --skill-root), streamed to ~/skill-root on the VM before the keys on every launch but --attach, and passed to the smoke's and
+# the shard's scripts/run-shard.sh as --skill-root. It holds no key; its request set stays on the VM and goes down with it.
 #
 # --workload gstack-laneb (docs/gstack-laneb.md) runs the shard's cells through the Lane B bridge instead of the
 # harness runner: the --laneb-root directory (default ~/.capy/work/gstack-laneb: the pinned gstack-evals checkout, the arm
@@ -134,7 +138,7 @@ runner=${UBI_RUNNER:-$here/ubi-runner.sh}
 
 commit="" prereg="" name="" cells="" lease="" dest="" size=standard-16 location="" storage="" smoke_lease="" smoke_task="" smoke=1
 smoke_first=0 embedded=0 gbrain_image="" amendment="" resume=0 attach=0 poll=30 timeout_h=12 sealed_root="" opening_receipt="" sealed=0
-workload=harness laneb_root="$HOME/.capy/work/gstack-laneb" pre_smoke="" install_check=0
+workload=harness laneb_root="$HOME/.capy/work/gstack-laneb" pre_smoke="" install_check=0 skill_root=""
 rep_s=${UBI_REPLICATE_SECONDS:-1200} replicate_to=${UBI_REPLICATE_TO:-}
 extra=()
 while [ $# -gt 0 ]; do
@@ -164,6 +168,7 @@ while [ $# -gt 0 ]; do
     --workload) workload=$2; shift 2 ;;
     --install-check) install_check=1; shift ;;
     --laneb-root) laneb_root=$2; shift 2 ;;
+    --skill-root) skill_root=$2; shift 2 ;;
     --pre-smoke) pre_smoke=$2; shift 2 ;;
     --replicate-seconds) rep_s=$2; shift 2 ;;
     --replicate-to) replicate_to=$2; shift 2 ;;
@@ -173,6 +178,10 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$dest" ] || { echo "run-shard (ubicloud): --dest is required" >&2; exit 2; }
+if [ -n "$skill_root" ]; then
+  [ "$workload" = harness ] || { echo "run-shard (ubicloud): --skill-root applies to --workload harness only" >&2; exit 2; }
+  [ "$attach" -eq 1 ] || { [ -d "$skill_root/kit" ] && [ -f "$skill_root/gbrain-linux-x64-musl" ] && [ -d "$skill_root/inputs" ]; } || { echo "run-shard (ubicloud): --skill-root $skill_root needs kit/, gbrain-linux-x64-musl and inputs/ (scripts/run-shard.sh, --skill-root)" >&2; exit 2; }
+fi
 if [ -n "$pre_smoke" ]; then
   [ "$attach" -eq 0 ] && [ "$workload" = harness ] || { echo "run-shard (ubicloud): --pre-smoke applies only to a new harness shard, not --attach or --workload gstack-laneb" >&2; exit 2; }
   [[ "$pre_smoke" =~ ^scripts/[A-Za-z0-9._/-]+\.sh$ && "$pre_smoke" != *..* ]] || { echo "run-shard (ubicloud): --pre-smoke must be a .sh file under scripts/ in the repository, e.g. scripts/ablation-golden.sh" >&2; exit 2; }
@@ -622,6 +631,13 @@ else
     log "laneb: uploading $laneb_root (${laneb_parts[*]}) to ~/laneb"
     # shellcheck disable=SC2086
     tar -C "$laneb_root" -czf - --exclude=gstack-evals/.git "${laneb_parts[@]}" 2>>"$dest/lane.log" | bash "$runner" unpack "$vm" laneb >>"$dest/lane.log" 2>&1 || { log "laneb upload failed"; exit 3; }
+  fi
+
+  # 4c. the skill-resolver kit, the musl resolver build and the cells' inputs (--skill-root), streamed to ~/skill-root; no key is in them
+  if [ -n "$skill_root" ]; then
+    log "skill: uploading $skill_root (kit, gbrain-linux-x64-musl, inputs) to ~/skill-root"
+    tar -C "$skill_root" -czf - kit gbrain-linux-x64-musl inputs 2>>"$dest/lane.log" | bash "$runner" unpack "$vm" skill-root >>"$dest/lane.log" 2>&1 || { log "skill root upload failed"; exit 3; }
+    extra+=(--skill-root "$remote_home/skill-root")
   fi
 
   # 5. the keys, over SSH only, into a 0600 file the launcher reads and deletes. Only the model keys go (PARTICLE_API_KEY

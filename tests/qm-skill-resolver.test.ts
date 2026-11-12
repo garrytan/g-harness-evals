@@ -237,4 +237,11 @@ describe('pull arm: status lines from the stored QM session', () => {
     const drifted = pullEntries(entries, { receipt: RECEIPT, trial: 't' }).map((e: { line: Record<string, unknown> }) => e.line);
     expect(drifted[0]).toMatchObject({ code: 'OK', exit: 0, index_hash: 'f'.repeat(64), infra: true, infra_reasons: ['INDEX_HASH_DIFFERS'] });
   });
+
+  test('a call by the installed path (/usr/local/bin/resolve-skills, ./resolve-skills) gets its line too', () => {
+    const call = (id: string, command: string) => [{ seq: 1, kind: 'ToolCall', tool: 'execute', callId: id, body: { command } }, { seq: 2, kind: 'ToolResult', tool: 'execute', callId: id, code: 0, text: stdout + '\n[exit 0]\n' }];
+    const items = { items: [...call('a', "/usr/local/bin/resolve-skills <<'JSON'\n{}\nJSON"), ...call('b', 'cd /tmp && ./resolve-skills < in.json'), ...call('c', 'ls /usr/local/bin')] };
+    const lines = pullEntries(items, { receipt: RECEIPT, trial: 't' }).map((e: { line: Record<string, unknown> }) => e.line);
+    expect(lines.map((l: Record<string, unknown>) => [l.turn, l.code])).toEqual([[1, 'OK'], [2, 'OK']]);
+  });
 });

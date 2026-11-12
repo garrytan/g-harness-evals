@@ -26,7 +26,7 @@ import { defaultPreambleFor, loadPreamble } from './task.ts';
 import { type CaptureConfig, captureDnsGapLine, captureLine, captureSummary } from './capture.ts';
 import { type GradeFn, type TrialContext, appendRecord, loadGrader, runTrial, trialTermination } from './trial.ts';
 import { writeAtomic } from './harness.ts';
-import { SET_T_SLICE, adapterWorkspaceEntries, gradeSetTWorkspace, qmSandboxImage, setTEnv, setTTaskDir, writeRunTrialTask, writeServeSetTTask } from './set-t.ts';
+import { SET_T_SLICE, adapterWorkspaceEntries, gradeSetTWorkspace, qmSandboxImage, setTEnv, setTTaskDir, skillArmImage, writeRunTrialTask, writeServeSetTTask } from './set-t.ts';
 import { SKILL_REQUESTS_SLICE, checkBlockDelivery, gotSkillRecord, gstackReads, insideDir, readRequestSet, redactRequest, scrubTrialDir, sha256, writeRequestTask, writeRunRequestTask } from './skill-requests.ts';
 import { readCatalogNames } from '../../scripts/skill-resolver/got-skill.ts';
 import { REQUEST_CAP, type SlotLimits } from '../proxy/metering-proxy.ts';
@@ -282,7 +282,7 @@ async function runSetTTrial(ctx: TrialContext): Promise<TrialRecord> {
       const env = setTEnv(cell);
       env.QM_SANDBOX_IMAGE = qmSandboxImage(runTask, repoRoot, process.env.QM_SANDBOX_IMAGE || undefined);
       ctx.log(`trial ${trial.id}: set T QM sandbox image ${env.QM_SANDBOX_IMAGE} (start/ and instruction.md at /root/workspace)`);
-      record = await runSingleShot({ cell, trial, trialDir: ctx.trialDir, proxy: ctx.proxy, log: ctx.log, image: ctx.opts.image, repoRoot: ctx.opts.repoRoot, taskDir: runTask, env, network: ctx.opts.network ?? null });
+      record = await runSingleShot({ cell, trial, trialDir: ctx.trialDir, proxy: ctx.proxy, log: ctx.log, image: ctx.opts.image ?? skillArmImage(cell), repoRoot: ctx.opts.repoRoot, taskDir: runTask, env, network: ctx.opts.network ?? null });
       record.harness_mode = 'docker';
     } else {
       writeServeSetTTask(taskDir, runTask);
@@ -293,7 +293,7 @@ async function runSetTTrial(ctx: TrialContext): Promise<TrialRecord> {
     }
     const workspace = join(ctx.trialDir, 'workspace');
     if (!existsSync(workspace)) return { ...record, grade: 'n/a', error: record.error ?? `HE-RUN-006 set T trial ${trial.id} left no workspace to grade` };
-    const setT = gradeSetTWorkspace(taskDir, workspace, cell.skill_arm ?? null, adapterWorkspaceEntries(cell.harness, taskDir));
+    const setT = gradeSetTWorkspace(taskDir, workspace, cell.skill_arm ?? null, adapterWorkspaceEntries(cell.harness, taskDir, ctx.trialDir));
     if (cell.harness === 'qm') {
       const file = join(ctx.trialDir, 'logs', 'qm-default-sandbox.json');
       const made = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) as { set_default?: { http?: number; body?: { defaultSandboxId?: unknown } } } : null;
@@ -317,20 +317,23 @@ async function runSkillRequestTrial(ctx: TrialContext): Promise<TrialRecord> {
   const catalog = readCatalogNames(cell.catalog!);
   const texts = [row.sent, row.text, ...(row.prev_user_text ? [row.prev_user_text] : [])];
   const redact = (s: string) => redactRequest(s, texts).body;
+  // The run log sits outside the scrubbed trial directory, and the turn loop writes the adapter's response detail to it.
+  const log = (line: string) => ctx.log(redact(line));
   const taskDir = mkdtempSync(join(tmpdir(), 'skillreq-task-'));
+  let scrubbed: ReturnType<typeof scrubTrialDir> | null = null;
   try {
     const slotLimits = { collect_requests: true, ...(cell.request_cap ? { max_requests: cell.request_cap } : {}) };
     let record: TrialRecord;
     if (cell.harness === 'qm') {
       // QM wires its skill arms on the run entry only, and its serve entry cannot register the world at this pin (harnesses/qm/README.md).
       writeRunRequestTask(row, taskDir);
-      record = await runSingleShot({ cell, trial, trialDir: ctx.trialDir, proxy: ctx.proxy, log: ctx.log, image: ctx.opts.image, repoRoot: ctx.opts.repoRoot, taskDir, env: setTEnv(cell), network: ctx.opts.network ?? null, bind: slotLimits, redact });
+      record = await runSingleShot({ cell, trial, trialDir: ctx.trialDir, proxy: ctx.proxy, log, image: ctx.opts.image ?? skillArmImage(cell), repoRoot: ctx.opts.repoRoot, taskDir, env: setTEnv(cell), network: ctx.opts.network ?? null, bind: slotLimits, redact });
       record.harness_mode = 'docker';
     } else {
       writeRequestTask(row, taskDir);
       // The grader's task schema has no Phase B task and Phase B has no predicates: Got the skill is scored from got-skill.json.
       const grade: GradeFn = () => ({ grade: 'n/a', predicates: [], consent_violation: false, approval_stop: false, effects: [] });
-      record = await runTrial({ ...ctx, grade, trial: { ...trial, task_dir: taskDir }, opts: { ...ctx.opts,
+      record = await runTrial({ ...ctx, log, grade, trial: { ...trial, task_dir: taskDir }, opts: { ...ctx.opts,
         harnessEnv: { ...ctx.opts.harnessEnv, ...(cell.skill_arm ? { HE_SKILL_ARM: cell.skill_arm } : {}) }, slotLimits } });
     }
     const key = trialKey(trial.id);
@@ -343,11 +346,12 @@ async function runSkillRequestTrial(ctx: TrialContext): Promise<TrialRecord> {
     const cleanArm = gstackReads(cell.harness, [...requests, ...refused], ctx.trialDir);
     const gotPath = join(ctx.trialDir, 'got-skill.json');
     writeAtomic(gotPath, JSON.stringify(got.file, null, 1) + '\n');
-    const lines = ctx.proxy ? ctx.proxy.usageLines(key) : [];
+    // The usage log is append-only across a resume: only this attempt's lines count, as in trialTermination.
+    const lines = ctx.proxy ? ctx.proxy.usageLines(key).filter((l) => l.at === undefined || l.at >= record.started_at) : [];
     const capped = lines.some((l) => l.outcome === 'refused' && (l.reason ?? '').startsWith(REQUEST_CAP));
     const modelRequests = lines.filter((l) => l.outcome !== 'refused' && `${l.provider}:${l.model}` === cell.model).length;
     const termination: Termination = capped && !record.cap_stop && record.termination !== 'infra_error' ? 'request_cap' : record.termination;
-    const scrubbed = scrubTrialDir(ctx.trialDir, texts);
+    scrubbed = scrubTrialDir(ctx.trialDir, texts);
     const paths = Object.fromEntries(Object.entries({ ...record.paths, got_skill: gotPath }).filter(([k, v]) => k === 'dir' || existsSync(v)));
     ctx.log(`trial ${trial.id}: skill request ${cell.request_set}/${row.id} termination=${termination} model_requests=${modelRequests}${cell.request_cap ? '/' + cell.request_cap : ''} got_skill=${got.opened.join(',') || '-'}${delivery ? ` blocks pushed=${delivery.pushed} carried=${delivery.carried} shadow=${delivery.shadow} leaked=${delivery.leaked}` : ''} gstack_reads=${cleanArm.gstack_reads}${cleanArm.contaminated ? ' contaminated' : ''} kept=${scrubbed.kept.length} removed=${scrubbed.removed} redacted_lines=${scrubbed.redacted_lines}`);
     return {
@@ -357,5 +361,9 @@ async function runSkillRequestTrial(ctx: TrialContext): Promise<TrialRecord> {
         arm: cell.skill_arm ?? null, model_requests: modelRequests, request_cap: cell.request_cap ?? null, got_skill: got.opened, ...(delivery ? { block_delivery: delivery } : {}),
         clean_arm: { ...cleanArm, paths: cleanArm.paths.map(redact) }, scrubbed },
     };
-  } finally { rmSync(taskDir, { recursive: true, force: true }); }
+  } finally {
+    // A throw before the scrub (the trial, a malformed status line, a trace read) still leaves no request text in the trial directory.
+    if (!scrubbed && existsSync(ctx.trialDir)) scrubTrialDir(ctx.trialDir, texts);
+    rmSync(taskDir, { recursive: true, force: true });
+  }
 }

@@ -77,10 +77,16 @@ export function writeServeSetTTask(taskDir: string, outDir: string, timeBudgetS 
   return outDir;
 }
 
-/** What an adapter itself writes into the workspace on the serve entry, left out of grading unless start/ has it: OpenClaw
- *  installs the catalog at /workspace/skills (harnesses/openclaw/adapter.sh). */
-export function adapterWorkspaceEntries(harness: string, taskDir: string): string[] {
-  return harness === 'openclaw' && !existsSync(join(taskDir, 'start', 'skills')) ? ['skills'] : [];
+/** What an adapter itself writes into the workspace on the serve entry, left out of grading: OpenClaw installs the catalog at
+ *  /workspace/skills (harnesses/openclaw/adapter.sh), and its logs/skill-arm.json names every skill directory it installed, so only
+ *  those are left out and a skill the task seeded (t37) or the agent wrote (t40's skills/cut-release) is graded. Without that
+ *  record, the whole skills/ directory is left out unless start/ has it. */
+export function adapterWorkspaceEntries(harness: string, taskDir: string, trialDir?: string): string[] {
+  if (harness !== 'openclaw') return [];
+  const arm = trialDir ? join(trialDir, 'logs', 'skill-arm.json') : null;
+  const names = arm && existsSync(arm) ? (JSON.parse(readFileSync(arm, 'utf8')) as { install?: { names?: unknown } }).install?.names : undefined;
+  if (Array.isArray(names)) return names.filter((n): n is string => typeof n === 'string' && /^[^/\\.][^/\\]*$/.test(n)).map((n) => 'skills/' + n);
+  return existsSync(join(taskDir, 'start', 'skills')) ? [] : ['skills'];
 }
 
 /** Grades a finished trial workspace. instruction.md is left out of the graded copy when it still holds the request byte for
@@ -124,7 +130,31 @@ export function qmSandboxImage(runTask: string, repoRoot: string, base = 'harnes
   } finally { rmSync(context, { recursive: true, force: true }); }
 }
 
-/** The environment a set T cell adds to the run (opt-in run-trial.sh --env): the arm and the cell's config, when set. */
+/** QM's skill-arm images (scripts/skill-resolver/step0/qm/arms/Dockerfile.arms, built on a shard by
+ *  scripts/skill-resolver/shard-kit.ts), per config: harnesses/qm/prepare.sh refuses a config whose core image has another
+ *  harness-eval.skill-arm label, and pi-skills-pull also needs its own sandbox image. */
+export const QM_ARM_IMAGES: Record<string, string> = {
+  'pi-skills-native': 'harness-eval/qm:harn52-arm-catalog',
+  'pi-skills-push': 'harness-eval/qm:harn52-arm-catalog',
+  'pi-skills-pull': 'harness-eval/qm:harn52-arm-pull',
+  'pi-skills-none': 'harness-eval/qm:harn52-arm-none',
+};
+export const QM_PULL_SANDBOX_IMAGE = 'harness-eval/qm-sandbox:harn52-arm-pull';
+
+/** The image a skill-arm cell runs in when the run names none (--image): harness-eval/<harness>:skills-kit, the harness image
+ *  plus the kit at /opt/skill-resolver, for OpenClaw, Claude Code, Codex and Hermes, and QM's arm image for the cell's config.
+ *  Undefined for a cell without a skill arm, which runs in harness-eval/<harness>:dev. */
+export function skillArmImage(cell: { id?: string; harness: string; skill_arm?: string; config?: string }): string | undefined {
+  if (!cell.skill_arm) return undefined;
+  if (cell.harness !== 'qm') return `harness-eval/${cell.harness}:skills-kit`;
+  const image = QM_ARM_IMAGES[cell.config ?? ''];
+  if (!image) throw new RunnerError('HE-PREREG-004', `cell ${cell.id ?? '?'}: a QM skill-arm cell needs one of the configs ${Object.keys(QM_ARM_IMAGES).join(', ')}, not ${cell.config ?? 'none'}`);
+  return image;
+}
+
+/** The environment a set T or skill-request cell adds to the run (opt-in run-trial.sh --env): the arm and the cell's config,
+ *  when set, and for QM's pull arm its sandbox image. */
 export function setTEnv(cell: { skill_arm?: string; config?: string }): Record<string, string> {
-  return { ...(cell.skill_arm ? { HE_SKILL_ARM: cell.skill_arm } : {}), ...(cell.config ? { HE_HARNESS_CONFIG: cell.config } : {}) };
+  return { ...(cell.skill_arm ? { HE_SKILL_ARM: cell.skill_arm } : {}), ...(cell.config ? { HE_HARNESS_CONFIG: cell.config } : {}),
+    ...(cell.config === 'pi-skills-pull' ? { QM_SANDBOX_IMAGE: QM_PULL_SANDBOX_IMAGE } : {}) };
 }

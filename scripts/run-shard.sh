@@ -10,7 +10,15 @@
 #   scripts/run-shard.sh --prereg docs/benchmarks/<run>/prereg.json --name <shard> --cells a,b --lease-usd <n>
 #                        [--out results/<run-id>] [--embedded] [--gbrain-image <tag>] [--skip-build] [--resume]
 #                        [--amendment <commit>] [--max-output-tokens <n>] [--sealed-root <dir> --opening-receipt <file>]
-#                        [--clean-arm-preflight]
+#                        [--clean-arm-preflight] [--skill-root <dir>]
+#
+# --skill-root (internal-task) is required when any of the shard's cells has a skill_arm: the directory holding the frozen skill
+# kit (kit/), the musl build of the pinned resolver (gbrain-linux-x64-musl) and the inputs the cells read under .skill-resolver/
+# (inputs/). After the harness images, scripts/skill-resolver/shard-kit.ts checks all of it against the preregistration's
+# inputs, stages .skill-resolver/, builds each skill-arm cell's image (harness-eval/<h>:skills-kit, QM's arm images; under
+# --skip-build only the missing ones, such as the arms a first-cell smoke did not run) and runs the per-shard skill preflight; any failure stops the shard with exit 2 before plan.
+# The arm images' ids join the others in shard.json. The runner picks each skill-arm cell's image itself
+# (runner/trial/set-t.ts skillArmImage).
 #
 # --clean-arm-preflight (internal-task, v0.4; CREW.md "Clean no-gstack and no-brain arms") runs scripts/v04/clean-arm-audit.ts
 # preflight before plan: no Capy drive mounted and no gstack installed on this machine or inside the shard's harness images.
@@ -59,7 +67,7 @@
 set -euo pipefail
 
 prereg="" name="" cells="" lease="" out="" embedded=0 gbrain_image="harness-eval/gbrain:dev" skip_build=0 resume=0 amendment="" max_output_tokens=128000
-sealed_root="" opening_receipt="" clean_arm=0
+sealed_root="" opening_receipt="" clean_arm=0 skill_root=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --prereg) prereg="$2"; shift 2 ;;
@@ -76,6 +84,7 @@ while [ $# -gt 0 ]; do
     --sealed-root) sealed_root="$2"; shift 2 ;;
     --opening-receipt) opening_receipt="$2"; shift 2 ;;
     --clean-arm-preflight) clean_arm=1; shift ;;
+    --skill-root) skill_root="$2"; shift 2 ;;
     *) echo "run-shard: unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -204,8 +213,19 @@ if [ "$skip_build" -eq 0 ]; then
   scripts/build-gbrain-image.sh "${args[@]}" > "$out/build-gbrain.log" 2>&1 || { show_tail "$out/build-gbrain.log" 20; [ -z "$shard_root" ] || log "the sealed build log is kept at $out/sealed-root-logs/build-gbrain-image.log (custody only)"; log "gbrain image build failed"; exit 2; }
 fi
 
+skill_images=""
+if python3 -c "import json,sys; w=set(sys.argv[2].split(',')); sys.exit(0 if any(c['id'] in w and c.get('skill_arm') for c in json.load(open(sys.argv[1]))['cells']) else 1)" "$prereg" "$cells"; then
+  skill_args=(--prereg "$prereg" --cells "$cells" --out "$out")
+  [ -z "$skill_root" ] || skill_args+=(--skill-root "$skill_root")
+  [ "$skip_build" -eq 0 ] || skill_args+=(--skip-build)
+  log "skill kit: scripts/skill-resolver/shard-kit.ts (inputs, arm images, skill preflight)"
+  bun scripts/skill-resolver/shard-kit.ts "${skill_args[@]}" > "$out/skill-kit.log" 2>&1 || { show_tail "$out/skill-kit.log" 30; log "skill kit or skill preflight failed ($out/skill-kit.log); no trial ran"; exit 2; }
+  grep '^SKILL_KIT' "$out/skill-kit.log" | tee -a "$out/run-shard.log" >&2
+  skill_images=$(python3 -c "import json,sys; print(' '.join(json.load(open(sys.argv[1])).get('images') or {}))" "$out/skill-kit.json")
+fi
+
 images=""
-for tag in $(for h in $harnesses; do echo "harness-eval/$h:dev"; [ "$h" != qm ] || echo "$qm_sandbox"; done) "$gbrain_image"; do
+for tag in $(for h in $harnesses; do echo "harness-eval/$h:dev"; [ "$h" != qm ] || echo "$qm_sandbox"; done) "$gbrain_image" $skill_images; do
   id=$(docker image inspect -f '{{.Id}}' "$tag" 2>/dev/null) && [ -n "$id" ] || { log "image $tag is missing; build it, or run without --skip-build"; exit 2; }
   images+="${images:+, }\"$tag\": \"$id\""
 done

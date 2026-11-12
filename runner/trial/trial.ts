@@ -39,6 +39,7 @@ import { wireOfModel } from '../proxy/ablate.ts';
 import { loadTask, type TaskSpec } from './task.ts';
 import { flushIngestAfterFence, runTurns } from './turns.ts';
 import { cellRoute } from './routes.ts';
+import { skillArmImage } from './set-t.ts';
 import { TrialWorld, worldAt } from './world.ts';
 
 /** Where preflight exports each gbrain-docs cell's bundle view, and where the trial reads it. */
@@ -326,7 +327,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
         harness = startProcessHarness({ adapter, dirs, env });
       } else {
         const harnessDir = join(opts.repoRoot ?? '.', 'harnesses', cell.harness);
-        const image = opts.image ?? `harness-eval/${cell.harness.replace(/^_/, '')}:dev`;
+        const image = opts.image ?? skillArmImage(cell) ?? `harness-eval/${cell.harness.replace(/^_/, '')}:dev`;
         const compose = join(harnessDir, 'compose.yaml');
         harness = existsSync(compose)
           ? await startComposeHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, composeFile: compose, timeBudgetS: task.time_budget_s, repoRoot: opts.repoRoot, stackEnv: { HE_MODEL_BASE_URL: env.HE_MODEL_BASE_URL!, HE_MODEL_API_KEY: token, HE_MODEL_NAME: modelName, HE_TIME_BUDGET_S: env.HE_TIME_BUDGET_S!, HE_TASK_SLICE: 'multiuser', HE_TRIAL_ID: trial.id, ...(cell.config ? { HE_HARNESS_CONFIG: cell.config } : {}) }, ...(providerWiring ? { coreEnv: providerWiring.coreEnv } : {}), modelProvider: provider })

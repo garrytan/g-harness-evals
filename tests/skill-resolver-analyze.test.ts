@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CONTAMINATED, DRAWS, SEED, analyze, loadLabels, loadTrials, markdown, type JudgeCheck } from '../scripts/skill-resolver/analyze.ts';
+import { CONTAMINATED, DRAWS, SEED, analyze, loadLabels, loadTrials, markdown, type JudgeCheck, type Label } from '../scripts/skill-resolver/analyze.ts';
 
 const ROOT = join(import.meta.dir, '..');
 const RUN = 'skill-resolver-synthetic';
@@ -88,7 +88,7 @@ describe('skill-resolver analysis on synthetic results', () => {
     expect(a.primary.excluded).toEqual({ 'no_skill_needed': 20, 'no acceptable skill reachable': 1 });
     expect(a.primary.delta).toBeCloseTo(30 / 59, 10);
     expect(a.primary.mcnemar).toMatchObject({ wins: 30, losses: 0, discordant: 30 });
-    expect(a.primary.claim_met).toBe(true);
+    expect(a.primary).toMatchObject({ significant: true, gated_by_judge_check: true, cross_family_labels: false, claim_met: false });
     expect(a.sensitivity_test_half.n_pairs).toBe(29);
     expect(a.primary).toMatchObject({ n_better: 30, n_worse: 0, n_same: 29, reading: 'resolver-on higher' });
     expect(a.primary.mdd80!).toBeGreaterThan(0);
@@ -119,6 +119,36 @@ describe('skill-resolver analysis on synthetic results', () => {
     expect(g.primary.n_pairs).toBe(49);
     expect(g.primary.excluded.no_skill_needed).toBe(30);
     expect(g.panel_labels!.n_pairs).toBe(59);
+  });
+
+  test('R78: the claim is met only on cross-family labels with their own judge check; panel labels and a panel check cannot stand in', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sr-claim-'));
+    const base = readFileSync(f.labels, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const labels = join(dir, 'labels.jsonl'), astra = join(dir, 'labels-astra.jsonl'), partial = join(dir, 'labels-astra-partial.jsonl');
+    writeFileSync(labels, base.map((r) => JSON.stringify({ ...r, judges: { opus: { ...r.final, candidates: [] } } })).join('\n') + '\n');
+    writeFileSync(astra, base.map((r) => JSON.stringify({ id: r.id, judges: { astra: { ...r.final, candidates: [] } } })).join('\n') + '\n');
+    writeFileSync(partial, base.slice(1).map((r) => JSON.stringify({ id: r.id, judges: { astra: { ...r.final, candidates: [] } } })).join('\n') + '\n');
+    const astraCheck: JudgeCheck = { n_gold: 50, sources: { 'openai:gpt-6-astra': { ...passing.sources.panel!, judge: 'openai:gpt-6-astra' } } };
+    const run = (L: Map<string, Label>, judgeCheck: JudgeCheck) => analyze({ trials: loadTrials(f.dir), labels: L, reachable: JSON.parse(readFileSync(f.reachable, 'utf8')), setT: f.setT, judgeCheck }).primary;
+    const cross = loadLabels([['P', labels]], [['P', f.requests]], [], [['P', astra]]);
+    expect(run(cross, astraCheck)).toMatchObject({ significant: true, cross_family_labels: true, gated_by_judge_check: true, claim_met: true });
+    expect(run(cross, passing)).toMatchObject({ gated_by_judge_check: false, claim_met: false });
+    expect(run(loadLabels([['P', f.labels]], [['P', f.requests]]), passing)).toMatchObject({ significant: true, gated_by_judge_check: true, cross_family_labels: false, claim_met: false });
+    expect(run(loadLabels([['P', labels]], [['P', f.requests]], [], [['P', partial]]), astraCheck)).toMatchObject({ cross_family_labels: false, claim_met: false });
+  });
+
+  test('a set T trial that left no workspace (no set_t) stays in the set T comparison as a failure, not in Phase B', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sr-analyze-noworkspace-'));
+    cpSync(f.dir, dir, { recursive: true });
+    const lines = readFileSync(join(dir, 'trials.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    for (const r of lines) if (r.cell === 't-on' && r.task === 't15-plain') { delete r.set_t; r.grade = 'n/a'; r.error = 'HE-RUN-006 set T trial left no workspace to grade'; }
+    writeFileSync(join(dir, 'trials.jsonl'), lines.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    const g = analyze({ trials: loadTrials(dir), labels: loadLabels([['P', f.labels]], [['P', f.requests]]), reachable: JSON.parse(readFileSync(f.reachable, 'utf8')), setT: f.setT, judgeCheck: passing });
+    expect(g.trials).toEqual(a.trials);
+    expect(g.infra.no_set_t_grade).toBe(1);
+    const pooled = (x: typeof a) => x.task_phase.pooled.success['resolver-on_minus_native'];
+    expect({ n: pooled(g).n_pairs, on: pooled(g).mean_b }).toEqual({ n: pooled(a).n_pairs, on: pooled(a).mean_b! - 1 / pooled(a).n_pairs });
+    expect(markdown(g)).toContain('| set T trial with no workspace graded | scored as a failure | 1 |');
   });
 
   test('exact-duplicate requests in one request_duplicate_groups entry share a cluster', () => {

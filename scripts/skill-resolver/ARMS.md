@@ -29,6 +29,8 @@ The arms read one directory, `/opt/skill-resolver` in the container (`HE_SKILL_K
 
 **Swapping in the real gbrain** is `build-kit.ts --gbrain <binary>`: the command lines, the input JSON and the checks stay the same.
 
+**On a shard** (`scripts/run-shard.sh --skill-root <dir>`, and `scripts/ubicloud/run-shard.sh --skill-root <local dir>`, which uploads it to the VM): the directory holds the frozen kit (`kit/`), the musl build of the pinned resolver (`gbrain-linux-x64-musl`) and the cells' inputs (`inputs/`, copied to `.skill-resolver/`). The kit is shipped, not rebuilt, because its index receipts record their build time, so only this copy matches the receipt sha256s the preregistration records. `scripts/skill-resolver/shard-kit.ts` checks it all against the preregistration's `inputs`, builds `harness-eval/<h>:skills-kit` and the QM arm images the shard's cells need, and runs the per-shard preflight. The runner runs each skill-arm cell in its own image (`runner/trial/set-t.ts` `skillArmImage`): `harness-eval/<h>:skills-kit`, or QM's arm image for its config, with QM's pull sandbox image for `pi-skills-pull`.
+
 ## Hook wrapper
 
 `bin/he-skill-hook <hook.json>`, one program for all four hooks. The adapter writes:
@@ -55,6 +57,8 @@ Each call runs `gbrain skills resolve --catalog he-skills --stdin --json --sessi
 ## Records
 
 `$HE_LOG_DIR/skill-arm.json` (the arm, the kit's hashes, each file written with its sha256, the settings applied, the hook check) and `ready.skill_arm` `{arm, catalog_hash, gbrain_catalog_hash, index_hash, skills_installed, hook}`.
+
+**Clean-arm count (PREREGISTRATION.md, amendment of 2026-11-11, rule c):** each Phase B record's `skill_request.clean_arm` counts the trial's reads of a gstack `SKILL.md` or other gstack skill file outside the arm's own catalog copy (`gstackReads` in `runner/trial/skill-requests.ts`). A read is what `got-skill.ts` counts as one: the harness's file-read tool, a reader program in its shell tool, a string in Codex code mode's exec JavaScript, or on QM a files read or a reader in execute. A read that found no file doesn't count, and neither does running a program under a gstack path, writing to one, or anything under gstack's `.gstack/` state directory: the catalog's own gstack skills tell the agent to run `~/.claude/skills/gstack/bin/...` and to write `.gstack/`, and doing so is the skill being followed. The catalog copy is wherever the arm installed it: `/workspace/skills` on OpenClaw, `/harness-state/<harness>/skills` on Claude Code, Codex and Hermes (also written as `~/<harness>/skills` or through the harness's own variable), `.agent-skills/` and the arm images' `/opt/catalog-layer/skills` on QM, and the kit. One counted read marks the trial contaminated, and `analyze.ts` leaves it out of every scored number.
 
 **Refusals (HE-ADAPTER-007, exit 2 before ready):** a skills config on the run entry, `skills-usage-ordered` off OpenClaw, a kit that is missing or incomplete, a skills root that already holds skills (on OpenClaw, whose root is the task's /workspace/skills, only an entry named like a skill the arm installs; a task's own skills, such as set T's t37 `skills/release-notes`, are kept and listed in `install.kept`), a hook that does not load (OpenClaw) or is not healthy (Hermes), and a Hermes config that already has `hooks:`.
 

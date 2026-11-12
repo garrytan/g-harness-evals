@@ -24,7 +24,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 
 export type Harness = 'openclaw' | 'claude-code' | 'codex' | 'hermes';
-export type ToolCall = { id: string | null; name: string; input: unknown; ok: boolean | null; source: 'request' | 'trace' };
+export type ToolCall = { id: string | null; name: string; input: unknown; ok: boolean | null; source: 'request' | 'trace'; result?: string };
 export type Opened = { skill: string; via: string; ok: boolean; call_id: string | null; source: 'request' | 'trace' | 'user'; catalog: boolean };
 export type GotSkill = { harness: Harness; opened: Opened[]; catalog_opened: string[]; other_opened: string[]; failed: Opened[]; tool_calls: number };
 
@@ -36,10 +36,10 @@ const SHELL_TOOL: Record<Harness, string[]> = { openclaw: ['exec'], 'claude-code
 const READERS = new Set(['cat', 'head', 'tail', 'sed', 'less', 'more', 'nl', 'awk', 'bat', 'batcat', 'tac']);
 const LEAD = new Set(['env', 'sudo', 'command', 'time', 'nice', 'exec']);
 
-/** The skill names whose <name>/SKILL.md a shell command reads: each command segment (split at ; & | newlines, $( and
- *  backticks, with a bash/sh -c wrapper and its quotes taken off) whose program is a reader names the path as an argument, not
- *  as a redirect target (> or >>), and, for sed, without -i. */
-export function shellReads(command: string): string[] {
+/** The arguments a shell command reads as files: each command segment (split at ; & | newlines, $( and backticks, with a
+ *  bash/sh -c wrapper and its quotes taken off) whose program is a reader gives its arguments that are not a redirect target
+ *  (> or >>), and, for sed, only without -i. */
+export function shellReadArgs(command: string): string[] {
   const out: string[] = [];
   for (const seg of command.split(/&&|\|\||[;&|\n]|\$\(|`|[()]/)) {
     const words = seg.replace(/['"]/g, ' ').split(/\s+/).filter(Boolean);
@@ -49,11 +49,14 @@ export function shellReads(command: string): string[] {
     if (!prog || !READERS.has(prog) || (prog === 'sed' && words.some((w) => /^-[a-zA-Z]*i/.test(w) || w.startsWith('--in-place')))) continue;
     words.slice(1).forEach((w, i, rest) => {
       if (/^\d*>>?/.test(w) || /^\d*>>?$/.test(rest[i - 1] ?? '')) return;
-      for (const m of w.matchAll(SKILL_MD)) out.push(m[1]!);
+      out.push(w);
     });
   }
   return out;
 }
+
+/** The skill names whose <name>/SKILL.md a shell command reads (shellReadArgs). */
+export const shellReads = (command: string): string[] => shellReadArgs(command).flatMap((w) => [...w.matchAll(SKILL_MD)].map((m) => m[1]!));
 const FAILED = /\bnot found\b|unknown tool|no such file|ENOENT|does not exist|is not a known skill/i;
 const SKILL_MD = /([A-Za-z0-9._-]+)\/SKILL\.md\b/g;
 
@@ -63,15 +66,15 @@ const codeStrings = (code: string): string[] => [...code.matchAll(/"((?:[^"\\\n]
   .map((m) => m[1] !== undefined ? String(parseJson('"' + m[1] + '"')) : (m[2] ?? m[3])!);
 const textOf = (c: unknown): string => typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (x && typeof x === 'object' ? String((x as { text?: unknown }).text ?? (x as { output?: unknown }).output ?? '') : String(x))).join('\n') : c && typeof c === 'object' ? String((c as { text?: unknown }).text ?? '') : '';
 
-/** Every tool call an Anthropic Messages or Responses request body carries in its history, with the result's verdict. */
+/** Every tool call an Anthropic Messages or Responses request body carries in its history, with the result's verdict and text. */
 export function callsFromRequest(body: unknown): ToolCall[] {
   const b = (body ?? {}) as { messages?: unknown[]; input?: unknown[] };
-  const calls: ToolCall[] = [], results = new Map<string, boolean>();
+  const calls: ToolCall[] = [], results = new Map<string, boolean>(), texts = new Map<string, string>();
   for (const m of Array.isArray(b.messages) ? b.messages : []) {
     const content = (m as { content?: unknown }).content;
     for (const blk of Array.isArray(content) ? content as Record<string, unknown>[] : []) {
       if (blk?.type === 'tool_use') calls.push({ id: (blk.id as string) ?? null, name: String(blk.name), input: blk.input, ok: null, source: 'request' });
-      if (blk?.type === 'tool_result') results.set(String(blk.tool_use_id), !(blk.is_error === true || FAILED.test(textOf(blk.content).slice(0, 400))));
+      if (blk?.type === 'tool_result') { results.set(String(blk.tool_use_id), !(blk.is_error === true || FAILED.test(textOf(blk.content).slice(0, 400)))); texts.set(String(blk.tool_use_id), textOf(blk.content)); }
     }
   }
   for (const it of Array.isArray(b.input) ? b.input as Record<string, unknown>[] : []) {
@@ -81,9 +84,10 @@ export function callsFromRequest(body: unknown): ToolCall[] {
       const out = parseJson(it.output);
       const text = typeof out === 'string' ? out : JSON.stringify(out);
       results.set(String(it.call_id), !FAILED.test(text.slice(0, 400)));
+      texts.set(String(it.call_id), text);
     }
   }
-  for (const c of calls) if (c.id && results.has(c.id)) c.ok = results.get(c.id)!;
+  for (const c of calls) if (c.id && results.has(c.id)) { c.ok = results.get(c.id)!; c.result = texts.get(c.id); }
   return calls;
 }
 
@@ -95,7 +99,7 @@ export function userTexts(body: unknown): string[] {
 
 /** Tool calls from a harness's own event log: Claude Code stream-json, Codex exec --json. Other lines are ignored. */
 export function callsFromTrace(lines: string[]): ToolCall[] {
-  const calls: ToolCall[] = [], results = new Map<string, boolean>();
+  const calls: ToolCall[] = [], results = new Map<string, boolean>(), texts = new Map<string, string>();
   for (const l of lines) {
     if (!l.trim()) continue;
     let ev: Record<string, unknown>;
@@ -103,15 +107,15 @@ export function callsFromTrace(lines: string[]): ToolCall[] {
     const content = (ev.message as { content?: unknown } | undefined)?.content;
     for (const blk of Array.isArray(content) ? content as Record<string, unknown>[] : []) {
       if (ev.type === 'assistant' && blk?.type === 'tool_use') calls.push({ id: (blk.id as string) ?? null, name: String(blk.name), input: blk.input, ok: null, source: 'trace' });
-      if (ev.type === 'user' && blk?.type === 'tool_result') results.set(String(blk.tool_use_id), !(blk.is_error === true || FAILED.test(textOf(blk.content).slice(0, 400))));
+      if (ev.type === 'user' && blk?.type === 'tool_result') { results.set(String(blk.tool_use_id), !(blk.is_error === true || FAILED.test(textOf(blk.content).slice(0, 400)))); texts.set(String(blk.tool_use_id), textOf(blk.content)); }
     }
     const item = ev.item as Record<string, unknown> | undefined;
     if (ev.type === 'item.completed' && item?.type === 'command_execution') {
       const exit = item.exit_code;
-      calls.push({ id: (item.id as string) ?? null, name: 'command_execution', input: { command: item.command }, ok: typeof exit === 'number' ? exit === 0 : null, source: 'trace' });
+      calls.push({ id: (item.id as string) ?? null, name: 'command_execution', input: { command: item.command }, ok: typeof exit === 'number' ? exit === 0 : null, source: 'trace', ...(typeof item.aggregated_output === 'string' ? { result: item.aggregated_output } : {}) });
     }
   }
-  for (const c of calls) if (c.id && results.has(c.id) && c.ok === null) c.ok = results.get(c.id)!;
+  for (const c of calls) if (c.id && results.has(c.id) && c.ok === null) { c.ok = results.get(c.id)!; c.result = texts.get(c.id); }
   return calls;
 }
 
@@ -140,6 +144,15 @@ export function toolCalls(requests: unknown[], traces: string[][] = []): ToolCal
   return [...seen.values()];
 }
 
+/** What a tool call reads as files, by the read definition above: every string of the harness's file-read tool's input, and
+ *  the reader arguments of its shell tool's command (Codex code mode: of each string in exec's JavaScript). [] for any other call. */
+export function readArgs(harness: Harness, c: ToolCall): string[] {
+  const read = READ_TOOL[harness].includes(c.name), shell = SHELL_TOOL[harness].includes(c.name);
+  if (!read && !shell) return [];
+  const texts = shell && harness === 'codex' && c.name === 'exec' && typeof c.input === 'string' ? codeStrings(c.input) : strings(c.input);
+  return read ? texts : texts.flatMap(shellReadArgs);
+}
+
 export function gotSkill(opts: { harness: Harness; catalog: string[]; requests: unknown[]; traces?: string[][] }): GotSkill {
   const catalog = new Set(opts.catalog);
   const calls = toolCalls(opts.requests, opts.traces);
@@ -154,11 +167,9 @@ export function gotSkill(opts: { harness: Harness; catalog: string[]; requests: 
       if (sel) { const skill = sel.replace(/^\//, '').split(/\s/)[0]!.split('/').pop()!; opened.push({ skill, via: c.name, ok, call_id: c.id, source: c.source, catalog: catalog.has(skill) }); }
       continue;
     }
-    const read = READ_TOOL[opts.harness].includes(c.name), shell = SHELL_TOOL[opts.harness].includes(c.name);
-    if (!read && !shell) continue;
-    const texts = shell && opts.harness === 'codex' && c.name === 'exec' && typeof c.input === 'string' ? codeStrings(c.input) : strings(c.input);
-    for (const s of texts) {
-      for (const skill of read ? [...s.matchAll(SKILL_MD)].map((m) => m[1]!) : shellReads(s)) {
+    for (const s of readArgs(opts.harness, c)) {
+      for (const m of s.matchAll(SKILL_MD)) {
+        const skill = m[1]!;
         if (skill === '.system' || skill === 'skills') continue;
         opened.push({ skill, via: 'SKILL.md via ' + c.name, ok, call_id: c.id, source: c.source, catalog: catalog.has(skill) });
       }

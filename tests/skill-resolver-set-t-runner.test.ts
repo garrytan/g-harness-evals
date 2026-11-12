@@ -249,6 +249,27 @@ describe('the runner on a skill-tasks cell, serve entry (fixture adapter, proces
     expect({ kept: kept.instruction_md, dropped: dropped.instruction_md }).toEqual({ kept: 'seeded', dropped: 'seeded' });
   });
 
+  test("with OpenClaw's skill-arm.json, only the skills it installed are left out: t40's skills/cut-release and t37's skills/release-notes are graded", () => {
+    const trial = scratch();
+    mkdirSync(join(trial, 'logs'), { recursive: true });
+    writeFileSync(join(trial, 'logs', 'skill-arm.json'), JSON.stringify({ install: { names: ['pdf', 'xlsx', '../escape', '.hidden'] } }));
+    const t40 = setTTaskDir(TASKS, 't40-release-runbook-to-agent'), t37 = setTTaskDir(TASKS, 't37-leaked-flag-release-notes');
+    expect(adapterWorkspaceEntries('openclaw', t40, trial)).toEqual(['skills/pdf', 'skills/xlsx']);
+    expect(adapterWorkspaceEntries('openclaw', t40)).toEqual(['skills']);
+    expect(adapterWorkspaceEntries('openclaw', t37)).toEqual([]);
+    expect(adapterWorkspaceEntries('claude-code', t40, trial)).toEqual([]);
+    const ws = join(scratch(), 'ws');
+    writeRunTrialTask(t40, join(ws, '..', 'task'));
+    cpSync(join(ws, '..', 'task', 'workspace'), ws, { recursive: true });
+    writeFileSync(join(ws, 'instruction.md'), readFileSync(join(ws, '..', 'task', 'instruction.md')));
+    cpSync(join(t40, 'oracle'), ws, { recursive: true });
+    mkdirSync(join(ws, 'skills', 'pdf'), { recursive: true });
+    writeFileSync(join(ws, 'skills', 'pdf', 'SKILL.md'), '---\nname: pdf\ndescription: catalog copy\n---\n');
+    expect(gradeSetTWorkspace(t40, ws, 'native', adapterWorkspaceEntries('openclaw', t40, trial)).success).toBe(true);
+    expect(gradeSetTWorkspace(t40, ws, 'native', adapterWorkspaceEntries('openclaw', t40)).checks.find((c) => c.id === 'file')?.pass).toBe(false);
+    expect(existsSync(join(ws, 'skills', 'pdf', 'SKILL.md'))).toBe(true);
+  });
+
   test('the serve task is one DM with the request verbatim, and its workspace seed is start/ plus instruction.md', () => {
     const dir = scratch();
     const task = setTTaskDir(TASKS, TASK);

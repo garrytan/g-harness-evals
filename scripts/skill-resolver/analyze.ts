@@ -17,7 +17,9 @@
 //     logs/skill-resolver/status.ndjson   the hook wrapper's status lines (scripts/skill-resolver/hook-wrapper.ts StatusLine)
 //     logs/skill-resolver.ndjson          QM's status lines (harnesses/qm/skill-resolver.mjs statusLine)
 //     logs/skill-resolver.infra.json      QM's INFRA marker
-//   A Phase B trial's task is the request id; a set T trial carries set_t (runner/contracts.ts TrialSetT).
+//   A Phase B trial's task is the request id; a set T trial is one of a skill-tasks cell (the manifest's slice) and carries set_t
+//   (runner/contracts.ts TrialSetT). A set T trial without set_t (the run left no workspace to grade) stays in the set T
+//   comparison, intention-to-treat, scored as a failure on success and used_it.
 //   --labels SET=file: label-set.ts output rows {id, half, final: {no_skill_needed, acceptable}}. The primary runs on set P.
 //   --requests SET=file: gen-set-p.ts rows {id, kind, overlap: {nd_jaccard} | null}, for the set P overlap bin.
 //   --reachable file: scripts/skill-resolver/reachable.ts output, {catalog_hash, harnesses: {"<harness>": {native: [skill, ...],
@@ -27,8 +29,8 @@
 //     acceptable skill counts as reachable and the output says so.
 //
 // Rules: every INFRA trial stays in (intention-to-treat) and is counted by code. A contaminated trial (skill_request.clean_arm,
-// runner/trial/skill-requests.ts gstackReads: a tool call that named a gstack path outside the trial's catalog copy) is left out
-// of every scored number (CREW.md, "Clean no-gstack and no-brain arms") and reported per cell; a request whose only trials on
+// runner/trial/skill-requests.ts gstackReads: a read of a gstack skill file outside the trial's catalog copy) is left out
+// of every scored number (CREW.md, "Clean no-gstack and no-brain arms"; PREREGISTRATION.md, rule c of 2026-11-11) and reported per cell; a request whose only trials on
 // one side are contaminated is excluded from a contrast as "contaminated (clean-arm rule)". Pairs are per request within a cell (harness
 // and model), clustered by request across cells (requests in one request_duplicate_groups entry of --duplicate-groups share a
 // cluster: the same text written twice is one cluster, not two); an item missing on one side or ineligible on either is excluded and counted.
@@ -42,6 +44,7 @@ import type { TrialRecord, TrialSetT } from '../../runner/contracts.ts';
 import { clopperPearson } from '../../runner/stats/exact.ts';
 import { clusteredPairedDelta, exactMcNemar, holmAdjusted, nonInferiorityP, type PairedDelta, type PairedItem } from '../../runner/stats/paired.ts';
 import { overlapBin } from './check-set-t.ts';
+import { SET_T_SLICE } from '../../runner/trial/set-t.ts';
 
 export const SEED = 20261108;
 export const DRAWS = 10000;
@@ -78,7 +81,7 @@ export function labelFor(l: Label | undefined, model: string): Label | undefined
 export type Turn = { session: string; turn: number | null; block: boolean; block_tokens: number; injected: boolean; on: boolean; suggestions: string[]; phase: string | null; exhausted: boolean; code: string; infra: string[] };
 export type Trial = {
   id: string; cell: string; harness: string; model: string; arm: string | null; task: string; termination: string; opened: string[]; got_skill_file: boolean;
-  turns: Turn[]; infra: string[]; set_t: TrialSetT | null; cluster?: string; contaminated?: boolean; gstack_reads?: number;
+  turns: Turn[]; infra: string[]; set_t: TrialSetT | null; task_phase?: boolean; cluster?: string; contaminated?: boolean; gstack_reads?: number;
 };
 export const CONTAMINATED = 'contaminated (clean-arm rule)';
 type Interval = { x: number; n: number; rate: number | null; ci95: [number, number] | null };
@@ -117,7 +120,7 @@ export function armOf(cell: { skill_arm?: string; config?: string } | undefined)
 }
 
 export function loadTrials(results: string): Trial[] {
-  const manifest = JSON.parse(readFileSync(join(results, 'manifest.json'), 'utf8')) as { cells: Array<{ id: string; skill_arm?: string; config?: string }> };
+  const manifest = JSON.parse(readFileSync(join(results, 'manifest.json'), 'utf8')) as { cells: Array<{ id: string; slice?: string; skill_arm?: string; config?: string }> };
   const cells = new Map(manifest.cells.map((c) => [c.id, c]));
   return (readJsonl(join(results, 'trials.jsonl')) as TrialRecord[]).map((r) => {
     const dir = join(results, 'trials', ...r.trial_id.split('/').slice(1));
@@ -136,7 +139,7 @@ export function loadTrials(results: string): Trial[] {
     const marker = join(dir, 'logs', 'skill-resolver.infra.json');
     if (existsSync(marker)) for (const reason of (JSON.parse(readFileSync(marker, 'utf8')).reasons ?? []) as string[]) if (!infra.includes(reason)) infra.push(reason);
     return { id: r.trial_id, cell: r.cell, harness: r.harness, model: r.model, arm: armOf(cells.get(r.cell)), task: r.task, termination: r.termination,
-      opened, got_skill_file: existsSync(got), turns, infra: infra.sort(), set_t: r.set_t ?? null,
+      opened, got_skill_file: existsSync(got), turns, infra: infra.sort(), set_t: r.set_t ?? null, task_phase: cells.get(r.cell)?.slice === SET_T_SLICE || !!r.set_t,
       contaminated: r.skill_request?.clean_arm?.contaminated === true, gstack_reads: r.skill_request?.clean_arm?.gstack_reads ?? 0 };
   });
 }
@@ -244,8 +247,9 @@ const significant = (c: Contrast) => c.p_sign_flip !== null && c.p_sign_flip <= 
 export function analyze(o: { trials: Trial[]; labels: Map<string, Label>; reachable: Reach; setT?: Map<string, { bin: string; body_coverage: number }>; judgeCheck?: JudgeCheck | null }) {
   const { labels, reachable } = o;
   const trials = o.trials.map((t) => ({ ...t, cluster: labels.get(t.task)?.cluster ?? t.task }));
-  const phaseB = trials.filter((t) => !t.set_t && t.arm);
-  const taskT = trials.filter((t) => t.set_t);
+  const isTask = (t: Trial) => t.task_phase === true || !!t.set_t;
+  const phaseB = trials.filter((t) => !isTask(t) && t.arm);
+  const taskT = trials.filter(isTask);
   const cross = [...labels.values()].some((l) => l.by_family);
   const lab = (t: Trial) => (cross ? labelFor(labels.get(t.task), t.model) : labels.get(t.task));
   const elig = (t: Trial, arm: string) => ineligible(lab(t), t.harness, arm, reachable);
@@ -262,6 +266,8 @@ export function analyze(o: { trials: Trial[]; labels: Map<string, Label>; reacha
   const panelPrimary = cross ? contrast(primarySet, 'native', 'resolver-on', gotPanel, eligPanel) : null;
   const usedSources = cross ? [...new Set(primarySet.map((t) => JUDGE_BY_FAMILY[t.model.split(':')[0] as 'anthropic' | 'openai']).filter(Boolean))].sort() : ['panel'];
   const checks = usedSources.map((src) => ({ source: src, check: o.judgeCheck?.sources[src] ?? null }));
+  // R78: the claim needs every primary trial scored with the other family's label; the panel labels are a sensitivity only.
+  const crossLabelled = cross && primarySet.every((t) => { const f = t.model.split(':')[0] as 'anthropic' | 'openai'; return f in JUDGE_BY_FAMILY && !!labels.get(t.task)?.by_family?.[f]; });
   const gates = !!o.judgeCheck && o.judgeCheck.n_gold >= 40 && checks.every((c) => c.check?.kappa !== null && c.check?.kappa !== undefined && c.check.kappa >= KAPPA_MIN);
   const judge = { label_source: cross ? { 'anthropic cells': JUDGE_BY_FAMILY.anthropic, 'openai cells': JUDGE_BY_FAMILY.openai } : 'panel (label-set.ts final)',
     check: o.judgeCheck ? { n_gold: o.judgeCheck.n_gold, sources: checks } : 'not supplied', kappa_min: KAPPA_MIN, gates_verdict: gates,
@@ -327,16 +333,17 @@ export function analyze(o: { trials: Trial[]; labels: Map<string, Label>; reacha
     rows: [...fsRows('pooled', resolverArms), ...harnesses.flatMap((h) => fsRows(h, resolverArms.filter((t) => t.harness === h)))],
   };
 
-  const infra = { handling: 'intention-to-treat: INFRA trials stay in every analysis with their observed outcome', by_code: {} as Record<string, number>, by_reason: {} as Record<string, number>, by_termination: {} as Record<string, number>, infra_trials: {} as Record<string, number>, no_got_skill_output: 0 };
+  const infra = { handling: 'intention-to-treat: INFRA trials stay in every analysis with their observed outcome', by_code: {} as Record<string, number>, by_reason: {} as Record<string, number>, by_termination: {} as Record<string, number>, infra_trials: {} as Record<string, number>, no_got_skill_output: 0, no_set_t_grade: 0 };
   for (const t of trials) {
     bump(infra.by_termination, t.termination);
     for (const turn of t.turns) bump(infra.by_code, turn.code);
     for (const r of t.infra) bump(infra.by_reason, r);
     if (t.infra.length) bump(infra.infra_trials, t.harness + ' ' + (t.arm ?? '?'));
-    if (!t.set_t && t.arm && !t.got_skill_file) infra.no_got_skill_output++;
+    if (!isTask(t) && t.arm && !t.got_skill_file) infra.no_got_skill_output++;
+    if (isTask(t) && !t.set_t) infra.no_set_t_grade++;
   }
 
-  const tVal = (k: 'success' | 'used_it') => (t: Trial) => (t.set_t ? (t.set_t[k] ? 1 : 0) : null);
+  const tVal = (k: 'success' | 'used_it') => (t: Trial) => (t.set_t?.[k] ? 1 : 0);
   const tElig = () => null;
   const taskPhase = {
     pooled: Object.fromEntries((['success', 'used_it'] as const).map((k) => [k, { 'resolver-on_minus_native': strip(contrast(taskT, 'native', 'resolver-on', tVal(k), tElig)), 'no-catalog_minus_native': strip(contrast(taskT, 'native', 'no-catalog', tVal(k), tElig)) }])),
@@ -346,7 +353,7 @@ export function analyze(o: { trials: Trial[]; labels: Map<string, Label>; reacha
       const [harness, model] = key.split('|');
       const ts = taskT.filter((t) => t.harness === harness && t.model === model);
       const arms = [...new Set(ts.map((t) => t.arm!))].sort();
-      return { harness, model, arms: Object.fromEntries(arms.map((a) => { const s = ts.filter((t) => t.arm === a); return [a, { success: interval(s.filter((t) => t.set_t!.success).length, s.length), used_it: interval(s.filter((t) => t.set_t!.used_it).length, s.length) }]; })) };
+      return { harness, model, arms: Object.fromEntries(arms.map((a) => { const s = ts.filter((t) => t.arm === a); return [a, { success: interval(s.filter((t) => t.set_t?.success).length, s.length), used_it: interval(s.filter((t) => t.set_t?.used_it).length, s.length) }]; })) };
     }),
     strata: [] as unknown[],
   };
@@ -361,7 +368,7 @@ export function analyze(o: { trials: Trial[]; labels: Map<string, Label>; reacha
   }
   for (const [g, ids] of Object.entries(SET_T_GROUPS)) taskPhase.strata.push(stratT('flagged ' + g, (t) => ids.includes(tTask(t)), { tasks: ids }));
   const nc = taskT.filter((t) => t.arm === 'no-catalog' && SET_T_GROUPS.guessable.includes(tTask(t)));
-  Object.assign(taskPhase, { no_catalog_pass_on_guessable: interval(nc.filter((t) => t.set_t!.success).length, nc.length) });
+  Object.assign(taskPhase, { no_catalog_pass_on_guessable: interval(nc.filter((t) => t.set_t?.success).length, nc.length) });
 
   const sessions = new Map<string, { harness: string; arm: string; turns: Turn[] }>();
   for (const t of phaseB.filter((u) => !u.contaminated)) for (const turn of t.turns) {
@@ -394,7 +401,7 @@ export function analyze(o: { trials: Trial[]; labels: Map<string, Label>; reacha
   });
 
   const contamination = {
-    rule: 'CREW.md, "Clean no-gstack and no-brain arms": a trial whose tool calls named a gstack path outside its own catalog copy is contaminated, reported here and left out of every scored number',
+    rule: 'CREW.md, "Clean no-gstack and no-brain arms", with rule c of the 2026-11-11 amendment: a trial that read a gstack SKILL.md or other gstack skill file outside its own catalog copy is contaminated, reported here and left out of every scored number',
     total: phaseB.filter((t) => t.contaminated).length,
     per_cell: [...new Set(phaseB.map((t) => t.cell))].sort().map((cell) => {
       const ts = phaseB.filter((t) => t.cell === cell);
@@ -408,7 +415,7 @@ export function analyze(o: { trials: Trial[]; labels: Map<string, Label>; reacha
     qm_resolver_on_arm: 'pi-skills-push (emulated hook); pi-skills-pull reported as qm-pull',
     trials: { total: trials.length, phase_b: phaseB.length, task_phase: taskT.length },
     judge,
-    primary: { ...strip(primary), bar: PRIMARY_BAR, significant: significant(primary), claim_met: gates && significant(primary) && (primary.delta ?? 0) >= PRIMARY_BAR, gated_by_judge_check: gates },
+    primary: { ...strip(primary), bar: PRIMARY_BAR, significant: significant(primary), claim_met: crossLabelled && gates && significant(primary) && (primary.delta ?? 0) >= PRIMARY_BAR, gated_by_judge_check: gates, cross_family_labels: crossLabelled },
     sensitivity_test_half: strip(sensitivity), panel_labels: panelPrimary ? strip(panelPrimary) : null,
     set_r: { ...strip(setR), descriptive: true, why: 'set R text goes to Anthropic only (decision 1A), so Opus labels score Opus cells: same family, never gates a verdict (R78)' },
     per_harness: perHarness, per_cell: perCell, equivalence, false_suggestions: falseSuggestions, infra, contamination, task_phase: taskPhase, footprint,
@@ -433,7 +440,7 @@ export function markdown(a: ReturnType<typeof analyze>): string {
     'Intervals are 95%: cluster bootstrap for paired differences, Clopper-Pearson for rates. Pairs are per request within a cell, clustered by request; exact-duplicate requests share one cluster.', '',
     '## Primary: resolver-on minus native, Got the skill', '', head(C_HEAD),
     cRow('pooled, set ' + a.primary_set, a.primary), cRow('sensitivity, test half', a.sensitivity_test_half), ...(a.panel_labels ? [cRow('sensitivity, panel labels', a.panel_labels)] : []), cRow('set R (one user, descriptive)', a.set_r), '',
-    'Bar: at least ' + pts(a.primary.bar) + ' points and significant (both p at most ' + a.alpha + '), and the judge check passed. Significant: ' + a.primary.significant + '. Judge check passed: ' + a.primary.gated_by_judge_check + '. Claim met: ' + a.primary.claim_met + '. Minimum detectable difference at 80% power: ' + pts(a.primary.mdd80) + ' points.', '',
+    'Bar: at least ' + pts(a.primary.bar) + ' points and significant (both p at most ' + a.alpha + '), every primary trial scored with the other family\'s labels (Astra for Claude cells, Opus for GPT cells), and the judge check passed. Significant: ' + a.primary.significant + '. Cross-family labels: ' + a.primary.cross_family_labels + '. Judge check passed: ' + a.primary.gated_by_judge_check + '. Claim met: ' + a.primary.claim_met + '. Minimum detectable difference at 80% power: ' + pts(a.primary.mdd80) + ' points.', '',
     '## Judge (R78)', '', 'Label source: ' + (typeof a.judge.label_source === 'string' ? a.judge.label_source : Object.entries(a.judge.label_source).map(([k, v]) => k + ' scored with ' + v).join('; ')) + '. ' + a.judge.note + '.', '',
     head(['label source', 'kappa', 'catch rate (bad outputs)', 'false-fail rate (good outputs)', 'gold bad', 'gold good']),
     ...(typeof a.judge.check === 'string' ? [row(['-', 'not supplied', '-', '-', '-', '-'])] : a.judge.check.sources.map((c) => row([c.source, c.check?.kappa?.toFixed(3) ?? '-', pct(c.check?.catch_rate), pct(c.check?.false_fail_rate), c.check?.n_bad ?? '-', c.check?.n_good ?? '-']))), '',
@@ -451,6 +458,7 @@ export function markdown(a: ReturnType<typeof analyze>): string {
   for (const [kind, m] of [['termination', a.infra.by_termination], ['status code', a.infra.by_code], ['INFRA reason', a.infra.by_reason], ['INFRA trials', a.infra.infra_trials]] as const)
     for (const [k, v] of Object.entries(m).sort()) out.push(row([kind, k, v]));
   out.push(row(['missing got-skill output', 'scored 0', a.infra.no_got_skill_output]));
+  out.push(row(['set T trial with no workspace graded', 'scored as a failure', a.infra.no_set_t_grade]));
   out.push('', '## Clean-arm audit (contaminated trials left out of every scored number)', '', a.contamination.rule + '. Contaminated trials: ' + a.contamination.total + '.', '',
     head(['cell', 'harness', 'model', 'arm', 'trials', 'contaminated (left out)', 'gstack reads']));
   for (const c of a.contamination.per_cell) out.push(row([c.cell, c.harness, c.model, c.arm, c.trials, c.contaminated, c.gstack_reads]));

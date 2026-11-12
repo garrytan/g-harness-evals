@@ -201,9 +201,10 @@ export function splitExecuteResult(text) {
   return m ? { stdout: t.slice(0, m.index), exit: Number(m[1]) } : { stdout: t, exit: null };
 }
 
-/** The pull arm's status entries: every execute call whose command runs resolve-skills. */
+/** The pull arm's status entries: every execute call whose command runs resolve-skills, by its bare name or by a path to it
+ *  (the image installs it as /usr/local/bin/resolve-skills). */
 export function pullEntries(session, { receipt, trial, arm = null, firstTurn = 1, at, before = FRESH_SESSION }) {
-  const calls = sessionToolCalls(session).filter((c) => c.tool === 'execute' && /(^|[\s;&|(])resolve-skills\b/.test(str(c.args.command)));
+  const calls = sessionToolCalls(session).filter((c) => c.tool === 'execute' && /(^|[\s;&|(])(?:[^\s;&|()]*\/)?resolve-skills\b/.test(str(c.args.command)));
   let state = before;
   return calls.map((c, i) => {
     const base = { receipt, call: 'pull', turn: firstTurn + i, arm, trial, before: state, ...(at ? { at } : {}) };

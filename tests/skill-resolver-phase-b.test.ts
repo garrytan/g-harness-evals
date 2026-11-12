@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import type { GradeResult } from '../runner/contracts.ts';
 import { executeRun } from '../runner/trial/run.ts';
+import { trialKey } from '../runner/trial/proxy.ts';
 import { loadTask } from '../runner/trial/task.ts';
 import { buildManifest, cellModels, loadPrereg } from '../runner/run.ts';
 import { BudgetRun } from '../runner/ledger/budget-ledger.ts';
@@ -287,33 +288,103 @@ describe('block delivery: a pushed block is in a captured request, a shadow bloc
   });
 });
 
-describe('clean arm: tool calls that name gstack outside the trial\'s catalog copy', () => {
-  const read = (id: string, input: Record<string, unknown>, name = 'Read') => ({ messages: [{ role: 'user', content: TEXT }, { role: 'assistant', content: [{ type: 'tool_use', id, name, input }] },
-    { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'No such file or directory', is_error: true }] }] });
-  test('a read of the Capy drive gstack skill or a gstack install counts, failed or not; the catalog copy does not', () => {
+describe('clean arm: reads of a gstack skill file outside the trial\'s catalog copy (rule c, amendment of 2026-11-11)', () => {
+  const FILE = '---\nname: gstack\n---\nbody';
+  const read = (id: string, input: Record<string, unknown>, name = 'Read', result = FILE, is_error = false) => ({ messages: [{ role: 'user', content: TEXT }, { role: 'assistant', content: [{ type: 'tool_use', id, name, input }] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: result, is_error }] }] });
+  const failed = (id: string, input: Record<string, unknown>, name = 'Read') => read(id, input, name, 'No such file or directory', true);
+  test('a read of the Capy drive gstack skill or a gstack install counts; the catalog copy, wherever the arm put it, does not', () => {
     const dir = scratch();
     const r = gstackReads('claude-code', [
       read('a', { file_path: '<private drive>/skills/gstack/SKILL.md' }),
       read('b', { command: 'ls ~/.local/share/gstack && cat ~/.local/share/gstack/ship/SKILL.md' }, 'Bash'),
       read('c', { file_path: '/harness-state/claude/skills/gstack/SKILL.md' }),
-      read('d', { command: 'cat "$CODEX_HOME/skills/gstack-browse/SKILL.md" /opt/skill-resolver/catalog/skills/gstack/SKILL.md skills/gstack/SKILL.md' }, 'Bash'),
+      read('d', { command: 'cat "$CODEX_HOME/skills/gstack-browse/SKILL.md" /opt/skill-resolver/catalog/skills/gstack/SKILL.md skills/gstack/SKILL.md ~/claude/skills/gstack/SKILL.md $HOME/hermes/skills/gstack/SKILL.md' }, 'Bash'),
       read('e', { file_path: join(dir, 'state', 'hermes', 'skills', 'open-gstack-browser', 'SKILL.md') }),
       read('f', { file_path: '/workspace/notes/sigstack.md' }),
       read('g', { skill: 'gstack' }, 'Skill'),
     ], dir);
-    expect({ gstack_reads: r.gstack_reads, contaminated: r.contaminated, rest: r.paths.slice(1) }).toEqual({ gstack_reads: 2, contaminated: true, rest: ['~/.local/share/gstack', '~/.local/share/gstack/ship/SKILL.md'] });
+    expect({ gstack_reads: r.gstack_reads, contaminated: r.contaminated, rest: r.paths.slice(1) }).toEqual({ gstack_reads: 2, contaminated: true, rest: ['~/.local/share/gstack/ship/SKILL.md'] });
     expect(r.paths[0]).toEndWith('/skills/gstack/SKILL.md');
     expect(gstackReads('claude-code', [read('h', { file_path: '/root/.claude/skills/gstack/SKILL.md' })], dir)).toEqual({ gstack_reads: 1, paths: ['/root/.claude/skills/gstack/SKILL.md'], contaminated: true });
+    expect(gstackReads('claude-code', [read('i', { file_path: '~/.claude/skills/gstack/ETHOS.md' })], dir)).toMatchObject({ gstack_reads: 1, contaminated: true });
     expect(gstackReads('claude-code', [read('x', { file_path: 'gstack/SKILL.md' })], dir)).toMatchObject({ gstack_reads: 1, paths: ['gstack/SKILL.md'] });
     expect(gstackReads('hermes', [read('y', { skill: 'gstack' }, 'Skill')], dir)).toEqual({ gstack_reads: 0, paths: [], contaminated: false });
+  });
+  test("following a catalog gstack skill's own text is not a read: running its bin, writing .gstack/ or a gstack path, or a read that found no file", () => {
+    const dir = scratch();
+    const followed = [
+      read('r1', { command: '~/.claude/skills/gstack/bin/gstack-skill-start --skill "ship"' }, 'Bash'),
+      read('r2', { command: 'mkdir -p .gstack/tmp && echo hi > .gstack/tmp/qt.txt && cat .gstack/tmp/qt.txt ~/.gstack/projects/x/question-log.jsonl' }, 'Bash'),
+      read('r3', { command: "cat > ~/.claude/skills/gstack/ship/SKILL.md <<'EOF'\nhi\nEOF" }, 'Bash'),
+      read('r4', { command: 'bun ~/.claude/skills/gstack/scripts/question-registry.ts && ls ~/.claude/skills/gstack' }, 'Bash'),
+      read('r5', { file_path: '~/.claude/skills/gstack/plan-eng-review/sections/review-sections.md', content: 'x' }, 'Write'),
+      failed('r6', { file_path: '~/.claude/skills/gstack/office-hours/SKILL.md' }),
+      failed('r7', { command: 'cat ~/.claude/skills/gstack/ETHOS.md' }, 'Bash'),
+    ];
+    expect(gstackReads('claude-code', followed, dir)).toEqual({ gstack_reads: 0, paths: [], contaminated: false });
+  });
+  test('an error line rules out only the paths it names, so a gstack read in a call that also failed still counts', () => {
+    const dir = scratch();
+    const sh = (id: string, command: string, result: string) => read(id, { command }, 'Bash', result, true);
+    expect(gstackReads('claude-code', [sh('m1', 'cat /root/.local/share/gstack/SKILL.md /nope', 'cat: /nope: No such file or directory\n' + FILE)], dir))
+      .toEqual({ gstack_reads: 1, paths: ['/root/.local/share/gstack/SKILL.md'], contaminated: true });
+    expect(gstackReads('claude-code', [sh('m2', 'ls /nope; cat /root/.local/share/gstack/SKILL.md', "ls: cannot access '/nope': No such file or directory\n" + FILE)], dir)).toMatchObject({ gstack_reads: 1, contaminated: true });
+    expect(gstackReads('claude-code', [sh('m3', 'cat ~/.local/share/gstack/SKILL.md /nope', 'cat: /root/.local/share/gstack/SKILL.md: No such file or directory\ncat: /nope: No such file or directory')], dir))
+      .toEqual({ gstack_reads: 0, paths: [], contaminated: false });
+  });
+  test('a read that succeeded counts even when the file it read says something does not exist', () => {
+    const dir = scratch();
+    const body = '---\nname: gstack-document-release\ndescription: ' + 'Post-ship documentation update. '.repeat(16) + '\n---\nIf TODOS.md does not exist, skip this step.\n';
+    expect(gstackReads('claude-code', [read('s1', { file_path: '/root/.local/share/gstack/document-release/SKILL.md' }, 'Read', body)], dir))
+      .toEqual({ gstack_reads: 1, paths: ['/root/.local/share/gstack/document-release/SKILL.md'], contaminated: true });
+    expect(gstackReads('claude-code', [read('s2', { command: 'cat /root/.local/share/gstack/document-release/SKILL.md' }, 'Bash', body)], dir)).toMatchObject({ gstack_reads: 1, contaminated: true });
+  });
+  describe('an error line that names the read path rules it out on any call, however the call ended', () => {
+    const ERR = 'cat: /root/.local/share/gstack/SKILL.md: No such file or directory';
+    const none = { gstack_reads: 0, paths: [], contaminated: false };
+    test('(a) Claude Code Bash, not an error, the error line after 640 characters of output', () => {
+      expect(gstackReads('claude-code', [read('a1', { command: 'cat /workspace/README.md ~/.local/share/gstack/SKILL.md | head -200' }, 'Bash', 'r'.repeat(640) + '\n' + ERR, false)], scratch())).toEqual(none);
+    });
+    test('(b) Codex trace command_execution with exit_code 0 and the error line as its whole output', () => {
+      const dir = scratch();
+      mkdirSync(join(dir, 'logs'), { recursive: true });
+      writeFileSync(join(dir, 'logs', 'run.codex.jsonl'), JSON.stringify({ type: 'item.completed', item: { id: 'b1', type: 'command_execution', command: 'cat ~/.local/share/gstack/SKILL.md | head -50', exit_code: 0, aggregated_output: ERR + '\n' } }) + '\n');
+      expect(gstackReads('codex', [], dir)).toEqual(none);
+    });
+    test('(c) Codex Responses shell call whose output says Exit code: 1, then over 400 characters, then the error line', () => {
+      const body = { input: [{ type: 'function_call', call_id: 'c1', name: 'shell', arguments: JSON.stringify({ command: ['bash', '-lc', 'cat ~/.local/share/gstack/SKILL.md'] }) },
+        { type: 'function_call_output', call_id: 'c1', output: 'Exit code: 1\nWall time: 0.1 seconds\nOutput:\n' + 'o'.repeat(420) + '\n' + ERR }] };
+      expect(gstackReads('codex', [body], scratch())).toEqual(none);
+    });
+    test('(d) a QM execute call that did not fail, with a late error line naming the path it read', () => {
+      const body = { input: [{ type: 'function_call', call_id: 'd1', name: 'execute', arguments: JSON.stringify({ command: 'cat /root/.local/share/gstack/ship/SKILL.md 2>&1' }) },
+        { type: 'function_call_output', call_id: 'd1', output: 'q'.repeat(500) + '\ncat: /root/.local/share/gstack/ship/SKILL.md: No such file or directory\n[exit 0]' }] };
+      expect(gstackReads('qm', [body], scratch())).toEqual(none);
+    });
+  });
+  test('Codex code mode, OpenClaw, Hermes and QM reads count by their own read tools', () => {
+    const dir = scratch();
+    const call = (name: string, args: unknown, output = FILE) => ({ input: [{ type: name === 'exec' ? 'custom_tool_call' : 'function_call', call_id: 'c-' + name, name, ...(name === 'exec' ? { input: args } : { arguments: JSON.stringify(args) }) },
+      { type: name === 'exec' ? 'custom_tool_call_output' : 'function_call_output', call_id: 'c-' + name, output }] });
+    expect(gstackReads('codex', [call('exec', 'const r = await tools.exec_command({"cmd":"cat /root/.local/share/gstack/SKILL.md"}); text(r);')], dir).gstack_reads).toBe(1);
+    expect(gstackReads('codex', [call('exec', 'await tools.exec_command({"cmd":"~/.claude/skills/gstack/bin/gstack-config get x"});')], dir).gstack_reads).toBe(0);
+    expect(gstackReads('openclaw', [read('o1', { path: '/root/gstack/review/SKILL.md' }, 'read'), read('o2', { command: '~/.claude/skills/gstack/bin/gstack-update-check' }, 'exec')], dir).gstack_reads).toBe(1);
+    expect(gstackReads('hermes', [call('read_file', { path: '/root/.local/share/gstack/SKILL.md' }), call('terminal', { command: '~/.claude/skills/gstack/bin/gstack-slug' })], dir).gstack_reads).toBe(1);
+    expect(gstackReads('qm', [call('files', { action: 'read', path: '/root/.local/share/gstack/ship/SKILL.md' }), call('execute', { command: '~/.claude/skills/gstack/bin/gstack-slug' }, 'ok\n[exit 0]'),
+      call('files', { action: 'read', path: '/root/workspace/.agent-skills/s/h/gstack/SKILL.md' })], dir)).toMatchObject({ gstack_reads: 1, paths: ['/root/.local/share/gstack/ship/SKILL.md'] });
+    expect(gstackReads('qm', [call('execute', { command: 'cat /opt/catalog-layer/skills/gstack-browse/SKILL.md' }), call('files', { action: 'read', path: '/opt/catalog-layer/skills/gstack/SKILL.md' })], dir))
+      .toEqual({ gstack_reads: 0, paths: [], contaminated: false });
   });
   test('Claude Code and Codex traces count too, and one call is counted once', () => {
     const dir = scratch();
     mkdirSync(join(dir, 'logs'), { recursive: true });
-    writeFileSync(join(dir, 'logs', 'run.codex.jsonl'), JSON.stringify({ type: 'item.completed', item: { id: 'i1', type: 'command_execution', command: 'cat /root/.claude/skills/gstack/SKILL.md /root/.claude/skills/gstack/ship/SKILL.md', exit_code: 1 } }) + '\n');
+    writeFileSync(join(dir, 'logs', 'run.codex.jsonl'), [{ id: 'i1', command: 'cat /root/.claude/skills/gstack/SKILL.md /root/.claude/skills/gstack/ship/SKILL.md', exit_code: 0 },
+      { id: 'i2', command: 'cat /root/.local/share/gstack/SKILL.md', exit_code: 1 }].map((item) => JSON.stringify({ type: 'item.completed', item: { ...item, type: 'command_execution' } })).join('\n') + '\n');
     expect(gstackReads('codex', [], dir)).toMatchObject({ gstack_reads: 1, contaminated: true });
     expect(gstackReads('hermes', [], dir).gstack_reads).toBe(0);
   });
+;
   test('a skill opened in the last step, whose next request the cap refused, counts from the refused body on every harness; it is not a delivered block', () => {
     const dir = scratch();
     const step = (id: string, name: string, input: unknown, result = '---\nname: pdf\n---') => [{ role: 'assistant', content: [{ type: 'tool_use', id, name, input }] }, { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: result }] }];
@@ -393,8 +464,9 @@ async function answer(f) {
     if (!uses.length) break;
     messages.push({ role: 'user', content: uses.map((u) => ({ type: 'tool_result', tool_use_id: u.id, content: 'Launching skill: ' + u.input.skill })) });
   }
+  if (JSON.stringify(messages).includes('TRUNCATE_STATUS')) fs.appendFileSync(logs + '/skill-resolver/status.ndjson', '{"code":"OK","sugg');
   const out = path.join(turns, f.replace('.request.json', '.response.json'));
-  fs.writeFileSync(out + '.tmp', JSON.stringify({ turn: req.turn, exit, reply_text: exit === 0 ? 'done: ' + req.text : null, started_at, ended_at: new Date().toISOString(), detail: exit ? 'model request refused' : undefined }));
+  fs.writeFileSync(out + '.tmp', JSON.stringify({ turn: req.turn, exit, reply_text: exit === 0 ? 'done: ' + req.text : null, started_at, ended_at: new Date().toISOString(), detail: exit ? 'model request refused' : 'answered ' + req.text }));
   fs.renameSync(out + '.tmp', out);
 }
 while (true) {
@@ -407,7 +479,7 @@ while (true) {
 `;
 
 describe('the runner on a skill-requests cell (serve entry, fixture adapter, fake endpoint, capture mode)', () => {
-  let mode: 'read' | 'none' | 'loop' | 'gstack' = 'read';
+  let mode: 'read' | 'none' | 'loop' | 'gstack' | 'truncated' = 'read';
   let seen = 0;
   const GSTACK_SKILL = '/root/.claude/skills/gstack/SKILL.md';
   const fake = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: async (req) => {
@@ -417,13 +489,13 @@ describe('the runner on a skill-requests cell (serve entry, fixture adapter, fak
     const tool = mode === 'loop' || ((mode === 'read' || mode === 'gstack') && !answered);
     const use = mode === 'gstack' ? { name: 'Read', input: { file_path: GSTACK_SKILL } } : { name: 'Skill', input: { skill: 'accelerate' } };
     return Response.json({ id: 'm' + seen, type: 'message', role: 'assistant', model: 'claude-opus-5-5', stop_reason: tool ? 'tool_use' : 'end_turn', usage: { input_tokens: 10, output_tokens: 2 },
-      content: tool ? [{ type: 'tool_use', id: 'tu' + seen, ...use }] : [{ type: 'text', text: 'done' }] });
+      content: tool ? [{ type: 'tool_use', id: 'tu' + seen, ...use }] : [{ type: 'text', text: mode === 'truncated' ? 'TRUNCATE_STATUS' : 'done' }] });
   } });
   afterAll(() => fake.stop(true));
   const stubGrade = (): GradeResult => ({ grade: 'pass', predicates: [], consent_violation: false, approval_stop: false, effects: [] });
   let runs = 0;
 
-  const runCell = async (m: typeof mode, cell: Record<string, unknown> = {}) => {
+  const runCell = async (m: typeof mode, cell: Record<string, unknown> = {}, before: UsageLine[] = []) => {
     mode = m; seen = 0;
     const dir = scratch();
     const adapter = join(dir, 'adapter.ts');
@@ -438,12 +510,14 @@ describe('the runner on a skill-requests cell (serve entry, fixture adapter, fak
     mkdirSync(runDir, { recursive: true });
     const manifestPath = join(runDir, 'manifest.json');
     writeFileSync(manifestPath, JSON.stringify(buildManifest(p, sha256, '2026-11-08T00:00:00Z'), null, 1));
+    if (before.length) writeFileSync(join(runDir, 'proxy-usage.ndjson'), before.map((l) => JSON.stringify({ ...l, key: trialKey(runId + '/cc-native/p-001/r1') })).join('\n') + '\n');
+    let thrown: unknown = null;
     const result = await executeRun(JSON.parse(readFileSync(manifestPath, 'utf8')), manifestPath, { harnessMode: 'process', preamblePath: join(ROOT, 'tests', 'fixtures', 'preamble.md'), grade: stubGrade, proxyEnv: ENV,
-      turnGraceS: 1, stopGraceS: 2, readyTimeoutS: 20, repoRoot: ROOT, leaseUsd: 1, newLease: true, capture: { upstream: { anthropic: 'http://127.0.0.1:' + fake.port }, dns: null } });
-    const record = result.records[0]!;
+      turnGraceS: 1, stopGraceS: 2, readyTimeoutS: 20, repoRoot: ROOT, leaseUsd: 1, newLease: true, capture: { upstream: { anthropic: 'http://127.0.0.1:' + fake.port }, dns: null } }).catch((e) => { thrown = e; return null; });
+    const record = result?.records[0]!;
     const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]);
     const leaks = walk(runDir).filter((f) => !f.endsWith('.sqlite') && redactRequest(readFileSync(f, 'utf8'), [TEXT]).lines > 0).map((f) => f.slice(runDir.length + 1));
-    return { record, leaks, runDir, seen };
+    return { record, leaks, runDir, seen, thrown };
   };
 
   test('a skill read lands in got-skill.json and the record; the arm and config reach the adapter; no request text stays in the run directory', async () => {
@@ -469,6 +543,21 @@ describe('the runner on a skill-requests cell (serve entry, fixture adapter, fak
       .toEqual({ termination: 'completed', got: [], clean_arm: { gstack_reads: 1, paths: [GSTACK_SKILL], contaminated: true } });
     expect(existsSync(join(record.paths.dir, 'logs', 'run.claude.jsonl'))).toBe(false);
     expect(leaks).toEqual([]);
+  }, 120_000);
+
+  test('a throw after the trial (a truncated resolver status line) still scrubs the request text from the trial directory', async () => {
+    const { thrown, leaks, runDir } = await runCell('truncated', { request_cap: 6 });
+    expect(String(thrown)).toContain('JSON');
+    expect(readdirSync(join(runDir, 'trials')).length).toBeGreaterThan(0);
+    expect(leaks).toEqual([]);
+  }, 120_000);
+
+  test("a resumed trial counts only its own attempt's usage lines: an interrupted attempt that hit the cap is not request_cap", async () => {
+    const at = '2026-11-08T00:00:00.000Z';
+    const line = (outcome: UsageLine['outcome'], extra: Partial<UsageLine> = {}): UsageLine => ({ at, key: '', provider: 'anthropic', route: '/v1/messages', model: 'claude-opus-5-5', outcome, ...extra });
+    const interrupted = [...Array.from({ length: 6 }, () => line('forwarded')), line('refused', { reason: REQUEST_CAP + ': 6 requests sent' })];
+    const { record } = await runCell('none', { request_cap: 6 }, interrupted);
+    expect({ termination: record.termination, requests: record.skill_request?.model_requests }).toEqual({ termination: 'completed', requests: 1 });
   }, 120_000);
 
   test('a turn that reads nothing gives an empty got-skill list', async () => {

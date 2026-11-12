@@ -72,7 +72,7 @@ import { sealedGuard } from './heldout/guard.ts';
 import { seededRandom } from './stats/paired.ts';
 import { GOLDEN_WIRES, type AblationSpec, loadBinding, wireOfModel } from './proxy/ablate.ts';
 import { setNames as zeroSetNames } from '../harnesses/harness-zero/zero.ts';
-import { SET_T_DIR, SET_T_SLICE, setTTaskIds } from './trial/set-t.ts';
+import { SET_T_DIR, SET_T_SLICE, setTTaskIds, skillArmImage } from './trial/set-t.ts';
 import { REQUEST_HALVES, SKILL_REQUESTS_SLICE, privateSetProblem, requestSetIds } from './trial/skill-requests.ts';
 
 export { RunnerError };
@@ -852,8 +852,9 @@ async function main(argv: string[]): Promise<number> {
     // internal-task (H10): a harness with harnesses/<name>/provenance.json is compared file by file, and the digests and image ids go
     // to preflight-provenance.json beside the manifest (merge-shards keeps it per shard) as receipts.
     const receipts: Record<string, unknown> = {};
-    for (const harness of [...new Set(dockerCells.map((c) => c.harness))]) {
-      const image = flag('--image') ?? `harness-eval/${harness.replace(/^_/, '')}:dev`;
+    // Each harness is checked in every image its cells run in: skill-arm cells run in their arm image (runner/trial/set-t.ts).
+    const pairs = [...new Set(dockerCells.map((c) => c.harness + '\t' + (flag('--image') ?? skillArmImage(c) ?? `harness-eval/${c.harness.replace(/^_/, '')}:dev`)))].map((p) => p.split('\t') as [string, string]);
+    for (const [harness, image] of pairs) {
       const { adapterProvenance, harnessProvenance, readProvenanceManifest } = await import('./trial/provenance.ts');
       if (!readProvenanceManifest(harness)) {
         const p = await adapterProvenance(harness, image);
@@ -861,7 +862,7 @@ async function main(argv: string[]): Promise<number> {
         continue;
       }
       const p = await harnessProvenance(harness, image);
-      receipts[harness] = p;
+      receipts[pairs.filter(([h]) => h === harness).length > 1 ? `${harness} ${image}` : harness] = p;
       console.log(`PROVENANCE: ${harness} image ${image} (${p.image_id.slice(0, 19)}) carries all ${p.files.length} files of harnesses/${harness}/provenance.json at the checkout's sha256; manifest digest ${p.digest}`);
     }
     if (Object.keys(receipts).length) writeFileSync(join(runDir, 'preflight-provenance.json'), JSON.stringify({ run_id: m.run_id, checked_at: new Date().toISOString(), harnesses: receipts }, null, 1) + '\n');

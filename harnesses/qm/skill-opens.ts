@@ -8,10 +8,14 @@
 //   files    a files tool read of a path ending in <name>/SKILL.md that QM answered with the file. QM syncs a read skill
 //            to <sandbox root>/.agent-skills/<session>/<hash>/<name>/ (src/skills/materialize.ts at 90e4ced7), so any
 //            directory prefix counts.
-//   execute  an execute call that exited 0 with a command segment (split on ;, &&, ||, | and newlines) whose command is
-//            cat, sed, head, tail, less, more, nl or awk and which names <name>/SKILL.md.
+//   execute  an execute call that exited 0 and reads <name>/SKILL.md by scripts/skill-resolver/got-skill.ts's shell rule
+//            (shellReadArgs: a command segment whose program is a reader, cat, head, tail, sed without -i, less, more, nl,
+//            awk, bat or tac, with the path as an argument and not a redirect target, so cat > <name>/SKILL.md is a write),
+//            and whose answer has no reader error for that path (No such file or directory, Permission denied, Is a
+//            directory): the exit code of a pipeline is its last command's, so cat <missing> | head still exits 0.
 // Only names in the catalog count as opened; reads of other skills (QM's own browse, onboarding) are listed apart.
 import { entryFromItem, toolCalls, type Entry } from './gstack/s1-count.ts';
+import { shellReadArgs } from '../../scripts/skill-resolver/got-skill.ts';
 
 export type Via = 'skills' | 'files' | 'execute';
 export interface SkillOpen { skill: string; via: Via; source: 'request' | 'trace'; call_id: string | null; path: string | null; found: boolean }
@@ -59,8 +63,7 @@ export function traceCalls(session: unknown): RawCall[] {
   }));
 }
 
-const SEGMENT = /;|&&|\|\||\||\n/;
-const READS = /^\s*\(?\s*(?:cat|sed|head|tail|less|more|nl|awk)\b/;
+const READ_ERROR = /No such file or directory|Permission denied|Is a directory/;
 const SKILL_MD = /([\w.-]+)\/SKILL\.md\b/g;
 const NOT_FOUND = /^\s*(?:\[no such (?:skill )?file|Validation failed for tool)/;
 
@@ -74,9 +77,9 @@ function opensOf(c: RawCall): SkillOpen[] {
     return m ? [open(m[1]!, 'files', str(c.args.path), ok)] : [];
   }
   if (c.tool === 'execute') {
-    const cmd = str(c.args.command);
-    const names = cmd.split(SEGMENT).filter((s) => READS.test(s)).flatMap((s) => [...s.matchAll(SKILL_MD)].map((m) => m[1]!));
-    return [...new Set(names)].map((n) => open(n, 'execute', null, ok && c.code === 0));
+    const errors = (c.resultText ?? '').split('\n').filter((l) => READ_ERROR.test(l));
+    const names = new Set(shellReadArgs(str(c.args.command)).flatMap((w) => [...w.matchAll(SKILL_MD)].map((m) => m[1]!)));
+    return [...names].map((n) => open(n, 'execute', null, ok && c.code === 0 && !errors.some((l) => [...l.matchAll(SKILL_MD)].some((m) => m[1] === n))));
   }
   return [];
 }

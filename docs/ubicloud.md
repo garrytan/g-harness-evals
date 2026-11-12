@@ -25,8 +25,10 @@ scripts/ubicloud/run-shard.sh \
   --dest ~/.capy/work/<run>/oc-a [--gbrain-image <tag>] [--embedded] [--amendment <sha>] [--resume] \
   [--size standard-16] [--smoke-lease-usd <n>] [--smoke-task <dev task id>] [--smoke-first-cell] [--no-smoke] [--pre-smoke <scripts/....sh>] \
   [--workload harness|gstack-laneb|qm-driver|frontier-harbor] [--install-check] [--replicate-to <dir>] [--replicate-seconds 1200] \
-  [-- <arguments for scripts/run-shard.sh>]
+  [--skill-root <local dir>] [-- <arguments for scripts/run-shard.sh>]
 ```
+
+**Skill-resolver cells** (any cell with a `skill_arm`) need `--skill-root`: a local directory with the frozen kit (`kit/`), the musl build of the pinned resolver (`gbrain-linux-x64-musl`) and the cells' inputs (`inputs/`). It is uploaded to `~/skill-root` on the VM, and the VM's `scripts/run-shard.sh` checks it against the preregistration, builds each cell's arm image and runs the skill preflight before plan (scripts/skill-resolver/ARMS.md, "On a shard"). The smoke gives such a cell the first of its request rows or set T tasks, and counts a request-cap ending as a finished trial.
 
 Run it as a background operation with a timeout covering the whole shard and register a wait on it, the way the Ubicloud skill says: a controller nobody waits on dies when the Capy machine sleeps. The VM is not harmed by that (the shard runs detached there), but nothing destroys it until `run-shard.sh --attach --dest <the same dest>` rejoins it, or `scripts/ubicloud/ubi-runner.sh down <vm>` is run by hand. `--attach` reads the VM name from `<dest>/shard-vm.json`, polls, pulls and destroys exactly as the first invocation would have.
 
@@ -174,6 +176,10 @@ The VM's phases: create to ready 82 s (19 s on an earlier VM the same evening), 
 ### 2026-11-11: a frontier-harbor mid-run pull skips unreadable files
 
 "Results leave the VM while it runs" says a frontier-harbor shard's mid-run pull runs `ubi-runner.sh pull ... --skip-unreadable`, leaves out files the VM user can't read, logs them in `lane.log` and counts finished trials, while the teardown pull and every other workload's pull stay strict. Why: a live Harbor trial's folder holds container-owned files, tar exited 2 on them, and `run-shard.sh` dropped the whole mid-run pull, so trial results reached the controller only at teardown. Tested in `tests/ubicloud-live-trial-pull.test.ts`.
+
+### 2026-11-10: skill-resolver shards (internal-task)
+
+`run-shard.sh --skill-root` ships the skill-resolver kit, the musl resolver build and the cells' inputs to the VM, where `scripts/run-shard.sh` runs `scripts/skill-resolver/shard-kit.ts` (checks against the preregistration, the arm images, the skill preflight). The runner now picks each skill-arm cell's image itself, so a shard can mix QM arms. The smoke picks a skill cell's first request row or set T task and accepts a request-cap ending. Why: on a fresh VM no skill cell could run; the kit, QM's arm images and the inputs existed only on the Capy machine that built them, and QM's pull arm was refused by the shard's sandbox tag.
 
 ### 2026-11-10: the fan-out re-queues a shard whose VM found no capacity
 

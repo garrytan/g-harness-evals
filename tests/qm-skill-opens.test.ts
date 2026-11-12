@@ -50,3 +50,21 @@ describe('the hand-made session', () => {
     expect(traceCalls(json('session-synthetic.json')).map((c) => [c.tool, c.code])).toEqual([['files', null], ['execute', 0], ['execute', 1], ['skills', null], ['skills', null], ['files', null], ['execute', 0]]);
   });
 });
+
+describe('execute counts reads only', () => {
+  const run = (id: string, command: string, result: string) => ({ messages: [{ role: 'user', content: 'go' },
+    { role: 'assistant', content: [{ type: 'tool_use', id, name: 'execute', input: { command } }] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: result }] }] });
+  const opened = (command: string, result: string) => skillOpens({ catalog: CATALOG, requests: [run('x', command, result)] }).opened;
+  test('a write to a SKILL.md (cat >, sed -i) is not an open', () => {
+    expect(opened("cat > review/SKILL.md <<'EOF'\n---\nname: review\n---\nEOF", '[exit 0]\n')).toEqual([]);
+    expect(opened('cat >> .agent-skills/s/h/qa/SKILL.md < notes.md', '[exit 0]\n')).toEqual([]);
+    expect(opened("sed -i 's/a/b/' ship/SKILL.md", '[exit 0]\n')).toEqual([]);
+  });
+  test('a read that failed inside a pipeline that exited 0 is not an open; the same pipeline that found the file is', () => {
+    expect(opened('cat .agent-skills/s/h/review/SKILL.md | head -80', 'cat: .agent-skills/s/h/review/SKILL.md: No such file or directory\n[exit 0]\n')).toEqual([]);
+    expect(opened('cat .agent-skills/s/h/review/SKILL.md | head -80', '---\nname: review\n---\n[exit 0]\n')).toEqual(['review']);
+    expect(opened('cat qa/SKILL.md review/SKILL.md | head', 'cat: qa/SKILL.md: No such file or directory\n---\nname: review\n---\n[exit 0]\n')).toEqual(['review']);
+  });
+});
+
