@@ -271,26 +271,41 @@ json.dump(d, open(p, 'w'), indent=1); open(p, 'a').write('\n')
 PY
 }
 jq1() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); v=d.get(sys.argv[2]); print('' if v is None else v)" "$dest/shard-vm.json" "$1" 2>/dev/null || true; }
+vm_owner() { local o; o=$(jq1 owner); echo "${o:-$UBI_OWNER}"; }
 vssh() { bash "$runner" ssh "$vm" "$@"; }
 remote_home=/home/ubi
 repo_dir=$remote_home/work/harness-evals
 now() { date +%s; }
 lines() { if [ -f "$1" ]; then wc -l < "$1"; else echo 0; fi; }
-# pull_results: ~/shard/results into <dest>/results through <dest>/.pull. It fails when the pull exits above 1 or brings
+# pull_results: ~/shard/results into <dest>/results through <dest>/.pull. It returns 1 when the pull exits above 1 or brings
 # back no results/; exit 1 is tar's "file changed as we read it" on a live log, after a complete extract. The staged copy is
 # merged over <dest>/results, so a failed, cut or empty pull never removes what an earlier pull brought back, and files the
-# VM never had (a --resume upload leaves out each trial's state/ and workspace/) stay. A *.sqlite that comes back without
+# VM never had (a --resume upload leaves out each trial's state/ and workspace/) stay. An earlier pull leaves read-only
+# files (git objects in a trial's workspace are 0444) that cp cannot open for writing, so both trees are made writable
+# before the merge and before a removal. A merge that still fails (a full disk, a file where the tree has a directory)
+# returns 2 and deletes the staged copy, except that teardown (`pull_results keep-staged`) keeps the complete staged copy in
+# <dest>/.pull to move into place; a sealed shard's staged plaintext is always deleted (scripts/sealed/cleanup.ts does not
+# know .pull and the VM still holds the results). Removal diagnostics go to $errs, so a failure can name no sealed path on stderr. A *.sqlite that comes back without
 # its -wal or -shm (teardown checkpoints and closes the ledger) drops the local one, which an earlier pull left and which
 # would replay old pages over the newer database.
 pull_results() {
-  local rc=0 db s
-  rm -rf "$dest/.pull"
+  local rc=0 db s errs=$dest/lane.log
+  [ "$sealed" -eq 0 ] || errs=$dest/sealed-upload.log
+  chmod -R u+w "$dest/.pull" 2>/dev/null; rm -rf "$dest/.pull" 2>>"$errs"
   bash "$runner" pull "$vm" shard/results "$dest/.pull" 2>/dev/null || rc=$?
-  if [ "$rc" -gt 1 ] || [ ! -d "$dest/.pull/results" ]; then rm -rf "$dest/.pull"; return 1; fi
+  if [ "$rc" -gt 1 ] || [ ! -d "$dest/.pull/results" ]; then chmod -R u+w "$dest/.pull" 2>/dev/null; rm -rf "$dest/.pull" 2>>"$errs"; return 1; fi
   while IFS= read -r db; do
     for s in -wal -shm; do [ -e "$dest/.pull/results/$db$s" ] || rm -f "$dest/results/$db$s"; done
   done < <(cd "$dest/.pull/results" && find . -name '*.sqlite')
-  mkdir -p "$dest/results" && cp -a "$dest/.pull/results/." "$dest/results/" && rm -rf "$dest/.pull"
+  chmod -R u+w "$dest/results" 2>/dev/null
+  if ! { mkdir -p "$dest/results" && cp -a "$dest/.pull/results/." "$dest/results/" 2>>"$errs"; }; then
+    [ "$sealed" -eq 1 ] || [ "${1:-}" != keep-staged ] || return 2
+    chmod -R u+w "$dest/.pull" 2>/dev/null; rm -rf "$dest/.pull" 2>>"$errs"
+    if [ "$sealed" -eq 0 ]; then [ ! -e "$dest/.pull" ] || log "WARNING: the staged copy $dest/.pull could not be deleted (diagnostics in $errs)"
+    elif [ -e "$dest/.pull" ]; then log "WARNING: the sealed pull from $vm could not be merged into $dest/results and its staged plaintext copy $dest/.pull could not be deleted; delete it by hand (diagnostics in $errs, custody only)"; else log "WARNING: the sealed pull from $vm could not be merged into $dest/results; its staged plaintext copy $dest/.pull is deleted and the results stay on $vm (diagnostics in $errs, custody only)"; fi
+    return 2
+  fi
+  chmod -R u+w "$dest/.pull" 2>>"$errs"; rm -rf "$dest/.pull" 2>>"$errs"
 }
 # mirror: <dest> to <replicate-to>/<shard> (without per-trial state/ and workspace/, and without the qm-driver smoke's gstack
 # checkout smoke/work/gstack-edition, whose own tests hold key-shaped text), staged locally and scanned for key-shaped text
@@ -305,7 +320,7 @@ mirror() {
   local stage=$dest/.mirror to=$replicate_to/${name:-attach} hits skip=()
   [ "$workload" != frontier-harbor ] || skip=(--exclude=proxy-capture --exclude=./results/run)
   rm -rf "$stage" && mkdir -p "$stage" &&
-    tar -C "$dest" -cf - --exclude=./.pull --exclude=./.mirror --exclude=./smoke/work/gstack-edition --exclude='./results/trials/*/*/*/state' --exclude='./results/trials/*/*/*/workspace' ${skip[@]+"${skip[@]}"} . | tar -C "$stage" -xf - ||
+    tar -C "$dest" -cf - --exclude='./.pull*' --exclude='./results.partial-*' --exclude=./.mirror --exclude=./smoke/work/gstack-edition --exclude='./results/trials/*/*/*/state' --exclude='./results/trials/*/*/*/workspace' ${skip[@]+"${skip[@]}"} . | tar -C "$stage" -xf - ||
     { log "WARNING: replicate: staging $dest for $to failed; the previous mirror stays"; rm -rf "$stage"; return 1; }
   hits=$(grep -rIlE "$key_shapes" "$stage" 2>/dev/null | sed "s#^$stage/##" | head -3 | paste -sd' ' -)
   if [ -n "$hits" ]; then log "WARNING: replicate: key-shaped text in $hits; $to keeps the previous mirror"; rm -rf "$stage"; return 1; fi
@@ -326,7 +341,13 @@ PY
   mkdir -p "$replicate_to/${name:-attach}" && cp "$dest/shard-vm.json" "$replicate_to/${name:-attach}/shard-vm.json" 2>/dev/null || true
 }
 replicate() {
-  if pull_results; then log "replicate: $(lines "$dest/results/$records") records in $dest/results"; else log "WARNING: replicate: the pull from $vm failed or brought back no results/; $dest/results keeps the last good copy; retried in ${rep_s}s"; fi
+  local rc=0
+  pull_results || rc=$?
+  case $rc in
+    0) log "replicate: $(lines "$dest/results/$records") records in $dest/results" ;;
+    2) log "WARNING: replicate: the pull from $vm came back but could not be merged into $dest/results, so the previous mirror stays and the staged copy is deleted; retried in ${rep_s}s"; return ;;
+    *) log "WARNING: replicate: the pull from $vm failed or brought back no results/; $dest/results keeps the last good copy; retried in ${rep_s}s" ;;
+  esac
   mirror || true
 }
 
@@ -354,7 +375,26 @@ teardown() {
     log "checkpointing ledgers and copying the results tree back to $dest"
     vssh 'for f in $(find ~/shard -name ledger.sqlite 2>/dev/null); do bun -e "const {Database}=require(\"bun:sqlite\"); const db=new Database(process.argv[1]); db.exec(\"PRAGMA wal_checkpoint(TRUNCATE)\"); db.close(); console.log(\"checkpointed\", process.argv[1])" "$f"; done' 2>>"$dest/lane.log" | stamp | tee -a "$dest/lane.log" >&2
     t_pull0=$(now)
-    pull_results || { results_pulled=0; log "WARNING: no shard/results on the VM to pull (the run never started, or the VM is gone)"; }
+    # A pull that came back whole but could not be merged replaces <dest>/results, and the earlier local tree moves aside
+    # (shard-vm.json names it), so <dest>/results is the teardown pull that --resume and merge-shards.ts expect and the VM
+    # can go. A sealed shard keeps its VM instead: cleanup.ts does not know the moved copy.
+    local pull_rc=0 partial
+    pull_results keep-staged || pull_rc=$?
+    if [ "$pull_rc" -eq 2 ] && [ "$sealed" -eq 0 ]; then
+      partial=$dest/results.partial-$(now)
+      if mv "$dest/results" "$partial" && mv "$dest/.pull/results" "$dest/results"; then
+        chmod -R u+w "$dest/.pull"; rm -rf "$dest/.pull"
+        jset "results_partial=\"$partial\""
+        log "WARNING: the pull from $vm came back whole but could not be merged over $dest/results, so $dest/results is now that pull and the earlier local tree is at $partial (files the VM never had, such as a --resume upload's state/ and workspace/, are only there); $vm is destroyed"
+      else
+        [ -e "$dest/results" ] || [ ! -d "$partial" ] || mv "$partial" "$dest/results" || jset "results_partial=\"$partial\""
+        results_pulled=0; log "WARNING: the pull from $vm came back whole but neither merging it over $dest/results nor moving it into place worked; the pull is in $dest/.pull$([ -d "$partial" ] && echo " and the earlier local tree is at $partial")"
+      fi
+    elif [ "$pull_rc" -eq 2 ]; then
+      results_pulled=0
+    elif [ "$pull_rc" -ne 0 ]; then
+      results_pulled=0; log "WARNING: the pull of shard/results from $vm failed or brought back no results/"
+    fi
     bash "$runner" pull "$vm" "shard/smoke" "$dest" 2>/dev/null || log "WARNING: no shard/smoke on the VM to pull"
     for f in vm-shard.out phases.json exit bun-install.log prereg.json; do bash "$runner" pull "$vm" "shard/$f" "$dest" 2>/dev/null || true; done
     t_pull1=$(now)
@@ -396,6 +436,7 @@ PY
     else
       log "WARNING: the results tree did not come back from $vm, so $vm is NOT destroyed (its TTL ends it); pull it with run-shard.sh --attach --dest $dest, or bash $runner pull $vm shard/results $dest, then bash $runner down $vm. The VM id is in $dest/cleanup-pending"
       printf '%s\n' "$vm" >> "$dest/cleanup-pending"
+      echo "UBICLOUD: left=1 owner=$(vm_owner) vm=$vm kept=1 reason=results-not-pulled" >&2
       jset "exit=$rc" "cleanup=\"pending\"" "cleanup_reason=\"results not pulled; VM kept\""
       map_event kept; mirror
       return 0
@@ -412,6 +453,7 @@ PY
   if [ "$down_rc" -ne 0 ]; then
     log "WARNING: down $vm failed (exit $down_rc); the VM id is kept in $dest/cleanup-pending for a sweep: bash $runner list --mine, then down $vm"
     printf '%s\n' "$vm" >> "$dest/cleanup-pending"
+    echo "UBICLOUD: left=1 owner=$(vm_owner) vm=$vm kept=1 reason=down-failed" >&2
     jset "exit=$rc" "cleanup=\"failed\""
     [ -f "$dest/results/$record_file" ] && cp "$dest/shard-vm.json" "$dest/results/shard-vm.json"
     map_event down-failed; mirror
