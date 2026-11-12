@@ -51,7 +51,7 @@ Deleting the file in a new commit does not help. Rewrite the branch so no commit
 
 ## Files
 
-- `scripts/public-safety/check.ts`: the CLI. `lib/` holds the scanning core it shares with the retired export (container expansion, marker matching, the blob stream), bounded process execution, the pinned-tool reader, the private pack reader, the output boundary, the hook script and the doctor.
+- `scripts/public-safety/check.ts`: the CLI. `lib/` holds the scanning core it shares with the retired export (container expansion, marker matching, the blob stream), bounded process execution, the pinned-tool reader, the private pack reader, the Claude Code reference shingles (`lib/reference.ts`: the reference paths, the tokenizer, the threshold and the common-phrase drop, never reference text, shared by the private pack builder and the export's `reference-overlap` gate), the output boundary, the hook script and the doctor.
 - `rules.json`: the public marker rules, the spend path globs, the allowed identity forms, and the fix text of every code.
 - `classes.json`: path classes, deny rules, allowed formats and size budgets. Refuses by default.
 - `allow.json`: blob-bound exceptions to public-rule findings, each with a reason and a date.
@@ -434,6 +434,7 @@ Not allowlistable.
 
 ## Changelog
 
+- 2026-11-11: `lib/reference.ts` holds the reference shingle code the private pack builder used to keep to itself: the 8-word tokenizer, the 20-shingle threshold, the reference file paths and the common-phrase drop. The export's new `reference-overlap` gate uses the same code, so both count alike. It holds no reference text.
 - 2026-11-09: the identity gate accepts the Capy account address (`identity.owner_accepted` in `rules.json`) as author and committer, and the header scans no longer flag it on those two lines. It stays refused in trailers, file contents, path names, ref names and anywhere else in a commit. The doctor's identity probe accepts it too. Pushes use this only after the private pack pins the new gate tree.
 - 2026-11-08: follow-up to the first version. Archive member names gitleaks flags are withheld everywhere; gzip header fields, every tar header field, pax and GNU records and bytes after the end are scanned; an allowlist entry binds to its lines; a base blob at a new path gets that path's rules; ref names go through gitleaks; the identity gate reads every trailer with an address; a push runs main's gate as `public-safety-push`; new sections on CI and the private lane (with PS-PRIV-UNAVAILABLE) and on the docs-only allowlist.
 - 2026-11-08: first version: the admission gate, its rules, classes, private pack reader, hook and doctor, replacing the weekly export's checks in front of every public push.
