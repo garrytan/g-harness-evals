@@ -112,3 +112,25 @@ test('company-v2 and personal-v2 dev task JSON is left out of review, and task.t
   ];
   expect(reviewed([...kept, ...dropped])).toEqual([...kept].sort());
 });
+
+// Value: protects=the analysis.json exclusion for the Claude Code 2.1.322 rerun hides only that run's analysis.json files
+// under its results folders, at any depth, so the analysis.md beside each one, its other analysis files and every other
+// run's analysis.json still reach /ship's readers; fails_when=the pattern is dropped, widened to other runs or to
+// *analysis.json, or loses its results* anchor; why_new=the rerun's seven generated analysis.json files put its review diff
+// at about 7.3 MB, over the 2 MB review ceiling, and bun run verify rebuilds them from the committed trial records and
+// compares them value by value; seam=a throwaway git repository and git's own glob pathspecs; no_claim=the rebuild check itself.
+test("the Claude Code 2.1.322 rerun's analysis.json files are left out of review, and other runs and other analysis files are still reviewed", () => {
+  // Stand-in paths only, as above: a real results path named here would keep that file in /ship's review diff.
+  const kept = [
+    'docs/benchmarks/2026-11-12-fable-5-2-coding-cc322/results/stand-in/analysis.md',
+    'docs/benchmarks/2026-11-12-fable-5-2-coding-cc322/results/stand-in/drift.json',
+    'docs/benchmarks/2026-11-12-fable-5-2-coding-cc322/prereg/analysis.json',
+    'docs/benchmarks/2026-11-07-frontier-harness/results/stand-in/analysis.json',
+    'docs/benchmarks/2026-11-09-failure-mining/results/stand-in/analysis.json',
+  ];
+  const dropped = [
+    'docs/benchmarks/2026-11-12-fable-5-2-coding-cc322/results/stand-in/analysis.json',
+    'docs/benchmarks/2026-11-12-fable-5-2-coding-cc322/results-x/deep/stand-in/analysis.json',
+  ];
+  expect(reviewed([...kept, ...dropped])).toEqual([...kept].sort());
+});
