@@ -200,7 +200,7 @@ Filled in from the uncounted pilot (2026-11-10, see Pilot). The minimum detectab
 
 ## Run, sharding and order
 
-- **Where:** every public cell runs on Ubicloud through `scripts/ubicloud/fanout.sh`, one standard-16 VM per shard, from a worktree pinned at the merge commit of the 2026-11-11 amendment's pull request (first written as this file's merge commit; see Amendments). No cell is split across machines, and trials run one at a time within a shard. The three set R cells run on one private machine from the set R private preregistration, with a results root outside the repository, never through fan-out or merge-shards.
+- **Where:** every public cell runs on Ubicloud through `scripts/ubicloud/fanout.sh`, one standard-16 VM per shard, from a worktree pinned at the merge commit of the 2026-11-12 amendment's pull request (first written as this file's merge commit, then the 2026-11-11 amendment's; see Amendments). No cell is split across machines, and trials run one at a time within a shard. The three set R cells run on one private machine from the set R private preregistration, with a results root outside the repository, never through fan-out or merge-shards.
 - **Shards (25 public):**
 
   | Shards | What each holds | Lease each |
@@ -223,7 +223,7 @@ Filled in from the uncounted pilot (2026-11-10, see Pilot). The minimum detectab
   5. The other set T shards.
 - **Set T resizing:** after the set T canary, each set T cell's lease becomes 48 x (the canary's mean cost per trial + $0.057 kept-reservation allowance) x 1.3. The set T shards' grouping and VM time-to-live come from the canary's mean wall time (time-to-live: expected wall time x 1.5).
 - **Stop rule:** if the resized projection puts the all-in total (spent so far + every lease + VMs + thread use) past $3,500, nothing more launches until internal-task has the number.
-- **VM time-to-live:** each VM sets UBI_TTL_HOURS above its expected wall time plus margin. The pilot's mean wall time per trial was 80 s for OpenClaw Opus and 42 s for Hermes Sol, so an oc Opus pair takes about 13 hours and gets 18.
+- **VM time-to-live:** each VM sets UBI_TTL_HOURS above its expected wall time plus margin. The pilot's mean wall time per trial was 80 s for OpenClaw Opus and 42 s for Hermes Sol, so an oc Opus pair takes about 13 hours and gets 18. Each shard also passes `--timeout-hours` one hour under its time-to-live (17 for an oc Opus pair), because scripts/ubicloud/run-shard.sh stops a shard at its 12-hour default and refuses a time-to-live that isn't above the timeout.
 - **A shard that runs out of lease** stops incomplete. Its cells are reported incomplete with their n. No lease is reopened.
 
 ## Privacy
@@ -294,3 +294,11 @@ internal-task granted this follow-up on 2026-11-11, with one /ship pass and one 
 - **Set T with no workspace (1b1fd1b889).** A set T trial that left no workspace stays in the intention-to-treat set T comparison, scored as a failure on success and used_it, and is counted in the INFRA table. It was counted as a Phase B trial.
 - **Set T grading of t40 (e4f4dcde26).** Set T grading on OpenClaw leaves out only the catalog skills the arm installed, so a skill the task seeded or the agent wrote (t40's `skills/cut-release`) is graded.
 - **Run commit.** The counted run executes from this follow-up's merge commit, not #387's (this file's), because the shard tooling a VM needs lands here (6036c2a9fc): `scripts/skill-resolver/shard-kit.ts`, `run-shard.sh --skill-root`, the per-cell arm images, and the smoke's choice of a skill cell's own first task. Run, sharding and order says so.
+
+### 2026-11-12, before any counted trial (internal-task)
+
+The one-VM pre-smoke at 49055a6f (the 2026-11-11 run commit) ran the oc Opus pair shard through the fan-out's own path on a fresh VM, and its smoke stopped at `plan` before its first trial. Every public shard's smoke would have stopped the same way, because `order.blocks` names all 48 cells. Nothing below changes a cell, a lease, an endpoint or a bar, and no counted trial has run.
+
+- **Smoke preregistration (vm-shard.sh).** The smoke plans from a scratch copy of this preregistration that keeps only the shard's cells. It trimmed `drop_order` and `minimum_v01` but not `order.blocks`, which name all 48 cells, so `plan` refused the copy (HE-PREREG-008), as it would have on all 25 public shards. The copy now also keeps only the shard's cells in each block and drops blocks left empty. Tested in `tests/vm-shard-smoke-prereg.test.ts`. The counted run itself was not affected: on a second fresh VM at 49055a6f, with the smoke fix applied outside the repository, the counted shard's own plan and preflight passed. They read the real preregistration, not the smoke's copy.
+- **Shard timeout.** Run, sharding and order now says each shard passes `--timeout-hours` one hour under its time-to-live. Without it, run-shard.sh's 12-hour default would stop an oc Opus pair (about 13 hours) before it finished.
+- **Run commit.** The counted run executes from this amendment's merge commit, not the 2026-11-11 one, because the smoke fix lands here. The one-VM pre-smoke reruns at that commit before the canary launches.

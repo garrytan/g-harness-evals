@@ -173,6 +173,10 @@ The VM's phases: create to ready 82 s (19 s on an earlier VM the same evening), 
 
 ## Changelog
 
+### 2026-11-12: a skill-resolver smoke plans on its shard's own run-order blocks (internal-task)
+
+The smoke's scratch preregistration keeps only the shard's cells in `order.blocks` and drops blocks left empty, as it already did for `drop_order` and `minimum_v01`. Why: the skill-resolver preregistration's blocks name all 48 cells, so `plan` refused the smoke preregistration (HE-PREREG-008) in the one-VM pre-smoke at 49055a6f, before any trial, and would have for every shard. Tested in `tests/vm-shard-smoke-prereg.test.ts`.
+
 ### 2026-11-11: a frontier-harbor mid-run pull skips unreadable files
 
 "Results leave the VM while it runs" says a frontier-harbor shard's mid-run pull runs `ubi-runner.sh pull ... --skip-unreadable`, leaves out files the VM user can't read, logs them in `lane.log` and counts finished trials, while the teardown pull and every other workload's pull stay strict. Why: a live Harbor trial's folder holds container-owned files, tar exited 2 on them, and `run-shard.sh` dropped the whole mid-run pull, so trial results reached the controller only at teardown. Tested in `tests/ubicloud-live-trial-pull.test.ts`.

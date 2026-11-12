@@ -364,6 +364,8 @@ p['question'] = 'UNCOUNTED one-trial smoke of a shard at the preregistration com
 p['spend_cap_usd'] = float(lease)
 for k in ('drop_order', 'minimum_v01'):
     if isinstance(p.get(k), list): p[k] = [x for x in p[k] if x in kept]
+if isinstance(p.get('order'), dict) and isinstance(p['order'].get('blocks'), list):
+    p['order']['blocks'] = [dict(b, cells=[x for x in b['cells'] if x in kept]) for b in p['order']['blocks'] if any(x in kept for x in b['cells'])]
 json.dump(p, open(out, 'w'), indent=2); open(out, 'a').write('\n')
 print('vm-shard: smoke preregistration', out, 'run_id', p['run_id'], 'cells', ','.join(c['id'] for c in cells_out), 'tasks', ','.join(c['tasks'][0] for c in cells_out))
 PY
