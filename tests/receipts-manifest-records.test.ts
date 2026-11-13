@@ -48,6 +48,34 @@ describe('receipts manifest records', () => {
     expect(edited.stderr).toContain(`differs from the results tree at ${RUN}`);
   });
 
+  test('a merge split across results/merged/<part>/ directories counts every part, and an edit to any part fails --check', () => {
+    const dir = repo([]);
+    const SPLIT = 'docs/benchmarks/2026-01-08-split';
+    const put = (file: string, body: string) => { mkdirSync(dirname(join(dir, file)), { recursive: true }); writeFileSync(join(dir, file), body); };
+    put(`${SPLIT}/PREREGISTRATION.md`, '# prereg\n');
+    put(`${SPLIT}/results/merged/arms/manifest.json`, JSON.stringify({ run_id: 'split-2026-01' }));
+    put(`${SPLIT}/results/merged/arms/trials.jsonl`, trial('split-2026-01/c/t1/a1', 'c'));
+    put(`${SPLIT}/results/merged/base/manifest.json`, JSON.stringify({ run_id: 'split-2026-01' }));
+    put(`${SPLIT}/results/merged/base/trials.jsonl`, trial('split-2026-01/a/t1/a1', 'a') + trial('split-2026-01/b/t1/a1', 'b') + trial('split-2026-01/b/t1/a2', 'b'));
+    put(`${SPLIT}/results/main/a/trials.jsonl`, trial('split-2026-01/a/t1/a1', 'a'));
+    put('docs/benchmarks/preregistrations.json', JSON.stringify({ schema_version: 1, experiments: [MERGED, { id: 'split-2026-01', preregistration: `${SPLIT}/PREREGISTRATION.md`, results: [`${SPLIT}/results/**`] }] }));
+    execFileSync('git', ['add', '-A'], { cwd: dir, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-q', '-m', 'split fixture'], { cwd: dir, stdio: 'ignore' });
+    expect(cli(dir).status).toBe(0);
+    const m = JSON.parse(readFileSync(join(dir, 'docs/receipts-manifest.json'), 'utf8'));
+    const row = m.runs.find((r: { directory: string }) => r.directory === SPLIT);
+    const sha = (f: string) => createHash('sha256').update(readFileSync(join(dir, f))).digest('hex');
+    expect(row).toMatchObject({ run_id: 'split-2026-01', trials: 4, cells: { a: 1, b: 2, c: 1 }, trials_jsonl: `${SPLIT}/results/merged/arms/trials.jsonl`, trials_jsonl_sha256: sha(`${SPLIT}/results/merged/arms/trials.jsonl`) });
+    expect(row.trials_jsonl_parts).toEqual([{ path: `${SPLIT}/results/merged/base/trials.jsonl`, sha256: sha(`${SPLIT}/results/merged/base/trials.jsonl`) }]);
+    expect(row.other_trials_jsonl.map((o: { path: string }) => o.path)).toEqual([`${SPLIT}/results/main/a/trials.jsonl`]);
+    expect(m.runs.find((r: { directory: string }) => r.directory === RUN).trials_jsonl_parts).toBeUndefined();
+    expect(cli(dir, '--check').status).toBe(0);
+    appendFileSync(join(dir, SPLIT, 'results/merged/base/trials.jsonl'), trial('split-2026-01/b/t1/a3', 'b'));
+    const edited = cli(dir, '--check');
+    expect(edited.status).toBe(1);
+    expect(edited.stderr).toContain(`differs from the results tree at ${SPLIT}`);
+  });
+
   test('an edit to a per-stage copy fails --check too', () => {
     const dir = repo([MERGED]);
     expect(cli(dir).status).toBe(0);

@@ -7,9 +7,12 @@
 //
 // Keyless, read-only against the runs, deterministic apart from generated_at. A run directory docs/benchmarks/<run>/ gets
 // a row when a trials.jsonl sits anywhere under its results/. The run's record is results/trials.jsonl; else
-// results/merged/trials.jsonl (the merge of per-stage or per-shard copies, as the frontier runs keep them); else the
-// shallowest trials.jsonl under results/, the first in path order among equals. A record other than results/trials.jsonl is
-// named under trials_jsonl, and every other trials.jsonl in the run directory (per-stage copies, a second experiment's
+// results/merged/trials.jsonl (the merge of per-stage or per-shard copies, as the frontier runs keep them); else every
+// results/merged/<part>/trials.jsonl, when the merge is split across part directories (the gstack skill ablation run keeps
+// its none and full cells in merged/base/ and its other cells in merged/arms/); else the shallowest trials.jsonl under
+// results/, the first in path order among equals. A record other than results/trials.jsonl is named under trials_jsonl
+// (the first part, in path order, for a split record, with the rest under trials_jsonl_parts, each with its sha256, and
+// every part counted in trials, cells and the trials window), and every other trials.jsonl in the run directory (per-stage copies, a second experiment's
 // results, calibration or probe trials) is listed with its sha256 under other_trials_jsonl, so an edit to any committed
 // trials.jsonl changes the manifest; both keys are absent when they would be empty, so a run with one results/trials.jsonl
 // has the row it always had. A trials.jsonl whose records are not trial records (it has records and none carries a cell
@@ -93,8 +96,10 @@ export interface RunRow {
   trials: number;
   cells: Record<string, number>;
   trials_jsonl_sha256: string;
-  /** The record's path when it is not results/trials.jsonl. */
+  /** The record's path when it is not results/trials.jsonl; the first part of a split record. */
   trials_jsonl?: string;
+  /** The other parts of a record split across results/merged/<part>/ directories, with their sha256. */
+  trials_jsonl_parts?: HashedFile[];
   /** Every other trials.jsonl in the run directory, with its sha256. */
   other_trials_jsonl?: HashedFile[];
   ledgers: LedgerRow[];
@@ -248,25 +253,28 @@ export function holdsTrialRecords(path: string): boolean {
 const isTrials = (f: string) => namedTrials(f) && holdsTrialRecords(f);
 
 /** The run's record among the trials.jsonl files under results/ (absolute paths): results/trials.jsonl, else
- *  results/merged/trials.jsonl, else the shallowest, first in path order. Null when results/ holds none. */
-export function runRecord(results: string, files: string[]): string | null {
+ *  results/merged/trials.jsonl, else every results/merged/<part>/trials.jsonl in path order, else the shallowest, first in
+ *  path order. Empty when results/ holds none. */
+export function runRecord(results: string, files: string[]): string[] {
   const under = files.filter((f) => isTrials(f) && f.startsWith(results + '/')).sort();
   const preferred = [join(results, 'trials.jsonl'), join(results, 'merged', 'trials.jsonl')].find((f) => under.includes(f));
-  if (preferred) return preferred;
+  if (preferred) return [preferred];
+  const parts = under.filter((f) => dirname(dirname(f)) === join(results, 'merged'));
+  if (parts.length) return parts;
   const depth = (f: string) => f.split('/').length;
-  return under.length ? under.reduce((best, f) => (depth(f) < depth(best) ? f : best)) : null;
+  return under.length ? [under.reduce((best, f) => (depth(f) < depth(best) ? f : best))] : [];
 }
 
 export function buildRun(root: string, directory: string, inRun: string[] = walk(root, join(root, directory))): RunRow {
   const dir = join(root, directory);
   const results = join(dir, 'results');
-  const trialsPath = runRecord(results, inRun) ?? join(results, 'trials.jsonl');
+  const [trialsPath = join(results, 'trials.jsonl'), ...parts] = runRecord(results, inRun);
   const trialsBytes = readFileSync(trialsPath);
   const cells: Record<string, number> = {};
   let trials = 0;
   let firstTrialId: string | null = null;
   let firstStarted: string | null = null, lastEnded: string | null = null;
-  for (const line of trialsBytes.toString('utf8').split('\n')) {
+  for (const line of [trialsBytes, ...parts.map((f) => readFileSync(f))].flatMap((b) => b.toString('utf8').split('\n'))) {
     if (!line.trim()) continue;
     const t = JSON.parse(line) as { trial_id?: string; cell?: string; started_at?: string; ended_at?: string };
     trials++;
@@ -287,7 +295,7 @@ export function buildRun(root: string, directory: string, inRun: string[] = walk
 
   const files = inRun.filter((f) => f.startsWith(results + '/'));
   const rel = (p: string) => relative(root, p).split('\\').join('/');
-  const others = inRun.filter((f) => isTrials(f) && f !== trialsPath).map((f) => ({ path: rel(f), sha256: sha256(readFileSync(f)) }));
+  const others = inRun.filter((f) => isTrials(f) && f !== trialsPath && !parts.includes(f)).map((f) => ({ path: rel(f), sha256: sha256(readFileSync(f)) }));
   const ledgers = files.filter((f) => f.endsWith('.sqlite')).map((f) => { const bytes = readFileSync(f); return { path: rel(f), sha256: sha256(bytes), ...readLedger(f, bytes) }; });
   const proxyLogs = files.filter((f) => /(^|[./-])proxy-usage([.-][^/]*)?\.ndjson$/.test(f.slice(f.lastIndexOf('/') + 1))).map((f) => ({ path: rel(f), sha256: sha256(readFileSync(f)) }));
 
@@ -306,6 +314,7 @@ export function buildRun(root: string, directory: string, inRun: string[] = walk
     cells: sortedCells,
     trials_jsonl_sha256: sha256(trialsBytes),
     ...(trialsPath !== join(results, 'trials.jsonl') ? { trials_jsonl: rel(trialsPath) } : {}),
+    ...(parts.length ? { trials_jsonl_parts: parts.map((f) => ({ path: rel(f), sha256: sha256(readFileSync(f)) })) } : {}),
     ...(others.length ? { other_trials_jsonl: others } : {}),
     ledgers,
     proxy_usage_logs: proxyLogs,
@@ -320,7 +329,8 @@ export function buildRun(root: string, directory: string, inRun: string[] = walk
 /** A run's trial intervals (started_at to ended_at), merged where they overlap, sorted by start. */
 function trialIntervals(root: string, run: RunRow): Array<[number, number]> {
   const spans: Array<[number, number]> = [];
-  for (const line of readFileSync(join(root, run.trials_jsonl ?? `${run.directory}/results/trials.jsonl`), 'utf8').split('\n')) {
+  const record = [run.trials_jsonl ?? `${run.directory}/results/trials.jsonl`, ...(run.trials_jsonl_parts ?? []).map((p) => p.path)];
+  for (const line of record.flatMap((f) => readFileSync(join(root, f), 'utf8').split('\n'))) {
     if (!line.trim()) continue;
     const t = JSON.parse(line) as { started_at?: string; ended_at?: string };
     if (t.started_at && t.ended_at) spans.push([Date.parse(t.started_at), Date.parse(t.ended_at)]);
@@ -404,7 +414,7 @@ export function buildManifest(root: string, generatedAt: string = new Date().toI
       notTrials.push({ path: relative(root, f).split('\\').join('/'), sha256: sha256(readFileSync(f)), reason: NOT_TRIAL_RECORDS_REASON });
     }
     const results = join(base, name, 'results');
-    if (!existsSync(results) || !runRecord(results, inRun)) continue;
+    if (!existsSync(results) || !runRecord(results, inRun).length) continue;
     runs.push(buildRun(root, directory, inRun));
   }
   attachOpenings(root, runs);
@@ -425,7 +435,7 @@ export const renderManifest = (m: Manifest) => JSON.stringify(m, null, 2) + '\n'
  *  per file. Empty when every registered experiment's trials are in the manifest, or when the repository has no registry. */
 export function unhashedRegisteredTrials(root: string, m: Manifest): string[] {
   if (!existsSync(join(root, BENCHMARKS_DIR, 'preregistrations.json'))) return [];
-  const hashed = new Set([...m.runs.flatMap((r) => [r.trials_jsonl ?? `${r.directory}/results/trials.jsonl`, ...(r.other_trials_jsonl ?? []).map((o) => o.path)]), ...(m.not_trial_records ?? []).map((n) => n.path)]);
+  const hashed = new Set([...m.runs.flatMap((r) => [r.trials_jsonl ?? `${r.directory}/results/trials.jsonl`, ...(r.trials_jsonl_parts ?? []).map((o) => o.path), ...(r.other_trials_jsonl ?? []).map((o) => o.path)]), ...(m.not_trial_records ?? []).map((n) => n.path)]);
   return loadManifest(root).flatMap((e) => {
     const listed = e.results.length ? git(root, ['ls-files', '-z', '--', ...e.results]) ?? '' : '';
     return listed.split('\0').filter((f) => (f === 'trials.jsonl' || namedTrials(f)) && !hashed.has(f)).map((f) => `${e.id}: ${f} has no row in ${OUTPUT_FILE}`);

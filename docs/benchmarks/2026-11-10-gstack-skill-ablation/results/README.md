@@ -155,4 +155,4 @@
 - **Stage membership:** [merged/stages.json](merged/stages.json), from `plan.ts show --stages-out` on both preregistrations.
 - **Unedited per-stage records:** main/<cell>/ and rerun1/<cell>/.
 - **Analysis:** [analysis.json](analysis.json) and [analysis.md](analysis.md), from `ablation.ts analyze --results <base + arms trials.jsonl> --spec ../ablation-spec.json --headroom stage0/headroom.json --selection stage0/selection.json --stages merged/stages.json`.
-- **Spend lines** are in ../spend-internal.md, an internal file kept out of the public copy.
+- **Spend lines** are in [../spend-internal.md](../spend-internal.md), an internal file kept out of the public copy.
