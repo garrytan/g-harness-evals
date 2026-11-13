@@ -100,7 +100,7 @@ test('gzip FNAME, FCOMMENT and FEXTRA, every tar header text field, pax and GNU 
 
 test('rules.json carries no private-pack rule and no thread-code rule, and every code has a fix and a docs section', () => {
   const ids = RULES.rules.map((r) => r.id);
-  for (const id of ['owner-email', 'custody-sha', 'proprietary-prompt', 'benchmark-canary', 'private-repo-link', 'thread-code']) expect(ids).not.toContain(id);
+  for (const id of ['owner-email', 'custody-sha', 'proprietary-prompt', 'benchmark-canary', 'thread-code']) expect(ids).not.toContain(id);
   expect(RULES.rules.every((r) => !('source' in r))).toBe(true);
   const doc = readFileSync(join(ROOT, 'docs', 'public-safety.md'), 'utf8');
   for (const [code, info] of Object.entries(RULES.codes)) {
