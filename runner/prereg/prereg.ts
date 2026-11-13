@@ -40,7 +40,11 @@
  * rule only, same-landing (a result file that reached main in the preregistration's
  * commit), each for one experiment and an exact path set, and only after the check
  * proves the private order the exception states; every use is printed, and an
- * exception no result file used fails.
+ * exception no result file used fails. Without --commit-map and --source (the public
+ * repository's own CI) the check reads docs/benchmarks/prereg-attestations.json, which
+ * the export writes with --write-attestation-map: each private attestation commit and
+ * its public commit. Such an attestation is labelled as mapped by the export, and a
+ * missing map fails the check rather than skip it.
  *
  * Both modes also run `checkPrivateByHash` (runner/prereg/private-by-hash.ts) over every experiment of the
  * private-by-hash result class: its preregistration pins the private billing outputs and no hash, and its results
@@ -55,7 +59,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export interface Attestation {
@@ -248,8 +252,16 @@ export function sourcePlacement(cwd: string, pub: Publication): (path: string) =
   };
 }
 
-export function publicCommit(cwd: string, pub?: Publication): (commit: string) => { commit: string } | { problem: string } {
+export function publicCommit(cwd: string, pub?: Publication, attestations?: AttestationMap): (commit: string) => { commit: string; mapped?: true } | { problem: string } {
   const held = heldIn(cwd);
+  if (!pub && attestations) {
+    return commit => {
+      if (held(commit)) return { commit };
+      const to = Object.hasOwn(attestations.attestations, commit) ? attestations.attestations[commit] : undefined;
+      if (held(to)) return { commit: to!, mapped: true };
+      return { problem: `${commit.slice(0, 12)} is not in this history, and ${ATTESTATION_MAP_PATH} ${to ? `maps it to ${to.slice(0, 12)}, which this history does not hold` : 'does not map it'}` };
+    };
+  }
   if (!pub) return commit => (held(commit) ? { commit } : { problem: `${commit.slice(0, 12)} is not in this history; give --commit-map and --source to map it through the export's commit map` });
   const landing = firstParentLanding(pub.source);
   return commit => {
@@ -265,6 +277,58 @@ export function publicCommit(cwd: string, pub?: Publication): (commit: string) =
 
 export function readCommitMap(path: string): Map<string, string> {
   return new Map(readFileSync(path, 'utf8').split('\n').slice(1).filter(Boolean).map(line => line.split('\t') as [string, string]));
+}
+
+export const ATTESTATION_MAP_PATH = 'docs/benchmarks/prereg-attestations.json';
+export const MAPPED = 'attestation mapped by the public export, which checked its private ancestry';
+
+/** The public export's map from each private commit a published attestation names, when the public history does not
+ *  hold it, to the public commit publicCommit gives it through the commit map. The export writes it into its last commit
+ *  after the check with the commit map and the private clone, so the public repository runs --public without either. */
+export interface AttestationMap {
+  schema_version: 1;
+  note: string;
+  label: typeof MAPPED;
+  attestations: Record<string, string>;
+  /** Each same-landing exception the export's check applies (EXCEPTIONS_PATH), at the public commit of its merge. Only
+   *  the experiment and the paths: the reason and the approval stay in the private record. The export's check fails an
+   *  exception that excuses nothing; this one may go unused, because the public history can place a held file later. */
+  exceptions: MappedException[];
+}
+
+export interface MappedException { experiment: string; paths: string[]; public_merge: string }
+
+/** The attestation map for this history: each private commit a result file's attestation names that this history does
+ *  not hold, at its public commit. A commit that cannot be mapped is left out; the check with the publication reports it. */
+export function buildAttestationMap(entries: ManifestEntry[], cwd: string, pub: Publication): AttestationMap {
+  const held = heldIn(cwd);
+  const named = publicCommit(cwd, pub);
+  const found = new Map<string, string>();
+  for (const entry of entries) {
+    for (const glob of entry.results) {
+      for (const file of trackedFiles(cwd, glob)) {
+        const commit = attestationIn(cwd, file)?.preregistration_commit;
+        if (!commit || !HEX40.test(commit) || found.has(commit) || held(commit)) continue;
+        const to = named(commit);
+        if ('commit' in to) found.set(commit, to.commit);
+      }
+    }
+  }
+  return {
+    schema_version: 1,
+    note: `Written by scripts/public-export into its last commit. Each key is a private commit that a published receipt's preregistration attestation names and this history does not hold; each value is the public commit it is checked at: the commit map's entry, or that of the merge that brought it into the private main. runner/prereg/prereg.ts --public reads it when it has no commit map and private clone, and checks that the public commit contains the preregistration. That the private commit contains it was checked at export.`,
+    label: MAPPED,
+    attestations: Object.fromEntries([...found].sort(([a], [b]) => a.localeCompare(b))),
+    exceptions: readExceptions(pub.source).exceptions.flatMap(e => (held(pub.map.get(e.merge)) ? [{ experiment: e.experiment, paths: e.paths, public_merge: pub.map.get(e.merge)! }] : [])),
+  };
+}
+
+export function readAttestationMap(path: string): AttestationMap {
+  const map = JSON.parse(readFileSync(path, 'utf8')) as AttestationMap;
+  const pairs = Object.entries(map?.attestations ?? {});
+  const exceptionsOk = Array.isArray(map?.exceptions) && map.exceptions.every(e => typeof e?.experiment === 'string' && Array.isArray(e.paths) && e.paths.every(p => typeof p === 'string') && HEX40.test(String(e.public_merge)));
+  if (map?.schema_version !== 1 || map.label !== MAPPED || typeof map.attestations !== 'object' || !pairs.every(([a, b]) => HEX40.test(a) && HEX40.test(String(b))) || !exceptionsOk) throw new Error(`${path} is not an attestation map (schema_version 1, the label, full commit ids and an exceptions list)`);
+  return map;
 }
 
 export const EXCEPTIONS_PATH = 'publication/prereg-exceptions.json';
@@ -364,7 +428,7 @@ interface PublicView {
   landing: (commit: string) => string | null;
   placed?: (path: string) => Placement | { problem: string };
   named: (commit: string) => { commit: string } | { problem: string };
-  excuse?: (entry: ManifestEntry, file: string, landedAt: string) => { exception: OrderException } | { problem: string } | null;
+  excuse?: (entry: ManifestEntry, file: string, landedAt: string) => { exception: OrderException | MappedException } | { problem: string } | null;
   /** With a publication, strict ancestry in the --source clone: an attestation's private commit must contain the
    *  preregistration's private first add there, because commits on one branch share a public landing. */
   inSource?: (older: string, newer: string) => boolean;
@@ -378,7 +442,7 @@ export function checkOrder(entries: ManifestEntry[], cwd = process.cwd()): Order
   return orderProblems(entries, cwd, firstAddCommits(cwd));
 }
 
-function orderProblems(entries: ManifestEntry[], cwd: string, adds: Map<string, string>, view?: PublicView): OrderProblem[] {
+function orderProblems(entries: ManifestEntry[], cwd: string, adds: Map<string, string>, view?: PublicView, only?: Set<string>): OrderProblem[] {
   const isStrictAncestor = ancestry(cwd);
   const place = (path: string, commit: string): Placement | { problem: string } => {
     if (view?.placed) return view.placed(path);
@@ -401,6 +465,7 @@ function orderProblems(entries: ManifestEntry[], cwd: string, adds: Map<string, 
     const declared = entry.preregistered_on_main === false && typeof entry.reason === 'string' && entry.reason.trim() !== '';
     for (const glob of entry.results) {
       for (const file of trackedFiles(cwd, glob)) {
+        if (only && !only.has(file)) continue;
         const resultCommit = adds.get(file);
         if (!resultCommit) continue;
         const res = place(file, resultCommit);
@@ -467,6 +532,10 @@ export interface PublicResult {
   deviation?: string;
   /** Each same-landing exception this experiment used, with the files it excused. */
   exceptions?: { exception: OrderException; files: string[] }[];
+  /** The private attestation commits read through the attestation map. */
+  mapped?: string[];
+  /** Each same-landing exception from the attestation map this experiment used, with the files it excused. */
+  mappedExceptions?: { exception: MappedException; files: string[] }[];
 }
 
 const sha256 = (data: string | Buffer) => createHash('sha256').update(data).digest('hex');
@@ -498,15 +567,33 @@ function ledgerWrites(cwd: string, ledgerPath: string): number {
   }).length;
 }
 
-function contentAt(cwd: string, at: Snapshot, path: string): Buffer {
-  return at.rev && at.changed.has(path) ? execFileSync('git', ['show', `${at.rev}:${path}`], { cwd, maxBuffer: 1 << 30, stdio: ['ignore', 'pipe', 'ignore'] }) : readFileSync(join(cwd, path));
+/** Each path's content in the snapshot, in order. A file that changed after the snapshot's commit is read from that commit
+ *  through one `git cat-file --batch` per 500 files: one `git show` per file took 13 minutes on an experiment with 10,388
+ *  result files. A path the commit does not hold as a file throws, as `git show` did. */
+function contentsAt(cwd: string, at: Snapshot, paths: string[]): Buffer[] {
+  const fromRev = at.rev ? paths.filter(p => at.changed.has(p)) : [];
+  const blobs = new Map<string, Buffer>();
+  for (let i = 0; i < fromRev.length; i += 500) {
+    const chunk = fromRev.slice(i, i + 500);
+    const out = execFileSync('git', ['cat-file', '--batch'], { cwd, input: chunk.map(p => `${at.rev}:${p}\n`).join(''), maxBuffer: 1 << 30, stdio: ['pipe', 'pipe', 'ignore'] });
+    let pos = 0;
+    for (const path of chunk) {
+      const eol = out.indexOf(10, pos);
+      const size = /^[0-9a-f]{40,64} blob (\d+)$/.exec(out.subarray(pos, eol).toString())?.[1];
+      if (size === undefined) throw new Error(`${path} is not a file in ${at.rev!.slice(0, 12)}`);
+      blobs.set(path, out.subarray(eol + 1, eol + 1 + Number(size)));
+      pos = eol + 1 + Number(size) + 1;
+    }
+  }
+  return paths.map(p => blobs.get(p) ?? readFileSync(join(cwd, p)));
 }
 
 /** The experiment's result manifest: one `<sha256>  <path>` line (sha256sum's format) per tracked file its results globs
  *  match that the snapshot contains, sorted by path, with the content it had there. */
 function resultManifest(entry: ManifestEntry, cwd: string, adds: Map<string, string>, at: Snapshot): { text: string; files: number } {
   const files = [...new Set(entry.results.flatMap(glob => trackedFiles(cwd, glob)))].filter(file => adds.has(file) && at.contains(adds.get(file)!)).sort();
-  return { text: files.map(file => `${sha256(contentAt(cwd, at, file))}  ${file}\n`).join(''), files: files.length };
+  const content = contentsAt(cwd, at, files);
+  return { text: files.map((file, i) => `${sha256(content[i]!)}  ${file}\n`).join(''), files: files.length };
 }
 
 /** The ledger, from the worktree: every experiment in the manifest, each of whose preregistration must have been first
@@ -554,7 +641,7 @@ export function buildLedger(entries: ManifestEntry[], cutover: string, cwd = pro
  *  Strict ancestry is judged between first-parent landings (firstParentLanding), so the preregistration must have
  *  reached main in a commit strictly before the one that brought in the result; the same commit fails. An attestation's
  *  private commit is checked at its public commit (publicCommit, through the publication's commit map). */
-export function checkPublic(entries: ManifestEntry[], ledger: Ledger, cwd = process.cwd(), ledgerPath = LEDGER_PATH, publication?: Publication): PublicResult[] {
+export function checkPublic(entries: ManifestEntry[], ledger: Ledger, cwd = process.cwd(), ledgerPath = LEDGER_PATH, publication?: Publication, attestations?: AttestationMap): PublicResult[] {
   if (isShallow(cwd)) return [{ id: '*', status: 'failed', problems: [SHALLOW.problem] }];
   if (Number.isNaN(Date.parse(ledger.cutover))) return [{ id: '*', status: 'failed', problems: [`ledger cutover ${ledger.cutover} is not an ISO-8601 instant`] }];
   const adds = firstAddCommits(cwd);
@@ -564,10 +651,23 @@ export function checkPublic(entries: ManifestEntry[], ledger: Ledger, cwd = proc
   const read = publication ? readExceptions(publication.source) : { exceptions: [], problems: [] };
   if (read.problems.length) return [{ id: '*', status: 'failed', problems: read.problems }];
   const exceptions = publication && read.exceptions.length ? exceptionCheck(publication, read.exceptions) : null;
-  const view: PublicView = { landing: firstParentLanding(cwd), placed: publication ? sourcePlacement(cwd, publication) : undefined, named: publicCommit(cwd, publication), excuse: exceptions?.excuse, inSource: publication ? ancestry(publication.source) : undefined };
+  const carried = !publication ? (attestations?.exceptions ?? []) : [];
+  const carriedUses = carried.map(() => [] as string[]);
+  const excuseCarried = (entry: ManifestEntry, file: string, landedAt: string): { exception: MappedException } | { problem: string } | null => {
+    const i = carried.findIndex(x => x.experiment === entry.id && x.paths.some(p => new Bun.Glob(p).match(file)));
+    if (i < 0) return null;
+    if (carried[i]!.public_merge !== landedAt) return { problem: `${ATTESTATION_MAP_PATH} records the exception at ${carried[i]!.public_merge.slice(0, 12)}, not at ${landedAt.slice(0, 12)}, where this file landed` };
+    carriedUses[i]!.push(file);
+    return { exception: carried[i]! };
+  };
+  const named = publicCommit(cwd, publication, attestations);
+  let mapped = new Set<string>();
+  const view: PublicView = { landing: firstParentLanding(cwd), placed: publication ? sourcePlacement(cwd, publication) : undefined, named: commit => { const to = named(commit); if ('mapped' in to) mapped.add(commit); return to; }, excuse: exceptions?.excuse ?? (carried.length ? excuseCarried : undefined), inSource: publication ? ancestry(publication.source) : undefined };
+  const mappedOf = () => (mapped.size ? { mapped: [...mapped].sort() } : {});
   const byId = new Map(ledger.experiments.map(e => [e.id, e]));
   const out: PublicResult[] = ledger.experiments.filter(l => !entries.some(e => e.id === l.id)).map(l => ({ id: l.id, status: 'failed' as const, problems: ['the ledger names an experiment the manifest does not list'] }));
   for (const entry of entries) {
+    mapped = new Set();
     const l = byId.get(entry.id);
     const add = adds.get(entry.preregistration);
     const unadded = [...new Set(entry.results.flatMap(glob => trackedFiles(cwd, glob)))].filter(file => !adds.has(file)).map(file => `${file}: no commit in this history adds it (a merge brought it in), so its order can't be checked`);
@@ -577,17 +677,17 @@ export function checkPublic(entries: ManifestEntry[], ledger: Ledger, cwd = proc
       if (!add || !at.contains(add)) problems.push('the preregistration is not in this history');
       else {
         if (Date.parse(commitDate(cwd, add)) !== Date.parse(l.prereg_merged_at)) problems.push(`the commit that added the preregistration is dated ${commitDate(cwd, add)}, the ledger says ${l.prereg_merged_at}`);
-        if (sha256(contentAt(cwd, at, entry.preregistration)) !== l.prereg_sha256) problems.push('ledger hash mismatch: the preregistration differs from the ledger');
+        if (sha256(contentsAt(cwd, at, [entry.preregistration])[0]!) !== l.prereg_sha256) problems.push('ledger hash mismatch: the preregistration differs from the ledger');
         if (sha256(resultManifest(entry, cwd, adds, at).text) !== l.result_manifest_sha256) problems.push('ledger hash mismatch: the result files differ from the ledger');
         const later = entry.results.flatMap(glob => trackedFiles(cwd, glob)).filter(file => adds.has(file) && !at.contains(adds.get(file)!));
-        if (later.length) problems.push(...orderProblems([{ id: entry.id, preregistration: entry.preregistration, results: later }], cwd, adds, view).map(p => `${p.file}: ${p.problem}`));
+        if (later.length) problems.push(...orderProblems([{ id: entry.id, preregistration: entry.preregistration, results: entry.results }], cwd, adds, view, new Set(later)).map(p => `${p.file}: ${p.problem}`));
       }
-      out.push({ id: entry.id, status: problems.length ? 'failed' : 'attested', problems, ...(l.declared_deviation ? { deviation: l.declared_deviation } : {}) });
+      out.push({ id: entry.id, status: problems.length ? 'failed' : 'attested', problems, ...(l.declared_deviation ? { deviation: l.declared_deviation } : {}), ...mappedOf() });
       continue;
     }
     const problems = [...unadded, ...orderProblems([{ id: entry.id, preregistration: entry.preregistration, results: entry.results }], cwd, adds, view).map(p => `${p.file}: ${p.problem}`)];
     if (l) problems.unshift(`the ledger entry is dated after the cutover (${l.prereg_merged_at} > ${ledger.cutover}), so strict ancestry applies`);
-    out.push({ id: entry.id, status: problems.length ? 'failed' : 'strict', problems });
+    out.push({ id: entry.id, status: problems.length ? 'failed' : 'strict', problems, ...mappedOf() });
   }
   for (const e of read.exceptions) {
     const files = exceptions!.uses.get(e.id)!;
@@ -598,6 +698,10 @@ export function checkPublic(entries: ManifestEntry[], ledger: Ledger, cwd = proc
     }
     result.exceptions = [...(result.exceptions ?? []), { exception: e, files }];
   }
+  carried.forEach((e, i) => {
+    const result = out.find(r => r.id === e.experiment);
+    if (carriedUses[i]!.length && result) result.mappedExceptions = [...(result.mappedExceptions ?? []), { exception: e, files: carriedUses[i]! }];
+  });
   return out;
 }
 
@@ -614,11 +718,12 @@ export function loadManifest(root = process.cwd()): ManifestEntry[] {
   return [...read(main), ...extra];
 }
 
-function publicMain(entries: ManifestEntry[], ledgerPath: string, publication?: Publication): number {
-  const results = checkPublic(entries, readLedger(ledgerPath), process.cwd(), ledgerPath, publication);
+function publicMain(entries: ManifestEntry[], ledgerPath: string, publication?: Publication, attestations?: AttestationMap): number {
+  const results = checkPublic(entries, readLedger(ledgerPath), process.cwd(), ledgerPath, publication, attestations);
   for (const r of results) {
-    if (r.status === 'attested') console.log(`prereg-public: ${r.id}: ${ATTESTED}${r.deviation ? `; declared deviation: ${r.deviation}` : ''}`);
-    else if (r.status === 'strict') console.log(`prereg-public: ${r.id}: strict ancestry`);
+    const mapped = r.mapped ? `; ${r.mapped.length} attestation commit(s) read through ${ATTESTATION_MAP_PATH} (${MAPPED})` : '';
+    if (r.status === 'attested') console.log(`prereg-public: ${r.id}: ${ATTESTED}${r.deviation ? `; declared deviation: ${r.deviation}` : ''}${mapped}`);
+    else if (r.status === 'strict') console.log(`prereg-public: ${r.id}: strict ancestry${mapped}`);
     else for (const p of r.problems) console.error(`prereg-public: ${r.id}: ${p}`);
   }
   const used = results.flatMap(r => (r.exceptions ?? []).map(u => ({ id: r.id, ...u })));
@@ -626,8 +731,11 @@ function publicMain(entries: ManifestEntry[], ledgerPath: string, publication?: 
     const e = u.exception;
     console.log(`prereg-public: exception ${e.id}: ${u.id}: ${u.files.length} result file(s) under ${e.paths.join(', ')} reached main in the preregistration's commit (${e.merge.slice(0, 12)}); same-landing waived after the source showed ${e.preregistration_commit.slice(0, 12)} adds the preregistration and is a strict ancestor of ${e.results_commit.slice(0, 12)} and of each file's first add. Reason: ${e.reason}`);
   }
+  const carried = results.flatMap(r => (r.mappedExceptions ?? []).map(u => ({ id: r.id, ...u })));
+  for (const u of carried) console.log(`prereg-public: exception at ${u.exception.public_merge.slice(0, 12)}: ${u.id}: ${u.files.length} result file(s) under ${u.exception.paths.join(', ')} reached main in the preregistration's commit; same-landing waived by an exception from ${ATTESTATION_MAP_PATH}, whose private order the export checked`);
   const failed = results.filter(r => r.status === 'failed').length;
-  console.log(`prereg-public: ${entries.length} experiments, ${results.filter(r => r.status === 'attested').length} attested, ${results.filter(r => r.status === 'strict').length} strict, ${failed} failed${used.length ? `, ${used.length} exception(s) used` : ''}`);
+  const usedCount = used.length + carried.length;
+  console.log(`prereg-public: ${entries.length} experiments, ${results.filter(r => r.status === 'attested').length} attested, ${results.filter(r => r.status === 'strict').length} strict, ${failed} failed${usedCount ? `, ${usedCount} exception(s) used` : ''}`);
   return failed;
 }
 
@@ -644,11 +752,38 @@ if (import.meta.main) {
   if (process.argv.includes('--public')) {
     const flag = (name: string) => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined);
     const [commitMap, source] = [flag('--commit-map'), flag('--source')];
-    if (!commitMap !== !source) {
-      console.error('usage: bun runner/prereg/prereg.ts --public [--ledger <path>] [--commit-map <commit-map.tsv> --source <private clone of main>] (--commit-map and --source go together)');
+    const writeMap = flag('--write-attestation-map');
+    if (!commitMap !== !source || (writeMap && !commitMap)) {
+      console.error('usage: bun runner/prereg/prereg.ts --public [--ledger <path>] [--commit-map <commit-map.tsv> --source <private clone of main> [--write-attestation-map <out>] | --attestation-map <path> [--base <commit>]] (--commit-map and --source go together; without them the check reads the attestation map, ' + ATTESTATION_MAP_PATH + ' by default, and --base fails a change that edits it)');
       process.exit(64);
     }
-    const failed = publicMain(entries, flag('--ledger') ?? LEDGER_PATH, commitMap && source ? { map: readCommitMap(commitMap), source } : undefined);
+    const publication = commitMap && source ? { map: readCommitMap(commitMap), source } : undefined;
+    if (writeMap) {
+      const map = buildAttestationMap(entries, process.cwd(), publication!);
+      writeFileSync(writeMap, JSON.stringify(map, null, 2) + '\n');
+      console.log(`prereg-public: wrote ${writeMap} with ${Object.keys(map.attestations).length} attestation commit(s)`);
+      process.exit(0);
+    }
+    const mapPath = flag('--attestation-map') ?? ATTESTATION_MAP_PATH;
+    let attestations: AttestationMap | undefined;
+    if (!publication) {
+      if (!existsSync(mapPath)) {
+        console.error(`prereg-public: ${mapPath} is missing. Without --commit-map and --source the check reads the attestation map the public export writes; it fails rather than skip the receipts' attestations.`);
+        process.exit(1);
+      }
+      const base = flag('--base');
+      if (base && tryGit(process.cwd(), ['diff', '--quiet', base, 'HEAD', '--', mapPath]) === null) {
+        console.error(`prereg-public: ${mapPath} differs from ${base}, or ${base} is not in this history. Only the public export writes the attestation map, so a pull request may not change it.`);
+        process.exit(1);
+      }
+      try {
+        attestations = readAttestationMap(mapPath);
+      } catch (e) {
+        console.error(`prereg-public: ${(e as Error).message}`);
+        process.exit(1);
+      }
+    }
+    const failed = publicMain(entries, flag('--ledger') ?? LEDGER_PATH, publication, attestations);
     const privateByHash = await privateByHashMain(entries);
     const { checkOpenings } = await import('../heldout/openings.ts');
     const openings = checkOpenings(process.cwd());

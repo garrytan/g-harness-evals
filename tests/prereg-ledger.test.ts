@@ -11,7 +11,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ATTESTED, buildLedger, checkOrder, checkPublic, type Ledger, LEDGER_PATH, type ManifestEntry, type Publication, type PublicResult } from '../runner/prereg/prereg.ts';
+import { ATTESTATION_MAP_PATH, ATTESTED, buildAttestationMap, buildLedger, checkOrder, checkPublic, type Ledger, LEDGER_PATH, MAPPED, type ManifestEntry, type Publication, type PublicResult, readAttestationMap } from '../runner/prereg/prereg.ts';
 
 const ROOT = join(import.meta.dir, '..');
 const X: ManifestEntry = { id: 'x', preregistration: 'docs/x/PREREGISTRATION.md', results: ['docs/x/results/**'] };
@@ -175,6 +175,7 @@ describe('the prereg ledger', () => {
     commit(dir, { [Y.preregistration]: 'the rule', 'docs/y/results/trials.jsonl': '{}\n', 'docs/benchmarks/preregistrations.json': JSON.stringify({ schema_version: 1, experiments: [X, declared] }) }, 'y prereg and results together');
     expect(ledger.experiments.map((e) => e.id)).toEqual(['x']);
     const run = (...args: string[]) => spawnSync(process.execPath, [join(ROOT, 'runner', 'prereg', 'prereg.ts'), ...args], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: dir } });
+    writeFileSync(join(dir, ATTESTATION_MAP_PATH), JSON.stringify({ schema_version: 1, note: '', label: MAPPED, attestations: {}, exceptions: [] }));
     const pub = run('--public');
     expect(pub.status).toBe(1);
     expect(pub.stderr).toContain('prereg-public: y: docs/y/results/trials.jsonl: added in ');
@@ -280,8 +281,42 @@ describe('the public check across merges, mapped through the commit map', () => 
     const mapped = run('--commit-map', map, '--source', src);
     expect(mapped.stdout).toContain('prereg-public: x: strict ancestry');
     expect(mapped.stdout).toContain('prereg-public: 1 experiments, 0 attested, 1 strict, 0 failed');
-    expect(run().stderr).toContain('prereg-public: x: docs/x/results/run-summary.json: attestation: ');
+    const missing = run();
+    expect([missing.status, missing.stdout]).toEqual([1, '']);
+    expect(missing.stderr).toContain(`prereg-public: ${ATTESTATION_MAP_PATH} is missing.`);
     expect(run('--commit-map', map).status).toBe(64);
+    expect(run('--write-attestation-map', join(dir, ATTESTATION_MAP_PATH)).status).toBe(64);
+    expect(run('--commit-map', map, '--source', src, '--write-attestation-map', join(dir, ATTESTATION_MAP_PATH)).status).toBe(0);
+    const alone = run();
+    expect(alone.status).toBe(0);
+    expect(alone.stdout).toContain(`prereg-public: x: strict ancestry; 1 attestation commit(s) read through ${ATTESTATION_MAP_PATH} (${MAPPED})`);
+    const before = git(dir, 'rev-parse', 'HEAD');
+    commit(dir, { [ATTESTATION_MAP_PATH]: readFileSync(join(dir, ATTESTATION_MAP_PATH), 'utf8') }, 'a pull request adds the map');
+    const edited = run('--base', before);
+    expect([edited.status, edited.stdout]).toEqual([1, '']);
+    expect(edited.stderr).toContain(`prereg-public: ${ATTESTATION_MAP_PATH} differs from ${before}`);
+    expect(run('--base', git(dir, 'rev-parse', 'HEAD')).status).toBe(0);
+    writeFileSync(join(dir, ATTESTATION_MAP_PATH), JSON.stringify({ schema_version: 1, note: '', label: MAPPED, attestations: { short: 'abc' }, exceptions: [] }));
+    expect(run().stderr).toContain('is not an attestation map');
+  });
+
+  test('the attestation map lets the check run without the private clone: each private attestation commit at the public commit the commit map gives, and nothing else', () => {
+    const { src, pre, preMerge } = frontier();
+    const { dir, publication } = exportFirstParent(src);
+    const map = buildAttestationMap([X], dir, publication);
+    expect(map.attestations).toEqual({ [pre]: publication.map.get(preMerge)! });
+    expect(checkPublic([X], NO_LEDGER, dir, LEDGER_PATH, undefined, map)).toEqual([{ id: 'x', status: 'strict', problems: [], mapped: [pre] }]);
+    const short = pre.slice(0, 12);
+    const using = (attestations: Record<string, string>) => checkPublic([X], NO_LEDGER, dir, LEDGER_PATH, undefined, { ...map, attestations })[0]!;
+    expect(using({}).problems).toEqual([`${SUMMARY}: attestation: ${short} is not in this history, and ${ATTESTATION_MAP_PATH} does not map it`]);
+    expect(using({ [pre]: preMerge }).problems).toEqual([`${SUMMARY}: attestation: ${short} is not in this history, and ${ATTESTATION_MAP_PATH} maps it to ${preMerge.slice(0, 12)}, which this history does not hold`]);
+    const base = git(dir, 'rev-list', '--max-parents=0', 'HEAD');
+    expect(using({ [pre]: base }).problems).toEqual([`${SUMMARY}: attestation names ${short}, published as ${base.slice(0, 12)}, which does not contain the preregistration`]);
+    const file = join(dir, '..', `${dir.split('/').pop()}-map.json`);
+    writeFileSync(file, JSON.stringify(map));
+    expect(readAttestationMap(file)).toEqual(map);
+    writeFileSync(file, JSON.stringify({ ...map, label: 'something else' }));
+    expect(() => readAttestationMap(file)).toThrow('is not an attestation map');
   });
 
   test('results added before the preregistration fail', () => {

@@ -58,7 +58,7 @@ bun scripts/seal-heldout.ts --check
 
 - `bun test tests/` takes about 25 minutes on a 4 vCPU machine. `--timeout=30000` gives each test 30 seconds, as CI does: a serial run keeps the 30 second default from `bunfig.toml`'s preload for its first file only.
 - `bash scripts/run-tests.sh` runs the same files in parallel phases, as CI does, in about 9 minutes on a 4 vCPU machine.
-- **The preregistration order check isn't in this list.** `bun runner/prereg/prereg.ts` checks each receipt's attestation against commits this public copy never holds, so it fails here and the public CI doesn't run it. The private repository runs it on every pull request, and the export's preregistration check verifies the order, with the private history, before every push to this repository.
+- **The preregistration order check runs here with `--public`.** `bun runner/prereg/prereg.ts --public` reads `docs/benchmarks/prereg-attestations.json`, which the public export writes, and fails when that file is missing. The public CI runs it on every pull request and every push to main, and fails a pull request that changes that file. The default mode (`bun runner/prereg/prereg.ts`) checks each receipt's attestation against commits this public copy never holds, so it fails here; the private repository runs it, and the export's preregistration check verifies the order, with the private history, before every push to this repository.
 - **CI is the reference.** If your local result differs from the GitHub Actions run on the same commit, trust CI and say so in your report.
 
 ## Re-read a run's receipts

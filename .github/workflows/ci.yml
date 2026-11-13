@@ -111,9 +111,18 @@ jobs:
 
   # Every experiment in docs/benchmarks/preregistrations.json (and preregistrations.d/)
   # must have its preregistration committed before any of its result files. It reads git
-  # history, so it needs the full clone.
+  # history, so it needs the full clone. The private repository runs the private check, and
+  # every other copy (the public repository) runs --public, which reads the export's
+  # attestation map (docs/benchmarks/prereg-attestations.json) and fails when it is missing.
+  # On a pull request it also fails when the pull request changes that map (--base), because
+  # only the export writes it and the check trusts it. It compares against the first parent of
+  # the pull request's merge commit (the base branch tip GitHub merged into), never the event's
+  # base.sha, which can be stale; fetch-depth 0 keeps both parents in the checkout, and a
+  # checkout without them fails the job rather than falling back or skipping.
+  # The job runs in every repository, because GitHub reports a job skipped by `if:` as passed.
+  # The public check took 41 seconds on the public main's 69 experiments on a 4-core machine;
+  # most of the timeout is for the full clone.
   prereg:
-    if: github.repository == 'garrytan/harness-evals'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -126,7 +135,15 @@ jobs:
       - name: Install (frozen lockfile)
         run: bun install --frozen-lockfile
       - name: Preregistration order
-        run: bun runner/prereg/prereg.ts
+        env:
+          REPOSITORY: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$REPOSITORY" = garrytan/harness-evals ]; then exec bun runner/prereg/prereg.ts; fi
+          if [ "$EVENT" != pull_request ]; then exec bun runner/prereg/prereg.ts --public; fi
+          git rev-parse --verify -q HEAD^2 >/dev/null || { echo "prereg: HEAD is not the pull request's merge commit"; exit 1; }
+          base=$(git rev-parse --verify -q HEAD^1) || { echo "prereg: the merge commit's base parent is not in this checkout"; exit 1; }
+          exec bun runner/prereg/prereg.ts --public --base "$base"
 
   # The public export (publication/README.md) of this pull request's tree, keyless: every export gate on the tree (the
   # pass rule is scripts/public-export/ci-gate.ts), then the export tree committed on top of the public repository's

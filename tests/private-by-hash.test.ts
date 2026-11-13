@@ -9,7 +9,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Database } from 'bun:sqlite';
-import { ATTESTED, LEDGER_PATH, type ManifestEntry } from '../runner/prereg/prereg.ts';
+import { ATTESTATION_MAP_PATH, ATTESTED, LEDGER_PATH, MAPPED, type ManifestEntry } from '../runner/prereg/prereg.ts';
 import { attest, attestationPath, checkPrivateByHash, parsePins, type Pins, type ResultsAttestation, verify } from '../runner/prereg/private-by-hash.ts';
 import { buildManifest } from '../scripts/receipts-manifest.ts';
 
@@ -147,7 +147,8 @@ describe('CI check of a private-by-hash experiment', () => {
   test('prereg.ts runs the check in both modes and fails on a broken attestation', () => {
     const r = finished();
     const ledger = { schema_version: 1, note: 'synthetic', label: ATTESTED, cutover: '2000-01-01T00:00:00.000Z', experiments: [] };
-    r.commit({ 'docs/benchmarks/preregistrations.json': JSON.stringify({ schema_version: 1, experiments: [ENTRY] }), [LEDGER_PATH]: JSON.stringify(ledger) }, 'Register');
+    const attestations = { schema_version: 1, note: 'synthetic', label: MAPPED, attestations: {}, exceptions: [] };
+    r.commit({ 'docs/benchmarks/preregistrations.json': JSON.stringify({ schema_version: 1, experiments: [ENTRY] }), [LEDGER_PATH]: JSON.stringify(ledger), [ATTESTATION_MAP_PATH]: JSON.stringify(attestations) }, 'Register');
     const run = (...a: string[]) => Bun.spawnSync([process.execPath, join(import.meta.dir, '..', 'runner', 'prereg', 'prereg.ts'), ...a], { cwd: r.dir, env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: tmp }, stdout: 'pipe', stderr: 'pipe' });
     const ok = run();
     expect([ok.exitCode, ok.stdout.toString()]).toEqual([0, expect.stringContaining('prereg-private-by-hash: 1 experiments, 0 problems')]);
