@@ -179,12 +179,15 @@ jobs:
             public-export-tools-${{ hashFiles('scripts/public-export/tools.lock') }}
       - name: Pinned export tools (checksum-verified)
         run: bun scripts/public-export/export.ts tools
-      # The export reads the source's identities from refs/heads/main, which a pull request checkout does not create.
+      # The export reads the source's identities from refs/heads/main, which a pull request checkout does not create. The
+      # public main is cloned first: the reference-overlap gate drops only the common phrases its harness captures, world/,
+      # harnesses/ and tasks/ hold, never those of the tree being exported.
       - name: Export tree (keyless; exit 1 is a gate verdict the next step reads)
         run: |
+          git clone -q --single-branch --branch main --no-tags https://github.com/garrytan/g-harness-evals.git "$RUNNER_TEMP/public"
           git update-ref refs/heads/main HEAD
           rc=0
-          bun scripts/public-export/export.ts tree --source . --rev HEAD --cutover "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --out "$RUNNER_TEMP/export" --no-trufflehog || rc=$?
+          bun scripts/public-export/export.ts tree --source . --rev HEAD --cutover "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --out "$RUNNER_TEMP/export" --no-trufflehog --common-from "$RUNNER_TEMP/public" || rc=$?
           [ "$rc" -le 1 ]
       - name: Export gates
         run: bun scripts/public-export/ci-gate.ts --report "$RUNNER_TEMP/export/report/tree-report.json" --summary "$GITHUB_STEP_SUMMARY"
@@ -199,7 +202,6 @@ jobs:
       # origin/main (the sealed governance checks) compares the export with itself, not with the public copy before it.
       - name: The export tree on top of the public history
         run: |
-          git clone -q --single-branch --branch main --no-tags https://github.com/garrytan/g-harness-evals.git "$RUNNER_TEMP/public"
           cd "$RUNNER_TEMP/public"
           git fetch -q --no-tags "$RUNNER_TEMP/export/stage" main
           tip=$(git -c user.name=ci -c user.email=ci@invalid commit-tree FETCH_HEAD^{tree} -p HEAD -m "export tree of $GITHUB_SHA")
