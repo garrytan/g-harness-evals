@@ -164,6 +164,23 @@ describe.skipIf(!NODE || !HAVE_PY)('adapters at process level (stub CLIs, no ima
       }
     }, 60_000);
   }
+
+  test('hermes: a Particle 402 or 429 is still exit 3 when the copies into stdout.log and stderr.log lag behind the CLI', () => {
+    // fixtures/particle/slow-tee/ delays every tee write by 200 ms, so a model-error check that read the tee'd copies would
+    // run before the HTTP line landed and give exit 2, as a loaded CI runner sometimes did.
+    for (const status of ['402', '429']) {
+      const dir = mkdtempSync(join(tmpdir(), 'he-particle-slow-tee-'));
+      for (const d of ['workspace', 'state', 'logs']) mkdirSync(join(dir, d));
+      writeFileSync(join(dir, 'workspace', 'instruction.md'), 'Say ok.\n');
+      writeFileSync(join(dir, 'state', 'stub-refused-status'), status);
+      const env: Record<string, string> = { ...hostEnv(harnessDir('hermes'), 'hermes', NODE!), HE_WORKSPACE_DIR: join(dir, 'workspace'), HE_SESSION_STATE_DIR: join(dir, 'state'), HE_LOG_DIR: join(dir, 'logs'),
+        HE_MODEL_BASE_URL: PARTICLE_CELL.baseUrl, HE_MODEL_API_KEY: TOKEN, HE_MODEL_NAME: PARTICLE_CELL.model, HE_TIME_BUDGET_S: '60', HE_TRIAL_ID: 'slow-tee' };
+      env.PATH = [join(import.meta.dir, 'fixtures', 'particle', 'slow-tee'), join(import.meta.dir, 'fixtures', 'particle', 'stub-refused'), STUB_DIR, env.PATH].join(':');
+      const exit = spawnSync('bash', [join(harnessDir('hermes'), 'adapter.sh'), 'run'], { env, stdio: 'ignore', timeout: 60_000 }).status;
+      rmSync(dir, { recursive: true, force: true });
+      expect({ status, exit }).toEqual({ status, exit: 3 });
+    }
+  }, 60_000);
 });
 
 describe.skipIf(!haveImage('openclaw') && !haveImage('hermes'))('one turn per entry on Particle-1 against the fake endpoint', () => {

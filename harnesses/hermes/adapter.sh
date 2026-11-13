@@ -708,11 +708,14 @@ if [ "$entry" = "run" ]; then
     route-hook|route-once|route-placebo) printf 'emit=1' > "$HE_SESSION_STATE_DIR/he-route/emit" ;;
   esac
   set +e
+  # Hermes appends to stdout.log and stderr.log itself, not through the tees above, which bash never waits for: the model-error
+  # grep below then sees every line Hermes printed. Through a tee, a loaded machine sometimes ran the grep before the HTTP 402
+  # or 429 line had landed, and a model error became exit 2.
   timeout -k 60 "$HE_TIME_BUDGET_S" hermes chat \
     --query-file "$HE_WORKSPACE_DIR/instruction.md" \
     --oneshot \
     --provider "$provider" \
-    --model "$HE_MODEL_NAME"
+    --model "$HE_MODEL_NAME" >> "$HE_LOG_DIR/stdout.log" 2>> "$HE_LOG_DIR/stderr.log"
   code=$?
   set -e
   case "$code" in

@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+# Test stand-in for tee (tests/particle-branch.test.ts): `tee -a FILE...` that waits 200 ms before it writes each chunk it
+# reads, as a tee the scheduler runs late on a loaded machine does. The adapters copy their output into stdout.log and
+# stderr.log through tee, so this makes those copies land after the CLI has exited.
+import os, sys, time
+files = [open(a, 'ab', buffering=0) for a in sys.argv[1:] if a != '-a']
+while True:
+    chunk = os.read(0, 65536)
+    if not chunk:
+        break
+    time.sleep(0.2)
+    for f in files:
+        f.write(chunk)
+    try:
+        os.write(1, chunk)
+    except BrokenPipeError:
+        pass
